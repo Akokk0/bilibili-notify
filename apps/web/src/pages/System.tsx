@@ -30,6 +30,7 @@ import {
 } from "../components/forms";
 import { LinkPreviewSettings } from "../components/link-preview-settings";
 import { OnboardingReopenSection } from "../components/onboarding/reopen-section";
+import { targetDisplay } from "../components/target-display";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { UpdateSection } from "../components/update/update-section";
 import { AUTH_STATUS_ACCENT, AUTH_STATUS_LABELS, authMessageOf } from "../config/auth-status";
@@ -39,6 +40,7 @@ import { SECTION_ACCENT } from "../config/section-accents";
 import { useSourceAuth } from "../hooks/use-source-auth";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
+import { useT } from "../i18n";
 import { ApiError, api } from "../services/api";
 import { errorTextOf } from "../services/error-text";
 import { BILIBILI_SOURCE_KEY, type Connection, type PushTarget } from "../types/domain";
@@ -289,29 +291,33 @@ function SystemSettingsSection({
 export function MasterSection({
 	draft,
 	targets,
+	connections = [],
 	onPatch,
 }: {
 	draft: Pick<GlobalConfig, "master">;
 	targets: PushTarget[];
+	connections?: readonly Connection[];
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
+	const tx = useT();
 	const master = draft.master;
 	const masterTarget = master.targetId ? targets.find((t) => t.id === master.targetId) : undefined;
 	// 主人目标只许指向私聊目标(ADR-0021 决策 57):下拉只列私聊的;当前存着的值要是已经不满足
 	// (指向群,或目标没了),就多显示一行不可选的「已失效」,免得下拉悄悄跳去「未配置」。
 	const isStale = master.targetId !== undefined && !isPrivateTarget(masterTarget);
+	const masterDisplay = masterTarget ? targetDisplay(masterTarget, connections) : undefined;
 	const masterStatus = !master.targetId
-		? "未配置 · 出错时不会私聊提醒"
+		? tx("system.master.unsetStatus")
 		: !masterTarget
-			? "原来的目标已经不在了，请重新选一个私聊目标"
+			? tx("system.master.missing")
 			: !isPrivateTarget(masterTarget)
-				? "这个目标不是私聊，女仆没法悄悄告诉主人。请换一个私聊目标"
-				: `→ ${masterTarget.name}`;
+				? tx("system.master.notPrivate")
+				: `→ ${masterDisplay?.label} · ${masterDisplay?.description}`;
 
 	return (
 		<GlassBox
-			title="主人账号 · master"
-			subtitle="插件遇错误会私聊报告给这个目标 · globals.master"
+			title={tx("system.master.title")}
+			subtitle={tx("system.master.subtitle")}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.user size={14} />}
 			badge="master"
@@ -321,13 +327,11 @@ export function MasterSection({
 					value={master.targetId ?? ""}
 					onChange={(v) => onPatch({ master: { targetId: v || undefined } })}
 					options={[
-						{ value: "", label: "未配置" },
+						{ value: "", label: tx("system.master.unset") },
 						...(isStale && master.targetId
-							? [{ value: master.targetId, label: "已失效", disabled: true }]
+							? [{ value: master.targetId, label: tx("system.master.stale"), disabled: true }]
 							: []),
-						...targets
-							.filter((t) => isPrivateTarget(t))
-							.map((t) => ({ value: t.id, label: t.name })),
+						...targets.filter((t) => isPrivateTarget(t)).map((t) => targetDisplay(t, connections)),
 					]}
 				/>
 			</Field>
@@ -568,6 +572,7 @@ export default function System() {
 							<MasterSection
 								draft={draft.core}
 								targets={targetsQuery.data ?? []}
+								connections={connectionsQuery.data ?? []}
 								onPatch={patchCoreDraft}
 							/>
 						) : null}

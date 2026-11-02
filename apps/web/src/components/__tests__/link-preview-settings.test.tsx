@@ -132,7 +132,10 @@ function renderCard(
 	return onPatch;
 }
 
-const row = (name: string) => within(screen.getByRole("group", { name }));
+const row = (name: string) =>
+	within(
+		screen.getByRole("group", { name: new RegExp(`^${name.replace(/[()]/g, "\\$&")}( · |$)`) }),
+	);
 /** 逐群表默认收起,要看行先展开。 */
 const openGroups = () => fireEvent.click(screen.getByRole("button", { name: "展开" }));
 
@@ -228,11 +231,11 @@ describe("LinkPreviewSettings", () => {
 		it("默认收起,只有一行摘要;点「展开」才列群,再点「收起」", () => {
 			renderCard(draftWith({ byTarget: { [T_A]: { replyForm: "nativeShare" } } }));
 			expect(screen.getByText("2 个群 · 1 个例外")).toBeTruthy();
-			expect(screen.queryByRole("group", { name: "群 A" })).toBeNull();
+			expect(screen.queryByRole("group", { name: /^群 A · / })).toBeNull();
 			openGroups();
-			expect(screen.getByRole("group", { name: "群 A" })).toBeTruthy();
+			expect(screen.getByRole("group", { name: /^群 A · / })).toBeTruthy();
 			fireEvent.click(screen.getByRole("button", { name: "收起" }));
-			expect(screen.queryByRole("group", { name: "群 A" })).toBeNull();
+			expect(screen.queryByRole("group", { name: /^群 A · / })).toBeNull();
 		});
 
 		/**
@@ -261,7 +264,7 @@ describe("LinkPreviewSettings", () => {
 				},
 			);
 			openGroups();
-			expect(screen.getByRole("group", { name: "电报群" })).toBeTruthy();
+			expect(screen.getByRole("group", { name: /^电报群 · / })).toBeTruthy();
 		});
 
 		it("拓展连接上的**私聊**目标还是不列 —— 例外表讲的只是群", () => {
@@ -292,16 +295,16 @@ describe("LinkPreviewSettings", () => {
 				},
 			);
 			openGroups();
-			expect(screen.queryByRole("group", { name: "电报私聊" })).toBeNull();
+			expect(screen.queryByRole("group", { name: /^电报私聊 · / })).toBeNull();
 		});
 
 		it("只列群类且收得到入站消息的目标:私聊与 webhook 不出现,官机群算", () => {
 			renderCard(draftWith());
 			openGroups();
-			expect(screen.getByRole("group", { name: "群 A" })).toBeTruthy();
-			expect(screen.getByRole("group", { name: "官机群 B" })).toBeTruthy();
-			expect(screen.queryByRole("group", { name: "主人私聊" })).toBeNull();
-			expect(screen.queryByRole("group", { name: "钩子" })).toBeNull();
+			expect(screen.getByRole("group", { name: /^群 A · / })).toBeTruthy();
+			expect(screen.getByRole("group", { name: /^官机群 B · / })).toBeTruthy();
+			expect(screen.queryByRole("group", { name: /^主人私聊 · / })).toBeNull();
+			expect(screen.queryByRole("group", { name: /^钩子 · / })).toBeNull();
 		});
 
 		it("没写例外的群两格都按在「跟默认」上,并把继承来的值写在旁边", () => {
@@ -387,7 +390,7 @@ describe("LinkPreviewSettings", () => {
 			it("支持 → 列", () => {
 				withCaps(SUPPORTED, ADAPTERS[0] as Connection);
 				openGroups();
-				expect(screen.getByRole("group", { name: "某群" })).toBeTruthy();
+				expect(screen.getByRole("group", { name: /^某群 · / })).toBeTruthy();
 			});
 
 			it("不支持 → 不列(webhook 直连的会话目标也一样,不看平台名)", () => {
@@ -401,13 +404,13 @@ describe("LinkPreviewSettings", () => {
 			it("还不知道 → 照列", () => {
 				withCaps({ state: "unknown", reason: "桥没报这一项" }, ADAPTERS[0] as Connection);
 				openGroups();
-				expect(screen.getByRole("group", { name: "某群" })).toBeTruthy();
+				expect(screen.getByRole("group", { name: /^某群 · / })).toBeTruthy();
 			});
 
 			it("能力表里没有这条连接(引擎没起来 / 表还没回来)→ 照「还不知道」列", () => {
 				renderCard(draftWith(), vi.fn(), groupOn(A_HOOK), { capabilities: {} });
 				openGroups();
-				expect(screen.getByRole("group", { name: "某群" })).toBeTruthy();
+				expect(screen.getByRole("group", { name: /^某群 · / })).toBeTruthy();
 			});
 
 			it("目标挂的连接不在了 → 不知道它是谁,不列", () => {

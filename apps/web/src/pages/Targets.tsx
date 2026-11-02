@@ -33,6 +33,7 @@ import { ChannelAddressPicker, SessionAddressPicker } from "../components/addres
 import { ConnectionAuthButton } from "../components/connection-auth";
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { DescriptorIcon, useConnectionFace } from "../components/platform-meta";
+import { TargetLabel } from "../components/target-display";
 import { useAdapters } from "../hooks/useAdapters";
 import {
 	EXTENSION_BOTS_QUERY_PREFIX,
@@ -62,7 +63,6 @@ import {
 	type NewConnection,
 	type PushTarget,
 	type PushTargetScope,
-	platformOfTarget,
 	targetReachabilityOf,
 } from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";
@@ -234,11 +234,6 @@ function TargetCard({
 	readOnly,
 }: TargetCardProps) {
 	const tx = useT();
-	const platformTint = usePlatformTint();
-	// 平台取自目标挂着的连接;连接缺了就是认不出(灰徽标)。
-	const platform = platformOfTarget(target, connection ? [connection] : []);
-	const face = useConnectionFace();
-	const tint = platformTint(connection ? face(connection) : "");
 	const connectionMissing = !connection;
 	const status = targetStatusFor(target);
 	const reachability = targetReachabilityOf(target);
@@ -251,15 +246,9 @@ function TargetCard({
 			}}
 		>
 			<div className="mb-2.5 flex items-center gap-2.5">
-				<div
-					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-					style={{ background: `color-mix(in srgb, ${tint} 10%, transparent)` }}
-				>
-					<PlatformIcon platform={platform ?? ""} size={18} />
-				</div>
 				<div className="min-w-0 flex-1">
 					<div className="truncate text-bn-base font-bold text-bn-text-primary">
-						{target.name || tx("targets.targetCard.text1")}
+						<TargetLabel target={target} connections={connection ? [connection] : []} />
 					</div>
 					<div className="truncate font-mono text-bn-xs text-bn-text-tertiary">
 						{targetSessionSummary(target, connection?.platformSnapshot)}
@@ -283,12 +272,9 @@ function TargetCard({
 			<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
 				<span className="truncate">
 					{scopeLabel(target.kind === "session" ? target.scope : "channel")}
-					{" · "}
-					<span style={{ color: connectionMissing ? "var(--color-bn-danger-text)" : undefined }}>
-						{connectionMissing
-							? tx("targets.targetCard.text4")
-							: tx("targets.targetCard.text5", { value0: connection.name })}
-					</span>
+					{connectionMissing && (
+						<span className="ml-1.5 text-bn-danger-text">{tx("targets.targetCard.text4")}</span>
+					)}
 					{target.enabled ? null : (
 						<span className="ml-1.5 text-bn-text-tertiary">{tx("targets.targetCard.text6")}</span>
 					)}

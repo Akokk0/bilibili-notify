@@ -141,3 +141,69 @@ describe("TargetChipPicker", () => {
 		expect(badge()?.textContent ?? "").toBe("");
 	});
 });
+
+it("同平台同名目标按连接区分，点击仍回传目标 id；连接缺失时保留 id", () => {
+	const onToggle = vi.fn();
+	const props = {
+		targets: [target(T_A, "Family"), { ...target(T_B, "Family"), connectionId: "other" }],
+		selected: [],
+		onToggle,
+		tone: "var(--color-bn-pink)",
+	};
+	const { rerender } = render(
+		<TargetChipPicker
+			{...props}
+			connections={
+				[
+					{ id: ADAPTER, name: "Main", platform: "custom-relay", enabled: true },
+					{ id: "other", name: "Backup", platform: "custom-relay", enabled: true },
+				] as Connection[]
+			}
+		/>,
+	);
+	fireEvent.click(screen.getByRole("button", { name: /Family.*Backup/ }));
+	expect(onToggle).toHaveBeenCalledExactlyOnceWith(T_B);
+	expect(screen.getByRole("button", { name: /Family.*Main/ })).toBeTruthy();
+	rerender(
+		<TargetChipPicker
+			{...props}
+			connections={
+				[{ id: "other", name: "Renamed", platform: "custom-relay", enabled: true }] as Connection[]
+			}
+		/>,
+	);
+	expect(screen.getByRole("button", { name: /Family.*Renamed/ })).toBeTruthy();
+	rerender(<TargetChipPicker {...props} connections={[]} />);
+	expect(screen.getByRole("button", { name: /Family.*other/ })).toBeTruthy();
+});
+
+it("同平台的图标仍取各自连接快照，适配器不在场也能显示", () => {
+	render(
+		<TargetChipPicker
+			targets={[target(T_A, "First"), { ...target(T_B, "Second"), connectionId: "other" }]}
+			connections={
+				[
+					{
+						id: ADAPTER,
+						name: "Main",
+						platform: "relay",
+						platformSnapshot: { shortLabel: "Alpha", color: "#247a6f" },
+					},
+					{
+						id: "other",
+						name: "Backup",
+						platform: "relay",
+						platformSnapshot: { shortLabel: "Beta", color: "#247a6f" },
+					},
+				] as Connection[]
+			}
+			selected={[]}
+			onToggle={() => {}}
+			tone="var(--color-bn-pink)"
+		/>,
+	);
+	expect(within(screen.getByRole("button", { name: /First.*Main/ })).getByText("A")).toBeTruthy();
+	expect(
+		within(screen.getByRole("button", { name: /Second.*Backup/ })).getByText("B"),
+	).toBeTruthy();
+});

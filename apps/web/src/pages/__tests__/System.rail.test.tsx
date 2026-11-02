@@ -122,7 +122,7 @@ function renderSystem(initialEntry = "/system") {
  * 主人账号那张卡是 `draft` 到了才画的,拿它当信号才真。
  */
 async function waitForDraft() {
-	await screen.findByText("主人账号 · master");
+	await screen.findByText("主人账号");
 }
 
 function pickSection(label: string) {
@@ -153,7 +153,7 @@ describe("系统页的分区导航", () => {
 
 	// 十节一节不丢:每一格点进去,该格该有的都在。
 	it.each([
-		["账号", ["账号 · auth", "主人账号 · master", "原始登录快照"], []],
+		["账号", ["账号 · auth", "主人账号", "原始登录快照"], []],
 		["运行", [], ["sec-browser-source"]],
 		["消息", [], ["sec-commands", "sec-link-preview"]],
 		["外观", [], ["sec-skin"]],

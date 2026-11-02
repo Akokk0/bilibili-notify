@@ -11,17 +11,15 @@
 
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import type { Connection, PushTarget } from "@bilibili-notify/internal";
-import { TSelect } from "@bilibili-notify/ui";
+import { TSelect, type TSelectOption } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
+import { targetDisplay } from "../components/target-display";
 import { api } from "../services/api";
 import { subscriptionIdentityOf } from "../types/domain";
 
 export type PickKind = "sub" | "target" | "connection" | "creator";
 
-interface Option {
-	value: string;
-	label: string;
-}
+type Option = TSelectOption;
 
 const DEFAULT_OPTION: Option = { value: "", label: "（服务端默认）" };
 
@@ -50,7 +48,7 @@ function useOptions(kind: PickKind, provider: string | undefined): Option[] {
 	const connections = useQuery({
 		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/connections"),
-		enabled: kind === "connection",
+		enabled: kind === "connection" || kind === "target",
 	});
 	switch (kind) {
 		case "sub":
@@ -68,10 +66,10 @@ function useOptions(kind: PickKind, provider: string | undefined): Option[] {
 			});
 		}
 		case "target":
-			return (targets.data ?? []).map((t) => ({
-				value: t.id,
-				label: `${t.name}${disabledTag(t.enabled)}`,
-			}));
+			return (targets.data ?? []).map((t) => {
+				const display = targetDisplay(t, connections.data ?? []);
+				return { ...display, label: `${display.label}${disabledTag(t.enabled)}` };
+			});
 		case "connection":
 			return (connections.data ?? []).map((a) => ({
 				value: a.id,

@@ -14,14 +14,11 @@
  * react-query 的取数留在调用方,所以它住 web 不进 `packages/ui`。
  */
 
-import { EmptyNote, Pill, PlatformIcon, ToneChip } from "@bilibili-notify/ui";
+import { EmptyNote, Pill, ToneChip } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
-import {
-	type Connection,
-	isTargetPaused,
-	type PushTarget,
-	platformOfTarget,
-} from "../types/domain";
+import { useT } from "../i18n";
+import { type Connection, isTargetPaused, type PushTarget } from "../types/domain";
+import { TargetLabel } from "./target-display";
 
 export function TargetChipPicker({
 	targets,
@@ -42,6 +39,7 @@ export function TargetChipPicker({
 	/** 一个候选都没有时显示的话;不给就什么都不画。 */
 	empty?: ReactNode;
 }) {
+	const tx = useT();
 	if (targets.length === 0) {
 		return empty ? (
 			<EmptyNote size="sm" className="w-full">
@@ -54,11 +52,10 @@ export function TargetChipPicker({
 		<div className="flex flex-wrap gap-2">
 			{targets.map((t) => (
 				<ToneChip key={t.id} tone={tone} active={chosen.has(t.id)} onClick={() => onToggle(t.id)}>
-					<PlatformIcon platform={platformOfTarget(t, connections) ?? ""} size={13} />
-					{t.name}
+					<TargetLabel target={t} connections={connections} />
 					{isTargetPaused(t, connections) ? (
 						<Pill size="sm" subtle color="var(--color-bn-inactive)">
-							已停用
+							{tx("targetDisplay.paused")}
 						</Pill>
 					) : null}
 				</ToneChip>

@@ -34,14 +34,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { i18n, useT } from "../i18n";
-import {
-	type Connection,
-	isTargetPaused,
-	type PushTarget,
-	platformOfTarget,
-} from "../types/domain";
+import { type Connection, isTargetPaused, type PushTarget } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field } from "./forms";
+import { TargetLabel, targetDisplay } from "./target-display";
 
 /**
  * 回复形式三档的标签。出字那一刻才取(切语言后随组件重画),所以是个 hook 而不是模块顶层的常量;
@@ -224,12 +220,11 @@ export function LinkPreviewSettings({
 						</div>
 						{groupsOpen
 							? candidates.map((t) => {
-									const platform = platformOfTarget(t, connections);
 									return (
 										<GroupRow
 											key={t.id}
 											target={t}
-											platform={platform}
+											connections={connections}
 											cfg={cfg}
 											onPatch={onPatch}
 											support={nativeShareSupport(capabilities, t.connectionId)}
@@ -316,15 +311,15 @@ function Cell({ label, children }: { label: string; children: React.ReactNode })
  */
 function GroupRow({
 	target,
-	platform,
+	connections,
 	cfg,
 	onPatch,
 	support,
 	paused,
 }: {
 	target: PushTarget;
-	/** 目标的平台,取自它挂着的连接;连接不在是 `undefined`。 */
-	platform: string | undefined;
+	/** 用同一份连接表计算目标的图标与连接名。 */
+	connections: readonly Connection[];
 	cfg: GlobalConfig["linkPreview"];
 	onPatch: (delta: GlobalConfigPatch) => void;
 	/** 这群所在连接能不能签小程序卡;表里没这条是 undefined。 */
@@ -334,6 +329,7 @@ function GroupRow({
 }) {
 	const tx = useT();
 	const replyFormLabel = useReplyFormLabel();
+	const display = targetDisplay(target, connections);
 	const o = cfg.byTarget[target.id];
 	// 草稿里被 patch 成 null 的字段(刚点过「跟默认」)与没写一样,都是跟默认。
 	const isOn = o?.isOn ?? undefined;
@@ -346,12 +342,11 @@ function GroupRow({
 		});
 	return (
 		<fieldset
-			aria-label={target.name}
+			aria-label={`${display.label} · ${display.description}`}
 			className="m-0 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-0 border-bn-border-subtle border-b p-0 py-2 last:border-b-0"
 		>
 			<div className="flex min-w-40 items-center gap-1.5 text-bn-sm text-bn-text-primary">
-				<PlatformIcon platform={platform ?? ""} size={13} />
-				<span className="font-semibold">{target.name}</span>
+				<TargetLabel target={target} connections={connections} />
 				{paused ? (
 					<Pill size="sm" subtle color="var(--color-bn-inactive)">
 						{tx("linkPreview.groupRow.text1")}

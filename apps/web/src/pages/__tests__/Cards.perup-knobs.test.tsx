@@ -67,6 +67,7 @@ function mockApi(sub: Subscription): void {
 	const globals = { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([sub]);
+		if (url === "/api/connections") return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
 		if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 		if (url.includes("/api/cards/skins")) return Promise.resolve(SKIN_LIST);

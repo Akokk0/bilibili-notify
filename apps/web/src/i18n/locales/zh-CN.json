@@ -1157,5 +1157,19 @@
 	"forms.log.warn": "告警",
 	"forms.log.info": "信息",
 	"forms.log.debug": "调试",
-	"forms.log.inherit": "跟随全局"
+	"forms.log.inherit": "跟随全局",
+	"targetDisplay.paused": "已停用",
+	"system.master.unsetStatus": "未配置 · 出错时不会私聊提醒",
+	"system.master.missing": "原来的目标已不存在，请重新选择私聊目标。",
+	"system.master.notPrivate": "该目标不是私聊，请选择私聊目标。",
+	"system.master.title": "主人账号",
+	"system.master.subtitle": "发生错误时，通过此目标发送私聊通知。",
+	"system.master.unset": "未配置",
+	"system.master.stale": "已失效",
+	"aiPage.test.silent": "（未返回文本）",
+	"aiPage.test.title": "试一句",
+	"aiPage.test.subtitle": "使用当前人格设置（含未保存的改动）测试回复；回复会发送到所选目标。",
+	"aiPage.test.placeholder": "今天过得怎么样？",
+	"aiPage.test.thinking": "正在生成回复…",
+	"aiPage.test.delivered": "已送达 · {latencyMs}ms"
 }

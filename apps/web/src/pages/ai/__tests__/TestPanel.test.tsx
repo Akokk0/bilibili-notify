@@ -162,3 +162,29 @@ describe("AI 试一句面板", () => {
 		expect(api.post).not.toHaveBeenCalled();
 	});
 });
+
+it("同名目标显示连接名，选择备用连接只提交对应目标", async () => {
+	vi.mocked(api.get).mockImplementation(async (path) =>
+		path === "/api/connections"
+			? [
+					{ id: "main", name: "Main", platform: "relay" },
+					{ id: "backup", name: "Backup", platform: "relay" },
+				]
+			: [
+					{ id: "first", name: "Family", connectionId: "main" },
+					{ id: "second", name: "Family", connectionId: "backup" },
+				],
+	);
+	vi.mocked(api.post).mockResolvedValue({ ok: true, reply: "ok", latencyMs: 1 });
+	renderPanel();
+	await waitFor(() => expect(screen.getByRole("combobox").textContent).toContain("Main"));
+	chooseSelect(screen.getByRole("combobox"), "Family · Backup");
+	fireEvent.change(screen.getByRole("textbox"), { target: { value: "hello" } });
+	fireEvent.click(screen.getByRole("button", { name: "试一句" }));
+	await waitFor(() =>
+		expect(api.post).toHaveBeenCalledWith(
+			"/api/ai/test",
+			expect.objectContaining({ targetId: "second" }),
+		),
+	);
+});

@@ -3,15 +3,16 @@ import type {
 	StatsRoastResult,
 	StatsSoloRoastResult,
 } from "@bilibili-notify/contract";
-import { Btn, PlatformIcon } from "@bilibili-notify/ui";
+import { Btn } from "@bilibili-notify/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { TSelect } from "../../components/forms";
+import { targetDisplay } from "../../components/target-display";
 import { AI_PURPLE } from "../../config/colors";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
-import { type Connection, type PushTarget, platformOfTarget } from "../../types/domain";
+import type { Connection, PushTarget } from "../../types/domain";
 
 /**
  * 「可推送周报」那一块 —— 显示女仆写的推送文案,并把它真发出去。
@@ -53,8 +54,6 @@ export function RoastPushBox({
 	const targets = (targetsQuery.data ?? []).filter((target) => target.enabled);
 	const [picked, setPicked] = useState("");
 	const targetId = picked || targets[0]?.id || "";
-	const chosen = targets.find((target) => target.id === targetId);
-	const chosenPlatform = chosen ? platformOfTarget(chosen, connectionsQuery.data ?? []) : undefined;
 
 	const push = useMutation<StatsRoastPushResponse>({
 		mutationFn: () =>
@@ -90,12 +89,11 @@ export function RoastPushBox({
 					</span>
 				) : (
 					<>
-						<PlatformIcon platform={chosenPlatform ?? ""} />
 						<TSelect
 							ariaLabel={t("stats.push.target")}
 							value={targetId}
 							onChange={onPick}
-							options={targets.map((target) => ({ value: target.id, label: target.name }))}
+							options={targets.map((target) => targetDisplay(target, connectionsQuery.data ?? []))}
 						/>
 						<Btn
 							size="sm"

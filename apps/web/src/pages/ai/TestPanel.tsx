@@ -14,14 +14,21 @@ import { Btn, ErrorNote, GlassBox, Icon } from "@bilibili-notify/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Field, TArea, TSelect } from "../../components/forms";
+import { targetDisplay } from "../../components/target-display";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
-import type { PushTarget } from "../../types/domain";
+import type { Connection, PushTarget } from "../../types/domain";
 import type { AISettingsDraft } from "../../types/globals";
 
 const MAX_MESSAGE = 500;
 
 export function AiTestPanel({ draft }: { draft: AISettingsDraft }) {
+	const connectionsQuery = useQuery({
+		queryKey: ["connections"],
+		queryFn: () => api.get<Connection[]>("/api/connections"),
+	});
+	const tx = useT();
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
@@ -53,7 +60,7 @@ export function AiTestPanel({ draft }: { draft: AISettingsDraft }) {
 			// 「试了没成」(女仆没答上来、投递没成)是 200 + { ok: false, code, message };请求本身不对
 			// (体不对、没这个目标、引擎没起)是非 2xx,走 onError。两条路都得显式接住,
 			// 否则失败会静静地什么都不显示,用户以为没点上。
-			if (r.ok) setReply(r.reply || "(女仆没说话)");
+			if (r.ok) setReply(r.reply || tx("aiPage.test.silent"));
 			else setErr(r.message);
 		},
 		onError: (e: unknown) => setErr(errorTextOf(e)),
@@ -63,8 +70,8 @@ export function AiTestPanel({ draft }: { draft: AISettingsDraft }) {
 
 	return (
 		<GlassBox
-			title="试一句"
-			subtitle="拿当前人格(含未保存的改动)问女仆一句 · 回复会真实推到选定目标"
+			title={tx("aiPage.test.title")}
+			subtitle={tx("aiPage.test.subtitle")}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.sparkle size={14} />}
 			badge="test"
@@ -73,7 +80,7 @@ export function AiTestPanel({ draft }: { draft: AISettingsDraft }) {
 				<TSelect
 					value={targetId}
 					onChange={setTargetId}
-					options={targets.map((t) => ({ value: t.id, label: t.name }))}
+					options={targets.map((target) => targetDisplay(target, connectionsQuery.data ?? []))}
 				/>
 			</Field>
 
@@ -81,17 +88,19 @@ export function AiTestPanel({ draft }: { draft: AISettingsDraft }) {
 				<TArea
 					value={message}
 					onChange={(v) => setMessage(v.slice(0, MAX_MESSAGE))}
-					placeholder="今天过得怎么样?"
+					placeholder={tx("aiPage.test.placeholder")}
 					rows={2}
 				/>
 			</Field>
 
 			<div className="flex items-center gap-2">
 				<Btn variant="primary" disabled={!canSend} onClick={() => test.mutate()}>
-					{test.isPending ? "女仆思考中…" : "试一句"}
+					{test.isPending ? tx("aiPage.test.thinking") : tx("aiPage.test.title")}
 				</Btn>
 				{test.data?.ok && reply !== null && (
-					<span className="text-bn-xs text-bn-text-tertiary">已送达 · {test.data.latencyMs}ms</span>
+					<span className="text-bn-xs text-bn-text-tertiary">
+						{tx("aiPage.test.delivered", { latencyMs: test.data.latencyMs })}
+					</span>
 				)}
 			</div>
 

@@ -1,3 +1,4 @@
+import { targetDisplay } from "../components/target-display";
 /**
  * Cards page — image plugin card preview. Ports `GlassPreviewTab` from
  * `.bn-design/variation-ac.jsx`.
@@ -48,7 +49,12 @@ import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSe
 import { useSources } from "../hooks/useSources";
 import { useT } from "../i18n";
 import { ApiError, api } from "../services/api";
-import { type PushTarget, type Subscription, subscriptionIdentityOf } from "../types/domain";
+import {
+	type Connection,
+	type PushTarget,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "../types/domain";
 import type { CardsSettings } from "../types/globals";
 import { walkTreeDiff } from "../utils/walkTreeDiff";
 import { CardSkinKnobsSection } from "./cards/CardSkinKnobs";
@@ -308,6 +314,10 @@ function TestPushCard({
 	subscriptions: readonly Subscription[];
 }) {
 	const t = useT();
+	const connectionsQuery = useQuery({
+		queryKey: ["connections"],
+		queryFn: () => api.get<Connection[]>("/api/connections"),
+	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
@@ -367,7 +377,7 @@ function TestPushCard({
 					options={
 						targets.length === 0
 							? [{ value: "", label: t("cards.testPush.noTargets") }]
-							: targets.map((target) => ({ value: target.id, label: target.name }))
+							: targets.map((target) => targetDisplay(target, connectionsQuery.data ?? []))
 					}
 				/>
 			</Field>

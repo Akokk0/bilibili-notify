@@ -16,11 +16,11 @@ import {
 	IconButton,
 	ModalShell,
 	Pill,
-	PlatformIcon,
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TInput } from "../../components/forms";
+import { TargetLabel } from "../../components/target-display";
 import { i18n, useT } from "../../i18n";
 import {
 	type Connection,
@@ -759,6 +759,7 @@ export function UpDialog({
 										key={t.id}
 										target={t}
 										platform={platformOfTarget(t, connections ?? [])}
+										connections={connections ?? []}
 										connectionsLoaded={connections !== undefined}
 										atAll={capabilities?.[t.connectionId]?.atAll}
 										isCustom={customSet.has(t.id)}
@@ -800,11 +801,7 @@ export function UpDialog({
 													onClick={() => attachTarget(t.id)}
 												>
 													<Icon.plus size={11} />
-													<PlatformIcon
-														platform={platformOfTarget(t, connections ?? []) ?? ""}
-														size={11}
-													/>
-													<span className="max-w-35 truncate">{t.name}</span>
+													<TargetLabel target={t} connections={connections ?? []} />
 												</AddButton>
 											))}
 										</div>
@@ -1175,6 +1172,7 @@ const missingConnectionAtAllNoteOf = () => i18n.t("sourceUi.pages.up.UpDialog.te
 
 function TargetRoutingCard({
 	target,
+	connections,
 	platform,
 	connectionsLoaded,
 	atAll,
@@ -1191,6 +1189,7 @@ function TargetRoutingCard({
 	onDetach,
 }: {
 	target: PushTarget;
+	connections: readonly Connection[];
 	/** 目标的平台,取自它挂着的连接;连接不在(或还没加载回来)是 `undefined`。 */
 	platform: string | undefined;
 	/** 连接列表是否已经回来 —— 没回来时平台未知不算「连接不在」,不下结论。 */
@@ -1220,10 +1219,9 @@ function TargetRoutingCard({
 		<div className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface">
 			{/* Header */}
 			<div className="flex items-center gap-2.5 px-3 py-2.5">
-				<PlatformIcon platform={platform ?? ""} size={16} />
 				<div className="min-w-0 flex-1">
 					<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
-						{target.name || tx("sourceUi.pages.up.UpDialog.TargetRoutingCard.44")}
+						<TargetLabel target={target} connections={connections} />
 					</div>
 					<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
 						{isCustom

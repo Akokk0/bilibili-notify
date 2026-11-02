@@ -327,9 +327,15 @@ describe("DevDock", () => {
 				case "/api/subscriptions":
 					return SUBSCRIPTIONS;
 				case "/api/targets":
-					return [{ id: "t1", name: "测试群", enabled: true }];
+					return [
+						{ id: "t1", name: "测试群", connectionId: "a1", enabled: true },
+						{ id: "t2", name: "测试群", connectionId: "a2", enabled: false },
+					];
 				case "/api/connections":
-					return [{ id: "a1", name: "家里的 NapCat", enabled: true }];
+					return [
+						{ id: "a1", name: "家里的 NapCat", enabled: true },
+						{ id: "a2", name: "备用 NapCat", enabled: true },
+					];
 				default:
 					return {
 						...STATUS,
@@ -368,23 +374,24 @@ describe("DevDock", () => {
 			selectOptionsOf(await screen.findByRole("combobox", { name: "目标" })).map(
 				(o) => o.textContent,
 			),
-		).toEqual(["（服务端默认）", "测试群"]);
+		).toEqual(["（服务端默认）", "测试群家里的 NapCat", "测试群（停用）备用 NapCat"]);
 		expect(
 			selectOptionsOf(await screen.findByRole("combobox", { name: "连接" })).map(
 				(o) => o.textContent,
 			),
-		).toEqual(["（服务端默认）", "家里的 NapCat"]);
+		).toEqual(["（服务端默认）", "家里的 NapCat", "备用 NapCat"]);
 
 		// 留空全部不带;选了才带。
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 		await waitFor(() =>
 			expect(api.post).toHaveBeenCalledWith("/api/dev/run/core.live.repush-now", { params: {} }),
 		);
+		chooseSelect(screen.getByRole("combobox", { name: "目标" }), "测试群（停用） · 备用 NapCat");
 		chooseSelect(sub, "乙 · x1");
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 		await waitFor(() =>
 			expect(api.post).toHaveBeenLastCalledWith("/api/dev/run/core.live.repush-now", {
-				params: { sub: "s3" },
+				params: { sub: "s3", target: "t2" },
 			}),
 		);
 	});

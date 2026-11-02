@@ -71,32 +71,30 @@ describe("MasterSection 的下拉", () => {
 
 	it("只列私聊目标:群与频道不在可选项里", () => {
 		renderCard(undefined);
-		expect(optionLabels()).toEqual(["未配置", "主人私聊", "副号私聊"]);
+		expect(optionLabels()).toEqual(["未配置", "主人私聊c1", "副号私聊c1"]);
 	});
 
 	it("存着的是私聊目标:选中它,状态行写它的名字,没有「已失效」行", () => {
 		renderCard("t-priv");
-		expect(screen.getByRole("combobox").textContent).toBe("主人私聊");
+		expect(screen.getByRole("combobox").textContent).toBe("主人私聊c1");
 		expect(optionLabels()).not.toContain("已失效");
-		expect(screen.getByText("→ 主人私聊")).toBeTruthy();
+		expect(screen.getByText("→ 主人私聊 · c1")).toBeTruthy();
 	});
 
 	it("存着的指向群:多一行不可选的「已失效」并停在它上面,状态行请主人换私聊目标", () => {
 		renderCard("t-group");
-		expect(optionLabels()).toEqual(["未配置", "已失效", "主人私聊", "副号私聊"]);
+		expect(optionLabels()).toEqual(["未配置", "已失效", "主人私聊c1", "副号私聊c1"]);
 		const stale = screen.getByRole("option", { name: "已失效" }) as HTMLButtonElement;
 		expect(stale.disabled).toBe(true);
 		expect(screen.getByRole("combobox").textContent).toBe("已失效");
-		expect(
-			screen.getByText("这个目标不是私聊，女仆没法悄悄告诉主人。请换一个私聊目标"),
-		).toBeTruthy();
+		expect(screen.getByText("该目标不是私聊，请选择私聊目标。")).toBeTruthy();
 	});
 
 	it("存着的目标已经不在了:同样多一行「已失效」,状态行说原来的目标不在了", () => {
 		renderCard("t-gone");
-		expect(optionLabels()).toEqual(["未配置", "已失效", "主人私聊", "副号私聊"]);
+		expect(optionLabels()).toEqual(["未配置", "已失效", "主人私聊c1", "副号私聊c1"]);
 		expect(screen.getByRole("combobox").textContent).toBe("已失效");
-		expect(screen.getByText("原来的目标已经不在了，请重新选一个私聊目标")).toBeTruthy();
+		expect(screen.getByText("原来的目标已不存在，请重新选择私聊目标。")).toBeTruthy();
 	});
 
 	it("没配主人:没有「已失效」行,状态行照旧", () => {
@@ -107,7 +105,29 @@ describe("MasterSection 的下拉", () => {
 
 	it("选一个私聊目标 → patch 它的 id", () => {
 		const onPatch = renderCard("t-group");
-		chooseSelect(screen.getByRole("combobox"), "副号私聊");
+		chooseSelect(screen.getByRole("combobox"), "副号私聊 · c1");
 		expect(onPatch).toHaveBeenCalledWith({ master: { targetId: "t-priv2" } });
 	});
+});
+
+it("同名私聊仍能按连接选择，patch 保持目标 id", () => {
+	const onPatch = vi.fn();
+	render(
+		<MasterSection
+			draft={{ master: {} }}
+			targets={[
+				target("first", "Family", "private"),
+				{ ...target("second", "Family", "private"), connectionId: "c2" },
+			]}
+			connections={
+				[
+					{ id: "c1", name: "Main", platform: "relay" },
+					{ id: "c2", name: "Backup", platform: "relay" },
+				] as import("../../types/domain").Connection[]
+			}
+			onPatch={onPatch}
+		/>,
+	);
+	chooseSelect(screen.getByRole("combobox"), "Family · Backup");
+	expect(onPatch).toHaveBeenCalledExactlyOnceWith({ master: { targetId: "second" } });
 });

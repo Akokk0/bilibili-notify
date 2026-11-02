@@ -91,6 +91,7 @@ beforeEach(() => {
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
+		if (url === "/api/connections") return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
 		if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 		return Promise.resolve({ core: GLOBALS });
@@ -152,6 +153,7 @@ describe("测试推送的结果", () => {
 	/** 点开 SC 那个类型 tab(测试推送只在类型 tab 里),点「测试推送」;预览照常画得出来。 */
 	async function clickTestPush(reply: () => Promise<unknown>): Promise<void> {
 		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url === "/api/connections") return Promise.resolve([]);
 			if (url.includes("/api/targets")) return Promise.resolve([TARGET]);
 			if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 			return Promise.resolve({ core: GLOBALS });
