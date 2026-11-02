@@ -174,6 +174,9 @@ const LAYER: Record<PopoverLayer, string> = {
 };
 
 export interface PopoverShellProps {
+	/** Anchored reading panels may be wider/taller than their trigger; viewport bounds still apply. */
+	preferredWidth?: number;
+	maxPanelHeight?: number;
 	anchorRef?: RefObject<HTMLElement | null>;
 	onAnchorHidden?: () => void;
 	id?: string;
@@ -199,6 +202,8 @@ export interface PopoverShellProps {
 }
 
 export function PopoverShell({
+	preferredWidth,
+	maxPanelHeight = 288,
 	anchorRef,
 	onAnchorHidden,
 	id,
@@ -257,11 +262,14 @@ export function PopoverShell({
 				hidden.current?.();
 				return;
 			}
-			const width = Math.min(Math.max(160, r.width), Math.max(0, window.innerWidth - 16));
+			const width = Math.min(
+				Math.max(160, preferredWidth ?? r.width),
+				Math.max(0, window.innerWidth - 16),
+			);
 			const below = Math.max(0, window.innerHeight - r.bottom - 14),
 				above = Math.max(0, r.top - 14);
-			const up = below < 288 && above > below;
-			const maxHeight = Math.min(288, up ? above : below);
+			const up = below < maxPanelHeight && above > below;
+			const maxHeight = Math.min(maxPanelHeight, up ? above : below);
 			const height = Math.min(node.current?.scrollHeight || maxHeight, maxHeight);
 			const next = {
 				position: "fixed" as const,
@@ -299,7 +307,7 @@ export function PopoverShell({
 			resize?.disconnect();
 			mutation.disconnect();
 		};
-	}, [anchorRef]);
+	}, [anchorRef, preferredWidth, maxPanelHeight]);
 	const panel = (
 		<div
 			id={id}

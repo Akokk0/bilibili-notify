@@ -291,5 +291,9 @@
 	"stats.roast.pending": "女仆正在阅读数据并撰写锐评",
 	"stats.roast.idleBefore": "主人，点一下，我会读完这批{creatorNoun}近 {days} 天的涨粉、投稿与直播数据，评出本期",
 	"stats.roast.idleAfter": "，再整理成能直接发到群里的周报哦~(*´∀`)~♡",
-	"stats.roast.scoreHint": "由女仆依据本期数据评分 · 0–100"
+	"stats.roast.scoreHint": "由女仆依据本期数据评分 · 0–100",
+	"problems.greeting": "主人，女仆为您打理通知与订阅～",
+	"problems.failed": "主人，女仆暂时读不到问题列表，现在的状态还不知道哦。",
+	"problems.loading": "主人，女仆正在读取问题列表",
+	"problems.separate": "主人，推送链路错误留在右上角；关闭错误记录不会清除这里的问题哦。"
 }

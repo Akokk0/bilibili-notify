@@ -165,3 +165,40 @@ it("anchors a body portal above a low trigger within viewport bounds", () => {
 		anchor.remove();
 	}
 });
+
+it("anchored reading panels use requested dimensions while staying inside a narrow viewport", () => {
+	const anchor = document.createElement("button");
+	document.body.append(anchor);
+	const rect = vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue({
+		left: 20,
+		right: 80,
+		top: 30,
+		bottom: 60,
+		width: 60,
+		height: 30,
+		x: 20,
+		y: 30,
+		toJSON: () => ({}),
+	});
+	try {
+		vi.stubGlobal("innerWidth", 390);
+		render(
+			<PopoverShell
+				anchorRef={{ current: anchor }}
+				preferredWidth={440}
+				maxPanelHeight={420}
+				role="dialog"
+			>
+				Reading panel
+			</PopoverShell>,
+		);
+		const panel = screen.getByRole("dialog");
+		expect(panel.style.width).toBe("374px");
+		expect(panel.style.left).toBe("8px");
+		expect(panel.style.maxHeight).toBe("420px");
+	} finally {
+		rect.mockRestore();
+		anchor.remove();
+		vi.unstubAllGlobals();
+	}
+});

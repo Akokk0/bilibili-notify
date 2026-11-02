@@ -224,7 +224,6 @@ export const RATCHET = {
 	"apps/web/src/components/ai-chat/sidebar.tsx": 14,
 	"apps/web/src/components/ai-chat/thinking-control.tsx": 4,
 	"apps/web/src/components/ai-chat/thinking-level-setting.tsx": 6,
-	"apps/web/src/components/alert-shell.tsx": 2,
 	"apps/web/src/components/browser-source-settings.tsx": 24,
 	"apps/web/src/components/chrome-autodetect.tsx": 15,
 	"apps/web/src/components/commands-settings.tsx": 12,
@@ -232,7 +231,7 @@ export const RATCHET = {
 	"apps/web/src/components/drag-handle.tsx": 3,
 	"apps/web/src/components/error-boundary.tsx": 6,
 
-	"apps/web/src/components/header.tsx": 33,
+	"apps/web/src/components/header.tsx": 29,
 	"apps/web/src/components/inherit-note.tsx": 1,
 
 	"apps/web/src/components/onboarding/derive.ts": 1,

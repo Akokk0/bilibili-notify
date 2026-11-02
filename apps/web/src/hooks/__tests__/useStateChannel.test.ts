@@ -11,7 +11,7 @@
  *   - extension-settings-changed        → 那个拓展的设置与视图(状态)
  *   - extension-report-discrepancies-changed → 仅拓展表(上报出入框住在那一行上)
  *   - subscription-profiles-changed     → 仅 invalidate ["subscriptions"](拓展报的资料落盘了)
- *   - problems-changed                  → 仅 invalidate ["subscriptions"](订阅卡带着挂在它上面的问题)
+ *   - problems-changed                  → invalidate 订阅、问题与健康详情(订阅卡带着挂在它上面的问题)
  *   - config-changed scope=subscriptions → invalidate ["subscriptions"] 与 ["subscription-tags"](标签表与订阅同一档)
  *   - config-changed scope=targets       → 仅 invalidate ["targets"]
  *   - config-changed scope=secrets       → 一律不动(前端无对应缓存)
@@ -82,6 +82,8 @@ describe("handleStateEnvelope — state 频道分发", () => {
 				"extension-bots",
 				"ext-settings",
 				"source-auth",
+				"problems",
+				"health",
 			]),
 		);
 	});
@@ -193,12 +195,12 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	});
 
 	/** 问题表变了:订阅列表每条订阅带着自己的问题,所以重取订阅列表(不必看是谁报的)。 */
-	it("problems-changed:仅 invalidate [subscriptions]", () => {
+	it("problems-changed:刷新订阅、问题与健康详情", () => {
 		handleStateEnvelope(
 			env({ type: "state", event: "problems-changed", data: { reporter: "bilibili" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["subscriptions"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["subscriptions"], ["problems"], ["health", "details"]]);
 	});
 
 	/**

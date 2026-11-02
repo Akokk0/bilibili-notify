@@ -18,19 +18,19 @@ import { CSS } from "@dnd-kit/utilities";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { AUTH_STATUS_LABELS, authMessageOf } from "../config/auth-status";
 import { canHideNav, NAV_ITEMS, type NavItem, orderedNav, resolveNav } from "../config/nav";
-import { SOURCE_AUTH_QUERY_PREFIX, useSourceAuth } from "../hooks/use-source-auth";
+import { SOURCE_AUTH_QUERY_PREFIX } from "../hooks/use-source-auth";
 import { useBackendReachable } from "../hooks/useBackendReachable";
+import { useT } from "../i18n";
 import { api } from "../services/api";
 import { submitLogout } from "../services/session";
 import { useNavStore } from "../store/nav";
 import { useSessionStore } from "../store/session";
 import { useSkinStore, useSkinText } from "../store/skin";
 import { type ThemePreference, useThemeStore } from "../store/theme";
-import { BILIBILI_SOURCE_KEY, type PushTarget, type Subscription } from "../types/domain";
-import { imageUrl } from "../utils/image-url";
+import type { PushTarget, Subscription } from "../types/domain";
 import { DragHandle } from "./drag-handle";
+import { ProblemBox } from "./problem-box";
 
 /**
  * 面板里的一行 —— ⠿ 拖动排序 + 勾选显隐。
@@ -149,36 +149,6 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 				</SortableContext>
 			</DndContext>
 		</PopoverShell>
-	);
-}
-
-function AccountChip() {
-	const { state, account } = useSourceAuth(BILIBILI_SOURCE_KEY);
-	const loggedIn = state?.status === "logged-in";
-	const name = loggedIn ? account?.name : undefined;
-	const face = loggedIn && account?.avatar ? imageUrl(account.avatar) : undefined;
-	if (loggedIn && name) {
-		return (
-			<span>
-				当前账号 <span className="font-bold text-bn-pink">{name}</span> 已登录
-				{face ? (
-					<img
-						alt={name}
-						src={face}
-						data-bn="avatar"
-						className="ml-2 inline-block h-5 w-5 rounded-full"
-					/>
-				) : null}
-			</span>
-		);
-	}
-	return (
-		<span>
-			女仆为您打理一切～(*´∀`)~♡{" "}
-			<span className="text-bn-text-secondary">
-				{state ? authMessageOf(state) || AUTH_STATUS_LABELS[state.status] : "登录态加载中"}
-			</span>
-		</span>
 	);
 }
 
@@ -365,6 +335,7 @@ function ReachBadge({
 }
 
 export function GlassHeader() {
+	const tx = useT();
 	const qc = useQueryClient();
 	const reachable = useBackendReachable();
 	// 皮肤文案槽:皮肤没给就用产品默认标题。
@@ -458,8 +429,9 @@ export function GlassHeader() {
 						<div className="text-bn-lg font-bold tracking-tight text-bn-text-primary">
 							{headerTitle}
 						</div>
-						<div className="mt-0.5 truncate text-bn-xs text-bn-text-secondary">
-							<AccountChip />
+						<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
+							{tx("problems.greeting")}
+							<ProblemBox />
 						</div>
 					</div>
 				</div>

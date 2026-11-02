@@ -13,6 +13,8 @@ import {
 	extensionStatusKey,
 	invalidateExtensionTables,
 } from "./useExtensions";
+import { HEALTH_DETAILS_QUERY_KEY } from "./useHealthDetails";
+import { PROBLEMS_QUERY_KEY } from "./useProblems";
 import { SETTINGS_KEY } from "./useSettings";
 import { SUBSCRIPTION_TAGS_QUERY_KEY } from "./useSubscriptionTags";
 
@@ -44,13 +46,15 @@ import { SUBSCRIPTION_TAGS_QUERY_KEY } from "./useSubscriptionTags";
  * 另有 `subscription-profiles-changed`(拓展报的资料落进了资料缓存,ADR-0019 决策 7 / 62):失效订阅
  * 列表 —— 资料不是配置,服务端不为它发 `config-changed`。
  *
- * 另有 `problems-changed`(问题表变了):失效订阅列表 —— 每条订阅带着问题表里关于它的那几条。
+ * 另有 `problems-changed`(问题表变了):失效问题表、健康详情与订阅列表 —— 每条订阅带着问题表里关于它的那几条。
  *
  * 提取成 export 纯函数让测试能注入测试用 QueryClient(`new QueryClient()`),
  * 不需要渲染 hook + Provider 整套。
  */
 export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 	if (isWsEvent(env, "state", "hydrate")) {
+		qc.invalidateQueries({ queryKey: PROBLEMS_QUERY_KEY });
+		qc.invalidateQueries({ queryKey: HEALTH_DETAILS_QUERY_KEY });
 		qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 		qc.invalidateQueries({ queryKey: ["targets"] });
@@ -100,6 +104,8 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 	// 问题表变了:每条订阅带着名下的问题,订阅列表重取。帧里的报告人不必看 —— 问题是 join 进整张表回来的。
 	if (isWsEvent(env, "state", "problems-changed")) {
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
+		qc.invalidateQueries({ queryKey: PROBLEMS_QUERY_KEY });
+		qc.invalidateQueries({ queryKey: HEALTH_DETAILS_QUERY_KEY });
 		return;
 	}
 	if (!isWsEvent(env, "state", "config-changed")) return;

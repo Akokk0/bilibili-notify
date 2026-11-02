@@ -57,7 +57,6 @@ export const ALLOWLIST = {
  */
 export const RATCHET = {
 	"apps/web/src/components/ai-chat/index.tsx": 2,
-	"apps/web/src/components/header.tsx": 2,
 	"apps/web/src/components/onboarding/derive.ts": 2,
 	"apps/web/src/components/onboarding/use-onboarding-view.ts": 5,
 	"apps/web/src/devtools/web-scenarios.ts": 1,
