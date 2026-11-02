@@ -276,5 +276,15 @@
 	"aiPage.test.subtitle": "主人可以用当前人格问女仆一句，没保存的改动也算；回复会真实送到选定目标哦。",
 	"aiPage.test.placeholder": "主人今天过得怎么样？",
 	"aiPage.test.thinking": "女仆思考中…",
-	"aiPage.test.delivered": "女仆送到啦 · {latencyMs}ms"
+	"aiPage.test.delivered": "女仆送到啦 · {latencyMs}ms",
+	"maidSkills.loading": "主人，正在读取技能喔。",
+	"maidSkills.builtinHint": "主人，内置技能跟版本走，想改就照着它新建自己的技能吧。",
+	"maidSkills.bodyHint": "主人，只需写这件事怎么做喔。这段 Markdown 会追加在人格设定之后。",
+	"maidSkills.problems": "主人，有 {count} 份技能读不进来：",
+	"maidSkills.nameHint": "主人，名字只收小写字母、数字和单个连字符，也是目录名喔。在聊天里输入 /{name} 就能用了。",
+	"maidSkills.descriptionHint": "主人，这句每轮对话都会带上，已写 {count} / {max} 字。",
+	"maidSkills.toolsHint": "主人，一把都不勾就是不限；勾了之后，这项技能就只用选中的这些工具喔。",
+	"maidSkills.saveFailed": "主人，没能保存：{message}",
+	"aiChat.messages.error": "呜…{name}出错了：{message}",
+	"aiChat.messages.image": "主人发送的图片"
 }

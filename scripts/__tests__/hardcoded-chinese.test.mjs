@@ -220,7 +220,6 @@ export const RATCHET = {
 	"apps/web/src/components/ai-chat/composer.tsx": 18,
 	"apps/web/src/components/ai-chat/index.tsx": 23,
 	"apps/web/src/components/ai-chat/markdown.tsx": 1,
-	"apps/web/src/components/ai-chat/messages.tsx": 13,
 	"apps/web/src/components/ai-chat/persona.ts": 2,
 	"apps/web/src/components/ai-chat/search-control.tsx": 4,
 	"apps/web/src/components/ai-chat/sidebar.tsx": 14,
@@ -262,7 +261,6 @@ export const RATCHET = {
 	"apps/web/src/pages/Logs.tsx": 15,
 	"apps/web/src/pages/System.tsx": 45,
 
-	"apps/web/src/pages/ai/MaidSkills.tsx": 28,
 	"apps/web/src/pages/backup/BackupExportDialog.tsx": 15,
 	"apps/web/src/pages/backup/BackupImportDialog.tsx": 16,
 	"apps/web/src/pages/backup/BackupSection.tsx": 20,

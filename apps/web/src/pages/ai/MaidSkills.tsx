@@ -25,6 +25,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { TArea, TInput } from "../../components/forms";
+import { useT } from "../../i18n";
 import {
 	createMaidSkill,
 	deleteMaidSkill,
@@ -90,11 +91,13 @@ function LabeledField(props: {
 }
 
 export function MaidSkills() {
+	const tx = useT();
 	const qc = useQueryClient();
 	const query = useQuery({ queryKey: maidSkillsQueryKey, queryFn: listMaidSkills });
 	const list = query.data?.list ?? [];
 	const problems = query.data?.problems ?? [];
 	const tools = query.data?.tools ?? [];
+	const toolLabels = query.data?.toolLabels ?? {};
 
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [draft, setDraft] = useState<MaidSkillWriteRequest>(BLANK);
@@ -163,12 +166,12 @@ export function MaidSkills() {
 		setDraft(arr.length > 0 ? { ...rest, allowedTools: arr } : rest);
 	};
 
-	if (query.isLoading) return <LoadingBlock label="正在读取技能" />;
+	if (query.isLoading) return <LoadingBlock label={tx("maidSkills.loading")} />;
 
 	return (
 		<div className="grid gap-4 xl:grid-bn-rail">
 			<SectionNav
-				heading="技能"
+				heading={tx("maidSkills.heading")}
 				items={[
 					...list.map((s) => ({
 						id: s.name,
@@ -182,11 +185,13 @@ export function MaidSkills() {
 						// (Pill 的色本就归调用方管,这不是绕过它的契约,是在用它。)
 						badge: s.builtin ? (
 							<Pill subtle color={s.name === activeId ? "currentColor" : undefined}>
-								内置
+								{tx("maidSkills.builtin")}
 							</Pill>
 						) : undefined,
 					})),
-					...(creating ? [{ id: NEW_ID, label: "新技能", icon: <Icon.plus size={14} /> }] : []),
+					...(creating
+						? [{ id: NEW_ID, label: tx("maidSkills.new"), icon: <Icon.plus size={14} /> }]
+						: []),
 				]}
 				activeId={activeId ?? ""}
 				onPick={(id) => {
@@ -200,37 +205,30 @@ export function MaidSkills() {
 					setActiveId(NEW_ID);
 					setDraft(BLANK);
 				}}
-				addLabel="+ 新建"
+				addLabel={tx("maidSkills.add")}
 			/>
 
 			<div className="flex min-w-0 flex-col gap-4">
 				{problems.length > 0 ? (
 					<WarnNote className="leading-relaxed">
-						盘上有 {problems.length} 份读不进来:
+						{tx("maidSkills.problems", { count: problems.length })}
 						{problems.map((p) => `${p.dir}(${p.reason})`).join(";")}
 					</WarnNote>
 				) : null}
 
 				<GlassBox
-					title={creating ? "新建技能" : (current?.name ?? "技能")}
-					subtitle={
-						readOnly
-							? "内置技能,只读跟版本走 —— 想改就照着它新建一条自己的"
-							: "一条技能 = 一份 SKILL.md,存在 <dataDir>/maid-skills/<名字>/"
-					}
+					title={creating ? tx("maidSkills.create") : (current?.name ?? tx("maidSkills.heading"))}
+					subtitle={readOnly ? tx("maidSkills.builtinHint") : tx("maidSkills.storageHint")}
 					accent="var(--color-bn-pink)"
 					icon={<Icon.sparkle size={14} />}
 					badge={readOnly ? "builtin" : "skill"}
 				>
 					<div className="flex flex-col gap-3.5 p-1">
 						<LabeledField
-							label="名字 · 也是斜杠命令"
-							hint={
-								<>
-									小写字母 / 数字 / 单个连字符。它同时是磁盘上的目录名,所以卡得比较死。 聊天里打{" "}
-									<span className="font-mono">/{draft.name || "名字"}</span> 就是用它。
-								</>
-							}
+							label={tx("maidSkills.nameLabel")}
+							hint={tx("maidSkills.nameHint", {
+								name: draft.name || tx("maidSkills.namePlaceholder"),
+							})}
 						>
 							{(aria) => (
 								<TInput
@@ -245,24 +243,24 @@ export function MaidSkills() {
 						</LabeledField>
 
 						<LabeledField
-							label="description · 女仆靠它决定要不要用"
-							hint={`${draft.description.length} / ${MAID_SKILL_LIMITS.descChars} 字。这一句每轮对话都带着,所以有上限。`}
+							label={tx("maidSkills.descriptionLabel")}
+							hint={tx("maidSkills.descriptionHint", {
+								count: draft.description.length,
+								max: MAID_SKILL_LIMITS.descChars,
+							})}
 						>
 							{(aria) => (
 								<TInput
 									ariaLabel={aria}
 									value={draft.description}
 									disabled={readOnly}
-									placeholder="一句话说清这条技能干什么"
+									placeholder={tx("maidSkills.descriptionPlaceholder")}
 									onChange={(v) => setDraft({ ...draft, description: v })}
 								/>
 							)}
 						</LabeledField>
 
-						<LabeledField
-							label="正文 · 做事的步骤"
-							hint="Markdown。这段会追加在女仆人格之后 —— 不必重新交代她是谁,只讲这件事怎么做。"
-						>
+						<LabeledField label={tx("maidSkills.bodyLabel")} hint={tx("maidSkills.bodyHint")}>
 							{(aria) => (
 								// rows 而不是 min-h-*:TArea 的高度口子就是 rows,11 行 ≈ 原先那个
 								// min-h-60(240px);拖动改高由 TArea 自带的 resize-y 提供。
@@ -272,7 +270,7 @@ export function MaidSkills() {
 									mono
 									value={draft.body}
 									disabled={readOnly}
-									placeholder={"## 步骤\n\n1. 先……\n2. 再……\n\n## 输出\n\n……"}
+									placeholder={tx("maidSkills.bodyPlaceholder")}
 									onChange={(v) => setDraft({ ...draft, body: v })}
 								/>
 							)}
@@ -280,11 +278,9 @@ export function MaidSkills() {
 
 						<div className="flex flex-col gap-1.5">
 							<span className="text-bn-sm font-semibold text-bn-text-secondary">
-								allowed-tools · 这条技能用得着哪几把
+								{tx("maidSkills.toolsLabel")}
 							</span>
-							<span className="text-bn-xs text-bn-text-tertiary">
-								一把都不勾 = 不限。勾了就只减不加:从这条技能被用上那一刻起,女仆手上只剩勾中的这些。
-							</span>
+							<span className="text-bn-xs text-bn-text-tertiary">{tx("maidSkills.toolsHint")}</span>
 							{/* CheckRow 没有 disabled(见 packages/ui 清单),内置那几条就整块
 							    锁住 —— 为一处只读需求给共用件加个开关不值当。 */}
 							<div
@@ -297,7 +293,9 @@ export function MaidSkills() {
 										checked={draft.allowedTools?.includes(t) ?? false}
 										onChange={(on) => toggleTool(t, on)}
 									>
-										<span className="font-mono text-bn-sm">{t}</span>
+										<span className="text-bn-sm" title={t}>
+											{toolLabels[t] ?? t}
+										</span>
 									</CheckRow>
 								))}
 							</div>
@@ -311,16 +309,20 @@ export function MaidSkills() {
 								checked={draft.disableModelInvocation}
 								onChange={(on) => setDraft({ ...draft, disableModelInvocation: on })}
 							>
-								不让女仆自己挑这条(只许打斜杠)
+								{tx("maidSkills.manualOnly")}
 							</CheckRow>
 						</div>
 
-						{err ? <ErrorNote className="mt-1">保存失败:{err}</ErrorNote> : null}
+						{err ? (
+							<ErrorNote className="mt-1">
+								{tx("maidSkills.saveFailed", { message: err })}
+							</ErrorNote>
+						) : null}
 
 						{readOnly ? null : (
 							<div className="mt-1 flex items-center gap-2">
 								<Btn onClick={submit} disabled={save.isPending}>
-									{save.isPending ? "保存中…" : "保存"}
+									{save.isPending ? tx("maidSkills.saving") : tx("maidSkills.save")}
 								</Btn>
 								{creating || !current ? null : (
 									<Btn
@@ -328,7 +330,7 @@ export function MaidSkills() {
 										disabled={remove.isPending}
 										onClick={() => remove.mutate(current.name)}
 									>
-										删除
+										{tx("maidSkills.delete")}
 									</Btn>
 								)}
 							</div>

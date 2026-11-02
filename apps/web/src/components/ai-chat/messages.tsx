@@ -8,6 +8,7 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { useT } from "../../i18n";
 import type { AiChatMessageDTO } from "../../services/aiChat";
 import { imageUrl } from "../../utils/image-url";
 import { CardSkinPreviews } from "./card-skin-preview";
@@ -126,7 +127,7 @@ export interface ToolChipData {
 	/** 小条上补的那一格入参的完整文字,服务端随痕迹下发;截短在这一层。 */
 	argText?: string;
 	ok?: boolean;
-	/** 失败的那句话。这一步只接住数据,界面还不显示它。 */
+	/** 失败的原话，在对应工具小条下显示。 */
 	message?: string;
 	/**
 	 * 还在跑时的进度:已经产出多少字符。只有肯报进度的慢工具才有(做皮肤那种一趟
@@ -176,6 +177,7 @@ export function MessageList({
 	aiSelf,
 	noAnimIds,
 }: MessageListProps) {
+	const tx = useT();
 	// 订阅放在这里而不是每条消息里:一屋子消息就只有一个订阅者,模块落地时也只重渲染
 	// 一次。往下传的是同一个组件引用,所以在途那份和落盘那份用的必然是同一个渲染器。
 	const Markdown = useChatMarkdown();
@@ -265,7 +267,7 @@ export function MessageList({
 				<div
 					className="bn-anim-msg-in flex gap-1.25 pl-0.5"
 					role="status"
-					aria-label={`${aiSelf}正在思考`}
+					aria-label={tx("aiChat.messages.thinking", { name: aiSelf })}
 				>
 					{[0, 1, 2].map((d) => (
 						<span
@@ -281,7 +283,7 @@ export function MessageList({
 				// 错误不进消息流的原因:那一轮问答根本没落盘(见服务端「整轮成败一致」),
 				// 把它画成一条助手消息,刷新后凭空消失,像是被谁偷偷删了。
 				<ErrorNote size="lg">
-					呜…{aiSelf}出错了:{error}
+					{tx("aiChat.messages.error", { name: aiSelf, message: error ?? "" })}
 				</ErrorNote>
 			) : null}
 		</div>
@@ -311,6 +313,7 @@ function UserTurn({
 	text: string;
 	images?: readonly string[];
 }) {
+	const tx = useT();
 	return (
 		<div className={`${animClass}flex flex-col items-end gap-1.5`}>
 			{images?.length ? (
@@ -319,7 +322,7 @@ function UserTurn({
 						<img
 							key={url}
 							src={url}
-							alt="主人发送的图片"
+							alt={tx("aiChat.messages.image")}
 							className="max-h-44 rounded-bn-card border border-bn-border object-cover"
 						/>
 					))}
@@ -476,6 +479,7 @@ function ThinkingBlock({
 	live: boolean;
 	defaultOpen: boolean;
 }) {
+	const tx = useT();
 	return (
 		<CollapsibleNote
 			testId="thinking-block"
@@ -485,7 +489,7 @@ function ThinkingBlock({
 					<Icon.sparkle size={11} />
 				</span>
 			}
-			label={live ? "思考中…" : "已深度思考"}
+			label={live ? tx("aiChat.messages.thinkingLive") : tx("aiChat.messages.thought")}
 		>
 			{/* 草稿要**一眼让位给正文**:比正文小两号(12px vs 15px)、行距收紧、
 			    颜色再退半档(opacity),配一条安静的左线 —— 引用式排版本身就在说
@@ -508,6 +512,7 @@ function SourcesBlock({
 }: {
 	sources: readonly { title: string; url: string; siteName?: string }[];
 }) {
+	const tx = useT();
 	return (
 		<CollapsibleNote
 			testId="sources-block"
@@ -516,7 +521,7 @@ function SourcesBlock({
 					<Icon.search size={11} />
 				</span>
 			}
-			label={<>来源 · {sources.length}</>}
+			label={tx("aiChat.messages.sources", { count: sources.length })}
 		>
 			<ol className="flex list-none flex-col gap-1 border-l-2 border-bn-border pl-3.5 text-bn-sm leading-[1.7]">
 				{sources.map((s, i) => (
@@ -564,6 +569,12 @@ function ToolChips({
 	open: ReadonlySet<string>;
 	onToggle: (key: string) => void;
 }) {
+	const tx = useT();
+	const stateText = {
+		running: tx("aiChat.messages.state.running"),
+		ok: tx("aiChat.messages.state.ok"),
+		failed: tx("aiChat.messages.state.failed"),
+	};
 	return (
 		<div className="flex flex-wrap gap-1.5">
 			{traces.map((t, i) => {
@@ -575,7 +586,9 @@ function ToolChips({
 				// 半截的字数说明不了什么,只会让人以为它写完了却失败。
 				const progress =
 					t.progress && state !== "failed"
-						? `${state === "running" ? "已写" : "写了"} ${formatChars(t.progress)} 字`
+						? state === "running"
+							? tx("aiChat.messages.writing", { count: formatChars(t.progress) })
+							: tx("aiChat.messages.written", { count: formatChars(t.progress) })
 						: null;
 				const key = toolArgKey(t.name, argText);
 				const open = openKeys.has(key);
@@ -585,7 +598,7 @@ function ToolChips({
 				const chipProps = {
 					"data-testid": "tool-trace",
 					"data-state": state,
-					title: `${label} · ${progress ?? STATE_TEXT[state]}`,
+					title: `${label} · ${progress ?? stateText[state]}`,
 					className: chipClass,
 				};
 				const inner = (
@@ -631,6 +644,11 @@ function ToolChips({
 						) : (
 							<span {...chipProps}>{inner}</span>
 						)}
+						{state === "failed" && t.message ? (
+							<ErrorNote size="sm" className="w-full whitespace-pre-wrap wrap-break-word">
+								{t.message}
+							</ErrorNote>
+						) : null}
 						{/* 展开那一段独占一行:`w-full` 在 flex-wrap 里就是换行,不必把这排
 						    小条拆成两层布局。排版照思考块的引用式来 —— 这是**她收到的
 						    需求原文**,不是回答;也刻意不给底色,免得玻璃叠玻璃。 */}
@@ -645,8 +663,6 @@ function ToolChips({
 		</div>
 	);
 }
-
-const STATE_TEXT = { running: "正在查", ok: "已完成", failed: "没查成" } as const;
 
 /**
  * 进度那个数字要**读得下去**。

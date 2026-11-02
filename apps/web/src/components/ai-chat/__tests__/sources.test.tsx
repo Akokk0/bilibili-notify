@@ -85,3 +85,35 @@ describe("来源折叠列表", () => {
 		expect(screen.queryByText(/来源/)).toBeNull();
 	});
 });
+
+describe("工具失败原因", () => {
+	it.each(["pending", "saved"])("%s 痕迹直接显示失败原话", (stage) => {
+		const tool = {
+			name: "web_search",
+			label: "联网搜索",
+			args: {},
+			ok: false,
+			message: "服务暂时不可用，请稍后再试。",
+		};
+		mountList(
+			stage === "pending"
+				? {
+						pending: { ask: "搜索", draft: "", think: "", tools: [tool] },
+					}
+				: { messages: [msg({ tools: [tool] })] },
+		);
+		expect(screen.getByText(tool.message)).toBeTruthy();
+	});
+});
+
+it.each([true, undefined])("未失败工具（ok=%s）不显示错误消息", (ok) => {
+	mountList({
+		pending: {
+			ask: "搜索",
+			draft: "",
+			think: "",
+			tools: [{ name: "web_search", args: {}, ok, message: "不该显示的错误" }],
+		},
+	});
+	expect(screen.queryByText("不该显示的错误")).toBeNull();
+});

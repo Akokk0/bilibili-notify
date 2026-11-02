@@ -47,5 +47,5 @@ bindPackageText(i18n.t);
 
 /** 组件里取字:`const t = useT()`。切语言或口吻后拿到的 `t` 换了引用,已画出来的组件自己重画。 */
 export function useT() {
-	return useSyncExternalStore(i18n.subscribe, i18n.state).t;
+	return useSyncExternalStore(i18n.subscribe, i18n.state, i18n.state).t;
 }

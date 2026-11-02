@@ -21,7 +21,12 @@ import { MaidSkills } from "../ai/MaidSkills";
 const H = vi.hoisted(() => ({
 	list: [] as unknown[],
 	problems: [] as unknown[],
-	tools: ["list_subscriptions", "get_user_stats", "web_search"],
+	tools: ["list_subscriptions", "get_creator_profile", "web_search"],
+	toolLabels: {
+		list_subscriptions: "列出订阅",
+		get_creator_profile: "查看创作者资料",
+		web_search: "联网搜索",
+	},
 }));
 
 const M = vi.hoisted(() => ({
@@ -32,7 +37,12 @@ const M = vi.hoisted(() => ({
 
 vi.mock("../../services/maidSkill", () => ({
 	maidSkillsQueryKey: ["ai", "skills"],
-	listMaidSkills: vi.fn(async () => ({ list: H.list, problems: H.problems, tools: H.tools })),
+	listMaidSkills: vi.fn(async () => ({
+		list: H.list,
+		problems: H.problems,
+		tools: H.tools,
+		toolLabels: H.toolLabels,
+	})),
 	createMaidSkill: M.create,
 	updateMaidSkill: M.update,
 	deleteMaidSkill: M.remove,
@@ -70,6 +80,7 @@ beforeEach(() => {
 		skill({ name: "my-skill", description: "我写的", builtin: false, body: "步骤" }),
 	];
 	H.problems = [];
+	H.tools = ["list_subscriptions", "get_creator_profile", "web_search"];
 	M.create.mockClear();
 	M.update.mockClear();
 	M.remove.mockClear();
@@ -88,7 +99,7 @@ describe("三个编辑框的无障碍名", () => {
 		// 精确匹配(非正则)取得到,就说明名字只剩标题本身。
 		for (const [title, tag] of [
 			["名字 · 也是斜杠命令", "INPUT"],
-			["description · 女仆靠它决定要不要用", "INPUT"],
+			["description · 技能用途", "INPUT"],
 			["正文 · 做事的步骤", "TEXTAREA"],
 		] as const) {
 			expect(`${title}=${screen.getByLabelText(title).tagName}`).toBe(`${title}=${tag}`);
@@ -143,14 +154,14 @@ describe("自己写的那些", () => {
 		pick("my-skill");
 		await waitFor(() => expect(nameBox().value).toBe("my-skill"));
 
-		fireEvent.click(screen.getByText("list_subscriptions"));
+		fireEvent.click(screen.getByRole("checkbox", { name: "列出订阅" }));
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(M.update).toHaveBeenCalled());
 		expect(M.update.mock.calls[0]?.[1]).toMatchObject({
 			allowedTools: ["list_subscriptions"],
 		});
 
-		fireEvent.click(screen.getByText("list_subscriptions"));
+		fireEvent.click(screen.getByRole("checkbox", { name: "列出订阅" }));
 		fireEvent.click(screen.getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(M.update).toHaveBeenCalledTimes(2));
 		// 「一把都不给」是个静默的大收紧,不该是「取消勾选」的意思。
@@ -275,4 +286,15 @@ describe("左栏「内置」徽章", () => {
 		expect(badgeStyleIn("live-copy")).toMatch(/currentcolor/i);
 		expect(badgeStyleIn("weekly-report")).toContain("--color-bn-pink");
 	});
+});
+
+it("没有标签的工具回退原名，标签不会替换保存的工具 ID", async () => {
+	H.tools = ["acme__echo"];
+	mount();
+	await waitFor(() => expect(nameBox().value).toBe("weekly-report"));
+	pick("my-skill");
+	fireEvent.click(screen.getByRole("checkbox", { name: "acme__echo" }));
+	fireEvent.click(screen.getByRole("button", { name: "保存" }));
+	await waitFor(() => expect(M.update).toHaveBeenCalled());
+	expect(M.update.mock.calls[0]?.[1]).toMatchObject({ allowedTools: ["acme__echo"] });
 });
