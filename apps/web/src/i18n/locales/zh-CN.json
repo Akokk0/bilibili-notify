@@ -1249,5 +1249,6 @@
 	"pipelineErrors.image": "渲染",
 	"pipelineErrors.ai": "AI",
 	"pipelineErrors.link": "链接预览",
-	"pipelineErrors.other": "其他"
+	"pipelineErrors.other": "其他",
+	"problems.headerActions": "顶栏操作"
 }

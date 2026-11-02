@@ -41,7 +41,7 @@ export function ProblemBox() {
 			? t("problems.count", { count: query.data.problems.length })
 			: t("problems.empty");
 	return (
-		<div ref={anchor} className="relative mt-1">
+		<div ref={anchor} className="relative">
 			<Btn
 				size="sm"
 				variant="ghost"

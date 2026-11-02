@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
@@ -77,4 +77,13 @@ it("直接打开问题深链接时也按阅读宽度定位", async () => {
 	mount("/#problems");
 	const panel = await screen.findByRole("dialog", { name: "待处理问题" });
 	expect(panel.style.width).toBe("440px");
+});
+
+it("待处理问题与服务器状态、主题和刷新位于同一操作区", async () => {
+	mount();
+	const actions = screen.getByRole("group", { name: "顶栏操作" });
+	expect(await within(actions).findByRole("button", { name: "待处理问题 1" })).toBeTruthy();
+	expect(within(actions).getByText("服务器运行中")).toBeTruthy();
+	expect(within(actions).getByRole("button", { name: /主题/ })).toBeTruthy();
+	expect(within(actions).getByRole("button", { name: "刷新" })).toBeTruthy();
 });

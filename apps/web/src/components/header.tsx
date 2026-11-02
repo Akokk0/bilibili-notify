@@ -431,11 +431,14 @@ export function GlassHeader() {
 						</div>
 						<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
 							{tx("problems.greeting")}
-							<ProblemBox />
 						</div>
 					</div>
 				</div>
-				<div className="flex shrink-0 items-center gap-2">
+				<fieldset
+					aria-label={tx("problems.headerActions")}
+					className="flex shrink-0 items-center gap-2"
+				>
+					<ProblemBox />
 					{/*
 					 * 这枚徽章只回答一件事:`/api/health` 通不通(见 useBackendReachable)。
 					 * 它曾经写着「推送服务运行中」,被读成了推送的启停开关 —— 而推送开没开
@@ -461,7 +464,7 @@ export function GlassHeader() {
 						</Btn>
 					</NavLink>
 					<LogoutButton />
-				</div>
+				</fieldset>
 			</div>
 			{/* 挂 `nav` 挂点 —— 次级导航(TabBarShell / SectionNav)都挂了,唯独这条
 			    一级导航没挂。皮肤给 nav 画底色/描边时,Rules 的作用域条、Targets 的
