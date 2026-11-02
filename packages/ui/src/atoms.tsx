@@ -244,7 +244,11 @@ export function Btn({
 type IconButtonSize = "xs" | "sm" | "md" | "lg" | "xl";
 type IconButtonTone = "neutral" | "danger" | "accent";
 
-export interface IconButtonProps {
+export interface IconButtonProps
+	extends Pick<
+		ButtonHTMLAttributes<HTMLButtonElement>,
+		"onKeyDown" | "onPointerDown" | "onContextMenu"
+	> {
 	icon: ReactNode;
 	/** 读屏器名字。图标本身没有文字,这个必填。 */
 	label: string;
@@ -313,6 +317,9 @@ export function IconButton({
 	label,
 	title,
 	onClick,
+	onKeyDown,
+	onPointerDown,
+	onContextMenu,
 	size = "sm",
 	tone = "neutral",
 	shape = "square",
@@ -326,6 +333,9 @@ export function IconButton({
 		<button
 			type="button"
 			onClick={onClick}
+			onKeyDown={onKeyDown}
+			onPointerDown={onPointerDown}
+			onContextMenu={onContextMenu}
 			disabled={disabled}
 			title={title ?? label}
 			aria-label={label}
