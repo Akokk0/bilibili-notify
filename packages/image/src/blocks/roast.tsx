@@ -32,6 +32,7 @@
  * 逐行不同 —— 所以这三个变量一律由用到它的元素自己 inline,不往上提。
  */
 
+import { packageText } from "@bilibili-notify/internal/texts";
 import { SVG_CHART_BARS, SVG_FEATHER, SVG_TROPHY } from "../icons";
 import type {
 	RoastBoardCardInput,
@@ -57,7 +58,7 @@ function CreatorAvatar(p: { creator: RoastCardCreator; size: number }) {
 				class="rounded-full object-cover shrink-0"
 				style={box}
 				src={p.creator.avatar}
-				alt="头像"
+				alt={packageText("image.roast.avatar")}
 			/>
 		);
 	}
@@ -123,10 +124,11 @@ function ScoreRow(p: { creator: RoastCardCreator; score: number; autoName?: bool
 /** 榜单周报卡的块表(整张正文一个块)。 */
 export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardInput>> = {
 	body: (p) => {
+		const creatorNoun = p.creatorNoun ?? packageText("image.roast.creatorNoun");
 		const podium = (
 			[
-				[SVG_FEATHER, "本期鸽王", p.pigeon, "#F85A54"],
-				[SVG_TROPHY, "勤奋 UP", p.diligent, "#2AC864"],
+				[SVG_FEATHER, packageText("image.roast.pigeon"), p.pigeon, "#F85A54"],
+				[SVG_TROPHY, packageText("image.roast.diligent", { creatorNoun }), p.diligent, "#2AC864"],
 			] as const
 		).map(([icon, label, who, tone]) => (
 			<div
@@ -167,13 +169,13 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardInpu
 						style={{ "--bn-ink": INK }}
 					>
 						{SVG_CHART_BARS}
-						<span>UP 主周报</span>
+						<span>{packageText("image.roast.boardTitle", { creatorNoun })}</span>
 					</span>
 					<span
 						class="text-[12px] [color:var(--bn-ink-soft)]"
 						style={{ "--bn-ink-soft": INK_SOFT }}
 					>
-						近 {p.days} 天 · 智能女仆锐评
+						{packageText("image.roast.period", { days: p.days })}
 					</span>
 				</div>
 				<Divider />
@@ -188,7 +190,7 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardInpu
 								class="mb-[8px] text-[11px] font-bold [color:var(--bn-ink-soft)]"
 								style={{ "--bn-ink-soft": INK_SOFT }}
 							>
-								逐位锐评
+								{packageText("image.roast.comments")}
 							</div>
 							<div class="flex flex-col gap-[6px]">
 								{p.roast.map((r) => (
@@ -223,7 +225,7 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardInpu
 								class="mb-[9px] text-[11px] font-bold [color:var(--bn-ink-soft)]"
 								style={{ "--bn-ink-soft": INK_SOFT }}
 							>
-								综合勤奋度评分 · 0–100
+								{packageText("image.roast.boardScore")}
 							</div>
 							<div class="flex flex-col gap-[7px]">
 								{[...p.scores]
@@ -257,7 +259,7 @@ export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardInput>
 						class="text-[11.5px] [color:var(--bn-ink-soft)]"
 						style={{ "--bn-ink-soft": INK_SOFT }}
 					>
-						近 {p.days} 天 · 智能女仆锐评
+						{packageText("image.roast.period", { days: p.days })}
 					</span>
 				</div>
 			</div>
@@ -278,7 +280,7 @@ export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardInput>
 					class="mb-[8px] text-[11px] font-bold [color:var(--bn-ink-soft)]"
 					style={{ "--bn-ink-soft": INK_SOFT }}
 				>
-					综合勤奋度 · 0–100
+					{packageText("image.roast.soloScore")}
 				</div>
 				<ScoreRow creator={p.creator} score={p.score} autoName />
 			</div>

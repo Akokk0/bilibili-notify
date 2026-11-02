@@ -23,10 +23,10 @@ const EXPECTED_LABELS: Record<string, string> = {
 	// 核心自带
 	list_subscriptions: "查看订阅列表",
 	get_live_status: "查看直播状态",
-	get_creator_posts: "查看最近动态",
-	get_creator_profile: "查看 UP 主资料",
+	get_creator_posts: "查看最近作品",
+	get_creator_profile: "查看 创作者资料",
 	get_creator_stats: "查看统计数据",
-	search_creators: "搜索 UP 主",
+	search_creators: "搜索创作者",
 	web_search: "联网搜索",
 	describe_image: "查看图片",
 	// B 站来源登记的提供方

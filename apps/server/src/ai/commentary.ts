@@ -14,6 +14,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { resolveAIProfile } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import { t } from "../i18n/index.js";
 import type { LiveTable } from "../live/live-table.js";
 import { builtinPersonasOf, toGeneratorConfig } from "../runtime/ai-config.js";
 import type { SubscriptionStateStore } from "../runtime/subscription-state-store.js";
@@ -82,6 +83,16 @@ export function createCommentary(deps: CommentaryDeps): CommentaryGenerator | nu
 		const c = new CommentaryGenerator({
 			serviceCtx: deps.serviceCtx,
 			config: buildAiConfig(deps),
+			toolNouns: (keys) =>
+				sourceNounsFor(
+					keys,
+					{ ...labelDeps, subscriptions: () => deps.subscriptionStore.list() },
+					{
+						creatorNoun: t("nouns.creator"),
+						postNoun: t("nouns.post"),
+						sources: t("nouns.sources"),
+					},
+				),
 			nouns: (keys) =>
 				sourceNounsFor(
 					keys,

@@ -1212,5 +1212,20 @@
 	"aiChat.messages.written": "写了 {count} 字",
 	"aiChat.messages.state.running": "正在查",
 	"aiChat.messages.state.ok": "已完成",
-	"aiChat.messages.state.failed": "没查成"
+	"aiChat.messages.state.failed": "没查成",
+	"stats.roast.postNoun": "作品",
+	"stats.roast.sources": "各平台",
+	"stats.roast.diligent": "勤奋{creatorNoun}",
+	"stats.roast.unknownCreator": "未知创作者",
+	"stats.roast.title": "AI 锐评 · 鸽王 vs 勤奋{creatorNoun}",
+	"stats.roast.subtitle": "根据统计数据自动评榜，并生成可推送的周报",
+	"stats.roast.pending": "正在阅读数据并撰写锐评",
+	"stats.roast.idleBefore": "根据这批{creatorNoun}近 {days} 天的涨粉、投稿与直播数据，评出本期",
+	"stats.roast.pigeonShort": "鸽王",
+	"stats.roast.and": "和",
+	"stats.roast.idleAfter": "，并整理成可推送的周报。",
+	"stats.roast.pigeon": "本期鸽王",
+	"stats.roast.pushLabel": "可推送周报",
+	"stats.roast.score": "综合勤奋度评分",
+	"stats.roast.scoreHint": "依据本期数据评分 · 0–100"
 }

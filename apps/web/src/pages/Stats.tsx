@@ -108,6 +108,8 @@ function hours(h: number): string {
  * 一行统计在页面上「是谁」(ADR-0020 决策 1 / 3)。行以订阅 id 为键,这些都从它对上的订阅与行上带的身份来。
  */
 interface UpMeta {
+	sourceKey: string;
+	nouns: { creatorNoun?: string; postNoun?: string; label?: string };
 	/** 名字:订阅卡那条链(`displayName`:资料里的名字 → B 站「UID xxx」/ 拓展的别名 → 外部 id)。 */
 	name: string;
 	/** 跟着人走的颜色(`identityColor`):与订阅卡、历史页同一个颜色。 */
@@ -138,6 +140,8 @@ function upMetaOf(
 	const platform = subscriptionPlatformOf(r.identity, sources);
 	return {
 		...base,
+		sourceKey: r.identity.sourceKey,
+		nouns: platform,
 		name: sub ? displayName(sub, platform) : historyRowIdentity(r, platform),
 		identity: { label: platform.externalIdNoun?.trim() || platform.label, id: externalId },
 		platform: platform.showBadge

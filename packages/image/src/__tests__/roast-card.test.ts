@@ -61,6 +61,15 @@ const renderBoard = async (over: Partial<RoastBoardCardInput> = {}) =>
 const renderSolo = async (over: Partial<RoastSoloCardInput> = {}) => bodyOf(await soloHtml(over));
 
 describe("锐评榜单周报卡", () => {
+	it.each([
+		["UP主", "勤奋UP主"],
+		["博主", "勤奋博主"],
+		[undefined, "勤奋创作者"],
+	])("称号按传入的榜单叫法 %s 拼,缺省用中性词", async (creatorNoun, title) => {
+		const html = await renderBoard({ creatorNoun });
+		expect(html).toContain(title);
+		expect(html).not.toContain("勤奋 UP");
+	});
 	it("鸽王 / 勤奋 UP / 锐评 / 评分都出现在卡上", async () => {
 		const html = await renderBoard();
 		expect(html).toContain("机智的党妹");

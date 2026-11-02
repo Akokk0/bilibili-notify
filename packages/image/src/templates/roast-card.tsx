@@ -29,6 +29,8 @@ export type RoastCardCreator = {
 };
 
 export type RoastBoardCardInput = {
+	/** 宿主按整张榜选好的叫法;预览没有来源上下文时落包字典中性词。 */
+	creatorNoun?: string;
 	/** 统计窗口天数。必须标在卡上:同一份榜单在 7 日和 30 日下讲的不是一回事。 */
 	days: number;
 	pigeon: RoastCardCreator & { reason: string };

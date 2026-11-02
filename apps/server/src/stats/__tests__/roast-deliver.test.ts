@@ -224,6 +224,42 @@ describe("buildRoastPayload — 卡上的人", () => {
 		return { deps, generateRoastBoardCard, generateRoastSoloCard };
 	}
 
+	it.each([
+		["s-bili", "s-bili-stored", [], "UP主"],
+		["s-bili", "s-bili-stored", [{ subscriptionId: "s-dy", score: 50 }], "创作者"],
+		["s-dy", "s-bare", [], "博主"],
+		["s-bili", "deleted", [], "创作者"],
+	])(
+		"榜单按所有参与者选叫法,卡片与兜底文字一致 (%s/%s)",
+		async (pigeon, diligent, scores, noun) => {
+			const { deps, generateRoastBoardCard } = makeCardDeps();
+			deps.runtime.sourceRegistry.get = (key) => ({
+				sourceKey: key,
+				descriptor: {
+					label: key,
+					creatorNoun: key === "bilibili" ? "UP主" : "博主",
+					supportedFeatures: [],
+				},
+				searchCreators: async () => ok({ candidates: [] }),
+				fetchProfile: async () => fail("unavailable", "fixture"),
+			});
+			const out = await buildRoastPayload(deps, {
+				kind: "board",
+				days: 7,
+				result: {
+					...BOARD,
+					pushText: "",
+					pigeon: { subscriptionId: pigeon, reason: "鸽" },
+					diligent: { subscriptionId: diligent, reason: "勤" },
+					scores,
+				},
+			});
+			expect(out.text).toContain(`勤奋${noun}：`);
+			expect(out.text).toContain(`${noun}周报`);
+			expect(generateRoastBoardCard.mock.calls[0]?.[0]).toMatchObject({ creatorNoun: noun });
+		},
+	);
+
 	it("单人锐评评的是拓展订阅:头像是内嵌图(不是面板的相对地址),名字与颜色跟面板一致", async () => {
 		const { deps, generateRoastSoloCard } = makeCardDeps();
 		const solo: SoloLike = {

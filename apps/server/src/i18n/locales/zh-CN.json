@@ -540,5 +540,11 @@
 	"platforms.candidates.wecom.label": "企业微信机器人",
 	"platforms.candidates.wecom.shortLabel": "企微",
 	"platforms.candidates.generic.label": "未指明的 HTTP 端点",
-	"platforms.candidates.generic.shortLabel": "HTTP 端点"
+	"platforms.candidates.generic.shortLabel": "HTTP 端点",
+	"stats.roast.unknownCreator": "未知创作者",
+	"stats.roast.boardHeading": "📊 {creatorNoun}周报（近 {days} 天）",
+	"stats.roast.pigeonLine": "🕊️ 本期鸽王：{name} —— {reason}",
+	"stats.roast.diligentLine": "🏆 勤奋{creatorNoun}：{name} —— {reason}",
+	"stats.roast.soloLine": "📊 {name}（近 {days} 天）：{verdict}",
+	"stats.roast.serviceUnavailable": "服务尚未就绪"
 }

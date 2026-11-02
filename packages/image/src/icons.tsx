@@ -153,7 +153,7 @@ export const SVG_CHART_BARS = (
 		stroke-width="2.2"
 		stroke-linecap="round"
 		stroke-linejoin="round"
-		aria-label="周报"
+		aria-hidden="true"
 	>
 		{/* 柱子从矮到高递增。中间最高会看成一个「山」字,反而不像数据图。 */}
 		<path d="M3 21h18" />
@@ -174,7 +174,7 @@ export const SVG_FEATHER = (
 		stroke-width="2"
 		stroke-linecap="round"
 		stroke-linejoin="round"
-		aria-label="鸽王"
+		aria-hidden="true"
 	>
 		<path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
 		<path d="M16 8 2 22" />
@@ -193,7 +193,7 @@ export const SVG_TROPHY = (
 		stroke-width="2"
 		stroke-linecap="round"
 		stroke-linejoin="round"
-		aria-label="勤奋 UP"
+		aria-hidden="true"
 	>
 		<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
 		<path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />

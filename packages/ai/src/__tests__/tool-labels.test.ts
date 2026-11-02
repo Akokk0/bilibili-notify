@@ -11,6 +11,7 @@
  */
 
 import { ok } from "@bilibili-notify/internal";
+import { bindPackageText } from "@bilibili-notify/internal/texts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type ToolTraceEvent } from "../commentary-generator";
 import { type AiTool, coreToolLabelOf, describeToolCall } from "../tools";
@@ -100,14 +101,23 @@ describe("核心工具的入参格 = 文案表里单独写的格 + 工具定义�
 			label: "查看订阅列表",
 		});
 		expect(describeToolCall(coreToolLabelOf("get_creator_profile"), {})).toEqual({
-			label: "查看 UP 主资料",
+			label: "查看 创作者资料",
 		});
 	});
 });
 
 describe("coreToolLabelOf", () => {
+	it("每次出标签现取字典,不会缓存启动时的语言", () => {
+		const binding = bindPackageText((key) => `translated:${key}`);
+		try {
+			expect(coreToolLabelOf("web_search")?.label).toBe("translated:ai.tools.webSearch");
+		} finally {
+			binding.dispose();
+		}
+		expect(coreToolLabelOf("web_search")?.label).toBe("联网搜索");
+	});
 	it("核心自带的几把查得到,表外的名字查不到", () => {
-		expect(coreToolLabelOf("get_creator_profile")).toMatchObject({ label: "查看 UP 主资料" });
+		expect(coreToolLabelOf("get_creator_profile")).toMatchObject({ label: "查看 创作者资料" });
 		expect(coreToolLabelOf("get_user_info")).toBeUndefined();
 		expect(coreToolLabelOf("no_such_tool")).toBeUndefined();
 	});
@@ -129,6 +139,12 @@ describe("工具环发 start 时带着标签", () => {
 			serviceCtx: fakeServiceCtx(),
 			config: aiConfig(),
 			nouns: testNouns,
+			toolNouns: (keys) =>
+				keys[0] === "bilibili"
+					? { creatorNoun: "UP主", postNoun: "动态" }
+					: keys[0] === "acme"
+						? { creatorNoun: "博主", postNoun: "笔记" }
+						: { creatorNoun: "创作者", postNoun: "作品" },
 		});
 	}
 
@@ -149,9 +165,20 @@ describe("工具环发 start 时带着标签", () => {
 		const start = await drive([], "get_creator_profile", { creator: "bilibili:12345" });
 		expect(start).toMatchObject({
 			name: "get_creator_profile",
-			label: "查看 UP 主资料",
+			label: "查看 UP主资料",
 			argText: "12345",
 		});
+	});
+
+	it.each([
+		["get_creator_profile", "acme:alice:x", "查看 博主资料"],
+		["get_creator_posts", "acme:alice:x", "查看最近笔记"],
+		["get_creator_posts", "bilibili:12345", "查看最近动态"],
+		["get_creator_profile", "gone:alice", "查看 创作者资料"],
+		["get_creator_posts", "malformed", "查看最近作品"],
+		["search_creators", "bilibili:12345", "搜索创作者"],
+	])("%s 的小条随本次创作者来源 (%s)", async (name, creator, label) => {
+		expect(await drive([], name, { creator })).toMatchObject({ label });
 	});
 
 	it("注入的一把:label / argText 取自它自己的 label、labelArg", async () => {

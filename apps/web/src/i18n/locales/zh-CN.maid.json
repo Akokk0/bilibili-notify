@@ -286,5 +286,10 @@
 	"maidSkills.toolsHint": "主人，一把都不勾就是不限；勾了之后，这项技能就只用选中的这些工具喔。",
 	"maidSkills.saveFailed": "主人，没能保存：{message}",
 	"aiChat.messages.error": "呜…{name}出错了：{message}",
-	"aiChat.messages.image": "主人发送的图片"
+	"aiChat.messages.image": "主人发送的图片",
+	"stats.roast.subtitle": "把统计数据交给女仆，评榜和周报都交给我吧~",
+	"stats.roast.pending": "女仆正在阅读数据并撰写锐评",
+	"stats.roast.idleBefore": "主人，点一下，我会读完这批{creatorNoun}近 {days} 天的涨粉、投稿与直播数据，评出本期",
+	"stats.roast.idleAfter": "，再整理成能直接发到群里的周报哦~(*´∀`)~♡",
+	"stats.roast.scoreHint": "由女仆依据本期数据评分 · 0–100"
 }

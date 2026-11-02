@@ -1,3 +1,5 @@
+import { type SourceNounsInput, sourceNounsOf } from "@bilibili-notify/contract";
+import { t } from "../i18n/index.js";
 /**
  * 把一份锐评发出去 —— 文案、卡片、降级、多目标。
  *
@@ -61,9 +63,6 @@ export interface DeliverOutcome {
 	text: string;
 }
 
-/** 订阅 id 对不上任何订阅(推送前那一刻被删了、或页面回传了一个陈旧的 id)时卡上写的名字。 */
-export const UNKNOWN_UP_NAME = "未知 UP";
-
 /**
  * 卡上的头像:资料里引用的那张图库图转成内嵌图(ADR-0020 决策 15)。面板用的同源地址
  * (`/api/images/<ref>`)截图的浏览器加载不到(同 ADR-0019 决策 68 那个坑)。没存、图已经不在、认不出
@@ -84,7 +83,7 @@ async function cardUp(
 	subscriptionId: string,
 	sub: Subscription | undefined,
 ): Promise<RoastCardCreator> {
-	if (!sub) return { name: UNKNOWN_UP_NAME, color: colorFromSeed(subscriptionId) };
+	if (!sub) return { name: t("stats.roast.unknownCreator"), color: colorFromSeed(subscriptionId) };
 	const name = roastSubjectName(deps, sub);
 	const identity = subscriptionIdentityOf(sub);
 	// 颜色跟着人走:种子与面板的 `identityColor` 逐字节相同(B 站是 uid,拓展是「拓展 id:外部 id」)。
@@ -109,7 +108,8 @@ export async function makeUpMeta(
 			metas.set(id, await cardUp(deps, id, subById.get(id)));
 		}),
 	);
-	return (id) => metas.get(id) ?? { name: UNKNOWN_UP_NAME, color: colorFromSeed(id) };
+	return (id) =>
+		metas.get(id) ?? { name: t("stats.roast.unknownCreator"), color: colorFromSeed(id) };
 }
 
 /** 这份锐评提到的所有订阅 id —— 卡上与兜底文案要画的就是这几位。 */
@@ -125,18 +125,30 @@ export function roastPushText(
 	result: BoardLike | SoloLike,
 	days: number,
 	upMeta: (subscriptionId: string) => RoastCardCreator,
+	creatorNoun: string,
 ): string {
 	if (result.pushText.trim()) return result.pushText;
 	if (kind === "board") {
 		const r = result as BoardLike;
 		return [
-			`📊 UP 主周报（近 ${days} 天）`,
-			`🕊️ 本期鸽王：${upMeta(r.pigeon.subscriptionId).name} —— ${r.pigeon.reason}`,
-			`🏆 勤奋 UP：${upMeta(r.diligent.subscriptionId).name} —— ${r.diligent.reason}`,
+			t("stats.roast.boardHeading", { creatorNoun, days }),
+			t("stats.roast.pigeonLine", {
+				name: upMeta(r.pigeon.subscriptionId).name,
+				reason: r.pigeon.reason,
+			}),
+			t("stats.roast.diligentLine", {
+				creatorNoun,
+				name: upMeta(r.diligent.subscriptionId).name,
+				reason: r.diligent.reason,
+			}),
 		].join("\n");
 	}
 	const s = result as SoloLike;
-	return `📊 ${upMeta(s.subscriptionId).name}（近 ${days} 天）：${s.verdict}`;
+	return t("stats.roast.soloLine", {
+		name: upMeta(s.subscriptionId).name,
+		days,
+		verdict: s.verdict,
+	});
 }
 
 /**
@@ -175,8 +187,25 @@ export async function buildRoastPayload(
 	deps: RoastDeliverDeps,
 	opts: { kind: "board" | "solo"; result: BoardLike | SoloLike; days: number },
 ): Promise<RoastPayload> {
-	const upMeta = await makeUpMeta(deps, mentionedIds(opts.kind, opts.result));
-	const text = roastPushText(opts.kind, opts.result, opts.days, upMeta);
+	const ids = mentionedIds(opts.kind, opts.result);
+	const subById = new Map(deps.store.getSubscriptions().map((sub) => [sub.id, sub]));
+	const sources = new Map<string | undefined, SourceNounsInput>();
+	for (const id of ids) {
+		const sub = subById.get(id);
+		const key = sub ? subscriptionIdentityOf(sub).sourceKey : undefined;
+		// 失去订阅的参与者也占一个未知来源,不能把混合榜误称成剩下那一家的榜。
+		sources.set(
+			key,
+			key === undefined ? {} : (deps.runtime.sourceRegistry.get(key)?.descriptor ?? {}),
+		);
+	}
+	const { creatorNoun } = sourceNounsOf([...sources.values()], {
+		creatorNoun: t("nouns.creator"),
+		postNoun: t("nouns.post"),
+		sources: t("nouns.sources"),
+	});
+	const upMeta = await makeUpMeta(deps, ids);
+	const text = roastPushText(opts.kind, opts.result, opts.days, upMeta, creatorNoun);
 
 	const renderer = deps.runtime.pipeline?.imageRenderer ?? null;
 	const imageWanted = renderer !== null && deps.store.getGlobals().defaults.cards.enabled;
@@ -188,7 +217,7 @@ export async function buildRoastPayload(
 		const buffer =
 			opts.kind === "board"
 				? await renderer.generateRoastBoardCard(
-						boardCardData(opts.result as BoardLike, opts.days, upMeta),
+						boardCardData(opts.result as BoardLike, opts.days, upMeta, creatorNoun),
 						{ cardSkin },
 					)
 				: await renderer.generateRoastSoloCard(
@@ -221,7 +250,7 @@ export async function deliverRoast(
 	const pipeline = deps.runtime.pipeline;
 	const { mode, payload, text } = await buildRoastPayload(deps, opts);
 
-	const targetsById = new Map(deps.store.getTargets().map((t) => [t.id, t]));
+	const targetsById = new Map(deps.store.getTargets().map((target) => [target.id, target]));
 	const connections = deps.store.getConnections();
 	const sent: string[] = [];
 	const skipped: string[] = [];
@@ -233,7 +262,7 @@ export async function deliverRoast(
 			continue;
 		}
 		if (!pipeline) {
-			failed.push({ targetId, failure: fail("unavailable", "服务尚未就绪") });
+			failed.push({ targetId, failure: fail("unavailable", t("stats.roast.serviceUnavailable")) });
 			continue;
 		}
 		try {
@@ -251,9 +280,15 @@ export async function deliverRoast(
 	return { mode, sent, skipped, failed, text };
 }
 
-function boardCardData(r: BoardLike, days: number, upMeta: (id: string) => RoastCardCreator) {
+function boardCardData(
+	r: BoardLike,
+	days: number,
+	upMeta: (id: string) => RoastCardCreator,
+	creatorNoun: string,
+) {
 	return {
 		days,
+		creatorNoun,
 		pigeon: { ...upMeta(r.pigeon.subscriptionId), reason: r.pigeon.reason },
 		diligent: { ...upMeta(r.diligent.subscriptionId), reason: r.diligent.reason },
 		roast: r.roast.map((x) => ({ ...upMeta(x.subscriptionId), comment: x.comment })),

@@ -13,7 +13,7 @@ export type { AiTool, AiToolLabelFields, AiToolResult } from "@bilibili-notify/i
 import type OpenAI from "openai";
 import { parseCreator } from "./creator";
 import { type PromptNouns, renderPromptNouns } from "./prompt-nouns";
-import { CORE_TOOL_LABEL_TEXTS } from "./tool-label-texts";
+import { coreToolLabelTexts } from "./tool-label-texts";
 import { TOOL_TEXTS } from "./tool-texts";
 import { WEB_SEARCH_TOOL } from "./web-search";
 
@@ -317,9 +317,13 @@ function renderPromptValues(value: unknown, nouns: PromptNouns): unknown {
  * 小条上补哪一格入参 = 文案表里单独写的格(有的话)**接上**这把工具参数定义里 `required` 的格
  * (从工具自己的定义现取,不另抄一遍参数名)。只用在核心这一侧;注入的工具只认自己写的 `labelArg`。
  */
-export function coreToolLabelOf(name: string): AiToolLabelFields | undefined {
-	if (!Object.hasOwn(CORE_TOOL_LABEL_TEXTS, name)) return undefined;
-	const texts = CORE_TOOL_LABEL_TEXTS[name];
+export function coreToolLabelOf(
+	name: string,
+	nouns?: Pick<PromptNouns, "creatorNoun" | "postNoun">,
+): AiToolLabelFields | undefined {
+	const labels = coreToolLabelTexts(nouns);
+	if (!Object.hasOwn(labels, name)) return undefined;
+	const texts = labels[name];
 	if (!texts) return undefined;
 	const definition = [...TOOL_DEFINITIONS, DESCRIBE_IMAGE_TOOL, WEB_SEARCH_TOOL].find(
 		(t) => t.function.name === name,

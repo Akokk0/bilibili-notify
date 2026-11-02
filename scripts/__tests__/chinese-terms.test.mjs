@@ -109,7 +109,6 @@ export const RATCHET = {
 	"apps/server/src/posts/deliver-post.ts": 6,
 	"apps/server/src/routes/targets.ts": 2,
 	"apps/server/src/runtime/roots.ts": 1,
-	"apps/server/src/stats/roast-deliver.ts": 1,
 	// 4-26：主人批准真实 B 语境 5 plain + 3 maid，精确键与命中词由下方实扫断言钉住。
 	"apps/web/src/i18n/locales/zh-CN.json": 5,
 	"apps/web/src/i18n/locales/zh-CN.maid.json": 3,
@@ -130,15 +129,12 @@ export const RATCHET = {
 	"apps/web/src/pages/guide/guide-panel.tsx": 1,
 	"apps/web/src/pages/rules/MessageLayoutEditor.tsx": 1,
 	"apps/web/src/pages/skins/SkinEditor.tsx": 1,
-	"apps/web/src/pages/stats/RoastCard.tsx": 1,
 	"apps/web/src/pages/stats/SoloRoastCard.tsx": 1,
 	"apps/web/src/pages/stats/charts.tsx": 1,
 
 	"apps/web/src/utils/groupDiffs.ts": 2,
 	"packages/ai/src/commentary-generator.ts": 1,
-	"packages/ai/src/tool-label-texts.ts": 3,
 	"packages/ai/src/tools.ts": 1,
-	"packages/image/src/blocks/roast.tsx": 1,
 	"packages/image/src/image-renderer.ts": 7,
 	"packages/image/src/preview/sample-cards.ts": 8,
 	"packages/internal/src/card-skin.ts": 7,

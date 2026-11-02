@@ -1,14 +1,22 @@
-import type { StatsRoastResponse, StatsRoastResult } from "@bilibili-notify/contract";
+import {
+	type SourceNounsInput,
+	type StatsRoastResponse,
+	type StatsRoastResult,
+	sourceNounsOf,
+} from "@bilibili-notify/contract";
 import { Avatar, Icon } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { AI_PURPLE } from "../../config/colors";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { localTzOffset } from "../../services/stats";
 import { RoastPushBox } from "./RoastPushBox";
 import { RoastShell, roastError } from "./RoastShell";
 
 interface UpMeta {
+	sourceKey: string;
+	nouns: SourceNounsInput;
 	name: string;
 	color: string;
 	/** 头像:B 站是 CDN 图链,拓展是面板同源的相对地址;没缓存到时 Avatar 退回首字母。 */
@@ -16,7 +24,6 @@ interface UpMeta {
 }
 
 /** 结果里回指的订阅 id 在这张表里对不上(生成之后订阅被删了)时写的名字。 */
-const UNKNOWN_UP_NAME = "未知 UP";
 
 /**
  * AI 锐评卡 —— 把统计数据喂给智能女仆,评鸽王 / 勤奋 UP 并生成可推送的周报。
@@ -25,6 +32,7 @@ const UNKNOWN_UP_NAME = "未知 UP";
  * **订阅 id** 回指(ADR-0020 决策 12 / 18),`meta` 就是统计行那张以订阅 id 为键的表。
  */
 export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMeta> }) {
+	const tx = useT();
 	const roast = useMutation<StatsRoastResponse>({
 		// 必须带 tz:服务端会拿这两个参数重算一遍 overview,漏了就按 parseTz(undefined)
 		// = UTC 分桶,喂给模型的净增与屏幕上的数对不上,榜单也是据此排的。
@@ -41,24 +49,37 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 
 	const result: StatsRoastResult | undefined = roast.data?.result;
 
-	const nameOf = (id: string) => meta.get(id)?.name ?? UNKNOWN_UP_NAME;
+	const participants = result
+		? [result.pigeon, result.diligent, ...result.roast, ...result.scores].map((who) =>
+				meta.get(who.subscriptionId),
+			)
+		: [...meta.values()];
+	const platforms = new Map(participants.map((who) => [who?.sourceKey, who?.nouns ?? {}]));
+	const { creatorNoun } = sourceNounsOf([...platforms.values()], {
+		creatorNoun: tx("subs.new.creatorNoun"),
+		postNoun: tx("stats.roast.postNoun"),
+		sources: tx("stats.roast.sources"),
+	});
+	const diligentTitle = tx("stats.roast.diligent", { creatorNoun });
+	const nameOf = (id: string) => meta.get(id)?.name ?? tx("stats.roast.unknownCreator");
 	const colorOf = (id: string) => meta.get(id)?.color ?? AI_PURPLE;
 	const avatarOf = (id: string) => meta.get(id)?.avatar;
 
 	return (
 		<RoastShell
-			title="AI 锐评 · 鸽王 vs 勤奋 UP"
-			subtitle="把统计数据交给智能女仆,自动评榜并生成可推送的周报"
-			pendingText="女仆正在阅读数据并撰写锐评"
+			title={tx("stats.roast.title", { creatorNoun })}
+			subtitle={tx("stats.roast.subtitle")}
+			pendingText={tx("stats.roast.pending")}
 			isPending={roast.isPending}
 			err={roastError(roast)}
 			onRun={() => roast.mutate()}
 			idle={
 				<>
-					点一下,女仆会读完这批 UP 主近 {days} 天的涨粉、投稿与直播数据,评出本期
-					<b className="text-bn-danger-text">鸽王</b>和
-					<b className="text-bn-success-text">勤奋 UP</b>
-					,并整理成一段可直接发到群里的周报 ~(*´∀`)~♡
+					{tx("stats.roast.idleBefore", { days, creatorNoun })}
+					<b className="text-bn-danger-text">{tx("stats.roast.pigeonShort")}</b>
+					{tx("stats.roast.and")}
+					<b className="text-bn-success-text">{diligentTitle}</b>
+					{tx("stats.roast.idleAfter")}
 				</>
 			}
 		>
@@ -69,8 +90,13 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 							{(
 								[
 									// 图标与推送卡片模板(SVG_FEATHER / SVG_TROPHY)同一套语义,改一边记得改另一边。
-									[Icon.feather, "本期鸽王", result.pigeon, "var(--color-bn-danger-text)"],
-									[Icon.trophy, "勤奋 UP", result.diligent, "var(--color-bn-success-text)"],
+									[
+										Icon.feather,
+										tx("stats.roast.pigeon"),
+										result.pigeon,
+										"var(--color-bn-danger-text)",
+									],
+									[Icon.trophy, diligentTitle, result.diligent, "var(--color-bn-success-text)"],
 								] as const
 							).map(([Glyph, label, who, color]) => (
 								<div
@@ -123,7 +149,7 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 						{result.pushText ? (
 							<RoastPushBox
 								days={days}
-								label="可推送周报"
+								label={tx("stats.roast.pushLabel")}
 								text={result.pushText}
 								payload={{ kind: "board", result }}
 							/>
@@ -131,9 +157,11 @@ export function RoastCard({ days, meta }: { days: number; meta: Map<string, UpMe
 					</div>
 
 					<div className="rounded-bn-card border border-bn-border-subtle p-3.5">
-						<div className="text-bn-sm font-bold text-bn-text-primary">综合勤奋度评分</div>
+						<div className="text-bn-sm font-bold text-bn-text-primary">
+							{tx("stats.roast.score")}
+						</div>
 						<div className="mb-3 text-bn-2xs text-bn-text-secondary">
-							由女仆依据本期数据评分 · 0–100
+							{tx("stats.roast.scoreHint")}
 						</div>
 						<div className="flex flex-col gap-2.5">
 							{[...result.scores]

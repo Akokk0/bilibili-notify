@@ -273,7 +273,7 @@ describe("POST /roast/push — 名称与配色由服务端 join", () => {
 			createStatsRoute(deps),
 			boardBody({ result: { ...BOARD, pigeon: { subscriptionId: "gone", reason: "查无此人" } } }),
 		);
-		expect((generateRoastBoardCard.mock.calls[0] as any)[0].pigeon.name).toBe("未知 UP");
+		expect((generateRoastBoardCard.mock.calls[0] as any)[0].pigeon.name).toBe("未知创作者");
 	});
 
 	it("请求体还按 uid 回指(旧页面)→ 400,不拿一个认不出的键去出卡", async () => {

@@ -70,6 +70,34 @@ describe("roastError", () => {
 describe("RoastCard —— 榜单锐评生成", () => {
 	const meta = new Map();
 
+	it.each([
+		["bilibili", "UP主", "勤奋UP主"],
+		["acme", "博主", "勤奋创作者"],
+		["gone", undefined, "勤奋创作者"],
+	])("整张榜按来源选称号,不是只看勤奋得主 (%s)", async (sourceKey, creatorNoun, title) => {
+		vi.mocked(api.get).mockResolvedValue([]);
+		vi.mocked(api.post).mockResolvedValue({
+			ok: true,
+			result: {
+				pigeon: { subscriptionId: "s1", reason: "鸽" },
+				diligent: { subscriptionId: "s2", reason: "勤" },
+				roast: [],
+				scores: [{ subscriptionId: "s3", score: 10 }],
+				pushText: "",
+			},
+		});
+		const mixedMeta = new Map([
+			["s1", { name: "甲", color: "red", sourceKey: "bilibili", nouns: { creatorNoun: "UP主" } }],
+			["s2", { name: "乙", color: "red", sourceKey: "bilibili", nouns: { creatorNoun: "UP主" } }],
+			["s3", { name: "丙", color: "blue", sourceKey, nouns: { creatorNoun } }],
+		]);
+		withQuery(<RoastCard days={7} meta={mixedMeta} />);
+		expect(screen.getByText(`AI 锐评 · 鸽王 vs ${title}`)).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "生成 AI 锐评" }));
+		await screen.findByText("勤");
+		expect(screen.getByText(title)).toBeTruthy();
+	});
+
 	it("没生成成(非 2xx)→ 卡片里显示 message,按钮变成「重试」", async () => {
 		vi.mocked(api.post).mockRejectedValue(new FakeApiError("至少要订阅 2 位 UP 主才评得出鸽王"));
 		withQuery(<RoastCard days={7} meta={meta} />);

@@ -115,7 +115,7 @@ describe("GET / —— 工具名单带给人看的标签", () => {
 			expect(body.toolLabels[name], name).toEqual(expect.any(String));
 			expect(body.toolLabels[name].trim(), name).not.toBe("");
 		}
-		expect(body.toolLabels.get_creator_profile).toBe("查看 UP 主资料");
+		expect(body.toolLabels.get_creator_profile).toBe("查看 创作者资料");
 		expect(body.toolLabels.web_search).toBe("联网搜索");
 	});
 

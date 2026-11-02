@@ -9,6 +9,7 @@ import {
 	type ThinkingLevel,
 } from "@bilibili-notify/internal";
 import type OpenAI from "openai";
+import { parseCreator } from "./creator";
 import { mergeExtraParams, parseExtraParams } from "./extra-params";
 import { buildSystemPrompt } from "./persona-presets";
 import { type PromptNouns, renderPromptNouns } from "./prompt-nouns";
@@ -426,6 +427,8 @@ export interface CommentaryGeneratorOptions {
 	config: CommentaryGeneratorConfig;
 	/** 按这次涉及的来源键现取提示词叫法;不给键表示聊天 / 试一句的全局范围。 */
 	nouns: (sourceKeys?: readonly string[]) => PromptNouns;
+	/** 给人看的工具小条叫法,与提示词分开取当前语言;空键列表落中性词。 */
+	toolNouns?: (sourceKeys: readonly string[]) => Pick<PromptNouns, "creatorNoun" | "postNoun">;
 }
 
 /**
@@ -523,6 +526,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	private readonly logger: Logger;
 	private config: CommentaryGeneratorConfig;
 	private readonly nouns: CommentaryGeneratorOptions["nouns"];
+	private readonly toolNouns: CommentaryGeneratorOptions["toolNouns"];
 
 	private creatorReader: CreatorReader | null = null;
 	/** 联网搜索执行器的热读口,同 {@link creatorReader} 的纪律。 */
@@ -536,6 +540,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		this.config = opts.config;
 		this.logger = opts.serviceCtx.logger;
 		this.nouns = opts.nouns;
+		this.toolNouns = opts.toolNouns;
 	}
 
 	/**
@@ -2134,8 +2139,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		// 执行**之前**报一声。查订阅要走一趟来源,慢起来好几秒,而那正是最
 		// 需要反馈的一刻;等查完再说等于什么都没说。
+		const creator = parseCreator(args.creator?.trim() ?? "");
 		const { label, argText } = describeToolCall(
-			toolOptions.labelOf?.(name) ?? coreToolLabelOf(name),
+			toolOptions.labelOf?.(name) ??
+				coreToolLabelOf(name, this.toolNouns?.(creator ? [creator.sourceKey] : [])),
 			args,
 		);
 		toolOptions.onToolEvent?.({

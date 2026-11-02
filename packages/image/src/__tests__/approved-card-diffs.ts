@@ -416,5 +416,14 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 		{ sample: "sc-custom-layout", ...RANK_ATTR_ADDED, hash: "5198152ee2a52e61" },
 		{ sample: "sc-high", ...RANK_ATTR_ADDED, hash: "52403a0490276fe2" },
 		{ sample: "sc-low", ...RANK_ATTR_ADDED, hash: "6b9739af41b95f2e" },
+		{
+			sample: "roast-board",
+			category: "platform-neutral-naming",
+			change:
+				"无来源上下文的预览以创作者称呼周报与勤奋得主;相邻已有称号文字的三个装饰图标不重复朗读旧称号",
+			basis:
+				"phase-4-plan 4-37 / Q8、ADR-0028 决策 2:叫法按来源,零来源用中性词;图标的旧平台称号随文字一起清除",
+			hash: "e4d9387dcd36db52",
+		},
 	],
 };
