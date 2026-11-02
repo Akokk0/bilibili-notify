@@ -1172,5 +1172,9 @@
 	"aiPage.test.subtitle": "使用当前人格设置（含未保存的改动）测试回复；回复会发送到所选目标。",
 	"aiPage.test.placeholder": "今天过得怎么样？",
 	"aiPage.test.thinking": "正在生成回复…",
-	"aiPage.test.delivered": "已送达 · {latencyMs}ms"
+	"aiPage.test.delivered": "已送达 · {latencyMs}ms",
+	"aiSettings.persona.unnamed": "未命名",
+	"aiSettings.persona.unnamedLabel": "(未命名)",
+	"aiSettings.persona.new": "新性格",
+	"aiSettings.persona.copy": "{name} 副本"
 }

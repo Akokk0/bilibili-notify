@@ -14,6 +14,7 @@ import {
 	providerMeta,
 } from "@bilibili-notify/internal/ai";
 import { BUILTIN_PRESET_IDS, type BuiltinPreset } from "@bilibili-notify/internal/texts/builtin";
+import { i18n } from "../../i18n";
 import type { AIPersona, AISettingsDraft } from "../../types/globals";
 
 type AIPreset = AISettingsDraft["presets"][number];
@@ -68,7 +69,7 @@ export function profileRailItems(ai: AISettingsDraft): ProfileRailItem[] {
  * - **同家的后续实例默认名带序号**(「DeepSeek 2」):左栏两行都叫「DeepSeek」的话
  *   主人分不清哪只是哪只;头一份留空名,显示时回落到家名。
  * - **不抢指针** —— 「添加」与「换用」是两件事,后者是「全局配置」里那个选择器的事
- *   (与人格的 `activePreset` 同一套语义)。唯一的例外是指针还没着落时(全新配置):
+ *   (与人格的 `activePreset` 同一套语义)。唯一的例外是指针为空且没有实例时(全新配置):
  *   头一份添加的就成了在用的那份,否则主人填好密钥、女仆却仍然「没配齐」。
  */
 export function addProfile(
@@ -84,12 +85,12 @@ export function addProfile(
 	}
 	const sameFamily = Object.values(ai.providers).some((p) => p?.provider === provider);
 	const label = sameFamily ? `${providerMeta(provider).label} ${n}` : "";
-	const pointerLanded = aiProfileAt(ai.providers, ai.activeProfile) !== undefined;
+	const isFirstProfile = ai.activeProfile === "" && taken.size === 0;
 	return {
 		id,
 		ai: {
 			...ai,
-			activeProfile: pointerLanded ? ai.activeProfile : id,
+			activeProfile: isFirstProfile ? id : ai.activeProfile,
 			providers: {
 				...ai.providers,
 				[id]: { ...EMPTY_AI_PROVIDER_PROFILE, provider, label },
@@ -182,7 +183,7 @@ export function personaRailItems(ai: AISettingsDraft, builtins: Builtins): Perso
 	return railPresets(ai, builtins).map((p) => ({
 		id: `${PRESET_RAIL_PREFIX}${p.id}`,
 		presetId: p.id,
-		label: p.label || "(未命名)",
+		label: p.label || i18n.t("aiSettings.persona.unnamedLabel"),
 	}));
 }
 
@@ -297,7 +298,7 @@ function freshPersonaId(ai: AISettingsDraft): string {
  */
 export function addPersona(
 	ai: AISettingsDraft,
-	label = "新性格",
+	label = i18n.t("aiSettings.persona.new"),
 ): { ai: AISettingsDraft; railId: string } {
 	const id = freshPersonaId(ai);
 	return {
@@ -437,7 +438,13 @@ export function duplicatePersona(
 	if (!src) return { ai, railId };
 
 	const id = freshPersonaId(ai);
-	const copy: AIPreset = { ...clonePreset(src), id, label: `${src.label || "未命名"} 副本` };
+	const copy: AIPreset = {
+		...clonePreset(src),
+		id,
+		label: i18n.t("aiSettings.persona.copy", {
+			name: src.label || i18n.t("aiSettings.persona.unnamed"),
+		}),
+	};
 	return {
 		ai: { ...ai, presets: [...ai.presets, copy] },
 		railId: `${PRESET_RAIL_PREFIX}${id}`,

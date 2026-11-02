@@ -263,7 +263,6 @@ export const RATCHET = {
 	"apps/web/src/pages/System.tsx": 45,
 
 	"apps/web/src/pages/ai/MaidSkills.tsx": 28,
-	"apps/web/src/pages/ai/model-ops.ts": 4,
 	"apps/web/src/pages/backup/BackupExportDialog.tsx": 15,
 	"apps/web/src/pages/backup/BackupImportDialog.tsx": 16,
 	"apps/web/src/pages/backup/BackupSection.tsx": 20,

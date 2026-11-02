@@ -111,21 +111,35 @@ describe("addProfile", () => {
 		});
 	});
 
-	it("指针还没着落时(全新配置)→ 头一份添加的就成了在用的那份", () => {
+	it("指针为空且没有实例时 → 头一份添加的就成了在用的那份", () => {
 		// 不这么做的话:主人添加了第一份、填好密钥,女仆却仍然「没配齐」,
 		// 而界面上看不出还差一步。
 		const { ai } = addProfile(settings(), "openrouter");
 		expect(ai.activeProfile).toBe("openrouter");
 	});
 
-	it.each(["constructor", "toString", "__proto__"])(
-		"指针是原型名 %s(表里没有这一家)→ 算没着落,头一份添加的成了在用的那份",
+	it.each(["unreadable-profile", "constructor", "toString", "__proto__"])(
+		"默认指针 %s 暂时没有可读实例 → 添加不改写原选择",
 		(name) => {
-			// 下标直读会从原型上摸到内置函数、当成「指针有着落」,新加的第一家就不会被用上。
-			const { ai } = addProfile(settings({ activeProfile: name }), "openrouter");
-			expect(ai.activeProfile).toBe("openrouter");
+			const base = settings({ activeProfile: name });
+			const { ai } = addProfile(base, "openrouter");
+			expect(ai.activeProfile).toBe(name);
+			expect(buildPatch({ ai }, { ai: base })).toMatchObject({ ai: { activeProfile: name } });
 		},
 	);
+
+	it("已有实例而指针为空 → 添加不替用户决定默认实例", () => {
+		const base = settings({ providers: { backup: bucket("deepseek") } });
+		expect(addProfile(base, "openrouter").ai.activeProfile).toBe("");
+	});
+
+	it("默认实例读不到但仍有别的实例 → 添加不抢默认指针", () => {
+		const base = settings({
+			activeProfile: "unreadable",
+			providers: { backup: bucket("deepseek") },
+		});
+		expect(addProfile(base, "openrouter").ai.activeProfile).toBe("unreadable");
+	});
 
 	it("已经有在用的那份 → 再添加**不抢**指针", () => {
 		// 添加 ≠ 换用。换用是「全局配置」里那个选择器的事(与人格同一套语义)。
