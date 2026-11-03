@@ -153,10 +153,10 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 	// 验红:给 Cards.tsx 的档位选项加回 `.reverse()`,这条红。
 	it("单卡上舰:档位钮由低到高摆(舰长 → 提督 → 总督),与规则页同序", async () => {
 		renderCards();
-		await waitFor(() => expect(screen.getAllByText("上舰提醒").length).toBeGreaterThan(0), {
+		await waitFor(() => expect(screen.getAllByText("会员提醒").length).toBeGreaterThan(0), {
 			timeout: 5000,
 		});
-		fireEvent.click(screen.getAllByText("上舰提醒")[0]);
+		fireEvent.click(screen.getAllByText("会员提醒")[0]);
 		await waitFor(() => expect(tierPicker()).not.toBeNull());
 		expect(selectOptionsOf(tierPicker()).map((option) => option.textContent)).toEqual([
 			"Silver",
@@ -166,10 +166,10 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 
 	it("单卡上舰:点「总督」后请求带 tierKey governor", async () => {
 		renderCards();
-		await waitFor(() => expect(screen.getAllByText("上舰提醒").length).toBeGreaterThan(0), {
+		await waitFor(() => expect(screen.getAllByText("会员提醒").length).toBeGreaterThan(0), {
 			timeout: 5000,
 		});
-		fireEvent.click(screen.getAllByText("上舰提醒")[0]);
+		fireEvent.click(screen.getAllByText("会员提醒")[0]);
 		await waitFor(() => expect(tierPicker()).not.toBeNull());
 		chooseSelect(tierPicker(), "Gold");
 		await waitFor(
@@ -218,7 +218,7 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 			renderCards();
 			await waitFor(() => expect(previewBodies("superchat").length).toBeGreaterThan(0));
 			expect(previewBodies("membership")).toEqual([]);
-			fireEvent.click(screen.getAllByText("上舰提醒")[0]);
+			fireEvent.click(screen.getAllByText("会员提醒")[0]);
 			await screen.findByText("当前来源没有可枚举的会员档位，或尚未运行，暂时无法预览。");
 			expect(previewBodies("membership")).toEqual([]);
 		},
@@ -300,7 +300,7 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 		renderCards();
 		fireEvent.click(await screen.findByText("Library · 0012"));
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
-		fireEvent.click(screen.getAllByText("上舰提醒")[0]);
+		fireEvent.click(screen.getAllByText("会员提醒")[0]);
 		const picker = await waitFor(() => {
 			const element = document.querySelector('[data-code="program"] [role="combobox"]');
 			expect(element).not.toBeNull();
@@ -320,8 +320,8 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 
 	it("来源刷新保留仍有效的体系与档，失效只回退预览且不保存", async () => {
 		const { qc } = renderCards();
-		await screen.findAllByText("上舰提醒");
-		fireEvent.click(screen.getAllByText("上舰提醒")[0]);
+		await screen.findAllByText("会员提醒");
+		fireEvent.click(screen.getAllByText("会员提醒")[0]);
 		await waitFor(() => expect(tierPicker()).not.toBeNull());
 		chooseSelect(tierPicker(), "Gold");
 		await waitFor(() => expect(previewBodies("membership").at(-1)?.content?.tierKey).toBe("gold"));

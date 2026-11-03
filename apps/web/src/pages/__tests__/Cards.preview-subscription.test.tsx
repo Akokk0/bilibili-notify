@@ -56,10 +56,10 @@ function renderCards() {
 
 /** 切到「动态发布」那张卡(左侧导航竖栏 + 横向条两份,取第一个)。 */
 async function openPostCard() {
-	await waitFor(() => expect(screen.getAllByText("动态发布").length).toBeGreaterThan(0), {
+	await waitFor(() => expect(screen.getAllByText("作品发布").length).toBeGreaterThan(0), {
 		timeout: 5000,
 	});
-	fireEvent.click(screen.getAllByRole("button", { name: "动态发布" })[0] as HTMLElement);
+	fireEvent.click(screen.getAllByRole("button", { name: "作品发布" })[0] as HTMLElement);
 }
 
 function subscriptionSelect(container: HTMLElement): HTMLButtonElement {

@@ -91,8 +91,8 @@ const blockEl = (id: string) =>
 async function openDynamic() {
 	mockApi();
 	renderEditor();
-	await waitFor(() => expect(screen.getByRole("button", { name: /动态/ })).toBeTruthy());
-	fireEvent.click(screen.getByRole("button", { name: /动态/ }));
+	await waitFor(() => expect(screen.getByRole("button", { name: /作品/ })).toBeTruthy());
+	fireEvent.click(screen.getByRole("button", { name: /作品/ }));
 	await waitFor(() => expect(blockEl("avatar")).toBeTruthy());
 }
 

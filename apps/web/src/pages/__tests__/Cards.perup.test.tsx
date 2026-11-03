@@ -366,7 +366,7 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
 
 		// 切到动态类型(SectionNav 竖栏 + 横向条两份,取第一个)。
-		fireEvent.click(screen.getAllByRole("button", { name: "动态发布" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { name: "作品发布" })[0]);
 
 		// 把「第几条作品」改成 3。
 		const nthInput = await waitFor(() => {
