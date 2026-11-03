@@ -9,6 +9,7 @@ import type {
 	AiSkinTarget,
 	ErrorResponse,
 } from "@bilibili-notify/contract";
+import { i18n } from "../i18n";
 import { api, apiErrorOf } from "./api";
 import { withDesktopTokenHeader } from "./desktop-token";
 
@@ -194,7 +195,11 @@ export async function sendChatMessage(
 	});
 	if (!res.ok || !res.body) {
 		const payload = await res.json().catch(() => undefined);
-		throw apiErrorOf(res.status, payload, `聊天请求失败(${res.status})`);
+		throw apiErrorOf(
+			res.status,
+			payload,
+			i18n.t("panelUi.services.aiChat.1", { value0: res.status }),
+		);
 	}
 
 	const reader = res.body.getReader();
@@ -225,7 +230,7 @@ export async function sendChatMessage(
 	if (failure !== null) throw apiErrorOf(res.status, failure, failure.message);
 	// 流结束了却既没 done 也没 error:服务端进程被掐了 / 反代掐了连接。
 	// 这时磁盘上什么都没落,当失败处理才与服务端状态一致。
-	if (!done) throw new Error("连接中断,女仆没能把话说完");
+	if (!done) throw new Error(i18n.t("panelUi.services.aiChat.2"));
 	return done;
 }
 
@@ -237,11 +242,11 @@ export async function sendChatMessage(
  */
 export function groupLabel(updatedAt: string, now = new Date()): string {
 	const d = new Date(updatedAt);
-	if (Number.isNaN(d.getTime())) return "更早";
+	if (Number.isNaN(d.getTime())) return i18n.t("panelUi.services.aiChat.3");
 	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-	if (d.getTime() >= startOfToday) return "今天";
-	if (d.getTime() >= startOfToday - 86_400_000) return "昨天";
-	return "更早";
+	if (d.getTime() >= startOfToday) return i18n.t("panelUi.services.aiChat.4");
+	if (d.getTime() >= startOfToday - 86_400_000) return i18n.t("panelUi.services.aiChat.5");
+	return i18n.t("panelUi.services.aiChat.6");
 }
 
 /** 按 {@link groupLabel} 分组,保持服务端给的倒序。 */
@@ -279,6 +284,7 @@ export async function uploadChatImage(file: File): Promise<string> {
 	const payload = (await res.json().catch(() => undefined)) as { id?: string } | undefined;
 	// 失败不论是上传闸的 413(「图片过大」)还是路由自己的拒绝(格式不认),体都是 `{ code, message }`,
 	// 经同一处解析,原话不丢。
-	if (!res.ok || !payload?.id) throw apiErrorOf(res.status, payload, "图片上传失败");
+	if (!res.ok || !payload?.id)
+		throw apiErrorOf(res.status, payload, i18n.t("panelUi.services.aiChat.7"));
 	return payload.id;
 }

@@ -173,7 +173,7 @@ describe("最近推送活动 · 平台徽章", () => {
 
 	it("多来源时 B 站行也按描述符画徽章", () => {
 		const { container } = renderPanel([row({ nameSnapshot: "某UP" })], [], [DOUYIN]);
-		expect(badgeTexts(container)).toEqual(["动态", "B 站", "已送达"]);
+		expect(badgeTexts(container)).toEqual(["作品", "B 站", "已送达"]);
 	});
 });
 

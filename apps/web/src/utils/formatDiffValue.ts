@@ -1,4 +1,5 @@
 import { getFieldLabel, SEEN_PREFIX } from "../config/field-labels";
+import { i18n } from "../i18n";
 
 /**
  * 灵动岛 diff 行的值格式化结果。
@@ -11,13 +12,29 @@ export interface FormattedValue {
 	swatch?: string;
 }
 
-const REDACTED: FormattedValue = { display: "••• 已改" };
-const UNSET: FormattedValue = { display: "(未设置)" };
+const REDACTED: FormattedValue = {
+	get display() {
+		return i18n.t("panelUi.utils.formatDiffValue.1");
+	},
+};
+const UNSET: FormattedValue = {
+	get display() {
+		return i18n.t("panelUi.utils.formatDiffValue.2");
+	},
+};
 const EMPTY_LIST: FormattedValue = { display: "[]" };
 
 /** 「默认文案有更新」的账本(前缀见 `field-labels.ts`);它的值是指纹,不该按字符串原样吐出来。 */
-const SEEN_YES: FormattedValue = { display: "已确认" };
-const SEEN_NO: FormattedValue = { display: "未确认" };
+const SEEN_YES: FormattedValue = {
+	get display() {
+		return i18n.t("panelUi.utils.formatDiffValue.3");
+	},
+};
+const SEEN_NO: FormattedValue = {
+	get display() {
+		return i18n.t("panelUi.utils.formatDiffValue.4");
+	},
+};
 
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
@@ -59,7 +76,11 @@ export function formatDiffValue(code: string, value: unknown): FormattedValue {
 	if (value === undefined || value === null) return UNSET;
 
 	if (typeof value === "boolean") {
-		return { display: value ? "开启" : "关闭" };
+		return {
+			display: value
+				? i18n.t("panelUi.utils.formatDiffValue.5")
+				: i18n.t("panelUi.utils.formatDiffValue.6"),
+		};
 	}
 
 	if (typeof value === "number") {

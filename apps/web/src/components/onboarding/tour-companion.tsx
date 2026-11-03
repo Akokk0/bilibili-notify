@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
+import { i18n, useT } from "../../i18n";
 import { useNavStore } from "../../store/nav";
 import { useOnboardingReopen } from "../../store/onboarding";
 import { Fireworks, StepDoneBadge } from "./celebration";
@@ -74,16 +75,36 @@ function persistCollapsed(v: boolean) {
 /** 毕业卡上的「锦上添花」链接。两条分支(去哪 / 叫什么)曾各写一个三元,
  *  加第三个尾巴会同时落进两处的 else 里 —— 一张表就没有漏的余地。 */
 const TAIL_LINKS: Record<OnboardingTailKey, { to: string; label: string }> = {
-	image: { to: "/about/guide/render", label: "图片渲染(强烈推荐)" },
-	ai: { to: "/about/guide/ai", label: "AI 能力" },
+	image: {
+		to: "/about/guide/render",
+		get label() {
+			return i18n.t("panelUi.components.onboarding.tour-companion.1");
+		},
+	},
+	ai: {
+		to: "/about/guide/ai",
+		get label() {
+			return i18n.t("panelUi.components.onboarding.tour-companion.2");
+		},
+	},
 };
 
 const STEP_SHORT: Record<OnboardingStepKey, string> = {
-	login: "登录",
-	connection: "连接",
-	target: "目标",
-	test: "测试",
-	subs: "订阅",
+	get login() {
+		return i18n.t("panelUi.components.onboarding.tour-companion.3");
+	},
+	get connection() {
+		return i18n.t("panelUi.components.onboarding.tour-companion.4");
+	},
+	get target() {
+		return i18n.t("panelUi.components.onboarding.tour-companion.5");
+	},
+	get test() {
+		return i18n.t("panelUi.components.onboarding.tour-companion.6");
+	},
+	get subs() {
+		return i18n.t("panelUi.components.onboarding.tour-companion.7");
+	},
 };
 
 /** 元素的**布局**矩形(不含 transform)。隐藏侧正停在 morph pose 上,
@@ -117,6 +138,8 @@ function TextBtn({ label, onClick }: { label: string; onClick: () => void }) {
 }
 
 export function TourCompanion() {
+	const tx = useT();
+
 	const location = useLocation();
 	const navigate = useNavigate();
 	const [manualPos, setManualPos] = useState<TourPos | null>(null);
@@ -306,7 +329,10 @@ export function TourCompanion() {
 	// 全绿的毕业时刻加放一场全屏烟花。
 	// 首拍(prev 为空)只记录不庆祝:刷新页面时已完成的步不算「刚完成」。
 	const prevViewRef = useRef<OnboardingView | null>(null);
-	const [celebration, setCelebration] = useState<{ seq: number; text: string } | null>(null);
+	const [celebration, setCelebration] = useState<{
+		seq: number;
+		step: keyof typeof STEP_DONE_MESSAGES;
+	} | null>(null);
 	const [fireworks, setFireworks] = useState(false);
 	useEffect(() => {
 		const prev = prevViewRef.current;
@@ -314,7 +340,7 @@ export function TourCompanion() {
 		if (!view || !prev || collapsed) return;
 		// 两份 steps 都出自 deriveOnboarding,同序等长 —— 按下标对位即可
 		const justDone = view.steps.findLast((s, i) => s.done && prev.steps[i]?.done === false);
-		if (justDone) setCelebration({ seq: Date.now(), text: STEP_DONE_MESSAGES[justDone.key] });
+		if (justDone) setCelebration({ seq: Date.now(), step: justDone.key });
 		if (view.allDone && !prev.allDone) setFireworks(true);
 	}, [view, collapsed]);
 
@@ -344,8 +370,8 @@ export function TourCompanion() {
 			<ModalShell
 				width={400}
 				onCancel={() => setAskDismissed(true)}
-				title="需要新手指引吗?"
-				description="五步带你配好 B 站登录与推送通道"
+				title={tx("panelUi.components.onboarding.tour-companion.8")}
+				description={tx("panelUi.components.onboarding.tour-companion.9")}
 			>
 				{askPhase === "ask" ? (
 					<div className="flex flex-col gap-2">
@@ -356,7 +382,7 @@ export function TourCompanion() {
 								toggleCollapsed(false);
 							}}
 						>
-							我是新用户,开始指引
+							{tx("panelUi.components.onboarding.tour-companion.10")}
 						</Btn>
 						<Btn
 							full
@@ -366,16 +392,16 @@ export function TourCompanion() {
 								markChoice(true);
 							}}
 						>
-							我是老用户,跳过
+							{tx("panelUi.components.onboarding.tour-companion.11")}
 						</Btn>
 					</div>
 				) : (
 					<div className="flex flex-col gap-3">
 						<p className="text-bn-sm leading-relaxed text-bn-text-secondary">
-							好的,不再打扰。以后需要指引时,到「系统」页的「新手指引」一节点「重新开启」即可。
+							{tx("panelUi.components.onboarding.tour-companion.12")}
 						</p>
 						<Btn full variant="outline" onClick={() => setAskDismissed(true)}>
-							知道了
+							{tx("panelUi.components.onboarding.tour-companion.13")}
 						</Btn>
 					</div>
 				)}
@@ -406,7 +432,7 @@ export function TourCompanion() {
 			{celebration ? (
 				<StepDoneBadge
 					key={celebration.seq}
-					text={celebration.text}
+					text={STEP_DONE_MESSAGES[celebration.step]}
 					onDone={() => setCelebration(null)}
 				/>
 			) : null}
@@ -415,7 +441,7 @@ export function TourCompanion() {
 				ref={tabRef}
 				type="button"
 				data-bn="btn"
-				aria-label="展开新手导览"
+				aria-label={tx("panelUi.components.onboarding.tour-companion.14")}
 				aria-hidden={expanded}
 				inert={expanded}
 				data-shown={collapsed ? "true" : "false"}
@@ -423,15 +449,19 @@ export function TourCompanion() {
 				className="bn-tour-tab bn-glass-strong shadow-bn-elev fixed left-0 top-3/4 z-bn-tour-panel flex flex-col items-center gap-1 rounded-r-bn-card px-1.5 py-2.5 text-bn-text-secondary hover:text-bn-pink"
 			>
 				<Icon.sparkle size={15} />
-				<span className="text-bn-2xs font-medium leading-tight">指</span>
-				<span className="-mt-1 text-bn-2xs font-medium leading-tight">引</span>
+				<span className="text-bn-2xs font-medium leading-tight">
+					{tx("panelUi.components.onboarding.tour-companion.15")}
+				</span>
+				<span className="-mt-1 text-bn-2xs font-medium leading-tight">
+					{tx("panelUi.components.onboarding.tour-companion.16")}
+				</span>
 				<span className="text-bn-2xs text-bn-text-tertiary">
 					{view.doneCount}/{view.steps.length}
 				</span>
 			</button>
 			<aside
 				ref={cardRef}
-				aria-label="新手导览"
+				aria-label={tx("panelUi.components.onboarding.tour-companion.17")}
 				aria-hidden={collapsed}
 				inert={collapsed}
 				data-shown={expanded ? "true" : "false"}
@@ -457,13 +487,15 @@ export function TourCompanion() {
 				    文案硬切太突兀(真机反馈);完成徽章在操作位负责「上一步成了」的那半 */}
 				{pos.stepKey === "done" ? (
 					<div key="done" className="bn-tour-step-in">
-						<div className="text-bn-base font-semibold text-bn-text-primary">🎉 全部配置完成!</div>
+						<div className="text-bn-base font-semibold text-bn-text-primary">
+							{tx("panelUi.components.onboarding.tour-companion.18")}
+						</div>
 						<p className="mt-1 mb-2 text-bn-xs leading-relaxed text-bn-text-secondary">
-							五步链路已打通,订阅 UP 的动态与开播会自动推送。
+							{tx("panelUi.components.onboarding.tour-companion.19")}
 						</p>
 						{pendingTails.length > 0 ? (
 							<p className="mb-2 text-bn-2xs leading-relaxed text-bn-text-tertiary">
-								锦上添花:
+								{tx("panelUi.components.onboarding.tour-companion.20")}
 								{pendingTails.map((t) => (
 									<Link
 										key={t.key}
@@ -476,7 +508,7 @@ export function TourCompanion() {
 							</p>
 						) : null}
 						<Btn size="sm" onClick={() => setJustGraduated(false)}>
-							收起
+							{tx("panelUi.components.onboarding.tour-companion.21")}
 						</Btn>
 					</div>
 				) : sub ? (
@@ -488,20 +520,23 @@ export function TourCompanion() {
 						{/* failNote 已只认当前步自己的失败(见上方守卫) */}
 						{failNote ? (
 							<ErrorNote size="sm" className="-mt-1 mb-2">
-								测试没通过:{failNote.text} —— 照原因排查,改完配置再点一次「测试」。
+								{tx("panelUi.components.onboarding.tour-companion.22")}
+								{failNote.text} {tx("panelUi.components.onboarding.tour-companion.23")}
 							</ErrorNote>
 						) : null}
 						{/* 「带我去」退役:不在目标路由时聚光灯指着顶栏页签,用户自己点过去。
 						    提示独立成行 —— 塞进按钮行会把整行挤爆(真机踩过:收起折成竖排) */}
 						{onRoute || navTabHidden || inReadingZone ? null : (
-							<p className="-mt-1.5 mb-2 text-bn-2xs text-bn-text-tertiary">点亮起的页签前往 →</p>
+							<p className="-mt-1.5 mb-2 text-bn-2xs text-bn-text-tertiary">
+								{tx("panelUi.components.onboarding.tour-companion.24")}
+							</p>
 						)}
 						<div className="flex flex-wrap items-center gap-2">
 							{/* 降级出口:目标页签被藏起来了,没有灯可跟 —— 只有这时才把退役的
 							    「带我去」放回来,正常情况下仍旧是「跟着灯自己点页签过去」 */}
 							{navTabHidden && !inReadingZone ? (
 								<Btn size="sm" onClick={() => navigate(sub.route)}>
-									带我去
+									{tx("panelUi.components.onboarding.tour-companion.25")}
 								</Btn>
 							) : null}
 							{/* 没有「上一步」—— 流转单向(定案:做完一步不回头,只顺序前进);
@@ -512,14 +547,14 @@ export function TourCompanion() {
 									variant="outline"
 									onClick={() => setManualPos({ ...pos, subIndex: pos.subIndex + 1 })}
 								>
-									下一步
+									{tx("panelUi.components.onboarding.tour-companion.26")}
 								</Btn>
 							) : null}
 							{/* 阅读区里没有灯,回去的路就是这颗按钮;「选型指引」此刻让位 ——
 							    人已经在教程里,再指过来没意义 */}
 							{inReadingZone ? (
 								<Btn size="sm" onClick={() => navigate(sub.route)}>
-									回去继续
+									{tx("panelUi.components.onboarding.tour-companion.27")}
 								</Btn>
 							) : subLink ? (
 								<Btn size="sm" variant="ghost" onClick={() => navigate(subLink.to)}>
@@ -529,8 +564,14 @@ export function TourCompanion() {
 							<span className="flex-1" />
 							{/* 「跳过指引」= 写回 true,整个导览就此消失(三态语义);
 							    系统页「新手指引」一节可随时重开 */}
-							<TextBtn label="跳过指引" onClick={() => markChoice(true)} />
-							<TextBtn label="收起" onClick={() => toggleCollapsed(true)} />
+							<TextBtn
+								label={tx("panelUi.components.onboarding.tour-companion.28")}
+								onClick={() => markChoice(true)}
+							/>
+							<TextBtn
+								label={tx("panelUi.components.onboarding.tour-companion.29")}
+								onClick={() => toggleCollapsed(true)}
+							/>
 						</div>
 					</div>
 				) : null}

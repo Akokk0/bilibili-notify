@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 /**
  * 覆盖开关关闭时的那行「未启用 · …」说明 —— 与设计稿一致。
  * 收编前 Cards(InheritNote)与 rules/PerUpEditor(InheritHint)各抄一份,
@@ -7,7 +8,12 @@
 import type { ReactNode } from "react";
 
 export function InheritNote({ children }: { children: ReactNode }) {
+	const tx = useT();
+
 	return (
-		<div className="py-5 text-center text-bn-sm text-bn-text-tertiary">未启用 · {children}</div>
+		<div className="py-5 text-center text-bn-sm text-bn-text-tertiary">
+			{tx("panelUi.components.inherit-note.1")}
+			{children}
+		</div>
 	);
 }

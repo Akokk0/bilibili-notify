@@ -1,3 +1,4 @@
+import { i18n } from "../i18n";
 /**
  * 推送(按特性键)的**唯一色表与文案表**。
  *
@@ -51,29 +52,45 @@ export const FEATURE_DESCRIPTORS: Record<FeatureKey, FeatureDescriptor> = {
 	post: {
 		tone: PUSH_TONE.post,
 		family: "post",
-		label: "动态",
-		eventLabel: "动态",
+		get label() {
+			return i18n.t("panelUi.config.push-features.1");
+		},
+		get eventLabel() {
+			return i18n.t("panelUi.config.push-features.2");
+		},
 		icon: "dyn",
 	},
 	liveStart: {
 		tone: PUSH_TONE.live,
 		family: "live",
-		label: "开播",
-		eventLabel: "开播",
+		get label() {
+			return i18n.t("panelUi.config.push-features.3");
+		},
+		get eventLabel() {
+			return i18n.t("panelUi.config.push-features.4");
+		},
 		icon: "live",
 	},
 	liveStreaming: {
 		tone: PUSH_TONE.live,
 		family: "live",
-		label: "直播中",
-		eventLabel: "正在直播",
+		get label() {
+			return i18n.t("panelUi.config.push-features.5");
+		},
+		get eventLabel() {
+			return i18n.t("panelUi.config.push-features.6");
+		},
 		icon: "live",
 	},
 	liveEnd: {
 		tone: "#F472B6",
 		family: "live",
-		label: "下播",
-		eventLabel: "下播",
+		get label() {
+			return i18n.t("panelUi.config.push-features.7");
+		},
+		get eventLabel() {
+			return i18n.t("panelUi.config.push-features.8");
+		},
 		icon: "sparkle",
 	},
 	superchat: {
@@ -86,22 +103,34 @@ export const FEATURE_DESCRIPTORS: Record<FeatureKey, FeatureDescriptor> = {
 	membership: {
 		tone: PUSH_TONE.membership,
 		family: "membership",
-		label: "舰长",
-		eventLabel: "上舰",
+		get label() {
+			return i18n.t("panelUi.config.push-features.9");
+		},
+		get eventLabel() {
+			return i18n.t("panelUi.config.push-features.10");
+		},
 		icon: "guard",
 	},
 	viewerChat: {
 		tone: "#10B981",
 		family: "live",
-		label: "弹幕",
-		eventLabel: "特别弹幕",
+		get label() {
+			return i18n.t("panelUi.config.push-features.11");
+		},
+		get eventLabel() {
+			return i18n.t("panelUi.config.push-features.12");
+		},
 		icon: "mic",
 	},
 	viewerEnter: {
 		tone: "#06B6D4",
 		family: "live",
-		label: "进房",
-		eventLabel: "特别进房",
+		get label() {
+			return i18n.t("panelUi.config.push-features.13");
+		},
+		get eventLabel() {
+			return i18n.t("panelUi.config.push-features.14");
+		},
 		icon: "user",
 	},
 };
@@ -113,12 +142,42 @@ export const FEATURE_DESCRIPTORS: Record<FeatureKey, FeatureDescriptor> = {
  * 只是留痕),同一支灰。
  */
 export const PUSH_STATUS_META: Record<PushStatus, { label: string; tone: string }> = {
-	delivered: { label: "已送达", tone: "var(--color-bn-success)" },
-	partial: { label: "部分失败", tone: "var(--color-bn-warning)" },
-	failed: { label: "失败", tone: "var(--color-bn-danger)" },
-	"no-targets": { label: "无目标", tone: "var(--color-bn-warning)" },
-	silenced: { label: "已静音", tone: "var(--color-bn-inactive)" },
-	filtered: { label: "已过滤", tone: "var(--color-bn-inactive)" },
+	delivered: {
+		get label() {
+			return i18n.t("panelUi.config.push-features.15");
+		},
+		tone: "var(--color-bn-success)",
+	},
+	partial: {
+		get label() {
+			return i18n.t("panelUi.config.push-features.16");
+		},
+		tone: "var(--color-bn-warning)",
+	},
+	failed: {
+		get label() {
+			return i18n.t("panelUi.config.push-features.17");
+		},
+		tone: "var(--color-bn-danger)",
+	},
+	"no-targets": {
+		get label() {
+			return i18n.t("panelUi.config.push-features.18");
+		},
+		tone: "var(--color-bn-warning)",
+	},
+	silenced: {
+		get label() {
+			return i18n.t("panelUi.config.push-features.19");
+		},
+		tone: "var(--color-bn-inactive)",
+	},
+	filtered: {
+		get label() {
+			return i18n.t("panelUi.config.push-features.20");
+		},
+		tone: "var(--color-bn-inactive)",
+	},
 };
 
 /**

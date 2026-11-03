@@ -1,5 +1,6 @@
 import { AddFileButton, Btn, ErrorNote, ModalShell, OptionCard } from "@bilibili-notify/ui";
 import { useState } from "react";
+import { useT } from "../../i18n";
 import { type ClientBackup, isValidPin, looksLikeBackup, readFileAsText } from "./backup-file";
 import { PinField } from "./dialog-bits";
 
@@ -12,8 +13,10 @@ export interface BackupImportDialogProps {
 }
 
 export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDialogProps) {
+	const tx = useT();
+
 	const [backup, setBackup] = useState<ClientBackup | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<"invalid" | "unreadable" | null>(null);
 	const [mode, setMode] = useState<Mode>("overwrite");
 	const [pin, setPin] = useState("");
 
@@ -24,7 +27,7 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 			const obj: unknown = JSON.parse(await readFileAsText(file));
 			if (!looksLikeBackup(obj)) {
 				setBackup(null);
-				setError("这不是一个 bilibili-notify 备份文件");
+				setError("invalid");
 				return;
 			}
 			setBackup(obj);
@@ -33,7 +36,7 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 			setMode(obj.kind === "full" ? "overwrite" : "merge");
 		} catch {
 			setBackup(null);
-			setError("文件解析失败，请确认选择的是备份文件");
+			setError("unreadable");
 		}
 	}
 
@@ -47,7 +50,12 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 	}
 
 	return (
-		<ModalShell onCancel={onCancel} width={400} bodyClassName="p-5" title="导入 / 恢复备份">
+		<ModalShell
+			onCancel={onCancel}
+			width={400}
+			bodyClassName="p-5"
+			title={tx("panelUi.pages.backup.BackupImportDialog.3")}
+		>
 			{/* 「这里还能塞一个文件」的虚线空位 —— 收编前是手写 label,说的还是家族统一
 			    前的老方言(bn-border 淡边 + 实底 + hover 不变粉)。 */}
 			<AddFileButton
@@ -55,30 +63,41 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 				onFile={onFile}
 				className="mb-3 flex items-center justify-center rounded-lg px-3 py-4 text-bn-base"
 			>
-				选择备份文件（.bnbackup / .json）…
+				{tx("panelUi.pages.backup.BackupImportDialog.4")}
 			</AddFileButton>
 
-			{error ? <ErrorNote className="mb-3">{error}</ErrorNote> : null}
+			{error ? (
+				<ErrorNote className="mb-3">
+					{error === "invalid"
+						? tx("panelUi.pages.backup.BackupImportDialog.1")
+						: tx("panelUi.pages.backup.BackupImportDialog.2")}
+				</ErrorNote>
+			) : null}
 
 			{backup ? (
 				<>
 					<div className="mb-3 text-bn-sm text-bn-text-secondary">
-						检测到：{isFull ? "完整备份（含机密）" : "脱敏导出（无机密）"}
+						{tx("panelUi.pages.backup.BackupImportDialog.5")}
+						{isFull
+							? tx("panelUi.pages.backup.BackupImportDialog.6")
+							: tx("panelUi.pages.backup.BackupImportDialog.7")}
 						{backup.createdAt ? ` · ${backup.createdAt.slice(0, 10)}` : ""}
 					</div>
 
-					<div className="mb-1 text-bn-sm font-semibold text-bn-text-secondary">落地方式</div>
+					<div className="mb-1 text-bn-sm font-semibold text-bn-text-secondary">
+						{tx("panelUi.pages.backup.BackupImportDialog.8")}
+					</div>
 					<div className="mb-3 grid grid-cols-2 gap-2">
 						<OptionCard
 							active={mode === "overwrite"}
-							label="覆盖"
-							description="回到快照 · 删多余"
+							label={tx("panelUi.pages.backup.BackupImportDialog.9")}
+							description={tx("panelUi.pages.backup.BackupImportDialog.10")}
 							onSelect={() => setMode("overwrite")}
 						/>
 						<OptionCard
 							active={mode === "merge"}
-							label="合并"
-							description="并入现有 · 不删"
+							label={tx("panelUi.pages.backup.BackupImportDialog.11")}
+							description={tx("panelUi.pages.backup.BackupImportDialog.12")}
 							onSelect={() => setMode("merge")}
 						/>
 					</div>
@@ -88,7 +107,7 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 							className="mb-1"
 							value={pin}
 							onChange={setPin}
-							placeholder="输入 6 位数字 PIN"
+							placeholder={tx("panelUi.pages.backup.BackupImportDialog.13")}
 						/>
 					) : null}
 				</>
@@ -96,10 +115,12 @@ export function BackupImportDialog({ onCancel, onImport, busy }: BackupImportDia
 
 			<div className="mt-4 flex justify-end gap-2">
 				<Btn variant="outline" size="sm" onClick={onCancel} disabled={busy}>
-					取消
+					{tx("panelUi.pages.backup.BackupImportDialog.14")}
 				</Btn>
 				<Btn variant="primary" size="sm" onClick={submit} disabled={!canImport}>
-					{busy ? "导入中…" : "导入"}
+					{busy
+						? tx("panelUi.pages.backup.BackupImportDialog.15")
+						: tx("panelUi.pages.backup.BackupImportDialog.16")}
 				</Btn>
 			</div>
 		</ModalShell>

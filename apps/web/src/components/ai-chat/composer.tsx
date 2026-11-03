@@ -8,6 +8,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useT } from "../../i18n";
 import { useSkinText } from "../../store/skin";
 import { matchSkills } from "./skills";
 
@@ -88,6 +89,8 @@ export function Composer({
 	extras,
 	skills = [],
 }: ComposerProps) {
+	const tx = useT();
+
 	const fileRef = useRef<HTMLInputElement>(null);
 	const full = attachments.length >= MAX_ATTACHMENTS;
 	// 皮肤文案槽:皮肤给了 chatPlaceholder 就整句替换默认提示。
@@ -178,7 +181,7 @@ export function Composer({
 					surface="solid-strong"
 					variant="flush"
 					role="listbox"
-					ariaLabel="女仆技能"
+					ariaLabel={tx("panelUi.components.ai-chat.composer.1")}
 					className="bn-anim-cmd-in"
 				>
 					<div className="p-[5px]">
@@ -203,7 +206,9 @@ export function Composer({
 										/{s.name}
 									</span>
 									<span className="rounded-bn-xs bg-bn-code-bg px-[7px] py-px text-bn-2xs font-semibold text-bn-text-secondary">
-										{s.builtin ? "内置" : "自定义"}
+										{s.builtin
+											? tx("panelUi.components.ai-chat.composer.2")
+											: tx("panelUi.components.ai-chat.composer.3")}
 									</span>
 								</div>
 								<div className="mt-0.5 truncate text-bn-sm text-bn-text-tertiary">
@@ -213,9 +218,9 @@ export function Composer({
 						))}
 					</div>
 					<div className="flex gap-3.5 border-t border-bn-border-subtle px-[13px] py-[7px] text-bn-xs text-bn-text-secondary">
-						<span>↑↓ 选择</span>
-						<span>Enter 确认</span>
-						<span>Esc 关闭</span>
+						<span>{tx("panelUi.components.ai-chat.composer.4")}</span>
+						<span>{tx("panelUi.components.ai-chat.composer.5")}</span>
+						<span>{tx("panelUi.components.ai-chat.composer.6")}</span>
 					</div>
 				</PopoverShell>
 			) : null}
@@ -231,13 +236,13 @@ export function Composer({
 							<div key={a.id} className="group relative">
 								<img
 									src={a.url}
-									alt="待发送的图片"
+									alt={tx("panelUi.components.ai-chat.composer.7")}
 									className="h-16 w-16 rounded-bn-sm border border-bn-border object-cover"
 								/>
 								<IconButton
 									icon={<Icon.close size={12} />}
-									label="移除图片"
-									title="移除"
+									label={tx("panelUi.components.ai-chat.composer.8")}
+									title={tx("panelUi.components.ai-chat.composer.9")}
 									shape="pill"
 									surface="filled"
 									className="-right-1.5 -top-1.5 absolute"
@@ -283,8 +288,10 @@ export function Composer({
 					// 延后收焦点态:点技能菜单里的项会先触发 blur,立刻收会让菜单在
 					// click 落地前就消失,于是那一下点了个寂寞。
 					onBlur={() => setTimeout(() => setFocus(false), 120)}
-					placeholder={skinPlaceholder ?? `给${aiName}发消息,输入 / 唤起技能`}
-					aria-label="聊天输入"
+					placeholder={
+						skinPlaceholder ?? tx("panelUi.components.ai-chat.composer.10", { value0: aiName })
+					}
+					aria-label={tx("panelUi.components.ai-chat.composer.11")}
 					className="w-full resize-none overflow-y-auto border-none bg-transparent px-2 pt-1.5 pb-1 text-bn-lg leading-relaxed text-bn-text-primary outline-none placeholder:text-bn-text-secondary"
 				/>
 
@@ -305,8 +312,8 @@ export function Composer({
 						<div className="relative shrink-0" ref={actionsRef}>
 							<IconButton
 								icon={<Icon.plus size={19} />}
-								label="添加"
-								title="添加图片或唤起女仆技能"
+								label={tx("panelUi.components.ai-chat.composer.12")}
+								title={tx("panelUi.components.ai-chat.composer.13")}
 								size="xl"
 								shape="pill"
 								ariaHasPopup
@@ -319,7 +326,7 @@ export function Composer({
 									layer="raised"
 									surface="solid-strong"
 									role="menu"
-									ariaLabel="更多"
+									ariaLabel={tx("panelUi.components.ai-chat.composer.14")}
 									className="bn-anim-cmd-in w-44"
 								>
 									<MenuItem
@@ -331,7 +338,7 @@ export function Composer({
 											setActionsOpen(false);
 										}}
 									>
-										添加图片
+										{tx("panelUi.components.ai-chat.composer.15")}
 									</MenuItem>
 									<MenuItem
 										role="menuitem"
@@ -343,7 +350,7 @@ export function Composer({
 											taRef.current?.focus();
 										}}
 									>
-										女仆技能
+										{tx("panelUi.components.ai-chat.composer.16")}
 									</MenuItem>
 								</PopoverShell>
 							) : null}
@@ -352,8 +359,8 @@ export function Composer({
 					</div>
 					<button
 						type="button"
-						title="发送"
-						aria-label="发送"
+						title={tx("panelUi.components.ai-chat.composer.17")}
+						aria-label={tx("panelUi.components.ai-chat.composer.18")}
 						disabled={!canSend}
 						onClick={onSubmit}
 						data-bn="btn"

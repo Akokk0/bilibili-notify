@@ -1,3 +1,4 @@
+import { i18n, useT } from "../../i18n";
 /**
  * 消息版式编辑器 —— 编辑单一推送类型(动态 / 开播)的 MessageKindLayout:
  * @dnd-kit 拖拽重排(拖动实时让位、手柄仅 ⠿)/
@@ -39,9 +40,15 @@ import {
 } from "./message-layout-utils";
 
 const PART_HINTS: Record<string, string> = {
-	card: "渲染出的卡片图片;隐藏后连图片渲染都跳过",
-	text: "AI 点评或消息模板(模板就在本块下方编辑)",
-	link: "动态 / 视频 / 直播间链接,独立部件",
+	get card() {
+		return i18n.t("panelUi.pages.rules.MessageLayoutEditor.1");
+	},
+	get text() {
+		return i18n.t("panelUi.pages.rules.MessageLayoutEditor.2");
+	},
+	get link() {
+		return i18n.t("panelUi.pages.rules.MessageLayoutEditor.3");
+	},
 };
 
 /**
@@ -61,6 +68,8 @@ function SortableBlockRow({
 	onRemove: (id: string) => void;
 	slot?: ReactNode;
 }) {
+	const tx = useT();
+
 	const isSplit = block.type === MESSAGE_SPLIT_TYPE;
 	return (
 		<SortableRow
@@ -87,7 +96,7 @@ function SortableBlockRow({
 						{/* 行内图标:父 span 是文本流(还带 italic),用 align 微调基线而不是改成 flex
 						    —— 非分条符那支还要跟后面的 PART_HINTS 并排。 */}
 						<Icon.scissors size={11} className="mr-1 inline-block align-[-1px]" />
-						分条符 · 上下切成两条消息
+						{tx("panelUi.pages.rules.MessageLayoutEditor.4")}
 					</>
 				) : (
 					(PART_LABELS[block.type] ?? block.type)
@@ -102,7 +111,7 @@ function SortableBlockRow({
 				{isSplit ? (
 					<IconButton
 						icon={<Icon.close size={13} />}
-						label="删除分条符"
+						label={tx("panelUi.pages.rules.MessageLayoutEditor.5")}
 						tone="danger"
 						onClick={() => onRemove(block.id)}
 					/>
@@ -132,6 +141,8 @@ export function MessageLayoutEditor({
 	textSlot?: ReactNode;
 	accent?: string;
 }) {
+	const tx = useT();
+
 	const setBlocks = (blocks: MessageBlockFull[]): void => onChange({ ...value, blocks });
 	const preview = describeGroups(value.blocks);
 	const cardNotFirst = groupsWithCardNotFirst(value.blocks);
@@ -177,17 +188,14 @@ export function MessageLayoutEditor({
 			<div className="flex items-center gap-2">
 				<AddButton onClick={() => setBlocks(insertSplit(value.blocks))}>
 					<Icon.plus size={13} />
-					插入分条符
+					{tx("panelUi.pages.rules.MessageLayoutEditor.6")}
 				</AddButton>
 				<span className="text-bn-xs text-bn-text-tertiary">
-					分条符把一次推送切成多条消息;某条发送失败时,该目标的后续条会中止
+					{tx("panelUi.pages.rules.MessageLayoutEditor.7")}
 				</span>
 			</div>
 
-			<Field
-				code={separatorCode}
-				hint="同一条消息内相邻文本类部件(文本 / 链接)之间的连接符;\n 表示换行"
-			>
+			<Field code={separatorCode} hint={tx("panelUi.pages.rules.MessageLayoutEditor.8")}>
 				<TInput
 					value={encodeSeparator(value.separator)}
 					onChange={(v) => onChange({ ...value, separator: decodeSeparator(v) })}
@@ -204,19 +212,23 @@ export function MessageLayoutEditor({
 				}}
 			>
 				<span className="font-bold" style={{ color: accent }}>
-					发送预览:
+					{tx("panelUi.pages.rules.MessageLayoutEditor.9")}
 				</span>{" "}
 				{preview.length === 0 ? (
-					<b className="text-bn-danger">所有部件都被隐藏,本类推送将不发送任何消息</b>
+					<b className="text-bn-danger">{tx("panelUi.pages.rules.MessageLayoutEditor.10")}</b>
 				) : (
-					preview.map((line, i) => `第 ${i + 1} 条『${line}』`).join(" · ")
+					preview
+						.map((line, i) =>
+							tx("panelUi.pages.rules.MessageLayoutEditor.11", { value0: i + 1, value1: line }),
+						)
+						.join(" · ")
 				)}
 			</div>
 
 			{cardNotFirst.length > 0 ? (
 				<WarnNote className="leading-6">
-					<b>提示:</b>第 {cardNotFirst.join("、")} 条消息里卡片图不在最前面 —— QQ
-					上先发文字再发图片会被自动拆成两条消息,卡片图放在最前才能合并成一条。
+					<b>{tx("panelUi.pages.rules.MessageLayoutEditor.12")}</b>
+					{tx("panelUi.pages.rules.MessageLayoutEditor.13", { messages: cardNotFirst.join("、") })}
 				</WarnNote>
 			) : null}
 		</div>

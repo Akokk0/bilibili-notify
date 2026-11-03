@@ -1,4 +1,5 @@
 import { type FieldSection, getFieldLabel } from "../config/field-labels";
+import { i18n } from "../i18n";
 import type { FieldDiff } from "./walkTreeDiff";
 
 /**
@@ -20,25 +21,61 @@ export interface DiffSection {
 }
 
 const SECTION_LABELS: Record<GroupSectionKey, string> = {
-	general: "通用",
+	get general() {
+		return i18n.t("panelUi.utils.groupDiffs.1");
+	},
 	master: "Master",
-	ai: "AI 模型",
-	persona: "AI 人格",
-	cardStyle: "卡片样式",
-	cardPreview: "卡片预览",
-	filter: "动态过滤",
-	templates: "消息模板",
-	schedule: "调度",
-	interaction: "直播互动",
-	specialViewers: "特别关注",
-	imageGroup: "动态图集",
-	target: "推送目标",
-	connection: "连接",
-	transport: "传输",
-	commands: "私聊指令",
-	linkPreview: "链接解析",
-	logging: "日志",
-	other: "其他",
+	get ai() {
+		return i18n.t("panelUi.utils.groupDiffs.2");
+	},
+	get persona() {
+		return i18n.t("panelUi.utils.groupDiffs.3");
+	},
+	get cardStyle() {
+		return i18n.t("panelUi.utils.groupDiffs.4");
+	},
+	get cardPreview() {
+		return i18n.t("panelUi.utils.groupDiffs.5");
+	},
+	get filter() {
+		return i18n.t("panelUi.utils.groupDiffs.6");
+	},
+	get templates() {
+		return i18n.t("panelUi.utils.groupDiffs.7");
+	},
+	get schedule() {
+		return i18n.t("panelUi.utils.groupDiffs.8");
+	},
+	get interaction() {
+		return i18n.t("panelUi.utils.groupDiffs.9");
+	},
+	get specialViewers() {
+		return i18n.t("panelUi.utils.groupDiffs.10");
+	},
+	get imageGroup() {
+		return i18n.t("panelUi.utils.groupDiffs.11");
+	},
+	get target() {
+		return i18n.t("panelUi.utils.groupDiffs.12");
+	},
+	get connection() {
+		return i18n.t("panelUi.utils.groupDiffs.13");
+	},
+	get transport() {
+		return i18n.t("panelUi.utils.groupDiffs.14");
+	},
+	get commands() {
+		return i18n.t("panelUi.utils.groupDiffs.15");
+	},
+	get linkPreview() {
+		return i18n.t("panelUi.utils.groupDiffs.16");
+	},
+	get logging() {
+		return i18n.t("panelUi.utils.groupDiffs.17");
+	},
+	get other() {
+		return i18n.t("panelUi.utils.groupDiffs.18");
+	},
 };
 
 /**

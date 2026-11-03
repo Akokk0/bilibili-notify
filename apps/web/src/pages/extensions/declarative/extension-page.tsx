@@ -5,6 +5,7 @@ import type {
 	SettingsScalarField,
 } from "@bilibili-notify/contract";
 import { ErrorNote, HintNote, Icon, StatusDot, WarnNote } from "@bilibili-notify/ui";
+import { useT } from "../../../i18n";
 import { reasonOf } from "../shared";
 import { PageBlocks, TONE_DOT } from "./blocks";
 import { ListSection } from "./list-section";
@@ -31,12 +32,19 @@ export function settingsFieldsOf(ext: ExtensionDTO) {
  * 失败(断网 / 500)把原话摆出来 —— 那一块本来该有东西,空着不说等于说「一切正常」。
  */
 export function DeclarativeHead({ ext }: { ext: ExtensionDTO }) {
+	const tx = useT();
+
 	const running = isRunning(ext);
 	const view = useExtensionView(ext.id, running);
 	if (!running) return null;
 	if (view.isError) {
 		if (isNotFound(view.error)) return null;
-		return <ErrorNote size="sm">读不到它现在的状态:{reasonOf(view.error)}</ErrorNote>;
+		return (
+			<ErrorNote size="sm">
+				{tx("panelUi.pages.extensions.declarative.extension-page.1")}
+				{reasonOf(view.error)}
+			</ErrorNote>
+		);
 	}
 	const live = liveViewOf(running, view);
 	const page = live?.page;
@@ -102,11 +110,15 @@ function configGroupsOf(fields: readonly SettingsField[]): ConfigGroup[] {
  * 后者要去查日志。
  */
 function RunStateNote({ ext }: { ext: ExtensionDTO }) {
+	const tx = useT();
+
 	if (!ext.enabled) {
 		return (
 			<WarnNote size="sm" icon={<Icon.warning size={15} />} className="leading-[1.7]">
-				<strong className="font-bold">拓展关着,它现在什么都不做。</strong>
-				下面的设置照样能改,打开拓展之后生效;连接状态要等它跑起来才看得到。
+				<strong className="font-bold">
+					{tx("panelUi.pages.extensions.declarative.extension-page.2")}
+				</strong>
+				{tx("panelUi.pages.extensions.declarative.extension-page.3")}
 			</WarnNote>
 		);
 	}
@@ -118,7 +130,7 @@ function RunStateNote({ ext }: { ext: ExtensionDTO }) {
 	if (ext.state === "settings-invalid") {
 		return (
 			<WarnNote size="sm" icon={<Icon.warning size={15} />} className="leading-[1.7]">
-				{ext.detail ?? "存着的设置过不了它自己的规矩,它没在跑 —— 在下面改对了,它会自己起来。"}
+				{ext.detail ?? tx("panelUi.pages.extensions.declarative.extension-page.4")}
 			</WarnNote>
 		);
 	}
@@ -129,14 +141,14 @@ function RunStateNote({ ext }: { ext: ExtensionDTO }) {
 	if (ext.state === "staged") {
 		return (
 			<HintNote className="leading-[1.65]">
-				新版装好了还没换上,底下只有设置、没有状态 —— 怎么换在上面那张卡里。
+				{tx("panelUi.pages.extensions.declarative.extension-page.5")}
 			</HintNote>
 		);
 	}
 	if (ext.state !== "running") {
 		return (
 			<HintNote className="leading-[1.65]">
-				这个拓展现在没跑起来,底下只有设置、没有状态 —— 去日志里看它为什么没起来。
+				{tx("panelUi.pages.extensions.declarative.extension-page.6")}
 			</HintNote>
 		);
 	}

@@ -3,6 +3,7 @@ import { Donut, ErrorNote, GlassPanel, Icon, LoadingBlock, Pill } from "@bilibil
 import type { ReactNode } from "react";
 import { SECTION_ACCENT } from "../config/section-accents";
 import type { ResourcesState } from "../hooks/useResourcesChannel";
+import { i18n, useT } from "../i18n";
 import { Sparkline } from "../pages/stats/charts";
 
 /**
@@ -59,11 +60,11 @@ function browserText(sample: ResourceSample): string {
 		case "running":
 			return bytes(sample.browserRss);
 		case "closed":
-			return "空闲已关";
+			return i18n.t("panelUi.components.system-resource-card.1");
 		case "remote":
-			return "远程";
+			return i18n.t("panelUi.components.system-resource-card.2");
 		default:
-			return "未接入";
+			return i18n.t("panelUi.components.system-resource-card.3");
 	}
 }
 
@@ -173,6 +174,8 @@ export function SystemResourceCard({
 	state: ResourcesState;
 	reachable: boolean;
 }) {
+	const tx = useT();
+
 	const latest = state.history.at(-1);
 	const statics = state.static;
 	const ready = reachable && statics && latest;
@@ -185,49 +188,53 @@ export function SystemResourceCard({
 
 	return (
 		<GlassPanel
-			title="系统资源"
-			subtitle="实时刷新 · 每 2 秒"
+			title={tx("panelUi.components.system-resource-card.4")}
+			subtitle={tx("panelUi.components.system-resource-card.5")}
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.pulse width={15} height={15} />}
 			right={
 				reachable ? (
 					ready ? (
 						<Pill color={heapTone(heapRatio ?? 0)} subtle size="sm">
-							堆 {percent(heapRatio)}
+							{tx("panelUi.components.system-resource-card.6")}
+							{percent(heapRatio)}
 						</Pill>
 					) : undefined
 				) : (
 					<Pill color="var(--color-bn-danger)" subtle size="sm">
-						失联
+						{tx("panelUi.components.system-resource-card.7")}
 					</Pill>
 				)
 			}
 		>
 			{!reachable ? (
-				<ErrorNote>
-					后端 API 当前失联,资源读数已停止刷新 ——
-					这里不拿最后一次的快照继续画,那会让人以为一切正常。
-				</ErrorNote>
+				<ErrorNote>{tx("panelUi.components.system-resource-card.8")}</ErrorNote>
 			) : !ready ? (
-				<LoadingBlock variant="inset" label="正在读取系统资源" hint="第一帧到了就开始画" />
+				<LoadingBlock
+					variant="inset"
+					label={tx("panelUi.components.system-resource-card.9")}
+					hint={tx("panelUi.components.system-resource-card.10")}
+				/>
 			) : (
 				<div className="flex flex-col gap-4">
 					<div className="flex flex-wrap items-start justify-center gap-x-8 gap-y-5">
 						<Gauge
-							title="CPU 占用"
+							title={tx("panelUi.components.system-resource-card.11")}
 							total={latest.hostCpu}
 							bn={bnCpu}
 							bnTone={BN_CPU_TONE}
 							caption="CPU"
-							detail={`本体 ${percent(bnCpu)}`}
+							detail={tx("panelUi.components.system-resource-card.12", { value0: percent(bnCpu) })}
 						/>
 						<Gauge
-							title="内存占用"
+							title={tx("panelUi.components.system-resource-card.13")}
 							total={memTotal > 0 ? latest.memUsed / memTotal : null}
 							bn={memTotal > 0 && bnMemBytes !== null ? bnMemBytes / memTotal : null}
 							bnTone={BN_MEM_TONE}
-							caption="内存"
-							detail={`本体 ${bytes(bnMemBytes)}`}
+							caption={tx("panelUi.components.system-resource-card.14")}
+							detail={tx("panelUi.components.system-resource-card.15", {
+								value0: bytes(bnMemBytes),
+							})}
 						/>
 					</div>
 
@@ -235,28 +242,41 @@ export function SystemResourceCard({
 					    常驻 / 浏览器)正好排满一行,三列会把浏览器挤到下一行去陪 sparkline。 */}
 					<div className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-bn-border-subtle pt-3 sm:grid-cols-3 xl:grid-cols-4">
 						<div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-4">
-							<div className="text-bn-2xs text-bn-text-secondary">处理器</div>
+							<div className="text-bn-2xs text-bn-text-secondary">
+								{tx("panelUi.components.system-resource-card.16")}
+							</div>
 							<div
 								className="truncate text-bn-xs font-bold text-bn-text-primary"
 								title={statics.cpuModel}
 							>
-								{statics.cpuModel || "—"} · {statics.hostCores} 核
+								{statics.cpuModel || "—"} · {statics.hostCores}{" "}
+								{tx("panelUi.components.system-resource-card.17")}
 							</div>
 						</div>
 						<Fact
-							label={statics.memSource === "cgroup" ? "容器配额" : "宿主机内存"}
+							label={
+								statics.memSource === "cgroup"
+									? tx("panelUi.components.system-resource-card.18")
+									: tx("panelUi.components.system-resource-card.19")
+							}
 							value={`${bytes(latest.memUsed)} / ${bytes(memTotal)}`}
 						/>
 						<Fact
-							label="本体堆"
+							label={tx("panelUi.components.system-resource-card.20")}
 							value={
 								<span style={{ color: heapTone(heapRatio ?? 0) }}>
 									{bytes(latest.heapUsed)} / {bytes(statics.heapLimit)}
 								</span>
 							}
 						/>
-						<Fact label="本体常驻" value={bytes(latest.rss)} />
-						<Fact label="浏览器" value={browserText(latest)} />
+						<Fact
+							label={tx("panelUi.components.system-resource-card.21")}
+							value={bytes(latest.rss)}
+						/>
+						<Fact
+							label={tx("panelUi.components.system-resource-card.22")}
+							value={browserText(latest)}
+						/>
 						<div className="col-span-2 flex flex-col justify-center gap-0.5 sm:col-span-1">
 							<Sparkline
 								data={state.history.map((s) => s.heapUsed / statics.heapLimit)}
@@ -264,7 +284,9 @@ export function SystemResourceCard({
 								width={140}
 								height={22}
 							/>
-							<span className="text-bn-2xs text-bn-text-tertiary">近 5 分钟堆占用</span>
+							<span className="text-bn-2xs text-bn-text-tertiary">
+								{tx("panelUi.components.system-resource-card.23")}
+							</span>
 						</div>
 					</div>
 				</div>

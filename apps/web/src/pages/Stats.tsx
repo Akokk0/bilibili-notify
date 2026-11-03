@@ -58,7 +58,7 @@ import {
 	Sparkline,
 	TrendChart,
 } from "./stats/charts";
-import { buildStatColumns, type StatColumnId, VIEWERS_HINT } from "./stats/columns";
+import { buildStatColumns, type StatColumnId, viewersHint } from "./stats/columns";
 import { buildCsv } from "./stats/csv";
 import { netFromCumulative, sumNetPoints } from "./stats/gaps";
 import { RoastCard } from "./stats/RoastCard";
@@ -305,10 +305,7 @@ function CompareTable({
 	const [sort, setSort] = useState<StatColumnId>("net7d");
 	// 表头与单元格都从这一个数组出 —— 曾经它们是两份手写的平行名单,插一列就
 	// 会整体错位(详见 columns.ts 的说明)。
-	const cols = useMemo(
-		() => buildStatColumns(days, { blue: BLUE, pink: PINK, purple: PURPLE }, { hours, num }),
-		[days],
-	);
+	const cols = buildStatColumns(days, { blue: BLUE, pink: PINK, purple: PURPLE }, { hours, num });
 	const sorted = useMemo(() => {
 		const pick = cols.find((c) => c.id === sort)?.value;
 		return [...rows].sort((a, b) => {
@@ -620,7 +617,7 @@ function StatsContent() {
 	const metaOf = (r: UpStatsRow): UpMeta =>
 		meta.get(r.subscriptionId) ?? upMetaOf(r, undefined, sources, extensions);
 	const axis = useMemo(() => dayAxis(days), [days]);
-	const xLabels = useMemo(() => sparseLabels(axis), [axis]);
+	const xLabels = sparseLabels(axis);
 	const totals = useMemo(() => (res ? computeTotals(res) : null), [res]);
 	/** 「总粉丝量」只加得动有记录的那几位,少于订阅数时标签要如实说明。 */
 	const fansKnown = fansKnownCount(rows);
@@ -631,10 +628,7 @@ function StatsContent() {
 	// 画像跟随顶部的时间范围。六根轴里只有「粉丝规模(当前)」不随窗口变 ——
 	// 粉丝数是「此刻共有多少」,没有「近30日的粉丝规模」这回事;轴上并排标着
 	// 原始值,切换范围时哪根动了哪根没动一目了然。
-	const radarAxes = useMemo(
-		() => (focused ? buildRadarAxes(focused, rows) : null),
-		[focused, rows],
-	);
+	const radarAxes = focused ? buildRadarAxes(focused, rows) : null;
 
 	// 等待/失败态也走页面自己的 p-6 外框 —— 直接裸一行字坐在页面背景上,皮肤壁纸
 	// 一开就是灰字飘在图上,而且切到正常态时整页会跳一下(内外边距对不上)。
@@ -1044,7 +1038,7 @@ function StatsContent() {
 						</div>
 						<HintNote className="mt-2">
 							{tx("sourceUi.pages.Stats.Stats.61")}
-							{VIEWERS_HINT}
+							{viewersHint()}
 						</HintNote>
 					</GlassPanel>
 				) : (

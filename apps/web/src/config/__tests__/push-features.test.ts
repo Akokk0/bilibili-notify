@@ -72,18 +72,18 @@ describe("FEATURE_DESCRIPTORS", () => {
 		}
 	});
 
-	/** 文案不改(⑬f 只换键):每把键的两套标签写死,换键时搬错一格会在这儿红。 */
-	it("每把键的分类标签与事件标签原样(⑬f 只换键,中文文案不动)", () => {
+	/** 分类与事件使用不同口径，B 站专用叫法由来源描述提供。 */
+	it("每把键的分类标签与事件标签按中性叫法显示", () => {
 		expect(
 			Object.fromEntries(
 				FEATURES.map((s) => [s, [FEATURE_DESCRIPTORS[s].label, FEATURE_DESCRIPTORS[s].eventLabel]]),
 			),
 		).toEqual({
-			post: ["动态", "动态"],
+			post: ["作品", "作品"],
 			liveStart: ["开播", "开播"],
 			liveStreaming: ["直播中", "正在直播"],
 			liveEnd: ["下播", "下播"],
-			membership: ["舰长", "上舰"],
+			membership: ["会员", "会员加入"],
 			superchat: ["SC", "SC"],
 			viewerChat: ["弹幕", "特别弹幕"],
 			viewerEnter: ["进房", "特别进房"],

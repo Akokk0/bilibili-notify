@@ -1,3 +1,4 @@
+import { useT } from "../../i18n";
 /**
  * 卡片工坊回复末尾的预览块(ADR-0015 决策 20 / 22 的 🔗)。
  *
@@ -51,6 +52,8 @@ export function CardSkinPreviews({ touches }: { touches: readonly AiCardSkinTouc
 }
 
 function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
+	const tx = useT();
+
 	const list = useCardSkinList();
 	const skin = list.data?.skins.find((s) => s.id === touch.id);
 	const inUse = list.data?.active === touch.id;
@@ -88,11 +91,13 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 					<span className="truncate text-bn-sm font-bold text-bn-text-primary">
 						「{skin?.name ?? touch.id}」
 					</span>
-					<span className="shrink-0 text-bn-2xs text-bn-text-tertiary">当前样子 · 示例数据</span>
+					<span className="shrink-0 text-bn-2xs text-bn-text-tertiary">
+						{tx("panelUi.components.ai-chat.card-skin-preview.1")}
+					</span>
 				</div>
 				{gone ? null : inUse ? (
 					<Pill subtle size="sm">
-						正在用
+						{tx("panelUi.components.ai-chat.card-skin-preview.2")}
 					</Pill>
 				) : (
 					<Btn
@@ -101,13 +106,13 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 						disabled={skin === undefined || activate.isPending}
 						onClick={() => activate.mutate(touch.id)}
 					>
-						换上这套
+						{tx("panelUi.components.ai-chat.card-skin-preview.3")}
 					</Btn>
 				)}
 			</div>
 
 			{gone ? (
-				<HintNote>这套皮肤已经不在库里了,预览没得看了。</HintNote>
+				<HintNote>{tx("panelUi.components.ai-chat.card-skin-preview.4")}</HintNote>
 			) : (
 				<>
 					<TabBar items={KIND_TABS} value={kind} onChange={setKind} />
@@ -118,14 +123,21 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 								width={preview.data.width}
 								usable={measured ?? FALLBACK_WIDTH}
 								fallbackHeight={VIEW_H}
-								title={`「${skin?.name ?? touch.id}」的${CARD_KIND_NAMES[kind]}`}
+								title={tx("panelUi.components.ai-chat.card-skin-preview.5", {
+									value0: skin?.name ?? touch.id,
+									value1: CARD_KIND_NAMES[kind],
+								})}
 							/>
 						) : preview.isError ? (
 							<ErrorNote size="sm" className="w-full">
-								这张画不出来:{errorTextOf(preview.error)}
+								{tx("panelUi.components.ai-chat.card-skin-preview.6")}
+								{errorTextOf(preview.error)}
 							</ErrorNote>
 						) : (
-							<LoadingBlock label="正在画预览…" variant="inset" />
+							<LoadingBlock
+								label={tx("panelUi.components.ai-chat.card-skin-preview.7")}
+								variant="inset"
+							/>
 						)}
 					</div>
 					{preview.data?.warnings.length ? (
@@ -133,7 +145,9 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 						// 旋钮之类),后者什么都没删。每条自己会说清是哪一种。
 						<WarnNote size="sm" className="leading-5">
 							<div className="space-y-0.5">
-								<div className="font-semibold">有几处要留意:</div>
+								<div className="font-semibold">
+									{tx("panelUi.components.ai-chat.card-skin-preview.8")}
+								</div>
 								{preview.data.warnings.map((w) => (
 									<div key={w}>{w}</div>
 								))}
@@ -144,7 +158,10 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 			)}
 
 			{activate.isError ? (
-				<ErrorNote size="sm">没换上:{String((activate.error as Error).message)}</ErrorNote>
+				<ErrorNote size="sm">
+					{tx("panelUi.components.ai-chat.card-skin-preview.9")}
+					{String((activate.error as Error).message)}
+				</ErrorNote>
 			) : null}
 		</div>
 	);

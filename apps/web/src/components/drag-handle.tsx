@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 /**
  * dnd-kit 可排序行的 ⠿ 拖拽手柄。
  *
@@ -26,14 +27,20 @@ export interface DragHandleProps {
 }
 
 export function DragHandle({ attributes, listeners, setActivatorNodeRef, label }: DragHandleProps) {
+	const tx = useT();
+
 	return (
 		<button
 			type="button"
 			ref={setActivatorNodeRef as Ref<HTMLButtonElement>}
 			{...attributes}
 			{...listeners}
-			title="拖动排序"
-			aria-label={label ? `拖动排序 ${label}` : "拖动排序"}
+			title={tx("panelUi.components.drag-handle.1")}
+			aria-label={
+				label
+					? tx("panelUi.components.drag-handle.2", { value0: label })
+					: tx("panelUi.components.drag-handle.3")
+			}
 			className="cursor-grab touch-none select-none text-bn-md leading-none text-bn-text-tertiary active:cursor-grabbing"
 		>
 			⠿

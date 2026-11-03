@@ -2,6 +2,7 @@ import { Btn, ConfirmDialog, ErrorNote, GlassBox, Icon } from "@bilibili-notify/
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { SECTION_ACCENT } from "../../config/section-accents";
+import { i18n, useT } from "../../i18n";
 import { ApiError, api } from "../../services/api";
 import { BackupExportDialog } from "./BackupExportDialog";
 import { BackupImportDialog } from "./BackupImportDialog";
@@ -30,12 +31,14 @@ function kindOf(backup: unknown): BackupKind {
 /** The scopes a plan would delete, e.g. ["订阅 1 项", "推送目标 2 项"]. */
 function deletions(r: ImportResult): string[] {
 	return [
-		["订阅", r.subscriptions.deleted] as const,
-		["推送目标", r.targets.deleted] as const,
-		["推送连接", r.connections.deleted] as const,
+		[i18n.t("panelUi.pages.backup.BackupSection.1"), r.subscriptions.deleted] as const,
+		[i18n.t("panelUi.pages.backup.BackupSection.2"), r.targets.deleted] as const,
+		[i18n.t("panelUi.pages.backup.BackupSection.3"), r.connections.deleted] as const,
 	]
 		.filter(([, n]) => n > 0)
-		.map(([label, n]) => `${label} ${n} 项`);
+		.map(([label, n]) =>
+			i18n.t("panelUi.pages.backup.BackupSection.4", { value0: label, count: n }),
+		);
 }
 
 /**
@@ -44,11 +47,17 @@ function deletions(r: ImportResult): string[] {
  * 全部查询 —— 后端已经通过 config-changed 热重载,前端只需重新拉一次即可对齐。
  */
 export function BackupSection() {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const [dialog, setDialog] = useState<"export" | "import" | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [notice, setNotice] = useState<string | null>(null);
+	const [notice, setNotice] = useState<
+		| { kind: "export"; backupKind: BackupKind }
+		| { kind: "import"; backupKind: BackupKind; result: ImportResult }
+		| null
+	>(null);
 	/** A planned import waiting for the user to confirm its deletions. */
 	const [pending, setPending] = useState<{ req: ImportRequest; plan: ImportResult } | null>(null);
 
@@ -69,11 +78,7 @@ export function BackupSection() {
 			const env = await api.post<ExportedEnvelope>("/api/system/backup/export", opts);
 			downloadJson(backupFilename(opts.kind, env.createdAt ?? ""), env);
 			setDialog(null);
-			setNotice(
-				opts.kind === "full"
-					? "完整备份已下载 —— 里面有你的账号与密码，请妥善保管、切勿外发。"
-					: "脱敏备份已下载。",
-			);
+			setNotice({ kind: "export", backupKind: opts.kind });
 		} catch (err) {
 			fail(err);
 		} finally {
@@ -118,7 +123,7 @@ export function BackupSection() {
 			});
 			setPending(null);
 			setDialog(null);
-			setNotice(summarizeImport(result, kindOf(req.backup)));
+			setNotice({ kind: "import", backupKind: kindOf(req.backup), result });
 			await qc.invalidateQueries();
 		} catch (err) {
 			fail(err);
@@ -130,33 +135,41 @@ export function BackupSection() {
 
 	return (
 		<GlassBox
-			title="备份与恢复 · backup"
-			subtitle="一键导出订阅 / 目标 / 连接 / 全局设置 · 完整备份另含 B 站登录与密钥"
+			title={tx("panelUi.pages.backup.BackupSection.7")}
+			subtitle={tx("panelUi.pages.backup.BackupSection.8")}
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.download size={14} />}
-			badge="导出 / 导入"
+			badge={tx("panelUi.pages.backup.BackupSection.9")}
 		>
 			<div className="text-bn-sm leading-relaxed text-bn-text-secondary">
-				<span className="font-semibold text-bn-text-primary">完整备份</span>
-				：含机密（B 站 Cookie、AI Key、连接凭据），用 6 位 PIN 加密，用于换机 / 灾备还原。
+				<span className="font-semibold text-bn-text-primary">
+					{tx("panelUi.pages.backup.BackupSection.10")}
+				</span>
+				{tx("panelUi.pages.backup.BackupSection.11")}
 				<br />
-				<span className="font-semibold text-bn-text-primary">脱敏导出</span>
-				：机密位置留空，纯明文 JSON，可存档、可分享给别人抄配置。
+				<span className="font-semibold text-bn-text-primary">
+					{tx("panelUi.pages.backup.BackupSection.12")}
+				</span>
+				{tx("panelUi.pages.backup.BackupSection.13")}
 			</div>
 
 			{error ? <ErrorNote className="mt-3">{error}</ErrorNote> : null}
 			{notice ? (
 				<div className="mt-3 rounded-sm border border-bn-border bg-bn-surface/60 p-2.5 text-bn-sm text-bn-text-secondary">
-					{notice}
+					{notice.kind === "import"
+						? summarizeImport(notice.result, notice.backupKind)
+						: notice.backupKind === "full"
+							? tx("panelUi.pages.backup.BackupSection.5")
+							: tx("panelUi.pages.backup.BackupSection.6")}
 				</div>
 			) : null}
 
 			<div className="mt-3.5 flex flex-wrap gap-2 border-t border-bn-border-subtle pt-3">
 				<Btn variant="primary" disabled={busy} onClick={() => setDialog("export")}>
-					导出备份
+					{tx("panelUi.pages.backup.BackupSection.14")}
 				</Btn>
 				<Btn variant="outline" disabled={busy} onClick={() => setDialog("import")}>
-					导入备份
+					{tx("panelUi.pages.backup.BackupSection.15")}
 				</Btn>
 			</div>
 
@@ -177,18 +190,18 @@ export function BackupSection() {
 			{pending ? (
 				<ConfirmDialog
 					danger
-					title="覆盖导入会删除现有配置"
+					title={tx("panelUi.pages.backup.BackupSection.16")}
 					message={
 						<>
-							这份备份里没有的东西会被删掉：
+							{tx("panelUi.pages.backup.BackupSection.17")}
 							<span className="font-bold text-bn-danger-text">
 								{deletions(pending.plan).join("、")}
 							</span>
-							。删除不可撤销，确定要继续吗？
+							{tx("panelUi.pages.backup.BackupSection.18")}
 						</>
 					}
-					confirmLabel="确认覆盖"
-					cancelLabel="再想想"
+					confirmLabel={tx("panelUi.pages.backup.BackupSection.19")}
+					cancelLabel={tx("panelUi.pages.backup.BackupSection.20")}
 					onConfirm={() => void apply(pending.req)}
 					onCancel={() => setPending(null)}
 				/>

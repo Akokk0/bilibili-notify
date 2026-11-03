@@ -1,3 +1,4 @@
+import { i18n } from "../i18n";
 /**
  * Thin fetch wrapper for /api/* endpoints. Vite dev server proxies these to
  * the standalone Hono server (see vite.config.ts). In production the dashboard
@@ -60,7 +61,9 @@ function textOf(v: unknown): string | undefined {
 /** 一条 issue 的形状整理:路径只留 string / number 段,缺话给兜底句,`op` 有才带。 */
 function issueOf(raw: unknown): ApiIssue {
 	const bag = isRecord(raw) ? raw : {};
-	const issue: ApiIssue = { message: typeof bag.message === "string" ? bag.message : "不合规矩" };
+	const issue: ApiIssue = {
+		message: typeof bag.message === "string" ? bag.message : i18n.t("panelUi.services.api.1"),
+	};
 	if (Array.isArray(bag.path)) {
 		const path = bag.path.filter(
 			(segment): segment is string | number =>
@@ -157,14 +160,14 @@ async function withOffline<T>(what: string, run: () => Promise<T>): Promise<T> {
 			throw new ApiError(
 				OFFLINE_STATUS,
 				undefined,
-				`等待超时，${what}在死线内没有等到服务器响应 —— 服务端可能仍在渲染,也可能卡住了`,
+				i18n.t("panelUi.services.api.2", { value0: what }),
 			);
 		}
 		if (err instanceof TypeError) {
 			throw new ApiError(
 				OFFLINE_STATUS,
 				undefined,
-				`连接中断，${what}没有拿到服务器响应（${err.message}）—— 可能是服务已重启、网络断开，或反向代理把这次请求掐断了`,
+				i18n.t("panelUi.services.api.3", { value0: what, value1: err.message }),
 			);
 		}
 		throw err;
@@ -208,7 +211,7 @@ function incompleteBodyError(what: string): ApiError {
 	return new ApiError(
 		OFFLINE_STATUS,
 		undefined,
-		`响应不完整，${what}的返回内容没有读全 —— 连接多半在传输途中被切断（服务已重启、内存不足被杀,或反向代理读超时）`,
+		i18n.t("panelUi.services.api.4", { value0: what }),
 	);
 }
 

@@ -26,6 +26,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Fragment, type ReactNode } from "react";
+import { useT } from "../../../i18n";
 import { ApiError, api } from "../../../services/api";
 import { reasonOf } from "../shared";
 import { extensionAddress } from "./address";
@@ -71,9 +72,13 @@ export function PageBlocks({
  * 黑盒猜。标记只有宿主加得了(拓展交的积木包在 `{ block }` 里,它造不出一条 `{ fault }`)。
  */
 export function ViewFaultNote({ fault }: { fault: ExtensionViewFault }) {
+	const tx = useT();
+
 	return (
 		<ErrorNote size="sm">
-			{fault.where}画不出来:{fault.reason}
+			{fault.where}
+			{tx("panelUi.pages.extensions.declarative.blocks.1")}
+			{fault.reason}
 		</ErrorNote>
 	);
 }
@@ -533,12 +538,18 @@ function CopyBlock({
 	note?: ExtensionViewText;
 	extensionId: string;
 }) {
+	const tx = useT();
+
 	return (
 		<div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-0.5">
 			<div className="flex items-center gap-[7px] text-bn-xs text-bn-text-secondary">
 				<span className="text-bn-text-tertiary">{label}</span>
 				<MonoChip>{value}</MonoChip>
-				<CopyControl iconOnly label={`复制 ${label}`} text={value} />
+				<CopyControl
+					iconOnly
+					label={tx("panelUi.pages.extensions.declarative.blocks.2", { value0: label })}
+					text={value}
+				/>
 			</div>
 			{note ? (
 				<>
@@ -568,8 +579,10 @@ function QrBlock({
 	extensionId: string;
 	images: ViewImages;
 }) {
+	const tx = useT();
+
 	return (
-		<QrPanel src={imageOf(images, image)} alt="二维码">
+		<QrPanel src={imageOf(images, image)} alt={tx("panelUi.pages.extensions.declarative.blocks.3")}>
 			{caption ? (
 				<div className="text-bn-sm text-bn-text-secondary">
 					<ViewText text={caption} extensionId={extensionId} />
@@ -643,19 +656,25 @@ export function useExtensionAction(extensionId: string) {
  * 主人等一等就好,不用去查。服务端那句照样接在后面(超时叫停了却还没停的,那句话里说着)。
  */
 export function ActionFailure({ label, error }: { label: string; error: unknown }) {
+	const tx = useT();
+
 	if (error instanceof ApiError && error.code === "conflict") {
 		return (
 			// WarnNote 自己不带角色 —— 包一层 status,读屏的人按下去也听得到这一句。
 			<div role="status">
 				<WarnNote size="sm">
-					「{label}」还在跑:{reasonOf(error)}
+					「{label}
+					{tx("panelUi.pages.extensions.declarative.blocks.4")}
+					{reasonOf(error)}
 				</WarnNote>
 			</div>
 		);
 	}
 	return (
 		<ErrorNote size="sm">
-			「{label}」没成:{reasonOf(error)}
+			「{label}
+			{tx("panelUi.pages.extensions.declarative.blocks.5")}
+			{reasonOf(error)}
 		</ErrorNote>
 	);
 }

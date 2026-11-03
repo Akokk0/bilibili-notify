@@ -1,6 +1,7 @@
 import { Btn } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useT } from "../i18n";
 import { api } from "../services/api";
 import { syncActiveSkinToStore } from "../services/skin-active";
 import { useSkinStore } from "../store/skin";
@@ -10,6 +11,8 @@ import { useSkinStore } from "../store/skin";
  * 落进服务端的深浅槽,「取消」清预览回真实状态;刷新页面预览自然消失(不落盘)。
  */
 export function SkinPreviewBar() {
+	const tx = useT();
+
 	const preview = useSkinStore((s) => s.preview);
 	// 编辑器开着时 preview 是它的实时画布,「应用/取消」由编辑器自己的「保存/取消」承接。
 	const editing = useSkinStore((s) => s.editing);
@@ -34,12 +37,17 @@ export function SkinPreviewBar() {
 		<div className="fixed inset-x-0 top-3 z-bn-preview flex justify-center px-4">
 			<div className="bn-glass-strong flex items-center gap-3 rounded-bn-pill px-4 py-2 shadow-bn-elev">
 				<span className="text-bn-sm text-bn-text-primary">
-					正在试穿<b>「{preview.manifest.name}」</b>
-					<span className="ml-1 text-bn-text-secondary">仅本页生效,刷新即还原</span>
+					{tx("panelUi.components.skin-preview-bar.1")}
+					<b>「{preview.manifest.name}」</b>
+					<span className="ml-1 text-bn-text-secondary">
+						{tx("panelUi.components.skin-preview-bar.2")}
+					</span>
 				</span>
 				{error ? <span className="text-bn-sm text-bn-danger">{error}</span> : null}
 				<Btn size="sm" onClick={() => apply.mutate(preview.id)} disabled={apply.isPending}>
-					{apply.isPending ? "应用中…" : "应用"}
+					{apply.isPending
+						? tx("panelUi.components.skin-preview-bar.3")
+						: tx("panelUi.components.skin-preview-bar.4")}
 				</Btn>
 				<Btn
 					size="sm"
@@ -47,7 +55,7 @@ export function SkinPreviewBar() {
 					onClick={() => useSkinStore.getState().setPreview(null)}
 					disabled={apply.isPending}
 				>
-					取消
+					{tx("panelUi.components.skin-preview-bar.5")}
 				</Btn>
 			</div>
 		</div>

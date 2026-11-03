@@ -2,6 +2,7 @@ import { memo, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { i18n } from "../../i18n";
 import { safeHref } from "../../utils/safe-href";
 
 /**
@@ -63,7 +64,11 @@ const COMPONENTS: Components = {
 	},
 
 	// 图片不渲染,只留 alt。见文件头的理由。
-	img: ({ alt }) => <span className="text-bn-text-tertiary">{alt || "[图片]"}</span>,
+	img: ({ alt }) => (
+		<span className="text-bn-text-tertiary">
+			{alt || i18n.t("panelUi.components.ai-chat.markdown.1")}
+		</span>
+	),
 
 	ul: ({ children }) => (
 		<ul className="my-[0.5em] list-disc space-y-[0.2em] pl-[1.4em] first:mt-0 last:mb-0">

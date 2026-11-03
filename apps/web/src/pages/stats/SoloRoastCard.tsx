@@ -2,6 +2,7 @@ import type { StatsSoloRoastResponse, StatsSoloRoastResult } from "@bilibili-not
 import { Avatar, StatusDot } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { localTzOffset } from "../../services/stats";
 import { RoastPushBox } from "./RoastPushBox";
@@ -28,6 +29,8 @@ export function SoloRoastCard({
 	avatar?: string;
 	days: number;
 }) {
+	const tx = useT();
+
 	const roast = useMutation<StatsSoloRoastResponse>({
 		// tz 同 RoastCard:漏了服务端就按 UTC 重算 overview,模型看到的不是屏幕上那份数。
 		// 订阅 id 编码进路径:它是一整段路径参数,原样拼的话里面的字符会改写路径。
@@ -49,16 +52,17 @@ export function SoloRoastCard({
 
 	return (
 		<RoastShell
-			title={`AI 锐评 · ${name}`}
-			subtitle={`把这位 UP 主近${days}日的数据交给智能女仆,单独点评`}
-			pendingText="女仆正在阅读数据并撰写锐评"
+			title={tx("panelUi.pages.stats.SoloRoastCard.1", { value0: name })}
+			subtitle={tx("panelUi.pages.stats.SoloRoastCard.2", { value0: days })}
+			pendingText={tx("panelUi.pages.stats.SoloRoastCard.3")}
 			isPending={roast.isPending}
 			err={roastError(roast)}
 			onRun={() => roast.mutate()}
 			idle={
 				<>
-					点一下,女仆会读完 <b className="text-bn-text-primary">{name}</b> 近 {days}{" "}
-					天的涨粉、投稿与直播数据,给出一句总评、分维度点评和勤奋度评分 ~(*´∀`)~♡
+					{tx("panelUi.pages.stats.SoloRoastCard.4")}
+					<b className="text-bn-text-primary">{name}</b> {tx("panelUi.pages.stats.SoloRoastCard.5")}
+					{days} {tx("panelUi.pages.stats.SoloRoastCard.6")}
 				</>
 			}
 		>
@@ -90,7 +94,7 @@ export function SoloRoastCard({
 						{result.pushText ? (
 							<RoastPushBox
 								days={days}
-								label="可推送短评"
+								label={tx("panelUi.pages.stats.SoloRoastCard.7")}
 								text={result.pushText}
 								payload={{ kind: "solo", result }}
 							/>
@@ -98,9 +102,11 @@ export function SoloRoastCard({
 					</div>
 
 					<div className="flex flex-col justify-center rounded-bn-card border border-bn-border-subtle p-4">
-						<div className="text-bn-sm font-bold text-bn-text-primary">综合勤奋度评分</div>
+						<div className="text-bn-sm font-bold text-bn-text-primary">
+							{tx("panelUi.pages.stats.SoloRoastCard.8")}
+						</div>
 						<div className="mb-3 text-bn-2xs text-bn-text-secondary">
-							由女仆依据近{days}日数据评分 · 0–100
+							{tx("panelUi.pages.stats.SoloRoastCard.9", { count: days })}
 						</div>
 						<div className="mb-2 flex items-baseline gap-1.5">
 							<span className="tabular-nums text-bn-hero font-bold leading-none" style={{ color }}>

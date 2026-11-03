@@ -9,6 +9,7 @@ import {
 	MonoChip,
 } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
+import { useT } from "../../../i18n";
 import { extensionAddress } from "./address";
 import {
 	countWordOf,
@@ -187,6 +188,8 @@ export function ItemDialog({
 	 */
 	onSubmit: (values: Record<string, unknown>) => void;
 }) {
+	const tx = useT();
+
 	const editing = item !== undefined;
 	const fields = dialogFieldsOf(field, editing ? "edit" : "new");
 	const [initial] = useState(() => (item ? itemDraft(fields, item) : initialDraft(fields)));
@@ -205,14 +208,26 @@ export function ItemDialog({
 	const copies = editing ? [] : copyRowsOf(field, extensionId, values);
 	const itemLabel = itemLabelOf(field);
 	const title = item ? titleOf(field, item) : "";
-	const idle = editing ? "保存" : "创建";
-	const busy = editing ? "保存中…" : "创建中…";
+	const idle = editing
+		? tx("panelUi.pages.extensions.declarative.list-new-item.1")
+		: tx("panelUi.pages.extensions.declarative.list-new-item.2");
+	const busy = editing
+		? tx("panelUi.pages.extensions.declarative.list-new-item.3")
+		: tx("panelUi.pages.extensions.declarative.list-new-item.4");
 
 	return (
 		<ModalShell
 			width={540}
 			onCancel={onCancel}
-			title={editing ? `编辑${title ? `「${title}」` : `这条${itemLabel}`}` : `新建${field.label}`}
+			title={
+				editing
+					? tx("panelUi.pages.extensions.declarative.list-new-item.5", {
+							value0: title
+								? `「${title}」`
+								: tx("panelUi.pages.extensions.declarative.list-new-item.6", { value0: itemLabel }),
+						})
+					: tx("panelUi.pages.extensions.declarative.list-new-item.7", { value0: field.label })
+			}
 			description={editing ? undefined : field.description}
 			bodyClassName="px-5 pb-[18px] pt-4"
 		>
@@ -245,7 +260,9 @@ export function ItemDialog({
 					<div data-new-item-copy>
 						<HintNote className="flex flex-col gap-[9px] p-3">
 							<span className="text-bn-xs font-bold text-bn-text-secondary">
-								把这{countWordOf(copies.length)}样填到对面去
+								{tx("panelUi.pages.extensions.declarative.list-new-item.8")}
+								{countWordOf(copies.length)}
+								{tx("panelUi.pages.extensions.declarative.list-new-item.9")}
 							</span>
 							<div className="flex flex-col gap-[7px]">
 								{copies.map((row) => (
@@ -254,7 +271,13 @@ export function ItemDialog({
 										<MonoChip className="min-w-0 flex-1 truncate text-bn-text-primary">
 											{row.value}
 										</MonoChip>
-										<CopyControl iconOnly label={`复制 ${row.label}`} text={row.value} />
+										<CopyControl
+											iconOnly
+											label={tx("panelUi.pages.extensions.declarative.list-new-item.10", {
+												value0: row.label,
+											})}
+											text={row.value}
+										/>
 									</div>
 								))}
 							</div>
@@ -264,13 +287,17 @@ export function ItemDialog({
 
 				{error ? (
 					<ErrorNote size="sm">
-						{editing ? "改不了" : "建不了"}这条{itemLabel}:{error}
+						{editing
+							? tx("panelUi.pages.extensions.declarative.list-new-item.11")
+							: tx("panelUi.pages.extensions.declarative.list-new-item.12")}
+						{tx("panelUi.pages.extensions.declarative.list-new-item.13")}
+						{itemLabel}:{error}
 					</ErrorNote>
 				) : null}
 
 				<div className="flex justify-end gap-2 pt-1">
 					<Btn variant="outline" size="md" onClick={onCancel}>
-						取消
+						{tx("panelUi.pages.extensions.declarative.list-new-item.14")}
 					</Btn>
 					<Btn
 						variant="primary"
@@ -318,6 +345,8 @@ function DraftControl({
 	value: string | boolean | undefined;
 	onChange: (value: string | boolean) => void;
 }): ReactNode {
+	const tx = useT();
+
 	/*
 	 * 生成的那一格**明文**摆着(决策 30「新建时明文显示一次」)—— 这是主人唯一一次看得到全文的
 	 * 时候,存下之后卡上只露头尾。只读:格式由 BN 定(32 位小写十六进制),要换就按旁边那颗。
@@ -332,7 +361,7 @@ function DraftControl({
 					{typeof value === "string" ? value : ""}
 				</span>
 				<IconButton
-					label={`重新生成 ${sub.label}`}
+					label={tx("panelUi.pages.extensions.declarative.list-new-item.15", { value0: sub.label })}
 					icon={<Icon.refresh size={13} />}
 					size="sm"
 					onClick={() => onChange(newHexSecret())}

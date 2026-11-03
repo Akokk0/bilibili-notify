@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
@@ -15,6 +16,8 @@ import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleField
  * 面板外壳、取数、保存与「试一次」。
  */
 export function RoastScheduleBox() {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
 	const targetsQuery = useQuery({
@@ -50,7 +53,7 @@ export function RoastScheduleBox() {
 	// (projectPerUpIsland)本来就是 nested,两边保持同一套 code。
 	useDirtyDraft({
 		pageKey: "stats",
-		pageLabel: "数据统计",
+		pageLabel: tx("panelUi.pages.stats.RoastScheduleBox.1"),
 		draft: draft ? { roastSchedule: draft } : null,
 		baseline: baseline ? { roastSchedule: baseline } : null,
 		// hook 会捕获 throw 并切到 error 态,所以这里要 await 到底、不吞异常。
@@ -64,10 +67,10 @@ export function RoastScheduleBox() {
 
 	return (
 		<RoastScheduleCard
-			title="定时周报"
-			subtitle="到点自动生成榜单并发到指定的群"
-			toggleAriaLabel="启用定时周报"
-			noun="周报"
+			title={tx("panelUi.pages.stats.RoastScheduleBox.2")}
+			subtitle={tx("panelUi.pages.stats.RoastScheduleBox.3")}
+			toggleAriaLabel={tx("panelUi.pages.stats.RoastScheduleBox.4")}
+			noun={tx("panelUi.pages.stats.RoastScheduleBox.5")}
 			draft={draft}
 			baseline={baseline}
 			onChange={setDraft}

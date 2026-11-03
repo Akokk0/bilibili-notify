@@ -167,6 +167,8 @@ export type MarketplaceInstaller = ReturnType<typeof useMarketplaceInstall>;
  * 手滑」的人看的。
  */
 export function MarketplaceInstallConfirm({ installer }: { installer: MarketplaceInstaller }) {
+	const tx = useT();
+
 	const market = useMarketplace();
 	const entry = installer.confirming;
 	if (!entry) return null;
@@ -177,11 +179,18 @@ export function MarketplaceInstallConfirm({ installer }: { installer: Marketplac
 			danger
 			title={
 				updating
-					? `更新第三方拓展「${entry.name}」到 v${entry.version}?`
-					: `装第三方拓展「${entry.name}」?`
+					? tx("panelUi.pages.extensions.marketplace-section.1", {
+							value0: entry.name,
+							value1: entry.version,
+						})
+					: tx("panelUi.pages.extensions.marketplace-section.2", { value0: entry.name })
 			}
-			message={`它来自「${sourceName}」,不是 BN 发的:BN 只保证装到盘上的是那个源写的那个包,不审核它做什么 —— 装了它就在 BN 进程里跑代码。`}
-			confirmLabel={updating ? "照样更新" : "照样装"}
+			message={tx("panelUi.pages.extensions.marketplace-section.3", { value0: sourceName })}
+			confirmLabel={
+				updating
+					? tx("panelUi.pages.extensions.marketplace-section.4")
+					: tx("panelUi.pages.extensions.marketplace-section.5")
+			}
 			onCancel={installer.cancel}
 			onConfirm={installer.confirm}
 		/>
@@ -209,13 +218,18 @@ export function MarketplaceUpdateOffer({
 	entry: MarketplaceEntryDTO;
 	installer: MarketplaceInstaller;
 }) {
+	const tx = useT();
+
 	return (
 		<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 			{entry.installed?.revoked === true ? (
-				<span className={REVOKED_TEXT_CLS}>装着的这一版被撤回了</span>
+				<span className={REVOKED_TEXT_CLS}>
+					{tx("panelUi.pages.extensions.marketplace-section.6")}
+				</span>
 			) : null}
 			<Pill subtle size="sm">
-				有新版 v{entry.version}
+				{tx("panelUi.pages.extensions.marketplace-section.7")}
+				{entry.version}
 			</Pill>
 			<Btn
 				variant="outline"
@@ -224,7 +238,7 @@ export function MarketplaceUpdateOffer({
 				onClick={(event) => installer.start(entry, event.currentTarget.getBoundingClientRect())}
 				{...{ [EXT_UPDATE_BUTTON]: "" }}
 			>
-				更新
+				{tx("panelUi.pages.extensions.marketplace-section.8")}
 			</Btn>
 		</div>
 	);
@@ -273,7 +287,9 @@ function EntryAction({
 					icon={<Icon.download size={13} />}
 					onClick={onInstall}
 				>
-					{installing ? "装着…" : "安装"}
+					{installing
+						? t("panelUi.pages.extensions.marketplace-section.9")
+						: t("panelUi.pages.extensions.marketplace-section.10")}
 				</Btn>
 			);
 		// 这三档走不到这里 —— 已装的在上面被滤掉了(见 INSTALLED_STATES)。留着空分支是为了
@@ -295,7 +311,11 @@ function EntryAction({
 				</span>
 			);
 		case "revoked":
-			return <span className={REVOKED_TEXT_CLS}>这一版已被撤回</span>;
+			return (
+				<span className={REVOKED_TEXT_CLS}>
+					{t("panelUi.pages.extensions.marketplace-section.11")}
+				</span>
+			);
 	}
 }
 
@@ -313,6 +333,8 @@ function EntryCard({
 	/** 收的是**这张卡当时在屏幕上的位置** —— 装成之后它就没了,那时再量来不及。 */
 	onInstall: (from: DOMRect) => void;
 }) {
+	const tx = useT();
+
 	const box = useRef<HTMLDivElement>(null);
 	return (
 		<div ref={box} className="relative h-full">
@@ -329,8 +351,12 @@ function EntryCard({
 			<GlassBox
 				className="h-full"
 				title={entry.name}
-				subtitle={`v${entry.version}${entry.prerelease ? " · 预发布" : ""}`}
-				badge={entry.official ? "官方" : `来自 ${sourceName}`}
+				subtitle={`v${entry.version}${entry.prerelease ? tx("panelUi.pages.extensions.marketplace-section.12") : ""}`}
+				badge={
+					entry.official
+						? tx("panelUi.pages.extensions.marketplace-section.13")
+						: tx("panelUi.pages.extensions.marketplace-section.14", { value0: sourceName })
+				}
 				accent={entry.official ? "var(--color-bn-pink)" : "var(--color-bn-text-tertiary)"}
 				icon={<Icon.extension size={18} />}
 			>
@@ -368,6 +394,8 @@ export function MarketplaceSection({
 	 */
 	installer: MarketplaceInstaller;
 }) {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const market = useMarketplace();
 	const { install, start } = installer;
@@ -383,12 +411,12 @@ export function MarketplaceSection({
 		<div className="flex flex-col gap-2.5">
 			<div className="flex items-center justify-between gap-3">
 				<div className="text-bn-xs font-bold uppercase tracking-[0.08em] text-bn-text-tertiary">
-					拓展市场
+					{tx("panelUi.pages.extensions.marketplace-section.15")}
 				</div>
 				<div className="flex items-center gap-1.5">
 					<IconButton
 						icon={<Icon.refresh size={13} />}
-						label="重新拉索引"
+						label={tx("panelUi.pages.extensions.marketplace-section.16")}
 						size="sm"
 						onClick={() => {
 							void qc.fetchQuery({
@@ -403,24 +431,33 @@ export function MarketplaceSection({
 						icon={<Icon.globe size={13} />}
 						onClick={() => setManagingSources(true)}
 					>
-						市场源{thirdPartyCount > 0 ? ` · ${thirdPartyCount}` : ""}
+						{tx("panelUi.pages.extensions.marketplace-section.17")}
+						{thirdPartyCount > 0 ? ` · ${thirdPartyCount}` : ""}
 					</Btn>
 				</div>
 			</div>
 
-			{market.isPending ? <LoadingBlock variant="inset" label="正在拉市场索引" /> : null}
-			{market.isError ? <ErrorNote size="sm">市场问不到:{market.error.message}</ErrorNote> : null}
+			{market.isPending ? (
+				<LoadingBlock
+					variant="inset"
+					label={tx("panelUi.pages.extensions.marketplace-section.18")}
+				/>
+			) : null}
+			{market.isError ? (
+				<ErrorNote size="sm">
+					{tx("panelUi.pages.extensions.marketplace-section.19")}
+					{market.error.message}
+				</ErrorNote>
+			) : null}
 
 			{data && !data.available && thirdPartyCount === 0 ? (
-				<HintNote>
-					这个构建没有官方源(没有内置信任公钥,fork
-					出去自己构建的就是这样)。可以在「源」里加一个第三方源。
-				</HintNote>
+				<HintNote>{tx("panelUi.pages.extensions.marketplace-section.20")}</HintNote>
 			) : null}
 
 			{failed.map((source) => (
 				<ErrorNote key={source.id} size="sm">
-					源「{source.name}」:{source.err}
+					{tx("panelUi.pages.extensions.marketplace-section.21")}
+					{source.name}」:{source.err}
 				</ErrorNote>
 			))}
 
@@ -444,7 +481,9 @@ export function MarketplaceSection({
 			(data.available || thirdPartyCount > 0) ? (
 				// 「都装上了」与「源里本来就是空的」是两件事,别合成一句 —— 前者是好消息。
 				<EmptyNote>
-					{data.extensions.length > 0 ? "市场里的拓展都装上了" : "市场里现在没有能装的拓展"}
+					{data.extensions.length > 0
+						? tx("panelUi.pages.extensions.marketplace-section.22")
+						: tx("panelUi.pages.extensions.marketplace-section.23")}
 				</EmptyNote>
 			) : null}
 

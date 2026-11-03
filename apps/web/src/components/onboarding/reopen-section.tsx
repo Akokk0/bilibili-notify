@@ -2,6 +2,7 @@ import { Btn, GlassBox, Icon } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { patchCoreSettings, SETTINGS_KEY } from "../../hooks/useSettings";
+import { useT } from "../../i18n";
 import { useOnboardingReopen } from "../../store/onboarding";
 
 /**
@@ -13,6 +14,8 @@ import { useOnboardingReopen } from "../../store/onboarding";
  * 没写上就展开,导览会因 skipped=true 渲染不出来,按钮看起来像坏了。
  */
 export function OnboardingReopenSection() {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const reopen = useOnboardingReopen((s) => s.reopen);
 	const { mutate, isPending } = useMutation({
@@ -24,17 +27,17 @@ export function OnboardingReopenSection() {
 	});
 	return (
 		<GlassBox
-			title="新手指引 · onboarding"
-			subtitle="五步导览:登录 → 连接 → 目标 → 测试 → 订阅 · 跳过或毕业后从这里重开"
+			title={tx("panelUi.components.onboarding.reopen-section.1")}
+			subtitle={tx("panelUi.components.onboarding.reopen-section.2")}
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.sparkle size={14} />}
 		>
 			<div className="flex flex-wrap items-center gap-3">
 				<div className="text-bn-sm leading-relaxed text-bn-text-secondary">
-					重开后左下角出现导览小卡,按当前配置进度接着带你做;随时可再跳过。
+					{tx("panelUi.components.onboarding.reopen-section.3")}
 				</div>
 				<Btn variant="outline" size="sm" disabled={isPending} onClick={() => mutate()}>
-					重新开启指引
+					{tx("panelUi.components.onboarding.reopen-section.4")}
 				</Btn>
 			</div>
 		</GlassBox>

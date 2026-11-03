@@ -281,7 +281,7 @@ describe("DraftIsland expand panel DiffRow 行跳转", () => {
 			panelLocked: true,
 		});
 		render(<DraftIsland />);
-		expect(screen.getByText("动态过滤")).toBeTruthy();
+		expect(screen.getByText("作品过滤")).toBeTruthy();
 		expect(screen.getByText("调度")).toBeTruthy();
 	});
 });

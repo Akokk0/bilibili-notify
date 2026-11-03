@@ -1,5 +1,6 @@
 import { formatCount } from "@bilibili-notify/internal/format";
 import { useLayoutEffect, useRef, useState } from "react";
+import { useT } from "../../i18n";
 import {
 	compactSeries,
 	extent,
@@ -110,6 +111,8 @@ export function Sparkline({
 	width?: number;
 	height?: number;
 }) {
+	const tx = useT();
+
 	// 迷你图不表现断档 —— 见 compactSeries 的注释。
 	const pts0 = compactSeries(data);
 	const ext = extent(pts0);
@@ -122,7 +125,7 @@ export function Sparkline({
 
 	return (
 		<svg width={width} height={height} style={{ display: "block" }} aria-hidden="true">
-			<title>近期走势</title>
+			<title>{tx("panelUi.pages.stats.charts.1")}</title>
 			<polygon
 				points={`0,${Y(min)} ${pts0.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ")} ${width},${Y(min)}`}
 				fill={color}
@@ -180,12 +183,14 @@ export function TrendChart({
 	 */
 	bridge?: boolean;
 }) {
+	const tx = useT();
+
 	const pad = { l: 46, r: 14, t: 14, b: 22 };
 	const iw = width - pad.l - pad.r;
 	const ih = height - pad.t - pad.b;
 	const all = series.flatMap((s) => [...s.data]);
 	const ext = extent(all);
-	if (!ext) return <ChartEmpty hint="这段时间还没有采集到数据" />;
+	if (!ext) return <ChartEmpty hint={tx("panelUi.pages.stats.charts.2")} />;
 
 	// 累计值(粉丝总量)不强制含 0,否则几百万的曲线会被压成贴顶的一条直线。
 	const {
@@ -209,7 +214,7 @@ export function TrendChart({
 
 	return (
 		<svg width={width} height={height} style={{ display: "block", maxWidth: "100%" }}>
-			<title>趋势图</title>
+			<title>{tx("panelUi.pages.stats.charts.3")}</title>
 			{tickVals.map((tv) => (
 				<g key={tv}>
 					<line
@@ -329,11 +334,13 @@ export function NetBars({
 	height?: number;
 	xLabels?: string[];
 }) {
+	const tx = useT();
+
 	const pad = { l: 46, r: 14, t: 12, b: 22 };
 	const iw = width - pad.l - pad.r;
 	const ih = height - pad.t - pad.b;
 	const ext = extent(data.map((p) => p.value));
-	if (!ext) return <ChartEmpty hint="这段时间还没有采集到数据" />;
+	if (!ext) return <ChartEmpty hint={tx("panelUi.pages.stats.charts.4")} />;
 
 	const { min, max, ticks: tickVals } = niceTicks(ext.min, ext.max, { integer: true });
 
@@ -345,7 +352,7 @@ export function NetBars({
 
 	return (
 		<svg width={width} height={height} style={{ display: "block", maxWidth: "100%" }}>
-			<title>每日净增</title>
+			<title>{tx("panelUi.pages.stats.charts.5")}</title>
 			{tickVals.map((tv) => (
 				<g key={tv}>
 					<line
@@ -384,7 +391,10 @@ export function NetBars({
 					>
 						<title>
 							{estimated
-								? `${days[i]} ${formatCount(Math.round(v), NET_COUNT)}(停机期间,按天平摊)`
+								? tx("panelUi.pages.stats.charts.6", {
+										value0: days[i],
+										value1: formatCount(Math.round(v), NET_COUNT),
+									})
 								: `${days[i]} ${formatCount(v, NET_COUNT)}`}
 						</title>
 					</rect>
@@ -416,8 +426,10 @@ export function RadarChart({
 	color: string;
 	size?: number;
 }) {
+	const tx = useT();
+
 	const n = axes.length;
-	if (n < 3) return <ChartEmpty hint="维度不足,无法绘制画像" />;
+	if (n < 3) return <ChartEmpty hint={tx("panelUi.pages.stats.charts.7")} />;
 	const cx = size / 2;
 	const cy = size / 2 + 4;
 	// 每根轴要写两行(维度名 + 原始值),比单行时多留一圈边距。
@@ -446,7 +458,7 @@ export function RadarChart({
 			height={size}
 			style={{ display: "block", margin: "0 auto", maxWidth: "100%", overflow: "visible" }}
 		>
-			<title>能力画像</title>
+			<title>{tx("panelUi.pages.stats.charts.8")}</title>
 			{rings.map((r) => (
 				<polygon key={r} points={poly(r)} fill="none" stroke={GRID} strokeWidth="1" />
 			))}
@@ -538,7 +550,9 @@ export function Heatmap({
 	maxCellH?: number;
 	gap?: number;
 }) {
-	if (!rows.length) return <ChartEmpty hint="还没有订阅任何 UP 主" />;
+	const tx = useT();
+
+	if (!rows.length) return <ChartEmpty hint={tx("panelUi.pages.stats.charts.9")} />;
 	return (
 		// 行用 flex-1 吃满面板高度(见 GlassPanel 的 flex-col 注释),避免下方留一大片空白;
 		// 上下限之间靠 justify-center 把富余空间均摊到两头。
@@ -558,7 +572,7 @@ export function Heatmap({
 						{r.cells.map((v, i) => (
 							<div
 								key={`${r.id}-${days[i]}`}
-								title={`${days[i]} · ${v === null ? "无记录" : `活跃度 ${v}/4`}`}
+								title={`${days[i]} · ${v === null ? tx("panelUi.pages.stats.charts.10") : tx("panelUi.pages.stats.charts.11", { value0: v })}`}
 								className="flex-1 rounded-sm"
 								// 无记录 = 空心描边,有记录 = 实心。口径在 heatCellStyle 里,有测试守着。
 								style={heatCellStyle(v, r.color)}

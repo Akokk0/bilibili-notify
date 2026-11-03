@@ -1,3 +1,4 @@
+import { useT } from "../../i18n";
 /**
  * 「源」弹窗:列官方源(内置,不能删)与主人自己加的第三方源,能加能删。
  *
@@ -52,11 +53,13 @@ export function MarketplaceSourcesDialog({
 	status: readonly MarketplaceSourceDTO[];
 	onClose: () => void;
 }) {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const globals = useCoreSettings();
 	const sources = sourcesOf(globals.data);
 	const [url, setUrl] = useState("");
-	const [problem, setProblem] = useState<string | null>(null);
+	const [problem, setProblem] = useState<"invalid-url" | "duplicate" | null>(null);
 
 	const save = useMutation({
 		mutationFn: (next: SourceRow[]) => patchCoreSettings({ marketplace: { sources: next } }),
@@ -75,11 +78,11 @@ export function MarketplaceSourcesDialog({
 	const add = () => {
 		const trimmed = url.trim();
 		if (!/^https:\/\/[^\s/]+/.test(trimmed)) {
-			setProblem("索引地址必须是 https:// 开头");
+			setProblem("invalid-url");
 			return;
 		}
 		if (sources.some((s) => s.url === trimmed)) {
-			setProblem("这个地址已经加过了");
+			setProblem("duplicate");
 			return;
 		}
 		setProblem(null);
@@ -92,8 +95,8 @@ export function MarketplaceSourcesDialog({
 		<ModalShell
 			width={560}
 			onCancel={onClose}
-			title="拓展市场的源"
-			description="每个源是一份 marketplace.json,列它能装的拓展。官方源是内置的;自己加的源由那个地址的主人说了算。"
+			title={tx("panelUi.pages.extensions.marketplace-sources-dialog.3")}
+			description={tx("panelUi.pages.extensions.marketplace-sources-dialog.4")}
 			bodyClassName="px-5 pb-4 pt-4"
 		>
 			<div className="flex flex-col gap-3.5">
@@ -104,7 +107,9 @@ export function MarketplaceSourcesDialog({
 							<div className="flex min-w-0 flex-1 flex-col">
 								<span className="text-bn-sm font-bold text-bn-text-primary">{official.name}</span>
 								<span className="text-bn-2xs text-bn-text-tertiary">
-									{official.ok ? "内置,签名验过" : official.err}
+									{official.ok
+										? tx("panelUi.pages.extensions.marketplace-sources-dialog.5")
+										: official.err}
 								</span>
 							</div>
 						</li>
@@ -135,7 +140,9 @@ export function MarketplaceSourcesDialog({
 								</div>
 								<IconButton
 									icon={<Icon.trash size={13} />}
-									label={`删掉 ${nameOf(source)}`}
+									label={tx("panelUi.pages.extensions.marketplace-sources-dialog.6", {
+										value0: nameOf(source),
+									})}
 									size="sm"
 									tone="danger"
 									onClick={() => save.mutate(sources.filter((s) => s.id !== source.id))}
@@ -146,29 +153,42 @@ export function MarketplaceSourcesDialog({
 				</ul>
 
 				<div className="flex flex-col gap-2 border-t border-bn-border-subtle pt-3">
-					<div className="text-bn-xs font-bold text-bn-text-secondary">加一个源</div>
+					<div className="text-bn-xs font-bold text-bn-text-secondary">
+						{tx("panelUi.pages.extensions.marketplace-sources-dialog.7")}
+					</div>
 					<WarnNote size="sm">
-						BN 不审核第三方源里的东西:装它们等于让那个源的作者在 BN 进程里跑代码。只加信得过的。
+						{tx("panelUi.pages.extensions.marketplace-sources-dialog.8")}
 					</WarnNote>
 					<div className="flex flex-col gap-2 sm:flex-row">
 						<TInput
-							ariaLabel="索引地址"
+							ariaLabel={tx("panelUi.pages.extensions.marketplace-sources-dialog.9")}
 							value={url}
 							onChange={setUrl}
 							placeholder="https://…/marketplace.json"
 							mono
 						/>
 						<Btn variant="primary" size="sm" disabled={save.isPending} onClick={add}>
-							加进来
+							{tx("panelUi.pages.extensions.marketplace-sources-dialog.10")}
 						</Btn>
 					</div>
-					{problem ? <ErrorNote size="sm">{problem}</ErrorNote> : null}
-					{save.isError ? <ErrorNote size="sm">没存上:{save.error.message}</ErrorNote> : null}
+					{problem ? (
+						<ErrorNote size="sm">
+							{problem === "invalid-url"
+								? tx("panelUi.pages.extensions.marketplace-sources-dialog.1")
+								: tx("panelUi.pages.extensions.marketplace-sources-dialog.2")}
+						</ErrorNote>
+					) : null}
+					{save.isError ? (
+						<ErrorNote size="sm">
+							{tx("panelUi.pages.extensions.marketplace-sources-dialog.11")}
+							{save.error.message}
+						</ErrorNote>
+					) : null}
 				</div>
 
 				<div className="flex justify-end pt-1">
 					<Btn variant="outline" size="md" onClick={onClose}>
-						关闭
+						{tx("panelUi.pages.extensions.marketplace-sources-dialog.12")}
 					</Btn>
 				</div>
 			</div>

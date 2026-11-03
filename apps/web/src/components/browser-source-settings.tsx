@@ -1,6 +1,7 @@
 import type { EnableRenderingResponse, RenderSourceResponse } from "@bilibili-notify/contract";
 import { Btn, GlassBox } from "@bilibili-notify/ui";
 import { useEffect, useState } from "react";
+import { useT } from "../i18n";
 import { api } from "../services/api";
 import { Field, TInput } from "./forms";
 
@@ -14,12 +15,14 @@ type Busy = null | "detect" | "path" | "endpoint";
  * 启用之后的查看与切换都在这里。
  */
 export function BrowserSourceSettings() {
+	const tx = useT();
+
 	const [status, setStatus] = useState<RenderSourceResponse | null>(null);
 	const [path, setPath] = useState("");
 	const [endpoint, setEndpoint] = useState("");
 	const [busy, setBusy] = useState<Busy>(null);
 	const [err, setErr] = useState<string | null>(null);
-	const [okMsg, setOkMsg] = useState<string | null>(null);
+	const [okMsg, setOkMsg] = useState<"unchanged" | "applied" | null>(null);
 	const [detectMiss, setDetectMiss] = useState(false);
 
 	async function load() {
@@ -59,7 +62,7 @@ export function BrowserSourceSettings() {
 		try {
 			// 切换不成一律是非 2xx(`api` 抛 `ApiError`,`message` 是服务端的原话),走到下一行就是成了。
 			const res = await api.post<EnableRenderingResponse>("/api/cards/renderer", body);
-			setOkMsg(res.alreadyEnabled ? "已是当前配置,无需切换" : "已生效");
+			setOkMsg(res.alreadyEnabled ? "unchanged" : "applied");
 			await load();
 		} catch (e) {
 			setErr((e as Error).message);
@@ -70,66 +73,84 @@ export function BrowserSourceSettings() {
 
 	const source = status?.source;
 	const current = !status ? (
-		<span className="text-bn-text-secondary">加载中…</span>
+		<span className="text-bn-text-secondary">
+			{tx("panelUi.components.browser-source-settings.3")}
+		</span>
 	) : status.enabled && source?.chromeEndpoint ? (
 		<span>
-			远程浏览器{" "}
+			{tx("panelUi.components.browser-source-settings.4")}{" "}
 			<code className="rounded-sm bg-bn-code-bg px-1.5 py-0.5 font-mono">
 				{source.chromeEndpoint}
 			</code>
 		</span>
 	) : status.enabled && source?.chromePath ? (
 		<span>
-			本地浏览器{" "}
+			{tx("panelUi.components.browser-source-settings.5")}{" "}
 			<code className="rounded-sm bg-bn-code-bg px-1.5 py-0.5 font-mono">{source.chromePath}</code>
 		</span>
 	) : (
-		<span className="text-bn-text-secondary">未启用 —— 卡片渲染当前退化为文字推送</span>
+		<span className="text-bn-text-secondary">
+			{tx("panelUi.components.browser-source-settings.6")}
+		</span>
 	);
 
 	return (
 		<GlassBox
-			title="卡片渲染 · 浏览器"
-			subtitle="chromePath / chromeEndpoint · 应用即热切换,先探测连通再生效"
+			title={tx("panelUi.components.browser-source-settings.7")}
+			subtitle={tx("panelUi.components.browser-source-settings.8")}
 			accent={status?.enabled ? "var(--color-bn-success)" : "var(--color-bn-inactive)"}
-			badge={status ? (status.enabled ? "已启用" : "未启用") : undefined}
+			badge={
+				status
+					? status.enabled
+						? tx("panelUi.components.browser-source-settings.9")
+						: tx("panelUi.components.browser-source-settings.10")
+					: undefined
+			}
 		>
 			<div data-testid="browser-source-current" className="py-2.5 text-bn-sm text-bn-text-primary">
 				{current}
 			</div>
 			{status && !status.persistable ? (
 				<div className="pb-2 text-bn-xs text-bn-warning-text">
-					当前部署没有可写的配置文件:切换即时生效,但重启后不保留(请改用环境变量 / yaml)。
+					{tx("panelUi.components.browser-source-settings.11")}
 				</div>
 			) : null}
-			<Field code="chromePath" label="本地浏览器路径" hint="Chrome / Chromium 可执行文件绝对路径">
+			<Field
+				code="chromePath"
+				label={tx("panelUi.components.browser-source-settings.12")}
+				hint={tx("panelUi.components.browser-source-settings.13")}
+			>
 				<div className="flex w-full flex-wrap items-center gap-2">
 					<TInput
 						value={path}
 						onChange={setPath}
 						mono
-						placeholder="/usr/bin/chromium 等 Chrome 路径"
+						placeholder={tx("panelUi.components.browser-source-settings.14")}
 						full={false}
 					/>
 					<Btn size="sm" variant="ghost" onClick={detect} disabled={busy === "detect"}>
-						{busy === "detect" ? "探测中…" : "自动探测"}
+						{busy === "detect"
+							? tx("panelUi.components.browser-source-settings.15")
+							: tx("panelUi.components.browser-source-settings.16")}
 					</Btn>
 					<Btn size="sm" onClick={() => apply("path")} disabled={busy === "path" || !path.trim()}>
-						{busy === "path" ? "应用中…" : "应用本地路径"}
+						{busy === "path"
+							? tx("panelUi.components.browser-source-settings.17")
+							: tx("panelUi.components.browser-source-settings.18")}
 					</Btn>
 				</div>
 			</Field>
 			<Field
 				code="chromeEndpoint"
-				label="远程浏览器端点"
-				hint="ws:// 直连 browserless 等;http:// 为 chromium remote-debugging 端点。slim 镜像用这个"
+				label={tx("panelUi.components.browser-source-settings.19")}
+				hint={tx("panelUi.components.browser-source-settings.20")}
 			>
 				<div className="flex w-full flex-wrap items-center gap-2">
 					<TInput
 						value={endpoint}
 						onChange={setEndpoint}
 						mono
-						placeholder="ws://browser:3000?token=… 或 http://host:9222"
+						placeholder={tx("panelUi.components.browser-source-settings.21")}
 						full={false}
 					/>
 					<Btn
@@ -137,16 +158,25 @@ export function BrowserSourceSettings() {
 						onClick={() => apply("endpoint")}
 						disabled={busy === "endpoint" || !endpoint.trim()}
 					>
-						{busy === "endpoint" ? "应用中…" : "应用远程端点"}
+						{busy === "endpoint"
+							? tx("panelUi.components.browser-source-settings.22")
+							: tx("panelUi.components.browser-source-settings.23")}
 					</Btn>
 				</div>
 			</Field>
 			{detectMiss ? (
 				<div className="pt-1.5 text-bn-xs text-bn-warning-text">
-					未在常见位置找到 Chrome / Chromium,请手动填写路径。
+					{tx("panelUi.components.browser-source-settings.24")}
 				</div>
 			) : null}
-			{okMsg ? <div className="pt-1.5 text-bn-xs text-bn-success-text">✓ {okMsg}</div> : null}
+			{okMsg ? (
+				<div className="pt-1.5 text-bn-xs text-bn-success-text">
+					✓{" "}
+					{okMsg === "unchanged"
+						? tx("panelUi.components.browser-source-settings.1")
+						: tx("panelUi.components.browser-source-settings.2")}
+				</div>
+			) : null}
 			{err ? <div className="pt-1.5 text-bn-xs text-bn-danger-text">{err}</div> : null}
 		</GlassBox>
 	);

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import type { PushTarget, Subscription } from "../../types/domain";
 import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleFields";
@@ -25,6 +26,8 @@ export function SoloRoastScheduleBox({
 	subscriptionId: string;
 	name: string;
 }) {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
@@ -63,7 +66,7 @@ export function SoloRoastScheduleBox({
 	// code 投影包一层 `roastSchedule`,与字典里那几条 code 对齐。
 	useDirtyDraft({
 		pageKey: "stats",
-		pageLabel: `${name} · 定时锐评`,
+		pageLabel: tx("panelUi.pages.stats.SoloRoastScheduleBox.1", { value0: name }),
 		draft: draft ? { roastSchedule: draft } : null,
 		baseline: baseline ? { roastSchedule: baseline } : null,
 		onSave: useCallback(async () => {
@@ -76,10 +79,10 @@ export function SoloRoastScheduleBox({
 
 	return (
 		<RoastScheduleCard
-			title="定时锐评"
-			subtitle={`到点自动点评 ${name} 并发到指定的群`}
-			toggleAriaLabel={`启用 ${name} 的定时锐评`}
-			noun="锐评"
+			title={tx("panelUi.pages.stats.SoloRoastScheduleBox.2")}
+			subtitle={tx("panelUi.pages.stats.SoloRoastScheduleBox.3", { value0: name })}
+			toggleAriaLabel={tx("panelUi.pages.stats.SoloRoastScheduleBox.4", { value0: name })}
+			noun={tx("panelUi.pages.stats.SoloRoastScheduleBox.5")}
 			subscriptionId={subscriptionId}
 			draft={draft}
 			baseline={baseline}

@@ -13,6 +13,7 @@ import {
 	Toggle,
 } from "@bilibili-notify/ui";
 import { type HTMLAttributes, type ReactNode, useState } from "react";
+import { i18n, useT } from "../../../i18n";
 import { reasonOf } from "../shared";
 import { safeImage } from "./image";
 import { settingsIssuesOf, settingsValuesOf, writeReasonOf } from "./list-items";
@@ -97,9 +98,14 @@ function isDirty(
 
 /** 数字的范围说成一句话。 */
 function rangeText(min: number | undefined, max: number | undefined): string {
-	if (min !== undefined && max !== undefined) return `要在 ${min} 到 ${max} 之间`;
-	if (min !== undefined) return `不能小于 ${min}`;
-	return `不能大于 ${max}`;
+	if (min !== undefined && max !== undefined)
+		return i18n.t("panelUi.pages.extensions.declarative.settings-form.1", {
+			value0: min,
+			value1: max,
+		});
+	if (min !== undefined)
+		return i18n.t("panelUi.pages.extensions.declarative.settings-form.2", { value0: min });
+	return i18n.t("panelUi.pages.extensions.declarative.settings-form.3", { value0: String(max) });
 }
 
 /** 数字框认的那种十进制写法:可带负号、小数、指数(`-1.5`、`.5`、`2e3`)。 */
@@ -126,15 +132,19 @@ export function decimalOf(text: string): number | undefined {
 export function clientErrorOf(field: SettingsScalarField, value: Edit): string | undefined {
 	if (field.type === "number") {
 		const text = String(value).trim();
-		if (text === "") return field.required ? "这一格必填" : undefined;
+		if (text === "")
+			return field.required
+				? i18n.t("panelUi.pages.extensions.declarative.settings-form.4")
+				: undefined;
 		const n = decimalOf(text);
-		if (n === undefined) return "要填一个数字";
+		if (n === undefined) return i18n.t("panelUi.pages.extensions.declarative.settings-form.5");
 		if ((field.min !== undefined && n < field.min) || (field.max !== undefined && n > field.max)) {
 			return rangeText(field.min, field.max);
 		}
 		return undefined;
 	}
-	if (field.type === "string" && field.required && value === "") return "这一格必填";
+	if (field.type === "string" && field.required && value === "")
+		return i18n.t("panelUi.pages.extensions.declarative.settings-form.6");
 	return undefined;
 }
 
@@ -189,6 +199,8 @@ export function SettingsForm({
 	extensionId: string;
 	fields: readonly SettingsScalarField[];
 }) {
+	const tx = useT();
+
 	const settings = useExtensionSettings(extensionId);
 	const [edits, setEdits] = useState<Record<string, Edit>>({});
 	/** 按了「换一份」的密钥 —— 只管显示(遮住 / 输入框),值照样只在 `edits` 里。 */
@@ -270,17 +282,32 @@ export function SettingsForm({
 
 	let body: ReactNode;
 	if (settings.isPending) {
-		body = <LoadingBlock variant="inset" label="正在读取设置" />;
+		body = (
+			<LoadingBlock
+				variant="inset"
+				label={tx("panelUi.pages.extensions.declarative.settings-form.7")}
+			/>
+		);
 	} else if (settings.isError) {
 		/*
 		 * 🔴 **「读不到」不许画成「全是默认值」**:照着一张假的表改完一存,只发改了的那几格
 		 * 倒是不会抹掉别的 —— 但主人看到的「现在是什么」全是假话。
 		 */
-		body = <ErrorNote size="sm">读不到这个拓展的设置:{reasonOf(settings.error)}</ErrorNote>;
+		body = (
+			<ErrorNote size="sm">
+				{tx("panelUi.pages.extensions.declarative.settings-form.8")}
+				{reasonOf(settings.error)}
+			</ErrorNote>
+		);
 	} else {
 		body = (
 			<div className="flex flex-col gap-4">
-				{pageError ? <ErrorNote size="sm">没存进去:{pageError}</ErrorNote> : null}
+				{pageError ? (
+					<ErrorNote size="sm">
+						{tx("panelUi.pages.extensions.declarative.settings-form.9")}
+						{pageError}
+					</ErrorNote>
+				) : null}
 				<div className="grid gap-4 md:grid-cols-2">
 					{fields.map((field) => (
 						<FieldShell
@@ -311,15 +338,17 @@ export function SettingsForm({
 	return (
 		<>
 			<GlassBox
-				title="设置"
-				subtitle="改完按保存才生效;拓展关着时也能先填好。"
+				title={tx("panelUi.pages.extensions.declarative.settings-form.10")}
+				subtitle={tx("panelUi.pages.extensions.declarative.settings-form.11")}
 				right={
 					<div className="flex shrink-0 items-center gap-2">
 						<Btn variant="outline" size="sm" disabled={!touched || save.isPending} onClick={revert}>
-							还原
+							{tx("panelUi.pages.extensions.declarative.settings-form.12")}
 						</Btn>
 						<Btn variant="primary" size="sm" disabled={!canSave || save.isPending} onClick={submit}>
-							{save.isPending ? "保存中…" : "保存"}
+							{save.isPending
+								? tx("panelUi.pages.extensions.declarative.settings-form.13")
+								: tx("panelUi.pages.extensions.declarative.settings-form.14")}
 						</Btn>
 					</div>
 				}
@@ -328,9 +357,11 @@ export function SettingsForm({
 			</GlassBox>
 			{confirming ? (
 				<ConfirmDialog
-					title={`重新生成「${confirming.label}」?`}
-					message="旧的那一份在保存之后就作废 —— 所有用着它的地方都得换成新的那一份。"
-					confirmLabel="重新生成"
+					title={tx("panelUi.pages.extensions.declarative.settings-form.15", {
+						value0: confirming.label,
+					})}
+					message={tx("panelUi.pages.extensions.declarative.settings-form.16")}
+					confirmLabel={tx("panelUi.pages.extensions.declarative.settings-form.17")}
 					danger
 					onConfirm={() => {
 						edit(confirming.key, newHexSecret());
@@ -555,11 +586,13 @@ function GeneratedValue({
 	savedMask: string | undefined;
 	onRegenerate: () => void;
 }) {
+	const tx = useT();
+
 	if (fresh === undefined && savedMask === undefined) {
 		return (
 			<div className="flex flex-wrap items-center gap-2.5">
 				<MissingSecretNote label={label} onRegenerate={onRegenerate}>
-					还没有 {label} —— 脱敏备份恢复回来的就是这样,生成一份新的。
+					{tx("panelUi.pages.extensions.declarative.settings-form.18", { field: label })}
 				</MissingSecretNote>
 			</div>
 		);
@@ -568,11 +601,18 @@ function GeneratedValue({
 		<>
 			<div className="flex flex-wrap items-center gap-2.5">
 				<SecretChip text={fresh ?? savedMask ?? ""} />
-				{fresh !== undefined ? <CopyControl label={`复制 ${label}`} text={fresh} /> : null}
+				{fresh !== undefined ? (
+					<CopyControl
+						label={tx("panelUi.pages.extensions.declarative.settings-form.20", { value0: label })}
+						text={fresh}
+					/>
+				) : null}
 				<RegenerateButton label={label} onClick={onRegenerate} />
 			</div>
 			{fresh !== undefined ? (
-				<p className={FIELD_NOTE_CLS}>新生成的,还没保存 —— 存下之后只露头尾,要用就趁现在复制。</p>
+				<p className={FIELD_NOTE_CLS}>
+					{tx("panelUi.pages.extensions.declarative.settings-form.21")}
+				</p>
 			) : null}
 		</>
 	);

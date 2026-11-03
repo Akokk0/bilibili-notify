@@ -1,6 +1,7 @@
 import type { EnableRenderingResponse } from "@bilibili-notify/contract";
 import { SELECTED_TINT_BG } from "@bilibili-notify/ui";
 import { useState } from "react";
+import { useT } from "../i18n";
 import { api } from "../services/api";
 
 type DetectState = "idle" | "detecting" | "enabling" | "connecting" | "enabled";
@@ -54,6 +55,8 @@ function ActionPill({
 }
 
 export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
+	const tx = useT();
+
 	const [state, setState] = useState<DetectState>("idle");
 	const [path, setPath] = useState<string | null>(null);
 	const [endpoint, setEndpoint] = useState("");
@@ -114,7 +117,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 	if (state === "enabled") {
 		return (
 			<div className="mt-2 rounded-sm border border-bn-success-border bg-bn-success-soft p-2 text-bn-xs font-semibold text-bn-success-text">
-				✓ 卡片渲染已启用 · 已写回配置,重启仍生效
+				{tx("panelUi.components.chrome-autodetect.1")}
 			</div>
 		);
 	}
@@ -122,12 +125,16 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 	return (
 		<div className="mt-2 rounded-sm border border-bn-warning-border bg-bn-warning-soft p-2 text-bn-xs text-bn-warning-text">
 			<div className="mb-1.5">
-				设置 <code className="font-mono">BN_CHROME_PATH</code> 环境变量或 yaml{" "}
-				<code className="font-mono">chromePath</code>,或一键自动探测本机浏览器:
+				{tx("panelUi.components.chrome-autodetect.2")}
+				<code className="font-mono">BN_CHROME_PATH</code>{" "}
+				{tx("panelUi.components.chrome-autodetect.3")} <code className="font-mono">chromePath</code>
+				{tx("panelUi.components.chrome-autodetect.4")}
 			</div>
 			<div className="flex flex-wrap items-center gap-2">
 				<ActionPill tone="pink" onClick={detect} disabled={state === "detecting"}>
-					{state === "detecting" ? "探测中…" : "自动探测 Chrome"}
+					{state === "detecting"
+						? tx("panelUi.components.chrome-autodetect.5")
+						: tx("panelUi.components.chrome-autodetect.6")}
 				</ActionPill>
 				{path ? (
 					<>
@@ -135,26 +142,30 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 							{path}
 						</code>
 						<ActionPill tone="success" onClick={enable} disabled={state === "enabling"}>
-							{state === "enabling" ? "启用中…" : "启用"}
+							{state === "enabling"
+								? tx("panelUi.components.chrome-autodetect.7")
+								: tx("panelUi.components.chrome-autodetect.8")}
 						</ActionPill>
 					</>
 				) : null}
 			</div>
 			{notFound ? (
 				<div className="mt-1.5 text-bn-warning-text">
-					未在常见位置找到 Chrome / Chromium,请手动设置 chromePath 指向浏览器二进制。
+					{tx("panelUi.components.chrome-autodetect.9")}
 				</div>
 			) : null}
 			<div className="mt-2 border-t border-bn-warning-border/50 pt-2">
 				<div className="mb-1.5">
-					或连接<strong>远程浏览器</strong>(slim 镜像 / 无本机浏览器时用,如 browserless 容器):
+					{tx("panelUi.components.chrome-autodetect.10")}
+					<strong>{tx("panelUi.components.chrome-autodetect.11")}</strong>
+					{tx("panelUi.components.chrome-autodetect.12")}
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<input
 						type="text"
 						value={endpoint}
 						onChange={(e) => setEndpoint(e.target.value)}
-						placeholder="ws://browser:3000?token=… 或 http://host:9222"
+						placeholder={tx("panelUi.components.chrome-autodetect.13")}
 						data-bn="input"
 						className="min-w-56 flex-1 rounded-sm border border-bn-warning-border bg-bn-code-bg px-2 py-1 font-mono text-bn-warning-text placeholder:opacity-50"
 					/>
@@ -163,7 +174,9 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 						onClick={connectRemote}
 						disabled={state === "connecting" || !endpoint.trim()}
 					>
-						{state === "connecting" ? "连接中…" : "连接远程浏览器"}
+						{state === "connecting"
+							? tx("panelUi.components.chrome-autodetect.14")
+							: tx("panelUi.components.chrome-autodetect.15")}
 					</ActionPill>
 				</div>
 			</div>

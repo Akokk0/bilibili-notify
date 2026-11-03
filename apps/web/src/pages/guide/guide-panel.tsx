@@ -1,6 +1,7 @@
 import { GlassPanel, Picker, Pill, StatusDot } from "@bilibili-notify/ui";
 import { useNavigate } from "react-router-dom";
 import { useOnboardingState } from "../../components/onboarding/use-onboarding-view";
+import { useT } from "../../i18n";
 import aiMd from "./content/ai.md?raw";
 import loginMd from "./content/login.md?raw";
 import overviewMd from "./content/overview.md?raw";
@@ -20,16 +21,41 @@ import { GuideMarkdown } from "./guide-markdown";
  * - 顶部常驻进度(与左缘导览同一份判据 useOnboardingState)。
  */
 
-const CHAPTERS: { key: string; title: string; source: string }[] = [
-	{ key: "overview", title: "总览与选型", source: overviewMd },
-	{ key: "login", title: "登录 B 站", source: loginMd },
-	{ key: "push", title: "推送通道", source: pushMd },
-	{ key: "subs", title: "订阅 UP", source: subsMd },
-	{ key: "render", title: "图片渲染", source: renderMd },
-	{ key: "ai", title: "AI 能力", source: aiMd },
-];
-
 export function GuidePanel({ chapter }: { chapter?: string | undefined }) {
+	const tx = useT();
+	const CHAPTERS: { key: string; title: string; source: string }[] = [
+		{
+			key: "overview",
+			title: tx("panelUi.pages.guide.guide-panel.1"),
+			source: overviewMd,
+		},
+		{
+			key: "login",
+			title: tx("panelUi.pages.guide.guide-panel.2"),
+			source: loginMd,
+		},
+		{
+			key: "push",
+			title: tx("panelUi.pages.guide.guide-panel.3"),
+			source: pushMd,
+		},
+		{
+			key: "subs",
+			title: tx("panelUi.pages.guide.guide-panel.4"),
+			source: subsMd,
+		},
+		{
+			key: "render",
+			title: tx("panelUi.pages.guide.guide-panel.5"),
+			source: renderMd,
+		},
+		{
+			key: "ai",
+			title: tx("panelUi.pages.guide.guide-panel.6"),
+			source: aiMd,
+		},
+	];
+
 	const navigate = useNavigate();
 	// 认不出(含没给)一律回落 CHAPTERS[0] —— 它就是总览,不需要第二条回退路径
 	const current = CHAPTERS.find((c) => c.key === chapter) ?? CHAPTERS[0];

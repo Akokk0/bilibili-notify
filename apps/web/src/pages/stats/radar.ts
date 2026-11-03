@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 能力画像的口径层。
  *
@@ -64,7 +65,9 @@ const METRICS: Metric[] = [
 		// 唯一不随时间窗变的一根 —— 粉丝数是「此刻共有多少」,不存在「近30日的粉丝规模」。
 		// 切换时间范围时它纹丝不动是对的,不是 bug;每根轴都并排标着原始值,读者
 		// 一眼能看出哪根变了哪根没变。
-		label: "粉丝规模(当前)",
+		get label() {
+			return i18n.t("panelUi.pages.stats.radar.1");
+		},
 		pick: (r) => r.followers,
 		format: (v) => formatCount(v, { compact: true }),
 		// 粉丝数是重尾分布:200 万的 UP 会把 5 万的压成一根针,那根轴就读不出
@@ -74,15 +77,37 @@ const METRICS: Metric[] = [
 	// `netWindow` 而不是 `net7d` —— 其余五轴都是窗口内的计数,涨粉势头必须同步,
 	// 否则切到近90日时同一张图里会有两把尺子。
 	{
-		label: "涨粉势头",
+		get label() {
+			return i18n.t("panelUi.pages.stats.radar.2");
+		},
 		pick: (r) => r.netWindow,
 		format: (v) => formatCount(v, { signed: true, compact: true }),
 	},
-	{ label: "投稿量", pick: (r) => r.videoPosts, format: (v) => `${v} 个` },
-	{ label: "动态量", pick: plainPostCount, format: (v) => `${v} 条` },
-	{ label: "开播场次", pick: (r) => r.liveSessions, format: (v) => `${v} 场` },
 	{
-		label: "直播时长",
+		get label() {
+			return i18n.t("panelUi.pages.stats.radar.3");
+		},
+		pick: (r) => r.videoPosts,
+		format: (v) => i18n.t("panelUi.pages.stats.radar.4", { count: v }),
+	},
+	{
+		get label() {
+			return i18n.t("panelUi.pages.stats.radar.5");
+		},
+		pick: plainPostCount,
+		format: (v) => i18n.t("panelUi.pages.stats.radar.6", { count: v }),
+	},
+	{
+		get label() {
+			return i18n.t("panelUi.pages.stats.radar.7");
+		},
+		pick: (r) => r.liveSessions,
+		format: (v) => i18n.t("panelUi.pages.stats.radar.8", { count: v }),
+	},
+	{
+		get label() {
+			return i18n.t("panelUi.pages.stats.radar.9");
+		},
 		pick: (r) => r.liveHours,
 		format: (v) => `${v >= 10 ? Math.round(v) : Math.round(v * 10) / 10}h`,
 	},
@@ -111,7 +136,7 @@ export function buildRadarAxes(
 				rows.map((r) => m.pick(r)),
 				m.scale,
 			),
-			display: raw === null ? "无记录" : m.format(raw),
+			display: raw === null ? i18n.t("panelUi.pages.stats.radar.10") : m.format(raw),
 		};
 	});
 }

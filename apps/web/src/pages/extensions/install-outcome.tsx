@@ -14,7 +14,7 @@ import type { ExtensionInstallResponse } from "@bilibili-notify/contract";
 import { HintNote, MonoChip, WarnNote } from "@bilibili-notify/ui";
 import { Link } from "react-router-dom";
 import { DEFAULT_RESTART_WAIT, type RestartWait } from "../../components/update/restart";
-import { useT } from "../../i18n";
+import { i18n, useT } from "../../i18n";
 import { StagedCodeNote } from "./staged-code-note";
 
 /**
@@ -29,9 +29,9 @@ function docsLabel(done: ExtensionInstallResponse): string | null {
 	// 同一个路子 —— 少一颗钮是小事,把整块「装好了」炸掉是大事。
 	const docs = done.docs;
 	if (!docs) return null;
-	if (done.staged && docs.changelog) return "看看更新了什么";
-	if (docs.readme) return "看看说明";
-	if (docs.changelog) return "看看更新日志";
+	if (done.staged && docs.changelog) return i18n.t("panelUi.pages.extensions.install-outcome.1");
+	if (docs.readme) return i18n.t("panelUi.pages.extensions.install-outcome.2");
+	if (docs.changelog) return i18n.t("panelUi.pages.extensions.install-outcome.3");
 	return null;
 }
 
@@ -96,6 +96,8 @@ export function ExtensionInstallOutcome(props: ExtensionInstallOutcomeProps) {
 }
 
 function InstallOutcomeBody({ done, wait = DEFAULT_RESTART_WAIT }: ExtensionInstallOutcomeProps) {
+	const tx = useT();
+
 	if (!done) return null;
 	/*
 	 * 🔴 老服务端(应用内自更新那几秒)回的是 `needsRestart` 而没有 `staged` —— 缺了就落到
@@ -111,8 +113,7 @@ function InstallOutcomeBody({ done, wait = DEFAULT_RESTART_WAIT }: ExtensionInst
 			<HintNote tone="neutral" className="flex flex-wrap items-center gap-x-2 gap-y-1">
 				<span>
 					<strong className="text-bn-text-secondary">{done.name}</strong> {done.version}{" "}
-					装好了,还关着 —— 不过这个进程早就认下了它的另一份代码,拨开开关也换不上;到它那一页选「重启
-					BN」,或者拨开之后「只重载这个拓展」。
+					{tx("panelUi.pages.extensions.install-outcome.4")}
 				</span>
 				<DocsLink done={done} />
 			</HintNote>
@@ -142,8 +143,8 @@ function InstallOutcomeBody({ done, wait = DEFAULT_RESTART_WAIT }: ExtensionInst
 			<span>
 				<strong className="text-bn-text-secondary">{done.name}</strong> {done.version}{" "}
 				{done.enabled
-					? "装好了,已经在跑 —— 开关在它自己那张卡上。"
-					: "装好了,还关着 —— 到它那张卡上把开关拨开才会跑。"}
+					? tx("panelUi.pages.extensions.install-outcome.5")
+					: tx("panelUi.pages.extensions.install-outcome.6")}
 			</span>
 			<DocsLink done={done} />
 		</HintNote>

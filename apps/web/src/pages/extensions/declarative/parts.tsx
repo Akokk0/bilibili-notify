@@ -8,6 +8,7 @@ import {
 	TriStateMark,
 } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
+import { useT } from "../../../i18n";
 import { copyToClipboard } from "../../../utils/clipboard";
 
 /**
@@ -41,6 +42,8 @@ export function CopyControl({
 	text: string;
 	iconOnly?: boolean;
 }) {
+	const tx = useT();
+
 	/*
 	 * 记的是**复制下去的那一串**,不是一个「复制过」的开关:`text` 一换(重新生成了一把),屏幕
 	 * 上这一串就没进过剪贴板 —— 还说「已复制」,主人会以为新的已经在剪贴板里,粘过去的却是作废
@@ -56,7 +59,9 @@ export function CopyControl({
 	if (iconOnly) {
 		return (
 			<IconButton
-				label={copied ? `${label}(已复制)` : label}
+				label={
+					copied ? tx("panelUi.pages.extensions.declarative.parts.1", { value0: label }) : label
+				}
 				icon={icon}
 				size="sm"
 				onClick={copy}
@@ -65,7 +70,9 @@ export function CopyControl({
 	}
 	return (
 		<Btn variant="ghost" size="sm" aria-label={label} icon={icon} onClick={copy}>
-			{copied ? "已复制" : "复制"}
+			{copied
+				? tx("panelUi.pages.extensions.declarative.parts.2")
+				: tx("panelUi.pages.extensions.declarative.parts.3")}
 		</Btn>
 	);
 }
@@ -88,16 +95,18 @@ export function RegenerateButton({
 	disabled?: boolean;
 	onClick: () => void;
 }) {
+	const tx = useT();
+
 	return (
 		<Btn
 			variant="danger-outline"
 			size="sm"
 			disabled={disabled}
-			aria-label={`重新生成 ${label}`}
+			aria-label={tx("panelUi.pages.extensions.declarative.parts.4", { value0: label })}
 			icon={<Icon.refresh size={13} />}
 			onClick={onClick}
 		>
-			重新生成
+			{tx("panelUi.pages.extensions.declarative.parts.5")}
 		</Btn>
 	);
 }
@@ -137,9 +146,11 @@ export function MissingSecretNote({
  * 2026-09-10 主人就是这么猜错的(把一张正常的能力表读成了故障)。
  */
 export function TriStateLegend() {
+	const tx = useT();
+
 	return (
 		<ul
-			aria-label="图例"
+			aria-label={tx("panelUi.pages.extensions.declarative.parts.6")}
 			className="flex list-none items-center gap-3 p-0 text-bn-2xs text-bn-text-tertiary"
 		>
 			{(Object.keys(TRISTATE_TEXT) as TriState[]).map((state) => (

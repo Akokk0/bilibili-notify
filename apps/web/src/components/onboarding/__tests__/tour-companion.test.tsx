@@ -951,7 +951,7 @@ describe("TourCompanion 常驻小卡", () => {
 			targets: [{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 			route: "/subs",
 		});
-		expect(await screen.findByText("订阅第一个 UP")).toBeTruthy();
+		expect(await screen.findByText("添加第一条订阅")).toBeTruthy();
 		await waitFor(() =>
 			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
 				'[data-tour="subs-add"]',

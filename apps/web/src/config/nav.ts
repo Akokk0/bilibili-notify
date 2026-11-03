@@ -1,3 +1,4 @@
+import { i18n } from "../i18n";
 /**
  * 顶部导航表,以及「显哪几个」的判定 —— 单一真源。
  *
@@ -20,18 +21,80 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-	{ to: "/", label: "概览" },
-	{ to: "/subs", label: "订阅 UP 主", countKey: "subs" },
-	{ to: "/targets", label: "推送目标", countKey: "targets" },
-	{ to: "/history", label: "推送历史" },
-	{ to: "/stats", label: "数据统计" },
-	{ to: "/rules", label: "高级规则" },
-	{ to: "/cards", label: "卡片渲染 · 样式" },
-	{ to: "/ai", label: "智能女仆" },
-	{ to: "/extensions", label: "拓展" },
-	{ to: ALWAYS_VISIBLE_PATH, label: "系统" },
-	{ to: "/logs", label: "日志" },
-	{ to: "/about", label: "关于" },
+	{
+		to: "/",
+		get label() {
+			return i18n.t("panelUi.config.nav.1");
+		},
+	},
+	{
+		to: "/subs",
+		get label() {
+			return i18n.t("panelUi.config.nav.2");
+		},
+		countKey: "subs",
+	},
+	{
+		to: "/targets",
+		get label() {
+			return i18n.t("panelUi.config.nav.3");
+		},
+		countKey: "targets",
+	},
+	{
+		to: "/history",
+		get label() {
+			return i18n.t("panelUi.config.nav.4");
+		},
+	},
+	{
+		to: "/stats",
+		get label() {
+			return i18n.t("panelUi.config.nav.5");
+		},
+	},
+	{
+		to: "/rules",
+		get label() {
+			return i18n.t("panelUi.config.nav.6");
+		},
+	},
+	{
+		to: "/cards",
+		get label() {
+			return i18n.t("panelUi.config.nav.7");
+		},
+	},
+	{
+		to: "/ai",
+		get label() {
+			return i18n.t("panelUi.config.nav.8");
+		},
+	},
+	{
+		to: "/extensions",
+		get label() {
+			return i18n.t("panelUi.config.nav.9");
+		},
+	},
+	{
+		to: ALWAYS_VISIBLE_PATH,
+		get label() {
+			return i18n.t("panelUi.config.nav.10");
+		},
+	},
+	{
+		to: "/logs",
+		get label() {
+			return i18n.t("panelUi.config.nav.11");
+		},
+	},
+	{
+		to: "/about",
+		get label() {
+			return i18n.t("panelUi.config.nav.12");
+		},
+	},
 ];
 
 /** 这一项允许被藏起来吗。 */

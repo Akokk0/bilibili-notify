@@ -1,5 +1,6 @@
 import { Btn, CheckRow, ErrorNote, Icon, ModalShell, OptionCard } from "@bilibili-notify/ui";
 import { useState } from "react";
+import { i18n, useT } from "../../i18n";
 import { type BackupKind, type BackupSectionSelection, isValidPin } from "./backup-file";
 import { PinField } from "./dialog-bits";
 
@@ -10,10 +11,30 @@ export interface BackupExportDialogProps {
 }
 
 const SECTIONS: { key: keyof BackupSectionSelection; label: string }[] = [
-	{ key: "subscriptions", label: "订阅 + 标签" },
-	{ key: "targets", label: "推送目标" },
-	{ key: "connections", label: "推送连接" },
-	{ key: "globals", label: "全局设置" },
+	{
+		key: "subscriptions",
+		get label() {
+			return i18n.t("panelUi.pages.backup.BackupExportDialog.1");
+		},
+	},
+	{
+		key: "targets",
+		get label() {
+			return i18n.t("panelUi.pages.backup.BackupExportDialog.2");
+		},
+	},
+	{
+		key: "connections",
+		get label() {
+			return i18n.t("panelUi.pages.backup.BackupExportDialog.3");
+		},
+	},
+	{
+		key: "globals",
+		get label() {
+			return i18n.t("panelUi.pages.backup.BackupExportDialog.4");
+		},
+	},
 ];
 
 const ALL_SELECTED: BackupSectionSelection = {
@@ -24,6 +45,8 @@ const ALL_SELECTED: BackupSectionSelection = {
 };
 
 export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDialogProps) {
+	const tx = useT();
+
 	const [kind, setKind] = useState<BackupKind>("full");
 	const [sections, setSections] = useState<BackupSectionSelection>(ALL_SELECTED);
 	const [pin, setPin] = useState("");
@@ -41,34 +64,45 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 	}
 
 	return (
-		<ModalShell onCancel={onCancel} width={400} bodyClassName="p-5" title="导出备份">
+		<ModalShell
+			onCancel={onCancel}
+			width={400}
+			bodyClassName="p-5"
+			title={tx("panelUi.pages.backup.BackupExportDialog.5")}
+		>
 			<div className="mb-4 grid grid-cols-2 gap-2">
 				<OptionCard
 					active={kind === "full"}
-					label="完整备份"
-					description="含机密 · 用于灾备还原"
+					label={tx("panelUi.pages.backup.BackupExportDialog.6")}
+					description={tx("panelUi.pages.backup.BackupExportDialog.7")}
 					onSelect={() => setKind("full")}
 				/>
 				<OptionCard
 					active={kind === "sanitized"}
-					label="脱敏导出"
-					description="无机密 · 可存档/分享"
+					label={tx("panelUi.pages.backup.BackupExportDialog.8")}
+					description={tx("panelUi.pages.backup.BackupExportDialog.9")}
 					onSelect={() => setKind("sanitized")}
 				/>
 			</div>
 
 			{kind === "full" ? (
 				<ErrorNote icon={<Icon.warning size={14} />} className="mb-4">
-					此文件 = 你的 B 站账号与面板密码，请妥善保管、切勿外发；6 位 PIN
-					仅防手滑，真正的安全靠保管好文件本身。
+					{tx("panelUi.pages.backup.BackupExportDialog.10")}
 				</ErrorNote>
 			) : null}
 
 			{kind === "full" ? (
-				<PinField className="mb-4" value={pin} onChange={setPin} placeholder="设置 6 位数字 PIN" />
+				<PinField
+					className="mb-4"
+					value={pin}
+					onChange={setPin}
+					placeholder={tx("panelUi.pages.backup.BackupExportDialog.11")}
+				/>
 			) : null}
 
-			<div className="mb-1 text-bn-sm font-semibold text-bn-text-secondary">备份内容</div>
+			<div className="mb-1 text-bn-sm font-semibold text-bn-text-secondary">
+				{tx("panelUi.pages.backup.BackupExportDialog.12")}
+			</div>
 			<div className="flex flex-col gap-1.5">
 				{SECTIONS.map(({ key, label }) => (
 					<CheckRow key={key} checked={sections[key]} onChange={() => toggle(key)}>
@@ -79,10 +113,12 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 
 			<div className="mt-4 flex justify-end gap-2">
 				<Btn variant="outline" size="sm" onClick={onCancel} disabled={busy}>
-					取消
+					{tx("panelUi.pages.backup.BackupExportDialog.13")}
 				</Btn>
 				<Btn variant="primary" size="sm" onClick={submit} disabled={!canExport}>
-					{busy ? "导出中…" : "导出"}
+					{busy
+						? tx("panelUi.pages.backup.BackupExportDialog.14")
+						: tx("panelUi.pages.backup.BackupExportDialog.15")}
 				</Btn>
 			</div>
 		</ModalShell>

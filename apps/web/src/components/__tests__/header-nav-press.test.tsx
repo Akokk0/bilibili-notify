@@ -134,19 +134,19 @@ afterEach(() => {
 describe("顶栏一级导航:点下就选中,不等路由", () => {
 	it("点一格 → 它当场挂上 tab-active,而不是等 pathname 追上来", async () => {
 		await renderHeader();
-		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅 UP 主"));
+		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅"));
 		expect(subs).toBeTruthy();
 
 		fireEvent.click(subs as HTMLElement);
 
 		// 路由被冻在 "/",所以只认 pathname 的写法这里永远是「概览」——
 		// 而那正是真机上那段缝里的样子:按下的位移弹了回去。
-		expect(activeLabels().some((l) => l.includes("订阅 UP 主"))).toBe(true);
+		expect(activeLabels().some((l) => l.includes("订阅"))).toBe(true);
 	});
 
 	it("选中的只有一格 —— 乐观那一格顶掉旧的,不是两格同时按下", async () => {
 		await renderHeader();
-		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅 UP 主"));
+		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅"));
 
 		fireEvent.click(subs as HTMLElement);
 
@@ -157,21 +157,21 @@ describe("顶栏一级导航:点下就选中,不等路由", () => {
 
 	it("Cmd / Ctrl 点击不动选中态 —— 那是「在新标签打开」,这一页没换路由", async () => {
 		await renderHeader();
-		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅 UP 主"));
+		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅"));
 
 		fireEvent.click(subs as HTMLElement, { metaKey: true });
 
 		// 认了的话顶栏会高亮一个根本没打开的格子,而且没有下一次 pathname 变化
 		// 来把它清掉 —— 一直错到主人自己再点一次。
 		expect(activeLabels().some((l) => l.includes("概览"))).toBe(true);
-		expect(activeLabels().some((l) => l.includes("订阅 UP 主"))).toBe(false);
+		expect(activeLabels().some((l) => l.includes("订阅"))).toBe(false);
 	});
 
 	it("路由追上来之后乐观值作废 —— 落到第三个地方也不会还高亮着点过的那格", async () => {
 		const rerender = await renderHeader();
-		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅 UP 主"));
+		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅"));
 		fireEvent.click(subs as HTMLElement);
-		expect(activeLabels().some((l) => l.includes("订阅 UP 主"))).toBe(true);
+		expect(activeLabels().some((l) => l.includes("订阅"))).toBe(true);
 
 		// 路由动了,而且落在第三个地方(浏览器后退、程序内跳转都会这样)。乐观值
 		// 该当场作废 —— 存成「需要清的状态」时,清的时机就是这里最容易漂的地方。
@@ -179,18 +179,18 @@ describe("顶栏一级导航:点下就选中,不等路由", () => {
 		rerender();
 
 		expect(activeLabels().some((l) => l.includes("推送历史"))).toBe(true);
-		expect(activeLabels().some((l) => l.includes("订阅 UP 主"))).toBe(false);
+		expect(activeLabels().some((l) => l.includes("订阅"))).toBe(false);
 	});
 
 	it("点过去再后退回来 —— 选中的是回到的那一页,不是点过的那格(issue #54)", async () => {
 		const rerender = await renderHeader();
-		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅 UP 主"));
+		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅"));
 		fireEvent.click(subs as HTMLElement);
 
 		// 路由追上来:到了订阅页。
 		freezeRouteAt("/subs");
 		rerender();
-		expect(activeLabels().some((l) => l.includes("订阅 UP 主"))).toBe(true);
+		expect(activeLabels().some((l) => l.includes("订阅"))).toBe(true);
 
 		// 浏览器后退:pathname 回到**点下时的那一个**。只拿「点下时的 pathname 等不等于
 		// 现在」判路由动没动的话,这里会判成「还没动」,把订阅那格又高亮回来。
@@ -198,7 +198,7 @@ describe("顶栏一级导航:点下就选中,不等路由", () => {
 		rerender();
 
 		expect(activeLabels().some((l) => l.includes("概览"))).toBe(true);
-		expect(activeLabels().some((l) => l.includes("订阅 UP 主"))).toBe(false);
+		expect(activeLabels().some((l) => l.includes("订阅"))).toBe(false);
 	});
 
 	it("没点过任何一格时,选中态照旧跟着 pathname 走", async () => {

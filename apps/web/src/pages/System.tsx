@@ -6,7 +6,7 @@ import { useLocation } from "react-router-dom";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
-import { useT } from "../i18n";
+import { i18n, useT } from "../i18n";
 import { api } from "../services/api";
 import type { Connection, PushTarget } from "../types/domain";
 import type { GlobalConfigPatch, SettingsPatch } from "../types/globals";
@@ -26,11 +26,56 @@ import { buildSystemPatch } from "./system-save-patch";
  * 顶部 chip 条,与 Rules / Targets / Ai / Cards 同一件组件。
  */
 const SYSTEM_SECTIONS = [
-	{ id: "account", label: "账号", desc: "B 站登录 · 主人账号", glyph: Icon.user },
-	{ id: "runtime", label: "运行", desc: "后端参数 · 浏览器来源", glyph: Icon.sliders },
-	{ id: "messaging", label: "消息", desc: "私聊指令 · 链接解析", glyph: Icon.chat },
-	{ id: "appearance", label: "外观", desc: "皮肤", glyph: Icon.palette },
-	{ id: "maintenance", label: "维护", desc: "备份 · 更新 · 新手指引", glyph: Icon.wrench },
+	{
+		id: "account",
+		get label() {
+			return i18n.t("panelUi.pages.System.1");
+		},
+		get desc() {
+			return i18n.t("panelUi.pages.System.2");
+		},
+		glyph: Icon.user,
+	},
+	{
+		id: "runtime",
+		get label() {
+			return i18n.t("panelUi.pages.System.3");
+		},
+		get desc() {
+			return i18n.t("panelUi.pages.System.4");
+		},
+		glyph: Icon.sliders,
+	},
+	{
+		id: "messaging",
+		get label() {
+			return i18n.t("panelUi.pages.System.5");
+		},
+		get desc() {
+			return i18n.t("panelUi.pages.System.6");
+		},
+		glyph: Icon.chat,
+	},
+	{
+		id: "appearance",
+		get label() {
+			return i18n.t("panelUi.pages.System.7");
+		},
+		get desc() {
+			return i18n.t("panelUi.pages.System.8");
+		},
+		glyph: Icon.palette,
+	},
+	{
+		id: "maintenance",
+		get label() {
+			return i18n.t("panelUi.pages.System.9");
+		},
+		get desc() {
+			return i18n.t("panelUi.pages.System.10");
+		},
+		glyph: Icon.wrench,
+	},
 ] as const;
 
 type SystemSectionId = (typeof SYSTEM_SECTIONS)[number]["id"];
@@ -132,7 +177,7 @@ export default function System() {
 			// 改了哪块发哪块(挑块的规则与理由在 system-save-patch.ts)。草稿是从这份基线长出来
 			// 的,没有基线就不会有草稿;真走到这里是状态坏了,宁可报错也别静默发一份空补丁。
 			const base = globalsQuery.data;
-			if (!base) throw new Error("配置基线尚未加载,无法保存");
+			if (!base) throw new Error(t("panelUi.pages.System.11"));
 			await patchSettings(buildSystemPatch(next, base));
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_KEY }),
@@ -140,7 +185,7 @@ export default function System() {
 
 	useDirtyDraft<SettingsResponse>({
 		pageKey: "system",
-		pageLabel: "Core · 应用",
+		pageLabel: t("panelUi.pages.System.12"),
 		draft,
 		baseline: globalsQuery.data ?? null,
 		onSave: async () => {
@@ -155,7 +200,7 @@ export default function System() {
 		// 两栏骨架一律走 `xl:grid-bn-rail`,别手写栏宽 —— 栏宽在 --bn-rail-width,皮肤能调。
 		<div className="bn-anim-page-in grid grid-cols-1 gap-4 xl:grid-bn-rail">
 			<SectionNav
-				heading="系统"
+				heading={t("panelUi.pages.System.13")}
 				items={SYSTEM_SECTIONS.map(({ id, label, desc, glyph: Glyph }) => ({
 					id,
 					label,
@@ -170,10 +215,11 @@ export default function System() {
 				{/* 配置读不下来是整页的事,不是某一格的事 —— 摆在格子外头,停在哪一格都看得见。 */}
 				{globalsQuery.error ? (
 					<ErrorNote>
-						拉取 /api/settings 失败：{String((globalsQuery.error as Error).message)}
+						{t("panelUi.pages.System.14")}
+						{String((globalsQuery.error as Error).message)}
 					</ErrorNote>
 				) : !draft && globalsQuery.isLoading ? (
-					<LoadingBlock label="正在读取系统配置" />
+					<LoadingBlock label={t("panelUi.pages.System.15")} />
 				) : null}
 
 				{section === "account" ? <CredentialsSection /> : null}

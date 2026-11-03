@@ -57,7 +57,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-/** 落在 `/subs` 上 —— 于是「订阅 UP 主」是选中格,「推送目标」是未选中格。 */
+/** 落在 `/subs` 上 —— 于是「订阅」是选中格,「推送目标」是未选中格。 */
 async function mountAtSubs(): Promise<void> {
 	const { GlassHeader } = await import("../header");
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -70,7 +70,7 @@ async function mountAtSubs(): Promise<void> {
 			</ThemeRoot>
 		</QueryClientProvider>,
 	);
-	await screen.findByText("订阅 UP 主");
+	await screen.findByText("订阅");
 }
 
 /** 某一格里那颗气泡 —— 认纯数字文本(同级还有条空的下划线 span)。 */
@@ -98,8 +98,8 @@ function isActive(label: string): boolean {
 describe("顶栏计数气泡", () => {
 	it("选中格的气泡不自带颜色,底与字都跟着这一格的文字色走", async () => {
 		await mountAtSubs();
-		expect(isActive("订阅 UP 主")).toBe(true);
-		const badge = countBadge("订阅 UP 主");
+		expect(isActive("订阅")).toBe(true);
+		const badge = countBadge("订阅");
 
 		// 写死品牌粉就是那个 bug:皮肤把选中格画成粉实心块时,粉字落在粉上没影了。
 		expect(badge.className).not.toContain("text-bn-pink");

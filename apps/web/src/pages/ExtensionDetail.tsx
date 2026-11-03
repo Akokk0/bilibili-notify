@@ -15,6 +15,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ExtensionViewBoundary } from "../components/error-boundary";
 import { ExtensionLogLevel } from "../components/extension-log-level";
 import { invalidateExtensionTables, useExtensions } from "../hooks/useExtensions";
+import { useT } from "../i18n";
 import { api } from "../services/api";
 import { type Subscription, subscriptionIdentityOf } from "../types/domain";
 import {
@@ -62,6 +63,8 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
 type DetailTab = "config" | ExtensionDocKind;
 
 export default function ExtensionDetail() {
+	const tx = useT();
+
 	const { id = "" } = useParams<{ id: string }>();
 	const listed = useExtensions();
 	const toggle = useExtensionToggle();
@@ -101,7 +104,7 @@ export default function ExtensionDetail() {
 		},
 	});
 
-	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
+	if (listed.isPending) return <LoadingBlock label={tx("panelUi.pages.ExtensionDetail.1")} />;
 	/*
 	 * 🔴 **「读不到」不许画成「没这个」**:表读不出来时 `find` 也交出 undefined,而底下
 	 * 那句「没有装名叫 X 的拓展」是结论 —— 主人会照着它去重装一个其实好好装着的拓展。
@@ -109,9 +112,12 @@ export default function ExtensionDetail() {
 	if (listed.isError) {
 		return (
 			<div className="bn-anim-page-in flex flex-col gap-3">
-				<ErrorNote>读不到装了哪些拓展:{reasonOf(listed.error)}</ErrorNote>
+				<ErrorNote>
+					{tx("panelUi.pages.ExtensionDetail.2")}
+					{reasonOf(listed.error)}
+				</ErrorNote>
 				<Link to="/extensions" className="text-bn-sm text-bn-pink">
-					← 回拓展列表
+					{tx("panelUi.pages.ExtensionDetail.3")}
 				</Link>
 			</div>
 		);
@@ -122,9 +128,12 @@ export default function ExtensionDetail() {
 		// 地址栏是能手敲的,拓展也可能刚被删掉 —— 白屏的话主人分不清是「没这个」还是「坏了」。
 		return (
 			<div className="bn-anim-page-in flex flex-col gap-3">
-				<EmptyNote>没有装名叫 {id} 的拓展</EmptyNote>
+				<EmptyNote>
+					{tx("panelUi.pages.ExtensionDetail.4")}
+					{id} {tx("panelUi.pages.ExtensionDetail.5")}
+				</EmptyNote>
 				<Link to="/extensions" className="text-bn-sm text-bn-pink">
-					← 回拓展列表
+					{tx("panelUi.pages.ExtensionDetail.6")}
 				</Link>
 			</div>
 		);
@@ -160,11 +169,11 @@ export default function ExtensionDetail() {
 			<div className="flex items-center gap-1.5 text-bn-xs text-bn-text-tertiary">
 				<Link
 					to="/extensions"
-					aria-label="返回拓展列表"
+					aria-label={tx("panelUi.pages.ExtensionDetail.7")}
 					className="flex items-center gap-1 font-bold text-bn-pink transition hover:underline hover:opacity-80"
 				>
 					<Icon.arrowLeft size={12} />
-					拓展
+					{tx("panelUi.pages.ExtensionDetail.8")}
 				</Link>
 				<Icon.chevronRight size={12} />
 				<span className="font-bold text-bn-text-secondary">{ext.name}</span>
@@ -201,7 +210,7 @@ export default function ExtensionDetail() {
 					) : (
 						<p className={PARAGRAPH_CLS}>
 							{ext.version ? `v${ext.version} · ` : ""}
-							这个拓展没有交上来自己的面板。
+							{tx("panelUi.pages.ExtensionDetail.9")}
 						</p>
 					)}
 				</div>
@@ -215,7 +224,7 @@ export default function ExtensionDetail() {
 					<span className="text-bn-2xs text-bn-text-tertiary">
 						{/* 头卡正文让给了积木,版本号挪到这一句的开头(决策 24 的五处之一)。 */}
 						{declarative && ext.version ? `v${ext.version} · ` : ""}
-						卸掉它:盘上那份与它自己的设置都会没,随时能再装回来。
+						{tx("panelUi.pages.ExtensionDetail.10")}
 					</span>
 					<Btn
 						variant="danger-outline"
@@ -223,7 +232,7 @@ export default function ExtensionDetail() {
 						icon={<Icon.trash size={13} />}
 						onClick={() => setConfirming(true)}
 					>
-						删除拓展
+						{tx("panelUi.pages.ExtensionDetail.11")}
 					</Btn>
 				</div>
 			</GlassBox>
@@ -238,7 +247,11 @@ export default function ExtensionDetail() {
 				<TabBar<DetailTab>
 					items={tabs.map((t) =>
 						t === "config"
-							? { id: t, label: "配置", icon: <Icon.gear size={14} /> }
+							? {
+									id: t,
+									label: tx("panelUi.pages.ExtensionDetail.12"),
+									icon: <Icon.gear size={14} />,
+								}
 							: { id: t, label: EXTENSION_DOC_LABEL[t], icon: extensionDocIcon(t, 14) },
 					)}
 					value={tab}
@@ -259,15 +272,18 @@ export default function ExtensionDetail() {
 
 			{confirming ? (
 				<ConfirmDialog
-					title={`删掉「${ext.name}」?`}
+					title={tx("panelUi.pages.ExtensionDetail.13", { value0: ext.name })}
 					message={
 						<>
 							<p className={PARAGRAPH_CLS}>
-								盘上那份会被抹掉,<strong>删掉它的设置也会一起没</strong>
-								。随时能从拓展市场再装回来。
+								{tx("panelUi.pages.ExtensionDetail.14")}
+								<strong>{tx("panelUi.pages.ExtensionDetail.15")}</strong>
+								{tx("panelUi.pages.ExtensionDetail.16")}
 							</p>
 							{keptSubs > 0 ? (
-								<p className={`mt-2 ${PARAGRAPH_CLS}`}>有 {keptSubs} 条订阅会保留(暂停)</p>
+								<p className={`mt-2 ${PARAGRAPH_CLS}`}>
+									{tx("panelUi.pages.ExtensionDetail.17", { count: keptSubs })}
+								</p>
 							) : null}
 							{remove.isError ? (
 								<ErrorNote size="sm" className="mt-2.5">
@@ -276,7 +292,11 @@ export default function ExtensionDetail() {
 							) : null}
 						</>
 					}
-					confirmLabel={remove.isPending ? "正在删…" : "删掉它"}
+					confirmLabel={
+						remove.isPending
+							? tx("panelUi.pages.ExtensionDetail.19")
+							: tx("panelUi.pages.ExtensionDetail.20")
+					}
 					danger
 					onConfirm={() => {
 						if (!remove.isPending) remove.mutate();

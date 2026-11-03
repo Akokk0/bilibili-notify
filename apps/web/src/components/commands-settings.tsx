@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 /**
  * 系统页的「私聊指令」卡片 —— 前缀 / 别名 / 总开关。
  *
@@ -48,6 +49,8 @@ export function CommandsSettings({
 	draft: Pick<GlobalConfig, "commands">;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
+	const tx = useT();
+
 	const registry = useQuery({
 		queryKey: ["commands"],
 		queryFn: () => api.get<CommandsResponse>("/api/commands"),
@@ -101,17 +104,23 @@ export function CommandsSettings({
 
 	return (
 		<GlassBox
-			title="Core · 私聊指令"
-			subtitle="主人在 IM 私聊里能敲的那几条 · globals.commands"
+			title={tx("panelUi.components.commands-settings.1")}
+			subtitle={tx("panelUi.components.commands-settings.2")}
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.chat size={14} />}
-			badge={cfg.enabled ? `前缀 ${cfg.prefix || "(空)"}` : "已关闭"}
+			badge={
+				cfg.enabled
+					? tx("panelUi.components.commands-settings.3", {
+							value0: cfg.prefix || tx("panelUi.components.commands-settings.4"),
+						})
+					: tx("panelUi.components.commands-settings.5")
+			}
 		>
 			<Field code="core.commands.enabled">
 				<Toggle
 					value={cfg.enabled}
 					onChange={(v) => onPatch({ commands: { enabled: v } })}
-					ariaLabel="私聊指令总开关"
+					ariaLabel={tx("panelUi.components.commands-settings.6")}
 				/>
 			</Field>
 
@@ -126,10 +135,11 @@ export function CommandsSettings({
 
 			<Field code="core.commands.aliases" full>
 				{registry.isLoading ? (
-					<LoadingBlock variant="inset" label="加载指令表中" />
+					<LoadingBlock variant="inset" label={tx("panelUi.components.commands-settings.7")} />
 				) : registry.error ? (
 					<div className="text-bn-sm text-bn-danger-text">
-						拉取指令表失败：{String((registry.error as Error).message)}
+						{tx("panelUi.components.commands-settings.8")}
+						{String((registry.error as Error).message)}
 					</div>
 				) : (
 					<div className="flex flex-col gap-2">
@@ -150,20 +160,21 @@ export function CommandsSettings({
 											variant="ghost"
 											size="sm"
 											onClick={() => restore(cmd.name)}
-											title="回到代码里内置的那几个别名"
+											title={tx("panelUi.components.commands-settings.9")}
 										>
-											恢复默认
+											{tx("panelUi.components.commands-settings.10")}
 										</Btn>
 									) : null}
 								</div>
 								<TInput
 									value={displayValue(cmd)}
 									onChange={(v) => setAliases(cmd.name, v)}
-									placeholder="别名,用空格分隔;留空则只认主名"
+									placeholder={tx("panelUi.components.commands-settings.11")}
 								/>
 								{cmd.example ? (
 									<div className="mt-1 font-mono text-bn-xs text-bn-text-tertiary">
-										例：{cfg.prefix}
+										{tx("panelUi.components.commands-settings.12")}
+										{cfg.prefix}
 										{cmd.name} {cmd.example}
 									</div>
 								) : null}

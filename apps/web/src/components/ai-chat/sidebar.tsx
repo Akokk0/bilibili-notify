@@ -1,6 +1,7 @@
 import type { AiChatMode, AiSkinTarget } from "@bilibili-notify/contract";
 import { EmptyNote, Icon, IconButton } from "@bilibili-notify/ui";
 import { useState } from "react";
+import { useT } from "../../i18n";
 import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
 import { ThinkingLevelSetting } from "./thinking-level-setting";
 
@@ -33,6 +34,8 @@ export interface ChatSidebarProps {
 }
 
 export function ChatSidebar(props: ChatSidebarProps) {
+	const tx = useT();
+
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const groups = groupConversations(props.conversations);
 
@@ -40,11 +43,12 @@ export function ChatSidebar(props: ChatSidebarProps) {
 		<div className="bn-glass-sheen bn-glass-strong m-3 flex w-[258px] shrink-0 flex-col rounded-3xl px-3 pb-3 pt-3.5 shadow-bn-elev">
 			<div className="flex items-center gap-1.5 px-0.5 pb-4">
 				<div className="flex-1 truncate pl-2 text-bn-md font-bold text-bn-text-primary">
-					女仆AI · {props.aiName}
+					{tx("panelUi.components.ai-chat.sidebar.1")}
+					{props.aiName}
 				</div>
 				<IconButton
 					icon={<Icon.panelCollapse size={18} />}
-					label="收起侧栏"
+					label={tx("panelUi.components.ai-chat.sidebar.2")}
 					size="xl"
 					onClick={props.onCollapse}
 				/>
@@ -58,23 +62,23 @@ export function ChatSidebar(props: ChatSidebarProps) {
 					onClick={() => props.onNew("chat")}
 					className="flex w-full cursor-pointer items-center gap-2 rounded-xl bg-bn-code-bg px-3 py-2.5 text-bn-base font-semibold text-bn-text-tertiary bn-chat-accent-soft-hover transition-colors"
 				>
-					<Icon.plus size={16} /> 开启新对话
+					<Icon.plus size={16} /> {tx("panelUi.components.ai-chat.sidebar.3")}
 				</button>
 				<button
 					type="button"
 					onClick={() => props.onNew("skin")}
 					className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-bn-sm font-semibold text-bn-text-secondary bn-chat-accent-soft-hover transition-colors"
 				>
-					<Icon.palette size={15} /> 新建皮肤工坊
+					<Icon.palette size={15} /> {tx("panelUi.components.ai-chat.sidebar.4")}
 				</button>
 			</div>
 
 			<div className="flex-1 overflow-y-auto">
 				{groups.length === 0 ? (
 					<EmptyNote size="sm" className="mx-3 my-2 leading-relaxed">
-						还没有聊过天呢～
+						{tx("panelUi.components.ai-chat.sidebar.5")}
 						<br />
-						点上面那颗按钮开个新对话吧
+						{tx("panelUi.components.ai-chat.sidebar.6")}
 					</EmptyNote>
 				) : (
 					groups.map((g) => (
@@ -108,8 +112,8 @@ export function ChatSidebar(props: ChatSidebarProps) {
 									</button>
 									<IconButton
 										icon={<Icon.close size={13} />}
-										label={`删除对话「${c.title}」`}
-										title="删除这个对话"
+										label={tx("panelUi.components.ai-chat.sidebar.7", { value0: c.title })}
+										title={tx("panelUi.components.ai-chat.sidebar.8")}
 										size="md"
 										tone="danger"
 										className="mr-1.5 opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100"
@@ -146,13 +150,13 @@ export function ChatSidebar(props: ChatSidebarProps) {
 						{props.userName}
 					</div>
 					<div className="truncate text-bn-2xs text-bn-text-secondary">
-						{props.modelName || "尚未配置模型"}
+						{props.modelName || tx("panelUi.components.ai-chat.sidebar.9")}
 					</div>
 				</div>
 				<IconButton
 					icon={<Icon.gear size={17} />}
-					label="聊天设置"
-					title="设置"
+					label={tx("panelUi.components.ai-chat.sidebar.10")}
+					title={tx("panelUi.components.ai-chat.sidebar.11")}
 					size="xl"
 					ariaExpanded={settingsOpen}
 					onClick={() => setSettingsOpen((v) => !v)}
@@ -188,8 +192,16 @@ function ConversationLabel({
 	persona: boolean;
 	skinTarget: AiSkinTarget;
 }) {
+	const tx = useT();
+
 	const text =
-		mode === "skin" ? (skinTarget === "card" ? "卡片工坊" : "工坊") : persona ? null : "无人格";
+		mode === "skin"
+			? skinTarget === "card"
+				? tx("panelUi.components.ai-chat.sidebar.12")
+				: tx("panelUi.components.ai-chat.sidebar.13")
+			: persona
+				? null
+				: tx("panelUi.components.ai-chat.sidebar.14");
 	if (!text) return null;
 	return (
 		<span

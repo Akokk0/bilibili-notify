@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 消息版式编辑器的纯函数工具 —— 块排序 / 分条符增删 / 分组预览 / 分隔符编解码。
  * 与后端 `planMessageGroups`(packages/internal)语义对齐:分条符切组、隐藏块
@@ -10,10 +11,18 @@ export const MESSAGE_SPLIT_TYPE = "split";
 
 /** 部件中文名(预览与块行共用)。 */
 export const PART_LABELS: Record<string, string> = {
-	card: "卡片图",
-	text: "文本",
-	link: "链接",
-	[MESSAGE_SPLIT_TYPE]: "分条符",
+	get card() {
+		return i18n.t("panelUi.pages.rules.message-layout-utils.1");
+	},
+	get text() {
+		return i18n.t("panelUi.pages.rules.message-layout-utils.2");
+	},
+	get link() {
+		return i18n.t("panelUi.pages.rules.message-layout-utils.3");
+	},
+	get [MESSAGE_SPLIT_TYPE]() {
+		return i18n.t("panelUi.pages.rules.message-layout-utils.4");
+	},
 };
 
 /** 把 from 处的块移动到 to(dnd 拖拽落点语义);越界原样返回。 */

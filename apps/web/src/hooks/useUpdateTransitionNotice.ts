@@ -6,6 +6,7 @@ import {
 	useUpdateStatus,
 	withNotes,
 } from "../components/update/status";
+import { i18n } from "../i18n";
 import { type NoticeView, useToastStore } from "../store/notifications";
 
 /**
@@ -25,9 +26,17 @@ export function transitionNotice(
 ): NoticeView | null {
 	if (before.state.phase !== "downloading") return null;
 	const { target, notes } = before.state;
-	const action = { label: "去更新", to: UPDATE_SECTION_PATH };
+	const action = {
+		label: i18n.t("panelUi.hooks.useUpdateTransitionNotice.1"),
+		to: UPDATE_SECTION_PATH,
+	};
 	if (after.state.phase === "ready" && after.state.target === target) {
-		return { id: `update:${target}`, title: `${target} 已就绪`, body: noticeBody(after), action };
+		return {
+			id: `update:${target}`,
+			title: i18n.t("panelUi.hooks.useUpdateTransitionNotice.2", { value0: target }),
+			body: noticeBody(after),
+			action,
+		};
 	}
 	// `error` 不带版本号,用上一拍记着的。「正在下 0.9.1,报回来的却是盘上早就就绪的 0.9.0」
 	// 同样是 0.9.1 没下下来 —— 服务端把盘上的事实压在失败结论上面(见 service 的
@@ -35,8 +44,8 @@ export function transitionNotice(
 	if (after.state.phase === "error" || after.state.phase === "ready") {
 		return {
 			id: `update:${target}`,
-			title: `${target} 下载失败`,
-			body: withNotes(notes, "没下下来,到系统页看看是哪一步没成。"),
+			title: i18n.t("panelUi.hooks.useUpdateTransitionNotice.3", { value0: target }),
+			body: withNotes(notes, i18n.t("panelUi.hooks.useUpdateTransitionNotice.4")),
 			action,
 		};
 	}

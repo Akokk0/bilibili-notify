@@ -2,6 +2,7 @@ import type { ExtensionDocsResponse } from "@bilibili-notify/contract";
 import { Btn, ErrorNote, GlassBox, Icon, LoadingBlock } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { lazy, type ReactNode, Suspense } from "react";
+import { i18n, useT } from "../../i18n";
 import { ApiError, api } from "../../services/api";
 import { reasonOf } from "./shared";
 
@@ -28,8 +29,12 @@ export type ExtensionDocKind = "readme" | "changelog";
 /** 顺序也在这儿:说明在前 —— 没指定的时候人更可能是来读「这是干嘛的」。 */
 const DOC_KINDS = ["readme", "changelog"] as const;
 export const EXTENSION_DOC_LABEL: Record<ExtensionDocKind, string> = {
-	readme: "说明",
-	changelog: "更新日志",
+	get readme() {
+		return i18n.t("panelUi.pages.extensions.docs-panel.1");
+	},
+	get changelog() {
+		return i18n.t("panelUi.pages.extensions.docs-panel.2");
+	},
 };
 
 /** 卡头那枚芯片 15、tab 里那枚 14 —— 两处尺寸不同,所以现画不存表。 */
@@ -86,11 +91,16 @@ export function useExtensionDocs(extensionId: string): ExtensionDocsView {
 
 /** 那句读不到 —— 摆在 tab 条下面,哪一档都看得见:它说的是整个拓展的文档读不到。 */
 export function ExtensionDocsFailureNote({ failure }: { failure: ExtensionDocsFailure }) {
+	const tx = useT();
+
 	return (
 		<ErrorNote size="sm" className="flex flex-wrap items-center gap-x-2 gap-y-1">
-			<span>读不到这个拓展的说明:{failure.reason}</span>
+			<span>
+				{tx("panelUi.pages.extensions.docs-panel.3")}
+				{failure.reason}
+			</span>
 			<Btn variant="outline" size="sm" disabled={failure.busy} onClick={failure.retry}>
-				重试
+				{tx("panelUi.pages.extensions.docs-panel.4")}
 			</Btn>
 		</ErrorNote>
 	);
@@ -98,9 +108,15 @@ export function ExtensionDocsFailureNote({ failure }: { failure: ExtensionDocsFa
 
 /** 一份文档一张卡。选哪一份不归它管。 */
 export function ExtensionDocPane({ kind, text }: { kind: ExtensionDocKind; text: string }) {
+	const tx = useT();
+
 	return (
 		<GlassBox title={EXTENSION_DOC_LABEL[kind]} icon={extensionDocIcon(kind, 15)}>
-			<Suspense fallback={<LoadingBlock variant="inset" label="正在读取文档" />}>
+			<Suspense
+				fallback={
+					<LoadingBlock variant="inset" label={tx("panelUi.pages.extensions.docs-panel.5")} />
+				}
+			>
 				<DocsMarkdown source={text} />
 			</Suspense>
 		</GlassBox>

@@ -1,3 +1,4 @@
+import { i18n } from "../i18n";
 /**
  * CSS 框旁那颗「请女仆帮忙写」的那条流(`POST /api/cards/skins/:id/ai`,ADR-0015 决策 3–10)。
  *
@@ -44,7 +45,11 @@ export async function streamCardSkinAiCss(
 	});
 	if (!res.ok || !res.body) {
 		const payload = await res.json().catch(() => undefined);
-		throw apiErrorOf(res.status, payload, `请求失败(${res.status})`);
+		throw apiErrorOf(
+			res.status,
+			payload,
+			i18n.t("panelUi.services.cardSkinAi.1", { value0: res.status }),
+		);
 	}
 
 	const reader = res.body.getReader();
@@ -68,6 +73,6 @@ export async function streamCardSkinAiCss(
 
 	if (failure !== null) throw apiErrorOf(res.status, failure, failure.message);
 	// 既没 done 也没 error:服务端进程被掐了、或反代掐了连接。当成写完的话,框里会留下半截。
-	if (!done) throw new Error("连接中断,AI 没能写完");
+	if (!done) throw new Error(i18n.t("panelUi.services.cardSkinAi.2"));
 	return done;
 }

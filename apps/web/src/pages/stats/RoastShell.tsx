@@ -1,6 +1,7 @@
 import { Btn, GlassPanel, Icon, LoadingBlock } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
 import { AI_PURPLE } from "../../config/colors";
+import { useT } from "../../i18n";
 import { errorTextOf } from "../../services/error-text";
 
 /**
@@ -36,6 +37,8 @@ export function RoastShell({
 	children,
 	onRun,
 }: RoastShellProps) {
+	const tx = useT();
+
 	return (
 		<GlassPanel
 			title={title}
@@ -45,7 +48,7 @@ export function RoastShell({
 			right={
 				children ? (
 					<Btn size="sm" variant="outline" onClick={onRun}>
-						重新生成
+						{tx("panelUi.pages.stats.RoastShell.1")}
 					</Btn>
 				) : null
 			}
@@ -64,10 +67,17 @@ export function RoastShell({
 				   的话邀请文案会吊在顶上、下面空一大片。 */
 				<div className="flex h-full flex-col items-center justify-center gap-3 px-1 py-4 text-center">
 					<div className="max-w-md text-bn-sm leading-relaxed text-bn-text-tertiary">
-						{err ? <span className="text-bn-danger-text">生成失败:{err}</span> : idle}
+						{err ? (
+							<span className="text-bn-danger-text">
+								{tx("panelUi.pages.stats.RoastShell.2")}
+								{err}
+							</span>
+						) : (
+							idle
+						)}
 					</div>
 					<Btn variant="primary" onClick={onRun}>
-						{err ? "重试" : "生成 AI 锐评"}
+						{err ? tx("panelUi.pages.stats.RoastShell.3") : tx("panelUi.pages.stats.RoastShell.4")}
 					</Btn>
 				</div>
 			)}

@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 「立即重启并应用」按下去之后的那段路。
  *
@@ -107,20 +108,20 @@ export function restartNotice(mark: RestartMark): NoticeView {
 	if (mark.mode === "restart") {
 		return {
 			id: `restarted:${mark.target}`,
-			title: "已重启",
-			body: `BN 回来了,跑的还是 ${mark.target} 这一版。`,
+			title: i18n.t("panelUi.components.update.restart.1"),
+			body: i18n.t("panelUi.components.update.restart.2", { value0: mark.target }),
 		};
 	}
 	return mark.mode === "rollback"
 		? {
 				id: `restarted:${mark.target}`,
-				title: `已退回 ${mark.target}`,
-				body: "重启完成,现在跑的就是这一版。想再往前走就到系统页按「检查更新」。",
+				title: i18n.t("panelUi.components.update.restart.3", { value0: mark.target }),
+				body: i18n.t("panelUi.components.update.restart.4"),
 			}
 		: {
 				id: `restarted:${mark.target}`,
-				title: `已更新到 ${mark.target}`,
-				body: "重启完成,现在跑的就是这一版。",
+				title: i18n.t("panelUi.components.update.restart.5", { value0: mark.target }),
+				body: i18n.t("panelUi.components.update.restart.6"),
 			};
 }
 

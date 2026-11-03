@@ -1,6 +1,7 @@
 import { Btn, ErrorNote, Icon } from "@bilibili-notify/ui";
 import { Component, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useT } from "../i18n";
 
 /**
  * 渲染期的错误边界。🔴 **没有它,任何一处渲染抛错都会让 React 卸掉整棵树** —— 面板整个白屏,
@@ -107,18 +108,20 @@ export function PageErrorBoundary({ children }: { children: ReactNode }) {
 }
 
 function PageCrashNote({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+	const tx = useT();
+
 	const navigate = useNavigate();
 	const { pathname } = useLocation();
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-3">
 			<ErrorNote icon={<Icon.warning size={15} />}>
-				<strong className="font-bold">这一页没能画出来。</strong>
-				顶栏和别的页不受影响;可以重试一次,或者先去别的页。
+				<strong className="font-bold">{tx("panelUi.components.error-boundary.1")}</strong>
+				{tx("panelUi.components.error-boundary.2")}
 				<CrashDetail error={error} />
 			</ErrorNote>
 			<div className="flex gap-2">
 				<Btn variant="primary" size="sm" onClick={onRetry}>
-					重试
+					{tx("panelUi.components.error-boundary.3")}
 				</Btn>
 				{/* 首页自己炸了就不给:那一下和重试是同一件事,两颗钮只会让人以为有区别。 */}
 				{pathname === "/" ? null : (
@@ -128,7 +131,7 @@ function PageCrashNote({ error, onRetry }: { error: unknown; onRetry: () => void
 					 * 一次,React 还会把它当成「并发渲染里出错、同步重画救回来了」报一条错。
 					 */
 					<Btn variant="outline" size="sm" onClick={() => navigate("/")}>
-						回首页
+						{tx("panelUi.components.error-boundary.4")}
 					</Btn>
 				)}
 			</div>
@@ -150,6 +153,8 @@ export function ExtensionViewBoundary({
 	resetKey: string;
 	children: ReactNode;
 }) {
+	const tx = useT();
+
 	return (
 		<ErrorBoundary
 			resetKeys={[resetKey]}
@@ -157,11 +162,11 @@ export function ExtensionViewBoundary({
 				<ErrorNote size="sm" icon={<Icon.warning size={13} />}>
 					<div className="flex flex-wrap items-start gap-2">
 						<div className="min-w-0 flex-1">
-							这个拓展交来的这一块没能画出来。
+							{tx("panelUi.components.error-boundary.5")}
 							<CrashDetail error={error} />
 						</div>
 						<Btn variant="outline" size="sm" onClick={reset}>
-							重试
+							{tx("panelUi.components.error-boundary.6")}
 						</Btn>
 					</div>
 				</ErrorNote>

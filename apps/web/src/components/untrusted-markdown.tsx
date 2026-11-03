@@ -1,4 +1,5 @@
 import type { Components } from "react-markdown";
+import { i18n } from "../i18n";
 import { safeHref } from "../utils/safe-href";
 import { DOC_MARKDOWN_COMPONENTS } from "./doc-markdown";
 
@@ -76,7 +77,12 @@ export const UNTRUSTED_MARKDOWN_COMPONENTS: Components = {
 		const safe = absoluteHttps(typeof src === "string" ? src : undefined);
 		// 相对路径 → 画个占位,别留一张碎图。AstrBot 那头就是直接坏图。
 		if (!safe) {
-			return <span className="text-bn-text-tertiary text-bn-sm">[{alt || "图片"} —— 见源站]</span>;
+			return (
+				<span className="text-bn-text-tertiary text-bn-sm">
+					[{alt || i18n.t("panelUi.components.untrusted-markdown.1")}{" "}
+					{i18n.t("panelUi.components.untrusted-markdown.2")}
+				</span>
+			);
 		}
 		return (
 			<img

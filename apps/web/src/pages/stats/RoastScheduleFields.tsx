@@ -7,6 +7,7 @@ import { Field, Picker, TInput } from "../../components/forms";
 import { TargetChipPicker } from "../../components/target-chip-picker";
 import { AI_PURPLE } from "../../config/colors";
 import { useCoreSettings } from "../../hooks/useSettings";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import type { Connection, PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
@@ -99,6 +100,8 @@ export function RoastScheduleCard({
  * 「不支持」与「还不知道」分开说:后者不是这条连接的毛病,别让主人去查自己的配置。
  */
 export function useApprovalReachability(): { canApprove: boolean; hint?: string } {
+	const tx = useT();
+
 	const globalsQuery = useCoreSettings();
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -116,25 +119,30 @@ export function useApprovalReachability(): { canApprove: boolean; hint?: string 
 	});
 	const masterTargetId = globalsQuery.data?.master?.targetId;
 	const masterTarget = (targetsQuery.data ?? []).find((t) => t.id === masterTargetId);
-	if (!masterTargetId) return { canApprove: false, hint: "需要先在「系统」里配好主人私聊目标" };
-	if (!masterTarget) return { canApprove: false, hint: "配置里的主人私聊目标已经不存在了" };
+	if (!masterTargetId)
+		return { canApprove: false, hint: tx("panelUi.pages.stats.RoastScheduleFields.1") };
+	if (!masterTarget)
+		return { canApprove: false, hint: tx("panelUi.pages.stats.RoastScheduleFields.2") };
 	if (!isPrivateTarget(masterTarget)) {
 		return {
 			canApprove: false,
-			hint: "这个目标不是私聊，女仆没法悄悄告诉主人。请换一个私聊目标",
+			hint: tx("panelUi.pages.stats.RoastScheduleFields.3"),
 		};
 	}
 	// 连接表 / 能力表还没回来:不下结论(也不闪「连接不在了」),先当收不到、不带理由。
 	if (connectionsQuery.data === undefined) return { canApprove: false };
 	if (!connectionsQuery.data.some((c) => c.id === masterTarget.connectionId)) {
-		return { canApprove: false, hint: "主人私聊目标挂的那条连接已经不在了" };
+		return { canApprove: false, hint: tx("panelUi.pages.stats.RoastScheduleFields.4") };
 	}
 	if (capabilitiesQuery.data === undefined) return { canApprove: false };
 	const inbound = capabilitiesQuery.data[masterTarget.connectionId]?.inbound;
 	if (canReceiveReply(inbound)) return { canApprove: true };
 	if (inbound?.state === "unsupported") return { canApprove: false, hint: inbound.reason };
 	const why = inbound?.state === "unknown" && inbound.reason ? `（${inbound.reason}）` : "";
-	return { canApprove: false, hint: `还不知道这条连接收不收得到主人的回复${why}` };
+	return {
+		canApprove: false,
+		hint: tx("panelUi.pages.stats.RoastScheduleFields.5", { value0: why }),
+	};
 }
 
 export function RoastScheduleFields({
@@ -147,6 +155,8 @@ export function RoastScheduleFields({
 	onChange: (next: RoastScheduleValue) => void;
 	noun: string;
 }) {
+	const tx = useT();
+
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
@@ -177,15 +187,22 @@ export function RoastScheduleFields({
 	const presets = STATS_RANGES.map((r) => ({ value: r.days, label: r.label, color: AI_PURPLE }));
 	const dayOptions = presets.some((o) => o.value === value.days)
 		? presets
-		: [...presets, { value: value.days, label: `近${value.days}日`, color: AI_PURPLE }];
+		: [
+				...presets,
+				{
+					value: value.days,
+					label: tx("panelUi.pages.stats.RoastScheduleFields.6", { value0: value.days }),
+					color: AI_PURPLE,
+				},
+			];
 
 	return (
 		<>
 			<div className="grid gap-3">
 				<Field
 					code="roastSchedule.cron"
-					label="发送时间"
-					hint="cron 表达式，如「0 9 * * 1」= 每周一早九点"
+					label={tx("panelUi.pages.stats.RoastScheduleFields.7")}
+					hint={tx("panelUi.pages.stats.RoastScheduleFields.8")}
 				>
 					<TInput
 						value={value.cron}
@@ -195,8 +212,8 @@ export function RoastScheduleFields({
 				</Field>
 				<Field
 					code="roastSchedule.days"
-					label="统计范围"
-					hint={`${noun}往前统计多少天，与发送周期无关`}
+					label={tx("panelUi.pages.stats.RoastScheduleFields.9")}
+					hint={tx("panelUi.pages.stats.RoastScheduleFields.10", { value0: noun })}
 				>
 					<Picker value={value.days} onChange={(days) => patch({ days })} options={dayOptions} />
 				</Field>
@@ -204,8 +221,8 @@ export function RoastScheduleFields({
 
 			<Field
 				code="roastSchedule.targets"
-				label="发送到"
-				hint="可以选多个群；一个群发失败不影响其他群；已停用的目标勾着也不发，恢复启用后自动生效"
+				label={tx("panelUi.pages.stats.RoastScheduleFields.11")}
+				hint={tx("panelUi.pages.stats.RoastScheduleFields.12")}
 			>
 				<TargetChipPicker
 					targets={targets}
@@ -213,21 +230,21 @@ export function RoastScheduleFields({
 					selected={value.targets}
 					onToggle={toggleTarget}
 					tone={AI_PURPLE}
-					empty="还没有可用的推送目标"
+					empty={tx("panelUi.pages.stats.RoastScheduleFields.13")}
 				/>
 			</Field>
 
 			<div className="mt-3 flex flex-col gap-2">
 				<SwitchRow
-					label="发送前先给主人过目"
-					hint={approvalHint ?? "私聊发预览，回复 y 才进群；48 小时没回复就作废"}
+					label={tx("panelUi.pages.stats.RoastScheduleFields.14")}
+					hint={approvalHint ?? tx("panelUi.pages.stats.RoastScheduleFields.15")}
 					value={value.approval && canApprove}
 					disabled={!canApprove}
 					onChange={(v) => patch({ approval: v })}
 				/>
 				<SwitchRow
-					label="没发出去时通知我"
-					hint="生成失败、没配目标、群发失败都会私聊说明原因"
+					label={tx("panelUi.pages.stats.RoastScheduleFields.16")}
+					hint={tx("panelUi.pages.stats.RoastScheduleFields.17")}
 					value={value.notifyOnError}
 					onChange={(v) => patch({ notifyOnError: v })}
 				/>

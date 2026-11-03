@@ -10,7 +10,7 @@ import type { SettingsListField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { ApiError } from "../../../../services/api";
 import {
-	CONFLICT_TEXT,
+	conflictText,
 	dialogIssuesOf,
 	isConflict,
 	type ListItem,
@@ -100,8 +100,8 @@ describe("writeFailureOf", () => {
 			{ code: "conflict", message: "重新读一遍再改" },
 			"重新读一遍再改",
 		);
-		expect(failureOf(conflict)).toBe(CONFLICT_TEXT);
-		expect(CONFLICT_TEXT).toContain("设置在你打开之后被改过了");
+		expect(failureOf(conflict)).toBe(conflictText());
+		expect(conflictText()).toContain("设置在你打开之后被改过了");
 	});
 
 	it("拆不出一条的(issues 空 / 不是数组 / 别的 400):原话照搬", () => {
@@ -126,7 +126,7 @@ describe("writeReasonOf", () => {
 			),
 		).toBe("links.c1.name:太长了;interval:太小了");
 		expect(writeReasonOf(new ApiError(409, { code: "conflict", message: "x" }, "x"))).toBe(
-			CONFLICT_TEXT,
+			conflictText(),
 		);
 		expect(writeReasonOf(new Error("断网了"))).toBe("断网了");
 	});

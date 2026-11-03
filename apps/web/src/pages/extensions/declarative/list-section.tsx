@@ -20,6 +20,7 @@ import {
 	StatusDot,
 } from "@bilibili-notify/ui";
 import { useState } from "react";
+import { i18n, useT } from "../../../i18n";
 import { reasonOf, SectionCaption } from "../shared";
 import {
 	ActionFailure,
@@ -90,10 +91,14 @@ function cardStatusOf(
 	viewState: ViewState,
 	slot: ExtensionPanelItem | undefined,
 ): CardStatus | undefined {
-	if (paused) return { tone: "off", text: "已停用" };
-	if (viewState === "off") return { tone: "off", text: "拓展关着" };
-	if (viewState === "unknown") return { tone: "off", text: "状态未知" };
-	if (slot && "fault" in slot) return { tone: "off", text: "状态未知" };
+	if (paused)
+		return { tone: "off", text: i18n.t("panelUi.pages.extensions.declarative.list-section.1") };
+	if (viewState === "off")
+		return { tone: "off", text: i18n.t("panelUi.pages.extensions.declarative.list-section.2") };
+	if (viewState === "unknown")
+		return { tone: "off", text: i18n.t("panelUi.pages.extensions.declarative.list-section.3") };
+	if (slot && "fault" in slot)
+		return { tone: "off", text: i18n.t("panelUi.pages.extensions.declarative.list-section.4") };
 	return slot?.view.status;
 }
 
@@ -159,6 +164,8 @@ const revealKey = (id: string, key: string) => JSON.stringify([id, key]);
  * **视图**交来的(状态、药丸、副标题、按钮、积木)、**BN** 自己画的(删除、图例、三句盖章)。
  */
 export function ListSection({ ext, field }: { ext: ExtensionDTO; field: SettingsListField }) {
+	const tx = useT();
+
 	const [dialog, setDialog] = useState<Dialog | null>(null);
 	/** 两件要确认的事共用底下那**一个**确认框 —— 谁在等,由它说了算。 */
 	const [confirming, setConfirming] = useState<Confirming | null>(null);
@@ -299,7 +306,8 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Settings
 	if (settings.isError) {
 		return (
 			<ErrorNote size="sm">
-				读不到{field.label}:{reasonOf(settings.error)}
+				{tx("panelUi.pages.extensions.declarative.list-section.5")}
+				{field.label}:{reasonOf(settings.error)}
 			</ErrorNote>
 		);
 	}
@@ -333,12 +341,18 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Settings
 						icon={<Icon.plus size={13} />}
 						onClick={() => open(() => setDialog({ kind: "new" }))}
 					>
-						新建{itemLabel}
+						{tx("panelUi.pages.extensions.declarative.list-section.6")}
+						{itemLabel}
 					</Btn>
 				</div>
 			) : null}
 
-			{writeError ? <ErrorNote size="sm">这次没写进去:{writeError}</ErrorNote> : null}
+			{writeError ? (
+				<ErrorNote size="sm">
+					{tx("panelUi.pages.extensions.declarative.list-section.7")}
+					{writeError}
+				</ErrorNote>
+			) : null}
 
 			{items.length === 0 ? (
 				<ListEmpty field={field} busy={busy} onAdd={() => open(() => setDialog({ kind: "new" }))} />
@@ -438,23 +452,31 @@ function confirmationOf(confirming: Confirming, field: SettingsListField) {
 	const title = titleOf(field, confirming.item);
 	if (confirming.kind === "remove") {
 		return {
-			title: `删掉这条${itemLabelOf(field)}?`,
+			title: i18n.t("panelUi.pages.extensions.declarative.list-section.8", {
+				value0: itemLabelOf(field),
+			}),
 			body: field.removeWarning
-				? `「${title}」删掉之后,${field.removeWarning}`
-				: `「${title}」连同它的设置一起删掉。`,
-			errorLead: "删不掉",
-			label: "删除",
-			busyLabel: "删除中…",
+				? i18n.t("panelUi.pages.extensions.declarative.list-section.9", {
+						value0: title,
+						value1: field.removeWarning,
+					})
+				: i18n.t("panelUi.pages.extensions.declarative.list-section.10", { value0: title }),
+			errorLead: i18n.t("panelUi.pages.extensions.declarative.list-section.11"),
+			label: i18n.t("panelUi.pages.extensions.declarative.list-section.12"),
+			busyLabel: i18n.t("panelUi.pages.extensions.declarative.list-section.13"),
 		};
 	}
 	const label = confirming.sub.label;
 	return {
-		title: `重新生成${label}?`,
-		body: `「${title}」的旧 ${label} 立刻作废 —— 正用着它的那一头会当场断开,得把新的复制过去重新填。`,
+		title: i18n.t("panelUi.pages.extensions.declarative.list-section.14", { value0: label }),
+		body: i18n.t("panelUi.pages.extensions.declarative.list-section.15", {
+			value0: title,
+			value1: label,
+		}),
 		// 写不进去时那句得贴着这一下说 —— 通用的「保存失败」等于让人对着黑盒按第二下。
-		errorLead: "换不了",
-		label: "重新生成",
-		busyLabel: "重新生成中…",
+		errorLead: i18n.t("panelUi.pages.extensions.declarative.list-section.16"),
+		label: i18n.t("panelUi.pages.extensions.declarative.list-section.17"),
+		busyLabel: i18n.t("panelUi.pages.extensions.declarative.list-section.18"),
 	};
 }
 
@@ -473,10 +495,15 @@ function ListEmpty({
 	busy: boolean;
 	onAdd: () => void;
 }) {
+	const tx = useT();
+
 	return (
 		<EmptyNote>
 			<div data-list-empty className="flex flex-col items-center">
-				<span className="text-bn-sm text-bn-text-secondary">还没有{field.label}。</span>
+				<span className="text-bn-sm text-bn-text-secondary">
+					{tx("panelUi.pages.extensions.declarative.list-section.19")}
+					{field.label}。
+				</span>
 				{field.description ? (
 					<span className="mt-[5px] text-bn-xs leading-[1.7] text-bn-text-tertiary">
 						{field.description}
@@ -490,7 +517,8 @@ function ListEmpty({
 						icon={<Icon.plus size={13} />}
 						onClick={onAdd}
 					>
-						新建第一条{itemLabelOf(field)}
+						{tx("panelUi.pages.extensions.declarative.list-section.20")}
+						{itemLabelOf(field)}
 					</Btn>
 				</div>
 			</div>
@@ -531,6 +559,8 @@ function ListCard({
 	status: CardStatus | undefined;
 	actions: CardActions;
 }) {
+	const tx = useT();
+
 	// 卡头上「调拓展」的按钮共用一发:同一时刻只按得动一颗,失败那句点的是按下去的那一颗。
 	const run = useExtensionAction(extensionId);
 	const title = titleOf(field, item);
@@ -592,10 +622,12 @@ function ListCard({
 								variant="outline"
 								size="sm"
 								disabled={busy}
-								aria-label={`编辑 ${title}`}
+								aria-label={tx("panelUi.pages.extensions.declarative.list-section.21", {
+									value0: title,
+								})}
 								onClick={() => actions.edit(item)}
 							>
-								编辑
+								{tx("panelUi.pages.extensions.declarative.list-section.22")}
 							</Btn>
 						) : null}
 						{field.toggle !== undefined ? (
@@ -603,20 +635,24 @@ function ListCard({
 								variant="outline"
 								size="sm"
 								disabled={busy}
-								aria-label={`${paused ? "启用" : "停用"} ${title}`}
+								aria-label={`${paused ? tx("panelUi.pages.extensions.declarative.list-section.23") : tx("panelUi.pages.extensions.declarative.list-section.24")} ${title}`}
 								onClick={() => actions.toggle(item)}
 							>
-								{paused ? "启用" : "停用"}
+								{paused
+									? tx("panelUi.pages.extensions.declarative.list-section.25")
+									: tx("panelUi.pages.extensions.declarative.list-section.26")}
 							</Btn>
 						) : null}
 						<Btn
 							variant="danger-outline"
 							size="sm"
 							disabled={busy}
-							aria-label={`删除 ${title}`}
+							aria-label={tx("panelUi.pages.extensions.declarative.list-section.27", {
+								value0: title,
+							})}
 							onClick={() => actions.remove(item)}
 						>
-							删除
+							{tx("panelUi.pages.extensions.declarative.list-section.28")}
 						</Btn>
 					</div>
 				}
@@ -700,15 +736,23 @@ function FieldRow({
 	revealed: string | undefined;
 	onRegenerate: () => void;
 }) {
+	const tx = useT();
+
 	if (isSecretSub(sub)) {
 		const masked = maskedOf(item[sub.key]);
-		const which = `${title} 的 ${sub.label}`;
+		const which = tx("panelUi.pages.extensions.declarative.list-section.29", {
+			value0: title,
+			value1: sub.label,
+		});
 		const generated = sub.type === "string" && sub.generate === true;
 		if (masked === undefined && generated) {
 			return (
 				<div data-field-row={sub.key} className="flex flex-wrap items-center gap-2.5">
 					<MissingSecretNote label={which} disabled={busy} onRegenerate={onRegenerate}>
-						这条{itemLabel}还没有 {sub.label} —— 脱敏备份恢复回来的就是这样,生成一个新的。
+						{tx("panelUi.pages.extensions.declarative.list-section.30", {
+							item: itemLabel,
+							field: sub.label,
+						})}
 					</MissingSecretNote>
 				</div>
 			);
@@ -725,14 +769,19 @@ function FieldRow({
 				<div className="flex flex-wrap items-center gap-2.5">
 					<RowLabel>{sub.label}</RowLabel>
 					<SecretChip text={revealed ?? masked} />
-					{revealed ? <CopyControl label={`复制 ${which}`} text={revealed} /> : null}
+					{revealed ? (
+						<CopyControl
+							label={tx("panelUi.pages.extensions.declarative.list-section.33", { value0: which })}
+							text={revealed}
+						/>
+					) : null}
 					{generated ? (
 						<RegenerateButton label={which} disabled={busy} onClick={onRegenerate} />
 					) : null}
 				</div>
 				{revealed ? (
 					<p className="text-bn-2xs leading-[1.7] text-bn-text-tertiary">
-						新生成的,只在这一刻看得到全文 —— 离开这一页就只剩头尾,要用就趁现在复制。
+						{tx("panelUi.pages.extensions.declarative.list-section.34")}
 					</p>
 				) : null}
 			</div>

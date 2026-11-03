@@ -1,3 +1,4 @@
+import { i18n, useT } from "../../i18n";
 /**
  * 「新版等着换上」那块提示(ADR-0012 决策 47)—— 装完那句话与详情页头卡**共用**。
  *
@@ -39,12 +40,15 @@ import { PARAGRAPH_CLS, reasonOf } from "./shared";
  */
 function headlineOf(stagedVersion: string, runningVersion: string | undefined): string {
 	if (runningVersion === undefined) {
-		return `v${stagedVersion} 装好了,但这个进程早就认下了它的另一份代码,换不上。`;
+		return i18n.t("panelUi.pages.extensions.staged-code-note.1", { value0: stagedVersion });
 	}
 	if (runningVersion === stagedVersion) {
-		return "盘上的代码换过了(版本号没变),这里跑的还是原来那份。";
+		return i18n.t("panelUi.pages.extensions.staged-code-note.2");
 	}
-	return `盘上换成了 v${stagedVersion},这里跑的还是 v${runningVersion}。`;
+	return i18n.t("panelUi.pages.extensions.staged-code-note.3", {
+		value0: stagedVersion,
+		value1: runningVersion,
+	});
 }
 
 /**
@@ -69,13 +73,14 @@ export function stagedFactsOf(
  * 是 ESM 模块缓存删不掉(桥实测每换一次约 2~3 MB);后台那句是决策 10 的承重条件 —— 拓展绕过
  * ctx 自己起的定时器 / 连接,收摊收不到。主人是照着这几句选的,少一句就是替他选了。
  */
-const SWAP_COST =
-	"别的推送与直播监听都不断;旧代码占的内存要等下次重启 BN 才还回来(每换一次约几 MB,反复换会一直累加);" +
-	"拓展要是有没交给 BN 管的定时器或连接,旧的那份可能还在后台跑。";
+function swapCost() {
+	return i18n.t("panelUi.pages.extensions.staged-code-note.4");
+}
 
 /** 关着时「只重载」为什么不在 —— 按下去等于替主人拨开开关。拨开之后这颗钮自己会出来。 */
-const SWAP_NEEDS_ENABLED =
-	"开关关着,不给「只重载」—— 换上去就是把它跑起来,那是开关的活;拨开之后这里才有这颗钮。";
+function swapNeedsEnabled() {
+	return i18n.t("panelUi.pages.extensions.staged-code-note.5");
+}
 
 /** 一条出路:按钮(可能没有)+ 它的代价 / 为什么没有按钮。两条并排时各占一半。 */
 function Way({ action, children }: { action: ReactNode; children: ReactNode }) {
@@ -119,6 +124,8 @@ export function StagedCodeNote({
 	wait = DEFAULT_RESTART_WAIT,
 	children,
 }: StagedCodeNoteProps) {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const { view, begin } = useRestartStore();
 	const restartNow = useMutation({
@@ -150,7 +157,7 @@ export function StagedCodeNote({
 			<HintNote tone="neutral" className="flex flex-col gap-2.5">
 				<p className={PARAGRAPH_CLS}>
 					{name ? <strong className="text-bn-text-secondary">{name} </strong> : null}
-					重载完了 —— 起没起来,以它那张卡上的状态为准。
+					{tx("panelUi.pages.extensions.staged-code-note.6")}
 				</p>
 				{children}
 			</HintNote>
@@ -168,35 +175,47 @@ export function StagedCodeNote({
 					action={
 						restart.can ? (
 							<Btn variant="primary" size="sm" disabled={busy} onClick={() => restartNow.mutate()}>
-								重启 BN
+								{tx("panelUi.pages.extensions.staged-code-note.7")}
 							</Btn>
 						) : null
 					}
 				>
 					{/* 拉不起来时那句话服务端按当前语言给(两种的出路不一样),原样显示。 */}
-					{restart.can ? "最干净的换法:所有推送与直播监听会断几秒。" : restart.message}
+					{restart.can ? tx("panelUi.pages.extensions.staged-code-note.8") : restart.message}
 				</Way>
 				<Way
 					action={
 						swappable ? (
 							<Btn variant="outline" size="sm" disabled={busy} onClick={() => swap.mutate()}>
-								只重载这个拓展
+								{tx("panelUi.pages.extensions.staged-code-note.9")}
 							</Btn>
 						) : null
 					}
 				>
-					{swappable ? SWAP_COST : SWAP_NEEDS_ENABLED}
+					{swappable ? swapCost() : swapNeedsEnabled()}
 				</Way>
 			</div>
 			{children}
 
 			{waiting ? (
-				<LoadingBlock variant="inset" label="正在重启" hint="服务回来后这一页会自动刷新。" />
+				<LoadingBlock
+					variant="inset"
+					label={tx("panelUi.pages.extensions.staged-code-note.10")}
+					hint={tx("panelUi.pages.extensions.staged-code-note.11")}
+				/>
 			) : null}
 			{restartNow.isError ? (
-				<ErrorNote size="sm">没能发出重启指令:{reasonOf(restartNow.error)}</ErrorNote>
+				<ErrorNote size="sm">
+					{tx("panelUi.pages.extensions.staged-code-note.12")}
+					{reasonOf(restartNow.error)}
+				</ErrorNote>
 			) : null}
-			{swap.isError ? <ErrorNote size="sm">没换上:{reasonOf(swap.error)}</ErrorNote> : null}
+			{swap.isError ? (
+				<ErrorNote size="sm">
+					{tx("panelUi.pages.extensions.staged-code-note.13")}
+					{reasonOf(swap.error)}
+				</ErrorNote>
+			) : null}
 		</HintNote>
 	);
 }

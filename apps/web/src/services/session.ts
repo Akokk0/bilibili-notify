@@ -1,3 +1,4 @@
+import { i18n } from "../i18n";
 /**
  * Dashboard session HTTP calls. Kept separate from `services/api.ts` so the
  * generic 401 interceptor there never recurses through these endpoints (login
@@ -52,7 +53,7 @@ export async function classifyLoginResponse(res: Response): Promise<LoginResult>
 	const err = apiErrorOf(
 		res.status,
 		await res.json().catch(() => undefined),
-		`登录失败 (HTTP ${res.status})`,
+		i18n.t("panelUi.services.session.1", { value0: res.status }),
 	);
 	switch (err.code) {
 		case "rate_limited": {
@@ -62,7 +63,7 @@ export async function classifyLoginResponse(res: Response): Promise<LoginResult>
 				ok: false,
 				kind: "rate_limited",
 				retryAfterSec,
-				message: `登录尝试过多,请 ${retryAfterSec} 秒后再试`,
+				message: i18n.t("panelUi.services.session.2", { value0: retryAfterSec }),
 			};
 		}
 		case "unauthorized":
@@ -84,7 +85,7 @@ export async function submitLogin(username: string, password: string): Promise<L
 			body: JSON.stringify({ username, password }),
 		});
 	} catch {
-		return { ok: false, kind: "error", message: "无法连接服务器" };
+		return { ok: false, kind: "error", message: i18n.t("panelUi.services.session.3") };
 	}
 	return classifyLoginResponse(res);
 }

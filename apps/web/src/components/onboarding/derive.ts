@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 新手导览的判据核心 —— 纯函数,不碰 react/query,测试在 __tests__/derive.test.ts。
  *
@@ -76,7 +77,14 @@ export interface OnboardingView {
 
 function failNoteFrom(outcomes: readonly (Outcome | undefined)[]): OnboardingView["failNote"] {
 	const st = outcomes.find((o) => o?.status === "unreachable");
-	return st ? { text: st.message || "测试未通过", at: st.at } : null;
+	return st
+		? {
+				get text() {
+					return st.message || i18n.t("panelUi.components.onboarding.derive.1");
+				},
+				at: st.at,
+			}
+		: null;
 }
 
 export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {

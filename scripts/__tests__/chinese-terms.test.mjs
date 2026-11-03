@@ -75,12 +75,14 @@ export const TERM_ALLOWLIST = {
 	},
 };
 
-/** 主人批准 4-26：统计原例外仅迁到这三个 plain 完整键，其他词仍计数。 */
+/** 4-26 / 4-53b：原统计例外精确迁到以下 plain 完整键，其他词仍计数。 */
 export const JSON_TERM_ALLOWLIST = {
 	"apps/web/src/i18n/locales/zh-CN.json": {
 		"sourceUi.pages.Stats.Stats.22": ["动态"],
 		"sourceUi.pages.Stats.subtitle.38": ["动态"],
 		"sourceUi.pages.Stats.plainPosts": ["动态"],
+		"panelUi.pages.stats.columns.5": ["动态"],
+		"panelUi.pages.stats.radar.5": ["动态"],
 	},
 };
 
@@ -110,29 +112,13 @@ export const RATCHET = {
 	"apps/server/src/routes/targets.ts": 2,
 	"apps/server/src/runtime/roots.ts": 1,
 	// 4-26：主人批准真实 B 语境 5 plain + 3 maid，精确键与命中词由下方实扫断言钉住。
-	"apps/web/src/i18n/locales/zh-CN.json": 6,
+	"apps/web/src/i18n/locales/zh-CN.json": 16,
 	"apps/web/src/i18n/locales/zh-CN.maid.json": 3,
-	"apps/web/src/components/header.tsx": 1,
 
-	"apps/web/src/components/onboarding/tour-companion.tsx": 2,
-	"apps/web/src/components/onboarding/tour-script.ts": 4,
-	"apps/web/src/components/shell-states.tsx": 1,
-	"apps/web/src/config/nav.ts": 1,
-	"apps/web/src/config/push-features.ts": 4,
 	"apps/web/src/devtools/ext-motion.ts": 2,
 	"apps/web/src/devtools/web-scenarios.ts": 1,
-	"apps/web/src/pages/About.tsx": 1,
 	// 4-43：沿4-29持续授权原文搬家，6=1+4+1，归期不改。
-	"apps/web/src/pages/System.tsx": 1,
-	"apps/web/src/pages/system/account-section.tsx": 4,
-	"apps/web/src/pages/backup/BackupExportDialog.tsx": 1,
-	"apps/web/src/pages/backup/BackupSection.tsx": 2,
-	"apps/web/src/pages/guide/guide-panel.tsx": 1,
-	"apps/web/src/pages/rules/MessageLayoutEditor.tsx": 1,
-	"apps/web/src/pages/stats/SoloRoastCard.tsx": 1,
-	"apps/web/src/pages/stats/charts.tsx": 1,
 
-	"apps/web/src/utils/groupDiffs.ts": 2,
 	"packages/ai/src/commentary-generator.ts": 1,
 	"packages/ai/src/tools.ts": 1,
 	"packages/image/src/image-renderer.ts": 7,
@@ -187,6 +173,17 @@ export const JSON_TERM_PINS = {
 	"apps/web/src/i18n/locales/zh-CN.json": {
 		// 4-53a：主人已持续批准后片原文迁移；系统设置名“减少动态效果”原节点1处移入此完整键，词不扩。
 		"skinUi.SkinEditor.64": ["动态"],
+		// 4-53b：持续授权下原 B 站账号 / 导览文案逐键迁移，功能仍归 4-40/41。
+		"panelUi.components.onboarding.tour-companion.9": ["B站"],
+		"panelUi.components.onboarding.tour-script.1": ["B站"],
+		"panelUi.components.onboarding.tour-script.2": ["B站"],
+		"panelUi.components.onboarding.tour-script.17": ["B站"],
+		"panelUi.pages.System.2": ["B站"],
+		"panelUi.pages.system.account-section.6": ["B站"],
+		"panelUi.pages.system.account-section.10": ["B站"],
+		"panelUi.pages.system.account-section.12": ["动态"],
+		"panelUi.pages.system.account-section.20": ["B站"],
+		"panelUi.pages.guide.guide-panel.2": ["B站"],
 		"sourceUi.pages.Dashboard.SystemHealthCard.31": ["B站"],
 		"sourceUi.pages.Dashboard.Dashboard.59": ["B站"],
 		"sourceUi.config.field.labels.label.1": ["B站"],

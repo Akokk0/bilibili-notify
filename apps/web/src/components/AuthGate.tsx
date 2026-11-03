@@ -1,5 +1,6 @@
 import { LoadingBlock } from "@bilibili-notify/ui";
 import { type ReactNode, useEffect } from "react";
+import { useT } from "../i18n";
 import { setUnauthorizedHandler } from "../services/api";
 import { fetchSessionStatus } from "../services/session";
 import { setWsEnabled } from "../services/wsSingleton";
@@ -18,6 +19,8 @@ import { LoginDialog } from "./LoginDialog";
  *   login card so the user resumes in place after re-login.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
+	const tx = useT();
+
 	const authRequired = useSessionStore((s) => s.authRequired);
 	const authed = useSessionStore((s) => s.authed);
 	const hydrated = useSessionStore((s) => s.hydrated);
@@ -53,7 +56,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 	if (!hydrated) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
-				<LoadingBlock label="正在唤醒女仆" variant="inset" />
+				<LoadingBlock label={tx("panelUi.components.AuthGate.1")} variant="inset" />
 			</div>
 		);
 	}

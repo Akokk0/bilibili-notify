@@ -22,6 +22,7 @@ import { SECTION_ACCENT } from "../../config/section-accents";
 import { HEALTH_QUERY_KEY } from "../../hooks/useBackendReachable";
 import { useScrollToHash } from "../../hooks/useScrollToHash";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
+import { i18n, useT } from "../../i18n";
 import { api } from "../../services/api";
 import { externalLinkClick } from "../../utils/externalLink";
 import { MirrorPicker } from "./mirror-picker";
@@ -41,8 +42,18 @@ import { phaseLabel, UPDATE_QUERY_KEY, UPDATE_SECTION_HASH, useUpdateStatus } fr
  */
 
 const CHANNEL_OPTIONS = [
-	{ value: "stable", label: "正式版" },
-	{ value: "prerelease", label: "预发布" },
+	{
+		value: "stable",
+		get label() {
+			return i18n.t("panelUi.components.update.update-section.1");
+		},
+	},
+	{
+		value: "prerelease",
+		get label() {
+			return i18n.t("panelUi.components.update.update-section.2");
+		},
+	},
 ];
 
 /**
@@ -54,16 +65,30 @@ const CHANNEL_OPTIONS = [
  */
 const ERROR_COPY: Record<UpdateErrorReason, string> = {
 	// 唯一该弹红字的一条(见下面的 DANGEROUS_REASON):分发链上可能真的有人动过手脚。
-	untrusted:
-		"更新包的签名验不过 —— 拿到的东西不是我们签发的。已停下,什么都没装。如果你填了加速前缀,先把它去掉再试一次;还是这样就先别更新。",
-	malformed: "更新清单读不出来 —— 这是我们发版时出的岔子,不是你的问题。过阵子再试。",
-	unreachable: "连不上更新服务器。可以在下面填一个加速前缀,或者按链接自己去下载。",
-	"stale-manifest":
-		"拿到的更新清单比之前见过的旧,没有收。多半是加速站缓存了旧文件 —— 换个站、或改回直连再试。",
-	"checksum-mismatch": "下下来的包对不上校验和,已丢弃、盘上没留东西。多半是中途被截断了,重试一次。",
-	"download-failed": "清单拿到了,包没下下来。可以换个加速前缀,或者按链接自己去下载。",
-	"install-failed": "包是好的,写进数据目录时失败了 —— 先看看磁盘还有没有空间、目录是不是只读。",
-	"nothing-to-roll-back": "已经是最早的那一版了,没有可退的上一版。",
+	get untrusted() {
+		return i18n.t("panelUi.components.update.update-section.3");
+	},
+	get malformed() {
+		return i18n.t("panelUi.components.update.update-section.4");
+	},
+	get unreachable() {
+		return i18n.t("panelUi.components.update.update-section.5");
+	},
+	get "stale-manifest"() {
+		return i18n.t("panelUi.components.update.update-section.6");
+	},
+	get "checksum-mismatch"() {
+		return i18n.t("panelUi.components.update.update-section.7");
+	},
+	get "download-failed"() {
+		return i18n.t("panelUi.components.update.update-section.8");
+	},
+	get "install-failed"() {
+		return i18n.t("panelUi.components.update.update-section.9");
+	},
+	get "nothing-to-roll-back"() {
+		return i18n.t("panelUi.components.update.update-section.10");
+	},
 };
 
 /** 唯一弹红字的一条。其余一律中性旁注 —— 把代理站抽风渲染成安全警告只会训练用户忽略它。 */
@@ -75,6 +100,8 @@ export interface UpdateSectionProps {
 }
 
 export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSectionProps = {}) {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	// 按下重启之后的进度住在模块级 store 里(理由见 restart.ts):用户中途离开系统页,
 	// 等待照样进行、换成了照样刷新;回来看到的还是同一份进度。
@@ -131,11 +158,11 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 		return (
 			<div ref={anchorRef} style={{ scrollMarginTop: BELOW_HEADER_TOP }}>
 				<GlassBox
-					title="应用内更新 · update"
+					title={tx("panelUi.components.update.update-section.11")}
 					accent={SECTION_ACCENT.system}
 					icon={<Icon.sparkle size={14} />}
 				>
-					<LoadingBlock variant="inset" label="正在读取更新状态…" />
+					<LoadingBlock variant="inset" label={tx("panelUi.components.update.update-section.12")} />
 				</GlassBox>
 			</div>
 		);
@@ -156,8 +183,8 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 	return (
 		<div ref={anchorRef} style={{ scrollMarginTop: BELOW_HEADER_TOP }}>
 			<GlassBox
-				title="应用内更新 · update"
-				subtitle="在这里直接换版本,不用重新拉镜像或下载安装包"
+				title={tx("panelUi.components.update.update-section.13")}
+				subtitle={tx("panelUi.components.update.update-section.14")}
 				accent={SECTION_ACCENT.system}
 				icon={<Icon.sparkle size={14} />}
 				badge={status.currentVersion}
@@ -173,7 +200,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 								rel="noreferrer"
 								onClick={externalLinkClick(helpUrl)}
 							>
-								打开发布页
+								{tx("panelUi.components.update.update-section.15")}
 							</a>
 						) : null}
 					</div>
@@ -185,24 +212,21 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 					{state.phase === "disabled" ? (
 						<HintNote tone="neutral">
 							{state.reason === "dev-build"
-								? "正在跑的是开发版(源码里的占位版本号),它比任何发布过的版本都小,所以应用内更新不检查也不提示 —— 不是出错。"
-								: "这个构建里没有内置更新签名的公钥,所以应用内更新是关着的 —— 不是出错。自己构建的版本会落在这一档,按原来的方式升级即可。"}
+								? tx("panelUi.components.update.update-section.16")
+								: tx("panelUi.components.update.update-section.17")}
 						</HintNote>
 					) : null}
 
 					{status.pinnedVersion !== null && state.phase !== "rolled-back" ? (
 						<HintNote tone="neutral">
-							现在钉在 <strong>{status.pinnedVersion}</strong>
-							(之前按过回退),打开面板不会再自动查更新。 按「检查更新」就是明确要往前走 ——
-							装上新版会拔掉这颗钉子。
+							{tx("panelUi.components.update.update-section.18")}
+							<strong>{status.pinnedVersion}</strong>
+							{tx("panelUi.components.update.update-section.19")}
 						</HintNote>
 					) : null}
 
 					{state.phase === "needs-image-pull" ? (
-						<HintNote tone="neutral">
-							这一版要求更新的运行环境(Node / 浏览器都来自镜像),没法在线换 —— 请重新
-							拉取镜像或下载新安装包。
-						</HintNote>
+						<HintNote tone="neutral">{tx("panelUi.components.update.update-section.20")}</HintNote>
 					) : null}
 
 					{state.phase !== "error" ? null : state.reason === DANGEROUS_REASON ? (
@@ -213,42 +237,52 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 
 					{canApply && !restarting ? (
 						<HintNote tone="neutral">
-							应用会<strong>重启服务</strong>:那一刻推送会断几秒、直播监听会重连。容器部署请确认{" "}
-							<code>restart</code> 策略是开着的 ——
-							没有它的话,进程退出后不会有人把它拉起来;桌面版由外壳自动拉起,界面会跟着刷新。
+							{tx("panelUi.components.update.update-section.21")}
+							<strong>{tx("panelUi.components.update.update-section.22")}</strong>
+							{tx("panelUi.components.update.update-section.23")} <code>restart</code>{" "}
+							{tx("panelUi.components.update.update-section.24")}
 						</HintNote>
 					) : null}
 
 					{restart?.kind === "waiting" ? (
 						<LoadingBlock
 							variant="inset"
-							label={`正在重启,换到 ${restart.intent.target}`}
-							hint="服务回来后这一页会自动刷新。推送这几秒会断,直播监听会自己重连。"
+							label={tx("panelUi.components.update.update-section.25", {
+								value0: restart.intent.target,
+							})}
+							hint={tx("panelUi.components.update.update-section.26")}
 						/>
 					) : null}
 
 					{restart?.kind === "fell-back" ? (
 						<HintNote tone="neutral">
-							重启完了,但跑起来的是 <strong>{restart.version}</strong>,不是 {restart.intent.target}{" "}
-							—— 多半是那一版起不来,启动器自动回落了。日志里 <code>[boot]</code> 开头那行写着原因。
+							{tx("panelUi.components.update.update-section.27")}
+							<strong>{restart.version}</strong>
+							{tx("panelUi.components.update.update-section.28")}
+							{restart.intent.target} {tx("panelUi.components.update.update-section.29")}
+							<code>[boot]</code> {tx("panelUi.components.update.update-section.30")}
 						</HintNote>
 					) : null}
 
 					{restart?.kind === "timed-out" ? (
 						<HintNote tone="neutral" className="flex flex-wrap items-center gap-2">
 							<span>
-								重启后等了 {Math.round(restartWait.timeoutMs / 1000)} 秒还没等到服务回来。容器没开{" "}
-								<code>restart</code> 策略的话,进程退出后没人把它拉起来,得手动启动一次;
-								桌面版看启动器日志。
+								{tx("panelUi.components.update.update-section.31")}
+								{Math.round(restartWait.timeoutMs / 1000)}{" "}
+								{tx("panelUi.components.update.update-section.32")} <code>restart</code>{" "}
+								{tx("panelUi.components.update.update-section.33")}
 							</span>
 							<Btn variant="outline" size="sm" onClick={retryRestart}>
-								再等等
+								{tx("panelUi.components.update.update-section.34")}
 							</Btn>
 						</HintNote>
 					) : null}
 
 					{apply.isError ? (
-						<HintNote tone="neutral">没能发出重启指令:{apply.error.message}</HintNote>
+						<HintNote tone="neutral">
+							{tx("panelUi.components.update.update-section.35")}
+							{apply.error.message}
+						</HintNote>
 					) : null}
 
 					<div className="flex flex-wrap gap-2">
@@ -258,7 +292,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 							disabled={busy || state.phase === "disabled"}
 							onClick={() => act.mutate("check")}
 						>
-							检查更新
+							{tx("panelUi.components.update.update-section.36")}
 						</Btn>
 						{state.phase === "available" ? (
 							<Btn
@@ -267,12 +301,12 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 								disabled={busy}
 								onClick={() => act.mutate("download")}
 							>
-								下载这一版
+								{tx("panelUi.components.update.update-section.37")}
 							</Btn>
 						) : null}
 						{canApply ? (
 							<Btn variant="primary" size="sm" disabled={busy} onClick={() => apply.mutate()}>
-								立即重启并应用
+								{tx("panelUi.components.update.update-section.38")}
 							</Btn>
 						) : null}
 						<Btn
@@ -281,7 +315,11 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 							disabled={busy || status.rollbackTarget === null}
 							onClick={() => act.mutate("rollback")}
 						>
-							{status.rollbackTarget ? `退回 ${status.rollbackTarget}` : "没有可退的版本"}
+							{status.rollbackTarget
+								? tx("panelUi.components.update.update-section.39", {
+										value0: status.rollbackTarget,
+									})
+								: tx("panelUi.components.update.update-section.40")}
 						</Btn>
 					</div>
 
@@ -289,7 +327,9 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 						{/* 不用 <label>:里面是一组按钮 / 一颗开关,不是原生表单控件,
 					    关联不上。无障碍名由 Picker 的按钮文字与 Toggle 的 ariaLabel 各自给。 */}
 						<div className="flex flex-wrap items-center gap-3">
-							<span className="w-24 text-bn-sm text-bn-text-secondary">更新渠道</span>
+							<span className="w-24 text-bn-sm text-bn-text-secondary">
+								{tx("panelUi.components.update.update-section.41")}
+							</span>
 							<Picker
 								value={settings.channel}
 								options={CHANNEL_OPTIONS}
@@ -298,19 +338,22 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 								}
 							/>
 							<span className="text-bn-xs text-bn-text-tertiary">
-								预发布版没验够,出问题的概率明显更高
+								{tx("panelUi.components.update.update-section.42")}
 							</span>
 						</div>
 
 						<div className="flex flex-wrap items-center gap-3">
-							<span className="w-24 text-bn-sm text-bn-text-secondary">自动下载</span>
+							<span className="w-24 text-bn-sm text-bn-text-secondary">
+								{tx("panelUi.components.update.update-section.43")}
+							</span>
 							<Toggle
 								value={settings.autoDownload}
-								ariaLabel="自动下载新版本"
+								ariaLabel={tx("panelUi.components.update.update-section.44")}
 								onChange={(autoDownload) => saveSettings.mutate({ autoDownload })}
 							/>
 							<span className="text-bn-xs text-bn-text-tertiary">
-								只下载;<strong>什么时候重启换版本永远由你按</strong>
+								{tx("panelUi.components.update.update-section.45")}
+								<strong>{tx("panelUi.components.update.update-section.46")}</strong>
 							</span>
 						</div>
 

@@ -1,6 +1,7 @@
 import { webSearchBackendMeta } from "@bilibili-notify/internal/ai";
 import { Icon } from "@bilibili-notify/ui";
 import { useCoreSettings } from "../../hooks/useSettings";
+import { useT } from "../../i18n";
 import { ComposerPill } from "./composer-pill";
 
 /**
@@ -13,6 +14,8 @@ import { ComposerPill } from "./composer-pill";
  * 不认内容。没配时灰着并指路设置页:点不亮的开关必须说清为什么。
  */
 export function SearchControl({ on, onToggle }: { on: boolean; onToggle: (v: boolean) => void }) {
+	const tx = useT();
+
 	const globalsQuery = useCoreSettings();
 	const ai = globalsQuery.data?.ai;
 	// 配置还没到手就先不画 —— 一颗状态未知的开关比没有开关更误导。
@@ -26,16 +29,16 @@ export function SearchControl({ on, onToggle }: { on: boolean; onToggle: (v: boo
 
 	return (
 		<ComposerPill
-			label="联网搜索"
+			label={tx("panelUi.components.ai-chat.search-control.1")}
 			icon={<Icon.search size={14} />}
 			on={on}
 			disabled={!configured}
 			title={
 				configured
 					? configured && on
-						? `联网搜索已开启(${backend.label}),只管当前会话`
-						: "联网搜索:她会先搜再答,按次计费。只管当前会话,不落盘"
-					: `还没配搜索后端 —— 到「智能女仆 → 全局配置 → 联网搜索」填 ${backend.label} 的 API Key`
+						? tx("panelUi.components.ai-chat.search-control.2", { value0: backend.label })
+						: tx("panelUi.components.ai-chat.search-control.3")
+					: tx("panelUi.components.ai-chat.search-control.4", { value0: backend.label })
 			}
 			onToggle={onToggle}
 		/>

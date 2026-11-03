@@ -4,6 +4,7 @@ import type {
 	SettingsScalarField,
 } from "@bilibili-notify/contract";
 import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
+import { i18n } from "../../../i18n";
 import { ApiError } from "../../../services/api";
 import { reasonOf } from "../shared";
 import { safeImage } from "./image";
@@ -133,7 +134,9 @@ export function plainValueOf(sub: SettingsScalarField, raw: unknown): string {
 			return sub.unit ? `${value} ${sub.unit}` : String(value);
 		}
 		case "boolean":
-			return (typeof raw === "boolean" ? raw : (sub.default ?? false)) ? "是" : "否";
+			return (typeof raw === "boolean" ? raw : (sub.default ?? false))
+				? i18n.t("panelUi.pages.extensions.declarative.list-items.1")
+				: i18n.t("panelUi.pages.extensions.declarative.list-items.2");
 		case "enum": {
 			const value = typeof raw === "string" ? raw : sub.default;
 			if (value === undefined) return "—";
@@ -182,7 +185,9 @@ export function isSecretSub(sub: SettingsScalarField): boolean {
  * 版本号对不上(409)时那一句。面板已经重读了一遍(`useSettingsWrite`),要主人做的只是看一眼
  * 现在的样子再按一次 —— 服务端原话「重新读一遍再改」是说给不会自己重读的调用方听的。
  */
-export const CONFLICT_TEXT = "设置在你打开之后被改过了 —— 已经重新读了一遍,看一眼现在的样子再改";
+export function conflictText() {
+	return i18n.t("panelUi.pages.extensions.declarative.list-items.3");
+}
 
 /** 这一发是不是撞上了版本号(`code === "conflict"`,别的标签页刚写过一笔)。 */
 export function isConflict(err: unknown): boolean {
@@ -222,7 +227,7 @@ export function settingsIssuesOf(err: unknown): SettingsIssue[] | null {
  * 别的失败原话照搬。**失败的原因不许吞** —— 「保存失败」四个字等于让人对着黑盒按第二下。
  */
 export function writeReasonOf(err: unknown): string {
-	if (isConflict(err)) return CONFLICT_TEXT;
+	if (isConflict(err)) return conflictText();
 	const issues = settingsIssuesOf(err);
 	if (!issues || issues.length === 0) return reasonOf(err);
 	return issues.map((issue) => issue.text).join(";");
@@ -254,9 +259,17 @@ function issueText(
 	if (typeof id !== "string") return `${field.label}:${message}`;
 	const item = items.find((candidate) => candidate.id === id);
 	const title = item ? titleOf(field, item) : "";
-	const which = title ? `「${title}」` : `这条${itemLabelOf(field)}`;
+	const which = title
+		? `「${title}」`
+		: i18n.t("panelUi.pages.extensions.declarative.list-items.4", { value0: itemLabelOf(field) });
 	const sub = typeof subKey === "string" ? subFieldOf(field, subKey) : undefined;
-	return sub ? `${which}的 ${sub.label}:${message}` : `${which}:${message}`;
+	return sub
+		? i18n.t("panelUi.pages.extensions.declarative.list-items.5", {
+				value0: which,
+				value1: sub.label,
+				value2: message,
+			})
+		: `${which}:${message}`;
 }
 
 /**
@@ -286,8 +299,18 @@ export function dialogIssuesOf(
 }
 
 /** 「把这 N 样填到对面去」的 N —— `newItemCopy` 封顶 8 样。 */
-const COUNT_WORDS = ["零", "一", "两", "三", "四", "五", "六", "七", "八"];
 
 export function countWordOf(n: number): string {
+	const COUNT_WORDS = [
+		i18n.t("panelUi.pages.extensions.declarative.list-items.6"),
+		i18n.t("panelUi.pages.extensions.declarative.list-items.7"),
+		i18n.t("panelUi.pages.extensions.declarative.list-items.8"),
+		i18n.t("panelUi.pages.extensions.declarative.list-items.9"),
+		i18n.t("panelUi.pages.extensions.declarative.list-items.10"),
+		i18n.t("panelUi.pages.extensions.declarative.list-items.11"),
+		i18n.t("panelUi.pages.extensions.declarative.list-items.12"),
+		i18n.t("panelUi.pages.extensions.declarative.list-items.13"),
+		i18n.t("panelUi.pages.extensions.declarative.list-items.14"),
+	];
 	return COUNT_WORDS[n] ?? String(n);
 }

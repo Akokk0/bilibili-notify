@@ -1,6 +1,7 @@
 import { canProfileThink, resolveAIProfile } from "@bilibili-notify/internal/ai";
 import { Icon } from "@bilibili-notify/ui";
 import { useCoreSettings } from "../../hooks/useSettings";
+import { useT } from "../../i18n";
 import { ComposerPill } from "./composer-pill";
 
 /**
@@ -16,6 +17,8 @@ import { ComposerPill } from "./composer-pill";
  * 主人只会觉得功能时有时无。
  */
 export function ThinkingControl({ on, onToggle }: { on: boolean; onToggle: (v: boolean) => void }) {
+	const tx = useT();
+
 	const globalsQuery = useCoreSettings();
 	const ai = globalsQuery.data?.ai;
 	// 配置还没到手就先不画 —— 一颗状态未知的开关比没有开关更误导。
@@ -28,16 +31,18 @@ export function ThinkingControl({ on, onToggle }: { on: boolean; onToggle: (v: b
 
 	return (
 		<ComposerPill
-			label="深度思考"
+			label={tx("panelUi.components.ai-chat.thinking-control.1")}
 			icon={<Icon.sparkle size={14} />}
 			on={on}
 			disabled={!canThink}
 			title={
 				canThink
 					? canThink && on
-						? "深度思考已开启,只管当前会话(想多深在侧栏「设置」的思考深度里调)"
-						: "深度思考:让她想清楚再答,响应会慢一些。只管当前会话,不落盘"
-					: '自定义服务商的方言未知,请到「智能女仆」页的「额外请求参数」手写(如 DeepSeek 填 {"thinking":{"type":"enabled"}});或把那份实例的接口风味换成 responses,思考在那套协议里是标准字段'
+						? tx("panelUi.components.ai-chat.thinking-control.2")
+						: tx("panelUi.components.ai-chat.thinking-control.3")
+					: tx("panelUi.components.ai-chat.thinking-control.4", {
+							example: '{"thinking":{"type":"enabled"}}',
+						})
 			}
 			onToggle={onToggle}
 		/>

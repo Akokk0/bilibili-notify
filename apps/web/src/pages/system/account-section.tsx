@@ -3,6 +3,7 @@ import { Avatar, Btn, ErrorNote, GlassBox, Icon, ModalShell, QrPanel } from "@bi
 import { useState } from "react";
 import { AUTH_STATUS_ACCENT, AUTH_STATUS_LABELS, authMessageOf } from "../../config/auth-status";
 import { useSourceAuth } from "../../hooks/use-source-auth";
+import { useT } from "../../i18n";
 import { ApiError } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import { BILIBILI_SOURCE_KEY, type Connection, type PushTarget } from "../../types/domain";
@@ -17,13 +18,21 @@ import { MasterSection } from "./master-section";
  * 状态还没取到(查询在路上)时没有 `AuthState` 可查表,用下面这组占位。
  */
 const LOADING_ACCENT = "var(--color-bn-blue)";
-const LOADING_LABEL = "读取中";
 
 function QrCard({ dataUrl }: { dataUrl: string }) {
+	const tx = useT();
+
 	return (
 		// data-tour:「带我做」导览的聚光灯锚点 —— 二维码一出现聚光灯就从登录按钮转移过来
-		<QrPanel data-tour="bili-login-qr" src={dataUrl} alt="登录二维码" loading="二维码加载中">
-			<div className="text-bn-sm text-bn-text-secondary">使用 Bilibili 手机客户端扫码登录</div>
+		<QrPanel
+			data-tour="bili-login-qr"
+			src={dataUrl}
+			alt={tx("panelUi.pages.system.account-section.1")}
+			loading={tx("panelUi.pages.system.account-section.2")}
+		>
+			<div className="text-bn-sm text-bn-text-secondary">
+				{tx("panelUi.pages.system.account-section.3")}
+			</div>
 		</QrPanel>
 	);
 }
@@ -51,6 +60,8 @@ export function AccountSection({
 	connections: Connection[];
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
+	const tx = useT();
+
 	const auth = useSourceAuth(BILIBILI_SOURCE_KEY);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const authState = auth.state;
@@ -85,30 +96,34 @@ export function AccountSection({
 	}
 
 	const accent = authState ? AUTH_STATUS_ACCENT[authState.status] : LOADING_ACCENT;
-	const badge = authState ? AUTH_STATUS_LABELS[authState.status] : LOADING_LABEL;
+	const badge = authState
+		? AUTH_STATUS_LABELS[authState.status]
+		: tx("panelUi.pages.system.account-section.4");
 	// 等待扫码时按钮是「继续扫码」(重开弹窗,不重新发起)。
 	const resumable = authState?.status === "awaiting-scan";
 	// 卡片正文:扫码弹窗开着时整块不写(状态与进度都在弹窗里)。`expired` / `error` 的话在下面的红框里。
 	let bodyText: string | null = null;
-	if (!authState) bodyText = auth.isError ? null : "正在读取登录状态";
+	if (!authState) bodyText = auth.isError ? null : tx("panelUi.pages.system.account-section.5");
 	else if (authState.status === "logged-out") {
-		bodyText = "尚未登录 B 站账号，点下方「发起扫码登录」开始。";
+		bodyText = tx("panelUi.pages.system.account-section.6");
 	} else if (authState.status === "confirming" && !qrModalOpen) {
-		bodyText = authMessageOf(authState) || "正在确认";
+		bodyText = authMessageOf(authState) || tx("panelUi.pages.system.account-section.7");
 	}
 	const modalBody =
 		authState?.status === "awaiting-scan" ? (
 			<QrCard dataUrl={authState.qr.dataUrl} />
 		) : authState?.status === "confirming" ? (
-			<ConfirmingCard message={authMessageOf(authState) || "正在确认"} />
+			<ConfirmingCard
+				message={authMessageOf(authState) || tx("panelUi.pages.system.account-section.8")}
+			/>
 		) : null;
 
 	if (!active) return null;
 	return (
 		<>
 			<GlassBox
-				title="账号 · auth"
-				subtitle="B 站账号登录 + Cookie / 会话 · 扫码后实时生效"
+				title={tx("panelUi.pages.system.account-section.9")}
+				subtitle={tx("panelUi.pages.system.account-section.10")}
 				accent={accent}
 				icon={<Icon.user size={14} />}
 				badge={badge}
@@ -123,10 +138,10 @@ export function AccountSection({
 						/>
 						<div className="min-w-0 flex-1">
 							<div className="truncate text-bn-md font-bold text-bn-text-primary">
-								{accountName ?? "已登录账号"}
+								{accountName ?? tx("panelUi.pages.system.account-section.11")}
 							</div>
 							<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
-								业务核心可正常拉取动态 / 直播 / WBI 签名
+								{tx("panelUi.pages.system.account-section.12")}
 							</div>
 						</div>
 					</div>
@@ -140,9 +155,17 @@ export function AccountSection({
 					<ErrorNote className="mt-2.5">{authState.message}</ErrorNote>
 				) : null}
 				{auth.isError ? (
-					<ErrorNote className="mt-2.5">读取登录状态失败：{errorTextOf(auth.error)}</ErrorNote>
+					<ErrorNote className="mt-2.5">
+						{tx("panelUi.pages.system.account-section.13")}
+						{errorTextOf(auth.error)}
+					</ErrorNote>
 				) : null}
-				{actionError ? <ErrorNote className="mt-2.5">操作失败：{actionError}</ErrorNote> : null}
+				{actionError ? (
+					<ErrorNote className="mt-2.5">
+						{tx("panelUi.pages.system.account-section.14")}
+						{actionError}
+					</ErrorNote>
+				) : null}
 
 				<div className="mt-3.5 flex flex-wrap gap-2 border-t border-bn-border-subtle pt-3">
 					<Btn
@@ -157,7 +180,11 @@ export function AccountSection({
 							}
 						}}
 					>
-						{startQr.isPending ? "处理中…" : resumable ? "继续扫码" : "发起扫码登录"}
+						{startQr.isPending
+							? tx("panelUi.pages.system.account-section.15")
+							: resumable
+								? tx("panelUi.pages.system.account-section.16")
+								: tx("panelUi.pages.system.account-section.17")}
 					</Btn>
 					{/* 没登录也能点:cookie 文件解不开时靠它清掉残留。 */}
 					<Btn
@@ -168,14 +195,20 @@ export function AccountSection({
 							logout.mutate(undefined, { onError: reportActionError });
 						}}
 					>
-						{logout.isPending ? "处理中…" : "退出登录"}
+						{logout.isPending
+							? tx("panelUi.pages.system.account-section.18")
+							: tx("panelUi.pages.system.account-section.19")}
 					</Btn>
 				</div>
 			</GlassBox>
 
 			{/* 二维码弹窗:不撑开页面布局;导览聚光灯经 bili-login-qr 锚点转移到这里 */}
 			{qrModalOpen && modalBody ? (
-				<ModalShell onCancel={() => setQrDismissed(true)} width={360} title="扫码登录 B 站">
+				<ModalShell
+					onCancel={() => setQrDismissed(true)}
+					width={360}
+					title={tx("panelUi.pages.system.account-section.20")}
+				>
 					{modalBody}
 				</ModalShell>
 			) : null}
@@ -190,9 +223,15 @@ export function AccountSection({
 			) : null}
 
 			<details className="rounded-sm border border-bn-border bg-bn-surface-muted p-3 text-bn-sm text-bn-text-secondary">
-				<summary className="cursor-pointer font-medium text-bn-text-primary">原始登录快照</summary>
+				<summary className="cursor-pointer font-medium text-bn-text-primary">
+					{tx("panelUi.pages.system.account-section.21")}
+				</summary>
 				<pre className="mt-2 overflow-auto leading-relaxed">
-					{JSON.stringify(auth.raw ?? { hint: "等待读取登录状态" }, null, 2)}
+					{JSON.stringify(
+						auth.raw ?? { hint: tx("panelUi.pages.system.account-section.22") },
+						null,
+						2,
+					)}
 				</pre>
 			</details>
 		</>

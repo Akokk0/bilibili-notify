@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSourceAuth } from "../../hooks/use-source-auth";
 import { useCoreSettings } from "../../hooks/useSettings";
+import { i18n, useT } from "../../i18n";
 import { CARD_SKINS_KEY } from "../../pages/cards/card-skins-query";
 import {
 	conversationQueryKey,
@@ -86,6 +87,8 @@ function onIdle(fn: () => void): () => void {
  * 都能召唤;已经在聊天页时不渲染 —— 自己叠在自己的入口上没有意义。
  */
 export function AiChatDock() {
+	const tx = useT();
+
 	const navigate = useNavigate();
 	const onChatPage = useLocation().pathname === CHAT_PATH;
 
@@ -111,7 +114,7 @@ export function AiChatDock() {
 			onPointerEnter={preloadChatMarkdown}
 			onPointerDown={preloadChatMarkdown}
 			onFocus={preloadChatMarkdown}
-			title="打开女仆 AI 聊天"
+			title={tx("panelUi.components.ai-chat.index.1")}
 			// 挂皮肤挂点:这颗胶囊全站常驻,却自带一套观感(`.bn-ai-fab` 的渐变 / 玻璃 /
 			// 流光全写死在 styles.css 里)。不挂的话皮肤够不到它 —— 整站换成像素窗口,
 			// 只有右下角还是圆头紫胶囊。皮肤 CSS 是无层 author 样式,压得过 `.bn-ai-fab`
@@ -120,7 +123,7 @@ export function AiChatDock() {
 			className="bn-ai-fab fixed bottom-5 right-5 z-bn-nav flex h-12 cursor-pointer items-center gap-2.25 rounded-bn-pill pl-4 pr-5 text-bn-base font-bold text-bn-on-solid shadow-bn-ai transition-shadow hover:shadow-bn-ai-lg"
 		>
 			<Icon.ai size={20} />
-			女仆 AI
+			{tx("panelUi.components.ai-chat.index.2")}
 		</button>
 	);
 }
@@ -181,8 +184,20 @@ const SKIN_FACE: ChatFace = { mode: "skin", persona: false, skinTarget: "dashboa
  * 认两颗入口省事。
  */
 const WORKSHOP_TABS = [
-	{ id: "dashboard" as const, label: "界面皮肤", icon: <Icon.palette size={14} /> },
-	{ id: "card" as const, label: "推送卡片", icon: <Icon.image size={14} /> },
+	{
+		id: "dashboard" as const,
+		get label() {
+			return i18n.t("panelUi.components.ai-chat.index.3");
+		},
+		icon: <Icon.palette size={14} />,
+	},
+	{
+		id: "card" as const,
+		get label() {
+			return i18n.t("panelUi.components.ai-chat.index.4");
+		},
+		icon: <Icon.image size={14} />,
+	},
 ];
 
 /** 卡片工坊里会改动皮肤库的那几把 —— 做成了就让皮肤库的缓存过期。 */
@@ -201,8 +216,20 @@ const CARD_WRITE_TOOLS: ReadonlySet<string> = new Set([
  * 换人格,前半段的语气和后半段对不上,读起来像换了个人。
  */
 const PERSONA_TABS = [
-	{ id: "on" as const, label: "有人格", icon: <Icon.ai size={14} /> },
-	{ id: "off" as const, label: "无人格", icon: <Icon.chat size={14} /> },
+	{
+		id: "on" as const,
+		get label() {
+			return i18n.t("panelUi.components.ai-chat.index.5");
+		},
+		icon: <Icon.ai size={14} />,
+	},
+	{
+		id: "off" as const,
+		get label() {
+			return i18n.t("panelUi.components.ai-chat.index.6");
+		},
+		icon: <Icon.chat size={14} />,
+	},
 ];
 
 /** /chat 路由页。除了「返回控制台」的去向,不感知路由 —— 其余全是聊天自己的事。 */
@@ -239,6 +266,8 @@ function FloatGlassButton({
 }
 
 export function ChatPage() {
+	const tx = useT();
+
 	const navigate = useNavigate();
 	const location = useLocation();
 	// 「返回控制台」回**来路**:从统计页点进来就该回统计页。直接输网址 / 书签进来时
@@ -723,7 +752,7 @@ export function ChatPage() {
 			// 页面上的对话框」,对屏幕阅读器自称 dialog 会让人找「关闭」而不是「返回」。
 			// 带名字的 <section> 暴露出来就是 region 地标;不用 <main> —— App 壳里
 			// 已经有一个 <main>,页面里嵌第二个是违规的。
-			aria-label="女仆 AI 聊天"
+			aria-label={tx("panelUi.components.ai-chat.index.7")}
 		>
 			{rail ? (
 				<ChatSidebar
@@ -746,8 +775,8 @@ export function ChatPage() {
 			<div className="relative flex min-w-0 flex-1 flex-col">
 				{!rail ? (
 					<FloatGlassButton
-						title="打开侧栏"
-						ariaLabel="打开侧栏"
+						title={tx("panelUi.components.ai-chat.index.8")}
+						ariaLabel={tx("panelUi.components.ai-chat.index.9")}
 						onClick={() => setRail(true)}
 						className="left-4 grid h-8.5 w-8.5 place-items-center rounded-bn-sm"
 					>
@@ -760,7 +789,7 @@ export function ChatPage() {
 					className="right-4 flex h-9.5 items-center gap-1.75 rounded-bn-lg px-4 text-bn-sm font-semibold"
 				>
 					<Icon.arrowLeft size={15} />
-					返回控制台
+					{tx("panelUi.components.ai-chat.index.10")}
 				</FloatGlassButton>
 
 				{empty ? (
@@ -780,10 +809,13 @@ export function ChatPage() {
 								</h1>
 								<div className="text-bn-md text-bn-text-secondary">
 									{cardWorkshop
-										? "说说推送卡片想换成什么样吧 —— 氛围、主色、先改哪几种卡都可以聊;她会一张一张写好,回复下面就能看到样子"
+										? tx("panelUi.components.ai-chat.index.11")
 										: skinMode
-											? "说说想要什么样的界面皮肤吧 —— 氛围、主色、深浅都可以聊;想要壁纸就把图发过来,她自己找不了图"
-											: `今天想让${persona.self}帮${persona.user}做点什么呢?`}
+											? tx("panelUi.components.ai-chat.index.12")
+											: tx("panelUi.components.ai-chat.index.13", {
+													value0: persona.self,
+													value1: persona.user,
+												})}
 								</div>
 							</div>
 							{facePicker}
@@ -802,7 +834,10 @@ export function ChatPage() {
 							/>
 							{error ? (
 								<ErrorNote size="lg" className="mx-auto mt-3 max-w-180">
-									呜…{persona.self}出错了:{error}
+									{tx("panelUi.components.ai-chat.index.14")}
+									{persona.self}
+									{tx("panelUi.components.ai-chat.index.15")}
+									{error}
 								</ErrorNote>
 							) : null}
 							{/* 技能胶囊那一排整个拆了(ADR-0001 决策 10):技能改成主人自己写的
@@ -810,11 +845,13 @@ export function ChatPage() {
 							    就是完整目录,打一个 `/` 全在那儿。留一句引导语指路即可。 */}
 							{!skinMode && skills.length > 0 ? (
 								<div className="bn-anim-fade-up mt-4 text-center text-bn-sm text-bn-text-tertiary">
-									打一个&nbsp;
+									{tx("panelUi.components.ai-chat.index.16")}
 									<span className="bn-chat-accent rounded-bn-xs bg-bn-code-bg px-1.5 py-px font-mono font-semibold">
 										/
 									</span>
-									&nbsp;看看{persona.self}会做的事
+									{tx("panelUi.components.ai-chat.index.17")}
+									{persona.self}
+									{tx("panelUi.components.ai-chat.index.18")}
 								</div>
 							) : null}
 						</div>
@@ -850,7 +887,8 @@ export function ChatPage() {
 								skills={skinMode ? EMPTY_SKILLS : skills}
 							/>
 							<div className="mt-2 text-center text-bn-xs text-bn-text-secondary">
-								{persona.name}可能会出错,请核对重要信息
+								{persona.name}
+								{tx("panelUi.components.ai-chat.index.19")}
 							</div>
 						</div>
 					</>
@@ -863,8 +901,8 @@ export function ChatPage() {
 /** 按本地时段问好。凌晨算「晚上」—— 三点还没睡的主人不需要被提醒「早上好」。 */
 function greeting(now = new Date()): string {
 	const h = now.getHours();
-	if (h >= 5 && h < 11) return "早上好,";
-	if (h >= 11 && h < 14) return "中午好,";
-	if (h >= 14 && h < 18) return "下午好,";
-	return "晚上好,";
+	if (h >= 5 && h < 11) return i18n.t("panelUi.components.ai-chat.index.20");
+	if (h >= 11 && h < 14) return i18n.t("panelUi.components.ai-chat.index.21");
+	if (h >= 14 && h < 18) return i18n.t("panelUi.components.ai-chat.index.22");
+	return i18n.t("panelUi.components.ai-chat.index.23");
 }

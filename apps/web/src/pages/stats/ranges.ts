@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 统计范围的三档预设。
  *
@@ -9,7 +10,22 @@
  * 从页面里取常量会绕成循环依赖。
  */
 export const STATS_RANGES = [
-	{ days: 7, label: "近7日" },
-	{ days: 30, label: "近30日" },
-	{ days: 90, label: "近90日" },
+	{
+		days: 7,
+		get label() {
+			return i18n.t("panelUi.pages.stats.ranges.1");
+		},
+	},
+	{
+		days: 30,
+		get label() {
+			return i18n.t("panelUi.pages.stats.ranges.2");
+		},
+	},
+	{
+		days: 90,
+		get label() {
+			return i18n.t("panelUi.pages.stats.ranges.3");
+		},
+	},
 ] as const;

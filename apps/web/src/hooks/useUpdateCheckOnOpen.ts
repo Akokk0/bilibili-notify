@@ -9,6 +9,7 @@ import {
 	UPDATE_QUERY_KEY,
 	UPDATE_SECTION_PATH,
 } from "../components/update/status";
+import { i18n } from "../i18n";
 import { api } from "../services/api";
 import { type NoticeView, useToastStore } from "../store/notifications";
 
@@ -55,7 +56,7 @@ export async function checkUpdateOnOpen(
 		id: `update:${target}`,
 		title: phaseLabel(after),
 		body: noticeBody(after),
-		action: { label: "去更新", to: UPDATE_SECTION_PATH },
+		action: { label: i18n.t("panelUi.hooks.useUpdateCheckOnOpen.1"), to: UPDATE_SECTION_PATH },
 	});
 }
 

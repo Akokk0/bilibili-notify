@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 /**
  * 「覆盖开关卡」模具 —— per-UP 覆盖那类 GlassBox:右上 Toggle 定开关、badge 写
  * 「覆盖中/继承」、关闭时正文换成一行 InheritNote。收编前这套接线在
@@ -35,14 +36,24 @@ export function OverrideBox({
 	inheritNote,
 	children,
 }: OverrideBoxProps) {
+	const tx = useT();
+
 	return (
 		<GlassBox
 			title={title}
 			subtitle={subtitle}
 			accent={accent}
 			icon={icon}
-			badge={enabled ? "覆盖中" : "继承"}
-			right={<Toggle value={enabled} onChange={onToggle} ariaLabel={`覆盖:${title}`} />}
+			badge={
+				enabled ? tx("panelUi.components.override-box.1") : tx("panelUi.components.override-box.2")
+			}
+			right={
+				<Toggle
+					value={enabled}
+					onChange={onToggle}
+					ariaLabel={tx("panelUi.components.override-box.3", { value0: title })}
+				/>
+			}
 		>
 			{enabled ? children : <InheritNote>{inheritNote}</InheritNote>}
 		</GlassBox>

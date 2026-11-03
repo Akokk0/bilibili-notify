@@ -1,3 +1,4 @@
+import { useT } from "../../i18n";
 /**
  * 导出 / 导入两个备份对话框共用的小件。曾各自手搓一份(PIN 输入框两份),合并到这里;
  * 只有 backup 在用,先不上升为全站原子。二选一的方式卡原先也住这儿(ChoiceCard),
@@ -16,10 +17,12 @@ export function PinField({
 	placeholder: string;
 	className?: string;
 }) {
+	const tx = useT();
+
 	return (
 		<label className={`block ${className ?? ""}`}>
 			<span className="mb-1 block text-bn-sm font-semibold text-bn-text-secondary">
-				备份 PIN（6 位数字）
+				{tx("panelUi.pages.backup.dialog-bits.1")}
 			</span>
 			<input
 				type="password"

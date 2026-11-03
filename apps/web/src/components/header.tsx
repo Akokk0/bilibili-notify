@@ -21,7 +21,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { canHideNav, NAV_ITEMS, type NavItem, orderedNav, resolveNav } from "../config/nav";
 import { SOURCE_AUTH_QUERY_PREFIX } from "../hooks/use-source-auth";
 import { useBackendReachable } from "../hooks/useBackendReachable";
-import { useT } from "../i18n";
+import { i18n, useT } from "../i18n";
 import { api } from "../services/api";
 import { submitLogout } from "../services/session";
 import { useNavStore } from "../store/nav";
@@ -39,6 +39,8 @@ import { ProblemBox } from "./problem-box";
  * 拖拽手柄只绑在 ⠿ 上,勾选框照常点得动。
  */
 function NavEditorRow({ item, shown, locked }: { item: NavItem; shown: boolean; locked: boolean }) {
+	const tx = useT();
+
 	const toggle = useNavStore((s) => s.toggle);
 	const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition } =
 		useSortable({ id: item.to });
@@ -63,7 +65,7 @@ function NavEditorRow({ item, shown, locked }: { item: NavItem; shown: boolean; 
 				}`}
 				// 「系统」是唯一能把别的改回来的地方,藏了就锁死了。说清楚原因,
 				// 否则一个点不动的勾选框只会让人以为是坏了。
-				title={locked ? "「系统」不能隐藏 —— 否则就没地方把别的改回来了" : undefined}
+				title={locked ? tx("panelUi.components.header.1") : undefined}
 			>
 				<input
 					type="checkbox"
@@ -88,6 +90,8 @@ function NavEditorRow({ item, shown, locked }: { item: NavItem; shown: boolean; 
  * 再决定要不要显示它,而不必为了调顺序先把它放出来。
  */
 function NavEditor({ onClose }: { onClose: () => void }) {
+	const tx = useT();
+
 	const hidden = useNavStore((s) => s.hidden);
 	const order = useNavStore((s) => s.order);
 	const showAll = useNavStore((s) => s.showAll);
@@ -123,13 +127,15 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 			className="w-60"
 		>
 			<div className="flex items-center justify-between gap-1 px-1 py-1">
-				<span className="text-bn-xs font-bold text-bn-text-secondary">标签显示与排序</span>
+				<span className="text-bn-xs font-bold text-bn-text-secondary">
+					{tx("panelUi.components.header.2")}
+				</span>
 				<div className="flex items-center gap-0.5">
 					<Btn variant="ghost" size="sm" onClick={showAll}>
-						全部显示
+						{tx("panelUi.components.header.3")}
 					</Btn>
 					<Btn variant="ghost" size="sm" onClick={resetOrder}>
-						默认顺序
+						{tx("panelUi.components.header.4")}
 					</Btn>
 				</div>
 			</div>
@@ -153,16 +159,44 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 }
 
 const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string; hint: string }> = [
-	{ value: "system", label: "跟随系统", hint: "自动跟随系统外观" },
-	{ value: "light", label: "浅色", hint: "固定使用亮色主题" },
-	{ value: "dark", label: "深色", hint: "固定使用深色主题" },
+	{
+		value: "system",
+		get label() {
+			return i18n.t("panelUi.components.header.5");
+		},
+		get hint() {
+			return i18n.t("panelUi.components.header.6");
+		},
+	},
+	{
+		value: "light",
+		get label() {
+			return i18n.t("panelUi.components.header.7");
+		},
+		get hint() {
+			return i18n.t("panelUi.components.header.8");
+		},
+	},
+	{
+		value: "dark",
+		get label() {
+			return i18n.t("panelUi.components.header.9");
+		},
+		get hint() {
+			return i18n.t("panelUi.components.header.10");
+		},
+	},
 ];
 
 function themeLabel(value: ThemePreference): string {
-	return THEME_OPTIONS.find((o) => o.value === value)?.label ?? "跟随系统";
+	return (
+		THEME_OPTIONS.find((o) => o.value === value)?.label ?? i18n.t("panelUi.components.header.11")
+	);
 }
 
 function ThemeSwitcher() {
+	const tx = useT();
+
 	const preference = useThemeStore((s) => s.preference);
 	const resolved = useThemeStore((s) => s.resolved);
 	const setPreference = useThemeStore((s) => s.setPreference);
@@ -187,11 +221,13 @@ function ThemeSwitcher() {
 				disabled
 				title={
 					editing
-						? `正在编辑这套皮肤的${themeLabel(lockedTheme)},抽屉顶部换一套即可切换`
-						: `试穿中的皮肤只有${themeLabel(lockedTheme)}一套,应用或取消试穿即可切换`
+						? tx("panelUi.components.header.12", { value0: themeLabel(lockedTheme) })
+						: tx("panelUi.components.header.13", { value0: themeLabel(lockedTheme) })
 				}
 			>
-				主题：{themeLabel(lockedTheme)}({editing ? "编辑中" : "试穿锁定"})
+				{tx("panelUi.components.header.14")}
+				{themeLabel(lockedTheme)}(
+				{editing ? tx("panelUi.components.header.15") : tx("panelUi.components.header.16")})
 			</Btn>
 		);
 	}
@@ -204,9 +240,16 @@ function ThemeSwitcher() {
 				onClick={() => setOpen((v) => !v)}
 				ariaHasPopup
 				ariaExpanded={open}
-				title={`当前外观:${current}${preference === "system" ? `(${resolved === "dark" ? "深色" : "浅色"})` : ""}`}
+				title={tx("panelUi.components.header.17", {
+					value0: current,
+					value1:
+						preference === "system"
+							? `(${resolved === "dark" ? tx("panelUi.components.header.18") : tx("panelUi.components.header.19")})`
+							: "",
+				})}
 			>
-				主题：{current}
+				{tx("panelUi.components.header.20")}
+				{current}
 			</Btn>
 			{open ? (
 				<PopoverShell align="right" className="w-42">
@@ -246,6 +289,8 @@ function ThemeSwitcher() {
  * fat-finger from dropping unsaved edits, no modal infra.
  */
 function LogoutButton() {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const authRequired = useSessionStore((s) => s.authRequired);
 	const authed = useSessionStore((s) => s.authed);
@@ -290,9 +335,9 @@ function LogoutButton() {
 				icon={<Icon.logout size={14} />}
 				onClick={armOrConfirm}
 				disabled={busy}
-				title="登出 Dashboard"
+				title={tx("panelUi.components.header.21")}
 			>
-				{confirming ? "确认登出?" : ""}
+				{confirming ? tx("panelUi.components.header.22") : ""}
 			</Btn>
 		</>
 	);
@@ -339,7 +384,7 @@ export function GlassHeader() {
 	const qc = useQueryClient();
 	const reachable = useBackendReachable();
 	// 皮肤文案槽:皮肤没给就用产品默认标题。
-	const headerTitle = useSkinText("headerTitle") ?? "Bilibili Notify · 女仆值班室";
+	const headerTitle = useSkinText("headerTitle") ?? tx("panelUi.components.header.23");
 	const subs = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
@@ -445,22 +490,19 @@ export function GlassHeader() {
 					 * 是每位 UP 各自的 features,跟这里毫无关系。措辞必须落在「服务器」上。
 					 */}
 					{reachable ? (
-						<ReachBadge
-							tone="success"
-							title="后端服务可访问。与推送开关无关 —— 推送是否启用见各 UP 的规则设置。"
-						>
-							服务器运行中
+						<ReachBadge tone="success" title={tx("panelUi.components.header.24")}>
+							{tx("panelUi.components.header.25")}
 						</ReachBadge>
 					) : (
-						<ReachBadge tone="danger">服务器失联</ReachBadge>
+						<ReachBadge tone="danger">{tx("panelUi.components.header.26")}</ReachBadge>
 					)}
 					<ThemeSwitcher />
 					<Btn variant="outline" size="sm" icon={<Icon.refresh size={14} />} onClick={refreshAll}>
-						刷新
+						{tx("panelUi.components.header.27")}
 					</Btn>
 					<NavLink to="/subs">
 						<Btn variant="primary" size="sm" icon={<Icon.plus size={14} />}>
-							添加 UP 主
+							{tx("panelUi.components.header.28")}
 						</Btn>
 					</NavLink>
 					<LogoutButton />
@@ -531,7 +573,7 @@ export function GlassHeader() {
 						variant="ghost"
 						size="sm"
 						icon={<Icon.sliders size={14} />}
-						title="挑要显示的标签"
+						title={tx("panelUi.components.header.29")}
 						onClick={() => setNavEditorOpen((v) => !v)}
 					/>
 					{navEditorOpen ? <NavEditor onClose={() => setNavEditorOpen(false)} /> : null}

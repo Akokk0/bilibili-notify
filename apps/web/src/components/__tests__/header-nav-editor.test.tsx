@@ -8,10 +8,11 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { NAV_ITEMS } from "../../config/nav";
+import { i18n } from "../../i18n";
 import { useNavStore } from "../../store/nav";
 import { GlassHeader } from "../header";
 
@@ -47,7 +48,12 @@ function openEditor(): void {
 	fireEvent.click(screen.getByTitle("挑要显示的标签"));
 }
 
+vi.mock("../../i18n/locales/en.json", () => ({
+	default: { "panelUi.config.nav.11": "Logs", "panelUi.config.nav.10": "System" },
+}));
+
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	localStorage.clear();
 	useNavStore.setState({ hidden: [], order: [] });
 });
@@ -55,6 +61,22 @@ beforeEach(() => {
 afterEach(() => {
 	cleanup();
 	localStorage.clear();
+});
+
+it("切换语言与口吻刷新标签并保留导航显隐和打开的编辑面板", async () => {
+	renderHeader();
+	await waitFor(() => expect(navLabels()).toContain("日志"));
+	openEditor();
+	fireEvent.click(await screen.findByRole("checkbox", { name: "日志" }));
+	act(() => i18n.set({ voice: "maid" }));
+	expect((screen.getByRole("checkbox", { name: "日志" }) as HTMLInputElement).checked).toBe(false);
+	act(() => i18n.set({ locale: "en" }));
+	expect(document.querySelector('nav a[href="/logs"]')).toBeNull();
+	expect((screen.getByRole("checkbox", { name: "Logs" }) as HTMLInputElement).checked).toBe(false);
+	expect(navLabels()).toContain("System");
+	fireEvent.click(screen.getByRole("checkbox", { name: "Logs" }));
+	expect(navLabels()).toContain("Logs");
+	act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 });
 
 describe("导航条 — 挑要显示的标签", () => {

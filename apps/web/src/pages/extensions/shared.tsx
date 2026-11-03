@@ -3,6 +3,7 @@ import { ErrorNote, Icon, WarnNote } from "@bilibili-notify/ui";
 import { type UseMutationResult, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invalidateExtensionTables } from "../../hooks/useExtensions";
 import { patchCoreSettings, SETTINGS_KEY } from "../../hooks/useSettings";
+import { useT } from "../../i18n";
 import { EXTENSION_STATE_META } from "./state-meta";
 
 /**
@@ -100,6 +101,13 @@ export function ExtensionToggleError({
 }: {
 	toggle: UseMutationResult<unknown, Error, { id: string; enabled: boolean }, unknown>;
 }) {
+	const tx = useT();
+
 	if (!toggle.isError) return null;
-	return <ErrorNote size="sm">这个开关没拨动:{reasonOf(toggle.error)}</ErrorNote>;
+	return (
+		<ErrorNote size="sm">
+			{tx("panelUi.pages.extensions.shared.1")}
+			{reasonOf(toggle.error)}
+		</ErrorNote>
+	);
 }

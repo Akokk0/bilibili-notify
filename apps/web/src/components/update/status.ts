@@ -1,5 +1,6 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { useQuery } from "@tanstack/react-query";
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 
 /**
@@ -53,23 +54,25 @@ export function newerVersionOf(status: UpdateStatusDTO): string | null {
 export function phaseLabel(status: UpdateStatusDTO): string {
 	switch (status.state.phase) {
 		case "disabled":
-			return status.state.reason === "dev-build" ? "开发版,不检查更新" : "本构建未启用";
+			return status.state.reason === "dev-build"
+				? i18n.t("panelUi.components.update.status.1")
+				: i18n.t("panelUi.components.update.status.2");
 		case "idle":
-			return "还没查过";
+			return i18n.t("panelUi.components.update.status.3");
 		case "up-to-date":
-			return "已是最新";
+			return i18n.t("panelUi.components.update.status.4");
 		case "available":
-			return `有新版 ${status.state.target}`;
+			return i18n.t("panelUi.components.update.status.5", { value0: status.state.target });
 		case "downloading":
-			return `正在下载 ${status.state.target}`;
+			return i18n.t("panelUi.components.update.status.6", { value0: status.state.target });
 		case "ready":
-			return `${status.state.target} 已就绪`;
+			return i18n.t("panelUi.components.update.status.7", { value0: status.state.target });
 		case "needs-image-pull":
-			return `${status.state.target} 需要新镜像`;
+			return i18n.t("panelUi.components.update.status.8", { value0: status.state.target });
 		case "rolled-back":
-			return `已排队回退到 ${status.state.target}`;
+			return i18n.t("panelUi.components.update.status.9", { value0: status.state.target });
 		case "error":
-			return "这次没成";
+			return i18n.t("panelUi.components.update.status.10");
 	}
 }
 
@@ -91,12 +94,12 @@ export function withNotes(notes: string | undefined, line: string): string {
 function statusLine(status: UpdateStatusDTO): string {
 	switch (status.state.phase) {
 		case "downloading":
-			return "正在后台下载,下好了会再提醒你。";
+			return i18n.t("panelUi.components.update.status.11");
 		case "ready":
-			return "已经下好了,到系统页按一下重启就换。";
+			return i18n.t("panelUi.components.update.status.12");
 		case "needs-image-pull":
-			return "这一版要重新拉镜像 / 下安装包,在线换不了。";
+			return i18n.t("panelUi.components.update.status.13");
 		default:
-			return "到系统页下载;什么时候重启换版本由你按。";
+			return i18n.t("panelUi.components.update.status.14");
 	}
 }

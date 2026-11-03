@@ -2,6 +2,7 @@ import type { StatsRoastRunNowResponse, StatsRoastRunOutcome } from "@bilibili-n
 import { Btn, ConfirmDialog } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 
@@ -33,6 +34,8 @@ export function RoastRunNowBox({
 	targetName: (id: string) => string;
 	subscriptionId?: string;
 }) {
+	const tx = useT();
+
 	const [asking, setAsking] = useState(false);
 
 	const run = useMutation<StatsRoastRunNowResponse>({
@@ -50,16 +53,26 @@ export function RoastRunNowBox({
 	// 「生成没成」「没配目标」)是 200 + 结局,由 OutcomeLine 说。
 	const err = run.isError ? errorTextOf(run.error) : undefined;
 
-	const noun = subscriptionId ? "锐评" : "周报";
+	const noun = subscriptionId
+		? tx("panelUi.pages.stats.RoastRunNowBox.1")
+		: tx("panelUi.pages.stats.RoastRunNowBox.2");
 	const confirmMessage = approval ? (
 		<>
-			会立刻生成一份{noun}并私聊发给主人等你回 y，<b>群里先不发</b>。顺便也能验一下「回
-			y」这条路通不通。
+			{tx("panelUi.pages.stats.RoastRunNowBox.3")}
+			{noun}
+			{tx("panelUi.pages.stats.RoastRunNowBox.4")}
+			<b>{tx("panelUi.pages.stats.RoastRunNowBox.5")}</b>
+			{tx("panelUi.pages.stats.RoastRunNowBox.6")}
 		</>
 	) : (
 		<>
-			会立刻生成一份{noun}，并<b className="text-bn-danger-text">真的发到 {targetCount} 个群</b>
-			里，不是演习。想先看过再发的话，请先打开上面的「发送前先给主人过目」。
+			{tx("panelUi.pages.stats.RoastRunNowBox.7")}
+			{noun}
+			{tx("panelUi.pages.stats.RoastRunNowBox.8")}
+			<b className="text-bn-danger-text">
+				{tx("panelUi.pages.stats.RoastRunNowBox.9", { count: targetCount })}
+			</b>
+			{tx("panelUi.pages.stats.RoastRunNowBox.11")}
 		</>
 	);
 
@@ -72,32 +85,43 @@ export function RoastRunNowBox({
 					onClick={() => setAsking(true)}
 					disabled={run.isPending || targetCount === 0}
 				>
-					{run.isPending ? "跑一轮中…" : "试一次"}
+					{run.isPending
+						? tx("panelUi.pages.stats.RoastRunNowBox.12")
+						: tx("panelUi.pages.stats.RoastRunNowBox.13")}
 				</Btn>
 				<span className="text-bn-xs text-bn-text-tertiary">
 					{targetCount === 0
-						? "先选一个发送目标"
-						: "按现在保存好的配置立刻跑一轮，和到点自动跑走的是同一条路"}
+						? tx("panelUi.pages.stats.RoastRunNowBox.14")
+						: tx("panelUi.pages.stats.RoastRunNowBox.15")}
 				</span>
 			</div>
 
 			{dirty ? (
 				<div className="mt-1.5 text-bn-xs text-bn-warning-text">
-					有还没保存的改动 —— 这一轮跑的是<b>已保存</b>的那份配置，先存一下再试。
+					{tx("panelUi.pages.stats.RoastRunNowBox.16")}
+					<b>{tx("panelUi.pages.stats.RoastRunNowBox.17")}</b>
+					{tx("panelUi.pages.stats.RoastRunNowBox.18")}
 				</div>
 			) : null}
 
 			{err ? (
-				<div className="mt-2 text-bn-xs text-bn-danger-text">跑不起来:{err}</div>
+				<div className="mt-2 text-bn-xs text-bn-danger-text">
+					{tx("panelUi.pages.stats.RoastRunNowBox.19")}
+					{err}
+				</div>
 			) : run.data ? (
 				<OutcomeLine outcome={run.data.outcome} targetName={targetName} />
 			) : null}
 
 			{asking ? (
 				<ConfirmDialog
-					title={`立刻跑一轮${noun}`}
+					title={tx("panelUi.pages.stats.RoastRunNowBox.20", { value0: noun })}
 					message={confirmMessage}
-					confirmLabel={approval ? "生成并私聊我" : "真的发出去"}
+					confirmLabel={
+						approval
+							? tx("panelUi.pages.stats.RoastRunNowBox.21")
+							: tx("panelUi.pages.stats.RoastRunNowBox.22")
+					}
 					danger={!approval}
 					onCancel={() => setAsking(false)}
 					onConfirm={() => {
@@ -124,32 +148,51 @@ export function OutcomeLine({
 	outcome: StatsRoastRunOutcome;
 	targetName: (id: string) => string;
 }) {
+	const tx = useT();
+
 	if (outcome.kind === "no-targets") {
 		return (
-			<div className="mt-2 text-bn-xs text-bn-danger-text">没有配置推送目标，这一轮跳过了</div>
+			<div className="mt-2 text-bn-xs text-bn-danger-text">
+				{tx("panelUi.pages.stats.RoastRunNowBox.23")}
+			</div>
 		);
 	}
 	if (outcome.kind === "gen-failed") {
-		return <div className="mt-2 text-bn-xs text-bn-danger-text">没生成出来:{outcome.message}</div>;
+		return (
+			<div className="mt-2 text-bn-xs text-bn-danger-text">
+				{tx("panelUi.pages.stats.RoastRunNowBox.24")}
+				{outcome.message}
+			</div>
+		);
 	}
 	if (outcome.kind === "pending-approval") {
 		return (
 			<div className="mt-2 text-bn-xs text-bn-success-text">
-				✓ 已生成并私聊给主人了，回一句「y {outcome.draftId}」就发出去（群里还没发）
+				{tx("panelUi.pages.stats.RoastRunNowBox.25", { draftId: outcome.draftId })}
 			</div>
 		);
 	}
-	const mode = outcome.mode === "image" ? "卡片图" : "文字";
+	const mode =
+		outcome.mode === "image"
+			? tx("panelUi.pages.stats.RoastRunNowBox.27")
+			: tx("panelUi.pages.stats.RoastRunNowBox.28");
 	// 停用而跳过的单独说,不混进失败:停用是主人自己按的,不是「没发出去」;但也不能从
 	// 总数里悄悄少一个,那会让人去查网络。
 	const skipped =
 		outcome.skipped.length > 0
-			? `；跳过 ${outcome.skipped.length} 个已停用：${outcome.skipped.map(targetName).join("、")}`
+			? tx("panelUi.pages.stats.RoastRunNowBox.29", {
+					count: outcome.skipped.length,
+					value1: outcome.skipped.map(targetName).join("、"),
+				})
 			: "";
 	if (outcome.failed.length > 0) {
 		return (
 			<div className="mt-2 text-bn-xs text-bn-warning-text">
-				{outcome.sent} 个目标成功、{outcome.failed.length} 个失败（{mode}）：
+				{tx("panelUi.pages.stats.RoastRunNowBox.30", {
+					sent: outcome.sent,
+					count: outcome.failed.length,
+					mode,
+				})}
 				{outcome.failed.map((f) => `${targetName(f.targetId)} ${f.message}`).join("；")}
 				{skipped}
 			</div>
@@ -157,7 +200,8 @@ export function OutcomeLine({
 	}
 	return (
 		<div className="mt-2 text-bn-xs text-bn-success-text">
-			✓ 已发送到 {outcome.sent} 个目标（{mode}）{skipped}
+			{tx("panelUi.pages.stats.RoastRunNowBox.32", { count: outcome.sent, mode })}
+			{skipped}
 		</div>
 	);
 }

@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 import type { OnboardingStepKey, OnboardingView } from "./derive";
 
 /**
@@ -94,8 +95,12 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			route: "/system",
 			// 二维码弹窗一出现,链解析到 qr(在 modal 内)→ 聚光灯让位给弹窗;关掉回落按钮
 			anchor: ["bili-login-qr", "bili-login"],
-			title: "扫码登录 B 站",
-			body: "点高亮的「发起扫码登录」,用手机 B 站 App 扫码并确认。登录成功后这里会自动进入下一步。",
+			get title() {
+				return i18n.t("panelUi.components.onboarding.tour-script.1");
+			},
+			get body() {
+				return i18n.t("panelUi.components.onboarding.tour-script.2");
+			},
 		},
 	],
 	connection: [
@@ -104,9 +109,18 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 出发前的选型思考步:不配 anchor(在目标页的动手指引归下一子步),
 			// 抵达 /targets 即流转 —— 灯与文案永远同步
 			advanceOnRoute: true,
-			title: "先选一条接入路线",
-			body: "BN 的连接分几路:「QQ 官方机器人」「OneBot(NapCat 等协议端)」,以及飞书 / 钉钉 / 企业微信的群机器人和「未指明的 HTTP 端点」。能力与部署成本各不同 —— 具体区别看「选型指引」,想清楚了再动身。",
-			link: { to: "/about/guide", label: "选型指引" },
+			get title() {
+				return i18n.t("panelUi.components.onboarding.tour-script.3");
+			},
+			get body() {
+				return i18n.t("panelUi.components.onboarding.tour-script.4");
+			},
+			link: {
+				to: "/about/guide",
+				get label() {
+					return i18n.t("panelUi.components.onboarding.tour-script.5");
+				},
+			},
 		},
 		{
 			route: "/targets",
@@ -115,18 +129,31 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			anchor: ["connection-form", "connection-add"],
 			// 保存落库的那一刻翻页 —— 灯立刻移到「测试」按钮,不等用户自己想起来
 			doneWhen: (v) => v.hasConnection,
-			title: "新建推送连接",
-			body: "点高亮的「+ 新建」,选好平台:QQ 官方填 appId / appSecret(或点表单里的「扫码连接 / 创建」自动回填);OneBot 选连接方式(推荐反向 WS,填一个监听端口)。填完点「保存」。",
+			get title() {
+				return i18n.t("panelUi.components.onboarding.tour-script.6");
+			},
+			get body() {
+				return i18n.t("panelUi.components.onboarding.tour-script.7");
+			},
 			// 上一子步在抵达时自动翻过 —— 一直待在本页的用户全程见不到它,选型入口在这也挂一份
-			link: { to: "/about/guide", label: "选型指引" },
+			link: {
+				to: "/about/guide",
+				get label() {
+					return i18n.t("panelUi.components.onboarding.tour-script.8");
+				},
+			},
 		},
 		{
 			route: "/targets",
 			// 控件级:灯指连接详情区的「测试」按钮本体;挂点没渲染时回落连接区
 			anchor: ["connection-test", "connection-add"],
 			anchorOnFail: ["connection-form", ["connection-config", "connection-test"], "connection-add"],
-			title: "测试连通性",
-			body: "在刚建好的连接行上点「测试」—— 通过后状态点变绿,并自动进入下一步。失败的话按错误提示排查(OneBot 先确认 NapCat 已连上)。",
+			get title() {
+				return i18n.t("panelUi.components.onboarding.tour-script.9");
+			},
+			get body() {
+				return i18n.t("panelUi.components.onboarding.tour-script.10");
+			},
 		},
 	],
 	target: [
@@ -139,8 +166,12 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 指着一个不存在的东西;又因为人已经在目标路由上,「点亮起的页签前往」那条
 			// 降级提示也被抑制,导览就此死在这儿(2026-08-31 审查)。test 步早有这条兜底。
 			anchor: ["target-form", "target-add", "target-list"],
-			title: "添加推送目标",
-			body: "点高亮的「+ 新建」,选刚才的连接,指定发到哪:OneBot 直接填群号或 QQ 号;QQ 官方要先在 QQ 里给机器人发一句话,然后在表单里选出现的会话。保存后自动进入下一步。",
+			get title() {
+				return i18n.t("panelUi.components.onboarding.tour-script.11");
+			},
+			get body() {
+				return i18n.t("panelUi.components.onboarding.tour-script.12");
+			},
 		},
 	],
 	test: [
@@ -149,8 +180,12 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 控件级:灯指第一个未测通目标行的「测试」按钮;挂点没渲染时回落目标区
 			anchor: ["target-test", "target-list"],
 			anchorOnFail: ["target-form", ["target-config", "target-test"], "target-list"],
-			title: "发送测试推送",
-			body: "在目标行点「测试」—— QQ 里收到测试消息,推送通道就全线打通了。只差最后一步:订阅要关注的 UP。",
+			get title() {
+				return i18n.t("panelUi.components.onboarding.tour-script.13");
+			},
+			get body() {
+				return i18n.t("panelUi.components.onboarding.tour-script.14");
+			},
 		},
 	],
 	subs: [
@@ -159,8 +194,12 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 			// 搜索框住在「添加 UP 主」弹窗里(弹窗没开时挂点不存在,开了又整体让位),
 			// 页面级灯位是右上恒在的「添加」按钮 —— 弹窗一开链解析进 modal,灯自动让位
 			anchor: ["subs-search", "subs-add"],
-			title: "订阅第一个 UP",
-			body: "点高亮的「添加」,搜索 UP 主名字或 UID,在结果里点「订阅」,并勾上刚建好的推送目标。订阅成功即大功告成,TA 的动态与开播会自动推送到 QQ。",
+			get title() {
+				return i18n.t("panelUi.components.onboarding.tour-script.15");
+			},
+			get body() {
+				return i18n.t("panelUi.components.onboarding.tour-script.16");
+			},
 		},
 	],
 };
@@ -168,11 +207,21 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 /** 主步完成时在操作位置弹出的完成徽章文案 —— 判据变绿的那一拍就地反馈,
  *  不然小卡文案无声切到下一步,用户不知道刚才那步已经成了(真机反馈:突兀)。 */
 export const STEP_DONE_MESSAGES: Record<OnboardingStepKey, string> = {
-	login: "B 站登录完成!",
-	connection: "连接打通了!",
-	target: "推送目标建好了!",
-	test: "测试消息已送达,通道全线打通!",
-	subs: "订阅成功,大功告成!",
+	get login() {
+		return i18n.t("panelUi.components.onboarding.tour-script.17");
+	},
+	get connection() {
+		return i18n.t("panelUi.components.onboarding.tour-script.18");
+	},
+	get target() {
+		return i18n.t("panelUi.components.onboarding.tour-script.19");
+	},
+	get test() {
+		return i18n.t("panelUi.components.onboarding.tour-script.20");
+	},
+	get subs() {
+		return i18n.t("panelUi.components.onboarding.tour-script.21");
+	},
 };
 
 export interface TourPos {

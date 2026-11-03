@@ -1,5 +1,6 @@
 import { Btn, Input, MODAL_HOOK } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import { submitLogin } from "../services/session";
 import { useSessionStore } from "../store/session";
 
@@ -18,6 +19,8 @@ import { useSessionStore } from "../store/session";
  * env); this component is the presentational shell + local form state.
  */
 export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
+	const tx = useT();
+
 	const markAuthed = useSessionStore((s) => s.markAuthed);
 	const setStatus = useSessionStore((s) => s.setStatus);
 	const [username, setUsername] = useState("");
@@ -97,27 +100,44 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 				<div className="mb-1 flex items-center gap-2">
 					<img alt="Bilibili Notify" src="/logo.png" className="h-9 w-auto object-contain" />
 					<div className="text-bn-lg font-bold tracking-tight text-bn-text-primary">
-						女仆值班室登录
+						{tx("panelUi.components.LoginDialog.1")}
 					</div>
 				</div>
 				<div className="mb-6 text-bn-sm text-bn-text-secondary">
-					{expired ? "会话已过期,请重新登录以继续。" : "请输入管理凭证进入控制台。"}
+					{expired
+						? tx("panelUi.components.LoginDialog.2")
+						: tx("panelUi.components.LoginDialog.3")}
 				</div>
 
 				<div className="space-y-3">
-					<Input value={username} onChange={setUsername} placeholder="用户名" full />
-					<Input value={password} onChange={setPassword} placeholder="密码" type="password" full />
+					<Input
+						value={username}
+						onChange={setUsername}
+						placeholder={tx("panelUi.components.LoginDialog.4")}
+						full
+					/>
+					<Input
+						value={password}
+						onChange={setPassword}
+						placeholder={tx("panelUi.components.LoginDialog.5")}
+						type="password"
+						full
+					/>
 				</div>
 
 				{error ? (
 					<div className="mt-3 rounded-md bg-bn-danger-soft px-3 py-2 text-bn-sm font-medium text-bn-danger-text">
-						{lockSec > 0 ? `登录尝试过多,请 ${lockSec} 秒后再试` : error}
+						{lockSec > 0 ? tx("panelUi.components.LoginDialog.6", { value0: lockSec }) : error}
 					</div>
 				) : null}
 
 				<div className="mt-6">
 					<Btn type="submit" variant="primary" full disabled={disabled}>
-						{busy ? "登录中…" : lockSec > 0 ? `请稍候 (${lockSec}s)` : "登录"}
+						{busy
+							? tx("panelUi.components.LoginDialog.7")
+							: lockSec > 0
+								? tx("panelUi.components.LoginDialog.8", { value0: lockSec })
+								: tx("panelUi.components.LoginDialog.9")}
 					</Btn>
 				</div>
 			</form>

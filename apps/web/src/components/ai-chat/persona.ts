@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 聊天界面上的称呼 —— 全部取自「智能女仆」页配的人格,不写死。
  *
@@ -27,8 +28,6 @@ export interface ChatPersona {
 }
 
 /** 配置还没加载 / 字段被清空时的兜底。宁可显示一个通用称呼,也不要空白。 */
-const FALLBACK_NAME = "女仆";
-const FALLBACK_USER = "主人";
 
 /**
  * 人格配置 → 界面上的三个称呼。
@@ -37,10 +36,10 @@ const FALLBACK_USER = "主人";
  * `self` 缺失时回落到 `name` 而不是兜底词 —— 名字都有了,自称却写「女仆」很怪。
  */
 export function resolveChatPersona(persona?: PersonaSource): ChatPersona {
-	const name = persona?.name?.trim() || FALLBACK_NAME;
+	const name = persona?.name?.trim() || i18n.t("panelUi.components.ai-chat.persona.1");
 	return {
 		name,
 		self: persona?.addressSelf?.trim() || name,
-		user: persona?.addressUser?.trim() || FALLBACK_USER,
+		user: persona?.addressUser?.trim() || i18n.t("panelUi.components.ai-chat.persona.2"),
 	};
 }

@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * UP 主数据对比表的列定义 —— 表头与单元格的**唯一**来源。
  *
@@ -18,7 +19,9 @@ import { dash } from "./chart-utils";
  * 看过」、拓展报的 `totalViewers`),不是同时在线的峰值 —— 列名改诚实之后还得说一句是按什么算的。对比表的表头
  * 与单人视图的直播概览共用这一句。
  */
-export const VIEWERS_HINT = "按每场累计看过的人数算";
+export function viewersHint() {
+	return i18n.t("panelUi.pages.stats.columns.1");
+}
 
 /** 可进表的数值字段。`UpStatsRow` 里的字符串 / 数组字段不参与排序与展示。 */
 export type StatColumnId =
@@ -68,11 +71,21 @@ export function buildStatColumns(
 	// 「投稿」与「动态」曾被直播那两列从中间劈开,横着扫一行要跳着看。插新列时
 	// 请并进它所属的那一组,别插在组与组的接缝上。`columns.test.ts` 钉了全序。
 	return [
-		{ id: "net7d", label: "近7日粉丝", value: (r) => r.net7d, kind: "delta" },
-		{ id: "netWindow", label: `近${days}日粉丝`, value: (r) => r.netWindow, kind: "delta" },
+		{
+			id: "net7d",
+			label: i18n.t("panelUi.pages.stats.columns.2"),
+			value: (r) => r.net7d,
+			kind: "delta",
+		},
+		{
+			id: "netWindow",
+			label: i18n.t("panelUi.pages.stats.columns.3", { value0: days }),
+			value: (r) => r.netWindow,
+			kind: "delta",
+		},
 		{
 			id: "videoPosts",
-			label: "投稿",
+			label: i18n.t("panelUi.pages.stats.columns.4"),
 			value: (r) => r.videoPosts,
 			kind: "text",
 			format: (v) => dash(v),
@@ -80,7 +93,7 @@ export function buildStatColumns(
 		},
 		{
 			id: "plainPosts",
-			label: "动态",
+			label: i18n.t("panelUi.pages.stats.columns.5"),
 			value: plainPostCount,
 			kind: "text",
 			format: (v) => dash(v),
@@ -88,7 +101,7 @@ export function buildStatColumns(
 		},
 		{
 			id: "liveSessions",
-			label: "直播场次",
+			label: i18n.t("panelUi.pages.stats.columns.6"),
 			value: (r) => r.liveSessions,
 			kind: "text",
 			format: (v) => dash(v),
@@ -96,7 +109,7 @@ export function buildStatColumns(
 		},
 		{
 			id: "liveHours",
-			label: "直播时长",
+			label: i18n.t("panelUi.pages.stats.columns.7"),
 			value: (r) => r.liveHours,
 			kind: "text",
 			format: (v) => dash(v, (n) => `${fmt.hours(n)}h`),
@@ -104,8 +117,8 @@ export function buildStatColumns(
 		{
 			id: "maxViewers",
 			// 曾叫「峰值观看」,名不副实:存的是每场的累计观看(ADR-0020 决策 7 / 11)。
-			label: "单场最高观看",
-			hint: VIEWERS_HINT,
+			label: i18n.t("panelUi.pages.stats.columns.8"),
+			hint: viewersHint(),
 			value: (r) => r.maxViewers,
 			kind: "text",
 			format: (v) => fmt.num(v),

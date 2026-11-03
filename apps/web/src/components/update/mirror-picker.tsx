@@ -7,6 +7,7 @@ import {
 import { Btn, Input, Pill, ToneChip } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { i18n, useT } from "../../i18n";
 import { api } from "../../services/api";
 
 /**
@@ -29,11 +30,19 @@ export interface MirrorPickerProps {
 }
 
 const FAILURE_LABEL: Record<Extract<MirrorProbeResult, { ok: false }>["reason"], string> = {
-	unreachable: "无法访问",
+	get unreachable() {
+		return i18n.t("panelUi.components.update.mirror-picker.1");
+	},
 	// 唯一该让人警觉的一种 —— 别和「连不上」混成一句。
-	untrusted: "签名验不过",
-	malformed: "清单不成形",
-	stale: "缓存了旧清单",
+	get untrusted() {
+		return i18n.t("panelUi.components.update.mirror-picker.2");
+	},
+	get malformed() {
+		return i18n.t("panelUi.components.update.mirror-picker.3");
+	},
+	get stale() {
+		return i18n.t("panelUi.components.update.mirror-picker.4");
+	},
 };
 
 const isBuiltin = (p: string): boolean => BUILTIN_UPDATE_MIRRORS.includes(p);
@@ -47,6 +56,8 @@ function hostOf(prefix: string): string {
 }
 
 export function MirrorPicker({ active, onSelect, disabled = false }: MirrorPickerProps) {
+	const tx = useT();
+
 	// 在用的不是内置的,那它就是之前填的自定义 —— 预填回输入框。
 	const [custom, setCustom] = useState(() => (active !== "" && !isBuiltin(active) ? active : ""));
 	const [results, setResults] = useState<Record<string, MirrorProbeResult>>({});
@@ -64,24 +75,28 @@ export function MirrorPicker({ active, onSelect, disabled = false }: MirrorPicke
 	return (
 		<div className="flex flex-col gap-1.5">
 			<div className="flex flex-wrap items-center gap-2">
-				<span className="text-bn-sm text-bn-text-secondary">下载加速</span>
+				<span className="text-bn-sm text-bn-text-secondary">
+					{tx("panelUi.components.update.mirror-picker.5")}
+				</span>
 				<Btn
 					size="sm"
 					variant="outline"
 					disabled={disabled || probe.isPending}
 					onClick={() => probe.mutate(prefixes)}
 				>
-					{probe.isPending ? "测速中…" : "测一遍"}
+					{probe.isPending
+						? tx("panelUi.components.update.mirror-picker.6")
+						: tx("panelUi.components.update.mirror-picker.7")}
 				</Btn>
 				{probe.isError ? (
 					<span className="text-bn-xs text-bn-danger">
-						测不了:{String((probe.error as Error).message)}
+						{tx("panelUi.components.update.mirror-picker.8")}
+						{String((probe.error as Error).message)}
 					</span>
 				) : null}
 			</div>
 			<span className="text-bn-xs text-bn-text-tertiary">
-				连不上 GitHub 时选一个代理站:选中的先试,直连永远垫底。更新包有签名,代理站改不了内容 ——
-				最多只能让这次下载失败。「版本」是通过那个站拿到的清单版本,比别家旧就是它缓存了。
+				{tx("panelUi.components.update.mirror-picker.9")}
 			</span>
 			<div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-3 gap-y-1.5">
 				<MirrorRow
@@ -91,7 +106,9 @@ export function MirrorPicker({ active, onSelect, disabled = false }: MirrorPicke
 					disabled={disabled}
 					onSelect={onSelect}
 				>
-					<span className="text-bn-xs text-bn-text-primary">直连</span>
+					<span className="text-bn-xs text-bn-text-primary">
+						{tx("panelUi.components.update.mirror-picker.10")}
+					</span>
 				</MirrorRow>
 				{BUILTIN_UPDATE_MIRRORS.map((p) => (
 					<MirrorRow
@@ -145,6 +162,8 @@ function MirrorRow({
 	onSelect: (prefix: string) => void;
 	children: React.ReactNode;
 }) {
+	const tx = useT();
+
 	return (
 		// `contents`:这一层只为给测试与阅读一个「行」的身份,四个格子仍直接落在网格里。
 		<div className="contents" data-mirror={rowId}>
@@ -173,7 +192,9 @@ function MirrorRow({
 				disabled={disabled || active}
 				onClick={() => onSelect(prefix)}
 			>
-				{active ? "使用中" : "选用"}
+				{active
+					? tx("panelUi.components.update.mirror-picker.11")
+					: tx("panelUi.components.update.mirror-picker.12")}
 			</ToneChip>
 		</div>
 	);

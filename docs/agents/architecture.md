@@ -305,3 +305,6 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 UiTextProvider/UiText 从 UI 包根导出,useUiText 仅内部使用,默认 packageText;AuthedApp 在渲染交 useT 结果,设置语言/口吻变更会带动真实 DOM 重画。新键属 internal 的 ui.* 和 web 既有字典,两份简中层在使用时读取,不新增 store 或 bind 协议。
 
 `scripts/__tests__/native-select.test.mjs` 不带白名单,扫 web/ui 的 JSX select 与可识别的真实 React createElement,导入别名/遮蔽有正反例;动态标签、变量转交工厂/跨文件包装需人工审查。`i18n-call-sites.test.mjs` 只认真实 UI 具名 Provider 的 t 注入、本地 useT 结果,以及明确 texts 入口里真实 Provider/hook 共用的 React const context 默认函数;不放行任意 context/工厂/传值。真实 useUiText 导入(含别名)消费者检查 ui.* 键、占位参数及取字时机,遮蔽仍红,ALLOWLIST 仍空。
+
+
+🔗现状（4-53b，2026-11-03）：面板剩余84文件931处原中文已收字，写死中文余格1802均在服务端/包/contract；web开发面板仍按原规则排除。配置文字元数据在访问时取字，渲染组件订阅当前语言/口吻；Stats的列/雷达与稀疏日期标签不缓存译文，导航状态与统计选中项不会因切换语言重置。备份回执与客户端校验保留结构化状态，服务端原文/用户草稿保持原值。原B站账号/导览文字的精确plain键保留至4-40/41；并不表示这些功能已中立化。4-38继续暂缓，390px既有顶栏挤压仍归4-58。

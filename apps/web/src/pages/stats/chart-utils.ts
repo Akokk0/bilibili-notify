@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 数据统计图表的纯函数工具。SVG 组件只负责摆坐标,数值语义全在这里。
  */
@@ -22,7 +23,7 @@ export function formatAxisTick(n: number, step: number): string {
 	// 尾随的 .0 / .00 去掉,但**只在真有小数位时**才去 —— 否则 "230" 会被当成
 	// 尾随零一路啃成 "23",230万 凭空缩水十倍。
 	const trimmed = digits > 0 ? fixed.replace(/\.?0+$/, "") : fixed;
-	return `${trimmed}万`;
+	return i18n.t("panelUi.pages.stats.chart-utils.1", { value0: trimmed });
 }
 
 /**
@@ -179,10 +180,10 @@ export function heatCellStyle(v: number | null, accent: string): HeatCellStyle {
 export function heatAxisLabels(dayCount: number): string[] {
 	const last = Math.max(0, dayCount - 1);
 	return [
-		`${last}天前`,
-		`${Math.round((last * 2) / 3)}天前`,
-		`${Math.round(last / 3)}天前`,
-		"今天",
+		i18n.t("panelUi.pages.stats.chart-utils.2", { value0: last }),
+		i18n.t("panelUi.pages.stats.chart-utils.3", { value0: Math.round((last * 2) / 3) }),
+		i18n.t("panelUi.pages.stats.chart-utils.4", { value0: Math.round(last / 3) }),
+		i18n.t("panelUi.pages.stats.chart-utils.5"),
 	];
 }
 

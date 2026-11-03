@@ -89,7 +89,7 @@ describe("projectPerUpIsland — imageGroup 保 nested + specialViewers 叶子",
 
 	// 图集的总开关叫 `enabled`,打平成顶层键会和 AI 页的 `enabled`(「启用 / 通用」)撞:保存条里这一格会被认成别人。
 	// 所以图集保 nested,code 带前缀;标签与分区和改名前一模一样。
-	it("改图集的总开关 → code 'imageGroup.enabled',保存条里是「推送作品图集 / 动态图集」那一条", () => {
+	it("改图集的总开关 → code 'imageGroup.enabled',保存条里是「推送作品图集 / 作品图集」那一条", () => {
 		const codes = diffCodes({ imageGroup: { enabled: false } }, { imageGroup: { enabled: true } });
 		expect(codes).toEqual(["imageGroup.enabled"]);
 		expect(getFieldLabel("imageGroup.enabled")?.label).toBe("推送作品图集");
@@ -97,10 +97,10 @@ describe("projectPerUpIsland — imageGroup 保 nested + specialViewers 叶子",
 		const [section] = groupDiffsBySection([
 			{ code: "imageGroup.enabled", oldValue: false, newValue: true },
 		]);
-		expect(section?.label).toBe("动态图集");
+		expect(section?.label).toBe("作品图集");
 	});
 
-	it("改图集的合并转发 → code 'imageGroup.mergeForward',保存条里是「图集走合并转发 / 动态图集」那一条", () => {
+	it("改图集的合并转发 → code 'imageGroup.mergeForward',保存条里是「图集走合并转发 / 作品图集」那一条", () => {
 		const codes = diffCodes(
 			{ imageGroup: { enabled: true, mergeForward: false } },
 			{ imageGroup: { enabled: true, mergeForward: true } },

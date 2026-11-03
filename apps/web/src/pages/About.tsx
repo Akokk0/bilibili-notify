@@ -2,6 +2,7 @@ import { EmptyNote, Icon, LoadingBlock, SELECTED_TINT_BG, SectionNav } from "@bi
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { DOC_MARKDOWN_COMPONENTS } from "../components/doc-markdown";
+import { i18n, useT } from "../i18n";
 import { externalLinkClick } from "../utils/externalLink";
 
 /**
@@ -65,10 +66,46 @@ const ABOUT_SECTIONS: ReadonlyArray<{
 	desc: string;
 	icon: keyof typeof Icon;
 }> = [
-	{ id: "sponsor", label: "支持项目", desc: "爱发电赞助与鸣谢", icon: "heart" },
-	{ id: "guide", label: "新手指引", desc: "从零配好推送链路", icon: "list" },
-	{ id: "changelog", label: "更新日志", desc: "独立端版本变更记录", icon: "sparkle" },
-	{ id: "about", label: "关于本项目", desc: "仓库 · 交流群 · 协议", icon: "star" },
+	{
+		id: "sponsor",
+		get label() {
+			return i18n.t("panelUi.pages.About.1");
+		},
+		get desc() {
+			return i18n.t("panelUi.pages.About.2");
+		},
+		icon: "heart",
+	},
+	{
+		id: "guide",
+		get label() {
+			return i18n.t("panelUi.pages.About.3");
+		},
+		get desc() {
+			return i18n.t("panelUi.pages.About.4");
+		},
+		icon: "list",
+	},
+	{
+		id: "changelog",
+		get label() {
+			return i18n.t("panelUi.pages.About.5");
+		},
+		get desc() {
+			return i18n.t("panelUi.pages.About.6");
+		},
+		icon: "sparkle",
+	},
+	{
+		id: "about",
+		get label() {
+			return i18n.t("panelUi.pages.About.7");
+		},
+		get desc() {
+			return i18n.t("panelUi.pages.About.8");
+		},
+		icon: "star",
+	},
 ];
 
 function isSectionId(v: string | undefined): v is AboutSectionId {
@@ -76,6 +113,8 @@ function isSectionId(v: string | undefined): v is AboutSectionId {
 }
 
 export default function About() {
+	const tx = useT();
+
 	const params = useParams<{ section?: string; chapter?: string }>();
 	const navigate = useNavigate();
 	// 认不出的 section(URL 手改/过时收藏)回退默认,与未知教程章节回退总览同理。
@@ -85,7 +124,7 @@ export default function About() {
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			<div className="grid gap-4 xl:grid-bn-rail">
 				<SectionNav
-					heading="关于"
+					heading={tx("panelUi.pages.About.9")}
 					activeId={section}
 					onPick={(id) =>
 						// replace:换 section 是看同一页的另一面,不是去了别的地方。push 的话逛
@@ -101,7 +140,9 @@ export default function About() {
 					{section === "sponsor" ? (
 						<SponsorPanel />
 					) : section === "guide" ? (
-						<Suspense fallback={<LoadingBlock label="正在打开新手指引" variant="inset" />}>
+						<Suspense
+							fallback={<LoadingBlock label={tx("panelUi.pages.About.10")} variant="inset" />}
+						>
 							<GuidePanel chapter={params.chapter} />
 						</Suspense>
 					) : section === "changelog" ? (
@@ -158,6 +199,8 @@ function PanelHead({
 }
 
 function SponsorPanel() {
+	const tx = useT();
+
 	const [sponsors, setSponsors] = useState<Sponsor[]>([]);
 
 	// 名单来自 CI 同步生成的静态文件;缺文件或解析失败时静默回退空态(本地/未配 token)。
@@ -181,12 +224,11 @@ function SponsorPanel() {
 			<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 				<PanelHead
 					icon={<Icon.heart size={16} />}
-					title="支持项目"
-					sub="用爱发电,让女仆值班室持续运转"
+					title={tx("panelUi.pages.About.11")}
+					sub={tx("panelUi.pages.About.12")}
 				/>
 				<p className="text-bn-base leading-7 text-bn-text-secondary">
-					Bilibili Notify 是 MIT 开源、永久免费的项目。服务器、测试设备与持续开发都需要成本,
-					如果它帮到了你,欢迎在爱发电请女仆喝杯奶茶 —— 每一份心意,都会化作新功能与更少的 bug。
+					{tx("panelUi.pages.About.13")}
 				</p>
 				{/*
 				 * 它长得就是一颗实心粉主按钮,只是行为上是条外链,所以留 a 标签没换成 Btn ——
@@ -212,7 +254,7 @@ function SponsorPanel() {
 						className="inline-flex items-center gap-2 rounded-bn-pill bg-bn-pink px-5 py-2.5 text-bn-base font-bold text-bn-on-solid shadow-bn-accent-lg transition hover:opacity-90"
 					>
 						<Icon.heart size={15} />
-						前往爱发电支持
+						{tx("panelUi.pages.About.14")}
 					</a>
 				</div>
 			</div>
@@ -220,10 +262,10 @@ function SponsorPanel() {
 			<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 				<div className="mb-3 flex items-center gap-2 text-bn-md font-extrabold text-bn-text-primary">
 					<Icon.gift size={15} />
-					赞助者名单
+					{tx("panelUi.pages.About.15")}
 				</div>
 				{sponsors.length === 0 ? (
-					<EmptyNote>还没有人发电,期待第一位供电的主人～</EmptyNote>
+					<EmptyNote>{tx("panelUi.pages.About.16")}</EmptyNote>
 				) : (
 					<div className="flex flex-wrap gap-2">
 						{sponsors.map((s) => (
@@ -250,9 +292,9 @@ function SponsorPanel() {
 					</div>
 				)}
 				<p className="mt-3 text-bn-xs text-bn-text-tertiary">
-					感谢每一位主人的供电
+					{tx("panelUi.pages.About.17")}
 					<Icon.heart size={10} className="mx-1 inline-block align-[-1px] text-bn-pink" />
-					名单在每次发布新版本时同步自爱发电。
+					{tx("panelUi.pages.About.18")}
 				</p>
 			</div>
 		</div>
@@ -260,30 +302,41 @@ function SponsorPanel() {
 }
 
 function AboutPanel() {
+	const tx = useT();
+
 	const links: ReadonlyArray<{
 		icon: keyof typeof Icon;
 		label: string;
 		value: string;
 		href?: string;
 	}> = [
-		{ icon: "link", label: "GitHub 仓库", value: "Akokk0/bilibili-notify", href: GITHUB_URL },
-		{ icon: "heart", label: "爱发电", value: "支持项目持续更新", href: AFDIAN_URL },
-		{ icon: "qq", label: "QQ 交流群", value: QQ_GROUP },
+		{
+			icon: "link",
+			label: tx("panelUi.pages.About.19"),
+			value: "Akokk0/bilibili-notify",
+			href: GITHUB_URL,
+		},
+		{
+			icon: "heart",
+			label: tx("panelUi.pages.About.20"),
+			value: tx("panelUi.pages.About.21"),
+			href: AFDIAN_URL,
+		},
+		{ icon: "qq", label: tx("panelUi.pages.About.22"), value: QQ_GROUP },
 	];
 
 	return (
 		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
-			<PanelHead icon={<Icon.star size={16} />} title="关于本项目" />
+			<PanelHead icon={<Icon.star size={16} />} title={tx("panelUi.pages.About.23")} />
 			<p className="text-bn-base leading-7 text-bn-text-secondary">
-				Bilibili Notify —— 监听 B 站 UP 主动态 / 直播,渲染成卡片图片推送到 QQ 群等渠道。 自带 Web
-				控制台,Docker 镜像或桌面应用皆可部署。MIT 开源。
+				{tx("panelUi.pages.About.24")}
 			</p>
 			<div className="mt-4 space-y-2">
 				{links.map((l) => (
 					<LinkRow key={l.label} {...l} />
 				))}
 			</div>
-			<p className="mt-4 text-bn-xs text-bn-text-tertiary">协议 · MIT License</p>
+			<p className="mt-4 text-bn-xs text-bn-text-tertiary">{tx("panelUi.pages.About.25")}</p>
 		</div>
 	);
 }
@@ -328,6 +381,8 @@ function LinkRow({
 }
 
 function ChangelogPanel() {
+	const tx = useT();
+
 	const [markdown, setMarkdown] = useState<string | null>(changelogCache);
 	const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -352,19 +407,22 @@ function ChangelogPanel() {
 		<div className="bn-glass rounded-bn-card p-5 shadow-bn-card">
 			<PanelHead
 				icon={<Icon.sparkle size={16} />}
-				title="更新日志"
-				sub="独立端版本变更记录"
+				title={tx("panelUi.pages.About.26")}
+				sub={tx("panelUi.pages.About.27")}
 				right={<PinkPill className="px-3 py-1 font-mono text-bn-xs">apps/CHANGELOG.md</PinkPill>}
 			/>
 			<div className="max-w-none">
 				{loadError ? (
 					<div className="py-8 text-center text-bn-sm text-bn-danger">
-						更新日志加载失败: {loadError}
+						{tx("panelUi.pages.About.28")}
+						{loadError}
 					</div>
 				) : markdown == null ? (
-					<LoadingBlock label="正在读取更新日志" variant="inset" />
+					<LoadingBlock label={tx("panelUi.pages.About.29")} variant="inset" />
 				) : (
-					<Suspense fallback={<LoadingBlock label="正在读取更新日志" variant="inset" />}>
+					<Suspense
+						fallback={<LoadingBlock label={tx("panelUi.pages.About.30")} variant="inset" />}
+					>
 						<ReactMarkdown components={DOC_MARKDOWN_COMPONENTS}>{markdown}</ReactMarkdown>
 					</Suspense>
 				)}

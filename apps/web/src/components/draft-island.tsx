@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 /**
  * DraftIsland —— 灵动岛草稿机制(Phase D 5 态 chip + Phase E expand panel)。
  *
@@ -54,6 +55,8 @@ export function selectChipKind(uiState: DraftUiState, current: DraftRegistration
 }
 
 export function DraftIsland(): ReactNode {
+	const tx = useT();
+
 	const uiState = useDraftStore((s) => s.uiState);
 	const current = useDraftStore((s) => s.current);
 	const errorMessage = useDraftStore((s) => s.errorMessage);
@@ -110,7 +113,7 @@ export function DraftIsland(): ReactNode {
 	return (
 		<motion.section
 			ref={containerRef}
-			aria-label="草稿状态"
+			aria-label={tx("panelUi.components.draft-island.1")}
 			aria-live="polite"
 			data-testid="draft-island"
 			className="pointer-events-none fixed left-1/2 z-bn-island flex -translate-x-1/2 flex-col items-center"
@@ -162,6 +165,8 @@ function ChipShell({
 // ── DirtyContent ──────────────────────────────────────────────────────────
 
 function DirtyContent({ current }: { current: DraftRegistration }) {
+	const tx = useT();
+
 	const togglePanelLocked = useDraftStore((s) => s.togglePanelLocked);
 
 	function handleChipClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -181,7 +186,7 @@ function DirtyContent({ current }: { current: DraftRegistration }) {
 				animate={{ scale: 1, opacity: 1 }}
 				transition={{ type: "spring", stiffness: 500, damping: 22 }}
 				className="rounded-bn-pill bg-bn-pink px-1.5 py-px text-bn-2xs font-bold leading-3.5"
-				aria-label={`${current.diff.length} 项未保存`}
+				aria-label={tx("panelUi.components.draft-island.2", { count: current.diff.length })}
 			>
 				{current.diff.length}
 			</motion.span>
@@ -196,7 +201,7 @@ function DirtyContent({ current }: { current: DraftRegistration }) {
 				// 实心面压在玻璃胶囊上 —— 对比来自「实 vs 半透明」,不来自写死的白。
 				className="rounded-bn-pill bg-bn-surface px-3 py-1 text-bn-xs font-bold text-bn-text-primary transition hover:bg-bn-hover-muted active:scale-95"
 			>
-				保存
+				{tx("panelUi.components.draft-island.3")}
 			</button>
 		</ChipShell>
 	);
@@ -205,6 +210,8 @@ function DirtyContent({ current }: { current: DraftRegistration }) {
 // ── SavingContent ─────────────────────────────────────────────────────────
 
 function SavingContent() {
+	const tx = useT();
+
 	return (
 		<ChipShell>
 			<motion.span
@@ -215,7 +222,7 @@ function SavingContent() {
 			>
 				<Icon.refresh size={14} />
 			</motion.span>
-			<span className="text-bn-sm">保存中…</span>
+			<span className="text-bn-sm">{tx("panelUi.components.draft-island.4")}</span>
 		</ChipShell>
 	);
 }
@@ -223,6 +230,8 @@ function SavingContent() {
 // ── SavedContent ──────────────────────────────────────────────────────────
 
 function SavedContent() {
+	const tx = useT();
+
 	return (
 		<ChipShell>
 			<motion.span
@@ -234,7 +243,7 @@ function SavedContent() {
 			>
 				<Icon.check size={11} />
 			</motion.span>
-			<span className="text-bn-sm">已保存</span>
+			<span className="text-bn-sm">{tx("panelUi.components.draft-island.5")}</span>
 		</ChipShell>
 	);
 }
@@ -248,6 +257,8 @@ const ERROR_PULSE_BOX_SHADOW = [
 ];
 
 function ErrorContent({ message }: { message: string | null }) {
+	const tx = useT();
+
 	const setUiState = useDraftStore((s) => s.setUiState);
 	return (
 		<ChipShell
@@ -273,11 +284,11 @@ function ErrorContent({ message }: { message: string | null }) {
 				<Icon.exclaim size={12} />
 			</span>
 			<span className="max-w-65 truncate text-bn-sm" title={message ?? undefined}>
-				{message ?? "保存失败"}
+				{message ?? tx("panelUi.components.draft-island.6")}
 			</span>
 			<IconButton
 				icon={<Icon.close size={12} />}
-				label="关闭"
+				label={tx("panelUi.components.draft-island.7")}
 				tone="neutral"
 				shape="pill"
 				onClick={() => setUiState("dirty")}
@@ -308,6 +319,8 @@ function scrollToFieldByCode(code: string): void {
 }
 
 function ExpandPanel({ current }: { current: DraftRegistration }) {
+	const tx = useT();
+
 	const sections = groupDiffsBySection(current.diff);
 	return (
 		<motion.div
@@ -321,12 +334,13 @@ function ExpandPanel({ current }: { current: DraftRegistration }) {
 		>
 			<div className="flex max-h-[60vh] flex-col">
 				<div className="border-b border-bn-border px-4 py-2.5 text-bn-xs font-semibold tracking-wide text-bn-text-secondary">
-					{current.pageLabel} · {current.diff.length} 项未保存
+					{current.pageLabel} ·{" "}
+					{tx("panelUi.components.draft-island.2", { count: current.diff.length })}
 				</div>
 				<div className="flex-1 overflow-y-auto px-2 py-2">
 					{sections.length === 0 ? (
 						<EmptyNote size="sm" className="mx-1 my-1">
-							无字段变更
+							{tx("panelUi.components.draft-island.9")}
 						</EmptyNote>
 					) : (
 						sections.map((s) => <DiffSectionView key={s.section} section={s} />)
@@ -354,6 +368,8 @@ function DiffSectionView({ section }: { section: DiffSection }) {
 }
 
 function DiffRow({ row }: { row: FieldDiff }) {
+	const tx = useT();
+
 	const before = formatDiffValue(row.code, row.oldValue);
 	const after = formatDiffValue(row.code, row.newValue);
 	return (
@@ -363,7 +379,7 @@ function DiffRow({ row }: { row: FieldDiff }) {
 			// 候选行:点一行跳到那个字段。不是按钮 —— 走 option。
 			data-bn="option"
 			className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition hover:bg-bn-hover-muted"
-			title={`跳转到 ${row.code}`}
+			title={tx("panelUi.components.draft-island.10", { value0: row.code })}
 		>
 			<code className="font-mono text-bn-2xs text-bn-text-tertiary">{row.code}</code>
 			<div className="flex items-center gap-1.5 text-bn-sm">
@@ -398,6 +414,8 @@ function ValueChip({
 }
 
 function PanelFooter({ onDiscard }: { onDiscard: () => void }) {
+	const tx = useT();
+
 	return (
 		<div className="flex items-center justify-between border-t border-bn-border px-4 py-2">
 			<button
@@ -406,9 +424,11 @@ function PanelFooter({ onDiscard }: { onDiscard: () => void }) {
 				data-bn="btn"
 				className="rounded-bn-pill px-2.5 py-1 text-bn-xs text-bn-text-secondary transition hover:bg-bn-hover-muted hover:text-bn-text-primary"
 			>
-				丢弃全部更改
+				{tx("panelUi.components.draft-island.11")}
 			</button>
-			<span className="text-bn-2xs text-bn-text-tertiary">click 行跳转字段</span>
+			<span className="text-bn-2xs text-bn-text-tertiary">
+				{tx("panelUi.components.draft-island.12")}
+			</span>
 		</div>
 	);
 }

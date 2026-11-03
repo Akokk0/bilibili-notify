@@ -139,11 +139,11 @@ describe("通知卡与推送 toast 抢队列", () => {
 
 describe("推送 toast —— 标题按特性键说「刚发生了什么」", () => {
 	it.each<[feature: PushEventView["feature"], label: string]>([
-		["post", "动态"],
+		["post", "作品"],
 		["liveStart", "开播"],
 		["liveStreaming", "正在直播"],
 		["liveEnd", "下播"],
-		["membership", "上舰"],
+		["membership", "会员加入"],
 		["superchat", "SC"],
 		["viewerChat", "特别弹幕"],
 		["viewerEnter", "特别进房"],

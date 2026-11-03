@@ -31,6 +31,13 @@ import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 import Stats from "../Stats";
 
+vi.mock("../../i18n/locales/en.json", () => ({
+	default: {
+		"panelUi.pages.stats.columns.4": "Video posts",
+		"panelUi.pages.stats.radar.3": "Video output",
+	},
+}));
+
 const DAYS = 30;
 const fill = <T,>(v: T) => Array.from({ length: DAYS }, () => v);
 
@@ -569,4 +576,18 @@ describe("统计总开关", () => {
 		expect(vi.mocked(api.get).mock.calls.map(([path]) => path)).toEqual(["/api/settings"]);
 		expect(api.patch).not.toHaveBeenCalled();
 	});
+});
+
+it("切换语言刷新统计表头与画像轴名，保留选中的订阅", async () => {
+	const user = userEvent.setup();
+	renderStats();
+	await screen.findByRole("table");
+	act(() => i18n.set({ locale: "en" }));
+	expect(screen.getByRole("columnheader", { name: /Video posts/ })).toBeTruthy();
+	await user.click(within(tableRow("抖音乙")).getByText("抖音乙"));
+	await screen.findByText("Video output");
+	act(() => i18n.set({ locale: "zh-CN" }));
+	expect(screen.queryByText("Video output")).toBeNull();
+	expect(screen.getByText("投稿量")).toBeTruthy();
+	expect(screen.getByText("AI 锐评 · 抖音乙")).toBeTruthy();
 });

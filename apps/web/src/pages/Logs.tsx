@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TSelect } from "../components/forms";
 import { LOG_LEVEL_TONE, LOG_LEVEL_TONE_CONSOLE } from "../config/log-levels";
 import { useLogChannel } from "../hooks/useLogChannel";
-import { useT } from "../i18n";
+import { i18n, useT } from "../i18n";
 import { api, apiErrorOf } from "../services/api";
 import {
 	type LogLineLevel,
@@ -49,7 +49,7 @@ async function downloadRawLog(day: string): Promise<void> {
 		throw apiErrorOf(
 			res.status,
 			await res.json().catch(() => undefined),
-			`下载失败（HTTP ${res.status}）`,
+			i18n.t("panelUi.pages.Logs.1", { value0: res.status }),
 		);
 	}
 	const blob = await res.blob();
@@ -141,7 +141,7 @@ export default function Logs() {
 				<Input
 					value={q}
 					onChange={setQ}
-					placeholder="搜索日志正文 / 源 / 参数..."
+					placeholder={t("panelUi.pages.Logs.2")}
 					icon={<Icon.search size={14} />}
 				/>
 				<div className="flex gap-1">
@@ -181,23 +181,23 @@ export default function Logs() {
 				{!isLive && (
 					// 常亮 active:它没有未选中态 —— 一旦回到实时,这颗自己就不显示了。
 					<ToneChip active onClick={() => setDay("")}>
-						回到实时
+						{t("panelUi.pages.Logs.3")}
 					</ToneChip>
 				)}
 				<ToneChip tone={PAUSED_TONE} active={paused} onClick={() => setPaused((p) => !p)}>
-					{paused ? "已暂停" : "暂停"}
+					{paused ? t("panelUi.pages.Logs.4") : t("panelUi.pages.Logs.5")}
 				</ToneChip>
 				<ToneChip
 					tone={AUTOSCROLL_TONE}
 					active={autoscroll}
 					onClick={() => setAutoscroll((a) => !a)}
 				>
-					自动滚动
+					{t("panelUi.pages.Logs.6")}
 				</ToneChip>
 				<ToneChip
 					onClick={() => {
 						void downloadRawLog(viewDay).catch((err) => {
-							alert(`下载失败:${String((err as Error).message ?? err)}`);
+							alert(t("panelUi.pages.Logs.7", { value0: String((err as Error).message ?? err) }));
 						});
 					}}
 				>
@@ -207,19 +207,23 @@ export default function Logs() {
 
 			<div className="flex items-center justify-between px-1 text-bn-xs text-bn-text-tertiary">
 				<span>
-					{isLive ? "实时" : `归档 · ${day}`} · 显示 {displayed.length} 行
-					{paused ? " · 已冻结" : ""}
+					{isLive ? t("panelUi.pages.Logs.8") : t("panelUi.pages.Logs.9", { value0: day })}{" "}
+					{t("panelUi.pages.Logs.10", { count: displayed.length })}
+					{paused ? t("panelUi.pages.Logs.12") : ""}
 				</span>
-				{logsQuery.isLoading ? <span>加载中…</span> : null}
+				{logsQuery.isLoading ? <span>{t("panelUi.pages.Logs.13")}</span> : null}
 			</div>
 
 			<div className="rounded-bn-sm border border-bn-border-subtle bg-bn-console-bg px-3 py-2.5 font-mono text-bn-sm leading-relaxed">
 				{logsQuery.error ? (
 					<div className="text-bn-console-danger">
-						加载失败:{String((logsQuery.error as Error).message)}
+						{t("panelUi.pages.Logs.14")}
+						{String((logsQuery.error as Error).message)}
 					</div>
 				) : displayed.length === 0 ? (
-					<div className="py-10 text-center text-bn-sm text-bn-console-dim">没有符合条件的日志</div>
+					<div className="py-10 text-center text-bn-sm text-bn-console-dim">
+						{t("panelUi.pages.Logs.15")}
+					</div>
 				) : (
 					// biome-ignore lint/suspicious/noArrayIndexKey: 日志行无稳定 id;append-only tail 视图,行不会原地重排,index 复用无状态副作用
 					displayed.map((e, i) => <LogRow key={`${e.ts}-${i}`} entry={e} />)

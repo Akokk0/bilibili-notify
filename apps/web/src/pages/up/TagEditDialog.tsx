@@ -2,6 +2,7 @@ import type { SubscriptionTag } from "@bilibili-notify/contract";
 import { Btn, CheckRow, EmptyNote, ErrorNote, Input, ModalShell } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { useReplaceSubscriptionTags } from "../../hooks/useSubscriptionTags";
+import { useT } from "../../i18n";
 import { newId } from "../../types/domain";
 import { keepKnownTagIds, planNewTag, toggleTagId } from "./tag-edit";
 
@@ -26,6 +27,8 @@ export interface TagEditDialogProps {
  * 「确定」只把最终勾选的 id 交给父层,挂不挂到订阅上由父层落盘。
  */
 export function TagEditDialog({ tags, current, onConfirm, onCancel, saving }: TagEditDialogProps) {
+	const tx = useT();
+
 	const [draft, setDraft] = useState<string[]>(current);
 	const [newName, setNewName] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -55,12 +58,17 @@ export function TagEditDialog({ tags, current, onConfirm, onCancel, saving }: Ta
 	}
 
 	return (
-		<ModalShell onCancel={onCancel} width={360} bodyClassName="p-5" title="编辑标签">
+		<ModalShell
+			onCancel={onCancel}
+			width={360}
+			bodyClassName="p-5"
+			title={tx("panelUi.pages.up.TagEditDialog.1")}
+		>
 			<div className="flex max-h-60 flex-col gap-1.5 overflow-y-auto">
 				{tags === undefined ? (
-					<EmptyNote size="sm">标签表还没读到,稍等一下再新建</EmptyNote>
+					<EmptyNote size="sm">{tx("panelUi.pages.up.TagEditDialog.2")}</EmptyNote>
 				) : table.length === 0 ? (
-					<EmptyNote size="sm">还没有任何标签,在下方新建一个吧</EmptyNote>
+					<EmptyNote size="sm">{tx("panelUi.pages.up.TagEditDialog.3")}</EmptyNote>
 				) : (
 					table.map((t) => (
 						<CheckRow
@@ -74,14 +82,20 @@ export function TagEditDialog({ tags, current, onConfirm, onCancel, saving }: Ta
 				)}
 			</div>
 			<div className="mt-3 flex gap-2">
-				<Input value={newName} onChange={setNewName} placeholder="新建标签名" full size="sm" />
+				<Input
+					value={newName}
+					onChange={setNewName}
+					placeholder={tx("panelUi.pages.up.TagEditDialog.4")}
+					full
+					size="sm"
+				/>
 				<Btn
 					variant="outline"
 					size="sm"
 					onClick={() => void addNew()}
 					disabled={!tags || !newName.trim() || replace.isPending}
 				>
-					添加
+					{tx("panelUi.pages.up.TagEditDialog.5")}
 				</Btn>
 			</div>
 			{error ? (
@@ -91,7 +105,7 @@ export function TagEditDialog({ tags, current, onConfirm, onCancel, saving }: Ta
 			) : null}
 			<div className="mt-4 flex justify-end gap-2">
 				<Btn variant="outline" size="sm" onClick={onCancel} disabled={busy}>
-					取消
+					{tx("panelUi.pages.up.TagEditDialog.6")}
 				</Btn>
 				<Btn
 					variant="primary"
@@ -100,7 +114,7 @@ export function TagEditDialog({ tags, current, onConfirm, onCancel, saving }: Ta
 					onClick={() => onConfirm(tags ? keepKnownTagIds(draft, tags) : draft)}
 					disabled={busy}
 				>
-					{saving ? "保存中…" : "确定"}
+					{saving ? tx("panelUi.pages.up.TagEditDialog.7") : tx("panelUi.pages.up.TagEditDialog.8")}
 				</Btn>
 			</div>
 		</ModalShell>

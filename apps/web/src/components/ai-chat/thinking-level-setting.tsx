@@ -7,6 +7,7 @@ import {
 } from "@bilibili-notify/internal/ai";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
+import { i18n, useT } from "../../i18n";
 
 /**
  * 侧栏设置弹层里的「思考深度」—— `ai.chat.thinkingLevel` 的编辑口。
@@ -24,12 +25,29 @@ import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/us
  */
 
 const LEVELS: readonly { value: ThinkingLevel; label: string }[] = [
-	{ value: "low", label: "低" },
-	{ value: "medium", label: "中" },
-	{ value: "high", label: "高" },
+	{
+		value: "low",
+		get label() {
+			return i18n.t("panelUi.components.ai-chat.thinking-level-setting.1");
+		},
+	},
+	{
+		value: "medium",
+		get label() {
+			return i18n.t("panelUi.components.ai-chat.thinking-level-setting.2");
+		},
+	},
+	{
+		value: "high",
+		get label() {
+			return i18n.t("panelUi.components.ai-chat.thinking-level-setting.3");
+		},
+	},
 ];
 
 export function ThinkingLevelSetting() {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
 
@@ -71,7 +89,7 @@ export function ThinkingLevelSetting() {
 	return (
 		<>
 			<div className="mb-2 mt-3.5 pl-0.5 text-bn-xs font-bold tracking-wide text-bn-text-secondary">
-				思考深度
+				{tx("panelUi.components.ai-chat.thinking-level-setting.4")}
 			</div>
 			{canThink ? (
 				<>
@@ -97,13 +115,12 @@ export function ThinkingLevelSetting() {
 						})}
 					</div>
 					<div className="mt-1.5 px-0.5 text-bn-2xs leading-relaxed text-bn-text-secondary">
-						管的是 ✦ 胶囊点亮后想多深；初始跟随所选实例的等级，调过就分家
+						{tx("panelUi.components.ai-chat.thinking-level-setting.5")}
 					</div>
 				</>
 			) : (
 				<div className="px-0.5 text-bn-2xs leading-relaxed text-bn-text-secondary">
-					当前实例是自定义服务商，女仆不会自作主张发思考参数 ——
-					需要的话写进那份实例的「额外请求参数」里
+					{tx("panelUi.components.ai-chat.thinking-level-setting.6")}
 				</div>
 			)}
 		</>
