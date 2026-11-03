@@ -34,6 +34,7 @@ export type {
 	ExtensionViewText,
 	ExtensionViewTextSegment,
 } from "@bilibili-notify/internal/extension/wire";
+export * from "./builtin-sources";
 export * from "./card-skin";
 export * from "./devtools";
 export * from "./extension-view";

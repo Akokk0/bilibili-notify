@@ -95,12 +95,6 @@ export function extensionColorSeed(extensionId: string, externalId: string): str
 /** 订阅来源的键:`bilibili` 或拓展 id,不加前缀(拓展 id 不许用保留 id,由宿主校验)。 */
 export type SourceKey = string;
 
-/**
- * B 站这个来源的键。核心里拿它判「是不是 B 站」做分派是过渡写法(替掉原来的
- * `isBiliSubscription`),第 3a 期 B 站搬进 `bilibili/`、核心只问登记表以后就没有了(「B 站替身」棘轮盯着)。
- */
-export const BILIBILI_SOURCE_KEY = "bilibili";
-
 /** 核心自己的保留名；内置集成的键由宿主装配并在接收拓展时校验。 */
 export const RESERVED_EXTENSION_IDS: readonly string[] = ["core", "image", "ai"];
 

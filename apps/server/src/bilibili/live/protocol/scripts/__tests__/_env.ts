@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { fixedTimezone } from "../../../../../__tests__/support/integration-io.js";
 import { BUILTIN_INTEGRATION_KEYS } from "../../../../../compose.js";
 /**
@@ -16,7 +17,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Json, Logger, ServiceContext } from "@bilibili-notify/internal";
-import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
+
 import { type KeyProvider, readKeyMaterial } from "@bilibili-notify/storage";
 import { ignoredProblems } from "../../../../../__tests__/support/ignored-problems.js";
 import { inertSettingsOf } from "../../../../../__tests__/support/inert-settings.js";

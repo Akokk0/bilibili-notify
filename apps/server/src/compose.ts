@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 /**
  * 组装根:整个核心里只有这个文件登记内置集成。只放登记与开发场景的过渡接线,不长别的逻辑。
  *
@@ -17,13 +18,12 @@
  * (`devtools-isolation` 钉着,注释里也别加引号写它):构建时它被换成恒空的桩。
  */
 
-import {
-	BILIBILI_SOURCE_KEY,
-	type Connection,
-	type Disposable,
-	type InboundHandlers,
-	type Logger,
-	type ServiceContext,
+import type {
+	Connection,
+	Disposable,
+	InboundHandlers,
+	Logger,
+	ServiceContext,
 } from "@bilibili-notify/internal";
 import { type BiliContextHandle, createBiliContext } from "./bilibili/context.js";
 import { createBiliDevtools, type DevtoolsProviderRegistry } from "./bilibili/devtools/index.js";

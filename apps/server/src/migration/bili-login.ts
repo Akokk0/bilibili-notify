@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { t as serverText } from "../i18n/index.js";
 /**
  * 0.x 的 B 站登录 `secrets/cookies.json` → 集成的密钥文件 `secrets/bilibili/secrets.enc`。
@@ -13,7 +14,7 @@ import { t as serverText } from "../i18n/index.js";
  */
 
 import { readFile } from "node:fs/promises";
-import { BILIBILI_SOURCE_KEY, type Json } from "@bilibili-notify/internal";
+import type { Json } from "@bilibili-notify/internal";
 import { gcmDecrypt, isGcmBlob, type KeyMaterialRead } from "@bilibili-notify/storage";
 import { integrationSecretsFile, writeIntegrationSecretsFile } from "../integration-store/files.js";
 import { errorMessageOf } from "../util/error-message.js";

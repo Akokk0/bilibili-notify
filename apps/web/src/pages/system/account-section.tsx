@@ -1,4 +1,5 @@
 import type { SettingsResponse } from "@bilibili-notify/contract";
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { Avatar, Btn, ErrorNote, GlassBox, Icon, ModalShell, QrPanel } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { AUTH_STATUS_ACCENT, AUTH_STATUS_LABELS, authMessageOf } from "../../config/auth-status";
@@ -6,7 +7,7 @@ import { useSourceAuth } from "../../hooks/use-source-auth";
 import { useT } from "../../i18n";
 import { ApiError } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
-import { BILIBILI_SOURCE_KEY, type Connection, type PushTarget } from "../../types/domain";
+import type { Connection, PushTarget } from "../../types/domain";
 import type { GlobalConfigPatch } from "../../types/globals";
 import { imageUrl } from "../../utils/image-url";
 import { MasterSection } from "./master-section";

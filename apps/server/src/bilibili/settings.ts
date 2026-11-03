@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { t as serverText } from "../i18n/index.js";
 /**
  * B 站这个集成的设置:`config/settings/bilibili.json`(ADR-0021 决策 42 下 10-01 的 🔗)。格式由 B 站自己定,
@@ -11,11 +12,7 @@ import { t as serverText } from "../i18n/index.js";
  * {@link BiliLoginCheckSettingsSchema}),哪格读不懂停哪样。
  */
 
-import {
-	BILIBILI_SOURCE_KEY,
-	DEFAULT_DYNAMIC_CRON,
-	DEFAULT_HEALTH_CHECK_MINUTES,
-} from "@bilibili-notify/internal";
+import { DEFAULT_DYNAMIC_CRON, DEFAULT_HEALTH_CHECK_MINUTES } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";

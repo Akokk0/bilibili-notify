@@ -11,13 +11,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import {
-	BILIBILI_SOURCE_KEY,
-	colorFromSeed,
-	extensionColorSeed,
-	identityColor,
-	UP_COLORS,
-} from "../identity";
+import { colorFromSeed, extensionColorSeed, identityColor, UP_COLORS } from "../identity";
 
 /** sRGB hex → CIE Lab。只为算色差与体检明度,不追求极致精度。 */
 function toLab(hex: string): [number, number, number] {
@@ -131,10 +125,7 @@ describe("identityColor — 按身份取色", () => {
 		];
 		for (const [uid, color] of before) {
 			expect(
-				identityColor(
-					{ sourceKey: BILIBILI_SOURCE_KEY, externalId: uid },
-					{ colorByExternalId: true },
-				),
+				identityColor({ sourceKey: "bilibili", externalId: uid }, { colorByExternalId: true }),
 				uid,
 			).toBe(color);
 		}

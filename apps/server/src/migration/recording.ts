@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { t as serverText } from "../i18n/index.js";
 /**
  * 统计的「在记」小账:从 0.x 留下的数据**推出**老日子哪些小时在记,按小时区间写进新代的
@@ -25,7 +26,7 @@ import { t as serverText } from "../i18n/index.js";
 
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { BILIBILI_SOURCE_KEY, DEFAULT_FEATURE_FLAGS } from "@bilibili-notify/internal";
+import { DEFAULT_FEATURE_FLAGS } from "@bilibili-notify/internal";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { HOUR_MS } from "../followers/cutoff.js";
 import { FOLLOWERS_DIR } from "../followers/store.js";

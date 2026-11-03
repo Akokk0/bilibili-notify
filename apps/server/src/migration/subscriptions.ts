@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { t as serverText } from "../i18n/index.js";
 /**
  * 订阅:0.x 的两份文件 `state/subscriptions.json`(B 站)与 `state/extension-subscriptions.json`(拓展)→ 新代
@@ -19,7 +20,7 @@ import { t as serverText } from "../i18n/index.js";
  */
 
 import { join } from "node:path";
-import { BILIBILI_SOURCE_KEY, deterministicUuid } from "@bilibili-notify/internal";
+import { deterministicUuid } from "@bilibili-notify/internal";
 import { moveSubscriptionCards } from "./card-moves.js";
 import { renameSubscriptionKeys } from "./feature-renames.js";
 import {

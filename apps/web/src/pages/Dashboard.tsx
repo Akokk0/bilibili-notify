@@ -5,7 +5,7 @@ import type {
 	SourceEntry,
 	UpdateStatusDTO,
 } from "@bilibili-notify/contract";
-import { displayNameOf } from "@bilibili-notify/contract";
+import { BILIBILI_SOURCE_KEY, displayNameOf } from "@bilibili-notify/contract";
 import { formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import { needsLiveMonitor } from "@bilibili-notify/internal/live-monitor";
 import {
@@ -66,7 +66,6 @@ import {
 	localDayKey,
 } from "../services/dashboard";
 import {
-	BILIBILI_SOURCE_KEY,
 	type FeatureFlagValues,
 	identityColor,
 	type PushTarget,

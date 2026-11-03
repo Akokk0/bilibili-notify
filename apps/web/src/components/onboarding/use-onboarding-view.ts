@@ -1,14 +1,10 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { SOURCE_AUTH_QUERY_PREFIX, useSourceAuth } from "../../hooks/use-source-auth";
 import { HEALTH_DETAILS_QUERY_KEY, useHealthDetails } from "../../hooks/useHealthDetails";
 import { api } from "../../services/api";
-import {
-	BILIBILI_SOURCE_KEY,
-	type Connection,
-	type PushTarget,
-	type Subscription,
-} from "../../types/domain";
+import type { Connection, PushTarget, Subscription } from "../../types/domain";
 import { deriveOnboarding, type OnboardingView } from "./derive";
 import { useOnboardingInputsOverride } from "./inputs-override";
 

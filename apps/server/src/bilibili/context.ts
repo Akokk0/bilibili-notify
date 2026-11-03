@@ -1,8 +1,5 @@
-import {
-	BILIBILI_SOURCE_KEY,
-	type IntegrationContext,
-	type ServiceContext,
-} from "@bilibili-notify/internal";
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
+import type { IntegrationContext, ServiceContext } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 import { disposeThenClose, type IntegrationStore } from "../integration-store/store.js";
 import type { CreateIntegrationContextOptions } from "../integrations/context.js";

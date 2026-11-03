@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import {
-	BILIBILI_SOURCE_KEY,
 	type BusEvents,
 	type ConfigScope,
 	type Connection,

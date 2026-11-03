@@ -1,9 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { CSS_CUSTOM_PROPERTY_MAX_CHARS, ImageRenderer } from "@bilibili-notify/image";
 import {
-	BILIBILI_SOURCE_KEY,
 	CARD_SKIN_LIMITS,
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,

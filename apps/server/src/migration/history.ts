@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { t as serverText } from "../i18n/index.js";
 /**
  * 推送历史 `history/<日>.jsonl`:0.x 的老行(一行 = 一个目标 × 一条消息,带 `source` / `result` / `payload`)
@@ -19,7 +20,6 @@ import { t as serverText } from "../i18n/index.js";
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
-	BILIBILI_SOURCE_KEY,
 	type FeatureKey,
 	fail,
 	type Identity,

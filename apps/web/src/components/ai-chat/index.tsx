@@ -4,6 +4,7 @@ import {
 	type AiChatMode,
 	type AiConversationDTO,
 	type AiSkinTarget,
+	BILIBILI_SOURCE_KEY,
 } from "@bilibili-notify/contract";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/ai";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
@@ -35,7 +36,7 @@ import {
 } from "../../services/maidSkill";
 import { syncActiveSkinToStore } from "../../services/skin-active";
 import { useAiChatStore } from "../../store/aiChat";
-import { BILIBILI_SOURCE_KEY } from "../../types/domain";
+
 import { imageUrl } from "../../utils/image-url";
 import { Composer, type ComposerAttachment, MAX_ATTACHMENTS } from "./composer";
 import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages";

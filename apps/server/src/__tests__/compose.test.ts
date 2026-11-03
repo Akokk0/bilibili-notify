@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 /**
  * 🔴 **组装根 `compose.ts` 的接线要有自己的守卫。**
@@ -12,7 +13,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	BILIBILI_SOURCE_KEY,
 	type Connection,
 	fail,
 	type IntegrationContext,

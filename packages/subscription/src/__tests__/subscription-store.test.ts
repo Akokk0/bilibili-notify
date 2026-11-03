@@ -13,7 +13,6 @@
  */
 
 import {
-	BILIBILI_SOURCE_KEY,
 	type BusEvents,
 	type Disposable,
 	type MessageBus,
@@ -51,7 +50,7 @@ function makeFakeBus(): MessageBus & { events: Array<[keyof BusEvents, unknown]>
 function makeSub(uid: string, id = `sub-${uid}`): Subscription {
 	return makeEmptySubscription({
 		id,
-		identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: uid },
+		identity: { sourceKey: "bilibili", externalId: uid },
 	});
 }
 
@@ -75,9 +74,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		store.upsert(sub);
 
 		expect(store.list()).toHaveLength(1);
-		expect(store.findByIdentity({ sourceKey: BILIBILI_SOURCE_KEY, externalId: "u1" })?.id).toBe(
-			"sub-u1",
-		);
+		expect(store.findByIdentity({ sourceKey: "bilibili", externalId: "u1" })?.id).toBe("sub-u1");
 		expect(store.findById("sub-u1")?.id).toBe("sub-u1");
 		expect(lastOps(bus)).toEqual([{ kind: "add", sub }]);
 	});
@@ -111,7 +108,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 	it("findByIdentity 两格都相等才算 —— 同一个外部 id 在 B 站与某个拓展下各有一条,按身份各找各的", () => {
 		const bus = makeFakeBus();
 		const store = createSubscriptionStore(bus);
-		const bili = (externalId: string) => ({ sourceKey: BILIBILI_SOURCE_KEY, externalId });
+		const bili = (externalId: string) => ({ sourceKey: "bilibili", externalId });
 		const douyin = (externalId: string) => ({ sourceKey: "douyin", externalId });
 		store.upsert(makeExtSub("123"));
 		// 只有拓展那条在册时,B 站的 123 找不到(拓展的外部 id 恰好也是这串数字,不算)。
@@ -131,9 +128,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		store.upsert(makeSub("123", "second"));
 		store.upsert(makeExtSub("sec-1", "ext-first"));
 		store.upsert(makeExtSub("sec-1", "ext-second"));
-		expect(store.findByIdentity({ sourceKey: BILIBILI_SOURCE_KEY, externalId: "123" })?.id).toBe(
-			"first",
-		);
+		expect(store.findByIdentity({ sourceKey: "bilibili", externalId: "123" })?.id).toBe("first");
 		expect(store.findByIdentity({ sourceKey: "douyin", externalId: "sec-1" })?.id).toBe(
 			"ext-first",
 		);
@@ -142,7 +137,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 	it("listByIdentity 回这个身份底下的全部订阅(按列表先后),没有就是空数组;来源、外部 id 两格都相等才算", () => {
 		const bus = makeFakeBus();
 		const store = createSubscriptionStore(bus);
-		const bili = { sourceKey: BILIBILI_SOURCE_KEY, externalId: "123" };
+		const bili = { sourceKey: "bilibili", externalId: "123" };
 		expect(store.listByIdentity(bili)).toEqual([]);
 		store.upsert(makeSub("123", "first"));
 		store.upsert(makeSub("124", "other"));

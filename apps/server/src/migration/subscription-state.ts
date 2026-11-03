@@ -1,4 +1,5 @@
-import { BILIBILI_SOURCE_KEY, CreatorProfileSchema, type Json } from "@bilibili-notify/internal";
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
+import { CreatorProfileSchema, type Json } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
 import { integrationStateFile, writeIntegrationStateFile } from "../integration-store/files.js";
 import {

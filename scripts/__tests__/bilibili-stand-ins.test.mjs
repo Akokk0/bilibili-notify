@@ -28,8 +28,7 @@ import {
  *     字母的不算。
  *   - 注释不算。
  * - 白名单:迁移模块整个目录(0.x 的形状只住那里);`compose.ts` 与 `bilibili/` 已加,设置 schema 的组合处建出来以后加。
- *   内置保留键已由装配根收齐；`BILIBILI_SOURCE_KEY` 与身份强调色仍住在 `packages/internal/src/identity.ts`,先记在棘轮里,
- *   清零之前拆成单独一个文件再放进白名单。
+ *   内置保留键由装配根收齐；4-54把产品内置来源键搬到 contract 单独模块，固定声明精确钉住；身份配色只读描述符。
  * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。⑥d 开张,第 4 期末清零。
  *
  * 判据写成纯函数 + 样例:一条永远判 OK 的规则跟没有一样。
@@ -46,6 +45,8 @@ export const ALLOWED_DIRS = {
 
 /** 白名单:整个文件放行,写明理由。 */
 export const ALLOWLIST = {
+	"apps/contract/src/builtin-sources.ts":
+		"4-54：独立端产品内置键声明搬出核心；只许固定声明，由本守卫钉住唯一语句，不能容纳业务分支",
 	"apps/server/src/compose.ts":
 		"组装根:整个核心只有它登记内置集成(architecture.md「compose.ts 装配」)。今天登记 B 站来源、认领 B 站那组开发场景。只许放登记:出口由入口咽喉守卫(entry-throat.test.mjs)钉着,里面长没长别的逻辑仍靠审查",
 };
@@ -70,9 +71,6 @@ export const RATCHET = {
 	"apps/web/src/pages/system/account-section.tsx": 2,
 	// 4-34清日志归属两处；剩下设置段读写两处随4-44。
 	"apps/web/src/pages/system/runtime-section.tsx": 2,
-	"apps/web/src/types/domain.ts": 2,
-	// B 站大航海档位表(㉓b):3a 搬进 `bilibili/` 的来源描述符之前,面板、引擎、出图器共读这一份。
-	"packages/internal/src/identity.ts": 2,
 };
 
 /** 字符串字面量里算 B 站替身的那两个值。 */
@@ -183,6 +181,13 @@ describe("核心、面板、contract 里不再长出 B 站替身", () => {
 			expect(roots).toContain(expected);
 		}
 		expect(roots.some((root) => root.startsWith("extensions/"))).toBe(false);
+	});
+
+	it("独立端内置来源键模块只声明固定键，不容纳平台分支", () => {
+		const source = parseSource("apps/contract/src/builtin-sources.ts");
+		expect(source.ast.statements.map((statement) => statement.getText(source.ast))).toEqual([
+			'export const BILIBILI_SOURCE_KEY = "bilibili";',
+		]);
 	});
 
 	it("白名单目录真的存在", () => {

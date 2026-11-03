@@ -1,9 +1,9 @@
 import { parseCreator, publishedStamp } from "@bilibili-notify/ai";
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import {
 	type AiTool,
 	type AiToolProvider,
 	type AiToolResult,
-	BILIBILI_SOURCE_KEY,
 	type Failure,
 	fail,
 	type IntegrationContext,

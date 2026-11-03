@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { t } from "../i18n/index.js";
 /**
  * 第 0 代 → 新的一代(ADR-0022 决策 4、7)。第 0 代就是 0.x 留在宿主根上的那些文件,它只读、一个字节不动;
@@ -18,7 +19,7 @@ import { t } from "../i18n/index.js";
 
 import { access, lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
+
 import {
 	copyFileAtomic,
 	type KeyMaterialRead,

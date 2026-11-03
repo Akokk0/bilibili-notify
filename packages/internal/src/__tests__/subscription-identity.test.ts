@@ -5,7 +5,6 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import {
-	BILIBILI_SOURCE_KEY,
 	identityColor,
 	RESERVED_EXTENSION_IDS,
 	sameIdentity,
@@ -18,7 +17,7 @@ describe("subscriptionIdentityOf", () => {
 	it("B 站订阅:来源是 bilibili,外部 id 是 uid", () => {
 		const sub = makeEmptySubscription({
 			id: "5c9c3a8e-2f4f-4a51-9d57-1f2a3b4c5d6e",
-			identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: "12345" },
+			identity: { sourceKey: "bilibili", externalId: "12345" },
 		});
 		expect(subscriptionIdentityOf(sub)).toEqual({ sourceKey: "bilibili", externalId: "12345" });
 	});
@@ -38,13 +37,13 @@ describe("subscriptionIdentityOf", () => {
 
 	it("同一串外部 id 挂在不同来源下是两个人", () => {
 		const bili = subscriptionIdentityOf({
-			identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: "12345" },
+			identity: { sourceKey: "bilibili", externalId: "12345" },
 		});
 		const ext = subscriptionIdentityOf({
 			identity: { sourceKey: "douyin", externalId: "12345" },
 		});
 		expect(sameIdentity(bili, ext)).toBe(false);
-		expect(sameIdentity(bili, { sourceKey: BILIBILI_SOURCE_KEY, externalId: "12345" })).toBe(true);
+		expect(sameIdentity(bili, { sourceKey: "bilibili", externalId: "12345" })).toBe(true);
 	});
 });
 
@@ -57,7 +56,7 @@ describe("identityColor", () => {
 	it("B 站按外部 id、拓展按「拓展 id:外部 id」取色", () => {
 		const before = [
 			{
-				identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: "12345" },
+				identity: { sourceKey: "bilibili", externalId: "12345" },
 				color: "#fb7299",
 			},
 			{ identity: { sourceKey: "douyin", externalId: "12345" }, color: "#ffaf7b" },
@@ -88,7 +87,7 @@ describe("特别关注是公共形状", () => {
 	it("拓展来源的订阅没写这一格,读进来是空表", () => {
 		const bili = makeEmptySubscription({
 			id: "5c9c3a8e-2f4f-4a51-9d57-1f2a3b4c5d6e",
-			identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: "1" },
+			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
 		const { specialViewers: _special, identity: _identity, ...common } = bili;
 		const parsed = SubscriptionSchema.parse({

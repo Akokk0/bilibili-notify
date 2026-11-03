@@ -1,3 +1,4 @@
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 /**
  * B 站的链接解析器:认哪些链接、怎么查、交什么。
  *
@@ -14,7 +15,7 @@ import type {
 	NotificationPayload,
 	Post,
 } from "@bilibili-notify/internal";
-import { BILIBILI_SOURCE_KEY, fail, type ImageRef, ok } from "@bilibili-notify/internal";
+import { fail, type ImageRef, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	createLinkPreviewer,

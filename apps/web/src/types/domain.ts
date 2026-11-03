@@ -30,7 +30,6 @@ import {
 } from "@bilibili-notify/internal/features";
 import { countsAsDelivery, countsAsFailure } from "@bilibili-notify/internal/history";
 import {
-	BILIBILI_SOURCE_KEY,
 	type Identity,
 	identityColor,
 	type SourceKey,
@@ -42,7 +41,6 @@ import { isTargetPaused, platformOfTarget } from "@bilibili-notify/internal/push
 
 export type { ExtraKey, FeatureFlagValues, FeatureKey, Identity, SourceKey, SubscriptionTag };
 export {
-	BILIBILI_SOURCE_KEY,
 	countsAsDelivery,
 	countsAsFailure,
 	DEFAULT_FEATURE_FLAGS,
