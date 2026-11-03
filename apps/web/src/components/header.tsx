@@ -89,7 +89,7 @@ function NavEditorRow({ item, shown, locked }: { item: NavItem; shown: boolean; 
  * 面板里列的是**全部**项(含藏起来的),排序也照排:这样可以先把一项摆到想要的位置,
  * 再决定要不要显示它,而不必为了调顺序先把它放出来。
  */
-function NavEditor({ onClose }: { onClose: () => void }) {
+function NavEditor() {
 	const tx = useT();
 
 	const hidden = useNavStore((s) => s.hidden);
@@ -97,7 +97,6 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 	const showAll = useNavStore((s) => s.showAll);
 	const reorder = useNavStore((s) => s.reorder);
 	const resetOrder = useNavStore((s) => s.resetOrder);
-	const ref = useRef<HTMLDivElement>(null);
 
 	// pointer 拖拽设 4px 启动阈值,免得点一下手柄被误判成拖拽;键盘可达走 KeyboardSensor。
 	// 与 rules/MessageLayoutEditor 同一套参数。
@@ -105,9 +104,6 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 		useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
 		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
 	);
-
-	// 点外面就收起来。面板本身不拦点击 —— 勾完一项还想勾下一项,不该每次都重新展开。
-	useDismiss(ref, onClose, { event: "pointerdown" });
 
 	const rows = orderedNav(NAV_ITEMS, order);
 
@@ -118,14 +114,7 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 	}
 
 	return (
-		<PopoverShell
-			ref={ref}
-			align="right"
-			variant="panel"
-			layer="nav"
-			surface="glass"
-			className="w-60"
-		>
+		<PopoverShell align="right" variant="panel" layer="nav" surface="glass" className="w-60">
 			<div className="flex items-center justify-between gap-1 px-1 py-1">
 				<span className="text-bn-xs font-bold text-bn-text-secondary">
 					{tx("panelUi.components.header.2")}
@@ -218,6 +207,11 @@ function ThemeSwitcher() {
 			<Btn
 				variant="outline"
 				size="sm"
+				icon={
+					<span className="bn-header-compact-icon">
+						<Icon.sun size={16} />
+					</span>
+				}
 				disabled
 				title={
 					editing
@@ -225,9 +219,11 @@ function ThemeSwitcher() {
 						: tx("panelUi.components.header.13", { value0: themeLabel(lockedTheme) })
 				}
 			>
-				{tx("panelUi.components.header.14")}
-				{themeLabel(lockedTheme)}(
-				{editing ? tx("panelUi.components.header.15") : tx("panelUi.components.header.16")})
+				<span className="bn-header-action-label">
+					{tx("panelUi.components.header.14")}
+					{themeLabel(lockedTheme)}(
+					{editing ? tx("panelUi.components.header.15") : tx("panelUi.components.header.16")})
+				</span>
 			</Btn>
 		);
 	}
@@ -238,6 +234,11 @@ function ThemeSwitcher() {
 				variant="outline"
 				size="sm"
 				onClick={() => setOpen((v) => !v)}
+				icon={
+					<span className="bn-header-compact-icon">
+						<Icon.sun size={16} />
+					</span>
+				}
 				ariaHasPopup
 				ariaExpanded={open}
 				title={tx("panelUi.components.header.17", {
@@ -248,8 +249,10 @@ function ThemeSwitcher() {
 							: "",
 				})}
 			>
-				{tx("panelUi.components.header.20")}
-				{current}
+				<span className="bn-header-action-label">
+					{tx("panelUi.components.header.20")}
+					{current}
+				</span>
 			</Btn>
 			{open ? (
 				<PopoverShell align="right" className="w-42">
@@ -328,7 +331,7 @@ function LogoutButton() {
 
 	return (
 		<>
-			<span className="mx-1 h-5 w-px bg-bn-border" aria-hidden="true" />
+			<span className="bn-header-logout-divider mx-1 h-5 w-px bg-bn-border" aria-hidden="true" />
 			<Btn
 				variant="outline"
 				size="sm"
@@ -368,13 +371,13 @@ function ReachBadge({
 	return (
 		<span
 			data-bn="badge"
-			className={`inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold ${box}`}
-			title={title}
+			className={`bn-header-reach inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold ${box}`}
+			title={title ?? (typeof children === "string" ? children : undefined)}
 		>
 			{/* 那颗点用库里的 —— 尺寸阶梯与档位色都归 StatusDot 管,手画一颗就等着
 			    它哪天改了阶梯而这里原地不动。 */}
 			<StatusDot size="sm" kind={tone === "success" ? "ok" : "err"} />
-			{children}
+			<span className="bn-header-action-label">{children}</span>
 		</span>
 	);
 }
@@ -428,6 +431,12 @@ export function GlassHeader() {
 	const navOrder = useNavStore((s) => s.order);
 	const shownNav = resolveNav(NAV_ITEMS, { order: navOrder, hidden: hiddenNav });
 	const [navEditorOpen, setNavEditorOpen] = useState(false);
+	const navEditorRef = useRef<HTMLDivElement>(null);
+	// The trigger and panel share one dismiss boundary; pressing the trigger must only toggle once.
+	useDismiss(navEditorRef, () => setNavEditorOpen(false), {
+		enabled: navEditorOpen,
+		event: "pointerdown",
+	});
 
 	function refreshAll(): void {
 		qc.invalidateQueries({ queryKey: ["health"] });
@@ -463,25 +472,28 @@ export function GlassHeader() {
 			// z-bn-header:卡在**页面内容**(最高 z-bn-nav,TabBarShell 给「添加 UP」下拉留的)之上、
 			// **覆盖层**(z-bn-scrim 起:AI 抽屉/弹窗/toast/灵动岛)之下。原先是 z-bn-raised,比页面
 			// 内容还低 —— 往下滚,tab 条整条画在吸顶顶栏之上,把主导航切掉一截。
-			className="bn-glass-strong sticky top-0 z-bn-header shadow-bn-card"
+			className="bn-header bn-glass-strong sticky top-0 z-bn-header shadow-bn-card"
 		>
-			<div className="flex items-center justify-between gap-4 px-7 pt-4">
-				<div className="flex min-w-0 items-center gap-3">
-					<div className="flex h-13 items-center px-1">
+			<div className="bn-header-top flex items-center justify-between">
+				<div className="bn-header-brand flex min-w-0 items-center gap-3">
+					<div className="flex h-13 shrink-0 items-center px-1">
 						<img alt="Bilibili Notify" src="/logo.png" className="h-13 w-auto object-contain" />
 					</div>
 					<div className="min-w-0">
-						<div className="text-bn-lg font-bold tracking-tight text-bn-text-primary">
+						<div
+							title={headerTitle}
+							className="bn-header-title text-bn-lg font-bold tracking-tight text-bn-text-primary"
+						>
 							{headerTitle}
 						</div>
-						<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
+						<div className="bn-header-greeting mt-0.5 text-bn-xs text-bn-text-secondary">
 							{tx("problems.greeting")}
 						</div>
 					</div>
 				</div>
 				<fieldset
 					aria-label={tx("problems.headerActions")}
-					className="flex shrink-0 items-center gap-2"
+					className="bn-header-actions flex min-w-0 shrink-0 items-center"
 				>
 					<ProblemBox />
 					{/*
@@ -498,11 +510,11 @@ export function GlassHeader() {
 					)}
 					<ThemeSwitcher />
 					<Btn variant="outline" size="sm" icon={<Icon.refresh size={14} />} onClick={refreshAll}>
-						{tx("panelUi.components.header.27")}
+						<span className="bn-header-action-label">{tx("panelUi.components.header.27")}</span>
 					</Btn>
 					<NavLink to="/subs">
 						<Btn variant="primary" size="sm" icon={<Icon.plus size={14} />}>
-							{tx("panelUi.components.header.28")}
+							<span className="bn-header-action-label">{tx("panelUi.components.header.28")}</span>
 						</Btn>
 					</NavLink>
 					<LogoutButton />
@@ -511,17 +523,20 @@ export function GlassHeader() {
 			{/* 挂 `nav` 挂点 —— 次级导航(TabBarShell / SectionNav)都挂了,唯独这条
 			    一级导航没挂。皮肤给 nav 画底色/描边时,Rules 的作用域条、Targets 的
 			    分区列表都换装,顶栏这排纹丝不动 —— 两者常常同屏,比"全都不生效"更露馅。 */}
-			<nav data-bn="nav" className="relative flex gap-0 px-5 pt-3">
+			<nav data-bn="nav" className="bn-header-nav relative flex">
 				{shownNav.map((t) => {
 					// data-bn 是静态属性,NavLink 的 isActive 回调塞不进去 —— 选中态自己算。
 					// 除精确匹配外把子路径也算给父项(/about/guide/push 亮「关于」);
 					// "/" 排除在前缀判定外,不然它永远全亮。
 					const current = pressed ?? pathname;
 					const navActive = current === t.to || (t.to !== "/" && current.startsWith(`${t.to}/`));
+					const Glyph = Icon[t.icon ?? "square"];
 					return (
 						<NavLink
 							key={t.to}
 							to={t.to}
+							aria-label={t.countKey ? `${t.label} ${counts[t.countKey]}` : t.label}
+							title={t.label}
 							end
 							// tab 家族挂点(曾挂 btn,皮肤按钮实底把整排一级导航画成一排按钮)。
 							data-bn={navActive ? "tab tab-active" : "tab"}
@@ -535,13 +550,14 @@ export function GlassHeader() {
 								if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 								setPressed(t.to);
 							}}
-							className={`relative flex items-center gap-1.5 px-4 py-2.5 text-bn-base transition ${
+							className={`bn-header-tab relative flex items-center gap-1.5 text-bn-base transition ${
 								navActive
 									? "font-bold text-bn-pink"
 									: "font-medium text-bn-text-tertiary hover:text-bn-text-primary"
 							}`}
 						>
-							{t.label}
+							<Glyph size={16} className="shrink-0" />
+							<span className="bn-header-nav-label">{t.label}</span>
 							{t.countKey ? (
 								// 选中态**不自带颜色**,底与字都跟着这一格自己的文字色走。此前写死
 								// `text-bn-pink`,等于假设「选中格的背景仍是页面底色」—— 皮肤把
@@ -551,7 +567,7 @@ export function GlassHeader() {
 								// 这条既有不变量上,皮肤把 tab-active 改成什么色都不会掉队。
 								// 未选中态反过来要自带:那时父色是 tertiary 浅灰,跟着走会糊成一团。
 								<span
-									className={`rounded-lg px-1.5 py-px text-bn-2xs font-bold ${
+									className={`bn-header-nav-count rounded-lg text-bn-2xs font-bold ${
 										navActive ? "bg-current/15" : "bg-bn-code-bg text-bn-text-secondary"
 									}`}
 								>
@@ -568,7 +584,7 @@ export function GlassHeader() {
 				})}
 				{/* 挑标签的入口。贴在导航条右端 —— 它讲的就是这一条的事,摆在别处得先
 				    让人找。图标按钮而非文字,免得这个「让界面别那么满」的功能自己先占一格。 */}
-				<div className="relative ml-auto self-center">
+				<div ref={navEditorRef} className="bn-header-nav-editor relative self-center">
 					<Btn
 						variant="ghost"
 						size="sm"
@@ -576,7 +592,7 @@ export function GlassHeader() {
 						title={tx("panelUi.components.header.29")}
 						onClick={() => setNavEditorOpen((v) => !v)}
 					/>
-					{navEditorOpen ? <NavEditor onClose={() => setNavEditorOpen(false)} /> : null}
+					{navEditorOpen ? <NavEditor /> : null}
 				</div>
 			</nav>
 		</header>

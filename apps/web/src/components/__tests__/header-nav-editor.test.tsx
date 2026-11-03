@@ -185,3 +185,24 @@ describe("导航条 — 挑要显示的标签", () => {
 		await waitFor(() => expect(screen.queryByText("标签显示与排序")).toBeNull());
 	});
 });
+
+it("every navigation destination has a leading decorative icon and a complete accessible name", async () => {
+	renderHeader();
+	await screen.findByRole("link", { name: /数据统计/ });
+	for (const link of document.querySelectorAll("nav a")) {
+		expect(link.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+		expect(link.getAttribute("aria-label")).toBeTruthy();
+		expect(link.getAttribute("title")).toBeTruthy();
+	}
+});
+
+it("clicking the navigation editor trigger again closes it through the full pointer sequence", async () => {
+	renderHeader();
+	const trigger = screen.getByTitle("挑要显示的标签");
+	fireEvent.pointerDown(trigger);
+	fireEvent.click(trigger);
+	expect(await screen.findByText("标签显示与排序")).toBeTruthy();
+	fireEvent.pointerDown(trigger);
+	fireEvent.click(trigger);
+	expect(screen.queryByText("标签显示与排序")).toBeNull();
+});

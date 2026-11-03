@@ -66,7 +66,10 @@ async function mount(healthy: boolean) {
 describe("服务器可达徽章", () => {
 	it("通的时候是绿的,措辞落在「服务器」而不是「推送」", async () => {
 		await mount(true);
-		const badge = await screen.findByText("服务器运行中");
+		const badge = (await screen.findByText("服务器运行中")).closest<HTMLElement>(
+			'[data-bn="badge"]',
+		);
+		if (!badge) throw new Error("Missing reach badge");
 		expect([
 			badge.className.includes("bg-bn-success-soft"),
 			badge.className.includes("bg-bn-danger-soft"),
@@ -82,7 +85,8 @@ describe("服务器可达徽章", () => {
 
 	it("失联的时候是红的 —— 两态合并后仍然分得开", async () => {
 		await mount(false);
-		const badge = await screen.findByText("服务器失联");
+		const badge = (await screen.findByText("服务器失联")).closest<HTMLElement>('[data-bn="badge"]');
+		if (!badge) throw new Error("Missing reach badge");
 		expect([
 			badge.className.includes("bg-bn-danger-soft"),
 			badge.className.includes("bg-bn-success-soft"),

@@ -52,6 +52,19 @@ const filled = (paths: React.ReactNode) =>
 	};
 
 export const Icon = {
+	home: stroke(<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" />),
+	history: stroke(
+		<>
+			<path d="M3 4v5h5M3.7 8a9 9 0 1 1-.2 7" />
+			<path d="M12 7v5l3 2" />
+		</>,
+	),
+	info: stroke(
+		<>
+			<circle cx="12" cy="12" r="9" />
+			<path d="M12 11v6M12 7h.01" />
+		</>,
+	),
 	search: stroke(
 		<>
 			<circle cx="11" cy="11" r="7" />

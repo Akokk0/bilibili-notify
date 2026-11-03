@@ -45,10 +45,26 @@ export function ProblemBox() {
 			<Btn
 				size="sm"
 				variant="ghost"
+				icon={
+					<span className="bn-header-compact-icon">
+						{known && query.data.problems.length === 0 ? (
+							<Icon.bell size={16} />
+						) : (
+							<Icon.warning size={16} />
+						)}
+					</span>
+				}
+				aria-label={label}
+				title={label}
 				aria-expanded={open}
 				onClick={() => (open ? close() : navigate({ hash: PROBLEMS_HASH }))}
 			>
-				{label}
+				<span className="bn-header-action-label">{label}</span>
+				{known && query.data.problems.length > 0 ? (
+					<span className="bn-header-problem-count" aria-hidden="true">
+						{query.data.problems.length > 99 ? "99+" : query.data.problems.length}
+					</span>
+				) : null}
 			</Btn>
 			{open && anchored ? (
 				<PopoverShell

@@ -87,3 +87,13 @@ it("待处理问题与服务器状态、主题和刷新位于同一操作区", a
 	expect(within(actions).getByRole("button", { name: /主题/ })).toBeTruthy();
 	expect(within(actions).getByRole("button", { name: "刷新" })).toBeTruthy();
 });
+
+it("compact problem and theme triggers retain their full names and decorative icons", async () => {
+	mount();
+	const problem = await screen.findByRole("button", { name: "待处理问题 1" });
+	expect(problem.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+	expect(problem.title).toBe("待处理问题 1");
+	expect(
+		screen.getByRole("button", { name: /主题/ }).querySelector('svg[aria-hidden="true"]'),
+	).not.toBeNull();
+});

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TabBarShell } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { ThemeRoot } from "../theme-root";
@@ -98,4 +98,24 @@ describe("吸顶顶栏的层级", () => {
 		expect(tabBar).toBeTruthy();
 		expect(zOf(header as Element)).toBeGreaterThan(zOf(tabBar as Element));
 	});
+});
+
+it("publishes changed header height so page navigation stays below wrapped rows", async () => {
+	vi.stubGlobal("ResizeObserver", undefined);
+	const { GlassHeader } = await import("../header");
+	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const { container } = render(
+		<QueryClientProvider client={qc}>
+			<MemoryRouter>
+				<GlassHeader />
+			</MemoryRouter>
+		</QueryClientProvider>,
+	);
+	const header = container.querySelector("header");
+	Object.defineProperty(header, "offsetHeight", { configurable: true, value: 128 });
+	fireEvent(window, new Event("resize"));
+	expect(document.documentElement.style.getPropertyValue("--bn-header-h")).toBe("128px");
+	Object.defineProperty(header, "offsetHeight", { configurable: true, value: 212 });
+	fireEvent(window, new Event("resize"));
+	expect(document.documentElement.style.getPropertyValue("--bn-header-h")).toBe("212px");
 });

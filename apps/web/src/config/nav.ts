@@ -1,3 +1,4 @@
+import type { Icon } from "@bilibili-notify/ui";
 import { i18n } from "../i18n";
 /**
  * 顶部导航表,以及「显哪几个」的判定 —— 单一真源。
@@ -16,6 +17,7 @@ export const ALWAYS_VISIBLE_PATH = "/system";
 export interface NavItem {
 	to: string;
 	label: string;
+	icon?: keyof typeof Icon;
 	/** 标签右侧那颗计数气泡的数据源。没有就不显示气泡。 */
 	countKey?: "subs" | "targets";
 }
@@ -23,12 +25,14 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
 	{
 		to: "/",
+		icon: "home",
 		get label() {
 			return i18n.t("panelUi.config.nav.1");
 		},
 	},
 	{
 		to: "/subs",
+		icon: "user",
 		get label() {
 			return i18n.t("panelUi.config.nav.2");
 		},
@@ -36,6 +40,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 	},
 	{
 		to: "/targets",
+		icon: "link",
 		get label() {
 			return i18n.t("panelUi.config.nav.3");
 		},
@@ -43,54 +48,63 @@ export const NAV_ITEMS: readonly NavItem[] = [
 	},
 	{
 		to: "/history",
+		icon: "history",
 		get label() {
 			return i18n.t("panelUi.config.nav.4");
 		},
 	},
 	{
 		to: "/stats",
+		icon: "chart",
 		get label() {
 			return i18n.t("panelUi.config.nav.5");
 		},
 	},
 	{
 		to: "/rules",
+		icon: "filter",
 		get label() {
 			return i18n.t("panelUi.config.nav.6");
 		},
 	},
 	{
 		to: "/cards",
+		icon: "image",
 		get label() {
 			return i18n.t("panelUi.config.nav.7");
 		},
 	},
 	{
 		to: "/ai",
+		icon: "ai",
 		get label() {
 			return i18n.t("panelUi.config.nav.8");
 		},
 	},
 	{
 		to: "/extensions",
+		icon: "extension",
 		get label() {
 			return i18n.t("panelUi.config.nav.9");
 		},
 	},
 	{
 		to: ALWAYS_VISIBLE_PATH,
+		icon: "gear",
 		get label() {
 			return i18n.t("panelUi.config.nav.10");
 		},
 	},
 	{
 		to: "/logs",
+		icon: "list",
 		get label() {
 			return i18n.t("panelUi.config.nav.11");
 		},
 	},
 	{
 		to: "/about",
+		icon: "info",
 		get label() {
 			return i18n.t("panelUi.config.nav.12");
 		},
