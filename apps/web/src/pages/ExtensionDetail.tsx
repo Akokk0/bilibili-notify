@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ExtensionViewBoundary } from "../components/error-boundary";
+import { ExtensionLogLevel } from "../components/extension-log-level";
 import { invalidateExtensionTables, useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import { type Subscription, subscriptionIdentityOf } from "../types/domain";
@@ -186,6 +187,7 @@ export default function ExtensionDetail() {
 				<div className="flex flex-col gap-2.5">
 					<ExtensionToggleError toggle={toggle} />
 					<ExtensionStateDetail ext={ext} />
+					<ExtensionLogLevel key={ext.id} id={ext.id} name={ext.name} />
 					{/* 排在正文前面:这是等着主人拿主意的事,积木是看的。 */}
 					{staged && restart ? <StagedCodeNote id={ext.id} restart={restart} {...staged} /> : null}
 					{/*

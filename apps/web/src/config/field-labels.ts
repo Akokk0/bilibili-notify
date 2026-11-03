@@ -107,8 +107,8 @@ export const FIELD_LABELS = {
 		},
 		section: "logging",
 	},
-	// 以下 4 条仅作 diff-path entry 用(System 页 SYSTEM_MODULES 改某一格时 walkTreeDiff
-	// 会输出对应 dot-path,跳转锚点回到包裹整组的 <Field code="core.logging.levels">)。
+	// 以下四条保留既有日志说明；其他归属键由下方动态元数据覆盖。
+	// walkTreeDiff 输出完整点路径，日志行以同一 data-code 提供跳转锚点。
 	"core.logging.levels.core": {
 		get label() {
 			return i18n.t("sourceUi.config.field.labels.label.6");
@@ -1217,6 +1217,16 @@ function profileDisplayName(id: string): string | null {
 export function getFieldLabel(code: string): FieldLabel | null {
 	const hit = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[code];
 	if (hit) return hit;
+	const logPrefix = "core.logging.levels.";
+	if (code.startsWith(logPrefix) && code.length > logPrefix.length) {
+		const key = code.slice(logPrefix.length);
+		return {
+			get label() {
+				return `${key} · ${i18n.t("logging.levelLabel")}`;
+			},
+			section: "logging",
+		};
+	}
 	const minimum = /^membership\.minRank\.([^.]+)$/.exec(code);
 	if (minimum)
 		return {

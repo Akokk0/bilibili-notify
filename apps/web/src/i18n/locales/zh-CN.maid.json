@@ -295,5 +295,13 @@
 	"problems.greeting": "主人，女仆为您打理通知与订阅～",
 	"problems.failed": "主人，女仆暂时读不到问题列表，现在的状态还不知道哦。",
 	"problems.loading": "主人，女仆正在读取问题列表",
-	"problems.separate": "主人，推送链路错误留在右上角；关闭错误记录不会清除这里的问题哦。"
+	"problems.separate": "主人，推送链路错误留在右上角；关闭错误记录不会清除这里的问题哦。",
+	"logging.ownersFailed": "主人，日志归属还没读全；女仆保留了已知项和已有覆盖，可以重试哦。",
+	"logging.ownersLoading": "主人，女仆正在读取日志归属…",
+	"logging.unidentified": "主人，这个归属暂时认不出，女仆会保留已有覆盖。",
+	"logging.overridesHint": "主人，没单独设置的跟随全局等级；保存后就生效，不用重启哦。",
+	"logging.readFailed": "主人，日志等级没读到，现在还不知道它是哪一档，可以重试哦。",
+	"logging.readLoading": "主人，女仆正在读取日志等级…",
+	"logging.extensionHint": "主人，这里只改此拓展的日志等级，选好就保存；没单独设置时跟随全局哦。",
+	"logging.saveFailed": "主人，日志等级没保存成功：{reason}"
 }

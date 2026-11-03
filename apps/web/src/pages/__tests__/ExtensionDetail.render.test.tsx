@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import ExtensionDetail from "../ExtensionDetail";
 // 迁到 v2 的桥长什么样只有一份 —— 清单那一格列表各处抄一份的话,迟早各漂各的。
 import { BRIDGE, shown } from "../extensions/declarative/__tests__/list-harness";
@@ -49,7 +50,10 @@ const BRIDGE_SETTINGS = {
 };
 
 /** `/api/settings` 里每个拓展只有开关;设置不在这里面(ADR-0021 决策 42)。 */
-const GLOBALS = { extensions: { bridge: { enabled: true } } };
+const GLOBALS = {
+	extensions: { bridge: { enabled: true } },
+	logging: { level: "info", levels: { bridge: "debug", other: "warn" } },
+};
 
 /**
  * 桥交来的视图 —— 照 `extensions/bridge/src/view.ts` 算出来的形状写:一条连着、一条没连上。
@@ -116,10 +120,13 @@ const VIEW = shown({
 	},
 });
 
-function renderDetail(id = "bridge") {
+function renderDetail(id = "bridge", settingsError?: Error) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/ext") return LISTED;
-		if (url === "/api/settings") return { core: GLOBALS };
+		if (url === "/api/settings") {
+			if (settingsError) throw settingsError;
+			return { core: GLOBALS };
+		}
 		// 接入名单从拓展自己的设置口读(ADR-0019 决策 35);`/api/settings` 里已经没有设置那一格。
 		if (url === "/api/ext/bridge/settings") {
 			return { revision: "r1", values: BRIDGE_SETTINGS };
@@ -160,6 +167,7 @@ describe("拓展详情页", () => {
 	// 箭头函数直接返回它,vitest 会把它当成这一条的清理钩子,在收摊时**当函数调一次**。
 	// 症状是每条用例末尾多一发 `api.get(undefined)`,栈里看不出是自己写的。
 	beforeEach(() => {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
 		apiGetMock.mockReset();
 		apiPatchMock.mockReset();
 		apiPatchMock.mockResolvedValue({});
@@ -175,6 +183,51 @@ describe("拓展详情页", () => {
 		expect(await screen.findAllByText("机器人框架桥接")).toHaveLength(2);
 		expect(screen.getByText("已启用")).toBeTruthy();
 		expect(screen.getByText(BRIDGE.description as string)).toBeTruthy();
+	});
+
+	it("日志等级只改拓展自己的键，跟随全局发送显式null", async () => {
+		renderDetail();
+		const row = await screen.findByRole("group", { name: "机器人框架桥接（bridge）日志等级" });
+		expect(within(row).getByText("L4 · 调试").getAttribute("aria-pressed")).toBe("true");
+		apiPatchMock.mockResolvedValue({
+			core: { ...GLOBALS, logging: { level: "info", levels: { other: "warn" } } },
+		});
+		fireEvent.click(within(row).getByText("跟随全局"));
+		await waitFor(() =>
+			expect(apiPatchMock).toHaveBeenCalledWith("/api/settings", {
+				core: { logging: { levels: { bridge: null } } },
+			}),
+		);
+		await waitFor(() =>
+			expect(within(row).getByText("跟随全局").getAttribute("aria-pressed")).toBe("true"),
+		);
+	});
+
+	it("宿主设置读取失败时不画假等级，日志重试入口与文档重试区分", async () => {
+		renderDetail("bridge", new Error("settings unavailable"));
+		expect(await screen.findByText("日志等级读取失败，当前状态未知。")).toBeTruthy();
+		expect(screen.queryByRole("group", { name: "机器人框架桥接（bridge）日志等级" })).toBeNull();
+		expect(screen.getByRole("button", { name: "重试读取日志等级" })).toBeTruthy();
+		expect(apiPatchMock).not.toHaveBeenCalled();
+	});
+
+	it("保存失败保留原等级，重试成功后才显示新等级", async () => {
+		renderDetail();
+		const row = await screen.findByRole("group", { name: "机器人框架桥接（bridge）日志等级" });
+		apiPatchMock.mockRejectedValueOnce(new Error("保存被拒"));
+		fireEvent.click(within(row).getByText("L1 · 错误"));
+		expect(await screen.findByText("保存日志等级失败：保存被拒")).toBeTruthy();
+		expect(within(row).getByText("L4 · 调试").getAttribute("aria-pressed")).toBe("true");
+		apiPatchMock.mockResolvedValue({
+			core: { ...GLOBALS, logging: { level: "info", levels: { bridge: "error", other: "warn" } } },
+		});
+		fireEvent.click(within(row).getByText("L1 · 错误"));
+		await waitFor(() =>
+			expect(within(row).getByText("L1 · 错误").getAttribute("aria-pressed")).toBe("true"),
+		);
+		expect(apiPatchMock).toHaveBeenLastCalledWith("/api/settings", {
+			core: { logging: { levels: { bridge: "error" } } },
+		});
 	});
 
 	/**

@@ -19,6 +19,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import System from "../System";
 
@@ -89,6 +90,33 @@ function mockApi(logLevels: Record<string, string>): void {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
 		if (url === "/api/settings") return JSON.parse(JSON.stringify(settings));
 		if (url === "/api/connections/capabilities") return {};
+		if (url === "/api/sources")
+			return {
+				sources: [
+					{ key: "bilibili", descriptor: { label: "内置来源" }, status: "running" },
+					{ key: "acme.dual", descriptor: { label: "双口来源" }, status: "disabled" },
+				],
+			};
+		if (url === "/api/adapters")
+			return {
+				adapters: [
+					{ key: "onebot", descriptor: { label: "适配器甲" } },
+					{ key: "qq-official", descriptor: { label: "适配器乙" } },
+					{ key: "webhook", descriptor: { label: "适配器丙" } },
+					{ key: "acme.dual", descriptor: { label: "双口推送" } },
+				],
+			};
+		if (url === "/api/ext")
+			return {
+				extensions: [
+					{
+						id: "acme.dual",
+						name: "双口拓展",
+						state: "disabled",
+						provides: ["subscription", "push"],
+					},
+				],
+			};
 		return [];
 	});
 }
@@ -119,16 +147,18 @@ async function renderRuntimeSection() {
 	);
 	fireEvent.click(screen.getAllByRole("button", { name: "运行" })[0]);
 	await screen.findByText("Core · 应用");
+	await screen.findByText("双口拓展");
 }
 
 /** 某个模块那一行里的「跟随全局」钮 —— 四行各有一颗,按模块名定位。 */
 function inheritButtonOf(moduleLabel: string): HTMLElement {
-	const row = screen.getByText(moduleLabel).closest("div");
+	const row = screen.getByText(moduleLabel).closest("fieldset");
 	if (!row) throw new Error(`找不到模块「${moduleLabel}」那一行`);
 	return within(row).getByText("跟随全局");
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 });
@@ -140,21 +170,77 @@ afterEach(() => {
 });
 
 describe("系统页的按模块日志等级", () => {
-	it("四个模块都在这一格里 —— image / ai 是从各自页面搬过来的,动态与直播并成一格 B 站", async () => {
+	it("未知归属覆盖继续可见，修改别的归属后保存仍保留它", async () => {
+		mockApi({ "old.source": "warn", core: "debug" });
+		await renderRuntimeSection();
+		expect(screen.getByText("未识别归属，保留已有覆盖。")).toBeTruthy();
+		fireEvent.click(
+			within(screen.getByRole("group", { name: "核心（core）日志等级" })).getByText("L1 · 错误"),
+		);
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave();
+		});
+		expect(api.patch).toHaveBeenCalledWith(
+			"/api/settings",
+			expect.objectContaining({
+				core: expect.objectContaining({
+					logging: expect.objectContaining({ levels: { "old.source": "warn", core: "error" } }),
+				}),
+			}),
+		);
+	});
+
+	it("归属读口失败时明确提示不完整，已有覆盖仍可手动清除", async () => {
+		mockApi({ "missing.source": "warn" });
+		const read = vi.mocked(api.get).getMockImplementation();
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path === "/api/sources") throw new Error("unavailable");
+			return read?.(path);
+		});
+		await renderRuntimeSection();
+		expect(
+			await screen.findByText("日志归属列表未完整读取，已知项和已有覆盖仍保留。"),
+		).toBeTruthy();
+		fireEvent.click(inheritButtonOf("missing.source"));
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave();
+		});
+		expect(api.patch).toHaveBeenCalledWith(
+			"/api/settings",
+			expect.objectContaining({
+				core: expect.objectContaining({
+					logging: expect.objectContaining({ levels: { "missing.source": null } }),
+				}),
+			}),
+		);
+	});
+	it("核心、来源、适配器与停用拓展按归属列出，多口拓展只占一行", async () => {
 		mockApi({});
 		await renderRuntimeSection();
-		for (const label of ["core 核心", "bilibili B 站", "image 出图", "ai 女仆"]) {
+		for (const label of [
+			"核心",
+			"内置来源",
+			"出图",
+			"AI",
+			"适配器甲",
+			"适配器乙",
+			"适配器丙",
+			"双口拓展",
+		]) {
 			expect(screen.getByText(label), `缺了「${label}」那一格`).toBeTruthy();
 		}
 		// 并掉的两格不再各画一格。
+		expect(screen.queryByText("双口来源")).toBeNull();
+		expect(screen.queryByText("双口推送")).toBeNull();
+		expect(screen.getAllByText("双口拓展")).toHaveLength(1);
 		expect(screen.queryByText("dynamic 动态")).toBeNull();
 		expect(screen.queryByText("live 直播")).toBeNull();
 	});
 
 	it.each([
-		["image 出图", "image"],
-		["ai 女仆", "ai"],
-		["bilibili B 站", "bilibili"],
+		["出图", "image"],
+		["AI", "ai"],
+		["内置来源", "bilibili"],
 	])("%s:退回「跟随全局」→ PATCH 里那个键显式为 null", async (label, key) => {
 		mockApi({ [key]: "debug" });
 		await renderRuntimeSection();
@@ -204,7 +290,7 @@ describe("系统页的按模块日志等级", () => {
 		mockApi({ image: "debug", ai: "warn" });
 		await renderRuntimeSection();
 
-		fireEvent.click(inheritButtonOf("image 出图"));
+		fireEvent.click(inheritButtonOf("出图"));
 
 		await act(async () => {
 			await useDraftStore.getState().current?.onSave();

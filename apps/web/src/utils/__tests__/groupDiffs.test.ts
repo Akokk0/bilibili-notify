@@ -41,6 +41,12 @@ describe("动态会员字段", () => {
 });
 
 describe("sectionOf", () => {
+	it("任意日志归属键的草稿都归日志组并保留完整键", () => {
+		for (const key of ["onebot", "acme.dual", "retired.source"]) {
+			expect(sectionOf(`core.logging.levels.${key}`)).toBe("logging");
+			expect(getFieldLabel(`core.logging.levels.${key}`)?.label).toBe(`${key} · 日志等级`);
+		}
+	});
 	it("已知 code → 字典里的 section", () => {
 		expect(sectionOf("ai.apiKey")).toBe("ai");
 		expect(sectionOf("liveCoverImageIds")).toBe("cardStyle");

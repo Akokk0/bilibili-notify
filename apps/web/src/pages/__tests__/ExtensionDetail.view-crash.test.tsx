@@ -65,6 +65,7 @@ const DOUYIN: ExtensionDTO = {
 
 function renderDetail() {
 	apiGetMock.mockImplementation(async (url: string) => {
+		if (url === "/api/settings") return { core: { logging: { level: "info", levels: {} } } };
 		if (url === "/api/ext") {
 			return {
 				extensions: [DOUYIN],

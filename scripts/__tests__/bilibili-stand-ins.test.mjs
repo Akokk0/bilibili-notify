@@ -68,7 +68,8 @@ export const RATCHET = {
 	// 4-43：沿4-29持续授权拆分旧内容。5处变6处只多一个既有常量导入节点，
 	// 账号2处随4-40收；运行4处随4-34日志/4-44设置收，原文与行为不变。
 	"apps/web/src/pages/system/account-section.tsx": 2,
-	"apps/web/src/pages/system/runtime-section.tsx": 4,
+	// 4-34清日志归属两处；剩下设置段读写两处随4-44。
+	"apps/web/src/pages/system/runtime-section.tsx": 2,
 	"apps/web/src/types/domain.ts": 2,
 	// B 站大航海档位表(㉓b):3a 搬进 `bilibili/` 的来源描述符之前,面板、引擎、出图器共读这一份。
 	"packages/internal/src/identity.ts": 3,

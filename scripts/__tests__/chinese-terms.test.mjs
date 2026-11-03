@@ -125,7 +125,6 @@ export const RATCHET = {
 	// 4-43：沿4-29持续授权原文搬家，6=1+4+1，归期不改。
 	"apps/web/src/pages/System.tsx": 1,
 	"apps/web/src/pages/system/account-section.tsx": 4,
-	"apps/web/src/pages/system/runtime-section.tsx": 1,
 	"apps/web/src/pages/backup/BackupExportDialog.tsx": 1,
 	"apps/web/src/pages/backup/BackupSection.tsx": 2,
 	"apps/web/src/pages/cards/SkinInspector.tsx": 1,

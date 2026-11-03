@@ -163,7 +163,7 @@ src/
 
 - **机制**:`createNodeServiceContext` 有一个基础日志器(跟 `core` 那一格),每对(标签, 键)另开一个 pino 实例:`forSubsystem(标签, 键)`,同一对交回同一个。**标签**是日志行的 `name` 字段(日志页「来源」筛选项的出处),**键**只管等级,所以两个同名标签跟不同键是正常用法(`live` 既有跟 `core` 的、也有跟 `bilibili` 的)。等级表只有 `bindLogLevels`(`runtime/log-levels.ts`)一处推、`applyLogLevels` 一处收;全仓没有第二处据 `logging.levels` 定等级的服务端代码。入口在配置读完之后立刻绑,所以登录系统与推送链路装配起步时日志器已经是设置里那一格;热更不重启。表里没有的键、`toString` 这类原型上有的名字一律跟总等级。拓展热装时子上下文按记下的等级表起步,停了再起拿回同一个实例,它停着时改它那一格,再起来已是新值。
 - **谁用哪一对**:核心其余一切用基础日志器(`core` / `core`);作品队列、作品装配与拓展作品的接入 `posts` / `core`;替拓展跑的直播场次与推送 `live` / `core`;AI `ai` / `ai`、出图 `image` / `image`;B 站直播监听 `live` / `bilibili`(`compose.ts` 给 B 站来源的 `liveContext`;3b 直播完全并进来源时随之走);B 站来源与动态轮询(来源上下文的 `ctx.logger`)`dynamic` / `bilibili`,由 `compose.ts` 造好随登记项递进去;B 站登录系统、接口客户端与登录流程 `bilibili` / `bilibili`,用来源递进去的 `serviceCtx`;B 站集成上下文由 `compose.ts` 的 `createBiliContext` 开;B 站分层上报器 `bilibili` / `bilibili`,在来源 `start` 里用同一个 `serviceCtx` 开;舰长图标 `bilibili` / `bilibili`(`compose.ts`);三个内置适配器与它们的集成上下文,标签与键都是适配器键(`compose.ts` 的 `loggerOf`);每个拓展,标签与键都是它的 id(入口把 `loggerOf` 递给装载器);宿主在集成的「上下文」层替它写的日志(来源上下文、拓展上下文、集成上下文、来源登记表那几行)跟那个集成那一格;装载器自己的行(`[ext] <id> …`)是核心的代码,跟 `core`。
-- **面板**:系统页只有 `core`、`bilibili`、`image`、`ai` 四行,适配器与拓展的入口第 4 期才有;在那之前单独调它们只能调总等级,或手发 `PATCH /api/settings`(`core.logging.levels.<键>`,清掉发 `null`)。
+- **面板**（4-34）:系统页运行区按核心三格、来源/适配器描述与已安装拓展列日志归属；拓展按id去重，停用/失败照列，未知已保存键保留并标记。名单读取失败提示不完整并可重试；改档沿用系统草稿保存/放弃。拓展详情自己的日志行直接保存到宿主设置，PATCH只含 `core.logging.levels.<id>`；成功后采纳服务端快照，保存失败保留原等级，读取失败不显示假继承。“跟随全局”发显式 `null` 清除覆盖；后端继续由既有 `bindLogLevels` 热应用，无新读写口。
 
 ### `apps/web`
 
