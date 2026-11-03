@@ -17,7 +17,6 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	aiWritingFor,
-	BILIBILI_SOURCE_KEY,
 	fail,
 	inQuietHours,
 	isPrivateTarget,
@@ -42,14 +41,12 @@ function makeAtAllPayload(): NotificationPayload {
 }
 
 /**
- * 日志里认得出「是谁」的那一截:B 站 `uid=<uid>`,拓展 `<extensionId>:<externalId>`。
+ * 日志里认得出「是谁」的那一截:所有来源均写 `<来源键>:<外部 id>`。
  * 只拿来给人看 —— 推送链认的是订阅自己的 id(ADR-0019 决策 50),查不到订阅时日志就写 `sub=<id>`。
  */
 function subscriptionLabel(sub: Subscription): string {
 	const identity = subscriptionIdentityOf(sub);
-	return identity.sourceKey === BILIBILI_SOURCE_KEY
-		? `uid=${identity.externalId}`
-		: `${identity.sourceKey}:${identity.externalId}`;
+	return `${identity.sourceKey}:${identity.externalId}`;
 }
 
 /**

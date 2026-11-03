@@ -73,7 +73,6 @@ export const RATCHET = {
 	"apps/web/src/types/domain.ts": 2,
 	// B 站大航海档位表(㉓b):3a 搬进 `bilibili/` 的来源描述符之前,面板、引擎、出图器共读这一份。
 	"packages/internal/src/identity.ts": 3,
-	"packages/push/src/push-router.ts": 2,
 };
 
 /** 字符串字面量里算 B 站替身的那两个值。 */

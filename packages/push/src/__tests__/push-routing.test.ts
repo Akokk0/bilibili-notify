@@ -722,8 +722,8 @@ describe("PushRouter.push — 按订阅 id 找订阅", () => {
 });
 
 /**
- * 日志里认得出「是谁」(`subscriptionLabel`):B 站写 `uid=<uid>`,拓展写 `<拓展 id>:<外部 id>`。
- * 只拿来给人看,所以没有别的测试会红 —— 这里钉住写法,免得换成按身份读的时候悄悄变样。
+ * 日志里认得出「是谁」(`subscriptionLabel`):所有来源均写 `<来源键>:<外部 id>`。
+ * 仅影响日志，发送仍按订阅 id 路由。
  */
 describe("PushRouter.push — 日志里的订阅标签", () => {
 	async function gateLogLine(sub: Subscription): Promise<string> {
@@ -743,13 +743,13 @@ describe("PushRouter.push — 日志里的订阅标签", () => {
 		return lines.find((l) => l.includes("总开关 OFF")) ?? "";
 	}
 
-	it("B 站订阅 → uid=<uid>", async () => {
+	it("B 站订阅也用来源键和外部 id", async () => {
 		const sub = makeEmptySubscription({
 			id: "s1",
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
 		sub.routing.liveStart = ["t1"];
-		expect(await gateLogLine(sub)).toBe("[push] uid=u1 feature=liveStart 总开关 OFF，跳过");
+		expect(await gateLogLine(sub)).toBe("[push] bilibili:u1 feature=liveStart 总开关 OFF，跳过");
 	});
 
 	it("拓展订阅 → <拓展 id>:<外部 id>", async () => {
