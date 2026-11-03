@@ -17,6 +17,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import System from "../System";
 
@@ -71,6 +72,7 @@ const GLOBALS = {
 	core: {
 		logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
 		history: { retentionDays: 30 },
+		stats: { enabled: true },
 		master: { targetId: undefined },
 	},
 	bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
@@ -129,6 +131,7 @@ async function save(): Promise<{
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 });
@@ -240,5 +243,25 @@ describe("系统页里的保留天数", () => {
 		expect(body).toMatchObject({ core: { history: { retentionDays: 7 } } });
 		expect(body.core).not.toHaveProperty("logging");
 		expect(body).not.toHaveProperty("bilibili");
+	});
+});
+
+describe("系统运行区的统计开关", () => {
+	it.each([true, false])("读取enabled=%s，改动可放弃，保存只提交统计块", async (enabled) => {
+		await renderRuntimeSection({ ...GLOBALS, core: { ...GLOBALS.core, stats: { enabled } } });
+		const toggle = screen.getByRole("button", { name: "统计记录" });
+		expect(toggle.getAttribute("aria-pressed")).toBe(String(enabled));
+		fireEvent.click(toggle);
+		expect(toggle.getAttribute("aria-pressed")).toBe(String(!enabled));
+		act(() => useDraftStore.getState().current?.onDiscard());
+		expect(toggle.getAttribute("aria-pressed")).toBe(String(enabled));
+		expect(api.patch).not.toHaveBeenCalled();
+		fireEvent.click(toggle);
+		await waitFor(() =>
+			expect(useDraftStore.getState().current?.diff.map((item) => item.code)).toContain(
+				"core.stats.enabled",
+			),
+		);
+		expect(await save()).toEqual({ core: { stats: { enabled: !enabled } } });
 	});
 });

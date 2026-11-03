@@ -42,6 +42,7 @@ vi.mock("../../services/api", () => ({
 					core: {
 						logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
 						history: { retentionDays: 30 },
+						stats: { enabled: true },
 						master: { targetId: undefined },
 					},
 					bilibili: { dynamicCron: "0 * * * *", healthCheckMinutes: 30 },

@@ -303,5 +303,10 @@
 	"logging.readFailed": "主人，日志等级没读到，现在还不知道它是哪一档，可以重试哦。",
 	"logging.readLoading": "主人，女仆正在读取日志等级…",
 	"logging.extensionHint": "主人，这里只改此拓展的日志等级，选好就保存；没单独设置时跟随全局哦。",
-	"logging.saveFailed": "主人，日志等级没保存成功：{reason}"
+	"logging.saveFailed": "主人，日志等级没保存成功：{reason}",
+	"statsSwitch.disabledHint": "主人，统计关着，女仆暂停记录作品、直播和粉丝样本；已有数据留着，订阅资料也会照常刷新哦。",
+	"statsSwitch.loading": "主人，女仆正在读取统计开关…",
+	"statsSwitch.readFailed": "主人，统计开关没读到，现在还不知道它是否开着，可以重试哦。",
+	"statsSwitch.hint": "主人，开着才记作品、直播和粉丝样本；关掉也会保留已有数据，订阅资料照常刷新哦。",
+	"statsSwitch.saveFailed": "主人，统计开关没保存成功：{reason}"
 }

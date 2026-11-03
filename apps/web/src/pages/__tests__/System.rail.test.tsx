@@ -83,6 +83,7 @@ const { GLOBALS, FakeApiError } = vi.hoisted(() => {
 			core: {
 				logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
 				history: { retentionDays: 30 },
+				stats: { enabled: true },
 				master: { targetId: undefined },
 				commands: { enabled: true, prefix: "/", aliases: {} },
 			},

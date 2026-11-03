@@ -93,6 +93,13 @@ function SystemSettingsSection({
 					ariaLabel={t("logging.memoryLog")}
 				/>
 			</Field>
+			<Field code="core.stats.enabled">
+				<Toggle
+					value={draft.core.stats.enabled}
+					onChange={(enabled) => onPatch({ core: { stats: { enabled } } })}
+					ariaLabel={t("statsSwitch.label")}
+				/>
+			</Field>
 		</GlassBox>
 	);
 }

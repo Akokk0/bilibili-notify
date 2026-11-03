@@ -19,12 +19,16 @@ import {
 	Pill,
 	PopoverShell,
 } from "@bilibili-notify/ui";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Picker } from "../components/forms";
+import { HeroStrip } from "../components/hero-strip";
 import { useExtensions } from "../hooks/useExtensions";
+import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
 import { i18n, useT } from "../i18n";
 import { api } from "../services/api";
+import { errorTextOf } from "../services/error-text";
 import {
 	activityLevel,
 	computeTotals,
@@ -510,6 +514,80 @@ function ContentMix({
 }
 
 export default function Stats() {
+	const tx = useT();
+	const settings = useCoreSettings();
+	const qc = useQueryClient();
+	const save = useMutation({
+		mutationFn: (enabled: boolean) => patchCoreSettings({ stats: { enabled } }),
+		onSuccess: (saved) => qc.setQueryData(SETTINGS_KEY, saved),
+	});
+	const enabled = settings.data?.stats?.enabled;
+	if (settings.isError || (!settings.isPending && typeof enabled !== "boolean")) {
+		return (
+			<div className="bn-anim-page-in space-y-3 p-6">
+				<ErrorNote>{tx("statsSwitch.readFailed")}</ErrorNote>
+				<Btn
+					variant="outline"
+					disabled={settings.isFetching}
+					onClick={() => void settings.refetch()}
+				>
+					{tx("statsSwitch.retry")}
+				</Btn>
+			</div>
+		);
+	}
+	if (enabled === undefined)
+		return (
+			<div className="bn-anim-page-in p-6">
+				<LoadingBlock label={tx("statsSwitch.loading")} />
+			</div>
+		);
+	return (
+		<div className="bn-anim-page-in flex flex-col gap-4">
+			<HeroStrip
+				icon={<Icon.chart size={26} />}
+				title={
+					<>
+						{tx("statsSwitch.title")}
+						<Pill color="var(--color-bn-purple)" subtle size="sm">
+							stats
+						</Pill>
+					</>
+				}
+				subtitle={enabled ? tx("statsSwitch.hint") : tx("statsSwitch.disabledHint")}
+				right={
+					<fieldset
+						disabled={save.isPending}
+						aria-label={tx("statsSwitch.label")}
+						className="shrink-0 disabled:opacity-60"
+					>
+						<Picker
+							value={enabled}
+							onChange={(next) => {
+								if (!save.isPending && next !== enabled) save.mutate(next);
+							}}
+							options={[
+								{ value: true, label: tx("statsSwitch.enable"), color: "var(--color-bn-purple)" },
+								{
+									value: false,
+									label: tx("statsSwitch.disable"),
+									color: "var(--color-bn-inactive)",
+								},
+							]}
+						/>
+					</fieldset>
+				}
+			/>
+			{save.isError ? (
+				<ErrorNote>{tx("statsSwitch.saveFailed", { reason: errorTextOf(save.error) })}</ErrorNote>
+			) : null}
+			{enabled ? <StatsContent /> : null}
+		</div>
+	);
+}
+
+/** 只在总开关确认开启后挂载，关闭时不启动统计读取或锐评组件。 */
+function StatsContent() {
 	const tx = useT();
 	const [days, setDays] = useState<number>(30);
 	const [picked, setPicked] = useState<string | null>(null);

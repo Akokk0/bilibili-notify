@@ -83,6 +83,7 @@ function mockApi(logLevels: Record<string, string>): void {
 				memoryLog: { enabled: false },
 			},
 			history: { retentionDays: 30 },
+			stats: { enabled: true },
 			master: { targetId: undefined },
 		},
 		bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },

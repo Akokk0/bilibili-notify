@@ -1271,5 +1271,15 @@
 	"logging.saveFailed": "保存日志等级失败：{reason}",
 	"logging.retryRead": "重试读取日志等级",
 	"logging.retryOwners": "重试读取日志归属",
-	"logging.levelLabel": "日志等级"
+	"logging.levelLabel": "日志等级",
+	"statsSwitch.disabledHint": "停止记录作品、直播和粉丝样本；已有数据保留，订阅资料仍照常刷新。",
+	"statsSwitch.enable": "启用",
+	"statsSwitch.loading": "正在读取统计开关",
+	"statsSwitch.readFailed": "统计开关读取失败，当前状态未知。",
+	"statsSwitch.retry": "重试读取统计开关",
+	"statsSwitch.label": "统计记录",
+	"statsSwitch.hint": "开启后记录作品、直播和粉丝样本。关闭时已有数据保留，订阅资料仍照常刷新。",
+	"statsSwitch.title": "数据统计",
+	"statsSwitch.disable": "停用",
+	"statsSwitch.saveFailed": "保存统计开关失败：{reason}"
 }

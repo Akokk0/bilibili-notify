@@ -12,8 +12,9 @@
  */
 
 import type { ExtensionDTO, SourceEntry, UpStatsRow } from "@bilibili-notify/contract";
+import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
@@ -25,6 +26,8 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { SETTINGS_KEY } from "../../hooks/useSettings";
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 import Stats from "../Stats";
 
@@ -113,8 +116,15 @@ const DOUYIN_SOURCE: SourceEntry = {
 	},
 };
 
-function mockApi(rows: UpStatsRow[], subs: Subscription[], extensions: ExtensionDTO[] = [DOUYIN]) {
+function mockApi(
+	rows: UpStatsRow[],
+	subs: Subscription[],
+	extensions: ExtensionDTO[] = [DOUYIN],
+	enabled = true,
+) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
+		if (path === "/api/settings")
+			return Promise.resolve({ core: { ...makeDefaultGlobalConfig(), stats: { enabled } } });
 		if (path.startsWith("/api/stats/overview")) return Promise.resolve({ days: DAYS, rows });
 		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
@@ -134,11 +144,12 @@ function mockApi(rows: UpStatsRow[], subs: Subscription[], extensions: Extension
 
 function renderStats() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const view = render(
 		<QueryClientProvider client={qc}>
 			<Stats />
 		</QueryClientProvider>,
 	);
+	return { ...view, qc };
 }
 
 /** jsdom 把 style 里的十六进制颜色存成 rgb(),比之前先照同一条路翻一遍。 */
@@ -164,6 +175,7 @@ class FakeRO {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.stubGlobal("ResizeObserver", FakeRO);
 	mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, EXT_SUB]);
 });
@@ -272,6 +284,7 @@ describe("统计 CSV 当前来源叫法与原始身份", () => {
 			? [first, { ...BILI_ROW, identity: { sourceKey: "bilibili", externalId: "0012" } }]
 			: [first];
 		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path === "/api/settings") return { core: makeDefaultGlobalConfig() };
 			if (path.startsWith("/api/stats/overview")) return { days: DAYS, rows };
 			if (path === "/api/subscriptions") return [];
 			if (path === "/api/sources")
@@ -404,5 +417,156 @@ describe("统计页 · 锐评两支都管(ADR-0020 决策 12 / 14 / 18)", () => 
 		expect(within(diligentCard).getByText("B 站甲")).toBeTruthy();
 		expect(screen.getByText("咕咕咕").previousElementSibling?.textContent).toBe("抖音乙");
 		expect(screen.queryByText(/UID s-/)).toBeNull();
+	});
+});
+
+describe("统计总开关", () => {
+	it("停用保存失败保留启用选中态和统计内容，可再次停用", async () => {
+		renderStats();
+		await screen.findByRole("table");
+		vi.mocked(api.patch).mockRejectedValueOnce(new Error("写入失败"));
+		const controls = screen.getByRole("group", { name: "统计记录" });
+		await userEvent.click(within(controls).getByRole("button", { name: "停用" }));
+		expect(await screen.findByRole("alert")).toHaveProperty(
+			"textContent",
+			"保存统计开关失败：写入失败",
+		);
+		expect(
+			within(controls).getByRole("button", { name: "启用" }).getAttribute("aria-pressed"),
+		).toBe("true");
+		expect(screen.getByRole("table")).toBeTruthy();
+		mockApi([BILI_ROW], [BILI_SUB], [], false);
+		vi.mocked(api.patch).mockResolvedValueOnce({
+			core: { ...makeDefaultGlobalConfig(), stats: { enabled: false } },
+		});
+		await userEvent.click(within(controls).getByRole("button", { name: "停用" }));
+		await waitFor(() => expect(screen.queryByRole("table")).toBeNull());
+		expect(screen.queryByRole("alert")).toBeNull();
+		expect(api.patch).toHaveBeenLastCalledWith("/api/settings", {
+			core: { stats: { enabled: false } },
+		});
+	});
+
+	it("页头始终保留启用/停用段选，停用仅保存统计开关并收起内容", async () => {
+		renderStats();
+		await screen.findByRole("table");
+		const controls = screen.getByRole("group", { name: "统计记录" });
+		expect(
+			within(controls).getByRole("button", { name: "启用" }).getAttribute("aria-pressed"),
+		).toBe("true");
+		mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, EXT_SUB], [DOUYIN], false);
+		vi.mocked(api.patch).mockResolvedValueOnce({
+			core: { ...makeDefaultGlobalConfig(), stats: { enabled: false } },
+		});
+		await userEvent.click(within(controls).getByRole("button", { name: "停用" }));
+		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+			core: { stats: { enabled: false } },
+		});
+		await waitFor(() => expect(screen.queryByRole("table")).toBeNull());
+		expect(screen.getByRole("group", { name: "统计记录" })).toBe(controls);
+		expect(
+			within(controls).getByRole("button", { name: "停用" }).getAttribute("aria-pressed"),
+		).toBe("true");
+		expect(api.delete).not.toHaveBeenCalled();
+	});
+
+	it("设置刷新为关闭时卸下已显示的图表与锐评，不因缓存仍有统计而继续显示", async () => {
+		const { qc } = renderStats();
+		await screen.findByRole("table");
+		mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, EXT_SUB], [DOUYIN], false);
+		await act(async () => {
+			await qc.invalidateQueries({ queryKey: SETTINGS_KEY });
+		});
+		await screen.findByText("停止记录作品、直播和粉丝样本；已有数据保留，订阅资料仍照常刷新。");
+		expect(screen.queryByRole("table")).toBeNull();
+		expect(screen.queryByRole("button", { name: "导出 CSV" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "生成 AI 锐评" })).toBeNull();
+		expect(api.delete).not.toHaveBeenCalled();
+	});
+
+	it("设置刷新失败不沿用缓存中的开启态，重试读到关闭后才展示开启入口", async () => {
+		const { qc } = renderStats();
+		await screen.findByRole("table");
+		const read = vi.mocked(api.get).getMockImplementation();
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path === "/api/settings") throw new Error("读取失败");
+			return read?.(path);
+		});
+		await act(async () => {
+			await qc.invalidateQueries({ queryKey: SETTINGS_KEY });
+		});
+		expect(await screen.findByRole("alert")).toHaveProperty(
+			"textContent",
+			"统计开关读取失败，当前状态未知。",
+		);
+		expect(screen.queryByRole("table")).toBeNull();
+		expect(screen.queryByRole("button", { name: "启用" })).toBeNull();
+		mockApi([BILI_ROW], [BILI_SUB], [], false);
+		await userEvent.click(screen.getByRole("button", { name: "重试读取统计开关" }));
+		await screen.findByRole("button", { name: "启用" });
+		expect(screen.queryByRole("alert")).toBeNull();
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it("开启失败保留关闭态和重试入口，不读取统计或清理数据", async () => {
+		mockApi([BILI_ROW], [BILI_SUB], [], false);
+		vi.mocked(api.patch).mockRejectedValueOnce(new Error("写入失败"));
+		renderStats();
+		await userEvent.click(await screen.findByRole("button", { name: "启用" }));
+		expect(await screen.findByRole("alert")).toHaveProperty(
+			"textContent",
+			"保存统计开关失败：写入失败",
+		);
+		expect(screen.getByRole("button", { name: "启用" }).hasAttribute("disabled")).toBe(false);
+		expect(screen.queryByRole("table")).toBeNull();
+		expect(vi.mocked(api.get).mock.calls.map(([path]) => path)).toEqual(["/api/settings"]);
+		expect(api.delete).not.toHaveBeenCalled();
+		mockApi([BILI_ROW], [BILI_SUB], []);
+		vi.mocked(api.patch).mockResolvedValueOnce({ core: makeDefaultGlobalConfig() });
+		await userEvent.click(screen.getByRole("button", { name: "启用" }));
+		await screen.findByRole("table");
+		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
+	it("开启只保存stats.enabled，响应成功前保留关闭态，成功后恢复已有统计", async () => {
+		mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, EXT_SUB], [DOUYIN], false);
+		let finish!: (value: unknown) => void;
+		vi.mocked(api.patch).mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		renderStats();
+		const button = await screen.findByRole("button", { name: "启用" });
+		await userEvent.click(button);
+		expect(api.patch).toHaveBeenCalledWith("/api/settings", { core: { stats: { enabled: true } } });
+		expect(button.matches(":disabled")).toBe(true);
+		expect(screen.getByRole("button", { name: "停用" }).matches(":disabled")).toBe(true);
+		expect(screen.queryByRole("table")).toBeNull();
+		mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, EXT_SUB]);
+		await act(async () => finish({ core: makeDefaultGlobalConfig() }));
+		await screen.findByRole("table");
+		expect(tableRow("抖音乙")).toBeTruthy();
+		expect(
+			screen.queryByText("停止记录作品、直播和粉丝样本；已有数据保留，订阅资料仍照常刷新。"),
+		).toBeNull();
+	});
+
+	it("关闭时只留说明和开启入口，不读取统计、订阅或挂载锐评", async () => {
+		mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, EXT_SUB], [DOUYIN], false);
+		renderStats();
+		expect(
+			await screen.findByText("停止记录作品、直播和粉丝样本；已有数据保留，订阅资料仍照常刷新。"),
+		).toBeTruthy();
+		expect(
+			screen.getByText("停止记录作品、直播和粉丝样本；已有数据保留，订阅资料仍照常刷新。"),
+		).toBeTruthy();
+		expect(screen.getByRole("button", { name: "启用" })).toBeTruthy();
+		expect(screen.queryByRole("table")).toBeNull();
+		expect(screen.queryByRole("button", { name: "导出 CSV" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "生成 AI 锐评" })).toBeNull();
+		expect(vi.mocked(api.get).mock.calls.map(([path]) => path)).toEqual(["/api/settings"]);
+		expect(api.patch).not.toHaveBeenCalled();
 	});
 });
