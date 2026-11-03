@@ -214,9 +214,13 @@ describe("统计页 · 拓展订阅的行", () => {
 				.find((el) => el.previousElementSibling?.tagName === "SPAN");
 			return (label?.previousElementSibling as HTMLElement | undefined)?.style.background;
 		};
-		expect(heatDot("抖音乙")).toBe(cssColor(subscriptionColor(EXT_SUB)));
-		expect(heatDot("B 站甲")).toBe(cssColor(subscriptionColor(BILI_SUB)));
-		expect(subscriptionColor(EXT_SUB)).not.toBe(subscriptionColor(BILI_SUB));
+		expect(heatDot("抖音乙")).toBe(cssColor(subscriptionColor(EXT_SUB, undefined)));
+		expect(heatDot("B 站甲")).toBe(
+			cssColor(subscriptionColor(BILI_SUB, { colorByExternalId: true })),
+		);
+		expect(subscriptionColor(EXT_SUB, undefined)).not.toBe(
+			subscriptionColor(BILI_SUB, { colorByExternalId: true }),
+		);
 
 		// 两位都在盯,总粉丝量两支一起加(1000 + 5000)。
 		expect(screen.getByText(/正在跟踪/).textContent).toContain("2");
@@ -234,7 +238,9 @@ describe("统计页 · 拓展订阅的行", () => {
 		expect(title.textContent).not.toContain("UID");
 		expect(screen.queryByRole("table")).toBeNull();
 		// 聚焦的颜色也是它自己的。
-		expect(within(title).getByText("12345").style.color).toBe(cssColor(subscriptionColor(EXT_SUB)));
+		expect(within(title).getByText("12345").style.color).toBe(
+			cssColor(subscriptionColor(EXT_SUB, undefined)),
+		);
 		// 单人锐评与它的定时两支都有(ADR-0020 决策 14)。
 		expect(screen.getByText("定时锐评")).toBeTruthy();
 		expect(screen.getByText("AI 锐评 · 抖音乙")).toBeTruthy();

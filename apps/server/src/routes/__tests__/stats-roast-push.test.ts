@@ -108,6 +108,10 @@ function makeDeps(opts: StubOpts = {}) {
 			subscriptionStateStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
 			// 锐评取名要问来源登记表拼身份标签(B 站声明「UID」)。
 			sourceRegistry: {
+				getRunView: (key: string) =>
+					key === "bilibili"
+						? { sourceKey: key, status: "running", descriptor: BILI_SOURCE_DESCRIPTOR }
+						: undefined,
 				get: (key: string) =>
 					key === "bilibili" ? { descriptor: BILI_SOURCE_DESCRIPTOR } : undefined,
 			},

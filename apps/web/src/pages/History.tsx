@@ -296,7 +296,7 @@ function HistoryRow({
 	// 头像快照是图库引用(只有拓展行有);没有快照 / 过了保留期就退到订阅现在的头像,再没有就是默认占位。
 	const upAvatar = historyRowAvatarUrl(entry, sub?.cachedProfile);
 	// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
-	const creatorColor = historyRowColor(entry);
+	const creatorColor = historyRowColor(entry, subscriptionPlatformOf(entry.identity, sources));
 	// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同首页「正在直播」;B 站行不画。
 	const platform = subscriptionPlatformOf(entry.identity, sources);
 	const headline = headlineOf(entry);

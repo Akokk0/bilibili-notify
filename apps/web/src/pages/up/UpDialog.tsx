@@ -356,7 +356,7 @@ export function UpDialog({
 
 	if (!draft) return null;
 
-	const color = subscriptionColor(draft);
+	const color = subscriptionColor(draft, platform);
 	const identity = subscriptionIdentityOf(draft);
 	const ext = platform;
 	const previewName = createProfile?.name.trim() ? createProfile.name : displayName(draft, ext);

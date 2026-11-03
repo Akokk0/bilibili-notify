@@ -51,21 +51,20 @@ export function historyRowAvatarUrl(
 	return profileAvatarUrl(profile);
 }
 
-/**
- * 这条订阅在页面上的颜色 —— 跟着人走。B 站订阅按 uid 取,拓展订阅按「拓展 id:外部 id」取(决策 73):
- * 删了再加订阅 id 变了,颜色不变。算法住 internal 的 `identityColor`(ADR-0020 决策 15),服务端出图(周报 /
- * 锐评卡)用的是同一份,同一个人在页面与图上是同一个颜色。历史行用 {@link historyRowColor}。
- */
-export function subscriptionColor(sub: Subscription): string {
-	return identityColor(subscriptionIdentityOf(sub));
+/** 身份强调色服从来源描述符，与服务端出图使用同一规则。 */
+export function subscriptionColor(
+	sub: Subscription,
+	platform: { colorByExternalId?: boolean } | undefined,
+): string {
+	return identityColor(subscriptionIdentityOf(sub), platform);
 }
 
-/**
- * 历史行的颜色,与 {@link subscriptionColor} 同一条规矩:跟着 `identity` 走(B 站行是 uid、拓展行是
- * 「拓展 id:外部 id」)—— 订阅卡与历史行是同一个颜色,订阅删了也不变。
- */
-export function historyRowColor(row: HistoryRowIdentity): string {
-	return identityColor(row.identity);
+/** 历史与订阅使用同一来源规则；订阅删后仍按历史身份取色。 */
+export function historyRowColor(
+	row: HistoryRowIdentity,
+	platform: { colorByExternalId?: boolean } | undefined,
+): string {
+	return identityColor(row.identity, platform);
 }
 
 /**

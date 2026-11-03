@@ -49,6 +49,11 @@ describe("subscriptionIdentityOf", () => {
 });
 
 describe("identityColor", () => {
+	it("由描述符声明按外部 id 取色，来源键不决定规则", () => {
+		expect(
+			identityColor({ sourceKey: "library", externalId: "12345" }, { colorByExternalId: true }),
+		).toBe("#fb7299");
+	});
 	it("B 站按外部 id、拓展按「拓展 id:外部 id」取色", () => {
 		const before = [
 			{
@@ -57,7 +62,10 @@ describe("identityColor", () => {
 			},
 			{ identity: { sourceKey: "douyin", externalId: "12345" }, color: "#ffaf7b" },
 		];
-		for (const { identity, color } of before) expect(identityColor(identity)).toBe(color);
+		for (const { identity, color } of before)
+			expect(
+				identityColor(identity, { colorByExternalId: identity.sourceKey === "bilibili" }),
+			).toBe(color);
 	});
 });
 

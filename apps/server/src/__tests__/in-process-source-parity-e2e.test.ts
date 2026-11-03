@@ -434,6 +434,7 @@ const SOURCE_DESCRIPTOR_MEMBERS = {
 	externalIdNoun: ["P38"],
 	shortLabel: ["P50"],
 	color: ["P50"],
+	colorByExternalId: ["P50"],
 	icon: ["P50"],
 	searchAccepts: ["P50"],
 	supportedFeatures: ["P50"],
@@ -996,6 +997,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			has: { auth: true, liveStatus: true, preview: true },
 		});
 		expect(sources.find((one) => one.key === "bilibili")?.descriptor.label).toBe("B 站");
+		expect(sources.find((one) => one.key === "bilibili")?.descriptor.colorByExternalId).toBe(true);
 		drove("P50");
 	});
 

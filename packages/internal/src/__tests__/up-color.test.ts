@@ -130,7 +130,13 @@ describe("identityColor — 按身份取色", () => {
 			["672328094", "#02b088"],
 		];
 		for (const [uid, color] of before) {
-			expect(identityColor({ sourceKey: BILIBILI_SOURCE_KEY, externalId: uid }), uid).toBe(color);
+			expect(
+				identityColor(
+					{ sourceKey: BILIBILI_SOURCE_KEY, externalId: uid },
+					{ colorByExternalId: true },
+				),
+				uid,
+			).toBe(color);
 		}
 	});
 
@@ -144,7 +150,7 @@ describe("identityColor — 按身份取色", () => {
 		];
 		for (const [extensionId, externalId, color] of before) {
 			expect(
-				identityColor({ sourceKey: extensionId, externalId }),
+				identityColor({ sourceKey: extensionId, externalId }, undefined),
 				`${extensionId} ${externalId}`,
 			).toBe(color);
 			expect(extensionColorSeed(extensionId, externalId)).toBe(`${extensionId}:${externalId}`);
@@ -153,7 +159,7 @@ describe("identityColor — 按身份取色", () => {
 
 	it("拓展不按外部 id 取色:外部 id 恰好等于某个 B 站 uid,种子也不是那串 uid", () => {
 		expect(extensionColorSeed("douyin", "12345")).not.toBe("12345");
-		expect(identityColor({ sourceKey: "douyin", externalId: "12345" })).toBe(
+		expect(identityColor({ sourceKey: "douyin", externalId: "12345" }, undefined)).toBe(
 			colorFromSeed("douyin:12345"),
 		);
 	});

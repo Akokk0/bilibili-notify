@@ -20,6 +20,7 @@ export function makeSource(over: Partial<SourceEntry> = {}): SourceEntry {
 		has: { auth: true, liveStatus: true, preview: true },
 		descriptor: {
 			label: "B 站",
+			colorByExternalId: true,
 			externalIdNoun: "UID",
 			postNoun: "动态",
 			creatorNoun: "UP 主",

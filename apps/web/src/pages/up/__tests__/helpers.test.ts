@@ -107,14 +107,14 @@ describe("subscriptionColor / displayName × 两支订阅", () => {
 	const ext = makeEmptySubscription({ sourceKey: "douyin", externalId: "12345" });
 
 	it("B 站按 uid,拓展按「拓展 id:外部 id」这一串 —— 带着冒号与拓展名,永远不等于纯数字 uid", () => {
-		expect(subscriptionColor(bili)).toBe(colorFromSeed("12345"));
-		expect(subscriptionColor(ext)).toBe(colorFromSeed("douyin:12345"));
+		expect(subscriptionColor(bili, { colorByExternalId: true })).toBe(colorFromSeed("12345"));
+		expect(subscriptionColor(ext, undefined)).toBe(colorFromSeed("douyin:12345"));
 	});
 
 	it("同一个人删了再加(订阅 id 变了)→ 颜色不变", () => {
 		const readded = { ...ext, id: "e-readded-0000-4000-8000-000000000009" };
 		const original = { ...ext, id: "e-original-0000-4000-8000-000000000001" };
-		expect(subscriptionColor(readded)).toBe(subscriptionColor(original));
+		expect(subscriptionColor(readded, undefined)).toBe(subscriptionColor(original, undefined));
 	});
 
 	it("B 站没资料 → 「UID xxx」;拓展没资料 → 外部 id(别名已退役,ADR-0021 决策 16)", () => {

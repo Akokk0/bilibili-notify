@@ -13,6 +13,7 @@ export interface SubscriptionPlatform {
 	shortLabel?: string;
 	icon?: string;
 	color?: string;
+	colorByExternalId?: boolean;
 	postNoun?: string;
 	creatorNoun?: string;
 	externalIdNoun?: string;
@@ -36,6 +37,7 @@ export function subscriptionPlatformOf(
 		shortLabel: descriptor?.shortLabel,
 		icon: descriptor?.icon,
 		color: descriptor?.color,
+		colorByExternalId: descriptor?.colorByExternalId,
 		postNoun: descriptor?.postNoun,
 		creatorNoun: descriptor?.creatorNoun,
 		externalIdNoun: descriptor?.externalIdNoun,

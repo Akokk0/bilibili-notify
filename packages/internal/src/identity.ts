@@ -124,12 +124,16 @@ export function sameIdentity(a: Identity, b: Identity): boolean {
 }
 
 /**
- * 这个人的颜色 —— 跟着人走,不跟着订阅走(ADR-0019 决策 73)。B 站的种子就是外部 id(uid):改成别的种子,
- * 主人屏幕上每位 B 站 UP 的颜色都会变,所以这一支按来源单独留着。其他来源按 {@link extensionColorSeed}。
- * 删了再加订阅 id 变了,颜色不变。面板与服务端出图共用这一份(ADR-0020 决策 15)。
+ * 颜色跟着身份走。描述符声明时只用外部 id，否则用「来源键:外部 id」作种子。
+ * 面板与服务端共用；删了再加订阅不改变颜色。
  */
-export function identityColor(identity: Identity): string {
-	return identity.sourceKey === BILIBILI_SOURCE_KEY
-		? colorFromSeed(identity.externalId)
-		: colorFromSeed(extensionColorSeed(identity.sourceKey, identity.externalId));
+export function identityColor(
+	identity: Identity,
+	descriptor: { colorByExternalId?: boolean } | undefined,
+): string {
+	return colorFromSeed(
+		descriptor?.colorByExternalId
+			? identity.externalId
+			: extensionColorSeed(identity.sourceKey, identity.externalId),
+	);
 }

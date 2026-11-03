@@ -135,6 +135,7 @@ export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 	},
 	shortLabel: "B",
 	color: "#fb7299",
+	colorByExternalId: true,
 	get creatorNoun() {
 		return t("bilibili.source.creatorNoun");
 	},

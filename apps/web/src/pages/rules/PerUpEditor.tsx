@@ -232,7 +232,7 @@ export function PerUpEditor({
 		setDraft((d) => ({ ...d, specialViewers: next }));
 	}
 
-	const color = subscriptionColor(sub);
+	const color = subscriptionColor(sub, platform);
 
 	/** 推送时间那几段(免扰 / 断流接续、周期间隔、启动补报)的覆盖与全局基线,「直播阈值」与「推送时段」两节共用。 */
 	const timingBoxProps: TimingBoxProps = {

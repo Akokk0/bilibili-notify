@@ -86,8 +86,9 @@ async function cardUp(
 	if (!sub) return { name: t("stats.roast.unknownCreator"), color: colorFromSeed(subscriptionId) };
 	const name = roastSubjectName(deps, sub);
 	const identity = subscriptionIdentityOf(sub);
-	// 颜色跟着人走:种子与面板的 `identityColor` 逐字节相同(B 站是 uid,拓展是「拓展 id:外部 id」)。
-	const color = identityColor(identity);
+	// 宿主保留的描述符在来源未运行时也可读，与面板来源表采用同一规则。
+	const descriptor = deps.runtime.sourceRegistry.getRunView(identity.sourceKey)?.descriptor;
+	const color = identityColor(identity, descriptor);
 	// 头像只认图库里那张(两支订阅一样):还没抓到(新订阅抓不到、或老资料等着开机冷刷补)就没有头像,
 	// 卡上画首字母圆牌 —— 渲染页不联网,来源地址交过去也画不出来。
 	return { name, avatar: await storedAvatar(deps, sub.id), color };

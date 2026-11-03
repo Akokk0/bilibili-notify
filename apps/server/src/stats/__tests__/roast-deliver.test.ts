@@ -155,6 +155,21 @@ describe("deliverRoast — 停用的目标", () => {
  * - 名字:所有来源都走同一条链(资料里的名字 → 身份标签);B 站经自己的描述符仍是 UID xxx。
  */
 describe("buildRoastPayload — 卡上的人", () => {
+	it("即使来源未运行，锐评仍按宿主保留的来源描述取色", async () => {
+		const { deps, generateRoastSoloCard } = makeCardDeps();
+		deps.runtime.sourceRegistry.getRunView = (sourceKey) => ({
+			sourceKey,
+			status: "failed",
+			descriptor: { label: "Library", supportedFeatures: [], colorByExternalId: true },
+		});
+		await buildRoastPayload(deps, {
+			kind: "solo",
+			days: 7,
+			result: { subscriptionId: "s-dy", pushText: "", verdict: "ok", score: 60, highlights: [] },
+		});
+		const data = generateRoastSoloCard.mock.calls[0]?.[0] as { creator: { color: string } };
+		expect(data.creator.color).toBe("#fb7299");
+	});
 	/** 最小的 PNG 文件头就够 `sniffImageFormat` 认出来。 */
 	const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 	const BILI = {
@@ -207,7 +222,18 @@ describe("buildRoastPayload — 卡上的人", () => {
 				},
 				serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 				subscriptionStateStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
-				sourceRegistry: { get: () => undefined },
+				sourceRegistry: {
+					get: () => undefined,
+					getRunView: (sourceKey: string) => ({
+						sourceKey,
+						status: "running",
+						descriptor: {
+							label: sourceKey,
+							supportedFeatures: [],
+							colorByExternalId: sourceKey === "bilibili",
+						},
+					}),
+				},
 				imageStore: {
 					read: async (ref: string) => {
 						const image = images[ref];
@@ -276,7 +302,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 		)?.creator;
 		expect(up?.avatar).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
 		expect(up?.name).toBe("抖音乙");
-		expect(up?.color).toBe(identityColor({ sourceKey: "douyin", externalId: "12345" }));
+		expect(up?.color).toBe(identityColor({ sourceKey: "douyin", externalId: "12345" }, undefined));
 		// 兜底文案用的也是这个名字。
 		expect(out.text).toContain("抖音乙");
 	});
@@ -319,9 +345,11 @@ describe("buildRoastPayload — 卡上的人", () => {
 		>;
 		expect(data.diligent).toHaveProperty("avatar", undefined);
 		expect(data.diligent?.color).toBe(
-			identityColor({ sourceKey: "bilibili", externalId: "12345" }),
+			identityColor({ sourceKey: "bilibili", externalId: "12345" }, { colorByExternalId: true }),
 		);
-		expect(data.pigeon?.color).toBe(identityColor({ sourceKey: "douyin", externalId: "12345" }));
+		expect(data.pigeon?.color).toBe(
+			identityColor({ sourceKey: "douyin", externalId: "12345" }, undefined),
+		);
 		expect(data.pigeon?.color).not.toBe(data.diligent?.color);
 		expect(String(data.pigeon?.avatar)).toMatch(/^data:image\/png;base64,/);
 		// 没存头像、资料里也没名字的拓展那位:名字退身份标签,头像留空(卡上画首字母),不塞相对地址。

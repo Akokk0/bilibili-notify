@@ -108,7 +108,7 @@ function liveRowFace(
 	const sub = lookup.byId(r.subscriptionId);
 	const avatar = profileAvatarUrl(sub?.cachedProfile);
 	const base = {
-		color: identityColor(r.identity),
+		color: identityColor(r.identity, subscriptionPlatformOf(r.identity, sources)),
 		avatar,
 		viewers: formatViewers(r.totalViewers),
 	};
@@ -447,7 +447,7 @@ export function TimelinePanel({
 						// 头像快照是图库引用(只有拓展行有);没有快照 / 过了保留期就退到订阅现在的头像,再没有就是默认占位。
 						const avatar = historyRowAvatarUrl(h, sub?.cachedProfile);
 						// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
-						const color = historyRowColor(h);
+						const color = historyRowColor(h, platformFor(h.identity));
 						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;
 						// B 站行不画。
 						const platform = platformFor(h.identity);
@@ -527,7 +527,7 @@ function fansRowFace(
 ): { name: string; color: string; avatar?: string; platform?: { label: string; color?: string } } {
 	const sub = lookup.byId(e.subscriptionId);
 	const base = {
-		color: identityColor(e.identity),
+		color: identityColor(e.identity, subscriptionPlatformOf(e.identity, sources)),
 		avatar: profileAvatarUrl(sub?.cachedProfile),
 	};
 	const platform = subscriptionPlatformOf(e.identity, sources);

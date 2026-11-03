@@ -137,7 +137,7 @@ function upMetaOf(
 	_extensions: readonly ExtensionDTO[] | undefined,
 ): UpMeta {
 	const base = {
-		color: identityColor(r.identity),
+		color: identityColor(r.identity, subscriptionPlatformOf(r.identity, sources)),
 		avatar: profileAvatarUrl(sub?.cachedProfile),
 	};
 	const { externalId } = r.identity;

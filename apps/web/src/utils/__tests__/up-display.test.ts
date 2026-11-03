@@ -51,19 +51,29 @@ describe("profileAvatarUrl(订阅资料里头像的显示地址)", () => {
 });
 
 describe("historyRowColor", () => {
+	it("非B来源同样服从描述符，订阅和历史保留同一个颜色", () => {
+		const platform = { colorByExternalId: true };
+		const sub = makeEmptySubscription({ sourceKey: "library", externalId: "12345" });
+		expect(subscriptionColor(sub, platform)).toBe("#fb7299");
+		expect(historyRowColor({ identity: sub.identity, subscriptionId: sub.id }, platform)).toBe(
+			"#fb7299",
+		);
+	});
 	it("B 站行与它那条订阅卡同一个颜色(按 uid)", () => {
-		expect(historyRowColor(BILI_ROW)).toBe(
-			subscriptionColor(makeEmptySubscription({ sourceKey: "bilibili", externalId: "12345" })),
+		expect(historyRowColor(BILI_ROW, { colorByExternalId: true })).toBe(
+			subscriptionColor(makeEmptySubscription({ sourceKey: "bilibili", externalId: "12345" }), {
+				colorByExternalId: true,
+			}),
 		);
 	});
 
 	it("拓展行与同一个人的订阅卡同一个颜色 —— 订阅删了又加(id 变了)也一样", () => {
 		const readded = makeEmptySubscription({ sourceKey: "douyin", externalId: "12345" });
-		expect(historyRowColor(EXT_ROW)).toBe(subscriptionColor(readded));
+		expect(historyRowColor(EXT_ROW, undefined)).toBe(subscriptionColor(readded, undefined));
 	});
 
 	it("拓展行不按外部 id 取色:外部 id 恰好等于某个 B 站 uid 时,取色的种子也不是那串 uid", () => {
-		expect(historyRowColor(EXT_ROW)).toBe(colorFromSeed("douyin:12345"));
+		expect(historyRowColor(EXT_ROW, undefined)).toBe(colorFromSeed("douyin:12345"));
 	});
 });
 
@@ -89,14 +99,19 @@ describe("颜色与搬家之前一字不差", () => {
 	it("B 站:订阅卡与历史行都是搬之前那个颜色", () => {
 		for (const [uid, color] of BILI) {
 			expect(
-				subscriptionColor(makeEmptySubscription({ sourceKey: "bilibili", externalId: uid })),
+				subscriptionColor(makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }), {
+					colorByExternalId: true,
+				}),
 				uid,
 			).toBe(color);
 			expect(
-				historyRowColor({
-					subscriptionId: "s",
-					identity: { sourceKey: "bilibili", externalId: uid },
-				}),
+				historyRowColor(
+					{
+						subscriptionId: "s",
+						identity: { sourceKey: "bilibili", externalId: uid },
+					},
+					{ colorByExternalId: true },
+				),
 				uid,
 			).toBe(color);
 		}
@@ -105,9 +120,12 @@ describe("颜色与搬家之前一字不差", () => {
 	it("拓展:订阅卡与历史行都是搬之前那个颜色", () => {
 		for (const [extensionId, externalId, color] of EXT) {
 			const sub = makeEmptySubscription({ sourceKey: extensionId, externalId: externalId });
-			expect(subscriptionColor(sub), externalId).toBe(color);
+			expect(subscriptionColor(sub, undefined), externalId).toBe(color);
 			expect(
-				historyRowColor({ subscriptionId: "s", identity: { sourceKey: extensionId, externalId } }),
+				historyRowColor(
+					{ subscriptionId: "s", identity: { sourceKey: extensionId, externalId } },
+					undefined,
+				),
 				externalId,
 			).toBe(color);
 		}

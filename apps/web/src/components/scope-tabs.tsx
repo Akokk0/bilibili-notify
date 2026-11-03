@@ -50,7 +50,11 @@ export interface ScopeTabsProps<S extends Subscription = Subscription> {
 	 * 拓展订阅的平台名(清单里的叫法)。拓展订阅没有 uid,「是谁」那一小行写「平台名 · 外部 id」
 	 * (ADR-0019 决策 73 的口径);调用方在取不到来源时回退到来源键(同决策 10)。
 	 */
-	platformOf: (identity: Identity) => { label: string; externalIdNoun?: string };
+	platformOf: (identity: Identity) => {
+		label: string;
+		externalIdNoun?: string;
+		colorByExternalId?: boolean;
+	};
 	/** 自定义提示语(右侧)。默认走 Rules 文案;Cards 传卡片专属文案。 */
 	globalHint?: string;
 	perUpHint?: (sub: S | undefined) => React.ReactNode;
@@ -99,7 +103,7 @@ export function ScopeTabs<S extends Subscription>({
 			{/* per-UP tabs (仅显示已定制 + 客户端临时添加的) */}
 			{tabSubs.map((sub) => {
 				const active = scope === sub.id;
-				const color = subscriptionColor(sub);
+				const color = subscriptionColor(sub, platformFor(sub.identity));
 				const count = overridesCountFor(sub);
 				return (
 					<div
@@ -193,7 +197,7 @@ export function ScopeTabs<S extends Subscription>({
 						) : (
 							<div className="max-h-72 overflow-y-auto py-1">
 								{availableSubs.map((sub) => {
-									const color = subscriptionColor(sub);
+									const color = subscriptionColor(sub, platformFor(sub.identity));
 									const identity = subscriptionIdentityOf(sub);
 									return (
 										<MenuItem

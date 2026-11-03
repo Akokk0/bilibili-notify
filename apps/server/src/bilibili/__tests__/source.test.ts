@@ -374,6 +374,10 @@ function makeCtx(
 }
 
 describe("createBiliSource", () => {
+	it("声明创作者颜色仅按外部 id，实例继承同一规则", () => {
+		expect(BILI_SOURCE_DESCRIPTOR.colorByExternalId).toBe(true);
+		expect(createBiliSource(makeDeps().deps).descriptor.colorByExternalId).toBe(true);
+	});
 	it("start 之后登录失效:问题表只剩登录失效那一条", async () => {
 		const { auth, registration, source, table } = await bootProblemTable(
 			{ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" },

@@ -83,7 +83,7 @@ export function UpCard({
 	const tx = useT();
 	const [hover, setHover] = useState(false);
 	const longPress = useLongPress({ onLongPress: onRequestMenu });
-	const color = subscriptionColor(sub);
+	const color = subscriptionColor(sub, platform);
 	const identity = subscriptionIdentityOf(sub);
 	const ext = platform;
 	const visible = visibleFeaturesOf(sub, ext);
