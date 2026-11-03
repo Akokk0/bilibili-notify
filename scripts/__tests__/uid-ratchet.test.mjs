@@ -63,9 +63,8 @@ export const ADVICE =
  * 棘轮表:文件 → 命中的上限(开张时的现数:15 个文件 212 处)。只许往下调。
  * 行内注释写这一格是什么;等第 4 期的格子接着写等什么改动、为什么现在清不了。
  */
-export const RATCHET = {
-	"apps/server/src/routes/cards.ts": 1, // 4-14 卡片真实预览改走来源(33 → 1);剩下的是醒目留言示例造的 B 站事件 `user.uid`,随 SC 示例做到中立那一片消。
-};
+// 4-57：最后一处示例user.uid已删除，核心不再有历史欠账。
+export const RATCHET = {};
 
 /** 字符串字面量里算 uid 的那几个值(不分大小写)。 */
 const UID_STRINGS = new Set(["uid", "uids"]);

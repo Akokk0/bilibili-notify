@@ -6,7 +6,7 @@
 	"cards.content.memberNameLabel": "新会员称呼",
 	"cards.content.memberNamePlaceholder": "留空用登录账号名",
 	"cards.content.membershipHint": "左侧渐变色对会员卡不生效；卡片背景色与徽章图由会员档位自动决定。",
-	"cards.content.superchatHint": "左侧渐变色对 SC 不生效；SC 卡片背景色由价格档位自动决定。",
+	"cards.content.superchatHint": "金额不决定配色档位或展示时长；0 秒隐藏时长。这里只调整示例，真实留言仍按来源提供的数据出卡。",
 	"cards.content.superchatPlaceholder": "留空就用示例留言",
 	"cards.cover.badgeInherit": "跟随",
 	"cards.cover.badgeOwn": "单独设置",
@@ -1312,5 +1312,9 @@
 	"credentials.required": "请填写完整的账号和密码。",
 	"credentials.mismatch": "两次输入的新密码不一致。",
 	"credentials.passwordHint": "新密码须为8–256位，账号最长256位。",
-	"credentials.pendingDraft": "请先保存或放弃系统设置，再修改账号密码。"
+	"credentials.pendingDraft": "请先保存或放弃系统设置，再修改账号密码。",
+	"cards.content.superchatRank": "配色档位",
+	"cards.content.superchatDuration": "展示时长（秒）",
+	"cards.content.superchatAmountHint": "只显示金额，不决定档位或时长。",
+	"cards.content.superchatAmount": "示例金额（CNY）"
 }

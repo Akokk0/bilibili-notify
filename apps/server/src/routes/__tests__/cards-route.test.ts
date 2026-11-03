@@ -1058,32 +1058,47 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 		update.mockRestore();
 	});
 
-	// ㉓c:SC 预览与真推送同一条路 —— 价格先经翻译算档(`superchatEventFromLiveEvent`),再按档补一个与 B 站醒目留言
-	// 一致的时长;不传头像(`viewer.avatar` / `creator.avatar` 只收图库引用,B 站 3a 才交)。
-	// 验红:把 cards.ts 里 SC 预览交给入口的 `tier` 换成固定一档,第一条红;给 `viewer` 加回 `avatar`,第二条红。
-	it.each([
-		[30, { rank: 1, durationSec: 60 }],
-		[100, { rank: 3, durationSec: 300 }],
-		[2000, { rank: 6, durationSec: 7200 }],
-	] as const)("sc:价格 %s 元 → 档 %j,viewer 与 creator 都不带头像", async (price, tier) => {
+	// 4-57：示例的默认档位与时长独立于金额，保留无头像的示例身份。
+	it.each([30, 100, 2000])("sc:金额 %s 不决定示例档位与时长", async (amount) => {
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
-		const app = createCardsRoute({
-			deps: makeDeps(),
-			puppeteer: makeFakePuppeteer(),
-		});
-		const res = await postPreview(app, {
-			kind: "superchat",
-			style: STYLE,
-			content: { amount: price },
-		});
-		expect(res.status).toBe(200);
-		const arg = spy.mock.calls[0]?.[0];
-		expect(arg).toMatchObject({ amount: price, currency: "CNY", tier });
-		expect(Object.keys(arg?.viewer ?? {})).toEqual(["name"]);
-		expect(Object.keys(arg?.creator ?? {})).toEqual(["name"]);
-		spy.mockRestore();
+		try {
+			const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer() });
+			const res = await postPreview(app, {
+				kind: "superchat",
+				style: STYLE,
+				content: { amount },
+			});
+			expect(res.status).toBe(200);
+			const arg = spy.mock.calls[0]?.[0];
+			expect(arg).toMatchObject({ amount, currency: "CNY", tier: { rank: 1, durationSec: 60 } });
+			expect(Object.keys(arg?.viewer ?? {})).toEqual(["name"]);
+			expect(Object.keys(arg?.creator ?? {})).toEqual(["name"]);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it.each([
+		{ rank: 6, durationSec: 17 },
+		{ rank: 2, durationSec: 0 },
+	])("sc:按独立输入的档位与时长%j预览，零时长不展示", async (tier) => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
+			.mockResolvedValue(Buffer.from("x"));
+		try {
+			const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer() });
+			const res = await postPreview(app, {
+				kind: "superchat",
+				style: STYLE,
+				content: { text: "独立示例", amount: 1, ...tier },
+			});
+			expect(res.status).toBe(200);
+			expect(spy.mock.calls[0]?.[0]).toMatchObject({ text: "独立示例", amount: 1, tier });
+		} finally {
+			spy.mockRestore();
+		}
 	});
 
 	// ㉓e:上舰预览的请求体带的是档的 key(`tierKey`),服务端按 key 在在册来源声明的会员体系里找那一档;档的各项取自同一份声明。
@@ -1292,6 +1307,30 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 				content: { amount },
 			});
 			expect(res.status, String(amount)).toBe(400);
+		}
+	});
+
+	it.each(["/preview", "/test"])("sc:%s拒绝越界或非整数的示例档位/时长", async (path) => {
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer() });
+		for (const content of [
+			{ rank: 0 },
+			{ rank: 7 },
+			{ rank: 1.5 },
+			{ durationSec: -1 },
+			{ durationSec: 1.5 },
+		]) {
+			const res = await app.request(path, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					targetId: "22222222-2222-4222-8222-222222222222",
+					kind: "superchat",
+					style: STYLE,
+					content,
+				}),
+			});
+			expect(res.status, JSON.stringify(content)).toBe(400);
+			expect(await res.json()).toMatchObject({ code: "invalid" });
 		}
 	});
 
@@ -1555,12 +1594,16 @@ describe("cards route — /preview 走皮肤", () => {
 					targetId: TARGET_ID,
 					kind: "superchat",
 					style: STYLE,
-					content: { amount: 30 },
+					content: { amount: 30, rank: 5, durationSec: 23 },
 					cardSkin: "marked",
 					cardSkinKnobs: { marked: { accent: "#00f0ff" } },
 				}),
 			});
 			expect(res.status).toBe(200);
+			expect(spy.mock.calls[0]?.[0]).toMatchObject({
+				amount: 30,
+				tier: { rank: 5, durationSec: 23 },
+			});
 			const colorOptions = spy.mock.calls[0]?.[1] as
 				| { cardSkin?: string; cardSkinKnobs?: unknown }
 				| undefined;

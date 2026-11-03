@@ -111,11 +111,43 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 		);
 		const sc = previewBodies("superchat")[0].content ?? {};
 		const guard = previewBodies("membership")[0].content ?? {};
-		expect(sc.amount).toBe(30);
+		expect(sc).toMatchObject({ amount: 30, rank: 1, durationSec: 60 });
 		expect("price" in sc).toBe(false);
 		expect(guard.program).toBe("readers");
 		expect(guard.tierKey).toBe("silver");
 		expect("level" in guard).toBe(false);
+	});
+
+	it("醒目留言：独立选择配色档位和时长，改金额不改两者", async () => {
+		renderCards();
+		await waitFor(() => expect(previewBodies("superchat").length).toBeGreaterThan(0));
+		fireEvent.click(screen.getAllByText("SC 提醒")[0]);
+		const duration = await screen.findByRole("spinbutton", { name: "展示时长（秒）" });
+		expect(screen.queryByText("决定背景色与时长 (30/50/100/500/1000)")).toBeNull();
+		expect(screen.getByText("示例金额（CNY）")).toBeTruthy();
+		fireEvent.change(duration, { target: { value: "17" } });
+		fireEvent.click(screen.getByRole("button", { name: "6" }));
+		const amount = document.querySelector('[data-code="amount"] input') as HTMLInputElement;
+		fireEvent.change(amount, { target: { value: "1" } });
+		await waitFor(
+			() =>
+				expect(previewBodies("superchat").at(-1)?.content).toMatchObject({
+					amount: 1,
+					rank: 6,
+					durationSec: 17,
+				}),
+			{ timeout: 5000 },
+		);
+		fireEvent.change(duration, { target: { value: "0" } });
+		await waitFor(
+			() =>
+				expect(previewBodies("superchat").at(-1)?.content).toMatchObject({
+					amount: 1,
+					rank: 6,
+					durationSec: 0,
+				}),
+			{ timeout: 5000 },
+		);
 	});
 
 	// 验红:给 Cards.tsx 的档位选项加回 `.reverse()`,这条红。
@@ -172,7 +204,7 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 													? "custom"
 													: mode === "empty"
 														? []
-														: SOURCES.sources[0].descriptor.membershipPrograms![0].tiers,
+														: (SOURCES.sources[0].descriptor.membershipPrograms?.[0]?.tiers ?? []),
 										},
 									],
 								},
@@ -250,7 +282,7 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 							descriptor: {
 								...SOURCES.sources[0].descriptor,
 								membershipPrograms: [
-									...SOURCES.sources[0].descriptor.membershipPrograms!,
+									...(SOURCES.sources[0].descriptor.membershipPrograms ?? []),
 									{
 										id: "patrons",
 										name: "Patrons",

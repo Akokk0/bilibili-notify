@@ -88,7 +88,7 @@
 	"sourceUi.pages.Dashboard.TimelinePanel.13": "主人，先在「推送目标」配好通道，再添加订阅，女仆就会把推送活动记在这里哦。",
 	"sources.membership.customHint": "主人，档位由创作者自定哦，女仆这里只设置体系默认文案与图片。",
 	"cards.content.membershipHint": "左侧渐变色管不到会员卡哦，背景色和徽章图是按会员档位自动定的～",
-	"cards.content.superchatHint": "左侧渐变色管不到 SC 哦，SC 卡的背景色是按价格档位自动定的～",
+	"cards.content.superchatHint": "主人，金额不会替您选档位和时长哦～填 0 秒就藏起时长；这里仅调示例，真实留言仍照来源交来的数据出卡。",
 	"cards.page.loading": "正在读卡片样式，主人稍等～",
 	"cards.preview.rendering": "正在画卡片，主人稍等～",
 	"cards.preview.sampleBecause": "主人，这张先拿示例顶上啦：{reason}",
@@ -319,5 +319,6 @@
 	"credentials.required": "主人，请把账号和密码填完整哦。",
 	"credentials.mismatch": "主人，两次输入的新密码不一样，请再核对一下。",
 	"credentials.passwordHint": "主人，新密码请用8–256位，账号不要超过256位哦。",
-	"credentials.pendingDraft": "主人，请先保存或放弃手上的系统设置，再来修改账号密码哦。"
+	"credentials.pendingDraft": "主人，请先保存或放弃手上的系统设置，再来修改账号密码哦。",
+	"cards.content.superchatAmountHint": "主人，这格只改显示金额，不会跟着换档位或时长哦～"
 }

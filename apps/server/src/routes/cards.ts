@@ -66,8 +66,6 @@ import {
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
-// 醒目留言的示例档位借 B 站的价目表:SC 示例做到中立另起一片(4-14 主人定,import 边界那一格留这一处)。
-import { superchatEventFromLiveEvent } from "../bilibili/live/index.js";
 import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
 import { membershipTierUnavailable, renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";
@@ -157,8 +155,11 @@ const ContentSchema = z
 		tierKey: z.string().optional(),
 		// guard: 会员体系 id(B 站是 `guard`);不指定 = 沿用旧请求的找法(示例卡取第一套体系的最低一档)。
 		program: z.string().optional(),
-		// sc: 金额(元)。决定醒目留言的档(= 背景色与时长);渐变样式字段对 SC 不生效。
+		// sc: 示例金额(CNY)，只决定显示金额，不推导档位或时长。
 		amount: z.number().int().min(1).optional(),
+		// sc: 皮肤的六档配色与展示时长，由示例输入独立指定。0秒不显示时长。
+		rank: z.number().int().min(1).max(6).optional(),
+		durationSec: z.number().int().nonnegative().optional(),
 	})
 	.optional();
 
@@ -603,28 +604,16 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 付款人 = 挑中那条订阅的来源登录着的账号(「我在别人直播间发条 SC 会长啥样」);收的人 = 那条订阅。
 			const payer = accountNameOf(sub);
 			const receiver = receiverNameOf(sub);
-			// 与真推送同一条路:先把一条 B 站的 SC 消息翻成中立事件(档位在那一步按价格算),再出卡。预览造的消息没有
-			// 「挂多久」这一格,按档补一个与 B 站醒目留言一致的时长,好让皮肤作者看得到时长那一块。
-			const event = superchatEventFromLiveEvent(
-				{
-					kind: "superchat",
-					content: content?.text?.trim() || t("cards.sample.superchatText"),
-					price: content?.amount ?? 30,
-					user: { uid: 0, name: payer ?? t("cards.sample.viewerName") },
-				},
-				"preview",
-			);
-			const rank = event.tier?.rank ?? 1;
 			// 示例数据没有头像:这张预览不传(`viewer.avatar` / `creator.avatar` 只收图库引用,示例里没有可给的;
 			// 真推送里观众头像取自帧里的地址、主播头像读订阅资料)。
 			const buffer = await renderer.generateSuperchatCard(
 				{
-					viewer: { name: event.viewer.name },
+					viewer: { name: payer ?? t("cards.sample.viewerName") },
 					creator: { name: receiver },
-					text: event.text,
-					amount: event.amount,
-					currency: event.currency,
-					tier: { rank, durationSec: PREVIEW_SC_DURATION_SEC[rank - 1] },
+					text: content?.text?.trim() || t("cards.sample.superchatText"),
+					amount: content?.amount ?? 30,
+					currency: "CNY",
+					tier: { rank: content?.rank ?? 1, durationSec: content?.durationSec ?? 60 },
 				},
 				// 预览样式已由 getImageRenderer() 烤进渲染器 config,故只带皮肤(id + 草稿旋钮)。
 				skin,
@@ -993,12 +982,6 @@ const SVG_AVATAR_PINK =
 
 const SVG_AVATAR_BLUE =
 	"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%2300AEEC'/%3E%3Ctext x='50%25' y='52%25' fill='white' font-size='30' text-anchor='middle' dominant-baseline='middle'%3EUP%3C/text%3E%3C/svg%3E";
-
-/**
- * 预览醒目留言卡用的留言时长(秒),下标 = 档位 rank - 1。真消息自带「挂多久」,预览造的消息没有,按 B 站醒目留言的档
- * (60 秒 / 2 分钟 / 5 分钟 / 30 分钟 / 1 小时 / 2 小时)补一个。
- */
-const PREVIEW_SC_DURATION_SEC = [60, 120, 300, 1800, 3600, 7200] as const;
 
 /**
  * 直播卡的示例:直接写块吃的那一份(`LiveCardView`),卡上那句时间写死、不读时钟 ——

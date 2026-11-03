@@ -37,7 +37,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { ChromeAutoDetect } from "../components/chrome-autodetect";
-import { Field, Picker, TArea, TInput, TSelect } from "../components/forms";
+import { Field, Picker, TArea, TInput, TNum, TSelect } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { InheritNote } from "../components/inherit-note";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
@@ -83,8 +83,8 @@ interface PreviewContent {
 	subscriptionId: string;
 	/** `nth`:作品卡取最近的第几条(1 = 最新那条);挑了订阅才有用。 */
 	post: { nth: number };
-	/** `amount`:金额(元),随预览请求体发给服务端。 */
-	superchat: { text: string; amount: number };
+	/** 金额、配色档位、展示时长互相独立，只用于示例。 */
+	superchat: { text: string; amount: number; rank: number; durationSec: number };
 	/** `program`:会员体系 id;`tierKey`:那一档在这个体系里的 key。两个一起随预览请求体发给服务端。 */
 	membership: { program: string; text: string; tierKey: string };
 }
@@ -94,7 +94,7 @@ const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
 	subscriptionId: "",
 	post: { nth: 1 },
 	// 留言默认空:服务端画示例留言(一句话只在服务端字典里存一份)。
-	superchat: { text: "", amount: 30 },
+	superchat: { text: "", amount: 30, rank: 1, durationSec: 60 },
 	// membership.text 默认空:挑了订阅时服务端取那个来源登录着的账号名,没挑或没登录才是示例名。
 	membership: { program: "", text: "", tierKey: "" },
 };
@@ -600,7 +600,7 @@ function PreviewContentFields({
 				</>
 			) : kind === "superchat" ? (
 				<>
-					<Field code="text">
+					<Field code="text" full>
 						<TArea
 							value={content.superchat.text}
 							onChange={(v) => setSuperchat({ text: v })}
@@ -608,7 +608,12 @@ function PreviewContentFields({
 							rows={3}
 						/>
 					</Field>
-					<Field code="amount">
+					<Field
+						code="amount"
+						label={t("cards.content.superchatAmount")}
+						hint={t("cards.content.superchatAmountHint")}
+						full
+					>
 						<TInput
 							value={String(content.superchat.amount)}
 							onChange={(v) => {
@@ -616,6 +621,23 @@ function PreviewContentFields({
 								setSuperchat({ amount: Number.isFinite(n) && n > 0 ? n : 30 });
 							}}
 							placeholder="30"
+						/>
+					</Field>
+					<Field code="rank" label={t("cards.content.superchatRank")} full>
+						<Picker
+							value={content.superchat.rank}
+							onChange={(rank) => setSuperchat({ rank })}
+							options={[1, 2, 3, 4, 5, 6].map((rank) => ({ value: rank, label: String(rank) }))}
+						/>
+					</Field>
+					<Field code="durationSec" label={t("cards.content.superchatDuration")} full>
+						<TNum
+							value={content.superchat.durationSec}
+							onChange={(durationSec) =>
+								setSuperchat({ durationSec: Math.max(0, Math.floor(durationSec)) })
+							}
+							min={0}
+							ariaLabel={t("cards.content.superchatDuration")}
 						/>
 					</Field>
 					<KindHintNote>{t("cards.content.superchatHint")}</KindHintNote>
@@ -1079,7 +1101,7 @@ export default function Cards() {
 			    160px,剩给控件的才是真正要摆字体选择器、图廊、滑杆的地方 —— 380 时它只有 180,
 			    上传按钮与它旁边那句说明挤成一团。预览那栏是 1fr 且卡片按 object-contain 缩放,
 			    让出这 60px 只是卡片画小一点。 */}
-			<div className="grid gap-3.5 xl:grid-cols-[220px_440px_minmax(0,1fr)]">
+			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[220px_440px_minmax(0,1fr)]">
 				{/* RAIL: 全局基准 + 各卡片类型 —— 选中决定编辑的样式 + 预览的卡片种类 */}
 				<SectionNav
 					heading={t("cards.page.label")}
