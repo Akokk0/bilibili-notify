@@ -1,6 +1,10 @@
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { ConfigScopeMeta, InvalidSettingView } from "@bilibili-notify/contract";
+import type {
+	ConfigScopeMeta,
+	IntegrationSettingsDescriptor,
+	InvalidSettingView,
+} from "@bilibili-notify/contract";
 import {
 	type ConfigScope,
 	type Connection,
@@ -38,6 +42,7 @@ import {
 	type SubscriptionTag,
 	SubscriptionTagListSchema,
 	sameIdentity,
+	settingsFieldsFromSchema,
 	type TargetReachability,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
@@ -131,6 +136,8 @@ export interface ConfigSections {
  * 登记。
  */
 export interface IntegrationSettingsSegment<T = unknown> {
+	/** Opt-in to the host's identity reset, applied on the next service restart. */
+	readonly identityReset?: "restart";
 	/**
 	 * 集成的键,也是文件名。不能叫 `core`:`/api/settings` 把核心那份挂在 `core` 下、与各集成的键同一层,
 	 * 核心的文件也正是 `config/settings/core.json`。
@@ -191,6 +198,10 @@ export interface ConfigStore {
 	 * 整个文件读不懂时整段是默认值 —— 键不在的话面板存这个集成的设置会被当成没登记的键、整发 400。
 	 */
 	getAllIntegrationSettings(): Record<string, unknown>;
+	getIntegrationSettingsDescriptors(): Pick<
+		IntegrationSettingsDescriptor,
+		"key" | "fields" | "identityReset"
+	>[];
 	/**
 	 * 一个拓展存着的设置(`config/settings/extensions/<id>.json`,深拷贝、原样;形状归拓展自己那份 zod);没存过是
 	 * `undefined`。
@@ -1527,6 +1538,24 @@ class NodeConfigStore implements ConfigStore {
 
 	getAllIntegrationSettings(): Record<string, unknown> {
 		return deepClone(Object.fromEntries(this.integrationSettings));
+	}
+
+	getIntegrationSettingsDescriptors(): Pick<
+		IntegrationSettingsDescriptor,
+		"key" | "fields" | "identityReset"
+	>[] {
+		return [...this.segments.values()].flatMap((segment) => {
+			const fields = settingsFieldsFromSchema(segment.schema);
+			return fields.length > 0
+				? [
+						{
+							key: segment.key,
+							fields,
+							...(segment.identityReset ? { identityReset: segment.identityReset } : {}),
+						},
+					]
+				: [];
+		});
 	}
 
 	getExtensionSettings(id: string): unknown {

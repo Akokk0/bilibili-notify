@@ -9,7 +9,9 @@ import {
 	MonoChip,
 } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
+import { SettingsFieldControl } from "../../../components/settings-field-control";
 import { useT } from "../../../i18n";
+import { clientErrorOf, decimalOf } from "../../../utils/settings-field-validation";
 import { extensionAddress } from "./address";
 import {
 	countWordOf,
@@ -21,7 +23,7 @@ import {
 } from "./list-items";
 import { CopyControl } from "./parts";
 import { newHexSecret } from "./secret";
-import { clientErrorOf, decimalOf, FieldShell, ScalarControl } from "./settings-form";
+import { FieldShell } from "./settings-form";
 
 /**
  * 列表的新建 / 编辑弹窗(ADR-0019 决策 21 / 29 / 30 / 37)—— 照项里的格一格一个控件,**停用那一格
@@ -369,5 +371,5 @@ function DraftControl({
 			</div>
 		);
 	}
-	return <ScalarControl field={sub} value={value ?? ""} onChange={onChange} />;
+	return <SettingsFieldControl field={sub} value={value ?? ""} onChange={onChange} />;
 }

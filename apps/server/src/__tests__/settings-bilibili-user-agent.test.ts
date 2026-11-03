@@ -11,10 +11,12 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import type { IntegrationSettingsDescriptorsResponse } from "@bilibili-notify/contract";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
+import { i18n } from "../i18n/index.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
 function makeBootstrap(dataDir: string): BootstrapConfig {
@@ -46,9 +48,58 @@ describe("PATCH /api/settings × bilibili.userAgent(已删的一格)", () => {
 				headers: { "Content-Type": "application/json" },
 				body: body === undefined ? undefined : JSON.stringify(body),
 			});
-		return { runtime, send };
+		return { runtime, send, app };
 	}
 
+	it("经设置读口下发规则导出的两格，登录心跳上下限与写入规则一致", async () => {
+		const { runtime, app } = await boot();
+		try {
+			const response = await app.request("/api/settings/integrations");
+			expect(response.status).toBe(200);
+			const body = (await response.json()) as IntegrationSettingsDescriptorsResponse;
+			expect(body.integrations).toEqual([
+				expect.objectContaining({
+					key: "bilibili",
+					fields: [
+						expect.objectContaining({ key: "dynamicCron", type: "string" }),
+						expect.objectContaining({
+							key: "healthCheckMinutes",
+							type: "number",
+							min: 5,
+							max: 180,
+						}),
+					],
+				}),
+			]);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("描述在请求时读取当前语言，已有规则与设置不重建", async () => {
+		const { runtime, app } = await boot();
+		const translator = vi
+			.spyOn(i18n.state(), "t")
+			.mockImplementation((key) =>
+				key === "bilibili.source.dynamicCell" ? "First label" : String(key),
+			);
+		try {
+			const first = (await (
+				await app.request("/api/settings/integrations")
+			).json()) as IntegrationSettingsDescriptorsResponse;
+			expect(first.integrations[0]?.fields[0]?.label).toBe("First label");
+			translator.mockImplementation((key) =>
+				key === "bilibili.source.dynamicCell" ? "Changed label" : String(key),
+			);
+			const second = (await (
+				await app.request("/api/settings/integrations")
+			).json()) as IntegrationSettingsDescriptorsResponse;
+			expect(second.integrations[0]?.fields[0]?.label).toBe("Changed label");
+		} finally {
+			translator.mockRestore();
+			await runtime.dispose();
+		}
+	});
 	it("带 userAgent 的补丁:200,别的格照常保存;回出去的快照与盘上都没有 userAgent", async () => {
 		const { runtime, send } = await boot();
 

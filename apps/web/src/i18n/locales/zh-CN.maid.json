@@ -484,5 +484,8 @@
 	"panelUi.services.session.2": "主人，登录尝试过多,请 {value0} 秒后再试",
 	"panelUi.pages.extensions.declarative.list-section.30": "主人，这条{item}还没有 {field} —— 脱敏备份恢复回来的就是这样,生成一个新的。",
 	"panelUi.pages.extensions.declarative.settings-form.18": "主人，还没有 {field} —— 脱敏备份恢复回来的就是这样,生成一份新的。",
-	"panelUi.pages.rules.MessageLayoutEditor.13": "主人，第 {messages} 条消息里卡片图不在最前面 —— QQ 上先发文字再发图片会被自动拆成两条消息,卡片图放在最前才能合并成一条。"
+	"panelUi.pages.rules.MessageLayoutEditor.13": "主人，第 {messages} 条消息里卡片图不在最前面 —— QQ 上先发文字再发图片会被自动拆成两条消息,卡片图放在最前才能合并成一条。",
+	"integrationSettings.identityHint": "主人，新身份会在下次服务重启时生效，当前请求和直播连接继续使用原身份，登录状态也会保持哦。",
+	"integrationSettings.dirty": "主人，先保存或放弃当前草稿，再让女仆更换浏览器身份吧。",
+	"integrationSettings.resetDone": "主人，女仆已安排在下次服务重启时生成新身份啦。"
 }

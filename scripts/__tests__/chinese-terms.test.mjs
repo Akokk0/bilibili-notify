@@ -238,8 +238,8 @@ export const JSON_TERM_PINS = {
 
 /** 4-53c：五个来源描述/设置名只准在B站的对应getter里取，核心读描述符。 */
 const BILI_DESCRIPTOR_READERS = {
-	"bilibili.source.dynamicCell": ["apps/server/src/bilibili/source.ts:DYNAMIC_CELL/label"],
-	"bilibili.source.loginCheckCell": ["apps/server/src/bilibili/source.ts:LOGIN_CHECK_CELL/label"],
+	"bilibili.source.dynamicCell": ["apps/server/src/bilibili/settings.ts:DYNAMIC_CELL/label"],
+	"bilibili.source.loginCheckCell": ["apps/server/src/bilibili/settings.ts:LOGIN_CHECK_CELL/label"],
 	"bilibili.source.label": ["apps/server/src/bilibili/source.ts:BILI_SOURCE_DESCRIPTOR/label"],
 	"bilibili.source.creatorNoun": [
 		"apps/server/src/bilibili/source.ts:BILI_SOURCE_DESCRIPTOR/creatorNoun",

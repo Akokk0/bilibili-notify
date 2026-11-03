@@ -19,8 +19,8 @@ import { png } from "../../__tests__/support/report-images.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createImageFetcher } from "../../images/image-fetcher.js";
 import { imageRefOf } from "../../images/image-store.js";
+import { HTTP_IDENTITY_KEY } from "../../integration-store/host-keys.js";
 import { createProblemTable } from "../../problems/problem-table.js";
-import { HTTP_IDENTITY_KEY } from "../http.js";
 import { type OpenedIntegration, openIntegration } from "../open.js";
 
 let server: Server;

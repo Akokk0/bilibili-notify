@@ -17,14 +17,43 @@ import { CronTime } from "cron";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
 
+/** 设置那一格的叫法与键名:问题文案里带着,让主人认出是哪一格。 */
+export const DYNAMIC_CELL = {
+	get label() {
+		return serverText("bilibili.source.dynamicCell");
+	},
+	get description() {
+		return serverText("bilibili.settings.dynamicDescription");
+	},
+	monospace: true,
+	key: "dynamicCron",
+} as const;
+export const LOGIN_CHECK_CELL = {
+	get label() {
+		return serverText("bilibili.source.loginCheckCell");
+	},
+	get description() {
+		return serverText("bilibili.settings.loginDescription");
+	},
+	unit: "min",
+	step: 1,
+	key: "healthCheckMinutes",
+} as const;
+
 export const BiliSettingsSchema = z.object({
 	/**
 	 * 动态轮询的 cron。读盘只认它是字符串:对存量宽松,一条解析不了的老值不该让开机失败(运行期
 	 * `new CronJob` 另有 try/catch 兜着);能不能解析在写入那一道核({@link settingsSegment})。
 	 */
-	dynamicCron: z.string().default(DEFAULT_DYNAMIC_CRON),
+	dynamicCron: z.string().default(DEFAULT_DYNAMIC_CRON).meta(DYNAMIC_CELL),
 	/** 登录健康检查的间隔(分钟)。 */
-	healthCheckMinutes: z.number().int().min(5).max(180).default(DEFAULT_HEALTH_CHECK_MINUTES),
+	healthCheckMinutes: z
+		.number()
+		.int()
+		.min(5)
+		.max(180)
+		.default(DEFAULT_HEALTH_CHECK_MINUTES)
+		.meta(LOGIN_CHECK_CELL),
 });
 export type BiliSettings = z.infer<typeof BiliSettingsSchema>;
 
@@ -45,6 +74,7 @@ function isParsableCron(expr: string): boolean {
  */
 export const settingsSegment: IntegrationSettingsSegment<BiliSettings> = {
 	key: BILIBILI_SOURCE_KEY,
+	identityReset: "restart",
 	schema: BiliSettingsSchema,
 	checkWrite(next, prev) {
 		if (next.dynamicCron === prev?.dynamicCron || isParsableCron(next.dynamicCron)) return [];

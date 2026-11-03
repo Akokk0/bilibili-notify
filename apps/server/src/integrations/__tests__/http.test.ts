@@ -17,18 +17,14 @@ import { createKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { memoryKeyValueStores } from "../../__tests__/support/memory-key-value-store.js";
 import { readIntegrationSecretsFile } from "../../integration-store/files.js";
+import { HTTP_COOKIES_KEY, HTTP_IDENTITY_KEY } from "../../integration-store/host-keys.js";
 import {
 	createIntegrationStore,
 	type IntegrationStoreHandle,
 } from "../../integration-store/store.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
 import { dataPath } from "../../runtime/roots.js";
-import {
-	COOKIE_SAVE_DELAY_MS,
-	createIntegrationHttp,
-	HTTP_COOKIES_KEY,
-	HTTP_IDENTITY_KEY,
-} from "../http.js";
+import { COOKIE_SAVE_DELAY_MS, createIntegrationHttp } from "../http.js";
 
 /** 假时钟:只给 `opts.setTimeout` 用,`advance` 按到点先后依次跑。 */
 function makeClock() {
@@ -689,6 +685,23 @@ describe("9. 身份", () => {
 	function majorOf(identity: { userAgent: string }): number {
 		return Number(/Chrome\/(\d+)\./.exec(identity.userAgent)?.[1]);
 	}
+
+	it("清除保存的身份不会改变当前客户端，下次创建上下文才生成身份，Cookie保留", async () => {
+		const w = world({ state: { [HTTP_IDENTITY_KEY]: inRange }, secrets: PAIR0 });
+		const { http } = await build(w);
+		expect((await w.handle.hostState.delete(HTTP_IDENTITY_KEY)).ok).toBe(true);
+		expect(http.identity).toEqual(inRange);
+		await http.dispose();
+		expect(w.stateDisk().has(HTTP_IDENTITY_KEY)).toBe(false);
+		const restarted = world({
+			state: Object.fromEntries(w.stateDisk()),
+			secrets: Object.fromEntries(w.secretsDisk()),
+		});
+		const next = await build(restarted);
+		expect(restarted.stateDisk().get(HTTP_IDENTITY_KEY)).toEqual({ ...next.http.identity });
+		expect(next.http.cookies.jar.cookieHeaderFor(SOURCE)).toContain("SESSDATA=c0");
+		await next.http.dispose();
+	});
 
 	it("没有:生成并写进 http.identity", async () => {
 		const w = world();

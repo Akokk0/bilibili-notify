@@ -5,17 +5,13 @@ import {
 	ErrorNote,
 	GlassBox,
 	LoadingBlock,
-	OptionCard,
-	Picker,
 	SavedSecretControl,
-	TArea,
-	TInput,
-	Toggle,
 } from "@bilibili-notify/ui";
 import { type HTMLAttributes, type ReactNode, useState } from "react";
-import { i18n, useT } from "../../../i18n";
+import { SettingsFieldControl } from "../../../components/settings-field-control";
+import { useT } from "../../../i18n";
+import { clientErrorOf, decimalOf } from "../../../utils/settings-field-validation";
 import { reasonOf } from "../shared";
-import { safeImage } from "./image";
 import { settingsIssuesOf, settingsValuesOf, writeReasonOf } from "./list-items";
 import { CopyControl, MissingSecretNote, RegenerateButton, SecretChip } from "./parts";
 import { maskedOf, newHexSecret } from "./secret";
@@ -94,58 +90,6 @@ function isDirty(
 	const edit = edits[field.key];
 	if (isSecretInput(field)) return edit !== "";
 	return edit !== baselineOf(field, stored);
-}
-
-/** 数字的范围说成一句话。 */
-function rangeText(min: number | undefined, max: number | undefined): string {
-	if (min !== undefined && max !== undefined)
-		return i18n.t("panelUi.pages.extensions.declarative.settings-form.1", {
-			value0: min,
-			value1: max,
-		});
-	if (min !== undefined)
-		return i18n.t("panelUi.pages.extensions.declarative.settings-form.2", { value0: min });
-	return i18n.t("panelUi.pages.extensions.declarative.settings-form.3", { value0: String(max) });
-}
-
-/** 数字框认的那种十进制写法:可带负号、小数、指数(`-1.5`、`.5`、`2e3`)。 */
-const DECIMAL = /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?$/;
-
-/**
- * 数字格里那串字是几;不算一个数的交 `undefined`。首尾的空格不算数,中间的算。
- *
- * 🔴 **比 `Number()` 严**:它把 `0x10`、`0b1`、`+5`、`5.`、只有空格的串(= 0)都当成数 —— 存
- * 下去的与主人以为自己填的对不上。设置表单与新建弹窗、校验与发出去的那一格都从这里认。
- */
-export function decimalOf(text: string): number | undefined {
-	const trimmed = text.trim();
-	if (!DECIMAL.test(trimmed)) return undefined;
-	const n = Number(trimmed);
-	// 写法对、却大到没边的(`1e999`)一样不收。
-	return Number.isFinite(n) ? n : undefined;
-}
-
-/**
- * 当场就能说的毛病(决策 30「min / max 当场校验」)。设置表单只拿它看**改过的**格(没动过的格
- * 是存着的样子,那归服务端说);新建弹窗拿它看填了字的格。
- */
-export function clientErrorOf(field: SettingsScalarField, value: Edit): string | undefined {
-	if (field.type === "number") {
-		const text = String(value).trim();
-		if (text === "")
-			return field.required
-				? i18n.t("panelUi.pages.extensions.declarative.settings-form.4")
-				: undefined;
-		const n = decimalOf(text);
-		if (n === undefined) return i18n.t("panelUi.pages.extensions.declarative.settings-form.5");
-		if ((field.min !== undefined && n < field.min) || (field.max !== undefined && n > field.max)) {
-			return rangeText(field.min, field.max);
-		}
-		return undefined;
-	}
-	if (field.type === "string" && field.required && value === "")
-		return i18n.t("panelUi.pages.extensions.declarative.settings-form.6");
-	return undefined;
 }
 
 /**
@@ -462,110 +406,11 @@ function FieldControl({
 				onReplace={onReplace}
 				onCancelReplace={onCancelReplace}
 			>
-				<ScalarControl field={field} value={value} onChange={onChange} />
+				<SettingsFieldControl field={field} value={value} onChange={onChange} />
 			</SavedSecretControl>
 		);
 	}
-	return <ScalarControl field={field} value={value} onChange={onChange} />;
-}
-
-/**
- * 一格单值控件的通用那几种(字 / 数字 / 开关 / 枚举)。设置表单与列表的新建弹窗**共用这一份** ——
- * 各画各的话,同一个清单在两处长成两种控件。生成的那种两处各有各的特化(表单里遮住 + 复制、弹窗
- * 里明文 + 就地换一把),表单的密钥格存着值时先遮住、按「换一份」才给输入框 —— 那几样留在摆放处,
- * 输入框本身还是这一件。
- */
-export function ScalarControl({
-	field,
-	value,
-	onChange,
-}: {
-	field: SettingsScalarField;
-	value: string | boolean;
-	onChange: (value: string | boolean) => void;
-}) {
-	const text = typeof value === "string" ? value : "";
-	switch (field.type) {
-		case "string":
-			// 密钥按密码框画(`secret` 自带等宽);多行的没有密码框这回事,只能等宽。
-			return field.multiline ? (
-				<TArea
-					ariaLabel={field.label}
-					value={text}
-					onChange={onChange}
-					placeholder={field.placeholder}
-					mono={field.monospace || field.secret}
-				/>
-			) : (
-				<TInput
-					ariaLabel={field.label}
-					value={text}
-					onChange={onChange}
-					placeholder={field.placeholder}
-					mono={field.monospace}
-					secret={field.secret}
-				/>
-			);
-		case "number":
-			return (
-				<div className="flex items-center gap-2">
-					{/*
-					 * 走 TInput 而不是 TNum:TNum 交出来的永远是个数,清空那一格会变成 0 —— 可选的
-					 * 数字格清空要发 `null`,打到一半的「-」也得先留在框里。
-					 *
-					 * 🔴 也不用 `type="number"`:那种框遇到不是数的输入(`abc`、`1e`、打到一半的「-」)
-					 * `.value` 按规范给空串 —— 框里明明有字,交出来的却是「清空了」,可选格就发 `null`
-					 * 把存着的值删掉。用文本框,算不算数由 `clientErrorOf` 当场说。
-					 */}
-					<TInput width={120} ariaLabel={field.label} value={text} onChange={onChange} />
-					{field.unit ? (
-						<span className="text-bn-xs text-bn-text-tertiary">{field.unit}</span>
-					) : null}
-				</div>
-			);
-		case "boolean":
-			return <Toggle ariaLabel={field.label} value={value === true} onChange={onChange} />;
-		case "enum":
-			return <EnumControl field={field} value={text} onChange={onChange} />;
-	}
-}
-
-/** 一格 `enum`(决策 30):选项带图标 → 两张一排的选项卡片(桥的「哪一种桥」),不带 → 分段按钮。 */
-function EnumControl({
-	field,
-	value,
-	onChange,
-}: {
-	field: Extract<SettingsScalarField, { type: "enum" }>;
-	value: string;
-	onChange: (value: string) => void;
-}) {
-	if (field.options.some((option) => option.icon)) {
-		return (
-			// `<fieldset>` 而不是 `<div role="group">`:同一个语义,原生元素不用手写 role。
-			<fieldset aria-label={field.label} className="grid min-w-0 grid-cols-2 gap-2.5">
-				{field.options.map((option) => (
-					<OptionCard
-						key={option.value}
-						active={value === option.value}
-						label={option.label}
-						mark={option.value}
-						logo={safeImage(option.icon)}
-						onSelect={() => onChange(option.value)}
-					/>
-				))}
-			</fieldset>
-		);
-	}
-	return (
-		<fieldset aria-label={field.label} className="min-w-0">
-			<Picker
-				value={value}
-				onChange={onChange}
-				options={field.options.map((option) => ({ value: option.value, label: option.label }))}
-			/>
-		</fieldset>
-	);
+	return <SettingsFieldControl field={field} value={value} onChange={onChange} />;
 }
 
 /**

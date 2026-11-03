@@ -4,7 +4,7 @@ import { ignoredProblems } from "../../../../__tests__/support/ignored-problems"
 import { inertSettingsOf } from "../../../../__tests__/support/inert-settings";
 import { fixedTimezone, inertTransitImages } from "../../../../__tests__/support/integration-io.js";
 import { memoryStoreHandle } from "../../../../__tests__/support/memory-key-value-store";
-import { HTTP_IDENTITY_KEY } from "../../../../integrations/http";
+import { HTTP_IDENTITY_KEY } from "../../../../integration-store/host-keys.js";
 import type { NodeServiceContext } from "../../../../runtime/service-context";
 import { createBiliContext, REFRESH_TOKEN_KEY } from "../../../context";
 import { Api, type ApiHandlers } from "../../api";

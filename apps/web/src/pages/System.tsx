@@ -1,4 +1,8 @@
-import type { ConnectionCapabilitiesMap, SettingsResponse } from "@bilibili-notify/contract";
+import type {
+	ConnectionCapabilitiesMap,
+	IntegrationSettingsDescriptorsResponse,
+	SettingsResponse,
+} from "@bilibili-notify/contract";
 import { ErrorNote, Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -6,13 +10,14 @@ import { useLocation } from "react-router-dom";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
-import { i18n, useT } from "../i18n";
+import { i18n, useT, useTextOptions } from "../i18n";
 import { api } from "../services/api";
 import type { Connection, PushTarget } from "../types/domain";
 import type { GlobalConfigPatch, SettingsPatch } from "../types/globals";
 import { SkinSection } from "./skins/SkinSection";
 import { AccountSection } from "./system/account-section";
 import { CredentialsSection } from "./system/credentials-section";
+import { IntegrationSection, integrationDraftIssue } from "./system/integration-section";
 import { MaintenanceSection } from "./system/maintenance-section";
 import { MessagingSection } from "./system/messaging-section";
 import { PreferencesSection } from "./system/preferences-section";
@@ -20,7 +25,7 @@ import { RuntimeSection } from "./system/runtime-section";
 import { buildSystemPatch } from "./system-save-patch";
 
 /**
- * 系统页的五格 —— 按「用户什么时候会来找它」分,不按代码结构分。
+ * 系统页的通用分区与集成分区 —— 按「用户什么时候会来找它」分,不按代码结构分。
  *
  * 十节挤在一页太长(主人 2026-09-12 提的),走 `SectionNav`:xl+ 左竖栏、窄视口
  * 顶部 chip 条,与 Rules / Targets / Ai / Cards 同一件组件。
@@ -78,7 +83,7 @@ const SYSTEM_SECTIONS = [
 	},
 ] as const;
 
-type SystemSectionId = (typeof SYSTEM_SECTIONS)[number]["id"];
+type SystemSectionId = (typeof SYSTEM_SECTIONS)[number]["id"] | `integration:${string}`;
 
 /**
  * 页外深链落在哪一格。
@@ -142,6 +147,13 @@ export default function System() {
 	}, [location.hash, location.key]);
 
 	const globalsQuery = useSettings();
+	const { locale, voice } = useTextOptions();
+	const descriptorsQuery = useQuery({
+		queryKey: ["integration-settings-descriptors", locale, voice],
+		queryFn: () => api.get<IntegrationSettingsDescriptorsResponse>("/api/settings/integrations"),
+	});
+	const descriptors = descriptorsQuery.data?.integrations ?? [];
+	const selectedIntegration = descriptors.find((entry) => `integration:${entry.key}` === section);
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
@@ -178,6 +190,8 @@ export default function System() {
 			// 的,没有基线就不会有草稿;真走到这里是状态坏了,宁可报错也别静默发一份空补丁。
 			const base = globalsQuery.data;
 			if (!base) throw new Error(t("panelUi.pages.System.11"));
+			const issue = integrationDraftIssue(descriptors, next, base);
+			if (issue) throw new Error(issue);
 			await patchSettings(buildSystemPatch(next, base));
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_KEY }),
@@ -201,18 +215,39 @@ export default function System() {
 		<div className="bn-anim-page-in grid grid-cols-1 gap-4 xl:grid-bn-rail">
 			<SectionNav
 				heading={t("panelUi.pages.System.13")}
-				items={SYSTEM_SECTIONS.map(({ id, label, desc, glyph: Glyph }) => ({
-					id,
-					label,
-					desc: id === "appearance" ? t("preferences.navHint") : desc,
-					icon: <Glyph size={14} />,
-				}))}
+				items={[
+					...SYSTEM_SECTIONS.slice(0, 2).map(({ id, label, desc, glyph: Glyph }) => ({
+						id,
+						label,
+						desc,
+						icon: <Glyph size={14} />,
+					})),
+					...descriptors.map((entry) => ({
+						id: `integration:${entry.key}`,
+						label: entry.label,
+						desc: t("integrationSettings.navHint"),
+						icon: entry.icon ? (
+							<img src={entry.icon} alt="" className="size-3.5" />
+						) : (
+							<Icon.sliders size={14} />
+						),
+					})),
+					...SYSTEM_SECTIONS.slice(2).map(({ id, label, desc, glyph: Glyph }) => ({
+						id,
+						label,
+						desc: id === "appearance" ? t("preferences.navHint") : desc,
+						icon: <Glyph size={14} />,
+					})),
+				]}
 				activeId={section}
 				onPick={(id) => setSection(id as SystemSectionId)}
 			/>
 
 			<div className="min-w-0 space-y-5">
 				{/* 配置读不下来是整页的事,不是某一格的事 —— 摆在格子外头,停在哪一格都看得见。 */}
+				{descriptorsQuery.error ? (
+					<ErrorNote>{String(descriptorsQuery.error.message)}</ErrorNote>
+				) : null}
 				{globalsQuery.error ? (
 					<ErrorNote>
 						{t("panelUi.pages.System.14")}
@@ -230,6 +265,14 @@ export default function System() {
 					connections={connectionsQuery.data ?? []}
 					onPatch={patchCoreDraft}
 				/>
+				{selectedIntegration && draft ? (
+					<IntegrationSection
+						key={selectedIntegration.key}
+						descriptor={selectedIntegration}
+						draft={draft}
+						onPatch={patchDraft}
+					/>
+				) : null}
 				{section === "runtime" ? <RuntimeSection draft={draft} onPatch={patchDraft} /> : null}
 				{section === "messaging" ? (
 					<MessagingSection

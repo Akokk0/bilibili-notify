@@ -11,8 +11,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo } from "react";
 import { useAdapters } from "../hooks/useAdapters";
-import { safeImage } from "../pages/extensions/declarative/image";
 import { api } from "../services/api";
+import { safeImage } from "../utils/settings-image";
 
 function appearanceOf(
 	descriptor: Pick<PlatformSnapshot, "color" | "shortLabel" | "icon">,

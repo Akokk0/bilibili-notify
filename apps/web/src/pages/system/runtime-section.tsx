@@ -2,7 +2,7 @@ import type { SettingsResponse } from "@bilibili-notify/contract";
 import { HISTORY_RETENTION_DAY_OPTIONS } from "@bilibili-notify/internal/history";
 import { GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { BrowserSourceSettings } from "../../components/browser-source-settings";
-import { Field, Picker, TInput, TNum } from "../../components/forms";
+import { Field, Picker } from "../../components/forms";
 import { IntegrationLogLevels } from "../../components/integration-log-levels";
 import { LogLevelControl } from "../../components/log-level-setting";
 import { useT } from "../../i18n";
@@ -15,22 +15,12 @@ function SystemSettingsSection({
 	draft: SettingsResponse;
 	onPatch: (delta: SettingsPatch) => void;
 }) {
-	// 核心那几格在 `core` 下,B 站的两格在它自己的设置里、挂在 `bilibili` 键下(ADR-0021 决策 42 下 10-01 的 🔗);
-	// 第 4 期起这一节按集成的描述画,B 站那半的形状随之删。
 	const t = useT();
 	const logging = draft.core.logging;
-	const source = draft.bilibili as {
-		dynamicCron: string;
-		healthCheckMinutes: number;
-	};
 
 	const setLogging = <K extends keyof LoggingSettings>(key: K, v: LoggingSettings[K]) => {
 		onPatch({ core: { logging: { [key]: v } as Partial<LoggingSettings> } });
 	};
-	const setSource = <K extends keyof typeof source>(key: K, v: (typeof source)[K]) => {
-		onPatch({ bilibili: { [key]: v } });
-	};
-
 	return (
 		<GlassBox
 			title={t("logging.runtimeTitle")}
@@ -39,10 +29,6 @@ function SystemSettingsSection({
 			icon={<Icon.sliders size={14} />}
 			badge="core"
 		>
-			<Field code="bilibili.dynamicCron">
-				<TInput value={source.dynamicCron} onChange={(v) => setSource("dynamicCron", v)} mono />
-			</Field>
-
 			<Field code="core.logging.level">
 				<LogLevelControl
 					value={logging.level}
@@ -61,16 +47,6 @@ function SystemSettingsSection({
 				<IntegrationLogLevels
 					levels={logging.levels}
 					onChange={(key, level) => onPatch({ core: { logging: { levels: { [key]: level } } } })}
-				/>
-			</Field>
-
-			<Field code="bilibili.healthCheckMinutes">
-				<TNum
-					value={source.healthCheckMinutes}
-					onChange={(v) => setSource("healthCheckMinutes", v)}
-					min={1}
-					max={1440}
-					suffix="min"
 				/>
 			</Field>
 
@@ -104,7 +80,7 @@ function SystemSettingsSection({
 	);
 }
 
-/** 日志归属已接入；B站设置仍随4-44移到独立分区。 */
+/** 核心运行参数和渲染浏览器；来源设置由独立描述驱动分区承载。 */
 export function RuntimeSection({
 	draft,
 	onPatch,

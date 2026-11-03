@@ -6,8 +6,8 @@ import type {
 import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import { i18n } from "../../../i18n";
 import { ApiError } from "../../../services/api";
+import { safeImage } from "../../../utils/settings-image";
 import { reasonOf } from "../shared";
-import { safeImage } from "./image";
 
 /**
  * 声明式列表(ADR-0019 决策 21 / 29)读项、认格的那几件 —— 纯函数,不碰 React。

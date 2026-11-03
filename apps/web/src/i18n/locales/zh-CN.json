@@ -2849,5 +2849,14 @@
 	"panelUi.pages.stats.radar.4#other": "{count} 个",
 	"panelUi.pages.stats.radar.6#other": "{count} 条",
 	"panelUi.pages.stats.radar.8#other": "{count} 场",
-	"panelUi.pages.ExtensionDetail.17#other": "有 {count} 条订阅会保留(暂停)"
+	"panelUi.pages.ExtensionDetail.17#other": "有 {count} 条订阅会保留(暂停)",
+	"integrationSettings.subtitle": "集成设置",
+	"integrationSettings.navHint": "集成参数",
+	"integrationSettings.unsupported": "此字段暂不支持编辑。",
+	"integrationSettings.identityTitle": "浏览器身份",
+	"integrationSettings.identityHint": "更换将在下次服务重启时生效。当前请求和直播连接继续使用现有身份，登录状态保持。",
+	"integrationSettings.reset": "换一个身份",
+	"integrationSettings.dirty": "请先保存或放弃当前草稿，再更换浏览器身份。",
+	"integrationSettings.resetDone": "已安排在下次服务重启时生成新身份。",
+	"integrationSettings.resetConfirm": "换一个浏览器身份？"
 }

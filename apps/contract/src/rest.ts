@@ -335,6 +335,21 @@ export type SettingsResponse = { readonly core: GlobalConfigView } & {
 	readonly [integrationKey: string]: unknown;
 };
 
+/** Registered integration settings, rendered alongside the existing system sections. */
+export interface IntegrationSettingsDescriptor {
+	key: string;
+	label: string;
+	icon?: string;
+	fields: SettingsField[];
+	identityReset?: "restart";
+}
+
+export type IntegrationIdentityResetResponse = Result<{ appliesOn: "restart" }>;
+
+export interface IntegrationSettingsDescriptorsResponse {
+	integrations: IntegrationSettingsDescriptor[];
+}
+
 /** A quarantined setting cell. Secret-bearing cells carry no representation of their value. */
 export type InvalidSettingView = {
 	path: (string | number)[];

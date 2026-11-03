@@ -56,6 +56,7 @@ export function useTextOptions() {
 	const state = useSyncExternalStore(i18n.subscribe, i18n.state, i18n.state);
 	return {
 		locale: state.locale,
+		voice: state.voice,
 		maidLocales: LOCALES.filter((locale) => "maid" in DICTS[locale]),
 	};
 }

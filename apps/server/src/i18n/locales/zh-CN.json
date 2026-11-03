@@ -1339,5 +1339,10 @@
 	"service.ws.server.text.2": "控制消息不合规矩",
 	"service.zip-junk.text.1": "包内文件太多(上限 {value0} 个)",
 	"service.zip-junk.text.2": "包解压后总大小超限",
-	"service.zip-junk.text.3": "不是合法的 zip 文件"
+	"service.zip-junk.text.3": "不是合法的 zip 文件",
+	"bilibili.settings.dynamicDescription": "按 Cron 表达式检查新作品，保存后自动调整检查时间。",
+	"bilibili.settings.loginDescription": "定期检查登录状态，保存后生效。",
+	"settings.identity.unavailable": "该集成的存储尚未打开，暂时无法更换身份。",
+	"settings.identity.notFound": "找不到该集成的设置。",
+	"settings.identity.unsupported": "该集成不支持更换浏览器身份。"
 }

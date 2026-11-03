@@ -1,5 +1,9 @@
 import { probeAiProvider } from "@bilibili-notify/ai";
-import type { InvalidSettingsResponse, SettingsResponse } from "@bilibili-notify/contract";
+import type {
+	IntegrationSettingsDescriptorsResponse,
+	InvalidSettingsResponse,
+	SettingsResponse,
+} from "@bilibili-notify/contract";
 import { aiProfileAt, fail, ok, type Result } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ConfigStore, ConfigValidationError, type SettingsSnapshot } from "../config/store.js";
@@ -40,6 +44,33 @@ import type { RouteDeps } from "./types.js";
 export function createSettingsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
+
+	app.get("/integrations", (c) => {
+		c.header("Cache-Control", "no-store");
+		return c.json({
+			integrations: deps.store.getIntegrationSettingsDescriptors().map((entry) => {
+				const descriptor = deps.runtime.sourceRegistry.getRunView(entry.key)?.descriptor;
+				return {
+					...entry,
+					label: descriptor?.label ?? entry.key,
+					...(descriptor?.icon ? { icon: descriptor.icon } : {}),
+				};
+			}),
+		} satisfies IntegrationSettingsDescriptorsResponse);
+	});
+
+	app.post("/integrations/:key/reset-identity", async (c) => {
+		const descriptor = deps.store
+			.getIntegrationSettingsDescriptors()
+			.find((entry) => entry.key === c.req.param("key"));
+		if (!descriptor) return respondFailure(c, fail("not_found", t("settings.identity.notFound")));
+		if (!descriptor.identityReset)
+			return respondFailure(c, fail("unsupported", t("settings.identity.unsupported")));
+		const result = await deps.runtime.integrationStore.resetHttpIdentity(descriptor.key);
+		return result.ok
+			? c.json(ok({ appliesOn: descriptor.identityReset }))
+			: respondFailure(c, result);
+	});
 
 	app.get("/invalid", (c) => {
 		c.header("Cache-Control", "no-store");

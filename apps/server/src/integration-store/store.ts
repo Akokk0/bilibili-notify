@@ -25,6 +25,7 @@ import {
 	writeIntegrationSecretsFile,
 	writeIntegrationStateFile,
 } from "./files.js";
+import { HTTP_IDENTITY_KEY } from "./host-keys.js";
 import {
 	createKeyValueStores,
 	type KeyValueStoreHandle,
@@ -52,6 +53,8 @@ export interface CreateIntegrationStoreOptions {
 }
 
 export interface IntegrationStore {
+	/** Clear only the stored HTTP identity; the live client retains its current identity. */
+	resetHttpIdentity(key: string): Promise<Result>;
 	/** 把这个集成的两份文件读进内存,交回它的把手。同一个键已经开着就抛(那是装配的 bug)。 */
 	open(key: string): Promise<IntegrationStoreHandle>;
 	isOpen(key: string): boolean;
@@ -102,6 +105,7 @@ export interface IntegrationStoreHandle {
 }
 
 interface OpenEntry {
+	hostState: IntegrationStoreHandle["hostState"];
 	secrets: KeyValueStoreHandle;
 	replacedHooks: Array<() => void | Promise<void>>;
 }
@@ -204,7 +208,7 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 					redactor.replace(key, SECRETS_KIND, [...entries.values()].flatMap(stringLeaves));
 				},
 			});
-			const entry: OpenEntry = { secrets, replacedHooks: [] };
+			const entry: OpenEntry = { secrets, hostState: state.host, replacedHooks: [] };
 			opened.set(key, entry);
 			return {
 				state: state.integration,
@@ -343,6 +347,11 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 
 	return {
 		open,
+		async resetHttpIdentity(key) {
+			const live = opened.get(key);
+			if (!live) return fail("unavailable", serverText("settings.identity.unavailable"));
+			return live.hostState.delete(HTTP_IDENTITY_KEY);
+		},
 		isOpen: (key) => opened.has(key),
 		remove,
 		exportSecrets,

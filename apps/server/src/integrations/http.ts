@@ -15,6 +15,7 @@ import {
 	type Result,
 } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
+import { HTTP_COOKIES_KEY, HTTP_IDENTITY_KEY } from "../integration-store/host-keys.js";
 import type { IntegrationStoreHandle } from "../integration-store/store.js";
 import { errorMessageOf } from "../util/error-message.js";
 
@@ -32,8 +33,6 @@ import { errorMessageOf } from "../util/error-message.js";
 
 /** 攒多久再存:从第一笔没存的变化起算,后面的变化不顺延。 */
 export const COOKIE_SAVE_DELAY_MS = 2_000;
-export const HTTP_COOKIES_KEY = "http.cookies";
-export const HTTP_IDENTITY_KEY = "http.identity";
 
 export interface CreateIntegrationHttpOptions {
 	/** 这个集成的存储把手(只用宿主那一面)。 */

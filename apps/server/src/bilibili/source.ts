@@ -43,7 +43,12 @@ import { createProblemLayers, type ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 import { createProfileFetcher } from "./profile.js";
 import { searchBiliCreators } from "./search-creators.js";
-import { BiliDynamicSettingsSchema, BiliLoginCheckSettingsSchema } from "./settings.js";
+import {
+	BiliDynamicSettingsSchema,
+	BiliLoginCheckSettingsSchema,
+	DYNAMIC_CELL,
+	LOGIN_CHECK_CELL,
+} from "./settings.js";
 import { BILI_SOURCE_ICON } from "./source-icon.js";
 
 export interface BiliSourceDeps {
@@ -98,20 +103,6 @@ const dynamicSettingsOf = (settings: { dynamicCron: string }, timezone: string) 
 	timezone,
 	dynamicVideoUrlToBV: false,
 });
-
-/** 设置那一格的叫法与键名:问题文案里带着,让主人认出是哪一格。 */
-const DYNAMIC_CELL = {
-	get label() {
-		return t("bilibili.source.dynamicCell");
-	},
-	key: "dynamicCron",
-} as const;
-const LOGIN_CHECK_CELL = {
-	get label() {
-		return t("bilibili.source.loginCheckCell");
-	},
-	key: "healthCheckMinutes",
-} as const;
 
 const DYNAMIC_PROBLEM = "dynamic_settings_invalid";
 const LOGIN_CHECK_PROBLEM = "login_check_settings_invalid";

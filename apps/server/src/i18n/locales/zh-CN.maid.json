@@ -155,5 +155,10 @@
 	"service.runtime.storage-usage.text.5": "卡片皮肤与界面皮肤是主人自己挑的,各在自己的页面删",
 	"service.runtime.storage-usage.text.6": "素材库是主人自己传的,在素材库页面里删",
 	"service.runtime.storage-usage.text.8": "已装的拓展是主人自己挑的,在拓展页面里卸",
-	"service.skins.ai-create.text.1": "设计师没把主人指定的壁纸写进 {value0},已按默认参数补上(overlay {value1} / blur {value2})"
+	"service.skins.ai-create.text.1": "设计师没把主人指定的壁纸写进 {value0},已按默认参数补上(overlay {value1} / blur {value2})",
+	"bilibili.settings.dynamicDescription": "主人，女仆会按这份 Cron 表达式检查新作品，保存后就调整检查时间哦。",
+	"bilibili.settings.loginDescription": "主人，女仆会定期检查登录状态，保存后就生效哦。",
+	"settings.identity.unavailable": "主人，这个集成的存储还没打开，暂时没法更换身份哦。",
+	"settings.identity.notFound": "主人，女仆没找到这个集成的设置。",
+	"settings.identity.unsupported": "主人，这个集成不支持更换浏览器身份哦。"
 }

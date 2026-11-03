@@ -8,7 +8,7 @@ import {
 	EXTENSION_IMAGE_MAX_CHARS,
 } from "@bilibili-notify/internal/extension/wire";
 import { describe, expect, it } from "vite-plus/test";
-import { safeImage } from "../image";
+import { safeImage } from "../../../../utils/settings-image";
 
 const PNG =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";

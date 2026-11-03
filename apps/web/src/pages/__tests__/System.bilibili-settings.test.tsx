@@ -13,6 +13,7 @@
  *    `bilibili.userAgent` 还在也不画。
  */
 
+import type { IntegrationSettingsDescriptorsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -78,6 +79,35 @@ const GLOBALS = {
 	bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
 };
 
+const DEFINITIONS: IntegrationSettingsDescriptorsResponse = {
+	integrations: [
+		{
+			key: "bilibili",
+			label: "B 站",
+			identityReset: "restart",
+			fields: [
+				{
+					key: "dynamicCron",
+					type: "string",
+					label: "动态检查频率",
+					default: "0 */2 * * * *",
+					monospace: true,
+				},
+				{
+					key: "healthCheckMinutes",
+					type: "number",
+					label: "登录心跳间隔",
+					default: 30,
+					min: 5,
+					max: 180,
+					unit: "min",
+					step: 1,
+				},
+			],
+		},
+	],
+};
+
 function resetStore(): void {
 	useDraftStore.setState({
 		current: null,
@@ -88,9 +118,13 @@ function resetStore(): void {
 }
 
 /** 渲染并停到「运行」格(两格就在那里);`Core · 应用` 那张卡是草稿到了才画的,拿它当到齐的信号。 */
-async function renderRuntimeSection(served: unknown = GLOBALS) {
+async function renderRuntimeSection(
+	served: unknown = GLOBALS,
+	definitions: IntegrationSettingsDescriptorsResponse = DEFINITIONS,
+) {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
 		if (url === "/api/settings") return JSON.parse(JSON.stringify(served));
+		if (url === "/api/settings/integrations") return definitions;
 		if (url === "/api/connections/capabilities") return {};
 		return [];
 	});
@@ -106,6 +140,11 @@ async function renderRuntimeSection(served: unknown = GLOBALS) {
 	await screen.findByText("Core · 应用");
 }
 
+async function renderIntegrationSection(served: unknown = GLOBALS) {
+	await renderRuntimeSection(served);
+	fireEvent.click(await screen.findByRole("button", { name: "B 站" }));
+}
+
 /** 某一格(按字段码)里的输入框。 */
 function inputOf(code: string): HTMLInputElement {
 	const input = document.querySelector<HTMLInputElement>(`[data-code="${code}"] input`);
@@ -117,6 +156,7 @@ function inputOf(code: string): HTMLInputElement {
 async function save(): Promise<{
 	core?: Record<string, unknown>;
 	bilibili?: Record<string, unknown>;
+	[key: string]: unknown;
 }> {
 	await act(async () => {
 		await useDraftStore.getState().current?.onSave();
@@ -143,11 +183,89 @@ afterEach(() => {
 });
 
 describe("系统页里 B 站的两格", () => {
-	it("运行草稿跨分区保留，放弃后恢复服务器值", async () => {
+	it("来源设置在原侧栏独立列出，运行区不再重复显示", async () => {
 		await renderRuntimeSection();
+		expect(document.querySelector('[data-code="bilibili.dynamicCron"]')).toBeNull();
+		fireEvent.click(await screen.findByRole("button", { name: "B 站" }));
+		expect(inputOf("bilibili.dynamicCron").value).toBe("30 */2 * * * *");
+		expect(inputOf("bilibili.healthCheckMinutes").value).toBe("30");
+		expect(screen.getByRole("button", { name: "换一个身份" })).toBeTruthy();
+	});
+
+	it("规则范围在表单校验，越界不发保存请求，合法值仍只改集成段", async () => {
+		await renderIntegrationSection();
+		fireEvent.change(inputOf("bilibili.healthCheckMinutes"), { target: { value: "181" } });
+		expect(screen.getByText(/5.*180/)).toBeTruthy();
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave();
+		});
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(useDraftStore.getState().errorMessage).toMatch(/5.*180/);
+		fireEvent.change(inputOf("bilibili.healthCheckMinutes"), { target: { value: "5" } });
+		expect(await save()).toMatchObject({ bilibili: { healthCheckMinutes: 5 } });
+	});
+	it("更换身份先确认，取消不请求，成功说明下次重启生效", async () => {
+		await renderIntegrationSection();
+		fireEvent.click(screen.getByRole("button", { name: "换一个身份" }));
+		expect(screen.getByRole("dialog").textContent).toContain("下次服务重启");
+		fireEvent.click(screen.getByRole("button", { name: "取消" }));
+		expect(api.post).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "换一个身份" }));
+		fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "换一个身份" }));
+		await screen.findByText("已安排在下次服务重启时生成新身份。");
+		expect(api.post).toHaveBeenCalledExactlyOnceWith(
+			"/api/settings/integrations/bilibili/reset-identity",
+		);
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+	it("身份重置失败显示原话，未保存的草稿阻止即时动作", async () => {
+		vi.mocked(api.post).mockRejectedValueOnce(new Error("identity write failed"));
+		await renderIntegrationSection();
+		fireEvent.click(screen.getByRole("button", { name: "换一个身份" }));
+		fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "换一个身份" }));
+		await screen.findByText("identity write failed");
+		fireEvent.change(inputOf("bilibili.dynamicCron"), { target: { value: "0 */10 * * * *" } });
+		await waitFor(() =>
+			expect(
+				(screen.getByRole("button", { name: "换一个身份" }) as HTMLButtonElement).disabled,
+			).toBe(true),
+		);
+		expect(api.post).toHaveBeenCalledTimes(1);
+	});
+
+	it("不同集成的键、字段和范围同样取自描述，保存不混入核心或别的集成", async () => {
+		await renderRuntimeSection(
+			{ ...GLOBALS, native: { poll: 12 } },
+			{
+				integrations: [
+					{
+						key: "native",
+						label: "Library",
+						fields: [
+							{
+								key: "poll",
+								type: "number",
+								label: "Poll interval",
+								min: 10,
+								max: 20,
+								default: 12,
+							},
+						],
+					},
+				],
+			},
+		);
+		fireEvent.click(await screen.findByRole("button", { name: "Library" }));
+		expect(inputOf("native.poll").value).toBe("12");
+		expect(screen.queryByRole("button", { name: "换一个身份" })).toBeNull();
+		fireEvent.change(inputOf("native.poll"), { target: { value: "15" } });
+		expect(await save()).toEqual({ native: { poll: 15 } });
+	});
+	it("集成草稿跨分区保留，放弃后恢复服务器值", async () => {
+		await renderIntegrationSection();
 		fireEvent.change(inputOf("bilibili.dynamicCron"), { target: { value: "0 */10 * * * *" } });
 		fireEvent.click(screen.getAllByRole("button", { name: "账号" })[0]);
-		fireEvent.click(screen.getAllByRole("button", { name: "运行" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { name: "B 站" })[0]);
 		expect(inputOf("bilibili.dynamicCron").value).toBe("0 */10 * * * *");
 		act(() => useDraftStore.getState().current?.onDiscard());
 		expect(inputOf("bilibili.dynamicCron").value).toBe("30 */2 * * * *");
@@ -155,13 +273,13 @@ describe("系统页里 B 站的两格", () => {
 	});
 
 	it("读:两格画的是 bilibili 块里的值", async () => {
-		await renderRuntimeSection();
+		await renderIntegrationSection();
 		expect(inputOf("bilibili.dynamicCron").value).toBe("30 */2 * * * *");
 		expect(inputOf("bilibili.healthCheckMinutes").value).toBe("30");
 	});
 
 	it("没有 User-Agent 那一格:草稿里残留着 bilibili.userAgent 也不画", async () => {
-		await renderRuntimeSection({
+		await renderIntegrationSection({
 			...GLOBALS,
 			bilibili: { ...GLOBALS.bilibili, userAgent: "UA/stale" },
 		});
@@ -175,7 +293,7 @@ describe("系统页里 B 站的两格", () => {
 		["bilibili.dynamicCron", "0 */10 * * * *", "dynamicCron", "0 */10 * * * *"],
 		["bilibili.healthCheckMinutes", "45", "healthCheckMinutes", 45],
 	])("写:改 %s → PATCH 发 { bilibili: { … } },不碰 core", async (code, typed, key, sent) => {
-		await renderRuntimeSection();
+		await renderIntegrationSection();
 		fireEvent.change(inputOf(code), { target: { value: typed } });
 
 		const body = await save();
