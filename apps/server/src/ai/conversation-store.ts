@@ -226,9 +226,11 @@ export interface ConversationStoreOptions {
 /** 盘上的既有占位标记不随语言改；仅对外展示时现取文字。 */
 const PLACEHOLDER_TITLE = "新对话";
 function displayConversation(c: Conversation): Conversation {
-	return c.title === PLACEHOLDER_TITLE
-		? { ...c, title: conversationText("conversation.placeholderTitle") }
-		: c;
+	const placeholder =
+		c.title === PLACEHOLDER_TITLE &&
+		!c.autoTitled &&
+		!c.messages.some((message) => message.role === "user" && message.content.trim());
+	return placeholder ? { ...c, title: conversationText("conversation.placeholderTitle") } : c;
 }
 /** 标题从首问截取的最大字数。侧栏一行放得下,再长也是省略号。 */
 const TITLE_MAX_CHARS = 24;

@@ -911,3 +911,28 @@ it("localizes empty conversation display while retaining the persisted marker an
 		i18n.set({ locale: state.locale, voice: state.voice });
 	}
 });
+
+it.each(["first-message", "assigned-title"])(
+	"preserves authored title matching the placeholder marker (%s)",
+	async (kind) => {
+		const state = i18n.state();
+		i18n.set({ locale: "en", voice: "plain" });
+		const translator = vi
+			.spyOn(i18n.state(), "t")
+			.mockImplementation((key) =>
+				key === "conversation.placeholderTitle" ? "New chat" : String(key),
+			);
+		try {
+			const conversation = await store.create();
+			await store.appendMessages(conversation.id, [
+				{ role: "user", content: kind === "first-message" ? "新对话" : "A real question" },
+			]);
+			if (kind === "assigned-title") await store.setTitle(conversation.id, "新对话");
+			expect((await store.get(conversation.id))?.title).toBe("新对话");
+			expect((await store.list()).find((row) => row.id === conversation.id)?.title).toBe("新对话");
+		} finally {
+			translator.mockRestore();
+			i18n.set({ locale: state.locale, voice: state.voice });
+		}
+	},
+);
