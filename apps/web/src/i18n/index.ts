@@ -3,6 +3,7 @@
 import {
 	createI18n,
 	type DictKey,
+	LOCALES,
 	type Locale,
 	type LocaleDicts,
 } from "@bilibili-notify/internal/i18n";
@@ -48,4 +49,13 @@ bindPackageText(i18n.t);
 /** 组件里取字:`const t = useT()`。切语言或口吻后拿到的 `t` 换了引用,已画出来的组件自己重画。 */
 export function useT() {
 	return useSyncExternalStore(i18n.subscribe, i18n.state, i18n.state).t;
+}
+
+/** 设置表单只取语言和女仆层能力，不把字典或取字函数交给元数据读者。 */
+export function useTextOptions() {
+	const state = useSyncExternalStore(i18n.subscribe, i18n.state, i18n.state);
+	return {
+		locale: state.locale,
+		maidLocales: LOCALES.filter((locale) => "maid" in DICTS[locale]),
+	};
 }

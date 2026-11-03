@@ -6,6 +6,7 @@ import { useLocation } from "react-router-dom";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
+import { useT } from "../i18n";
 import { api } from "../services/api";
 import type { Connection, PushTarget } from "../types/domain";
 import type { GlobalConfigPatch, SettingsPatch } from "../types/globals";
@@ -13,6 +14,7 @@ import { SkinSection } from "./skins/SkinSection";
 import { AccountSection } from "./system/account-section";
 import { MaintenanceSection } from "./system/maintenance-section";
 import { MessagingSection } from "./system/messaging-section";
+import { PreferencesSection } from "./system/preferences-section";
 import { RuntimeSection } from "./system/runtime-section";
 import { buildSystemPatch } from "./system-save-patch";
 
@@ -77,6 +79,7 @@ function deepMerge<T>(base: T, patch: GlobalConfigPatch | SettingsPatch): T {
 }
 
 export default function System() {
+	const t = useT();
 	const qc = useQueryClient();
 
 	const location = useLocation();
@@ -149,13 +152,13 @@ export default function System() {
 
 	return (
 		// 两栏骨架一律走 `xl:grid-bn-rail`,别手写栏宽 —— 栏宽在 --bn-rail-width,皮肤能调。
-		<div className="bn-anim-page-in grid gap-4 xl:grid-bn-rail">
+		<div className="bn-anim-page-in grid grid-cols-1 gap-4 xl:grid-bn-rail">
 			<SectionNav
 				heading="系统"
 				items={SYSTEM_SECTIONS.map(({ id, label, desc, glyph: Glyph }) => ({
 					id,
 					label,
-					desc,
+					desc: id === "appearance" ? t("preferences.navHint") : desc,
 					icon: <Glyph size={14} />,
 				}))}
 				activeId={section}
@@ -189,7 +192,12 @@ export default function System() {
 						capabilities={capabilitiesQuery.data ?? {}}
 					/>
 				) : null}
-				{section === "appearance" ? <SkinSection /> : null}
+				{section === "appearance" ? (
+					<>
+						{draft ? <PreferencesSection draft={draft.core} onPatch={patchCoreDraft} /> : null}
+						<SkinSection />
+					</>
+				) : null}
 				{section === "maintenance" ? <MaintenanceSection /> : null}
 			</div>
 		</div>

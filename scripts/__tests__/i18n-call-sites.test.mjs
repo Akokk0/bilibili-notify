@@ -92,7 +92,7 @@ export const ENDS = {
 		root: "apps/web/src",
 		store: "apps/web/src/i18n/index",
 		localeDir: "apps/web/src/i18n/locales",
-		valueNames: ["useT", "i18n"],
+		valueNames: ["useT", "i18n", "useTextOptions"],
 		minCalls: 5,
 		// 面板的组件里取字要订阅(useT),直接调 i18n.t 不会在切语言后重画
 		react: true,
@@ -572,7 +572,13 @@ export function analyzeFile(source, end, sentences) {
 
 	// 1. 入口的引入:只认具名的值引入,别的形式都认不出
 	// 入口导出的名字 → 本地名的集合(同一个名字可以引入多次:`import { t as tr, t }`)
-	const localsOf = { t: new Set(), i18n: new Set(), useT: new Set(), packageText: new Set() };
+	const localsOf = {
+		t: new Set(),
+		i18n: new Set(),
+		useT: new Set(),
+		useTextOptions: new Set(),
+		packageText: new Set(),
+	};
 	const uiHooks = new Set();
 	if (end === ENDS.packages && path.startsWith("packages/ui/src/")) {
 		for (const statement of ast.statements) {
@@ -1027,6 +1033,26 @@ export function f() {
 		);
 		expect(result.findings).toEqual([]);
 		expect(result.calls).toBe(2);
+	});
+
+	it("面板设置可以读取订阅式语言元数据，仍拒绝字典直取与未订阅的快照", () => {
+		const meta = webOf(
+			'import { useTextOptions } from "../i18n/index"; export function View() { const options = useTextOptions(); return options.locale; }',
+		);
+		expect(meta.findings).toEqual([]);
+		expect(meta.literalCalls).toEqual([]);
+		expect(
+			codes(
+				webOf('import { DICTS } from "../i18n/index"; export function View() { return DICTS; }'),
+			),
+		).toContain("unrecognised");
+		expect(
+			codes(
+				webOf(
+					'import { i18n } from "../i18n/index"; export function View() { return i18n.state().locale; }',
+				),
+			),
+		).toContain("unsubscribed");
 	});
 
 	it("面板:const t = useT() 之后的调用;不同组件各自接 t 也行", () => {

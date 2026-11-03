@@ -73,6 +73,33 @@ export interface FieldLabel {
  * 档的名字取会员体系里档的名字,体系加一档这里自动跟着有,不再逐档抄。
  */
 export const FIELD_LABELS = {
+	"core.locale": {
+		get label() {
+			return i18n.t("preferences.locale.label");
+		},
+		get hint() {
+			return i18n.t("preferences.locale.hint");
+		},
+		section: "general",
+	},
+	"core.voice": {
+		get label() {
+			return i18n.t("preferences.voice.label");
+		},
+		get hint() {
+			return i18n.t("preferences.voice.hint");
+		},
+		section: "general",
+	},
+	"core.timezone": {
+		get label() {
+			return i18n.t("preferences.timezone.label");
+		},
+		get hint() {
+			return i18n.t("preferences.timezone.hint");
+		},
+		section: "general",
+	},
 	"core.stats.enabled": {
 		get label() {
 			return i18n.t("statsSwitch.label");

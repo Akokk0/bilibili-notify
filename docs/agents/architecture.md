@@ -173,7 +173,7 @@ src/
   components/   共享原子组件 + 图标
   hooks/        useAuthChannel / use-source-auth(登录态的唯一读口:`["source-auth", 来源键]` 查询缓存,读的地方各自点名要哪个来源;`store/auth.ts` 已删)/ usePushEventsChannel / useAlertChannel / useLogChannel / useStateChannel / ...
   services/     HTTP client(api.ts)+ 类型化封装(dashboard.ts,wire 类型 re-export 自 @bilibili-notify/contract)
-  i18n/         面板的字典 store(3b-09,ADR-0037):`i18n`(`@bilibili-notify/internal/i18n` 的 `createI18n` 建的单例,不包 zustand)与 `useT()`(`useSyncExternalStore` 订它,切语言或口吻后已画出来的组件自己重画);初值读浏览器(`preference.ts`:`bn.locale` / `bn.voice`,没记过语言按 `navigator.languages` 猜,`guessLocale`),登录后 `use-text-settings.ts` 的 `useTextSettings`(挂在 `AuthedApp`)订 `["settings"]`,把设置里的 `locale` / `voice` 接进 store 并记回浏览器,设置缺语言时把登录页在用的那个 PATCH 进去(只写一次);译文在 `locales/`,简中平实层从 3b-43 起有第一批键(拓展详情页那块译文问题的标题、装包后跳过的语言文件那句),别的语言与女仆层仍是空的;面板的字随第 4 期重画才收,第 5 期才翻译;字典同服务端一样垫着包字典、把取字口交给包(4-56),组件用 `useT()` 也取得到包里的句子
+  i18n/         面板的字典 store(3b-09,ADR-0037):`i18n`(`@bilibili-notify/internal/i18n` 的 `createI18n` 建的单例,不包 zustand)与 `useT()`(`useSyncExternalStore` 订它,切语言或口吻后已画出来的组件自己重画);初值读浏览器(`preference.ts`:`bn.locale` / `bn.voice`,没记过语言按 `navigator.languages` 猜,`guessLocale`),登录后 `use-text-settings.ts` 的 `useTextSettings`(挂在 `AuthedApp`)订 `["settings"]`,把设置里的 `locale` / `voice` 接进 store 并记回浏览器,设置缺语言时把登录页在用的那个 PATCH 进去(只写一次);译文在 `locales/`,简中平实层从 3b-43 起有第一批键(拓展详情页那块译文问题的标题、装包后跳过的语言文件那句),简中女仆层随第4期收字，其余语言与相应女仆层第5期补齐;面板的字随第 4 期重画才收,第 5 期才翻译;字典同服务端一样垫着包字典、把取字口交给包(4-56),组件用 `useT()` 也取得到包里的句子
   store/        zustand 管瞬态 UI 状态;tanstack-query 缓存管服务端状态
   types/domain.ts  域类型门面:类型 `import type` 自 internal/contract(编译期擦除),值级常量走
                    各领域的零依赖子路径(`/identity`、`/features` 等,不含 zod,bundle 零增量);
@@ -183,6 +183,8 @@ src/
 页面级状态归 tanstack-query;WS push 帧经 `setQueryData` 打补丁,实时更新无需额外 HTTP 往返。
 
 4-47：系统页运行区的 `core.stats.enabled` 使用共用设置草稿保存/放弃。统计页先读同一份设置缓存，只在确认开启后挂载原统计内容；开启/关闭时都保留复用 `HeroStrip` + `Picker` 的页头总开关卡，关闭时只留该卡与说明；读取失败显示未知/重试。页头启用/停用仅PATCH统计块，成功后采纳服务端设置快照；失败保留原选中态与内容。页面关闭不清统计数据，服务端记录闸与资料刷新行为见ADR-0027决策9、16。
+
+4-48：系统外观区的语言/口吻/时区沿用共用设置草稿。`locale`候选取共享LOCALES；`useTextOptions`订阅当前语言和女仆层语言名单，只交元数据，页面不得直取DICTS。无女仆层时收起口吻但保留存值，跟随默认由共享DEFAULT_VOICE显示、恢复默认发null。保存成功由既有useTextSettings更新面板字典与浏览器偏好，草稿或保存失败不改应用状态。时区由原IANA规则校验，卡片与服务端墙钟用核心timezone；浏览器统计图表的本地切天口径不变。
 
 ## 拓展(`extensions/`)
 

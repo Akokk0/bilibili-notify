@@ -308,5 +308,9 @@
 	"statsSwitch.loading": "主人，女仆正在读取统计开关…",
 	"statsSwitch.readFailed": "主人，统计开关没读到，现在还不知道它是否开着，可以重试哦。",
 	"statsSwitch.hint": "主人，开着才记作品、直播和粉丝样本；关掉也会保留已有数据，订阅资料照常刷新哦。",
-	"statsSwitch.saveFailed": "主人，统计开关没保存成功：{reason}"
+	"statsSwitch.saveFailed": "主人，统计开关没保存成功：{reason}",
+	"preferences.subtitle": "主人，选好后保存，女仆再把设置应用到本台服务和面板哦。",
+	"preferences.locale.hint": "主人，整台服务会用同一种语言；还没翻好的内容暂时用简体中文。",
+	"preferences.voice.hint": "主人，这里只换交互和提示的口吻，标题和数据名照常；没有女仆译文的语言会先收起此项，原选择会留着哦。",
+	"preferences.timezone.hint": "主人，请填 IANA 时区名，例如 Asia/Shanghai；卡片时间、服务端日程和免打扰会跟着走。保存后只重排未来日程，不补跑；浏览器统计图表仍按本机时区切天哦。"
 }
