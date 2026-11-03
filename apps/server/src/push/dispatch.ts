@@ -5,6 +5,7 @@ import {
 	type PlatformAdapter,
 	type Result,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 import { resolveSettings } from "./connection-settings.js";
 
 /**
@@ -57,7 +58,11 @@ export function resolveConnection<T extends Pick<PlatformAdapter, "settingsSchem
 ): Result<{ adapter: T; connection: Connection }> {
 	const resolved = resolveSettings(adapter.settingsSchema, connection.settings);
 	if (!resolved.ok) {
-		return fail("not_configured", `连接${resolved.message}`, { issues: resolved.issues });
+		return fail(
+			"not_configured",
+			serverText("service.push.dispatch.text.1", { value0: resolved.message }),
+			{ issues: resolved.issues },
+		);
 	}
 	return ok({ adapter, connection: { ...connection, settings: resolved.settings } });
 }

@@ -44,9 +44,9 @@ import { createLibraryRoute } from "./routes/library.js";
 import { createLiveRoute } from "./routes/live.js";
 import { createProblemsRoute } from "./routes/problems.js";
 import {
-	ROUTE_NOT_FOUND_MESSAGE,
 	requestErrorHandler,
 	respondFailure,
+	routeNotFoundMessage,
 } from "./routes/respond-failure.js";
 import { createSessionRoute } from "./routes/session.js";
 import { createSettingsRoute } from "./routes/settings.js";
@@ -560,7 +560,7 @@ function createAppShell(
 		if (indexHtml && c.req.method === "GET" && !c.req.path.startsWith("/api/")) {
 			return c.html(indexHtml);
 		}
-		return respondFailure(c, fail("not_found", ROUTE_NOT_FOUND_MESSAGE));
+		return respondFailure(c, fail("not_found", routeNotFoundMessage()));
 	});
 
 	/**

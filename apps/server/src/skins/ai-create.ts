@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 从**一句话**生成一整套皮肤 —— 聊天里「女仆,给我做套赛博朋克的皮肤」那条路的
  * 生成层。产物是清洗后的 manifest,落盘由调用方(`chat-tool.ts`)负责。
@@ -98,7 +99,11 @@ function attachWallpaper(
 		// 编辑器那侧会把警告显出来:让人知道这张壁纸是补上去的,不是设计师配的。
 		warnings: [
 			...result.warnings,
-			`设计师没把主人指定的壁纸写进 ${patched.join(" / ")},已按默认参数补上(overlay ${FALLBACK_OVERLAY} / blur ${FALLBACK_BLUR})`,
+			serverText("service.skins.ai-create.text.1", {
+				value0: patched.join(" / "),
+				value1: FALLBACK_OVERLAY,
+				value2: FALLBACK_BLUR,
+			}),
 		],
 	};
 }

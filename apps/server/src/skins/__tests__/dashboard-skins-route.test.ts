@@ -17,7 +17,7 @@ import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { createDashboardSkinsRoute } from "../../routes/dashboard-skins.js";
-import { ROUTE_NOT_FOUND_MESSAGE, respondFailure } from "../../routes/respond-failure.js";
+import { respondFailure, routeNotFoundMessage } from "../../routes/respond-failure.js";
 import { MAX_SKIN_ASSETS, SkinStore } from "../store.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -60,7 +60,7 @@ beforeEach(async () => {
 	// 与生产一样带全局的 notFound:路径压根匹不上路由时(如 `/:id/modes/` 少了 theme)回的是
 	// 标准的 `not_found` 错误体,不是 Hono 默认的纯文本 —— 否则这条测试自己造的 404 会被错误体守卫点名。
 	app = new Hono()
-		.notFound((c) => respondFailure(c, fail("not_found", ROUTE_NOT_FOUND_MESSAGE)))
+		.notFound((c) => respondFailure(c, fail("not_found", routeNotFoundMessage())))
 		.route("/", createDashboardSkinsRoute({ skinStore: store }));
 });
 

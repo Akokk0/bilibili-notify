@@ -624,7 +624,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 						timezoneReader: deps.timezoneReader,
 						stores: store,
 						logger,
-						stopReason: "BN 关停",
+						stopReason: () => "BN 关停",
 						problems: deps.problems,
 						reporter: IN_PROCESS_KEY,
 						label: () => IN_PROCESS_KEY,

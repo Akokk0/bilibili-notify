@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 推送历史 `history/<日>.jsonl`:0.x 的老行(一行 = 一个目标 × 一条消息,带 `source` / `result` / `payload`)
  * → 现在的行(`feature` / `messages[]` / `status` / `targetId`)。一项一项收进来(⑥c);从前是 schema 读时映射、
@@ -495,7 +496,10 @@ export async function sweepMigratedHistory(opts: {
 	if (swept.snapshotDays.length > 0) {
 		skipped.push({
 			path: "history/repush",
-			reason: `${swept.snapshotDays.length} 天的重推原件过了保留期(${opts.retentionDays} 天),没带过来`,
+			reason: serverText("service.migration.history.text.1", {
+				count: swept.snapshotDays.length,
+				value1: opts.retentionDays,
+			}),
 		});
 	}
 	return { clearedThrough: swept.clearedThrough, snapshotDays: swept.snapshotDays, skipped };

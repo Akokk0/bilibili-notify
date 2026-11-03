@@ -1,4 +1,5 @@
 import type { Disposable, LiveDetails, LiveInteractionReport } from "@bilibili-notify/internal";
+import { t as serverText } from "../../../i18n/index.js";
 import { riskBackoffStepMs } from "../../api/index.js";
 import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
@@ -300,7 +301,10 @@ export class RoomSession {
 					this.ctx.logger.warn(
 						`[conn] 直播间 [${this.room.roomId}] 弹幕认证失败 code=${event.code}`,
 					);
-					void this.reconnect("error", `认证失败 code=${event.code}`);
+					void this.reconnect(
+						"error",
+						serverText("bilibili.live.session.room-session.text.1", { value0: event.code }),
+					);
 					return;
 				case "heartbeat":
 					this.markActivity("heartbeat");
@@ -374,7 +378,12 @@ export class RoomSession {
 		this.reportInteraction({
 			kind: "superchat",
 			...report,
-			fallbackText: `【${name}的直播间】${report.viewer.name}的SC:${report.text}（${report.amount}元）`,
+			fallbackText: serverText("bilibili.live.session.room-session.text.2", {
+				value0: name,
+				value1: report.viewer.name,
+				value2: report.text,
+				value3: report.amount,
+			}),
 		});
 	}
 
@@ -391,7 +400,11 @@ export class RoomSession {
 		this.reportInteraction({
 			kind: "membership",
 			...report,
-			fallbackText: `【${this.masterName}的直播间】${report.viewer.name}加入了大航海（${report.tier.name}）`,
+			fallbackText: serverText("bilibili.live.session.room-session.text.3", {
+				value0: this.masterName,
+				value1: report.viewer.name,
+				value2: report.tier.name,
+			}),
 		});
 	}
 
@@ -488,7 +501,10 @@ export class RoomSession {
 			if (staleMs >= LIVE_WS_STALE_MS) {
 				void this.reconnect(
 					"watchdog",
-					`${Math.floor(staleMs / 1000)}s 无 heartbeat/消息(last=${this.lastActivityReason})`,
+					serverText("bilibili.live.session.room-session.text.4", {
+						value0: Math.floor(staleMs / 1000),
+						value1: this.lastActivityReason,
+					}),
 				);
 			}
 		}, LIVE_WS_WATCHDOG_INTERVAL_MS);
@@ -618,10 +634,15 @@ export class RoomSession {
 	}
 
 	private describeReconnectReason(reason: ReconnectReason, detail?: string): string {
-		if (reason === "error") return detail ? `连接错误(${detail})` : "连接错误";
-		if (reason === "close") return "连接关闭";
-		if (reason === "preflight") return "弹幕预检被风控拦截";
-		return detail ? `连接静默(${detail})` : "连接静默";
+		if (reason === "error")
+			return detail
+				? serverText("bilibili.live.session.room-session.text.5", { value0: detail })
+				: serverText("bilibili.live.session.room-session.text.6");
+		if (reason === "close") return serverText("bilibili.live.session.room-session.text.7");
+		if (reason === "preflight") return serverText("bilibili.live.session.room-session.text.8");
+		return detail
+			? serverText("bilibili.live.session.room-session.text.9", { value0: detail })
+			: serverText("bilibili.live.session.room-session.text.10");
 	}
 
 	private logMonitoringStopped(reason: string): void {

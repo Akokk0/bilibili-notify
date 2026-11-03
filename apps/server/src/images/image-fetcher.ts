@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 抓图服务:把远端的图抓进图库 / 把手里的字节存进图库,回引用(ADR-0025 决策 8、10;签名见
  * docs/1.0/subscription-sources.md 的 `IntegrationContext`)。以后绑到每个集成的上下文上当 `ctx.fetchImage` /
@@ -77,12 +78,16 @@ export interface ImageFetcher {
 	): Promise<Result<{ ref: ImageRef }>>;
 }
 
-const NOT_AN_IMAGE = "不是图库收的图(只收 png / jpg / gif / webp)";
-const TOO_LARGE = `图太大(单张上限 ${IMAGE_MAX_BYTES / 1024 / 1024} MiB)`;
+const notAnImage = () => serverText("service.images.image-fetcher.text.1");
+const tooLarge = () =>
+	serverText("service.images.image-fetcher.text.2", { value0: IMAGE_MAX_BYTES / 1024 / 1024 });
 
 /** 对端回了非 2xx:状态码 → 失败。 */
 function statusFailure(status: number, where: string): Failure {
-	const message = `对端回了 HTTP ${status}: ${where}`;
+	const message = serverText("service.images.image-fetcher.text.3", {
+		value0: status,
+		value1: where,
+	});
 	if (status === 401 || status === 403) return fail("unauthorized", message);
 	if (status === 404 || status === 410) return fail("not_found", message);
 	if (status === 429) return fail("rate_limited", message);
@@ -100,7 +105,10 @@ export function createImageFetcher(deps: ImageFetcherDeps): ImageFetcher {
 			try {
 				target = new URL(url);
 			} catch {
-				return fail("invalid", `不是合法的地址: ${urlWithoutQuery(url)}`);
+				return fail(
+					"invalid",
+					serverText("service.images.image-fetcher.text.4", { value0: urlWithoutQuery(url) }),
+				);
 			}
 			const origin = target.origin;
 
@@ -123,7 +131,11 @@ export function createImageFetcher(deps: ImageFetcherDeps): ImageFetcher {
 					if (hop >= IMAGE_FETCH_MAX_REDIRECTS) {
 						return fail(
 							"unavailable",
-							`跟了 ${IMAGE_FETCH_MAX_REDIRECTS} 跳重定向还没到图(HTTP ${response.status}): ${urlWithoutQuery(target)}`,
+							serverText("service.images.image-fetcher.text.5", {
+								value0: IMAGE_FETCH_MAX_REDIRECTS,
+								value1: response.status,
+								value2: urlWithoutQuery(target),
+							}),
 						);
 					}
 					try {
@@ -131,23 +143,27 @@ export function createImageFetcher(deps: ImageFetcherDeps): ImageFetcher {
 					} catch {
 						return fail(
 							"unavailable",
-							`对端给了不合法的重定向地址(HTTP ${response.status}): ${urlWithoutQuery(target)}`,
+							serverText("service.images.image-fetcher.text.6", {
+								value0: response.status,
+								value1: urlWithoutQuery(target),
+							}),
 						);
 					}
 					continue;
 				}
 				if (!response.isSuccess) return statusFailure(response.status, urlWithoutQuery(target));
 				if (!sniffImageFormat(response.body)) {
-					return fail("invalid", `${NOT_AN_IMAGE}: ${urlWithoutQuery(target)}`);
+					return fail("invalid", `${notAnImage()}: ${urlWithoutQuery(target)}`);
 				}
 				return deps.images.put(response.body);
 			}
 		},
 
 		async storeImage(bytes, opts = {}) {
-			if (opts.signal?.aborted) return fail("indeterminate", "存图被中止");
-			if (bytes.byteLength > IMAGE_MAX_BYTES) return fail("invalid", TOO_LARGE);
-			if (!sniffImageFormat(bytes)) return fail("invalid", NOT_AN_IMAGE);
+			if (opts.signal?.aborted)
+				return fail("indeterminate", serverText("service.images.image-fetcher.text.7"));
+			if (bytes.byteLength > IMAGE_MAX_BYTES) return fail("invalid", tooLarge());
+			if (!sniffImageFormat(bytes)) return fail("invalid", notAnImage());
 			return deps.images.put(bytes);
 		},
 	};

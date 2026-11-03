@@ -642,7 +642,7 @@ describe("createPipelineRuntime — 出图失败计数 B 站与拓展作品共�
 		// 自己直发一条。两条路共用一份计数、一个来源(60 秒节流键),第二次失败不会再补一条,面板上也只亮一次。
 		const texts = H.push[0].notifyMaster.mock.calls.map((call: unknown[]) => String(call[0]));
 		expect(texts).toHaveLength(1);
-		expect(texts[0]).toMatch(/^\[post-delivery\] 生成动态图片失败：浏览器挂了/);
+		expect(texts[0]).toMatch(/^\[post-delivery\] 生成作品图片失败：浏览器挂了/);
 	});
 });
 

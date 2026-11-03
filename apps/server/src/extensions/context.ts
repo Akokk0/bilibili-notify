@@ -315,8 +315,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	const integration = createIntegrationContext({
 		timezoneReader: opts.timezoneReader,
 		logger: opts.loggerOf(id),
-		// 建上下文那一刻就取了字:`stopReason` 收的是字符串,改成停下那一刻现取要动集成上下文,随 4-53c。
-		stopReason: t("extension.stopReason.disabled", { id }),
+		// 停下时现取原因，长期运行的上下文不会冻结创建时的语言。
+		stopReason: () => t("extension.stopReason.disabled", { id }),
 		state: opts.stores.state,
 		secrets: opts.stores.secrets,
 		problems: opts.problems,

@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 卡片背景图的本地资产存储。落盘到 `<dataRoot>/assets/card-bg/`,资产 id = 文件名
  * `<32-hex>.<ext>`。**不**用 serveStatic 暴露整个 dataRoot(里面有 secrets);只经此模块
@@ -64,8 +65,12 @@ export async function saveCardBg(
 	mime: string,
 ): Promise<string> {
 	const ext = MIME_TO_EXT[mime];
-	if (!ext) throw new AssetRejectedError(`不支持的图片类型：${mime}（仅 PNG / JPEG / WebP）`);
-	if (bytes.byteLength > MAX_CARD_BG_BYTES) throw new AssetRejectedError("图片过大（上限 5MB）");
+	if (!ext)
+		throw new AssetRejectedError(
+			serverText("service.runtime.card-assets.text.1", { value0: mime }),
+		);
+	if (bytes.byteLength > MAX_CARD_BG_BYTES)
+		throw new AssetRejectedError(serverText("service.runtime.card-assets.text.2"));
 	const result = await storeOf(dataRoot).put({ bytes, ext });
 	// 上面已按同一套规矩判过,走到这里被拒说明两边对不上 —— 是 bug,不是用户输入的事。
 	if (!result.ok) throw new Error(result.message);

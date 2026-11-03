@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 往图库存图的小件;存图的口一律是 `Pick<ImageWriter, "put">`。
  */
@@ -24,7 +25,7 @@ export function deferImageWrites(writer: Pick<ImageWriter, "put">): {
 			async put(bytes) {
 				const ref = imageRefOf(bytes);
 				if (ref === undefined) {
-					return fail("invalid", "不是图库收的图(只收 png / jpg / gif / webp,单张不超过 8 MiB)");
+					return fail("invalid", serverText("service.images.image-writes.text.1"));
 				}
 				pending.set(ref, bytes);
 				return ok({ ref });
@@ -34,9 +35,14 @@ export function deferImageWrites(writer: Pick<ImageWriter, "put">): {
 			committed ??= (async () => {
 				for (const [ref, bytes] of pending) {
 					const stored = await writer.put(bytes);
-					if (!stored.ok) throw new Error(`作品配图存不进图库:${stored.message}`);
+					if (!stored.ok)
+						throw new Error(
+							serverText("service.images.image-writes.text.2", { value0: stored.message }),
+						);
 					if (stored.ref !== ref) {
-						throw new Error(`作品配图的引用对不上:算出 ${ref},图库给 ${stored.ref}`);
+						throw new Error(
+							serverText("service.images.image-writes.text.3", { value0: ref, value1: stored.ref }),
+						);
 					}
 				}
 			})();
@@ -59,5 +65,5 @@ export async function storeOrSkip(
 	const stored = await images.put(bytes);
 	if (stored.ok) return stored.ref;
 	if (stored.code === "invalid") return undefined;
-	throw new Error(`图存不进图库:${stored.message}`);
+	throw new Error(serverText("service.images.image-writes.text.4", { value0: stored.message }));
 }

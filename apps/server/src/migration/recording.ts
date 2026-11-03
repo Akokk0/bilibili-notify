@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 统计的「在记」小账:从 0.x 留下的数据**推出**老日子哪些小时在记,按小时区间写进新代的
  * `stats/recording/<订阅 id>.jsonl`(ADR-0027 决策 3 / 13;㉖f)。迁移之后,老日子在 `/overview` 上哪些格有数、
@@ -195,7 +196,7 @@ export async function migrateRecordingLedger(
 	);
 	const coreFile = await readJsonFile(dataPath(dataRoot, ...CORE_SETTINGS_FILE));
 	if (subsFile.kind === "unreadable" || coreFile.kind === "unreadable") {
-		skip("订阅文件或核心设置读不懂,没推出「在记」小账");
+		skip(serverText("service.migration.recording.text.1"));
 		return [];
 	}
 	const rows =
@@ -207,7 +208,7 @@ export async function migrateRecordingLedger(
 				? []
 				: undefined;
 	if (rows === undefined) {
-		skip("订阅文件读不懂,没推出「在记」小账");
+		skip(serverText("service.migration.recording.text.2"));
 		return [];
 	}
 	const defaults: Features = layerFeatures(

@@ -9,6 +9,7 @@ import {
 	type Logger,
 } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
+import { t as conversationText } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 
 /**
@@ -222,7 +223,13 @@ export interface ConversationStoreOptions {
 }
 
 /** 新会话的占位标题。首条用户消息落下来之前一直显示它。 */
+/** 盘上的既有占位标记不随语言改；仅对外展示时现取文字。 */
 const PLACEHOLDER_TITLE = "新对话";
+function displayConversation(c: Conversation): Conversation {
+	return c.title === PLACEHOLDER_TITLE
+		? { ...c, title: conversationText("conversation.placeholderTitle") }
+		: c;
+}
 /** 标题从首问截取的最大字数。侧栏一行放得下,再长也是省略号。 */
 const TITLE_MAX_CHARS = 24;
 const DEFAULT_MAX_MESSAGES = 200;
@@ -351,7 +358,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				.filter((c) => c.messages.length > 0 || busy.has(c.id))
 				.map((c) => ({
 					id: c.id,
-					title: c.title,
+					title: displayConversation(c).title,
 					createdAt: c.createdAt,
 					updatedAt: c.updatedAt,
 					messageCount: c.messages.length,
@@ -362,7 +369,8 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 		},
 
 		async get(id) {
-			return readOne(fileOf(id));
+			const c = await readOne(fileOf(id));
+			return c ? displayConversation(c) : c;
 		},
 
 		create(init) {
@@ -420,7 +428,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 					await unlink(fileOf(stale.id)).catch(() => {});
 					logger.debug(`[ai-chat] 会话数超上限,删除最旧的 ${stale.id}`);
 				}
-				return conv;
+				return displayConversation(conv);
 			});
 		},
 
@@ -459,7 +467,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				}
 				conv.updatedAt = now;
 				await writeOne(conv);
-				return conv;
+				return displayConversation(conv);
 			});
 		},
 
@@ -473,7 +481,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				conv.autoTitled = true;
 				// updatedAt 保持不动,理由见接口上的注释。
 				await writeOne(conv);
-				return conv;
+				return displayConversation(conv);
 			});
 		},
 

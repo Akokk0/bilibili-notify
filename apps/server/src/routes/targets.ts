@@ -3,8 +3,9 @@ import { fail, issuesFromZod, type NotificationPayload } from "@bilibili-notify/
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
+import { t as serverText } from "../i18n/index.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
-import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
+import { enginesNotReadyMessage, respondFailure } from "./respond-failure.js";
 import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 
@@ -39,11 +40,21 @@ const TargetIdSchema = z.uuid();
 // TestResponse 在 @bilibili-notify/contract(web 同源消费)。
 
 const KIND_TEXTS: Record<z.infer<typeof TestKindSchema>, string> = {
-	liveStart: "[测试推送 · 直播开播] 老番茄 开播了！标题：测试直播",
-	post: "[测试推送 · 动态] 老番茄 发布了一条测试动态",
-	superchat: "[测试推送 · SC] ¥30 来自 测试用户 — 主播加油！",
-	membership: "[测试推送 · 上舰] 测试用户 成为了舰长！",
-	text: "[bilibili-notify] 测试推送已送达 ✓",
+	get liveStart() {
+		return serverText("service.routes.targets.text.1");
+	},
+	get post() {
+		return serverText("service.routes.targets.text.2");
+	},
+	get superchat() {
+		return serverText("service.routes.targets.text.3");
+	},
+	get membership() {
+		return serverText("service.routes.targets.text.4");
+	},
+	get text() {
+		return serverText("service.routes.targets.text.5");
+	},
 };
 
 /** 整个体都不带(`curl -X POST` 一把)就当 `{}`,全按缺省;带了但不是 JSON 才算体不对。 */
@@ -95,7 +106,9 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 		if (!idCheck.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "推送目标 id 要是 uuid", { issues: issuesFromZod(idCheck.error) }),
+				fail("invalid", serverText("service.routes.targets.text.6"), {
+					issues: issuesFromZod(idCheck.error),
+				}),
 			);
 		}
 		const targetId = idCheck.data;
@@ -103,18 +116,25 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", `测试推送的 kind 只能是 ${TestKindSchema.options.join(" / ")}`, {
-					issues: issuesFromZod(parsed.error),
-				}),
+				fail(
+					"invalid",
+					serverText("service.routes.targets.text.7", {
+						value0: TestKindSchema.options.join(" / "),
+					}),
+					{
+						issues: issuesFromZod(parsed.error),
+					},
+				),
 			);
 		}
 
 		const { kind, text } = parsed.data;
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
-		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
+		if (!target)
+			return respondFailure(c, fail("not_found", serverText("service.routes.targets.text.8")));
 
 		const payload: NotificationPayload = {
 			kind: "text",
@@ -130,7 +150,8 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 		const id = c.req.param("id");
 		try {
 			const removed = await deps.store.deleteTarget(id);
-			if (!removed) return respondFailure(c, fail("not_found", "没有这个推送目标"));
+			if (!removed)
+				return respondFailure(c, fail("not_found", serverText("service.routes.targets.text.9")));
 			return c.body(null, 204);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());

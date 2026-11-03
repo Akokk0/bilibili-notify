@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 女仆技能库:`<dir>/<name>/SKILL.md`,一条一目录,目录名即技能名。
  *
@@ -103,7 +104,7 @@ export class MaidSkillStore {
 			if (!isValidSkillName(dirName)) {
 				issues.push({
 					dir: dirName,
-					reason: "目录名不是合法技能名(只收小写字母 / 数字 / 单个连字符)",
+					reason: serverText("service.maid-skills.store.text.1"),
 				});
 				continue;
 			}
@@ -111,12 +112,20 @@ export class MaidSkillStore {
 			try {
 				const buf = await readFile(join(this.dir, dirName, SKILL_FILE));
 				if (buf.byteLength > MAX_FILE_BYTES) {
-					issues.push({ dir: dirName, reason: `SKILL.md 过大(上限 ${MAX_FILE_BYTES / 1024} KB)` });
+					issues.push({
+						dir: dirName,
+						reason: serverText("service.maid-skills.store.text.2", {
+							value0: MAX_FILE_BYTES / 1024,
+						}),
+					});
 					continue;
 				}
 				text = buf.toString("utf-8");
 			} catch {
-				issues.push({ dir: dirName, reason: `目录里没有 ${SKILL_FILE}` });
+				issues.push({
+					dir: dirName,
+					reason: serverText("service.maid-skills.store.text.3", { value0: SKILL_FILE }),
+				});
 				continue;
 			}
 			const res = parseSkillFile(text);
@@ -128,14 +137,14 @@ export class MaidSkillStore {
 				// 名字就是目录名,这条不变式一破,「按名字找目录」这件事就不成立了。
 				issues.push({
 					dir: dirName,
-					reason: `frontmatter 里的 name 是「${res.skill.name}」,与目录名对不上`,
+					reason: serverText("service.maid-skills.store.text.4", { value0: res.skill.name }),
 				});
 				continue;
 			}
 			if (reserved.has(dirName)) {
 				// 内置照旧赢。让盘上一份悄悄顶掉它,主人升级之后会发现某条内置技能
 				// 永远停在旧版本,而界面上看不出任何异样。
-				issues.push({ dir: dirName, reason: "这个名字已被内置技能占用,盘上这一份不会生效" });
+				issues.push({ dir: dirName, reason: serverText("service.maid-skills.store.text.5") });
 				continue;
 			}
 			user.set(dirName, res.skill);
@@ -173,7 +182,11 @@ export class MaidSkillStore {
 
 	async update(name: string, next: MaidSkill): Promise<void> {
 		this.assertEditable(name);
-		if (!this.user.has(name)) throw new SkillStoreError("not_found", `技能不存在:${name}`);
+		if (!this.user.has(name))
+			throw new SkillStoreError(
+				"not_found",
+				serverText("service.maid-skills.store.text.6", { value0: name }),
+			);
 		const clean = this.validate(next);
 		if (clean.name !== name) await this.assertFree(clean.name);
 		await this.writeSkill(clean);
@@ -187,7 +200,11 @@ export class MaidSkillStore {
 
 	async remove(name: string): Promise<void> {
 		this.assertEditable(name);
-		if (!this.user.has(name)) throw new SkillStoreError("not_found", `技能不存在:${name}`);
+		if (!this.user.has(name))
+			throw new SkillStoreError(
+				"not_found",
+				serverText("service.maid-skills.store.text.7", { value0: name }),
+			);
 		await rm(join(this.dir, name), { recursive: true, force: true });
 		this.user.delete(name);
 	}
@@ -214,10 +231,21 @@ export class MaidSkillStore {
 	 */
 	private async assertFree(name: string): Promise<void> {
 		if (this.isReserved(name)) {
-			throw new SkillStoreError("conflict", `「${name}」已被内置技能占用,换个名字吧`);
+			throw new SkillStoreError(
+				"conflict",
+				serverText("service.maid-skills.store.text.8", { value0: name }),
+			);
 		}
-		if (this.user.has(name)) throw new SkillStoreError("conflict", `「${name}」已经有了`);
-		if (await this.fileExists(name)) throw new SkillStoreError("conflict", `「${name}」已经有了`);
+		if (this.user.has(name))
+			throw new SkillStoreError(
+				"conflict",
+				serverText("service.maid-skills.store.text.9", { value0: name }),
+			);
+		if (await this.fileExists(name))
+			throw new SkillStoreError(
+				"conflict",
+				serverText("service.maid-skills.store.text.10", { value0: name }),
+			);
 	}
 
 	/** 盘上有没有这个名字的 SKILL.md。空目录 / 临时文件残留不算占用 —— 那儿没有主人的东西可丢。 */
@@ -230,9 +258,16 @@ export class MaidSkillStore {
 
 	/** 改 / 删的前置:名字合法(它要拼进路径)且不是内置。 */
 	private assertEditable(name: string): void {
-		if (!isValidSkillName(name)) throw new SkillStoreError("invalid", `技能名不合法:${name}`);
+		if (!isValidSkillName(name))
+			throw new SkillStoreError(
+				"invalid",
+				serverText("service.maid-skills.store.text.11", { value0: name }),
+			);
 		if (this.isReserved(name)) {
-			throw new SkillStoreError("conflict", `「${name}」是内置技能,改不动也删不掉`);
+			throw new SkillStoreError(
+				"conflict",
+				serverText("service.maid-skills.store.text.12", { value0: name }),
+			);
 		}
 	}
 

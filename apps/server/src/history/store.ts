@@ -29,6 +29,7 @@ import {
 	IMAGE_REF_PATTERN,
 } from "@bilibili-notify/internal";
 import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
+import { t as serverText } from "../i18n/index.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { dataPath } from "../runtime/roots.js";
 import { RecencyTable } from "../util/recency-table.js";
@@ -306,7 +307,10 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	async function putImage(bytes: Uint8Array, label: string): Promise<ImageRef | undefined> {
 		const stored = await opts.images.put(bytes);
 		if (stored.ok) return stored.ref;
-		if (stored.code !== "invalid") throw new Error(`配图存不进图库:${label} — ${stored.message}`);
+		if (stored.code !== "invalid")
+			throw new Error(
+				serverText("service.history.store.text.1", { value0: label, value1: stored.message }),
+			);
 		opts.logger.warn(`[history] 配图存不进图库,这条消息不带图:${label} — ${stored.message}`);
 		return undefined;
 	}
@@ -337,16 +341,24 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				// 下播的附加项里唯一的图是词云;别的纯图都是拆成独立消息的卡片。
 				const text =
 					payload.caption ||
-					(feature === "liveEnd" && msg.role === "extra" ? "[弹幕词云]" : "[卡片图]");
+					(feature === "liveEnd" && msg.role === "extra"
+						? serverText("service.history.store.text.2")
+						: serverText("service.history.store.text.3"));
 				return { kind: "image", text, image };
 			}
 			case "image-group":
 				return {
 					kind: "text",
-					text: `[图集 ${payload.images.length} 张${payload.mergeForward ? " · 合并转发" : ""}]`,
+					text: serverText("service.history.store.text.5", {
+						count: payload.images.length,
+						value1: payload.mergeForward ? serverText("service.history.store.text.4") : "",
+					}),
 				};
 			case "native-share":
-				return { kind: "text", text: `[小程序卡] ${payload.title}` };
+				return {
+					kind: "text",
+					text: serverText("service.history.store.text.6", { value0: payload.title }),
+				};
 			case "composite": {
 				const textParts: string[] = [];
 				let image: ImageRef | undefined;
@@ -363,7 +375,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 					} else if (seg.kind === "at-all") {
 						// @全体 段无文字载体,但 History 需要可读标记,否则独立的 @全体 提醒
 						// 消息会整条落成「（无内容）」。按段序前置拼接(@全体 通常单独成消息)。
-						textParts.push("@全体");
+						textParts.push(serverText("service.history.store.text.7"));
 					}
 				}
 				return {

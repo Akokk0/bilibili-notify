@@ -5,6 +5,7 @@ import type {
 	WebSocketLike,
 	WebSocketOptions,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../../i18n/index.js";
 import { RiskControlError } from "./risk-control";
 
 /**
@@ -138,7 +139,12 @@ export class ApiClient {
 
 		// 跟满跳数还是 30x:通用客户端把那个 3xx 原样交回来,B 站这一路当失败。
 		if (isRedirectStatus(result.status) && result.headers.has("location")) {
-			throw new Error(`重定向超过 ${MAX_REDIRECTS} 跳: ${urlWithoutQuery(url)}`);
+			throw new Error(
+				serverText("bilibili.api.api-client.text.1", {
+					value0: MAX_REDIRECTS,
+					value1: urlWithoutQuery(url),
+				}),
+			);
 		}
 		const text = result.text();
 		if (!result.isSuccess) {

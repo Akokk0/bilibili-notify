@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 保存指令别名时的冲突检查。
  *
@@ -63,8 +64,15 @@ export function checkCommandAliases(args: {
 				return fail(
 					"conflict",
 					prev === spec.name
-						? `「${spec.name}」的别名「${trigger}」和它自己重复了`
-						: `别名「${trigger}」被「${spec.name}」和「${prev}」同时占用了，一个词只能归一条指令`,
+						? serverText("service.routes.command-alias-guard.text.1", {
+								value0: spec.name,
+								value1: trigger,
+							})
+						: serverText("service.routes.command-alias-guard.text.2", {
+								value0: trigger,
+								value1: spec.name,
+								value2: prev,
+							}),
 				);
 			}
 			owner.set(trigger.toLowerCase(), spec.name);

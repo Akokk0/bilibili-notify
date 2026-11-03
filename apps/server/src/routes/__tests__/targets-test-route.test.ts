@@ -113,9 +113,9 @@ describe("POST /api/targets/:id/test 投递的结果(照旧回 200,体是 Result
 	it("kind 用特性键:liveStart / post / superchat / membership 各发各的样板句", async () => {
 		const expected = {
 			liveStart: "直播开播",
-			post: "动态",
+			post: "作品",
 			superchat: "SC",
-			membership: "上舰",
+			membership: "会员",
 		} as const;
 		for (const [kind, word] of Object.entries(expected)) {
 			const { app, sendToTarget } = makeApp();

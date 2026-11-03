@@ -100,8 +100,18 @@ const dynamicSettingsOf = (settings: { dynamicCron: string }, timezone: string) 
 });
 
 /** 设置那一格的叫法与键名:问题文案里带着,让主人认出是哪一格。 */
-const DYNAMIC_CELL = { label: "动态检查频率", key: "dynamicCron" } as const;
-const LOGIN_CHECK_CELL = { label: "登录心跳间隔", key: "healthCheckMinutes" } as const;
+const DYNAMIC_CELL = {
+	get label() {
+		return t("bilibili.source.dynamicCell");
+	},
+	key: "dynamicCron",
+} as const;
+const LOGIN_CHECK_CELL = {
+	get label() {
+		return t("bilibili.source.loginCheckCell");
+	},
+	key: "healthCheckMinutes",
+} as const;
 
 const DYNAMIC_PROBLEM = "dynamic_settings_invalid";
 const LOGIN_CHECK_PROBLEM = "login_check_settings_invalid";
@@ -120,12 +130,18 @@ function causeOf(failure: Failure, cell: { label: string; key: string }): string
  */
 export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 	icon: BILI_SOURCE_ICON,
-	label: "B 站",
+	get label() {
+		return t("bilibili.source.label");
+	},
 	shortLabel: "B",
 	color: "#fb7299",
-	creatorNoun: "UP主",
+	get creatorNoun() {
+		return t("bilibili.source.creatorNoun");
+	},
 	externalIdNoun: "UID",
-	postNoun: "动态",
+	get postNoun() {
+		return t("bilibili.source.postNoun");
+	},
 	externalIdRegex: BILI_EXTERNAL_ID_REGEX,
 	// 纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。
 	searchAccepts: ["id", "link", "name"],
@@ -145,9 +161,24 @@ const GUARD_ICON_RETRY_INTERVAL_MS = 5 * 60 * 1000;
 
 /** 每个来源实例一份:运行中补上的图库引用只属于这个实例,模块里的档位表保持不变。 */
 function copyBiliDescriptor(): SourceDescriptor {
-	const { featureHints: _featureHints, ...descriptor } = BILI_SOURCE_DESCRIPTOR;
+	const {
+		label: _label,
+		creatorNoun: _creatorNoun,
+		postNoun: _postNoun,
+		featureHints: _featureHints,
+		...descriptor
+	} = BILI_SOURCE_DESCRIPTOR;
 	return {
 		...descriptor,
+		get label() {
+			return BILI_SOURCE_DESCRIPTOR.label;
+		},
+		get creatorNoun() {
+			return BILI_SOURCE_DESCRIPTOR.creatorNoun;
+		},
+		get postNoun() {
+			return BILI_SOURCE_DESCRIPTOR.postNoun;
+		},
 		get featureHints() {
 			return BILI_SOURCE_DESCRIPTOR.featureHints;
 		},
@@ -550,7 +581,9 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				mine.push(
 					ctx.registerLinkResolver(
 						createBiliLinkResolver({
-							label: descriptor.label,
+							get label() {
+								return descriptor.label;
+							},
 							api: biliApi,
 							fetchImage: ctx.fetchImage,
 							logger: ctx.logger,

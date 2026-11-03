@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 图库的同源读口 `GET /api/images/<ref>`(ADR-0036 决策 5 下 10-03 的 🔗)。
  *
@@ -17,7 +18,8 @@ export function createImagesRoute(deps: RouteDeps): Hono {
 	app.get("/:ref", async (c) => {
 		// 引用不合规矩时图库不碰盘、直接回 undefined —— 和文件不在一样答 404。
 		const image = await deps.runtime.imageStore.read(c.req.param("ref"));
-		if (!image) return respondFailure(c, fail("not_found", "图库里没有这张图"));
+		if (!image)
+			return respondFailure(c, fail("not_found", serverText("service.routes.images.text.1")));
 		return c.body(new Uint8Array(image.bytes), 200, {
 			"Content-Type": image.mime,
 			"Cache-Control": IMAGE_CACHE_CONTROL,

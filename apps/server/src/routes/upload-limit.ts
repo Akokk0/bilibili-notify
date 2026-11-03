@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 上传路由的**入口**闸门。
  *
@@ -30,10 +31,18 @@ const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
  * 413 而不是 400:这是「超出上限」的标准语义,与「文件类型不对」区分得开。码是 `invalid`(输入不对),
  * 状态码显式给 413 —— `statusOf` 里没有这一档。
  */
-export function uploadBodyLimit(maxBytes: number, what: string): MiddlewareHandler {
+export function uploadBodyLimit(maxBytes: number, what: () => string): MiddlewareHandler {
 	const mb = Math.round(maxBytes / 1024 / 1024);
 	return bodyLimit({
 		maxSize: maxBytes + MULTIPART_OVERHEAD_BYTES,
-		onError: (c) => respondFailure(c, fail("invalid", `${what}过大（上限 ${mb}MB）`), 413),
+		onError: (c) =>
+			respondFailure(
+				c,
+				fail(
+					"invalid",
+					serverText("service.routes.upload-limit.text.1", { value0: what(), value1: mb }),
+				),
+				413,
+			),
 	});
 }

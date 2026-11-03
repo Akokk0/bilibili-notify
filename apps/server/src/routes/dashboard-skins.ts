@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 皮肤库 API。上传是 multipart zip(闸在 parseBody 之前,见 upload-limit.ts);
  * 校验/白名单/路径穿越防御在 skins/package.ts 与 skins/store.ts,这里只做 wire。
@@ -39,7 +40,7 @@ const MAX_SKIN_ZIP_BYTES = 30 * 1024 * 1024;
  * `{ code: "not_found", message }`,从前按端点分的 `err` / `errors` 两种壳不再有。
  */
 function skinNotFound(c: Context) {
-	return respondFailure(c, fail("not_found", "皮肤不存在"));
+	return respondFailure(c, fail("not_found", serverText("service.routes.dashboard-skins.text.1")));
 }
 
 export function createDashboardSkinsRoute(deps: {
@@ -65,24 +66,38 @@ export function createDashboardSkinsRoute(deps: {
 		return c.json(body);
 	});
 
-	app.post("/", uploadBodyLimit(MAX_SKIN_ZIP_BYTES, "皮肤包"), async (c) => {
-		const body = await c.req.parseBody().catch(() => null);
-		const file = body?.file;
-		if (!(file instanceof File)) {
-			return respondFailure(c, fail("invalid", "缺少皮肤包文件(multipart 字段 file)"));
-		}
-		const bytes = new Uint8Array(await file.arrayBuffer());
-		const opened = openSkinPackage(bytes);
-		if (!opened.ok) {
-			return respondFailure(c, failureOfChecks("invalid", "这个皮肤包", opened.errors));
-		}
-		const { id } = await skinStore.save({
-			manifest: opened.manifest,
-			assets: opened.assets,
-			names: opened.names,
-		});
-		return c.json(ok({ id, warnings: opened.warnings }), 201);
-	});
+	app.post(
+		"/",
+		uploadBodyLimit(MAX_SKIN_ZIP_BYTES, () => serverText("service.routes.dashboard-skins.text.2")),
+		async (c) => {
+			const body = await c.req.parseBody().catch(() => null);
+			const file = body?.file;
+			if (!(file instanceof File)) {
+				return respondFailure(
+					c,
+					fail("invalid", serverText("service.routes.dashboard-skins.text.3")),
+				);
+			}
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			const opened = openSkinPackage(bytes);
+			if (!opened.ok) {
+				return respondFailure(
+					c,
+					failureOfChecks(
+						"invalid",
+						serverText("service.routes.dashboard-skins.text.4"),
+						opened.errors,
+					),
+				);
+			}
+			const { id } = await skinStore.save({
+				manifest: opened.manifest,
+				assets: opened.assets,
+				names: opened.names,
+			});
+			return c.json(ok({ id, warnings: opened.warnings }), 201);
+		},
+	);
 
 	app.get("/active", async (c) => {
 		const ids = skinStore.getActive();
@@ -102,10 +117,16 @@ export function createDashboardSkinsRoute(deps: {
 		const req = body && typeof body === "object" ? (body as { id?: unknown; theme?: unknown }) : {};
 		const { id, theme } = req;
 		if (id !== null && typeof id !== "string") {
-			return respondFailure(c, fail("invalid", "id 必须是皮肤 id 或 null"));
+			return respondFailure(
+				c,
+				fail("invalid", serverText("service.routes.dashboard-skins.text.5")),
+			);
 		}
 		if (theme !== undefined && theme !== "light" && theme !== "dark") {
-			return respondFailure(c, fail("invalid", "theme 只能是 light 或 dark"));
+			return respondFailure(
+				c,
+				fail("invalid", serverText("service.routes.dashboard-skins.text.6")),
+			);
 		}
 		if (id !== null && !(await skinStore.get(id))) {
 			return skinNotFound(c);
@@ -130,7 +151,7 @@ export function createDashboardSkinsRoute(deps: {
 			// `commentary` 回 null 分不出「没配模型」与「引擎还没挂上」;那句话本来就是叫主人去接模型,按没配。
 			return respondFailure(
 				c,
-				fail("not_configured", "智能女仆尚未配置或未就绪,先去 AI 设置页接好模型"),
+				fail("not_configured", serverText("service.routes.dashboard-skins.text.7")),
 			);
 		}
 		const body = await c.req.json().catch(() => null);
@@ -138,10 +159,16 @@ export function createDashboardSkinsRoute(deps: {
 			body && typeof body === "object" ? (body as { instruction?: unknown }).instruction : null;
 		const draft = body && typeof body === "object" ? (body as { draft?: unknown }).draft : null;
 		if (typeof instruction !== "string" || instruction.trim() === "" || instruction.length > 2000) {
-			return respondFailure(c, fail("invalid", "修改要求必须是 1~2000 字的文本"));
+			return respondFailure(
+				c,
+				fail("invalid", serverText("service.routes.dashboard-skins.text.8")),
+			);
 		}
 		if (typeof draft !== "object" || draft === null) {
-			return respondFailure(c, fail("invalid", "draft 必须是当前 manifest 对象"));
+			return respondFailure(
+				c,
+				fail("invalid", serverText("service.routes.dashboard-skins.text.9")),
+			);
 		}
 		const assets = await skinStore.listAssets(id);
 		// 原名只进提示词的资产清单(帮设计师看懂这是什么图);它写进 manifest 的
@@ -160,13 +187,24 @@ export function createDashboardSkinsRoute(deps: {
 			// 生成本身失败(模型那头的错、网络):对端给的原因就是主人要看的,原话进 `message` ——
 			// 与卡片皮肤的 `/:id/ai` 同一口径。
 			const reason = e instanceof Error ? e.message : String(e);
-			return respondFailure(c, fail("unavailable", `女仆那边没改成：${reason}`));
+			return respondFailure(
+				c,
+				fail(
+					"unavailable",
+					serverText("service.routes.dashboard-skins.text.10", { value0: reason }),
+				),
+			);
 		}
 		// 女仆两趟都没改出合格的皮肤:是 `invalid`(逐条意见进 `issues`),不再是 422 的私有形状。
 		if (!result.ok) {
 			return respondFailure(
 				c,
-				failureOfChecks("invalid", "女仆改出来的皮肤", result.errors, { listSingle: true }),
+				failureOfChecks(
+					"invalid",
+					serverText("service.routes.dashboard-skins.text.11"),
+					result.errors,
+					{ listSingle: true },
+				),
 			);
 		}
 		return c.json(ok({ manifest: result.manifest, warnings: result.warnings }));
@@ -197,43 +235,50 @@ export function createDashboardSkinsRoute(deps: {
 	 * 类型各判各的。这道闸管的是「这次请求能往堆里塞多少」,不是「这个文件多大」;
 	 * 按图片那条 5MB 开的话,合规的字体连 parseBody 都进不来,主人收到的会是 413。
 	 */
-	app.post("/:id/assets", uploadBodyLimit(MAX_FONT_BYTES, "文件"), async (c) => {
-		const id = c.req.param("id");
-		if (!(await skinStore.get(id))) return skinNotFound(c);
-		const body = await c.req.parseBody().catch(() => null);
-		const file = body?.file;
-		if (!(file instanceof File)) {
-			return respondFailure(c, fail("invalid", "缺少文件(multipart 字段 file)"));
-		}
-		/**
-		 * 图**按 mime 定扩展名**(各家浏览器给得准),字体**按文件名后缀**。
-		 *
-		 * 不是图省事:同一个 .ttf,浏览器给的可能是 `font/ttf`、`application/x-font-ttf`、
-		 * `application/octet-stream`,甚至空串 —— 照 mime 判会把一堆正常字体拒在门外
-		 * (卡片字体图廊那边踩过并写进了 `font-mime.ts`)。两条路都不把上传的文件名
-		 * 拼进磁盘路径:落盘名由 store 自己生成。
-		 */
-		const ext = MIME_TO_EXT[file.type] ?? fontExtOf(file.name);
-		if (!ext) {
-			return respondFailure(
-				c,
-				fail("invalid", "只收 PNG / JPEG / WebP 图片,或 woff2 / woff / ttf / otf 字体"),
-			);
-		}
-		try {
-			// 原始文件名只进原名清单(纯显示),**绝不进磁盘路径 / URL / CSS**。
-			const name = await skinStore.addAsset(
-				id,
-				new Uint8Array(await file.arrayBuffer()),
-				ext,
-				file.name,
-			);
-			return c.json(ok({ name }), 201);
-		} catch (e) {
-			if (e instanceof SkinStoreError) return respondFailure(c, e.toFailure());
-			throw e;
-		}
-	});
+	app.post(
+		"/:id/assets",
+		uploadBodyLimit(MAX_FONT_BYTES, () => serverText("service.routes.dashboard-skins.text.12")),
+		async (c) => {
+			const id = c.req.param("id");
+			if (!(await skinStore.get(id))) return skinNotFound(c);
+			const body = await c.req.parseBody().catch(() => null);
+			const file = body?.file;
+			if (!(file instanceof File)) {
+				return respondFailure(
+					c,
+					fail("invalid", serverText("service.routes.dashboard-skins.text.13")),
+				);
+			}
+			/**
+			 * 图**按 mime 定扩展名**(各家浏览器给得准),字体**按文件名后缀**。
+			 *
+			 * 不是图省事:同一个 .ttf,浏览器给的可能是 `font/ttf`、`application/x-font-ttf`、
+			 * `application/octet-stream`,甚至空串 —— 照 mime 判会把一堆正常字体拒在门外
+			 * (卡片字体图廊那边踩过并写进了 `font-mime.ts`)。两条路都不把上传的文件名
+			 * 拼进磁盘路径:落盘名由 store 自己生成。
+			 */
+			const ext = MIME_TO_EXT[file.type] ?? fontExtOf(file.name);
+			if (!ext) {
+				return respondFailure(
+					c,
+					fail("invalid", serverText("service.routes.dashboard-skins.text.14")),
+				);
+			}
+			try {
+				// 原始文件名只进原名清单(纯显示),**绝不进磁盘路径 / URL / CSS**。
+				const name = await skinStore.addAsset(
+					id,
+					new Uint8Array(await file.arrayBuffer()),
+					ext,
+					file.name,
+				);
+				return c.json(ok({ name }), 201);
+			} catch (e) {
+				if (e instanceof SkinStoreError) return respondFailure(c, e.toFailure());
+				throw e;
+			}
+		},
+	);
 
 	// 编辑器保存:就地更新 manifest(资产不动)。校验与 zip 上传同权威:
 	// parseSkinManifest + 「引用的图/字体必须在包里」同一把尺(referencedAssets)。
@@ -243,7 +288,15 @@ export function createDashboardSkinsRoute(deps: {
 		const read = await readJsonBody(c);
 		if (!read.ok) return respondFailure(c, read);
 		const parsed = parseSkinManifest(read.body);
-		if (!parsed.ok) return respondFailure(c, failureOfChecks("invalid", "皮肤清单", parsed.errors));
+		if (!parsed.ok)
+			return respondFailure(
+				c,
+				failureOfChecks(
+					"invalid",
+					serverText("service.routes.dashboard-skins.text.15"),
+					parsed.errors,
+				),
+			);
 
 		const assets = new Set(await skinStore.listAssets(id));
 		const missing = [...referencedAssets(parsed.skin)].filter((name) => !assets.has(name));
@@ -252,8 +305,8 @@ export function createDashboardSkinsRoute(deps: {
 				c,
 				failureOfChecks(
 					"invalid",
-					"皮肤清单",
-					missing.map((m) => `${m}: manifest 引用了它,但包里没有这个文件`),
+					serverText("service.routes.dashboard-skins.text.16"),
+					missing.map((m) => serverText("service.routes.dashboard-skins.text.17", { value0: m })),
 				),
 			);
 		}
@@ -274,7 +327,11 @@ export function createDashboardSkinsRoute(deps: {
 		const id = c.req.param("id");
 		if (!(await skinStore.get(id))) return skinNotFound(c);
 		const manifest = await skinStore.getDefault(id);
-		if (!manifest) return respondFailure(c, fail("not_found", "该皮肤还没有钉过默认值"));
+		if (!manifest)
+			return respondFailure(
+				c,
+				fail("not_found", serverText("service.routes.dashboard-skins.text.18")),
+			);
 		const body: SkinDefaultResponse = { manifest };
 		return c.json(body);
 	});
@@ -339,7 +396,10 @@ export function createDashboardSkinsRoute(deps: {
 		const theme = c.req.param("theme");
 		// 先卡形状再碰 store:`:theme` 从 URL 来,而它下一步要当对象键用。
 		if (theme !== "light" && theme !== "dark") {
-			return respondFailure(c, fail("invalid", "模式只能是 light 或 dark"));
+			return respondFailure(
+				c,
+				fail("invalid", serverText("service.routes.dashboard-skins.text.19")),
+			);
 		}
 		if (!(await skinStore.get(id))) return skinNotFound(c);
 		try {
@@ -353,7 +413,11 @@ export function createDashboardSkinsRoute(deps: {
 
 	app.get("/:id/assets/:name", async (c) => {
 		const path = await skinStore.assetPath(c.req.param("id"), `assets/${c.req.param("name")}`);
-		if (!path) return respondFailure(c, fail("not_found", "资产不存在"));
+		if (!path)
+			return respondFailure(
+				c,
+				fail("not_found", serverText("service.routes.dashboard-skins.text.20")),
+			);
 		const ext = path.split(".").pop()?.toLowerCase() ?? "";
 		const data = await readFile(path);
 		return c.body(new Uint8Array(data), 200, {

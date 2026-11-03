@@ -1,5 +1,6 @@
 import { fail, type Issue, issuesFromZod, ok, type Result } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 连接的 `settings` 归适配器的 `settingsSchema`:盘上存的是原文(不补默认值),用之前由宿主按
@@ -23,9 +24,12 @@ export function resolveSettings(schema: ZodType, settings: unknown): Result<{ se
  */
 export function settingsIssueMessage(issues: readonly Issue[]): string {
 	const first = issues[0];
-	if (!first) return "设置不合法";
+	if (!first) return serverText("service.push.connection-settings.text.1");
 	const where = first.path && first.path.length > 0 ? `${first.path.join(".")}：` : "";
-	return `设置不合法：${where}${first.message}`;
+	return serverText("service.push.connection-settings.text.2", {
+		value0: where,
+		value1: first.message,
+	});
 }
 
 /**

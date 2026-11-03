@@ -1,5 +1,6 @@
 import { type Failure, fail, type Issue } from "@bilibili-notify/internal";
 import { isMaskedCell } from "@bilibili-notify/internal/patch";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 写入接口收到的体里有没有下发时的密钥遮挡(`{ masked }`)—— 有就是 400,issues 指到那一格。
@@ -13,16 +14,12 @@ export function maskedCellsFailure(body: unknown): Failure | undefined {
 	const issues: Issue[] = [];
 	collect(body, [], issues);
 	if (issues.length === 0) return undefined;
-	return fail(
-		"invalid",
-		"这是下发时的密钥遮挡,不是新值 —— 没改就别带这一格;要换交新的明文,要清空交空串(可选的格交 null)",
-		{ issues },
-	);
+	return fail("invalid", serverText("service.routes.masked-cells.text.1"), { issues });
 }
 
 function collect(value: unknown, path: (string | number)[], out: Issue[]): void {
 	if (isMaskedCell(value)) {
-		out.push({ path, message: "密钥遮挡不是新值,不能写回" });
+		out.push({ path, message: serverText("service.routes.masked-cells.text.2") });
 		return;
 	}
 	if (Array.isArray(value)) {

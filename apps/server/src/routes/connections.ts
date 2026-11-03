@@ -7,9 +7,10 @@ import type {
 import { fail, NewConnectionSchema, PushTargetScopeSchema } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { ConfigValidationError } from "../config/store.js";
+import { t as serverText } from "../i18n/index.js";
 import { maskedCellsFailure } from "./masked-cells.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
-import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
+import { enginesNotReadyMessage, respondFailure } from "./respond-failure.js";
 import { connectionView } from "./secret-view.js";
 import { testResultOfProbe } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
@@ -69,13 +70,13 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		if (!scope.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "scope 只能是 group / private / channel", {
-					issues: [{ path: ["scope"], message: "不是 group / private / channel 之一" }],
+				fail("invalid", serverText("service.routes.connections.text.1"), {
+					issues: [{ path: ["scope"], message: serverText("service.routes.connections.text.2") }],
 				}),
 			);
 		}
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 		const result = await pipeline.listAddressCandidates(
 			c.req.param("id"),
 			scope.data,
@@ -103,7 +104,10 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			.list()
 			.find((a) => a.adapterKey === draft.data.adapterKey);
 		if (!adapter) {
-			return respondFailure(c, fail("unavailable", "这种连接的适配器没在跑，没法新建"));
+			return respondFailure(
+				c,
+				fail("unavailable", serverText("service.routes.connections.text.3")),
+			);
 		}
 		// 平台快照:从挑中平台的那个候选抄(候选口是适配器的必备成员,内置与拓展同一条路)。
 		let candidates: Awaited<ReturnType<typeof adapter.listConnectionCandidates>>;
@@ -111,15 +115,24 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			candidates = await adapter.listConnectionCandidates(c.req.raw.signal);
 		} catch (err) {
 			log.warn(`POST /api/connections: ${draft.data.adapterKey} 的候选列不出来: ${String(err)}`);
-			return respondFailure(c, fail("unavailable", "这个适配器现在列不出可选的平台，请稍后再试"));
+			return respondFailure(
+				c,
+				fail("unavailable", serverText("service.routes.connections.text.4")),
+			);
 		}
 		const hit = candidates.find((cand) => cand.platform.platform === draft.data.platform);
 		if (!hit) {
 			return respondFailure(
 				c,
-				fail("invalid", `这个适配器没有 ${draft.data.platform} 这种候选`, {
-					issues: [{ path: ["platform"], message: "不在这个适配器的候选里" }],
-				}),
+				fail(
+					"invalid",
+					serverText("service.routes.connections.text.5", { value0: draft.data.platform }),
+					{
+						issues: [
+							{ path: ["platform"], message: serverText("service.routes.connections.text.6") },
+						],
+					},
+				),
 			);
 		}
 		const { platform: _platform, ...snapshot } = hit.platform;
@@ -153,9 +166,10 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	app.post("/:id/probe", async (c) => {
 		const id = c.req.param("id");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
-		if (!connection) return respondFailure(c, fail("not_found", "没有这条连接"));
+		if (!connection)
+			return respondFailure(c, fail("not_found", serverText("service.routes.connections.text.7")));
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 		// 探测结果写进连接的 probeState、问题表的清理,都由推送链路的手动探测一并做了
 		// (面板的状态圆点不必等一分钟一轮的周期探测)。回给面板的形状在 {@link testResultOfProbe} 里另翻。
 		const result = await pipeline.probeConnection(id);
@@ -166,7 +180,11 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		const id = c.req.param("id");
 		try {
 			const removed = await deps.store.deleteConnection(id);
-			if (!removed) return respondFailure(c, fail("not_found", "没有这条连接"));
+			if (!removed)
+				return respondFailure(
+					c,
+					fail("not_found", serverText("service.routes.connections.text.8")),
+				);
 			return c.body(null, 204);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());

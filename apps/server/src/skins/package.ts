@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * zip 皮肤包解析:不可信字节流 → { manifest, assets } 或拒绝。
  *
@@ -111,43 +112,47 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 			if (data.byteLength <= MAX_MANIFEST_BYTES) namesBytes = data;
 		} else if (name === "skin.json") {
 			if (data.byteLength > MAX_MANIFEST_BYTES) {
-				errors.push("skin.json 过大(上限 512KB)");
+				errors.push(serverText("service.skins.package.text.1"));
 			} else {
 				manifestBytes = data;
 			}
 		} else if (WALLPAPER_IMAGE_RE.test(name) && !name.includes("..")) {
 			if (data.byteLength > MAX_ASSET_BYTES) {
-				errors.push(`${name}: 图片过大(上限 5MB)`);
+				errors.push(serverText("service.skins.package.text.2", { value0: name }));
 			} else {
 				assets.set(name, data);
 			}
 		} else if (SKIN_FONT_FILE_RE.test(name) && !name.includes("..")) {
 			if (data.byteLength > MAX_FONT_BYTES) {
 				errors.push(
-					`${name}: 字体过大(上限 ${Math.round(MAX_FONT_BYTES / 1024 / 1024)}MB)—— 同一套字转成 woff2 通常只占三分之一`,
+					serverText("service.skins.package.text.3", {
+						value0: name,
+						value1: Math.round(MAX_FONT_BYTES / 1024 / 1024),
+					}),
 				);
 			} else {
 				assets.set(name, data);
 			}
 		} else {
-			errors.push(
-				`${name}: 包里只允许 skin.json 和 assets/ 下的 webp/jpg/png 与 woff2/woff/ttf/otf`,
-			);
+			errors.push(serverText("service.skins.package.text.4", { value0: name }));
 		}
 	}
 	// 文件数那道是粗筛(它连 skin.json 一起数);资产数得单独问一句 —— 一个不带
 	// 原名清单的包能在文件数之内塞进多一份资产,而落盘之后编辑器就再也加不进东西。
 	if (assets.size > MAX_SKIN_ASSETS) {
-		errors.push(`包里的资产太多(${assets.size} 份,上限 ${MAX_SKIN_ASSETS} 份),删掉用不上的再传`);
+		errors.push(
+			serverText("service.skins.package.text.5", { value0: assets.size, value1: MAX_SKIN_ASSETS }),
+		);
 	}
-	if (!manifestBytes && errors.length === 0) errors.push("包里缺少 skin.json");
+	if (!manifestBytes && errors.length === 0)
+		errors.push(serverText("service.skins.package.text.6"));
 	if (errors.length > 0 || !manifestBytes) return { ok: false, errors };
 
 	let json: unknown;
 	try {
 		json = JSON.parse(strFromU8(manifestBytes));
 	} catch {
-		return { ok: false, errors: ["skin.json 不是合法 JSON"] };
+		return { ok: false, errors: [serverText("service.skins.package.text.7")] };
 	}
 	// 旧版(≤v0.7.0)导出的包身上还烙着清洗层的旧笔迹 —— **解析前**先摘:否则
 	// parseCssField 对每条装饰规则刷一遍「pointer-events 不在白名单」(正是读盘
@@ -158,13 +163,15 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 
 	const referenced = referencedAssets(parsed.skin);
 	for (const name of referenced) {
-		if (!assets.has(name)) errors.push(`${name}: manifest 引用了它,但包里没有这个文件`);
+		if (!assets.has(name))
+			errors.push(serverText("service.skins.package.text.8", { value0: name }));
 	}
 	if (errors.length > 0) return { ok: false, errors };
 
 	const warnings = [...parsed.warnings];
 	for (const name of assets.keys()) {
-		if (!referenced.has(name)) warnings.push(`${name}: 包里带了但 manifest 没引用,不会被使用`);
+		if (!referenced.has(name))
+			warnings.push(serverText("service.skins.package.text.9", { value0: name }));
 	}
 	// 清单读不懂就当没有 —— 名字是锦上添花,不该让一整套皮肤装不进去。
 	let names: Record<string, string> = {};

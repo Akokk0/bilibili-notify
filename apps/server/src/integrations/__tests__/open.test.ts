@@ -76,7 +76,7 @@ async function open(key: string, io = integrationIo()) {
 		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		stores: store.handle,
 		logger: silentLogger,
-		stopReason: "测试",
+		stopReason: () => "测试",
 		problems: createProblemTable({ logger: silentLogger }),
 		reporter: key,
 		label: () => key,

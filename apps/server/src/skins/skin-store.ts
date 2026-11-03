@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 皮肤包目录:`<dir>/<id>/{<清单文件>, assets/*, …}`,一皮肤一子目录。
  *
@@ -129,7 +130,7 @@ async function mtimeOf(path: string): Promise<number> {
 /** 附带文件的名字得留在皮肤目录里:绝对路径与 `..` 一律不收(那是调用方的 bug,不是坏输入)。 */
 function assertInsidePackage(rel: string): void {
 	if (rel === "" || isAbsolute(rel) || rel.split(/[/\\]/).includes("..")) {
-		throw new TypeError(`createSkinStore: 附带文件的名字必须在皮肤目录之内(${rel})`);
+		throw new TypeError(serverText("service.skins.skin-store.text.1", { value0: rel }));
 	}
 }
 
@@ -141,7 +142,8 @@ export function createSkinStore<M>(options: SkinPackageStoreOptions<M>): SkinPac
 	const manifestPath = (id: string): string => join(dir, id, manifestFile);
 
 	function requireKnown(id: string): void {
-		if (!index.has(id)) throw new Error(`皮肤不存在: ${id}`);
+		if (!index.has(id))
+			throw new Error(serverText("service.skins.skin-store.text.2", { value0: id }));
 	}
 
 	/**
@@ -163,7 +165,10 @@ export function createSkinStore<M>(options: SkinPackageStoreOptions<M>): SkinPac
 			try {
 				raw = JSON.parse(await readFile(path, "utf8"));
 			} catch {
-				options.onSkip?.(id, `${manifestFile} 读不出来或不是合法 JSON,跳过`);
+				options.onSkip?.(
+					id,
+					serverText("service.skins.skin-store.text.3", { value0: manifestFile }),
+				);
 				continue;
 			}
 			let parsed: ManifestResult<M>;
@@ -172,7 +177,9 @@ export function createSkinStore<M>(options: SkinPackageStoreOptions<M>): SkinPac
 			} catch (err) {
 				parsed = fail(
 					"invalid",
-					`清单解析出错(${err instanceof Error ? err.message : String(err)}),跳过`,
+					serverText("service.skins.skin-store.text.4", {
+						value0: err instanceof Error ? err.message : String(err),
+					}),
 				);
 			}
 			if (!parsed.ok) {

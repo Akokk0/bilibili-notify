@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 图库:所有图按内容摘要存成 `images/<sha256>.<ext>`(ADR-0022 决策 9),引用 `ImageRef` 就是这个文件名。
  *
@@ -230,13 +231,16 @@ export function createImageStore(options: { dir: string }): ImageStore {
 		put(bytes) {
 			return writes.run(WRITE_KEY, async () => {
 				const format = sniffImageFormat(bytes);
-				if (!format) return fail("invalid", "不是图库收的图(只收 png / jpg / gif / webp)");
+				if (!format) return fail("invalid", serverText("service.images.image-store.text.1"));
 				try {
 					const result = await assets.put({ bytes, ext: EXT_OF_FORMAT[format] });
 					return result.ok ? ok({ ref: result.id }) : result;
 				} catch (error) {
 					// 资产库那头磁盘写失败是抛(刷新修改时间、建目录、落文件都可能);图库这一层收成结果,原话照带。
-					return fail("unavailable", `图库写盘失败:${String(error)}`);
+					return fail(
+						"unavailable",
+						serverText("service.images.image-store.text.2", { value0: String(error) }),
+					);
 				}
 			});
 		},
@@ -263,7 +267,7 @@ export function createImageStore(options: { dir: string }): ImageStore {
 
 		register(referrer) {
 			if (referrers.has(referrer.name)) {
-				throw new Error(`图库引用方「${referrer.name}」登记了两次`);
+				throw new Error(serverText("service.images.image-store.text.3", { value0: referrer.name }));
 			}
 			referrers.set(referrer.name, referrer);
 			return writer;

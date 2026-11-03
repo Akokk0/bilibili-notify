@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 从一个 zip 装拓展 —— 面板上那条「传一个包上来」。
  *
@@ -139,35 +140,45 @@ export function openExtensionPackage(
 				count += 1;
 				claimedTotal += f.originalSize;
 				if (count > MAX_PACKAGE_FILES) {
-					precheck = `包里的文件太多(上限 ${MAX_PACKAGE_FILES} 个)`;
+					precheck = serverText("service.extensions.install.text.1", { value0: MAX_PACKAGE_FILES });
 					return false;
 				}
 				// 🔴 压缩炸弹:fflate 按 zip 头**声明**的解压大小先分配内存,再解压。上限得在这儿拦 ——
 				// 解压完再量,一个 300KB 的包已经解出了 300MB。清单与入口各有各的顶,先按最宽的那档
 				// 拦住撒谎的头,拆出来之后再按各自的顶细量。
 				if (f.originalSize > MAX_CODE_BYTES) {
-					precheck = `${f.name} 过大(声明的解压大小 ${Math.round(f.originalSize / 1024 / 1024)}MB,上限 ${Math.round(MAX_CODE_BYTES / 1024 / 1024)}MB)`;
+					precheck = serverText("service.extensions.install.text.2", {
+						value0: f.name,
+						value1: Math.round(f.originalSize / 1024 / 1024),
+						value2: Math.round(MAX_CODE_BYTES / 1024 / 1024),
+					});
 					return false;
 				}
 				// 每个都合规、加起来不合规:说清是**总量**,别让主人去挨个文件找那个大的。
 				if (claimedTotal > MAX_PACKAGE_TOTAL_BYTES) {
-					precheck = `包解压后总量过大(声明的总解压大小 ${Math.round(claimedTotal / 1024 / 1024)}MB,上限 ${(MAX_PACKAGE_TOTAL_BYTES / 1024 / 1024).toFixed(1)}MB)`;
+					precheck = serverText("service.extensions.install.text.3", {
+						value0: Math.round(claimedTotal / 1024 / 1024),
+						value1: (MAX_PACKAGE_TOTAL_BYTES / 1024 / 1024).toFixed(1),
+					});
 					return false;
 				}
 				return true;
 			},
 		});
 	} catch {
-		return fail("invalid", "这不是一个合法的 zip 文件");
+		return fail("invalid", serverText("service.extensions.install.text.4"));
 	}
 	if (precheck) return fail("invalid", precheck);
 
 	const names = Object.keys(entries);
-	if (names.length === 0) return fail("invalid", "这个 zip 是空的");
+	if (names.length === 0) return fail("invalid", serverText("service.extensions.install.text.5"));
 	// 🔴 `..` 一律不认,而且是在**剥前缀之前**判:`../` 也可能被当成共有前缀。
 	const traversal = names.filter((name) => name.split("/").includes(".."));
 	if (traversal.length > 0) {
-		return fail("invalid", `包里的路径不许带 ..:${traversal.join("、")}`);
+		return fail(
+			"invalid",
+			serverText("service.extensions.install.text.6", { value0: traversal.join("、") }),
+		);
 	}
 
 	const prefix = commonPrefix(names);
@@ -182,12 +193,18 @@ export function openExtensionPackage(
 	for (const [name, data] of Object.entries(entries)) {
 		const inner = name.startsWith(prefix) ? name.slice(prefix.length) : name;
 		if (inner === EXTENSION_MANIFEST_FILE) {
-			if (data.byteLength > MAX_MANIFEST_BYTES) errors.push(`${EXTENSION_MANIFEST_FILE} 过大`);
+			if (data.byteLength > MAX_MANIFEST_BYTES)
+				errors.push(
+					serverText("service.extensions.install.text.7", { value0: EXTENSION_MANIFEST_FILE }),
+				);
 			else manifestBytes = data;
 		} else if (inner === EXTENSION_ENTRY_FILE) {
 			if (data.byteLength > MAX_CODE_BYTES) {
 				errors.push(
-					`${EXTENSION_ENTRY_FILE} 过大(上限 ${Math.round(MAX_CODE_BYTES / 1024 / 1024)}MB)`,
+					serverText("service.extensions.install.text.8", {
+						value0: EXTENSION_ENTRY_FILE,
+						value1: Math.round(MAX_CODE_BYTES / 1024 / 1024),
+					}),
 				);
 			} else entry = data;
 		} else if (inner === EXTENSION_README_FILE || inner === EXTENSION_CHANGELOG_FILE) {
@@ -239,17 +256,27 @@ export function openExtensionPackage(
 	if (localesBytes > EXTENSION_LOCALES_TOTAL_MAX_BYTES) {
 		errors.push(t("extension.install.localesTooLarge", { limit: "2 MB" }));
 	}
-	if (!manifestBytes && errors.length === 0) errors.push(`包里少了 ${EXTENSION_MANIFEST_FILE}`);
-	if (!entry && errors.length === 0) errors.push(`包里少了 ${EXTENSION_ENTRY_FILE}`);
+	if (!manifestBytes && errors.length === 0)
+		errors.push(
+			serverText("service.extensions.install.text.9", { value0: EXTENSION_MANIFEST_FILE }),
+		);
+	if (!entry && errors.length === 0)
+		errors.push(serverText("service.extensions.install.text.10", { value0: EXTENSION_ENTRY_FILE }));
 	if (errors.length > 0 || !manifestBytes || !entry) {
-		return failureOfChecks("invalid", "这个拓展包", errors);
+		return failureOfChecks("invalid", serverText("service.extensions.install.text.11"), errors);
 	}
 
 	let raw: unknown;
 	try {
 		raw = JSON.parse(strFromU8(manifestBytes));
 	} catch (err) {
-		return fail("invalid", `${EXTENSION_MANIFEST_FILE} 不是合法 JSON:${(err as Error).message}`);
+		return fail(
+			"invalid",
+			serverText("service.extensions.install.text.12", {
+				value0: EXTENSION_MANIFEST_FILE,
+				value1: (err as Error).message,
+			}),
+		);
 	}
 	// 版本不合就在这儿拦,而且**先判它**:为将来的宿主写的清单,格式本来就可能是我们不认识
 	// 的,挑它的毛病只会把「先升级 BN」说成一串「读不了」。装进去再在页面上显示 incompatible
@@ -261,7 +288,7 @@ export function openExtensionPackage(
 		}
 		return failureOfChecks(
 			"invalid",
-			"这个拓展包",
+			serverText("service.extensions.install.text.13"),
 			read.issues.map((issue) => `${EXTENSION_MANIFEST_FILE} ${issue}`),
 		);
 	}
@@ -324,10 +351,7 @@ export async function uninstallExtension({
 	const existing = await lstat(at).catch(() => undefined);
 	if (!existing) return ok({ removed: false });
 	if (existing.isSymbolicLink()) {
-		return fail(
-			"conflict",
-			`${id} 现在是一条软链(开发版 devtools 装的)—— 在 devtools 里卸掉它,别从这里删`,
-		);
+		return fail("conflict", serverText("service.extensions.install.text.14", { value0: id }));
 	}
 	await rm(at, { recursive: true, force: true });
 	return ok({ removed: true });
@@ -372,7 +396,7 @@ async function installExtensionPackageUnlocked(input: InstallExtensionPackageInp
 	// 🔴 软链 = devtools 链进来的仓库工作树。往里写就是往 git 仓库里写。
 	if (existing?.isSymbolicLink()) {
 		throw new ExtensionConflictError(
-			`${pkg.id} 现在是一条软链(开发版 devtools 装的)—— 先在 devtools 里卸掉它,再传包`,
+			serverText("service.extensions.install.text.15", { value0: pkg.id }),
 		);
 	}
 

@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * **按挂点收窄的 CSS 清洗核心** —— 用 css-tree 真 parser 走 AST。
  *
@@ -301,8 +302,8 @@ function isHookAttr(node: AttributeSelector): boolean {
  * 里头夹着 `data-bn` 就判不了它是哪种写法、指哪个挂点 —— 判不了的一律拒。
  */
 function checkFreeSelector(selector: CssNode, hooks: ReadonlySet<string>): string | null {
-	if (selector.type !== "Selector") return "不是一条选择器";
-	if (selector.children.isEmpty) return "空选择器";
+	if (selector.type !== "Selector") return serverText("service.skins.scoped-css.text.1");
+	if (selector.children.isEmpty) return serverText("service.skins.scoped-css.text.2");
 	const reasons: string[] = [];
 	// 起头的挂点后面紧跟兄弟组合器(`+` / `~`)= 选的是**块的兄弟**,也就是别的块 ——
 	// 前缀收住的只有后代方向,这一支得单独拒。(挂点起头但走后代 / 子代的照旧。)
@@ -317,21 +318,26 @@ function checkFreeSelector(selector: CssNode, hooks: ReadonlySet<string>): strin
 		second.type === "Combinator" &&
 		(second.name === "+" || second.name === "~")
 	) {
-		reasons.push("里挂点后面紧跟兄弟组合器,会选到别的块");
+		reasons.push(serverText("service.skins.scoped-css.text.3"));
 	}
 	walk(selector, (node: CssNode) => {
 		if (node.type === "Raw") {
-			if (node.value.includes("data-bn")) reasons.push("里有解析不动的 data-bn 片段");
+			if (node.value.includes("data-bn"))
+				reasons.push(serverText("service.skins.scoped-css.text.4"));
 			return;
 		}
 		if (node.type !== "AttributeSelector" || !isHookAttr(node)) return;
 		if (node.matcher !== "=") {
-			reasons.push(`里的 data-bn 只认精确等号(写的是 ${node.matcher ?? "裸属性"})`);
+			reasons.push(
+				serverText("service.skins.scoped-css.text.6", {
+					value0: node.matcher ?? serverText("service.skins.scoped-css.text.5"),
+				}),
+			);
 			return;
 		}
 		const hook = valueOfAttr(node.value);
 		if (hook === null || !hooks.has(hook)) {
-			reasons.push(`里的挂点「${hook ?? ""}」不在这个块的挂点表里`);
+			reasons.push(serverText("service.skins.scoped-css.text.7", { value0: hook ?? "" }));
 		}
 	});
 	return reasons[0] ?? null;
@@ -395,15 +401,21 @@ export function rejectDeclaration(
 	// 对着自己上一轮的笔迹刷「已丢弃」(2026-08-25 主人导入自家导出的包,12 条)。
 	// 不落盘,警告才永远指向作者真写了的东西。
 	if (!isAllowedProp(prop, opts.props)) {
-		return "deny" in opts.props ? `属性 ${prop} 在黑名单(执行面)` : `属性 ${prop} 不在白名单`;
+		return "deny" in opts.props
+			? serverText("service.skins.scoped-css.text.8", { value0: prop })
+			: serverText("service.skins.scoped-css.text.9", { value0: prop });
 	}
 	const value = generate(decl.value).toLowerCase();
 	// 反斜杠 = CSS 转义,而转义在 tokenizer 里**先于**ident 判定解开:`\75 rl(` 到
 	// 浏览器手上就是 `url(`,下面那圈子串匹配一个字都看不见。白名单里没有哪个属性
 	// 需要转义,整条拒掉最省事 —— schema.ts 的值校验一直是这个口径,这一层补上。
-	if (value.includes("\\")) return `属性 ${prop} 的值含转义写法(反斜杠)`;
+	if (value.includes("\\")) return serverText("service.skins.scoped-css.text.10", { value0: prop });
 	for (const bad of FORBIDDEN_VALUE) {
-		if (value.includes(bad)) return `属性 ${prop} 的值含 ${bad.slice(0, -1)}()`;
+		if (value.includes(bad))
+			return serverText("service.skins.scoped-css.text.11", {
+				value0: prop,
+				value1: bad.slice(0, -1),
+			});
 	}
 	// 「装饰」的判定在函数顶部(唯一口径)。装饰层随便淡、随便定位 —— 它
 	// pointer-events:none 且压在内容之下,骗不到人。keyframes 不算装饰:同一段
@@ -418,7 +430,7 @@ export function rejectDeclaration(
 		if (prop === "opacity") {
 			const n = literalOpacity(value);
 			if (n === null || n < floor) {
-				return `宿主的 opacity 只准写不低于 ${floor} 的字面值(看不见却点得到 = UI 欺骗)`;
+				return serverText("service.skins.scoped-css.text.12", { value0: floor });
 			}
 		}
 		// filter:opacity() 是同一把锁的另一把钥匙,漏掉它上面那道闸一绕就过。
@@ -428,7 +440,7 @@ export function rejectDeclaration(
 			for (const m of value.matchAll(/opacity\(([^)]*)\)/g)) {
 				const n = literalOpacity(m[1] ?? "");
 				if (n === null || n < floor) {
-					return `宿主的 filter:opacity() 只准写不低于 ${floor} 的字面值(同上)`;
+					return serverText("service.skins.scoped-css.text.13", { value0: floor });
 				}
 			}
 		}
@@ -436,19 +448,19 @@ export function rejectDeclaration(
 	if (prop === "position") {
 		if (!decoration && !opts.hostPosition) {
 			return scope.keyframes
-				? `position 不准写进 @keyframes —— 那段动画挂得到宿主身上,会顶掉它的布局`
-				: `position 只归宿主本身的布局管,皮肤改不了(装饰层写在伪元素上)`;
+				? serverText("service.skins.scoped-css.text.14")
+				: serverText("service.skins.scoped-css.text.15");
 		}
-		if (!POSITION_VALUES.has(value.trim())) return `position 只准 static/relative/absolute`;
+		if (!POSITION_VALUES.has(value.trim())) return serverText("service.skins.scoped-css.text.16");
 	}
 	if (prop === "content") {
 		const v = value.trim();
 		if (v === `""` || v === `''` || v === "none") return null;
-		if (!opts.contentStrings) return `content 只准空串或 none`;
+		if (!opts.contentStrings) return serverText("service.skins.scoped-css.text.17");
 		// 卡片那档:字符串字面量 / normal。反斜杠转义在上面已一律拒掉,所以字面量里藏不了
 		// `\75 rl(`;`attr()` / `url()` / 计数器不放行 —— 静态出图用不上,值级过滤也不必为它们开口。
 		const isString = /^(?:"[^"\\]*"|'[^'\\]*')$/.test(v);
-		if (!isString && v !== "normal") return `content 只准字符串字面量、none 或 normal`;
+		if (!isString && v !== "normal") return serverText("service.skins.scoped-css.text.18");
 	}
 	return null;
 }
@@ -474,7 +486,9 @@ function filterBlock(
 		}
 		const reason = rejectDeclaration(node, scope, opts);
 		if (reason) {
-			warnings.push(`${path}: ${reason},已丢弃`);
+			warnings.push(
+				serverText("service.skins.scoped-css.text.19", { value0: path, value1: reason }),
+			);
 			drop.push(item);
 		} else {
 			// `!important` 一律摘掉,只留声明本身。装饰层那两句硬规矩是**追加**在块
@@ -484,7 +498,12 @@ function filterBlock(
 			// 就生效,!important 在这里没有正当用途,只会把布局的账搅乱。
 			if (node.important) {
 				node.important = false;
-				warnings.push(`${path}: 属性 ${node.property.toLowerCase()} 的 !important 已摘掉`);
+				warnings.push(
+					serverText("service.skins.scoped-css.text.20", {
+						value0: path,
+						value1: node.property.toLowerCase(),
+					}),
+				);
 			}
 			kept += 1;
 		}
@@ -537,15 +556,15 @@ function filterRuleList(
 			if (prelude.type !== "SelectorList") {
 				warnings.push(
 					policy.mode === "hooked"
-						? `选择器「${selectorText}」不在 hook 白名单,整条丢弃`
-						: `选择器「${selectorText}」解析不动,整条丢弃`,
+						? serverText("service.skins.scoped-css.text.21", { value0: selectorText })
+						: serverText("service.skins.scoped-css.text.22", { value0: selectorText }),
 				);
 				drop.push(item);
 				return;
 			}
 			if (policy.mode === "hooked") {
 				if (!everyChild(prelude.children, (sel) => isAllowedSelector(sel, opts.hooks))) {
-					warnings.push(`选择器「${selectorText}」不在 hook 白名单,整条丢弃`);
+					warnings.push(serverText("service.skins.scoped-css.text.23", { value0: selectorText }));
 					drop.push(item);
 					return;
 				}
@@ -559,7 +578,12 @@ function filterRuleList(
 					if (reason !== null) bad.push(reason);
 				});
 				if (bad.length > 0) {
-					warnings.push(`选择器「${selectorText}」${bad[0]},整条丢弃`);
+					warnings.push(
+						serverText("service.skins.scoped-css.text.24", {
+							value0: selectorText,
+							value1: String(bad[0]),
+						}),
+					);
 					drop.push(item);
 					return;
 				}
@@ -582,7 +606,7 @@ function filterRuleList(
 			if (name === "keyframes" && opts.allowKeyframes) {
 				const kfName = node.prelude ? generate(node.prelude).trim() : "";
 				if (!KEYFRAMES_NAME_RE.test(kfName)) {
-					warnings.push(`@keyframes 名「${kfName}」必须以 skin- 开头,整段丢弃`);
+					warnings.push(serverText("service.skins.scoped-css.text.25", { value0: kfName }));
 					drop.push(item);
 					return;
 				}
@@ -595,7 +619,7 @@ function filterRuleList(
 				}
 				return;
 			}
-			warnings.push(`@${name} 不在白名单,整段丢弃`);
+			warnings.push(serverText("service.skins.scoped-css.text.26", { value0: name }));
 			drop.push(item);
 			return;
 		}
@@ -609,7 +633,10 @@ function filterRuleList(
 /** 一段样式表的清洗:入口粗筛体积 → 解析 → 逐条过滤 → 重新序列化 → 产物再量一次。 */
 export function sanitizeScopedCss(input: string, opts: ScopedCssOptions): SanitizeCssResult {
 	if (Buffer.byteLength(input, "utf8") > opts.maxBytes) {
-		return { ok: false, errors: [`自定义 CSS 超过 ${opts.maxBytes / 1024}KB 上限`] };
+		return {
+			ok: false,
+			errors: [serverText("service.skins.scoped-css.text.27", { value0: opts.maxBytes / 1024 })],
+		};
 	}
 	if (input.trim() === "") return { ok: true, css: "", warnings: [] };
 
@@ -617,9 +644,13 @@ export function sanitizeScopedCss(input: string, opts: ScopedCssOptions): Saniti
 	try {
 		ast = parse(input, { parseCustomProperty: false });
 	} catch (e) {
-		return { ok: false, errors: [`CSS 解析失败:${(e as Error).message}`] };
+		return {
+			ok: false,
+			errors: [serverText("service.skins.scoped-css.text.28", { value0: (e as Error).message })],
+		};
 	}
-	if (ast.type !== "StyleSheet") return { ok: false, errors: ["CSS 顶层结构异常"] };
+	if (ast.type !== "StyleSheet")
+		return { ok: false, errors: [serverText("service.skins.scoped-css.text.29")] };
 
 	const warnings: string[] = [];
 	filterRuleList(ast, warnings, opts);
@@ -639,14 +670,17 @@ export function sanitizeScopedCss(input: string, opts: ScopedCssOptions): Saniti
 	// 数字,而 `</` 在 CSS 里没有任何正当含义。**整份拒收**而不是丢一条 —— 没有哪段
 	// 正经皮肤会不小心写出 `</`,报出来比静默削掉有用。
 	if (css.includes("</")) {
-		return { ok: false, errors: ["CSS 里不许出现 `</` —— 它能提前关掉 <style> 标签"] };
+		return { ok: false, errors: [serverText("service.skins.scoped-css.text.30")] };
 	}
 	// **上限量的是存盘那份。** 入口那道只是粗筛(别把超大输入送进解析器);存盘的
 	// 是产物。`free` 档的选择器归一是**会加字节**的(每条缺前缀的规则多一个
 	// `[data-bn="self"] `),所以这道闸不是摆设:贴着上限写的 CSS 归一之后可能真的
 	// 越线,报的也正是存盘那份的大小。
 	if (Buffer.byteLength(css, "utf8") > opts.maxBytes) {
-		return { ok: false, errors: [`清洗后的 CSS 超过 ${opts.maxBytes / 1024}KB 上限`] };
+		return {
+			ok: false,
+			errors: [serverText("service.skins.scoped-css.text.31", { value0: opts.maxBytes / 1024 })],
+		};
 	}
 	return { ok: true, css, warnings };
 }
@@ -678,14 +712,16 @@ export function sanitizeDeclarationList(
 		}
 		const reason = rejectDeclaration(node, { pseudo: false, keyframes: false }, opts);
 		if (reason) {
-			warnings.push(`${reason},已丢弃`);
+			warnings.push(serverText("service.skins.scoped-css.text.32", { value0: reason }));
 			drop.push(item);
 			return;
 		}
 		// 与样式表同一口径:`!important` 没有正当用途,摘掉只留声明本身。
 		if (node.important) {
 			node.important = false;
-			warnings.push(`属性 ${node.property.toLowerCase()} 的 !important 已摘掉`);
+			warnings.push(
+				serverText("service.skins.scoped-css.text.33", { value0: node.property.toLowerCase() }),
+			);
 		}
 	});
 	for (const item of drop) ast.children.remove(item);

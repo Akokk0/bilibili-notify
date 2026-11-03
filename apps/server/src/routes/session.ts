@@ -4,7 +4,7 @@ import { isSecureRequest } from "../auth/dashboard-auth.js";
 import type { IpRateLimiter } from "../auth/ip-rate-limit.js";
 import { isOriginAllowed, normalizeAllowedOrigins } from "../auth/origin.js";
 import type { SessionCodec, SessionCreds } from "../auth/session.js";
-import { t } from "../i18n/index.js";
+import { t as serverText, t } from "../i18n/index.js";
 import { respondFailure } from "./respond-failure.js";
 
 /** 新密码至少几位(面板改账号密码)。 */
@@ -13,8 +13,8 @@ export const PASSWORD_MIN_CHARS = 8;
 export const CREDENTIAL_MAX_CHARS = 256;
 
 /** 登录与改账号密码共用的两句。 */
-const RATE_LIMITED = "登录失败次数过多，请稍后再试。";
-const NOT_JSON = "请求体要是 JSON";
+const rateLimited = () => serverText("service.routes.session.text.1");
+const notJson = () => serverText("service.routes.session.text.2");
 
 /**
  * `/api/session/*` — dashboard session control plane. Mounted **outside** the
@@ -72,7 +72,7 @@ export function createSessionRoute(deps: SessionRouteDeps): Hono {
 	const originRejected = (c: Context): Response | null =>
 		isOriginAllowed(c.req.header("origin"), allowedOrigins)
 			? null
-			: respondFailure(c, fail("invalid", "请求来源不被允许"), 403);
+			: respondFailure(c, fail("invalid", serverText("service.routes.session.text.3")), 403);
 
 	app.get("/", (c) => {
 		const authed =
@@ -88,21 +88,21 @@ export function createSessionRoute(deps: SessionRouteDeps): Hono {
 		if (denied) return denied;
 
 		if (!deps.codec) {
-			return respondFailure(c, fail("unsupported", "面板没有开登录，用不着登录"));
+			return respondFailure(c, fail("unsupported", serverText("service.routes.session.text.4")));
 		}
 
 		const ip = deps.rateLimiter.ip(c);
 		const blockedMs = deps.rateLimiter.blocked(ip);
 		if (blockedMs !== null) {
 			c.header("Retry-After", String(Math.ceil(blockedMs / 1000)));
-			return respondFailure(c, fail("rate_limited", RATE_LIMITED));
+			return respondFailure(c, fail("rate_limited", rateLimited()));
 		}
 
 		let body: LoginBody;
 		try {
 			body = (await c.req.json()) as LoginBody;
 		} catch {
-			return respondFailure(c, fail("invalid", NOT_JSON));
+			return respondFailure(c, fail("invalid", notJson()));
 		}
 		const username = typeof body?.username === "string" ? body.username : "";
 		const password = typeof body?.password === "string" ? body.password : "";
@@ -110,7 +110,11 @@ export function createSessionRoute(deps: SessionRouteDeps): Hono {
 		// 账号密码一起按指纹比(常量时间):不会因为账号错了就跳过比密码、漏出「账号对不对」的时差。
 		if (!deps.codec.matches(username, password)) {
 			deps.rateLimiter.fail(ip);
-			return respondFailure(c, fail("unauthorized", "账号或密码错误"), 401);
+			return respondFailure(
+				c,
+				fail("unauthorized", serverText("service.routes.session.text.5")),
+				401,
+			);
 		}
 
 		deps.rateLimiter.succeed(ip);
@@ -140,14 +144,14 @@ export function createSessionRoute(deps: SessionRouteDeps): Hono {
 		const blockedMs = deps.rateLimiter.blocked(ip);
 		if (blockedMs !== null) {
 			c.header("Retry-After", String(Math.ceil(blockedMs / 1000)));
-			return respondFailure(c, fail("rate_limited", RATE_LIMITED));
+			return respondFailure(c, fail("rate_limited", rateLimited()));
 		}
 
 		let body: Record<string, unknown>;
 		try {
 			body = (await c.req.json()) as Record<string, unknown>;
 		} catch {
-			return respondFailure(c, fail("invalid", NOT_JSON));
+			return respondFailure(c, fail("invalid", notJson()));
 		}
 		const current = typeof body?.currentPassword === "string" ? body.currentPassword : "";
 		if (!codec.matches(codec.username(), current)) {

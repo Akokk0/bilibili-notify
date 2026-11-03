@@ -1,4 +1,5 @@
 import { formatCount } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 import { renderTemplate } from "../util/render-template";
 
 /**
@@ -95,7 +96,7 @@ export interface LiveTextInput {
 }
 
 /** `{watched}` 缺数时印的那句。 */
-const WATCHED_UNKNOWN_TEXT = "暂未获取到";
+const watchedUnknownText = () => serverText("service.live.live-text.text.1");
 
 /** 数字按 `format` 排,文字原样,没有就空串。 */
 function textOf(v: number | string | undefined, format: (n: number) => string): string {
@@ -122,7 +123,7 @@ export function renderLiveText(
 		case "liveStreaming":
 			// 缺数时的「暂未获取到」只在这里(文字出口)印,不写回直播数据。
 			vars.watched =
-				values.watched === undefined ? WATCHED_UNKNOWN_TEXT : formatCount(values.watched);
+				values.watched === undefined ? watchedUnknownText() : formatCount(values.watched);
 			break;
 		case "liveEnd":
 			vars.follower_change = textOf(values.followerChange, (n) => formatCount(n, { signed: true }));

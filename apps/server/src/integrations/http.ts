@@ -14,6 +14,7 @@ import {
 	type Logger,
 	type Result,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 import type { IntegrationStoreHandle } from "../integration-store/store.js";
 import { errorMessageOf } from "../util/error-message.js";
 
@@ -164,7 +165,7 @@ export async function createIntegrationHttp(
 			// 解不开、不是数组、数组里有坏元素(`jar.load` 会抛)都是同一种结局:记 error、按空罐起,不挡开机。
 			try {
 				const parsed: unknown = typeof raw === "string" ? JSON.parse(raw) : raw;
-				if (!Array.isArray(parsed)) throw new Error("不是数组");
+				if (!Array.isArray(parsed)) throw new Error(serverText("service.integrations.http.text.1"));
 				jar.load(parsed as Cookie[]);
 			} catch (err) {
 				logger.error(`[integrations/http] 存着的 cookie 读不进(${errorMessageOf(err)}),按空罐起`);
@@ -259,7 +260,7 @@ export async function createIntegrationHttp(
 			};
 		},
 		async commit(ops = []) {
-			if (disposed) return fail("unavailable", "集成已停下,cookie 不再存盘");
+			if (disposed) return fail("unavailable", serverText("service.integrations.http.text.2"));
 			clearTimer();
 			return writeJar(ops);
 		},

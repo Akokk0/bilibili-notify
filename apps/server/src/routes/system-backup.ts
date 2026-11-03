@@ -1,7 +1,7 @@
 import { type Failure, fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { validateBackup } from "../backup/envelope.js";
-import { BACKUP_PIN_REQUIRED_MESSAGE, BackupRejectedError } from "../backup/rejected-error.js";
+import { BackupRejectedError, backupPinRequiredMessage } from "../backup/rejected-error.js";
 import type { ImportMode } from "../backup/restore.js";
 import type { BackupService, SectionSelection } from "../backup/service.js";
 import { ConfigValidationError } from "../config/validation-error.js";
@@ -56,7 +56,7 @@ export function createSystemBackupRoute(opts: { service: BackupService }): Hono 
 		}
 		const pin = typeof body.pin === "string" ? body.pin : undefined;
 		if (kind === "full" && !pin)
-			return respondFailure(c, fail("invalid", BACKUP_PIN_REQUIRED_MESSAGE));
+			return respondFailure(c, fail("invalid", backupPinRequiredMessage()));
 		try {
 			const env = await opts.service.exportBackup({ kind, sections: body.sections, pin });
 			return c.json(env);
@@ -85,7 +85,7 @@ export function createSystemBackupRoute(opts: { service: BackupService }): Hono 
 		}
 		const pin = typeof body.pin === "string" ? body.pin : undefined;
 		if (envelope.kind === "full" && !pin)
-			return respondFailure(c, fail("invalid", BACKUP_PIN_REQUIRED_MESSAGE));
+			return respondFailure(c, fail("invalid", backupPinRequiredMessage()));
 		try {
 			const result = await opts.service.importBackup({
 				envelope,

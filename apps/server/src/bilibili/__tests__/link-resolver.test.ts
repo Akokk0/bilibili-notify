@@ -56,14 +56,16 @@ function firstArg<A extends unknown[]>(calls: A[]): A[0] {
 	return call[0];
 }
 
-function makeResolver(video: VideoResponse = VIDEO) {
+function makeResolver(video: VideoResponse = VIDEO, label: () => string = () => "B 站") {
 	const fetchVideoInfo = vi.fn(async (_ref: VideoRef) => video);
 	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
 	/** 抓图服务的内存替身:缺省每张都抓得到;`h.fetchImage.mockResolvedValue(fail(…))` 演抓不到。 */
 	const fetchImage = vi.fn<ImagesDeps["images"]["fetchImage"]>(async () => ok({ ref: COVER_REF }));
 	const warn = vi.fn();
 	const resolver = createBiliLinkResolver({
-		label: "B 站",
+		get label() {
+			return label();
+		},
 		api: { fetchVideoInfo, resolveShortLink },
 		fetchImage,
 		logger: { info() {}, warn, error() {}, debug() {} },
@@ -404,4 +406,12 @@ describe("B 站链接贴进群里(真解析器 + 真的门)", () => {
 			expect(h.sent).toHaveLength(1);
 		});
 	});
+});
+
+it("reads the resolver label from the current source descriptor rather than its creation value", () => {
+	let label = "Before";
+	const { resolver } = makeResolver(VIDEO, () => label);
+	expect(resolver.label).toBe("Before");
+	label = "After";
+	expect(resolver.label).toBe("After");
 });

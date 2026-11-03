@@ -140,3 +140,20 @@ it("takes descriptions and replies from the current plain or maid layer", async 
 		i18n.set(previous);
 	}
 });
+
+it("keeps all built-in input aliases while changing only displayed aliases", () => {
+	const { spec } = setup();
+	const state = i18n.state();
+	try {
+		for (const locale of ["zh-CN", "zh-TW", "en", "ja"] as const) {
+			i18n.set({ locale });
+			expect(spec.aliases).toEqual(
+				expect.arrayContaining(["静音", "免打扰", "靜音", "勿擾", "ミュート"]),
+			);
+		}
+		expect(spec.displayAliases).toEqual(["ミュート"]);
+		expect(spec.signature).toBe("<duration:duration>");
+	} finally {
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
+});

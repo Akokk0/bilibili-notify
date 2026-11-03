@@ -6,6 +6,7 @@ import type {
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { type BackupSecretBag, openSecrets, sealSecrets } from "./crypto.js";
 import { type BackupEnvelope, type BackupSections, buildBackup } from "./envelope.js";
@@ -51,13 +52,13 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 function readIntegrationSecrets(raw: unknown): Record<string, Record<string, Json>> {
 	if (raw === undefined) return {};
 	if (!isPlainRecord(raw)) {
-		throw new BackupRejectedError("invalid", "备份里的集成密钥格式不对，文件可能被改动过");
+		throw new BackupRejectedError("invalid", serverText("service.backup.assemble.text.1"));
 	}
 	for (const [key, bag] of Object.entries(raw)) {
 		if (!isPlainRecord(bag)) {
 			throw new BackupRejectedError(
 				"invalid",
-				`备份里集成 ${key} 的密钥格式不对，文件可能被改动过`,
+				serverText("service.backup.assemble.text.2", { value0: key }),
 			);
 		}
 	}
@@ -99,7 +100,7 @@ export function assembleFullBackup(
 
 export function openFullBackup(env: BackupEnvelope, pin: string): OpenedFullBackup {
 	if (env.kind !== "full" || !env.secrets) {
-		throw new BackupRejectedError("invalid", "这份完整备份缺少加密的密钥段，文件可能被改动过");
+		throw new BackupRejectedError("invalid", serverText("service.backup.assemble.text.3"));
 	}
 	const bag = openSecrets(pin, env.secrets);
 	const integrationSecrets = readIntegrationSecrets(bag.integrationSecrets);

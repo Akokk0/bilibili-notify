@@ -22,7 +22,7 @@ import { distinctPng, makeChatImages, putImage } from "../../__tests__/support/c
 import { createConversationStore } from "../../ai/conversation-store.js";
 import { IMAGE_GRACE_MS } from "../../images/image-store.js";
 import { createAiRoute } from "../ai.js";
-import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
+import { requestErrorHandler, unhandledErrorMessage } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
 
 const MB5 = 5 * 1024 * 1024;
@@ -153,7 +153,7 @@ describe("POST /api/ai/assets", () => {
 		const res = await upload(app, png());
 
 		expect(res.status).toBe(503);
-		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(await res.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
 		expect(logger.error).toHaveBeenCalledTimes(1);
 		const logged = logger.error.mock.calls[0]?.[1] as Error;
 		expect(logged.message).toContain("i-am-a-file");

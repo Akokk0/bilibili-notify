@@ -24,7 +24,7 @@ import { CARD_SKINS_DIR, CardSkinStore } from "../../card-skins/store.js";
 import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
 import { bilibiliLikeSources } from "../../subscriptions/__tests__/fixtures.js";
 import { createCardsRoute } from "../cards.js";
-import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
+import { respondFailure, unhandledErrorMessage } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
 
 const EMPTY_GLOBALS = { defaults: { cardSkin: "default", cardSkinKnobs: {} } };
@@ -280,12 +280,12 @@ describe("POST /renderer:意外的抛错不回原文", () => {
 		});
 		// 与生产一样带全局的出错处理:抛出来的按 `unavailable` 回,原话只进日志。
 		const app = new Hono()
-			.onError((_err, c) => respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE)))
+			.onError((_err, c) => respondFailure(c, fail("unavailable", unhandledErrorMessage())))
 			.route("/", route);
 		const res = await post(app, "/renderer", { chromePath: "/x" });
 		expect(res.status).toBe(503);
 		const text = await res.text();
-		expect(JSON.parse(text)).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(JSON.parse(text)).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
 		expect(text).not.toContain("EACCES");
 	});
 });

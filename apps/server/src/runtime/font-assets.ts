@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 主人上传的字体文件的本地资产存储。落盘到 `<dataRoot>/assets/font/`,资产 id = 文件名
  * `<32-hex>.<ext>`。**不**用 serveStatic 暴露整个 dataRoot(里面有 secrets);只经此模块
@@ -106,12 +107,17 @@ export async function saveFontAsset(
 ): Promise<string> {
 	const ext = fontExtOf(filename);
 	if (!ext) {
-		throw new AssetRejectedError(`不支持的字体格式：${filename}（仅 woff2 / woff / ttf / otf）`);
+		throw new AssetRejectedError(
+			serverText("service.runtime.font-assets.text.1", { value0: filename }),
+		);
 	}
 	if (bytes.byteLength > MAX_FONT_ASSET_BYTES) {
 		throw new AssetRejectedError(
 			// 上限从常量算,别硬写 —— 写死的话改了常量这句话还在说旧数字。
-			`字体文件过大（上限 ${Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024)}MB，这个 ${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB）—— 同一套字转成 woff2 通常只占三分之一`,
+			serverText("service.runtime.font-assets.text.2", {
+				value0: Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024),
+				value1: (bytes.byteLength / 1024 / 1024).toFixed(1),
+			}),
 		);
 	}
 	// 原始文件名交给存储记进清单(它记之前会洗:浏览器给的这一串可能是整条桌面路径,

@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 审批指令 —— 主人在私聊里回的那句 `y` / `n`。
  *
@@ -88,17 +89,24 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		if (cmd.id) {
 			target = pending.find((d) => d.id === cmd.id);
 			if (!target) {
-				await reply(`没找到编号 ${cmd.id} 的待审锐评，可能已经处理过或者超时了。`);
+				await reply(serverText("service.runtime.roast-command.text.1", { value0: cmd.id }));
 				return;
 			}
 		} else if (pending.length === 1) {
 			target = pending[0];
 		} else {
 			const list = pending
-				.map((d) => `${d.id}（${d.kind === "board" ? "周报" : "单人"}）`)
+				.map(
+					(d) =>
+						`${d.id}（${d.kind === "board" ? serverText("service.runtime.roast-command.text.2") : serverText("service.runtime.roast-command.text.3")}）`,
+				)
 				.join("、");
 			await reply(
-				`现在有 ${pending.length} 份待审：${list}。请带上编号，比如「y ${pending[0]?.id}」。`,
+				serverText("service.runtime.roast-command.text.4", {
+					value0: pending.length,
+					value1: list,
+					value2: String(pending[0]?.id),
+				}),
 			);
 			return;
 		}
@@ -107,13 +115,13 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		const taken = await drafts.take(target.id);
 		// take 会再判一次过期,并且是原子的 —— 两条指令同时进来只有一条拿得到。
 		if (!taken) {
-			await reply(`编号 ${target.id} 刚刚已经被处理或超时了。`);
+			await reply(serverText("service.runtime.roast-command.text.5", { value0: target.id }));
 			return;
 		}
 
 		if (cmd.kind === "reject") {
 			logger.info(`[roast-cmd] 主人丢弃了草稿 ${taken.id}`);
-			await reply(`好的，${taken.id} 已经丢掉了～`);
+			await reply(serverText("service.runtime.roast-command.text.6", { value0: taken.id }));
 			return;
 		}
 

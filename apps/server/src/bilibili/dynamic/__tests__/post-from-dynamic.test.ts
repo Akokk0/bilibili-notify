@@ -14,7 +14,8 @@
 
 import { DYNAMIC_SAMPLE_POSTS } from "@bilibili-notify/image/testing";
 import { normalizePost, type Post } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n/index.js";
 import { emojiUrlsOf, postFromDynamic } from "../post-from-dynamic";
 import type { Dynamic } from "../types";
 import { BILI_DYNAMIC_SAMPLES, LIVE_RCMD_DYNAMIC } from "./fixtures/bili-dynamic-fixtures";
@@ -1110,4 +1111,44 @@ describe("emojiUrlsOf:表情文字 → 图片地址(出卡前抓表情图用)", 
 		expect(emojiTexts).toEqual(["[a]", "[b]", "[c]"]);
 		expect([...emojiUrlsOf(item).keys()]).toEqual(emojiTexts);
 	});
+});
+
+it("recognizes platform badge and reservation status words independently of the output language", () => {
+	const state = i18n.state();
+	i18n.set({ locale: "en", voice: "plain" });
+	const spy = vi.spyOn(i18n.state(), "t").mockReturnValue("Translated label");
+	try {
+		const video = postFromDynamic(
+			raw("DYNAMIC_TYPE_AV", {
+				major: {
+					type: "MAJOR_TYPE_ARCHIVE",
+					archive: {
+						badge: { text: "投稿视频" },
+						title: "Source title",
+						cover: "",
+						desc: "",
+						stat: {},
+					},
+				},
+			}),
+		);
+		expect(video.label).toBe("Translated label");
+		const reserve = postFromDynamic(
+			raw("DYNAMIC_TYPE_WORD", {
+				additional: {
+					type: "ADDITIONAL_TYPE_RESERVE",
+					reserve: {
+						title: "Source title",
+						desc1: { text: "a" },
+						desc2: { text: "b" },
+						button: { uncheck: { text: "已结束" } },
+					},
+				},
+			}),
+		);
+		expect(reserve.attachment).toMatchObject({ button: { text: "已结束", enabled: false } });
+	} finally {
+		spy.mockRestore();
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
 });

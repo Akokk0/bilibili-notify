@@ -17,7 +17,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import type { ZodType } from "zod";
-import { t } from "../i18n/index.js";
+import { t as serverText, t } from "../i18n/index.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { IntegrationStore, IntegrationStoreHandle } from "../integration-store/store.js";
 import { createIntegrationHttp } from "../integrations/http.js";
@@ -410,9 +410,7 @@ function declaredSettings(manifest: ExtensionManifest): readonly SettingsField[]
 function assertSettingsHanded(manifest: ExtensionManifest, runtime: ExtensionRuntime): void {
 	if (declaredSettings(manifest).length === 0) return;
 	if (runtime.settingsSchemas().length > 0) return;
-	throw new Error(
-		"清单里声明了设置项,activate 里却没交校验它们的 zod —— 要调 ctx.settings(schema):面板写进来的值得再过拓展自己那一道",
-	);
+	throw new Error(serverText("service.extensions.loader.text.1"));
 }
 
 /** 问题表里「设置读不了」那一条的 code(报的人是拓展 id)。问题码只要求 snake,不在失败码表里。 */
@@ -420,7 +418,7 @@ const SETTINGS_INVALID_CODE = "settings_invalid";
 
 /** 「设置读不了」那一行:哪一格、为什么,再加一句怎么办。 */
 function unreadableDetail(why: string): string {
-	return `存着的设置不合它自己的规矩:${why}。在它的「配置」里改对,改对了会自己起来`;
+	return serverText("service.extensions.loader.text.2", { value0: why });
 }
 
 /**
@@ -428,7 +426,7 @@ function unreadableDetail(why: string): string {
  * 本身不是合法的 JSON;「改对」也不对 —— 在配置里存一次是整份覆盖。后面接解析报错的原话(不含文件内容)。
  */
 function brokenFileDetail(why: string): string {
-	return `这个拓展的设置文件女仆读不懂(不是合法的 JSON),先没让它跑。到「配置」里重新填好保存,女仆马上把它叫起来;没有配置页的话,改好文件再重启。${why}`;
+	return serverText("service.extensions.loader.text.3", { value0: why });
 }
 
 /**
@@ -663,7 +661,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		if (!fresh && readLoadLedger(ledgerRoot).blocked.includes(`${id}@${manifest.version}`)) {
 			slot.miss = {
 				state: "blocked",
-				detail: `连续加载失败 ${maxFailures} 次,已自动停用;换一版会重新试`,
+				detail: serverText("service.extensions.loader.text.4", { value0: maxFailures }),
 			};
 			return;
 		}
@@ -683,7 +681,10 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			stores = await opts.integrationStore.open(id);
 		} catch (err) {
 			const why = errorMessageOf(err);
-			slot.miss = { state: "failed", detail: `存储打不开:${why}` };
+			slot.miss = {
+				state: "failed",
+				detail: serverText("service.extensions.loader.text.5", { value0: why }),
+			};
 			host.logger.warn(`[ext] ${id} v${manifest.version} 存储打不开,不跑:${why}`);
 			return;
 		}
@@ -766,7 +767,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			// (决策 10),重新跑的只有 `activate`。所以拓展的模块顶层不许存状态。
 			const mod = (await importModule(url)) as Partial<ExtensionModule>;
 			if (typeof mod.activate !== "function") {
-				throw new Error(`${EXTENSION_ENTRY_FILE} 没有导出 activate()`);
+				throw new Error(
+					serverText("service.extensions.loader.text.6", { value0: EXTENSION_ENTRY_FILE }),
+				);
 			}
 			at.step = "activate()";
 			let crashed: { err: unknown } | undefined;
@@ -777,7 +780,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			}
 			// 🔴 **不论 activate 抛没抛**,先问设置读不读得了(ADR-0019 决策 36):没接住的话抛出来的
 			// 正是 `ctx.settings()` 那一下,那不是它崩了;拓展 try/catch 吞了那一抛,也照样作数。
-			at.step = "判存着的设置";
+			at.step = serverText("service.extensions.loader.text.7");
 			const unreadable = await runtime.verifySettings();
 			if (unreadable !== undefined) return unreadable;
 			if (crashed) throw crashed.err;
@@ -815,7 +818,10 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		} catch (err) {
 			const detail =
 				err instanceof Overdue
-					? `${at.step} 超过 ${activateTimeoutMs / 1000} 秒没回来,按加载失败算`
+					? serverText("service.extensions.loader.text.8", {
+							value0: at.step,
+							value1: activateTimeoutMs / 1000,
+						})
 					: (err as Error).message;
 			if (err instanceof Overdue) {
 				// 🔴 晚到的那一下**不许登记成在跑**:这一次已经按失败记了账、收了摊。它之后才注册的
@@ -970,7 +976,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			reservedIntegrationKeys: opts.reservedIntegrationKeys,
 		});
 		if (dir.state !== "ready") {
-			throw new Error(`${id} 盘上那份现在装不起来,换不上 —— 先看拓展页上它那一行`);
+			throw new Error(serverText("service.extensions.loader.text.9", { value0: id }));
 		}
 		await stop(slot);
 		slot.disk = dir;
@@ -1145,13 +1151,13 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				const slot = slots.get(id);
 				if (!slot || !stagedOf(slot)) {
 					throw new ExtensionConflictError(
-						`${id} 没有等着换上的新代码 —— 每重载一次漏一份旧模块,不白漏`,
+						serverText("service.extensions.loader.text.10", { value0: id }),
 					);
 				}
 				// 🔴 关着的也带 `staged`,可换上去就是把它跑起来 —— 那是开关的活,不是这颗钮的。
 				if (!isEnabled(id)) {
 					throw new ExtensionConflictError(
-						`${id} 的开关关着 —— 只重载会把它跑起来;要换就重启 BN,或者先打开它`,
+						serverText("service.extensions.loader.text.11", { value0: id }),
 					);
 				}
 				await replaceCode(slot);
@@ -1161,9 +1167,10 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			return enqueue(async () => {
 				const slot = slots.get(id);
 				if (slot?.disk.state !== "ready") {
-					throw new Error(`没有装着叫 ${id} 的拓展(或者它的清单就读不出来)`);
+					throw new Error(serverText("service.extensions.loader.text.12", { value0: id }));
 				}
-				if (!isEnabled(id)) throw new Error(`${id} 的开关关着 —— 先打开它,重载才有东西可换`);
+				if (!isEnabled(id))
+					throw new Error(serverText("service.extensions.loader.text.13", { value0: id }));
 				await replaceCode(slot);
 			});
 		},

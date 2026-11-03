@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 指令分发器 —— 主人在私聊里敲的那几条指令,从这里认出来、校验参数、交出去。
  *
@@ -61,6 +62,10 @@ export interface CommandDef<S extends string = string> {
 	 * 别名,参数就整体错位了(上游 koishi 框架专门修过这个回归)。
 	 */
 	aliases?: readonly string[];
+	/** 帮助里只列当前语言的内置别名；匹配仍用完整 aliases。 */
+	displayAliases?: readonly string[];
+	/** 显示名与机器签名分离，解析失败时现读。 */
+	parameterLabels?: Readonly<Record<string, string>>;
 	/** 参数签名,如 `<duration:duration|时长>`。不含指令名。省略 = 不收参数。 */
 	signature?: S;
 	/** 一句话说明,帮助里会列出来。列表是在手机上看的,**一行以内**。 */
@@ -216,7 +221,11 @@ function compile(commands: readonly CommandDef[], aliases: Record<string, string
 			if (owner !== undefined) {
 				// 报错里用主人**写的那个**大小写,不是折算过的 —— 他要在配置里找的是原样。
 				throw new Error(
-					`指令「${spec.name}」的触发词「${raw}」和「${owner}」撞了,一个词只能归一条指令`,
+					serverText("service.runtime.command-dispatcher.text.1", {
+						value0: spec.name,
+						value1: raw,
+						value2: owner,
+					}),
 				);
 			}
 			seen.set(lowered, spec.name);
@@ -322,13 +331,18 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 				compiled.flatMap((c) => c.triggers),
 			);
 			await reply(
-				near ? `没有这条指令哦～是不是想敲 ${config.prefix}${near}？` : "没有这条指令哦～",
+				near
+					? serverText("service.runtime.command-dispatcher.text.2", {
+							value0: config.prefix,
+							value1: near,
+						})
+					: serverText("service.runtime.command-dispatcher.text.3"),
 			);
 			return;
 		}
 
 		// 解析与执行分离:parse 失败就报错返回,handler 拿到的永远是已校验的值。
-		const parsed = parseArgs(hit.params, hit.rest);
+		const parsed = parseArgs(hit.params, hit.rest, hit.spec.parameterLabels);
 		if (!parsed.ok) {
 			await reply(parsed.message);
 			return;

@@ -46,7 +46,7 @@ it.each(["source", "adapter"] as const)(
 			...memoryStores(),
 			timezoneReader: timezoneReaderOf(store),
 			logger,
-			stopReason: "test stopped",
+			stopReason: () => "test stopped",
 			problems: ignoredProblems,
 			reporter: "timezone-layer",
 			label: () => "timezone-layer",

@@ -5,6 +5,7 @@ import {
 	type ServiceContext,
 	type SourceAuth,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../../i18n/index.js";
 import { createImageFetcher } from "../../images/image-fetcher.js";
 import type { ImageWriter } from "../../images/image-store.js";
 import { errorMessageOf } from "../../util/error-message.js";
@@ -134,10 +135,7 @@ export function createAuthSystem(opts: CreateAuthSystemOptions): AuthSystem {
 		}
 		return saved.ok
 			? ok()
-			: fail(
-					"unavailable",
-					`已退出，但存着的登录状态没清掉：${saved.message}，重启后可能还是登录着`,
-				);
+			: fail("unavailable", serverText("bilibili.auth.index.text.1", { value0: saved.message }));
 	};
 
 	const auth: Required<SourceAuth> = {

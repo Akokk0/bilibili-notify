@@ -1,5 +1,6 @@
 import type { DeliveryResult, ProbeResult, Result } from "@bilibili-notify/internal";
 import { fail, ok } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 「试一次、回报结果」的接口(测试推送、测试连通)回给面板的体:`Result<{ latencyMs }>`(ADR-0026)。
@@ -13,7 +14,9 @@ export type TestResult = Result<{ latencyMs: number }>;
 /** 一次测试投递的结果 → 线上的形状。 */
 export function testResultOfDelivery(result: DeliveryResult): TestResult {
 	if (result.ok) return ok({ latencyMs: result.latencyMs });
-	return result.message ? result : { ...result, message: "没有送达，对端没说原因" };
+	return result.message
+		? result
+		: { ...result, message: serverText("service.routes.test-result.text.1") };
 }
 
 /**
@@ -22,6 +25,9 @@ export function testResultOfDelivery(result: DeliveryResult): TestResult {
  */
 export function testResultOfProbe(result: ProbeResult): TestResult {
 	if (result.ok) return ok({ latencyMs: result.latencyMs });
-	if (result.code === "unsupported") return fail("unsupported", "该平台不支持连接探测");
-	return result.message ? result : { ...result, message: "连接探测没通过，对端没说原因" };
+	if (result.code === "unsupported")
+		return fail("unsupported", serverText("service.routes.test-result.text.2"));
+	return result.message
+		? result
+		: { ...result, message: serverText("service.routes.test-result.text.3") };
 }

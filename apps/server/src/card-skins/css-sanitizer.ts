@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * **卡片皮肤**的 CSS 清洗层(ADR-0014 决策 13,2026-09-13「开放重写」那一版)——
  * dashboard 皮肤方言按**块**收窄,但**开得比 dashboard 宽**。
@@ -121,7 +122,10 @@ export function sanitizeCardBlockCss(input: string, opts: CardBlockCssOptions): 
 	// 白名单」纳闷,而真正的毛病在块名上。(形状那道门 `parseCardSkin` 会单独拒收它。)
 	if (res.ok && opts.builtin !== undefined && !entry) {
 		res.warnings.unshift(
-			`${opts.kind} 卡没有叫「${opts.builtin}」的内置块,这段 CSS 只按 self 清洗`,
+			serverText("service.card-skins.css-sanitizer.text.1", {
+				value0: opts.kind,
+				value1: opts.builtin,
+			}),
 		);
 	}
 	return res;

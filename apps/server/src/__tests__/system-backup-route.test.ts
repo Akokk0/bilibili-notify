@@ -5,7 +5,7 @@ import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupEnvelope } from "../ba
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { BackupService } from "../backup/service.js";
 import { ConfigValidationError } from "../config/validation-error.js";
-import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../routes/respond-failure.js";
+import { requestErrorHandler, unhandledErrorMessage } from "../routes/respond-failure.js";
 import { createSystemBackupRoute } from "../routes/system-backup.js";
 
 /**
@@ -350,7 +350,7 @@ describe("backup route — 未知的抛错是 bug,交给全局出错处理", () 
 		});
 
 		expect(res.status).toBe(503);
-		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(await res.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
 		expect(logger.error).toHaveBeenCalledWith("unhandled request error", DISK_ERROR);
 	});
 

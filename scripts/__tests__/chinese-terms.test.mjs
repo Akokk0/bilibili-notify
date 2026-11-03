@@ -104,13 +104,11 @@ export const RATCHET = {
 	// 4-24: 主人2026-10-31批准迁移事实搬字典的精确5处增量，原文不改、判据与白名单不动。
 	// 4-27：主人批准来源提示专栏精确1处增量，完整键与命中词由下方断言钉住。
 	// 4-28: 主人批准旧档位表七处原文精确迁入,全仓叫法总数不变。
-	"apps/server/src/i18n/locales/zh-CN.json": 23,
+	"apps/server/src/i18n/locales/zh-CN.json": 41,
 	"apps/server/src/i18n/locales/zh-CN.maid.json": 1,
 	"apps/server/src/live/membership.ts": 3,
 	"apps/server/src/live/recap/live-summary-requester.ts": 1,
-	"apps/server/src/posts/deliver-post.ts": 6,
-	"apps/server/src/routes/targets.ts": 2,
-	"apps/server/src/runtime/roots.ts": 1,
+	"apps/server/src/posts/deliver-post.ts": 5,
 	// 4-26：主人批准真实 B 语境 5 plain + 3 maid，精确键与命中词由下方实扫断言钉住。
 	"apps/web/src/i18n/locales/zh-CN.json": 16,
 	"apps/web/src/i18n/locales/zh-CN.maid.json": 3,
@@ -168,9 +166,7 @@ export function jsonTermHits(json, allowed = [], file = "") {
 /** 批准的叫法与同词原节点闭集，词以 termsIn 的规范形式记录。 */
 export const JSON_TERM_PINS = {
 	"apps/web/src/i18n/locales/zh-CN.json": {
-		// 4-53a：主人已持续批准后片原文迁移；系统设置名“减少动态效果”原节点1处移入此完整键，词不扩。
 		"skinUi.SkinEditor.64": ["动态"],
-		// 4-53b：持续授权下原 B 站账号 / 导览文案逐键迁移，功能仍归 4-40/41。
 		"panelUi.components.onboarding.tour-companion.9": ["B站"],
 		"panelUi.components.onboarding.tour-script.1": ["B站"],
 		"panelUi.components.onboarding.tour-script.2": ["B站"],
@@ -192,7 +188,87 @@ export const JSON_TERM_PINS = {
 		"sourceUi.config.field.labels.hint.8": ["B站"],
 		"sourceUi.config.field.labels.hint.12": ["B站"],
 	},
+	"apps/server/src/i18n/locales/zh-CN.json": {
+		"bilibili.guard.name": ["大航海"],
+		"bilibili.guard.captain.name": ["舰长"],
+		"bilibili.guard.commander.name": ["提督"],
+		"bilibili.guard.governor.name": ["总督"],
+		"bilibili.guard.captain.announcement": ["大航海"],
+		"bilibili.guard.commander.announcement": ["大航海", "提督"],
+		"bilibili.guard.governor.announcement": ["大航海", "总督"],
+		"bilibili.source.featureHints.post": ["专栏"],
+		"bilibili.problem.dynamicFetchFailed": ["动态"],
+		"bilibili.problem.dynamicSettingsInvalid": ["动态"],
+		"bilibili.problem.followFailed": ["动态"],
+		"bilibili.problem.loginCheckSettingsInvalid": ["动态"],
+		"bilibili.response.malformed": ["B站"],
+		"bilibili.response.codeOnly": ["B站"],
+		"bilibili.search.failed": ["B站"],
+		"bilibili.search.failedWithReason": ["B站"],
+		"migration.subscriptionState.biliStateUnreadable": ["B站"],
+		"migration.subscriptionState.biliStateUnwritable": ["B站"],
+		"migration.subscriptionState.roomsDropped": ["B站", "B站"],
+		"migration.zero.layout.secrets": ["B站"],
+		"migration.zero.inputs.cookies": ["B站"],
+		"migration.zero.labels.biliLogin": ["B站"],
+		"migration.zero.biliLoginFailed": ["B站"],
+		"bilibili.source.dynamicCell": ["动态"],
+		"bilibili.source.label": ["B站"],
+		"bilibili.source.creatorNoun": ["UP主"],
+		"bilibili.source.postNoun": ["动态"],
+		"bilibili.auth.login-state.text.7": ["B站"],
+		"bilibili.dynamic.post-from-dynamic.text.5": ["动态", "动态"],
+		"bilibili.dynamic.post-from-dynamic.text.7": ["专栏"],
+		"bilibili.dynamic.post-from-dynamic.text.15": ["动态"],
+		"bilibili.dynamic.post-from-dynamic.text.16": ["动态"],
+		"bilibili.dynamic.post-from-dynamic.text.17": ["动态"],
+		"bilibili.dynamic.post-from-dynamic.text.18": ["动态"],
+		"bilibili.health-texts.text.3": ["动态"],
+		"bilibili.link-resolver-texts.text.1": ["B站"],
+		"bilibili.live.session.room-helpers.text.3": ["B站"],
+		"bilibili.live.session.room-helpers.text.4": ["B站"],
+		"bilibili.live.session.room-helpers.text.5": ["B站"],
+		"bilibili.live.session.room-helpers.text.6": ["B站"],
+		"bilibili.live.session.room-session.text.3": ["大航海"],
+	},
+	"apps/server/src/i18n/locales/zh-CN.maid.json": {
+		"migration.zero.biliLoginFailed": ["B站"],
+	},
 };
+
+/** 4-53c：五个来源描述/设置名只准在B站的对应getter里取，核心读描述符。 */
+const BILI_DESCRIPTOR_READERS = {
+	"bilibili.source.dynamicCell": ["apps/server/src/bilibili/source.ts:DYNAMIC_CELL/label"],
+	"bilibili.source.loginCheckCell": ["apps/server/src/bilibili/source.ts:LOGIN_CHECK_CELL/label"],
+	"bilibili.source.label": ["apps/server/src/bilibili/source.ts:BILI_SOURCE_DESCRIPTOR/label"],
+	"bilibili.source.creatorNoun": [
+		"apps/server/src/bilibili/source.ts:BILI_SOURCE_DESCRIPTOR/creatorNoun",
+	],
+	"bilibili.source.postNoun": [
+		"apps/server/src/bilibili/source.ts:BILI_SOURCE_DESCRIPTOR/postNoun",
+	],
+};
+function descriptorReaders(source) {
+	const out = {};
+	for (const { node } of findNodes(
+		source,
+		(n) => ts.isStringLiteral(n) && Object.hasOwn(BILI_DESCRIPTOR_READERS, n.text),
+	)) {
+		const names = [];
+		for (let p = node.parent; p; p = p.parent)
+			if (
+				(ts.isVariableDeclaration(p) ||
+					ts.isFunctionDeclaration(p) ||
+					ts.isMethodDeclaration(p) ||
+					ts.isGetAccessorDeclaration(p)) &&
+				p.name
+			)
+				names.unshift(p.name.getText(source.ast));
+		out[node.text] ??= [];
+		out[node.text].push(`${source.path}:${names.join("/")}`);
+	}
+	return out;
+}
 
 export function auditJsonPins(json, file) {
 	const actual = Object.fromEntries(
@@ -372,7 +448,26 @@ describe("核心与面板里的 B 站叫法只降不涨", () => {
 		});
 	});
 
-	it("两份 web 字典恰好保留批准的完整键与命中词", () => {
+	it("B站描述符叫法的真实读取者是五个已批准getter，核心不能借键写死叫法", () => {
+		const actual = {};
+		for (const file of listSources(scopeRoots()))
+			for (const [key, readers] of Object.entries(descriptorReaders(parseSource(file)))) {
+				actual[key] ??= [];
+				actual[key].push(...readers);
+			}
+		expect(actual).toEqual(BILI_DESCRIPTOR_READERS);
+		const moved = descriptorReaders(
+			parseSource(
+				"apps/server/src/core.ts",
+				'const core = { get label() { return t("bilibili.source.label"); } };',
+			),
+		);
+		expect(moved["bilibili.source.label"]).not.toEqual(
+			BILI_DESCRIPTOR_READERS["bilibili.source.label"],
+		);
+	});
+
+	it("两端字典恰好保留批准的完整键与命中词", () => {
 		for (const file of Object.keys(JSON_TERM_PINS))
 			expect(auditJsonPins(readFileSync(join(REPO_ROOT, file), "utf8"), file)).toEqual([]);
 	});

@@ -6,6 +6,7 @@ import {
 	SubscriptionAvatarSchema,
 	sniffImageFormat,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 新建订阅带的头像在存进图库之前过的一道关(ADR-0019 决策 49)。存进图库本身归图库(`images/image-store.ts`:
@@ -37,7 +38,10 @@ export function decodeSubscriptionAvatar(dataUrl: string): AvatarCheck {
 	const declared = dataUrl.slice("data:image/".length, dataUrl.indexOf(";"));
 	const bytes = Buffer.from(dataUrl.slice(comma + 1), "base64");
 	if (sniffImageFormat(bytes) !== declared) {
-		return fail("invalid", `头像声明是 image/${declared},内容却不是这种图`);
+		return fail(
+			"invalid",
+			serverText("service.runtime.subscription-avatar.text.1", { value0: declared }),
+		);
 	}
 	return ok({ bytes });
 }

@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 推送历史里跟图有关的格 → 图库(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗,⑳d)。
  *
@@ -36,11 +37,11 @@ import { createImageCopier, isCleanFileName } from "./image-library.js";
  */
 export function historyInputReason(path: string): string | undefined {
 	if (path === "img") {
-		return "历史图:迁移读一次,保留期内的行与重推原件引用的逐张复制进图库 images/(记在搬过去的里)、其余不带过来,不整目录进新代";
+		return serverText("service.migration.history-images.text.1");
 	}
 	const own = /^repush\/[^/]+\/([^/]+)$/.exec(path)?.[1];
 	if (own !== undefined && !own.endsWith(".json")) {
-		return "重推原件自己存的图:迁移读一次,原件引用着的复制进图库 images/(记在搬过去的里)、其余不带过来,不进新代";
+		return serverText("service.migration.history-images.text.2");
 	}
 	return undefined;
 }

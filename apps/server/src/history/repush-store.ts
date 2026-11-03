@@ -12,6 +12,7 @@ import {
 } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import { z } from "zod";
+import { t as serverText } from "../i18n/index.js";
 import type { ImageStore, ImageWriter } from "../images/image-store.js";
 import { dataPath } from "../runtime/roots.js";
 
@@ -177,14 +178,17 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 	/** 原件里的一张图存进图库,回引用。存不进(不是图库收的图、磁盘写失败)就抛 —— 原件不完整比没有更糟,由 `append` 的调用方收成 warn。 */
 	async function storeImage(buffer: Uint8Array): Promise<ImageRef> {
 		const stored = await opts.images.put(buffer);
-		if (!stored.ok) throw new Error(`图存不进图库:${stored.message}`);
+		if (!stored.ok)
+			throw new Error(
+				serverText("service.history.repush-store.text.1", { value0: stored.message }),
+			);
 		return stored.ref;
 	}
 
 	/** 图库引用 → 能直接发的图(字节 + mime)。图库里没有就抛,由 `load` 收成 null。 */
 	async function loadImage(ref: ImageRef): Promise<{ buffer: Buffer; mime: string }> {
 		const found = await opts.imageStore.read(ref);
-		if (!found) throw new Error(`图库里没有这张图:${ref}`);
+		if (!found) throw new Error(serverText("service.history.repush-store.text.2", { value0: ref }));
 		return { buffer: found.bytes, mime: found.mime };
 	}
 

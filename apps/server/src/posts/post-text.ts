@@ -1,4 +1,5 @@
 import type { Post } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 
 /** `plain`:各段无前缀、换行拼接(过滤用);`labeled`:带「标题：」「视频标题：」「（转发自 X：…）」(给 AI 读)。 */
 export type PostTextStyle = "plain" | "labeled";
@@ -11,9 +12,11 @@ function ownSections(post: Post, style: PostTextStyle): string[] {
 	const videoTitle = post.video?.title;
 	if (style === "plain") return [post.text, title, videoTitle].filter(filled);
 	return [
-		filled(title) ? `标题：${title}` : undefined,
+		filled(title) ? serverText("service.posts.post-text.text.1", { value0: title }) : undefined,
 		post.text,
-		filled(videoTitle) ? `视频标题：${videoTitle}` : undefined,
+		filled(videoTitle)
+			? serverText("service.posts.post-text.text.2", { value0: videoTitle })
+			: undefined,
 	].filter(filled);
 }
 
@@ -29,8 +32,13 @@ export function postText(post: Post, style: PostTextStyle): string {
 			if (inner !== "") sections.push(inner);
 		} else {
 			const inner = postText(post.repost, style).replaceAll("\n", " ");
-			const name = filled(post.repost.creator.name) ? post.repost.creator.name : "未知";
-			if (inner !== "") sections.push(`（转发自 ${name}：${inner}）`);
+			const name = filled(post.repost.creator.name)
+				? post.repost.creator.name
+				: serverText("service.posts.post-text.text.3");
+			if (inner !== "")
+				sections.push(
+					serverText("service.posts.post-text.text.4", { value0: name, value1: inner }),
+				);
 		}
 	}
 	const joined = sections.join("\n");

@@ -12,6 +12,7 @@ import {
 	type Result,
 } from "@bilibili-notify/internal";
 import { type KeyProvider, removeDirectory } from "@bilibili-notify/storage";
+import { t as serverText } from "../i18n/index.js";
 import { stringLeaves, type ValueRedactor } from "../logs/value-redactor.js";
 import { dataPath } from "../runtime/roots.js";
 import { errorMessageOf } from "../util/error-message.js";
@@ -146,13 +147,18 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 		logger.error(
 			`[integration-store] ${key} 的 ${file} 在盘上但读不了(${read.message}):这一份读一律空、写一律拒,盘上原文件不动`,
 		);
-		return `${key} 的 ${file} 读不了(${read.message}),写入一律拒绝`;
+		return serverText("service.integration-store.store.text.1", {
+			value0: key,
+			value1: file,
+			value2: read.message,
+		});
 	}
 
 	async function open(key: string): Promise<IntegrationStoreHandle> {
-		if (!isKnownKey(key)) throw new Error(`集成键不合法,开不了存储:${key}`);
+		if (!isKnownKey(key))
+			throw new Error(serverText("service.integration-store.store.text.2", { value0: key }));
 		if (opened.has(key) || opening.has(key)) {
-			throw new Error(`集成 ${key} 的存储已经开着,同一个集成不能同时开两份`);
+			throw new Error(serverText("service.integration-store.store.text.3", { value0: key }));
 		}
 		opening.add(key);
 		try {
@@ -171,7 +177,8 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 			const secretsUnreadable = unreadableNote("secrets.enc", key, secretsRead);
 
 			let closed = false;
-			const closedNote = () => (closed ? `集成 ${key} 已停下,存储不再接受写入` : undefined);
+			const closedNote = () =>
+				closed ? serverText("service.integration-store.store.text.4", { value0: key }) : undefined;
 
 			const state = createKeyValueStores({
 				initial: stateRead.kind === "ok" ? stateRead.entries : undefined,
@@ -234,11 +241,15 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 
 	async function remove(key: string): Promise<Result> {
 		if (reservedIntegrationKeys.includes(key)) {
-			return fail("invalid", `${key} 是内置集成,没有卸载`);
+			return fail("invalid", serverText("service.integration-store.store.text.5", { value0: key }));
 		}
-		if (!isKnownKey(key)) return fail("invalid", `集成键不合法:${key}`);
+		if (!isKnownKey(key))
+			return fail("invalid", serverText("service.integration-store.store.text.6", { value0: key }));
 		if (opened.has(key) || opening.has(key)) {
-			return fail("conflict", `集成 ${key} 的存储还开着,先让它停下再删`);
+			return fail(
+				"conflict",
+				serverText("service.integration-store.store.text.7", { value0: key }),
+			);
 		}
 		// 排在各自写道的末尾:在途的写先落完,再删目录。
 		const removals = [
@@ -253,7 +264,13 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 			await Promise.all(removals);
 			return ok();
 		} catch (err) {
-			return fail("unavailable", `清不掉集成 ${key} 存的状态与密钥:${errorMessageOf(err)}`);
+			return fail(
+				"unavailable",
+				serverText("service.integration-store.store.text.8", {
+					value0: key,
+					value1: errorMessageOf(err),
+				}),
+			);
 		}
 	}
 
@@ -305,7 +322,11 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 
 	async function restoreSecrets(key: string, entries: Record<string, Json>): Promise<Result> {
 		const live = opened.get(key);
-		if (!live) return fail("unavailable", `集成 ${key} 现在没在运行,密钥带不回来`);
+		if (!live)
+			return fail(
+				"unavailable",
+				serverText("service.integration-store.store.text.9", { value0: key }),
+			);
 		const replaced = await live.secrets.replace(new Map(Object.entries(entries)));
 		if (!replaced.ok) return replaced;
 		for (const hook of [...live.replacedHooks]) {

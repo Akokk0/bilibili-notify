@@ -72,7 +72,9 @@ export function createBiliLinkResolver(deps: BiliLinkResolverDeps): LinkResolver
 	}
 
 	return {
-		label: deps.label,
+		get label() {
+			return deps.label;
+		},
 		matches: (url) => extractVideoLinks(url).length > 0,
 		async resolve(url): Promise<Result<LinkPreview>> {
 			const [linkRef] = extractVideoLinks(url);

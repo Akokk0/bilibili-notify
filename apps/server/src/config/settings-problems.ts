@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 核心设置的坏格表 → 问题表里的那一条,以及那句话。
  *
@@ -72,7 +73,7 @@ const cellName = (entry: InvalidSettingEntry): string => entry.path.join(".");
 /** 原因取这一格第一条 issue 的话;单家的带上值规则里的字段名(`model：…`),字段名不是盘上的内容。 */
 function reasonOf(entry: InvalidSettingEntry): string {
 	const first = entry.issues[0];
-	if (!first) return "格式不对";
+	if (!first) return serverText("service.config.settings-problems.text.1");
 	if (isInstance(entry) && first.path && first.path.length > 0) {
 		return `${first.path.join(".")}：${first.message}`;
 	}
@@ -83,7 +84,7 @@ function reasonOf(entry: InvalidSettingEntry): string {
 function labelOf(entry: InvalidSettingEntry, withPrefix: boolean): string {
 	const id = instanceLabelOf(entry);
 	if (id === undefined) return `${cellName(entry)}（${reasonOf(entry)}）`;
-	return `${withPrefix ? "AI 服务商 " : ""}${id}（${reasonOf(entry)}）`;
+	return `${withPrefix ? serverText("service.config.settings-problems.text.2") : ""}${id}（${reasonOf(entry)}）`;
 }
 
 /** 摊开前三格,多的写「等 N <单位>」。 */
@@ -93,7 +94,13 @@ function listed(
 	unit: string,
 ): string {
 	const shown = entries.slice(0, MAX_LISTED).map((e) => labelOf(e, withPrefix));
-	if (entries.length > MAX_LISTED) shown.push(`等 ${entries.length - MAX_LISTED} ${unit}`);
+	if (entries.length > MAX_LISTED)
+		shown.push(
+			serverText("service.config.settings-problems.text.3", {
+				value0: entries.length - MAX_LISTED,
+				value1: unit,
+			}),
+		);
 	return shown.join("；");
 }
 
@@ -101,29 +108,60 @@ function listed(
 export function settingsInvalidMessage(entries: readonly InvalidSettingEntry[]): string {
 	const instances = entries.filter(isInstance);
 	if (instances.length === entries.length) return instancesOnlyMessage(instances);
-	const unit = instances.length > 0 ? "处" : "格";
+	const unit =
+		instances.length > 0
+			? serverText("service.config.settings-problems.text.4")
+			: serverText("service.config.settings-problems.text.5");
 	const single = entries.length === 1;
-	const count = single ? `有一${unit}` : `有 ${entries.length} ${unit}`;
-	const these = single ? "这一格" : "这几格";
+	const count = single
+		? serverText("service.config.settings-problems.text.6", { value0: unit })
+		: serverText("service.config.settings-problems.text.7", {
+				value0: entries.length,
+				value1: unit,
+			});
+	const these = single
+		? serverText("service.config.settings-problems.text.8")
+		: serverText("service.config.settings-problems.text.9");
 	// 有单家的:不能笼统说「先按默认值在跑」(单家是「先当它不在」),这句话挪到各类的补救里分开说。
 	const lead =
 		instances.length > 0
-			? `主人，设置文件里${count}女仆读不懂：${listed(entries, true, unit)}。`
-			: `主人，设置文件里${count}女仆读不懂，先按默认值在跑了：${listed(entries, false, unit)}。`;
-	return `${lead}文件里原来写的女仆一个字没动。${remedyOf(entries, these)}`;
+			? serverText("service.config.settings-problems.text.10", {
+					value0: count,
+					value1: listed(entries, true, unit),
+				})
+			: serverText("service.config.settings-problems.text.11", {
+					value0: count,
+					value1: listed(entries, false, unit),
+				});
+	return serverText("service.config.settings-problems.text.12", {
+		value0: lead,
+		value1: remedyOf(entries, these),
+	});
 }
 
 /** 只有单家坏:不带「处」「格」,直接说几家。 */
 function instancesOnlyMessage(instances: readonly InvalidSettingEntry[]): string {
 	const single = instances.length === 1;
-	const count = single ? "有一家" : `有 ${instances.length} 家`;
+	const count = single
+		? serverText("service.config.settings-problems.text.13")
+		: serverText("service.config.settings-problems.text.14", { count: instances.length });
 	return (
-		`主人，设置文件里${count} AI 服务商女仆读不懂：${listed(instances, false, "家")}。` +
-		`文件里原来写的女仆一个字没动。${instancesRemedy(instances.length, single ? "这一家" : "这几家")}`
+		serverText("service.config.settings-problems.text.16", {
+			value0: count,
+			value1: listed(instances, false, serverText("service.config.settings-problems.text.15")),
+		}) +
+		serverText("service.config.settings-problems.text.19", {
+			value0: instancesRemedy(
+				instances.length,
+				single
+					? serverText("service.config.settings-problems.text.17")
+					: serverText("service.config.settings-problems.text.18"),
+			),
+		})
 	);
 }
 
-const EDIT_FILE = "请改好 config/settings/core.json 里对应的那一格再重启。";
+const editFile = () => serverText("service.config.settings-problems.text.20");
 
 /**
  * 单家的怎么修:别家照常用、面板上照常改(写口 `ai.providers` 的别家照存,见 store-invalid-settings 的 N3);
@@ -131,13 +169,19 @@ const EDIT_FILE = "请改好 config/settings/core.json 里对应的那一格再�
  * 在用的正是它时 AI 先停着(引擎读不到那一家,按「没配齐」停,不换家)。
  */
 function instancesRemedy(count: number, those: string): string {
-	const pron = count === 1 ? "它" : "它们";
-	const inUse = count === 1 ? "这一家" : "其中一家";
+	const pron =
+		count === 1
+			? serverText("service.config.settings-problems.text.21")
+			: serverText("service.config.settings-problems.text.22");
+	const inUse =
+		count === 1
+			? serverText("service.config.settings-problems.text.23")
+			: serverText("service.config.settings-problems.text.24");
 	return (
-		`${those}先当${pron}不在，别家照常用、在面板上照常改；存着的密钥也还在，` +
-		`请改好 config/settings/core.json 里 ai.providers 下的${those}再重启，${pron}就回来了。` +
-		`面板上现在看不到${pron}；这时候在面板上新加同一家服务商，可能会存不进去，保存条上会说明原因。` +
-		`要是女仆平时用的正好是${inUse}，AI 会先停着。`
+		serverText("service.config.settings-problems.text.25", { value0: those, value1: pron }) +
+		serverText("service.config.settings-problems.text.26", { value0: those, value1: pron }) +
+		serverText("service.config.settings-problems.text.27", { value0: pron }) +
+		serverText("service.config.settings-problems.text.28", { value0: inUse })
 	);
 }
 
@@ -154,28 +198,48 @@ function remedyOf(entries: readonly InvalidSettingEntry[], these: string): strin
 	if (handsOff.length > 0) {
 		const only = handsOff.length === entries.length;
 		const one = handsOff.length === 1;
-		const aiThese = only ? (one ? "这一格" : "这几格") : one ? "那一格" : "那几格";
-		const thatCell = only && handsOff.length === 1 ? "这一格" : "那一格";
+		const aiThese = only
+			? one
+				? serverText("service.config.settings-problems.text.29")
+				: serverText("service.config.settings-problems.text.30")
+			: one
+				? serverText("service.config.settings-problems.text.31")
+				: serverText("service.config.settings-problems.text.32");
+		const thatCell =
+			only && handsOff.length === 1
+				? serverText("service.config.settings-problems.text.33")
+				: serverText("service.config.settings-problems.text.34");
 		const lost = handsOff.some(losesKeysOnResave)
-			? "连同存着的密钥一起换掉"
-			: "换掉，手写在里面、还没存进加密袋的 key 也会一起没了";
+			? serverText("service.config.settings-problems.text.35")
+			: serverText("service.config.settings-problems.text.36");
 		pieces.push(
-			`ai 开头的${aiThese}请别在面板上改：面板上现在看不到原来的内容，` +
-				`在面板保存会把${thatCell}里原来的东西${lost}；${EDIT_FILE}`,
+			serverText("service.config.settings-problems.text.37", { value0: aiThese }) +
+				serverText("service.config.settings-problems.text.38", {
+					value0: thatCell,
+					value1: lost,
+					value2: editFile(),
+				}),
 		);
 	}
 	if (plainCount > 0) {
 		if (handsOff.length === 0 && instances.length === 0) {
 			pieces.push(
-				`到面板把${these}改成想要的样子保存一下就好；` +
-					"想找回原来写的，改好 config/settings/core.json 里对应的那一格再重启。",
+				serverText("service.config.settings-problems.text.39", { value0: these }) +
+					serverText("service.config.settings-problems.text.40"),
 			);
 		} else {
-			pieces.push("其余的到面板改成想要的样子保存一下就好。");
+			pieces.push(serverText("service.config.settings-problems.text.41"));
 		}
 	}
 	if (instances.length > 0) {
-		pieces.push(instancesRemedy(instances.length, instances.length === 1 ? "那一家" : "那几家"));
+		pieces.push(
+			instancesRemedy(
+				instances.length,
+				instances.length === 1
+					? serverText("service.config.settings-problems.text.42")
+					: serverText("service.config.settings-problems.text.43"),
+			),
+		);
 	}
 	return pieces.join("");
 }
@@ -186,8 +250,8 @@ function remedyOf(entries: readonly InvalidSettingEntry[], these: string): strin
  */
 export function brokenInstanceIdTakenMessage(id: string): string {
 	return (
-		`主人，这个 id（${shortenInstanceId(id)}）被设置文件里读不懂的那一家 AI 服务商占着，女仆这次没有保存。` +
-		"请改好 config/settings/core.json 里 ai.providers 下的这一家再重启；不想要它了，就在文件里把它删掉再重启。"
+		serverText("service.config.settings-problems.text.44", { value0: shortenInstanceId(id) }) +
+		serverText("service.config.settings-problems.text.45")
 	);
 }
 

@@ -33,7 +33,7 @@ function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {
 	const handle = createIntegrationContext({
 		...integrationIo(),
 		logger,
-		stopReason: "它停用了",
+		stopReason: () => "它停用了",
 		...memoryStores(),
 		problems,
 		reporter: "demo",
@@ -75,7 +75,7 @@ describe("createIntegrationContext", () => {
 	});
 
 	it("钩子跑的时候 signal 已经中止,原因是给的那句", async () => {
-		const { handle } = make({ stopReason: "拓展 x 停用了" });
+		const { handle } = make({ stopReason: () => "拓展 x 停用了" });
 		let seen: { aborted: boolean; name?: string; message?: string } | undefined;
 		handle.ctx.onDispose(() => {
 			const reason = handle.ctx.signal.reason as DOMException;
@@ -616,4 +616,12 @@ describe("共同 timezone", () => {
 		expect(seen).toEqual(["Asia/Kathmandu"]);
 		await handle.dispose();
 	});
+});
+
+it("reads the shutdown reason at disposal rather than context creation", async () => {
+	let reason = "Before";
+	const { handle } = make({ stopReason: () => reason });
+	reason = "After";
+	await handle.dispose();
+	expect((handle.ctx.signal.reason as DOMException).message).toBe("After");
 });

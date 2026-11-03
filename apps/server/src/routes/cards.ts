@@ -83,7 +83,7 @@ import { createMembershipTierReader } from "../subscriptions/membership-tiers.js
 import { subscriptionIdentityLabelOf } from "../subscriptions/platform-label.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { failureOfChecks } from "../util/failure-text.js";
-import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
+import { enginesNotReadyMessage, respondFailure } from "./respond-failure.js";
 import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 
@@ -372,7 +372,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			);
 		}
 		const pipeline = opts.deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 		const source = parsed.data;
 		// 热切换 = 路由已握有在用 adapter;同源直接幂等返回,连 adapter 都不构造。
 		const replacing = currentPuppeteer !== null;
@@ -906,7 +906,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", noChromeHint()));
 		const pipeline = opts.deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 		const target = opts.deps.store.getTargets().find((each) => each.id === targetId);
 		if (!target) return respondFailure(c, fail("not_found", t("cards.testPush.noTarget")));
 		if (missingSubscription(content)) {

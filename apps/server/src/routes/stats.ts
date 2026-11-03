@@ -17,6 +17,7 @@ import {
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
+import { t as serverText } from "../i18n/index.js";
 import type { RoastRunOutcome } from "../runtime/roast-scheduler.js";
 import {
 	countPosts,
@@ -33,7 +34,7 @@ import {
 	generateSoloRoast,
 	type OverviewFetcher,
 } from "../stats/roast-generate.js";
-import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
+import { enginesNotReadyMessage, respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -400,19 +401,22 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	 */
 	app.post("/roast/push", async (c) => {
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 
 		const parsed = RoastPushSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "锐评推送的请求格式不对", { issues: issuesFromZod(parsed.error) }),
+				fail("invalid", serverText("service.routes.stats.text.1"), {
+					issues: issuesFromZod(parsed.error),
+				}),
 			);
 		}
 		const { targetId, days, kind, result } = parsed.data;
 
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
-		if (!target) return respondFailure(c, fail("not_found", "推送目标不存在"));
+		if (!target)
+			return respondFailure(c, fail("not_found", serverText("service.routes.stats.text.2")));
 
 		// 渲染与投递的本体在 `../stats/roast-deliver.ts` —— 定时推送走同一份,
 		// 免得「渲染挂了降级成文字」这类行为将来只剩一条路上还留着。
@@ -421,13 +425,15 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		// 含糊的「推送失败」—— 那会让人去查网络。
 		// 停用要主人去把开关打开,等是等不好的:`not_configured`。
 		if (out.skipped.length > 0) {
-			return respondFailure(c, fail("not_configured", "推送目标已停用"));
+			return respondFailure(c, fail("not_configured", serverText("service.routes.stats.text.3")));
 		}
 		if (out.sent.length === 0) {
 			// 投递那头的失败原样回(码、原话、平台自己的码);原话是空的补一句能读的。
 			const failure = out.failed[0]?.failure ?? fail("unavailable", "");
 			return c.json<StatsRoastPushResponse>(
-				failure.message ? failure : { ...failure, message: "没有送达，对端没说原因" },
+				failure.message
+					? failure
+					: { ...failure, message: serverText("service.routes.stats.text.4") },
 			);
 		}
 		return c.json<StatsRoastPushResponse>(ok({ mode: out.mode }));
@@ -453,7 +459,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	 */
 	async function runNow(c: Context, subscriptionId?: string): Promise<Response> {
 		if (!options.runRoastNow) {
-			return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+			return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 		}
 		return c.json<StatsRoastRunNowResponse>(
 			ok({ outcome: await options.runRoastNow(subscriptionId) }),

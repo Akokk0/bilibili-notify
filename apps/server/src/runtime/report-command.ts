@@ -1,3 +1,8 @@
+import { t as serverText } from "../i18n/index.js";
+import {
+	builtinCommandAliases,
+	displayedBuiltinCommandAliases,
+} from "./builtin-command-aliases.js";
 /**
  * `/report` —— 手动催一份周报。
  *
@@ -56,8 +61,11 @@ function describeSent(outcome: Extract<ReportOutcome, { kind: "pending-approval"
 			return null;
 		case "sent":
 			return outcome.failed.length === 0
-				? `周报发出去了，${outcome.sent} 个目标都成了～`
-				: `周报发出去了：${outcome.sent} 个成功，${outcome.failed.length} 个失败。`;
+				? serverText("service.runtime.report-command.text.1", { value0: outcome.sent })
+				: serverText("service.runtime.report-command.text.2", {
+						value0: outcome.sent,
+						count: outcome.failed.length,
+					});
 	}
 }
 
@@ -68,11 +76,21 @@ export function createReportCommand(opts: ReportCommandOptions): CommandDef {
 
 	return command({
 		name: "report",
-		aliases: ["周报"],
-		signature: "[days:number|天数]",
-		description: "现在就要一份周报",
+		get parameterLabels() {
+			return { days: serverText("service.runtime.report-command.text.3") };
+		},
+		aliases: builtinCommandAliases("report"),
+		get displayAliases() {
+			return displayedBuiltinCommandAliases("report");
+		},
+		signature: "[days:number]",
+		get description() {
+			return serverText("service.runtime.report-command.text.4");
+		},
 		example: "7",
-		details: "要跑几十秒。生成期间再敲不会重复生成，也不会重复花钱。",
+		get details() {
+			return serverText("service.runtime.report-command.text.5");
+		},
 		run: async (values, { reply }) => {
 			// 范围是这条指令自己的业务规则,parser 只管格式 —— 它要是替各指令管范围,
 			// 就得为每条指令在那儿开一个口子。挡在调 AI 之前,越界不该花钱。
@@ -90,7 +108,7 @@ export function createReportCommand(opts: ReportCommandOptions): CommandDef {
 				// ack 在跑生成之前发出去:主人先看到「收到了」,再等结果。它必须在
 				// try **里面** —— reply 本身也可能 reject(适配器瞬断),写在外面的话
 				// finally 不执行,running 卡死 true,此后每次 /report 都被挡到重启为止。
-				await reply("好的，在生成了，稍等～");
+				await reply(serverText("service.runtime.report-command.text.6"));
 				const outcome = await opts.run(days);
 				if (outcome.kind === "no-targets") {
 					return fail("not_configured", t("command.report.noTargets"));

@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * `SKILL.md` 的解析与回写 —— 一条女仆技能在盘上的全部形状。
  *
@@ -54,32 +55,38 @@ function parseAllowedTools(raw: unknown): string[] | undefined {
 export function parseSkillFile(text: string): ParseSkillResult {
 	const normalized = text.replace(/\r\n/g, "\n");
 	if (!normalized.startsWith("---\n")) {
-		return { ok: false, reason: "缺少 frontmatter:文件要以 `---` 单独一行开头" };
+		return { ok: false, reason: serverText("service.maid-skills.parse.text.1") };
 	}
 	const end = normalized.indexOf("\n---", 3);
 	if (end === -1) {
-		return { ok: false, reason: "frontmatter 没有收尾:缺少第二行 `---`" };
+		return { ok: false, reason: serverText("service.maid-skills.parse.text.2") };
 	}
 	const rawFm = normalized.slice(4, end);
 	if (rawFm.length > MAX_FRONTMATTER_CHARS) {
-		return { ok: false, reason: `frontmatter 过长(上限 ${MAX_FRONTMATTER_CHARS} 字)` };
+		return {
+			ok: false,
+			reason: serverText("service.maid-skills.parse.text.3", { value0: MAX_FRONTMATTER_CHARS }),
+		};
 	}
 	// `\n---` 之后到行尾的残字(`---abc`)不算收尾,那多半是主人写岔了。
 	const afterDelim = normalized.slice(end + 4);
 	const lineBreak = afterDelim.indexOf("\n");
 	const tail = lineBreak === -1 ? afterDelim : afterDelim.slice(0, lineBreak);
 	if (tail.trim() !== "") {
-		return { ok: false, reason: "frontmatter 的收尾 `---` 那一行不能再有别的字" };
+		return { ok: false, reason: serverText("service.maid-skills.parse.text.4") };
 	}
 
 	let fm: unknown;
 	try {
 		fm = parseYaml(rawFm);
 	} catch (err) {
-		return { ok: false, reason: `frontmatter 不是合法 YAML:${(err as Error).message}` };
+		return {
+			ok: false,
+			reason: serverText("service.maid-skills.parse.text.5", { value0: (err as Error).message }),
+		};
 	}
 	if (typeof fm !== "object" || fm === null || Array.isArray(fm)) {
-		return { ok: false, reason: "frontmatter 要是一组 `键: 值`" };
+		return { ok: false, reason: serverText("service.maid-skills.parse.text.6") };
 	}
 	const rec = fm as Record<string, unknown>;
 

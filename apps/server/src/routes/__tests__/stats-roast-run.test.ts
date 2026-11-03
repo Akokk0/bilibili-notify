@@ -12,7 +12,7 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { RoastRunOutcome } from "../../runtime/roast-scheduler.js";
-import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
+import { requestErrorHandler, unhandledErrorMessage } from "../respond-failure.js";
 import { createStatsRoute } from "../stats.js";
 import type { RouteDeps } from "../types.js";
 
@@ -109,7 +109,7 @@ describe("POST /roast/run", () => {
 		app.route("/api/stats", createStatsRoute(deps, { runRoastNow }));
 		const res = await app.request("/api/stats/roast/run", { method: "POST" });
 		expect(res.status).toBe(503);
-		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(await res.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
 		expect(logger.error).toHaveBeenCalledWith("unhandled request error", boom);
 	});
 });

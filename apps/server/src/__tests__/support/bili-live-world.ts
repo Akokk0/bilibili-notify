@@ -451,7 +451,7 @@ export async function bootBiliLiveWorld(
 		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		stores: stores.handle,
 		logger: serviceCtx.forSubsystem("bilibili", "bilibili").logger,
-		stopReason: "测试关停",
+		stopReason: () => "测试关停",
 		problems: problemTable,
 		reporter: "bilibili",
 		label: () => "B 站",

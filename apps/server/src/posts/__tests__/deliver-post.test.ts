@@ -382,7 +382,7 @@ describe("deliverPost — 出图连续失败只提醒一次", () => {
 		await run(h);
 		expect(tracker.streak).toBe(1);
 		expect(h.emitPipelineError).toHaveBeenCalledWith(
-			"生成动态图片失败：chrome crash，已降级为纯文字推送，请检查图片插件状态",
+			"生成作品图片失败：chrome crash，已降级为纯文字推送，请检查卡片渲染状态",
 		);
 
 		await run(h);

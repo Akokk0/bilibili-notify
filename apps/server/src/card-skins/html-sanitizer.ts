@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * **自定义块的 HTML 清洗层**(ADR-0014 决策 11 / 12,2026-09-13「开放重写」那一版:
  * 标签白名单放宽到排版语义标签全集,见 {@link ALLOWED_TAGS};`style=""` 照旧走
@@ -420,7 +421,9 @@ const ANY_PLACEHOLDER_RE = /\{[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+\}/;
  */
 function rejectsPlaceholder(tag: string, name: string, value: string, ctx: Ctx): boolean {
 	if (!ANY_PLACEHOLDER_RE.test(value)) return false;
-	ctx.warnings.push(`<${tag}> 的属性 ${name} 里不认占位符(只有 src / alt 认),整个属性丢弃`);
+	ctx.warnings.push(
+		serverText("service.card-skins.html-sanitizer.text.1", { value0: tag, value1: name }),
+	);
 	return true;
 }
 /** 包内资产的引用前缀。 */
@@ -493,21 +496,35 @@ function checkSrc(raw: string, ctx: Ctx): { value: string } | { reason: string }
 	const value = raw.trim();
 	if (value.startsWith(ASSET_PREFIX)) {
 		const name = value.slice(ASSET_PREFIX.length);
-		if (!ctx.assets.has(name)) return { reason: `src 指向的资产「${name}」不在包里` };
+		if (!ctx.assets.has(name))
+			return { reason: serverText("service.card-skins.html-sanitizer.text.2", { value0: name }) };
 		return { value };
 	}
 	const m = WHOLE_PLACEHOLDER_RE.exec(value);
 	if (!m) {
 		return {
-			reason: `src「${value}」只准写 ${ASSET_PREFIX}<资产名> 或一个图片类型的字段占位符`,
+			reason: serverText("service.card-skins.html-sanitizer.text.3", {
+				value0: value,
+				value1: ASSET_PREFIX,
+			}),
 		};
 	}
 	const path = m[1] as string;
 	const type = ctx.fields.get(path);
 	if (type === undefined)
-		return { reason: `src 的占位符「{${path}}」不在 ${ctx.kind} 卡的字段表里` };
+		return {
+			reason: serverText("service.card-skins.html-sanitizer.text.4", {
+				value0: path,
+				value1: ctx.kind,
+			}),
+		};
 	if (type !== "image") {
-		return { reason: `src 的占位符「{${path}}」是 ${type} 类型,只有 image 类型能当图` };
+		return {
+			reason: serverText("service.card-skins.html-sanitizer.text.5", {
+				value0: path,
+				value1: type,
+			}),
+		};
 	}
 	return { value };
 }
@@ -516,7 +533,9 @@ function checkSrc(raw: string, ctx: Ctx): { value: string } | { reason: string }
 function cleanClass(tag: string, value: string, ctx: Ctx): Token.Attribute | null {
 	const tokens = value.split(/\s+/).filter((t) => t !== "");
 	if (tokens.length === 0 || !tokens.every((t) => CLASS_TOKEN_RE.test(t))) {
-		ctx.warnings.push(`<${tag}> 的 class「${value}」含不合法的 token,整个属性丢弃`);
+		ctx.warnings.push(
+			serverText("service.card-skins.html-sanitizer.text.6", { value0: tag, value1: value }),
+		);
 		return null;
 	}
 	return { name: "class", value: tokens.join(" ") };
@@ -530,10 +549,13 @@ function cleanClass(tag: string, value: string, ctx: Ctx): Token.Attribute | nul
 function cleanStyle(tag: string, value: string, ctx: Ctx): Token.Attribute | null {
 	const cleaned = sanitizeDeclarationList(value, CARD_DECL_OPTIONS);
 	if (!cleaned) {
-		ctx.warnings.push(`<${tag}> 的 style 解析不动,整个属性丢弃`);
+		ctx.warnings.push(serverText("service.card-skins.html-sanitizer.text.7", { value0: tag }));
 		return null;
 	}
-	for (const w of cleaned.warnings) ctx.warnings.push(`<${tag}> 的 style: ${w}`);
+	for (const w of cleaned.warnings)
+		ctx.warnings.push(
+			serverText("service.card-skins.html-sanitizer.text.8", { value0: tag, value1: w }),
+		);
 	if (cleaned.css.trim() === "") return null;
 	return { name: "style", value: cleaned.css };
 }
@@ -560,7 +582,9 @@ function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
 		if (attr.prefix !== undefined && !(attr.prefix === "xlink" && name === "href")) {
 			// 前缀是空串时别拼出一个 `:name` 来 —— 报出去的名字得是作者写的那个。
 			const shown = attr.prefix ? `${attr.prefix}:${name}` : name;
-			ctx.warnings.push(`<${tag}> 的属性 ${shown} 不在白名单,已丢弃`);
+			ctx.warnings.push(
+				serverText("service.card-skins.html-sanitizer.text.9", { value0: tag, value1: shown }),
+			);
 			continue;
 		}
 		// svg 这边一个认占位符的属性都没有(`src` / `alt` 都不在 SVG_ATTRS 里)。
@@ -568,7 +592,12 @@ function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
 		if (name === "href") {
 			const value = attr.value.trim();
 			if (!FRAGMENT_REF_RE.test(value)) {
-				ctx.warnings.push(`<${tag}> 的 href「${attr.value}」不是 #片段引用,已丢弃`);
+				ctx.warnings.push(
+					serverText("service.card-skins.html-sanitizer.text.10", {
+						value0: tag,
+						value1: attr.value,
+					}),
+				);
 				continue;
 			}
 			if (hasHref) continue;
@@ -578,7 +607,12 @@ function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
 		}
 		if (name === "id") {
 			if (!SVG_ID_RE.test(attr.value)) {
-				ctx.warnings.push(`<${tag}> 的 id「${attr.value}」不是合法标识符,已丢弃`);
+				ctx.warnings.push(
+					serverText("service.card-skins.html-sanitizer.text.11", {
+						value0: tag,
+						value1: attr.value,
+					}),
+				);
 				continue;
 			}
 			ctx.ids.push(attr.value);
@@ -596,13 +630,21 @@ function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
 			continue;
 		}
 		if (!SVG_ATTRS.has(name)) {
-			ctx.warnings.push(`<${tag}> 的属性 ${name} 不在白名单,已丢弃`);
+			ctx.warnings.push(
+				serverText("service.card-skins.html-sanitizer.text.12", { value0: tag, value1: name }),
+			);
 			continue;
 		}
 		if (HAS_URL_RE.test(attr.value)) {
 			const m = URL_FRAGMENT_RE.exec(attr.value.trim());
 			if (!m) {
-				ctx.warnings.push(`<${tag}> 的 ${name}「${attr.value}」里的 url() 只准指向 #片段,已丢弃`);
+				ctx.warnings.push(
+					serverText("service.card-skins.html-sanitizer.text.13", {
+						value0: tag,
+						value1: name,
+						value2: attr.value,
+					}),
+				);
 				continue;
 			}
 			out.push({ name, value: `url(#${m[1]})` });
@@ -622,12 +664,14 @@ function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 	if (tag === "img") {
 		const src = el.attrs.find((a) => a.name === "src");
 		if (!src) {
-			ctx.warnings.push("<img> 没有 src,整个丢弃");
+			ctx.warnings.push(serverText("service.card-skins.html-sanitizer.text.14"));
 			return null;
 		}
 		const verdict = checkSrc(src.value, ctx);
 		if ("reason" in verdict) {
-			ctx.warnings.push(`<img> 的 ${verdict.reason},整个丢弃`);
+			ctx.warnings.push(
+				serverText("service.card-skins.html-sanitizer.text.15", { value0: verdict.reason }),
+			);
 			return null;
 		}
 		srcValue = verdict.value;
@@ -638,7 +682,9 @@ function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 		const name = attr.name;
 		// 有命名空间的属性(`xlink:href` 那一类)连名字都对不上白名单,顺带被这一问拦下。
 		if (!COMMON_ATTRS.has(name) && !(allowed?.has(name) ?? false)) {
-			ctx.warnings.push(`<${tag}> 的属性 ${name} 不在白名单,已丢弃`);
+			ctx.warnings.push(
+				serverText("service.card-skins.html-sanitizer.text.16", { value0: tag, value1: name }),
+			);
 			continue;
 		}
 		if (name !== "src" && name !== "alt" && rejectsPlaceholder(tag, name, attr.value, ctx)) {
@@ -646,7 +692,13 @@ function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 		}
 		if (name === "colspan" || name === "rowspan") {
 			if (!SPAN_RE.test(attr.value.trim())) {
-				ctx.warnings.push(`<${tag}> 的 ${name}「${attr.value}」不是正整数,已丢弃`);
+				ctx.warnings.push(
+					serverText("service.card-skins.html-sanitizer.text.17", {
+						value0: tag,
+						value1: name,
+						value2: attr.value,
+					}),
+				);
 				continue;
 			}
 			out.push({ name, value: attr.value.trim() });
@@ -692,7 +744,7 @@ function rebuild(nodes: readonly ChildNode[], parent: ParentNode, ctx: Ctx): voi
 			continue;
 		}
 		if (ns !== htmlNs.NS.HTML || !ALLOWED_TAGS.has(tag)) {
-			ctx.warnings.push(`<${tag}> 不在标签白名单,连同里面的内容一起丢弃`);
+			ctx.warnings.push(serverText("service.card-skins.html-sanitizer.text.18", { value0: tag }));
 			continue;
 		}
 		const attrs = filterAttrs(node, ctx);
@@ -717,7 +769,10 @@ export function sanitizeCardBlockHtml(
 	const max = CARD_SKIN_LIMITS.maxHtmlBytes;
 	// 按 UTF-8 字节算,不是 `input.length` —— 那是 UTF-16 单元数,一个汉字才记 1。
 	if (Buffer.byteLength(input, "utf8") > max) {
-		return { ok: false, errors: [`自定义 HTML 超过 ${max / 1024}KB 上限`] };
+		return {
+			ok: false,
+			errors: [serverText("service.card-skins.html-sanitizer.text.19", { value0: max / 1024 })],
+		};
 	}
 
 	const ctx: Ctx = {
@@ -736,15 +791,21 @@ export function sanitizeCardBlockHtml(
 	if (ctx.unknownPaths.size > 0) {
 		return {
 			ok: false,
-			errors: [...ctx.unknownPaths].map((p) => `占位符「{${p}}」不在 ${opts.kind} 卡的字段表里`),
+			errors: [...ctx.unknownPaths].map((p) =>
+				serverText("service.card-skins.html-sanitizer.text.20", { value0: p, value1: opts.kind }),
+			),
 		};
 	}
 
 	const html = serialize(out);
-	if (html.trim() === "") return { ok: false, errors: ["清洗后这个块什么都不剩"] };
+	if (html.trim() === "")
+		return { ok: false, errors: [serverText("service.card-skins.html-sanitizer.text.21")] };
 	// 上限量的也是**存盘那份**:转义会让文本变长(`&` → `&amp;`),所以产物得自己再过一次闸。
 	if (Buffer.byteLength(html, "utf8") > max) {
-		return { ok: false, errors: [`清洗后的 HTML 超过 ${max / 1024}KB 上限`] };
+		return {
+			ok: false,
+			errors: [serverText("service.card-skins.html-sanitizer.text.22", { value0: max / 1024 })],
+		};
 	}
 	return { ok: true, html, warnings: ctx.warnings, ids: ctx.ids };
 }

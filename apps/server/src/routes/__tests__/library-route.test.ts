@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { CARD_BG_DIR, listCardBg, saveCardBg } from "../../runtime/card-assets.js";
 import { bilibiliLikeSources } from "../../subscriptions/__tests__/fixtures.js";
 import { createLibraryRoute } from "../library.js";
-import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
+import { respondFailure, unhandledErrorMessage } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -340,12 +341,12 @@ describe("背景图上传与读取", () => {
 		// `library` 是个文件而不是目录 —— 建图廊目录必然失败。
 		await writeFile(join(dataDir, CARD_BG_DIR[0]), "占位");
 		const app = new Hono()
-			.onError((_err, c) => respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE)))
+			.onError((_err, c) => respondFailure(c, fail("unavailable", unhandledErrorMessage())))
 			.route("/", bgApp());
 		const res = await uploadPng(app);
 		expect(res.status).toBe(503);
 		const text = await res.text();
-		expect(JSON.parse(text)).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(JSON.parse(text)).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
 		expect(text).not.toContain(dataDir);
 	});
 
@@ -366,4 +367,31 @@ describe("背景图上传与读取", () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true });
 	});
+});
+
+it("reads upload nouns when rejecting a request after the route has been constructed", async () => {
+	const app = route({ deps: depsWithDataDir(join(tmpdir(), "bn-no-library")), puppeteer: null });
+	const state = i18n.state();
+	i18n.set({ locale: "en", voice: "plain" });
+	const current = i18n.state().t;
+	const spy = vi
+		.spyOn(i18n.state(), "t")
+		.mockImplementation((key, values) =>
+			key === "cards.upload.imageNoun" ? "Current image" : current(key, values),
+		);
+	try {
+		const response = await app.request("/images", {
+			method: "POST",
+			headers: { "content-length": "6000000" },
+			body: "x",
+		});
+		expect(response.status).toBe(413);
+		expect(await response.json()).toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("Current image"),
+		});
+	} finally {
+		spy.mockRestore();
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
 });

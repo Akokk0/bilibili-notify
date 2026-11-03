@@ -19,7 +19,7 @@ import {
 	type BackupSections,
 	buildBackup,
 } from "./envelope.js";
-import { BACKUP_PIN_REQUIRED_MESSAGE, BackupRejectedError } from "./rejected-error.js";
+import { BackupRejectedError, backupPinRequiredMessage } from "./rejected-error.js";
 import { foldPlan, type ImportMode, planImport } from "./restore.js";
 import { redactBackupSections } from "./sanitize.js";
 
@@ -176,7 +176,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const createdAt = opts.createdAt ?? now();
 
 		if (opts.kind === "full") {
-			if (!opts.pin) throw new BackupRejectedError("invalid", BACKUP_PIN_REQUIRED_MESSAGE);
+			if (!opts.pin) throw new BackupRejectedError("invalid", backupPinRequiredMessage());
 			const integrationSecrets = await deps.integrationSecrets.exportSecrets();
 			return assembleFullBackup(
 				{
@@ -205,7 +205,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		let sections: BackupSections;
 		let integrationSecrets: Record<string, Record<string, Json>> = {};
 		if (opts.envelope.kind === "full") {
-			if (!opts.pin) throw new BackupRejectedError("invalid", BACKUP_PIN_REQUIRED_MESSAGE);
+			if (!opts.pin) throw new BackupRejectedError("invalid", backupPinRequiredMessage());
 			const opened = openFullBackup(opts.envelope, opts.pin);
 			sections = opened.sections;
 			integrationSecrets = opened.integrationSecrets;

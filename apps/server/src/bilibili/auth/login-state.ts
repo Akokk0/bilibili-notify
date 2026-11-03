@@ -1,4 +1,5 @@
 import type { AuthState } from "@bilibili-notify/internal";
+import { t as serverText } from "../../i18n/index.js";
 
 /** 二维码登录失败的原因键(`failed` 状态里带的那几种)。 */
 export type LoginFailureKey =
@@ -11,12 +12,24 @@ export type LoginFailureKey =
 
 /** 每种失败原因给主人看的那句话(进 `AuthState` 的 `error.message` 与发起扫码失败的结果)。 */
 export const LOGIN_FAILURE_MESSAGES: Record<LoginFailureKey, string> = {
-	qrFetchFailed: "获取二维码失败，请重试",
-	qrRenderFailed: "生成二维码失败",
-	qrExpired: "二维码已超时（3分钟），请重新登录",
-	qrInvalidated: "二维码已失效，请重新登录",
-	noCookieAfterLogin: "登录成功但未获取到 cookie，请重试",
-	genericLoginFail: "登录失败，请重试",
+	get qrFetchFailed() {
+		return serverText("bilibili.auth.login-state.text.1");
+	},
+	get qrRenderFailed() {
+		return serverText("bilibili.auth.login-state.text.2");
+	},
+	get qrExpired() {
+		return serverText("bilibili.auth.login-state.text.3");
+	},
+	get qrInvalidated() {
+		return serverText("bilibili.auth.login-state.text.4");
+	},
+	get noCookieAfterLogin() {
+		return serverText("bilibili.auth.login-state.text.5");
+	},
+	get genericLoginFail() {
+		return serverText("bilibili.auth.login-state.text.6");
+	},
 };
 
 /**
@@ -56,24 +69,24 @@ export type BiliLoginState =
 	| { status: "failed"; reason: LoginFailureKey };
 
 /** 开机没确认的这句话(`confirming` 的两种情况之一)。 */
-const CHECKING_MESSAGE = "正在向 B 站确认登录状态，暂时连不上的话会自动重试";
+const checkingMessage = () => serverText("bilibili.auth.login-state.text.7");
 /** 已扫码、等手机上点确认(`confirming` 的另一种情况)。 */
-const WAIT_CONFIRM_MESSAGE = "已扫码，请在手机上确认";
+const waitConfirmMessage = () => serverText("bilibili.auth.login-state.text.8");
 /** 已登录的会话失效了。 */
-const AUTH_LOST_MESSAGE = "账号登录已失效，请重新扫码登录";
+const authLostMessage = () => serverText("bilibili.auth.login-state.text.9");
 
 /** 内部原形 → 对外的中立状态。纯函数。 */
 export function authStateFromLoginState(state: BiliLoginState): AuthState {
 	switch (state.status) {
 		case "checking":
-			return { status: "confirming", message: CHECKING_MESSAGE };
+			return { status: "confirming", message: checkingMessage() };
 		case "logged-out":
 			return state.reason === "authLost"
-				? { status: "expired", message: AUTH_LOST_MESSAGE }
+				? { status: "expired", message: authLostMessage() }
 				: { status: "logged-out" };
 		case "qr":
 			if (state.phase === "waiting-confirm") {
-				return { status: "confirming", message: WAIT_CONFIRM_MESSAGE };
+				return { status: "confirming", message: waitConfirmMessage() };
 			}
 			return {
 				status: "awaiting-scan",

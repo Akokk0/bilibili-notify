@@ -1,4 +1,5 @@
 import { type Failure, type FailureCode, fail } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 备份被拒的原因,只有这两种(标准码表的子集,规矩见 docs/agents/conventions/failure-results.md):
@@ -11,7 +12,7 @@ import { type Failure, type FailureCode, fail } from "@bilibili-notify/internal"
 export type BackupRejectionCode = Extract<FailureCode, "invalid" | "unsupported">;
 
 /** 完整备份必须有 PIN —— 路由的闸与服务里的兜底说同一句话。 */
-export const BACKUP_PIN_REQUIRED_MESSAGE = "完整备份必须设置 PIN";
+export const backupPinRequiredMessage = () => serverText("service.backup.rejected-error.text.1");
 
 /**
  * 导入 / 导出备份时**可预期**的拒收:用户递进来的文件或 PIN 有问题。`message` 是给人看的中文,

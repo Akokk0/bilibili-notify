@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 指令参数 —— 签名声明与入参解析。
  *
@@ -51,7 +52,7 @@ export function parseSignature(signature: string): ParamSpec[] {
 		// `duration|时长` 这个键上,handler 读 `values.duration` 永远是 undefined。
 		if (name.includes("|")) {
 			throw new Error(
-				`指令签名「${signature}」的参数名「${name}」里有竖线，显示名要写在类型后面：<名:类型|显示名>`,
+				serverText("service.runtime.command-params.text.1", { value0: signature, value1: name }),
 			);
 		}
 		// `类型|显示名` —— 竖线右边是给主人看的名字,没有就用参数名本身。
@@ -62,20 +63,24 @@ export function parseSignature(signature: string): ParamSpec[] {
 		// 而不是等主人某天真敲了这条指令才发现参数根本没被校验。
 		if (!TYPES.includes(type)) {
 			throw new Error(
-				`指令签名「${signature}」里的参数类型「${type}」不认识,只支持 ${TYPES.join(" / ")}`,
+				serverText("service.runtime.command-params.text.2", {
+					value0: signature,
+					value1: type,
+					value2: TYPES.join(" / "),
+				}),
 			);
 		}
 		// text 吞掉剩余全部文本,排在它后面的参数永远拿不到值 —— 同样是签名写错。
 		const previous = specs[specs.length - 1];
 		if (previous?.type === "text") {
-			throw new Error(`指令签名「${signature}」把参数放在了 text 之后,text 只能是最后一个`);
+			throw new Error(serverText("service.runtime.command-params.text.3", { value0: signature }));
 		}
 		// 必填必须排在可选前面。这条不只是风格 —— `Values<S>` 那套类型推导按这个顺序
 		// 解析签名,支持交错会让它撞上 `Type instantiation is excessively deep`。
 		// 类型和运行时不能各说各话,所以这里也钉死。
 		if (reqName !== undefined && specs.some((s) => !s.required)) {
 			throw new Error(
-				`指令签名「${signature}」把必填参数「${name}」放在了可选参数后面,必填必须排在前面`,
+				serverText("service.runtime.command-params.text.4", { value0: signature, value1: name }),
 			);
 		}
 		specs.push({
@@ -104,11 +109,15 @@ export type ParseResult =
  */
 const DURATION_UNITS: readonly (readonly [string, number])[] = [
 	["小时", 3600_000],
+	["小時", 3600_000],
+	["時間", 3600_000],
 	["分钟", 60_000],
+	["分鐘", 60_000],
 	["ms", 1],
 	["秒", 1000],
 	["分", 60_000],
 	["时", 3600_000],
+	["時", 3600_000],
 	["天", 86400_000],
 	["日", 86400_000],
 	["s", 1000],
@@ -151,11 +160,11 @@ function coerce(spec: ParamSpec, token: string): ParamValue | null {
 function describe(type: ParamType): string {
 	switch (type) {
 		case "number":
-			return "要填一个整数";
+			return serverText("service.runtime.command-params.text.5");
 		case "duration":
-			return "要填一段时长，比如 3h、30分钟、1天";
+			return serverText("service.runtime.command-params.text.6");
 		default:
-			return "格式不对";
+			return serverText("service.runtime.command-params.text.7");
 	}
 }
 
@@ -171,7 +180,11 @@ function readToken(text: string, pos: number): string {
  *
  * 解析失败**不进 handler** —— parse 与 execute 分离,handler 拿到的永远是已校验的值。
  */
-export function parseArgs(specs: readonly ParamSpec[], input: string): ParseResult {
+export function parseArgs(
+	specs: readonly ParamSpec[],
+	input: string,
+	labels?: Readonly<Record<string, string>>,
+): ParseResult {
 	const text = input.trim();
 	const values: Record<string, ParamValue> = {};
 	// 用游标而不是 split:`text` 要拿到**原始**的剩余文本,split 会把中间的连续空白
@@ -182,7 +195,12 @@ export function parseArgs(specs: readonly ParamSpec[], input: string): ParseResu
 		if (pos >= text.length) {
 			// 可选参数缺席是正常的:不塞进 values,handler 那边就是 undefined。
 			if (!spec.required) continue;
-			return { ok: false, message: `缺少参数「${spec.label ?? spec.name}」` };
+			return {
+				ok: false,
+				message: serverText("service.runtime.command-params.text.8", {
+					value0: labels?.[spec.name] ?? spec.label ?? spec.name,
+				}),
+			};
 		}
 		// text 吞掉剩余全部(含空白)。parseSignature 保证了它只能是最后一个。
 		const token = spec.type === "text" ? text.slice(pos) : readToken(text, pos);
@@ -191,7 +209,10 @@ export function parseArgs(specs: readonly ParamSpec[], input: string): ParseResu
 		if (value === null) {
 			return {
 				ok: false,
-				message: `参数「${spec.label ?? spec.name}」看不懂:${describe(spec.type)}`,
+				message: serverText("service.runtime.command-params.text.9", {
+					value0: labels?.[spec.name] ?? spec.label ?? spec.name,
+					value1: describe(spec.type),
+				}),
 			};
 		}
 		values[spec.name] = value;
@@ -201,7 +222,9 @@ export function parseArgs(specs: readonly ParamSpec[], input: string): ParseResu
 	if (text.slice(pos).trim()) {
 		return {
 			ok: false,
-			message: specs.length ? `参数给多了，这条指令只要 ${specs.length} 个` : "这条指令不需要参数",
+			message: specs.length
+				? serverText("service.runtime.command-params.text.10", { count: specs.length })
+				: serverText("service.runtime.command-params.text.11"),
 		};
 	}
 	return { ok: true, values };

@@ -1,3 +1,4 @@
+import { t as serverText } from "./i18n/index.js";
 /**
  * 自包含 bundle 的启动入口 —— 镜像里跑的是 `node boot.mjs`,不是 `index.mjs`。
  *
@@ -71,7 +72,7 @@ async function start(
 	const startEntry =
 		typeof mod.startServer === "function" ? mod.startServer : mod.startStandaloneServer;
 	if (typeof startEntry !== "function") {
-		throw new Error(`载荷没有导出 startServer / startStandaloneServer:${dir}`);
+		throw new Error(serverText("service.boot.text.1", { value0: dir }));
 	}
 	await startEntry({ installProcessHandlers: true });
 }

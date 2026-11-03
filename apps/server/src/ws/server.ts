@@ -6,6 +6,7 @@ import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { isDesktopWsTokenAllowed } from "../auth/desktop-token.js";
 import { isOriginAllowed, normalizeAllowedOrigins } from "../auth/origin.js";
 import type { WsTicketStore } from "../auth/ws-ticket.js";
+import { t as serverText } from "../i18n/index.js";
 import type { NodeServiceContext } from "../runtime/service-context.js";
 import { attachChannelWiring, buildStateHydrate } from "./channels.js";
 import { createLogChannel, type LogChannel } from "./log-channel.js";
@@ -375,7 +376,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 				sendRaw(client, {
 					type: "error",
 					code: "invalid",
-					message: "控制消息不是合法的 JSON",
+					message: serverText("service.ws.server.text.1"),
 					ts: new Date().toISOString(),
 				});
 				return;
@@ -385,7 +386,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 				sendRaw(client, {
 					type: "error",
 					code: "invalid",
-					message: "控制消息不合规矩",
+					message: serverText("service.ws.server.text.2"),
 					// 只留路径与原话:zod 自己的字段(code / expected / received …)不往外甩。
 					issues: issuesFromZod(result.error),
 					ts: new Date().toISOString(),

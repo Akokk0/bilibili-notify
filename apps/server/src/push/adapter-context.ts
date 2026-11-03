@@ -7,7 +7,7 @@ import type {
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import { t } from "../i18n/index.js";
+import { t as serverText, t } from "../i18n/index.js";
 import {
 	parseProblemReport,
 	parseProblemResolve,
@@ -114,7 +114,7 @@ export function createPlatformAdapterContext(
 	): void {
 		const ownership = ownershipOf(connectionId);
 		const issue = stopped()
-			? "适配器已停下"
+			? serverText("service.push.adapter-context.text.1")
 			: ownership.kind === "foreign" || (ownership.kind === "removed" && !allowRemoved)
 				? t("problem.report.connectionNotOwned", { connectionId, adapterKey })
 				: undefined;

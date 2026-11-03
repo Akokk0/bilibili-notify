@@ -46,7 +46,7 @@ export interface CreateIntegrationContextOptions {
 	/** 集成自己的那个 logger:按它的集成键要来的,行的标签与等级都跟这个键(拓展传 `loggerOf(id)` 要来的)。 */
 	logger: Logger;
 	/** `signal` 中止时带的原因(`DOMException(这句话, "AbortError")`)。 */
-	stopReason: string;
+	stopReason: () => string;
 	/**
 	 * 这个集成的两份小存储,原样放进 `ctx`。`integrations/` 自己不碰盘、不认识宿主:谁开的存储谁传进来、
 	 * 谁负责在上下文收摊之后关把手。
@@ -290,7 +290,7 @@ export function createIntegrationContext(
 			}
 			// 🔴 在跑的东西先叫停,再跑收摊钩子 —— 钩子里能等它们收尾;不叫停的话,集成都停了,
 			// 它的 handler 还在背后接着轮询平台。
-			controller.abort(new DOMException(opts.stopReason, "AbortError"));
+			controller.abort(new DOMException(opts.stopReason(), "AbortError"));
 			// 先跑自己的收摊钩子(它可能要用还活着的定时器 / 端点收尾),再拆机件。
 			// 后注册的先跑 —— 后建起来的东西通常依赖先建起来的。
 			const pending = [...hooks].reverse();

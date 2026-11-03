@@ -10,6 +10,7 @@ import {
 	type SourceAccount,
 } from "@bilibili-notify/internal";
 import QRCode from "qrcode";
+import { t as serverText } from "../../i18n/index.js";
 import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/api";
 import type { MyselfResponse } from "../api/types";
@@ -381,15 +382,15 @@ export class LoginFlow {
 	async beginLogin(renderQr: (url: string) => Promise<string> = defaultRenderQr): Promise<Result> {
 		// 登录已成立、正在落盘:不动任何东西(旧会话已在 `pollOnce` 里结束),让它落完进已登录。
 		if (this.committingLogin) {
-			return fail("conflict", "登录已经成立，正在完成，请稍候再看状态");
+			return fail("conflict", serverText("bilibili.auth.login-flow.text.1"));
 		}
 		const session = this.endScanSession();
 		const startedGen = this.authGeneration;
 		// 两种作废各说各的:其间登出过(退出登录 / 登录失效)与被新的一次(或已成立的登录)取代。
 		const superseded = () =>
 			this.authGeneration !== startedGen
-				? fail("conflict", "这一次扫码已因退出登录或登录失效而作废，请重新发起")
-				: fail("conflict", "这一次扫码已被新的一次(或已成立的登录)取代，请以最新的状态为准");
+				? fail("conflict", serverText("bilibili.auth.login-flow.text.2"))
+				: fail("conflict", serverText("bilibili.auth.login-flow.text.3"));
 		let qr: Awaited<ReturnType<Api["fetchLoginQrCode"]>>;
 		try {
 			qr = await this.api.fetchLoginQrCode();

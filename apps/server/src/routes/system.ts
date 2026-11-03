@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 系统级动作:**重启一下**;开机之后要告诉主人的事(⑧,`GET /notices`、`POST /notices/:id/acknowledge`);
  * 主人要求开新代(全新开始 / 从旧代重新迁移,`POST /generations` —— 写下标记再重启,开代在重启后的开机里做)。
@@ -72,24 +73,38 @@ const GenerationCreateSchema = z.strictObject({ source: z.enum(["empty", "zero"]
 
 /** 不许删时那句话,面板原样显示;要原因码读列表里的 `lockReason`(错误体不带它)。 */
 const LOCK_MESSAGES = {
-	current: "这是正在用的那一代,不能删",
-	partial: "这一代还没写完(或上次写到一半被中断),不能删",
-	unreadable: "读不懂这一代的 generation.json(可能是更新版本的程序写的),为了不误删不能在这里删",
-	"newer-format": "这一代的数据格式比这一版新(是更新版本的数据),不能删",
-	"protected-source": "这是当前这一代的来源,要等当前这一代用满 30 天才能删",
-	"protected-previous": "这是当前这一代的上一代,要等当前这一代用满 30 天才能删",
-	"current-age-unknown": "读不到当前这一代的创建时间,没法判断满没满 30 天,暂时都不能删",
+	get current() {
+		return serverText("service.routes.system.text.1");
+	},
+	get partial() {
+		return serverText("service.routes.system.text.2");
+	},
+	get unreadable() {
+		return serverText("service.routes.system.text.3");
+	},
+	get "newer-format"() {
+		return serverText("service.routes.system.text.4");
+	},
+	get "protected-source"() {
+		return serverText("service.routes.system.text.5");
+	},
+	get "protected-previous"() {
+		return serverText("service.routes.system.text.6");
+	},
+	get "current-age-unknown"() {
+		return serverText("service.routes.system.text.7");
+	},
 } as const satisfies Record<GenerationLockReason, string>;
 
 /** 不能整类清空时那句话:面板原样显示。只读的两行与旧版本数据各有各的说法。 */
 function notClearable(category: string): string {
 	if (category === "generations") {
-		return "旧版本数据不走整类清空,请在旧版本数据里逐代删(/api/system/generations)";
+		return serverText("service.routes.system.text.8");
 	}
 	if (category === "logs" || category === "otherImages") {
-		return "这一类是只读的,不能清理(日志按天数滚动;其它图片会随引用它的东西一起被清扫收走)";
+		return serverText("service.routes.system.text.9");
 	}
-	return "没有这一类,能清的只有 stats / historyText / historyImages / ai";
+	return serverText("service.routes.system.text.10");
 }
 
 /** 序号只认规范的纯数字(0 或不带前导零),不收符号、小数、路径分隔符与超出安全整数的。 */
@@ -140,7 +155,7 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 
 	app.post("/notices/:id/acknowledge", async (c) => {
 		if (!(await input.notices.acknowledge(c.req.param("id")))) {
-			return respondFailure(c, fail("not_found", "没有这条提示"));
+			return respondFailure(c, fail("not_found", serverText("service.routes.system.text.11")));
 		}
 		const body: SystemNoticesResponse = { notices: await input.notices.list() };
 		return c.json(body);
@@ -151,9 +166,15 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", `请求体不合规矩:${formatZodIssues(parsed.error).join(";")}`, {
-					issues: issuesFromZod(parsed.error),
-				}),
+				fail(
+					"invalid",
+					serverText("service.routes.system.text.12", {
+						value0: formatZodIssues(parsed.error).join(";"),
+					}),
+					{
+						issues: issuesFromZod(parsed.error),
+					},
+				),
 			);
 		}
 		// 拒绝的几种一律在写标记之前:标记写下了却没重启,下次不知道哪一回开机就开了一代。
@@ -162,7 +183,7 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 		if (!ability.can) return respondFailure(c, fail("unsupported", ability.message));
 		const { source } = parsed.data;
 		if (source === "zero" && !(await input.zeroGenerationExists())) {
-			return respondFailure(c, fail("not_found", "第 0 代(0.x 的数据)已经不在了,没法从它重新迁移"));
+			return respondFailure(c, fail("not_found", serverText("service.routes.system.text.13")));
 		}
 		// 标记没写成就抛出去、不重启:重启回来什么都没变,主人还以为点过了。
 		await input.requestGeneration(source);
@@ -179,10 +200,11 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 	app.delete("/generations/:seq", async (c) => {
 		const seq = parseSeq(c.req.param("seq"));
 		if (seq === undefined) {
-			return respondFailure(c, fail("invalid", "序号只能是纯数字(第 0 代用 0)"));
+			return respondFailure(c, fail("invalid", serverText("service.routes.system.text.14")));
 		}
 		const result = await input.generations.remove(seq);
-		if (result.kind === "not_found") return respondFailure(c, fail("not_found", "没有这一代"));
+		if (result.kind === "not_found")
+			return respondFailure(c, fail("not_found", serverText("service.routes.system.text.15")));
 		if (result.kind === "locked") {
 			return respondFailure(c, fail("conflict", LOCK_MESSAGES[result.reason]));
 		}

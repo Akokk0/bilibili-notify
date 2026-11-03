@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * skin.json 校验层。类型与语义字段清单在 `@bilibili-notify/contract`(skin.ts);
  * 这里负责把不可信输入变成 SkinManifest:非法拒绝(errors)、未知字段忽略并告警
@@ -120,7 +121,7 @@ function parseCssField(
 	warnings: string[],
 ): string | undefined {
 	if (typeof raw !== "string") {
-		errors.push(`${path}: 必须是 CSS 字符串`);
+		errors.push(serverText("service.skins.schema.text.1", { value0: path }));
 		return undefined;
 	}
 	const res = sanitizeSkinCss(raw);
@@ -160,7 +161,14 @@ function takeRecord(
 	if (v === undefined) return null;
 	const rec = asRecord(v);
 	// path 为空 = 顶层字段(texts),别给它拼出个前导点。
-	if (!rec) errors.push(`${path ? `${path}.` : ""}${key}: 必须是对象${note}`);
+	if (!rec)
+		errors.push(
+			serverText("service.skins.schema.text.2", {
+				value0: path ? `${path}.` : "",
+				value1: key,
+				value2: note,
+			}),
+		);
 	return rec;
 }
 
@@ -182,7 +190,15 @@ function takeNumber(
 	const v = src[key];
 	if (v === undefined) return undefined;
 	if (!numberIn(v, min, max)) {
-		errors.push(`${path}.${key}: 必须是 ${min}~${max} 的数字${unit}`);
+		errors.push(
+			serverText("service.skins.schema.text.3", {
+				value0: path,
+				value1: key,
+				value2: min,
+				value3: max,
+				value4: unit,
+			}),
+		);
 		return undefined;
 	}
 	return v;
@@ -196,7 +212,7 @@ function parseWallpaper(
 ): SkinMode["wallpaper"] | undefined {
 	const wp = asRecord(raw);
 	if (!wp) {
-		errors.push(`${path}: 必须是对象`);
+		errors.push(serverText("service.skins.schema.text.4", { value0: path }));
 		return undefined;
 	}
 	const out: NonNullable<SkinMode["wallpaper"]> = {};
@@ -206,21 +222,21 @@ function parseWallpaper(
 			wp.image.includes("..") ||
 			!WALLPAPER_IMAGE_RE.test(wp.image)
 		) {
-			errors.push(`${path}.image: 只能引用包内 assets/<文件名>.webp|jpg|png`);
+			errors.push(serverText("service.skins.schema.text.5", { value0: path }));
 		} else {
 			out.image = wp.image;
 		}
 	}
 	if (wp.fit !== undefined) {
 		if (typeof wp.fit !== "string" || !WALLPAPER_FITS.has(wp.fit)) {
-			errors.push(`${path}.fit: 只能是 cover / contain / tile`);
+			errors.push(serverText("service.skins.schema.text.6", { value0: path }));
 		} else {
 			out.fit = wp.fit as NonNullable<SkinMode["wallpaper"]>["fit"];
 		}
 	}
 	if (wp.position !== undefined) {
 		if (typeof wp.position !== "string" || !POSITION_RE.test(wp.position)) {
-			errors.push(`${path}.position: 只收关键词/百分比(如 "center top")`);
+			errors.push(serverText("service.skins.schema.text.7", { value0: path }));
 		} else {
 			out.position = wp.position.trim();
 		}
@@ -261,11 +277,11 @@ function parseMode(
 		const colors: Record<string, string> = {};
 		for (const [key, value] of Object.entries(rawColors)) {
 			if (!KNOWN_COLOR_KEYS.has(key)) {
-				warnings.push(`${path}.colors.${key}: 不认识的颜色键,已忽略`);
+				warnings.push(serverText("service.skins.schema.text.8", { value0: path, value1: key }));
 				continue;
 			}
 			if (typeof value !== "string" || !isColor(value)) {
-				errors.push(`${path}.colors.${key}: 不是合法颜色值(hex/rgb/hsl/oklch/transparent)`);
+				errors.push(serverText("service.skins.schema.text.9", { value0: path, value1: key }));
 				continue;
 			}
 			colors[key] = value.trim();
@@ -276,7 +292,7 @@ function parseMode(
 	const page = takeRecord(raw, "page", path, errors);
 	if (page?.background !== undefined) {
 		if (typeof page.background !== "string" || !isBackground(page.background)) {
-			errors.push(`${path}.page.background: 不是合法背景值(纯色或渐变)`);
+			errors.push(serverText("service.skins.schema.text.10", { value0: path }));
 		} else {
 			mode.page = { background: page.background.trim() };
 		}
@@ -294,7 +310,7 @@ function parseMode(
 		const out: NonNullable<SkinMode["chat"]> = {};
 		if (chat.background !== undefined) {
 			if (typeof chat.background !== "string" || !isBackground(chat.background)) {
-				errors.push(`${path}.chat.background: 不是合法背景值(纯色或渐变)`);
+				errors.push(serverText("service.skins.schema.text.11", { value0: path }));
 			} else {
 				out.background = chat.background.trim();
 			}
@@ -313,7 +329,7 @@ function parseMode(
 			const v = glass[key];
 			if (v === undefined) continue;
 			if (typeof v !== "string" || !isColor(v)) {
-				errors.push(`${path}.glass.${key}: 不是合法颜色值`);
+				errors.push(serverText("service.skins.schema.text.12", { value0: path, value1: key }));
 			} else {
 				out[key] = v.trim();
 			}
@@ -338,7 +354,7 @@ function parseMode(
 		const out: NonNullable<SkinMode["fonts"]> = {};
 		if (fonts.asset !== undefined) {
 			if (typeof fonts.asset !== "string" || !SKIN_FONT_FILE_RE.test(fonts.asset)) {
-				errors.push(`${path}.fonts.asset: 只能引用包内 assets/<文件名>.woff2|woff|ttf|otf`);
+				errors.push(serverText("service.skins.schema.text.13", { value0: path }));
 			} else {
 				out.asset = fonts.asset;
 			}
@@ -362,10 +378,12 @@ function parseMode(
 					)
 				: null;
 			if (!names || names.length === 0 || !names.every((f) => FONT_NAME_RE.test(f))) {
-				errors.push(`${path}.fonts.body: 必须是 1~8 个字体名(仅文字/数字/空格/点/连字符)`);
+				errors.push(serverText("service.skins.schema.text.14", { value0: path }));
 			} else {
 				if (names.length > MAX_FONTS) {
-					warnings.push(`${path}.fonts.body: 超过 ${MAX_FONTS} 个字体名,已截断`);
+					warnings.push(
+						serverText("service.skins.schema.text.15", { value0: path, value1: MAX_FONTS }),
+					);
 				}
 				out.body = names.slice(0, MAX_FONTS);
 			}
@@ -410,7 +428,7 @@ function parseMode(
 			const v = shadows[key];
 			if (v === undefined) continue;
 			if (typeof v !== "string" || hasForbidden(v) || !SHADOW_RE.test(v)) {
-				errors.push(`${path}.shadows.${key}: 不是合法阴影值`);
+				errors.push(serverText("service.skins.schema.text.16", { value0: path, value1: key }));
 			} else {
 				out[key] = v.trim();
 			}
@@ -430,10 +448,16 @@ function parseMode(
 	if (fx) {
 		const out: SkinEffects = {};
 
-		const g = takeRecord(fx, "glassShine", `${path}.effects`, errors, "(可为空对象)");
+		const g = takeRecord(
+			fx,
+			"glassShine",
+			`${path}.effects`,
+			errors,
+			serverText("service.skins.schema.text.17"),
+		);
 		if (g) {
 			if (g.color !== undefined && (typeof g.color !== "string" || !isColor(g.color))) {
-				errors.push(`${path}.effects.glassShine.color: 不是合法颜色值`);
+				errors.push(serverText("service.skins.schema.text.18", { value0: path }));
 			} else {
 				out.glassShine = g.color !== undefined ? { color: (g.color as string).trim() } : {};
 			}
@@ -448,7 +472,9 @@ function parseMode(
 				b.colors.length > MAX_BOKEH_COLORS ||
 				!b.colors.every((c) => typeof c === "string" && isColor(c))
 			) {
-				errors.push(`${path}.effects.bokeh.colors: 必须是 1~${MAX_BOKEH_COLORS} 个合法颜色`);
+				errors.push(
+					serverText("service.skins.schema.text.19", { value0: path, value1: MAX_BOKEH_COLORS }),
+				);
 			} else {
 				out.bokeh = { colors: b.colors.map((c) => (c as string).trim()) };
 			}
@@ -458,14 +484,15 @@ function parseMode(
 			// backgroundFlow(卡顿)与 particles(主人砍掉)均已移除:存量皮肤里的它们
 			// 走这里的未知字段告警 + 忽略,优雅降级。
 			if (!["glassShine", "bokeh"].includes(key)) {
-				warnings.push(`${path}.effects.${key}: 不认识的字段,已忽略`);
+				warnings.push(serverText("service.skins.schema.text.20", { value0: path, value1: key }));
 			}
 		}
 		if (Object.keys(out).length > 0) mode.effects = out;
 	}
 
 	for (const key of Object.keys(raw)) {
-		if (!KNOWN_MODE_KEYS.has(key)) warnings.push(`${path}.${key}: 不认识的字段,已忽略`);
+		if (!KNOWN_MODE_KEYS.has(key))
+			warnings.push(serverText("service.skins.schema.text.21", { value0: path, value1: key }));
 	}
 
 	return mode;
@@ -475,11 +502,20 @@ function parseMode(
 
 const ManifestSchema = z.looseObject({
 	schemaVersion: z.literal(SKIN_SCHEMA_VERSION, {
-		error: `schemaVersion 必须是 ${SKIN_SCHEMA_VERSION}(不认识的版本,可能需要升级本体)`,
+		error: () => serverText("service.skins.schema.text.22", { value0: SKIN_SCHEMA_VERSION }),
 	}),
-	name: z.string({ error: "name 必须是字符串" }).min(1, "name 不能为空").max(50, "name 最长 50 字"),
-	author: z.string().max(50, "author 最长 50 字").optional(),
-	description: z.string().max(200, "description 最长 200 字").optional(),
+	name: z
+		.string({ error: () => serverText("service.skins.schema.text.23") })
+		.min(1, { error: () => serverText("service.skins.schema.text.24") })
+		.max(50, { error: () => serverText("service.skins.schema.text.25") }),
+	author: z
+		.string()
+		.max(50, { error: () => serverText("service.skins.schema.text.26") })
+		.optional(),
+	description: z
+		.string()
+		.max(200, { error: () => serverText("service.skins.schema.text.27") })
+		.optional(),
 	modes: z.looseObject({
 		light: z.looseObject({}).optional(),
 		dark: z.looseObject({}).optional(),
@@ -488,7 +524,7 @@ const ManifestSchema = z.looseObject({
 
 export function parseSkinManifest(input: unknown): ParseSkinResult {
 	if (typeof input !== "object" || input === null || Array.isArray(input)) {
-		return { ok: false, errors: ["skin.json 顶层必须是对象"] };
+		return { ok: false, errors: [serverText("service.skins.schema.text.28")] };
 	}
 	const parsed = ManifestSchema.safeParse(input);
 	if (!parsed.success) {
@@ -501,7 +537,7 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 	}
 	const raw = parsed.data;
 	if (!raw.modes.light && !raw.modes.dark) {
-		return { ok: false, errors: ["modes 至少要给 light / dark 其中一套"] };
+		return { ok: false, errors: [serverText("service.skins.schema.text.29")] };
 	}
 
 	const errors: string[] = [];
@@ -516,7 +552,8 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 		"css",
 	];
 	for (const key of Object.keys(input)) {
-		if (!KNOWN_TOP_KEYS.includes(key)) warnings.push(`${key}: 不认识的字段,已忽略`);
+		if (!KNOWN_TOP_KEYS.includes(key))
+			warnings.push(serverText("service.skins.schema.text.30", { value0: key }));
 	}
 
 	let texts: SkinManifest["texts"];
@@ -525,11 +562,11 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 		const out: Record<string, string> = {};
 		for (const [slot, value] of Object.entries(rec)) {
 			if (!(SKIN_TEXT_SLOTS as readonly string[]).includes(slot)) {
-				warnings.push(`texts.${slot}: 不认识的文案槽位,已忽略`);
+				warnings.push(serverText("service.skins.schema.text.31", { value0: slot }));
 				continue;
 			}
 			if (typeof value !== "string" || value.length === 0 || value.length > L.maxTextChars) {
-				errors.push(`texts.${slot}: 必须是 1~60 字的字符串`);
+				errors.push(serverText("service.skins.schema.text.32", { value0: slot }));
 				continue;
 			}
 			out[slot] = value;

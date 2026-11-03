@@ -9,6 +9,7 @@ import {
 	quarantineFile,
 	readJsonFile,
 } from "@bilibili-notify/storage";
+import { t as serverText } from "../i18n/index.js";
 import { type DataRootKey, dataPath } from "../runtime/roots.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { parseStoredEntries, STORE_FILE_VERSION, serializeEntries } from "./key-value-store.js";
@@ -115,7 +116,10 @@ export async function writeIntegrationStateFile(
 		);
 		return ok();
 	} catch (err) {
-		return fail("unavailable", `写 state.json 失败:${errorMessageOf(err)}`);
+		return fail(
+			"unavailable",
+			serverText("service.integration-store.files.text.1", { value0: errorMessageOf(err) }),
+		);
 	}
 }
 
@@ -142,7 +146,12 @@ export async function readIntegrationSecretsFile(
 	try {
 		key = await opts.keyProvider.getKey();
 	} catch (err) {
-		return { kind: "unreadable", message: `主密钥取不到:${errorMessageOf(err)}` };
+		return {
+			kind: "unreadable",
+			message: serverText("service.integration-store.files.text.2", {
+				value0: errorMessageOf(err),
+			}),
+		};
 	}
 	try {
 		const entries = parseStoredEntries(JSON.parse(gcmDecrypt(key, JSON.parse(raw))));
@@ -177,6 +186,9 @@ export async function writeIntegrationSecretsFile(
 		);
 		return ok();
 	} catch (err) {
-		return fail("unavailable", `写 secrets.enc 失败:${errorMessageOf(err)}`);
+		return fail(
+			"unavailable",
+			serverText("service.integration-store.files.text.3", { value0: errorMessageOf(err) }),
+		);
 	}
 }

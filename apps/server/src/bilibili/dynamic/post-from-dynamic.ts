@@ -1,3 +1,4 @@
+import { t as serverText } from "../../i18n/index.js";
 /**
  * B 站原始动态 → 平台中立的作品 `Post`(㉑c 第 5 步,ADR-0021 决策 19–25)。
  *
@@ -172,8 +173,8 @@ function translate(item: Dynamic, isRepost: boolean): Post {
 		const badge = author.icon_badge;
 		post.locked = {
 			...(badge?.icon ? { icon: { url: badge.icon } } : {}),
-			title: badge?.text || "充电专属内容",
-			hint: `为 ${name} 充电即可查看完整内容`,
+			title: badge?.text || serverText("bilibili.dynamic.post-from-dynamic.text.3"),
+			hint: serverText("bilibili.dynamic.post-from-dynamic.text.4", { value0: name }),
 		};
 		return post;
 	}
@@ -193,7 +194,7 @@ function translate(item: Dynamic, isRepost: boolean): Post {
 			if (item.orig) {
 				post.repost = translate(item.orig, true);
 			} else {
-				post.notice = `${name}转发了一条动态，但原动态已不可见`;
+				post.notice = serverText("bilibili.dynamic.post-from-dynamic.text.5", { value0: name });
 			}
 			return post;
 		}
@@ -202,39 +203,52 @@ function translate(item: Dynamic, isRepost: boolean): Post {
 			applyBody(post, mod);
 			const archive = mod.major?.archive;
 			if (archive) post.video = videoOf(archive);
-			if (archive?.badge?.text === ARCHIVE_BADGE_UPLOAD) post.label = "投稿了视频";
+			if (archive?.badge?.text === ARCHIVE_BADGE_UPLOAD)
+				post.label = serverText("bilibili.dynamic.post-from-dynamic.text.6");
 			return post;
 		}
 
 		case DYNAMIC_TYPE_ARTICLE: {
 			applyBody(post, mod, { asArticle: true });
-			post.label = "投稿了专栏";
+			post.label = serverText("bilibili.dynamic.post-from-dynamic.text.7");
 			return post;
 		}
 
 		case DYNAMIC_TYPE_LIVE:
-			return notice(post, `${name}发起了直播预约，我暂时无法渲染，请自行查看`);
+			return notice(
+				post,
+				serverText("bilibili.dynamic.post-from-dynamic.text.8", { value0: name }),
+			);
 		case DYNAMIC_TYPE_MEDIALIST:
-			return notice(post, `${name}分享了收藏夹，我暂时无法渲染，请自行查看`);
+			return notice(
+				post,
+				serverText("bilibili.dynamic.post-from-dynamic.text.9", { value0: name }),
+			);
 		case DYNAMIC_TYPE_PGC:
 			return withVideoCard(
 				post,
 				mod,
 				seriesCard(mod.major?.pgc),
 				t("bilibili.post.label.series"),
-				`${name}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看`,
+				serverText("bilibili.dynamic.post-from-dynamic.text.10", { value0: name }),
 			);
 		case DYNAMIC_TYPE_MUSIC:
-			return notice(post, `${name}发行了新歌，我暂时无法渲染，请自行查看`);
+			return notice(
+				post,
+				serverText("bilibili.dynamic.post-from-dynamic.text.11", { value0: name }),
+			);
 		case DYNAMIC_TYPE_COMMON_SQUARE:
-			return notice(post, `${name}发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看`);
+			return notice(
+				post,
+				serverText("bilibili.dynamic.post-from-dynamic.text.12", { value0: name }),
+			);
 		case DYNAMIC_TYPE_COURSES_SEASON:
 			return withVideoCard(
 				post,
 				mod,
 				courseCard(mod.major?.courses),
 				t("bilibili.post.label.course"),
-				`${name}发布了新课程，我暂时无法渲染，请自行查看`,
+				serverText("bilibili.dynamic.post-from-dynamic.text.13", { value0: name }),
 			);
 		case DYNAMIC_TYPE_UGC_SEASON:
 			return withVideoCard(
@@ -242,15 +256,24 @@ function translate(item: Dynamic, isRepost: boolean): Post {
 				mod,
 				collectionCard(mod.major?.ugc_season),
 				t("bilibili.post.label.collection"),
-				`${name}更新了合集，我暂时无法渲染，请自行查看`,
+				serverText("bilibili.dynamic.post-from-dynamic.text.14", { value0: name }),
 			);
 		case DYNAMIC_TYPE_NONE:
-			return notice(post, `${name}发布了一条无效动态`);
+			return notice(
+				post,
+				serverText("bilibili.dynamic.post-from-dynamic.text.15", { value0: name }),
+			);
 		case DYNAMIC_TYPE_LIVE_RCMD:
-			if (!isRepost) throw new Error("直播开播动态，不做处理");
-			return notice(post, `${name}发布了一条开播动态，我暂时无法渲染，请自行查看`);
+			if (!isRepost) throw new Error(serverText("bilibili.dynamic.post-from-dynamic.text.16"));
+			return notice(
+				post,
+				serverText("bilibili.dynamic.post-from-dynamic.text.17", { value0: name }),
+			);
 		default:
-			return notice(post, `${name}发布了一条我无法识别的动态，请自行查看`);
+			return notice(
+				post,
+				serverText("bilibili.dynamic.post-from-dynamic.text.18", { value0: name }),
+			);
 	}
 }
 

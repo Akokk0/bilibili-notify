@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 迁移器改写文件的共用几件:读一份 JSON(分得清没有 / 读不懂 / 读到了)、写一份新文件替掉旧的(原子换名、
  * 沿用原件的权限)、逐行改写一份 jsonl、判一坨东西是不是普通对象、认第 0 代里的残留。
@@ -91,12 +92,12 @@ export async function listFiles(dir: string, suffix: string): Promise<string[]> 
  * (`*.bak`、恢复备份留下的 `*.restore.bak`)、0.x 自己的临时件与迁移中间件、被隔离的坏文件。
  */
 export function leftoverReason(name: string): string | undefined {
-	if (isLeftoverName(name)) return "上个进程留下的临时文件";
-	if (name.endsWith(".bak")) return "0.x 的备份";
+	if (isLeftoverName(name)) return serverText("service.migration.files.text.1");
+	if (name.endsWith(".bak")) return serverText("service.migration.files.text.2");
 	if (/\.tmp(\.|$)/.test(name) || name.startsWith(".staging-") || name.endsWith(".migrating")) {
-		return "0.x 的临时件";
+		return serverText("service.migration.files.text.3");
 	}
-	if (name.includes(".corrupt-")) return "被隔离的坏文件";
+	if (name.includes(".corrupt-")) return serverText("service.migration.files.text.4");
 	return undefined;
 }
 

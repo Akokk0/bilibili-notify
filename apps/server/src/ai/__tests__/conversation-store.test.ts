@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
+import { i18n } from "../../i18n/index.js";
 import {
 	CONVERSATIONS_DIR,
 	type ConversationStore,
@@ -882,4 +883,31 @@ describe("ConversationStore.close", () => {
 		expect(await readFile(file, "utf8")).toBe(before);
 		expect(await chatFiles()).toEqual([`${c.id}.json`]);
 	});
+});
+
+it("localizes empty conversation display while retaining the persisted marker and first-message title", async () => {
+	const state = i18n.state();
+	i18n.set({ locale: "en", voice: "plain" });
+	const translator = vi
+		.spyOn(i18n.state(), "t")
+		.mockImplementation((key) =>
+			key === "conversation.placeholderTitle" ? "New chat" : String(key),
+		);
+	try {
+		const conversation = await store.create();
+		expect(conversation.title).toBe("New chat");
+		const stored = JSON.parse(
+			await readFile(join(dataDir, ...CONVERSATIONS_DIR, `${conversation.id}.json`), "utf8"),
+		);
+		expect(stored.title).toBe("新对话");
+		translator.mockImplementation((key) =>
+			key === "conversation.placeholderTitle" ? "Changed placeholder" : String(key),
+		);
+		expect((await store.get(conversation.id))?.title).toBe("Changed placeholder");
+		await store.appendMessages(conversation.id, [{ role: "user", content: "My original title" }]);
+		expect((await store.get(conversation.id))?.title).toBe("My original title");
+	} finally {
+		translator.mockRestore();
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
 });

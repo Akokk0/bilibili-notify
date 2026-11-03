@@ -1,6 +1,7 @@
 import { fail, ok, type Result } from "@bilibili-notify/internal";
 import type { Context } from "hono";
 import { z } from "zod";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 读 JSON 请求体的两个口子 —— 配置写入的那几条路由(订阅 / 推送目标 / 连接 / 全局设置)共用。
@@ -13,7 +14,7 @@ export async function readJsonBody(c: Context): Promise<Result<{ body: unknown }
 	try {
 		return ok({ body: await c.req.json() });
 	} catch {
-		return fail("invalid", "请求体不是合法的 JSON");
+		return fail("invalid", serverText("service.routes.request-body.text.1"));
 	}
 }
 
@@ -26,6 +27,6 @@ export async function readJsonObject(
 	const read = await readJsonBody(c);
 	if (!read.ok) return read;
 	const shape = ObjectBodySchema.safeParse(read.body);
-	if (!shape.success) return fail("invalid", "请求体要是一个 JSON 对象，不能是数组或单个值");
+	if (!shape.success) return fail("invalid", serverText("service.routes.request-body.text.2"));
 	return ok({ body: shape.data });
 }

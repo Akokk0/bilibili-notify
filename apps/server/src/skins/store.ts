@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 皮肤库存储:`<skinsDir>/<id>/skin.json + assets/*`,active 指针在
  * `<skinsDir>/active.json`。整包落盘、清单原子写、删除先改名,全部经皮肤包目录
@@ -26,7 +27,7 @@ import { createSkinStore, type ManifestResult, type SkinPackageStore } from "./s
 /** 皮肤包目录读盘时的解析:不做 schema 校验(手改的清单照样进索引)。 */
 function parseSkinManifest(raw: unknown): ManifestResult<SkinManifest> {
 	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-		return fail("invalid", "skin.json 不是一份清单");
+		return fail("invalid", serverText("service.skins.store.text.1"));
 	}
 	return ok({ manifest: raw as SkinManifest });
 }
@@ -75,7 +76,14 @@ const SKIN_FONT_EXTS = new Set(Object.keys(FONT_EXT_TO_MIME));
  * 「深色」),不跟 chat-tool.ts 走 —— 那份是说给模型听的,这一句会原样显示给主人,
  * 与同一页上的其它字对不上就成了两套黑话。
  */
-const MODE_LABEL = { light: "浅色", dark: "深色" } as const;
+const MODE_LABEL = {
+	get light() {
+		return serverText("service.skins.store.text.2");
+	},
+	get dark() {
+		return serverText("service.skins.store.text.3");
+	},
+} as const;
 
 /** 深浅色各一个槽位:浅色模式渲染 light 槽的皮肤,暗色渲染 dark 槽;槽空=默认装。 */
 export interface ActiveSlots {
@@ -220,13 +228,14 @@ export class SkinStore {
 		/** 主人上传时这个文件叫什么;只做显示,过 sanitizeAssetLabel 后记进原名清单。 */
 		originalName?: string,
 	): Promise<string> {
-		if (!this.pkg.has(id)) throw new SkinStoreError("not_found", "皮肤不存在或已被删除");
+		if (!this.pkg.has(id))
+			throw new SkinStoreError("not_found", serverText("service.skins.store.text.4"));
 		const clean = ext.toLowerCase().replace(/^\./, "");
 		const isFont = SKIN_FONT_EXTS.has(clean);
 		if (!isFont && !SKIN_ASSET_EXTS.has(clean)) {
 			throw new SkinStoreError(
 				"invalid",
-				`不支持的文件类型:${ext}(图片仅 PNG / JPEG / WebP,字体仅 woff2 / woff / ttf / otf)`,
+				serverText("service.skins.store.text.5", { value0: ext }),
 			);
 		}
 		const limit = isFont ? MAX_FONT_BYTES : MAX_ASSET_BYTES;
@@ -235,18 +244,19 @@ export class SkinStore {
 			throw new SkinStoreError(
 				"invalid",
 				isFont
-					? `字体过大(上限 ${mb}MB)—— 同一套字转成 woff2 通常只占三分之一`
-					: `图片过大(上限 ${mb}MB)`,
+					? serverText("service.skins.store.text.6", { value0: mb })
+					: serverText("service.skins.store.text.7", { value0: mb }),
 			);
 		}
 		return await this.pkg.run(id, async () => {
 			// 排队的这段时间里,前面的写可能已经把这套皮肤删了。
-			if (!this.pkg.has(id)) throw new SkinStoreError("not_found", "皮肤不存在或已被删除");
+			if (!this.pkg.has(id))
+				throw new SkinStoreError("not_found", serverText("service.skins.store.text.8"));
 			const existing = await this.listAssets(id);
 			if (existing.length >= MAX_SKIN_ASSETS) {
 				throw new SkinStoreError(
 					"conflict",
-					`一套皮肤最多放 ${MAX_SKIN_ASSETS} 份资产,先删掉用不上的再传`,
+					serverText("service.skins.store.text.9", { value0: MAX_SKIN_ASSETS }),
 				);
 			}
 			const fileName = `${isFont ? "font" : "img"}-${randomBytes(4).toString("hex")}.${clean}`;
@@ -324,7 +334,10 @@ export class SkinStore {
 	 */
 	async updateManifest(id: string, manifest: SkinManifest): Promise<void> {
 		if (!(await this.pkg.saveManifest(id, manifest))) {
-			throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
+			throw new SkinStoreError(
+				"not_found",
+				serverText("service.skins.store.text.10", { value0: id }),
+			);
 		}
 	}
 
@@ -353,16 +366,20 @@ export class SkinStore {
 		await this.pkg.run(id, async (saveManifest) => {
 			const manifest = this.pkg.get(id);
 			// 不认识的 id 一律不动手 —— 与 remove 同一条纪律,这里同样要写盘。
-			if (!manifest) throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
+			if (!manifest)
+				throw new SkinStoreError(
+					"not_found",
+					serverText("service.skins.store.text.11", { value0: id }),
+				);
 			if (!manifest.modes[theme]) {
-				throw new SkinStoreError("invalid", `这套皮肤没有${MODE_LABEL[theme]}模式`);
+				throw new SkinStoreError(
+					"invalid",
+					serverText("service.skins.store.text.12", { value0: MODE_LABEL[theme] }),
+				);
 			}
 			const other = theme === "light" ? "dark" : "light";
 			if (!manifest.modes[other]) {
-				throw new SkinStoreError(
-					"conflict",
-					"这是最后一套模式,删了就等于删掉整套皮肤 —— 请改用「删除」",
-				);
+				throw new SkinStoreError("conflict", serverText("service.skins.store.text.13"));
 			}
 
 			const next: SkinManifest = { ...manifest, modes: { [other]: manifest.modes[other] } };
@@ -385,7 +402,11 @@ export class SkinStore {
 	async setDefault(id: string): Promise<void> {
 		await this.pkg.run(id, async () => {
 			const manifest = this.pkg.get(id);
-			if (!manifest) throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
+			if (!manifest)
+				throw new SkinStoreError(
+					"not_found",
+					serverText("service.skins.store.text.14", { value0: id }),
+				);
 			await atomicWriteFile(this.pkg.pathOf(id, DEFAULT_SNAPSHOT_FILE), serializeJson(manifest));
 		});
 	}
@@ -429,8 +450,16 @@ export class SkinStore {
 		await this.pkg.runRoot(async () => {
 			if (id !== null) {
 				const m = this.pkg.get(id);
-				if (!m) throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
-				if (!m.modes[theme]) throw new SkinStoreError("invalid", `皮肤没有 ${theme} 模式: ${id}`);
+				if (!m)
+					throw new SkinStoreError(
+						"not_found",
+						serverText("service.skins.store.text.15", { value0: id }),
+					);
+				if (!m.modes[theme])
+					throw new SkinStoreError(
+						"invalid",
+						serverText("service.skins.store.text.16", { value0: theme, value1: id }),
+					);
 			}
 			await this.writeActive({ ...this.active, [theme]: id });
 		});
@@ -444,7 +473,11 @@ export class SkinStore {
 				return;
 			}
 			const m = this.pkg.get(id);
-			if (!m) throw new SkinStoreError("not_found", `皮肤不存在: ${id}`);
+			if (!m)
+				throw new SkinStoreError(
+					"not_found",
+					serverText("service.skins.store.text.17", { value0: id }),
+				);
 			await this.writeActive({
 				light: m.modes.light ? id : this.active.light,
 				dark: m.modes.dark ? id : this.active.dark,

@@ -1,5 +1,6 @@
 import { fail } from "@bilibili-notify/internal";
 import type { MiddlewareHandler } from "hono";
+import { t as serverText } from "../i18n/index.js";
 import { respondFailure } from "../routes/respond-failure.js";
 import { readCookie } from "./cookie.js";
 import { safeEqual } from "./safe-equal.js";
@@ -25,7 +26,11 @@ export function createDesktopTokenAuth(expectedToken: string): MiddlewareHandler
 		const cookieOk = !!cookie && safeEqual(cookie, expectedToken);
 		if (!headerOk && !cookieOk) {
 			// 401 显式给:这是看板自己的门(桌面壳的令牌),面板见 401 就回登录框。
-			return respondFailure(c, fail("unauthorized", "缺少桌面壳的访问令牌"), 401);
+			return respondFailure(
+				c,
+				fail("unauthorized", serverText("service.auth.desktop-token.text.1")),
+				401,
+			);
 		}
 		if (!cookieOk) {
 			// 不设 Max-Age:随 webview 会话走。不设 Secure:桌面壳走的是 http 回环。

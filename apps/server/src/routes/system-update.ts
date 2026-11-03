@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 自主升级 API。判断全在 `update/service.ts` —— 这一层只做 wire,外加一件实质的事:
  * **应用更新时先把话说完,再关自己**。
@@ -53,10 +54,7 @@ export function createSystemUpdateRoute({
 	app.post("/mirrors/probe", async (c) => {
 		const parsed = ProbeBody.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
-			return respondFailure(
-				c,
-				fail("invalid", "测速前缀要是空串或 https:// 开头的地址（最多 20 个）"),
-			);
+			return respondFailure(c, fail("invalid", serverText("service.routes.system-update.text.1")));
 		}
 		return c.json({ results: await service.probeMirrors(parsed.data.prefixes) });
 	});
@@ -65,7 +63,7 @@ export function createSystemUpdateRoute({
 		// 判定在契约里,面板决定按钮出不出用的是同一个函数 —— 见 `canApplyUpdate`。
 		const { state } = service.getStatus();
 		if (!canApplyUpdate(state)) {
-			return respondFailure(c, fail("conflict", "没有可应用的版本"));
+			return respondFailure(c, fail("conflict", serverText("service.routes.system-update.text.2")));
 		}
 		// 回话里带上要换掉的是哪个进程、换到哪:这些都在这一头,面板不必先探一次再猜。
 		const body: UpdateApplyResponse = {

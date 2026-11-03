@@ -6,6 +6,7 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 
 /**
@@ -90,10 +91,14 @@ export interface KeyValueStoreHandle {
 class NotJsonError extends Error {}
 
 function walkJson(value: unknown, depth: number): Json {
-	if (depth > MAX_JSON_DEPTH) throw new NotJsonError(`嵌套超过 ${MAX_JSON_DEPTH} 层`);
+	if (depth > MAX_JSON_DEPTH)
+		throw new NotJsonError(
+			serverText("service.integration-store.key-value-store.text.1", { value0: MAX_JSON_DEPTH }),
+		);
 	if (value === null || typeof value === "string" || typeof value === "boolean") return value;
 	if (typeof value === "number") {
-		if (!Number.isFinite(value)) throw new NotJsonError("数字只收有限数(不收 NaN / Infinity)");
+		if (!Number.isFinite(value))
+			throw new NotJsonError(serverText("service.integration-store.key-value-store.text.2"));
 		return value;
 	}
 	if (Array.isArray(value)) {
@@ -103,7 +108,8 @@ function walkJson(value: unknown, depth: number): Json {
 	}
 	if (typeof value === "object") {
 		const proto = Object.getPrototypeOf(value);
-		if (proto !== Object.prototype && proto !== null) throw new NotJsonError("对象只收普通对象");
+		if (proto !== Object.prototype && proto !== null)
+			throw new NotJsonError(serverText("service.integration-store.key-value-store.text.3"));
 		// 键是第三方给的:用 defineProperty 落在自己身上,`__proto__` 之类不会改原型。
 		const out: { [key: string]: Json } = {};
 		for (const [key, inner] of Object.entries(value)) {
@@ -116,7 +122,9 @@ function walkJson(value: unknown, depth: number): Json {
 		}
 		return out;
 	}
-	throw new NotJsonError(`${typeof value} 不是 JSON 值`);
+	throw new NotJsonError(
+		serverText("service.integration-store.key-value-store.text.4", { value0: typeof value }),
+	);
 }
 
 /** 值逐层走一遍,只收 `Json`;交回的是一份拷贝(调用方之后再改原值不影响存着的)。 */
@@ -138,11 +146,21 @@ type CheckedOp = { kind: "set"; key: string; value: Json } | { kind: "delete"; k
 
 /** `whole` 是整袋换(恢复备份):两个面的键都收。 */
 function checkKey(face: "integration" | "host" | "whole", key: unknown): string | undefined {
-	if (typeof key !== "string" || key.length === 0) return "键要是非空字符串";
-	if (bytesOf(key) > MAX_KEY_NAME_BYTES) return `键超过 ${MAX_KEY_NAME_BYTES} 字节`;
+	if (typeof key !== "string" || key.length === 0)
+		return serverText("service.integration-store.key-value-store.text.5");
+	if (bytesOf(key) > MAX_KEY_NAME_BYTES)
+		return serverText("service.integration-store.key-value-store.text.6", {
+			value0: MAX_KEY_NAME_BYTES,
+		});
 	const hosted = key.startsWith(HOST_KEY_PREFIX);
-	if (face === "integration" && hosted) return `「${HOST_KEY_PREFIX}」开头的键归宿主,集成不能写`;
-	if (face === "host" && !hosted) return `宿主只许写「${HOST_KEY_PREFIX}」开头的键`;
+	if (face === "integration" && hosted)
+		return serverText("service.integration-store.key-value-store.text.7", {
+			value0: HOST_KEY_PREFIX,
+		});
+	if (face === "host" && !hosted)
+		return serverText("service.integration-store.key-value-store.text.8", {
+			value0: HOST_KEY_PREFIX,
+		});
 	return undefined;
 }
 
@@ -153,9 +171,12 @@ function checkOps(
 ): CheckedOp[] | string {
 	const checked: CheckedOp[] = [];
 	for (const [index, op] of ops.entries()) {
-		const at = `第 ${index + 1} 步`;
+		const at = serverText("service.integration-store.key-value-store.text.9", {
+			value0: index + 1,
+		});
 		const kind = (op as { kind?: unknown } | null)?.kind;
-		if (kind !== "set" && kind !== "delete") return `${at}:kind 只能是 set 或 delete`;
+		if (kind !== "set" && kind !== "delete")
+			return serverText("service.integration-store.key-value-store.text.10", { value0: at });
 		const keyProblem = checkKey(face, op.key);
 		if (keyProblem !== undefined) return `${at}:${keyProblem}`;
 		if (op.kind === "delete") {
@@ -214,12 +235,19 @@ export function createKeyValueStores(opts: CreateKeyValueStoresOptions): KeyValu
 			for (const key of setKeys) {
 				const value = next.get(key);
 				if (value !== undefined && bytesOf(JSON.stringify(value)) > maxKeyBytes) {
-					return `「${key}」的值超过单键上限 ${maxKeyBytes} 字节`;
+					return serverText("service.integration-store.key-value-store.text.11", {
+						value0: key,
+						value1: maxKeyBytes,
+					});
 				}
 			}
 		}
 		const total = bytesOf(serializeEntries(next));
-		if (total > maxTotalBytes) return `整份 ${total} 字节,超过上限 ${maxTotalBytes} 字节`;
+		if (total > maxTotalBytes)
+			return serverText("service.integration-store.key-value-store.text.12", {
+				value0: total,
+				value1: maxTotalBytes,
+			});
 		return undefined;
 	}
 
@@ -233,7 +261,12 @@ export function createKeyValueStores(opts: CreateKeyValueStoresOptions): KeyValu
 		try {
 			result = await opts.persist(next);
 		} catch (err) {
-			result = fail("unavailable", `存盘失败:${errorMessageOf(err)}`);
+			result = fail(
+				"unavailable",
+				serverText("service.integration-store.key-value-store.text.13", {
+					value0: errorMessageOf(err),
+				}),
+			);
 		}
 		if (result.ok) {
 			current = next;
@@ -250,7 +283,12 @@ export function createKeyValueStores(opts: CreateKeyValueStoresOptions): KeyValu
 			return await lane(task);
 		} catch (err) {
 			// 写道关了(关停之后)迟到的写:回 unavailable,不落盘。
-			return fail("unavailable", `写道已关门:${errorMessageOf(err)}`);
+			return fail(
+				"unavailable",
+				serverText("service.integration-store.key-value-store.text.14", {
+					value0: errorMessageOf(err),
+				}),
+			);
 		}
 	}
 
@@ -305,7 +343,12 @@ export function createKeyValueStores(opts: CreateKeyValueStoresOptions): KeyValu
 					hostChecked = checkOps("host", hostOps());
 				} catch (err) {
 					return Promise.resolve(
-						fail("unavailable", `取宿主那一组改动时出错:${errorMessageOf(err)}`),
+						fail(
+							"unavailable",
+							serverText("service.integration-store.key-value-store.text.15", {
+								value0: errorMessageOf(err),
+							}),
+						),
 					);
 				}
 				if (typeof hostChecked === "string") return Promise.resolve(fail("invalid", hostChecked));

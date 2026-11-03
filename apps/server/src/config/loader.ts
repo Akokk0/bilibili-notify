@@ -5,7 +5,7 @@ import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { atomicWriteFileSync, atomicWriteJsonSync } from "@bilibili-notify/storage";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { shouldRefuseBareAuth } from "../auth/bare-auth-policy.js";
-import { t } from "../i18n/index.js";
+import { t as serverText, t } from "../i18n/index.js";
 import { stderrLineRedacted } from "../logs/console-fallback.js";
 import { type BootstrapConfig, BootstrapConfigSchema } from "./schema.js";
 import { dropLegacyWebDistDir } from "./web-dist.js";
@@ -142,10 +142,10 @@ function loadBModel(
 		// 常见于 docker bind-mount 单文件时 host 端 yaml 未创建,docker 自动建空目录占位
 		throw new Error(
 			`bootstrap config path is a directory: ${yamlPath}\n` +
-				"  → 常见于 docker bind-mount 单文件而 host 端 yaml 不存在,docker 自动建空目录。\n" +
-				"  → 解决:在 docker-compose.yaml 里删掉 bn.config.yaml 的 single-file volume 挂载,\n" +
-				"     改成挂目录;或先 'rm -rf <host 路径>' 让 first boot 自动 seed。\n" +
-				"  → 详见 apps/docker-compose.example.yaml",
+				serverText("service.config.loader.text.1") +
+				serverText("service.config.loader.text.2") +
+				serverText("service.config.loader.text.3") +
+				serverText("service.config.loader.text.4"),
 		);
 	}
 
@@ -208,20 +208,14 @@ function parseOrRethrow(
 	if (result.success) return result.data;
 	const hint =
 		mode === "read"
-			? `修复 yaml 后重启,或 'rm ${yamlPath}' 让 first boot 重新 seed`
-			: "请检查 BN_* 环境变量取值";
+			? serverText("service.config.loader.text.5", { value0: yamlPath })
+			: serverText("service.config.loader.text.6");
 	throw new Error(
 		`bootstrap config schema error (${mode}) at ${yamlPath}:\n${result.error.message}\n  → ${hint}`,
 	);
 }
 
-const SEED_HEADER = `# bilibili-notify bootstrap config (auto-generated on first boot)
-#
-# 模型:env 仅在首次启动写入此文件,之后启动 env 被 loader 忽略 —— 文件即真相。
-# 编辑此文件后重启容器: docker compose restart
-# 完全重置(让 env 重新 seed): rm 本文件 + docker compose up -d
-#
-`;
+const seedHeader = () => serverText("service.config.loader.text.7");
 
 /**
  * 首启动写种文件。这个文件里写盘的两处(这里与 `dropSeededWebDistDir`)都走 storage 的同步
@@ -236,7 +230,7 @@ function writeSeedFile(path: string, config: BootstrapConfig, log: (msg: string)
 	if (path.toLowerCase().endsWith(".json")) {
 		atomicWriteJsonSync(path, config, { mode: 0o600 });
 	} else {
-		atomicWriteFileSync(path, `${SEED_HEADER}${stringifyYaml(config, { indent: 2 })}`, {
+		atomicWriteFileSync(path, `${seedHeader()}${stringifyYaml(config, { indent: 2 })}`, {
 			mode: 0o600,
 		});
 	}

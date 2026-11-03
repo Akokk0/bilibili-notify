@@ -70,7 +70,7 @@ function build(
 		...integrationIo(),
 		...(extra.timezoneReader ? { timezoneReader: extra.timezoneReader } : {}),
 		logger,
-		stopReason: "测试",
+		stopReason: () => "测试",
 		...memoryStores(),
 		settings: inertSettings(),
 		problems,
@@ -487,7 +487,7 @@ describe("createPlatformAdapterContext · inbound", () => {
 		const handle = createIntegrationContext({
 			...integrationIo(),
 			logger: silentLogger,
-			stopReason: "测试",
+			stopReason: () => "测试",
 			...memoryStores(),
 			settings: inertSettings(),
 			problems,

@@ -1,3 +1,4 @@
+import { t as serverText } from "../../../i18n/index.js";
 /**
  * 直播信息流 WSS 客户端 —— 哑管道。
  *
@@ -92,7 +93,7 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 /** 建立一条直播间信息流连接。 */
 export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 	const first = opts.hostList[0];
-	if (!first) throw new Error("hostList 为空");
+	if (!first) throw new Error(serverText("bilibili.live.protocol.client.text.1"));
 	const url = `wss://${first.host}${first.wssPort === 443 ? "" : `:${first.wssPort}`}/sub`;
 
 	const socket = opts.createSocket(url);
@@ -114,7 +115,11 @@ export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 		connectTimer = undefined;
 		emit({
 			kind: "error",
-			error: new Error(`连接/认证超时(${Math.round(timeoutMs / 1000)}s 内未收到认证回执)`),
+			error: new Error(
+				serverText("bilibili.live.protocol.client.text.2", {
+					value0: Math.round(timeoutMs / 1000),
+				}),
+			),
 		});
 		socket.close();
 	}, timeoutMs);

@@ -6,6 +6,7 @@ import {
 	type Issue,
 	issuesFromZod,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 配置写入被拒的原因,只有这三种(标准码表的子集,规矩见 docs/agents/conventions/failure-results.md):
@@ -15,12 +16,24 @@ export type ConfigFailureCode = Extract<FailureCode, "invalid" | "not_found" | "
 
 /** 面板上一块配置叫什么 —— 拼进给人看的那句话。 */
 const SCOPE_LABEL: Record<ConfigScope, string> = {
-	globals: "全局设置",
-	"integration-settings": "集成的设置",
-	subscriptions: "订阅",
-	connections: "连接",
-	targets: "推送目标",
-	secrets: "密钥",
+	get globals() {
+		return serverText("service.config.validation-error.text.1");
+	},
+	get "integration-settings"() {
+		return serverText("service.config.validation-error.text.2");
+	},
+	get subscriptions() {
+		return serverText("service.config.validation-error.text.3");
+	},
+	get connections() {
+		return serverText("service.config.validation-error.text.4");
+	},
+	get targets() {
+		return serverText("service.config.validation-error.text.5");
+	},
+	get secrets() {
+		return serverText("service.config.validation-error.text.6");
+	},
 };
 
 /** 顶上那句话里最多摊几条原因;全部原因在 `issues` 里。 */
@@ -35,7 +48,9 @@ function lineOf(issue: Issue): string {
 
 function summarize(issues: readonly Issue[]): string {
 	const shown = issues.slice(0, SUMMARY_LIMIT).map(lineOf).join("；");
-	return issues.length > SUMMARY_LIMIT ? `${shown}；……共 ${issues.length} 处` : shown;
+	return issues.length > SUMMARY_LIMIT
+		? serverText("service.config.validation-error.text.7", { value0: shown, count: issues.length })
+		: shown;
 }
 
 /**
@@ -100,7 +115,11 @@ export class ConfigValidationError extends Error {
 		const subject = opts.subject ?? SCOPE_LABEL[scope];
 		return ConfigValidationError.invalid(
 			scope,
-			`${subject}有 ${issues.length} 格不合法：${summarize(issues)}`,
+			serverText("service.config.validation-error.text.8", {
+				value0: subject,
+				count: issues.length,
+				value2: summarize(issues),
+			}),
 			issues,
 		);
 	}

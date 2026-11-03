@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 女仆技能 API。校验、名字白名单、路径穿越防御全在 `maid-skills/parse.ts` 与
  * `maid-skills/store.ts`,这里只做 wire。
@@ -31,7 +32,7 @@ const writeSchema = z.object({
 });
 
 /** 请求体不是一条技能的形状时那一句;逐格原因(zod 的原话)放 `issues`。 */
-const NOT_A_SKILL_MESSAGE = "请求体不是一条技能的形状";
+const notASkillMessage = () => serverText("service.routes.ai-skills.text.1");
 
 export function createAiSkillsRoute(deps: {
 	skillStore: MaidSkillStore;
@@ -72,7 +73,7 @@ export function createAiSkillsRoute(deps: {
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", NOT_A_SKILL_MESSAGE, { issues: issuesFromZod(parsed.error) }),
+				fail("invalid", notASkillMessage(), { issues: issuesFromZod(parsed.error) }),
 			);
 		}
 		// 与 PUT / DELETE 同待遇。名字占用那道闸自己会问盘(见 store.assertFree),
@@ -94,7 +95,7 @@ export function createAiSkillsRoute(deps: {
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", NOT_A_SKILL_MESSAGE, { issues: issuesFromZod(parsed.error) }),
+				fail("invalid", notASkillMessage(), { issues: issuesFromZod(parsed.error) }),
 			);
 		}
 		await skillStore.ensureReady();

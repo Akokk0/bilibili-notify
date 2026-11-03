@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 待审的锐评草稿 `runtime/roast-drafts.json`:0.x 按 uid 回指一位 UP → 按订阅 id 回指(ADR-0020 决策 18)。
  * 收进来之前是草稿库读盘时翻(⑥c),草稿库开机只认最新的形状。
@@ -26,7 +27,8 @@ export function upgradeLegacyDraft(
 		if (raw.uid === undefined) return raw;
 		const { uid, ...rest } = raw;
 		const subscriptionId = lookup(uid);
-		if (!subscriptionId) return `单人草稿的 uid=${String(uid)} 已对不上任何订阅`;
+		if (!subscriptionId)
+			return serverText("service.migration.roast-drafts.text.1", { value0: String(uid) });
 		const { uid: _resultUid, ...resultRest } = (result ?? {}) as Record<string, unknown>;
 		return { ...rest, subscriptionId, result: { ...resultRest, subscriptionId } };
 	}
@@ -42,7 +44,7 @@ export function upgradeLegacyDraft(
 	const diligent = result.diligent as WithLegacyUid<{ reason: string }> | undefined;
 	const newPigeon = swap(pigeon);
 	const newDiligent = diligent ? swap(diligent) : null;
-	if (!newPigeon || !newDiligent) return "榜单草稿的鸽王 / 勤奋 UP 已对不上任何订阅";
+	if (!newPigeon || !newDiligent) return serverText("service.migration.roast-drafts.text.2");
 	const list = (key: "roast" | "scores") =>
 		(Array.isArray(result[key]) ? (result[key] as WithLegacyUid<object>[]) : []).flatMap((r) => {
 			const one = swap(r);

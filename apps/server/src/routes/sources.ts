@@ -22,7 +22,7 @@ import type { ImageStore } from "../images/image-store.js";
 import type { SourceView } from "../subscriptions/registry.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
 import { errorMessageOf } from "../util/error-message.js";
-import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
+import { enginesNotReadyMessage, respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /** 搜人那句话最多几个字(输入框里粘一段长链接也够)。 */
@@ -135,7 +135,7 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 			return respondFailure(c, fail("invalid", query.error.issues[0]?.message ?? ""));
 		}
 		const found = await opts.searchCreators?.(c.req.param("sourceKey"), query.data);
-		if (!found) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!found) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 		if (!found.ok) return respondFailure(c, found, found.code === "invalid" ? 502 : undefined);
 		const body: CreatorsResponse = {
 			candidates: await Promise.all(found.candidates.map(candidateView)),

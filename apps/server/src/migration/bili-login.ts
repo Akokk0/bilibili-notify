@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 0.x 的 B 站登录 `secrets/cookies.json` → 集成的密钥文件 `secrets/bilibili/secrets.enc`。
  *
@@ -50,16 +51,20 @@ export async function migrateBiliLogin(
 		raw = await readFile(opts.cookiesPath, "utf8");
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return { kind: "none" };
-		return { kind: "dropped", reason: `读不了:${errorMessageOf(err)}` };
+		return {
+			kind: "dropped",
+			reason: serverText("service.migration.bili-login.text.1", { value0: errorMessageOf(err) }),
+		};
 	}
-	if (opts.key.kind !== "ok") return { kind: "dropped", reason: "缺主密钥" };
+	if (opts.key.kind !== "ok")
+		return { kind: "dropped", reason: serverText("service.migration.bili-login.text.2") };
 	const key = opts.key.key;
 
 	let stored: ZeroStoredCookies;
 	try {
 		stored = JSON.parse(raw) as ZeroStoredCookies;
 	} catch {
-		return { kind: "dropped", reason: "内容读不懂" };
+		return { kind: "dropped", reason: serverText("service.migration.bili-login.text.3") };
 	}
 	if (
 		typeof stored !== "object" ||
@@ -67,7 +72,7 @@ export async function migrateBiliLogin(
 		!isGcmBlob(stored.cookiesJson) ||
 		(stored.refreshToken !== undefined && !isGcmBlob(stored.refreshToken))
 	) {
-		return { kind: "dropped", reason: "内容读不懂" };
+		return { kind: "dropped", reason: serverText("service.migration.bili-login.text.4") };
 	}
 
 	let cookiesJson: string;
@@ -77,9 +82,10 @@ export async function migrateBiliLogin(
 		refreshToken =
 			stored.refreshToken === undefined ? undefined : gcmDecrypt(key, stored.refreshToken);
 	} catch {
-		return { kind: "dropped", reason: "解不开" };
+		return { kind: "dropped", reason: serverText("service.migration.bili-login.text.5") };
 	}
-	if (!isJsonArray(cookiesJson)) return { kind: "dropped", reason: "内容读不懂" };
+	if (!isJsonArray(cookiesJson))
+		return { kind: "dropped", reason: serverText("service.migration.bili-login.text.6") };
 
 	const entries = new Map<string, Json>([["http.cookies", cookiesJson]]);
 	if (refreshToken) entries.set("refreshToken", refreshToken);

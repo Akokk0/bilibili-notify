@@ -1,5 +1,6 @@
 import { fail } from "@bilibili-notify/internal";
 import type { Context, MiddlewareHandler } from "hono";
+import { t as serverText } from "../i18n/index.js";
 import { respondFailure } from "../routes/respond-failure.js";
 import type { SessionCodec } from "./session.js";
 
@@ -43,7 +44,11 @@ export function createDashboardAuth(codec: SessionCodec): MiddlewareHandler {
 
 		const token = codec.readCookie(c.req.header("cookie"));
 		if (!codec.verify(token)) {
-			return respondFailure(c, fail("unauthorized", "需要先登录面板"), 401);
+			return respondFailure(
+				c,
+				fail("unauthorized", serverText("service.auth.dashboard-auth.text.1")),
+				401,
+			);
 		}
 
 		// Sliding renewal: a still-valid token past half-life gets a fresh

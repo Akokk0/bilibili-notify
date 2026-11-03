@@ -1,4 +1,5 @@
 import { type Failure, type FailureCode, fail } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 失败那一句话怎么写 —— 两件事路由里到处要用:一串检查意见怎么变成 `message` + `issues`,
@@ -24,10 +25,15 @@ export function failureOfChecks(
 ): Failure {
 	const [only] = reasons;
 	if (reasons.length === 1 && only !== undefined && !options.listSingle) return fail(code, only);
-	if (reasons.length === 0) return fail(code, `${subject}没通过检查`);
-	return fail(code, `${subject}没通过检查（共 ${reasons.length} 条）`, {
-		issues: reasons.map((message) => ({ message })),
-	});
+	if (reasons.length === 0)
+		return fail(code, serverText("service.util.failure-text.text.1", { value0: subject }));
+	return fail(
+		code,
+		serverText("service.util.failure-text.text.2", { value0: subject, count: reasons.length }),
+		{
+			issues: reasons.map((message) => ({ message })),
+		},
+	);
 }
 
 /** 「还有谁在用」那句话里最多点几个名字;再多的只报个数,全列出来会把一条错误变成一面墙。 */
@@ -36,10 +42,15 @@ const USERS_SHOWN = 3;
 /** 几个用家点名:不多于 {@link USERS_SHOWN} 个全列,多了列前几个再接「等 N 处」。 */
 export function listUsers(users: readonly string[]): string {
 	const shown = users.slice(0, USERS_SHOWN).join("、");
-	return users.length > USERS_SHOWN ? `${shown} 等 ${users.length} 处` : shown;
+	return users.length > USERS_SHOWN
+		? serverText("service.util.failure-text.text.3", { value0: shown, count: users.length })
+		: shown;
 }
 
 /** 「还有 3 处在用：全局默认、某 UP、另一 UP」—— 拼进 `message`,不占一格自己的字段。 */
 export function describeUsers(users: readonly string[]): string {
-	return `还有 ${users.length} 处在用：${listUsers(users)}`;
+	return serverText("service.util.failure-text.text.4", {
+		count: users.length,
+		value1: listUsers(users),
+	});
 }

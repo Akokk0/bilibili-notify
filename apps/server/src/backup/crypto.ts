@@ -6,6 +6,7 @@ import {
 	gcmDecrypt,
 	gcmEncrypt,
 } from "@bilibili-notify/storage";
+import { t as serverText } from "../i18n/index.js";
 import { BackupRejectedError } from "./rejected-error.js";
 
 /**
@@ -45,7 +46,7 @@ export interface EncryptedSecrets {
  * 所以话里两种都说。
  */
 export class BackupPinError extends BackupRejectedError {
-	constructor(message = "备份 PIN 错误，或文件已损坏") {
+	constructor(message = serverText("service.backup.crypto.text.1")) {
 		super("invalid", message);
 		this.name = "BackupPinError";
 	}

@@ -13,6 +13,7 @@ import {
 import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import type { ZodError, ZodType } from "zod";
 import type { ConfigStore } from "../config/store.js";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 拓展设置的读写口(`/api/ext/:id/settings`,ADR-0019 决策 35)背后的那几件事:怎么遮密钥、
@@ -90,8 +91,7 @@ export function settingsRevision(stored: unknown): string {
 
 // ---- 写:一步步套上去,只校验动到的 ------------------------------------------------------
 
-const MASKED_MESSAGE =
-	"这是下发时的密钥遮挡,不是新值 —— 不改就别带这一格,要换就交新的明文(比如重新生成)";
+const maskedMessage = () => serverText("service.extensions.settings-io.text.1");
 
 /** 值是不是下发时那个遮挡的形状 —— 原样回传的话,真密钥会被盖成一个对象。 */
 function isMaskedSecret(value: unknown): boolean {
@@ -150,8 +150,8 @@ export function applySettingsOps(
 	/** 列表的那一格;不是列表回一句为什么。 */
 	const listOf = (key: string): SettingsListField | string => {
 		const field = byKey.get(key);
-		if (!field) return "清单里没有这一格";
-		if (field.type !== "list") return "这一格不是列表 —— 单值的格用 set 改";
+		if (!field) return serverText("service.extensions.settings-io.text.2");
+		if (field.type !== "list") return serverText("service.extensions.settings-io.text.3");
 		return field;
 	};
 	/** 按 id 找一项;找不到是 -1。 */
@@ -175,27 +175,27 @@ export function applySettingsOps(
 			return Object.entries(values).flatMap(([key, value]) => {
 				const why =
 					key === LIST_ITEM_ID_KEY
-						? "项的 id 由 BN 生成、不许交也不许改"
+						? serverText("service.extensions.settings-io.text.4")
 						: !declared.has(key)
-							? "清单里这一项没有这一格"
+							? serverText("service.extensions.settings-io.text.5")
 							: isMaskedSecret(value)
-								? MASKED_MESSAGE
+								? maskedMessage()
 								: undefined;
 				return why ? at([...prefix, key], why) : [];
 			});
 		};
 		/** 找不到那一项就说清楚 —— 静默当成功的话,面板以为改了 / 删了。 */
 		const missing = (list: string, id: string) =>
-			at([list, id], `这个列表里没有 id 为 ${id} 的一项(可能已经被删了)`);
+			at([list, id], serverText("service.extensions.settings-io.text.6", { value0: id }));
 
 		switch (op.op) {
 			case "set": {
 				const field = byKey.get(op.key);
-				if (!field) return at([op.key], "清单里没有这一格");
+				if (!field) return at([op.key], serverText("service.extensions.settings-io.text.7"));
 				if (field.type === "list") {
-					return at([op.key], "列表只能逐项增 / 改 / 删(add / update / remove),不能整份 set");
+					return at([op.key], serverText("service.extensions.settings-io.text.8"));
 				}
-				if (isMaskedSecret(op.value)) return at([op.key], MASKED_MESSAGE);
+				if (isMaskedSecret(op.value)) return at([op.key], maskedMessage());
 				const value = op.value === null ? undefined : op.value;
 				const parsed = settingsFieldSchema(field).safeParse(value);
 				if (!parsed.success) return fromZod([op.key], parsed.error);
@@ -372,27 +372,36 @@ const MAX_NAMED_ISSUES = 3;
  */
 function whereOf(fields: readonly SettingsField[], raw: unknown, path: Path): string {
 	const [head, ...rest] = path;
-	if (head === undefined) return "整份设置";
+	if (head === undefined) return serverText("service.extensions.settings-io.text.9");
 	const field = fields.find((candidate) => candidate.key === head);
 	if (!field) return `「${path.join(".")}」`;
 	const name = `「${field.label}」`;
 	if (rest.length === 0) return name;
 	const [index, ...inner] = rest;
-	if (field.type !== "list" || typeof index !== "number") return `${name}的「${rest.join(".")}」`;
+	if (field.type !== "list" || typeof index !== "number")
+		return serverText("service.extensions.settings-io.text.10", {
+			value0: name,
+			value1: rest.join("."),
+		});
 	const item = isPlainObject(raw) ? itemsOf(raw[field.key])[index] : undefined;
 	// 标题不会是密钥格(清单校验拦着,决策 38),念出来不漏东西。
 	const title = isPlainObject(item) ? item[field.title] : undefined;
 	const id = idOf(item);
 	const which =
 		typeof title === "string" && title !== ""
-			? `「${title}」这一项`
+			? serverText("service.extensions.settings-io.text.11", { value0: title })
 			: typeof id === "string" && id !== ""
-				? ` id 为 ${id} 的那一项`
-				: `第 ${index + 1} 项`;
+				? serverText("service.extensions.settings-io.text.12", { value0: id })
+				: serverText("service.extensions.settings-io.text.13", { value0: index + 1 });
 	const [cell, ...deeper] = inner;
-	if (cell === undefined) return `${name}里${which}`;
+	if (cell === undefined)
+		return serverText("service.extensions.settings-io.text.14", { value0: name, value1: which });
 	const sub = field.fields.find((candidate) => candidate.key === cell);
-	return `${name}里${which}的「${sub ? [sub.label, ...deeper].join(".") : inner.join(".")}」`;
+	return serverText("service.extensions.settings-io.text.15", {
+		value0: name,
+		value1: which,
+		value2: sub ? [sub.label, ...deeper].join(".") : inner.join("."),
+	});
 }
 
 /** zod 的问题 → 一句人话:「哪一格:为什么」,同一句只说一次,多了只点名前几处。 */
@@ -408,7 +417,9 @@ function describeSettingsIssues(
 	];
 	const named = lines.slice(0, MAX_NAMED_ISSUES).join(";");
 	const more = lines.length - MAX_NAMED_ISSUES;
-	return more > 0 ? `${named};…另有 ${more} 处` : named;
+	return more > 0
+		? serverText("service.extensions.settings-io.text.16", { value0: named, value1: more })
+		: named;
 }
 
 /**
@@ -475,7 +486,7 @@ export async function judgeStoredSettings(
 			parsed = await schema.safeParseAsync(unset ? {} : raw);
 		} catch (err) {
 			const reason = err instanceof Error ? err.message : String(err);
-			const detail = `它自己的设置校验抛了(是拓展代码的毛病,不是哪一格填错了):${reason}`;
+			const detail = serverText("service.extensions.settings-io.text.17", { value0: reason });
 			return { ok: false, detail, issues: [{ message: detail }] };
 		}
 		recordParsed(schema, parsed, unset, fields, values, issues);

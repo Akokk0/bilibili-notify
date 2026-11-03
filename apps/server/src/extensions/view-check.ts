@@ -27,6 +27,7 @@ import type {
 } from "@bilibili-notify/internal/extension/wire";
 import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import type { ZodError } from "zod";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 宿主怎么核一份 v2 视图(ADR-0019 决策 39 / 40)—— ctx 的 `status()` 每被问一次就走一遍这里。
@@ -66,17 +67,29 @@ export interface ViewCheck {
 
 /** 积木的中文名 —— 点名「页上第 2 块(表格)」。 */
 const BLOCK_LABELS: Readonly<Record<ExtensionBlock["type"], string>> = {
-	keyValue: "键值",
-	table: "表格",
-	notice: "提示条",
-	copy: "可复制的值",
-	qr: "二维码",
-	button: "按钮",
+	get keyValue() {
+		return serverText("service.extensions.view-check.text.1");
+	},
+	get table() {
+		return serverText("service.extensions.view-check.text.2");
+	},
+	get notice() {
+		return serverText("service.extensions.view-check.text.3");
+	},
+	get copy() {
+		return serverText("service.extensions.view-check.text.4");
+	},
+	get qr() {
+		return serverText("service.extensions.view-check.text.5");
+	},
+	get button() {
+		return serverText("service.extensions.view-check.text.6");
+	},
 };
 
 /** 列表项那张卡上的提示点名的是它自己 —— 卡就是「哪一项」。 */
-const ITEM_WHERE = "这一项";
-const WHOLE_WHERE = "整份视图";
+const itemWhere = () => serverText("service.extensions.view-check.text.7");
+const wholeWhere = () => serverText("service.extensions.view-check.text.8");
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -116,18 +129,20 @@ function itemIdsOf(settings: unknown, list: string): string[] {
  * 也各一条**:那张卡写「状态未知」加同一句话,主人在「配置」页签上也看得见为什么。
  */
 export function faultedExtensionView(reason: string, input: ViewCheckInput): ViewCheck {
-	const fault: ExtensionViewFault = { where: WHOLE_WHERE, reason };
+	const fault: ExtensionViewFault = { where: wholeWhere(), reason };
 	const items: Record<string, Record<string, ExtensionPanelItem>> = {};
 	for (const list of listsOf(input.fields).keys()) {
 		const ids = itemIdsOf(input.settings, list);
 		if (ids.length === 0) continue;
 		items[list] = Object.fromEntries(
-			ids.map((id) => [id, { fault: { where: ITEM_WHERE, reason } }]),
+			ids.map((id) => [id, { fault: { where: itemWhere(), reason } }]),
 		);
 	}
 	return {
 		view: { page: [{ fault }], ...(Object.keys(items).length > 0 ? { items } : {}) },
-		problems: [`${WHOLE_WHERE}画不出来:${reason}`],
+		problems: [
+			serverText("service.extensions.view-check.text.9", { value0: wholeWhere(), value1: reason }),
+		],
 	};
 }
 
@@ -135,7 +150,14 @@ export function faultedExtensionView(reason: string, input: ViewCheckInput): Vie
 export function checkExtensionView(raw: unknown, input: ViewCheckInput): ViewCheck {
 	if (!isPlainObject(raw)) {
 		return faultedExtensionView(
-			`交来的不是一个对象(是 ${raw === null ? "null" : Array.isArray(raw) ? "数组" : typeof raw})`,
+			serverText("service.extensions.view-check.text.11", {
+				value0:
+					raw === null
+						? "null"
+						: Array.isArray(raw)
+							? serverText("service.extensions.view-check.text.10")
+							: typeof raw,
+			}),
 			input,
 		);
 	}
@@ -150,8 +172,8 @@ export function checkExtensionView(raw: unknown, input: ViewCheckInput): ViewChe
 		page.push(
 			fault(
 				problems,
-				WHOLE_WHERE,
-				`多了 BN 不认识的一格:${extra.join("、")} —— 视图只有 summary / page / items / images 这四格`,
+				wholeWhere(),
+				serverText("service.extensions.view-check.text.12", { value0: extra.join("、") }),
 			),
 		);
 	}
@@ -160,7 +182,10 @@ export function checkExtensionView(raw: unknown, input: ViewCheckInput): ViewChe
 	if (raw.summary !== undefined) {
 		const parsed = ExtensionViewSummarySchema.safeParse(raw.summary);
 		if (parsed.success) summary = parsed.data;
-		else problems.push(`摘要画不出来,列表页那一行不说了:${reasonOf(parsed.error)}`);
+		else
+			problems.push(
+				serverText("service.extensions.view-check.text.13", { value0: reasonOf(parsed.error) }),
+			);
 	}
 
 	if (raw.page !== undefined) page.push(...checkPage(raw.page, images, actions, problems));
@@ -176,7 +201,9 @@ const VIEW_KEYS: ReadonlySet<string> = new Set(["summary", "page", "items", "ima
 
 /** 换上一条提示,顺手记进 `problems`。 */
 function fault(problems: string[], where: string, reason: string, logAs = where) {
-	problems.push(`${logAs}画不出来:${reason}`);
+	problems.push(
+		serverText("service.extensions.view-check.text.14", { value0: logAs, value1: reason }),
+	);
 	return { fault: { where, reason } };
 }
 
@@ -195,7 +222,7 @@ function checkImages(raw: unknown, problems: string[]): CheckedImages {
 	const bad = new Map<string, string>();
 	if (raw === undefined) return { good, bad };
 	if (!isPlainObject(raw)) {
-		problems.push("images 不是一张「键 → 图片」的表,这一份里的图一张都不画");
+		problems.push(serverText("service.extensions.view-check.text.15"));
 		return { good, bad };
 	}
 	for (const [key, value] of Object.entries(raw)) {
@@ -220,7 +247,11 @@ function imageIssues(block: ExtensionBlock, images: CheckedImages, at: string): 
 		return [
 			why === undefined
 				? `${where}: ${imageMissing(key)}`
-				: `${where}: 引用的图片「${key}」不合规矩(images.${why})`,
+				: serverText("service.extensions.view-check.text.16", {
+						value0: where,
+						value1: key,
+						value2: why,
+					}),
 		];
 	});
 }
@@ -235,14 +266,16 @@ function actionIssues(
 	at: string,
 ): string[] {
 	if (button.kind !== "action" || declared.has(button.action)) return [];
-	return [`${at}.action: 清单的 actions 里没有「${button.action}」—— 先在清单里声明`];
+	return [
+		serverText("service.extensions.view-check.text.17", { value0: at, value1: button.action }),
+	];
 }
 
 // ---- 页:按块 --------------------------------------------------------------------------
 
 function blockLabel(raw: unknown): string {
 	const type = isPlainObject(raw) ? raw.type : undefined;
-	if (typeof type !== "string") return "不是一块积木";
+	if (typeof type !== "string") return serverText("service.extensions.view-check.text.18");
 	return Object.hasOwn(BLOCK_LABELS, type)
 		? BLOCK_LABELS[type as ExtensionBlock["type"]]
 		: `「${type}」`;
@@ -255,16 +288,28 @@ function checkPage(
 	problems: string[],
 ): ExtensionPanelBlock[] {
 	if (!Array.isArray(raw)) {
-		return [fault(problems, "页上的积木", "page 应该是一串积木")];
+		return [
+			fault(
+				problems,
+				serverText("service.extensions.view-check.text.19"),
+				serverText("service.extensions.view-check.text.20"),
+			),
+		];
 	}
 	const slots = raw.slice(0, EXTENSION_VIEW_MAX_PAGE_BLOCKS).map((block, i) => {
-		const where = `页上第 ${i + 1} 块(${blockLabel(block)})`;
+		const where = serverText("service.extensions.view-check.text.21", {
+			value0: i + 1,
+			value1: blockLabel(block),
+		});
 		const type = isPlainObject(block) ? block.type : undefined;
 		if (typeof type === "string" && !(EXTENSION_BLOCK_TYPES as readonly string[]).includes(type)) {
 			return fault(
 				problems,
 				where,
-				`不认识「${type}」这种积木 —— 积木是封闭的一组(${EXTENSION_BLOCK_TYPES.join(" / ")}),缺了等 BN 加`,
+				serverText("service.extensions.view-check.text.22", {
+					value0: type,
+					value1: EXTENSION_BLOCK_TYPES.join(" / "),
+				}),
 			);
 		}
 		const parsed = ExtensionPageBlockSchema.safeParse(block);
@@ -283,8 +328,13 @@ function checkPage(
 		slots.push(
 			fault(
 				problems,
-				`页上第 ${EXTENSION_VIEW_MAX_PAGE_BLOCKS + 1} 块起`,
-				`页上最多 ${EXTENSION_VIEW_MAX_PAGE_BLOCKS} 块,后面 ${dropped} 块没画`,
+				serverText("service.extensions.view-check.text.23", {
+					value0: EXTENSION_VIEW_MAX_PAGE_BLOCKS + 1,
+				}),
+				serverText("service.extensions.view-check.text.24", {
+					value0: EXTENSION_VIEW_MAX_PAGE_BLOCKS,
+					value1: dropped,
+				}),
 			),
 		);
 	}
@@ -306,32 +356,36 @@ function checkItems(
 	const out: PanelItems = new Map();
 	/** 这张列表整张用不了 —— 现存的每一项各一条。 */
 	const faultAll = (list: string, reason: string) => {
-		problems.push(`items.${list} 画不出来:${reason}`);
+		problems.push(
+			serverText("service.extensions.view-check.text.25", { value0: list, value1: reason }),
+		);
 		const ids = itemIdsOf(input.settings, list);
 		if (ids.length === 0) return;
-		out.set(list, new Map(ids.map((id) => [id, { fault: { where: ITEM_WHERE, reason } }])));
+		out.set(list, new Map(ids.map((id) => [id, { fault: { where: itemWhere(), reason } }])));
 	};
 	if (!isPlainObject(raw)) {
 		for (const list of lists.keys()) {
-			faultAll(list, "items 应该是「列表的 key → 项的 id → 这一项」的一张表");
+			faultAll(list, serverText("service.extensions.view-check.text.26"));
 		}
 		return out;
 	}
 	for (const [list, byId] of Object.entries(raw)) {
 		const field = lists.get(list);
 		if (!field) {
-			problems.push(`items 里的「${list}」不是清单里声明过的列表设置项 —— 这一格不画`);
+			problems.push(serverText("service.extensions.view-check.text.27", { value0: list }));
 			continue;
 		}
 		if (!isPlainObject(byId)) {
-			faultAll(list, `items.${list} 应该是「项的 id → 这一项」的一张表`);
+			faultAll(list, serverText("service.extensions.view-check.text.28", { value0: list }));
 			continue;
 		}
 		const existing = new Set(itemIdsOf(input.settings, list));
 		const checked = new Map<string, ExtensionPanelItem>();
 		for (const [id, item] of Object.entries(byId)) {
 			if (!existing.has(id)) {
-				problems.push(`items.${list} 里的「${id}」不是这张列表里现存的项 —— 这一格不画`);
+				problems.push(
+					serverText("service.extensions.view-check.text.29", { value0: list, value1: id }),
+				);
 				continue;
 			}
 			const verdict = checkItem(item, field, images, actions);
@@ -339,7 +393,12 @@ function checkItems(
 				id,
 				"view" in verdict
 					? verdict
-					: fault(problems, ITEM_WHERE, verdict.reason, `items.${list} 里的「${id}」`),
+					: fault(
+							problems,
+							itemWhere(),
+							verdict.reason,
+							serverText("service.extensions.view-check.text.30", { value0: list, value1: id }),
+						),
 			);
 		}
 		out.set(list, checked);
@@ -393,18 +452,33 @@ function setIssues(
 	const fields = new Map(list.fields.map((sub) => [sub.key, sub]));
 	return Object.entries(set).flatMap(([key, value]) => {
 		const where = `${at}.${key}`;
-		if (key === LIST_ITEM_ID_KEY) return [`${where}: id 是 BN 给每一项的身份,按钮改不了`];
+		if (key === LIST_ITEM_ID_KEY)
+			return [serverText("service.extensions.view-check.text.31", { value0: where })];
 		const sub = fields.get(key);
-		if (!sub) return [`${where}: 「${key}」不是这张列表声明过的格`];
+		if (!sub)
+			return [serverText("service.extensions.view-check.text.32", { value0: where, value1: key })];
 		if (isSecretField(sub)) {
-			return [`${where}: 「${key}」是密钥 / 生成的格,按钮改不了 —— 要换走「重新生成」`];
+			return [serverText("service.extensions.view-check.text.33", { value0: where, value1: key })];
 		}
 		const expected = sub.type === "enum" ? "string" : sub.type;
 		if (typeof value !== expected) {
-			return [`${where}: 「${key}」是 ${sub.type},给的是 ${typeof value}`];
+			return [
+				serverText("service.extensions.view-check.text.34", {
+					value0: where,
+					value1: key,
+					value2: sub.type,
+					value3: typeof value,
+				}),
+			];
 		}
 		if (sub.type === "enum" && !sub.options.some((option) => option.value === value)) {
-			return [`${where}: 「${key}」的选项里没有 ${JSON.stringify(value)}`];
+			return [
+				serverText("service.extensions.view-check.text.35", {
+					value0: where,
+					value1: key,
+					value2: JSON.stringify(value),
+				}),
+			];
 		}
 		return [];
 	});
@@ -497,20 +571,33 @@ function fitWithin(view: ExtensionPanelView, max: number, problems: string[]): E
 	const goodImages = new Map(Object.entries(images));
 	let current = view;
 	for (const unit of units) {
-		const reason = `整份视图序列化后 ${kb(total)},超过上限 ${kb(max)};这一块连同它引用的图有 ${kb(unit.weight)},先不画它 —— 把它拆小,或者少放几张图`;
+		const reason = serverText("service.extensions.view-check.text.36", {
+			value0: kb(total),
+			value1: kb(max),
+			value2: kb(unit.weight),
+		});
 		if (unit.kind === "summary") {
 			summary = undefined;
-			problems.push(`摘要画不出来,列表页那一行不说了:${reason}`);
+			problems.push(serverText("service.extensions.view-check.text.37", { value0: reason }));
 		} else if (unit.kind === "page") {
-			const where = `页上第 ${unit.index + 1} 块(${blockLabel((page[unit.index] as { block: unknown }).block)})`;
+			const where = serverText("service.extensions.view-check.text.38", {
+				value0: unit.index + 1,
+				value1: blockLabel((page[unit.index] as { block: unknown }).block),
+			});
 			page[unit.index] = fault(problems, where, reason);
 		} else {
-			items
-				?.get(unit.list)
-				?.set(
-					unit.id,
-					fault(problems, ITEM_WHERE, reason, `items.${unit.list} 里的「${unit.id}」`),
-				);
+			items?.get(unit.list)?.set(
+				unit.id,
+				fault(
+					problems,
+					itemWhere(),
+					reason,
+					serverText("service.extensions.view-check.text.39", {
+						value0: unit.list,
+						value1: unit.id,
+					}),
+				),
+			);
 		}
 		current = assemble(summary, page, items, goodImages);
 		if (bytesOf(current) <= max) break;

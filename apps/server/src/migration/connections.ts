@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 连接与推送目标这一族:0.x 各个版本留在盘上的形状 → 1.0 的形状(ADR-0022 决策 4)。⑥c 从配置仓和
  * internal 的 schema 里收进迁移模块 —— 旧格式的知识只住在这里,配置仓开机只认最新的形状。
@@ -680,7 +681,7 @@ export async function migrateConnectionFiles(input: ConnectionFilesInput): Promi
 	if (connectionsFile.kind === "unreadable" || !Array.isArray(connectionsFile.value)) {
 		// 旧名那份坏了:新代里没有 connections.json,配置仓会说「connections.json 不见了」,而真正坏的是
 		// 它 —— 所以在这里就把话说准。
-		if (fromAdapters) throw new Error("第 0 代的 state/adapters.json 不是 JSON 数组,连接没法迁");
+		if (fromAdapters) throw new Error(serverText("service.migration.connections.text.1"));
 		return rewritten;
 	}
 

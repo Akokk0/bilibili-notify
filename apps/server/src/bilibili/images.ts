@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * B 站集成自己把图存进图库:作品里的图、正文表情图、直播卡的封面在**出卡之前**抓进图库,交给出卡器的只带图库引用
  * (ADR-0021 决策 22)。翻译(`postFromDynamic`、`liveCardInputFromRoomInfo`)是同步的、只填 `url`,抓图是这里
@@ -320,7 +321,7 @@ async function fetchScaledOnly(
  * 下一轮由调用方再试。
  */
 export function fetchAvatar(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
-	return fetchScaledOnly(url, AVATAR_MAX_WIDTH, "头像", deps);
+	return fetchScaledOnly(url, AVATAR_MAX_WIDTH, serverText("bilibili.images.text.1"), deps);
 }
 
 /**
@@ -328,7 +329,7 @@ export function fetchAvatar(url: string, deps: ImagesDeps): Promise<ImageRef | u
  * ({@link EMOJI_MAX_WIDTH} 宽),**缩放版抓不到不回退原图**(表情原图可能是很大的动图):那个表情这一轮卡上画文字。
  */
 function fetchEmoji(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
-	return fetchScaledOnly(url, EMOJI_MAX_WIDTH, "表情图", deps);
+	return fetchScaledOnly(url, EMOJI_MAX_WIDTH, serverText("bilibili.images.text.2"), deps);
 }
 
 /** B 站自己资料状态里头像的两格:`avatar` 是图库引用,`avatarUrl` 是那张图的来源地址。 */

@@ -3,6 +3,7 @@ import { type Failure, type FailureCode, fail, type Logger } from "@bilibili-not
 import type { Context, ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * 失败的出口(ADR-0026 决策 6):HTTP 非 2xx 的错误体一律经 {@link respondFailure} 回,
@@ -65,13 +66,13 @@ export function errorBodyOf(failure: Failure): ErrorResponse {
 }
 
 /** 全局出错处理回给客户端的那一句:原话只进日志,不外泄。 */
-export const UNHANDLED_ERROR_MESSAGE = "服务端出错了，详情在日志里";
+export const unhandledErrorMessage = () => serverText("service.routes.respond-failure.text.1");
 
 /** 引擎还没挂上(启动中 / 没登录)时,要引擎才做得了的接口回的那一句。 */
-export const ENGINES_NOT_READY_MESSAGE = "服务还没准备好，请稍后重试";
+export const enginesNotReadyMessage = () => serverText("service.routes.respond-failure.text.2");
 
 /** `notFound` 回的那一句。 */
-export const ROUTE_NOT_FOUND_MESSAGE = "没有这个接口";
+export const routeNotFoundMessage = () => serverText("service.routes.respond-failure.text.3");
 
 /** HTTP 状态码 → 标准码。只给全局出错处理里的 `HTTPException` 用。 */
 function codeOfHttpStatus(status: number): FailureCode {
@@ -85,11 +86,21 @@ function codeOfHttpStatus(status: number): FailureCode {
 
 /** `HTTPException` 自己没带话时的中文兜底。 */
 const DEFAULT_MESSAGE_OF_CODE: Partial<Record<FailureCode, string>> = {
-	unauthorized: "没登录，或登录已失效",
-	not_found: "没有找到要的东西",
-	conflict: "与当前状态冲突",
-	rate_limited: "请求太频繁，请稍后再试",
-	unavailable: UNHANDLED_ERROR_MESSAGE,
+	get unauthorized() {
+		return serverText("service.routes.respond-failure.text.4");
+	},
+	get not_found() {
+		return serverText("service.routes.respond-failure.text.5");
+	},
+	get conflict() {
+		return serverText("service.routes.respond-failure.text.6");
+	},
+	get rate_limited() {
+		return serverText("service.routes.respond-failure.text.7");
+	},
+	get unavailable() {
+		return unhandledErrorMessage();
+	},
 };
 
 /**
@@ -103,7 +114,9 @@ export function failureOfHttpException(err: HTTPException): {
 } {
 	const code = codeOfHttpStatus(err.status);
 	const message =
-		err.message.trim() === "" ? (DEFAULT_MESSAGE_OF_CODE[code] ?? "请求不对") : err.message;
+		err.message.trim() === ""
+			? (DEFAULT_MESSAGE_OF_CODE[code] ?? serverText("service.routes.respond-failure.text.8"))
+			: err.message;
 	return { failure: fail(code, message), status: err.status };
 }
 
@@ -122,6 +135,6 @@ export function requestErrorHandler(logger: Pick<Logger, "error">): ErrorHandler
 			return respondFailure(c, failure, status);
 		}
 		logger.error("unhandled request error", err);
-		return respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE));
+		return respondFailure(c, fail("unavailable", unhandledErrorMessage()));
 	};
 }

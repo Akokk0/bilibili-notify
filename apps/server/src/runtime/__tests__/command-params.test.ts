@@ -198,3 +198,25 @@ export type {
 	_显示名不进类型,
 	_没有签名就是一个键都没有,
 };
+
+it("reads supplied argument labels without changing the machine signature", () => {
+	const specs = parseSignature("<duration:duration>");
+	expect(parseArgs(specs, "", { duration: "Period" })).toEqual({
+		ok: false,
+		message: "缺少参数「Period」",
+	});
+	expect(parseArgs(specs, "3h", { duration: "Period" })).toEqual({
+		ok: true,
+		values: { duration: 10800000 },
+	});
+});
+it.each([
+	["3時間", 10800000],
+	["2小時", 7200000],
+	["4分鐘", 240000],
+])("accepts %s regardless of output language", (input, ms) => {
+	expect(parseArgs(parseSignature("<duration:duration>"), String(input))).toEqual({
+		ok: true,
+		values: { duration: ms },
+	});
+});

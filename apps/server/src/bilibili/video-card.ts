@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 把一条视频信息直接造成「投稿了视频」形态的作品,喂给出卡器(`ImageRenderer.generatePostCard`)。
  *
@@ -22,7 +23,9 @@ export function videoToPost(info: VideoResponse): Post {
 		// 头像不给:`Creator.avatar` 只收图库引用,B 站 3a 才存。
 		creator: { name: info.owner.name },
 		publishedAt: isoOfSeconds(info.pubdate),
-		label: "投稿了视频",
+		get label() {
+			return serverText("bilibili.video-card.text.1");
+		},
 		// 视频的简介在视频卡里,没有动态正文。
 		text: "",
 		video: {

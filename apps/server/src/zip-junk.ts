@@ -1,3 +1,4 @@
+import { t as serverText } from "./i18n/index.js";
 /**
  * 收不可信 zip 的**共用卫生层**:什么条目不算内容,以及怎么把一个包摊开而不被压缩
  * 炸弹撑爆。白名单、各自的单文件上限、落盘形状仍归各家(dashboard 皮肤包、卡片皮肤包、
@@ -51,18 +52,18 @@ export function openZipEntries(buf: Uint8Array, limits: OpenZipLimits): OpenZipR
 				count += 1;
 				claimedTotal += f.originalSize;
 				if (count > limits.maxFiles) {
-					precheckError = `包内文件太多(上限 ${limits.maxFiles} 个)`;
+					precheckError = serverText("service.zip-junk.text.1", { value0: limits.maxFiles });
 					return false;
 				}
 				if (claimedTotal > limits.maxTotalBytes) {
-					precheckError = "包解压后总大小超限";
+					precheckError = serverText("service.zip-junk.text.2");
 					return false;
 				}
 				return true;
 			},
 		});
 	} catch {
-		return { ok: false, error: "不是合法的 zip 文件" };
+		return { ok: false, error: serverText("service.zip-junk.text.3") };
 	}
 	if (precheckError) return { ok: false, error: precheckError };
 	return { ok: true, entries };

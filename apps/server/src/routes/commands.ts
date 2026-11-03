@@ -32,7 +32,7 @@ export function createCommandsRoute(deps: RouteDeps): Hono {
 				// 面板要印的是**给人看的**用法(`<时长>`),不是写给解析器的签名
 				// (`<duration:duration|时长>`)—— 后者三段里有两段跟用户无关。
 				// 渲染规则与私聊帮助共用一份,免得两处印出不同的东西。
-				usage: renderUsage(spec.signature),
+				usage: renderUsage(spec.signature, spec.parameterLabels),
 				example: spec.example ?? "",
 				description: spec.description ?? "",
 				details: spec.details ?? "",

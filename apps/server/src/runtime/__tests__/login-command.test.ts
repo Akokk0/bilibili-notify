@@ -90,7 +90,8 @@ describe("login 指令", () => {
 		expect(spec.name).toBe("login");
 		expect(spec.aliases).toContain("扫码");
 		expect(spec.aliases).toContain("登录");
-		expect(spec.signature).toBe("[source:text|来源]");
+		expect(spec.signature).toBe("[source:text]");
+		expect(spec.parameterLabels).toEqual({ source: "来源" });
 	});
 
 	describe("挑来源", () => {

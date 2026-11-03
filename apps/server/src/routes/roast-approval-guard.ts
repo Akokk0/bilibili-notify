@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 审批开关的前置检查 —— 全局那条榜单周报与每位 UP 的单人锐评**共用这一道闸**。
  *
@@ -42,28 +43,31 @@ export function checkApprovalReachable(args: {
 	if (!args.approvalOn) return ok();
 
 	if (!args.masterTargetId) {
-		return fail(
-			"not_configured",
-			"审批需要先配好「主人私聊目标」—— 草稿要发给主人过目，没有这个目标就没人能批。",
-		);
+		return fail("not_configured", serverText("service.routes.roast-approval-guard.text.1"));
 	}
 	const target = args.targets.find((t) => t.id === args.masterTargetId);
 	if (!target) {
-		return fail("not_configured", "审批打不开：配置里的主人私聊目标已经不存在了，请先重新指定。");
+		return fail("not_configured", serverText("service.routes.roast-approval-guard.text.2"));
 	}
 	if (!args.connections.some((c) => c.id === target.connectionId)) {
-		return fail("not_configured", "审批打不开：主人私聊目标挂的那条连接已经不在了，请先重新指定。");
+		return fail("not_configured", serverText("service.routes.roast-approval-guard.text.3"));
 	}
 	const inbound = args.capabilitiesOf(target.connectionId)?.inbound;
 	if (canReceiveReply(inbound)) return ok();
-	const advice = "请把主人私聊目标换成收得到回复的连接，或者把审批关掉。";
+	const advice = serverText("service.routes.roast-approval-guard.text.4");
 	if (inbound?.state === "unsupported") {
-		return fail("not_configured", `审批打不开：${inbound.reason}。${advice}`);
+		return fail(
+			"not_configured",
+			serverText("service.routes.roast-approval-guard.text.5", {
+				value0: inbound.reason,
+				value1: advice,
+			}),
+		);
 	}
 	// 还不知道:不是这条连接的毛病,说成「收不到」主人会去查自己的配置 —— 如实说还不知道,有原因就带上。
 	const why = inbound?.state === "unknown" && inbound.reason ? `（${inbound.reason}）` : "";
 	return fail(
 		"not_configured",
-		`审批打不开：还不知道这条连接收不收得到主人的回复${why}。${advice}`,
+		serverText("service.routes.roast-approval-guard.text.6", { value0: why, value1: advice }),
 	);
 }

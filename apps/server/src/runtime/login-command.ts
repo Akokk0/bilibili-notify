@@ -1,3 +1,8 @@
+import { t as serverText } from "../i18n/index.js";
+import {
+	builtinCommandAliases,
+	displayedBuiltinCommandAliases,
+} from "./builtin-command-aliases.js";
 /**
  * `/login [来源]` —— 在手机上重新扫码登录某个来源。
  *
@@ -87,10 +92,20 @@ function pickSource(
 export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 	return command({
 		name: "login",
-		aliases: ["扫码", "登录"],
-		signature: "[source:text|来源]",
-		description: "重新扫码登录（有好几个来源时跟上来源的名字或键）",
-		details: `二维码只发这条私聊，${QR_TTL_SECONDS} 秒内有效，过期就再敲一次。`,
+		get parameterLabels() {
+			return { source: serverText("service.runtime.login-command.text.1") };
+		},
+		aliases: builtinCommandAliases("login"),
+		get displayAliases() {
+			return displayedBuiltinCommandAliases("login");
+		},
+		signature: "[source:text]",
+		get description() {
+			return serverText("service.runtime.login-command.text.2");
+		},
+		get details() {
+			return serverText("service.runtime.login-command.text.3", { value0: QR_TTL_SECONDS });
+		},
 		run: async (values, { reply }) => {
 			const sources = opts.sources();
 			const [first, ...others] = sources;

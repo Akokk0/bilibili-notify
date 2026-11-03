@@ -4,6 +4,7 @@ import {
 	type HistoryEntry,
 	type HistoryMessage,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 
 /**
  * **人工重推的判断**(ADR-0017)—— 全是纯函数,不碰盘也不碰网。
@@ -74,10 +75,10 @@ export interface RepushGateInput {
 }
 
 /** 被过滤的行:只留了痕,当时就没推、也没存原件。 */
-const FILTERED = "这一条是被过滤规则挡下的，当时就没推，没有东西可补";
+const filtered = () => serverText("service.history.repush.text.1");
 
 /** 当时没有目标的行:目标那一格是空的。 */
-const NO_TARGET = "这条推送当时没有可用的目标，补不了 —— 先去给它配一个吧";
+const noTarget = () => serverText("service.history.repush.text.2");
 
 /**
  * 能不能补。拒了回 `conflict`(有这一行,但现在补不了)和一句**给人看的**理由,`null` = 放行。
@@ -88,19 +89,19 @@ const NO_TARGET = "这条推送当时没有可用的目标，补不了 —— �
 export function repushDenial(input: RepushGateInput): Failure | null {
 	const { entry, routedTargets, targetEnabled, running } = input;
 	// 被过滤的行目标那一格也空着,可它不是没配目标 —— 先按状态认出它,各说各的。
-	if (entry.status === "filtered") return fail("conflict", FILTERED);
+	if (entry.status === "filtered") return fail("conflict", filtered());
 	// 无目标行连目标都没有,补不成(它的消息全都「没发」,所以要先于下一句判)。
-	if (entry.targetId === null) return fail("conflict", NO_TARGET);
+	if (entry.targetId === null) return fail("conflict", noTarget());
 	// 决策 6:行里还有没送到的或被挡下的消息才有得补。
 	if (unsentIndices(entry.messages).length === 0) {
-		return fail("conflict", "这一行全都送到了，不用补啦");
+		return fail("conflict", serverText("service.history.repush.text.3"));
 	}
 	// 决策 10:与发送层每次重试前复检 routing 同源 —— 用户已经取消了。
 	if (!routedTargets.includes(entry.targetId)) {
-		return fail("conflict", "这条推送已经不发给这个目标了 —— 路由里把它去掉了");
+		return fail("conflict", serverText("service.history.repush.text.4"));
 	}
-	if (!targetEnabled) return fail("conflict", "这个目标（或者它所在的连接）停用了，先启用再补");
+	if (!targetEnabled) return fail("conflict", serverText("service.history.repush.text.5"));
 	// 决策 13:挡在服务端。两个标签页各点一下,前端的禁用态管不着彼此。
-	if (running) return fail("conflict", "这一行正在补，女仆还没回来呢");
+	if (running) return fail("conflict", serverText("service.history.repush.text.6"));
 	return null;
 }

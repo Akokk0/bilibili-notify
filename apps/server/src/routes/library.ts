@@ -155,7 +155,7 @@ export function createLibraryRoute(deps: RouteDeps): Hono {
 	// 超限那句里的名词在建路由时就取了字:`uploadBodyLimit` 收的是字符串,改成现取要动另外六条路由,随 4-53c。
 	app.post(
 		"/images",
-		uploadBodyLimit(MAX_CARD_BG_BYTES, t("cards.upload.imageNoun")),
+		uploadBodyLimit(MAX_CARD_BG_BYTES, () => t("cards.upload.imageNoun")),
 		async (c) => {
 			const body = await c.req.parseBody().catch(() => null);
 			const file = body?.file;
@@ -226,7 +226,7 @@ export function createLibraryRoute(deps: RouteDeps): Hono {
 	// 是 font/ttf、application/x-font-ttf、application/octet-stream 甚至空串)。
 	app.post(
 		"/fonts",
-		uploadBodyLimit(MAX_FONT_ASSET_BYTES, t("cards.upload.fontNoun")),
+		uploadBodyLimit(MAX_FONT_ASSET_BYTES, () => t("cards.upload.fontNoun")),
 		async (c) => {
 			const body = await c.req.parseBody().catch(() => null);
 			const file = body?.file;

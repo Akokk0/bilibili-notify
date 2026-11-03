@@ -1,3 +1,8 @@
+import { t as serverText } from "../i18n/index.js";
+import {
+	builtinCommandAliases,
+	displayedBuiltinCommandAliases,
+} from "./builtin-command-aliases.js";
 /**
  * `/status` —— 手机上问一句「现在还好吗」。
  *
@@ -43,28 +48,32 @@ export interface StatusCommandOptions {
 
 function renderConnections(connections: StatusReport["connections"]): string {
 	// 一行空白看起来像功能坏了,而「还没配」是个明确的下一步。
-	if (connections.length === 0) return "还没配连接";
+	if (connections.length === 0) return serverText("service.runtime.status-command.text.1");
 	const down = connections.filter((a) => !a.ok);
-	if (down.length === 0) return `${connections.length} 个都连着`;
+	if (down.length === 0)
+		return serverText("service.runtime.status-command.text.2", { count: connections.length });
 	// 只点名断掉的那些 —— 连着的不需要主人做任何事。
-	return `${down.map((a) => a.name).join("、")} 断了（共 ${connections.length} 个）`;
+	return serverText("service.runtime.status-command.text.3", {
+		value0: down.map((a) => a.name).join("、"),
+		count: connections.length,
+	});
 }
 
 /** 来源自己的读口抛了时那一行写的话(`health()` 与 `auth.state()` 共用)。 */
-const UNREADABLE = "状态读不到";
+const unreadable = () => serverText("service.runtime.status-command.text.4");
 
 /** 登录态的一行人话。`confirming` 没带 `message` 时写「正在确认」;`undefined`(读口抛了)写「状态读不到」。 */
 export function renderLogin(state: AuthState | undefined): string {
-	if (state === undefined) return UNREADABLE;
+	if (state === undefined) return unreadable();
 	switch (state.status) {
 		case "logged-in":
-			return "已登录";
+			return serverText("service.runtime.status-command.text.5");
 		case "logged-out":
-			return "没登录";
+			return serverText("service.runtime.status-command.text.6");
 		case "awaiting-scan":
-			return "等待扫码";
+			return serverText("service.runtime.status-command.text.7");
 		case "confirming":
-			return state.message ?? "正在确认";
+			return state.message ?? serverText("service.runtime.status-command.text.8");
 		case "expired":
 		case "error":
 			return state.message;
@@ -91,7 +100,7 @@ export function readSourceHealth(
 			rows.push({ label, summary: view.health().summary });
 		} catch (err) {
 			logger.error(`[status] 来源「${label}」的 health() 抛错: ${errorMessageOf(err)}`);
-			rows.push({ label, summary: UNREADABLE });
+			rows.push({ label, summary: unreadable() });
 		}
 	}
 	return rows;
@@ -123,12 +132,14 @@ export function renderStatus(report: StatusReport, now: number): string {
 		),
 		// 「多久以前」由来源自己拼(手机上「14:32」还得自己减一次,「2 分钟前」不用)。
 		...report.sources.map((s) => `${s.label}：${s.summary}`),
-		`推送通道：${renderConnections(report.connections)}`,
-		`渲染排队：${report.renderQueue}`,
+		serverText("service.runtime.status-command.text.9", {
+			value0: renderConnections(report.connections),
+		}),
+		serverText("service.runtime.status-command.text.10", { value0: report.renderQueue }),
 	];
 	// 静音只在**真静音时**占一行。它是「怎么没动静」的第一嫌疑 —— 不说的话主人会
 	// 顺着查登录、查网络,而真相是他三小时前自己敲的。判定同样是读时现算。
-	if (now < report.mutedUntil) lines.push("（正在静音中）");
+	if (now < report.mutedUntil) lines.push(serverText("service.runtime.status-command.text.11"));
 	return lines.join("\n");
 }
 
@@ -136,8 +147,13 @@ export function createStatusCommand(opts: StatusCommandOptions): CommandDef {
 	const now = opts.now ?? Date.now;
 	return command({
 		name: "status",
-		aliases: ["状态"],
-		description: "看看现在怎么样",
+		aliases: builtinCommandAliases("status"),
+		get displayAliases() {
+			return displayedBuiltinCommandAliases("status");
+		},
+		get description() {
+			return serverText("service.runtime.status-command.text.12");
+		},
 		run: async (_values, { reply }) => {
 			await reply(renderStatus(opts.probe(), now()));
 			return ok();

@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 系统页「存储占用」的服务端(㉙d,ADR-0027 决策 10 / 17;路由见 `routes/system.ts`):一张用量表、
  * 四类的整类清空、手动清一次图库。**清空不可恢复**,所以每一类删什么、经哪条写队都在这里写死。
@@ -76,21 +77,50 @@ export function sumImageBytes(images: readonly ImageUsage[]): Record<ImageClass,
  * 归哪一类,这里的 `satisfies` 编译不过、`storage-usage.test.ts` 也会红。
  */
 export const DATA_ROOT_STORAGE_COVERAGE = {
-	config: { excluded: "主人填的设置、订阅、连接、目标,不是缓存" },
-	secrets: { excluded: "主密钥、口令盐、apiKey、cookie、各集成的 secrets,删了要重新登录配置" },
+	config: {
+		get excluded() {
+			return serverText("service.runtime.storage-usage.text.1");
+		},
+	},
+	secrets: {
+		get excluded() {
+			return serverText("service.runtime.storage-usage.text.2");
+		},
+	},
 	runtime: {
-		excluded:
-			"程序自己记的运行态(订阅运行态、草稿、轮换游标、各集成的 state),丢了只退化,不进清理表",
+		get excluded() {
+			return serverText("service.runtime.storage-usage.text.3");
+		},
 	},
 	history: ["historyText", "historyImages"],
 	images: ["historyImages", "ai", "otherImages"],
 	stats: "stats",
-	uptime: { excluded: "运行记录不算数据统计,不受清理影响(ADR-0033 决策 3),年度总结还要读" },
+	uptime: {
+		get excluded() {
+			return serverText("service.runtime.storage-usage.text.4");
+		},
+	},
 	ai: "ai",
-	skins: { excluded: "卡片皮肤与界面皮肤是主人自己挑的,各在自己的页面删" },
-	library: { excluded: "素材库是主人自己传的,在素材库页面里删" },
-	"maid-skills": { excluded: "女仆技能是主人自己写的,在女仆页面里删" },
-	extensions: { excluded: "已装的拓展是主人自己挑的,在拓展页面里卸" },
+	skins: {
+		get excluded() {
+			return serverText("service.runtime.storage-usage.text.5");
+		},
+	},
+	library: {
+		get excluded() {
+			return serverText("service.runtime.storage-usage.text.6");
+		},
+	},
+	"maid-skills": {
+		get excluded() {
+			return serverText("service.runtime.storage-usage.text.7");
+		},
+	},
+	extensions: {
+		get excluded() {
+			return serverText("service.runtime.storage-usage.text.8");
+		},
+	},
 } as const satisfies Record<
 	DataRootKey,
 	StorageCategory | readonly StorageCategory[] | { excluded: string }

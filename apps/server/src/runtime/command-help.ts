@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 帮助渲染 —— 注册表是可序列化的声明,帮助就几乎是白拿的,而且**永不过期**
  * (手写的帮助必然与实现脱节)。
@@ -21,6 +22,8 @@ import { parseSignature } from "./command-params.js";
 export interface HelpEntry {
 	name: string;
 	aliases?: readonly string[];
+	displayAliases?: readonly string[];
+	parameterLabels?: Readonly<Record<string, string>>;
 	signature?: string;
 	description?: string;
 	details?: string;
@@ -40,17 +43,24 @@ export interface HelpEntry {
  * 尖括号 / 方括号保留 —— 必填和可选得看得出区别。没写显示名就退回参数名,总比
  * 印一段类型声明强。
  */
-export function renderUsage(signature: string | undefined): string {
+export function renderUsage(
+	signature: string | undefined,
+	labels?: Readonly<Record<string, string>>,
+): string {
 	if (!signature) return "";
 	const params = parseSignature(signature);
 	if (params.length === 0) return "";
 	return params
-		.map((p) => (p.required ? `<${p.label ?? p.name}>` : `[${p.label ?? p.name}]`))
+		.map((p) =>
+			p.required
+				? `<${labels?.[p.name] ?? p.label ?? p.name}>`
+				: `[${labels?.[p.name] ?? p.label ?? p.name}]`,
+		)
 		.join(" ");
 }
 
 function usageOf(entry: HelpEntry, prefix: string): string {
-	const params = renderUsage(entry.signature);
+	const params = renderUsage(entry.signature, entry.parameterLabels);
 	return `${prefix}${entry.name}${params ? ` ${params}` : ""}`;
 }
 
@@ -71,13 +81,18 @@ export function renderHelp(commands: readonly HelpEntry[], prefix: string, topic
 		);
 		// 找不到时别给一份空白帮助 —— 主人会以为这条指令存在只是没写说明。
 		// 这里指路用**主名**:别名是主人可配的,写死中文那个,他改完就指向一个不存在的名字。
-		if (!hit) return `没有「${topic}」这条指令，敲 ${prefix}help 看看有哪些。`;
+		if (!hit)
+			return serverText("service.runtime.command-help.text.1", { value0: topic, value1: prefix });
 		const example = exampleOf(hit, prefix);
 		return [
 			usageOf(hit, prefix),
 			hit.description,
-			example ? `例：${example}` : null,
-			hit.aliases?.length ? `别名：${hit.aliases.join("、")}` : null,
+			example ? serverText("service.runtime.command-help.text.2", { value0: example }) : null,
+			(hit.displayAliases ?? hit.aliases)?.length
+				? serverText("service.runtime.command-help.text.3", {
+						value0: (hit.displayAliases ?? hit.aliases ?? []).join("、"),
+					})
+				: null,
 			hit.details,
 		]
 			.filter(Boolean)
@@ -90,12 +105,16 @@ export function renderHelp(commands: readonly HelpEntry[], prefix: string, topic
 		// 主名是英文,别名不列出来主人就不知道能敲中文。
 		const example = exampleOf(c, prefix);
 		const notes = [
-			example ? `例：${example}` : null,
-			c.aliases?.length ? `别名：${c.aliases.join("、")}` : null,
+			example ? serverText("service.runtime.command-help.text.4", { value0: example }) : null,
+			(c.displayAliases ?? c.aliases)?.length
+				? serverText("service.runtime.command-help.text.5", {
+						value0: (c.displayAliases ?? c.aliases ?? []).join("、"),
+					})
+				: null,
 		]
 			.filter(Boolean)
 			.join("　");
 		return notes ? [head, `　${notes}`] : [head];
 	});
-	return ["可以敲这些：", ...lines].join("\n");
+	return [serverText("service.runtime.command-help.text.6"), ...lines].join("\n");
 }

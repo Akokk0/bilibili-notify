@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 卡片皮肤编辑器那口 AI(ADR-0015 决策 3–10、24–26):给**一个框**写 CSS ——
  * 一个块的,或整张卡外框的。
@@ -129,12 +130,21 @@ export function prepareCardCssAi(
 ): PreparedCardCssAi {
 	const card = manifest.cards[target.kind];
 	if (!card) {
-		return { ok: false, error: `这套皮肤还没接管 ${target.kind} 卡,先在编辑器里接管再写` };
+		return {
+			ok: false,
+			error: serverText("service.card-skins.ai-css.text.1", { value0: target.kind }),
+		};
 	}
 	const block =
 		target.blockId === undefined ? undefined : card.blocks.find((b) => b.id === target.blockId);
 	if (target.blockId !== undefined && !block) {
-		return { ok: false, error: `${target.kind} 卡里没有 id 为「${target.blockId}」的块` };
+		return {
+			ok: false,
+			error: serverText("service.card-skins.ai-css.text.2", {
+				value0: target.kind,
+				value1: target.blockId,
+			}),
+		};
 	}
 
 	const sections: string[] = [];
@@ -356,7 +366,9 @@ export async function runCardCssAiRound(input: {
 		});
 		const css = splitter.finish(raw);
 		const judged: SanitizeCssResult =
-			css === "" ? { ok: false, errors: ["输出是空的"] } : input.sanitize(css);
+			css === ""
+				? { ok: false, errors: [serverText("service.card-skins.ai-css.text.3")] }
+				: input.sanitize(css);
 		return { raw, css, judged };
 	};
 

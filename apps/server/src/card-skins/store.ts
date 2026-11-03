@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 卡片皮肤库(ADR-0014 决策 2 / 5)。盘上形状 `<dir>/<id>/{card-skin.json, assets/*}`,
  * 与 dashboard 皮肤库(`skins/store.ts`)同规:盘上那一层(整包落盘、清单原子写、删除先改名、
@@ -81,7 +82,7 @@ export class CardSkinPackageError extends Error {
 	 * 回给面板的失败:一句话就是 `message`;一串检查意见 `message` 概括、`issues` 逐条。
 	 * `subject` 是概括那句里「谁没通过检查」(装 zip 包传「这个皮肤包」,其余缺省)。
 	 */
-	toFailure(subject = "这套皮肤"): Failure {
+	toFailure(subject = serverText("service.card-skins.store.text.1")): Failure {
 		return failureOfChecks(this.code, subject, this.errors);
 	}
 }
@@ -224,14 +225,14 @@ export class CardSkinStore {
 	 */
 	async duplicate(id: string, name?: string): Promise<{ id: string }> {
 		const source = this.get(id);
-		if (!source) throw new Error(`皮肤不存在: ${id}`);
+		if (!source) throw new Error(serverText("service.card-skins.store.text.2", { value0: id }));
 		const asked = name?.trim();
 		const manifest: CardSkinManifest = {
 			...source,
-			name: (asked === undefined || asked === "" ? `${source.name} 副本` : asked).slice(
-				0,
-				CARD_SKIN_LIMITS.name.max,
-			),
+			name: (asked === undefined || asked === ""
+				? serverText("service.card-skins.store.text.3", { value0: source.name })
+				: asked
+			).slice(0, CARD_SKIN_LIMITS.name.max),
 		};
 		// 与 `exportZip` 同一个理由:各张资产之间没有先后关系,串行读等于把几十次系统
 		// 调用排成一条队,而主人在等这份副本。
@@ -252,19 +253,20 @@ export class CardSkinStore {
 	/** 删一套。内置那份删不掉;不认识的 id 抛错(调用方得分得清「没这套」与「删好了」)。 */
 	async remove(id: string): Promise<void> {
 		if (id === DEFAULT_CARD_SKIN_ID) {
-			throw new Error("内置的默认皮肤删不掉 —— 想改它请先「复制一份」");
+			throw new Error(serverText("service.card-skins.store.text.4"));
 		}
 		// 不认识的 id 一律不动手:路由把 `:id` 原样交进来,而这里干的是整目录删除
 		// (dashboard 那头 2026-08-19 实测过 `%2e%2e%2f` 能穿出皮肤目录)。这道守卫在皮肤包目录里
 		// (`remove` 只认索引里的 id),落盘的删法也在那儿:先改名再删,删到一半留下的残骸
 		// 开机扫描认得出不是皮肤,由开机清扫收。
-		if (!(await this.pkg.remove(id))) throw new Error(`皮肤不存在: ${id}`);
+		if (!(await this.pkg.remove(id)))
+			throw new Error(serverText("service.card-skins.store.text.5", { value0: id }));
 	}
 
 	/** 打回一个标准包(manifest + 全部资产),和装包收的是同一种 zip(往返闭环)。 */
 	async exportZip(id: string): Promise<Uint8Array> {
 		const manifest = this.get(id);
-		if (!manifest) throw new Error(`皮肤不存在: ${id}`);
+		if (!manifest) throw new Error(serverText("service.card-skins.store.text.6", { value0: id }));
 		const files: Record<string, Uint8Array> = {
 			[CARD_SKIN_MANIFEST_FILE]: strToU8(serialize(manifest)),
 		};
@@ -304,12 +306,10 @@ export class CardSkinStore {
 	 */
 	async addAsset(id: string, filename: string, bytes: Uint8Array): Promise<{ name: string }> {
 		if (id === DEFAULT_CARD_SKIN_ID) {
-			throw new CardSkinPackageError(
-				["内置的默认皮肤加不了资产 —— 想改它请先「复制一份」"],
-				"conflict",
-			);
+			throw new CardSkinPackageError([serverText("service.card-skins.store.text.7")], "conflict");
 		}
-		if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"], "not_found");
+		if (!this.pkg.has(id))
+			throw new CardSkinPackageError([serverText("service.card-skins.store.text.8")], "not_found");
 
 		// **只小写,不剥路径**。白名单正则不收 `/` 也不收 `..`,带路径的名字到这儿会被明着
 		// 拒掉 —— 而先剥成 basename 的话,`../../etc/passwd.ttf` 会变成一份叫 passwd.ttf 的
@@ -319,27 +319,36 @@ export class CardSkinStore {
 		const name = `${ASSET_DIR}/${base}`;
 		if (!isCardSkinAssetName(name)) {
 			throw new CardSkinPackageError([
-				`「${base}」不能作为皮肤资产 —— 只收 png / jpg / webp / gif 与 woff2 / woff / ttf / otf,名字只准小写字母、数字、\`.\` \`_\` \`-\``,
+				serverText("service.card-skins.store.text.9", { value0: base }),
 			]);
 		}
 		if (bytes.byteLength > CARD_SKIN_LIMITS.maxAssetBytes) {
 			const mb = Math.round(CARD_SKIN_LIMITS.maxAssetBytes / 1024 / 1024);
-			throw new CardSkinPackageError([`「${base}」太大了 —— 单份上限 ${mb}MB`]);
+			throw new CardSkinPackageError([
+				serverText("service.card-skins.store.text.10", { value0: base, value1: mb }),
+			]);
 		}
 		return await this.pkg.run(id, async () => {
 			// 排队的这段时间里,前面的写可能已经把这套皮肤删了。
-			if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"], "not_found");
+			if (!this.pkg.has(id))
+				throw new CardSkinPackageError(
+					[serverText("service.card-skins.store.text.11")],
+					"not_found",
+				);
 			const existing = await this.listAssets(id);
 			if (existing.includes(name)) {
 				throw new CardSkinPackageError(
-					[`已经有一份叫「${base}」的了 —— 先删掉那份再传`],
+					[serverText("service.card-skins.store.text.12", { value0: base })],
 					"conflict",
 				);
 			}
 			if (existing.length >= CARD_SKIN_LIMITS.maxAssets) {
 				throw new CardSkinPackageError(
 					[
-						`这套皮肤已经 ${existing.length} 份资产,上限 ${CARD_SKIN_LIMITS.maxAssets} 份 —— 删掉用不上的再传`,
+						serverText("service.card-skins.store.text.13", {
+							value0: existing.length,
+							value1: CARD_SKIN_LIMITS.maxAssets,
+						}),
 					],
 					"conflict",
 				);
@@ -358,18 +367,29 @@ export class CardSkinStore {
 	 */
 	async removeAsset(id: string, name: string): Promise<void> {
 		if (id === DEFAULT_CARD_SKIN_ID) {
-			throw new CardSkinPackageError(["内置的默认皮肤没有落盘的资产"], "conflict");
+			throw new CardSkinPackageError([serverText("service.card-skins.store.text.14")], "conflict");
 		}
-		if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"], "not_found");
-		if (!isCardSkinAssetName(name)) throw new CardSkinPackageError(["资产名不合法"]);
+		if (!this.pkg.has(id))
+			throw new CardSkinPackageError([serverText("service.card-skins.store.text.15")], "not_found");
+		if (!isCardSkinAssetName(name))
+			throw new CardSkinPackageError([serverText("service.card-skins.store.text.16")]);
 
 		// 「清单还引用着吗」与删文件排在同一条写道里:中间不许有编辑器保存钻进来把引用加回去。
 		await this.pkg.run(id, async () => {
-			if (!this.pkg.has(id)) throw new CardSkinPackageError(["卡片皮肤不存在"], "not_found");
+			if (!this.pkg.has(id))
+				throw new CardSkinPackageError(
+					[serverText("service.card-skins.store.text.17")],
+					"not_found",
+				);
 			const users = assetUsers(this.get(id), name);
 			if (users.length > 0) {
 				throw new CardSkinPackageError(
-					[`「${name}」还被用着(${users.join("、")})—— 先在编辑器里换掉再删`],
+					[
+						serverText("service.card-skins.store.text.18", {
+							value0: name,
+							value1: users.join("、"),
+						}),
+					],
 					"conflict",
 				);
 			}
@@ -395,10 +415,11 @@ export class CardSkinStore {
 	 */
 	async save(id: string, manifestRaw: unknown): Promise<{ warnings: string[] }> {
 		if (id === DEFAULT_CARD_SKIN_ID) {
-			throw new Error("内置的默认皮肤改不了 —— 想改它请先「复制一份」");
+			throw new Error(serverText("service.card-skins.store.text.19"));
 		}
 		return await this.pkg.run(id, async (saveManifest) => {
-			if (!this.pkg.has(id)) throw new Error(`皮肤不存在: ${id}`);
+			if (!this.pkg.has(id))
+				throw new Error(serverText("service.card-skins.store.text.20", { value0: id }));
 			const checked = checkCardSkinPackage(manifestRaw, new Set(await this.listAssets(id)));
 			if (!checked.ok) throw new CardSkinPackageError(checked.errors);
 			await saveManifest(checked.manifest);
@@ -426,11 +447,16 @@ export class CardSkinStore {
  */
 function parseStoredManifest(raw: unknown, id: string): ManifestResult<CardSkinManifest> {
 	if (id === DEFAULT_CARD_SKIN_ID) {
-		return fail("invalid", "这个 id 是内置皮肤的保留字,盘上这份目录不会被加载");
+		return fail("invalid", serverText("service.card-skins.store.text.21"));
 	}
 	const parsed = parseCardSkin(raw);
 	if (!parsed.ok) {
-		return fail("invalid", `清单不合格式(${parsed.errors[0] ?? "未知原因"}),跳过`);
+		return fail(
+			"invalid",
+			serverText("service.card-skins.store.text.23", {
+				value0: parsed.errors[0] ?? serverText("service.card-skins.store.text.22"),
+			}),
+		);
 	}
 	return ok({ manifest: parsed.manifest });
 }
@@ -472,23 +498,30 @@ function assetUsers(manifest: CardSkinManifest | null, name: string): string[] {
 	const users: string[] = [];
 
 	for (const f of manifest.fonts ?? []) {
-		if (f.asset === ref) users.push(`字体 ${f.family}`);
+		if (f.asset === ref)
+			users.push(serverText("service.card-skins.store.text.24", { value0: f.family }));
 	}
 	const inVars = (vars: Record<string, string> | undefined): boolean =>
 		Object.values(vars ?? {}).includes(ref);
 	for (const [kind, card] of Object.entries(manifest.cards)) {
 		if (!card) continue;
-		if (inVars(card.assets)) users.push(`${kind} 卡的资产变量`);
+		if (inVars(card.assets))
+			users.push(serverText("service.card-skins.store.text.25", { value0: kind }));
 		for (const block of card.blocks) {
-			if (inVars(block.assets)) users.push(`${kind} 卡的块「${block.id}」`);
+			if (inVars(block.assets))
+				users.push(
+					serverText("service.card-skins.store.text.26", { value0: kind, value1: block.id }),
+				);
 			else if (block.kind === "custom" && block.html.includes(ref)) {
-				users.push(`${kind} 卡的块「${block.id}」的 HTML`);
+				users.push(
+					serverText("service.card-skins.store.text.27", { value0: kind, value1: block.id }),
+				);
 			}
 		}
 	}
 	// 兜底:上面一条都没认出来,但整份清单里确实有这个引用。
 	if (users.length === 0 && JSON.stringify(manifest).includes(ref)) {
-		users.push("清单里还有地方引用着");
+		users.push(serverText("service.card-skins.store.text.28"));
 	}
 	return users;
 }

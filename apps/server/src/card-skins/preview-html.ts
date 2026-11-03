@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * **草稿清单 → 一整份 HTML**。编辑器的实时预览(`POST /api/cards/skins/:id/preview`)与
  * 「最终效果」截图(`POST /api/cards/skins/:id/screenshot`)共用这一步。
@@ -33,7 +34,7 @@ export function membershipTierUnavailable(
 	membershipTier: MembershipTier | undefined,
 ): Failure | undefined {
 	if (kind !== "membership" || membershipTier) return undefined;
-	return fail("unavailable", "没有在跑的来源声明会员档位，画不了会员卡示例");
+	return fail("unavailable", serverText("service.card-skins.preview-html.text.1"));
 }
 
 export type SkinPreviewHtml =
@@ -88,7 +89,9 @@ export async function renderSkinPreviewHtml(args: {
 	// 就是全部 —— 不再另递原始动态。
 	const sample = await sampleCard(kind, picked.id, { membershipTier: args.membershipTier });
 	const html = await renderCardWithSkin(kind, sample.props as never, manifest, {
-		title: `皮肤预览 · ${kind}`,
+		get title() {
+			return serverText("service.card-skins.preview-html.text.2", { value0: kind });
+		},
 		resolveAsset: (name) => assets.get(name),
 	});
 	return {

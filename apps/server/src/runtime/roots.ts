@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 配置里的 `dataDir` 在代码里拆成两个根(ADR-0022 决策 1):
  *
@@ -19,11 +20,15 @@ import { join } from "node:path";
  * `generations` 是装各代的那一层本身。
  */
 export const HOST_ROOT_LAYOUT = {
-	versions:
-		"已装的载荷版本,内含 boot-state.json 与 manifest-freshness.json;冻住的 boot.mjs 从 dataDir 推算这里",
-	logs: "日志 <日>.jsonl,跨代连续;冻住的桌面壳写死了这里(「打开日志目录」)",
-	generations:
-		"数据代,一代一个目录 <序号>/(写到一半的叫 <序号>.partial/),选哪一代见 runtime/generations.ts",
+	get versions() {
+		return serverText("service.runtime.roots.text.1");
+	},
+	get logs() {
+		return serverText("service.runtime.roots.text.2");
+	},
+	get generations() {
+		return serverText("service.runtime.roots.text.3");
+	},
 } as const;
 
 /**
@@ -32,21 +37,42 @@ export const HOST_ROOT_LAYOUT = {
  * 两个过渡键删了,`history/img/` 没有了。
  */
 export const DATA_ROOT_LAYOUT = {
-	config: "主人填的:设置、订阅、连接、目标",
-	secrets: "主密钥、口令派生盐、AI 的 apiKey、B 站 cookie、各集成的 secrets",
-	runtime: "程序自己记的,丢了只退化:订阅运行态、锐评草稿、直播封面的轮换游标、各集成的 state",
-	history:
-		"推送历史 <日>.jsonl(文字不删)、重推原件 repush/<日>/、图与原件清到哪天的水位线 retention.json;图在图库 images/,这里只存引用",
-	images: "图库:按内容存的图 <sha256>.<ext>,作品图、封面、头像、历史快照、聊天附件共用",
-	stats:
-		"作品 posts/、直播 live/、「在记」小账 recording/、粉丝时序 followers/(都按订阅一个 jsonl)",
-	uptime:
-		"运行记录 hours.jsonl:每行一个 UTC 整点小时里 BN 跑了多少分钟,整个 BN 一份;不算数据统计,不受统计总开关管,不进备份",
-	ai: "女仆对话 conversations/",
-	skins: "卡片皮肤 card/<id>/、界面皮肤 dashboard/<id>/ 与 dashboard/active.json",
-	library: "素材库:卡片背景 images/、字体 fonts/(连同名字清单)",
-	"maid-skills": "主人的女仆技能 <name>/SKILL.md",
-	extensions: "已装的拓展包、失败记账 load-state.json、市场来源 .marketplace.json",
+	get config() {
+		return serverText("service.runtime.roots.text.4");
+	},
+	get secrets() {
+		return serverText("service.runtime.roots.text.5");
+	},
+	get runtime() {
+		return serverText("service.runtime.roots.text.6");
+	},
+	get history() {
+		return serverText("service.runtime.roots.text.7");
+	},
+	get images() {
+		return serverText("service.runtime.roots.text.8");
+	},
+	get stats() {
+		return serverText("service.runtime.roots.text.9");
+	},
+	get uptime() {
+		return serverText("service.runtime.roots.text.10");
+	},
+	get ai() {
+		return serverText("service.runtime.roots.text.11");
+	},
+	get skins() {
+		return serverText("service.runtime.roots.text.12");
+	},
+	get library() {
+		return serverText("service.runtime.roots.text.13");
+	},
+	get "maid-skills"() {
+		return serverText("service.runtime.roots.text.14");
+	},
+	get extensions() {
+		return serverText("service.runtime.roots.text.15");
+	},
 } as const;
 
 export type HostRootKey = keyof typeof HOST_ROOT_LAYOUT;

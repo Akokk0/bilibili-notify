@@ -12,7 +12,7 @@ import {
 	type WebSocketLike,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
-import { t } from "../../i18n/index.js";
+import { t as serverText, t } from "../../i18n/index.js";
 import { errorMessageOf } from "../../util/error-message";
 import { type BiliContext, REFRESH_TOKEN_KEY } from "../context";
 import type { AllDynamicResponse } from "../dynamic/types";
@@ -517,7 +517,7 @@ export class Api {
 				if (!probed.ok) {
 					if (probed.code === "unauthorized") {
 						// 探测即 -101:会话已死,直接终态,不再跑 RSA 链。
-						await this.terminateSession("[cookie] fetchCookieInfo 返回 -101(账号未登录),终止会话");
+						await this.terminateSession(serverText("bilibili.api.api.text.1"));
 						return;
 					}
 					this.logger.warn(
@@ -580,7 +580,7 @@ export class Api {
 				// correspond 页面没解析出 refresh_csrf(B 站返回异常 / 结构变更):
 				// 绝不 POST 一个 null refresh_csrf(必失败且语义不明)。抛可重试错,
 				// triggerRefreshCheck 记 warn,下个 interval 再探(generation/timer 不动)。
-				throw new Error("correspond 页面未解析到 refresh_csrf,跳过本轮刷新");
+				throw new Error(serverText("bilibili.api.api.text.2"));
 			}
 
 			const refreshBody = await this.client.postForm(EP.COOKIE_REFRESH_URL, {
@@ -614,19 +614,21 @@ export class Api {
 					this.logger.warn(
 						`[cookie] 刷新失败 code=${shownCode} msg=${refreshed.message},跳过本轮(不判定登录失效,等下轮再试)`,
 					);
-					throw new Error(`Cookie 刷新失败(可重试): code=${shownCode}`);
+					throw new Error(serverText("bilibili.api.api.text.3", { value0: shownCode }));
 				}
 				// 终态(-101):②3 —— B2 此前只 emit 不清理,死会话每小时
 				// 继续 RSA 轮换、isLoginInfoLoaded 误报。统一走 terminateSession 清净。
 				fate = "release";
 				await this.terminateSession(
-					`[cookie] 刷新失败(会话终态)code=${shownCode} msg=${refreshed.message},判定登录失效`,
+					serverText("bilibili.api.api.text.4", { value0: shownCode, value1: refreshed.message }),
 				);
-				throw new Error(`Cookie 刷新失败: code=${shownCode}, message=${refreshed.message}`);
+				throw new Error(
+					serverText("bilibili.api.api.text.5", { value0: shownCode, value1: refreshed.message }),
+				);
 			}
 
 			const newCsrf = this.getCSRF();
-			if (!newCsrf) throw new Error("未找到 bili_jct cookie");
+			if (!newCsrf) throw new Error(serverText("bilibili.api.api.text.6"));
 
 			const accepted = this.resultOf<unknown>(
 				await this.client.postForm(EP.COOKIE_REFRESH_CONFIRM_URL, {
@@ -649,14 +651,12 @@ export class Api {
 				if (accepted.code !== "unauthorized") {
 					// confirm 步:同刷新那一步,只有 -101 是终态,别的退避等下轮(不判定登录失效/不拆 timer)。
 					this.logger.warn(`[cookie] 刷新确认失败 code=${shownCode},跳过本轮(等下轮再试)`);
-					throw new Error(`Cookie 刷新确认失败(可重试): code=${shownCode}`);
+					throw new Error(serverText("bilibili.api.api.text.7", { value0: shownCode }));
 				}
 				// confirm 终态:新旧 cookie 状态不可信,清罐 + 判定登录失效(②3 同款)。
 				fate = "release";
-				await this.terminateSession(
-					`[cookie] 刷新确认失败(会话终态)code=${shownCode},判定登录失效`,
-				);
-				throw new Error(`Cookie 刷新确认失败: code=${shownCode}`);
+				await this.terminateSession(serverText("bilibili.api.api.text.8", { value0: shownCode }));
+				throw new Error(serverText("bilibili.api.api.text.9", { value0: shownCode }));
 			}
 
 			// 提交:罐子此刻的内容(新 cookie)+ 新令牌,同一次原子写。失败时内存里已是新 cookie、盘上仍是上一对,
@@ -697,7 +697,7 @@ export class Api {
 		const csrf = this.getCSRF();
 		const ticket = await this.getBiliTicket(csrf);
 		if (ticket.code !== 0) {
-			throw new Error(`获取 TicketResponse 失败: ${ticket.message}`);
+			throw new Error(serverText("bilibili.api.api.text.10", { value0: ticket.message }));
 		}
 		const extract = (url: string) => url.slice(url.lastIndexOf("/") + 1, url.lastIndexOf("."));
 		this.wbiKeys = {
@@ -744,7 +744,7 @@ export class Api {
 				if (retried && typeof retried === "object" && retried.code === -352) {
 					// 抛「持续风控」类型 —— 外层 retry 的 shouldRetry 据此 fail-fast,
 					// 不再把刷新+重试整轮跑 3 遍放大请求量(风控收敛)。
-					throw new RiskControlError("[wbi] 刷新 wbiKeys 后仍 -352(WBI 签名持续被拒/风控)", -352);
+					throw new RiskControlError(serverText("bilibili.api.api.text.11"), -352);
 				}
 				return retried;
 			}
@@ -1040,7 +1040,12 @@ export class Api {
 			"fetchVideoInfo",
 		);
 		if (result.code !== 0 || !result.data) {
-			throw new Error(`获取视频信息失败(${result.code}): ${result.message ?? "unknown"}`);
+			throw new Error(
+				serverText("bilibili.api.api.text.12", {
+					value0: result.code,
+					value1: result.message ?? "unknown",
+				}),
+			);
 		}
 		const d = result.data;
 		return {

@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * **作品装配**(ADR-0019 决策 66):一条作品进了核心之后的那一段 —— 现折这条订阅的设置 → 过滤(挡下的留痕)→
  * 出卡 → AI 点评 → 回问订阅还在不在 → 套模板 → 按版式装配 → 推送 → 图集。B 站动态与拓展作品共用这一份:
@@ -311,7 +312,11 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 			try {
 				// 给模型看:提示词中性词写死中文,不随界面语言翻。
 				aiComment = await ai.comment(
-					`${post.creator.name}发布了一条${postNounsOf(event, PROMPT_NEUTRAL_NOUNS).postNoun}，内容如下：\n${commentText}`,
+					serverText("service.posts.deliver-post.text.1", {
+						value0: post.creator.name,
+						value1: postNounsOf(event, PROMPT_NEUTRAL_NOUNS).postNoun,
+						value2: commentText,
+					}),
 					"dynamic",
 					imageUrls,
 					// 联网搜索是全局开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
@@ -401,7 +406,7 @@ function noteCardFailure(err: unknown, deps: DeliverPostDeps): void {
 	const notice = deps.cardFailures.claimNotice();
 	if (!notice) return;
 	try {
-		deps.emitPipelineError(`生成动态图片失败：${reason}，已降级为纯文字推送，请检查图片插件状态`);
+		deps.emitPipelineError(serverText("service.posts.deliver-post.text.2", { value0: reason }));
 		notice.settle(true);
 	} catch (notifyErr) {
 		notice.settle(false);

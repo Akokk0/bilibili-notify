@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { readClearedThrough } from "../history/retention.js";
 import { toHistoryView } from "../history/view.js";
+import { t as serverText } from "../i18n/index.js";
 import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
@@ -43,13 +44,19 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 			if (!Number.isFinite(n)) {
 				// 此前 Number("abc")=NaN 经 Math.min/max 透传成 limit=NaN 静默喂给
 				// query() → 行为未定义。显式 400 而非静默 no-op。
-				return respondFailure(c, fail("invalid", `limit 要是数字：${limitRaw}`));
+				return respondFailure(
+					c,
+					fail("invalid", serverText("service.routes.history.text.1", { value0: limitRaw })),
+				);
 			}
 			limit = Math.max(1, Math.min(500, Math.trunc(n)));
 		}
 		const since = c.req.query("since");
 		if (since !== undefined && Number.isNaN(Date.parse(since))) {
-			return respondFailure(c, fail("invalid", `since 要是 ISO 时间戳：${since}`));
+			return respondFailure(
+				c,
+				fail("invalid", serverText("service.routes.history.text.2", { value0: since })),
+			);
 		}
 		// 老参数名(⑬f 之前的 `kind`,值是 0.x 的推送种类名)不再认。静默当成「没筛」会让书签里的旧链接
 		// 悄悄返回全部行 —— 这里回错误,把新名字告诉对方。
@@ -57,10 +64,7 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		if (staleKind !== undefined) {
 			return respondFailure(
 				c,
-				fail(
-					"invalid",
-					`kind 已经改叫 feature,值是特性键(post / liveStart / liveEnd …)：kind=${staleKind}`,
-				),
+				fail("invalid", serverText("service.routes.history.text.3", { value0: staleKind })),
 			);
 		}
 		// 不是特性键的值同样回错误(和 limit / since 一个做法):当成没传会悄悄回全部行,对方以为筛过了。
@@ -68,10 +72,7 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		if (featureParam !== undefined && !VALID_FEATURES.has(featureParam)) {
 			return respondFailure(
 				c,
-				fail(
-					"invalid",
-					`feature 要是特性键(post / liveStart / liveEnd …)：feature=${featureParam}`,
-				),
+				fail("invalid", serverText("service.routes.history.text.4", { value0: featureParam })),
 			);
 		}
 		const feature = featureParam as FeatureKey | undefined;
@@ -109,7 +110,10 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		if (daysRaw !== undefined) {
 			const n = Number(daysRaw);
 			if (!Number.isFinite(n)) {
-				return respondFailure(c, fail("invalid", `days 要是数字：${daysRaw}`));
+				return respondFailure(
+					c,
+					fail("invalid", serverText("service.routes.history.text.5", { value0: daysRaw })),
+				);
 			}
 			days = Math.max(1, Math.min(90, Math.trunc(n)));
 		}
@@ -118,7 +122,10 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		if (tzRaw !== undefined) {
 			const n = Number(tzRaw);
 			if (!Number.isFinite(n)) {
-				return respondFailure(c, fail("invalid", `tzOffset 要是数字（分钟）：${tzRaw}`));
+				return respondFailure(
+					c,
+					fail("invalid", serverText("service.routes.history.text.6", { value0: tzRaw })),
+				);
 			}
 			tzOffsetMin = Math.max(-840, Math.min(840, Math.trunc(n)));
 		}
@@ -139,10 +146,7 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 	app.post("/:id/repush", async (c) => {
 		const parsed = RepushSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
-			return respondFailure(
-				c,
-				fail("invalid", "重推请求要带 createdAt（这一行的 ISO 时间戳）和 mode（all 或 missing）"),
-			);
+			return respondFailure(c, fail("invalid", serverText("service.routes.history.text.7")));
 		}
 		const { createdAt, mode } = parsed.data;
 		const res = await deps.runtime.repushRunner.start(c.req.param("id"), createdAt, mode);
@@ -155,6 +159,8 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 
 const RepushSchema = z.object({
 	/** 这一行的 `createdAt`,服务端拿它定位日文件。 */
-	createdAt: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "createdAt 必须是 ISO 时间戳"),
+	createdAt: z.string().refine((v) => !Number.isNaN(Date.parse(v)), {
+		error: () => serverText("service.routes.history.text.8"),
+	}),
 	mode: z.enum(["all", "missing"]),
 });

@@ -1817,3 +1817,27 @@ it("内置来源的公共描述符提供可直接绘制的品牌图标", () => {
 	const source = createBiliSource(makeDeps().deps);
 	expect(source.descriptor.icon).toMatch(/^data:image\/svg\+xml;base64,/);
 });
+
+it("reads descriptor nouns through both the shared descriptor and existing source instance at use time", () => {
+	const source = createBiliSource(makeDeps().deps);
+	const descriptor = source.descriptor;
+	const state = i18n.state();
+	try {
+		i18n.set({ locale: "en", voice: "plain" });
+		const translate = vi.spyOn(i18n.state(), "t").mockImplementation((key) => `Current ${key}`);
+		try {
+			for (const object of [BILI_SOURCE_DESCRIPTOR, descriptor]) {
+				expect(object.label).toBe("Current bilibili.source.label");
+				expect(object.creatorNoun).toBe("Current bilibili.source.creatorNoun");
+				expect(object.postNoun).toBe("Current bilibili.source.postNoun");
+				expect(object.externalIdRegex).toBe("^\\d+$");
+				expect(object.shortLabel).toBe("B");
+			}
+			expect(source.descriptor).toBe(descriptor);
+		} finally {
+			translate.mockRestore();
+		}
+	} finally {
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
+});

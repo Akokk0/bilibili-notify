@@ -24,7 +24,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { FONT_DIR, listFontAssets, saveFontAsset } from "../../runtime/font-assets.js";
 import { bilibiliLikeSources } from "../../subscriptions/__tests__/fixtures.js";
 import { createLibraryRoute } from "../library.js";
-import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
+import { respondFailure, unhandledErrorMessage } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
 
 const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32, 0x00, 0x01]);
@@ -164,12 +164,12 @@ describe("POST /fonts —— 上传", () => {
 			// `library` 是个文件而不是目录 —— 建字体目录必然失败。
 			await writeFile(join(dir, FONT_DIR[0]), "占位");
 			const app = new Hono()
-				.onError((_err, c) => respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE)))
+				.onError((_err, c) => respondFailure(c, fail("unavailable", unhandledErrorMessage())))
 				.route("/", route(makeDeps({ dataDir: dir })));
 			const res = await upload(app, "好字体.woff2");
 			expect(res.status).toBe(503);
 			const json = (await res.json()) as { code: string; message: string };
-			expect(json).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+			expect(json).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
 			expect(JSON.stringify(json)).not.toContain(dir);
 		});
 	});

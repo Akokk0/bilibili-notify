@@ -1,3 +1,8 @@
+import { t as serverText } from "../i18n/index.js";
+import {
+	builtinCommandAliases,
+	displayedBuiltinCommandAliases,
+} from "./builtin-command-aliases.js";
 /**
  * `/mute` —— 「安静一会儿」。
  *
@@ -51,8 +56,14 @@ export function createMuteCommand(opts: MuteCommandOptions): CommandDef {
 	const now = opts.now ?? Date.now;
 	return command({
 		name: "mute",
-		aliases: ["静音", "免打扰"],
-		signature: "<duration:duration|时长>",
+		get parameterLabels() {
+			return { duration: serverText("service.runtime.mute-command.text.1") };
+		},
+		aliases: builtinCommandAliases("mute"),
+		get displayAliases() {
+			return displayedBuiltinCommandAliases("mute");
+		},
+		signature: "<duration:duration>",
 		get description() {
 			return t("commands.mute.description");
 		},

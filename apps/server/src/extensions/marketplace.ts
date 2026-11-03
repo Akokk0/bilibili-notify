@@ -21,6 +21,7 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 import { readBestEffortJson, writeBestEffortJson } from "../update/durable-json.js";
 import { fetchSignedJson } from "../update/fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "../update/fetch-through-mirrors.js";
@@ -223,10 +224,18 @@ function mib(bytes: number): string {
 
 /** 索引拿不到 / 验不过时给主人看的那句 —— 四种原因四句话,别混成「连接出错」。 */
 const OFFICIAL_FAILURE_TEXT = {
-	unreachable: "拿不到官方索引:加速镜像与直连都没拿到",
-	untrusted: "官方索引的签名验不过 —— 内容被改过,或不是我们签的",
-	malformed: "官方索引读不出来(格式不对)",
-	stale: "拿到的官方索引比上次见过的旧,不收 —— 加速站可能在回放旧的",
+	get unreachable() {
+		return serverText("service.extensions.marketplace.text.1");
+	},
+	get untrusted() {
+		return serverText("service.extensions.marketplace.text.2");
+	},
+	get malformed() {
+		return serverText("service.extensions.marketplace.text.3");
+	},
+	get stale() {
+		return serverText("service.extensions.marketplace.text.4");
+	},
 } as const;
 
 export function createMarketplace(deps: MarketplaceDeps): Marketplace {
@@ -262,7 +271,14 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		const base = { id: MARKETPLACE_OFFICIAL_SOURCE_ID, official: true };
 		if (!fetched.ok) {
 			return {
-				view: { ...base, name: "官方源", ok: false, err: OFFICIAL_FAILURE_TEXT[fetched.reason] },
+				view: {
+					...base,
+					get name() {
+						return serverText("service.extensions.marketplace.text.5");
+					},
+					ok: false,
+					err: OFFICIAL_FAILURE_TEXT[fetched.reason],
+				},
 			};
 		}
 		const checked = checkMarketplaceIndex(fetched.value, { official: true });
@@ -272,7 +288,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 					...base,
 					name: fetched.value.name,
 					ok: false,
-					err: `官方索引不合规矩:${checked.err}`,
+					err: serverText("service.extensions.marketplace.text.6", { value0: checked.err }),
 				},
 			};
 		}
@@ -322,11 +338,11 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				try {
 					parsed = JSON.parse(Buffer.from(bytes).toString("utf8"));
 				} catch {
-					return { ok: false, reason: "这个地址给的不是 JSON" };
+					return { ok: false, reason: serverText("service.extensions.marketplace.text.7") };
 				}
 				const shaped = indexSchema.safeParse(parsed);
 				if (!shaped.success)
-					return { ok: false, reason: "这份索引的形状不对(不是一份 marketplace.json)" };
+					return { ok: false, reason: serverText("service.extensions.marketplace.text.8") };
 				const checked = checkMarketplaceIndex(shaped.data, { official: false });
 				if (!checked.ok) return { ok: false, reason: checked.err };
 				return { ok: true, value: shaped.data };
@@ -335,7 +351,10 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		if (!fetched.ok) {
 			return {
 				ok: false,
-				err: fetched.reason === "all-mirrors-failed" ? "拿不到这个源的索引" : fetched.reason,
+				err:
+					fetched.reason === "all-mirrors-failed"
+						? serverText("service.extensions.marketplace.text.9")
+						: fetched.reason,
 			};
 		}
 		return { ok: true, index: fetched.value };
@@ -363,7 +382,10 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 					...named,
 					namespace: ns,
 					ok: false,
-					err: `命名空间「${ns}」已经被源「${holder.name}」用了`,
+					err: serverText("service.extensions.marketplace.text.10", {
+						value0: ns,
+						value1: holder.name,
+					}),
 				},
 			};
 		}
@@ -506,22 +528,42 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	async function install(sourceId: string, id: string): Promise<MarketplaceInstallOutcome> {
 		const loaded = await loadAll(false);
 		const source = loaded.find((candidate) => candidate.view.id === sourceId);
-		if (!source) return fail("not_found", `没有这个源:${sourceId}`);
+		if (!source)
+			return fail(
+				"not_found",
+				serverText("service.extensions.marketplace.text.11", { value0: sourceId }),
+			);
 		if (!source.index) {
 			return fail(
 				"unavailable",
-				`源「${source.view.name}」现在不可用:${source.view.err ?? "索引没拿到"}`,
+				serverText("service.extensions.marketplace.text.13", {
+					value0: source.view.name,
+					value1: source.view.err ?? serverText("service.extensions.marketplace.text.12"),
+				}),
 			);
 		}
 		// 🔴 挑条目必须与 list() 用**同一把尺子**:索引里同一个 id 有两档,拿 find() 取第一条
 		// 的话,面板上那张卡写着 A、按下去装的是 B —— 而两边都全绿。
 		const entry = pickPerId(source.index.extensions, deps.prerelease(), fitsHost).get(id);
-		if (!entry) return fail("not_found", `源「${source.view.name}」里没有 ${id}`);
+		if (!entry)
+			return fail(
+				"not_found",
+				serverText("service.extensions.marketplace.text.14", {
+					value0: source.view.name,
+					value1: id,
+				}),
+			);
 		if (!fitsHost(entry)) {
 			return fail("unsupported", `${entry.name}:${apiVersionMismatch(entry, hostApiRange)}`);
 		}
 		if (isMarketplaceRevoked(source.index, entry.id, entry.version)) {
-			return fail("not_found", `${entry.name} ${entry.version} 已被这个源撤回`);
+			return fail(
+				"not_found",
+				serverText("service.extensions.marketplace.text.15", {
+					value0: entry.name,
+					value1: entry.version,
+				}),
+			);
 		}
 		// 索引自己写了包有多大,那就是这一次的上限 —— 拿 10MB 硬顶当上限等于允许对面
 		// 灌到 10MB 才停,而我们本来就知道该收多少。超过本机上限的得说清是上限:
@@ -529,7 +571,11 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		if (entry.package.size > MAX_EXTENSION_PACKAGE_BYTES) {
 			return fail(
 				"invalid",
-				`索引写的 ${entry.name} 包有 ${mib(entry.package.size)} MB,超过本机上限 ${mib(MAX_EXTENSION_PACKAGE_BYTES)} MB`,
+				serverText("service.extensions.marketplace.text.16", {
+					value0: entry.name,
+					value1: mib(entry.package.size),
+					value2: mib(MAX_EXTENSION_PACKAGE_BYTES),
+				}),
 			);
 		}
 
@@ -546,19 +592,34 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		});
 		if (!downloaded.ok) {
 			return downloaded.reason === "checksum"
-				? fail("invalid", `下载到的包校验和与索引写的对不上 —— 中途被换过,或源那头发错了包`)
-				: fail("unavailable", `下不下来 ${entry.name} 的包(${entry.package.url})`);
+				? fail("invalid", serverText("service.extensions.marketplace.text.17"))
+				: fail(
+						"unavailable",
+						serverText("service.extensions.marketplace.text.18", {
+							value0: entry.name,
+							value1: entry.package.url,
+						}),
+					);
 		}
 
 		const opened = openExtensionPackage(downloaded.value, deps.reservedIntegrationKeys);
 		if (!opened.ok) {
 			// 拆包那几句(哪一处不合规矩)原样带上:主人手里没有这个包,它们是源作者唯一的线索。
-			return fail(opened.code, `包拆不开:${opened.message}`, { issues: opened.issues });
+			return fail(
+				opened.code,
+				serverText("service.extensions.marketplace.text.19", { value0: opened.message }),
+				{ issues: opened.issues },
+			);
 		}
 		if (opened.pkg.id !== entry.id || opened.pkg.manifest.version !== entry.version) {
 			return fail(
 				"invalid",
-				`包里的清单是 ${opened.pkg.id}@${opened.pkg.manifest.version},索引说的是 ${entry.id}@${entry.version} —— 源那头发错了包`,
+				serverText("service.extensions.marketplace.text.20", {
+					value0: opened.pkg.id,
+					value1: opened.pkg.manifest.version,
+					value2: entry.id,
+					value3: entry.version,
+				}),
 			);
 		}
 		// 落盘 → 记来源,在装载器的队里是一件事,紧跟着那一遍重扫由队替我们做。

@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 订阅:0.x 的两份文件 `state/subscriptions.json`(B 站)与 `state/extension-subscriptions.json`(拓展)→ 新代
  * 里的一个 `config/subscriptions.json`,行行带 `identity`(ADR-0021 决策 14、15)。先把 0.x 各个版本留下的形状
@@ -196,9 +197,7 @@ export async function migrateSubscriptionFiles(
 	const bili = await readJsonFile(path);
 	const ext = await readJsonFile(opts.extensionSubscriptionsPath);
 	if (ext.kind === "unreadable" || (ext.kind === "ok" && !Array.isArray(ext.value))) {
-		throw new Error(
-			"第 0 代的 state/extension-subscriptions.json 读不懂(不是 JSON 数组),拓展订阅没法迁过来",
-		);
+		throw new Error(serverText("service.migration.subscriptions.text.1"));
 	}
 	if (bili.kind === "unreadable" || (bili.kind === "ok" && !Array.isArray(bili.value))) return [];
 	// 已经合过(行里有 `identity`,0.x 的文件里不会有):再合一遍会把拓展的订阅追加第二份。

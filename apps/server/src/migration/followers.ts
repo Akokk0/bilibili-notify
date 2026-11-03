@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 迁移压老粉丝样本(ADR-0027 决策 8、15;㉘c):把新代 `stats/followers/<订阅 id>.jsonl` 里 0.x 的 `{ ts, value }`
  * 行改成新形状 `{ sampledAt, followers }`,同时按「现在」压一遍(最近 8 天原样,更早的每小时留最晚的一条、
@@ -45,7 +46,7 @@ export async function migrateFollowerCompression(
 		written.push(path);
 	}
 	if (badLines > 0) {
-		skip(`${badLines} 条粉丝样本读不懂(不是 JSON、缺格或时刻解析不了),没带过来`);
+		skip(serverText("service.migration.followers.text.1", { value0: badLines }));
 	}
 	return written;
 }

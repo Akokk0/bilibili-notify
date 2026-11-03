@@ -17,6 +17,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { fail, isTargetPaused, shouldSendAtAll } from "@bilibili-notify/internal";
 import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
+import { t as serverText } from "../i18n/index.js";
 import { findAdapter, resolveConnection } from "./dispatch.js";
 import { type PlatformAdapterRegistry, sendableAdapters } from "./registry.js";
 
@@ -277,7 +278,8 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 			const route = routeOf(connectionId, CONNECTION_NOT_FOUND);
 			if (!route.ok) return route;
 			const { adapter, connection } = route;
-			if (!adapter.listAddressCandidates) return fail("unsupported", "这种连接没有可列的地址");
+			if (!adapter.listAddressCandidates)
+				return fail("unsupported", serverText("service.push.target-dispatcher.text.1"));
 			try {
 				return await adapter.listAddressCandidates(connection, scope, signal);
 			} catch (e) {

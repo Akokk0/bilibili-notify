@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 数据代:开机选哪一代、怎么开新的一代(ADR-0022 决策 1–3 与它们下面的 🔗)。
  *
@@ -118,7 +119,11 @@ export async function selectGeneration(
 
 	if (current && current.file.formatVersion < opts.formatVersion) {
 		throw new Error(
-			`第 ${current.seq} 代的数据格式版本是 ${current.file.formatVersion},比这一版的 ${opts.formatVersion} 旧;代与代之间的迁移还没有写`,
+			serverText("service.runtime.generations.text.1", {
+				value0: current.seq,
+				value1: current.file.formatVersion,
+				value2: opts.formatVersion,
+			}),
 		);
 	}
 	const pending =
@@ -200,7 +205,12 @@ export async function createGeneration(
 ): Promise<void> {
 	// 序号只往后排,正式的一代不该已经在;真在的话,下面的整目录替换会把它挪开删掉。
 	if (existsSync(selection.dir)) {
-		throw new Error(`第 ${selection.seq} 代已经存在,不能再开一次:${selection.dir}`);
+		throw new Error(
+			serverText("service.runtime.generations.text.2", {
+				value0: selection.seq,
+				value1: selection.dir,
+			}),
+		);
 	}
 	await replaceDirectory(
 		selection.dir,

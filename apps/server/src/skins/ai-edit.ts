@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 抽屉内嵌 AI(「让女仆改」)的服务端逻辑。
  *
@@ -155,7 +156,7 @@ function tryParse(
 	try {
 		json = JSON.parse(stripJsonFences(text));
 	} catch {
-		return { ok: false, errors: ["输出不是合法 JSON"] };
+		return { ok: false, errors: [serverText("service.skins.ai-edit.text.1")] };
 	}
 	const parsed = parseSkinManifest(json);
 	if (!parsed.ok) return parsed;
@@ -163,7 +164,7 @@ function tryParse(
 	if (missing.length > 0) {
 		return {
 			ok: false,
-			errors: missing.map((m) => `${m}: manifest 引用了它,但包里没有这个文件`),
+			errors: missing.map((m) => serverText("service.skins.ai-edit.text.2", { value0: m })),
 		};
 	}
 	return { ok: true, manifest: parsed.skin, warnings: parsed.warnings };

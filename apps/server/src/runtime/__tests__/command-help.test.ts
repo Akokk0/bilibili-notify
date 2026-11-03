@@ -145,3 +145,18 @@ describe("用法展示", () => {
 		expect(renderHelp(COMMANDS, "/", "status")).not.toContain("<");
 	});
 });
+
+it("matches every input alias but prints only the current language aliases and argument labels", () => {
+	const entry = {
+		name: "mute",
+		aliases: ["静音", "靜音", "ミュート"],
+		displayAliases: ["ミュート"],
+		signature: "<duration:duration>",
+		parameterLabels: { duration: "時間" },
+	};
+	const help = renderHelp([entry], "/", "静音");
+	expect(help).toContain("/mute <時間>");
+	expect(help).toContain("别名：ミュート");
+	expect(help).not.toContain("静音");
+	expect(help).not.toContain("靜音");
+});

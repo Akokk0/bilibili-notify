@@ -11,6 +11,7 @@ import {
 	type Result,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 import { originalCount, repushDenial, unsentIndices } from "./repush.js";
 import type { RepushMessage, RepushStore } from "./repush-store.js";
 import type { HistoryStore } from "./store.js";
@@ -91,7 +92,7 @@ export interface CreateRepushRunnerOptions {
 }
 
 /** 原件不在了(保留期到了、或者当初就没写成)。两处都说这一句。 */
-const SNAPSHOT_GONE = "这一行的原料已经不在了，女仆补不出原来那条 —— 只有保留期内的推送补得回来";
+const snapshotGone = () => serverText("service.history.repush-runner.text.1");
 
 export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunner {
 	/**
@@ -118,7 +119,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 		if (denial) return denial;
 		return (await opts.repush.has(entry.id, entry.createdAt))
 			? null
-			: fail("conflict", SNAPSHOT_GONE);
+			: fail("conflict", snapshotGone());
 	}
 
 	async function start(
@@ -127,14 +128,14 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 		mode: RepushMode,
 	): Promise<RepushStartResult> {
 		const entry = await opts.history.findRow(rowId, createdAt);
-		if (!entry) return fail("not_found", "找不到这一行推送记录了");
+		if (!entry) return fail("not_found", serverText("service.history.repush-runner.text.2"));
 
 		const denial = gate(entry);
 		if (denial) return denial;
 
 		// 原件与行**按身份号**对表,不是按 messages.length —— 行会随着每次重推变长。
 		const snapshot = await opts.repush.load(rowId, createdAt, originalCount(entry.messages));
-		if (!snapshot) return fail("conflict", SNAPSHOT_GONE);
+		if (!snapshot) return fail("conflict", snapshotGone());
 
 		const indices =
 			mode === "all" ? snapshot.messages.map((_, i) => i) : unsentIndices(entry.messages);

@@ -15,6 +15,7 @@ import type {
 	Subscription,
 } from "@bilibili-notify/internal";
 import { subscriptionIdentityOf } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
 import type { LiveWorkSettings } from "./live-settings.js";
 import { liveEndGraceMinutes } from "./live-settings.js";
@@ -339,11 +340,19 @@ function changedStartTimes(
 }
 
 const REASON_TEXT: Record<LiveSessionEndReason, string> = {
-	signal: "来源报了下播，当场结束",
-	"grace-expired": "断流等待等满了",
+	get signal() {
+		return serverText("service.live.live-sessions.text.1");
+	},
+	get "grace-expired"() {
+		return serverText("service.live.live-sessions.text.2");
+	},
 	poll: "poll",
-	superseded: "没报下播就又开播了",
-	stopped: "停止",
+	get superseded() {
+		return serverText("service.live.live-sessions.text.3");
+	},
+	get stopped() {
+		return serverText("service.live.live-sessions.text.4");
+	},
 };
 
 export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): LiveSessionEngine {

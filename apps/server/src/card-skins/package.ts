@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * **卡片皮肤包**的装包门(ADR-0014 决策 2 / 5 / 19)—— 不可信 zip →
  * `{ card-skin.json, assets/* }`,再把清单洗干净。
@@ -93,7 +94,10 @@ export function parseCardSkinPackage(zip: Uint8Array): ParseCardSkinPackageResul
 		if (name === CARD_SKIN_MANIFEST_FILE) {
 			if (data.byteLength > MAX_CARD_SKIN_MANIFEST_BYTES) {
 				errors.push(
-					`${CARD_SKIN_MANIFEST_FILE} 过大(上限 ${Math.round(MAX_CARD_SKIN_MANIFEST_BYTES / 1024 / 1024)}MB)`,
+					serverText("service.card-skins.package.text.1", {
+						value0: CARD_SKIN_MANIFEST_FILE,
+						value1: Math.round(MAX_CARD_SKIN_MANIFEST_BYTES / 1024 / 1024),
+					}),
 				);
 			} else {
 				manifestBytes = data;
@@ -102,15 +106,20 @@ export function parseCardSkinPackage(zip: Uint8Array): ParseCardSkinPackageResul
 			// 解压后按**真实**字节复核 —— 上面那道信的是 zip 头,而头会撒谎。
 			if (data.byteLength > CARD_SKIN_LIMITS.maxAssetBytes) {
 				errors.push(
-					`${name}: 资产过大(上限 ${Math.round(CARD_SKIN_LIMITS.maxAssetBytes / 1024 / 1024)}MB)`,
+					serverText("service.card-skins.package.text.2", {
+						value0: name,
+						value1: Math.round(CARD_SKIN_LIMITS.maxAssetBytes / 1024 / 1024),
+					}),
 				);
 			} else {
 				assets.set(name, data);
 			}
 		} else {
 			errors.push(
-				`${name}: 包里只允许 ${CARD_SKIN_MANIFEST_FILE} 和 assets/ 下的图片(png / jpg / webp / gif)` +
-					`与字体(woff2 / woff / ttf / otf),名字只准小写字母、数字、. _ -`,
+				serverText("service.card-skins.package.text.3", {
+					value0: name,
+					value1: CARD_SKIN_MANIFEST_FILE,
+				}) + serverText("service.card-skins.package.text.4"),
 			);
 		}
 	}
@@ -118,16 +127,27 @@ export function parseCardSkinPackage(zip: Uint8Array): ParseCardSkinPackageResul
 	// 能在文件数之内多塞一份资产,落盘之后编辑器就再也加不进东西。
 	if (assets.size > CARD_SKIN_LIMITS.maxAssets) {
 		errors.push(
-			`包里的资产太多(${assets.size} 份,上限 ${CARD_SKIN_LIMITS.maxAssets} 份),删掉用不上的再传`,
+			serverText("service.card-skins.package.text.5", {
+				value0: assets.size,
+				value1: CARD_SKIN_LIMITS.maxAssets,
+			}),
 		);
 	}
-	if (!manifestBytes && errors.length === 0) errors.push(`包里缺少 ${CARD_SKIN_MANIFEST_FILE}`);
+	if (!manifestBytes && errors.length === 0)
+		errors.push(
+			serverText("service.card-skins.package.text.6", { value0: CARD_SKIN_MANIFEST_FILE }),
+		);
 	if (errors.length > 0 || !manifestBytes) return { ok: false, errors };
 
 	try {
 		return { ok: true, manifestRaw: JSON.parse(strFromU8(manifestBytes)), assets };
 	} catch {
-		return { ok: false, errors: [`${CARD_SKIN_MANIFEST_FILE} 不是合法 JSON`] };
+		return {
+			ok: false,
+			errors: [
+				serverText("service.card-skins.package.text.7", { value0: CARD_SKIN_MANIFEST_FILE }),
+			],
+		};
 	}
 }
 
@@ -211,9 +231,13 @@ export function checkCardSkinPackage(
 		for (const [id, users] of idUsers) {
 			if (users.length < 2) continue;
 			warnings.push(
-				`cards.${kind}: svg id「${id}」被用了 ${users.length} 次(${[...new Set(users)]
-					.map((u) => `「${u}」`)
-					.join("、")})—— 整张卡是一个 id 命名空间,url(#${id}) 只认文档里第一个,给它们各加个前缀`,
+				serverText("service.card-skins.package.text.8", {
+					value0: kind,
+					value1: id,
+					value2: users.length,
+					value3: [...new Set(users)].map((u) => `「${u}」`).join("、"),
+					value4: id,
+				}),
 			);
 		}
 	}
@@ -234,9 +258,21 @@ export function checkCardSkinPackage(
 	manifest.fonts?.forEach((font, i) => {
 		const name = font.asset.slice(ASSET_REF_PREFIX.length);
 		if (!assetNames.has(name)) {
-			errors.push(`fonts[${i}]「${font.family}」: 指了「${name}」,但包里没有这份资产`);
+			errors.push(
+				serverText("service.card-skins.package.text.9", {
+					value0: i,
+					value1: font.family,
+					value2: name,
+				}),
+			);
 		} else if (!CARD_SKIN_FONT_RE.test(name)) {
-			errors.push(`fonts[${i}]「${font.family}」:「${name}」不是字体`);
+			errors.push(
+				serverText("service.card-skins.package.text.10", {
+					value0: i,
+					value1: font.family,
+					value2: name,
+				}),
+			);
 		}
 	});
 
@@ -272,12 +308,12 @@ function checkKnobUsage(manifest: CardSkinManifest): string[] {
 	const out: string[] = [];
 	for (const key of used) {
 		if (!declared.has(key)) {
-			out.push(`css 里用了 var(--bn-knob-${key}),但 knobs 里没声明它 —— 面板上没有这个控件`);
+			out.push(serverText("service.card-skins.package.text.11", { value0: key }));
 		}
 	}
 	for (const key of declared) {
 		if (!used.has(key)) {
-			out.push(`knobs 声明了「${key}」,但没有一处 css 用 var(--bn-knob-${key}) —— 拧了不会有反应`);
+			out.push(serverText("service.card-skins.package.text.12", { value0: key, value1: key }));
 		}
 	}
 	return out;
@@ -298,6 +334,9 @@ function checkAssetVars(
 ): void {
 	for (const [key, ref] of Object.entries(vars ?? {})) {
 		const name = ref.slice(ASSET_REF_PREFIX.length);
-		if (!assetNames.has(name)) errors.push(`${at}.${key}: 指了「${name}」,但包里没有这份资产`);
+		if (!assetNames.has(name))
+			errors.push(
+				serverText("service.card-skins.package.text.13", { value0: at, value1: key, value2: name }),
+			);
 	}
 }

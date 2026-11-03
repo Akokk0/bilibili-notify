@@ -3,6 +3,7 @@ import {
 	type IntegrationContext,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
+import { t as serverText } from "../i18n/index.js";
 import { disposeThenClose, type IntegrationStore } from "../integration-store/store.js";
 import type { CreateIntegrationContextOptions } from "../integrations/context.js";
 import type { CookieJarHandle } from "../integrations/http.js";
@@ -69,7 +70,7 @@ export async function createBiliContext(
 			timezoneReader: opts.timezoneReader,
 			stores: store,
 			logger: serviceCtx.logger,
-			stopReason: "BN 关停",
+			stopReason: () => serverText("bilibili.context.text.1"),
 			problems: opts.problems,
 			reporter: BILIBILI_SOURCE_KEY,
 			label: () => BILI_SOURCE_DESCRIPTOR.label,

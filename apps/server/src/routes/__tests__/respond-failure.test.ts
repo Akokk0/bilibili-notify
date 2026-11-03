@@ -8,7 +8,7 @@ import {
 	requestErrorHandler,
 	respondFailure,
 	statusOf,
-	UNHANDLED_ERROR_MESSAGE,
+	unhandledErrorMessage,
 } from "../respond-failure.js";
 
 describe("statusOf:失败码 → HTTP 状态码", () => {
@@ -151,7 +151,7 @@ describe("requestErrorHandler:全局出错处理(app.ts 与被进程内直接 re
 		const res = await app.request("/");
 
 		expect(res.status).toBe(503);
-		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(await res.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
 		expect(logger.error).toHaveBeenCalledWith("unhandled request error", boom);
 	});
 

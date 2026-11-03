@@ -38,6 +38,7 @@ import {
 	slimCardToolArgs,
 } from "../card-skins/chat-tools.js";
 import type { CardSkinStore } from "../card-skins/store.js";
+import { t as serverText } from "../i18n/index.js";
 import { type ImageStore, imageExtOf, isValidImageRef } from "../images/image-store.js";
 import { createSkillChatTool, skillInstruction } from "../maid-skills/chat-tool.js";
 import type { MaidSkillReader } from "../maid-skills/reader.js";
@@ -52,10 +53,10 @@ import {
 import type { SkinStore } from "../skins/store.js";
 import { maskedCellsFailure } from "./masked-cells.js";
 import {
-	ENGINES_NOT_READY_MESSAGE,
+	enginesNotReadyMessage,
 	errorBodyOf,
 	respondFailure,
-	UNHANDLED_ERROR_MESSAGE,
+	unhandledErrorMessage,
 } from "./respond-failure.js";
 import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
@@ -83,21 +84,20 @@ const TestPushRequestSchema = z.object({
 // 「没配 / 没开」都是 `not_configured`(要主人去配,等是等不好的),「服务还没起」是 `unavailable`。
 
 /** 智能女仆的开关没打开。 */
-const AI_DISABLED_MESSAGE = "智能女仆尚未启用,请先到「智能女仆」页打开开关";
+const aiDisabledMessage = () => serverText("service.routes.ai.text.1");
 /**
  * 开关开着但实例是 null,只有一个原因:baseUrl / apiKey 没填齐。这时回「尚未启用」会把人支去翻开关 ——
  * 而开关明明是开的,于是变成一个查不出原因的死胡同。直接指向该填的那两栏。
  */
-const AI_KEY_MISSING_MESSAGE = "智能女仆的 baseUrl / apiKey 还没填齐,请先到「智能女仆」页补上";
+const aiKeyMissingMessage = () => serverText("service.routes.ai.text.2");
 /** 会话不在了(被删 / 从没有过)。 */
-const CONVERSATION_GONE_MESSAGE = "会话不存在或已被删除";
+const conversationGoneMessage = () => serverText("service.routes.ai.text.3");
 /**
  * 想带图,但主模型看不见、也没配视觉副模型。这句是**按控件名指路**的,两个引号里的名字必须与设置页
  * FIELD_LABELS 里的 label 一字不差 —— 指向一个叫不出名字的控件,比不给指引更让人打转。
  * 它是在叫主人去配置,所以是 `not_configured`,不是 `unsupported`。
  */
-const VISION_NOT_SET_MESSAGE =
-	"女仆还看不见图片。请到「智能女仆」页的「图片理解」:主模型自己看得见图就打开「主模型支持看图」;看不见(比如 DeepSeek)就填上「视觉模型 ID」";
+const visionNotSetMessage = () => serverText("service.routes.ai.text.4");
 /** 聊天一条消息的字数上限。 */
 const CHAT_MESSAGE_MAX_CHARS = 4000;
 /** 单张聊天附件上限 5MB —— 与卡片背景图同口径。图库自己的线是 8MB,这是上传这一层更紧的规矩。 */
@@ -105,7 +105,7 @@ const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
 /** 一条消息最多带几张图。与动态点评那条路的上限一致(`posts/deliver-post.ts` 的 `POST_COMMENT_IMAGES_MAX`)。 */
 const MAX_CHAT_IMAGES_PER_MESSAGE = 4;
 /** 认不出是图、或不是聊天附件收的格式时对主人说的话(图库还收 gif,聊天附件不收)。 */
-const CHAT_IMAGE_UNSUPPORTED_MESSAGE = "不支持的图片类型（仅 PNG / JPEG / WebP）";
+const chatImageUnsupportedMessage = () => serverText("service.routes.ai.text.5");
 
 export function createAiRoute(
 	deps: RouteDeps,
@@ -143,7 +143,7 @@ export function createAiRoute(
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "试一句的请求格式不对：要带推送目标（uuid）和 1~500 字的话，以及 AI 配置", {
+				fail("invalid", serverText("service.routes.ai.text.6"), {
 					issues: issuesFromZod(parsed.error),
 				}),
 			);
@@ -151,9 +151,10 @@ export function createAiRoute(
 		const { targetId, message, ai } = parsed.data;
 
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
-		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
+		if (!target)
+			return respondFailure(c, fail("not_found", serverText("service.routes.ai.text.7")));
 
 		// 用草稿配置**临时**造一个 generator,用完即弃 —— 绝不碰正在跑的 commentary 实例,
 		// 否则「试一句」会把未保存的人格泄进真实推送。
@@ -177,7 +178,9 @@ export function createAiRoute(
 			// 模型那头的错(密钥不对、余额不足、网络)—— 对端给的原因就是主人要看的,原话进 `message`。
 			const msg = err instanceof Error ? err.message : String(err);
 			deps.runtime.serviceCtx.logger.warn(`[ai] 试一句:女仆没答上来: ${msg}`);
-			return c.json<AiTestPushResponse>(fail("unavailable", `女仆那边没答上来：${msg}`));
+			return c.json<AiTestPushResponse>(
+				fail("unavailable", serverText("service.routes.ai.text.8", { value0: msg })),
+			);
 		}
 
 		const payload: NotificationPayload = { kind: "text", text: reply };
@@ -214,7 +217,7 @@ export function createAiRoute(
 
 	app.get("/conversations/:id", async (c) => {
 		const conv = await store().get(c.req.param("id"));
-		if (!conv) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
+		if (!conv) return respondFailure(c, fail("not_found", conversationGoneMessage()));
 		return c.json<AiConversationResponse>({ conversation: toDetail(conv) });
 	});
 
@@ -222,7 +225,7 @@ export function createAiRoute(
 		// 只删会话,不碰它带过的图:图是图库的,按内容起名,同一张可能还被别的会话、历史行引用着。
 		// 没有任何一家再引用的图,由图库清扫在宽限期过后收走(会话库就是清扫要问的引用方之一)。
 		const removed = await store().remove(c.req.param("id"));
-		if (!removed) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
+		if (!removed) return respondFailure(c, fail("not_found", conversationGoneMessage()));
 		return c.json(ok());
 	});
 
@@ -233,22 +236,27 @@ export function createAiRoute(
 
 	/** 上传一张附件 → 存进图库,返回图库引用(字段叫 `id`)供随消息带上。 */
 	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 512MB 的堆里。见 upload-limit.ts。
-	app.post("/assets", uploadBodyLimit(MAX_CHAT_IMAGE_BYTES, "图片"), async (c) => {
-		const body = await c.req.parseBody().catch(() => null);
-		const file = body?.file;
-		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少图片文件"));
-		const bytes = new Uint8Array(await file.arrayBuffer());
-		const refusal = chatUploadRefusal(bytes);
-		if (refusal) return respondFailure(c, fail("invalid", refusal));
-		const stored = await deps.runtime.chatImages.put(bytes);
-		if (!stored.ok) {
-			if (stored.code === "invalid") return respondFailure(c, stored);
-			// 磁盘写失败之类是环境的事:原话(里头可能带路径)只进日志,客户端拿一句固定的话 —— 与全局出错处理同一个口径。
-			deps.runtime.serviceCtx.logger.error("[ai] 附件存不进图库", new Error(stored.message));
-			return respondFailure(c, fail(stored.code, UNHANDLED_ERROR_MESSAGE));
-		}
-		return c.json(ok({ id: stored.ref }));
-	});
+	app.post(
+		"/assets",
+		uploadBodyLimit(MAX_CHAT_IMAGE_BYTES, () => serverText("service.routes.ai.text.9")),
+		async (c) => {
+			const body = await c.req.parseBody().catch(() => null);
+			const file = body?.file;
+			if (!(file instanceof File))
+				return respondFailure(c, fail("invalid", serverText("service.routes.ai.text.10")));
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			const refusal = chatUploadRefusal(bytes);
+			if (refusal) return respondFailure(c, fail("invalid", refusal));
+			const stored = await deps.runtime.chatImages.put(bytes);
+			if (!stored.ok) {
+				if (stored.code === "invalid") return respondFailure(c, stored);
+				// 磁盘写失败之类是环境的事:原话(里头可能带路径)只进日志,客户端拿一句固定的话 —— 与全局出错处理同一个口径。
+				deps.runtime.serviceCtx.logger.error("[ai] 附件存不进图库", new Error(stored.message));
+				return respondFailure(c, fail(stored.code, unhandledErrorMessage()));
+			}
+			return c.json(ok({ id: stored.ref }));
+		},
+	);
 
 	/**
 	 * 让女仆看一眼首轮问答,给这个会话起个标题。
@@ -264,12 +272,12 @@ export function createAiRoute(
 	 */
 	app.post("/conversations/:id/title", async (c) => {
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 		const commentary = pipeline.commentary;
-		if (!commentary) return respondFailure(c, fail("not_configured", AI_KEY_MISSING_MESSAGE));
+		if (!commentary) return respondFailure(c, fail("not_configured", aiKeyMissingMessage()));
 
 		const conv = await store().get(c.req.param("id"));
-		if (!conv) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
+		if (!conv) return respondFailure(c, fail("not_found", conversationGoneMessage()));
 
 		const firstRound = conv.messages.slice(0, 2);
 		// 起过就不再起 —— 侧栏那行是主人认会话的路标,不该被反复挪。判据是这个
@@ -316,7 +324,7 @@ export function createAiRoute(
 		const raw = (await c.req.json().catch(() => null)) as { message?: unknown } | null;
 		// 空话单独说:这是最常见的一种"不对",zod 的英文默认话("Too small…")不该出现在主人眼前。
 		if (typeof raw?.message !== "string" || raw.message.trim() === "") {
-			return respondFailure(c, fail("invalid", "消息不能为空"));
+			return respondFailure(c, fail("invalid", serverText("service.routes.ai.text.11")));
 		}
 		const parsed = ChatRequestSchema.safeParse(raw);
 		if (!parsed.success) {
@@ -324,7 +332,10 @@ export function createAiRoute(
 				c,
 				fail(
 					"invalid",
-					`聊天请求的格式不对：消息最多 ${CHAT_MESSAGE_MAX_CHARS} 字，图片最多 ${MAX_CHAT_IMAGES_PER_MESSAGE} 张`,
+					serverText("service.routes.ai.text.12", {
+						value0: CHAT_MESSAGE_MAX_CHARS,
+						value1: MAX_CHAT_IMAGES_PER_MESSAGE,
+					}),
 					{ issues: issuesFromZod(parsed.error) },
 				),
 			);
@@ -332,15 +343,15 @@ export function createAiRoute(
 		const message = parsed.data.message.trim();
 
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
 		if (!deps.store.getGlobals().ai.enabled) {
-			return respondFailure(c, fail("not_configured", AI_DISABLED_MESSAGE));
+			return respondFailure(c, fail("not_configured", aiDisabledMessage()));
 		}
 		const commentary = pipeline.commentary;
-		if (!commentary) return respondFailure(c, fail("not_configured", AI_KEY_MISSING_MESSAGE));
+		if (!commentary) return respondFailure(c, fail("not_configured", aiKeyMissingMessage()));
 
 		const conv = await store().get(c.req.param("id"));
-		if (!conv) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
+		if (!conv) return respondFailure(c, fail("not_found", conversationGoneMessage()));
 
 		// 附件。看图有**两条路**:主模型自己看(enableVision),或交给副模型转文字
 		// (vision.model)。两条都没开的话图是彻底没人看的 —— 静默吞掉会让主人看着
@@ -355,7 +366,7 @@ export function createAiRoute(
 			const mainModelCanSee =
 				aiProfile.enableVision && providerMeta(aiProfile.provider).supportsVision;
 			if (!mainModelCanSee && !aiProfile.vision.model.trim()) {
-				return respondFailure(c, fail("not_configured", VISION_NOT_SET_MESSAGE));
+				return respondFailure(c, fail("not_configured", visionNotSetMessage()));
 			}
 		}
 		// 主人这一问贴的图(见 readImageUrls:为什么带字节而不是地址)。
@@ -418,10 +429,7 @@ export function createAiRoute(
 		if (skinMode && !(cardMode ? opts?.cardSkinStore : opts?.skinStore)) {
 			// 静默退回普通聊天(或另一种工坊)的话,主人会在一个根本做不了这种皮肤的
 			// 窗口里反复说「做套皮肤」,而女仆一本正经地打太极。
-			return respondFailure(
-				c,
-				fail("unsupported", "皮肤工坊在这个部署里没有装配好,请改用聊天模式"),
-			);
+			return respondFailure(c, fail("unsupported", serverText("service.routes.ai.text.13")));
 		}
 		const skinTools =
 			skinMode && !cardMode && opts?.skinStore
@@ -500,7 +508,7 @@ export function createAiRoute(
 		// `/weekly-report` 发了出去、女仆却当普通话回了一句,而消息流里连一枚
 		// 痕迹都没有 —— 他没法从界面上看出技能压根没生效。
 		if (skinMode && parsed.data.skill !== undefined) {
-			return respondFailure(c, fail("unsupported", "皮肤工坊里用不了技能,请回普通聊天窗口"));
+			return respondFailure(c, fail("unsupported", serverText("service.routes.ai.text.14")));
 		}
 		if (!skinMode && opts?.skillReader) {
 			await opts.skillReader.reload();
@@ -510,7 +518,11 @@ export function createAiRoute(
 				// 认不得就当场拒。静默发出去的话,主人以为在用技能、其实在跟模型说
 				// 一句它不认识的暗号 —— 老 `/锐评 只看这三个人` 栽的正是这个坑。
 				// 这一步在 markBusy 之前,所以没有账要销。
-				if (!pickedSkill) return respondFailure(c, fail("not_found", `没有叫「${named}」的技能`));
+				if (!pickedSkill)
+					return respondFailure(
+						c,
+						fail("not_found", serverText("service.routes.ai.text.15", { value0: named })),
+					);
 			} else {
 				// 主人自己点名了就不必再挂「读技能」那把工具 —— 正文这一轮已经在
 				// system 里了,再让模型去调一次是白烧一轮。
@@ -656,7 +668,11 @@ export function createAiRoute(
 					const reason = err instanceof Error ? err.message : String(err);
 					await sse.writeSSE({
 						event: "error",
-						data: JSON.stringify(errorBodyOf(fail("unavailable", `女仆那边没答上来：${reason}`))),
+						data: JSON.stringify(
+							errorBodyOf(
+								fail("unavailable", serverText("service.routes.ai.text.16", { value0: reason })),
+							),
+						),
 					});
 					return;
 				}
@@ -681,7 +697,7 @@ export function createAiRoute(
 					// 聊天期间这个会话被删了(另一个标签页 / 超出会话数上限被修剪)。
 					await sse.writeSSE({
 						event: "error",
-						data: JSON.stringify(errorBodyOf(fail("not_found", CONVERSATION_GONE_MESSAGE))),
+						data: JSON.stringify(errorBodyOf(fail("not_found", conversationGoneMessage()))),
 					});
 					return;
 				}
@@ -785,10 +801,10 @@ function toDetail(conv: Conversation): AiConversationDTO {
  * `file.type`。收的回 `undefined`,不收的回给主人看的中文原因。
  */
 function chatUploadRefusal(bytes: Uint8Array): string | undefined {
-	if (bytes.byteLength > MAX_CHAT_IMAGE_BYTES) return "图片过大（上限 5MB）";
+	if (bytes.byteLength > MAX_CHAT_IMAGE_BYTES) return serverText("service.routes.ai.text.17");
 	const format = sniffImageFormat(bytes);
-	if (format === undefined) return CHAT_IMAGE_UNSUPPORTED_MESSAGE;
-	if (format === "gif") return "不支持的图片类型：GIF（仅 PNG / JPEG / WebP）";
+	if (format === undefined) return chatImageUnsupportedMessage();
+	if (format === "gif") return serverText("service.routes.ai.text.18");
 	return undefined;
 }
 

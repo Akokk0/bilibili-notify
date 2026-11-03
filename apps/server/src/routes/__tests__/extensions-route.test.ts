@@ -59,7 +59,7 @@ import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createSourceContext } from "../../subscriptions/source-context.js";
 import { createExtensionsRoute } from "../extensions.js";
-import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
+import { requestErrorHandler, unhandledErrorMessage } from "../respond-failure.js";
 
 /**
  * 非 2xx 的体:平铺的 `{ code, message }`(+ 可选 `issues`),键集合钉死 —— 旧形状的 `err` /
@@ -976,7 +976,7 @@ describe("POST /api/ext/install", () => {
 		);
 		const crashed = await upload(app, form(pack()));
 		expect(crashed.status).toBe(503);
-		expect(await crashed.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(await crashed.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
 		expect(logged).toHaveLength(1);
 	});
 });
@@ -1089,7 +1089,7 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 		const res = await app.request("/bridge/swap", { method: "POST" });
 
 		expect(res.status).toBe(503);
-		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
+		expect(await res.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
 		expect(logged).toHaveLength(1);
 	});
 

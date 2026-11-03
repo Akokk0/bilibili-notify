@@ -245,7 +245,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	// 「图片」「字体文件」)。
 	app.post(
 		"/install",
-		uploadBodyLimit(MAX_EXTENSION_PACKAGE_BYTES, t("extensions.route.packageNoun")),
+		uploadBodyLimit(MAX_EXTENSION_PACKAGE_BYTES, () => t("extensions.route.packageNoun")),
 		async (c) => {
 			const install = opts.install;
 			if (!install)

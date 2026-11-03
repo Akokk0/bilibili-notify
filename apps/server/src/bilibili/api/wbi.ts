@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import md5 from "md5";
+import { t as serverText } from "../../i18n/index.js";
 
 // Bilibili WBI signing constant table
 const MIXIN_KEY_ENC_TAB = [
@@ -32,7 +33,7 @@ export function encWbi(params: Record<string, string | number | object>, keys: W
 			// P2:对象/数组值此前 String()→"[object Object]" 静默进签名,签名必错
 			// 却无任何线索。显式抛错把误用暴露在调用点(query 参数只应是标量)。
 			if (raw !== null && typeof raw === "object") {
-				throw new Error(`encWbi: 参数 "${key}" 为对象/数组,query 参数只接受标量`);
+				throw new Error(serverText("bilibili.api.wbi.text.1", { value0: key }));
 			}
 			const value = String(raw).replace(chrFilter, "");
 			return `${encodeURIComponent(key)}=${encodeURIComponent(value)}`;

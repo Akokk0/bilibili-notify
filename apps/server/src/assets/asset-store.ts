@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * 资产存储:一个目录里放一类文件,资产 id 就是文件名。
  *
@@ -209,16 +210,26 @@ export function createAssetStore(options: AssetStoreOptions): AssetStore {
 
 		async put({ bytes, ext, name, label }) {
 			if (!isKnownExt(formats, ext)) {
-				return invalid(`不支持的格式：${ext}（仅 ${Object.keys(formats).join(" / ")}）`);
+				return invalid(
+					serverText("service.assets.asset-store.text.1", {
+						value0: ext,
+						value1: Object.keys(formats).join(" / "),
+					}),
+				);
 			}
 			const limit =
 				typeof options.maxBytes === "function" ? options.maxBytes(ext) : options.maxBytes;
-			if (bytes.byteLength > limit) return invalid(`文件过大（上限 ${limit} 字节）`);
+			if (bytes.byteLength > limit)
+				return invalid(serverText("service.assets.asset-store.text.2", { value0: limit }));
 			let id: string;
 			if (naming.kind === "given") {
-				if (name === undefined) return invalid("缺少资产名字");
-				if (!isValidId(name)) return invalid(`资产名字不合法：${name}`);
-				if (extOfName(name) !== ext) return invalid(`资产名字 ${name} 的后缀与 ${ext} 对不上`);
+				if (name === undefined) return invalid(serverText("service.assets.asset-store.text.3"));
+				if (!isValidId(name))
+					return invalid(serverText("service.assets.asset-store.text.4", { value0: name }));
+				if (extOfName(name) !== ext)
+					return invalid(
+						serverText("service.assets.asset-store.text.5", { value0: name, value1: ext }),
+					);
 				id = name;
 			} else if (naming.kind === "sha256") {
 				id = `${createHash("sha256").update(bytes).digest("hex")}.${ext}`;

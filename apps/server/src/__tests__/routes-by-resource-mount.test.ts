@@ -27,7 +27,7 @@ import { settingsSegment } from "../bilibili/settings.js";
 import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
 import { createDevRegistry } from "../devtools/registry.js";
 import { createDevRoute } from "../devtools/route.js";
-import { ROUTE_NOT_FOUND_MESSAGE } from "../routes/respond-failure.js";
+import { routeNotFoundMessage } from "../routes/respond-failure.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 import type { UpdateService } from "../update/service.js";
 
@@ -255,7 +255,7 @@ async function hit(app: Hono, probe: Probe) {
 async function isRouteMissing(res: Response): Promise<boolean> {
 	if (res.status !== 404) return false;
 	const body = (await res.json().catch(() => null)) as { code?: string; message?: string } | null;
-	return body?.code === "not_found" && body.message === ROUTE_NOT_FOUND_MESSAGE;
+	return body?.code === "not_found" && body.message === routeNotFoundMessage();
 }
 
 const label = (p: Probe) => `${p.method} ${p.path}`;
@@ -273,7 +273,7 @@ describe("路由按资源整理(ADR-0036)的挂载", () => {
 			const app = await makeApp();
 			const res = await hit(app, probe);
 			expect(res.status).toBe(404);
-			expect(await res.json()).toEqual({ code: "not_found", message: ROUTE_NOT_FOUND_MESSAGE });
+			expect(await res.json()).toEqual({ code: "not_found", message: routeNotFoundMessage() });
 		},
 	);
 

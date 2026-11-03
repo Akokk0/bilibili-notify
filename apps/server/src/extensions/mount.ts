@@ -2,6 +2,7 @@ import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
 import { fail, type Logger } from "@bilibili-notify/internal";
 import type { ExtensionFetchHandler } from "@bilibili-notify/internal/extension";
 import { type Context, Hono } from "hono";
+import { t as serverText } from "../i18n/index.js";
 import { createRegistry } from "../integrations/registry.js";
 import { respondFailure } from "../routes/respond-failure.js";
 
@@ -49,7 +50,8 @@ export function createExtensionMounts(options: { logger: Logger }): ExtensionMou
 	async function dispatch(c: Context, id: string): Promise<Response> {
 		const handler = table.get(id);
 		// 没装 / 没启用 / 刚被撤下 —— 对外都是「这条路不存在」。
-		if (!handler) return respondFailure(c, fail("not_found", "没有这个拓展"));
+		if (!handler)
+			return respondFailure(c, fail("not_found", serverText("service.extensions.mount.text.1")));
 
 		// 前缀在这里剥掉:拓展注册的是 `/blob/:id`,它从不写 `/ext/bridge`。
 		const raw = c.req.raw;
@@ -63,7 +65,7 @@ export function createExtensionMounts(options: { logger: Logger }): ExtensionMou
 				`extension ${id} failed to handle ${raw.method} ${new URL(raw.url).pathname}`,
 				err,
 			);
-			return respondFailure(c, fail("unavailable", "拓展处理这次请求时出错了，详情在日志里"));
+			return respondFailure(c, fail("unavailable", serverText("service.extensions.mount.text.2")));
 		}
 	}
 

@@ -9,6 +9,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import type { ConfigStore } from "../config/store.js";
+import { t as serverText } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 
 export interface CreateSettingsReaderOptions<T> {
@@ -39,7 +40,11 @@ export function createSettingsReader<T>(opts: CreateSettingsReaderOptions<T>): {
 		const parsed = schema.safeParse(raw.settings);
 		if (parsed.success) return ok({ settings: parsed.data });
 		const issues = issuesFromZod(parsed.error);
-		return fail("invalid", issues[0]?.message ?? "设置读不懂", { issues });
+		return fail(
+			"invalid",
+			issues[0]?.message ?? serverText("service.integrations.settings-reader.text.1"),
+			{ issues },
+		);
 	};
 
 	/** 成功比值、失败比原因:原因变了读的人要据此换问题文案,所以也算「变了」。 */

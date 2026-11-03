@@ -1,3 +1,4 @@
+import { t as serverText } from "../i18n/index.js";
 /**
  * B 站这个集成的设置:`config/settings/bilibili.json`(ADR-0021 决策 42 下 10-01 的 🔗)。格式由 B 站自己定,
  * 登记进配置仓(今天在 `runtime/bootstrap.ts`,3a 起在组装根);核心不读这一份(守卫 12)。
@@ -50,7 +51,12 @@ export const settingsSegment: IntegrationSettingsSegment<BiliSettings> = {
 	schema: BiliSettingsSchema,
 	checkWrite(next, prev) {
 		if (next.dynamicCron === prev?.dynamicCron || isParsableCron(next.dynamicCron)) return [];
-		return [{ path: ["dynamicCron"], message: `不是合法的 cron 表达式："${next.dynamicCron}"` }];
+		return [
+			{
+				path: ["dynamicCron"],
+				message: serverText("bilibili.settings.text.1", { value0: next.dynamicCron }),
+			},
+		];
 	},
 };
 
@@ -61,7 +67,9 @@ export const settingsSegment: IntegrationSettingsSegment<BiliSettings> = {
  */
 export const BiliDynamicSettingsSchema = z.object({
 	dynamicCron: BiliSettingsSchema.shape.dynamicCron.refine(isParsableCron, {
-		message: "不是合法的 cron 表达式",
+		get message() {
+			return serverText("bilibili.settings.text.2");
+		},
 	}),
 });
 

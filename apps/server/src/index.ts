@@ -58,7 +58,7 @@ import { createReportDiscrepancyTable } from "./extensions/report-discrepancies.
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { bindTextSettings } from "./i18n/bind-settings.js";
-import { i18n, t } from "./i18n/index.js";
+import { i18n, t as serverText, t } from "./i18n/index.js";
 import { localeReaderOf } from "./i18n/locale-reader.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { settingsReaderOptionsOf } from "./integrations/settings-reader.js";
@@ -81,6 +81,10 @@ import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { connectionView, globalConfigView, integrationSettingsView } from "./routes/secret-view.js";
 import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
+import {
+	builtinCommandAliases,
+	displayedBuiltinCommandAliases,
+} from "./runtime/builtin-command-aliases.js";
 import {
 	type CommandDef,
 	command,
@@ -1077,9 +1081,21 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		commands.push(
 			command({
 				name: "help",
-				aliases: ["帮助", "?"],
-				signature: "[name:string|指令名]",
-				description: "看看能敲哪些指令",
+				aliases: builtinCommandAliases("help"),
+				get displayAliases() {
+					return displayedBuiltinCommandAliases("help");
+				},
+				get parameterLabels() {
+					return {
+						get name() {
+							return serverText("service.index.text.1");
+						},
+					};
+				},
+				signature: "[name:string]",
+				get description() {
+					return serverText("service.index.text.2");
+				},
 				example: "mute",
 				// values.name 由签名推出来,是 string | undefined —— 不用断言、不用 typeof。
 				// 报错里显示的是「指令名」那个显示名,不是 name。
@@ -1090,6 +1106,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					const entries = commands.map((c) => ({
 						...c,
 						aliases: effectiveAliases(c, cfg.aliases),
+						displayAliases: cfg.aliases[c.name] ?? c.displayAliases ?? c.aliases,
 					}));
 					await reply(renderHelp(entries, cfg.prefix, values.name));
 					// 查不到的指令名也是正常的回答(`renderHelp` 指路),不算办不成。
