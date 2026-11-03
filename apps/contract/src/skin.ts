@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 皮肤包 wire 契约 —— `skin.json` 的形状(schemaVersion 1)与语义字段清单。
  *
@@ -265,51 +266,90 @@ export type SkinCssHook = keyof typeof SKIN_CSS_HOOK_MAP;
  * 只教一边的话另一边会把同一个坑再踩一次(后者已删,见 {@link SKIN_BEST_PRACTICES})。
  */
 export const SKIN_CSS_HOOK_NOTES: Record<SkinCssHook, string> = {
-	page: "整页根(壁纸之上、内容之下;氛围层挂它的伪元素)",
-	glass:
-		"所有轻玻璃卡片(小到一行数据卡,大到整块面板)。**内环别用 `inset box-shadow`** —— inset 影画在**子元素之下**,卡里只要有一条带底色的表头或行,内环当场断掉一截(2026-08-24 真机:推送历史那张表的表头把内环盖了)。要一圈**压在内容之上**的环,用 `outline` + 负 `outline-offset`:outline 在绘制顺序里最后画,谁也盖不掉它,而且跟着圆角走。外圈用 border 也安全(子元素在内边距盒里,够不到边框)",
-	"glass-strong": "强玻璃面(弹层、浮条、抽屉);内环同 glass 那条 —— 走 outline,别走 inset 影",
-	btn: "所有按钮(矮元素,胶囊圆角安全)",
-	"btn-primary": "主按钮(粉色实底那种)",
-	"btn-danger":
-		"危险动作的按钮(删除 / 销毁),与 btn 同挂。**不写它的后果是「确认销毁」和「确认」长得一模一样** —— 实心那档同时挂着 btn-primary,你给主按钮刷什么色它就是什么色,红色这个信号整个没了;另外两档的红在字与边上,而你给 btn 写的边会把它盖掉。一句 background/border/color 就够,别做得比主按钮还醒目 —— 它是要人**慢一秒**的东西,不是要人点的",
-	input:
-		"输入框(单行输入、多行文本域、下拉选择框都挂它)。**聚焦态写 `:focus-within`,别写 `:focus`** —— 单行输入那一档挂点在**包壳 div** 上,div 不可聚焦,`:focus` 一辈子不触发(写了不会红、不会丢,只是永远不生效);而裸的 textarea / select 自己也匹配 `:focus-within`,一条就够两种形态",
-	header: "顶栏(横向长条)",
-	nav: "页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状",
-	avatar: "圆头像(本身已经是圆的)",
-	modal: "弹窗卡片本体",
-	badge:
-		"不可点的小徽章 —— 顶栏「服务器运行中」那类状态胶囊,以及行内那种紧凑计数/标签徽章(「订阅 UP 主 3」的那个 3)。**非交互**,别写 hover;底色多是语义色(平台色、推送类型色,不少还是行内样式),盖 background 会让徽章说谎,通常只描边加影。**同一挂点两种形态**:顶栏那种有内边距撑着,行内那种靠行高定高、上下没有余量 —— 描边一律用 outline+负 offset,写 border 会把它撑高 2px 顶开整行。**描边别用同色**:徽章的底与字本来就带着那个语义色(每颗还把它露成 `var(--bn-tint)`,想用够得到),再框一圈同色相当于整颗糊成一片,反而看不出是个徽章 —— 2026-08-24 真机试过一版同色描边,主人当场退回。想让它像个立体的小方块,描边取一个与底**对得起来**的颜色,类型色由底和字去说",
-	"nav-item":
-		"分区导航项 —— 宽视口是**竖栏里图标+标题+描述的多行卡**,窄视口是横条里的胶囊 chip,同一挂点两种形态,别按单一形态设形状;不写规则时默认装是「透明行、选中淡染」,想要选中项突出写 nav-item-active",
-	"nav-item-active":
-		"选中的那一项额外挂它(与 nav-item 同挂);选中态样式写在这儿,别写在 nav-item 上让整栏全亮",
-	tab: "横向 tab 条里的一格(顶栏一级导航、页面内 TabBar、作用域条都是);矮元素,胶囊圆角安全;不写规则时默认装是「透明字 tab、选中实底/下划线」",
-	"tab-active":
-		"选中的那个 tab 额外挂它(与 tab 同挂);注意有的 tab 默认装选中是强调色实底白字 —— 盖 background 时把 color 一起写了,别留白底白字",
-	option:
-		"候选行(下拉菜单的一行、命令面板候选、会话/草稿列表、字体列表、搜索结果)。**它不是按钮** —— 写实底会把一屏菜单画成一摞按钮,这一族正是因为这个才一直没有挂点;想让它有边界感,走淡底或描边",
-	"option-active":
-		"选中的那一行额外挂它(与 option 同挂);选中态写这儿,别写在 option 上让整列全亮。有几列候选的选中底是**品牌/平台色**染的(服务商卡、连接行),盖 background 盖得动 —— 但盖掉就等于把「这是哪一家」这条信息抹了,想留着就只描边加影",
-	note: "提示盒三件套的共同底(红「失败」/ 黄「有几处没照办」/ 空态框)。**这一档管造型**——圆角、描边、阴影;三者的颜色本来就跟着色板的 danger*/warning*/border 走,不必在这儿重写一遍",
-	"note-danger":
-		"「XX 失败」红字提示盒额外挂它(与 note 同挂);它是**出错才出现**的东西,别把它调得比正文还安静",
-	"note-warn":
-		"「做完了但有几处没照办」黄字提示盒额外挂它(与 note 同挂);要与 note-danger 一眼能分开——两者撞色等于没有分档",
-	"note-empty":
-		"「这里还什么都没有」空态框额外挂它(与 note 同挂);**虚线就是它的话**(「这儿是空的」),改成实线会让空态看着像一张真卡片",
-	"add-slot":
-		"「这里还能再加一个」的虚线空位(添加 UP 主的网格大卡、行内的添加胶囊、表单的「+ 添加一行」、挑文件上传格)。**虚线就是它的话**(同 note-empty 的道理)—— 别写实底 background 把空位画成一颗真按钮;**多形态**(网格大卡 / 整行 / 行内小钮),别按单一形态设形状、圆角别超过 24px;想调就调 border(粗细 / 线型 / 颜色)与淡底,hover 微染即可",
-	switch:
-		"开关轨道(Toggle,站里最常见的那颗粉色滑动开关)。**宽高是行内样式,写 width/height 没用**,这档管的是圆角、描边、阴影;底色分两档写(开的写 switch-on,这儿写的是关着的样子)",
-	"switch-on":
-		"开着的那颗额外挂它(与 switch 同挂)。**两档必须一眼分得开** —— 写成同一个底色等于整站的开关全部失去开/关,而默认装靠的正是「粉=开、灰=关」",
-	"switch-dot":
-		"轨道里那颗滑块(圆点)。轨道掰成直角时把它一起掰,不然方轨道里滚着个圆球;**别写 left/top/width/height**,那几个是行内的运动学量,写了也压不过去",
-	chip: "筛选/档位/开关的小胶囊(改的是值,不换视图 —— 换视图的是 tab);多形态且常挤在小容器里,别加占布局的 border,描边用 outline+负 offset",
-	"chip-active":
-		"选中/点亮的那颗 chip 额外挂它(与 chip 同挂)。**这一档只买得到造型**(圆角、描边样式、阴影、字重)—— 选中的底与边是行内的语义色,盖不动,而且是**刻意**盖不动:这排胶囊能同时亮好几颗(日志等级是多选),底一旦可盖,一句话就能把 debug/info/warn/error 四档抹成一个颜色。别在这儿写 background,写了也不会生效。**描边颜色写 `var(--bn-tint)`** —— 选中那颗把自己那档的语义色露在这个变量里;写死一个颜色的话,`outline-offset` 负值那圈会正好压在语义色边上,四档看起来就成了同一个色(2026-08-24 真机翻过这个车)",
+	get page() {
+		return packageText("contract.skin.1");
+	},
+	get glass() {
+		return packageText("contract.skin.2");
+	},
+	get "glass-strong"() {
+		return packageText("contract.skin.3");
+	},
+	get btn() {
+		return packageText("contract.skin.4");
+	},
+	get "btn-primary"() {
+		return packageText("contract.skin.5");
+	},
+	get "btn-danger"() {
+		return packageText("contract.skin.6");
+	},
+	get input() {
+		return packageText("contract.skin.7");
+	},
+	get header() {
+		return packageText("contract.skin.8");
+	},
+	get nav() {
+		return packageText("contract.skin.9");
+	},
+	get avatar() {
+		return packageText("contract.skin.10");
+	},
+	get modal() {
+		return packageText("contract.skin.11");
+	},
+	get badge() {
+		return packageText("contract.skin.12");
+	},
+	get "nav-item"() {
+		return packageText("contract.skin.13");
+	},
+	get "nav-item-active"() {
+		return packageText("contract.skin.14");
+	},
+	get tab() {
+		return packageText("contract.skin.15");
+	},
+	get "tab-active"() {
+		return packageText("contract.skin.16");
+	},
+	get option() {
+		return packageText("contract.skin.17");
+	},
+	get "option-active"() {
+		return packageText("contract.skin.18");
+	},
+	get note() {
+		return packageText("contract.skin.19");
+	},
+	get "note-danger"() {
+		return packageText("contract.skin.20");
+	},
+	get "note-warn"() {
+		return packageText("contract.skin.21");
+	},
+	get "note-empty"() {
+		return packageText("contract.skin.22");
+	},
+	get "add-slot"() {
+		return packageText("contract.skin.23");
+	},
+	get switch() {
+		return packageText("contract.skin.24");
+	},
+	get "switch-on"() {
+		return packageText("contract.skin.25");
+	},
+	get "switch-dot"() {
+		return packageText("contract.skin.26");
+	},
+	get chip() {
+		return packageText("contract.skin.27");
+	},
+	get "chip-active"() {
+		return packageText("contract.skin.28");
+	},
 };
 
 /**
@@ -613,3 +653,52 @@ export interface SkinAiEditResponse {
 	manifest: SkinManifest;
 	warnings: string[];
 }
+
+/** 给模型的固定规则；人用的同源帮助由上面的惰性表按当前语言取。 */
+export const SKIN_CSS_MODEL_HOOK_NOTES: Record<SkinCssHook, string> = {
+	page: "整页根(壁纸之上、内容之下;氛围层挂它的伪元素)",
+	glass:
+		"所有轻玻璃卡片(小到一行数据卡,大到整块面板)。**内环别用 `inset box-shadow`** —— inset 影画在**子元素之下**,卡里只要有一条带底色的表头或行,内环当场断掉一截(2026-08-24 真机:推送历史那张表的表头把内环盖了)。要一圈**压在内容之上**的环,用 `outline` + 负 `outline-offset`:outline 在绘制顺序里最后画,谁也盖不掉它,而且跟着圆角走。外圈用 border 也安全(子元素在内边距盒里,够不到边框)",
+	"glass-strong": "强玻璃面(弹层、浮条、抽屉);内环同 glass 那条 —— 走 outline,别走 inset 影",
+	btn: "所有按钮(矮元素,胶囊圆角安全)",
+	"btn-primary": "主按钮(粉色实底那种)",
+	"btn-danger":
+		"危险动作的按钮(删除 / 销毁),与 btn 同挂。**不写它的后果是「确认销毁」和「确认」长得一模一样** —— 实心那档同时挂着 btn-primary,你给主按钮刷什么色它就是什么色,红色这个信号整个没了;另外两档的红在字与边上,而你给 btn 写的边会把它盖掉。一句 background/border/color 就够,别做得比主按钮还醒目 —— 它是要人**慢一秒**的东西,不是要人点的",
+	input:
+		"输入框(单行输入、多行文本域、下拉选择框都挂它)。**聚焦态写 `:focus-within`,别写 `:focus`** —— 单行输入那一档挂点在**包壳 div** 上,div 不可聚焦,`:focus` 一辈子不触发(写了不会红、不会丢,只是永远不生效);而裸的 textarea / select 自己也匹配 `:focus-within`,一条就够两种形态",
+	header: "顶栏(横向长条)",
+	nav: "页面级导航容器 —— 横向 tab 条和**竖向的分区列表**都挂它,别当成横条设形状",
+	avatar: "圆头像(本身已经是圆的)",
+	modal: "弹窗卡片本体",
+	badge:
+		"不可点的小徽章 —— 顶栏「服务器运行中」那类状态胶囊,以及行内那种紧凑计数/标签徽章(「订阅 3」的那个 3)。**非交互**,别写 hover;底色多是语义色(平台色、推送类型色,不少还是行内样式),盖 background 会让徽章说谎,通常只描边加影。**同一挂点两种形态**:顶栏那种有内边距撑着,行内那种靠行高定高、上下没有余量 —— 描边一律用 outline+负 offset,写 border 会把它撑高 2px 顶开整行。**描边别用同色**:徽章的底与字本来就带着那个语义色(每颗还把它露成 `var(--bn-tint)`,想用够得到),再框一圈同色相当于整颗糊成一片,反而看不出是个徽章 —— 2026-08-24 真机试过一版同色描边,主人当场退回。想让它像个立体的小方块,描边取一个与底**对得起来**的颜色,类型色由底和字去说",
+	"nav-item":
+		"分区导航项 —— 宽视口是**竖栏里图标+标题+描述的多行卡**,窄视口是横条里的胶囊 chip,同一挂点两种形态,别按单一形态设形状;不写规则时默认装是「透明行、选中淡染」,想要选中项突出写 nav-item-active",
+	"nav-item-active":
+		"选中的那一项额外挂它(与 nav-item 同挂);选中态样式写在这儿,别写在 nav-item 上让整栏全亮",
+	tab: "横向 tab 条里的一格(顶栏一级导航、页面内 TabBar、作用域条都是);矮元素,胶囊圆角安全;不写规则时默认装是「透明字 tab、选中实底/下划线」",
+	"tab-active":
+		"选中的那个 tab 额外挂它(与 tab 同挂);注意有的 tab 默认装选中是强调色实底白字 —— 盖 background 时把 color 一起写了,别留白底白字",
+	option:
+		"候选行(下拉菜单的一行、命令面板候选、会话/草稿列表、字体列表、搜索结果)。**它不是按钮** —— 写实底会把一屏菜单画成一摞按钮,这一族正是因为这个才一直没有挂点;想让它有边界感,走淡底或描边",
+	"option-active":
+		"选中的那一行额外挂它(与 option 同挂);选中态写这儿,别写在 option 上让整列全亮。有几列候选的选中底是**品牌/平台色**染的(服务商卡、连接行),盖 background 盖得动 —— 但盖掉就等于把「这是哪一家」这条信息抹了,想留着就只描边加影",
+	note: "提示盒三件套的共同底(红「失败」/ 黄「有几处没照办」/ 空态框)。**这一档管造型**——圆角、描边、阴影;三者的颜色本来就跟着色板的 danger*/warning*/border 走,不必在这儿重写一遍",
+	"note-danger":
+		"「XX 失败」红字提示盒额外挂它(与 note 同挂);它是**出错才出现**的东西,别把它调得比正文还安静",
+	"note-warn":
+		"「做完了但有几处没照办」黄字提示盒额外挂它(与 note 同挂);要与 note-danger 一眼能分开——两者撞色等于没有分档",
+	"note-empty":
+		"「这里还什么都没有」空态框额外挂它(与 note 同挂);**虚线就是它的话**(「这儿是空的」),改成实线会让空态看着像一张真卡片",
+	"add-slot":
+		"「这里还能再加一个」的虚线空位(添加订阅的网格大卡、行内的添加胶囊、表单的「+ 添加一行」、挑文件上传格)。**虚线就是它的话**(同 note-empty 的道理)—— 别写实底 background 把空位画成一颗真按钮;**多形态**(网格大卡 / 整行 / 行内小钮),别按单一形态设形状、圆角别超过 24px;想调就调 border(粗细 / 线型 / 颜色)与淡底,hover 微染即可",
+	switch:
+		"开关轨道(Toggle,站里最常见的那颗粉色滑动开关)。**宽高是行内样式,写 width/height 没用**,这档管的是圆角、描边、阴影;底色分两档写(开的写 switch-on,这儿写的是关着的样子)",
+	"switch-on":
+		"开着的那颗额外挂它(与 switch 同挂)。**两档必须一眼分得开** —— 写成同一个底色等于整站的开关全部失去开/关,而默认装靠的正是「粉=开、灰=关」",
+	"switch-dot":
+		"轨道里那颗滑块(圆点)。轨道掰成直角时把它一起掰,不然方轨道里滚着个圆球;**别写 left/top/width/height**,那几个是行内的运动学量,写了也压不过去",
+	chip: "筛选/档位/开关的小胶囊(改的是值,不换视图 —— 换视图的是 tab);多形态且常挤在小容器里,别加占布局的 border,描边用 outline+负 offset",
+	"chip-active":
+		"选中/点亮的那颗 chip 额外挂它(与 chip 同挂)。**这一档只买得到造型**(圆角、描边样式、阴影、字重)—— 选中的底与边是行内的语义色,盖不动,而且是**刻意**盖不动:这排胶囊能同时亮好几颗(日志等级是多选),底一旦可盖,一句话就能把 debug/info/warn/error 四档抹成一个颜色。别在这儿写 background,写了也不会生效。**描边颜色写 `var(--bn-tint)`** —— 选中那颗把自己那档的语义色露在这个变量里;写死一个颜色的话,`outline-offset` 负值那圈会正好压在语义色边上,四档看起来就成了同一个色(2026-08-24 真机翻过这个车)",
+};

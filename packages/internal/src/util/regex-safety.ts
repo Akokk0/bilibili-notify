@@ -1,3 +1,4 @@
+import { packageText } from "../texts";
 /**
  * 用户可配正则的安全闸门 —— **单一权威**。
  *
@@ -112,15 +113,18 @@ export interface SafeRegexCheck {
  */
 export function checkUserRegex(src: string, maxLen = DEFAULT_MAX_REGEX_LEN): SafeRegexCheck {
 	if (src.length > maxLen) {
-		return { ok: false, reason: `正则过长(>${maxLen} 字符),拒绝以防 ReDoS` };
+		return { ok: false, reason: packageText("internal.util.regex-safety.1", { value0: maxLen }) };
 	}
 	if (isCatastrophicRegexSource(src)) {
-		return { ok: false, reason: "正则疑似灾难性回溯(嵌套量词 / 交替重叠),拒绝执行" };
+		return { ok: false, reason: packageText("internal.util.regex-safety.2") };
 	}
 	try {
 		new RegExp(src);
 	} catch (e) {
-		return { ok: false, reason: `正则非法:${(e as Error).message}` };
+		return {
+			ok: false,
+			reason: packageText("internal.util.regex-safety.3", { value0: (e as Error).message }),
+		};
 	}
 	return { ok: true, reason: "" };
 }

@@ -8,6 +8,7 @@ import {
 	type ServiceContext,
 	type ThinkingLevel,
 } from "@bilibili-notify/internal";
+import { packageText } from "@bilibili-notify/internal/texts";
 import type OpenAI from "openai";
 import { parseCreator } from "./creator";
 import { mergeExtraParams, parseExtraParams } from "./extra-params";
@@ -360,7 +361,7 @@ export interface CommentaryCallOverride {
 
 /** 被调用方取消时抛的错。带记号是为了让外圈的 catch 认得出它、别再换个姿势重来。 */
 function cancelledError(): Error {
-	return Object.assign(new Error("已取消"), { cancelled: true });
+	return Object.assign(new Error(packageText("ai.commentary-generator.1")), { cancelled: true });
 }
 
 /**
@@ -788,11 +789,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 				images: imageUrls,
 				describe: async (url) => {
 					const [text] = await this.describeImagesLogged([url], model);
-					if (text === null) throw new Error("视觉模型没能识别这张图");
+					if (text === null) throw new Error(packageText("ai.commentary-generator.2"));
 					return text;
 				},
 			},
-			note: `（本条消息附带了 ${n} 张图片。你看不见它们,需要时请用 describe_image 工具按序号 1~${n} 逐张查看。）`,
+			note: packageText("ai.commentary-generator.3", { value0: n, value1: n }),
 		};
 	}
 
@@ -855,8 +856,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const cfg = this.config.vision;
 		const baseURL = cfg?.baseURL?.trim() || this.config.baseURL;
 		const apiKey = cfg?.apiKey?.trim() || this.config.apiKey;
-		if (!apiKey) throw new Error("视觉模型 apiKey 未配置(且主模型的也是空的)");
-		if (!baseURL) throw new Error("视觉模型 baseURL 未配置(且主模型的也是空的)");
+		if (!apiKey) throw new Error(packageText("ai.commentary-generator.4"));
+		if (!baseURL) throw new Error(packageText("ai.commentary-generator.5"));
 
 		const { default: OpenAI } = await import("openai");
 		// maxRetries 归零同主路:一道 60s 的闸叠上 SDK 默认的两次重试就是 180s,而
@@ -877,7 +878,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				],
 			});
 			const choice = res.choices?.[0];
-			if (!choice) throw new Error("视觉模型返回空 choices(疑似命中内容审查或上游异常)");
+			if (!choice) throw new Error(packageText("ai.commentary-generator.6"));
 			// 只报成功返回的那张 —— 空 choices 与 callAPI 那边同一口径,不算。
 			onUsage(readTokenUsage(res.usage));
 			return choice.message.content ?? "";
@@ -979,7 +980,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		messages: readonly ConversationMessage[],
 		opts?: ChatStatelessOptions,
 	): Promise<string> {
-		if (messages.length === 0) throw new Error("对话历史为空");
+		if (messages.length === 0) throw new Error(packageText("ai.commentary-generator.7"));
 
 		// slice 顺带把调用方的数组复制了一份,这一点是必需的而非顺手:callAPI 的
 		// 工具循环会**就地**往 messages 里 push 助手回复 / 工具结果,直接把持久化
@@ -1164,10 +1165,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	async summarizeTitle(exchange: readonly ConversationMessage[]): Promise<string> {
-		if (exchange.length === 0) throw new Error("没有可总结的对话");
+		if (exchange.length === 0) throw new Error(packageText("ai.commentary-generator.8"));
 		const { apiKey, baseURL, model } = this.config;
-		if (!apiKey) throw new Error("AI apiKey 未配置");
-		if (!baseURL) throw new Error("AI baseURL 未配置");
+		if (!apiKey) throw new Error(packageText("ai.commentary-generator.9"));
+		if (!baseURL) throw new Error(packageText("ai.commentary-generator.10"));
 
 		const { default: OpenAI } = await import("openai");
 		// 同视觉那条:标题没起出来就用默认标题,不值得为它把等待翻三倍。
@@ -1208,7 +1209,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		const title = clipTitle(stripTitleDecoration(res.choices?.[0]?.message?.content ?? ""));
 		// 空标题比「你好」更糟 —— 侧栏那一行会变成一片空白,看着像会话坏了。
-		if (!title) throw new Error("模型没给出标题");
+		if (!title) throw new Error(packageText("ai.commentary-generator.11"));
 		return title;
 	}
 
@@ -1227,13 +1228,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const status = (e as { status?: unknown } | null)?.status;
 		const msg =
 			status === 401
-				? "AI 网关拒绝:API Key 无效或已失效(401)"
+				? packageText("ai.commentary-generator.12")
 				: status === 402
-					? "AI 网关拒绝:账户余额不足或配额已用尽(402)"
+					? packageText("ai.commentary-generator.13")
 					: status === 403
-						? "AI 网关拒绝:无权访问该模型(403)"
+						? packageText("ai.commentary-generator.14")
 						: status === 429
-							? "AI 网关拒绝:请求过于频繁,已被限流(429)"
+							? packageText("ai.commentary-generator.15")
 							: null;
 		// 带上 status 再抛:外层那条 thinking 降级路径也要靠它认出「重来也没用」。
 		// **headers 也要带**:流式那条路的 429 就是在这里被重新造成一个新错误的,
@@ -1269,10 +1270,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// catch 再问一次**「重来有没有用」,而翻译过的中文里既没有 timeout 也没有
 		// status,认不出来就又掉进方言降级那条路 —— 判过死刑的错误再撞一次,正是这
 		// 整件事要修的毛病。
-		return Object.assign(
-			new Error("AI 网关超时:模型在死线内没把这次回答吐完(生成太长 / 服务商太慢)"),
-			{ timedOut: true },
-		);
+		return Object.assign(new Error(packageText("ai.commentary-generator.16")), { timedOut: true });
 	}
 
 	/**
@@ -1382,7 +1380,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			// 照抄给主人等于什么都没说。打上记号是为了别再被当成「换个姿势重来」
 			// 的理由 —— 卡住和超时同类。
 			if (controller.signal.aborted) {
-				throw Object.assign(new Error("AI 网关卡住:流开着但迟迟没有新内容,已断开"), {
+				throw Object.assign(new Error(packageText("ai.commentary-generator.17")), {
 					timedOut: true,
 				});
 			}
@@ -1540,8 +1538,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 	): Promise<string> {
 		const { apiKey, baseURL } = this.config;
 		const model = override?.model ?? this.config.model;
-		if (!apiKey) throw new Error("AI apiKey 未配置");
-		if (!baseURL) throw new Error("AI baseURL 未配置");
+		if (!apiKey) throw new Error(packageText("ai.commentary-generator.18"));
+		if (!baseURL) throw new Error(packageText("ai.commentary-generator.19"));
 		const signal = override?.signal;
 		if (signal?.aborted) throw cancelledError();
 		/**
@@ -1610,7 +1608,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		if (extra.dropped?.length) {
 			this.warnOnce(
 				`extra-params-dropped:${extra.dropped.join(",")}`,
-				`[api] 额外请求参数里的 ${extra.dropped.join(" / ")} 被忽略了 —— 这些字段是请求的骨架,覆盖它们会让对话或工具静默失灵`,
+				packageText("ai.commentary-generator.20", { value0: extra.dropped.join(" / ") }),
 			);
 		}
 
@@ -1707,7 +1705,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			// undefined";给出明确可诊断的错误,让调用方 catch 后回退纯文字。
 			const choice = res.choices?.[0];
 			if (!choice) {
-				throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
+				throw new Error(packageText("ai.commentary-generator.21"));
 			}
 			// 回落路径下这一轮的思考与正文都是一次性到手的。仍然按「先想后说」的
 			// 顺序交给回调 —— 调用方只认「分片流」这一种形状,不必为「有时候流、
@@ -1771,7 +1769,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 						);
 						const choice = res.choices?.[0];
 						if (!choice) {
-							throw new Error("AI 网关返回空 choices(疑似命中内容审查或上游异常),无法生成");
+							throw new Error(packageText("ai.commentary-generator.22"));
 						}
 						// 与 fetchRound 的非流式回落同一条纪律:message 上的思考也要补喂,
 						// 先想后说。摘掉的只是**请求侧**的方言参数 —— 默认开思考的模型
@@ -1847,7 +1845,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			}
 		}
 
-		return "（工具调用轮次已达上限）";
+		return packageText("ai.commentary-generator.23");
 	}
 
 	/**
@@ -1918,7 +1916,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			)) as { output?: unknown[]; usage?: unknown };
 			const items = res.output;
 			if (!Array.isArray(items)) {
-				throw new Error("AI 网关返回的 responses 响应缺少 output(疑似不支持该协议或命中审查)");
+				throw new Error(packageText("ai.commentary-generator.24"));
 			}
 			if (emitReasoning) {
 				const think = responsesReasoningText(items);
@@ -2016,7 +2014,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			}
 		}
 
-		return "（工具调用轮次已达上限）";
+		return packageText("ai.commentary-generator.25");
 	}
 
 	/**
@@ -2086,13 +2084,15 @@ export class CommentaryGenerator implements CommentaryProvider {
 				items = (ev.response as { output?: unknown[] } | undefined)?.output ?? [];
 			} else if (type === "response.failed") {
 				const msg = (ev.response as { error?: { message?: unknown } } | undefined)?.error?.message;
-				throw new Error(typeof msg === "string" ? msg : "responses 流式响应报告失败");
+				throw new Error(typeof msg === "string" ? msg : packageText("ai.commentary-generator.26"));
 			} else if (type === "error") {
-				throw new Error(typeof ev.message === "string" ? ev.message : "responses 流式响应错误");
+				throw new Error(
+					typeof ev.message === "string" ? ev.message : packageText("ai.commentary-generator.27"),
+				);
 			}
 		}
 		if (!items) {
-			throw new Error("responses 流式未收到 response.completed(网关可能不支持流式)");
+			throw new Error(packageText("ai.commentary-generator.28"));
 		}
 		return { items, usage: readTokenUsage(usage) };
 	}

@@ -93,7 +93,7 @@ const duration: BlockRenderer<SuperchatCardView> = (p) =>
 			class="inline-flex items-center"
 			style={{ "--bn-card-tier-color": p.bgColor[0] }}
 		>
-			{SVG_DURATION}
+			{SVG_DURATION()}
 			<span>{p.duration}</span>
 		</div>
 	) : null;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { packageText } from "../texts";
 import {
 	ApiRevisionSchema,
 	ExtensionIdSchema,
@@ -101,31 +102,55 @@ export function checkMarketplaceIndex(
 ): MarketplaceIndexCheck {
 	const seen = new Set<string>();
 	for (const entry of index.extensions) {
-		const tier = isPrereleaseEntry(entry) ? "预发布" : "正式";
+		const tier = isPrereleaseEntry(entry)
+			? packageText("internal.schema.extension-marketplace.1")
+			: packageText("internal.schema.extension-marketplace.2");
 		if (isPrereleaseEntry(entry) !== entry.version.includes("-"))
 			return {
 				ok: false,
-				err: `索引里 ${entry.id} ${entry.version} 标成了${tier}版,与版本号对不上`,
+				err: packageText("internal.schema.extension-marketplace.3", {
+					value0: entry.id,
+					value1: entry.version,
+					value2: tier,
+				}),
 			};
 		// 键别写成 `id@x`,那是 revoked 里 `id@version` 的样子。
-		const key = `${tier} ${entry.id} 契约${entry.apiVersion}`;
+		const key = packageText("internal.schema.extension-marketplace.4", {
+			value0: tier,
+			value1: entry.id,
+			value2: entry.apiVersion,
+		});
 		if (seen.has(key))
 			return {
 				ok: false,
-				err: `索引里 ${entry.id} 的${tier}版(契约 v${entry.apiVersion})列了两遍`,
+				err: packageText("internal.schema.extension-marketplace.5", {
+					value0: entry.id,
+					value1: tier,
+					value2: entry.apiVersion,
+				}),
 			};
 		seen.add(key);
 	}
 	if (opts.official) {
-		if (index.issuedAt === undefined) return { ok: false, err: "官方索引缺 issuedAt" };
+		if (index.issuedAt === undefined)
+			return { ok: false, err: packageText("internal.schema.extension-marketplace.6") };
 		const stray = index.extensions.find((entry) => extensionNamespaceOf(entry.id) !== undefined);
-		if (stray) return { ok: false, err: `官方索引里的 ${stray.id} 带了命名空间` };
+		if (stray)
+			return {
+				ok: false,
+				err: packageText("internal.schema.extension-marketplace.7", { value0: stray.id }),
+			};
 		return { ok: true };
 	}
-	if (!index.namespace) return { ok: false, err: "第三方源必须声明 namespace" };
+	if (!index.namespace)
+		return { ok: false, err: packageText("internal.schema.extension-marketplace.8") };
 	const ns = index.namespace;
 	const stray = index.extensions.find((entry) => extensionNamespaceOf(entry.id) !== ns);
-	if (stray) return { ok: false, err: `${stray.id} 不在这个源的命名空间「${ns}」里` };
+	if (stray)
+		return {
+			ok: false,
+			err: packageText("internal.schema.extension-marketplace.9", { value0: stray.id, value1: ns }),
+		};
 	return { ok: true };
 }
 

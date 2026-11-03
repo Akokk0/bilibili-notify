@@ -97,7 +97,7 @@ export const ADVICE =
  * 棘轮表:文件 → 命中的上限(4-09 开张时的现数:65 个文件 298 处)。只许往下调;第 4 期面板按描述符重画时成片消,第 5 期末清零。
  */
 export const RATCHET = {
-	"apps/contract/src/skin.ts": 3,
+	"apps/contract/src/skin.ts": 1,
 	"apps/server/src/card-skins/ai-css.ts": 1,
 	"apps/server/src/devtools/scenarios/capture.ts": 1,
 	"apps/server/src/devtools/scenarios/timers.ts": 1,
@@ -122,8 +122,6 @@ export const RATCHET = {
 	"packages/ai/src/commentary-generator.ts": 1,
 	"packages/ai/src/tools.ts": 1,
 	"packages/image/src/image-renderer.ts": 2,
-	"packages/internal/src/card-skin.ts": 7,
-	"packages/internal/src/schema/card-skin.ts": 2,
 	"packages/storage/src/key-manager.ts": 1,
 	"packages/storage/src/key-provider.ts": 2,
 };

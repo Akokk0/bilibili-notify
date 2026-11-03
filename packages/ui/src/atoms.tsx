@@ -1,3 +1,4 @@
+import { useUiText } from "./texts";
 /**
  * Atoms — Tailwind/JSX ports of `.bn-design/shared.jsx`. Inline-style escapes
  * are kept where Tailwind utilities can't take dynamic hex (per-UP color rings,
@@ -486,11 +487,14 @@ export interface AddFileButtonProps {
 export function AddFileButton({
 	accept,
 	uploading,
-	uploadingLabel = "上传中…",
+	uploadingLabel,
 	onFile,
 	className,
 	children,
 }: AddFileButtonProps) {
+	const tx = useUiText();
+	uploadingLabel ??= tx("ui.atoms.1");
+
 	return (
 		<label data-bn="add-slot" className={`cursor-pointer ${ADD_LANGUAGE} ${className ?? ""}`}>
 			{uploading ? uploadingLabel : children}
@@ -1545,9 +1549,12 @@ export function Donut({
 	color = "var(--color-bn-pink)",
 	stroke = 13,
 	label,
-	title = "占比",
+	title,
 	segments,
 }: DonutProps) {
+	const tx = useUiText();
+	title ??= tx("ui.atoms.2");
+
 	const r = (size - stroke) / 2;
 	const c = 2 * Math.PI * r;
 	const raw = segments ?? [{ value, color }];

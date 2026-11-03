@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import * as wire from "../../extension/wire";
+import { bindPackageText } from "../../texts";
 import {
 	ActionNameSchema,
 	apiVersionAccepted,
@@ -1283,4 +1284,20 @@ it("宿主追加 ID 规则仍拒绝顶层多余键，清单不降为宽松格式
 		parseExtensionManifest(currentManifest({ id: "reserved-source" }), undefined, hostId),
 	).toMatchObject({ ok: false, reason: "unreadable" });
 	expect(parseExtensionManifest(currentManifest(), undefined, hostId).ok).toBe(true);
+});
+
+it("已加载的清单schema在校验发生时取当前文案", () => {
+	const original = ExtensionIdSchema.safeParse("INVALID ID");
+	expect(original.success).toBe(false);
+	const binding = bindPackageText(() => "Use a lowercase extension id");
+	try {
+		const translated = ExtensionIdSchema.safeParse("INVALID ID");
+		expect(translated.success).toBe(false);
+		if (!translated.success)
+			expect(translated.error.issues[0]?.message).toBe("Use a lowercase extension id");
+		expect(ExtensionIdSchema.safeParse("preview.notes").success).toBe(true);
+	} finally {
+		binding.dispose();
+	}
+	expect(ExtensionIdSchema.safeParse("INVALID ID")).toEqual(original);
 });

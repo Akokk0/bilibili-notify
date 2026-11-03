@@ -5,7 +5,12 @@
  *   失败**带错误反馈自动重试一次**,二败才对外报错。产物是清洗后的 manifest,不落盘。
  */
 
-import { SKIN_CSS_HOOK_MAP } from "@bilibili-notify/contract";
+import {
+	SKIN_CSS_HOOK_MAP,
+	SKIN_CSS_HOOK_NOTES,
+	SKIN_CSS_MODEL_HOOK_NOTES,
+} from "@bilibili-notify/contract";
+import { bindPackageText } from "@bilibili-notify/internal/texts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { buildSkinAiSystemPrompt, runSkinAiEdit } from "../ai-edit.js";
 
@@ -183,4 +188,16 @@ describe("runSkinAiEdit", () => {
 		expect(res.errors.join()).toContain("assets/nope.png");
 		expect(gen).toHaveBeenCalledTimes(2);
 	});
+});
+
+it("keeps model rules fixed while the human hook guide follows the current translator", () => {
+	const original = SKIN_CSS_MODEL_HOOK_NOTES.glass;
+	const binding = bindPackageText(() => "Changed human help");
+	try {
+		expect(SKIN_CSS_HOOK_NOTES.glass).toBe("Changed human help");
+		expect(SKIN_CSS_MODEL_HOOK_NOTES.glass).toBe(original);
+		expect(buildSkinAiSystemPrompt(ASSETS)).toContain(original);
+	} finally {
+		binding.dispose();
+	}
 });

@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import { fail, ok, type Result } from "@bilibili-notify/internal/result";
+import { packageText } from "@bilibili-notify/internal/texts";
 
 /**
  * 这个地址是不是公网地址 —— 抓图那一层拦内网(防 SSRF)用的判定,`FetchOptions.addressCheck` 的生产默认实现。
@@ -29,11 +30,11 @@ export function requirePublicAddress(address: string): Result {
 		if (embedded) return isReservedIPv4(embedded) ? refuse(address) : ok();
 		return isReservedIPv6(bytes) ? refuse(address) : ok();
 	}
-	return fail("invalid", `不是 IP 地址: ${address}`);
+	return fail("invalid", packageText("http.public-address.1", { value0: address }));
 }
 
 function refuse(address: string): Result {
-	return fail("invalid", `内网或保留地址,不连: ${address}`);
+	return fail("invalid", packageText("http.public-address.2", { value0: address }));
 }
 
 function isReservedIPv4([a = 0, b = 0, c = 0]: readonly number[]): boolean {

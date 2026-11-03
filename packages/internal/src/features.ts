@@ -1,3 +1,4 @@
+import { packageText } from "./texts/index";
 /**
  * 订阅特性与附加项词表 —— 哪些事件能单独开关、每个附加项跟着谁走、出厂值是什么。
  *
@@ -85,10 +86,36 @@ export const PUSH_EXTRAS: Record<
 	ExtraKey,
 	{ feature: FeatureKey; label: string; default: boolean; capability?: "atAll" }
 > = {
-	atAllPost: { feature: "post", label: "@全体", default: false, capability: "atAll" },
-	atAllLiveStart: { feature: "liveStart", label: "@全体", default: true, capability: "atAll" },
-	wordcloud: { feature: "liveEnd", label: "弹幕词云", default: true },
-	liveSummary: { feature: "liveEnd", label: "AI 总结", default: true },
+	atAllPost: {
+		feature: "post",
+		get label() {
+			return packageText("internal.features.1");
+		},
+		default: false,
+		capability: "atAll",
+	},
+	atAllLiveStart: {
+		feature: "liveStart",
+		get label() {
+			return packageText("internal.features.2");
+		},
+		default: true,
+		capability: "atAll",
+	},
+	wordcloud: {
+		feature: "liveEnd",
+		get label() {
+			return packageText("internal.features.3");
+		},
+		default: true,
+	},
+	liveSummary: {
+		feature: "liveEnd",
+		get label() {
+			return packageText("internal.features.4");
+		},
+		default: true,
+	},
 };
 
 /** 四把附加项开关。全局一份、per-UP 一份 partial(schema 见 schema/common.ts)。 */

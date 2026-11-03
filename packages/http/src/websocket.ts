@@ -1,5 +1,6 @@
 import type { WebSocketLike, WebSocketOptions } from "@bilibili-notify/internal";
 import { fail, ok, type Result } from "@bilibili-notify/internal/result";
+import { packageText } from "@bilibili-notify/internal/texts";
 import WebSocket from "ws";
 
 /**
@@ -27,7 +28,10 @@ export function connectWebSocket(
 	try {
 		socket = new WebSocket(url, { headers });
 	} catch {
-		return fail("invalid", `不支持的 WebSocket 地址: ${url.origin}${url.pathname}`);
+		return fail(
+			"invalid",
+			packageText("http.websocket.1", { value0: url.origin, value1: url.pathname }),
+		);
 	}
 	if (signal) {
 		const abort = () => socket.close();

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { packageText } from "../texts";
 import { ActionNameSchema, ExtensionImageSchema, FieldKeySchema } from "./extension-manifest";
 
 /**
@@ -64,11 +65,12 @@ const ViewImageKeySchema = z
 	.string()
 	.min(1)
 	.max(64)
-	.regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/, "图片的键只能是字母或数字开头的字母、数字与 _ . : -")
-	.refine(
-		(key) => !Object.hasOwn(Object.prototype, key),
-		"图片的键不能用 JS 对象原型上的名字(constructor / toString 这类)",
-	);
+	.regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/, {
+		error: () => packageText("internal.schema.extension-view.1"),
+	})
+	.refine((key) => !Object.hasOwn(Object.prototype, key), {
+		error: () => packageText("internal.schema.extension-view.2"),
+	});
 
 /**
  * 视图顶层的图片字典:键 → 图片的 base64 data URL(决策 39)。单张的类型与大小沿用选项图标那一条
@@ -102,7 +104,9 @@ export const ExtensionButtonSchema = z.discriminatedUnion("kind", [
 		label: z.string().min(1).max(32),
 		set: z
 			.record(FieldKeySchema, z.union([z.string(), z.number(), z.boolean()]))
-			.refine((set) => Object.keys(set).length > 0, "「改设置」的按钮至少要改一格")
+			.refine((set) => Object.keys(set).length > 0, {
+				error: () => packageText("internal.schema.extension-view.3"),
+			})
 			.readonly(),
 	}),
 ]);
@@ -155,7 +159,10 @@ const TableSchema = z
 				ctx.addIssue({
 					code: "custom",
 					path: ["rows", r],
-					message: `这一行有 ${row.length} 格,表头是 ${table.columns.length} 列`,
+					message: packageText("internal.schema.extension-view.4", {
+						value0: row.length,
+						value1: table.columns.length,
+					}),
 				});
 				return;
 			}
@@ -165,7 +172,10 @@ const TableSchema = z
 					ctx.addIssue({
 						code: "custom",
 						path: ["rows", r, c],
-						message: `这一格是 ${cell.kind},那一列是 ${column}`,
+						message: packageText("internal.schema.extension-view.5", {
+							value0: cell.kind,
+							value1: column,
+						}),
 					});
 				}
 			});
@@ -216,13 +226,13 @@ export const EXTENSION_BLOCK_TYPES = ExtensionBlockSchema.options.map(
 	(option) => option.shape.type.value,
 );
 
-const SET_ON_PAGE = "「改设置」的按钮改的是某一项的一格,只能挂在列表项上";
+const setOnPage = () => packageText("internal.schema.extension-view.6");
 
 /** 页级积木的规矩外加一条:「改设置」的按钮改的是某一项的一格,页上没有「这一项」。 */
 export const ExtensionPageBlockSchema = ExtensionBlockSchema.superRefine((block, ctx) => {
 	for (const { path, button } of blockButtons(block)) {
 		if (button.kind === "set") {
-			ctx.addIssue({ code: "custom", path: [...path, "set"], message: SET_ON_PAGE });
+			ctx.addIssue({ code: "custom", path: [...path, "set"], message: setOnPage() });
 		}
 	}
 });
@@ -322,7 +332,7 @@ export const ExtensionViewSchema = z
 		view.page?.forEach((block, i) => {
 			for (const { path, button } of blockButtons(block)) {
 				if (button.kind === "set") {
-					ctx.addIssue({ code: "custom", path: ["page", i, ...path, "set"], message: SET_ON_PAGE });
+					ctx.addIssue({ code: "custom", path: ["page", i, ...path, "set"], message: setOnPage() });
 				}
 			}
 			checkImages(block, ["page", i]);
@@ -340,5 +350,5 @@ export const ExtensionViewSchema = z
 
 /** 「引用的图不在字典里」那句 —— 整份检查与宿主逐块时说同一句。 */
 export function imageMissing(key: string): string {
-	return `引用的图片「${key}」不在 images 里`;
+	return packageText("internal.schema.extension-view.7", { value0: key });
 }

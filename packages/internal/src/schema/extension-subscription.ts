@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { packageText } from "../texts";
 
 /**
  * 新建订阅时解析门交回来的头像 data URL(ADR-0019 决策 49 / 52)。
@@ -25,8 +26,12 @@ export const SUBSCRIPTION_AVATAR_DATA_URL_RE =
 /** 新建订阅请求里的一张 data URL 头像;来源候选与上报头像现在都走图库引用,不再经过这里。 */
 export const SubscriptionAvatarSchema = z
 	.string()
-	.max(SUBSCRIPTION_AVATAR_MAX_CHARS, `头像不能超过 ${SUBSCRIPTION_AVATAR_MAX_CHARS / 1024} KiB`)
-	.regex(
-		SUBSCRIPTION_AVATAR_DATA_URL_RE,
-		"头像只收 png / jpeg / webp 的 base64 data URL(不收 SVG,不收 http 地址)",
-	);
+	.max(SUBSCRIPTION_AVATAR_MAX_CHARS, {
+		error: () =>
+			packageText("internal.schema.extension-subscription.1", {
+				value0: SUBSCRIPTION_AVATAR_MAX_CHARS / 1024,
+			}),
+	})
+	.regex(SUBSCRIPTION_AVATAR_DATA_URL_RE, {
+		error: () => packageText("internal.schema.extension-subscription.2"),
+	});

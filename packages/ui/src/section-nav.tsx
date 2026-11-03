@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Btn, type BtnProps, IconButton } from "./atoms";
+import { useUiText } from "./texts";
 
 /**
  * SectionNav —— Rules / Targets / Logs 三页共用的「分区/Tab 导航」。
@@ -188,6 +189,8 @@ function IconBox({ icon, tint, active }: { icon: ReactNode; tint?: string; activ
  * 而且 11px 比外壳的 9.52px 还大,角上会露出一条没被渐隐盖住的缝。
  */
 function ScrollEdge({ dir, onClick }: { dir: "left" | "right"; onClick: () => void }) {
+	const tx = useUiText();
+
 	const isLeft = dir === "left";
 	return (
 		<div
@@ -199,7 +202,7 @@ function ScrollEdge({ dir, onClick }: { dir: "left" | "right"; onClick: () => vo
 		>
 			<IconButton
 				icon={<Chevron dir={dir} />}
-				label={isLeft ? "向左滚动" : "向右滚动"}
+				label={isLeft ? tx("ui.section-nav.1") : tx("ui.section-nav.2")}
 				size="lg"
 				tone="accent"
 				shape="pill"
@@ -216,10 +219,13 @@ export function SectionNav({
 	activeId,
 	onPick,
 	onAdd,
-	addLabel = "+ 新建",
+	addLabel,
 	addButtonProps,
 	emptyState,
 }: SectionNavProps) {
+	const tx = useUiText();
+	addLabel ??= tx("ui.section-nav.3");
+
 	// 横向条(窄视口)左右滚动:隐藏滚动条,改用两端箭头按钮,仅在该方向可滚时出现。
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [edges, setEdges] = useState({ left: false, right: false });

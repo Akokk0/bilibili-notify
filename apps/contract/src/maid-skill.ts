@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 女仆技能(Agent Skill)的 wire 契约 —— `apps/server` ↔ `apps/web` 共用。
  *
@@ -65,17 +66,17 @@ export function complainAboutSkill(d: {
 	body: unknown;
 }): string | null {
 	if (!isValidSkillName(d.name)) {
-		return `名字只收小写字母 / 数字 / 单个连字符(如 weekly-report),最长 ${MAID_SKILL_LIMITS.nameChars} 字符`;
+		return packageText("contract.maid-skill.1", { value0: MAID_SKILL_LIMITS.nameChars });
 	}
 	const description = typeof d.description === "string" ? d.description.trim() : "";
-	if (description === "") return "得写一句 description —— 女仆靠它决定要不要用这条";
+	if (description === "") return packageText("contract.maid-skill.2");
 	if (description.length > MAID_SKILL_LIMITS.descChars) {
-		return `description 超长(上限 ${MAID_SKILL_LIMITS.descChars} 字)`;
+		return packageText("contract.maid-skill.3", { value0: MAID_SKILL_LIMITS.descChars });
 	}
 	const body = typeof d.body === "string" ? d.body.trim() : "";
-	if (body === "") return "正文是空的 —— 一条什么都不说的技能等于没有";
+	if (body === "") return packageText("contract.maid-skill.4");
 	if (body.length > MAID_SKILL_LIMITS.bodyChars) {
-		return `正文超长(上限 ${MAID_SKILL_LIMITS.bodyChars} 字)`;
+		return packageText("contract.maid-skill.5", { value0: MAID_SKILL_LIMITS.bodyChars });
 	}
 	return null;
 }

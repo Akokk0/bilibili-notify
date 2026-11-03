@@ -8,6 +8,7 @@ import { EXTENSION_SOURCE_FEATURES, FEATURE_KEYS } from "../features";
 import { RESERVED_EXTENSION_IDS } from "../identity";
 import type { SettingsField, SettingsListField } from "../settings-field";
 import { CREATOR_SEARCH_INPUTS } from "../source";
+import { packageText } from "../texts";
 import { checkUserRegex } from "../util/regex-safety";
 
 /**
@@ -140,9 +141,9 @@ export type ExtensionRunState = (typeof EXTENSION_RUN_STATES)[number];
 export const ID_SEGMENT = "[a-z0-9](?:[a-z0-9-]*[a-z0-9])?";
 
 /** 光是「一段」的 schema;长度上限由用它的人各自加(id 是 64,命名空间是 32)。 */
-export const IdSegmentSchema = z
-	.string()
-	.regex(new RegExp(`^${ID_SEGMENT}$`), "只能是小写字母、数字与连字符,且首尾必须是字母或数字");
+export const IdSegmentSchema = z.string().regex(new RegExp(`^${ID_SEGMENT}$`), {
+	error: () => packageText("internal.schema.extension-manifest.1"),
+});
 
 /**
  * `Object.prototype` 自己身上的名字(`constructor` / `toString` / `valueOf` / `hasOwnProperty`
@@ -158,7 +159,7 @@ export function isPrototypeName(name: string): boolean {
 }
 
 export function prototypeNameMessage(what: string): string {
-	return `${what}不能用 JS 对象原型上的名字(constructor / toString / valueOf 这类):它会被当成键去查表,查一个没有的名字也会摸到内置函数`;
+	return packageText("internal.schema.extension-manifest.2", { value0: what });
 }
 
 /**
@@ -171,18 +172,21 @@ export const ExtensionIdSchema = z
 	.string()
 	.min(1)
 	.max(64)
-	.regex(
-		new RegExp(`^${ID_SEGMENT}(?:\\.${ID_SEGMENT})?$`),
-		"拓展 id 只能是小写字母、数字与连字符(可用一个点分出命名空间),且每段首尾必须是字母或数字",
-	)
+	.regex(new RegExp(`^${ID_SEGMENT}(?:\\.${ID_SEGMENT})?$`), {
+		error: () => packageText("internal.schema.extension-manifest.3"),
+	})
 	// 小写那几个里正则放得过的只有 `constructor`,但 id 是 `globals.extensions` 等处的键。
-	.refine((id) => !isPrototypeName(id), prototypeNameMessage("拓展 id "))
+	.refine((id) => !isPrototypeName(id), {
+		error: () => prototypeNameMessage(packageText("internal.schema.extension-manifest.4")),
+	})
 	// 内置集成键由宿主在接收时另验；通用打包器这里只保留核心自己的名字。
 	// `core`、`image`、`ai` 是核心自己的名字(日志等级里核心那三格的键;`core` 还是设置文件名),拓展叫它们就和核心撞。
-	.refine(
-		(id) => !RESERVED_EXTENSION_IDS.includes(id),
-		`拓展 id 不能用保留 id(${RESERVED_EXTENSION_IDS.join("、")})`,
-	);
+	.refine((id) => !RESERVED_EXTENSION_IDS.includes(id), {
+		error: () =>
+			packageText("internal.schema.extension-manifest.5", {
+				value0: RESERVED_EXTENSION_IDS.join("、"),
+			}),
+	});
 
 /** 命名空间那一段;没有点 = 官方源的拓展,回 `undefined`。 */
 export function extensionNamespaceOf(id: string): string | undefined {
@@ -201,7 +205,7 @@ export const ExtensionVersionSchema = z.string().regex(
 	// 是同一把尺子:不收前导零、不收 build 元数据。三把对同一批样本的答案由
 	// marketplace-index.test.mjs 钉着。
 	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/,
-	"拓展版本号必须是 semver,如 1.0.0 或 1.0.0-alpha.1",
+	{ error: () => packageText("internal.schema.extension-manifest.6") },
 );
 
 /*
@@ -250,8 +254,12 @@ export type ExtensionIdentity = z.infer<typeof ExtensionIdentitySchema>;
 export const FieldKeySchema = z
 	.string()
 	.max(64)
-	.regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, "设置项的 key 只能是字母开头的字母、数字与下划线")
-	.refine((key) => !isPrototypeName(key), prototypeNameMessage("设置项的 key "));
+	.regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, {
+		error: () => packageText("internal.schema.extension-manifest.7"),
+	})
+	.refine((key) => !isPrototypeName(key), {
+		error: () => prototypeNameMessage(packageText("internal.schema.extension-manifest.8")),
+	});
 
 const fieldBase = {
 	key: FieldKeySchema,
@@ -295,8 +303,12 @@ const BooleanFieldSchema = z.strictObject({
  */
 export const ExtensionImageSchema = z
 	.string()
-	.max(EXTENSION_IMAGE_MAX_CHARS, "图片不能超过 32 KB")
-	.regex(EXTENSION_IMAGE_DATA_URL_RE, "图片只收 png / jpeg / webp / svg 的 base64 data URL");
+	.max(EXTENSION_IMAGE_MAX_CHARS, {
+		error: () => packageText("internal.schema.extension-manifest.9"),
+	})
+	.regex(EXTENSION_IMAGE_DATA_URL_RE, {
+		error: () => packageText("internal.schema.extension-manifest.10"),
+	});
 
 const EnumFieldSchema = z.strictObject({
 	...fieldBase,
@@ -368,28 +380,40 @@ function checkListRefs(list: FieldLike, at: number, ctx: z.RefinementCtx): void 
 
 	const title = find(list.title);
 	if (title?.type !== "string" || title.required !== true) {
-		issue(["title"], `title 要指向项里一格必填的 string,"${list.title}" 不是`);
+		issue(
+			["title"],
+			packageText("internal.schema.extension-manifest.11", { value0: String(list.title) }),
+		);
 	} else if (isSecretField(title)) {
 		// 标题印在卡头与删除确认框里、一直摆在屏幕上 —— 指向密钥就是把密钥全文上屏(决策 38)。
 		issue(
 			["title"],
-			`title 不能指向密钥格(secret / generate),"${list.title}" 是:标题会印在卡头与删除确认框里,等于把密钥明文摆上屏`,
+			packageText("internal.schema.extension-manifest.12", { value0: String(list.title) }),
 		);
 	}
 	if (list.mark !== undefined && find(list.mark)?.type !== "enum") {
-		issue(["mark"], `mark 要指向项里一格 enum,"${list.mark}" 不是`);
+		issue(["mark"], packageText("internal.schema.extension-manifest.13", { value0: list.mark }));
 	}
 	if (list.toggle !== undefined && find(list.toggle)?.type !== "boolean") {
-		issue(["toggle"], `toggle 要指向项里一格 boolean,"${list.toggle}" 不是`);
+		issue(
+			["toggle"],
+			packageText("internal.schema.extension-manifest.14", { value0: list.toggle }),
+		);
 	}
 	list.newItemCopy?.forEach((entry, i) => {
 		if ("field" in entry && find(entry.field)?.type !== "string") {
-			issue(["newItemCopy", i, "field"], `newItemCopy 要指向项里一格 string,"${entry.field}" 不是`);
+			issue(
+				["newItemCopy", i, "field"],
+				packageText("internal.schema.extension-manifest.15", { value0: entry.field }),
+			);
 		}
 	});
 	items.forEach((item, i) => {
 		if (item.key === LIST_ITEM_ID_KEY) {
-			issue(["fields", i, "key"], `项里的 "${LIST_ITEM_ID_KEY}" 由 BN 生成、不许声明`);
+			issue(
+				["fields", i, "key"],
+				packageText("internal.schema.extension-manifest.16", { value0: LIST_ITEM_ID_KEY }),
+			);
 		}
 	});
 }
@@ -406,12 +430,16 @@ function checkFieldList(fields: readonly FieldLike[], ctx: z.RefinementCtx): voi
 			ctx.addIssue({
 				code: "custom",
 				path: [i, "key"],
-				message: `"${field.key}" 摆了两栏 —— 哪一栏说了算没有答案`,
+				message: packageText("internal.schema.extension-manifest.17", { value0: field.key }),
 			});
 		}
 		seen.add(field.key);
 		if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
-			ctx.addIssue({ code: "custom", path: [i, "min"], message: "min 比 max 还大" });
+			ctx.addIssue({
+				code: "custom",
+				path: [i, "min"],
+				message: packageText("internal.schema.extension-manifest.18"),
+			});
 		}
 		if (field.options) {
 			const values = new Set<string>();
@@ -420,7 +448,7 @@ function checkFieldList(fields: readonly FieldLike[], ctx: z.RefinementCtx): voi
 					ctx.addIssue({
 						code: "custom",
 						path: [i, "options", j, "value"],
-						message: `选项 "${option.value}" 摆了两个`,
+						message: packageText("internal.schema.extension-manifest.19", { value0: option.value }),
 					});
 				}
 				values.add(option.value);
@@ -429,7 +457,7 @@ function checkFieldList(fields: readonly FieldLike[], ctx: z.RefinementCtx): voi
 				ctx.addIssue({
 					code: "custom",
 					path: [i, "default"],
-					message: `默认值 "${field.default}" 不是选项之一`,
+					message: packageText("internal.schema.extension-manifest.20", { value0: field.default }),
 				});
 			}
 		}
@@ -488,9 +516,9 @@ const SettingsSchema = z.strictObject({
 /**
  * 颜色进样式,而清单来自第三方 —— 只收 hex,别的写法(`url(...)`、带分号的)一律拒。
  */
-const HexColorSchema = z
-	.string()
-	.regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "颜色只收 hex,如 #fe2c55");
+const HexColorSchema = z.string().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, {
+	error: () => packageText("internal.schema.extension-manifest.21"),
+});
 
 /** 一个口在界面上的样子(ADR-0012 决策 46 那三格,`tint` 改名 `color`)。 */
 const displayShape = {
@@ -540,10 +568,9 @@ const PACKAGE_PATH_SEGMENT = "[A-Za-z0-9][A-Za-z0-9._-]*";
 const PackagePathSchema = z
 	.string()
 	.max(128)
-	.regex(
-		new RegExp(`^${PACKAGE_PATH_SEGMENT}(?:/${PACKAGE_PATH_SEGMENT})*$`),
-		"包内路径要相对拓展根写(如 card-skin),不带 ./、不许 ..",
-	);
+	.regex(new RegExp(`^${PACKAGE_PATH_SEGMENT}(?:/${PACKAGE_PATH_SEGMENT})*$`), {
+		error: () => packageText("internal.schema.extension-manifest.22"),
+	});
 
 const ContributesSchema = z
 	.strictObject({
@@ -608,10 +635,9 @@ const ContributesSchema = z
 		 */
 		devtools: z.strictObject({}).optional(),
 	})
-	.refine(
-		(contributes) => EXTENSION_PROVIDES.some((key) => contributes[key] !== undefined),
-		"contributes 至少要开一口",
-	);
+	.refine((contributes) => EXTENSION_PROVIDES.some((key) => contributes[key] !== undefined), {
+		error: () => packageText("internal.schema.extension-manifest.23"),
+	});
 
 /**
  * 动作名 —— 它要进 URL(`POST /api/ext/:id/actions/:name`),所以只许小写字母开头的
@@ -620,12 +646,13 @@ const ContributesSchema = z
 export const ActionNameSchema = z
 	.string()
 	.max(64)
-	.regex(
-		/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*$/,
-		"动作名只能是小写字母开头的字母数字,用点分段,如 login.start",
-	)
+	.regex(/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*$/, {
+		error: () => packageText("internal.schema.extension-manifest.24"),
+	})
 	// `toString` 这类放过去,「清单里有没有这个动作」一查就是有 —— 面板能按一个没声明的名字。
-	.refine((name) => !isPrototypeName(name), prototypeNameMessage("动作名"));
+	.refine((name) => !isPrototypeName(name), {
+		error: () => prototypeNameMessage(packageText("internal.schema.extension-manifest.25")),
+	});
 
 /**
  * 当前新契约:静态声明全住清单(ADR-0019 决策16,4-55重新起号)。
@@ -658,7 +685,11 @@ export const ExtensionManifestSchema = z.strictObject({
 			const seen = new Set<string>();
 			names.forEach((name, i) => {
 				if (seen.has(name)) {
-					ctx.addIssue({ code: "custom", path: [i], message: `动作名 ${name} 重复了` });
+					ctx.addIssue({
+						code: "custom",
+						path: [i],
+						message: packageText("internal.schema.extension-manifest.26", { value0: name }),
+					});
 				}
 				seen.add(name);
 			});
@@ -706,7 +737,7 @@ export function formatZodIssues(error: z.ZodError): string[] {
 			issue.code === "invalid_key" && issue.issues.length > 0
 				? issue.issues.map((inner) => inner.message).join(";")
 				: issue.message;
-		return `${issue.path.join(".") || "(根)"}: ${message}`;
+		return `${issue.path.join(".") || packageText("internal.schema.extension-manifest.27")}: ${message}`;
 	});
 }
 
@@ -805,11 +836,22 @@ function valueSchemaOf(field: SettingsField): z.ZodType {
 	switch (field.type) {
 		case "string":
 			// 必填 = 不许空串:面板上那颗星的意思是「得填点什么」。
-			return need(field.required ? z.string().min(1, "这一格必填") : z.string());
+			return need(
+				field.required
+					? z.string().min(1, { error: () => packageText("internal.schema.extension-manifest.28") })
+					: z.string(),
+			);
 		case "number": {
+			const { min, max } = field;
 			let n = z.number();
-			if (field.min !== undefined) n = n.min(field.min, `不能小于 ${field.min}`);
-			if (field.max !== undefined) n = n.max(field.max, `不能大于 ${field.max}`);
+			if (min !== undefined)
+				n = n.min(min, {
+					error: () => packageText("internal.schema.extension-manifest.29", { value0: min }),
+				});
+			if (max !== undefined)
+				n = n.max(max, {
+					error: () => packageText("internal.schema.extension-manifest.30", { value0: max }),
+				});
 			return need(n);
 		}
 		case "boolean":
@@ -817,7 +859,7 @@ function valueSchemaOf(field: SettingsField): z.ZodType {
 		case "enum":
 			return need(
 				z.enum(field.options.map((option) => option.value) as [string, ...string[]], {
-					error: "不是可选的值",
+					error: () => packageText("internal.schema.extension-manifest.31"),
 				}),
 			);
 		case "list":
@@ -830,7 +872,7 @@ function valueSchemaOf(field: SettingsField): z.ZodType {
 							ctx.addIssue({
 								code: "custom",
 								path: [i, LIST_ITEM_ID_KEY],
-								message: `列表项的 id "${id}" 重复了`,
+								message: packageText("internal.schema.extension-manifest.32", { value0: id }),
 							});
 						}
 						seen.add(id);
@@ -846,7 +888,10 @@ function valueSchemaOf(field: SettingsField): z.ZodType {
  */
 function fieldsObjectSchema(fields: readonly SettingsField[], listItem: boolean) {
 	const shape: Record<string, z.ZodType> = {};
-	if (listItem) shape[LIST_ITEM_ID_KEY] = z.string().min(1, "列表项要有 id");
+	if (listItem)
+		shape[LIST_ITEM_ID_KEY] = z
+			.string()
+			.min(1, { error: () => packageText("internal.schema.extension-manifest.33") });
 	for (const field of fields) shape[field.key] = valueSchemaOf(field);
 	return z.looseObject(shape);
 }

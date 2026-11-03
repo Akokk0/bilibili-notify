@@ -36,7 +36,7 @@
 | `ToneChip` | 「一排里选一个/开一个」的**可点**胶囊:选中 = 12% `tone` 底(**混 surface 出的不透明底**,不是混 transparent 的纱 —— 纱在壁纸皮肤下隐形)+ **实色 `tone` 边** + 正文色字,未选中退中性描边 + 悬停变正文色。**`tone` 不承担可读性**(当字色时字底同色相,亮色下 warn 只有 1.90:1),色彩识别交给实色边框。自带 `data-bn="btn"`;`tone` 收 hex **或** `var()`(内部 `color-mix`),纯操作钮可不填。别拿 `Pill` 套 `onClick` 顶替它 |
 | `Toast` | 一句话瞬时提示(「已复制」「已保存失败」)。自己**不计时**,挂上撤下由调用方管 —— 但「停多久」走同包导出的 `TOAST_DURATION_MS`,别各拍各的(收编前三个调用方是 2000 / 2000 / 2400)。三条取值不许改:① 字色恒 `text-bn-text-primary`,**不写死白字** —— 底能被皮肤重绘、写死的字色不能,两者一起就是白底白字;② 语义走**描边**不走实心底(同 `ToneChip` 的道理);③ 钉**底部居中**,右下角是推送 toast 那一摞的地盘。底材质吃 `.bn-glass-strong`(与导览庆祝胶囊同一块玻璃,边由玻璃类出、不叠 `border-bn-border`),另挂 `data-bn="glass-strong"`。通知中心那种带图标/时间的富卡片不归它管 |
 | `StatusDot` | 语义色状态点(`live/living` 粉+呼吸、`ok` 绿、`warn` 橙、`err` 红、`off`/`pending` 两档灰)。七档**全走 token**,跟皮肤换装;两档灰不许并成一个(`off` 走 textDisabled 浅、`pending` 走 textTertiary 深,靠深浅分「关着的」与「等着的」)。`size`:`md`(默认)8px 状态点、`sm` 6px 行内图例;逐项动态的图例色(模块 tone / 版式 accent)走 `color` 口盖档位色,与 `kind` 二选一 —— **能用语义档就别用 color** |
-| `TriStateMark` / `TriStateChip` / `TRISTATE_TEXT` / `TriState` | 三态记号:支持 / 不支持 / 还不知道(拓展视图 tristate 列那种)。三档靠**形状**分 —— 实心打勾 / 空心圈里一横 / 虚线空圈,颜色只是第二条通道;🔴 **「不支持」与「还不知道」不许并成一档**(前者是结论,后者是「试试看」),也**不许拿删除线画「不支持」**(删除线在这套界面里读作「坏了」,主人真这么读错过一张正常的能力表)。`TriStateMark` 是记号本身,**图例与正文共用这一颗**;`TriStateChip` = 记号 + 名字,悬停说明用 `TRISTATE_TEXT` 那三句。图例(`TriStateLegend`)住 web 的 `pages/extensions/declarative/parts.tsx` |
+| `TriStateMark` / `TriStateChip` / `TRISTATE_TEXT` / `TriState` | 三态记号:支持 / 不支持 / 还不知道(拓展视图 tristate 列那种)。三档靠**形状**分 —— 实心打勾 / 空心圈里一横 / 虚线空圈,颜色只是第二条通道;🔴 **「不支持」与「还不知道」不许并成一档**(前者是结论,后者是「试试看」),也**不许拿删除线画「不支持」**(删除线在这套界面里读作「坏了」,主人真这么读错过一张正常的能力表)。`TriStateMark` 是记号本身,**图例与正文共用这一颗**;`TriStateChip` = 记号 + 名字,悬停说明与图例共用 `useTriStateTexts` 随 Provider 更新，非组件消费者读惰性的 `TRISTATE_TEXT`。图例(`TriStateLegend`)住 web 的 `pages/extensions/declarative/parts.tsx` |
 | `Toggle` | 开关(粉=开),`sm`/`md`;`ariaLabel` 给读屏器命名 |
 | `Input` | 带可选前置 icon 的单行输入框 |
 | `CheckRow` | 多选列表的选项行:粉勾选方块 + 文本,checkbox 本体 sr-only |
@@ -61,7 +61,7 @@
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
 | `TInput` / `TArea` / `TNum` / `TSelect` / `TColor` | 设置表单的 T 系列受控件:全部自带 `data-bn="input"` 挂点与 `bg-bn-field` 底;`secret` 走 password 型防明文，TInput可传`id`关联label、`autoComplete`区分当前/新密码（未传时secret仍用new-password）;`ariaLabel` **不是装饰**(label 包裹场景读屏器会念整段提示);定宽走 `width` 数字(没装 tailwind-merge,`w-*` 类压不掉基线;`TSelect` 给了 `width` 就不再垫 160px 的最小宽,单位选择器那种窄的用它;`TSelect` 的选项可带 `icon` / `description`，触发钮与菜单都显示图标和第二行小字（触发钮随两行内容增高，纯文字仍为单行高度），菜单无障碍名包含标题与小字；也可带 `disabled`,拿来如实显示「当前值已失效」那种不可选的一行)。与 `Input` 的分工:`Input` 是带图标槽的搜索框原语,T 系列是设置表单家族 |
-| `UiTextProvider` / `UiText` | `UiTextProvider({t, children})` 让基础件在渲染时读当前 `ui.*` 包字典;没有 Provider 时用 `packageText`。App 在 AuthedApp 内交真实 `useT()` 结果,不新建 store。内部 hook `useUiText` 不从包根导出;消费者是 TSelect、TColor、ArrayEditor、QuietHoursEditor(含移除行按钮)。只依赖 internal 的 texts 子路径(参数类型用 type import) |
+| `UiTextProvider` / `UiText` | `UiTextProvider({t, children})` 让基础件在渲染时读当前 `ui.*` 包字典;没有 Provider 时用 `packageText`。App 在 AuthedApp 内交真实 `useT()` 结果,不新建 store。内部 hook `useUiText` 不从包根导出;消费者包括表单、弹窗、通知、密钥控制、导航、三态标记及 dock 的默认文字。只依赖 internal 的 texts 子路径(参数类型用 type import) |
 | `Picker` | 通用段选钮组。**选项个数固定(写死的一组)就用它,哪怕超过 5 个;选项来自数据、个数不定才用 `TSelect`**(2026-10-04 主人定,取代「≤ ~5」的旧说法;容器会折行,项多了窄屏自己换行):挂 chip/chip-active、带 `aria-pressed`;`color` 是逐项语义色 |
 | `ArrayEditor` / `QuietHoursEditor` | 「一列可增删的行」的两个特化:字符串行 / 免扰时段(0-23 整点对,跨午夜 start>end)。行号徽标 / 移除钮 / 虚线添加钮是**不导出**的实现细节 |
 
@@ -105,6 +105,7 @@
 
 | 导出 | 干什么 |
 | --- | --- |
+| `useTriStateTexts` / `TRISTATE_TEXT` | 三态默认文字；组件与图例用 hook 跟随 `UiTextProvider`，非组件消费者读惰性的 `TRISTATE_TEXT` |
 | `Icon` / `IconName` | 内联 SVG 图标注册表(currentColor 染色),几十枚;加新图标进这里,别散落内联 |
 | `FieldUpdatesProvider` / `useFieldUpdate` / `useFieldReset` | 「字段默认值有更新/可还原」的广播 context;无 Provider 时恒 null |
 | `useDismiss` | 「点外面关掉」的唯一写法(住 popover.tsx)。`enabled` 只在浮层开着时挂监听、`escape` 连 Esc 一起关、`event` 选 mousedown/pointerdown,`insideRefs` 把 portal 菜单等 DOM 也算内部 —— 收编前五份手写行为各漂各的,差异现在是调用点上显式的选项 |

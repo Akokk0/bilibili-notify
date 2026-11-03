@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { formatAgo, formatAmount, formatClock, formatCount, formatDuration } from "../format";
+import { bindPackageText } from "../texts";
 
 describe("formatCount", () => {
 	it("卡片口径:万和亿都一位小数、保留「.0」、万以下原样不加千分位", () => {
@@ -183,4 +184,19 @@ describe("formatAmount", () => {
 		expect(formatAmount(Number.NEGATIVE_INFINITY, "USD")).toBe("");
 		expect(formatAmount(Number.NaN, "NOT-A-CODE")).toBe("");
 	});
+});
+
+it("reads translated units on each call while preserving numbers and source times", () => {
+	const dispose = bindPackageText(
+		(key, values) => `${key}:${Object.values(values ?? {}).join(",")}`,
+	);
+	try {
+		expect(formatCount(10000)).toContain(":1.0");
+		expect(formatAgo(0, 120000)).toContain(":2");
+		expect(formatDuration(0, 3600000)).toContain(":1");
+		expect(formatClock(65)).toBe("1:05");
+	} finally {
+		dispose.dispose();
+	}
+	expect(formatCount(10000)).toBe("1.0万");
 });

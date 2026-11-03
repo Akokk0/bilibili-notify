@@ -1,4 +1,5 @@
 import type { WebSearchBackendId } from "@bilibili-notify/internal/ai";
+import { packageText } from "@bilibili-notify/internal/texts";
 import type OpenAI from "openai";
 
 /**
@@ -95,13 +96,18 @@ async function postJson(url: string, apiKey: string, body: unknown): Promise<unk
 			signal: AbortSignal.timeout(TIMEOUT_MS),
 		});
 	} catch (e) {
-		throw new WebSearchError(`搜索请求没发出去:${e instanceof Error ? e.message : String(e)}`, {
-			cause: e,
-		});
+		throw new WebSearchError(
+			packageText("ai.web-search.1", { value0: e instanceof Error ? e.message : String(e) }),
+			{
+				cause: e,
+			},
+		);
 	}
 	if (!res.ok) {
 		const text = await res.text().catch(() => "");
-		throw new WebSearchError(`搜索后端回了 ${res.status}:${text.slice(0, 200)}`);
+		throw new WebSearchError(
+			packageText("ai.web-search.2", { value0: res.status, value1: text.slice(0, 200) }),
+		);
 	}
 	// 200 也不代表是 JSON:网关维护页/反代错误页照样带着 2xx 回 HTML。json()
 	// 的 SyntaxError(或读 body 中途的超时)原样外逃就破了「唯一出口」的契约,
@@ -110,7 +116,9 @@ async function postJson(url: string, apiKey: string, body: unknown): Promise<unk
 		return await res.json();
 	} catch (e) {
 		throw new WebSearchError(
-			`搜索后端回了 200 但正文不是 JSON(疑似网关维护页或反代错误页):${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`,
+			packageText("ai.web-search.3", {
+				value0: e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120),
+			}),
 			{ cause: e },
 		);
 	}

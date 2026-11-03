@@ -1,3 +1,5 @@
+import { packageText } from "@bilibili-notify/internal/texts";
+
 /**
  * 「额外请求参数」—— 主人手写的一段 JSON,原样摊进请求体顶层。
  *
@@ -47,13 +49,19 @@ export function parseExtraParams(raw: string | undefined | null): ParsedExtraPar
 		return {
 			ok: false,
 			value: {},
-			error: `额外请求参数不是合法 JSON:${e instanceof Error ? e.message : String(e)}`,
+			error: packageText("ai.extra-params.1", {
+				value0: e instanceof Error ? e.message : String(e),
+			}),
 		};
 	}
 
 	// `[1,2]` / `42` / `null` 都能过 JSON.parse,摊进请求体却毫无意义。
 	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return { ok: false, value: {}, error: '额外请求参数必须是一个 JSON 对象,比如 {"top_k": 40}' };
+		return {
+			ok: false,
+			value: {},
+			error: packageText("ai.extra-params.2", { example: '{"top_k": 40}' }),
+		};
 	}
 
 	const value: Record<string, unknown> = {};

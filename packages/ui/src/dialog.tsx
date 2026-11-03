@@ -1,3 +1,4 @@
+import { useUiText } from "./texts";
 /**
  * ModalShell — overlay + centered card + ESC + click-outside.
  *
@@ -51,6 +52,8 @@ export function ModalShell({
 	description,
 	bodyClassName = "p-6",
 }: ModalShellProps) {
+	const tx = useUiText();
+
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") onCancel();
@@ -66,7 +69,7 @@ export function ModalShell({
 		>
 			<button
 				type="button"
-				aria-label="关闭弹窗"
+				aria-label={tx("ui.dialog.1")}
 				onClick={onCancel}
 				className="absolute inset-0 cursor-default border-0 bg-transparent"
 			/>
@@ -125,12 +128,16 @@ export interface ConfirmDialogProps {
 export function ConfirmDialog({
 	title,
 	message,
-	confirmLabel = "确认",
-	cancelLabel = "取消",
+	confirmLabel,
+	cancelLabel,
 	danger = false,
 	onConfirm,
 	onCancel,
 }: ConfirmDialogProps) {
+	const tx = useUiText();
+	confirmLabel ??= tx("ui.dialog.2");
+	cancelLabel ??= tx("ui.dialog.3");
+
 	return (
 		<ModalShell
 			onCancel={onCancel}

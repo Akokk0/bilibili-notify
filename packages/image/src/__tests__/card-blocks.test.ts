@@ -62,7 +62,7 @@ const SPLIT_ATOMS: Record<string, Record<string, string>> = {
 		likeCount: "点赞数",
 	},
 	superchat: { amount: "金额", duration: "时长胶囊", to: "「SC to」那一行" },
-	membership: { viewerName: "用户名胶囊", creator: "主播胶囊" },
+	membership: { viewerName: "用户名胶囊", creator: "创作者胶囊" },
 };
 
 describe("块库 — 2026-09-18 补的原子块在目录里", () => {

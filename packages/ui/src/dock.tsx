@@ -1,3 +1,4 @@
+import { useUiText } from "./texts";
 /**
  * Dock —— 底边工作台的两件(Vue DevTools 7 / Nuxt DevTools 那种形态):
  *
@@ -59,10 +60,13 @@ export function DockPill({
 	open,
 	onToggle,
 	active = false,
-	activeTitle = "有注入生效",
+	activeTitle,
 	actions = [],
 	offsetBottom,
 }: DockPillProps) {
+	const tx = useUiText();
+	activeTitle ??= tx("ui.dock.1");
+
 	const style: CSSProperties | undefined =
 		offsetBottom === undefined ? undefined : { bottom: offsetBottom };
 	return (
@@ -160,6 +164,8 @@ export function DockPanel({
 	header,
 	children,
 }: DockPanelProps) {
+	const tx = useUiText();
+
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") onClose();
@@ -189,7 +195,7 @@ export function DockPanel({
 			<div
 				role="separator"
 				aria-orientation="horizontal"
-				aria-label="拖动改高"
+				aria-label={tx("ui.dock.2")}
 				aria-valuenow={height}
 				aria-valuemin={minHeight}
 				// 少了 max,读屏按 ARIA 的默认上限 100 去念这个像素值,念出来是个没意义的数。
@@ -221,15 +227,15 @@ export function DockPanel({
 				<div className="min-w-0 flex-1">{header}</div>
 				<IconButton
 					icon={<Icon.close size={16} />}
-					label="收起"
-					title="收起(Esc)"
+					label={tx("ui.dock.3")}
+					title={tx("ui.dock.4")}
 					size="md"
 					onClick={onClose}
 				/>
 			</div>
 			<div className="flex min-h-0 flex-1">
 				<nav
-					aria-label={`${title} 分组`}
+					aria-label={tx("ui.dock.5", { value0: title })}
 					data-bn="nav"
 					className="flex w-40 shrink-0 flex-col gap-1 overflow-y-auto border-bn-border border-r px-2 pb-3"
 				>

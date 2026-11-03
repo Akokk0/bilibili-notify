@@ -6,6 +6,7 @@ import {
 	TRISTATE_TEXT,
 	type TriState,
 	TriStateMark,
+	useTriStateTexts,
 } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
 import { useT } from "../../../i18n";
@@ -147,6 +148,7 @@ export function MissingSecretNote({
  */
 export function TriStateLegend() {
 	const tx = useT();
+	const texts = useTriStateTexts();
 
 	return (
 		<ul
@@ -156,7 +158,7 @@ export function TriStateLegend() {
 			{(Object.keys(TRISTATE_TEXT) as TriState[]).map((state) => (
 				<li key={state} className="flex items-center gap-[5px]">
 					<TriStateMark state={state} size={12} />
-					{TRISTATE_TEXT[state]}
+					{texts[state]}
 				</li>
 			))}
 		</ul>

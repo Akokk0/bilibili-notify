@@ -1,3 +1,4 @@
+import { packageText } from "./texts/index";
 /**
  * AI 服务商、思考档位、人格与锐评定时配置的零依赖词表和解析函数。
  *
@@ -56,7 +57,13 @@ export interface WebSearchBackendMeta {
 
 export const WEB_SEARCH_BACKENDS: readonly WebSearchBackendMeta[] = [
 	// 博查在前:B 站语境下中文搜索质量是主场景。
-	{ id: "bocha", label: "博查", keyUrl: "https://open.bochaai.com" },
+	{
+		id: "bocha",
+		get label() {
+			return packageText("internal.ai.1");
+		},
+		keyUrl: "https://open.bochaai.com",
+	},
 	{ id: "tavily", label: "Tavily", keyUrl: "https://app.tavily.com" },
 ];
 
@@ -123,7 +130,9 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 	},
 	{
 		id: "volcengine",
-		label: "火山方舟",
+		get label() {
+			return packageText("internal.ai.2");
+		},
 		supportsThinking: true,
 		thinkingDefaultsOn: true,
 		supportsVision: true,
@@ -133,7 +142,9 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 	},
 	{
 		id: "siliconflow",
-		label: "硅基流动",
+		get label() {
+			return packageText("internal.ai.3");
+		},
 		supportsThinking: true,
 		thinkingDefaultsOn: true,
 		supportsVision: true,
@@ -143,7 +154,9 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 	},
 	{
 		id: "bailian",
-		label: "阿里云百炼",
+		get label() {
+			return packageText("internal.ai.4");
+		},
 		supportsThinking: true,
 		// 百炼的默认按**模型**分:qwen-plus / qwen-flash / qwen3-max 默认关,
 		// qwen3.7+ 商业版与开源版默认开。填 true 让「关」位显式发 enable_thinking:false
@@ -166,13 +179,17 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 	},
 	{
 		id: "custom",
-		label: "自定义",
+		get label() {
+			return packageText("internal.ai.5");
+		},
 		supportsThinking: false,
 		thinkingDefaultsOn: false,
 		supportsVision: true,
 		supportsResponses: true,
 		streamUsageNeedsOptIn: false,
-		baseUrlHint: "任何 OpenAI 兼容地址",
+		get baseUrlHint() {
+			return packageText("internal.ai.6");
+		},
 	},
 ];
 

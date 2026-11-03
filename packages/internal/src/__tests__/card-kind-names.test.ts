@@ -114,9 +114,9 @@ describe("同一个概念同一个名字", () => {
 
 describe("判据本身(样例)", () => {
 	it("一张抄来的表:短名与对象式 label 两种写法都认", () => {
-		const copy = `const A = { live: "直播", post: "动态", superchat: "SC", extra: 1 };`;
+		const copy = `const A = { live: "直播", post: "作品", superchat: "SC", extra: 1 };`;
 		expect(kindNameEntries("sample-a.ts", copy)).toEqual(["live", "post", "superchat"]);
-		const labelled = `const B = { live: { label: "直播开播", icon: "x" }, post: { label: "动态发布" }, membership: { label: "上舰提醒" } };`;
+		const labelled = `const B = { live: { label: "直播开播", icon: "x" }, post: { label: "作品发布" }, membership: { label: "会员提醒" } };`;
 		expect(kindNameEntries("sample-b.ts", labelled)).toEqual(["live", "membership", "post"]);
 	});
 
@@ -128,7 +128,7 @@ describe("判据本身(样例)", () => {
 	});
 
 	it("特性名表不算:三个特性键(post / superchat / membership)撞了同样的字,没有卡种独有的键", () => {
-		const features = `const FEATURE_LABELS = { post: "动态", liveStart: "开播", membership: "上舰", superchat: "SC" };`;
+		const features = `const FEATURE_LABELS = { post: "作品", liveStart: "开播", membership: "会员", superchat: "SC" };`;
 		const keys = kindNameEntries("sample-f.ts", features);
 		expect(keys).toEqual(["membership", "post", "superchat"]);
 		expect(looksLikeKindTable(keys)).toBe(false);
@@ -140,8 +140,8 @@ describe("判据本身(样例)", () => {
 		const other = [
 			`const D = { live: "开播 / 直播中 / 下播", post: "动态 / 视频投稿", superchat: "醒目留言 SC" };`,
 			`const E = { feature: "直播", other: "动态" };`,
-			`// live: "直播", post: "动态", superchat: "SC"`,
-			'const F = `live: "直播", post: "动态", superchat: "SC"`;',
+			`// live: "直播", post: "作品", superchat: "SC"`,
+			'const F = `live: "直播", post: "作品", superchat: "SC"`;',
 		].join("\n");
 		expect(kindNameEntries("sample-c.ts", other)).toEqual([]);
 	});

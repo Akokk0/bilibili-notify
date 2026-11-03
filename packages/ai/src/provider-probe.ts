@@ -1,4 +1,5 @@
 import { fail, ok, type Result } from "@bilibili-notify/internal";
+import { packageText } from "@bilibili-notify/internal/texts";
 
 /** 探活要用的那份实例连接字段(面板保存时 merge 之后的值)。 */
 export interface AiProbeFields {
@@ -13,9 +14,9 @@ export interface AiProbeFields {
  * 没过的一律是带标准码的失败,`message` 面板原样内联显示。
  */
 export async function probeAiProvider(fields: AiProbeFields): Promise<Result> {
-	if (!fields.apiKey) return fail("not_configured", "apiKey 字段为空，启用 AI 前请先填写。");
-	if (!fields.baseUrl) return fail("not_configured", "baseUrl 字段为空，启用 AI 前请先填写。");
-	if (!fields.model) return fail("not_configured", "model 字段为空，启用 AI 前请先填写。");
+	if (!fields.apiKey) return fail("not_configured", packageText("ai.provider-probe.1"));
+	if (!fields.baseUrl) return fail("not_configured", packageText("ai.provider-probe.2"));
+	if (!fields.model) return fail("not_configured", packageText("ai.provider-probe.3"));
 
 	// 探活打的端点跟实例的接口风味走 —— responses-only 的模型(o1-pro 这类)在
 	// /chat/completions 上是 404,打错端点等于把用户永久挡在自己的探活门外,
@@ -54,12 +55,12 @@ export async function probeAiProvider(fields: AiProbeFields): Promise<Result> {
 		return failureOfAiHttpError(res.status, text, fields);
 	} catch (err) {
 		if (err instanceof Error && err.name === "AbortError") {
-			return fail("timeout", `连接 ${fields.baseUrl} 超时（10s），请检查 baseUrl 与网络。`);
+			return fail("timeout", packageText("ai.provider-probe.4", { value0: fields.baseUrl }));
 		}
 		const detail = err instanceof Error ? err.message : String(err);
 		return fail(
 			"unavailable",
-			`连接 ${fields.baseUrl} 失败：${detail}。请检查 baseUrl 拼写、网络可达性与 TLS 证书。`,
+			packageText("ai.provider-probe.5", { value0: fields.baseUrl, value1: detail }),
 		);
 	} finally {
 		clearTimeout(timer);
@@ -78,7 +79,10 @@ function failureOfAiHttpError(status: number, text: string, fields: AiProbeField
 	if (status === 401 || status === 403) {
 		return fail(
 			"not_configured",
-			`apiKey 鉴权失败（HTTP ${status}）。响应：${truncated || "(空)"}`,
+			packageText("ai.provider-probe.7", {
+				value0: status,
+				value1: truncated || packageText("ai.provider-probe.6"),
+			}),
 			{
 				upstreamCode,
 			},
@@ -87,21 +91,44 @@ function failureOfAiHttpError(status: number, text: string, fields: AiProbeField
 	if (status === 404) {
 		return fail(
 			"not_configured",
-			`model "${fields.model}" 不存在或 baseUrl 路径不对（HTTP 404）。响应：${truncated || "(空)"}`,
+			packageText("ai.provider-probe.9", {
+				value0: fields.model,
+				value1: truncated || packageText("ai.provider-probe.8"),
+			}),
 			{ upstreamCode },
 		);
 	}
 	if (status === 429) {
-		return fail("rate_limited", `请求被限速（HTTP 429）。响应：${truncated || "(空)"}`, {
-			upstreamCode,
-		});
+		return fail(
+			"rate_limited",
+			packageText("ai.provider-probe.11", {
+				value0: truncated || packageText("ai.provider-probe.10"),
+			}),
+			{
+				upstreamCode,
+			},
+		);
 	}
 	if (status >= 500) {
-		return fail("unavailable", `服务端错误（HTTP ${status}）。响应：${truncated || "(空)"}`, {
-			upstreamCode,
-		});
+		return fail(
+			"unavailable",
+			packageText("ai.provider-probe.13", {
+				value0: status,
+				value1: truncated || packageText("ai.provider-probe.12"),
+			}),
+			{
+				upstreamCode,
+			},
+		);
 	}
-	return fail("unavailable", `请求失败（HTTP ${status}）。响应：${truncated || "(空)"}`, {
-		upstreamCode,
-	});
+	return fail(
+		"unavailable",
+		packageText("ai.provider-probe.15", {
+			value0: status,
+			value1: truncated || packageText("ai.provider-probe.14"),
+		}),
+		{
+			upstreamCode,
+		},
+	);
 }

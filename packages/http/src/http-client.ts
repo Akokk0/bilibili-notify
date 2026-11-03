@@ -8,6 +8,7 @@ import type {
 	FetchOptions as PublicFetchOptions,
 } from "@bilibili-notify/internal";
 import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal/result";
+import { packageText } from "@bilibili-notify/internal/texts";
 import { Agent, buildConnector, Headers as UndiciHeaders, fetch as undiciFetch } from "undici";
 import type { BrowserIdentity } from "./browser-identity";
 import type { CookieJar } from "./cookie-jar";
@@ -99,7 +100,7 @@ function createResponse(
 			try {
 				return ok({ value: JSON.parse(utf8.decode(body)) as unknown });
 			} catch {
-				return fail("invalid", "响应不是合法的 JSON");
+				return fail("invalid", packageText("http.http-client.1"));
 			}
 		},
 	};
@@ -148,8 +149,8 @@ function abortFailure(signal: AbortSignal, target: URL): Failure {
 	const where = urlWithoutQuery(target);
 	const name = (signal.reason as { name?: unknown } | undefined)?.name;
 	return name === "TimeoutError"
-		? fail("timeout", `请求超时被中止: ${where}`)
-		: fail("indeterminate", `请求被中止: ${where}`);
+		? fail("timeout", packageText("http.http-client.2", { value0: where }))
+		: fail("indeterminate", packageText("http.http-client.3", { value0: where }));
 }
 
 /** 单跳的中止信号:调用方的 signal 与本跳的超时合成一个,并记下是不是超时掐的(回 `timeout` 还是「被中止」靠它分)。 */
@@ -158,7 +159,7 @@ function startHopSignal(parent: AbortSignal | undefined, timeoutMs: number) {
 	let timedOut = false;
 	const timer = setTimeout(() => {
 		timedOut = true;
-		controller.abort(new DOMException("请求超时", "TimeoutError"));
+		controller.abort(new DOMException(packageText("http.http-client.4"), "TimeoutError"));
 	}, timeoutMs);
 	const onParentAbort = () => controller.abort(parent?.reason);
 	parent?.addEventListener("abort", onParentAbort, { once: true });
@@ -211,13 +212,19 @@ function guardedConnector(
 		const host = hostname.replace(/^\[|\]$/g, "");
 		const literal = isIP(host) !== 0;
 		const addresses = literal ? [host] : await lookup(host);
-		if (addresses.length === 0) throw new Error(`名字没有解析出地址: ${host}`);
+		if (addresses.length === 0)
+			throw new Error(packageText("http.http-client.5", { value0: host }));
 		for (const address of addresses) {
 			const verdict = check(address);
 			if (verdict.ok) continue;
-			const where = literal ? address : `${host} 解析到 ${address}`;
+			const where = literal
+				? address
+				: packageText("http.http-client.6", { value0: host, value1: address });
 			throw new AddressRejectedError(
-				fail("invalid", `不许连这个地址(${where}): ${verdict.message}`),
+				fail(
+					"invalid",
+					packageText("http.http-client.7", { value0: where, value1: verdict.message }),
+				),
 			);
 		}
 		return addresses.find((address) => isIP(address) === 4) ?? (addresses[0] as string);
@@ -331,17 +338,20 @@ export class HttpClient implements HttpClientContract {
 	async fetch(url: string | URL, options: FetchOptions = {}): Promise<Result<HttpResponse>> {
 		const method = (options.method ?? "GET").toUpperCase();
 		if (options.body !== undefined && (method === "GET" || method === "HEAD")) {
-			return fail("invalid", `${method} 请求不能带 body`);
+			return fail("invalid", packageText("http.http-client.8", { value0: method }));
 		}
 		let target: URL;
 		try {
 			target = new URL(url);
 		} catch {
-			return fail("invalid", `不是合法的地址: ${urlWithoutQuery(String(url))}`);
+			return fail(
+				"invalid",
+				packageText("http.http-client.9", { value0: urlWithoutQuery(String(url)) }),
+			);
 		}
 
 		if (options.body instanceof FormData && options.addressCheck) {
-			return fail("invalid", "FormData 请求体不能和 addressCheck 同用");
+			return fail("invalid", packageText("http.http-client.10"));
 		}
 
 		const maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
@@ -360,7 +370,10 @@ export class HttpClient implements HttpClientContract {
 
 		for (let index = 0; ; index++) {
 			if (target.protocol !== "http:" && target.protocol !== "https:") {
-				return fail("invalid", `只支持 http / https: ${urlWithoutQuery(target)}`);
+				return fail(
+					"invalid",
+					packageText("http.http-client.11", { value0: urlWithoutQuery(target) }),
+				);
 			}
 			if (options.signal?.aborted) return abortFailure(options.signal, target);
 
@@ -380,7 +393,7 @@ export class HttpClient implements HttpClientContract {
 					crossedOrigin,
 				);
 			} catch (err) {
-				return fail("invalid", `请求头不合法: ${describeError(err)}`);
+				return fail("invalid", packageText("http.http-client.12", { value0: describeError(err) }));
 			}
 
 			const attempt = startHopSignal(options.signal, timeoutMs);
@@ -414,7 +427,10 @@ export class HttpClient implements HttpClientContract {
 					if (body === null) {
 						return fail(
 							"invalid",
-							`响应体超过 ${options.maxBodyBytes} 字节: ${urlWithoutQuery(target)}`,
+							packageText("http.http-client.13", {
+								value0: String(options.maxBodyBytes),
+								value1: urlWithoutQuery(target),
+							}),
 						);
 					}
 					leg = {
@@ -432,10 +448,22 @@ export class HttpClient implements HttpClientContract {
 				if (rejected) return rejected;
 				// 这一小段里只有网络栈:连不上、读到一半断线、被超时或调用方中止。
 				if (attempt.timedOut()) {
-					return fail("timeout", `请求超过 ${timeoutMs / 1000} 秒没回: ${urlWithoutQuery(target)}`);
+					return fail(
+						"timeout",
+						packageText("http.http-client.14", {
+							value0: timeoutMs / 1000,
+							value1: urlWithoutQuery(target),
+						}),
+					);
 				}
 				if (options.signal?.aborted) return abortFailure(options.signal, target);
-				return fail("unavailable", `请求失败: ${urlWithoutQuery(target)} (${describeError(err)})`);
+				return fail(
+					"unavailable",
+					packageText("http.http-client.15", {
+						value0: urlWithoutQuery(target),
+						value1: describeError(err),
+					}),
+				);
 			} finally {
 				attempt.dispose();
 			}
@@ -454,7 +482,10 @@ export class HttpClient implements HttpClientContract {
 			try {
 				next = new URL(leg.location, target);
 			} catch {
-				return fail("unavailable", `对端给了不合法的重定向地址: ${urlWithoutQuery(target)}`);
+				return fail(
+					"unavailable",
+					packageText("http.http-client.16", { value0: urlWithoutQuery(target) }),
+				);
 			}
 			// 303(以及 301/302 上的 POST)降级为 GET 且不重发 body;307/308 保持方法与 body
 			// (与 fetch / 浏览器语义一致)。body 没了,描述它的头也要剥掉。
@@ -489,7 +520,10 @@ export class HttpClient implements HttpClientContract {
 		try {
 			target = new URL(url);
 		} catch {
-			return fail("invalid", `不是合法的地址: ${urlWithoutQuery(String(url))}`);
+			return fail(
+				"invalid",
+				packageText("http.http-client.17", { value0: urlWithoutQuery(String(url)) }),
+			);
 		}
 		const handshake: [string, string][] = [];
 		if (!options.bare) {

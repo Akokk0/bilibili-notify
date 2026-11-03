@@ -1,3 +1,4 @@
+import { packageText } from "../texts";
 /**
  * 拓展包的构建那一步(construction-plan「读设置的写法简化」,第 4 期):**规则只写一份**,清单里的设置项由构建
  * 从规则导出,作者不写第二份。拓展经门的构建子路径 `@bilibili-notify/extension/build` 拿它,挂在自己
@@ -36,7 +37,7 @@ function isObject(value: unknown): value is Json {
  * 错在构建时就报、点名到那一格。
  */
 export function manifestWithSettingsFields(source: unknown, entry: ExtensionEntrySchemas): Json {
-	if (!isObject(source)) throw new Error("extension.json 不是一个对象");
+	if (!isObject(source)) throw new Error(packageText("internal.extension.build.1"));
 	const id = String(source.id);
 	const fail = (msg: string): never => {
 		throw new Error(`extension ${id}: ${msg}`);
@@ -45,12 +46,10 @@ export function manifestWithSettingsFields(source: unknown, entry: ExtensionEntr
 	const push = isObject(contributes?.push) ? contributes.push : undefined;
 	// 两份并存就又会漂:源码清单里还手写着的,一律不收。
 	if (source.settings !== undefined) {
-		fail("源码清单里不写 settings.fields —— 设置项由构建从入口导出的 settingsSchema 导出");
+		fail(packageText("internal.extension.build.2"));
 	}
 	if (push?.settingsFields !== undefined) {
-		fail(
-			"源码清单里不写 contributes.push.settingsFields —— 由构建从入口导出的 connectionSettingsSchema 导出",
-		);
+		fail(packageText("internal.extension.build.3"));
 	}
 
 	const out: Json = { ...source };
@@ -60,7 +59,7 @@ export function manifestWithSettingsFields(source: unknown, entry: ExtensionEntr
 		if (fields.length > 0) out.settings = { fields };
 	}
 	if (entry.connectionSettingsSchema !== undefined) {
-		if (!push) fail("入口导出了 connectionSettingsSchema,清单却没开推送那口(contributes.push)");
+		if (!push) fail(packageText("internal.extension.build.4"));
 		const fields = settingsFieldsFromSchema(entry.connectionSettingsSchema);
 		// 连接一律是从候选里挑出来的(settings 由拓展交),所以按「挑出来的」对表 —— 同宿主登记适配器时那一道。
 		assertConfigFieldsMatchSchema(id, entry.connectionSettingsSchema as ZodType, fields, {
@@ -74,7 +73,9 @@ export function manifestWithSettingsFields(source: unknown, entry: ExtensionEntr
 	const read = parseExtensionManifest(out);
 	if (!read.ok) {
 		fail(
-			`导出来的清单读不了:${read.reason === "unreadable" ? read.issues.join(";") : read.reason}`,
+			packageText("internal.extension.build.5", {
+				value0: read.reason === "unreadable" ? read.issues.join(";") : read.reason,
+			}),
 		);
 	}
 	return out;

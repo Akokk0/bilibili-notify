@@ -37,12 +37,12 @@ import { buildGallery, type PostNode } from "../templates/post-content";
 import type { BlockRenderer } from "./types";
 
 /**
- * 给 `icons.tsx` 里那几个**预求值的 VNode 常量**挂上 `icon` 挂点。
+ * 给 `icons.tsx` 里那几个**按当前语言构造的 VNode**挂上 `icon` 挂点。
  *
  * 不能在图标外面包一层 `<span data-bn="icon">` —— 那会往输出里塞一个今天没有的元素,
  * 基准快照(剥掉挂点后逐字节)当场红,布局也跟着变;也不能改常量本身,它们在别处(富文本、
  * 附加卡)复用,而那些地方没有 `icon` 挂点。所以照原样重建一个同类型同 children 的 VNode,
- * props 里多一条 `data-bn`,原常量分毫不动。
+ * props 里多一条 `data-bn`,原图标分毫不动。
  *
  * ⚠️ 别改回 `cloneVNode`:它走 `mergeProps`,而 `mergeProps` 会把**每个** `style`(包括
  * 没被覆盖的那一份)过一遍 `normalizeStyle` —— 图标的 `style` 是字符串,被解析成对象再
@@ -52,9 +52,9 @@ import type { BlockRenderer } from "./types";
 const withIconHook = (icon: VNode): VNode =>
 	h(icon.type as string, { ...icon.props, "data-bn": "icon" }, icon.children as VNode[]);
 
-const ICON_FORWARD = withIconHook(SVG_FORWARD);
-const ICON_COMMENT = withIconHook(SVG_COMMENT);
-const ICON_LIKE = withIconHook(SVG_LIKE);
+const ICON_FORWARD = () => withIconHook(SVG_FORWARD());
+const ICON_COMMENT = () => withIconHook(SVG_COMMENT());
+const ICON_LIKE = () => withIconHook(SVG_LIKE());
 
 /**
  * 作品块吃的 props:一个 PostNode + **内层卡怎么装**。
@@ -110,7 +110,7 @@ const time: BlockRenderer<PostBlockProps> = ({ node }) => (
 const topic: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.topic ? (
 		<div data-bn="text" class="flex items-center">
-			{SVG_TOPIC}
+			{SVG_TOPIC()}
 			{node.topic}
 		</div>
 	) : null;
@@ -175,13 +175,13 @@ const videoStats: BlockRenderer<PostBlockProps> = ({ node }) =>
 		<div data-bn="text" class="flex items-center">
 			{node.video.views ? (
 				<span data-bn="stat" class="flex items-center">
-					{SVG_VIEW}
+					{SVG_VIEW()}
 					{node.video.views}
 				</span>
 			) : null}
 			{node.video.danmaku ? (
 				<span data-bn="stat" class="flex items-center">
-					{SVG_DANMAKU}
+					{SVG_DANMAKU()}
 					{node.video.danmaku}
 				</span>
 			) : null}
@@ -212,11 +212,11 @@ type DynamicStats = NonNullable<PostNode["stats"]>;
  * 也收起(拓展的作品三样各自选填,ADR-0019 决策 55),不画一个空着的图标。
  */
 const statAtom =
-	(icon: VNode, pick: (s: DynamicStats) => string): BlockRenderer<PostBlockProps> =>
+	(icon: () => VNode, pick: (s: DynamicStats) => string): BlockRenderer<PostBlockProps> =>
 	({ node }) =>
 		node.stats && pick(node.stats) ? (
 			<div data-bn="text" class={STAT_ATOM_CLASS}>
-				{icon}
+				{icon()}
 				<span>{pick(node.stats)}</span>
 			</div>
 		) : null;

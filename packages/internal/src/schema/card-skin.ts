@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { packageText } from "../texts";
 
 /**
  * 卡片皮肤包(ADR-0014)—— 推送卡片图的皮肤:一份 JSON 描述七种卡各自的**网格、块与
@@ -19,17 +20,15 @@ import { z } from "zod";
  * 皮肤包格式的版本。结构不兼容地演进时递增。
  *
  * 2 = 1.0:卡种键、字段路径、块名与挂点名改用同一套词(ADR-0023 决策 3 的 2026-10-06 🔗),退役的 `variables` /
- * `variablesByKind` 删掉。版本 1(0.x 与 1.0 开发期做的包)一律拒收,不写转换 —— 提示见 {@link OLD_CARD_SKIN_MESSAGE}。
+ * `variablesByKind` 删掉。版本 1(0.x 与 1.0 开发期做的包)一律拒收,不写转换 —— 提示见 {@link oldCardSkinMessage}。
  */
 export const CARD_SKIN_SCHEMA_VERSION = 2;
 
 /** 老版本(格式版本比当前小)的包被拒收时给的话。装包、编辑器保存、预览、AI 写 CSS 走的是同一道门(`parseCardSkin`)。 */
-export const OLD_CARD_SKIN_MESSAGE =
-	"这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。";
+export const oldCardSkinMessage = () => packageText("internal.schema.card-skin.1");
 
 /** 新版本(格式版本比当前大)的包被拒收时给的话:它来自更新的 BN,这一版读不了。不报版本数字,用户不关心。 */
-export const NEWER_CARD_SKIN_MESSAGE =
-	"这个卡片皮肤是用更新版本的 BN 做的，请先把 BN 更新到最新版再装。";
+export const newerCardSkinMessage = () => packageText("internal.schema.card-skin.2");
 
 /**
  * 数据契约(`CARD_SKIN_FIELDS`)的版本。字段**只增**,所以它只在「有字段被加进来」时递增,
@@ -71,8 +70,18 @@ export const CardKindSchema = z.enum(CARD_KINDS);
  */
 export const CARD_SKIN_VARIABLES = {
 	/** SC 按价位、上舰按舰长等级的档位色,只这两种卡有。 */
-	tierColor: { css: "--bn-card-tier-color", label: "档位色(SC / 上舰)" },
-	tierColorEnd: { css: "--bn-card-tier-color-end", label: "档位色止色(SC / 上舰)" },
+	tierColor: {
+		css: "--bn-card-tier-color",
+		get label() {
+			return packageText("internal.schema.card-skin.3");
+		},
+	},
+	tierColorEnd: {
+		css: "--bn-card-tier-color-end",
+		get label() {
+			return packageText("internal.schema.card-skin.4");
+		},
+	},
 } as const;
 
 /**
@@ -220,23 +229,25 @@ const KNOB_VALUE_DENY = ["url(", "image-set(", "element(", "expression(", "src("
 /** 一个字面量能不能进(下拉候选 / 开关两端)。返回原因或 null。 */
 function knobValueReason(raw: string): string | null {
 	if (raw.length === 0 || raw.length > CARD_SKIN_KNOB_LIMITS.value.max) {
-		return `值长度要在 1~${CARD_SKIN_KNOB_LIMITS.value.max} 之间`;
+		return packageText("internal.schema.card-skin.5", { value0: CARD_SKIN_KNOB_LIMITS.value.max });
 	}
-	if (!KNOB_VALUE_RE.test(raw)) return "值含分号 / 大括号 / 引号 / 反斜杠这类能越出声明的字符";
+	if (!KNOB_VALUE_RE.test(raw)) return packageText("internal.schema.card-skin.6");
 	const flat = raw.toLowerCase().replace(/\s+/g, "");
 	for (const bad of KNOB_VALUE_DENY) {
-		if (flat.includes(bad)) return `值含 ${bad.slice(0, -1)}()`;
+		if (flat.includes(bad))
+			return packageText("internal.schema.card-skin.7", { value0: bad.slice(0, -1) });
 	}
 	return null;
 }
 
 const knobValue = z.string().refine((v) => knobValueReason(v) === null, {
-	error: (iss) => knobValueReason(iss.input as string) ?? "值不合法",
+	error: (iss) =>
+		knobValueReason(iss.input as string) ?? packageText("internal.schema.card-skin.8"),
 });
 const knobKey = z
 	.string()
 	.max(CARD_SKIN_KNOB_LIMITS.key.max)
-	.regex(CARD_SKIN_KNOB_KEY_RE, "旋钮 key 只准小写字母起头的 kebab(如 accent / glass-opacity)");
+	.regex(CARD_SKIN_KNOB_KEY_RE, { error: () => packageText("internal.schema.card-skin.9") });
 const knobLabel = z.string().min(1).max(CARD_SKIN_KNOB_LIMITS.label.max);
 
 export const CardSkinKnobSchema = z.discriminatedUnion("type", [
@@ -245,7 +256,9 @@ export const CardSkinKnobSchema = z.discriminatedUnion("type", [
 			key: knobKey,
 			label: knobLabel,
 			type: z.literal("color"),
-			default: z.string().regex(KNOB_COLOR_RE, "颜色只准 3 位 / 6 位 hex(半透明走 color-mix)"),
+			default: z
+				.string()
+				.regex(KNOB_COLOR_RE, { error: () => packageText("internal.schema.card-skin.10") }),
 		})
 		.strict(),
 	z
@@ -269,11 +282,13 @@ export const CardSkinKnobSchema = z.discriminatedUnion("type", [
 			default: knobValue,
 			options: z
 				.array(z.object({ value: knobValue, label: knobLabel }).strict())
-				.min(1, "下拉至少要有一个候选")
-				.max(
-					CARD_SKIN_KNOB_LIMITS.maxOptions,
-					`下拉最多 ${CARD_SKIN_KNOB_LIMITS.maxOptions} 个候选`,
-				),
+				.min(1, { error: () => packageText("internal.schema.card-skin.11") })
+				.max(CARD_SKIN_KNOB_LIMITS.maxOptions, {
+					error: () =>
+						packageText("internal.schema.card-skin.12", {
+							value0: CARD_SKIN_KNOB_LIMITS.maxOptions,
+						}),
+				}),
 		})
 		.strict(),
 	z
@@ -421,7 +436,11 @@ const CardSkinColumnSchema = z.union([
 	z.object({ fr: z.number().int().min(1).max(CARD_SKIN_LIMITS.columns) }).strict(),
 	z
 		.object({
-			px: z.number().min(1).max(CARD_SKIN_LIMITS.width.max).multipleOf(0.01, "px 列最多两位小数"),
+			px: z
+				.number()
+				.min(1)
+				.max(CARD_SKIN_LIMITS.width.max)
+				.multipleOf(0.01, { error: () => packageText("internal.schema.card-skin.13") }),
 		})
 		.strict(),
 ]);
@@ -437,8 +456,8 @@ const BLOCK_ID_RE = /^[a-z][a-z0-9-]{0,31}$/;
 const ASSET_REF_RE = /^asset:assets\/[a-z0-9._-]+$/;
 const assetRef = z
 	.string()
-	.regex(ASSET_REF_RE, "资产引用只认 asset:assets/<文件> 形式")
-	.refine((v) => !v.includes(".."), "资产引用不许带 ..");
+	.regex(ASSET_REF_RE, { error: () => packageText("internal.schema.card-skin.14") })
+	.refine((v) => !v.includes(".."), { error: () => packageText("internal.schema.card-skin.15") });
 
 /** CSS 变量名(`--bn-asset-<名>` 的那截 `<名>`)。 */
 const ASSET_VAR_RE = /^[a-z][a-z0-9-]{0,31}$/;
@@ -450,13 +469,13 @@ const ASSET_VAR_RE = /^[a-z][a-z0-9-]{0,31}$/;
  */
 const AssetVarsSchema = z
 	.record(
-		z.string().regex(ASSET_VAR_RE, "资产变量名只准小写字母、数字、连字符,32 字以内"),
+		z.string().regex(ASSET_VAR_RE, { error: () => packageText("internal.schema.card-skin.16") }),
 		assetRef,
 	)
-	.refine(
-		(m) => Object.keys(m).length <= CARD_SKIN_LIMITS.maxAssetVars,
-		`一张 assets 表最多 ${CARD_SKIN_LIMITS.maxAssetVars} 项`,
-	);
+	.refine((m) => Object.keys(m).length <= CARD_SKIN_LIMITS.maxAssetVars, {
+		error: () =>
+			packageText("internal.schema.card-skin.17", { value0: CARD_SKIN_LIMITS.maxAssetVars }),
+	});
 export type CardSkinAssetVars = z.infer<typeof AssetVarsSchema>;
 
 // 长度闸量 **UTF-8 字节**,不是 `.max()` 的 UTF-16 单元数 —— 后者一个汉字只记 1,
@@ -464,17 +483,20 @@ export type CardSkinAssetVars = z.infer<typeof AssetVarsSchema>;
 // 存的时候才被清洗器退回来。
 const cssField = z
 	.string()
-	.refine(
-		(v) => cardSkinBytes(v) <= CARD_SKIN_LIMITS.maxCssBytes,
-		`css 超过 ${CARD_SKIN_LIMITS.maxCssBytes / 1024}KB`,
-	)
+	.refine((v) => cardSkinBytes(v) <= CARD_SKIN_LIMITS.maxCssBytes, {
+		error: () =>
+			packageText("internal.schema.card-skin.18", { value0: CARD_SKIN_LIMITS.maxCssBytes / 1024 }),
+	})
 	.optional();
 
 const BlockBaseSchema = z.object({
-	id: z.string().regex(BLOCK_ID_RE, "块 id 只准小写字母、数字、连字符,32 字以内"),
+	id: z.string().regex(BLOCK_ID_RE, { error: () => packageText("internal.schema.card-skin.19") }),
 	grid: GridSchema,
 	/** 字段路径,真值才画;字段必须在该卡种的 `CARD_SKIN_FIELDS` 里(装包时对表)。 */
-	showIf: z.string().regex(FIELD_PATH_RE, "showIf 只认 a.b.c 形式的字段路径").optional(),
+	showIf: z
+		.string()
+		.regex(FIELD_PATH_RE, { error: () => packageText("internal.schema.card-skin.20") })
+		.optional(),
 	css: cssField,
 	/** 这个块的资产变量(注在 wrapper 上)。 */
 	assets: AssetVarsSchema.optional(),
@@ -492,12 +514,12 @@ const BuiltinBlockSchema = BlockBaseSchema.extend({
 const CustomBlockSchema = BlockBaseSchema.extend({
 	kind: z.literal("custom"),
 	/** 受限 HTML 子集(清洗在 server),文本里可写 `{a.b.c}` 占位符。 */
-	html: z
-		.string()
-		.refine(
-			(v) => cardSkinBytes(v) <= CARD_SKIN_LIMITS.maxHtmlBytes,
-			`html 超过 ${CARD_SKIN_LIMITS.maxHtmlBytes / 1024}KB`,
-		),
+	html: z.string().refine((v) => cardSkinBytes(v) <= CARD_SKIN_LIMITS.maxHtmlBytes, {
+		error: () =>
+			packageText("internal.schema.card-skin.21", {
+				value0: CARD_SKIN_LIMITS.maxHtmlBytes / 1024,
+			}),
+	}),
 }).strict();
 
 export const CardSkinBlockSchema = z.discriminatedUnion("kind", [
@@ -524,7 +546,9 @@ export type CardSkinCustomBlock = z.infer<typeof CustomBlockSchema>;
 const CardSkinBleedSchema = z
 	.object({
 		size: z.number().int().min(CARD_SKIN_LIMITS.bleed.min).max(CARD_SKIN_LIMITS.bleed.max),
-		color: z.string().regex(KNOB_COLOR_RE, "出血色只收 #rgb / #rrggbb"),
+		color: z
+			.string()
+			.regex(KNOB_COLOR_RE, { error: () => packageText("internal.schema.card-skin.22") }),
 	})
 	.strict();
 export type CardSkinBleed = z.infer<typeof CardSkinBleedSchema>;
@@ -556,15 +580,19 @@ const CardSkinCardShapeSchema = z
 		 */
 		columns: z
 			.array(CardSkinColumnSchema)
-			.length(CARD_SKIN_LIMITS.columns, `columns 必须恰好 ${CARD_SKIN_LIMITS.columns} 项`)
+			.length(CARD_SKIN_LIMITS.columns, {
+				error: () =>
+					packageText("internal.schema.card-skin.23", { value0: CARD_SKIN_LIMITS.columns }),
+			})
 			.optional(),
 		/** 根块两层的 CSS(清洗后每条选择器以 `[data-bn="frame"]` / `[data-bn="glass"]` 起头)。 */
 		css: cssField,
 		/** 这张卡外框的资产变量(注在 frame 上)。 */
 		assets: AssetVarsSchema.optional(),
-		blocks: z
-			.array(CardSkinBlockSchema)
-			.max(CARD_SKIN_LIMITS.maxBlocks, `一张卡最多 ${CARD_SKIN_LIMITS.maxBlocks} 块`),
+		blocks: z.array(CardSkinBlockSchema).max(CARD_SKIN_LIMITS.maxBlocks, {
+			error: () =>
+				packageText("internal.schema.card-skin.24", { value0: CARD_SKIN_LIMITS.maxBlocks }),
+		}),
 		/**
 		 * 🪦 **已退役**(ADR-0014 决策 10 的 2026-09-19 🔗)。形态覆盖 —— 一份基础版式 + 每个
 		 * 形态在它上面改几块。出图端从此没有形态:块照数据画,没数据的不画、整行空的行压掉。
@@ -599,7 +627,7 @@ export const CardSkinFontSchema = z
 	.object({
 		family: z
 			.string()
-			.regex(FONT_FAMILY_RE, "字体名只准字母、数字、空格、下划线、连字符,60 字以内"),
+			.regex(FONT_FAMILY_RE, { error: () => packageText("internal.schema.card-skin.25") }),
 		asset: assetRef,
 	})
 	.strict();
@@ -608,7 +636,8 @@ export type CardSkinFont = z.infer<typeof CardSkinFontSchema>;
 export const CardSkinManifestSchema = z
 	.object({
 		schemaVersion: z.literal(CARD_SKIN_SCHEMA_VERSION, {
-			error: `schemaVersion 必须是 ${CARD_SKIN_SCHEMA_VERSION}`,
+			error: () =>
+				packageText("internal.schema.card-skin.26", { value0: CARD_SKIN_SCHEMA_VERSION }),
 		}),
 		dataVersion: z.number().int().min(1),
 		name: z.string().min(CARD_SKIN_LIMITS.name.min).max(CARD_SKIN_LIMITS.name.max),
@@ -617,12 +646,18 @@ export const CardSkinManifestSchema = z
 		/** 这套皮肤自己的旋钮(面板照它生成控件)。 */
 		knobs: z
 			.array(CardSkinKnobSchema)
-			.max(CARD_SKIN_KNOB_LIMITS.maxKnobs, `knobs 最多 ${CARD_SKIN_KNOB_LIMITS.maxKnobs} 枚`)
+			.max(CARD_SKIN_KNOB_LIMITS.maxKnobs, {
+				error: () =>
+					packageText("internal.schema.card-skin.27", { value0: CARD_SKIN_KNOB_LIMITS.maxKnobs }),
+			})
 			.optional(),
 		/** 皮肤自带的字体(family 全表唯一,装包时对包内资产)。 */
 		fonts: z
 			.array(CardSkinFontSchema)
-			.max(CARD_SKIN_LIMITS.maxFonts, `fonts 最多 ${CARD_SKIN_LIMITS.maxFonts} 款`)
+			.max(CARD_SKIN_LIMITS.maxFonts, {
+				error: () =>
+					packageText("internal.schema.card-skin.28", { value0: CARD_SKIN_LIMITS.maxFonts }),
+			})
 			.optional(),
 		cards: z.partialRecord(CardKindSchema, CardSkinCardSchema),
 	})
@@ -640,8 +675,8 @@ export type ParseCardSkinResult =
 function versionRejection(raw: unknown): string[] | undefined {
 	const version = (raw as { schemaVersion?: unknown } | null)?.schemaVersion;
 	if (typeof version !== "number" || !Number.isInteger(version)) return undefined;
-	if (version < CARD_SKIN_SCHEMA_VERSION) return [OLD_CARD_SKIN_MESSAGE];
-	if (version > CARD_SKIN_SCHEMA_VERSION) return [NEWER_CARD_SKIN_MESSAGE];
+	if (version < CARD_SKIN_SCHEMA_VERSION) return [oldCardSkinMessage()];
+	if (version > CARD_SKIN_SCHEMA_VERSION) return [newerCardSkinMessage()];
 	return undefined;
 }
 
@@ -663,23 +698,35 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 	const errors: string[] = [];
 	const families = new Set<string>();
 	m.fonts?.forEach((f, i) => {
-		if (families.has(f.family)) errors.push(`fonts[${i}]: 字体名「${f.family}」重复`);
+		if (families.has(f.family))
+			errors.push(packageText("internal.schema.card-skin.29", { value0: i, value1: f.family }));
 		families.add(f.family);
 	});
 	const knobKeys = new Set<string>();
 	m.knobs?.forEach((k, i) => {
 		const at = `knobs[${i}]`;
 		// 两枚同 key 的旋钮注的是同一个变量:面板画两个控件,拧哪个都被另一个盖掉。
-		if (knobKeys.has(k.key)) errors.push(`${at}: 旋钮 key「${k.key}」重复`);
+		if (knobKeys.has(k.key))
+			errors.push(packageText("internal.schema.card-skin.30", { value0: at, value1: k.key }));
 		knobKeys.add(k.key);
 		if (k.type === "number") {
-			if (k.min > k.max) errors.push(`${at}: min ${k.min} 大于 max ${k.max}`);
+			if (k.min > k.max)
+				errors.push(
+					packageText("internal.schema.card-skin.31", { value0: at, value1: k.min, value2: k.max }),
+				);
 			else if (k.default < k.min || k.default > k.max) {
-				errors.push(`${at}: 默认值 ${k.default} 不在 ${k.min}~${k.max} 之间`);
+				errors.push(
+					packageText("internal.schema.card-skin.32", {
+						value0: at,
+						value1: k.default,
+						value2: k.min,
+						value3: k.max,
+					}),
+				);
 			}
 		}
 		if (k.type === "select" && !k.options.some((o) => o.value === k.default)) {
-			errors.push(`${at}: 默认值「${k.default}」不在候选里`);
+			errors.push(packageText("internal.schema.card-skin.33", { value0: at, value1: k.default }));
 		}
 	});
 	for (const kind of CARD_KINDS) {
@@ -691,7 +738,11 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 			const px = card.columns.reduce((sum, c) => sum + ("px" in c ? c.px : 0), 0);
 			if (px >= card.width) {
 				errors.push(
-					`cards.${kind}.columns: 定宽列合计 ${px}px 不小于卡宽 ${card.width}px,等分列没地方站`,
+					packageText("internal.schema.card-skin.34", {
+						value0: kind,
+						value1: px,
+						value2: card.width,
+					}),
 				);
 			}
 		}
@@ -700,21 +751,44 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 		const catalogue = CARD_SKIN_BUILTIN_BLOCKS[kind];
 		card.blocks.forEach((b, i) => {
 			const at = `cards.${kind}.blocks[${i}]`;
-			if (ids.has(b.id)) errors.push(`${at}: 块 id「${b.id}」重复`);
+			if (ids.has(b.id))
+				errors.push(packageText("internal.schema.card-skin.35", { value0: at, value1: b.id }));
 			ids.add(b.id);
 			if (b.grid.column + b.grid.span - 1 > CARD_SKIN_LIMITS.columns) {
 				errors.push(
-					`${at}.grid: 第 ${b.grid.column} 列起跨 ${b.grid.span} 列越过了 ${CARD_SKIN_LIMITS.columns} 列`,
+					packageText("internal.schema.card-skin.36", {
+						value0: at,
+						value1: b.grid.column,
+						value2: b.grid.span,
+						value3: CARD_SKIN_LIMITS.columns,
+					}),
 				);
 			}
 			if (b.grid.row + (b.grid.rowSpan ?? 1) - 1 > CARD_SKIN_LIMITS.maxRows) {
-				errors.push(`${at}.grid: 行数越过了 ${CARD_SKIN_LIMITS.maxRows}`);
+				errors.push(
+					packageText("internal.schema.card-skin.37", {
+						value0: at,
+						value1: CARD_SKIN_LIMITS.maxRows,
+					}),
+				);
 			}
 			if (b.kind === "builtin" && !(b.builtin in catalogue)) {
-				errors.push(`${at}: ${kind} 卡没有叫「${b.builtin}」的内置块`);
+				errors.push(
+					packageText("internal.schema.card-skin.38", {
+						value0: at,
+						value1: kind,
+						value2: b.builtin,
+					}),
+				);
 			}
 			if (b.showIf && !fields.has(b.showIf)) {
-				errors.push(`${at}.showIf: ${kind} 卡的契约里没有字段「${b.showIf}」`);
+				errors.push(
+					packageText("internal.schema.card-skin.39", {
+						value0: at,
+						value1: kind,
+						value2: b.showIf,
+					}),
+				);
 			}
 		});
 	}
@@ -733,7 +807,7 @@ export const DEFAULT_CARD_SKIN_ID = "default";
  */
 export const CardSkinIdSchema = z
 	.string()
-	.regex(/^[a-z0-9][a-z0-9-]{0,63}$/, "皮肤 id 只准小写字母、数字、连字符");
+	.regex(/^[a-z0-9][a-z0-9-]{0,63}$/, { error: () => packageText("internal.schema.card-skin.40") });
 
 type B = CardSkinBlock;
 
@@ -854,8 +928,12 @@ const HEAD = "display:flex";
 export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 	schemaVersion: CARD_SKIN_SCHEMA_VERSION,
 	dataVersion: CARD_DATA_VERSION,
-	name: "默认",
-	description: "Bilibili-Notify 出厂的卡片外观。",
+	get name() {
+		return packageText("internal.schema.card-skin.41");
+	},
+	get description() {
+		return packageText("internal.schema.card-skin.42");
+	},
 	/**
 	 * 出厂那四枚旋钮。`default` 只是面板控件的起始位置,**不注入** —— 玻璃白纱那枚的
 	 * 各卡兜底写在 CSS 里({@link glassBase}),一注就把三档基线塌成一档。
@@ -863,19 +941,25 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 	knobs: [
 		{
 			key: DEFAULT_SKIN_KNOB_KEYS.gradientStart,
-			label: "背景渐变起色",
+			get label() {
+				return packageText("internal.schema.card-skin.43");
+			},
 			type: "color",
 			default: DEFAULT_CARD_GRADIENT[0],
 		},
 		{
 			key: DEFAULT_SKIN_KNOB_KEYS.gradientEnd,
-			label: "背景渐变止色",
+			get label() {
+				return packageText("internal.schema.card-skin.44");
+			},
 			type: "color",
 			default: DEFAULT_CARD_GRADIENT[1],
 		},
 		{
 			key: DEFAULT_SKIN_KNOB_KEYS.glassOpacity,
-			label: "玻璃白纱",
+			get label() {
+				return packageText("internal.schema.card-skin.45");
+			},
 			type: "number",
 			default: 0.82,
 			min: 0,
@@ -884,7 +968,9 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		},
 		{
 			key: DEFAULT_SKIN_KNOB_KEYS.glassBlur,
-			label: "玻璃模糊",
+			get label() {
+				return packageText("internal.schema.card-skin.46");
+			},
 			type: "number",
 			default: 10,
 			min: 0,
@@ -893,10 +979,23 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			unit: "px",
 		},
 		// 起手位置是空 = 跟着渲染那台机器的兜底链走(从前那句「默认(交给渲染那台机器)」)。
-		{ key: DEFAULT_SKIN_KNOB_KEYS.font, label: "字体", type: "font", default: "" },
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.font,
+			get label() {
+				return packageText("internal.schema.card-skin.47");
+			},
+			type: "font",
+			default: "",
+		},
 		// 图片旋钮没有 default:主人自己的图,皮肤起不出默认值来 —— 没选时外框那条规则里
 		// 的渐变兜底顶上。
-		{ key: DEFAULT_SKIN_KNOB_KEYS.wallpaper, label: "卡片背景图", type: "image" },
+		{
+			key: DEFAULT_SKIN_KNOB_KEYS.wallpaper,
+			get label() {
+				return packageText("internal.schema.card-skin.48");
+			},
+			type: "image",
+		},
 	],
 	cards: {
 		live: {

@@ -19,10 +19,10 @@ import {
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
-	CARD_SKIN_RANK_GUIDE,
 	CARD_SKIN_RANKED_KINDS,
 	CARD_SKIN_SELF_HOOK,
 	cardSkinBytes,
+	cardSkinRankGuide,
 } from "@bilibili-notify/internal/card-skin";
 import {
 	AddFileButton,
@@ -579,11 +579,11 @@ function blockHooks(kind: CardKind, block: Card["blocks"][number]): Array<[strin
 
 /**
  * 档位卡(醒目留言 / 会员)的 CSS 一节要带上「按档换色」的说明;别的卡没有「档」,不给。
- * 说明与 AI 的规则提示词读同一段常量({@link CARD_SKIN_RANK_GUIDE})。
+ * 说明与 AI 的规则提示词读同一段常量({@link cardSkinRankGuide})。
  */
 function rankNote(kind: CardKind): string | undefined {
 	return (CARD_SKIN_RANKED_KINDS as readonly string[]).includes(kind)
-		? CARD_SKIN_RANK_GUIDE
+		? cardSkinRankGuide()
 		: undefined;
 }
 

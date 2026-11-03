@@ -1,3 +1,4 @@
+import { packageText } from "./texts/index";
 /**
  * 卡片皮肤契约 —— 卡种、预览场景、网格、字段、挂点、旋钮与内置块目录。
  *
@@ -52,13 +53,27 @@ export type CardKind = (typeof CARD_KINDS)[number];
  * 加第八种卡时总有一边漏掉,而漏掉的那边是静默的。
  */
 export const CARD_KIND_NAMES: Readonly<Record<CardKind, string>> = {
-	live: "直播卡",
-	post: "动态卡",
-	superchat: "醒目留言卡",
-	membership: "上舰卡",
-	roastBoard: "锐评榜单卡",
-	roastSolo: "单人锐评卡",
-	wordcloud: "弹幕词云卡",
+	get live() {
+		return packageText("internal.card-skin.1");
+	},
+	get post() {
+		return packageText("internal.card-skin.2");
+	},
+	get superchat() {
+		return packageText("internal.card-skin.3");
+	},
+	get membership() {
+		return packageText("internal.card-skin.4");
+	},
+	get roastBoard() {
+		return packageText("internal.card-skin.5");
+	},
+	get roastSolo() {
+		return packageText("internal.card-skin.6");
+	},
+	get wordcloud() {
+		return packageText("internal.card-skin.7");
+	},
 };
 
 /**
@@ -66,13 +81,25 @@ export const CARD_KIND_NAMES: Readonly<Record<CardKind, string>> = {
  * 是同一张表的两种写法,**卡种中文名只许住在这里**(`__tests__/card-kind-names.test.ts` 扫源码钉着:别处再写一份就红)。
  */
 export const CARD_KIND_SHORT_NAMES: Readonly<Record<CardKind, string>> = {
-	live: "直播",
-	post: "动态",
+	get live() {
+		return packageText("internal.card-skin.8");
+	},
+	get post() {
+		return packageText("internal.card-skin.9");
+	},
 	superchat: "SC",
-	membership: "上舰",
-	roastBoard: "锐评榜单",
-	roastSolo: "单人锐评",
-	wordcloud: "词云",
+	get membership() {
+		return packageText("internal.card-skin.10");
+	},
+	get roastBoard() {
+		return packageText("internal.card-skin.11");
+	},
+	get roastSolo() {
+		return packageText("internal.card-skin.12");
+	},
+	get wordcloud() {
+		return packageText("internal.card-skin.13");
+	},
 };
 
 /**
@@ -82,10 +109,18 @@ export const CARD_KIND_SHORT_NAMES: Readonly<Record<CardKind, string>> = {
 export const CARD_KIND_EVENT_NAMES: Readonly<
 	Record<"live" | "post" | "superchat" | "membership", string>
 > = {
-	live: "直播开播",
-	post: "动态发布",
-	superchat: "SC 提醒",
-	membership: "上舰提醒",
+	get live() {
+		return packageText("internal.card-skin.14");
+	},
+	get post() {
+		return packageText("internal.card-skin.15");
+	},
+	get superchat() {
+		return packageText("internal.card-skin.16");
+	},
+	get membership() {
+		return packageText("internal.card-skin.17");
+	},
 };
 
 // ---- 预览场景 ---------------------------------------------------------------
@@ -117,8 +152,18 @@ export const CARD_PREVIEW_SCENES: Readonly<Record<CardKind, readonly PreviewScen
 	// 看到的一张。「开播」不单列:它与直播中 `liveStatus` 都是 1,只差一句文案,出图端分不开,
 	// 留着就只能是别名(ADR-0014 决策 10 的 2026-09-19 🔗)。
 	live: [
-		{ id: "streaming", label: "直播中" },
-		{ id: "ended", label: "下播" },
+		{
+			id: "streaming",
+			get label() {
+				return packageText("internal.card-skin.18");
+			},
+		},
+		{
+			id: "ended",
+			get label() {
+				return packageText("internal.card-skin.19");
+			},
+		},
 	],
 	// 四场按主媒体分,每一场就是出图端分得出来的一种卡:纯文字是底档(正文 + 话题 + 附加
 	// 内容都在这儿看);「视频投稿」是真机上 UP 发视频推过来的那张 —— 只有头部、视频五块和
@@ -127,16 +172,71 @@ export const CARD_PREVIEW_SCENES: Readonly<Record<CardKind, readonly PreviewScen
 	// 皮肤摆的块),不单列的话皮肤作者在面板上一眼都看不到这一层。
 	// 从前的「全字段」(视频 + 正文 + 话题)砍了 —— 它在出图端与「视频投稿」是同一种卡。
 	post: [
-		{ id: "text", label: "纯文字" },
-		{ id: "video", label: "视频投稿" },
-		{ id: "pics", label: "图文" },
-		{ id: "forward", label: "转发" },
+		{
+			id: "text",
+			get label() {
+				return packageText("internal.card-skin.20");
+			},
+		},
+		{
+			id: "video",
+			get label() {
+				return packageText("internal.card-skin.21");
+			},
+		},
+		{
+			id: "pics",
+			get label() {
+				return packageText("internal.card-skin.22");
+			},
+		},
+		{
+			id: "forward",
+			get label() {
+				return packageText("internal.card-skin.23");
+			},
+		},
 	],
-	superchat: [{ id: "default", label: "醒目留言" }],
-	membership: [{ id: "default", label: "上舰" }],
-	roastBoard: [{ id: "default", label: "锐评榜单" }],
-	roastSolo: [{ id: "default", label: "单人锐评" }],
-	wordcloud: [{ id: "default", label: "词云" }],
+	superchat: [
+		{
+			id: "default",
+			get label() {
+				return packageText("internal.card-skin.24");
+			},
+		},
+	],
+	membership: [
+		{
+			id: "default",
+			get label() {
+				return packageText("internal.card-skin.25");
+			},
+		},
+	],
+	roastBoard: [
+		{
+			id: "default",
+			get label() {
+				return packageText("internal.card-skin.26");
+			},
+		},
+	],
+	roastSolo: [
+		{
+			id: "default",
+			get label() {
+				return packageText("internal.card-skin.27");
+			},
+		},
+	],
+	wordcloud: [
+		{
+			id: "default",
+			get label() {
+				return packageText("internal.card-skin.28");
+			},
+		},
+	],
 };
 
 /**
@@ -331,16 +431,18 @@ export interface CardSkinField {
 	label: string;
 }
 
-const f = (path: string, type: CardSkinFieldType, label: string): CardSkinField => ({
+const f = (path: string, type: CardSkinFieldType, label: () => string): CardSkinField => ({
 	path,
 	type,
-	label,
+	get label() {
+		return label();
+	},
 });
 
 /** 各卡的创作者那两格。同名同义:每种卡上 `creator.*` 都是「这张卡讲的创作者」,没有平台的叫法(UP 主 / 主播 / master)。 */
 const CREATOR_FIELDS = [
-	f("creator.name", "text", "创作者名"),
-	f("creator.avatar", "image", "创作者头像"),
+	f("creator.name", "text", () => packageText("internal.card-skin.29")),
+	f("creator.avatar", "image", () => packageText("internal.card-skin.30")),
 ];
 
 /**
@@ -353,71 +455,74 @@ const CREATOR_FIELDS = [
 export const CARD_SKIN_FIELDS: Record<CardKind, readonly CardSkinField[]> = {
 	live: [
 		...CREATOR_FIELDS,
-		f("live.title", "text", "直播标题"),
-		f("live.category", "text", "分类"),
-		f("live.time", "text", "开播时长 / 下播时间那句"),
-		f("live.description", "text", "房间简介(纯文本)"),
+		f("live.title", "text", () => packageText("internal.card-skin.31")),
+		f("live.category", "text", () => packageText("internal.card-skin.32")),
+		f("live.time", "text", () => packageText("internal.card-skin.33")),
+		f("live.description", "text", () => packageText("internal.card-skin.34")),
 		// 封面永远画得出来:没有真封面时 `live.cover` 给 BN 自带的占位图(不是空串 —— 没写
 		// `showIf` 的皮肤也不会裂图),`live.hasCover` 如实为假;想整格收起就 `showIf` 它。
-		f("live.cover", "image", "封面(生效的那张;没有真封面时是占位图)"),
-		f("live.hasCover", "bool", "有没有真封面(占位图不算)"),
-		f("live.isStreaming", "bool", "正在直播"),
-		f("live.isEnded", "bool", "已下播"),
+		f("live.cover", "image", () => packageText("internal.card-skin.35")),
+		f("live.hasCover", "bool", () => packageText("internal.card-skin.36")),
+		f("live.isStreaming", "bool", () => packageText("internal.card-skin.37")),
+		f("live.isEnded", "bool", () => packageText("internal.card-skin.38")),
 		// 每格只装名字说的那一样;不该有值的状态下是空串(字段表规定永不 undefined)。
-		f("stats.currentViewers", "text", "在看人数(开播 / 直播中)"),
-		f("stats.likes", "text", "点赞(下播)"),
-		f("stats.followers", "text", "粉丝数(开播 / 直播中)"),
-		f("stats.totalViewers", "text", "累计观看(下播)"),
-		f("stats.followersDelta", "text", "粉丝变化(下播才有)"),
-		f("stats.hasFollowersDelta", "bool", "有没有粉丝变化"),
+		f("stats.currentViewers", "text", () => packageText("internal.card-skin.39")),
+		f("stats.likes", "text", () => packageText("internal.card-skin.40")),
+		f("stats.followers", "text", () => packageText("internal.card-skin.41")),
+		f("stats.totalViewers", "text", () => packageText("internal.card-skin.42")),
+		f("stats.followersDelta", "text", () => packageText("internal.card-skin.43")),
+		f("stats.hasFollowersDelta", "bool", () => packageText("internal.card-skin.44")),
 	],
 	post: [
 		...CREATOR_FIELDS,
-		f("creator.isPremium", "bool", "是付费会员"),
-		f("post.label", "text", "「投稿了视频」这类动作标签(内外层卡都有)"),
-		f("post.time", "text", "发布时间(只有时间,不带标签)"),
-		f("post.topic", "text", "话题"),
-		f("post.hasTopic", "bool", "有没有话题"),
-		f("post.hasRepost", "bool", "是转发"),
-		f("post.hasAttachment", "bool", "有没有附加内容(预约 / 商品…)"),
-		f("post.hasVideo", "bool", "带视频卡"),
-		f("post.hasImages", "bool", "带图"),
-		f("video.title", "text", "视频标题"),
-		f("video.description", "text", "视频简介"),
-		f("video.cover", "image", "视频封面"),
-		f("video.duration", "text", "视频时长"),
-		f("video.views", "text", "播放量"),
-		f("video.danmaku", "text", "弹幕数"),
-		f("images.count", "number", "图片张数"),
-		f("images.first", "image", "第一张图"),
-		f("stats.shares", "text", "转发数"),
-		f("stats.comments", "text", "评论数"),
-		f("stats.likes", "text", "点赞数"),
+		f("creator.isPremium", "bool", () => packageText("internal.card-skin.45")),
+		f("post.label", "text", () => packageText("internal.card-skin.46")),
+		f("post.time", "text", () => packageText("internal.card-skin.47")),
+		f("post.topic", "text", () => packageText("internal.card-skin.48")),
+		f("post.hasTopic", "bool", () => packageText("internal.card-skin.49")),
+		f("post.hasRepost", "bool", () => packageText("internal.card-skin.50")),
+		f("post.hasAttachment", "bool", () => packageText("internal.card-skin.51")),
+		f("post.hasVideo", "bool", () => packageText("internal.card-skin.52")),
+		f("post.hasImages", "bool", () => packageText("internal.card-skin.53")),
+		f("video.title", "text", () => packageText("internal.card-skin.54")),
+		f("video.description", "text", () => packageText("internal.card-skin.55")),
+		f("video.cover", "image", () => packageText("internal.card-skin.56")),
+		f("video.duration", "text", () => packageText("internal.card-skin.57")),
+		f("video.views", "text", () => packageText("internal.card-skin.58")),
+		f("video.danmaku", "text", () => packageText("internal.card-skin.59")),
+		f("images.count", "number", () => packageText("internal.card-skin.60")),
+		f("images.first", "image", () => packageText("internal.card-skin.61")),
+		f("stats.shares", "text", () => packageText("internal.card-skin.62")),
+		f("stats.comments", "text", () => packageText("internal.card-skin.63")),
+		f("stats.likes", "text", () => packageText("internal.card-skin.64")),
 	],
 	// 醒目留言卡与会员卡两组字段随 ㉓ 改到最终名字(ADR-0021 决策 26 下 2026-10-05 的 🔗):观众是 `viewer.*`,
 	// 醒目留言的东西在 `superchat.*`,会员的在 `membership.*`;主播那两格 `master.*` 随 ㉔b 改成 `creator.*`。
 	superchat: [
-		f("viewer.name", "text", "观众名"),
-		f("viewer.avatar", "image", "观众头像(没有就是空串)"),
+		f("viewer.name", "text", () => packageText("internal.card-skin.65")),
+		f("viewer.avatar", "image", () => packageText("internal.card-skin.66")),
 		...CREATOR_FIELDS,
-		f("superchat.amount", "text", "金额(带货币符号,排好的字)"),
-		f("superchat.amountValue", "number", "金额数字"),
-		f("superchat.duration", "text", "留言时长(来源没给就是空串)"),
-		f("superchat.rank", "number", "价位档(1~6,1 最低)"),
-		f("superchat.text", "text", "留言"),
+		f("superchat.amount", "text", () => packageText("internal.card-skin.67")),
+		f("superchat.amountValue", "number", () => packageText("internal.card-skin.68")),
+		f("superchat.duration", "text", () => packageText("internal.card-skin.69")),
+		f("superchat.rank", "number", () => packageText("internal.card-skin.70")),
+		f("superchat.text", "text", () => packageText("internal.card-skin.71")),
 	],
 	membership: [
-		f("viewer.name", "text", "观众名"),
-		f("viewer.avatar", "image", "观众头像(没有就是空串)"),
+		f("viewer.name", "text", () => packageText("internal.card-skin.72")),
+		f("viewer.avatar", "image", () => packageText("internal.card-skin.73")),
 		...CREATOR_FIELDS,
-		f("membership.rank", "number", "档位(从 1 起、1 最低;没有 rank 的档是 0)"),
-		f("membership.tierName", "text", "档名"),
-		f("membership.icon", "image", "徽章图"),
-		f("membership.announcement", "text", "宣告语(档位没声明就是空串)"),
+		f("membership.rank", "number", () => packageText("internal.card-skin.74")),
+		f("membership.tierName", "text", () => packageText("internal.card-skin.75")),
+		f("membership.icon", "image", () => packageText("internal.card-skin.76")),
+		f("membership.announcement", "text", () => packageText("internal.card-skin.77")),
 	],
 	// 榜单周报不属于任何单个创作者,没有创作者那两格(从前留着一个恒为空串的 `master.name`,㉔b 删了)。
-	roastBoard: [f("report.days", "number", "统计天数")],
-	roastSolo: [...CREATOR_FIELDS, f("report.days", "number", "统计天数")],
+	roastBoard: [f("report.days", "number", () => packageText("internal.card-skin.78"))],
+	roastSolo: [
+		...CREATOR_FIELDS,
+		f("report.days", "number", () => packageText("internal.card-skin.79")),
+	],
 	wordcloud: [...CREATOR_FIELDS],
 };
 
@@ -432,8 +537,12 @@ export const CARD_SKIN_SELF_HOOK = "self";
  * (圆角 / 阴影 / 白纱 / 模糊)。块都画在玻璃层里。
  */
 export const CARD_SKIN_FRAME_HOOKS = {
-	frame: "外框(渐变 / 背景图那一层)",
-	glass: "玻璃层(圆角、阴影、白纱、模糊)",
+	get frame() {
+		return packageText("internal.card-skin.80");
+	},
+	get glass() {
+		return packageText("internal.card-skin.81");
+	},
 } as const;
 export type CardSkinFrameHook = keyof typeof CARD_SKIN_FRAME_HOOKS;
 
@@ -462,6 +571,15 @@ export const CARD_SKIN_RANK_GUIDE =
 	`外框的 CSS 写 [data-bn="frame"][${CARD_SKIN_RANK_ATTR}="3"]{…}。` +
 	`限制:档色变量(--bn-card-tier-color 等)是出图器直接写在元素上的,皮肤 CSS 盖不掉它,` +
 	`所以按档换色要对想换的部位直接写颜色属性(color / background-color / border-color…),不要去改那个变量。`;
+
+/** 编辑器面向皮肤作者的说明随当前语言读取；模型规则仍使用固定提示词。 */
+export function cardSkinRankGuide(): string {
+	return packageText("internal.card-skin.rankGuide", {
+		rankAttr: CARD_SKIN_RANK_ATTR,
+		blockExample: `[data-bn="${CARD_SKIN_SELF_HOOK}"][${CARD_SKIN_RANK_ATTR}="3"]{…}`,
+		frameExample: `[data-bn="frame"][${CARD_SKIN_RANK_ATTR}="3"]{…}`,
+	});
+}
 
 /** 主人自己传上来的资产在旋钮值里的前缀。**对外 API**,只增不改。 */
 export const CARD_SKIN_UPLOAD_PREFIX = "upload:";
@@ -567,7 +685,17 @@ export interface CardSkinBuiltinBlock {
 export const DIVIDER_TYPE = "divider";
 
 /** 四种可编辑卡共用的分割线。 */
-const DIVIDER_BLOCK: CardSkinBuiltinBlock = { label: "分割线", atom: true, hooks: { line: "线" } };
+const DIVIDER_BLOCK: CardSkinBuiltinBlock = {
+	get label() {
+		return packageText("internal.card-skin.82");
+	},
+	atom: true,
+	hooks: {
+		get line() {
+			return packageText("internal.card-skin.83");
+		},
+	},
+};
 
 /**
  * 内置块目录:每种卡有哪些块、每块内部有哪些挂点。**块名与挂点名是对外 API。**
@@ -587,111 +715,541 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<CardKind, Record<string, CardSkinB
 		// `data-bn` 一起掉了一次(`5fa842ca`)—— 挂点名只增不改不删,而且没有它,皮肤连
 		// 「把封面压矮一点」都写不出来(`[data-bn="self"]` 是外面那层 div,在它上面写
 		// height 图会直接溢出去)。
-		cover: { label: "封面图", atom: true, heightFromRows: true, hooks: { image: "封面图片" } },
-		status: { label: "直播状态", atom: true, hooks: { pill: "胶囊" } },
-		title: { label: "直播标题", atom: true, hooks: { text: "文字" } },
-		description: { label: "简介", atom: true, hooks: { text: "文字" } },
+		cover: {
+			get label() {
+				return packageText("internal.card-skin.84");
+			},
+			atom: true,
+			heightFromRows: true,
+			hooks: {
+				get image() {
+					return packageText("internal.card-skin.85");
+				},
+			},
+		},
+		status: {
+			get label() {
+				return packageText("internal.card-skin.86");
+			},
+			atom: true,
+			hooks: {
+				get pill() {
+					return packageText("internal.card-skin.87");
+				},
+			},
+		},
+		title: {
+			get label() {
+				return packageText("internal.card-skin.88");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.89");
+				},
+			},
+		},
+		description: {
+			get label() {
+				return packageText("internal.card-skin.90");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.91");
+				},
+			},
+		},
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,
-		creatorAvatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
-		creatorName: { label: "创作者名", atom: true, hooks: { text: "文字" } },
-		time: { label: "开播时间", atom: true, hooks: { text: "文字" } },
+		creatorAvatar: {
+			get label() {
+				return packageText("internal.card-skin.92");
+			},
+			atom: true,
+			hooks: {
+				get image() {
+					return packageText("internal.card-skin.93");
+				},
+			},
+		},
+		creatorName: {
+			get label() {
+				return packageText("internal.card-skin.94");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.95");
+				},
+			},
+		},
+		time: {
+			get label() {
+				return packageText("internal.card-skin.96");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.97");
+				},
+			},
+		},
 		// 数据区(ADR-0014 决策 16 的 🔗):从前由三个显隐开关管,而开关管的是复合块
 		// **内部的一行**、块级的 `showIf` 够不着 —— 所以拆成原子块,想少显示哪件就删哪块。
 		// ㉔c 起随状态换含义的两块各拆成两块(`popularity` → `currentViewers` + `likes`,`fans` → `followers` +
 		// `totalViewers`):每块只画一样东西,各自只在该出现的状态下有内容(`scenes` 只给画布用,出图端不读)。
 		currentViewers: {
-			label: "在看人数",
+			get label() {
+				return packageText("internal.card-skin.98");
+			},
 			atom: true,
-			hooks: { text: "文字" },
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.99");
+				},
+			},
 			scenes: ["streaming"],
 		},
-		likes: { label: "点赞数", atom: true, hooks: { text: "文字" }, scenes: ["ended"] },
-		category: { label: "分类", atom: true, hooks: { text: "文字" } },
-		followers: { label: "粉丝数", atom: true, hooks: { text: "文字" }, scenes: ["streaming"] },
-		totalViewers: { label: "累计观看", atom: true, hooks: { text: "文字" }, scenes: ["ended"] },
+		likes: {
+			get label() {
+				return packageText("internal.card-skin.100");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.101");
+				},
+			},
+			scenes: ["ended"],
+		},
+		category: {
+			get label() {
+				return packageText("internal.card-skin.102");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.103");
+				},
+			},
+		},
+		followers: {
+			get label() {
+				return packageText("internal.card-skin.104");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.105");
+				},
+			},
+			scenes: ["streaming"],
+		},
+		totalViewers: {
+			get label() {
+				return packageText("internal.card-skin.106");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.107");
+				},
+			},
+			scenes: ["ended"],
+		},
 	},
 	post: {
 		attachment: {
-			label: "附加内容",
-			hooks: { card: "附加卡", cover: "附加卡封面", button: "按钮" },
+			get label() {
+				return packageText("internal.card-skin.108");
+			},
+			hooks: {
+				get card() {
+					return packageText("internal.card-skin.109");
+				},
+				get cover() {
+					return packageText("internal.card-skin.110");
+				},
+				get button() {
+					return packageText("internal.card-skin.111");
+				},
+			},
 		},
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,
-		creatorAvatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
-		creatorName: { label: "创作者名", atom: true, hooks: { text: "文字" } },
-		time: { label: "发布时间", atom: true, hooks: { text: "文字" } },
+		creatorAvatar: {
+			get label() {
+				return packageText("internal.card-skin.112");
+			},
+			atom: true,
+			hooks: {
+				get image() {
+					return packageText("internal.card-skin.113");
+				},
+			},
+		},
+		creatorName: {
+			get label() {
+				return packageText("internal.card-skin.114");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.115");
+				},
+			},
+		},
+		time: {
+			get label() {
+				return packageText("internal.card-skin.116");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.117");
+				},
+			},
+		},
 		// 文字与媒体是呈现态里分开的几份(`PostNode.text` / `.video` / `.images`)。
-		topic: { label: "话题", atom: true, hooks: { text: "文字" } },
+		topic: {
+			get label() {
+				return packageText("internal.card-skin.118");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.119");
+				},
+			},
+		},
 		// 正文富文本整段留在渲染器(决策 7 的 2026-09-19 🔗),所以这块没有根挂点 ——
 		// `body` 是富文本自己的根,样子也归它。
-		text: { label: "正文文字", atom: true, hooks: { body: "正文" } },
+		text: {
+			get label() {
+				return packageText("internal.card-skin.120");
+			},
+			atom: true,
+			hooks: {
+				get body() {
+					return packageText("internal.card-skin.121");
+				},
+			},
+		},
 		// 投稿视频那张卡拆成的五块。外面那圈灰底圆角容器不是块,是皮肤用 CSS 拼的 ——
 		// 三段文字各带一段灰底、首尾分担圆角(决策 8 的 2026-09-18 🔗)。
 		// 三组独有块各自只属于一场(`scenes`):画布切到别的场就不摆它们。
 		videoCover: {
-			label: "视频封面",
+			get label() {
+				return packageText("internal.card-skin.122");
+			},
 			atom: true,
 			heightFromRows: true,
-			hooks: { image: "封面图片" },
+			hooks: {
+				get image() {
+					return packageText("internal.card-skin.123");
+				},
+			},
 			scenes: ["video"],
 		},
-		videoDuration: { label: "视频时长", atom: true, hooks: { pill: "角标" }, scenes: ["video"] },
-		videoTitle: { label: "视频标题", atom: true, hooks: { text: "文字" }, scenes: ["video"] },
-		videoDescription: { label: "视频简介", atom: true, hooks: { text: "文字" }, scenes: ["video"] },
-		videoStats: {
-			label: "播放 · 弹幕数",
+		videoDuration: {
+			get label() {
+				return packageText("internal.card-skin.124");
+			},
 			atom: true,
-			hooks: { text: "文字", stat: "一项数据" },
+			hooks: {
+				get pill() {
+					return packageText("internal.card-skin.125");
+				},
+			},
+			scenes: ["video"],
+		},
+		videoTitle: {
+			get label() {
+				return packageText("internal.card-skin.126");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.127");
+				},
+			},
+			scenes: ["video"],
+		},
+		videoDescription: {
+			get label() {
+				return packageText("internal.card-skin.128");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.129");
+				},
+			},
+			scenes: ["video"],
+		},
+		videoStats: {
+			get label() {
+				return packageText("internal.card-skin.130");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.131");
+				},
+				get stat() {
+					return packageText("internal.card-skin.132");
+				},
+			},
 			scenes: ["video"],
 		},
 		// 图廊张数是动态的,拆不开,整块画。
 		images: {
-			label: "图廊",
+			get label() {
+				return packageText("internal.card-skin.133");
+			},
 			atom: true,
-			hooks: { images: "图廊", image: "图廊里的一张图" },
+			hooks: {
+				get images() {
+					return packageText("internal.card-skin.134");
+				},
+				get image() {
+					return packageText("internal.card-skin.135");
+				},
+			},
 			scenes: ["pics"],
 		},
 		// 根就是转发框,它的样子挂在 `bubble` 上;框里是一整张内层卡,那些部件归内层卡
 		// 自己的块管,这里不声明。
-		repost: { label: "转发框", atom: true, hooks: { bubble: "转发框" }, scenes: ["forward"] },
-		shareCount: { label: "转发数", atom: true, hooks: { text: "文字", icon: "图标" } },
-		commentCount: { label: "评论数", atom: true, hooks: { text: "文字", icon: "图标" } },
-		likeCount: { label: "点赞数", atom: true, hooks: { text: "文字", icon: "图标" } },
+		repost: {
+			get label() {
+				return packageText("internal.card-skin.136");
+			},
+			atom: true,
+			hooks: {
+				get bubble() {
+					return packageText("internal.card-skin.137");
+				},
+			},
+			scenes: ["forward"],
+		},
+		shareCount: {
+			get label() {
+				return packageText("internal.card-skin.138");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.139");
+				},
+				get icon() {
+					return packageText("internal.card-skin.140");
+				},
+			},
+		},
+		commentCount: {
+			get label() {
+				return packageText("internal.card-skin.141");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.142");
+				},
+				get icon() {
+					return packageText("internal.card-skin.143");
+				},
+			},
+		},
+		likeCount: {
+			get label() {
+				return packageText("internal.card-skin.144");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.145");
+				},
+				get icon() {
+					return packageText("internal.card-skin.146");
+				},
+			},
+		},
 	},
 	superchat: {
 		// 留言的根是一层撑满格子的壳(居中靠块的 `self` 说),气泡与文字各一个挂点。
-		message: { label: "留言", atom: true, hooks: { bubble: "留言气泡", text: "留言文本" } },
-		[DIVIDER_TYPE]: DIVIDER_BLOCK,
-		// 头像的根是那个把图裁圆的框,`image` 挂在框上 —— 尺寸与圆都归它,里头的 img 填满即可。
-		viewerAvatar: { label: "发送者头像", atom: true, hooks: { image: "头像图片" } },
-		viewerName: { label: "发送者名", atom: true, hooks: { pill: "胶囊" } },
-		amount: { label: "金额", atom: true, hooks: { text: "文字" } },
-		duration: { label: "时长胶囊", atom: true, hooks: { pill: "胶囊" } },
-		to: {
-			label: "「SC to」那一行",
+		message: {
+			get label() {
+				return packageText("internal.card-skin.147");
+			},
 			atom: true,
 			hooks: {
-				text: "文字",
-				label: "「SC to」三个字",
-				creator: "主播那一组",
-				creatorAvatar: "主播小头像",
-				creatorName: "主播名",
+				get bubble() {
+					return packageText("internal.card-skin.148");
+				},
+				get text() {
+					return packageText("internal.card-skin.149");
+				},
+			},
+		},
+		[DIVIDER_TYPE]: DIVIDER_BLOCK,
+		// 头像的根是那个把图裁圆的框,`image` 挂在框上 —— 尺寸与圆都归它,里头的 img 填满即可。
+		viewerAvatar: {
+			get label() {
+				return packageText("internal.card-skin.150");
+			},
+			atom: true,
+			hooks: {
+				get image() {
+					return packageText("internal.card-skin.151");
+				},
+			},
+		},
+		viewerName: {
+			get label() {
+				return packageText("internal.card-skin.152");
+			},
+			atom: true,
+			hooks: {
+				get pill() {
+					return packageText("internal.card-skin.153");
+				},
+			},
+		},
+		amount: {
+			get label() {
+				return packageText("internal.card-skin.154");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.155");
+				},
+			},
+		},
+		duration: {
+			get label() {
+				return packageText("internal.card-skin.156");
+			},
+			atom: true,
+			hooks: {
+				get pill() {
+					return packageText("internal.card-skin.157");
+				},
+			},
+		},
+		to: {
+			get label() {
+				return packageText("internal.card-skin.158");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.159");
+				},
+				get label() {
+					return packageText("internal.card-skin.160");
+				},
+				get creator() {
+					return packageText("internal.card-skin.161");
+				},
+				get creatorAvatar() {
+					return packageText("internal.card-skin.162");
+				},
+				get creatorName() {
+					return packageText("internal.card-skin.163");
+				},
 			},
 		},
 	},
 	membership: {
-		icon: { label: "会员徽章", atom: true, hooks: { image: "徽章图" } },
-		announcement: { label: "宣告语", atom: true, hooks: { text: "文字" } },
+		icon: {
+			get label() {
+				return packageText("internal.card-skin.164");
+			},
+			atom: true,
+			hooks: {
+				get image() {
+					return packageText("internal.card-skin.165");
+				},
+			},
+		},
+		announcement: {
+			get label() {
+				return packageText("internal.card-skin.166");
+			},
+			atom: true,
+			hooks: {
+				get text() {
+					return packageText("internal.card-skin.167");
+				},
+			},
+		},
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,
 		// 头像的根是那个把图裁圆的框,`image` 挂在框上 —— 尺寸与圆都归它。
-		viewerAvatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
-		viewerName: { label: "用户名胶囊", atom: true, hooks: { pill: "胶囊", text: "文字" } },
-		creator: {
-			label: "主播胶囊",
+		viewerAvatar: {
+			get label() {
+				return packageText("internal.card-skin.168");
+			},
 			atom: true,
-			hooks: { pill: "胶囊", creatorAvatar: "主播小头像", creatorName: "主播名" },
+			hooks: {
+				get image() {
+					return packageText("internal.card-skin.169");
+				},
+			},
+		},
+		viewerName: {
+			get label() {
+				return packageText("internal.card-skin.170");
+			},
+			atom: true,
+			hooks: {
+				get pill() {
+					return packageText("internal.card-skin.171");
+				},
+				get text() {
+					return packageText("internal.card-skin.172");
+				},
+			},
+		},
+		creator: {
+			get label() {
+				return packageText("internal.card-skin.173");
+			},
+			atom: true,
+			hooks: {
+				get pill() {
+					return packageText("internal.card-skin.174");
+				},
+				get creatorAvatar() {
+					return packageText("internal.card-skin.175");
+				},
+				get creatorName() {
+					return packageText("internal.card-skin.176");
+				},
+			},
 		},
 	},
-	roastBoard: { body: { label: "周报榜单", hooks: {} } },
-	roastSolo: { body: { label: "单人锐评", hooks: {} } },
-	wordcloud: { body: { label: "弹幕词云", hooks: {} } },
+	roastBoard: {
+		body: {
+			get label() {
+				return packageText("internal.card-skin.177");
+			},
+			hooks: {},
+		},
+	},
+	roastSolo: {
+		body: {
+			get label() {
+				return packageText("internal.card-skin.178");
+			},
+			hooks: {},
+		},
+	},
+	wordcloud: {
+		body: {
+			get label() {
+				return packageText("internal.card-skin.179");
+			},
+			hooks: {},
+		},
+	},
 };

@@ -4,6 +4,7 @@ import { DEFAULT_ROAST_SCHEDULE } from "../ai";
 // 一起经 ./common 重导出去撑大根入口的 API 面。
 import { EXTRA_KEYS, extrasRecord, FEATURE_KEYS, type FeatureKey, PUSH_EXTRAS } from "../features";
 import { IMAGE_REF_PATTERN } from "../image-ref";
+import { packageText } from "../texts";
 import { CardSkinIdSchema, CardSkinKnobOverridesSchema } from "./card-skin";
 import {
 	CardsOverridesSchema,
@@ -173,12 +174,13 @@ function refineExtraTargetsWithinRouting(
 export const SourceKeySchema = z
 	.string()
 	.max(64)
-	.regex(
-		new RegExp(`^${ID_SEGMENT}(?:\\.${ID_SEGMENT})?$`),
-		"来源键只能是小写字母、数字与连字符(可用一个点分出命名空间)",
-	)
+	.regex(new RegExp(`^${ID_SEGMENT}(?:\\.${ID_SEGMENT})?$`), {
+		error: () => packageText("internal.schema.subscriptions.1"),
+	})
 	// 同拓展 id:来源键也会被拿去当键用。
-	.refine((key) => !isPrototypeName(key), prototypeNameMessage("来源键 "));
+	.refine((key) => !isPrototypeName(key), {
+		error: () => prototypeNameMessage(packageText("internal.schema.subscriptions.2")),
+	});
 
 /**
  * 外部 id 的长度上限(字数)。BN 不解读它,封顶只为挡住一坨巨大的字符串进配置;抖音的 `sec_uid` 七十多个字。
@@ -227,7 +229,10 @@ export const IdentitySchema = z
 export const SubscriptionTagSchema = z
 	.object({
 		id: z.uuid(),
-		name: z.string().trim().min(1, "标签名不能是空的"),
+		name: z
+			.string()
+			.trim()
+			.min(1, { error: () => packageText("internal.schema.subscriptions.3") }),
 	})
 	.strict();
 export type SubscriptionTag = z.infer<typeof SubscriptionTagSchema>;
@@ -238,13 +243,17 @@ export const SubscriptionTagListSchema = z.array(SubscriptionTagSchema).superRef
 	const names = new Set<string>();
 	tags.forEach((tag, i) => {
 		if (ids.has(tag.id)) {
-			ctx.addIssue({ code: "custom", path: [i, "id"], message: `标签 id ${tag.id} 重复了` });
+			ctx.addIssue({
+				code: "custom",
+				path: [i, "id"],
+				message: packageText("internal.schema.subscriptions.4", { value0: tag.id }),
+			});
 		}
 		if (names.has(tag.name)) {
 			ctx.addIssue({
 				code: "custom",
 				path: [i, "name"],
-				message: `已经有一个叫「${tag.name}」的标签了`,
+				message: packageText("internal.schema.subscriptions.5", { value0: tag.name }),
 			});
 		}
 		ids.add(tag.id);

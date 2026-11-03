@@ -1,3 +1,4 @@
+import { useUiText } from "./texts";
 /**
  * 通知栈与富通知卡 —— 推送 toast(右下)与组件告警(右上)那种「图标片 + 标题/时间 +
  * 正文 + 关闭」的浮层卡。收编前两个 shell 各抄一份:卡骨架、图标片壳、标题行、
@@ -79,9 +80,12 @@ export function NoticeCard({
 	time,
 	children,
 	onClose,
-	closeLabel = "关闭",
+	closeLabel,
 	style,
 }: NoticeCardProps) {
+	const tx = useUiText();
+	closeLabel ??= tx("ui.notice.1");
+
 	return (
 		<div
 			data-bn="glass-strong"

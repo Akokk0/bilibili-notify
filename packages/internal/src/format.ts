@@ -1,8 +1,9 @@
+import { packageText } from "./texts/index";
 /**
  * 数字与时间的排版 —— 全仓只有这一份(data-model「数字、时间与「不知道」」;1.0 第 2 期 ⑪,
  * 2026-10-02 主人定口径)。卡片、推送文字、面板、`/status` 都走这里,守卫 4 钉着别处不许再有同名定义。
  *
- * 🔴 **一条值级 import 都不许有**:它经 `@bilibili-notify/internal/format` 子路径直供浏览器端,
+ * 🔴 **值级 import 只许指向零依赖名单里的同伴**:它经 `@bilibili-notify/internal/format` 子路径直供浏览器端,
  * 和零依赖领域子路径同一条纪律(`scripts/__tests__/internal-package.test.mjs` 一起扫)。
  */
 
@@ -27,13 +28,15 @@ export function formatCount(
 }
 
 function magnitude(abs: number, compact: boolean): string {
-	if (abs >= 1e8) return `${(abs / 1e8).toFixed(1)}亿`;
+	if (abs >= 1e8) return packageText("internal.format.1", { value0: (abs / 1e8).toFixed(1) });
 	if (abs >= 1e4) {
 		const wan = compact && abs >= 1e6 ? String(Math.round(abs / 1e4)) : (abs / 1e4).toFixed(1);
-		return Number(wan) >= 1e4 ? "1.0亿" : `${wan}万`;
+		return Number(wan) >= 1e4
+			? packageText("internal.format.2")
+			: packageText("internal.format.3", { value0: wan });
 	}
 	const below = compact ? Math.round(abs) : abs;
-	return below >= 1e4 ? "1.0万" : String(below);
+	return below >= 1e4 ? packageText("internal.format.4") : String(below);
 }
 
 function toMs(at: string | number): number {
@@ -48,10 +51,12 @@ export function formatAgo(at: string | number, now: number = Date.now()): string
 	const t = toMs(at);
 	if (!Number.isFinite(t)) return undefined;
 	const delta = now - t;
-	if (delta < 60_000) return "刚刚";
-	if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} 分钟前`;
-	if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)} 小时前`;
-	return `${Math.floor(delta / 86_400_000)} 天前`;
+	if (delta < 60_000) return packageText("internal.format.5");
+	if (delta < 3_600_000)
+		return packageText("internal.format.6", { count: Math.floor(delta / 60_000) });
+	if (delta < 86_400_000)
+		return packageText("internal.format.7", { count: Math.floor(delta / 3_600_000) });
+	return packageText("internal.format.8", { count: Math.floor(delta / 86_400_000) });
 }
 
 /**
@@ -60,7 +65,7 @@ export function formatAgo(at: string | number, now: number = Date.now()): string
  */
 export function formatDuration(start: string | number, end: string | number = Date.now()): string {
 	const ms = toMs(end) - toMs(start);
-	if (!Number.isFinite(ms)) return "0秒";
+	if (!Number.isFinite(ms)) return packageText("internal.format.9");
 	const total = Math.trunc(ms / 1000);
 	let s = Math.abs(total);
 	const days = Math.floor(s / 86400);
@@ -70,11 +75,11 @@ export function formatDuration(start: string | number, end: string | number = Da
 	const minutes = Math.floor(s / 60);
 	const seconds = s % 60;
 	const parts: string[] = [];
-	if (days) parts.push(`${days}天`);
-	if (hours) parts.push(`${hours}小时`);
-	if (minutes) parts.push(`${minutes}分`);
-	if (seconds) parts.push(`${seconds}秒`);
-	if (parts.length === 0) return "0秒";
+	if (days) parts.push(packageText("internal.format.10", { count: days }));
+	if (hours) parts.push(packageText("internal.format.11", { count: hours }));
+	if (minutes) parts.push(packageText("internal.format.12", { count: minutes }));
+	if (seconds) parts.push(packageText("internal.format.13", { count: seconds }));
+	if (parts.length === 0) return packageText("internal.format.14");
 	return (total < 0 ? "-" : "") + parts.join("");
 }
 

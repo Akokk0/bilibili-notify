@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { packageText } from "@bilibili-notify/internal/texts";
 
 /*
  * 持久化底层:追加行(历史、统计、日志)。一次调用的几条拼成一块、一次写完,一条一行。
@@ -19,7 +20,7 @@ export async function appendLines(path: string, lines: readonly string[]): Promi
 	if (lines.length === 0) return;
 	for (const line of lines) {
 		if (line.includes("\n")) {
-			throw new TypeError("appendLines: 一行里不能含换行(会把 JSONL 劈成两条)");
+			throw new TypeError(packageText("storage.append-jsonl.1"));
 		}
 	}
 	await mkdir(dirname(path), { recursive: true });
@@ -36,7 +37,7 @@ export async function appendJsonl(path: string, records: readonly unknown[]): Pr
 	const lines = records.map((record, index) => {
 		const line = JSON.stringify(record) as string | undefined;
 		if (line === undefined) {
-			throw new TypeError(`appendJsonl: 第 ${index} 条记录序列化不出 JSON`);
+			throw new TypeError(packageText("storage.append-jsonl.2", { value0: index }));
 		}
 		return line;
 	});

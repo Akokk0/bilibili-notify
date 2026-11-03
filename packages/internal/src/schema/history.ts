@@ -3,6 +3,7 @@ import { PUSH_STATUSES } from "../history";
 import { IMAGE_REF_PATTERN } from "../image-ref";
 import { PostFilterReason } from "../post";
 import { FAILURE_CODES, type FailureCode } from "../result";
+import { packageText } from "../texts";
 import { FeatureKeySchema } from "./common";
 import { IdentitySchema } from "./subscriptions";
 
@@ -26,7 +27,7 @@ export type PushStatus = z.infer<typeof PushStatusSchema>;
  */
 export const ImageRefSchema = z
 	.string()
-	.regex(IMAGE_REF_PATTERN, "必须是图库引用(<sha256>.<png|jpg|gif|webp>)");
+	.regex(IMAGE_REF_PATTERN, { error: () => packageText("internal.schema.history.1") });
 
 export const HistoryPayloadSchema = z.object({
 	kind: z.enum(["text", "image", "composite"]),

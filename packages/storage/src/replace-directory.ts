@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { packageText } from "@bilibili-notify/internal/texts";
 import { syncDirectory, tempPathFor } from "./atomic-file";
 
 /** 整目录替换时被换下来的旧目录名里的标记;开机清扫据它决定挪回还是删掉。 */
@@ -80,10 +81,14 @@ function assertNamesUsable(target: string, opts: ReplaceDirectoryOptions): void 
 	for (const [field, path] of named) {
 		if (path === undefined) continue;
 		if (dirname(resolve(path)) !== parent) {
-			throw new TypeError(`replaceDirectory: ${field} 必须与目标在同一个父目录里(${path})`);
+			throw new TypeError(
+				packageText("storage.replace-directory.1", { value0: field, value1: path }),
+			);
 		}
 		if (resolve(path) === resolve(target)) {
-			throw new TypeError(`replaceDirectory: ${field} 不能就是目标本身(${path})`);
+			throw new TypeError(
+				packageText("storage.replace-directory.2", { value0: field, value1: path }),
+			);
 		}
 	}
 	if (
@@ -91,6 +96,6 @@ function assertNamesUsable(target: string, opts: ReplaceDirectoryOptions): void 
 		opts.oldPath !== undefined &&
 		resolve(opts.stagingPath) === resolve(opts.oldPath)
 	) {
-		throw new TypeError("replaceDirectory: stagingPath 与 oldPath 不能是同一个路径");
+		throw new TypeError(packageText("storage.replace-directory.3"));
 	}
 }

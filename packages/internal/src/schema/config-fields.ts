@@ -1,6 +1,7 @@
 import type { ZodType } from "zod";
 import { LIST_ITEM_ID_KEY } from "../extension/wire";
 import type { SettingsField } from "../settings-field";
+import { packageText } from "../texts";
 import { defOf, enumValuesOf, numberBoundsOf, unwrap, type ZodDef } from "./zod-def";
 
 /**
@@ -36,7 +37,7 @@ export function assertConfigFieldsMatchSchema(
 	// 第一层必须是**键值对象**:面板那侧的 `set` 统一生成成 `config[key] = v`,前提就是这个。
 	const shape = (schema as { shape?: unknown }).shape;
 	if (typeof shape !== "object" || shape === null) {
-		return void fail("config 的 schema 必须是一个对象(第一层只支持键值对象)");
+		return void fail(packageText("internal.schema.config-fields.1"));
 	}
 	assertNotStrict("config schema", defOf(schema), fail);
 	checkFields("", shape as Record<string, unknown>, fields, fail, {
@@ -56,9 +57,7 @@ function assertNotStrict(
 	fail: (msg: string) => never,
 ): void {
 	if (defOf(def?.catchall)?.type !== "never") return;
-	fail(
-		`${what}是 strict 对象(z.strictObject / .strict()):存着的那份里只要多一个旧键(清单改过、旧版留下的),整份就解不开,拓展会因此起不来。改用普通的 z.object(多的键丢掉)或 z.looseObject / .passthrough()(多的键原样留着)`,
-	);
+	fail(packageText("internal.schema.config-fields.2", { value0: what }));
 }
 
 /** 设置项的类型 → zod 那边剥完包装应该是什么。enum 不止一种写法,另由 {@link enumValuesOf} 认。 */
@@ -83,17 +82,19 @@ function checkFields(
 	// 列表项的 id 由 BN 生成、藏起来(ADR-0019 决策 29):清单里不声明它,zod 里却必须有 ——
 	// 没有的话,BN 生成的 id 会被拓展那份 zod 当场剥掉,视图就再也挂不到这一项上。
 	if (opts.listItem && !memberKeys.has(LIST_ITEM_ID_KEY)) {
-		fail(`列表项 "${prefix}${LIST_ITEM_ID_KEY}" 由 BN 生成,zod 的项里要有这一格`);
+		fail(
+			packageText("internal.schema.config-fields.3", { value0: prefix, value1: LIST_ITEM_ID_KEY }),
+		);
 	}
 	const seen = new Set<string>(opts.listItem ? [LIST_ITEM_ID_KEY] : []);
 	for (const field of fields) {
 		const path = `${prefix}${field.key}`;
 		if (seen.has(field.key)) {
-			fail(`字段表里 "${path}" 摆了两栏 —— 哪一栏说了算没有答案`);
+			fail(packageText("internal.schema.config-fields.4", { value0: path }));
 		}
 		seen.add(field.key);
 		if (!memberKeys.has(field.key)) {
-			fail(`字段表里的 "${path}" 不是 config schema 的键`);
+			fail(packageText("internal.schema.config-fields.5", { value0: path }));
 		}
 		checkField(path, field, members[field.key], fail);
 	}
@@ -104,8 +105,8 @@ function checkFields(
 		if (seen.has(key)) continue;
 		const path = `${prefix}${key}`;
 		const { def, optional } = unwrap(member);
-		if (!def) fail(`"${path}" 的 schema 认不出类型 —— 拓展的 schema 要用 zod 4 写`);
-		if (!optional) fail(`config schema 的必填键 "${path}" 在字段表里没有对应那一栏`);
+		if (!def) fail(packageText("internal.schema.config-fields.6", { value0: path }));
+		if (!optional) fail(packageText("internal.schema.config-fields.7", { value0: path }));
 	}
 }
 
@@ -117,14 +118,21 @@ function checkField(
 ): void {
 	const { def, fill, optional } = unwrap(member);
 	// 认不出就拒,而不是悄悄跳过这一格 —— 跳过的话,这一格的两份声明就再没人对了。
-	if (!def) return void fail(`"${path}" 的 schema 认不出类型 —— 拓展的 schema 要用 zod 4 写`);
+	if (!def) return void fail(packageText("internal.schema.config-fields.8", { value0: path }));
 	const accepted = field.type === "enum" ? enumValuesOf(def) : undefined;
 	if (field.type === "enum" ? !accepted : def.type !== ZOD_TYPE_OF[field.type]) {
 		const hint =
 			field.type === "enum" && def.type === "union"
-				? " —— enum 只认每一支都是字面量(或 z.enum)的 union"
+				? packageText("internal.schema.config-fields.9")
 				: "";
-		fail(`"${path}" 声明的是 ${field.type},zod 里却是 ${def.type}${hint}`);
+		fail(
+			packageText("internal.schema.config-fields.10", {
+				value0: path,
+				value1: field.type,
+				value2: def.type,
+				value3: hint,
+			}),
+		);
 	}
 
 	// 🔴 必填也要对上。BN 保存设置前按**清单**校验,没写 `required` 也没给 `default` 的格照清单是
@@ -135,20 +143,18 @@ function checkField(
 	if (zodRequired && field.required !== true && declaredDefault === undefined) {
 		const fix =
 			field.type === "list"
-				? `要么写 "required": true,要么给 zod 那边一个默认值(比如 .default([]))`
-				: `要么写 "required": true,要么两边都给同一个 default`;
-		fail(
-			`"${path}" 在 zod 里是必填(收不下 undefined),设置项里却没写 "required": true 也没给 default —— 按清单保存时缺了它照样放行,拓展自己的 zod 却解不开(设置会整份当没设过)。${fix}`,
-		);
+				? packageText("internal.schema.config-fields.11")
+				: packageText("internal.schema.config-fields.12");
+		fail(packageText("internal.schema.config-fields.13", { value0: path, value1: fix }));
 	}
 
 	if (field.type === "list") {
 		// 列表自己的默认值(通常是空数组)不算漂移:设置项里没有给列表写默认值那一格。
 		const item = unwrap(def.element).def;
 		if (item?.type !== "object" || !item.shape) {
-			return void fail(`"${path}" 是列表,zod 那边每一项得是个对象`);
+			return void fail(packageText("internal.schema.config-fields.14", { value0: path }));
 		}
-		assertNotStrict(`"${path}" 的每一项`, item, fail);
+		assertNotStrict(packageText("internal.schema.config-fields.15", { value0: path }), item, fail);
 		checkFields(`${path}.`, item.shape, field.fields, fail, {
 			picked: false,
 			listItem: true,
@@ -161,8 +167,8 @@ function checkField(
 		// 失败(设置读不了、拓展起不来);设置项多一道,面板拦下的是拓展本来收的值。
 		const zod = numberBoundsOf(def);
 		const sides = [
-			["下限", field.min, zod.min, ["≥", ">"]],
-			["上限", field.max, zod.max, ["≤", "<"]],
+			[packageText("internal.schema.config-fields.16"), field.min, zod.min, ["≥", ">"]],
+			[packageText("internal.schema.config-fields.17"), field.max, zod.max, ["≤", "<"]],
 		] as const;
 		for (const [which, declared, bound, [closed, open]] of sides) {
 			if (
@@ -170,9 +176,19 @@ function checkField(
 			) {
 				continue;
 			}
-			const zodSide = bound ? `${bound.inclusive ? closed : open} ${bound.value}` : "没写";
+			const zodSide = bound
+				? `${bound.inclusive ? closed : open} ${bound.value}`
+				: packageText("internal.schema.config-fields.18");
 			fail(
-				`"${path}" 的${which}两边不一样:设置项是 ${declared === undefined ? "没写" : `${closed} ${declared}`},zod 是 ${zodSide} —— 面板照设置项拦、拓展照 zod 收,放行的值拓展可能读不了。设置项的 min / max 含端点,对应 zod 的 .min() / .max()(即 .gte() / .lte())`,
+				packageText("internal.schema.config-fields.20", {
+					value0: path,
+					value1: which,
+					value2:
+						declared === undefined
+							? packageText("internal.schema.config-fields.19")
+							: `${closed} ${declared}`,
+					value3: zodSide,
+				}),
 			);
 		}
 	}
@@ -181,13 +197,24 @@ function checkField(
 		// 面板存的永远是字符串:zod 收的是数字 1 的话,选项写 "1" 也永远存不对。
 		const odd = accepted.find((value) => typeof value !== "string");
 		if (odd !== undefined) {
-			fail(`"${path}" 的 zod 取值里有不是字符串的 ${JSON.stringify(odd)} —— 面板存的永远是字符串`);
+			fail(
+				packageText("internal.schema.config-fields.21", {
+					value0: path,
+					value1: JSON.stringify(odd),
+				}),
+			);
 		}
 		// 面板能选出 zod 不收的值(或者反过来有一种永远选不到),都是漂了。
 		const declared = field.options.map((option) => option.value).sort();
 		const values = [...new Set(accepted as string[])].sort();
 		if (declared.join("\n") !== values.join("\n")) {
-			fail(`"${path}" 的选项 [${declared.join(", ")}] 与 zod 的取值 [${values.join(", ")}] 对不上`);
+			fail(
+				packageText("internal.schema.config-fields.22", {
+					value0: path,
+					value1: declared.join(", "),
+					value2: values.join(", "),
+				}),
+			);
 		}
 	}
 
@@ -198,24 +225,42 @@ function checkField(
 			defaultValue = fill.read();
 		} catch (err) {
 			fail(
-				`"${path}" 的 .${fill.from}() 在缺了这一格时算不出补什么(${err instanceof Error ? err.message : String(err)}) —— 对表要拿它与设置项的 default 比,改成直接给值的 .catch(值) 或 .default(值)`,
+				packageText("internal.schema.config-fields.23", {
+					value0: path,
+					value1: fill.from,
+					value2: err instanceof Error ? err.message : String(err),
+				}),
 			);
 		}
 	}
 	// 补出来是 undefined 的(`.catch(() => undefined)` 这类)等于没补。
 	const hasDefault = defaultValue !== undefined;
-	const from = fill?.from === "catch" ? "(.catch 补的)" : "";
+	const from = fill?.from === "catch" ? packageText("internal.schema.config-fields.24") : "";
 	if (field.default !== undefined && !hasDefault) {
-		fail(`"${path}" 在设置项里写了默认值 ${JSON.stringify(field.default)},zod 里却没有`);
+		fail(
+			packageText("internal.schema.config-fields.25", {
+				value0: path,
+				value1: JSON.stringify(field.default),
+			}),
+		);
 	}
 	if (field.default === undefined && hasDefault) {
 		fail(
-			`"${path}" 在 zod 里有默认值 ${JSON.stringify(defaultValue)}${from},设置项里没写 —— 面板显示的会和实际用的不一样`,
+			packageText("internal.schema.config-fields.26", {
+				value0: path,
+				value1: JSON.stringify(defaultValue),
+				value2: from,
+			}),
 		);
 	}
 	if (field.default !== undefined && hasDefault && !Object.is(field.default, defaultValue)) {
 		fail(
-			`"${path}" 的默认值两边不一样:设置项写的是 ${JSON.stringify(field.default)},zod 是 ${JSON.stringify(defaultValue)}${from}`,
+			packageText("internal.schema.config-fields.27", {
+				value0: path,
+				value1: JSON.stringify(field.default),
+				value2: JSON.stringify(defaultValue),
+				value3: from,
+			}),
 		);
 	}
 }

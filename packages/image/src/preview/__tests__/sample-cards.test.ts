@@ -422,3 +422,17 @@ it("示例内联SVG只把译文当文字，保留SVG外壳", async () => {
 		binding.dispose();
 	}
 });
+
+it("refreshes cached post statistics icon labels on every render", async () => {
+	const sample = await sampleCard("post", "video");
+	const before = await renderCardWithSkin("post", sample.props as never, DEFAULT_CARD_SKIN);
+	expect(before).toContain('aria-label="播放量"');
+	const bound = bindPackageText((key) => (key.startsWith("image.icons.") ? "Changed icon" : key));
+	try {
+		const after = await renderCardWithSkin("post", sample.props as never, DEFAULT_CARD_SKIN);
+		expect(after).toContain('aria-label="Changed icon"');
+		expect(after).not.toContain('aria-label="播放量"');
+	} finally {
+		bound.dispose();
+	}
+});

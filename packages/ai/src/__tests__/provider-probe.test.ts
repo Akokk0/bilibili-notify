@@ -6,6 +6,7 @@
  * fetch 用 vi.stubGlobal 假掉,不打真实网络。
  */
 
+import { bindPackageText } from "@bilibili-notify/internal/texts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { probeAiProvider } from "../provider-probe";
 
@@ -120,17 +121,17 @@ describe("probeAiProvider — 没过的带标准码", () => {
 		fetchMock.mockResolvedValueOnce(httpResponse(401, "x".repeat(250)));
 		const long = await probeAiProvider(fields);
 		expect(long.ok === false && long.message).toBe(
-			`apiKey 鉴权失败（HTTP 401）。响应：${"x".repeat(200)}…`,
+			`主人，apiKey 鉴权失败（HTTP 401）。响应：${"x".repeat(200)}…`,
 		);
 		fetchMock.mockResolvedValueOnce(httpResponse(404, ""));
 		const empty = await probeAiProvider(fields);
 		expect(empty.ok === false && empty.message).toBe(
-			'model "m" 不存在或 baseUrl 路径不对（HTTP 404）。响应：(空)',
+			'主人，model "m" 不存在或 baseUrl 路径不对（HTTP 404）。响应：(空)',
 		);
 		fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
 		const down = await probeAiProvider(fields);
 		expect(down.ok === false && down.message).toBe(
-			"连接 https://api.example.com 失败：fetch failed。请检查 baseUrl 拼写、网络可达性与 TLS 证书。",
+			"主人，连接 https://api.example.com 失败：fetch failed。请检查 baseUrl 拼写、网络可达性与 TLS 证书。",
 		);
 	});
 
@@ -141,4 +142,19 @@ describe("probeAiProvider — 没过的带标准码", () => {
 		const r = await probeAiProvider(fields);
 		expect(r).toMatchObject({ ok: false, code: "timeout" });
 	});
+});
+
+it("reads configuration error text at the call without making a request", async () => {
+	const bound = bindPackageText(() => "Current configuration error");
+	try {
+		const result = await probeAiProvider({ ...fields, apiKey: "" });
+		expect(result).toMatchObject({
+			ok: false,
+			code: "not_configured",
+			message: "Current configuration error",
+		});
+		expect(fetchMock).not.toHaveBeenCalled();
+	} finally {
+		bound.dispose();
+	}
 });

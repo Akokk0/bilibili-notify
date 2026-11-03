@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Btn, MonoChip } from "./atoms";
 import { TInput } from "./form-controls";
+import { useUiText } from "./texts";
 
 /**
  * 一格密钥在面板上的样子 —— 拓展设置页、连接表单、智能女仆页共用这一份(ADR-0021 决策 44)。
@@ -67,13 +68,15 @@ export function SavedSecretControl({
 	/** 输入框 —— 摆放处按自己的草稿造。 */
 	children: ReactNode;
 }) {
+	const tx = useUiText();
+
 	if (savedMask === undefined) return <>{children}</>;
 	if (!replacing) {
 		return (
 			<div className="flex flex-wrap items-center gap-2.5">
 				<SecretChip text={savedMask} />
 				<Btn variant="outline" size="sm" onClick={onReplace}>
-					换一份
+					{tx("ui.secret-cell.1")}
 				</Btn>
 			</div>
 		);
@@ -82,7 +85,7 @@ export function SavedSecretControl({
 		<div className="flex items-start gap-2.5">
 			<div className="min-w-0 flex-1">{children}</div>
 			<Btn variant="ghost" size="sm" onClick={onCancelReplace}>
-				不换了
+				{tx("ui.secret-cell.2")}
 			</Btn>
 		</div>
 	);

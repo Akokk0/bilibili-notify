@@ -17,6 +17,7 @@ import {
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
 } from "../../card-skin";
+import { bindPackageText } from "../../texts";
 import {
 	CARD_DATA_VERSION,
 	CARD_SKIN_SCHEMA_VERSION,
@@ -1470,4 +1471,38 @@ describe("㉔ 词表全集:卡种键、字段、块、挂点", () => {
 		);
 		expect(actual).toEqual(BLOCKS);
 	});
+});
+
+it("已加载的卡片字段与场景名称按访问时的文案显示，字段路径和场景id不变", () => {
+	const field = CARD_SKIN_FIELDS.live.find((f) => f.path === "creator.name");
+	const scene = CARD_PREVIEW_SCENES.live[0];
+	expect(field?.label).toBe("创作者名");
+	expect(scene.label).toBe("直播中");
+	const binding = bindPackageText(() => "Current caption");
+	try {
+		expect(field?.label).toBe("Current caption");
+		expect(scene.label).toBe("Current caption");
+		expect(field?.path).toBe("creator.name");
+		expect(scene.id).toBe("streaming");
+	} finally {
+		binding.dispose();
+	}
+	expect(field?.label).toBe("创作者名");
+});
+
+it("reads already loaded schema failures and skin version guidance at validation time", () => {
+	const bound = bindPackageText(() => "Current validation error");
+	try {
+		expect(parseCardSkin(minimal({ schemaVersion: 1 as never }))).toEqual({
+			ok: false,
+			errors: ["Current validation error"],
+		});
+		expect(
+			errorsOf(
+				minimal({ cards: { live: { width: 600, columns: [{ px: 1.001 }], blocks: [] } } } as never),
+			),
+		).toContain("Current validation error");
+	} finally {
+		bound.dispose();
+	}
 });

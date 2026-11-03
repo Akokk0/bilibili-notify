@@ -1,3 +1,4 @@
+import { packageText } from "../texts";
 /**
  * 写道:按键串行的任务队列。同一个键上的任务严格按交进来的顺序一个接一个跑,前一个失败
  * 不挡后一个;不同键之间互不等待。要全局串行就只用一个键。
@@ -9,7 +10,7 @@
 export class SerialQueueClosedError extends Error {
 	readonly code = "queue_closed";
 	constructor() {
-		super("写道已关门,不再接受新任务");
+		super(packageText("internal.util.serial-queue.1"));
 		this.name = "SerialQueueClosedError";
 	}
 }
