@@ -624,3 +624,28 @@ describe("别处改了设置", () => {
 		expect(settingsReads()).toBe(before);
 	});
 });
+
+it("settings-invalid config shows safe originals including an entire secret list without any raw view", async () => {
+	renderList({
+		ext: { ...BRIDGE, state: "settings-invalid", detail: "fix the settings" },
+		invalid: [
+			{
+				path: ["interval"],
+				secret: false,
+				raw: "oops",
+				missing: false,
+				issues: [{ path: ["interval"], message: "number required" }],
+			},
+			{
+				path: ["links"],
+				secret: true,
+				issues: [{ path: ["links", 0, "token"], message: "too short" }],
+			},
+		],
+	});
+	expect(await screen.findByText('"oops"')).toBeTruthy();
+	expect(screen.getByText("number required")).toBeTruthy();
+	expect(screen.getByText("too short")).toBeTruthy();
+	expect(screen.getByText("密钥原值不显示")).toBeTruthy();
+	expect(api.patch).not.toHaveBeenCalled();
+});

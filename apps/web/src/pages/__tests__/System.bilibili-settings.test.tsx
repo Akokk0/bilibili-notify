@@ -13,7 +13,10 @@
  *    `bilibili.userAgent` 还在也不画。
  */
 
-import type { IntegrationSettingsDescriptorsResponse } from "@bilibili-notify/contract";
+import type {
+	IntegrationSettingsDescriptorsResponse,
+	InvalidSettingView,
+} from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -121,8 +124,10 @@ function resetStore(): void {
 async function renderRuntimeSection(
 	served: unknown = GLOBALS,
 	definitions: IntegrationSettingsDescriptorsResponse = DEFINITIONS,
+	invalid: InvalidSettingView[] = [],
 ) {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/settings/invalid") return { entries: invalid };
 		if (url === "/api/settings") return JSON.parse(JSON.stringify(served));
 		if (url === "/api/settings/integrations") return definitions;
 		if (url === "/api/connections/capabilities") return {};
@@ -381,5 +386,30 @@ describe("系统运行区的统计开关", () => {
 			),
 		);
 		expect(await save()).toEqual({ core: { stats: { enabled: !enabled } } });
+	});
+});
+
+describe("isolated settings on the System page", () => {
+	it("shows original non-secret values and every reason, while secret cells have no value view", async () => {
+		await renderRuntimeSection(GLOBALS, DEFINITIONS, [
+			{
+				path: ["bilibili", "healthCheckMinutes"],
+				secret: false,
+				raw: 999,
+				missing: false,
+				issues: [{ path: ["healthCheckMinutes"], message: "too large" }],
+			},
+			{
+				path: ["core", "ai", "providers", "hidden"],
+				secret: true,
+				issues: [{ path: [], message: "invalid provider" }],
+			},
+		]);
+		expect(await screen.findByText("999")).toBeTruthy();
+		expect(screen.getByText("too large")).toBeTruthy();
+		expect(screen.getByText("invalid provider")).toBeTruthy();
+		expect(screen.getByText("core.ai.providers.hidden")).toBeTruthy();
+		expect(screen.getByText("密钥原值不显示")).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
 	});
 });

@@ -1,4 +1,13 @@
-import { Btn, CheckRow, ErrorNote, Icon, ModalShell, OptionCard } from "@bilibili-notify/ui";
+import {
+	Btn,
+	CheckRow,
+	ErrorNote,
+	HintNote,
+	Icon,
+	ModalShell,
+	OptionCard,
+	WarnNote,
+} from "@bilibili-notify/ui";
 import { useState } from "react";
 import { i18n, useT } from "../../i18n";
 import { type BackupKind, type BackupSectionSelection, isValidPin } from "./backup-file";
@@ -8,6 +17,10 @@ export interface BackupExportDialogProps {
 	onCancel: () => void;
 	onExport: (opts: { kind: BackupKind; sections: BackupSectionSelection; pin?: string }) => void;
 	busy?: boolean;
+	previewPaths?: readonly (string | number)[][];
+	previewPending?: boolean;
+	previewError?: string;
+	onRetryPreview?: () => void;
 }
 
 const SECTIONS: { key: keyof BackupSectionSelection; label: string }[] = [
@@ -44,7 +57,15 @@ const ALL_SELECTED: BackupSectionSelection = {
 	targets: true,
 };
 
-export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDialogProps) {
+export function BackupExportDialog({
+	onCancel,
+	onExport,
+	busy,
+	previewPaths = [],
+	previewPending,
+	previewError,
+	onRetryPreview,
+}: BackupExportDialogProps) {
 	const tx = useT();
 
 	const [kind, setKind] = useState<BackupKind>("full");
@@ -53,7 +74,8 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 
 	const pinOk = kind !== "full" || isValidPin(pin);
 	const anySection = Object.values(sections).some(Boolean);
-	const canExport = !busy && pinOk && anySection;
+	const canExport =
+		!busy && pinOk && anySection && (!sections.globals || (!previewPending && !previewError));
 
 	function toggle(key: keyof BackupSectionSelection): void {
 		setSections((s) => ({ ...s, [key]: !s[key] }));
@@ -111,6 +133,31 @@ export function BackupExportDialog({ onCancel, onExport, busy }: BackupExportDia
 				))}
 			</div>
 
+			{sections.globals ? (
+				<div className="mt-4 space-y-2">
+					{previewPending ? <HintNote>{tx("invalidSettings.previewLoading")}</HintNote> : null}
+					{previewError ? (
+						<ErrorNote>
+							{tx("invalidSettings.loadFailed", { reason: previewError })}
+							<Btn variant="outline" size="sm" onClick={onRetryPreview}>
+								{tx("invalidSettings.retry")}
+							</Btn>
+						</ErrorNote>
+					) : null}
+					{!previewPending && !previewError && previewPaths.length ? (
+						<WarnNote>
+							<p>{tx("invalidSettings.defaultedExport")}</p>
+							<ul className="mt-2 space-y-1">
+								{previewPaths.map((path) => (
+									<li key={JSON.stringify(path)}>
+										<code className="break-all">{path.join(".")}</code>
+									</li>
+								))}
+							</ul>
+						</WarnNote>
+					) : null}
+				</div>
+			) : null}
 			<div className="mt-4 flex justify-end gap-2">
 				<Btn variant="outline" size="sm" onClick={onCancel} disabled={busy}>
 					{tx("panelUi.pages.backup.BackupExportDialog.13")}

@@ -7,8 +7,10 @@ import { ErrorNote, Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { InvalidSettingsPanel } from "../components/invalid-settings-note";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
+import { INVALID_SETTINGS_QUERY_PREFIX } from "../hooks/useInvalidSettings";
 import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
 import { i18n, useT, useTextOptions } from "../i18n";
 import { api } from "../services/api";
@@ -194,7 +196,10 @@ export default function System() {
 			if (issue) throw new Error(issue);
 			await patchSettings(buildSystemPatch(next, base));
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_KEY }),
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: SETTINGS_KEY });
+			await qc.invalidateQueries({ queryKey: INVALID_SETTINGS_QUERY_PREFIX });
+		},
 	});
 
 	useDirtyDraft<SettingsResponse>({
@@ -244,6 +249,7 @@ export default function System() {
 			/>
 
 			<div className="min-w-0 space-y-5">
+				<InvalidSettingsPanel path="/api/settings/invalid" />
 				{/* 配置读不下来是整页的事,不是某一格的事 —— 摆在格子外头,停在哪一格都看得见。 */}
 				{descriptorsQuery.error ? (
 					<ErrorNote>{String(descriptorsQuery.error.message)}</ErrorNote>

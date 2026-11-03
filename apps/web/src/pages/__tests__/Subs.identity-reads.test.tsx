@@ -36,9 +36,12 @@ const named = (sub: Subscription, name: string): Subscription => ({
 const BILI = named(makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }), "UP甲");
 const EXT = named(makeEmptySubscription({ sourceKey: "douyin", externalId: "Sec-Abc" }), "抖音乙");
 
+let problems: unknown[] = [];
 beforeEach(() => {
+	problems = [];
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/problems") return Promise.resolve({ problems });
 		if (path === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 		if (path === "/api/subscriptions/tags") return Promise.resolve([]);
 		if (path === "/api/subscriptions") return Promise.resolve([BILI, EXT]);
@@ -175,4 +178,22 @@ describe("右键菜单「复制 UID」", () => {
 		expect(api.patch).not.toHaveBeenCalled();
 		expect(api.post).not.toHaveBeenCalled();
 	});
+});
+
+it("shows the isolated-subscription count message without changing or hiding valid subscriptions", async () => {
+	problems = [
+		{
+			reporter: "core",
+			code: "subscriptions_invalid",
+			message: "2 isolated subscriptions; fix the file and restart",
+			since: "2026-11-03T00:00:00Z",
+		},
+	];
+	await renderSubs();
+	expect(
+		await screen.findByText("2 isolated subscriptions; fix the file and restart"),
+	).toBeTruthy();
+	expect(screen.getByText("抖音乙")).toBeTruthy();
+	expect(api.patch).not.toHaveBeenCalled();
+	expect(api.post).not.toHaveBeenCalled();
 });

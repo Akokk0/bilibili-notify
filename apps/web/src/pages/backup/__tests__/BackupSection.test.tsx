@@ -13,7 +13,7 @@ import { BackupSection } from "../BackupSection";
 import { BACKUP_FORMAT } from "../backup-file";
 
 vi.mock("../../../services/api", () => ({
-	api: { post: vi.fn() },
+	api: { get: vi.fn(), post: vi.fn() },
 	ApiError: class extends Error {
 		constructor(
 			public status: number,
@@ -55,6 +55,7 @@ function pickFile(kind: "full" | "sanitized"): void {
 
 beforeEach(() => {
 	post.mockReset();
+	vi.mocked(api.get).mockReset().mockResolvedValue({ defaultedSettings: [] });
 	download.mockReset();
 });
 afterEach(cleanup);
@@ -70,6 +71,11 @@ describe("BackupSection", () => {
 
 		fireEvent.click(screen.getByText("导出备份"));
 		fireEvent.change(screen.getByPlaceholderText(/设置 6 位/), { target: { value: "123456" } });
+		await waitFor(() =>
+			expect((screen.getByRole("button", { name: "导出" }) as HTMLButtonElement).disabled).toBe(
+				false,
+			),
+		);
 		fireEvent.click(screen.getByText("导出"));
 
 		await waitFor(() =>
@@ -190,5 +196,39 @@ describe("BackupSection", () => {
 		fireEvent.click(screen.getByText("导入"));
 
 		expect(await screen.findByText(/PIN 错误/)).toBeTruthy();
+	});
+});
+
+describe("export effective-default preview", () => {
+	it("names defaulted paths without original values before exporting", async () => {
+		vi.mocked(api.get).mockResolvedValue({
+			defaultedSettings: [
+				["core", "logging"],
+				["bilibili", "healthCheckMinutes"],
+			],
+		});
+		renderSection();
+		fireEvent.click(screen.getByText("导出备份"));
+		expect(await screen.findByText("core.logging")).toBeTruthy();
+		expect(screen.getByText("bilibili.healthCheckMinutes")).toBeTruthy();
+		expect(post).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("checkbox", { name: /设置/ }));
+		expect(screen.queryByText("core.logging")).toBeNull();
+	});
+	it("blocks selected settings on preview failure and offers retry without exporting", async () => {
+		vi.mocked(api.get).mockRejectedValue(new Error("preview unavailable"));
+		renderSection();
+		fireEvent.click(screen.getByText("导出备份"));
+		fireEvent.click(screen.getByRole("button", { name: /脱敏导出/ }));
+		expect(await screen.findByText(/preview unavailable/)).toBeTruthy();
+		expect((screen.getByRole("button", { name: "导出" }) as HTMLButtonElement).disabled).toBe(true);
+		vi.mocked(api.get).mockResolvedValue({ defaultedSettings: [] });
+		fireEvent.click(screen.getByRole("button", { name: "重试" }));
+		await waitFor(() =>
+			expect((screen.getByRole("button", { name: "导出" }) as HTMLButtonElement).disabled).toBe(
+				false,
+			),
+		);
+		expect(post).not.toHaveBeenCalled();
 	});
 });

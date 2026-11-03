@@ -5,6 +5,7 @@ import type {
 	SettingsScalarField,
 } from "@bilibili-notify/contract";
 import { ErrorNote, HintNote, Icon, StatusDot, WarnNote } from "@bilibili-notify/ui";
+import { InvalidSettingsPanel } from "../../../components/invalid-settings-note";
 import { useT } from "../../../i18n";
 import { reasonOf } from "../shared";
 import { PageBlocks, TONE_DOT } from "./blocks";
@@ -65,6 +66,7 @@ export function DeclarativeConfig({ ext }: { ext: ExtensionDTO }) {
 	return (
 		<>
 			<RunStateNote ext={ext} />
+			<InvalidSettingsPanel path={`/api/ext/${encodeURIComponent(ext.id)}/settings/invalid`} />
 			{configGroupsOf(settingsFieldsOf(ext)).map((group) =>
 				group.kind === "list" ? (
 					<ListSection key={`list:${group.field.key}`} ext={ext} field={group.field} />

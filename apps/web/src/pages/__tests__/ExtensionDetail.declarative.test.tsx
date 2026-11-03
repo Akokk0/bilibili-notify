@@ -92,6 +92,7 @@ function renderDetail({
 	restart = { can: true, how: "container" },
 }: Setup = {}) {
 	apiGetMock.mockImplementation(async (url: string) => {
+		if (url.endsWith("/settings/invalid")) return { entries: [] };
 		if (url === "/api/ext") return { extensions: [ext], restart } satisfies ExtensionsResponse;
 		if (url === "/api/settings") return { core: { logging: { level: "info", levels: {} } } };
 		// 设置走拓展自己的口(ADR-0019 决策 35)—— `/api/settings` 里已经没有这一格了。

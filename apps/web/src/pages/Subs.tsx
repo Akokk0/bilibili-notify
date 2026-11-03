@@ -27,11 +27,13 @@ import {
 	TOAST_DURATION_MS,
 	Toast,
 	ToneChip,
+	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ExtensionSettingsButton } from "../components/extension-settings-button";
+import { useProblems } from "../hooks/useProblems";
 import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
 import { useSubscriptionTags } from "../hooks/useSubscriptionTags";
@@ -449,6 +451,11 @@ export default function Subs() {
 		disabled: t("subs.filter.disabled"),
 	};
 	const qc = useQueryClient();
+	const problemsQuery = useProblems();
+	const invalidSubscriptions =
+		problemsQuery.data?.problems?.filter(
+			(problem) => problem.reporter === "core" && problem.code === "subscriptions_invalid",
+		) ?? [];
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
@@ -833,6 +840,9 @@ export default function Subs() {
 				</div>
 			) : null}
 
+			{invalidSubscriptions.map((problem) => (
+				<WarnNote key={`${problem.reporter}:${problem.code}`}>{problem.message}</WarnNote>
+			))}
 			{error ? <ErrorNote>{error}</ErrorNote> : null}
 
 			{subsQuery.isLoading ? (

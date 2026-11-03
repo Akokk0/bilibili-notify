@@ -1,8 +1,10 @@
+import type { BackupExportPreviewResponse } from "@bilibili-notify/contract";
 import { Btn, ConfirmDialog, ErrorNote, GlassBox, Icon } from "@bilibili-notify/ui";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { SECTION_ACCENT } from "../../config/section-accents";
-import { i18n, useT } from "../../i18n";
+import { INVALID_SETTINGS_QUERY_PREFIX } from "../../hooks/useInvalidSettings";
+import { i18n, useT, useTextOptions } from "../../i18n";
 import { ApiError, api } from "../../services/api";
 import { BackupExportDialog } from "./BackupExportDialog";
 import { BackupImportDialog } from "./BackupImportDialog";
@@ -51,6 +53,14 @@ export function BackupSection() {
 
 	const qc = useQueryClient();
 	const [dialog, setDialog] = useState<"export" | "import" | null>(null);
+	const { locale, voice } = useTextOptions();
+	const preview = useQuery({
+		queryKey: [...INVALID_SETTINGS_QUERY_PREFIX, "backup-preview", locale, voice],
+		queryFn: () => api.get<BackupExportPreviewResponse>("/api/system/backup/preview"),
+		enabled: dialog === "export",
+		retry: false,
+		staleTime: 0,
+	});
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<
@@ -175,6 +185,10 @@ export function BackupSection() {
 
 			{dialog === "export" ? (
 				<BackupExportDialog
+					previewPaths={preview.data?.defaultedSettings ?? []}
+					previewPending={preview.isPending || preview.isFetching}
+					previewError={preview.error?.message}
+					onRetryPreview={() => void preview.refetch()}
 					busy={busy}
 					onCancel={() => setDialog(null)}
 					onExport={(opts) => void doExport(opts)}

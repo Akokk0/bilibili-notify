@@ -2858,5 +2858,15 @@
 	"integrationSettings.reset": "换一个身份",
 	"integrationSettings.dirty": "请先保存或放弃当前草稿，再更换浏览器身份。",
 	"integrationSettings.resetDone": "已安排在下次服务重启时生成新身份。",
-	"integrationSettings.resetConfirm": "换一个浏览器身份？"
+	"integrationSettings.resetConfirm": "换一个浏览器身份？",
+	"invalidSettings.title": "设置不合法",
+	"invalidSettings.help": "以下原值保留在本机文件中；部分项目在内存中使用默认值。按原因修正后保存，无法在面板修复时请停服修改文件后重启。若要保留当前默认值，请先改为其他合法值保存，再改回。",
+	"invalidSettings.file": "设置文件",
+	"invalidSettings.secret": "密钥原值不显示",
+	"invalidSettings.original": "原值",
+	"invalidSettings.missing": "缺少该项",
+	"invalidSettings.loadFailed": "读取设置问题失败：{reason}",
+	"invalidSettings.retry": "重试",
+	"invalidSettings.previewLoading": "正在核对导出设置…",
+	"invalidSettings.defaultedExport": "下列项目将按当前内存中的默认值导出，不含本机文件里的原值；被隔离的 AI 服务实例不在导出中。"
 }

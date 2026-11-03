@@ -1938,7 +1938,11 @@ export default function Targets() {
 												style={{ color: "var(--color-bn-danger-text)" }}
 											>
 												{tx("targets.targets.text19")}
-												{issueTextsOf({ issues: selectedConnection.settingsIssues })[0]}
+												{Array.from(
+													new Set(issueTextsOf({ issues: selectedConnection.settingsIssues })),
+												).map((text) => (
+													<div key={text}>{text}</div>
+												))}
 											</div>
 										) : null}
 										{selectedConnection.probeState?.status === "unsupported" ? (

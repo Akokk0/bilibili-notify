@@ -487,5 +487,9 @@
 	"panelUi.pages.rules.MessageLayoutEditor.13": "主人，第 {messages} 条消息里卡片图不在最前面 —— QQ 上先发文字再发图片会被自动拆成两条消息,卡片图放在最前才能合并成一条。",
 	"integrationSettings.identityHint": "主人，新身份会在下次服务重启时生效，当前请求和直播连接继续使用原身份，登录状态也会保持哦。",
 	"integrationSettings.dirty": "主人，先保存或放弃当前草稿，再让女仆更换浏览器身份吧。",
-	"integrationSettings.resetDone": "主人，女仆已安排在下次服务重启时生成新身份啦。"
+	"integrationSettings.resetDone": "主人，女仆已安排在下次服务重启时生成新身份啦。",
+	"invalidSettings.help": "主人，这些原值还留在本机文件里，部分项目正在用默认值。请按原因改好再保存；面板修不了的，请停服修改文件后重启哦。若想保留当前默认值，先改成其他合法值保存，再改回来就好。",
+	"invalidSettings.loadFailed": "主人，设置问题没读到：{reason}",
+	"invalidSettings.previewLoading": "主人，女仆正在核对导出设置…",
+	"invalidSettings.defaultedExport": "主人，下列项目会按当前内存中的默认值导出，本机文件里的原值不会带走；被隔离的 AI 服务实例也不在导出中哦。"
 }

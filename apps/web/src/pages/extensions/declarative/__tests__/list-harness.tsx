@@ -148,6 +148,7 @@ export class NotFound extends Error {
 }
 
 export interface ListSetup {
+	invalid?: import("@bilibili-notify/contract").InvalidSettingView[];
 	/** 拓展本身 —— 开关、状态、清单里的设置项。 */
 	ext?: ExtensionDTO;
 	/**
@@ -287,7 +288,7 @@ export function changeBehindTheBack(change: (settings: Record<string, unknown>) 
 	served.revision += 1;
 }
 
-function mockApi({ ext = BRIDGE, items = [], extraSettings = {}, view }: ListSetup) {
+function mockApi({ ext = BRIDGE, items = [], extraSettings = {}, view, invalid = [] }: ListSetup) {
 	served = {
 		ext,
 		revision: 1,
@@ -302,6 +303,7 @@ function mockApi({ ext = BRIDGE, items = [], extraSettings = {}, view }: ListSet
 				restart: { can: true, how: "container" },
 			} satisfies ExtensionsResponse;
 		}
+		if (url === `/api/ext/${ext.id}/settings/invalid`) return { entries: invalid };
 		if (url === `/api/ext/${ext.id}/settings`) {
 			if (items === "pending") return new Promise(() => {});
 			if (items === null) throw new Error("配置读不出来:500");

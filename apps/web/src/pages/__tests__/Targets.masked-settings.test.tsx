@@ -154,3 +154,19 @@ describe("探不了的连接", () => {
 		expect(screen.queryByText("这种连接没有探测办法")).toBeNull();
 	});
 });
+
+it("shows every safe settings reason instead of dropping all but the first", async () => {
+	connections = [
+		{
+			...INVALID_ONEBOT,
+			settingsIssues: [
+				{ path: ["baseUrl"], message: "first reason" },
+				{ path: ["token"], message: "second reason" },
+			],
+		},
+	];
+	renderPage();
+	expect(await screen.findByText(/first reason/)).toBeTruthy();
+	expect(screen.getByText(/second reason/)).toBeTruthy();
+	expect(screen.queryByText("http://127.0.0.1")).toBeNull();
+});

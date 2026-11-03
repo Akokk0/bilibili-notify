@@ -14,6 +14,7 @@ import {
 	invalidateExtensionTables,
 } from "./useExtensions";
 import { HEALTH_DETAILS_QUERY_KEY } from "./useHealthDetails";
+import { INVALID_SETTINGS_QUERY_PREFIX } from "./useInvalidSettings";
 import { PROBLEMS_QUERY_KEY } from "./useProblems";
 import { SETTINGS_KEY } from "./useSettings";
 import { SUBSCRIPTION_TAGS_QUERY_KEY } from "./useSubscriptionTags";
@@ -70,6 +71,7 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		qc.invalidateQueries({ queryKey: EXTENSION_SETTINGS_QUERY_PREFIX });
 		// 各来源的登录状态同理:`auth` 频道的帧也不重放,断线期间登出 / 失效 / 换号都得靠这一步补回来。
 		qc.invalidateQueries({ queryKey: SOURCE_AUTH_QUERY_PREFIX });
+		qc.invalidateQueries({ queryKey: INVALID_SETTINGS_QUERY_PREFIX });
 		return;
 	}
 	// 拓展喊了「面板数据变了」:只失效那个拓展的 status 与 bot 名单,让页面自己重取。
@@ -93,6 +95,7 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		if (typeof id !== "string" || id === "") return;
 		qc.invalidateQueries({ queryKey: extensionSettingsKey(id) });
 		qc.invalidateQueries({ queryKey: extensionStatusKey(id) });
+		qc.invalidateQueries({ queryKey: INVALID_SETTINGS_QUERY_PREFIX });
 		return;
 	}
 	// 拓展报的资料(名字 / 头像 / 粉丝)落进了资料缓存:订阅列表重取。帧里的订阅 id 不必看 —— 资料是
@@ -106,6 +109,7 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 		qc.invalidateQueries({ queryKey: PROBLEMS_QUERY_KEY });
 		qc.invalidateQueries({ queryKey: HEALTH_DETAILS_QUERY_KEY });
+		qc.invalidateQueries({ queryKey: INVALID_SETTINGS_QUERY_PREFIX });
 		return;
 	}
 	if (!isWsEvent(env, "state", "config-changed")) return;
@@ -120,12 +124,14 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		// 设置口的写只发这一档;不跟着过期的话,这一页照旧画着旧名单,直到下一发拿着旧版本号撞 409。经设置口写的
 		// 那一发会多失效一次 —— 只有开着的那一页真去重读,换一个不漏。
 		qc.invalidateQueries({ queryKey: EXTENSION_SETTINGS_QUERY_PREFIX });
+		qc.invalidateQueries({ queryKey: INVALID_SETTINGS_QUERY_PREFIX });
 	} else if (scope === "globals") {
 		qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 		// 拓展的开关(`enabled`)住在 globals 里,拓展页 / 详情页吃的却是拓展表那一口:别的标签页
 		// 把拓展关了,只重读 globals 的话,这一页还把它画成「跑着」,状态那一口的 404 被当成「没交
 		// 视图」,卡上一片空白。来源表跟着拓展表走(停了的拓展,它的来源那一行没了 `has`)。
 		void invalidateExtensionTables(qc);
+		qc.invalidateQueries({ queryKey: INVALID_SETTINGS_QUERY_PREFIX });
 	}
 	// 服务端建 / 改 / 删连接都发这一档(config/store.ts 三处);不接的话别处改了连接,
 	// 这一页要等 staleTime 过去或切页才知道。

@@ -84,6 +84,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 				"source-auth",
 				"problems",
 				"health",
+				"invalid-settings",
 			]),
 		);
 	});
@@ -100,6 +101,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 		expect(keysOf(sc.invalidate)).toEqual([
 			["ext-settings", "bridge"],
 			["extension-status", "bridge"],
+			["invalid-settings"],
 		]);
 	});
 
@@ -160,6 +162,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			["extensions"],
 			["sources"],
 			["adapters"],
+			["invalid-settings"],
 		]);
 		expect(keysOf(sc.invalidate)).not.toContainEqual(["ext-settings"]);
 	});
@@ -200,7 +203,12 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			env({ type: "state", event: "problems-changed", data: { reporter: "bilibili" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["subscriptions"], ["problems"], ["health", "details"]]);
+		expect(keysOf(sc.invalidate)).toEqual([
+			["subscriptions"],
+			["problems"],
+			["health", "details"],
+			["invalid-settings"],
+		]);
 	});
 
 	/**
@@ -217,7 +225,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			env({ type: "state", event: "config-changed", data: { scope: "integration-settings" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["settings"], ["ext-settings"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["settings"], ["ext-settings"], ["invalid-settings"]]);
 	});
 
 	it("config-changed scope=integration-settings:拓展设置那一口真的过期了(按前缀,各拓展一起)", () => {

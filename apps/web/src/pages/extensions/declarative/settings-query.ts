@@ -6,6 +6,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { extensionSettingsKey, extensionStatusKey } from "../../../hooks/useExtensions";
+import { INVALID_SETTINGS_QUERY_PREFIX } from "../../../hooks/useInvalidSettings";
 import { api } from "../../../services/api";
 import { isConflict } from "./list-items";
 
@@ -70,6 +71,7 @@ export function useSettingsWrite<V extends SettingsWrite>(
 			};
 			qc.setQueryData(key, adopted);
 			onWritten?.(written, vars);
+			void qc.invalidateQueries({ queryKey: INVALID_SETTINGS_QUERY_PREFIX });
 			void qc.invalidateQueries({ queryKey: extensionStatusKey(extensionId) });
 		},
 		onError: (err) => {
