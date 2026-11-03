@@ -110,7 +110,7 @@ export const RATCHET = {
 	"apps/server/src/routes/targets.ts": 2,
 	"apps/server/src/runtime/roots.ts": 1,
 	// 4-26：主人批准真实 B 语境 5 plain + 3 maid，精确键与命中词由下方实扫断言钉住。
-	"apps/web/src/i18n/locales/zh-CN.json": 5,
+	"apps/web/src/i18n/locales/zh-CN.json": 6,
 	"apps/web/src/i18n/locales/zh-CN.maid.json": 3,
 	"apps/web/src/components/header.tsx": 1,
 
@@ -127,10 +127,8 @@ export const RATCHET = {
 	"apps/web/src/pages/system/account-section.tsx": 4,
 	"apps/web/src/pages/backup/BackupExportDialog.tsx": 1,
 	"apps/web/src/pages/backup/BackupSection.tsx": 2,
-	"apps/web/src/pages/cards/SkinInspector.tsx": 1,
 	"apps/web/src/pages/guide/guide-panel.tsx": 1,
 	"apps/web/src/pages/rules/MessageLayoutEditor.tsx": 1,
-	"apps/web/src/pages/skins/SkinEditor.tsx": 1,
 	"apps/web/src/pages/stats/SoloRoastCard.tsx": 1,
 	"apps/web/src/pages/stats/charts.tsx": 1,
 
@@ -184,9 +182,11 @@ export function jsonTermHits(json, allowed = [], file = "") {
 	return hits;
 }
 
-/** 4-26 批准的 B 站真实语境闭集，词以 termsIn 的规范形式记录。 */
+/** 批准的叫法与同词原节点闭集，词以 termsIn 的规范形式记录。 */
 export const JSON_TERM_PINS = {
 	"apps/web/src/i18n/locales/zh-CN.json": {
+		// 4-53a：主人已持续批准后片原文迁移；系统设置名“减少动态效果”原节点1处移入此完整键，词不扩。
+		"skinUi.SkinEditor.64": ["动态"],
 		"sourceUi.pages.Dashboard.SystemHealthCard.31": ["B站"],
 		"sourceUi.pages.Dashboard.Dashboard.59": ["B站"],
 		"sourceUi.config.field.labels.label.1": ["B站"],
@@ -378,7 +378,7 @@ describe("核心与面板里的 B 站叫法只降不涨", () => {
 		});
 	});
 
-	it("两份 web 字典恰好保留批准的八个真实 B 站节点", () => {
+	it("两份 web 字典恰好保留批准的完整键与命中词", () => {
 		for (const file of Object.keys(JSON_TERM_PINS))
 			expect(auditJsonPins(readFileSync(join(REPO_ROOT, file), "utf8"), file)).toEqual([]);
 	});

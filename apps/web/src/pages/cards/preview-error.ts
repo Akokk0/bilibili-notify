@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 预览失败时标题上那一行。
  *
@@ -24,9 +25,10 @@ export function previewErrorTitle(err: PreviewFailure | undefined): string {
 	// 先挡住「没有状态码」这一档。`undefined === 0` 本就是 false,但测试里 mock 掉
 	// services/api 时 OFFLINE_STATUS 会变成 undefined —— 那时每个无状态码的错误都会
 	// 谎报「连接中断」。显式挡一道,判断就不再依赖那个 import 有没有被 mock 全。
-	if (err?.status !== undefined && err.status === OFFLINE_STATUS) return "连接中断";
-	if (err?.code === "not_configured") return "puppeteer 未配置";
-	return "渲染失败";
+	if (err?.status !== undefined && err.status === OFFLINE_STATUS)
+		return i18n.t("skinUi.preview-error.1");
+	if (err?.code === "not_configured") return i18n.t("skinUi.preview-error.2");
+	return i18n.t("skinUi.preview-error.3");
 }
 
 /**
@@ -35,7 +37,7 @@ export function previewErrorTitle(err: PreviewFailure | undefined): string {
  */
 export function previewErrorHint(status: number | undefined): string | null {
 	if (status === undefined || status !== OFFLINE_STATUS) return null;
-	return "卡片渲染较慢，若经反向代理访问，请把读超时调到 120s 以上；也可能是服务端刚重启（内存不足时会被系统杀掉）。";
+	return i18n.t("skinUi.preview-error.4");
 }
 
 /**

@@ -1,3 +1,4 @@
+import { useT } from "../../i18n";
 /**
  * 编辑器的实时预览栏(ADR-0014 决策 22)。
  *
@@ -83,6 +84,8 @@ export function SkinPreviewPane({
 	 */
 	hotCell?: string | null;
 }) {
+	const tx = useT();
+
 	const preview = usePreviewCardSkin(skinId);
 	const shot = useShotCardSkin();
 	const chrome = useRenderSource();
@@ -148,20 +151,20 @@ export function SkinPreviewPane({
 	return (
 		<div className="space-y-3.5">
 			<GlassBox
-				title="实时预览"
-				subtitle="server 出 HTML、浏览器画;字体渲染与截图有细微差,像素级以「最终效果」为准"
+				title={tx("skinUi.SkinPreviewPane.1")}
+				subtitle={tx("skinUi.SkinPreviewPane.2")}
 				accent="var(--color-bn-purple)"
 				icon={<Icon.eye size={14} />}
 			>
 				<div className="flex flex-col gap-2">
 					<div className="flex w-full items-center justify-between gap-2">
 						<span className="text-bn-2xs text-bn-text-tertiary">
-							{snap === null ? "实时预览 · 浏览器画的" : "最终效果 · server 上的 Chrome 画的"}
+							{snap === null ? tx("skinUi.SkinPreviewPane.3") : tx("skinUi.SkinPreviewPane.4")}
 						</span>
 						<div className="flex items-center gap-1.5">
 							{snap === null ? null : (
 								<Btn size="sm" variant="ghost" onClick={() => setSnap(null)}>
-									回到实时预览
+									{tx("skinUi.SkinPreviewPane.5")}
 								</Btn>
 							)}
 							<Btn
@@ -177,7 +180,7 @@ export function SkinPreviewPane({
 									);
 								}}
 							>
-								{shot.isPending ? "正在截…" : "最终效果"}
+								{shot.isPending ? tx("skinUi.SkinPreviewPane.6") : tx("skinUi.SkinPreviewPane.7")}
 							</Btn>
 						</div>
 					</div>
@@ -187,7 +190,9 @@ export function SkinPreviewPane({
 					    所以只在实时预览这一档给。 */}
 					{snap === null ? (
 						<div className="flex w-full items-center gap-2">
-							<span className="shrink-0 text-bn-2xs text-bn-text-tertiary">格子</span>
+							<span className="shrink-0 text-bn-2xs text-bn-text-tertiary">
+								{tx("skinUi.SkinPreviewPane.8")}
+							</span>
 							<Picker
 								value={cells}
 								onChange={setCells}
@@ -197,22 +202,20 @@ export function SkinPreviewPane({
 					) : null}
 
 					{noChrome ? (
-						<HintNote className="w-full">
-							没配渲染浏览器,截不了图 —— 去系统页的「卡片渲染浏览器」设一下,或者设环境变量
-							BN_CHROME_PATH / BN_CHROME_ENDPOINT。下面的实时预览不受影响。
-						</HintNote>
+						<HintNote className="w-full">{tx("skinUi.SkinPreviewPane.9")}</HintNote>
 					) : null}
 
 					{shotFailure !== null ? (
 						<ErrorNote className="w-full" size="sm">
-							最终效果没截出来:{shotFailure}
+							{tx("skinUi.SkinPreviewPane.10")}
+							{shotFailure}
 						</ErrorNote>
 					) : null}
 
 					{errors.length > 0 ? (
 						<ErrorNote className="w-full" size="sm">
 							<div className="space-y-0.5">
-								<div className="font-semibold">这版草稿存不进去,预览停在上一张:</div>
+								<div className="font-semibold">{tx("skinUi.SkinPreviewPane.11")}</div>
 								{errors.map((e) => (
 									<div key={e}>{e}</div>
 								))}
@@ -225,7 +228,7 @@ export function SkinPreviewPane({
 							<div className="space-y-0.5">
 								{/* 不全是「清洗掉」:还混着装包时的提醒(用了没声明的旋钮之类),
 								    那些什么都没删。每条自己会说清是哪一种。 */}
-								<div className="font-semibold">存下去时有几处要留意:</div>
+								<div className="font-semibold">{tx("skinUi.SkinPreviewPane.12")}</div>
 								{warnings.map((w) => (
 									<div key={w}>{w}</div>
 								))}
@@ -233,9 +236,7 @@ export function SkinPreviewPane({
 						</WarnNote>
 					) : null}
 
-					<HintNote className="w-full">
-						选中的块在预览里不画选框 —— 要对位置看中间画布的行列。
-					</HintNote>
+					<HintNote className="w-full">{tx("skinUi.SkinPreviewPane.13")}</HintNote>
 				</div>
 			</GlassBox>
 
@@ -256,11 +257,15 @@ export function SkinPreviewPane({
 						{/* 截图就是一张 JPEG,按卡宽画、整张摊开(不限高,与实时预览一样跟着
 						    卡长);宽放不下时这一格横着滚 —— 缩放会让「像素级以最终效果为准」
 						    那句话当场失效。 */}
-						<img src={snap.res.dataUrl} alt="最终效果" style={{ width: snap.res.width }} />
+						<img
+							src={snap.res.dataUrl}
+							alt={tx("skinUi.SkinPreviewPane.14")}
+							style={{ width: snap.res.width }}
+						/>
 					</div>
 				) : html === null ? (
 					preview.isError ? null : (
-						<LoadingBlock label="正在画第一张预览…" variant="inset" />
+						<LoadingBlock label={tx("skinUi.SkinPreviewPane.15")} variant="inset" />
 					)
 				) : (
 					<SkinHtmlFrame
@@ -268,7 +273,7 @@ export function SkinPreviewPane({
 						width={width}
 						usable={usable}
 						fallbackHeight={VIEW_H}
-						title="皮肤预览"
+						title={tx("skinUi.SkinPreviewPane.16")}
 						// 画好了就量一次交给画布。只在 `load` 那一刻量 —— 与量卡高同一个时机。
 						onDocument={onMetrics ? (doc) => onMetrics(readGridMetrics(doc)) : undefined}
 						hotCell={hotCell}
@@ -284,19 +289,18 @@ export function SkinPreviewPane({
 					</span>
 					{stale ? (
 						<WarnNote className="w-full" size="sm">
-							草稿在这张截图之后又改过了,这张是上一版 —— 再按一次「最终效果」。
+							{tx("skinUi.SkinPreviewPane.17")}
 						</WarnNote>
 					) : null}
 					{snap.res.overHeight ? (
 						<ErrorNote className="w-full" size="sm">
-							这张 {Math.round(snap.res.height)} px,超过卡片高度上限 —— 真出图时它会被判失败、
-							回落到默认皮肤,而推送那头不会有任何提示。
+							{tx("skinUi.SkinPreviewPane.heightLimit", { height: Math.round(snap.res.height) })}
 						</ErrorNote>
 					) : null}
 				</div>
 			) : scale < 1 ? (
 				<div className="text-center text-bn-2xs text-bn-text-tertiary">
-					卡宽 {width},这一栏放不下,按 {Math.round(scale * 100)}% 缩放显示
+					{tx("skinUi.SkinPreviewPane.scaled", { width, percent: Math.round(scale * 100) })}
 				</div>
 			) : null}
 		</div>

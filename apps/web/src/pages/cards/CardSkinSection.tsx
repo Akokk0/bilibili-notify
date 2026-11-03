@@ -1,3 +1,4 @@
+import { i18n, useT } from "../../i18n";
 /**
  * 卡片皮肤库(ADR-0014 决策 2 / 5 / 20 的第①段)+ per-UP 的「选哪套」下拉(决策 17)。
  *
@@ -46,7 +47,7 @@ const KIND_LABEL = CARD_KIND_SHORT_NAMES;
  * 而「哪一套」正是主人唯一能照着去查的线索。
  */
 function skinName(skins: readonly CardSkinSummary[], id: string): string {
-	return skins.find((s) => s.id === id)?.name ?? `皮肤 ${id}`;
+	return skins.find((s) => s.id === id)?.name ?? i18n.t("skinUi.CardSkinSection.1", { value0: id });
 }
 
 /** 回落时刻:同一天只报时分,跨天带上月日 —— 「上周那条」和「刚刚那条」要一眼分得开。 */
@@ -90,6 +91,8 @@ function downloadSkin(skin: CardSkinSummary): void {
 }
 
 export function CardSkinSection() {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 	const [error, setError] = useState<string | null>(null);
@@ -184,11 +187,15 @@ export function CardSkinSection() {
 
 	return (
 		<GlassBox
-			title="卡片皮肤 · card-skin"
-			subtitle="推送卡片的整套外观 —— 上传皮肤包换装;内置那套只读,想改先「复制一份」"
+			title={tx("skinUi.CardSkinSection.2")}
+			subtitle={tx("skinUi.CardSkinSection.3")}
 			accent="var(--color-bn-purple)"
 			icon={<Icon.palette size={14} />}
-			badge={active && active !== "default" ? "已换装" : "内置皮肤"}
+			badge={
+				active && active !== "default"
+					? tx("skinUi.CardSkinSection.4")
+					: tx("skinUi.CardSkinSection.5")
+			}
 			right={
 				<div className="flex items-center gap-2">
 					<Btn
@@ -196,7 +203,7 @@ export function CardSkinSection() {
 						onClick={() => uploadInputRef.current?.click()}
 						disabled={upload.isPending}
 					>
-						{upload.isPending ? "上传中…" : "上传皮肤包"}
+						{upload.isPending ? tx("skinUi.CardSkinSection.6") : tx("skinUi.CardSkinSection.7")}
 					</Btn>
 					<input
 						ref={uploadInputRef}
@@ -204,21 +211,31 @@ export function CardSkinSection() {
 						accept=".zip,application/zip"
 						className="hidden"
 						onChange={onUploadPick}
-						aria-label="选择卡片皮肤包 zip 文件"
+						aria-label={tx("skinUi.CardSkinSection.8")}
 					/>
 				</div>
 			}
 		>
-			{error ? <ErrorNote className="mb-3">操作失败：{error}</ErrorNote> : null}
+			{error ? (
+				<ErrorNote className="mb-3">
+					{tx("skinUi.CardSkinSection.9")}
+					{error}
+				</ErrorNote>
+			) : null}
 			{fallbacks.length > 0 ? (
 				<WarnNote className="mb-3 leading-5">
 					<div className="flex items-start gap-3">
 						<div className="min-w-0 flex-1 space-y-0.5">
-							<div className="font-semibold">有卡片没能按皮肤画出来,已回落内置默认皮肤</div>
+							<div className="font-semibold">{tx("skinUi.CardSkinSection.10")}</div>
 							{fallbacks.map((f) => (
 								<div key={`${f.skinId} ${f.kind} ${f.reason}`}>
-									{skinName(skins, f.skinId)} 的{KIND_LABEL[f.kind]}卡{f.reason}
-									{f.count > 1 ? `(${f.count} 次)` : ""} · {formatAt(f.at)}
+									{tx("skinUi.CardSkinSection.fallback", {
+										skin: skinName(skins, f.skinId),
+										kind: KIND_LABEL[f.kind],
+										reason: f.reason,
+									})}
+									{f.count > 1 ? tx("skinUi.CardSkinSection.13", { count: f.count }) : ""} ·{" "}
+									{formatAt(f.at)}
 								</div>
 							))}
 						</div>
@@ -228,7 +245,7 @@ export function CardSkinSection() {
 							onClick={() => dismissFallbacks.mutate()}
 							disabled={dismissFallbacks.isPending}
 						>
-							知道了
+							{tx("skinUi.CardSkinSection.14")}
 						</Btn>
 					</div>
 				</WarnNote>
@@ -242,9 +259,9 @@ export function CardSkinSection() {
 			) : null}
 
 			{listQuery.isPending ? (
-				<LoadingBlock label="读取皮肤库中" variant="inset" />
+				<LoadingBlock label={tx("skinUi.CardSkinSection.15")} variant="inset" />
 			) : skins.length === 0 ? (
-				<EmptyNote>皮肤库是空的 —— 上传一个皮肤包试试。</EmptyNote>
+				<EmptyNote>{tx("skinUi.CardSkinSection.16")}</EmptyNote>
 			) : (
 				<div className="space-y-2">
 					{skins.map((skin) => (
@@ -270,17 +287,14 @@ export function CardSkinSection() {
 				</div>
 			)}
 
-			<HintNote className="mt-3">
-				per-UP 想单独换一套或单独拧旋钮:上方切到那个
-				UP,在「卡片皮肤」里挑、在它下面的旋钮里拧;想给它改排版就先「复制一份」再改。
-			</HintNote>
+			<HintNote className="mt-3">{tx("skinUi.CardSkinSection.17")}</HintNote>
 
 			{confirmRemove ? (
 				<ConfirmDialog
-					title="删除卡片皮肤"
-					message={`确定删除「${confirmRemove.name}」吗?删除后不可恢复。`}
+					title={tx("skinUi.CardSkinSection.18")}
+					message={tx("skinUi.CardSkinSection.19", { value0: confirmRemove.name })}
 					danger
-					confirmLabel="删除"
+					confirmLabel={tx("skinUi.CardSkinSection.20")}
 					onConfirm={() => {
 						remove.mutate(confirmRemove.id);
 						setConfirmRemove(null);
@@ -302,6 +316,8 @@ function CardSkinRow(props: {
 	onExport: () => void;
 	onRemove: () => void;
 }) {
+	const tx = useT();
+
 	const { skin } = props;
 	const desc = skinDesc(skin);
 	return (
@@ -320,10 +336,12 @@ function CardSkinRow(props: {
 					</span>
 					{skin.builtin ? (
 						<Pill subtle color="var(--color-bn-blue)">
-							内置
+							{tx("skinUi.CardSkinSection.21")}
 						</Pill>
 					) : null}
-					{props.inUse ? <Pill color="var(--color-bn-pink)">使用中</Pill> : null}
+					{props.inUse ? (
+						<Pill color="var(--color-bn-pink)">{tx("skinUi.CardSkinSection.22")}</Pill>
+					) : null}
 				</div>
 				{desc ? (
 					<div className="mt-0.5 truncate text-bn-xs text-bn-text-secondary">{desc}</div>
@@ -336,22 +354,22 @@ function CardSkinRow(props: {
 					onClick={props.onActivate}
 					disabled={props.busy || props.inUse}
 				>
-					{props.inUse ? "已启用" : "启用"}
+					{props.inUse ? tx("skinUi.CardSkinSection.23") : tx("skinUi.CardSkinSection.24")}
 				</Btn>
 				{/* 内置那份改不了(决策 5),所以它这颗写的是「复制并编辑」:点了先派生再进编辑器。 */}
 				<Btn size="sm" variant="ghost" onClick={props.onEdit} disabled={props.busy}>
-					{skin.builtin ? "复制并编辑" : "编辑"}
+					{skin.builtin ? tx("skinUi.CardSkinSection.25") : tx("skinUi.CardSkinSection.26")}
 				</Btn>
 				<Btn size="sm" variant="ghost" onClick={props.onDuplicate} disabled={props.busy}>
-					复制一份
+					{tx("skinUi.CardSkinSection.27")}
 				</Btn>
 				<Btn size="sm" variant="ghost" onClick={props.onExport}>
-					导出
+					{tx("skinUi.CardSkinSection.28")}
 				</Btn>
 				{/* 内置那份删不掉(服务端也拦)—— 摆一颗点了必失败的钮只是在骗人。 */}
 				{skin.builtin ? null : (
 					<Btn size="sm" variant="danger" onClick={props.onRemove} disabled={props.busy}>
-						删除
+						{tx("skinUi.CardSkinSection.29")}
 					</Btn>
 				)}
 			</div>
@@ -372,6 +390,8 @@ export function CardSkinPicker({
 	value: string | undefined;
 	onChange: (next: string | undefined) => void;
 }) {
+	const tx = useT();
+
 	const listQuery = useCardSkinList();
 	const skins = useMemo(() => sortSkins(listQuery.data?.skins ?? []), [listQuery.data?.skins]);
 	const active = listQuery.data?.active ?? "";
@@ -384,8 +404,16 @@ export function CardSkinPicker({
 				value={value ?? ""}
 				onChange={(next) => onChange(next === "" ? undefined : next)}
 				options={[
-					{ value: "", label: activeName ? `跟随全局（${activeName}）` : "跟随全局" },
-					...skins.map((s) => ({ value: s.id, label: s.builtin ? `${s.name}（内置）` : s.name })),
+					{
+						value: "",
+						label: activeName
+							? tx("skinUi.CardSkinSection.30", { value0: activeName })
+							: tx("skinUi.CardSkinSection.31"),
+					},
+					...skins.map((s) => ({
+						value: s.id,
+						label: s.builtin ? tx("skinUi.CardSkinSection.32", { value0: s.name }) : s.name,
+					})),
 				]}
 			/>
 		</Field>

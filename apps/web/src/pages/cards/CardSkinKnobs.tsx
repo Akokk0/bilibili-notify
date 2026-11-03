@@ -1,3 +1,4 @@
+import { useT } from "../../i18n";
 /**
  * 皮肤旋钮区(ADR-0014 决策 16 的 🔗,2026-09-14)—— 卡片页「全局」tab 上,照**一套皮肤
  * 自己的声明**生成控件的一块。
@@ -55,6 +56,8 @@ export function CardSkinKnobsSection({
 	 */
 	perUp?: { inherit: CardSkinKnobsBySkin; skinId: string | undefined };
 }) {
+	const tx = useT();
+
 	const listQuery = useCardSkinList();
 	const active = perUp?.skinId || (listQuery.data?.active ?? "");
 	// `skins` 也要问一句 —— 拉取失败 / 回了个不成形的响应时它就是 undefined,而这一块
@@ -72,31 +75,24 @@ export function CardSkinKnobsSection({
 
 	return (
 		<GlassBox
-			title="皮肤旋钮"
-			subtitle={
-				perUp
-					? "这位 UP 实际用的那套皮肤的可调项 —— 单独拧过的只作用于他,没拧过的跟随全局"
-					: "这套皮肤自己声明的可调项 —— 拧过的才会存,没拧过的用皮肤自带的兜底"
-			}
+			title={tx("skinUi.CardSkinKnobs.1")}
+			subtitle={perUp ? tx("skinUi.CardSkinKnobs.2") : tx("skinUi.CardSkinKnobs.3")}
 			accent="var(--color-bn-purple)"
 			icon={<Icon.sliders size={14} />}
 			badge={
 				knobs === undefined || knobs.length === 0
-					? "无"
+					? tx("skinUi.CardSkinKnobs.4")
 					: perUp
 						? tweaked > 0
-							? `单独调 ${tweaked} 项`
-							: "跟随全局"
+							? tx("skinUi.CardSkinKnobs.5", { count: tweaked })
+							: tx("skinUi.CardSkinKnobs.6")
 						: tweaked > 0
-							? `已调 ${tweaked} 项`
-							: "出厂值"
+							? tx("skinUi.CardSkinKnobs.7", { count: tweaked })
+							: tx("skinUi.CardSkinKnobs.8")
 			}
 		>
 			{knobs === undefined || knobs.length === 0 ? (
-				<HintNote>
-					这套皮肤没有提供可调项。可调项由皮肤自己声明 ——
-					旧版本导出的皮肤包里没有这一段,换一套皮肤(或让作者重新导出)就能在这里看到旋钮。
-				</HintNote>
+				<HintNote>{tx("skinUi.CardSkinKnobs.9")}</HintNote>
 			) : (
 				<>
 					{knobs.map((knob) => (
@@ -111,9 +107,7 @@ export function CardSkinKnobsSection({
 						/>
 					))}
 					<HintNote className="mt-3">
-						{perUp
-							? "单独拧过的按皮肤分开存,给他换皮肤再换回来还在;「还原」把这一枚退回跟随全局,之后全局怎么改他就跟着怎么变。"
-							: "旋钮按皮肤分开存,换皮肤再换回来设置还在;「还原」是把这个键删掉,不是写回默认值。"}
+						{perUp ? tx("skinUi.CardSkinKnobs.10") : tx("skinUi.CardSkinKnobs.11")}
 					</HintNote>
 				</>
 			)}
@@ -147,6 +141,8 @@ function KnobRow({
 	onSet: (next: CardSkinKnobValue) => void;
 	onReset: () => void;
 }) {
+	const tx = useT();
+
 	return (
 		<div
 			// 按 key 找得到这一行(测试、以后的「跳到这枚旋钮」都靠它);同 Field 的 data-code。
@@ -162,15 +158,13 @@ function KnobRow({
 							variant="ghost"
 							size="sm"
 							onClick={onReset}
-							title={
-								perUp ? "删掉这位 UP 的这一枚，回到跟随全局" : "删掉这个覆盖，回到皮肤自带的兜底"
-							}
+							title={perUp ? tx("skinUi.CardSkinKnobs.12") : tx("skinUi.CardSkinKnobs.13")}
 						>
-							还原
+							{tx("skinUi.CardSkinKnobs.14")}
 						</Btn>
 					) : perUp ? (
 						<Pill color="var(--color-bn-text-tertiary)" subtle size="sm">
-							跟随全局
+							{tx("skinUi.CardSkinKnobs.15")}
 						</Pill>
 					) : null}
 				</div>
@@ -200,6 +194,8 @@ function KnobControl({
 	current: CardSkinKnobValue;
 	onSet: (next: CardSkinKnobValue) => void;
 }) {
+	const tx = useT();
+
 	switch (knob.type) {
 		case "color":
 			// 契约还收 `rgb(…)` 与命名色,而颜色选择器只认 hex —— 那两种写法会以「格式不对」
@@ -267,7 +263,7 @@ function KnobControl({
 					<GalleryPicker
 						value={Array.isArray(current) ? current : []}
 						onChange={onSet}
-						emptyHint="未选择(这一档由皮肤自己的兜底画)"
+						emptyHint={tx("skinUi.CardSkinKnobs.16")}
 					/>
 				</div>
 			);

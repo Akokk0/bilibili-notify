@@ -13,6 +13,7 @@ import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import type { CardSkinAiDone, CardSkinAiHandlers } from "../../../services/cardSkinAi";
 import type { CardSkinAiReadiness } from "../card-skin-ai";
 import type { SkinSelection } from "../SkinCanvas";
@@ -85,7 +86,7 @@ async function ask(instruction = "圆角大一点") {
 		target: { value: instruction },
 	});
 	await act(async () => {
-		fireEvent.click(within(dialog).getByRole("button", { name: "拜托啦" }));
+		fireEvent.click(within(dialog).getByRole("button", { name: "生成" }));
 	});
 	return dialog;
 }
@@ -151,6 +152,16 @@ describe("CSS 旁边的「请女仆帮忙写」", () => {
 		act(() => state.handlers?.onRetry(["解析失败"]));
 		expect(box().value).toBe(ORIGINAL);
 		expect(within(dialog).getByText(/重写/)).toBeTruthy();
+		const { locale, voice } = i18n.state();
+		try {
+			act(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+			expect(
+				within(dialog).getByText("主人，第一遍没过清洗器，女仆正在重写，稍等一下哦。"),
+			).toBeTruthy();
+			expect(box().value).toBe(ORIGINAL);
+		} finally {
+			act(() => i18n.set({ locale, voice }));
+		}
 	});
 
 	it("失败 → 框退回原文,弹层里说原因", async () => {
@@ -174,7 +185,7 @@ describe("CSS 旁边的「请女仆帮忙写」", () => {
 		});
 		expect(state.signal?.aborted).toBe(true);
 		expect(box().value).toBe(ORIGINAL);
-		expect(within(dialog).getByRole("button", { name: "拜托啦" })).toBeTruthy();
+		expect(within(dialog).getByRole("button", { name: "生成" })).toBeTruthy();
 		// 被掐之后迟到的规则不许再进框。
 		act(() => state.handlers?.onRule(".late{x:1}"));
 		expect(box().value).toBe(ORIGINAL);

@@ -6,8 +6,44 @@
  * `12px` 等于替作者把他写的东西删了,而他多半不会当场发现。
  */
 
-import { describe, expect, it } from "vite-plus/test";
-import { formatShape, KEYWORD_OPTIONS, PROP_LABELS, shapeOf } from "../css-value-shapes";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
+import {
+	formatShape,
+	KEYWORD_OPTIONS,
+	LENGTH_UNITS,
+	PROP_LABELS,
+	shapeOf,
+} from "../css-value-shapes";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
+vi.mock("../../../i18n/locales/en.json", () => ({
+	default: {
+		"skinUi.css-value-shapes.1": "Unitless",
+		"skinUi.css-value-shapes.8": "Center",
+		"skinUi.css-value-shapes.85": "Padding",
+	},
+}));
+
+it("已加载的候选表与属性名在读取时跟随当前语言，CSS值不改写", () => {
+	const { locale, voice } = i18n.state();
+	const labels = PROP_LABELS;
+	const units = LENGTH_UNITS;
+	try {
+		i18n.set({ locale: "en", voice: "plain" });
+		expect(labels.padding).toBe("Padding");
+		expect(units.at(-1)).toEqual({ value: "", label: "Unitless" });
+		expect(shapeOf("text-align", "center")).toMatchObject({
+			kind: "keyword",
+			keyword: "center",
+			options: expect.arrayContaining([{ value: "center", label: "Center" }]),
+		});
+	} finally {
+		i18n.set({ locale, voice });
+	}
+	expect(labels.padding).toBe("内边距");
+});
 
 describe("长度", () => {
 	it("认得出单个长度,单位照原文;裸数单位为空", () => {

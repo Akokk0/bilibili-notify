@@ -17,6 +17,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useRef, useState } from "react";
 import { Picker } from "../../components/forms";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import { syncActiveSkinToStore } from "../../services/skin-active";
@@ -41,6 +42,8 @@ async function fetchManifest(id: string): Promise<SkinManifest> {
  * preview(SkinRoot 负责真正注入),应用/取消由全局的 SkinPreviewBar 承接。
  */
 export function SkinSection() {
+	const tx = useT();
+
 	const qc = useQueryClient();
 	const [error, setError] = useState<string | null>(null);
 	const [warnings, setWarnings] = useState<string[]>([]);
@@ -161,11 +164,13 @@ export function SkinSection() {
 
 	return (
 		<GlassBox
-			title="界面皮肤 · skins"
-			subtitle="给面板换装 —— 上传皮肤包,或到女仆聊天侧栏点「新建皮肤工坊」让她做一套"
+			title={tx("skinUi.SkinSection.1")}
+			subtitle={tx("skinUi.SkinSection.2")}
 			accent="var(--color-bn-purple)"
 			icon={<Icon.palette size={14} />}
-			badge={activeIds.light || activeIds.dark ? "已换装" : "原生外观"}
+			badge={
+				activeIds.light || activeIds.dark ? tx("skinUi.SkinSection.3") : tx("skinUi.SkinSection.4")
+			}
 			right={
 				<div className="flex items-center gap-2">
 					<Btn
@@ -173,7 +178,7 @@ export function SkinSection() {
 						onClick={() => uploadInputRef.current?.click()}
 						disabled={upload.isPending}
 					>
-						{upload.isPending ? "上传中…" : "上传皮肤包"}
+						{upload.isPending ? tx("skinUi.SkinSection.5") : tx("skinUi.SkinSection.6")}
 					</Btn>
 					<input
 						ref={uploadInputRef}
@@ -181,12 +186,17 @@ export function SkinSection() {
 						accept=".zip,application/zip"
 						className="hidden"
 						onChange={onUploadPick}
-						aria-label="选择皮肤包 zip 文件"
+						aria-label={tx("skinUi.SkinSection.7")}
 					/>
 				</div>
 			}
 		>
-			{error ? <ErrorNote className="mb-3">操作失败:{error}</ErrorNote> : null}
+			{error ? (
+				<ErrorNote className="mb-3">
+					{tx("skinUi.SkinSection.8")}
+					{error}
+				</ErrorNote>
+			) : null}
 			{warnings.length > 0 ? (
 				<WarnNote className="mb-3 leading-5">
 					{warnings.map((w) => (
@@ -201,11 +211,12 @@ export function SkinSection() {
 				{(["light", "dark"] as const).map((theme) => (
 					<fieldset
 						key={theme}
-						aria-label={`${MODE_LABEL[theme]}模式皮肤`}
+						aria-label={tx("skinUi.SkinSection.9", { value0: MODE_LABEL[theme] })}
 						className="flex flex-wrap items-center gap-2"
 					>
 						<span className="w-14 shrink-0 text-bn-sm font-semibold text-bn-text-secondary">
-							{MODE_LABEL[theme]}模式
+							{MODE_LABEL[theme]}
+							{tx("skinUi.SkinSection.10")}
 						</span>
 						<Picker
 							value={activeIds[theme] ?? ""}
@@ -214,7 +225,7 @@ export function SkinSection() {
 								activate.mutate({ theme, id: id === "" ? null : id });
 							}}
 							options={[
-								{ value: "", label: "默认装" },
+								{ value: "", label: tx("skinUi.SkinSection.11") },
 								...entries
 									.filter((entry) => entry.modes.includes(theme))
 									.map((entry) => ({ value: entry.id, label: entry.name })),
@@ -243,7 +254,7 @@ export function SkinSection() {
 									))}
 									{entry.hasWallpaper ? (
 										<Pill subtle color="var(--color-bn-purple)">
-											壁纸
+											{tx("skinUi.SkinSection.12")}
 										</Pill>
 									) : null}
 								</>
@@ -262,9 +273,9 @@ export function SkinSection() {
 			</div>
 
 			<p className="mt-3 text-bn-xs leading-5 text-bn-text-tertiary">
-				万一皮肤把界面弄得看不清:在地址栏加上{" "}
+				{tx("skinUi.SkinSection.13")}{" "}
 				<code className="rounded-sm bg-bn-code-bg px-1">?skin=off</code>{" "}
-				访问,本次会话会强制默认装,再回这里恢复默认即可。
+				{tx("skinUi.SkinSection.14")}
 			</p>
 
 			{confirmRemove ? (
@@ -285,10 +296,10 @@ export function SkinSection() {
 					// 只有一色时「只删这一色」就等于「删整套」,摆出来只会让人犹豫
 					// 该点哪个 —— 那时照旧是一句「确定删除吗」。
 					<ConfirmDialog
-						title="删除皮肤"
-						message={`确定删除「${confirmRemove.name}」吗?删除后不可恢复。`}
+						title={tx("skinUi.SkinSection.15")}
+						message={tx("skinUi.SkinSection.16", { value0: confirmRemove.name })}
 						danger
-						confirmLabel="删除"
+						confirmLabel={tx("skinUi.SkinSection.17")}
 						onConfirm={() => {
 							remove.mutate(confirmRemove.id);
 							setConfirmRemove(null);
@@ -333,25 +344,30 @@ function RemoveSkinDialog(props: {
 	onRemoveAll: () => void;
 	onCancel: () => void;
 }) {
+	const tx = useT();
+
 	return (
 		<ModalShell
 			onCancel={props.onCancel}
 			width={340}
 			bodyClassName="p-5"
-			title="删除皮肤"
-			description={`「${props.name}」有浅色和深色两套。要删哪一部分?删除后不可恢复。`}
+			title={tx("skinUi.SkinSection.18")}
+			description={tx("skinUi.SkinSection.19", { value0: props.name })}
 		>
 			<div className="flex flex-col gap-2">
 				{(["light", "dark"] as const).map((theme) => (
 					<Btn key={theme} variant="outline" size="sm" onClick={() => props.onPickMode(theme)}>
-						只删{MODE_LABEL[theme]}(留下{MODE_LABEL[theme === "light" ? "dark" : "light"]})
+						{tx("skinUi.SkinSection.20")}
+						{MODE_LABEL[theme]}
+						{tx("skinUi.SkinSection.21")}
+						{MODE_LABEL[theme === "light" ? "dark" : "light"]})
 					</Btn>
 				))}
 				<Btn variant="danger" size="sm" onClick={props.onRemoveAll}>
-					删除整套
+					{tx("skinUi.SkinSection.22")}
 				</Btn>
 				<Btn variant="ghost" size="sm" onClick={props.onCancel}>
-					取消
+					{tx("skinUi.SkinSection.23")}
 				</Btn>
 			</div>
 		</ModalShell>
@@ -370,6 +386,8 @@ function SkinRow(props: {
 	onExport: () => void;
 	onRemove: () => void;
 }) {
+	const tx = useT();
+
 	return (
 		<div className="flex items-center gap-3 rounded-bn-sm border border-bn-border-subtle bg-bn-surface-muted/60 px-3 py-2.5">
 			<div className="min-w-0 flex-1">
@@ -378,7 +396,9 @@ function SkinRow(props: {
 					{props.tags}
 					{props.usage.length > 0 ? (
 						<Pill color="var(--color-bn-pink)">
-							{props.usage.length === 2 ? "使用中" : `${MODE_LABEL[props.usage[0]]}·使用中`}
+							{props.usage.length === 2
+								? tx("skinUi.SkinSection.24")
+								: tx("skinUi.SkinSection.25", { value0: MODE_LABEL[props.usage[0]] })}
 						</Pill>
 					) : null}
 				</div>
@@ -388,16 +408,16 @@ function SkinRow(props: {
 			</div>
 			<div className="flex shrink-0 items-center gap-1.5">
 				<Btn size="sm" variant="ghost" onClick={props.onTryOn}>
-					试穿
+					{tx("skinUi.SkinSection.26")}
 				</Btn>
 				<Btn size="sm" variant="ghost" onClick={props.onEdit}>
-					调整
+					{tx("skinUi.SkinSection.27")}
 				</Btn>
 				<Btn size="sm" variant="ghost" onClick={props.onExport}>
-					导出
+					{tx("skinUi.SkinSection.28")}
 				</Btn>
 				<Btn size="sm" variant="danger" onClick={props.onRemove} disabled={props.busy}>
-					删除
+					{tx("skinUi.SkinSection.29")}
 				</Btn>
 			</div>
 		</div>

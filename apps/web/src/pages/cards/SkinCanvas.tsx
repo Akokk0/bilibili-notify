@@ -1,3 +1,4 @@
+import { i18n, useT } from "../../i18n";
 /**
  * 编辑器的网格画布(ADR-0014 决策 6 / 20)。
  *
@@ -156,6 +157,8 @@ export function SkinCanvas({
 	 */
 	onHover?: (blockId: string | null) => void;
 }) {
+	const tx = useT();
+
 	// 目录是展开还是收着。挂在画布上(不是页面上):它讲的是「这张卡还能添什么」,
 	// 换卡种时本来就该跟着收 —— 而画布是按卡种重画的那一层。
 	const [picking, setPicking] = useState(false);
@@ -192,10 +195,10 @@ export function SkinCanvas({
 	if (!card) {
 		return (
 			<div className="flex flex-col items-start gap-2.5">
-				<EmptyNote>这套皮肤没有定义这种卡 —— 出图时它跟着内置默认皮肤走。</EmptyNote>
+				<EmptyNote>{tx("skinUi.SkinCanvas.1")}</EmptyNote>
 				{onAdopt ? (
 					<Btn size="sm" variant="outline" disabled={adoptBusy} onClick={onAdopt}>
-						{adoptBusy ? "正在读出厂皮肤…" : "接管这种卡"}
+						{adoptBusy ? tx("skinUi.SkinCanvas.2") : tx("skinUi.SkinCanvas.3")}
 					</Btn>
 				) : null}
 			</div>
@@ -325,10 +328,14 @@ export function SkinCanvas({
 						: "border-bn-inactive/50 text-bn-text-secondary"
 				}`}
 			>
-				<span className="font-semibold text-bn-xs">卡片外框</span>
+				<span className="font-semibold text-bn-xs">{tx("skinUi.SkinCanvas.4")}</span>
 				<span className="font-mono text-bn-2xs text-bn-text-tertiary">
-					宽 {card.width} · 行距 {card.gap?.row ?? 0} · 列距 {card.gap?.column ?? 0}
-					{card.columns ? " · 自定义列宽" : ""}
+					{tx("skinUi.SkinCanvas.dimensions", {
+						width: card.width,
+						rowGap: card.gap?.row ?? 0,
+						columnGap: card.gap?.column ?? 0,
+					})}
+					{card.columns ? tx("skinUi.SkinCanvas.8") : ""}
 				</span>
 			</button>
 		</div>
@@ -354,6 +361,8 @@ function EmptyRow({
 	full: boolean;
 	onToggle?: () => void;
 }) {
+	const tx = useT();
+
 	const style = { gridColumn: `2 / span ${cols}`, gridRow: row };
 	if (!onToggle || full) {
 		return (
@@ -361,13 +370,15 @@ function EmptyRow({
 				className="flex items-center justify-center rounded-bn-sm border border-bn-inactive/50 border-dashed text-bn-text-tertiary text-bn-xs"
 				style={style}
 			>
-				{full ? `这张卡已经 ${CARD_SKIN_LIMITS.maxBlocks} 块,加不下了` : "空行"}
+				{full
+					? tx("skinUi.SkinCanvas.9", { count: CARD_SKIN_LIMITS.maxBlocks })
+					: tx("skinUi.SkinCanvas.10")}
 			</div>
 		);
 	}
 	return (
 		<AddButton block style={style} aria-expanded={picking} onClick={onToggle}>
-			<Icon.plus size={12} /> 添加块
+			<Icon.plus size={12} /> {tx("skinUi.SkinCanvas.11")}
 		</AddButton>
 	);
 }
@@ -391,16 +402,18 @@ function BlockCatalogue({
 	onPick: (builtin: string) => void;
 	onPickCustom?: () => void;
 }) {
+	const tx = useT();
+
 	const entries = Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind]);
 	const groups: Array<[label: string, items: Array<[string, CardSkinBuiltinBlock]>]> = [
-		["复合块", entries.filter(([, m]) => m.atom !== true)],
-		["原子块", entries.filter(([, m]) => m.atom === true)],
+		[tx("skinUi.SkinCanvas.12"), entries.filter(([, m]) => m.atom !== true)],
+		[tx("skinUi.SkinCanvas.13"), entries.filter(([, m]) => m.atom === true)],
 	];
 	return (
 		// `<fieldset>` 而不是 `<div role="group">`:同一个语义(读屏器都念「分组」),但原生
 		// 元素不用手写 role —— biome 的 useSemanticElements 钉着这条。
 		<fieldset
-			aria-label="可以添加的块"
+			aria-label={tx("skinUi.SkinCanvas.14")}
 			className="mt-2.5 flex min-w-0 flex-col gap-2 rounded-bn-sm border border-bn-border bg-bn-surface-muted p-2.5"
 		>
 			{groups.map(([label, items]) =>
@@ -418,7 +431,9 @@ function BlockCatalogue({
 											<span className="text-bn-2xs text-bn-text-tertiary">{only}</span>
 										) : null}
 										{used.has(name) ? (
-											<span className="text-bn-2xs text-bn-text-tertiary">已有</span>
+											<span className="text-bn-2xs text-bn-text-tertiary">
+												{tx("skinUi.SkinCanvas.15")}
+											</span>
 										) : null}
 									</Btn>
 								);
@@ -429,13 +444,14 @@ function BlockCatalogue({
 			)}
 			{onPickCustom ? (
 				<div className="flex flex-col gap-1.5">
-					<span className="text-bn-2xs text-bn-text-tertiary">自己写</span>
+					<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinCanvas.16")}</span>
 					<div className="flex flex-wrap items-center gap-1.5">
 						<Btn size="sm" variant="outline" onClick={onPickCustom}>
-							自定义块
+							{tx("skinUi.SkinCanvas.17")}
 						</Btn>
 						<span className="text-bn-2xs text-bn-text-tertiary">
-							一段自己写的 HTML,字段用 {"{creator.name}"} 这样的占位符引。
+							{tx("skinUi.SkinCanvas.18")}
+							{"{creator.name}"} {tx("skinUi.SkinCanvas.19")}
 						</span>
 					</div>
 				</div>
@@ -819,8 +835,11 @@ function CanvasBlock({
 	/** 不给 = 只读,拖拽整个不装(把手也不画)。 */
 	drag?: CanvasDrag;
 }) {
+	const tx = useT();
+
 	const meta = block.kind === "builtin" ? CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin] : undefined;
-	const label = meta?.label ?? (block.kind === "custom" ? "自定义块" : block.builtin);
+	const label =
+		meta?.label ?? (block.kind === "custom" ? tx("skinUi.SkinCanvas.20") : block.builtin);
 	const sceneMark = meta ? sceneMarkOf(kind, meta) : null;
 	// 拉边是**当场**改的(块的宽度由网格轨道定,transform 补不了),所以拉边时格子就画在
 	// 改过的位置上;移动则相反 —— 块靠 transform 贴着手走,格子始终停在原处,会落到哪
@@ -978,25 +997,27 @@ function sceneMarkOf(kind: CardKind, meta: CardSkinBuiltinBlock): string | null 
 	const labels = meta.scenes.map(
 		(id) => CARD_PREVIEW_SCENES[kind].find((sc) => sc.id === id)?.label ?? id,
 	);
-	return `${labels.join(" / ")}专属`;
+	return i18n.t("skinUi.SkinCanvas.21", { value0: labels.join(" / ") });
 }
 
 /** 三档来历:复合内置块 / 原子内置块 / 自定义块。分档是为了让「这块能不能改内容」一眼看出来。 */
 function BlockKindPill({ block, atom }: { block: Block; atom: boolean }) {
+	const tx = useT();
+
 	if (block.kind === "custom") {
 		return (
 			<Pill subtle color="var(--color-bn-pink)">
-				自定义
+				{tx("skinUi.SkinCanvas.22")}
 			</Pill>
 		);
 	}
 	return atom ? (
 		<Pill subtle color="var(--color-bn-purple)">
-			原子
+			{tx("skinUi.SkinCanvas.23")}
 		</Pill>
 	) : (
 		<Pill subtle color="var(--color-bn-blue)">
-			内置
+			{tx("skinUi.SkinCanvas.24")}
 		</Pill>
 	);
 }

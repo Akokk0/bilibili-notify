@@ -117,7 +117,12 @@ export function SkinEditor(props: {
 	 * 分成 error / note 两个的时候,互斥全靠每个写点自己记得清对方:传图失败时
 	 * 上一条绿色的成功提示还挂在那儿,「让女仆改」成功了也不清。
 	 */
-	const [feedback, setFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+	const [feedback, setFeedback] = useState<
+		| { tone: "err"; text: string }
+		| { tone: "ok"; kind: "pinned" | "restored" }
+		| { tone: "ok"; kind: "synced"; mode: "light" | "dark" }
+		| null
+	>(null);
 	const [aiInstruction, setAiInstruction] = useState("");
 	const [aiWarnings, setAiWarnings] = useState<string[]>([]);
 	/** 包内资产 —— props 是打开那一刻的快照,传了新图就在这儿接着长。 */
@@ -205,7 +210,7 @@ export function SkinEditor(props: {
 		onSuccess: () => {
 			// 快照变了,重拉喂给「(默认)」标注与恢复按钮
 			void qc.invalidateQueries({ queryKey: ["dashboard", "skins", id, "default"] });
-			setFeedback({ tone: "ok", text: "已把当前状态钉为这个皮肤包的默认值" });
+			setFeedback({ tone: "ok", kind: "pinned" });
 		},
 		onError: (e) => setFeedback({ tone: "err", text: String((e as Error).message) }),
 	});
@@ -222,7 +227,7 @@ export function SkinEditor(props: {
 				: "dark";
 		setModeKey(nextKey);
 		setBokehRaw(null);
-		setFeedback({ tone: "ok", text: "已拉回默认值预览,满意就点保存落盘" });
+		setFeedback({ tone: "ok", kind: "restored" });
 	}
 
 	function requestClose(): void {
@@ -245,7 +250,8 @@ export function SkinEditor(props: {
 		setSyncOpen(false);
 		setFeedback({
 			tone: "ok",
-			text: `已把当前调整套到${MODE_LABEL[otherKey]},满意就点保存落盘`,
+			kind: "synced",
+			mode: otherKey,
 		});
 	}
 
@@ -362,23 +368,21 @@ export function SkinEditor(props: {
 		patchSection("chat", patch);
 
 	return (
-		<DrawerShell onClose={requestClose} width={420} ariaLabel="皮肤调整">
+		<DrawerShell onClose={requestClose} width={420} ariaLabel={t("skinUi.SkinEditor.4")}>
 			<div className="flex items-center justify-between gap-2 border-b border-bn-border-subtle px-4 py-3">
 				<div>
-					<div className="text-bn-md font-bold">调整皮肤</div>
-					<div className="text-bn-xs text-bn-text-secondary">
-						每一项改动整页立即生效;保存前只是预览
-					</div>
+					<div className="text-bn-md font-bold">{t("skinUi.SkinEditor.5")}</div>
+					<div className="text-bn-xs text-bn-text-secondary">{t("skinUi.SkinEditor.6")}</div>
 				</div>
 			</div>
 
 			<div className="space-y-1.5 border-b border-bn-border-subtle px-4 py-3">
 				<textarea
 					data-bn="input"
-					aria-label="修改要求"
+					aria-label={t("skinUi.SkinEditor.7")}
 					value={aiInstruction}
 					onChange={(e) => setAiInstruction(e.target.value)}
-					placeholder="用一句话让女仆改,如「整体换成赛博朋克风,卡片加霓虹流光」"
+					placeholder={t("skinUi.SkinEditor.8")}
 					rows={2}
 					className={`${inputCls} resize-y`}
 				/>
@@ -388,14 +392,14 @@ export function SkinEditor(props: {
 							{aiWarnings.join(";")}
 						</span>
 					) : (
-						<span className="text-bn-xs text-bn-text-tertiary">改完直接上身预览,不满意再改</span>
+						<span className="text-bn-xs text-bn-text-tertiary">{t("skinUi.SkinEditor.9")}</span>
 					)}
 					<Btn
 						size="sm"
 						disabled={aiEdit.isPending || aiInstruction.trim() === ""}
 						onClick={() => aiEdit.mutate({ instruction: aiInstruction.trim(), draft })}
 					>
-						{aiEdit.isPending ? "女仆修改中…" : "让女仆改"}
+						{aiEdit.isPending ? t("skinUi.SkinEditor.10") : t("skinUi.SkinEditor.11")}
 					</Btn>
 				</div>
 			</div>
@@ -417,65 +421,65 @@ export function SkinEditor(props: {
 					/>
 					{missing ? (
 						<Btn size="sm" variant="outline" onClick={() => setDraft(addMissingMode(draft))}>
-							补一套{MODE_LABEL[missing]}
+							{t("skinUi.SkinEditor.12")}
+							{MODE_LABEL[missing]}
 						</Btn>
 					) : (
 						// 双套时这个位置换成「同步」:一颗是造出另一套,一颗是让另一套跟这套走,
 						// 两者天然互斥 —— 缺套时无从同步,双套时无从补。
 						<Btn size="sm" variant="outline" onClick={() => setSyncOpen(true)}>
-							同步到{MODE_LABEL[otherKey]}
+							{t("skinUi.SkinEditor.13")}
+							{MODE_LABEL[otherKey]}
 						</Btn>
 					)}
 				</div>
-				<p className="text-bn-xs leading-4 text-bn-text-tertiary">
-					页面正在显示哪套由右上角明暗开关决定;只有一套的皮肤会锁定该模式。
-				</p>
+				<p className="text-bn-xs leading-4 text-bn-text-tertiary">{t("skinUi.SkinEditor.14")}</p>
 
-				<Fold title="基本信息与文案" defaultOpen>
+				<Fold title={t("skinUi.SkinEditor.15")} defaultOpen>
 					<TextField
-						label="皮肤名"
+						label={t("skinUi.SkinEditor.16")}
 						value={draft.name}
 						isDefault={isDef(draft.name, defaultManifest?.name)}
 						onChange={(v) => setDraft({ ...draft, name: v })}
 					/>
 					<TextField
-						label="作者"
+						label={t("skinUi.SkinEditor.17")}
 						value={draft.author ?? ""}
 						isDefault={isDef(draft.author, defaultManifest?.author)}
 						onChange={(v) => setDraft(withOptional(draft, "author", v))}
 					/>
 					<TextField
-						label="描述"
+						label={t("skinUi.SkinEditor.18")}
 						value={draft.description ?? ""}
 						isDefault={isDef(draft.description, defaultManifest?.description)}
 						onChange={(v) => setDraft(withOptional(draft, "description", v))}
 					/>
 					<TextField
-						label="顶栏标题"
+						label={t("skinUi.SkinEditor.19")}
 						value={draft.texts?.headerTitle ?? ""}
-						placeholder="默认「bilibili-notify」"
+						placeholder={t("skinUi.SkinEditor.20")}
 						isDefault={isDef(draft.texts?.headerTitle, defaultManifest?.texts?.headerTitle)}
 						onChange={(v) => setDraft(setManifestText(draft, "headerTitle", v))}
 					/>
 					<TextField
-						label="聊天提示语"
+						label={t("skinUi.SkinEditor.21")}
 						value={draft.texts?.chatPlaceholder ?? ""}
-						placeholder="聊天输入框的占位文案"
+						placeholder={t("skinUi.SkinEditor.22")}
 						isDefault={isDef(draft.texts?.chatPlaceholder, defaultManifest?.texts?.chatPlaceholder)}
 						onChange={(v) => setDraft(setManifestText(draft, "chatPlaceholder", v))}
 					/>
 				</Fold>
 
-				<Fold title="背景与壁纸" defaultOpen>
-					<FieldRow label="页面背景">
+				<Fold title={t("skinUi.SkinEditor.23")} defaultOpen>
+					<FieldRow label={t("skinUi.SkinEditor.24")}>
 						<textarea
 							data-bn="input"
-							aria-label="页面背景"
+							aria-label={t("skinUi.SkinEditor.25")}
 							value={mode.page?.background ?? ""}
 							onChange={(e) =>
 								setSection("page", e.target.value ? { background: e.target.value } : undefined)
 							}
-							placeholder="纯色或渐变;留空回默认(有壁纸时被壁纸盖住)"
+							placeholder={t("skinUi.SkinEditor.26")}
 							rows={2}
 							className={`${inputCls} resize-y font-mono text-bn-xs`}
 						/>
@@ -491,7 +495,7 @@ export function SkinEditor(props: {
 						onChange={(next) => setSection("wallpaper", next)}
 						afterImage={
 							<UploadRow
-								label="上传图片"
+								label={t("skinUi.SkinEditor.27")}
 								accept="image/png,image/jpeg,image/webp"
 								uploading={uploading}
 								onFile={uploadAsset}
@@ -500,12 +504,12 @@ export function SkinEditor(props: {
 					/>
 				</Fold>
 
-				<Fold title="玻璃面板" defaultOpen>
+				<Fold title={t("skinUi.SkinEditor.28")} defaultOpen>
 					{/* 与推送卡片同名同义的一对(玻璃片透明度 + 完全透明):完全透明 =
 					    透明度与模糊一起归零(那边的哲学),关闭清字段回默认装。这里也是
 					    AI 聊天玻璃的唯一调节入口 —— 聊天玻璃族直接吃 --bn-glass-* token。 */}
 					<RangeField
-						label="玻璃片透明度"
+						label={t("skinUi.SkinEditor.29")}
 						min={0}
 						max={1}
 						step={0.05}
@@ -527,7 +531,7 @@ export function SkinEditor(props: {
 							)
 						}
 					/>
-					<FieldRow label="完全透明">
+					<FieldRow label={t("skinUi.SkinEditor.30")}>
 						<Toggle
 							value={glassClear}
 							onChange={(b) =>
@@ -544,38 +548,38 @@ export function SkinEditor(props: {
 									),
 								)
 							}
-							ariaLabel="完全透明(去磨砂模糊)"
+							ariaLabel={t("skinUi.SkinEditor.31")}
 							size="sm"
 						/>
 					</FieldRow>
 					{/* 编辑器 = 能力全集(主人定的原则):透明度对是便利入口,下面是
 					    玻璃的全部字段 —— schema 有的这里都要有编辑口。 */}
 					<ColorField
-						label="玻璃底色"
+						label={t("skinUi.SkinEditor.32")}
 						value={glass.background}
 						isDefault={isDef(glass.background, dm.glass?.background)}
 						onChange={(v) => patchSection("glass", { background: v })}
 					/>
 					<ColorField
-						label="玻璃描边"
+						label={t("skinUi.SkinEditor.33")}
 						value={glass.border}
 						isDefault={isDef(glass.border, dm.glass?.border)}
 						onChange={(v) => patchSection("glass", { border: v })}
 					/>
 					<ColorField
-						label="强玻璃底色"
+						label={t("skinUi.SkinEditor.34")}
 						value={glass.strongBackground}
 						isDefault={isDef(glass.strongBackground, dm.glass?.strongBackground)}
 						onChange={(v) => patchSection("glass", { strongBackground: v })}
 					/>
 					<ColorField
-						label="强玻璃描边"
+						label={t("skinUi.SkinEditor.35")}
 						value={glass.strongBorder}
 						isDefault={isDef(glass.strongBorder, dm.glass?.strongBorder)}
 						onChange={(v) => patchSection("glass", { strongBorder: v })}
 					/>
 					<RangeField
-						label="玻璃模糊"
+						label={t("skinUi.SkinEditor.36")}
 						min={SKIN_LIMITS.glassBlur.min}
 						max={SKIN_LIMITS.glassBlur.max}
 						step={1}
@@ -586,7 +590,7 @@ export function SkinEditor(props: {
 						onChange={(v) => patchSection("glass", { blur: v })}
 					/>
 					<RangeField
-						label="强玻璃模糊"
+						label={t("skinUi.SkinEditor.37")}
 						min={SKIN_LIMITS.glassBlur.min}
 						max={SKIN_LIMITS.glassBlur.max}
 						step={1}
@@ -598,7 +602,7 @@ export function SkinEditor(props: {
 					/>
 				</Fold>
 
-				<Fold title="语义颜色">
+				<Fold title={t("skinUi.SkinEditor.38")}>
 					{COLOR_GROUPS.map((group) => (
 						<div key={group.label} className="space-y-1.5">
 							<div className="pt-1 text-bn-xs font-semibold text-bn-text-tertiary">
@@ -617,18 +621,15 @@ export function SkinEditor(props: {
 					))}
 				</Fold>
 
-				<Fold title="AI 聊天">
-					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
-						皮肤生效时聊天页整体换装(默认四色预设隐藏):强调色跟随「主强调色」,
-						玻璃件直接用上面「玻璃」一节的参数 —— 这里只管聊天页自己的背景。
-					</p>
-					<FieldRow label="聊天页背景">
+				<Fold title={t("skinUi.SkinEditor.39")}>
+					<p className="text-bn-xs leading-4 text-bn-text-tertiary">{t("skinUi.SkinEditor.40")}</p>
+					<FieldRow label={t("skinUi.SkinEditor.41")}>
 						<textarea
 							data-bn="input"
-							aria-label="聊天页背景"
+							aria-label={t("skinUi.SkinEditor.42")}
 							value={chat.background ?? ""}
 							onChange={(e) => setChat({ background: e.target.value || undefined })}
-							placeholder="纯色或渐变;留空透出整页皮肤背景"
+							placeholder={t("skinUi.SkinEditor.43")}
 							rows={2}
 							className={`${inputCls} resize-y font-mono text-bn-xs`}
 						/>
@@ -645,9 +646,9 @@ export function SkinEditor(props: {
 					/>
 				</Fold>
 
-				<Fold title="圆角 · 阴影 · 版式">
+				<Fold title={t("skinUi.SkinEditor.44")}>
 					<RangeField
-						label="卡片圆角"
+						label={t("skinUi.SkinEditor.45")}
 						min={SKIN_LIMITS.radiusCard.min}
 						max={SKIN_LIMITS.radiusCard.max}
 						step={1}
@@ -658,16 +659,19 @@ export function SkinEditor(props: {
 						onChange={(v) => patchSection("radius", { card: v })}
 					/>
 					<NumberField
-						label="胶囊圆角"
+						label={t("skinUi.SkinEditor.46")}
 						value={radius.pill}
 						isDefault={isDef(radius.pill, dm.radius?.pill)}
-						placeholder={`默认;${SKIN_LIMITS.radiusPill.min}~${SKIN_LIMITS.radiusPill.max} px`}
+						placeholder={t("skinUi.SkinEditor.47", {
+							value0: SKIN_LIMITS.radiusPill.min,
+							value1: SKIN_LIMITS.radiusPill.max,
+						})}
 						min={SKIN_LIMITS.radiusPill.min}
 						max={SKIN_LIMITS.radiusPill.max}
 						onChange={(v) => patchSection("radius", { pill: v })}
 					/>
 					<RangeField
-						label="左栏宽度"
+						label={t("skinUi.SkinEditor.48")}
 						min={SKIN_LIMITS.railWidth.min}
 						max={SKIN_LIMITS.railWidth.max}
 						step={4}
@@ -678,24 +682,24 @@ export function SkinEditor(props: {
 						onChange={(v) => setSection("railWidth", v)}
 					/>
 					<TextField
-						label="卡片阴影"
+						label={t("skinUi.SkinEditor.49")}
 						mono
 						value={shadows.card ?? ""}
 						isDefault={isDef(shadows.card, dm.shadows?.card)}
-						placeholder="如 0 10px 30px rgba(57,197,187,0.25)"
+						placeholder={t("skinUi.SkinEditor.50")}
 						onChange={(v) => patchSection("shadows", { card: v })}
 					/>
 					<TextField
-						label="悬浮阴影"
+						label={t("skinUi.SkinEditor.51")}
 						mono
 						value={shadows.elev ?? ""}
 						isDefault={isDef(shadows.elev, dm.shadows?.elev)}
-						placeholder="悬停/浮层那一档"
+						placeholder={t("skinUi.SkinEditor.52")}
 						onChange={(v) => patchSection("shadows", { elev: v })}
 					/>
 				</Fold>
 
-				<Fold title="字体">
+				<Fold title={t("skinUi.SkinEditor.53")}>
 					<SelectField
 						label={t("skins.select.font")}
 						value={mode.fonts?.asset ?? ""}
@@ -707,16 +711,16 @@ export function SkinEditor(props: {
 						]}
 					/>
 					<UploadRow
-						label="上传字体"
+						label={t("skinUi.SkinEditor.54")}
 						accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf"
 						uploading={uploading}
 						onFile={uploadAsset}
 					/>
 					<TextField
-						label="正文字体栈"
+						label={t("skinUi.SkinEditor.55")}
 						value={fontsToText(mode.fonts?.body)}
 						isDefault={isDef(fontsToText(mode.fonts?.body), fontsToText(dm.fonts?.body))}
-						placeholder="逗号分隔,如 LXGW WenKai, sans-serif"
+						placeholder={t("skinUi.SkinEditor.56")}
 						onChange={(v) => {
 							// 自带字体那一栏**不能被顺手清掉** —— 两栏是「先用文件、拉不下来
 							// 再退到家族名」的一对,改字体栈不该把主人传的那款字弄没。
@@ -724,35 +728,32 @@ export function SkinEditor(props: {
 							patchSection("fonts", { body });
 						}}
 					/>
-					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
-						自带字体排在字体栈**之前**;文件拉不下来时自动退到后面的家族名。
-						一款完整中文字库有八九兆,转成 woff2 通常只占三分之一,主人和访客都省。
-					</p>
+					<p className="text-bn-xs leading-4 text-bn-text-tertiary">{t("skinUi.SkinEditor.57")}</p>
 				</Fold>
 
-				<Fold title="动效">
-					<FieldRow label="玻璃流光">
+				<Fold title={t("skinUi.SkinEditor.58")}>
+					<FieldRow label={t("skinUi.SkinEditor.59")}>
 						<Toggle
 							value={Boolean(effects.glassShine)}
 							onChange={(b) => setEffects({ glassShine: b ? {} : undefined })}
-							ariaLabel="玻璃流光"
+							ariaLabel={t("skinUi.SkinEditor.60")}
 							size="sm"
 						/>
 					</FieldRow>
 					{effects.glassShine ? (
 						<ColorField
-							label="流光颜色"
+							label={t("skinUi.SkinEditor.61")}
 							value={effects.glassShine.color}
 							isDefault={isDef(effects.glassShine.color, dm.effects?.glassShine?.color)}
 							onChange={(v) => setEffects({ glassShine: v === "" ? {} : { color: v } })}
 						/>
 					) : null}
 					<TextField
-						label="光斑颜色"
+						label={t("skinUi.SkinEditor.62")}
 						mono
 						value={bokehText}
 						isDefault={isDef(bokehText, (dm.effects?.bokeh?.colors ?? []).join(", "))}
-						placeholder="逗号分隔 1~4 个颜色,留空关闭"
+						placeholder={t("skinUi.SkinEditor.63")}
 						onChange={(v) => {
 							setBokehRaw(v);
 							const colors = v
@@ -763,17 +764,16 @@ export function SkinEditor(props: {
 							setEffects({ bokeh: colors.length > 0 ? { colors } : undefined });
 						}}
 					/>
-					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
-						所有动效自动尊重系统「减少动态效果」设置。
-					</p>
+					<p className="text-bn-xs leading-4 text-bn-text-tertiary">{t("skinUi.SkinEditor.64")}</p>
 				</Fold>
 
-				<Fold title="自定义 CSS">
+				<Fold title={t("skinUi.SkinEditor.65")}>
 					<p className="text-bn-xs leading-4 text-bn-text-tertiary">
-						选择器只准 <code className="rounded-sm bg-bn-code-bg px-1">[data-bn="挂点"]</code>
-						,属性走视觉白名单;违禁项保存时会被逐条丢弃并提示。可用的挂点(悬停看它管哪一块):
+						{t("skinUi.SkinEditor.66")}
+						<code className="rounded-sm bg-bn-code-bg px-1">{t("skinUi.SkinEditor.67")}</code>
+						{t("skinUi.SkinEditor.68")}
 					</p>
-					<ul aria-label="可用挂点" className="flex flex-wrap gap-1">
+					<ul aria-label={t("skinUi.SkinEditor.69")} className="flex flex-wrap gap-1">
 						{SKIN_CSS_HOOKS.map((hook) => (
 							<li key={hook}>
 								<code
@@ -785,24 +785,26 @@ export function SkinEditor(props: {
 							</li>
 						))}
 					</ul>
-					<FieldRow label="共用 CSS">
+					<FieldRow label={t("skinUi.SkinEditor.70")}>
 						<textarea
 							data-bn="input"
-							aria-label="共用 CSS"
+							aria-label={t("skinUi.SkinEditor.71")}
 							value={draft.css ?? ""}
 							onChange={(e) => setDraft(withOptional(draft, "css", e.target.value))}
-							placeholder='如 [data-bn="glass"]:hover { box-shadow: 0 0 24px rgba(251,114,153,0.4); }'
+							placeholder={t("skinUi.SkinEditor.72", {
+								example: '[data-bn="glass"]:hover { box-shadow: 0 0 24px rgba(251,114,153,0.4); }',
+							})}
 							rows={6}
 							className={`${inputCls} resize-y font-mono text-bn-xs`}
 						/>
 					</FieldRow>
-					<FieldRow label="本模式 CSS">
+					<FieldRow label={t("skinUi.SkinEditor.73")}>
 						<textarea
 							data-bn="input"
-							aria-label="本模式 CSS"
+							aria-label={t("skinUi.SkinEditor.74")}
 							value={mode.css ?? ""}
 							onChange={(e) => setSection("css", e.target.value || undefined)}
-							placeholder="只在当前明/暗套生效,叠在共用 CSS 之后"
+							placeholder={t("skinUi.SkinEditor.75")}
 							rows={4}
 							className={`${inputCls} resize-y font-mono text-bn-xs`}
 						/>
@@ -811,9 +813,22 @@ export function SkinEditor(props: {
 			</div>
 
 			<div className="sticky bottom-0 space-y-2 border-t border-bn-border-subtle bg-bn-surface-strong/80 px-4 py-3 backdrop-blur-sm">
-				{feedback?.tone === "err" ? <ErrorNote>操作失败:{feedback.text}</ErrorNote> : null}
+				{feedback?.tone === "err" ? (
+					<ErrorNote>
+						{t("skinUi.SkinEditor.76")}
+						{feedback.text}
+					</ErrorNote>
+				) : null}
 				{feedback?.tone === "ok" ? (
-					<p className="text-bn-xs text-bn-success-text">{feedback.text}</p>
+					<p className="text-bn-xs text-bn-success-text">
+						{feedback.kind === "pinned"
+							? t("skinUi.SkinEditor.1")
+							: feedback.kind === "restored"
+								? t("skinUi.SkinEditor.2")
+								: feedback.kind === "synced"
+									? t("skinUi.SkinEditor.3", { value0: MODE_LABEL[feedback.mode] })
+									: null}
+					</p>
 				) : null}
 				<div className="flex items-center justify-between gap-2">
 					<div className="flex gap-2">
@@ -822,33 +837,29 @@ export function SkinEditor(props: {
 							variant="outline"
 							onClick={() => setDefault.mutate()}
 							disabled={dirty || setDefault.isPending}
-							title={dirty ? "有未保存的改动,先保存再钉默认值" : "把当前状态钉为这个皮肤包的默认值"}
+							title={dirty ? t("skinUi.SkinEditor.77") : t("skinUi.SkinEditor.78")}
 						>
-							设为默认值
+							{t("skinUi.SkinEditor.79")}
 						</Btn>
 						<Btn
 							size="sm"
 							variant="outline"
 							onClick={restoreDefault}
 							disabled={!defaultManifest}
-							title={
-								defaultManifest
-									? "把出厂快照拉回来预览,保存后才落盘"
-									: "该皮肤还没有钉过默认值,先点「设为默认值」"
-							}
+							title={defaultManifest ? t("skinUi.SkinEditor.80") : t("skinUi.SkinEditor.81")}
 						>
-							恢复默认值
+							{t("skinUi.SkinEditor.82")}
 						</Btn>
 					</div>
 					<div className="flex gap-2">
 						<Btn variant="outline" onClick={requestClose} disabled={save.isPending}>
-							取消
+							{t("skinUi.SkinEditor.83")}
 						</Btn>
 						<Btn
 							onClick={() => save.mutate(draft)}
 							disabled={save.isPending || draft.name.trim().length === 0}
 						>
-							{save.isPending ? "保存中…" : "保存"}
+							{save.isPending ? t("skinUi.SkinEditor.84") : t("skinUi.SkinEditor.85")}
 						</Btn>
 					</div>
 				</div>
@@ -865,10 +876,10 @@ export function SkinEditor(props: {
 
 			{confirmDiscard ? (
 				<ConfirmDialog
-					title="丢弃修改"
-					message="调整还没保存,关闭后界面会回到原样。确定丢弃吗?"
+					title={t("skinUi.SkinEditor.86")}
+					message={t("skinUi.SkinEditor.87")}
 					danger
-					confirmLabel="丢弃"
+					confirmLabel={t("skinUi.SkinEditor.88")}
 					onConfirm={() => {
 						setConfirmDiscard(false);
 						onClose();
@@ -908,6 +919,8 @@ function UploadRow(props: {
 	uploading: boolean;
 	onFile: (file: File) => void;
 }) {
+	const tx = useT();
+
 	const { label, accept, uploading, onFile } = props;
 	return (
 		<FieldRow label={label}>
@@ -926,7 +939,9 @@ function UploadRow(props: {
 					className="w-full text-bn-xs text-bn-text-secondary file:mr-2 file:rounded-md file:border-0 file:bg-bn-surface-muted file:px-2 file:py-1 file:text-bn-xs file:text-bn-text-primary"
 				/>
 				{uploading ? (
-					<span className="shrink-0 text-bn-xs text-bn-text-secondary">上传中…</span>
+					<span className="shrink-0 text-bn-xs text-bn-text-secondary">
+						{tx("skinUi.SkinEditor.89")}
+					</span>
 				) : null}
 			</div>
 		</FieldRow>
@@ -989,14 +1004,14 @@ function WallpaperFields(props: {
 						]}
 					/>
 					<TextField
-						label={`${prefix}位置`}
+						label={t("skinUi.SkinEditor.90", { value0: prefix })}
 						value={wp.position ?? ""}
 						isDefault={isDef(wp.position, def?.position)}
-						placeholder="默认 center;如 center top"
+						placeholder={t("skinUi.SkinEditor.91")}
 						onChange={(v) => onChange(cleanSection({ ...wp, position: v }))}
 					/>
 					<RangeField
-						label={`${prefix}遮罩`}
+						label={t("skinUi.SkinEditor.92", { value0: prefix })}
 						min={SKIN_LIMITS.wallpaperOverlay.min}
 						max={SKIN_LIMITS.wallpaperOverlay.max}
 						step={0.05}
@@ -1006,7 +1021,7 @@ function WallpaperFields(props: {
 						onChange={(v) => onChange(cleanSection({ ...wp, overlay: v }))}
 					/>
 					<RangeField
-						label={`${prefix}模糊`}
+						label={t("skinUi.SkinEditor.93", { value0: prefix })}
 						min={SKIN_LIMITS.wallpaperBlur.min}
 						max={SKIN_LIMITS.wallpaperBlur.max}
 						step={1}
@@ -1033,30 +1048,32 @@ function SyncModeDialog(props: {
 	onPick: (scope: SyncScope) => void;
 	onCancel: () => void;
 }) {
+	const tx = useT();
+
 	const { from, to } = props;
 	return (
 		<ModalShell
 			onCancel={props.onCancel}
 			width={360}
 			bodyClassName="p-5"
-			title={`把${MODE_LABEL[from]}套到${MODE_LABEL[to]}`}
-			description={`${MODE_LABEL[to]}原有的设置会被覆盖。保存前只是预览,不满意点「取消」就还原。`}
+			title={tx("skinUi.SkinEditor.94", { value0: MODE_LABEL[from], value1: MODE_LABEL[to] })}
+			description={tx("skinUi.SkinEditor.95", { value0: MODE_LABEL[to] })}
 		>
 			<div className="flex flex-col gap-2">
 				<Btn variant="outline" onClick={() => props.onPick("layout")}>
-					只套版式(不动颜色)
+					{tx("skinUi.SkinEditor.96")}
 				</Btn>
 				<p className="-mt-1 px-0.5 text-bn-xs leading-4 text-bn-text-tertiary">
-					壁纸、圆角、字体、玻璃模糊过去;配色、玻璃底色、阴影留在原地
+					{tx("skinUi.SkinEditor.97")}
 				</p>
 				<Btn variant="outline" onClick={() => props.onPick("all")}>
-					整套套过去
+					{tx("skinUi.SkinEditor.98")}
 				</Btn>
 				<p className="-mt-1 px-0.5 text-bn-xs leading-4 text-bn-text-tertiary">
-					连配色一起,两套长得一模一样 —— {MODE_LABEL[to]}会变成{MODE_LABEL[from]}的样子
+					{tx("skinUi.SkinEditor.syncExplanation", { to: MODE_LABEL[to], from: MODE_LABEL[from] })}
 				</p>
 				<Btn variant="outline" onClick={props.onCancel}>
-					取消
+					{tx("skinUi.SkinEditor.102")}
 				</Btn>
 			</div>
 		</ModalShell>
@@ -1174,6 +1191,8 @@ function RangeField(props: {
 	isDefault?: boolean;
 	onChange: (v: number | undefined) => void;
 }) {
+	const tx = useT();
+
 	const clearable = props.clearable ?? true;
 	return (
 		<FieldRow label={props.label}>
@@ -1191,13 +1210,13 @@ function RangeField(props: {
 				/>
 				<span className="min-w-13 shrink-0 text-right text-bn-xs tabular-nums text-bn-text-tertiary">
 					{props.value !== undefined
-						? `${props.value}${props.unit ?? ""}${props.isDefault ? "(默认)" : ""}`
-						: `${props.fallback}${props.unit ?? ""}(默认)`}
+						? `${props.value}${props.unit ?? ""}${props.isDefault ? tx("skinUi.SkinEditor.103") : ""}`
+						: tx("skinUi.SkinEditor.104", { value0: props.fallback, value1: props.unit ?? "" })}
 				</span>
 				{clearable && props.value !== undefined ? (
 					<button
 						type="button"
-						aria-label={`清除${props.label}`}
+						aria-label={tx("skinUi.SkinEditor.105", { value0: props.label })}
 						onClick={() => props.onChange(undefined)}
 						className="shrink-0 text-bn-sm text-bn-text-tertiary hover:text-bn-text-primary"
 					>
@@ -1238,13 +1257,15 @@ function ColorField(props: {
 	onChange: (v: string) => void;
 	isDefault?: boolean;
 }) {
+	const tx = useT();
+
 	const hex = toHex6(props.value ?? "");
 	return (
 		<FieldRow label={props.label}>
 			<div className="flex items-center gap-1.5">
 				<input
 					data-bn="input"
-					aria-label={`${props.label}取色`}
+					aria-label={tx("skinUi.SkinEditor.106", { value0: props.label })}
 					type="color"
 					value={hex ?? "#ffffff"}
 					onChange={(e) => props.onChange(e.target.value)}
@@ -1255,7 +1276,7 @@ function ColorField(props: {
 					aria-label={props.label}
 					value={props.value ?? ""}
 					onChange={(e) => props.onChange(e.target.value)}
-					placeholder="默认"
+					placeholder={tx("skinUi.SkinEditor.107")}
 					className={`${inputCls} font-mono text-bn-xs`}
 				/>
 				{props.isDefault ? <DefaultTag /> : null}

@@ -1,3 +1,4 @@
+import { useT } from "../../i18n";
 /**
  * 结构化 CSS 编辑器(ADR-0014 决策 21 的 2026-09-19 🔗):规则 → 一行行声明,按值的形状给
  * 控件;源码退成一个切换。七枚旋钮并进来了,不再单列一排。
@@ -76,6 +77,8 @@ export function CssEditor({
 	ariaLabel: string;
 	placeholder?: string;
 }) {
+	const tx = useT();
+
 	const [view, setView] = useState<View>("structure");
 	// 指针在画布上每进出一个块,上头的 `hotCell` 就换一次 state —— 没有这个 memo,
 	// 那段一个字节都没变的 CSS(上限 16KB)会跟着被 css-tree 重新 parse 十几次。
@@ -88,18 +91,14 @@ export function CssEditor({
 					value={view}
 					onChange={setView}
 					options={[
-						{ value: "structure", label: "结构" },
-						{ value: "source", label: "源码" },
+						{ value: "structure", label: tx("skinUi.CssEditor.1") },
+						{ value: "source", label: tx("skinUi.CssEditor.2") },
 					]}
 				/>
 			</div>
 
 			{/* 解析不了就让位给源码:硬撑着显示等于拿半份 AST 上算出来的偏移去切作者的文本。 */}
-			{rules === null ? (
-				<HintNote className="w-full">
-					这段 CSS 现在解析不了(多半是括号没配上),结构视图先让位 —— 在源码里改好它自己回来。
-				</HintNote>
-			) : null}
+			{rules === null ? <HintNote className="w-full">{tx("skinUi.CssEditor.3")}</HintNote> : null}
 
 			{view === "source" || rules === null ? (
 				<TArea
@@ -136,10 +135,12 @@ function Structure({
 	hooksLabel: string;
 	onChange: (css: string) => void;
 }) {
+	const tx = useT();
+
 	return (
 		<div className="flex flex-col gap-2.5">
 			{rules.length === 0 ? (
-				<EmptyNote size="sm">还没有规则 —— 点下面一个挂点起一条。</EmptyNote>
+				<EmptyNote size="sm">{tx("skinUi.CssEditor.4")}</EmptyNote>
 			) : (
 				rules.map((rule, ri) => (
 					<RuleSection
@@ -158,7 +159,7 @@ function Structure({
 			{/* 挂点名是**对外 API**,记不住名字是写卡片皮肤的第一道坎 —— 列出来还能点一下起一条
 			    规则。只是起手快捷,选择器本身照旧能改成自由段;限制的活归清洗器。 */}
 			<fieldset aria-label={hooksLabel} className="flex min-w-0 flex-wrap items-center gap-1">
-				<span className="text-bn-2xs text-bn-text-tertiary">加一条规则:</span>
+				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.CssEditor.5")}</span>
 				{hooks.map(([name, human]) => (
 					<button
 						key={name}
@@ -197,11 +198,13 @@ function RuleSection({
 	onRemoveDecl: (declIndex: number) => void;
 	onAddDecl: (prop: string, value: string) => void;
 }) {
+	const tx = useT();
+
 	// 声明在 `decls` 里的下标 —— 写操作按它找;`items` 里夹着注释,下标对不上。
 	let declIndex = -1;
 	return (
 		<section
-			aria-label={`规则 ${rule.selector}`}
+			aria-label={tx("skinUi.CssEditor.6", { value0: rule.selector })}
 			className="flex flex-col gap-1.5 rounded-bn-sm border border-bn-border bg-bn-surface-muted p-2"
 		>
 			{rule.notes.map((note) => (
@@ -216,12 +219,12 @@ function RuleSection({
 				<CommitInput
 					value={rule.selector}
 					onCommit={onSelector}
-					ariaLabel={`规则 ${rule.selector} 的选择器`}
+					ariaLabel={tx("skinUi.CssEditor.7", { value0: rule.selector })}
 					mono
 				/>
 				<IconButton
 					size="sm"
-					label={`删掉规则 ${rule.selector}`}
+					label={tx("skinUi.CssEditor.8", { value0: rule.selector })}
 					icon={<Icon.trash size={12} />}
 					onClick={onRemoveRule}
 				/>
@@ -260,6 +263,8 @@ function DeclRow({
 	onValue: (value: string) => void;
 	onRemove: () => void;
 }) {
+	const tx = useT();
+
 	const label = propLabel(decl.prop);
 	const shape = shapeOf(decl.prop, decl.value);
 	return (
@@ -278,7 +283,7 @@ function DeclRow({
 			) : null}
 			<IconButton
 				size="xs"
-				label={`删掉${label}`}
+				label={tx("skinUi.CssEditor.9", { value0: label })}
 				icon={<Icon.close size={10} />}
 				onClick={onRemove}
 			/>
@@ -297,6 +302,8 @@ function ValueControl({
 	raw: string;
 	onValue: (value: string) => void;
 }) {
+	const tx = useT();
+
 	if (shape.kind === "length") {
 		return (
 			<div className="flex items-center gap-1">
@@ -313,7 +320,7 @@ function ValueControl({
 					value={shape.unit}
 					onChange={(unit) => onValue(formatShape({ ...shape, unit }))}
 					options={[...LENGTH_UNITS]}
-					ariaLabel={`${label}的单位`}
+					ariaLabel={tx("skinUi.CssEditor.10", { value0: label })}
 					width={60}
 				/>
 			</div>
@@ -347,20 +354,20 @@ function ValueControl({
 					min={0}
 					max={40}
 					onChange={(px) => onValue(formatShape({ ...shape, px }))}
-					ariaLabel={`${label}宽度`}
+					ariaLabel={tx("skinUi.CssEditor.11", { value0: label })}
 					width={64}
 				/>
 				<TSelect
 					value={shape.style}
 					onChange={(style) => onValue(formatShape({ ...shape, style }))}
 					options={[...BORDER_STYLES]}
-					ariaLabel={`${label}样式`}
+					ariaLabel={tx("skinUi.CssEditor.12", { value0: label })}
 					width={80}
 				/>
 				<TColor
 					value={shape.hex}
 					onChange={(hex) => onValue(formatShape({ ...shape, hex }))}
-					ariaLabel={`${label}颜色`}
+					ariaLabel={tx("skinUi.CssEditor.13", { value0: label })}
 				/>
 			</div>
 		);
@@ -422,6 +429,8 @@ function CommitInput({
 
 /** 加声明那一行:属性名(带常用候选)+ 值 + 「加上」。 */
 function AddDeclRow({ onAdd }: { onAdd: (prop: string, value: string) => void }) {
+	const tx = useT();
+
 	const [prop, setProp] = useState("");
 	const [value, setValue] = useState("");
 	const typed = prop.trim().toLowerCase();
@@ -451,8 +460,8 @@ function AddDeclRow({ onAdd }: { onAdd: (prop: string, value: string) => void })
 				<TInput
 					value={prop}
 					onChange={setProp}
-					ariaLabel="要加的属性"
-					placeholder="属性,如 padding"
+					ariaLabel={tx("skinUi.CssEditor.14")}
+					placeholder={tx("skinUi.CssEditor.15")}
 					mono
 					full={false}
 					width={140}
@@ -460,18 +469,18 @@ function AddDeclRow({ onAdd }: { onAdd: (prop: string, value: string) => void })
 				<TInput
 					value={value}
 					onChange={setValue}
-					ariaLabel="要加的值"
-					placeholder="值,如 12px"
+					ariaLabel={tx("skinUi.CssEditor.16")}
+					placeholder={tx("skinUi.CssEditor.17")}
 					mono
 					full={false}
 					width={160}
 				/>
 				<AddButton disabled={!ready} onClick={submit}>
-					<Icon.plus size={12} /> 加上
+					<Icon.plus size={12} /> {tx("skinUi.CssEditor.18")}
 				</AddButton>
 			</div>
 			{suggestions.length > 0 ? (
-				<fieldset className="flex flex-wrap gap-1" aria-label="属性候选">
+				<fieldset className="flex flex-wrap gap-1" aria-label={tx("skinUi.CssEditor.19")}>
 					{suggestions.map((p) => (
 						<button
 							key={p}

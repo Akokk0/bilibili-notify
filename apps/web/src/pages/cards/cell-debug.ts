@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * **格子的调试叠层**(ADR-0018 决策 5)—— 往预览框那份 HTML 后面追一段 CSS,把每个格子
  * 的地盘画出来,浏览器开发者工具查元素那个样子。
@@ -30,9 +31,15 @@ export type CellDebugMode = (typeof CELL_DEBUG_MODES)[number];
 
 /** 三档各自在界面上怎么说。 */
 export const CELL_DEBUG_LABELS: Record<CellDebugMode, string> = {
-	off: "不显示",
-	hover: "指到才显示",
-	all: "全部显示",
+	get off() {
+		return i18n.t("skinUi.cell-debug.1");
+	},
+	get hover() {
+		return i18n.t("skinUi.cell-debug.2");
+	},
+	get all() {
+		return i18n.t("skinUi.cell-debug.3");
+	},
 };
 
 /** 悬停那一格:实线框 + 一层很淡的底。颜色写死成半透明蓝,不吃皮肤的变量(框里没有它们)。 */

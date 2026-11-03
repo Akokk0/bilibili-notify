@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 /**
  * 卡片皮肤编辑器(ADR-0014 第二步,决策 20)—— 独立路由 `/cards/skins/:id` 的全屏页。
  *
@@ -111,6 +112,8 @@ const KIND_META: Record<CardKind, { label: string; icon: keyof typeof Icon }> = 
 };
 
 export default function CardSkinEditor() {
+	const tx = useT();
+
 	const { id = "" } = useParams();
 	const navigate = useNavigate();
 	const manifestQuery = useCardSkinManifest(id);
@@ -240,7 +243,7 @@ export default function CardSkinEditor() {
 				    时看着是正的,切到没有场景的卡种就整条往右偏。 */}
 				<div className="flex min-w-0 flex-1 items-center gap-3">
 					<Btn size="sm" variant="ghost" onClick={() => navigate("/cards")}>
-						<Icon.arrowLeft size={14} /> 返回卡片页
+						<Icon.arrowLeft size={14} /> {tx("skinUi.CardSkinEditor.1")}
 					</Btn>
 					<span className="h-5.5 w-px bg-bn-border" />
 					<div className="flex min-w-0 items-center gap-2">
@@ -257,17 +260,17 @@ export default function CardSkinEditor() {
 									: "text-bn-text-primary hover:text-bn-pink"
 							}`}
 						>
-							{draft?.name ?? "载入中…"}
+							{draft?.name ?? tx("skinUi.CardSkinEditor.2")}
 						</button>
 						{inUse ? (
 							<Pill subtle color="var(--color-bn-pink)">
-								使用中
+								{tx("skinUi.CardSkinEditor.3")}
 							</Pill>
 						) : null}
 						{dirty ? (
 							<span className="flex items-center gap-1.5 text-bn-text-tertiary text-bn-xs">
 								<StatusDot kind="warn" size="sm" />
-								有未保存的改动
+								{tx("skinUi.CardSkinEditor.4")}
 							</span>
 						) : null}
 					</div>
@@ -293,10 +296,7 @@ export default function CardSkinEditor() {
 									<IconComp size={13} />
 									{meta.label}
 									{draft?.cards[k] === undefined ? (
-										<span
-											className="text-bn-text-disabled"
-											title="这套皮肤没有定义这种卡,出图时跟着出厂默认"
-										>
+										<span className="text-bn-text-disabled" title={tx("skinUi.CardSkinEditor.5")}>
 											·
 										</span>
 									) : null}
@@ -309,7 +309,9 @@ export default function CardSkinEditor() {
 				<div className="flex flex-1 items-center justify-end gap-2">
 					{scenes.length > 1 ? (
 						<>
-							<span className="text-bn-text-tertiary text-bn-xs">场景</span>
+							<span className="text-bn-text-tertiary text-bn-xs">
+								{tx("skinUi.CardSkinEditor.6")}
+							</span>
 							<Picker
 								value={scene}
 								onChange={switchScene}
@@ -323,16 +325,19 @@ export default function CardSkinEditor() {
 						disabled={!dirty || readOnly || save.isPending || draftError !== null}
 						onClick={() => draft && save.mutate(draft)}
 					>
-						{save.isPending ? "保存中…" : "保存"}
+						{save.isPending ? tx("skinUi.CardSkinEditor.7") : tx("skinUi.CardSkinEditor.8")}
 					</Btn>
 				</div>
 			</header>
 
 			<div className="min-h-0 flex-1 overflow-y-auto px-7 pt-4 pb-6">
 				{manifestQuery.isPending ? (
-					<LoadingBlock label="正在读取皮肤清单…" />
+					<LoadingBlock label={tx("skinUi.CardSkinEditor.9")} />
 				) : manifestQuery.isError ? (
-					<ErrorNote>读不到这套皮肤:{String((manifestQuery.error as Error).message)}</ErrorNote>
+					<ErrorNote>
+						{tx("skinUi.CardSkinEditor.10")}
+						{String((manifestQuery.error as Error).message)}
+					</ErrorNote>
 				) : (
 					// **按占比分,不按内容分**(2026-09-14 主人拍板):预览 1/3,画布与检查器合占
 					// 2/3。从前预览列是「卡宽」这个固定数,换一张 640 宽的卡整页就重新排一次;
@@ -356,8 +361,8 @@ export default function CardSkinEditor() {
 							style={{ "--bn-inspector-col": `${INSPECTOR_COL}px` } as CSSProperties}
 						>
 							<GlassBox
-								title={`网格画布 · ${KIND_META[kind].label}卡`}
-								subtitle="只摆左边那一场会有的块,别的场独有的块(图廊、视频那几块)切过去才露面;点一个块,在右边的检查器里改它的位置;封面这种单张图拉上下两条边就是改高度,别的块的高度由内容撑"
+								title={tx("skinUi.CardSkinEditor.11", { value0: KIND_META[kind].label })}
+								subtitle={tx("skinUi.CardSkinEditor.12")}
 								icon={<Icon.square size={14} />}
 							>
 								<SkinCanvas
@@ -406,7 +411,7 @@ export default function CardSkinEditor() {
 									}
 								/>
 							</GlassBox>
-							<GlassBox title="检查器" icon={<Icon.sliders size={14} />}>
+							<GlassBox title={tx("skinUi.CardSkinEditor.13")} icon={<Icon.sliders size={14} />}>
 								<SkinInspector
 									manifest={draft}
 									kind={kind}
@@ -476,13 +481,12 @@ export default function CardSkinEditor() {
 						</div>
 					</div>
 				)}
-				{readOnly ? (
-					<ErrorNote className="mt-3">
-						内置的默认皮肤改不了 —— 想改它请先回卡片页「复制一份」。
-					</ErrorNote>
-				) : null}
+				{readOnly ? <ErrorNote className="mt-3">{tx("skinUi.CardSkinEditor.14")}</ErrorNote> : null}
 				{save.isError ? (
-					<ErrorNote className="mt-3">保存失败:{errorTextOf(save.error)}</ErrorNote>
+					<ErrorNote className="mt-3">
+						{tx("skinUi.CardSkinEditor.15")}
+						{errorTextOf(save.error)}
+					</ErrorNote>
 				) : null}
 			</div>
 		</div>

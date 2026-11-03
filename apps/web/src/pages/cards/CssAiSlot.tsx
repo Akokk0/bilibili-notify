@@ -1,3 +1,4 @@
+import { useT } from "../../i18n";
 /**
  * CSS 框旁那颗「请女仆帮忙写」(ADR-0015 决策 3–10)—— 只写**这一个框**。
  *
@@ -46,11 +47,13 @@ export function CssAiSlot({
 	value: string;
 	onChange: (css: string) => void;
 }) {
+	const tx = useT();
+
 	const [open, setOpen] = useState(false);
 	const [instruction, setInstruction] = useState("");
 	const [running, setRunning] = useState(false);
 	const [written, setWritten] = useState(0);
-	const [note, setNote] = useState<string | null>(null);
+	const [note, setNote] = useState<"retrying" | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	/** 上一趟写完留下的:动手前的原文(给「还原」)与清洗器削掉了什么。 */
 	const [undo, setUndo] = useState<{ original: string; warnings: string[] } | null>(null);
@@ -116,7 +119,7 @@ export function CssAiSlot({
 						if (!live()) return;
 						acc = "";
 						setWritten(0);
-						setNote("第一遍没过清洗器,女仆在重写…");
+						setNote("retrying");
 						onChangeRef.current(original);
 					},
 				},
@@ -153,12 +156,12 @@ export function CssAiSlot({
 					variant="ghost"
 					icon={<Icon.ai size={12} />}
 					disabled={!ai.readiness.ready}
-					title={ai.readiness.ready ? "说一句想要的样子,女仆只动这一个框" : ai.readiness.reason}
+					title={ai.readiness.ready ? tx("skinUi.CssAiSlot.2") : ai.readiness.reason}
 					aria-haspopup="dialog"
 					ariaExpanded={open}
 					onClick={() => setOpen((o) => !o)}
 				>
-					请女仆帮忙写
+					{tx("skinUi.CssAiSlot.3")}
 				</Btn>
 				{open ? (
 					<PopoverShell
@@ -166,7 +169,7 @@ export function CssAiSlot({
 						variant="panel"
 						layer="raised"
 						role="dialog"
-						ariaLabel="请女仆帮忙写"
+						ariaLabel={tx("skinUi.CssAiSlot.4")}
 						className="flex flex-col gap-2"
 					>
 						<TArea
@@ -174,21 +177,32 @@ export function CssAiSlot({
 							onChange={setInstruction}
 							rows={2}
 							disabled={running}
-							ariaLabel="想让这段 CSS 变成什么样"
-							placeholder="比如:毛玻璃、圆角大一点"
+							ariaLabel={tx("skinUi.CssAiSlot.5")}
+							placeholder={tx("skinUi.CssAiSlot.6")}
 						/>
 						{tooLong ? (
-							<ErrorNote size="sm">最多 {CARD_SKIN_AI_INSTRUCTION_MAX} 字。</ErrorNote>
+							<ErrorNote size="sm">
+								{tx("skinUi.CssAiSlot.instructionLimit", { count: CARD_SKIN_AI_INSTRUCTION_MAX })}
+							</ErrorNote>
 						) : null}
-						{error ? <ErrorNote size="sm">女仆没能写好:{error}</ErrorNote> : null}
+						{error ? (
+							<ErrorNote size="sm">
+								{tx("skinUi.CssAiSlot.9")}
+								{error}
+							</ErrorNote>
+						) : null}
 						<div className="flex items-center justify-end gap-2">
 							{running ? (
 								<>
 									<span className="mr-auto text-bn-2xs text-bn-text-tertiary" aria-live="polite">
-										{note ?? (written > 0 ? `女仆已经写好 ${written} 条了…` : "女仆正在写…")}
+										{note
+											? tx("skinUi.CssAiSlot.1")
+											: written > 0
+												? tx("skinUi.CssAiSlot.10", { count: written })
+												: tx("skinUi.CssAiSlot.11")}
 									</span>
 									<Btn size="sm" variant="outline" onClick={stop}>
-										先不用了
+										{tx("skinUi.CssAiSlot.12")}
 									</Btn>
 								</>
 							) : (
@@ -197,7 +211,7 @@ export function CssAiSlot({
 									onClick={() => void start()}
 									disabled={instruction.trim() === "" || tooLong}
 								>
-									拜托啦
+									{tx("skinUi.CssAiSlot.13")}
 								</Btn>
 							)}
 						</div>
@@ -208,7 +222,7 @@ export function CssAiSlot({
 			{undo ? (
 				<HintNote className="flex flex-col gap-1.5">
 					<div className="flex items-center gap-2">
-						<span className="mr-auto">女仆刚改过这一段。</span>
+						<span className="mr-auto">{tx("skinUi.CssAiSlot.14")}</span>
 						<Btn
 							size="sm"
 							variant="ghost"
@@ -217,13 +231,16 @@ export function CssAiSlot({
 								setUndo(null);
 							}}
 						>
-							还原
+							{tx("skinUi.CssAiSlot.15")}
 						</Btn>
 					</div>
 					{undo.warnings.length > 0 ? (
 						<WarnNote size="sm">
 							{undo.warnings.map((w) => (
-								<div key={w}>清洗器削掉了:{w}</div>
+								<div key={w}>
+									{tx("skinUi.CssAiSlot.16")}
+									{w}
+								</div>
 							))}
 						</WarnNote>
 					) : null}

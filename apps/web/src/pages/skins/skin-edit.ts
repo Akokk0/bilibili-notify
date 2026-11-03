@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 皮肤编辑器的纯函数层:draft(SkinManifest)的不可变修改与表单值互转。
  * 约定「空值即删除」—— 编辑器里清空一个字段等于「回默认装」,draft 里不留
@@ -17,7 +18,14 @@ import {
  * 明暗两套的中文名。皮肤这一块**只认这一份** —— 同一套皮肤在库列表叫「深色」、
  * 在编辑器里叫别的,主人只会以为那是两回事。
  */
-export const MODE_LABEL: Record<"light" | "dark", string> = { light: "浅色", dark: "深色" };
+export const MODE_LABEL: Record<"light" | "dark", string> = {
+	get light() {
+		return i18n.t("skinUi.skin-edit.1");
+	},
+	get dark() {
+		return i18n.t("skinUi.skin-edit.2");
+	},
+};
 
 /** 去掉 undefined 与空串成员(数字 0 是合法值,保留);清空后整个 section 就地消失。 */
 export function cleanSection<T extends Record<string, unknown>>(obj: T): T | undefined {
@@ -65,57 +73,225 @@ export const COLOR_GROUPS: ReadonlyArray<{
 	keys: ReadonlyArray<{ key: SkinColorKey; label: string }>;
 }> = [
 	{
-		label: "主色",
+		get label() {
+			return i18n.t("skinUi.skin-edit.3");
+		},
 		keys: [
-			{ key: "accent", label: "主强调色" },
-			{ key: "accentAlt", label: "副强调色" },
-			{ key: "highlight", label: "高亮点缀" },
+			{
+				key: "accent",
+				get label() {
+					return i18n.t("skinUi.skin-edit.4");
+				},
+			},
+			{
+				key: "accentAlt",
+				get label() {
+					return i18n.t("skinUi.skin-edit.5");
+				},
+			},
+			{
+				key: "highlight",
+				get label() {
+					return i18n.t("skinUi.skin-edit.6");
+				},
+			},
 		],
 	},
 	{
-		label: "文字",
+		get label() {
+			return i18n.t("skinUi.skin-edit.7");
+		},
 		keys: [
-			{ key: "textPrimary", label: "正文" },
-			{ key: "textSecondary", label: "次要" },
-			{ key: "textTertiary", label: "辅助" },
-			{ key: "textDisabled", label: "禁用" },
-			{ key: "inactive", label: "静默档" },
+			{
+				key: "textPrimary",
+				get label() {
+					return i18n.t("skinUi.skin-edit.8");
+				},
+			},
+			{
+				key: "textSecondary",
+				get label() {
+					return i18n.t("skinUi.skin-edit.9");
+				},
+			},
+			{
+				key: "textTertiary",
+				get label() {
+					return i18n.t("skinUi.skin-edit.10");
+				},
+			},
+			{
+				key: "textDisabled",
+				get label() {
+					return i18n.t("skinUi.skin-edit.11");
+				},
+			},
+			{
+				key: "inactive",
+				get label() {
+					return i18n.t("skinUi.skin-edit.12");
+				},
+			},
 		],
 	},
 	{
-		label: "表面与边框",
+		get label() {
+			return i18n.t("skinUi.skin-edit.13");
+		},
 		keys: [
-			{ key: "surface", label: "表面" },
-			{ key: "surfaceStrong", label: "表面·强" },
-			{ key: "surfaceMuted", label: "表面·弱" },
-			{ key: "field", label: "输入框底" },
-			{ key: "border", label: "边框" },
-			{ key: "borderSubtle", label: "边框·淡" },
-			{ key: "hoverMuted", label: "悬停底" },
-			{ key: "listRow", label: "行条底" },
-			{ key: "listRowBorder", label: "行条描边" },
-			{ key: "codeBg", label: "代码底" },
-			{ key: "overlay", label: "遮罩" },
+			{
+				key: "surface",
+				get label() {
+					return i18n.t("skinUi.skin-edit.14");
+				},
+			},
+			{
+				key: "surfaceStrong",
+				get label() {
+					return i18n.t("skinUi.skin-edit.15");
+				},
+			},
+			{
+				key: "surfaceMuted",
+				get label() {
+					return i18n.t("skinUi.skin-edit.16");
+				},
+			},
+			{
+				key: "field",
+				get label() {
+					return i18n.t("skinUi.skin-edit.17");
+				},
+			},
+			{
+				key: "border",
+				get label() {
+					return i18n.t("skinUi.skin-edit.18");
+				},
+			},
+			{
+				key: "borderSubtle",
+				get label() {
+					return i18n.t("skinUi.skin-edit.19");
+				},
+			},
+			{
+				key: "hoverMuted",
+				get label() {
+					return i18n.t("skinUi.skin-edit.20");
+				},
+			},
+			{
+				key: "listRow",
+				get label() {
+					return i18n.t("skinUi.skin-edit.21");
+				},
+			},
+			{
+				key: "listRowBorder",
+				get label() {
+					return i18n.t("skinUi.skin-edit.22");
+				},
+			},
+			{
+				key: "codeBg",
+				get label() {
+					return i18n.t("skinUi.skin-edit.23");
+				},
+			},
+			{
+				key: "overlay",
+				get label() {
+					return i18n.t("skinUi.skin-edit.24");
+				},
+			},
 			// 主强调色 / 状态色的实底上压着的字。调深了强调色就该跟着调它,
 			// 否则主按钮上的字会整片消失。
-			{ key: "onSolid", label: "实底上的字" },
+			{
+				key: "onSolid",
+				get label() {
+					return i18n.t("skinUi.skin-edit.25");
+				},
+			},
 		],
 	},
 	{
-		label: "状态色",
+		get label() {
+			return i18n.t("skinUi.skin-edit.26");
+		},
 		keys: [
-			{ key: "danger", label: "危险" },
-			{ key: "dangerSoft", label: "危险·底" },
-			{ key: "dangerText", label: "危险·字" },
-			{ key: "dangerBorder", label: "危险·框" },
-			{ key: "success", label: "成功" },
-			{ key: "successSoft", label: "成功·底" },
-			{ key: "successText", label: "成功·字" },
-			{ key: "successBorder", label: "成功·框" },
-			{ key: "warning", label: "警告" },
-			{ key: "warningSoft", label: "警告·底" },
-			{ key: "warningText", label: "警告·字" },
-			{ key: "warningBorder", label: "警告·框" },
+			{
+				key: "danger",
+				get label() {
+					return i18n.t("skinUi.skin-edit.27");
+				},
+			},
+			{
+				key: "dangerSoft",
+				get label() {
+					return i18n.t("skinUi.skin-edit.28");
+				},
+			},
+			{
+				key: "dangerText",
+				get label() {
+					return i18n.t("skinUi.skin-edit.29");
+				},
+			},
+			{
+				key: "dangerBorder",
+				get label() {
+					return i18n.t("skinUi.skin-edit.30");
+				},
+			},
+			{
+				key: "success",
+				get label() {
+					return i18n.t("skinUi.skin-edit.31");
+				},
+			},
+			{
+				key: "successSoft",
+				get label() {
+					return i18n.t("skinUi.skin-edit.32");
+				},
+			},
+			{
+				key: "successText",
+				get label() {
+					return i18n.t("skinUi.skin-edit.33");
+				},
+			},
+			{
+				key: "successBorder",
+				get label() {
+					return i18n.t("skinUi.skin-edit.34");
+				},
+			},
+			{
+				key: "warning",
+				get label() {
+					return i18n.t("skinUi.skin-edit.35");
+				},
+			},
+			{
+				key: "warningSoft",
+				get label() {
+					return i18n.t("skinUi.skin-edit.36");
+				},
+			},
+			{
+				key: "warningText",
+				get label() {
+					return i18n.t("skinUi.skin-edit.37");
+				},
+			},
+			{
+				key: "warningBorder",
+				get label() {
+					return i18n.t("skinUi.skin-edit.38");
+				},
+			},
 		],
 	},
 ];

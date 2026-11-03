@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 编辑器改草稿的那几个纯函数 —— **不碰 React**,所以行为能单独钉住。
  *
@@ -283,7 +284,7 @@ export function addCustomBlock(manifest: CardSkinManifest, kind: CardKind): Adde
 	return appendBlock(manifest, kind, "custom", (id, grid) => ({
 		id,
 		kind: "custom",
-		html: "<div>新的自定义块</div>",
+		html: i18n.t("skinUi.skin-draft-ops.1"),
 		grid,
 	}));
 }
@@ -576,16 +577,21 @@ export function setSkinMeta(manifest: CardSkinManifest, patch: SkinMetaPatch): C
  */
 export function skinMetaError(manifest: CardSkinManifest): string | null {
 	const L = CARD_SKIN_LIMITS;
-	if (manifest.name.trim().length < L.name.min) return "皮肤得有个名字";
+	if (manifest.name.trim().length < L.name.min) return i18n.t("skinUi.skin-draft-ops.2");
 	// 三个框都**不设 `maxLength`**:截断等于悄悄吞掉按键(同 `clampInt` 那条「夹不是拒」
 	// 的反面 —— 那边夹的是数,这边吞的是字)。敲得进去,存不下去当场说。
 	const over: Array<[string, string, number]> = [
-		["皮肤名", manifest.name, L.name.max],
-		["作者", manifest.author ?? "", L.author.max],
-		["说明", manifest.description ?? "", L.description.max],
+		[i18n.t("skinUi.skin-draft-ops.3"), manifest.name, L.name.max],
+		[i18n.t("skinUi.skin-draft-ops.4"), manifest.author ?? "", L.author.max],
+		[i18n.t("skinUi.skin-draft-ops.5"), manifest.description ?? "", L.description.max],
 	];
 	for (const [label, value, max] of over) {
-		if (value.length > max) return `${label}最多 ${max} 个字,现在是 ${value.length}`;
+		if (value.length > max)
+			return i18n.t("skinUi.skin-draft-ops.6", {
+				value0: label,
+				count: max,
+				value2: value.length,
+			});
 	}
 	return null;
 }
@@ -612,7 +618,17 @@ const KNOB_SHAPES: { [T in KnobType]: Omit<Extract<Knob, { type: T }>, "key" | "
 	{
 		color: { default: "#ffffff" },
 		number: { default: 0, min: 0, max: 100 },
-		select: { default: "none", options: [{ value: "none", label: "候选一" }] },
+		select: {
+			default: "none",
+			options: [
+				{
+					value: "none",
+					get label() {
+						return i18n.t("skinUi.skin-draft-ops.7");
+					},
+				},
+			],
+		},
 		switch: { default: false, on: "block", off: "none" },
 		font: { default: "" },
 		image: {},
@@ -637,7 +653,7 @@ export function addKnob(manifest: CardSkinManifest): AddedKnob | null {
 	return {
 		manifest: withKnobs(manifest, [
 			...knobs,
-			{ key, label: "新旋钮", type: "color", ...KNOB_SHAPES.color },
+			{ key, label: i18n.t("skinUi.skin-draft-ops.8"), type: "color", ...KNOB_SHAPES.color },
 		]),
 		key,
 	};
@@ -718,16 +734,20 @@ export function knobsError(manifest: CardSkinManifest): string | null {
 	const seen = new Set<string>();
 	for (const knob of knobsOf(manifest)) {
 		if (!CARD_SKIN_KNOB_KEY_RE.test(knob.key) || knob.key.length > CARD_SKIN_KNOB_LIMITS.key.max) {
-			return `旋钮 key「${knob.key}」不合法 —— 只准小写字母起头的 kebab(如 accent / glass-opacity)`;
+			return i18n.t("skinUi.skin-draft-ops.9", { value0: knob.key });
 		}
-		if (seen.has(knob.key)) return `旋钮 key「${knob.key}」重复了 —— 两枚注的是同一个变量`;
+		if (seen.has(knob.key)) return i18n.t("skinUi.skin-draft-ops.10", { value0: knob.key });
 		seen.add(knob.key);
-		if (knob.label.trim() === "") return `旋钮「${knob.key}」得有个名字`;
+		if (knob.label.trim() === "") return i18n.t("skinUi.skin-draft-ops.11", { value0: knob.key });
 		if (knob.label.length > CARD_SKIN_KNOB_LIMITS.label.max) {
-			return `旋钮「${knob.key}」的名字最多 ${CARD_SKIN_KNOB_LIMITS.label.max} 个字`;
+			return i18n.t("skinUi.skin-draft-ops.12", {
+				value0: knob.key,
+				count: CARD_SKIN_KNOB_LIMITS.label.max,
+			});
 		}
 		const shape = knobShapeError(knob);
-		if (shape !== null) return `旋钮「${knob.label || knob.key}」${shape}`;
+		if (shape !== null)
+			return i18n.t("skinUi.skin-draft-ops.13", { value0: knob.label || knob.key, value1: shape });
 	}
 	return null;
 }
@@ -739,34 +759,40 @@ export function knobsError(manifest: CardSkinManifest): string | null {
 function knobShapeError(knob: Knob): string | null {
 	switch (knob.type) {
 		case "number": {
-			if (knob.min > knob.max) return `的取值域反了:下限 ${knob.min} 比上限 ${knob.max} 还大`;
+			if (knob.min > knob.max)
+				return i18n.t("skinUi.skin-draft-ops.14", { value0: knob.min, value1: knob.max });
 			if (knob.default < knob.min || knob.default > knob.max) {
-				return `的起手位置 ${knob.default} 不在 ${knob.min}~${knob.max} 之间`;
+				return i18n.t("skinUi.skin-draft-ops.15", {
+					value0: knob.default,
+					value1: knob.min,
+					value2: knob.max,
+				});
 			}
 			return null;
 		}
 		case "select": {
-			if (knob.options.length === 0) return "至少要有一个候选";
+			if (knob.options.length === 0) return i18n.t("skinUi.skin-draft-ops.16");
 			if (knob.options.length > CARD_SKIN_KNOB_LIMITS.maxOptions) {
-				return `最多 ${CARD_SKIN_KNOB_LIMITS.maxOptions} 个候选`;
+				return i18n.t("skinUi.skin-draft-ops.17", { count: CARD_SKIN_KNOB_LIMITS.maxOptions });
 			}
 			for (const o of knob.options) {
 				const bad = knobLiteralError(o.value);
-				if (bad !== null) return `的候选「${o.value}」${bad}`;
-				if (o.label.trim() === "") return `有个候选没名字`;
+				if (bad !== null)
+					return i18n.t("skinUi.skin-draft-ops.18", { value0: o.value, value1: bad });
+				if (o.label.trim() === "") return i18n.t("skinUi.skin-draft-ops.19");
 			}
 			if (!knob.options.some((o) => o.value === knob.default)) {
-				return `的起手位置「${knob.default}」不在候选里`;
+				return i18n.t("skinUi.skin-draft-ops.20", { value0: knob.default });
 			}
 			return null;
 		}
 		case "switch": {
 			for (const [side, value] of [
-				["开", knob.on],
-				["关", knob.off],
+				[i18n.t("skinUi.skin-draft-ops.21"), knob.on],
+				[i18n.t("skinUi.skin-draft-ops.22"), knob.off],
 			] as const) {
 				const bad = knobLiteralError(value);
-				if (bad !== null) return `的「${side}」${bad}`;
+				if (bad !== null) return i18n.t("skinUi.skin-draft-ops.23", { value0: side, value1: bad });
 			}
 			return null;
 		}
@@ -781,12 +807,12 @@ function knobShapeError(knob: Knob): string | null {
  * 这里只是提前把话说明白)。
  */
 function knobLiteralError(value: string): string | null {
-	if (value.length === 0) return "不能是空的";
+	if (value.length === 0) return i18n.t("skinUi.skin-draft-ops.24");
 	if (value.length > CARD_SKIN_KNOB_LIMITS.value.max) {
-		return `最多 ${CARD_SKIN_KNOB_LIMITS.value.max} 个字`;
+		return i18n.t("skinUi.skin-draft-ops.25", { count: CARD_SKIN_KNOB_LIMITS.value.max });
 	}
 	const bad = [...`;{}:"'\\`].find((c) => value.includes(c));
-	return bad === undefined ? null : `里不能有 \`${bad}\``;
+	return bad === undefined ? null : i18n.t("skinUi.skin-draft-ops.26", { value0: bad });
 }
 
 /** 数值旋钮的取值域与单位。`step: 0` / `unit: ""` = 删键(两项都是 optional)。 */
@@ -838,7 +864,13 @@ export function addKnobOption(manifest: CardSkinManifest, key: string): CardSkin
 		if (k.type !== "select" || k.options.length >= CARD_SKIN_KNOB_LIMITS.maxOptions) return k;
 		// 候选的值也得让开:两个同值的候选在装包门那里同样判重复。
 		const value = uniqueName("option", new Set(k.options.map((o) => o.value)));
-		return { ...k, options: [...k.options, { value, label: `候选 ${k.options.length + 1}` }] };
+		return {
+			...k,
+			options: [
+				...k.options,
+				{ value, label: i18n.t("skinUi.skin-draft-ops.27", { value0: k.options.length + 1 }) },
+			],
+		};
 	});
 }
 
@@ -925,13 +957,13 @@ export function setFont(
 export function fontsError(manifest: CardSkinManifest, assets: readonly string[]): string | null {
 	const families = new Set<string>();
 	for (const f of fontsOf(manifest)) {
-		if (f.family.trim() === "") return "有一行字体还没起名字";
-		if (families.has(f.family)) return `字体名「${f.family}」重复了`;
+		if (f.family.trim() === "") return i18n.t("skinUi.skin-draft-ops.28");
+		if (families.has(f.family)) return i18n.t("skinUi.skin-draft-ops.29", { value0: f.family });
 		families.add(f.family);
-		if (f.asset === "") return `字体「${f.family}」还没选用哪份资产`;
+		if (f.asset === "") return i18n.t("skinUi.skin-draft-ops.30", { value0: f.family });
 		const name = f.asset.replace(/^asset:/, "");
 		if (!assets.includes(name)) {
-			return `字体「${f.family}」指着「${name}」,但这套皮肤里没有这份资产`;
+			return i18n.t("skinUi.skin-draft-ops.31", { value0: f.family, value1: name });
 		}
 	}
 	return null;

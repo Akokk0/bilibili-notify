@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * CSS 框旁那颗「请女仆帮忙写」按不按得动(ADR-0015 决策 10 与它的 🔗)。
  *
@@ -21,17 +22,17 @@ export function cardSkinAiReadiness(input: {
 	if (input.readOnly) {
 		return {
 			ready: false,
-			reason: "内置的默认皮肤改不了 —— 先回卡片页「复制一份」,再请女仆写",
+			reason: i18n.t("skinUi.card-skin-ai.1"),
 		};
 	}
-	if (!input.globals) return { ready: false, reason: "正在读取模型配置…" };
+	if (!input.globals) return { ready: false, reason: i18n.t("skinUi.card-skin-ai.2") };
 	// 编辑器的测试里 globals 常是个空对象;真配置里 ai 那一段也可能整个缺席。
 	const ai = input.globals.ai;
 	const profile = ai ? resolveAIProfile(ai) : undefined;
 	if (!profile?.apiKey || !profile.baseUrl) {
 		return {
 			ready: false,
-			reason: "还没配好模型 —— 到「智能女仆」页把当前服务商的 API Key 与接口地址填上",
+			reason: i18n.t("skinUi.card-skin-ai.3"),
 		};
 	}
 	return { ready: true };

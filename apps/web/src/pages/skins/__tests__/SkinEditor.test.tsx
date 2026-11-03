@@ -13,8 +13,9 @@ import {
 	type SkinManifest,
 } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
 import { useThemeStore } from "../../../store/theme";
 import { SkinEditor } from "../SkinEditor";
@@ -372,6 +373,13 @@ describe("SkinEditor", () => {
 		renderEditor();
 		fireEvent.click(screen.getByText("设为默认值").closest("button") as HTMLButtonElement);
 		await waitFor(() => expect(screen.getByText(/已把当前状态钉为/)).toBeTruthy());
+		const { locale, voice } = i18n.state();
+		try {
+			act(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+			expect(screen.getByText("主人，已把当前状态设为这套皮肤包的默认值啦。")).toBeTruthy();
+		} finally {
+			act(() => i18n.set({ locale, voice }));
+		}
 
 		H.uploadFails = true;
 		const file = new File([new Uint8Array([1])], "big.png", { type: "image/png" });

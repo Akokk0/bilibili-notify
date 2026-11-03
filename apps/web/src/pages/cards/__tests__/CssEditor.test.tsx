@@ -9,9 +9,17 @@ import { chooseSelect } from "../../../__tests__/select-controls";
  * 只动一条(断言整段逐字相等)、认不出的值不许被悄悄改写、以及源码切换那一跳。
  */
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { CssEditor } from "../CssEditor";
+
+// Only this worker supplies an English label, to prove a live language switch.
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
+vi.mock("../../../i18n/locales/en.json", () => ({
+	default: { "skinUi.css-value-shapes.85": "Padding" },
+}));
 
 afterEach(cleanup);
 
@@ -36,6 +44,19 @@ function mount(css: string) {
 
 const last = (spy: ReturnType<typeof vi.fn>) => spy.mock.calls.at(-1)?.[0] as string;
 const input = (label: string | RegExp) => screen.getByLabelText(label) as HTMLInputElement;
+
+it("切换语言与口吻保留未提交的CSS文本，并刷新字段名", () => {
+	const { onChange } = mount('[data-bn="self"]{padding:12px 16px}');
+	const field = input("内边距");
+	fireEvent.change(field, { target: { value: "calc(100% - 8px)" } });
+	const { voice, locale } = i18n.state();
+	act(() => i18n.set({ voice: voice === "maid" ? "plain" : "maid" }));
+	expect(input("内边距").value).toBe("calc(100% - 8px)");
+	act(() => i18n.set({ locale: "en" }));
+	expect(input("Padding").value).toBe("calc(100% - 8px)");
+	expect(onChange).not.toHaveBeenCalled();
+	act(() => i18n.set({ voice, locale }));
+});
 
 describe("结构视图 —— 读", () => {
 	it("默认是结构视图:规则一节一条,选择器照原文,声明按值的形状给控件", () => {

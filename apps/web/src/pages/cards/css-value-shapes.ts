@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 一条声明的值长什么样,就给什么控件(ADR-0014 决策 21 的 2026-09-19 🔗:**按值的形状判,
  * 不按属性名**)。
@@ -28,7 +29,12 @@ export const LENGTH_UNITS: ReadonlyArray<{ value: string; label: string }> = [
 	{ value: "%", label: "%" },
 	{ value: "vw", label: "vw" },
 	{ value: "vh", label: "vh" },
-	{ value: "", label: "无" },
+	{
+		value: "",
+		get label() {
+			return i18n.t("skinUi.css-value-shapes.1");
+		},
+	},
 ];
 
 /**
@@ -43,11 +49,36 @@ export const INSERT_CHIP =
 	"rounded-bn-pill border border-bn-border px-2 py-0.5 text-bn-2xs text-bn-text-secondary transition hover:border-bn-pink hover:text-bn-pink";
 
 export const BORDER_STYLES: ReadonlyArray<{ value: string; label: string }> = [
-	{ value: "solid", label: "实线" },
-	{ value: "dashed", label: "虚线" },
-	{ value: "dotted", label: "点线" },
-	{ value: "double", label: "双线" },
-	{ value: "none", label: "无" },
+	{
+		value: "solid",
+		get label() {
+			return i18n.t("skinUi.css-value-shapes.2");
+		},
+	},
+	{
+		value: "dashed",
+		get label() {
+			return i18n.t("skinUi.css-value-shapes.3");
+		},
+	},
+	{
+		value: "dotted",
+		get label() {
+			return i18n.t("skinUi.css-value-shapes.4");
+		},
+	},
+	{
+		value: "double",
+		get label() {
+			return i18n.t("skinUi.css-value-shapes.5");
+		},
+	},
+	{
+		value: "none",
+		get label() {
+			return i18n.t("skinUi.css-value-shapes.6");
+		},
+	},
 ];
 
 const opts = (pairs: ReadonlyArray<[string, string]>) =>
@@ -60,186 +91,334 @@ const opts = (pairs: ReadonlyArray<[string, string]>) =>
 export const KEYWORD_OPTIONS: Readonly<
 	Record<string, ReadonlyArray<{ value: string; label: string }>>
 > = {
-	"text-align": opts([
-		["left", "左"],
-		["center", "居中"],
-		["right", "右"],
-		["justify", "两端"],
-	]),
-	"font-weight": opts([
-		["normal", "常规"],
-		["bold", "粗体"],
-		["300", "300 细"],
-		["400", "400"],
-		["500", "500 中"],
-		["600", "600 半粗"],
-		["700", "700 粗"],
-		["800", "800"],
-		["900", "900 黑"],
-	]),
-	"font-style": opts([
-		["normal", "常规"],
-		["italic", "斜体"],
-	]),
-	display: opts([
-		["block", "块"],
-		["inline", "行内"],
-		["inline-block", "行内块"],
-		["flex", "弹性"],
-		["inline-flex", "行内弹性"],
-		["grid", "网格"],
-		["none", "不显示"],
-	]),
-	position: opts([
-		["static", "默认"],
-		["relative", "相对"],
-		["absolute", "绝对"],
-	]),
-	"align-self": opts([
-		["auto", "跟父级"],
-		["start", "起点"],
-		["center", "居中"],
-		["end", "终点"],
-		["stretch", "拉满"],
-	]),
-	"justify-self": opts([
-		["auto", "跟父级"],
-		["start", "起点"],
-		["center", "居中"],
-		["end", "终点"],
-		["stretch", "拉满"],
-	]),
-	"align-items": opts([
-		["flex-start", "起点"],
-		["center", "居中"],
-		["flex-end", "终点"],
-		["stretch", "拉满"],
-		["baseline", "基线"],
-	]),
-	"justify-content": opts([
-		["flex-start", "起点"],
-		["center", "居中"],
-		["flex-end", "终点"],
-		["space-between", "两端分散"],
-		["space-around", "环绕分散"],
-	]),
-	"flex-direction": opts([
-		["row", "横排"],
-		["column", "竖排"],
-	]),
-	"flex-wrap": opts([
-		["nowrap", "不换行"],
-		["wrap", "换行"],
-	]),
-	"object-fit": opts([
-		["cover", "裁满"],
-		["contain", "装下"],
-		["fill", "拉伸"],
-		["none", "原尺寸"],
-	]),
-	overflow: opts([
-		["visible", "露出"],
-		["hidden", "裁掉"],
-		["auto", "自动"],
-	]),
-	"white-space": opts([
-		["normal", "正常"],
-		["nowrap", "不换行"],
-		["pre", "保留"],
-		["pre-wrap", "保留且换行"],
-	]),
-	"text-overflow": opts([
-		["clip", "截断"],
-		["ellipsis", "省略号"],
-	]),
-	"text-decoration": opts([
-		["none", "无"],
-		["underline", "下划线"],
-		["line-through", "删除线"],
-	]),
-	"text-transform": opts([
-		["none", "无"],
-		["uppercase", "全大写"],
-		["lowercase", "全小写"],
-	]),
-	"vertical-align": opts([
-		["baseline", "基线"],
-		["top", "顶"],
-		["middle", "中"],
-		["bottom", "底"],
-	]),
-	visibility: opts([
-		["visible", "可见"],
-		["hidden", "隐藏"],
-	]),
-	"box-sizing": opts([
-		["border-box", "含边框"],
-		["content-box", "只算内容"],
-	]),
+	get "text-align"() {
+		return opts([
+			["left", i18n.t("skinUi.css-value-shapes.7")],
+			["center", i18n.t("skinUi.css-value-shapes.8")],
+			["right", i18n.t("skinUi.css-value-shapes.9")],
+			["justify", i18n.t("skinUi.css-value-shapes.10")],
+		]);
+	},
+	get "font-weight"() {
+		return opts([
+			["normal", i18n.t("skinUi.css-value-shapes.11")],
+			["bold", i18n.t("skinUi.css-value-shapes.12")],
+			["300", i18n.t("skinUi.css-value-shapes.13")],
+			["400", "400"],
+			["500", i18n.t("skinUi.css-value-shapes.14")],
+			["600", i18n.t("skinUi.css-value-shapes.15")],
+			["700", i18n.t("skinUi.css-value-shapes.16")],
+			["800", "800"],
+			["900", i18n.t("skinUi.css-value-shapes.17")],
+		]);
+	},
+	get "font-style"() {
+		return opts([
+			["normal", i18n.t("skinUi.css-value-shapes.18")],
+			["italic", i18n.t("skinUi.css-value-shapes.19")],
+		]);
+	},
+	get display() {
+		return opts([
+			["block", i18n.t("skinUi.css-value-shapes.20")],
+			["inline", i18n.t("skinUi.css-value-shapes.21")],
+			["inline-block", i18n.t("skinUi.css-value-shapes.22")],
+			["flex", i18n.t("skinUi.css-value-shapes.23")],
+			["inline-flex", i18n.t("skinUi.css-value-shapes.24")],
+			["grid", i18n.t("skinUi.css-value-shapes.25")],
+			["none", i18n.t("skinUi.css-value-shapes.26")],
+		]);
+	},
+	get position() {
+		return opts([
+			["static", i18n.t("skinUi.css-value-shapes.27")],
+			["relative", i18n.t("skinUi.css-value-shapes.28")],
+			["absolute", i18n.t("skinUi.css-value-shapes.29")],
+		]);
+	},
+	get "align-self"() {
+		return opts([
+			["auto", i18n.t("skinUi.css-value-shapes.30")],
+			["start", i18n.t("skinUi.css-value-shapes.31")],
+			["center", i18n.t("skinUi.css-value-shapes.32")],
+			["end", i18n.t("skinUi.css-value-shapes.33")],
+			["stretch", i18n.t("skinUi.css-value-shapes.34")],
+		]);
+	},
+	get "justify-self"() {
+		return opts([
+			["auto", i18n.t("skinUi.css-value-shapes.35")],
+			["start", i18n.t("skinUi.css-value-shapes.36")],
+			["center", i18n.t("skinUi.css-value-shapes.37")],
+			["end", i18n.t("skinUi.css-value-shapes.38")],
+			["stretch", i18n.t("skinUi.css-value-shapes.39")],
+		]);
+	},
+	get "align-items"() {
+		return opts([
+			["flex-start", i18n.t("skinUi.css-value-shapes.40")],
+			["center", i18n.t("skinUi.css-value-shapes.41")],
+			["flex-end", i18n.t("skinUi.css-value-shapes.42")],
+			["stretch", i18n.t("skinUi.css-value-shapes.43")],
+			["baseline", i18n.t("skinUi.css-value-shapes.44")],
+		]);
+	},
+	get "justify-content"() {
+		return opts([
+			["flex-start", i18n.t("skinUi.css-value-shapes.45")],
+			["center", i18n.t("skinUi.css-value-shapes.46")],
+			["flex-end", i18n.t("skinUi.css-value-shapes.47")],
+			["space-between", i18n.t("skinUi.css-value-shapes.48")],
+			["space-around", i18n.t("skinUi.css-value-shapes.49")],
+		]);
+	},
+	get "flex-direction"() {
+		return opts([
+			["row", i18n.t("skinUi.css-value-shapes.50")],
+			["column", i18n.t("skinUi.css-value-shapes.51")],
+		]);
+	},
+	get "flex-wrap"() {
+		return opts([
+			["nowrap", i18n.t("skinUi.css-value-shapes.52")],
+			["wrap", i18n.t("skinUi.css-value-shapes.53")],
+		]);
+	},
+	get "object-fit"() {
+		return opts([
+			["cover", i18n.t("skinUi.css-value-shapes.54")],
+			["contain", i18n.t("skinUi.css-value-shapes.55")],
+			["fill", i18n.t("skinUi.css-value-shapes.56")],
+			["none", i18n.t("skinUi.css-value-shapes.57")],
+		]);
+	},
+	get overflow() {
+		return opts([
+			["visible", i18n.t("skinUi.css-value-shapes.58")],
+			["hidden", i18n.t("skinUi.css-value-shapes.59")],
+			["auto", i18n.t("skinUi.css-value-shapes.60")],
+		]);
+	},
+	get "white-space"() {
+		return opts([
+			["normal", i18n.t("skinUi.css-value-shapes.61")],
+			["nowrap", i18n.t("skinUi.css-value-shapes.62")],
+			["pre", i18n.t("skinUi.css-value-shapes.63")],
+			["pre-wrap", i18n.t("skinUi.css-value-shapes.64")],
+		]);
+	},
+	get "text-overflow"() {
+		return opts([
+			["clip", i18n.t("skinUi.css-value-shapes.65")],
+			["ellipsis", i18n.t("skinUi.css-value-shapes.66")],
+		]);
+	},
+	get "text-decoration"() {
+		return opts([
+			["none", i18n.t("skinUi.css-value-shapes.67")],
+			["underline", i18n.t("skinUi.css-value-shapes.68")],
+			["line-through", i18n.t("skinUi.css-value-shapes.69")],
+		]);
+	},
+	get "text-transform"() {
+		return opts([
+			["none", i18n.t("skinUi.css-value-shapes.70")],
+			["uppercase", i18n.t("skinUi.css-value-shapes.71")],
+			["lowercase", i18n.t("skinUi.css-value-shapes.72")],
+		]);
+	},
+	get "vertical-align"() {
+		return opts([
+			["baseline", i18n.t("skinUi.css-value-shapes.73")],
+			["top", i18n.t("skinUi.css-value-shapes.74")],
+			["middle", i18n.t("skinUi.css-value-shapes.75")],
+			["bottom", i18n.t("skinUi.css-value-shapes.76")],
+		]);
+	},
+	get visibility() {
+		return opts([
+			["visible", i18n.t("skinUi.css-value-shapes.77")],
+			["hidden", i18n.t("skinUi.css-value-shapes.78")],
+		]);
+	},
+	get "box-sizing"() {
+		return opts([
+			["border-box", i18n.t("skinUi.css-value-shapes.79")],
+			["content-box", i18n.t("skinUi.css-value-shapes.80")],
+		]);
+	},
 	"border-style": BORDER_STYLES,
-	"mix-blend-mode": opts([
-		["normal", "正常"],
-		["multiply", "正片叠底"],
-		["screen", "滤色"],
-		["overlay", "叠加"],
-	]),
+	get "mix-blend-mode"() {
+		return opts([
+			["normal", i18n.t("skinUi.css-value-shapes.81")],
+			["multiply", i18n.t("skinUi.css-value-shapes.82")],
+			["screen", i18n.t("skinUi.css-value-shapes.83")],
+			["overlay", i18n.t("skinUi.css-value-shapes.84")],
+		]);
+	},
 };
 
 /** 常用属性的人话名。表里没有的属性照显属性名 —— 这张表只为好读,不限制能写什么。 */
 export const PROP_LABELS: Readonly<Record<string, string>> = {
-	padding: "内边距",
-	margin: "外边距",
-	background: "背景",
-	"background-color": "背景色",
-	color: "字色",
-	"font-size": "字号",
-	"font-weight": "字重",
-	"font-style": "字形",
-	"font-family": "字体",
-	"line-height": "行高",
-	"letter-spacing": "字距",
-	"text-align": "对齐",
-	"text-decoration": "文字装饰",
-	"text-transform": "大小写",
-	"text-shadow": "文字阴影",
-	"text-overflow": "截断",
-	"white-space": "换行",
-	border: "边框",
-	"border-color": "边框色",
-	"border-width": "边框宽",
-	"border-style": "边框样式",
-	"border-radius": "圆角",
-	"box-shadow": "阴影",
-	width: "宽",
-	height: "高",
-	"max-width": "最大宽",
-	"min-width": "最小宽",
-	"max-height": "最大高",
-	"min-height": "最小高",
-	gap: "间距",
-	opacity: "不透明度",
-	display: "显示方式",
-	position: "定位",
-	top: "上",
-	right: "右",
-	bottom: "下",
-	left: "左",
-	"z-index": "层次",
-	"align-self": "纵向对齐",
-	"justify-self": "横向对齐",
-	"align-items": "子项纵向对齐",
-	"justify-content": "子项横向分布",
-	"flex-direction": "排列方向",
-	"flex-wrap": "换行方式",
-	"object-fit": "图片填充",
-	overflow: "溢出",
-	"vertical-align": "基线对齐",
-	visibility: "可见性",
-	"box-sizing": "盒模型",
-	transform: "变换",
-	filter: "滤镜",
-	"backdrop-filter": "背景滤镜",
-	"mix-blend-mode": "混合模式",
+	get padding() {
+		return i18n.t("skinUi.css-value-shapes.85");
+	},
+	get margin() {
+		return i18n.t("skinUi.css-value-shapes.86");
+	},
+	get background() {
+		return i18n.t("skinUi.css-value-shapes.87");
+	},
+	get "background-color"() {
+		return i18n.t("skinUi.css-value-shapes.88");
+	},
+	get color() {
+		return i18n.t("skinUi.css-value-shapes.89");
+	},
+	get "font-size"() {
+		return i18n.t("skinUi.css-value-shapes.90");
+	},
+	get "font-weight"() {
+		return i18n.t("skinUi.css-value-shapes.91");
+	},
+	get "font-style"() {
+		return i18n.t("skinUi.css-value-shapes.92");
+	},
+	get "font-family"() {
+		return i18n.t("skinUi.css-value-shapes.93");
+	},
+	get "line-height"() {
+		return i18n.t("skinUi.css-value-shapes.94");
+	},
+	get "letter-spacing"() {
+		return i18n.t("skinUi.css-value-shapes.95");
+	},
+	get "text-align"() {
+		return i18n.t("skinUi.css-value-shapes.96");
+	},
+	get "text-decoration"() {
+		return i18n.t("skinUi.css-value-shapes.97");
+	},
+	get "text-transform"() {
+		return i18n.t("skinUi.css-value-shapes.98");
+	},
+	get "text-shadow"() {
+		return i18n.t("skinUi.css-value-shapes.99");
+	},
+	get "text-overflow"() {
+		return i18n.t("skinUi.css-value-shapes.100");
+	},
+	get "white-space"() {
+		return i18n.t("skinUi.css-value-shapes.101");
+	},
+	get border() {
+		return i18n.t("skinUi.css-value-shapes.102");
+	},
+	get "border-color"() {
+		return i18n.t("skinUi.css-value-shapes.103");
+	},
+	get "border-width"() {
+		return i18n.t("skinUi.css-value-shapes.104");
+	},
+	get "border-style"() {
+		return i18n.t("skinUi.css-value-shapes.105");
+	},
+	get "border-radius"() {
+		return i18n.t("skinUi.css-value-shapes.106");
+	},
+	get "box-shadow"() {
+		return i18n.t("skinUi.css-value-shapes.107");
+	},
+	get width() {
+		return i18n.t("skinUi.css-value-shapes.108");
+	},
+	get height() {
+		return i18n.t("skinUi.css-value-shapes.109");
+	},
+	get "max-width"() {
+		return i18n.t("skinUi.css-value-shapes.110");
+	},
+	get "min-width"() {
+		return i18n.t("skinUi.css-value-shapes.111");
+	},
+	get "max-height"() {
+		return i18n.t("skinUi.css-value-shapes.112");
+	},
+	get "min-height"() {
+		return i18n.t("skinUi.css-value-shapes.113");
+	},
+	get gap() {
+		return i18n.t("skinUi.css-value-shapes.114");
+	},
+	get opacity() {
+		return i18n.t("skinUi.css-value-shapes.115");
+	},
+	get display() {
+		return i18n.t("skinUi.css-value-shapes.116");
+	},
+	get position() {
+		return i18n.t("skinUi.css-value-shapes.117");
+	},
+	get top() {
+		return i18n.t("skinUi.css-value-shapes.118");
+	},
+	get right() {
+		return i18n.t("skinUi.css-value-shapes.119");
+	},
+	get bottom() {
+		return i18n.t("skinUi.css-value-shapes.120");
+	},
+	get left() {
+		return i18n.t("skinUi.css-value-shapes.121");
+	},
+	get "z-index"() {
+		return i18n.t("skinUi.css-value-shapes.122");
+	},
+	get "align-self"() {
+		return i18n.t("skinUi.css-value-shapes.123");
+	},
+	get "justify-self"() {
+		return i18n.t("skinUi.css-value-shapes.124");
+	},
+	get "align-items"() {
+		return i18n.t("skinUi.css-value-shapes.125");
+	},
+	get "justify-content"() {
+		return i18n.t("skinUi.css-value-shapes.126");
+	},
+	get "flex-direction"() {
+		return i18n.t("skinUi.css-value-shapes.127");
+	},
+	get "flex-wrap"() {
+		return i18n.t("skinUi.css-value-shapes.128");
+	},
+	get "object-fit"() {
+		return i18n.t("skinUi.css-value-shapes.129");
+	},
+	get overflow() {
+		return i18n.t("skinUi.css-value-shapes.130");
+	},
+	get "vertical-align"() {
+		return i18n.t("skinUi.css-value-shapes.131");
+	},
+	get visibility() {
+		return i18n.t("skinUi.css-value-shapes.132");
+	},
+	get "box-sizing"() {
+		return i18n.t("skinUi.css-value-shapes.133");
+	},
+	get transform() {
+		return i18n.t("skinUi.css-value-shapes.134");
+	},
+	get filter() {
+		return i18n.t("skinUi.css-value-shapes.135");
+	},
+	get "backdrop-filter"() {
+		return i18n.t("skinUi.css-value-shapes.136");
+	},
+	get "mix-blend-mode"() {
+		return i18n.t("skinUi.css-value-shapes.137");
+	},
 };
 
 /** 加声明时候选的常用属性(顺序就是候选顺序)。 */

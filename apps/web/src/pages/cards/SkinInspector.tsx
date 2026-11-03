@@ -1,3 +1,4 @@
+import { i18n, useT } from "../../i18n";
 /**
  * 编辑器的检查器(ADR-0014 决策 20 / 21)—— 画布上选中什么,这里就编什么。
  *
@@ -143,16 +144,14 @@ export function SkinInspector({
 	/** CSS 框旁的「请女仆帮忙写」。不给就不摆那颗钮。 */
 	ai?: InspectorAi;
 }) {
+	const tx = useT();
+
 	// 「这块带着内容,真删?」那个弹窗开没开。
 	const [confirming, setConfirming] = useState(false);
 	const card = cardOf(manifest, kind);
 
 	if (selection === null) {
-		return (
-			<EmptyNote size="sm">
-				在中间画布上点一个块,或者点最底下那条「卡片外框」;改皮肤本身的名字点头部那行。
-			</EmptyNote>
-		);
+		return <EmptyNote size="sm">{tx("skinUi.SkinInspector.1")}</EmptyNote>;
 	}
 	if (selection.kind === "skin") {
 		return (
@@ -166,7 +165,7 @@ export function SkinInspector({
 		);
 	}
 	if (selection.kind === "frame") {
-		if (!card) return <EmptyNote size="sm">这套皮肤没有定义这种卡。</EmptyNote>;
+		if (!card) return <EmptyNote size="sm">{tx("skinUi.SkinInspector.2")}</EmptyNote>;
 		return (
 			<FrameInspector
 				kind={kind}
@@ -183,7 +182,7 @@ export function SkinInspector({
 	const block = blockOf(card, selection.id);
 	if (!block) {
 		// 换了卡种但选中还留着上一张卡的块 id —— 这里如实说,别画一个空壳让人以为坏了。
-		return <EmptyNote size="sm">这一张卡里没有这个块。</EmptyNote>;
+		return <EmptyNote size="sm">{tx("skinUi.SkinInspector.3")}</EmptyNote>;
 	}
 
 	const lim = gridLimits(block.grid);
@@ -203,39 +202,39 @@ export function SkinInspector({
 		<div className="flex flex-col gap-3.5">
 			<div className="flex items-center gap-1.5">
 				<Pill subtle color="var(--color-bn-pink)">
-					{block.kind === "custom" ? "自定义块" : "内置块"}
+					{block.kind === "custom" ? tx("skinUi.SkinInspector.4") : tx("skinUi.SkinInspector.5")}
 				</Pill>
 				<span className="font-mono text-bn-2xs text-bn-text-tertiary">id {block.id}</span>
 			</div>
 
-			<Section label="位置">
+			<Section label={tx("skinUi.SkinInspector.6")}>
 				<div className="grid grid-cols-2 gap-x-2.5 gap-y-1.5 p-2.5">
 					<GridNum
-						label="行"
+						label={tx("skinUi.SkinInspector.7")}
 						value={block.grid.row}
 						lim={lim.row}
 						onChange={(row) => onGrid(block.id, { row })}
 					/>
 					<GridNum
-						label="起始列"
+						label={tx("skinUi.SkinInspector.8")}
 						value={block.grid.column}
 						lim={lim.column}
 						onChange={(column) => onGrid(block.id, { column })}
 					/>
 					<GridNum
-						label="跨列"
+						label={tx("skinUi.SkinInspector.9")}
 						value={block.grid.span}
 						lim={lim.span}
 						onChange={(span) => onGrid(block.id, { span })}
 					/>
 					<GridNum
-						label="跨行"
+						label={tx("skinUi.SkinInspector.10")}
 						value={block.grid.rowSpan ?? 1}
 						lim={lim.rowSpan}
 						onChange={(rowSpan) => onGrid(block.id, { rowSpan })}
 					/>
 					<GridNum
-						label="层次"
+						label={tx("skinUi.SkinInspector.11")}
 						value={block.grid.z ?? 0}
 						lim={lim.z}
 						onChange={(z) => onGrid(block.id, { z })}
@@ -247,14 +246,15 @@ export function SkinInspector({
 				    不说的话,主人会拖了没反应还以为是自己改坏了什么。 */}
 				<HintNote className="mx-2.5 mb-2.5" tone={sizedByRows ? "success" : "neutral"}>
 					{sizedByRows
-						? `跨行就是这块的高度 —— 每行 ${CARD_SKIN_LIMITS.rowHeight}px,图会按比例裁着填满。`
-						: "这块的高度由内容撑(字多就高),跨行只影响画布上它占几格;要改真高度请在下面的 CSS 里写。"}
+						? tx("skinUi.SkinInspector.12", { value0: CARD_SKIN_LIMITS.rowHeight })
+						: tx("skinUi.SkinInspector.13")}
 				</HintNote>
 				{/* 只在真叠上了才说这句:平时它是一句与你无关的话,叠上了它才是你要找的那句。 */}
 				{overlapWith.length > 0 ? (
 					<HintNote className="m-2.5 mt-0">
-						这个块与 {overlapWith.map((b) => `「${b}」`).join("、")} 占着同一片格子。层次大的画在
-						上面;都不写层次时,谁在下面看的是块的先后。
+						{tx("skinUi.SkinInspector.overlap", {
+							blocks: overlapWith.map((b) => `「${b}」`).join("、"),
+						})}
 					</HintNote>
 				) : null}
 			</Section>
@@ -263,18 +263,16 @@ export function SkinInspector({
 				<HtmlSection kind={kind} value={block.html} onChange={(html) => onHtml(block.id, html)} />
 			) : null}
 
-			<Section label="显示条件">
+			<Section label={tx("skinUi.SkinInspector.16")}>
 				<div className="flex flex-col gap-1.5 p-2.5">
 					<TSelect
 						value={block.showIf ?? ""}
 						onChange={(path) => onShowIf(block.id, path === "" ? undefined : path)}
 						options={showIfOptions(kind)}
-						ariaLabel="显示条件"
+						ariaLabel={tx("skinUi.SkinInspector.17")}
 						full
 					/>
-					<span className="text-bn-2xs text-bn-text-tertiary">
-						字段为真才画这一块。候选只列这种卡承诺的字段 —— 别的卡的字段写进去,装包门那头直接拒。
-					</span>
+					<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.18")}</span>
 				</div>
 			</Section>
 
@@ -282,8 +280,8 @@ export function SkinInspector({
 			    同一个实例留着的话,剩下的规则会写进新选中的那块。 */}
 			<CssSection
 				key={block.id}
-				label="这个块的 CSS"
-				hooksLabel="这个块的挂点"
+				label={tx("skinUi.SkinInspector.19")}
+				hooksLabel={tx("skinUi.SkinInspector.20")}
 				hooks={blockHooks(kind, block)}
 				value={block.css ?? ""}
 				onChange={(css) => onCss(block.id, css)}
@@ -299,16 +297,16 @@ export function SkinInspector({
 						icon={<Icon.trash size={12} />}
 						onClick={() => (carriesWork ? setConfirming(true) : onRemove(block.id))}
 					>
-						删除这个块
+						{tx("skinUi.SkinInspector.21")}
 					</Btn>
 				</div>
 			) : null}
 
 			{confirming && onRemove ? (
 				<ConfirmDialog
-					title="删掉这个块?"
-					message="它自己带着内容(自定义 HTML / 块 CSS / 资产变量),删了找不回来 —— 内置块能从「添加块」里原样再摆一个,这些不能。"
-					confirmLabel="删掉"
+					title={tx("skinUi.SkinInspector.22")}
+					message={tx("skinUi.SkinInspector.23")}
+					confirmLabel={tx("skinUi.SkinInspector.24")}
 					danger
 					onConfirm={() => {
 						setConfirming(false);
@@ -342,6 +340,8 @@ function FrameInspector({
 	onDropCard?: () => void;
 	ai?: InspectorAi;
 }) {
+	const tx = useT();
+
 	const [dropping, setDropping] = useState(false);
 	const custom = card.columns !== undefined;
 	const cols = columnsOf(card);
@@ -350,28 +350,28 @@ function FrameInspector({
 
 	return (
 		<div className="flex flex-col gap-3.5">
-			<Section label="卡片外框">
+			<Section label={tx("skinUi.SkinInspector.25")}>
 				<div className="grid grid-cols-2 gap-x-2.5 gap-y-1.5 p-2.5">
 					<GridNum
-						label="卡宽"
+						label={tx("skinUi.SkinInspector.26")}
 						value={card.width}
 						lim={CARD_SKIN_LIMITS.width}
 						onChange={(width) => onFrame({ width })}
 					/>
 					<GridNum
-						label="行间距"
+						label={tx("skinUi.SkinInspector.27")}
 						value={card.gap?.row ?? 0}
 						lim={CARD_SKIN_LIMITS.gap}
 						onChange={(gapRow) => onFrame({ gapRow })}
 					/>
 					<GridNum
-						label="列间距"
+						label={tx("skinUi.SkinInspector.28")}
 						value={card.gap?.column ?? 0}
 						lim={CARD_SKIN_LIMITS.gap}
 						onChange={(gapColumn) => onFrame({ gapColumn })}
 					/>
 					<GridNum
-						label="出血"
+						label={tx("skinUi.SkinInspector.29")}
 						value={card.bleed?.size ?? 0}
 						lim={CARD_SKIN_LIMITS.bleed}
 						onChange={(bleedSize) => onFrame({ bleedSize })}
@@ -379,29 +379,30 @@ function FrameInspector({
 					{/* 色只在真有出血时才给 —— 没有那圈的时候摆一个色块,拧了没反应。 */}
 					{card.bleed ? (
 						<div className="flex flex-col gap-1">
-							<span className="text-bn-2xs text-bn-text-secondary">出血色</span>
+							<span className="text-bn-2xs text-bn-text-secondary">
+								{tx("skinUi.SkinInspector.30")}
+							</span>
 							<TColor
 								value={card.bleed.color}
 								onChange={(bleedColor) => onFrame({ bleedColor })}
-								ariaLabel="出血色"
+								ariaLabel={tx("skinUi.SkinInspector.31")}
 							/>
 						</div>
 					) : null}
 				</div>
-				<HintNote className="mx-2.5 mb-2.5">
-					卡外留给辉光的余量。出图截的是卡的外接矩形,而阴影 / 辉光画在卡外面的那一圈 不占位置 ——
-					不留出血,外框上的辉光在推出去的图里等于没写。
-				</HintNote>
+				<HintNote className="mx-2.5 mb-2.5">{tx("skinUi.SkinInspector.32")}</HintNote>
 			</Section>
 
-			<Section label="列定义">
+			<Section label={tx("skinUi.SkinInspector.33")}>
 				<div className="flex flex-col gap-2 p-2.5">
 					<div className="flex items-center justify-between gap-2">
-						<span className="text-bn-2xs text-bn-text-secondary">自定义列宽</span>
+						<span className="text-bn-2xs text-bn-text-secondary">
+							{tx("skinUi.SkinInspector.34")}
+						</span>
 						<Toggle
 							size="sm"
 							value={custom}
-							ariaLabel="自定义列宽"
+							ariaLabel={tx("skinUi.SkinInspector.35")}
 							// 打开时把当前的 12 等分原样落进清单,主人在那个基础上改;关掉就整份删掉。
 							onChange={(on) => onColumns(on ? cols : undefined)}
 						/>
@@ -419,16 +420,15 @@ function FrameInspector({
 						))
 					) : (
 						<span className="text-bn-2xs text-bn-text-tertiary">
-							12 等分。定宽列是给定尺寸的图留的 —— 上舰卡那枚 175px 的方徽章在 12 等分里落不到
-							整数列,只有定宽列能复刻到像素。
+							{tx("skinUi.SkinInspector.36")}
 						</span>
 					)}
 				</div>
 			</Section>
 
 			<CssSection
-				label="外框的 CSS"
-				hooksLabel="外框的挂点"
+				label={tx("skinUi.SkinInspector.37")}
+				hooksLabel={tx("skinUi.SkinInspector.38")}
 				hooks={Object.entries(CARD_SKIN_FRAME_HOOKS)}
 				value={card.css ?? ""}
 				onChange={onFrameCss}
@@ -444,16 +444,16 @@ function FrameInspector({
 						icon={<Icon.trash size={12} />}
 						onClick={() => setDropping(true)}
 					>
-						交还给默认皮肤
+						{tx("skinUi.SkinInspector.39")}
 					</Btn>
 				</div>
 			) : null}
 
 			{dropping && onDropCard ? (
 				<ConfirmDialog
-					title="把这种卡交还给出厂默认?"
-					message="这张卡的块、位置与 CSS 会整份从这套皮肤里去掉,出图时它跟着出厂默认走。想再改回来得重新接管一次。"
-					confirmLabel="交还"
+					title={tx("skinUi.SkinInspector.40")}
+					message={tx("skinUi.SkinInspector.41")}
+					confirmLabel={tx("skinUi.SkinInspector.42")}
 					danger
 					onConfirm={() => {
 						setDropping(false);
@@ -481,16 +481,18 @@ function HtmlSection({
 	value: string;
 	onChange: (html: string) => void;
 }) {
+	const tx = useT();
+
 	// 量 **UTF-8 字节**,不是 `value.length` —— 退这份包的清洗器量的就是字节,
 	// 两把尺不一样的话面板会一路显示「没超」,存下去才被退回来(汉字占 3 个)。
 	const bytes = cardSkinBytes(value);
 	const over = bytes > CARD_SKIN_LIMITS.maxHtmlBytes;
 	const empty = value.trim() === "";
 	return (
-		<Section label="内容">
+		<Section label={tx("skinUi.SkinInspector.43")}>
 			<div className="flex flex-col gap-2 p-2.5">
 				<fieldset
-					aria-label="这种卡能引用的字段"
+					aria-label={tx("skinUi.SkinInspector.44")}
 					className="flex max-h-28 min-w-0 flex-wrap gap-1 overflow-y-auto"
 				>
 					{CARD_SKIN_FIELDS[kind].map((f) => (
@@ -513,17 +515,18 @@ function HtmlSection({
 					onChange={onChange}
 					rows={6}
 					mono
-					ariaLabel="这个块的 HTML"
+					ariaLabel={tx("skinUi.SkinInspector.45")}
 					placeholder="<div>{creator.name}</div>"
 				/>
 
 				{empty ? (
-					<ErrorNote size="sm">
-						空的自定义块存不下去 —— 装包门判的是「清洗后什么都不剩」。
-					</ErrorNote>
+					<ErrorNote size="sm">{tx("skinUi.SkinInspector.46")}</ErrorNote>
 				) : over ? (
 					<ErrorNote size="sm">
-						{bytes} 字节,超过上限 {CARD_SKIN_LIMITS.maxHtmlBytes} —— 这样存不下去。
+						{tx("skinUi.SkinInspector.byteLimit47", {
+							count: bytes,
+							max: CARD_SKIN_LIMITS.maxHtmlBytes,
+						})}
 					</ErrorNote>
 				) : (
 					<span className="text-right font-mono text-bn-2xs text-bn-text-tertiary">
@@ -550,10 +553,13 @@ function showIfOptions(kind: CardKind): Array<{ value: string; label: string }> 
 	const fields = CARD_SKIN_FIELDS[kind];
 	const order = [...fields].sort((a, b) => Number(b.type === "bool") - Number(a.type === "bool"));
 	return [
-		{ value: "", label: "总是显示" },
+		{ value: "", label: i18n.t("skinUi.SkinInspector.49") },
 		...order.map((f) => ({
 			value: f.path,
-			label: f.type === "bool" ? `${f.label}(${f.path})` : `非空时:${f.label}(${f.path})`,
+			label:
+				f.type === "bool"
+					? `${f.label}(${f.path})`
+					: i18n.t("skinUi.SkinInspector.50", { value0: f.label, value1: f.path }),
 		})),
 	];
 }
@@ -565,7 +571,10 @@ function showIfOptions(kind: CardKind): Array<{ value: string; label: string }> 
 function blockHooks(kind: CardKind, block: Card["blocks"][number]): Array<[string, string]> {
 	const meta =
 		block.kind === "builtin" ? CARD_SKIN_BUILTIN_BLOCKS[kind]?.[block.builtin] : undefined;
-	return [[CARD_SKIN_SELF_HOOK, "整块"], ...Object.entries(meta?.hooks ?? {})];
+	return [
+		[CARD_SKIN_SELF_HOOK, i18n.t("skinUi.SkinInspector.51")],
+		...Object.entries(meta?.hooks ?? {}),
+	];
 }
 
 /**
@@ -601,6 +610,8 @@ function CssSection({
 	/** 这一节 CSS 旁边给作者的一段说明(档位卡的「按档换色」);没有就不画。 */
 	note?: string;
 }) {
+	const tx = useT();
+
 	// 同上:计数器与那道闸必须是同一把尺(UTF-8 字节)。
 	const bytes = cardSkinBytes(value);
 	const over = bytes > CARD_SKIN_LIMITS.maxCssBytes;
@@ -622,7 +633,10 @@ function CssSection({
 
 				{over ? (
 					<ErrorNote size="sm">
-						{bytes} 字节,超过上限 {CARD_SKIN_LIMITS.maxCssBytes} —— 这样存不下去。
+						{tx("skinUi.SkinInspector.byteLimit52", {
+							count: bytes,
+							max: CARD_SKIN_LIMITS.maxCssBytes,
+						})}
 					</ErrorNote>
 				) : (
 					<span className="text-right font-mono text-bn-2xs text-bn-text-tertiary">
@@ -646,18 +660,22 @@ function ColumnRow({
 	equalPx: number;
 	onChange: (next: CardSkinColumn) => void;
 }) {
+	const tx = useT();
+
 	const px = "px" in value;
 	return (
 		<div className="flex items-center gap-1.5">
-			<span className="w-11 shrink-0 font-mono text-bn-2xs text-bn-text-tertiary">第 {n} 列</span>
+			<span className="w-11 shrink-0 font-mono text-bn-2xs text-bn-text-tertiary">
+				{tx("skinUi.SkinInspector.columnNumber", { index: n })}
+			</span>
 			{/* `<fieldset>` 只为给这组钮一个名字 —— 12 组「份 / px」长得一模一样,读屏器
 			    (和测试)得知道念的是哪一列。 */}
-			<fieldset aria-label={`第 ${n} 列的单位`} className="min-w-0">
+			<fieldset aria-label={tx("skinUi.SkinInspector.56", { value0: n })} className="min-w-0">
 				<Picker
 					value={px ? "px" : "fr"}
 					onChange={(u) => onChange(u === "px" ? { px: equalPx } : { fr: 1 })}
 					options={[
-						{ value: "fr", label: "份" },
+						{ value: "fr", label: tx("skinUi.SkinInspector.57") },
 						{ value: "px", label: "px" },
 					]}
 				/>
@@ -668,7 +686,7 @@ function ColumnRow({
 				max={px ? CARD_SKIN_LIMITS.width.max : CARD_SKIN_LIMITS.columns}
 				step={px ? 0.01 : 1}
 				width={72}
-				ariaLabel={`第 ${n} 列的宽度`}
+				ariaLabel={tx("skinUi.SkinInspector.58", { value0: n })}
 				onChange={(v) => onChange(px ? { px: v } : { fr: v })}
 			/>
 		</div>
@@ -722,23 +740,23 @@ function SkinMetaInspector({
 	onAssets?: AssetHandlers;
 	assets?: { names: string[]; pending: boolean; uploadError?: string | null };
 }) {
-	if (!manifest) return <EmptyNote size="sm">清单还没读到。</EmptyNote>;
+	const tx = useT();
+
+	if (!manifest) return <EmptyNote size="sm">{tx("skinUi.SkinInspector.59")}</EmptyNote>;
 	const err = skinMetaError(manifest);
 	// 只读皮肤:框仍然画出来(内容本身是主人要看的),走库里的 `disabled` 只读态。
 	const ro = onMeta === undefined;
 	return (
 		<div className="flex flex-col gap-3.5">
-			<Section label="皮肤">
+			<Section label={tx("skinUi.SkinInspector.60")}>
 				<div className="flex flex-col gap-2.5 p-2.5">
-					<span className="text-bn-2xs text-bn-text-tertiary">
-						这三项写在清单头上,皮肤库那一行与导出的包照它显示。
-					</span>
+					<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.61")}</span>
 					<TInput
 						value={manifest.name}
 						onChange={(v) => onMeta?.({ name: v })}
 						disabled={ro}
-						ariaLabel="皮肤名"
-						placeholder="霓虹"
+						ariaLabel={tx("skinUi.SkinInspector.62")}
+						placeholder={tx("skinUi.SkinInspector.63")}
 					/>
 					{err ? <ErrorNote size="sm">{err}</ErrorNote> : null}
 
@@ -746,8 +764,8 @@ function SkinMetaInspector({
 						value={manifest.author ?? ""}
 						onChange={(v) => onMeta?.({ author: v })}
 						disabled={ro}
-						ariaLabel="作者"
-						placeholder="谁做的(可以不填)"
+						ariaLabel={tx("skinUi.SkinInspector.64")}
+						placeholder={tx("skinUi.SkinInspector.65")}
 					/>
 
 					<TArea
@@ -755,8 +773,8 @@ function SkinMetaInspector({
 						onChange={(v) => onMeta?.({ description: v })}
 						disabled={ro}
 						rows={3}
-						ariaLabel="说明"
-						placeholder="一句话说说这套皮肤(可以不填)"
+						ariaLabel={tx("skinUi.SkinInspector.66")}
+						placeholder={tx("skinUi.SkinInspector.67")}
 					/>
 				</div>
 			</Section>
@@ -795,14 +813,16 @@ export type KnobHandlers = {
 };
 
 /** 六档在下拉里的人话名。顺序照的是「多数皮肤先要哪一档」。 */
-const KNOB_TYPE_LABELS: Array<[CardSkinKnob["type"], string]> = [
-	["color", "颜色"],
-	["number", "数值"],
-	["select", "下拉"],
-	["switch", "开关"],
-	["font", "字体"],
-	["image", "图"],
-];
+function knobTypeLabels(): Array<[CardSkinKnob["type"], string]> {
+	return [
+		["color", i18n.t("skinUi.SkinInspector.68")],
+		["number", i18n.t("skinUi.SkinInspector.69")],
+		["select", i18n.t("skinUi.SkinInspector.70")],
+		["switch", i18n.t("skinUi.SkinInspector.71")],
+		["font", i18n.t("skinUi.SkinInspector.72")],
+		["image", i18n.t("skinUi.SkinInspector.73")],
+	];
+}
 
 /**
  * 皮肤自己的旋钮声明 —— 卡片页那个旋钮区照它画控件(ADR-0014 决策 16)。
@@ -818,21 +838,24 @@ function KnobSection({
 	manifest: CardSkinManifest;
 	onKnobs?: KnobHandlers;
 }) {
+	const tx = useT();
+
 	const knobs = manifest.knobs ?? [];
 	const err = knobsError(manifest);
 	const full = knobs.length >= CARD_SKIN_KNOB_LIMITS.maxKnobs;
 	return (
-		<Section label="旋钮">
+		<Section label={tx("skinUi.SkinInspector.74")}>
 			<div className="flex flex-col gap-2.5 p-2.5">
 				<span className="text-bn-2xs text-bn-text-tertiary">
-					声明几枚,卡片页的「皮肤旋钮」就画几个控件;拧出来的值注成{" "}
-					<code className="font-mono">--bn-knob-&lt;key&gt;</code>,在这套皮肤的 CSS 里用{" "}
-					<code className="font-mono">var(--bn-knob-&lt;key&gt;, 兜底)</code> 引用。
-					<strong>起手位置不注入</strong> —— 那个兜底才是真默认值。
+					{tx("skinUi.SkinInspector.75")} <code className="font-mono">--bn-knob-&lt;key&gt;</code>
+					{tx("skinUi.SkinInspector.76")}{" "}
+					<code className="font-mono">{tx("skinUi.SkinInspector.77")}</code>{" "}
+					{tx("skinUi.SkinInspector.78")}
+					<strong>{tx("skinUi.SkinInspector.79")}</strong> {tx("skinUi.SkinInspector.80")}
 				</span>
 
 				{knobs.length === 0 ? (
-					<EmptyNote size="sm">还没有旋钮 —— 这套皮肤在卡片页上没有任何可拧的东西。</EmptyNote>
+					<EmptyNote size="sm">{tx("skinUi.SkinInspector.81")}</EmptyNote>
 				) : (
 					knobs.map((knob, i) => (
 						<KnobRow key={knob.key || `#${i}`} index={i} knob={knob} onKnobs={onKnobs} />
@@ -843,11 +866,11 @@ function KnobSection({
 
 				{onKnobs === undefined ? null : full ? (
 					<span className="text-bn-2xs text-bn-text-tertiary">
-						已经 {CARD_SKIN_KNOB_LIMITS.maxKnobs} 枚,加不下了。
+						{tx("skinUi.SkinInspector.knobLimit", { count: CARD_SKIN_KNOB_LIMITS.maxKnobs })}
 					</span>
 				) : (
 					<Btn size="sm" variant="outline" onClick={onKnobs.onAdd}>
-						<Icon.plus size={12} /> 添加旋钮
+						<Icon.plus size={12} /> {tx("skinUi.SkinInspector.84")}
 					</Btn>
 				)}
 			</div>
@@ -868,10 +891,12 @@ function KnobRow({
 	knob: CardSkinKnob;
 	onKnobs?: KnobHandlers;
 }) {
+	const tx = useT();
+
 	const ro = onKnobs === undefined;
 	return (
 		<fieldset
-			aria-label={`第 ${index + 1} 枚旋钮`}
+			aria-label={tx("skinUi.SkinInspector.85", { value0: index + 1 })}
 			className="flex min-w-0 flex-col gap-1.5 rounded-bn-sm border border-bn-border bg-bn-surface-muted p-2"
 		>
 			{/* key 与名字**各占一行**:检查器那一栏再宽也就 380,两个输入框挤一排时
@@ -883,13 +908,13 @@ function KnobRow({
 					onChange={(v) => onKnobs?.onDecl(knob.key, { key: v })}
 					disabled={ro}
 					mono
-					ariaLabel="旋钮 key"
+					ariaLabel={tx("skinUi.SkinInspector.86")}
 					placeholder="accent"
 				/>
 				{ro ? null : (
 					<IconButton
 						size="sm"
-						label="删掉这枚旋钮"
+						label={tx("skinUi.SkinInspector.87")}
 						icon={<Icon.trash size={12} />}
 						onClick={() => onKnobs.onRemove(knob.key)}
 					/>
@@ -899,17 +924,17 @@ function KnobRow({
 				value={knob.label}
 				onChange={(v) => onKnobs?.onDecl(knob.key, { label: v })}
 				disabled={ro}
-				ariaLabel="旋钮名字"
-				placeholder="主色"
+				ariaLabel={tx("skinUi.SkinInspector.88")}
+				placeholder={tx("skinUi.SkinInspector.89")}
 			/>
 
 			<div className="flex min-w-0 items-center gap-1.5">
 				<TSelect
 					value={knob.type}
 					onChange={(t) => onKnobs?.onType(knob.key, t as CardSkinKnob["type"])}
-					options={KNOB_TYPE_LABELS.map(([value, label]) => ({ value, label }))}
+					options={knobTypeLabels().map(([value, label]) => ({ value, label }))}
 					disabled={ro}
-					ariaLabel="旋钮档位"
+					ariaLabel={tx("skinUi.SkinInspector.90")}
 					full={false}
 				/>
 				<KnobDefault knob={knob} onKnobs={onKnobs} />
@@ -925,16 +950,18 @@ function KnobRow({
  * 其余三档(颜色 / 字体 / 图)没有附加字段,这里什么都不画。
  */
 function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandlers }) {
+	const tx = useT();
+
 	const ro = onKnobs === undefined;
 	if (knob.type === "number") {
 		return (
 			<div className="flex min-w-0 flex-wrap items-center gap-1.5">
-				<span className="text-bn-2xs text-bn-text-tertiary">范围</span>
+				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.91")}</span>
 				<TNum
 					value={knob.min}
 					onChange={(v) => onKnobs?.onNumber(knob.key, { min: v })}
 					disabled={ro}
-					ariaLabel="取值下限"
+					ariaLabel={tx("skinUi.SkinInspector.92")}
 					width={68}
 					step={knob.step}
 				/>
@@ -943,16 +970,16 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 					value={knob.max}
 					onChange={(v) => onKnobs?.onNumber(knob.key, { max: v })}
 					disabled={ro}
-					ariaLabel="取值上限"
+					ariaLabel={tx("skinUi.SkinInspector.93")}
 					width={68}
 					step={knob.step}
 				/>
-				<span className="text-bn-2xs text-bn-text-tertiary">步长</span>
+				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.94")}</span>
 				<TNum
 					value={knob.step ?? 0}
 					onChange={(v) => onKnobs?.onNumber(knob.key, { step: v })}
 					disabled={ro}
-					ariaLabel="步长"
+					ariaLabel={tx("skinUi.SkinInspector.95")}
 					width={68}
 					step={0.01}
 					min={0}
@@ -961,11 +988,11 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 					value={knob.unit ?? ""}
 					onChange={(u) => onKnobs?.onNumber(knob.key, { unit: u })}
 					options={[
-						{ value: "", label: "无单位" },
+						{ value: "", label: tx("skinUi.SkinInspector.96") },
 						...CARD_SKIN_KNOB_UNITS.map((u) => ({ value: u, label: u })),
 					]}
 					disabled={ro}
-					ariaLabel="单位"
+					ariaLabel={tx("skinUi.SkinInspector.97")}
 					full={false}
 				/>
 			</div>
@@ -974,22 +1001,22 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 	if (knob.type === "switch") {
 		return (
 			<div className="flex min-w-0 flex-wrap items-center gap-1.5">
-				<span className="text-bn-2xs text-bn-text-tertiary">开</span>
+				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.98")}</span>
 				<TInput
 					value={knob.on}
 					onChange={(v) => onKnobs?.onSwitch(knob.key, { on: v })}
 					disabled={ro}
 					mono
-					ariaLabel="开的时候注什么"
+					ariaLabel={tx("skinUi.SkinInspector.99")}
 					placeholder="block"
 				/>
-				<span className="text-bn-2xs text-bn-text-tertiary">关</span>
+				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.100")}</span>
 				<TInput
 					value={knob.off}
 					onChange={(v) => onKnobs?.onSwitch(knob.key, { off: v })}
 					disabled={ro}
 					mono
-					ariaLabel="关的时候注什么"
+					ariaLabel={tx("skinUi.SkinInspector.101")}
 					placeholder="none"
 				/>
 			</div>
@@ -1012,27 +1039,27 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 						disabled={ro}
 						onClick={() => onKnobs?.onDefault(knob.key, option.value)}
 					>
-						起手
+						{tx("skinUi.SkinInspector.102")}
 					</ToneChip>
 					<TInput
 						value={option.value}
 						onChange={(v) => onKnobs?.onOption(knob.key, i, { value: v })}
 						disabled={ro}
 						mono
-						ariaLabel="候选注什么"
+						ariaLabel={tx("skinUi.SkinInspector.103")}
 						placeholder="12px"
 					/>
 					<TInput
 						value={option.label}
 						onChange={(v) => onKnobs?.onOption(knob.key, i, { label: v })}
 						disabled={ro}
-						ariaLabel="候选叫什么"
-						placeholder="圆"
+						ariaLabel={tx("skinUi.SkinInspector.104")}
+						placeholder={tx("skinUi.SkinInspector.105")}
 					/>
 					{ro || knob.options.length <= 1 ? null : (
 						<IconButton
 							size="sm"
-							label="删掉这个候选"
+							label={tx("skinUi.SkinInspector.106")}
 							icon={<Icon.trash size={12} />}
 							onClick={() => onKnobs.onOptionRemove(knob.key, i)}
 						/>
@@ -1041,7 +1068,7 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 			))}
 			{ro || knob.options.length >= CARD_SKIN_KNOB_LIMITS.maxOptions ? null : (
 				<Btn size="sm" variant="ghost" onClick={() => onKnobs.onOptionAdd(knob.key)}>
-					<Icon.plus size={12} /> 添加候选
+					<Icon.plus size={12} /> {tx("skinUi.SkinInspector.107")}
 				</Btn>
 			)}
 		</div>
@@ -1053,25 +1080,40 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
  * `image` 压根没有(图是主人自己的东西,皮肤起不出默认值),两档都不在这儿画。
  */
 function KnobDefault({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandlers }) {
+	const tx = useT();
+
 	const ro = onKnobs === undefined;
 	const set = (v: string | number | boolean) => onKnobs?.onDefault(knob.key, v);
 	switch (knob.type) {
 		case "color":
-			return <TColor value={knob.default} onChange={set} disabled={ro} ariaLabel="起手位置" />;
+			return (
+				<TColor
+					value={knob.default}
+					onChange={set}
+					disabled={ro}
+					ariaLabel={tx("skinUi.SkinInspector.108")}
+				/>
+			);
 		case "number":
 			return (
 				<TNum
 					value={knob.default}
 					onChange={set}
 					disabled={ro}
-					ariaLabel="起手位置"
+					ariaLabel={tx("skinUi.SkinInspector.109")}
 					width={80}
 					step={knob.step}
 				/>
 			);
 		case "switch":
 			return (
-				<Toggle value={knob.default} onChange={set} disabled={ro} size="sm" ariaLabel="起手位置" />
+				<Toggle
+					value={knob.default}
+					onChange={set}
+					disabled={ro}
+					size="sm"
+					ariaLabel={tx("skinUi.SkinInspector.110")}
+				/>
 			);
 		case "font":
 			return (
@@ -1079,14 +1121,14 @@ function KnobDefault({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHand
 					value={knob.default}
 					onChange={set}
 					disabled={ro}
-					ariaLabel="起手位置"
-					placeholder="留空 = 跟着兜底链"
+					ariaLabel={tx("skinUi.SkinInspector.111")}
+					placeholder={tx("skinUi.SkinInspector.112")}
 				/>
 			);
 		default:
 			return (
 				<span className="text-bn-2xs text-bn-text-tertiary">
-					{knob.type === "image" ? "图没有起手位置" : "起手位置在候选表里选"}
+					{knob.type === "image" ? tx("skinUi.SkinInspector.113") : tx("skinUi.SkinInspector.114")}
 				</span>
 			);
 	}
@@ -1122,22 +1164,27 @@ function AssetSection({
 	/** 传失败的原因(体积 / 后缀 / 重名),原样摆出来 —— 自编一句「上传失败」等于把线索吞掉。 */
 	uploadError?: string | null;
 }) {
+	const tx = useT();
+
 	const fonts = manifest.fonts ?? [];
 	const fontAssets = assets.filter((a) => /\.(woff2|woff|ttf|otf)$/.test(a));
 	const err = fontsError(manifest, assets);
 	return (
 		<>
-			<Section label="资产">
+			<Section label={tx("skinUi.SkinInspector.115")}>
 				<div className="flex flex-col gap-2 p-2.5">
 					<span className="text-bn-2xs text-bn-text-tertiary">
-						图与字体文件住在这套皮肤自己的包里,导出的 zip 会带着它们。在块的 CSS / HTML 里用{" "}
-						<code className="font-mono">asset:&lt;名字&gt;</code> 引用。
+						{tx("skinUi.SkinInspector.116")}{" "}
+						<code className="font-mono">{tx("skinUi.SkinInspector.117")}</code>{" "}
+						{tx("skinUi.SkinInspector.118")}
 					</span>
 
 					{assetsPending ? (
-						<span className="text-bn-2xs text-bn-text-tertiary">正在读…</span>
+						<span className="text-bn-2xs text-bn-text-tertiary">
+							{tx("skinUi.SkinInspector.119")}
+						</span>
 					) : assets.length === 0 ? (
-						<EmptyNote size="sm">这套皮肤还没有自带任何文件。</EmptyNote>
+						<EmptyNote size="sm">{tx("skinUi.SkinInspector.120")}</EmptyNote>
 					) : (
 						assets.map((name) => (
 							<div key={name} className="flex min-w-0 items-center gap-1.5">
@@ -1147,7 +1194,7 @@ function AssetSection({
 								{on ? (
 									<IconButton
 										size="sm"
-										label="删掉这份资产"
+										label={tx("skinUi.SkinInspector.121")}
 										icon={<Icon.trash size={12} />}
 										onClick={() => on.onDeleteAsset(name)}
 									/>
@@ -1162,7 +1209,7 @@ function AssetSection({
 							onFile={(file) => file && on.onUpload(file)}
 							className="flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-bn-2xs"
 						>
-							<Icon.plus size={12} /> 传一份资产
+							<Icon.plus size={12} /> {tx("skinUi.SkinInspector.122")}
 						</AddFileButton>
 					) : null}
 
@@ -1170,11 +1217,13 @@ function AssetSection({
 				</div>
 			</Section>
 
-			<Section label="自带字体">
+			<Section label={tx("skinUi.SkinInspector.123")}>
 				<div className="flex flex-col gap-2 p-2.5">
 					<span className="text-bn-2xs text-bn-text-tertiary">
-						每一行注一条 <code className="font-mono">@font-face</code>,块的 CSS 里直接写{" "}
-						<code className="font-mono">font-family:&lt;字体名&gt;</code>。
+						{tx("skinUi.SkinInspector.124")}
+						<code className="font-mono">@font-face</code>
+						{tx("skinUi.SkinInspector.125")}{" "}
+						<code className="font-mono">{tx("skinUi.SkinInspector.126")}</code>。
 					</span>
 
 					{fonts.map((font, i) => (
@@ -1185,23 +1234,23 @@ function AssetSection({
 								value={font.family}
 								onChange={(v) => on?.onFont(i, { family: v })}
 								disabled={on === undefined}
-								ariaLabel="字体名"
+								ariaLabel={tx("skinUi.SkinInspector.127")}
 								placeholder="Song"
 							/>
 							<TSelect
 								value={font.asset}
 								onChange={(v) => on?.onFont(i, { asset: v })}
 								options={[
-									{ value: "", label: "选一份…" },
+									{ value: "", label: tx("skinUi.SkinInspector.128") },
 									...fontAssets.map((a) => ({ value: `asset:${a}`, label: a })),
 								]}
 								disabled={on === undefined}
-								ariaLabel="用哪份资产"
+								ariaLabel={tx("skinUi.SkinInspector.129")}
 							/>
 							{on ? (
 								<IconButton
 									size="sm"
-									label="删掉这一行"
+									label={tx("skinUi.SkinInspector.130")}
 									icon={<Icon.trash size={12} />}
 									onClick={() => on.onRemoveFont(i)}
 								/>
@@ -1210,17 +1259,17 @@ function AssetSection({
 					))}
 
 					{fonts.length > 0 && fontAssets.length === 0 ? (
-						<HintNote>先在上面传一份字体文件(woff2 / woff / ttf / otf),这里才选得到。</HintNote>
+						<HintNote>{tx("skinUi.SkinInspector.131")}</HintNote>
 					) : null}
 					{err ? <ErrorNote size="sm">{err}</ErrorNote> : null}
 
 					{on === undefined ? null : fonts.length >= CARD_SKIN_LIMITS.maxFonts ? (
 						<span className="text-bn-2xs text-bn-text-tertiary">
-							已经 {CARD_SKIN_LIMITS.maxFonts} 款,加不下了。
+							{tx("skinUi.SkinInspector.fontLimit", { count: CARD_SKIN_LIMITS.maxFonts })}
 						</span>
 					) : (
 						<Btn size="sm" variant="outline" onClick={on.onAddFont}>
-							<Icon.plus size={12} /> 添加字体
+							<Icon.plus size={12} /> {tx("skinUi.SkinInspector.134")}
 						</Btn>
 					)}
 				</div>

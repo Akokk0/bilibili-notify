@@ -130,7 +130,7 @@ describe("编辑器 ·「请女仆帮忙写」的接线", () => {
 		fireEvent.change(within(dialog).getByLabelText("想让这段 CSS 变成什么样"), {
 			target: { value: "圆角大一点" },
 		});
-		fireEvent.click(within(dialog).getByRole("button", { name: "拜托啦" }));
+		fireEvent.click(within(dialog).getByRole("button", { name: "生成" }));
 
 		await waitFor(() => expect(streamCardSkinAiCss).toHaveBeenCalledOnce());
 		const [skinId, body] = vi.mocked(streamCardSkinAiCss).mock.calls[0] ?? [];
