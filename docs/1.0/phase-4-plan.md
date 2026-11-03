@@ -177,6 +177,8 @@
 
 ### 4-57（2026-11-03）
 
+后续4-53a的web包门禁发现：新增rank/durationSec虽已显式给label，仍须登记FIELD_LABELS；已按现有conformance seam补两项惰性label登记，复用原译文，无新中文/豁免。该修正单独原子提交，片数/53/23不变；未放宽字段守卫。
+
 沿主人小改UI边界，只补醒目留言既有示例表单：金额、皮肤六档配色rank、展示时长durationSec独立，秒数0隐藏时长；默认仍金额30/CNY、rank1、60秒，保留原默认示例外观，改变金额不推导另外两格。预览与测试推送共用ContentSchema及渲染路径，rank限1–6整数、时长非负整数；直接构造generateSuperchatCard的中立输入，删平台翻译器import、user.uid和价格/时长表。真实来源的换算、皮肤取色规则与持久化均不动。卡片路由import-boundaries和uid-ratchet各最后1处清零，两张历史欠账表均空。
 
 表单复用Picker/TNum/Field，两个示例金额label/hint显式覆盖旧field-labels的“价格决定背景色与时长”，说明区分示例与真实来源，平实/女仆层齐。整份field-labels旧字沿授权仍归4-53b，无新硬编码或豁免，三棘轮3363/113/25不变。390px实测发现旧横排文字/金额把卡片撑到约490px，局部改上下排，内容网格补grid-cols-1后卡334px、三字段296px/scrollWidth=clientWidth，桌面原三栏保留；全局顶栏挤压仍4-58，不声称整页窄屏正常。完成44/61，迁移53/备份23，4-38仍未开始/暂缓。

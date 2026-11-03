@@ -668,6 +668,18 @@ export const FIELD_LABELS = {
 		},
 		section: "cardPreview",
 	},
+	rank: {
+		get label() {
+			return i18n.t("cards.content.superchatRank");
+		},
+		section: "cardPreview",
+	},
+	durationSec: {
+		get label() {
+			return i18n.t("cards.content.superchatDuration");
+		},
+		section: "cardPreview",
+	},
 	tierKey: {
 		get label() {
 			return i18n.t("sourceUi.config.field.labels.label.95");
