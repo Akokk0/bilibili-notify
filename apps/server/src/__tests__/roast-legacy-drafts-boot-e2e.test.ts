@@ -299,9 +299,9 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 		expect(hooks[1]?.payload).toEqual({
 			kind: "text",
 			text: [
-				"📊 UP 主周报（近 7 天）",
+				"📊 UP主周报（近 7 天）",
 				"🕊️ 本期鸽王：UID 102 —— 整周没动静",
-				"🏆 勤奋 UP：UID 101 —— 好歹发了一条",
+				"🏆 勤奋UP主：UID 101 —— 好歹发了一条",
 			].join("\n"),
 		});
 		expect(await draftsOnDisk()).toEqual([]);

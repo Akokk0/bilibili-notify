@@ -111,9 +111,9 @@ function makeFakePuppeteer(): PuppeteerAdapter {
 describe("cards route — testPushCaption(测试推送图说)", () => {
 	it("每种卡片类型 → 带「测试推送」前缀 + 该类型中文标签的文案", () => {
 		expect(testPushCaption("live")).toContain("直播卡");
-		expect(testPushCaption("post")).toContain("动态卡");
+		expect(testPushCaption("post")).toContain("作品卡");
 		expect(testPushCaption("superchat")).toContain("醒目留言卡");
-		expect(testPushCaption("membership")).toContain("上舰卡");
+		expect(testPushCaption("membership")).toContain("会员卡");
 		for (const k of ["live", "post", "superchat", "membership"] as const) {
 			// 非空且带前缀 —— 顶替 QQ 富媒体空 content 的占位空格,接收方一眼知是测试。
 			expect(testPushCaption(k)).toContain("测试推送");

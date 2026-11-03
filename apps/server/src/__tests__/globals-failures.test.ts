@@ -149,7 +149,7 @@ describe("PATCH /api/settings 的失败", () => {
 		expect(res.status).toBe(409);
 		expect(await res.json()).toEqual({
 			code: "not_configured",
-			message: "apiKey 字段为空，启用 AI 前请先填写。",
+			message: "主人，apiKey 字段为空，启用 AI 前请先填写。",
 		});
 		await runtime.dispose();
 	});
