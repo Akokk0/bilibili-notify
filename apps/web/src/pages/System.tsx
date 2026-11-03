@@ -12,6 +12,7 @@ import type { Connection, PushTarget } from "../types/domain";
 import type { GlobalConfigPatch, SettingsPatch } from "../types/globals";
 import { SkinSection } from "./skins/SkinSection";
 import { AccountSection } from "./system/account-section";
+import { CredentialsSection } from "./system/credentials-section";
 import { MaintenanceSection } from "./system/maintenance-section";
 import { MessagingSection } from "./system/messaging-section";
 import { PreferencesSection } from "./system/preferences-section";
@@ -175,6 +176,7 @@ export default function System() {
 					<LoadingBlock label="正在读取系统配置" />
 				) : null}
 
+				{section === "account" ? <CredentialsSection /> : null}
 				<AccountSection
 					active={section === "account"}
 					draft={draft}

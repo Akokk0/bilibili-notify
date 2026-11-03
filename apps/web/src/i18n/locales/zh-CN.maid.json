@@ -312,5 +312,12 @@
 	"preferences.subtitle": "主人，选好后保存，女仆再把设置应用到本台服务和面板哦。",
 	"preferences.locale.hint": "主人，整台服务会用同一种语言；还没翻好的内容暂时用简体中文。",
 	"preferences.voice.hint": "主人，这里只换交互和提示的口吻，标题和数据名照常；没有女仆译文的语言会先收起此项，原选择会留着哦。",
-	"preferences.timezone.hint": "主人，请填 IANA 时区名，例如 Asia/Shanghai；卡片时间、服务端日程和免打扰会跟着走。保存后只重排未来日程，不补跑；浏览器统计图表仍按本机时区切天哦。"
+	"preferences.timezone.hint": "主人，请填 IANA 时区名，例如 Asia/Shanghai；卡片时间、服务端日程和免打扰会跟着走。保存后只重排未来日程，不补跑；浏览器统计图表仍按本机时区切天哦。",
+	"credentials.hint": "主人，这里修改面板登录账号和密码；保存成功后，所有面板会话都会失效，请用新凭据重新登录哦。",
+	"credentials.saving": "正在保存哦…",
+	"credentials.failed": "主人，账号密码没改成功：{reason}",
+	"credentials.required": "主人，请把账号和密码填完整哦。",
+	"credentials.mismatch": "主人，两次输入的新密码不一样，请再核对一下。",
+	"credentials.passwordHint": "主人，新密码请用8–256位，账号不要超过256位哦。",
+	"credentials.pendingDraft": "主人，请先保存或放弃手上的系统设置，再来修改账号密码哦。"
 }

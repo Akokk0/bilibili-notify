@@ -56,6 +56,8 @@ type Labelled = { ariaLabel?: string };
 type Sized = { width?: number };
 
 export interface TInputProps extends Labelled, Sized {
+	id?: string;
+	autoComplete?: string;
 	value: string;
 	onChange: (next: string) => void;
 	placeholder?: string;
@@ -68,6 +70,8 @@ export interface TInputProps extends Labelled, Sized {
 }
 
 export function TInput({
+	id,
+	autoComplete,
 	value,
 	onChange,
 	placeholder,
@@ -85,10 +89,11 @@ export function TInput({
 	return (
 		<input
 			type={effectiveType}
+			id={id}
 			value={value}
 			onChange={(e) => onChange(e.target.value)}
 			placeholder={placeholder}
-			autoComplete={secret ? "new-password" : undefined}
+			autoComplete={autoComplete ?? (secret ? "new-password" : undefined)}
 			disabled={disabled}
 			aria-label={ariaLabel}
 			data-bn={INPUT_HOOK}

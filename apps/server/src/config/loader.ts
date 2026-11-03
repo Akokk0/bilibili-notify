@@ -281,7 +281,7 @@ function maybeSeedDashboardCredentials(
 			`             username: ${username}\n` +
 			`             password: ${password}\n` +
 			"           凭据已写入 bootstrap yaml(host 端 ./config/bn.config.yaml)。" +
-			"登录后请编辑该文件修改 auth.basicAuth 并重启容器。",
+			"登录后可在系统页修改账号密码。",
 	);
 }
 

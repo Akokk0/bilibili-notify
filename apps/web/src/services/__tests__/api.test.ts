@@ -316,11 +316,15 @@ describe("全局 401 钩子", () => {
 		expect(hook).not.toHaveBeenCalled();
 	});
 
-	it("/api/session/* 的 401 是「账号密码错」,不是会话过期,不触发", async () => {
+	it.each(["login", "credentials"])("/api/session/%s 的 401 不触发全局退出", async (action) => {
 		const hook = vi.fn();
 		setUnauthorizedHandler(hook);
 		respond(401, { code: "unauthorized", message: "账号或密码错误" });
-		await expect(api.post("/api/session/login", {})).rejects.toMatchObject({ status: 401 });
+		await expect(
+			action === "login"
+				? api.post("/api/session/login", {})
+				: api.put("/api/session/credentials", {}),
+		).rejects.toMatchObject({ status: 401 });
 		expect(hook).not.toHaveBeenCalled();
 	});
 

@@ -1297,5 +1297,20 @@
 	"preferences.voice.plain": "平实",
 	"preferences.voice.default": "跟随默认（{voice}）",
 	"preferences.timezone.label": "时区",
-	"preferences.timezone.hint": "填写 IANA 时区名，例如 Asia/Shanghai。用于卡片时间和服务端日程、免打扰；保存后重排未来日程，不补跑。浏览器内统计图表仍按本机时区切天。"
+	"preferences.timezone.hint": "填写 IANA 时区名，例如 Asia/Shanghai。用于卡片时间和服务端日程、免打扰；保存后重排未来日程，不补跑。浏览器内统计图表仍按本机时区切天。",
+	"credentials.title": "面板账号",
+	"credentials.hint": "修改面板登录账号与密码。保存成功后，所有面板登录会话失效，需要使用新账号和密码重新登录。",
+	"credentials.open": "修改账号密码",
+	"credentials.current": "当前密码",
+	"credentials.username": "新账号",
+	"credentials.password": "新密码",
+	"credentials.confirmation": "确认新密码",
+	"credentials.cancel": "取消",
+	"credentials.save": "保存并重新登录",
+	"credentials.saving": "保存中…",
+	"credentials.failed": "修改失败：{reason}",
+	"credentials.required": "请填写完整的账号和密码。",
+	"credentials.mismatch": "两次输入的新密码不一致。",
+	"credentials.passwordHint": "新密码须为8–256位，账号最长256位。",
+	"credentials.pendingDraft": "请先保存或放弃系统设置，再修改账号密码。"
 }

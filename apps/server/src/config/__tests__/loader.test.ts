@@ -339,6 +339,7 @@ describe("loadBootstrapConfig — B 模型 first-boot 凭据自动生成", () =>
 		expect(fileAuth.password).toBe(pw);
 		// 打了日志(docker logs 可见)
 		expect(logged.some((m) => m.includes("自动生成") && m.includes("password:"))).toBe(true);
+		expect(logged.some((m) => m.includes("登录后可在系统页修改账号密码。"))).toBe(true);
 	});
 
 	it("BN_ALLOW_NO_AUTH=1 → 不生成(尊重显式逃生口)", () => {
