@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /** @jsxImportSource vue */
 
 /**
@@ -35,9 +36,9 @@ function isOnAir(p: LiveCardView): boolean {
 }
 
 function statusLabel(p: LiveCardView): { text: string; bg: string } {
-	if (isOnAir(p)) return { text: "直播中", bg: "#FF6699" };
-	if (p.status === "end") return { text: "已下播", bg: "#aaa" };
-	return { text: "未开播", bg: "#aaa" };
+	if (isOnAir(p)) return { text: packageText("image.blocks.live.1"), bg: "#FF6699" };
+	if (p.status === "end") return { text: packageText("image.blocks.live.2"), bg: "#aaa" };
+	return { text: packageText("image.blocks.live.3"), bg: "#aaa" };
 }
 
 /**
@@ -46,7 +47,12 @@ function statusLabel(p: LiveCardView): { text: string; bg: string } {
  */
 const creatorAvatar: BlockRenderer<LiveCardView> = (p) =>
 	p.creatorAvatarUrl ? (
-		<img data-bn="image" class="object-cover shrink-0" src={p.creatorAvatarUrl} alt="主播头像" />
+		<img
+			data-bn="image"
+			class="object-cover shrink-0"
+			src={p.creatorAvatarUrl}
+			alt={packageText("image.blocks.live.4")}
+		/>
 	) : null;
 
 /** 主播名(原子块)。 */
@@ -89,31 +95,35 @@ const stat =
 /** 在看人数(原子块):下播以外的状态。 */
 const currentViewers = stat(
 	(p) => p.status !== "end",
-	(p) => (p.currentViewers ? `人气：${p.currentViewers}` : ""),
+	(p) => (p.currentViewers ? packageText("image.blocks.live.5", { value0: p.currentViewers }) : ""),
 	"span",
 );
 
 /** 点赞(原子块):只有下播。 */
 const likes = stat(
 	(p) => p.status === "end",
-	(p) => (p.likes ? `点赞：${p.likes}` : ""),
+	(p) => (p.likes ? packageText("image.blocks.live.6", { value0: p.likes }) : ""),
 	"span",
 );
 
 /** 分类(原子块)。没有分类就收起 —— 拓展可以不报,不留一个「分区：」后面什么都没有。 */
 const category = stat(
 	() => true,
-	(p) => (p.category ? `分区：${p.category}` : ""),
+	(p) => (p.category ? packageText("image.blocks.live.7", { value0: p.category }) : ""),
 	"span",
 );
 
 /** 粉丝数(原子块):开播 / 直播中。 */
-const followers = stat(isOnAir, (p) => (p.followers ? `当前粉丝数：${p.followers}` : ""), "div");
+const followers = stat(
+	isOnAir,
+	(p) => (p.followers ? packageText("image.blocks.live.8", { value0: p.followers }) : ""),
+	"div",
+);
 
 /** 累计观看(原子块):只有下播。 */
 const totalViewers = stat(
 	(p) => p.status === "end",
-	(p) => (p.totalViewers ? `累计观看人数：${p.totalViewers}` : ""),
+	(p) => (p.totalViewers ? packageText("image.blocks.live.9", { value0: p.totalViewers }) : ""),
 	"div",
 );
 
@@ -134,7 +144,7 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardView>> = {
 			// 百分比没有参照物,浏览器当 auto 办 —— 所以这两个 class 对老皮肤是零影响。
 			class="block w-full h-full object-cover"
 			src={p.cover}
-			alt="封面"
+			alt={packageText("image.blocks.live.10")}
 		/>
 	),
 
@@ -156,7 +166,9 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardView>> = {
 
 	title: (p) => <div data-bn="text">{p.title}</div>,
 
-	description: (p) => <div data-bn="text">{p.description || "这个主播很懒，什么简介都没写"}</div>,
+	description: (p) => (
+		<div data-bn="text">{p.description || packageText("image.blocks.live.11")}</div>
+	),
 
 	creatorAvatar,
 	creatorName,

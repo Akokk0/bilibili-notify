@@ -121,8 +121,7 @@ export const RATCHET = {
 
 	"packages/ai/src/commentary-generator.ts": 1,
 	"packages/ai/src/tools.ts": 1,
-	"packages/image/src/image-renderer.ts": 7,
-	"packages/image/src/preview/sample-cards.ts": 8,
+	"packages/image/src/image-renderer.ts": 2,
 	"packages/internal/src/card-skin.ts": 7,
 	"packages/internal/src/schema/card-skin.ts": 2,
 	"packages/storage/src/key-manager.ts": 1,

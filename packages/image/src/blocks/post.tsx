@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /** @jsxImportSource vue */
 
 /**
@@ -73,7 +74,12 @@ export type PostBlockProps = {
  */
 const creatorAvatar: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.creatorAvatarUrl ? (
-		<img data-bn="image" class="shrink-0 object-cover" src={node.creatorAvatarUrl} alt="头像" />
+		<img
+			data-bn="image"
+			class="shrink-0 object-cover"
+			src={node.creatorAvatarUrl}
+			alt={packageText("image.blocks.post.1")}
+		/>
 	) : null;
 
 /**

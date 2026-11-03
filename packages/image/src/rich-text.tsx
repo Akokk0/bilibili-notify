@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /** @jsxImportSource vue */
 
 /**
@@ -126,7 +127,7 @@ export function renderRichText(
 					);
 				return seg.text;
 			})}
-			{truncated && <span class="text-[#999]">...（全文过长，已省略）</span>}
+			{truncated && <span class="text-[#999]">{packageText("image.rich-text.1")}</span>}
 		</div>
 	);
 }
@@ -164,7 +165,7 @@ function parseRichTextArticle(rt: RichText, title?: string, imageUrl?: ImageUrlO
 	// 标题与「已省略」那行走 **class 不走 inline**:这段是拼进 `innerHTML` 的,而 inline
 	// 皮肤永远压不过(清洗器一律摘 `!important`)。同一句灰字在上面非专栏那条路本来就是
 	// `text-[#999]`,两条路的可染性不该差一截。
-	const fullHtml = `${title ? `<h1 class="text-[18px] font-bold mb-[8px]">${escapeHtml(title)}</h1>` : ""}${displayHtml}${truncated ? '<span class="text-[#999]">...（全文过长，已省略）</span>' : ""}`;
+	const fullHtml = `${title ? `<h1 class="text-[18px] font-bold mb-[8px]">${escapeHtml(title)}</h1>` : ""}${displayHtml}${truncated ? `<span class="text-[#999]">${escapeHtml(packageText("image.rich-text.2"))}</span>` : ""}`;
 
 	return (
 		<div

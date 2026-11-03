@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 直播卡的**中立输入 → 块吃的那一份**(ADR-0019 决策 68)。
  *
@@ -14,6 +15,7 @@ import {
 	type PostImage,
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { escapeHtml } from "./html-escape";
 import type { ImageUrlOf } from "./rich-text";
 import type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
 
@@ -36,11 +38,12 @@ function liveTimeText(
 	startedAt: string | undefined,
 	timezone: string,
 ): string {
-	if (status === "offline") return "未开播";
+	if (status === "offline") return packageText("image.live-view.1");
 	const start = startedAtOf(startedAt, timezone);
 	if (start === undefined) return "";
-	if (status === "streaming") return `直播时长：${formatDuration(start.toMillis())}`;
-	return `开播时间：${start.toFormat(LIVE_TIME_FORMAT)}`;
+	if (status === "streaming")
+		return packageText("image.live-view.2", { value0: formatDuration(start.toMillis()) });
+	return packageText("image.live-view.3", { value0: start.toFormat(LIVE_TIME_FORMAT) });
 }
 
 /**
@@ -79,25 +82,25 @@ export function coverUrlOf(
  * 图形得随发行物附上它的许可声明,而 bundle 会剥掉注释。颜色只用卡片里现成的两种灰:
  * `#999`(次要文字,底色取它的 12%)与 `#aaa`(「已下播」角标)。
  */
-const LIVE_COVER_PLACEHOLDER_SVG = [
-	'<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">',
-	'<rect width="640" height="360" fill="#999" fill-opacity="0.12"/>',
-	// 图标画在 64 格的网格里、放大 2.5 倍,中心落在 (320, 150)。
-	'<g transform="translate(240 77.5) scale(2.5)">',
-	'<g fill="none" stroke="#aaa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">',
-	'<rect x="8" y="18" width="48" height="34" rx="6"/>',
-	'<path d="M27 12.5a7 7 0 0 1 10 0"/>',
-	'<path d="M22.5 8a13.5 13.5 0 0 1 19 0"/>',
-	"</g>",
-	'<path d="M28 28v14l12-7z" fill="#aaa"/>',
-	"</g>",
-	'<text x="320" y="258" text-anchor="middle" font-family="sans-serif" font-size="26" fill="#999">暂无封面</text>',
-	"</svg>",
-].join("");
+export function liveCoverPlaceholder(): string {
+	const svg = [
+		'<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">',
+		'<rect width="640" height="360" fill="#999" fill-opacity="0.12"/>',
+		// 图标画在 64 格的网格里、放大 2.5 倍,中心落在 (320, 150)。
+		'<g transform="translate(240 77.5) scale(2.5)">',
+		'<g fill="none" stroke="#aaa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">',
+		'<rect x="8" y="18" width="48" height="34" rx="6"/>',
+		'<path d="M27 12.5a7 7 0 0 1 10 0"/>',
+		'<path d="M22.5 8a13.5 13.5 0 0 1 19 0"/>',
+		"</g>",
+		'<path d="M28 28v14l12-7z" fill="#aaa"/>',
+		"</g>",
+		`<text x="320" y="258" text-anchor="middle" font-family="sans-serif" font-size="26" fill="#999">${escapeHtml(packageText("image.live-view.4"))}</text>`,
+		"</svg>",
+	].join("");
 
-export const LIVE_COVER_PLACEHOLDER = `data:image/svg+xml;base64,${Buffer.from(
-	LIVE_COVER_PLACEHOLDER_SVG,
-).toString("base64")}`;
+	return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}
 
 export interface LiveCardViewOptions {
 	/**
@@ -114,7 +117,7 @@ export interface LiveCardViewOptions {
 /**
  * 中立输入 → 块吃的那一份。
  *
- * 封面:自定义封面 > 输入的封面({@link coverUrlOf}) > {@link LIVE_COVER_PLACEHOLDER}。`hasCover` 只认前两样 ——
+ * 封面:自定义封面 > 输入的封面({@link coverUrlOf}) > {@link liveCoverPlaceholder}。`hasCover` 只认前两样 ——
  * 占位图不算真封面,皮肤拿 `live.hasCover` 做 `showIf` 时照旧能把这一格收起。头像:`creator.avatar` 解析到了
  * 就是地址,没有或解析不到是空串(头像块整块收起)。
  */
@@ -131,7 +134,7 @@ export function buildLiveCardView(
 		title: input.title ?? "",
 		category: input.category ?? "",
 		description: input.description ?? "",
-		cover: cover || LIVE_COVER_PLACEHOLDER,
+		cover: cover || liveCoverPlaceholder(),
 		hasCover: cover !== "",
 		time: liveTimeText(input.status, input.startedAt, timezone),
 		currentViewers: countText(input.currentViewers),

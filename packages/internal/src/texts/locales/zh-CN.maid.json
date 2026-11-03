@@ -16,5 +16,17 @@
 	"ui.form.addQuiet": "+ 添加免扰时段吧，主人",
 	"ui.select.placeholder": "请选择哦，主人",
 	"ui.select.empty": "暂时没有可选项哦，主人",
-	"ui.select.unavailable": "当前值不可用（{value}），请重选哦，主人"
+	"ui.select.unavailable": "当前值不可用（{value}），请重选哦，主人",
+	"image.image-renderer.2": "主人，生成直播卡片失败！错误: {value0}",
+	"image.image-renderer.4": "主人，生成会员卡片失败！错误: {value0}",
+	"image.image-renderer.6": "主人，生成醒目留言卡片失败！错误: {value0}",
+	"image.image-renderer.8": "主人，生成作品卡片失败！错误: {value0}",
+	"image.image-renderer.10": "主人，生成词云图片失败！错误: {value0}",
+	"image.image-renderer.12": "主人，生成周报卡片失败！错误: {value0}",
+	"image.image-renderer.14": "主人，生成锐评卡片失败！错误: {value0}",
+	"image.image-renderer.15": "主人，无法获取 html 元素",
+	"image.image-renderer.16": "主人，无法获取 boundingBox",
+	"image.image-renderer.17": "主人，截图超时（20s）",
+	"image.preview.sample-cards.25": "主人，上会员卡的示例需要调用方给一档(options.membershipTier)",
+	"image.skin.knob-assets.1": "主人，旋钮「{value0}」的图「{value1}」压不进 CSS 自定义属性的 2 MiB 上限({value2} / 上限 {value3}),这一张没画上去"
 }

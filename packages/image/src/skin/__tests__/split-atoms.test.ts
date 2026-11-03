@@ -19,8 +19,8 @@ import { sampleCard } from "../../preview/sample-cards";
 import { renderCardWithSkin } from "../render-skin";
 
 /** 示例数据里那几句,在各自的卡上只出现在一处。 */
-const AV_TEXT = "这是一段示例动态正文，用来看正文块的字号、行距与留白。";
-const FORWARD_TEXT = "这是一段示例转发语，下面那张是被转发的原动态。";
+const AV_TEXT = "这是一段示例作品正文，用来看正文块的字号、行距与留白。";
+const FORWARD_TEXT = "这是一段示例转发语，下面那张是被转发的原作品。";
 const VIDEO_TITLE = "【示例视频】这是一条用来预览卡片的示例投稿标题";
 
 /**
@@ -235,7 +235,7 @@ describe("醒目留言卡 — amount / duration / to", () => {
 	it("to:画的是「SC to」那一行,主播小头像与主播名的挂点都在", async () => {
 		const root = soleRoot(await renderWith("superchat", ["to"]), "to");
 		expect(root.textContent).toContain("SC to");
-		expect(root.textContent).toContain("示例 UP 主");
+		expect(root.textContent).toContain("示例作者");
 		expect(root.textContent).not.toContain("示例粉丝");
 		expect(hooksOn(root)).toEqual(["text"]);
 		expect(hooksUnder(root)).toEqual(
@@ -254,7 +254,7 @@ describe("上舰卡 — viewerName / creator", () => {
 
 	it("creator:画的是主播胶囊,主播小头像与主播名的挂点都在", async () => {
 		const root = soleRoot(await renderWith("membership", ["creator"]), "creator");
-		expect(root.textContent).toBe("示例 UP 主");
+		expect(root.textContent).toBe("示例作者");
 		expect(root.getAttribute("style") ?? "").toContain("--bn-card-tier-color:");
 		expect(hooksOn(root)).toEqual(["pill"]);
 		expect(hooksUnder(root)).toEqual(new Set(["pill", "creatorAvatar", "creatorName"]));

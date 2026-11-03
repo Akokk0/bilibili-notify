@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /** @jsxImportSource vue */
 
 /**
@@ -50,7 +51,11 @@ import type { BlockRenderer } from "./types";
 const viewerAvatar: BlockRenderer<SuperchatCardView> = (p) =>
 	p.viewerAvatarUrl ? (
 		<div data-bn="image" class="overflow-hidden">
-			<img class="w-full h-full object-cover" src={p.viewerAvatarUrl} alt="观众头像" />
+			<img
+				class="w-full h-full object-cover"
+				src={p.viewerAvatarUrl}
+				alt={packageText("image.blocks.superchat.1")}
+			/>
 		</div>
 	) : null;
 

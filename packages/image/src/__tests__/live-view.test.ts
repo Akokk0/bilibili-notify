@@ -14,9 +14,10 @@
  * - 头像、封面是引用:经 `imageUrl` 解析,解析不到的收起 / 画占位。
  */
 
+import { bindPackageText } from "@bilibili-notify/internal/texts";
 import { Settings } from "luxon";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { buildLiveCardView, LIVE_COVER_PLACEHOLDER } from "../live-view";
+import { buildLiveCardView, liveCoverPlaceholder } from "../live-view";
 import type { LiveCardInput, LiveCardStatus } from "../templates/live-card";
 
 /** 北京时间 2026-09-13 20:00:00。 */
@@ -87,7 +88,7 @@ describe("buildLiveCardView — 整个视图", () => {
 			title: "",
 			category: "",
 			description: "",
-			cover: LIVE_COVER_PLACEHOLDER,
+			cover: liveCoverPlaceholder(),
 			hasCover: false,
 			time: "",
 			currentViewers: "",
@@ -367,7 +368,7 @@ describe("buildLiveCardView — 封面", () => {
 			expect(
 				buildLiveCardView(input({ cover }), { coverOverride: "" }),
 				JSON.stringify(cover),
-			).toMatchObject({ cover: LIVE_COVER_PLACEHOLDER, hasCover: false });
+			).toMatchObject({ cover: liveCoverPlaceholder(), hasCover: false });
 		}
 	});
 
@@ -389,7 +390,7 @@ describe("buildLiveCardView — 封面", () => {
 		const cover = { ref: COVER_REF, url: "https://example.com/c.png" };
 		for (const options of [{ imageUrl: () => undefined }, {}]) {
 			expect(buildLiveCardView(input({ cover }), options)).toMatchObject({
-				cover: LIVE_COVER_PLACEHOLDER,
+				cover: liveCoverPlaceholder(),
 				hasCover: false,
 			});
 		}
@@ -399,7 +400,7 @@ describe("buildLiveCardView — 封面", () => {
 		for (const options of [{ imageUrl }, {}]) {
 			expect(
 				buildLiveCardView(input({ cover: { url: "https://example.com/c.png" } }), options),
-			).toMatchObject({ cover: LIVE_COVER_PLACEHOLDER, hasCover: false });
+			).toMatchObject({ cover: liveCoverPlaceholder(), hasCover: false });
 		}
 		expect(
 			buildLiveCardView(input({ cover: { ref: COVER_REF, url: "https://example.com/c.png" } }), {
@@ -407,4 +408,27 @@ describe("buildLiveCardView — 封面", () => {
 			}).cover,
 		).toBe("data:image/png;base64,COVER-REF");
 	});
+});
+
+it("直播文案和缺封面图片在生成时取字，来源内容保持原文且SVG文字转义", () => {
+	const input: LiveCardInput = {
+		status: "offline",
+		creator: { name: "用户原名" },
+		title: "来源原题",
+	};
+	const original = buildLiveCardView(input);
+	expect(original.time).toBe("未开播");
+	const binding = bindPackageText(() => "Live <&>");
+	try {
+		const translated = buildLiveCardView(input);
+		expect(translated.time).toBe("Live <&>");
+		expect(translated.creatorName).toBe("用户原名");
+		expect(translated.title).toBe("来源原题");
+		const svg = Buffer.from(translated.cover.split(",")[1] ?? "", "base64").toString("utf8");
+		expect(svg).toContain("Live &lt;&amp;&gt;");
+		expect(svg).not.toContain("Live <&>");
+	} finally {
+		binding.dispose();
+	}
+	expect(buildLiveCardView(input)).toEqual(original);
 });

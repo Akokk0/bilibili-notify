@@ -20,7 +20,7 @@ import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { ImageRenderer } from "../image-renderer";
-import { LIVE_COVER_PLACEHOLDER } from "../live-view";
+import { liveCoverPlaceholder } from "../live-view";
 import type { PuppeteerLike } from "../puppeteer";
 import type { LiveCardInput } from "../templates/live-card";
 
@@ -241,9 +241,9 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 	 * 裂图。验红:把 `buildLiveCardView` 的封面兜底去掉(没有就直接画空串),这条红。
 	 */
 	it("没有封面(没给、url 是空串)→ 画 BN 自带的占位图", async () => {
-		expect((await drawn(input({ cover: undefined }))).cover).toBe(LIVE_COVER_PLACEHOLDER);
-		expect((await drawn(input({ cover: { url: "" } }))).cover).toBe(LIVE_COVER_PLACEHOLDER);
-		expect((await drawn(input({ cover: {} }))).cover).toBe(LIVE_COVER_PLACEHOLDER);
+		expect((await drawn(input({ cover: undefined }))).cover).toBe(liveCoverPlaceholder());
+		expect((await drawn(input({ cover: { url: "" } }))).cover).toBe(liveCoverPlaceholder());
+		expect((await drawn(input({ cover: {} }))).cover).toBe(liveCoverPlaceholder());
 	});
 
 	it("没有封面但设了自定义封面 → 画自定义封面,不画占位", async () => {
@@ -256,8 +256,8 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 describe("直播封面的占位图", () => {
 	it("是内嵌的 SVG,带「暂无封面」那行字", () => {
 		const prefix = "data:image/svg+xml;base64,";
-		expect(LIVE_COVER_PLACEHOLDER.startsWith(prefix)).toBe(true);
-		const svg = Buffer.from(LIVE_COVER_PLACEHOLDER.slice(prefix.length), "base64").toString("utf8");
+		expect(liveCoverPlaceholder().startsWith(prefix)).toBe(true);
+		const svg = Buffer.from(liveCoverPlaceholder().slice(prefix.length), "base64").toString("utf8");
 		expect(svg).toMatch(/^<svg [^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
 		expect(svg).toContain("暂无封面");
 		// 16:9 —— 与 B 站封面同比例,没声明高度的皮肤里它按自己的比例撑开,不会压扁。
@@ -357,9 +357,9 @@ describe("generateLiveCard — 封面是 PostImage:引用 / url / 都没有", ()
 
 	it("引用解析不到(回 undefined / 抛错 / 没注入解析口):画占位,哪怕同时带着 url", async () => {
 		const gone = `${"c".repeat(64)}.png`;
-		expect(await coverSrc({ ref: gone })).toBe(LIVE_COVER_PLACEHOLDER);
+		expect(await coverSrc({ ref: gone })).toBe(liveCoverPlaceholder());
 		expect(await coverSrc({ ref: gone, url: "https://example.com/c.png" })).toBe(
-			LIVE_COVER_PLACEHOLDER,
+			liveCoverPlaceholder(),
 		);
 		expect(
 			await coverSrc(
@@ -370,15 +370,15 @@ describe("generateLiveCard — 封面是 PostImage:引用 / url / 都没有", ()
 					},
 				},
 			),
-		).toBe(LIVE_COVER_PLACEHOLDER);
+		).toBe(liveCoverPlaceholder());
 		expect(await coverSrc({ ref: COVER_REF }, { resolveImageRef: null })).toBe(
-			LIVE_COVER_PLACEHOLDER,
+			liveCoverPlaceholder(),
 		);
 	});
 
 	it("只有 url:占位(来源没把图存进图库就是没有封面;data URL 也一样,出图只认引用)", async () => {
-		expect(await coverSrc({ url: "https://example.com/c.png" })).toBe(LIVE_COVER_PLACEHOLDER);
-		expect(await coverSrc({ url: COVER })).toBe(LIVE_COVER_PLACEHOLDER);
+		expect(await coverSrc({ url: "https://example.com/c.png" })).toBe(liveCoverPlaceholder());
+		expect(await coverSrc({ url: COVER })).toBe(liveCoverPlaceholder());
 	});
 
 	it("引用与 url 都有且引用解析到了:认引用", async () => {
@@ -388,8 +388,8 @@ describe("generateLiveCard — 封面是 PostImage:引用 / url / 都没有", ()
 	});
 
 	it("两样都没有(没给 cover / cover 是空对象):占位", async () => {
-		expect(await coverSrc(undefined)).toBe(LIVE_COVER_PLACEHOLDER);
-		expect(await coverSrc({})).toBe(LIVE_COVER_PLACEHOLDER);
+		expect(await coverSrc(undefined)).toBe(liveCoverPlaceholder());
+		expect(await coverSrc({})).toBe(liveCoverPlaceholder());
 	});
 
 	/** 自定义直播封面(`colorOptions.liveCoverImage`)优先级最高,盖在引用与 url 之上,也盖在占位之上。 */
@@ -419,12 +419,12 @@ describe("generateLiveCard — 皮肤契约的封面", () => {
 
 	it("没有真封面:live.cover 给占位图(没写 showIf 的皮肤也不裂图),live.hasCover 为假", async () => {
 		expect(await coverContract(input({ cover: undefined }))).toEqual({
-			src: LIVE_COVER_PLACEHOLDER,
+			src: liveCoverPlaceholder(),
 			hasCover: "false",
 		});
 		// 引用解析不到同样是没有真封面。
 		expect(await coverContract(input({ cover: { ref: `${"c".repeat(64)}.png` } }))).toEqual({
-			src: LIVE_COVER_PLACEHOLDER,
+			src: liveCoverPlaceholder(),
 			hasCover: "false",
 		});
 	});

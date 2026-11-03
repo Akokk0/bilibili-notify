@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /** @jsxImportSource vue */
 
 /**
@@ -42,7 +43,7 @@ export function wordCloudBodyChildren(p: WordCloudCardInput): VNode[] {
 				<img
 					class="w-[44px] h-[44px] rounded-full object-cover shrink-0"
 					src={p.creatorAvatarUrl}
-					alt="头像"
+					alt={packageText("image.blocks.wordcloud.1")}
 				/>
 			)}
 			<div class="flex flex-col gap-[2px] min-w-0">
@@ -53,7 +54,7 @@ export function wordCloudBodyChildren(p: WordCloudCardInput): VNode[] {
 					{p.creatorName}
 				</span>
 				<span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">
-					本场直播弹幕词云
+					{packageText("image.blocks.wordcloud.2")}
 				</span>
 			</div>
 		</div>,

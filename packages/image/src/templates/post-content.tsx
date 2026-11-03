@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /** @jsxImportSource vue */
 
 /**
@@ -141,8 +142,8 @@ function tallerThan(p: GalleryImage, ratio: number): boolean {
  * 过」在缩略图上多少感觉得到。两者同时成立极罕见,不值得为它另设一个双标签位。
  */
 function picBadgeText(p: GalleryImage, isLong: boolean): string | null {
-	if (p.animated) return "动图";
-	return isLong ? "长图" : null;
+	if (p.animated) return packageText("image.templates.post-content.1");
+	return isLong ? packageText("image.templates.post-content.2") : null;
 }
 
 /**

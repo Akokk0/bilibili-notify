@@ -19,7 +19,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { h } from "vue";
-import { LIVE_COVER_PLACEHOLDER } from "../../live-view";
+import { liveCoverPlaceholder } from "../../live-view";
 import type { LiveCardView } from "../../templates/live-card";
 import type { MembershipCardView } from "../../templates/membership-card";
 import type { PostCardView, PostNode } from "../../templates/post-card";
@@ -412,8 +412,8 @@ describe("直播卡的封面", () => {
 	// 钉着);契约照视图说:`live.cover` 就是那张占位图,`live.hasCover` 如实为假。
 	// 验红:把 `hasCover` 改回按「封面非空」判,这条红(占位图不是空串)。
 	it("没有真封面 → cover 是视图里的占位图,hasCover 为假", () => {
-		const d = buildCardData("live", liveProps({ cover: LIVE_COVER_PLACEHOLDER, hasCover: false }));
-		expect(d.live.cover).toBe(LIVE_COVER_PLACEHOLDER);
+		const d = buildCardData("live", liveProps({ cover: liveCoverPlaceholder(), hasCover: false }));
+		expect(d.live.cover).toBe(liveCoverPlaceholder());
 		expect(d.live.hasCover).toBe(false);
 	});
 });

@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /** @jsxImportSource vue */
 
 /**
@@ -49,7 +50,11 @@ import type { BlockRenderer } from "./types";
 const viewerAvatar: BlockRenderer<MembershipCardView> = (p) =>
 	p.viewerAvatarUrl ? (
 		<div data-bn="image" class="overflow-hidden shrink-0">
-			<img class="w-full h-full object-cover" src={p.viewerAvatarUrl} alt="观众头像" />
+			<img
+				class="w-full h-full object-cover"
+				src={p.viewerAvatarUrl}
+				alt={packageText("image.blocks.membership.1")}
+			/>
 		</div>
 	) : null;
 

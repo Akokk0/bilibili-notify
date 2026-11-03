@@ -396,9 +396,9 @@ describe("会员卡:头像是图库引用,解析不到就不画;观众名与主�
 	});
 
 	// 验红:把 `image-renderer.ts` 里会员卡入口的 `title: "上舰通知"` 改掉,这条红。
-	it("页面标题是「上舰通知」", async () => {
+	it("页面标题是中立的「会员通知」", async () => {
 		const doc = await memberOf(membership());
-		expect(doc.title).toBe("上舰通知");
+		expect(doc.title).toBe("会员通知");
 	});
 
 	it("观众名在用户名胶囊里、主播名在主播胶囊里(没有任何「房管」替换)", async () => {

@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 卡片上的时刻写法。卡片上的计数(万 / 亿)与时长不在这里:全仓只有一份,
  * 住在 `@bilibili-notify/internal` 的 `format`(`formatCount` / `formatDuration`)。
@@ -12,5 +13,12 @@ import { DateTime } from "luxon";
 export function formatCardTime(unixSeconds: number, timezone: string): string {
 	const at = DateTime.fromSeconds(unixSeconds, { zone: timezone });
 	const pad = (n: number) => `0${n}`.slice(-2);
-	return `${at.year}年${pad(at.month)}月${pad(at.day)}日 ${pad(at.hour)}:${pad(at.minute)}:${pad(at.second)}`;
+	return packageText("image.format.1", {
+		value0: at.year,
+		value1: pad(at.month),
+		value2: pad(at.day),
+		value3: pad(at.hour),
+		value4: pad(at.minute),
+		value5: pad(at.second),
+	});
 }

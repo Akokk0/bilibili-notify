@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 import { renderToString } from "@vue/server-renderer";
 import type { Component } from "vue";
 import { createSSRApp, h } from "vue";
@@ -153,7 +154,13 @@ export async function renderCard(
 		extraCss?: string;
 	} = {},
 ): Promise<string> {
-	const { title = "通知", font = "sans-serif", htmlWidth, fontFace, extraCss } = options;
+	const {
+		title = packageText("image.render.1"),
+		font = "sans-serif",
+		htmlWidth,
+		fontFace,
+		extraCss,
+	} = options;
 
 	const uno = await getUno();
 	const app = createSSRApp({ render: () => h(component, props) });

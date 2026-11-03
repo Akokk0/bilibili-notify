@@ -16,6 +16,7 @@ import {
 	type Post,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
+import { packageText } from "@bilibili-notify/internal/texts";
 import type { CardPropsByKind } from "./blocks/frames";
 import { formatCardTime } from "./format";
 import { buildLiveCardView } from "./live-view";
@@ -563,7 +564,7 @@ export class ImageRenderer {
 
 		return this.renderWithSkin({
 			kind: "live",
-			title: "直播通知",
+			title: packageText("image.image-renderer.1"),
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(),
@@ -578,7 +579,7 @@ export class ImageRenderer {
 				return buf;
 			})
 			.catch((e) => {
-				throw new Error(`生成直播卡片失败！错误: ${e}`);
+				throw new Error(packageText("image.image-renderer.2", { value0: e }));
 			});
 	}
 
@@ -608,7 +609,7 @@ export class ImageRenderer {
 
 		return this.renderWithSkin({
 			kind: "membership",
-			title: "上舰通知",
+			title: packageText("image.image-renderer.3"),
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(),
@@ -619,7 +620,7 @@ export class ImageRenderer {
 				return buf;
 			})
 			.catch((e) => {
-				throw new Error(`生成会员卡片失败！错误: ${e}`);
+				throw new Error(packageText("image.image-renderer.4", { value0: e }));
 			});
 	}
 
@@ -647,7 +648,7 @@ export class ImageRenderer {
 
 		return this.renderWithSkin({
 			kind: "superchat",
-			title: "醒目留言通知",
+			title: packageText("image.image-renderer.5"),
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(),
@@ -660,7 +661,7 @@ export class ImageRenderer {
 				return buf;
 			})
 			.catch((e) => {
-				throw new Error(`生成醒目留言卡片失败！错误: ${e}`);
+				throw new Error(packageText("image.image-renderer.6", { value0: e }));
 			});
 	}
 
@@ -693,7 +694,7 @@ export class ImageRenderer {
 		this.logger.debug(`[dynamic] 开始渲染动态卡片：${node.creatorName}`);
 		return this.renderWithSkin({
 			kind: "post",
-			title: "动态通知",
+			title: packageText("image.image-renderer.7"),
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(),
@@ -707,7 +708,7 @@ export class ImageRenderer {
 				return buf;
 			})
 			.catch((e) => {
-				throw new Error(`生成动态卡片失败！错误: ${e}`);
+				throw new Error(packageText("image.image-renderer.8", { value0: e }));
 			});
 	}
 
@@ -753,7 +754,7 @@ export class ImageRenderer {
 		const creatorAvatarUrl = creatorAvatar === undefined ? undefined : resolved.get(creatorAvatar);
 		return this.renderWithSkin({
 			kind: "wordcloud",
-			title: "弹幕词云",
+			title: packageText("image.image-renderer.9"),
 			skinId: this.skinIdOf(opts),
 			skinKnobs: opts.cardSkinKnobs,
 			font: await this.resolveFont(),
@@ -766,7 +767,7 @@ export class ImageRenderer {
 				return buf;
 			})
 			.catch((e) => {
-				throw new Error(`生成词云图片失败！错误: ${e}`);
+				throw new Error(packageText("image.image-renderer.10", { value0: e }));
 			});
 	}
 
@@ -779,7 +780,7 @@ export class ImageRenderer {
 		this.logger.debug(`[roast] 开始渲染周报卡片：近 ${data.days} 天`);
 		return this.renderWithSkin({
 			kind: "roastBoard",
-			title: "UP 主周报",
+			title: packageText("image.image-renderer.11"),
 			skinId: this.skinIdOf(opts),
 			font: await this.resolveFont(),
 			props: { ...data },
@@ -789,7 +790,7 @@ export class ImageRenderer {
 				return buf;
 			})
 			.catch((e) => {
-				throw new Error(`生成周报卡片失败！错误: ${e}`);
+				throw new Error(packageText("image.image-renderer.12", { value0: e }));
 			});
 	}
 
@@ -802,7 +803,7 @@ export class ImageRenderer {
 		this.logger.debug(`[roast] 开始渲染单人锐评卡片：${data.creator.name}`);
 		return this.renderWithSkin({
 			kind: "roastSolo",
-			title: "UP 主锐评",
+			title: packageText("image.image-renderer.13"),
 			skinId: this.skinIdOf(opts),
 			font: await this.resolveFont(),
 			props: { ...data },
@@ -814,7 +815,7 @@ export class ImageRenderer {
 				return buf;
 			})
 			.catch((e) => {
-				throw new Error(`生成锐评卡片失败！错误: ${e}`);
+				throw new Error(packageText("image.image-renderer.14", { value0: e }));
 			});
 	}
 
@@ -845,9 +846,9 @@ export class ImageRenderer {
 				await page.waitForFunction(waitForCondition, { timeout: 30_000 });
 			}
 			const elementHandle = await page.$("html");
-			if (!elementHandle) throw new Error("无法获取 html 元素");
+			if (!elementHandle) throw new Error(packageText("image.image-renderer.15"));
 			const boundingBox = await elementHandle.boundingBox();
-			if (!boundingBox) throw new Error("无法获取 boundingBox");
+			if (!boundingBox) throw new Error(packageText("image.image-renderer.16"));
 			const screenshotPromise = page.screenshot({
 				type: "jpeg",
 				clip: {
@@ -862,7 +863,10 @@ export class ImageRenderer {
 			// 无法回收)。改用 setTimeout 句柄 + finally clear,直接搞定。
 			let timeoutId: NodeJS.Timeout | undefined;
 			const timeoutPromise = new Promise<never>((_, reject) => {
-				timeoutId = setTimeout(() => reject(new Error("截图超时（20s）")), 20_000);
+				timeoutId = setTimeout(
+					() => reject(new Error(packageText("image.image-renderer.17"))),
+					20_000,
+				);
 			});
 			try {
 				const raw = await Promise.race([screenshotPromise, timeoutPromise]);

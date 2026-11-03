@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 字体 / 图两档旋钮的**宿主解析**(ADR-0014 决策 16 的 🔗,2026-09-14 主人拍板)。
  *
@@ -148,8 +149,12 @@ async function fitUrl(
 	if (shrunk !== undefined && shrunk !== null && shrunk.length <= IMAGE_URL_BUDGET) return shrunk;
 	const mb = (n: number) => `${(n / 1024 / 1024).toFixed(2)}MB`;
 	warnings.push(
-		`旋钮「${key}」的图「${id}」压不进 CSS 自定义属性的 2 MiB 上限` +
-			`(${mb(shrunk?.length ?? url.length)} / 上限 ${mb(IMAGE_URL_BUDGET)}),这一张没画上去`,
+		packageText("image.skin.knob-assets.1", {
+			value0: key,
+			value1: id,
+			value2: mb(shrunk?.length ?? url.length),
+			value3: mb(IMAGE_URL_BUDGET),
+		}),
 	);
 	return "";
 }

@@ -17,6 +17,7 @@ import {
 	IMAGE_REF_PATTERN,
 	type MembershipTier,
 } from "@bilibili-notify/internal";
+import { bindPackageText } from "@bilibili-notify/internal/texts";
 import { describe, expect, it } from "vite-plus/test";
 import { renderCardWithSkin } from "../../skin/render-skin";
 import { SAMPLE_AVATAR_REF, sampleCard } from "../sample-cards";
@@ -227,7 +228,7 @@ describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
 		expect(html).toContain("【示例视频】");
 		expect(html).toContain("投稿了视频");
 		// 这三样纯文字那场都有 —— 回落到默认场面的话这里红。
-		expect(html).not.toContain("示例动态正文");
+		expect(html).not.toContain("示例作品正文");
 		expect(html).not.toContain("示例话题");
 		expect(html).not.toContain("示例预约");
 	});
@@ -389,4 +390,35 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 		expect(at, "这张卡上没有转发框").toBeGreaterThan(-1);
 		expect(html.slice(at)).toContain("探针:【示例视频】");
 	});
+});
+
+it("每次预览按当前取字口生成示例，模块加载时不冻结作者与正文", async () => {
+	const original = await sampleCard("live");
+	expect((original.props as { creatorName: string }).creatorName).toContain("示例");
+	const binding = bindPackageText(() => "Sample creator");
+	try {
+		const switched = await sampleCard("live");
+		expect((switched.props as { creatorName: string }).creatorName).toBe("Sample creator");
+		expect((switched.props as { title: string }).title).toBe("Sample creator");
+	} finally {
+		binding.dispose();
+	}
+	expect((await sampleCard("live")).props).toEqual(original.props);
+});
+
+it("示例内联SVG只把译文当文字，保留SVG外壳", async () => {
+	const binding = bindPackageText(() => "Member <&>");
+	try {
+		const member = await sampleCard("membership", undefined, {
+			membershipTier: { key: "sample", name: "用户档名", rank: 1 },
+		});
+		const svg = decodeURIComponent(
+			(member.props as { iconUrl: string }).iconUrl.split(",")[1] ?? "",
+		);
+		expect(svg).toContain("Member &lt;&amp;&gt;");
+		expect(svg).not.toContain("Member <&>");
+		expect(svg).toContain("<svg");
+	} finally {
+		binding.dispose();
+	}
 });

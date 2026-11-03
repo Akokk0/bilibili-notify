@@ -27,7 +27,7 @@ import { findNodes, listSources, parseSource, srcRootsUnder, ts } from "../sourc
  *   **涨了一律红,调格前问主人**(包与 contract 也一样)。
  *
  * 抓不到的(靠审查与别的守卫):
- * - 先赋给变量再交给日志的(`const m = "坏了"; logger.warn(m);`):字符串在日志调用外面,照算(钉住现状,漏排)。
+ * - 先赋给变量再交给日志的(`const m = "坏了"; logger.warn(m);`):默认照算；主人批准的少量间接诊断由 NON_DISPLAY_TEXTS 精确登记与逐项对账，不泛化日志数据流。
  * - 名字碰巧叫 `log` / `warn` 却不是日志的函数(目前没看到):会被漏排。
  * - `new Error("…")`、问题上报、`fail(code, "…")` 里的话:会进私聊、问题表或失败 `message`,是给人看的字,照算。
  * - 正则字面量里的中文(`/^(帮助|help)$/`):是认输入用的(决策 9),不是字符串节点。
@@ -227,20 +227,7 @@ export const RATCHET = {
 	"packages/http/src/http-client.ts": 17,
 	"packages/http/src/public-address.ts": 2,
 	"packages/http/src/websocket.ts": 1,
-	"packages/image/src/blocks/live.tsx": 11,
-	"packages/image/src/blocks/membership.tsx": 1,
-	"packages/image/src/blocks/post.tsx": 1,
-	"packages/image/src/blocks/superchat.tsx": 1,
-	"packages/image/src/blocks/wordcloud.tsx": 2,
-	"packages/image/src/format.ts": 1,
 	"packages/image/src/icons.tsx": 7,
-	"packages/image/src/image-renderer.ts": 25,
-	"packages/image/src/live-view.ts": 4,
-	"packages/image/src/preview/sample-cards.ts": 38,
-	"packages/image/src/render.ts": 1,
-	"packages/image/src/rich-text.tsx": 2,
-	"packages/image/src/skin/knob-assets.ts": 2,
-	"packages/image/src/templates/post-content.tsx": 2,
 	"packages/internal/src/ai.ts": 6,
 	"packages/internal/src/card-skin.ts": 185,
 	"packages/internal/src/extension/build.ts": 5,
@@ -265,6 +252,69 @@ export const RATCHET = {
 	"packages/ui/src/secret-cell.tsx": 2,
 	"packages/ui/src/section-nav.tsx": 3,
 	"packages/ui/src/tri-state.tsx": 3,
+};
+
+/** 2026-11-03 主人批准：输入协议/间接诊断按完整路径、声明链及源码原文精确登记；不整文件放行。 */
+/** 登记文本里的 @{ 表示源码模板的插值起点，避免被当成本文件的模板。 */
+function pinnedSource(text) {
+	return text.replaceAll("@{", "${");
+}
+
+export const NON_DISPLAY_TEXTS = {
+	"packages/image/src/image-renderer.ts": [
+		{
+			owner: "blockedTargetOf",
+			text: pinnedSource('"(解析不了的地址)"'),
+			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			site: pinnedSource('return "(解析不了的地址)";'),
+		},
+		{
+			owner: "ImageRenderer/updateConfig",
+			text: pinnedSource('"(自带字体)"'),
+			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			site: pinnedSource('diffs.push(`fontAsset=@{config.fontAsset ? "(自带字体)" : "(无)"}`);'),
+		},
+		{
+			owner: "ImageRenderer/updateConfig",
+			text: pinnedSource('"(无)"'),
+			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			site: pinnedSource('diffs.push(`fontAsset=@{config.fontAsset ? "(自带字体)" : "(无)"}`);'),
+		},
+		{
+			owner: "ImageRenderer/updateConfig/line",
+			text: pinnedSource('`[image] 配置已更新: @{diffs.join(", ")}`'),
+			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			site: pinnedSource('line = `[image] 配置已更新: @{diffs.join(", ")}`'),
+		},
+		{
+			owner: "ImageRenderer/renderWithSkin",
+			text: pinnedSource('"皮肤不存在"'),
+			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			site: pinnedSource('return await fallback(id, "皮肤不存在");'),
+		},
+		{
+			owner: "ImageRenderer/renderWithSkin",
+			text: pinnedSource('"皮肤没有这种卡"'),
+			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			site: pinnedSource('return await fallback(id, "皮肤没有这种卡");'),
+		},
+		{
+			owner: "ImageRenderer/renderWithSkin",
+			text: pinnedSource("`卡片高度 @{Math.round(cardHeight)} 超过上限 @{max}`"),
+			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			site: pinnedSource(
+				"return await fallback(id, `卡片高度 @{Math.round(cardHeight)} 超过上限 @{max}`);",
+			),
+		},
+		{
+			owner: "ImageRenderer/renderWithSkin",
+			text: pinnedSource("`渲染失败(@{e instanceof Error ? e.message : String(e)})`"),
+			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			site: pinnedSource(
+				"return await fallback(id, `渲染失败(@{e instanceof Error ? e.message : String(e)})`);",
+			),
+		},
+	],
 };
 
 const HAN = /\p{Script=Han}/u;
@@ -308,10 +358,58 @@ function isChineseText(node) {
 }
 
 /** 一份源码里写死的中文:`{ line, text }[]`,按出现顺序。 */
-export function chineseTextHits(source) {
-	return findNodes(source, (node) => isChineseText(node) && !insideLogCall(node)).map(
-		({ line, text }) => ({ line, text }),
+/** 嵌套函数/变量也记在声明链里；同时钉最近的变量声明/return/调用语句，不能拿原词换消费者。 */
+function declarationPath(node, source) {
+	const names = [];
+	for (let p = node.parent; p; p = p.parent) {
+		if (
+			(ts.isFunctionDeclaration(p) ||
+				ts.isMethodDeclaration(p) ||
+				ts.isClassDeclaration(p) ||
+				ts.isVariableDeclaration(p)) &&
+			p.name
+		)
+			names.unshift(p.name.getText(source.ast));
+	}
+	return names.join("/");
+}
+
+function textSite(node, source) {
+	for (let p = node.parent; p; p = p.parent) {
+		if (ts.isVariableDeclaration(p) || ts.isReturnStatement(p) || ts.isExpressionStatement(p))
+			return p.getText(source.ast);
+	}
+	return "";
+}
+
+function classificationMatches(node, source, entry) {
+	return (
+		isChineseText(node) &&
+		!insideLogCall(node) &&
+		declarationPath(node, source) === entry.owner &&
+		node.getText(source.ast) === entry.text &&
+		textSite(node, source) === entry.site
 	);
+}
+
+/** 缺失、挪位、改原文或复制一份都拒绝：登记不是可复用额度。 */
+export function auditTextClassifications(source, entries = NON_DISPLAY_TEXTS[source.path] ?? []) {
+	return entries.flatMap((entry) => {
+		const count = findNodes(source, (node) => classificationMatches(node, source, entry)).length;
+		return count === 1
+			? []
+			: [`${source.path}:${entry.owner}: 非展示文字精确登记命中${count}处，应为1处`];
+	});
+}
+
+export function chineseTextHits(source, entries = NON_DISPLAY_TEXTS[source.path] ?? []) {
+	return findNodes(
+		source,
+		(node) =>
+			isChineseText(node) &&
+			!insideLogCall(node) &&
+			!entries.some((entry) => classificationMatches(node, source, entry)),
+	).map(({ line, text }) => ({ line, text }));
 }
 
 const sample = (text, file = "sample.ts") => chineseTextHits(parseSource(file, text));
@@ -439,6 +537,62 @@ export function scanRepo() {
 /**
  * 🔴 **真去扫仓里的代码。** 上面的样例证明判据没写错;这一条证明表外没有人又把话写死回源码里。
  */
+describe("不翻的输入/诊断文字精确登记", () => {
+	const file = "example.ts";
+	const entries = [
+		{
+			owner: "probe/message",
+			text: '"固定输入"',
+			reason: "测试协议词",
+			site: 'message = "固定输入"',
+		},
+	];
+	const original = 'function probe() { const message = "固定输入"; return message; }';
+	it("只有批准的路径、声明链与原文同时命中才不记展示文字", () => {
+		const source = parseSource(file, original);
+		expect(auditTextClassifications(source, entries)).toEqual([]);
+		expect(chineseTextHits(source, entries)).toEqual([]);
+		expect(
+			chineseTextHits(parseSource(file, original.replace("固定输入", "新增提示")), entries),
+		).toHaveLength(1);
+		expect(
+			chineseTextHits(parseSource(file, original.replace("probe", "other")), entries),
+		).toHaveLength(1);
+		expect(
+			chineseTextHits(parseSource(file, `${original} const extra = "固定输入";`), entries),
+		).toHaveLength(1);
+	});
+	it("删除、改原文、挪声明与复制一份会破坏登记对账", () => {
+		for (const text of [
+			"",
+			original.replace("固定输入", "新增提示"),
+			original.replace("probe", "other"),
+			original.replace('const message = "固定输入";', 'return "固定输入";'),
+			original + original,
+		])
+			expect(auditTextClassifications(parseSource(file, text), entries)).not.toEqual([]);
+	});
+	it("真实登记逐项存在且恰好一处；同一句不能扩成整个文件豁免", () => {
+		for (const [file, entries] of Object.entries(NON_DISPLAY_TEXTS)) {
+			expect(
+				new Set(entries.map((e) => JSON.stringify([e.owner, e.text, e.site]))).size,
+				file,
+			).toBe(entries.length);
+			expect(existsSync(join(REPO_ROOT, file)), file).toBe(true);
+			const source = parseSource(file);
+			expect(auditTextClassifications(source), file).toEqual([]);
+			for (const entry of entries) {
+				expect(entry.reason.trim()).not.toBe("");
+				expect(chineseTextHits(parseSource("unapproved.ts", source.text))).not.toEqual([]);
+				expect(
+					chineseTextHits(parseSource(file, `${source.text}\nconst extra = "新展示文案";`)).at(-1)
+						?.text,
+				).toContain("新展示文案");
+			}
+		}
+	});
+});
+
 describe("源码里写死的中文只降不涨", () => {
 	it("范围认得对:服务端、面板、contract 与各包都在,桌面壳、拓展不在", () => {
 		const roots = scopeRoots();
