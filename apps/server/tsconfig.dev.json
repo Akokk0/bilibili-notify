@@ -6,8 +6,9 @@
 		"jsx": "react-jsx",
 		"jsxImportSource": "vue",
 		"paths": {
+			"@bilibili-notify/contract": ["../contract/src/index.ts"],
 			"@bilibili-notify/*": ["../../packages/*/src/index.ts"]
 		}
 	},
-	"include": ["src", "../../packages/*/src"]
+	"include": ["src", "../../packages/*/src", "../contract/src"]
 }

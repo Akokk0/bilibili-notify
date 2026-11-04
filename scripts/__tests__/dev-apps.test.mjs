@@ -1,7 +1,10 @@
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	buildWindowsTreeKillArgs,
@@ -319,4 +322,62 @@ describe("dev-apps supervisor", () => {
 	it("Windows 下终止整棵 dev 进程树", () => {
 		expect(buildWindowsTreeKillArgs(1234)).toEqual(["taskkill", ["/pid", "1234", "/T", "/F"]]);
 	});
+});
+
+it("dev startup resolves current contract source even when its compiled library lacks a new export", () => {
+	const root = mkdtempSync(join(tmpdir(), "bn-dev-contract-"));
+	const server = join(root, "apps/server");
+	const contract = join(root, "apps/contract");
+	const repo = fileURLToPath(new URL("../../", import.meta.url));
+	try {
+		for (const dir of [
+			join(server, "src"),
+			join(server, "node_modules/@bilibili-notify"),
+			join(contract, "src"),
+			join(contract, "lib"),
+		])
+			mkdirSync(dir, { recursive: true });
+		writeFileSync(join(server, "package.json"), JSON.stringify({ type: "module" }));
+		writeFileSync(
+			join(server, "tsconfig.json"),
+			JSON.stringify({
+				compilerOptions: { module: "esnext", moduleResolution: "bundler", target: "es2022" },
+			}),
+		);
+		writeFileSync(
+			join(server, "tsconfig.dev.json"),
+			readFileSync(join(repo, "apps/server/tsconfig.dev.json")),
+		);
+		writeFileSync(
+			join(contract, "package.json"),
+			JSON.stringify({
+				name: "@bilibili-notify/contract",
+				type: "module",
+				exports: { ".": "./lib/index.mjs" },
+			}),
+		);
+		writeFileSync(join(contract, "lib/index.mjs"), 'export const OLD_EXPORT = "stale";');
+		writeFileSync(
+			join(contract, "src/index.ts"),
+			'export const SKIN_CSS_MODEL_HOOK_NOTES = {page:"current source"};',
+		);
+		writeFileSync(
+			join(server, "src/index.ts"),
+			'import { SKIN_CSS_MODEL_HOOK_NOTES } from "@bilibili-notify/contract"; console.log(SKIN_CSS_MODEL_HOOK_NOTES.page);',
+		);
+		symlinkSync(contract, join(server, "node_modules/@bilibili-notify/contract"), "junction");
+		const spec = createDevProcessSpecs(root)[0];
+		const tsx = createRequire(join(repo, "apps/server/package.json")).resolve("tsx/cli");
+		// Use the dev launcher's config and entry through the real tsx loader, without keeping a watcher alive.
+		const result = spawnSync(
+			process.execPath,
+			[tsx, "--tsconfig", spec.args[spec.args.indexOf("--tsconfig") + 1], spec.args.at(-1)],
+			{ cwd: spec.cwd, encoding: "utf8", timeout: 10000 },
+		);
+		expect(result.status, result.stderr || result.error?.message).toBe(0);
+		expect(result.error).toBeUndefined();
+		expect(result.stdout.trim()).toBe("current source");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });

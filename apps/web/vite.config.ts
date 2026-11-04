@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import tailwind from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -21,6 +22,26 @@ export default defineConfig({
 		__WEB_VERSION__: JSON.stringify(webVersion),
 	},
 	plugins: [react(), tailwind()],
+	// dev:apps 不预构建核心包；面板直接消费工作区源码，避免旧 lib 缺导出导致白屏。
+	// 子路径先匹配，保留 texts/builtin 等目录入口的正常解析。
+	resolve: {
+		alias: [
+			{
+				find: /^@bilibili-notify\/internal\/(.+)$/,
+				replacement: `${fileURLToPath(new URL("../../packages/internal/src/", import.meta.url))}$1`,
+			},
+			{
+				find: /^@bilibili-notify\/internal$/,
+				replacement: fileURLToPath(
+					new URL("../../packages/internal/src/index.ts", import.meta.url),
+				),
+			},
+			{
+				find: /^@bilibili-notify\/contract$/,
+				replacement: fileURLToPath(new URL("../contract/src/index.ts", import.meta.url)),
+			},
+		],
+	},
 	server: {
 		port: 5173,
 		proxy: {

@@ -7,7 +7,11 @@
  * 所以这里把每条代理键对着 SPA 的路由表过一遍:只许转 server 的路径,不许沾任何一个页面。
  */
 
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
 import { describe, expect, it } from "vite-plus/test";
 import config from "../../vite.config";
 
@@ -69,4 +73,48 @@ describe("vite 代理表", () => {
 			).toBe(true);
 		}
 	});
+});
+
+it("开发页面能读取当前工作区导出，即使旧 lib 缺少这些导出", async () => {
+	const root = mkdtempSync(join(tmpdir(), "bn-web-dev-"));
+	const webRoot = fileURLToPath(new URL("../../", import.meta.url));
+	let server: Awaited<ReturnType<typeof createServer>> | undefined;
+	try {
+		const modules = join(root, "node_modules/@bilibili-notify");
+		mkdirSync(modules, { recursive: true });
+		for (const name of ["internal", "contract"]) {
+			const pkg = join(root, name);
+			mkdirSync(join(pkg, "lib"), { recursive: true });
+			writeFileSync(
+				join(pkg, "package.json"),
+				JSON.stringify({
+					name: `@bilibili-notify/${name}`,
+					type: "module",
+					exports: { ".": "./lib/index.mjs", "./card-skin": "./lib/index.mjs" },
+				}),
+			);
+			writeFileSync(join(pkg, "lib/index.mjs"), 'export const OLD_EXPORT = "stale";');
+			symlinkSync(pkg, join(modules, name), "junction");
+		}
+		const entry = join(root, "page.ts");
+		writeFileSync(
+			entry,
+			`import { cardSkinRankGuide } from "@bilibili-notify/internal/card-skin";
+import { SKIN_CSS_MODEL_HOOK_NOTES } from "@bilibili-notify/contract";
+export const view = { rankGuide: typeof cardSkinRankGuide, modelHooks: typeof SKIN_CSS_MODEL_HOOK_NOTES };`,
+		);
+		server = await createServer({
+			...config,
+			configFile: false,
+			root: webRoot,
+			cacheDir: join(root, "cache"),
+			server: { middlewareMode: true, watch: null, ws: false },
+			optimizeDeps: { noDiscovery: true, include: [] },
+		});
+		const page = await server.ssrLoadModule(entry);
+		expect(page.view).toEqual({ rankGuide: "function", modelHooks: "object" });
+	} finally {
+		await server?.close();
+		rmSync(root, { recursive: true, force: true });
+	}
 });
