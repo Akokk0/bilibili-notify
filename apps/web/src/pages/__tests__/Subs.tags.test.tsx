@@ -2,7 +2,7 @@
 
 /**
  * 订阅页的标签(ADR-0034):筛选胶囊**照标签表的顺序**一枚一枚出、按 id 计数与筛选,没人挂的空标签也在;
- * 没挂任何标签的收进「无标签」;卡片角标写第一个标签的名字;订阅详情的「标签」一行改的是草稿的 `tagIds`,
+ * 没挂任何标签的收进「无标签」;卡片按登记表顺序显示全部标签;订阅详情的「标签」一行改的是草稿的 `tagIds`,
  * 点保存走整份 POST、带着它。
  *
  * 接线各有各的守卫:标签表读出来以后得真的传给卡片与详情弹窗(零件各自的单测证明不了这条线接上了)。
@@ -14,6 +14,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { SUBSCRIPTION_TAGS_QUERY_KEY } from "../../hooks/useSubscriptionTags";
+import { i18n } from "../../i18n";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import Subs from "../Subs";
 
@@ -59,6 +60,12 @@ const SUB_A = makeSub("111", "UP甲", [CHAT.id]);
 const SUB_B = makeSub("222", "UP乙", [GAME.id, CHAT.id]);
 const SUB_C = makeSub("333", "UP丙", []);
 
+async function saveManager(manager: ReturnType<typeof within>) {
+	const button = manager.getByRole("button", { name: "保存更改" }) as HTMLButtonElement;
+	await waitFor(() => expect(button.disabled).toBe(false));
+	fireEvent.click(button);
+}
+
 function renderSubs() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const view = render(
@@ -96,6 +103,7 @@ function chip(label: string): HTMLElement {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path === "/api/subscriptions/tags") return Promise.resolve(TABLE);
 		// 新建弹窗搜人要来源表里在册的来源;只有 B 站一个时不画平台一排。
@@ -180,15 +188,17 @@ describe("Subs 标签筛选", () => {
 });
 
 describe("Subs 卡片角标", () => {
-	it("每张卡写自己第一个标签的名字(按 id 查表);没挂标签的卡什么都不写", async () => {
+	it("wires the registry to every card so all labels follow registry order", async () => {
 		renderSubs();
 		await waitFor(() => expect(screen.getByText("无标签")).toBeTruthy());
 
-		// 卡片按订阅列表的顺序出:甲(杂谈) → 乙(游戏,第一个) → 丙(没有)。
-		expect(screen.getAllByText("标签：").map((n) => n.textContent)).toEqual([
-			"标签：杂谈",
-			"标签：游戏",
-		]);
+		expect(
+			screen.getAllByRole("list", { name: "订阅标签" }).map((list) =>
+				within(list)
+					.getAllByRole("listitem")
+					.map((n) => n.textContent),
+			),
+		).toEqual([["杂谈"], ["杂谈", "游戏"]]);
 	});
 });
 
@@ -250,4 +260,293 @@ describe("Subs 订阅详情 × 标签", () => {
 		expect(body).not.toHaveProperty("problems");
 		expect(body.cachedProfile).toEqual({ name: "查到的 999", followers: 5 });
 	});
+});
+
+it("manages names and order in one full-table save through the existing subscriptions page", async () => {
+	renderSubs();
+	fireEvent.click(await screen.findByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	fireEvent.change(manager.getByRole("textbox", { name: "标签名称 2" }), {
+		target: { value: " 游戏与杂谈 " },
+	});
+	fireEvent.click(manager.getByRole("button", { name: /上移.*游戏与杂谈/ }));
+	expect(api.put).not.toHaveBeenCalled();
+	vi.mocked(api.put).mockResolvedValue([{ ...GAME, name: "游戏与杂谈" }, CHAT, MUSIC]);
+	await saveManager(manager);
+	await waitFor(() =>
+		expect(api.put).toHaveBeenCalledWith("/api/subscriptions/tags", [
+			{ ...GAME, name: "游戏与杂谈" },
+			CHAT,
+			MUSIC,
+		]),
+	);
+	await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	expect(tagChips()).toEqual(["全部3", "游戏与杂谈1", "杂谈2", "音乐0", "无标签1"]);
+});
+
+it("stages deletion with undo; saving removes only the label and restores all subscriptions from its filter", async () => {
+	let subscriptions = [SUB_A, SUB_B, SUB_C];
+	const get = vi.mocked(api.get).getMockImplementation();
+	vi.mocked(api.get).mockImplementation((path) =>
+		path === "/api/subscriptions"
+			? Promise.resolve(subscriptions)
+			: (get?.(path) as Promise<unknown>),
+	);
+	renderSubs();
+	await screen.findByText("无标签");
+	fireEvent.click(chip("游戏"));
+	fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	fireEvent.click(manager.getByRole("button", { name: "删除 游戏" }));
+	expect(manager.getByText(/订阅本身不会删除/)).toBeTruthy();
+	fireEvent.click(manager.getByRole("button", { name: "标记删除" }));
+	expect(manager.queryByRole("textbox", { name: "标签名称 3" })).toBeNull();
+	fireEvent.click(manager.getByRole("button", { name: "撤销" }));
+	expect((manager.getByRole("button", { name: "保存更改" }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
+	fireEvent.click(manager.getByRole("button", { name: "删除 游戏" }));
+	fireEvent.click(manager.getByRole("button", { name: "标记删除" }));
+	expect(api.put).not.toHaveBeenCalled();
+	vi.mocked(api.put).mockImplementation(async () => {
+		subscriptions = [SUB_A, { ...SUB_B, tagIds: [CHAT.id] }, SUB_C];
+		return [CHAT, MUSIC];
+	});
+	await saveManager(manager);
+	await waitFor(() =>
+		expect(api.put).toHaveBeenCalledWith("/api/subscriptions/tags", [CHAT, MUSIC]),
+	);
+	await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	expect(screen.getByText("UP甲")).toBeTruthy();
+	expect(screen.getByText("UP乙")).toBeTruthy();
+	expect(screen.getByText("UP丙")).toBeTruthy();
+	expect(tagChips()).toEqual(["全部3", "杂谈2", "音乐0", "无标签1"]);
+});
+
+it("keeps the manager available for an empty table and creates an unused label only on save", async () => {
+	const get = vi.mocked(api.get).getMockImplementation();
+	vi.mocked(api.get).mockImplementation((path) =>
+		path === "/api/subscriptions/tags" || path === "/api/subscriptions"
+			? Promise.resolve([])
+			: (get?.(path) as Promise<unknown>),
+	);
+	renderSubs();
+	fireEvent.click(await screen.findByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	await manager.findByText(/还没有标签/);
+	fireEvent.change(manager.getByRole("textbox", { name: "新标签名称" }), {
+		target: { value: " 周末计划 " },
+	});
+	fireEvent.click(manager.getByRole("button", { name: "添加" }));
+	expect(api.put).not.toHaveBeenCalled();
+	vi.mocked(api.put).mockImplementation(async (_path, body) => body);
+	await saveManager(manager);
+	await waitFor(() =>
+		expect(api.put).toHaveBeenCalledWith("/api/subscriptions/tags", [
+			{ id: expect.stringMatching(/^[a-f0-9-]{36}$/), name: "周末计划" },
+		]),
+	);
+	await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	expect(tagChips()).toEqual(["全部0", "周末计划0"]);
+});
+
+it("preserves unsaved edits but blocks overwriting a registry update already received from elsewhere", async () => {
+	const { qc } = renderSubs();
+	await screen.findByText("无标签");
+	fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	fireEvent.change(manager.getByRole("textbox", { name: "标签名称 2" }), {
+		target: { value: "本地修改" },
+	});
+	await waitFor(() =>
+		expect((manager.getByRole("button", { name: "保存更改" }) as HTMLButtonElement).disabled).toBe(
+			false,
+		),
+	);
+	act(() =>
+		qc.setQueryData(SUBSCRIPTION_TAGS_QUERY_KEY, [{ ...CHAT, name: "后台改名" }, GAME, MUSIC]),
+	);
+	await manager.findByText(/标签表已在其他位置更新/);
+	expect((manager.getByRole("textbox", { name: "标签名称 2" }) as HTMLInputElement).value).toBe(
+		"本地修改",
+	);
+	expect((manager.getByRole("button", { name: "保存更改" }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
+	fireEvent.click(manager.getByRole("button", { name: "重新载入并放弃修改" }));
+	expect((manager.getByRole("textbox", { name: "标签名称 1" }) as HTMLInputElement).value).toBe(
+		"后台改名",
+	);
+	expect((manager.getByRole("textbox", { name: "标签名称 2" }) as HTMLInputElement).value).toBe(
+		"游戏",
+	);
+	expect(api.put).not.toHaveBeenCalled();
+});
+
+it("keeps the draft and local validation current when voice changes", async () => {
+	renderSubs();
+	await screen.findByText("无标签");
+	fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	fireEvent.change(manager.getByRole("textbox", { name: "新标签名称" }), {
+		target: { value: " 游戏 " },
+	});
+	fireEvent.click(manager.getByRole("button", { name: "添加" }));
+	expect(manager.getByText("已有同名标签，请使用不同名称。")).toBeTruthy();
+	act(() => i18n.set({ voice: "maid" }));
+	expect(manager.getByText("主人，这个标签已经有了，换一个名称吧。")).toBeTruthy();
+	expect((manager.getByRole("textbox", { name: "新标签名称" }) as HTMLInputElement).value).toBe(
+		" 游戏 ",
+	);
+	expect((manager.getByRole("button", { name: "保存更改" }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
+});
+
+it("locks the in-flight save, preserves edits and request issues on failure, and can retry", async () => {
+	renderSubs();
+	await screen.findByText("无标签");
+	fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	fireEvent.change(manager.getByRole("textbox", { name: "标签名称 2" }), {
+		target: { value: "新游戏" },
+	});
+	let reject!: (reason: unknown) => void;
+	vi.mocked(api.put).mockImplementationOnce(
+		() =>
+			new Promise((_resolve, r) => {
+				reject = r;
+			}),
+	);
+	await saveManager(manager);
+	await manager.findByRole("button", { name: "正在保存…" });
+	expect((manager.getByRole("textbox", { name: "标签名称 2" }) as HTMLInputElement).disabled).toBe(
+		true,
+	);
+	fireEvent.keyDown(window, { key: "Escape" });
+	fireEvent.click(screen.getByRole("button", { name: "关闭弹窗" }));
+	expect(screen.getByRole("dialog")).toBeTruthy();
+	await act(async () =>
+		reject(
+			Object.assign(new Error("无法保存"), {
+				issues: [{ path: [1, "name"], message: "名字冲突" }],
+			}),
+		),
+	);
+	await manager.findByText("无法保存：1.name：名字冲突");
+	expect((manager.getByRole("textbox", { name: "标签名称 2" }) as HTMLInputElement).value).toBe(
+		"新游戏",
+	);
+	vi.mocked(api.put).mockResolvedValueOnce([CHAT, { ...GAME, name: "新游戏" }, MUSIC]);
+	await saveManager(manager);
+	await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	expect(chip("新游戏")).toBeTruthy();
+});
+
+it("blocks a cached table after a read failure, then retries without losing the local draft", async () => {
+	const { qc } = renderSubs();
+	await screen.findByText("无标签");
+	fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	fireEvent.change(manager.getByRole("textbox", { name: "标签名称 2" }), {
+		target: { value: "本地草稿" },
+	});
+	await waitFor(() =>
+		expect((manager.getByRole("button", { name: "保存更改" }) as HTMLButtonElement).disabled).toBe(
+			false,
+		),
+	);
+	const get = vi.mocked(api.get).getMockImplementation();
+	vi.mocked(api.get).mockImplementation((path) =>
+		path === "/api/subscriptions/tags"
+			? Promise.reject(new Error("offline"))
+			: (get?.(path) as Promise<unknown>),
+	);
+	await act(async () => {
+		await qc.invalidateQueries({ queryKey: SUBSCRIPTION_TAGS_QUERY_KEY });
+	});
+	await manager.findByText("标签表未能读出，不能覆盖保存。");
+	expect((manager.getByRole("button", { name: "保存更改" }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
+	vi.mocked(api.get).mockImplementation((path) => get?.(path) as Promise<unknown>);
+	fireEvent.click(manager.getByRole("button", { name: "重试" }));
+	await manager.findByRole("textbox", { name: "标签名称 2" });
+	expect((manager.getByRole("textbox", { name: "标签名称 2" }) as HTMLInputElement).value).toBe(
+		"本地草稿",
+	);
+	expect(api.put).not.toHaveBeenCalled();
+});
+
+it("validates empty and duplicate names and confirms discard including an unadded name", async () => {
+	renderSubs();
+	await screen.findByText("无标签");
+	fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	fireEvent.change(manager.getByRole("textbox", { name: "标签名称 2" }), {
+		target: { value: " " },
+	});
+	expect(manager.getByText("名称不能为空。")).toBeTruthy();
+	expect((manager.getByRole("button", { name: "保存更改" }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
+	fireEvent.change(manager.getByRole("textbox", { name: "标签名称 2" }), {
+		target: { value: "杂谈" },
+	});
+	expect(manager.getAllByText("与其他标签重名。")).toHaveLength(2);
+	fireEvent.change(manager.getByRole("textbox", { name: "标签名称 2" }), {
+		target: { value: "游戏" },
+	});
+	fireEvent.change(manager.getByRole("textbox", { name: "新标签名称" }), {
+		target: { value: "还没添加" },
+	});
+	fireEvent.keyDown(window, { key: "Escape" });
+	expect(manager.getByText(/放弃未保存的标签修改/)).toBeTruthy();
+	fireEvent.click(manager.getByRole("button", { name: "继续编辑" }));
+	expect((manager.getByRole("textbox", { name: "新标签名称" }) as HTMLInputElement).value).toBe(
+		"还没添加",
+	);
+	fireEvent.click(manager.getByRole("button", { name: "取消" }));
+	fireEvent.click(manager.getByRole("button", { name: "放弃修改" }));
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(api.put).not.toHaveBeenCalled();
+});
+
+it("undoes multiple staged deletions without reversing their registry order", async () => {
+	renderSubs();
+	await screen.findByText("无标签");
+	fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	for (const name of ["杂谈", "游戏"]) {
+		fireEvent.click(manager.getByRole("button", { name: `删除 ${name}` }));
+		fireEvent.click(manager.getByRole("button", { name: "标记删除" }));
+	}
+	fireEvent.click(manager.getAllByRole("button", { name: "撤销" })[0]);
+	fireEvent.click(manager.getByRole("button", { name: "撤销" }));
+	expect(
+		[1, 2, 3].map(
+			(index) =>
+				(manager.getByRole("textbox", { name: `标签名称 ${index}` }) as HTMLInputElement).value,
+		),
+	).toEqual(["杂谈", "游戏", "音乐"]);
+	expect((manager.getByRole("button", { name: "保存更改" }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
+});
+
+it("keeps keyboard focus in the manager and restores its entry when closed", async () => {
+	renderSubs();
+	await screen.findByText("无标签");
+	const entry = screen.getByRole("button", { name: "管理标签" });
+	entry.focus();
+	fireEvent.click(entry);
+	const manager = within(screen.getByRole("dialog"));
+	const first = manager.getByRole("textbox", { name: "新标签名称" });
+	await waitFor(() => expect(document.activeElement).toBe(first));
+	fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+	expect(document.activeElement).toBe(manager.getByRole("button", { name: "取消" }));
+	fireEvent.keyDown(window, { key: "Tab" });
+	expect(document.activeElement).toBe(first);
+	fireEvent.click(manager.getByRole("button", { name: "取消" }));
+	expect(document.activeElement).toBe(entry);
 });

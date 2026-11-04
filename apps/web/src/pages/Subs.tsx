@@ -57,6 +57,7 @@ import {
 	subscriptionPlatformOf,
 } from "./up/subscription-source";
 import { TagEditDialog } from "./up/TagEditDialog";
+import { TagManagerDialog } from "./up/TagManagerDialog";
 import { UP_CARD_MIN_H, UpCard } from "./up/UpCard";
 import { UpCardMenu } from "./up/UpCardMenu";
 import { UpDialog } from "./up/UpDialog";
@@ -534,7 +535,8 @@ export default function Subs() {
 	const [menuAt, setMenuAt] = useState<{ subId: string; x: number; y: number } | null>(null);
 	/** 待二次确认的删除(单个来自右键 / 抽屉,多个来自批量)。 */
 	const [pendingDelete, setPendingDelete] = useState<{ ids: string[] } | null>(null);
-	/** 正在编辑标签的订阅。 */
+	/** 标签表管理与单条订阅挑标签分别拥有自己的弹窗。 */
+	const [managingTags, setManagingTags] = useState(false);
 	const [tagEditId, setTagEditId] = useState<string | null>(null);
 	/** 复制 UID 后的轻量提示,自动消失。 */
 	const [copyMsg, setCopyMsg] = useState<string | null>(null);
@@ -805,40 +807,48 @@ export default function Subs() {
 				</Btn>
 			</div>
 
-			{tagTable.length > 0 || tagStats.untagged > 0 ? (
-				<div className="flex flex-wrap items-center gap-1.5">
-					{/* 这个标题**直接坐在页面背景上**,没有任何底。壁纸皮肤下 tertiary 那一档
+			<div className="flex flex-wrap items-center gap-1.5">
+				{/* 这个标题**直接坐在页面背景上**,没有任何底。壁纸皮肤下 tertiary 那一档
 					    只剩 2.1~2.7:1(旁边的胶囊看着清楚,是因为它们挂了 btn、拿到了皮肤给的
 					    实底),secondary 在壁纸深处也才 3.3:1 —— 无底的文字只有 primary 稳。 */}
-					<span className="text-bn-xs font-semibold text-bn-text-primary">
-						{t("subs.tags.title")}
-					</span>
+				<span className="text-bn-xs font-semibold text-bn-text-primary">
+					{t("subs.tags.title")}
+				</span>
+				<TagChip
+					label={t("subs.tags.all")}
+					count={subs.length}
+					active={activeTagFilter === null}
+					onClick={() => setTagFilter(null)}
+				/>
+				{tagTable.map((tag) => (
 					<TagChip
-						label={t("subs.tags.all")}
-						count={subs.length}
-						active={activeTagFilter === null}
-						onClick={() => setTagFilter(null)}
+						key={tag.id}
+						label={tag.name}
+						count={tagStats.counts.get(tag.id) ?? 0}
+						active={activeTagFilter === tag.id}
+						onClick={() => setTagFilter(tag.id)}
 					/>
-					{tagTable.map((tag) => (
-						<TagChip
-							key={tag.id}
-							label={tag.name}
-							count={tagStats.counts.get(tag.id) ?? 0}
-							active={activeTagFilter === tag.id}
-							onClick={() => setTagFilter(tag.id)}
-						/>
-					))}
-					{tagStats.untagged > 0 ? (
-						<TagChip
-							label={t("subs.tags.untagged")}
-							count={tagStats.untagged}
-							active={activeTagFilter === UNTAGGED}
-							onClick={() => setTagFilter(UNTAGGED)}
-							muted
-						/>
-					) : null}
+				))}
+				{tagStats.untagged > 0 ? (
+					<TagChip
+						label={t("subs.tags.untagged")}
+						count={tagStats.untagged}
+						active={activeTagFilter === UNTAGGED}
+						onClick={() => setTagFilter(UNTAGGED)}
+						muted
+					/>
+				) : null}
+				<div className="ml-auto">
+					<Btn
+						size="sm"
+						variant="outline"
+						icon={<Icon.sliders size={13} />}
+						onClick={() => setManagingTags(true)}
+					>
+						{t("subscriptionTags.manage")}
+					</Btn>
 				</div>
-			) : null}
+			</div>
 
 			{invalidSubscriptions.map((problem) => (
 				<WarnNote key={`${problem.reporter}:${problem.code}`}>{problem.message}</WarnNote>
@@ -992,6 +1002,13 @@ export default function Subs() {
 					}}
 					onEditTags={() => setTagEditId(menuSub.id)}
 					onDelete={() => setPendingDelete({ ids: [menuSub.id] })}
+				/>
+			) : null}
+
+			{managingTags ? (
+				<TagManagerDialog
+					subscriptions={subsQuery.isError ? undefined : subsQuery.data}
+					onClose={() => setManagingTags(false)}
 				/>
 			) : null}
 

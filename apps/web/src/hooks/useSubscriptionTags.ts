@@ -12,6 +12,7 @@
 import type { SubscriptionTag } from "@bilibili-notify/contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../services/api";
+import type { Subscription } from "../types/domain";
 
 export const SUBSCRIPTION_TAGS_QUERY_KEY = ["subscription-tags"] as const;
 
@@ -34,6 +35,14 @@ export function useReplaceSubscriptionTags() {
 	return useMutation({
 		mutationFn: (table: SubscriptionTag[]) =>
 			api.put<SubscriptionTag[]>(SUBSCRIPTION_TAGS_PATH, table),
-		onSuccess: (saved) => qc.setQueryData(SUBSCRIPTION_TAGS_QUERY_KEY, saved),
+		onSuccess: (saved) => {
+			qc.setQueryData(SUBSCRIPTION_TAGS_QUERY_KEY, saved);
+			const known = new Set(saved.map((tag) => tag.id));
+			// A successful full-table replacement has already removed these references on the server.
+			qc.setQueryData<Subscription[]>(["subscriptions"], (current) =>
+				current?.map((sub) => ({ ...sub, tagIds: sub.tagIds.filter((id) => known.has(id)) })),
+			);
+			void qc.invalidateQueries({ queryKey: ["subscriptions"] });
+		},
 	});
 }

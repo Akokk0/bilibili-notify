@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	DEFAULT_FEATURE_FLAGS,
@@ -142,22 +142,25 @@ describe("UpCard 订阅上的问题", () => {
 });
 
 /**
- * 卡片角标(ADR-0034):写**第一个标签的名字**,名字按 id 到标签表里查;没挂标签就什么都不写 —— 不再写
- * 「默认」。订阅上只记 id,所以角标不会因为标签改名而过期。
+ * 卡片标签(ADR-0034):按登记表顺序显示全部已知标签;没挂标签就什么都不写。
+ * 订阅上只记 id,所以显示名称不会因为标签改名而过期。
  */
 const GAME = { id: "11111111-1111-4111-8111-111111111111", name: "游戏" };
 const CHAT = { id: "22222222-2222-4222-8222-222222222222", name: "杂谈" };
 
 describe("UpCard 标签角标", () => {
-	it("挂了标签 → 写第一个标签的名字(按订阅上 id 的顺序,不是表的顺序),不写第二个", () => {
+	it("shows all known tags in registry order without changing subscription tagIds", () => {
 		const sub = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			tagIds: [CHAT.id, GAME.id],
 		};
-		const { getByText, queryByText } = render(<UpCard {...props({ sub, tags: [GAME, CHAT] })} />);
-
-		expect(getByText("标签：").textContent).toBe("标签：杂谈");
-		expect(queryByText("游戏")).toBeNull();
+		const { getByRole } = render(<UpCard {...props({ sub, tags: [GAME, CHAT] })} />);
+		expect(
+			within(getByRole("list", { name: "订阅标签" }))
+				.getAllByRole("listitem")
+				.map((n) => n.textContent),
+		).toEqual(["游戏", "杂谈"]);
+		expect(sub.tagIds).toEqual([CHAT.id, GAME.id]);
 	});
 
 	it("没挂标签 → 什么都不写:没有「标签:」,更没有「默认」", () => {
@@ -176,14 +179,16 @@ describe("UpCard 标签角标", () => {
 		expect(container.textContent).not.toContain("· 更新于");
 	});
 
-	it("挂了标签时「更新于」前有分隔点", () => {
+	it("keeps the update time separate from label pills", () => {
 		const sub = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			tagIds: [GAME.id],
 		};
 		const { container } = render(<UpCard {...props({ sub, tags: [GAME] })} />);
 
-		expect(container.textContent).toContain("标签：游戏· 更新于");
+		expect(container.textContent).toContain("游戏");
+		expect(container.textContent).toContain("更新于");
+		expect(container.textContent).not.toContain("· 更新于");
 	});
 
 	it("标签表没读到 / 表里查不到那个 id → 当没挂,什么都不写(两张表各自重取,一时对不上不许崩)", () => {

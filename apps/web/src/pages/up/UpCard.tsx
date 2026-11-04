@@ -19,7 +19,6 @@ import {
 	type SubscriptionPlatform,
 	visibleFeaturesOf,
 } from "./subscription-source";
-import { resolveTagNames } from "./tag-edit";
 
 /**
  * 订阅功能开关的胶囊色。键空间是 FeatureKey(历史行与推送色表用的也是它),
@@ -94,8 +93,8 @@ export function UpCard({
 		fans == null
 			? tx("sourceUi.pages.up.UpCard.UpCard.1")
 			: tx("sourceUi.pages.up.UpCard.UpCard.2", { value1: formatCount(fans) });
-	// 角标只写第一个标签的名字;没挂(或查不到)就什么都不写 —— 不再写「默认」。
-	const firstTagName = resolveTagNames(sub.tagIds, tags ?? [])[0];
+	// Display order belongs to the registry; subscription tagIds remain unchanged.
+	const cardTags = (tags ?? []).filter((tag) => sub.tagIds.includes(tag.id));
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: outer card holds inner <button>s (select / enabled toggle); nested HTML <button> is invalid, so a div + role=button is the right escape.
 		<div
@@ -244,18 +243,23 @@ export function UpCard({
 						{sub.notes}
 					</div>
 				) : null}
-				<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
-					{firstTagName !== undefined ? (
-						<span>
-							{tx("sourceUi.pages.up.UpCard.UpCard.7")}
-							<span className="text-bn-text-tertiary">{firstTagName}</span>
-						</span>
-					) : null}
-					<span className="ml-auto">
-						{firstTagName !== undefined ? "· " : null}
-						{tx("sourceUi.pages.up.UpCard.UpCard.8")}{" "}
-						<RelativeTime at={sub.cachedProfile?.refreshedAt} />
-					</span>
+				{cardTags.length > 0 ? (
+					<ul
+						aria-label={tx("subscriptionTags.cardLabels")}
+						className="m-0 mb-2.5 flex min-w-0 list-none flex-wrap gap-1 p-0"
+					>
+						{cardTags.map((tag) => (
+							<li key={tag.id} className="max-w-full" title={tag.name}>
+								<Pill color="var(--color-bn-pink)" subtle size="sm">
+									<span className="break-all">{tag.name}</span>
+								</Pill>
+							</li>
+						))}
+					</ul>
+				) : null}
+				<div className="text-right text-bn-xs text-bn-text-secondary">
+					{tx("sourceUi.pages.up.UpCard.UpCard.8")}{" "}
+					<RelativeTime at={sub.cachedProfile?.refreshedAt} />
 				</div>
 			</div>
 		</div>
