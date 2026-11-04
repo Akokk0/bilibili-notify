@@ -108,6 +108,7 @@ type SystemSectionId = (typeof SYSTEM_SECTIONS)[number]["id"] | `integration:${s
 const HASH_SECTION: Readonly<Record<string, SystemSectionId>> = {
 	[UPDATE_SECTION_HASH]: "maintenance",
 	"#storage": "storage",
+	"#account": "account",
 };
 
 /**

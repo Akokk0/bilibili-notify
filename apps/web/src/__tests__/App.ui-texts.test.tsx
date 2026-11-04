@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-import type { HealthDetailsResponse, HealthResponse } from "@bilibili-notify/contract";
+import type {
+	HealthDetailsResponse,
+	HealthResponse,
+	SystemNotice,
+} from "@bilibili-notify/contract";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -7,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import App from "../App";
+import { browser, useRestartStore } from "../components/update/restart";
 import { i18n } from "../i18n";
 import { setWsEnabled } from "../services/wsSingleton";
 import { useAlertStore } from "../store/alerts";
@@ -15,6 +20,8 @@ import { useSessionStore } from "../store/session";
 const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 afterEach(() => {
 	cleanup();
+	useRestartStore.getState().dismiss();
+	vi.restoreAllMocks();
 	useAlertStore.getState().clear();
 	setWsEnabled(false);
 	qc.clear();
@@ -48,6 +55,8 @@ function mountApp(
 		details?: () => HealthDetailsResponse | Promise<HealthDetailsResponse>;
 		path?: string;
 		health?: () => HealthResponse | Promise<HealthResponse>;
+		notices?: () => SystemNotice[] | Promise<SystemNotice[]>;
+		request?: (path: string, init?: RequestInit) => Promise<Response | undefined>;
 		session?: { authRequired: boolean; authed: boolean };
 	} = {},
 ) {
@@ -72,10 +81,14 @@ function mountApp(
 	}));
 	vi.stubGlobal(
 		"fetch",
-		vi.fn(async (input: string | URL | Request) => {
+		vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 			const path = String(input);
+			const overridden = await options.request?.(path, init);
+			if (overridden) return overridden;
 			let data: unknown = {};
-			if (path === "/api/session") data = options.session ?? { authRequired: false, authed: false };
+			if (path === "/api/system/notices") data = { notices: await (options.notices?.() ?? []) };
+			else if (path === "/api/session")
+				data = options.session ?? { authRequired: false, authed: false };
 			else if (path === "/api/health/details") data = await (options.details?.() ?? runningDetails);
 			else if (path === "/api/settings") data = { core };
 			else if (path === "/api/health")
@@ -279,7 +292,7 @@ it("re-enters the startup gate on a new process and keeps the original page afte
 	startedAt = "2026-11-04T00:00:00Z";
 	details = { phase: "migrating", progress: { step: 2, total: 12, label: "订阅" } };
 	await act(async () => {
-		await qc.invalidateQueries({ queryKey: ["health"], exact: true });
+		await qc.invalidateQueries({ queryKey: ["health"] });
 	});
 	expect(await screen.findByRole("heading", { name: "正在搬家" })).toBeTruthy();
 	expect(screen.queryByRole("button", { name: /添加一行/ })).toBeNull();
@@ -288,4 +301,415 @@ it("re-enters the startup gate on a new process and keeps the original page afte
 		await qc.invalidateQueries({ queryKey: ["health", "details"] });
 	});
 	expect((await screen.findAllByRole("button", { name: /添加一行/ })).length).toBeGreaterThan(0);
+});
+
+const updateNotice: SystemNotice = {
+	id: "notice-1",
+	kind: "updated",
+	createdAt: "2026-11-04T00:00:00Z",
+	version: "1.0.1",
+	releases: [],
+};
+const jsonResponse = (data: unknown, status = 200) =>
+	new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
+it("offers an explicit 了解 action; snoozing and reopening never mark a system notice read", async () => {
+	let left = [updateNotice];
+	mountApp({
+		notices: () => left,
+		request: async (path, init) => {
+			if (path === "/api/system/notices/notice-1/acknowledge" && init?.method === "POST") {
+				left = [];
+				return jsonResponse({ notices: left });
+			}
+		},
+	});
+	expect(await screen.findByText("本次更新 · 1.0.1")).toBeTruthy();
+	expect(screen.queryByRole("button", { name: "已了解" })).toBeNull();
+	await userEvent.click(screen.getByRole("button", { name: "稍后提醒" }));
+	expect(screen.queryByText("本次更新 · 1.0.1")).toBeNull();
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.filter(
+				([path, init]) => init?.method === "POST" && String(path).endsWith("/acknowledge"),
+			),
+	).toEqual([]);
+	await userEvent.click(screen.getByRole("button", { name: "查看" }));
+	await userEvent.click(screen.getByRole("button", { name: "了解" }));
+	await waitFor(() => expect(screen.queryByText("本次更新 · 1.0.1")).toBeNull());
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.some(
+				([path, init]) =>
+					String(path) === "/api/system/notices/notice-1/acknowledge" && init?.method === "POST",
+			),
+	).toBe(true);
+});
+
+it("lets the system notice finish before offering onboarding, then returns control to onboarding", async () => {
+	mountApp({ notices: () => [updateNotice] });
+	await screen.findByText("本次更新 · 1.0.1");
+	await screen.findAllByRole("button", { name: /添加一行/ });
+	expect(screen.queryByText("需要新手指引吗?")).toBeNull();
+	await userEvent.click(screen.getByRole("button", { name: "稍后提醒" }));
+	expect(await screen.findByText("需要新手指引吗?")).toBeTruthy();
+});
+
+it("renders release notes safely and handles failed-generation and rollback notices in server order", async () => {
+	let left: SystemNotice[] = [
+		{
+			...updateNotice,
+			releases: [
+				{
+					version: "1.0.1",
+					date: "2026-11-04",
+					summary: "**标签管理**\n\n<script>bad()</script>",
+					caution: "请更新拓展",
+					releaseUrl: "javascript:alert(1)",
+				},
+			],
+		},
+		{
+			id: "notice-2",
+			kind: "generation-failed",
+			createdAt: "2026-11-04T00:00:01Z",
+			source: "zero",
+			message: "磁盘空间不足（原文）",
+		},
+		{ id: "notice-3", kind: "rolled-back", createdAt: "2026-11-04T00:00:02Z", version: "1.0.2" },
+	];
+	mountApp({
+		notices: () => left,
+		request: async (path, init) => {
+			if (path.endsWith("/acknowledge") && init?.method === "POST") {
+				left = left.slice(1);
+				return jsonResponse({ notices: left });
+			}
+		},
+	});
+	expect(await screen.findByText("标签管理", { selector: "strong" })).toBeTruthy();
+	expect(screen.getByText("请更新拓展")).toBeTruthy();
+	expect(document.querySelector("script")).toBeNull();
+	expect(screen.queryByRole("button", { name: "完整更新说明" })).toBeNull();
+	await userEvent.click(screen.getByRole("button", { name: "了解" }));
+	expect(await screen.findByText("未能创建新数据")).toBeTruthy();
+	expect(screen.getByText("磁盘空间不足（原文）")).toBeTruthy();
+	expect(screen.getByText(/从旧代重新迁移未能完成/)).toBeTruthy();
+	await userEvent.click(screen.getByRole("button", { name: "了解" }));
+	expect(await screen.findByText("已自动退回可用版本")).toBeTruthy();
+	expect(screen.getByText(/1.0.2.*test/)).toBeTruthy();
+});
+
+it("keeps unread state unknown after a failed read and can retry the same notice list", async () => {
+	let failing = true;
+	mountApp({
+		notices: () => [updateNotice],
+		request: async (path) =>
+			path === "/api/system/notices" && failing
+				? jsonResponse({ code: "unavailable", message: "读提示失败原文" }, 503)
+				: undefined,
+	});
+	expect(await screen.findByText("读提示失败原文")).toBeTruthy();
+	expect(screen.queryByText("本次更新 · 1.0.1")).toBeNull();
+	failing = false;
+	await userEvent.click(screen.getByRole("button", { name: "重试" }));
+	expect(await screen.findByText("本次更新 · 1.0.1")).toBeTruthy();
+});
+
+const migratedNotice: SystemNotice = {
+	id: "migrated-1",
+	kind: "migrated",
+	createdAt: "2026-11-04T00:00:00Z",
+	version: "1.0.0",
+	cardSkinsDropped: true,
+	masterTargetCleared: true,
+	releases: [],
+};
+it("shows only the migration follow-ups reported by the current generation", async () => {
+	let left: SystemNotice[] = [
+		migratedNotice,
+		{ ...migratedNotice, id: "migrated-2", cardSkinsDropped: false, masterTargetCleared: false },
+	];
+	mountApp({
+		notices: () => left,
+		request: async (path, init) => {
+			if (path.endsWith("/acknowledge") && init?.method === "POST") {
+				left = left.slice(1);
+				return jsonResponse({ notices: left });
+			}
+		},
+	});
+	expect(await screen.findByText("卡片皮肤需要重新制作")).toBeTruthy();
+	expect(screen.getByText("重新选择主人目标")).toBeTruthy();
+	expect(screen.getByRole("button", { name: "全新开始…" })).toBeTruthy();
+	await userEvent.click(screen.getByRole("button", { name: "沿用已迁数据" }));
+	await waitFor(() => expect(screen.queryByText("卡片皮肤需要重新制作")).toBeNull());
+	expect(screen.queryByText("重新选择主人目标")).toBeNull();
+	expect(screen.getByRole("button", { name: "全新开始…" })).toBeTruthy();
+});
+
+it("rechecks a notice missing at acknowledgement time instead of leaving a stale unread dialog", async () => {
+	let left = [updateNotice];
+	mountApp({
+		notices: () => left,
+		request: async (path, init) => {
+			if (path.endsWith("/acknowledge") && init?.method === "POST") {
+				left = [];
+				return jsonResponse({ code: "not_found", message: "提示不存在" }, 404);
+			}
+		},
+	});
+	await screen.findByText("本次更新 · 1.0.1");
+	await userEvent.click(screen.getByRole("button", { name: "了解" }));
+	await waitFor(() => expect(screen.queryByText("本次更新 · 1.0.1")).toBeNull());
+});
+
+it("confirms the empty-generation consequences and refuses when the host cannot restart", async () => {
+	mountApp({
+		notices: () => [migratedNotice],
+		request: async (path) =>
+			path === "/api/ext"
+				? jsonResponse({
+						extensions: [],
+						restart: { can: false, code: "source_run", message: "只能手动重启（原文）" },
+					})
+				: undefined,
+	});
+	await screen.findByText("数据已迁移完成");
+	await userEvent.click(screen.getByRole("button", { name: "全新开始…" }));
+	expect(await screen.findByText("确认全新开始？")).toBeTruthy();
+	expect(await screen.findByText("只能手动重启（原文）")).toBeTruthy();
+	expect(screen.getByText(/面板账号和密码保留/)).toBeTruthy();
+	expect(
+		(screen.getByRole("button", { name: "确认全新开始并重启" }) as HTMLButtonElement).disabled,
+	).toBe(true);
+	await userEvent.click(screen.getByRole("button", { name: "返回" }));
+	expect(await screen.findByText("数据已迁移完成")).toBeTruthy();
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.filter(
+				([path, init]) => String(path) === "/api/system/generations" && init?.method === "POST",
+			),
+	).toEqual([]);
+});
+
+it("submits an empty generation only after confirmation, retains failures, then waits for a new process", async () => {
+	let attempts = 0;
+	let accepted = false;
+	const reload = vi.spyOn(browser, "reload").mockImplementation(() => {});
+	mountApp({
+		notices: () => [migratedNotice],
+		health: () => ({
+			status: "ok",
+			version: "test",
+			startedAt: accepted ? "2026-11-04T00:00:00Z" : "2026-11-01T00:00:00Z",
+			uptime: 0,
+		}),
+		request: async (path, init) => {
+			if (path === "/api/ext")
+				return jsonResponse({ extensions: [], restart: { can: true, how: "desktop" } });
+			if (path === "/api/system/generations" && init?.method === "POST") {
+				expect(JSON.parse(String(init.body))).toEqual({ source: "empty" });
+				attempts++;
+				if (attempts === 1)
+					return jsonResponse({ code: "unavailable", message: "暂时无法开新代" }, 503);
+				accepted = true;
+				return jsonResponse({
+					restarting: true,
+					startedAt: "2026-11-01T00:00:00Z",
+					version: "test",
+				});
+			}
+		},
+	});
+	await screen.findByText("数据已迁移完成");
+	expect(attempts).toBe(0);
+	await userEvent.click(screen.getByRole("button", { name: "全新开始…" }));
+	await waitFor(() =>
+		expect(
+			(screen.getByRole("button", { name: "确认全新开始并重启" }) as HTMLButtonElement).disabled,
+		).toBe(false),
+	);
+	await userEvent.click(screen.getByRole("button", { name: "确认全新开始并重启" }));
+	expect(await screen.findByText("暂时无法开新代")).toBeTruthy();
+	expect(reload).not.toHaveBeenCalled();
+	await userEvent.click(screen.getByRole("button", { name: "确认全新开始并重启" }));
+	expect(await screen.findByRole("heading", { name: "正在等待服务重启" })).toBeTruthy();
+	expect(screen.queryByRole("link", { name: "系统" })).toBeNull();
+	await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+	expect(attempts).toBe(2);
+});
+
+it("keeps third-party extension updates behind confirmation without marking the migration notice read", async () => {
+	let installed = false;
+	let installs = 0;
+	const entry = {
+		source: "alice",
+		official: false,
+		id: "alice.bridge",
+		name: "示例消息桥",
+		description: "demo",
+		version: "2.0.0",
+		apiVersion: 3,
+		prerelease: false,
+		size: 100,
+		state: "updatable",
+	};
+	mountApp({
+		notices: () => [migratedNotice],
+		request: async (path, init) => {
+			if (path === "/api/ext")
+				return jsonResponse({
+					extensions: [
+						{
+							id: entry.id,
+							name: entry.name,
+							dir: "/tmp/demo",
+							state: installed ? "disabled" : "incompatible",
+							enabled: false,
+							detail: "旧契约不兼容",
+						},
+					],
+					restart: { can: false, code: "source_run", message: "手动重启" },
+				});
+			if (path === "/api/ext/marketplace")
+				return jsonResponse({
+					available: true,
+					fetchedAt: "2026-11-04T00:00:00Z",
+					sources: [{ id: "alice", name: "Alice 的拓展源", official: false, ok: true }],
+					extensions: [{ ...entry, state: installed ? "installed" : "updatable" }],
+				});
+			if (path === "/api/ext/marketplace/install" && init?.method === "POST") {
+				expect(JSON.parse(String(init.body))).toEqual({ source: "alice", id: entry.id });
+				installed = true;
+				installs++;
+				return jsonResponse({
+					id: entry.id,
+					name: entry.name,
+					version: entry.version,
+					staged: false,
+					enabled: false,
+					restart: { can: false, code: "source_run", message: "手动重启" },
+				});
+			}
+		},
+	});
+	await screen.findByText("示例消息桥");
+	await userEvent.click(await screen.findByRole("button", { name: "更新" }));
+	expect(installs).toBe(0);
+	expect(screen.getAllByRole("dialog")).toHaveLength(1);
+	expect(screen.getByText(/Alice 的拓展源/)).toBeTruthy();
+	await userEvent.click(screen.getByRole("button", { name: "返回" }));
+	expect(installs).toBe(0);
+	await userEvent.click(screen.getByRole("button", { name: "更新" }));
+	await userEvent.click(screen.getByRole("button", { name: "照样更新" }));
+	await waitFor(() => expect(installs).toBe(1));
+	expect(screen.getByText("数据已迁移完成")).toBeTruthy();
+	expect(
+		vi.mocked(fetch).mock.calls.filter(([path]) => String(path).endsWith("/acknowledge")),
+	).toEqual([]);
+});
+
+it("locks acknowledgement, retains server issues on failure, and retries without closing the unread notice", async () => {
+	let resolve!: (response: Response) => void;
+	let calls = 0;
+	const pending = new Promise<Response>((r) => {
+		resolve = r;
+	});
+	mountApp({
+		notices: () => [updateNotice],
+		request: async (path, init) => {
+			if (path.endsWith("/acknowledge") && init?.method === "POST") {
+				calls++;
+				return calls === 1 ? pending : jsonResponse({ notices: [] });
+			}
+		},
+	});
+	await screen.findByText("本次更新 · 1.0.1");
+	await userEvent.click(screen.getByRole("button", { name: "了解" }));
+	expect((screen.getByRole("button", { name: "稍后提醒" }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
+	await userEvent.keyboard("{Escape}");
+	await userEvent.click(screen.getByRole("button", { name: "关闭弹窗" }));
+	expect(screen.getByText("本次更新 · 1.0.1")).toBeTruthy();
+	expect(calls).toBe(1);
+	await act(async () =>
+		resolve(
+			jsonResponse(
+				{
+					code: "unavailable",
+					message: "不可写",
+					issues: [{ path: ["notices"], message: "磁盘只读" }],
+				},
+				503,
+			),
+		),
+	);
+	expect(await screen.findByText("不可写：notices：磁盘只读")).toBeTruthy();
+	await userEvent.click(screen.getByRole("button", { name: "了解" }));
+	await waitFor(() => expect(screen.queryByText("本次更新 · 1.0.1")).toBeNull());
+	expect(calls).toBe(2);
+});
+
+it("keeps keyboard focus inside the notice and returns it to the unread entry after snoozing", async () => {
+	mountApp({ notices: () => [updateNotice] });
+	await screen.findByText("本次更新 · 1.0.1");
+	await waitFor(() =>
+		expect(document.activeElement).toBe(screen.getByRole("button", { name: "稍后提醒" })),
+	);
+	await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+	expect(document.activeElement).toBe(screen.getByRole("button", { name: "了解" }));
+	await userEvent.keyboard("{Tab}");
+	expect(document.activeElement).toBe(screen.getByRole("button", { name: "稍后提醒" }));
+	await userEvent.keyboard("{Escape}");
+	expect(document.activeElement).toBe(screen.getByRole("button", { name: "查看" }));
+});
+
+it("ignores an old acknowledgement reply after the backend has switched generations", async () => {
+	let left: SystemNotice[] = [updateNotice];
+	let startedAt = "2026-11-01T00:00:00Z";
+	let details: HealthDetailsResponse = runningDetails;
+	let resolve!: (response: Response) => void;
+	const pending = new Promise<Response>((r) => {
+		resolve = r;
+	});
+	mountApp({
+		notices: () => left,
+		details: () => details,
+		health: () => ({ status: "ok", version: "test", startedAt, uptime: 0 }),
+		request: async (path, init) =>
+			path.endsWith("/acknowledge") && init?.method === "POST" ? pending : undefined,
+	});
+	await screen.findByText("本次更新 · 1.0.1");
+	await userEvent.click(screen.getByRole("button", { name: "了解" }));
+	startedAt = "2026-11-04T00:00:00Z";
+	details = { phase: "migrating", progress: null };
+	await act(async () => {
+		await qc.invalidateQueries({ queryKey: ["health"], exact: true });
+	});
+	await screen.findByRole("heading", { name: "正在搬家" });
+	left = [];
+	details = runningDetails;
+	await act(async () => {
+		await qc.invalidateQueries({ queryKey: ["health", "details"] });
+	});
+	await screen.findAllByRole("button", { name: /添加一行/ });
+	await act(async () => resolve(jsonResponse({ notices: [updateNotice] })));
+	expect(screen.queryByText("本次更新 · 1.0.1")).toBeNull();
+});
+
+it("explains the required container restart policy before confirming a fresh start", async () => {
+	mountApp({
+		notices: () => [migratedNotice],
+		request: async (path) =>
+			path === "/api/ext"
+				? jsonResponse({ extensions: [], restart: { can: true, how: "container" } })
+				: undefined,
+	});
+	await screen.findByText("数据已迁移完成");
+	await userEvent.click(screen.getByRole("button", { name: "全新开始…" }));
+	expect(await screen.findByText(/容器.*自动重启策略/)).toBeTruthy();
 });

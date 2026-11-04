@@ -1,4 +1,4 @@
-import { UiTextProvider } from "@bilibili-notify/ui";
+import { Btn, ErrorNote, UiTextProvider, WarnNote } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
@@ -14,7 +14,9 @@ import { ShellError, ShellLoading } from "./components/shell-states";
 import { SkinPreviewBar } from "./components/skin-preview-bar";
 import { SkinRoot } from "./components/skin-root";
 import { StartupScreen } from "./components/startup-screen";
+import { SystemNoticesHost } from "./components/system-notices";
 import { ToastShell } from "./components/toast-shell";
+import { browser, useRestartStore } from "./components/update/restart";
 import { useAlertChannel } from "./hooks/useAlertChannel";
 import { useAuthChannel } from "./hooks/useAuthChannel";
 import { HEALTH_QUERY_OPTIONS } from "./hooks/useBackendReachable";
@@ -109,7 +111,10 @@ function StartupApp() {
 			alive = false;
 		};
 	}, [running, process, health.isError, releasedProcess, qc]);
-	const ready = process !== null && releasedProcess === process && running;
+	const restartView = useRestartStore((s) => s.view);
+	const generationRestart = restartView?.intent.purpose === "generation" ? restartView : null;
+	const ready =
+		process !== null && releasedProcess === process && running && generationRestart === null;
 	const allowed = useSessionStore((s) => !s.authRequired || s.authed);
 	useLayoutEffect(() => {
 		setWsBackendReady(ready && allowed);
@@ -120,18 +125,39 @@ function StartupApp() {
 			{ready ? (
 				<PlatformMetaRoot>
 					<SkinRoot>
-						<AuthedApp />
+						<AuthedApp processId={process ?? ""} />
 					</SkinRoot>
 				</PlatformMetaRoot>
 			) : (
 				<StartupScreen
-					details={state}
-					failed={health.isError || details.isError}
+					details={generationRestart ? undefined : state}
+					restarting={generationRestart !== null}
+					failed={!generationRestart && (health.isError || details.isError)}
 					onRetry={() => {
 						void health.refetch();
 						void details.refetch();
 					}}
-				/>
+				>
+					{generationRestart?.kind === "timed-out" ? (
+						<ErrorNote size="sm" className="mt-4">
+							{t("lifecycle.restartTimedOut")}
+							<div className="mt-2">
+								<Btn size="sm" variant="outline" onClick={() => useRestartStore.getState().retry()}>
+									{t("lifecycle.keepWaiting")}
+								</Btn>
+							</div>
+						</ErrorNote>
+					) : generationRestart?.kind === "fell-back" ? (
+						<WarnNote size="sm" className="mt-4">
+							{t("lifecycle.restartFellBack", { version: generationRestart.version })}
+							<div className="mt-2">
+								<Btn size="sm" variant="outline" onClick={() => browser.reload()}>
+									{t("lifecycle.reloadCurrent")}
+								</Btn>
+							</div>
+						</WarnNote>
+					) : null}
+				</StartupScreen>
 			)}
 		</UiTextProvider>
 	);
@@ -143,7 +169,8 @@ function StartupApp() {
  * than at the App root — is what gates WS: a cold, unauthenticated load never
  * mounts this subtree, so the WS singleton is never created before login.
  */
-function AuthedApp() {
+function AuthedApp({ processId }: { processId: string }) {
+	const [noticesBlocking, setNoticesBlocking] = useState(true);
 	useAuthChannel();
 	useStateChannel();
 	// 语言与口吻跟服务端设置走(登录后才读得到设置,所以挂在这里而不是根上)。
@@ -174,6 +201,7 @@ function AuthedApp() {
 	return (
 		<div className="flex min-h-screen flex-col">
 			<GlassHeader />
+			<SystemNoticesHost processId={processId} onBlockingChange={setNoticesBlocking} />
 			{showLoading ? (
 				<ShellLoading />
 			) : showError ? (
@@ -219,7 +247,7 @@ function AuthedApp() {
 			<ToastShell />
 			<AlertShell />
 			{/* 「带我做」导览伴随窗:左下角(右下 toast/右上告警/底部灵动岛都有主了) */}
-			<TourCompanion />
+			{noticesBlocking ? null : <TourCompanion />}
 			{DevDock ? (
 				<Suspense fallback={null}>
 					<DevDock />

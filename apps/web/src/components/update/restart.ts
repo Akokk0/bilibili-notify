@@ -151,6 +151,8 @@ export const DEFAULT_RESTART_WAIT: RestartWait = { intervalMs: 1_000, timeoutMs:
 
 /** 按下「立即重启并应用」那一刻记下的:要换到哪、是升是退、要换掉的进程是哪个。 */
 export interface RestartIntent extends RestartMark {
+	/** A requested new data generation blocks business until the refreshed app is ready. */
+	purpose?: "generation";
 	/** 被换掉的那个进程的 `startedAt` —— 之后只认和它不同的回答。 */
 	before: string;
 }

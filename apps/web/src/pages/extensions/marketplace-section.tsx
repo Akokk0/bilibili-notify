@@ -61,7 +61,7 @@ interface InstallRequest {
  * —— 把一份 BN 不担保的代码放进 BN 进程里跑。哪一颗钮自己接 `install.mutate`,哪一颗就绕过
  * 了这道门,而且构建、类型、别的测试全绿:第三方源只要把版本号抬一格就能零确认装进新代码。
  */
-export function useMarketplaceInstall() {
+export function useMarketplaceInstall({ motion = true }: { motion?: boolean } = {}) {
 	const qc = useQueryClient();
 	const [done, setDone] = useState<ExtensionInstallResponse | null>(null);
 	const [errors, setErrors] = useState<string[]>([]);
@@ -99,7 +99,7 @@ export function useMarketplaceInstall() {
 		onMutate: ({ id, kind, from }) => {
 			setErrors([]);
 			setDone(null);
-			if (kind !== "update" || !mounted.current) return undefined;
+			if (!motion || kind !== "update" || !mounted.current) return undefined;
 			let settle: (landed: boolean) => void = () => {};
 			// 换装没有起点也演 —— 球从卡片上方落下。
 			const outcome = new Promise<boolean>((resolve) => {
@@ -112,7 +112,7 @@ export function useMarketplaceInstall() {
 			setDone(res);
 			started?.settle(true);
 			// 装的传送非得有起点(从市场那张卡飞过来)。
-			if (kind === "install" && from && mounted.current) {
+			if (motion && kind === "install" && from && mounted.current) {
 				play({ kind: "install", id: res.id, from });
 			}
 			void invalidateExtensionTables(qc);

@@ -47,6 +47,7 @@ vi.mock("../../services/api", () => ({
 		get: vi.fn(async (url: string) => {
 			if (url === "/api/health")
 				return { status: "ok", uptime: 1, startedAt: "2026-11-04T00:00:00Z" };
+			if (url === "/api/system/notices") return { notices: [] };
 			if (url === "/api/health/details") return { phase: "running" };
 			if (url === "/api/adapters") return { adapters: [] };
 			if (url === "/api/connections") return [];

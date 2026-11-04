@@ -1,5 +1,6 @@
 import type { HealthDetailsResponse } from "@bilibili-notify/contract";
 import { Btn, ErrorNote, HintNote, Icon, LoadingBlock } from "@bilibili-notify/ui";
+import type { ReactNode } from "react";
 import { useT } from "../i18n";
 
 /** Startup is a page boundary, not a cover over mounted business controls. */
@@ -7,10 +8,14 @@ export function StartupScreen({
 	details,
 	failed,
 	onRetry,
+	restarting = false,
+	children,
 }: {
 	details?: HealthDetailsResponse;
 	failed: boolean;
 	onRetry: () => void;
+	restarting?: boolean;
+	children?: ReactNode;
 }) {
 	const tx = useT();
 	const progress = details?.phase === "migrating" ? details.progress : null;
@@ -21,26 +26,30 @@ export function StartupScreen({
 					<Icon.refresh size={18} /> Bilibili Notify
 				</div>
 				<h1 className="mb-2 text-bn-md font-bold">
-					{failed
-						? details
-							? tx("startup.disconnected")
-							: tx("startup.unavailable")
-						: details?.phase === "migrating"
-							? tx("startup.migrating")
-							: details?.phase === "starting"
-								? tx("startup.starting")
-								: tx("startup.checking")}
+					{restarting
+						? tx("startup.restarting")
+						: failed
+							? details
+								? tx("startup.disconnected")
+								: tx("startup.unavailable")
+							: details?.phase === "migrating"
+								? tx("startup.migrating")
+								: details?.phase === "starting"
+									? tx("startup.starting")
+									: tx("startup.checking")}
 				</h1>
 				<p className="mb-6 text-bn-sm leading-relaxed text-bn-text-secondary">
-					{failed
-						? details
-							? tx("startup.connectionHint")
-							: tx("startup.firstFailureHint")
-						: details?.phase === "migrating"
-							? tx("startup.migrationHint")
-							: details?.phase === "starting"
-								? tx("startup.startingHint")
-								: tx("startup.checkingHint")}
+					{restarting
+						? tx("startup.restartingHint")
+						: failed
+							? details
+								? tx("startup.connectionHint")
+								: tx("startup.firstFailureHint")
+							: details?.phase === "migrating"
+								? tx("startup.migrationHint")
+								: details?.phase === "starting"
+									? tx("startup.startingHint")
+									: tx("startup.checkingHint")}
 				</p>
 				{progress ? (
 					<div>
@@ -79,6 +88,7 @@ export function StartupScreen({
 						</Btn>
 					</div>
 				) : null}
+				{children}
 			</section>
 		</main>
 	);

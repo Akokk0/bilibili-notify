@@ -79,12 +79,14 @@ export interface UseExtensionsOptions {
 	 * 会拿它把默认值覆盖掉。
 	 */
 	retry?: boolean;
+	enabled?: boolean;
 }
 
-export function useExtensions({ retry }: UseExtensionsOptions = {}) {
+export function useExtensions({ retry, enabled }: UseExtensionsOptions = {}) {
 	return useQuery({
 		queryKey: EXTENSIONS_QUERY_KEY,
 		queryFn: () => api.get<ExtensionsResponse>("/api/ext"),
 		...(retry === undefined ? {} : { retry }),
+		...(enabled === undefined ? {} : { enabled }),
 	});
 }
