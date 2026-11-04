@@ -129,6 +129,8 @@ async function renderRuntimeSection(
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
 		if (url === "/api/settings/invalid") return { entries: invalid };
 		if (url === "/api/settings") return JSON.parse(JSON.stringify(served));
+		if (url === "/api/system/storage") return { rows: [] };
+		if (url === "/api/system/generations") return { generations: [] };
 		if (url === "/api/settings/integrations") return definitions;
 		if (url === "/api/connections/capabilities") return {};
 		return [];
@@ -334,6 +336,7 @@ describe("系统页里的保留天数", () => {
 
 	it("读:七档段选,当前那一档按着;标签说清它管的是图片与重推原件", async () => {
 		await renderRuntimeSection();
+		fireEvent.click(screen.getByRole("button", { name: "存储" }));
 		const options = within(row()).getAllByRole("button");
 		expect(options.map((b) => b.textContent)).toEqual([
 			"90 天",
@@ -359,6 +362,7 @@ describe("系统页里的保留天数", () => {
 
 	it("写:点「7 天」→ PATCH 发 { core: { history: { retentionDays: 7 } } },别的块不带", async () => {
 		await renderRuntimeSection();
+		fireEvent.click(screen.getByRole("button", { name: "存储" }));
 		fireEvent.click(within(row()).getByText("7 天"));
 
 		const body = await save();

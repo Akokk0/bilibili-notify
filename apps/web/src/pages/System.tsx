@@ -24,6 +24,7 @@ import { MaintenanceSection } from "./system/maintenance-section";
 import { MessagingSection } from "./system/messaging-section";
 import { PreferencesSection } from "./system/preferences-section";
 import { RuntimeSection } from "./system/runtime-section";
+import { StorageSection } from "./system/storage-section";
 import { buildSystemPatch } from "./system-save-patch";
 
 /**
@@ -74,6 +75,16 @@ const SYSTEM_SECTIONS = [
 		glyph: Icon.palette,
 	},
 	{
+		id: "storage",
+		get label() {
+			return i18n.t("storageUsage.nav");
+		},
+		get desc() {
+			return i18n.t("storageUsage.navHint");
+		},
+		glyph: Icon.list,
+	},
+	{
 		id: "maintenance",
 		get label() {
 			return i18n.t("panelUi.pages.System.9");
@@ -96,6 +107,7 @@ type SystemSectionId = (typeof SYSTEM_SECTIONS)[number]["id"] | `integration:${s
  */
 const HASH_SECTION: Readonly<Record<string, SystemSectionId>> = {
 	[UPDATE_SECTION_HASH]: "maintenance",
+	"#storage": "storage",
 };
 
 /**
@@ -296,6 +308,7 @@ export default function System() {
 					</>
 				) : null}
 				{section === "maintenance" ? <MaintenanceSection /> : null}
+				{section === "storage" ? <StorageSection draft={draft} onPatch={patchDraft} /> : null}
 			</div>
 		</div>
 	);

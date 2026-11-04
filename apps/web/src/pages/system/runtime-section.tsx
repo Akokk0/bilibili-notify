@@ -1,8 +1,7 @@
 import type { SettingsResponse } from "@bilibili-notify/contract";
-import { HISTORY_RETENTION_DAY_OPTIONS } from "@bilibili-notify/internal/history";
 import { GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { BrowserSourceSettings } from "../../components/browser-source-settings";
-import { Field, Picker } from "../../components/forms";
+import { Field } from "../../components/forms";
 import { IntegrationLogLevels } from "../../components/integration-log-levels";
 import { LogLevelControl } from "../../components/log-level-setting";
 import { useT } from "../../i18n";
@@ -47,18 +46,6 @@ function SystemSettingsSection({
 				<IntegrationLogLevels
 					levels={logging.levels}
 					onChange={(key, level) => onPatch({ core: { logging: { levels: { [key]: level } } } })}
-				/>
-			</Field>
-
-			{/* 只许七档:选项个数固定,用段选钮组,不用下拉。 */}
-			<Field code="core.history.retentionDays">
-				<Picker
-					value={draft.core.history.retentionDays}
-					onChange={(v) => onPatch({ core: { history: { retentionDays: v } } })}
-					options={HISTORY_RETENTION_DAY_OPTIONS.map((days) => ({
-						value: days,
-						label: t("logging.retentionDays", { count: days }),
-					}))}
 				/>
 			</Field>
 
