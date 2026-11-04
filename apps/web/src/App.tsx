@@ -1,6 +1,6 @@
 import { UiTextProvider } from "@bilibili-notify/ui";
-import { useQuery } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import { AuthGate } from "./components/AuthGate";
 import { AiChatDock, CHAT_PATH } from "./components/ai-chat";
@@ -9,12 +9,16 @@ import { DraftIsland } from "./components/draft-island";
 import { PageErrorBoundary } from "./components/error-boundary";
 import { GlassHeader } from "./components/header";
 import { TourCompanion } from "./components/onboarding/tour-companion";
+import { PlatformMetaRoot } from "./components/platform-meta";
 import { ShellError, ShellLoading } from "./components/shell-states";
 import { SkinPreviewBar } from "./components/skin-preview-bar";
+import { SkinRoot } from "./components/skin-root";
+import { StartupScreen } from "./components/startup-screen";
 import { ToastShell } from "./components/toast-shell";
 import { useAlertChannel } from "./hooks/useAlertChannel";
 import { useAuthChannel } from "./hooks/useAuthChannel";
 import { HEALTH_QUERY_OPTIONS } from "./hooks/useBackendReachable";
+import { HEALTH_DETAILS_QUERY_OPTIONS } from "./hooks/useHealthDetails";
 import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
 import { useUpdateCheckOnOpen } from "./hooks/useUpdateCheckOnOpen";
@@ -36,6 +40,8 @@ import Stats from "./pages/Stats";
 import Subs from "./pages/Subs";
 import System from "./pages/System";
 import Targets from "./pages/Targets";
+import { setWsBackendReady } from "./services/wsSingleton";
+import { useSessionStore } from "./store/session";
 
 /**
  * devtools 只在开发期存在:`import.meta.env.DEV` 是编译期常量,生产构建里这一句折成 `null`,
@@ -51,8 +57,83 @@ const DevDock = import.meta.env.DEV
 export default function App() {
 	return (
 		<AuthGate>
-			<AuthedApp />
+			<StartupApp />
 		</AuthGate>
+	);
+}
+
+/** Auth is established before probing protected startup details; business readers mount only after running. */
+function StartupApp() {
+	const t = useT();
+	const qc = useQueryClient();
+	const health = useQuery({ ...HEALTH_QUERY_OPTIONS, refetchOnMount: "always" });
+	const process = health.isFetchedAfterMount ? (health.data?.startedAt ?? null) : null;
+	const [probedProcess, setProbedProcess] = useState<string | null>(null);
+	const [releasedProcess, setReleasedProcess] = useState<string | null>(null);
+	const details = useQuery({
+		...HEALTH_DETAILS_QUERY_OPTIONS,
+		enabled: process !== null && probedProcess === process,
+	});
+	// A cached running result may belong to another process or data generation. Never release from it.
+	useEffect(() => {
+		let alive = true;
+		setReleasedProcess(null);
+		if (process !== null)
+			void qc
+				.resetQueries({ queryKey: HEALTH_DETAILS_QUERY_OPTIONS.queryKey, exact: true })
+				.then(() => {
+					if (alive) setProbedProcess(process);
+				});
+		return () => {
+			alive = false;
+		};
+	}, [process, qc]);
+	const state = probedProcess === process ? details.data : undefined;
+	const running = state?.phase === "running";
+	useEffect(() => {
+		if (!running) {
+			setReleasedProcess(null);
+			return;
+		}
+		if (process === null || health.isError || releasedProcess === process) return;
+		let alive = true;
+		const business = {
+			predicate: (query: { queryKey: readonly unknown[] }) => query.queryKey[0] !== "health",
+		};
+		void qc.cancelQueries(business).then(() => {
+			if (!alive) return;
+			qc.removeQueries(business);
+			setReleasedProcess(process);
+		});
+		return () => {
+			alive = false;
+		};
+	}, [running, process, health.isError, releasedProcess, qc]);
+	const ready = process !== null && releasedProcess === process && running;
+	const allowed = useSessionStore((s) => !s.authRequired || s.authed);
+	useLayoutEffect(() => {
+		setWsBackendReady(ready && allowed);
+		return () => setWsBackendReady(false);
+	}, [ready, allowed]);
+	return (
+		<UiTextProvider t={t}>
+			{ready ? (
+				<PlatformMetaRoot>
+					<SkinRoot>
+						<AuthedApp />
+					</SkinRoot>
+				</PlatformMetaRoot>
+			) : (
+				<StartupScreen
+					details={state}
+					failed={health.isError || details.isError}
+					onRetry={() => {
+						void health.refetch();
+						void details.refetch();
+					}}
+				/>
+			)}
+		</UiTextProvider>
 	);
 }
 
@@ -63,7 +144,6 @@ export default function App() {
  * mounts this subtree, so the WS singleton is never created before login.
  */
 function AuthedApp() {
-	const t = useT();
 	useAuthChannel();
 	useStateChannel();
 	// 语言与口吻跟服务端设置走(登录后才读得到设置,所以挂在这里而不是根上)。
@@ -92,61 +172,59 @@ function AuthedApp() {
 	const showError = !health.data && !!health.error;
 
 	return (
-		<UiTextProvider t={t}>
-			<div className="flex min-h-screen flex-col">
-				<GlassHeader />
-				{showLoading ? (
-					<ShellLoading />
-				) : showError ? (
-					<ShellError
-						message={String((health.error as Error | null)?.message ?? "unknown")}
-						onRetry={() => {
-							void health.refetch();
-						}}
-					/>
-				) : (
-					<main className="flex-1 px-7 pb-24 pt-6">
-						{/* 一页渲染炸了只丢这一页:边界在 main 里面,顶栏与角落里那几块在它外面(见组件注释)。 */}
-						<PageErrorBoundary>
-							<Routes>
-								<Route path="/" element={<Dashboard />} />
-								<Route path="/subs" element={<Subs />} />
-								<Route path="/targets" element={<Targets />} />
-								<Route path="/extensions" element={<Extensions />} />
-								<Route path="/extensions/:id" element={<ExtensionDetail />} />
-								<Route path="/history" element={<History />} />
-								<Route path="/stats" element={<Stats />} />
-								<Route path="/rules" element={<Rules />} />
-								<Route path="/cards" element={<Cards />} />
-								{/* 皮肤编辑器自铺 fixed inset-0(同聊天页):三栏并排要整个视口宽,
+		<div className="flex min-h-screen flex-col">
+			<GlassHeader />
+			{showLoading ? (
+				<ShellLoading />
+			) : showError ? (
+				<ShellError
+					message={String((health.error as Error | null)?.message ?? "unknown")}
+					onRetry={() => {
+						void health.refetch();
+					}}
+				/>
+			) : (
+				<main className="flex-1 px-7 pb-24 pt-6">
+					{/* 一页渲染炸了只丢这一页:边界在 main 里面,顶栏与角落里那几块在它外面(见组件注释)。 */}
+					<PageErrorBoundary>
+						<Routes>
+							<Route path="/" element={<Dashboard />} />
+							<Route path="/subs" element={<Subs />} />
+							<Route path="/targets" element={<Targets />} />
+							<Route path="/extensions" element={<Extensions />} />
+							<Route path="/extensions/:id" element={<ExtensionDetail />} />
+							<Route path="/history" element={<History />} />
+							<Route path="/stats" element={<Stats />} />
+							<Route path="/rules" element={<Rules />} />
+							<Route path="/cards" element={<Cards />} />
+							{/* 皮肤编辑器自铺 fixed inset-0(同聊天页):三栏并排要整个视口宽,
 							    挤在站内顶栏与两侧内边距里会两边都不够(ADR-0014 决策 20)。 */}
-								<Route path="/cards/skins/:id" element={<CardSkinEditor />} />
-								<Route path="/ai" element={<Ai />} />
-								{/* 聊天页自带 fixed inset-0 的整页底,视觉上盖过 header 与 main 的
+							<Route path="/cards/skins/:id" element={<CardSkinEditor />} />
+							<Route path="/ai" element={<Ai />} />
+							{/* 聊天页自带 fixed inset-0 的整页底,视觉上盖过 header 与 main 的
 							    留白 —— 放在健康门里是刻意的:后端断了就该看到统一的错误壳,
 							    而不是一个每问必挂的聊天。 */}
-								<Route path={CHAT_PATH} element={<Chat />} />
-								<Route path="/system" element={<System />} />
-								<Route path="/logs" element={<Logs />} />
-								{/* 新手指引并进关于页(五轮定稿):/about/guide/:chapter? 深链直达教程章节 */}
-								<Route path="/about/:section?/:chapter?" element={<About />} />
-							</Routes>
-						</PageErrorBoundary>
-					</main>
-				)}
-				<AiChatDock />
-				<DraftIsland />
-				<SkinPreviewBar />
-				<ToastShell />
-				<AlertShell />
-				{/* 「带我做」导览伴随窗:左下角(右下 toast/右上告警/底部灵动岛都有主了) */}
-				<TourCompanion />
-				{DevDock ? (
-					<Suspense fallback={null}>
-						<DevDock />
-					</Suspense>
-				) : null}
-			</div>
-		</UiTextProvider>
+							<Route path={CHAT_PATH} element={<Chat />} />
+							<Route path="/system" element={<System />} />
+							<Route path="/logs" element={<Logs />} />
+							{/* 新手指引并进关于页(五轮定稿):/about/guide/:chapter? 深链直达教程章节 */}
+							<Route path="/about/:section?/:chapter?" element={<About />} />
+						</Routes>
+					</PageErrorBoundary>
+				</main>
+			)}
+			<AiChatDock />
+			<DraftIsland />
+			<SkinPreviewBar />
+			<ToastShell />
+			<AlertShell />
+			{/* 「带我做」导览伴随窗:左下角(右下 toast/右上告警/底部灵动岛都有主了) */}
+			<TourCompanion />
+			{DevDock ? (
+				<Suspense fallback={null}>
+					<DevDock />
+				</Suspense>
+			) : null}
+		</div>
 	);
 }

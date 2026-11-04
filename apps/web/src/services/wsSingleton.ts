@@ -15,6 +15,7 @@ import { type ChannelName, connectWs, type WsClient, type WsEnvelope, type WsSta
 
 let client: WsClient | null = null;
 let enabled = true;
+let backendReady = false;
 let lastStatus: WsStatus = "closed";
 
 const desired = new Set<ChannelName>();
@@ -23,7 +24,8 @@ const statusHandlers = new Set<(status: WsStatus) => void>();
 let detachers: Array<() => void> = [];
 
 function bind(): void {
-	if (client || !enabled) return;
+	if (client || !enabled || !backendReady || (desired.size === 0 && eventHandlers.size === 0))
+		return;
 	const c = connectWs();
 	client = c;
 	if (desired.size > 0) c.subscribe([...desired]);
@@ -49,7 +51,7 @@ function unbind(): void {
 }
 
 function ensure(): void {
-	if (!client && enabled) bind();
+	if (!client && enabled && backendReady) bind();
 }
 
 /** Enable/disable the socket. Driven by the dashboard session state. */
@@ -57,6 +59,14 @@ export function setWsEnabled(next: boolean): void {
 	if (enabled === next) return;
 	enabled = next;
 	if (enabled) bind();
+	else unbind();
+}
+
+/** Startup has its own gate: authenticated does not yet mean business channels are available. */
+export function setWsBackendReady(next: boolean): void {
+	if (backendReady === next) return;
+	backendReady = next;
+	if (next) bind();
 	else unbind();
 }
 

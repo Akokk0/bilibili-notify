@@ -11,11 +11,10 @@ import { api } from "../services/api";
  */
 export const HEALTH_DETAILS_QUERY_KEY = ["health", "details"] as const;
 
-const HEALTH_DETAILS_QUERY_OPTIONS = queryOptions({
+export const HEALTH_DETAILS_QUERY_OPTIONS = queryOptions({
 	queryKey: HEALTH_DETAILS_QUERY_KEY,
 	queryFn: () => api.get<HealthDetailsResponse>("/api/health/details"),
 	// 缓存保留完整开机进度;现有健康卡与导览只消费运行详情,开机期间沿用它们的兜底。
-	select: (details: HealthDetailsResponse) => (details.phase === "running" ? details : undefined),
 	// 与短版同一个节奏:首页开着时切了 AI / 卡片开关,灯 5 秒内跟上。只在有人看(首页、新手进度)
 	// 的时候问,后台标签页不问(react-query 默认)。不改 WS,理由同短版(ADR-0010)。
 	retry: 0,
@@ -24,5 +23,9 @@ const HEALTH_DETAILS_QUERY_OPTIONS = queryOptions({
 
 /** 读详情口。`enabled` 留给新手进度:导览关着的人不该替它发请求。 */
 export function useHealthDetails(opts?: { enabled?: boolean }) {
-	return useQuery({ ...HEALTH_DETAILS_QUERY_OPTIONS, enabled: opts?.enabled ?? true });
+	return useQuery({
+		...HEALTH_DETAILS_QUERY_OPTIONS,
+		enabled: opts?.enabled ?? true,
+		select: (details: HealthDetailsResponse) => (details.phase === "running" ? details : undefined),
+	});
 }

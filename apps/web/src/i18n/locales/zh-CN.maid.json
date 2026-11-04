@@ -545,5 +545,12 @@
 	"subscriptionTags.deleteHint": "主人，这里先标记删除，还能撤销；点「保存更改」后才会生效喔。",
 	"subscriptionTags.addFirst": "主人，先点「添加」把新标签放进草稿，再一起保存喔。",
 	"subscriptionTags.existingName": "主人，这个标签已经有了，换一个名称吧。",
-	"subscriptionTags.changed": "主人，标签表已在其他位置更新。重新载入会放弃这次还没保存的修改喔。"
+	"subscriptionTags.changed": "主人，标签表已在其他位置更新。重新载入会放弃这次还没保存的修改喔。",
+	"startup.connectionHint": "主人，连接暂时断开了，女仆会保留最后一次进度并继续尝试连接。",
+	"startup.migrationHint": "主人，女仆正在为新版整理数据，旧数据会好好保留；搬完会自动带您进入面板。",
+	"startup.startingHint": "主人，数据已经安顿好了，女仆正在启动服务，就绪后会带您进入面板。",
+	"startup.checkingHint": "主人，女仆正在确认服务是否就绪，请稍等片刻。",
+	"startup.unknown": "主人，启动状态还没读出来，先别急着打开业务页面喔。",
+	"startup.operationsPaused": "准备期间女仆先暂停页面操作和推送，请主人稍等片刻。",
+	"startup.firstFailureHint": "主人，暂时没能读出服务状态，女仆会继续尝试连接喔。"
 }

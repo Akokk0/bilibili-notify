@@ -45,7 +45,13 @@ vi.mock("../../devtools/dock", () => ({ DevDock: () => null }));
 vi.mock("../../services/api", () => ({
 	api: {
 		get: vi.fn(async (url: string) => {
-			if (url === "/api/health") return { status: "ok", uptime: 1 };
+			if (url === "/api/health")
+				return { status: "ok", uptime: 1, startedAt: "2026-11-04T00:00:00Z" };
+			if (url === "/api/health/details") return { phase: "running" };
+			if (url === "/api/adapters") return { adapters: [] };
+			if (url === "/api/connections") return [];
+			if (url === "/api/dashboard/skins/active") return { active: { light: null, dark: null } };
+			if (url === "/api/settings") return { core: { locale: "zh-CN", voice: "plain" } };
 			throw new Error(`没有这个口:${url}`);
 		}),
 	},
