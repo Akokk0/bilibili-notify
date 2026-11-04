@@ -464,3 +464,15 @@ describe("LinkPreviewSettings", () => {
 		});
 	});
 });
+
+it("keeps explicit same-default preferences and an empty exception out of the count after collapse", () => {
+	renderCard(draftWith({ byTarget: { [T_A]: { isOn: true }, [T_B]: {} } }));
+	expect(screen.queryByRole("group", { name: /^群 A · / })).toBeNull();
+	openGroups();
+	expect(row("群 A").getByRole("button", { name: "开" }).getAttribute("aria-pressed")).toBe("true");
+	expect(
+		row("官机群 B").getByRole("button", { name: "跟默认 · 开" }).getAttribute("aria-pressed"),
+	).toBe("true");
+	fireEvent.click(screen.getByRole("button", { name: "收起" }));
+	expect(screen.queryByRole("group", { name: /^群 A · / })).toBeNull();
+});

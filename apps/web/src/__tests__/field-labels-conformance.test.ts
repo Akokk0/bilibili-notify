@@ -16,7 +16,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { FIELD_LABELS } from "../config/field-labels.js";
+import { FIELD_LABELS, getFieldLabel } from "../config/field-labels.js";
+import { i18n } from "../i18n";
 import { listSources } from "./walk.js";
 
 /**
@@ -66,4 +67,16 @@ describe("Field 字典 conformance", () => {
 				.join("\n")}`,
 		).toEqual([]);
 	});
+});
+
+it("AI body draft fields name scenes and display AI/template instead of generic on/off", () => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+	const value = getFieldLabel("ai.writing.post.isOnByDefault");
+	expect(value?.label).toBe("作品默认正文");
+	expect(value?.formatter?.(false)).toBe("模板");
+	const target = getFieldLabel(
+		"ai.writing.liveSummary.byTarget.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+	);
+	expect(target?.label).toContain("直播总结目标例外");
+	expect(target?.formatter?.(true)).toBe("AI 写");
 });

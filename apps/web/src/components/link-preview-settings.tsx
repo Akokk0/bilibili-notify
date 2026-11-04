@@ -16,13 +16,11 @@ import type { CapabilitySupport, ConnectionCapabilitiesMap } from "@bilibili-not
 import { LINK_REPLY_FORMS, type LinkReplyForm } from "@bilibili-notify/internal/link-preview";
 import { listsForLinkPreview } from "@bilibili-notify/internal/push-target";
 import {
-	DisclosurePill,
 	EmptyNote,
 	GlassBox,
 	HintNote,
 	Icon,
 	Picker,
-	Pill,
 	PlatformIcon,
 	Row,
 	Section,
@@ -30,14 +28,13 @@ import {
 	TNum,
 	Toggle,
 } from "@bilibili-notify/ui";
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { i18n, useT } from "../i18n";
-import { type Connection, isTargetPaused, type PushTarget } from "../types/domain";
+import type { Connection, PushTarget } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field } from "./forms";
-import { TargetLabel, targetDisplay } from "./target-display";
+import { TargetExceptions } from "./target-exceptions";
 
 /**
  * 回复形式三档的标签。出字那一刻才取(切语言后随组件重画),所以是个 hook 而不是模块顶层的常量;
@@ -114,8 +111,6 @@ export function LinkPreviewSettings({
 	const overrides = Object.values(cfg.byTarget).filter(
 		(g) => g?.isOn !== undefined || g?.replyForm !== undefined,
 	).length;
-	// 逐群表默认收起:群一多整张表直接把卡撑爆,先给一行摘要,要改再展开。
-	const [groupsOpen, setGroupsOpen] = useState(false);
 
 	const badge = !cfg.enabled
 		? tx("linkPreview.linkPreviewSettings.text1")
@@ -200,40 +195,23 @@ export function LinkPreviewSettings({
 						{tx("linkPreview.linkPreviewSettings.text16")}
 					</EmptyNote>
 				) : (
-					<div className="flex flex-col">
-						<div className="flex items-center gap-2 text-bn-xs text-bn-text-secondary">
-							<span>
-								{tx("linkPreview.linkPreviewSettings.text17", {
-									count: candidates.length,
-									overrides,
-								})}
-							</span>
-							<DisclosurePill
-								open={groupsOpen}
-								onToggle={() => setGroupsOpen((v) => !v)}
-								color={SECTION_ACCENT.system}
-							>
-								{groupsOpen
-									? tx("linkPreview.linkPreviewSettings.text19")
-									: tx("linkPreview.linkPreviewSettings.text20")}
-							</DisclosurePill>
-						</div>
-						{groupsOpen
-							? candidates.map((t) => {
-									return (
-										<GroupRow
-											key={t.id}
-											target={t}
-											connections={connections}
-											cfg={cfg}
-											onPatch={onPatch}
-											support={nativeShareSupport(capabilities, t.connectionId)}
-											paused={isTargetPaused(t, connections)}
-										/>
-									);
-								})
-							: null}
-					</div>
+					<TargetExceptions
+						targets={candidates}
+						connections={connections}
+						color={SECTION_ACCENT.system}
+						summary={tx("linkPreview.linkPreviewSettings.text17", {
+							count: candidates.length,
+							overrides,
+						})}
+						expandLabel={tx("linkPreview.linkPreviewSettings.text20")}
+						collapseLabel={tx("linkPreview.linkPreviewSettings.text19")}
+						renderCells={(target) => <GroupCells target={target} cfg={cfg} onPatch={onPatch} />}
+						renderAfter={(target) =>
+							nativeShareSupport(capabilities, target.connectionId)?.state === "unsupported" ? (
+								<HintNote className="basis-full">{tx("linkPreview.groupRow.text3")}</HintNote>
+							) : null
+						}
+					/>
 				)}
 			</Field>
 
@@ -306,30 +284,20 @@ function Cell({ label, children }: { label: string; children: React.ReactNode })
 }
 
 /**
- * 例外表的一行:目标名 + 两个三态格。格里「跟默认」那一档把继承来的值写在旁边 —— 主人
+ * 例外表的两个三态格；目标行壳由共用件负责。格里「跟默认」那一档把继承来的值写在旁边 —— 主人
  * 一眼看到这群现在实际是什么,不用回头看默认行。
  */
-function GroupRow({
+function GroupCells({
 	target,
-	connections,
 	cfg,
 	onPatch,
-	support,
-	paused,
 }: {
 	target: PushTarget;
-	/** 用同一份连接表计算目标的图标与连接名。 */
-	connections: readonly Connection[];
 	cfg: GlobalConfig["linkPreview"];
 	onPatch: (delta: GlobalConfigPatch) => void;
-	/** 这群所在连接能不能签小程序卡;表里没这条是 undefined。 */
-	support: CapabilitySupport | undefined;
-	/** 目标自己停用、或它挂的连接停用 —— 运行时都不解析,面板得说同一句话。 */
-	paused: boolean;
 }) {
 	const tx = useT();
 	const replyFormLabel = useReplyFormLabel();
-	const display = targetDisplay(target, connections);
 	const o = cfg.byTarget[target.id];
 	// 草稿里被 patch 成 null 的字段(刚点过「跟默认」)与没写一样,都是跟默认。
 	const isOn = o?.isOn ?? undefined;
@@ -341,18 +309,7 @@ function GroupRow({
 			linkPreview: { byTarget: { [target.id]: { replyForm: v === INHERIT ? null : v } } },
 		});
 	return (
-		<fieldset
-			aria-label={`${display.label} · ${display.description}`}
-			className="m-0 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-0 border-bn-border-subtle border-b p-0 py-2 last:border-b-0"
-		>
-			<div className="flex min-w-40 items-center gap-1.5 text-bn-sm text-bn-text-primary">
-				<TargetLabel target={target} connections={connections} />
-				{paused ? (
-					<Pill size="sm" subtle color="var(--color-bn-inactive)">
-						{tx("linkPreview.groupRow.text1")}
-					</Pill>
-				) : null}
-			</div>
+		<>
 			<Cell label={tx("linkPreview.linkPreviewSettings.text10")}>
 				<Picker<boolean | typeof INHERIT>
 					value={isOn ?? INHERIT}
@@ -396,9 +353,6 @@ function GroupRow({
 					]}
 				/>
 			</Cell>
-			{support?.state === "unsupported" ? (
-				<HintNote className="basis-full">{tx("linkPreview.groupRow.text3")}</HintNote>
-			) : null}
-		</fieldset>
+		</>
 	);
 }

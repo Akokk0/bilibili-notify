@@ -131,3 +131,15 @@ describe("formatDiffValue", () => {
 		});
 	});
 });
+
+it("AI body choices render AI/template in draft diffs while inherit remains unset", () => {
+	expect(formatDiffValue("ai.writing.post.isOnByDefault", false).display).toBe("模板");
+	expect(
+		formatDiffValue("ai.writing.liveSummary.byTarget.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", true)
+			.display,
+	).toBe("AI 写");
+	expect(
+		formatDiffValue("ai.writing.post.byTarget.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", undefined)
+			.display,
+	).toBe("(未设置)");
+});

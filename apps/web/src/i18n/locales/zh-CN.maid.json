@@ -525,5 +525,12 @@
 	"storageUsage.lock.newer-format": "主人，这代的数据格式比当前程序更新，不能删除哦。",
 	"storageUsage.lock.protected-source": "主人，这是当前代的来源代，需要保留到保护期结束哦。",
 	"storageUsage.lock.protected-previous": "主人，这是上一代的数据，需要保留到保护期结束哦。",
-	"storageUsage.lock.current-age-unknown": "主人，当前代的创建时间还无法确定，旧代暂时都受保护哦。"
+	"storageUsage.lock.current-age-unknown": "主人，当前代的创建时间还无法确定，旧代暂时都受保护哦。",
+	"aiWriting.subtitle": "主人，同一次推送也能为不同目标选正文喔，AI 写不出来时会自动使用模板。",
+	"aiWriting.defaultHint": "主人，没有单独设置的目标都会跟随这里喔。",
+	"aiWriting.off": "主人，AI 现在停用着，推送会使用模板；这里照样能改偏好，重新启用后就会应用喔。",
+	"aiWriting.empty": "主人，还没有推送目标，可以先选好默认正文，添加目标后再设例外喔。",
+	"aiWriting.failed": "主人，推送目标或连接没能读出来，重试后再设置例外吧。",
+	"aiWriting.loading": "主人，正在读取推送目标",
+	"aiWriting.orphan#other": "主人，有 {count} 条例外找不到对应目标了，当前不会应用，设置会先留着喔。"
 }

@@ -88,6 +88,7 @@ import {
 } from "./ai/model-ops";
 import { personaIconKey } from "./ai/persona-icons";
 import { AiTestPanel } from "./ai/TestPanel";
+import { WritingSettings } from "./ai/WritingSettings";
 
 type TopTab = "global" | "model" | "persona" | "skills";
 
@@ -126,13 +127,15 @@ function packProviders(ai: AISettingsDraft, keys: readonly string[]): Record<str
  * - 人格 / 预设:`<Field code="persona.name">` / `code="presets"` → 顶层(只有主人自己的那几份;内置的不落盘)
  */
 function packIsland(ai: AISettingsDraft, providerKeys: readonly string[]) {
-	const { presets, removedBuiltinPresets, enabled, activeProfile, activePreset, search } = ai;
+	const { presets, removedBuiltinPresets, enabled, activeProfile, activePreset, search, writing } =
+		ai;
 	return {
 		ai: {
 			// `ai.chat`(聊天页的思考等级)**不在**这里:它的编辑口在聊天侧栏的
 			// 「设置」弹层,点档位立即 PATCH,不走本页的草稿 + 保存条。
-			// 联网搜索(后端 / key / 引擎开关)。两侧都经 schema 补齐,恒为完整对象,
+			// 正文偏好和联网搜索。两侧都经 schema 补齐,恒为完整对象,
 			// 不会踩「一侧 undefined 整块当叶子」那个明文 key 外泄的坑。
+			writing,
 			search: {
 				backend: search.backend,
 				keys: search.keys,
@@ -486,6 +489,11 @@ export default function Ai() {
 							{tx("aiSettings.page.global.profileNoteSuffix")}
 						</FieldNote>
 					</GlassBox>
+
+					<WritingSettings
+						ai={draft}
+						onChange={(writing) => setDraft((d) => (d ? { ...d, writing } : d))}
+					/>
 
 					{/* 聊天页的思考设置不在这里:开关是输入框旁那颗 ✦ 胶囊(会话级不落盘),
 					    **等级**(ai.chat.thinkingLevel)搬进了聊天侧栏的「设置」弹层 ——

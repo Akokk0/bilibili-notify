@@ -74,6 +74,7 @@ export function formatDiffValue(code: string, value: unknown): FormattedValue {
 	}
 
 	if (value === undefined || value === null) return UNSET;
+	if (entry?.formatter) return { display: entry.formatter(value) };
 
 	if (typeof value === "boolean") {
 		return {

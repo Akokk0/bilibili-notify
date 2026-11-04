@@ -296,6 +296,33 @@ export const FIELD_LABELS = {
 		section: "commands",
 	},
 
+	"ai.writing.post.isOnByDefault": {
+		get label() {
+			return i18n.t("aiWriting.postDefault");
+		},
+		section: "ai",
+		formatter: (value) => (value ? i18n.t("aiWriting.ai") : i18n.t("aiWriting.template")),
+	},
+	"ai.writing.post.byTarget": {
+		get label() {
+			return i18n.t("aiWriting.postExceptions");
+		},
+		section: "ai",
+	},
+	"ai.writing.liveSummary.isOnByDefault": {
+		get label() {
+			return i18n.t("aiWriting.liveDefault");
+		},
+		section: "ai",
+		formatter: (value) => (value ? i18n.t("aiWriting.ai") : i18n.t("aiWriting.template")),
+	},
+	"ai.writing.liveSummary.byTarget": {
+		get label() {
+			return i18n.t("aiWriting.liveExceptions");
+		},
+		section: "ai",
+	},
+
 	// ── AI 连接 ───────────────────────────────────────────────────────────
 	"ai.apiKey": { label: "API Key", section: "ai", secret: true },
 	"ai.baseUrl": { label: "Base URL", section: "ai" },
@@ -1265,6 +1292,16 @@ function profileDisplayName(id: string): string | null {
 export function getFieldLabel(code: string): FieldLabel | null {
 	const hit = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[code];
 	if (hit) return hit;
+	const writingTarget = /^(ai\.writing\.(?:post|liveSummary)\.byTarget)\.([^.]+)$/.exec(code);
+	if (writingTarget) {
+		const owner = getFieldLabel(writingTarget[1] ?? "");
+		if (owner)
+			return {
+				...owner,
+				label: `${owner.label} · ${writingTarget[2]}`,
+				formatter: (value) => (value ? i18n.t("aiWriting.ai") : i18n.t("aiWriting.template")),
+			};
+	}
 	const logPrefix = "core.logging.levels.";
 	if (code.startsWith(logPrefix) && code.length > logPrefix.length) {
 		const key = code.slice(logPrefix.length);
