@@ -23,7 +23,13 @@ import Cards from "../Cards";
 import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
-	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), upload: vi.fn() },
+	api: {
+		blob: vi.fn().mockRejectedValue(new Error("thumbnail unavailable in fixture")),
+		get: vi.fn(),
+		post: vi.fn(),
+		patch: vi.fn(),
+		upload: vi.fn(),
+	},
 	ApiError: class extends Error {},
 }));
 
@@ -95,6 +101,7 @@ type PatchBody = { overrides: { cards: { liveCoverImageIds?: string[] } | null }
 
 async function openPerUp(sub: Subscription): Promise<void> {
 	vi.mocked(api.get).mockImplementation((url: string) => {
+		if (url === "/api/library/images") return Promise.resolve({ ok: true, ids: [] });
 		if (url.includes("/api/subscriptions")) return Promise.resolve([sub]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
 		if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });

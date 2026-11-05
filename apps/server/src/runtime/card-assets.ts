@@ -1,3 +1,4 @@
+import { MAX_CARD_BG_BYTES } from "@bilibili-notify/internal/card-skin";
 import { t as serverText } from "../i18n/index.js";
 /**
  * 卡片背景图的本地资产存储。落盘到 `<dataRoot>/assets/card-bg/`,资产 id = 文件名
@@ -21,7 +22,7 @@ import { MIME_TO_EXT, UPLOAD_EXT_TO_MIME } from "./image-mime.js";
 import { dataPath } from "./roots.js";
 
 /** 单张背景图上限 5MB(前端应先压缩;这里是兜底)。 */
-export const MAX_CARD_BG_BYTES = 5 * 1024 * 1024;
+export { MAX_CARD_BG_BYTES } from "@bilibili-notify/internal/card-skin";
 
 /** 背景图资产在代里的位置(素材库)。 */
 export const CARD_BG_DIR = ["library", "images"] as const;

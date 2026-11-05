@@ -884,3 +884,237 @@ it("多个来源等待扫码时只打开一个弹窗，可分别继续原码", a
 			),
 	).toEqual([]);
 });
+
+it("素材库可独立打开，按图片与字体展示已有元数据", async () => {
+	const core = {
+		...makeDefaultGlobalConfig(),
+		locale: "zh-CN",
+		voice: "plain",
+		onboarding: { skipped: true },
+	};
+	mountApp({
+		path: "/library",
+		request: async (path) => {
+			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/library/images") return Response.json({ ok: true, ids: [] });
+			if (path === "/api/library/fonts")
+				return Response.json({
+					ok: true,
+					fonts: [{ id: `${"a".repeat(32)}.woff2`, name: "示例字体.woff2", size: 2097152 }],
+				});
+		},
+	});
+	expect(await screen.findByText("反复使用的图片与字体，统一放在这里。")).toBeTruthy();
+	expect(screen.getByRole("link", { name: "素材库" }).getAttribute("href")).toBe("/library");
+	expect(await screen.findByText("还没有图片")).toBeTruthy();
+	await userEvent.click(screen.getByRole("button", { name: "字体" }));
+	expect(await screen.findByText("示例字体.woff2")).toBeTruthy();
+	expect(screen.getByText("2.0 MB · 字体文件")).toBeTruthy();
+});
+
+it("素材库图片预览使用鉴权读取的对象地址，并在关闭大图后保留清单", async () => {
+	const id = `${"1".repeat(32)}.png`;
+	const revoke = vi.fn();
+	vi.stubGlobal(
+		"URL",
+		class extends URL {
+			static createObjectURL() {
+				return "blob:library-image";
+			}
+			static revokeObjectURL = revoke;
+		},
+	);
+	const core = {
+		...makeDefaultGlobalConfig(),
+		locale: "zh-CN",
+		voice: "plain",
+		onboarding: { skipped: true },
+	};
+	mountApp({
+		path: "/library",
+		request: async (path) => {
+			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/library/images") return Response.json({ ok: true, ids: [id] });
+			if (path === `/api/library/images/${id}`)
+				return new Response(new Blob(["image"], { type: "image/png" }));
+		},
+	});
+	await userEvent.click(await screen.findByRole("button", { name: "预览图片 1" }));
+	expect((await screen.findByAltText("素材预览")).getAttribute("src")).toBe("blob:library-image");
+	const request = vi
+		.mocked(fetch)
+		.mock.calls.find(([path]) => path === `/api/library/images/${id}`);
+	expect(request?.[1]?.credentials).toBe("include");
+	await userEvent.keyboard("{Escape}");
+	expect(screen.queryByAltText("素材预览")).toBeNull();
+	expect(screen.getByRole("button", { name: "预览图片 1" })).toBeTruthy();
+});
+
+it("删除字体先确认，被引用时保留原话与文件，解除引用后可重新删除", async () => {
+	const id = `${"a".repeat(32)}.woff2`;
+	let fonts = [{ id, name: "使用中的字体.woff2", size: 1024 }];
+	let referenced = true;
+	let deletes = 0;
+	const reason = "该字体被全局默认使用，请先换掉再删除";
+	const core = {
+		...makeDefaultGlobalConfig(),
+		locale: "zh-CN",
+		voice: "plain",
+		onboarding: { skipped: true },
+	};
+	mountApp({
+		path: "/library",
+		request: async (path, init) => {
+			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/library/images") return Response.json({ ok: true, ids: [] });
+			if (path === "/api/library/fonts") return Response.json({ ok: true, fonts });
+			if (path === `/api/library/fonts/${id}` && init?.method === "DELETE") {
+				deletes++;
+				if (referenced)
+					return Response.json({ code: "conflict", message: reason }, { status: 409 });
+				fonts = [];
+				return Response.json({ ok: true });
+			}
+		},
+	});
+	await screen.findByText("还没有图片");
+	await userEvent.click(screen.getByRole("button", { name: "字体" }));
+	await userEvent.click(await screen.findByRole("button", { name: "删除字体 使用中的字体.woff2" }));
+	expect(deletes).toBe(0);
+	await userEvent.click(screen.getByRole("button", { name: "取消" }));
+	expect(deletes).toBe(0);
+	await userEvent.click(screen.getByRole("button", { name: "删除字体 使用中的字体.woff2" }));
+	await userEvent.click(screen.getByRole("button", { name: "删除" }));
+	expect(await screen.findByText(reason)).toBeTruthy();
+	expect(deletes).toBe(1);
+	expect(screen.queryByRole("button", { name: "重试删除" })).toBeNull();
+	await userEvent.click(screen.getByRole("button", { name: "关闭" }));
+	referenced = false;
+	await userEvent.click(screen.getByRole("button", { name: "删除字体 使用中的字体.woff2" }));
+	await userEvent.click(screen.getByRole("button", { name: "删除" }));
+	expect(await screen.findByText("还没有字体")).toBeTruthy();
+	expect(deletes).toBe(2);
+});
+
+it("上传图片失败保留清单，再传同一文件成功即入库，不提交设置", async () => {
+	const id = `${"2".repeat(32)}.png`;
+	let ids: string[] = [];
+	let failed = true;
+	const core = {
+		...makeDefaultGlobalConfig(),
+		locale: "zh-CN",
+		voice: "plain",
+		onboarding: { skipped: true },
+	};
+	mountApp({
+		path: "/library",
+		request: async (path, init) => {
+			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/library/images" && init?.method === "POST") {
+				if (failed)
+					return Response.json(
+						{ code: "unavailable", message: "上传未完成，请重试" },
+						{ status: 503 },
+					);
+				ids = [id];
+				return Response.json({ ok: true, id });
+			}
+			if (path === "/api/library/images") return Response.json({ ok: true, ids });
+		},
+	});
+	await screen.findByText("还没有图片");
+	const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+	expect(input).not.toBeNull();
+	if (!input) throw new Error("missing upload input");
+	const file = new File(["png"], "sample.png", { type: "image/png" });
+	const { fireEvent } = await import("@testing-library/react");
+	fireEvent.change(input, { target: { files: [file] } });
+	expect(await screen.findByText("上传未完成，请重试")).toBeTruthy();
+	expect(screen.getByText("还没有图片")).toBeTruthy();
+	failed = false;
+	fireEvent.change(input, { target: { files: [file] } });
+	expect(await screen.findByRole("button", { name: "预览图片 1" })).toBeTruthy();
+	expect(screen.queryByText("上传未完成，请重试")).toBeNull();
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.some(([path, init]) => path === "/api/settings" && init?.method === "PATCH"),
+	).toBe(false);
+});
+
+it("图片删除失败可重试，等待响应时不重复发起，成功后刷新清单", async () => {
+	const id = `${"3".repeat(32)}.png`;
+	let ids = [id],
+		deletes = 0;
+	let release: (response: Response) => void = () => {};
+	const core = {
+		...makeDefaultGlobalConfig(),
+		locale: "zh-CN",
+		voice: "plain",
+		onboarding: { skipped: true },
+	};
+	mountApp({
+		path: "/library",
+		request: async (path, init) => {
+			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/library/images") return Response.json({ ok: true, ids });
+			if (path === `/api/library/images/${id}` && init?.method === "DELETE") {
+				deletes++;
+				if (deletes === 1)
+					return Response.json(
+						{ code: "unavailable", message: "删除失败，原文件还在" },
+						{ status: 503 },
+					);
+				return new Promise<Response>((resolve) => {
+					release = (response) => {
+						ids = [];
+						resolve(response);
+					};
+				});
+			}
+		},
+	});
+	await userEvent.click(await screen.findByRole("button", { name: "删除图片 1" }));
+	await userEvent.click(screen.getByRole("button", { name: "删除" }));
+	expect(await screen.findByText("删除失败，原文件还在")).toBeTruthy();
+	await userEvent.click(screen.getByRole("button", { name: "重试删除" }));
+	expect(
+		((await screen.findByRole("button", { name: "正在删除…" })) as HTMLButtonElement).disabled,
+	).toBe(true);
+	await userEvent.click(screen.getByRole("button", { name: "正在删除…" }));
+	expect(deletes).toBe(2);
+	await act(async () => release(Response.json({ ok: true })));
+	expect(await screen.findByText("还没有图片")).toBeTruthy();
+});
+
+it("素材读取失败不展示旧缓存为空库，重试成功后恢复清单", async () => {
+	const id = `${"4".repeat(32)}.png`;
+	let failed = false;
+	const core = {
+		...makeDefaultGlobalConfig(),
+		locale: "zh-CN",
+		voice: "plain",
+		onboarding: { skipped: true },
+	};
+	mountApp({
+		path: "/library",
+		request: async (path) => {
+			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/library/images")
+				return failed
+					? Response.json({ code: "unavailable", message: "暂时无法列举素材" }, { status: 503 })
+					: Response.json({ ok: true, ids: [id] });
+		},
+	});
+	await screen.findByRole("button", { name: "预览图片 1" });
+	failed = true;
+	await act(async () => {
+		await qc.invalidateQueries({ queryKey: ["library", "images"] });
+	});
+	expect(await screen.findByText("素材列表暂时无法读取，请重试。")).toBeTruthy();
+	expect(screen.queryByRole("button", { name: "预览图片 1" })).toBeNull();
+	expect(screen.queryByText("还没有图片")).toBeNull();
+	failed = false;
+	await userEvent.click(screen.getByRole("button", { name: "重试" }));
+	expect(await screen.findByRole("button", { name: "预览图片 1" })).toBeTruthy();
+});

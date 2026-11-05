@@ -36,6 +36,7 @@ import Dashboard from "./pages/Dashboard";
 import ExtensionDetail from "./pages/ExtensionDetail";
 import Extensions from "./pages/Extensions";
 import History from "./pages/History";
+import Library from "./pages/Library";
 import Logs from "./pages/Logs";
 import Rules from "./pages/Rules";
 import Stats from "./pages/Stats";
@@ -225,6 +226,7 @@ function AuthedApp({ processId }: { processId: string }) {
 							<Route path="/stats" element={<Stats />} />
 							<Route path="/rules" element={<Rules />} />
 							<Route path="/cards" element={<Cards />} />
+							<Route path="/library" element={<Library />} />
 							{/* 皮肤编辑器自铺 fixed inset-0(同聊天页):三栏并排要整个视口宽,
 							    挤在站内顶栏与两侧内边距里会两边都不够(ADR-0014 决策 20)。 */}
 							<Route path="/cards/skins/:id" element={<CardSkinEditor />} />

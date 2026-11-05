@@ -95,7 +95,7 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("CardSkinKnobsSection", () => {
-	it("字体 / 图两档画的是现成的那两个选择器 —— 上传、图廊、失效提示都在里面", async () => {
+	it("字体 / 图两档沿用字段选择器，上传与图廊从共用弹窗打开", async () => {
 		vi.mocked(api.get).mockImplementation((url: string) => {
 			// 图廊 / 字体库那两口(`/api/library/images`、`/api/library/fonts`);别写成 `/api/cards/` 前缀 ——
 			// 皮肤库列表如今也在这个前缀底下(`/api/cards/skins`)。
@@ -107,10 +107,12 @@ describe("CardSkinKnobsSection", () => {
 		const { container } = renderKnobs({});
 		await screen.findByText("字体");
 
-		// 字体那行是字体选择器(它的第一档);图那行是图廊(它的上传口)。
+		// 原字段保留模式与选择入口，素材浏览进入共用弹窗。
 		// 画错一种,主人就只能对着一个文本框手敲资产 id。
 		expect(within(rowOf(container, "font")).getByText(/默认/)).toBeTruthy();
-		expect(within(rowOf(container, "wallpaper")).getByText(/上传/)).toBeTruthy();
+		expect(
+			within(rowOf(container, "wallpaper")).getByRole("button", { name: "选择图片" }),
+		).toBeTruthy();
 	});
 
 	it("当前皮肤没声明旋钮 → 不画控件,但明说一句这套皮肤没有可调项", async () => {

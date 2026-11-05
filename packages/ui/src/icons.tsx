@@ -81,6 +81,16 @@ export const Icon = {
 			<path d="m4 17 4.5-4.5 3.5 3.5 3-2.5L20 18" />
 		</>,
 	),
+	// Three outlined books on a shelf stay legible in both the navigation and page hero.
+	library: stroke(
+		<>
+			<rect x="3" y="7" width="4" height="13" rx="0.8" />
+			<rect x="9" y="4" width="4" height="16" rx="0.8" />
+			<path d="m15 6 3.5-1L22 19l-3.5 1Z" />
+			<path d="M3 11h4M9 8h4m2.9 1.5 3.5-1M2 22h20" />
+		</>,
+		1.7,
+	),
 	bell: filled(
 		<path d="M12 2a6 6 0 0 0-6 6v3.5l-2 3.5h16l-2-3.5V8a6 6 0 0 0-6-6Zm-2 17a2 2 0 1 0 4 0Z" />,
 	),

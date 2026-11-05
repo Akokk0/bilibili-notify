@@ -106,7 +106,7 @@
 | 导出 | 干什么 |
 | --- | --- |
 | `useTriStateTexts` / `TRISTATE_TEXT` | 三态默认文字；组件与图例用 hook 跟随 `UiTextProvider`，非组件消费者读惰性的 `TRISTATE_TEXT` |
-| `Icon` / `IconName` | 内联 SVG 图标注册表(currentColor 染色),几十枚;加新图标进这里,别散落内联 |
+| `Icon` / `IconName` | 内联 SVG 图标注册表(currentColor 染色),几十枚；`library` 为三本书带搁板的素材库图标，与 `image` 图片图标区分；加新图标进这里，别散落内联 |
 | `FieldUpdatesProvider` / `useFieldUpdate` / `useFieldReset` | 「字段默认值有更新/可还原」的广播 context;无 Provider 时恒 null |
 | `useDismiss` | 「点外面关掉」的唯一写法(住 popover.tsx)。`enabled` 只在浮层开着时挂监听、`escape` 连 Esc 一起关、`event` 选 mousedown/pointerdown,`insideRefs` 把 portal 菜单等 DOM 也算内部 —— 收编前五份手写行为各漂各的,差异现在是调用点上显式的选项 |
 

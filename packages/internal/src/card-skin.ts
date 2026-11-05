@@ -19,6 +19,9 @@ import { packageText } from "./texts/index";
  */
 export const MAX_FONT_ASSET_BYTES = 20 * 1024 * 1024;
 
+/** Reusable library images share this upload limit in the server and dashboard. */
+export const MAX_CARD_BG_BYTES = 5 * 1024 * 1024;
+
 /**
  * 超过它就在上传后提醒换 woff2。
  *

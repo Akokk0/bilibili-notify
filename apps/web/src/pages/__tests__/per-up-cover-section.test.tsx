@@ -11,7 +11,13 @@ const { getMock, postMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../services/api", () => ({
-	api: { get: getMock, post: postMock, upload: vi.fn(), delete: vi.fn() },
+	api: {
+		blob: vi.fn().mockRejectedValue(new Error("thumbnail unavailable in fixture")),
+		get: getMock,
+		post: postMock,
+		upload: vi.fn(),
+		delete: vi.fn(),
+	},
 	ApiError: class extends Error {},
 }));
 
@@ -38,7 +44,7 @@ describe("PerUpCoverSection", () => {
 		renderWithQuery(
 			<PerUpCoverSection base={["g1", "g2"]} value={undefined} onChange={onChange} />,
 		);
-		fireEvent.click(screen.getByRole("button"));
+		fireEvent.click(screen.getByRole("button", { name: "" }));
 		expect(onChange).toHaveBeenCalledWith(["g1", "g2"]);
 	});
 
@@ -46,7 +52,7 @@ describe("PerUpCoverSection", () => {
 	it("关闭覆盖开关 → 回 undefined(跟随全局),不是空列表", () => {
 		const onChange = vi.fn();
 		renderWithQuery(<PerUpCoverSection base={[]} value={["c1"]} onChange={onChange} />);
-		fireEvent.click(screen.getByRole("button"));
+		fireEvent.click(screen.getByRole("button", { name: "" }));
 		expect(onChange).toHaveBeenCalledWith(undefined);
 	});
 

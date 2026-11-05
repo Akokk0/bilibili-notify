@@ -62,14 +62,6 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		why: "两颗入口钮(「开启新对话」「新建皮肤工坊」,走聊天区自己的 bn-chat-accent 语汇)+ 会话行的可点区 —— **会话行挂了 option,挂在外层那个 div 上**:底色与选中态都在那一层,挂到里面这个 button 上等于让皮肤去改一片没有样式的地方",
 	},
 	"apps/web/src/pages/Stats.tsx": { count: 1, why: "一个无样式包裹" },
-	"apps/web/src/pages/cards/FontPicker.tsx": {
-		count: 1,
-		why: "字体行的可点区 —— **行本身挂了 option**,挂在外层那个 div 上(描边与底色都在那一层,同 sidebar 会话行)",
-	},
-	"apps/web/src/pages/cards/GalleryPicker.tsx": {
-		count: 1,
-		why: "盖在图片上的透明选取层",
-	},
 	"apps/web/src/pages/skins/SkinEditor.tsx": {
 		count: 2,
 		why: "折叠小节的表头行 + 一条纯文字链接",

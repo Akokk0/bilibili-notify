@@ -10,6 +10,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import { FontPicker } from "../FontPicker";
@@ -35,7 +36,7 @@ vi.mock("../../../services/api", () => ({
 	},
 }));
 
-import { ApiError, api } from "../../../services/api";
+import { api } from "../../../services/api";
 
 const UPLOADED = `${"a".repeat(32)}.woff2`;
 
@@ -43,12 +44,34 @@ function mount(value: FontChoice, fonts: Array<{ id: string; name: string; size?
 	vi.mocked(api.get).mockResolvedValue({ ok: true, fonts } as never);
 	const onChange = vi.fn();
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	function Host() {
+		const [current, setCurrent] = useState(value);
+		return (
+			<FontPicker
+				value={current}
+				onChange={(next) => {
+					onChange(next);
+					setCurrent(next);
+				}}
+			/>
+		);
+	}
 	render(
 		<QueryClientProvider client={qc}>
-			<FontPicker value={value} onChange={onChange} />
+			<Host />
 		</QueryClientProvider>,
 	);
 	return onChange;
+}
+
+async function openFonts() {
+	fireEvent.click(screen.getByRole("button", { name: "素材库" }));
+	fireEvent.click(screen.getByRole("button", { name: "选择字体" }));
+}
+async function applyFont() {
+	const button = screen.getByRole("button", { name: "使用所选" });
+	await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+	fireEvent.click(button);
 }
 
 /** 当前被按下的那一档的文字。 */
@@ -69,7 +92,8 @@ describe("选中态落在哪一档", () => {
 
 	it("选着上传的那款 → 落在那一款上,不是「默认」", async () => {
 		mount({ font: "兜底", fontAsset: UPLOADED }, [{ id: UPLOADED, name: "霞鹜文楷.ttf" }]);
-		await waitFor(() => expect(picked()).toContain("霞鹜文楷.ttf"));
+		await waitFor(() => expect(picked()).toBe("素材库"));
+		expect(await screen.findByText("霞鹜文楷.ttf")).toBeTruthy();
 	});
 
 	it("选着一款已经不在字体库里的 → 明说它失效了,而不是悄悄显示成「默认」", async () => {
@@ -83,11 +107,17 @@ describe("选中态落在哪一档", () => {
 		// Chrome,Windows / macOS 默认没有 Noto CJK,选了只会静静回落兜底链。
 		mount({ font: "" }, [{ id: UPLOADED, name: "某字体.ttf" }]);
 		// 先等列表到位,否则「查无此行」在加载态下必然成立,这条断言就是空的。
+		await openFonts();
 		expect(await screen.findByText("某字体.ttf")).toBeTruthy();
 		// 数**可选项行**(带 aria-pressed 的那些)。按文字查是不行的:默认行和手填那档的
 		// 说明里都提着思源黑/宋 —— 那是在讲各环境挑得到什么,不是一档可以选的东西。
 		const rows = screen.getAllByRole("button").filter((b) => b.hasAttribute("aria-pressed"));
-		expect(rows.map((b) => b.textContent?.slice(0, 2))).toEqual(["默认", "某字"]);
+		expect(rows.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual([
+			"默认",
+			"素材库",
+			"手填家族名",
+			"选择字体 某字体.ttf",
+		]);
 	});
 });
 
@@ -96,6 +126,7 @@ describe("切档", () => {
 		const onChange = mount({ font: "", fontAsset: UPLOADED }, [
 			{ id: UPLOADED, name: "某字体.ttf" },
 		]);
+		fireEvent.click(screen.getByRole("button", { name: "手填家族名" }));
 		fireEvent.change(await screen.findByLabelText("手填字体名"), {
 			target: { value: "PingFang SC" },
 		});
@@ -104,35 +135,29 @@ describe("切档", () => {
 
 	it("选上传的那款 → 家族名留着当兜底,不清空", async () => {
 		const onChange = mount({ font: "兜底那款" }, [{ id: UPLOADED, name: "某字体.ttf" }]);
-		fireEvent.click(await screen.findByText("某字体.ttf"));
+		await openFonts();
+		fireEvent.click(await screen.findByRole("button", { name: "选择字体 某字体.ttf" }));
+		expect(onChange).not.toHaveBeenCalled();
+		await applyFont();
 		expect(onChange).toHaveBeenCalledWith({ font: "兜底那款", fontAsset: UPLOADED });
 	});
 });
 
-describe("删除", () => {
-	it("被别处用着(conflict)→ 把服务端 message 里「谁在用」原样告诉主人,不再自己拼一句", async () => {
-		const message = "该字体还有 2 处在用：全局默认、UP 12345，请先换掉再删除";
-		vi.mocked(api.delete).mockRejectedValue(
-			new (ApiError as unknown as new (s: number, b: unknown, m: string) => Error)(
-				409,
-				{ code: "conflict", message },
-				message,
-			),
-		);
+describe("原字段与素材管理分离", () => {
+	it("选择弹窗不提供删除文件", async () => {
 		mount({ font: "" }, [{ id: UPLOADED, name: "在用的.ttf" }]);
-		fireEvent.click(await screen.findByLabelText("删除 在用的.ttf"));
-		expect(await screen.findByText(message)).toBeTruthy();
-		// 从前是面板读 `body.referencedBy` 自己拼「仍被使用,无法删除：…」。
-		expect(screen.queryByText(/仍被使用,无法删除/)).toBeNull();
+		await openFonts();
+		await screen.findByText("在用的.ttf");
+		expect(screen.queryByRole("button", { name: /删除字体/ })).toBeNull();
+		expect(api.delete).not.toHaveBeenCalled();
 	});
-
-	it("删掉的正是当前选着的那款 → 当场落回默认,不留悬空 id", async () => {
-		vi.mocked(api.delete).mockResolvedValue({ ok: true } as never);
-		const onChange = mount({ font: "兜底", fontAsset: UPLOADED }, [
-			{ id: UPLOADED, name: "待删.ttf" },
+	it("改回默认会清掉当前资产", async () => {
+		const changed = mount({ font: "兜底", fontAsset: UPLOADED }, [
+			{ id: UPLOADED, name: "待换.ttf" },
 		]);
-		fireEvent.click(await screen.findByLabelText("删除 待删.ttf"));
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith({ font: "" }));
+		await screen.findByText("待换.ttf");
+		fireEvent.click(screen.getByRole("button", { name: "默认" }));
+		expect(changed).toHaveBeenCalledWith({ font: "" });
 	});
 });
 
@@ -153,6 +178,7 @@ describe("传了一款很大的字体", () => {
 
 	async function upload(file: File) {
 		mount({ font: "" });
+		await openFonts();
 		vi.mocked(api.upload).mockResolvedValue({ ok: true, id: UPLOADED } as never);
 		const input = document.querySelector('input[type="file"]') as HTMLInputElement;
 		Object.defineProperty(input, "files", { value: [file] });
@@ -196,8 +222,10 @@ describe("大字体提醒随当前选中走", () => {
 	});
 
 	it("切回默认 → 提醒跟着消失,不再说一款已经不用了的字体", async () => {
-		mount({ font: "" }, LIB);
-		expect(await screen.findByText("超大字体.ttf")).toBeTruthy();
+		const changed = mount({ font: "", fontAsset: BIG }, LIB);
+		await screen.findByText(/会整份进内存/);
+		fireEvent.click(screen.getByRole("button", { name: "默认" }));
+		expect(changed).toHaveBeenCalledWith({ font: "" });
 		expect(screen.queryByText(/会整份进内存/)).toBeNull();
 	});
 });
@@ -211,23 +239,25 @@ describe("素材库字体端点接线", () => {
 		} as never);
 		vi.mocked(api.upload).mockResolvedValue({ ok: true, id: UPLOADED, name: "new.woff2" } as never);
 		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/library/fonts"));
+		await openFonts();
 		const file = new File(["x"], "new.woff2");
 		const input = document.querySelector<HTMLInputElement>('input[type="file"]');
 		if (!input) throw new Error("missing upload input");
 		fireEvent.change(input, { target: { files: [file] } });
 		await screen.findByText("new.woff2");
+		expect(onChange).not.toHaveBeenCalled();
+		await applyFont();
 		expect(onChange).toHaveBeenCalledWith({ font: "fallback", fontAsset: UPLOADED });
 		expect(vi.mocked(api.upload).mock.calls[0][0]).toBe("/api/library/fonts");
 		expect((vi.mocked(api.upload).mock.calls[0][1] as FormData).get("file")).toBe(file);
 	});
-	it("删盘经字体库新口，刷新后移除列表项", async () => {
-		mount({ font: "" }, [{ id: UPLOADED, name: "remove.woff2" }]);
-		await screen.findByText("remove.woff2");
-		vi.mocked(api.get).mockResolvedValue({ ok: true, fonts: [] } as never);
-		vi.mocked(api.delete).mockResolvedValue({ ok: true } as never);
-		fireEvent.click(screen.getByLabelText("删除 remove.woff2"));
-		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/library/fonts/${UPLOADED}`));
-		await waitFor(() => expect(screen.queryByText("remove.woff2")).toBeNull());
+	it("取消字体选择不删盘也不改字段", async () => {
+		const changed = mount({ font: "" }, [{ id: UPLOADED, name: "keep.woff2" }]);
+		await openFonts();
+		fireEvent.click(await screen.findByRole("button", { name: "选择字体 keep.woff2" }));
+		fireEvent.click(screen.getByRole("button", { name: "取消" }));
+		expect(changed).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
 	});
 });
 
@@ -244,4 +274,53 @@ describe("字体选择器的平实与女仆口吻", () => {
 		expect(plain.textContent).toContain("woff2");
 		expect(screen.getByText("渲染那台机器").tagName).toBe("STRONG");
 	});
+});
+
+it("字体在共用弹窗里单选，取消不改字段，确认保留家族名兜底", async () => {
+	const next = `${"b".repeat(32)}.ttf`;
+	const changed = mount({ font: "兜底", fontAsset: UPLOADED }, [
+		{ id: UPLOADED, name: "原字体.woff2" },
+		{ id: next, name: "新字体.ttf" },
+	]);
+	fireEvent.click(await screen.findByRole("button", { name: "选择字体" }));
+	fireEvent.click(await screen.findByRole("button", { name: "选择字体 新字体.ttf" }));
+	expect(changed).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "取消" }));
+	expect(changed).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "选择字体" }));
+	fireEvent.click(await screen.findByRole("button", { name: "选择字体 新字体.ttf" }));
+	fireEvent.click(screen.getByRole("button", { name: "使用所选" }));
+	expect(changed).toHaveBeenCalledWith({ font: "兜底", fontAsset: next });
+});
+
+it("外部丢弃草稿时，字体模式跟随恢复的字段", async () => {
+	vi.mocked(api.get).mockResolvedValue({
+		ok: true,
+		fonts: [{ id: UPLOADED, name: "已上传.woff2" }],
+	} as never);
+	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const changed = vi.fn();
+	const view = (value: FontChoice) => (
+		<QueryClientProvider client={qc}>
+			<FontPicker value={value} onChange={changed} />
+		</QueryClientProvider>
+	);
+	const { rerender } = render(view({ font: "", fontAsset: UPLOADED }));
+	expect(await screen.findByText("已上传.woff2")).toBeTruthy();
+	rerender(view({ font: "" }));
+	expect(picked()).toBe("默认");
+	rerender(view({ font: "系统字体" }));
+	expect(picked()).toBe("手填家族名");
+	expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("系统字体");
+	expect(changed).not.toHaveBeenCalled();
+});
+
+it("失效字体且库为空时仍显示空态，不能确认不存在的文件", async () => {
+	mount({ font: "兜底", fontAsset: UPLOADED });
+	await screen.findByText("未找到当前字体");
+	await openFonts();
+	expect(await screen.findByText("还没有字体")).toBeTruthy();
+	expect((screen.getByRole("button", { name: "使用所选" }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
 });

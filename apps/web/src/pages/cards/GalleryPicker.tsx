@@ -1,88 +1,14 @@
-import type { LibraryImagesResponse, LibraryImageUploadResponse } from "@bilibili-notify/contract";
-/**
- * 图廊选择器 —— 多选已上传的图(选中顺序 = 每次推送的轮换顺序),支持上传与删盘。
- * 两家在用:皮肤的 `image` 旋钮(壁纸)与 `cards.liveCoverImageIds`(直播封面)。
- * `value` 是一串资产 id:空 = 不覆盖,1 = 单张,>1 = 轮换。删被引用的图被服务端以 `conflict`
- * (409)拦截,`message` 里已经点名了用家,这里原样提示出来。
- */
+/** The field stays in its original form; selection is staged in the shared library dialog. */
 
-import { AddFileButton, Icon, IconButton } from "@bilibili-notify/ui";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import { useLibrary } from "../../components/library/library-data";
+import {
+	LibraryImage,
+	LibraryOrderBadge,
+	MissingLibraryImage,
+} from "../../components/library/library-image";
+import { LibraryPicker } from "../../components/library/library-picker";
 import { useT } from "../../i18n";
-import { api } from "../../services/api";
-import { removeFromGallery, toggleSelected } from "./gallery-ops";
-import { useAssetObjectUrl } from "./useAssetObjectUrl";
-
-/** 单张缩略图:点击切换选中(角标显示轮换序号),hover 出现删盘按钮。 */
-/**
- * 缩略图左上角那个序号角标。选中态与「已失效」态此前各写一遍,共用一串 90 字符
- * 的类名 —— 两边只差一个底色,却是两份会各自漂的定位与字号。
- *
- * 不进组件库:全站只有这一处用得上「绝对定位的方形序号角标」,库里 `Pill` 管的是
- * 行内徽章,两者不是一回事。
- */
-function OrderBadge({ tone, children }: { tone: "pink" | "danger"; children: ReactNode }) {
-	return (
-		<span
-			className={`absolute left-1 top-1 grid h-4 min-w-4 place-items-center rounded-bn-pill px-1 text-bn-micro font-bold text-bn-on-solid ${
-				tone === "pink" ? "bg-bn-pink" : "bg-bn-danger-text"
-			}`}
-		>
-			{children}
-		</span>
-	);
-}
-
-function Thumb({
-	id,
-	order,
-	onToggle,
-	onDelete,
-}: {
-	id: string;
-	/** 在轮换序列中的位置(0 基);null = 未选中。 */
-	order: number | null;
-	onToggle: () => void;
-	onDelete: () => void;
-}) {
-	const t = useT();
-	const url = useAssetObjectUrl(id);
-	const selected = order !== null;
-	return (
-		<div
-			className={`group relative aspect-[16/10] w-24 shrink-0 overflow-hidden rounded-lg border transition ${
-				selected ? "border-bn-pink ring-1 ring-bn-pink/40" : "border-bn-border-subtle"
-			}`}
-		>
-			<button
-				type="button"
-				onClick={onToggle}
-				className="block h-full w-full"
-				title={t("library.images.toggle")}
-			>
-				{url ? (
-					<img src={url} alt={t("library.images.image")} className="h-full w-full object-cover" />
-				) : (
-					<span className="grid h-full w-full place-items-center bg-bn-surface-muted text-bn-2xs text-bn-text-tertiary">
-						…
-					</span>
-				)}
-			</button>
-			{selected ? <OrderBadge tone="pink">{order + 1}</OrderBadge> : null}
-			<IconButton
-				icon={<Icon.close size={10} />}
-				label={t("library.images.delete")}
-				onClick={onDelete}
-				size="xs"
-				shape="pill"
-				tone="danger"
-				surface="scrim"
-				className="absolute right-1 top-1 opacity-0 group-hover:opacity-100"
-			/>
-		</div>
-	);
-}
+import { removeFromGallery } from "./gallery-ops";
 
 export function GalleryPicker({
 	value,
@@ -93,125 +19,52 @@ export function GalleryPicker({
 }: {
 	value: string[];
 	onChange: (next: string[]) => void;
-	/**
-	 * 删盘成功后的回调(在本 picker 自身 onChange 剔除之外)。Cards 页借它清扫页面上
-	 * 其他仍引用该 id 的样式状态 —— 否则那些字段带着悬空 id 落盘成幽灵引用。
-	 */
 	onAssetDeleted?: (id: string) => void;
-	/** 空选时的底部文案(缺省背景语义「未选择(用渐变背景)」;封面上下文应传封面语义)。 */
 	emptyHint?: string;
-	/** 单张选中时的底部文案(缺省「单张固定背景」)。 */
 	singleHint?: string;
 }) {
-	const t = useT();
-	const qc = useQueryClient();
-	const [uploading, setUploading] = useState(false);
-	const [err, setErr] = useState<string | null>(null);
-	const gallery = useQuery({
-		queryKey: ["library", "images"],
-		queryFn: () => api.get<LibraryImagesResponse>("/api/library/images"),
-	});
-	const ids = gallery.data?.ids ?? [];
-
-	const onFile = async (file: File | undefined) => {
-		if (!file) return;
-		setErr(null);
-		setUploading(true);
-		try {
-			const form = new FormData();
-			form.append("file", file);
-			// 上传被拒(格式不认、超上限)是非 2xx,`api` 抛 `ApiError`,`message` 就是服务端的原话;
-			// 走到下一行就是收下了。
-			const res = await api.upload<LibraryImageUploadResponse>("/api/library/images", form);
-			await qc.invalidateQueries({ queryKey: ["library", "images"] });
-			if (!value.includes(res.id)) onChange([...value, res.id]); // 新传的默认选入
-		} catch (e) {
-			setErr((e as Error).message);
-		} finally {
-			setUploading(false);
-		}
-	};
-
-	const onDelete = async (id: string) => {
-		setErr(null);
-		try {
-			await api.delete(`/api/library/images/${id}`);
-			onChange(removeFromGallery(value, id));
-			// 通知页面清扫其他仍引用该 id 的样式状态(必须在删盘成功后、409 拦截不触发)。
-			onAssetDeleted?.(id);
-			await qc.invalidateQueries({ queryKey: ["library", "images"] });
-		} catch (e) {
-			// 还被引用着(`conflict`)时,服务端的 `message` 已经把用家点名了(「该背景图还有 2 处在用：…」),
-			// 与别的失败一样原样显示 —— 从前这里按 409 去读 `body.referencedBy` 自己拼一句。
-			setErr((e as Error).message);
-		}
-	};
-
-	// 选中但已不在图廊里的 id(文件被删的悬空引用)。渲染成可见的「已失效」占位块 ——
-	// 隐形会让它悄悄占住轮换位(角标/张数对不上、渲染回退渐变),且没有任何入口能取消选中。
-	// 图廊列表未加载完(data 缺省)时不判失效,避免加载闪烁误标。
-	const ghosts = gallery.data ? value.filter((id) => !ids.includes(id)) : [];
-
+	const t = useT(),
+		list = useLibrary("images");
+	const known = list.isSuccess && !list.isError;
 	return (
-		<div className="flex flex-col gap-2">
+		<div className="space-y-2">
+			<div className="flex items-center justify-end">
+				<LibraryPicker
+					kind="images"
+					value={value}
+					onChange={onChange}
+					onAssetDeleted={(id) => {
+						onChange(removeFromGallery(value, id));
+						onAssetDeleted?.(id);
+					}}
+				/>
+			</div>
 			<div className="flex flex-wrap gap-2">
-				{ids.map((id) => {
-					const idx = value.indexOf(id);
-					return (
-						<Thumb
+				{value.map((id, index) =>
+					known && !list.entries.some((entry) => entry.id === id) ? (
+						<MissingLibraryImage
 							key={id}
-							id={id}
-							order={idx === -1 ? null : idx}
-							onToggle={() => onChange(toggleSelected(value, id))}
-							onDelete={() => onDelete(id)}
+							order={index}
+							onRemove={() => onChange(removeFromGallery(value, id))}
 						/>
-					);
-				})}
-				{ghosts.map((id) => (
-					<div
-						key={id}
-						data-testid="gallery-ghost"
-						title={t("library.images.missingHint")}
-						// 边走 danger-border token —— 此前写的 border-bn-danger-text/50 是拿**字色**
-						// 当边色,全站独一份,皮肤改字色时这圈虚线会跟着漂。
-						className="relative grid aspect-[16/10] w-24 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-bn-danger-border bg-bn-surface-muted"
-					>
-						<OrderBadge tone="danger">{value.indexOf(id) + 1}</OrderBadge>
-						<span className="text-bn-2xs text-bn-danger-text">{t("library.images.missing")}</span>
-						<IconButton
-							icon={<Icon.close size={10} />}
-							label={t("library.images.removeMissing")}
-							onClick={() => onChange(removeFromGallery(value, id))}
-							size="xs"
-							shape="pill"
-							tone="danger"
-							surface="scrim"
-							className="absolute right-1 top-1"
-						/>
-					</div>
-				))}
-				<AddFileButton
-					accept="image/png,image/jpeg,image/webp"
-					uploading={uploading}
-					onFile={onFile}
-					className="grid aspect-[16/10] w-24 shrink-0 place-items-center rounded-lg text-bn-xs"
-				>
-					<span className="flex flex-col items-center gap-0.5">
-						<Icon.plus size={16} />
-						<span>{t("library.images.upload")}</span>
-					</span>
-				</AddFileButton>
+					) : (
+						<span
+							key={id}
+							className="relative aspect-[16/10] w-24 overflow-hidden rounded-lg border border-bn-border-subtle"
+						>
+							<LibraryImage id={id} alt={t("library.images.image")} />
+							<LibraryOrderBadge>{index + 1}</LibraryOrderBadge>
+						</span>
+					),
+				)}
 			</div>
-			<div className="flex items-center justify-between text-bn-xs">
-				<span className="text-bn-text-tertiary">
-					{value.length === 0
-						? (emptyHint ?? t("library.images.empty"))
-						: value.length === 1
-							? (singleHint ?? t("library.images.single"))
-							: t("library.images.rotation", { count: value.length })}
-				</span>
-				{err ? <span className="text-right text-bn-danger-text">{err}</span> : null}
-			</div>
+			<p className="text-bn-2xs text-bn-text-tertiary">
+				{value.length === 0
+					? (emptyHint ?? t("library.images.empty"))
+					: value.length === 1
+						? (singleHint ?? t("library.images.single"))
+						: t("library.images.rotation", { count: value.length })}
+			</p>
 		</div>
 	);
 }

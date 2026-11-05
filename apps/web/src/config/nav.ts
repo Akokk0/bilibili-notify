@@ -75,6 +75,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		},
 	},
 	{
+		to: "/library",
+		icon: "library",
+		get label() {
+			return i18n.t("library.title");
+		},
+	},
+	{
 		to: "/ai",
 		icon: "ai",
 		get label() {

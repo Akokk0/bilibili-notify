@@ -22,7 +22,13 @@ import Cards from "../Cards";
 import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
-	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), upload: vi.fn() },
+	api: {
+		blob: vi.fn().mockRejectedValue(new Error("thumbnail unavailable in fixture")),
+		get: vi.fn(),
+		post: vi.fn(),
+		patch: vi.fn(),
+		upload: vi.fn(),
+	},
 	ApiError: class extends Error {},
 }));
 
@@ -81,6 +87,7 @@ beforeEach(() => {
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation((url: string) => {
+		if (url === "/api/library/images") return Promise.resolve({ ok: true, ids: [] });
 		if (url.includes("/api/subscriptions")) return Promise.resolve([CUSTOMIZED]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
 		if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
@@ -296,6 +303,7 @@ describe("Cards per-UP 作用域接线", () => {
 			overrides: { cardSkin: "aurora" },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url === "/api/library/images") return Promise.resolve({ ok: true, ids: [] });
 			if (url.includes("/api/subscriptions")) return Promise.resolve([skinned]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
 			if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
@@ -430,6 +438,7 @@ describe("Cards per-UP 作用域接线", () => {
 			overrides: { cardSkin: "aurora" },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
+			if (url === "/api/library/images") return Promise.resolve({ ok: true, ids: [] });
 			if (url.includes("/api/subscriptions")) return Promise.resolve([skinned]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
 			if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });

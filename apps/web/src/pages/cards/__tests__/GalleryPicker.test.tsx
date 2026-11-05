@@ -7,7 +7,10 @@ import { i18n } from "../../../i18n";
 import { GalleryPicker } from "../GalleryPicker";
 
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
-afterEach(() => i18n.set({ voice: "maid" }));
+afterEach(() => {
+	cleanup();
+	i18n.set({ voice: "maid" });
+});
 
 const { getMock, blobMock, deleteMock, uploadMock } = vi.hoisted(() => ({
 	getMock: vi.fn(),
@@ -69,30 +72,19 @@ describe("GalleryPicker", () => {
 		expect(onChange).toHaveBeenCalledWith([REAL]);
 	});
 
-	it("删盘成功 → 除 onChange 剔除自身选择外,还回调 onAssetDeleted 让页面清扫其他字段", async () => {
-		deleteMock.mockResolvedValue({ ok: true });
-		const onChange = vi.fn();
-		const onAssetDeleted = vi.fn();
+	it("选择窗不提供删除文件，取消不清字段或通知删盘", async () => {
+		const onChange = vi.fn(),
+			onAssetDeleted = vi.fn();
 		renderWithQuery(
 			<GalleryPicker value={[REAL]} onChange={onChange} onAssetDeleted={onAssetDeleted} />,
 		);
-		fireEvent.click(await screen.findByLabelText("从图廊删除"));
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith([]));
-		expect(onAssetDeleted).toHaveBeenCalledWith(REAL);
-	});
-
-	it("删被引用的图(conflict)→ 服务端 message 里的「谁在用」原样露出来,选择不动、不通知页面清扫", async () => {
-		const message = "该背景图还有 1 处在用：UP 30303，请先在卡片设置里移除再删除";
-		deleteMock.mockRejectedValue(new Error(message));
-		const onChange = vi.fn();
-		const onAssetDeleted = vi.fn();
-		renderWithQuery(
-			<GalleryPicker value={[REAL]} onChange={onChange} onAssetDeleted={onAssetDeleted} />,
-		);
-		fireEvent.click(await screen.findByLabelText("从图廊删除"));
-		expect(await screen.findByText(message)).toBeTruthy();
+		fireEvent.click(await screen.findByRole("button", { name: "选择图片" }));
+		await screen.findByRole("button", { name: "选择图片 1" });
+		expect(screen.queryByRole("button", { name: /删除图片|从图廊删除/ })).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "取消" }));
 		expect(onChange).not.toHaveBeenCalled();
 		expect(onAssetDeleted).not.toHaveBeenCalled();
+		expect(deleteMock).not.toHaveBeenCalled();
 	});
 
 	it("空选/单张的底部文案可被调用方定制(封面上下文不再写「用渐变背景」)", async () => {
@@ -127,32 +119,22 @@ describe("素材库图片端点接线", () => {
 		blobMock.mockRejectedValue(new Error("no blob in test"));
 		uploadMock.mockResolvedValue({ ok: true, id: REAL });
 		const onChange = vi.fn();
-		const view = renderWithQuery(<GalleryPicker value={[]} onChange={onChange} />);
+		renderWithQuery(<GalleryPicker value={[]} onChange={onChange} />);
+		fireEvent.click(await screen.findByRole("button", { name: "选择图片" }));
 		await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/library/images"));
 		const file = new File(["image"], "image.png", { type: "image/png" });
-		const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+		const input = document.querySelector<HTMLInputElement>('input[type="file"]');
 		if (!input) throw new Error("missing upload input");
 		fireEvent.change(input, {
 			target: { files: [file] },
 		});
+		await screen.findByRole("button", { name: "选择图片 1" });
+		expect(onChange).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "使用所选" }));
 		await waitFor(() => expect(onChange).toHaveBeenCalledWith([REAL]));
 		expect(uploadMock.mock.calls[0][0]).toBe("/api/library/images");
 		expect((uploadMock.mock.calls[0][1] as FormData).get("file")).toBe(file);
 		await waitFor(() => expect(blobMock).toHaveBeenCalledWith(`/api/library/images/${REAL}`));
-	});
-	it("删盘刷新列表后移除缩略图", async () => {
-		getMock.mockReset();
-		deleteMock.mockReset();
-		blobMock.mockReset();
-		getMock
-			.mockResolvedValueOnce({ ok: true, ids: [REAL] })
-			.mockResolvedValue({ ok: true, ids: [] });
-		blobMock.mockRejectedValue(new Error("no blob in test"));
-		deleteMock.mockResolvedValue({ ok: true });
-		renderWithQuery(<GalleryPicker value={[]} onChange={() => {}} />);
-		fireEvent.click(await screen.findByLabelText("从图廊删除"));
-		await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(`/api/library/images/${REAL}`));
-		await waitFor(() => expect(screen.queryByLabelText("从图廊删除")).toBeNull());
 	});
 });
 
@@ -175,11 +157,53 @@ describe("图片选择器的平实与女仆口吻", () => {
 			},
 		);
 		renderWithQuery(<GalleryPicker value={[]} onChange={() => {}} />);
+		fireEvent.click(await screen.findByRole("button", { name: "选择图片" }));
 		const toggle = await screen.findByTitle("点击选用或取消");
 		expect(toggle).toBeTruthy();
-		expect(await screen.findByAltText("背景图")).toBeTruthy();
+		expect(await screen.findByAltText("图片 1")).toBeTruthy();
 		act(() => i18n.set({ voice: "maid" }));
 		expect(toggle.title).toBe("主人，点一下选用，再点一下就取消啦。");
-		expect(await screen.findByAltText("背景图")).toBeTruthy();
+		expect(await screen.findByAltText("图片 1")).toBeTruthy();
 	});
+});
+
+it("图片在共用弹窗里多选，取消不改字段，确认保留点击顺序", async () => {
+	getMock.mockResolvedValue({ ok: true, ids: [REAL, GHOST] });
+	const changed = vi.fn();
+	renderWithQuery(<GalleryPicker value={[REAL]} onChange={changed} />);
+	fireEvent.click(await screen.findByRole("button", { name: "选择图片" }));
+	fireEvent.click(await screen.findByRole("button", { name: "选择图片 2" }));
+	expect(changed).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "取消" }));
+	expect(changed).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
+	fireEvent.click(await screen.findByRole("button", { name: "选择图片 2" }));
+	fireEvent.click(screen.getByRole("button", { name: "使用所选" }));
+	expect(changed).toHaveBeenCalledWith([REAL, GHOST]);
+});
+
+it("取消选择不撤回已经上传的文件，也不改当前字段", async () => {
+	let ids: string[] = [];
+	getMock.mockImplementation(async () => ({ ok: true, ids }));
+	uploadMock.mockImplementation(async () => {
+		ids = [REAL];
+		return { ok: true, id: REAL };
+	});
+	const changed = vi.fn();
+	renderWithQuery(<GalleryPicker value={[]} onChange={changed} />);
+	fireEvent.click(await screen.findByRole("button", { name: "选择图片" }));
+	const input = document.querySelector<HTMLInputElement>("input[type=file]");
+	if (!input) throw new Error("missing upload input");
+	fireEvent.change(input, {
+		target: { files: [new File(["x"], "image.png", { type: "image/png" })] },
+	});
+	await screen.findByRole("button", { name: "选择图片 1" });
+	fireEvent.click(screen.getByRole("button", { name: "取消" }));
+	expect(changed).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
+	expect(
+		(await screen.findByRole("button", { name: "选择图片 1" })).getAttribute("aria-pressed"),
+	).toBe("false");
+	expect(changed).not.toHaveBeenCalled();
+	expect(deleteMock).not.toHaveBeenCalled();
 });
