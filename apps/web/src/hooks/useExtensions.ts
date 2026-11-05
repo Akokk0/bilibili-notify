@@ -6,6 +6,7 @@
 import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
 import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
+import { ACCOUNTS_QUERY_KEY } from "./useAccounts";
 import { ADAPTERS_QUERY_KEY } from "./useAdapters";
 import { SOURCES_QUERY_KEY } from "./useSources";
 
@@ -20,6 +21,7 @@ export function invalidateExtensionTables(qc: QueryClient): Promise<void> {
 		qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY }),
 		qc.invalidateQueries({ queryKey: SOURCES_QUERY_KEY }),
 		qc.invalidateQueries({ queryKey: ADAPTERS_QUERY_KEY }),
+		qc.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY }),
 	]).then(() => undefined);
 }
 

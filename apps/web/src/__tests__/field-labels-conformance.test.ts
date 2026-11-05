@@ -80,3 +80,8 @@ it("AI body draft fields name scenes and display AI/template instead of generic 
 	expect(target?.label).toContain("直播总结目标例外");
 	expect(target?.formatter?.(true)).toBe("AI 写");
 });
+
+it("账号排序的草稿差异有可读名称", () => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+	expect(getFieldLabel("core.accounts.order")?.label).toBe("账号顺序");
+});

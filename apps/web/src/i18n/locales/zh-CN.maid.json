@@ -572,5 +572,16 @@
 	"startup.restartingHint": "主人，请求已经提交，女仆正在等新的服务进程，就绪后会带您进入面板。",
 	"lifecycle.updateReadFailed": "主人，暂时查不到可用更新，可以重试或先去拓展管理看看。",
 	"lifecycle.updateFailed": "主人，拓展没能更新好：",
-	"lifecycle.containerRestart": "主人，如果使用容器部署，请先配置自动重启策略，服务退出后才有人把它重新拉起来喔。"
+	"lifecycle.containerRestart": "主人，如果使用容器部署，请先配置自动重启策略，服务退出后才有人把它重新拉起来喔。",
+	"accounts.orderHint": "主人，拖动左侧手柄就能排序；第一位会出现在顶栏和AI头像里，改好后在页面底部保存就好啦。",
+	"accounts.readFailed": "主人，账号列表暂时没读出来，现在还不能确定登录状态，再试一次吧。",
+	"accounts.empty": "主人，现在还没有提供登录的来源；等来源可用，女仆会把账号入口放在这里喔。",
+	"accounts.orderPending": "主人，保存后会用{source}作为顶栏显示账号喔。",
+	"accounts.loggedOutHint": "主人，还没登录{source}账号，点扫码登录就能开始啦。",
+	"accounts.scanHint": "主人，请使用{source}客户端扫码登录喔。",
+	"accounts.confirmPhone": "主人，已经扫好码啦，请在手机上确认登录。",
+	"accounts.guideHint": "主人，点高亮的扫码登录，用{source}客户端扫码并确认就好；登录成功后，女仆会带您继续下一步喔。",
+	"panelUi.components.onboarding.tour-script.2": "主人，点高亮的扫码登录，用来源客户端扫码并确认；成功后女仆会带您继续下一步喔。",
+	"panelUi.components.onboarding.tour-script.17": "主人，登录完成啦！",
+	"accounts.orderLabel": "账号顺序"
 }

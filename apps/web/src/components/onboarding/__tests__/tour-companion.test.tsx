@@ -9,11 +9,12 @@
  * 流转单向:说明步抵达即翻过,没有「上一步」。判据跟随逻辑在 tour.test.ts。
  */
 
+import type { AccountView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { sourceAuthKey } from "../../../hooks/use-source-auth";
+import { ACCOUNTS_QUERY_KEY } from "../../../hooks/useAccounts";
 import { useNavStore } from "../../../store/nav";
 
 const apiGet = vi.hoisted(() => vi.fn(async (_path: string) => null as unknown));
@@ -22,6 +23,8 @@ const apiPatch = vi.hoisted(() => vi.fn(async (_p: string, _b?: unknown) => ({})
 vi.mock("../../../services/api", () => ({ api: { get: apiGet, patch: apiPatch } }));
 
 interface Scenario {
+	accounts?: AccountView[];
+	labels?: Record<string, string>;
 	loggedIn?: boolean;
 	subs?: unknown[];
 	connections?: unknown[];
@@ -44,19 +47,32 @@ const loggedInAt = "2026-10-11T00:00:00.000Z";
 /** 中途登录上：既改服务端口子今后的回答，也把查询缓存当场换成已登录（等同 WS 帧到了）。 */
 function logIn(): void {
 	authLoggedIn = true;
-	mountedQc?.setQueryData(sourceAuthKey("bilibili"), {
-		state: { status: "logged-in", loggedInAt },
+	mountedQc?.setQueryData(ACCOUNTS_QUERY_KEY, {
+		accounts: [{ sourceKey: "demo", state: { status: "logged-in", loggedInAt } }],
 	});
 }
 
 async function mount(s: Scenario) {
 	authLoggedIn = s.loggedIn === true;
 	apiGet.mockImplementation(async (path: string) => {
-		if (path === "/api/sources/bilibili/auth") {
+		if (path === "/api/accounts")
 			return {
-				state: authLoggedIn ? { status: "logged-in", loggedInAt } : { status: "logged-out" },
+				accounts: s.accounts ?? [
+					{
+						sourceKey: "demo",
+						state: authLoggedIn ? { status: "logged-in", loggedInAt } : { status: "logged-out" },
+					},
+				],
 			};
-		}
+		if (path === "/api/sources")
+			return {
+				sources: Object.entries(s.labels ?? {}).map(([key, label]) => ({
+					key,
+					descriptor: { label },
+					has: { auth: true },
+					status: "running",
+				})),
+			};
 		if (path === "/api/subscriptions") return s.subs ?? [];
 		if (path === "/api/connections") return s.connections ?? [];
 		if (path === "/api/targets") return s.targets ?? [];
@@ -126,7 +142,7 @@ function mountNavAnchor(to: string): HTMLElement {
 describe("TourCompanion 常驻小卡", () => {
 	it("新用户(未收起未毕业):常驻显示当前步,无需任何入口", async () => {
 		await mount({ route: "/" });
-		expect(await screen.findByText("扫码登录 B 站")).toBeTruthy();
+		expect(await screen.findByText("登录demo")).toBeTruthy();
 		// 「带我去」已退役 —— 跨页由聚光灯照导航页签指路,小卡只留一句提示
 		expect(screen.queryByRole("button", { name: "带我去" })).toBeNull();
 		expect(screen.getByText(/点亮起的页签前往/)).toBeTruthy();
@@ -167,7 +183,7 @@ describe("TourCompanion 常驻小卡", () => {
 					core: { onboarding: { skipped: false } },
 				}),
 			);
-			await screen.findByText("扫码登录 B 站");
+			await screen.findByText("登录demo");
 			expect(screen.queryByText(/需要新手指引吗/)).toBeNull();
 		});
 
@@ -251,7 +267,7 @@ describe("TourCompanion 常驻小卡", () => {
 				return {};
 			});
 			await mount(s);
-			await screen.findByText("扫码登录 B 站");
+			await screen.findByText("登录demo");
 			fireEvent.click(screen.getByRole("button", { name: "跳过指引" }));
 			await waitFor(() =>
 				expect(apiPatch).toHaveBeenCalledWith("/api/settings", {
@@ -282,7 +298,7 @@ describe("TourCompanion 常驻小卡", () => {
 				return {};
 			});
 			await mount(s);
-			await screen.findByText("扫码登录 B 站");
+			await screen.findByText("登录demo");
 			expect(apiPatch).not.toHaveBeenCalled();
 			act(() => {
 				logIn();
@@ -325,7 +341,7 @@ describe("TourCompanion 常驻小卡", () => {
 				return {};
 			});
 			const { qc } = await mount(s);
-			await screen.findByText("扫码登录 B 站");
+			await screen.findByText("登录demo");
 			// ① 本会话内走完最后一步 → 自动写标记(ref 闸在这一拍落下),🎉 卡谢幕
 			act(() => {
 				logIn();
@@ -375,11 +391,11 @@ describe("TourCompanion 常驻小卡", () => {
 	 */
 	it("降频之后洞照样跟着目标走 —— 没有任何事件也要跟上", async () => {
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		anchorEl.getBoundingClientRect = () => new DOMRect(10, 10, 40, 20);
 		document.body.appendChild(anchorEl);
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		await waitFor(() =>
 			expect(screen.getByTestId("tour-spot-frame").getAttribute("x")).toBe(String(10 - 6)),
 		);
@@ -404,7 +420,7 @@ describe("TourCompanion 常驻小卡", () => {
 	 */
 	it("完成徽章只认自己那段动画结束 —— 子元素冒泡上来的不算", async () => {
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		document.body.appendChild(anchorEl);
 		await mount({
 			subs: [{ id: "s1" }],
@@ -414,7 +430,7 @@ describe("TourCompanion 常驻小卡", () => {
 			targets: [{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 			route: "/system",
 		});
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		act(() => {
 			logIn();
 		});
@@ -439,7 +455,7 @@ describe("TourCompanion 常驻小卡", () => {
 	describe("完成徽章的减动效档", () => {
 		async function graduate() {
 			const anchorEl = document.createElement("div");
-			anchorEl.setAttribute("data-tour", "bili-login");
+			anchorEl.setAttribute("data-tour", "source-login");
 			document.body.appendChild(anchorEl);
 			await mount({
 				subs: [{ id: "s1" }],
@@ -451,7 +467,7 @@ describe("TourCompanion 常驻小卡", () => {
 				],
 				route: "/system",
 			});
-			await screen.findByText("扫码登录 B 站");
+			await screen.findByText("登录demo");
 			act(() => {
 				logIn();
 			});
@@ -489,19 +505,19 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("聚光灯:在目标路由且锚点元素存在时渲染挖洞层", async () => {
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		document.body.appendChild(anchorEl);
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 	});
 
 	it("聚光灯即引导锁:亮灯时铺四块洞外拦截层,退散后一并撤掉", async () => {
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		document.body.appendChild(anchorEl);
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 		// 洞外指针操作被吃掉 —— 引导模式下只允许做被指的那一步;洞内无遮挡
 		// (块数 = 视口减洞集的矩形分割结果,几何相关,只钉「确实铺了」)
@@ -522,11 +538,11 @@ describe("TourCompanion 常驻小卡", () => {
 		const original = window.innerWidth;
 		try {
 			const anchorEl = document.createElement("div");
-			anchorEl.setAttribute("data-tour", "bili-login");
+			anchorEl.setAttribute("data-tour", "source-login");
 			anchorEl.getBoundingClientRect = () => new DOMRect(100, 60, 80, 40);
 			document.body.appendChild(anchorEl);
 			await mount({ route: "/system" });
-			await screen.findByText("扫码登录 B 站");
+			await screen.findByText("登录demo");
 			const rightEdge = () => {
 				const blocks = [...screen.getByTestId("tour-blocker").children] as HTMLElement[];
 				return Math.max(
@@ -556,11 +572,11 @@ describe("TourCompanion 常驻小卡", () => {
 	 */
 	it("目标滚出视口 → 灯与引导锁一起收起,别把人锁在一块没有出口的暗幕里", async () => {
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		anchorEl.getBoundingClientRect = () => new DOMRect(100, 60, 80, 40);
 		document.body.appendChild(anchorEl);
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		await waitFor(() => expect(screen.getByTestId("tour-blocker")).toBeTruthy());
 		// 用户往下翻了一大截,目标整个跑到视口上方
 		anchorEl.getBoundingClientRect = () => new DOMRect(100, -500, 80, 40);
@@ -573,10 +589,10 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("聚光灯交互即退散:在锚点上按下后暗幕消失(别盖住点击弹出的内容)", async () => {
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		document.body.appendChild(anchorEl);
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 		fireEvent.pointerDown(anchorEl);
 		await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
@@ -712,25 +728,25 @@ describe("TourCompanion 常驻小卡", () => {
 		const modal = document.createElement("div");
 		modal.setAttribute("data-bn", "modal");
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		modal.appendChild(anchorEl);
 		document.body.appendChild(modal);
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		// 给 rAF 解析留几拍 —— 让位是持续判定,不是初始态碰巧没渲染
 		await new Promise((r) => setTimeout(r, 80));
 		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
 		// 弹窗关掉(锚点随之消失)→ 无回落目标,仍无聚光灯;页面锚点补挂后回落
 		modal.remove();
 		const pageEl = document.createElement("div");
-		pageEl.setAttribute("data-tour", "bili-login");
+		pageEl.setAttribute("data-tour", "source-login");
 		document.body.appendChild(pageEl);
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 	});
 
 	it("弹窗内的点击不影响页面锚点的退散状态", async () => {
 		const pageEl = document.createElement("div");
-		pageEl.setAttribute("data-tour", "bili-login");
+		pageEl.setAttribute("data-tour", "source-login");
 		document.body.appendChild(pageEl);
 		const modal = document.createElement("div");
 		modal.setAttribute("data-bn", "modal");
@@ -738,7 +754,7 @@ describe("TourCompanion 常驻小卡", () => {
 		modal.appendChild(inModalEl);
 		document.body.appendChild(modal);
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 		fireEvent.pointerDown(inModalEl);
 		await new Promise((r) => setTimeout(r, 50));
@@ -747,10 +763,10 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("退散过弹窗即复原:点按钮(退散)→ 弹窗让位 → 取消关掉 → 灯重新聚回按钮", async () => {
 		const btn = document.createElement("div");
-		btn.setAttribute("data-tour", "bili-login");
+		btn.setAttribute("data-tour", "source-login");
 		document.body.appendChild(btn);
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		await waitFor(() => expect(screen.getByTestId("tour-spotlight")).toBeTruthy());
 		fireEvent.pointerDown(btn);
 		await waitFor(() => expect(screen.queryByTestId("tour-spotlight")).toBeNull());
@@ -758,7 +774,7 @@ describe("TourCompanion 常驻小卡", () => {
 		const modal = document.createElement("div");
 		modal.setAttribute("data-bn", "modal");
 		const qr = document.createElement("div");
-		qr.setAttribute("data-tour", "bili-login-qr");
+		qr.setAttribute("data-tour", "source-login-qr");
 		modal.appendChild(qr);
 		document.body.appendChild(modal);
 		await new Promise((r) => setTimeout(r, 80));
@@ -767,18 +783,18 @@ describe("TourCompanion 常驻小卡", () => {
 		modal.remove();
 		await waitFor(() =>
 			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
-				'[data-tour="bili-login"]',
+				'[data-tour="source-login"]',
 			),
 		);
 	});
 
 	it("不在目标路由:聚光灯改照顶栏对应页签(页内锚点在也不聚它)", async () => {
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		document.body.appendChild(anchorEl);
 		mountNavAnchor("/system");
 		await mount({ route: "/" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		await waitFor(() =>
 			expect(screen.getByTestId("tour-spotlight").getAttribute("data-target")).toBe(
 				'[data-tour-nav="/system"]',
@@ -819,7 +835,7 @@ describe("TourCompanion 常驻小卡", () => {
 	it("教程阅读区(/about):聚光灯整个不渲染,「回去继续」跳回原步", async () => {
 		mountNavAnchor("/system");
 		await mount({ route: "/about/guide" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		// 给 rAF 解析留几拍 —— 不渲染是持续判定,不是初始态碰巧没画
 		await new Promise((r) => setTimeout(r, 80));
 		expect(screen.queryByTestId("tour-spotlight")).toBeNull();
@@ -961,7 +977,7 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("主步判据变绿的那一拍:操作位置弹完成徽章;全绿再加放毕业烟花", async () => {
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		document.body.appendChild(anchorEl);
 		// 除登录外全绿 —— 登录一完成即毕业,徽章与烟花一次验俩
 		await mount({
@@ -972,22 +988,22 @@ describe("TourCompanion 常驻小卡", () => {
 			targets: [{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 			route: "/system",
 		});
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		expect(screen.queryByTestId("tour-done-badge")).toBeNull();
 		act(() => {
 			logIn();
 		});
-		expect(await screen.findByText("B 站登录完成!")).toBeTruthy();
+		expect(await screen.findByText("登录完成！")).toBeTruthy();
 		await waitFor(() => expect(screen.getByTestId("tour-fireworks")).toBeTruthy());
 		// 已完成的步在下一次挂载(如刷新)不再庆祝 —— 首拍只记录
 	});
 
 	it("「收起」折叠成左缘标签:卡摘出可达性树与聚光灯,进度还活在标签上", async () => {
 		const anchorEl = document.createElement("div");
-		anchorEl.setAttribute("data-tour", "bili-login");
+		anchorEl.setAttribute("data-tour", "source-login");
 		document.body.appendChild(anchorEl);
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		fireEvent.click(screen.getByRole("button", { name: "收起" }));
 		// 卡仍在 DOM(退场动画要演完 —— styles.css 按 data-shown 做两态交接),
 		// 但 inert + aria-hidden 把它摘出焦点链与读屏,byRole 于是查不到。
@@ -1004,7 +1020,7 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("morph 轨迹:切换前把对方矩形 pose 写进 CSS 变量(iOS zoom 式互变)", async () => {
 		await mount({ route: "/system" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		fireEvent.click(screen.getByRole("button", { name: "收起" }));
 		// styles.css 的隐藏态 transform 消费这两个变量 —— 缺了它们 morph 退化成原地淡入
 		const card = document.querySelector('aside[aria-label="新手导览"]') as HTMLElement;
@@ -1016,7 +1032,7 @@ describe("TourCompanion 常驻小卡", () => {
 
 	it("展开态下标签也常驻 DOM(动画交接的前提),同样被 inert 摘出交互", async () => {
 		await mount({ route: "/" });
-		await screen.findByText("扫码登录 B 站");
+		await screen.findByText("登录demo");
 		const tab = document.querySelector('button[aria-label="展开新手导览"]');
 		expect(tab?.getAttribute("data-shown")).toBe("false");
 		expect(tab?.hasAttribute("inert")).toBe(true);
@@ -1028,7 +1044,7 @@ describe("TourCompanion 常驻小卡", () => {
 		await mount({ route: "/" });
 		const tab = await screen.findByRole("button", { name: "展开新手导览" });
 		fireEvent.click(tab);
-		expect(await screen.findByText("扫码登录 B 站")).toBeTruthy();
+		expect(await screen.findByText("登录demo")).toBeTruthy();
 		expect(localStorage.getItem("bn-tour-collapsed")).toBe("0");
 	});
 
@@ -1133,4 +1149,28 @@ describe("TourCompanion 常驻小卡", () => {
 			}
 		});
 	});
+});
+
+it("逐来源登录：完成书库后引导到电台，不把两个登录步合并", async () => {
+	const { qc } = await mount({
+		route: "/system",
+		accounts: [
+			{ sourceKey: "library", state: { status: "logged-out" } },
+			{ sourceKey: "radio", state: { status: "logged-out" } },
+		],
+		labels: { library: "书库", radio: "电台" },
+	});
+	expect(await screen.findByText("登录书库")).toBeTruthy();
+	expect(screen.getByText("书库登录")).toBeTruthy();
+	expect(screen.getByText("电台登录")).toBeTruthy();
+	act(() =>
+		qc.setQueryData(ACCOUNTS_QUERY_KEY, {
+			accounts: [
+				{ sourceKey: "library", state: { status: "logged-in", loggedInAt } },
+				{ sourceKey: "radio", state: { status: "logged-out" } },
+			],
+		}),
+	);
+	expect(await screen.findByText("登录电台")).toBeTruthy();
+	expect(screen.queryByText("建立推送连接")).toBeNull();
 });

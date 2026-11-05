@@ -20,7 +20,7 @@ import { deriveOnboarding, type OnboardingInputs } from "../derive";
 
 function inputs(partial: Partial<OnboardingInputs>): OnboardingInputs {
 	return {
-		biliLoggedIn: false,
+		accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: false }],
 		subsCount: 0,
 		connections: [],
 		targets: [],
@@ -44,7 +44,9 @@ describe("deriveOnboarding 步骤判据", () => {
 	});
 
 	it("登录后 active 直接推进到 adapter —— 订阅在最后,不挡通道配置", () => {
-		const v = deriveOnboarding(inputs({ biliLoggedIn: true }));
+		const v = deriveOnboarding(
+			inputs({ accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }] }),
+		);
 		expect(stepMap(v)).toMatchObject({ login: true, connection: false, subs: false });
 		expect(v.activeKey).toBe("connection");
 	});
@@ -52,7 +54,7 @@ describe("deriveOnboarding 步骤判据", () => {
 	it("adapter 只建不测 → adapter 步未完成(定案:存在且 test 通过)", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				connections: [{ enabled: true, probeState: undefined }],
 			}),
 		);
@@ -77,7 +79,7 @@ describe("deriveOnboarding 步骤判据", () => {
 	it("adapter 测过 + 启用目标存在 → active=test", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
 				targets: [{ enabled: true, reachability: undefined }],
 			}),
@@ -89,7 +91,7 @@ describe("deriveOnboarding 步骤判据", () => {
 	it("测试推送成功但还没订阅 → 通道全通,active=subs 收尾", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
 				targets: [{ enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 			}),
@@ -102,7 +104,7 @@ describe("deriveOnboarding 步骤判据", () => {
 	it("订阅补上 → 全绿毕业,无 active", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				subsCount: 1,
 				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
 				targets: [{ enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
@@ -115,7 +117,7 @@ describe("deriveOnboarding 步骤判据", () => {
 	it("测通后禁用目标:test 不回退,但 target 步退回未完成并成为 active", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				subsCount: 1,
 				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
 				targets: [{ enabled: false, reachability: { status: "reachable", changedAt: "t" } }],
@@ -150,7 +152,7 @@ describe("deriveOnboarding 可选尾巴", () => {
 	it("modules 布尔直通;尾巴不影响 allDone", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				subsCount: 1,
 				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
 				targets: [{ enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
@@ -176,7 +178,7 @@ describe("deriveOnboarding failNote", () => {
 	it("adapter 步失败 → 带出启用连接的 err 与 lastCheckedAt", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				connections: [
 					{
 						enabled: true,
@@ -192,7 +194,7 @@ describe("deriveOnboarding failNote", () => {
 	it("err 缺失回落「测试未通过」;disabled 连接的失败不算", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				connections: [
 					{
 						enabled: false,
@@ -208,7 +210,7 @@ describe("deriveOnboarding failNote", () => {
 	it("test 步失败 → 从 targets 带出", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
 				targets: [
 					{
@@ -231,7 +233,7 @@ describe("deriveOnboarding failNote", () => {
 	it("test 步:disabled 目标的旧失败不算 —— 讲的必须是用户此刻要测的那条", () => {
 		const v = deriveOnboarding(
 			inputs({
-				biliLoggedIn: true,
+				accounts: [{ sourceKey: "demo", label: "演示来源", loggedIn: true }],
 				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
 				targets: [
 					{
@@ -260,4 +262,26 @@ describe("deriveOnboarding failNote", () => {
 		expect(v.activeKey).toBe("login");
 		expect(v.failNote).toBeNull();
 	});
+});
+
+it("每个来源各有登录步骤，零来源直接从连接开始", () => {
+	const common = { subsCount: 0, connections: [], targets: [], modules: undefined };
+	const accounts = [
+		{ sourceKey: "library", label: "书库", loggedIn: true },
+		{ sourceKey: "radio", label: "电台", loggedIn: false },
+	];
+	const view = deriveOnboarding({ ...common, accounts });
+	expect(
+		view.steps
+			.filter((step) => step.key === "login")
+			.map((step) => ({ sourceKey: step.sourceKey, done: step.done })),
+	).toEqual([
+		{ sourceKey: "library", done: true },
+		{ sourceKey: "radio", done: false },
+	]);
+	expect(view.activeSource).toEqual({ sourceKey: "radio", label: "电台", loggedIn: false });
+	expect(view.doneCount).toBe(1);
+	const empty = deriveOnboarding({ ...common, accounts: [] });
+	expect(empty.steps.map((step) => step.key)).toEqual(["connection", "target", "test", "subs"]);
+	expect(empty.activeKey).toBe("connection");
 });

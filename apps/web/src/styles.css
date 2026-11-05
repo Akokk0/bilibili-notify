@@ -886,3 +886,83 @@
 		border-radius: 99px;
 	}
 }
+
+@layer utilities {
+	.bn-account-trigger {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		max-width: 100%;
+		min-height: 24px;
+		padding: 0;
+		color: var(--color-bn-text-secondary);
+		cursor: pointer;
+		font-size: 11px;
+		text-align: left;
+	}
+	.bn-account-trigger-name {
+		max-width: 240px;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--color-bn-pink);
+		font-weight: 600;
+	}
+	@container bn-header (width < 72rem) {
+		.bn-account-trigger-name {
+			max-width: 170px;
+		}
+		.bn-account-trigger {
+			min-height: 28px;
+		}
+	}
+}
+@layer utilities {
+	.bn-source-account-row {
+		display: grid;
+		grid-template-columns: 24px auto minmax(0, 1fr) auto;
+		gap: 12px;
+		align-items: center;
+		padding: 14px 0;
+		scroll-margin-top: calc(var(--bn-header-h, 150px) + 70px);
+	}
+	.bn-source-account-handle {
+		width: 24px;
+		display: flex;
+		justify-content: center;
+	}
+	.bn-source-account-actions {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+	}
+	@media (max-width: 600px) {
+		.bn-source-account-row {
+			grid-template-columns: 44px 36px minmax(0, 1fr);
+			column-gap: 8px;
+			row-gap: 8px;
+			align-items: start;
+		}
+		.bn-source-account-handle {
+			width: 44px;
+		}
+		.bn-source-account-handle button {
+			min-width: 44px;
+			min-height: 44px;
+		}
+		.bn-source-account-actions {
+			grid-column: 3 / -1;
+			justify-content: flex-end;
+		}
+		.bn-source-account-actions [data-bn~="btn"] {
+			min-height: 36px;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.bn-source-account-row {
+			/* biome-ignore lint/complexity/noImportantStyles: Reduced motion must override the sortable inline transition. */
+			transition: none !important;
+		}
+	}
+}

@@ -12,9 +12,10 @@ import { api } from "../services/api";
 
 export const SOURCES_QUERY_KEY = ["sources"] as const;
 
-export function useSources() {
+export function useSources({ enabled = true }: { enabled?: boolean } = {}) {
 	return useQuery({
 		queryKey: SOURCES_QUERY_KEY,
+		enabled,
 		queryFn: () => api.get<SourcesResponse>("/api/sources"),
 	});
 }

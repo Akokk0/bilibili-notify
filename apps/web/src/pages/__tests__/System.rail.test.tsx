@@ -147,14 +147,14 @@ describe("系统页的分区导航", () => {
 	it("默认停在账号那格,别的格的内容不在 DOM 里", async () => {
 		renderSystem();
 		await waitForDraft();
-		expect(screen.getByText("账号 · auth")).toBeTruthy();
+		expect(screen.getByText("来源账号")).toBeTruthy();
 		expect(screen.queryByTestId("sec-skin")).toBeNull();
 		expect(screen.queryByTestId("sec-update")).toBeNull();
 	});
 
 	// 十节一节不丢:每一格点进去,该格该有的都在。
 	it.each([
-		["账号", ["账号 · auth", "主人账号", "原始登录快照"], []],
+		["账号", ["来源账号", "主人账号", "原始登录快照"], []],
 		["运行", [], ["sec-browser-source"]],
 		["消息", [], ["sec-commands", "sec-link-preview"]],
 		["外观", [], ["sec-skin"]],
@@ -171,7 +171,7 @@ describe("系统页的分区导航", () => {
 		renderSystem("/system#update");
 		// 这里不能等主人账号那张卡:落的就是维护格,它压根不渲染。
 		expect(await screen.findByTestId("sec-update")).toBeTruthy();
-		expect(screen.queryByText("账号 · auth")).toBeNull();
+		expect(screen.queryByText("来源账号")).toBeNull();
 	});
 
 	it("草稿跨格不丢", async () => {

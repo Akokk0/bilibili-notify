@@ -20,6 +20,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "re
 import { NavLink, useLocation } from "react-router-dom";
 import { canHideNav, NAV_ITEMS, type NavItem, orderedNav, resolveNav } from "../config/nav";
 import { SOURCE_AUTH_QUERY_PREFIX } from "../hooks/use-source-auth";
+import { ACCOUNTS_QUERY_KEY } from "../hooks/useAccounts";
 import { useBackendReachable } from "../hooks/useBackendReachable";
 import { i18n, useT } from "../i18n";
 import { api } from "../services/api";
@@ -29,6 +30,7 @@ import { useSessionStore } from "../store/session";
 import { useSkinStore, useSkinText } from "../store/skin";
 import { type ThemePreference, useThemeStore } from "../store/theme";
 import type { PushTarget, Subscription } from "../types/domain";
+import { AccountChip } from "./accounts/account-chip";
 import { DragHandle } from "./drag-handle";
 import { ProblemBox } from "./problem-box";
 
@@ -441,6 +443,7 @@ export function GlassHeader() {
 	function refreshAll(): void {
 		qc.invalidateQueries({ queryKey: ["health"] });
 		qc.invalidateQueries({ queryKey: SOURCE_AUTH_QUERY_PREFIX });
+		qc.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 		qc.invalidateQueries({ queryKey: ["targets"] });
 	}
@@ -486,8 +489,8 @@ export function GlassHeader() {
 						>
 							{headerTitle}
 						</div>
-						<div className="bn-header-greeting mt-0.5 text-bn-xs text-bn-text-secondary">
-							{tx("problems.greeting")}
+						<div className="mt-0.5 min-w-0 text-bn-xs text-bn-text-secondary">
+							<AccountChip />
 						</div>
 					</div>
 				</div>

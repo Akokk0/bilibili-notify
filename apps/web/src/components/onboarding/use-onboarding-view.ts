@@ -1,8 +1,9 @@
-import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
-import { SOURCE_AUTH_QUERY_PREFIX, useSourceAuth } from "../../hooks/use-source-auth";
+import { SOURCE_AUTH_QUERY_PREFIX } from "../../hooks/use-source-auth";
+import { ACCOUNTS_QUERY_KEY, useAccounts } from "../../hooks/useAccounts";
 import { HEALTH_DETAILS_QUERY_KEY, useHealthDetails } from "../../hooks/useHealthDetails";
+import { useSources } from "../../hooks/useSources";
 import { api } from "../../services/api";
 import type { Connection, PushTarget, Subscription } from "../../types/domain";
 import { deriveOnboarding, type OnboardingView } from "./derive";
@@ -20,6 +21,7 @@ const POLL_MS = 3_000;
  */
 const POLLED_KEYS: readonly (readonly unknown[])[] = [
 	SOURCE_AUTH_QUERY_PREFIX,
+	ACCOUNTS_QUERY_KEY,
 	["subscriptions"],
 	["connections"],
 	["targets"],
@@ -53,8 +55,9 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 	view: OnboardingView | null;
 } {
 	const qc = useQueryClient();
-	const { state: authState } = useSourceAuth(BILIBILI_SOURCE_KEY);
 	const enabled = opts?.active ?? true;
+	const accountsQ = useAccounts({ enabled });
+	const sourcesQ = useSources({ enabled });
 	const subsQ = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
@@ -75,7 +78,8 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 	// 记住结果:react-query 的结构共享让空转 refetch 不换引用,所以这个 memo
 	// 真的守得住。不记的话每次 render 都是新对象,下游那几个吃 view 的 memo /
 	// effect(步位、完成庆祝)就跟着每 render 跑一遍,memo 形同虚设。
-	const biliLoggedIn = authState?.status === "logged-in";
+	const accounts = accountsQ.data?.accounts;
+	const sources = sourcesQ.data?.sources;
 	const modules = detailsQ.data?.modules;
 	// devtools 装的假输入优先:判据函数照跑,只是喂的不是真查询。
 	const override = useOnboardingInputsOverride((s) => s.inputs);
@@ -83,16 +87,31 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 		() =>
 			override
 				? deriveOnboarding(override)
-				: subsQ.data && connectionsQ.data && targetsQ.data
+				: !accountsQ.isError && accounts && subsQ.data && connectionsQ.data && targetsQ.data
 					? deriveOnboarding({
-							biliLoggedIn,
+							accounts: accounts.map((account) => ({
+								sourceKey: account.sourceKey,
+								label:
+									sources?.find((source) => source.key === account.sourceKey)?.descriptor.label ??
+									account.sourceKey,
+								loggedIn: account.state.status === "logged-in",
+							})),
 							subsCount: subsQ.data.length,
 							connections: connectionsQ.data,
 							targets: targetsQ.data,
 							modules,
 						})
 					: null,
-		[override, biliLoggedIn, subsQ.data, connectionsQ.data, targetsQ.data, modules],
+		[
+			override,
+			accounts,
+			accountsQ.isError,
+			sources,
+			subsQ.data,
+			connectionsQ.data,
+			targetsQ.data,
+			modules,
+		],
 	);
 
 	const pollActive = opts?.poll === true && view !== null && !view.allDone;

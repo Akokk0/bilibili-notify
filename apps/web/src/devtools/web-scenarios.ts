@@ -107,7 +107,7 @@ const draftIsland: WebDevScenario = {
 };
 
 const STEPS: ReadonlyArray<{ value: OnboardingStepKey | "done"; label: string }> = [
-	{ value: "login", label: "① 还没登录 B 站" },
+	{ value: "login", label: "① 还没登录来源" },
 	{ value: "connection", label: "② 该建连接了" },
 	{ value: "target", label: "③ 该建推送目标了" },
 	{ value: "test", label: "④ 该测一次推送了" },
@@ -131,7 +131,7 @@ export function onboardingInputsFor(step: OnboardingStepKey | "done"): Onboardin
 	const probeOk = { status: "reachable", lastCheckedAt: stamp } as const;
 	const reachable = { status: "reachable", changedAt: stamp } as const;
 	return {
-		biliLoggedIn: done("login"),
+		accounts: [{ sourceKey: "demo", label: "demo", loggedIn: done("login") }],
 		connections: done("connection") ? [{ enabled: true, probeState: probeOk }] : [],
 		targets: done("target")
 			? [{ enabled: true, reachability: done("test") ? reachable : undefined }]

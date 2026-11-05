@@ -57,18 +57,7 @@ export const ALLOWLIST = {
  * 面板里认 B 站的分支归第 4 期按描述符重画。
  */
 export const RATCHET = {
-	"apps/web/src/components/ai-chat/index.tsx": 2,
-	"apps/web/src/components/onboarding/derive.ts": 2,
-	"apps/web/src/components/onboarding/use-onboarding-view.ts": 5,
-	"apps/web/src/devtools/web-scenarios.ts": 1,
-	// 3a-38(主人 10-10 点头,4 → 6):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(动态、直播两行都读它)。
-	// 第 4 期系统页与概览页按集成的描述画之后消失。
 	"apps/web/src/pages/Dashboard.tsx": 4,
-	// 3a-38(主人 10-10 点头,27 → 29):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(引入常量、模块表里用一次)。
-	// 第 4 期系统页按集成的描述画之后消失。
-	// 4-43：沿4-29持续授权拆分旧内容。5处变6处只多一个既有常量导入节点，
-	// 账号2处随4-40收；运行区的日志与集成设置分别由4-34、4-44清零。
-	"apps/web/src/pages/system/account-section.tsx": 2,
 };
 
 /** 字符串字面量里算 B 站替身的那两个值。 */

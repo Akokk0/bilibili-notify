@@ -24,8 +24,15 @@ vi.mock("../../../services/api", () => ({ api: { get: apiGet, patch: apiPatch } 
 
 async function mount(path: string) {
 	apiGet.mockImplementation(async (p: string) => {
-		if (p === "/api/sources/bilibili/auth") {
-			return { state: { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" } };
+		if (p === "/api/accounts") {
+			return {
+				accounts: [
+					{
+						sourceKey: "library",
+						state: { status: "logged-in", loggedInAt: "2026-10-11T00:00:00Z" },
+					},
+				],
+			};
 		}
 		if (p === "/api/subscriptions") return [{ id: "s1" }];
 		if (p === "/api/connections") return [];
@@ -69,6 +76,8 @@ describe("关于页 · 新手指引 section", () => {
 		await mount("/about/guide");
 		// 选型表的判据维度(grilling 定案四维)至少出现「群推送」这一最硬分流
 		expect(await screen.findByText(/群推送/)).toBeTruthy();
+		expect(screen.getByText(/有登录能力的来源逐个登录/)).toBeTruthy();
+		expect(screen.queryByText(/登录 B 站账号/)).toBeNull();
 	});
 
 	it("/about/guide/push 双路都在:NapCat 教程与官方扫码一键建都出现", async () => {
@@ -77,10 +86,10 @@ describe("关于页 · 新手指引 section", () => {
 		expect(screen.getAllByText(/扫码连接/).length).toBeGreaterThan(0);
 	});
 
-	it("/about/guide/login 渲染 B 站登录章", async () => {
+	it("/about/guide/login 渲染来源登录与排序说明", async () => {
 		await mount("/about/guide/login");
 		// 用登录章独有的正文锚点,不依赖标题元素的 heading 角色
-		expect(await screen.findByText(/自动轮换刷新 cookie/)).toBeTruthy();
+		expect(await screen.findByText(/不同来源的账号分别管理/)).toBeTruthy();
 	});
 
 	it("未知章节回退总览,不白屏", async () => {

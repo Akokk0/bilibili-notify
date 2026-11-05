@@ -97,3 +97,72 @@ it("compact problem and theme triggers retain their full names and decorative ic
 		screen.getByRole("button", { name: /主题/ }).querySelector('svg[aria-hidden="true"]'),
 	).not.toBeNull();
 });
+
+it("账号放在标题下方，按聚合首项显示，未登录不借后续账号资料", async () => {
+	const fallback = get.getMockImplementation();
+	get.mockImplementation(async (path: string) =>
+		path === "/api/accounts"
+			? {
+					accounts: [
+						{
+							sourceKey: "library",
+							state: { status: "logged-out" },
+							account: { name: "旧资料", avatar: `${"a".repeat(64)}.png` },
+						},
+						{
+							sourceKey: "later",
+							state: { status: "logged-in", loggedInAt: "2026-11-05T00:00:00Z" },
+							account: { name: "后面的账号" },
+						},
+					],
+				}
+			: path === "/api/sources"
+				? {
+						sources: [
+							{
+								key: "library",
+								descriptor: { label: "书库", shortLabel: "书", color: "#888", icon: "globe" },
+								has: { auth: true },
+								status: "running",
+							},
+						],
+					}
+				: fallback?.(path),
+	);
+	mount();
+	const trigger = await screen.findByRole("button", { name: "来源账号：书库 · 未登录" });
+	expect(trigger.closest(".bn-header-brand")).not.toBeNull();
+	expect(trigger.closest("fieldset")).toBeNull();
+	expect(trigger.querySelector("img")).toBeNull();
+	expect(screen.queryByText("旧资料")).toBeNull();
+	expect(screen.queryByText("后面的账号")).toBeNull();
+	await userEvent.click(trigger);
+	expect(await screen.findByRole("menuitem", { name: "查看书库账号" })).toBeTruthy();
+	expect(screen.getByRole("menuitem", { name: "管理账号与顺序" })).toBeTruthy();
+});
+
+it("顶栏刷新会重读账号聚合，读取失败不继续显示旧资料", async () => {
+	const fallback = get.getMockImplementation();
+	let offline = false;
+	get.mockImplementation(async (path: string) => {
+		if (path === "/api/accounts") {
+			if (offline) throw Error("temporary offline");
+			return {
+				accounts: [
+					{
+						sourceKey: "library",
+						state: { status: "logged-in", loggedInAt: "2026-11-05T00:00:00Z" },
+						account: { name: "北窗" },
+					},
+				],
+			};
+		}
+		return fallback?.(path);
+	});
+	mount();
+	await screen.findByRole("button", { name: "来源账号：北窗" });
+	offline = true;
+	await userEvent.click(screen.getByRole("button", { name: "刷新" }));
+	expect(await screen.findByRole("button", { name: "来源账号：账号读取失败" })).toBeTruthy();
+	expect(screen.queryByText("北窗")).toBeNull();
+});

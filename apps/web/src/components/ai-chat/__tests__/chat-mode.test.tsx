@@ -12,6 +12,7 @@
  * apps/server/src/routes/__tests__/ai-chat-skin-tool.test.ts。
  */
 
+import type { AccountView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -21,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 const H = vi.hoisted(() => ({
 	/** 最后一次发送带的 flags。 */
 	lastFlags: null as Record<string, unknown> | null,
+	accounts: [] as AccountView[],
 	/** 最后一次建会话时定下的面孔。 */
 	lastInit: undefined as Record<string, unknown> | undefined,
 	/** 当前会话读回来的样子 —— 用例按需改它来摆出「这是一场工坊会话」。 */
@@ -91,18 +93,22 @@ vi.mock("../../../services/aiChat", async (orig) => {
 
 vi.mock("../../../services/api", () => ({
 	api: {
-		get: vi.fn(async () => ({
-			core: {
-				ai: {
-					activeProfile: "deepseek",
-					providers: { deepseek: { model: "gpt-test" } },
-					persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
-					// 搜索后端配好了,那颗胶囊才画得出来 —— 没有它 SearchControl
-					// 自己就返回 null,断言「它还在」会假绿。
-					search: { backend: "bocha", keys: { bocha: "sk-x" } },
-				},
-			},
-		})),
+		get: vi.fn(async (path: string) =>
+			path === "/api/accounts"
+				? { accounts: H.accounts }
+				: {
+						core: {
+							ai: {
+								activeProfile: "deepseek",
+								providers: { deepseek: { model: "gpt-test" } },
+								persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
+								// 搜索后端配好了,那颗胶囊才画得出来 —— 没有它 SearchControl
+								// 自己就返回 null,断言「它还在」会假绿。
+								search: { backend: "bocha", keys: { bocha: "sk-x" } },
+							},
+						},
+					},
+		),
 	},
 }));
 
@@ -146,6 +152,7 @@ const tab = (name: string) => screen.queryByRole("tab", { name });
 
 beforeEach(() => {
 	H.lastFlags = null;
+	H.accounts = [];
 	H.lastInit = undefined;
 	H.conv = { mode: "chat", persona: true, messages: [] };
 });
@@ -288,4 +295,39 @@ describe("皮肤工坊做哪种:空态选一次", () => {
 		expect(tab("界面皮肤")).toBeNull();
 		expect(tab("推送卡片")).toBeNull();
 	});
+});
+
+it("AI头像使用首位来源账号，首位未登录不借第二位资料", async () => {
+	H.accounts = [
+		{
+			sourceKey: "library",
+			state: { status: "logged-in", loggedInAt: "2026-11-05T00:00:00Z" },
+			account: { name: "北窗", avatar: "account.webp" },
+		},
+	];
+	mountFresh();
+	expect((await screen.findAllByText("北窗")).length).toBeGreaterThan(0);
+	expect(
+		screen
+			.getAllByAltText("北窗")
+			.every((image) => image.getAttribute("src") === "/api/images/account.webp"),
+	).toBe(true);
+	cleanup();
+	H.accounts = [
+		{
+			sourceKey: "library",
+			state: { status: "logged-out" },
+			account: { name: "旧账号", avatar: "old.webp" },
+		},
+		{
+			sourceKey: "later",
+			state: { status: "logged-in", loggedInAt: "2026-11-05T00:00:00Z" },
+			account: { name: "后位账号", avatar: "later.webp" },
+		},
+	];
+	mountFresh();
+	await screen.findByLabelText("聊天输入");
+	expect(screen.queryByText("旧账号")).toBeNull();
+	expect(screen.queryByText("后位账号")).toBeNull();
+	expect(screen.queryByAltText("旧账号")).toBeNull();
 });

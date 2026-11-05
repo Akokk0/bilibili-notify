@@ -4,7 +4,6 @@ import {
 	type AiChatMode,
 	type AiConversationDTO,
 	type AiSkinTarget,
-	BILIBILI_SOURCE_KEY,
 } from "@bilibili-notify/contract";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/ai";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
@@ -13,7 +12,7 @@ import { ErrorNote, Icon, TabBar } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useSourceAuth } from "../../hooks/use-source-auth";
+import { usePrimaryAccount } from "../../hooks/useAccounts";
 import { useCoreSettings } from "../../hooks/useSettings";
 import { i18n, useT } from "../../i18n";
 import { CARD_SKINS_KEY } from "../../pages/cards/card-skins-query";
@@ -312,8 +311,8 @@ export function ChatPage() {
 	const builtins = useMemo(() => builtinPresetsFor(locale), [locale]);
 	const persona = resolveChatPersona(ai ? resolveActivePersona(ai, builtins).persona : undefined);
 
-	const { state: authState, account } = useSourceAuth(BILIBILI_SOURCE_KEY);
-	const card = authState?.status === "logged-in" ? account : undefined;
+	const account = usePrimaryAccount();
+	const card = account?.state.status === "logged-in" ? account.account : undefined;
 	// 没登录 / 还没拿到账号时,用人格里那个称呼顶上 —— 傲娇预设下就是「笨蛋」,
 	// 比硬写「主人」更贴合主人自己配的那套口吻。
 	const userName = card?.name?.trim() || persona.user;

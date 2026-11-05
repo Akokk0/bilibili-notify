@@ -43,8 +43,13 @@ const targetOutcome = (t: TargetRow): Outcome | undefined =>
 		at: t.reachability.changedAt,
 	};
 
+export interface OnboardingAccount {
+	sourceKey: string;
+	label: string;
+	loggedIn: boolean;
+}
 export interface OnboardingInputs {
-	biliLoggedIn: boolean;
+	accounts: readonly OnboardingAccount[];
 	subsCount: number;
 	connections: readonly ConnectionRow[];
 	targets: readonly TargetRow[];
@@ -53,7 +58,8 @@ export interface OnboardingInputs {
 }
 
 export interface OnboardingView {
-	steps: { key: OnboardingStepKey; done: boolean }[];
+	steps: { key: OnboardingStepKey; done: boolean; sourceKey?: string; label?: string }[];
+	activeSource?: OnboardingAccount;
 	tails: { key: OnboardingTailKey; done: boolean }[];
 	/** 第一个未完成步;全绿为 null。导览靠它高亮「现在该做哪步」。 */
 	activeKey: OnboardingStepKey | null;
@@ -89,7 +95,12 @@ function failNoteFrom(outcomes: readonly (Outcome | undefined)[]): OnboardingVie
 
 export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 	const steps: OnboardingView["steps"] = [
-		{ key: "login", done: inputs.biliLoggedIn },
+		...inputs.accounts.map((account) => ({
+			key: "login" as const,
+			sourceKey: account.sourceKey,
+			label: account.label,
+			done: account.loggedIn,
+		})),
 		{
 			key: "connection",
 			done: inputs.connections.some((a) => a.enabled && a.probeState?.status === "reachable"),
@@ -105,6 +116,7 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 	const activeKey = steps.find((s) => !s.done)?.key ?? null;
 	return {
 		steps,
+		activeSource: inputs.accounts.find((account) => !account.loggedIn),
 		// 两边都只翻**启用中**那些的账。test 步的 done 判据刻意不看 enabled(测通过
 		// 就算数,事后禁用不该把它收回去),但失败是另一回事:用户此刻要测的是还
 		// 启用着的目标,被禁用目标上周留下的旧账既不是他的问题也不是他改得动的东西,

@@ -82,6 +82,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 				"extension-bots",
 				"ext-settings",
 				"source-auth",
+				"accounts",
 				"problems",
 				"health",
 				"invalid-settings",
@@ -162,6 +163,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			["extensions"],
 			["sources"],
 			["adapters"],
+			["accounts"],
 			["invalid-settings"],
 		]);
 		expect(keysOf(sc.invalidate)).not.toContainEqual(["ext-settings"]);

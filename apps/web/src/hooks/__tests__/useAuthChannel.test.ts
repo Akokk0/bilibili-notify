@@ -62,7 +62,8 @@ describe("handleAuthEnvelope — auth 频道事件分发", () => {
 			qc,
 		);
 		expect(read("bilibili")).toEqual({ state: LOGGED_IN, account: { name: "晨风UP主" } });
-		expect(invalidate).toHaveBeenCalledTimes(1);
+		expect(invalidate).toHaveBeenCalledTimes(2);
+		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["accounts"] });
 		expect(invalidate).toHaveBeenCalledWith({ queryKey: sourceAuthKey("bilibili") });
 	});
 

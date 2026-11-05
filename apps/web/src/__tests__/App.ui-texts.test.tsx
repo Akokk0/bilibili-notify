@@ -104,6 +104,7 @@ function mountApp(
 			else if (path === "/api/adapters") data = { adapters: [] };
 			else if (path === "/api/dashboard/skins/active")
 				data = { active: { light: null, dark: null } };
+			else if (path === "/api/accounts") data = { accounts: [] };
 			else if (path === "/api/sources") data = { sources: [] };
 			else if (path === "/api/problems")
 				data = {
@@ -688,7 +689,7 @@ it("ignores an old acknowledgement reply after the backend has switched generati
 	startedAt = "2026-11-04T00:00:00Z";
 	details = { phase: "migrating", progress: null };
 	await act(async () => {
-		await qc.invalidateQueries({ queryKey: ["health"], exact: true });
+		await qc.invalidateQueries({ queryKey: ["health"] });
 	});
 	await screen.findByRole("heading", { name: "正在搬家" });
 	left = [];
@@ -712,4 +713,174 @@ it("explains the required container restart policy before confirming a fresh sta
 	await screen.findByText("数据已迁移完成");
 	await userEvent.click(screen.getByRole("button", { name: "全新开始…" }));
 	expect(await screen.findByText(/容器.*自动重启策略/)).toBeTruthy();
+});
+
+it("系统账号按来源扫码，默认可排序且不需要进入调整模式", async () => {
+	const stamp = "2026-11-05T00:00:00Z";
+	const rows: import("@bilibili-notify/contract").AccountView[] = [
+		{ sourceKey: "library", state: { status: "logged-out" } },
+		{ sourceKey: "later", state: { status: "logged-out" } },
+	];
+	mountApp({
+		path: "/system",
+		request: async (path, init) => {
+			if (path === "/api/accounts") return Response.json({ accounts: rows });
+			if (path === "/api/sources")
+				return Response.json({
+					sources: rows.map((a) => ({
+						key: a.sourceKey,
+						status: "running",
+						has: { auth: true },
+						descriptor: {
+							label: a.sourceKey === "library" ? "书库" : "另一个来源",
+							shortLabel: "源",
+							color: "#888",
+							icon: "globe",
+						},
+					})),
+				});
+			if (path === "/api/sources/library/auth" && init?.method === "POST") {
+				rows[0] = {
+					sourceKey: "library",
+					state: {
+						status: "awaiting-scan",
+						qr: { dataUrl: "data:image/png;base64,AA==", expiresAt: stamp },
+					},
+				};
+				return Response.json({ state: rows[0].state });
+			}
+		},
+	});
+	await screen.findByText("来源账号");
+	expect(screen.queryByRole("button", { name: "调整顺序" })).toBeNull();
+	expect(screen.getByRole("button", { name: "拖动排序 书库" })).toBeTruthy();
+	await userEvent.click(screen.getByRole("button", { name: "扫码登录书库" }));
+	expect((await screen.findByText("书库 · 扫码登录")).closest("[role=dialog]")).not.toBeNull();
+	expect(screen.getByAltText("书库登录二维码")).toBeTruthy();
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.some(
+				([path, init]) => path === "/api/sources/library/auth" && init?.method === "POST",
+			),
+	).toBe(true);
+});
+
+it("排序沿系统草稿保存，失败保稿，保留暂不在册键和重复键", async () => {
+	const core = {
+		...makeDefaultGlobalConfig(),
+		locale: "zh-CN",
+		voice: "plain",
+		onboarding: { skipped: true },
+		accounts: { order: ["dormant", "library", "library", "radio"] },
+	};
+	const rows = [
+		{ sourceKey: "library", state: { status: "logged-out" } },
+		{ sourceKey: "radio", state: { status: "logged-out" } },
+	];
+	const attempts: unknown[] = [];
+	let fail = true;
+	const nativeRect = HTMLElement.prototype.getBoundingClientRect;
+	vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+		this: HTMLElement,
+	) {
+		if (this.id.startsWith("source-account-")) {
+			const index = [...(this.parentElement?.children ?? [])].indexOf(this);
+			return new DOMRect(0, index * 90, 800, 90);
+		}
+		return nativeRect.call(this);
+	});
+	mountApp({
+		path: "/system",
+		request: async (path, init) => {
+			if (path === "/api/settings" && init?.method === "PATCH") {
+				const patch = JSON.parse(String(init.body));
+				attempts.push(patch);
+				if (fail)
+					return Response.json({ code: "unavailable", message: "保存顺序失败" }, { status: 503 });
+				core.accounts = patch.core.accounts;
+				return Response.json({ core });
+			}
+			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/accounts") {
+				const keys = [...new Set(core.accounts.order)];
+				return Response.json({
+					accounts: keys.flatMap((key) => rows.filter((row) => row.sourceKey === key)),
+				});
+			}
+			if (path === "/api/sources")
+				return Response.json({
+					sources: rows.map((row) => ({
+						key: row.sourceKey,
+						status: "running",
+						has: { auth: true },
+						descriptor: {
+							label: row.sourceKey === "library" ? "书库" : "电台",
+							shortLabel: "源",
+							icon: "globe",
+						},
+					})),
+				});
+		},
+	});
+	const handle = await screen.findByRole("button", { name: "拖动排序 书库" });
+	handle.focus();
+	await userEvent.keyboard("[Space]");
+	await userEvent.keyboard("[ArrowDown]");
+	await userEvent.keyboard("[Space]");
+	expect(await screen.findByText("保存后，电台将成为顶栏显示账号。")).toBeTruthy();
+	expect(screen.getByRole("button", { name: "来源账号：书库 · 未登录" })).toBeTruthy();
+	await userEvent.click(await screen.findByRole("button", { name: "保存" }));
+	expect(await screen.findByText("保存顺序失败")).toBeTruthy();
+	expect(attempts[0]).toEqual({
+		core: { accounts: { order: ["dormant", "radio", "library", "library"] } },
+	});
+	expect(screen.getByRole("button", { name: "来源账号：书库 · 未登录" })).toBeTruthy();
+	fail = false;
+	await userEvent.click(screen.getByRole("button", { name: "关闭" }));
+	await userEvent.click(await screen.findByRole("button", { name: "保存" }));
+	expect(await screen.findByRole("button", { name: "来源账号：电台 · 未登录" })).toBeTruthy();
+});
+
+it("多个来源等待扫码时只打开一个弹窗，可分别继续原码", async () => {
+	const rows = ["library", "radio"].map((sourceKey) => ({
+		sourceKey,
+		state: {
+			status: "awaiting-scan",
+			qr: { dataUrl: `data:image/png;base64,${sourceKey}`, expiresAt: "2026-11-05T10:00:00Z" },
+		},
+	}));
+	mountApp({
+		path: "/system",
+		request: async (path) => {
+			if (path === "/api/accounts") return Response.json({ accounts: rows });
+			if (path === "/api/sources")
+				return Response.json({
+					sources: rows.map((a) => ({
+						key: a.sourceKey,
+						status: "running",
+						has: { auth: true },
+						descriptor: {
+							label: a.sourceKey === "library" ? "书库" : "电台",
+							shortLabel: "源",
+							color: "#888",
+							icon: "globe",
+						},
+					})),
+				});
+		},
+	});
+	await screen.findByAltText("书库登录二维码");
+	expect(screen.queryByAltText("电台登录二维码")).toBeNull();
+	await userEvent.keyboard("{Escape}");
+	await userEvent.click(screen.getByRole("button", { name: "继续扫码电台" }));
+	expect(await screen.findByAltText("电台登录二维码")).toBeTruthy();
+	expect(screen.queryByAltText("书库登录二维码")).toBeNull();
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.filter(
+				([path, init]) => String(path).startsWith("/api/sources/") && init?.method === "POST",
+			),
+	).toEqual([]);
 });

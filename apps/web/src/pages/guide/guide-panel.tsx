@@ -79,7 +79,11 @@ export function GuidePanel({ chapter }: { chapter?: string | undefined }) {
 				{view ? (
 					<span className="flex items-center gap-1.5">
 						{view.steps.map((s) => (
-							<StatusDot key={s.key} kind={s.done ? "ok" : "pending"} size="sm" />
+							<StatusDot
+								key={`${s.key}:${s.sourceKey ?? ""}`}
+								kind={s.done ? "ok" : "pending"}
+								size="sm"
+							/>
 						))}
 						<Pill subtle size="sm" className="ml-1">
 							{view.doneCount}/{view.steps.length}

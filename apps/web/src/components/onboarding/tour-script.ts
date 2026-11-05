@@ -17,8 +17,9 @@ import type { OnboardingStepKey, OnboardingView } from "./derive";
  *  类型由它派生(站里通行写法,见 config/nav 的 NAV_ITEMS、contract 的 CHANNELS):
  *  词表与联合类型分两处手写的话,漏一处不会红,只会让守卫少覆盖一个锚点。 */
 export const TOUR_ANCHORS = [
-	"bili-login",
-	"bili-login-qr",
+	"source-login",
+	"source-login-qr",
+	"source-account-tab",
 	"subs-search",
 	"subs-add",
 	"connection-add",
@@ -42,7 +43,7 @@ export type TourAnchor = (typeof TOUR_ANCHORS)[number];
  * 不会红,只会让那条不变式悄悄放行一条永远不亮的链。
  */
 export const MODAL_ONLY_ANCHORS: ReadonlySet<TourAnchor> = new Set<TourAnchor>([
-	"bili-login-qr",
+	"source-login-qr",
 	"connection-form",
 	"target-form",
 	"subs-search",
@@ -94,7 +95,7 @@ export const TOUR_SCRIPT: Record<OnboardingStepKey, readonly TourSubStep[]> = {
 		{
 			route: "/system",
 			// 二维码弹窗一出现,链解析到 qr(在 modal 内)→ 聚光灯让位给弹窗;关掉回落按钮
-			anchor: ["bili-login-qr", "bili-login"],
+			anchor: ["source-login-qr", "source-login", "source-account-tab"],
 			get title() {
 				return i18n.t("panelUi.components.onboarding.tour-script.1");
 			},
@@ -246,4 +247,20 @@ export function reconcileTourPos(
 	if (!pos || pos.stepKey !== activeKey) return { stepKey: activeKey, subIndex: 0 };
 	const max = TOUR_SCRIPT[activeKey].length - 1;
 	return { stepKey: activeKey, subIndex: Math.min(pos.subIndex, max) };
+}
+
+/** Login uses one template per registered source; the other tour steps stay unchanged. */
+export function tourStepsFor(
+	key: OnboardingStepKey,
+	view: OnboardingView | null,
+): readonly TourSubStep[] {
+	if (key !== "login") return TOUR_SCRIPT[key];
+	const source = view?.activeSource?.label ?? i18n.t("accounts.sourceFallback");
+	return [
+		{
+			...TOUR_SCRIPT.login[0],
+			title: i18n.t("accounts.guideTitle", { source }),
+			body: i18n.t("accounts.guideHint", { source }),
+		},
+	];
 }

@@ -110,11 +110,10 @@ export const RATCHET = {
 	"apps/server/src/live/recap/live-summary-requester.ts": 1,
 	"apps/server/src/posts/deliver-post.ts": 5,
 	// 4-26：主人批准真实 B 语境 5 plain + 3 maid，精确键与命中词由下方实扫断言钉住。
-	"apps/web/src/i18n/locales/zh-CN.json": 16,
+	"apps/web/src/i18n/locales/zh-CN.json": 6,
 	"apps/web/src/i18n/locales/zh-CN.maid.json": 3,
 
 	"apps/web/src/devtools/ext-motion.ts": 2,
-	"apps/web/src/devtools/web-scenarios.ts": 1,
 	// 4-43：沿4-29持续授权原文搬家，6=1+4+1，归期不改。
 
 	"packages/ai/src/commentary-generator.ts": 1,
@@ -167,16 +166,6 @@ export function jsonTermHits(json, allowed = [], file = "") {
 export const JSON_TERM_PINS = {
 	"apps/web/src/i18n/locales/zh-CN.json": {
 		"skinUi.SkinEditor.64": ["动态"],
-		"panelUi.components.onboarding.tour-companion.9": ["B站"],
-		"panelUi.components.onboarding.tour-script.1": ["B站"],
-		"panelUi.components.onboarding.tour-script.2": ["B站"],
-		"panelUi.components.onboarding.tour-script.17": ["B站"],
-		"panelUi.pages.System.2": ["B站"],
-		"panelUi.pages.system.account-section.6": ["B站"],
-		"panelUi.pages.system.account-section.10": ["B站"],
-		"panelUi.pages.system.account-section.12": ["动态"],
-		"panelUi.pages.system.account-section.20": ["B站"],
-		"panelUi.pages.guide.guide-panel.2": ["B站"],
 		"sourceUi.pages.Dashboard.SystemHealthCard.31": ["B站"],
 		"sourceUi.pages.Dashboard.Dashboard.59": ["B站"],
 		"sourceUi.config.field.labels.label.1": ["B站"],

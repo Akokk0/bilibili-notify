@@ -150,7 +150,7 @@ const G = vi.hoisted(() => ({
 		activeProfile: "deepseek",
 		providers: { deepseek: { model: "gpt-test" } },
 	} as Record<string, unknown>,
-	/** `GET /api/sources/bilibili/auth` 回的那一份;默认没登录。 */
+	/** `GET /api/accounts` 首项里的登录资料;默认没登录。 */
 	auth: { state: { status: "logged-out" } } as Record<string, unknown>,
 }));
 
@@ -159,8 +159,8 @@ vi.mock("../../../services/api", () => ({
 		get: vi.fn(async (path: string) =>
 			// 技能清单、登录状态与全局配置走同一个 get,按路径分流 —— 一律回 globals 的话,
 			// 斜杠菜单那份清单永远是空的,空态那句引导语也就永远不出现。
-			path === "/api/sources/bilibili/auth"
-				? G.auth
+			path === "/api/accounts"
+				? { accounts: [{ sourceKey: "library", ...G.auth }] }
 				: path.startsWith("/api/ai/skills")
 					? {
 							list: [

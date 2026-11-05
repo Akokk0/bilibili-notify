@@ -1,9 +1,10 @@
-import type { SourceAuthResponse } from "@bilibili-notify/contract";
+import type { AccountsResponse, SourceAuthResponse } from "@bilibili-notify/contract";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../services/api";
+import { ACCOUNTS_QUERY_KEY } from "./useAccounts";
 
 /**
- * 来源的登录状态(`GET|POST|DELETE /api/sources/:sourceKey/auth`)—— 面板读登录态的唯一一处。
+ * 来源的登录状态(`GET|POST|DELETE /api/sources/:sourceKey/auth`)—— 逐来源登录操作与原查询缓存；多账号展示共用 useAccounts 聚合。
  *
  * 住在查询缓存里,**按来源键分开**:键是 `["source-auth", sourceKey]`,读的地方各自点名要哪个来源。
  * 保鲜靠两条线,所以 `staleTime` 是无穷:
@@ -36,20 +37,44 @@ export function applySourceAuthChanged(
 	if (!data || typeof data.sourceKey !== "string" || !data.state) return;
 	const key = sourceAuthKey(data.sourceKey);
 	qc.setQueryData<SourceAuthResponse>(key, (prev) => ({ ...prev, state: data.state }));
+	qc.setQueryData<AccountsResponse>(ACCOUNTS_QUERY_KEY, (prev) =>
+		prev?.accounts
+			? {
+					accounts: prev.accounts.map((account) =>
+						account.sourceKey === data.sourceKey
+							? { sourceKey: data.sourceKey, state: data.state }
+							: account,
+					),
+				}
+			: prev,
+	);
+	void qc.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
 	void qc.invalidateQueries({ queryKey: key });
 }
 
-export function useSourceAuth(sourceKey: string) {
+export function useSourceAuth(sourceKey: string, { enabled = true }: { enabled?: boolean } = {}) {
 	const qc = useQueryClient();
 	const key = sourceAuthKey(sourceKey);
 	const query = useQuery({
 		queryKey: key,
+		enabled,
 		queryFn: () => api.get<SourceAuthResponse>(sourceAuthPath(sourceKey)),
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnWindowFocus: false,
 	});
 	/** 服务端回的就是操作之后的整份状态,直接写进缓存 —— 不必等 WS 帧。 */
-	const adopt = (saved: SourceAuthResponse) => qc.setQueryData(key, saved);
+	const adopt = (saved: SourceAuthResponse) => {
+		qc.setQueryData(key, saved);
+		qc.setQueryData<AccountsResponse>(ACCOUNTS_QUERY_KEY, (prev) =>
+			prev?.accounts
+				? {
+						accounts: prev.accounts.map((account) =>
+							account.sourceKey === sourceKey ? { sourceKey, ...saved } : account,
+						),
+					}
+				: prev,
+		);
+	};
 	const startLogin = useMutation({
 		mutationFn: () => api.post<SourceAuthResponse>(sourceAuthPath(sourceKey)),
 		onSuccess: adopt,

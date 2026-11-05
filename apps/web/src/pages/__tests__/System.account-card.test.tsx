@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * 系统页账号卡 —— B 站登录状态的六种取值各画什么（`GET /api/sources/bilibili/auth`，经 `useSourceAuth`）。
+ * 系统页账号卡 —— 聚合列表按来源显示登录六态，操作经 `useSourceAuth`。
  *
  * 钉住的约定：
  * ① 六种取值各自的标签、正文与按钮可点性；
@@ -9,7 +9,7 @@
  *    （开机没确认、刷新过页面）话在卡片上。**面板分这两种靠本地布尔值，不靠比对 `message` 的文字**——
  *    所以两种情况下用同一句话，弹窗在不在是唯一的区别；
  * ③ 「刷新 Cookie」与「最近 Cookie 刷新」没了；
- * ④ 账号头像从图库取（`/api/images/<引用>`），没有就是首字母。
+ * ④ 账号头像从图库取（`/api/images/<引用>`），没有则保留通用账号占位。
  */
 
 import type { SourceAuthResponse } from "@bilibili-notify/contract";
@@ -17,7 +17,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { sourceAuthKey } from "../../hooks/use-source-auth";
+import { applySourceAuthChanged } from "../../hooks/use-source-auth";
 import System from "../System";
 
 vi.mock("../../hooks/useDirtyDraft", () => ({ useDirtyDraft: () => {} }));
@@ -36,7 +36,19 @@ vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 	api: {
 		get: vi.fn(async (url: string) => {
-			if (url === "/api/sources/bilibili/auth") return H.auth;
+			if (url === "/api/accounts")
+				return { accounts: [{ sourceKey: "library", ...(await H.auth) }] };
+			if (url === "/api/sources")
+				return {
+					sources: [
+						{
+							key: "library",
+							status: "running",
+							has: { auth: true },
+							descriptor: { label: "书库", shortLabel: "书", color: "#888", icon: "globe" },
+						},
+					],
+				};
 			if (url === "/api/settings") {
 				return {
 					core: {
@@ -53,11 +65,13 @@ vi.mock("../../services/api", () => ({
 		}),
 		post: vi.fn(async (url: string) => {
 			H.posted.push(url);
+			H.auth = H.postResult;
 			return H.postResult;
 		}),
 		delete: vi.fn(async (url: string) => {
 			H.deleted.push(url);
-			return { state: { status: "logged-out" } };
+			H.auth = { state: { status: "logged-out" } };
+			return H.auth;
 		}),
 		patch: vi.fn(async () => ({})),
 	},
@@ -82,12 +96,13 @@ function renderSystem() {
 /** WS 帧到了的效果：状态当场写进缓存。 */
 function pushState(state: SourceAuthResponse["state"]): void {
 	act(() => {
-		qc.setQueryData<SourceAuthResponse>(sourceAuthKey("bilibili"), (prev) => ({ ...prev, state }));
+		H.auth = { ...H.auth, state };
+		applySourceAuthChanged(qc, { sourceKey: "library", state });
 	});
 }
 
 const modal = () => document.querySelector('[data-bn="modal"]');
-const startButton = () => screen.getByRole("button", { name: /发起扫码登录|继续扫码|处理中/ });
+const startButton = () => screen.getByRole("button", { name: /扫码登录书库|继续扫码书库|处理中/ });
 
 beforeEach(() => {
 	H.auth = { state: { status: "logged-out" } };
@@ -101,20 +116,17 @@ afterEach(() => {
 });
 
 describe("系统页账号卡 · 六种登录状态", () => {
-	it("状态还没取到：写「正在读取登录状态」，两个按钮都禁用", async () => {
+	it("状态还没取到：等待账号列表，不能对未知来源发起操作", async () => {
 		H.auth = new Promise(() => {}) as never;
 		renderSystem();
-		expect(await screen.findByText("正在读取登录状态")).toBeTruthy();
-		expect(screen.getByText("读取中")).toBeTruthy();
-		expect((startButton() as HTMLButtonElement).disabled).toBe(true);
-		expect((screen.getByRole("button", { name: "退出登录" }) as HTMLButtonElement).disabled).toBe(
-			true,
-		);
+		expect(await screen.findByText("正在读取账号…")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /扫码登录|退出.*登录/ })).toBeNull();
+		expect(modal()).toBeNull();
 	});
 
 	it("logged-out：未登录标签与提示，发起可点", async () => {
 		renderSystem();
-		expect(await screen.findByText("尚未登录 B 站账号，点下方「发起扫码登录」开始。")).toBeTruthy();
+		expect(await screen.findByText("尚未登录书库账号，点击扫码登录开始。")).toBeTruthy();
 		expect(screen.getByText("未登录")).toBeTruthy();
 		expect((startButton() as HTMLButtonElement).disabled).toBe(false);
 		expect(modal()).toBeNull();
@@ -125,10 +137,10 @@ describe("系统页账号卡 · 六种登录状态", () => {
 			state: { status: "awaiting-scan", qr: { dataUrl: QR, expiresAt: NOW } },
 		};
 		renderSystem();
-		const img = (await screen.findByAltText("登录二维码")) as HTMLImageElement;
+		const img = (await screen.findByAltText("书库登录二维码")) as HTMLImageElement;
 		expect(img.getAttribute("src")).toBe(QR);
-		expect(screen.getByText("使用 Bilibili 手机客户端扫码登录")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "继续扫码" })).toBeTruthy();
+		expect(screen.getByText("使用书库客户端扫码登录")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "继续扫码书库" })).toBeTruthy();
 	});
 
 	it("awaiting-scan 关掉弹窗后：按钮「继续扫码」重开同一张码，不重新发起", async () => {
@@ -136,11 +148,11 @@ describe("系统页账号卡 · 六种登录状态", () => {
 			state: { status: "awaiting-scan", qr: { dataUrl: QR, expiresAt: NOW } },
 		};
 		renderSystem();
-		await screen.findByAltText("登录二维码");
+		await screen.findByAltText("书库登录二维码");
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(modal()).toBeNull());
-		fireEvent.click(screen.getByRole("button", { name: "继续扫码" }));
-		expect(await screen.findByAltText("登录二维码")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "继续扫码书库" }));
+		expect(await screen.findByAltText("书库登录二维码")).toBeTruthy();
 		expect(H.posted).toEqual([]);
 	});
 
@@ -149,14 +161,14 @@ describe("系统页账号卡 · 六种登录状态", () => {
 			state: { status: "awaiting-scan", qr: { dataUrl: QR, expiresAt: NOW } },
 		};
 		renderSystem();
-		await screen.findByAltText("登录二维码");
+		await screen.findByAltText("书库登录二维码");
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(modal()).toBeNull());
 		fireEvent.click(screen.getAllByRole("button", { name: "运行" })[0]);
 		fireEvent.click(screen.getAllByRole("button", { name: "账号" })[0]);
 		expect(modal()).toBeNull();
-		fireEvent.click(screen.getByRole("button", { name: "继续扫码" }));
-		expect((await screen.findByAltText("登录二维码")).getAttribute("src")).toBe(QR);
+		fireEvent.click(screen.getByRole("button", { name: "继续扫码书库" }));
+		expect((await screen.findByAltText("书库登录二维码")).getAttribute("src")).toBe(QR);
 		expect(H.posted).toEqual([]);
 	});
 
@@ -165,9 +177,9 @@ describe("系统页账号卡 · 六种登录状态", () => {
 			state: { status: "awaiting-scan", qr: { dataUrl: QR, expiresAt: NOW } },
 		};
 		renderSystem();
-		await screen.findByAltText("登录二维码");
+		await screen.findByAltText("书库登录二维码");
 		pushState({ status: "confirming", message: "已扫码，请在手机上确认" });
-		await waitFor(() => expect(screen.queryByAltText("登录二维码")).toBeNull());
+		await waitFor(() => expect(screen.queryByAltText("书库登录二维码")).toBeNull());
 		expect(modal()?.textContent).toContain("已扫码，请在手机上确认");
 		// 话只在弹窗里写一遍（卡片正文不重复）。
 		expect(screen.getAllByText("已扫码，请在手机上确认")).toHaveLength(1);
@@ -180,7 +192,7 @@ describe("系统页账号卡 · 六种登录状态", () => {
 		expect(await screen.findByText("已扫码，请在手机上确认")).toBeTruthy();
 		expect(modal()).toBeNull();
 		expect((startButton() as HTMLButtonElement).disabled).toBe(false);
-		expect(startButton().textContent).toBe("发起扫码登录");
+		expect(startButton().textContent).toBe("扫码登录");
 	});
 
 	it("confirming 没带 message：卡片上写「正在确认」", async () => {
@@ -196,7 +208,7 @@ describe("系统页账号卡 · 六种登录状态", () => {
 			state: { status: "awaiting-scan", qr: { dataUrl: QR, expiresAt: NOW } },
 		};
 		renderSystem();
-		await screen.findByAltText("登录二维码");
+		await screen.findByAltText("书库登录二维码");
 		pushState({ status: "logged-out" });
 		await waitFor(() => expect(modal()).toBeNull());
 		pushState({
@@ -219,9 +231,9 @@ describe("系统页账号卡 · 六种登录状态", () => {
 		const img = document.querySelector('[data-bn="avatar"] img, img[src^="/api/images/"]');
 		expect(img?.getAttribute("src")).toBe("/api/images/avatar0123456789abcdef.webp");
 		expect((startButton() as HTMLButtonElement).disabled).toBe(true);
-		expect((screen.getByRole("button", { name: "退出登录" }) as HTMLButtonElement).disabled).toBe(
-			false,
-		);
+		expect(
+			(screen.getByRole("button", { name: "退出书库登录" }) as HTMLButtonElement).disabled,
+		).toBe(false);
 		expect(screen.queryByText(/刷新 Cookie/)).toBeNull();
 		expect(screen.queryByText(/最近 Cookie 刷新/)).toBeNull();
 	});
@@ -254,10 +266,10 @@ describe("系统页账号卡 · 六种登录状态", () => {
 			state: { status: "awaiting-scan", qr: { dataUrl: QR, expiresAt: NOW } },
 		};
 		renderSystem();
-		await screen.findByText("尚未登录 B 站账号，点下方「发起扫码登录」开始。");
+		await screen.findByText("尚未登录书库账号，点击扫码登录开始。");
 		fireEvent.click(startButton());
-		expect(await screen.findByAltText("登录二维码")).toBeTruthy();
-		expect(H.posted).toEqual(["/api/sources/bilibili/auth"]);
+		expect(await screen.findByAltText("书库登录二维码")).toBeTruthy();
+		expect(H.posted).toEqual(["/api/sources/library/auth"]);
 	});
 
 	it("点「退出登录」：DELETE 来源登录口", async () => {
@@ -267,8 +279,27 @@ describe("系统页账号卡 · 六种登录状态", () => {
 		};
 		renderSystem();
 		await screen.findByText("晨风UP主");
-		fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
-		await waitFor(() => expect(H.deleted).toEqual(["/api/sources/bilibili/auth"]));
-		expect(await screen.findByText("尚未登录 B 站账号，点下方「发起扫码登录」开始。")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "退出书库登录" }));
+		await waitFor(() => expect(H.deleted).toEqual(["/api/sources/library/auth"]));
+		expect(await screen.findByText("尚未登录书库账号，点击扫码登录开始。")).toBeTruthy();
 	});
+});
+
+it("账号列表读取失败时显示未知，重试恢复也不会重新弹出已收起的码", async () => {
+	H.auth = { state: { status: "awaiting-scan", qr: { dataUrl: QR, expiresAt: NOW } } };
+	renderSystem();
+	await screen.findByAltText("书库登录二维码");
+	fireEvent.keyDown(document, { key: "Escape" });
+	const { api } = await import("../../services/api");
+	vi.mocked(api.get).mockRejectedValueOnce(new Error("temporary offline"));
+	await act(async () => {
+		await qc.invalidateQueries({ queryKey: ["accounts"] });
+	});
+	expect(await screen.findByText("账号列表未能读取，当前状态未知。")).toBeTruthy();
+	expect(screen.queryByRole("button", { name: "继续扫码书库" })).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: "重试" }));
+	await screen.findByRole("button", { name: "继续扫码书库" });
+	expect(modal()).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: "继续扫码书库" }));
+	expect(await screen.findByAltText("书库登录二维码")).toBeTruthy();
 });

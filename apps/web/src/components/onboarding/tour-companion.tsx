@@ -10,7 +10,7 @@ import { useOnboardingReopen } from "../../store/onboarding";
 import { Fireworks, StepDoneBadge } from "./celebration";
 import type { OnboardingStepKey, OnboardingTailKey, OnboardingView } from "./derive";
 import { Spotlight } from "./spotlight";
-import { reconcileTourPos, STEP_DONE_MESSAGES, TOUR_SCRIPT, type TourPos } from "./tour-script";
+import { reconcileTourPos, STEP_DONE_MESSAGES, type TourPos, tourStepsFor } from "./tour-script";
 import { useOnboardingState } from "./use-onboarding-view";
 
 /**
@@ -237,7 +237,7 @@ export function TourCompanion() {
 		[view, manualPos],
 	);
 
-	const sub = pos && pos.stepKey !== "done" ? TOUR_SCRIPT[pos.stepKey][pos.subIndex] : null;
+	const sub = pos && pos.stepKey !== "done" ? tourStepsFor(pos.stepKey, view)[pos.subIndex] : null;
 	const onRoute = sub ? location.pathname === sub.route : false;
 	// 提出来给闭包用 —— JSX 条件里的 narrowing 进不了 onClick 闭包
 	const subLink = sub?.link ?? null;
@@ -301,10 +301,10 @@ export function TourCompanion() {
 		(sub?.doneWhen != null && view != null && sub.doneWhen(view));
 	useEffect(() => {
 		if (!subAdvanceReady || !pos || pos.stepKey === "done") return;
-		if (pos.subIndex < TOUR_SCRIPT[pos.stepKey].length - 1) {
+		if (pos.subIndex < tourStepsFor(pos.stepKey, view).length - 1) {
 			setManualPos({ stepKey: pos.stepKey, subIndex: pos.subIndex + 1 });
 		}
-	}, [subAdvanceReady, pos]);
+	}, [subAdvanceReady, pos, view]);
 
 	// 子步层的判据回退(2026-08-30 真机反馈):主步 activeKey 的前进回退早有
 	// (reconcileTourPos),但子步曾只进不退 —— 删掉连接后 activeKey 仍是
@@ -317,7 +317,7 @@ export function TourCompanion() {
 		const prev = prevSubViewRef.current;
 		prevSubViewRef.current = view;
 		if (!pos || pos.stepKey === "done" || view == null || prev == null) return;
-		const subs = TOUR_SCRIPT[pos.stepKey];
+		const subs = tourStepsFor(pos.stepKey, view);
 		const firstBroken = subs.findIndex(
 			(s, i) => i < pos.subIndex && s.doneWhen != null && !s.doneWhen(view) && s.doneWhen(prev),
 		);
@@ -338,8 +338,12 @@ export function TourCompanion() {
 		const prev = prevViewRef.current;
 		prevViewRef.current = view;
 		if (!view || !prev || collapsed) return;
-		// 两份 steps 都出自 deriveOnboarding,同序等长 —— 按下标对位即可
-		const justDone = view.steps.findLast((s, i) => s.done && prev.steps[i]?.done === false);
+		// 来源可能增删或重排；登录步骤以来源身份对位，避免把位置变化当成完成。
+		const justDone = view.steps.findLast(
+			(s) =>
+				s.done &&
+				prev.steps.find((p) => p.key === s.key && p.sourceKey === s.sourceKey)?.done === false,
+		);
 		if (justDone) setCelebration({ seq: Date.now(), step: justDone.key });
 		if (view.allDone && !prev.allDone) setFireworks(true);
 	}, [view, collapsed]);
@@ -416,8 +420,14 @@ export function TourCompanion() {
 	// 步序只有一份 —— derive.ts 排好的 view.steps。曾另立 TOUR_STEP_ORDER,
 	// 改一处漏一处不会红,步点条会静静地少一颗或谁都不高亮。
 	const stepIndex =
-		pos.stepKey === "done" ? view.steps.length : view.steps.findIndex((s) => s.key === pos.stepKey);
-	const subCount = pos.stepKey === "done" ? 0 : TOUR_SCRIPT[pos.stepKey].length;
+		pos.stepKey === "done"
+			? view.steps.length
+			: view.steps.findIndex(
+					(s) =>
+						s.key === pos.stepKey &&
+						(s.key !== "login" || s.sourceKey === view.activeSource?.sourceKey),
+				);
+	const subCount = pos.stepKey === "done" ? 0 : tourStepsFor(pos.stepKey, view).length;
 	const pendingTails = view.tails.filter((t) => !t.done);
 	const expanded = !collapsed;
 
@@ -469,7 +479,7 @@ export function TourCompanion() {
 			>
 				<div className="mb-2 flex items-center gap-1.5">
 					{view.steps.map((s, i) => (
-						<span key={s.key} className="flex items-center gap-1">
+						<span key={`${s.key}:${s.sourceKey ?? ""}`} className="flex items-center gap-1">
 							<StatusDot kind={s.done ? "ok" : i === stepIndex ? "live" : "pending"} size="sm" />
 							<span
 								className={
@@ -478,7 +488,11 @@ export function TourCompanion() {
 										: "text-bn-2xs text-bn-text-tertiary"
 								}
 							>
-								{STEP_SHORT[s.key]}
+								{s.key === "login"
+									? tx("accounts.guideShort", {
+											source: s.label ?? s.sourceKey ?? tx("accounts.sourceFallback"),
+										})
+									: STEP_SHORT[s.key]}
 							</span>
 						</span>
 					))}
@@ -512,7 +526,10 @@ export function TourCompanion() {
 						</Btn>
 					</div>
 				) : sub ? (
-					<div key={`${pos.stepKey}:${pos.subIndex}`} className="bn-tour-step-in">
+					<div
+						key={`${pos.stepKey}:${pos.subIndex}:${view.activeSource?.sourceKey ?? ""}`}
+						className="bn-tour-step-in"
+					>
 						<div className="text-bn-base font-semibold text-bn-text-primary">{sub.title}</div>
 						<p className="mt-1 mb-2.5 text-bn-xs leading-relaxed text-bn-text-secondary">
 							{sub.body}

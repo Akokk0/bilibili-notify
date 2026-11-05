@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { InvalidSettingsPanel } from "../components/invalid-settings-note";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
+import { ACCOUNTS_QUERY_KEY } from "../hooks/useAccounts";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { INVALID_SETTINGS_QUERY_PREFIX } from "../hooks/useInvalidSettings";
 import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
@@ -211,6 +212,7 @@ export default function System() {
 		},
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: SETTINGS_KEY });
+			await qc.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
 			await qc.invalidateQueries({ queryKey: INVALID_SETTINGS_QUERY_PREFIX });
 		},
 	});
@@ -238,7 +240,14 @@ export default function System() {
 						id,
 						label,
 						desc,
-						icon: <Glyph size={14} />,
+						icon:
+							id === "account" ? (
+								<span data-tour="source-account-tab">
+									<Glyph size={14} />
+								</span>
+							) : (
+								<Glyph size={14} />
+							),
 					})),
 					...descriptors.map((entry) => ({
 						id: `integration:${entry.key}`,
