@@ -1118,3 +1118,34 @@ it("素材读取失败不展示旧缓存为空库，重试成功后恢复清单"
 	await userEvent.click(screen.getByRole("button", { name: "重试" }));
 	expect(await screen.findByRole("button", { name: "预览图片 1" })).toBeTruthy();
 });
+
+it("迁移提示首次与重新打开时先聚焦正文，Tab后才聚焦操作，关闭返回查看入口", async () => {
+	mountApp({ notices: () => [migratedNotice] });
+	await screen.findByText("数据已迁移完成");
+	const cards = screen.getByRole("button", { name: "前往卡片设置" });
+	const dialog = screen.getByRole("dialog");
+	await waitFor(() => {
+		expect(dialog.contains(document.activeElement)).toBe(true);
+		expect(document.activeElement?.matches("button, a[href], summary")).toBe(false);
+	});
+	await userEvent.keyboard("{Tab}");
+	expect(document.activeElement).toBe(cards);
+	await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+	expect(document.activeElement).toBe(screen.getByRole("button", { name: "沿用已迁数据" }));
+	await userEvent.keyboard("{Tab}");
+	expect(document.activeElement).toBe(cards);
+	await userEvent.click(screen.getByRole("button", { name: "稍后提醒" }));
+	expect(document.activeElement).toBe(screen.getByRole("button", { name: "查看" }));
+	await userEvent.click(screen.getByRole("button", { name: "查看" }));
+	expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+	expect(document.activeElement?.matches("button, a[href], summary")).toBe(false);
+	await userEvent.keyboard("{Escape}");
+	expect(document.activeElement).toBe(screen.getByRole("button", { name: "查看" }));
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.some(
+				([path, init]) => String(path).endsWith("/acknowledge") && init?.method === "POST",
+			),
+	).toBe(false);
+});

@@ -190,9 +190,13 @@ function SystemNoticeDialog({
 			body.current?.focus();
 			return;
 		}
-		if (view === "fresh" || view.startsWith("confirm:") || view === "notice")
+		if (view === "notice" && notice.kind === "migrated") {
+			// Start with the information, not a preselected action. Tab still enters the controls.
+			body.current?.focus();
+		} else if (view === "fresh" || view.startsWith("confirm:") || view === "notice") {
 			body.current?.querySelector<HTMLElement>("button:not([disabled]), a[href], summary")?.focus();
-	}, [view, locked]);
+		}
+	}, [view, locked, notice.kind]);
 	const title = confirming
 		? tx("panelUi.pages.extensions.marketplace-section.1", {
 				value0: confirming.name,
@@ -238,7 +242,7 @@ function SystemNoticeDialog({
 				ref={body}
 				tabIndex={-1}
 				aria-busy={locked}
-				className="text-bn-sm leading-relaxed text-bn-text-secondary"
+				className="text-bn-sm leading-relaxed text-bn-text-secondary outline-none"
 			>
 				{confirming ? (
 					<p>{tx("panelUi.pages.extensions.marketplace-section.3", { value0: sourceName })}</p>
