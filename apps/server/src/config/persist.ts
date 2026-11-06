@@ -1,6 +1,20 @@
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { createSerialQueue } from "@bilibili-notify/internal";
 import { atomicWriteFile } from "@bilibili-notify/storage";
-import { parseDocument } from "yaml";
+import { type Document, parseDocument } from "yaml";
+
+const writes = createSerialQueue();
+
+/** 同一配置文件的两个写口共用完整读改写队列；不同文件互不等待，失败不阻断后续写入。 */
+function updateBootstrapConfig(configPath: string, update: (doc: Document) => void): Promise<void> {
+	const path = resolve(configPath);
+	return writes.run(path, async () => {
+		const doc = parseDocument(await readFile(path, "utf8"));
+		update(doc);
+		await atomicWriteFile(path, doc.toString(), { mode: 0o600 });
+	});
+}
 
 /** dashboard 热启用卡片渲染时选定的浏览器来源:本地二进制路径或远程端点(至少一项)。 */
 export interface ChromeSource {
@@ -21,12 +35,12 @@ export interface ChromeSource {
  * 凭据等 secret,仅 owner 可读)。
  */
 export async function persistChromeSource(configPath: string, source: ChromeSource): Promise<void> {
-	const doc = parseDocument(await readFile(configPath, "utf8"));
-	if (source.chromePath) doc.set("chromePath", source.chromePath);
-	else doc.delete("chromePath");
-	if (source.chromeEndpoint) doc.set("chromeEndpoint", source.chromeEndpoint);
-	else doc.delete("chromeEndpoint");
-	await atomicWriteFile(configPath, doc.toString(), { mode: 0o600 });
+	return updateBootstrapConfig(configPath, (doc) => {
+		if (source.chromePath) doc.set("chromePath", source.chromePath);
+		else doc.delete("chromePath");
+		if (source.chromeEndpoint) doc.set("chromeEndpoint", source.chromeEndpoint);
+		else doc.delete("chromeEndpoint");
+	});
 }
 
 /**
@@ -38,8 +52,8 @@ export async function persistDashboardCredentials(
 	configPath: string,
 	creds: { username: string; password: string },
 ): Promise<void> {
-	const doc = parseDocument(await readFile(configPath, "utf8"));
-	doc.setIn(["auth", "basicAuth", "username"], creds.username);
-	doc.setIn(["auth", "basicAuth", "password"], creds.password);
-	await atomicWriteFile(configPath, doc.toString(), { mode: 0o600 });
+	return updateBootstrapConfig(configPath, (doc) => {
+		doc.setIn(["auth", "basicAuth", "username"], creds.username);
+		doc.setIn(["auth", "basicAuth", "password"], creds.password);
+	});
 }

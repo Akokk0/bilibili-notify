@@ -144,6 +144,43 @@ describe("persistDashboardCredentials", () => {
 			password: "n3w-secret",
 		});
 	});
+
+	it.each(["credentials-first", "chrome-first"] as const)(
+		"并发保存凭据和浏览器来源，两项都保留（%s）",
+		async (order) => {
+			await writeFile(
+				cfg,
+				"# 保留部署说明\nauth:\n  basicAuth:\n    username: admin\n    password: old\nchromeEndpoint: ws://old-browser:3000\ndataDir: ./data\n",
+			);
+			const credentials = () =>
+				persistDashboardCredentials(cfg, { username: "owner", password: "n3w-secret" });
+			const chrome = () => persistChromeSource(cfg, { chromePath: "/new/chrome" });
+			const writes = order === "credentials-first" ? [credentials, chrome] : [chrome, credentials];
+			await Promise.all(writes.map((write) => write()));
+
+			const text = await readFile(cfg, "utf8");
+			expect(parseYaml(text)).toEqual({
+				auth: { basicAuth: { username: "owner", password: "n3w-secret" } },
+				chromePath: "/new/chrome",
+				dataDir: "./data",
+			});
+			expect(text).toContain("# 保留部署说明");
+		},
+	);
+
+	it("凭据写入失败如实返回，不阻断同文件排队的浏览器保存", async () => {
+		await writeFile(cfg, "auth: invalid\ndataDir: ./data\n");
+		const results = await Promise.allSettled([
+			persistDashboardCredentials(cfg, { username: "owner", password: "n3w-secret" }),
+			persistChromeSource(cfg, { chromePath: "/new/chrome" }),
+		]);
+		expect(results.map((result) => result.status)).toEqual(["rejected", "fulfilled"]);
+		expect(parseYaml(await readFile(cfg, "utf8"))).toEqual({
+			auth: "invalid",
+			dataDir: "./data",
+			chromePath: "/new/chrome",
+		});
+	});
 });
 
 describe("resolveCredentialsTarget(面板改账号密码写到哪)", () => {
