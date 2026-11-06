@@ -1604,13 +1604,14 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		// 主人手写的那段 JSON 解析一次,两轮(首发 + 降级重试)共用。
 		const extra = parseExtraParams(this.config.extraParams);
-		if (!extra.ok && extra.error) this.warnOnce("extra-params", `[api] ${extra.error}`);
-		if (extra.dropped?.length) {
+		if (!extra.ok) this.warnOnce("extra-params", `[api] ${extra.message}`);
+		else if (extra.dropped?.length) {
 			this.warnOnce(
 				`extra-params-dropped:${extra.dropped.join(",")}`,
 				packageText("ai.commentary-generator.20", { value0: extra.dropped.join(" / ") }),
 			);
 		}
+		const extraValues = extra.ok ? extra.value : {};
 
 		// 风味岔路:responses 走自己的取轮与工具环。放在 chat 方言参数之前 ——
 		// buildProviderParams 那套(enable_thinking / thinking.type…)是 chat
@@ -1621,7 +1622,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				client,
 				apiMessages,
 				model,
-				extra: extra.value,
+				extra: extraValues,
 				toolOptions,
 				override,
 				onDelta,
@@ -1655,7 +1656,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...(toolOptions && toolOptions.tools.length > 0
 				? { tools: toolOptions.tools, tool_choice: "auto" }
 				: {}),
-			...mergeExtraParams(withProviderParams ? thinkingParams : {}, extra.value),
+			...mergeExtraParams(withProviderParams ? thinkingParams : {}, extraValues),
 		});
 
 		// 出字记账(吐过字就不许悄悄重来)—— 规则本体见 makeAccountedEmitters。

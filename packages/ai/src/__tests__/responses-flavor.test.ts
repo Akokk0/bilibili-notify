@@ -149,6 +149,18 @@ describe("responses 风味:路由与请求形状", () => {
 		// 主人手写的额外参数照常摊进请求体顶层
 		expect(params(0).max_output_tokens).toBe(100);
 	});
+
+	it.each(["{不是 JSON}", "[]"])("坏额外参数 %s 不拖垮 responses 请求", async (extraParams) => {
+		oai.responsesCreate.mockResolvedValueOnce({ output: [msgItem("照常回答")] });
+		const gen = makeGen({ extraParams });
+		await expect(gen.chatStateless([{ role: "user", content: "hi" }])).resolves.toBe("照常回答");
+		expect(oai.chatCreate).not.toHaveBeenCalled();
+		expect(oai.responsesCreate).toHaveBeenCalledTimes(1);
+		expect(params(0).model).toBe("ds-test");
+		expect(params(0).input).toEqual(
+			expect.arrayContaining([expect.objectContaining({ role: "user", content: "hi" })]),
+		);
+	});
 });
 
 describe("responses 风味:流式分流与思考参数", () => {

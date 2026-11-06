@@ -833,7 +833,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `ActionOutcome`、`MarketplaceInstallOutcome`、`QQSendVerdict`、`DeliverOutcome`（锐评投递）、`PushMessageOutcome`、`CellOutcome`、桥的 `BridgeSendOutcome` / `BridgePingOutcome` | `ActionResult`、`MarketplaceInstallResult`、`QQSendResult`、`RoastDeliveryResult`、`PushMessageResult`、`CellResult`、`BridgeSendResult` / `BridgePingResult` |
 | `LookupOutcome`（解析门） | 随 `searchCreators` 改成 `…Result` |
 | `StoredSettingsVerdict` / `judgeStoredSettings` | `StoredSettingsCheckResult` / `checkStoredSettings` |
-| `ParsedExtraParams`（装的是 `{ ok, value, error }`） | `ExtraParamsParseResult` |
+| `ParsedExtraParams`（装的是 `{ ok, value, error }`） | `ExtraParamsParseResult`。🔗 现状（5-04，2026-11-06）：已落，成功带`value`/可选`dropped`，失败为标准`invalid`/`message`；请求调用方显式回退空参数。 |
 | `SweepReport`（这次清扫的结果）；`StatusReport`（status 指令现算的） | `SweepResult`；`StatusView` |
 | `LiveSessionRecord`；`StatsSeenRow`；`ProvenanceRecord`；`ProcRow` | `LiveSessionEntry`；（seen 行没有了，并进「在记」的账 `RecordingEntry`，ADR-0027 决策 13）；`ProvenanceEntry`；`ProcessEntry` |
 | `ModuleStatus`（装的是四个布尔的对象） | `ModuleState` |

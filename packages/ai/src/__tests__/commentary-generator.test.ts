@@ -76,16 +76,20 @@ function makeConfig(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGe
 	});
 }
 
-/** 这个文件的调用点全都解构 `{ gen }` —— 保留这层壳,免得为改形状动上百处。 */
+/** 一台 generator 与公开 logger 上的告警监听;不关心告警的用例只取 gen。 */
 function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 	gen: CommentaryGenerator;
+	warn: ReturnType<typeof vi.fn>;
 } {
+	const ctx = fakeServiceCtx();
+	const warn = vi.fn();
+	ctx.logger.warn = warn;
 	const gen = new CommentaryGenerator({
-		serviceCtx: fakeServiceCtx(),
+		serviceCtx: ctx,
 		config: makeConfig(over),
 		nouns: testNouns,
 	});
-	return { gen };
+	return { gen, warn };
 }
 
 interface ChatMsg {
@@ -303,17 +307,29 @@ describe("CommentaryGenerator.comment", () => {
 		});
 
 		it("覆盖不了 messages —— 覆盖了就是整段对话凭空消失", async () => {
-			const { gen } = makeGen({ provider: "custom", extraParams: '{"messages": []}' });
-			oai.create.mockResolvedValueOnce(msgResp("ok"));
+			const { gen, warn } = makeGen({ provider: "custom", extraParams: '{"messages": []}' });
+			oai.create.mockResolvedValue(msgResp("ok"));
 			await gen.comment("正文在此");
+			await gen.comment("还有正文");
 			expect(createParams(0).messages.length).toBeGreaterThan(0);
+			expect(createParams(1).messages.length).toBeGreaterThan(0);
+			expect(warn).toHaveBeenCalledExactlyOnceWith(
+				expect.stringContaining("额外请求参数里的 messages 被忽略了"),
+			);
 		});
 
-		it("写错 JSON 照常发请求,只是不带额外参数 —— 不让一个填错的框拖垮整条链路", async () => {
-			const { gen } = makeGen({ provider: "custom", extraParams: "{不是 JSON}" });
-			oai.create.mockResolvedValueOnce(msgResp("ok"));
+		it.each([
+			["{不是 JSON}", "额外请求参数不是合法 JSON:"],
+			["[]", "额外请求参数必须是一个 JSON 对象"],
+		])("坏额外参数 %s 不拖垮请求,同一原因只告警一次", async (extraParams, message) => {
+			const { gen, warn } = makeGen({ provider: "custom", extraParams });
+			oai.create.mockResolvedValue(msgResp("ok"));
 			await expect(gen.comment("x")).resolves.toBe("ok");
-			expect(oai.create).toHaveBeenCalledTimes(1);
+			await expect(gen.comment("y")).resolves.toBe("ok");
+			expect(oai.create).toHaveBeenCalledTimes(2);
+			expect(createParams(0)).toMatchObject({ model: "gpt-test" });
+			expect(createParams(0).messages.length).toBeGreaterThan(0);
+			expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(message));
 		});
 
 		it("降级重试时额外参数原样带着 —— 摘掉的只该是女仆自己加的思考参数", async () => {

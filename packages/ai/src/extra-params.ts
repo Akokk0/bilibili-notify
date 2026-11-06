@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal/result";
 import { packageText } from "@bilibili-notify/internal/texts";
 
 /**
@@ -22,46 +23,37 @@ import { packageText } from "@bilibili-notify/internal/texts";
  */
 const BLOCKED_KEYS = ["model", "messages", "input", "stream", "tools", "tool_choice"] as const;
 
-export interface ParsedExtraParams {
-	/** 解析是否成功。**被挡掉危险键不算失败** —— 剩下的参数照常生效。 */
-	ok: boolean;
-	/** 可安全摊进请求体的部分;失败时为空对象。 */
+export type ExtraParamsParseResult = Result<{
+	/** 可安全摊进请求体的部分;仅解析成功时存在。 */
 	value: Record<string, unknown>;
-	/** 失败原因,给日志与配置页用。 */
-	error?: string;
-	/** 被闸挡掉的键名。 */
+	/** 被闸挡掉的键名。挡掉危险键不算失败,剩下的参数照常生效。 */
 	dropped?: string[];
-}
+}>;
 
 /**
  * 解析主人手写的 JSON。**任何情况下都不抛** —— 一个填错的文本框不该让整条
  * 推送链路挂掉;调用方拿到 `ok:false` 时按「这次不带额外参数」继续,并把
- * `error` 记进日志。
+ * `message` 记进日志。
  */
-export function parseExtraParams(raw: string | undefined | null): ParsedExtraParams {
+export function parseExtraParams(raw: string | undefined | null): ExtraParamsParseResult {
 	const src = (raw ?? "").trim();
-	if (!src) return { ok: true, value: {} };
+	if (!src) return ok({ value: {} });
 
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(src);
 	} catch (e) {
-		return {
-			ok: false,
-			value: {},
-			error: packageText("ai.extra-params.1", {
+		return fail(
+			"invalid",
+			packageText("ai.extra-params.1", {
 				value0: e instanceof Error ? e.message : String(e),
 			}),
-		};
+		);
 	}
 
 	// `[1,2]` / `42` / `null` 都能过 JSON.parse,摊进请求体却毫无意义。
 	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return {
-			ok: false,
-			value: {},
-			error: packageText("ai.extra-params.2", { example: '{"top_k": 40}' }),
-		};
+		return fail("invalid", packageText("ai.extra-params.2", { example: '{"top_k": 40}' }));
 	}
 
 	const value: Record<string, unknown> = {};
@@ -70,7 +62,7 @@ export function parseExtraParams(raw: string | undefined | null): ParsedExtraPar
 		if ((BLOCKED_KEYS as readonly string[]).includes(k)) dropped.push(k);
 		else value[k] = v;
 	}
-	return dropped.length > 0 ? { ok: true, value, dropped } : { ok: true, value };
+	return ok(dropped.length > 0 ? { value, dropped } : { value });
 }
 
 /**

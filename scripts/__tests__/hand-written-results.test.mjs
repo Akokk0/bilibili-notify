@@ -65,7 +65,6 @@ export const RATCHET = {
 	"apps/web/src/devtools/dock.tsx": 2,
 	"apps/web/src/devtools/ext-motion.ts": 3,
 	"apps/web/src/services/session.ts": 6,
-	"packages/ai/src/extra-params.ts": 5,
 	"packages/internal/src/schema/card-skin.ts": 3,
 	"packages/internal/src/schema/extension-manifest.ts": 6,
 	"packages/internal/src/schema/extension-marketplace.ts": 8,

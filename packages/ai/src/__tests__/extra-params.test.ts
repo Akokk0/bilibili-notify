@@ -22,29 +22,32 @@ import { mergeExtraParams, parseExtraParams } from "../extra-params";
 describe("解析", () => {
 	it("空着不算错", () => {
 		for (const raw of ["", "   ", undefined, null]) {
-			const r = parseExtraParams(raw);
-			expect(r.ok).toBe(true);
-			expect(r.value).toEqual({});
+			expect(parseExtraParams(raw)).toEqual({ ok: true, value: {} });
 		}
 	});
 
 	it("正常对象照单全收", () => {
 		const r = parseExtraParams('{"enable_search": true, "top_k": 40}');
-		expect(r.ok).toBe(true);
-		expect(r.value).toEqual({ enable_search: true, top_k: 40 });
+		expect(r).toEqual({ ok: true, value: { enable_search: true, top_k: 40 } });
 	});
 
 	it("非法 JSON 报错而不是抛异常,也不是当空处理", () => {
 		const r = parseExtraParams("{enable_search: true}");
-		expect(r.ok).toBe(false);
-		expect(r.error).toBeTruthy();
-		expect(r.value).toEqual({});
+		expect(r).toEqual({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("额外请求参数不是合法 JSON:"),
+		});
 	});
 
 	it("合法 JSON 但不是对象,同样算错", () => {
 		// `[1,2]` / `42` / `"x"` 都能 JSON.parse 通过,摊进请求体却毫无意义。
 		for (const raw of ["[1,2]", "42", '"x"', "null"]) {
-			expect(parseExtraParams(raw).ok).toBe(false);
+			expect(parseExtraParams(raw)).toEqual({
+				ok: false,
+				code: "invalid",
+				message: expect.stringContaining('额外请求参数必须是一个 JSON 对象,比如 {"top_k": 40}'),
+			});
 		}
 	});
 });
@@ -54,21 +57,17 @@ describe("结构性字段的闸", () => {
 	// 骨架键都在同一道闸上,不按风味分家(闸多了迟早漏)。
 	it.each(["model", "messages", "input", "stream", "tools", "tool_choice"])("挡掉 %s", (key) => {
 		const r = parseExtraParams(JSON.stringify({ [key]: "x", top_k: 40 }));
-		expect(r.value).toEqual({ top_k: 40 });
-		expect(r.dropped).toContain(key);
+		expect(r).toEqual({ ok: true, value: { top_k: 40 }, dropped: [key] });
 	});
 
 	it("挡掉之后仍然算解析成功 —— 剩下的参数照常生效", () => {
 		const r = parseExtraParams('{"messages": [], "top_k": 40}');
-		expect(r.ok).toBe(true);
-		expect(r.value).toEqual({ top_k: 40 });
+		expect(r).toEqual({ ok: true, value: { top_k: 40 }, dropped: ["messages"] });
 	});
 
 	it("整段都是危险键时,value 为空但不报错", () => {
 		const r = parseExtraParams('{"messages": []}');
-		expect(r.ok).toBe(true);
-		expect(r.value).toEqual({});
-		expect(r.dropped).toEqual(["messages"]);
+		expect(r).toEqual({ ok: true, value: {}, dropped: ["messages"] });
 	});
 });
 

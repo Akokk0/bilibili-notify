@@ -12,8 +12,8 @@ export {
 } from "./commentary-generator";
 export { creatorOf, parseCreator } from "./creator";
 export {
+	type ExtraParamsParseResult,
 	mergeExtraParams,
-	type ParsedExtraParams,
 	parseExtraParams,
 } from "./extra-params";
 export * from "./persona-presets";
