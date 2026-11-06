@@ -69,7 +69,6 @@ export const RATCHET = {
 	"packages/internal/src/schema/card-skin.ts": 3,
 	"packages/internal/src/schema/extension-manifest.ts": 6,
 	"packages/internal/src/schema/extension-marketplace.ts": 8,
-	"packages/internal/src/util/regex-safety.ts": 4,
 };
 
 /** 剥掉只改类型、不改值的外壳:括号、`as`、`satisfies`、`<T>x`、`x!`。 */

@@ -99,7 +99,7 @@ export function createSourceRegistry(opts: CreateSourceRegistryOptions = {}): So
 				const checked = checkUserRegex(externalIdRegex);
 				if (!checked.ok) {
 					throw new Error(
-						t("sources.registry.badExternalIdRegex", { sourceKey, reason: checked.reason }),
+						t("sources.registry.badExternalIdRegex", { sourceKey, reason: checked.message }),
 					);
 				}
 			}

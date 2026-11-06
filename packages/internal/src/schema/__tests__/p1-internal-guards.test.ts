@@ -74,9 +74,15 @@ describe("SubscriptionRouting — 重复 UUID 去重 (P1)", () => {
 
 describe("ContentFilters.blockRegex — ReDoS/非法拦截 (P1 / ②2 同源)", () => {
 	it("拒绝交替重叠 ReDoS 正则", () => {
-		expect(
-			ContentFiltersSchema.safeParse({ ...baseFilters, blockRegex: ["(a|a)*c"] }).success,
-		).toBe(false);
+		const parsed = ContentFiltersSchema.safeParse({ ...baseFilters, blockRegex: ["(a|a)*c"] });
+		expect(parsed.success).toBe(false);
+		if (parsed.success) throw new Error("疑似灾难性回溯正则应该被拒");
+		expect(parsed.error.issues).toEqual([
+			expect.objectContaining({
+				path: ["blockRegex", 0],
+				message: expect.stringContaining("正则疑似灾难性回溯(嵌套量词 / 交替重叠),拒绝执行"),
+			}),
+		]);
 	});
 	it("拒绝非法正则", () => {
 		expect(ContentFiltersSchema.safeParse({ ...baseFilters, blockRegex: ["(abc"] }).success).toBe(

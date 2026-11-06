@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "../result";
 import { packageText } from "../texts";
 /**
  * 用户可配正则的安全闸门 —— **单一权威**。
@@ -101,30 +102,24 @@ export function isCatastrophicRegexSource(src: string): boolean {
 	return NESTED_QUANTIFIER.test(src) || hasOverlappingAlternationUnderQuantifier(src);
 }
 
-export interface SafeRegexCheck {
-	ok: boolean;
-	/** 不安全/非法时的原因(已就绪用于日志/校验报错);ok 时为空串。 */
-	reason: string;
-}
-
 /**
  * 用户正则的完整安全体检:长度上限 → 灾难性回溯启发式 → 可编译性。
- * 三关任一不过即 `ok:false` 且带可直接展示的中文 reason。纯函数,不抛。
+ * 三关任一不过即 `invalid`,message 可直接用于日志或校验报错。纯函数,不抛。
  */
-export function checkUserRegex(src: string, maxLen = DEFAULT_MAX_REGEX_LEN): SafeRegexCheck {
+export function checkUserRegex(src: string, maxLen = DEFAULT_MAX_REGEX_LEN): Result {
 	if (src.length > maxLen) {
-		return { ok: false, reason: packageText("internal.util.regex-safety.1", { value0: maxLen }) };
+		return fail("invalid", packageText("internal.util.regex-safety.1", { value0: maxLen }));
 	}
 	if (isCatastrophicRegexSource(src)) {
-		return { ok: false, reason: packageText("internal.util.regex-safety.2") };
+		return fail("invalid", packageText("internal.util.regex-safety.2"));
 	}
 	try {
 		new RegExp(src);
 	} catch (e) {
-		return {
-			ok: false,
-			reason: packageText("internal.util.regex-safety.3", { value0: (e as Error).message }),
-		};
+		return fail(
+			"invalid",
+			packageText("internal.util.regex-safety.3", { value0: (e as Error).message }),
+		);
 	}
-	return { ok: true, reason: "" };
+	return ok();
 }

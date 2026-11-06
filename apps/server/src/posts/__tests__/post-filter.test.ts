@@ -458,7 +458,7 @@ describe("屏蔽 / 白名单的规则语义", () => {
 			logger,
 		);
 		expect(result.blocked).toBe(false);
-		expect(warn).toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("正则非法:"));
 	});
 
 	// 验红:`post-filter.ts` 里把两处日志标签改回 `[bilibili-notify-dynamic]`,这条红(中立文件里的日志说成 B 站动态)。

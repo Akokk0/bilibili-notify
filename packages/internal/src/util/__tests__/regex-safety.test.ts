@@ -58,21 +58,31 @@ describe("isCatastrophicRegexSource — 两类指数构造都判危 (②2)", () 
 describe("checkUserRegex — 长度/回溯/编译三关", () => {
 	it("超长拒绝", () => {
 		const r = checkUserRegex("a".repeat(201));
-		expect(r.ok).toBe(false);
-		expect(r.reason).toContain("过长");
+		expect(r).toEqual({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("正则过长(>200 字符),拒绝以防 ReDoS"),
+		});
 	});
 
 	it("疑似 ReDoS 拒绝(交替重叠)", () => {
-		expect(checkUserRegex("(a|a)*c").ok).toBe(false);
+		expect(checkUserRegex("(a|a)*c")).toEqual({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("正则疑似灾难性回溯(嵌套量词 / 交替重叠),拒绝执行"),
+		});
 	});
 
 	it("非法正则拒绝(括号不配平)", () => {
 		const r = checkUserRegex("(abc");
-		expect(r.ok).toBe(false);
-		expect(r.reason).toContain("非法");
+		expect(r).toEqual({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("正则非法:"),
+		});
 	});
 
 	it("合法安全正则通过", () => {
-		expect(checkUserRegex("^bilibili-\\d+$").ok).toBe(true);
+		expect(checkUserRegex("^bilibili-\\d+$")).toEqual({ ok: true });
 	});
 });

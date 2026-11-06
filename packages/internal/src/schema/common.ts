@@ -10,7 +10,7 @@ import { markBackupOnly, markSecret } from "./secret";
 /** blockRegex/allowRegex 的单元素校验:保存期即拦非法 / 超长 / 疑似 ReDoS 正则。 */
 const UserRegexString = z.string().superRefine((src, ctx) => {
 	const r = checkUserRegex(src);
-	if (!r.ok) ctx.addIssue({ code: "custom", message: r.reason });
+	if (!r.ok) ctx.addIssue({ code: "custom", message: r.message });
 });
 
 /** 全部可订阅的特性键(键列表本体在 ../features)。 */

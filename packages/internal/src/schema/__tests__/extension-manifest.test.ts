@@ -635,7 +635,9 @@ describe("全新1.0契约1 的订阅与推送外观", () => {
 		expect(() =>
 			ok(sub({ display: { ...DISPLAY, externalIdRegex: "a".repeat(200) } })),
 		).not.toThrow();
-		unreadable(sub({ display: { ...DISPLAY, externalIdRegex: "a".repeat(201) } }));
+		expect(unreadable(sub({ display: { ...DISPLAY, externalIdRegex: "a".repeat(201) } }))).toEqual([
+			expect.stringContaining("正则过长(>200 字符),拒绝以防 ReDoS"),
+		]);
 	});
 
 	it("externalIdRegex 只有订阅源那段有 —— 推送源没有外部 id", () => {

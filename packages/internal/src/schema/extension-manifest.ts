@@ -614,7 +614,7 @@ const ContributesSchema = z
 					.min(1)
 					.superRefine((src, ctx) => {
 						const r = checkUserRegex(src);
-						if (!r.ok) ctx.addIssue({ code: "custom", message: r.reason });
+						if (!r.ok) ctx.addIssue({ code: "custom", message: r.message });
 					})
 					.optional(),
 				/** 这个源能报的几种特性,见 {@link SupportedFeaturesSchema}。 */

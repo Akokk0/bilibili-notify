@@ -86,7 +86,7 @@ describe("createSourceRegistry", () => {
 			const bad = makeSource();
 			bad.descriptor.externalIdRegex = externalIdRegex;
 			await expect(registry.register("bad", bad, ctxOf().ctx)).rejects.toThrow(
-				`source "bad" 的 externalIdRegex 不合规`,
+				/source "bad" 的 externalIdRegex 不合规: .*正则(非法|过长|疑似灾难性回溯)/,
 			);
 			expect(bad.started).toEqual([]);
 			expect(registry.get("bad")).toBeUndefined();
