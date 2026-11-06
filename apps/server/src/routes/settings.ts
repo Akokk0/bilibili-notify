@@ -108,6 +108,15 @@ export function createSettingsRoute(deps: RouteDeps): Hono {
 		const split = splitSettingsPatch(read.body, deps.store);
 		if (!split.ok) return respondFailure(c, split);
 		const { core: body, integrations } = split;
+		// 资源内容独立保存；旧页整份写回会覆盖另一页的新版本，整次拒收。
+		if (
+			"ai" in body &&
+			(body.ai === null ||
+				typeof body.ai !== "object" ||
+				"presets" in body.ai ||
+				"removedBuiltinPresets" in body.ai)
+		)
+			return respondFailure(c, fail("conflict", t("personas.settingsMoved")));
 		// 拓展设置有自己的口了(ADR-0019 决策 35),这里一格都不收 —— 老面板(应用内更新那几秒里
 		// 还开着的那一页)会整份写回,得拒掉并说清去哪儿写。先于别的检查:这一发整个作废。
 		const moved = extensionSettingsWriteOf(body);

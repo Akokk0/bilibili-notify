@@ -41,6 +41,7 @@ export * from "./extension-view";
 export * from "./health";
 export * from "./maid-skill";
 export * from "./nouns";
+export * from "./persona";
 export * from "./resources";
 export * from "./rest";
 export * from "./skin";

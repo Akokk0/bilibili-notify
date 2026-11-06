@@ -54,6 +54,7 @@ async function renderAppearance(overrides: Partial<GlobalConfig> = {}) {
 	await screen.findByText("主人账号");
 	fireEvent.click(screen.getAllByRole("button", { name: "外观" })[0]);
 	await screen.findByRole("group", { name: "界面语言" });
+	return { qc, settings };
 }
 
 beforeEach(() => {
@@ -74,6 +75,46 @@ afterEach(() => {
 });
 
 describe("系统外观的语言、口吻和时区", () => {
+	it("素材库保存刷新设置时保留系统页未保存的时区", async () => {
+		const { qc, settings } = await renderAppearance();
+		fireEvent.change(screen.getByRole("textbox", { name: "时区" }), {
+			target: { value: "Europe/Paris" },
+		});
+		settings.core.ai.presets.push({
+			id: "new-persona",
+			label: "新增资源",
+			persona: {
+				name: "新性格",
+				addressUser: "",
+				addressSelf: "",
+				traits: "",
+				catchphrase: "",
+				baseRole: "",
+				extraSystemPrompt: "",
+			},
+		});
+		settings.core.voice = "maid";
+		await act(async () => {
+			await qc.invalidateQueries({ queryKey: ["settings"] });
+		});
+		await waitFor(() =>
+			expect(
+				within(screen.getByRole("group", { name: "文案口吻" })).getByRole("button", {
+					name: "女仆",
+				}),
+			).toHaveProperty("ariaPressed", "true"),
+		);
+		expect(screen.getByRole("textbox", { name: "时区" })).toHaveProperty("value", "Europe/Paris");
+		await waitFor(() => expect(useDraftStore.getState().current?.diff.length).toBe(1));
+		await act(async () => {
+			useDraftStore.getState().current?.onSave();
+		});
+		await waitFor(() =>
+			expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+				core: { timezone: "Europe/Paris" },
+			}),
+		);
+	});
 	it("切到无女仆层的语言只隐藏口吻，切回来保留原选项；放弃跨区草稿不改变已应用设置", async () => {
 		await renderAppearance({ voice: "plain" });
 		fireEvent.click(

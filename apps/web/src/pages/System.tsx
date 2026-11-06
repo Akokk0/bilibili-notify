@@ -14,6 +14,7 @@ import { ACCOUNTS_QUERY_KEY } from "../hooks/useAccounts";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { INVALID_SETTINGS_QUERY_PREFIX } from "../hooks/useInvalidSettings";
 import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
+import { useSettingsDraft } from "../hooks/useSettingsDraft";
 import { i18n, useT, useTextOptions } from "../i18n";
 import { api } from "../services/api";
 import type { Connection, PushTarget } from "../types/domain";
@@ -194,11 +195,7 @@ export default function System() {
 	});
 
 	// 草稿是整份设置(核心那份在 `core` 下、B 站的挂在 `bilibili` 下),字段码也按这个形状写(`core.logging.level`)。
-	const [draft, setDraft] = useState<SettingsResponse | null>(null);
-
-	useEffect(() => {
-		if (globalsQuery.data) setDraft(globalsQuery.data);
-	}, [globalsQuery.data]);
+	const [draft, setDraft] = useSettingsDraft(globalsQuery.data);
 
 	function patchDraft(delta: SettingsPatch): void {
 		setDraft((d) => (d ? deepMerge(d, delta) : d));

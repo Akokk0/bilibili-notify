@@ -10,8 +10,7 @@
  *   同一套语义。右侧是那一份的整套配置:模型连接 / 图片理解 / 生成参数。哪些字段
  *   摆出来由 `AIProviderMeta` 的能力位说了算 —— 摆一个那家根本不支持的选项,
  *   主人调了没反应只会以为保存坏了。
- * - **女仆性格** —— 左栏是没删的内置(内容取当前语言,设置里只记删了哪几份)加主人自己的 `presets[]`。
- *   点某一项 = 切换**我在编辑谁**,不是「换用这一份」。要套用到全局有单独的「设为默认」按钮。
+ * 性格内容在素材库独立管理；本页保留默认性格选择。
  *
  * 总开关不属于任何一家或任何一份人格,放在头图上,不进 Tab。(曾经并排摆在底部的
  * 日志等级已整体搬去系统页那格「按模块覆盖」,与另外四个模块同住。)
@@ -48,7 +47,7 @@ import {
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Field, Picker, TArea, TInput } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { ManageResourcesButton } from "../components/library/manage-resources-button";
@@ -58,39 +57,24 @@ import { AI_PURPLE } from "../config/colors";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
+import { useSettingsDraft } from "../hooks/useSettingsDraft";
 import { useT } from "../i18n/index";
-import type {
-	AIPersona,
-	AIProviderProfileDraft,
-	AISettingsDraft,
-	GlobalConfigPatch,
-} from "../types/globals";
+import type { AIProviderProfileDraft, AISettingsDraft, GlobalConfigPatch } from "../types/globals";
 import {
-	addPersona,
 	addProfile,
-	duplicatePersona,
 	globalPersonaRailId,
-	isBuiltinPersona,
-	missingBuiltinPersonas,
-	personaAt,
 	personaRailItems,
 	profileRailItems,
-	removePersona,
 	removeProfile,
-	renamePersona,
 	renameProfile,
 	resolveEditingProfile,
-	resolvePersonaRailId,
-	restoreBuiltinPersona,
 	setActiveProfile,
 	setGlobalPersona,
-	updatePersonaAt,
 } from "./ai/model-ops";
-import { personaIconKey } from "./ai/persona-icons";
 import { AiTestPanel } from "./ai/TestPanel";
 import { WritingSettings } from "./ai/WritingSettings";
 
-type TopTab = "global" | "model" | "persona";
+type TopTab = "global" | "model";
 
 /** 顶部配置tab。技能管理另走资源库，配置条仍共用`TabBar`原语。 */
 
@@ -122,13 +106,11 @@ function packProviders(ai: AISettingsDraft, keys: readonly string[]): Record<str
  * 灵动岛 draft/baseline 打包:walkTreeDiff 输出的 dot-path 跟 FIELD_LABELS
  * 字典 key 对齐(否则 diff panel 归 "其他" 段、click 跳转锚点缺失)。
  *
- * AISettings 字段在 JSX 里 code 风格分两组:
- * - 连接 / 参数:`<Field code={`ai.providers.${家}.apiKey`}>` → `ai.providers` 下逐家
- * - 人格 / 预设:`<Field code="persona.name">` / `code="presets"` → 顶层(只有主人自己的那几份;内置的不落盘)
+ * 连接与参数按服务商实例打包；性格只保留选用指针。资源内容在素材库独立保存，
+ * 不加入本页差异，以免后台刷新资源时误报配置改动。
  */
 function packIsland(ai: AISettingsDraft, providerKeys: readonly string[]) {
-	const { presets, removedBuiltinPresets, enabled, activeProfile, activePreset, search, writing } =
-		ai;
+	const { enabled, activeProfile, activePreset, search, writing } = ai;
 	return {
 		ai: {
 			// `ai.chat`(聊天页的思考等级)**不在**这里:它的编辑口在聊天侧栏的
@@ -152,10 +134,7 @@ function packIsland(ai: AISettingsDraft, providerKeys: readonly string[]) {
 			// 全局用哪份人格是个指针,不改写 persona —— 不显式喂给灵动岛的话,
 			// 换一份性格在它眼里毫无变化,保存条不亮。
 			activePreset: activePreset ?? "",
-			// 删掉了哪几份内置:内置不落盘、删一份 `presets` 不会变,不喂进去的话删内置保存条不亮。
-			removedBuiltinPresets: (removedBuiltinPresets ?? []).join(","),
 		},
-		presets,
 		enabled,
 	};
 }
@@ -178,35 +157,22 @@ export default function Ai() {
 	const TOP_TABS = [
 		{ id: "global" as const, label: tx("aiSettings.page.tabs.global"), code: "global" },
 		{ id: "model" as const, label: tx("aiSettings.page.tabs.model"), code: "provider" },
-		{ id: "persona" as const, label: tx("aiSettings.page.tabs.persona"), code: "persona" },
 	];
 
 	const TAB_HINTS: Record<TopTab, string> = {
 		global: tx("aiSettings.page.tabs.globalHint"),
 		model: tx("aiSettings.page.tabs.modelHint"),
-		persona: tx("aiSettings.page.tabs.personaHint"),
 	};
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
 
-	const [draft, setDraft] = useState<AISettingsDraft | null>(null);
+	const [draft, setDraft] = useSettingsDraft<AISettingsDraft>(globalsQuery.data?.ai);
 	const [tab, setTab] = useState<TopTab>("global");
-	// 左栏选中的那份人格。存左栏 id 而不是 presets 下标 —— 下标会在删除时整体前移,
-	// 指向另一份人格。空串交给 resolvePersonaRailId 收敛到第一份。
-	const [personaRailId, setPersonaRailId] = useState<string>("");
 	// 左栏在看哪一份实例 —— **纯界面状态**,与「女仆在用哪一份」(`ai.activeProfile`)
 	// 无关。两者曾经共用一个字段,于是点左栏想看看另一份 = 当场换掉了在用的那份。
 	const [editingProfile, setEditingProfile] = useState<string | null>(null);
 	// 「+ 添加服务商」展开中。一家都没添加时无条件展开(那就是空态引导本身)。
 	const [addingProvider, setAddingProvider] = useState(false);
-	// 「添加性格」面板展开中(新建空白 / 从内置恢复)。与服务商那半边同一套交互。
-	const [addingPersona, setAddingPersona] = useState(false);
-
-	useEffect(() => {
-		if (globalsQuery.data) {
-			setDraft(globalsQuery.data.ai);
-		}
-	}, [globalsQuery.data]);
 
 	const save = useMutation({
 		mutationFn: async (payload: { ai: AISettingsDraft }) => {
@@ -303,19 +269,7 @@ export default function Ai() {
 	// 一份都没添加 → 右侧直接就是添加面板,那本身就是空态引导。
 	const showAddPanel = addingProvider || rail.length === 0;
 
-	// 左栏选中项收敛到真实存在的一项,否则会出现「左栏没有任何高亮、右侧却显示着
-	// 默认那一份」——高亮项与内容各说各话。
-	const activePersonaId = resolvePersonaRailId(draft, builtins, personaRailId);
-	const personaDraft = personaAt(draft, builtins, activePersonaId);
 	const personaRail = personaRailItems(draft, builtins);
-	// 这一份是不是女仆平时用的那份。左栏副标题、右上角按钮与说明条都跟着它。
-	const isGlobalPersona = globalPersonaRailId(draft, builtins) === activePersonaId;
-	const activePresetId = personaRail.find((i) => i.id === activePersonaId)?.presetId ?? "";
-	// 内置那几份是只读的参照库:能删、能「从内置修改」另存一份可改的,但不能就地改
-	// —— 改花了「从内置恢复」就没有稳定的东西可恢复了。
-	const personaLocked = isBuiltinPersona(activePresetId);
-	const restorable = missingBuiltinPersonas(draft, builtins);
-	const ActivePersonaGlyph = Icon[personaIconKey(activePresetId)];
 
 	function setAi<K extends keyof AISettingsDraft>(k: K, v: AISettingsDraft[K]): void {
 		setDraft((d) => (d ? { ...d, [k]: v } : d));
@@ -372,20 +326,6 @@ export default function Ai() {
 	function setVision(k: "baseUrl" | "apiKey" | "model", v: SecretCellDraft | string): void {
 		setProfile("vision", { ...profile.vision, [k]: v });
 	}
-	/** 改当前编辑的那份人格里的一项 —— 落在 `ai.persona` 还是 `presets[i]` 由左栏选中项决定。 */
-	function setPersona<K extends keyof AIPersona>(k: K, v: AIPersona[K]): void {
-		setDraft((d) =>
-			d
-				? updatePersonaAt(d, builtins, activePersonaId, {
-						persona: { ...personaAt(d, builtins, activePersonaId).persona, [k]: v },
-					})
-				: d,
-		);
-	}
-	function setPersonaPrompt(k: "dynamicPrompt" | "liveSummaryPrompt", v: string): void {
-		setDraft((d) => (d ? updatePersonaAt(d, builtins, activePersonaId, { [k]: v }) : d));
-	}
-
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/* Hero strip。总开关是页面级的 —— 它既不属于某一家服务商,也不属于某一份人格。 */}
@@ -435,21 +375,14 @@ export default function Ai() {
 					<TabBar<TopTab>
 						items={TOP_TABS.map((t) => ({
 							...t,
-							icon:
-								t.id === "model" ? (
-									<Icon.link size={14} />
-								) : t.id === "persona" ? (
-									// 「性格」问的是**她是谁**,不是「喜不喜欢」—— 心形读作后者。
-									<Icon.user size={14} />
-								) : (
-									<Icon.gear size={14} />
-								),
+							icon: t.id === "model" ? <Icon.link size={14} /> : <Icon.gear size={14} />,
 						}))}
 						value={tab}
 						onChange={setTab}
 						hint={TAB_HINTS[tab]}
 					/>
 				</div>
+				<ManageResourcesButton category="personas" label={tx("personas.manage")} />
 				<ManageResourcesButton category="skills" label={tx("maidSkills.manage")} />
 			</div>
 
@@ -583,7 +516,7 @@ export default function Ai() {
 					{/* 试一句 —— 调完模型与人格,当场就能问她一句看看效果。 */}
 					<AiTestPanel draft={draft} />
 				</div>
-			) : tab === "model" ? (
+			) : (
 				<div className="grid gap-4 xl:grid-bn-rail">
 					<SectionNav
 						heading={tx("aiSettings.page.models.railTitle")}
@@ -927,271 +860,6 @@ export default function Ai() {
 									) : null}
 								</GlassBox>
 							</>
-						)}
-					</div>
-				</div>
-			) : (
-				<div className="grid gap-4 xl:grid-bn-rail">
-					<SectionNav
-						heading={tx("aiSettings.page.personas.railTitle")}
-						items={personaRail.map((item) => {
-							// 四份内置的各有各的样子(主人一眼要认出哪个是哪个);自己加的
-							// 用通用小人像。映射与漏画守卫见 ./ai/persona-icons。
-							const Glyph = Icon[personaIconKey(item.presetId)];
-							return {
-								id: item.id,
-								label: item.label,
-								// 与服务商那栏同一颗指示器。此前这里写的是一行副标题文字,
-								// 两栏各说各的;共用之后观感只有一处定义。
-								badge:
-									globalPersonaRailId(draft, builtins) === item.id ? (
-										<RailDot
-											title={tx("aiSettings.page.personas.defaultHint")}
-											active={item.id === activePersonaId}
-										/>
-									) : undefined,
-								icon: <Glyph size={14} />,
-							};
-						})}
-						activeId={activePersonaId}
-						onPick={(id) => {
-							setPersonaRailId(id);
-							setAddingPersona(false);
-						}}
-						onAdd={() => setAddingPersona(true)}
-						addLabel={tx("aiSettings.page.actions.add")}
-					/>
-
-					<div className="flex min-w-0 flex-col gap-4">
-						{addingPersona ? (
-							<GlassBox
-								title={tx("aiSettings.page.personas.addTitle")}
-								subtitle={tx("aiSettings.page.personas.addSubtitle")}
-								accent={SECTION_ACCENT.persona}
-								icon={<Icon.plus size={14} />}
-								badge="add"
-							>
-								<Field code="presets" label={tx("aiSettings.page.personas.newLabel")} full>
-									<Btn
-										variant="outline"
-										size="sm"
-										onClick={() => {
-											// 新建即切过去 —— 否则左栏多一项、右侧还停在原来那份,像没反应。
-											const next = draft ? addPersona(draft) : null;
-											if (!next) return;
-											setDraft(next.ai);
-											setPersonaRailId(next.railId);
-											setAddingPersona(false);
-										}}
-									>
-										{tx("aiSettings.page.personas.blankAction")}
-									</Btn>
-								</Field>
-								{restorable.length > 0 ? (
-									<Field
-										code="presets"
-										label={tx("aiSettings.page.personas.restoreLabel")}
-										hint={tx("aiSettings.page.personas.restoreHint")}
-										full
-									>
-										<div className="flex flex-wrap gap-1.5">
-											{restorable.map((b) => {
-												const Glyph = Icon[personaIconKey(b.id)];
-												return (
-													<Btn
-														variant="outline"
-														size="sm"
-														key={b.id}
-														onClick={() => {
-															const next = restoreBuiltinPersona(draft, b.id);
-															setDraft(next.ai);
-															setPersonaRailId(next.railId);
-															setAddingPersona(false);
-														}}
-													>
-														<Glyph size={13} />
-														{b.label}
-													</Btn>
-												);
-											})}
-										</div>
-									</Field>
-								) : (
-									<FieldNote>{tx("aiSettings.page.personas.noneToRestore")}</FieldNote>
-								)}
-							</GlassBox>
-						) : (
-							<GlassBox
-								title={tx("aiSettings.page.personas.editorTitle")}
-								subtitle={tx("aiSettings.page.personas.editorSubtitle")}
-								accent={SECTION_ACCENT.persona}
-								icon={<ActivePersonaGlyph size={14} />}
-								badge="persona"
-								right={
-									<div className="flex items-center gap-1.5">
-										{/* 内置那份改不动 —— 给一条出路:以它为蓝本另存一份可改的。 */}
-										{personaLocked ? (
-											<Btn
-												variant="outline"
-												size="sm"
-												onClick={() => {
-													const next = duplicatePersona(draft, builtins, activePersonaId);
-													setDraft(next.ai);
-													setPersonaRailId(next.railId);
-												}}
-											>
-												{tx("aiSettings.page.personas.duplicateAction")}
-											</Btn>
-										) : null}
-										{isGlobalPersona ? null : (
-											<Btn
-												variant="outline"
-												size="sm"
-												onClick={() =>
-													setDraft((d) => (d ? setGlobalPersona(d, builtins, activePersonaId) : d))
-												}
-											>
-												{tx("aiSettings.page.actions.setDefault")}
-											</Btn>
-										)}
-										{/* 最后一份删不掉 —— AI 总得有一份人格。按钮直接不摆,
-									    好过摆一个点了没反应的。 */}
-										{personaRail.length > 1 ? (
-											<Btn
-												variant="danger-outline"
-												size="sm"
-												onClick={() => {
-													setDraft((d) => (d ? removePersona(d, builtins, activePersonaId) : d));
-													setPersonaRailId("");
-												}}
-											>
-												{tx("aiSettings.page.actions.delete")}
-											</Btn>
-										) : null}
-									</div>
-								}
-							>
-								{personaLocked ? (
-									<FieldNote>
-										{tx("aiSettings.page.personas.builtinPrefix")}
-										<strong>{tx("aiSettings.page.personas.builtinEmphasis")}</strong>
-										{tx("aiSettings.page.personas.builtinSuffix")}
-										<strong>{tx("aiSettings.page.personas.duplicateEmphasis")}</strong>
-										{tx("aiSettings.page.personas.duplicateSuffix")}
-									</FieldNote>
-								) : null}
-								{isGlobalPersona ? (
-									<FieldNote>
-										{tx("aiSettings.page.personas.currentPrefix")}
-										<strong>{tx("aiSettings.page.personas.currentEmphasis")}</strong>
-										{tx("aiSettings.page.personas.currentSuffix")}
-									</FieldNote>
-								) : (
-									<FieldNote>
-										{tx("aiSettings.page.personas.inactivePrefix")}
-										<strong>{tx("aiSettings.page.personas.inactiveEmphasis")}</strong>
-										{tx("aiSettings.page.personas.inactiveSuffix")}
-									</FieldNote>
-								)}
-								<Field code="presets" label={tx("aiSettings.page.personas.namePlaceholder")} full>
-									<TInput
-										value={personaRail.find((i) => i.id === activePersonaId)?.label ?? ""}
-										onChange={(v) =>
-											setDraft((d) => (d ? renamePersona(d, builtins, activePersonaId, v) : d))
-										}
-										placeholder={tx("aiSettings.page.personas.traitsPlaceholder")}
-									/>
-								</Field>
-								<div className="grid grid-cols-1 gap-0 lg:grid-cols-2">
-									<Field code="persona.name">
-										<TInput
-											value={personaDraft.persona.name}
-											disabled={personaLocked}
-											onChange={(v) => setPersona("name", v)}
-											placeholder={tx("aiSettings.page.personas.nameFallback")}
-											full={false}
-										/>
-									</Field>
-									<Field code="persona.addressUser">
-										<TInput
-											value={personaDraft.persona.addressUser}
-											disabled={personaLocked}
-											onChange={(v) => setPersona("addressUser", v)}
-											placeholder={tx("aiSettings.page.personas.userPlaceholder")}
-											full={false}
-										/>
-									</Field>
-									<Field code="persona.addressSelf">
-										<TInput
-											value={personaDraft.persona.addressSelf}
-											disabled={personaLocked}
-											onChange={(v) => setPersona("addressSelf", v)}
-											placeholder={tx("aiSettings.page.personas.selfPlaceholder")}
-											full={false}
-										/>
-									</Field>
-									<Field code="persona.catchphrase">
-										<TInput
-											value={personaDraft.persona.catchphrase}
-											disabled={personaLocked}
-											onChange={(v) => setPersona("catchphrase", v)}
-											placeholder="(*´∀`)~♡"
-											full={false}
-										/>
-									</Field>
-								</div>
-								<Field code="persona.traits" full>
-									<TInput
-										value={personaDraft.persona.traits}
-										disabled={personaLocked}
-										onChange={(v) => setPersona("traits", v)}
-									/>
-								</Field>
-								<Field code="persona.baseRole" full>
-									<TArea
-										value={personaDraft.persona.baseRole}
-										disabled={personaLocked}
-										onChange={(v) => setPersona("baseRole", v)}
-										rows={2}
-									/>
-								</Field>
-								<Field code="persona.extraSystemPrompt" full>
-									<TArea
-										value={personaDraft.persona.extraSystemPrompt}
-										disabled={personaLocked}
-										onChange={(v) => setPersona("extraSystemPrompt", v)}
-										rows={2}
-									/>
-								</Field>
-								{/* 预设的两段 prompt 是可选的:留空 = 跟随「默认」那一份(存回 undefined)。
-							    这个提示必须写清楚,否则清空之后主人无从知道是「跟随」还是「强制发空」。 */}
-								<Field
-									code="ai.dynamicPrompt"
-									full
-									hint={tx("aiSettings.page.personas.promptPlaceholder")}
-								>
-									<TArea
-										value={personaDraft.dynamicPrompt}
-										disabled={personaLocked}
-										onChange={(v) => setPersonaPrompt("dynamicPrompt", v)}
-										rows={3}
-										mono
-									/>
-								</Field>
-								<Field
-									code="ai.liveSummaryPrompt"
-									full
-									hint={tx("aiSettings.page.personas.promptPlaceholder")}
-								>
-									<TArea
-										value={personaDraft.liveSummaryPrompt}
-										disabled={personaLocked}
-										onChange={(v) => setPersonaPrompt("liveSummaryPrompt", v)}
-										rows={4}
-										mono
-									/>
-								</Field>
-							</GlassBox>
 						)}
 					</div>
 				</div>

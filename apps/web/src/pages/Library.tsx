@@ -5,6 +5,7 @@ import { LibraryBrowser } from "../components/library/library-browser";
 import type { ResourceCategory } from "../components/library/library-data";
 import { useT } from "../i18n";
 import { MaidSkills } from "./ai/MaidSkills";
+import { PersonaLibrary } from "./ai/PersonaLibrary";
 import { CardSkinSection } from "./cards/CardSkinSection";
 import { SkinSection } from "./skins/SkinSection";
 export default function Library() {
@@ -15,7 +16,8 @@ export default function Library() {
 		requested === "fonts" ||
 		requested === "dashboard-skins" ||
 		requested === "card-skins" ||
-		requested === "skills"
+		requested === "skills" ||
+		requested === "personas"
 			? requested
 			: "images";
 	const categories = [
@@ -36,6 +38,12 @@ export default function Library() {
 			label: t("library.skillsTitle"),
 			desc: t("library.skillsDescription"),
 			icon: <Icon.sparkle size={20} />,
+		},
+		{
+			id: "personas",
+			label: t("library.personasTitle"),
+			desc: t("library.personasDescription"),
+			icon: <Icon.user size={20} />,
 		},
 		{
 			id: "dashboard-skins",
@@ -77,7 +85,9 @@ export default function Library() {
 						});
 					}}
 				/>
-				{kind === "skills" ? (
+				{kind === "personas" ? (
+					<PersonaLibrary />
+				) : kind === "skills" ? (
 					<MaidSkills />
 				) : kind === "dashboard-skins" ? (
 					<SkinSection mode="manage" />

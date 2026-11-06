@@ -34,6 +34,14 @@ export function useCoreSettings() {
 
 /** 改设置:核心那份的补丁在 `core` 下,各集成的挂在自己的键下。回的是改完的整份。 */
 export function patchSettings(patch: SettingsPatch): Promise<SettingsResponse> {
+	const ai = patch.core?.ai;
+	if (ai && typeof ai === "object") {
+		const { presets: _presets, removedBuiltinPresets: _removed, ...selection } = ai;
+		return api.patch<SettingsResponse>("/api/settings", {
+			...patch,
+			core: { ...patch.core, ai: selection },
+		});
+	}
 	return api.patch<SettingsResponse>("/api/settings", patch);
 }
 

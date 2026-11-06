@@ -30,6 +30,7 @@ import { createSecretCellsReader } from "./push/connection-settings.js";
 import { createAccountsRoute } from "./routes/accounts.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAiRoute } from "./routes/ai.js";
+import { createAiPersonasRoute } from "./routes/ai-personas.js";
 import { createAiSkillsRoute } from "./routes/ai-skills.js";
 import { createCardsRoute } from "./routes/cards.js";
 import { createCardsSkinsRoute } from "./routes/cards-skins.js";
@@ -328,6 +329,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		// 图库被历史、订阅、AI 共用,是顶层资源(ADR-0036 决策 5 下 10-03 的 🔗)。
 		app.route("/api/images", createImagesRoute(deps));
 		app.route("/api/library", createLibraryRoute(deps));
+		app.route("/api/ai/personas", createAiPersonasRoute(runtime.configStore));
 		// `/api/system` 是这一个实例自己的事(ADR-0036):日志一直挂着;更新、备份、重启与开新代
 		// 宿主传了才挂(见下面各自的 `if`)—— 各个口原来挂不挂的条件照旧,只是并进了一个前缀。
 		app.route("/api/system/logs", createSystemLogsRoute(deps));

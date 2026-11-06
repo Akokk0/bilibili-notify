@@ -241,6 +241,10 @@ export interface ConfigStore {
 	 * 那一发原样交回调用方。详见实现处的注释。
 	 */
 	updateGlobals(update: (current: GlobalConfig) => GlobalConfig): Promise<GlobalConfig>;
+	/** 同一事务内核对引用与版本；预期拒绝不写盘、不发变更事件。 */
+	updateGlobalsResult<T>(
+		update: (current: GlobalConfig) => Result<{ globals: GlobalConfig; value: T }>,
+	): Promise<Result<{ value: T }>>;
 	/**
 	 * 核心与各集成的设置一起改(`/api/settings` 的 PATCH):全部校验过才写,写到一半失败推回原样。没登记过的集成键
 	 * 整次拒收。与 globals 的其余写入排在同一条队里。
@@ -1864,6 +1868,26 @@ class NodeConfigStore implements ConfigStore {
 		this.announceInvalidSettings();
 		this.bus.emit("config-changed", { scope: "globals" });
 		return deepClone(result);
+	}
+
+	async updateGlobalsResult<T>(
+		update: (current: GlobalConfig) => Result<{ globals: GlobalConfig; value: T }>,
+	): Promise<Result<{ value: T }>> {
+		const result = await this.runAllScopes(async () => {
+			const next = update(deepClone(this.globals));
+			if (!next.ok) return next;
+			const parsed = GlobalConfigSchema.safeParse(next.globals);
+			if (!parsed.success)
+				return ConfigValidationError.fromZod("globals", parsed.error).toFailure();
+			await this.writeGlobals(parsed.data);
+			this.touch("globals");
+			return ok({ value: next.value });
+		});
+		if (result.ok) {
+			this.announceInvalidSettings();
+			this.bus.emit("config-changed", { scope: "globals" });
+		}
+		return result;
 	}
 
 	async upsertSubscription(sub: Subscription): Promise<void> {

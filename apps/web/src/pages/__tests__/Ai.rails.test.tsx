@@ -9,8 +9,7 @@
  */
 
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
-import { Icon } from "@bilibili-notify/ui";
+import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -18,7 +17,6 @@ import { i18n } from "../../i18n/index";
 import { useDraftStore } from "../../store/draft";
 import { formatDiffValue } from "../../utils/formatDiffValue";
 import Ai from "../Ai";
-import { personaIconKey } from "../ai/persona-icons";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), patch: vi.fn(), post: vi.fn() },
@@ -50,7 +48,6 @@ function bucket(over: Partial<Bucket> = {}): Bucket {
 /** 造一份 globals;`mutate` 里改 `ai`。 */
 // 内置人格每次按当前语言取,设置里不存;要测"只有主人自己的"就把四份内置标成已删
 const BUILTINS = builtinPresetsFor("zh-CN");
-const ALL_BUILTIN_IDS = [...BUILTIN_PRESET_IDS];
 const BASE_PERSONA = (BUILTINS[0] as (typeof BUILTINS)[number]).persona;
 
 function globalsWith(mutate: (g: Globals) => void): Globals {
@@ -66,12 +63,41 @@ function mount(g: Globals) {
 	);
 	vi.mocked(api.patch).mockImplementation(async () => ({ core: JSON.parse(JSON.stringify(g)) }));
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<Ai />
-		</QueryClientProvider>,
-	);
+	return {
+		qc,
+		...render(
+			<QueryClientProvider client={qc}>
+				<Ai />
+			</QueryClientProvider>,
+		),
+	};
 }
+
+it("素材库改变后保留模型草稿，保存不回写性格内容", async () => {
+	const g = globalsWith((value) => {
+		value.ai.providers.deepseek = bucket();
+		value.ai.activeProfile = "deepseek";
+	});
+	const { qc } = mount(g);
+	fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
+	const model = await screen.findByDisplayValue("m-1");
+	fireEvent.change(model, { target: { value: "unsaved-model" } });
+	g.ai.presets.push({ id: "new-persona", label: "新性格", persona: BASE_PERSONA });
+	await act(async () => {
+		await qc.invalidateQueries({ queryKey: ["settings"] });
+	});
+	fireEvent.click(screen.getByRole("tab", { name: /全局配置/ }));
+	await screen.findByRole("button", { name: "新性格" });
+	fireEvent.click(screen.getByRole("tab", { name: /模型配置/ }));
+	expect(screen.getByDisplayValue("unsaved-model")).toBeTruthy();
+	await act(async () => {
+		await useDraftStore.getState().current?.onSave();
+	});
+	await waitFor(() => expect(api.patch).toHaveBeenCalled());
+	const body = vi.mocked(api.patch).mock.calls.at(-1)?.[1] as { core: { ai: object } };
+	expect(body.core.ai).not.toHaveProperty("presets");
+	expect(body.core.ai).not.toHaveProperty("removedBuiltinPresets");
+});
 
 it("技能管理新页打开资源库，AI页保留当前设置", async () => {
 	const open = vi.spyOn(window, "open").mockReturnValue(null);
@@ -79,6 +105,13 @@ it("技能管理新页打开资源库，AI页保留当前设置", async () => {
 		mount(globalsWith(() => {}));
 		fireEvent.click(await screen.findByRole("button", { name: "管理技能" }));
 		expect(open).toHaveBeenCalledWith("/library?category=skills", "_blank", "noopener,noreferrer");
+		fireEvent.click(screen.getByRole("button", { name: "管理性格" }));
+		expect(open).toHaveBeenCalledWith(
+			"/library?category=personas",
+			"_blank",
+			"noopener,noreferrer",
+		);
+		expect(screen.queryByRole("tab", { name: /女仆性格/ })).toBeNull();
 		expect(screen.queryByRole("tab", { name: /女仆技能/ })).toBeNull();
 		expect(api.patch).not.toHaveBeenCalled();
 		expect(screen.getByRole("tab", { name: /全局配置/ })).toBeTruthy();
@@ -409,152 +442,6 @@ describe("在用哪一家 vs 在看哪一家", () => {
 	});
 });
 
-describe("女仆性格左栏", () => {
-	/** 切到「女仆性格」Tab。 */
-	async function gotoPersona() {
-		fireEvent.click(await screen.findByRole("tab", { name: /女仆性格/ }));
-		await screen.findByText(/人格塑造/);
-	}
-
-	it("左栏就是人格清单本身,没有多余的「默认」项", async () => {
-		// 「默认」曾经是 ai.persona 的入口,而它与「温柔女仆」本就是同一份 ——
-		// 同一份东西摆两遍还得解释哪个算数。清单恒非空(内置没删的 + 主人自己的)。
-		mount(globalsWith(() => {}));
-		await gotoPersona();
-		expect(screen.queryByText("默认")).toBeNull();
-		expect(screen.getAllByText("温柔女仆").length).toBeGreaterThan(0);
-	});
-
-	it("点另一份 → 右侧换成它自己的字段", async () => {
-		mount(
-			globalsWith((g) => {
-				g.ai.removedBuiltinPresets = ALL_BUILTIN_IDS;
-				g.ai.presets = [
-					{ id: "a", label: "甲", persona: { ...BASE_PERSONA, name: "甲的名" } },
-					{ id: "b", label: "乙", persona: { ...BASE_PERSONA, name: "乙的名" } },
-				];
-				g.ai.activePreset = "a";
-			}),
-		);
-		await gotoPersona();
-		expect(screen.getByDisplayValue("甲的名")).toBeTruthy();
-		fireEvent.click(screen.getAllByText("乙")[0] as HTMLElement);
-		await waitFor(() => expect(screen.getByDisplayValue("乙的名")).toBeTruthy());
-		expect(screen.queryByDisplayValue("甲的名")).toBeNull();
-	});
-
-	it("改自建那份只动 presets —— 内置不落盘,不会顺手写出 removedBuiltinPresets", async () => {
-		mount(
-			globalsWith((g) => {
-				g.ai.presets = [
-					{ id: "mine", label: "我的傲娇", persona: { ...BASE_PERSONA, name: "傲娇娘" } },
-				];
-			}),
-		);
-		await gotoPersona();
-		fireEvent.click(screen.getAllByText("我的傲娇")[0] as HTMLElement);
-		const nameInput = await screen.findByDisplayValue("傲娇娘");
-		fireEvent.change(nameInput, { target: { value: "超傲娇" } });
-
-		await act(async () => {
-			useDraftStore.getState().current?.onSave();
-		});
-		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
-			string,
-			{
-				core: {
-					ai: {
-						presets?: { id: string; persona: { name: string } }[];
-						removedBuiltinPresets?: unknown;
-					};
-				};
-			},
-		];
-		expect(body.ai.presets?.find((p) => p.id === "mine")?.persona.name).toBe("超傲娇");
-		expect(body.ai.removedBuiltinPresets).toBeUndefined();
-	});
-
-	it("「+ 添加」建出一份新性格并当场切过去(否则看起来像没反应)", async () => {
-		mount(
-			globalsWith((g) => {
-				g.ai.presets = [];
-			}),
-		);
-		await gotoPersona();
-		// 「+ 添加」开的是面板(新建空白 / 从内置恢复),再点「+ 空白性格」才真建。
-		fireEvent.click(screen.getAllByText("+ 添加")[0] as HTMLElement);
-		fireEvent.click(await screen.findByText("+ 空白性格"));
-		await waitFor(() => expect(screen.getByDisplayValue("新性格")).toBeTruthy());
-	});
-
-	it("左栏用指示器标出在用的那份,不写字", async () => {
-		mount(
-			globalsWith((g) => {
-				g.ai.removedBuiltinPresets = ALL_BUILTIN_IDS;
-				g.ai.presets = [
-					{ id: "a", label: "甲", persona: BASE_PERSONA },
-					{ id: "b", label: "乙", persona: BASE_PERSONA },
-				];
-				g.ai.activePreset = "b";
-			}),
-		);
-		await gotoPersona();
-		expect(inUseRailLabels()).toEqual(["乙"]);
-	});
-
-	it("正在用的那份不摆「设为默认」,别的才摆", async () => {
-		mount(
-			globalsWith((g) => {
-				g.ai.removedBuiltinPresets = ALL_BUILTIN_IDS;
-				g.ai.presets = [
-					{ id: "a", label: "甲", persona: BASE_PERSONA },
-					{ id: "b", label: "乙", persona: BASE_PERSONA },
-				];
-				g.ai.activePreset = "a";
-			}),
-		);
-		await gotoPersona();
-		expect(screen.queryByText("设为默认")).toBeNull();
-		fireEvent.click(screen.getAllByText("乙")[0] as HTMLElement);
-		await waitFor(() => expect(screen.getByText("设为默认")).toBeTruthy());
-	});
-
-	it("只剩一份时不摆删除按钮 —— 摆一个点了没反应的比没有还糟", async () => {
-		mount(
-			globalsWith((g) => {
-				g.ai.removedBuiltinPresets = ALL_BUILTIN_IDS;
-				g.ai.presets = [{ id: "only", label: "唯一", persona: BASE_PERSONA }];
-				g.ai.activePreset = "only";
-			}),
-		);
-		await gotoPersona();
-		expect(screen.queryByText("删除")).toBeNull();
-	});
-
-	it("「最后一份删不掉」按左栏总数算:只剩一份内置、主人也没有 → 不摆删除;主人有一份 → 摆", async () => {
-		const lastBuiltin = ["gentle-maid", "tsundere", "analyst"];
-		const { unmount } = mount(
-			globalsWith((g) => {
-				g.ai.removedBuiltinPresets = lastBuiltin;
-			}),
-		);
-		await gotoPersona();
-		expect(screen.queryByText("删除")).toBeNull();
-		unmount();
-		cleanup();
-
-		mount(
-			globalsWith((g) => {
-				g.ai.removedBuiltinPresets = lastBuiltin;
-				g.ai.presets = [{ id: "mine", label: "我的", persona: BASE_PERSONA }];
-			}),
-		);
-		await gotoPersona();
-		expect(screen.getByText("删除")).toBeTruthy();
-	});
-});
-
 describe("全局配置 Tab", () => {
 	async function gotoGlobal() {
 		fireEvent.click(await screen.findByRole("tab", { name: /全局配置/ }));
@@ -620,7 +507,7 @@ describe("全局配置 Tab", () => {
 		];
 		expect(body.ai.activePreset).toBe("mine");
 		// 选指针不改任何一份的内容。
-		expect(body.ai.presets?.[0]?.persona.name).toBe("傲娇娘");
+		expect(body.ai).not.toHaveProperty("presets");
 	});
 
 	/**
@@ -655,169 +542,6 @@ describe("全局配置 Tab", () => {
 		await waitFor(() => {
 			expect(useDraftStore.getState().current?.diff.length ?? 0).toBeGreaterThan(0);
 		});
-	});
-});
-
-describe("内置人格的图标", () => {
-	/** 左栏里某一项(竖栏那份)所带的 svg 标记。 */
-	function railGlyph(label: string): string | undefined {
-		const btn = screen
-			.getAllByText(label)
-			.map((el) => el.closest("button"))
-			.find((b): b is HTMLButtonElement => b !== null);
-		return btn?.querySelector("svg")?.outerHTML;
-	}
-
-	async function mountBuiltins() {
-		mount(globalsWith(() => {}));
-		fireEvent.click(await screen.findByRole("tab", { name: /女仆性格/ }));
-		await screen.findByText(/人格塑造/);
-	}
-
-	it("四份内置各用各的图标,不是清一色一个样", async () => {
-		// 最容易犯的接线错:拿带前缀的左栏 id 去查表 → 全部落到兜底的小人像,
-		// 而界面上「都有个图标」看着并不像坏了。
-		await mountBuiltins();
-		// 标签从注册表取,不写死 —— 改人格名字不该把这条测试也带红。
-		const glyphs = BUILTINS.map((p) => railGlyph(p.label));
-		expect(glyphs.every((g) => g !== undefined)).toBe(true);
-		expect(new Set(glyphs).size).toBe(BUILTINS.length);
-	});
-
-	it("每一份内置用的正是映射表里那个 —— 表与界面对得上", async () => {
-		// 拿另行渲染的同一个 Icon 做对照,不写死 svg 路径数据(图标重画时不该红)。
-		await mountBuiltins();
-		for (const p of BUILTINS) {
-			const Glyph = Icon[personaIconKey(p.id)];
-			const { container, unmount } = render(<Glyph size={14} />);
-			expect(railGlyph(p.label)).toBe(container.querySelector("svg")?.outerHTML);
-			unmount();
-		}
-	});
-
-	it("主人新加的那份用通用小人像", async () => {
-		await mountBuiltins();
-		fireEvent.click(screen.getAllByText("+ 添加")[0] as HTMLElement);
-		fireEvent.click(await screen.findByText("+ 空白性格"));
-		await waitFor(() => expect(screen.getByDisplayValue("新性格")).toBeTruthy());
-
-		const { container } = render(<Icon.user size={14} />);
-		expect(railGlyph("新性格")).toBe(container.querySelector("svg")?.outerHTML);
-	});
-});
-
-describe("内置性格:锁死、可删、可恢复、可另存", () => {
-	async function gotoPersona2() {
-		fireEvent.click(await screen.findByRole("tab", { name: /女仆性格/ }));
-		await screen.findByText(/人格塑造/);
-	}
-
-	/** 按 `<Field code>` 精确取输入框 —— 同一份人格里 name 与 addressSelf 可能同值。 */
-	function fieldInput(code: string): HTMLInputElement {
-		const el = document.querySelector<HTMLInputElement>(`[data-code="${code}"] input`);
-		if (!el) throw new Error(`找不到字段 ${code}`);
-		return el;
-	}
-
-	it("选中内置那份 → 字段全禁用,并说清为什么", async () => {
-		mount(globalsWith(() => {}));
-		await gotoPersona2();
-		// 落地选中第一份「温柔女仆」,它是内置的。
-		expect(screen.getByText(/内置性格/)).toBeTruthy();
-		expect(fieldInput("persona.name").value).toBe("小绫");
-		expect(fieldInput("persona.name").disabled).toBe(true);
-		expect(fieldInput("persona.traits").disabled).toBe(true);
-	});
-
-	it("内置那份摆「从内置修改」,自建的不摆", async () => {
-		mount(globalsWith(() => {}));
-		await gotoPersona2();
-		expect(screen.getByText("从内置修改")).toBeTruthy();
-
-		fireEvent.click(screen.getAllByText("+ 添加")[0] as HTMLElement);
-		fireEvent.click(await screen.findByText("+ 空白性格"));
-		await waitFor(() => expect(screen.getByDisplayValue("新性格")).toBeTruthy());
-		expect(screen.queryByText("从内置修改")).toBeNull();
-	});
-
-	it("「从内置修改」另存一份可改的,原件不动", async () => {
-		mount(globalsWith(() => {}));
-		await gotoPersona2();
-		fireEvent.click(screen.getByText("从内置修改"));
-
-		// 切到副本:名称格出现且可改。
-		const nameInput = await screen.findByDisplayValue("温柔女仆 副本");
-		expect((nameInput as HTMLInputElement).disabled).toBe(false);
-		// 副本内容照抄原件,且可改。
-		expect(fieldInput("persona.name").value).toBe("小绫");
-		expect(fieldInput("persona.name").disabled).toBe(false);
-		// 原件仍在清单里,且仍是锁着的。
-		fireEvent.click(screen.getAllByText("温柔女仆")[0] as HTMLElement);
-		await waitFor(() => expect(fieldInput("persona.name").disabled).toBe(true));
-	});
-
-	it("删掉一份内置 → 「从内置恢复」里列得出来,点一下回来", async () => {
-		mount(globalsWith(() => {}));
-		await gotoPersona2();
-		// 选中傲娇毒舌并删掉。
-		fireEvent.click(screen.getAllByText("傲娇毒舌")[0] as HTMLElement);
-		await waitFor(() => expect(screen.getByDisplayValue("凛子")).toBeTruthy());
-		fireEvent.click(screen.getByText("删除"));
-		await waitFor(() => expect(screen.queryByText("傲娇毒舌")).toBeNull());
-
-		// 从添加面板恢复。
-		fireEvent.click(screen.getAllByText("+ 添加")[0] as HTMLElement);
-		fireEvent.click(await screen.findByText("傲娇毒舌"));
-		await waitFor(() => expect(screen.getByDisplayValue("凛子")).toBeTruthy());
-	});
-
-	it("删一份内置存盘 → 补丁只记删了哪一份;再恢复回来存盘 → 下发 null(删键)", async () => {
-		mount(globalsWith(() => {}));
-		await gotoPersona2();
-		fireEvent.click(screen.getAllByText("傲娇毒舌")[0] as HTMLElement);
-		await waitFor(() => expect(screen.getByDisplayValue("凛子")).toBeTruthy());
-		fireEvent.click(screen.getByText("删除"));
-		await waitFor(() => expect(screen.queryByText("傲娇毒舌")).toBeNull());
-		await act(async () => {
-			useDraftStore.getState().current?.onSave();
-		});
-		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
-			string,
-			{ core: { ai: { removedBuiltinPresets?: string[]; presets?: unknown[] } } },
-		];
-		expect(body.ai.removedBuiltinPresets).toEqual(["tsundere"]);
-		// 内置不落盘:presets 里没有它
-		expect(body.ai.presets ?? []).toEqual([]);
-	});
-
-	it("磁盘上已删过一份:恢复它、存盘 → removedBuiltinPresets 下发 null", async () => {
-		mount(
-			globalsWith((g) => {
-				g.ai.removedBuiltinPresets = ["tsundere"];
-			}),
-		);
-		await gotoPersona2();
-		expect(screen.queryByText("傲娇毒舌")).toBeNull();
-		fireEvent.click(screen.getAllByText("+ 添加")[0] as HTMLElement);
-		fireEvent.click(await screen.findByText("傲娇毒舌"));
-		await waitFor(() => expect(screen.getByDisplayValue("凛子")).toBeTruthy());
-		await act(async () => {
-			useDraftStore.getState().current?.onSave();
-		});
-		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
-			string,
-			{ core: { ai: { removedBuiltinPresets?: string[] | null } } },
-		];
-		expect(body.ai.removedBuiltinPresets).toBeNull();
-	});
-
-	it("一份内置都没删时,面板明说没得恢复", async () => {
-		mount(globalsWith(() => {}));
-		await gotoPersona2();
-		fireEvent.click(screen.getAllByText("+ 添加")[0] as HTMLElement);
-		expect(await screen.findByText(/都在清单里/)).toBeTruthy();
 	});
 });
 
