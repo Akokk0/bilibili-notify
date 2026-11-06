@@ -2,6 +2,7 @@ import type { ResourceSample, ResourceStatic } from "@bilibili-notify/contract";
 import { Donut, ErrorNote, GlassPanel, Icon, LoadingBlock, Pill } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
 import { SECTION_ACCENT } from "../config/section-accents";
+import { useCardContentHeight } from "../hooks/useCardContentHeight";
 import type { ResourcesState } from "../hooks/useResourcesChannel";
 import { i18n, useT } from "../i18n";
 import { Sparkline } from "../pages/stats/charts";
@@ -170,11 +171,14 @@ function Fact({ label, value }: { label: string; value: ReactNode }) {
 export function SystemResourceCard({
 	state,
 	reachable,
+	onContentHeightChange,
 }: {
 	state: ResourcesState;
 	reachable: boolean;
+	onContentHeightChange?: (height: number) => void;
 }) {
 	const tx = useT();
+	const content = useCardContentHeight(onContentHeightChange);
 
 	const latest = state.history.at(-1);
 	const statics = state.static;
@@ -188,6 +192,7 @@ export function SystemResourceCard({
 
 	return (
 		<GlassPanel
+			className="@container/resources min-w-0 @min-[1104px]/system-row:min-h-[var(--system-default-height,0px)]"
 			title={tx("panelUi.components.system-resource-card.4")}
 			subtitle={tx("panelUi.components.system-resource-card.5")}
 			accent={SECTION_ACCENT.system}
@@ -207,90 +212,93 @@ export function SystemResourceCard({
 				)
 			}
 		>
-			{!reachable ? (
-				<ErrorNote>{tx("panelUi.components.system-resource-card.8")}</ErrorNote>
-			) : !ready ? (
-				<LoadingBlock
-					variant="inset"
-					label={tx("panelUi.components.system-resource-card.9")}
-					hint={tx("panelUi.components.system-resource-card.10")}
-				/>
-			) : (
-				<div className="flex flex-col gap-4">
-					<div className="flex flex-wrap items-start justify-center gap-x-8 gap-y-5">
-						<Gauge
-							title={tx("panelUi.components.system-resource-card.11")}
-							total={latest.hostCpu}
-							bn={bnCpu}
-							bnTone={BN_CPU_TONE}
-							caption="CPU"
-							detail={tx("panelUi.components.system-resource-card.12", { value0: percent(bnCpu) })}
-						/>
-						<Gauge
-							title={tx("panelUi.components.system-resource-card.13")}
-							total={memTotal > 0 ? latest.memUsed / memTotal : null}
-							bn={memTotal > 0 && bnMemBytes !== null ? bnMemBytes / memTotal : null}
-							bnTone={BN_MEM_TONE}
-							caption={tx("panelUi.components.system-resource-card.14")}
-							detail={tx("panelUi.components.system-resource-card.15", {
-								value0: bytes(bnMemBytes),
-							})}
-						/>
-					</div>
-
-					{/* xl 起四列:那一档下这张卡拿到整行 1.6/2.6 的宽度,四个数(内存 / 堆 /
-					    常驻 / 浏览器)正好排满一行,三列会把浏览器挤到下一行去陪 sparkline。 */}
-					<div className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-bn-border-subtle pt-3 sm:grid-cols-3 xl:grid-cols-4">
-						<div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-4">
-							<div className="text-bn-2xs text-bn-text-secondary">
-								{tx("panelUi.components.system-resource-card.16")}
-							</div>
-							<div
-								className="truncate text-bn-xs font-bold text-bn-text-primary"
-								title={statics.cpuModel}
-							>
-								{statics.cpuModel || "—"} · {statics.hostCores}{" "}
-								{tx("panelUi.components.system-resource-card.17")}
-							</div>
-						</div>
-						<Fact
-							label={
-								statics.memSource === "cgroup"
-									? tx("panelUi.components.system-resource-card.18")
-									: tx("panelUi.components.system-resource-card.19")
-							}
-							value={`${bytes(latest.memUsed)} / ${bytes(memTotal)}`}
-						/>
-						<Fact
-							label={tx("panelUi.components.system-resource-card.20")}
-							value={
-								<span style={{ color: heapTone(heapRatio ?? 0) }}>
-									{bytes(latest.heapUsed)} / {bytes(statics.heapLimit)}
-								</span>
-							}
-						/>
-						<Fact
-							label={tx("panelUi.components.system-resource-card.21")}
-							value={bytes(latest.rss)}
-						/>
-						<Fact
-							label={tx("panelUi.components.system-resource-card.22")}
-							value={browserText(latest)}
-						/>
-						<div className="col-span-2 flex flex-col justify-center gap-0.5 sm:col-span-1">
-							<Sparkline
-								data={state.history.map((s) => s.heapUsed / statics.heapLimit)}
-								color={heapTone(heapRatio ?? 0)}
-								width={140}
-								height={22}
+			<div ref={content} className="flow-root">
+				{!reachable ? (
+					<ErrorNote>{tx("panelUi.components.system-resource-card.8")}</ErrorNote>
+				) : !ready ? (
+					<LoadingBlock
+						variant="inset"
+						label={tx("panelUi.components.system-resource-card.9")}
+						hint={tx("panelUi.components.system-resource-card.10")}
+					/>
+				) : (
+					<div className="flex flex-col gap-4">
+						<div className="flex flex-wrap items-start justify-center gap-x-8 gap-y-5">
+							<Gauge
+								title={tx("panelUi.components.system-resource-card.11")}
+								total={latest.hostCpu}
+								bn={bnCpu}
+								bnTone={BN_CPU_TONE}
+								caption="CPU"
+								detail={tx("panelUi.components.system-resource-card.12", {
+									value0: percent(bnCpu),
+								})}
 							/>
-							<span className="text-bn-2xs text-bn-text-tertiary">
-								{tx("panelUi.components.system-resource-card.23")}
-							</span>
+							<Gauge
+								title={tx("panelUi.components.system-resource-card.13")}
+								total={memTotal > 0 ? latest.memUsed / memTotal : null}
+								bn={memTotal > 0 && bnMemBytes !== null ? bnMemBytes / memTotal : null}
+								bnTone={BN_MEM_TONE}
+								caption={tx("panelUi.components.system-resource-card.14")}
+								detail={tx("panelUi.components.system-resource-card.15", {
+									value0: bytes(bnMemBytes),
+								})}
+							/>
+						</div>
+
+						{/* 按卡片自身宽度排辅助读数，避免宽屏里的窄资源列被四列挤压。 */}
+						<div className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-bn-border-subtle pt-3 @min-[520px]/resources:grid-cols-4">
+							<div className="col-span-2 min-w-0 @min-[520px]/resources:col-span-4">
+								<div className="text-bn-2xs text-bn-text-secondary">
+									{tx("panelUi.components.system-resource-card.16")}
+								</div>
+								<div
+									className="truncate text-bn-xs font-bold text-bn-text-primary"
+									title={statics.cpuModel}
+								>
+									{statics.cpuModel || "—"} · {statics.hostCores}{" "}
+									{tx("panelUi.components.system-resource-card.17")}
+								</div>
+							</div>
+							<Fact
+								label={
+									statics.memSource === "cgroup"
+										? tx("panelUi.components.system-resource-card.18")
+										: tx("panelUi.components.system-resource-card.19")
+								}
+								value={`${bytes(latest.memUsed)} / ${bytes(memTotal)}`}
+							/>
+							<Fact
+								label={tx("panelUi.components.system-resource-card.20")}
+								value={
+									<span style={{ color: heapTone(heapRatio ?? 0) }}>
+										{bytes(latest.heapUsed)} / {bytes(statics.heapLimit)}
+									</span>
+								}
+							/>
+							<Fact
+								label={tx("panelUi.components.system-resource-card.21")}
+								value={bytes(latest.rss)}
+							/>
+							<Fact
+								label={tx("panelUi.components.system-resource-card.22")}
+								value={browserText(latest)}
+							/>
+							<div className="col-span-2 flex flex-col justify-center gap-0.5">
+								<Sparkline
+									data={state.history.map((s) => s.heapUsed / statics.heapLimit)}
+									color={heapTone(heapRatio ?? 0)}
+									width={140}
+									height={22}
+								/>
+								<span className="text-bn-2xs text-bn-text-tertiary">
+									{tx("panelUi.components.system-resource-card.23")}
+								</span>
+							</div>
 						</div>
 					</div>
-				</div>
-			)}
+				)}
+			</div>
 		</GlassPanel>
 	);
 }

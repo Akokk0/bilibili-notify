@@ -56,9 +56,7 @@ export const ALLOWLIST = {
  * 服务端里接 B 站的那几处(引擎、粉丝轮询、关注、登录、统计的 B 站适配),第 3a 期 B 站搬进 `bilibili/` 时整批掉出;
  * 面板里认 B 站的分支归第 4 期按描述符重画。
  */
-export const RATCHET = {
-	"apps/web/src/pages/Dashboard.tsx": 4,
-};
+export const RATCHET = {};
 
 /** 字符串字面量里算 B 站替身的那两个值。 */
 const STAND_IN_STRINGS = new Set(["bilibili", "@bilibili"]);

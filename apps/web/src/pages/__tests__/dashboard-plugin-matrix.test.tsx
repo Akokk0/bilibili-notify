@@ -1,166 +1,155 @@
 // @vitest-environment jsdom
-/**
- * 概览页「系统状态 · 各模块」的模块矩阵。
- *
- * 这里钉两条**行为**(其余是观感,留手动验证):
- *
- * ① 日志等级徽章只在**该模块被单独调过**时出现。八个模块各挂一个 `DEBUG` 徽章时,
- *    重复度高到没人会去看,真正要紧的「哪个被单独设过」反而淹在里面。
- * ② 全局那档等级搬进卡头副标题 —— 收起八个徽章不等于把这个信息丢掉,它跟「核心 /
- *    面板版本」是同一类:这套东西当前的全局事实,一处说一遍。
- */
-
+import type { HealthResponse } from "@bilibili-notify/contract";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import type { ModuleLogLevels } from "../../types/globals";
 import { SystemHealthCard } from "../Dashboard";
+import { integrationHealth, runningHealth } from "./support/health";
 
-vi.stubGlobal("__WEB_VERSION__", "0.0.0-test");
+vi.mock("../../services/api", () => ({ api: { get: vi.fn() }, ApiError: class extends Error {} }));
 
-afterEach(cleanup);
+import { api } from "../../services/api";
 
-function renderCard(over: { logLevel?: string; logLevels?: ModuleLogLevels } = {}) {
-	return render(
-		<MemoryRouter initialEntries={["/"]}>
-			<SystemHealthCard
-				health={{ status: "ok", version: "0.9.0" }}
-				reachable
-				logLevel={over.logLevel ?? "debug"}
-				logLevels={over.logLevels}
-				loggedIn
-				subCount={1}
-				targetCount={3}
-				dynamicEnabled
-				liveEnabled
-				imageEnabled
-				aiEnabled
-			/>
-		</MemoryRouter>,
+const SHORT: HealthResponse = {
+	status: "ok",
+	version: "0.9.0",
+	uptime: 600,
+	startedAt: "2026-11-05T00:00:00Z",
+};
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+	vi.stubGlobal("__WEB_VERSION__", "0.0.0-test");
+});
+afterEach(() => {
+	cleanup();
+	vi.clearAllMocks();
+	vi.unstubAllGlobals();
+});
+function renderCard(
+	over: {
+		logLevel?: string;
+		logLevels?: ModuleLogLevels;
+		reachable?: boolean;
+		settingsFailed?: boolean;
+	} = {},
+) {
+	vi.mocked(api.get).mockImplementation(async (path) => {
+		if (path === "/api/health/details")
+			return runningHealth({ integrations: [integrationHealth()] });
+		if (path === "/api/settings") {
+			if (over.settingsFailed) throw new Error("settings failed");
+			return {
+				core: { logging: { level: over.logLevel ?? "debug", levels: over.logLevels ?? {} } },
+			};
+		}
+		if (path === "/api/accounts") return { accounts: [] };
+		if (path === "/api/sources") return { sources: [] };
+		if (path === "/api/problems") return { problems: [] };
+		return null;
+	});
+	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	render(
+		<QueryClientProvider client={qc}>
+			<MemoryRouter>
+				<SystemHealthCard health={SHORT} reachable={over.reachable ?? true} />
+			</MemoryRouter>
+		</QueryClientProvider>,
 	);
+	return qc;
+}
+async function detail(label: string) {
+	await userEvent.click(
+		await screen.findByRole("button", { name: new RegExp(`^${label} · .*查看详情$`) }),
+	);
+	return screen.getByRole("dialog");
 }
 
-/** 某个模块那一条 —— 靠模块名定位,不依赖它在第几格。 */
-function row(label: string): HTMLElement {
-	const el = screen.getByText(label).closest("[data-module]");
-	if (!(el instanceof HTMLElement)) throw new Error(`没找到 ${label} 那一条`);
-	return el;
-}
-
-describe("模块矩阵的日志等级", () => {
-	it("全部继承全局时,一个徽章都不出现", () => {
-		renderCard({ logLevel: "debug" });
-		// 八行八个一模一样的 DEBUG,看的人只会把它当背景纹理。
-		expect(screen.queryAllByTitle("按模块覆盖")).toHaveLength(0);
-		// 「继承全局」那档整个不渲染 —— 只是不标星、照样画出来的话噪音一点没少。
-		expect(screen.queryAllByTitle("继承全局")).toHaveLength(0);
-	});
-
-	it("B 站那一个键被调过 → 动态与直播两条都挂徽章(两个引擎共用这个键),别的不挂", () => {
-		renderCard({ logLevel: "debug", logLevels: { bilibili: "warn" } });
-		const badges = screen.getAllByTitle("按模块覆盖");
-		expect(badges).toHaveLength(2);
-		for (const badge of badges) expect(badge.textContent).toContain("WARN");
-		// 挂在动态与直播这两条上,不是随便哪两条。
-		expect(within(row("直播 · live")).getByTitle("按模块覆盖")).toBeTruthy();
-		expect(within(row("B 站作品 · dynamic")).getByTitle("按模块覆盖")).toBeTruthy();
-		expect(within(row("卡片 · image")).queryByTitle("按模块覆盖")).toBeNull();
-		expect(within(row("AI · ai")).queryByTitle("按模块覆盖")).toBeNull();
-	});
-
-	it("旧的 live / dynamic 键不再是覆盖键:写了也不挂徽章", () => {
-		renderCard({ logLevel: "debug", logLevels: { live: "warn", dynamic: "warn" } });
-		expect(screen.queryAllByTitle("按模块覆盖")).toHaveLength(0);
-	});
-
-	it("core 那一档落到四个基础设施件上 —— 服务端的基础 logger 就是它们的桶", () => {
-		// 系统页能调的是 core / bilibili / image / ai 四档。`core` 在服务端管的是**引擎之外的
-		// 每一条日志**(push / sink / master 私聊 / 粉丝轮询 / 路由 / 配置 / 历史 / ws),
-		// 也就是这四格。概览页此前有一份写死的名单只认四个引擎键,于是把 core 调成 info
-		// 之后服务端真按 info 打了、卡上却一点变化都没有。
-		renderCard({ logLevel: "debug", logLevels: { core: "info" } });
-		for (const label of ["接口 · api", "持久化 · storage", "订阅 · subscription", "推送 · push"]) {
-			const badge = within(row(label)).getByTitle("按模块覆盖");
-			expect(badge.textContent, `${label} 那一条`).toContain("INFO");
+describe("健康卡详情的日志覆盖", () => {
+	it("core 日志覆盖属于存储、订阅、推送，渲染与AI各读自己的键", async () => {
+		renderCard({ logLevel: "debug", logLevels: { core: "info", image: "warn", ai: "error" } });
+		for (const [name, level] of [
+			["存储", "INFO"],
+			["订阅", "INFO"],
+			["推送", "INFO"],
+			["图片", "WARN"],
+			["AI", "ERROR"],
+		]) {
+			const dialog = await detail(name);
+			expect(within(dialog).getByText(level)).toBeTruthy();
+			expect(within(dialog).getByText("独立配置")).toBeTruthy();
+			await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
 		}
-		// 四个引擎各读各的键,不跟着 core 走。
-		for (const label of ["B 站作品 · dynamic", "直播 · live", "卡片 · image", "AI · ai"]) {
-			expect(within(row(label)).queryByTitle("按模块覆盖"), `${label} 那一条`).toBeNull();
-		}
-	});
-
-	it("引擎那四个各读各的键,不被 core 顶掉", () => {
-		renderCard({ logLevel: "debug", logLevels: { core: "info", bilibili: "warn" } });
-		expect(within(row("直播 · live")).getByTitle("按模块覆盖").textContent).toContain("WARN");
-		expect(within(row("B 站作品 · dynamic")).getByTitle("按模块覆盖").textContent).toContain(
-			"WARN",
-		);
-		expect(within(row("接口 · api")).getByTitle("按模块覆盖").textContent).toContain("INFO");
-	});
-
-	it("覆盖成与全局相同的等级时也算被单独设过 —— 那是一条会留在盘上的设置", () => {
-		// 全局日后改了,这条不跟着动;说它「和全局一样所以不用标」是把将来的分歧藏起来。
-		renderCard({ logLevel: "debug", logLevels: { ai: "debug" } });
-		expect(screen.getAllByTitle("按模块覆盖")).toHaveLength(1);
-	});
-
-	it("全局那档写在左边的事实列里,与核心 / 面板版本并排", () => {
-		renderCard({ logLevel: "warn" });
-		const badge = screen.getByTitle("全局日志等级");
-		expect(badge.textContent).toBe("WARN");
-		// 而且不混在某一条模块里 —— 那样就成了第九个模块的等级。
-		expect(badge.closest("[data-module]")).toBeNull();
 	});
 });
 
-describe("就绪数", () => {
-	it("八个都亮着就是 8 / 8", () => {
-		renderCard();
-		expect(screen.getByTitle("就绪的模块数").textContent).toBe("8 / 8");
-		expect(screen.getByText("模块全部就绪")).toBeTruthy();
+describe("健康卡保留的版本与日志信息", () => {
+	it("版本与默认日志收在信息区，模块详情使用对应版本和默认等级", async () => {
+		renderCard({ logLevel: "warn" });
+		await screen.findByRole("button", { name: "存储 · 运行中，查看详情" });
+		expect(screen.queryByText("WARN")).toBeNull();
+		await userEvent.click(screen.getByRole("button", { name: "版本与日志 ＋" }));
+		expect(screen.getByText("0.9.0")).toBeTruthy();
+		expect(screen.getByText("0.0.0-test")).toBeTruthy();
+		expect(screen.getByText("WARN")).toBeTruthy();
+		const dialog = await detail("订阅");
+		expect(within(dialog).getByText("0.7.1")).toBeTruthy();
+		expect(within(dialog).getByText("WARN")).toBeTruthy();
+		expect(within(dialog).getByText("跟随默认")).toBeTruthy();
 	});
+	it("覆盖成相同等级仍标为独立配置，集成按自己的键读取覆盖", async () => {
+		renderCard({
+			logLevel: "debug",
+			logLevels: { core: "info", ai: "debug", "acme.source": "warn" },
+		});
+		let dialog = await detail("AI");
+		expect(within(dialog).getByText("独立配置")).toBeTruthy();
+		await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+		dialog = await detail("测试来源");
+		expect(within(dialog).getByText("WARN")).toBeTruthy();
+		expect(within(dialog).getByText("独立配置")).toBeTruthy();
+	});
+	it("设置读取失败时不捏造默认INFO", async () => {
+		renderCard({ settingsFailed: true });
+		const dialog = await detail("存储");
+		expect(within(dialog).queryByText("INFO")).toBeNull();
+		expect(within(dialog).getAllByText("—")).toHaveLength(2);
+	});
+	it("失联时隐藏运行格和计数", async () => {
+		renderCard({ reachable: false });
+		expect(screen.getByText("暂时连不上服务")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /运行中，查看详情/ })).toBeNull();
+	});
+});
 
-	it("关着的引擎不算就绪,数字跟着状态点走", () => {
-		render(
-			<MemoryRouter initialEntries={["/"]}>
-				<SystemHealthCard
-					health={{ status: "ok", version: "0.9.0" }}
-					reachable
-					logLevel="debug"
-					logLevels={undefined}
-					loggedIn
-					subCount={1}
-					targetCount={3}
-					dynamicEnabled
-					liveEnabled={false}
-					imageEnabled={false}
-					aiEnabled
-				/>
-			</MemoryRouter>,
-		);
-		expect(screen.getByTitle("就绪的模块数").textContent).toBe("6 / 8");
-		expect(screen.getByText("2 个模块未启用")).toBeTruthy();
-	});
+it("核心项的管理入口到对应页面", async () => {
+	renderCard();
+	for (const [name, path] of [
+		["存储", "/system#storage"],
+		["订阅", "/subs"],
+		["推送", "/targets"],
+		["图片", "/cards"],
+		["AI", "/ai"],
+	]) {
+		const dialog = await detail(name);
+		expect(within(dialog).getByRole("link", { name: "前往管理" }).getAttribute("href")).toBe(path);
+		await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+	}
+});
 
-	it("失联时不报数 —— 拿最后一次的快照说「8 个就绪」是在撒谎", () => {
-		render(
-			<MemoryRouter initialEntries={["/"]}>
-				<SystemHealthCard
-					health={{ status: "ok", version: "0.9.0" }}
-					reachable={false}
-					logLevel="debug"
-					logLevels={undefined}
-					loggedIn
-					subCount={1}
-					targetCount={3}
-					dynamicEnabled
-					liveEnabled
-					imageEnabled
-					aiEnabled
-				/>
-			</MemoryRouter>,
-		);
-		expect(screen.getByTitle("就绪的模块数").textContent).toBe("— / 8");
-		expect(screen.getByText("后端失联,状态未知")).toBeTruthy();
-	});
+it("详情键盘焦点在弹窗内循环，关闭回到原入口", async () => {
+	renderCard();
+	const opener = await screen.findByRole("button", { name: "存储 · 运行中，查看详情" });
+	await userEvent.click(opener);
+	const dialog = screen.getByRole("dialog");
+	await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+	expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "关闭" }));
+	await userEvent.keyboard("{Tab}");
+	expect(document.activeElement).toBe(within(dialog).getByRole("link", { name: "前往管理" }));
+	await userEvent.keyboard("{Escape}");
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(document.activeElement).toBe(opener);
 });

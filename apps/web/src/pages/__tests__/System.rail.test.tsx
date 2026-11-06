@@ -14,7 +14,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { Link, MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { GlobalConfigPatch } from "../../types/globals";
 import System from "../System";
@@ -96,6 +96,16 @@ vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 	api: {
 		get: vi.fn(async (url: string) => {
+			if (url === "/api/settings/integrations")
+				return {
+					integrations: [
+						{
+							key: "acme-source",
+							label: "内置测试来源",
+							fields: [{ key: "sample", type: "string", label: "集成测试字段", default: "sample" }],
+						},
+					],
+				};
 			if (url === "/api/settings") return GLOBALS;
 			if (url === "/api/connections/capabilities") return {};
 			return [];
@@ -110,6 +120,7 @@ function renderSystem(initialEntry = "/system") {
 	return render(
 		<MemoryRouter initialEntries={[initialEntry]}>
 			<QueryClientProvider client={qc}>
+				<Link to={initialEntry}>重新打开系统深链</Link>
 				<System />
 			</QueryClientProvider>
 		</MemoryRouter>,
@@ -172,6 +183,35 @@ describe("系统页的分区导航", () => {
 		// 这里不能等主人账号那张卡:落的就是维护格,它压根不渲染。
 		expect(await screen.findByTestId("sec-update")).toBeTruthy();
 		expect(screen.queryByText("来源账号")).toBeNull();
+	});
+
+	it("健康卡的集成深链等待描述符后定位对应侧栏项", async () => {
+		renderSystem("/system#integration:acme-source");
+		expect(await screen.findByText("集成测试字段")).toBeTruthy();
+		expect(screen.queryByText("主人账号")).toBeNull();
+	});
+
+	it.each([
+		["/system#update", "update"],
+		["/system#integration:acme-source", "integration"],
+	])("手动切侧栏后再次打开%s仍定位深链目标", async (path, target) => {
+		renderSystem(path);
+		if (target === "update") await screen.findByTestId("sec-update");
+		else await screen.findByText("集成测试字段");
+		await screen.findByRole("button", { name: "内置测试来源" });
+		pickSection("账号");
+		await waitForDraft();
+		pickSection("运行");
+		expect(screen.getByTestId("sec-browser-source")).toBeTruthy();
+		fireEvent.click(screen.getByRole("link", { name: "重新打开系统深链" }));
+		if (target === "update") expect(await screen.findByTestId("sec-update")).toBeTruthy();
+		else expect(await screen.findByText("集成测试字段")).toBeTruthy();
+	});
+
+	it.each(["unknown", "%E0%A4%A"])("未知或损坏的集成深链%s保留可用默认页", async (key) => {
+		renderSystem(`/system#integration:${key}`);
+		await waitForDraft();
+		expect(screen.getByText("来源账号")).toBeTruthy();
 	});
 
 	it("草稿跨格不丢", async () => {

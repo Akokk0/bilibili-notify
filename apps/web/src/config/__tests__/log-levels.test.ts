@@ -81,7 +81,7 @@ describe("日志等级色表", () => {
 		for (const rel of [
 			"../../pages/Logs.tsx",
 			"../../components/forms.tsx",
-			"../../pages/Dashboard.tsx",
+			"../../components/system-health-card.tsx",
 		]) {
 			const src = await read(rel);
 			expect(`${rel} 引用统一表 ${src.includes("config/log-levels")}`).toBe(

@@ -11,6 +11,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { integrationSettingsPath } from "../config/system-paths";
 import { useAdapters } from "../hooks/useAdapters";
 import { useBackendReachable } from "../hooks/useBackendReachable";
 import { useExtensions } from "../hooks/useExtensions";
@@ -112,7 +113,7 @@ export function ProblemBox() {
 		</div>
 	);
 }
-function ProblemRows({
+export function ProblemRows({
 	problems,
 	onClose,
 }: {
@@ -162,7 +163,7 @@ function ProblemRows({
 						: extension
 							? `/extensions/${encodeURIComponent(extension.id)}`
 							: source
-								? "/system"
+								? integrationSettingsPath(source.key)
 								: adapter
 									? "/targets"
 									: "/logs";

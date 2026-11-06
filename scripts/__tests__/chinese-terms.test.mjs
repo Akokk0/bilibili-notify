@@ -110,8 +110,8 @@ export const RATCHET = {
 	"apps/server/src/live/recap/live-summary-requester.ts": 1,
 	"apps/server/src/posts/deliver-post.ts": 5,
 	// 4-26：主人批准真实 B 语境 5 plain + 3 maid，精确键与命中词由下方实扫断言钉住。
-	"apps/web/src/i18n/locales/zh-CN.json": 6,
-	"apps/web/src/i18n/locales/zh-CN.maid.json": 3,
+	"apps/web/src/i18n/locales/zh-CN.json": 4,
+	"apps/web/src/i18n/locales/zh-CN.maid.json": 2,
 
 	"apps/web/src/devtools/ext-motion.ts": 2,
 	// 4-43：沿4-29持续授权原文搬家，6=1+4+1，归期不改。
@@ -166,14 +166,11 @@ export function jsonTermHits(json, allowed = [], file = "") {
 export const JSON_TERM_PINS = {
 	"apps/web/src/i18n/locales/zh-CN.json": {
 		"skinUi.SkinEditor.64": ["动态"],
-		"sourceUi.pages.Dashboard.SystemHealthCard.31": ["B站"],
-		"sourceUi.pages.Dashboard.Dashboard.59": ["B站"],
 		"sourceUi.config.field.labels.label.1": ["B站"],
 		"sourceUi.config.field.labels.hint.8": ["B站"],
 		"sourceUi.config.field.labels.hint.12": ["B站"],
 	},
 	"apps/web/src/i18n/locales/zh-CN.maid.json": {
-		"sourceUi.pages.Dashboard.Dashboard.59": ["B站"],
 		"sourceUi.config.field.labels.hint.8": ["B站"],
 		"sourceUi.config.field.labels.hint.12": ["B站"],
 	},
@@ -397,12 +394,15 @@ describe("核心与面板里的 B 站叫法只降不涨", () => {
 		expect(auditJsonPins(json, file)).toEqual([]);
 		expect(
 			auditJsonPins(
-				json.replace("sourceUi.pages.Dashboard.Dashboard.59", "sourceUi.pages.History.unapproved"),
+				json.replace(
+					'"sourceUi.config.field.labels.hint.8"',
+					'"sourceUi.pages.History.unapproved"',
+				),
 				file,
 			),
 		).not.toEqual([]);
 		expect(
-			auditJsonPins(json.replace("还没有登录 B 站账号", "还没有登录 B 站 UID 账号"), file),
+			auditJsonPins(json.replace("这一档同时管 B 站来源", "这一档同时管 B 站 UID 来源"), file),
 		).not.toEqual([]);
 	});
 	it("4-27 服务端新增叫法只来自批准的完整来源提示键与专栏一词", () => {

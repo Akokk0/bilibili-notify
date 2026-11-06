@@ -1,11 +1,5 @@
-import type {
-	ExtensionDTO,
-	HealthResponse,
-	LogLevel,
-	SourceEntry,
-	UpdateStatusDTO,
-} from "@bilibili-notify/contract";
-import { BILIBILI_SOURCE_KEY, displayNameOf } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import { displayNameOf } from "@bilibili-notify/contract";
 import { formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import { needsLiveMonitor } from "@bilibili-notify/internal/live-monitor";
 import {
@@ -13,37 +7,28 @@ import {
 	Btn,
 	EmptyNote,
 	ErrorNote,
-	GlassBox,
 	GlassPanel,
 	GlassStatCard,
 	Icon,
 	LoadingBlock,
 	Pill,
 	StatsBar,
-	StatusDot,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useMemo } from "react";
+import { type CSSProperties, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { HeroStrip } from "../components/hero-strip";
+import { SystemHealthCard } from "../components/system-health-card";
 import { SystemResourceCard } from "../components/system-resource-card";
-import {
-	newerVersionOf,
-	phaseLabel,
-	UPDATE_SECTION_PATH,
-	useUpdateStatus,
-} from "../components/update/status";
-import { LOG_LEVEL_TONE, logLevelTint } from "../config/log-levels";
+import { useUpdateStatus } from "../components/update/status";
 import {
 	FEATURE_DESCRIPTORS,
 	familyTone,
 	PUSH_STATUS_META,
 	PUSH_TONE,
 } from "../config/push-features";
-import { useSourceAuth } from "../hooks/use-source-auth";
 import { HEALTH_QUERY_OPTIONS, useBackendReachable } from "../hooks/useBackendReachable";
 import { useExtensions } from "../hooks/useExtensions";
-import { useHealthDetails } from "../hooks/useHealthDetails";
 import { useResourcesChannel } from "../hooks/useResourcesChannel";
 import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
@@ -71,7 +56,6 @@ import {
 	type PushTarget,
 	type Subscription,
 } from "../types/domain";
-import type { ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
 import { historyRowAvatarUrl, historyRowColor, historyRowIdentity } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
@@ -653,352 +637,17 @@ export function FansPanel({
 	);
 }
 
-// ── Plugin matrix (mirrors .bn-design SystemHealthPanel) ──────────────────
-
-type ModuleCellId =
-	| "api"
-	| "storage"
-	| "subscription"
-	| "push"
-	| "dynamic"
-	| "live"
-	| "image"
-	| "ai";
-
-interface PluginCell {
-	id: ModuleCellId;
-	label: string;
-	enabled: boolean;
-	sub?: string;
-	logLevel: string | undefined;
-	logLevelSource: "global" | "module";
-}
-
-/**
- * 每格读哪个覆盖键。
- *
- * 四个基础设施件共用 **`core`** —— 服务端的基础 logger 跟着 `logging.levels.core` 走
- * (`runtime/pipeline.ts`),而推送链路之外的每一条日志(push / sink / master 私聊 /
- * 粉丝轮询 / 路由 / 配置 / 历史 / ws)都从它出,那正好就是这四格。
- *
- * 此前这里是一份只认四个功能模块键的写死名单,注释还断言「infra 四件没有槽位」。
- * 那句话在写下的当天(2026-05-13,概览页把占位的 core 格拆成 8 个真包)成立,
- * 六天后服务端把基础 logger 接到 `logging.levels.core` 上就不成立了,而没有任何东西
- * 拦下这次分歧:把 core 调成 info,服务端真按 info 打日志,卡上一点变化都没有。
- *
- * 动态与直播两个 B 站功能模块共用日志等级表里的一个键(`BILIBILI_SOURCE_KEY`),所以这两格读同一个覆盖。
- */
-const OVERRIDE_KEY: Record<ModuleCellId, string> = {
-	api: "core",
-	storage: "core",
-	subscription: "core",
-	push: "core",
-	dynamic: BILIBILI_SOURCE_KEY,
-	live: BILIBILI_SOURCE_KEY,
-	image: "image",
-	ai: "ai",
-};
-
-function pickLogTone(level: string | undefined): { fg: string; bg: string } {
-	const key: LogLevel = level === "error" || level === "debug" || level === "warn" ? level : "info";
-	return { fg: LOG_LEVEL_TONE[key], bg: logLevelTint(key) };
-}
-
-/** 等宽数字的版本小徽章(核心 / 面板)—— 收编前同一串 className 在 subtitle 里抄了两份。 */
-function VersionBadge({ children }: { children: ReactNode }) {
-	return (
-		<span className="inline-block rounded-md bg-bn-code-bg px-1.5 py-px text-bn-2xs font-semibold tabular-nums tracking-tight text-bn-text-primary">
-			{children}
-		</span>
-	);
-}
-
-/** 一组四个模块:小标题 + 四条单行(状态点 · 名字 …… 覆盖徽章 · 状态)。 */
-function ModuleGroup({ caption, cells }: { caption: string; cells: PluginCell[] }) {
-	const tx = useT();
-	return (
-		// 小标题定高 18px,四条平摊剩下的高度;与右边那组同在一个等高的 grid 里,行线才对得齐。
-		<div className="grid grid-rows-[18px_repeat(4,minmax(0,1fr))]">
-			<div className="flex items-end pb-0.5 text-bn-2xs font-semibold tracking-[0.08em] text-bn-text-tertiary">
-				{caption}
-			</div>
-			{cells.map((c, i) => {
-				const tone = pickLogTone(c.logLevel);
-				const levelLabel = c.logLevel ? c.logLevel.toUpperCase() : "—";
-				// 只有**被单独调过**的模块才挂徽章。八个模块各挂一个一模一样的 DEBUG 时,
-				// 重复度高到会被当成背景纹理,真正要紧的「哪个被单独设过」反而淹在里面;
-				// 全局那一档搬去了左边的事实列,一处说一遍。
-				const isOverride = c.logLevelSource === "module";
-				// 行改成单行、状态右对齐之后,行间那道细线才立得住:它分开的是两条对齐的
-				// 「名字 …… 值」,不再是两块各自居中的双行文字。最后一条不画,别贴着卡底。
-				const divider = i < cells.length - 1 ? "border-b border-bn-border-subtle" : "";
-				return (
-					<div
-						key={c.id}
-						data-module={c.id}
-						className={`flex min-h-0 items-center gap-2 py-1.5 ${divider}`}
-					>
-						<StatusDot size="sm" kind={c.enabled ? "ok" : "off"} />
-						<span className="truncate text-bn-sm font-bold text-bn-text-primary">{c.label}</span>
-						<span className="flex-1" />
-						{isOverride ? (
-							<span
-								className="shrink-0 rounded-sm px-1.5 text-bn-2xs font-bold leading-4"
-								style={{ background: tone.bg, color: tone.fg }}
-								title={tx("sourceUi.pages.Dashboard.title.21")}
-							>
-								{levelLabel}
-							</span>
-						) : null}
-						<span className="shrink-0 text-bn-sm font-medium tabular-nums text-bn-text-secondary">
-							{c.sub}
-						</span>
-					</div>
-				);
-			})}
-		</div>
-	);
-}
-
-/** 事实列里的一行:左边标签、右边值。 */
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-	return (
-		<div className="flex items-center justify-between gap-2 text-bn-xs text-bn-text-secondary">
-			<span>{label}</span>
-			<span className="inline-flex items-center gap-1.5">{children}</span>
-		</div>
-	);
-}
-
-export function SystemHealthCard({
-	health,
-	reachable,
-	logLevel,
-	logLevels,
-	loggedIn,
-	subCount,
-	targetCount,
-	dynamicEnabled,
-	liveEnabled,
-	imageEnabled,
-	aiEnabled,
-	update,
-}: {
-	health: Pick<HealthResponse, "status" | "version"> | undefined;
-	reachable: boolean;
-	/** 应用内更新的状态;有比现在新的一版就在版本号旁边说一句、给个直达按钮。 */
-	update?: UpdateStatusDTO;
-	logLevel: string | undefined;
-	logLevels: ModuleLogLevels | undefined;
-	loggedIn: boolean;
-	subCount: number;
-	targetCount: number;
-	dynamicEnabled: boolean;
-	liveEnabled: boolean;
-	imageEnabled: boolean;
-	aiEnabled: boolean;
-}) {
-	const tx = useT();
-	const effectiveLevel = (
-		id: ModuleCellId,
-	): { level: string | undefined; source: "global" | "module" } => {
-		const override = logLevels?.[OVERRIDE_KEY[id]];
-		if (override) return { level: override, source: "module" };
-		return { level: logLevel, source: "global" };
-	};
-
-	// When the backend is unreachable, all module status text falls back to
-	// "—" — keeping the previous "运行中 / 已就绪" copy alive while the API is
-	// dead would be lying to the user.
-	const buildCell = (
-		id: ModuleCellId,
-		label: string,
-		enabled: boolean,
-		sub: string,
-	): PluginCell => {
-		const { level, source } = effectiveLevel(id);
-		return {
-			id,
-			label,
-			enabled: reachable && enabled,
-			sub: reachable ? sub : "—",
-			logLevel: level,
-			logLevelSource: source,
-		};
-	};
-
-	// Infra → 功能模块. 这 4 个 infra 包 boot 成功后 100% constructed,所以状态点跟
-	// reachable 同步;子文案改填业务计数(api 显示登录态,storage 已加载,subscription
-	// / push 分别显示订阅 / 目标数)以增加信息量。
-	const infra: PluginCell[] = [
-		buildCell(
-			"api",
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.22"),
-			true,
-			loggedIn
-				? tx("sourceUi.pages.Dashboard.SystemHealthCard.23")
-				: tx("sourceUi.pages.Dashboard.SystemHealthCard.24"),
-		),
-		buildCell(
-			"storage",
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.25"),
-			true,
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.26"),
-		),
-		buildCell(
-			"subscription",
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.27"),
-			true,
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.28", { value1: subCount }),
-		),
-		buildCell(
-			"push",
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.29"),
-			true,
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.30", { value1: targetCount }),
-		),
-	];
-	const featureModules: PluginCell[] = [
-		buildCell(
-			"dynamic",
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.31"),
-			dynamicEnabled,
-			dynamicEnabled
-				? tx("sourceUi.pages.Dashboard.SystemHealthCard.32")
-				: tx("sourceUi.pages.Dashboard.SystemHealthCard.33"),
-		),
-		buildCell(
-			"live",
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.34"),
-			liveEnabled,
-			liveEnabled
-				? tx("sourceUi.pages.Dashboard.SystemHealthCard.32")
-				: tx("sourceUi.pages.Dashboard.SystemHealthCard.35"),
-		),
-		buildCell(
-			"image",
-			tx("sourceUi.pages.Dashboard.SystemHealthCard.36"),
-			imageEnabled,
-			imageEnabled
-				? tx("sourceUi.pages.Dashboard.SystemHealthCard.37")
-				: tx("sourceUi.pages.Dashboard.SystemHealthCard.38"),
-		),
-		buildCell(
-			"ai",
-			"AI · ai",
-			aiEnabled,
-			aiEnabled
-				? tx("sourceUi.pages.Dashboard.SystemHealthCard.32")
-				: tx("sourceUi.pages.Dashboard.SystemHealthCard.33"),
-		),
-	];
-	const total = infra.length + featureModules.length;
-	// 就绪数就是亮着的状态点的个数 —— 它不是第二个真相源,只是把八颗点数成一个数。
-	const ready = [...infra, ...featureModules].filter((c) => c.enabled).length;
-	const summary = !reachable
-		? tx("sourceUi.pages.Dashboard.SystemHealthCard.39")
-		: ready === total
-			? tx("sourceUi.pages.Dashboard.SystemHealthCard.40")
-			: tx("sourceUi.pages.Dashboard.SystemHealthCard.41", { value1: total - ready });
-
-	// 失联时那份更新状态只是快照,按了「去更新」也去不了哪 —— 不催。
-	// 直接算成要显示的那句话:`newer` 非 null 蕴含 `update` 在,但 TS narrow 不出来,
-	// 留着中间量就得在每个用处再守一次 `update`。
-	const updateLabel = reachable && update && newerVersionOf(update) ? phaseLabel(update) : null;
-	// 事实列里那枚全局等级徽章的两个色 —— 同一帧算一次就够。
-	const globalTone = pickLogTone(logLevel);
-
-	return (
-		<GlassBox
-			title={tx("sourceUi.pages.Dashboard.title.42")}
-			accent={reachable ? "var(--color-bn-success)" : "var(--color-bn-danger)"}
-			icon={<Icon.check size={14} />}
-			badge={
-				!reachable
-					? tx("sourceUi.pages.Dashboard.badge.43")
-					: health?.status === "ok"
-						? tx("sourceUi.pages.Dashboard.badge.44")
-						: "—"
-			}
-			right={
-				updateLabel ? (
-					<Link to={UPDATE_SECTION_PATH}>
-						<Btn size="sm" variant="primary">
-							{tx("sourceUi.pages.Dashboard.right.45")}
-						</Btn>
-					</Link>
-				) : undefined
-			}
-			dense
-			// 与「系统资源」并排时跟着行高长满,正文里的事实列与模块格子再把这份高度分掉。
-			className="h-full"
-		>
-			<div className="flex h-full flex-col">
-				{!reachable ? (
-					<ErrorNote className="mb-2.5">
-						{tx("sourceUi.pages.Dashboard.SystemHealthCard.46")}
-					</ErrorNote>
-				) : null}
-				{/* 左:事实列(就绪数 + 核心 / 面板 / 全局日志);右:两组四行。
-				    flex-1 + min-h-0:失联横幅在时把剩下的高度让给正文,而不是让正文按 h-full
-				    去顶满父高、把横幅挤出去。窄屏上下叠,事实列的竖线换成横线。 */}
-				<div className="grid min-h-0 flex-1 grid-cols-1 gap-x-[22px] gap-y-3 sm:grid-cols-[196px_minmax(0,1fr)]">
-					<div className="flex flex-col justify-center gap-4.5 border-b border-bn-border-subtle pb-3 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-[22px]">
-						<div>
-							<div
-								className="flex items-baseline gap-1 leading-none tabular-nums"
-								title={tx("sourceUi.pages.Dashboard.title.47")}
-							>
-								<span className="text-bn-hero font-bold tracking-tight text-bn-text-primary">
-									{reachable ? ready : "—"}
-								</span>
-								<span className="text-bn-md font-semibold text-bn-text-tertiary">{` / ${total}`}</span>
-							</div>
-							<div className="mt-1.5 text-bn-xs text-bn-text-secondary">{summary}</div>
-						</div>
-						<div className="flex flex-col gap-2">
-							<Fact label={tx("sourceUi.pages.Dashboard.label.48")}>
-								<VersionBadge>{health?.version ?? "—"}</VersionBadge>
-								{updateLabel ? (
-									<span className="font-semibold text-bn-pink">{updateLabel}</span>
-								) : null}
-							</Fact>
-							<Fact label={tx("sourceUi.pages.Dashboard.label.49")}>
-								<VersionBadge>{__WEB_VERSION__}</VersionBadge>
-							</Fact>
-							<Fact label={tx("sourceUi.pages.Dashboard.label.50")}>
-								<span
-									className="inline-block rounded-md px-1.5 py-px text-bn-2xs font-bold"
-									style={{ background: globalTone.bg, color: globalTone.fg }}
-									// 光一个「WARN」没有上下文,读屏器与鼠标悬停都得知道它说的是哪一档。
-									title={tx("sourceUi.pages.Dashboard.title.51")}
-								>
-									{logLevel ? logLevel.toUpperCase() : "—"}
-								</span>
-							</Fact>
-						</div>
-					</div>
-					<div className="grid grid-cols-1 gap-y-3 sm:grid-cols-2 sm:gap-x-7">
-						<ModuleGroup caption={tx("sourceUi.pages.Dashboard.caption.52")} cells={infra} />
-						<ModuleGroup
-							caption={tx("sourceUi.pages.Dashboard.caption.53")}
-							cells={featureModules}
-						/>
-					</div>
-				</div>
-			</div>
-		</GlassBox>
-	);
-}
+export { SystemHealthCard } from "../components/system-health-card";
 
 export default function Dashboard() {
 	const tx = useT();
-	const loggedIn = useSourceAuth(BILIBILI_SOURCE_KEY).state?.status === "logged-in";
+	const [healthHeight, setHealthHeight] = useState(0);
+	const [resourceHeight, setResourceHeight] = useState(0);
+
 	const reachable = useBackendReachable();
 
 	const health = useQuery(HEALTH_QUERY_OPTIONS);
-	// 四个模块开没开住详情口(短版只剩四格,ADR-0025 决策 12)。
-	const modules = useHealthDetails().data?.modules;
+
 	const updateQuery = useUpdateStatus();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
@@ -1048,7 +697,7 @@ export default function Dashboard() {
 				: globalsQuery.data?.defaults?.features
 					? "success"
 					: "error";
-	// 小贴士说谁:先挑 B 站的在播(下播总结那句话只对它成立),没有再说拓展订阅的。
+	// 小贴士说谁:优先挑支持直播回顾的在播来源，其余按快照顺序。
 	const tipLive =
 		live.find((r) =>
 			subscriptionPlatformOf(r.identity, sources).supportedExtras.includes("liveSummary"),
@@ -1068,7 +717,7 @@ export default function Dashboard() {
 	const pushDelta = today && yesterday ? today.total - yesterday.total : null;
 	const pushSeries = daily.map((d) => d.total);
 
-	const aiTip = loggedIn ? (
+	const aiTip = liveQuery.isSuccess ? (
 		live.length > 0 ? (
 			<>
 				<b>
@@ -1076,12 +725,12 @@ export default function Dashboard() {
 						// 与「正在直播」那块同一口径:按快照里的订阅 id 对(ADR-0019 决策 50)。
 						const sub = subs.find((s) => s.id === tipLive?.subscriptionId);
 						if (sub) return displayName(sub, subscriptionPlatformOf(sub.identity, sources));
-						// 订阅还没回来时按身份写(同「正在直播」那块):B 站写 UID,拓展写平台名加外部 id。
+						// 订阅还没回来时按来源描述符展示身份(同「正在直播」那块)。
 						if (!tipLive) return "";
 						return historyRowIdentity(tipLive, subscriptionPlatformOf(tipLive.identity, sources));
 					})()}
 				</b>{" "}
-				{/* 下播总结只有 B 站有(ADR-0019 决策 12),拓展订阅在播时不这么劝。 */}
+				{/* 按来源声明决定是否提示直播回顾。 */}
 				{tipLive &&
 				!subscriptionPlatformOf(tipLive.identity, sources).supportedExtras.includes("liveSummary")
 					? tx("sourceUi.pages.Dashboard.Dashboard.54")
@@ -1097,11 +746,7 @@ export default function Dashboard() {
 			</>
 		)
 	) : (
-		<>
-			{tx("sourceUi.pages.Dashboard.Dashboard.59")}
-			<b>{tx("sourceUi.pages.Dashboard.Dashboard.60")}</b>
-			{tx("sourceUi.pages.Dashboard.Dashboard.61")}
-		</>
+		tx("healthCard.insightUnknown")
 	);
 
 	return (
@@ -1181,25 +826,28 @@ export default function Dashboard() {
 				/>
 			</div>
 
-			{/* row 5: 各模块状态(窄) + 系统资源(宽) —— 同属「系统」这一组,并排不多占一行。
-			    列比刻意不与 row 4 相同:两行都是 1fr_1.3fr 的话竖缝落在同一条线上,整页
-			    被切成两半。1fr_1.6fr 把缝挪出去,顺带让资源卡吃掉模块卡的一部分宽度。 */}
-			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_1.6fr]">
-				<SystemHealthCard
-					health={health.data}
-					reachable={reachable}
-					logLevel={globalsQuery.data?.logging.level}
-					logLevels={globalsQuery.data?.logging.levels}
-					loggedIn={loggedIn}
-					subCount={subs.length}
-					targetCount={targets.length}
-					dynamicEnabled={modules?.dynamic ?? loggedIn}
-					liveEnabled={modules?.live ?? false}
-					imageEnabled={modules?.image ?? false}
-					aiEnabled={modules?.ai ?? false}
-					update={updateQuery.data}
-				/>
-				<SystemResourceCard state={resources} reachable={reachable} />
+			{/* 资源在左，状态占主要宽度；仅默认高度对齐，状态展开独立增高。 */}
+			<div
+				className="@container/system-row"
+				style={
+					{
+						"--system-default-height": `${Math.max(healthHeight, resourceHeight)}px`,
+					} as CSSProperties
+				}
+			>
+				<div className="grid grid-cols-1 items-start gap-3.5 @min-[1104px]/system-row:grid-cols-[minmax(520px,min(680px,48%))_minmax(560px,1fr)]">
+					<SystemResourceCard
+						state={resources}
+						reachable={reachable}
+						onContentHeightChange={setResourceHeight}
+					/>
+					<SystemHealthCard
+						health={health.data}
+						reachable={reachable}
+						update={updateQuery.data}
+						onDefaultHeightChange={setHealthHeight}
+					/>
+				</div>
 			</div>
 		</div>
 	);

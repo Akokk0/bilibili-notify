@@ -1,15 +1,23 @@
 // @vitest-environment jsdom
 /**
- * 首页「系统状态 · 各模块」那四个模块(动态 / 直播 / 卡片 / AI)开没开,读的是详情口
- * `/api/health/details` 的 `modules`(ADR-0025 决策 12):短版 `/api/health` 只剩四格,不再带它。
+ * 首页健康卡通过真实页面和HTTP边界读取核心、集成、账号与问题快照。
+ * 详情失败、生命周期变化和缺失数据都不从登录态或旧模块字段猜测。
  *
  * 这里整页渲染首页,钉的是**接线**:卡片自己按 prop 怎么画由 `dashboard-plugin-matrix` 管,这条管
- * 「prop 从哪来」—— 把首页改回读短版,或者干脆不传,卡片测试照绿,这里红。
+ * 「数据从哪来」—— 改回旧来源或遗漏接线时，这里应当报错。
  */
 
-import type { HealthResponse, LiveListeningEntry, ModuleState } from "@bilibili-notify/contract";
+import type {
+	AccountsResponse,
+	HealthResponse,
+	LiveListeningEntry,
+	ModuleState,
+	ProblemsResponse,
+	SourceEntry,
+} from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { HEALTH_DETAILS_QUERY_KEY } from "../../hooks/useHealthDetails";
@@ -33,6 +41,7 @@ import {
 	type Subscription,
 } from "../../types/domain";
 import Dashboard from "../Dashboard";
+import { integrationHealth, runningHealth } from "./support/health";
 
 /** 短版:只有这四格。 */
 const SHORT: HealthResponse = {
@@ -51,13 +60,17 @@ const ALL_ON: ModuleState = {
 
 function mockApi(opts: {
 	loggedIn: boolean;
+	health?: () => Promise<HealthResponse>;
+	accounts?: () => Promise<AccountsResponse>;
+	sources?: () => Promise<{ sources: SourceEntry[] }>;
+	problems?: () => Promise<ProblemsResponse>;
 	details: () => Promise<unknown>;
 	live?: () => Promise<LiveListeningEntry[]>;
 	subscriptions?: () => Promise<Subscription[]>;
 	settings?: () => Promise<unknown>;
 }) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/health") return SHORT;
+		if (path === "/api/health") return opts.health ? opts.health() : SHORT;
 		if (path === "/api/health/details") return opts.details();
 		if (path === "/api/sources/bilibili/auth") {
 			return {
@@ -83,7 +96,9 @@ function mockApi(opts: {
 		if (path.startsWith("/api/history")) return { entries: [] };
 		if (path === "/api/stats/followers") return { entries: [] };
 		if (path === "/api/ext") return { extensions: [] };
-		if (path === "/api/sources") return { sources: [] };
+		if (path === "/api/sources") return opts.sources ? opts.sources() : { sources: [] };
+		if (path === "/api/accounts") return opts.accounts ? opts.accounts() : { accounts: [] };
+		if (path === "/api/problems") return opts.problems ? opts.problems() : { problems: [] };
 		return null;
 	});
 }
@@ -114,41 +129,435 @@ beforeEach(() => {
 afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
+	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 });
 
 describe("首页各模块的状态读详情口", () => {
-	it("短版没有 modules、详情说四个都开着 → 8 / 8(没登录也不影响动态那格)", async () => {
-		// 没登录:要是动态那格落到「详情没回来」的兜底(跟着登录态走),就只有 4 / 8。
-		mockApi({ loggedIn: false, details: async () => ({ phase: "running", modules: ALL_ON }) });
+	it("系统资源先于系统状态呈现，窄屏和阅读顺序一致", async () => {
+		mockApi({ loggedIn: false, details: async () => runningHealth() });
 		renderDashboard();
-		expect(await screen.findByText("模块全部就绪")).toBeTruthy();
-		expect(screen.getByTitle("就绪的模块数").textContent).toBe("8 / 8");
+		const health = await screen.findByRole("region", { name: "系统状态" });
+		const resources = screen.getByText("系统资源");
+		expect(
+			resources.compareDocumentPosition(health) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
 	});
 
-	it("开机详情保留在缓存,首页沿用兜底;运行详情回来后模块恢复", async () => {
-		const startup = { phase: "migrating", progress: { step: 1, total: 27, label: "设置与订阅" } };
+	it("核心按详情显示五项及数量，不从登录与旧modules推测就绪", async () => {
+		mockApi({ loggedIn: false, details: async () => runningHealth({ modules: ALL_ON }) });
+		renderDashboard();
+		expect(await screen.findByRole("button", { name: "图片 · 未就绪，查看详情" })).toBeTruthy();
+		for (const label of ["存储", "订阅", "推送", "AI"])
+			expect(screen.getByRole("button", { name: `${label} · 运行中，查看详情` })).toBeTruthy();
+		expect(screen.queryByText("接口 · api")).toBeNull();
+		expect(screen.getByText("1 条")).toBeTruthy();
+		expect(screen.getByText("3 个目标")).toBeTruthy();
+	});
+
+	it("开机详情不显示运行格，运行快照回来后再显示五项", async () => {
+		const startup = { phase: "starting", progress: null };
 		mockApi({ loggedIn: true, details: async () => startup });
 		const qc = renderDashboard();
-		await waitFor(() => expect(qc.getQueryData(HEALTH_DETAILS_QUERY_KEY)).toEqual(startup));
-		expect(screen.getByTitle("就绪的模块数").textContent).toBe("5 / 8");
-		mockApi({ loggedIn: true, details: async () => ({ phase: "running", modules: ALL_ON }) });
+		expect(await screen.findByText("服务正在启动")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "存储 · 运行中，查看详情" })).toBeNull();
+		mockApi({ loggedIn: true, details: async () => runningHealth() });
 		await qc.invalidateQueries({ queryKey: HEALTH_DETAILS_QUERY_KEY });
-		expect(await screen.findByText("模块全部就绪")).toBeTruthy();
+		expect(await screen.findByRole("button", { name: "存储 · 运行中，查看详情" })).toBeTruthy();
 	});
-
-	it("详情口失败 → 兜底:动态跟着登录态,其余三个按没开算", async () => {
+	it("详情失败不根据登录态或旧缓存宣称就绪", async () => {
 		mockApi({
 			loggedIn: true,
 			details: async () => {
 				throw new Error("details 挂了");
 			},
 		});
+		renderDashboard();
+		expect(await screen.findByText("主人，运行详情没读到，请再试一次吧。")).toBeTruthy();
+		expect(
+			within(screen.getByRole("region", { name: "系统状态" })).getByRole("alert"),
+		).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "存储 · 运行中，查看详情" })).toBeNull();
+	});
+	it("每个集成一格，未运行或清单不可读的集成仍可查看", async () => {
+		mockApi({
+			loggedIn: false,
+			details: async () =>
+				runningHealth({
+					integrations: [
+						integrationHealth({ provides: ["subscription", "push"], connectionCount: 2 }),
+						integrationHealth({
+							key: "broken",
+							descriptor: { label: "清单坏了" },
+							status: "unreadable",
+							light: "red",
+							provides: undefined,
+						}),
+					],
+				}),
+		});
+		renderDashboard();
+		expect(await screen.findByRole("button", { name: "测试来源 · 运行中，查看详情" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "清单坏了 · 清单读不出来，查看详情" })).toBeTruthy();
+		expect(screen.getByText("2 条推送连接")).toBeTruthy();
+	});
+	it("摘要失败仍显示运行中，账号按所属来源匹配，详情给出准确入口", async () => {
+		mockApi({
+			loggedIn: false,
+			details: async () =>
+				runningHealth({
+					integrations: [
+						integrationHealth({
+							health: { ok: false, code: "unavailable", message: "摘要暂不可读" },
+						}),
+					],
+				}),
+			accounts: async () => ({
+				accounts: [
+					{
+						sourceKey: "other",
+						state: { status: "logged-in", loggedInAt: "2026-11-05T00:00:00Z" },
+						account: { name: "别人的账号" },
+					},
+					{
+						sourceKey: "acme.source",
+						state: { status: "logged-in", loggedInAt: "2026-11-05T00:00:00Z" },
+						account: { name: "正确账号" },
+					},
+				],
+			}),
+			sources: async () => ({
+				sources: [
+					{
+						key: "acme.source",
+						status: "running",
+						descriptor: { label: "测试来源", supportedFeatures: [] },
+						has: { auth: true, liveStatus: false, preview: false },
+					},
+				],
+			}),
+		});
+		renderDashboard();
+		const opener = await screen.findByRole("button", { name: "测试来源 · 运行中，查看详情" });
+		await userEvent.click(opener);
+		const dialog = screen.getByRole("dialog");
+		expect(within(dialog).getByText("摘要暂不可读")).toBeTruthy();
+		expect(within(dialog).getByText("正确账号")).toBeTruthy();
+		expect(within(dialog).queryByText("别人的账号")).toBeNull();
+		expect(within(dialog).getByRole("link", { name: "账号" }).getAttribute("href")).toBe(
+			"/system?account=acme.source#account",
+		);
+		expect(within(dialog).getByRole("link", { name: "集成设置" }).getAttribute("href")).toBe(
+			"/extensions/acme.source",
+		);
+		await userEvent.keyboard("{Escape}");
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(document.activeElement).toBe(opener);
+	});
+	it("核心问题只归组，全部问题包含没有当前集成的报告", async () => {
+		const core = runningHealth().core;
+		mockApi({
+			loggedIn: false,
+			details: async () =>
+				runningHealth({
+					core: { ...core, problemCount: 1 },
+					problemCount: 3,
+					integrations: [integrationHealth({ problemCount: 1, light: "orange" })],
+				}),
+			problems: async () => ({
+				problems: [
+					{
+						reporter: "core",
+						code: "blocked",
+						message: "核心任务待处理",
+						since: "2026-11-05T00:00:00Z",
+					},
+					{
+						reporter: "acme.source",
+						code: "source",
+						message: "来源待处理",
+						since: "2026-11-05T00:00:00Z",
+					},
+					{
+						reporter: "gone",
+						code: "orphan",
+						message: "遗留报告仍需处理",
+						since: "2026-11-05T00:00:00Z",
+					},
+				],
+			}),
+		});
+		renderDashboard();
+		await userEvent.click(await screen.findByRole("button", { name: "核心问题 1" }));
+		let dialog = screen.getByRole("dialog");
+		expect(await within(dialog).findByText("核心任务待处理")).toBeTruthy();
+		expect(within(dialog).queryByText("来源待处理")).toBeNull();
+		expect(within(dialog).queryByText("遗留报告仍需处理")).toBeNull();
+		await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+		await userEvent.click(screen.getByRole("button", { name: "查看问题 3" }));
+		dialog = screen.getByRole("dialog");
+		expect(await within(dialog).findByText("遗留报告仍需处理")).toBeTruthy();
+		expect(within(dialog).getByText("来源待处理")).toBeTruthy();
+		expect(within(dialog).queryByRole("button", { name: /清空/ })).toBeNull();
+	});
+	it("同身份遗留订阅逐条提供检查入口，不自动合并或删除", async () => {
+		mockApi({
+			loggedIn: false,
+			details: async () =>
+				runningHealth({
+					identityDuplicates: [
+						{
+							identity: { sourceKey: "acme.source", externalId: "a/42" },
+							name: "同一个人",
+							subscriptionIds: ["sub/a", "sub?b"],
+						},
+					],
+				}),
+		});
+		renderDashboard();
+		expect(await screen.findByText("发现 1 组同身份遗留订阅")).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "查看" }));
+		expect(screen.getByText("同一个人")).toBeTruthy();
+		expect(screen.getByRole("link", { name: "sub/a" }).getAttribute("href")).toBe(
+			"/subs?open=sub%2Fa",
+		);
+		expect(screen.getByRole("link", { name: "sub?b" }).getAttribute("href")).toBe(
+			"/subs?open=sub%3Fb",
+		);
+		expect(screen.queryByRole("button", { name: /合并|删除/ })).toBeNull();
+	});
+	it("默认显示五个集成，超过五个才折叠且可以展开完整列表", async () => {
+		mockApi({
+			loggedIn: false,
+			details: async () =>
+				runningHealth({
+					integrations: Array.from({ length: 6 }, (_, index) =>
+						integrationHealth({ key: `source-${index}`, descriptor: { label: `来源${index}` } }),
+					),
+				}),
+		});
+		renderDashboard();
+		expect(await screen.findByRole("button", { name: "来源4 · 运行中，查看详情" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "来源5 · 运行中，查看详情" })).toBeNull();
+		await userEvent.click(screen.getByRole("button", { name: "其余 1 个集成" }));
+		expect(screen.getByRole("button", { name: "来源5 · 运行中，查看详情" })).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "收起集成" }));
+		expect(screen.queryByRole("button", { name: "来源5 · 运行中，查看详情" })).toBeNull();
+	});
+
+	it("直播提示依据运行数据，不被单个来源的登录态阻断", async () => {
+		mockApi({ loggedIn: false, details: async () => runningHealth() });
+		renderDashboard();
+		expect(
+			await screen.findByText(new RegExp(i18n.t("sourceUi.pages.Dashboard.Dashboard.56").trim())),
+		).toBeTruthy();
+		expect(screen.queryByText(/尚未登录 B 站/)).toBeNull();
+	});
+	it("空集成给出拓展管理入口", async () => {
+		mockApi({ loggedIn: false, details: async () => runningHealth() });
+		renderDashboard();
+		expect(await screen.findByRole("link", { name: "查看拓展" })).toHaveProperty(
+			"href",
+			expect.stringContaining("/extensions"),
+		);
+	});
+
+	it("问题快照已变化时，空分组给出空态而非空白列表", async () => {
+		mockApi({
+			loggedIn: false,
+			details: async () =>
+				runningHealth({ core: { ...runningHealth().core, problemCount: 1 }, problemCount: 1 }),
+			problems: async () => ({
+				problems: [
+					{
+						reporter: "other",
+						code: "later",
+						message: "另一组的问题",
+						since: "2026-11-05T00:00:00Z",
+					},
+				],
+			}),
+		});
+		renderDashboard();
+		await userEvent.click(await screen.findByRole("button", { name: "核心问题 1" }));
+		expect(
+			await within(screen.getByRole("dialog")).findByText(i18n.t("problems.empty")),
+		).toBeTruthy();
+	});
+	it("失联后的重新读取同时探测服务，恢复后立即显示最新状态", async () => {
+		let up = false;
+		mockApi({
+			loggedIn: false,
+			health: async () => {
+				if (!up) throw new Error("offline");
+				return SHORT;
+			},
+			details: async () => runningHealth(),
+		});
 		const qc = renderDashboard();
-		// 等的是「详情确实失败了」,不是「请求发出去了」:兜底那一帧在详情回来之前就已经是这样。
-		await waitFor(() => expect(qc.getQueryState(HEALTH_DETAILS_QUERY_KEY)?.status).toBe("error"));
-		await waitFor(() => expect(screen.getByTitle("就绪的模块数").textContent).toBe("5 / 8"));
-		expect(screen.getByText("3 个模块未启用")).toBeTruthy();
+		await waitFor(() => expect(qc.getQueryState(["health"])?.status).toBe("error"));
+		expect(screen.getByText("主人，暂时连不上服务，当前状态还不能确认哦。")).toBeTruthy();
+		up = true;
+		await userEvent.click(screen.getByRole("button", { name: "重新读取" }));
+		expect(await screen.findByRole("button", { name: "存储 · 运行中，查看详情" })).toBeTruthy();
+	});
+	it("运行详情缺少单项时仍保留五项，缺项明确显示未知", async () => {
+		mockApi({
+			loggedIn: false,
+			details: async () => runningHealth({ core: { items: [], problemCount: 0 } }),
+		});
+		renderDashboard();
+		for (const name of ["存储", "订阅", "推送", "图片", "AI"])
+			expect(
+				await screen.findByRole("button", { name: `${name} · 状态未知，查看详情` }),
+			).toBeTruthy();
+		expect(screen.queryByText("0 条")).toBeNull();
+		expect(screen.queryByText("0 个目标")).toBeNull();
+	});
+
+	it.each(["missing", "failed", "expired"] as const)(
+		"账号%s时如实显示，不把缺记录或读取失败说成未登录",
+		async (mode) => {
+			mockApi({
+				loggedIn: false,
+				details: async () => runningHealth({ integrations: [integrationHealth()] }),
+				sources: async () => ({
+					sources: [
+						{
+							key: "acme.source",
+							status: "running",
+							descriptor: { label: "测试来源", supportedFeatures: [] },
+							has: { auth: true, liveStatus: false, preview: false },
+						},
+					],
+				}),
+				accounts: async () => {
+					if (mode === "failed") throw new Error("accounts unavailable");
+					return {
+						accounts:
+							mode === "missing"
+								? []
+								: [
+										{
+											sourceKey: "acme.source",
+											state: { status: "expired", message: "认证已过期" },
+										},
+									],
+					};
+				},
+			});
+			renderDashboard();
+			await userEvent.click(
+				await screen.findByRole("button", { name: "测试来源 · 运行中，查看详情" }),
+			);
+			const dialog = screen.getByRole("dialog");
+			expect(
+				await within(dialog).findByText(
+					mode === "missing"
+						? "账号状态尚未确认"
+						: mode === "failed"
+							? "账号读取失败"
+							: "认证已过期",
+				),
+			).toBeTruthy();
+			expect(within(dialog).queryByText("未登录")).toBeNull();
+		},
+	);
+	it("问题读取失败保留错误，重试后显示真实列表", async () => {
+		let failed = true;
+		mockApi({
+			loggedIn: false,
+			details: async () => runningHealth({ problemCount: 1 }),
+			problems: async () => {
+				if (failed) throw new Error("problems unavailable");
+				return {
+					problems: [
+						{
+							reporter: "gone",
+							code: "pending",
+							message: "重试后的问题",
+							since: "2026-11-05T00:00:00Z",
+						},
+					],
+				};
+			},
+		});
+		renderDashboard();
+		await userEvent.click(await screen.findByRole("button", { name: "查看问题 1" }));
+		const dialog = screen.getByRole("dialog");
+		expect(await within(dialog).findByText(i18n.t("problems.failed"))).toBeTruthy();
+		expect(within(dialog).queryByText(i18n.t("problems.empty"))).toBeNull();
+		failed = false;
+		await userEvent.click(within(dialog).getByRole("button", { name: "重试" }));
+		expect(await within(dialog).findByText("重试后的问题")).toBeTruthy();
+	});
+	it("详情缓存刷新失败时不保留旧的运行断言，包括打开的详情", async () => {
+		mockApi({
+			loggedIn: false,
+			details: async () => runningHealth({ integrations: [integrationHealth()] }),
+		});
+		const qc = renderDashboard();
+		await userEvent.click(
+			await screen.findByRole("button", { name: "测试来源 · 运行中，查看详情" }),
+		);
+		mockApi({
+			loggedIn: false,
+			details: async () => {
+				throw new Error("details failed");
+			},
+		});
+		await qc.invalidateQueries({ queryKey: HEALTH_DETAILS_QUERY_KEY });
+		expect(await screen.findByText("主人，运行详情没读到，请再试一次吧。")).toBeTruthy();
+		expect(within(screen.getByRole("dialog")).getByText("状态待确认")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "测试来源 · 运行中，查看详情" })).toBeNull();
+		expect(within(screen.getByRole("dialog")).queryByText("运行中")).toBeNull();
+	});
+	it("集成离开当前列表后，已开的详情不保留旧状态和操作", async () => {
+		mockApi({
+			loggedIn: false,
+			details: async () => runningHealth({ integrations: [integrationHealth()] }),
+		});
+		const qc = renderDashboard();
+		await userEvent.click(
+			await screen.findByRole("button", { name: "测试来源 · 运行中，查看详情" }),
+		);
+		mockApi({ loggedIn: false, details: async () => runningHealth() });
+		await qc.invalidateQueries({ queryKey: HEALTH_DETAILS_QUERY_KEY });
+		const dialog = screen.getByRole("dialog");
+		expect(await within(dialog).findByText("状态待确认")).toBeTruthy();
+		expect(within(dialog).queryByRole("link", { name: "集成设置" })).toBeNull();
+	});
+	it("已开问题框失联后重试也重新探测服务", async () => {
+		let up = true;
+		mockApi({
+			loggedIn: false,
+			health: async () => {
+				if (!up) throw new Error("offline");
+				return SHORT;
+			},
+			details: async () => runningHealth({ problemCount: 1 }),
+			problems: async () => ({
+				problems: [
+					{
+						reporter: "gone",
+						code: "pending",
+						message: "服务恢复后的问题",
+						since: "2026-11-05T00:00:00Z",
+					},
+				],
+			}),
+		});
+		const qc = renderDashboard();
+		await userEvent.click(await screen.findByRole("button", { name: "查看问题 1" }));
+		up = false;
+		vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1000);
+		await qc.invalidateQueries({ queryKey: ["health"], exact: true });
+		expect(
+			await within(screen.getByRole("dialog")).findByText(i18n.t("problems.failed")),
+		).toBeTruthy();
+		up = true;
+		await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "重试" }));
+		expect(await within(screen.getByRole("dialog")).findByText("服务恢复后的问题")).toBeTruthy();
 	});
 });
 
@@ -160,7 +569,7 @@ describe("首页直播读数的未知态", () => {
 			sub.overrides = { features: { liveStart: false, liveEnd: false } };
 			mockApi({
 				loggedIn: false,
-				details: async () => ({ phase: "running", modules: ALL_ON }),
+				details: async () => runningHealth({ modules: ALL_ON }),
 				live:
 					input === "live"
 						? async () => {
@@ -201,7 +610,7 @@ describe("首页直播读数的未知态", () => {
 	it("设置成功回应缺少默认开关时仍未知,不静默改用出厂值", async () => {
 		mockApi({
 			loggedIn: false,
-			details: async () => ({ phase: "running", modules: ALL_ON }),
+			details: async () => runningHealth({ modules: ALL_ON }),
 			subscriptions: async () => [
 				makeEmptySubscription({ sourceKey: "acme.test", externalId: "one" }),
 			],
@@ -226,7 +635,7 @@ describe("首页直播读数的未知态", () => {
 		async (status) => {
 			mockApi({
 				loggedIn: false,
-				details: async () => ({ phase: "running", modules: ALL_ON }),
+				details: async () => runningHealth({ modules: ALL_ON }),
 				settings: () =>
 					status === "pending"
 						? new Promise<unknown>(() => {})
@@ -260,7 +669,7 @@ describe("首页直播读数的未知态", () => {
 			const sub = makeEmptySubscription({ sourceKey: "acme.test", externalId: "closed" });
 			mockApi({
 				loggedIn: false,
-				details: async () => ({ phase: "running", modules: ALL_ON }),
+				details: async () => runningHealth({ modules: ALL_ON }),
 				subscriptions: async () => {
 					if (input === "subscriptions" && failed)
 						throw new Error("only-test-subscriptions-failure");
@@ -312,7 +721,7 @@ describe("首页直播读数的未知态", () => {
 			sub.overrides = { features: { liveStart: false, liveEnd: false } };
 			mockApi({
 				loggedIn: false,
-				details: async () => ({ phase: "running", modules: ALL_ON }),
+				details: async () => runningHealth({ modules: ALL_ON }),
 				subscriptions:
 					input === "subscriptions"
 						? () => new Promise<Subscription[]>(() => {})
@@ -346,7 +755,7 @@ describe("首页直播读数的未知态", () => {
 		};
 		mockApi({
 			loggedIn: false,
-			details: async () => ({ phase: "running", modules: ALL_ON }),
+			details: async () => runningHealth({ modules: ALL_ON }),
 			live: async () => {
 				if (failed) throw new Error("only-test-live-failure");
 				return [entry];
@@ -376,7 +785,7 @@ describe("首页直播读数的未知态", () => {
 	it("在播请求仍在等待时明确读取中,直播卡与顶部人数都不冒充 0", async () => {
 		mockApi({
 			loggedIn: false,
-			details: async () => ({ phase: "running", modules: ALL_ON }),
+			details: async () => runningHealth({ modules: ALL_ON }),
 			live: () => new Promise<LiveListeningEntry[]>(() => {}),
 		});
 		const qc = renderDashboard();

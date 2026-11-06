@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { InvalidSettingsPanel } from "../components/invalid-settings-note";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
+import { integrationKeyFromHash } from "../config/system-paths";
 import { ACCOUNTS_QUERY_KEY } from "../hooks/useAccounts";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { INVALID_SETTINGS_QUERY_PREFIX } from "../hooks/useInvalidSettings";
@@ -153,14 +154,6 @@ export default function System() {
 	const [section, setSection] = useState<SystemSectionId>(
 		() => HASH_SECTION[location.hash] ?? "account",
 	);
-	// 带 hash 进来时先落到对应那一格。`location.key` 一起听:已经停在系统页的人
-	// 再点一次「去更新」,hash 没变但那是一次新的导航,也该回到维护格 —— 同
-	// update-section 里那条滚动 effect 的理由。
-	// biome-ignore lint/correctness/useExhaustiveDependencies: location.key 是刻意的重触发条件
-	useEffect(() => {
-		const wanted = HASH_SECTION[location.hash];
-		if (wanted) setSection(wanted);
-	}, [location.hash, location.key]);
 
 	const globalsQuery = useSettings();
 	const { locale, voice } = useTextOptions();
@@ -169,6 +162,21 @@ export default function System() {
 		queryFn: () => api.get<IntegrationSettingsDescriptorsResponse>("/api/settings/integrations"),
 	});
 	const descriptors = descriptorsQuery.data?.integrations ?? [];
+	const integrationKey = integrationKeyFromHash(location.hash);
+	const integrationSection =
+		integrationKey === undefined
+			? undefined
+			: descriptors.some((entry) => entry.key === integrationKey)
+				? `integration:${integrationKey}`
+				: "account";
+	// 集成元数据异步到齐后再定位；未知或损坏的深链保留可用默认页。
+	// 相同hash的新导航仍需定位：用户可能已手动切到别的侧栏项。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: location.key 是刻意的重触发条件
+	useEffect(() => {
+		const wanted = HASH_SECTION[location.hash] ?? integrationSection;
+		if (wanted) setSection(wanted);
+	}, [location.hash, location.key, integrationSection]);
+
 	const selectedIntegration = descriptors.find((entry) => `integration:${entry.key}` === section);
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
