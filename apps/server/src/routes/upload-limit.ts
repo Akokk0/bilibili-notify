@@ -22,7 +22,7 @@ import { respondFailure } from "./respond-failure.js";
  * multipart 信封的余量:boundary、part 头、文件名。几百字节足够,给到 64KB 是为了
  * 长中文文件名也不会被这道闸误伤 —— 误伤的话主人收到的会是「过大」,而文件其实合规。
  */
-const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
+export const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
 
 /**
  * 造一道上传闸。`maxBytes` 传那条路由自己的资产上限,文案与后面那道校验对齐,

@@ -1,10 +1,11 @@
+import type { Result } from "@bilibili-notify/internal";
 import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 女仆技能(Agent Skill)的 wire 契约 —— `apps/server` ↔ `apps/web` 共用。
  *
  * 一条技能 = 一份 `SKILL.md`(YAML frontmatter + Markdown 正文),存在
  * `<dataDir>/maid-skills/<name>/SKILL.md`。形状照 Claude Code 的 Agent Skill
- * 标准,但**不跑脚本、不带附件**(ADR-0001)。
+ * 标准,但**不跑脚本、不带附件**(ADR-0003)。
  *
  * 尺子(名字正则 / 长度上限)放在这里而不是各写一份:服务端拒收与网页端提示若
  * 各判各的,迟早会出现「网页说没问题、存进去被拒」这种主人无从下手的状态。
@@ -26,6 +27,8 @@ import { packageText } from "@bilibili-notify/internal/texts";
 export const MAID_SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export const MAID_SKILL_LIMITS = {
+	/** 单份SKILL.md的字节上限，手放文件与HTTP导入共用。 */
+	fileBytes: 256 * 1024,
 	/** 名字长度 —— 目录名与斜杠命令都要打。 */
 	nameChars: 32,
 	/**
@@ -120,6 +123,9 @@ export interface MaidSkillsListResponse {
 
 /** 新建 / 修改的请求体。`builtin` 与 `aliases` 不收 —— 那是服务端的判定,不是主人能声明的。 */
 export type MaidSkillWriteRequest = Omit<MaidSkillDTO, "builtin" | "aliases">;
+
+/** 文件只解析预览，确认后沿用新建接口保存。 */
+export type MaidSkillImportPreviewResponse = Result<{ skill: MaidSkillWriteRequest }>;
 
 /**
  * 「读取一条技能」那把工具的名字 —— 服务端建工具、web 端画调用痕迹胶囊,

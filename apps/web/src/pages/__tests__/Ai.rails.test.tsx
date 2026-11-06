@@ -73,6 +73,20 @@ function mount(g: Globals) {
 	);
 }
 
+it("技能管理新页打开资源库，AI页保留当前设置", async () => {
+	const open = vi.spyOn(window, "open").mockReturnValue(null);
+	try {
+		mount(globalsWith(() => {}));
+		fireEvent.click(await screen.findByRole("button", { name: "管理技能" }));
+		expect(open).toHaveBeenCalledWith("/library?category=skills", "_blank", "noopener,noreferrer");
+		expect(screen.queryByRole("tab", { name: /女仆技能/ })).toBeNull();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(screen.getByRole("tab", { name: /全局配置/ })).toBeTruthy();
+	} finally {
+		open.mockRestore();
+	}
+});
+
 /**
  * 左栏里挂着小圆点的那几项的名字(去重)。
  *

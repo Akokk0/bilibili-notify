@@ -34,7 +34,7 @@
 
 ## 新增资源管理组
 
-2026-11-06主人认可素材库扩为资源库，先备局部稿再逐类接入。决策见[ADR-0038](../adr/0038-resource-library.md)，R0与R1–R6见[resource-library-plan.md](./resource-library-plan.md)。当前R0准备、R1分类骨架与R2皮肤管理迁入已完成，生产功能2/6；下一片R3迁入女仆技能管理。不混入已完成7片清理，也不表示解除其他页面的大改UI限制。
+2026-11-06主人认可素材库扩为资源库，先备局部稿再逐类接入。决策见[ADR-0038](../adr/0038-resource-library.md)，R0与R1–R6见[resource-library-plan.md](./resource-library-plan.md)。当前R0准备与R1–R3已完成，生产功能3/6；下一片R4迁入性格管理。不混入已完成7片清理，也不表示解除其他页面的大改UI限制。
 
 ## 后续清理队列（待按模块拆片）
 

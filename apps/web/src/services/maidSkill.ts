@@ -1,13 +1,14 @@
 /**
  * 女仆技能库的 REST 门面 + query key。
  *
- * 一份清单两处用:聊天的斜杠菜单(只读)与 AI 页的技能编辑器(增删改)。共用
+ * 一份清单两处用:聊天的斜杠菜单(只读)与资源库技能编辑器(增删改)。共用
  * 同一个 key,编辑器改完一条,输入框里的菜单立刻跟着变 —— 各拉各的话,主人会
  * 遇到「改完名字,斜杠菜单里还是旧的」这种要刷新才好的怪事。
  */
 
 import type {
 	MaidSkillDTO,
+	MaidSkillImportPreviewResponse,
 	MaidSkillsListResponse,
 	MaidSkillWriteRequest,
 } from "@bilibili-notify/contract";
@@ -31,6 +32,16 @@ export function updateMaidSkill(name: string, skill: MaidSkillWriteRequest): Pro
 
 export function deleteMaidSkill(name: string): Promise<{ ok: true }> {
 	return api.delete<{ ok: true }>(`/api/ai/skills/${encodeURIComponent(name)}`);
+}
+
+export function previewMaidSkill(file: File): Promise<MaidSkillImportPreviewResponse> {
+	const form = new FormData();
+	form.set("file", file);
+	return api.upload<MaidSkillImportPreviewResponse>("/api/ai/skills/import-preview", form);
+}
+
+export function exportMaidSkill(name: string): Promise<Blob> {
+	return api.blob(`/api/ai/skills/${encodeURIComponent(name)}/export`);
 }
 
 /** 只给聊天菜单用的那份 —— 拉不到就当没有技能,别让斜杠菜单把整个聊天拖垮。 */

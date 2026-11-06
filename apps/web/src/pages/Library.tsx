@@ -4,6 +4,7 @@ import { HeroStrip } from "../components/hero-strip";
 import { LibraryBrowser } from "../components/library/library-browser";
 import type { ResourceCategory } from "../components/library/library-data";
 import { useT } from "../i18n";
+import { MaidSkills } from "./ai/MaidSkills";
 import { CardSkinSection } from "./cards/CardSkinSection";
 import { SkinSection } from "./skins/SkinSection";
 export default function Library() {
@@ -11,7 +12,10 @@ export default function Library() {
 	const [params, setParams] = useSearchParams();
 	const requested = params.get("category");
 	const kind: ResourceCategory =
-		requested === "fonts" || requested === "dashboard-skins" || requested === "card-skins"
+		requested === "fonts" ||
+		requested === "dashboard-skins" ||
+		requested === "card-skins" ||
+		requested === "skills"
 			? requested
 			: "images";
 	const categories = [
@@ -26,6 +30,12 @@ export default function Library() {
 			label: t("library.fontsTitle"),
 			desc: t("library.fontsDescription"),
 			icon: <Icon.list size={20} />,
+		},
+		{
+			id: "skills",
+			label: t("library.skillsTitle"),
+			desc: t("library.skillsDescription"),
+			icon: <Icon.sparkle size={20} />,
 		},
 		{
 			id: "dashboard-skins",
@@ -67,7 +77,9 @@ export default function Library() {
 						});
 					}}
 				/>
-				{kind === "dashboard-skins" ? (
+				{kind === "skills" ? (
+					<MaidSkills />
+				) : kind === "dashboard-skins" ? (
 					<SkinSection mode="manage" />
 				) : kind === "card-skins" ? (
 					<CardSkinSection mode="manage" />

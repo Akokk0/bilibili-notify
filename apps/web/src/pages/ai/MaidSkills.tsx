@@ -1,7 +1,7 @@
 /**
- * 「女仆技能」Tab —— 一条技能 = 一份 `SKILL.md`,主人在这儿写。
+ * 资源库中的女仆技能编辑器 —— 一条技能 = 一份 `SKILL.md`。
  *
- * 与隔壁三个 Tab 的一处**刻意不同**:这里不参与整页那条保存栏。技能不是配置,
+ * 与AI配置页不同:这里不参与整页那条保存栏。技能不是配置,
  * 它是自己的一份 REST 资源(`/api/ai/skills`),每条各存各的。混进配置草稿的话,
  * 保存栏会开始声称一堆它根本管不着的改动。所以每条底下自带「保存」。
  *
@@ -12,25 +12,30 @@
 import type { MaidSkillDTO, MaidSkillWriteRequest } from "@bilibili-notify/contract";
 import { complainAboutSkill, MAID_SKILL_LIMITS } from "@bilibili-notify/contract";
 import {
+	AddFileButton,
 	Btn,
 	CheckRow,
 	ErrorNote,
 	GlassBox,
+	HintNote,
 	Icon,
 	LoadingBlock,
+	ModalShell,
 	Pill,
 	SectionNav,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { TArea, TInput } from "../../components/forms";
 import { useT } from "../../i18n";
 import {
 	createMaidSkill,
 	deleteMaidSkill,
+	exportMaidSkill,
 	listMaidSkills,
 	maidSkillsQueryKey,
+	previewMaidSkill,
 	updateMaidSkill,
 } from "../../services/maidSkill";
 
@@ -44,6 +49,14 @@ const BLANK: MaidSkillWriteRequest = {
 
 /** 左栏那颗「新建」的哨兵 id —— 与任何合法技能名都撞不上(名字里没有斜杠)。 */
 const NEW_ID = "/new";
+
+function copyName(name: string, list: readonly MaidSkillDTO[]): string {
+	for (let n = 1; ; n++) {
+		const suffix = n === 1 ? "-copy" : `-copy-${n}`;
+		const candidate = `${name.slice(0, MAID_SKILL_LIMITS.nameChars - suffix.length).replace(/-+$/, "")}${suffix}`;
+		if (!list.some((skill) => skill.name === candidate)) return candidate;
+	}
+}
 
 function toDraft(s: MaidSkillDTO): MaidSkillWriteRequest {
 	const draft: MaidSkillWriteRequest = {
@@ -102,6 +115,38 @@ export function MaidSkills() {
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [draft, setDraft] = useState<MaidSkillWriteRequest>(BLANK);
 	const [err, setErr] = useState<string | null>(null);
+	const [importDraft, setImportDraft] = useState<MaidSkillWriteRequest | null>(null);
+	const [importError, setImportError] = useState<string | null>(null);
+	const [importCopied, setImportCopied] = useState(false);
+	const [importedName, setImportedName] = useState<string | null>(null);
+	const importBody = useRef<HTMLDivElement>(null);
+	const importOpen = importDraft !== null;
+	useEffect(() => {
+		if (!importOpen) return;
+		const previous = document.activeElement as HTMLElement | null;
+		const body = importBody.current;
+		body?.querySelector<HTMLInputElement>("input")?.focus();
+		const trap = (event: KeyboardEvent) => {
+			if (event.key !== "Tab") return;
+			const controls = body?.querySelectorAll<HTMLElement>(
+				"input:not([disabled]),button:not([disabled])",
+			);
+			const first = controls?.[0],
+				last = controls?.[controls.length - 1];
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault();
+				last?.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault();
+				first?.focus();
+			}
+		};
+		body?.addEventListener("keydown", trap);
+		return () => {
+			body?.removeEventListener("keydown", trap);
+			previous?.focus();
+		};
+	}, [importOpen]);
 
 	// 首次拉到清单时落在第一条上 —— 右侧空着会让人以为这个 Tab 坏了。
 	useEffect(() => {
@@ -119,6 +164,45 @@ export function MaidSkills() {
 	const readOnly = current?.builtin === true;
 
 	const invalidate = () => qc.invalidateQueries({ queryKey: maidSkillsQueryKey });
+	const preview = useMutation({
+		mutationFn: (file: File) => previewMaidSkill(file),
+		onSuccess: (result) => {
+			if (!result.ok) {
+				setErr(result.message);
+				return;
+			}
+			const copied = list.some((skill) => skill.name === result.skill.name);
+			setImportCopied(copied);
+			setImportError(null);
+			setImportDraft({
+				...result.skill,
+				name: copied ? copyName(result.skill.name, list) : result.skill.name,
+			});
+		},
+		onError: (e: Error) => setErr(e.message),
+	});
+	const importSkill = useMutation({
+		mutationFn: (skill: MaidSkillWriteRequest) => createMaidSkill(skill),
+		onSuccess: (_result, skill) => {
+			setImportedName(skill.name);
+			setImportDraft(null);
+			setImportError(null);
+			void invalidate();
+		},
+		onError: (e: Error) => setImportError(e.message),
+	});
+	const download = useMutation({
+		mutationFn: (name: string) => exportMaidSkill(name),
+		onSuccess: (blob, name) => {
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = `${name}.SKILL.md`;
+			link.click();
+			setTimeout(() => URL.revokeObjectURL(url), 0);
+		},
+		onError: (e: Error) => setErr(e.message),
+	});
 
 	const save = useMutation({
 		// 改名是「换目录」,服务端认的是**路径上那个旧名字** —— 从 draft.name 取会
@@ -166,10 +250,45 @@ export function MaidSkills() {
 		setDraft(arr.length > 0 ? { ...rest, allowedTools: arr } : rest);
 	};
 
+	const copyCurrent = () => {
+		if (!current) return;
+		setErr(null);
+		setActiveId(NEW_ID);
+		setDraft({ ...toDraft(current), name: copyName(current.name, list) });
+	};
+
 	if (query.isLoading) return <LoadingBlock label={tx("maidSkills.loading")} />;
+	if (query.isError)
+		return (
+			<ErrorNote>
+				{tx("maidSkills.readFailed")}{" "}
+				<Btn onClick={() => void query.refetch()}>{tx("library.retry")}</Btn>
+			</ErrorNote>
+		);
 
 	return (
-		<div className="grid gap-4 xl:grid-bn-rail">
+		<div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-bn-rail">
+			<div className="col-span-full flex flex-wrap items-center justify-between gap-3">
+				<span className="text-bn-xs text-bn-text-tertiary">
+					{tx("maidSkills.fileHint", { kb: MAID_SKILL_LIMITS.fileBytes / 1024 })}
+				</span>
+				<AddFileButton
+					accept=".md,text/markdown,text/plain"
+					uploading={preview.isPending}
+					onFile={(file) => {
+						if (!file || preview.isPending) return;
+						setErr(null);
+						if (file.size > MAID_SKILL_LIMITS.fileBytes) {
+							setErr(tx("maidSkills.fileTooLarge", { kb: MAID_SKILL_LIMITS.fileBytes / 1024 }));
+							return;
+						}
+						preview.mutate(file);
+					}}
+					className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-bn-sm"
+				>
+					{tx("maidSkills.import")}
+				</AddFileButton>
+			</div>
 			<SectionNav
 				heading={tx("maidSkills.heading")}
 				items={[
@@ -209,6 +328,9 @@ export function MaidSkills() {
 			/>
 
 			<div className="flex min-w-0 flex-col gap-4">
+				{importedName ? (
+					<HintNote>{tx("maidSkills.imported", { name: importedName })}</HintNote>
+				) : null}
 				{problems.length > 0 ? (
 					<WarnNote className="leading-relaxed">
 						{tx("maidSkills.problems", { count: problems.length })}
@@ -224,6 +346,24 @@ export function MaidSkills() {
 					badge={readOnly ? "builtin" : "skill"}
 				>
 					<div className="flex flex-col gap-3.5 p-1">
+						{current ? (
+							<div className="flex flex-wrap justify-end gap-2">
+								<Btn size="sm" variant="outline" onClick={copyCurrent}>
+									{readOnly ? tx("maidSkills.copyEdit") : tx("maidSkills.copy")}
+								</Btn>
+								<Btn
+									size="sm"
+									variant="outline"
+									disabled={download.isPending}
+									onClick={() => {
+										setErr(null);
+										download.mutate(current.name);
+									}}
+								>
+									{tx("maidSkills.export")}
+								</Btn>
+							</div>
+						) : null}
 						<LabeledField
 							label={tx("maidSkills.nameLabel")}
 							hint={tx("maidSkills.nameHint", {
@@ -338,6 +478,67 @@ export function MaidSkills() {
 					</div>
 				</GlassBox>
 			</div>
+			{importDraft ? (
+				<ModalShell
+					title={tx("maidSkills.importTitle")}
+					description={tx("maidSkills.importHint")}
+					onCancel={() => {
+						if (!importSkill.isPending) setImportDraft(null);
+					}}
+					width={620}
+				>
+					<div ref={importBody} className="space-y-4">
+						{importCopied ? <WarnNote>{tx("maidSkills.importCopyHint")}</WarnNote> : null}
+						<LabeledField label={tx("maidSkills.importName")}>
+							{(aria) => (
+								<TInput
+									ariaLabel={aria}
+									mono
+									value={importDraft.name}
+									onChange={(name) => setImportDraft({ ...importDraft, name })}
+								/>
+							)}
+						</LabeledField>
+						<p className="text-bn-sm text-bn-text-secondary">{importDraft.description}</p>
+						<pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-bn-sm bg-bn-surface-muted p-3 text-bn-sm text-bn-text-secondary">
+							{importDraft.body}
+						</pre>
+						<p className="break-words text-bn-xs text-bn-text-tertiary">
+							{tx("maidSkills.importTools", {
+								tools: importDraft.allowedTools?.join(", ") || tx("maidSkills.toolsUnlimited"),
+							})}
+						</p>
+						{importDraft.disableModelInvocation ? (
+							<HintNote>{tx("maidSkills.manualOnly")}</HintNote>
+						) : null}
+						{importError ? <ErrorNote>{importError}</ErrorNote> : null}
+						<div className="flex justify-end gap-2">
+							<Btn
+								variant="outline"
+								disabled={importSkill.isPending}
+								onClick={() => setImportDraft(null)}
+							>
+								{tx("library.cancel")}
+							</Btn>
+							<Btn
+								variant="primary"
+								disabled={importSkill.isPending}
+								onClick={() => {
+									const complaint = localComplaint(importDraft);
+									if (complaint) {
+										setImportError(complaint);
+										return;
+									}
+									setImportError(null);
+									importSkill.mutate(importDraft);
+								}}
+							>
+								{tx("maidSkills.confirmImport")}
+							</Btn>
+						</div>
+					</div>
+				</ModalShell>
+			) : null}
 		</div>
 	);
 }

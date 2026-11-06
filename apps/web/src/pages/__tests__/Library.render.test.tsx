@@ -12,6 +12,7 @@ afterEach(() => {
 	cleanup();
 	for (const client of clients.splice(0)) client.clear();
 	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 });
 
 function LocationControls() {
@@ -37,6 +38,21 @@ function mount(path: string, request?: (path: string) => Response | undefined) {
 		vi.fn(async (input: string | URL | Request) => {
 			const response = request?.(String(input));
 			if (response) return response;
+			if (String(input) === "/api/ai/skills")
+				return Response.json({
+					list: [
+						{
+							name: "weekly-report",
+							description: "评选本周鸽王",
+							body: "先列出订阅。",
+							builtin: true,
+							disableModelInvocation: false,
+						},
+					],
+					problems: [],
+					tools: [],
+					toolLabels: {},
+				});
 			if (String(input) === "/api/cards/skins")
 				return Response.json({
 					skins: [
@@ -125,7 +141,46 @@ it("切换分类更新可分享地址，保留其他参数并支持后退", asyn
 });
 
 it("未知分类仍可浏览图片，不展示未接入的资源管理", async () => {
-	mount("/library?category=skills");
+	mount("/library?category=unknown");
 	expect(await screen.findByText("还没有图片")).toBeTruthy();
-	expect(screen.queryByRole("button", { name: /女仆技能/ })).toBeNull();
+	expect(screen.queryByRole("button", { name: /女仆性格/ })).toBeNull();
+});
+
+it("技能分类链接展示原技能编辑器，内置技能保持只读", async () => {
+	mount("/library?category=skills");
+	const body = await screen.findByRole("textbox", { name: "正文 · 做事的步骤" });
+	expect((body as HTMLTextAreaElement).value).toBe("先列出订阅。");
+	expect((body as HTMLTextAreaElement).disabled).toBe(true);
+});
+
+it("技能导出通过鉴权读取文件，以SKILL.md名称下载，不修改技能", async () => {
+	const created = vi.fn(() => "blob:skill-export"),
+		revoked = vi.fn();
+	vi.stubGlobal(
+		"URL",
+		class extends URL {
+			static createObjectURL = created;
+			static revokeObjectURL = revoked;
+		},
+	);
+	const clicks: Array<{ href: string; name: string }> = [];
+	vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+		this: HTMLAnchorElement,
+	) {
+		clicks.push({ href: this.href, name: this.download });
+	});
+	mount("/library?category=skills", (path) =>
+		path === "/api/ai/skills/weekly-report/export"
+			? new Response("---\nname: weekly-report\n---\n", {
+					headers: { "content-type": "text/markdown" },
+				})
+			: undefined,
+	);
+	await screen.findByRole("textbox", { name: "正文 · 做事的步骤" });
+	await userEvent.click(screen.getByRole("button", { name: "导出 SKILL.md" }));
+	expect(clicks).toEqual([{ href: "blob:skill-export", name: "weekly-report.SKILL.md" }]);
+	const request = vi
+		.mocked(fetch)
+		.mock.calls.find(([path]) => String(path).endsWith("/weekly-report/export"));
+	expect(request?.[1]?.credentials).toBe("include");
 });

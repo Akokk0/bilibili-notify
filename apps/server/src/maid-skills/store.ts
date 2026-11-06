@@ -13,7 +13,14 @@ import { t as serverText } from "../i18n/index.js";
 
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { fail, type MaidSkill, ok, type Result } from "@bilibili-notify/internal";
+import { MAID_SKILL_LIMITS } from "@bilibili-notify/contract";
+import {
+	createSerialQueue,
+	fail,
+	type MaidSkill,
+	ok,
+	type Result,
+} from "@bilibili-notify/internal";
 import { atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
 import { BUILTIN_SKILL_NAMES, BUILTIN_SKILLS } from "./builtin.js";
 import {
@@ -49,7 +56,7 @@ function entryOfBuiltin({ aliases, ...skill }: (typeof BUILTIN_SKILLS)[number]):
 }
 
 /** 单份 SKILL.md 的大小上限 —— 手放的目录里可能是任何东西,别把一整个视频读进内存。 */
-const MAX_FILE_BYTES = 256 * 1024;
+const MAX_FILE_BYTES = MAID_SKILL_LIMITS.fileBytes;
 
 export class MaidSkillStore {
 	private readonly dir: string;
@@ -57,6 +64,8 @@ export class MaidSkillStore {
 	private user = new Map<string, MaidSkill>();
 	private issues: SkillProblem[] = [];
 	private ready?: Promise<void>;
+	/** 占名检查与写盘属于同一次写操作，不能被另一条创建或改名插入。 */
+	private readonly writes = createSerialQueue();
 	private readonly reservedNames: () => Iterable<string>;
 
 	constructor(opts: { dir: string; reservedNames?: () => Iterable<string> }) {
@@ -156,44 +165,50 @@ export class MaidSkillStore {
 
 	/** 预期拒绝回标准结果;底层读写异常交给宿主统一出错边界。 */
 	async create(skill: MaidSkill): Promise<Result> {
-		const clean = this.validate(skill);
-		if (!clean.ok) return clean;
-		const free = await this.checkFree(clean.skill.name);
-		if (!free.ok) return free;
-		await this.writeSkill(clean.skill);
-		this.user.set(clean.skill.name, clean.skill);
-		return ok();
+		return this.writes.run("skills", async () => {
+			const clean = this.validate(skill);
+			if (!clean.ok) return clean;
+			const free = await this.checkFree(clean.skill.name);
+			if (!free.ok) return free;
+			await this.writeSkill(clean.skill);
+			this.user.set(clean.skill.name, clean.skill);
+			return ok();
+		});
 	}
 
 	async update(name: string, next: MaidSkill): Promise<Result> {
-		const editable = this.checkEditable(name);
-		if (!editable.ok) return editable;
-		if (!this.user.has(name))
-			return fail("not_found", serverText("service.maid-skills.store.text.6", { value0: name }));
-		const clean = this.validate(next);
-		if (!clean.ok) return clean;
-		if (clean.skill.name !== name) {
-			const free = await this.checkFree(clean.skill.name);
-			if (!free.ok) return free;
-		}
-		await this.writeSkill(clean.skill);
-		if (clean.skill.name !== name) {
-			// 改名 = 换目录。旧的不留在盘上,否则下次读盘会冒出一条僵尸。
-			await rm(join(this.dir, name), { recursive: true, force: true });
-			this.user.delete(name);
-		}
-		this.user.set(clean.skill.name, clean.skill);
-		return ok();
+		return this.writes.run("skills", async () => {
+			const editable = this.checkEditable(name);
+			if (!editable.ok) return editable;
+			if (!this.user.has(name))
+				return fail("not_found", serverText("service.maid-skills.store.text.6", { value0: name }));
+			const clean = this.validate(next);
+			if (!clean.ok) return clean;
+			if (clean.skill.name !== name) {
+				const free = await this.checkFree(clean.skill.name);
+				if (!free.ok) return free;
+			}
+			await this.writeSkill(clean.skill);
+			if (clean.skill.name !== name) {
+				// 改名 = 换目录。旧的不留在盘上,否则下次读盘会冒出一条僵尸。
+				await rm(join(this.dir, name), { recursive: true, force: true });
+				this.user.delete(name);
+			}
+			this.user.set(clean.skill.name, clean.skill);
+			return ok();
+		});
 	}
 
 	async remove(name: string): Promise<Result> {
-		const editable = this.checkEditable(name);
-		if (!editable.ok) return editable;
-		if (!this.user.has(name))
-			return fail("not_found", serverText("service.maid-skills.store.text.7", { value0: name }));
-		await rm(join(this.dir, name), { recursive: true, force: true });
-		this.user.delete(name);
-		return ok();
+		return this.writes.run("skills", async () => {
+			const editable = this.checkEditable(name);
+			if (!editable.ok) return editable;
+			if (!this.user.has(name))
+				return fail("not_found", serverText("service.maid-skills.store.text.7", { value0: name }));
+			await rm(join(this.dir, name), { recursive: true, force: true });
+			this.user.delete(name);
+			return ok();
+		});
 	}
 
 	/**

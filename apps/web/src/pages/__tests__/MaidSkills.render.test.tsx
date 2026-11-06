@@ -12,7 +12,8 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { MaidSkills } from "../ai/MaidSkills";
 
@@ -33,6 +34,8 @@ const M = vi.hoisted(() => ({
 	create: vi.fn(async (_skill: Record<string, unknown>) => ({ ok: true as const })),
 	update: vi.fn(async (_name: string, _skill: Record<string, unknown>) => ({ ok: true as const })),
 	remove: vi.fn(async (_name: string) => ({ ok: true as const })),
+	preview: vi.fn(),
+	export: vi.fn(),
 }));
 
 vi.mock("../../services/maidSkill", () => ({
@@ -46,6 +49,8 @@ vi.mock("../../services/maidSkill", () => ({
 	createMaidSkill: M.create,
 	updateMaidSkill: M.update,
 	deleteMaidSkill: M.remove,
+	previewMaidSkill: M.preview,
+	exportMaidSkill: M.export,
 }));
 
 const skill = (over: Record<string, unknown> = {}) => ({
@@ -84,9 +89,110 @@ beforeEach(() => {
 	M.create.mockClear();
 	M.update.mockClear();
 	M.remove.mockClear();
+	M.preview.mockReset();
+	M.export.mockReset();
 });
 
 afterEach(cleanup);
+
+it("导入先预览，默认保留同名原件；确认冲突后可改名重试，原编辑草稿保留", async () => {
+	M.preview.mockResolvedValue({
+		ok: true,
+		skill: {
+			name: "my-skill",
+			description: "导入的技能",
+			body: "导入正文",
+			allowedTools: ["web_search"],
+			disableModelInvocation: true,
+		},
+	});
+	M.create.mockRejectedValueOnce(new Error("这个名字已被占用"));
+	mount();
+	await screen.findByDisplayValue("weekly-report");
+	const file = new File(["skill"], "SKILL.md", { type: "text/markdown" });
+	fireEvent.change(screen.getByLabelText("导入 SKILL.md"), { target: { files: [file] } });
+	const dialog = await screen.findByRole("dialog");
+	expect(M.preview).toHaveBeenCalledWith(file);
+	expect(M.create).not.toHaveBeenCalled();
+	const name = within(dialog).getByRole("textbox", { name: "导入后名称" }) as HTMLInputElement;
+	expect(name.value).toBe("my-skill-copy");
+	expect(within(dialog).getByText("导入正文")).toBeTruthy();
+	fireEvent.change(name, { target: { value: "my-skill" } });
+	fireEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
+	expect(await within(dialog).findByText("这个名字已被占用")).toBeTruthy();
+	expect(M.update).not.toHaveBeenCalled();
+	fireEvent.change(name, { target: { value: "my-skill-copy" } });
+	fireEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
+	await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	expect(M.create).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			name: "my-skill-copy",
+			body: "导入正文",
+			allowedTools: ["web_search"],
+			disableModelInvocation: true,
+		}),
+	);
+	expect(nameBox().value).toBe("weekly-report");
+	expect(bodyBox().value).toBe("先列订阅");
+});
+
+it("错误或超限文件不修改库，取消预览保留当前编辑草稿", async () => {
+	M.preview.mockRejectedValueOnce(new Error("文件没有frontmatter"));
+	mount();
+	await screen.findByDisplayValue("weekly-report");
+	const input = screen.getByLabelText("导入 SKILL.md");
+	fireEvent.change(input, { target: { files: [new File(["bad"], "SKILL.md")] } });
+	expect(await screen.findByText(/文件没有frontmatter/)).toBeTruthy();
+	M.preview.mockClear();
+	fireEvent.change(input, { target: { files: [new File(["x".repeat(262145)], "SKILL.md")] } });
+	expect(await screen.findByText(/技能文件超过 256 KB/)).toBeTruthy();
+	expect(M.preview).not.toHaveBeenCalled();
+	M.preview.mockResolvedValue({
+		ok: true,
+		skill: {
+			name: "import-test",
+			description: "导入",
+			body: "正文",
+			disableModelInvocation: false,
+		},
+	});
+	fireEvent.change(input, { target: { files: [new File(["skill"], "SKILL.md")] } });
+	const dialog = await screen.findByRole("dialog");
+	fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(M.create).not.toHaveBeenCalled();
+	expect(bodyBox().value).toBe("先列订阅");
+});
+
+it("导入预览的键盘焦点留在弹窗中，Escape取消不改当前技能", async () => {
+	M.preview.mockResolvedValue({
+		ok: true,
+		skill: {
+			name: "import-test",
+			description: "导入",
+			body: "正文",
+			disableModelInvocation: false,
+		},
+	});
+	mount();
+	await screen.findByDisplayValue("weekly-report");
+	fireEvent.change(screen.getByLabelText("导入 SKILL.md"), {
+		target: { files: [new File(["skill"], "SKILL.md")] },
+	});
+	const dialog = await screen.findByRole("dialog");
+	await waitFor(() =>
+		expect(document.activeElement).toBe(
+			within(dialog).getByRole("textbox", { name: "导入后名称" }),
+		),
+	);
+	await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+	expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "确认导入" }));
+	await userEvent.keyboard("{Tab}");
+	expect(document.activeElement).toBe(within(dialog).getByRole("textbox", { name: "导入后名称" }));
+	await userEvent.keyboard("{Escape}");
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(M.create).not.toHaveBeenCalled();
+});
 
 describe("三个编辑框的无障碍名", () => {
 	it("按可见标题就能精确取到 —— 不是「标题+整段提示」的拼接", async () => {
@@ -108,6 +214,21 @@ describe("三个编辑框的无障碍名", () => {
 });
 
 describe("内置技能", () => {
+	it("复制并编辑只建立可修改草稿，确认保存前不改库", async () => {
+		mount();
+		fireEvent.click(await screen.findByRole("button", { name: "复制并编辑" }));
+		expect(nameBox().disabled).toBe(false);
+		expect(nameBox().value).toBe("weekly-report-copy");
+		expect(bodyBox().value).toBe("先列订阅");
+		expect(M.create).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await waitFor(() =>
+			expect(M.create).toHaveBeenCalledWith(
+				expect.objectContaining({ name: "weekly-report-copy", body: "先列订阅" }),
+			),
+		);
+		expect(M.update).not.toHaveBeenCalled();
+	});
 	it("摊开给主人看,但一个字都改不动、也删不掉", async () => {
 		mount();
 		await waitFor(() => expect(nameBox().value).toBe("weekly-report"));

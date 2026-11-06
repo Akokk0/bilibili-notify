@@ -51,6 +51,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Field, Picker, TArea, TInput } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
+import { ManageResourcesButton } from "../components/library/manage-resources-button";
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
 import { AI_PURPLE } from "../config/colors";
@@ -64,7 +65,6 @@ import type {
 	AISettingsDraft,
 	GlobalConfigPatch,
 } from "../types/globals";
-import { MaidSkills } from "./ai/MaidSkills";
 import {
 	addPersona,
 	addProfile,
@@ -90,9 +90,9 @@ import { personaIconKey } from "./ai/persona-icons";
 import { AiTestPanel } from "./ai/TestPanel";
 import { WritingSettings } from "./ai/WritingSettings";
 
-type TopTab = "global" | "model" | "persona" | "skills";
+type TopTab = "global" | "model" | "persona";
 
-/** 顶部四个 tab。观感与 Rules / Cards 的作用域条同源(共用 `TabBar` 原语)。 */
+/** 顶部配置tab。技能管理另走资源库，配置条仍共用`TabBar`原语。 */
 
 /**
  * 逐实例摊平桶,code 走 `ai.providers.<实例>.<字段>`(字典里有一条前缀规则
@@ -179,16 +179,12 @@ export default function Ai() {
 		{ id: "global" as const, label: tx("aiSettings.page.tabs.global"), code: "global" },
 		{ id: "model" as const, label: tx("aiSettings.page.tabs.model"), code: "provider" },
 		{ id: "persona" as const, label: tx("aiSettings.page.tabs.persona"), code: "persona" },
-		// 技能不是配置(自己的一份 REST 资源),所以它的 `code` 与整页那条保存栏无关
-		// —— 这一栏底下自带保存。摆在这儿只是因为「她是谁」与「她会做什么」该挨着。
-		{ id: "skills" as const, label: tx("aiSettings.page.tabs.skills"), code: "skills" },
 	];
 
 	const TAB_HINTS: Record<TopTab, string> = {
 		global: tx("aiSettings.page.tabs.globalHint"),
 		model: tx("aiSettings.page.tabs.modelHint"),
 		persona: tx("aiSettings.page.tabs.personaHint"),
-		skills: tx("aiSettings.page.tabs.skillsHint"),
 	};
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
@@ -434,29 +430,30 @@ export default function Ai() {
 				</div>
 			) : null}
 
-			<TabBar<TopTab>
-				items={TOP_TABS.map((t) => ({
-					...t,
-					icon:
-						t.id === "model" ? (
-							<Icon.link size={14} />
-						) : t.id === "persona" ? (
-							// 「性格」问的是**她是谁**,不是「喜不喜欢」—— 心形读作后者。
-							<Icon.user size={14} />
-						) : t.id === "skills" ? (
-							<Icon.sparkle size={14} />
-						) : (
-							<Icon.gear size={14} />
-						),
-				}))}
-				value={tab}
-				onChange={setTab}
-				hint={TAB_HINTS[tab]}
-			/>
+			<div className="flex min-w-0 flex-wrap items-start gap-3">
+				<div className="min-w-0 flex-1">
+					<TabBar<TopTab>
+						items={TOP_TABS.map((t) => ({
+							...t,
+							icon:
+								t.id === "model" ? (
+									<Icon.link size={14} />
+								) : t.id === "persona" ? (
+									// 「性格」问的是**她是谁**,不是「喜不喜欢」—— 心形读作后者。
+									<Icon.user size={14} />
+								) : (
+									<Icon.gear size={14} />
+								),
+						}))}
+						value={tab}
+						onChange={setTab}
+						hint={TAB_HINTS[tab]}
+					/>
+				</div>
+				<ManageResourcesButton category="skills" label={tx("maidSkills.manage")} />
+			</div>
 
-			{tab === "skills" ? (
-				<MaidSkills />
-			) : tab === "global" ? (
+			{tab === "global" ? (
 				<div className="flex flex-col gap-4">
 					{/* 全局实例选择 —— 与人格那条同一套语义:这里决定女仆**用**哪一份,
 					    「模型配置」那个 Tab 的左栏只决定**在编辑**哪一份。两件事曾经共用

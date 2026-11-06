@@ -20,7 +20,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { complainAboutSkill } from "@bilibili-notify/contract";
+import { complainAboutSkill, MAID_SKILL_LIMITS } from "@bilibili-notify/contract";
 import { type AiTool, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
@@ -28,6 +28,7 @@ import {
 	createAiToolProviderRegistry,
 } from "../../ai/tool-provider-registry.js";
 import { BUILTIN_SKILLS } from "../../maid-skills/builtin.js";
+import { parseSkillFile } from "../../maid-skills/parse.js";
 import { createMaidSkillReader } from "../../maid-skills/reader.js";
 import { MaidSkillStore } from "../../maid-skills/store.js";
 import { createAiSkillsRoute } from "../ai-skills.js";
@@ -96,6 +97,93 @@ const put = (name: string, body: unknown) =>
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body),
 	});
+
+const previewFile = (text: string) => {
+	const form = new FormData();
+	form.set("file", new File([text], "SKILL.md", { type: "text/markdown" }));
+	return app.request("/import-preview", { method: "POST", body: form });
+};
+
+it("导入只解析预览，确认新建后可导出为同一格式再次预览", async () => {
+	const text =
+		"---\nname: trip-note\ndescription: '旅行: 清单'\nallowed-tools:\n  - web_search\ndisable-model-invocation: true\n---\n\n先整理清单。\n\n---\n保留正文分割线。\n";
+	const preview = await previewFile(text);
+	expect(preview.status).toBe(200);
+	const data = (await preview.json()) as any;
+	expect(data).toEqual({
+		ok: true,
+		skill: {
+			name: "trip-note",
+			description: "旅行: 清单",
+			allowedTools: ["web_search"],
+			disableModelInvocation: true,
+			body: "先整理清单。\n\n---\n保留正文分割线。",
+		},
+	});
+	expect(
+		((await (await app.request("/")).json()) as any).list.some((s: any) => s.name === "trip-note"),
+	).toBe(false);
+	expect((await post(data.skill)).status).toBe(200);
+	const exported = await app.request("/trip-note/export");
+	expect(exported.status).toBe(200);
+	expect(exported.headers.get("content-type")).toContain("text/markdown");
+	expect(exported.headers.get("content-disposition")).toContain("trip-note.SKILL.md");
+	const exportedText = await exported.text();
+	expect(parseSkillFile(exportedText)).toEqual(data);
+	expect(await (await previewFile(exportedText)).json()).toEqual(data);
+});
+
+it("同名导入预览后确认仍拒绝覆盖，改用新名字可保存副本", async () => {
+	await post(sample);
+	const preview = (await (
+		await previewFile("---\nname: my-skill\ndescription: 新的用途\n---\n\n新的正文\n")
+	).json()) as any;
+	expect(preview.ok).toBe(true);
+	const conflict = await post(preview.skill);
+	expect(conflict.status).toBe(409);
+	expect(((await conflict.json()) as any).code).toBe("conflict");
+	const original = parseSkillFile(await (await app.request("/my-skill/export")).text());
+	expect(original).toEqual({ ok: true, skill: sample });
+	expect((await post({ ...preview.skill, name: "my-skill-copy" })).status).toBe(200);
+	expect(parseSkillFile(await (await app.request("/my-skill/export")).text())).toEqual(original);
+});
+
+it("内置技能导出当前可见内容，不携带只读标志或别名；原名不可导入覆盖", async () => {
+	const list = (await (await app.request("/")).json()) as any;
+	const visible = list.list.find((s: any) => s.builtin);
+	expect(visible).toBeDefined();
+	const res = await app.request(`/${visible.name}/export`);
+	expect(res.status).toBe(200);
+	const text = await res.text();
+	expect(text).not.toContain("builtin:");
+	expect(text).not.toContain("aliases:");
+	const parsed = parseSkillFile(text);
+	expect(parsed.ok && parsed.skill.body).toBe(visible.body);
+	if (!parsed.ok) throw new Error(parsed.message);
+	expect((await post(parsed.skill)).status).toBe(409);
+});
+
+it("文件缺失、格式不对、超限或导出不存在时回标准错误，未创建技能", async () => {
+	expect(
+		(await app.request("/import-preview", { method: "POST", body: new FormData() })).status,
+	).toBe(400);
+	const invalid = await previewFile("没有frontmatter");
+	expect(invalid.status).toBe(400);
+	expect(((await invalid.json()) as any).code).toBe("invalid");
+	for (const size of [MAID_SKILL_LIMITS.fileBytes + 1, MAID_SKILL_LIMITS.fileBytes + 100_000]) {
+		const large = await previewFile("x".repeat(size));
+		expect(large.status).toBe(413);
+		expect(await large.json()).toEqual({
+			code: "invalid",
+			message: "技能文件超过 256 KB，请缩小后重试。",
+		});
+	}
+	expect((await app.request("/not-here/export")).status).toBe(404);
+	expect((await app.request("/bad_name/export")).status).toBe(400);
+	expect(((await (await app.request("/")).json()) as any).list.every((s: any) => s.builtin)).toBe(
+		true,
+	);
+});
 
 /** 主人绕过界面、直接往库里手放的一份 —— 从没进过内存索引。 */
 const HAND_MADE = "---\nname: hand-made\ndescription: 手放的\n---\n\n主人亲手写的正文\n";

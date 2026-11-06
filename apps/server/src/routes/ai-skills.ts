@@ -9,14 +9,21 @@ import { t as serverText } from "../i18n/index.js";
  */
 
 import { coreToolLabelOf } from "@bilibili-notify/ai";
-import type { MaidSkillsListResponse } from "@bilibili-notify/contract";
+import {
+	isValidSkillName,
+	MAID_SKILL_LIMITS,
+	type MaidSkillsListResponse,
+} from "@bilibili-notify/contract";
 import { fail, issuesFromZod } from "@bilibili-notify/internal";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
+import { formatSkillFile, parseSkillFile } from "../maid-skills/parse.js";
 import { type MaidSkillReader, skillToolNames } from "../maid-skills/reader.js";
 import type { MaidSkillStore } from "../maid-skills/store.js";
 import { respondFailure } from "./respond-failure.js";
+import { MULTIPART_OVERHEAD_BYTES } from "./upload-limit.js";
 
 /**
  * 只做形状检查 —— 名字合不合法、长度超没超、正文空不空,全部交给
@@ -41,6 +48,42 @@ export function createAiSkillsRoute(deps: {
 }): Hono {
 	const { skillStore, skillReader, aiToolProviders } = deps;
 	const app = new Hono();
+	const tooLarge = () =>
+		fail(
+			"invalid",
+			serverText("skills.import.tooLarge", { kb: MAID_SKILL_LIMITS.fileBytes / 1024 }),
+		);
+
+	app.post(
+		"/import-preview",
+		bodyLimit({
+			maxSize: MAID_SKILL_LIMITS.fileBytes + MULTIPART_OVERHEAD_BYTES,
+			onError: (c) => respondFailure(c, tooLarge(), 413),
+		}),
+		async (c) => {
+			const body = await c.req.parseBody().catch(() => null);
+			const file = body?.file;
+			if (!(file instanceof File))
+				return respondFailure(c, fail("invalid", serverText("skills.import.missingFile")));
+			if (file.size > MAID_SKILL_LIMITS.fileBytes) return respondFailure(c, tooLarge(), 413);
+			const parsed = parseSkillFile(await file.text());
+			if (!parsed.ok) return respondFailure(c, parsed);
+			return c.json(parsed);
+		},
+	);
+
+	app.get("/:name/export", async (c) => {
+		const name = c.req.param("name");
+		if (!isValidSkillName(name))
+			return respondFailure(c, fail("invalid", serverText("skills.export.invalidName")));
+		await skillReader.reload();
+		const skill = skillReader.list().find((entry) => entry.name === name);
+		if (!skill) return respondFailure(c, fail("not_found", serverText("skills.export.notFound")));
+		return c.body(formatSkillFile(skill), 200, {
+			"content-type": "text/markdown; charset=utf-8",
+			"content-disposition": `attachment; filename="${name}.SKILL.md"`,
+		});
+	});
 
 	app.get("/", async (c) => {
 		await skillStore.reload();

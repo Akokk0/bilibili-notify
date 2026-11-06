@@ -43,6 +43,18 @@ const sample = {
 	body: "先做这个,再做那个。",
 };
 
+it("并发确认同名新技能只成功一次，后来的请求不覆盖已入库正文", async () => {
+	const results = await Promise.all([
+		store.create({ ...sample, body: "第一份正文" }),
+		store.create({ ...sample, body: "第二份正文" }),
+	]);
+	expect(results.filter((result) => result.ok)).toHaveLength(1);
+	expect(results.filter((result) => !result.ok && result.code === "conflict")).toHaveLength(1);
+	expect(store.get(sample.name)?.body).toBe("第一份正文");
+	await store.reload();
+	expect(store.get(sample.name)?.body).toBe("第一份正文");
+});
+
 /** 拿第一条内置当样本。表空了这几条测试本来也不成立,当场炸掉比一路 optional 好读。 */
 const BUILTIN = BUILTIN_SKILLS[0];
 if (!BUILTIN) throw new Error("内置技能表是空的");
