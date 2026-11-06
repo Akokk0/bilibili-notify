@@ -2,24 +2,40 @@
 	"$schema": "https://unpkg.com/knip@6/schema.json",
 	"workspaces": {
 		"packages/*": {
-			"entry": ["src/**/*.test.ts", "vite.config.ts"],
-			"project": ["src/**/*.ts"]
+			"entry": ["src/**/*.test.{ts,tsx}"],
+			"project": ["src/**/*.{ts,tsx}"]
 		},
 		"apps/server": {
-			"entry": ["src/**/*.test.ts", "vite.config.ts"],
+			"entry": ["src/**/*.test.ts", "src/bilibili/live/protocol/scripts/__tests__/*.ts"],
 			"project": ["src/**/*.ts"]
 		},
 		"apps/web": {
 			"entry": ["index.html", "src/**/*.test.{ts,tsx}"],
-			"project": ["src/**/*.{ts,tsx}"]
+			"project": ["src/**/*.{ts,tsx,css}"]
 		},
 		"apps/desktop": {
-			"entry": ["src/index.html", "scripts/*.mjs", "src-tauri/tauri.conf.json"],
-			"project": ["scripts/*.mjs"]
+			"entry": ["index.html", "scripts/*.mjs", "src-tauri/tauri.conf.json"],
+			"project": ["src/**/*.{ts,tsx,css}", "scripts/*.mjs"]
 		},
 		".": {
 			"entry": ["scripts/*.mjs"],
 			"project": ["scripts/*.mjs"]
+		},
+		"packages/internal": {
+			"entry": [
+				"src/**/*.test.ts",
+				"src/extension/manifest-shape-pin.ts",
+				"src/extension/view-shape-pin.ts"
+			],
+			"project": ["src/**/*.ts"]
+		},
+		"packages/extension": {
+			"entry": [],
+			"project": ["src/**/*.ts"]
+		},
+		"packages/image": {
+			"entry": ["src/**/*.test.ts"],
+			"project": ["src/**/*.{ts,vue}"]
 		}
 	}
 }
