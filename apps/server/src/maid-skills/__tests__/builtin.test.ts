@@ -55,7 +55,7 @@ describe("内置技能表", () => {
 	it("每一条都写得出、读得回 —— 与主人自己写的一条走同一道闸", () => {
 		for (const skill of BUILTIN_SKILLS) {
 			const res = parseSkillFile(formatSkillFile(skill));
-			expect(res.ok, `${skill.name}: ${res.ok ? "" : res.reason}`).toBe(true);
+			expect(res.ok, `${skill.name}: ${res.ok ? "" : res.message}`).toBe(true);
 			// 别名只住内置条目；写成主人的 SKILL.md 时不应落进 frontmatter。
 			if (res.ok) expect(res.skill).toEqual(withoutAliases(skill));
 		}

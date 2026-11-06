@@ -3,7 +3,7 @@ import { t as serverText } from "../i18n/index.js";
  * `SKILL.md` 的解析与回写 —— 一条女仆技能在盘上的全部形状。
  *
  * 形状照 Claude Code 的 Agent Skill 标准:YAML frontmatter + Markdown 正文,
- * 单文件、不带附件、**不跑脚本**(ADR-0001「明确不做」第一条:这台 server 攥着
+ * 单文件、不带附件、**不跑脚本**(ADR-0003「明确不做」第一条:这台 server 攥着
  * B站 cookie 与 AI key,而 skill 正是「从网上抄一份贴进来」的东西)。
  *
  * 这份文件**主人可以手写手放**,所以解析器面对的从来不是我们自己序列化出来的
@@ -12,13 +12,13 @@ import { t as serverText } from "../i18n/index.js";
  */
 
 import { complainAboutSkill, isValidSkillName } from "@bilibili-notify/contract";
-import type { MaidSkill } from "@bilibili-notify/internal";
+import { fail, type MaidSkill, ok, type Result } from "@bilibili-notify/internal";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 /** frontmatter 整块的字节上限 —— 手放的文件可能是任意东西,别让 YAML 解析器啃一整个视频。 */
 const MAX_FRONTMATTER_CHARS = 4_000;
 
-export type ParseSkillResult = { ok: true; skill: MaidSkill } | { ok: false; reason: string };
+export type ParseSkillResult = Result<{ skill: MaidSkill }>;
 
 // 名字闸与五条收/拒规则都住在 contract(见那边 complainAboutSkill 的注释)。
 // 这里原样再导出,免得动这个模块现有的调用点。
@@ -55,38 +55,38 @@ function parseAllowedTools(raw: unknown): string[] | undefined {
 export function parseSkillFile(text: string): ParseSkillResult {
 	const normalized = text.replace(/\r\n/g, "\n");
 	if (!normalized.startsWith("---\n")) {
-		return { ok: false, reason: serverText("service.maid-skills.parse.text.1") };
+		return fail("invalid", serverText("service.maid-skills.parse.text.1"));
 	}
 	const end = normalized.indexOf("\n---", 3);
 	if (end === -1) {
-		return { ok: false, reason: serverText("service.maid-skills.parse.text.2") };
+		return fail("invalid", serverText("service.maid-skills.parse.text.2"));
 	}
 	const rawFm = normalized.slice(4, end);
 	if (rawFm.length > MAX_FRONTMATTER_CHARS) {
-		return {
-			ok: false,
-			reason: serverText("service.maid-skills.parse.text.3", { value0: MAX_FRONTMATTER_CHARS }),
-		};
+		return fail(
+			"invalid",
+			serverText("service.maid-skills.parse.text.3", { value0: MAX_FRONTMATTER_CHARS }),
+		);
 	}
 	// `\n---` 之后到行尾的残字(`---abc`)不算收尾,那多半是主人写岔了。
 	const afterDelim = normalized.slice(end + 4);
 	const lineBreak = afterDelim.indexOf("\n");
 	const tail = lineBreak === -1 ? afterDelim : afterDelim.slice(0, lineBreak);
 	if (tail.trim() !== "") {
-		return { ok: false, reason: serverText("service.maid-skills.parse.text.4") };
+		return fail("invalid", serverText("service.maid-skills.parse.text.4"));
 	}
 
 	let fm: unknown;
 	try {
 		fm = parseYaml(rawFm);
 	} catch (err) {
-		return {
-			ok: false,
-			reason: serverText("service.maid-skills.parse.text.5", { value0: (err as Error).message }),
-		};
+		return fail(
+			"invalid",
+			serverText("service.maid-skills.parse.text.5", { value0: (err as Error).message }),
+		);
 	}
 	if (typeof fm !== "object" || fm === null || Array.isArray(fm)) {
-		return { ok: false, reason: serverText("service.maid-skills.parse.text.6") };
+		return fail("invalid", serverText("service.maid-skills.parse.text.6"));
 	}
 	const rec = fm as Record<string, unknown>;
 
@@ -94,7 +94,7 @@ export function parseSkillFile(text: string): ParseSkillResult {
 	const body = (lineBreak === -1 ? "" : afterDelim.slice(lineBreak + 1)).trim();
 	// 名字 / description / 正文这五条与网页端的预检**是同一份**(contract)。
 	const complaint = complainAboutSkill({ name: rec.name, description, body });
-	if (complaint) return { ok: false, reason: complaint };
+	if (complaint) return fail("invalid", complaint);
 
 	const skill: MaidSkill = {
 		name: rec.name as string,
@@ -104,7 +104,7 @@ export function parseSkillFile(text: string): ParseSkillResult {
 	};
 	const allowedTools = parseAllowedTools(rec["allowed-tools"]);
 	if (allowedTools !== undefined) skill.allowedTools = allowedTools;
-	return { ok: true, skill };
+	return ok({ skill });
 }
 
 /**

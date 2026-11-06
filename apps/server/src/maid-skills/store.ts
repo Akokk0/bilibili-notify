@@ -2,7 +2,7 @@ import { t as serverText } from "../i18n/index.js";
 /**
  * 女仆技能库:`<dir>/<name>/SKILL.md`,一条一目录,目录名即技能名。
  *
- * **盘是唯一权威。** 主人可以直接往 dataDir 里手放一份(ADR-0001 决策 3:真文件、
+ * **盘是唯一权威。** 主人可以直接往 dataDir 里手放一份(ADR-0003 决策 3:真文件、
  * 可手放、可导出),所以内存里这份索引只是读缓存,{@link MaidSkillStore.reload}
  * 随时能从盘上重建。
  *
@@ -130,7 +130,7 @@ export class MaidSkillStore {
 			}
 			const res = parseSkillFile(text);
 			if (!res.ok) {
-				issues.push({ dir: dirName, reason: res.reason });
+				issues.push({ dir: dirName, reason: res.message });
 				continue;
 			}
 			if (res.skill.name !== dirName) {
@@ -216,7 +216,7 @@ export class MaidSkillStore {
 	 */
 	private validate(skill: MaidSkill): MaidSkill {
 		const res = parseSkillFile(formatSkillFile(skill));
-		if (!res.ok) throw new SkillStoreError("invalid", res.reason);
+		if (!res.ok) throw new SkillStoreError("invalid", res.message);
 		return res.skill;
 	}
 

@@ -271,7 +271,10 @@ describe("PUT /:name", () => {
 		await post(sample);
 		const res = await put("my-skill", { ...sample, body: "   " });
 		expect(res.status).toBe(400);
-		expect(((await res.json()) as any).code).toBe("invalid");
+		expect(await res.json()).toEqual({
+			code: "invalid",
+			message: expect.stringContaining("正文是空的"),
+		});
 	});
 
 	it("改名撞上盘上手放的那份 → conflict(409),那份文件一个字都不动", async () => {

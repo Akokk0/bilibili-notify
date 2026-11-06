@@ -225,7 +225,11 @@ describe("SkillStoreError:拒收各带各的码", () => {
 
 	it("内容或名字不合规矩 → invalid", async () => {
 		expect(await codeOf(() => store.create({ ...sample, name: "我的技能" }))).toBe("invalid");
-		expect(await codeOf(() => store.create({ ...sample, body: "  " }))).toBe("invalid");
+		await expect(store.create({ ...sample, body: "  " })).rejects.toMatchObject({
+			name: "SkillStoreError",
+			code: "invalid",
+			message: expect.stringContaining("正文是空的"),
+		});
 		expect(await codeOf(() => store.remove("../evil"))).toBe("invalid");
 	});
 

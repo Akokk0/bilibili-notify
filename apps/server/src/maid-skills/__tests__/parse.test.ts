@@ -110,9 +110,20 @@ describe("parseSkillFile", () => {
 
 	it("没有 frontmatter → 拒收,并说清缺的是什么", () => {
 		const res = parseSkillFile("就一段正文,什么都没声明");
-		expect(res.ok).toBe(false);
-		if (res.ok) return;
-		expect(res.reason).toContain("frontmatter");
+		expect(res).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "缺少 frontmatter:文件要以 `---` 单独一行开头",
+		});
+	});
+
+	it.each([
+		["缺收尾", "---\nname: a\n", "frontmatter 没有收尾:缺少第二行 `---`"],
+		["过长", `---\n${"x".repeat(4001)}\n---\n正文`, "frontmatter 过长(上限 4000 字)"],
+		["收尾带残字", "---\nname: a\n---oops\n正文", "frontmatter 的收尾 `---` 那一行不能再有别的字"],
+		["非映射", "---\n[]\n---\n正文", "frontmatter 要是一组 `键: 值`"],
+	])("frontmatter %s → 拒收并保留具体原因", (_case, text, message) => {
+		expect(parseSkillFile(text)).toEqual({ ok: false, code: "invalid", message });
 	});
 
 	it("name 不合法 / 缺失 → 拒收", () => {
@@ -145,6 +156,8 @@ describe("parseSkillFile", () => {
 	it("YAML 本身坏掉 → 拒收而不是抛", () => {
 		const res = parseSkillFile(["---", "name: [unclosed", "---", "正文"].join("\n"));
 		expect(res.ok).toBe(false);
+		if (res.ok) return;
+		expect(res.message).toContain("frontmatter 不是合法 YAML:");
 	});
 });
 
