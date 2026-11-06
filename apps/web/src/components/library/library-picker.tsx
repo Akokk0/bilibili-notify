@@ -1,4 +1,4 @@
-import { Btn, ModalShell } from "@bilibili-notify/ui";
+import { Btn, Icon, ModalShell } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../../i18n";
 import { toggleSelected } from "../../pages/cards/gallery-ops";
@@ -96,6 +96,19 @@ function SelectionDialog({
 			onCancel={onCancel}
 		>
 			<div ref={body}>
+				<div className="mb-3 flex justify-end">
+					<Btn
+						size="sm"
+						variant="outline"
+						icon={<Icon.link size={14} />}
+						title={t("library.manageResourcesHint")}
+						onClick={() =>
+							window.open(`/library?category=${kind}`, "_blank", "noopener,noreferrer")
+						}
+					>
+						{t("library.manageResources")}
+					</Btn>
+				</div>
 				<div className="bn-library-picker-scroll">
 					<LibraryBrowser
 						kind={kind}

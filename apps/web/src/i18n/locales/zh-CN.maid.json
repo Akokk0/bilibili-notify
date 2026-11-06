@@ -581,7 +581,7 @@
 	"panelUi.components.onboarding.tour-script.2": "主人，点高亮的扫码登录，用来源客户端扫码并确认；成功后女仆会带您继续下一步喔。",
 	"panelUi.components.onboarding.tour-script.17": "主人，登录完成啦！",
 	"accounts.orderLabel": "账号顺序",
-	"library.scopeHint": "主人，这里只收反复选用的素材；对话附件和皮肤自带文件各自在原处保存。",
+	"library.scopeHint": "主人，整理好后再去对应页面选用；对话附件和皮肤自带文件各自在原处保存哦。",
 	"library.readFailed": "主人，素材列表暂时没读出来，再试一次吧。",
 	"library.emptyHint": "主人，上传一份，以后就能在卡片设置里反复选用啦。",
 	"library.deleteHint": "主人，删掉就找不回来了。删除前会检查引用，还在使用的素材会保留。",

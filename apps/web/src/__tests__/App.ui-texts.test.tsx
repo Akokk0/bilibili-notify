@@ -904,10 +904,10 @@ it("素材库可独立打开，按图片与字体展示已有元数据", async (
 				});
 		},
 	});
-	expect(await screen.findByText("反复使用的图片与字体，统一放在这里。")).toBeTruthy();
-	expect(screen.getByRole("link", { name: "素材库" }).getAttribute("href")).toBe("/library");
+	expect(await screen.findByText("反复使用的资源，统一整理与分享。")).toBeTruthy();
+	expect(screen.getByRole("link", { name: "资源库" }).getAttribute("href")).toBe("/library");
 	expect(await screen.findByText("还没有图片")).toBeTruthy();
-	await userEvent.click(screen.getByRole("button", { name: "字体" }));
+	await userEvent.click(screen.getAllByRole("button", { name: /^字体/ })[0] as HTMLElement);
 	expect(await screen.findByText("示例字体.woff2")).toBeTruthy();
 	expect(screen.getByText("2.0 MB · 字体文件")).toBeTruthy();
 });
@@ -978,7 +978,7 @@ it("删除字体先确认，被引用时保留原话与文件，解除引用后�
 		},
 	});
 	await screen.findByText("还没有图片");
-	await userEvent.click(screen.getByRole("button", { name: "字体" }));
+	await userEvent.click(screen.getAllByRole("button", { name: /^字体/ })[0] as HTMLElement);
 	await userEvent.click(await screen.findByRole("button", { name: "删除字体 使用中的字体.woff2" }));
 	expect(deletes).toBe(0);
 	await userEvent.click(screen.getByRole("button", { name: "取消" }));

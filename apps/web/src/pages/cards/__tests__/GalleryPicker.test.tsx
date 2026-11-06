@@ -45,6 +45,28 @@ describe("GalleryPicker", () => {
 	});
 	afterEach(() => cleanup());
 
+	it("管理资源在新页打开图片分类，保留选择窗中尚未确认的选择", async () => {
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		const onChange = vi.fn();
+		try {
+			renderWithQuery(<GalleryPicker value={[]} onChange={onChange} />);
+			fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
+			fireEvent.click(await screen.findByRole("button", { name: "选择图片 1" }));
+			fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
+			expect(open).toHaveBeenCalledWith(
+				"/library?category=images",
+				"_blank",
+				"noopener,noreferrer",
+			);
+			expect(screen.getByText("已选择 1 张")).toBeTruthy();
+			expect(onChange).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: "使用所选" }));
+			expect(onChange).toHaveBeenCalledWith([REAL]);
+		} finally {
+			open.mockRestore();
+		}
+	});
+
 	it("选中但已不在图廊(文件被删)的 id → 渲染可见的「已失效」占位块,带轮换序号", async () => {
 		renderWithQuery(<GalleryPicker value={[GHOST, REAL]} onChange={() => {}} />);
 		const ghost = await screen.findByTestId("gallery-ghost");

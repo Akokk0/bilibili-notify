@@ -231,6 +231,21 @@ describe("大字体提醒随当前选中走", () => {
 });
 
 describe("素材库字体端点接线", () => {
+	it("管理资源直达字体分类，暂存的字体仍需确认才写回字段", async () => {
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		try {
+			const changed = mount({ font: "fallback" }, [{ id: UPLOADED, name: "keep.woff2" }]);
+			await openFonts();
+			fireEvent.click(await screen.findByRole("button", { name: "选择字体 keep.woff2" }));
+			fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
+			expect(open).toHaveBeenCalledWith("/library?category=fonts", "_blank", "noopener,noreferrer");
+			expect(changed).not.toHaveBeenCalled();
+			await applyFont();
+			expect(changed).toHaveBeenCalledWith({ font: "fallback", fontAsset: UPLOADED });
+		} finally {
+			open.mockRestore();
+		}
+	});
 	it("上传后刷新字体库并选用，保持 multipart 的 file 字段", async () => {
 		const onChange = mount({ font: "fallback" });
 		vi.mocked(api.get).mockResolvedValue({
