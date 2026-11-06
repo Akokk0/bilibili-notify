@@ -1,7 +1,7 @@
 {
 	"name": "@bilibili-notify/image",
 	"private": true,
-	"version": "0.1.0-alpha.3",
+	"version": "0.0.0-dev",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"

@@ -1,6 +1,6 @@
 {
 	"name": "@root/bilibili-notify",
-	"version": "0.0.0",
+	"version": "0.0.0-dev",
 	"private": true,
 	"packageManager": "pnpm@12.16.1",
 	"scripts": {
