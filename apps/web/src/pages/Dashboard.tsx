@@ -431,8 +431,7 @@ export function TimelinePanel({
 						const avatar = historyRowAvatarUrl(h, sub?.cachedProfile);
 						// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 						const color = historyRowColor(h, platformFor(h.identity));
-						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;
-						// B 站行不画。
+						// 平台徽章显隐沿用来源投影：已知单来源且命中当前项时隐藏。
 						const platform = platformFor(h.identity);
 						const tone = familyTone(h.feature);
 						const status = PUSH_STATUS_META[h.status];
@@ -464,7 +463,7 @@ export function TimelinePanel({
 									<Pill color={tone} subtle size="sm">
 										{FEATURE_DESCRIPTORS[h.feature].label}
 									</Pill>
-									{platform ? (
+									{platform.showBadge ? (
 										<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
 											{platform.shortLabel ?? platform.label}
 										</Pill>

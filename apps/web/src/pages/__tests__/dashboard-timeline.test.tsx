@@ -142,8 +142,8 @@ describe("最近推送活动 · 行是谁", () => {
 });
 
 /**
- * 拓展行带一枚平台徽章(ADR-0019 决策 9「订阅删了也看得出是哪个平台的」),画法同「正在直播」:
- * 短名照清单,拓展卸载了取不到写拓展 id。名字取自快照还是身份兜底都带;B 站行不画。
+ * 平台徽章与其他面板读者共用投影：已知单来源且命中当前项时隐藏，否则显示。
+ * 短名照描述符，来源缺失时用来源键，不因订阅被删除而丢失归属。
  */
 describe("最近推送活动 · 平台徽章", () => {
 	/**
@@ -153,6 +153,28 @@ describe("最近推送活动 · 平台徽章", () => {
 	function badgeTexts(container: HTMLElement): (string | null)[] {
 		return [...container.querySelectorAll('[data-bn="badge"]')].map((b) => b.textContent);
 	}
+
+	it.each([
+		{ name: "已知唯一来源命中B站行", sources: [makeSource()], key: "bilibili", badge: null },
+		{ name: "已知唯一来源命中拓展行", sources: [DOUYIN_SOURCE], key: "douyin", badge: null },
+		{ name: "来源表尚未知", sources: undefined, key: "douyin", badge: "douyin" },
+		{ name: "来源表为空", sources: [], key: "douyin", badge: "douyin" },
+		{ name: "唯一来源不含当前行", sources: [makeSource()], key: "douyin", badge: "douyin" },
+	])("$name：仅隐藏确定多余的平台徽章", ({ sources, key, badge }) => {
+		const { container } = render(
+			<MemoryRouter>
+				<TimelinePanel
+					entries={[row({ identity: { sourceKey: key, externalId: "u1" } })]}
+					subs={[]}
+					targets={[]}
+					sources={sources}
+				/>
+			</MemoryRouter>,
+		);
+		expect(badgeTexts(container)).toEqual(
+			badge === null ? ["作品", "已送达"] : ["作品", badge, "已送达"],
+		);
+	});
 
 	it("拓展行带平台徽章(短名照清单),名字取自快照也带", () => {
 		const { container } = renderPanel([extRow({ nameSnapshot: "某抖音号" })], [], [DOUYIN]);
