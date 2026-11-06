@@ -100,22 +100,44 @@ describe("吸顶顶栏的层级", () => {
 	});
 });
 
-it("publishes changed header height so page navigation stays below wrapped rows", async () => {
-	vi.stubGlobal("ResizeObserver", undefined);
-	const { GlassHeader } = await import("../header");
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	const { container } = render(
-		<QueryClientProvider client={qc}>
-			<MemoryRouter>
-				<GlassHeader />
-			</MemoryRouter>
-		</QueryClientProvider>,
-	);
-	const header = container.querySelector("header");
-	Object.defineProperty(header, "offsetHeight", { configurable: true, value: 128 });
-	fireEvent(window, new Event("resize"));
-	expect(document.documentElement.style.getPropertyValue("--bn-header-h")).toBe("128px");
-	Object.defineProperty(header, "offsetHeight", { configurable: true, value: 212 });
-	fireEvent(window, new Event("resize"));
-	expect(document.documentElement.style.getPropertyValue("--bn-header-h")).toBe("212px");
-});
+it.each(["resize-event", "resize-observer"] as const)(
+	"发布顶栏的小数实测高度，避免长短分区切换时吸顶导航挪动（%s）",
+	async (mode) => {
+		let notify: () => void = () => fireEvent(window, new Event("resize"));
+		if (mode === "resize-observer") {
+			vi.stubGlobal(
+				"ResizeObserver",
+				class {
+					constructor(callback: () => void) {
+						notify = callback;
+					}
+					observe() {}
+					disconnect() {}
+				},
+			);
+		} else vi.stubGlobal("ResizeObserver", undefined);
+		const { GlassHeader } = await import("../header");
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const { container } = render(
+			<QueryClientProvider client={qc}>
+				<MemoryRouter>
+					<GlassHeader />
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+		const header = container.querySelector("header") as HTMLElement;
+		let height = 128.5;
+		Object.defineProperty(header, "offsetHeight", {
+			configurable: true,
+			get: () => Math.round(height),
+		});
+		vi.spyOn(header, "getBoundingClientRect").mockImplementation(
+			() => new DOMRect(0, 0, 1600, height),
+		);
+		notify();
+		expect(document.documentElement.style.getPropertyValue("--bn-header-h")).toBe("128.5px");
+		height = 212.25;
+		notify();
+		expect(document.documentElement.style.getPropertyValue("--bn-header-h")).toBe("212.25px");
+	},
+);

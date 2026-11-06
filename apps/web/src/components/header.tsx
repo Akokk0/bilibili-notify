@@ -456,7 +456,11 @@ export function GlassHeader() {
 		const el = headerRef.current;
 		if (!el) return;
 		const apply = () => {
-			document.documentElement.style.setProperty("--bn-header-h", `${el.offsetHeight}px`);
+			// offsetHeight 会取整；半像素误差会让吸顶导航在长短内容间切换时被容器底部推回。
+			document.documentElement.style.setProperty(
+				"--bn-header-h",
+				`${el.getBoundingClientRect().height}px`,
+			);
 		};
 		apply();
 		if (typeof ResizeObserver === "undefined") {
