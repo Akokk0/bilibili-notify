@@ -242,7 +242,7 @@ export default function CardSkinEditor() {
 				    正中。只给中间 `flex-1` 的话,它的中心跟着两侧内容宽度漂 —— 直播卡有场景选择器
 				    时看着是正的,切到没有场景的卡种就整条往右偏。 */}
 				<div className="flex min-w-0 flex-1 items-center gap-3">
-					<Btn size="sm" variant="ghost" onClick={() => navigate("/cards")}>
+					<Btn size="sm" variant="ghost" onClick={() => navigate("/library?category=card-skins")}>
 						<Icon.arrowLeft size={14} /> {tx("skinUi.CardSkinEditor.1")}
 					</Btn>
 					<span className="h-5.5 w-px bg-bn-border" />

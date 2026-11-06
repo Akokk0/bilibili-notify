@@ -2,12 +2,18 @@ import { GlassPanel, Icon, SectionNav } from "@bilibili-notify/ui";
 import { useSearchParams } from "react-router-dom";
 import { HeroStrip } from "../components/hero-strip";
 import { LibraryBrowser } from "../components/library/library-browser";
-import type { LibraryKind } from "../components/library/library-data";
+import type { ResourceCategory } from "../components/library/library-data";
 import { useT } from "../i18n";
+import { CardSkinSection } from "./cards/CardSkinSection";
+import { SkinSection } from "./skins/SkinSection";
 export default function Library() {
 	const t = useT();
 	const [params, setParams] = useSearchParams();
-	const kind: LibraryKind = params.get("category") === "fonts" ? "fonts" : "images";
+	const requested = params.get("category");
+	const kind: ResourceCategory =
+		requested === "fonts" || requested === "dashboard-skins" || requested === "card-skins"
+			? requested
+			: "images";
 	const categories = [
 		{
 			id: "images",
@@ -20,6 +26,18 @@ export default function Library() {
 			label: t("library.fontsTitle"),
 			desc: t("library.fontsDescription"),
 			icon: <Icon.list size={20} />,
+		},
+		{
+			id: "dashboard-skins",
+			label: t("library.dashboardSkinsTitle"),
+			desc: t("library.dashboardSkinsDescription"),
+			icon: <Icon.palette size={20} />,
+		},
+		{
+			id: "card-skins",
+			label: t("library.cardSkinsTitle"),
+			desc: t("library.cardSkinsDescription"),
+			icon: <Icon.eye size={20} />,
 		},
 	];
 	const category = categories.find((item) => item.id === kind);
@@ -49,9 +67,15 @@ export default function Library() {
 						});
 					}}
 				/>
-				<GlassPanel title={category?.label} subtitle={category?.desc}>
-					<LibraryBrowser key={kind} kind={kind} />
-				</GlassPanel>
+				{kind === "dashboard-skins" ? (
+					<SkinSection mode="manage" />
+				) : kind === "card-skins" ? (
+					<CardSkinSection mode="manage" />
+				) : (
+					<GlassPanel title={category?.label} subtitle={category?.desc}>
+						<LibraryBrowser key={kind} kind={kind} />
+					</GlassPanel>
+				)}
 			</div>
 		</div>
 	);

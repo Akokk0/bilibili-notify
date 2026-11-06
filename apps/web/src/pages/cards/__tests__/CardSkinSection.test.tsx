@@ -65,13 +65,13 @@ const LIST = {
 	active: "aurora",
 };
 
-function renderSection() {
+function renderSection(mode: "select" | "manage" = "manage") {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	// 「编辑」那颗钮要跳路由,所以这一节现在吃 router context。
 	return render(
 		<MemoryRouter>
 			<QueryClientProvider client={qc}>
-				<CardSkinSection />
+				<CardSkinSection mode={mode} />
 			</QueryClientProvider>
 		</MemoryRouter>,
 	);
@@ -119,7 +119,7 @@ describe("卡片皮肤库 · 回落告警", () => {
 
 	it("账本非空 → 把「哪套皮肤、哪种卡、为什么」摆出来,皮肤名按 id 对回去", async () => {
 		vi.mocked(api.get).mockResolvedValue(WITH_FALLBACK);
-		renderSection();
+		renderSection("select");
 		const note = await screen.findByText(/有卡片没能按皮肤画出来/);
 		// WarnNote 自带 `data-bn="note note-warn"` —— 爬到它那层才是整块告警,
 		// 爬一层只会停在标题那个 div 上。
@@ -133,7 +133,7 @@ describe("卡片皮肤库 · 回落告警", () => {
 
 	it("点「知道了」打 DELETE /api/cards/skins/fallbacks 并重取列表", async () => {
 		vi.mocked(api.get).mockResolvedValue(WITH_FALLBACK);
-		renderSection();
+		renderSection("select");
 		const before = vi.mocked(api.get).mock.calls.length;
 		fireEvent.click(await screen.findByText("知道了"));
 		await waitFor(() =>
@@ -143,13 +143,39 @@ describe("卡片皮肤库 · 回落告警", () => {
 	});
 
 	it("账本空 → 一个字都不画", async () => {
-		renderSection();
+		renderSection("select");
 		await screen.findByText("极光");
 		expect(screen.queryByText(/有卡片没能按皮肤画出来/)).toBeNull();
 	});
 });
 
 describe("卡片皮肤库", () => {
+	it("内置皮肤复制后才编辑，不启用副本", async () => {
+		renderSection();
+		fireEvent.click(within(await rowOf("默认皮肤")).getByRole("button", { name: "复制并编辑" }));
+		await waitFor(() =>
+			expect(api.post).toHaveBeenCalledWith("/api/cards/skins/default/duplicate", {}),
+		);
+		expect(api.put).not.toHaveBeenCalled();
+	});
+
+	it("管理资源新页直达卡片皮肤分类，不切换当前默认皮肤", async () => {
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		try {
+			renderSection("select");
+			await screen.findByText("极光");
+			fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
+			expect(open).toHaveBeenCalledWith(
+				"/library?category=card-skins",
+				"_blank",
+				"noopener,noreferrer",
+			);
+			expect(api.put).not.toHaveBeenCalled();
+			expect(screen.getByRole("combobox")).toBeTruthy();
+		} finally {
+			open.mockRestore();
+		}
+	});
 	it("内置那份排首位,「使用中」跟着 active 走", async () => {
 		renderSection();
 		await screen.findByText("默认皮肤");
@@ -166,20 +192,22 @@ describe("卡片皮肤库", () => {
 	});
 
 	it("「启用」打 PUT /api/cards/skins/active", async () => {
-		renderSection();
-		const row = await rowOf("默认皮肤");
-		fireEvent.click(within(row).getByRole("button", { name: "启用" }));
+		renderSection("select");
+		fireEvent.click(await screen.findByRole("combobox"));
+		fireEvent.click(screen.getByRole("option", { name: "默认皮肤（内置）" }));
 
 		await waitFor(() =>
 			expect(api.put).toHaveBeenCalledWith("/api/cards/skins/active", { id: "default" }),
 		);
 	});
 
-	it("正在用的那套没有「启用」钮(显示「已启用」且禁用)", async () => {
-		renderSection();
-		const row = await rowOf("极光");
-		const btn = within(row).getByRole("button", { name: "已启用" }) as HTMLButtonElement;
-		expect(btn.disabled).toBe(true);
+	it("选用当前皮肤不重复写入，原页不提供编辑或删除", async () => {
+		renderSection("select");
+		fireEvent.click(await screen.findByRole("combobox"));
+		fireEvent.click(screen.getByRole("option", { name: "极光" }));
+		expect(api.put).not.toHaveBeenCalled();
+		expect(screen.queryByRole("button", { name: "编辑" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "删除" })).toBeNull();
 	});
 
 	it("内置那份不给删除钮", async () => {

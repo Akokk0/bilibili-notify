@@ -10,6 +10,7 @@ import {
 	ErrorNote,
 	GlassBox,
 	Icon,
+	LoadingBlock,
 	ModalShell,
 	Pill,
 	WarnNote,
@@ -17,6 +18,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useRef, useState } from "react";
 import { Picker } from "../../components/forms";
+import { ManageResourcesButton } from "../../components/library/manage-resources-button";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
@@ -41,7 +43,18 @@ async function fetchManifest(id: string): Promise<SkinManifest> {
  * 皮肤库。列表操作(试穿/启用/删除)走服务端;试穿只写 store 的
  * preview(SkinRoot 负责真正注入),应用/取消由全局的 SkinPreviewBar 承接。
  */
-export function SkinSection() {
+function useDashboardSkins() {
+	return useQuery({
+		queryKey: ["dashboard", "skins"],
+		queryFn: () => api.get<SkinsListResponse>("/api/dashboard/skins"),
+	});
+}
+
+export function SkinSection({ mode = "select" }: { mode?: "select" | "manage" } = {}) {
+	return mode === "select" ? <SkinSelection /> : <SkinManagement />;
+}
+
+function SkinManagement() {
 	const tx = useT();
 
 	const qc = useQueryClient();
@@ -62,28 +75,12 @@ export function SkinSection() {
 	} | null>(null);
 	const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
-	const listQuery = useQuery({
-		queryKey: ["dashboard", "skins"],
-		queryFn: () => api.get<SkinsListResponse>("/api/dashboard/skins"),
-	});
+	const listQuery = useDashboardSkins();
 	const activeIds = listQuery.data?.active ?? { light: null, dark: null };
 
 	function refresh(): void {
 		void qc.invalidateQueries({ queryKey: ["dashboard", "skins"] });
 	}
-
-	const activate = useMutation({
-		// 深浅槽各自设置;id:null = 该槽回默认装。
-		mutationFn: (req: { id: string | null; theme: "light" | "dark" }) =>
-			api.put<{ ok: boolean }>("/api/dashboard/skins/active", req),
-		onSuccess: async () => {
-			setError(null);
-			await syncActiveSkinToStore();
-			useSkinStore.getState().setPreview(null);
-			refresh();
-		},
-		onError: (e) => setError(String((e as Error).message)),
-	});
 
 	const remove = useMutation({
 		mutationFn: (id: string) => api.delete<{ ok: boolean }>(`/api/dashboard/skins/${id}`),
@@ -116,13 +113,10 @@ export function SkinSection() {
 			form.set("file", file);
 			return api.upload<UploadResult>("/api/dashboard/skins", form);
 		},
-		onSuccess: async (data) => {
+		onSuccess: (data) => {
 			setError(null);
 			setWarnings(data.warnings);
 			refresh();
-			// 传完直接试穿:所见即所得,喜欢再点「应用」。
-			const manifest = await fetchManifest(data.id);
-			useSkinStore.getState().setPreview({ id: data.id, manifest });
 		},
 		// 装包门没过时 `message` 只是一句概括,逐条意见在 `issues` —— 一起给主人。
 		onError: (e) => setError(errorTextOf(e)),
@@ -205,38 +199,19 @@ export function SkinSection() {
 				</WarnNote>
 			) : null}
 
-			{/* 换装 Picker(分段按钮组):深浅色各自挑一套,只列具备该模式的皮肤;
-			    点「默认装」即卸下该槽。 */}
-			<div className="mb-3 space-y-2">
-				{(["light", "dark"] as const).map((theme) => (
-					<fieldset
-						key={theme}
-						aria-label={tx("skinUi.SkinSection.9", { value0: MODE_LABEL[theme] })}
-						className="flex flex-wrap items-center gap-2"
-					>
-						<span className="w-14 shrink-0 text-bn-sm font-semibold text-bn-text-secondary">
-							{MODE_LABEL[theme]}
-							{tx("skinUi.SkinSection.10")}
-						</span>
-						<Picker
-							value={activeIds[theme] ?? ""}
-							onChange={(id) => {
-								if (id === (activeIds[theme] ?? "")) return;
-								activate.mutate({ theme, id: id === "" ? null : id });
-							}}
-							options={[
-								{ value: "", label: tx("skinUi.SkinSection.11") },
-								...entries
-									.filter((entry) => entry.modes.includes(theme))
-									.map((entry) => ({ value: entry.id, label: entry.name })),
-							]}
-						/>
-					</fieldset>
-				))}
-			</div>
-
+			{listQuery.isPending ? (
+				<LoadingBlock label={tx("skinUi.CardSkinSection.15")} variant="inset" />
+			) : null}
+			{listQuery.isError ? (
+				<ErrorNote>
+					{tx("library.skinsReadFailed")}{" "}
+					<Btn size="sm" onClick={() => void listQuery.refetch()}>
+						{tx("library.retry")}
+					</Btn>
+				</ErrorNote>
+			) : null}
 			<div className="space-y-2">
-				{entries.map((entry) => {
+				{(listQuery.isError ? [] : entries).map((entry) => {
 					const usage = (["light", "dark"] as const).filter((t) => activeIds[t] === entry.id);
 					return (
 						<SkinRow
@@ -322,6 +297,84 @@ export function SkinSection() {
 	);
 }
 
+function SkinSelection() {
+	const tx = useT(),
+		qc = useQueryClient();
+	const [error, setError] = useState<string | null>(null);
+	const listQuery = useDashboardSkins();
+	const activeIds = listQuery.data?.active ?? { light: null, dark: null };
+	const entries = listQuery.data?.list ?? [];
+	function refresh() {
+		void qc.invalidateQueries({ queryKey: ["dashboard", "skins"] });
+	}
+	const activate = useMutation({
+		// 深浅槽各自设置;id:null = 该槽回默认装。
+		mutationFn: (req: { id: string | null; theme: "light" | "dark" }) =>
+			api.put<{ ok: boolean }>("/api/dashboard/skins/active", req),
+		onSuccess: async () => {
+			setError(null);
+			await syncActiveSkinToStore();
+			useSkinStore.getState().setPreview(null);
+			refresh();
+		},
+		onError: (e) => setError(String((e as Error).message)),
+	});
+
+	return (
+		<GlassBox
+			title={tx("skinUi.SkinSection.1")}
+			subtitle={tx("library.dashboardSelectHint")}
+			accent="var(--color-bn-purple)"
+			icon={<Icon.palette size={14} />}
+			right={<ManageResourcesButton category="dashboard-skins" />}
+		>
+			{error ? <ErrorNote>{error}</ErrorNote> : null}
+			{listQuery.isPending ? (
+				<LoadingBlock label={tx("skinUi.CardSkinSection.15")} variant="inset" />
+			) : listQuery.isError ? (
+				<ErrorNote>
+					{tx("library.skinsReadFailed")}{" "}
+					<Btn size="sm" onClick={() => void listQuery.refetch()}>
+						{tx("library.retry")}
+					</Btn>
+				</ErrorNote>
+			) : (
+				<fieldset disabled={activate.isPending}>
+					{/* 换装 Picker(分段按钮组):深浅色各自挑一套,只列具备该模式的皮肤;
+			    点「默认装」即卸下该槽。 */}
+					<div className="mb-3 space-y-2">
+						{(["light", "dark"] as const).map((theme) => (
+							<fieldset
+								key={theme}
+								aria-label={tx("skinUi.SkinSection.9", { value0: MODE_LABEL[theme] })}
+								className="flex flex-wrap items-center gap-2"
+							>
+								<span className="w-14 shrink-0 text-bn-sm font-semibold text-bn-text-secondary">
+									{MODE_LABEL[theme]}
+									{tx("skinUi.SkinSection.10")}
+								</span>
+								<Picker
+									value={activeIds[theme] ?? ""}
+									onChange={(id) => {
+										if (id === (activeIds[theme] ?? "")) return;
+										activate.mutate({ theme, id: id === "" ? null : id });
+									}}
+									options={[
+										{ value: "", label: tx("skinUi.SkinSection.11") },
+										...entries
+											.filter((entry) => entry.modes.includes(theme))
+											.map((entry) => ({ value: entry.id, label: entry.name })),
+									]}
+								/>
+							</fieldset>
+						))}
+					</div>
+				</fieldset>
+			)}
+		</GlassBox>
+	);
+}
+
 /** 皮肤导出:直接开导出端点,浏览器按 content-disposition 落文件(会话 cookie 同源自带)。 */
 function downloadSkin(entry: SkinListEntry): void {
 	const a = document.createElement("a");
@@ -389,10 +442,12 @@ function SkinRow(props: {
 	const tx = useT();
 
 	return (
-		<div className="flex items-center gap-3 rounded-bn-sm border border-bn-border-subtle bg-bn-surface-muted/60 px-3 py-2.5">
+		<div className="flex flex-col gap-3 rounded-bn-sm border border-bn-border-subtle bg-bn-surface-muted/60 px-3 py-2.5 sm:flex-row sm:items-center">
 			<div className="min-w-0 flex-1">
 				<div className="flex flex-wrap items-center gap-1.5">
-					<span className="text-bn-base font-semibold text-bn-text-primary">{props.name}</span>
+					<span className="min-w-0 break-words text-bn-base font-semibold text-bn-text-primary">
+						{props.name}
+					</span>
 					{props.tags}
 					{props.usage.length > 0 ? (
 						<Pill color="var(--color-bn-pink)">
@@ -406,7 +461,7 @@ function SkinRow(props: {
 					<div className="mt-0.5 truncate text-bn-xs text-bn-text-secondary">{props.desc}</div>
 				) : null}
 			</div>
-			<div className="flex shrink-0 items-center gap-1.5">
+			<div className="flex shrink-0 flex-wrap items-center gap-1.5">
 				<Btn size="sm" variant="ghost" onClick={props.onTryOn}>
 					{tx("skinUi.SkinSection.26")}
 				</Btn>

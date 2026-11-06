@@ -8,6 +8,7 @@ import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { api } from "../../services/api";
 
 export type LibraryKind = "images" | "fonts";
+export type ResourceCategory = LibraryKind | "dashboard-skins" | "card-skins";
 export interface LibraryEntry {
 	id: string;
 	name?: string;

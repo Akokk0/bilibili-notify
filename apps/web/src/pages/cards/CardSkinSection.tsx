@@ -1,19 +1,5 @@
 import { i18n, useT } from "../../i18n";
-/**
- * 卡片皮肤库(ADR-0014 决策 2 / 5 / 20 的第①段)+ per-UP 的「选哪套」下拉(决策 17)。
- *
- * 形态与文案口径照抄 dashboard 皮肤库(`pages/skins/SkinSection.tsx`)—— 两个库讲的是
- * 同一件事(上传 zip / 启用 / 复制一份 / 导出 / 删除),长成两副样子只会让人以为它们
- * 规矩不同。与那边刻意的三处不同,都来自 ADR:
- *
- * - **启用的是一套不是两套**:卡片没有深浅之分,`PUT /active` 只收一个 id;
- * - **内置那份列得出但改不了删不了**(决策 5),要改先「复制一份」;
- * - **删之前服务端先问「谁在用」**:409 的那句话里已经点名了用家(全局默认 / 哪几个
- *   UP),原样显示给主人 —— 自己再编一句「删除失败」等于把唯一可操作的线索吞掉。
- *
- * 「编辑」按钮这轮只占位(编辑器是 ADR-0014 节奏里的第二步),摆出来但禁用,免得第二步
- * 落地时整行按钮重排。
- */
+/** 卡片页只保留选用、旋钮与回落告警；资源库复用原有皮肤包管理与编辑器。 */
 
 import type { CardSkinDuplicateResponse, CardSkinSummary } from "@bilibili-notify/contract";
 import { CARD_KIND_SHORT_NAMES } from "@bilibili-notify/internal/card-skin";
@@ -33,6 +19,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Field, TSelect } from "../../components/forms";
+import { ManageResourcesButton } from "../../components/library/manage-resources-button";
 import { SETTINGS_KEY } from "../../hooks/useSettings";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
@@ -90,7 +77,11 @@ function downloadSkin(skin: CardSkinSummary): void {
 	a.click();
 }
 
-export function CardSkinSection() {
+export function CardSkinSection({ mode = "select" }: { mode?: "select" | "manage" } = {}) {
+	return mode === "select" ? <CardSkinSelection /> : <CardSkinManagement />;
+}
+
+function CardSkinManagement() {
 	const tx = useT();
 
 	const qc = useQueryClient();
@@ -104,20 +95,13 @@ export function CardSkinSection() {
 	const skins = useMemo(() => sortSkins(listQuery.data?.skins ?? []), [listQuery.data?.skins]);
 	const active = listQuery.data?.active ?? "";
 
-	/** 装包 / 复制 / 删除之后的重取(启用那一档不走这里,见下面的 `activate`)。 */
+	/** 装包 / 复制 / 删除后让管理列表和设置读者同步重取。 */
 	function refresh(): void {
 		void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
 		// 启用指针住在 `globals.defaults.cardSkin`,不在店里 —— 删掉正在用的那套,服务端
 		// 会顺手改这个指针,页面上读 globals 的那些地方(预览、灵动岛基线)得跟着重取。
 		void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 	}
-
-	// 启用那颗钮封在 card-skins-query 里(两个 key 的 invalidate 归它管)——「换上这套」
-	// 在卡片工坊的回复末尾还有一份,两处各写各的必然漏掉其中一个 key。
-	const activate = useActivateCardSkin({
-		onSuccess: () => setError(null),
-		onError: setError,
-	});
 
 	/**
 	 * 复制一份。`andThen` 是「复制完拿新 id 干什么」(**别叫 `then`** —— 带 `then` 的对象
@@ -170,20 +154,7 @@ export function CardSkinSection() {
 		if (file) upload.mutate(file);
 	}
 
-	/**
-	 * 出图回落的账本(ADR-0014 决策 19「回落必须可见」)。
-	 *
-	 * **刻意不做 toast**:回落发生在推送的那一刻,主人多半不在面板前;等他下次打开卡片页
-	 * 才看得见,所以这块要一直留在页面上,直到他自己说「知道了」。
-	 */
-	const fallbacks = listQuery.data?.fallbacks ?? [];
-	const dismissFallbacks = useMutation({
-		mutationFn: () => api.delete<{ ok: boolean }>("/api/cards/skins/fallbacks"),
-		onSuccess: refresh,
-		onError: (e) => setError(String((e as Error).message)),
-	});
-
-	const busy = activate.isPending || duplicate.isPending || remove.isPending;
+	const busy = duplicate.isPending || remove.isPending;
 
 	return (
 		<GlassBox
@@ -222,34 +193,7 @@ export function CardSkinSection() {
 					{error}
 				</ErrorNote>
 			) : null}
-			{fallbacks.length > 0 ? (
-				<WarnNote className="mb-3 leading-5">
-					<div className="flex items-start gap-3">
-						<div className="min-w-0 flex-1 space-y-0.5">
-							<div className="font-semibold">{tx("skinUi.CardSkinSection.10")}</div>
-							{fallbacks.map((f) => (
-								<div key={`${f.skinId} ${f.kind} ${f.reason}`}>
-									{tx("skinUi.CardSkinSection.fallback", {
-										skin: skinName(skins, f.skinId),
-										kind: KIND_LABEL[f.kind],
-										reason: f.reason,
-									})}
-									{f.count > 1 ? tx("skinUi.CardSkinSection.13", { count: f.count }) : ""} ·{" "}
-									{formatAt(f.at)}
-								</div>
-							))}
-						</div>
-						<Btn
-							size="sm"
-							variant="ghost"
-							onClick={() => dismissFallbacks.mutate()}
-							disabled={dismissFallbacks.isPending}
-						>
-							{tx("skinUi.CardSkinSection.14")}
-						</Btn>
-					</div>
-				</WarnNote>
-			) : null}
+
 			{warnings.length > 0 ? (
 				<WarnNote className="mb-3 leading-5">
 					{warnings.map((w) => (
@@ -258,7 +202,14 @@ export function CardSkinSection() {
 				</WarnNote>
 			) : null}
 
-			{listQuery.isPending ? (
+			{listQuery.isError ? (
+				<ErrorNote>
+					{tx("library.skinsReadFailed")}{" "}
+					<Btn size="sm" onClick={() => void listQuery.refetch()}>
+						{tx("library.retry")}
+					</Btn>
+				</ErrorNote>
+			) : listQuery.isPending ? (
 				<LoadingBlock label={tx("skinUi.CardSkinSection.15")} variant="inset" />
 			) : skins.length === 0 ? (
 				<EmptyNote>{tx("skinUi.CardSkinSection.16")}</EmptyNote>
@@ -270,7 +221,6 @@ export function CardSkinSection() {
 							skin={skin}
 							inUse={skin.id === active}
 							busy={busy}
-							onActivate={() => activate.mutate(skin.id)}
 							onDuplicate={() => duplicate.mutate({ id: skin.id })}
 							onEdit={() =>
 								skin.builtin
@@ -287,7 +237,7 @@ export function CardSkinSection() {
 				</div>
 			)}
 
-			<HintNote className="mt-3">{tx("skinUi.CardSkinSection.17")}</HintNote>
+			<HintNote className="mt-3">{tx("library.cardManageHint")}</HintNote>
 
 			{confirmRemove ? (
 				<ConfirmDialog
@@ -310,7 +260,6 @@ function CardSkinRow(props: {
 	skin: CardSkinSummary;
 	inUse: boolean;
 	busy: boolean;
-	onActivate: () => void;
 	onDuplicate: () => void;
 	onEdit: () => void;
 	onExport: () => void;
@@ -348,14 +297,6 @@ function CardSkinRow(props: {
 				) : null}
 			</div>
 			<div className="flex flex-wrap items-center gap-1.5">
-				<Btn
-					size="sm"
-					variant="ghost"
-					onClick={props.onActivate}
-					disabled={props.busy || props.inUse}
-				>
-					{props.inUse ? tx("skinUi.CardSkinSection.23") : tx("skinUi.CardSkinSection.24")}
-				</Btn>
 				{/* 内置那份改不了(决策 5),所以它这颗写的是「复制并编辑」:点了先派生再进编辑器。 */}
 				<Btn size="sm" variant="ghost" onClick={props.onEdit} disabled={props.busy}>
 					{skin.builtin ? tx("skinUi.CardSkinSection.25") : tx("skinUi.CardSkinSection.26")}
@@ -377,6 +318,89 @@ function CardSkinRow(props: {
 	);
 }
 
+function CardSkinSelection() {
+	const tx = useT(),
+		qc = useQueryClient();
+	const [error, setError] = useState<string | null>(null);
+	const listQuery = useCardSkinList();
+	const skins = listQuery.data?.skins ?? [];
+	const activate = useActivateCardSkin({ onSuccess: () => setError(null), onError: setError });
+	function refresh() {
+		void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
+	}
+	/**
+	 * 出图回落的账本(ADR-0014 决策 19「回落必须可见」)。
+	 *
+	 * **刻意不做 toast**:回落发生在推送的那一刻,主人多半不在面板前;等他下次打开卡片页
+	 * 才看得见,所以这块要一直留在页面上,直到他自己说「知道了」。
+	 */
+	const fallbacks = listQuery.data?.fallbacks ?? [];
+	const dismissFallbacks = useMutation({
+		mutationFn: () => api.delete<{ ok: boolean }>("/api/cards/skins/fallbacks"),
+		onSuccess: refresh,
+		onError: (e) => setError(String((e as Error).message)),
+	});
+
+	return (
+		<GlassBox
+			title={tx("skinUi.CardSkinSection.2")}
+			subtitle={tx("library.cardSelectHint")}
+			accent="var(--color-bn-purple)"
+			icon={<Icon.palette size={14} />}
+		>
+			{error ? <ErrorNote>{error}</ErrorNote> : null}
+			{fallbacks.length > 0 ? (
+				<WarnNote className="mb-3 leading-5">
+					<div className="flex items-start gap-3">
+						<div className="min-w-0 flex-1 space-y-0.5">
+							<div className="font-semibold">{tx("skinUi.CardSkinSection.10")}</div>
+							{fallbacks.map((f) => (
+								<div key={`${f.skinId} ${f.kind} ${f.reason}`}>
+									{tx("skinUi.CardSkinSection.fallback", {
+										skin: skinName(skins, f.skinId),
+										kind: KIND_LABEL[f.kind],
+										reason: f.reason,
+									})}
+									{f.count > 1 ? tx("skinUi.CardSkinSection.13", { count: f.count }) : ""} ·{" "}
+									{formatAt(f.at)}
+								</div>
+							))}
+						</div>
+						<Btn
+							size="sm"
+							variant="ghost"
+							onClick={() => dismissFallbacks.mutate()}
+							disabled={dismissFallbacks.isPending}
+						>
+							{tx("skinUi.CardSkinSection.14")}
+						</Btn>
+					</div>
+				</WarnNote>
+			) : null}
+			{listQuery.isPending ? (
+				<LoadingBlock label={tx("skinUi.CardSkinSection.15")} variant="inset" />
+			) : listQuery.isError ? (
+				<ErrorNote>
+					{tx("library.skinsReadFailed")}{" "}
+					<Btn size="sm" onClick={() => void listQuery.refetch()}>
+						{tx("library.retry")}
+					</Btn>
+				</ErrorNote>
+			) : (
+				<fieldset disabled={activate.isPending}>
+					<CardSkinPicker
+						value={listQuery.data?.active}
+						inherit={false}
+						onChange={(id) => {
+							if (id && id !== listQuery.data?.active) activate.mutate(id);
+						}}
+					/>
+				</fieldset>
+			)}
+		</GlassBox>
+	);
+}
+
 /**
  * per-UP 的「这个 UP 用哪套皮肤」下拉(ADR-0014 决策 17)。
  *
@@ -386,7 +410,9 @@ function CardSkinRow(props: {
 export function CardSkinPicker({
 	value,
 	onChange,
+	inherit = true,
 }: {
+	inherit?: boolean;
 	value: string | undefined;
 	onChange: (next: string | undefined) => void;
 }) {
@@ -398,24 +424,33 @@ export function CardSkinPicker({
 	const activeName = skins.find((s) => s.id === active)?.name ?? active;
 
 	return (
-		<Field code="cardSkin" full>
-			<TSelect
-				full
-				value={value ?? ""}
-				onChange={(next) => onChange(next === "" ? undefined : next)}
-				options={[
-					{
-						value: "",
-						label: activeName
-							? tx("skinUi.CardSkinSection.30", { value0: activeName })
-							: tx("skinUi.CardSkinSection.31"),
-					},
-					...skins.map((s) => ({
-						value: s.id,
-						label: s.builtin ? tx("skinUi.CardSkinSection.32", { value0: s.name }) : s.name,
-					})),
-				]}
-			/>
-		</Field>
+		<div className="space-y-3">
+			<Field code="cardSkin" full>
+				<TSelect
+					full
+					value={value ?? ""}
+					onChange={(next) => onChange(next === "" ? undefined : next)}
+					options={[
+						...(inherit
+							? [
+									{
+										value: "",
+										label: activeName
+											? tx("skinUi.CardSkinSection.30", { value0: activeName })
+											: tx("skinUi.CardSkinSection.31"),
+									},
+								]
+							: []),
+						...skins.map((s) => ({
+							value: s.id,
+							label: s.builtin ? tx("skinUi.CardSkinSection.32", { value0: s.name }) : s.name,
+						})),
+					]}
+				/>
+			</Field>
+			<div className="flex justify-end">
+				<ManageResourcesButton category="card-skins" />
+			</div>
+		</div>
 	);
 }

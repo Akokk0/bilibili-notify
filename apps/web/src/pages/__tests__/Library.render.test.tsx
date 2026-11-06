@@ -30,11 +30,27 @@ function LocationControls() {
 	);
 }
 
-function mount(path: string) {
+function mount(path: string, request?: (path: string) => Response | undefined) {
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.stubGlobal(
 		"fetch",
 		vi.fn(async (input: string | URL | Request) => {
+			const response = request?.(String(input));
+			if (response) return response;
+			if (String(input) === "/api/cards/skins")
+				return Response.json({
+					skins: [
+						{ id: "default", name: "默认卡片", builtin: true, updatedAt: 0 },
+						{ id: "aurora", name: "极光", builtin: false, updatedAt: 1 },
+					],
+					active: "aurora",
+					fallbacks: [],
+				});
+			if (String(input) === "/api/dashboard/skins")
+				return Response.json({
+					list: [{ id: "sakura", name: "樱花夜", modes: ["light", "dark"], hasWallpaper: true }],
+					active: { light: null, dark: null },
+				});
 			if (String(input) === "/api/library/fonts")
 				return Response.json({
 					ok: true,
@@ -61,6 +77,40 @@ it("字体分类链接直接展示字体，保留原有管理操作", async () =
 	expect(await screen.findByText("示例字体.woff2")).toBeTruthy();
 	expect(screen.getByRole("button", { name: "删除字体 示例字体.woff2" })).toBeTruthy();
 	expect(screen.queryByText("还没有图片")).toBeNull();
+});
+
+it("界面皮肤链接展示真实管理列表，选用仍由系统页负责", async () => {
+	mount("/library?category=dashboard-skins");
+	expect(await screen.findByText("樱花夜")).toBeTruthy();
+	expect(screen.getByRole("button", { name: "调整" })).toBeTruthy();
+	expect(screen.getByRole("button", { name: "导出" })).toBeTruthy();
+	expect(screen.queryByRole("group", { name: "浅色模式皮肤" })).toBeNull();
+});
+
+it("卡片皮肤链接提供原编辑、复制与导出，管理页不切换默认皮肤", async () => {
+	mount("/library?category=card-skins");
+	expect(await screen.findByText("极光")).toBeTruthy();
+	expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy();
+	expect(screen.getByRole("button", { name: "复制并编辑" })).toBeTruthy();
+	expect(screen.getAllByRole("button", { name: "导出" })).toHaveLength(2);
+	expect(screen.queryByRole("button", { name: "启用" })).toBeNull();
+});
+
+it.each([
+	["dashboard-skins", "/api/dashboard/skins", "樱花夜"],
+	["card-skins", "/api/cards/skins", "极光"],
+])("%s读取失败保留重试入口，不误报空库", async (category, endpoint, name) => {
+	let failed = true;
+	mount(`/library?category=${category}`, (path) =>
+		path === endpoint && failed
+			? Response.json({ code: "unavailable", message: "临时无法读取" }, { status: 503 })
+			: undefined,
+	);
+	expect(await screen.findByText("皮肤列表暂时无法读取，请重试。")).toBeTruthy();
+	expect(screen.queryByText(name)).toBeNull();
+	failed = false;
+	await userEvent.click(screen.getByRole("button", { name: "重试" }));
+	expect(await screen.findByText(name)).toBeTruthy();
 });
 
 it("切换分类更新可分享地址，保留其他参数并支持后退", async () => {

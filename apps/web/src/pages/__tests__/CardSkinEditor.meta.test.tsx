@@ -18,7 +18,7 @@ import { chooseSelect } from "../../__tests__/select-controls";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../services/api", () => ({
@@ -81,11 +81,31 @@ function renderEditor() {
 			<MemoryRouter initialEntries={["/cards/skins/neon"]}>
 				<Routes>
 					<Route path="/cards/skins/:id" element={<CardSkinEditor />} />
+					<Route path="/library" element={<LibraryLocation />} />
 				</Routes>
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);
 }
+
+function LibraryLocation() {
+	const location = useLocation();
+	return (
+		<output aria-label="返回位置">
+			{location.pathname}
+			{location.search}
+		</output>
+	);
+}
+
+it("编辑完成后返回资源库的卡片皮肤分类", async () => {
+	mockApi();
+	renderEditor();
+	fireEvent.click(await screen.findByRole("button", { name: "返回资源库" }));
+	expect((await screen.findByLabelText("返回位置")).textContent).toBe(
+		"/library?category=card-skins",
+	);
+});
 
 /** 最近一次 `PUT` 出去的那份清单。 */
 const saved = () =>
