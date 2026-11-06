@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "./i18n/index.js";
 /**
  * 收不可信 zip 的**共用卫生层**:什么条目不算内容,以及怎么把一个包摊开而不被压缩
@@ -29,9 +30,7 @@ export interface OpenZipLimits {
 	maxTotalBytes: number;
 }
 
-export type OpenZipResult =
-	| { ok: true; entries: Record<string, Uint8Array> }
-	| { ok: false; error: string };
+export type OpenZipResult = Result<{ entries: Record<string, Uint8Array> }>;
 
 /**
  * 摊开一个不可信 zip:垃圾条目滤掉,两道粗筛在**解压之前**拦住压缩炸弹。
@@ -63,8 +62,8 @@ export function openZipEntries(buf: Uint8Array, limits: OpenZipLimits): OpenZipR
 			},
 		});
 	} catch {
-		return { ok: false, error: serverText("service.zip-junk.text.3") };
+		return fail("invalid", serverText("service.zip-junk.text.3"));
 	}
-	if (precheckError) return { ok: false, error: precheckError };
-	return { ok: true, entries };
+	if (precheckError) return fail("invalid", precheckError);
+	return ok({ entries });
 }

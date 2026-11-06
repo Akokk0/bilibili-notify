@@ -72,7 +72,7 @@ describe("openSkinPackage", () => {
 
 	it("不是 zip 的字节流 → 拒绝", () => {
 		const r = openSkinPackage(strToU8("这不是 zip"));
-		expect(r.ok).toBe(false);
+		expect(r).toEqual({ ok: false, errors: ["不是合法的 zip 文件"] });
 	});
 
 	it("缺 skin.json → 拒绝", () => {
@@ -278,7 +278,7 @@ describe("openSkinPackage", () => {
 		const files: Record<string, Uint8Array> = { "skin.json": manifestJson() };
 		for (let i = 0; i < 20; i++) files[`assets/a${i}.png`] = PNG;
 		const r = openSkinPackage(makeZip(files));
-		expect(r.ok).toBe(false);
+		expect(r).toEqual({ ok: false, errors: ["包内文件太多(上限 14 个)"] });
 	});
 });
 

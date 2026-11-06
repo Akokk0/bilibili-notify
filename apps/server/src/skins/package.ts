@@ -98,7 +98,7 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 		maxFiles: MAX_PACKAGE_FILES,
 		maxTotalBytes: MAX_TOTAL_BYTES,
 	});
-	if (!opened.ok) return { ok: false, errors: [opened.error] };
+	if (!opened.ok) return { ok: false, errors: [opened.message] };
 	const entries = opened.entries;
 
 	const errors: string[] = [];

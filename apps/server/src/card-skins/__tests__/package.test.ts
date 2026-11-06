@@ -74,7 +74,10 @@ describe("parseCardSkinPackage:文件层", () => {
 	});
 
 	it("不是 zip 的字节流 → 拒", () => {
-		expect(parseCardSkinPackage(strToU8("这不是 zip")).ok).toBe(false);
+		expect(parseCardSkinPackage(strToU8("这不是 zip"))).toEqual({
+			ok: false,
+			errors: ["不是合法的 zip 文件"],
+		});
 	});
 
 	it("card-skin.json 不是合法 JSON → 拒", () => {
@@ -162,6 +165,38 @@ describe("parseCardSkinPackage:文件层", () => {
  * 由上面那条「多一份就拒」与清单体积那条钉着。
  */
 describe("zip bomb 两道闸", () => {
+	it("公共解包只返回有效文件:目录和 macOS 垃圾不占数量或总大小额度", () => {
+		const content = new Uint8Array([1, 2]);
+		const zip = zipSync({
+			"a.bin": content,
+			"folder/": new Uint8Array(),
+			"__MACOSX/._a.bin": new Uint8Array(8),
+			".DS_Store": new Uint8Array(8),
+			"nested/.DS_Store": new Uint8Array(8),
+		});
+		expect(openZipEntries(zip, { maxFiles: 1, maxTotalBytes: 2 })).toEqual({
+			ok: true,
+			entries: { "a.bin": content },
+		});
+	});
+
+	it("公共解包拒绝损坏包,保留格式错误原因", () => {
+		expect(openZipEntries(strToU8("这不是 zip"), { maxFiles: 1, maxTotalBytes: 2 })).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "不是合法的 zip 文件",
+		});
+	});
+
+	it("公共解包条目数超限,保留数量上限原因", () => {
+		const zip = zipSync({ "a.bin": new Uint8Array(1), "b.bin": new Uint8Array(1) });
+		expect(openZipEntries(zip, { maxFiles: 1, maxTotalBytes: 2 })).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "包内文件太多(上限 1 个)",
+		});
+	});
+
 	/**
 	 * 断言得盯住**是哪道闸开的口**,而且**不许引用实现里那个常量**:
 	 *
@@ -192,9 +227,7 @@ describe("zip bomb 两道闸", () => {
 		const zip = zipSync({ "a.bin": new Uint8Array(4096), "b.bin": new Uint8Array(4096) });
 		expect(openZipEntries(zip, { maxFiles: 10, maxTotalBytes: 8192 }).ok).toBe(true);
 		const r = openZipEntries(zip, { maxFiles: 10, maxTotalBytes: 4096 });
-		expect(r.ok).toBe(false);
-		if (r.ok) return;
-		expect(r.error).toContain("总大小");
+		expect(r).toEqual({ ok: false, code: "invalid", message: "包解压后总大小超限" });
 	});
 });
 

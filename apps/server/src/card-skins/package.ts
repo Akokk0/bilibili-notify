@@ -85,7 +85,7 @@ export function parseCardSkinPackage(zip: Uint8Array): ParseCardSkinPackageResul
 		maxFiles: MAX_CARD_SKIN_PACKAGE_FILES,
 		maxTotalBytes: MAX_CARD_SKIN_TOTAL_BYTES,
 	});
-	if (!opened.ok) return { ok: false, errors: [opened.error] };
+	if (!opened.ok) return { ok: false, errors: [opened.message] };
 
 	const errors: string[] = [];
 	let manifestBytes: Uint8Array | null = null;

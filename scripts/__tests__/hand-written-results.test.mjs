@@ -61,7 +61,6 @@ export const RATCHET = {
 	"apps/server/src/update/install-payload.ts": 6,
 	"apps/server/src/update/service.ts": 4,
 	"apps/server/src/update/signed-manifest.ts": 5,
-	"apps/server/src/zip-junk.ts": 3,
 	"apps/web/src/devtools/dock.tsx": 2,
 	"apps/web/src/devtools/ext-motion.ts": 3,
 	"apps/web/src/services/session.ts": 6,
