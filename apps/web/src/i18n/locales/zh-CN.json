@@ -1261,7 +1261,6 @@
 	"preferences.voice.hint": "选择交互与提示的口吻；标题和数据名保持平实。没有女仆译文的语言不显示此项，已存选择仍保留。",
 	"preferences.voice.maid": "女仆",
 	"preferences.voice.plain": "平实",
-	"preferences.voice.default": "跟随默认（{voice}）",
 	"preferences.timezone.label": "时区",
 	"preferences.timezone.hint": "填写 IANA 时区名，例如 Asia/Shanghai。用于卡片时间和服务端日程、免打扰；保存后重排未来日程，不补跑。浏览器内统计图表仍按本机时区切天。",
 	"credentials.title": "面板账号",

@@ -44,14 +44,10 @@ export function PreferencesSection({
 			{textOptions.maidLocales.includes(locale) ? (
 				<Field code="core.voice" full>
 					<fieldset aria-label={t("preferences.voice.label")}>
-						<Picker<Voice | "default">
-							value={draft.voice ?? "default"}
-							onChange={(voice) => onPatch({ voice: voice === "default" ? null : voice })}
+						<Picker<Voice>
+							value={draft.voice ?? DEFAULT_VOICE}
+							onChange={(voice) => onPatch({ voice: voice === DEFAULT_VOICE ? null : voice })}
 							options={[
-								{
-									value: "default",
-									label: t("preferences.voice.default", { voice: voices[DEFAULT_VOICE] }),
-								},
 								{ value: "maid", label: voices.maid },
 								{ value: "plain", label: voices.plain },
 							]}

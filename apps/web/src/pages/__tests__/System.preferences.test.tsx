@@ -149,11 +149,11 @@ describe("系统外观的语言、口吻和时区", () => {
 		await waitFor(() => expect(i18n.state().voice).toBe("maid"));
 	});
 
-	it("恢复默认口吻提交显式null，成功后回到默认女仆并记入浏览器", async () => {
+	it("选回女仆提交默认值删除，成功后应用口吻并记入浏览器", async () => {
 		await renderAppearance({ voice: "plain" });
 		fireEvent.click(
 			within(screen.getByRole("group", { name: "文案口吻" })).getByRole("button", {
-				name: "跟随默认（女仆）",
+				name: "女仆",
 			}),
 		);
 		expect(i18n.state().voice).toBe("plain");
@@ -189,15 +189,20 @@ describe("系统外观的语言、口吻和时区", () => {
 		);
 	});
 
-	it("显示四种语言，未设口吻跟随默认女仆，只展示默认不回写", async () => {
+	it("显示四种语言，口吻仅女仆和平实，未设置时女仆选中但不回写", async () => {
 		await renderAppearance();
 		const languages = screen.getByRole("group", { name: "界面语言" });
 		for (const name of ["简体中文", "繁體中文", "English", "日本語"])
 			expect(within(languages).getByRole("button", { name })).toBeTruthy();
 		const voices = screen.getByRole("group", { name: "文案口吻" });
 		expect(
-			within(voices).getByRole("button", { name: "跟随默认（女仆）" }).getAttribute("aria-pressed"),
-		).toBe("true");
+			within(voices)
+				.getAllByRole("button")
+				.map((button) => button.textContent),
+		).toEqual(["女仆", "平实"]);
+		expect(within(voices).getByRole("button", { name: "女仆" }).getAttribute("aria-pressed")).toBe(
+			"true",
+		);
 		expect((screen.getByRole("textbox", { name: "时区" }) as HTMLInputElement).value).toBe(
 			"Asia/Shanghai",
 		);
