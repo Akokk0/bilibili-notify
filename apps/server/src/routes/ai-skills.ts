@@ -3,19 +3,19 @@ import { t as serverText } from "../i18n/index.js";
  * 女仆技能 API。校验、名字白名单、路径穿越防御全在 `maid-skills/parse.ts` 与
  * `maid-skills/store.ts`,这里只做 wire。
  *
- * 每次 GET 都重新读盘:「真文件、可手放」是这个特性的一半意义(ADR-0001 决策 3),
+ * 每次 GET 都重新读盘:「真文件、可手放」是这个特性的一半意义(ADR-0003 决策 3),
  * 要是得重启才认得,主人放完刷新一下看不见,只会以为自己放错了地方。代价是一次
  * readdir + 几份小文件,量级可以忽略。
  */
 
 import { coreToolLabelOf } from "@bilibili-notify/ai";
 import type { MaidSkillsListResponse } from "@bilibili-notify/contract";
-import { fail, issuesFromZod, ok } from "@bilibili-notify/internal";
+import { fail, issuesFromZod } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import { type MaidSkillReader, skillToolNames } from "../maid-skills/reader.js";
-import { type MaidSkillStore, SkillStoreError } from "../maid-skills/store.js";
+import type { MaidSkillStore } from "../maid-skills/store.js";
 import { respondFailure } from "./respond-failure.js";
 
 /**
@@ -76,17 +76,12 @@ export function createAiSkillsRoute(deps: {
 				fail("invalid", notASkillMessage(), { issues: issuesFromZod(parsed.error) }),
 			);
 		}
-		// 与 PUT / DELETE 同待遇。名字占用那道闸自己会问盘(见 store.assertFree),
+		// 与 PUT / DELETE 同待遇。名字占用那道闸自己会问盘(见 store.checkFree),
 		// 所以这句不是防线 —— 它只是别让 create 把一份残缺索引当成全库。
 		await skillStore.ensureReady();
-		try {
-			await skillStore.create({ disableModelInvocation: false, ...parsed.data });
-		} catch (err) {
-			// 只接技能库自己拒收的(名字不合法 400、重名 409);别的抛错是环境或 bug 的事,往上抛。
-			if (err instanceof SkillStoreError) return respondFailure(c, err.toFailure());
-			throw err;
-		}
-		return c.json(ok());
+		const result = await skillStore.create({ disableModelInvocation: false, ...parsed.data });
+		if (!result.ok) return respondFailure(c, result);
+		return c.json(result);
 	});
 
 	app.put("/:name", async (c) => {
@@ -99,27 +94,17 @@ export function createAiSkillsRoute(deps: {
 			);
 		}
 		await skillStore.ensureReady();
-		try {
-			await skillStore.update(name, { disableModelInvocation: false, ...parsed.data });
-		} catch (err) {
-			if (err instanceof SkillStoreError) return respondFailure(c, err.toFailure());
-			throw err;
-		}
-		return c.json(ok());
+		const result = await skillStore.update(name, { disableModelInvocation: false, ...parsed.data });
+		if (!result.ok) return respondFailure(c, result);
+		return c.json(result);
 	});
 
 	app.delete("/:name", async (c) => {
 		const name = c.req.param("name");
 		await skillStore.ensureReady();
-		try {
-			await skillStore.remove(name);
-		} catch (err) {
-			// 名字不合法(`invalid`)与「没这条」(`not_found`)都从这儿出来。都不是 500 —— 前者是主人
-			// (或攻击者)给了个走不通的名字,后者是他手快点了两次删除。
-			if (err instanceof SkillStoreError) return respondFailure(c, err.toFailure());
-			throw err;
-		}
-		return c.json(ok());
+		const result = await skillStore.remove(name);
+		if (!result.ok) return respondFailure(c, result);
+		return c.json(result);
 	});
 
 	return app;

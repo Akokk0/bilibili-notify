@@ -11,10 +11,11 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Result } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { BUILTIN_SKILLS } from "../builtin.js";
 import { formatSkillFile, parseSkillFile } from "../parse.js";
-import { MaidSkillStore, SkillStoreError } from "../store.js";
+import { MaidSkillStore } from "../store.js";
 
 let dir: string;
 let store: MaidSkillStore;
@@ -55,13 +56,20 @@ describe("内置", () => {
 
 	it("内置改不动、删不掉 —— 只读跟版本走(ADR 决策 15)", async () => {
 		const name = BUILTIN.name;
-		await expect(store.update(name, { ...BUILTIN, body: "篡改" })).rejects.toThrow();
-		await expect(store.remove(name)).rejects.toThrow();
+		await expect(store.update(name, { ...BUILTIN, body: "篡改" })).resolves.toMatchObject({
+			ok: false,
+			code: "conflict",
+		});
+		await expect(store.remove(name)).resolves.toMatchObject({ ok: false, code: "conflict" });
 		expect(store.get(name)?.body).toBe(BUILTIN.body);
 	});
 
 	it("建同名内置 → 直接拒,并说清是被内置占用了", async () => {
-		await expect(store.create({ ...sample, name: BUILTIN.name })).rejects.toThrow(/内置/);
+		await expect(store.create({ ...sample, name: BUILTIN.name })).resolves.toMatchObject({
+			ok: false,
+			code: "conflict",
+			message: expect.stringContaining("内置"),
+		});
 	});
 
 	it("盘上有个跟内置同名的目录 → 内置照旧赢,并报成一条问题", async () => {
@@ -76,7 +84,7 @@ describe("内置", () => {
 
 describe("增删改", () => {
 	it("建 → 列得出、读得回,且不是内置", async () => {
-		await store.create(sample);
+		await expect(store.create(sample)).resolves.toEqual({ ok: true });
 		const got = store.get("my-skill");
 		expect(got).toBeDefined();
 		expect(got?.builtin).toBe(false);
@@ -92,14 +100,19 @@ describe("增删改", () => {
 
 	it("建重名 → 拒", async () => {
 		await store.create(sample);
-		await expect(store.create(sample)).rejects.toThrow();
+		await expect(store.create(sample)).resolves.toMatchObject({ ok: false, code: "conflict" });
 	});
 
 	it("改 → 内容换掉;改不存在的 → 拒", async () => {
 		await store.create(sample);
-		await store.update("my-skill", { ...sample, body: "换了个说法" });
+		await expect(store.update("my-skill", { ...sample, body: "换了个说法" })).resolves.toEqual({
+			ok: true,
+		});
 		expect(store.get("my-skill")?.body).toBe("换了个说法");
-		await expect(store.update("nope", sample)).rejects.toThrow();
+		await expect(store.update("nope", sample)).resolves.toMatchObject({
+			ok: false,
+			code: "not_found",
+		});
 	});
 
 	it("改名 = 换目录,旧的不留在盘上", async () => {
@@ -116,12 +129,15 @@ describe("增删改", () => {
 	it("改名撞上已有的名字 → 拒,别把人家覆盖掉", async () => {
 		await store.create(sample);
 		await store.create({ ...sample, name: "other" });
-		await expect(store.update("other", { ...sample, name: "my-skill" })).rejects.toThrow();
+		await expect(store.update("other", { ...sample, name: "my-skill" })).resolves.toMatchObject({
+			ok: false,
+			code: "conflict",
+		});
 	});
 
 	it("删 → 盘上目录一起没", async () => {
 		await store.create(sample);
-		await store.remove("my-skill");
+		await expect(store.remove("my-skill")).resolves.toEqual({ ok: true });
 		expect(store.get("my-skill")).toBeUndefined();
 		const reopened = new MaidSkillStore({ dir });
 		await reopened.ensureReady();
@@ -131,8 +147,11 @@ describe("增删改", () => {
 	it("名字不合法 → 一律拒,连磁盘都不碰", async () => {
 		// 名字要拼进路径,这是那道闸的最后一站。
 		for (const bad of ["../evil", "a/b", "周报", "A"]) {
-			await expect(store.create({ ...sample, name: bad })).rejects.toThrow();
-			await expect(store.remove(bad)).rejects.toThrow();
+			await expect(store.create({ ...sample, name: bad })).resolves.toMatchObject({
+				ok: false,
+				code: "invalid",
+			});
+			await expect(store.remove(bad)).resolves.toMatchObject({ ok: false, code: "invalid" });
 		}
 	});
 });
@@ -158,10 +177,10 @@ describe("落盘", () => {
 	it("同一条技能并发存几次 → 都成功,盘上是完整的一份,不留临时文件", async () => {
 		await store.create(sample);
 		const bodies = Array.from({ length: 8 }, (_, i) => `第 ${i} 版的正文`);
-		const results = await Promise.allSettled(
+		const results = await Promise.all(
 			bodies.map((body) => store.update("my-skill", { ...sample, body })),
 		);
-		expect(results.map((r) => r.status)).toEqual(bodies.map(() => "fulfilled"));
+		expect(results).toEqual(bodies.map(() => ({ ok: true })));
 
 		expect(await readdir(join(dir, "my-skill"))).toEqual(["SKILL.md"]);
 		const onDisk = parseSkillFile(await readFile(join(dir, "my-skill", "SKILL.md"), "utf-8"));
@@ -209,24 +228,19 @@ describe("手放的文件", () => {
 });
 
 /**
- * 拒收**自带码**(ADR-0026):路由靠 `SkillStoreError.code` 回给面板,不再把名字不合法、重名、
+ * 拒收**自带码**(ADR-0026):路由按标准结果回给面板,不再把名字不合法、重名、
  * 没这条一把抓成 400。这里钉每一处拒收各是哪个码。
  */
-describe("SkillStoreError:拒收各带各的码", () => {
-	const codeOf = async (run: () => Promise<unknown>): Promise<unknown> => {
-		try {
-			await run();
-		} catch (e) {
-			expect(e).toBeInstanceOf(SkillStoreError);
-			return (e as SkillStoreError).code;
-		}
-		return "没有拒收";
+describe("标准结果:拒收各带各的码", () => {
+	const codeOf = async (run: () => Promise<Result>): Promise<unknown> => {
+		const result = await run();
+		return result.ok ? "没有拒收" : result.code;
 	};
 
 	it("内容或名字不合规矩 → invalid", async () => {
 		expect(await codeOf(() => store.create({ ...sample, name: "我的技能" }))).toBe("invalid");
-		await expect(store.create({ ...sample, body: "  " })).rejects.toMatchObject({
-			name: "SkillStoreError",
+		await expect(store.create({ ...sample, body: "  " })).resolves.toMatchObject({
+			ok: false,
 			code: "invalid",
 			message: expect.stringContaining("正文是空的"),
 		});
@@ -250,11 +264,11 @@ describe("SkillStoreError:拒收各带各的码", () => {
 		expect(await codeOf(() => store.create({ ...sample, name: "hand-made" }))).toBe("conflict");
 	});
 
-	it("toFailure():码原样、话就是 message,不带别的格", () => {
-		expect(new SkillStoreError("not_found", "没这条").toFailure()).toEqual({
+	it("预期拒收直接返回标准失败,不带别的格", async () => {
+		await expect(store.remove("nope")).resolves.toEqual({
 			ok: false,
 			code: "not_found",
-			message: "没这条",
+			message: "技能不存在:nope",
 		});
 	});
 });
@@ -267,16 +281,18 @@ describe("提供方技能占名", () => {
 
 		await expect(
 			guarded.create({ ...sample, name: "acme-inprocess-echo-check" }),
-		).rejects.toMatchObject({ code: "conflict" });
+		).resolves.toMatchObject({ ok: false, code: "conflict" });
 
 		await guarded.create(sample);
 		await expect(
 			guarded.update("my-skill", { ...sample, name: "acme-inprocess-echo-check" }),
-		).rejects.toMatchObject({ code: "conflict" });
-		await expect(guarded.update("acme-inprocess-echo-check", sample)).rejects.toMatchObject({
+		).resolves.toMatchObject({ ok: false, code: "conflict" });
+		await expect(guarded.update("acme-inprocess-echo-check", sample)).resolves.toMatchObject({
+			ok: false,
 			code: "conflict",
 		});
-		await expect(guarded.remove("acme-inprocess-echo-check")).rejects.toMatchObject({
+		await expect(guarded.remove("acme-inprocess-echo-check")).resolves.toMatchObject({
+			ok: false,
 			code: "conflict",
 		});
 

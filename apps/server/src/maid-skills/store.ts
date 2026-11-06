@@ -13,10 +13,15 @@ import { t as serverText } from "../i18n/index.js";
 
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { type Failure, type FailureCode, fail, type MaidSkill } from "@bilibili-notify/internal";
+import { fail, type MaidSkill, ok, type Result } from "@bilibili-notify/internal";
 import { atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
 import { BUILTIN_SKILL_NAMES, BUILTIN_SKILLS } from "./builtin.js";
-import { formatSkillFile, isValidSkillName, parseSkillFile } from "./parse.js";
+import {
+	formatSkillFile,
+	isValidSkillName,
+	type ParseSkillResult,
+	parseSkillFile,
+} from "./parse.js";
 
 /** 技能文件在目录里的固定名字,与 Claude Code 的 Agent Skill 一致。 */
 const SKILL_FILE = "SKILL.md";
@@ -41,30 +46,6 @@ function entryOfBuiltin({ aliases, ...skill }: (typeof BUILTIN_SKILLS)[number]):
 		...(aliases === undefined ? {} : { aliases: [...aliases] }),
 		builtin: true,
 	};
-}
-
-/**
- * 技能库拒收一件事的原因,只有这三种(标准码表的子集,规矩见 docs/agents/conventions/failure-results.md):
- * `invalid` 内容或名字不合规矩,`not_found` 要动的技能不存在,`conflict` 与当前状态冲突(内置只读、重名)。
- */
-export type SkillStoreFailureCode = Extract<FailureCode, "invalid" | "not_found" | "conflict">;
-
-/**
- * 技能库拒收:**自带码**,路由靠 `toFailure()` 回给面板。从前名字不合法、重名、没这条都是同一种裸
- * `Error`,路由只能一把抓成 400;磁盘写失败也混在里头,原话(带路径)照样外泄。现在路由只接这个类,
- * 别的抛错交给全局出错处理。
- */
-export class SkillStoreError extends Error {
-	readonly code: SkillStoreFailureCode;
-	constructor(code: SkillStoreFailureCode, message: string) {
-		super(message);
-		this.name = "SkillStoreError";
-		this.code = code;
-	}
-
-	toFailure(): Failure {
-		return fail(this.code, this.message);
-	}
 }
 
 /** 单份 SKILL.md 的大小上限 —— 手放的目录里可能是任何东西,别把一整个视频读进内存。 */
@@ -173,40 +154,46 @@ export class MaidSkillStore {
 		return [...this.issues];
 	}
 
-	async create(skill: MaidSkill): Promise<void> {
+	/** 预期拒绝回标准结果;底层读写异常交给宿主统一出错边界。 */
+	async create(skill: MaidSkill): Promise<Result> {
 		const clean = this.validate(skill);
-		await this.assertFree(clean.name);
-		await this.writeSkill(clean);
-		this.user.set(clean.name, clean);
+		if (!clean.ok) return clean;
+		const free = await this.checkFree(clean.skill.name);
+		if (!free.ok) return free;
+		await this.writeSkill(clean.skill);
+		this.user.set(clean.skill.name, clean.skill);
+		return ok();
 	}
 
-	async update(name: string, next: MaidSkill): Promise<void> {
-		this.assertEditable(name);
+	async update(name: string, next: MaidSkill): Promise<Result> {
+		const editable = this.checkEditable(name);
+		if (!editable.ok) return editable;
 		if (!this.user.has(name))
-			throw new SkillStoreError(
-				"not_found",
-				serverText("service.maid-skills.store.text.6", { value0: name }),
-			);
+			return fail("not_found", serverText("service.maid-skills.store.text.6", { value0: name }));
 		const clean = this.validate(next);
-		if (clean.name !== name) await this.assertFree(clean.name);
-		await this.writeSkill(clean);
-		if (clean.name !== name) {
+		if (!clean.ok) return clean;
+		if (clean.skill.name !== name) {
+			const free = await this.checkFree(clean.skill.name);
+			if (!free.ok) return free;
+		}
+		await this.writeSkill(clean.skill);
+		if (clean.skill.name !== name) {
 			// 改名 = 换目录。旧的不留在盘上,否则下次读盘会冒出一条僵尸。
 			await rm(join(this.dir, name), { recursive: true, force: true });
 			this.user.delete(name);
 		}
-		this.user.set(clean.name, clean);
+		this.user.set(clean.skill.name, clean.skill);
+		return ok();
 	}
 
-	async remove(name: string): Promise<void> {
-		this.assertEditable(name);
+	async remove(name: string): Promise<Result> {
+		const editable = this.checkEditable(name);
+		if (!editable.ok) return editable;
 		if (!this.user.has(name))
-			throw new SkillStoreError(
-				"not_found",
-				serverText("service.maid-skills.store.text.7", { value0: name }),
-			);
+			return fail("not_found", serverText("service.maid-skills.store.text.7", { value0: name }));
 		await rm(join(this.dir, name), { recursive: true, force: true });
 		this.user.delete(name);
+		return ok();
 	}
 
 	/**
@@ -214,38 +201,28 @@ export class MaidSkillStore {
 	 * 名字、长度、正文非空全部由 {@link parseSkillFile} 那一处判,不在这儿抄第二遍。
 	 * 两处各判各的,迟早会出现「存得进去、读不回来」的东西。
 	 */
-	private validate(skill: MaidSkill): MaidSkill {
-		const res = parseSkillFile(formatSkillFile(skill));
-		if (!res.ok) throw new SkillStoreError("invalid", res.message);
-		return res.skill;
+	private validate(skill: MaidSkill): ParseSkillResult {
+		return parseSkillFile(formatSkillFile(skill));
 	}
 
 	/**
 	 * 这个名字还空着吗 —— 内置、索引里、**以及盘上**都算占用。
 	 *
 	 * 盘那一问不能省。索引只是读缓存,主人手放的那份在下一次读盘之前从没进过它
-	 * (ADR-0001 决策 3:真文件、可手放),而 {@link writeSkill} 是照着名字直接盖的。
+	 * (ADR-0003 决策 3:真文件、可手放),而 {@link writeSkill} 是照着名字直接盖的。
 	 * 只问索引会漏成两种真事故:冷启动第一发就是写请求(陈旧标签页、脚本、先挂后
 	 * 拉列表的页面),以及索引热过之后才放进来的那份 —— 两种都是 200 OK 把主人手写
 	 * 的正文抹掉,界面上连个响都没有。缓存怎么调都堵不住,只能问盘。
 	 */
-	private async assertFree(name: string): Promise<void> {
+	private async checkFree(name: string): Promise<Result> {
 		if (this.isReserved(name)) {
-			throw new SkillStoreError(
-				"conflict",
-				serverText("service.maid-skills.store.text.8", { value0: name }),
-			);
+			return fail("conflict", serverText("service.maid-skills.store.text.8", { value0: name }));
 		}
 		if (this.user.has(name))
-			throw new SkillStoreError(
-				"conflict",
-				serverText("service.maid-skills.store.text.9", { value0: name }),
-			);
+			return fail("conflict", serverText("service.maid-skills.store.text.9", { value0: name }));
 		if (await this.fileExists(name))
-			throw new SkillStoreError(
-				"conflict",
-				serverText("service.maid-skills.store.text.10", { value0: name }),
-			);
+			return fail("conflict", serverText("service.maid-skills.store.text.10", { value0: name }));
+		return ok();
 	}
 
 	/** 盘上有没有这个名字的 SKILL.md。空目录 / 临时文件残留不算占用 —— 那儿没有主人的东西可丢。 */
@@ -257,18 +234,13 @@ export class MaidSkillStore {
 	}
 
 	/** 改 / 删的前置:名字合法(它要拼进路径)且不是内置。 */
-	private assertEditable(name: string): void {
+	private checkEditable(name: string): Result {
 		if (!isValidSkillName(name))
-			throw new SkillStoreError(
-				"invalid",
-				serverText("service.maid-skills.store.text.11", { value0: name }),
-			);
+			return fail("invalid", serverText("service.maid-skills.store.text.11", { value0: name }));
 		if (this.isReserved(name)) {
-			throw new SkillStoreError(
-				"conflict",
-				serverText("service.maid-skills.store.text.12", { value0: name }),
-			);
+			return fail("conflict", serverText("service.maid-skills.store.text.12", { value0: name }));
 		}
+		return ok();
 	}
 
 	/** 内置与当前在册的提供方技能共同占名；所有读写入口都只问这一处。 */

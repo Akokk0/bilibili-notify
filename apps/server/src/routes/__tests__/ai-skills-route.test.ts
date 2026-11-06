@@ -190,7 +190,9 @@ describe("GET /", () => {
 
 describe("POST /", () => {
 	it("建一条 → 列表里就有了", async () => {
-		expect((await post(sample)).status).toBe(200);
+		const created = await post(sample);
+		expect(created.status).toBe(200);
+		expect(await created.json()).toEqual({ ok: true });
 		const body = (await (await app.request("/")).json()) as any;
 		const mine = body.list.find((s: any) => s.name === "my-skill");
 		expect(mine).toBeDefined();
@@ -246,7 +248,9 @@ describe("POST /", () => {
 describe("PUT /:name", () => {
 	it("改 → 内容换掉", async () => {
 		await post(sample);
-		expect((await put("my-skill", { ...sample, body: "换了个说法" })).status).toBe(200);
+		const updated = await put("my-skill", { ...sample, body: "换了个说法" });
+		expect(updated.status).toBe(200);
+		expect(await updated.json()).toEqual({ ok: true });
 		const body = (await (await app.request("/")).json()) as any;
 		expect(body.list.find((s: any) => s.name === "my-skill").body).toBe("换了个说法");
 	});
@@ -275,6 +279,7 @@ describe("PUT /:name", () => {
 			code: "invalid",
 			message: expect.stringContaining("正文是空的"),
 		});
+		expect(store.get("my-skill")?.body).toBe(sample.body);
 	});
 
 	it("改名撞上盘上手放的那份 → conflict(409),那份文件一个字都不动", async () => {
@@ -296,7 +301,9 @@ describe("PUT /:name", () => {
 describe("DELETE /:name", () => {
 	it("删 → 没了", async () => {
 		await post(sample);
-		expect((await app.request("/my-skill", { method: "DELETE" })).status).toBe(200);
+		const removed = await app.request("/my-skill", { method: "DELETE" });
+		expect(removed.status).toBe(200);
+		expect(await removed.json()).toEqual({ ok: true });
 		const body = (await (await app.request("/")).json()) as any;
 		expect(body.list.some((s: any) => s.name === "my-skill")).toBe(false);
 	});
@@ -310,7 +317,7 @@ describe("DELETE /:name", () => {
 	it("删没有的 → not_found(404)", async () => {
 		const res = await app.request("/nope", { method: "DELETE" });
 		expect(res.status).toBe(404);
-		expect(((await res.json()) as any).code).toBe("not_found");
+		expect(await res.json()).toEqual({ code: "not_found", message: "技能不存在:nope" });
 	});
 
 	it("名字带路径穿越 → 一律拒,库外的东西一根汗毛都不能少", async () => {
