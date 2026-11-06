@@ -32,6 +32,10 @@
 
 5-07的命令与红绿日志见主仓`.bn-design/s5-5-07-skill-store-results-delivery.md`及同名证据目录，核销5-06记录的技能库存储预期异常候选。
 
+## 新增资源管理组
+
+2026-11-06主人认可素材库扩为资源库，先备局部稿再逐类接入。决策见[ADR-0038](../adr/0038-resource-library.md)，R0与R1–R6见[resource-library-plan.md](./resource-library-plan.md)。当前R0为范围/交互稿准备，生产功能尚未施工，不混入已完成7片清理，也不表示解除其他页面的大改UI限制。
+
 ## 后续清理队列（待按模块拆片）
 
 | 工作 | 当前基线与处理边界 |
