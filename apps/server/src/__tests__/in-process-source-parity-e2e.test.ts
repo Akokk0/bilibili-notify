@@ -9,7 +9,7 @@
  * 推送内容从 devtools 的截流记录里读(不出网);出卡的浏览器是假的(灌进去的 HTML 留下来);AI 是回环上的假模型。
  * 联网守卫对每条用例自动查账,只许回环。
  *
- * **这份文件自己是清单**:`PARITY_ROWS` 列着对拍的每一行与「这版不开」的每一行(不开的必须写清等哪一期、为什么);
+ * **这份文件自己是清单**:`PARITY_ROWS` 只列真实进程内对拍；`PANEL_COVERAGE` 单独登记面板测试边界，不冒称进程内渲染。
  * 成员棘轮(`satisfies Record<keyof …>`)让接口上多一个成员时这里类型检查就过不去 —— 必须来补一行。
  * 下面每条用例前的「验红」写的是施工时真改坏跑过的那一处。
  */
@@ -54,10 +54,12 @@ import {
 } from "vite-plus/test";
 import { WebSocket } from "ws";
 import {
+	findNodes,
 	importsOf,
 	isInside,
 	parseSource,
 	resolveSpecifier,
+	ts,
 } from "../../../../scripts/source-scan.mjs";
 import { integrationSettingsFile } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
@@ -170,15 +172,9 @@ vi.mock("../runtime/bootstrap.js", async (importOriginal) => {
 // 清单自己
 // ---------------------------------------------------------------------------
 
-type ParityRow =
-	| { id: string; title: string; checked: true }
-	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
+type ParityRow = { id: string; title: string; checked: true };
 
-/**
- * 对拍的行(`checked: true`,P01–P52)与「这版不开」的行(`checked: false`,N01–N16 去掉
- * N02、N03、N04、N05、N06、N07、N08、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
- * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
- */
+/** P01–P54 都由本文件实际驱动；面板范围另登记证据，不留“等第4期”的伪待办。 */
 const PARITY_ROWS: readonly ParityRow[] = [
 	{ id: "P01", title: "登记即启动", checked: true },
 	{ id: "P02", title: "名单", checked: true },
@@ -353,21 +349,6 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
-		id: "N09",
-		title: "规则节按描述符露出(featureHints、supportedExtras)",
-		checked: false,
-		waitsFor: "第 4 期",
-		reason:
-			"服务端描述符与提示经 P50 下发；面板能力由 Rules.extension-subs / section-scope、提示覆盖由 UpDialog.extension 组件测试管着（4-26/27），不记为进程内渲染对拍；4-27 统筹真页11组通过，含提示与能力的详情操作，规则页仅全局冒烟，按来源节显隐仍由上述组件测试负责",
-	},
-	{
-		id: "N14",
-		title: "订阅、历史、统计、概览四个页面的清单",
-		checked: false,
-		waitsFor: "第 4 期",
-		reason: "面板不在进程内对拍的范围,页面按描述画是第 4 期",
-	},
-	{
 		id: "P53",
 		title:
 			"宿主运行态与健康详情:假来源运行中,问题叠橙灯,摘要读取失败不改启动结论;失败与拓展八档另由登记表和路由测试钉住",
@@ -382,13 +363,54 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	// 编号不回填;N18(女仆订阅视图里的平台名)在 3b-33 落成了,转进对拍的 P25(P24 留给 3b-38)。
 ];
 
+/** 第4期完成的面板覆盖：这里只核证据仍存在且启用；界面行为由这些测试本身执行。 */
+const PANEL_COVERAGE = [
+	{
+		id: "N09",
+		reason: "服务端描述符已由P50对拍；规则节显隐和提示属于面板渲染边界。",
+		tests: [
+			{
+				file: "apps/web/src/pages/__tests__/Rules.extension-subs.test.tsx",
+				title:
+					"只报作品:过滤 / 作品消息 / 版式 / 推送时段 / AI 人格;图集、直播那几节、B 站独有的都不露",
+			},
+			{
+				file: "apps/web/src/pages/up/__tests__/UpDialog.extension.test.tsx",
+				title: "featureHints 同时覆盖订阅和自定义目标小字，不给未声明特性造开关",
+			},
+		],
+	},
+	{
+		id: "N14",
+		reason: "订阅、历史、统计、概览在面板测试执行，不计入进程内对拍行。",
+		tests: [
+			{
+				file: "apps/web/src/pages/__tests__/Subs.new-subscription.test.tsx",
+				title: "列出在册的全部来源,B 站只是其中一颗;没在跑的(不带 has)不列",
+			},
+			{
+				file: "apps/web/src/pages/__tests__/History.rows.test.tsx",
+				title: "多来源时 B 站行也按描述符画徽章",
+			},
+			{
+				file: "apps/web/src/pages/__tests__/Stats.extension-rows.test.tsx",
+				title:
+					"对比表 / 热力图两支都列:名字照订阅、拓展行带平台徽章与在播,颜色与订阅卡同一个;汇总两支一起算",
+			},
+			{
+				file: "apps/web/src/pages/__tests__/dashboard-health-details.test.tsx",
+				title: "每个集成一格，未运行或清单不可读的集成仍可查看",
+			},
+		],
+	},
+] as const;
+
 /**
  * 成员棘轮(类型层):接口上每个成员都要在这里说「哪几行对拍管着它」。
  * 给 `Source` / `SourceContext` / `SourceDescriptor` / `SourceAuth` 加一个成员,下面四张表的 `satisfies Record<keyof …>`
- * 就类型检查过不去 —— 必须来补一行,而且只能指向对拍(`checked: true`)的行:指向「不开」的行,
- * 末尾「成员棘轮」那条用例会红。新成员没有对拍管着,就先补对拍的行再加成员。
+ * 就类型检查过不去 —— 必须来补一行,而且只能指向进程内对拍(`checked: true`)的行；面板证据不能顶替接口对拍。新成员没有对拍管着,就先补对拍的行再加成员。
  */
-type RowId = `P${number}` | `N${number}`;
+type RowId = `P${number}`;
 const SOURCE_MEMBERS = {
 	descriptor: ["P10", "P15", "P19", "P50"],
 	health: ["P15"],
@@ -3894,31 +3916,61 @@ describe("进程内对拍:两趟开机", () => {
 });
 
 describe("进程内对拍:清单自己", () => {
+	it("第四期出期：进程内清单没有仍等本期施工的未拍项", () => {
+		expect(PARITY_ROWS.filter((row) => !row.checked)).toEqual([]);
+	});
+
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 54 行、不开 2 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(56);
-		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
-		const checked = PARITY_ROWS.filter((row) => row.checked);
-		const closed = PARITY_ROWS.filter((row) => !row.checked);
-		expect(checked.map((row) => row.id)).toEqual(
+	it("PARITY_ROWS:54行全由进程内驱动，id不重且标题非空", () => {
+		expect(PARITY_ROWS).toHaveLength(54);
+		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(54);
+		expect(PARITY_ROWS.map((row) => row.id)).toEqual(
 			Array.from({ length: 54 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
-		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
-		// N08→P46(「默认文案有更新」归面板测试);N06 的「六把中立工具」那一半→P41,
-		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填(P47 是 3b-42 新加的 reportProfile,没有 N 行转来);P48、P49 是 3b-50 补的「另补项」(按订阅的皮肤、过滤与点评共用取段),同样没有 N 来源;
-		// N09 的服务端一半(描述符经来源表下发)在 4-12 转了 P50,面板一半(规则节按描述符露出)仍是 N09;N05→P51(4-14);
-		// N01→P52(4-15)。
-		expect(closed.map((row) => row.id)).toEqual(
-			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => ![1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16].includes(n))
-				.map((n) => `N${String(n).padStart(2, "0")}`),
-		);
-		for (const row of closed) {
-			if (row.checked) continue;
-			expect(row.waitsFor.trim().length, `${row.id} 要写等哪一期`).toBeGreaterThan(0);
-			expect(row.reason.trim().length, `${row.id} 要写理由`).toBeGreaterThan(0);
-		}
 		for (const row of PARITY_ROWS) expect(row.title.trim().length, row.id).toBeGreaterThan(0);
+		// N01→P52、N05→P51、N15→P53；N09的服务端描述符已由P50驱动，面板半与N14见PANEL_COVERAGE。
+	});
+
+	it("面板证据：N09与N14逐项钉住实际启用的界面测试", async () => {
+		expect(PANEL_COVERAGE.map((row) => row.id)).toEqual(["N09", "N14"]);
+		for (const row of PANEL_COVERAGE) {
+			expect(row.reason.trim().length, row.id).toBeGreaterThan(0);
+			for (const proof of row.tests) {
+				const source = parseSource(
+					proof.file,
+					await readFile(new URL(`../../../../${proof.file}`, import.meta.url), "utf8"),
+				);
+				const activeTitles = new Set<string>();
+				for (const { node } of findNodes(source, (n) => ts.isCallExpression(n))) {
+					if (
+						!ts.isCallExpression(node) ||
+						!ts.isIdentifier(node.expression) ||
+						!["it", "test"].includes(node.expression.text)
+					)
+						continue;
+					const title = node.arguments[0];
+					if (!title || !ts.isStringLiteral(title)) continue;
+					let disabled = false;
+					for (let parent = node.parent; parent; parent = parent.parent) {
+						if (!ts.isCallExpression(parent)) continue;
+						let expression = parent.expression;
+						while (ts.isCallExpression(expression)) expression = expression.expression;
+						if (
+							ts.isPropertyAccessExpression(expression) &&
+							["skip", "todo", "skipIf", "runIf", "only"].includes(expression.name.text)
+						) {
+							disabled = true;
+							break;
+						}
+					}
+					if (!disabled) activeTitles.add(title.text);
+				}
+				expect(
+					activeTitles.has(proof.title),
+					`${row.id}: ${proof.file} → ${proof.title} 必须保留启用的测试`,
+				).toBe(true);
+			}
+		}
 	});
 
 	it("成员棘轮:四张表里指向的行都是清单里「对拍」的行(类型层另有 satisfies Record<keyof …> 守着不漏成员)", () => {
@@ -3937,7 +3989,7 @@ describe("进程内对拍:清单自己", () => {
 		}
 	});
 
-	it("标「对拍」的行恰好都被驱动到了,标「不开」的一行也没碰", () => {
+	it("54条进程内对拍都实际驱动，面板证据不混进驱动计数", () => {
 		const declared = new Set(PARITY_ROWS.filter((row) => row.checked).map((row) => row.id));
 		expect(drivenInThisRun).toEqual(declared);
 	});

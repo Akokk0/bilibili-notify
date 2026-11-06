@@ -128,7 +128,8 @@ async function expectMigrated(
 	// 报告:「拓展订阅」那份只作输入、没进新代;历史图与拓展订阅的头像目录也是输入(每个头像被资料引用着、每张历史图被一行
 	// 引用着,没有孤儿、没有对不上的,所以各只有一条);聊天附件、女仆技能、女仆对话不迁(3b-53),各记一条;过了保留期的
 	// 原件与图不带过来,各记一句(⑲c、⑳d)。
-	// 合成的 0.x 设置没写保留天数,按默认 30 天;此刻取历史的最后一天,所以留下的是最后 31 个 UTC 日。
+	// 4-11 后房号迁到 B 站自己的状态仓;合成盘还给拓展订阅摆了房号,这些不能写进 B 站,报告合记一条。
+	// 合成的 0.x 设置按两档写保留天数(满量60天、四分之一量15天);此刻取历史的最后一天。
 	// 「N 天」那一档按 UTC 日界算,留下的是 N + 1 个日子。
 	const keptDays = Math.min(counts.historyDays, counts.plan.historyRetentionDays + 1);
 	const expiredDays = counts.historyDays - keptDays;
@@ -144,6 +145,7 @@ async function expectMigrated(
 					"ai",
 					"history/repush",
 					"history/img",
+					"runtime/bilibili/state.json",
 				]
 			: [
 					"state/extension-subscriptions.json",
@@ -152,8 +154,18 @@ async function expectMigrated(
 					"avatars",
 					"maid-skills",
 					"ai",
+					"runtime/bilibili/state.json",
 				],
 	);
+	const biliState = JSON.parse(
+		await readFile(join(generation, "runtime", "bilibili", "state.json"), "utf8"),
+	);
+	expect(biliState).toEqual({
+		version: 1,
+		entries: Object.fromEntries(
+			counts.biliSubscriptions.map(({ uid }, i) => [`room:${uid}`, String(21_000_000 + i)]),
+		),
+	});
 	// 搬过去的:除了不进新代的(拓展订阅那份、全部历史图文件、会话、聊天附件、女仆技能),加上过了保留期的原件;反过来,
 	// 保留期内的历史图各记一条复制。
 	expect(report.transfers).toHaveLength(
