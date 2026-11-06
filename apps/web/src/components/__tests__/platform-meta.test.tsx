@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
-import { buildPlatformTable, PlatformMetaRoot } from "../platform-meta";
+import { buildPlatformTable, DescriptorIcon, PlatformMetaRoot } from "../platform-meta";
 
 vi.mock("../../services/api", () => ({ api: { get: vi.fn() } }));
 
@@ -87,4 +87,33 @@ describe("描述与快照提供平台外观", () => {
 		expect(await screen.findByText("桥")).toBeTruthy();
 		expect(document.querySelector("img")?.getAttribute("src")).toBe(IMAGE);
 	});
+});
+
+describe("描述符图标的纯图标兜底", () => {
+	it("有安全图片时优先用描述符图片，不被兜底图标替换", () => {
+		const { container } = render(
+			<DescriptorIcon
+				descriptor={{ shortLabel: "桥", color: "#123456", icon: IMAGE }}
+				fallbackIcon="globe"
+			/>,
+		);
+		expect(container.querySelector("img")?.getAttribute("src")).toBe(IMAGE);
+		expect(container.querySelector("svg")).toBeNull();
+		expect(container.textContent).toBe("");
+	});
+
+	it.each([undefined, "not-an-icon", "https://tracker.test/icon"])(
+		"图标不可用(%s)时用调用方指定的图形，不画短名首字也不请求外图",
+		(icon) => {
+			const { container } = render(
+				<DescriptorIcon
+					descriptor={{ shortLabel: "桥", color: "#123456", icon }}
+					fallbackIcon="globe"
+				/>,
+			);
+			expect(container.querySelector("svg")).not.toBeNull();
+			expect(container.querySelector("img")).toBeNull();
+			expect(container.textContent).toBe("");
+		},
+	);
 });

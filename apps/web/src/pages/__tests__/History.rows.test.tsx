@@ -455,16 +455,25 @@ const DOUYIN_SOURCE: SourceEntry = {
 	descriptor: {
 		label: "抖音",
 		shortLabel: "抖",
+		icon: "library",
 		color: "#161823",
 		supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 	},
 };
 
 /**
- * 拓展行带一枚平台徽章(ADR-0019 决策 9「订阅删了也看得出是哪个平台的」),画法同首页「正在直播」:
- * 短名照清单,拓展卸载了取不到写拓展 id。名字取自快照还是外部 id 兜底都带;B 站行不画。
+ * 平台用描述符图标，放在作者头像之前；缺失时用通用图标，名称只供悬停和读屏。
+ * 已知单来源仍隐藏，多来源或缺项仍显示。
  */
 describe("推送历史 · 平台徽章", () => {
+	it("已知单来源不显示平台图标，作者头像仍在", async () => {
+		mockApi([row()]);
+		const { container } = renderHistory();
+		await screen.findByText("某UP");
+		expect(screen.queryByRole("img", { name: "B 站" })).toBeNull();
+		expect(container.querySelector('[data-bn="avatar"]')).not.toBeNull();
+	});
+
 	const extRow = (over: Partial<HistoryEntryView> = {}) =>
 		row({
 			identity: { sourceKey: "douyin", externalId: "sec-1" },
@@ -473,29 +482,37 @@ describe("推送历史 · 平台徽章", () => {
 			...over,
 		});
 
-	it("拓展行带平台徽章(短名照清单),名字取自快照也带", async () => {
+	it("拓展行的平台图标在作者头像之前，名字取自快照也不显示平台字", async () => {
 		mockApi([extRow()], [], [DOUYIN]);
-		renderHistory();
-		await waitFor(() =>
-			expect(screen.getByText("抖", { selector: '[data-bn="badge"]' })).toBeTruthy(),
-		);
+		const { container } = renderHistory();
+		const platform = await screen.findByRole("img", { name: "抖音" });
+		expect(platform.textContent).toBe("");
+		expect(platform.querySelector("svg")).not.toBeNull();
+		expect(platform.getAttribute("title")).toBe("抖音");
+		const avatar = container.querySelector('[data-bn="avatar"]');
+		expect(avatar).not.toBeNull();
+		expect(
+			platform.compareDocumentPosition(avatar as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).not.toBe(0);
+		expect(screen.queryByText("抖", { selector: '[data-bn="badge"]' })).toBeNull();
 		expect(screen.getByText("某抖音号")).toBeTruthy();
 	});
 
 	it("名字是外部 id 兜底的拓展行也带徽章", async () => {
 		mockApi([extRow({ nameSnapshot: undefined })], [], [DOUYIN]);
 		renderHistory();
-		await waitFor(() =>
-			expect(screen.getByText("抖", { selector: '[data-bn="badge"]' })).toBeTruthy(),
-		);
+		expect((await screen.findByRole("img", { name: "抖音" })).textContent).toBe("");
 		expect(screen.getByText("抖音 · sec-1")).toBeTruthy();
 	});
 
-	it("拓展卸载了(清单里没有它)→ 徽章写拓展 id", async () => {
+	it("拓展卸载了→通用图标，来源键只作可访问名称", async () => {
 		mockApi([extRow()], [], []);
 		renderHistory();
 		await waitFor(() => expect(screen.getByText("某抖音号")).toBeTruthy());
-		expect(await screen.findByText("douyin")).toBeTruthy();
+		const platform = await screen.findByRole("img", { name: "douyin" });
+		expect(platform.textContent).toBe("");
+		expect(platform.querySelector("svg")).not.toBeNull();
+		expect(screen.queryByText("douyin")).toBeNull();
 	});
 
 	it("多来源时 B 站行也按描述符画徽章", async () => {
@@ -515,6 +532,9 @@ describe("推送历史 · 平台徽章", () => {
 		// 等拓展清单也回来,免得「还没回来所以没画」冒充「B 站行不画」。
 		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext"));
 		const badges = [...container.querySelectorAll('[data-bn="badge"]')].map((b) => b.textContent);
-		expect(badges).toEqual(["下播", "B 站", "已送达"]);
+		expect(badges).toEqual(["下播", "已送达"]);
+		const platform = screen.getByRole("img", { name: "B 站" });
+		expect(platform.textContent).toBe("");
+		expect(platform.querySelector("svg")).not.toBeNull();
 	});
 });

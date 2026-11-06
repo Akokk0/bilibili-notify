@@ -81,7 +81,7 @@ describe("FEATURE_DESCRIPTORS", () => {
 		).toEqual({
 			post: ["作品", "作品"],
 			liveStart: ["开播", "开播"],
-			liveStreaming: ["直播中", "正在直播"],
+			liveStreaming: ["直播", "正在直播"],
 			liveEnd: ["下播", "下播"],
 			membership: ["会员", "会员加入"],
 			superchat: ["SC", "SC"],

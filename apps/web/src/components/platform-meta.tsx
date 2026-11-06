@@ -3,6 +3,7 @@ import type { AdapterEntry, ConnectionView } from "@bilibili-notify/contract";
 import type { NewConnection, PlatformSnapshot } from "@bilibili-notify/internal";
 import {
 	Icon,
+	type IconName,
 	PlatformIcon,
 	type PlatformMeta,
 	PlatformMetaProvider,
@@ -34,11 +35,15 @@ function appearanceOf(
 export function DescriptorIcon({
 	descriptor,
 	size = 16,
+	fallbackIcon,
 }: {
 	descriptor: Pick<PlatformSnapshot, "color" | "shortLabel" | "icon">;
 	size?: number;
+	/** 只接受图形的摆放处指定兜底，缺省仍沿用平台短名。 */
+	fallbackIcon?: IconName;
 }) {
 	const meta = appearanceOf(descriptor);
+	if (!meta.image && !meta.icon && fallbackIcon) meta.icon = fallbackIcon;
 	return (
 		<PlatformMetaProvider value={() => meta}>
 			<PlatformIcon platform={descriptor.shortLabel} size={size} />

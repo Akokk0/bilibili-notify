@@ -18,6 +18,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { DescriptorIcon } from "../components/platform-meta";
 import {
 	FEATURE_DESCRIPTORS,
 	familyTone,
@@ -246,7 +247,7 @@ function HistoryTable({
 	);
 }
 
-const HISTORY_GRID = "100px 28px 64px 1fr 200px 100px";
+const HISTORY_GRID = "100px 48px 64px 1fr 200px 100px";
 
 /**
  * 被过滤的作品是被哪一类规则挡下的(行上的 `filteredBy`),展开后写在那条消息的结果位置上。
@@ -297,7 +298,7 @@ function HistoryRow({
 	const upAvatar = historyRowAvatarUrl(entry, sub?.cachedProfile);
 	// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 	const creatorColor = historyRowColor(entry, subscriptionPlatformOf(entry.identity, sources));
-	// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同首页「正在直播」;B 站行不画。
+	// 平台显隐由来源投影决定，图标放在作者头像前，名称供悬停与读屏。
 	const platform = subscriptionPlatformOf(entry.identity, sources);
 	const headline = headlineOf(entry);
 	const count = messageCountOf(entry);
@@ -320,16 +321,33 @@ function HistoryRow({
 				<span className="tabular-nums text-bn-xs text-bn-text-tertiary">
 					<RelativeTime at={entry.createdAt} />
 				</span>
-				<Avatar name={upName} color={creatorColor} size={24} url={upAvatar} />
+				<div className="flex items-center gap-2">
+					<span className="inline-flex size-4 shrink-0 items-center">
+						{platform.showBadge ? (
+							<span
+								role="img"
+								aria-label={platform.label}
+								title={platform.label}
+								className="inline-flex"
+							>
+								<DescriptorIcon
+									descriptor={{
+										icon: platform.icon,
+										color: platform.color ?? "var(--color-bn-inactive)",
+										shortLabel: platform.shortLabel ?? platform.label,
+									}}
+									fallbackIcon="globe"
+									size={16}
+								/>
+							</span>
+						) : null}
+					</span>
+					<Avatar name={upName} color={creatorColor} size={24} url={upAvatar} />
+				</div>
 				<Pill color={tone} subtle size="sm">
 					{FEATURE_DESCRIPTORS[entry.feature].label}
 				</Pill>
 				<div className="flex min-w-0 items-center gap-2">
-					{platform.showBadge ? (
-						<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
-							{platform.shortLabel ?? platform.label}
-						</Pill>
-					) : null}
 					<div className="min-w-0 flex-1 truncate" title={headline}>
 						<span className="font-bold text-bn-text-primary">{upName}</span>
 						{headline ? (
