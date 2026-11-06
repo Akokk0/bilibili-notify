@@ -4,7 +4,15 @@ import type {
 	SettingsResponse,
 	SettingsScalarField,
 } from "@bilibili-notify/contract";
-import { Btn, ConfirmDialog, ErrorNote, GlassBox, HintNote, Icon } from "@bilibili-notify/ui";
+import {
+	Btn,
+	ConfirmDialog,
+	ErrorNote,
+	GlassBox,
+	HintNote,
+	Icon,
+	KindMark,
+} from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Field } from "../../components/forms";
@@ -75,13 +83,12 @@ export function IntegrationSection({
 				title={descriptor.label}
 				subtitle={t("integrationSettings.subtitle")}
 				badge={descriptor.key}
-				icon={
+				mark={
 					descriptor.icon ? (
-						<img src={descriptor.icon} alt="" className="size-3.5" />
-					) : (
-						<Icon.sliders size={14} />
-					)
+						<KindMark text={descriptor.label} logo={descriptor.icon} size={32} />
+					) : undefined
 				}
+				icon={<Icon.sliders size={14} />}
 			>
 				{descriptor.fields.map((field) => {
 					if (field.type === "list")

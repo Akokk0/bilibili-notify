@@ -190,6 +190,20 @@ afterEach(() => {
 });
 
 describe("系统页里 B 站的两格", () => {
+	it("集成图片放在中性标识底上，不叠同色渐变，并放大到可辨认尺寸", async () => {
+		const icon = "data:image/png;base64,QUJD";
+		await renderRuntimeSection(GLOBALS, {
+			integrations: DEFINITIONS.integrations.map((entry) => ({ ...entry, icon })),
+		});
+		fireEvent.click(await screen.findByRole("button", { name: "B 站" }));
+		const header = screen.getByText("集成设置").parentElement?.parentElement;
+		const image = header?.querySelector("img");
+		expect(image?.getAttribute("src")).toBe(icon);
+		expect(image?.parentElement?.getAttribute("style")).toContain("--color-bn-inactive");
+		expect(image?.parentElement?.getAttribute("style")).not.toContain("linear-gradient");
+		expect(image?.style.width).toBe("20px");
+	});
+
 	it("来源设置在原侧栏独立列出，运行区不再重复显示", async () => {
 		await renderRuntimeSection();
 		expect(document.querySelector('[data-code="bilibili.dynamicCron"]')).toBeNull();
