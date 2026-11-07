@@ -7,12 +7,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	DEFAULT_DYNAMIC_CRON,
-	DEFAULT_HEALTH_CHECK_MINUTES,
-	type MessageBus,
-	type ServiceContext,
-} from "@bilibili-notify/internal";
+import type { MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeIntegrationSecrets } from "../../__tests__/support/backup-integration-secrets.js";
 import { buildBackup } from "../../backup/envelope.js";
@@ -31,6 +26,8 @@ import {
 	BiliLoginCheckSettingsSchema,
 	type BiliSettings,
 	BiliSettingsSchema,
+	DEFAULT_DYNAMIC_CRON,
+	DEFAULT_HEALTH_CHECK_MINUTES,
 	settingsSegment,
 } from "../settings.js";
 

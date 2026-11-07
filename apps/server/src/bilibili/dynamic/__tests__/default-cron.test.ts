@@ -1,6 +1,6 @@
-import { DEFAULT_DYNAMIC_CRON } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { describe, expect, it } from "vite-plus/test";
+import { DEFAULT_DYNAMIC_CRON } from "../../settings.js";
 
 /**
  * 默认 cron 表达式的守护测试。

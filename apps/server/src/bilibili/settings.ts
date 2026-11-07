@@ -4,18 +4,32 @@ import { t as serverText } from "./i18n.js";
  * B 站这个集成的设置:`config/settings/bilibili.json`(ADR-0021 决策 42 下 10-01 的 🔗)。格式由 B 站自己定,
  * 登记进配置仓(今天在 `runtime/bootstrap.ts`,3a 起在组装根);核心不读这一份(守卫 12)。
  *
- * ⑥f 只挪位置、不改键名:两格(`dynamicCron` / `healthCheckMinutes`)原样从核心设置的 `app` 搬来。`healthCheckMinutes` 随 3a 改名
- * `loginCheckIntervalMinutes`。0.x 还有第三格 `userAgent`(自定义 UA),已删:浏览器身份一律由 `packages/http` 生成,UA 与
+ * ⑥f 只挪位置、不改键名:两格(`dynamicCron` / `healthCheckMinutes`)原样从核心设置的 `app` 搬来。`healthCheckMinutes` 保留已保存的键名，由登录模块读取。0.x 还有第三格 `userAgent`(自定义 UA),已删:浏览器身份一律由 `packages/http` 生成,UA 与
  * `sec-ch-ua` 永远配套(ADR-0025 决策 7);格式不是 strict,老文件 / 老备份里带着它读进来时被剥掉。
  *
  * 读法:来源在 `start` 里经 `ctx.settings(schema)` 各读各的格({@link BiliDynamicSettingsSchema}、
  * {@link BiliLoginCheckSettingsSchema}),哪格读不懂停哪样。
  */
 
-import { DEFAULT_DYNAMIC_CRON, DEFAULT_HEALTH_CHECK_MINUTES } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
+
+/**
+ * 动态轮询 cron 默认值，只由本集成的 `dynamicCron` 使用。
+ *
+ * **六字段**(秒 分 时 日 月 周),秒位是 `30` —— 每 2 分钟的第 30 秒拉,而不是整分。
+ * 整分是全网默认节拍:一堆客户端(以及本项目此前的所有实例)都卡在 `:00` 同时打
+ * B 站接口,人为堆出一个流量尖峰。错开半分钟不改变频率、不多花一个请求,只是把
+ * 自己从那个尖峰里挪出来,降低撞上限流(-509)的面。
+ *
+ * 秒字段是 `cron` 包的可选首字段(3.x 起支持,已实测),标准五字段表达式仍然合法 ——
+ * 用户在 dashboard 里填五字段照常工作,这里只是默认值换了形态。
+ */
+export const DEFAULT_DYNAMIC_CRON = "30 */2 * * * *";
+
+/** 登录健康检查间隔(分钟)默认值。B 站设置的 `healthCheckMinutes` 用它(同 {@link DEFAULT_DYNAMIC_CRON})。 */
+export const DEFAULT_HEALTH_CHECK_MINUTES = 30;
 
 /** 设置那一格的叫法与键名:问题文案里带着,让主人认出是哪一格。 */
 export const DYNAMIC_CELL = {

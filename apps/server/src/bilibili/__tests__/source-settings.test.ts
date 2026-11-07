@@ -9,12 +9,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	DEFAULT_DYNAMIC_CRON,
-	DEFAULT_HEALTH_CHECK_MINUTES as DEFAULT_HEALTH_MINUTES,
-	type Disposable,
-	ok,
-} from "@bilibili-notify/internal";
+import { type Disposable, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { switchableLocale } from "../../__tests__/support/fixed-locale.js";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
@@ -33,7 +28,11 @@ import { registerBuiltinSource } from "../../subscriptions/builtin-sources.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import type { Api } from "../api/index.js";
 import { PROBLEM_TEXTS } from "../problem-texts.js";
-import { settingsSegment } from "../settings.js";
+import {
+	DEFAULT_DYNAMIC_CRON,
+	DEFAULT_HEALTH_CHECK_MINUTES as DEFAULT_HEALTH_MINUTES,
+	settingsSegment,
+} from "../settings.js";
 import { createBiliSource } from "../source.js";
 import { fakeLoginDeps, fakeLoginSystem } from "./support/fake-login-system.js";
 
