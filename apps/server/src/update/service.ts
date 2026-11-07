@@ -6,8 +6,10 @@ import type {
 	UpdateStatusDTO,
 } from "@bilibili-notify/contract";
 import type { ServiceContext, UpdateSettings } from "@bilibili-notify/internal";
+import { ok, fail as resultFail } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { decideUpdate } from "./decide-update.js";
-import { fetchSignedManifest } from "./fetch-signed-manifest.js";
+import { fetchSignedManifest, signedFailureKind } from "./fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "./fetch-through-mirrors.js";
 import { installPayload } from "./install-payload.js";
 import { readSeenIssuedAt, rememberIssuedAt } from "./manifest-freshness.js";
@@ -239,8 +241,8 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			// 报成「包被掉包」—— 那个归因只配给直连(最后一个候选)。
 			accept: (bytes) =>
 				createHash("sha256").update(bytes).digest("hex") === manifest.payload.sha256
-					? { ok: true, value: bytes }
-					: { ok: false, reason: "checksum-mismatch" as const },
+					? ok({ value: bytes })
+					: resultFail("conflict", t("update.validation.checksum")),
 			signal: serviceCtx.signal,
 		});
 		// 关停已经开始:不装,也不算失败(不是没下成,是不下了)。字节就算已经到手了也不落盘,
@@ -253,7 +255,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		// 清单在手,所以这里能精确指到**那一版**的发布页,比只给发布列表有用得多。
 		if (!fetched.ok) {
 			return fail(
-				fetched.reason === "checksum-mismatch" ? "checksum-mismatch" : "download-failed",
+				fetched.code === "conflict" ? "checksum-mismatch" : "download-failed",
 				manifest.releaseUrl,
 			);
 		}
@@ -266,7 +268,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		});
 		if (!installed.ok) {
 			return fail(
-				installed.reason === "checksum-mismatch" ? "checksum-mismatch" : "install-failed",
+				installed.code === "conflict" ? "checksum-mismatch" : "install-failed",
 				manifest.releaseUrl,
 			);
 		}
@@ -407,7 +409,8 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			pending = null;
 			// 清单都没拿到,给不出「那一版」的发布页,只能给发布列表 —— 但必须给得出:
 			// 「下不动就通知 + 给个链接」是设计里的兜底出口。
-			return fail(fetched.reason === "stale" ? "stale-manifest" : fetched.reason, releasesPageUrl);
+			const kind = signedFailureKind(fetched);
+			return fail(kind === "stale" ? "stale-manifest" : kind, releasesPageUrl);
 		}
 
 		const manifest = fetched.manifest;
@@ -502,8 +505,8 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 					const fetched = await fetchManifest(channel, [prefix], minIssuedAt);
 					const ms = Math.max(0, Date.now() - started);
 					return fetched.ok
-						? { prefix, ok: true, ms, version: fetched.manifest.version }
-						: { prefix, ok: false, ms, reason: fetched.reason };
+						? { ...ok(), prefix, ms, version: fetched.manifest.version }
+						: { ...resultFail(fetched.code, fetched.message), prefix, ms };
 				}),
 			);
 		},

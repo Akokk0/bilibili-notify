@@ -1,3 +1,5 @@
+import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 /**
  * 主人填的加速前缀 → 这一次要按顺序试的候选站。
  *
@@ -12,9 +14,9 @@ export function mirrorChain(mirrors: readonly string[]): string[] {
 }
 
 /** 拿到字节之后的验收:成就带着解出来的值走,不成就带着理由换下一个候选。 */
-export type Acceptance<T, R extends string> = { ok: true; value: T } | { ok: false; reason: R };
+export type MirrorAcceptanceResult<T> = Result<{ value: T }>;
 
-export interface FetchThroughMirrorsInput<T, R extends string> {
+export interface FetchThroughMirrorsOptions<T> {
 	/** 真实地址(GitHub Release 资产)。候选站以**前缀**形式拼在它前面。 */
 	url: string;
 	/**
@@ -38,24 +40,16 @@ export interface FetchThroughMirrorsInput<T, R extends string> {
 	 * 换站的实现会把那张页当内容收下,然后整条更新死在验签上,而直连(永远排在末尾)
 	 * 从没被试过。验收不过就和网络失败一样换下一个。
 	 */
-	accept: (bytes: Uint8Array) => Acceptance<T, R>;
+	accept: (bytes: Uint8Array) => MirrorAcceptanceResult<T>;
 	/**
 	 * 关停信号。中止之后手上这一个候选的请求当场断开、不再试后面的候选 —— 一个候选最长等 `timeoutMs`,
-	 * 候选一多,关停就没法靠预算等它。中止得到的是失败结果(`all-mirrors-failed`),调用方自己
+	 * 候选一多,关停就没法靠预算等它。中止得到的是失败结果(`unavailable`),调用方自己
 	 * 看 `signal.aborted` 分辨「被叫停」和「真没下成」。
 	 */
 	signal?: AbortSignal;
 }
 
-export type FetchThroughMirrorsResult<T, R extends string> =
-	| { ok: true; value: T }
-	/**
-	 * 没有一个候选交出验收得过的字节。理由取**最后一个候选**的:它拿到了字节但验收
-	 * 不过 → 它的验收理由;它连字节都没拿到 → `all-mirrors-failed`。直连永远是最后
-	 * 一个,所以「签名不对」这种要弹红字的归因只会来自直连,前面代理站的垃圾页
-	 * 不会被报成安全事件。
-	 */
-	| { ok: false; reason: "all-mirrors-failed" | R };
+export type FetchThroughMirrorsResult<T> = Result<{ value: T }>;
 
 /**
  * 边读边数,超过上限**当场 cancel**。不能「先 arrayBuffer() 收完再看大小」——
@@ -104,19 +98,19 @@ function candidateUrl(mirror: string, url: string): string {
  * 代理站挂了,第三种是代理站活着但在说胡话(限流页、门户页、缓存了半截的文件)——
  * 后者更常见,也更阴险:只按状态码换站的实现会把它当内容收下,整条更新死在验签上。
  */
-export async function fetchThroughMirrors<T, R extends string>({
+export async function fetchThroughMirrors<T>({
 	url,
 	mirrors,
 	maxBytes,
 	timeoutMs,
 	accept,
 	signal,
-}: FetchThroughMirrorsInput<T, R>): Promise<FetchThroughMirrorsResult<T, R>> {
-	let last: "all-mirrors-failed" | R = "all-mirrors-failed";
+}: FetchThroughMirrorsOptions<T>): Promise<FetchThroughMirrorsResult<T>> {
+	let last: Failure = fail("unavailable", t("update.validation.unreachable"));
 	for (const mirror of mirrors) {
 		// 被叫停就别再试下一个候选:每个都会秒败一遍,最后还得走一次「全部失败」的归因。
 		if (signal?.aborted) break;
-		last = "all-mirrors-failed";
+		last = fail("unavailable", t("update.validation.unreachable"));
 		try {
 			// signal 同时管住建连和读 body —— 慢慢滴水的站也一样被这一条掐断。
 			const timeout = AbortSignal.timeout(timeoutMs);
@@ -127,11 +121,11 @@ export async function fetchThroughMirrors<T, R extends string>({
 			const bytes = await readCapped(response, maxBytes);
 			if (bytes === null) continue; // 这个候选灌太多,换下一个
 			const accepted = accept(bytes);
-			if (accepted.ok) return { ok: true, value: accepted.value };
-			last = accepted.reason; // 拿到了字节但不是我们要的,换下一个
+			if (accepted.ok) return ok({ value: accepted.value });
+			last = accepted; // 拿到了字节但不是我们要的,换下一个
 		} catch {
 			// 这个候选不通,换下一个。全都不通时由下面统一报。
 		}
 	}
-	return { ok: false, reason: last };
+	return last;
 }

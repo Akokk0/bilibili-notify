@@ -14,7 +14,7 @@ import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { MarketplaceEntryDTO, MarketplaceResponse } from "@bilibili-notify/contract";
+import type { MarketplaceEntryView, MarketplaceResponse } from "@bilibili-notify/contract";
 import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createMarketplace, type Marketplace } from "../../extensions/marketplace.js";
@@ -22,7 +22,7 @@ import { type InstalledExtension, injectableMarketplace } from "../marketplace-i
 import { marketplaceUpdateScenario } from "../scenarios/marketplace.js";
 import { coreDevRegistry } from "./support/core-registry.js";
 
-function entry(over: Partial<MarketplaceEntryDTO> & { id: string }): MarketplaceEntryDTO {
+function entry(over: Partial<MarketplaceEntryView> & { id: string }): MarketplaceEntryView {
 	return {
 		source: "official",
 		official: true,
@@ -38,7 +38,7 @@ function entry(over: Partial<MarketplaceEntryDTO> & { id: string }): Marketplace
 }
 
 /** 一个假的真市场:列表每次给一份新拷贝(真的那份也是每次现算),装只记账。 */
-function fakeMarket(entries: MarketplaceEntryDTO[]) {
+function fakeMarket(entries: MarketplaceEntryView[]) {
 	const install = vi.fn<Marketplace["install"]>(async (_source, id) => ({
 		ok: true,
 		id,
@@ -57,7 +57,7 @@ function fakeMarket(entries: MarketplaceEntryDTO[]) {
 	return { list, install };
 }
 
-function setup(entries: MarketplaceEntryDTO[], installed: InstalledExtension[]) {
+function setup(entries: MarketplaceEntryView[], installed: InstalledExtension[]) {
 	const real = fakeMarket(entries);
 	const injectable = injectableMarketplace(real, () => installed);
 	const reg = coreDevRegistry([marketplaceUpdateScenario(injectable)]);

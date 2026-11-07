@@ -86,8 +86,20 @@ describe("MirrorPicker", () => {
 	it("「测一遍」把直连 + 内置 + 有效的自定义一起送去测,结果逐行落座", async () => {
 		const results: MirrorProbeResult[] = [
 			{ prefix: "", ok: true, ms: 406, version: "0.9.0" },
-			{ prefix: BUILTIN_UPDATE_MIRRORS[0] as string, ok: false, ms: 10_000, reason: "unreachable" },
-			{ prefix: BUILTIN_UPDATE_MIRRORS[1] as string, ok: false, ms: 300, reason: "untrusted" },
+			{
+				prefix: BUILTIN_UPDATE_MIRRORS[0] as string,
+				ok: false,
+				ms: 10_000,
+				code: "unavailable",
+				message: "probe failed",
+			},
+			{
+				prefix: BUILTIN_UPDATE_MIRRORS[1] as string,
+				ok: false,
+				ms: 300,
+				code: "unauthorized",
+				message: "probe failed",
+			},
 			{ prefix: "https://my.mirror.example/", ok: true, ms: 120, version: "0.8.0" },
 		];
 		vi.mocked(api.post).mockResolvedValue({ results });

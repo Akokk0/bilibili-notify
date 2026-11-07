@@ -50,7 +50,7 @@ describe("loadSignedManifest", () => {
 			backup.spkiBase64,
 		]);
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(result.manifest.version).toBe("0.9.0");
 	});
 
@@ -63,7 +63,7 @@ describe("loadSignedManifest", () => {
 		const result = loadSignedManifest(bytes, signBytes(key.privateKey, bytes), [key.spkiBase64]);
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("malformed");
+		expect(result.ok === false && result.code).toBe("invalid");
 	});
 
 	it("签名验过了但不是一份清单的形状 → 拒绝,不把垃圾当 Manifest 交出去", () => {
@@ -82,7 +82,7 @@ describe("loadSignedManifest", () => {
 			const bytes = Buffer.from(JSON.stringify(shape), "utf8");
 			const result = loadSignedManifest(bytes, signBytes(key.privateKey, bytes), [key.spkiBase64]);
 			expect(result.ok, `should reject ${JSON.stringify(shape)}`).toBe(false);
-			expect(result.ok === false && result.reason).toBe("malformed");
+			expect(result.ok === false && result.code).toBe("invalid");
 		}
 	});
 
@@ -96,7 +96,7 @@ describe("loadSignedManifest", () => {
 		for (const signature of garbage) {
 			const result = loadSignedManifest(bytes, signature, [key.spkiBase64]);
 			expect(result.ok, `should reject signature ${JSON.stringify(signature)}`).toBe(false);
-			expect(result.ok === false && result.reason).toBe("bad-signature");
+			expect(result.ok === false && result.code).toBe("unauthorized");
 		}
 	});
 
@@ -111,7 +111,7 @@ describe("loadSignedManifest", () => {
 
 		const result = loadSignedManifest(tampered, signature, [key.spkiBase64]);
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("bad-signature");
+		expect(result.ok === false && result.code).toBe("unauthorized");
 	});
 
 	it("读得出载荷描述:去哪下、多大、校验和是多少", () => {
@@ -120,7 +120,7 @@ describe("loadSignedManifest", () => {
 
 		const result = loadSignedManifest(bytes, signBytes(key.privateKey, bytes), [key.spkiBase64]);
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(result.manifest.payload).toEqual({
 			url: "https://github.com/o/r/releases/download/v0.9.0/payload-0.9.0.zip",
 			sha256: "a".repeat(64),
@@ -168,7 +168,7 @@ describe("loadSignedManifest", () => {
 			const bytes = Buffer.from(JSON.stringify(shape), "utf8");
 			const result = loadSignedManifest(bytes, signBytes(key.privateKey, bytes), [key.spkiBase64]);
 			expect(result.ok, `should reject ${JSON.stringify(shape)}`).toBe(false);
-			expect(result.ok === false && result.reason).toBe("malformed");
+			expect(result.ok === false && result.code).toBe("invalid");
 		}
 	});
 
@@ -184,6 +184,6 @@ describe("loadSignedManifest", () => {
 		]);
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("bad-signature");
+		expect(result.ok === false && result.code).toBe("unauthorized");
 	});
 });

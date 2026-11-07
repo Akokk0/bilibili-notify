@@ -52,7 +52,7 @@ describe("fetchSignedManifest", () => {
 			maxBytes: 64 * 1024,
 		});
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(result.manifest.version).toBe("0.9.0");
 	});
 
@@ -72,7 +72,7 @@ describe("fetchSignedManifest", () => {
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("malformed");
+		expect(result.ok === false && result.code).toBe("invalid");
 	});
 
 	it("所有候选站都拿不到 → unreachable,和「不可信」分得清清楚楚", async () => {
@@ -90,7 +90,7 @@ describe("fetchSignedManifest", () => {
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("unreachable");
+		expect(result.ok === false && result.code).toBe("unavailable");
 	});
 
 	it("加速站回 200 垃圾页、直连是好清单 → 拿到清单,不报 malformed", async () => {
@@ -125,7 +125,7 @@ describe("fetchSignedManifest", () => {
 			maxBytes: 64 * 1024,
 		});
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(result.manifest.version).toBe("0.9.0");
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(fetchMock.mock.calls[1]?.[0]).toBe(RELEASE_URL);
@@ -164,7 +164,7 @@ describe("fetchSignedManifest", () => {
 			maxBytes: 64 * 1024,
 			minIssuedAt: 100,
 		});
-		if (!fresh.ok) throw new Error(`expected ok, got reason=${fresh.reason}`);
+		if (!fresh.ok) throw new Error(`expected ok, got reason=${fresh.code}`);
 		expect(fresh.manifest.issuedAt).toBe(200);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -181,7 +181,7 @@ describe("fetchSignedManifest", () => {
 			minIssuedAt: 100,
 		});
 		expect(stale.ok).toBe(false);
-		expect(stale.ok === false && stale.reason).toBe("stale");
+		expect(stale.ok === false && stale.code).toBe("conflict");
 	});
 
 	it("内层被人改过 → untrusted", async () => {
@@ -204,7 +204,7 @@ describe("fetchSignedManifest", () => {
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("untrusted");
+		expect(result.ok === false && result.code).toBe("unauthorized");
 	});
 
 	it("信封本身就不成形 → malformed,不抛", async () => {
@@ -226,7 +226,7 @@ describe("fetchSignedManifest", () => {
 				maxBytes: 64 * 1024,
 			});
 			expect(result.ok, `should reject ${body.slice(0, 40)}`).toBe(false);
-			expect(result.ok === false && result.reason).toBe("malformed");
+			expect(result.ok === false && result.code).toBe("invalid");
 		}
 	});
 });

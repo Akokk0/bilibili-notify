@@ -10,7 +10,7 @@
 
 import type {
 	ExtensionInstallResponse,
-	MarketplaceEntryDTO,
+	MarketplaceEntryView,
 	MarketplaceResponse,
 } from "@bilibili-notify/contract";
 import {
@@ -67,7 +67,7 @@ export function useMarketplaceInstall({ motion = true }: { motion?: boolean } = 
 	const [errors, setErrors] = useState<string[]>([]);
 	/** 等着确认的那条第三方,连同点下去那一刻量的起飞位置 —— 确认时带着它们发。 */
 	const [confirming, setConfirming] = useState<{
-		entry: MarketplaceEntryDTO;
+		entry: MarketplaceEntryView;
 		from?: DOMRect;
 	} | null>(null);
 	const play = useCardMotionStore((state) => state.play);
@@ -123,7 +123,7 @@ export function useMarketplaceInstall({ motion = true }: { motion?: boolean } = 
 			started?.settle(false);
 		},
 	});
-	const send = (entry: MarketplaceEntryDTO, from?: DOMRect) =>
+	const send = (entry: MarketplaceEntryView, from?: DOMRect) =>
 		install.mutate({
 			source: entry.source,
 			id: entry.id,
@@ -131,7 +131,7 @@ export function useMarketplaceInstall({ motion = true }: { motion?: boolean } = 
 			from,
 		});
 	/** 装 / 更新的唯一入口:官方一键,第三方先过确认框。 */
-	const start = (entry: MarketplaceEntryDTO, from?: DOMRect) => {
+	const start = (entry: MarketplaceEntryView, from?: DOMRect) => {
 		if (entry.official) send(entry, from);
 		else setConfirming({ entry, from });
 	};
@@ -215,7 +215,7 @@ export function MarketplaceUpdateOffer({
 	installer,
 }: {
 	/** 市场里这条 `updatable` 的那一版。 */
-	entry: MarketplaceEntryDTO;
+	entry: MarketplaceEntryView;
 	installer: MarketplaceInstaller;
 }) {
 	const tx = useT();
@@ -258,7 +258,7 @@ export const MARKETPLACE_SECTION_HASH = "#marketplace";
  * 也滤掉,并不会让人更新不了。装着那版被撤回、又有新版可换的(`updatable` + `installed.revoked`)
  * 同理:那句红字跟着更新钮长在已装卡上({@link MarketplaceUpdateOffer}),不在这儿再画一张。
  */
-const INSTALLED_STATES: ReadonlySet<MarketplaceEntryDTO["state"]> = new Set([
+const INSTALLED_STATES: ReadonlySet<MarketplaceEntryView["state"]> = new Set([
 	"installed",
 	"updatable",
 	"installed-elsewhere",
@@ -270,7 +270,7 @@ function EntryAction({
 	installing,
 	onInstall,
 }: {
-	entry: MarketplaceEntryDTO;
+	entry: MarketplaceEntryView;
 	busy: boolean;
 	/** 正在装的是**这一条**。`busy` 是「有别的在装、先别点」,两件事。 */
 	installing: boolean;
@@ -326,7 +326,7 @@ function EntryCard({
 	installing,
 	onInstall,
 }: {
-	entry: MarketplaceEntryDTO;
+	entry: MarketplaceEntryView;
 	sourceName: string;
 	busy: boolean;
 	installing: boolean;
@@ -457,7 +457,7 @@ export function MarketplaceSection({
 			{failed.map((source) => (
 				<ErrorNote key={source.id} size="sm">
 					{tx("panelUi.pages.extensions.marketplace-section.21")}
-					{source.name}」:{source.err}
+					{source.name}」:{source.message}
 				</ErrorNote>
 			))}
 

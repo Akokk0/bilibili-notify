@@ -8,7 +8,7 @@ import { useT } from "../../i18n";
  * 还会再确认一次,那是给手滑的人看的,这里是给不知道自己在干什么的人看的。
  */
 
-import type { MarketplaceSourceDTO } from "@bilibili-notify/contract";
+import type { MarketplaceSourceView } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import {
 	Btn,
@@ -50,7 +50,7 @@ export function MarketplaceSourcesDialog({
 	onClose,
 }: {
 	/** 市场那一口报的各源状态(拿到了没、叫什么、为什么没)。 */
-	status: readonly MarketplaceSourceDTO[];
+	status: readonly MarketplaceSourceView[];
 	onClose: () => void;
 }) {
 	const tx = useT();
@@ -109,7 +109,7 @@ export function MarketplaceSourcesDialog({
 								<span className="text-bn-2xs text-bn-text-tertiary">
 									{official.ok
 										? tx("panelUi.pages.extensions.marketplace-sources-dialog.5")
-										: official.err}
+										: official.message}
 								</span>
 							</div>
 						</li>
@@ -135,7 +135,7 @@ export function MarketplaceSourcesDialog({
 										{source.url}
 									</span>
 									{st && !st.ok ? (
-										<span className="text-bn-2xs text-bn-danger">{st.err}</span>
+										<span className="text-bn-2xs text-bn-danger">{st.message}</span>
 									) : null}
 								</div>
 								<IconButton

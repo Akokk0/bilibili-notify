@@ -1,5 +1,7 @@
 import { createPublicKey, verify as cryptoVerify } from "node:crypto";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { type ZodType, z } from "zod";
+import { t } from "../i18n/index.js";
 
 /**
  * 升级清单的**唯一**信任入口。
@@ -76,12 +78,7 @@ export const ManifestSchema = z.object({
 
 export type Manifest = z.infer<typeof ManifestSchema>;
 
-export type LoadManifestResult =
-	| { ok: true; manifest: Manifest }
-	/** 信任列表里没有一把公钥能验过这串字节 —— 被改过,或不是我们签的。 */
-	| { ok: false; reason: "bad-signature" }
-	/** 签名验过了,但内容读不出一个合法清单 —— 通常意味着我们自己签错了东西。 */
-	| { ok: false; reason: "malformed" };
+export type LoadManifestResult = Result<{ manifest: Manifest }>;
 
 /**
  * @param bytes 清单文件的原始字节。
@@ -95,12 +92,10 @@ export function loadSignedManifest(
 	trustedKeysBase64: readonly string[],
 ): LoadManifestResult {
 	const loaded = loadSignedJson(bytes, signatureBase64, trustedKeysBase64, ManifestSchema);
-	return loaded.ok ? { ok: true, manifest: loaded.value } : loaded;
+	return loaded.ok ? ok({ manifest: loaded.value }) : loaded;
 }
 
-export type LoadSignedJsonResult<T> =
-	| { ok: true; value: T }
-	| { ok: false; reason: "bad-signature" | "malformed" };
+export type LoadSignedJsonResult<T> = Result<{ value: T }>;
 
 /**
  * 同一扇门的通用形态:验签 + 按给定 schema 读。升级清单与拓展市场的官方索引都从这儿过 ——
@@ -127,7 +122,7 @@ export function loadSignedJson<T>(
 			signature,
 		),
 	);
-	if (!verified) return { ok: false, reason: "bad-signature" };
+	if (!verified) return fail("unauthorized", t("update.validation.signature"));
 
 	// 清单是从网上下来的,而分发链上站着我们不控制的代理站。任何让它把进程带走
 	// 的路径,都等于白送对方一个拒绝服务的开关。
@@ -135,14 +130,14 @@ export function loadSignedJson<T>(
 	try {
 		parsed = JSON.parse(Buffer.from(bytes).toString("utf8"));
 	} catch {
-		return { ok: false, reason: "malformed" };
+		return fail("invalid", t("update.validation.document"));
 	}
 
 	// 验签只证明「这是我们签的、没被改过」,不证明内容是对的。我们自己签错一次
 	// 东西,下游就会拿着一份 version 缺失的清单去比版本 —— NapCat 更新完显示
 	// 0.0.0 就是这一类。
 	const shaped = schema.safeParse(parsed);
-	if (!shaped.success) return { ok: false, reason: "malformed" };
+	if (!shaped.success) return fail("invalid", t("update.validation.document"));
 
-	return { ok: true, value: shaped.data };
+	return ok({ value: shaped.data });
 }

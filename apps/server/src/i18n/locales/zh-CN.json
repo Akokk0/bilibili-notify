@@ -1359,5 +1359,12 @@
 	"bilibili.settings.loginDescription": "定期检查登录状态，保存后生效。",
 	"settings.identity.unavailable": "该集成的存储尚未打开，暂时无法更换身份。",
 	"settings.identity.notFound": "找不到该集成的设置。",
-	"settings.identity.unsupported": "该集成不支持更换浏览器身份。"
+	"settings.identity.unsupported": "该集成不支持更换浏览器身份。",
+	"update.validation.unreachable": "没有候选站交出可用的下载内容",
+	"update.validation.signature": "签名未通过信任公钥校验",
+	"update.validation.document": "签名清单的格式无效",
+	"update.validation.stale": "清单早于已见过的签发时间",
+	"update.validation.checksum": "下载内容与清单的校验和不一致",
+	"update.validation.unsafeEntry": "升级包包含越界文件路径",
+	"update.validation.extract": "升级包解压或落盘失败"
 }

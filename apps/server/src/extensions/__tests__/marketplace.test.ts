@@ -223,7 +223,7 @@ describe("list():官方源", () => {
 		expect(view.sources[0]).toMatchObject({
 			id: "official",
 			ok: false,
-			err: expect.stringContaining("签名"),
+			message: expect.stringContaining("签名"),
 		});
 		expect(view.extensions).toEqual([]);
 	});
@@ -244,7 +244,7 @@ describe("list():官方源", () => {
 		await h.marketplace.list();
 		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official({ issuedAt: 100 })) });
 		const view = await h.marketplace.list({ refresh: true });
-		expect(view.sources[0]).toMatchObject({ ok: false, err: expect.stringContaining("旧") });
+		expect(view.sources[0]).toMatchObject({ ok: false, message: expect.stringContaining("旧") });
 		const provenance = JSON.parse(await readFile(join(root, MARKETPLACE_PROVENANCE_FILE), "utf8"));
 		expect(provenance.officialIssuedAt).toBe(200);
 	});
@@ -443,7 +443,7 @@ describe("list():第三方源", () => {
 		expect(bad.sources[0]).toMatchObject({
 			name: "alice.example",
 			ok: false,
-			err: expect.stringContaining("bridge"),
+			message: expect.stringContaining("bridge"),
 		});
 		expect(bad.extensions).toEqual([]);
 	});
@@ -463,7 +463,7 @@ describe("list():第三方源", () => {
 		expect(view.sources[1]).toMatchObject({
 			id: "s2",
 			ok: false,
-			err: expect.stringContaining("alice"),
+			message: expect.stringContaining("alice"),
 		});
 		expect(view.extensions.map((e) => e.source)).toEqual(["s1"]);
 	});
@@ -486,7 +486,7 @@ describe("list():第三方源", () => {
 		expect(view.sources[1]).toMatchObject({
 			id: "s2",
 			ok: false,
-			err: expect.stringContaining("alice"),
+			message: expect.stringContaining("alice"),
 		});
 		expect(view.extensions).toEqual([]);
 	});

@@ -46,7 +46,7 @@ import {
 	type LoadedExtensions,
 	loadExtensions,
 } from "../../extensions/loader.js";
-import type { MarketplaceInstallOutcome } from "../../extensions/marketplace.js";
+import type { MarketplaceInstallResult } from "../../extensions/marketplace.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import {
 	createReportDiscrepancyTable,
@@ -1439,7 +1439,7 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 				fetchedAt: "2026-10-27T00:00:00.000Z",
 			})),
 			install: vi.fn(
-				async (): Promise<MarketplaceInstallOutcome> => ({
+				async (): Promise<MarketplaceInstallResult> => ({
 					ok: true,
 					id: "bridge",
 					name: "桥",
@@ -1544,7 +1544,7 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 		expect(m.install).toHaveBeenCalledTimes(1);
 	});
 
-	it.each<[string, MarketplaceInstallOutcome, number]>([
+	it.each<[string, MarketplaceInstallResult, number]>([
 		["没这个源 / 源里没有 / 被撤回", fail("not_found", "没有这个源:nope"), 404],
 		["源的索引没拿到 / 包下不下来", fail("unavailable", "源「官方」现在不可用:拿不到"), 503],
 		["这台 BN 的档位装不了", fail("unsupported", "桥:先升级 BN"), 400],

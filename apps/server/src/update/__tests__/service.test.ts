@@ -1141,9 +1141,9 @@ describe("createUpdateService —— 测一遍加速站", () => {
 			"https://fine.example/",
 		]);
 		expect(results[0]).toMatchObject({ ok: true, version: "0.9.0" });
-		expect(results[1]).toMatchObject({ ok: false, reason: "unreachable" });
+		expect(results[1]).toMatchObject({ ok: false, code: "unavailable" });
 		// 改了内容的站要说「签名验不过」,不能和「连不上」混成一句。
-		expect(results[2]).toMatchObject({ ok: false, reason: "untrusted" });
+		expect(results[2]).toMatchObject({ ok: false, code: "unauthorized" });
 		expect(results[3]).toMatchObject({ ok: true, version: "0.9.0" });
 		for (const r of results) expect(r.ms).toBeGreaterThanOrEqual(0);
 	});

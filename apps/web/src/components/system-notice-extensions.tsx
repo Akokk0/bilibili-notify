@@ -1,4 +1,4 @@
-import type { ExtensionDTO, MarketplaceEntryDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, MarketplaceEntryView } from "@bilibili-notify/contract";
 import { Btn, HintNote, Icon, IconButton } from "@bilibili-notify/ui";
 import { useT } from "../i18n";
 import { useMarketplace } from "../pages/extensions/marketplace-section";
@@ -13,7 +13,7 @@ export function NoticeExtensionList({
 	extensions: ExtensionDTO[];
 	disabled: boolean;
 	onNavigate: (to: string) => void;
-	onUpdate: (entry: MarketplaceEntryDTO, sourceName: string) => void;
+	onUpdate: (entry: MarketplaceEntryView, sourceName: string) => void;
 }) {
 	const tx = useT();
 	const market = useMarketplace();

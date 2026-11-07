@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { atomicWriteFile, replaceDirectory } from "@bilibili-notify/storage";
 import { unzipSync } from "fflate";
+import { t } from "../i18n/index.js";
 
-export interface InstallPayloadInput {
+export interface InstallPayloadOptions {
 	/** 升级包的原始字节(ZIP)。 */
 	zip: Uint8Array;
 	/** 清单里声明的 sha256(hex)。清单本身已经验过签,所以这个值是可信的。 */
@@ -14,19 +16,7 @@ export interface InstallPayloadInput {
 	versionsRoot: string;
 }
 
-export type InstallPayloadResult =
-	| {
-			ok: true;
-			path: string;
-			/** 目标版本本来就在,这次没碰磁盘。上层照样可以把指针切过去。 */
-			alreadyInstalled: boolean;
-	  }
-	/** 字节和清单声明的不一致 —— 传输坏了,或者被中间人换过。 */
-	| { ok: false; reason: "checksum-mismatch" }
-	/** 包里有条目会写到版本目录外面 —— 整包不要。 */
-	| { ok: false; reason: "unsafe-entry" }
-	/** 包解不开,或者写到一半失败了。现场已经清干净。 */
-	| { ok: false; reason: "extract-failed" };
+export type InstallPayloadResult = Result<{ path: string; alreadyInstalled: boolean }>;
 
 /** 版本目录里记「这是哪份包」的文件名。 */
 const SHA_MARKER = ".payload-sha256";
@@ -58,7 +48,7 @@ export async function installPayload({
 	expectedSha256,
 	version,
 	versionsRoot,
-}: InstallPayloadInput): Promise<InstallPayloadResult> {
+}: InstallPayloadOptions): Promise<InstallPayloadResult> {
 	const target = join(versionsRoot, version);
 
 	// 同一份包已经装过就什么都不做。「同一份」看目录里记的 sha256,不只看目录在不在:
@@ -66,12 +56,12 @@ export async function installPayload({
 	// 还是旧那份、上层却记着新 sha,面板说已就绪,重启跑的是旧的。
 	// 版本目录只可能通过原子 rename 出现,所以它存在就说明内容是完整的。
 	if (existsSync(target) && readInstalledSha256(target) === expectedSha256) {
-		return { ok: true, path: target, alreadyInstalled: true };
+		return ok({ path: target, alreadyInstalled: true });
 	}
 
 	// 校验在**落盘之前**。反过来的话,失败那一刻磁盘上已经躺着半个树了。
 	const actual = createHash("sha256").update(zip).digest("hex");
-	if (actual !== expectedSha256) return { ok: false, reason: "checksum-mismatch" };
+	if (actual !== expectedSha256) return fail("conflict", t("update.validation.checksum"));
 
 	// 先整个解进 staging,**最后一次 rename 才让它以目标名字出现**。rename 在同一
 	// 文件系统内是原子的,所以启动选版永远看不到半个树。
@@ -90,10 +80,10 @@ export async function installPayload({
 		entries = Object.entries(unzipSync(zip)).filter(([name]) => !name.endsWith("/"));
 	} catch {
 		// sha256 对得上只证明「字节是清单说的那一份」,不证明那份字节解得开。
-		return { ok: false, reason: "extract-failed" };
+		return fail("invalid", t("update.validation.extract"));
 	}
 	if (entries.some(([name]) => escapesRoot(staging, name))) {
-		return { ok: false, reason: "unsafe-entry" };
+		return fail("invalid", t("update.validation.unsafeEntry"));
 	}
 
 	try {
@@ -116,10 +106,10 @@ export async function installPayload({
 	} catch {
 		// 包是从网上下来的,畸形结构(同名的文件与目录、磁盘满、权限)都只能是
 		// 「装不上」,不能是「进程没了」。暂存目录存储层已经收走。
-		return { ok: false, reason: "extract-failed" };
+		return fail("unavailable", t("update.validation.extract"));
 	}
 
-	return { ok: true, path: target, alreadyInstalled: false };
+	return ok({ path: target, alreadyInstalled: false });
 }
 
 /** 目录里记的「这是哪份包」。没有(更早的版本装的)或读不出来 → 当作不是同一份。 */

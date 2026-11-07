@@ -1,4 +1,4 @@
-import type { ExtensionDTO, MarketplaceEntryDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, MarketplaceEntryView } from "@bilibili-notify/contract";
 import {
 	BELOW_HEADER_TOP,
 	Btn,
@@ -110,7 +110,7 @@ function ExtensionCard({
 	count: number;
 	onToggle: (enabled: boolean) => void;
 	/** 市场里这条有更新的那一版(ADR-0013)。没有就不画。 */
-	update?: MarketplaceEntryDTO;
+	update?: MarketplaceEntryView;
 	/** 页面那一份「从市场装」—— 更新钮走的是它(第三方那道确认框在里面)。 */
 	installer: MarketplaceInstaller;
 	/**
@@ -120,7 +120,7 @@ function ExtensionCard({
 	 * 更新、又确实有另一份可拿 —— 不说的话,主人既不知道市场里有,也不知道这张卡为什么
 	 * 从来不提示更新。**不许画成「更新」钮**:按下去等于换成一份来路不同的代码。
 	 */
-	elsewhere?: { entry: MarketplaceEntryDTO; sourceName: string };
+	elsewhere?: { entry: MarketplaceEntryView; sourceName: string };
 }) {
 	const t = useT();
 	const labels = useProvidesLabels();

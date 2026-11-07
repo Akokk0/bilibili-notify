@@ -514,7 +514,7 @@ export interface ExtensionDocsResponse {
 // ---- /api/ext/marketplace(ADR-0013)--------------------------------------------
 
 /** 一个源:内置的官方源(`id: "official"`)或主人自己加的第三方源。 */
-export interface MarketplaceSourceDTO {
+export type MarketplaceSourceView = Result & {
 	id: string;
 	name: string;
 	official: boolean;
@@ -522,10 +522,7 @@ export interface MarketplaceSourceDTO {
 	url?: string;
 	/** 第三方源声明的命名空间;它列的每个 id 都在这底下。 */
 	namespace?: string;
-	/** 索引拿到了、验过了。不 ok 时 `err` 是那句要原样给主人看的原因。 */
-	ok: boolean;
-	err?: string;
-}
+};
 
 /**
  * 一条条目在**这台机器上**的状态 —— 面板上那颗钮画什么全看它:
@@ -545,8 +542,8 @@ export type MarketplaceEntryState =
 	| "incompatible"
 	| "revoked";
 
-export interface MarketplaceEntryDTO {
-	/** 来自哪个源(`MarketplaceSourceDTO.id`)。 */
+export interface MarketplaceEntryView {
+	/** 来自哪个源(`MarketplaceSourceView.id`)。 */
 	source: string;
 	official: boolean;
 	id: string;
@@ -585,8 +582,8 @@ export interface MarketplaceEntryDTO {
 export interface MarketplaceResponse {
 	/** 这个构建有没有官方源(fork 出去没有信任公钥的构建没有)。 */
 	available: boolean;
-	sources: MarketplaceSourceDTO[];
-	extensions: MarketplaceEntryDTO[];
+	sources: MarketplaceSourceView[];
+	extensions: MarketplaceEntryView[];
 	/** 索引是什么时候拉的,带时区的 UTC ISO。 */
 	fetchedAt: string;
 }

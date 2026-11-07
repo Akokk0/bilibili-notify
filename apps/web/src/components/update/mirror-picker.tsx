@@ -29,18 +29,18 @@ export interface MirrorPickerProps {
 	disabled?: boolean;
 }
 
-const FAILURE_LABEL: Record<Extract<MirrorProbeResult, { ok: false }>["reason"], string> = {
-	get unreachable() {
+const FAILURE_LABEL: Partial<Record<Extract<MirrorProbeResult, { ok: false }>["code"], string>> = {
+	get unavailable() {
 		return i18n.t("panelUi.components.update.mirror-picker.1");
 	},
 	// 唯一该让人警觉的一种 —— 别和「连不上」混成一句。
-	get untrusted() {
+	get unauthorized() {
 		return i18n.t("panelUi.components.update.mirror-picker.2");
 	},
-	get malformed() {
+	get invalid() {
 		return i18n.t("panelUi.components.update.mirror-picker.3");
 	},
-	get stale() {
+	get conflict() {
 		return i18n.t("panelUi.components.update.mirror-picker.4");
 	},
 };
@@ -176,7 +176,7 @@ function MirrorRow({
 				</Pill>
 			) : (
 				<Pill subtle size="sm" color="var(--color-bn-danger)">
-					{FAILURE_LABEL[result.reason]}
+					{FAILURE_LABEL[result.code] ?? result.message}
 				</Pill>
 			)}
 			{result?.ok ? (

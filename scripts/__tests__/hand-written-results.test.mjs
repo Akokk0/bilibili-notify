@@ -43,13 +43,7 @@ export const ALLOWLIST = {
  * - 不是结果但带 `ok` 的:AI 工具结束的 SSE 帧。
  */
 export const RATCHET = {
-	"apps/server/src/extensions/marketplace.ts": 14,
 	"apps/server/src/routes/ai.ts": 2,
-	"apps/server/src/update/fetch-signed-manifest.ts": 8,
-	"apps/server/src/update/fetch-through-mirrors.ts": 2,
-	"apps/server/src/update/install-payload.ts": 6,
-	"apps/server/src/update/service.ts": 4,
-	"apps/server/src/update/signed-manifest.ts": 5,
 	"apps/web/src/devtools/dock.tsx": 2,
 	"apps/web/src/devtools/ext-motion.ts": 3,
 	"apps/web/src/services/session.ts": 6,

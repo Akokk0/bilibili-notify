@@ -1,4 +1,4 @@
-import type { MarketplaceEntryDTO, MarketplaceResponse } from "@bilibili-notify/contract";
+import type { MarketplaceEntryView, MarketplaceResponse } from "@bilibili-notify/contract";
 import { EXTENSION_API_RANGE, ok } from "@bilibili-notify/internal";
 import type { Marketplace } from "../extensions/marketplace.js";
 
@@ -78,7 +78,7 @@ export function bumpedVersion(version: string | undefined): string {
  * ① **装着那份的来源**那一条(真「有新版」只会出在它身上,别的源那条是 `installed-elsewhere`);
  * ② 没有(手放 / devtools 链进来的,全是 elsewhere)就挑官方那条;③ 再没有就第一条。
  */
-function pickIndex(entries: readonly MarketplaceEntryDTO[], id: string): number {
+function pickIndex(entries: readonly MarketplaceEntryView[], id: string): number {
 	const fromHere = entries.findIndex(
 		(one) =>
 			one.id === id && one.installed?.source !== undefined && one.installed.source === one.source,

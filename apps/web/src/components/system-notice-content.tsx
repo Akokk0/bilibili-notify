@@ -1,5 +1,5 @@
 import type {
-	MarketplaceEntryDTO,
+	MarketplaceEntryView,
 	ReleaseNoteEntry,
 	RestartAbility,
 	SystemNotice,
@@ -82,7 +82,7 @@ export function SystemNoticeContent({
 	runningVersion: string;
 	onNavigate: (to: string) => void;
 	onFresh: () => void;
-	onUpdate: (entry: MarketplaceEntryDTO, sourceName: string) => void;
+	onUpdate: (entry: MarketplaceEntryView, sourceName: string) => void;
 	disabled: boolean;
 }) {
 	const tx = useT();
@@ -151,7 +151,7 @@ function MigratedContent({
 	notice: Extract<SystemNotice, { kind: "migrated" }>;
 	onNavigate: (to: string) => void;
 	onFresh: () => void;
-	onUpdate: (entry: MarketplaceEntryDTO, sourceName: string) => void;
+	onUpdate: (entry: MarketplaceEntryView, sourceName: string) => void;
 	disabled: boolean;
 }) {
 	const tx = useT();

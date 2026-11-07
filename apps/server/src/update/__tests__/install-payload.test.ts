@@ -69,7 +69,7 @@ describe("installPayload", () => {
 			versionsRoot,
 		});
 
-		expect(result.ok, result.ok ? "" : `reason=${result.reason}`).toBe(true);
+		expect(result.ok, result.ok ? "" : `reason=${result.code}`).toBe(true);
 		expect(existsSync(join(absolute, "0.9.0", "index.mjs"))).toBe(true);
 	});
 
@@ -141,7 +141,7 @@ describe("installPayload", () => {
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("checksum-mismatch");
+		expect(result.ok === false && result.code).toBe("conflict");
 		// 校验必须发生在**落盘之前**。先解压再校验的话,失败那一刻磁盘上已经躺着
 		// 半个树了,而下一次启动选版会把它当成一个可用版本。
 		expect(readdirSync(versionsRoot)).toEqual([]);
@@ -161,7 +161,7 @@ describe("installPayload", () => {
 			versionsRoot,
 		});
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(result.alreadyInstalled).toBe(false);
 		expect(readdirSync(versionsRoot)).toEqual(["0.9.0"]);
 		expect(readFileSync(join(result.path, "index.mjs"), "utf8")).toBe("console.log('payload')");
@@ -190,7 +190,7 @@ describe("installPayload", () => {
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("unsafe-entry");
+		expect(result.ok === false && result.code).toBe("invalid");
 		expect(readdirSync(versionsRoot)).toEqual([]);
 		expect(existsSync(join(root, "escaped.mjs"))).toBe(false);
 	});
@@ -217,7 +217,7 @@ describe("installPayload", () => {
 			versionsRoot,
 		});
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(result.alreadyInstalled).toBe(true);
 		expect(readFileSync(join(result.path, "index.mjs"), "utf8")).toBe("第一次装的");
 		// 没有残留的 staging 目录
@@ -239,7 +239,7 @@ describe("installPayload", () => {
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("extract-failed");
+		expect(result.ok === false && result.code).toBe("unavailable");
 		// 目标目录没出现,**staging 也没留下** —— 否则下次安装会撞上一堆孤儿目录。
 		expect(readdirSync(versionsRoot)).toEqual([]);
 	});
@@ -258,7 +258,7 @@ describe("installPayload", () => {
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("extract-failed");
+		expect(result.ok === false && result.code).toBe("invalid");
 		expect(readdirSync(versionsRoot)).toEqual([]);
 	});
 
@@ -280,7 +280,7 @@ describe("installPayload", () => {
 			versionsRoot,
 		});
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(new Uint8Array(readFileSync(join(result.path, "assets", "deep", "blob.wasm")))).toEqual(
 			binary,
 		);
@@ -344,7 +344,7 @@ describe("installPayload", () => {
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("extract-failed");
+		expect(result.ok === false && result.code).toBe("unavailable");
 		expect(readdirSync(versionsRoot)).toEqual(["0.9.0"]);
 		expect(readFileSync(join(versionsRoot, "0.9.0", "index.mjs"), "utf8")).toBe("// A");
 		expect(readFileSync(join(versionsRoot, "0.9.0", "extra.txt"), "utf8")).toBe("old");

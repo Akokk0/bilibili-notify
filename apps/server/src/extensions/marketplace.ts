@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import type {
-	MarketplaceEntryDTO,
 	MarketplaceEntryState,
+	MarketplaceEntryView,
 	MarketplaceResponse,
-	MarketplaceSourceDTO,
+	MarketplaceSourceView,
 } from "@bilibili-notify/contract";
 import {
 	apiVersionAccepted,
@@ -23,7 +23,7 @@ import {
 } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 import { readBestEffortJson, writeBestEffortJson } from "../update/durable-json.js";
-import { fetchSignedJson } from "../update/fetch-signed-manifest.js";
+import { fetchSignedJson, signedFailureKind } from "../update/fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "../update/fetch-through-mirrors.js";
 import { compareVersions } from "../update/version-order.js";
 import { ExtensionConflictError } from "./conflict-error.js";
@@ -100,7 +100,7 @@ export interface MarketplaceDeps {
  * `unsupported` 这台 BN 的档位装不了它,`invalid` 包超上限 / 校验和对不上 / 拆不开 / 清单与索引说的不是一个,
  * `conflict` 目标是 devtools 链进来的软链。`message` 是给主人看的中文原话。
  */
-export type MarketplaceInstallOutcome = Result<{
+export type MarketplaceInstallResult = Result<{
 	id: string;
 	name: string;
 	version: string;
@@ -112,7 +112,7 @@ export type MarketplaceInstallOutcome = Result<{
 
 export interface Marketplace {
 	list(opts?: { refresh?: boolean }): Promise<MarketplaceResponse>;
-	install(sourceId: string, id: string): Promise<MarketplaceInstallOutcome>;
+	install(sourceId: string, id: string): Promise<MarketplaceInstallResult>;
 }
 
 interface ProvenanceRecord {
@@ -140,7 +140,7 @@ interface NamespaceHolder {
 }
 
 interface LoadedSource {
-	view: MarketplaceSourceDTO;
+	view: MarketplaceSourceView;
 	index?: MarketplaceIndex;
 }
 
@@ -276,8 +276,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 					get name() {
 						return serverText("service.extensions.marketplace.text.5");
 					},
-					ok: false,
-					err: OFFICIAL_FAILURE_TEXT[fetched.reason],
+					...fail(fetched.code, OFFICIAL_FAILURE_TEXT[signedFailureKind(fetched)]),
 				},
 			};
 		}
@@ -287,8 +286,10 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				view: {
 					...base,
 					name: fetched.value.name,
-					ok: false,
-					err: serverText("service.extensions.marketplace.text.6", { value0: checked.message }),
+					...fail(
+						"invalid",
+						serverText("service.extensions.marketplace.text.6", { value0: checked.message }),
+					),
 				},
 			};
 		}
@@ -305,7 +306,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				});
 			}
 		}
-		return { view: { ...base, name: fetched.value.name, ok: true }, index: fetched.value };
+		return { view: ok({ ...base, name: fetched.value.name }), index: fetched.value };
 	}
 
 	/** 索引拿到之前叫什么:用户没起名(通常没有),就拿域名顶着。 */
@@ -325,10 +326,10 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	 * 谁先回来归网络管。两件事混在一条函数里的话,并发一开,「谁占住了这个命名空间」就成了
 	 * 抽签。
 	 */
-	type ThirdPartyFetch = { ok: true; index: MarketplaceIndex } | { ok: false; err: string };
+	type ThirdPartyFetchResult = Result<{ index: MarketplaceIndex }>;
 
-	async function fetchThirdParty(source: MarketplaceSource): Promise<ThirdPartyFetch> {
-		const fetched = await fetchThroughMirrors<MarketplaceIndex, string>({
+	async function fetchThirdParty(source: MarketplaceSource): Promise<ThirdPartyFetchResult> {
+		const fetched = await fetchThroughMirrors<MarketplaceIndex>({
 			url: source.url,
 			mirrors: [""],
 			timeoutMs,
@@ -338,26 +339,24 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				try {
 					parsed = JSON.parse(Buffer.from(bytes).toString("utf8"));
 				} catch {
-					return { ok: false, reason: serverText("service.extensions.marketplace.text.7") };
+					return fail("invalid", serverText("service.extensions.marketplace.text.7"));
 				}
 				const shaped = indexSchema.safeParse(parsed);
 				if (!shaped.success)
-					return { ok: false, reason: serverText("service.extensions.marketplace.text.8") };
+					return fail("invalid", serverText("service.extensions.marketplace.text.8"));
 				const checked = checkMarketplaceIndex(shaped.data, { official: false });
-				if (!checked.ok) return { ok: false, reason: checked.message };
-				return { ok: true, value: shaped.data };
+				if (!checked.ok) return checked;
+				return ok({ value: shaped.data });
 			},
 		});
-		if (!fetched.ok) {
-			return {
-				ok: false,
-				err:
-					fetched.reason === "all-mirrors-failed"
-						? serverText("service.extensions.marketplace.text.9")
-						: fetched.reason,
-			};
-		}
-		return { ok: true, index: fetched.value };
+		if (!fetched.ok)
+			return fail(
+				fetched.code,
+				fetched.code === "invalid"
+					? fetched.message
+					: serverText("service.extensions.marketplace.text.9"),
+			);
+		return ok({ index: fetched.value });
 	}
 
 	/**
@@ -366,12 +365,12 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	 */
 	function admitThirdParty(
 		source: MarketplaceSource,
-		fetched: ThirdPartyFetch,
+		fetched: ThirdPartyFetchResult,
 		taken: Map<string, NamespaceHolder>,
 	): LoadedSource {
 		const base = { id: source.id, name: placeholderName(source), official: false, url: source.url };
 		// 拉不到 / 不合规矩时索引里那个名字还没有,拿域名顶着 —— 别让错误行上写一个 uuid。
-		if (!fetched.ok) return { view: { ...base, ok: false, err: fetched.err } };
+		if (!fetched.ok) return { view: { ...base, ...fetched } };
 		// 名字以索引自己报的为准 —— 用户加源时只填了地址。
 		const named = { ...base, name: fetched.index.name };
 		const ns = fetched.index.namespace as string;
@@ -381,16 +380,18 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				view: {
 					...named,
 					namespace: ns,
-					ok: false,
-					err: serverText("service.extensions.marketplace.text.10", {
-						value0: ns,
-						value1: holder.name,
-					}),
+					...fail(
+						"conflict",
+						serverText("service.extensions.marketplace.text.10", {
+							value0: ns,
+							value1: holder.name,
+						}),
+					),
 				},
 			};
 		}
 		taken.set(ns, { sourceId: source.id, name: named.name });
-		return { view: { ...named, namespace: ns, ok: true }, index: fetched.index };
+		return { view: ok({ ...named, namespace: ns }), index: fetched.index };
 	}
 
 	/**
@@ -450,7 +451,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		provenance: Provenance,
 		/** 盘上装着的,按 id 索引。一份,不是每条条目现算一遍。 */
 		installedOnDisk: Map<string, { id: string; version?: string }>,
-	): { state: MarketplaceEntryState; installed?: MarketplaceEntryDTO["installed"] } {
+	): { state: MarketplaceEntryState; installed?: MarketplaceEntryView["installed"] } {
 		const onDisk = installedOnDisk.get(entry.id);
 		const record = provenance.installed[entry.id];
 		if (onDisk) {
@@ -488,7 +489,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		// 装载器那份名单问一次就够:每条条目各问一遍等于把整张表扫成 O(条目 × 装着的)。
 		const installedOnDisk = new Map(deps.installed().map((one) => [one.id, one]));
 		const prerelease = deps.prerelease();
-		const extensions: MarketplaceEntryDTO[] = [];
+		const extensions: MarketplaceEntryView[] = [];
 		for (const source of loaded) {
 			if (!source.index) continue;
 			for (const entry of pickPerId(source.index.extensions, prerelease, fitsHost).values()) {
@@ -525,7 +526,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		};
 	}
 
-	async function install(sourceId: string, id: string): Promise<MarketplaceInstallOutcome> {
+	async function install(sourceId: string, id: string): Promise<MarketplaceInstallResult> {
 		const loaded = await loadAll(false);
 		const source = loaded.find((candidate) => candidate.view.id === sourceId);
 		if (!source)
@@ -538,7 +539,9 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				"unavailable",
 				serverText("service.extensions.marketplace.text.13", {
 					value0: source.view.name,
-					value1: source.view.err ?? serverText("service.extensions.marketplace.text.12"),
+					value1: !source.view.ok
+						? source.view.message
+						: serverText("service.extensions.marketplace.text.12"),
 				}),
 			);
 		}
@@ -579,7 +582,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			);
 		}
 
-		const downloaded = await fetchThroughMirrors<Uint8Array, "checksum">({
+		const downloaded = await fetchThroughMirrors<Uint8Array>({
 			url: entry.package.url,
 			// 只有官方源的包在 GitHub 上,加速前缀才拼得出东西。
 			mirrors: source.view.official ? mirrorChain(deps.mirrors()) : [""],
@@ -587,11 +590,11 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			maxBytes: Math.min(entry.package.size, MAX_EXTENSION_PACKAGE_BYTES),
 			accept: (bytes) =>
 				bytes.byteLength === entry.package.size && sha256Hex(bytes) === entry.package.sha256
-					? { ok: true, value: bytes }
-					: { ok: false, reason: "checksum" },
+					? ok({ value: bytes })
+					: fail("invalid", serverText("service.extensions.marketplace.text.17")),
 		});
 		if (!downloaded.ok) {
-			return downloaded.reason === "checksum"
+			return downloaded.code === "invalid"
 				? fail("invalid", serverText("service.extensions.marketplace.text.17"))
 				: fail(
 						"unavailable",

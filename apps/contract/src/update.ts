@@ -1,3 +1,4 @@
+import type { Result } from "@bilibili-notify/internal/result";
 /**
  * 自主升级的 wire 契约 —— `GET /api/system/update` 的响应,以及它的几个动作。
  *
@@ -150,15 +151,7 @@ export interface MirrorProbeRequest {
  * 一个候选站测出来的结果:通就给毫秒数和**通过它拿到的清单版本**(某个站缓存了旧
  * 清单一眼看得出);不通就按老规矩归因 —— 连不上、签名验不过、清单不成形,三件事。
  */
-export type MirrorProbeResult =
-	| { prefix: string; ok: true; ms: number; version: string }
-	| {
-			prefix: string;
-			ok: false;
-			ms: number;
-			/** `stale`:这个站给的清单比之前见过的旧 —— 它缓存了旧文件。 */
-			reason: "unreachable" | "untrusted" | "malformed" | "stale";
-	  };
+export type MirrorProbeResult = Result<{ version: string }> & { prefix: string; ms: number };
 
 export interface MirrorProbeResponse {
 	results: MirrorProbeResult[];

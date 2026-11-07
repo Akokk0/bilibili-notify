@@ -42,7 +42,7 @@ describe("fetchThroughMirrors", () => {
 			accept: takeAll,
 		});
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(new TextDecoder().decode(result.value)).toBe("真正的清单");
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
@@ -75,7 +75,7 @@ describe("fetchThroughMirrors", () => {
 			accept: takeAll,
 		});
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(new TextDecoder().decode(result.value)).toBe("小小的清单");
 		// 上限 / 每块大小 = 拉到第 4 块就该收手。给一点余量,但**远小于**那 10000 块
 		// —— 缓冲式的假防护会把它们全拉完,这条断言就是用来分辨这两者的。
@@ -108,7 +108,7 @@ describe("fetchThroughMirrors", () => {
 			accept: takeAll,
 		});
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(new TextDecoder().decode(result.value)).toBe("终于拿到了");
 	});
 
@@ -166,10 +166,10 @@ describe("fetchThroughMirrors", () => {
 			accept: (bytes) =>
 				decode(bytes) === "真正的清单"
 					? { ok: true, value: decode(bytes) }
-					: { ok: false, reason: "malformed" as const },
+					: { ok: false as const, code: "invalid" as const, message: "malformed" },
 		});
 
-		if (!result.ok) throw new Error(`expected ok, got reason=${result.reason}`);
+		if (!result.ok) throw new Error(`expected ok, got reason=${result.code}`);
 		expect(result.value).toBe("真正的清单");
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(fetchMock.mock.calls[1]?.[0]).toBe(RELEASE_URL);
@@ -187,11 +187,11 @@ describe("fetchThroughMirrors", () => {
 			mirrors: ["https://a.example", ""],
 			maxBytes: 1024,
 			timeoutMs: 1000,
-			accept: () => ({ ok: false, reason: "untrusted" as const }),
+			accept: () => ({ ok: false as const, code: "unauthorized" as const, message: "untrusted" }),
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("untrusted");
+		expect(result.ok === false && result.code).toBe("unauthorized");
 	});
 
 	it("前面的候选验收不过、最后一个候选网络失败 → all-mirrors-failed,不把代理站的垃圾页报成安全事件", async () => {
@@ -206,11 +206,11 @@ describe("fetchThroughMirrors", () => {
 			mirrors: ["https://a.example", ""],
 			maxBytes: 1024,
 			timeoutMs: 1000,
-			accept: () => ({ ok: false, reason: "untrusted" as const }),
+			accept: () => ({ ok: false as const, code: "unauthorized" as const, message: "untrusted" }),
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("all-mirrors-failed");
+		expect(result.ok === false && result.code).toBe("unavailable");
 	});
 
 	it("所有候选都失败 → 返回失败结果,不抛", async () => {
@@ -228,7 +228,7 @@ describe("fetchThroughMirrors", () => {
 		});
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.reason).toBe("all-mirrors-failed");
+		expect(result.ok === false && result.code).toBe("unavailable");
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
@@ -256,7 +256,11 @@ describe("fetchThroughMirrors", () => {
 		shutdown.abort();
 		const result = await running;
 
-		expect(result).toEqual({ ok: false, reason: "all-mirrors-failed" });
+		expect(result).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "没有候选站交出可用的下载内容",
+		});
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 });
