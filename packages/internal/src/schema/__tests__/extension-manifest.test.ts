@@ -25,7 +25,7 @@ import {
 	type ExtensionApiRange,
 	ExtensionIdSchema,
 	type ExtensionManifest,
-	type ExtensionManifestRead,
+	type ExtensionManifestResult,
 	extensionNamespaceOf,
 	manifestProvides,
 	manifestSecretKeys,
@@ -85,30 +85,39 @@ function withField(field: Record<string, unknown>): Record<string, unknown> {
 
 function ok(raw: unknown, range?: ExtensionApiRange): ExtensionManifest {
 	const r = parseExtensionManifest(raw, range);
-	if (!r.ok) throw new Error(`应该收下,却是 ${r.reason}:${JSON.stringify(r)}`);
+	if (!r.ok) throw new Error(`应该收下,却是 ${r.code}:${JSON.stringify(r)}`);
 	return r.manifest;
 }
 
 function unreadable(raw: unknown, range?: ExtensionApiRange): string[] {
 	const r = parseExtensionManifest(raw, range);
-	if (r.ok || r.reason !== "unreadable") {
+	if (r.ok || r.code !== "invalid") {
 		throw new Error(`应该读不了,却是 ${JSON.stringify(r)}`);
 	}
-	return r.issues;
+	return r.issues.map((issue) => issue.message);
 }
 
 function incompatible(
 	raw: unknown,
 	range?: ExtensionApiRange,
-): Extract<ExtensionManifestRead, { reason: "incompatible" }> {
+): Extract<ExtensionManifestResult, { code: "unsupported" }> {
 	const r = parseExtensionManifest(raw, range);
-	if (r.ok || r.reason !== "incompatible") {
+	if (r.ok || r.code !== "unsupported") {
 		throw new Error(`应该判不兼容,却是 ${JSON.stringify(r)}`);
 	}
 	return r;
 }
 
 describe("parseExtensionManifest —— 档位区间", () => {
+	it("清单不兼容回 unsupported，并保留面板识别它所需的身份", () => {
+		const result = parseExtensionManifest(currentManifest({ apiVersion: 99 }));
+		expect(result).toMatchObject({
+			ok: false,
+			code: "unsupported",
+			requires: { apiVersion: 99 },
+			identity: { id: "demo-ext" },
+		});
+	});
 	it("宿主这一版只认 currentManifest(第 2 版的退路已删),契约小号是 0", () => {
 		expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 0 });
 	});
@@ -1281,10 +1290,10 @@ it("宿主追加 ID 规则仍拒绝顶层多余键，清单不降为宽松格式
 	const hostId = ExtensionIdSchema.refine((id) => id !== "reserved-source");
 	expect(
 		parseExtensionManifest(currentManifest({ provides: ["push"] }), undefined, hostId),
-	).toMatchObject({ ok: false, reason: "unreadable" });
+	).toMatchObject({ ok: false, code: "invalid" });
 	expect(
 		parseExtensionManifest(currentManifest({ id: "reserved-source" }), undefined, hostId),
-	).toMatchObject({ ok: false, reason: "unreadable" });
+	).toMatchObject({ ok: false, code: "invalid" });
 	expect(parseExtensionManifest(currentManifest(), undefined, hostId).ok).toBe(true);
 });
 

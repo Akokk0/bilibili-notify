@@ -6,6 +6,7 @@ import {
 } from "../extension/wire";
 import { EXTENSION_SOURCE_FEATURES, FEATURE_KEYS } from "../features";
 import { RESERVED_EXTENSION_IDS } from "../identity";
+import { fail, type Issue, ok, type Result } from "../result";
 import type { SettingsField, SettingsListField } from "../settings-field";
 import { CREATOR_SEARCH_INPUTS } from "../source";
 import { packageText } from "../texts";
@@ -710,20 +711,18 @@ const ApiVersionOnlySchema = z.object({ apiVersion: z.number().int().min(1) });
 /** 档位认得了,再单读这一格 —— 小号不够就不必挑其余格式的毛病。 */
 const ApiRevisionOnlySchema = z.object({ apiRevision: ApiRevisionSchema.optional() });
 
-export type ExtensionManifestRead =
-	| { ok: true; manifest: ExtensionManifest }
-	/** 读不了。`issues` 每条都是「路径: 原因」。 */
-	| { ok: false; reason: "unreadable"; issues: string[] }
-	/**
-	 * 给别的契约档位写的,或要的小号比这台 BN 的高。身份那几格照样读出来了,面板要印它是谁。
-	 * 档位不合时不读小号(那一档的格式可能根本不认识),`requires` 里就没有那一格。
-	 */
-	| {
-			ok: false;
-			reason: "incompatible";
-			identity: ExtensionIdentity;
-			requires: ExtensionApiRequirement;
-	  };
+/** 读清单失败仍保留诊断身份；只供宿主发现/安装使用，不直接作为 HTTP 错误体。 */
+export type ExtensionManifestResult = Result<{ manifest: ExtensionManifest }> &
+	(
+		| { ok: true }
+		| { ok: false; code: "invalid"; issues: Issue[] }
+		| {
+				ok: false;
+				code: "unsupported";
+				identity: ExtensionIdentity;
+				requires: ExtensionApiRequirement;
+		  }
+	);
 
 /**
  * zod 的错误摊成「路径: 原因」一条一条 —— 读清单与校验拓展交上来的视图共用这一套说法。
@@ -753,10 +752,10 @@ export function parseExtensionManifest(
 	range: ExtensionApiRange = EXTENSION_API_RANGE,
 	/** 宿主追加本次装配的保留键；打包器不传，使用通用 ID 规则。 */
 	idSchema?: typeof ExtensionIdSchema,
-): ExtensionManifestRead {
+): ExtensionManifestResult {
 	const head = ApiVersionOnlySchema.safeParse(raw);
 	if (!head.success) {
-		return { ok: false, reason: "unreadable", issues: formatZodIssues(head.error) };
+		return invalidManifest(formatZodIssues(head.error));
 	}
 	const apiVersion = head.data.apiVersion;
 	const schema = tierAccepted(apiVersion, range) ? MANIFEST_SCHEMAS[apiVersion] : undefined;
@@ -766,7 +765,7 @@ export function parseExtensionManifest(
 	if (schema) {
 		const revision = ApiRevisionOnlySchema.safeParse(raw);
 		if (!revision.success) {
-			return { ok: false, reason: "unreadable", issues: formatZodIssues(revision.error) };
+			return invalidManifest(formatZodIssues(revision.error));
 		}
 		requires = { apiVersion, apiRevision: revision.data.apiRevision ?? 0 };
 	}
@@ -776,9 +775,18 @@ export function parseExtensionManifest(
 			idSchema ? ExtensionIdentitySchema.extend({ id: idSchema }) : ExtensionIdentitySchema
 		).safeParse(raw);
 		if (!identity.success) {
-			return { ok: false, reason: "unreadable", issues: formatZodIssues(identity.error) };
+			return invalidManifest(formatZodIssues(identity.error));
 		}
-		return { ok: false, reason: "incompatible", identity: identity.data, requires };
+		return {
+			...fail(
+				"unsupported",
+				packageText("internal.schema.extension-manifest.incompatible", {
+					version: requires.apiVersion,
+				}),
+			),
+			identity: identity.data,
+			requires,
+		};
 	}
 
 	// ID 只追加校验；交叉合并会改变 strictObject 对额外键的拒收语义。
@@ -793,9 +801,9 @@ export function parseExtensionManifest(
 		: schema;
 	const parsed = hostSchema.safeParse(raw);
 	if (!parsed.success) {
-		return { ok: false, reason: "unreadable", issues: formatZodIssues(parsed.error) };
+		return invalidManifest(formatZodIssues(parsed.error));
 	}
-	return { ok: true, manifest: parsed.data };
+	return ok({ manifest: parsed.data });
 }
 
 /** 它开的是哪几口 —— 由 `contributes` 的键推出来(次序固定)。 */
@@ -922,4 +930,9 @@ export function settingsFieldSchema(field: SettingsField): z.ZodType {
  */
 export function settingsListItemSchema(list: SettingsListField): z.ZodType {
 	return fieldsObjectSchema(list.fields, true);
+}
+
+function invalidManifest(messages: string[]) {
+	const issues = messages.map((message) => ({ message }));
+	return { ...fail("invalid", messages.join(";")), issues };
 }

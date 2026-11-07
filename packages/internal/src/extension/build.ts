@@ -74,7 +74,7 @@ export function manifestWithSettingsFields(source: unknown, entry: ExtensionEntr
 	if (!read.ok) {
 		fail(
 			packageText("internal.extension.build.5", {
-				value0: read.reason === "unreadable" ? read.issues.join(";") : read.reason,
+				value0: read.message,
 			}),
 		);
 	}

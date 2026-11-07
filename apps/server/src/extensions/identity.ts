@@ -1,7 +1,7 @@
 import {
 	type ExtensionApiRange,
 	ExtensionIdSchema,
-	type ExtensionManifestRead,
+	type ExtensionManifestResult,
 	parseExtensionManifest,
 } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
@@ -17,6 +17,6 @@ export function parseHostExtensionManifest(
 	raw: unknown,
 	range: ExtensionApiRange,
 	reservedIntegrationKeys: readonly string[],
-): ExtensionManifestRead {
+): ExtensionManifestResult {
 	return parseExtensionManifest(raw, range, extensionIdSchema(reservedIntegrationKeys));
 }

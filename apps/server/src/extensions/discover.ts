@@ -202,14 +202,14 @@ export async function readExtensionDir(
 	// 先单读 apiVersion、再按那一档的格式读其余(ADR-0019 决策 18)—— 为将来的宿主写的
 	// 清单,格式本来就可能是我们不认识的,挑它的毛病只会把「版本不合」说成「读不了」。
 	const read = parseHostExtensionManifest(raw, range, options.reservedIntegrationKeys);
-	if (!read.ok && read.reason === "unreadable") {
+	if (!read.ok && read.code === "invalid") {
 		return {
 			state: "unreadable",
 			id,
 			dir,
 			detail: t("extension.manifest.invalid", {
 				file: EXTENSION_MANIFEST_FILE,
-				detail: read.issues.join(";"),
+				detail: read.issues.map((issue) => issue.message).join(";"),
 			}),
 		};
 	}

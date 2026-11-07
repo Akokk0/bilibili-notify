@@ -53,7 +53,6 @@ export const RATCHET = {
 	"apps/web/src/devtools/dock.tsx": 2,
 	"apps/web/src/devtools/ext-motion.ts": 3,
 	"apps/web/src/services/session.ts": 6,
-	"packages/internal/src/schema/extension-manifest.ts": 6,
 };
 
 /** 剥掉只改类型、不改值的外壳:括号、`as`、`satisfies`、`<T>x`、`x!`。 */

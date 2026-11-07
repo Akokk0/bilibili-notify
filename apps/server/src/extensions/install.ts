@@ -283,13 +283,13 @@ export function openExtensionPackage(
 	// 也不是不行,但**此刻**这句话最清楚:主人正拿着那个包,还能去换一个对的。
 	const read = parseHostExtensionManifest(raw, EXTENSION_API_RANGE, reservedIntegrationKeys);
 	if (!read.ok) {
-		if (read.reason === "incompatible") {
+		if (read.code === "unsupported") {
 			return fail("unsupported", apiVersionMismatch(read.requires, EXTENSION_API_RANGE));
 		}
 		return failureOfChecks(
 			"invalid",
 			serverText("service.extensions.install.text.13"),
-			read.issues.map((issue) => `${EXTENSION_MANIFEST_FILE} ${issue}`),
+			read.issues.map((issue) => `${EXTENSION_MANIFEST_FILE} ${issue.message}`),
 		);
 	}
 

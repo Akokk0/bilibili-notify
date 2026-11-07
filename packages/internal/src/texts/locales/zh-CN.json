@@ -168,6 +168,7 @@
 	"internal.schema.extension-manifest.24": "动作名只能是小写字母开头的字母数字,用点分段,如 login.start",
 	"internal.schema.extension-manifest.25": "动作名",
 	"internal.schema.extension-manifest.26": "动作名 {value0} 重复了",
+	"internal.schema.extension-manifest.incompatible": "拓展要求的契约版本 {version} 与本宿主不兼容",
 	"internal.schema.extension-manifest.27": "(根)",
 	"internal.schema.extension-manifest.28": "这一格必填",
 	"internal.schema.extension-manifest.29": "不能小于 {value0}",
