@@ -12,7 +12,7 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 
 ## File structure
 
-This is a **single-context repo**. Domain language is shared across `packages/` (platform-neutral business core) and `apps/` (standalone Hono + React); the same Bilibili API / push / subscription / dynamic / live concepts apply across both.
+This is a **single-context repo**. The platform-neutral core in `packages/` and the Hono host / React dashboard in `apps/` share subscription, post, live-session and push concepts. Bilibili API, dynamic-feed and room-protocol terms belong to the built-in integration in `apps/server/src/bilibili/`.
 
 ```
 /
@@ -21,7 +21,7 @@ This is a **single-context repo**. Domain language is shared across `packages/` 
 │   ├── 0001-…
 │   └── 0002-…
 ├── packages/           ← @bilibili-notify/* business core
-└── apps/               ← standalone server + web dashboard
+└── apps/               ← application server + web dashboard
 ```
 
 ## Use the glossary's vocabulary

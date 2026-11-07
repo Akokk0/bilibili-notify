@@ -39,6 +39,10 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 
 核心的 `live` / `push` / `image` 通过 `ServiceContext` / `MessageBus` / `PushLike` / 各自的注入钩子与宿主对接;动态轮询不直接拿 `ServiceContext`,只收 `logger` 与 `setTimeout`(加 `MessageBus` / `PushLike` / `reportPost` / 名单等注入钩子),由 B 站来源在 `start(ctx)` 里递给它;独立端 `apps/server/src/runtime/` 是唯一宿主,这些钩子一律必填、不留「宿主不注入就走旧路径」的分支。薄适配插件把 Koishi / AstrBot 桥接进来时,接的是**跑着的独立端**,走的是**拓展**那条路(见下面「拓展」一节),不再各自内嵌一份运行时。
 
+## 模块字典归属
+
+5-18起，服务端`bilibili/locales/`和`migration/locales/`分别持有集成原文与旧数据迁移原文；模块`i18n.ts`在实际取字时读取宿主当前语言/口吻，共用键委托宿主`i18n`。宿主根字典只拥有通用文字，包字典仍由`withPackageDicts`垫底。键/占位符、调用点、叫法与精确原文守卫覆盖这两份真实归属，不将整个模块加入忽略名单。翻译时分别更新所有归属，稳定键ID不随文件改名。
+
 ## 工作区依赖卫生
 
 每个 workspace `src/` import 若解析到**运行时值**(常量 / 类 / 函数),**必须**声明进该包 `package.json` 的 `dependencies`。`import type` 不进产物,无需声明;但 `declare module "x"` 这种类型增强要能从本包解析到 `x`,否则静默变成孤立声明(isolated 布局下 `packages/image` 的 Vue JSX 增强就这样断过)。
