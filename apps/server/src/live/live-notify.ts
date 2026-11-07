@@ -16,6 +16,7 @@ import {
 	type MessageKindLayout,
 	type MessageLayoutSegment,
 } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import type { LivePushAnchor, LivePushKind } from "./live-types";
 
 /** 直播卡的四种推送:开播 / 周期「正在直播」/ 重启补报(卡与文字同「正在直播」)/ 下播。 */
@@ -96,14 +97,27 @@ export async function pushLiveNotify(
 				cardSkinKnobs: params.cardSkinKnobs,
 			});
 		} catch (e) {
-			deps.logger.error(`[image] 生成直播图片失败：${(e as Error).message}，降级为文字推送`);
+			deps.logger.error(
+				logText("log.live.cardGenerationFailed"),
+				{
+					event: "live.card_generation_failed",
+					kind: "live",
+					label: params.label,
+					pushKind: params.pushKind,
+				},
+				e,
+			);
 		}
 	}
 
 	// 隐藏的块由 `assembleMessageGroups` 自己剔掉,这里照值交。
 	const groups = assembleMessageGroups(layout, { card, text: params.text, link: params.link });
 	if (groups.length === 0) {
-		deps.logger.debug(`[push] ${params.label} 消息版式所有部件隐藏/缺失,本次不推送`);
+		deps.logger.debug(logText("log.live.layoutEmpty"), {
+			event: "live.layout_empty",
+			label: params.label,
+			pushKind: params.pushKind,
+		});
 		return;
 	}
 	if (params.extras === undefined) await deps.send(groups, params.pushKind);

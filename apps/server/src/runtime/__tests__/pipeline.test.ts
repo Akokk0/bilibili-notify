@@ -2110,7 +2110,8 @@ describe("createPipelineRuntime — config-changed globals 热重载", () => {
 		});
 		await settleTracked(c);
 		expect(subsystemCtx(c, "live", "core").logger.debug).toHaveBeenCalledWith(
-			expect.stringContaining("接上这一场"),
+			expect.any(String),
+			expect.objectContaining({ event: "live.push_attached", subscriptionId: sub.id }),
 		);
 		expect(subsystemCtx(c, "posts", "core").logger.debug).not.toHaveBeenCalled();
 	});

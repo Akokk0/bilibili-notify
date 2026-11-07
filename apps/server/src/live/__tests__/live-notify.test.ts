@@ -9,6 +9,7 @@
 import type { LiveCardInput } from "@bilibili-notify/image";
 import type { Logger, MessageKindLayout, MessageLayoutSegment } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { type LiveNotifyParams, type LiveNotifySend, pushLiveNotify } from "../live-notify";
 import { LivePushKind } from "../live-types";
 
@@ -172,4 +173,40 @@ describe("pushLiveNotify — 分组与发送", () => {
 		expect(d.generateLiveCard).not.toHaveBeenCalled();
 		expect(d.send).not.toHaveBeenCalled();
 	});
+});
+
+it("出卡失败按四语平实记录原错误，保持文字回退且不记录卡片内容", async () => {
+	const previous = i18n.state();
+	try {
+		for (const [locale, message] of [
+			["en", "Card generation failed; falling back to text"],
+			["ja", "カードの生成に失敗したため、テキストにフォールバックします"],
+			["zh-TW", "卡片產生失敗，改用文字"],
+			["zh-CN", "卡片生成失败，回退到文字"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			const d = deps();
+			const error = new Error("renderer stopped", { cause: new Error("worker exited") });
+			d.generateLiveCard.mockRejectedValue(error);
+			await pushLiveNotify(params({ input: { ...INPUT, title: "PRIVATE-LIVE-TITLE" } }), d.deps);
+			expect(d.logger.error).toHaveBeenCalledExactlyOnceWith(
+				message,
+				{
+					event: "live.card_generation_failed",
+					kind: "live",
+					label: "sub=s1",
+					pushKind: LivePushKind.LiveStart,
+				},
+				error,
+			);
+			expect(d.logger.error.mock.calls[0]?.[2]).toBe(error);
+			expect(d.send).toHaveBeenCalledExactlyOnceWith(
+				[[text(`开播啦\n${LINK}`)]],
+				LivePushKind.LiveStart,
+			);
+			expect(JSON.stringify(d.logger.error.mock.calls)).not.toContain("PRIVATE-LIVE-TITLE");
+		}
+	} finally {
+		i18n.set(previous);
+	}
 });

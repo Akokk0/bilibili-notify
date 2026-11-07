@@ -1,5 +1,6 @@
 import type { CardSkinChoice, ImageRenderer } from "@bilibili-notify/image";
 import type { ImageRef, Logger } from "@bilibili-notify/internal";
+import { logText } from "../../i18n/index.js";
 
 /**
  * Threshold for refusing to render a wordcloud — stays in sync with the
@@ -63,11 +64,17 @@ export class WordcloudGenerator {
 		cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"],
 	): Promise<Buffer | undefined> {
 		if (sortedWords.length < WORDCLOUD_MIN_WORDS) {
-			this.logger.debug(`[wordcloud] 热词不足${WORDCLOUD_MIN_WORDS}个，放弃生成弹幕词云`);
+			this.logger.debug(logText("log.live.wordcloudTooFew"), {
+				event: "live.wordcloud_too_few",
+				wordCount: sortedWords.length,
+				minimum: WORDCLOUD_MIN_WORDS,
+			});
 			return undefined;
 		}
 		if (!this.isImageEnabled()) {
-			this.logger.debug("[wordcloud] cardStyle.enabled=false,跳过词云图片生成");
+			this.logger.debug(logText("log.live.wordcloudDisabled"), {
+				event: "live.wordcloud_disabled",
+			});
 			return undefined;
 		}
 		const renderer = this.getImageRenderer();
@@ -80,7 +87,7 @@ export class WordcloudGenerator {
 				{ cardSkin, cardSkinKnobs },
 			);
 		} catch (e) {
-			this.logger.error(`[wordcloud] 生成词云失败：${(e as Error).message}`);
+			this.logger.error(logText("log.live.wordcloudFailed"), { event: "live.wordcloud_failed" }, e);
 			return undefined;
 		}
 	}

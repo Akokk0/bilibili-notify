@@ -1,6 +1,6 @@
 import type { CommentaryCallOverride, CommentaryProvider } from "@bilibili-notify/ai";
 import type { Logger } from "@bilibili-notify/internal";
-import { errorMessageOf } from "../../util/error-message";
+import { logText } from "../../i18n/index.js";
 import { renderLiveSummary } from "../live-text";
 
 /**
@@ -90,7 +90,12 @@ export class LiveSummaryRequester {
 			aiOverride,
 		} = params;
 		if (senderCount < LIVE_SUMMARY_MIN_SENDERS) {
-			this.logger.debug(`[summary] 发言人数不足${LIVE_SUMMARY_MIN_SENDERS}位，放弃生成直播总结`);
+			this.logger.debug(logText("log.live.summaryTooFew"), {
+				event: "live.summary_too_few",
+				sourceKey,
+				senderCount,
+				minimum: LIVE_SUMMARY_MIN_SENDERS,
+			});
 			return undefined;
 		}
 
@@ -120,11 +125,19 @@ export class LiveSummaryRequester {
 				const aiResult = await commentary.comment(prompt, "liveSummary", undefined, override, [
 					sourceKey,
 				]);
-				this.logger.debug(`[summary] AI 直播总结生成完毕，长度=${aiResult.length}`);
+				this.logger.debug(logText("log.live.summaryCompleted"), {
+					event: "live.summary_completed",
+					sourceKey,
+					textLength: aiResult.length,
+				});
 				// 空串不是一份正文:当没有 AI 版,让推送层用模板。
 				return aiResult || undefined;
 			} catch (e) {
-				this.logger.error(`[summary] AI 直播总结生成失败：${errorMessageOf(e)}，所有目标用模板`);
+				this.logger.error(
+					logText("log.live.summaryFailed"),
+					{ event: "live.summary_failed", sourceKey },
+					e,
+				);
 				return undefined;
 			}
 		})();

@@ -20,7 +20,7 @@ import {
 	type Result,
 } from "@bilibili-notify/internal";
 import type { EffectiveMembershipTemplate } from "@bilibili-notify/internal/texts/builtin";
-import { errorMessageOf } from "../util/error-message";
+import { logText } from "../i18n/index.js";
 import { renderTemplate } from "../util/render-template";
 import { passesMembershipMinRank } from "./interaction-gates";
 
@@ -65,9 +65,11 @@ async function imageSegmentOf(
 ): Promise<ImageSegment | undefined> {
 	const image = await deps.readImage(ref);
 	if (image === undefined) {
-		deps.logger.warn(
-			`[guard] ${source === "custom" ? "自定义图" : "徽章"}在图库里读不到，这条会员提醒只发文字`,
-		);
+		deps.logger.warn(logText("log.live.membershipImageMissing"), {
+			event: "live.membership_image_missing",
+			imageSource: source,
+			imageRef: ref,
+		});
 		return undefined;
 	}
 	return { kind: "image", buffer: Buffer.from(image.bytes), mime: image.mime };
@@ -80,7 +82,11 @@ async function customImageSegment(
 ): Promise<ImageSegment | undefined> {
 	const fetched = await deps.fetchImage(url);
 	if (!fetched.ok) {
-		deps.logger.warn(`[guard] 自定义图抓不到：${fetched.message}，这条会员提醒只发文字`);
+		deps.logger.warn(logText("log.live.customImageFailed"), {
+			event: "live.membership_image_fetch_failed",
+			code: fetched.code,
+			message: fetched.message,
+		});
 		return undefined;
 	}
 	return await imageSegmentOf(fetched.ref, "custom", deps);
@@ -95,7 +101,7 @@ async function badgeSegment(
 		const icon = await tierIcon();
 		return icon === undefined ? undefined : await imageSegmentOf(icon.ref, "badge", deps);
 	} catch (e) {
-		deps.logger.warn(`[guard] 取徽章失败：${errorMessageOf(e)}，这条会员提醒只发文字`);
+		deps.logger.warn(logText("log.live.badgeFailed"), { event: "live.membership_badge_failed" }, e);
 		return undefined;
 	}
 }
@@ -163,7 +169,11 @@ export async function pushMembership(
 				{ cardSkin: options.cardSkin, cardSkinKnobs: options.cardSkinKnobs },
 			);
 		} catch (e) {
-			deps.logger.error(`[image] 生成会员卡片失败：${errorMessageOf(e)}，降级为文字推送`);
+			deps.logger.error(
+				logText("log.live.cardGenerationFailed"),
+				{ event: "live.card_generation_failed", kind: "membership" },
+				e,
+			);
 		}
 		if (card !== undefined) {
 			await deps.send([{ kind: "image", buffer: card, mime: "image/jpeg" }]);

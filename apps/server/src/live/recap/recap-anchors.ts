@@ -1,3 +1,4 @@
+import { logText } from "../../i18n/index.js";
 /**
  * **下播的附加项锚点**(词云 / AI 总结):各一个锚点、按「词云 → 总结」排;弹幕快照同步取,两样随即各自开始做
  * (互不等待,也不等下播卡),内容是各自的约定 —— 谁先做好不要紧,推送层按锚点先后发。
@@ -46,9 +47,12 @@ export function recapAnchors(options: RecapOptions, deps: RecapDeps): LivePushAn
 	const { extras, creator } = options;
 	if (!extras.wordcloud && !extras.liveSummary) return [];
 
-	deps.logger.debug(
-		`[wordcloud] 开始制作下播总结 wordcloud=${extras.wordcloud} summary=${extras.liveSummary}`,
-	);
+	deps.logger.debug(logText("log.live.recapStarted"), {
+		event: "live.recap_started",
+		subscriptionId: options.subscriptionId,
+		wordcloud: extras.wordcloud,
+		summary: extras.liveSummary,
+	});
 	const snapshot = deps.collector.snapshot(options.subscriptionId);
 
 	// 订阅额外停用词:记词时按 bundled + 全局过滤,这里对该订阅解析后的覆盖词再过滤一遍 sortedWords,

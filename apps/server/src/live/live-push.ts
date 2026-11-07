@@ -18,6 +18,7 @@ import {
 	type SerialGate,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
 import { liveCardInputFromDetails } from "./live-card-input.js";
 import { type LiveNotifyPushKind, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
@@ -69,9 +70,6 @@ import type { WordcloudGenerator } from "./recap/wordcloud-generator.js";
  *
  * 只在内存:BN 重启之后靠来源开机第一轮报的直播状态接上(决策 57 / 8)。
  */
-
-/** 周期「正在直播」卡在推送出错日志里的叫法。 */
-const STREAMING_WHAT = "「正在直播」";
 
 /**
  * 推送这头挂在一场上的那几样。开播时刻、粉丝基线、最后一份状态、断流等待都是这一场的(`session`),不在这里。
@@ -196,7 +194,11 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const run = runs.get(id);
 		if (!run) return;
 		runs.delete(id);
-		log.debug(`[live-push] 订阅 ${id} 的这一场推送这头放下了(${why})`);
+		log.debug(logText("log.live.pushRunDropped"), {
+			event: "live.push_run_dropped",
+			subscriptionId: id,
+			reason: why,
+		});
 	}
 
 	/** 设置可能变了(订阅改了、全局改了):对着现折的设置看这一场还该不该挂着(三把直播开关全关了就放下)。 */
@@ -205,16 +207,16 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		if (!run) return;
 		const sub = pushable(id);
 		if (!sub) {
-			dropRun(id, "订阅停用 / 删了,或来源没在跑");
+			dropRun(id, "not-pushable");
 			return;
 		}
 		const settings = opts.settings(sub);
 		if (!anyLiveSwitchOn(settings)) {
-			dropRun(id, "开播、正在直播与下播推送都关了");
+			dropRun(id, "all-features-off");
 		}
 	}
 
-	function enqueue(id: string, what: string, job: () => Promise<void>): void {
+	function enqueue(id: string, pushKind: LiveNotifyPushKind, job: () => Promise<void>): void {
 		let gate = gates.get(id);
 		if (!gate) {
 			gate = createSerialGate();
@@ -224,7 +226,9 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			gate.run(job).catch((err) => {
 				// 与作品上报同一条规矩(决策 77):不重试,记错误日志;发不出去的目标推送层自己接住、落历史「失败」。
 				log.error(
-					`[live-push] 订阅 ${id} 的${what}卡推送途中出错(不重试): ${err instanceof Error ? err.message : String(err)}`,
+					logText("log.live.pushFailed"),
+					{ event: "live.push_failed", subscriptionId: id, pushKind },
+					err,
 				);
 			}),
 		);
@@ -324,11 +328,18 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				renderer: opts.renderer() ?? null,
 				send: async (groups, type, extras) => {
 					if (!pushable(id)) {
-						log.debug(`[live-push] 订阅 ${id} 在出卡途中停用 / 删了 / 来源停了,这张卡不发`);
+						log.debug(logText("log.live.pushIneligible"), {
+							event: "live.push_ineligible",
+							subscriptionId: id,
+						});
 						return;
 					}
 					if (job.run && runs.get(id) !== job.run) {
-						log.debug(`[live-push] 订阅 ${id} 在出卡途中换了一场,这张「正在直播」卡不发`);
+						log.debug(logText("log.live.pushSessionChanged"), {
+							event: "live.push_session_changed",
+							subscriptionId: id,
+							phase: "rendering",
+						});
 						return;
 					}
 					await send(groups, type, extras);
@@ -349,13 +360,20 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		pushKind: typeof LivePushKind.LiveStreaming | typeof LivePushKind.CatchUp,
 	): Promise<void> {
 		if (runs.get(id) !== run) {
-			log.debug(`[live-push] 订阅 ${id} 排队期间换了一场,这张「正在直播」卡不推`);
+			log.debug(logText("log.live.pushSessionChanged"), {
+				event: "live.push_session_changed",
+				subscriptionId: id,
+				phase: "queued",
+			});
 			return Promise.resolve();
 		}
 		const row = opts.table.get(id);
 		const details = row?.details ?? run.session.lastDetails;
 		if (!details) {
-			log.debug(`[live-push] 订阅 ${id} 已经不在在播表里,这张「正在直播」卡不推`);
+			log.debug(logText("log.live.pushDetailsMissing"), {
+				event: "live.push_details_missing",
+				subscriptionId: id,
+			});
 			return Promise.resolve();
 		}
 		const startedAt = millisOf(run.session.startedAt) ?? row?.startedAt;
@@ -377,7 +395,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		if (!sub) return undefined;
 		const settings = opts.settings(sub);
 		if (!anyLiveSwitchOn(settings)) {
-			dropRun(id, "开播、正在直播与下播推送都关了");
+			dropRun(id, "all-features-off");
 			return undefined;
 		}
 		return { sub, settings };
@@ -390,13 +408,13 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		if (!ready) return;
 		const { sub, settings } = ready;
 		seen.set(id, subscriptionIdentityOf(sub).sourceKey);
-		dropRun(id, "新的一场开播了");
+		dropRun(id, "new-session");
 		const startedAt = millisOf(session.startedAt);
 		const at = Date.parse(session.detectedAt);
 		const run: LiveRun = { session };
 		runs.set(id, run);
 		if (settings.liveStart) {
-			enqueue(id, "开播", () =>
+			enqueue(id, LivePushKind.LiveStart, () =>
 				pushCard(id, {
 					status: "start",
 					pushKind: LivePushKind.LiveStart,
@@ -420,7 +438,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const run = runs.get(id) ?? { session };
 		run.session = session;
 		runs.set(id, run);
-		log.info(`[live-push] 订阅 ${id} 断流后重新开播,接续为同一场(开播卡、下播卡都不发)`);
+		log.info(logText("log.live.pushResumed"), { event: "live.push_resumed", subscriptionId: id });
 	}
 
 	/** 一份直播状态(认出一场的那一份也是):记「见过」、「收到过新状态」,必要时补报。 */
@@ -443,10 +461,13 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const run: LiveRun = { session };
 		runs.set(id, run);
 		if (first && settings.catchUpOnBoot && settings.liveStart) {
-			log.info(`[live-push] 订阅 ${id} 在 BN 起来之前就开播了,补报一张「正在直播」`);
-			enqueue(id, "「正在直播」(重启补报)", () => pushStreaming(id, run, LivePushKind.CatchUp));
+			log.info(logText("log.live.catchUp"), { event: "live.catch_up", subscriptionId: id });
+			enqueue(id, LivePushKind.CatchUp, () => pushStreaming(id, run, LivePushKind.CatchUp));
 		} else {
-			log.debug(`[live-push] 订阅 ${id} 正在播,接上这一场(不补报)`);
+			log.debug(logText("log.live.pushAttached"), {
+				event: "live.push_attached",
+				subscriptionId: id,
+			});
 		}
 	}
 
@@ -463,7 +484,9 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		runs.set(id, run);
 		if (!ready.settings.liveStreaming) return;
 		const current = run;
-		enqueue(id, STREAMING_WHAT, () => pushStreaming(id, current, LivePushKind.LiveStreaming));
+		enqueue(id, LivePushKind.LiveStreaming, () =>
+			pushStreaming(id, current, LivePushKind.LiveStreaming),
+		);
 	}
 
 	/** 下播进了断流等待:换上带着等待的那份场次(周期推送的停由核心的计时管)。 */
@@ -488,7 +511,10 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const sub = pushable(id);
 		if (!sub) return;
 		if (!opts.settings(sub).liveEnd) {
-			log.debug(`[live-push] 订阅 ${id} 的下播推送关着,下播卡不推`);
+			log.debug(logText("log.live.endPushDisabled"), {
+				event: "live.end_push_disabled",
+				subscriptionId: id,
+			});
 			return;
 		}
 		// 信号没带的格用这一场最后一份状态补;开播时刻先认 BN 自己记着的(决策 56)。
@@ -497,7 +523,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const endedAt = Date.parse(endedAtIso);
 		// 收集器在另一个场次监听者里清空；这里先在结束那一刻同步取快照。
 		const extras = recapFor(sub, opts.settings(sub), facts);
-		enqueue(id, "下播", () => {
+		enqueue(id, LivePushKind.LiveEnd, () => {
 			const fansNow = opts.profile(id)?.followers;
 			const fansChanged =
 				fansNow !== undefined && session?.followersAtStart !== undefined
@@ -536,7 +562,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				return;
 			case "end":
 				// 为什么结束场次那边的日志写了。
-				dropRun(change.subscriptionId, "这一场结束了");
+				dropRun(change.subscriptionId, "session-ended");
 				// 只有来源报的下播、断流等待到期,或核对发现的漏收下播推下播卡;来源停了、订阅停用 /
 				// 删了、关机的,等着的下播卡不补推(决策 61)。
 				if (
@@ -571,12 +597,12 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		opts.bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
 				if (op.kind === "remove") {
-					dropRun(op.sub.id, "订阅删了");
+					dropRun(op.sub.id, "subscription-removed");
 					gates.delete(op.sub.id);
 					seen.delete(op.sub.id);
 				} else if (op.kind === "update") {
 					if (op.sub.enabled) reconcile(op.sub.id);
-					else dropRun(op.sub.id, "订阅停用了");
+					else dropRun(op.sub.id, "subscription-disabled");
 				}
 			}
 		}),
@@ -591,7 +617,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		dispose() {
 			disposed = true;
 			for (const watch of watches) watch.dispose();
-			for (const id of [...runs.keys()]) dropRun(id, "关机");
+			for (const id of [...runs.keys()]) dropRun(id, "shutdown");
 			gates.clear();
 		},
 	};

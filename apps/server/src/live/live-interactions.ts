@@ -17,12 +17,11 @@ import {
 	type SuperchatEvent,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { LOOKUP_TIMEOUT_MS } from "../integrations/lookup-timeout.js";
 import { callSource, type SourceGates } from "../subscriptions/call-source.js";
 import type { SourceView } from "../subscriptions/registry.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
-import { errorMessageOf } from "../util/error-message.js";
 import type { LiveNotifySend, LiveTextPushKind } from "./live-notify.js";
 import { type LiveSessionEngine, liveSubscriptionPushable } from "./live-sessions.js";
 import { type LiveSettings, wantsLiveEndExtras } from "./live-settings.js";
@@ -131,16 +130,27 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 				signal: opts.serviceCtx.signal,
 				onAbort: () => fail("unavailable", "the call was cancelled by the host"),
 				onTimeout: () => {
-					log.error(
-						`[live-interactions] 订阅 ${subscriptionId} 的 ${member} 超时(${LOOKUP_TIMEOUT_MS / 1000} 秒)`,
-					);
+					log.error(logText("log.live.interactionLookupTimeout"), {
+						event: "live.interaction_lookup_timeout",
+						subscriptionId,
+						sourceKey,
+						member,
+						timeoutMs: LOOKUP_TIMEOUT_MS,
+					});
 					return fail("timeout", "the source did not answer in time");
 				},
 				onThrow: () => fail("unavailable", "the source threw"),
 			}),
 		);
 		if (!got.ok) {
-			log.debug(`[live-interactions] 订阅 ${subscriptionId} 的 ${member} 取不到: ${got.message}`);
+			log.debug(logText("log.live.interactionLookupFailed"), {
+				event: "live.interaction_lookup_failed",
+				subscriptionId,
+				sourceKey,
+				member,
+				code: got.code,
+				message: got.message,
+			});
 			return undefined;
 		}
 		return got.ref;
@@ -154,7 +164,9 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 				.sendFor(id)([[{ kind: "text", text }]], type)
 				.catch((err) => {
 					log.error(
-						`[live-interactions] 订阅 ${id} 的互动推送出错(不重试): ${errorMessageOf(err)}`,
+						logText("log.live.interactionPushFailed"),
+						{ event: "live.interaction_push_failed", subscriptionId: id, pushKind: type },
+						err,
 					);
 				}),
 		);
@@ -167,7 +179,13 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 			.sendFor(id)([[segment]], LivePushKind.Superchat)
 			.catch((err) => {
 				log.error(
-					`[live-interactions] 订阅 ${id} 的醒目留言推送出错(不重试): ${errorMessageOf(err)}`,
+					logText("log.live.interactionPushFailed"),
+					{
+						event: "live.interaction_push_failed",
+						subscriptionId: id,
+						pushKind: LivePushKind.Superchat,
+					},
+					err,
 				);
 			});
 	};
@@ -178,7 +196,15 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 		return opts
 			.sendFor(id)([[...segments]], LivePushKind.Membership)
 			.catch((err) => {
-				log.error(`[live-interactions] 订阅 ${id} 的会员推送出错(不重试): ${errorMessageOf(err)}`);
+				log.error(
+					logText("log.live.interactionPushFailed"),
+					{
+						event: "live.interaction_push_failed",
+						subscriptionId: id,
+						pushKind: LivePushKind.Membership,
+					},
+					err,
+				);
 			});
 	};
 
@@ -204,9 +230,11 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 			if (disposed) return;
 			const sub = opts.subscription(subscriptionId);
 			if (!liveSubscriptionPushable(sub, opts.sourceStatus)) {
-				log.debug(
-					`[live-interactions] 订阅 ${subscriptionId} 不在 / 停用了 / 来源没在跑,${report.kind} 不收`,
-				);
+				log.debug(logText("log.live.interactionSkipped"), {
+					event: "live.interaction_skipped",
+					subscriptionId,
+					kind: report.kind,
+				});
 				return;
 			}
 			const settings = opts.settings(sub);
@@ -232,9 +260,11 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 					(candidate) => candidate.id === report.program,
 				);
 				if (program === undefined) {
-					log.warn(
-						`[live-interactions] 订阅 ${subscriptionId} 认不出会员体系 ${report.program},丢弃这条会员上报`,
-					);
+					log.warn(logText("log.live.membershipProgramUnknown"), {
+						event: "live.membership_program_unknown",
+						subscriptionId,
+						program: report.program,
+					});
 					return;
 				}
 				// 逐档声明:取声明的那一档(名字、rank、档色、徽章都听平台的);custom:档由主播自定,
@@ -248,9 +278,12 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 							}
 						: program.tiers.find((candidate) => candidate.key === report.tier.key);
 				if (tier === undefined) {
-					log.warn(
-						`[live-interactions] 订阅 ${subscriptionId} 的会员体系 ${program.id} 认不出档 ${report.tier.key},丢弃这条会员上报`,
-					);
+					log.warn(logText("log.live.membershipTierUnknown"), {
+						event: "live.membership_tier_unknown",
+						subscriptionId,
+						program: program.id,
+						tierKey: report.tier.key,
+					});
 					return;
 				}
 				recognizedMembership = { program, tier };
@@ -332,7 +365,13 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 							},
 						).catch((err) => {
 							log.error(
-								`[live-interactions] 订阅 ${subscriptionId} 的醒目留言推送出错(不重试): ${errorMessageOf(err)}`,
+								logText("log.live.interactionPushFailed"),
+								{
+									event: "live.interaction_push_failed",
+									subscriptionId,
+									pushKind: LivePushKind.Superchat,
+								},
+								err,
 							);
 						}),
 					);
@@ -401,7 +440,13 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 							},
 						).catch((err) => {
 							log.error(
-								`[live-interactions] 订阅 ${subscriptionId} 的会员推送出错(不重试): ${errorMessageOf(err)}`,
+								logText("log.live.interactionPushFailed"),
+								{
+									event: "live.interaction_push_failed",
+									subscriptionId,
+									pushKind: LivePushKind.Membership,
+								},
+								err,
 							);
 						}),
 					);

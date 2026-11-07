@@ -14,6 +14,7 @@
 import type { LiveDetails, LiveSessionChange, Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { i18n } from "../../i18n/index.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
 	createLiveSessionEngine,
@@ -607,9 +608,11 @@ describe("作废(决策 61)", () => {
 		liveStart();
 		bus.emit("extension-stopped", { extensionId: EXT });
 
-		expect(logger.debug.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-			"来源停了",
-		);
+		expect(logger.debug).toHaveBeenCalledWith(expect.any(String), {
+			event: "live.session_stopping",
+			subscriptionId: SUB.id,
+			origin: "source-stopped",
+		});
 	});
 
 	it("订阅停用了:日志带出这个起因", () => {
@@ -619,9 +622,11 @@ describe("作废(决策 61)", () => {
 			ops: [{ kind: "update", sub: { ...SUB, enabled: false } }],
 		});
 
-		expect(logger.debug.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-			"订阅停用了",
-		);
+		expect(logger.debug).toHaveBeenCalledWith(expect.any(String), {
+			event: "live.session_stopping",
+			subscriptionId: SUB.id,
+			origin: "subscription-disabled",
+		});
 	});
 
 	it("订阅删了:日志带出这个起因", () => {
@@ -629,9 +634,11 @@ describe("作废(决策 61)", () => {
 		liveStart();
 		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: SUB }] });
 
-		expect(logger.debug.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-			"订阅删了",
-		);
+		expect(logger.debug).toHaveBeenCalledWith(expect.any(String), {
+			event: "live.session_stopping",
+			subscriptionId: SUB.id,
+			origin: "subscription-removed",
+		});
 	});
 
 	it("关机:日志带出这个起因", () => {
@@ -639,9 +646,11 @@ describe("作废(决策 61)", () => {
 		liveStart();
 		sessions.dispose();
 
-		expect(logger.debug.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-			"关机",
-		);
+		expect(logger.debug).toHaveBeenCalledWith(expect.any(String), {
+			event: "live.session_stopping",
+			subscriptionId: SUB.id,
+			origin: "shutdown",
+		});
 	});
 
 	it("拓展停了:它名下的当场结束(原因分得清),等着的下播不再等;别的拓展的不动", async () => {
@@ -1264,4 +1273,35 @@ describe("断流等待到期时再核来源", () => {
 		expect(summary().some((change) => change.kind === "end")).toBe(false);
 		expect(sessions.get(SUB.id)).toBeDefined();
 	});
+});
+
+it("场次结束日志现取四语平实说明，结束原因保持原值", () => {
+	const previous = i18n.state();
+	try {
+		for (const [locale, message] of [
+			["en", "Live session ended"],
+			["ja", "ライブセッションが終了しました"],
+			["zh-TW", "直播場次已結束"],
+			["zh-CN", "直播场次已结束"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			logger.debug.mockClear();
+			start();
+			liveStart();
+			liveEnd();
+			expect(logger.debug).toHaveBeenCalledWith(message, {
+				event: "live.session_ended",
+				subscriptionId: SUB.id,
+				reason: "signal",
+				cancelledPendingEnd: false,
+			});
+			expect(summary().at(-1)).toMatchObject({ kind: "end", reason: "signal" });
+			const written = logger.debug.mock.calls.find(([text]) => text === message)?.[0];
+			i18n.set({ locale: "zh-CN" });
+			expect(written).toBe(message);
+			sessions.dispose();
+		}
+	} finally {
+		i18n.set(previous);
+	}
 });

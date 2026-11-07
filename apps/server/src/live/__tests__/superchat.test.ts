@@ -121,7 +121,9 @@ describe("pushSuperchat", () => {
 		expect(t.sent).toEqual([{ kind: "text", text: "兜底一句" }]);
 		expect(t.logger.error).toHaveBeenCalledTimes(1);
 		expect(t.logger.error).toHaveBeenCalledWith(
-			"[image] 生成醒目留言卡片失败：boom，降级为文字推送",
+			expect.any(String),
+			{ event: "live.card_generation_failed", kind: "superchat" },
+			expect.objectContaining({ message: "boom" }),
 		);
 	});
 

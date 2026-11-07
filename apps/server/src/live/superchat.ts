@@ -13,7 +13,7 @@ import type {
 	MessageLayoutSegment,
 	SuperchatEvent,
 } from "@bilibili-notify/internal";
-import { errorMessageOf } from "../util/error-message";
+import { logText } from "../i18n/index.js";
 import { passesSuperchatMinAmount } from "./interaction-gates";
 
 export interface SuperchatOptions extends CardSkinChoice {
@@ -68,7 +68,11 @@ export async function pushSuperchat(options: SuperchatOptions, deps: SuperchatDe
 				{ cardSkin: options.cardSkin, cardSkinKnobs: options.cardSkinKnobs },
 			);
 		} catch (e) {
-			deps.logger.error(`[image] 生成醒目留言卡片失败：${errorMessageOf(e)}，降级为文字推送`);
+			deps.logger.error(
+				logText("log.live.cardGenerationFailed"),
+				{ event: "live.card_generation_failed", kind: "superchat" },
+				e,
+			);
 		}
 		if (card !== undefined) {
 			await deps.send({ kind: "image", buffer: card, mime: "image/jpeg" });

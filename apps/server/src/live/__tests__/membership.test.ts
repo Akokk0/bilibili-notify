@@ -235,8 +235,13 @@ describe("pushMembership — 自定义文案那一支", () => {
 		);
 		expect(t.sent).toEqual([[{ kind: "text", text: "来了 船员" }]]);
 		expect(t.logger.warn).toHaveBeenCalledTimes(1);
-		const warned = String(t.logger.warn.mock.calls[0]?.[0]);
-		expect(warned).toContain("自定义图抓不到：对端回了 HTTP 502: example.com");
+		expect(t.logger.warn).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({
+				event: "live.membership_image_fetch_failed",
+				message: "对端回了 HTTP 502: example.com",
+			}),
+		);
 	});
 
 	it("自定义图抓到了但图库读不到字节:只发文字,记一条警告", async () => {
@@ -257,7 +262,11 @@ describe("pushMembership — 自定义文案那一支", () => {
 		const t = setup({ iconFail: true });
 		await pushMembership(options({ template: custom() }), t.d);
 		expect(t.sent).toEqual([[{ kind: "text", text: "船员→主播:舰长\n欢迎" }]]);
-		expect(String(t.logger.warn.mock.calls[0]?.[0])).toContain("取徽章失败：icon down");
+		expect(t.logger.warn).toHaveBeenCalledWith(
+			expect.any(String),
+			{ event: "live.membership_badge_failed" },
+			expect.objectContaining({ message: "icon down" }),
+		);
 	});
 });
 
@@ -363,9 +372,11 @@ describe("pushMembership — 兜底那一支", () => {
 		expect(t.sent).toEqual([[ICON_IMAGE, { kind: "text", text: "兜底一句" }]]);
 		expect(t.fetchTierIcon).toHaveBeenCalledTimes(1);
 		expect(t.logger.error).toHaveBeenCalledTimes(1);
-		const logged = String(t.logger.error.mock.calls[0]?.[0]);
-		expect(logged).toContain("[image] 生成会员卡片失败：");
-		expect(logged).toContain("，降级为文字推送");
+		expect(t.logger.error).toHaveBeenCalledWith(
+			expect.any(String),
+			{ event: "live.card_generation_failed", kind: "membership" },
+			expect.any(Error),
+		);
 	});
 
 	it("取徽章抛:记一条 error 退到兜底,兜底不重取徽章、只发文字并记一条警告", async () => {

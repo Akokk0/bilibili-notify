@@ -25,6 +25,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { i18n } from "../../i18n/index.js";
 import { LOOKUP_TIMEOUT_MS } from "../../integrations/lookup-timeout.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createSourceGates } from "../../subscriptions/call-source.js";
@@ -742,4 +743,37 @@ describe("下播回顾的弹幕收集(归核心)", () => {
 		expect(collector.snapshot(SUB.id).viewerChatCount).toBe(1);
 		expect(sent).toEqual([]);
 	});
+});
+
+it("互动取图超时按当前语言记录成员与时限，不记录观众资料", async () => {
+	const previous = i18n.state();
+	try {
+		i18n.set({ locale: "en", voice: "maid" });
+		avatarImpl = () => new Promise(() => {});
+		interactions.apply(SUB.id, {
+			kind: "superchat",
+			viewer: { id: "42", name: "PRIVATE-VIEWER" },
+			text: "PRIVATE-CHAT",
+			amount: 50,
+			currency: "CNY",
+			tier: { rank: 2, durationSec: 120 },
+		} as LiveInteractionReport);
+		await vi.advanceTimersByTimeAsync(LOOKUP_TIMEOUT_MS);
+		await flush();
+		expect(logger.error).toHaveBeenCalledExactlyOnceWith(
+			"Live interaction image lookup timed out",
+			{
+				event: "live.interaction_lookup_timeout",
+				subscriptionId: SUB.id,
+				sourceKey: EXT,
+				member: "liveInteractions.fetchViewerAvatar",
+				timeoutMs: LOOKUP_TIMEOUT_MS,
+			},
+		);
+		expect(superchatCard).toHaveBeenCalledTimes(1);
+		expect(superchatCard.mock.calls[0]?.[0]).not.toHaveProperty("viewer.avatar");
+		expect(JSON.stringify(logger.error.mock.calls)).not.toContain("PRIVATE-");
+	} finally {
+		i18n.set(previous);
+	}
 });

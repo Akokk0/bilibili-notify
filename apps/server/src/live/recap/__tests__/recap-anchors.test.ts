@@ -265,6 +265,9 @@ describe("recapAnchors", () => {
 		const t = setup();
 		recapAnchors(options(), t.d);
 		expect(t.logger.debug).toHaveBeenCalledTimes(1);
-		expect(String(t.logger.debug.mock.calls[0]?.[0])).toContain("wordcloud=true summary=true");
+		expect(t.logger.debug).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ event: "live.recap_started", wordcloud: true, summary: true }),
+		);
 	});
 });

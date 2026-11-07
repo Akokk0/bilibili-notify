@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n/index.js";
 import { LIVE_SUMMARY_MIN_SENDERS, LiveSummaryRequester } from "../live-summary-requester";
 
 /** 6 位观众(1..6 条),收集器交出来的形状:发言最多的五位已按条数降序截好。 */
@@ -96,7 +97,11 @@ describe("LiveSummaryRequester.generate", () => {
 		expect(made?.template).toBe("共6人，观众5发了6条，小晨");
 		await expect(made?.ai).resolves.toBeUndefined();
 		expect(logger.error).toHaveBeenCalledTimes(1);
-		expect(String(logger.error.mock.calls[0]?.[0])).toContain("服务商挂了");
+		expect(logger.error).toHaveBeenCalledWith(
+			expect.any(String),
+			{ event: "live.summary_failed", sourceKey: "fake" },
+			expect.objectContaining({ message: "服务商挂了" }),
+		);
 	});
 
 	it("comment 回空串:AI 那份兑现成 undefined(当没有 AI 版)", async () => {
@@ -124,4 +129,30 @@ it("queries search for each summary and preserves the per-subscription override"
 	enabled = false;
 	await requester.generate(PARAMS)?.ai;
 	expect(comment.mock.calls[2]?.[3]).toBeUndefined();
+});
+
+it("总结失败按当前语言记录原错误，保留模板回退且不记录素材", async () => {
+	const previous = i18n.state();
+	try {
+		i18n.set({ locale: "en", voice: "maid" });
+		const error = new Error("provider down", { cause: new Error("request closed") });
+		const { requester, logger, comment } = setup({
+			comment: async () => {
+				throw error;
+			},
+		});
+		const made = requester.generate({ ...PARAMS, fanClubName: "PRIVATE-FANCLUB" });
+		expect(made?.template).toBe("共6人，观众5发了6条，PRIVATE-FANCLUB");
+		await expect(made?.ai).resolves.toBeUndefined();
+		expect(comment).toHaveBeenCalledTimes(1);
+		expect(logger.error).toHaveBeenCalledExactlyOnceWith(
+			"Live summary generation failed; all targets will use the template",
+			{ event: "live.summary_failed", sourceKey: "fake" },
+			error,
+		);
+		expect(logger.error.mock.calls[0]?.[2]).toBe(error);
+		expect(JSON.stringify(logger.error.mock.calls)).not.toContain("PRIVATE-");
+	} finally {
+		i18n.set(previous);
+	}
 });
