@@ -97,8 +97,8 @@ function makeWorld(
 	const socket = { closed: false, close: () => {} };
 	const api = {
 		fetchLiveRoomInfoStreamKey: vi.fn(options.preflight ?? (async () => GOOD_PREFLIGHT)),
-		getMyselfInfoCached: vi.fn(options.myself ?? (async () => ({ code: 0, data: { mid: 1 } }))),
-		getBuvid3: vi.fn(async () => "buv"),
+		fetchCachedMyself: vi.fn(options.myself ?? (async () => ({ code: 0, data: { mid: 1 } }))),
+		fetchCachedBuvid3: vi.fn(async () => "buv"),
 		openDanmakuSocket: vi.fn(() => ({
 			binaryType: "",
 			on() {},
@@ -113,7 +113,7 @@ function makeWorld(
 					data: { uid: 1, room_id: 100, live_status: 0, live_time: "0000-00-00 00:00:00" },
 				})),
 		),
-		getMasterInfo: vi.fn(async () => ({
+		fetchUpDetails: vi.fn(async () => ({
 			data: { info: { uid: 1, uname: "U" }, medal_name: "" },
 		})),
 		fetchUserInfo: vi.fn(async () => ok({ data: { live_room: { roomid: 100 } } })),

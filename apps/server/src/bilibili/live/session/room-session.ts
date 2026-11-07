@@ -41,7 +41,7 @@ type ActivityReason =
 	| "close";
 
 export class RoomSession {
-	private masterName = "";
+	private upName = "";
 	private watchedNumber: number | undefined;
 	private lastLiveStart = 0;
 	private lastLiveEnd = 0;
@@ -176,8 +176,8 @@ export class RoomSession {
 	}
 
 	private async rememberFanClub(): Promise<void> {
-		const master = await this.ctx.fetchMasterSnapshot(this.room.externalId);
-		if (master.name && !this.masterName) this.masterName = master.name;
+		const up = await this.ctx.fetchUpProfile(this.room.externalId);
+		if (up.name && !this.upName) this.upName = up.name;
 	}
 
 	async bootstrap(): Promise<void> {
@@ -368,13 +368,13 @@ export class RoomSession {
 	}
 
 	private async onSuperchat(event: Extract<LiveEvent, { kind: "superchat" }>): Promise<void> {
-		if (!this.masterName) await this.rememberFanClub();
+		if (!this.upName) await this.rememberFanClub();
 		if (event.user.avatarUrl) {
 			this.ctx.rememberSuperchatAvatar(String(event.user.uid), event.user.avatarUrl);
 		}
 		const translated = superchatEventFromLiveEvent(event, "");
 		const { subscriptionId: _subscriptionId, ...report } = translated;
-		const name = this.masterName;
+		const name = this.upName;
 		this.reportInteraction({
 			kind: "superchat",
 			...report,
@@ -388,7 +388,7 @@ export class RoomSession {
 	}
 
 	private async onMembership(event: Extract<LiveEvent, { kind: "guard-buy" }>): Promise<void> {
-		if (!this.masterName) await this.rememberFanClub();
+		if (!this.upName) await this.rememberFanClub();
 		const translated = membershipEventFromLiveEvent(event, "");
 		if (!translated) {
 			this.ctx.logger.warn(
@@ -401,7 +401,7 @@ export class RoomSession {
 			kind: "membership",
 			...report,
 			fallbackText: serverText("bilibili.live.session.room-session.text.3", {
-				value0: this.masterName,
+				value0: this.upName,
 				value1: report.viewer.name,
 				value2: report.tier.name,
 			}),

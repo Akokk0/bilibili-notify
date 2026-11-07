@@ -949,7 +949,7 @@ describe("④ api 槽位:算 / 不算", () => {
 
 	it("属性访问(含 ?.)、对象字面量里的 api(两种写法)、接口属性签名(含可选)、解构", () => {
 		expect(slots(`engines.api.fetchUserCard(uid);`)).toEqual([1]);
-		expect(slots(`opts.api?.getMyselfInfoCached();`)).toEqual([1]);
+		expect(slots(`opts.api?.fetchCachedMyself();`)).toEqual([1]);
 		expect(slots(`createX({ api: engines.api });`)).toEqual([1, 1]);
 		expect(slots(`createX({ api });`)).toEqual([1]);
 		expect(slots(`interface O { api: Api }\ninterface P { api?: Api }`)).toEqual([1, 2]);

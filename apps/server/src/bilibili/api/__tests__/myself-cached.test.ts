@@ -3,7 +3,7 @@ import { MYSELF_INFO_URL } from "../endpoints";
 import { makeApi as makeBaseApi } from "./support/make-api";
 
 /**
- * getMyselfInfoCached 挂在客户端上、被直播建连 / 卡片预览共享:
+ * fetchCachedMyself 挂在客户端上、被直播建连 / 卡片预览共享:
  *   - 连续调用去重(命中缓存),只落一次 MYSELF_INFO_URL;
  *   - 登出(clearCookies)后缓存失效,下次真调 —— 换号不会用旧账号身份。
  */
@@ -23,21 +23,21 @@ async function makeApi() {
 	return { api, inject, calls: () => myselfCalls };
 }
 
-describe("Api.getMyselfInfoCached", () => {
+describe("Api.fetchCachedMyself", () => {
 	it("连续调用去重,只落一次 MYSELF_INFO_URL", async () => {
 		const { api, calls } = await makeApi();
-		await Promise.all([api.getMyselfInfoCached(), api.getMyselfInfoCached()]);
-		await api.getMyselfInfoCached();
+		await Promise.all([api.fetchCachedMyself(), api.fetchCachedMyself()]);
+		await api.fetchCachedMyself();
 		expect(calls()).toBe(1);
 	});
 
 	it("clearCookies(登出/换号)后缓存失效,下次真调", async () => {
 		const { api, inject, calls } = await makeApi();
-		await api.getMyselfInfoCached();
+		await api.fetchCachedMyself();
 		expect(calls()).toBe(1);
 		await api.clearCookies(); // 会 invalidate + 重建 client
 		inject(); // clearCookies 里 initClient 换掉了 client,测试重新注入 mock
-		await api.getMyselfInfoCached();
+		await api.fetchCachedMyself();
 		expect(calls()).toBe(2); // 缓存已清 → 又真调了一次
 	});
 });

@@ -2,7 +2,7 @@ import type { MyselfResponse } from "./types";
 
 /**
  * `fetchMyselfInfo` 的短 TTL + 在途合流缓存。挂在 {@link Api} 客户端上,
- * 对外经 `getMyselfInfoCached()` 共享给所有「需要当前账号身份、但不需要实时」的
+ * 对外经 `fetchCachedMyself()` 共享给所有「需要当前账号身份、但不需要实时」的
  * 调用方(直播弹幕建连、卡片预览发送方解析…)。
  *
  * 「自己的信息」(mid/uname/face)在一个登录会话内是常量,却被多处反复要:

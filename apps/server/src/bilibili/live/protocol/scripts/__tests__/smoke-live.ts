@@ -9,7 +9,7 @@ import { makeServiceCtx, openReadonlyApi } from "./_env.js";
 
 const serviceCtx = makeServiceCtx();
 const api = await openReadonlyApi(serviceCtx);
-const myself = await api.getMyselfInfoCached();
+const myself = await api.fetchCachedMyself();
 if (myself.code !== 0 || !myself.data) {
 	console.error(`登录态失效 code=${myself.code}`);
 	process.exit(1);
@@ -33,7 +33,7 @@ if (!info.ok || !token || hostListRaw.length === 0) {
 	console.error(`getDanmuInfo 失败 code=${info.ok ? "0" : (info.upstreamCode ?? info.code)}`);
 	process.exit(1);
 }
-const buvid = await api.getBuvid3();
+const buvid = await api.fetchCachedBuvid3();
 console.log("buvid:", buvid ? "已取得" : "缺失");
 
 const counts = new Map<string, number>();

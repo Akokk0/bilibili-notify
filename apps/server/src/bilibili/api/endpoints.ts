@@ -9,7 +9,7 @@ export const LOGIN_QR_CODE_URL =
 	"https://passport.bilibili.com/x/passport-login/web/qrcode/generate";
 export const LOGIN_STATUS_URL = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll";
 export const LIVE_ROOM_INFO_URL = "https://api.live.bilibili.com/room/v1/Room/get_info";
-export const MASTER_INFO_URL = "https://api.live.bilibili.com/live_user/v1/Master/info";
+export const LIVE_UP_URL = "https://api.live.bilibili.com/live_user/v1/Master/info";
 export const USER_CARD_URL = "https://api.bilibili.com/x/web-interface/card";
 export const USER_INFO_IN_LIVE_URL = "https://api.live.bilibili.com/xlive/app-ucenter/v2/card/user";
 export const RELATION_MODIFY_URL = "https://api.bilibili.com/x/relation/modify";

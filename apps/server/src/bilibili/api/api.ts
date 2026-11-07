@@ -133,7 +133,7 @@ export class Api {
 	/** wbi 签名请求一族的熔断(见 {@link WbiBreaker})。按实例记:集成重启就是重新开始;新登录成立时清。 */
 	private readonly wbiBreaker: WbiBreaker;
 	/**
-	 * ④ 账号身份缓存(getMyselfInfoCached 共享给直播建连 / 卡片预览)。换号 / 登出 /
+	 * ④ 账号身份缓存(fetchCachedMyself 共享给直播建连 / 卡片预览)。换号 / 登出 /
 	 * -101 时 invalidate。lazy 调 `this.fetchMyselfInfo`,故传 `this` 安全。
 	 */
 	private readonly selfInfoCache: MyselfCache = createMyselfCache(this);
@@ -798,7 +798,7 @@ export class Api {
 	 * 改成 unknown 会波及全部调用方签名。
 	 */
 	// biome-ignore lint/suspicious/noExplicitAny: 见上,兼容旧返回契约
-	private getJson<T = any>(url: string, label: string): Promise<T> {
+	private fetchJson<T = any>(url: string, label: string): Promise<T> {
 		return this.retry(async () => (await this.client.get(url)) as T, label);
 	}
 
@@ -849,7 +849,7 @@ export class Api {
 	}
 
 	async fetchUserSpaceDynamic(uid: string) {
-		return this.getJson(
+		return this.fetchJson(
 			`${EP.USER_SPACE_DYNAMIC_URL}&host_mid=${encodeURIComponent(uid)}`,
 			"fetchUserSpaceDynamic",
 		);
@@ -864,7 +864,7 @@ export class Api {
 	}
 
 	async fetchLoginStatus(qrcodeKey: string) {
-		return this.getJson(
+		return this.fetchJson(
 			`${EP.LOGIN_STATUS_URL}?qrcode_key=${encodeURIComponent(qrcodeKey)}`,
 			"fetchLoginStatus",
 		);
@@ -873,10 +873,10 @@ export class Api {
 	/**
 	 * 裸探当前账号信息。**每次都真发请求**，不缓存 —— `LoginFlow` 的启动探活 /
 	 * 健康检查靠它探 -101 会话死活，缓存会掩盖会话失效。需要账号身份但不要求实时
-	 * 的调用方(直播建连 / 卡片预览)请改用 {@link getMyselfInfoCached}。
+	 * 的调用方(直播建连 / 卡片预览)请改用 {@link fetchCachedMyself}。
 	 */
 	async fetchMyselfInfo(): Promise<MyselfResponse> {
-		return this.getJson(EP.MYSELF_INFO_URL, "fetchMyselfInfo");
+		return this.fetchJson(EP.MYSELF_INFO_URL, "fetchMyselfInfo");
 	}
 
 	/**
@@ -884,7 +884,7 @@ export class Api {
 	 * 多处反复要(直播重连风暴 / 卡片预览);共享一份缓存收敛掉重复请求。换号 /
 	 * 登出 / -101 时由本类精准 invalidate,不靠 TTL 硬扛陈旧身份。
 	 */
-	getMyselfInfoCached(): Promise<MyselfResponse> {
+	fetchCachedMyself(): Promise<MyselfResponse> {
 		return this.selfInfoCache.get();
 	}
 
@@ -920,7 +920,7 @@ export class Api {
 	}
 
 	async fetchLiveRoomInfo(roomId: string): Promise<LiveRoomResponse> {
-		return this.getJson(
+		return this.fetchJson(
 			`${EP.LIVE_ROOM_INFO_URL}?room_id=${encodeURIComponent(roomId)}`,
 			"fetchLiveRoomInfo",
 		);
@@ -931,7 +931,7 @@ export class Api {
 	 * 是 resumeStoredLogin 填的占位假值,不能进认证包。成功后进程内缓存;失败返回空串
 	 * 且不缓存(认证包缺 buvid 仍可尝试,下次调用重试)。
 	 */
-	async getBuvid3(): Promise<string> {
+	async fetchCachedBuvid3(): Promise<string> {
 		if (this.buvid3Cache) return this.buvid3Cache;
 		// 在途合流(同 createMyselfCache 模式):启动时 N 个房间并发 bootstrap,
 		// 缓存落位前各自联网等于把 N 条相同请求同时打在风控敏感面上。
@@ -945,9 +945,9 @@ export class Api {
 
 	private async fetchBuvid3(): Promise<string> {
 		try {
-			const res = await this.getJson<{ code: number; data?: { b_3?: string } }>(
+			const res = await this.fetchJson<{ code: number; data?: { b_3?: string } }>(
 				EP.FINGER_SPI_URL,
-				"getBuvid3",
+				"fetchBuvid3",
 			);
 			const b3 = res?.data?.b_3;
 			if (typeof b3 === "string" && b3) {
@@ -960,8 +960,8 @@ export class Api {
 		return "";
 	}
 
-	async getMasterInfo(uid: string): Promise<LiveUpResponse> {
-		return this.getJson(`${EP.MASTER_INFO_URL}?uid=${encodeURIComponent(uid)}`, "getMasterInfo");
+	async fetchUpDetails(uid: string): Promise<LiveUpResponse> {
+		return this.fetchJson(`${EP.LIVE_UP_URL}?uid=${encodeURIComponent(uid)}`, "fetchUpDetails");
 	}
 
 	async fetchLiveRoomInfoStreamKey(
@@ -1035,7 +1035,7 @@ export class Api {
 			"bvid" in ref ? `bvid=${encodeURIComponent(ref.bvid)}` : `aid=${encodeURIComponent(ref.aid)}`;
 		// wire 上的 data 字段远不止这些;`VideoResponse` 就是「我们用得到的那几个」的那份声明,
 		// 下面逐字段抄一遍 —— 照单全收但不透传。
-		const result = await this.getJson<{ code: number; message?: string; data?: VideoResponse }>(
+		const result = await this.fetchJson<{ code: number; message?: string; data?: VideoResponse }>(
 			`${EP.VIDEO_INFO_URL}?${query}`,
 			"fetchVideoInfo",
 		);
@@ -1117,7 +1117,7 @@ export class Api {
 	 * 该参数即会整条刷新探测失效。统一传真实 bili_jct csrf。
 	 */
 	async fetchCookieInfo(csrf: string) {
-		return this.getJson(
+		return this.fetchJson(
 			`${EP.COOKIE_INFO_URL}?csrf=${encodeURIComponent(csrf)}`,
 			"fetchCookieInfo",
 		);

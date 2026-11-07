@@ -84,7 +84,7 @@ describe("RoomContext.startLiveRoomListener · 取个人信息失败只记日志
 		async (_name, myself) => {
 			const { ctx, problems } = makeCtx({
 				fetchLiveRoomInfoStreamKey: vi.fn(async () => goodInfo),
-				getMyselfInfoCached: vi.fn(myself),
+				fetchCachedMyself: vi.fn(myself),
 			});
 			await expect(ctx.startLiveRoomListener("123", () => {})).resolves.toBe(false);
 			expect(problems.reportFailure).not.toHaveBeenCalled();

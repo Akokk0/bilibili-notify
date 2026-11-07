@@ -244,8 +244,8 @@ export async function bootBiliLiveWorld(
 			ok({
 				data: { token: "test-token", host_list: [{ host: "danmaku.test", wss_port: 443 }] },
 			}),
-		getMyselfInfoCached: async () => ({ code: 0, data: { mid: 1, uname: "bot", face: "" } }),
-		getBuvid3: async () => "test-buvid",
+		fetchCachedMyself: async () => ({ code: 0, data: { mid: 1, uname: "bot", face: "" } }),
+		fetchCachedBuvid3: async () => "test-buvid",
 		openDanmakuSocket,
 		fetchLiveRoomInfo: async () => {
 			if (bili.roomInfo === "throws") throw new Error("取房间信息炸了");
@@ -269,7 +269,7 @@ export async function bootBiliLiveWorld(
 				},
 			};
 		},
-		getMasterInfo: async () => {
+		fetchUpDetails: async () => {
 			if (bili.masterInfo === "throws") throw new Error("取主播信息炸了");
 			return {
 				code: 0,

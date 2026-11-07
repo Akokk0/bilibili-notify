@@ -93,7 +93,7 @@ export function makeSessionHarness(options: SessionHarnessOptions = {}) {
 		if (roomInfo) return roomInfo();
 		return { ...DEFAULT_ROOM, live_status: options.liveStatus ?? 0 };
 	});
-	const fetchMasterSnapshot = vi.fn(
+	const fetchUpProfile = vi.fn(
 		options.master ??
 			(async () => ({
 				name: "U1",
@@ -132,7 +132,7 @@ export function makeSessionHarness(options: SessionHarnessOptions = {}) {
 		source,
 		problems,
 		fetchRoomInfo,
-		fetchMasterSnapshot,
+		fetchUpProfile,
 		startLiveRoomListener,
 		closeListener,
 		isDisposed: () => disposed,
@@ -166,7 +166,7 @@ export function makeSessionHarness(options: SessionHarnessOptions = {}) {
 		startLiveRoomListener,
 		closeListener,
 		fetchRoomInfo,
-		fetchMasterSnapshot,
+		fetchUpProfile,
 		reports,
 		interactions,
 		superchatAvatars,

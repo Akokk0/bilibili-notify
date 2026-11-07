@@ -36,11 +36,11 @@ function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 	};
 	const api = {
 		fetchLiveRoomInfoStreamKey: vi.fn(streamKeyImpl),
-		getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 42 } })),
-		getBuvid3: vi.fn(async () => "buv"),
+		fetchCachedMyself: vi.fn(async () => ({ code: 0, data: { mid: 42 } })),
+		fetchCachedBuvid3: vi.fn(async () => "buv"),
 		openDanmakuSocket: vi.fn(() => fakeSocket),
 		fetchLiveRoomInfo: vi.fn(),
-		getMasterInfo: vi.fn(),
+		fetchUpDetails: vi.fn(),
 		fetchUserInfo: vi.fn(async () => ok({ data: {} })),
 	};
 	const ctx = new RoomContext({

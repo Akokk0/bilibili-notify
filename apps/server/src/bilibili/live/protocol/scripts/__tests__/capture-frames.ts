@@ -35,7 +35,7 @@ const logger = {
 const serviceCtx = makeServiceCtx(logger);
 const api = await openReadonlyApi(serviceCtx);
 
-const myself = await api.getMyselfInfoCached();
+const myself = await api.fetchCachedMyself();
 if (myself.code !== 0 || !myself.data) {
 	console.error(`登录态失效 code=${myself.code}`);
 	process.exit(1);
@@ -78,7 +78,7 @@ if (!host) {
 	process.exit(1);
 }
 
-const buvid = await api.getBuvid3();
+const buvid = await api.fetchCachedBuvid3();
 logger.info(`buvid=${buvid ? "已取得" : "缺失"}`);
 
 const url = `wss://${host.host}${host.wss_port === 443 ? "" : `:${host.wss_port}`}/sub`;

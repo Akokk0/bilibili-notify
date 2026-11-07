@@ -19,18 +19,18 @@ async function makeApi() {
 	return { api, calls };
 }
 
-describe("getBuvid3", () => {
+describe("fetchCachedBuvid3", () => {
 	it("向 finger/spi 要真 buvid3", async () => {
 		const { api, calls } = await makeApi();
 
-		await expect(api.getBuvid3()).resolves.toBe("real-buvid3-value");
+		await expect(api.fetchCachedBuvid3()).resolves.toBe("real-buvid3-value");
 		expect(calls).toEqual([FINGER_SPI_URL]);
 	});
 
 	it("同进程缓存,第二次不再联网", async () => {
 		const { api, calls } = await makeApi();
-		await api.getBuvid3();
-		await api.getBuvid3();
+		await api.fetchCachedBuvid3();
+		await api.fetchCachedBuvid3();
 
 		expect(calls).toHaveLength(1);
 	});
@@ -39,7 +39,11 @@ describe("getBuvid3", () => {
 		// 启动时 RoomSessionCoordinator 对每个订阅 fire-and-forget,缓存落位前的并发
 		// 调用若各自联网,等于把 N 条相同请求同时打在风控敏感面上。
 		const { api, calls } = await makeApi();
-		const results = await Promise.all([api.getBuvid3(), api.getBuvid3(), api.getBuvid3()]);
+		const results = await Promise.all([
+			api.fetchCachedBuvid3(),
+			api.fetchCachedBuvid3(),
+			api.fetchCachedBuvid3(),
+		]);
 
 		expect(results).toEqual(["real-buvid3-value", "real-buvid3-value", "real-buvid3-value"]);
 		expect(calls).toHaveLength(1);
@@ -54,10 +58,10 @@ describe("getBuvid3", () => {
 			},
 		};
 
-		await expect(api.getBuvid3()).resolves.toBe("");
+		await expect(api.fetchCachedBuvid3()).resolves.toBe("");
 		// 失败不缓存,下次调用还会联网再试(底层 retry 的具体次数不在此约束)
 		const afterFirst = calls.length;
-		await api.getBuvid3();
+		await api.fetchCachedBuvid3();
 		expect(calls.length).toBeGreaterThan(afterFirst);
 	});
 });

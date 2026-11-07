@@ -68,8 +68,8 @@ function harness() {
 
 	const api = {
 		fetchLiveRoomInfoStreamKey: async () => preflight,
-		getMyselfInfoCached: async () => ({ code: 0, data: { mid: 1 } }),
-		getBuvid3: async () => "buvid",
+		fetchCachedMyself: async () => ({ code: 0, data: { mid: 1 } }),
+		fetchCachedBuvid3: async () => "buvid",
 		openDanmakuSocket: () => {
 			const handlers = new Map<string, Array<(...args: unknown[]) => void>>();
 			const socket: Socket = {
@@ -117,7 +117,7 @@ function harness() {
 				},
 			};
 		},
-		getMasterInfo: async () => ({
+		fetchUpDetails: async () => ({
 			code: 0,
 			data: {
 				info: { uid: Number(EXTERNAL_ID), uname: "测试主播", face: "" },
@@ -676,13 +676,13 @@ describe("BiliLiveRooms", () => {
 	it("开机确认中连不上：登录恢复后按名单重开监听", async () => {
 		const h = harness();
 		h.setAuth({ status: "confirming" });
-		h.api.getMyselfInfoCached = (async () => {
+		h.api.fetchCachedMyself = (async () => {
 			throw new Error("连不上网");
 		}) as never;
 		await h.start();
 		expect(h.sockets).toHaveLength(0);
 
-		h.api.getMyselfInfoCached = async () => ({ code: 0, data: { mid: 1 } });
+		h.api.fetchCachedMyself = async () => ({ code: 0, data: { mid: 1 } });
 		h.setAuth({ status: "logged-in", loggedInAt: "2026-10-25T00:01:00.000Z" });
 		await settle();
 

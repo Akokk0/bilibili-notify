@@ -67,7 +67,7 @@ export function makeRoomSessionCoordinatorHarness(
 			ok({
 				data: { live_room: { roomid: Number.parseInt(externalId.slice(1), 10) * 100 } },
 			}),
-		getMasterInfo: async () => ({ data: { medal_name: "牌" } }),
+		fetchUpDetails: async () => ({ data: { medal_name: "牌" } }),
 	};
 	const roomIds = createRoomIds({
 		api: api as never,
@@ -91,7 +91,7 @@ export function makeRoomSessionCoordinatorHarness(
 		startLiveRoomListener,
 		closeListener,
 		fetchRoomInfo,
-		fetchMasterSnapshot: async () => ({ name: "U", fanClubName: "牌" }),
+		fetchUpProfile: async () => ({ name: "U", fanClubName: "牌" }),
 		isDisposed: () => false,
 	};
 	const manager = new RoomSessionCoordinator(ctx as never);

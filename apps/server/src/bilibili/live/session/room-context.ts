@@ -34,9 +34,9 @@ export interface RoomContextOptions {
 		fetchLiveRoomInfo(roomId: string): Promise<LiveRoomResponse>;
 		fetchLiveRoomInfoStreamKey(roomId: string): Promise<Result<{ data: LiveRoomDanmaku }>>;
 		fetchUserInfo(externalId: string): Promise<Result<{ data: UserInfoResponse["data"] }>>;
-		getMasterInfo(externalId: string): Promise<unknown>;
-		getMyselfInfoCached(): Promise<MyselfResponse>;
-		getBuvid3(): Promise<string>;
+		fetchUpDetails(externalId: string): Promise<unknown>;
+		fetchCachedMyself(): Promise<MyselfResponse>;
+		fetchCachedBuvid3(): Promise<string>;
 		openDanmakuSocket(url: string): unknown;
 	};
 	liveContext: ServiceContext;
@@ -140,7 +140,7 @@ export class RoomContext {
 
 		let self: MyselfResponse;
 		try {
-			self = await this.api.getMyselfInfoCached();
+			self = await this.api.fetchCachedMyself();
 		} catch (error) {
 			this.logger.warn(`[conn] 获取个人信息异常，房间 [${roomId}]：${String(error)}`);
 			return false;
@@ -151,7 +151,7 @@ export class RoomContext {
 			);
 			return false;
 		}
-		const buvid = await this.api.getBuvid3();
+		const buvid = await this.api.fetchCachedBuvid3();
 		if (aborted()) return false;
 
 		const attempt = this.hostRotation.get(roomId) ?? 0;
@@ -187,9 +187,9 @@ export class RoomContext {
 		}
 	}
 
-	async fetchMasterSnapshot(externalId: string): Promise<{ name?: string; fanClubName?: string }> {
+	async fetchUpProfile(externalId: string): Promise<{ name?: string; fanClubName?: string }> {
 		try {
-			const response = (await this.api.getMasterInfo(externalId)) as {
+			const response = (await this.api.fetchUpDetails(externalId)) as {
 				data?: { medal_name?: unknown; info?: { uname?: unknown } };
 			};
 			const fanClubName =

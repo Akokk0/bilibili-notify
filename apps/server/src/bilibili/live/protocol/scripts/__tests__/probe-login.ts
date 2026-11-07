@@ -2,6 +2,6 @@
 import { makeServiceCtx, openReadonlyApi } from "./_env.js";
 
 const api = await openReadonlyApi(makeServiceCtx());
-const myself = await api.getMyselfInfoCached();
+const myself = await api.fetchCachedMyself();
 console.log("probe:", JSON.stringify({ code: myself.code, mid: myself.data?.mid }));
 process.exit(0);
