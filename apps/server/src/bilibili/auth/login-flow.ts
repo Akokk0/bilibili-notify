@@ -10,10 +10,9 @@ import {
 	type SourceAccount,
 } from "@bilibili-notify/internal";
 import QRCode from "qrcode";
-import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/api";
 import type { MyselfResponse } from "../api/types";
-import { t as serverText } from "../i18n.js";
+import { logText, t as serverText } from "../i18n.js";
 import {
 	authStateFromLoginState,
 	type BiliAccount,
@@ -180,7 +179,7 @@ export class LoginFlow {
 		try {
 			account = this.account();
 		} catch (e) {
-			this.logger.error(`[auth] 算账号失败,这次只按登录状态比对: ${errorMessageOf(e)}`);
+			this.logger.error(logText("log.bilibili.auth.accountComputeFailed"), { error: e });
 			account = null;
 		}
 		return JSON.stringify([this.authState(), account]);
@@ -199,11 +198,11 @@ export class LoginFlow {
 				try {
 					fn();
 				} catch (e) {
-					this.logger.error(`[auth] 状态变化的订阅方抛错: ${errorMessageOf(e)}`);
+					this.logger.error(logText("log.bilibili.auth.listenerFailed"), { error: e });
 				}
 			}
 		} catch (e) {
-			this.logger.error(`[auth] 通知登录状态变化失败: ${errorMessageOf(e)}`);
+			this.logger.error(logText("log.bilibili.auth.changeNotifyFailed"), { error: e });
 		}
 	}
 
@@ -220,8 +219,7 @@ export class LoginFlow {
 			personalInfo = await this.api.fetchMyselfInfo();
 		} catch (e) {
 			if (this.supersededSince(asked)) return;
-			this.logger.warn(`[account] 获取个人信息异常: ${errorMessageOf(e)}`);
-			this.reportTransientFailure(e);
+			this.reportTransientFailure(e, "personal-info");
 			this.attachHealthCheck();
 			return;
 		}
@@ -237,7 +235,7 @@ export class LoginFlow {
 		// 取卡片的途中主人发起了重扫(调用处:开机确认时状态是 checking,扫码成功后是 logged-in,都不会合法地是 qr):
 		// 这份成功问的是上一帧,不得把等待扫码的二维码盖成已登录,账号也不写。
 		if (this.state.status === "qr") {
-			this.logger.debug("[auth] 取账号回来时已在扫码，丢弃这份成功");
+			this.logger.debug(logText("log.bilibili.auth.scanSupersededResult"), { stage: "account" });
 			// 登录其实是成立的(探活回了 0、没被登出也没被新登录取代),只是这份结果不落到状态上:心跳得挂着,
 			// 新码超时停在出错之后靠它把状态带回已登录。没登录过起步的那条路上心跳在登出时已经摘了。
 			this.attachHealthCheck();
@@ -255,13 +253,13 @@ export class LoginFlow {
 	 */
 	private async fetchAccount(mid: unknown): Promise<BiliAccount | undefined> {
 		if (typeof mid !== "number") {
-			this.logger.warn("[account] 个人信息里没有用户 id,取不了用户卡片");
+			this.logger.warn(logText("log.bilibili.auth.missingAccountId"));
 			return undefined;
 		}
 		try {
 			return this.accountFromCardResponse(await this.api.fetchUserCard(String(mid), true));
 		} catch (e) {
-			this.logger.warn(`[account] 获取用户卡片失败: ${errorMessageOf(e)}`);
+			this.logger.warn(logText("log.bilibili.auth.cardFetchFailed"), { error: e });
 			return undefined;
 		}
 	}
@@ -271,14 +269,16 @@ export class LoginFlow {
 		res: Awaited<ReturnType<Api["fetchUserCard"]>>,
 	): BiliAccount | undefined {
 		if (!res.ok) {
-			this.logger.warn(
-				`[account] 用户卡片没取到: code=${String(res.upstreamCode)} standardCode=${res.code} message=${res.message}`,
-			);
+			this.logger.warn(logText("log.bilibili.auth.cardRejected"), {
+				upstreamCode: res.upstreamCode,
+				code: res.code,
+				message: res.message,
+			});
 			return undefined;
 		}
 		const card = res.data?.card;
 		if (typeof card?.name !== "string" || card.name === "") {
-			this.logger.warn("[account] 用户卡片缺名字,当作没取到");
+			this.logger.warn(logText("log.bilibili.auth.cardMissingName"));
 			return undefined;
 		}
 		return { name: card.name, avatarUrl: typeof card.face === "string" ? card.face : "" };
@@ -310,7 +310,7 @@ export class LoginFlow {
 				this.notifyIfChanged();
 			} catch (e) {
 				if (this.avatarFetching === mine) this.avatarFetching = undefined;
-				this.logger.warn(`[account] 头像抓取出错，这一轮没有头像: ${errorMessageOf(e)}`);
+				this.logger.warn(logText("log.bilibili.auth.avatarFetchFailed"), { error: e });
 			}
 		})();
 		this.serviceCtx.track(task);
@@ -331,11 +331,11 @@ export class LoginFlow {
 	 */
 	private supersededSince(asked: { auth: number; login: number }): boolean {
 		if (asked.auth !== this.authGeneration) {
-			this.logger.debug("[auth] 探活结果已被一次登出取代，丢弃本轮");
+			this.logger.debug(logText("log.bilibili.auth.checkSuperseded"), { reason: "logout" });
 			return true;
 		}
 		if (asked.login !== this.api.loginGeneration) {
-			this.logger.debug("[auth] 探活结果问的是上一段登录，丢弃本轮");
+			this.logger.debug(logText("log.bilibili.auth.checkSuperseded"), { reason: "login-replaced" });
 			return true;
 		}
 		return false;
@@ -347,7 +347,10 @@ export class LoginFlow {
 	 */
 	async handleAuthLost(): Promise<void> {
 		if (!this.hasSession) {
-			this.logger.debug("[auth] 没有可丢的登录会话，忽略请求报来的 -101");
+			this.logger.debug(logText("log.bilibili.auth.authLostIgnored"), {
+				stage: "request",
+				upstreamCode: -101,
+			});
 			return;
 		}
 		this.reportLoggedOut("authLost");
@@ -395,7 +398,7 @@ export class LoginFlow {
 		try {
 			qr = await this.api.fetchLoginQrCode();
 		} catch (e) {
-			this.logger.warn(`[login] 获取登录二维码失败：${errorMessageOf(e)}`);
+			this.logger.warn(logText("log.bilibili.auth.qrFetchFailed"), { error: e });
 			if (session !== this.scanSession) return superseded();
 			// 取码请求没到 B 站:一次网络抖动不该把一个好会话在面板上盖成出错,状态不动;
 			// 唯独上一次的二维码已被我们作废、状态还停在扫码上时,不能留着一个没人轮询的码。
@@ -415,7 +418,7 @@ export class LoginFlow {
 		try {
 			dataUrl = await renderQr(qr.data.url);
 		} catch (e) {
-			this.logger.warn(`[login] 生成二维码失败：${errorMessageOf(e)}`);
+			this.logger.warn(logText("log.bilibili.auth.qrRenderFailed"), { error: e });
 			if (session !== this.scanSession) return superseded();
 			this.reportQrFailure("qrRenderFailed");
 			return fail("unavailable", LOGIN_FAILURE_MESSAGES.qrRenderFailed);
@@ -433,7 +436,7 @@ export class LoginFlow {
 			// 关门。失败在交进去之前接住(以前这里是裸的 async 回调,抛错就是一次 unhandledRejection)。
 			const poll = this.pollOnce(qr.data.qrcode_key, session, gen)
 				.catch((e) => {
-					this.logger.warn(`[login] 二维码轮询出错：${errorMessageOf(e)}`);
+					this.logger.warn(logText("log.bilibili.auth.qrPollFailed"), { error: e });
 				})
 				.finally(() => {
 					polling = true;
@@ -464,7 +467,7 @@ export class LoginFlow {
 		try {
 			loginContent = await this.api.fetchLoginStatus(qrcodeKey);
 		} catch (e) {
-			this.logger.warn(`[login] 获取登录状态失败：${errorMessageOf(e)}`);
+			this.logger.warn(logText("log.bilibili.auth.qrStatusFailed"), { error: e });
 			return;
 		}
 
@@ -495,7 +498,7 @@ export class LoginFlow {
 				try {
 					const cookiesJson = this.api.getCookiesJson();
 					if (!cookiesJson || cookiesJson === "[]") {
-						this.logger.error("[login] 登录成功但未获取到任何 cookie，放弃保存");
+						this.logger.error(logText("log.bilibili.auth.qrMissingCookies"));
 						this.reportQrFailure("noCookieAfterLogin");
 						return;
 					}
@@ -503,15 +506,17 @@ export class LoginFlow {
 					if (!refreshToken) {
 						// P2:此前静默 `?? ""`,会话到期前无任何刷新、过期才靠心跳 -101 兜出登录失效。
 						// 至少响亮告警让运维知道这次登录拿不到自动续期。
-						this.logger.warn(
-							"[login] 登录成功但响应未含 refresh_token —— cookie 自动刷新不可用,会话到期需手动重新登录",
-						);
+						this.logger.warn(logText("log.bilibili.auth.qrMissingRefreshToken"));
 					}
 					// 一段新登录成立了(落盘成败都进已登录):`Api` 那个唯一的口在这一拍里(落盘之前)就让登录代往前走 ——
 					// 此前发出去的登录检查、请求、续期链问的都是上一段,回来一律不作数;续期也由它起。
 					// 从上面认出「确认成功」到这里不许隔 await。紧接着的 `reportAccountInfo` 在入口记下的就是新值。
 					const saved = await this.api.commitScannedLogin(refreshToken || undefined);
-					if (!saved.ok) this.logger.error(`[login] 保存登录状态失败：${saved.message}`);
+					if (!saved.ok)
+						this.logger.error(logText("log.bilibili.auth.loginPersistFailed"), {
+							code: saved.code,
+							message: saved.message,
+						});
 				} finally {
 					hold?.dispose();
 				}
@@ -519,7 +524,7 @@ export class LoginFlow {
 				// 不进已登录、不去取账号 —— 进了的话那一问只会回 -101,把一次主动退出说成「登录失效」。
 				// 走到落盘之前 `gen` 一定等于当前的登出代数(入口那一行挡过),所以这里比的就是「落盘期间」。
 				if (gen !== this.authGeneration) {
-					this.logger.debug("[login] 登录落盘期间已登出，不进已登录");
+					this.logger.debug(logText("log.bilibili.auth.loggedOutWhilePersisting"));
 					return;
 				}
 				this.reportLoggedIn(undefined, "loginJustSucceeded");
@@ -539,7 +544,7 @@ export class LoginFlow {
 		// 静默每秒 no-op 直到 3min 过期);非数值 = data 缺失等瞬时 → 继续轮询
 		// (容忍一次抖动,3min 过期兜底)。
 		if (typeof code === "number") {
-			this.logger.warn(`[login] QR 轮询返回未知 data.code=${code},判定登录失败`);
+			this.logger.warn(logText("log.bilibili.auth.qrUnknownStatus"), { upstreamCode: code });
 			this.endScanSession();
 			this.reportQrFailure("genericLoginFail");
 		}
@@ -571,17 +576,23 @@ export class LoginFlow {
 		} else if (code === -101) {
 			// 探活回 -101:登着的登录失效了。没有会话可丢(只有宿主 devtools 在「没登录」的 failed 上手动探活才走到)就还是「没登录」。
 			if (!this.hasSession) {
-				this.logger.debug("[auth] 没有可丢的登录会话，探活回 -101 不算失效");
+				this.logger.debug(logText("log.bilibili.auth.authLostIgnored"), {
+					stage: "health-check",
+					upstreamCode: -101,
+				});
 				return;
 			}
 			this.reportLoggedOut("authLost");
 		} else {
-			this.reportTransientFailure(`code=${code}`);
+			this.reportTransientFailure(code, "status");
 		}
 	}
 
-	private reportTransientFailure(detail: unknown): void {
-		this.logger.warn(`[auth] 瞬时失败：${errorMessageOf(detail)}`);
+	private reportTransientFailure(detail: unknown, stage: "personal-info" | "status"): void {
+		this.logger.warn(logText("log.bilibili.auth.checkTransient"), {
+			stage,
+			...(typeof detail === "number" ? { upstreamCode: detail } : { error: detail }),
+		});
 		if (this.state.status !== "logged-in") return;
 		this.transition({ ...this.state, reason: "fetchAccountFailed" });
 		this.notifyIfChanged();
@@ -674,7 +685,9 @@ export class LoginFlow {
 			if (this.supersededSince(asked)) return;
 			// 探活在途时主人发起了重扫:成功的结果问的是登录那一帧,不得把等待扫码的二维码盖成已登录。
 			if (res.code === 0 && this.state.status === "qr") {
-				this.logger.debug("[auth] 探活回来时已在扫码，丢弃这份成功");
+				this.logger.debug(logText("log.bilibili.auth.scanSupersededResult"), {
+					stage: "health-check",
+				});
 				return;
 			}
 			this.reportLoginCheck(res.code);
@@ -686,7 +699,7 @@ export class LoginFlow {
 				this.maybeFetchAvatar();
 			}
 		} catch (e) {
-			this.logger.warn(`[auth] 心跳异常（保持当前状态）：${errorMessageOf(e)}`);
+			this.logger.warn(logText("log.bilibili.auth.heartbeatFailed"), { error: e });
 		}
 	}
 
@@ -700,7 +713,7 @@ export class LoginFlow {
 		if (this.supersededSince(asked) || !account) return;
 		// 补取的途中发起了重扫(状态已不是已登录):账号只补给登录着的那一帧,不得把二维码盖成已登录。
 		if (this.state.status !== "logged-in") {
-			this.logger.debug("[auth] 补取账号回来时已不在已登录，丢弃");
+			this.logger.debug(logText("log.bilibili.auth.accountResultSuperseded"));
 			return;
 		}
 		this.reportLoggedIn(account);

@@ -1,11 +1,14 @@
 /** 模块原文由模块持有；语言与口吻在调用时跟随宿主，通用句子委托宿主。 */
 import {
 	createI18n,
+	type Dict,
 	type DictKey,
 	type Locale,
 	type LocaleDicts,
+	mergeDict,
 	stemOf,
 	type TextValues,
+	translate,
 } from "@bilibili-notify/internal/i18n";
 import { i18n as hostI18n, t as hostText } from "../i18n/index.js";
 import en from "./locales/en.json" with { type: "json" };
@@ -33,4 +36,17 @@ export function t(key: LocalKey | HostKey, values?: TextValues): string {
 	const { locale, voice } = hostI18n.state();
 	texts.set({ locale, voice });
 	return texts.t(key as LocalKey, values);
+}
+
+/** B站日志只取本模块的平实字典，在输出时读取宿主当前语言。 */
+const plainLogDicts = {
+	"zh-CN": zhCN,
+	"zh-TW": mergeDict(zhCN, zhTW),
+	en: mergeDict(zhCN, en),
+	ja: mergeDict(zhCN, ja),
+} satisfies Record<Locale, Dict>;
+
+export function logText(key: Extract<LocalKey, `log.${string}`>, values?: TextValues): string {
+	const locale = hostI18n.state().locale;
+	return translate(plainLogDicts[locale], locale, key, values);
 }

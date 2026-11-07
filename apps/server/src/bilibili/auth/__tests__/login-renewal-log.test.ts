@@ -18,6 +18,7 @@ import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { inertTransitImages } from "../../../__tests__/support/integration-io.js";
+import { i18n } from "../../../i18n/index.js";
 import { readIntegrationSecretsFile } from "../../../integration-store/files.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
 import { createValueRedactor } from "../../../logs/value-redactor.js";
@@ -80,6 +81,7 @@ beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-cookies-refreshed-"));
 });
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	await rm(dataDir, { recursive: true, force: true });
 });
 
@@ -110,10 +112,18 @@ describe("AuthSystem — 续期落盘之后的回调", () => {
 			{ kind: "set", key: "refreshToken", value: "SECRET_REFRESH" },
 		]);
 		expect(committed.ok).toBe(true);
-		await captured.callbacks?.onCookiesRefreshed?.();
-
-		// 续期落盘只记一行 info。
-		expect(ctx.logger.info).toHaveBeenCalledWith("[auth] 登录续期已落盘");
+		vi.mocked(ctx.logger.info).mockClear();
+		for (const [locale, text] of [
+			["zh-CN", "B站登录续期已落盘"],
+			["en", "Bilibili login renewal persisted"],
+			["ja", "Bilibiliのログイン更新を保存しました"],
+			["zh-TW", "B站登入續期已儲存"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			await captured.callbacks?.onCookiesRefreshed?.();
+			expect(ctx.logger.info).toHaveBeenLastCalledWith(text);
+		}
+		expect(ctx.logger.info).toHaveBeenCalledTimes(4);
 		// 日志里不许出现 cookie 或 refreshToken 的内容。
 		expect(JSON.stringify(vi.mocked(ctx.logger.info).mock.calls)).not.toContain("SECRET");
 

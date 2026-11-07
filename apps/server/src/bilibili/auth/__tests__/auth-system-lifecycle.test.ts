@@ -94,7 +94,7 @@ describe("日志跟给它的那个宿主上下文", () => {
 		expect(held(flow).logger).toBe(biliLogger);
 		expect(auth.context.ctx.logger).toBe(biliLogger);
 		// 登录系统自己的几行也在那一格(没登录:「等待扫码登录」那一行)。
-		expect(biliLogger.info).toHaveBeenCalledWith("[auth] 账号未登录，等待扫码登录");
+		expect(biliLogger.info).toHaveBeenCalledWith("B站尚未登录，等待扫码登录");
 		expect(baseLogger.info).not.toHaveBeenCalled();
 		expect(baseLogger.debug).not.toHaveBeenCalled();
 

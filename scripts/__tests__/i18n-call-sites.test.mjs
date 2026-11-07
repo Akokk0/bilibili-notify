@@ -84,7 +84,7 @@ export const ENDS = {
 		root: "apps/server/src/bilibili",
 		store: "apps/server/src/bilibili/i18n",
 		localeDir: "apps/server/src/bilibili/locales",
-		valueNames: ["t"],
+		valueNames: ["t", "logText"],
 		minCalls: 1,
 		fallbackDirs: [PACKAGE_LOCALE_DIR, "apps/server/src/i18n/locales"],
 	},
@@ -943,6 +943,25 @@ const serverOf = (body, imports = SERVER_IMPORT) =>
 const webOf = (body, imports = WEB_IMPORT) =>
 	analyzeFile(parseSource(WEB_FILE, imports + body), ENDS.web, SENTENCES);
 const codes = (result) => result.findings.map((finding) => finding.code);
+
+describe("B站日志取字入口", () => {
+	it("本地logText及别名也核对实际调用、键与使用时机", () => {
+		const analyze = (body) =>
+			analyzeFile(
+				parseSource(
+					"apps/server/src/bilibili/auth/fixture.ts",
+					`import { logText as say } from "../i18n.js";\n${body}`,
+				),
+				ENDS.bilibili,
+				SENTENCES,
+			);
+		const valid = analyze('export function run() { return say("a.greet", { name: "x" }); }');
+		expect(valid.calls).toBe(1);
+		expect(valid.findings).toEqual([]);
+		expect(codes(analyze('export const run = () => say("a.nope");'))).toContain("unknown-key");
+		expect(codes(analyze('export const frozen = say("a.plain");'))).toContain("top-level");
+	});
+});
 
 describe("宿主日志取字入口", () => {
 	it("具名logText及别名沿用键、占位符和使用时机的严格核对", () => {

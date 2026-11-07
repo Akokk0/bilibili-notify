@@ -104,7 +104,10 @@ describe("扫码登录(真罐子)", () => {
 
 		await w.pass(1_000);
 
-		expect(w.host.logger.error).toHaveBeenCalledWith(expect.stringContaining("保存登录状态失败"));
+		expect(w.host.logger.error).toHaveBeenCalledWith(
+			"B站扫码登录状态保存失败",
+			expect.objectContaining({ code: "unavailable", message: expect.any(String) }),
+		);
 		expect(w.secrets.persists).toHaveLength(0);
 		// 扫码那道闸已放,但提交失败留下了新的一道:零散变化到点也不写(「新 cookie + 旧令牌」不许落盘)。
 		expect(await w.savesAfterTouch()).toBe(0);

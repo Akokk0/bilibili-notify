@@ -6,7 +6,8 @@ import {
 	type Result,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n/index.js";
 import type { Api } from "../../api/api";
 import { failureFromBili } from "../../error-codes";
 import { watchLoginEdges } from "../../login-edges";
@@ -402,7 +403,9 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 		await h.scFake.intervals[0]?.handle.fire();
 
 		await expect(h.scFake.tracked[0]).resolves.toBeUndefined();
-		expect(h.scFake.logger.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith("B站扫码轮询任务发生异常", {
+			error: expect.objectContaining({ message: "boom" }),
+		});
 		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
 		await h.scFake.intervals[0]?.handle.fire();
 		expect(h.scFake.tracked).toHaveLength(2); // polling 标志复位了,下一拍照常轮询
@@ -542,7 +545,10 @@ describe("LoginFlow.beginLogin() — 扫码期间的存盘闸", () => {
 
 		await h.scFake.intervals[0]?.handle.fire();
 
-		expect(h.scFake.logger.error).toHaveBeenCalledWith(expect.stringContaining("disk full"));
+		expect(h.scFake.logger.error).toHaveBeenCalledWith("B站扫码登录状态保存失败", {
+			code: "unavailable",
+			message: "disk full",
+		});
 		expect(h.api.holds[0]?.disposed).toBe(true);
 		expect(rawOf(h.flow).status).toBe("logged-in");
 	});
@@ -1145,7 +1151,9 @@ describe("LoginFlow — 账号头像这条后台线", () => {
 		expect(h.flow.account()).toEqual({ name: "n" });
 		expect(rawOf(h.flow)).toMatchObject({ status: "logged-in", reason: "loggedIn" });
 		expect(h.edges.length).toBe(eventsBefore);
-		expect(h.scFake.logger.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith("B站账号头像获取失败，本次不写入头像", {
+			error: expect.objectContaining({ message: "boom" }),
+		});
 	});
 
 	it("抓的途中退出登录:结果丢掉,账号没了;之后重新登录同一个头像网址会重抓", async () => {
@@ -1270,7 +1278,11 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, "风控"));
 		await h.flow.reportAccountInfo();
-		expect(h.scFake.logger.warn).toHaveBeenCalledWith(expect.stringContaining("code=-352"));
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith("B站用户卡片获取未成功", {
+			upstreamCode: -352,
+			code: "rate_limited",
+			message: "风控",
+		});
 	});
 
 	it("个人信息里没有用户 id:同样当卡片没取到,不抛", async () => {
@@ -1307,7 +1319,10 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		expect(rawOf(h.flow).status).toBe("logged-in");
 		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 		expect(liveHeartbeat(h)).toBeDefined();
-		expect(h.scFake.logger.error).toHaveBeenCalledWith(expect.stringContaining("listener boom"));
+		expect(h.scFake.logger.error).toHaveBeenCalledWith(
+			"B站登录状态订阅方抛错，继续通知其他订阅方",
+			{ error: expect.objectContaining({ message: "listener boom" }) },
+		);
 	});
 
 	it("算对外的变化本身抛了(防御):接住记 error,状态机照走", async () => {
@@ -1325,7 +1340,9 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		// 账号算不出来也照状态通知:动态轮询与直播监听听的恢复边不能被吞。
 		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 		expect(liveHeartbeat(h)).toBeDefined();
-		expect(h.scFake.logger.error).toHaveBeenCalledWith(expect.stringContaining("account boom"));
+		expect(h.scFake.logger.error).toHaveBeenCalledWith("B站账号信息计算失败，本次仅比较登录状态", {
+			error: expect.objectContaining({ message: "account boom" }),
+		});
 	});
 });
 
@@ -2296,5 +2313,68 @@ describe("LoginFlow — 心跳停着(间隔 <= 0)时,登录的各条路都不会
 		logged(h);
 		await h.flow.reportAccountInfo();
 		expect(liveTimers(h)).toHaveLength(0);
+	});
+});
+
+afterEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
+});
+
+describe("B站账号诊断", () => {
+	it("个人信息请求失败只记一次四语平实日志，保留Error/cause并保持登录", async () => {
+		const h = makeFlow({ healthCheckMs: 1000 });
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce(
+			ok({ data: { card: { name: "private account name", face: "" } } }),
+		);
+		await h.flow.reportAccountInfo();
+		const error = new Error("raw account request failed", { cause: new Error("network") });
+		let count = 0;
+		for (const [locale, text] of [
+			["zh-CN", "B站登录检查暂时失败，保留当前登录状态"],
+			["en", "Bilibili login check temporarily failed; keeping the current login state"],
+			[
+				"ja",
+				"Bilibiliのログイン確認で一時的なエラーが発生しました。現在のログイン状態を保持します",
+			],
+			["zh-TW", "B站登入檢查暫時失敗，保留目前登入狀態"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			h.api.fetchMyselfInfo.mockRejectedValueOnce(error);
+			await h.flow.reportAccountInfo();
+			expect(h.scFake.logger.warn).toHaveBeenLastCalledWith(text, {
+				stage: "personal-info",
+				error,
+			});
+			expect(
+				(vi.mocked(h.scFake.logger.warn).mock.calls.at(-1)?.[1] as { error: unknown } | undefined)
+					?.error,
+			).toBe(error);
+			expect(h.scFake.logger.warn).toHaveBeenCalledTimes(++count);
+			expect(h.flow.authState().status).toBe("logged-in");
+		}
+		expect(h.flow.account()).toMatchObject({ name: "private account name" });
+		expect(JSON.stringify(vi.mocked(h.scFake.logger.warn).mock.calls)).not.toContain(
+			"private account name",
+		);
+	});
+});
+
+describe("B站扫码与通知诊断", () => {
+	it("二维码请求异常记录当前语言与原错误，不记录二维码网址或令牌", async () => {
+		const h = makeFlow();
+		const error = new Error("raw QR request failed", { cause: new Error("network") });
+		i18n.set({ locale: "en", voice: "maid" });
+		h.api.fetchLoginQrCode.mockRejectedValueOnce(error);
+		expect(await h.flow.beginLogin()).toMatchObject({ ok: false, code: "unavailable" });
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith(
+			"Failed to fetch the Bilibili login QR code",
+			{ error },
+		);
+		expect(
+			(vi.mocked(h.scFake.logger.warn).mock.calls.at(-1)?.[1] as { error: unknown } | undefined)
+				?.error,
+		).toBe(error);
+		expect(h.scFake.intervals).toHaveLength(0);
 	});
 });

@@ -7,10 +7,9 @@ import {
 } from "@bilibili-notify/internal";
 import { createImageFetcher } from "../../images/image-fetcher.js";
 import type { ImageWriter } from "../../images/image-store.js";
-import { errorMessageOf } from "../../util/error-message.js";
 import { Api } from "../api/index.js";
 import type { BiliContext } from "../context.js";
-import { t as serverText } from "../i18n.js";
+import { logText, t as serverText } from "../i18n.js";
 import { fetchAvatar } from "../images.js";
 import { LoginFlow } from "./login-flow.js";
 
@@ -77,14 +76,14 @@ export function createAuthSystem(opts: CreateAuthSystemOptions): AuthSystem {
 		callbacks: {
 			// 续期提交落盘成功之后叫一声:只记一行 info(没有任何读者要这个事件了,cookie 本身是密钥,不进日志)。
 			onCookiesRefreshed: () => {
-				log.info("[auth] 登录续期已落盘");
+				log.info(logText("log.bilibili.auth.renewed"));
 			},
 			// handleAuthLost() 是 Promise:此前 void 丢弃 → reject 成 unhandled
 			// 且登录失效处理静默失败。改 .catch 经 logger;flow 仍为
 			// undefined 时(构造期)?. 双重短路不调用 .catch。
 			onAuthLost: () => {
 				flow?.handleAuthLost()?.catch((e) => {
-					log.error(`[auth] 登录失效处理失败: ${errorMessageOf(e)}`);
+					log.error(logText("log.bilibili.auth.authLostFailed"), { error: e });
 				});
 			},
 		},
@@ -111,7 +110,7 @@ export function createAuthSystem(opts: CreateAuthSystemOptions): AuthSystem {
 		if (ctx.cookies.jar.getValue("bili_jct") !== undefined) {
 			await flowFinal.reportAccountInfo();
 		} else {
-			log.info("[auth] 账号未登录，等待扫码登录");
+			log.info(logText("log.bilibili.auth.awaitingLogin"));
 			flowFinal.reportLoggedOut("notLogin");
 		}
 	};
@@ -131,7 +130,11 @@ export function createAuthSystem(opts: CreateAuthSystemOptions): AuthSystem {
 			await api.clearCookies();
 			// 罐子已空:`http.cookies` 与令牌在同一次写里一起删。失败记 error,并把失败交给调用方。
 			saved = await api.commitLogin(undefined);
-			if (!saved.ok) log.error(`[auth] 登出后清不掉存着的登录状态: ${saved.message}`);
+			if (!saved.ok)
+				log.error(logText("log.bilibili.auth.logoutPersistFailed"), {
+					code: saved.code,
+					message: saved.message,
+				});
 		}
 		return saved.ok
 			? ok()
@@ -162,7 +165,7 @@ export function createAuthSystem(opts: CreateAuthSystemOptions): AuthSystem {
 			try {
 				// api.start() — initialise HTTP client + ticket cron.
 				await api.start();
-				log.debug("[auth] Api started");
+				log.debug(logText("log.bilibili.auth.apiStarted"));
 				await flowFinal.start();
 				// 恢复备份后由宿主叫:罐子已经换成新内容,这里重起续期、重探账号。
 				restoredSubscription = ctx.cookies.onRestored(resumeLogin);
