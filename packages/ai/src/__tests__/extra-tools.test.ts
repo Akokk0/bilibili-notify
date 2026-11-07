@@ -212,11 +212,16 @@ describe("chatStatelessStream × 注入工具", () => {
 			.mockResolvedValueOnce(streamOf([textChunk("没做成")]));
 		const tool = makeTool();
 		tool.execute.mockRejectedValueOnce(new Error("炸了"));
-		const errors: string[] = [];
+		const errors: unknown[][] = [];
 		const gen = new CommentaryGenerator({
 			serviceCtx: {
 				...fakeServiceCtx(),
-				logger: { info() {}, warn() {}, debug() {}, error: (m: string) => errors.push(m) },
+				logger: {
+					info() {},
+					warn() {},
+					debug() {},
+					error: (m: string, ...args: unknown[]) => errors.push([m, ...args]),
+				},
 			},
 			config: aiConfig(),
 			nouns: testNouns,
@@ -229,8 +234,10 @@ describe("chatStatelessStream × 注入工具", () => {
 		});
 
 		expect(errors).toHaveLength(1);
-		expect(errors[0]).toContain("make_thing");
-		expect(errors[0]).toContain("炸了");
+		expect(errors[0]).toEqual([
+			"AI工具执行异常，作为失败资料交回模型",
+			{ name: "make_thing", error: expect.objectContaining({ message: "炸了" }) },
+		]);
 		expect(events.find((e) => e.phase === "end")).toMatchObject({
 			ok: false,
 			message: "工具执行失败: 炸了",

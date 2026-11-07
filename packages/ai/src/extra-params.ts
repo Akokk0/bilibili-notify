@@ -33,9 +33,12 @@ export type ExtraParamsParseResult = Result<{
 /**
  * 解析主人手写的 JSON。**任何情况下都不抛** —— 一个填错的文本框不该让整条
  * 推送链路挂掉;调用方拿到 `ok:false` 时按「这次不带额外参数」继续,并把
- * `message` 记进日志。
+ * `message` 记进日志。诊断调用传 `diagnostic`，只取平实日志文字；默认交互原文保持。
  */
-export function parseExtraParams(raw: string | undefined | null): ExtraParamsParseResult {
+export function parseExtraParams(
+	raw: string | undefined | null,
+	purpose: "interaction" | "diagnostic" = "interaction",
+): ExtraParamsParseResult {
 	const src = (raw ?? "").trim();
 	if (!src) return ok({ value: {} });
 
@@ -45,15 +48,22 @@ export function parseExtraParams(raw: string | undefined | null): ExtraParamsPar
 	} catch (e) {
 		return fail(
 			"invalid",
-			packageText("ai.extra-params.1", {
-				value0: e instanceof Error ? e.message : String(e),
-			}),
+			purpose === "diagnostic"
+				? packageText("ai.log.extraParamsJson", {
+						value0: e instanceof Error ? e.message : String(e),
+					})
+				: packageText("ai.extra-params.1", { value0: e instanceof Error ? e.message : String(e) }),
 		);
 	}
 
 	// `[1,2]` / `42` / `null` 都能过 JSON.parse,摊进请求体却毫无意义。
 	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return fail("invalid", packageText("ai.extra-params.2", { example: '{"top_k": 40}' }));
+		return fail(
+			"invalid",
+			purpose === "diagnostic"
+				? packageText("ai.log.extraParamsObject", { example: '{"top_k": 40}' })
+				: packageText("ai.extra-params.2", { example: '{"top_k": 40}' }),
+		);
 	}
 
 	const value: Record<string, unknown> = {};

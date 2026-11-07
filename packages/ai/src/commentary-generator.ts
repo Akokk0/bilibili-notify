@@ -589,11 +589,16 @@ export class CommentaryGenerator implements CommentaryProvider {
 	updateConfig(config: CommentaryGeneratorSettings): void {
 		this.config = config;
 		const { name, traits } = config.persona;
-		this.logger.info(
-			`[update] 名字：${name ?? "(默认)"}，模型：${config.model}，性格：${traits ?? "(默认)"}`,
-		);
+		this.logger.info(packageText("ai.log.configUpdated"), {
+			name: name === undefined ? undefined : this.sanitizeErr(name),
+			model: config.model,
+			traits: traits === undefined ? undefined : this.sanitizeErr(traits),
+		});
 		// 不传参 = 无场景、未挂工具那一版;聊天那条路发出去的会多一段工具铁律。
-		this.logger.debug(`[update] 新系统提示词（无场景 · 未挂工具）：\n${this.getSystemPrompt()}`);
+		this.logger.debug(packageText("ai.log.systemPrompt"), {
+			stage: "updated",
+			prompt: this.sanitizeErr(this.getSystemPrompt()),
+		});
 	}
 
 	/**
@@ -601,8 +606,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 没有会话),所以没有配对的 `stop()` —— 宿主扔掉引用即可。
 	 */
 	start(): void {
-		this.logger.info(`[start] 模型：${this.config.model}`);
-		this.logger.debug(`[start] 系统提示词（无场景 · 未挂工具）：\n${this.getSystemPrompt()}`);
+		this.logger.info(packageText("ai.log.started"), { model: this.config.model });
+		this.logger.debug(packageText("ai.log.systemPrompt"), {
+			stage: "started",
+			prompt: this.sanitizeErr(this.getSystemPrompt()),
+		});
 	}
 
 	/**
@@ -692,9 +700,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 			: "";
 		const nouns = this.nouns(sourceKeys);
 		const systemPrompt = this.buildSystemPrompt(override, nouns, { scene }) + searchNote;
-		this.logger.debug(
-			`[comment] scene=${scene ?? "default"}, 内容长度=${content.length}, 图片数=${imageUrls?.length ?? 0}${override ? ", override=yes" : ""}${searchExec ? ", webSearch=yes" : ""}`,
-		);
+		this.logger.debug(packageText("ai.log.commentStarted"), {
+			scene: scene ?? "default",
+			contentLength: content.length,
+			images: imageUrls?.length ?? 0,
+			override: Boolean(override),
+			webSearch: Boolean(searchExec),
+		});
 		const shaped = await this.resolveImages(content, imageUrls);
 		const result = await this.callAPI(
 			() =>
@@ -716,7 +728,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 			shaped.passthrough,
 			override,
 		);
-		this.logger.debug(`[comment] 响应长度=${result.length}`);
+		this.logger.debug(packageText("ai.log.responseReceived"), {
+			stage: "comment",
+			length: result.length,
+		});
 		return result;
 	}
 
@@ -762,7 +777,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		const block = renderImageDescriptions(descriptions);
 		const ok = descriptions.filter((d) => d !== null).length;
-		this.logger.debug(`[vision] ${ok}/${imageUrls.length} 张图转成了文字`);
+		this.logger.debug(packageText("ai.log.imagesDescribed"), {
+			succeeded: ok,
+			total: imageUrls.length,
+		});
 		// **不**回填 passthrough:主模型可能根本不支持多模态(这功能就是为它做的),
 		// 把图再下挂一份等于让它 400。
 		return { content: block ? `${content}\n\n${block}` : content };
@@ -806,10 +824,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 同一件事只报一次。这些告警都长在热路径上(每张图、每轮请求都会重新撞一遍),
 	 * 原样打日志会把日志刷成一片。`key` 相同即视为同一件事。
 	 */
-	private warnOnce(key: string, msg: string): void {
+	private warnOnce(key: string, msg: string, details?: Record<string, unknown>): void {
 		if (this.warned.has(key)) return;
 		this.warned.add(key);
-		this.logger.warn(this.sanitizeErr(msg));
+		this.logger.warn(this.sanitizeErr(msg), ...(details === undefined ? [] : [details]));
 	}
 
 	/** 视觉失败按「失败原因」去重。 */
@@ -916,7 +934,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const vision = this.chatVision(imageUrls, nouns);
 		// withTools:下面 callAPI 是真的把 TOOL_DEFINITIONS 挂上去的,这条路才该收工具铁律。
 		const systemPrompt = this.buildSystemPrompt(undefined, nouns, { withTools: true });
-		this.logger.debug(`[chat] 消息长度=${content.length}`);
+		this.logger.debug(packageText("ai.log.chatStarted"), { length: content.length });
 
 		// 搜索是**加装**:开了且执行器在,才在既有工具表上多出 web_search(与
 		// chatStatelessImpl 同一口径)。
@@ -947,7 +965,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 			vision.ctx ? undefined : this.mainModelCanSeeImages() ? imageUrls : undefined,
 		);
 
-		this.logger.debug(`[chat] 响应长度=${result.length}`);
+		this.logger.debug(packageText("ai.log.responseReceived"), {
+			stage: "test-push",
+			length: result.length,
+		});
 		return result;
 	}
 
@@ -1007,7 +1028,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 			});
 		// 技能正文**追加**在人格之后,不顶掉它(见 systemSuffix 的文档)。
 		const systemPrompt = opts?.systemSuffix ? `${baseSystem}\n\n${opts.systemSuffix}` : baseSystem;
-		this.logger.debug(`[chat-stateless] 历史=${messages.length} 条,实发=${trimmed.length} 条`);
+		this.logger.debug(packageText("ai.log.historyPrepared"), {
+			original: messages.length,
+			sent: trimmed.length,
+		});
 
 		// 与 chat() 同样的看图口径:dashboard 聊天里主人贴的图从这里进(routes/ai.ts
 		// 把可见的那几张交进来)。
@@ -1064,7 +1088,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 			opts?.onReasoning,
 		);
 
-		this.logger.debug(`[chat-stateless] 响应长度=${result.length}`);
+		this.logger.debug(packageText("ai.log.responseReceived"), {
+			stage: "chat",
+			length: result.length,
+		});
 		return result;
 	}
 
@@ -1083,7 +1110,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		if (!out.ok) return out;
 		if (out.restrictTools) {
 			toolOptions.tools = narrowTools(toolOptions.tools, out.restrictTools);
-			this.logger.debug(`[tool] 工具面收窄至 ${toolOptions.tools.length} 把`);
+			this.logger.debug(packageText("ai.log.toolsNarrowed"), { count: toolOptions.tools.length });
 		}
 		return out.images?.length ? this.toolImagesFor(out.text, out.images) : ok({ text: out.text });
 	}
@@ -1328,6 +1355,39 @@ export class CommentaryGenerator implements CommentaryProvider {
 		return seconds * 1000;
 	}
 
+	/** 仅用于日志；实际请求继续使用完整配置地址。 */
+	private logEndpoint(value: string): string {
+		try {
+			const url = new URL(value);
+			url.username = "";
+			url.password = "";
+			url.search = "";
+			url.hash = "";
+			return this.sanitizeErr(url.toString());
+		} catch {
+			return this.sanitizeErr(value.split(/[?#]/, 1)[0] ?? "");
+		}
+	}
+
+	/** 只保留错误诊断字段，并继续执行本包的密钥/Bearer遮盖；不携带SDK的headers或请求体。 */
+	private logError(error: unknown, seen = new Set<Error>()): unknown {
+		if (!(error instanceof Error)) return this.sanitizeErr(error);
+		if (seen.has(error)) return "[Circular]";
+		seen.add(error);
+		const clean = new Error(this.sanitizeErr(error));
+		clean.name = this.sanitizeErr(error.name);
+		if (error.stack) clean.stack = this.sanitizeErr(error.stack);
+		if (error.cause !== undefined) clean.cause = this.logError(error.cause, seen);
+		for (const key of ["code", "status"] as const) {
+			const value = (error as unknown as Record<string, unknown>)[key];
+			if (typeof value === "string" || typeof value === "number")
+				Object.assign(clean, {
+					[key]: typeof value === "string" ? this.sanitizeErr(value) : value,
+				});
+		}
+		return clean;
+	}
+
 	private sanitizeErr(e: unknown): string {
 		let msg = e instanceof Error ? e.message : String(e);
 		// 两把 key 都要抹:视觉副模型常常在另一家,它的 key 同样会出现在 SDK 的
@@ -1564,9 +1624,14 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		// flavor 必须打出来:两种风味成功时的其余日志一字不差,主人切了 responses
 		// 只能靠这里确认真的换了协议,否则「到底走没走新路」查无实据。
-		this.logger.debug(
-			`[api] flavor=${this.config.apiFlavor ?? "chat"}, baseURL=${baseURL}, model=${model}, messages=${messages.length}, tools=${toolOptions ? "yes" : "no"}, images=${imageUrls?.length ?? 0}`,
-		);
+		this.logger.debug(packageText("ai.log.apiRequest"), {
+			apiFlavor: this.config.apiFlavor ?? "chat",
+			baseURL: this.logEndpoint(baseURL),
+			model,
+			messages: messages.length,
+			tools: Boolean(toolOptions),
+			images: imageUrls?.length ?? 0,
+		});
 		const { default: OpenAI } = await import("openai");
 		// 单次 chat.completions.create 的硬超时。下播总结/动态点评偶发的 LLM 长尾(模型 hang
 		// 或服务端 stuck)会让等着它的那一步一直卡住,影响下播总结那个锚点
@@ -1613,12 +1678,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 		type CreateParams = OpenAI.ChatCompletionCreateParamsNonStreaming & Record<string, unknown>;
 
 		// 主人手写的那段 JSON 解析一次,两轮(首发 + 降级重试)共用。
-		const extra = parseExtraParams(this.config.extraParams);
-		if (!extra.ok) this.warnOnce("extra-params", `[api] ${extra.message}`);
+		const extra = parseExtraParams(this.config.extraParams, "diagnostic");
+		if (!extra.ok)
+			this.warnOnce("extra-params", packageText("ai.log.extraParamsInvalid"), {
+				code: extra.code,
+				message: this.sanitizeErr(extra.message),
+			});
 		else if (extra.dropped?.length) {
 			this.warnOnce(
 				`extra-params-dropped:${extra.dropped.join(",")}`,
-				packageText("ai.commentary-generator.20", { value0: extra.dropped.join(" / ") }),
+				packageText("ai.log.extraParamsDropped"),
+				{ fields: extra.dropped },
 			);
 		}
 		const extraValues = extra.ok ? extra.value : {};
@@ -1707,7 +1777,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 					// 账单 / 鉴权那一层的拒绝跟 stream 无关,回落也是白撞一次。
 					const rejection = CommentaryGenerator.fatalOf(e);
 					if (rejection) throw rejection;
-					this.logger.warn(`[api] 流式不可用,回落非流式: ${this.sanitizeErr(e)}`);
+					this.logger.warn(packageText("ai.log.streamFallback"), {
+						apiFlavor: "chat",
+						error: this.logError(e),
+					});
 				}
 			}
 			const res = await cancellable((opts) => client.chat.completions.create(base, opts));
@@ -1744,7 +1817,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				// 吐过字就不许重来 —— 页面上已经有半句话了,静默重来会让那半句凭空
 				// 变成另一段(同 fetchRound 里那条纪律)。
 				if (wait === null || acct.emitted > 0) throw e;
-				this.logger.warn(`[api] 网关限流并给了 Retry-After,等 ${wait}ms 后重来一次`);
+				this.logger.warn(packageText("ai.log.retryAfter"), { delayMs: wait });
 				await new Promise((resolve) => setTimeout(resolve, wait));
 				return await fetchRound();
 			}
@@ -1771,9 +1844,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 				// DeepSeek / 火山这类默认开思考的家,连「关」位都要发一条显式禁用,
 				// 那条同样可能被某些兼容网关拒掉。
 				if (Object.keys(thinkingParams).length > 0 && acct.emitted === 0) {
-					this.logger.warn(
-						`[api] 服务商方言参数不受支持，摘掉后重试(主人手写的额外参数保留): ${this.sanitizeErr(e)}`,
-					);
+					this.logger.warn(packageText("ai.log.reasoningRetry"), {
+						apiFlavor: "chat",
+						error: this.logError(e),
+					});
 					try {
 						const res = await cancellable((opts) =>
 							client.chat.completions.create(makeParams(false), opts),
@@ -1807,7 +1881,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 				return message.content ?? "";
 			}
 
-			this.logger.debug(`[tool] 第 ${round + 1} 轮，调用 ${message.tool_calls.length} 个工具`);
+			this.logger.debug(packageText("ai.log.toolRound"), {
+				apiFlavor: "chat",
+				round: round + 1,
+				count: message.tool_calls.length,
+			});
 			if (!toolOptions) break;
 
 			/** 这一轮工具交回的图,等所有 tool 消息都回完再一次补上(每个 tool_call 得先有应答)。 */
@@ -1820,7 +1898,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				// 判成「tool_call 没有应答」而整个请求报错。直接读 `.function` 的老写法
 				// 在这一帧上是 `undefined.name`,会把整轮对话带走。
 				if (toolCall.type !== "function") {
-					this.logger.warn(`[tool] 网关回了不支持的工具类型 ${toolCall.type},跳过`);
+					this.logger.warn(packageText("ai.log.unsupportedTool"), { type: toolCall.type });
 					apiMessages.push({
 						role: "tool",
 						tool_call_id: toolCall.id,
@@ -1956,7 +2034,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 					if (acct.emitted > 0) throw new Error(this.sanitizeErr(e));
 					const rejection = CommentaryGenerator.fatalOf(e);
 					if (rejection) throw rejection;
-					this.logger.warn(`[api] responses 流式不可用,回落非流式: ${this.sanitizeErr(e)}`);
+					this.logger.warn(packageText("ai.log.streamFallback"), {
+						apiFlavor: "responses",
+						error: this.logError(e),
+					});
 				}
 			}
 			return createOnce(true);
@@ -1973,9 +2054,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 				const rejection = CommentaryGenerator.fatalOf(e);
 				if (rejection) throw rejection;
 				if (Object.keys(reasoningParams).length > 0 && acct.emitted === 0) {
-					this.logger.warn(
-						`[api] reasoning 参数不受支持，摘掉后重试(主人手写的额外参数保留): ${this.sanitizeErr(e)}`,
-					);
+					this.logger.warn(packageText("ai.log.reasoningRetry"), {
+						apiFlavor: "responses",
+						error: this.logError(e),
+					});
 					try {
 						({ items, usage } = await createOnce(false));
 					} catch (e2) {
@@ -1995,7 +2077,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 			if (calls.length === 0) {
 				return responsesOutputText(items);
 			}
-			this.logger.debug(`[tool] 第 ${round + 1} 轮，调用 ${calls.length} 个工具`);
+			this.logger.debug(packageText("ai.log.toolRound"), {
+				apiFlavor: "responses",
+				round: round + 1,
+				count: calls.length,
+			});
 			if (!toolOptions) break;
 			const shown: string[] = [];
 			for (let i = 0; i < calls.length; i++) {
@@ -2185,7 +2271,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 			} else {
 				budget.searchCalls++;
 				try {
-					this.logger.debug(`[tool] web_search(${args.query})`);
+					this.logger.debug(packageText("ai.log.webSearch"), {
+						query: this.sanitizeErr(args.query),
+					});
 					const found = await toolOptions.webSearch.search(args.query);
 					result = formatWebSearchResults(found);
 					sources = sourceRefsOf(found);
@@ -2198,7 +2286,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 			}
 		} else if (toolOptions.onToolCall) {
 			try {
-				this.logger.debug(`[tool] 执行 ${name}(${JSON.stringify(args)})`);
+				this.logger.debug(packageText("ai.log.toolExecuting"), {
+					name,
+					arguments: this.sanitizeErr(JSON.stringify(args)),
+				});
 				const out = await toolOptions.onToolCall(name, args, (chars) =>
 					toolOptions.onToolEvent?.({ phase: "progress", id: traceId, chars }),
 				);
@@ -2214,7 +2305,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			} catch (e) {
 				// 预期内的失败都按结果形状返回了,走到这里的只剩 bug:话照旧喂回给模型,
 				// 同时记一条错误日志(失败规矩第 2 条:边界接住抛出来的错要记)。
-				this.logger.error(`[tool] ${name} 抛了错: ${this.sanitizeErr(e)}`);
+				this.logger.error(packageText("ai.log.toolThrew"), { name, error: this.logError(e) });
 				result = `工具执行失败: ${(e as Error).message}`;
 				ok = false;
 			}
@@ -2232,7 +2323,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...(ok ? {} : { message: result }),
 			...(sources ? { sources } : {}),
 		});
-		this.logger.debug(`[tool] ${name} 结果长度=${result.length}`);
+		this.logger.debug(packageText("ai.log.toolFinished"), { name, length: result.length });
 		return images ? { content: result, images } : { content: result };
 	}
 }

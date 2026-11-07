@@ -13,6 +13,12 @@
  * `./persona-presets#buildSystemPrompt` 保持真实(纯函数,产物不做精确断言)。
  */
 
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	PACKAGE_DICTS,
+	type PackageTextKey,
+} from "@bilibili-notify/internal/texts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorSettings } from "../commentary-generator";
 import {
@@ -313,9 +319,9 @@ describe("CommentaryGenerator.comment", () => {
 			await gen.comment("还有正文");
 			expect(createParams(0).messages.length).toBeGreaterThan(0);
 			expect(createParams(1).messages.length).toBeGreaterThan(0);
-			expect(warn).toHaveBeenCalledExactlyOnceWith(
-				expect.stringContaining("额外请求参数里的 messages 被忽略了"),
-			);
+			expect(warn).toHaveBeenCalledExactlyOnceWith("已忽略会覆盖请求结构的AI额外参数", {
+				fields: ["messages"],
+			});
 		});
 
 		it.each([
@@ -329,7 +335,10 @@ describe("CommentaryGenerator.comment", () => {
 			expect(oai.create).toHaveBeenCalledTimes(2);
 			expect(createParams(0)).toMatchObject({ model: "gpt-test" });
 			expect(createParams(0).messages.length).toBeGreaterThan(0);
-			expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(message));
+			expect(warn).toHaveBeenCalledExactlyOnceWith("AI额外请求参数无效，忽略本次额外参数", {
+				code: "invalid",
+				message: expect.stringContaining(message),
+			});
 		});
 
 		it("降级重试时额外参数原样带着 —— 摘掉的只该是女仆自己加的思考参数", async () => {
@@ -1796,4 +1805,99 @@ describe("CommentaryGenerator — 副路两把闸也别放大超时", () => {
 		const visionCtor = oai.ctorArgs.find((a) => (a as { timeout?: number }).timeout === 60_000);
 		expect(visionCtor).toMatchObject({ maxRetries: 0 });
 	});
+});
+
+it("AI回退日志随当前语言输出，保留脱敏后的异常链，不改变两次请求回退", async () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: PACKAGE_DICTS,
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "maid",
+	});
+	const binding = bindPackageText(texts.t);
+	try {
+		const { gen, warn } = makeGen({ provider: "custom", apiKey: "main-secret-key" });
+		const cause = new Error("Authorization: Bearer unexpected-secret-token");
+		const error = Object.assign(new Error("stream unsupported: main-secret-key", { cause }), {
+			status: 400,
+			code: "stream_not_supported",
+		});
+		for (const [locale, message] of [
+			["zh-CN", "流式请求未产生正文，回退为非流式请求"],
+			["en", "Streaming request produced no text; falling back to a non-streaming request"],
+			["ja", "ストリーミングで本文が生成されなかったため、非ストリーミングに切り替えます"],
+			["zh-TW", "串流請求尚未產生正文，改用非串流請求"],
+		] as const) {
+			texts.set({ locale, voice: "maid" });
+			oai.create.mockRejectedValueOnce(error).mockResolvedValueOnce(msgResp("回答原样"));
+			await expect(gen.generateRaw("system", "user")).resolves.toBe("回答原样");
+			expect(warn.mock.lastCall?.[0]).toBe(message);
+			const fields = warn.mock.lastCall?.[1] as {
+				apiFlavor: string;
+				error: Error & { code: string; status: number };
+			};
+			expect(fields.apiFlavor).toBe("chat");
+			expect(fields.error).toBeInstanceOf(Error);
+			expect(fields.error.message).toBe("stream unsupported: ***");
+			expect(fields.error.cause).toMatchObject({ message: "Authorization: Bearer ***" });
+			expect(fields.error).toMatchObject({ code: "stream_not_supported", status: 400 });
+			expect(fields.error.stack).not.toContain("main-secret-key");
+			expect((fields.error.cause as Error).stack).not.toContain("unexpected-secret-token");
+		}
+		expect(oai.create).toHaveBeenCalledTimes(8);
+		expect(warn).toHaveBeenCalledTimes(4);
+		expect(error.message).toContain("main-secret-key");
+		expect(cause.message).toContain("unexpected-secret-token");
+	} finally {
+		binding.dispose();
+	}
+});
+
+it("AI请求日志不写endpoint凭据和查询参数，实际请求配置与素材保持原样", async () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: PACKAGE_DICTS,
+		fallback: "zh-CN",
+		locale: "en",
+		voice: "maid",
+	});
+	const binding = bindPackageText(texts.t);
+	try {
+		const ctx = fakeServiceCtx();
+		const debug = vi.fn();
+		ctx.logger.debug = debug;
+		const baseURL = "https://user:password@api.test/v1?token=external-secret#fragment";
+		const gen = new CommentaryGenerator({
+			serviceCtx: ctx,
+			config: makeConfig({ provider: "custom", baseURL }),
+			nouns: testNouns,
+		});
+		oai.create.mockResolvedValueOnce(msgResp("reply"));
+		await expect(gen.comment("sensitive material")).resolves.toBe("reply");
+		expect(debug).toHaveBeenCalledWith("Starting AI request", {
+			apiFlavor: "chat",
+			baseURL: "https://api.test/v1",
+			model: "gpt-test",
+			messages: 1,
+			tools: false,
+			images: 0,
+		});
+		expect(JSON.stringify(debug.mock.calls)).not.toContain("external-secret");
+		expect(JSON.stringify(debug.mock.calls)).not.toContain("password");
+		expect(oai.ctorArgs.at(-1)).toMatchObject({ baseURL });
+		expect(JSON.stringify(createParams(0).messages)).toContain("sensitive material");
+	} finally {
+		binding.dispose();
+	}
+});
+
+it("额外参数的日志诊断使用平实文字，解析和请求回退保持", async () => {
+	const { gen, warn } = makeGen({ provider: "custom", extraParams: "[]" });
+	oai.create.mockResolvedValue(msgResp("ok"));
+	await gen.comment("one");
+	await gen.comment("two");
+	expect(warn).toHaveBeenCalledExactlyOnceWith("AI额外请求参数无效，忽略本次额外参数", {
+		code: "invalid",
+		message: '额外请求参数必须是一个 JSON 对象,比如 {"top_k": 40}',
+	});
+	expect(oai.create).toHaveBeenCalledTimes(2);
 });
