@@ -166,7 +166,7 @@ const editFile = () => serverText("service.config.settings-problems.text.20");
 /**
  * 单家的怎么修:别家照常用、面板上照常改(写口 `ai.providers` 的别家照存,见 store-invalid-settings 的 N3);
  * 密钥还在、改好文件重启它就回来(N4);面板上看不到它、新加同 id 的会被拒收(N11);
- * 在用的正是它时 AI 先停着(引擎读不到那一家,按「没配齐」停,不换家)。
+ * 在用的正是它时 AI 先停着(生成器读不到那一家,按「没配齐」停,不换家)。
  */
 function instancesRemedy(count: number, those: string): string {
 	const pron =

@@ -150,10 +150,8 @@ export interface IntegrationContext {
 /**
  * 订阅变更操作。CRUD 产生的 diff 列表，随 subscription-changed 事件携带。
  *
- * `remove` 带着**被删掉的那一整条**。下游引擎（DynamicPoller / LiveEngine）按 B 站 UID
- * 索引 listener / poll target，得拿到 uid 才清得掉资源 —— 但拓展订阅没有 uid(ADR-0019
- * 决策 9),所以这里不再单拎一个 `uid: string`:那样拓展订阅只能填个空串,下游照样拿它
- * 去清,编译器一声不吭。带整条订阅,消费方按 `kind` 收窄之后才读得到 uid。
+ * `remove` 带着被删掉的整条订阅：消费方按订阅 id 清理核心状态，来源登记表按身份
+ * 更新各来源的名单。所有来源共用 `{ sourceKey, externalId }`，核心不读取平台用户号。
  */
 export type SubscriptionOp =
 	| { kind: "add"; sub: Subscription }
@@ -212,7 +210,7 @@ export interface BusEvents {
 	 * 头像 / 粉丝数)真变了的订阅 id。**按窗口合并过**:拓展起来时可能一口气报一百条资料,一阵只发一次。
 	 *
 	 * 独立端转成 `state` WS channel 的同名帧,面板据此重取订阅列表。🔴 **不发 `config-changed
-	 * "subscriptions"`**:那一档会重建路由表、通知拓展「名下订阅变了」、让引擎 reconcile —— 资料缓存
+	 * "subscriptions"`**:那一档会重建路由表、通知拓展「名下订阅变了」、让推送链路 reconcile —— 资料缓存
 	 * 不是配置,那些全是白干。
 	 */
 	"subscription-profiles-changed": { subscriptionIds: string[] };
@@ -419,7 +417,7 @@ export interface TargetDispatcher {
 	 */
 	supportsAtAll(targetId: string): boolean;
 	/**
-	 * 带外的连接探测入口,给 `/api/connections/:id/probe` 与引擎的周期健康探测用。
+	 * 带外的连接探测入口,给 `/api/connections/:id/probe` 与连接探测部件的周期健康探测用。
 	 */
 	probeConnection(connectionId: string): Promise<ProbeResult>;
 	/**

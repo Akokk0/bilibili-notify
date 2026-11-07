@@ -9,7 +9,7 @@
  *
  * - {@link collectAiSecrets} 收集要存进加密袋的
  * - {@link stripAiSecrets} 落盘前把明文抠掉(`config/settings/core.json` **不加密**)
- * - {@link applyAiSecrets} 读回时从袋子灌回内存,引擎照旧读得到
+ * - {@link applyAiSecrets} 读回时从袋子灌回内存,AI 生成器照旧读得到
  *
  * 三者必须互为逆运算:`apply(strip(g), collect(g))` 恒等于 `g`。破了这条就意味着
  * 「重启一次配置就掉一部分」,而这种故障看着像「配置丢了」,极难溯源。
@@ -80,11 +80,11 @@ export function collectAiSecrets(g: GlobalSettings): Record<string, string> {
  * 落盘前把所有 AI 密钥抠成空串。
  *
  * 抠成空串而不是 `delete` 掉那个键:globals 必须保持 zod parse 后的**规范形态**
- * (键序敏感) —— 引擎的 config-changed diff 是拿 `JSON.stringify` 逐 section 比
+ * (键序敏感) —— 设置变更处理的 config-changed diff 是拿 `JSON.stringify` 逐 section 比
  * 相等的,少一个键再补回去会让它落到对象末尾,键序偏移,于是重启后第一次改任何
  * 设置都会被误判成「AI 配置变了」而白热重载一次。
  *
- * 不改动传进来的那份 —— 内存里的明文还要继续给引擎用。
+ * 不改动传进来的那份 —— 内存里的明文还要继续给 AI 生成器用。
  */
 export function stripAiSecrets(g: GlobalSettings): GlobalSettings {
 	return mapAiSecrets(

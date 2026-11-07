@@ -119,7 +119,7 @@ function makeRoastGenerator(
 }
 
 /**
- * `engines.roast` 开着才给 override 盖 webSearch 章。关着时**原样递回 base**
+ * `scenes.roast` 开着才给 override 盖 webSearch 章。关着时**原样递回 base**
  * (可能是 undefined)—— 「没覆盖递 undefined 而不是空对象」是被测试钉住的契约,
  * 空对象会让「有没有 override」这个判断失真。
  */
@@ -156,7 +156,7 @@ export async function generateBoardRoast(
 	const generator = makeRoastGenerator(deps, aiSettings, builtinPersonasOf(globals));
 	let reply: string;
 	try {
-		// `comment()` 而不是 `chat()` —— 工具默认不挂,只有 engines.roast 开着时才
+		// `comment()` 而不是 `chat()` —— 工具默认不挂,只有 scenes.roast 开着时才
 		// 带上 web_search(见 roastSearchOverride)。chat() 会挂上整套 B 站工具与工具
 		// 铁律,模型可能中途发起 tool call 而不是回 JSON(详见 stats-roast-call.test.ts)。
 		reply = await generator.comment(

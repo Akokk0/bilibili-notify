@@ -5,7 +5,7 @@ import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import { t as serverText } from "../i18n/index.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
-import { enginesNotReadyMessage, respondFailure } from "./respond-failure.js";
+import { pipelineNotReadyMessage, respondFailure } from "./respond-failure.js";
 import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 
@@ -130,7 +130,7 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 
 		const { kind, text } = parsed.data;
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
 
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
 		if (!target)

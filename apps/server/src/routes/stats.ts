@@ -34,7 +34,7 @@ import {
 	generateSoloRoast,
 	type OverviewFetcher,
 } from "../stats/roast-generate.js";
-import { enginesNotReadyMessage, respondFailure } from "./respond-failure.js";
+import { pipelineNotReadyMessage, respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -401,7 +401,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	 */
 	app.post("/roast/push", async (c) => {
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
 
 		const parsed = RoastPushSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
@@ -459,7 +459,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	 */
 	async function runNow(c: Context, subscriptionId?: string): Promise<Response> {
 		if (!options.runRoastNow) {
-			return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
+			return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
 		}
 		return c.json<StatsRoastRunNowResponse>(
 			ok({ outcome: await options.runRoastNow(subscriptionId) }),

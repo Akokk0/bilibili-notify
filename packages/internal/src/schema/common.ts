@@ -185,7 +185,7 @@ export const MembershipDefaultEntrySchema = z.object({
 /**
  * 一个会员体系的文案(㉓d,原先 B 站专属的 `guardBuy`)。`templates.membership` 是体系 id → 这一份。
  *
- * - `enabled`:用不用自定义文案与图片。`false` 时引擎走内置那条路(官方图 / 出卡),推不推由特性开关管。默认 false。
+ * - `enabled`:用不用自定义文案与图片。`false` 时装配层走内置那条路(官方图 / 出卡),推不推由特性开关管。默认 false。
  * - `default`:体系默认。每一档没单独配的格都用它;图片也空时回落该档自己的徽章。
  * - `tiers`:按档的 key 存只改过的那几档与那几格(取法见 `membershipTemplateOf`)。`custom` 体系(档位由主播自定)也存在这里,
  *   key 就是档名。
@@ -362,7 +362,7 @@ const AiSettingsObjectSchema = z.object({
 		)
 		.default({}),
 	/**
-	 * AI 聊天页自己的思考**等级**,独立于实例桶里的那两格 —— 那两格是引擎的
+	 * AI 聊天页自己的思考**等级**,独立于实例桶里的那两格 —— 那两格供自动生成使用
 	 * (动态点评 / 直播总结 / 锐评),聊天页曾经直接改它,于是在对话里拨一下,
 	 * 整个女仆的点评行为跟着变。
 	 *
@@ -387,7 +387,7 @@ const AiSettingsObjectSchema = z.object({
 	 * 重敲 key」的纪律)。落盘前会被抠进加密袋,袋键 `search:<backend>`,见
 	 * `apps/server/src/config/ai-secrets.ts`。
 	 *
-	 * `engines` 三个开关**默认全关**:搜索按次付费,自动路径(点评/总结)一旦
+	 * `scenes` 三个开关**默认全关**:搜索按次付费,自动路径(点评/总结)一旦
 	 * 开了,每条推送都可能烧额度,必须主人亲手点亮。聊天页不在此列 —— 那颗
 	 * 胶囊是会话级的,不落盘。
 	 */

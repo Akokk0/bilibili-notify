@@ -4,7 +4,7 @@ import { errorMessageOf } from "../../util/error-message";
 import { renderLiveSummary } from "../live-text";
 
 /**
- * Threshold below which the engine refuses to generate a live summary.
+ * Threshold below which the requester refuses to generate a live summary.
  * Mirrors the original live-service heuristic.
  */
 export const LIVE_SUMMARY_MIN_SENDERS = 5;
@@ -37,7 +37,7 @@ export class LiveSummaryRequester {
 		/**
 		 * 联网搜索开关查询。true 时给这一次 comment() 的 override 盖 webSearch 章;
 		 * 执行器在不在是生成器的事。Adapter 用
-		 * `() => globals.ai.search.engines.live` 填充,缺省 () => false ——
+		 * `() => globals.ai.search.scenes.live` 填充,缺省 () => false ——
 		 * 搜索按次付费,方向要紧:漏接的 adapter 拿到的是不烧钱的那侧。
 		 */
 		isWebSearchEnabled?: () => boolean;
@@ -113,7 +113,7 @@ export class LiveSummaryRequester {
 			`热词TOP10：${top10Words.join("、")}`,
 			`弹幕排行TOP5：${topSenders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
 		].join("，");
-		// 联网搜索是引擎级开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
+		// 联网搜索是场景开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
 		const override = this.isWebSearchEnabled() ? { ...aiOverride, webSearch: true } : aiOverride;
 		const ai = (async (): Promise<string | undefined> => {
 			try {

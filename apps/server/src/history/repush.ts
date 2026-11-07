@@ -57,7 +57,7 @@ export function unsentIndices(messages: readonly HistoryMessage[]): number[] {
 
 /**
  * 闸的入参。**这里没有的东西就是这个闸不判的东西** —— 全局静音、免扰时段、特性总开关
- * 一把钥匙都没给它(决策 11:这是主人此刻按下的显式动作,不是引擎自动推送),目标
+ * 一把钥匙都没给它(决策 11:这是主人此刻按下的显式动作,不是推送链路的自动任务),目标
  * 当下可不可达也没给(决策 12:那正是重推要解决的,交给发送层的退避重试)。
  */
 export interface RepushGateOptions {

@@ -162,7 +162,7 @@ export function createDashboardSkinsRoute(deps: {
 		if (!(await skinStore.get(id))) return skinNotFound(c);
 		const generator = deps.commentary?.() ?? null;
 		if (!generator) {
-			// `commentary` 回 null 分不出「没配模型」与「引擎还没挂上」;那句话本来就是叫主人去接模型,按没配。
+			// `commentary` 回 null 分不出「没配模型」与「推送链路还没就绪」;那句话本来就是叫主人去接模型,按没配。
 			return respondFailure(
 				c,
 				fail("not_configured", serverText("service.routes.dashboard-skins.text.7")),

@@ -10,7 +10,7 @@ import { ConfigValidationError } from "../config/store.js";
 import { t as serverText } from "../i18n/index.js";
 import { maskedCellsFailure } from "./masked-cells.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
-import { enginesNotReadyMessage, respondFailure } from "./respond-failure.js";
+import { pipelineNotReadyMessage, respondFailure } from "./respond-failure.js";
 import { connectionView } from "./secret-view.js";
 import { testResultOfProbe } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
@@ -76,7 +76,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			);
 		}
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
 		const result = await pipeline.listAddressCandidates(
 			c.req.param("id"),
 			scope.data,
@@ -169,7 +169,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		if (!connection)
 			return respondFailure(c, fail("not_found", serverText("service.routes.connections.text.7")));
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
 		// 探测结果写进连接的 probeState、问题表的清理,都由推送链路的手动探测一并做了
 		// (面板的状态圆点不必等一分钟一轮的周期探测)。回给面板的形状在 {@link testResultOfProbe} 里另翻。
 		const result = await pipeline.probeConnection(id);

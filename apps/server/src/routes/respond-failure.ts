@@ -68,8 +68,8 @@ export function errorBodyOf(failure: Failure): ErrorResponse {
 /** 全局出错处理回给客户端的那一句:原话只进日志,不外泄。 */
 export const unhandledErrorMessage = () => serverText("service.routes.respond-failure.text.1");
 
-/** 引擎还没挂上(启动中 / 没登录)时,要引擎才做得了的接口回的那一句。 */
-export const enginesNotReadyMessage = () => serverText("service.routes.respond-failure.text.2");
+/** 推送链路尚未就绪时，依赖它的接口回的固定提示。 */
+export const pipelineNotReadyMessage = () => serverText("service.routes.respond-failure.text.2");
 
 /** `notFound` 回的那一句。 */
 export const routeNotFoundMessage = () => serverText("service.routes.respond-failure.text.3");

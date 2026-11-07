@@ -37,7 +37,7 @@ export function checkApprovalReachable(args: {
 	targets: readonly PushTarget[];
 	/** 主人目标挂着的那条连接还在不在,看这张名单。 */
 	connections: readonly Pick<Connection, "id">[];
-	/** 一条连接眼下的能力(适配器的回答);取不到(引擎还没起来、没有适配器)回 `undefined`,按「还不知道」算。 */
+	/** 一条连接眼下的能力(适配器的回答);取不到(推送链路还没就绪、没有适配器)回 `undefined`,按「还不知道」算。 */
 	capabilitiesOf: (connectionId: string) => ConnectionCapabilities | undefined;
 }): ApprovalReachability {
 	if (!args.approvalOn) return ok();

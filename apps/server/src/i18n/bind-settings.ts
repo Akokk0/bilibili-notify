@@ -4,7 +4,7 @@ import type { ConfigStore } from "../config/store.js";
 
 /**
  * 把核心设置里的语言与口吻接到字典 store 上:当场推一次,之后核心设置一变就再推。
- * 入口在配置读完之后立刻调,所以登录系统与引擎起步时说的话已经是设置里的语言。
+ * 入口在配置读完之后立刻调,所以登录系统与推送链路启动时说的话已经是设置里的语言。
  *
  * 收的是 store 的 `set` 而不是 store 本身:入口写 `(change) => i18n.set(change)`,
  * 取字调用的守卫(`scripts/__tests__/i18n-call-sites.test.mjs`)只认 `i18n.set(…)` 这种用法,不许把单例当值递。

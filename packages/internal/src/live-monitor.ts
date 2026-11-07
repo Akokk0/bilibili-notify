@@ -1,7 +1,7 @@
 /**
  * 「这条订阅要不要监听直播」的唯一判定(ADR-0027 决策 1)。
  *
- * 零依赖子路径 `@bilibili-notify/internal/live-monitor`:服务端(直播引擎开监听、统计记不记、首页「直播」那一格)
+ * 零依赖子路径 `@bilibili-notify/internal/live-monitor`:服务端(来源按名单开监听、统计记不记、首页「直播」那一格)
  * 与面板(「没开直播推送,不会被监听」那句)读的是同一份,所以**只许有 type import**
  * (`scripts/__tests__/internal-package.test.mjs` 钉着)。
  */

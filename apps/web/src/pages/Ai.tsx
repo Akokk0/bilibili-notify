@@ -278,9 +278,9 @@ export default function Ai() {
 		setDraft((d) => (d ? { ...d, [k]: v } : d));
 	}
 	/**
-	 * 改联网搜索段的若干项 —— backend 指针 / keys / engines 都走这一个口
+	 * 改联网搜索段的若干项 —— backend 指针 / keys / scenes 都走这一个口
 	 * (曾经三个 setter 各抄一遍嵌套 spread)。
-	 * keys / engines 是嵌套袋:调用方只给改动的那几格,这里在**函数式更新**里
+	 * keys / scenes 是嵌套袋:调用方只给改动的那几格,这里在**函数式更新**里
 	 * 补上其余的 —— 漏一层内 spread 就是静默丢兄弟键(换后端丢另一家的 key)。
 	 */
 	function setSearch(delta: {

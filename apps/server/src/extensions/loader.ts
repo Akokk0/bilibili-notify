@@ -231,11 +231,11 @@ export interface LoadExtensionsOptions {
 	/** 订阅「连接配置动过了」。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
 	/**
-	 * 把拓展的订阅源登进来源登记表(引擎的 `registerSource`)。登记是异步的:装载器在 `activate` 之后等它落定,
+	 * 把拓展的订阅源登进来源登记表(推送链路的 `registerSource`)。登记是异步的:装载器在 `activate` 之后等它落定,
 	 * `start` 抛了就是这次加载失败。不给就是没接来源登记表,拓展调 `ctx.registerSource` 会抛。
 	 */
 	registerSource?: CreateExtensionContextOptions["registerSource"];
-	/** 事件里没带作者名时补的名字(引擎的 `fallbackCreatorName`),递给每个拓展的 ctx。 */
+	/** 事件里没带作者名时补的名字(推送链路的 `fallbackCreatorName`),递给每个拓展的 ctx。 */
 	fallbackCreatorName?: CreateExtensionContextOptions["fallbackCreatorName"];
 	/** 图库读口(`runtime.imageStore`),递给每个拓展的 ctx:订阅源作品图补宽高与动图标记。 */
 	images?: CreateExtensionContextOptions["images"];

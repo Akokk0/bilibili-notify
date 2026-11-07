@@ -77,8 +77,7 @@ export const ModuleLogLevelsSchema = z.record(
 export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
 
 /**
- * 资料刷新(粉丝数轮询,独立端 FansPoller)cron 默认值。粉丝曲线要不了动态那样的 2min
- * 精度,独立成一档更慢的节奏 —— 每 UP 一个请求,拉长间隔直接降低风控面。
+ * 资料刷新 cron 默认值。按订阅向来源请求现成资料，采用较慢的独立节奏。
  * 对应顶层 `profileRefreshCron`。
  */
 export const DEFAULT_PROFILE_REFRESH_CRON = "*/10 * * * *";
@@ -430,7 +429,7 @@ export function isExtensionEnabled(
 
 export const DEFAULT_AI = {
 	enabled: false,
-	// 全新安装一份实例都没添加 —— 设置页左栏是空的,引擎按「还没配齐」停用。
+	// 全新安装一份实例都没添加 —— 设置页左栏是空的,AI 生成按「还没配齐」停用。
 	// activeProfile 指针先悬空,主人添加第一份时会跟着落过去。
 	activeProfile: "",
 	providers: {},

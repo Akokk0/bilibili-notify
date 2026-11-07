@@ -185,7 +185,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					logger: deps.serviceCtx.forSubsystem("dynamic", BILIBILI_SOURCE_KEY).logger,
 				});
 			} catch (err) {
-				// 开机失败(与从前造动态引擎抛了的后果一样):不留半个来源,上下文先收再抛。
+				// 开机失败(来源初始化未完成):不留半个来源,上下文先收再抛。
 				source = undefined;
 				registering = false;
 				biliContext = undefined;

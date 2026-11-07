@@ -45,7 +45,7 @@ export interface CreateRoastSchedulerOptions {
 	fetchOverview: OverviewFetcher;
 	/**
 	 * 私聊主人。**失败只该被吞掉** —— 通知是锦上添花,发不出去不能把这一轮的
-	 * 生成结果或后续步骤一起带走(动态引擎那边刚为同一个道理修过一处)。
+	 * 生成结果或后续步骤一起带走(通知失败不能中断业务本身)。
 	 */
 	tellMaster: (text: string) => Promise<void>;
 	/**

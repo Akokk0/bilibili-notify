@@ -48,7 +48,7 @@ export interface PushImageGroup {
 export type PushSegment = PushImagePart | PushTextPart | PushImageGroup;
 
 /**
- * 一次作品推送里的一个锚点 —— 推送层 `PushAnchor` 在引擎这一侧的样子:本体(主卡,可能按消息
+ * 一次作品推送里的一个锚点 —— 推送层 `PushAnchor` 在作品装配这一侧的样子:本体(主卡,可能按消息
  * 版式分成几条),或一个附加项(图集)。锚点按先后发;附加项永不带 @全体,所以一条图文动态
  * 不会在主卡和图集各 @ 一次。
  */

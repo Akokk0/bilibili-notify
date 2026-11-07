@@ -52,7 +52,7 @@ function safeRegexTest(pattern: string, text: string, logger?: Logger): boolean 
 	// 只挡 `(X+)+`,漏 `(a|a)*c`/`(.|.)*c`(35 字符冻 ~60s)—— 单源后不再分叉。
 	const check = checkUserRegex(pattern);
 	if (!check.ok) {
-		// logger 缺省 = silent(纯函数语义);引擎层应传入 ctx.logger 让 warn 走标准日志通道。
+		// logger 缺省 = silent(纯函数语义);装配层应传入 ctx.logger 让 warn 走标准日志通道。
 		logger?.warn(`[post] 拒绝执行正则(${check.message}):"${pattern.slice(0, 80)}"`);
 		return false;
 	}

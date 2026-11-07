@@ -79,7 +79,7 @@ export const extrasRecord = <T>(make: (k: ExtraKey) => T): Record<ExtraKey, T> =
  * 显示文案,改一次措辞守卫就静默失效。
  *
  * 表里只放代码真读的这几样。**排在本体前还是后、等不等它算完,归各自的发送路**
- * (@全体 在推送层排本体前且不 await;词云 / 总结是直播引擎算完后另发的两次广播)——
+ * (@全体 在推送层排本体前且不 await;词云 / 总结是直播回顾装配层算完后另发的两次广播)——
  * 见 ADR-0016 决策 4。抄进这张表只会变成没人读的死数据。
  */
 export const PUSH_EXTRAS: Record<

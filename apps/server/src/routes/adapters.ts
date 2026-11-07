@@ -32,7 +32,7 @@ export interface AdaptersRouteOptions {
  * - `POST /:adapterKey/auth` 发起;`GET /:adapterKey/auth/:taskId` 读状态(不带草稿、不清草稿);
  *   `POST /:adapterKey/auth/:taskId/draft` 取走草稿(取走即清,响应头 `no-store`)。
  *
- * 路由直接问适配器登记表,不经派发器与引擎装配 —— 发起时还没有连接,只有适配器键。任务表住适配器里,
+ * 路由直接问适配器登记表,不经派发器与推送链路装配 —— 发起时还没有连接,只有适配器键。任务表住适配器里,
  * 这里不持有任何状态。⚠️ 回包**逐格挑**:不展开适配器的返回值,也不把它整个打进日志
  * (草稿里有密钥)。
  *

@@ -1170,7 +1170,7 @@ export default function Cards() {
 						))}
 
 					{/* 直播封面 —— 仅「直播开播」tab。全局作用域改 `defaults.cards.liveCoverImageIds`
-					    (engines 的全局默认封面即读它);per-UP 单独覆盖走 `overrides.cards.liveCoverImageIds`。 */}
+					    (推送链路的全局默认封面即读它);per-UP 单独覆盖走 `overrides.cards.liveCoverImageIds`。 */}
 					{!isGlobalTab &&
 						kind === "live" &&
 						(isGlobalScope ? (

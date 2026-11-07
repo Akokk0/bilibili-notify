@@ -54,7 +54,7 @@ export interface BuiltinAdapters {
 
 /**
  * 内置适配器登记即启动:每个适配器各有一份集成上下文,包上「自己的连接」后交给登记表 `start`。
- * 启动时刻就是今天「引擎开机对账」的那一刻 —— 调用方在 `createPipelineRuntime` 之前调它。
+ * 调用方在 `createPipelineRuntime` 之前完成登记与启动。
  *
  * 异步:`get` 是同步的,所以每个适配器的存储要先读盘,读完才登记。
  */

@@ -185,7 +185,7 @@ interface CallToolOptions {
 	tools: OpenAI.ChatCompletionFunctionTool[];
 	/**
 	 * 名字不是 `web_search` 的工具调用走这里执行。可缺席:只挂了 web_search
-	 * 的调用方(引擎的 comment 路)没有别的工具可执行,走到这个口只可能是模型
+	 * 的调用方(自动点评的 comment 路)没有别的工具可执行,走到这个口只可能是模型
 	 * 编了个不存在的工具名 —— execToolCall 统一回「未知工具」的失败资料,
 	 * 不必每个调用方自造 throw 桩。
 	 */
@@ -321,7 +321,7 @@ export interface CommentaryGeneratorSettings {
 }
 
 /**
- * 单次 comment() 调用的运行时覆盖。dynamic / live 引擎在 per-UP 推送上下文里构造
+ * 单次 comment() 调用的运行时覆盖。作品与直播装配层在单条订阅的推送过程中构造
  * 一份只包含「与全局不同」的字段的 override，传给 comment() 后仅对该次调用生效。
  *
  * 未指定的字段都从 CommentaryGenerator.config 取，model 也走同一规则。
@@ -335,14 +335,14 @@ export interface CommentaryCallOverride {
 	model?: string;
 	/**
 	 * 这一次调用的思考开关 / 深度,压过全局配置。dashboard 聊天用它 —— 聊天页的
-	 * 思考设置与引擎(点评 / 总结)分了家,不传则照旧用全局的。方言翻译仍按
+	 * 思考设置与自动生成(点评 / 总结)分了家,不传则照旧用全局的。方言翻译仍按
 	 * 全局 provider 走:override 决定「想不想 / 想多深」,不决定「怎么说」。
 	 */
 	enableThinking?: boolean;
 	thinkingLevel?: ThinkingLevel;
 	/**
-	 * 这一次调用允不允许联网搜索(挂 `web_search` 工具)。引擎路径(点评 / 总结 /
-	 * 锐评)按 `ai.search.engines.*` 的 per-engine 开关传;开了但执行器不在
+	 * 这一次调用允不允许联网搜索(挂 `web_search` 工具)。自动生成路径(点评 / 总结 /
+	 * 锐评)按 `ai.search.scenes.*` 的场景开关传;开了但执行器不在
 	 * (没填 key / 没接 source)时静默不挂,不报错 —— 推送链路不因搜索没配置而断。
 	 */
 	webSearch?: boolean;
@@ -465,7 +465,7 @@ export interface ChatStatelessOptions {
 	 * 模型没开思考 / 网关不吐这个字段时自然一声不响。
 	 */
 	onReasoning?: (text: string) => void;
-	/** 这一次的思考开关 / 深度,压过引擎全局配置。见 {@link CommentaryCallOverride}。 */
+	/** 这一次的思考开关 / 深度,压过生成器的全局设置。见 {@link CommentaryCallOverride}。 */
 	thinking?: { enableThinking: boolean; thinkingLevel: ThinkingLevel };
 	/** 这一次允不允许联网搜索。聊天页那颗胶囊是会话级的,按消息传进来。 */
 	webSearch?: boolean;
@@ -678,7 +678,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		sourceKeys?: readonly string[],
 	): Promise<string> {
 		/**
-		 * 引擎路径的联网搜索:开着且执行器在,才**首次**给这条路挂工具 —— 且工具表
+		 * 自动生成路径的联网搜索:开着且执行器在,才**首次**给这条路挂工具 —— 且工具表
 		 * **只有 web_search**,核心与提供方的只读工具不顺带塞进来(那会静默改变
 		 * 点评的行为面)。
 		 *
@@ -944,7 +944,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/**
-	 * 多轮对话:整段历史由调用方交出来,引擎用完即弃。
+	 * 多轮对话:整段历史由调用方交出来,生成器用完即弃。
 	 *
 	 * 多轮对话**只有这一条路**。生成器自己不存任何历史 —— 历史住在调用方那里
 	 * (dashboard 的会话落在磁盘上的 ConversationStore,重开浏览器记录还在),每一轮
@@ -1050,7 +1050,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			withVisionNote(trimmed, vision),
 			toolOptions,
 			vision.ctx ? undefined : this.mainModelCanSeeImages() ? opts?.imageUrls : undefined,
-			// 只带思考两项的最小 override —— 聊天的思考设置与引擎分了家。
+			// 只带思考两项的最小 override —— 聊天的思考设置与自动生成分了家。
 			opts?.thinking,
 			opts?.onDelta,
 			opts?.onReasoning,
@@ -1631,7 +1631,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			});
 		}
 
-		// override 是 per-call 的(dashboard 聊天的思考设置与引擎分了家),没给就用全局。
+		// override 是 per-call 的(dashboard 聊天的思考设置与自动生成分了家),没给就用全局。
 		const thinkingParams = buildProviderParams({
 			provider: this.config.provider,
 			enableThinking: override?.enableThinking ?? this.config.enableThinking,

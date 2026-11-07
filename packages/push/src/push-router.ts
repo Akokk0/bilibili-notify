@@ -246,7 +246,7 @@ export interface PushRouterOptions {
  *
  * The standalone runtime's push router. Routing comes from
  * store.findById(subscriptionId)?.routing[feature] → targetId[] → dispatcher.send(targetId, payload).
- * 键是订阅自己的 id,不是 B 站 uid(ADR-0019 决策 50):B 站引擎那条边在宿主里先把 uid 翻成 id。
+ * 键是订阅 id；来源身份由宿主映射为订阅，路由层不读取平台用户号(ADR-0019 决策 50)。
  * The old pushArrMap, broadcastToTargets, sendToMaster/sendPrivateMsg/sendErrorMsg are gone —— 主人通知只剩 notifyMaster。
  */
 export class PushRouter {
@@ -350,7 +350,7 @@ export class PushRouter {
 
 	/**
 	 * 发一次推送(见 {@link Push})。订阅按**它自己的 id** 找(ADR-0019 决策 50):同一个 UP 配了
-	 * 两条订阅时各推各的路由,拓展订阅(没有 uid)也找得到。B 站引擎说的是 uid,翻译在宿主那条边上做。
+	 * 两条订阅时各走各的路由；所有来源都由宿主按身份绑定到订阅 id。
 	 *
 	 * **交进来那一刻判一次**,裁决管整次推送,之后的锚点不再看这四样({@link judgePush}):
 	 * - 没有订阅记录、特性总开关关着 → 整次静默丢掉,不发、不回调(这些不是「无目标」);

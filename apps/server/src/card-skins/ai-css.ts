@@ -48,7 +48,7 @@ export interface CardCssAiTarget {
 
 /**
  * 生成器的最小面。路由那头接的是 `generateRaw(system, user, undefined, stream)`;
- * 单独立一个形状是为了测试不必造一整台引擎。
+ * 单独立一个形状是为了测试不必装配整条推送链路。
  */
 export type CardCssAiGenerate = (
 	system: string,

@@ -5,7 +5,7 @@ import { t as serverText } from "../i18n/index.js";
 /**
  * 「试一次、回报结果」的接口(测试推送、测试连通)回给面板的体:`Result<{ latencyMs }>`(ADR-0026)。
  *
- * 引擎那头的 `DeliveryResult` / `ProbeResult` 已经是同一种结果形状,失败那一支(标准码、原话、
+ * 投递与探测入口的 `DeliveryResult` / `ProbeResult` 已经是同一种结果形状,失败那一支(标准码、原话、
  * `upstreamCode`)原样过线;这里只做两件事:成功那一支只留耗时(截流标记 `isSynthetic` 不过线),
  * 以及给原话是空的失败补一句能读的话。
  */

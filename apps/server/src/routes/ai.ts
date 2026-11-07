@@ -53,8 +53,8 @@ import {
 import type { SkinStore } from "../skins/store.js";
 import { maskedCellsFailure } from "./masked-cells.js";
 import {
-	enginesNotReadyMessage,
 	errorBodyOf,
+	pipelineNotReadyMessage,
 	respondFailure,
 	unhandledErrorMessage,
 } from "./respond-failure.js";
@@ -151,7 +151,7 @@ export function createAiRoute(
 		const { targetId, message, ai } = parsed.data;
 
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
 		if (!target)
 			return respondFailure(c, fail("not_found", serverText("service.routes.ai.text.7")));
@@ -272,7 +272,7 @@ export function createAiRoute(
 	 */
 	app.post("/conversations/:id/title", async (c) => {
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
 		const commentary = pipeline.commentary;
 		if (!commentary) return respondFailure(c, fail("not_configured", aiKeyMissingMessage()));
 
@@ -343,7 +343,7 @@ export function createAiRoute(
 		const message = parsed.data.message.trim();
 
 		const pipeline = deps.runtime.pipeline;
-		if (!pipeline) return respondFailure(c, fail("unavailable", enginesNotReadyMessage()));
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
 		if (!deps.store.getGlobals().ai.enabled) {
 			return respondFailure(c, fail("not_configured", aiDisabledMessage()));
 		}

@@ -120,7 +120,7 @@ export function createCommentary(deps: CommentaryDeps): CommentaryGenerator | nu
 			fetchProfile: deps.fetchProfile,
 			// 女仆查直播状态统一从在播表答;来源没在跑时 BN 手里没有它的在播状态。
 			liveNow: liveNowReader(deps),
-			// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比引擎晚一步建)。
+			// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比推送链路晚一步建)。
 			...(deps.creatorStats ? { stats: deps.creatorStats } : {}),
 			// 每次请求现取:来源随上下文登记与撤销。
 			providedTools: () => deps.aiToolProviders.tools(),

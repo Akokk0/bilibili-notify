@@ -279,7 +279,7 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 				const s = probe();
 				if (s) extra.push(s);
 			} catch {
-				// 引擎可能还没起来 / 已经拆了,不是内存自检该管的事。
+				// 推送链路可能还没就绪 / 已经收摊,不是内存自检该管的事。
 			}
 		}
 		return extra.length > 0 ? ` | ${extra.join(" | ")}` : "";

@@ -892,7 +892,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		});
 		runtime.serviceCtx.onDispose(() => reportDiscrepancies.dispose(), "stop");
 
-		// 内置适配器登记即启动 —— 就在 `createPipelineRuntime` 之前,启动时刻与从前引擎开机对账那一刻一致。
+		// 内置适配器登记即启动 —— 就在 `createPipelineRuntime` 之前,登记时就启动，不等推送链路创建。
 		// 关停钩子也登记在推送链路之前:同一段里后登记的先跑,推送链路先收、适配器后停。
 		const builtinAdapters = await builtins.registerAdapters();
 		runtime.serviceCtx.onDispose(() => builtinAdapters.dispose(), "stop");
