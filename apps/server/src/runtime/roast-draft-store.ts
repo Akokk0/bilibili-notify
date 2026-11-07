@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createSerialQueue, type Logger } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
+import { logText } from "../i18n/index.js";
 import { dataPath } from "./roots.js";
 
 /**
@@ -101,7 +102,7 @@ export function createRoastDraftStore(opts: CreateRoastDraftStoreOptions): Roast
 		try {
 			await atomicWriteJson(file, records);
 		} catch (err) {
-			opts.logger.warn(`[roast-draft] 落盘失败: ${String(err)}`);
+			opts.logger.warn(logText("log.draft.persistFailed"), { error: err });
 			throw err;
 		}
 	}
@@ -185,13 +186,13 @@ export function createRoastDraftStore(opts: CreateRoastDraftStoreOptions): Roast
 				if (Array.isArray(parsed)) {
 					records = parsed as RoastDraft[];
 				} else {
-					opts.logger.warn("[roast-draft] 文件不是数组,当空的起");
+					opts.logger.warn(logText("log.draft.invalid"));
 				}
 			} catch (err) {
 				// 盘上文件坏了也得能起 —— 草稿丢了顶多少发一份周报,
 				// 起不来是整个服务没了。
 				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[roast-draft] 读盘失败,当空的起: ${String(err)}`);
+					opts.logger.warn(logText("log.draft.loadFailed"), { error: err });
 				}
 			}
 		},

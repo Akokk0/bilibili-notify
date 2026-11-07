@@ -86,7 +86,7 @@ describe("compact", () => {
 			'{"sampledAt":"2026-06-29T10:00:00.000Z","followers":200}\n',
 		);
 		expect(log.warn).toHaveBeenCalledTimes(1);
-		expect(String(log.warn.mock.calls[0]?.[0])).toMatch(/u1.*3/);
+		expect(log.warn).toHaveBeenCalledWith("粉丝样本压缩时丢弃损坏行", { key: "u1", badLines: 3 });
 	});
 
 	it("文件不在:回全 0、不建文件、不告警", async () => {

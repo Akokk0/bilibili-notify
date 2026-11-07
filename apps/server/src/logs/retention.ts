@@ -1,5 +1,6 @@
 import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
+import { logText } from "../i18n/index.js";
 import { deleteLogDayFile, listLogDayFiles } from "./store.js";
 
 /**
@@ -26,13 +27,13 @@ export function startLogRetention(opts: LogRetentionRunnerOptions): Disposable {
 	const handle = opts.serviceCtx.setInterval(() => {
 		opts.serviceCtx.track(
 			runOnce(opts).catch((err) => {
-				opts.logger.warn(`[log] retention pass failed: ${String(err)}`);
+				opts.logger.warn(logText("log.archive.retentionFailed"), { stage: "interval", error: err });
 			}),
 		);
 	}, interval);
 	opts.serviceCtx.track(
 		runOnce(opts).catch((err) => {
-			opts.logger.warn(`[log] initial retention pass failed: ${String(err)}`);
+			opts.logger.warn(logText("log.archive.retentionFailed"), { stage: "startup", error: err });
 		}),
 	);
 	return handle;
@@ -53,11 +54,11 @@ async function runOnce(opts: LogRetentionRunnerOptions): Promise<void> {
 				await deleteLogDayFile(opts.hostRoot, f);
 				deleted++;
 			} catch (err) {
-				opts.logger.warn(`[log] failed to delete ${f}: ${String(err)}`);
+				opts.logger.warn(logText("log.archive.deleteFailed"), { file: f, error: err });
 			}
 		}
 	}
 	if (deleted > 0) {
-		opts.logger.info(`[log] retention dropped ${deleted} day file(s) older than ${cutoffStr}`);
+		opts.logger.info(logText("log.archive.deleted"), { deleted, cutoff: cutoffStr });
 	}
 }

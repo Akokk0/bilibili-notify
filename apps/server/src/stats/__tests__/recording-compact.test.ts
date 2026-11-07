@@ -93,7 +93,7 @@ describe("store.compactRecording", () => {
 		expect(report).toEqual({ rowsBefore: 1, rowsAfter: 1, badLines: 4, rewritten: true });
 		expect(await readFile(fileOf("u1"), "utf8")).toBe(lines([row("posts", H(10, 29), H(11, 29))]));
 		expect(log.warn).toHaveBeenCalledTimes(1);
-		expect(String(log.warn.mock.calls[0]?.[0])).toMatch(/u1.*4/);
+		expect(log.warn).toHaveBeenCalledWith("统计账本压缩时丢弃损坏行", { key: "u1", badLines: 4 });
 	});
 
 	it("文件不在:回全 0、不建文件、不告警", async () => {

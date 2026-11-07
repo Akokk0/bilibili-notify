@@ -23,6 +23,7 @@ import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
+import { i18n } from "../../i18n/index.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import {
 	createSubscriptionStateStore,
@@ -196,6 +197,28 @@ describe("SubscriptionStateStore.get / getAll — 防御性克隆", () => {
 });
 
 describe("SubscriptionStateStore.load — 损坏输入容忍", () => {
+	it("损坏数据日志跟随当前语言并保留原始异常", async () => {
+		const state = i18n.state();
+		const { mkdir } = await import("node:fs/promises");
+		await mkdir(dirname(file), { recursive: true });
+		await writeFile(file, "{ private-profile", "utf8");
+		try {
+			for (const [locale, message] of [
+				["zh-CN", "订阅运行态读取失败，使用空状态"],
+				["en", "Failed to load subscription state; using empty state"],
+				["ja", "購読状態を読み込めなかったため、空の状態を使用します"],
+				["zh-TW", "訂閱執行狀態讀取失敗，使用空狀態"],
+			] as const) {
+				i18n.set({ locale, voice: "maid" });
+				await make().load();
+				expect(logger.warn).toHaveBeenLastCalledWith(message, { error: expect.any(SyntaxError) });
+			}
+			expect(logger.warn).toHaveBeenCalledTimes(4);
+		} finally {
+			i18n.set({ locale: state.locale, voice: state.voice });
+		}
+	});
+
 	it("文件缺失 → 起始为空,不抛,不告警 ENOENT", async () => {
 		const store = make();
 		await expect(store.load()).resolves.toBeUndefined();

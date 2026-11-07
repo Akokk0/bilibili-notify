@@ -60,7 +60,10 @@ describe("append", () => {
 		await mkdir(join(dataDir, ...FOLLOWERS_DIR, "u1.jsonl"), { recursive: true });
 		await expect(store.append("u1", { sampledAt: T(1), followers: 100 })).resolves.toBeUndefined();
 		expect(logger.warn).toHaveBeenCalledTimes(1);
-		expect(String(logger.warn.mock.calls[0]?.[0])).toContain("[followers-store] append u1 failed");
+		expect(logger.warn).toHaveBeenCalledWith("粉丝样本追加失败", {
+			key: "u1",
+			error: expect.any(Error),
+		});
 	});
 });
 

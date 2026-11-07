@@ -3,6 +3,7 @@ import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
 import { createSerialQueue } from "@bilibili-notify/internal";
 import { appendJsonl } from "@bilibili-notify/storage";
+import { logText } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 
 /**
@@ -97,7 +98,7 @@ export function createUptimeStore(opts: CreateUptimeStoreOptions): UptimeStore {
 				}
 			} catch (err) {
 				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[uptime-store] read ${file} failed: ${String(err)}`);
+					opts.logger.warn(logText("log.uptime.readFailed"), { file, error: err });
 				}
 			}
 			return rows;

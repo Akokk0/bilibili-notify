@@ -590,7 +590,10 @@ describe("会话的模式与人格", () => {
 
 			expect(await store.get("faceless")).toBeNull();
 			expect((await store.list()).map((c) => c.id)).toEqual([real.id]);
-			expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("faceless.json"));
+			expect(logger.warn).toHaveBeenCalledWith("跳过损坏的会话文件", {
+				file: join(dataDir, "ai", "conversations", "faceless.json"),
+				error: expect.any(Error),
+			});
 		},
 	);
 

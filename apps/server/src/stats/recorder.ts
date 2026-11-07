@@ -1,6 +1,7 @@
 import type { Disposable, Logger, MessageBus } from "@bilibili-notify/internal";
 import { HOUR_MS } from "../followers/cutoff.js";
 import type { FollowersStore } from "../followers/store.js";
+import { logText } from "../i18n/index.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import type { RecordingCompactSummary } from "./compaction.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
@@ -141,8 +142,8 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	 * 落盘不挡调用方:bus handler 是同步签名,而这些写入都不在任何关键路径上。统计写失败只该丢一条统计,
 	 * 绝不能把异常冒泡回推送链路。
 	 */
-	const swallow = (what: string) => (err: unknown) =>
-		opts.logger.warn(`[stats-recorder] ${what} failed: ${String(err)}`);
+	const swallow = (operation: string, key: string) => (err: unknown) =>
+		opts.logger.warn(logText("log.stats.operationFailed"), { operation, key, error: err });
 
 	/**
 	 * 每个键一队:这个键上一条写入落地了才开始下一条。
@@ -153,7 +154,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	 */
 	const tails = new Map<string, Promise<void>>();
 	function enqueue(key: string, what: string, task: () => Promise<unknown>): Promise<void> {
-		const onError = swallow(`${what} ${key}`.trim());
+		const onError = swallow(what, key);
 		const run = (): Promise<void> => {
 			try {
 				return task().then(() => undefined, onError);

@@ -9,7 +9,7 @@ import {
 	type Logger,
 } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
-import { t as conversationText } from "../i18n/index.js";
+import { t as conversationText, logText } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 
 /**
@@ -296,7 +296,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 			return parsed;
 		} catch (err) {
 			// 一条脏记录不该让侧栏整个空掉:跳过它,别的照常列出来。
-			logger.warn(`[ai-chat] 跳过损坏的会话文件 ${file}: ${String(err)}`);
+			logger.warn(logText("log.conversation.invalid"), { file, error: err });
 			return null;
 		}
 	}
@@ -415,7 +415,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				for (const c of others) {
 					if (c.messages.length === 0 && !busy.has(c.id) && Date.parse(c.createdAt) < cutoff) {
 						await unlink(fileOf(c.id)).catch(() => {});
-						logger.debug(`[ai-chat] 回收没发出去的空会话 ${c.id}`);
+						logger.debug(logText("log.conversation.emptyRemoved"), { conversationId: c.id });
 						continue;
 					}
 					alive.push(c);
@@ -428,7 +428,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				for (const stale of alive.slice(Math.max(0, maxConversations - 1))) {
 					if (busy.has(stale.id)) continue;
 					await unlink(fileOf(stale.id)).catch(() => {});
-					logger.debug(`[ai-chat] 会话数超上限,删除最旧的 ${stale.id}`);
+					logger.debug(logText("log.conversation.oldestRemoved"), { conversationId: stale.id });
 				}
 				return displayConversation(conv);
 			});

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
 import { appendJsonl, atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
+import { logText } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 import { compressRecordingEntries } from "./recording-compress.js";
 
@@ -418,7 +419,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			}
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				opts.logger.warn(`[stats-store] read ${file} failed: ${String(err)}`);
+				opts.logger.warn(logText("log.stats.readFailed"), { file, error: err });
 			}
 		}
 	}
@@ -427,7 +428,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 		try {
 			await appendJsonl(file, [value]);
 		} catch (err) {
-			opts.logger.warn(`[stats-store] append ${what} failed: ${String(err)}`);
+			opts.logger.warn(logText("log.stats.appendFailed"), { record: what, error: err });
 		}
 	}
 
@@ -456,7 +457,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			await unlink(file);
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				opts.logger.warn(`[stats-store] drop ${file} failed: ${String(err)}`);
+				opts.logger.warn(logText("log.stats.dropFailed"), { file, error: err });
 			}
 		}
 	}
@@ -650,7 +651,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 				nextLines.length === originalLines.length &&
 				nextLines.every((line, i) => line === originalLines[i]?.trim());
 			if (badLines > 0) {
-				opts.logger.warn(`[stats-store] compact recording ${key} dropped ${badLines} bad line(s)`);
+				opts.logger.warn(logText("log.stats.badLines"), { key, badLines });
 			}
 			if (!same) {
 				await atomicWriteFile(

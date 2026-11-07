@@ -485,9 +485,10 @@ describe("StatsStore — 「在记」小账(ADR-0027 决策 13)", () => {
 		await mkdir(join(dataDir, "stats", "recording", "s9.jsonl"), { recursive: true });
 		await expect(store.appendRecording("s9", row("posts", 1, 2))).resolves.toBeUndefined();
 		expect(logger.warn).toHaveBeenCalledTimes(1);
-		expect(String(logger.warn.mock.calls[0]?.[0])).toContain(
-			"[stats-store] append recording s9 failed",
-		);
+		expect(logger.warn).toHaveBeenCalledWith("统计数据追加失败", {
+			record: "recording s9",
+			error: expect.any(Error),
+		});
 	});
 
 	it("没有文件 → 空;坏行、不认的项、倒置或空的区间跳过", async () => {

@@ -7,6 +7,7 @@ import {
 } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import type { ConfigStore } from "../config/store.js";
+import { logText } from "../i18n/index.js";
 import { dataPath } from "./roots.js";
 
 /**
@@ -116,7 +117,7 @@ export function createSubscriptionStateStore(
 		try {
 			await atomicWriteJson(file, records);
 		} catch (err) {
-			opts.logger.warn(`[subscription-state] persist failed: ${String(err)}`);
+			opts.logger.warn(logText("log.state.persistFailed"), { error: err });
 			throw err;
 		}
 	}
@@ -129,11 +130,11 @@ export function createSubscriptionStateStore(
 				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
 					records = parsed as Record<string, SubscriptionState>;
 				} else {
-					opts.logger.warn("[subscription-state] file is not an object; starting empty");
+					opts.logger.warn(logText("log.state.invalid"));
 				}
 			} catch (err) {
 				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[subscription-state] load failed, starting empty: ${String(err)}`);
+					opts.logger.warn(logText("log.state.loadFailed"), { error: err });
 				}
 			}
 		})();
@@ -184,7 +185,7 @@ export function createSubscriptionStateStore(
 				if (dropped === 0) return;
 				records = next;
 				await persist();
-				opts.logger.debug(`[subscription-state] pruned ${dropped} orphan entr(ies)`);
+				opts.logger.debug(logText("log.state.pruned"), { dropped });
 			});
 		},
 

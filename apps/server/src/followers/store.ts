@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { createSerialQueue, type Logger } from "@bilibili-notify/internal";
 import { appendJsonl, atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
+import { logText } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 import { compressFollowersSamples } from "./compress.js";
 import { expandFollowersSamples } from "./expand.js";
@@ -136,7 +137,7 @@ export function createFollowersStore(opts: CreateFollowersStoreOptions): Followe
 			}
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				opts.logger.warn(`[followers-store] read ${key} failed: ${String(err)}`);
+				opts.logger.warn(logText("log.samples.readFailed"), { key, error: err });
 			}
 		}
 	}
@@ -160,7 +161,7 @@ export function createFollowersStore(opts: CreateFollowersStoreOptions): Followe
 				await unlink(fileFor(key));
 			} catch (err) {
 				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[followers-store] drop ${key} failed: ${String(err)}`);
+					opts.logger.warn(logText("log.samples.dropFailed"), { key, error: err });
 				}
 			}
 		});
@@ -175,7 +176,7 @@ export function createFollowersStore(opts: CreateFollowersStoreOptions): Followe
 				try {
 					await appendJsonl(fileFor(key), [row]);
 				} catch (err) {
-					opts.logger.warn(`[followers-store] append ${key} failed: ${String(err)}`);
+					opts.logger.warn(logText("log.samples.appendFailed"), { key, error: err });
 				}
 			});
 		},
@@ -256,7 +257,7 @@ export function createFollowersStore(opts: CreateFollowersStoreOptions): Followe
 					nextLines.length === originalLines.length &&
 					nextLines.every((line, i) => line === originalLines[i]?.trim());
 				if (badLines > 0) {
-					opts.logger.warn(`[followers-store] compact ${key} dropped ${badLines} bad line(s)`);
+					opts.logger.warn(logText("log.samples.badLines"), { key, badLines });
 				}
 				if (!same) {
 					await atomicWriteFile(

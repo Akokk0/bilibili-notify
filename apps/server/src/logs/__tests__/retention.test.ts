@@ -159,8 +159,9 @@ describe("startLogRetention", () => {
 
 		const [task] = ctx.tracked;
 		await expect(task).resolves.toBeUndefined();
-		expect(logger.warn).toHaveBeenCalledWith(
-			expect.stringContaining("initial retention pass failed"),
-		);
+		expect(logger.warn).toHaveBeenCalledWith("日志保留期清理失败", {
+			stage: "startup",
+			error: expect.any(Error),
+		});
 	});
 });

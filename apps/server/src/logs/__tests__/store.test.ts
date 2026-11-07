@@ -300,7 +300,10 @@ describe("createLogStore — 后台落盘登记进 track", () => {
 
 			await expect(tracked[0]).resolves.toBeUndefined();
 			expect(logger.warn).toHaveBeenCalledTimes(1);
-			expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("建不出日志目录"));
+			expect(logger.warn).toHaveBeenCalledWith("无法创建日志目录，丢弃本批日志", {
+				path: join(dataDir, "logs"),
+				error: expect.any(Error),
+			});
 		});
 
 		it("同一个错只记一行:warn 自己回到缓冲,关停时的最终落盘不会被它拖成死循环", async () => {

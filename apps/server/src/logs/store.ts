@@ -6,6 +6,7 @@ import type { LogArchiveEntry } from "@bilibili-notify/contract";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { appendLines } from "@bilibili-notify/storage";
 import { z } from "zod";
+import { logText } from "../i18n/index.js";
 import { hostPath } from "../runtime/roots.js";
 import { LOG_LEVELS, type LogEntry } from "../ws/types.js";
 
@@ -144,7 +145,7 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 			const key = code ? `${code}:${syscall ?? ""}` : String(err);
 			if (key !== rootError) {
 				rootError = key;
-				opts.logger.warn(`[log-store] 建不出日志目录 ${root}，这一批日志丢掉: ${String(err)}`);
+				opts.logger.warn(logText("log.archive.directoryFailed"), { path: root, error: err });
 			}
 			return;
 		}
@@ -162,7 +163,7 @@ export function createLogStore(opts: CreateLogStoreOptions): LogStore {
 			} catch (err) {
 				// Best-effort: a failed flush drops that batch (logs are
 				// non-critical). Warn so the operator notices disk problems.
-				opts.logger.warn(`[log-store] flush ${day} failed: ${String(err)}`);
+				opts.logger.warn(logText("log.archive.flushFailed"), { day, error: err });
 			}
 		}
 	}

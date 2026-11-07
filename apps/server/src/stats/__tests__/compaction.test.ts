@@ -87,6 +87,23 @@ afterEach(() => {
 });
 
 describe("startStatsCompaction", () => {
+	it("压缩诊断分开记录汇总计数与原始异常，失败不阻止账本压缩", async () => {
+		const error = new Error("disk", { cause: new Error("io") });
+		const { store } = makeStore(["bad", "good"], async (key) => {
+			if (key === "bad") throw error;
+			return report(true, 10, 4, 2);
+		});
+		const { recorder } = makeRecorder(async () => ({ files: 1, squeezed: 3, badLines: 1 }));
+		start(store, undefined, recorder);
+		await ctx.settled();
+		expect(log.warn).toHaveBeenCalledWith("粉丝样本压缩失败", { key: "bad", error });
+		expect(log.info.mock.calls).toEqual([
+			["粉丝样本压缩完成", { files: 1, squeezed: 6, badLines: 2 }],
+			["统计记录账本压缩完成", { files: 1, squeezed: 3, badLines: 1 }],
+		]);
+		expect(recorder.compactRecording).toHaveBeenCalledTimes(1);
+	});
+
 	it("开机跑一次:盘上每个文件各压一遍,用注入的此刻;这一轮登记进 track", async () => {
 		const { store, calls } = makeStore(["a", "b"]);
 		start(store);
@@ -137,7 +154,7 @@ describe("startStatsCompaction", () => {
 		expect(settled).toEqual([{ status: "fulfilled", value: undefined }]);
 		expect(calls.map(([key]) => key)).toEqual(["a", "b", "c"]);
 		expect(log.warn).toHaveBeenCalledTimes(1);
-		expect(String(log.warn.mock.calls[0]?.[0])).toContain("b");
+		expect(log.warn.mock.calls[0]?.[1]).toMatchObject({ key: "b", error: expect.any(Error) });
 	});
 
 	it("列不出文件:记 warn,不抛;下一轮照来", async () => {
@@ -163,10 +180,11 @@ describe("startStatsCompaction", () => {
 		start(loud.store);
 		await ctx.settled();
 		expect(log.info).toHaveBeenCalledTimes(1);
-		const text = String(log.info.mock.calls[0]?.[0]);
-		expect(text).toContain("2 file(s)");
-		expect(text).toContain("squeezed 61 row(s)"); // 压掉 (100-40) + (10-9) = 61 行
-		expect(text).toContain("2 bad line(s)");
+		expect(log.info).toHaveBeenCalledWith("粉丝样本压缩完成", {
+			files: 2,
+			squeezed: 61,
+			badLines: 2,
+		});
 	});
 });
 
@@ -216,7 +234,9 @@ describe("startStatsCompaction — 在记的账", () => {
 		await ctx.settled();
 		expect(failing.calls).toHaveLength(1);
 		expect(log.warn).toHaveBeenCalledTimes(2);
-		expect(String(log.warn.mock.calls[1]?.[0])).toContain("ledger boom");
+		expect(log.warn.mock.calls[1]?.[1]).toMatchObject({
+			error: expect.objectContaining({ message: "ledger boom" }),
+		});
 	});
 
 	it("账有改写时记一条 info(几个文件、压掉几行、丢几条坏行);没改写不吵", async () => {
@@ -227,10 +247,10 @@ describe("startStatsCompaction — 在记的账", () => {
 		const loud = makeRecorder(async () => ({ files: 3, squeezed: 40, badLines: 1 }));
 		start(makeStore([]).store, undefined, loud.recorder);
 		await ctx.settled();
-		const text = log.info.mock.calls.map((c) => String(c[0])).join("\n");
-		expect(text).toContain("recording");
-		expect(text).toContain("3 file(s)");
-		expect(text).toContain("squeezed 40 row(s)");
-		expect(text).toContain("1 bad line(s)");
+		expect(log.info).toHaveBeenCalledWith("统计记录账本压缩完成", {
+			files: 3,
+			squeezed: 40,
+			badLines: 1,
+		});
 	});
 });

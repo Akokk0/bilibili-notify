@@ -1,5 +1,6 @@
 import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { FollowersStore } from "../followers/store.js";
+import { logText } from "../i18n/index.js";
 
 /** 一趟账压缩的汇总。 */
 export interface RecordingCompactSummary {
@@ -56,7 +57,7 @@ async function compactFollowers(opts: StatsCompactionOptions, at: Date): Promise
 	try {
 		keys = await opts.store.keys();
 	} catch (err) {
-		opts.logger.warn(`[followers] compaction could not list the sample files: ${String(err)}`);
+		opts.logger.warn(logText("log.samples.listFailed"), { error: err });
 		return;
 	}
 	let files = 0;
@@ -71,13 +72,11 @@ async function compactFollowers(opts: StatsCompactionOptions, at: Date): Promise
 			}
 			badLines += report.badLines;
 		} catch (err) {
-			opts.logger.warn(`[followers] compaction of ${key} failed: ${String(err)}`);
+			opts.logger.warn(logText("log.samples.compactFailed"), { key, error: err });
 		}
 	}
 	if (files > 0) {
-		opts.logger.info(
-			`[followers] compacted ${files} file(s): squeezed ${squeezed} row(s)${badLines > 0 ? `, dropped ${badLines} bad line(s)` : ""}`,
-		);
+		opts.logger.info(logText("log.samples.compacted"), { files, squeezed, badLines });
 	}
 }
 
@@ -85,11 +84,9 @@ async function compactRecording(opts: StatsCompactionOptions, at: Date): Promise
 	try {
 		const { files, squeezed, badLines } = await opts.recorder.compactRecording(at);
 		if (files > 0) {
-			opts.logger.info(
-				`[stats] recording ledger compacted ${files} file(s): squeezed ${squeezed} row(s)${badLines > 0 ? `, dropped ${badLines} bad line(s)` : ""}`,
-			);
+			opts.logger.info(logText("log.stats.compacted"), { files, squeezed, badLines });
 		}
 	} catch (err) {
-		opts.logger.warn(`[stats] recording ledger compaction failed: ${String(err)}`);
+		opts.logger.warn(logText("log.stats.compactFailed"), { error: err });
 	}
 }

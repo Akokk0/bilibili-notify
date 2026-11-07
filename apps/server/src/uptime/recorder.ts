@@ -1,4 +1,5 @@
 import type { Logger } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import type { UptimeStore } from "./store.js";
 
 /**
@@ -63,7 +64,7 @@ export function createUptimeRecorder(opts: CreateUptimeRecorderOptions): UptimeR
 				minutes: Math.min(minutes, 60),
 			});
 		} catch (err) {
-			opts.logger.warn(`[uptime] 记一小时的运行分钟失败:${String(err)}`);
+			opts.logger.warn(logText("log.uptime.writeFailed"), { error: err });
 		}
 	}
 
