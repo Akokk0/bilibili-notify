@@ -72,14 +72,20 @@ describe("openSkinPackage", () => {
 
 	it("不是 zip 的字节流 → 拒绝", () => {
 		const r = openSkinPackage(strToU8("这不是 zip"));
-		expect(r).toEqual({ ok: false, errors: ["不是合法的 zip 文件"] });
+		expect(r).toEqual(
+			expect.objectContaining({
+				ok: false,
+				code: "invalid",
+				issues: ["不是合法的 zip 文件"].map((message) => ({ message })),
+			}),
+		);
 	});
 
 	it("缺 skin.json → 拒绝", () => {
 		const r = openSkinPackage(makeZip({ "assets/bg.png": PNG }));
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("skin.json");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain("skin.json");
 	});
 
 	it("skin.json 不是合法 JSON → 拒绝", () => {
@@ -100,7 +106,7 @@ describe("openSkinPackage", () => {
 		const r = openSkinPackage(zip);
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("accent");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain("accent");
 	});
 
 	it("manifest 引用的壁纸不在包里 → 拒绝", () => {
@@ -112,7 +118,7 @@ describe("openSkinPackage", () => {
 		const r = openSkinPackage(zip);
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("assets/missing.webp");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain("assets/missing.webp");
 	});
 
 	it("chat.wallpaper 引用的图同样要在包里 → 缺了拒绝", () => {
@@ -124,7 +130,9 @@ describe("openSkinPackage", () => {
 		const r = openSkinPackage(zip);
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("assets/chat-missing.webp");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain(
+			"assets/chat-missing.webp",
+		);
 	});
 
 	it("包里混入白名单外的文件 → 拒绝;macOS 打包垃圾静默忽略", () => {
@@ -162,7 +170,7 @@ describe("openSkinPackage", () => {
 		const r = openSkinPackage(zip);
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toMatch(/5\s*MB|过大/);
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toMatch(/5\s*MB|过大/);
 	});
 
 	it("被引用的字体文件 → ok,和壁纸一样取出来", () => {
@@ -189,7 +197,9 @@ describe("openSkinPackage", () => {
 		const r = openSkinPackage(zip);
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("assets/font-missing.woff2");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain(
+			"assets/font-missing.woff2",
+		);
 	});
 
 	it("字体上限 20MB,图片仍旧 5MB —— 两条线各管各的", () => {
@@ -278,7 +288,13 @@ describe("openSkinPackage", () => {
 		const files: Record<string, Uint8Array> = { "skin.json": manifestJson() };
 		for (let i = 0; i < 20; i++) files[`assets/a${i}.png`] = PNG;
 		const r = openSkinPackage(makeZip(files));
-		expect(r).toEqual({ ok: false, errors: ["包内文件太多(上限 14 个)"] });
+		expect(r).toEqual(
+			expect.objectContaining({
+				ok: false,
+				code: "invalid",
+				issues: ["包内文件太多(上限 14 个)"].map((message) => ({ message })),
+			}),
+		);
 	});
 });
 
@@ -327,6 +343,8 @@ describe("资产数上限:zip 这头与编辑器那头同一把尺", () => {
 		const r = openSkinPackage(packWithAssets(MAX_SKIN_ASSETS + 1));
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain(String(MAX_SKIN_ASSETS));
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain(
+			String(MAX_SKIN_ASSETS),
+		);
 	});
 });

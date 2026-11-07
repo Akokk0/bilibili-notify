@@ -204,7 +204,9 @@ describe("runSkinAiCreate", () => {
 
 		expect(res.ok).toBe(false);
 		if (res.ok) return;
-		expect(res.errors.join()).toContain("assets/wallpaper.webp");
+		expect((res.issues ?? [res]).map((issue) => issue.message).join()).toContain(
+			"assets/wallpaper.webp",
+		);
 	});
 
 	it("首答不是 JSON → 带错误反馈重试一次,第二答合法就 ok", async () => {
@@ -224,6 +226,6 @@ describe("runSkinAiCreate", () => {
 
 		expect(res.ok).toBe(false);
 		if (res.ok) return;
-		expect(res.errors.length).toBeGreaterThan(0);
+		expect((res.issues ?? [res]).map((issue) => issue.message).length).toBeGreaterThan(0);
 	});
 });

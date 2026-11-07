@@ -189,7 +189,8 @@ export class CardSkinStore {
 	/** 装一个 zip 包:摊开 → 验+洗 → 落盘。任何一步不过一律抛 {@link CardSkinPackageError}。 */
 	async install(zip: Uint8Array): Promise<{ id: string; warnings: string[] }> {
 		const opened = openCardSkinPackage(zip);
-		if (!opened.ok) throw new CardSkinPackageError(opened.errors);
+		if (!opened.ok)
+			throw new CardSkinPackageError((opened.issues ?? [opened]).map((issue) => issue.message));
 		// 落盘的是**洗过的**那份 —— 出图那头不该再洗一遍,也不该有机会读到原文。
 		const id = await this.writePackage(opened.manifest, opened.assets);
 		return { id, warnings: opened.warnings };
@@ -201,7 +202,8 @@ export class CardSkinStore {
 	 */
 	async create(manifestRaw: unknown): Promise<{ id: string; warnings: string[] }> {
 		const checked = checkCardSkinPackage(manifestRaw, new Set());
-		if (!checked.ok) throw new CardSkinPackageError(checked.errors);
+		if (!checked.ok)
+			throw new CardSkinPackageError((checked.issues ?? [checked]).map((issue) => issue.message));
 		const id = await this.writePackage(checked.manifest, new Map());
 		return { id, warnings: checked.warnings };
 	}
@@ -244,7 +246,8 @@ export class CardSkinStore {
 			if (bytes) assets.set(name, bytes);
 		}
 		const checked = checkCardSkinPackage(manifest, new Set(assets.keys()));
-		if (!checked.ok) throw new CardSkinPackageError(checked.errors);
+		if (!checked.ok)
+			throw new CardSkinPackageError((checked.issues ?? [checked]).map((issue) => issue.message));
 		return { id: await this.writePackage(checked.manifest, assets) };
 	}
 
@@ -419,7 +422,8 @@ export class CardSkinStore {
 			if (!this.pkg.has(id))
 				throw new Error(serverText("service.card-skins.store.text.20", { value0: id }));
 			const checked = checkCardSkinPackage(manifestRaw, new Set(await this.listAssets(id)));
-			if (!checked.ok) throw new CardSkinPackageError(checked.errors);
+			if (!checked.ok)
+				throw new CardSkinPackageError((checked.issues ?? [checked]).map((issue) => issue.message));
 			await saveManifest(checked.manifest);
 			return { warnings: checked.warnings };
 		});
@@ -452,7 +456,9 @@ function parseStoredManifest(raw: unknown, id: string): ManifestResult<CardSkinM
 		return fail(
 			"invalid",
 			serverText("service.card-skins.store.text.23", {
-				value0: parsed.errors[0] ?? serverText("service.card-skins.store.text.22"),
+				value0:
+					(parsed.issues ?? [parsed]).map((issue) => issue.message)[0] ??
+					serverText("service.card-skins.store.text.22"),
 			}),
 		);
 	}

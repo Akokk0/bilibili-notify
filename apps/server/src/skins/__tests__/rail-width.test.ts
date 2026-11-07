@@ -37,7 +37,7 @@ describe("皮肤的左栏宽度", () => {
 
 	it("合法值收下", () => {
 		const r = parseMode({ railWidth: 260 });
-		expect(r.ok, r.ok ? "" : r.errors.join("\n")).toBe(true);
+		expect(r.ok, r.ok ? "" : (r.issues ?? [r]).map((issue) => issue.message).join("\n")).toBe(true);
 		expect(r.ok && r.skin.modes.light?.railWidth).toBe(260);
 	});
 
@@ -48,18 +48,21 @@ describe("皮肤的左栏宽度", () => {
 			// 那种最坏 —— 皮肤作者以为自己填的值生效了。
 			const kept = r.ok ? r.skin.modes.light?.railWidth : undefined;
 			expect(kept, `${v} 不该被夹成一个合法值`).toBeUndefined();
-			expect(r.ok ? [] : r.errors, `${v} 应当报错`).not.toEqual([]);
+			expect(
+				r.ok ? [] : (r.issues ?? [r]).map((issue) => issue.message),
+				`${v} 应当报错`,
+			).not.toEqual([]);
 		}
 	});
 
 	it("不是数字的拒收", () => {
 		const r = parseMode({ railWidth: "220px" });
-		expect(r.ok ? [] : r.errors).not.toEqual([]);
+		expect(r.ok ? [] : (r.issues ?? [r]).map((issue) => issue.message)).not.toEqual([]);
 	});
 
 	it("不写就是不写 —— 不替皮肤作者填一个默认值进去", () => {
 		const r = parseMode({ radius: { card: 10 } });
-		expect(r.ok, r.ok ? "" : r.errors.join("\n")).toBe(true);
+		expect(r.ok, r.ok ? "" : (r.issues ?? [r]).map((issue) => issue.message).join("\n")).toBe(true);
 		expect(r.ok && r.skin.modes.light?.railWidth).toBeUndefined();
 	});
 });

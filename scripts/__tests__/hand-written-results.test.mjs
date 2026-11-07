@@ -43,15 +43,9 @@ export const ALLOWLIST = {
  * - 不是结果但带 `ok` 的:AI 工具结束的 SSE 帧。
  */
 export const RATCHET = {
-	"apps/server/src/card-skins/ai-css.ts": 6,
-	"apps/server/src/card-skins/package.ts": 6,
-	"apps/server/src/card-skins/preview-html.ts": 2,
 	"apps/server/src/extensions/marketplace.ts": 14,
 	"apps/server/src/extensions/settings-io.ts": 8,
 	"apps/server/src/routes/ai.ts": 2,
-	"apps/server/src/skins/ai-edit.ts": 3,
-	"apps/server/src/skins/package.ts": 5,
-	"apps/server/src/skins/schema.ts": 5,
 	"apps/server/src/update/fetch-signed-manifest.ts": 8,
 	"apps/server/src/update/fetch-through-mirrors.ts": 2,
 	"apps/server/src/update/install-payload.ts": 6,
@@ -60,7 +54,6 @@ export const RATCHET = {
 	"apps/web/src/devtools/dock.tsx": 2,
 	"apps/web/src/devtools/ext-motion.ts": 3,
 	"apps/web/src/services/session.ts": 6,
-	"packages/internal/src/schema/card-skin.ts": 3,
 	"packages/internal/src/schema/extension-manifest.ts": 6,
 	"packages/internal/src/schema/extension-marketplace.ts": 8,
 };

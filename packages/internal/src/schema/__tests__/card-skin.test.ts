@@ -57,17 +57,26 @@ const PX = (n: number, px: number) => Array.from({ length: n }, () => ({ px }));
 
 function ok(raw: unknown): CardSkinManifest {
 	const r = parseCardSkin(raw);
-	if (!r.ok) throw new Error(r.errors.join("\n"));
+	if (!r.ok) throw new Error((r.issues ?? [r]).map((issue) => issue.message).join("\n"));
 	return r.manifest;
 }
 
 function errorsOf(raw: unknown): string {
 	const r = parseCardSkin(raw);
 	if (r.ok) throw new Error("本该拒收却过了");
-	return r.errors.join("\n");
+	return (r.issues ?? [r]).map((issue) => issue.message).join("\n");
 }
 
 describe("parseCardSkin", () => {
+	it("旧版本拒绝用标准 invalid 结果保留原原因", () => {
+		expect(parseCardSkin(minimal({ schemaVersion: 1 as never }))).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。",
+			issues: [{ message: "这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。" }],
+		});
+	});
+
 	it("接受最小的合法包,缺的卡种不补", () => {
 		const m = ok(minimal());
 		expect(m.name).toBe("测试皮肤");
@@ -85,7 +94,9 @@ describe("parseCardSkin", () => {
 		const res = parseCardSkin(minimal({ schemaVersion: 1 as never }));
 		expect(res.ok).toBe(false);
 		if (res.ok) throw new Error("unreachable");
-		expect(res.errors).toEqual(["这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。"]);
+		expect((res.issues ?? [res]).map((issue) => issue.message)).toEqual([
+			"这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。",
+		]);
 		// 版本 0 与负数同样算「旧」。
 		expect(parseCardSkin(minimal({ schemaVersion: 0 as never }))).toEqual(res);
 	});
@@ -94,7 +105,7 @@ describe("parseCardSkin", () => {
 		const res = parseCardSkin(minimal({ schemaVersion: 99 as never }));
 		expect(res.ok).toBe(false);
 		if (res.ok) throw new Error("unreachable");
-		expect(res.errors).toEqual([
+		expect((res.issues ?? [res]).map((issue) => issue.message)).toEqual([
 			"这个卡片皮肤是用更新版本的 BN 做的，请先把 BN 更新到最新版再装。",
 		]);
 	});
@@ -652,7 +663,7 @@ describe("资产变量与皮肤字体(ADR-0014 决策 13 的 🔗)", () => {
 			}),
 		);
 		expect(dup.ok).toBe(false);
-		if (!dup.ok) expect(dup.errors.join()).toContain("A");
+		if (!dup.ok) expect((dup.issues ?? [dup]).map((issue) => issue.message).join()).toContain("A");
 		const many = Array.from({ length: CARD_SKIN_LIMITS.maxFonts + 1 }, (_, i) => ({
 			family: `F${i}`,
 			asset: "asset:assets/a.ttf",
@@ -696,7 +707,10 @@ describe("皮肤自定义旋钮", () => {
 				{ key: "shadow", label: "阴影", type: "switch", default: true, on: "block", off: "none" },
 			]),
 		);
-		expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+		expect(
+			res.ok,
+			res.ok ? "" : (res.issues ?? [res]).map((issue) => issue.message).join(" / "),
+		).toBe(true);
 	});
 
 	it("字体与图两档也进得去 —— 主人的字体 / 壁纸从此由皮肤决定给不给(2026-09-14 拍板)", () => {
@@ -706,7 +720,10 @@ describe("皮肤自定义旋钮", () => {
 				{ key: "wallpaper", label: "壁纸", type: "image" },
 			]),
 		);
-		expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+		expect(
+			res.ok,
+			res.ok ? "" : (res.issues ?? [res]).map((issue) => issue.message).join(" / "),
+		).toBe(true);
 	});
 
 	it("图片旋钮没有 default —— 图是主人自己的东西,皮肤起不出默认值来", () => {
@@ -762,7 +779,8 @@ describe("皮肤自定义旋钮", () => {
 	it("key 重复拒 —— 两个旋钮注同一个变量,后一个静默吃掉前一个", () => {
 		const res = parseCardSkin(withKnobs([knob(), knob({ label: "另一个" })]));
 		expect(res.ok).toBe(false);
-		if (!res.ok) expect(res.errors.join()).toContain("accent");
+		if (!res.ok)
+			expect((res.issues ?? [res]).map((issue) => issue.message).join()).toContain("accent");
 	});
 
 	it("旋钮数量与 label 长度有上限", () => {
@@ -1493,10 +1511,13 @@ it("已加载的卡片字段与场景名称按访问时的文案显示，字段�
 it("reads already loaded schema failures and skin version guidance at validation time", () => {
 	const bound = bindPackageText(() => "Current validation error");
 	try {
-		expect(parseCardSkin(minimal({ schemaVersion: 1 as never }))).toEqual({
-			ok: false,
-			errors: ["Current validation error"],
-		});
+		expect(parseCardSkin(minimal({ schemaVersion: 1 as never }))).toEqual(
+			expect.objectContaining({
+				ok: false,
+				code: "invalid",
+				issues: ["Current validation error"].map((message) => ({ message })),
+			}),
+		);
 		expect(
 			errorsOf(
 				minimal({ cards: { live: { width: 600, columns: [{ px: 1.001 }], blocks: [] } } } as never),

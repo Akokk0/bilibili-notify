@@ -9,10 +9,15 @@ function minimal(): Record<string, unknown> {
 describe("parseSkinManifest / 骨架校验", () => {
 	it("CSS 拒绝逐条保留全局与模式路径及原文", () => {
 		const css = "x".repeat(65537);
-		expect(parseSkinManifest({ ...minimal(), css, modes: { dark: { css } } })).toEqual({
-			ok: false,
-			errors: ["css: 自定义 CSS 超过 64KB 上限", "modes.dark.css: 自定义 CSS 超过 64KB 上限"],
-		});
+		expect(parseSkinManifest({ ...minimal(), css, modes: { dark: { css } } })).toEqual(
+			expect.objectContaining({
+				ok: false,
+				code: "invalid",
+				issues: ["css: 自定义 CSS 超过 64KB 上限", "modes.dark.css: 自定义 CSS 超过 64KB 上限"].map(
+					(message) => ({ message }),
+				),
+			}),
+		);
 	});
 
 	it("最小合法 manifest → ok,无告警", () => {
@@ -41,7 +46,7 @@ describe("parseSkinManifest / 骨架校验", () => {
 		const r = parseSkinManifest({ ...minimal(), schemaVersion: 2 });
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toMatch(/schemaVersion|版本/);
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toMatch(/schemaVersion|版本/);
 	});
 
 	it("modes 缺失或空对象 → 拒绝(皮肤至少要给一套模式)", () => {
@@ -94,7 +99,7 @@ describe("parseSkinManifest / colors 值校验(注入面)", () => {
 			const r = parseSkinManifest(withColors({ accent: bad }));
 			expect(r.ok).toBe(false);
 			if (r.ok) continue;
-			expect(r.errors.join()).toContain("accent");
+			expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain("accent");
 		}
 	});
 
@@ -622,7 +627,9 @@ describe("parseSkinManifest / chat(AI 聊天页专属外观)", () => {
 		});
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("chat.wallpaper.image");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain(
+			"chat.wallpaper.image",
+		);
 	});
 
 	it("空 chat 对象 → 与没写同构(不留空字段)", () => {
@@ -657,7 +664,9 @@ describe("parseSkinManifest / 段必须是对象", () => {
 			const r = parseSkinManifest({ ...minimal(), modes: { light: { [section]: bad } } });
 			expect(r.ok, `${section} = ${JSON.stringify(bad)}`).toBe(false);
 			if (r.ok) return;
-			expect(r.errors.join("\n")).toContain(`modes.light.${section}`);
+			expect((r.issues ?? [r]).map((issue) => issue.message).join("\n")).toContain(
+				`modes.light.${section}`,
+			);
 		}
 	});
 
@@ -669,7 +678,9 @@ describe("parseSkinManifest / 段必须是对象", () => {
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
 		for (const section of ["colors", "glass", "radius", "shadows"]) {
-			expect(r.errors.join("\n")).toContain(`modes.light.${section}`);
+			expect((r.issues ?? [r]).map((issue) => issue.message).join("\n")).toContain(
+				`modes.light.${section}`,
+			);
 		}
 	});
 
@@ -687,14 +698,18 @@ describe("parseSkinManifest / 段必须是对象", () => {
 		});
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join("\n")).toContain("modes.light.effects.glassShine");
-		expect(r.errors.join("\n")).toContain("可为空对象");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join("\n")).toContain(
+			"modes.light.effects.glassShine",
+		);
+		expect((r.issues ?? [r]).map((issue) => issue.message).join("\n")).toContain("可为空对象");
 	});
 
 	it("顶层 texts 非对象 → 拒绝,路径不带前缀点", () => {
 		const r = parseSkinManifest({ ...minimal(), texts: ["首页"] });
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.some((e) => e.startsWith("texts:"))).toBe(true);
+		expect(
+			(r.issues ?? [r]).map((issue) => issue.message).some((e) => e.startsWith("texts:")),
+		).toBe(true);
 	});
 });

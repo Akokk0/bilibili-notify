@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 /**
  * zip 皮肤包解析:不可信字节流 → { manifest, assets } 或拒绝。
@@ -51,16 +52,13 @@ const MAX_MANIFEST_BYTES = 512 * 1024;
 /** 解压后总量上限。够装满一款 20MB 字体 + 一包壁纸,再多就当 zip bomb 拦下。 */
 const MAX_TOTAL_BYTES = 48 * 1024 * 1024;
 
-export type OpenSkinPackageResult =
-	| {
-			ok: true;
-			manifest: SkinManifest;
-			assets: Map<string, Uint8Array>;
-			/** 资产原名清单;只做显示,缺失 / 坏掉一律空表(见 asset-names.ts)。 */
-			names: Record<string, string>;
-			warnings: string[];
-	  }
-	| { ok: false; errors: string[] };
+export type OpenSkinPackageResult = Result<{
+	manifest: SkinManifest;
+	assets: Map<string, Uint8Array>;
+	/** 资产原名清单;只做显示,缺失 / 坏掉一律空表(见 asset-names.ts)。 */
+	names: Record<string, string>;
+	warnings: string[];
+}>;
 
 /** manifest 各处引用的图片集合(整页壁纸 + chat 壁纸)。zip 校验与编辑保存共用一把尺。 */
 export function referencedImages(manifest: SkinManifest): Set<string> {
@@ -98,7 +96,7 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 		maxFiles: MAX_PACKAGE_FILES,
 		maxTotalBytes: MAX_TOTAL_BYTES,
 	});
-	if (!opened.ok) return { ok: false, errors: [opened.message] };
+	if (!opened.ok) return invalid([opened.message]);
 	const entries = opened.entries;
 
 	const errors: string[] = [];
@@ -146,13 +144,13 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 	}
 	if (!manifestBytes && errors.length === 0)
 		errors.push(serverText("service.skins.package.text.6"));
-	if (errors.length > 0 || !manifestBytes) return { ok: false, errors };
+	if (errors.length > 0 || !manifestBytes) return invalid(errors);
 
 	let json: unknown;
 	try {
 		json = JSON.parse(strFromU8(manifestBytes));
 	} catch {
-		return { ok: false, errors: [serverText("service.skins.package.text.7")] };
+		return invalid([serverText("service.skins.package.text.7")]);
 	}
 	// 旧版(≤v0.7.0)导出的包身上还烙着清洗层的旧笔迹 —— **解析前**先摘:否则
 	// parseCssField 对每条装饰规则刷一遍「pointer-events 不在白名单」(正是读盘
@@ -166,7 +164,7 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 		if (!assets.has(name))
 			errors.push(serverText("service.skins.package.text.8", { value0: name }));
 	}
-	if (errors.length > 0) return { ok: false, errors };
+	if (errors.length > 0) return invalid(errors);
 
 	const warnings = [...parsed.warnings];
 	for (const name of assets.keys()) {
@@ -182,7 +180,7 @@ export function openSkinPackage(buf: Uint8Array): OpenSkinPackageResult {
 			names = {};
 		}
 	}
-	return { ok: true, manifest: parsed.skin, assets, names, warnings };
+	return ok({ manifest: parsed.skin, assets, names, warnings });
 }
 
 /**
@@ -201,4 +199,9 @@ function stripRawManifestResidue(json: unknown): void {
 		const holder = mode as { css?: unknown };
 		if (typeof holder.css === "string") holder.css = stripDecorationResidue(holder.css);
 	}
+}
+
+/** 校验的原文与顺序同时保留在摘要和逐条原因里。 */
+function invalid(messages: string[]) {
+	return fail("invalid", messages.join("\n"), { issues: messages.map((message) => ({ message })) });
 }

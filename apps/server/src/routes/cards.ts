@@ -572,7 +572,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const gone = membershipTierUnavailable(kind, membershipTier);
 		if (gone) throw new Error(gone.message);
 		const out = await renderSkinPreviewHtml({ store, skinId, kind, manifest, membershipTier });
-		if (!out.ok) throw new Error(out.errors.join("；"));
+		if (!out.ok) throw new Error((out.issues ?? [out]).map((issue) => issue.message).join("；"));
 		const { buffer } = await renderer.screenshotHtml(out.html);
 		return `data:image/jpeg;base64,${buffer.toString("base64")}`;
 	}
@@ -863,7 +863,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!out.ok)
 			return respondFailure(
 				c,
-				failureOfChecks("invalid", t("cards.skinShot.draftNoun"), out.errors),
+				failureOfChecks(
+					"invalid",
+					t("cards.skinShot.draftNoun"),
+					(out.issues ?? [out]).map((issue) => issue.message),
+				),
 			);
 
 		// 同 `/preview`:截不出来是 200 + 失败那一支。

@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 /**
  * skin.json 校验层。类型与语义字段清单在 `@bilibili-notify/contract`(skin.ts);
@@ -21,9 +22,7 @@ import {
 import { z } from "zod";
 import { sanitizeSkinCss } from "./css-sanitizer.js";
 
-export type ParseSkinResult =
-	| { ok: true; skin: SkinManifest; warnings: string[] }
-	| { ok: false; errors: string[] };
+export type ParseSkinResult = Result<{ skin: SkinManifest; warnings: string[] }>;
 
 // ---- 值语法校验 -----------------------------------------------------------
 
@@ -524,20 +523,19 @@ const ManifestSchema = z.looseObject({
 
 export function parseSkinManifest(input: unknown): ParseSkinResult {
 	if (typeof input !== "object" || input === null || Array.isArray(input)) {
-		return { ok: false, errors: [serverText("service.skins.schema.text.28")] };
+		return invalid([serverText("service.skins.schema.text.28")]);
 	}
 	const parsed = ManifestSchema.safeParse(input);
 	if (!parsed.success) {
-		return {
-			ok: false,
-			errors: parsed.error.issues.map((i) =>
+		return invalid(
+			parsed.error.issues.map((i) =>
 				i.path.length > 0 ? `${i.path.join(".")}: ${i.message}` : i.message,
 			),
-		};
+		);
 	}
 	const raw = parsed.data;
 	if (!raw.modes.light && !raw.modes.dark) {
-		return { ok: false, errors: [serverText("service.skins.schema.text.29")] };
+		return invalid([serverText("service.skins.schema.text.29")]);
 	}
 
 	const errors: string[] = [];
@@ -581,7 +579,7 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 	const modes: SkinManifest["modes"] = {};
 	if (raw.modes.light) modes.light = parseMode(raw.modes.light, "modes.light", errors, warnings);
 	if (raw.modes.dark) modes.dark = parseMode(raw.modes.dark, "modes.dark", errors, warnings);
-	if (errors.length > 0) return { ok: false, errors };
+	if (errors.length > 0) return invalid(errors);
 
 	const skin: SkinManifest = {
 		schemaVersion: SKIN_SCHEMA_VERSION,
@@ -592,5 +590,10 @@ export function parseSkinManifest(input: unknown): ParseSkinResult {
 		...(texts !== undefined ? { texts } : {}),
 		...(css !== undefined ? { css } : {}),
 	};
-	return { ok: true, skin, warnings };
+	return ok({ skin, warnings });
+}
+
+/** 校验的原文与顺序同时保留在摘要和逐条原因里。 */
+function invalid(messages: string[]) {
+	return fail("invalid", messages.join("\n"), { issues: messages.map((message) => ({ message })) });
 }

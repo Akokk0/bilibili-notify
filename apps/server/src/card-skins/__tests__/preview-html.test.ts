@@ -77,7 +77,10 @@ async function preview(manifest: unknown, scene?: string): Promise<string> {
 		membershipTier: undefined,
 		...(scene ? { scene } : {}),
 	});
-	if (!out.ok) throw new Error(`预览没画出来: ${out.errors.join(" / ")}`);
+	if (!out.ok)
+		throw new Error(
+			`预览没画出来: ${(out.issues ?? [out]).map((issue) => issue.message).join(" / ")}`,
+		);
 	return out.html;
 }
 

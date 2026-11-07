@@ -1,3 +1,4 @@
+import { ok, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 /**
  * **草稿清单 → 一整份 HTML**。编辑器的实时预览(`POST /api/cards/skins/:id/preview`)与
@@ -37,16 +38,13 @@ export function membershipTierUnavailable(
 	return fail("unavailable", serverText("service.card-skins.preview-html.text.1"));
 }
 
-export type SkinPreviewHtml =
-	| {
-			ok: true;
-			html: string;
-			width: number;
-			bleed: number;
-			warnings: string[];
-			scene: string;
-	  }
-	| { ok: false; errors: string[] };
+export type SkinPreviewHtmlResult = Result<{
+	html: string;
+	width: number;
+	bleed: number;
+	warnings: string[];
+	scene: string;
+}>;
 
 export async function renderSkinPreviewHtml(args: {
 	store: CardSkinStore;
@@ -73,10 +71,10 @@ export async function renderSkinPreviewHtml(args: {
 	 * 黑边,而「最终效果」这颗按钮的全部意义就是像素级可信。
 	 */
 	transparentPage?: boolean;
-}): Promise<SkinPreviewHtml> {
+}): Promise<SkinPreviewHtmlResult> {
 	const { store, skinId, kind } = args;
 	const checked = checkCardSkinPackage(args.manifest, new Set(await store.listAssets(skinId)));
-	if (!checked.ok) return { ok: false, errors: checked.errors };
+	if (!checked.ok) return checked;
 	const manifest = checked.manifest;
 
 	const card = cardOfManifest(manifest, kind);
@@ -94,8 +92,7 @@ export async function renderSkinPreviewHtml(args: {
 		},
 		resolveAsset: (name) => assets.get(name),
 	});
-	return {
-		ok: true,
+	return ok({
 		html: args.transparentPage ? withPreviewPageCss(html) : html,
 		// **整张图**的宽,不是卡宽 —— 写了出血的皮肤,图比卡宽两道出血。面板拿这个数
 		// 定 iframe / 截图的宽度,给卡宽的话出血那圈会在编辑器里被切掉,而出血存在的
@@ -105,7 +102,7 @@ export async function renderSkinPreviewHtml(args: {
 		bleed: card.bleed?.size ?? 0,
 		warnings: checked.warnings,
 		scene: picked.id,
-	};
+	});
 }
 
 /**

@@ -59,7 +59,7 @@ function fixture(): CardSkinManifest {
 
 function prepared(target: Parameters<typeof prepareCardCssAi>[1]) {
 	const ctx = prepareCardCssAi(fixture(), target);
-	if (!ctx.ok) throw new Error(`没拼出来:${ctx.error}`);
+	if (!ctx.ok) throw new Error(`没拼出来:${ctx.message}`);
 	return ctx;
 }
 
@@ -242,7 +242,13 @@ describe("一轮生成", () => {
 		});
 		expect(retries).toEqual([["输出是空的"]]);
 		expect(generate.calls).toHaveLength(2);
-		expect(result).toEqual({ ok: false, errors: ["输出是空的"] });
+		expect(result).toEqual(
+			expect.objectContaining({
+				ok: false,
+				code: "invalid",
+				issues: ["输出是空的"].map((message) => ({ message })),
+			}),
+		);
 	});
 
 	it("清洗器整份拒收 → 带着错误与上次的输出重试一次", async () => {
@@ -292,7 +298,13 @@ describe("一轮生成", () => {
 			sanitize: () => fail("invalid", "CSS 解析失败"),
 			onRule: () => {},
 		});
-		expect(res).toEqual({ ok: false, errors: ["CSS 解析失败"] });
+		expect(res).toEqual(
+			expect.objectContaining({
+				ok: false,
+				code: "invalid",
+				issues: ["CSS 解析失败"].map((message) => ({ message })),
+			}),
+		);
 		expect(generate.calls).toHaveLength(2);
 	});
 

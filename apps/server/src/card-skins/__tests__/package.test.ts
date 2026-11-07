@@ -51,7 +51,7 @@ function pack(files: Record<string, Uint8Array | Record<string, unknown>>): Uint
 /** 摊包 + 验洗一条龙(装包那条路的全程),失败时把错误原样带出来。 */
 function open(zip: Uint8Array) {
 	const opened = parseCardSkinPackage(zip);
-	if (!opened.ok) return { ok: false as const, errors: opened.errors };
+	if (!opened.ok) return opened;
 	return checkCardSkinPackage(opened.manifestRaw, new Set(opened.assets.keys()));
 }
 
@@ -70,21 +70,26 @@ describe("parseCardSkinPackage:文件层", () => {
 		const r = parseCardSkinPackage(pack({ "assets/bg.png": PNG }));
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain(CARD_SKIN_MANIFEST_FILE);
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain(
+			CARD_SKIN_MANIFEST_FILE,
+		);
 	});
 
 	it("不是 zip 的字节流 → 拒", () => {
-		expect(parseCardSkinPackage(strToU8("这不是 zip"))).toEqual({
-			ok: false,
-			errors: ["不是合法的 zip 文件"],
-		});
+		expect(parseCardSkinPackage(strToU8("这不是 zip"))).toEqual(
+			expect.objectContaining({
+				ok: false,
+				code: "invalid",
+				issues: ["不是合法的 zip 文件"].map((message) => ({ message })),
+			}),
+		);
 	});
 
 	it("card-skin.json 不是合法 JSON → 拒", () => {
 		const r = parseCardSkinPackage(pack({ [CARD_SKIN_MANIFEST_FILE]: strToU8("{ 半截") }));
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("JSON");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain("JSON");
 	});
 
 	/**
@@ -123,7 +128,7 @@ describe("parseCardSkinPackage:文件层", () => {
 		);
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("assets/big.png");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain("assets/big.png");
 	});
 
 	it("装满 maxAssets 份 → 照收;多一份 → 拒(自己导出的满包必须传得回来)", () => {
@@ -141,7 +146,9 @@ describe("parseCardSkinPackage:文件层", () => {
 		const over = parseCardSkinPackage(pack(files(CARD_SKIN_LIMITS.maxAssets + 1)));
 		expect(over.ok).toBe(false);
 		if (over.ok) return;
-		expect(over.errors.join()).toContain(String(CARD_SKIN_LIMITS.maxAssets));
+		expect((over.issues ?? [over]).map((issue) => issue.message).join()).toContain(
+			String(CARD_SKIN_LIMITS.maxAssets),
+		);
 	});
 
 	it("macOS 打包垃圾静默忽略(用户自己压的包十有八九带)", () => {
@@ -211,8 +218,8 @@ describe("zip bomb 两道闸", () => {
 		const r = parseCardSkinPackage(zipSync(files));
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors).toHaveLength(1);
-		expect(r.errors[0]).toContain("包内文件太多");
+		expect((r.issues ?? [r]).map((issue) => issue.message)).toHaveLength(1);
+		expect((r.issues ?? [r]).map((issue) => issue.message)[0]).toContain("包内文件太多");
 	});
 
 	it("清单本身过大 → 拒(它和资产不是一条线)", () => {
@@ -220,7 +227,9 @@ describe("zip bomb 两道闸", () => {
 		const r = parseCardSkinPackage(zipSync({ [CARD_SKIN_MANIFEST_FILE]: huge }));
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain(CARD_SKIN_MANIFEST_FILE);
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain(
+			CARD_SKIN_MANIFEST_FILE,
+		);
 	});
 
 	it("声明的解压总量超上限 → 解压前就拒", () => {
@@ -254,13 +263,16 @@ describe("checkCardSkinPackage:清单层", () => {
 			}),
 			new Set(),
 		);
-		expect(result).toEqual({
-			ok: false,
-			errors: [
-				"cards.live.css: 清洗后的 CSS 超过 16KB 上限",
-				"cards.live.blocks[0]「note」.css: 清洗后的 CSS 超过 16KB 上限",
-			],
-		});
+		expect(result).toEqual(
+			expect.objectContaining({
+				ok: false,
+				code: "invalid",
+				issues: [
+					"cards.live.css: 清洗后的 CSS 超过 16KB 上限",
+					"cards.live.blocks[0]「note」.css: 清洗后的 CSS 超过 16KB 上限",
+				].map((message) => ({ message })),
+			}),
+		);
 	});
 
 	it("HTML 多条拒绝保留块路径、原文和顺序", () => {
@@ -282,13 +294,16 @@ describe("checkCardSkinPackage:清单层", () => {
 			}),
 			new Set(),
 		);
-		expect(result).toEqual({
-			ok: false,
-			errors: [
-				"cards.live.blocks[0]「note」.html: 占位符「{missing.one}」不在 live 卡的字段表里",
-				"cards.live.blocks[0]「note」.html: 占位符「{missing.two}」不在 live 卡的字段表里",
-			],
-		});
+		expect(result).toEqual(
+			expect.objectContaining({
+				ok: false,
+				code: "invalid",
+				issues: [
+					"cards.live.blocks[0]「note」.html: 占位符「{missing.one}」不在 live 卡的字段表里",
+					"cards.live.blocks[0]「note」.html: 占位符「{missing.two}」不在 live 卡的字段表里",
+				].map((message) => ({ message })),
+			}),
+		);
 	});
 
 	it("形状不对 → 拒,错误指得出是哪个块", () => {
@@ -312,7 +327,7 @@ describe("checkCardSkinPackage:清单层", () => {
 		);
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("不存在的块");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain("不存在的块");
 	});
 
 	/**
@@ -415,7 +430,7 @@ describe("checkCardSkinPackage:清单层", () => {
 		);
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors.join()).toContain("up.nickname");
+		expect((r.issues ?? [r]).map((issue) => issue.message).join()).toContain("up.nickname");
 	});
 
 	it("自定义块引用包内资产:在包里 → 留;不在 → 丢掉那个 <img> 并告警", () => {
@@ -526,7 +541,10 @@ describe("checkCardSkinPackage:资产变量与皮肤字体的引用(ADR-0014 决
 			pack({ [CARD_SKIN_MANIFEST_FILE]: withAssets({ assets: { hud: "asset:assets/nope.png" } }) }),
 		);
 		expect(r.ok).toBe(false);
-		if (!r.ok) expect(r.errors.join()).toMatch(/assets\.hud.*assets\/nope\.png/);
+		if (!r.ok)
+			expect((r.issues ?? [r]).map((issue) => issue.message).join()).toMatch(
+				/assets\.hud.*assets\/nope\.png/,
+			);
 	});
 
 	it("fonts 指向包里的字体 → ok;指向不存在的 / 指向图片 → 拒", () => {
@@ -547,7 +565,10 @@ describe("checkCardSkinPackage:资产变量与皮肤字体的引用(ADR-0014 决
 			}),
 		);
 		expect(missing.ok).toBe(false);
-		if (!missing.ok) expect(missing.errors.join()).toMatch(/fonts\[0\].*orb\.woff2/);
+		if (!missing.ok)
+			expect((missing.issues ?? [missing]).map((issue) => issue.message).join()).toMatch(
+				/fonts\[0\].*orb\.woff2/,
+			);
 		const notFont = open(
 			pack({
 				[CARD_SKIN_MANIFEST_FILE]: manifest({
@@ -557,7 +578,10 @@ describe("checkCardSkinPackage:资产变量与皮肤字体的引用(ADR-0014 决
 			}),
 		);
 		expect(notFont.ok).toBe(false);
-		if (!notFont.ok) expect(notFont.errors.join()).toContain("不是字体");
+		if (!notFont.ok)
+			expect((notFont.issues ?? [notFont]).map((issue) => issue.message).join()).toContain(
+				"不是字体",
+			);
 	});
 });
 
@@ -588,7 +612,10 @@ describe("旋钮声明与 css 引用对表", () => {
 			withKnobs(ACCENT, '[data-bn="frame"]{color:var(--bn-knob-accent,#fb7299)}'),
 			new Set(),
 		);
-		expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+		expect(
+			res.ok,
+			res.ok ? "" : (res.issues ?? [res]).map((issue) => issue.message).join(" / "),
+		).toBe(true);
 		if (!res.ok) throw new Error("unreachable");
 		expect(res.warnings.filter((w) => w.includes("knob"))).toEqual([]);
 	});
@@ -648,7 +675,7 @@ describe("已删除的 variables / variablesByKind", () => {
 		const res = checkCardSkinPackage(withVars({ variables: { font: "Menlo" } }), new Set());
 		expect(res.ok).toBe(false);
 		if (res.ok) return;
-		expect(res.errors.join("\n")).toContain("variables");
+		expect((res.issues ?? [res]).map((issue) => issue.message).join("\n")).toContain("variables");
 		const byKind = checkCardSkinPackage(
 			withVars({ variablesByKind: { live: { glassOpacity: 0.5 } } }),
 			new Set(),
@@ -660,7 +687,9 @@ describe("已删除的 variables / variablesByKind", () => {
 		const res = checkCardSkinPackage(withVars({ variables: { font: "Menlo" } }, 1), new Set());
 		expect(res.ok).toBe(false);
 		if (res.ok) return;
-		expect(res.errors).toEqual(["这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。"]);
+		expect((res.issues ?? [res]).map((issue) => issue.message)).toEqual([
+			"这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。",
+		]);
 	});
 
 	it("没写它的版本 2 包照常装进来", () => {

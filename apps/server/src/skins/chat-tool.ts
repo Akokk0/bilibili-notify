@@ -220,7 +220,10 @@ export function createSkinChatTools(deps: SkinChatToolDeps): AiTool[] {
 			if (!result.ok) {
 				// 原因原样带回给模型 —— 它才能跟主人说清是哪儿没做成,而不是干瞪眼。
 				// 这条路上 made 不动:没做成的不占主人那两套额度(尝试次数已经记过了)。
-				return fail("unavailable", `皮肤生成失败:${result.errors.join(";")}`);
+				return fail(
+					"unavailable",
+					`皮肤生成失败:${(result.issues ?? [result]).map((issue) => issue.message).join(";")}`,
+				);
 			}
 			made++;
 

@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 /**
  * 抽屉内嵌 AI(「让女仆改」)的服务端逻辑。
@@ -5,7 +6,7 @@ import { t as serverText } from "../i18n/index.js";
  * 产物**不落盘**:AI 输出 → 剥围栏 → parseSkinManifest(含 CSS 清洗)+ 资产引用
  * 校验 → 把清洗后的 manifest 还给编辑器 draft,实时预览;保存永远由主人点。
  * 首答校验不过时**带错误反馈自动重试一次**(弱模型常犯格式小错,直接报错太挫败),
- * 二败才对外报 errors。
+ * 二败才对外报标准失败与逐条原因。
  */
 
 import {
@@ -42,9 +43,7 @@ export interface SkinAiEditInput {
 	instruction: string;
 }
 
-export type SkinAiEditResult =
-	| { ok: true; manifest: SkinManifest; warnings: string[] }
-	| { ok: false; errors: string[] };
+export type SkinAiEditResult = Result<{ manifest: SkinManifest; warnings: string[] }>;
 
 // 挂点名由这一头拼,不写进 note 正文 —— 正文里再打一遍键名的话,那个名字就是
 // 全靠手打的第二份,打错了两条提示词都会教 AI 一个不存在的挂点,而一切照绿。
@@ -151,23 +150,20 @@ export function stripJsonFences(text: string): string {
 function tryParse(
 	text: string,
 	assets: Set<string>,
-): { ok: true; manifest: SkinManifest; warnings: string[] } | { ok: false; errors: string[] } {
+): Result<{ manifest: SkinManifest; warnings: string[] }> {
 	let json: unknown;
 	try {
 		json = JSON.parse(stripJsonFences(text));
 	} catch {
-		return { ok: false, errors: [serverText("service.skins.ai-edit.text.1")] };
+		return invalid([serverText("service.skins.ai-edit.text.1")]);
 	}
 	const parsed = parseSkinManifest(json);
 	if (!parsed.ok) return parsed;
 	const missing = [...referencedAssets(parsed.skin)].filter((name) => !assets.has(name));
 	if (missing.length > 0) {
-		return {
-			ok: false,
-			errors: missing.map((m) => serverText("service.skins.ai-edit.text.2", { value0: m })),
-		};
+		return invalid(missing.map((m) => serverText("service.skins.ai-edit.text.2", { value0: m })));
 	}
-	return { ok: true, manifest: parsed.skin, warnings: parsed.warnings };
+	return ok({ manifest: parsed.skin, warnings: parsed.warnings });
 }
 
 /**
@@ -193,7 +189,10 @@ export async function runSkinAiRound(input: {
 	if (parsed.ok) return parsed;
 
 	// 带错误反馈重试一次 —— 原答也附上,让模型知道自己上次说了什么。
-	const retryUser = `${input.user}\n\n你上次的输出未通过校验:\n${parsed.errors.map((e) => `- ${e}`).join("\n")}\n\n上次输出:\n${first}\n\n请修正后重新输出完整 skin.json,仍然只输出 JSON。`;
+	const retryUser = `${input.user}\n\n你上次的输出未通过校验:\n${(parsed.issues ?? [parsed])
+		.map((issue) => issue.message)
+		.map((e) => `- ${e}`)
+		.join("\n")}\n\n上次输出:\n${first}\n\n请修正后重新输出完整 skin.json,仍然只输出 JSON。`;
 	const second = await input.generateRaw(input.system, retryUser, input.onProgress);
 	return tryParse(second, input.assets);
 }
@@ -205,4 +204,9 @@ export async function runSkinAiEdit(input: SkinAiEditInput): Promise<SkinAiEditR
 		user: `当前 skin.json 草稿:\n${JSON.stringify(input.draft, null, "\t")}\n\n修改要求:${input.instruction}`,
 		assets: new Set(input.assets),
 	});
+}
+
+/** 校验的原文与顺序同时保留在摘要和逐条原因里。 */
+function invalid(messages: string[]) {
+	return fail("invalid", messages.join("\n"), { issues: messages.map((message) => ({ message })) });
 }

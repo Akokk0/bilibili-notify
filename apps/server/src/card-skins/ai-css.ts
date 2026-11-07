@@ -1,3 +1,4 @@
+import { ok, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 /**
  * 卡片皮肤编辑器那口 AI(ADR-0015 决策 3–10、24–26):给**一个框**写 CSS ——
@@ -55,9 +56,7 @@ export type CardCssAiGenerate = (
 	stream: { onText: (text: string) => void; signal?: AbortSignal },
 ) => Promise<string>;
 
-export type CardCssAiResult =
-	| { ok: true; css: string; warnings: string[] }
-	| { ok: false; errors: string[] };
+export type CardCssAiResult = Result<{ css: string; warnings: string[] }>;
 
 /**
  * 写卡片 CSS 的规矩 —— 选择器、属性与值、能用的变量。编辑器那口与工坊那口**共用这一段**
@@ -114,38 +113,32 @@ ${cardCssRules("见用户消息")}
 - 一条规则写完再写下一条。`;
 }
 
-export type PreparedCardCssAi =
-	| {
-			ok: true;
-			/** 用户消息:框的上下文 + 用户那句话。 */
-			user: (instruction: string) => string;
-			/** 这个框该过的那道门(挂点表按框定)。 */
-			sanitize: (css: string) => SanitizeCssResult;
-	  }
-	| { ok: false; error: string };
+export type PrepareCardCssAiResult = Result<{
+	/** 用户消息:框的上下文 + 用户那句话。 */
+	user: (instruction: string) => string;
+	/** 这个框该过的那道门(挂点表按框定)。 */
+	sanitize: (css: string) => SanitizeCssResult;
+}>;
 
 /** 与框有关的那半。卡种没接管、块不存在时说清楚,不硬拼。 */
 export function prepareCardCssAi(
 	manifest: CardSkinManifest,
 	target: CardCssAiTarget,
-): PreparedCardCssAi {
+): PrepareCardCssAiResult {
 	const card = manifest.cards[target.kind];
 	if (!card) {
-		return {
-			ok: false,
-			error: serverText("service.card-skins.ai-css.text.1", { value0: target.kind }),
-		};
+		return fail("invalid", serverText("service.card-skins.ai-css.text.1", { value0: target.kind }));
 	}
 	const block =
 		target.blockId === undefined ? undefined : card.blocks.find((b) => b.id === target.blockId);
 	if (target.blockId !== undefined && !block) {
-		return {
-			ok: false,
-			error: serverText("service.card-skins.ai-css.text.2", {
+		return fail(
+			"invalid",
+			serverText("service.card-skins.ai-css.text.2", {
 				value0: target.kind,
 				value1: target.blockId,
 			}),
-		};
+		);
 	}
 
 	const sections: string[] = [];
@@ -188,11 +181,10 @@ export function prepareCardCssAi(
 					...(block.kind === "builtin" ? { builtin: block.builtin } : {}),
 				})
 		: sanitizeCardFrameCss;
-	return {
-		ok: true,
-		user: (instruction) => `${context}\n\n## 用户的要求\n${instruction}`,
+	return ok({
+		user: (instruction: string) => `${context}\n\n## 用户的要求\n${instruction}`,
 		sanitize,
-	};
+	});
 }
 
 export function blockLabel(kind: CardKind, block: Block): string {
@@ -374,12 +366,17 @@ export async function runCardCssAiRound(input: {
 	};
 
 	const first = await attempt(input.user);
-	if (first.judged.ok) return { ok: true, css: first.css, warnings: first.judged.warnings };
+	if (first.judged.ok) return ok({ css: first.css, warnings: first.judged.warnings });
 
 	input.onRetry?.([first.judged.message]);
 	const retryUser = `${input.user}\n\n你上次的输出没过清洗器:\n- ${first.judged.message}\n\n上次的输出:\n${first.raw}\n\n请修正后重新输出这个框的完整 CSS,仍然只输出 CSS。`;
 	const second = await attempt(retryUser);
 	return second.judged.ok
-		? { ok: true, css: second.css, warnings: second.judged.warnings }
-		: { ok: false, errors: [second.judged.message] };
+		? ok({ css: second.css, warnings: second.judged.warnings })
+		: invalid([second.judged.message]);
+}
+
+/** 校验的原文与顺序同时保留在摘要和逐条原因里。 */
+function invalid(messages: string[]) {
+	return fail("invalid", messages.join("\n"), { issues: messages.map((message) => ({ message })) });
 }

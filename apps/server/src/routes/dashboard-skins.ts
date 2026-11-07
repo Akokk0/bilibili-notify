@@ -90,7 +90,7 @@ export function createDashboardSkinsRoute(deps: {
 						failureOfChecks(
 							"invalid",
 							serverText("service.routes.dashboard-skins.text.4"),
-							opened.errors,
+							(opened.issues ?? [opened]).map((issue) => issue.message),
 						),
 					);
 				}
@@ -216,7 +216,7 @@ export function createDashboardSkinsRoute(deps: {
 				failureOfChecks(
 					"invalid",
 					serverText("service.routes.dashboard-skins.text.11"),
-					result.errors,
+					(result.issues ?? [result]).map((issue) => issue.message),
 					{ listSingle: true },
 				),
 			);
@@ -308,7 +308,7 @@ export function createDashboardSkinsRoute(deps: {
 				failureOfChecks(
 					"invalid",
 					serverText("service.routes.dashboard-skins.text.15"),
-					parsed.errors,
+					(parsed.issues ?? [parsed]).map((issue) => issue.message),
 				),
 			);
 

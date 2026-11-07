@@ -165,7 +165,7 @@ export function createCardsSkinsRoute(deps: {
 					failureOfChecks(
 						"invalid",
 						serverText("service.routes.cards-skins.text.5"),
-						opened.errors,
+						(opened.issues ?? [opened]).map((issue) => issue.message),
 					),
 				);
 			return c.json(
@@ -347,7 +347,11 @@ export function createCardsSkinsRoute(deps: {
 		if (!out.ok)
 			return respondFailure(
 				c,
-				failureOfChecks("invalid", serverText("service.routes.cards-skins.text.14"), out.errors),
+				failureOfChecks(
+					"invalid",
+					serverText("service.routes.cards-skins.text.14"),
+					(out.issues ?? [out]).map((issue) => issue.message),
+				),
 			);
 		const body: CardSkinPreviewResponse = {
 			html: out.html,
@@ -399,11 +403,15 @@ export function createCardsSkinsRoute(deps: {
 		if (!draft.ok)
 			return respondFailure(
 				c,
-				failureOfChecks("invalid", serverText("service.routes.cards-skins.text.18"), draft.errors),
+				failureOfChecks(
+					"invalid",
+					serverText("service.routes.cards-skins.text.18"),
+					(draft.issues ?? [draft]).map((issue) => issue.message),
+				),
 			);
 		const { kind, blockId, instruction } = parsed.data;
 		const prepared = prepareCardCssAi(draft.manifest, { kind, blockId });
-		if (!prepared.ok) return respondFailure(c, fail("invalid", prepared.error));
+		if (!prepared.ok) return respondFailure(c, fail("invalid", prepared.message));
 
 		const abort = new AbortController();
 		const stop = () => abort.abort();
@@ -438,7 +446,7 @@ export function createCardsSkinsRoute(deps: {
 									failureOfChecks(
 										"invalid",
 										serverText("service.routes.cards-skins.text.19"),
-										res.errors,
+										(res.issues ?? [res]).map((issue) => issue.message),
 										{ listSingle: true },
 									),
 								),

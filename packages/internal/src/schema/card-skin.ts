@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fail, ok, type Result } from "../result";
 import { packageText } from "../texts";
 
 /**
@@ -664,9 +665,7 @@ export const CardSkinManifestSchema = z
 	.strict();
 export type CardSkinManifest = z.infer<typeof CardSkinManifestSchema>;
 
-export type ParseCardSkinResult =
-	| { ok: true; manifest: CardSkinManifest }
-	| { ok: false; errors: string[] };
+export type ParseCardSkinResult = Result<{ manifest: CardSkinManifest }>;
 
 /**
  * 格式版本不对的包,只回那一句话(没有就是版本没毛病、往下走形状校验)。先于一切形状校验:老包的字段名整套换过,
@@ -687,12 +686,10 @@ function versionRejection(raw: unknown): string[] | undefined {
 export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 	const parsed = CardSkinManifestSchema.safeParse(raw);
 	if (!parsed.success) {
-		return {
-			ok: false,
-			errors:
-				versionRejection(raw) ??
+		return invalid(
+			versionRejection(raw) ??
 				parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
-		};
+		);
 	}
 	const m = parsed.data;
 	const errors: string[] = [];
@@ -792,7 +789,7 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 			}
 		});
 	}
-	return errors.length ? { ok: false, errors } : { ok: true, manifest: m };
+	return errors.length ? invalid(errors) : ok({ manifest: m });
 }
 
 // ---- 默认皮肤 ----------------------------------------------------------------
@@ -1321,3 +1318,8 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 		},
 	},
 };
+
+/** 校验的原文与顺序同时保留在摘要和逐条原因里。 */
+function invalid(messages: string[]) {
+	return fail("invalid", messages.join("\n"), { issues: messages.map((message) => ({ message })) });
+}

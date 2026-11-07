@@ -1,3 +1,4 @@
+import { fail, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 /**
  * **卡片皮肤包**的装包门(ADR-0014 决策 2 / 5 / 19)—— 不可信 zip →
@@ -73,9 +74,10 @@ export const MAX_CARD_SKIN_PACKAGE_FILES = CARD_SKIN_LIMITS.maxAssets + 2;
 export const MAX_CARD_SKIN_TOTAL_BYTES =
 	CARD_SKIN_LIMITS.maxAssets * CARD_SKIN_LIMITS.maxAssetBytes + MAX_CARD_SKIN_MANIFEST_BYTES;
 
-export type ParseCardSkinPackageResult =
-	| { ok: true; manifestRaw: unknown; assets: Map<string, Uint8Array> }
-	| { ok: false; errors: string[] };
+export type ParseCardSkinPackageResult = Result<{
+	manifestRaw: unknown;
+	assets: Map<string, Uint8Array>;
+}>;
 
 /** 预览与安装共同走完文件检查、清单校验和清洗；这里不写盘。 */
 export function openCardSkinPackage(zip: Uint8Array) {
@@ -95,7 +97,7 @@ export function parseCardSkinPackage(zip: Uint8Array): ParseCardSkinPackageResul
 		maxFiles: MAX_CARD_SKIN_PACKAGE_FILES,
 		maxTotalBytes: MAX_CARD_SKIN_TOTAL_BYTES,
 	});
-	if (!opened.ok) return { ok: false, errors: [opened.message] };
+	if (!opened.ok) return invalid([opened.message]);
 
 	const errors: string[] = [];
 	let manifestBytes: Uint8Array | null = null;
@@ -147,23 +149,18 @@ export function parseCardSkinPackage(zip: Uint8Array): ParseCardSkinPackageResul
 		errors.push(
 			serverText("service.card-skins.package.text.6", { value0: CARD_SKIN_MANIFEST_FILE }),
 		);
-	if (errors.length > 0 || !manifestBytes) return { ok: false, errors };
+	if (errors.length > 0 || !manifestBytes) return invalid(errors);
 
 	try {
-		return { ok: true, manifestRaw: JSON.parse(strFromU8(manifestBytes)), assets };
+		return ok({ manifestRaw: JSON.parse(strFromU8(manifestBytes)), assets });
 	} catch {
-		return {
-			ok: false,
-			errors: [
-				serverText("service.card-skins.package.text.7", { value0: CARD_SKIN_MANIFEST_FILE }),
-			],
-		};
+		return invalid([
+			serverText("service.card-skins.package.text.7", { value0: CARD_SKIN_MANIFEST_FILE }),
+		]);
 	}
 }
 
-export type CheckCardSkinPackageResult =
-	| { ok: true; manifest: CardSkinManifest; warnings: string[] }
-	| { ok: false; errors: string[] };
+export type CheckCardSkinPackageResult = Result<{ manifest: CardSkinManifest; warnings: string[] }>;
 
 /**
  * 清单的形状 + 清洗,**装包与编辑器保存共用这一道**(ADR-0014 决策 19)。
@@ -288,7 +285,7 @@ export function checkCardSkinPackage(
 
 	warnings.push(...checkKnobUsage(manifest));
 
-	return errors.length > 0 ? { ok: false, errors } : { ok: true, manifest, warnings };
+	return errors.length > 0 ? invalid(errors) : ok({ manifest, warnings });
 }
 
 /** 皮肤 CSS 里对旋钮变量的引用:`var(--bn-knob-<key>` 那一截。 */
@@ -349,4 +346,9 @@ function checkAssetVars(
 				serverText("service.card-skins.package.text.13", { value0: at, value1: key, value2: name }),
 			);
 	}
+}
+
+/** 校验的原文与顺序同时保留在摘要和逐条原因里。 */
+function invalid(messages: string[]) {
+	return fail("invalid", messages.join("\n"), { issues: messages.map((message) => ({ message })) });
 }

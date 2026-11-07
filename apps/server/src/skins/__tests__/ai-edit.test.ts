@@ -185,7 +185,7 @@ describe("runSkinAiEdit", () => {
 		});
 		expect(res.ok).toBe(false);
 		if (res.ok) return;
-		expect(res.errors.join()).toContain("assets/nope.png");
+		expect((res.issues ?? [res]).map((issue) => issue.message).join()).toContain("assets/nope.png");
 		expect(gen).toHaveBeenCalledTimes(2);
 	});
 });
