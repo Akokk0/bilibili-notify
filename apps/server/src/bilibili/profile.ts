@@ -12,7 +12,7 @@ import {
 } from "@bilibili-notify/internal";
 import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
-import { t } from "./i18n.js";
+import { logText, t } from "./i18n.js";
 import { type ImagesDeps, type ProfileAvatarFields, syncProfileAvatar } from "./images.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 
@@ -93,8 +93,8 @@ export function createProfileFetcher(deps: ProfileFetcherDeps): {
 	 * state 写不进去只丢这一次的记忆(下一轮重抓头像、粉丝牌名等下一场直播):记一句、不拖累交资料。
 	 * 那一句由调用处写在 `logger.warn` 里,这里只递标准码与原话。
 	 */
-	function logStateFailure(result: Result, warn: (reason: string) => void): void {
-		if (!result.ok) warn(`${result.code}: ${result.message}`);
+	function logStateFailure(result: Result, warn: (failure: Failure) => void): void {
+		if (!result.ok) warn(result);
 	}
 
 	/** 离上一次出网不足间隔就先等;等的时候宿主不等了(`signal` 中止)回 `false`,这一发不出网。 */
@@ -142,7 +142,10 @@ export function createProfileFetcher(deps: ProfileFetcherDeps): {
 			} catch (error) {
 				// 连不上、超时、非 2xx:请求层抛的。收成一时失败交给核心(下一轮照问),原话进日志。
 				const message = errorMessageOf(error);
-				deps.logger.warn(`[profile] uid=${identity.externalId} 取用户卡失败: ${message}`);
+				deps.logger.warn(logText("log.bilibili.profile.fetchFailed"), {
+					externalId: identity.externalId,
+					error,
+				});
 				return fail("unavailable", message);
 			}
 			if (!result.ok) {
@@ -174,7 +177,11 @@ export function createProfileFetcher(deps: ProfileFetcherDeps): {
 				const merged = { ...current, ...avatarFields };
 				const written = await deps.state.set(`profile:${identity.externalId}`, merged);
 				logStateFailure(written, (reason) =>
-					deps.logger.warn(`[profile] uid=${identity.externalId} 的头像记录没写进去: ${reason}`),
+					deps.logger.warn(logText("log.bilibili.profile.avatarWriteFailed"), {
+						externalId: identity.externalId,
+						code: reason.code,
+						message: reason.message,
+					}),
 				);
 				return merged;
 			});
@@ -198,7 +205,11 @@ export function createProfileFetcher(deps: ProfileFetcherDeps): {
 					fanClubName: name,
 				});
 				logStateFailure(written, (reason) =>
-					deps.logger.warn(`[profile] uid=${externalId} 的粉丝牌名没写进去: ${reason}`),
+					deps.logger.warn(logText("log.bilibili.profile.fanClubWriteFailed"), {
+						externalId: externalId,
+						code: reason.code,
+						message: reason.message,
+					}),
 				);
 			});
 		},
@@ -213,7 +224,11 @@ export function createProfileFetcher(deps: ProfileFetcherDeps): {
 				void stateTask(async () => {
 					const removed = await deps.state.delete(`profile:${externalId}`);
 					logStateFailure(removed, (reason) =>
-						deps.logger.warn(`[profile] uid=${externalId} 的资料记录没删掉: ${reason}`),
+						deps.logger.warn(logText("log.bilibili.profile.deleteFailed"), {
+							externalId: externalId,
+							code: reason.code,
+							message: reason.message,
+						}),
 					);
 				});
 			}

@@ -7,10 +7,9 @@ import {
 	type SourceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
-import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
 import { ensureFollowed, FOLLOWED_ATTRIBUTES, riskBackoffStepMs } from "./api/index.js";
-import { t } from "./i18n.js";
+import { logText, t } from "./i18n.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 
@@ -115,24 +114,32 @@ async function queryFollowed(
 		const res = await api.fetchRelations(uids);
 		if (!res.ok) {
 			if (res.code === "unauthorized") {
-				logger.info("[follow] 账号未登录,本轮关注同步整批跳过,等登录恢复");
+				logger.info(logText("log.bilibili.follow.unauthorized"), {
+					code: res.code,
+					upstreamCode: res.upstreamCode,
+					message: res.message,
+				});
 				return "unauthorized";
 			}
 			if (res.code === "rate_limited") {
-				logger.warn(
-					`[follow] 批量查询关注状态撞风控，本轮关注同步整批跳过、不降级(code=${res.upstreamCode ?? res.code}: ${res.message})`,
-				);
+				logger.warn(logText("log.bilibili.follow.queryLimited"), {
+					code: res.code,
+					upstreamCode: res.upstreamCode,
+					message: res.message,
+				});
 				return "rate_limited";
 			}
-			logger.warn(
-				`[follow] 批量查询关注状态失败(code=${res.upstreamCode ?? res.code}: ${res.message}) —— 降级为逐个关注`,
-			);
+			logger.warn(logText("log.bilibili.follow.queryRejected"), {
+				code: res.code,
+				upstreamCode: res.upstreamCode,
+				message: res.message,
+			});
 			return null;
 		}
 		// code=0 且 data 缺席 = 一个都没关注(契约:data 只列已关注的)。有效答案,不是失败。
 		if (res.data == null) return new Set();
 		if (typeof res.data !== "object" || Array.isArray(res.data)) {
-			logger.warn("[follow] 批量查询关注状态返回了预期外的结构 —— 降级为逐个关注");
+			logger.warn(logText("log.bilibili.follow.queryMalformed"));
 			return null;
 		}
 		const followed = new Set<string>();
@@ -143,7 +150,7 @@ async function queryFollowed(
 		}
 		return followed;
 	} catch (e) {
-		logger.warn(`[follow] 批量查询关注状态抛错(${errorMessageOf(e)}) —— 降级为逐个关注`);
+		logger.warn(logText("log.bilibili.follow.queryThrew"), { error: e });
 		return null;
 	}
 }
@@ -187,7 +194,7 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 	const degraded = alreadyFollowed === null;
 	const interrupted = (): boolean => deps.signal?.aborted === true;
 	if (interrupted()) {
-		deps.logger.info("[follow] 关停中，关注同步到此为止");
+		deps.logger.info(logText("log.bilibili.follow.stopping"));
 		return {
 			checked: uids.length,
 			followed: 0,
@@ -206,7 +213,7 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 	// 降级时对现状一无所知 → 每个人都 follow 一遍(幂等)。
 	const needFollow = uids.filter((uid) => degraded || !alreadyFollowed?.has(uid));
 	if (needFollow.length === 0) {
-		deps.logger.debug(`[follow] ${uids.length} 个人均已关注,无需补关注`);
+		deps.logger.debug(logText("log.bilibili.follow.alreadyFollowed"), { count: uids.length });
 		return {
 			checked: uids.length,
 			followed: 0,
@@ -217,9 +224,11 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 		};
 	}
 
-	deps.logger.info(
-		`[follow] ${uids.length} 个人中 ${needFollow.length} 个尚未关注,开始补关注${degraded ? "(降级:逐个)" : ""}`,
-	);
+	deps.logger.info(logText("log.bilibili.follow.starting"), {
+		count: uids.length,
+		missing: needFollow.length,
+		degraded,
+	});
 
 	let followed = 0;
 	let failed = 0;
@@ -242,9 +251,12 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 		}
 		failed++;
 		const code = outcome.upstreamCode ?? outcome.code;
-		deps.logger.warn(
-			`[follow] 关注 UID ${uid} 失败(code=${code}): ${outcome.message} —— 该订阅收不到动态`,
-		);
+		deps.logger.warn(logText("log.bilibili.follow.followFailed"), {
+			externalId: uid,
+			code: outcome.code,
+			upstreamCode: outcome.upstreamCode,
+			message: outcome.message,
+		});
 		deps.problems.reportFailure({
 			externalId: uid,
 			code: "follow_failed",
@@ -257,19 +269,19 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 		});
 		if (outcome.code === "rate_limited") {
 			pending = needFollow.slice(index);
-			deps.logger.warn(
-				`[follow] 撞风控，停下这一批，剩下 ${needFollow.length - sent} 位等下次关注同步`,
-			);
+			deps.logger.warn(logText("log.bilibili.follow.batchLimited"), {
+				remaining: needFollow.length - sent,
+			});
 			break;
 		}
 	}
 
 	if (interrupted()) {
-		deps.logger.info(`[follow] 关停中，补关注到此为止:${followed} 成功、${failed} 失败`);
+		deps.logger.info(logText("log.bilibili.follow.interrupted"), { followed, failed });
 	} else if (failed > 0) {
-		deps.logger.warn(`[follow] 补关注完成:${followed} 成功、${failed} 失败(失败的收不到动态)`);
+		deps.logger.warn(logText("log.bilibili.follow.finishedWithFailures"), { followed, failed });
 	} else {
-		deps.logger.info(`[follow] 补关注完成:${followed} 个`);
+		deps.logger.info(logText("log.bilibili.follow.finished"), { followed });
 	}
 
 	return {
@@ -335,9 +347,10 @@ export function watchFollows(deps: WatchFollowsDeps): Disposable {
 		}
 		const delay = riskBackoffStepMs(retryAttempt);
 		retryAttempt += 1;
-		deps.logger.info(
-			`[follow] 还欠 ${remaining.length} 位的关注没补上，${Math.round(delay / 60_000)} 分钟后自动再试`,
-		);
+		deps.logger.info(logText("log.bilibili.follow.retryScheduled"), {
+			remaining: remaining.length,
+			delayMs: delay,
+		});
 		retryTimer = deps.setTimeout(() => {
 			retryTimer = undefined;
 			if (!isLoggedIn(deps.auth.state())) {
@@ -383,15 +396,15 @@ export function watchFollows(deps: WatchFollowsDeps): Disposable {
 					for (const externalId of queried) pending.delete(externalId);
 					for (const externalId of result.pending) pending.add(externalId);
 				} catch (err) {
-					deps.logger.warn(`[follow] 关注同步失败: ${errorMessageOf(err)}`);
+					deps.logger.warn(logText("log.bilibili.follow.syncFailed"), { error: err });
 				}
 				if (owedBefore > 0 && pending.size === 0) {
-					deps.logger.info(`[follow] 重试补全:之前欠着的 ${owedBefore} 位关注都补上了`);
+					deps.logger.info(logText("log.bilibili.follow.retryCompleted"), { count: owedBefore });
 				}
 				scheduleRetry();
 			})
 			.catch((err) => {
-				deps.logger.warn(`[follow] 关注同步失败: ${errorMessageOf(err)}`);
+				deps.logger.warn(logText("log.bilibili.follow.syncFailed"), { error: err });
 			});
 	};
 

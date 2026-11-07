@@ -8,7 +8,8 @@
  */
 
 import { fail, ok, type Result, type SourceSubscriptionView } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { syncFollows } from "../follow-sync.js";
 
 const UIDS = ["111", "222", "333"];
@@ -134,7 +135,11 @@ describe("syncFollows — 补齐关注", () => {
 		expect(follow).not.toHaveBeenCalled();
 		expect(reportFailure).not.toHaveBeenCalled();
 		expect(resolveFailure).not.toHaveBeenCalled();
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("请求过于频繁"));
+		expect(logger.warn).toHaveBeenCalledWith("批量关注查询被限流，整批跳过，不回退逐个写入", {
+			code: "rate_limited",
+			upstreamCode: -352,
+			message: "请求过于频繁",
+		});
 		expect(r).toEqual({
 			checked: UIDS.length,
 			followed: 0,
@@ -289,4 +294,31 @@ describe("syncFollows — signal 中止", () => {
 		expect(reportFailure).not.toHaveBeenCalled();
 		expect(resolveFailure).not.toHaveBeenCalled();
 	});
+});
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+it("关注查询异常诊断跟随当前语言，保留原Error/cause并继续既有逐个关注回退", async () => {
+	const w = makeDeps({ views: [view("333")] });
+	const error = new Error("raw upstream failure", { cause: new Error("connection lost") });
+	w.fetchRelations.mockRejectedValue(error);
+	for (const [locale, message] of [
+		["zh-CN", "批量关注查询异常，回退为逐个关注"],
+		["en", "Batch follow lookup failed; falling back to individual follow requests"],
+		["ja", "フォローの一括確認で例外が発生したため、個別のフォローに切り替えます"],
+		["zh-TW", "批次關注查詢異常，改為逐一關注"],
+	] as const) {
+		i18n.set({ locale, voice: "maid" });
+		const result = await syncFollows(w.deps);
+		expect(w.logger.warn).toHaveBeenLastCalledWith(message, { error });
+		const fields = (w.logger.warn.mock.lastCall as unknown[] | undefined)?.[1] as
+			| { error: Error }
+			| undefined;
+		expect(fields?.error).toBe(error);
+		expect(result).toMatchObject({ degraded: true, followed: 1, failed: 0 });
+	}
+	expect(w.logger.warn).toHaveBeenCalledTimes(4);
+	expect(w.fetchRelations).toHaveBeenCalledTimes(4);
+	expect(w.follow).toHaveBeenCalledTimes(4);
+	expect(w.reportFailure).not.toHaveBeenCalled();
 });

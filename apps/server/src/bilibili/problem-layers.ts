@@ -1,6 +1,6 @@
 import type { Logger, SourceAuth, SourceContext } from "@bilibili-notify/internal";
 import type { LocaleReader } from "../i18n/locale-reader.js";
-import { errorMessageOf } from "../util/error-message.js";
+import { logText } from "./i18n.js";
 import { isLoginLost } from "./login-edges.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 
@@ -129,7 +129,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		try {
 			act(core);
 		} catch (err) {
-			logger.warn(`[problem-layers] ${what}失败(已忽略): ${errorMessageOf(err)}`);
+			logger.warn(logText("log.bilibili.problems.operationFailed"), { action: what, error: err });
 		}
 	}
 
@@ -167,7 +167,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	function pressDownFailures(wasVisible: boolean): void {
 		for (const [key, failure] of [...failures]) {
 			if (wasVisible) {
-				toCore("抹掉请求失败", (to) =>
+				toCore("clear-failures", (to) =>
 					to.resolveProblem({
 						...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
 						code: failure.code,
@@ -188,7 +188,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		for (const failure of failures.values()) {
 			if (failure.reported) failure.muted = true;
 		}
-		toCore("补报压着的请求失败", (to) => {
+		toCore("reveal-failures", (to) => {
 			for (const failure of failures.values()) reportFailureEntry(to, failure);
 		});
 	}
@@ -198,7 +198,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		if (risk.size === 0) return;
 		risk.clear();
 		riskNotify = false;
-		toCore("抹掉风控", (to) => to.resolveProblem({ code: RISK_CODE, notify: false }));
+		toCore("clear-risk-silent", (to) => to.resolveProblem({ code: RISK_CODE, notify: false }));
 	}
 
 	function applyAuth(status: ReturnType<SourceAuth["state"]>["status"]): void {
@@ -226,7 +226,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		try {
 			applyAuth(options.auth.state().status);
 		} catch (err) {
-			logger.warn(`[problem-layers] 读登录状态失败(已忽略): ${errorMessageOf(err)}`);
+			logger.warn(logText("log.bilibili.problems.authReadFailed"), { error: err });
 		}
 	}
 
@@ -235,7 +235,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	 * 句子都是此刻现取的。
 	 */
 	function reportVisible(): void {
-		toCore("补报", (to) => {
+		toCore("report-visible", (to) => {
 			// 登录没好:低层都压着,登录问题本身归宿主报,这里什么都不补
 			if (loggedOut) return;
 			if (risk.size > 0) reportRiskEntry(to);
@@ -255,7 +255,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	return {
 		reportRisk(path, riskOptions) {
 			if (loggedOut) {
-				logger.debug(`[problem-layers] 登录没好,风控(${path})不另记`);
+				logger.debug(logText("log.bilibili.problems.riskSuppressed"), { path });
 				return;
 			}
 			const wasEmpty = risk.size === 0;
@@ -264,13 +264,13 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			const raised = riskOptions.notify && !riskNotify;
 			if (raised) riskNotify = true;
 			if (wasEmpty) pressDownFailures(true);
-			if (wasEmpty || raised) toCore("报风控", reportRiskEntry);
+			if (wasEmpty || raised) toCore("report-risk", reportRiskEntry);
 		},
 		resolveRisk(path, resolveOptions) {
 			if (!risk.delete(path)) return;
 			if (risk.size > 0) return;
 			riskNotify = false;
-			toCore("清风控", (to) =>
+			toCore("resolve-risk", (to) =>
 				to.resolveProblem({
 					code: RISK_CODE,
 					...(resolveOptions?.notify === false ? { notify: false } : {}),
@@ -281,7 +281,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		reportFailure(failure) {
 			const pressed = !failuresVisible();
 			if (pressed && !failure.lasting) {
-				logger.debug(`[problem-layers] 更上一层的问题开着,${failure.code} 不另记`);
+				logger.debug(logText("log.bilibili.problems.failureSuppressed"), { code: failure.code });
 				return;
 			}
 			const entry: Failure = {
@@ -301,16 +301,16 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			failures.set(failureKey(entry), entry);
 			// 压着的 lasting 只存不报,高层清掉那一刻再报
 			if (pressed) {
-				logger.debug(`[problem-layers] 更上一层的问题开着,${failure.code} 先记着,等它清掉再报`);
+				logger.debug(logText("log.bilibili.problems.failureDeferred"), { code: failure.code });
 				return;
 			}
-			toCore("报请求失败", (to) => reportFailureEntry(to, entry));
+			toCore("report-failure", (to) => reportFailureEntry(to, entry));
 		},
 		resolveFailure(failure, resolveOptions) {
 			if (!failures.delete(failureKey(failure))) return;
 			// 压着的那条从没报上去过,删了就不用对核心说什么
 			if (!failuresVisible()) return;
-			toCore("清请求失败", (to) =>
+			toCore("resolve-failure", (to) =>
 				to.resolveProblem({
 					...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
 					code: failure.code,

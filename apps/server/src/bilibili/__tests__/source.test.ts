@@ -1001,8 +1001,9 @@ describe("createBiliSource", () => {
 
 		// 动态轮询一起来就读名单:让名单读口炸一次。
 		const roster = ctx.subscriptions;
+		const error = new Error("名单炸了");
 		(ctx as { subscriptions: unknown }).subscriptions = () => {
-			throw new Error("名单炸了");
+			throw error;
 		};
 		expect(() => config.set({ dynamicCron: "*/5 * * * *" })).not.toThrow();
 
@@ -1011,9 +1012,10 @@ describe("createBiliSource", () => {
 		expect(resolved).not.toHaveBeenCalledWith(
 			expect.objectContaining({ code: "dynamic_settings_invalid" }),
 		);
-		expect(logger.error.mock.calls.some(([m]) => String(m).includes("按新设置重来时抛错"))).toBe(
-			true,
-		);
+		expect(logger.error).toHaveBeenCalledWith("应用新设置异常，等待下次设置变更再试", {
+			cellKey: "dynamicCron",
+			error,
+		});
 
 		// 下一次变化再试:这回名单读得出来,动态轮询起来、问题清掉。
 		(ctx as { subscriptions: unknown }).subscriptions = roster;

@@ -211,8 +211,12 @@ describe("createBiliLinkResolver · resolve", () => {
 		});
 		expect(h.warn).toHaveBeenCalledTimes(1);
 		// 地址不带参数、不带缩放后缀:报的是那张图本身。
-		expect(String(h.warn.mock.calls[0]?.[0])).toContain(
-			"http://i0.hdslb.com/bfs/archive/cover.jpg: unavailable",
+		expect(h.warn).toHaveBeenCalledWith(
+			"图片抓取失败，本张仅保留原地址",
+			expect.objectContaining({
+				url: "http://i0.hdslb.com/bfs/archive/cover.jpg",
+				code: "unavailable",
+			}),
 		);
 	});
 

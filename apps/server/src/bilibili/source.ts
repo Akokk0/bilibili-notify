@@ -22,7 +22,6 @@ import {
 } from "@bilibili-notify/internal";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { ImageWriter } from "../images/image-store.js";
-import { errorMessageOf } from "../util/error-message.js";
 import { createBiliAiToolProvider } from "./ai-tools.js";
 import type { Api } from "./api/index.js";
 import { createAuthSystem } from "./auth/index.js";
@@ -32,7 +31,7 @@ import { BILI_EXTERNAL_ID_REGEX } from "./external-id.js";
 import { watchFollows } from "./follow-sync.js";
 import { GUARD_PROGRAM } from "./guard-program.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
-import { t } from "./i18n.js";
+import { logText, t } from "./i18n.js";
 import { fetchAvatar, IMAGE_REQUEST_HEADERS } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
 import { createRoomIds, type RoomIds } from "./live/room-ids.js";
@@ -258,11 +257,13 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						tier.icon = { ...tier.icon, ref: result.ref };
 						return;
 					}
-					ctx.logger.warn(
-						`[guard-icons] 抓「${tier.name}」徽章图失败: ${result.code}: ${result.message}`,
-					);
+					ctx.logger.warn(logText("log.bilibili.source.badgeRejected"), {
+						tier: tier.name,
+						code: result.code,
+						message: result.message,
+					});
 				} catch (error) {
-					ctx.logger.warn(`[guard-icons] 抓「${tier.name}」徽章图失败: ${errorMessageOf(error)}`);
+					ctx.logger.warn(logText("log.bilibili.source.badgeThrew"), { tier: tier.name, error });
 				}
 			}),
 		).then(() => undefined);
@@ -481,9 +482,10 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					}
 					stopEngine();
 					dynamicStopped = true;
-					ctx.logger.warn(
-						`[settings] 动态(${DYNAMIC_CELL.key})读不懂,动态先停着: ${read.issues?.[0]?.message ?? read.message}`,
-					);
+					ctx.logger.warn(logText("log.bilibili.source.postSettingsInvalid"), {
+						cellKey: DYNAMIC_CELL.key,
+						message: read.issues?.[0]?.message ?? read.message,
+					});
 					dynamicWording = () =>
 						PROBLEM_TEXTS.dynamicSettingsInvalid.text(causeOf(read, DYNAMIC_CELL));
 					reportInvalid(
@@ -504,9 +506,10 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						return;
 					}
 					login.setHealthCheckMs(0);
-					ctx.logger.warn(
-						`[settings] 登录检查(${LOGIN_CHECK_CELL.key})读不懂,定时的登录检查先停着: ${read.issues?.[0]?.message ?? read.message}`,
-					);
+					ctx.logger.warn(logText("log.bilibili.source.authSettingsInvalid"), {
+						cellKey: LOGIN_CHECK_CELL.key,
+						message: read.issues?.[0]?.message ?? read.message,
+					});
 					loginCheckWording = () =>
 						PROBLEM_TEXTS.loginCheckSettingsInvalid.text(causeOf(read, LOGIN_CHECK_CELL));
 					reportInvalid(
@@ -534,7 +537,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 							);
 						}
 					} catch (err) {
-						ctx.logger.warn(`[settings] 换语言时重报设置问题失败(已忽略): ${errorMessageOf(err)}`);
+						ctx.logger.warn(logText("log.bilibili.source.languageRefreshFailed"), { error: err });
 					}
 				};
 
@@ -587,11 +590,11 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				);
 				applyDynamic();
 				rooms.start(ctx, ctx.subscriptions());
-				const applyDynamicChanged = guarded(ctx, "动态", applyDynamic);
+				const applyDynamicChanged = guarded(ctx, DYNAMIC_CELL.key, applyDynamic);
 				mine.push(dynamicSettings.onChange(applyDynamicChanged));
 				mine.push(ctx.onTimezoneChanged(applyDynamicChanged));
 				applyLoginCheck();
-				mine.push(loginCheckSettings.onChange(guarded(ctx, "登录检查", applyLoginCheck)));
+				mine.push(loginCheckSettings.onChange(guarded(ctx, LOGIN_CHECK_CELL.key, applyLoginCheck)));
 				mine.push(deps.locale.onChange(reportInvalidAgain));
 				handles = mine;
 				if (ctx.subscriptions().some((view) => view.monitorsLive)) {
@@ -657,9 +660,10 @@ function guarded(ctx: SourceContext, what: string, run: () => void): () => void 
 		try {
 			run();
 		} catch (err) {
-			ctx.logger.error(
-				`[settings] ${what}那一样按新设置重来时抛错(下次设置变了再试): ${errorMessageOf(err)}`,
-			);
+			ctx.logger.error(logText("log.bilibili.source.settingsApplyFailed"), {
+				cellKey: what,
+				error: err,
+			});
 		}
 	};
 }

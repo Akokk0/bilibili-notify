@@ -1,5 +1,5 @@
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
-import { t as serverText } from "./i18n.js";
+import { logText } from "./i18n.js";
 /**
  * B 站集成自己把图存进图库:作品里的图、正文表情图、直播卡的封面在**出卡之前**抓进图库,交给出卡器的只带图库引用
  * (ADR-0021 决策 22)。翻译(`postFromDynamic`、`liveCardInputFromRoomInfo`)是同步的、只填 `url`,抓图是这里
@@ -13,6 +13,7 @@ import { t as serverText } from "./i18n.js";
 import { urlWithoutQuery } from "@bilibili-notify/http";
 import type { LiveCardInput } from "@bilibili-notify/image";
 import {
+	type Failure,
 	type FailureCode,
 	type ImageRef,
 	type Logger,
@@ -164,20 +165,28 @@ const SCALED_ONLY_FAILURES: ReadonlySet<FailureCode> = new Set(["invalid", "not_
 async function fetchRef(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
 	const scaled = scaledImageUrl(url);
 	const candidates = scaled === url ? [url] : [scaled, url];
-	let lastMessage = "";
+	let lastFailure:
+		| Pick<Failure, "code" | "message" | "upstreamCode">
+		| { error: unknown }
+		| undefined;
 	for (const candidate of candidates) {
 		try {
 			const result = await deps.images.fetchImage(candidate, { headers: IMAGE_REQUEST_HEADERS });
 			if (result.ok) return result.ref;
-			lastMessage = `${result.code}: ${result.message}`;
+			lastFailure = {
+				code: result.code,
+				upstreamCode: result.upstreamCode,
+				message: result.message,
+			};
 			if (!SCALED_ONLY_FAILURES.has(result.code)) break;
 		} catch (e) {
-			lastMessage = (e as Error).message;
+			lastFailure = { error: e };
 		}
 	}
-	deps.logger.warn(
-		`[bilibili-images] 抓图失败,这张图保持只有地址 ${urlWithoutQuery(url)}: ${lastMessage}`,
-	);
+	deps.logger.warn(logText("log.bilibili.images.fetchFailed"), {
+		url: urlWithoutQuery(url),
+		...lastFailure,
+	});
 	return undefined;
 }
 
@@ -290,12 +299,12 @@ export async function fetchLiveCover(
 
 /**
  * 抓某一档缩放版进图库,回图库引用;**缩放版抓不到不回退原图**,回 `undefined`、记一条 warn(地址不带 query),不抛。
- * 抓图服务本身抛了同样回 `undefined`。非 B 站图床的地址(缩放不动它)只抓一次原地址。`what` 是 warn 里的叫法。
+ * 抓图服务本身抛了同样回 `undefined`。非 B 站图床的地址(缩放不动它)只抓一次原地址。`what` 是日志里的图片用途标识。
  */
 async function fetchScaledOnly(
 	url: string,
 	maxWidth: number,
-	what: string,
+	what: "avatar" | "emoji",
 	deps: ImagesDeps,
 ): Promise<ImageRef | undefined> {
 	try {
@@ -303,14 +312,20 @@ async function fetchScaledOnly(
 			headers: IMAGE_REQUEST_HEADERS,
 		});
 		if (result.ok) return result.ref;
-		deps.logger.warn(
-			`[bilibili-images] ${what}抓取失败,这一轮没有${what} ${urlWithoutQuery(url)}: ${result.code}: ${result.message}`,
-		);
+		deps.logger.warn(logText("log.bilibili.images.scaledRejected"), {
+			imageKind: what,
+			url: urlWithoutQuery(url),
+			code: result.code,
+			upstreamCode: result.upstreamCode,
+			message: result.message,
+		});
 	} catch (e) {
 		// 抓图服务本身抛了也是「这一轮没有」:约定是不抛,调用方不必再包一层。
-		deps.logger.warn(
-			`[bilibili-images] ${what}抓取出错,这一轮没有${what} ${urlWithoutQuery(url)}: ${(e as Error).message}`,
-		);
+		deps.logger.warn(logText("log.bilibili.images.scaledThrew"), {
+			imageKind: what,
+			url: urlWithoutQuery(url),
+			error: e,
+		});
 	}
 	return undefined;
 }
@@ -321,7 +336,7 @@ async function fetchScaledOnly(
  * 下一轮由调用方再试。
  */
 export function fetchAvatar(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
-	return fetchScaledOnly(url, AVATAR_MAX_WIDTH, serverText("bilibili.images.text.1"), deps);
+	return fetchScaledOnly(url, AVATAR_MAX_WIDTH, "avatar", deps);
 }
 
 /**
@@ -329,7 +344,7 @@ export function fetchAvatar(url: string, deps: ImagesDeps): Promise<ImageRef | u
  * ({@link EMOJI_MAX_WIDTH} 宽),**缩放版抓不到不回退原图**(表情原图可能是很大的动图):那个表情这一轮卡上画文字。
  */
 function fetchEmoji(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
-	return fetchScaledOnly(url, EMOJI_MAX_WIDTH, serverText("bilibili.images.text.2"), deps);
+	return fetchScaledOnly(url, EMOJI_MAX_WIDTH, "emoji", deps);
 }
 
 /** B 站自己资料状态里头像的两格:`avatar` 是图库引用,`avatarUrl` 是那张图的来源地址。 */

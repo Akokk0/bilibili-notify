@@ -1,6 +1,8 @@
 import type { FailureCode, ImageRef, Logger, Post } from "@bilibili-notify/internal";
 import { fail, makeEmptySubscription, ok } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { logMessage } from "../../__tests__/support/log-message.js";
+import { i18n } from "../../i18n/index.js";
 import {
 	fetchAvatar,
 	fetchLiveCover,
@@ -189,7 +191,7 @@ describe("fetchPostImages", () => {
 		expect(result.images?.[1]?.ref).toBeDefined();
 		const warn = vi.mocked(deps.logger.warn);
 		expect(warn).toHaveBeenCalledTimes(1);
-		const line = String(warn.mock.calls[0]?.[0]);
+		const line = logMessage(warn.mock.calls[0]?.[0] ?? "", warn.mock.calls[0]?.slice(1));
 		expect(line).toContain("/bfs/x/bad.jpg");
 		expect(line).not.toContain("secret");
 	});
@@ -214,7 +216,7 @@ describe("fetchPostImages", () => {
 		expect(result.images?.[1]?.ref).toBeDefined();
 		const warn = vi.mocked(deps.logger.warn);
 		expect(warn).toHaveBeenCalledTimes(1);
-		const line = String(warn.mock.calls[0]?.[0]);
+		const line = logMessage(warn.mock.calls[0]?.[0] ?? "", warn.mock.calls[0]?.slice(1));
 		expect(line).toContain("/bfs/x/bad.jpg");
 		expect(line).toContain("socket hang up");
 		expect(line).not.toContain("secret");
@@ -479,7 +481,9 @@ describe("fetchPostImages 的表情图", () => {
 			{ kind: "emoji", text: "[doge]", image: expect.any(String) },
 		]);
 		expect(result.images?.[0]?.ref).toBeDefined();
-		const warns = vi.mocked(deps.logger.warn).mock.calls.map((call) => String(call[0]));
+		const warns = vi
+			.mocked(deps.logger.warn)
+			.mock.calls.map((call) => logMessage(call[0], call.slice(1)));
 		expect(warns).toHaveLength(1);
 		expect(warns[0]).toContain("https://i0.hdslb.com/bfs/emote/bad.png");
 		expect(warns[0]).not.toContain("token");
@@ -605,7 +609,10 @@ describe("fetchAvatar", () => {
 			logger: silentLogger(),
 		};
 		await expect(fetchAvatar(`${face}?token=secret`, deps)).resolves.toBeUndefined();
-		const line = String(vi.mocked(deps.logger.warn).mock.calls[0]?.[0]);
+		const line = logMessage(
+			vi.mocked(deps.logger.warn).mock.calls[0]?.[0] ?? "",
+			vi.mocked(deps.logger.warn).mock.calls[0]?.slice(1),
+		);
 		expect(line).toContain("boom");
 		expect(line).not.toContain("secret");
 	});
@@ -631,7 +638,10 @@ describe("fetchAvatar", () => {
 	it("抓不到记的 warn 带地址但不带 query", async () => {
 		const { deps } = fakeImages(() => true);
 		await fetchAvatar(`${face}?token=secret`, deps);
-		const warned = vi.mocked(deps.logger.warn).mock.calls.flat().join("\n");
+		const warned = vi
+			.mocked(deps.logger.warn)
+			.mock.calls.map((call) => logMessage(call[0], call.slice(1)))
+			.join("\n");
 		expect(warned).toContain(face);
 		expect(warned).not.toContain("secret");
 	});
@@ -730,4 +740,36 @@ describe("subscribedAvatar", () => {
 		expect(subscribedAvatar(subs, profileOf, "456")).toBeUndefined();
 		expect(subscribedAvatar(subs, profileOf, "789")).toBeUndefined();
 	});
+});
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+it("头像抓取诊断随语言切换，保留原异常且URL参数不写入日志", async () => {
+	const error = new Error("raw image failure", { cause: new Error("socket closed") });
+	const fetchImage = vi.fn(async () => {
+		throw error;
+	});
+	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+	const url = "https://i0.hdslb.com/bfs/avatar/a.png?token=secret";
+	for (const [locale, message] of [
+		["zh-CN", "缩放图片抓取异常，本轮不使用该图片"],
+		["en", "Scaled image fetch failed unexpectedly; omitting the image this cycle"],
+		["ja", "縮小画像の取得で例外が発生したため、今回は画像を使用しません"],
+		["zh-TW", "縮放圖片抓取異常，本輪不使用該圖片"],
+	] as const) {
+		i18n.set({ locale, voice: "maid" });
+		await expect(fetchAvatar(url, { images: { fetchImage }, logger })).resolves.toBeUndefined();
+		expect(logger.warn).toHaveBeenLastCalledWith(message, {
+			imageKind: "avatar",
+			url: "https://i0.hdslb.com/bfs/avatar/a.png",
+			error,
+		});
+		const fields = (logger.warn.mock.lastCall as unknown[] | undefined)?.[1] as
+			| { error: Error }
+			| undefined;
+		expect(fields?.error).toBe(error);
+		expect(logMessage(message, [fields])).not.toContain("secret");
+	}
+	expect(fetchImage).toHaveBeenCalledTimes(4);
+	expect(logger.warn).toHaveBeenCalledTimes(4);
 });
