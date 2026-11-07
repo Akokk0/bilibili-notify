@@ -89,6 +89,12 @@
 
 两项棘轮初始70/141，经结果清理变为70/0、业务文字清理变为42/0、模块原文归位后为0/0。完整片级红绿记录及本批全量收尾结果见主仓`.bn-design/s5-cleanup-continuation-2026-11-07.md`与同名证据目录。
 
+## 本轮清理收尾验收（2026-11-07）
+
+按CI顺序执行`vp exec biome ci .`、`vp run build`、`vp run typecheck`、`vp run test --reporter=dot`，最终均通过：1253测试文件通过/1既有跳过，18740项通过/3既有跳过。Biome检查2442文件，保留3条既有warning、3条info。初次全量发现一条市场HTTP回归还断言旧`err`，已独立补齐标准`code/message`与旧字段不存在的断言，再次全量通过，失败记录保留。
+
+`vp run build:update-payload`装配通过，开发工具未混入产物；`vp run knip`与`vp exec knip --include exports,types --reporter json --no-progress`均0项。5-24的`vp run check:desktop`含Rust fmt/clippy/test/check全绿（12测试），之后无Rust改动。片级修正保持原子提交，三个本地fixup已合回所属提交且文件树不变。本地dev同步结果与完整原始日志见主仓`.bn-design/s5-cleanup-continuation-2026-11-07.md`及同名目录；未推送。
+
 ## 清理后接翻译
 
 - 面板、宿主、B站、迁移与包共用文字的简中平实底稿合计5224键，内置人格另49键，女仆差异层899键（2026-11-07复点）；英、日、繁体平实字典目前均为空。数量会随前述清理调整，不作为最终翻译片数。
