@@ -1375,18 +1375,26 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		drove("Source", "health");
 	});
 
-	// 验红:`push/adapter-context.ts` 的 `feed` 摘掉连接归属检查,冒名的入站也递下去,日志里没有「不是适配器 … 的」那一行。
+	// 摘掉连接归属检查后，这条入站拒收诊断及不回复的断言会红。
 	step(TITLE.forged, async () => {
 		const before = (await adapterView()).rows;
 		await press("inbound.forged");
 		// 不存在的连接:宿主丢掉并记一行,不会有回复。
-		const line = `丢掉一条私聊消息:连接 ${FORGED_CONNECTION_ID} 不是适配器 ${FAKE} 的`;
+		const line = "连接不属于此适配器，丢弃入站消息";
 		await vi.waitFor(
 			async () => {
 				const logs = await okJson<{ entries: { level: string; msg: string }[] }>(
 					await api("/api/system/logs?limit=500"),
 				);
-				expect(logs.entries.some((e) => e.level === "warn" && e.msg === line)).toBe(true);
+				expect(logs.entries).toEqual(
+					expect.arrayContaining([
+						expect.objectContaining({
+							level: "warn",
+							msg: line,
+							args: [{ route: "private", connectionId: FORGED_CONNECTION_ID, adapterKey: FAKE }],
+						}),
+					]),
+				);
 			},
 			{ timeout: 10_000 },
 		);

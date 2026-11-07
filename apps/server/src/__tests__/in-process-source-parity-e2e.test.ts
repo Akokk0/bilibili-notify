@@ -3864,12 +3864,17 @@ describe("进程内对拍:两趟开机", () => {
 		const probe = currentProbe();
 		expect(probe.stops).toBe(0);
 		expect(probe.ctx?.signal.aborted).toBe(false);
-		// 问题表收到一条上报,核心的日志里会有「[problems] 开 … code」:拿它看「收没收」。
+		// 沿既有日志观察口，按问题登记说明和独立 code 核对表是否接收。
 		const serviceCtx = inProcessWorld.serviceCtx as unknown as NodeServiceContext;
-		const seen: string[] = [];
-		const previous = serviceCtx.setLogHook((entry) => seen.push(entry.msg));
+		const seen: LogEntry[] = [];
+		const previous = serviceCtx.setLogHook((entry) => seen.push(entry));
 		const tableOpened = (code: string) =>
-			seen.filter((msg) => msg.startsWith("[problems] 开") && msg.includes(code));
+			seen.filter(
+				(entry) =>
+					entry.level === "warn" &&
+					entry.msg === "问题已登记" &&
+					(entry.args?.[0] as { code?: string })?.code === code,
+			);
 		// 开着的时候报一条,问题表收得到(证明下面「停后不收」不是因为这条路本来就不通)。
 		probe.ctx?.reportProblem({
 			externalId: EXT.alice,

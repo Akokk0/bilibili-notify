@@ -15,6 +15,7 @@ import { makeWorld } from "../subscriptions/__tests__/fixtures.js";
 import { registerBuiltinSource } from "../subscriptions/builtin-sources.js";
 import { createSourceRegistry } from "../subscriptions/registry.js";
 import { fixedTimezone } from "./support/integration-io.js";
+import { logMessage } from "./support/log-message.js";
 /**
  * 「真能用,不是空壳」(ADR-0025 决策 9、10):内置适配器、拓展的适配器上下文、拓展的 `activate` 上下文,
  * 三处写进去的东西**盘上真有、重开读得到**,卸载拓展之后两个目录都没了。
@@ -425,7 +426,10 @@ it("timezone parity: activate/source/adapter read, notify, stop and restart", as
 		adapter: [] as string[],
 	};
 	const errors: string[] = [];
-	const extLogger: Logger = { ...logger(), error: (m) => errors.push(m) };
+	const extLogger: Logger = {
+		...logger(),
+		error: (m, ...args) => errors.push(logMessage(m, args)),
+	};
 	const listen = (kind: keyof typeof seen, ctx: IntegrationContext) => {
 		initial[kind].push(ctx.timezone());
 		ctx.onTimezoneChanged(() => seen[kind].push(ctx.timezone()));

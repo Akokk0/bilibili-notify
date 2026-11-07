@@ -200,7 +200,10 @@ describe("开机读到悬空的标签 id(只可能是手改了文件)", () => {
 		);
 		const store = await open();
 		expect(store.getSubscriptions()[0]?.tagIds).toEqual([t.id]);
-		expect(ctx.logger.warn).toHaveBeenCalledWith(expect.stringContaining(ghost));
+		expect(ctx.logger.warn).toHaveBeenCalledWith("已移除订阅中不存在于标签表的标签引用", {
+			event: "config.unknown_tags_removed",
+			tagIds: [ghost],
+		});
 	});
 });
 

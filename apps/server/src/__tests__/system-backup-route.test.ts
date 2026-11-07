@@ -351,7 +351,7 @@ describe("backup route — 未知的抛错是 bug,交给全局出错处理", () 
 
 		expect(res.status).toBe(503);
 		expect(await res.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
-		expect(logger.error).toHaveBeenCalledWith("unhandled request error", DISK_ERROR);
+		expect(logger.error).toHaveBeenCalledWith("请求处理发生未捕获异常", DISK_ERROR);
 	});
 
 	it("export 时抛的未知错也一样,不再变成 `export_failed` + `String(err)`", async () => {
@@ -368,6 +368,6 @@ describe("backup route — 未知的抛错是 bug,交给全局出错处理", () 
 		const text = JSON.stringify(await res.json());
 		expect(text).not.toContain("ENOSPC");
 		expect(text).not.toContain("Error:");
-		expect(logger.error).toHaveBeenCalledWith("unhandled request error", DISK_ERROR);
+		expect(logger.error).toHaveBeenCalledWith("请求处理发生未捕获异常", DISK_ERROR);
 	});
 });

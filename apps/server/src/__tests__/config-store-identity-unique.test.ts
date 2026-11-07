@@ -198,10 +198,22 @@ describe("盘上遗留的一对(老版本留下的)", () => {
 		const { store, pair, other } = await openWithLegacyPair();
 		expect(store.getSubscriptions()).toEqual([pair[0], other, pair[1]]);
 
-		const warnings = vi.mocked(ctx.logger.warn).mock.calls.map((c) => String(c[0]));
-		const hit = warnings.filter((w) => w.includes("12345"));
-		expect(hit).toHaveLength(1);
-		for (const word of ["bilibili", pair[0].id, pair[1].id]) expect(hit[0]).toContain(word);
+		expect(ctx.logger.warn).toHaveBeenCalledWith(expect.any(String), {
+			event: "config.duplicate_subscriptions",
+			duplicates: [
+				{
+					identity: { sourceKey: "bilibili", externalId: "12345" },
+					subscriptionIds: [pair[0].id, pair[1].id],
+				},
+			],
+		});
+		expect(
+			vi
+				.mocked(ctx.logger.warn)
+				.mock.calls.filter(
+					(call) => (call[1] as { event?: string })?.event === "config.duplicate_subscriptions",
+				),
+		).toHaveLength(1);
 	});
 
 	it("没有重复 → 开机不为这个警告", async () => {

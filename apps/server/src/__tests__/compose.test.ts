@@ -307,7 +307,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 
 		expect(forSubsystem).toHaveBeenCalledWith(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY);
 		const bili = subsystems.get(JSON.stringify([BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY]));
-		expect(bili?.logger.info).toHaveBeenCalledWith("[auth] 账号未登录，等待扫码登录");
+		expect(bili?.logger.info).toHaveBeenCalledWith("尚未登录，等待扫码登录");
 		expect(coreLogger.info).not.toHaveBeenCalled();
 		expect(coreLogger.debug).not.toHaveBeenCalled();
 		const index = forSubsystem.mock.calls.findIndex(
@@ -585,9 +585,13 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			await w.store.close();
 
 			// 先停了 Api:迟到的链看见自己被取代,安静丢弃。没先停的话,它会去提交,撞上已经关掉的写道:记 error。
-			expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("被取代"));
+			expect(logger.debug).toHaveBeenCalledWith("续期已被新会话状态取代，丢弃本轮结果", {
+				stage: "confirm",
+			});
 			expect(logger.error).not.toHaveBeenCalled();
-			expect(logger.info).not.toHaveBeenCalledWith("[auth] 登录续期已落盘");
+			expect(
+				vi.mocked(logger.info).mock.calls.filter(([message]) => message === "登录续期已落盘"),
+			).toEqual([]);
 		});
 
 		it("没有在途续期、罐子里有没存的变化时关停:最后一次存盘落了,存储把手关了", async () => {
