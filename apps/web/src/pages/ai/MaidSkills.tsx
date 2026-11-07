@@ -20,8 +20,7 @@ import {
 	HintNote,
 	Icon,
 	LoadingBlock,
-	Pill,
-	SectionNav,
+	TabBar,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -235,64 +234,59 @@ export function MaidSkills() {
 		);
 
 	return (
-		<div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-bn-rail">
+		<div className="min-w-0 space-y-4">
 			<div className="col-span-full flex flex-wrap items-center justify-between gap-3">
 				<span className="text-bn-xs text-bn-text-tertiary">
 					{tx("maidSkills.fileHint", { kb: MAID_SKILL_LIMITS.fileBytes / 1024 })}
 				</span>
-				<AddFileButton
-					accept=".md,text/markdown,text/plain"
-					uploading={preview.isPending}
-					onFile={(file) => {
-						if (!file || preview.isPending) return;
-						setErr(null);
-						if (file.size > MAID_SKILL_LIMITS.fileBytes) {
-							setErr(tx("maidSkills.fileTooLarge", { kb: MAID_SKILL_LIMITS.fileBytes / 1024 }));
-							return;
-						}
-						preview.mutate(file);
-					}}
-					className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-bn-sm"
-				>
-					{tx("maidSkills.import")}
-				</AddFileButton>
+				<div className="flex flex-wrap items-center gap-3">
+					<AddFileButton
+						accept=".md,text/markdown,text/plain"
+						uploading={preview.isPending}
+						onFile={(file) => {
+							if (!file || preview.isPending) return;
+							setErr(null);
+							if (file.size > MAID_SKILL_LIMITS.fileBytes) {
+								setErr(tx("maidSkills.fileTooLarge", { kb: MAID_SKILL_LIMITS.fileBytes / 1024 }));
+								return;
+							}
+							preview.mutate(file);
+						}}
+						className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-bn-sm"
+					>
+						{tx("maidSkills.import")}
+					</AddFileButton>
+					<Btn
+						variant="outline"
+						onClick={() => {
+							setErr(null);
+							setActiveId(NEW_ID);
+							setDraft(BLANK);
+						}}
+					>
+						{tx("maidSkills.add")}
+					</Btn>
+				</div>
 			</div>
-			<SectionNav
-				heading={tx("maidSkills.heading")}
+			<TabBar
 				items={[
-					...list.map((s) => ({
-						id: s.name,
-						label: s.name,
+					...list.map((skill) => ({
+						id: skill.name,
+						label: skill.name,
 						icon: <Icon.sparkle size={14} />,
-						// 选中那一格的底由皮肤说了算(见 SectionNav 的 RAIL_ITEM_ACTIVE)。主人
-						// 把它画成实心粉块之后,徽章默认那身粉纱 + 粉字正好糊在上面,只剩皮肤
-						// 给 badge 画的那道影子(2026-08-25 真机指出)。所以选中态改喂
-						// currentColor —— 底与字都跟着这一格的文字色走,而那个色皮肤是改得动的。
-						// 未选中态照旧是粉:那时底是页面色,粉看得清清楚楚,没必要动。
-						// (Pill 的色本就归调用方管,这不是绕过它的契约,是在用它。)
-						badge: s.builtin ? (
-							<Pill subtle color={s.name === activeId ? "currentColor" : undefined}>
-								{tx("maidSkills.builtin")}
-							</Pill>
-						) : undefined,
+						code: skill.builtin ? tx("maidSkills.builtin") : undefined,
 					})),
 					...(creating
 						? [{ id: NEW_ID, label: tx("maidSkills.new"), icon: <Icon.plus size={14} /> }]
 						: []),
 				]}
-				activeId={activeId ?? ""}
-				onPick={(id) => {
+				value={activeId ?? ""}
+				onChange={(id) => {
 					setErr(null);
 					setActiveId(id);
-					const picked = list.find((s) => s.name === id);
+					const picked = list.find((skill) => skill.name === id);
 					if (picked) setDraft(toDraft(picked));
 				}}
-				onAdd={() => {
-					setErr(null);
-					setActiveId(NEW_ID);
-					setDraft(BLANK);
-				}}
-				addLabel={tx("maidSkills.add")}
 			/>
 
 			<div className="flex min-w-0 flex-col gap-4">

@@ -71,9 +71,11 @@ function mount() {
 	);
 }
 
-/** SectionNav 是双形态(竖栏 + 横向 chip),同一个标签会出现两次。 */
+/** 技能切换用Tab，新建仍是独立动作。 */
 const pick = (label: string | RegExp) =>
-	fireEvent.click(screen.getAllByRole("button", { name: label })[0] as Element);
+	fireEvent.click(
+		screen.queryByRole("tab", { name: label }) ?? screen.getByRole("button", { name: label }),
+	);
 
 const nameBox = () => screen.getByPlaceholderText("weekly-report") as HTMLInputElement;
 const descBox = () => screen.getByPlaceholderText("一句话说清这条技能干什么") as HTMLInputElement;
@@ -392,51 +394,30 @@ describe("盘上读不进来的", () => {
 	});
 });
 
-/**
- * 左栏「内置」徽章的颜色归属。
- *
- * 徽章的色本来就归调用方管(Pill 把它走行内样式,皮肤盖不动 —— 那是为了别让承载
- * 语义色的徽章说谎)。而这一处压根没有语义色可言,吃的是默认的粉。
- *
- * 于是主人把左栏选中项画成实心粉块之后,粉纱铺在粉块上还是粉、粉字落上去等于没有,
- * 屏幕上只剩皮肤给 `badge` 画的那道影子(2026-08-25 真机指出)。
- *
- * 修法是选中态改喂 `currentColor`:底与字都跟着这一格的文字色走,而那个色皮肤改得动。
- * 未选中态维持粉 —— 那时底是页面色,粉看得清清楚楚,一起改反而白丢一层观感。
- */
-describe("左栏「内置」徽章", () => {
-	/** 竖栏里某一格上的徽章。双形态会各渲染一枚,这里只认竖栏那枚。 */
-	function badgeStyleIn(label: string): string {
-		const rail = document.querySelector('[data-section-nav="rail"]') as HTMLElement;
-		const cell = [...rail.querySelectorAll<HTMLElement>('[data-bn~="nav-item"]')].find((el) =>
-			(el.textContent ?? "").includes(label),
+describe("技能Tab与内置只读", () => {
+	it("内置来源由Tab标明，默认选中的内容保持只读", async () => {
+		H.list = [skill(), skill({ name: "live-copy", description: "转播直播间" })];
+		mount();
+		const tab = await screen.findByRole("tab", { name: /weekly-report.*内置/ });
+		await waitFor(() => expect(tab.getAttribute("aria-selected")).toBe("true"));
+		expect(bodyBox().disabled).toBe(true);
+		expect(screen.getByRole("tab", { name: /live-copy.*内置/ }).getAttribute("aria-selected")).toBe(
+			"false",
 		);
-		if (!cell) throw new Error(`竖栏里没有「${label}」这一格`);
-		const badge = cell.querySelector<HTMLElement>('[data-bn="badge"]');
-		if (!badge) throw new Error(`「${label}」这一格上没有徽章`);
-		return badge.getAttribute("style") ?? "";
-	}
-
-	it("选中的那格跟着文字色走,没选中的照旧是粉", async () => {
-		H.list = [skill(), skill({ name: "live-copy", description: "转播直播间" })];
-		mount();
-		// 首个技能自动选中(见 MaidSkills 里那条 effect)。
-		await waitFor(() => expect(nameBox().value).toBe("weekly-report"));
-
-		expect(badgeStyleIn("weekly-report")).toMatch(/currentcolor/i);
-		expect(badgeStyleIn("live-copy")).toContain("--color-bn-pink");
 	});
-
-	it("换一格选中,徽章跟着换 —— 绑的是选中态,不是「第一项特殊」", async () => {
+	it("切换Tab同步选中标记和编辑内容", async () => {
 		H.list = [skill(), skill({ name: "live-copy", description: "转播直播间" })];
 		mount();
 		await waitFor(() => expect(nameBox().value).toBe("weekly-report"));
-
 		pick(/live-copy/);
-		await waitFor(() => expect(nameBox().value).toBe("live-copy"));
-
-		expect(badgeStyleIn("live-copy")).toMatch(/currentcolor/i);
-		expect(badgeStyleIn("weekly-report")).toContain("--color-bn-pink");
+		expect(nameBox().value).toBe("live-copy");
+		expect(bodyBox().disabled).toBe(true);
+		expect(screen.getByRole("tab", { name: /live-copy.*内置/ }).getAttribute("aria-selected")).toBe(
+			"true",
+		);
+		expect(
+			screen.getByRole("tab", { name: /weekly-report.*内置/ }).getAttribute("aria-selected"),
+		).toBe("false");
 	});
 });
 

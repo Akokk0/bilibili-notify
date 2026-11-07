@@ -14,7 +14,7 @@ import {
 	ModalShell,
 	Pill,
 	RailDot,
-	SectionNav,
+	TabBar,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -307,9 +307,8 @@ export function PersonaLibrary() {
 			{notice ? <HintNote>{notice}</HintNote> : null}
 			{query.isError ? <ErrorNote>{query.error.message}</ErrorNote> : null}
 			{error && !importDraft ? <ErrorNote>{error}</ErrorNote> : null}
-			<div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-bn-rail">
-				<SectionNav
-					heading={t("library.personasTitle")}
+			<div className="min-w-0 space-y-4">
+				<TabBar
 					items={list
 						.filter((p) => p.label.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
 						.map((p) => {
@@ -317,15 +316,18 @@ export function PersonaLibrary() {
 							return {
 								id: p.id,
 								label: p.label,
-								desc: p.builtin ? t("personas.builtin") : t("personas.custom"),
-								icon: <Mark size={18} />,
-								badge: p.usedBy.length ? (
-									<RailDot title={p.usedBy.join("、")} active={p.id === active} />
-								) : undefined,
+								icon: (
+									<span className="flex items-center gap-1.5">
+										<Mark size={14} />
+										{p.usedBy.length ? (
+											<RailDot title={p.usedBy.join("、")} active={p.id === active} />
+										) : null}
+									</span>
+								),
 							};
 						})}
-					activeId={active ?? ""}
-					onPick={(id) => {
+					value={active ?? ""}
+					onChange={(id) => {
 						const entry = list.find((p) => p.id === id);
 						if (entry && !busy) guard(() => select(id, entry, query.data.revision));
 					}}

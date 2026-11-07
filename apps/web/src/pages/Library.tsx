@@ -25,37 +25,37 @@ export default function Library() {
 			id: "images",
 			label: t("library.imagesTitle"),
 			desc: t("library.imagesDescription"),
-			icon: <Icon.image size={20} />,
+			icon: <Icon.image size={15} />,
 		},
 		{
 			id: "fonts",
 			label: t("library.fontsTitle"),
 			desc: t("library.fontsDescription"),
-			icon: <Icon.list size={20} />,
+			icon: <Icon.list size={15} />,
 		},
 		{
 			id: "skills",
 			label: t("library.skillsTitle"),
 			desc: t("library.skillsDescription"),
-			icon: <Icon.sparkle size={20} />,
+			icon: <Icon.sparkle size={15} />,
 		},
 		{
 			id: "personas",
 			label: t("library.personasTitle"),
 			desc: t("library.personasDescription"),
-			icon: <Icon.user size={20} />,
+			icon: <Icon.user size={15} />,
 		},
 		{
 			id: "dashboard-skins",
 			label: t("library.dashboardSkinsTitle"),
 			desc: t("library.dashboardSkinsDescription"),
-			icon: <Icon.palette size={20} />,
+			icon: <Icon.palette size={15} />,
 		},
 		{
 			id: "card-skins",
 			label: t("library.cardSkinsTitle"),
 			desc: t("library.cardSkinsDescription"),
-			icon: <Icon.eye size={20} />,
+			icon: <Icon.eye size={15} />,
 		},
 	];
 	const category = categories.find((item) => item.id === kind);
@@ -71,7 +71,7 @@ export default function Library() {
 					</>
 				}
 			/>
-			<div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-bn-rail">
+			<div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-bn-rail">
 				<SectionNav
 					heading={t("library.categoriesTitle")}
 					items={categories}

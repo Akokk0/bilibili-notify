@@ -288,6 +288,37 @@ it("切换语言保留自建性格未保存草稿，新目录版本由主人重�
 	expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
 });
 
+it("性格使用二级Tab切换，编辑草稿仍受丢弃确认保护", async () => {
+	const builtin = builtinPresetsFor("zh-CN")[0];
+	if (!builtin) throw new Error("missing fixture");
+	mount("/library?category=personas", (path) =>
+		path === "/api/ai/personas"
+			? Response.json({
+					revision: "v1",
+					entries: [
+						{ ...builtin, builtin: true, usedBy: [] },
+						{ ...builtin, id: "custom", label: "自己的性格", builtin: false, usedBy: [] },
+					],
+					removedBuiltins: [],
+				})
+			: undefined,
+	);
+	expect(
+		(await screen.findByRole("tab", { name: builtin.label })).getAttribute("aria-selected"),
+	).toBe("true");
+	await userEvent.click(screen.getByRole("tab", { name: "自己的性格" }));
+	const name = screen.getByRole("textbox", { name: "性格名称" });
+	await userEvent.clear(name);
+	await userEvent.type(name, "未保存的草稿");
+	await userEvent.click(screen.getByRole("tab", { name: builtin.label }));
+	expect(await screen.findByRole("dialog")).toBeTruthy();
+	await userEvent.click(screen.getByRole("button", { name: "取消" }));
+	expect(screen.getByRole("tab", { name: "自己的性格" }).getAttribute("aria-selected")).toBe(
+		"true",
+	);
+	expect(name).toHaveProperty("value", "未保存的草稿");
+});
+
 it("性格导入预览保留原字段、初始焦点及取消语义，不写配置或资源", async () => {
 	const builtin = builtinPresetsFor("zh-CN")[0];
 	if (!builtin) throw new Error("missing fixture");
@@ -381,6 +412,16 @@ it("界面皮肤链接展示真实管理列表，选用仍由系统页负责", a
 	expect(screen.getByRole("button", { name: "调整" })).toBeTruthy();
 	expect(screen.getByRole("button", { name: "导出" })).toBeTruthy();
 	expect(screen.queryByRole("group", { name: "浅色模式皮肤" })).toBeNull();
+});
+
+it("技能使用二级Tab，并保留新建独立技能的入口", async () => {
+	mount("/library?category=skills");
+	expect(
+		(await screen.findByRole("tab", { name: /weekly-report/ })).getAttribute("aria-selected"),
+	).toBe("true");
+	await userEvent.click(screen.getByRole("button", { name: "+ 新建" }));
+	expect(screen.getByRole("tab", { name: "新技能" }).getAttribute("aria-selected")).toBe("true");
+	expect(screen.getByRole("textbox", { name: "名字 · 也是斜杠命令" })).toHaveProperty("value", "");
 });
 
 it("卡片皮肤链接提供原编辑、复制与导出，管理页不切换默认皮肤", async () => {
