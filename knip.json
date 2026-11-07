@@ -35,7 +35,7 @@
 		},
 		"packages/image": {
 			"entry": ["src/**/*.test.ts"],
-			"project": ["src/**/*.{ts,vue}"]
+			"project": ["src/**/*.{ts,tsx,vue}"]
 		}
 	}
 }
