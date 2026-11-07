@@ -18,14 +18,14 @@ const FRAME_RULE = `[data-bn="frame"][data-rank="3"]{outline:2px solid rgb(4,5,6
 
 function sanitizedBlock(kind: "superchat" | "membership", builtin: string, css: string): string {
 	const res = sanitizeCardBlockCss(css, { kind, builtin });
-	expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+	expect(res.ok, res.ok ? "" : res.message).toBe(true);
 	if (!res.ok) throw new Error("unreachable");
 	return res.css;
 }
 
 function sanitizedFrame(css: string): string {
 	const res = sanitizeCardFrameCss(css);
-	expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+	expect(res.ok, res.ok ? "" : res.message).toBe(true);
 	if (!res.ok) throw new Error("unreachable");
 	return res.css;
 }

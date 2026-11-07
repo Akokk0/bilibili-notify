@@ -195,7 +195,7 @@ export function checkCardSkinPackage(
 			const at = `cards.${kind}.css`;
 			const res = sanitizeCardFrameCss(card.css);
 			if (!res.ok) {
-				errors.push(...res.errors.map((e) => `${at}: ${e}`));
+				errors.push(`${at}: ${res.message}`);
 			} else {
 				warnings.push(...res.warnings.map((w) => `${at}: ${w}`));
 				if (res.css === "") delete card.css;
@@ -214,7 +214,7 @@ export function checkCardSkinPackage(
 					...(block.kind === "builtin" ? { builtin: block.builtin } : {}),
 				});
 				if (!res.ok) {
-					errors.push(...res.errors.map((e) => `${at}.css: ${e}`));
+					errors.push(`${at}.css: ${res.message}`);
 				} else {
 					warnings.push(...res.warnings.map((w) => `${at}.css: ${w}`));
 					if (res.css === "") delete block.css;

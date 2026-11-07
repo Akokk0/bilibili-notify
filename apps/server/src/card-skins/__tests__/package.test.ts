@@ -232,6 +232,37 @@ describe("zip bomb 两道闸", () => {
 });
 
 describe("checkCardSkinPackage:清单层", () => {
+	it("CSS 归一后超限保留根及块的逐条路径与原文", () => {
+		const css = ".a{color:red}".repeat(1000);
+		const result = checkCardSkinPackage(
+			manifest({
+				cards: {
+					live: {
+						width: 600,
+						css,
+						blocks: [
+							{
+								id: "note",
+								kind: "custom",
+								grid: { row: 1, column: 1, span: 12 },
+								html: "<p>note</p>",
+								css,
+							},
+						],
+					},
+				},
+			}),
+			new Set(),
+		);
+		expect(result).toEqual({
+			ok: false,
+			errors: [
+				"cards.live.css: 清洗后的 CSS 超过 16KB 上限",
+				"cards.live.blocks[0]「note」.css: 清洗后的 CSS 超过 16KB 上限",
+			],
+		});
+	});
+
 	it("HTML 多条拒绝保留块路径、原文和顺序", () => {
 		const result = checkCardSkinPackage(
 			manifest({

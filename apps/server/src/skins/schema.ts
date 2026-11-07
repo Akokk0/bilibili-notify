@@ -126,7 +126,7 @@ function parseCssField(
 	}
 	const res = sanitizeSkinCss(raw);
 	if (!res.ok) {
-		errors.push(...res.errors.map((e) => `${path}: ${e}`));
+		errors.push(`${path}: ${res.message}`);
 		return undefined;
 	}
 	warnings.push(...res.warnings.map((w) => `${path}: ${w}`));

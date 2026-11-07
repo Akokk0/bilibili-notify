@@ -17,14 +17,14 @@ import { sanitizeCardBlockCss, sanitizeCardFrameCss } from "../css-sanitizer.js"
 
 function ok(css: string, builtin?: string, kind: "post" | "superchat" = "post") {
 	const res = sanitizeCardBlockCss(css, { kind, builtin });
-	expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+	expect(res.ok, res.ok ? "" : res.message).toBe(true);
 	if (!res.ok) throw new Error("unreachable");
 	return { css: res.css, warnings: res.warnings };
 }
 
 function okFrame(css: string) {
 	const res = sanitizeCardFrameCss(css);
-	expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+	expect(res.ok, res.ok ? "" : res.message).toBe(true);
 	if (!res.ok) throw new Error("unreachable");
 	return { css: res.css, warnings: res.warnings };
 }
@@ -414,6 +414,20 @@ describe("根块(外框)只认两个挂点", () => {
 });
 
 describe("体积闸", () => {
+	it("CSS 硬拒绝统一为 invalid/message，空 CSS 仍成功", () => {
+		expect([
+			sanitizeCardFrameCss("x".repeat(16385)),
+			sanitizeCardFrameCss('.a::before{content:"</style>"}'),
+			sanitizeCardFrameCss(".a{color:red}".repeat(1000)),
+			sanitizeCardFrameCss(""),
+		]).toEqual([
+			{ ok: false, code: "invalid", message: "自定义 CSS 超过 16KB 上限" },
+			{ ok: false, code: "invalid", message: "CSS 里不许出现 `</` —— 它能提前关掉 <style> 标签" },
+			{ ok: false, code: "invalid", message: "清洗后的 CSS 超过 16KB 上限" },
+			{ ok: true, css: "", warnings: [] },
+		]);
+	});
+
 	it("超过 maxCssBytes → error", () => {
 		const big = '[data-bn="self"]{border-width:1px}'.repeat(600);
 		expect(Buffer.byteLength(big, "utf8")).toBeGreaterThan(CARD_SKIN_LIMITS.maxCssBytes);
@@ -497,7 +511,7 @@ describe("`</` 逃逸:清洗器整份拒收", () => {
 		it(`${name} → 整份 error,不是丢一条`, () => {
 			const r = sanitizeCardBlockCss(css, { kind: "live" });
 			expect(r.ok).toBe(false);
-			if (!r.ok) expect(r.errors.join()).toContain("</");
+			if (!r.ok) expect(r.message).toContain("</");
 		});
 	}
 
@@ -530,7 +544,7 @@ describe("出厂默认皮肤 — 每段 CSS 都是清洗器的规范形", () => 
 		it(`${kind}:外框 CSS 原样通过、零警告`, () => {
 			if (!card.css) return;
 			const res = sanitizeCardFrameCss(card.css);
-			expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+			expect(res.ok, res.ok ? "" : res.message).toBe(true);
 			if (!res.ok) throw new Error("unreachable");
 			expect(res.warnings).toEqual([]);
 			expect(res.css).toBe(card.css);
@@ -542,7 +556,7 @@ describe("出厂默认皮肤 — 每段 CSS 都是清洗器的规范形", () => 
 					kind: kind as "post",
 					builtin: block.kind === "builtin" ? block.builtin : undefined,
 				});
-				expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+				expect(res.ok, res.ok ? "" : res.message).toBe(true);
 				if (!res.ok) throw new Error("unreachable");
 				expect(res.warnings).toEqual([]);
 				expect(res.css).toBe(block.css);

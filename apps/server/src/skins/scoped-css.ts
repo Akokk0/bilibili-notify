@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 /**
  * **按挂点收窄的 CSS 清洗核心** —— 用 css-tree 真 parser 走 AST。
@@ -44,9 +45,7 @@ import type {
 // (assemble-server-bundle.test 拦到的正是它);dist 版数据全内联,无此雷。
 import { generate, parse, walk } from "css-tree/dist/csstree.esm";
 
-export type SanitizeCssResult =
-	| { ok: true; css: string; warnings: string[] }
-	| { ok: false; errors: string[] };
+export type SanitizeCssResult = Result<{ css: string; warnings: string[] }>;
 
 /**
  * 属性策略 —— 白名单与黑名单两种形态,不是「白名单 + 几个例外」。
@@ -633,24 +632,24 @@ function filterRuleList(
 /** 一段样式表的清洗:入口粗筛体积 → 解析 → 逐条过滤 → 重新序列化 → 产物再量一次。 */
 export function sanitizeScopedCss(input: string, opts: ScopedCssOptions): SanitizeCssResult {
 	if (Buffer.byteLength(input, "utf8") > opts.maxBytes) {
-		return {
-			ok: false,
-			errors: [serverText("service.skins.scoped-css.text.27", { value0: opts.maxBytes / 1024 })],
-		};
+		return fail(
+			"invalid",
+			serverText("service.skins.scoped-css.text.27", { value0: opts.maxBytes / 1024 }),
+		);
 	}
-	if (input.trim() === "") return { ok: true, css: "", warnings: [] };
+	if (input.trim() === "") return ok({ css: "", warnings: [] });
 
 	let ast: CssNode;
 	try {
 		ast = parse(input, { parseCustomProperty: false });
 	} catch (e) {
-		return {
-			ok: false,
-			errors: [serverText("service.skins.scoped-css.text.28", { value0: (e as Error).message })],
-		};
+		return fail(
+			"invalid",
+			serverText("service.skins.scoped-css.text.28", { value0: (e as Error).message }),
+		);
 	}
 	if (ast.type !== "StyleSheet")
-		return { ok: false, errors: [serverText("service.skins.scoped-css.text.29")] };
+		return fail("invalid", serverText("service.skins.scoped-css.text.29"));
 
 	const warnings: string[] = [];
 	filterRuleList(ast, warnings, opts);
@@ -670,19 +669,19 @@ export function sanitizeScopedCss(input: string, opts: ScopedCssOptions): Saniti
 	// 数字,而 `</` 在 CSS 里没有任何正当含义。**整份拒收**而不是丢一条 —— 没有哪段
 	// 正经皮肤会不小心写出 `</`,报出来比静默削掉有用。
 	if (css.includes("</")) {
-		return { ok: false, errors: [serverText("service.skins.scoped-css.text.30")] };
+		return fail("invalid", serverText("service.skins.scoped-css.text.30"));
 	}
 	// **上限量的是存盘那份。** 入口那道只是粗筛(别把超大输入送进解析器);存盘的
 	// 是产物。`free` 档的选择器归一是**会加字节**的(每条缺前缀的规则多一个
 	// `[data-bn="self"] `),所以这道闸不是摆设:贴着上限写的 CSS 归一之后可能真的
 	// 越线,报的也正是存盘那份的大小。
 	if (Buffer.byteLength(css, "utf8") > opts.maxBytes) {
-		return {
-			ok: false,
-			errors: [serverText("service.skins.scoped-css.text.31", { value0: opts.maxBytes / 1024 })],
-		};
+		return fail(
+			"invalid",
+			serverText("service.skins.scoped-css.text.31", { value0: opts.maxBytes / 1024 }),
+		);
 	}
-	return { ok: true, css, warnings };
+	return ok({ css, warnings });
 }
 
 /**

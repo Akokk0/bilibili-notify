@@ -26,6 +26,7 @@ import {
 	type CardSkinKnob,
 	type CardSkinManifest,
 	cardSkinKnobVar,
+	fail,
 } from "@bilibili-notify/internal";
 import { FORBIDDEN_VALUE, POSITION_VALUES } from "../skins/scoped-css.js";
 import {
@@ -367,7 +368,7 @@ export async function runCardCssAiRound(input: {
 		const css = splitter.finish(raw);
 		const judged: SanitizeCssResult =
 			css === ""
-				? { ok: false, errors: [serverText("service.card-skins.ai-css.text.3")] }
+				? fail("invalid", serverText("service.card-skins.ai-css.text.3"))
 				: input.sanitize(css);
 		return { raw, css, judged };
 	};
@@ -375,12 +376,10 @@ export async function runCardCssAiRound(input: {
 	const first = await attempt(input.user);
 	if (first.judged.ok) return { ok: true, css: first.css, warnings: first.judged.warnings };
 
-	input.onRetry?.(first.judged.errors);
-	const retryUser = `${input.user}\n\n你上次的输出没过清洗器:\n${first.judged.errors
-		.map((e) => `- ${e}`)
-		.join("\n")}\n\n上次的输出:\n${first.raw}\n\n请修正后重新输出这个框的完整 CSS,仍然只输出 CSS。`;
+	input.onRetry?.([first.judged.message]);
+	const retryUser = `${input.user}\n\n你上次的输出没过清洗器:\n- ${first.judged.message}\n\n上次的输出:\n${first.raw}\n\n请修正后重新输出这个框的完整 CSS,仍然只输出 CSS。`;
 	const second = await attempt(retryUser);
 	return second.judged.ok
 		? { ok: true, css: second.css, warnings: second.judged.warnings }
-		: { ok: false, errors: second.judged.errors };
+		: { ok: false, errors: [second.judged.message] };
 }

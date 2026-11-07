@@ -7,6 +7,14 @@ function minimal(): Record<string, unknown> {
 }
 
 describe("parseSkinManifest / 骨架校验", () => {
+	it("CSS 拒绝逐条保留全局与模式路径及原文", () => {
+		const css = "x".repeat(65537);
+		expect(parseSkinManifest({ ...minimal(), css, modes: { dark: { css } } })).toEqual({
+			ok: false,
+			errors: ["css: 自定义 CSS 超过 64KB 上限", "modes.dark.css: 自定义 CSS 超过 64KB 上限"],
+		});
+	});
+
 	it("最小合法 manifest → ok,无告警", () => {
 		const r = parseSkinManifest(minimal());
 		expect(r.ok).toBe(true);

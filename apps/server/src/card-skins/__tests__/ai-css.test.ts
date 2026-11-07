@@ -14,6 +14,7 @@ import {
 	CARD_SKIN_VARIABLES,
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
+	fail,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { FORBIDDEN_VALUE, POSITION_VALUES } from "../../skins/scoped-css.js";
@@ -23,7 +24,7 @@ import {
 	prepareCardCssAi,
 	runCardCssAiRound,
 } from "../ai-css.js";
-import { CARD_CSS_DENY_PROPS } from "../css-sanitizer.js";
+import { CARD_CSS_DENY_PROPS, sanitizeCardFrameCss } from "../css-sanitizer.js";
 
 type Block = NonNullable<CardSkinManifest["cards"]["live"]>["blocks"][number];
 
@@ -211,11 +212,44 @@ describe("一轮生成", () => {
 		expect(res).toMatchObject({ ok: true, css: ".a{x:1}", warnings: ["属性 behavior 被丢弃"] });
 	});
 
+	it("真实清洗器拒绝后，重试仍带原原因且成功保留模型排版", async () => {
+		const generate = scripted(['.a::before{content:"</style>"}'], [".good { color: red; }"]);
+		const retries: string[][] = [];
+		const result = await runCardCssAiRound({
+			generate,
+			system: "S",
+			user: "U",
+			sanitize: sanitizeCardFrameCss,
+			onRule: () => {},
+			onRetry: (errors) => retries.push(errors),
+		});
+		expect(retries).toEqual([["CSS 里不许出现 `</` —— 它能提前关掉 <style> 标签"]]);
+		expect(generate.calls).toHaveLength(2);
+		expect(generate.calls[1]?.user).toContain("- CSS 里不许出现 `</` —— 它能提前关掉 <style> 标签");
+		expect(result).toEqual({ ok: true, css: ".good { color: red; }", warnings: [] });
+	});
+
+	it("两次空输出只重试一次，并保留原错误提示", async () => {
+		const generate = scripted(["```css\n```"], [""]);
+		const retries: string[][] = [];
+		const result = await runCardCssAiRound({
+			generate,
+			system: "S",
+			user: "U",
+			sanitize: sanitizeCardFrameCss,
+			onRule: () => {},
+			onRetry: (errors) => retries.push(errors),
+		});
+		expect(retries).toEqual([["输出是空的"]]);
+		expect(generate.calls).toHaveLength(2);
+		expect(result).toEqual({ ok: false, errors: ["输出是空的"] });
+	});
+
 	it("清洗器整份拒收 → 带着错误与上次的输出重试一次", async () => {
 		const generate = scripted(["BROKEN{"], [".ok{x:1}"]);
 		const sanitize = vi
 			.fn()
-			.mockReturnValueOnce({ ok: false, errors: ["CSS 解析失败"] })
+			.mockReturnValueOnce(fail("invalid", "CSS 解析失败"))
 			.mockReturnValueOnce(OK(".ok{x:1}"));
 		const retries: string[][] = [];
 		const rules: string[] = [];
@@ -255,7 +289,7 @@ describe("一轮生成", () => {
 			generate,
 			system: "S",
 			user: "U",
-			sanitize: () => ({ ok: false, errors: ["CSS 解析失败"] }),
+			sanitize: () => fail("invalid", "CSS 解析失败"),
 			onRule: () => {},
 		});
 		expect(res).toEqual({ ok: false, errors: ["CSS 解析失败"] });
