@@ -2,14 +2,16 @@
 
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
 import Library from "../Library";
 
 const clients: QueryClient[] = [];
+beforeAll(() => sessionStorage.setItem("bn.desktopToken", "r5-download-fixture"));
+afterAll(() => sessionStorage.removeItem("bn.desktopToken"));
 afterEach(() => {
 	cleanup();
 	for (const client of clients.splice(0)) client.clear();
@@ -97,6 +99,126 @@ it("字体分类链接直接展示字体，保留原有管理操作", async () =
 	expect(screen.queryByText("还没有图片")).toBeNull();
 });
 
+it("字体原文件经下载接口导出，保留文件名，失败可见", async () => {
+	const create = vi.fn(() => "blob:download");
+	vi.stubGlobal(
+		"URL",
+		class extends URL {
+			static createObjectURL = create;
+			static revokeObjectURL = vi.fn();
+		},
+	);
+	const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+	const id = `${"a".repeat(32)}.woff2`;
+	let fail = false;
+	mount("/library?category=fonts", (path) =>
+		path === `/api/library/fonts/${id}?download=1`
+			? fail
+				? Response.json(
+						{ code: "unavailable", message: "下载暂时不可用", issues: [{ message: "请稍后重试" }] },
+						{ status: 503 },
+					)
+				: new Response(new Uint8Array([119, 79, 70, 50]), {
+						headers: { "content-type": "font/woff2" },
+					})
+			: undefined,
+	);
+	await userEvent.click(await screen.findByRole("button", { name: "导出字体 示例字体.woff2" }));
+	await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+	expect(click.mock.instances[0]).toHaveProperty("download", "示例字体.woff2");
+	expect(create).toHaveBeenCalledTimes(1);
+	await waitFor(() =>
+		expect(screen.getByRole("button", { name: "导出字体 示例字体.woff2" })).toHaveProperty(
+			"disabled",
+			false,
+		),
+	);
+	fail = true;
+	await userEvent.click(screen.getByRole("button", { name: "导出字体 示例字体.woff2" }));
+	expect(await screen.findByText(/下载暂时不可用.*请稍后重试/)).toBeTruthy();
+	expect(click).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+	["dashboard-skins", "/api/dashboard/skins/sakura/export"],
+	["card-skins", "/api/cards/skins/default/export"],
+])("%s ZIP 下载使用同一鉴权门，令牌不进URL", async (category, path) => {
+	vi.stubGlobal(
+		"URL",
+		class extends URL {
+			static createObjectURL = vi.fn(() => "blob:zip");
+			static revokeObjectURL = vi.fn();
+		},
+	);
+	const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+	mount(`/library?category=${category}`, (url) =>
+		url === path ? new Response(new Uint8Array([80, 75])) : undefined,
+	);
+	await userEvent.click((await screen.findAllByRole("button", { name: "导出" }))[0]);
+	await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+	const request = vi.mocked(fetch).mock.calls.find(([url]) => String(url) === path);
+	expect(new Headers(request?.[1]?.headers).get("x-bn-desktop-token")).toBe("r5-download-fixture");
+	expect(String(request?.[0])).not.toContain("desktopToken");
+});
+
+it("字体先预览再确认，取消不上传；失败保留预览并展示逐项原因，可重试", async () => {
+	const writes: string[] = [];
+	let attempts = 0;
+	mount("/library?category=fonts", (path, init) => {
+		if (init?.method !== "POST") return undefined;
+		writes.push(path);
+		if (path.endsWith("/import-preview"))
+			return Response.json({ ok: true, name: "示例字体.woff2", warnings: [], conflict: true });
+		attempts++;
+		return attempts === 1
+			? Response.json(
+					{ code: "conflict", message: "导入未完成", issues: [{ message: "请重新检查这份文件" }] },
+					{ status: 409 },
+				)
+			: Response.json({ ok: true, id: "new-font", name: "示例字体.woff2" });
+	});
+	await screen.findByText("示例字体.woff2");
+	const input = screen.getByLabelText("上传字体");
+	const file = new File(["font"], "示例字体.woff2");
+	fireEvent.change(input, { target: { files: [file] } });
+	let dialog = await screen.findByRole("dialog");
+	expect(within(dialog).getByText(/原件不变/)).toBeTruthy();
+	expect(writes).toEqual(["/api/library/fonts/import-preview"]);
+	await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+	expect(attempts).toBe(0);
+	fireEvent.change(input, { target: { files: [file] } });
+	dialog = await screen.findByRole("dialog");
+	await userEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
+	expect(await within(dialog).findByText(/请重新检查这份文件/)).toBeTruthy();
+	expect(within(dialog).getByText("示例字体.woff2")).toBeTruthy();
+	await userEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
+	await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	expect(attempts).toBe(2);
+});
+
+it("图片不能解码时给出预览失败说明，不露出坏图标", async () => {
+	vi.stubGlobal(
+		"URL",
+		class extends URL {
+			static createObjectURL = vi.fn(() => "blob:preview");
+			static revokeObjectURL = vi.fn();
+		},
+	);
+	mount("/library?category=images", (path) =>
+		path.endsWith("/import-preview")
+			? Response.json({ ok: true, name: "sample.png", warnings: [], conflict: false })
+			: undefined,
+	);
+	await screen.findByText("还没有图片");
+	fireEvent.change(screen.getByLabelText("上传图片"), {
+		target: { files: [new File(["broken"], "sample.png", { type: "image/png" })] },
+	});
+	const dialog = await screen.findByRole("dialog");
+	fireEvent.error(await within(dialog).findByRole("img", { name: "待导入图片" }));
+	expect(await within(dialog).findByText(/无法显示图片预览/)).toBeTruthy();
+	expect(within(dialog).queryByRole("img", { name: "待导入图片" })).toBeNull();
+});
+
 it("性格分类复用字段编辑器，内置只读，复制后独立保存而不选用", async () => {
 	const builtin = builtinPresetsFor("zh-CN")[0];
 	if (!builtin) throw new Error("missing builtin fixture");
@@ -116,6 +238,48 @@ it("性格分类复用字段编辑器，内置只读，复制后独立保存而�
 	expect(screen.getAllByDisplayValue(source.persona.name)[0]).toHaveProperty("disabled", false);
 	expect(screen.queryByRole("button", { name: "设为默认" })).toBeNull();
 	expect(screen.getByRole("button", { name: "保存性格" })).toBeTruthy();
+});
+
+it("性格导入预览保留原字段、初始焦点及取消语义，不写配置或资源", async () => {
+	const builtin = builtinPresetsFor("zh-CN")[0];
+	if (!builtin) throw new Error("missing fixture");
+	const { label, persona, dynamicPrompt, liveSummaryPrompt } = builtin;
+	mount("/library?category=personas", (path) => {
+		if (path === "/api/ai/personas")
+			return Response.json({
+				revision: "v1",
+				entries: [{ ...builtin, builtin: true, usedBy: ["全局默认"] }],
+				removedBuiltins: [],
+			});
+		if (path.endsWith("/import-preview"))
+			return Response.json({
+				ok: true,
+				content: { label, persona, dynamicPrompt, liveSummaryPrompt },
+			});
+		return undefined;
+	});
+	await screen.findByDisplayValue(label);
+	fireEvent.change(screen.getByLabelText("导入 JSON"), {
+		target: { files: [new File(["{}"], "persona.json")] },
+	});
+	const dialog = await screen.findByRole("dialog");
+	const name = within(dialog).getByRole("textbox", { name: "性格名称" });
+	expect(within(dialog).getByText(/库中已有同名资源.*原件不变/)).toBeTruthy();
+	expect(document.activeElement).toBe(name);
+	expect(within(dialog).getByRole("textbox", { name: "作品点评 prompt" })).toHaveProperty(
+		"value",
+		dynamicPrompt,
+	);
+	await userEvent.clear(name);
+	await userEvent.type(name, "预览草稿");
+	await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.filter(([, init]) => init?.method === "POST")
+			.map(([path]) => String(path)),
+	).toEqual(["/api/ai/personas/import-preview"]);
 });
 
 it("性格保存只发送资源和版本，冲突保留输入，不写普通设置", async () => {

@@ -26,6 +26,7 @@ import {
 	type CardSkinManifestResponse,
 	type CardSkinPreviewResponse,
 	type CardSkinSaveResponse,
+	type ResourceImportPreviewResponse,
 } from "@bilibili-notify/contract";
 import {
 	CARD_SKIN_LIMITS,
@@ -43,7 +44,7 @@ import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { buildCardCssAiSystem, prepareCardCssAi, runCardCssAiRound } from "../card-skins/ai-css.js";
-import { MAX_CARD_SKIN_TOTAL_BYTES } from "../card-skins/package.js";
+import { MAX_CARD_SKIN_TOTAL_BYTES, openCardSkinPackage } from "../card-skins/package.js";
 import { membershipTierUnavailable, renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import { CardSkinPackageError, type CardSkinStore } from "../card-skins/store.js";
 import type { ConfigStore } from "../config/store.js";
@@ -147,6 +148,33 @@ export function createCardsSkinsRoute(deps: {
 					return respondFailure(c, e.toFailure(serverText("service.routes.cards-skins.text.5")));
 				throw e;
 			}
+		},
+	);
+	app.post(
+		"/import-preview",
+		uploadBodyLimit(MAX_CARD_SKIN_ZIP_BYTES, () => serverText("service.routes.cards-skins.text.3")),
+		async (c) => {
+			const body = await c.req.parseBody().catch(() => null),
+				file = body?.file;
+			if (!(file instanceof File))
+				return respondFailure(c, fail("invalid", serverText("service.routes.cards-skins.text.4")));
+			const opened = openCardSkinPackage(new Uint8Array(await file.arrayBuffer()));
+			if (!opened.ok)
+				return respondFailure(
+					c,
+					failureOfChecks(
+						"invalid",
+						serverText("service.routes.cards-skins.text.5"),
+						opened.errors,
+					),
+				);
+			return c.json(
+				ok({
+					name: opened.manifest.name,
+					warnings: opened.warnings,
+					conflict: store.list().some((entry) => entry.name === opened.manifest.name),
+				}) satisfies ResourceImportPreviewResponse,
+			);
 		},
 	);
 

@@ -7,6 +7,7 @@ import { t as serverText } from "../i18n/index.js";
 import { readFile } from "node:fs/promises";
 import type {
 	ActiveSkinResponse,
+	ResourceImportPreviewResponse,
 	SkinDefaultResponse,
 	SkinManifestResponse,
 	SkinsListResponse,
@@ -66,38 +67,51 @@ export function createDashboardSkinsRoute(deps: {
 		return c.json(body);
 	});
 
-	app.post(
-		"/",
-		uploadBodyLimit(MAX_SKIN_ZIP_BYTES, () => serverText("service.routes.dashboard-skins.text.2")),
-		async (c) => {
-			const body = await c.req.parseBody().catch(() => null);
-			const file = body?.file;
-			if (!(file instanceof File)) {
-				return respondFailure(
-					c,
-					fail("invalid", serverText("service.routes.dashboard-skins.text.3")),
-				);
-			}
-			const bytes = new Uint8Array(await file.arrayBuffer());
-			const opened = openSkinPackage(bytes);
-			if (!opened.ok) {
-				return respondFailure(
-					c,
-					failureOfChecks(
-						"invalid",
-						serverText("service.routes.dashboard-skins.text.4"),
-						opened.errors,
-					),
-				);
-			}
-			const { id } = await skinStore.save({
-				manifest: opened.manifest,
-				assets: opened.assets,
-				names: opened.names,
-			});
-			return c.json(ok({ id, warnings: opened.warnings }), 201);
-		},
-	);
+	for (const preview of [false, true])
+		app.post(
+			preview ? "/import-preview" : "/",
+			uploadBodyLimit(MAX_SKIN_ZIP_BYTES, () =>
+				serverText("service.routes.dashboard-skins.text.2"),
+			),
+			async (c) => {
+				const body = await c.req.parseBody().catch(() => null);
+				const file = body?.file;
+				if (!(file instanceof File)) {
+					return respondFailure(
+						c,
+						fail("invalid", serverText("service.routes.dashboard-skins.text.3")),
+					);
+				}
+				const bytes = new Uint8Array(await file.arrayBuffer());
+				const opened = openSkinPackage(bytes);
+				if (!opened.ok) {
+					return respondFailure(
+						c,
+						failureOfChecks(
+							"invalid",
+							serverText("service.routes.dashboard-skins.text.4"),
+							opened.errors,
+						),
+					);
+				}
+				if (preview)
+					return c.json(
+						ok({
+							name: opened.manifest.name,
+							warnings: opened.warnings,
+							conflict: (await skinStore.list()).some(
+								(entry) => entry.name === opened.manifest.name,
+							),
+						}) satisfies ResourceImportPreviewResponse,
+					);
+				const { id } = await skinStore.save({
+					manifest: opened.manifest,
+					assets: opened.assets,
+					names: opened.names,
+				});
+				return c.json(ok({ id, warnings: opened.warnings }), 201);
+			},
+		);
 
 	app.get("/active", async (c) => {
 		const ids = skinStore.getActive();

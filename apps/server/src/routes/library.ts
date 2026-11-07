@@ -4,6 +4,7 @@ import type {
 	LibraryFontUploadResponse,
 	LibraryImagesResponse,
 	LibraryImageUploadResponse,
+	ResourceImportPreviewResponse,
 } from "@bilibili-notify/contract";
 import {
 	CARD_SKIN_UPLOAD_PREFIX,
@@ -18,6 +19,7 @@ import { Hono } from "hono";
 import { AssetRejectedError } from "../assets/asset-store.js";
 import { t } from "../i18n/index.js";
 import {
+	checkCardBgUpload,
 	deleteCardBg,
 	isValidCardBgId,
 	listCardBg,
@@ -26,6 +28,7 @@ import {
 	saveCardBg,
 } from "../runtime/card-assets.js";
 import {
+	checkFontAssetUpload,
 	deleteFontAsset,
 	isValidFontAssetId,
 	listFontAssets,
@@ -149,6 +152,47 @@ export function createLibraryRoute(deps: RouteDeps): Hono {
 			sources: deps.runtime.sourceRegistry,
 		});
 
+	app.post(
+		"/images/import-preview",
+		uploadBodyLimit(MAX_CARD_BG_BYTES, () => t("cards.upload.imageNoun")),
+		async (c) => {
+			const body = await c.req.parseBody().catch(() => null),
+				file = body?.file;
+			if (!(file instanceof File))
+				return respondFailure(c, fail("invalid", t("cards.upload.missingImage")));
+			const checked = checkCardBgUpload(new Uint8Array(await file.arrayBuffer()), file.type);
+			if (!checked.ok) return respondFailure(c, checked);
+			return c.json(
+				ok({
+					name: file.name,
+					warnings: [],
+					conflict: (await listCardBg(deps.runtime.dataRoot)).includes(file.name),
+				}) satisfies ResourceImportPreviewResponse,
+			);
+		},
+	);
+	app.post(
+		"/fonts/import-preview",
+		uploadBodyLimit(MAX_FONT_ASSET_BYTES, () => t("cards.upload.fontNoun")),
+		async (c) => {
+			const body = await c.req.parseBody().catch(() => null),
+				file = body?.file;
+			if (!(file instanceof File))
+				return respondFailure(c, fail("invalid", t("cards.upload.missingFont")));
+			const checked = checkFontAssetUpload(new Uint8Array(await file.arrayBuffer()), file.name);
+			if (!checked.ok) return respondFailure(c, checked);
+			return c.json(
+				ok({
+					name: file.name,
+					warnings: [],
+					conflict: (await listFontAssets(deps.runtime.dataRoot)).some(
+						(entry) => entry.name === file.name,
+					),
+				}) satisfies ResourceImportPreviewResponse,
+			);
+		},
+	);
+
 	// 图片上传 → 落盘 `<dataRoot>/library/images/<id>`,返回资产 id 写进皮肤的图旋钮
 	// (或 `cards.liveCoverImageIds`)。素材库由卡片旋钮与直播封面共用。
 	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 512MB 的堆里。见 upload-limit.ts。
@@ -183,11 +227,15 @@ export function createLibraryRoute(deps: RouteDeps): Hono {
 
 	// 背景图服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataRoot,内有 secrets)。
 	app.get("/images/:id", async (c) => {
-		const res = await readCardBg(deps.runtime.dataRoot, c.req.param("id"));
+		const id = c.req.param("id");
+		const res = await readCardBg(deps.runtime.dataRoot, id);
 		if (!res) return respondFailure(c, fail("not_found", t("cards.asset.bgNotFound")));
 		return new Response(res.bytes, {
 			headers: {
 				"Content-Type": res.mime,
+				...(c.req.query("download") === "1"
+					? { "Content-Disposition": `attachment; filename="${id}"` }
+					: {}),
 				"Cache-Control": "private, max-age=31536000, immutable",
 			},
 		});
@@ -254,11 +302,22 @@ export function createLibraryRoute(deps: RouteDeps): Hono {
 	// 字体文件服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataRoot,内有 secrets)。
 	// 返回原始字体字节;字体选择器当前仅消费列表,渲染期仍走内部读取器。
 	app.get("/fonts/:id", async (c) => {
-		const res = await readFontAsset(deps.runtime.dataRoot, c.req.param("id"));
+		const id = c.req.param("id");
+		const res = await readFontAsset(deps.runtime.dataRoot, id);
 		if (!res) return respondFailure(c, fail("not_found", t("cards.asset.fontNotFound")));
+		const name =
+			c.req.query("download") === "1"
+				? ((await listFontAssets(deps.runtime.dataRoot)).find((entry) => entry.id === id)?.name ??
+					id)
+				: null;
 		return new Response(res.bytes, {
 			headers: {
 				"Content-Type": res.mime,
+				...(name
+					? {
+							"Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(Buffer.from(name).toString("utf8"))}`,
+						}
+					: {}),
 				"Cache-Control": "private, max-age=31536000, immutable",
 			},
 		});

@@ -42,7 +42,7 @@ import {
 	CARD_SKIN_MANIFEST_FILE,
 	checkCardSkinPackage,
 	isCardSkinAssetName,
-	parseCardSkinPackage,
+	openCardSkinPackage,
 } from "./package.js";
 
 /**
@@ -188,13 +188,11 @@ export class CardSkinStore {
 
 	/** 装一个 zip 包:摊开 → 验+洗 → 落盘。任何一步不过一律抛 {@link CardSkinPackageError}。 */
 	async install(zip: Uint8Array): Promise<{ id: string; warnings: string[] }> {
-		const opened = parseCardSkinPackage(zip);
+		const opened = openCardSkinPackage(zip);
 		if (!opened.ok) throw new CardSkinPackageError(opened.errors);
-		const checked = checkCardSkinPackage(opened.manifestRaw, new Set(opened.assets.keys()));
-		if (!checked.ok) throw new CardSkinPackageError(checked.errors);
 		// 落盘的是**洗过的**那份 —— 出图那头不该再洗一遍,也不该有机会读到原文。
-		const id = await this.writePackage(checked.manifest, opened.assets);
-		return { id, warnings: checked.warnings };
+		const id = await this.writePackage(opened.manifest, opened.assets);
+		return { id, warnings: opened.warnings };
 	}
 
 	/**

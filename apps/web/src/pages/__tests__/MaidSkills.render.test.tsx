@@ -12,7 +12,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { MaidSkills } from "../ai/MaidSkills";
@@ -192,6 +192,37 @@ it("导入预览的键盘焦点留在弹窗中，Escape取消不改当前技能"
 	await userEvent.keyboard("{Escape}");
 	expect(screen.queryByRole("dialog")).toBeNull();
 	expect(M.create).not.toHaveBeenCalled();
+});
+
+it("确认正在保存时仍将键盘焦点留在导入弹窗中", async () => {
+	M.preview.mockResolvedValue({
+		ok: true,
+		skill: {
+			name: "pending-import",
+			description: "导入",
+			body: "正文",
+			disableModelInvocation: false,
+		},
+	});
+	let finish = (_value: { ok: true }) => {};
+	M.create.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+	);
+	mount();
+	await screen.findByDisplayValue("weekly-report");
+	fireEvent.change(screen.getByLabelText("导入 SKILL.md"), {
+		target: { files: [new File(["skill"], "SKILL.md")] },
+	});
+	const dialog = await screen.findByRole("dialog");
+	await userEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
+	await userEvent.tab();
+	expect(dialog.contains(document.activeElement)).toBe(true);
+	await act(async () => {
+		finish({ ok: true });
+	});
 });
 
 describe("三个编辑框的无障碍名", () => {

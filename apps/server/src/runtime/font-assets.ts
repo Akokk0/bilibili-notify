@@ -1,4 +1,5 @@
 import { t as serverText } from "../i18n/index.js";
+
 /**
  * 主人上传的字体文件的本地资产存储。落盘到 `<dataRoot>/assets/font/`,资产 id = 文件名
  * `<32-hex>.<ext>`。**不**用 serveStatic 暴露整个 dataRoot(里面有 secrets);只经此模块
@@ -14,6 +15,7 @@ import { t as serverText } from "../i18n/index.js";
  *    清单丢了照样列得出字体(名字回落成 id),清单里多出盘上没有的记录则一概不列。
  */
 
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/card-skin";
 import {
 	AssetRejectedError,
@@ -105,14 +107,22 @@ export async function saveFontAsset(
 	bytes: Uint8Array,
 	filename: string,
 ): Promise<string> {
+	const checked = checkFontAssetUpload(bytes, filename);
+	if (!checked.ok) throw new AssetRejectedError(checked.message);
+	const result = await storeOf(dataRoot).put({ bytes, ext: checked.ext, label: filename });
+	if (!result.ok) throw new Error(result.message);
+	return result.id;
+}
+
+/** 预览与保存共用的只读检查，不创建目录或文件。 */
+export function checkFontAssetUpload(bytes: Uint8Array, filename: string): Result<{ ext: string }> {
 	const ext = fontExtOf(filename);
 	if (!ext) {
-		throw new AssetRejectedError(
-			serverText("service.runtime.font-assets.text.1", { value0: filename }),
-		);
+		return fail("invalid", serverText("service.runtime.font-assets.text.1", { value0: filename }));
 	}
 	if (bytes.byteLength > MAX_FONT_ASSET_BYTES) {
-		throw new AssetRejectedError(
+		return fail(
+			"invalid",
 			// 上限从常量算,别硬写 —— 写死的话改了常量这句话还在说旧数字。
 			serverText("service.runtime.font-assets.text.2", {
 				value0: Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024),
@@ -120,12 +130,7 @@ export async function saveFontAsset(
 			}),
 		);
 	}
-	// 原始文件名交给存储记进清单(它记之前会洗:浏览器给的这一串可能是整条桌面路径,
-	// 也可能带着双向覆盖符)。
-	const result = await storeOf(dataRoot).put({ bytes, ext, label: filename });
-	// 上面已按同一套规矩判过,走到这里被拒说明两边对不上 —— 是 bug,不是用户输入的事。
-	if (!result.ok) throw new Error(result.message);
-	return result.id;
+	return ok({ ext });
 }
 
 /** 读字体原始字节 + mime;id 非法或文件缺失返回 null(供服务路由)。 */

@@ -1,9 +1,14 @@
 import { i18n, useT } from "../../i18n";
 /** 卡片页只保留选用、旋钮与回落告警；资源库复用原有皮肤包管理与编辑器。 */
 
-import type { CardSkinDuplicateResponse, CardSkinSummary } from "@bilibili-notify/contract";
+import type {
+	CardSkinDuplicateResponse,
+	CardSkinSummary,
+	ResourceImportPreviewResponse,
+} from "@bilibili-notify/contract";
 import { CARD_KIND_SHORT_NAMES } from "@bilibili-notify/internal/card-skin";
 import {
+	AddFileButton,
 	Btn,
 	ConfirmDialog,
 	EmptyNote,
@@ -16,13 +21,16 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Field, TSelect } from "../../components/forms";
 import { ManageResourcesButton } from "../../components/library/manage-resources-button";
+import { ResourceImportDialog } from "../../components/library/resource-import-dialog";
+import { useResourceImport } from "../../components/library/use-resource-import";
 import { SETTINGS_KEY } from "../../hooks/useSettings";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
+import { downloadResource } from "../../services/resource-download";
 import { CARD_SKINS_KEY, useActivateCardSkin, useCardSkinList } from "./card-skins-query";
 
 /** 七种卡在回落告警里怎么称呼:短名(名字只住在 internal 的 card-skin.ts,见 `CARD_KIND_SHORT_NAMES`)。 */
@@ -69,14 +77,6 @@ function skinDesc(skin: CardSkinSummary): string {
 		.join(" · ");
 }
 
-/** 导出:直接开导出端点,浏览器按 content-disposition 落文件(会话 cookie 同源自带)。 */
-function downloadSkin(skin: CardSkinSummary): void {
-	const a = document.createElement("a");
-	a.href = `/api/cards/skins/${skin.id}/export`;
-	a.download = `${skin.name}.zip`;
-	a.click();
-}
-
 export function CardSkinSection({ mode = "select" }: { mode?: "select" | "manage" } = {}) {
 	return mode === "select" ? <CardSkinSelection /> : <CardSkinManagement />;
 }
@@ -89,7 +89,6 @@ function CardSkinManagement() {
 	const [error, setError] = useState<string | null>(null);
 	const [warnings, setWarnings] = useState<string[]>([]);
 	const [confirmRemove, setConfirmRemove] = useState<CardSkinSummary | null>(null);
-	const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
 	const listQuery = useCardSkinList();
 	const skins = useMemo(() => sortSkins(listQuery.data?.skins ?? []), [listQuery.data?.skins]);
@@ -133,26 +132,28 @@ function CardSkinManagement() {
 		onError: (e) => setError(String((e as Error).message)),
 	});
 
-	const upload = useMutation({
-		mutationFn: (file: File) => {
+	const importer = useResourceImport({
+		previewFile: (file) => {
+			const form = new FormData();
+			form.set("file", file);
+			return api.upload<ResourceImportPreviewResponse>("/api/cards/skins/import-preview", form);
+		},
+		importFile: (file) => {
 			const form = new FormData();
 			form.set("file", file);
 			return api.upload<UploadResult>("/api/cards/skins", form);
 		},
-		onSuccess: (data) => {
+		onImported: (data) => {
 			setError(null);
 			setWarnings(data.warnings);
 			refresh();
 		},
-		// 装包门没过时 `message` 只是一句概括,逐条意见在 `issues` —— 一起给主人,他要照着去改那个包。
+	});
+	const download = useMutation({
+		mutationFn: (entry: CardSkinSummary) =>
+			downloadResource(`/api/cards/skins/${entry.id}/export`, `${entry.name}.zip`),
 		onError: (e) => setError(errorTextOf(e)),
 	});
-
-	function onUploadPick(e: ChangeEvent<HTMLInputElement>): void {
-		const file = e.target.files?.[0];
-		e.target.value = "";
-		if (file) upload.mutate(file);
-	}
 
 	const busy = duplicate.isPending || remove.isPending;
 
@@ -168,25 +169,32 @@ function CardSkinManagement() {
 					: tx("skinUi.CardSkinSection.5")
 			}
 			right={
-				<div className="flex items-center gap-2">
-					<Btn
-						size="sm"
-						onClick={() => uploadInputRef.current?.click()}
-						disabled={upload.isPending}
-					>
-						{upload.isPending ? tx("skinUi.CardSkinSection.6") : tx("skinUi.CardSkinSection.7")}
-					</Btn>
-					<input
-						ref={uploadInputRef}
-						type="file"
-						accept=".zip,application/zip"
-						className="hidden"
-						onChange={onUploadPick}
-						aria-label={tx("skinUi.CardSkinSection.8")}
-					/>
-				</div>
+				<AddFileButton
+					accept=".zip,application/zip"
+					uploading={importer.busy}
+					onFile={(file) => {
+						if (file) importer.pick(file);
+					}}
+					className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-bn-sm"
+				>
+					{tx("skinUi.CardSkinSection.7")}
+				</AddFileButton>
 			}
 		>
+			{importer.error && !importer.review ? <ErrorNote>{importer.error}</ErrorNote> : null}
+			{importer.imported ? <HintNote>{tx("resourceImport.saved")}</HintNote> : null}
+			{importer.review ? (
+				<ResourceImportDialog
+					file={importer.review.file}
+					name={importer.review.preview.name}
+					warnings={importer.review.preview.warnings}
+					conflict={importer.review.preview.conflict}
+					pending={importer.busy}
+					error={importer.error}
+					onCancel={importer.cancel}
+					onConfirm={importer.confirm}
+				/>
+			) : null}
 			{error ? (
 				<ErrorNote className="mb-3">
 					{tx("skinUi.CardSkinSection.9")}
@@ -230,7 +238,7 @@ function CardSkinManagement() {
 										})
 									: navigate(`/cards/skins/${skin.id}`)
 							}
-							onExport={() => downloadSkin(skin)}
+							onExport={() => download.mutate(skin)}
 							onRemove={() => setConfirmRemove(skin)}
 						/>
 					))}

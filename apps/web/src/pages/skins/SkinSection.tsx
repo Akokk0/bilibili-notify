@@ -1,14 +1,17 @@
 import type {
+	ResourceImportPreviewResponse,
 	SkinListEntry,
 	SkinManifest,
 	SkinManifestResponse,
 	SkinsListResponse,
 } from "@bilibili-notify/contract";
 import {
+	AddFileButton,
 	Btn,
 	ConfirmDialog,
 	ErrorNote,
 	GlassBox,
+	HintNote,
 	Icon,
 	LoadingBlock,
 	ModalShell,
@@ -16,12 +19,15 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ChangeEvent, useRef, useState } from "react";
+import { useState } from "react";
 import { Picker } from "../../components/forms";
 import { ManageResourcesButton } from "../../components/library/manage-resources-button";
+import { ResourceImportDialog } from "../../components/library/resource-import-dialog";
+import { useResourceImport } from "../../components/library/use-resource-import";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
+import { downloadResource } from "../../services/resource-download";
 import { syncActiveSkinToStore } from "../../services/skin-active";
 import { useSkinStore } from "../../store/skin";
 import { SkinEditor } from "./SkinEditor";
@@ -73,7 +79,6 @@ function SkinManagement() {
 		/** 生成名 → 主人上传时的原文件名,给抽屉里两个下拉当标签。 */
 		assetNames: Record<string, string>;
 	} | null>(null);
-	const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
 	const listQuery = useDashboardSkins();
 	const activeIds = listQuery.data?.active ?? { light: null, dark: null };
@@ -107,18 +112,26 @@ function SkinManagement() {
 		onError: (e) => setError(String((e as Error).message)),
 	});
 
-	const upload = useMutation({
-		mutationFn: (file: File) => {
+	const importer = useResourceImport({
+		previewFile: (file) => {
+			const form = new FormData();
+			form.set("file", file);
+			return api.upload<ResourceImportPreviewResponse>("/api/dashboard/skins/import-preview", form);
+		},
+		importFile: (file) => {
 			const form = new FormData();
 			form.set("file", file);
 			return api.upload<UploadResult>("/api/dashboard/skins", form);
 		},
-		onSuccess: (data) => {
+		onImported: (data) => {
 			setError(null);
 			setWarnings(data.warnings);
 			refresh();
 		},
-		// 装包门没过时 `message` 只是一句概括,逐条意见在 `issues` —— 一起给主人。
+	});
+	const download = useMutation({
+		mutationFn: (entry: SkinListEntry) =>
+			downloadResource(`/api/dashboard/skins/${entry.id}/export`, `${entry.name}.zip`),
 		onError: (e) => setError(errorTextOf(e)),
 	});
 
@@ -148,12 +161,6 @@ function SkinManagement() {
 		}
 	}
 
-	function onUploadPick(e: ChangeEvent<HTMLInputElement>): void {
-		const file = e.target.files?.[0];
-		e.target.value = "";
-		if (file) upload.mutate(file);
-	}
-
 	const entries = listQuery.data?.list ?? [];
 
 	return (
@@ -166,25 +173,32 @@ function SkinManagement() {
 				activeIds.light || activeIds.dark ? tx("skinUi.SkinSection.3") : tx("skinUi.SkinSection.4")
 			}
 			right={
-				<div className="flex items-center gap-2">
-					<Btn
-						size="sm"
-						onClick={() => uploadInputRef.current?.click()}
-						disabled={upload.isPending}
-					>
-						{upload.isPending ? tx("skinUi.SkinSection.5") : tx("skinUi.SkinSection.6")}
-					</Btn>
-					<input
-						ref={uploadInputRef}
-						type="file"
-						accept=".zip,application/zip"
-						className="hidden"
-						onChange={onUploadPick}
-						aria-label={tx("skinUi.SkinSection.7")}
-					/>
-				</div>
+				<AddFileButton
+					accept=".zip,application/zip"
+					uploading={importer.busy}
+					onFile={(file) => {
+						if (file) importer.pick(file);
+					}}
+					className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-bn-sm"
+				>
+					{tx("skinUi.SkinSection.6")}
+				</AddFileButton>
 			}
 		>
+			{importer.error && !importer.review ? <ErrorNote>{importer.error}</ErrorNote> : null}
+			{importer.imported ? <HintNote>{tx("resourceImport.saved")}</HintNote> : null}
+			{importer.review ? (
+				<ResourceImportDialog
+					file={importer.review.file}
+					name={importer.review.preview.name}
+					warnings={importer.review.preview.warnings}
+					conflict={importer.review.preview.conflict}
+					pending={importer.busy}
+					error={importer.error}
+					onCancel={importer.cancel}
+					onConfirm={importer.confirm}
+				/>
+			) : null}
 			{error ? (
 				<ErrorNote className="mb-3">
 					{tx("skinUi.SkinSection.8")}
@@ -237,7 +251,7 @@ function SkinManagement() {
 							usage={usage}
 							onTryOn={() => void tryOn(entry.id)}
 							onEdit={() => void openEditor(entry.id)}
-							onExport={() => downloadSkin(entry)}
+							onExport={() => download.mutate(entry)}
 							onRemove={() =>
 								setConfirmRemove({ id: entry.id, name: entry.name, modes: entry.modes })
 							}
@@ -373,14 +387,6 @@ function SkinSelection() {
 			)}
 		</GlassBox>
 	);
-}
-
-/** 皮肤导出:直接开导出端点,浏览器按 content-disposition 落文件(会话 cookie 同源自带)。 */
-function downloadSkin(entry: SkinListEntry): void {
-	const a = document.createElement("a");
-	a.href = `/api/dashboard/skins/${entry.id}/export`;
-	a.download = `${entry.name}.zip`;
-	a.click();
 }
 
 /**

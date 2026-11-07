@@ -257,10 +257,14 @@ describe("卡片皮肤库", () => {
 	});
 
 	it("上传成功 → 列表重取,并把清洗提示列出来", async () => {
-		vi.mocked(api.upload).mockResolvedValue({
-			id: "new-skin",
-			warnings: ["直播卡「封面」块的 filter 声明已丢弃"],
-		});
+		vi.mocked(api.upload).mockImplementation(async (path) =>
+			path.endsWith("/import-preview")
+				? { ok: true, name: "新皮肤", warnings: [], conflict: false }
+				: {
+						id: "new-skin",
+						warnings: ["直播卡「封面」块的 filter 声明已丢弃"],
+					},
+		);
 
 		const { container } = renderSection();
 		await screen.findByText("极光");
@@ -269,9 +273,14 @@ describe("卡片皮肤库", () => {
 		const input = container.querySelector('input[type="file"]') as HTMLInputElement;
 		const file = new File([new Uint8Array([1, 2, 3])], "skin.zip", { type: "application/zip" });
 		fireEvent.change(input, { target: { files: [file] } });
+		const dialog = await screen.findByRole("dialog");
+		expect(vi.mocked(api.upload).mock.calls.at(-1)?.[0]).toBe("/api/cards/skins/import-preview");
+		expect(vi.mocked(api.get).mock.calls.length).toBe(before);
+		fireEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
 
 		await waitFor(() => expect(api.upload).toHaveBeenCalled());
-		const [uploadUrl, form] = vi.mocked(api.upload).mock.calls[0] as [string, FormData];
+		await waitFor(() => expect(vi.mocked(api.upload).mock.calls.length).toBe(2));
+		const [uploadUrl, form] = vi.mocked(api.upload).mock.calls[1] as [string, FormData];
 		expect(uploadUrl).toBe("/api/cards/skins");
 		expect(form.get("file")).toBe(file);
 

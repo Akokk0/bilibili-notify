@@ -19,6 +19,7 @@ import {
 	CARD_KINDS,
 	CARD_SKIN_LIMITS,
 	type CardSkinManifest,
+	ok,
 	parseCardSkin,
 } from "@bilibili-notify/internal";
 import { strFromU8 } from "fflate";
@@ -75,6 +76,15 @@ export const MAX_CARD_SKIN_TOTAL_BYTES =
 export type ParseCardSkinPackageResult =
 	| { ok: true; manifestRaw: unknown; assets: Map<string, Uint8Array> }
 	| { ok: false; errors: string[] };
+
+/** 预览与安装共同走完文件检查、清单校验和清洗；这里不写盘。 */
+export function openCardSkinPackage(zip: Uint8Array) {
+	const opened = parseCardSkinPackage(zip);
+	if (!opened.ok) return opened;
+	const checked = checkCardSkinPackage(opened.manifestRaw, new Set(opened.assets.keys()));
+	if (!checked.ok) return checked;
+	return ok({ manifest: checked.manifest, assets: opened.assets, warnings: checked.warnings });
+}
 
 /**
  * 摊开一个卡片皮肤包。**只管文件层面**(白名单、上限、JSON 合不合法),清单的形状与

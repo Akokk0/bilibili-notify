@@ -144,6 +144,35 @@ async function install(
 }
 
 describe("GET / —— 皮肤库列表", () => {
+	it("ZIP 预览不写入，使用与安装相同的检查，同名安装仍保留原件", async () => {
+		const form = () => {
+			const data = new FormData();
+			data.set("file", new File([pack(manifest(), {})], "skin.zip", { type: "application/zip" }));
+			return data;
+		};
+		const before = store.list().length;
+		const response = await app.request("/import-preview", { method: "POST", body: form() });
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			ok: true,
+			name: manifest().name,
+			conflict: false,
+		});
+		expect(store.list()).toHaveLength(before);
+		await install();
+		expect(
+			await (await app.request("/import-preview", { method: "POST", body: form() })).json(),
+		).toMatchObject({ conflict: true });
+		await install();
+		expect(store.list()).toHaveLength(before + 2);
+		expect(active).toBe(DEFAULT_CARD_SKIN_ID);
+		for (const path of ["/import-preview", "/"]) {
+			const data = new FormData();
+			data.set("file", new File([pack({ ...manifest(), schemaVersion: 99 }, {})], "broken.zip"));
+			expect((await app.request(path, { method: "POST", body: data })).status).toBe(400);
+		}
+		expect(store.list()).toHaveLength(before + 2);
+	});
 	it("内置那份在首位且标着 builtin;active 跟着配置走", async () => {
 		const id = await install();
 		active = id;

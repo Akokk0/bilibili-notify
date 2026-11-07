@@ -65,6 +65,30 @@ beforeEach(async () => {
 });
 
 describe("skins route", () => {
+	it("导入预览不入库，同名再次导入保留原件且不切换启用槽", async () => {
+		const file = makeZipFile(true);
+		const form = () => {
+			const data = new FormData();
+			data.set("file", file);
+			return data;
+		};
+		let response = await app.request("/import-preview", { method: "POST", body: form() });
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ ok: true, name: "樱花夜", conflict: false });
+		expect(await store.list()).toHaveLength(0);
+		await upload(app, file);
+		response = await app.request("/import-preview", { method: "POST", body: form() });
+		expect(await response.json()).toMatchObject({ conflict: true });
+		await upload(app, file);
+		expect(await store.list()).toHaveLength(2);
+		expect(store.getActive()).toEqual({ light: null, dark: null });
+		for (const path of ["/import-preview", "/"]) {
+			const data = new FormData();
+			data.set("file", new File([new Uint8Array([1, 2, 3])], "broken.zip"));
+			expect((await app.request(path, { method: "POST", body: data })).status).toBe(400);
+		}
+		expect(await store.list()).toHaveLength(2);
+	});
 	it("GET / 初始为空:list=[] active 双槽全空", async () => {
 		const res = await app.request("/");
 		expect(res.status).toBe(200);

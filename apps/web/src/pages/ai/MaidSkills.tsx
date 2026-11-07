@@ -20,15 +20,16 @@ import {
 	HintNote,
 	Icon,
 	LoadingBlock,
-	ModalShell,
 	Pill,
 	SectionNav,
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { TArea, TInput } from "../../components/forms";
+import { ResourceImportDialog } from "../../components/library/resource-import-dialog";
 import { useT } from "../../i18n";
+import { errorTextOf } from "../../services/error-text";
 import {
 	createMaidSkill,
 	deleteMaidSkill,
@@ -38,6 +39,7 @@ import {
 	previewMaidSkill,
 	updateMaidSkill,
 } from "../../services/maidSkill";
+import { saveResourceFile } from "../../services/resource-download";
 
 /** 新建时右侧那份空白草稿。 */
 const BLANK: MaidSkillWriteRequest = {
@@ -119,35 +121,6 @@ export function MaidSkills() {
 	const [importError, setImportError] = useState<string | null>(null);
 	const [importCopied, setImportCopied] = useState(false);
 	const [importedName, setImportedName] = useState<string | null>(null);
-	const importBody = useRef<HTMLDivElement>(null);
-	const importOpen = importDraft !== null;
-	useEffect(() => {
-		if (!importOpen) return;
-		const previous = document.activeElement as HTMLElement | null;
-		const body = importBody.current;
-		body?.querySelector<HTMLInputElement>("input")?.focus();
-		const trap = (event: KeyboardEvent) => {
-			if (event.key !== "Tab") return;
-			const controls = body?.querySelectorAll<HTMLElement>(
-				"input:not([disabled]),button:not([disabled])",
-			);
-			const first = controls?.[0],
-				last = controls?.[controls.length - 1];
-			if (event.shiftKey && document.activeElement === first) {
-				event.preventDefault();
-				last?.focus();
-			} else if (!event.shiftKey && document.activeElement === last) {
-				event.preventDefault();
-				first?.focus();
-			}
-		};
-		body?.addEventListener("keydown", trap);
-		return () => {
-			body?.removeEventListener("keydown", trap);
-			previous?.focus();
-		};
-	}, [importOpen]);
-
 	// 首次拉到清单时落在第一条上 —— 右侧空着会让人以为这个 Tab 坏了。
 	useEffect(() => {
 		if (activeId === null && list.length > 0) {
@@ -179,7 +152,7 @@ export function MaidSkills() {
 				name: copied ? copyName(result.skill.name, list) : result.skill.name,
 			});
 		},
-		onError: (e: Error) => setErr(e.message),
+		onError: (e: Error) => setErr(errorTextOf(e)),
 	});
 	const importSkill = useMutation({
 		mutationFn: (skill: MaidSkillWriteRequest) => createMaidSkill(skill),
@@ -189,19 +162,14 @@ export function MaidSkills() {
 			setImportError(null);
 			void invalidate();
 		},
-		onError: (e: Error) => setImportError(e.message),
+		onError: (e: Error) => setImportError(errorTextOf(e)),
 	});
 	const download = useMutation({
 		mutationFn: (name: string) => exportMaidSkill(name),
 		onSuccess: (blob, name) => {
-			const url = URL.createObjectURL(blob);
-			const link = document.createElement("a");
-			link.href = url;
-			link.download = `${name}.SKILL.md`;
-			link.click();
-			setTimeout(() => URL.revokeObjectURL(url), 0);
+			saveResourceFile(blob, `${name}.SKILL.md`);
 		},
-		onError: (e: Error) => setErr(e.message),
+		onError: (e: Error) => setErr(errorTextOf(e)),
 	});
 
 	const save = useMutation({
@@ -216,7 +184,7 @@ export function MaidSkills() {
 			setActiveId(vars.skill.name);
 			void invalidate();
 		},
-		onError: (e: Error) => setErr(e.message),
+		onError: (e: Error) => setErr(errorTextOf(e)),
 	});
 
 	const remove = useMutation({
@@ -226,7 +194,7 @@ export function MaidSkills() {
 			setActiveId(null);
 			void invalidate();
 		},
-		onError: (e: Error) => setErr(e.message),
+		onError: (e: Error) => setErr(errorTextOf(e)),
 	});
 
 	const submit = () => {
@@ -479,65 +447,46 @@ export function MaidSkills() {
 				</GlassBox>
 			</div>
 			{importDraft ? (
-				<ModalShell
+				<ResourceImportDialog
 					title={tx("maidSkills.importTitle")}
-					description={tx("maidSkills.importHint")}
-					onCancel={() => {
-						if (!importSkill.isPending) setImportDraft(null);
+					conflict={importCopied}
+					pending={importSkill.isPending}
+					error={importError}
+					onCancel={() => setImportDraft(null)}
+					onConfirm={() => {
+						const complaint = localComplaint(importDraft);
+						if (complaint) {
+							setImportError(complaint);
+							return;
+						}
+						setImportError(null);
+						importSkill.mutate(importDraft);
 					}}
-					width={620}
 				>
-					<div ref={importBody} className="space-y-4">
-						{importCopied ? <WarnNote>{tx("maidSkills.importCopyHint")}</WarnNote> : null}
-						<LabeledField label={tx("maidSkills.importName")}>
-							{(aria) => (
-								<TInput
-									ariaLabel={aria}
-									mono
-									value={importDraft.name}
-									onChange={(name) => setImportDraft({ ...importDraft, name })}
-								/>
-							)}
-						</LabeledField>
-						<p className="text-bn-sm text-bn-text-secondary">{importDraft.description}</p>
-						<pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-bn-sm bg-bn-surface-muted p-3 text-bn-sm text-bn-text-secondary">
-							{importDraft.body}
-						</pre>
-						<p className="break-words text-bn-xs text-bn-text-tertiary">
-							{tx("maidSkills.importTools", {
-								tools: importDraft.allowedTools?.join(", ") || tx("maidSkills.toolsUnlimited"),
-							})}
-						</p>
-						{importDraft.disableModelInvocation ? (
-							<HintNote>{tx("maidSkills.manualOnly")}</HintNote>
-						) : null}
-						{importError ? <ErrorNote>{importError}</ErrorNote> : null}
-						<div className="flex justify-end gap-2">
-							<Btn
-								variant="outline"
+					<LabeledField label={tx("maidSkills.importName")}>
+						{(aria) => (
+							<TInput
+								ariaLabel={aria}
+								mono
+								value={importDraft.name}
 								disabled={importSkill.isPending}
-								onClick={() => setImportDraft(null)}
-							>
-								{tx("library.cancel")}
-							</Btn>
-							<Btn
-								variant="primary"
-								disabled={importSkill.isPending}
-								onClick={() => {
-									const complaint = localComplaint(importDraft);
-									if (complaint) {
-										setImportError(complaint);
-										return;
-									}
-									setImportError(null);
-									importSkill.mutate(importDraft);
-								}}
-							>
-								{tx("maidSkills.confirmImport")}
-							</Btn>
-						</div>
-					</div>
-				</ModalShell>
+								onChange={(name) => setImportDraft({ ...importDraft, name })}
+							/>
+						)}
+					</LabeledField>
+					<p className="text-bn-sm text-bn-text-secondary">{importDraft.description}</p>
+					<pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-bn-sm bg-bn-surface-muted p-3 text-bn-sm text-bn-text-secondary">
+						{importDraft.body}
+					</pre>
+					<p className="break-words text-bn-xs text-bn-text-tertiary">
+						{tx("maidSkills.importTools", {
+							tools: importDraft.allowedTools?.join(", ") || tx("maidSkills.toolsUnlimited"),
+						})}
+					</p>
+					{importDraft.disableModelInvocation ? (
+						<HintNote>{tx("maidSkills.manualOnly")}</HintNote>
+					) : null}
+				</ResourceImportDialog>
 			) : null}
 		</div>
 	);

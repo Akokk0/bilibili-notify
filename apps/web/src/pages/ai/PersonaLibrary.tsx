@@ -19,11 +19,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Field, TArea, TInput } from "../../components/forms";
+import { ResourceImportDialog } from "../../components/library/resource-import-dialog";
 import { getFieldLabel } from "../../config/field-labels";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { SETTINGS_KEY } from "../../hooks/useSettings";
 import { useT } from "../../i18n";
 import { ApiError } from "../../services/api";
+import { errorTextOf } from "../../services/error-text";
 import {
 	exportPersona,
 	listPersonas,
@@ -31,6 +33,7 @@ import {
 	previewPersona,
 	writePersona,
 } from "../../services/persona";
+import { saveResourceFile } from "../../services/resource-download";
 import { personaIconKey } from "./persona-icons";
 
 const NEW_ID = "/new";
@@ -134,13 +137,14 @@ export function PersonaLibrary() {
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [importDraft, setImportDraft] = useState<PersonaContent | null>(null);
+	const [importCopied, setImportCopied] = useState(false);
 	const [importRevision, setImportRevision] = useState("");
 	const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 	const modal = useRef<HTMLDivElement>(null);
 	const list = query.data?.entries ?? [];
 	const current = list.find((entry) => entry.id === active);
 	const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
-	const isModalOpen = importDraft !== null || pendingAction !== null;
+	const isModalOpen = pendingAction !== null;
 	useEffect(() => {
 		if (!isModalOpen) return;
 		const previous = document.activeElement as HTMLElement | null;
@@ -213,7 +217,7 @@ export function PersonaLibrary() {
 			}
 		},
 		onError: (e: Error) => {
-			setError(e.message);
+			setError(errorTextOf(e));
 			if (e instanceof ApiError && e.code === "conflict")
 				void qc.invalidateQueries({ queryKey: personaQueryKey });
 		},
@@ -227,26 +231,21 @@ export function PersonaLibrary() {
 			}
 			setError(null);
 			setImportRevision(query.data?.revision ?? "");
+			const copied = list.some((entry) => entry.label === result.content.label);
+			setImportCopied(copied);
 			setImportDraft({
 				...result.content,
-				label: list.some((entry) => entry.label === result.content.label)
-					? copyLabel(result.content.label)
-					: result.content.label,
+				label: copied ? copyLabel(result.content.label) : result.content.label,
 			});
 		},
-		onError: (e: Error) => setError(e.message),
+		onError: (e: Error) => setError(errorTextOf(e)),
 	});
 	const download = useMutation({
 		mutationFn: exportPersona,
 		onSuccess: (blob) => {
-			const url = URL.createObjectURL(blob),
-				link = document.createElement("a");
-			link.href = url;
-			link.download = "persona.json";
-			link.click();
-			setTimeout(() => URL.revokeObjectURL(url), 0);
+			saveResourceFile(blob, "persona.json");
 		},
-		onError: (e: Error) => setError(e.message),
+		onError: (e: Error) => setError(errorTextOf(e)),
 	});
 	const busy = write.isPending || preview.isPending || download.isPending;
 	function submit(content: PersonaContent, version: string, id: string) {
@@ -432,57 +431,36 @@ export function PersonaLibrary() {
 				</div>
 			</div>
 			{importDraft ? (
-				<ModalShell
-					width={720}
+				<ResourceImportDialog
 					title={t("personas.importTitle")}
-					description={t("personas.importHint")}
+					conflict={importCopied}
+					pending={busy}
+					error={error}
+					confirmDisabled={!importDraft.label.trim()}
 					onCancel={() => {
-						if (!busy) {
-							setImportDraft(null);
-							setError(null);
-						}
+						setImportDraft(null);
+						setError(null);
 					}}
+					onConfirm={() => submit(importDraft, importRevision, NEW_ID)}
 				>
-					<div ref={modal} className="space-y-4">
-						<PersonaFields value={importDraft} onChange={setImportDraft} readOnly={busy} />
-						{importRevision !== query.data.revision ? (
-							<HintNote>
-								{t("personas.importStale")}{" "}
-								<Btn
-									size="sm"
-									variant="outline"
-									disabled={busy}
-									onClick={() => {
-										setImportRevision(query.data.revision);
-										setError(null);
-									}}
-								>
-									{t("personas.keepImport")}
-								</Btn>
-							</HintNote>
-						) : null}
-						{error ? <ErrorNote>{error}</ErrorNote> : null}
-						<div className="flex justify-end gap-2">
+					<PersonaFields value={importDraft} onChange={setImportDraft} readOnly={busy} />
+					{importRevision !== query.data.revision ? (
+						<HintNote>
+							{t("personas.importStale")}{" "}
 							<Btn
+								size="sm"
 								variant="outline"
 								disabled={busy}
 								onClick={() => {
-									setImportDraft(null);
+									setImportRevision(query.data.revision);
 									setError(null);
 								}}
 							>
-								{t("library.cancel")}
+								{t("personas.keepImport")}
 							</Btn>
-							<Btn
-								variant="primary"
-								disabled={busy || !importDraft.label.trim()}
-								onClick={() => submit(importDraft, importRevision, NEW_ID)}
-							>
-								{t("personas.confirmImport")}
-							</Btn>
-						</div>
-					</div>
-				</ModalShell>
+						</HintNote>
+					) : null}
+				</ResourceImportDialog>
 			) : pendingAction ? (
 				<ModalShell
 					width={460}

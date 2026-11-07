@@ -12,6 +12,64 @@ import { respondFailure, unhandledErrorMessage } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+it("原图下载原样返回字节，下载头不改变普通图片读取", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bn-image-export-"));
+	try {
+		const app = createLibraryRoute(depsWithDataDir(dir));
+		const form = new FormData();
+		form.set("file", new File([PNG], "picture.png", { type: "image/png" }));
+		const saved = await app.request("/images", { method: "POST", body: form });
+		const { id } = (await saved.json()) as { id: string };
+		const response = await app.request(`/images/${id}?download=1`);
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-disposition")).toBe(`attachment; filename="${id}"`);
+		expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG);
+		expect((await app.request(`/images/${id}`)).headers.get("content-disposition")).toBeNull();
+		expect((await app.request("/images/not-an-id?download=1")).status).toBe(404);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+it("图片导入预览不入库，确认上传仍重新校验并新建身份", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bn-image-preview-"));
+	try {
+		const app = createLibraryRoute(depsWithDataDir(dir));
+		const form = () => {
+			const data = new FormData();
+			data.set("file", new File([PNG], "picture.png", { type: "image/png" }));
+			return data;
+		};
+		const preview = await app.request("/images/import-preview", { method: "POST", body: form() });
+		expect(preview.status).toBe(200);
+		expect(await preview.json()).toMatchObject({ ok: true, name: "picture.png", conflict: false });
+		expect(((await (await app.request("/images")).json()) as { ids: string[] }).ids).toEqual([]);
+		expect((await app.request("/images", { method: "POST", body: form() })).status).toBe(200);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+it("图片预览拒绝格式和大小越界，确认请求换成坏文件也不能入库", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bn-image-preview-invalid-"));
+	try {
+		const app = createLibraryRoute(depsWithDataDir(dir));
+		for (const [bytes, type] of [
+			[PNG, "text/plain"],
+			[new Uint8Array(5 * 1024 * 1024 + 1), "image/png"],
+		] as const) {
+			for (const path of ["/images/import-preview", "/images"]) {
+				const data = new FormData();
+				data.set("file", new File([bytes], "image.png", { type }));
+				expect((await app.request(path, { method: "POST", body: data })).status).toBe(400);
+			}
+		}
+		expect(await listCardBg(dir)).toEqual([]);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
 function depsWithDataDir(dataDir: string): RouteDeps {
 	return {
 		runtime: { sourceRegistry: bilibiliLikeSources(), dataRoot: dataDir },

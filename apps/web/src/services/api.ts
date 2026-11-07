@@ -281,7 +281,8 @@ async function requestBlob(path: string): Promise<Blob> {
 	);
 	if (!res.ok) {
 		if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized?.();
-		throw new ApiError(res.status, undefined, `GET ${path} → ${res.status}`);
+		const { payload } = await readJsonPayload(res);
+		throw apiErrorOf(res.status, payload, `GET ${path} → ${res.status}`);
 	}
 	return res.blob();
 }

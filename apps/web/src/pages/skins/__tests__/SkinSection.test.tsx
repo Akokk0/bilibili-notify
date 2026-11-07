@@ -57,7 +57,11 @@ vi.mock("../../../services/api", () => ({
 			return { ok: true };
 		}),
 		delete: vi.fn(async () => ({ ok: true })),
-		upload: vi.fn(async () => ({ ok: true, id: "s1", warnings: H.uploadWarnings })),
+		upload: vi.fn(async (path: string) =>
+			path.endsWith("/import-preview")
+				? { ok: true, name: "樱花夜", warnings: H.uploadWarnings, conflict: true }
+				: { ok: true, id: "s1", warnings: H.uploadWarnings },
+		),
 	},
 }));
 
@@ -128,11 +132,18 @@ describe("SkinSection", () => {
 		const zip = new File([new Uint8Array([0x50, 0x4b])], "sakura.zip", {
 			type: "application/zip",
 		});
-		fireEvent.change(screen.getByLabelText("选择皮肤包 zip 文件"), {
+		fireEvent.change(screen.getByLabelText("上传皮肤包"), {
 			target: { files: [zip] },
 		});
 
-		await waitFor(() => expect(screen.getByText(/pointer-events/)).toBeTruthy());
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByText(/pointer-events/)).toBeTruthy();
+		expect(vi.mocked(api.upload).mock.calls.at(-1)?.[0]).toBe(
+			"/api/dashboard/skins/import-preview",
+		);
+		fireEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		expect(screen.getByText(/pointer-events/)).toBeTruthy();
 		expect(useSkinStore.getState().preview).toBeNull();
 		expect(H.putCalls).toEqual([]);
 	});

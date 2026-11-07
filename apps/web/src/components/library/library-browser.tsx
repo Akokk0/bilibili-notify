@@ -8,6 +8,7 @@ import {
 	Btn,
 	EmptyNote,
 	ErrorNote,
+	HintNote,
 	Icon,
 	IconButton,
 	LoadingBlock,
@@ -21,13 +22,17 @@ import { ApiError } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import {
 	deleteLibraryFile,
+	exportLibraryFile,
 	invalidateLibrary,
 	type LibraryEntry,
 	type LibraryKind,
+	previewLibraryFile,
 	uploadLibraryFile,
 	useLibrary,
 } from "./library-data";
 import { LibraryImage, LibraryOrderBadge, MissingLibraryImage } from "./library-image";
+import { ResourceImportDialog } from "./resource-import-dialog";
+import { useResourceImport } from "./use-resource-import";
 
 interface LibraryBrowserProps {
 	kind: LibraryKind;
@@ -58,6 +63,17 @@ export function LibraryBrowser({
 			onUploaded?.(saved.id);
 		},
 	});
+	const download = useMutation({
+		mutationFn: (entry: LibraryEntry) => exportLibraryFile(kind, entry),
+	});
+	const importer = useResourceImport({
+		previewFile: (file) => previewLibraryFile(kind, file),
+		importFile: (file) => uploadLibraryFile(kind, file),
+		onImported: async (saved) => {
+			await invalidateLibrary(qc, kind);
+			onUploaded?.(saved.id);
+		},
+	});
 	const remove = useMutation({
 		mutationFn: (entry: LibraryEntry) => deleteLibraryFile(kind, entry.id),
 		onSuccess: async (_saved, entry) => {
@@ -84,6 +100,20 @@ export function LibraryBrowser({
 		opener.current?.focus();
 	};
 	const blocked = remove.error instanceof ApiError && remove.error.code === "conflict";
+	const exportButton = (entry: LibraryEntry, index: number) =>
+		!selection ? (
+			<IconButton
+				icon={<Icon.download size={13} />}
+				size="lg"
+				disabled={download.isPending}
+				label={
+					kind === "images"
+						? t("library.exportImage", { number: index + 1 })
+						: t("library.exportFont", { name: entry.name ?? entry.id })
+				}
+				onClick={() => download.mutate(entry)}
+			/>
+		) : null;
 	const deleteButton = (entry: LibraryEntry, index: number) =>
 		!selection ? (
 			<IconButton
@@ -160,7 +190,10 @@ export function LibraryBrowser({
 										{t("library.imageNumber", { number: index + 1 })} ·{" "}
 										{entry.id.split(".").pop()?.toUpperCase()}
 									</span>
-									{deleteButton(entry, index)}
+									<div className="flex shrink-0 items-center gap-1">
+										{exportButton(entry, index)}
+										{deleteButton(entry, index)}
+									</div>
 								</div>
 							</div>
 						);
@@ -225,7 +258,10 @@ export function LibraryBrowser({
 							) : (
 								<div className="flex min-w-0 flex-1 items-center gap-3">{description}</div>
 							)}
-							{deleteButton(entry, index)}
+							<div className="flex shrink-0 items-center gap-1">
+								{exportButton(entry, index)}
+								{deleteButton(entry, index)}
+							</div>
 						</div>
 					);
 				})}
@@ -242,9 +278,12 @@ export function LibraryBrowser({
 				</p>
 				<AddFileButton
 					accept={kind === "images" ? "image/png,image/jpeg,image/webp" : ".woff2,.woff,.ttf,.otf"}
-					uploading={upload.isPending}
+					uploading={upload.isPending || importer.busy}
 					onFile={(file) => {
-						if (file && !upload.isPending) upload.mutate(file);
+						if (file && !upload.isPending && !importer.busy) {
+							if (selection) upload.mutate(file);
+							else importer.pick(file);
+						}
 					}}
 					className="inline-flex shrink-0 items-center gap-1 rounded-lg px-3 py-2 text-bn-xs"
 				>
@@ -258,6 +297,23 @@ export function LibraryBrowser({
 				</ErrorNote>
 			) : null}
 			{content()}
+			{importer.error && !importer.review ? (
+				<ErrorNote size="sm">{importer.error}</ErrorNote>
+			) : null}
+			{importer.imported ? <HintNote>{t("resourceImport.saved")}</HintNote> : null}
+			{importer.review ? (
+				<ResourceImportDialog
+					file={importer.review.file}
+					name={importer.review.preview.name}
+					warnings={importer.review.preview.warnings}
+					conflict={importer.review.preview.conflict}
+					pending={importer.busy}
+					error={importer.error}
+					onCancel={importer.cancel}
+					onConfirm={importer.confirm}
+				/>
+			) : null}
+			{download.isError ? <ErrorNote size="sm">{errorTextOf(download.error)}</ErrorNote> : null}
 			{deleting ? (
 				<ModalShell
 					title={

@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { MAX_CARD_BG_BYTES } from "@bilibili-notify/internal/card-skin";
 import { t as serverText } from "../i18n/index.js";
 /**
@@ -65,17 +66,21 @@ export async function saveCardBg(
 	bytes: Uint8Array,
 	mime: string,
 ): Promise<string> {
-	const ext = MIME_TO_EXT[mime];
-	if (!ext)
-		throw new AssetRejectedError(
-			serverText("service.runtime.card-assets.text.1", { value0: mime }),
-		);
-	if (bytes.byteLength > MAX_CARD_BG_BYTES)
-		throw new AssetRejectedError(serverText("service.runtime.card-assets.text.2"));
-	const result = await storeOf(dataRoot).put({ bytes, ext });
-	// 上面已按同一套规矩判过,走到这里被拒说明两边对不上 —— 是 bug,不是用户输入的事。
+	const checked = checkCardBgUpload(bytes, mime);
+	if (!checked.ok) throw new AssetRejectedError(checked.message);
+	const result = await storeOf(dataRoot).put({ bytes, ext: checked.ext });
 	if (!result.ok) throw new Error(result.message);
 	return result.id;
+}
+
+/** 预览与保存共用的只读检查，不创建目录或文件。 */
+export function checkCardBgUpload(bytes: Uint8Array, mime: string): Result<{ ext: string }> {
+	const ext = MIME_TO_EXT[mime];
+	if (!ext)
+		return fail("invalid", serverText("service.runtime.card-assets.text.1", { value0: mime }));
+	if (bytes.byteLength > MAX_CARD_BG_BYTES)
+		return fail("invalid", serverText("service.runtime.card-assets.text.2"));
+	return ok({ ext });
 }
 
 /** 读背景图原始字节 + mime;id 非法或文件缺失返回 null(供服务路由)。 */

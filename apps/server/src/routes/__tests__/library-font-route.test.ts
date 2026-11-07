@@ -29,6 +29,61 @@ import type { RouteDeps } from "../types.js";
 
 const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32, 0x00, 0x01]);
 
+it("字体下载保留原始字节与安全编码的原名，可再次导入且不覆盖原件", async () => {
+	await withDir(async (dir) => {
+		const app = route(makeDeps({ dataDir: dir }));
+		const name = '验收 字体".woff2';
+		const { id } = (await (await upload(app, name)).json()) as { id: string };
+		const response = await app.request(`/fonts/${id}?download=1`);
+		expect(response.headers.get("content-disposition")).toBe(
+			`attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+		);
+		const bytes = new Uint8Array(await response.arrayBuffer());
+		expect(bytes).toEqual(WOFF2);
+		const imported = await upload(app, name, bytes);
+		expect(imported.status).toBe(200);
+		expect(((await imported.json()) as { id: string }).id).not.toBe(id);
+		expect(await listFontAssets(dir)).toHaveLength(2);
+	});
+});
+
+it("字体预览报告同名副本且不写盘，不合法后缀在预览和正式上传都拒绝", async () => {
+	await withDir(async (dir) => {
+		const app = route(makeDeps({ dataDir: dir }));
+		await upload(app, "sample.woff2");
+		const form = (name: string) => {
+			const data = new FormData();
+			data.set("file", new File([WOFF2], name));
+			return data;
+		};
+		const response = await app.request("/fonts/import-preview", {
+			method: "POST",
+			body: form("sample.woff2"),
+		});
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ ok: true, name: "sample.woff2", conflict: true });
+		expect(await listFontAssets(dir)).toHaveLength(1);
+		expect(
+			(await app.request("/fonts/import-preview", { method: "POST", body: form("bad.exe") }))
+				.status,
+		).toBe(400);
+		expect((await upload(app, "bad.exe")).status).toBe(400);
+	});
+});
+
+it("字体预览与正式上传都拒绝超过原文件上限，不改变原件", async () => {
+	await withDir(async (dir) => {
+		const app = route(makeDeps({ dataDir: dir }));
+		await upload(app, "original.woff2");
+		for (const path of ["/fonts/import-preview", "/fonts"]) {
+			const data = new FormData();
+			data.set("file", new File([new Uint8Array(20 * 1024 * 1024 + 1)], "large.woff2"));
+			expect((await app.request(path, { method: "POST", body: data })).status).toBe(400);
+		}
+		expect(await listFontAssets(dir)).toHaveLength(1);
+	});
+});
+
 /**
  * 造一份 deps。
  *
