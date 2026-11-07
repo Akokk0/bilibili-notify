@@ -198,7 +198,7 @@ describe("红字提示盒只有 ErrorNote 那一份", () => {
 		return cls.includes("border-bn-danger-border") && cls.includes("bg-bn-danger-soft");
 	}
 
-	// UpDialog「已失效的引用」与 FontPicker「字体不在库里」两条豁免已清:它们要的
+	// SubscriptionDialog「已失效的引用」与 FontPicker「字体不在库里」两条豁免已清:它们要的
 	// 正是「红容器装任意 children」,那个口子后来以 HintNote(danger 档)的身份进了
 	// 库 —— 虚线旁注收自由子元素,两处已改吃它。
 	const KEPT: Record<string, string> = {

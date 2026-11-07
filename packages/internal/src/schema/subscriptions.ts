@@ -75,7 +75,7 @@ export type CreatorProfile = z.infer<typeof CreatorProfileSchema>;
  * 不在 schema 里(它们后来只为 koishi 插件那一侧留着):人格一律在「智能女仆」页里写,
  * per-UP 只负责挑一份。per-UP 的 `temperature` 也已退役(请求里一律不发、走服务商默认)。
  * 盘上残留的旧字段在解析时被丢弃(裸 z.object,未知键 strip,不会整份拒收),设置页
- * 保存时也会显式清掉(见 apps/web PerUpEditor 的 `pickAiOverride`)。
+ * 保存时也会显式清掉(见 apps/web SubscriptionRulesEditor 的 `pickAiOverride`)。
  *
  * ## 为什么 preset 是裸 string
  *

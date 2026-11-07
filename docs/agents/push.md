@@ -103,7 +103,7 @@
 
 ⚠️ 身份两格一起比：外部 id 恰好是一串等于某个 B 站 uid 的数字，来源键不同，也不是同一个人。0.x 与 ⑱b 之前的行（`uid` / `extensionId` + `externalId` 散格）由迁移并成 `identity`（`migration/history.ts`），推不出身份的是坏行、原样不动。
 
-行 → 订阅一律「**先认 `subscriptionId`、找不到再按身份认、绝不跨来源**」：找第一个来源键与外部 id 都相同的订阅（两层 map，不拼串）。服务端是 `runtime/target-scope.ts` 的 `currentSubscriptionOf`（重推用），面板是 `pages/up/subscription-lookup.ts` 的 `forRow`，同一条规矩两份实现。行的颜色跟着人走（`utils/up-display.ts` 的 `historyRowColor`），删了再加也不变。
+行 → 订阅一律「**先认 `subscriptionId`、找不到再按身份认、绝不跨来源**」：找第一个来源键与外部 id 都相同的订阅（两层 map，不拼串）。服务端是 `runtime/target-scope.ts` 的 `currentSubscriptionOf`（重推用），面板是 `pages/subscriptions/subscription-lookup.ts` 的 `forRow`，同一条规矩两份实现。行的颜色跟着人走（`utils/creator-display.ts` 的 `historyRowColor`），删了再加也不变。
 
 **人工重推**（ADR-0017，`history/repush-runner.ts`）从历史行再发一次：发送口固定注入 `PushRouter.sendToTarget(…, { routing })` —— 所以静音 / 免扰 / 总开关三道（在它上游的 `PushRouter.push` 里）天然不参与，退避重试与重试前复检 routing 照有；订阅按上面那条规矩找回，结果追加进原来那一行。能补的是「有目标、且行里还有没送到的或被挡下的消息」的行（`history/repush.ts` 的 `unsentIndices`，看消息不看 `status`；补发闸、列表与 WS 投影给不给 `repush`、补完删不删原件三处同一个判据）；被挡下的消息算「没送到的」，补发不带 @全体（被挡时没记它）。无目标行与被过滤的行不能补，拒绝的话各说各的。
 

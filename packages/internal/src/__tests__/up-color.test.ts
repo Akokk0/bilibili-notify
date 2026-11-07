@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { colorFromSeed, extensionColorSeed, identityColor, UP_COLORS } from "../identity";
+import { CREATOR_COLORS, colorFromSeed, extensionColorSeed, identityColor } from "../identity";
 
 /** sRGB hex → CIE Lab。只为算色差与体检明度,不追求极致精度。 */
 function toLab(hex: string): [number, number, number] {
@@ -41,20 +41,21 @@ const hueOf = (hex: string) => {
 
 describe("UP 主配色", () => {
 	it("调色板至少 20 色 —— 8 色时订阅 4 位就有约 65% 概率撞色", () => {
-		expect(UP_COLORS.length).toBeGreaterThanOrEqual(20);
+		expect(CREATOR_COLORS.length).toBeGreaterThanOrEqual(20);
 	});
 
 	it("没有重复的十六进制值", () => {
-		expect(new Set(UP_COLORS.map((c) => c.toLowerCase())).size).toBe(UP_COLORS.length);
+		expect(new Set(CREATOR_COLORS.map((c) => c.toLowerCase())).size).toBe(CREATOR_COLORS.length);
 	});
 
 	it("两两都分得开 —— 不重复不代表看得出区别", () => {
 		// 旧调色板这条会挂:#FF6699 与 #FB7299 的 ΔE76 只有 7.0。
 		let worst = { pair: ["", ""], d: Number.POSITIVE_INFINITY };
-		for (let i = 0; i < UP_COLORS.length; i++) {
-			for (let j = i + 1; j < UP_COLORS.length; j++) {
-				const d = deltaE(UP_COLORS[i] as string, UP_COLORS[j] as string);
-				if (d < worst.d) worst = { pair: [UP_COLORS[i] as string, UP_COLORS[j] as string], d };
+		for (let i = 0; i < CREATOR_COLORS.length; i++) {
+			for (let j = i + 1; j < CREATOR_COLORS.length; j++) {
+				const d = deltaE(CREATOR_COLORS[i] as string, CREATOR_COLORS[j] as string);
+				if (d < worst.d)
+					worst = { pair: [CREATOR_COLORS[i] as string, CREATOR_COLORS[j] as string], d };
 			}
 		}
 		expect(
@@ -67,7 +68,7 @@ describe("UP 主配色", () => {
 		// 这条是「连续取色」那一版被否掉的直接原因:逐色相取最大彩度,在 Lab 色相
 		// 55–125° 且明度偏低时会扫出 #cf9700 #aea300 #84ae04 这类颜色。色差指标
 		// 完全看不出问题,只有人眼看得出来,所以单独钉一条。
-		const muddy = UP_COLORS.filter((c) => {
+		const muddy = CREATOR_COLORS.filter((c) => {
 			const h = hueOf(c);
 			return h >= 55 && h <= 125 && (toLab(c)[0] as number) < 78;
 		});
@@ -75,7 +76,7 @@ describe("UP 主配色", () => {
 	});
 
 	it("明度锁在浅调带里 —— 头像是白色首字母直接压在这个颜色上", () => {
-		for (const c of UP_COLORS) {
+		for (const c of CREATOR_COLORS) {
 			const l = toLab(c)[0];
 			expect(l, `${c} 的 L*=${l.toFixed(0)}`).toBeGreaterThanOrEqual(60);
 			expect(l, `${c} 的 L*=${l.toFixed(0)}`).toBeLessThanOrEqual(84);
@@ -88,7 +89,7 @@ describe("UP 主配色", () => {
 
 	it("颜色一定取自调色板", () => {
 		for (const uid of ["1", "946974", "387654321", ""]) {
-			expect(UP_COLORS).toContain(colorFromSeed(uid));
+			expect(CREATOR_COLORS).toContain(colorFromSeed(uid));
 		}
 	});
 
@@ -100,7 +101,7 @@ describe("UP 主配色", () => {
 			const c = colorFromSeed(String(1_000_000 + i * 7919));
 			buckets.set(c, (buckets.get(c) ?? 0) + 1);
 		}
-		expect(buckets.size).toBe(UP_COLORS.length);
+		expect(buckets.size).toBe(CREATOR_COLORS.length);
 		const counts = [...buckets.values()];
 		expect(Math.max(...counts) / Math.min(...counts)).toBeLessThan(1.5);
 	});
@@ -108,7 +109,7 @@ describe("UP 主配色", () => {
 
 /**
  * 按人取色(ADR-0019 决策 73 / ADR-0020 决策 15):B 站按 uid,拓展按「拓展 id:外部 id」。这份算法以前只在
- * 面板里有(`apps/web/src/utils/up-display.ts`),锐评卡在服务端出图也要同一个颜色,所以搬进这里。
+ * 面板里有(`apps/web/src/utils/creator-display.ts`),锐评卡在服务端出图也要同一个颜色,所以搬进这里。
  *
  * 下面的色值是拿**搬之前**那份代码(git 里面板的 `extensionColorSeed` + 这里的 `colorFromSeed`)现算出来
  * 写死的,不是拿新代码算的 —— 搬家之后订阅卡、历史行、统计页上同一个人的颜色一个都不许变。

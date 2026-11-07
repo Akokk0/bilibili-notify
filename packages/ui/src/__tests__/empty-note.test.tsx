@@ -6,7 +6,7 @@
  * 收编之前站内写了九份,同一个意思却在四种圆角之间漂(`rounded-md` 6px /
  * `rounded-bn-sm` 9.5px / `rounded-lg` 8px / `rounded-bn-card` 14px),字号在
  * 11 / 11.5 / 12.5px 之间漂。这里钉的是其中**逐字重复**的两份:面板档
- * (Dashboard 三张卡)与内嵌档(Targets / UpDialog 三处),期望值直接取自
+ * (Dashboard 三张卡)与内嵌档(Targets / SubscriptionDialog 三处),期望值直接取自
  * 被替换的那段 markup,不是照着新实现回抄的。
  */
 
@@ -35,7 +35,7 @@ describe("EmptyNote", () => {
 		}
 	});
 
-	it("内嵌档(size=sm)复刻 Targets / UpDialog 的行内空态盒", () => {
+	it("内嵌档(size=sm)复刻 Targets / SubscriptionDialog 的行内空态盒", () => {
 		render(<EmptyNote size="sm">还没有配置推送目标</EmptyNote>);
 		const el = screen.getByText("还没有配置推送目标");
 		const cls = el.className.split(/\s+/);

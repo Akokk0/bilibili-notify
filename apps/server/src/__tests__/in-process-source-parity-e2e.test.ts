@@ -375,7 +375,7 @@ const PANEL_COVERAGE = [
 					"只报作品:过滤 / 作品消息 / 版式 / 推送时段 / AI 人格;图集、直播那几节、B 站独有的都不露",
 			},
 			{
-				file: "apps/web/src/pages/up/__tests__/UpDialog.extension.test.tsx",
+				file: "apps/web/src/pages/subscriptions/__tests__/SubscriptionDialog.extension.test.tsx",
 				title: "featureHints 同时覆盖订阅和自定义目标小字，不给未声明特性造开关",
 			},
 		],
@@ -385,7 +385,7 @@ const PANEL_COVERAGE = [
 		reason: "订阅、历史、统计、概览在面板测试执行，不计入进程内对拍行。",
 		tests: [
 			{
-				file: "apps/web/src/pages/__tests__/Subs.new-subscription.test.tsx",
+				file: "apps/web/src/pages/__tests__/Subscriptions.new-subscription.test.tsx",
 				title: "列出在册的全部来源,B 站只是其中一颗;没在跑的(不带 has)不列",
 			},
 			{

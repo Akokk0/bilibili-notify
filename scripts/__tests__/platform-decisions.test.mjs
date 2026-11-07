@@ -102,7 +102,7 @@ import {
  *   - 显示用的方法调用:`c.platform.trim()`、`` `平台 ${c.platform.toUpperCase()}` ``,套在 `logger.*` 里也红(红的是里面那次方法调用);
  *     `c.platform.length === 0` 红,`c.platform.length > 0` 不红;
  *   - **名字以 `platform` 结尾、装的却是描述对象的**:「派生读再比」与「任何方法都算」对任何名字以 `platform` 结尾的东西都生效,
- *     面板里 `platform` 多半是个描述对象(`Dashboard.tsx`、`History.tsx`、`Stats.tsx`、`PerUpEditor.tsx`),`descPlatform.label === "QQ"`、
+ *     面板里 `platform` 多半是个描述对象(`Overview.tsx`、`History.tsx`、`Stats.tsx`、`PerUpEditor.tsx`),`descPlatform.label === "QQ"`、
  *     `c.platform.label === o.label`、`hostPlatform.describe()` 都红。今天面板只读 `.label` / `.color` / `.features`、没拿去比也没调方法,所以没红;
  *     以后写 `platform.shortLabel === platform.label` 就红。
  *   - 平台值带兜底(`c.platform ?? ""`、`p || "onebot"`)看穿了:喂函数、比字面量、`switch`、查表都算(面板 `Targets.tsx` 因此从 12 处涨到 18 处)。
@@ -956,7 +956,10 @@ function scan(roots, skippedDirs) {
 		.map((file) => parseSource(file));
 	const descriptors =
 		roots === PANEL_ROOTS
-			? descriptorFlow(sources, join(REPO_ROOT, "apps/web/src/pages/up/subscription-source.ts"))
+			? descriptorFlow(
+					sources,
+					join(REPO_ROOT, "apps/web/src/pages/subscriptions/subscription-source.ts"),
+				)
 			: undefined;
 	for (const source of sources) {
 		const file = source.path;

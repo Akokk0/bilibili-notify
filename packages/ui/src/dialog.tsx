@@ -34,7 +34,7 @@ export interface ModalShellProps {
 	/**
 	 * 弹窗标题。**间距与字号一律由壳子出,不给调用方留口子** —— 全站 11 个弹窗
 	 * 各写各的标题行,漂成 14 / 15 / 16px 三种字号、mb-1 / 1.5 / 2 / 3 四种下边距,
-	 * 而它们本来是同一件东西。要自绘表头(如 UpDialog 的封面渐变)就不传 title,
+	 * 而它们本来是同一件东西。要自绘表头(如 SubscriptionDialog 的封面渐变)就不传 title,
 	 * 连同 `bodyClassName=""` 一起走完全自定义那条路。
 	 */
 	title?: ReactNode;
@@ -78,7 +78,7 @@ export function ModalShell({
 				aria-modal="true"
 				data-bn={MODAL_HOOK}
 				// 这个元素就是 `modal` 挂点本身。曾经有个 `bodyStyle` prop 往这儿灌
-				// inline style,唯一的调用方(UpDialog)传的还全是编译期常量 —— 而
+				// inline style,唯一的调用方(SubscriptionDialog)传的还全是编译期常量 —— 而
 				// inline 压过一切 author 样式,等于皮肤给弹窗写的 max-height / overflow
 				// 永远失效。改成让调用方走 bodyClassName,这里只留必需的 width(运行时值)。
 				className={`relative max-h-full overflow-y-auto rounded-bn-card bg-bn-surface-strong text-bn-text-primary shadow-bn-elev ${bodyClassName}`}

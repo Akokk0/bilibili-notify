@@ -397,11 +397,11 @@ export const ADD_LANGUAGE =
  * 「这一项当前被选中 / 激活」的语汇:全浓粉描边 + 粉字 + **不透明**粉调底。
  *
  * 统一前站内五处各配各的:描边透明度 100 / 60 / 40 三档、纱 6 / 8 / 10 / 12%
- * 四档 —— 而它们说的都是同一件事。定案配方来自 Subs 分组胶囊(2026-08-30 主人
+ * 四档 —— 而它们说的都是同一件事。定案配方来自 Subscriptions 分组胶囊(2026-08-30 主人
  * 真机三轮拍板「选中是粉色描边加变粉」)。
  *
  * 底**必须不透明**:`bg-bn-pink/10` 那类纱靠白页垫底才好看,壁纸皮肤把页面换掉
- * 后选中态当场隐形(Subs 胶囊踩过的雷)。粉调用 color-mix 落在 surface 上出,
+ * 后选中态当场隐形(Subscriptions 胶囊踩过的雷)。粉调用 color-mix 落在 surface 上出,
  * 默认装与旧纱等值。同理,**不是**选中语义、只想要这块不透明粉底的(状态条 /
  * 装饰徽章),单独吃 {@link SELECTED_TINT_BG}。
  *
@@ -1025,7 +1025,7 @@ export interface ErrorNoteProps {
 	icon?: ReactNode;
 	/**
 	 * 同 {@link EmptyNote},**三档不是可选项而是三种位置**:
-	 * `sm` 挤在密集卡片里(UpCard 整张卡的字号只有 10~11px,12px 的错误行会成为
+	 * `sm` 挤在密集卡片里(SubscriptionCard 整张卡的字号只有 10~11px,12px 的错误行会成为
 	 * 全卡最大的字),`md`(默认)给表单与面板,`lg` 给整条消息流里的横幅
 	 * (AI 聊天的正文是 13px,内边距也对齐气泡)。除此之外别再加档。
 	 */
@@ -1202,7 +1202,7 @@ export function EmptyNote({ children, size = "md", className }: EmptyNoteProps) 
  * 「出事了」,虚线是「旁白 / 引用落了空」。
  *
  * 收编前站内三处各写各的:Cards 的真实数据说明 `rounded-sm`、FontPicker 的失效
- * 字体条 `rounded-lg`、UpDialog 的失效引用盒 `rounded-md` —— 同一句「旁注」三种
+ * 字体条 `rounded-lg`、SubscriptionDialog 的失效引用盒 `rounded-md` —— 同一句「旁注」三种
  * 圆角。形状统一走家族的 `NOTE_SIZE.sm` 档(旁注天生是小字,不设尺寸档)。
  *
  * 三档 tone:`neutral` 中性说明(某些样式不归你管)、`success` 报喜旁注(预览用的

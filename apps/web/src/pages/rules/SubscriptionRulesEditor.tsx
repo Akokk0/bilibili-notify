@@ -1,0 +1,1410 @@
+import { subscriptionIdentityLabel } from "@bilibili-notify/contract";
+import { useT } from "../../i18n";
+/**
+ * Per-UP overrides editor — Subscription.overrides + Subscription.specialViewers
+ * bound to /api/subscriptions PATCH.
+ *
+ * Each override family is gated by a "覆盖全局" toggle. Off → undefined
+ * (inherit). On → seeded with the corresponding global default so the user
+ * starts editing from a real baseline rather than empty fields.
+ *
+ * Driven by a `section` prop from the parent so only ONE section box renders
+ * at a time — matching the design's "侧栏选 section · 主体只看一项" pattern.
+ */
+
+import {
+	type BuiltinTemplates,
+	type EffectiveMembershipTemplate,
+	type EffectiveTemplates,
+	withMembershipDefaults,
+	withTemplateDefaults,
+} from "@bilibili-notify/internal/texts/builtin";
+import { Avatar, CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import {
+	ArrayEditor,
+	Field,
+	Picker,
+	QuietHoursEditor,
+	TArea,
+	TNum,
+	TSelect,
+} from "../../components/forms";
+import { InheritNote } from "../../components/inherit-note";
+import { OverrideBox } from "../../components/override-box";
+import { AI_PURPLE } from "../../config/colors";
+import { type MembershipProgram, membershipTiersOf } from "../../config/membership-programs";
+import { SECTION_ACCENT } from "../../config/section-accents";
+import { useDirtyDraft } from "../../hooks/useDirtyDraft";
+import { api } from "../../services/api";
+import {
+	type AiOverrides,
+	type ContentFiltersOverride,
+	type FeatureKey,
+	type ImageGroupOverride,
+	type LiveStartOverride,
+	type LiveStreamingOverride,
+	type MembershipOverride,
+	type MessageLayoutOverride,
+	type OverridesShape,
+	type ScheduleOverride,
+	type SpecialViewer,
+	type Subscription,
+	type SuperchatOverride,
+	subscriptionIdentityOf,
+	type TemplateOverride,
+} from "../../types/domain";
+import type { AiSettings, GlobalDefaults, ImageGroupSettings } from "../../types/globals";
+import { displayName, profileAvatarUrl, subscriptionColor } from "../subscriptions/helpers";
+import {
+	type SubscriptionPlatform,
+	subscriptionPlatformOf,
+} from "../subscriptions/subscription-source";
+import { MessageLayoutEditor } from "./MessageLayoutEditor";
+import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
+import { projectPerUpIsland } from "./perup-island";
+import {
+	FILTER_CONTENT_KEYS,
+	hasAiPersonaOverride,
+	hasFilterContentOverride,
+	hasLiveThresholdOverride,
+	hasLiveTimingOverride,
+} from "./section-scope";
+import {
+	DynamicMsgVariableHints,
+	GuardTemplateFields,
+	GuardVariableHints,
+	LiveMsgVariableHints,
+	type SectionId,
+	SpecialDanmakuVariableHints,
+	SpecialEnterVariableHints,
+	StopWordsHint,
+	SummaryVariableHints,
+} from "./sections";
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Override 切片名;Rules.tsx 用它判定 sub 是否"已定制"。
+ * cardStyle / cardSkin 不在此列 —— 卡片相关覆盖已统一迁到 /cards 页编辑,
+ * 由 Cards 自管 tab 与计数,Rules 不再surface 卡片定制。
+ */
+export const subscriptionOverrideKeys = [
+	"filters",
+	"schedule",
+	"liveStart",
+	"liveStreaming",
+	// 醒目留言与会员的门槛(㉓d,原先是 `filters` 里的两个字段):自己两个切片,漏了的话只覆盖了门槛的订阅会从 tab 栏里消失。
+	"superchat",
+	"membership",
+	"templates",
+	"ai",
+	"imageGroup",
+	"messageLayout",
+] as const;
+export type SubscriptionOverrideKey = (typeof subscriptionOverrideKeys)[number];
+
+interface SubPatch {
+	// overrides 走清除哨兵线格式:被关闭的 slice 显式 null(见 buildOverridesPatch / store SY1)。
+	overrides?: OverridesPatch;
+	specialViewers?: SpecialViewer[];
+}
+
+function patchSub(id: string, body: SubPatch) {
+	return api.patch<Subscription>(`/api/subscriptions/${id}`, body);
+}
+
+/* -------------------------------------------------------------------------- */
+
+export interface SubscriptionRulesEditorProps {
+	/**
+	 * 来源订阅露哪几节由调用方按 `perUpSectionsFor` 挑,
+	 * 这里只管节内的差别:推送时段按源报不报直播给格、版式只给源报得出的那套(过滤的四个类型开关对所有来源都画)。
+	 */
+	sub: Subscription;
+	/** 当前来源描述符投影；未取得时不猜测能力。 */
+	platform?: SubscriptionPlatform;
+	defaults: GlobalDefaults;
+	/** 当前语言的出厂文字:全局没存的文字格,订阅覆盖的基线取它。 */
+	factory: BuiltinTemplates;
+	/** 全局的人格库(没删的内置 + 主人自己的,内置取当前语言):「AI 人格」那一节从里面挑一份。 */
+	presets: AiSettings["presets"];
+	section: SectionId;
+}
+
+interface SubscriptionRulesDraft {
+	overrides: Subscription["overrides"];
+	specialViewers: SpecialViewer[];
+}
+
+export function SubscriptionRulesEditor({
+	sub,
+	platform,
+	defaults,
+	factory,
+	presets,
+	section,
+}: SubscriptionRulesEditorProps) {
+	const tx = useT();
+	const qc = useQueryClient();
+	// 订阅覆盖的文字基线 = 全局生效值(存的 ?? 当前语言的默认)。
+	const baselineTemplates = useMemo(
+		() => withTemplateDefaults(defaults.templates, factory),
+		[defaults.templates, factory],
+	);
+	const identity = subscriptionIdentityOf(sub);
+	const displayPlatform = platform ?? subscriptionPlatformOf(identity, undefined);
+	const programs = platform?.membershipPrograms ?? [];
+	const specialViewers = sub.specialViewers;
+	// 仅按当前来源声明的事件给格；来源表未知时保留草稿，不推断额外能力。
+	const features = platform?.features;
+	const reports = (k: FeatureKey): boolean => features?.includes(k) ?? false;
+	const reportsPost = reports("post");
+	const reportsLive = reports("liveStart") || reports("liveEnd");
+	// 推送频率那几格各看各的事件:补报是开播的子项,周期间隔要有 `liveStreaming` 这一把(声明了开播与下播)。
+	const timing: LiveTimingShown = {
+		grace: reportsLive,
+		catchUp: reports("liveStart"),
+		streaming: reports("liveStreaming"),
+	};
+	const [draft, setDraft] = useState<SubscriptionRulesDraft>({
+		overrides: sub.overrides,
+		specialViewers,
+	});
+
+	useEffect(() => {
+		setDraft({ overrides: sub.overrides, specialViewers });
+	}, [sub.overrides, specialViewers]);
+
+	const save = useMutation({
+		mutationFn: () => {
+			// 关闭的覆盖 slice 需显式 null 清除,否则 deepMerge 当「不改」→ 旧值残留、diff 不归零。
+			const overrides = buildOverridesPatch(draft.overrides, sub.overrides);
+			// 只有来源声明特别关注事件时才提交这格，隐藏时不清除已有值。
+			return patchSub(
+				sub.id,
+				reports("viewerChat") || reports("viewerEnter")
+					? { overrides, specialViewers: draft.specialViewers }
+					: { overrides },
+			);
+		},
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
+	});
+
+	function discard(): void {
+		setDraft({ overrides: sub.overrides, specialViewers });
+	}
+
+	// per-UP 草稿接入灵动岛:draft / sub 同款投影成扁平 code 结构,walkTreeDiff 出的
+	// code 对齐 FIELD_LABELS(section 分组 / 跳转锚点),详见 perup-island.ts。保存 /
+	// 丢弃统一由灵动岛触发,不再走页内按钮;保存失败时 mutateAsync reject →
+	// useDirtyDraft 捕获并切 error 态展示在灵动岛。
+	const islandDraft = useMemo(
+		() => projectPerUpIsland(draft.overrides, draft.specialViewers),
+		[draft],
+	);
+	const islandBaseline = useMemo(
+		() => projectPerUpIsland(sub.overrides, specialViewers),
+		[sub.overrides, specialViewers],
+	);
+	useDirtyDraft({
+		pageKey: "rules-perup",
+		pageLabel: tx("sourceUi.pages.rules.PerUpEditor.pageLabel.1", {
+			value1: displayName(sub, displayPlatform),
+		}),
+		draft: islandDraft,
+		baseline: islandBaseline,
+		onSave: () => save.mutateAsync(),
+		onDiscard: discard,
+	});
+
+	function setSlice<K extends keyof OverridesShape>(
+		key: K,
+		value: OverridesShape[K] | undefined,
+	): void {
+		setDraft((d) => {
+			const next: Subscription["overrides"] = { ...d.overrides };
+			if (value === undefined) delete next[key];
+			else next[key] = value;
+			return { ...d, overrides: next };
+		});
+	}
+
+	function setSpecialViewers(next: SpecialViewer[]): void {
+		setDraft((d) => ({ ...d, specialViewers: next }));
+	}
+
+	const color = subscriptionColor(sub, platform);
+
+	/** 推送时间那几段(免扰 / 断流接续、周期间隔、启动补报)的覆盖与全局基线,「直播阈值」与「推送时段」两节共用。 */
+	const timingBoxProps: TimingBoxProps = {
+		overrides: {
+			schedule: draft.overrides.schedule,
+			liveStart: draft.overrides.liveStart,
+			liveStreaming: draft.overrides.liveStreaming,
+		},
+		onSchedule: (v) => setSlice("schedule", v),
+		onLiveStart: (v) => setSlice("liveStart", v),
+		onLiveStreaming: (v) => setSlice("liveStreaming", v),
+		baseline: {
+			schedule: defaults.schedule,
+			liveStart: defaults.liveStart,
+			liveStreaming: defaults.liveStreaming,
+		},
+	};
+
+	return (
+		<div className="space-y-4">
+			<div
+				className="bn-glass flex items-center gap-3 rounded-bn-card p-4 shadow-bn-card"
+				style={{
+					background: `linear-gradient(135deg, color-mix(in srgb, ${color} 13%, transparent), var(--bn-glass-bg))`,
+					borderColor: `color-mix(in srgb, ${color} 20%, transparent)`,
+				}}
+			>
+				<Avatar
+					name={displayName(sub, displayPlatform)}
+					color={color}
+					size={48}
+					url={profileAvatarUrl(sub.cachedProfile)}
+					ring
+				/>
+				<div className="min-w-0 flex-1">
+					<div className="text-bn-md font-bold text-bn-text-primary">
+						{displayName(sub, displayPlatform)}
+					</div>
+					<div className="text-bn-sm text-bn-text-secondary tabular-nums">
+						{subscriptionIdentityLabel(identity, displayPlatform)}{" "}
+						{tx("sourceUi.pages.rules.PerUpEditor.PerUpEditor.2")}
+					</div>
+				</div>
+			</div>
+
+			{section === "filter" ? (
+				<FilterOverrideBox
+					value={draft.overrides.filters}
+					onChange={(v) => setSlice("filters", v)}
+					baseline={defaults.filters}
+				/>
+			) : null}
+			{section === "live" ? (
+				<LiveOverrideBox
+					programs={programs}
+					superchat={draft.overrides.superchat}
+					onSuperchat={(v) => setSlice("superchat", v)}
+					baselineSuperchat={defaults.superchat}
+					membership={draft.overrides.membership}
+					onMembership={(v) => setSlice("membership", v)}
+					baselineMembership={defaults.membership}
+					timing={timing}
+					{...timingBoxProps}
+				/>
+			) : null}
+			{section === "schedule" ? <ScheduleOverrideBox timing={timing} {...timingBoxProps} /> : null}
+			{section === "summary" ? (
+				<SummaryOverrideBox
+					value={draft.overrides.templates}
+					onChange={(v) => setSlice("templates", v)}
+					baseline={baselineTemplates}
+				/>
+			) : null}
+			{section === "msg" ? (
+				<MsgOverrideBox
+					value={draft.overrides.templates}
+					onChange={(v) => setSlice("templates", v)}
+					baseline={baselineTemplates}
+				/>
+			) : null}
+			{section === "dynamicMsg" ? (
+				<DynamicMsgOverrideBox
+					value={draft.overrides.templates}
+					onChange={(v) => setSlice("templates", v)}
+					baseline={baselineTemplates}
+				/>
+			) : null}
+			{section === "messageLayout" ? (
+				<MessageLayoutOverrideBox
+					value={draft.overrides.messageLayout}
+					onChange={(v) => setSlice("messageLayout", v)}
+					baseline={defaults.messageLayout}
+					showDynamic={reportsPost}
+					showLive={reportsLive}
+				/>
+			) : null}
+			{section === "guard"
+				? programs.map((program) => (
+						<GuardOverrideBox
+							key={program.id}
+							program={program}
+							value={draft.overrides.templates}
+							onChange={(v) => setSlice("templates", v)}
+							baseline={baselineTemplates}
+							factoryGuardText={factory.membership}
+						/>
+					))
+				: null}
+			{section === "specialDanmaku" ? (
+				<SpecialViewerBox
+					feature="viewerChat"
+					title={tx("sourceUi.pages.rules.PerUpEditor.title.3")}
+					subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.4")}
+					accent={SECTION_ACCENT.persona}
+					icon={<Icon.star size={14} />}
+					viewers={draft.specialViewers}
+					onViewersChange={setSpecialViewers}
+					template={draft.overrides.templates}
+					onTemplateChange={(v) => setSlice("templates", v)}
+					baselineTemplate={baselineTemplates.viewerChat}
+				/>
+			) : null}
+			{section === "specialEnter" ? (
+				<SpecialViewerBox
+					feature="viewerEnter"
+					title={tx("sourceUi.pages.rules.PerUpEditor.title.5")}
+					subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.6")}
+					accent="var(--color-bn-blue)"
+					icon={<Icon.user size={14} />}
+					viewers={draft.specialViewers}
+					onViewersChange={setSpecialViewers}
+					template={draft.overrides.templates}
+					onTemplateChange={(v) => setSlice("templates", v)}
+					baselineTemplate={baselineTemplates.viewerEnter}
+				/>
+			) : null}
+			{section === "ai" ? (
+				<AiOverrideBox
+					value={draft.overrides.ai}
+					onChange={(v) => setSlice("ai", v)}
+					presets={presets}
+				/>
+			) : null}
+			{section === "imageGroup" ? (
+				<ImageGroupOverrideBox
+					value={draft.overrides.imageGroup}
+					onChange={(v) => setSlice("imageGroup", v)}
+					baseline={defaults.imageGroup}
+				/>
+			) : null}
+		</div>
+	);
+}
+
+/* -------- Filters --------------------------------------------------------- */
+
+function FilterOverrideBox({
+	value,
+	onChange,
+	baseline,
+}: {
+	value: ContentFiltersOverride | undefined;
+	onChange: (next: ContentFiltersOverride | undefined) => void;
+	baseline: GlobalDefaults["filters"];
+}) {
+	const tx = useT();
+	const enabled = hasFilterContentOverride(value);
+	const cur = value ?? {};
+	const get = <K extends keyof typeof baseline>(k: K) =>
+		(cur[k] ?? baseline[k]) as (typeof baseline)[K];
+	function set<K extends keyof typeof baseline>(k: K, v: (typeof baseline)[K]): void {
+		onChange({ ...cur, [k]: v });
+	}
+	function toggle(on: boolean): void {
+		if (on) {
+			const seeded: ContentFiltersOverride = { ...cur };
+			for (const k of FILTER_CONTENT_KEYS) {
+				Object.assign(seeded, { [k]: baseline[k] });
+			}
+			onChange(seeded);
+		} else {
+			const next = { ...cur };
+			for (const k of FILTER_CONTENT_KEYS) delete next[k];
+			onChange(Object.keys(next).length > 0 ? next : undefined);
+		}
+	}
+	return (
+		<OverrideBox
+			title={tx("sourceUi.pages.rules.PerUpEditor.title.7")}
+			subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.8")}
+			accent="var(--color-bn-pink)"
+			icon={<Icon.filter size={14} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.9")}
+		>
+			<Field code="blockKeywords" full>
+				<ArrayEditor value={get("blockKeywords")} onChange={(n) => set("blockKeywords", n)} />
+			</Field>
+			<Field code="blockRegex" full>
+				<ArrayEditor value={get("blockRegex")} onChange={(n) => set("blockRegex", n)} />
+			</Field>
+			<Field code="allowKeywords" full>
+				<ArrayEditor value={get("allowKeywords")} onChange={(n) => set("allowKeywords", n)} />
+			</Field>
+			<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+				<Field code="blockReposts">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={get("blockReposts")}
+							onChange={(v) => set("blockReposts", v)}
+							size="sm"
+						/>
+					</div>
+				</Field>
+				<Field code="blockArticles">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={get("blockArticles")}
+							onChange={(v) => set("blockArticles", v)}
+							size="sm"
+						/>
+					</div>
+				</Field>
+				<Field code="blockImages">
+					<div className="flex h-7.5 items-center">
+						<Toggle value={get("blockImages")} onChange={(v) => set("blockImages", v)} size="sm" />
+					</div>
+				</Field>
+				<Field code="blockVideos">
+					<div className="flex h-7.5 items-center">
+						<Toggle value={get("blockVideos")} onChange={(v) => set("blockVideos", v)} size="sm" />
+					</div>
+				</Field>
+			</div>
+		</OverrideBox>
+	);
+}
+
+/* -------- 推送时间那几段:免扰 / 断流接续、周期间隔、启动补报 ----------------- */
+
+/**
+ * 推送时间这几段里画哪几格，由当前来源声明的直播事件决定。
+ * 免扰时段对所有推送生效,恒画。
+ */
+interface LiveTimingShown {
+	/** 断流接续那两格(源报开播或下播)。 */
+	grace: boolean;
+	/** 启动补报(开播的子项,源报开播)。 */
+	catchUp: boolean;
+	/** 周期「正在直播」的间隔(源声明了开播与下播,有 `liveStreaming` 这一把)。 */
+	streaming: boolean;
+}
+
+/**
+ * 推送时间的几段覆盖:免扰 / 断流接续(`schedule`),外加直播拆键(⑬d)从 `schedule` 里搬出来的周期间隔
+ * (`liveStreaming`)与启动补报(`liveStart`)。「直播阈值」(B 站)与「推送时段」(拓展订阅)两节共用。
+ */
+interface TimingBoxProps {
+	overrides: {
+		schedule: ScheduleOverride | undefined;
+		liveStart: LiveStartOverride | undefined;
+		liveStreaming: LiveStreamingOverride | undefined;
+	};
+	onSchedule: (next: ScheduleOverride | undefined) => void;
+	onLiveStart: (next: LiveStartOverride | undefined) => void;
+	onLiveStreaming: (next: LiveStreamingOverride | undefined) => void;
+	baseline: {
+		schedule: GlobalDefaults["schedule"];
+		liveStart: GlobalDefaults["liveStart"];
+		liveStreaming: GlobalDefaults["liveStreaming"];
+	};
+}
+
+/** 开覆盖:把画出来的那几段钉成当前全局值(一份快照)。`schedule` 里免扰时段恒钉,断流接续只在画出来时钉。 */
+function seedTiming(
+	{ onSchedule, onLiveStart, onLiveStreaming, baseline }: TimingBoxProps,
+	shown: LiveTimingShown,
+): void {
+	onSchedule(shown.grace ? { ...baseline.schedule } : { quietHours: baseline.schedule.quietHours });
+	if (shown.catchUp) onLiveStart({ ...baseline.liveStart });
+	if (shown.streaming) onLiveStreaming({ ...baseline.liveStreaming });
+}
+
+/** 关覆盖:几段全部清掉(回到继承全局)。 */
+function clearTiming({ onSchedule, onLiveStart, onLiveStreaming }: TimingBoxProps): void {
+	onSchedule(undefined);
+	onLiveStart(undefined);
+	onLiveStreaming(undefined);
+}
+
+/* -------- Live thresholds (superchat.minAmount / membership.minRank + 推送时间) ---- */
+
+/** 只清当前可编辑体系的门槛；隐藏或未知体系原样保留，空了才恢复整段继承。 */
+function withoutProgramRanks(
+	membership: MembershipOverride | undefined,
+	programIds: readonly string[],
+): MembershipOverride | undefined {
+	if (!membership) return undefined;
+	const rest = { ...membership.minRank };
+	for (const id of programIds) delete rest[id];
+	if (Object.keys(rest).length > 0) return { ...membership, minRank: rest };
+	const { minRank: _minRank, ...others } = membership;
+	return Object.keys(others).length > 0 ? others : undefined;
+}
+
+function LiveOverrideBox({
+	programs,
+	superchat,
+	onSuperchat,
+	baselineSuperchat,
+	membership,
+	onMembership,
+	baselineMembership,
+	timing,
+	...timingProps
+}: {
+	superchat: SuperchatOverride | undefined;
+	onSuperchat: (next: SuperchatOverride | undefined) => void;
+	baselineSuperchat: GlobalDefaults["superchat"];
+	membership: MembershipOverride | undefined;
+	onMembership: (next: MembershipOverride | undefined) => void;
+	baselineMembership: GlobalDefaults["membership"];
+	programs: readonly MembershipProgram[];
+	timing: LiveTimingShown;
+} & TimingBoxProps) {
+	const tx = useT();
+	const enabled = hasLiveThresholdOverride(
+		{ superchat, membership, ...timingProps.overrides },
+		programs,
+	);
+	/** 这个订阅生效的上舰门槛(rank):覆盖有就用覆盖,否则全局,都没配 = 全推 = 最低一档。 */
+	const ranked = programs.flatMap((program) => {
+		const tiers = membershipTiersOf(programs, program.id);
+		return tiers.length ? [{ program, tiers }] : [];
+	});
+	const baselineRank = (id: string, lowest: number) => baselineMembership.minRank?.[id] ?? lowest;
+	function toggle(on: boolean): void {
+		if (on) {
+			// 写成显式的值(跟全局一样也写):覆盖开着就是「这个订阅自己说了算」,以后全局再改也不跟着变。
+			onSuperchat({ ...superchat, minAmount: baselineSuperchat.minAmount ?? 0 });
+			if (ranked.length)
+				onMembership({
+					...membership,
+					minRank: {
+						...membership?.minRank,
+						...Object.fromEntries(
+							ranked.map(({ program, tiers }) => [
+								program.id,
+								baselineRank(program.id, tiers[0]!.rank),
+							]),
+						),
+					},
+				});
+			seedTiming(timingProps, timing);
+		} else {
+			// 整段拿掉(下发时编成显式 null,服务端才真的删):金额门槛一段只有一个字段；会员门槛只清当前可编辑体系。
+			onSuperchat(undefined);
+			onMembership(
+				withoutProgramRanks(
+					membership,
+					ranked.map(({ program }) => program.id),
+				),
+			);
+			clearTiming(timingProps);
+		}
+	}
+	return (
+		<OverrideBox
+			title={tx("sourceUi.pages.rules.PerUpEditor.title.10")}
+			subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.11")}
+			accent="var(--color-bn-pink)"
+			icon={<Icon.mic size={14} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.12")}
+		>
+			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2">
+				<Field code="superchat.minAmount">
+					<TNum
+						value={superchat?.minAmount ?? baselineSuperchat.minAmount ?? 0}
+						onChange={(v) => onSuperchat({ ...superchat, minAmount: v })}
+						min={0}
+						suffix={tx("sourceUi.pages.rules.PerUpEditor.suffix.13")}
+					/>
+				</Field>
+				{ranked.map(({ program, tiers }) => (
+					<Field key={program.id} code={`membership.minRank.${program.id}`} label={program.name}>
+						<TSelect
+							value={String(
+								membership?.minRank?.[program.id] ?? baselineRank(program.id, tiers[0]!.rank),
+							)}
+							onChange={(rank) =>
+								onMembership({
+									...membership,
+									minRank: { ...membership?.minRank, [program.id]: Number(rank) },
+								})
+							}
+							options={tiers.map((tier) => ({ value: String(tier.rank), label: tier.name }))}
+						/>
+					</Field>
+				))}
+				<TimingFields {...timingProps} timing={timing} />
+			</div>
+		</OverrideBox>
+	);
+}
+
+/**
+ * 推送时间那几格 —— B 站的「直播阈值」与拓展订阅的「推送时段」共用。返回一串同级的格(Fragment),
+ * 由外面那张两列网格排版。`timing` 说画哪几格(见 {@link LiveTimingShown});免扰时段恒画。
+ */
+function TimingFields({
+	overrides,
+	onSchedule,
+	onLiveStart,
+	onLiveStreaming,
+	baseline,
+	timing,
+}: TimingBoxProps & { timing: LiveTimingShown }) {
+	const tx = useT();
+	const schedule = overrides.schedule ?? {};
+	const liveStart = overrides.liveStart ?? {};
+	const liveStreaming = overrides.liveStreaming ?? {};
+	return (
+		<>
+			{timing.streaming ? (
+				<Field code="liveStreaming.streamingIntervalHours">
+					<TNum
+						value={
+							liveStreaming.streamingIntervalHours ?? baseline.liveStreaming.streamingIntervalHours
+						}
+						onChange={(v) => onLiveStreaming({ ...liveStreaming, streamingIntervalHours: v })}
+						min={1}
+						max={24}
+						suffix={tx("sourceUi.pages.rules.PerUpEditor.suffix.14")}
+					/>
+				</Field>
+			) : null}
+			{timing.catchUp ? (
+				<Field code="liveStart.catchUpOnBoot">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={liveStart.catchUpOnBoot ?? baseline.liveStart.catchUpOnBoot}
+							onChange={(v) => onLiveStart({ ...liveStart, catchUpOnBoot: v })}
+							size="sm"
+						/>
+					</div>
+				</Field>
+			) : null}
+			{timing.grace ? (
+				<>
+					<Field code="schedule.liveEndGrace" hint={tx("sourceUi.pages.rules.PerUpEditor.hint.15")}>
+						<div className="flex h-7.5 items-center">
+							<Toggle
+								value={schedule.liveEndGrace ?? baseline.schedule.liveEndGrace}
+								onChange={(v) => onSchedule({ ...schedule, liveEndGrace: v })}
+								size="sm"
+							/>
+						</div>
+					</Field>
+					{(schedule.liveEndGrace ?? baseline.schedule.liveEndGrace) ? (
+						<Field code="schedule.liveEndGraceMinutes">
+							<TNum
+								value={schedule.liveEndGraceMinutes ?? baseline.schedule.liveEndGraceMinutes}
+								onChange={(v) => onSchedule({ ...schedule, liveEndGraceMinutes: v })}
+								min={1}
+								max={10}
+								suffix={tx("sourceUi.pages.rules.PerUpEditor.suffix.16")}
+							/>
+						</Field>
+					) : null}
+				</>
+			) : null}
+			<Field code="schedule.quietHours" hint={tx("sourceUi.pages.rules.PerUpEditor.hint.17")} full>
+				<QuietHoursEditor
+					value={schedule.quietHours ?? baseline.schedule.quietHours}
+					onChange={(v) => onSchedule({ ...schedule, quietHours: v })}
+				/>
+			</Field>
+		</>
+	);
+}
+
+/* -------- Schedule (拓展订阅的「推送时段」:免扰 + 源报得出的推送频率) -------- */
+
+/**
+ * 拓展订阅那一节「推送时段」:B 站那节「直播阈值」去掉 SC / 上舰两格(B 站独有,ADR-0019 决策 5)。
+ * 免扰时段对所有推送生效,所以只报作品的源也有这一节;源报直播时再加推送频率那几格(决策 57 / 58)。
+ *
+ * 开覆盖只钉画出来的那几格:只报作品的源不画推送频率,也就不替它钉一份用不上的快照。
+ */
+function ScheduleOverrideBox({
+	timing,
+	...timingProps
+}: { timing: LiveTimingShown } & TimingBoxProps) {
+	const tx = useT();
+	function toggle(on: boolean): void {
+		if (on) seedTiming(timingProps, timing);
+		else clearTiming(timingProps);
+	}
+	const liveTiming = timing.grace || timing.catchUp || timing.streaming;
+	return (
+		<OverrideBox
+			title={tx("sourceUi.pages.rules.PerUpEditor.title.18")}
+			subtitle={
+				liveTiming
+					? tx("sourceUi.pages.rules.PerUpEditor.subtitle.19")
+					: tx("sourceUi.pages.rules.PerUpEditor.subtitle.20")
+			}
+			accent="var(--color-bn-pink)"
+			icon={<Icon.sliders size={14} />}
+			enabled={hasLiveTimingOverride(timingProps.overrides)}
+			onToggle={toggle}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.21")}
+		>
+			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2">
+				<TimingFields {...timingProps} timing={timing} />
+			</div>
+		</OverrideBox>
+	);
+}
+
+/* ----- Summary section (overrides.templates.{wordcloudStopWords,liveSummary}) ----- */
+
+/**
+ * 「直播总结」per-UP 覆盖框 —— 总开关 + 总结正文二级开关。
+ *
+ * 总开关(与其它覆盖项一致)= 是否覆盖本段:关 → 两键全清、整段继承全局;开 → seed
+ * 停用词为 baseline(=当前全局值,直接显示),总结正文另由内部二级 CollapseBlock 单独
+ * 控制。停用词短、随总开关直接可见;总结正文长,折进二级开关,层级清爽。
+ *
+ * seed 用 baseline(全局值)而非空串:故「开了但没动」== 等同继承(merge 后 eff === 全局
+ * 值,无副作用);用户改谁谁生效,语义与其它模板覆盖一致(覆盖即钉住快照、不跟随全局热更)。
+ */
+function SummaryOverrideBox({
+	value,
+	onChange,
+	baseline,
+}: {
+	value: TemplateOverride | undefined;
+	onChange: (next: TemplateOverride | undefined) => void;
+	baseline: EffectiveTemplates;
+}) {
+	const tx = useT();
+	const cur = value ?? {};
+	const enabled = cur.liveSummary !== undefined || cur.wordcloudStopWords !== undefined;
+	const summaryOn = cur.liveSummary !== undefined;
+
+	function toggle(on: boolean): void {
+		if (on) {
+			onChange({ ...cur, wordcloudStopWords: baseline.wordcloudStopWords });
+		} else {
+			const { wordcloudStopWords: _w, liveSummary: _l, ...rest } = cur;
+			onChange(Object.keys(rest).length > 0 ? rest : undefined);
+		}
+	}
+	function toggleSummary(on: boolean): void {
+		if (on) onChange({ ...cur, liveSummary: baseline.liveSummary });
+		else {
+			const { liveSummary: _l, ...rest } = cur;
+			onChange(Object.keys(rest).length > 0 ? rest : undefined);
+		}
+	}
+
+	return (
+		<OverrideBox
+			title={tx("sourceUi.pages.rules.PerUpEditor.title.22")}
+			subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.23")}
+			accent="var(--color-bn-purple)"
+			icon={<Icon.list size={14} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.24")}
+		>
+			<StopWordsHint />
+			<Field code="templates.wordcloudStopWords" full>
+				<TArea
+					value={cur.wordcloudStopWords ?? baseline.wordcloudStopWords}
+					onChange={(v) => onChange({ ...cur, wordcloudStopWords: v })}
+					rows={2}
+					mono
+					placeholder={tx("sourceUi.pages.rules.PerUpEditor.placeholder.25")}
+				/>
+			</Field>
+			<div className="my-3 border-t border-bn-border-subtle" />
+			<CollapseBlock
+				label={tx("sourceUi.pages.rules.PerUpEditor.label.26")}
+				enabled={summaryOn}
+				onToggle={toggleSummary}
+				accent="var(--color-bn-purple)"
+			>
+				<SummaryVariableHints />
+				<Field code="templates.liveSummary" full>
+					<TArea
+						value={cur.liveSummary ?? baseline.liveSummary}
+						onChange={(v) => onChange({ ...cur, liveSummary: v })}
+						rows={8}
+						mono
+					/>
+				</Field>
+			</CollapseBlock>
+		</OverrideBox>
+	);
+}
+
+/* -------- Msg templates (liveStart / liveStreaming / liveEnd) ----------- */
+
+function MsgOverrideBox({
+	value,
+	onChange,
+	baseline,
+}: {
+	value: TemplateOverride | undefined;
+	onChange: (next: TemplateOverride | undefined) => void;
+	baseline: EffectiveTemplates;
+}) {
+	const tx = useT();
+	// 无 enable flag(与动态模板一致):有 liveStart/liveStreaming/liveEnd 任一覆盖即「覆盖中」。
+	const enabled =
+		value?.liveStart !== undefined ||
+		value?.liveStreaming !== undefined ||
+		value?.liveEnd !== undefined;
+	const cur = value ?? {};
+	function set<K extends "liveStart" | "liveStreaming" | "liveEnd">(k: K, v: string): void {
+		onChange({ ...cur, [k]: v });
+	}
+	function toggle(on: boolean): void {
+		if (on) {
+			onChange({
+				...cur,
+				liveStart: cur.liveStart ?? baseline.liveStart,
+				liveStreaming: cur.liveStreaming ?? baseline.liveStreaming,
+				liveEnd: cur.liveEnd ?? baseline.liveEnd,
+			});
+		} else {
+			const { liveStart: _a, liveStreaming: _b, liveEnd: _c, ...rest } = cur;
+			onChange(Object.keys(rest).length > 0 ? rest : undefined);
+		}
+	}
+	return (
+		<OverrideBox
+			title={tx("sourceUi.pages.rules.PerUpEditor.title.27")}
+			subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.28")}
+			accent="var(--color-bn-pink)"
+			icon={<Icon.chat size={14} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.29")}
+		>
+			<LiveMsgVariableHints />
+			<Field code="templates.liveStart" full>
+				<TArea
+					value={cur.liveStart ?? baseline.liveStart}
+					onChange={(v) => set("liveStart", v)}
+					rows={3}
+					mono
+				/>
+			</Field>
+			<Field code="templates.liveStreaming" full>
+				<TArea
+					value={cur.liveStreaming ?? baseline.liveStreaming}
+					onChange={(v) => set("liveStreaming", v)}
+					rows={3}
+					mono
+				/>
+			</Field>
+			<Field code="templates.liveEnd" full>
+				<TArea
+					value={cur.liveEnd ?? baseline.liveEnd}
+					onChange={(v) => set("liveEnd", v)}
+					rows={2}
+					mono
+				/>
+			</Field>
+		</OverrideBox>
+	);
+}
+
+/* -------- Dynamic msg (overrides.templates.post / postVideo) -------- */
+
+function DynamicMsgOverrideBox({
+	value,
+	onChange,
+	baseline,
+}: {
+	value: TemplateOverride | undefined;
+	onChange: (next: TemplateOverride | undefined) => void;
+	baseline: EffectiveTemplates;
+}) {
+	const tx = useT();
+	// 无 enable flag —— 动态推送总会发;有 post / postVideo 任一覆盖即「覆盖中」。
+	const enabled = value?.post !== undefined || value?.postVideo !== undefined;
+	const cur = value ?? {};
+	function set<K extends "post" | "postVideo">(k: K, v: string): void {
+		onChange({ ...cur, [k]: v });
+	}
+	function toggle(on: boolean): void {
+		if (on) {
+			onChange({
+				...cur,
+				post: cur.post ?? baseline.post,
+				postVideo: cur.postVideo ?? baseline.postVideo,
+			});
+		} else {
+			const { post: _a, postVideo: _b, ...rest } = cur;
+			onChange(Object.keys(rest).length > 0 ? rest : undefined);
+		}
+	}
+	return (
+		<OverrideBox
+			title={tx("sourceUi.pages.rules.PerUpEditor.title.30")}
+			subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.31")}
+			accent={SECTION_ACCENT.message}
+			icon={<Icon.chat size={14} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.32")}
+		>
+			<DynamicMsgVariableHints />
+			<Field code="templates.post" full>
+				<TArea value={cur.post ?? baseline.post} onChange={(v) => set("post", v)} rows={2} mono />
+			</Field>
+			<Field code="templates.postVideo" full>
+				<TArea
+					value={cur.postVideo ?? baseline.postVideo}
+					onChange={(v) => set("postVideo", v)}
+					rows={2}
+					mono
+				/>
+			</Field>
+		</OverrideBox>
+	);
+}
+
+/* -------- Message layout (overrides.messageLayout, 整份覆盖) --------------- */
+
+function MessageLayoutOverrideBox({
+	value,
+	onChange,
+	baseline,
+	showDynamic,
+	showLive,
+}: {
+	value: MessageLayoutOverride | undefined;
+	onChange: (next: MessageLayoutOverride | undefined) => void;
+	baseline: GlobalDefaults["messageLayout"];
+	/**
+	 * 画不画动态 / 直播那一套。拓展订阅只画源报得出的那套;覆盖仍是整份(schema 要两套齐全),
+	 * 没画的那套就是开覆盖时抄来的全局副本,用不上。
+	 */
+	showDynamic: boolean;
+	showLive: boolean;
+}) {
+	const tx = useT();
+	const enabled = value !== undefined;
+	const cur = value ?? baseline;
+	return (
+		<OverrideBox
+			title={tx("sourceUi.pages.rules.PerUpEditor.title.33")}
+			subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.34")}
+			accent={SECTION_ACCENT.message}
+			icon={<Icon.list size={14} />}
+			enabled={enabled}
+			onToggle={(on) => onChange(on ? structuredClone(baseline) : undefined)}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.35")}
+		>
+			{showDynamic ? (
+				<>
+					<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">
+						{tx("sourceUi.pages.rules.PerUpEditor.MessageLayoutOverrideBox.36")}
+					</div>
+					<MessageLayoutEditor
+						value={cur.post}
+						onChange={(next) => onChange({ ...cur, post: next })}
+						separatorCode="messageLayout.post.separator"
+						accent={SECTION_ACCENT.message}
+					/>
+				</>
+			) : null}
+			{showDynamic && showLive ? <div className="my-3 border-t border-bn-border-subtle" /> : null}
+			{showLive ? (
+				<>
+					<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">
+						{tx("sourceUi.pages.rules.PerUpEditor.MessageLayoutOverrideBox.37")}
+					</div>
+					<MessageLayoutEditor
+						value={cur.live}
+						onChange={(next) => onChange({ ...cur, live: next })}
+						separatorCode="messageLayout.live.separator"
+						accent="var(--color-bn-pink)"
+					/>
+				</>
+			) : null}
+			<div className="mt-2 text-bn-xs text-bn-text-tertiary">
+				{tx("sourceUi.pages.rules.PerUpEditor.MessageLayoutOverrideBox.38")}
+			</div>
+		</OverrideBox>
+	);
+}
+
+/* -------- Guard (overrides.templates.membership.guard) ------------------- */
+
+/** 只清当前体系的会员文案；其他体系原样保留，空段才恢复继承。 */
+function withoutProgramTemplate(
+	templates: TemplateOverride,
+	programId: string,
+): TemplateOverride | undefined {
+	const { [programId]: _guard, ...otherPrograms } = templates.membership ?? {};
+	const { membership: _membership, ...rest } = templates;
+	const next: TemplateOverride =
+		Object.keys(otherPrograms).length > 0 ? { ...rest, membership: otherPrograms } : rest;
+	return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function GuardOverrideBox({
+	program,
+	value,
+	onChange,
+	baseline,
+	factoryGuardText,
+}: {
+	program: MembershipProgram;
+	value: TemplateOverride | undefined;
+	onChange: (next: TemplateOverride | undefined) => void;
+	baseline: EffectiveTemplates;
+	/** 当前语言的体系默认那一句:订阅覆盖里没存的体系默认文字取它(与引擎取文案同一规矩)。 */
+	factoryGuardText: string;
+}) {
+	const tx = useT();
+	// 覆盖语义:开 = 该 UP 强制启用自定义上舰文案/图片(membership.guard.enabled=true,整份换成订阅这一份);关 = 继承全局决定。
+	const own = value?.membership?.[program.id];
+	const enabled = own?.enabled === true;
+	const cur = value ?? {};
+	const baselineGuard = withMembershipDefaults(baseline.membership[program.id], factoryGuardText);
+	/** 画出来的那一份:订阅自己的整份(没有就拿全局的当起点)。 */
+	const bundle: EffectiveMembershipTemplate = own
+		? withMembershipDefaults(own, factoryGuardText)
+		: baselineGuard;
+	function writeBundle(next: EffectiveMembershipTemplate): void {
+		onChange({ ...cur, membership: { ...cur.membership, [program.id]: next } });
+	}
+	/** 改一档的一格;清空 = 这一格不再覆盖,一档两格都空了就把这一档拿掉(整份是普通对象,下发时 buildOverridesPatch 编出 null)。 */
+	function setTier(key: string, field: "template" | "imageUrl", v: string): void {
+		const tier = { ...bundle.tiers[key], [field]: v };
+		if (v === "") delete tier[field];
+		const { [key]: _old, ...others } = bundle.tiers;
+		writeBundle({
+			...bundle,
+			tiers: tier.template || tier.imageUrl ? { ...others, [key]: tier } : others,
+		});
+	}
+	function toggle(on: boolean): void {
+		if (on) {
+			// 以全局那一份为起点(带上全局已有的体系默认与每档文案),再把开关打开。
+			writeBundle({ ...structuredClone(baselineGuard), enabled: true });
+		} else {
+			onChange(withoutProgramTemplate(cur, program.id));
+		}
+	}
+	return (
+		<OverrideBox
+			title={program.name}
+			subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.39")}
+			accent={SECTION_ACCENT.guard}
+			icon={<Icon.anchor size={14} />}
+			enabled={enabled}
+			onToggle={toggle}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.40")}
+		>
+			<GuardVariableHints />
+			<GuardTemplateFields
+				program={program}
+				bundle={bundle}
+				onDefault={(field, v) =>
+					writeBundle({ ...bundle, default: { ...bundle.default, [field]: v } })
+				}
+				onTier={setTier}
+				tiersClassName="grid grid-cols-1 gap-2.5 lg:grid-cols-3"
+			/>
+		</OverrideBox>
+	);
+}
+
+/* -------- Special viewer (UID list + template) --------------------------- */
+
+function SpecialViewerBox({
+	feature,
+	title,
+	subtitle,
+	accent,
+	icon,
+	viewers,
+	onViewersChange,
+	template,
+	onTemplateChange,
+	baselineTemplate,
+}: {
+	/** 这一节管的特性键;同名的也是文案键。 */
+	feature: SpecialViewer["features"][number];
+	title: string;
+	subtitle: string;
+	accent: string;
+	icon: React.ReactNode;
+	viewers: SpecialViewer[];
+	onViewersChange: (next: SpecialViewer[]) => void;
+	template: TemplateOverride | undefined;
+	onTemplateChange: (next: TemplateOverride | undefined) => void;
+	baselineTemplate: string;
+}) {
+	const tx = useT();
+	const templateField = feature;
+	// 把 specialViewers 投影成"带这一把特性键的 UID 列表",编辑时再写回完整 specialViewers。
+	const uids = useMemo(
+		() => viewers.filter((v) => v.features.includes(feature)).map((v) => v.id),
+		[viewers, feature],
+	);
+
+	function setUids(nextUids: string[]): void {
+		// 同步:删去本特性不在 nextUids 里的;加上 nextUids 里没出现过的。
+		const set = new Set(nextUids.filter((u) => u.trim() !== ""));
+		const next: SpecialViewer[] = [];
+		const seen = new Set<string>();
+		for (const v of viewers) {
+			if (set.has(v.id)) {
+				const features = v.features.includes(feature) ? v.features : [...v.features, feature];
+				next.push({ ...v, features });
+				seen.add(v.id);
+			} else if (v.features.includes(feature)) {
+				const features = v.features.filter((k) => k !== feature);
+				if (features.length > 0) next.push({ ...v, features });
+				// features 为空 → 整个条目从 specialViewers 里去掉
+			} else {
+				next.push(v);
+			}
+		}
+		for (const id of set) {
+			if (!seen.has(id)) next.push({ id, features: [feature] });
+		}
+		onViewersChange(next);
+	}
+
+	const curTemplate = template ?? {};
+	const tplValue = curTemplate[templateField] ?? baselineTemplate;
+	const tplOverridden = curTemplate[templateField] !== undefined;
+
+	function setTemplate(v: string | undefined): void {
+		const next = { ...curTemplate };
+		if (v === undefined) delete next[templateField];
+		else next[templateField] = v;
+		onTemplateChange(Object.keys(next).length > 0 ? next : undefined);
+	}
+
+	const enabled = uids.length > 0 || tplOverridden;
+
+	function toggle(on: boolean): void {
+		if (on) {
+			// 启用:暂不写入 UID,仅切换显示态;用户开始增加 UID 后即"已设置"。
+			// 这里给 ArrayEditor 留一个空白条目通过 onChange 进入,但更稳妥是让 isSectionCustomized
+			// 在 Rules.tsx 里看 uids/template 即可。这里设一个占位保留模板继承。
+			if (uids.length === 0 && !tplOverridden) {
+				// 通过把 templateField 设成 baseline 来"激活"区段;用户随后可改写或新增 UID。
+				setTemplate(baselineTemplate);
+			}
+		} else {
+			// 关闭:清空本 kind 所有 UID + 移除 template 覆盖
+			setUids([]);
+			setTemplate(undefined);
+		}
+	}
+
+	const inheritLabel =
+		feature === "viewerChat"
+			? tx("sourceUi.pages.rules.PerUpEditor.SpecialViewerBox.41")
+			: tx("sourceUi.pages.rules.PerUpEditor.SpecialViewerBox.42");
+
+	return (
+		<GlassBox
+			title={title}
+			subtitle={subtitle}
+			accent={accent}
+			icon={icon}
+			badge={
+				enabled
+					? tx("sourceUi.pages.rules.PerUpEditor.badge.43")
+					: tx("sourceUi.pages.Dashboard.SystemHealthCard.33")
+			}
+			right={<Toggle value={enabled} onChange={toggle} />}
+		>
+			{enabled ? (
+				<>
+					<Field
+						code="specialViewers"
+						hint={
+							feature === "viewerChat"
+								? tx("sourceUi.pages.rules.PerUpEditor.hint.44")
+								: tx("sourceUi.pages.rules.PerUpEditor.hint.45")
+						}
+						full
+					>
+						<ArrayEditor
+							value={uids}
+							onChange={setUids}
+							placeholder={tx("sourceUi.pages.rules.PerUpEditor.placeholder.46")}
+						/>
+					</Field>
+					{feature === "viewerChat" ? (
+						<SpecialDanmakuVariableHints />
+					) : (
+						<SpecialEnterVariableHints />
+					)}
+					<Field
+						code={`templates.${templateField}`}
+						hint={
+							tplOverridden
+								? tx("sourceUi.pages.rules.PerUpEditor.hint.47")
+								: tx("sourceUi.pages.rules.PerUpEditor.hint.48")
+						}
+						full
+					>
+						<TArea
+							value={tplValue}
+							onChange={(v) => setTemplate(v)}
+							rows={2}
+							mono
+							placeholder={baselineTemplate}
+						/>
+						{tplOverridden ? (
+							<button
+								type="button"
+								onClick={() => setTemplate(undefined)}
+								className="mt-1 text-bn-xs text-bn-text-tertiary underline-offset-2 hover:text-bn-pink hover:underline"
+							>
+								{tx("sourceUi.pages.rules.PerUpEditor.SpecialViewerBox.49")}
+							</button>
+						) : null}
+					</Field>
+				</>
+			) : (
+				<InheritNote>
+					{tx("sourceUi.pages.rules.PerUpEditor.SpecialViewerBox.50")}
+					{inheritLabel}
+				</InheritNote>
+			)}
+		</GlassBox>
+	);
+}
+
+/* -------- AI -------------------------------------------------------------- */
+
+/**
+ * 覆盖开着时写回磁盘的那个对象 —— 只有「挑了哪份人格」这一格。
+ *
+ * 刻意**从零造**而不是 `{ ...value, preset }`:老配置里可能还留着当年那档「完全自定义」
+ * 写下的 persona 与两段 prompt,以及已退役的 temperature(它们都已不在 schema 里,见
+ * schema/subscriptions.ts 的说明)。原样带上就等于把一份死配置重新写回盘上,下一个人
+ * 打开文件照样看得见,还以为它在起作用;从零造之后 buildPatch 会对它们发显式 null。
+ */
+function pickAiOverride(presetId: string): AiOverrides {
+	return { preset: presetId };
+}
+
+function AiOverrideBox({
+	value,
+	onChange,
+	presets,
+}: {
+	value: AiOverrides | undefined;
+	onChange: (next: AiOverrides | undefined) => void;
+	presets: AiSettings["presets"];
+}) {
+	const tx = useT();
+	// 人格一律在「智能女仆」页里写,这里只负责**挑一份**。所以选项就是已有的那几份,
+	// 没有「继承全局」(关掉开关就是继承,再摆一个同义的选项纯属多此一举),也没有
+	// 「完全自定义」(想要专属人格就去那边新建一份,再回来挑它)。
+	const presetOptions = presets.map((p) => ({ value: p.id, label: p.label }));
+	const activePreset = presets.find((p) => p.id === value?.preset);
+	/*
+	 * 覆盖到底开着没有 —— 判据是**挑中的那份人格真实存在**(判定本身住在
+	 * `section-scope`,侧栏那颗小点用的是同一个,两处口径不许各走各的)。
+	 *
+	 * 三种指不着人格的老值在 `resolveSubscriptionPersona` 眼里都是完整继承全局 —— 与关掉开关一模
+	 * 一样,所以这里就照实显示成「关」。界面和实际行为于是永远对得上;主人哪天真去
+	 * 开它,写回去的是一个干干净净的新对象,当年残留的 persona / prompt 顺手就没了。
+	 */
+	const enabled = hasAiPersonaOverride(value, presets);
+	// 开关打开时落到第一份。人格库按约定恒非空(设置页删不掉最后一份,内置的又不落盘、只记删了哪几份),
+	// 所以这里不必为空列表留一条走不到的分支。
+	const firstPresetId = presets[0]?.id ?? "";
+
+	return (
+		<OverrideBox
+			title={tx("sourceUi.pages.rules.PerUpEditor.title.51")}
+			subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.52")}
+			accent={AI_PURPLE}
+			icon={<Icon.ai size={14} />}
+			enabled={enabled}
+			// 开:落到第一份人格。关:整个 override 拿掉 —— 那才是「继承全局」,
+			// 不必再往里塞一个表示同一件事的值。
+			onToggle={(on) => onChange(on ? pickAiOverride(firstPresetId) : undefined)}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.53")}
+		>
+			{/* 开着却索引不到预设(理论不可达)时沿用继承文案兜底 —— 与收编前行为一致。 */}
+			{activePreset ? (
+				<>
+					<Field code="ai.preset" full>
+						<Picker
+							value={activePreset.id}
+							onChange={(v) => onChange(pickAiOverride(v))}
+							options={presetOptions}
+						/>
+					</Field>
+
+					<div className="rounded-lg border border-bn-purple/30 bg-bn-purple/8 px-3 py-2 text-bn-xs text-bn-text-secondary">
+						{tx("sourceUi.pages.rules.PerUpEditor.AiOverrideBox.54")}
+						{activePreset.label}
+						{tx("sourceUi.pages.rules.PerUpEditor.AiOverrideBox.55")}
+						{activePreset.persona.name}
+						{tx("sourceUi.pages.rules.PerUpEditor.AiOverrideBox.56")}{" "}
+						{activePreset.persona.addressUser}
+						{tx("sourceUi.pages.rules.PerUpEditor.AiOverrideBox.57")}
+					</div>
+				</>
+			) : (
+				<InheritNote>{tx("sourceUi.pages.rules.PerUpEditor.inheritNote.53")}</InheritNote>
+			)}
+		</OverrideBox>
+	);
+}
+
+/* -------- ImageGroup (enabled + mergeForward) ---------------------------------- */
+
+function ImageGroupOverrideBox({
+	value,
+	onChange,
+	baseline,
+}: {
+	value: ImageGroupOverride | undefined;
+	onChange: (next: ImageGroupOverride | undefined) => void;
+	baseline: ImageGroupSettings;
+}) {
+	const tx = useT();
+	const enabled = value !== undefined;
+	const cur = value ?? {};
+	const effEnable = cur.enabled ?? baseline.enabled;
+	const effForward = cur.mergeForward ?? baseline.mergeForward;
+	function set<K extends keyof ImageGroupOverride>(k: K, v: ImageGroupOverride[K]): void {
+		onChange({ ...cur, [k]: v });
+	}
+	return (
+		<OverrideBox
+			title={tx("sourceUi.pages.rules.PerUpEditor.title.58")}
+			subtitle={tx("sourceUi.pages.rules.PerUpEditor.subtitle.59")}
+			accent="var(--color-bn-pink)"
+			icon={<Icon.dyn size={14} />}
+			enabled={enabled}
+			onToggle={(on) =>
+				onChange(
+					on ? { enabled: baseline.enabled, mergeForward: baseline.mergeForward } : undefined,
+				)
+			}
+			inheritNote={tx("sourceUi.pages.rules.PerUpEditor.inheritNote.60")}
+		>
+			<Field code="imageGroup.enabled">
+				<Toggle value={effEnable} onChange={(v) => set("enabled", v)} />
+			</Field>
+			<Field code="imageGroup.mergeForward">
+				<Toggle value={effForward} onChange={(v) => set("mergeForward", v)} disabled={!effEnable} />
+			</Field>
+		</OverrideBox>
+	);
+}

@@ -129,7 +129,7 @@ export const globalSectionsOf = (): SectionMeta[] => [
  * per-UP 9 个分类:全局 5 个 + 特别关注弹幕 / 进房 / 卡片样式 / AI 人格。
  * 每项独立 toggle 到「覆盖中」才会写入 Subscription.overrides;关闭即继承全局。
  */
-export const perupSectionsOf = (): SectionMeta[] => [
+export const subscriptionSectionsOf = (): SectionMeta[] => [
 	{
 		id: "filter",
 		label: i18n.t("sourceUi.pages.rules.sections.label.1"),
@@ -229,7 +229,7 @@ export function perUpSectionsFor(
 	const post = features.includes("post");
 	const live = features.includes("liveStart") || features.includes("liveEnd");
 	const out: SectionMeta[] = [];
-	for (const s of perupSectionsOf()) {
+	for (const s of subscriptionSectionsOf()) {
 		if (s.id === "guard" && platform?.membershipPrograms?.length) {
 			out.push(s);
 		} else if (

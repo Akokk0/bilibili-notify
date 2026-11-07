@@ -28,8 +28,8 @@ import {
 } from "@bilibili-notify/ui";
 import { useRef, useState } from "react";
 import { type Identity, type Subscription, subscriptionIdentityOf } from "../types/domain";
-// 不走 pages/up/helpers —— 组件层反向 import 页面层是圈套。
-import { displayName, profileAvatarUrl, subscriptionColor } from "../utils/up-display";
+// 不走 pages/subscriptions/helpers —— 组件层反向 import 页面层是圈套。
+import { displayName, profileAvatarUrl, subscriptionColor } from "../utils/creator-display";
 
 /** "__global" = 全局默认;其余 = subscription.id。 */
 export type Scope = "__global" | string;

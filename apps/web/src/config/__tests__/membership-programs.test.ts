@@ -129,7 +129,7 @@ describe("面板不再直读 B 站的档位表", () => {
 		const consumers = [
 			"pages/Cards.tsx",
 			"pages/rules/sections.tsx",
-			"pages/rules/PerUpEditor.tsx",
+			"pages/rules/SubscriptionRulesEditor.tsx",
 		];
 		const colors = membershipTiersOf(PROGRAMS, GUARD_PROGRAM_ID).flatMap((t) =>
 			t.color ? [t.color] : [],

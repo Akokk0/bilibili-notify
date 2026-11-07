@@ -64,8 +64,8 @@ import { removeFromGallery } from "./cards/gallery-ops";
 import type { CardSkinKnobsBySkin } from "./cards/knob-ops";
 import { previewErrorHint, previewErrorTitle } from "./cards/preview-error";
 import { enqueuePreview, PREVIEW_TIMEOUT_MS } from "./cards/preview-queue";
-import { displayName } from "./up/helpers";
-import { subscriptionPlatformOf } from "./up/subscription-source";
+import { displayName } from "./subscriptions/helpers";
+import { subscriptionPlatformOf } from "./subscriptions/subscription-source";
 
 /** 本页能预览的四种卡(卡种键与全仓同一套,没有页面自己的缩写)。 */
 type PreviewKind = "live" | "post" | "superchat" | "membership";
@@ -473,7 +473,7 @@ export function PerUpCoverSection({
 /**
  * 「这条预览用的是真实数据」的绿色说明条。四个 kind 分支各自写了一遍,连
  * `realDataLabel` 缺省时的那句兜底也抄了两份;局部收编后又与 FontPicker /
- * UpDialog 的旁注各配各的圆角 —— 观感统一升进了库的 {@link HintNote},这里
+ * SubscriptionDialog 的旁注各配各的圆角 —— 观感统一升进了库的 {@link HintNote},这里
  * 只剩「这条旁注是报喜档」这层领域语义。
  */
 function RealDataNote({ children }: { children: React.ReactNode }) {

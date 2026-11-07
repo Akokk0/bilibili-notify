@@ -3,7 +3,7 @@ import { i18n } from "../i18n";
  * 推送(按特性键)的**唯一色表与文案表**。
  *
  * 由来:同一份「特性 → 颜色 / 标签 / 图标」此前抄在五个地方 —— toast、Dashboard
- * 时间轴、History 列表、Cards 卡片类型、UpCard 功能胶囊。抄多了就飘:上舰在
+ * 时间轴、History 列表、Cards 卡片类型、SubscriptionCard 功能胶囊。抄多了就飘:上舰在
  * 四处是橙 `#f2a053`、在 toast 里是紫 `#7A5AF8`;SC 是 `#fdcb6e` vs `#FFB454`;
  * 直播在 Cards 是 `#FF6699`、别处是 `#FB7299`。没有任何东西拦下一次再飘。
  *
@@ -23,13 +23,13 @@ import type { PushStatus } from "@bilibili-notify/contract";
 import type { IconName } from "@bilibili-notify/ui";
 import type { FeatureKey } from "../types/domain";
 
-/** 四个主家族的色,外加 UpCard 给「衍生能力」用的那一档。键与 {@link PushFamily} 同一套说法(特性键那套)。 */
+/** 四个主家族的色,外加 SubscriptionCard 给「衍生能力」用的那一档。键与 {@link PushFamily} 同一套说法(特性键那套)。 */
 export const PUSH_TONE = {
 	live: "#FB7299",
 	post: "#00AEEC",
 	superchat: "#fdcb6e",
 	membership: "#f2a053",
-	/** 词云 / 总结 / 特别弹幕 / 特别进房 —— UpCard 把这几档衍生能力统一成紫。 */
+	/** 词云 / 总结 / 特别弹幕 / 特别进房 —— SubscriptionCard 把这几档衍生能力统一成紫。 */
 	derived: "#a29bfe",
 } as const;
 

@@ -56,12 +56,15 @@ import {
 	type PushTarget,
 	type Subscription,
 } from "../types/domain";
+import { historyRowAvatarUrl, historyRowColor, historyRowIdentity } from "../utils/creator-display";
 import { headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowAvatarUrl, historyRowColor, historyRowIdentity } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
-import { displayName, profileAvatarUrl, subscribedFeatures } from "./up/helpers";
-import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
-import { subscriptionPlatformOf } from "./up/subscription-source";
+import { displayName, profileAvatarUrl, subscribedFeatures } from "./subscriptions/helpers";
+import {
+	createSubscriptionLookup,
+	type SubscriptionLookup,
+} from "./subscriptions/subscription-lookup";
+import { subscriptionPlatformOf } from "./subscriptions/subscription-source";
 
 /** 「正在直播」那一列的人数:精确数排成「1.2万」(`formatCount`),没有数是「—」。0 是真数,写「0」。 */
 function formatViewers(n: number | undefined): string {

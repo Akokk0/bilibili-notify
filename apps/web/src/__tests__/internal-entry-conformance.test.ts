@@ -8,8 +8,8 @@
  * typecheck 绿(类型没错)、Biome 绿(import 合法)、全部组件测试绿(vitest 不打包,
  * 根本不在意 bundle 里有什么)。**唯一的症状是浏览器多下几十 KB**,没人会注意。
  *
- * 这不是假想:`pages/up/helpers.ts` 曾经写成
- * `export { colorFromSeed, UP_COLORS } from "@bilibili-notify/internal"` —— 只为一个
+ * 这不是假想:`pages/subscriptions/helpers.ts` 曾经写成
+ * `export { colorFromSeed, CREATOR_COLORS } from "@bilibili-notify/internal"` —— 只为一个
  * 调色板,整个 zod(产物里 300+ 处引用)被打进页面。修法是把那两个值搬进零依赖的
  * `identity.ts`(见那边「UP 主强调色」那一段),这条测试钉住它不再回来。
  *
@@ -70,7 +70,7 @@ describe("apps/web 不得从 internal 根入口拿值", () => {
 		expect(from("type { GlobalSettings }")).toEqual([]);
 		expect(from("{ type A, type B }")).toEqual([]);
 		expect(from("type Everything")).toEqual([]);
-		expect(from("{ colorFromSeed, UP_COLORS }")).toHaveLength(1);
+		expect(from("{ colorFromSeed, CREATOR_COLORS }")).toHaveLength(1);
 		expect(from("{ type A, colorFromSeed }")).toHaveLength(1);
 		expect(from("everything")).toHaveLength(1); // default 导入
 		expect(from("* as internal")).toHaveLength(1); // namespace 导入
@@ -90,7 +90,7 @@ describe("apps/web 不得从 internal 根入口拿值", () => {
 		expect(offendersIn(`type T = import("${INTERNAL_ROOT}").GlobalSettings;`)).toEqual([]);
 
 		// 零依赖子路径是合法的取值入口;别的包不归这条管。
-		expect(offendersIn(`import { UP_COLORS } from "${INTERNAL_ROOT}/identity";`)).toEqual([]);
+		expect(offendersIn(`import { CREATOR_COLORS } from "${INTERNAL_ROOT}/identity";`)).toEqual([]);
 		expect(offendersIn(`import { z } from "zod";`)).toEqual([]);
 
 		// 注释、字符串里写得再像也不算(原先的按分号切语句会被它们绊倒)。

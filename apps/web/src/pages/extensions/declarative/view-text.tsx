@@ -1,6 +1,6 @@
 import type { ExtensionViewText, ExtensionViewTextSegment } from "@bilibili-notify/contract";
 import type { ReactNode } from "react";
-import { RelativeTime } from "../../up/relative-time";
+import { RelativeTime } from "../../subscriptions/relative-time";
 import { extensionAddress } from "./address";
 
 /**

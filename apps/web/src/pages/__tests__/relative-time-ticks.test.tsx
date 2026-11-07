@@ -15,8 +15,8 @@ import type { HistoryEntryView } from "../../services/overview";
 import { makeEmptySubscription } from "../../types/domain";
 import History from "../History";
 import { makeSource } from "../rules/__tests__/fixtures";
-import { subscriptionPlatformOf } from "../up/subscription-source";
-import { UpCard } from "../up/UpCard";
+import { SubscriptionCard } from "../subscriptions/SubscriptionCard";
+import { subscriptionPlatformOf } from "../subscriptions/subscription-source";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -98,7 +98,7 @@ describe("挂在页面上的相对时间会走", () => {
 			},
 		};
 		render(
-			<UpCard
+			<SubscriptionCard
 				platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 				sub={sub}
 				selected={false}

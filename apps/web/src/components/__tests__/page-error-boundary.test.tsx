@@ -65,7 +65,7 @@ vi.mock("../../pages/Overview", () => ({
 		return <p>首页内容</p>;
 	},
 }));
-vi.mock("../../pages/Subs", () => ({
+vi.mock("../../pages/Subscriptions", () => ({
 	default: () => {
 		if (crash.subs) throw new Error("订阅页炸了");
 		return <p>订阅页内容</p>;

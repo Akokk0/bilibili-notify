@@ -2,7 +2,7 @@ import { useT } from "../i18n";
 /**
  * 「覆盖开关卡」模具 —— per-UP 覆盖那类 GlassBox:右上 Toggle 定开关、badge 写
  * 「覆盖中/继承」、关闭时正文换成一行 InheritNote。收编前这套接线在
- * rules/PerUpEditor(9 张)与 Cards(2 张)各拼各的,badge 那行逐字符抄了 11 遍。
+ * rules/SubscriptionRulesEditor(9 张)与 Cards(2 张)各拼各的,badge 那行逐字符抄了 11 遍。
  *
  * 开/关时**如何从 baseline 填字段、如何清覆盖**是每张卡自己的业务,全留在
  * `onToggle` 的调用方闭包里 —— 模具只管壳子的长相。

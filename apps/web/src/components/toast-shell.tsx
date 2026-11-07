@@ -4,15 +4,15 @@ import { Link } from "react-router-dom";
 import { FEATURE_DESCRIPTORS, PUSH_STATUS_META } from "../config/push-features";
 import { useSources } from "../hooks/useSources";
 import { useT } from "../i18n";
-import { subscriptionPlatformOf } from "../pages/up/subscription-source";
+import { subscriptionPlatformOf } from "../pages/subscriptions/subscription-source";
 import {
 	AUTO_DISMISS_MS,
 	type PushEventView,
 	type ToastItem,
 	useToastStore,
 } from "../store/notifications";
+import { historyRowIdentity } from "../utils/creator-display";
 import { headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowIdentity } from "../utils/up-display";
 
 /**
  * 推送 toast 层(右下角)。卡与栈的壳子在 ui 的 NoticeCard / NoticeStack;

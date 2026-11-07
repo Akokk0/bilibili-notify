@@ -27,4 +27,4 @@ src/
     ws.ts           ← WebSocket subscription client
 ```
 
-Pages will land under `src/pages/*` as stage 3 progresses (Auth / Subs / Targets / Rules / Cards / AI / Dashboard / History).
+Pages will land under `src/pages/*` as stage 3 progresses (Auth / Subscriptions / Targets / Rules / Cards / AI / Dashboard / History).

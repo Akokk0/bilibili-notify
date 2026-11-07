@@ -18,7 +18,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
-import { subscriptionColor } from "../../utils/up-display";
+import { subscriptionColor } from "../../utils/creator-display";
 import { makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({

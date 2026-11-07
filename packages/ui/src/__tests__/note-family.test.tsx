@@ -137,7 +137,7 @@ describe("提示盒三兄弟共用一套尺寸阶梯", () => {
 /**
  * 第四位成员 HintNote —— 「顺带说一句」的低调旁注:虚线 + 软底 + 小字。
  * 收编前三处各配各的圆角(Cards `rounded-sm` / FontPicker `rounded-lg` /
- * UpDialog `rounded-md`),同一句「旁注」三种控件长相。
+ * SubscriptionDialog `rounded-md`),同一句「旁注」三种控件长相。
  */
 describe("HintNote 旁注盒", () => {
 	const note = (container: HTMLElement) => container.firstElementChild as HTMLElement;

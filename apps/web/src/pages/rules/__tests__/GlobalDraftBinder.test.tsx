@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * GlobalDraftBinder 接线测试 —— 全局 island 从 Rules.tsx 顶层抽出的子组件,只在
- * isGlobal 时挂载。与 PerUpEditor 的 useDirtyDraft 永不同时挂载(JSX 条件渲染互斥),
+ * isGlobal 时挂载。与 SubscriptionRulesEditor 的 useDirtyDraft 永不同时挂载(JSX 条件渲染互斥),
  * 从而消除「双 hook 抢单槽 draftStore」的 effect 时序竞态。
  *
  * 锁三件事:① 注册 pageKey "rules";② 打平 code 对齐(无 defaults 前缀);

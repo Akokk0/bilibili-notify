@@ -29,7 +29,11 @@ import { api } from "../services/api";
 import { type Subscription, subscriptionIdentityOf } from "../types/domain";
 import type { GlobalDefaults, GlobalSettings, GlobalSettingsPatch } from "../types/globals";
 import { buildOverridesPatch } from "./rules/overrides-patch";
-import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
+import {
+	type SubscriptionOverrideKey,
+	SubscriptionRulesEditor,
+	subscriptionOverrideKeys,
+} from "./rules/SubscriptionRulesEditor";
 import { isSectionCustomized } from "./rules/section-scope";
 import {
 	DynamicMsgSection,
@@ -44,12 +48,12 @@ import {
 	type SectionMeta,
 	SummarySection,
 } from "./rules/sections";
-import { displayName } from "./up/helpers";
+import { displayName } from "./subscriptions/helpers";
 import {
 	type SubscriptionPlatform,
 	subscriptionPlatformOf,
 	visibleFeaturesOf,
-} from "./up/subscription-source";
+} from "./subscriptions/subscription-source";
 
 // 账本(「默认文案有更新」)按简体原文算,不随语言变:换语言不亮,以后补上别的语言的译文也不亮。
 // 输入框显示的「没存时的默认」才跟当前语言(见 `Rules` 里的 `factory`)。
@@ -67,9 +71,9 @@ function nestByPath(path: string, value: string | null): Record<string, unknown>
 }
 
 /** Slices on Subscription.overrides that are populated; per-UP "已覆盖" 状态来源。 */
-function overrideKeysOf(sub: Subscription): Set<PerUpOverrideKey> {
-	const keys = new Set<PerUpOverrideKey>();
-	for (const key of perUpOverrideKeys) {
+function overrideKeysOf(sub: Subscription): Set<SubscriptionOverrideKey> {
+	const keys = new Set<SubscriptionOverrideKey>();
+	for (const key of subscriptionOverrideKeys) {
 		if (sub.overrides[key] !== undefined) keys.add(key);
 	}
 	return keys;
@@ -84,7 +88,7 @@ function hasAnyCustomization(sub: Subscription): boolean {
 	return overrideKeysOf(sub).size > 0 || hasSpecialViewers(sub);
 }
 
-// isSectionCustomized 已抽到 ./rules/section-scope(与 PerUpEditor 的 toggle 判定共用
+// isSectionCustomized 已抽到 ./rules/section-scope(与 SubscriptionRulesEditor 的 toggle 判定共用
 // 同一份字段分域常量,避免 filter/live 共享 overrides.filters 切片时口径不一致)。
 
 // ── Sidebar (规则分类) ─────────────────────────────────────────────────────
@@ -163,7 +167,7 @@ function deepMerge<T>(base: T, patch: GlobalSettingsPatch): T {
  * liveStreaming / templates 字典 code 带前缀 → 保 nested,walkTreeDiff 递归出 `imageGroup.X` / `schedule.X` /
  * `liveStart.X` / `liveStreaming.X` / `templates.X`(图集的总开关叫 `enabled`,打平会和 AI 页的 `enabled` 撞键)。`features` 只投影周期那一把(这一页只编辑它)。
  *
- * 刻意抽成独立组件、仅在 isGlobal 时挂载,与 per-UP 的 PerUpEditor(自调
+ * 刻意抽成独立组件、仅在 isGlobal 时挂载,与 per-UP 的 SubscriptionRulesEditor(自调
  * pageKey "rules-perup" 的 useDirtyDraft)**互斥** —— 同一时刻只有一个 binder
  * 在册,杜绝两个 useDirtyDraft 同时挂载时抢单槽 draftStore 的注册/注销 effect
  * 时序竞态(子 register 先于父 unregister 把当前页 stomp 成 null)。
@@ -499,10 +503,10 @@ export default function Rules() {
 			: (sections[0] as SectionMeta).id;
 
 	// 灵动岛绑定改由互斥子组件承载:isGlobal → <GlobalDraftBinder>,per-UP →
-	// <PerUpEditor> 自调 useDirtyDraft。两者条件渲染互斥,见下方 JSX 与
+	// <SubscriptionRulesEditor> 自调 useDirtyDraft。两者条件渲染互斥,见下方 JSX 与
 	// GlobalDraftBinder 注释。
 	// presets 只被「AI 人格」那一格用到 —— 它判的是「挑中的人格还在不在」,
-	// 与 PerUpEditor 里那颗开关同一个判据(见 section-scope#hasAiPersonaOverride)。
+	// 与 SubscriptionRulesEditor 里那颗开关同一个判据(见 section-scope#hasAiPersonaOverride)。
 	const customizedIds: Set<SectionId> | undefined =
 		!isGlobal && focusedSub
 			? new Set(
@@ -568,7 +572,7 @@ export default function Rules() {
 				<FieldUpdatesProvider value={isGlobal ? fieldUpdates : null}>
 					<div className="space-y-4">
 						{!isGlobal && focusedSub ? (
-							<PerUpEditor
+							<SubscriptionRulesEditor
 								sub={focusedSub}
 								platform={focusedPlatform}
 								defaults={draft.defaults}

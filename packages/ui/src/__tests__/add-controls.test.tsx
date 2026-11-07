@@ -114,7 +114,7 @@ describe("AddCard", () => {
 	});
 
 	// 底色刻意不在示例里:虚线家族统一「只有虚线框、不带底色」,底透下去才和
-	// Subs「添加 UP 主」一个样(2026-08-30 主人定案,调用点的 bg-bn-surface 已随之拆掉)。
+	// Subscriptions「添加 UP 主」一个样(2026-08-30 主人定案,调用点的 bg-bn-surface 已随之拆掉)。
 	it("className 只追加不冲突的(最小高度、焦点环),接在本体之后", () => {
 		render(<AddCard label="x" hint="y" className="min-h-22" onClick={() => {}} />);
 		expect(btn().className.endsWith("min-h-22")).toBe(true);

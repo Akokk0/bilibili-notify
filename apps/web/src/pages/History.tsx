@@ -39,13 +39,16 @@ import {
 	historyQueryKey,
 } from "../services/overview";
 import type { PushTarget, Subscription } from "../types/domain";
+import { historyRowAvatarUrl, historyRowColor } from "../utils/creator-display";
 import { imageUrl } from "../utils/image-url";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowAvatarUrl, historyRowColor } from "../utils/up-display";
-import { displayName } from "./up/helpers";
-import { RelativeTime } from "./up/relative-time";
-import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
-import { subscriptionPlatformOf } from "./up/subscription-source";
+import { displayName } from "./subscriptions/helpers";
+import { RelativeTime } from "./subscriptions/relative-time";
+import {
+	createSubscriptionLookup,
+	type SubscriptionLookup,
+} from "./subscriptions/subscription-lookup";
+import { subscriptionPlatformOf } from "./subscriptions/subscription-source";
 
 /**
  * `/history` — 1:1 port of `.bn-design/variation-a-tabs.jsx#HistoryTab`,

@@ -7,9 +7,9 @@ import { GlassBox, Icon, Pill } from "@bilibili-notify/ui";
 import { useSources } from "../../hooks/useSources";
 import { i18n, useT } from "../../i18n";
 import type { Subscription } from "../../types/domain";
-import { displayName } from "../../utils/up-display";
-import { RelativeTime } from "../up/relative-time";
-import { featureLabelOf, subscriptionPlatformOf } from "../up/subscription-source";
+import { displayName } from "../../utils/creator-display";
+import { RelativeTime } from "../subscriptions/relative-time";
+import { featureLabelOf, subscriptionPlatformOf } from "../subscriptions/subscription-source";
 import { PARAGRAPH_CLS } from "./shared";
 
 /**

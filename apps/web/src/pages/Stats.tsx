@@ -45,7 +45,7 @@ import {
 	type UpStatsRow,
 } from "../services/stats";
 import { identityColor, type Subscription } from "../types/domain";
-import { historyRowIdentity } from "../utils/up-display";
+import { historyRowIdentity } from "../utils/creator-display";
 import type { SignTone } from "./stats/chart-utils";
 import { dash, signTone } from "./stats/chart-utils";
 import {
@@ -67,9 +67,9 @@ import { buildRadarAxes } from "./stats/radar";
 import { STATS_RANGES } from "./stats/ranges";
 import { SoloRoastCard } from "./stats/SoloRoastCard";
 import { SoloRoastScheduleBox } from "./stats/SoloRoastScheduleBox";
-import { displayName, profileAvatarUrl } from "./up/helpers";
-import { createSubscriptionLookup } from "./up/subscription-lookup";
-import { subscriptionPlatformOf } from "./up/subscription-source";
+import { displayName, profileAvatarUrl } from "./subscriptions/helpers";
+import { createSubscriptionLookup } from "./subscriptions/subscription-lookup";
+import { subscriptionPlatformOf } from "./subscriptions/subscription-source";
 
 /**
  * 面板 / KPI 卡的主题色 —— 走 token,跟皮肤换装。

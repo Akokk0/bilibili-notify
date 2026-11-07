@@ -40,7 +40,7 @@ import Logs from "./pages/Logs";
 import Overview from "./pages/Overview";
 import Rules from "./pages/Rules";
 import Stats from "./pages/Stats";
-import Subs from "./pages/Subs";
+import Subscriptions from "./pages/Subscriptions";
 import System from "./pages/System";
 import Targets from "./pages/Targets";
 import { setWsBackendReady } from "./services/wsSingleton";
@@ -218,7 +218,7 @@ function AuthedApp({ processId }: { processId: string }) {
 					<PageErrorBoundary>
 						<Routes>
 							<Route path="/" element={<Overview />} />
-							<Route path="/subs" element={<Subs />} />
+							<Route path="/subs" element={<Subscriptions />} />
 							<Route path="/targets" element={<Targets />} />
 							<Route path="/extensions" element={<Extensions />} />
 							<Route path="/extensions/:id" element={<ExtensionDetail />} />

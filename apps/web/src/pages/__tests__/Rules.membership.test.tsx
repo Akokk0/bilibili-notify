@@ -7,7 +7,7 @@
  *   PATCH 里带着这两段(漏了的话改了保存条不亮、或保存时这一段没下发);
  * - 全局上舰提示里清空某一档的文案能真的清掉:保存出去的是显式 `null`(JSON Merge Patch),不是「不提」—— 这个仓里反复栽的
  *   「关不掉 / 清不掉」,草稿合并(`deepMerge`)与 `buildPatch` 这一整条路都在这里走一遍;
- * - 只覆盖了一个门槛的订阅仍有自己的 tab(`perUpOverrideKeys` 漏了新两段的话它会从 tab 栏里消失)。
+ * - 只覆盖了一个门槛的订阅仍有自己的 tab(`subscriptionOverrideKeys` 漏了新两段的话它会从 tab 栏里消失)。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

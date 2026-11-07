@@ -32,7 +32,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 | **身份**：`identity { sourceKey, externalId }`（B 站是 `bilibili` + uid） | 这是谁 | 判重（同一个人只能有一条订阅，见下）、把拓展的上报对到订阅上、历史行找回订阅、颜色 |
 | **运行期键**：订阅自己的 `id`（uuid） | 是哪一条 | 推送链（`PushRouter.push`）、历史行的 `subscriptionId`、资料缓存（头像是它里面的图库引用）、拓展在播表、女仆查订阅的视图、增删改接口、备份的合并计划 |
 
-- 🔴 **身份别拼字符串当键。** 外部 id 是拓展给的不透明串，什么字符都可能有：拼就得选分隔符、做转义，当文件名、进 URL 还得再转义一次。按身份查一律**两层 map**（拓展 id → 外部 id），样板是 `runtime/target-scope.ts` 与 `apps/web/src/pages/up/subscription-lookup.ts`。拼成 `extensionId:externalId` 的只有两处、都只给人看：取色（`packages/internal` 的 `identityColor` / `extensionColorSeed`，面板与服务端出图共用一份，ADR-0020 决策 15）与推送层的日志标签（`subscriptionLabel`）。
+- 🔴 **身份别拼字符串当键。** 外部 id 是拓展给的不透明串，什么字符都可能有：拼就得选分隔符、做转义，当文件名、进 URL 还得再转义一次。按身份查一律**两层 map**（拓展 id → 外部 id），样板是 `runtime/target-scope.ts` 与 `apps/web/src/pages/subscriptions/subscription-lookup.ts`。拼成 `extensionId:externalId` 的只有两处、都只给人看：取色（`packages/internal` 的 `identityColor` / `extensionColorSeed`，面板与服务端出图共用一份，ADR-0020 决策 15）与推送层的日志标签（`subscriptionLabel`）。
 - **绝不跨支**：外部 id 恰好等于某个 B 站 uid，也是另一个平台上的另一个人。
 - **同一个人只能有一条订阅**（守卫 9）：闸在写盘的 `ConfigStore`（规矩是 `packages/subscription` 的 `findNewIdentityDuplicates`），逐条写与整体替换都过它，新建撞了回 409 `conflict`。判据是这次写入有没有**新增**重复，所以盘上遗留的一对照样能改、能删；开机读到只记一句警告。恢复备份先按 id 对、再按身份并入（id 留本机的、内容用备份的），备份自己里面就有一对的整份拒收、点名是谁（`backup/restore.ts`、`backup/service.ts`）。
 - 老版本留下的同一个人两条订阅**各推各的路由**。**作品这一路 3a-28 起每条各一份**：来源上下文的 `reportPost` 按身份取全部订阅（`listByIdentity`）逐条交给作品入口，各推各的、`post-detected` 各发一次（统计各记各的），一条停用或关了作品开关只丢它自己那份。**3b-22 起直播也每条各一份**：`reportLive` 与 `reportLiveInteraction` 同样按身份取全部订阅，再按每条订阅现折的设置判。
@@ -80,7 +80,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 **资料的落盘**：拉来的资料与 `ctx.reportProfile` 报来的资料共用 `runtime/profile-cache.ts`：给了哪格改哪格（简介 `bio` 给的是空串就缺这一格），头像没给就沿用并 `keep` 续期，`refreshedAt` 每次更新。报来的资料由 `runtime/reported-profiles.ts` 接；宿主在来源上下文按身份只交给启用中的订阅，订阅刚删时报上来的不再种，写入排一条队；新建时种资料也排这条队（`seed`）。面板看得见的名字 / 头像 / 粉丝**真变了**才发 `subscription-profiles-changed`（250ms 窗口合并）。
 
-**拓展订阅的头像在图库里**（决策 49；进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗）：资料缓存里 `avatar` 是 `ImageRef`（`<sha256>.<ext>`），面板走图库的同源读口 `GET /api/images/<ref>`（`apps/web/src/utils/up-display.ts` 的 `profileAvatarUrl` 是唯一的取址处：有 `avatar` 走读口，没有退首字）。
+**拓展订阅的头像在图库里**（决策 49；进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗）：资料缓存里 `avatar` 是 `ImageRef`（`<sha256>.<ext>`），面板走图库的同源读口 `GET /api/images/<ref>`（`apps/web/src/utils/creator-display.ts` 的 `profileAvatarUrl` 是唯一的取址处：有 `avatar` 走读口，没有退首字）。
 
 - 两条来路最终都引用 `runtime.profileImages`（图库的存图口，资料缓存登记成引用方后才拿得到，装配在 `runtime/bootstrap.ts`）：新建订阅时，面板交的 data URL 在路由层过 `decodeSubscriptionAvatar`（`runtime/subscription-avatar.ts`），128 KiB 封顶、只收 png / jpeg / webp、魔数得对得上声明；`ctx.reportProfile` 交的头像已经是来源先经 `ctx.storeImage` 存好的图库引用，`reported-profiles.ts` 不再收字节。头像不收 gif、不收 SVG；图库自己再按嗅探认格式。
 - 图按内容起名：同一张图再报一次引用不变（面板地址不变，浏览器缓存照样命中）。没给头像时沿用旧的引用 —— 沿用也是「抄引用」，先 `keep` 续期；图已经不在了就缺着 `avatar`，不留悬空的引用。
@@ -88,12 +88,12 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 - 出卡时 `/api/images/<ref>` 截图加载不到：拓展作品卡与拓展直播卡的头像是图库引用，出图器经注入的 `resolveImageRef` 读字节转 data URL（作品与直播都在 `extensions/extension-source.ts` 先翻成核心形状，直播详情再由 `live/live-card-input.ts` 的 `liveCardInputFromDetails` 转成卡输入；事件带了头像引用就优先用它，没带用资料里的引用，哪儿都没有就没有头像、头像块收起，决策 54 / 68，ADR-0021 决策 22 下 10-05 的 🔗）；锐评卡（`stats/roast-deliver.ts`，B 站与拓展同一条路；资料里还没有 `avatar` 就没有头像、画首字母圆牌）图只认字符串地址，用 `images/profile-avatar.ts` 的 `readProfileAvatar` 读字节、`imageDataUrl` 转 data URL。拓展作品与直播卡上作者名和模板 `{name}` 走 contract 的 `displayNameOf`：事件里的作者名 → 资料名 → 身份标签（别名 `name` 已退役）；面板上标「备注」的 `notes` 是自由文字，**不当名字用**（决策 77）。
 - 历史行的头像快照 ⑳d 起叫 `avatarSnapshot`、只装图库引用：拓展行写行时抄资料缓存里的 `avatar`（历史仓先续期，续不上不写这一格）；B 站行同样抄资料里的 `avatar`（B 站头像进图库后；资料里还没有 `avatar` 的行缺着，面板退到订阅现在的头像〔`profileAvatarUrl`〕）；过了保留期的行面板也不用快照。
 
-**显示名与颜色**（`apps/web/src/utils/up-display.ts`）：
+**显示名与颜色**（`apps/web/src/utils/creator-display.ts`）：
 
 - `displayName`：经 contract 的 `displayNameOf` 取非空资料名，否则经 `subscriptionIdentityLabel` 生成身份标签：描述符有 `externalIdNoun` 时用「叫法 + 原始 externalId」，否则用「来源 label · 原始 externalId」。未知来源回退来源键；不把数字字符串转成数值，复制与 CSV 同样保留前导零。
 - `subscriptionColor`：**颜色跟着人走**，经公共身份取色函数生成；删了再加颜色不变。历史行 `historyRowColor` 同一条规矩。
 - 历史与时间轴：非空事件快照 → 非空资料名 → 公共身份标签；合法名字保留原有空格。
-- 平台名与徽章：`apps/web/src/pages/up/subscription-source.ts` 的 `subscriptionPlatformOf` 统一投影 `GET /api/sources` 的当前描述符与状态。来源表只有一项且包含此来源时不画徽章；多项、表未知或条目缺失时画。缺条目明确显示来源未安装；表尚未知时不猜成未安装。能力只取 `supportedFeatures` / `supportedExtras` 的声明，缺省为空；`has` 缺省不猜可用。
+- 平台名与徽章：`apps/web/src/pages/subscriptions/subscription-source.ts` 的 `subscriptionPlatformOf` 统一投影 `GET /api/sources` 的当前描述符与状态。来源表只有一项且包含此来源时不画徽章；多项、表未知或条目缺失时画。缺条目明确显示来源未安装；表尚未知时不猜成未安装。能力只取 `supportedFeatures` / `supportedExtras` 的声明，缺省为空；`has` 缺省不猜可用。
 - `GET /api/sources` 的 `SourceEntry.descriptor` 下发完整 `SourceDescriptor`，包括会员体系 `membershipPrograms`（体系 id、档位 key 与实际 rank、图片引用或 URL）和可选附加项 `supportedExtras`。这是公共读口；拓展清单当前仍拒绝这两项，不因读口变宽而放宽清单契约。
 - 规则、卡片与订阅弹层按当前描述符露能力。会员以 `program.id` 与 `tier.key` 两层索引，固定档位按实际 rank 排序，最低档无需从 1 开始；`custom` 与空档位只编辑体系默认文案及图片，不造档位门槛。卡片会员预览要求来源运行中且有可枚举档位，全家福跳过不可用的会员卡后继续其他卡种。
 - 来源或语言刷新只更新显示与能力，不清未保存草稿；隐藏的未知体系、档位、附加项与路由原样保留。显式删除使用 JSON Merge Patch 的 `null`，省略表示不改。CSV 按实际导出行涉及的来源选叫法：单来源取描述符，混合来源用中性列名。
@@ -127,7 +127,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只接受当�
 
 ### 拓展停了之后（决策 10 / 61）
 
-订阅**保留**，只有主人手删才删：面板置灰、写「××拓展没在跑」（`pages/up/UpCard.tsx`；没装时拿不到名字就写拓展 id），卸载确认框写「有 N 条订阅会保留（暂停）」（`pages/ExtensionDetail.tsx`）。不轮询不推送（轮询本来就是拓展做的）；ctx 收摊那一刻发 `extension-stopped`，之后它的上报一概拒，在播表清掉它名下的；`createExtensionSource` 的串行队里还没交给核心的作品也丢并记 debug，已经进 `PostQueue` 的作品由来源登记表判没在跑后丢弃，出卡、点评之后发送之前仍会回问（决策 61）。等待中的断流接续与下播卡同样作废。开回来自动恢复，在播靠直播状态上报或 `fetchLiveStatus` 接上。
+订阅**保留**，只有主人手删才删：面板置灰、写「××拓展没在跑」（`pages/subscriptions/SubscriptionCard.tsx`；没装时拿不到名字就写拓展 id），卸载确认框写「有 N 条订阅会保留（暂停）」（`pages/ExtensionDetail.tsx`）。不轮询不推送（轮询本来就是拓展做的）；ctx 收摊那一刻发 `extension-stopped`，之后它的上报一概拒，在播表清掉它名下的；`createExtensionSource` 的串行队里还没交给核心的作品也丢并记 debug，已经进 `PostQueue` 的作品由来源登记表判没在跑后丢弃，出卡、点评之后发送之前仍会回问（决策 61）。等待中的断流接续与下播卡同样作废。开回来自动恢复，在播靠直播状态上报或 `fetchLiveStatus` 接上。
 
 ## 上报（决策 4 / 7 / 53–62）
 

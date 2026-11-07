@@ -998,7 +998,7 @@ export const FIELD_LABELS = {
 		section: "imageGroup",
 	},
 
-	// ── 卡片自定义模板 special user 子表(PerUpEditor SpecialUserBox) ─────
+	// ── 卡片自定义模板 special user 子表(SubscriptionRulesEditor SpecialUserBox) ─────
 	template: {
 		get label() {
 			return i18n.t("sourceUi.config.field.labels.label.141");

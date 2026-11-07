@@ -13,7 +13,7 @@ import { TAB_ACTIVE_LANGUAGE, TAB_IDLE_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeSource } from "../../pages/rules/__tests__/fixtures";
-import { subscriptionPlatformOf } from "../../pages/up/subscription-source";
+import { subscriptionPlatformOf } from "../../pages/subscriptions/subscription-source";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { ScopeTabs } from "../scope-tabs";
 

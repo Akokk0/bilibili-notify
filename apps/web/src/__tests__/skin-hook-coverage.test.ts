@@ -5,7 +5,7 @@
  *
  * 为什么要静态护栏:挂点是**只在别人的皮肤下才看得见**的东西 —— 漏挂不会红、
  * 不会白屏、开发时长得一模一样,只有装了皮肤的用户看到半页按钮换了样、半页没
- * 换。这条路径已经复发三回(tab 条那排、Subs/History 的筛选胶囊、Toggle),
+ * 换。这条路径已经复发三回(tab 条那排、Subscriptions/History 的筛选胶囊、Toggle),
  * `packages/ui` 的 `skin-hooks.test.tsx` 只管库里那几个组件,页面在它射程之外。
  *
  * 豁免名单按**文件计数**而不是行号:行号一改就漂,计数只在有人**新增**一个
@@ -66,12 +66,15 @@ const UNHOOKED: Record<string, { count: number; why: string }> = {
 		count: 2,
 		why: "折叠小节的表头行 + 一条纯文字链接",
 	},
-	"apps/web/src/pages/rules/PerUpEditor.tsx": { count: 1, why: "纯文字链接(带下划线的那种)" },
-	"apps/web/src/pages/up/UpCard.tsx": {
+	"apps/web/src/pages/rules/SubscriptionRulesEditor.tsx": {
+		count: 1,
+		why: "纯文字链接(带下划线的那种)",
+	},
+	"apps/web/src/pages/subscriptions/SubscriptionCard.tsx": {
 		count: 1,
 		why: "多选勾选方块 —— 它是**指示物**而不是控件外壳(同 Toggle 那颗滑块、CheckRow 那个勾选方块的分工)。也不该套 `switch`:那一档在词表里写明了是「滑动开关的轨道」,皮肤会按一条长胶囊的形状去写它,落到一个 22px 方块上必然走样",
 	},
-	"apps/web/src/pages/up/UpDialog.tsx": { count: 1, why: "纯文字链接" },
+	"apps/web/src/pages/subscriptions/SubscriptionDialog.tsx": { count: 1, why: "纯文字链接" },
 };
 
 const BUTTON_RE = /<button\b(?:(?!<\/button>)[\s\S])*?<\/button>/g;

@@ -6,7 +6,7 @@
  * 走字典 lookup;新增 Field 用法忘补字典 → 用户看到的就是 raw code(只在 dev
  * console.warn),需要静态护栏。
  *
- * 跳过:动态 code(`code={...}` 模板字符串 / 表达式)。本仓库仅 PerUpEditor
+ * 跳过:动态 code(`code={...}` 模板字符串 / 表达式)。本仓库仅 SubscriptionRulesEditor
  * `code={`templates.${templateField}`}` 一处,templateField 限定在
  * viewerChat / viewerEnter,两个 key 都在字典里;再加字段时 PR review
  * 兜底。

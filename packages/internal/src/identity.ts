@@ -34,7 +34,7 @@
  * Avatar 与周报卡),所以别往更浅走 —— 这一族对白字的对比度只有 1.65–2.78,是这套
  * 设计有意选的浅调,再浅白字就糊了。测试只锁「两两分得开」,明度与调性靠这段说明。
  */
-export const UP_COLORS = [
+export const CREATOR_COLORS = [
 	"#fb7299",
 	"#ff6b6d",
 	"#ff9c89",
@@ -75,7 +75,7 @@ export function colorFromSeed(seed: string): string {
 		// imul 才是 32 位整数乘法;直接 `*` 会溢出成浮点,低位精度丢光。
 		h = Math.imul(h, 0x01000193);
 	}
-	return UP_COLORS[(h >>> 0) % UP_COLORS.length] as string;
+	return CREATOR_COLORS[(h >>> 0) % CREATOR_COLORS.length] as string;
 }
 
 /**
