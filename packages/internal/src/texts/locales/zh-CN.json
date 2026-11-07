@@ -683,5 +683,8 @@
 	"ai.log.extraParamsInvalid": "AI额外请求参数无效，忽略本次额外参数",
 	"ai.log.extraParamsDropped": "已忽略会覆盖请求结构的AI额外参数",
 	"ai.log.extraParamsJson": "额外请求参数不是合法 JSON:{value0}",
-	"ai.log.extraParamsObject": "额外请求参数必须是一个 JSON 对象,比如 {example}"
+	"ai.log.extraParamsObject": "额外请求参数必须是一个 JSON 对象,比如 {example}",
+	"ai.log.visionImageFailed": "视觉图片处理失败，本轮该图片没有描述",
+	"ai.log.visionTimedOut": "视觉图片处理超时，本轮该图片没有描述",
+	"ai.log.visionInlineImage": "一张内联图,约 {kilobytes} KB"
 }

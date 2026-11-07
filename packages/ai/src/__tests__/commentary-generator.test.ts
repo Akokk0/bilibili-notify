@@ -1901,3 +1901,34 @@ it("额外参数的日志诊断使用平实文字，解析和请求回退保持"
 	});
 	expect(oai.create).toHaveBeenCalledTimes(2);
 });
+
+it("视觉失败去重保留且仅记录脱敏异常链，主模型仍正常回答", async () => {
+	const { gen, warn } = makeGen({
+		provider: "custom",
+		vision: { model: "qwen-vl", apiKey: "vision-secret-key", baseURL: "https://vision.test/v1" },
+	});
+	const error = new Error("upstream failure: vision-secret-key", {
+		cause: new Error("Bearer another-secret"),
+	});
+	oai.create.mockImplementation(async (params: { model: string }) => {
+		if (params.model === "qwen-vl") throw error;
+		return msgResp("answer");
+	});
+	const images = ["https://user:pass@image.test/a.png?token=secret", "data:image/png;base64,QUJD"];
+	await expect(gen.comment("one", "post", images)).resolves.toBe("answer");
+	await expect(gen.comment("two", "post", images)).resolves.toBe("answer");
+	expect(oai.create).toHaveBeenCalledTimes(6);
+	expect(warn).toHaveBeenCalledTimes(1);
+	expect(warn.mock.lastCall?.[0]).toBe("视觉图片处理失败，本轮该图片没有描述");
+	const fields = warn.mock.lastCall?.[1] as {
+		imageIndex: number;
+		imageLabel: string;
+		error: Error;
+	};
+	expect(fields).toMatchObject({ imageIndex: 1, imageLabel: "https://image.test/a.png" });
+	expect(fields.error.message).toBe("upstream failure: ***");
+	expect(fields.error.cause).toMatchObject({ message: "Bearer ***" });
+	expect(fields.error.stack).not.toContain("vision-secret-key");
+	expect((fields.error.cause as Error).stack).not.toContain("another-secret");
+	expect(error.message).toContain("vision-secret-key");
+});

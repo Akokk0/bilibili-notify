@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 视觉副模型 —— 把图片先转成文字,再交给主模型。
  *
@@ -19,6 +20,13 @@ export type VisionCaller = (args: {
 	model: string;
 }) => Promise<string>;
 
+export interface VisionWarning {
+	imageIndex: number;
+	imageLabel: string;
+	error: unknown;
+	timeoutMs?: number;
+}
+
 export interface DescribeImagesOptions {
 	call: VisionCaller;
 	model: string;
@@ -33,10 +41,10 @@ export interface DescribeImagesOptions {
 	 */
 	timeoutMs?: number;
 	/**
-	 * 失败逐张回调。第二个参数是**不含 URL 的失败原因**,专供调用方做去重 ——
+	 * 失败逐张回调。第二个参数是原始失败原因，专供调用方做去重；图片标识与原异常另交details ——
 	 * 热路径上同一种失败(欠费、拉不动图)每张每轮都会发生一次,原样打日志会刷屏。
 	 */
-	onWarn?: (msg: string, reason: string) => void;
+	onWarn?: (msg: string, reason: string, details: VisionWarning) => void;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -50,22 +58,43 @@ function buildPrompt(contextText?: string): string {
 }
 
 /**
- * 告警里怎么称呼一张图。普通地址原样写;data URL 是整张图的 base64,原样拼进告警就是一次失败灌几 MB 进日志
+ * 告警里怎么称呼一张图。普通地址去凭据、query与hash；data URL 是整张图的 base64,原样拼进告警就是一次失败灌几 MB 进日志
  * (聊天附件交给视觉模型的就是 data URL)—— 只说是一张内联图,加个大小的量级。
  */
 function imageLabel(url: string): string {
-	if (!url.startsWith("data:")) return url;
+	if (!url.startsWith("data:")) {
+		try {
+			const label = new URL(url);
+			label.username = "";
+			label.password = "";
+			label.search = "";
+			label.hash = "";
+			return label.toString();
+		} catch {
+			return url.split(/[?#]/, 1)[0] ?? "";
+		}
+	}
 	const payload = url.length - (url.indexOf(",") + 1);
 	const bytes = url.slice(0, url.indexOf(",")).endsWith(";base64")
 		? Math.floor((payload * 3) / 4)
 		: payload;
-	return `一张内联图,约 ${Math.max(1, Math.round(bytes / 1024))} KB`;
+	return packageText("ai.log.visionInlineImage", {
+		kilobytes: Math.max(1, Math.round(bytes / 1024)),
+	});
+}
+
+/** 超时原因用稳定诊断标识，切语言不改变同一失败的去重键。 */
+class VisionTimeoutError extends Error {
+	constructor(readonly timeoutMs: number) {
+		super(`vision_timeout:${timeoutMs}`);
+		this.name = "VisionTimeoutError";
+	}
 }
 
 /** 给一个 promise 套硬超时;超时即 reject。 */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 	return new Promise<T>((resolve, reject) => {
-		const timer = setTimeout(() => reject(new Error(`视觉模型超时(${ms}ms)`)), ms);
+		const timer = setTimeout(() => reject(new VisionTimeoutError(ms)), ms);
 		p.then(
 			(v) => {
 				clearTimeout(timer);
@@ -104,7 +133,18 @@ export async function describeImages(
 				return text.trim() || null;
 			} catch (e) {
 				const reason = e instanceof Error ? e.message : String(e);
-				onWarn?.(`[vision] 第 ${i + 1} 张图没看成(${imageLabel(url)}):${reason}`, reason);
+				onWarn?.(
+					e instanceof VisionTimeoutError
+						? packageText("ai.log.visionTimedOut")
+						: packageText("ai.log.visionImageFailed"),
+					reason,
+					{
+						imageIndex: i + 1,
+						imageLabel: imageLabel(url),
+						error: e,
+						...(e instanceof VisionTimeoutError ? { timeoutMs: e.timeoutMs } : {}),
+					},
+				);
 				return null;
 			}
 		}),

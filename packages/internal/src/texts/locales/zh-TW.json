@@ -63,5 +63,8 @@
 	"ai.log.extraParamsInvalid": "AI額外請求參數無效，忽略本次額外參數",
 	"ai.log.extraParamsDropped": "已忽略會覆寫請求結構的AI額外參數",
 	"ai.log.extraParamsJson": "額外請求參數不是有效的 JSON：{value0}",
-	"ai.log.extraParamsObject": "額外請求參數必須是 JSON 物件，例如 {example}"
+	"ai.log.extraParamsObject": "額外請求參數必須是 JSON 物件，例如 {example}",
+	"ai.log.visionImageFailed": "視覺圖片處理失敗，本輪該圖片沒有描述",
+	"ai.log.visionTimedOut": "視覺圖片處理逾時，本輪該圖片沒有描述",
+	"ai.log.visionInlineImage": "一張內嵌圖片，約 {kilobytes} KB"
 }

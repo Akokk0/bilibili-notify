@@ -790,28 +790,6 @@ export const NON_DISPLAY_TEXTS = {
 			),
 		},
 		{
-			owner: "imageLabel",
-			text: pinnedSource("`一张内联图,约 @{Math.max(1, Math.round(bytes / 1024))} KB`"),
-			reason: "只交给 onWarn 的视觉调用诊断；describeImages 捕获后只记日志",
-			site: pinnedSource("return `一张内联图,约 @{Math.max(1, Math.round(bytes / 1024))} KB`;"),
-		},
-		{
-			owner: "withTimeout/timer",
-			text: pinnedSource("`视觉模型超时(@{ms}ms)`"),
-			reason: "只交给 onWarn 的视觉调用诊断；describeImages 捕获后只记日志",
-			site: pinnedSource(
-				"timer = setTimeout(() => reject(new Error(`视觉模型超时(@{ms}ms)`)), ms)",
-			),
-		},
-		{
-			owner: "describeImages",
-			text: pinnedSource("`[vision] 第 @{i + 1} 张图没看成(@{imageLabel(url)}):@{reason}`"),
-			reason: "只交给 onWarn 的视觉调用诊断；describeImages 捕获后只记日志",
-			site: pinnedSource(
-				"onWarn?.(`[vision] 第 @{i + 1} 张图没看成(@{imageLabel(url)}):@{reason}`, reason);",
-			),
-		},
-		{
 			owner: "renderImageDescriptions/lines",
 			text: pinnedSource("`图 @{i + 1}:(未能识别,这张图没看成)`"),
 			reason: "视觉副模型及主模型的素材框定提示词；ADR-0037 决策11",

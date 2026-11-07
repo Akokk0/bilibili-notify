@@ -14,6 +14,12 @@
  * 那层框定。定界符和那句声明是唯一的框。
  */
 
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	PACKAGE_DICTS,
+	type PackageTextKey,
+} from "@bilibili-notify/internal/texts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { describeImages, renderImageDescriptions } from "../vision";
 
@@ -70,7 +76,11 @@ describe("describeImages — 并发与容错", () => {
 		await describeImages(["a", "b"], { call, model: "vl", onWarn });
 
 		expect(onWarn).toHaveBeenCalledTimes(2);
-		expect(onWarn.mock.calls[0]?.[0]).toContain("402 余额不足");
+		expect(onWarn.mock.calls[0]?.[1]).toBe("402 余额不足");
+		expect(onWarn.mock.calls[0]?.[2]).toMatchObject({
+			imageIndex: 1,
+			error: { message: "402 余额不足" },
+		});
 	});
 
 	it("data URL 形式的图失败时,告警里不带整张图的 base64,只说一张内联图和大小量级;普通地址照旧", async () => {
@@ -88,12 +98,14 @@ describe("describeImages — 并发与容错", () => {
 			onWarn,
 		});
 
-		const [inlineWarn, remoteWarn] = onWarn.mock.calls.map((c) => c[0] as string);
+		const [inlineWarn, remoteWarn] = onWarn.mock.calls.map(
+			(c) => (c[2] as { imageLabel: string }).imageLabel,
+		);
 		expect(inlineWarn).not.toContain(base64.slice(0, 40));
 		expect(inlineWarn).not.toContain("base64");
 		expect(inlineWarn).toContain("一张内联图");
 		expect(inlineWarn).toContain("约 30 KB");
-		expect(inlineWarn).toContain("402 余额不足");
+		expect(onWarn.mock.calls[0]?.[1]).toBe("402 余额不足");
 		expect(inlineWarn?.length).toBeLessThan(200);
 		expect(remoteWarn).toContain("https://i0.hdslb.com/bfs/a.png");
 	});
@@ -152,4 +164,87 @@ describe("renderImageDescriptions — 注入防护", () => {
 		expect(renderImageDescriptions([null, null])).toBe("");
 		expect(renderImageDescriptions([])).toBe("");
 	});
+});
+
+it("视觉失败说明随语言切换，原异常与图片序号独立，日志地址不带凭据/query", async () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: PACKAGE_DICTS,
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "maid",
+	});
+	const binding = bindPackageText(texts.t);
+	try {
+		const error = new Error("raw vision failure", { cause: new Error("socket closed") });
+		const call = vi.fn(async () => {
+			throw error;
+		});
+		const onWarn = vi.fn();
+		for (const [locale, message] of [
+			["zh-CN", "视觉图片处理失败，本轮该图片没有描述"],
+			["en", "Image description failed; no description for this image this cycle"],
+			["ja", "画像の説明に失敗したため、今回はこの画像の説明がありません"],
+			["zh-TW", "視覺圖片處理失敗，本輪該圖片沒有描述"],
+		] as const) {
+			texts.set({ locale, voice: "maid" });
+			await expect(
+				describeImages(["https://user:pass@image.test/a.png?token=secret"], {
+					call,
+					model: "vl",
+					onWarn,
+				}),
+			).resolves.toEqual([null]);
+			expect(onWarn).toHaveBeenLastCalledWith(message, "raw vision failure", {
+				imageIndex: 1,
+				imageLabel: "https://image.test/a.png",
+				error,
+			});
+			const details = onWarn.mock.lastCall?.[2] as { error: unknown };
+			expect(details.error).toBe(error);
+		}
+		expect(call).toHaveBeenCalledTimes(4);
+		expect(onWarn).toHaveBeenCalledTimes(4);
+	} finally {
+		binding.dispose();
+	}
+});
+
+it("视觉超时理由不随语言改变，超时后仍回null且保留等待时长", async () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: PACKAGE_DICTS,
+		fallback: "zh-CN",
+		locale: "en",
+		voice: "maid",
+	});
+	const binding = bindPackageText(texts.t);
+	vi.useFakeTimers();
+	try {
+		const reasons: string[] = [];
+		for (const [locale, message] of [
+			["en", "Image description timed out; no description for this image this cycle"],
+			["ja", "画像の説明がタイムアウトしたため、今回はこの画像の説明がありません"],
+		] as const) {
+			texts.set({ locale, voice: "maid" });
+			const onWarn = vi.fn();
+			const running = describeImages(["data:image/png;base64,QUJD"], {
+				call: () => new Promise<string>(() => {}),
+				model: "vl",
+				timeoutMs: 20,
+				onWarn,
+			});
+			await vi.advanceTimersByTimeAsync(20);
+			await expect(running).resolves.toEqual([null]);
+			expect(onWarn.mock.lastCall?.[0]).toBe(message);
+			expect(onWarn.mock.lastCall?.[2]).toMatchObject({
+				imageIndex: 1,
+				timeoutMs: 20,
+				error: { name: "VisionTimeoutError" },
+			});
+			reasons.push(onWarn.mock.lastCall?.[1] as string);
+		}
+		expect(new Set(reasons).size).toBe(1);
+	} finally {
+		binding.dispose();
+		vi.useRealTimers();
+	}
 });

@@ -36,7 +36,12 @@ import {
 	type VisionToolContext,
 } from "./tools";
 import { formatUsageLine, readTokenUsage, type TokenUsage } from "./usage";
-import { describeImages, renderImageDescriptions, type VisionCaller } from "./vision";
+import {
+	describeImages,
+	renderImageDescriptions,
+	type VisionCaller,
+	type VisionWarning,
+} from "./vision";
 import {
 	formatWebSearchResults,
 	sourceRefsOf,
@@ -831,8 +836,12 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/** 视觉失败按「失败原因」去重。 */
-	private warnVisionOnce(msg: string, reason: string): void {
-		this.warnOnce(`vision:${reason}`, msg);
+	private warnVisionOnce(msg: string, reason: string, details: VisionWarning): void {
+		this.warnOnce(`vision:${reason}`, msg, {
+			...details,
+			imageLabel: this.sanitizeErr(details.imageLabel),
+			error: this.logError(details.error),
+		});
 	}
 
 	/**
@@ -856,9 +865,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 			model,
 			contextText,
 			timeoutMs: VISION_TIMEOUT_MS,
-			onWarn: (msg, reason) => {
+			onWarn: (msg, reason, details) => {
 				failed++;
-				this.warnVisionOnce(msg, reason);
+				this.warnVisionOnce(msg, reason, details);
 			},
 		});
 		if (usages.length > 0) {

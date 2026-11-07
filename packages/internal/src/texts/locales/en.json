@@ -63,5 +63,8 @@
 	"ai.log.extraParamsInvalid": "Invalid AI extra request parameters; ignoring them for this call",
 	"ai.log.extraParamsDropped": "Ignored AI extra parameters that would overwrite the request structure",
 	"ai.log.extraParamsJson": "Extra request parameters are not valid JSON: {value0}",
-	"ai.log.extraParamsObject": "Extra request parameters must be a JSON object, for example {example}"
+	"ai.log.extraParamsObject": "Extra request parameters must be a JSON object, for example {example}",
+	"ai.log.visionImageFailed": "Image description failed; no description for this image this cycle",
+	"ai.log.visionTimedOut": "Image description timed out; no description for this image this cycle",
+	"ai.log.visionInlineImage": "Inline image, approximately {kilobytes} KB"
 }

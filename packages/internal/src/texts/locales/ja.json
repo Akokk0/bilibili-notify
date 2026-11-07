@@ -63,5 +63,8 @@
 	"ai.log.extraParamsInvalid": "AIの追加リクエストパラメーターが無効なため、今回の呼び出しでは無視します",
 	"ai.log.extraParamsDropped": "リクエスト構造を上書きするAI追加パラメーターを無視しました",
 	"ai.log.extraParamsJson": "追加リクエストパラメーターは有効なJSONではありません: {value0}",
-	"ai.log.extraParamsObject": "追加リクエストパラメーターはJSONオブジェクトである必要があります。例: {example}"
+	"ai.log.extraParamsObject": "追加リクエストパラメーターはJSONオブジェクトである必要があります。例: {example}",
+	"ai.log.visionImageFailed": "画像の説明に失敗したため、今回はこの画像の説明がありません",
+	"ai.log.visionTimedOut": "画像の説明がタイムアウトしたため、今回はこの画像の説明がありません",
+	"ai.log.visionInlineImage": "インライン画像、約{kilobytes} KB"
 }
