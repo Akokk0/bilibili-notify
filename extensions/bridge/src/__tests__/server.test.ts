@@ -1,3 +1,4 @@
+import { bridgeTexts, CHINESE } from "./bridge-texts.js";
 /**
  * WS 端点 —— 桥连进来的那条长连接。
  *
@@ -252,6 +253,7 @@ describe("/bridge 端点", () => {
 	async function boot(over: Partial<Parameters<typeof createBridgeServer>[0]> = {}) {
 		server?.dispose();
 		server = createBridgeServer({
+			i18n: CHINESE,
 			logger: SILENT,
 			// 宿主那面的 `setInterval`:真定时器 + 一个摘得掉的把手,这一层要的就这么多。
 			// 心跳与看门狗的用例量的是真实时间,所以不能换成攒回调的假的。
@@ -306,6 +308,24 @@ describe("/bridge 端点", () => {
 		server.dispose();
 		for (const socket of sockets) socket.destroy();
 		await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+	});
+
+	it("连接日志按当前语言输出，标识结构化保留且不记录 token", async () => {
+		const i18n = bridgeTexts("en");
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+		await boot({ i18n, logger });
+		await handshaken();
+		expect(logger.info).toHaveBeenCalledExactlyOnceWith(
+			"Bridge connected",
+			expect.objectContaining({ event: "session.connected", linkId: CONNECTION_ID }),
+		);
+		i18n.setLocale("ja");
+		server.disconnect(CONNECTION_ID, BRIDGE_CLOSE_CODES.revoked);
+		expect(logger.info).toHaveBeenLastCalledWith("連携の接続が切断されました", {
+			event: "session.disconnected",
+			linkId: CONNECTION_ID,
+		});
+		expect(JSON.stringify(logger.info.mock.calls)).not.toContain(TOKEN);
 	});
 
 	// ---- 鉴权在 upgrade ----------------------------------------------------

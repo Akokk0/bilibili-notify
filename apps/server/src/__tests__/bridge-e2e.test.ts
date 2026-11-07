@@ -491,6 +491,47 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		}
 	});
 
+	it("切语言时清单与已有桥视图一起更新，不重连且保留插件原名", async () => {
+		await handshake();
+		try {
+			for (const [locale, name, address, connected, suffix] of [
+				["en", "Bot framework bridge", "BN address", "Connected", " bot online"],
+				["ja", "ボットフレームワーク連携", "BN アドレス", "接続済み", " 個の bot がオンライン"],
+				["zh-TW", "機器人框架橋接", "BN 位址", "已連線", " 個 bot 在線"],
+				["zh-CN", "机器人框架桥接", "BN 地址", "已连接", " 个 bot 在线"],
+			]) {
+				const changed = await fetch(`${handle?.url}/api/settings`, {
+					method: "PATCH",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ core: { locale } }),
+				});
+				expect(changed.status).toBe(200);
+				await expectStatusEventually((status) => {
+					expect(status.page?.[0]).toMatchObject({ block: { type: "copy", label: address } });
+					const slot = status.items?.links?.[LINK_ID];
+					if (!slot || !("view" in slot)) throw new Error("missing bridge item");
+					expect(slot.view.status).toEqual({ tone: "ok", text: connected });
+					expect(status.summary?.text).toEqual([{ b: "1" }, suffix]);
+					expect(JSON.stringify(slot.view.subtitle)).toContain("家里那台 koishi v0.1.0");
+				});
+				const list = await fetch(`${handle?.url}/api/ext`);
+				const body = (await list.json()) as { extensions: { id: string; name: string }[] };
+				expect(body.extensions.find((ext) => ext.id === "bridge")?.name).toBe(name);
+				const pushed = testPush();
+				const frame = await client?.next();
+				expect(frame).toMatchObject({ type: "send", botId: BOT_ID });
+				client?.send({ type: "result", id: frame?.id, ok: true });
+				expect((await pushed).status).toBe(200);
+			}
+		} finally {
+			await fetch(`${handle?.url}/api/settings`, {
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ core: { locale: "zh-CN" } }),
+			});
+		}
+	});
+
 	/** 现在拓展什么状态 —— 这一口会先把还没落地的开关 settle 掉,是「等它装完」的正路。 */
 	async function bridgeState(): Promise<string | undefined> {
 		const res = await fetch(`${handle?.url}/api/ext`);

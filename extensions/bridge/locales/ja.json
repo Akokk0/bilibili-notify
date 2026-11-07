@@ -1,0 +1,114 @@
+{
+	"view.connected": "接続済み",
+	"view.mismatched": "接続済み（種類が不一致）",
+	"view.configuredKind": "設定: {kind}",
+	"view.connectedAt": "接続",
+	"view.remote": "接続元: {address}",
+	"view.changeKind": "{kind} に変更",
+	"view.mismatchLead": "この接続は {configured} として設定されていますが、接続元は {actual} を申告しています。",
+	"view.mismatchHint": "別のフレームワークのプラグインに token を入力した可能性があります。BN は両方の連携を同じように扱うため送受信できますが、名前が一致するよう片方の設定を修正してください。",
+	"view.bots": "接続中の bot",
+	"view.emptyBots": "連携は接続済みですが、bot がありません。フレームワーク側でアカウントにログインしてください。",
+	"view.unlisted": "ほかに {count} 個の bot があります。この表には最大 {limit} 行まで表示します。表示されていない bot も通知先ページで接続として追加できます。",
+	"view.disconnected": "未接続",
+	"view.noSession": "この token を使用している接続はありません。",
+	"view.setupPrefix": "プラグインに BN アドレス ",
+	"view.setupSuffix": " と上記の token を入力してください。token が違うと 401、アドレスに到達できないと接続できません。どちらもこの接続一覧には表示されません。",
+	"view.noToken": "token が未設定です。接続すると 401 が返り、プラグインは設定エラーと判断して再試行しません。token を再生成し、BN アドレスとともにプラグインへ入力してください。",
+	"view.newTokenSuffix": " と、新しく生成した token を入力してください。",
+	"view.paused": "無効",
+	"view.pausedNoToken": "無効になっており、token も未設定です。接続は 401 になるため、有効にするだけでは復旧しません。token を生成し、BN アドレスとともにプラグインへ入力してください。",
+	"view.pausedHint": "無効です。この token で接続すると 503 が返ります。連携は間隔を空けて再試行し、有効にすると再接続します。",
+	"view.onlineSuffix#other": " 個の bot がオンライン",
+	"view.address": "BN アドレス",
+	"view.addressNotePrefix": "このアドレスには、",
+	"view.bridgeMachine": "連携を実行するマシン",
+	"view.addressNoteMiddle": " からアクセスできる必要があります。BN が NAS 上の場合は ",
+	"view.addressNoteSuffix": " を指定しないでください。",
+	"capability.atAll": "全員メンション",
+	"capability.inbound": "個別チャットのコマンド受信",
+	"capability.forward": "まとめて転送",
+	"capability.miniAppCard": "ミニアプリカード",
+	"capability.shareCardLinks": "共有カードのリンク",
+	"capability.markdown": "Markdown",
+	"error.notBridge": "連携の接続ではありません",
+	"error.linkRemoved": "この接続で使用していた接続設定は削除されています",
+	"error.linkDisabled": "接続「{name}」は無効です",
+	"error.linkDisconnected": "接続「{name}」は未接続です",
+	"error.botMissing": "連携に bot {botId} がありません",
+	"error.sessionOnly": "連携はセッション宛てにのみ送信できます",
+	"error.disconnected": "連携は未接続です",
+	"error.connectionLost": "連携の接続が切断されました",
+	"error.receiptTimeout": "{timeout} ms 以内に送信結果が届きませんでした",
+	"error.pingTimeout": "{timeout} ms 以内に pong が届きませんでした",
+	"capability.unreported": "連携からこの機能の報告がありません",
+	"capability.noAtAll": "この bot は全員メンションに対応していません（連携からの報告）",
+	"capability.noInbound": "この bot は返信の受信に対応していません（連携からの報告）",
+	"capability.noNativeShare": "この bot はミニアプリカードに対応していません（連携からの報告）",
+	"http.notFound": "画像が見つかりません",
+	"log.sendFailed": "連携フレームの送信に失敗しました",
+	"log.disconnected": "連携の接続が切断されました",
+	"log.terminated": "連携のハートビートがタイムアウトしたため、接続を終了します",
+	"log.duplicateHello": "hello フレームが重複したため、接続を閉じます",
+	"log.incompatible": "連携プロトコルのバージョンに互換性がないため、接続を閉じます",
+	"log.disabledDuringHandshake": "ハンドシェイク中に無効になったため、接続を拒否します",
+	"log.replaced": "連携の接続が新しい接続に置き換えられました",
+	"log.connected": "連携の接続が確立しました",
+	"log.unknownFrame": "不明な種類の連携フレームを無視します",
+	"log.malformedFrame": "連携フレームの形式が無効なため、接続を閉じます",
+	"log.beforeHello": "hello より先に別のフレームを受信したため、接続を閉じます",
+	"log.unknownResult": "処理中のリクエストに対応しない結果を無視します",
+	"log.helloTimeout": "連携の hello がタイムアウトしたため、接続を閉じます",
+	"log.socketError": "連携のソケットエラー",
+	"log.unauthorized": "連携の認証に失敗しました",
+	"log.disabled": "接続設定が無効のため、連携の接続を保留します",
+	"log.botsUpdated": "連携の bot 一覧を更新しました",
+	"log.unboundInbound": "接続に紐付けられていない bot の受信メッセージを無視します",
+	"log.disabledInbound": "無効な接続の受信メッセージを無視します",
+	"log.blobMissing": "一度限りの画像が存在しないか、取得済み、または期限切れです",
+	"$manifest": {
+		"name": "ボットフレームワーク連携",
+		"description": "koishi / AstrBot で設定済みの bot を BN で使います。プラグインに BN アドレスと token を入力すると接続します。",
+		"contributes": {
+			"push": {
+				"label": "ボットフレームワーク連携",
+				"shortLabel": "連携"
+			}
+		},
+		"settings": {
+			"fields": {
+				"links": {
+					"label": "連携の接続設定",
+					"itemLabel": "接続設定",
+					"description": "接続設定を追加し、生成された token と BN アドレスを koishi / AstrBot のプラグインに入力してください。",
+					"removeWarning": "プラグインが接続できなくなり、その bot を使う接続からも送信できなくなります。",
+					"newItemCopy": {
+						"extensionUrl": {
+							"label": "BN アドレス"
+						}
+					},
+					"fields": {
+						"bridgeKind": {
+							"label": "連携の種類",
+							"description": "ダッシュボードの表示名にのみ影響します。どちらの連携も同じプロトコルを使用します。"
+						},
+						"name": {
+							"label": "名前",
+							"placeholder": "例: 自宅の koishi"
+						},
+						"enabled": {
+							"label": "有効"
+						},
+						"token": {
+							"label": "token",
+							"description": "token 全文はこのときだけ表示されます。保存後は先頭と末尾のみ表示されます。紛失した場合は再生成してください。"
+						}
+					}
+				}
+			}
+		}
+	},
+	"error.frameObject": "フレームがオブジェクトではありません",
+	"error.frameType": "フレームに type がありません",
+	"error.unknownFrame": "不明なフレームの種類: {type}"
+}

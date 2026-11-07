@@ -1,0 +1,114 @@
+{
+	"view.connected": "已連線",
+	"view.mismatched": "已連線，但類型不符",
+	"view.configuredKind": "設定：{kind}",
+	"view.connectedAt": "已連線",
+	"view.remote": "來自 {address}",
+	"view.changeKind": "改為 {kind}",
+	"view.mismatchLead": "這條接入設定為 {configured}，連入的橋接卻回報 {actual}。",
+	"view.mismatchHint": "可能把 token 填到另一端的外掛了。收發仍可使用，BN 對兩種橋接的處理相同；建議修改其中一端，讓面板名稱一致。",
+	"view.bots": "橋接提供的 bot",
+	"view.emptyBots": "橋接已連線，但目前沒有 bot，請先在框架端登入帳號。",
+	"view.unlisted": "還有 {count} 個 bot 未列出，表格最多顯示 {limit} 列，仍可在推送目標頁選為連線。",
+	"view.disconnected": "未連線",
+	"view.noSession": "目前沒有橋接使用此 token 連線。",
+	"view.setupPrefix": "外掛端需填入 BN 位址 ",
+	"view.setupSuffix": " 與上方的 token。token 錯誤會收到 401，位址不通則無法連線，兩者都不會出現在這份連線清單。",
+	"view.noToken": "尚未設定 token。橋接連入只會收到 401，外掛會視為設定錯誤而不再重試。請重新產生 token，連同 BN 位址填入外掛。",
+	"view.newTokenSuffix": " 與新產生的 token。",
+	"view.paused": "已停用",
+	"view.pausedNoToken": "已停用且尚未設定 token，連入只會收到 401，單靠啟用無法恢復。請先產生 token，連同 BN 位址填入外掛。",
+	"view.pausedHint": "已停用，使用此 token 連入會收到 503；橋接會間隔重試，啟用後即可恢復。",
+	"view.onlineSuffix#other": " 個 bot 在線",
+	"view.address": "BN 位址",
+	"view.addressNotePrefix": "這是",
+	"view.bridgeMachine": "橋接所在的機器",
+	"view.addressNoteMiddle": "必須能存取的位址；BN 在 NAS 上時請勿填 ",
+	"view.addressNoteSuffix": "。",
+	"capability.atAll": "@全體",
+	"capability.inbound": "接收私訊指令",
+	"capability.forward": "合併轉傳",
+	"capability.miniAppCard": "小程式卡片",
+	"capability.shareCardLinks": "分享卡片連結",
+	"capability.markdown": "Markdown",
+	"error.notBridge": "這不是橋接連線",
+	"error.linkRemoved": "此連線使用的接入已刪除",
+	"error.linkDisabled": "接入「{name}」已停用",
+	"error.linkDisconnected": "接入「{name}」未連線",
+	"error.botMissing": "橋接目前沒有這個 bot（{botId}）",
+	"error.sessionOnly": "橋接僅可傳送至會話目標",
+	"error.disconnected": "橋接未連線",
+	"error.connectionLost": "橋接已斷線",
+	"error.receiptTimeout": "橋接未在 {timeout}ms 內回報傳送結果",
+	"error.pingTimeout": "橋接未在 {timeout}ms 內回覆 pong",
+	"capability.unreported": "橋接尚未回報此能力",
+	"capability.noAtAll": "橋接回報此 bot 無法 @全體",
+	"capability.noInbound": "橋接回報此 bot 無法接收回覆",
+	"capability.noNativeShare": "橋接回報此 bot 無法傳送小程式卡片",
+	"http.notFound": "找不到圖片",
+	"log.sendFailed": "傳送橋接訊框失敗",
+	"log.disconnected": "橋接連線已中斷",
+	"log.terminated": "橋接心跳逾時，終止連線",
+	"log.duplicateHello": "收到重複的 hello 訊框，關閉連線",
+	"log.incompatible": "橋接協定版本不相容，關閉連線",
+	"log.disabledDuringHandshake": "接入於交握期間停用，拒絕連線",
+	"log.replaced": "舊橋接連線已由新連線取代",
+	"log.connected": "橋接連線已建立",
+	"log.unknownFrame": "忽略未知類型的橋接訊框",
+	"log.malformedFrame": "橋接訊框格式無效，關閉連線",
+	"log.beforeHello": "在 hello 之前收到其他訊框，關閉連線",
+	"log.unknownResult": "忽略不屬於待處理請求的回報",
+	"log.helloTimeout": "等待橋接 hello 逾時，關閉連線",
+	"log.socketError": "橋接連線發生通訊端錯誤",
+	"log.unauthorized": "橋接交握驗證失敗",
+	"log.disabled": "接入已停用，暫不接受橋接連線",
+	"log.botsUpdated": "橋接 bot 清單已更新",
+	"log.unboundInbound": "忽略未綁定連線的 bot 輸入訊息",
+	"log.disabledInbound": "忽略已停用連線的輸入訊息",
+	"log.blobMissing": "一次性圖片不存在、已取用或已過期",
+	"$manifest": {
+		"name": "機器人框架橋接",
+		"description": "將 koishi / AstrBot 中已設定的機器人連接至 BN，在外掛填入 BN 位址與 token 即可連線。",
+		"contributes": {
+			"push": {
+				"label": "機器人框架橋接",
+				"shortLabel": "橋接"
+			}
+		},
+		"settings": {
+			"fields": {
+				"links": {
+					"label": "橋接接入",
+					"itemLabel": "接入",
+					"description": "在此新增接入，將產生的 token 與 BN 位址填入 koishi / AstrBot 外掛即可連線。",
+					"removeWarning": "另一端的外掛將無法連線，使用其 bot 的連線也將無法傳送。",
+					"newItemCopy": {
+						"extensionUrl": {
+							"label": "BN 位址"
+						}
+					},
+					"fields": {
+						"bridgeKind": {
+							"label": "橋接類型",
+							"description": "僅影響面板顯示名稱，兩種橋接使用相同協定。"
+						},
+						"name": {
+							"label": "名稱",
+							"placeholder": "例如「家中的 koishi」"
+						},
+						"enabled": {
+							"label": "啟用"
+						},
+						"token": {
+							"label": "token",
+							"description": "token 全文僅在此時顯示，儲存後只顯示頭尾；遺失時請重新產生。"
+						}
+					}
+				}
+			}
+		}
+	},
+	"error.frameObject": "訊框不是物件",
+	"error.frameType": "訊框沒有 type",
+	"error.unknownFrame": "未知訊框類型：{type}"
+}

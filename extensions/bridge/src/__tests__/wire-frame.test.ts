@@ -1,3 +1,4 @@
+import { CHINESE } from "./bridge-texts.js";
 /**
  * 刻画测试 — 桥适配器发给对端的**线上帧内容**(`NotificationPayload` → `message`)。
  *
@@ -116,6 +117,7 @@ function harness(markdown: "supported" | "unknown" = "supported") {
 		dispose() {},
 	} as unknown as BridgeServer;
 	const adapter = createBridgeAdapter({
+		i18n: CHINESE,
 		server,
 		links: () => [link],
 		mountPath: "/ext/bridge",

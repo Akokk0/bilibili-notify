@@ -10,7 +10,7 @@
  * 单边演进;后者反了,一条畸形帧被当成正常帧喂进 BN 内部。
  */
 
-import type { FailureCode, Result } from "@bilibili-notify/extension";
+import type { ExtensionI18n, FailureCode, Result } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
 import { z } from "zod";
 import {
@@ -168,22 +168,22 @@ const KNOWN_FRAME_TYPES: ReadonlySet<string> = new Set(BRIDGE_TO_SERVER_FRAME_TY
 
 function describeIssues(error: z.ZodError): string {
 	return error.issues
-		.map((issue) => `${issue.path.length ? issue.path.join(".") : "(根)"}: ${issue.message}`)
+		.map((issue) => `${issue.path.length ? issue.path.join(".") : "(root)"}: ${issue.message}`)
 		.join("; ");
 }
 
-export function parseBridgeFrame(raw: unknown): BridgeFrameParseResult {
+export function parseBridgeFrame(raw: unknown, t: ExtensionI18n["t"]): BridgeFrameParseResult {
 	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-		return fail("invalid", "帧不是一个对象");
+		return fail("invalid", t("error.frameObject"));
 	}
 	const type = (raw as { type?: unknown }).type;
 	if (typeof type !== "string") {
-		return fail("invalid", "帧没有 type");
+		return fail("invalid", t("error.frameType"));
 	}
 	// 认不认识要在 zod 之前判:判别联合对没见过的 type 只会回一条「不是这几个之一」,
 	// 分不出「桥比我新」与「这是垃圾」—— 而这两者的处置一个是忽略、一个是断连。
 	if (!KNOWN_FRAME_TYPES.has(type)) {
-		return fail("unsupported", `不认识的帧类型: ${type}`);
+		return fail("unsupported", t("error.unknownFrame", { type }));
 	}
 	const parsed = BridgeFrameSchema.safeParse(raw);
 	if (!parsed.success) {

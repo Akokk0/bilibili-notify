@@ -1,0 +1,115 @@
+{
+	"view.connected": "Connected",
+	"view.mismatched": "Connected, but bridge type differs",
+	"view.configuredKind": "Configured: {kind}",
+	"view.connectedAt": "connected",
+	"view.remote": "From {address}",
+	"view.changeKind": "Change to {kind}",
+	"view.mismatchLead": "This link is configured as {configured}, but the connected peer reports {actual}.",
+	"view.mismatchHint": "The token may have been entered in the other framework’s plugin. Sending and receiving still work, because BN handles both bridge types identically. Update one side so the names match.",
+	"view.bots": "Connected bots",
+	"view.emptyBots": "The bridge is connected, but has no bots. Sign in to an account in the framework.",
+	"view.unlisted": "{count} more bots are not shown; this table displays up to {limit} rows. They are still available when adding push connections.",
+	"view.disconnected": "Disconnected",
+	"view.noSession": "No bridge is currently connected with this token.",
+	"view.setupPrefix": "Enter both values in the plugin: BN address ",
+	"view.setupSuffix": " and the token above. An incorrect token returns 401; an unreachable address prevents connection. Neither attempt appears in this connection list.",
+	"view.noToken": "No token has been set. Connection attempts return 401, which the plugin treats as a configuration error and does not retry. Generate a token and enter it with the BN address in the plugin.",
+	"view.newTokenSuffix": " and the newly generated token.",
+	"view.paused": "Disabled",
+	"view.pausedNoToken": "Disabled, with no token set. Connection attempts return 401, so enabling this link alone will not restore it. Generate a token and enter it with the BN address in the plugin.",
+	"view.pausedHint": "Disabled. Connection attempts with this token return 503. The bridge retries with backoff and reconnects when enabled.",
+	"view.onlineSuffix#one": " bot online",
+	"view.onlineSuffix#other": " bots online",
+	"view.address": "BN address",
+	"view.addressNotePrefix": "This address must be reachable from ",
+	"view.bridgeMachine": "the bridge machine",
+	"view.addressNoteMiddle": "; do not use ",
+	"view.addressNoteSuffix": " when BN runs on a NAS.",
+	"capability.atAll": "@everyone",
+	"capability.inbound": "Private commands",
+	"capability.forward": "Merged forwards",
+	"capability.miniAppCard": "Mini app cards",
+	"capability.shareCardLinks": "Share card links",
+	"capability.markdown": "Markdown",
+	"error.notBridge": "This is not a bridge connection",
+	"error.linkRemoved": "The link used by this connection has been removed",
+	"error.linkDisabled": "Link “{name}” is disabled",
+	"error.linkDisconnected": "Link “{name}” is disconnected",
+	"error.botMissing": "The bridge does not currently have bot {botId}",
+	"error.sessionOnly": "The bridge only sends to session targets",
+	"error.disconnected": "The bridge is disconnected",
+	"error.connectionLost": "The bridge disconnected",
+	"error.receiptTimeout": "No delivery receipt within {timeout} ms",
+	"error.pingTimeout": "No pong within {timeout} ms",
+	"capability.unreported": "The bridge has not reported this capability",
+	"capability.noAtAll": "The bridge reports that this bot cannot mention everyone",
+	"capability.noInbound": "The bridge reports that this bot cannot receive replies",
+	"capability.noNativeShare": "The bridge reports that this bot cannot send mini app cards",
+	"http.notFound": "Image not found",
+	"log.sendFailed": "Failed to send bridge frame",
+	"log.disconnected": "Bridge disconnected",
+	"log.terminated": "Bridge heartbeat timed out; terminating connection",
+	"log.duplicateHello": "Duplicate hello frame; closing connection",
+	"log.incompatible": "Incompatible bridge protocol version; closing connection",
+	"log.disabledDuringHandshake": "Link disabled during handshake; rejecting connection",
+	"log.replaced": "Bridge connection replaced by a newer connection",
+	"log.connected": "Bridge connected",
+	"log.unknownFrame": "Ignoring unknown bridge frame type",
+	"log.malformedFrame": "Invalid bridge frame; closing connection",
+	"log.beforeHello": "Frame received before hello; closing connection",
+	"log.unknownResult": "Ignoring receipt for an unknown request",
+	"log.helloTimeout": "Timed out waiting for bridge hello; closing connection",
+	"log.socketError": "Bridge socket error",
+	"log.unauthorized": "Bridge authentication failed",
+	"log.disabled": "Link disabled; bridge connection deferred",
+	"log.botsUpdated": "Bridge bot list updated",
+	"log.unboundInbound": "Ignoring inbound message from an unbound bot",
+	"log.disabledInbound": "Ignoring inbound message for a disabled connection",
+	"log.blobMissing": "One-time image is missing, consumed or expired",
+	"$manifest": {
+		"name": "Bot framework bridge",
+		"description": "Use bots configured in koishi / AstrBot with BN. Enter the BN address and token in the plugin to connect.",
+		"contributes": {
+			"push": {
+				"label": "Bot framework bridge",
+				"shortLabel": "Bridge"
+			}
+		},
+		"settings": {
+			"fields": {
+				"links": {
+					"label": "Bridge links",
+					"itemLabel": "Link",
+					"description": "Add a link here, then enter its token and BN address in the koishi / AstrBot plugin to connect.",
+					"removeWarning": "The plugin will no longer connect, and connections using its bots will no longer send messages.",
+					"newItemCopy": {
+						"extensionUrl": {
+							"label": "BN address"
+						}
+					},
+					"fields": {
+						"bridgeKind": {
+							"label": "Bridge type",
+							"description": "Only changes the label in the dashboard. Both bridge types use the same protocol."
+						},
+						"name": {
+							"label": "Name",
+							"placeholder": "For example: Home koishi"
+						},
+						"enabled": {
+							"label": "Enabled"
+						},
+						"token": {
+							"label": "token",
+							"description": "The full token is only shown now. After saving, only its first and last characters are visible. Generate a new token if lost."
+						}
+					}
+				}
+			}
+		}
+	},
+	"error.frameObject": "Frame is not an object",
+	"error.frameType": "Frame has no type",
+	"error.unknownFrame": "Unknown frame type: {type}"
+}

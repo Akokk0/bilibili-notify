@@ -1,3 +1,4 @@
+import { CHINESE } from "./bridge-texts.js";
 /**
  * 桥交给面板的视图(ADR-0019 决策 20 / 26–31)—— 今天面板里为桥手写的那些派生(四种样子、
  * 「对不上」、bot 表、没连上的提示),迁过去以后由桥自己算好交出去。
@@ -59,7 +60,7 @@ function session(over: Partial<BridgeSession> = {}): BridgeSession {
 }
 
 const item = (links: BridgeLink[], sessions: Record<string, BridgeSession>, id = "a1") =>
-	bridgeView(links, (linkId) => sessions[linkId]).items?.links?.[id];
+	bridgeView(links, (linkId) => sessions[linkId], CHINESE).items?.links?.[id];
 
 describe("bridgeView", () => {
 	it("连上了:已连接、种类当药丸、副标题是「名字 v版本 · N 分钟前连上 · 来自 地址」", () => {
@@ -78,14 +79,17 @@ describe("bridgeView", () => {
 	});
 
 	it("连上了:bot 表 —— 图标先用插件报的,没有查桥自己的小表,都没有退回两个字", () => {
-		const view = bridgeView([link()], () =>
-			session({
-				bots: [
-					bot({ botId: "1", platform: "telegram", icon: PNG }),
-					bot({ botId: "2", platform: "onebot" }),
-					bot({ botId: "3", platform: "kook", name: undefined, selfId: undefined }),
-				],
-			}),
+		const view = bridgeView(
+			[link()],
+			() =>
+				session({
+					bots: [
+						bot({ botId: "1", platform: "telegram", icon: PNG }),
+						bot({ botId: "2", platform: "onebot" }),
+						bot({ botId: "3", platform: "kook", name: undefined, selfId: undefined }),
+					],
+				}),
+			CHINESE,
 		);
 		const table = view.items?.links?.a1?.blocks?.[0];
 		if (table?.type !== "table") throw new Error("应该是一张表");
@@ -123,16 +127,19 @@ describe("bridgeView", () => {
 	 * (决策 39)。同一张图 —— 同一平台的桥自带图标、插件给几个 bot 报的同一枚 —— 只放一份,跨接入也是。
 	 */
 	it("同一张图只放一份:同一平台的几个 bot、两条接入之间都共用那一个键", () => {
-		const view = bridgeView([link(), link({ id: "a2" })], (id) =>
-			session({
-				linkId: id,
-				bots: [
-					bot({ botId: `${id}-1`, platform: "onebot" }),
-					bot({ botId: `${id}-2`, platform: "onebot" }),
-					bot({ botId: `${id}-3`, platform: "telegram", icon: PNG }),
-					bot({ botId: `${id}-4`, platform: "telegram", icon: PNG }),
-				],
-			}),
+		const view = bridgeView(
+			[link(), link({ id: "a2" })],
+			(id) =>
+				session({
+					linkId: id,
+					bots: [
+						bot({ botId: `${id}-1`, platform: "onebot" }),
+						bot({ botId: `${id}-2`, platform: "onebot" }),
+						bot({ botId: `${id}-3`, platform: "telegram", icon: PNG }),
+						bot({ botId: `${id}-4`, platform: "telegram", icon: PNG }),
+					],
+				}),
+			CHINESE,
 		);
 		expect(Object.values(view.images ?? {}).sort()).toEqual([platformIcon("onebot"), PNG].sort());
 		const keys = ["a1", "a2"].flatMap((id) => {
@@ -144,7 +151,11 @@ describe("bridgeView", () => {
 	});
 
 	it("一个 bot 都没带图 —— 视图里没有 images 这一格", () => {
-		const view = bridgeView([link()], () => session({ bots: [bot({ platform: "kook" })] }));
+		const view = bridgeView(
+			[link()],
+			() => session({ bots: [bot({ platform: "kook" })] }),
+			CHINESE,
+		);
 		expect(view.images).toBeUndefined();
 	});
 
@@ -245,6 +256,7 @@ describe("bridgeView", () => {
 					a1: session({ bots: [bot(), bot({ botId: "2" })] }),
 					a2: session({ linkId: "a2", bots: [bot()] }),
 				})[id],
+			CHINESE,
 		);
 		expect(view.summary).toEqual({ tone: "ok", text: [{ b: "3" }, " 个 bot 在线"] });
 	});
@@ -297,7 +309,7 @@ describe("bridgeView", () => {
 
 		it("201 个 bot:表里画 200 行,表下面说一句还有 1 个没列;列表页那句照旧按全数", () => {
 			const bots = Array.from({ length: 201 }, (_, i) => bot({ botId: `b${i}`, name: `bot ${i}` }));
-			const view = bridgeView([link()], () => session({ bots }));
+			const view = bridgeView([link()], () => session({ bots }), CHINESE);
 			const blocks = view.items?.links?.a1?.blocks ?? [];
 			const table = blocks[0];
 			if (table?.type !== "table") throw new Error("应该是一张表");
@@ -317,7 +329,7 @@ describe("bridgeView", () => {
 	});
 
 	it("页级:BN 地址一行(值由 BN 在浏览器里现算)", () => {
-		const page = bridgeView([], () => undefined).page;
+		const page = bridgeView([], () => undefined, CHINESE).page;
 		expect(page).toEqual([
 			{
 				type: "copy",

@@ -1,0 +1,114 @@
+{
+	"view.connected": "已连接",
+	"view.mismatched": "连上了,但对不上",
+	"view.configuredKind": "配置:{kind}",
+	"view.connectedAt": "连上",
+	"view.remote": "来自 {address}",
+	"view.changeKind": "改成 {kind}",
+	"view.mismatchLead": "这条接入配的是 {configured},连进来的却自报 {actual}。",
+	"view.mismatchHint": "多半是 token 填到另一头的插件里去了。收发照常能用 —— BN 对两种桥的处理完全相同 —— 但面板上的名字会一直对不上,建议改掉其中一边。",
+	"view.bots": "它驮着的 bot",
+	"view.emptyBots": "桥连上了,但它现在一个 bot 都没有 —— 那头的框架里还没登任何账号。",
+	"view.unlisted": "还有 {count} 个 bot 没列出来 —— 一张表最多画 {limit} 行。它们照样能在推送目标页挑来当连接。",
+	"view.disconnected": "没连上",
+	"view.noSession": "现在没有桥用这个 token 连着。",
+	"view.setupPrefix": "插件那头要填两样:BN 地址 ",
+	"view.setupSuffix": " 与上面这个 token。填错 token 的话插件会收到 401;地址不通则是连不上 —— 两种都不会在这里留下记录。",
+	"view.noToken": "还没有 token —— 桥连过来只会收到 401,插件会当成配置错、不会自己重试。先「重新生成」一个 token,连同 BN 地址填进插件那头。",
+	"view.newTokenSuffix": " 与新生成的那个 token。",
+	"view.paused": "已停用",
+	"view.pausedNoToken": "停用了,而且还没有 token —— 桥连过来只会收到 401,插件会当成配置错、不再重连,光启用回不来。先生成一个 token,连同 BN 地址填进插件那头。",
+	"view.pausedHint": "停用了 —— 桥用这个 token 连过来会被回 503,它会自己退避重连,启用就回来。",
+	"view.onlineSuffix#other": " 个 bot 在线",
+	"view.address": "BN 地址",
+	"view.addressNotePrefix": "这是",
+	"view.bridgeMachine": "桥那台机器",
+	"view.addressNoteMiddle": "要访问得到的地址 —— BN 在 NAS 上时别填 ",
+	"view.addressNoteSuffix": "。",
+	"capability.atAll": "@全体",
+	"capability.inbound": "收私聊指令",
+	"capability.forward": "合并转发",
+	"capability.miniAppCard": "小程序卡",
+	"capability.shareCardLinks": "分享卡链接",
+	"capability.markdown": "markdown",
+	"error.notBridge": "不是桥连接",
+	"error.linkRemoved": "这条连接绑的那条接入已经删了",
+	"error.linkDisabled": "接入「{name}」已停用",
+	"error.linkDisconnected": "接入「{name}」没连着",
+	"error.botMissing": "桥上现在没有这个 bot({botId})",
+	"error.sessionOnly": "桥只发会话目标",
+	"error.disconnected": "桥没连着",
+	"error.connectionLost": "桥断开了",
+	"error.receiptTimeout": "桥 {timeout}ms 内没给回执",
+	"error.pingTimeout": "桥 {timeout}ms 内没回 pong",
+	"capability.unreported": "桥没报这一项",
+	"capability.noAtAll": "桥报的:这个 bot 发不了 @全体",
+	"capability.noInbound": "桥报的:这个 bot 收不到主人的回复",
+	"capability.noNativeShare": "桥报的:这个 bot 发不了小程序卡",
+	"http.notFound": "未找到图片",
+	"log.sendFailed": "发送桥接帧失败",
+	"log.disconnected": "桥接连接已断开",
+	"log.terminated": "桥接心跳超时，终止连接",
+	"log.duplicateHello": "收到重复的 hello 帧，关闭连接",
+	"log.incompatible": "桥接协议版本不兼容，关闭连接",
+	"log.disabledDuringHandshake": "接入在握手期间停用，拒绝连接",
+	"log.replaced": "旧桥接连接已由新连接替换",
+	"log.connected": "桥接连接已建立",
+	"log.unknownFrame": "忽略未知类型的桥接帧",
+	"log.malformedFrame": "桥接帧格式无效，关闭连接",
+	"log.beforeHello": "在 hello 之前收到其他帧，关闭连接",
+	"log.unknownResult": "忽略不属于待处理请求的回执",
+	"log.helloTimeout": "等待桥接 hello 超时，关闭连接",
+	"log.socketError": "桥接连接发生套接字错误",
+	"log.unauthorized": "桥接握手鉴权失败",
+	"log.disabled": "接入已停用，暂不接受桥接连接",
+	"log.botsUpdated": "桥接 bot 名单已更新",
+	"log.unboundInbound": "忽略未绑定连接的 bot 入站消息",
+	"log.disabledInbound": "忽略已停用连接的入站消息",
+	"log.blobMissing": "一次性图片不存在、已取走或已过期",
+	"$manifest": {
+		"name": "机器人框架桥接",
+		"description": "把 koishi / AstrBot 里已经配好的机器人借给 BN 用：插件那头填 BN 地址与 token，桥主动连过来。",
+		"contributes": {
+			"push": {
+				"label": "机器人框架桥接",
+				"shortLabel": "桥接"
+			}
+		},
+		"settings": {
+			"fields": {
+				"links": {
+					"label": "桥接入",
+					"itemLabel": "接入",
+					"description": "在这里建一条,把生成的 token 和 BN 地址填进 koishi / AstrBot 的插件设置里,它就会自己连过来。",
+					"removeWarning": "那一头的插件会连不上,从它借来的 bot 建的那些连接也会发不出去。",
+					"newItemCopy": {
+						"extensionUrl": {
+							"label": "BN 地址"
+						}
+					},
+					"fields": {
+						"bridgeKind": {
+							"label": "哪一种桥",
+							"description": "只影响面板怎么称呼它。两种桥说的是同一套协议,BN 这边的处理完全相同。"
+						},
+						"name": {
+							"label": "名字",
+							"placeholder": "比如「家里那台 koishi」"
+						},
+						"enabled": {
+							"label": "启用"
+						},
+						"token": {
+							"label": "token",
+							"description": "只在这一刻看得到全文。存下之后面板只显示头尾 —— 忘了就重新生成一个。"
+						}
+					}
+				}
+			}
+		}
+	},
+	"error.frameObject": "帧不是一个对象",
+	"error.frameType": "帧没有 type",
+	"error.unknownFrame": "不认识的帧类型: {type}"
+}

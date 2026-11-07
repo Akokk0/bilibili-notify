@@ -1,3 +1,4 @@
+import { CHINESE } from "./bridge-texts.js";
 /**
  * 桥接协议的解析层 —— 帧从**不受信的外部插件**进来,所以这一层是边界。
  *
@@ -58,7 +59,7 @@ function groupInbound(message: Record<string, unknown> = {}) {
 
 describe("parseBridgeFrame", () => {
 	it("认得握手帧 —— bots 与能力表原样带出来", () => {
-		const parsed = parseBridgeFrame(helloFrame());
+		const parsed = parseBridgeFrame(helloFrame(), CHINESE.t);
 		expect(parsed.ok).toBe(true);
 		if (!parsed.ok) return;
 		expect(parsed.frame.type).toBe("hello");
@@ -73,19 +74,19 @@ describe("parseBridgeFrame", () => {
 	});
 
 	it("握手帧缺字段 / 形状不对 → invalid,消息里点得出是哪一格", () => {
-		const noProtocol = parseBridgeFrame(helloFrame({ protocol: undefined }));
+		const noProtocol = parseBridgeFrame(helloFrame({ protocol: undefined }), CHINESE.t);
 		expect(noProtocol).toMatchObject({ ok: false, code: "invalid" });
 		if (noProtocol.ok || noProtocol.code !== "invalid") return;
 		expect(noProtocol.message).toContain("protocol");
 
-		const badBots = parseBridgeFrame(helloFrame({ bots: "一堆" }));
+		const badBots = parseBridgeFrame(helloFrame({ bots: "一堆" }), CHINESE.t);
 		expect(badBots).toMatchObject({ ok: false, code: "invalid" });
 		if (badBots.ok || badBots.code !== "invalid") return;
 		expect(badBots.message).toContain("bots");
 	});
 
 	it("**不认识的帧类型是忽略,不是拒绝** —— 桥比 BN 新时要还连得住", () => {
-		const parsed = parseBridgeFrame({ type: "telemetry", payload: { anything: 1 } });
+		const parsed = parseBridgeFrame({ type: "telemetry", payload: { anything: 1 } }, CHINESE.t);
 		expect(parsed).toEqual({
 			ok: false,
 			code: "unsupported",
@@ -94,45 +95,54 @@ describe("parseBridgeFrame", () => {
 	});
 
 	it("连 type 都没有 / 不是对象 → invalid(这不叫「新帧」,叫垃圾)", () => {
-		expect(parseBridgeFrame({ nope: 1 })).toMatchObject({ ok: false, code: "invalid" });
-		expect(parseBridgeFrame("hello")).toMatchObject({ ok: false, code: "invalid" });
-		expect(parseBridgeFrame(null)).toMatchObject({ ok: false, code: "invalid" });
+		expect(parseBridgeFrame({ nope: 1 }, CHINESE.t)).toMatchObject({ ok: false, code: "invalid" });
+		expect(parseBridgeFrame("hello", CHINESE.t)).toMatchObject({ ok: false, code: "invalid" });
+		expect(parseBridgeFrame(null, CHINESE.t)).toMatchObject({ ok: false, code: "invalid" });
 	});
 
 	it("bots 帧是**全量快照**,空数组合法(桥的宿主里一个 bot 都没有)", () => {
-		const parsed = parseBridgeFrame({ type: "bots", bots: [] });
+		const parsed = parseBridgeFrame({ type: "bots", bots: [] }, CHINESE.t);
 		expect(parsed.ok).toBe(true);
 		if (!parsed.ok || parsed.frame.type !== "bots") return;
 		expect(parsed.frame.bots).toEqual([]);
 	});
 
 	it("bot 少报 capabilities 也合法 —— 归一那步再补成 unknown", () => {
-		const parsed = parseBridgeFrame({
-			type: "bots",
-			bots: [{ botId: "b1", platform: "discord" }],
-		});
+		const parsed = parseBridgeFrame(
+			{
+				type: "bots",
+				bots: [{ botId: "b1", platform: "discord" }],
+			},
+			CHINESE.t,
+		);
 		expect(parsed.ok).toBe(true);
 		if (!parsed.ok || parsed.frame.type !== "bots") return;
 		expect(parsed.frame.bots[0]?.capabilities).toBeUndefined();
 	});
 
 	it("入站帧两支都解得开", () => {
-		const priv = parseBridgeFrame({
-			type: "inbound",
-			botId: "b1",
-			platform: "telegram",
-			message: { scope: "private", userId: "u1", text: "订阅列表" },
-		});
+		const priv = parseBridgeFrame(
+			{
+				type: "inbound",
+				botId: "b1",
+				platform: "telegram",
+				message: { scope: "private", userId: "u1", text: "订阅列表" },
+			},
+			CHINESE.t,
+		);
 		expect(priv.ok).toBe(true);
 		if (!priv.ok || priv.frame.type !== "inbound") return;
 		expect(priv.frame.message).toEqual({ scope: "private", userId: "u1", text: "订阅列表" });
 
-		const group = parseBridgeFrame({
-			type: "inbound",
-			botId: "b1",
-			platform: "telegram",
-			message: { scope: "group", groupId: "g1", userId: "u1", text: "https://b23.tv/x" },
-		});
+		const group = parseBridgeFrame(
+			{
+				type: "inbound",
+				botId: "b1",
+				platform: "telegram",
+				message: { scope: "group", groupId: "g1", userId: "u1", text: "https://b23.tv/x" },
+			},
+			CHINESE.t,
+		);
 		expect(group.ok).toBe(true);
 		if (!group.ok || group.frame.type !== "inbound") return;
 		expect(group.frame.message.scope).toBe("group");
@@ -148,6 +158,7 @@ describe("parseBridgeFrame", () => {
 				cardLinks: ["https://b23.tv/aaa"],
 				miniAppCardLinks: ["https://b23.tv/bbb"],
 			}),
+			CHINESE.t,
 		);
 		expect(withLinks.ok).toBe(true);
 		if (!withLinks.ok || withLinks.frame.type !== "inbound") return;
@@ -155,7 +166,7 @@ describe("parseBridgeFrame", () => {
 		expect(withLinks.frame.message.cardLinks).toEqual(["https://b23.tv/aaa"]);
 		expect(withLinks.frame.message.miniAppCardLinks).toEqual(["https://b23.tv/bbb"]);
 
-		const without = parseBridgeFrame(groupInbound({ text: "https://b23.tv/x" }));
+		const without = parseBridgeFrame(groupInbound({ text: "https://b23.tv/x" }), CHINESE.t);
 		expect(without.ok).toBe(true);
 		if (!without.ok || without.frame.type !== "inbound") return;
 		if (without.frame.message.scope !== "group") return;
@@ -163,7 +174,7 @@ describe("parseBridgeFrame", () => {
 	});
 
 	it("那两格不是字符串数组 → invalid,消息里点得出是哪一格", () => {
-		const parsed = parseBridgeFrame(groupInbound({ cardLinks: "https://b23.tv/aaa" }));
+		const parsed = parseBridgeFrame(groupInbound({ cardLinks: "https://b23.tv/aaa" }), CHINESE.t);
 		expect(parsed).toMatchObject({ ok: false, code: "invalid" });
 		if (parsed.ok || parsed.code !== "invalid") return;
 		expect(parsed.message).toContain("cardLinks");
@@ -185,6 +196,7 @@ describe("parseBridgeFrame", () => {
 					(_, i) => `https://b23.tv/${i}`,
 				),
 			}),
+			CHINESE.t,
 		);
 		expect(many.ok).toBe(true);
 		if (!many.ok || many.frame.type !== "inbound") return;
@@ -201,6 +213,7 @@ describe("parseBridgeFrame", () => {
 					"https://b23.tv/ok",
 				],
 			}),
+			CHINESE.t,
 		);
 		expect(long.ok).toBe(true);
 		if (!long.ok || long.frame.type !== "inbound") return;
@@ -213,42 +226,51 @@ describe("parseBridgeFrame", () => {
 	 * 静默丢掉(不是拒帧),所以这里钉的是「丢掉了」而不是「拒了」。
 	 */
 	it("私聊帧带链接格 → 不拒,但也不带进来(私聊只有指令)", () => {
-		const parsed = parseBridgeFrame({
-			type: "inbound",
-			botId: "b1",
-			platform: "onebot",
-			message: { scope: "private", userId: "u1", text: "x", cardLinks: ["https://b23.tv/a"] },
-		});
+		const parsed = parseBridgeFrame(
+			{
+				type: "inbound",
+				botId: "b1",
+				platform: "onebot",
+				message: { scope: "private", userId: "u1", text: "x", cardLinks: ["https://b23.tv/a"] },
+			},
+			CHINESE.t,
+		);
 		expect(parsed.ok).toBe(true);
 		if (!parsed.ok || parsed.frame.type !== "inbound") return;
 		expect(parsed.frame.message).toEqual({ scope: "private", userId: "u1", text: "x" });
 	});
 
 	it("入站帧的 scope 不认识 → invalid(别静默当私聊)", () => {
-		const parsed = parseBridgeFrame({
-			type: "inbound",
-			botId: "b1",
-			platform: "telegram",
-			message: { scope: "channel", userId: "u1", text: "x" },
-		});
+		const parsed = parseBridgeFrame(
+			{
+				type: "inbound",
+				botId: "b1",
+				platform: "telegram",
+				message: { scope: "channel", userId: "u1", text: "x" },
+			},
+			CHINESE.t,
+		);
 		expect(parsed).toMatchObject({ ok: false, code: "invalid" });
 	});
 
 	it("result 帧把 id 与成败带回来", () => {
-		const okFrame = parseBridgeFrame({ type: "result", id: "r1", ok: true });
+		const okFrame = parseBridgeFrame({ type: "result", id: "r1", ok: true }, CHINESE.t);
 		expect(okFrame.ok).toBe(true);
 		if (!okFrame.ok || okFrame.frame.type !== "result") return;
 		expect(okFrame.frame).toEqual({ type: "result", id: "r1", ok: true });
 
-		const failed = parseBridgeFrame({
-			type: "result",
-			id: "r2",
-			ok: false,
-			code: "rate_limited",
-			message: "发得太快了",
-			upstreamCode: 22009,
-			err: "bot 掉线了",
-		});
+		const failed = parseBridgeFrame(
+			{
+				type: "result",
+				id: "r2",
+				ok: false,
+				code: "rate_limited",
+				message: "发得太快了",
+				upstreamCode: 22009,
+				err: "bot 掉线了",
+			},
+			CHINESE.t,
+		);
 		expect(failed.ok).toBe(true);
 		if (!failed.ok || failed.frame.type !== "result") return;
 		expect(failed.frame).toEqual({
@@ -269,7 +291,7 @@ describe("parseBridgeFrame", () => {
 			[{ upstreamCode: {} }, "upstreamCode"],
 		] as const;
 		for (const [field, path] of cases) {
-			const parsed = parseBridgeFrame({ type: "result", id: "r3", ok: false, ...field });
+			const parsed = parseBridgeFrame({ type: "result", id: "r3", ok: false, ...field }, CHINESE.t);
 			expect(parsed).toMatchObject({ ok: false, code: "invalid" });
 			if (parsed.ok || parsed.code !== "invalid") continue;
 			expect(parsed.message).toContain(path);
@@ -277,7 +299,7 @@ describe("parseBridgeFrame", () => {
 	});
 
 	it("pong 帧", () => {
-		expect(parseBridgeFrame({ type: "pong" })).toEqual({
+		expect(parseBridgeFrame({ type: "pong" }, CHINESE.t)).toEqual({
 			ok: true,
 			frame: { type: "pong" },
 		});

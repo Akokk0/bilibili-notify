@@ -39,7 +39,9 @@ export function activate(ctx: ExtensionContext): void {
 	ctx.onDispose(() => blobs.dispose());
 
 	// 先要挂载点:取图 URL 拿它拼,而 adapter 一注册就可能被叫去发消息。
-	const mountPath = ctx.mount(createBridgeFetchHandler({ store: blobs, logger: ctx.logger }));
+	const mountPath = ctx.mount(
+		createBridgeFetchHandler({ store: blobs, logger: ctx.logger, i18n: ctx.i18n }),
+	);
 
 	// 接入名单住设置里,**现读**:面板上重新生成 token,下一次连接立刻按新的判。
 	const settings = ctx.settings(BridgeSettingsSchema);
@@ -54,6 +56,7 @@ export function activate(ctx: ExtensionContext): void {
 
 	const server = createBridgeServer({
 		logger: ctx.logger,
+		i18n: ctx.i18n,
 		// 心跳与看门狗那两只定时器从 ctx 走 —— 裸 `setInterval` 是禁止的(决策 11)。
 		ctx,
 		serverVersion: ctx.hostVersion,
@@ -66,14 +69,12 @@ export function activate(ctx: ExtensionContext): void {
 		// 要等它自己重连才恢复。要不要解析在本地判(link-previewer 自己会看开关)。
 		inbound: () => ({ private: true, group: "with-links" }),
 		onInbound: (session, frame) => adapter.deliverInbound(session, frame),
-		onBots: (linkId, bots) => {
+		onBots: () => {
 			// 名单是**会再变的**:插件探完能力会重发一份带答案的快照,bot 上下线也会。不喊
 			// 这一声的话面板上那张能力矩阵永远停在握手那一份 —— 探测结果要切一次页才看得见。
-			ctx.logger.debug(`${linkId} 报了 ${bots.length} 个 bot`);
 			ctx.statusChanged();
 		},
-		onSessionChange: (linkId, connected) => {
-			ctx.logger.info(`${linkId} ${connected ? "已连接" : "已断开"}`);
+		onSessionChange: () => {
 			// 面板那张卡要当场变绿 / 变灰,不能等主人切页。
 			ctx.statusChanged();
 		},
@@ -81,7 +82,7 @@ export function activate(ctx: ExtensionContext): void {
 	ctx.onDispose(() => server.dispose());
 	ctx.onUpgrade(server.upgrade);
 
-	const adapter = createBridgeAdapter({ server, links, mountPath, blobs });
+	const adapter = createBridgeAdapter({ server, links, mountPath, blobs, i18n: ctx.i18n });
 	// 面板上这一档叫什么、什么颜色,写在清单摊平的 `contributes.push` 里(ADR-0019 决策 16);
 	// 适配器自己的 settings schema 随适配器一起登记,连接与入站由宿主经 `start(ctx)` 递进来。
 	ctx.registerPlatformAdapter(adapter);
@@ -92,6 +93,6 @@ export function activate(ctx: ExtensionContext): void {
 	// 面板照着画的视图(ADR-0019 决策 20 / 39):四种样子、「对不上」、bot 表都由这里算好交出去。
 	// 走 `publishView`,回调要同步交回 —— 会话表是现成的内存,本来就不用等。
 	// 设置一动也喊一声 —— 停用 / 换种类之后卡上的话要当场跟着变。
-	ctx.publishView(() => bridgeView(links(), (linkId) => server.getSession(linkId)));
+	ctx.publishView(() => bridgeView(links(), (linkId) => server.getSession(linkId), ctx.i18n));
 	settings.onChange(() => ctx.statusChanged());
 }

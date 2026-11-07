@@ -1,4 +1,5 @@
 import type {
+	ExtensionI18n,
 	ExtensionItemView,
 	ExtensionTableCell,
 	ExtensionView,
@@ -23,14 +24,16 @@ import { BRIDGE_KIND_FACES, type BridgeLink } from "./settings.js";
  * 停用的项状态由 BN 盖成「已停用」(决策 26),这里只管把那张卡上的话说对。
  */
 
-/** 能力项在面板上的叫法。顺序即显示顺序。 */
+type BridgeText = ExtensionI18n["t"];
+
+/** 能力项的取字键。顺序即显示顺序。 */
 const CAPABILITY_LABELS: Readonly<Record<BridgeCapability, string>> = {
-	atAll: "@全体",
-	inbound: "收私聊指令",
-	forward: "合并转发",
-	miniAppCard: "小程序卡",
-	shareCardLinks: "分享卡链接",
-	markdown: "markdown",
+	atAll: "capability.atAll",
+	inbound: "capability.inbound",
+	forward: "capability.forward",
+	miniAppCard: "capability.miniAppCard",
+	shareCardLinks: "capability.shareCardLinks",
+	markdown: "capability.markdown",
 };
 
 /**
@@ -132,6 +135,7 @@ function connectedItem(
 	link: BridgeLink,
 	session: BridgeSession,
 	shelf: ImageShelf,
+	t: BridgeText,
 ): ExtensionItemView {
 	// 方块与药丸印**配置里那一种**,不是桥自报的那一种:两者对不上正是要看见的事
 	// (token 填到另一头的插件里去了),而把自报的印出来会把那个错悄悄抹平。
@@ -144,20 +148,22 @@ function connectedItem(
 	const listed = session.bots.slice(0, VIEW_LIMITS.tableRows);
 	const unlisted = session.bots.length - listed.length;
 	return {
-		status: mismatched ? { tone: "warn", text: "连上了,但对不上" } : { tone: "ok", text: "已连接" },
-		pill: mismatched ? `配置:${link.bridgeKind}` : link.bridgeKind,
+		status: mismatched
+			? { tone: "warn", text: t("view.mismatched") }
+			: { tone: "ok", text: t("view.connected") },
+		pill: mismatched ? t("view.configuredKind", { kind: link.bridgeKind }) : link.bridgeKind,
 		subtitle: joined([
 			nameAndVersion ? clip(nameAndVersion, VIEW_LIMITS.viewTextSegment) : undefined,
-			{ time: isoAt(session.connectedAt), suffix: "连上" },
+			{ time: isoAt(session.connectedAt), suffix: t("view.connectedAt") },
 			session.remoteAddress
-				? clip(`来自 ${session.remoteAddress}`, VIEW_LIMITS.viewTextSegment)
+				? clip(t("view.remote", { address: session.remoteAddress }), VIEW_LIMITS.viewTextSegment)
 				: undefined,
 		]),
 		buttons: mismatched
 			? [
 					{
 						kind: "set",
-						label: `改成 ${KIND_FACES[session.kind]?.label ?? session.kind}`,
+						label: t("view.changeKind", { kind: KIND_FACES[session.kind]?.label ?? session.kind }),
 						set: { bridgeKind: session.kind },
 					},
 				]
@@ -168,8 +174,8 @@ function connectedItem(
 						type: "notice",
 						tone: "warn",
 						text: [
-							{ b: `这条接入配的是 ${link.bridgeKind},连进来的却自报 ${session.kind}。` },
-							"多半是 token 填到另一头的插件里去了。收发照常能用 —— BN 对两种桥的处理完全相同 —— 但面板上的名字会一直对不上,建议改掉其中一边。",
+							{ b: t("view.mismatchLead", { configured: link.bridgeKind, actual: session.kind }) },
+							t("view.mismatchHint"),
 						],
 					},
 				]
@@ -177,16 +183,16 @@ function connectedItem(
 		blocks: [
 			{
 				type: "table",
-				title: "它驮着的 bot",
+				title: t("view.bots"),
 				count: true,
-				empty: "桥连上了,但它现在一个 bot 都没有 —— 那头的框架里还没登任何账号。",
+				empty: t("view.emptyBots"),
 				// 名字那一列定宽:几个 bot 排下来,能力记号得在同一条竖线上起排。
 				columns: [
 					{ kind: "icon" },
 					{ kind: "text", width: 210 },
 					...BRIDGE_CAPABILITIES.map((capability) => ({
 						kind: "tristate" as const,
-						label: CAPABILITY_LABELS[capability],
+						label: t(CAPABILITY_LABELS[capability]),
 					})),
 				],
 				rows: listed.map((bot) => [
@@ -212,7 +218,7 @@ function connectedItem(
 						{
 							type: "notice" as const,
 							tone: "info" as const,
-							text: `还有 ${unlisted} 个 bot 没列出来 —— 一张表最多画 ${VIEW_LIMITS.tableRows} 行。它们照样能在推送目标页挑来当连接。`,
+							text: t("view.unlisted", { count: unlisted, limit: VIEW_LIMITS.tableRows }),
 						},
 					]
 				: []),
@@ -220,21 +226,17 @@ function connectedItem(
 	};
 }
 
-function disconnectedItem(link: BridgeLink): ExtensionItemView {
+function disconnectedItem(link: BridgeLink, t: BridgeText): ExtensionItemView {
 	return {
-		status: { tone: "off", text: "没连上" },
+		status: { tone: "off", text: t("view.disconnected") },
 		pill: link.bridgeKind,
-		subtitle: "现在没有桥用这个 token 连着。",
+		subtitle: t("view.noSession"),
 		// 401 / 连不上这两句放在「没连上」这张卡上 —— 那才是它们真正被需要的时刻。
 		blocks: [
 			{
 				type: "notice",
 				tone: "info",
-				text: [
-					"插件那头要填两样:BN 地址 ",
-					{ host: "extensionUrl" },
-					" 与上面这个 token。填错 token 的话插件会收到 401;地址不通则是连不上 —— 两种都不会在这里留下记录。",
-				],
+				text: [t("view.setupPrefix"), { host: "extensionUrl" }, t("view.setupSuffix")],
 			},
 		],
 	};
@@ -246,17 +248,16 @@ function disconnectedItem(link: BridgeLink): ExtensionItemView {
  * (`tokens.ts`),插件连过来收到 401,按协议当成配置错、不再重连。开着也等不回来,出路只有一条:
  * 先生成一个,连同地址填过去。地址就摆在这张卡上 —— 这正是主人要去填插件的那一刻。
  */
-function tokenlessItem(link: BridgeLink): ExtensionItemView {
+function tokenlessItem(link: BridgeLink, t: BridgeText): ExtensionItemView {
 	return {
-		status: { tone: "off", text: "没连上" },
+		status: { tone: "off", text: t("view.disconnected") },
 		pill: link.bridgeKind,
-		subtitle:
-			"还没有 token —— 桥连过来只会收到 401,插件会当成配置错、不会自己重试。先「重新生成」一个 token,连同 BN 地址填进插件那头。",
+		subtitle: t("view.noToken"),
 		blocks: [
 			{
 				type: "notice",
 				tone: "info",
-				text: ["插件那头要填两样:BN 地址 ", { host: "extensionUrl" }, " 与新生成的那个 token。"],
+				text: [t("view.setupPrefix"), { host: "extensionUrl" }, t("view.newTokenSuffix")],
 			},
 		],
 	};
@@ -269,21 +270,20 @@ function tokenlessItem(link: BridgeLink): ExtensionItemView {
  * 例外是 **token 为空**(脱敏备份恢复回来就是这样):空 token 永远不匹配(`tokens.ts`),upgrade
  * 回的是 401 而不是 503,插件按协议当成配置错、不再重连 —— 这时说「启用就回来」是假话。
  */
-function pausedItem(link: BridgeLink): ExtensionItemView {
+function pausedItem(link: BridgeLink, t: BridgeText): ExtensionItemView {
 	return {
-		status: { tone: "off", text: "已停用" },
+		status: { tone: "off", text: t("view.paused") },
 		pill: link.bridgeKind,
-		subtitle:
-			link.token === ""
-				? "停用了,而且还没有 token —— 桥连过来只会收到 401,插件会当成配置错、不再重连,光启用回不来。先生成一个 token,连同 BN 地址填进插件那头。"
-				: "停用了 —— 桥用这个 token 连过来会被回 503,它会自己退避重连,启用就回来。",
+		subtitle: link.token === "" ? t("view.pausedNoToken") : t("view.pausedHint"),
 	};
 }
 
 export function bridgeView(
 	links: readonly BridgeLink[],
 	sessionOf: (linkId: string) => BridgeSession | undefined,
+	i18n: Pick<ExtensionI18n, "t">,
 ): ExtensionView {
+	const t: BridgeText = (key, values) => i18n.t(key, values);
 	let online = 0;
 	const shelf = imageShelf();
 	const items: Record<string, ExtensionItemView> = {};
@@ -292,27 +292,30 @@ export function bridgeView(
 		if (session) online += session.bots.length;
 		// 停用了但会话还没断干净的那一瞬,照连着的画 —— 状态由 BN 盖成「已停用」。
 		items[link.id] = session
-			? connectedItem(link, session, shelf)
+			? connectedItem(link, session, shelf, t)
 			: !link.enabled
-				? pausedItem(link)
+				? pausedItem(link, t)
 				: link.token === ""
-					? tokenlessItem(link)
-					: disconnectedItem(link);
+					? tokenlessItem(link, t)
+					: disconnectedItem(link, t);
 	}
 	const images = shelf.images();
 	return {
-		summary: { tone: "ok", text: [{ b: String(online) }, " 个 bot 在线"] },
+		summary: {
+			tone: "ok",
+			text: [{ b: String(online) }, t("view.onlineSuffix", { count: online })],
+		},
 		page: [
 			{
 				type: "copy",
-				label: "BN 地址",
+				label: t("view.address"),
 				value: { host: "extensionUrl" },
 				note: [
-					"这是",
-					{ b: "桥那台机器" },
-					"要访问得到的地址 —— BN 在 NAS 上时别填 ",
+					t("view.addressNotePrefix"),
+					{ b: t("view.bridgeMachine") },
+					t("view.addressNoteMiddle"),
 					{ mono: "127.0.0.1" },
-					"。",
+					t("view.addressNoteSuffix"),
 				],
 			},
 		],

@@ -12,6 +12,7 @@ import type {
 	ExtensionContext,
 	ExtensionDevtoolsContext,
 	ExtensionFetchHandler,
+	ExtensionI18n,
 	ExtensionItemView,
 	ExtensionTableCell,
 	ExtensionUpgradeHandler,
@@ -24,6 +25,7 @@ import type {
 } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
 import { WebSocket } from "ws";
+import { CHINESE } from "./bridge-texts.js";
 import { memoryKeyValueStore } from "./memory-key-value-store.js";
 
 const EXTENSION_ID = "bridge";
@@ -95,7 +97,7 @@ export function hostFor(
 	httpServer: HttpServer,
 	connections: () => readonly Connection[],
 	settings: () => unknown,
-	options: { http?: HttpClient; signal?: AbortSignal } = {},
+	options: { http?: HttpClient; signal?: AbortSignal; i18n?: ExtensionI18n } = {},
 ) {
 	const timers: NodeJS.Timeout[] = [];
 	const hooks: Array<() => void | Promise<void>> = [];
@@ -140,12 +142,7 @@ export function hostFor(
 		hostApiVersion: 1,
 		hostVersion: "9.9.9-test",
 		logger: SILENT,
-		// 桥不取字(留给后续),这里只为过类型:键回键本身,语言一直是简中。
-		i18n: {
-			locale: () => "zh-CN",
-			t: (key) => key,
-			onChange: () => ({ dispose() {} }),
-		},
+		i18n: options.i18n ?? CHINESE,
 		state: memoryKeyValueStore(),
 		secrets: memoryKeyValueStore(),
 		signal: options.signal ?? new AbortController().signal,

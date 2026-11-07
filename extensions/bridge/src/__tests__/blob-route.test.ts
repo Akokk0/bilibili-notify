@@ -1,3 +1,4 @@
+import { bridgeTexts, CHINESE } from "./bridge-texts.js";
 /**
  * 一次性取图口的 HTTP 那一半。
  *
@@ -23,10 +24,14 @@ function fakeCtx(): ExtensionContext {
 	} as unknown as ExtensionContext;
 }
 
-function boot() {
+function boot(i18n = CHINESE) {
 	const ctx = fakeCtx();
 	const store = createBridgeBlobStore({ ctx });
-	const handler = createBridgeFetchHandler({ store, logger: ctx.logger });
+	const handler = createBridgeFetchHandler({
+		i18n,
+		store,
+		logger: ctx.logger,
+	});
 	return {
 		store,
 		get: (path: string) => handler(new Request(`http://bn.local${path}`)),
@@ -58,10 +63,17 @@ describe("GET <挂载点>/blob/:id", () => {
 	});
 
 	it("404 的错误体是平铺的 code + message", async () => {
-		const { get } = boot();
-		const res = await get("/blob/0123456789abcdef0123456789abcdef");
-		expect(res.status).toBe(404);
-		expect(await res.json()).toEqual({ code: "not_found", message: "not found" });
+		for (const [locale, message] of [
+			["zh-CN", "未找到图片"],
+			["en", "Image not found"],
+			["ja", "画像が見つかりません"],
+			["zh-TW", "找不到圖片"],
+		] as const) {
+			const { get } = boot(bridgeTexts(locale));
+			const res = await get("/blob/0123456789abcdef0123456789abcdef");
+			expect(res.status).toBe(404);
+			expect(await res.json()).toEqual({ code: "not_found", message });
+		}
 	});
 
 	it("**不许缓存** —— 中间层留一份,取过即焚就等于没焚", async () => {

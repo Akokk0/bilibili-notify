@@ -15,13 +15,14 @@ import { BRIDGE_BLOB_SEGMENT, type BridgeBlobStore } from "./blob.js";
 export interface BridgeBlobRouteOptions {
 	store: BridgeBlobStore;
 	logger: ExtensionContext["logger"];
+	i18n: ExtensionContext["i18n"];
 }
 
 /** `<挂载点>/blob/<id>`,id 那一段不许再有斜杠。 */
 const BLOB_PATH = new RegExp(`^${BRIDGE_BLOB_SEGMENT}/([^/]+)/?$`);
 
-function notFound(): Response {
-	return Response.json({ code: "not_found", message: "not found" }, { status: 404 });
+function notFound(message: string): Response {
+	return Response.json({ code: "not_found", message }, { status: 404 });
 }
 
 /**
@@ -29,18 +30,19 @@ function notFound(): Response {
  * `/ext/bridge/*` 整段都是这个拓展的,没有下一层。
  */
 export function createBridgeFetchHandler(opts: BridgeBlobRouteOptions): ExtensionFetchHandler {
+	const missing = () => notFound(opts.i18n.t("http.notFound"));
 	return (req) => {
-		if (req.method !== "GET") return notFound();
+		if (req.method !== "GET") return missing();
 		const path = new URL(req.url).pathname;
 		const id = BLOB_PATH.exec(path)?.[1];
-		if (id === undefined) return notFound();
+		if (id === undefined) return missing();
 
 		const blob = opts.store.take(id);
 		if (!blob) {
 			// 取过了 / 过期了 / 根本没有 —— 三种都是 404,而且都值得留一行:桥那侧看到的
 			// 只是「图没发出去」,分不清是自己重试了还是慢了一步。
-			opts.logger.debug(`blob ${id} 取不到(取过了 / 过期了 / 没这个 id)`);
-			return notFound();
+			opts.logger.debug(opts.i18n.t("log.blobMissing"), { event: "blob.missing" });
+			return missing();
 		}
 		return new Response(blob.buffer, {
 			headers: {

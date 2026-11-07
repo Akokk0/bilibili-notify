@@ -1,3 +1,4 @@
+import { CHINESE } from "./bridge-texts.js";
 /**
  * 桥 adapter —— 把一条推送译成协议帧,再把回执译回投递结果。
  *
@@ -143,6 +144,7 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 	let connections: Connection[] = [connection()];
 	let links: BridgeLink[] = [link()];
 	const adapter = createBridgeAdapter({
+		i18n: CHINESE,
 		server,
 		links: () => links,
 		mountPath: "/ext/bridge",

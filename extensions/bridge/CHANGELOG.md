@@ -10,6 +10,9 @@
 
 ### Changed
 
+- 清单、设置标签、连接视图、失败说明与运行日志支持简中、繁体、英文和日文，切换语言无需重连
+- 桥接日志采用平实说明与独立诊断参数，连接事件统一在传输层记录，保留错误上下文并继续由宿主脱敏
+
 - 这一版要 BN 1.0 起(拓展契约第 3 版),0.12 装不了;1.0 alpha 期间只进预发布档
 - 协议 1.5:失败回执改带 `code` / `message` / `upstreamCode?`,`error` 帧补 `code`;老插件照常能用,只带 `err` 的旧回执仍收下并记成「原因不明」
 - 插件那一侧:AstrBot 的也有了 —— `astrbot_plugin_bilibili_notify_bridge`(AstrBot 4.14.7 起,仓库 <https://github.com/Akokk0/astrbot_plugin_bilibili_notify_bridge>),建接入时挑 AstrBot 那一档就好。0.0.1 里「AstrBot 这一档面板上选得到,但插件还没写」那句作废

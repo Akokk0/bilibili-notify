@@ -25,6 +25,7 @@ import type { Duplex } from "node:stream";
 import type {
 	Disposable,
 	ExtensionContext,
+	ExtensionI18n,
 	ExtensionUpgrade,
 	ExtensionUpgradeHandler,
 	Logger,
@@ -73,6 +74,7 @@ const DEFAULT_BRIDGE_SEND_TIMEOUT_MS = 30_000;
 const DEFAULT_BRIDGE_PING_TIMEOUT_MS = 5_000;
 
 export interface BridgeServerOptions {
+	i18n: ExtensionI18n;
 	logger: Logger;
 	/**
 	 * 心跳、看门狗、握手窗口与回执超时这几只定时器都从这儿走。**裸 `setInterval` / `setTimeout` 是禁止的**(ADR-0012 决策 11:
@@ -324,6 +326,7 @@ function localAuthority(req: IncomingMessage): string {
 
 export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	const log = opts.logger;
+	const t: ExtensionI18n["t"] = (key, values) => opts.i18n.t(key, values);
 	const handshakeTimeoutMs = opts.handshakeTimeoutMs ?? BRIDGE_HANDSHAKE_TIMEOUT_MS;
 	const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? DEFAULT_BRIDGE_HEARTBEAT_INTERVAL_MS;
 	const heartbeatTimeoutMs = opts.heartbeatTimeoutMs ?? DEFAULT_BRIDGE_HEARTBEAT_TIMEOUT_MS;
@@ -345,7 +348,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			conn.socket.send(JSON.stringify(frame));
 			return true;
 		} catch (err) {
-			log.warn(`bridge ${conn.linkId} send failed: ${String(err)}`);
+			log.warn(t("log.sendFailed"), { event: "frame.send_failed", linkId: conn.linkId }, err);
 			return false;
 		}
 	}
@@ -373,9 +376,10 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			conn.handshakeTimer.dispose();
 			conn.handshakeTimer = undefined;
 		}
-		failPending(conn, "桥断开了");
+		failPending(conn, t("error.connectionLost"));
 		if (sessions.get(conn.linkId) === conn) {
 			sessions.delete(conn.linkId);
+			log.info(t("log.disconnected"), { event: "session.disconnected", linkId: conn.linkId });
 			opts.onSessionChange?.(conn.linkId, false);
 		}
 	}
@@ -390,8 +394,8 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		drop(conn);
 	}
 
-	function terminate(conn: BridgeConn, why: string): void {
-		log.warn(`bridge ${conn.linkId} ${why}; terminating`);
+	function terminate(conn: BridgeConn): void {
+		log.warn(t("log.terminated"), { event: "session.heartbeat_timeout", linkId: conn.linkId });
 		try {
 			conn.socket.terminate();
 		} catch {
@@ -404,17 +408,19 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 
 	function onHello(conn: BridgeConn, frame: BridgeHelloFrame): void {
 		if (conn.hello) {
-			log.warn(`bridge ${conn.linkId} sent a second hello`);
+			log.warn(t("log.duplicateHello"), { event: "frame.duplicate_hello", linkId: conn.linkId });
 			close(conn, BRIDGE_CLOSE_CODES.badFrame, "hello is the first frame, and only once");
 			return;
 		}
 		// 版本先判:那是**永久**的结论(别重连,去升级),而下面那一问是暂时的。反过来的话,
 		// 一个版本根本对不上的插件会被告知「退避重连」,于是拿着同样的老版本一直回来。
 		if (!isBridgeProtocolCompatible(frame.protocol)) {
-			log.warn(
-				`bridge ${conn.linkId} speaks protocol v${frame.protocol.major}.${frame.protocol.minor}, ` +
-					`we speak v${BRIDGE_PROTOCOL_VERSION.major}.${BRIDGE_PROTOCOL_VERSION.minor}`,
-			);
+			log.warn(t("log.incompatible"), {
+				event: "session.incompatible_protocol",
+				linkId: conn.linkId,
+				peerVersion: frame.protocol,
+				hostVersion: BRIDGE_PROTOCOL_VERSION,
+			});
 			close(conn, BRIDGE_CLOSE_CODES.incompatibleProtocol, "incompatible protocol major");
 			return;
 		}
@@ -424,7 +430,10 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		// 码给 `disabled`(可退避重连)而不是 `revoked`:这一问答的是「眼下收不收」,分不出
 		// 「删了」与「关了」;真被删了的话下一次 upgrade 会以 401 把它劝退。
 		if (opts.accepts && !opts.accepts(conn.linkId)) {
-			log.info(`bridge ${conn.linkId} went off during the handshake window`);
+			log.info(t("log.disabledDuringHandshake"), {
+				event: "session.disabled_during_handshake",
+				linkId: conn.linkId,
+			});
 			close(conn, BRIDGE_CLOSE_CODES.disabled, "this link is off");
 			return;
 		}
@@ -443,7 +452,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		// 对不上的重连就能把正在用的会话打下线。
 		const previous = sessions.get(conn.linkId);
 		if (previous && previous !== conn) {
-			log.info(`bridge ${conn.linkId} replaced by a newer connection`);
+			log.info(t("log.replaced"), { event: "session.replaced", linkId: conn.linkId });
 			close(previous, BRIDGE_CLOSE_CODES.replaced, "replaced by a newer connection");
 		}
 		sessions.set(conn.linkId, conn);
@@ -454,7 +463,12 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			server: { version: opts.serverVersion },
 			inbound: opts.inbound(),
 		});
-		log.info(`bridge ${conn.linkId} connected (${conn.hello.kind}, ${conn.bots.length} bot(s))`);
+		log.info(t("log.connected"), {
+			event: "session.connected",
+			linkId: conn.linkId,
+			bridgeKind: conn.hello.kind,
+			botCount: conn.bots.length,
+		});
 		opts.onSessionChange?.(conn.linkId, true);
 		opts.onBots?.(conn.linkId, conn.bots);
 	}
@@ -475,15 +489,23 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			close(conn, BRIDGE_CLOSE_CODES.badFrame, "invalid json");
 			return;
 		}
-		const parsed = parseBridgeFrame(payload);
+		const parsed = parseBridgeFrame(payload, t);
 		if (!parsed.ok) {
 			if (parsed.code === "unsupported") {
 				// 桥比我们新。忽略是协议写死的 —— 断在这里等于每次插件加一种帧就打死老 BN。
 				const type = (payload as { type: string }).type;
-				log.debug(`bridge ${conn.linkId} sent unknown frame "${type}"; ignoring`);
+				log.debug(t("log.unknownFrame"), {
+					event: "frame.unknown_type",
+					linkId: conn.linkId,
+					frameType: type,
+				});
 				return;
 			}
-			log.warn(`bridge ${conn.linkId} sent a malformed frame: ${parsed.message}`);
+			log.warn(t("log.malformedFrame"), {
+				event: "frame.invalid",
+				linkId: conn.linkId,
+				detail: parsed.message,
+			});
 			close(conn, BRIDGE_CLOSE_CODES.badFrame, "malformed frame");
 			return;
 		}
@@ -493,7 +515,11 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			return;
 		}
 		if (!conn.hello) {
-			log.warn(`bridge ${conn.linkId} sent "${frame.type}" before hello`);
+			log.warn(t("log.beforeHello"), {
+				event: "frame.before_hello",
+				linkId: conn.linkId,
+				frameType: frame.type,
+			});
 			close(conn, BRIDGE_CLOSE_CODES.badFrame, "hello must come first");
 			return;
 		}
@@ -501,6 +527,11 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			case "bots": {
 				// 全量快照,整份换掉 —— 增量合并会在丢帧时留下一个永远不消失的幽灵 bot。
 				conn.bots = frame.bots.map(toBot);
+				log.debug(t("log.botsUpdated"), {
+					event: "bots.updated",
+					linkId: conn.linkId,
+					botCount: conn.bots.length,
+				});
 				opts.onBots?.(conn.linkId, conn.bots);
 				break;
 			}
@@ -515,7 +546,11 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				// 断连不合适;而已经结算过的那条投递也不该被翻案。
 				const outcome = sendResultFromReceipt(frame);
 				if (!conn.pending.settle(frame.id, outcome))
-					log.debug(`bridge ${conn.linkId} sent a result for an unknown id`);
+					log.debug(t("log.unknownResult"), {
+						event: "receipt.unknown_request",
+						linkId: conn.linkId,
+						requestId: frame.id,
+					});
 				break;
 			}
 			case "pong": {
@@ -569,14 +604,14 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		conns.add(conn);
 		if (handshakeTimeoutMs > 0) {
 			conn.handshakeTimer = opts.ctx.setTimeout(() => {
-				log.warn(`bridge ${linkId} never sent hello`);
+				log.warn(t("log.helloTimeout"), { event: "session.hello_timeout", linkId });
 				close(conn, BRIDGE_CLOSE_CODES.handshakeTimeout, "handshake timeout");
 			}, handshakeTimeoutMs);
 		}
 		socket.on("message", (raw: RawData) => onMessage(conn, raw));
 		socket.on("close", () => drop(conn));
 		socket.on("error", (err) => {
-			log.warn(`bridge ${linkId} socket error: ${String(err)}`);
+			log.warn(t("log.socketError"), { event: "session.socket_error", linkId }, err);
 			drop(conn);
 		});
 	}
@@ -591,14 +626,14 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		const token = readBearerToken(req);
 		const linkId = token ? opts.resolveToken(token) : null;
 		if (!linkId) {
-			log.warn("bridge upgrade rejected: missing or invalid token");
+			log.warn(t("log.unauthorized"), { event: "session.unauthorized" });
 			reject(socket, "401 Unauthorized");
 			return;
 		}
 		if (opts.accepts && !opts.accepts(linkId)) {
 			// 认得这个 token,只是眼下不收 —— 模块关了 / 这条接入停用了。503 而不是 401:
 			// 插件据此退避重连,用户把开关拨回来,它自己就回来了。
-			log.info(`bridge upgrade deferred: ${linkId} is off`);
+			log.info(t("log.disabled"), { event: "session.disabled", linkId });
 			reject(socket, "503 Service Unavailable");
 			return;
 		}
@@ -629,7 +664,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				() => {
 					const cutoff = Date.now() - heartbeatTimeoutMs;
 					for (const conn of [...conns]) {
-						if (conn.lastSeenAt < cutoff) terminate(conn, "went quiet");
+						if (conn.lastSeenAt < cutoff) terminate(conn);
 					}
 				},
 				Math.max(20, Math.floor(heartbeatTimeoutMs / 2)),
@@ -655,25 +690,25 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 
 	function send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendResult> {
 		const conn = sessions.get(linkId);
-		if (!conn) return Promise.resolve(fail("unavailable", "桥没连着"));
+		if (!conn) return Promise.resolve(fail("unavailable", t("error.disconnected")));
 		const id = randomUUID();
 		return new Promise<BridgeSendResult>((resolve) => {
 			const settle = conn.pending.start(
 				id,
 				sendTimeoutMs,
 				// 帧发出去了、只是没等到回执:消息可能已经送达。
-				fail("indeterminate", `桥 ${sendTimeoutMs}ms 内没给回执`),
+				fail("indeterminate", t("error.receiptTimeout", { timeout: sendTimeoutMs })),
 				resolve,
 			);
 			if (!sendFrame(conn, { type: "send", id, ...request })) {
-				settle(fail("unavailable", "桥没连着"));
+				settle(fail("unavailable", t("error.disconnected")));
 			}
 		});
 	}
 
 	function ping(linkId: string): Promise<BridgePingResult> {
 		const conn = sessions.get(linkId);
-		if (!conn) return Promise.resolve(fail("unavailable", "桥没连着"));
+		if (!conn) return Promise.resolve(fail("unavailable", t("error.disconnected")));
 		const id = randomUUID();
 		const t0 = Date.now();
 		return new Promise<BridgePingResult>((resolve) => {
@@ -682,11 +717,11 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			const settle = conn.pendingPings.start(
 				id,
 				pingTimeoutMs,
-				fail("timeout", `桥 ${pingTimeoutMs}ms 内没回 pong`),
+				fail("timeout", t("error.pingTimeout", { timeout: pingTimeoutMs })),
 				(outcome) => resolve(outcome.ok ? ok({ latencyMs: Date.now() - t0 }) : outcome),
 			);
 			if (!sendFrame(conn, { type: "ping", id })) {
-				settle(fail("unavailable", "桥没连着"));
+				settle(fail("unavailable", t("error.disconnected")));
 			}
 		});
 	}

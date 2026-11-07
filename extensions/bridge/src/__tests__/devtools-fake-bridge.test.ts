@@ -1,3 +1,4 @@
+import { CHINESE } from "./bridge-texts.js";
 /**
  * 假桥客户端 —— 它说的是**桥这套协议**,对家是桥**自己的** `createBridgeServer`:真 HTTP 服务器、
  * 真 upgrade、真握手。断言看的是端点上的真会话与真帧,不是手搭的回声。
@@ -58,6 +59,7 @@ beforeEach(async () => {
 		res.writeHead(404).end();
 	});
 	server = createBridgeServer({
+		i18n: CHINESE,
 		logger: SILENT,
 		ctx: {
 			setInterval: (fn, ms) => {

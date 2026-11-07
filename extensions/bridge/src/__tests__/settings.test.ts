@@ -51,3 +51,43 @@ describe("设置项从规则导出", () => {
 		expect((await builtManifest()).contributes.push.settingsFields).toBeUndefined();
 	});
 });
+
+// This checks the files shipped in the package, including counts and interpolation data.
+describe("随包交付的四语译文", () => {
+	it("每种语言有完整的键与占位符，数量分支符合语言且清单结构完整", async () => {
+		const catalogs = await Promise.all(
+			["zh-CN", "en", "ja", "zh-TW"].map(
+				async (locale) =>
+					JSON.parse(
+						await readFile(new URL(`../../dist/locales/${locale}.json`, import.meta.url), "utf8"),
+					) as Record<string, unknown>,
+			),
+		);
+		function shape(value: unknown, locale: string): unknown {
+			if (typeof value === "string") {
+				expect(value.length).toBeGreaterThan(0);
+				return [...value.matchAll(/\{(\w+)\}/g)].map((one) => one[1]).sort();
+			}
+			if (!value || typeof value !== "object" || Array.isArray(value))
+				throw new Error("Invalid catalog entry");
+			const result: Record<string, unknown> = {};
+			for (const [key, text] of Object.entries(value)) {
+				const [stem, category] = key.split("#");
+				if (!stem) throw new Error("Empty text key");
+				if (category)
+					expect(new Intl.PluralRules(locale).resolvedOptions().pluralCategories).toContain(
+						category,
+					);
+				const entry = shape(text, locale);
+				if (Object.hasOwn(result, stem)) expect(entry).toEqual(result[stem]);
+				result[stem] = entry;
+			}
+			return result;
+		}
+		for (const [i, locale] of ["zh-CN", "en", "ja", "zh-TW"].entries())
+			expect(shape(catalogs[i], locale)).toEqual(shape(catalogs[0], "zh-CN"));
+
+		expect(catalogs[1]?.["view.onlineSuffix#one"]).toBe(" bot online");
+		expect(catalogs[1]?.["view.onlineSuffix#other"]).toBe(" bots online");
+	});
+});

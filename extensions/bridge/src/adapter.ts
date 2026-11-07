@@ -17,6 +17,7 @@ import type {
 	ConnectionCapabilities,
 	DeliveryResult,
 	DestinationRef,
+	ExtensionI18n,
 	NotificationPayload,
 	PayloadSegment,
 	PlatformAdapter,
@@ -42,6 +43,7 @@ import type { BridgeSendRequest, BridgeServer, BridgeSession } from "./server.js
 import type { BridgeLink } from "./settings.js";
 
 export interface BridgeAdapterOptions {
+	i18n: ExtensionI18n;
 	server: BridgeServer;
 	/** 接入名单(设置里那份),**现读**。别缓存 —— 缓存与真相会漂,症状是「面板上停用了它还连着」。 */
 	links(): readonly BridgeLink[];
@@ -174,6 +176,7 @@ export type BridgeAdapter = Omit<PlatformAdapter, "adapterKey" | "descriptor"> &
 
 export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	const { server, blobs } = opts;
+	const t: ExtensionI18n["t"] = (key, values) => opts.i18n.t(key, values);
 	const blobPrefix = `${opts.mountPath}${BRIDGE_BLOB_SEGMENT}`;
 	/**
 	 * 上一轮对账时每条桥接入的 token。**只为了发现「token 被重新生成了」** —— 会话本身
@@ -213,14 +216,14 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		//
 		// 失败的码(ADR-0026):不是我的连接是输入不对;接入删了是「不存在」;被主人停用的要去把开关
 		// 打开,等是等不好的;没连着、bot 暂时不在名单上,等它连回来就好。
-		if (!mine || !settings) return fail("invalid", "不是桥连接");
+		if (!mine || !settings) return fail("invalid", t("error.notBridge"));
 		const link = opts.links().find((candidate) => candidate.id === settings.link);
-		if (!link) return fail("not_found", "这条连接绑的那条接入已经删了");
-		if (!link.enabled) return fail("not_configured", `接入「${link.name}」已停用`);
+		if (!link) return fail("not_found", t("error.linkRemoved"));
+		if (!link.enabled) return fail("not_configured", t("error.linkDisabled", { name: link.name }));
 		const session = server.getSession(link.id);
-		if (!session) return fail("unavailable", `接入「${link.name}」没连着`);
+		if (!session) return fail("unavailable", t("error.linkDisconnected", { name: link.name }));
 		const bot = session.bots.find((candidate) => candidate.botId === settings.botId);
-		if (!bot) return fail("unavailable", `桥上现在没有这个 bot(${settings.botId})`);
+		if (!bot) return fail("unavailable", t("error.botMissing", { botId: settings.botId }));
 		return ok({ connection: mine, link, session, bot });
 	}
 
@@ -228,7 +231,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	function resolve(connection: Connection, destination: DestinationRef): Resolved {
 		const located = locate(connection);
 		if (!located.ok) return located;
-		if (destination.kind !== "session") return fail("invalid", "桥只发会话目标");
+		if (destination.kind !== "session") return fail("invalid", t("error.sessionOnly"));
 		return ok({ bot: located.bot, destination, session: located.session });
 	}
 
@@ -243,9 +246,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	): CapabilitySupport {
 		if (state === "supported") return { state, checkedAt };
 		if (state === "unsupported") {
-			return { state, reason: `桥报的:这个 bot ${unsupportedReason}`, checkedAt };
+			return { state, reason: t(unsupportedReason), checkedAt };
 		}
-		return { state: "unknown", reason: "桥没报这一项" };
+		return { state: "unknown", reason: t("capability.unreported") };
 	}
 
 	/** 桥报的能力翻成宿主那份:宿主问的三项(@全体、收不收得到回复、小程序卡)都在这儿。 */
@@ -253,10 +256,10 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		const { capabilities } = located.bot;
 		const checkedAt = new Date(located.session.connectedAt).toISOString();
 		return {
-			atAll: supportOf(capabilities.atAll, checkedAt, "发不了 @全体"),
-			inbound: supportOf(capabilities.inbound, checkedAt, "收不到主人的回复"),
+			atAll: supportOf(capabilities.atAll, checkedAt, "capability.noAtAll"),
+			inbound: supportOf(capabilities.inbound, checkedAt, "capability.noInbound"),
 			// 内部这一格叫 nativeShare;桥帧的线上名照旧是 `capabilities.miniAppCard`,进 alpha 后两步改。
-			nativeShare: supportOf(capabilities.miniAppCard, checkedAt, "发不了小程序卡"),
+			nativeShare: supportOf(capabilities.miniAppCard, checkedAt, "capability.noNativeShare"),
 		};
 	}
 
@@ -314,13 +317,21 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 			// 只有绑成了连接的 bot 收到的消息才归 BN:没绑的 bot 在 BN 眼里不存在,它收到
 			// 的指令也没有一条连接能拿来回。记 debug 不记 warn —— 桥驮上来的每条都会经这儿。
 			if (!bound) {
-				ctx.logger.debug(`${session.linkId} 上的 ${frame.botId} 没绑成连接,这条消息不收`);
+				ctx.logger.debug(t("log.unboundInbound"), {
+					event: "inbound.unbound",
+					linkId: session.linkId,
+					botId: frame.botId,
+				});
 				return;
 			}
 			// 停用的连接**进也不收**:只拦出的那一半的话,指令照跑、链接照解析、图照渲染,
 			// 一路走到要发回去那步才失败。停用的意思是「这个 bot 现在跟 BN 没关系」。
 			if (!bound.enabled) {
-				ctx.logger.debug(`连接「${bound.name}」已停用,${frame.botId} 这条消息不收`);
+				ctx.logger.debug(t("log.disabledInbound"), {
+					event: "inbound.disabled",
+					connectionId: bound.id,
+					botId: frame.botId,
+				});
 				return;
 			}
 			routeBridgeInbound(frame, { connectionId: bound.id, bots: session.bots }, ctx.inbound);
