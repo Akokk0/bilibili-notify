@@ -88,6 +88,17 @@ describe("MarketplaceIndexSchema", () => {
 });
 
 describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩", () => {
+	it("缺签发时间回标准 invalid 结果", () => {
+		expect(
+			checkMarketplaceIndex(MarketplaceIndexSchema.parse(index({ issuedAt: undefined })), {
+				official: true,
+			}),
+		).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "官方索引缺 issuedAt",
+		});
+	});
 	it("官方:条目 id 不能带命名空间,且必须有 issuedAt", () => {
 		expect(
 			checkMarketplaceIndex(MarketplaceIndexSchema.parse(index()), { official: true }),
@@ -99,12 +110,12 @@ describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩",
 				MarketplaceIndexSchema.parse(index({ extensions: [entry({ id: "alice.bridge" })] })),
 				{ official: true },
 			),
-		).toMatchObject({ ok: false, err: expect.stringContaining("alice.bridge") });
+		).toMatchObject({ ok: false, message: expect.stringContaining("alice.bridge") });
 		expect(
 			checkMarketplaceIndex(MarketplaceIndexSchema.parse(index({ issuedAt: undefined })), {
 				official: true,
 			}),
-		).toMatchObject({ ok: false, err: expect.stringContaining("issuedAt") });
+		).toMatchObject({ ok: false, message: expect.stringContaining("issuedAt") });
 	});
 
 	it("第三方:必须声明 namespace,每个条目都得在自己的命名空间里", () => {
@@ -125,18 +136,18 @@ describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩",
 				}),
 				{ official: false },
 			),
-		).toMatchObject({ ok: false, err: expect.stringContaining("namespace") });
+		).toMatchObject({ ok: false, message: expect.stringContaining("namespace") });
 		// 冒充官方
 		expect(
 			checkMarketplaceIndex(MarketplaceIndexSchema.parse(third), { official: false }),
-		).toMatchObject({ ok: false, err: expect.stringContaining("bridge") });
+		).toMatchObject({ ok: false, message: expect.stringContaining("bridge") });
 		// 冒用别人的命名空间
 		expect(
 			checkMarketplaceIndex(
 				MarketplaceIndexSchema.parse({ ...third, extensions: [entry({ id: "bob.douyin" })] }),
 				{ official: false },
 			),
-		).toMatchObject({ ok: false, err: expect.stringContaining("bob.douyin") });
+		).toMatchObject({ ok: false, message: expect.stringContaining("bob.douyin") });
 	});
 
 	it("同一个 id 一条正式 + 一条预发布 → 放行(两个渠道各留最新那一版)", () => {
@@ -146,7 +157,7 @@ describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩",
 	});
 
 	it("同一个 id 同一档列两遍 → 拒(那一档的「最新版」就没法唯一)", () => {
-		const twice = { ok: false, err: expect.stringContaining("列了两遍") };
+		const twice = { ok: false, message: expect.stringContaining("列了两遍") };
 		expect(check([entry(), entry({ version: "0.0.3" })])).toMatchObject(twice);
 		// `prerelease: false` 与不写是同一档 —— 按字段的真假分档,不是按「写没写」。
 		expect(check([entry(), entry({ version: "0.0.3", prerelease: false })])).toMatchObject(twice);
@@ -177,7 +188,7 @@ describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩",
 	});
 
 	it("同一个 id 同一档同一个契约版本列两遍 → 拒,哪怕别的契约版本夹在中间", () => {
-		const twice = { ok: false, err: expect.stringContaining("列了两遍") };
+		const twice = { ok: false, message: expect.stringContaining("列了两遍") };
 		expect(
 			check([
 				entry({ apiVersion: 2, version: "0.0.1" }),
@@ -194,7 +205,7 @@ describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩",
 	});
 
 	it("prerelease 旗标与版本号对不上 → 拒(第三方源写 alpha 却不标,稳定渠道会看见它)", () => {
-		const mismatch = { ok: false, err: expect.stringContaining("对不上") };
+		const mismatch = { ok: false, message: expect.stringContaining("对不上") };
 		expect(check([entry({ version: "0.1.0-alpha.1" })])).toMatchObject(mismatch);
 		expect(check([entry({ version: "0.1.0", prerelease: true })])).toMatchObject(mismatch);
 	});

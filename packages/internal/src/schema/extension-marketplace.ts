@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fail, ok, type Result } from "../result";
 import { packageText } from "../texts";
 import {
 	ApiRevisionSchema,
@@ -71,7 +72,7 @@ export const MarketplaceIndexSchema = z.object({
 });
 export type MarketplaceIndex = z.infer<typeof MarketplaceIndexSchema>;
 
-export type MarketplaceIndexCheck = { ok: true } | { ok: false; err: string };
+export type MarketplaceIndexResult = Result;
 
 /**
  * 这条条目归哪一档:按 `prerelease` 的真假分,`false` 与不写是同一档。
@@ -99,21 +100,21 @@ export function isPrereleaseEntry(entry: { prerelease?: boolean }): boolean {
 export function checkMarketplaceIndex(
 	index: MarketplaceIndex,
 	opts: { official: boolean },
-): MarketplaceIndexCheck {
+): MarketplaceIndexResult {
 	const seen = new Set<string>();
 	for (const entry of index.extensions) {
 		const tier = isPrereleaseEntry(entry)
 			? packageText("internal.schema.extension-marketplace.1")
 			: packageText("internal.schema.extension-marketplace.2");
 		if (isPrereleaseEntry(entry) !== entry.version.includes("-"))
-			return {
-				ok: false,
-				err: packageText("internal.schema.extension-marketplace.3", {
+			return fail(
+				"invalid",
+				packageText("internal.schema.extension-marketplace.3", {
 					value0: entry.id,
 					value1: entry.version,
 					value2: tier,
 				}),
-			};
+			);
 		// 键别写成 `id@x`,那是 revoked 里 `id@version` 的样子。
 		const key = packageText("internal.schema.extension-marketplace.4", {
 			value0: tier,
@@ -121,37 +122,37 @@ export function checkMarketplaceIndex(
 			value2: entry.apiVersion,
 		});
 		if (seen.has(key))
-			return {
-				ok: false,
-				err: packageText("internal.schema.extension-marketplace.5", {
+			return fail(
+				"invalid",
+				packageText("internal.schema.extension-marketplace.5", {
 					value0: entry.id,
 					value1: tier,
 					value2: entry.apiVersion,
 				}),
-			};
+			);
 		seen.add(key);
 	}
 	if (opts.official) {
 		if (index.issuedAt === undefined)
-			return { ok: false, err: packageText("internal.schema.extension-marketplace.6") };
+			return fail("invalid", packageText("internal.schema.extension-marketplace.6"));
 		const stray = index.extensions.find((entry) => extensionNamespaceOf(entry.id) !== undefined);
 		if (stray)
-			return {
-				ok: false,
-				err: packageText("internal.schema.extension-marketplace.7", { value0: stray.id }),
-			};
-		return { ok: true };
+			return fail(
+				"invalid",
+				packageText("internal.schema.extension-marketplace.7", { value0: stray.id }),
+			);
+		return ok({});
 	}
 	if (!index.namespace)
-		return { ok: false, err: packageText("internal.schema.extension-marketplace.8") };
+		return fail("invalid", packageText("internal.schema.extension-marketplace.8"));
 	const ns = index.namespace;
 	const stray = index.extensions.find((entry) => extensionNamespaceOf(entry.id) !== ns);
 	if (stray)
-		return {
-			ok: false,
-			err: packageText("internal.schema.extension-marketplace.9", { value0: stray.id, value1: ns }),
-		};
-	return { ok: true };
+		return fail(
+			"invalid",
+			packageText("internal.schema.extension-marketplace.9", { value0: stray.id, value1: ns }),
+		);
+	return ok({});
 }
 
 /** 这一版被这个源撤回了吗(`revoked` 里有 `id@version`)。 */

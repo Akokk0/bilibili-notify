@@ -288,7 +288,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 					...base,
 					name: fetched.value.name,
 					ok: false,
-					err: serverText("service.extensions.marketplace.text.6", { value0: checked.err }),
+					err: serverText("service.extensions.marketplace.text.6", { value0: checked.message }),
 				},
 			};
 		}
@@ -344,7 +344,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				if (!shaped.success)
 					return { ok: false, reason: serverText("service.extensions.marketplace.text.8") };
 				const checked = checkMarketplaceIndex(shaped.data, { official: false });
-				if (!checked.ok) return { ok: false, reason: checked.err };
+				if (!checked.ok) return { ok: false, reason: checked.message };
 				return { ok: true, value: shaped.data };
 			},
 		});
