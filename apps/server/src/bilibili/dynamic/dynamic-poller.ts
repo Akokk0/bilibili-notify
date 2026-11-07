@@ -11,8 +11,8 @@ import type {
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
-import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/index.js";
+import { logText } from "../i18n.js";
 import { fetchPostImages, type ImagesDeps, runLimited } from "../images";
 import { watchLoginEdges } from "../login-edges.js";
 import type { ProblemLayers } from "../problem-layers";
@@ -250,7 +250,7 @@ export class DynamicPoller {
 		this.postAnchors = new Map();
 		this.running = true;
 
-		this.logger.info("[start] 动态轮询启动，立即启动检测");
+		this.logger.info(logText("log.bilibili.poller.started"));
 		this.restartDetector();
 
 		// 名单变动由来源经 `syncSubscriptions()` 通知;动态轮询自己只在登录恢复时重建检测器。
@@ -259,7 +259,7 @@ export class DynamicPoller {
 				this.authLost = false;
 				// 前缀与登录失效那条、以及直播引擎的同一对日志统一成 [auth]:
 				// 这是登录生命周期事件,不是检测器自己的事。
-				this.logger.info("[auth] 账号登录已恢复，正在重启动态检测");
+				this.logger.info(logText("log.bilibili.poller.authRestored"));
 				this.restartDetector();
 			},
 
@@ -269,7 +269,7 @@ export class DynamicPoller {
 			onLost: () => {
 				this.authLost = true;
 				this.suspendDetector();
-				this.logger.warn("[auth] 账号登录已失效，动态检测已暂停（登录恢复后重启）");
+				this.logger.warn(logText("log.bilibili.poller.authLost"));
 			},
 		});
 	}
@@ -295,7 +295,7 @@ export class DynamicPoller {
 		if (this.dynamicJob) {
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
-			this.logger.info("[stop] 动态检测任务已停止");
+			this.logger.info(logText("log.bilibili.poller.stopped"));
 		}
 		this.releaseDetectLock();
 		// 表清空:关停那一刻还在抓图的那条动态过不了交出前的重校,不会在停下之后再上报。
@@ -316,9 +316,10 @@ export class DynamicPoller {
 			this.settings.timezone !== settings.timezone;
 		this.settings = settings;
 		if (cronChanged && this.dynamicJob) {
-			this.logger.info(
-				`[detector] schedule changed: cron="${settings.dynamicCron}" timezone="${settings.timezone}"`,
-			);
+			this.logger.info(logText("log.bilibili.poller.scheduleChanged"), {
+				cron: settings.dynamicCron,
+				timezone: settings.timezone,
+			});
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
 			if (this.postAnchors.size > 0) this.startJob();
@@ -353,7 +354,7 @@ export class DynamicPoller {
 		this.detectorRestartTimer = undefined;
 		// Stop existing job first
 		if (this.dynamicJob) {
-			this.logger.info("[detector] 停止旧的动态检测任务");
+			this.logger.info(logText("log.bilibili.poller.replacingJob"));
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
 		}
@@ -361,12 +362,14 @@ export class DynamicPoller {
 		this.applyRoster();
 
 		if (this.postAnchors.size === 0) {
-			this.logger.info("[detector] 没有需要动态检测的订阅对象");
+			this.logger.info(logText("log.bilibili.poller.emptyRoster"));
 			// 这一路不再跑了,不会再有「下一次结果」:它报的风控与拉取失败不再适用,不清的话永远挂着
 			this.dropProblems();
 			return;
 		}
-		this.logger.debug(`[detector] 动态检测 UID 列表：${[...this.postAnchors.keys()].join(", ")}`);
+		this.logger.debug(logText("log.bilibili.poller.roster"), {
+			externalIds: [...this.postAnchors.keys()],
+		});
 		this.startJob();
 	}
 
@@ -387,13 +390,13 @@ export class DynamicPoller {
 			if (next.has(uid)) continue;
 			this.postAnchors.delete(uid);
 			removed++;
-			this.logger.debug(`[detector] 清理已移除 UID：${uid} 的时间戳`);
+			this.logger.debug(logText("log.bilibili.poller.anchorRemoved"), { externalId: uid });
 		}
 		for (const uid of next) {
 			if (this.postAnchors.has(uid)) continue;
 			this.postAnchors.set(uid, Math.floor(DateTime.now().toSeconds()));
 			opened++;
-			this.logger.debug(`[detector] 初始化 UID：${uid} 时间戳`);
+			this.logger.debug(logText("log.bilibili.poller.anchorCreated"), { externalId: uid });
 		}
 		return { opened, removed };
 	}
@@ -406,9 +409,11 @@ export class DynamicPoller {
 		const { opened, removed } = this.applyRoster();
 		if (opened === 0 && removed === 0) return;
 		// per-UID 进出不逐条记 info(批量变更不刷屏),这里收口一条汇总。
-		this.logger.info(
-			`[roster] 动态订阅变更已应用：+${opened} 开启 / -${removed} 移除（当前 ${this.postAnchors.size} 个动态订阅）`,
-		);
+		this.logger.info(logText("log.bilibili.poller.rosterChanged"), {
+			opened,
+			removed,
+			total: this.postAnchors.size,
+		});
 		this.reconcileJob();
 	}
 
@@ -434,16 +439,17 @@ export class DynamicPoller {
 				this.settings.timezone,
 			);
 		} catch (err) {
-			this.logger.error(
-				`[detector] dynamicCron="${this.settings.dynamicCron}" 无法解析,动态检测未启动：${errorMessageOf(err)}`,
-			);
+			this.logger.error(logText("log.bilibili.poller.scheduleInvalid"), {
+				cron: this.settings.dynamicCron,
+				error: err,
+			});
 			// 起不来也是「这一路不再跑了」:之前报的风控 / 拉取失败不会再有下一次结果去清它
 			this.dropProblems();
 			return;
 		}
 		this.dynamicJob = job;
 		this.dynamicJob.start();
-		this.logger.info("[detector] 动态检测任务已启动");
+		this.logger.info(logText("log.bilibili.poller.jobStarted"));
 	}
 
 	/**
@@ -474,7 +480,7 @@ export class DynamicPoller {
 			if (this.dynamicJob?.isActive) {
 				this.dynamicJob.stop();
 				this.dynamicJob = undefined;
-				this.logger.info("[detector] 订阅清空，动态检测任务已停止");
+				this.logger.info(logText("log.bilibili.poller.rosterEmptied"));
 			}
 			// 名单空了,这一路不再跑:撞过风控 / 拉取失败而 job 已停着的(退避中)也要清,见 restartDetector
 			this.dropProblems();
@@ -483,7 +489,9 @@ export class DynamicPoller {
 			// 会去戳仍在风控的端点,击穿退避(退避的全部意义就是不放大风控)。到点后
 			// scheduleDetectorRestart 的回调会用最新快照重启,订阅变更不会丢。
 			// 「登录失效别起」「已经停了别起」两道门收在 startJob 自己身上,所有起 cron 的路共用。
-			this.logger.debug(`[detector] 动态检测 UID 列表：${[...this.postAnchors.keys()].join(", ")}`);
+			this.logger.debug(logText("log.bilibili.poller.roster"), {
+				externalIds: [...this.postAnchors.keys()],
+			});
 			this.startJob();
 		}
 	}
@@ -503,7 +511,7 @@ export class DynamicPoller {
 
 	/** 这一轮的代已经变了(拆过检测器):结果不算数,记一行 debug 丢掉。 */
 	private discardStaleRound(): void {
-		this.logger.debug("[detector] 检测器已停止或重启，本轮结果作废");
+		this.logger.debug(logText("log.bilibili.poller.roundDiscarded"));
 	}
 
 	/**
@@ -516,7 +524,7 @@ export class DynamicPoller {
 		let round: Promise<void>;
 		round = this.detectDynamics()
 			.catch((err: unknown) => {
-				this.logger.error(`[detector] 动态检测执行异常：${errorMessageOf(err)}`);
+				this.logger.error(logText("log.bilibili.poller.roundFailed"), { error: err });
 			})
 			.finally(() => {
 				// 只在锁仍然是这一轮时才清:拆过检测器又起了新一轮的话,旧一轮落定不能把新锁清掉,
@@ -539,7 +547,7 @@ export class DynamicPoller {
 
 	private async detectDynamics(): Promise<void> {
 		const generation = this.detectorGeneration;
-		this.logger.debug("[detector] 开始获取动态信息");
+		this.logger.debug(logText("log.bilibili.poller.fetching"));
 
 		let content: Result<{ data: AllDynamicResponse["data"] }>;
 		try {
@@ -550,7 +558,7 @@ export class DynamicPoller {
 				return;
 			}
 			// Q3:per-tick 拉取失败,cron 下一 tick 自重试、系统继续 → warn 不冒充事故。
-			this.logger.warn(`[api] 获取动态失败：${errorMessageOf(e)}`);
+			this.logger.warn(logText("log.bilibili.poller.feedFailed"), { error: e });
 			return;
 		}
 
@@ -567,7 +575,7 @@ export class DynamicPoller {
 		this.noteFetchSucceeded();
 		// 记在这里而不是入口:上面那两个 return(网络抛错 / 接口错误码)都不算抓到。
 		this.lastSuccessfulFetchAt = Date.now();
-		this.logger.debug("[detector] 成功获取动态信息，开始处理");
+		this.logger.debug(logText("log.bilibili.poller.fetched"));
 
 		// per-uid 记账:每条越过时间线闸的动态**恰好前移一次** —— 交出去的、翻译失败的、抓图/入口出错的、
 		// 开播伪动态、名单外的,一律记它的 pub_ts。作品交出去就算(核心不替来源重放,留着不前移只会下一轮重交一遍)。
@@ -586,7 +594,9 @@ export class DynamicPoller {
 			const author = item.modules?.module_author;
 			const uid = parseUid(author?.mid);
 			if (!uid) {
-				this.logger.debug(`[detector] 跳过无作者 UID 的动态，ID=${item.id_str ?? "unknown"}`);
+				this.logger.debug(logText("log.bilibili.poller.missingAuthor"), {
+					postId: item.id_str ?? "unknown",
+				});
 				continue;
 			}
 
@@ -595,17 +605,24 @@ export class DynamicPoller {
 			const postTime = getDynamicPostTime(author);
 			if (postTime === undefined) {
 				const rawPubTs = (author as { pub_ts?: unknown }).pub_ts;
-				this.logger.warn(
-					`[detector] 跳过无效动态：无法解析发布时间，UID=${uid} ID=${item.id_str ?? "unknown"} type=${item.type ?? "unknown"} pub_ts_type=${typeof rawPubTs} pub_ts=${JSON.stringify(rawPubTs)} pub_time=${JSON.stringify(author.pub_time)}`,
-				);
+				this.logger.warn(logText("log.bilibili.poller.invalidTime"), {
+					externalId: uid,
+					postId: item.id_str ?? "unknown",
+					type: item.type ?? "unknown",
+					timestampType: typeof rawPubTs,
+					timestamp: JSON.stringify(rawPubTs),
+					time: JSON.stringify(author.pub_time),
+				});
 				continue;
 			}
 
 			const name = author.name;
 
-			this.logger.debug(
-				`[detector] 检查动态 UP=${name} UID=${uid} 发布时间=${DateTime.fromSeconds(postTime).toFormat("yyyy-MM-dd HH:mm:ss")}`,
-			);
+			this.logger.debug(logText("log.bilibili.poller.checking"), {
+				authorName: name,
+				externalId: uid,
+				publishedAt: DateTime.fromSeconds(postTime).toFormat("yyyy-MM-dd HH:mm:ss"),
+			});
 
 			if (!this.isDue(uid, postTime)) continue; // already pushed
 
@@ -630,9 +647,11 @@ export class DynamicPoller {
 					try {
 						await this.produce(item, uid, postTime, generation);
 					} catch (e) {
-						this.logger.error(
-							`[detector] 生产动态时意外出错 UID=${uid} ID=${item.id_str ?? "?"}：${errorMessageOf(e)}`,
-						);
+						this.logger.error(logText("log.bilibili.poller.produceFailed"), {
+							externalId: uid,
+							postId: item.id_str ?? "?",
+							error: e,
+						});
 					}
 					markAdvance(uid, postTime);
 				}
@@ -645,18 +664,19 @@ export class DynamicPoller {
 			// 本轮抓图途中名单对过、已经不在表里的 UID(退订、停用、关作品开关):锚点已被清掉,这里再 set 等于
 			// 复活孤儿锚点,跳过(A7)。
 			if (!this.postAnchors.has(uid)) {
-				this.logger.debug(`[timeline] UID=${uid} 已退订，跳过时间线回写（不复活）`);
+				this.logger.debug(logText("log.bilibili.poller.anchorWriteSkipped"), { externalId: uid });
 				continue;
 			}
 			const existing = this.postAnchors.get(uid) ?? 0;
 			if (latest <= existing) continue;
 			this.postAnchors.set(uid, latest);
-			this.logger.debug(
-				`[timeline] 更新时间线 UID=${uid} 时间=${DateTime.fromSeconds(latest).toFormat("yyyy-MM-dd HH:mm:ss")}`,
-			);
+			this.logger.debug(logText("log.bilibili.poller.anchorAdvanced"), {
+				externalId: uid,
+				publishedAt: DateTime.fromSeconds(latest).toFormat("yyyy-MM-dd HH:mm:ss"),
+			});
 		}
 
-		this.logger.debug(`[detector] 本次处理了 ${advanced.size} 个 UP 的动态`);
+		this.logger.debug(logText("log.bilibili.poller.roundCompleted"), { creators: advanced.size });
 	}
 
 	/**
@@ -684,9 +704,11 @@ export class DynamicPoller {
 		try {
 			post = postFromDynamic(item);
 		} catch (e) {
-			this.logger.warn(
-				`[detector] 动态翻译失败,已跳过 UID=${uid} ID=${item.id_str ?? "?"}：${errorMessageOf(e)}`,
-			);
+			this.logger.warn(logText("log.bilibili.poller.translationFailed"), {
+				externalId: uid,
+				postId: item.id_str ?? "?",
+				error: e,
+			});
 			return;
 		}
 		try {
@@ -705,11 +727,11 @@ export class DynamicPoller {
 			// 不交,锚点由调用方照常前移。不用对象身份:update / 重建名单也会换对象,那样会把同一条订阅的动态丢掉。
 			// 抓图那几个 await 期间检测器可能已经被拆掉(停下 / 登录失效 / 重启):旧一轮的结果不再算数。
 			if (this.detectorGeneration !== generation) {
-				this.logger.debug(`[detector] 检测器已停止或重启，放弃交出 UID=${uid} 的这条动态`);
+				this.logger.debug(logText("log.bilibili.poller.stalePost"), { externalId: uid });
 				return;
 			}
 			if (!this.isDue(uid, postTime)) {
-				this.logger.debug(`[detector] UID=${uid} 在抓图途中已退订/被替换，这条动态不交`);
+				this.logger.debug(logText("log.bilibili.poller.replacedPost"), { externalId: uid });
 				return;
 			}
 			this.reportPost(uid, {
@@ -718,9 +740,11 @@ export class DynamicPoller {
 				post: withImages,
 			});
 		} catch (e) {
-			this.logger.warn(
-				`[detector] 交出作品失败 UID=${uid} ID=${item.id_str ?? "?"}：${errorMessageOf(e)}`,
-			);
+			this.logger.warn(logText("log.bilibili.poller.reportFailed"), {
+				externalId: uid,
+				postId: item.id_str ?? "?",
+				error: e,
+			});
 		}
 	}
 
@@ -742,7 +766,11 @@ export class DynamicPoller {
 				// 对死会话每 5 分钟刷一次毫无意义且放大风控)。登录失效由请求层的拦截器
 				// 报给登录流。要不要告诉主人登录失效,由宿主看登录状态决定,
 				// 这里不再发告警。
-				this.logger.error("[api] 账号未登录，动态检测已停止（登录恢复后重启）");
+				this.logger.error(logText("log.bilibili.poller.unauthorized"), {
+					code: failure.code,
+					upstreamCode: failure.upstreamCode,
+					message,
+				});
 				this.authLost = true;
 				// -101 既不是风控拦截、也换了一种性质的失败:这一路之前报过的风控与请求失败不再适用
 				// (不是风控解除,不对主人说「风控已解除」)。通常登录一失效未登录层就已经把它们抹了,
@@ -771,11 +799,19 @@ export class DynamicPoller {
 				}
 				if (!this.riskControlled) {
 					this.riskControlled = true;
-					this.logger.error("[api] 账号被风控，动态检测暂停，将退避后自动重试");
+					this.logger.error(logText("log.bilibili.poller.riskStarted"), {
+						code: failure.code,
+						upstreamCode: failure.upstreamCode,
+						message,
+					});
 				} else {
-					this.logger.debug("[api] 仍处于风控态，退避后继续重探(不重复告警)");
+					this.logger.debug(logText("log.bilibili.poller.riskContinued"), {
+						code: failure.code,
+						upstreamCode: failure.upstreamCode,
+						message,
+					});
 				}
-				this.scheduleDetectorRestart("风控");
+				this.scheduleDetectorRestart(failure);
 				break;
 			}
 			default: {
@@ -797,13 +833,19 @@ export class DynamicPoller {
 				const errorKey = String(errorCode);
 				if (this.transientErrorCode !== errorKey) {
 					this.transientErrorCode = errorKey;
-					this.logger.warn(
-						`[api] 获取动态信息失败，错误码：${errorKey}，${message}，将退避后自动重试`,
-					);
+					this.logger.warn(logText("log.bilibili.poller.fetchRejected"), {
+						code: failure.code,
+						upstreamCode: failure.upstreamCode,
+						message,
+					});
 				} else {
-					this.logger.debug(`[api] 仍是错误码 ${errorKey}，退避后继续重试(不重复告警)`);
+					this.logger.debug(logText("log.bilibili.poller.failureContinued"), {
+						code: failure.code,
+						upstreamCode: failure.upstreamCode,
+						message,
+					});
 				}
-				this.scheduleDetectorRestart(`错误码 ${errorKey}`);
+				this.scheduleDetectorRestart(failure);
 			}
 		}
 	}
@@ -836,13 +878,12 @@ export class DynamicPoller {
 		// 真解除:最后一路这样清掉会补「风控已解除」
 		this.problems.resolveRisk(RISK_PATH);
 		this.problems.resolveFailure({ code: FETCH_FAILED_CODE });
-		const parts: string[] = [];
-		if (this.riskControlled) parts.push("风控已解除");
-		if (this.transientErrorCode !== null) parts.push(`此前错误码：${this.transientErrorCode}`);
-		if (parts.length === 0) return;
+		if (!this.riskControlled && this.transientErrorCode === null) return;
+		const riskRecovered = this.riskControlled;
+		const previousCode = this.transientErrorCode;
 		this.riskControlled = false;
 		this.transientErrorCode = null;
-		this.logger.info(`[api] ${parts.join("，")}，动态检测恢复正常`);
+		this.logger.info(logText("log.bilibili.poller.recovered"), { riskRecovered, previousCode });
 	}
 
 	/**
@@ -850,14 +891,17 @@ export class DynamicPoller {
 	 * 非空即跳过)。到点按最新名单重启检测;`stop()` / 显式 `restartDetector`
 	 * 会作废本计时(避免 dispose 后 / 重启后仍触发陈旧重启)。
 	 */
-	private scheduleDetectorRestart(reason: string): void {
+	private scheduleDetectorRestart(failure: Failure): void {
 		if (this.detectorRestartTimer) return;
-		this.logger.info(
-			`[detector] ${reason},将在 ${DETECTOR_RESTART_BACKOFF_MS / 1000}s 后自动重试动态检测`,
-		);
+		this.logger.info(logText("log.bilibili.poller.backoffScheduled"), {
+			code: failure.code,
+			upstreamCode: failure.upstreamCode,
+			message: failure.message,
+			delayMs: DETECTOR_RESTART_BACKOFF_MS,
+		});
 		this.detectorRestartTimer = this.setTimeout(() => {
 			this.detectorRestartTimer = undefined;
-			this.logger.info("[detector] 退避计时到,重启动态检测");
+			this.logger.info(logText("log.bilibili.poller.backoffEnded"));
 			this.restartDetector();
 		}, DETECTOR_RESTART_BACKOFF_MS);
 	}

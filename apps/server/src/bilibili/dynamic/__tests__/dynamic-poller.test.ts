@@ -26,8 +26,10 @@ import {
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fixedLocale } from "../../../__tests__/support/fixed-locale.js";
+import { logMessage } from "../../../__tests__/support/log-message.js";
+import { i18n } from "../../../i18n/index.js";
 import { makeProblemHarness } from "../../__tests__/problem-harness.js";
 import type { Api } from "../../api/index.js";
 import { failureFromBili } from "../../error-codes.js";
@@ -98,7 +100,7 @@ interface Priv {
 }
 const priv = (e: DynamicPollerType): Priv => e as unknown as Priv;
 
-type LogRec = { level: "info" | "warn" | "error" | "debug"; msg: string };
+type LogRec = { level: "info" | "warn" | "error" | "debug"; msg: string; args: unknown[] };
 
 function makeServiceCtx(): {
 	ctx: ServiceContext;
@@ -110,9 +112,11 @@ function makeServiceCtx(): {
 	const disposers: Array<() => void | Promise<void>> = [];
 	const logs: LogRec[] = [];
 	const timers: Array<() => void> = [];
-	const rec = (level: LogRec["level"]) => (msg: unknown) => {
-		logs.push({ level, msg: String(msg) });
-	};
+	const rec =
+		(level: LogRec["level"]) =>
+		(msg: string, ...args: unknown[]) => {
+			logs.push({ level, msg: logMessage(msg, args), args });
+		};
 	const ctx: ServiceContext = {
 		logger: { info: rec("info"), warn: rec("warn"), error: rec("error"), debug: rec("debug") },
 		setInterval: () => ({ dispose() {} }),
@@ -423,7 +427,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		expect(b.problems.reportRisk).toHaveBeenCalledWith("dynamic", { notify: true });
 		expect(b.problems.reportFailure).not.toHaveBeenCalled();
 		expect(b.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
-		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
+		expect(b.logs.some((l) => l.msg.includes("已安排退避"))).toBe(true);
 	});
 
 	it.each([-412, -799, -509])(
@@ -437,7 +441,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 			expect(b.problems.reportRisk).toHaveBeenCalledWith("dynamic", { notify: true });
 			expect(b.problems.reportFailure).not.toHaveBeenCalled();
 			expect(b.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
-			expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
+			expect(b.logs.some((l) => l.msg.includes("已安排退避"))).toBe(true);
 		},
 	);
 
@@ -456,7 +460,14 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 
 		b.fetchAllDynamic.mockResolvedValue(resp([])); // code 0 → 恢复
 		await detect(b.engine);
-		expect(b.logs.some((l) => l.level === "info" && l.msg.includes("风控已解除"))).toBe(true);
+		expect(
+			b.logs.some(
+				(l) =>
+					l.level === "info" &&
+					l.msg.includes("恢复正常") &&
+					(l.args[0] as { riskRecovered?: boolean })?.riskRecovered === true,
+			),
+		).toBe(true);
 
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine); // 再次风控 → 边沿复位后重新记 error
@@ -505,7 +516,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		);
 		expect(b.problems.reportRisk).not.toHaveBeenCalled();
 		expect(b.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
-		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
+		expect(b.logs.some((l) => l.msg.includes("已安排退避"))).toBe(true);
 	});
 
 	/**
@@ -519,7 +530,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
-		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
+		expect(b.logs.some((l) => l.msg.includes("已安排退避"))).toBe(true);
 	});
 
 	it("风控上报口抛错 → 退避重启同样照排", async () => {
@@ -528,7 +539,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine);
-		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
+		expect(b.logs.some((l) => l.msg.includes("已安排退避"))).toBe(true);
 	});
 
 	/**
@@ -618,9 +629,9 @@ describe("DynamicPoller — 故障恢复", () => {
 		await detect(b.engine);
 		expect(b.problems.reportFailure).toHaveBeenCalledTimes(3);
 		expect(b.logs.filter((l) => l.level === "warn" && l.msg.includes("4101132"))).toHaveLength(1);
-		expect(b.logs.filter((l) => l.level === "debug" && l.msg.includes("仍是错误码"))).toHaveLength(
-			2,
-		);
+		expect(
+			b.logs.filter((l) => l.level === "debug" && l.msg.includes("仍是此前错误")),
+		).toHaveLength(2);
 	});
 
 	it("错误码变了 → 当作新故障再记 warn,上报的文案带新的码", async () => {
@@ -631,7 +642,7 @@ describe("DynamicPoller — 故障恢复", () => {
 		b.fetchAllDynamic.mockResolvedValue(resp([], -403, "访问权限不足"));
 		await detect(b.engine);
 		expect(
-			b.logs.filter((l) => l.level === "warn" && l.msg.includes("获取动态信息失败")),
+			b.logs.filter((l) => l.level === "warn" && l.msg.includes("获取作品列表失败")),
 		).toHaveLength(2);
 		expect(b.problems.reportFailure.mock.lastCall?.[0].message()).toBe(
 			PROBLEM_TEXTS.dynamicFetchFailed.text(-403),
@@ -645,7 +656,14 @@ describe("DynamicPoller — 故障恢复", () => {
 		await detect(b.engine);
 		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
-		expect(b.logs.some((l) => l.level === "info" && l.msg.includes("风控已解除"))).toBe(true);
+		expect(
+			b.logs.some(
+				(l) =>
+					l.level === "info" &&
+					l.msg.includes("恢复正常") &&
+					(l.args[0] as { riskRecovered?: boolean })?.riskRecovered === true,
+			),
+		).toBe(true);
 	});
 
 	it("风控与瞬时错误同时挂着 → 恢复记一行,两样都说到", async () => {
@@ -660,7 +678,7 @@ describe("DynamicPoller — 故障恢复", () => {
 		await detect(b.engine);
 		const recovery = b.logs.filter((l) => l.msg.includes("恢复正常"));
 		expect(recovery).toHaveLength(1);
-		expect(recovery[0]?.msg).toContain("风控");
+		expect(recovery[0]?.args[0]).toEqual({ riskRecovered: true, previousCode: "4101132" });
 		expect(recovery[0]?.msg).toContain("4101132");
 	});
 
@@ -1791,9 +1809,9 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 		b.logs.length = 0;
 		b.engine.syncSubscriptions();
 		const summary = () =>
-			b.logs.filter((l) => l.level === "info" && l.msg.includes("动态订阅变更已应用"));
+			b.logs.filter((l) => l.level === "info" && l.msg.includes("作品订阅变更已应用"));
 		expect(summary()).toHaveLength(1); // 两个人进名单仅一条汇总 info
-		expect(summary()[0]?.msg).toContain("+2 开启");
+		expect(summary()[0]?.args[0]).toEqual({ opened: 2, removed: 0, total: 2 });
 		// 再对一遍、没有进出:什么都不记
 		b.logs.length = 0;
 		b.engine.syncSubscriptions();
@@ -2196,7 +2214,9 @@ it("changes timezone on the same poller without bypassing lost-login or stop", (
 	b.engine.updateSettings(next);
 	expect(old?.isActive).toBe(false);
 	expect(cronMock.instances.at(-1)?.timezone).toBe("Asia/Kathmandu");
-	expect(b.logs.some(({ msg }) => msg.includes('timezone="Asia/Kathmandu"'))).toBe(true);
+	expect(
+		b.logs.some(({ args }) => (args[0] as { timezone?: string })?.timezone === "Asia/Kathmandu"),
+	).toBe(true);
 	const count = cronMock.instances.length;
 	b.engine.updateSettings(next);
 	expect(cronMock.instances).toHaveLength(count);
@@ -2208,4 +2228,30 @@ it("changes timezone on the same poller without bypassing lost-login or stop", (
 	b.engine.stop();
 	b.engine.updateSettings({ ...next, timezone: "UTC" });
 	expect(cronMock.instances.every((job) => !job.isActive)).toBe(true);
+});
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+describe("作品轮询诊断", () => {
+	it("同一轮询器跟随当前语言，保留原异常与cause，失败不交作品", async () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		const error = new Error("raw transport failure", { cause: new Error("socket reset") });
+		b.fetchAllDynamic.mockRejectedValue(error);
+		b.engine.start();
+		for (const [locale, text] of [
+			["zh-CN", "作品列表请求异常，本轮结束，等待下次检测"],
+			["en", "Post feed request failed; ending this round and waiting for the next check"],
+			["ja", "作品一覧の取得で例外が発生したため、今回の処理を終了して次の確認を待ちます"],
+			["zh-TW", "作品列表請求異常，本輪結束，等待下次檢查"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			await b.engine.detectNow();
+			const line = b.logs.filter((l) => l.level === "warn").at(-1);
+			expect(line?.msg).toBe(logMessage(text, [{ error }]));
+			expect((line?.args[0] as { error: Error } | undefined)?.error).toBe(error);
+		}
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(4);
+		expect(b.reportPost).not.toHaveBeenCalled();
+		b.engine.stop();
+	});
 });

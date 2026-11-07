@@ -1387,34 +1387,6 @@ export const NON_DISPLAY_TEXTS = {
 			),
 			slot: pinnedSource(""),
 		},
-		{
-			owner: "DynamicPoller/handleApiError",
-			text: pinnedSource('"风控"'),
-			reason: "退避重启/请求恢复的固定日志片段；用户问题由PROBLEM_TEXTS独立出字",
-			site: pinnedSource('case "rate_limited":\nthis.scheduleDetectorRestart("风控");'),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "DynamicPoller/handleApiError",
-			text: pinnedSource("`错误码 @{errorKey}`"),
-			reason: "退避重启/请求恢复的固定日志片段；用户问题由PROBLEM_TEXTS独立出字",
-			site: pinnedSource("default:\nthis.scheduleDetectorRestart(`错误码 @{errorKey}`);"),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "DynamicPoller/noteFetchSucceeded",
-			text: pinnedSource('"风控已解除"'),
-			reason: "退避重启/请求恢复的固定日志片段；用户问题由PROBLEM_TEXTS独立出字",
-			site: pinnedSource('parts.push("风控已解除");'),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "DynamicPoller/noteFetchSucceeded",
-			text: pinnedSource("`此前错误码：@{this.transientErrorCode}`"),
-			reason: "退避重启/请求恢复的固定日志片段；用户问题由PROBLEM_TEXTS独立出字",
-			site: pinnedSource("parts.push(`此前错误码：@{this.transientErrorCode}`);"),
-			slot: pinnedSource(""),
-		},
 	],
 	"apps/server/src/bilibili/problem-layers.ts": [
 		{
