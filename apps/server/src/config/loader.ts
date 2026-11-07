@@ -5,7 +5,7 @@ import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { atomicWriteFileSync, atomicWriteJsonSync } from "@bilibili-notify/storage";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { shouldRefuseBareAuth } from "../auth/bare-auth-policy.js";
-import { t as serverText, t } from "../i18n/index.js";
+import { logText, t as serverText, t } from "../i18n/index.js";
 import { stderrLineRedacted } from "../logs/console-fallback.js";
 import { type BootstrapConfig, BootstrapConfigSchema } from "./schema.js";
 import { dropLegacyWebDistDir } from "./web-dist.js";
@@ -190,11 +190,13 @@ function dropSeededWebDistDir(yamlPath: string, log: (msg: string) => void): voi
 		// 收拾一行配置不该顺手把他设好的 mode 改掉。
 		const mode = statSync(yamlPath).mode & 0o777;
 		atomicWriteFileSync(yamlPath, text, { mode });
-		log(`[bootstrap] 已移除 ${yamlPath} 里首启动种入的 webDistDir —— dashboard 现在跟着载荷走`);
+		log(logText("log.bootstrap.webDistRemoved", { path: yamlPath }));
 	} catch (err) {
 		log(
-			`[bootstrap] 移除 ${yamlPath} 里的 webDistDir 失败(${err instanceof Error ? err.message : String(err)});` +
-				"不影响启动 —— 该值会被当作「跟着载荷」处理。想彻底清掉就手动删掉那一行。",
+			logText("log.bootstrap.webDistRemoveFailed", {
+				path: yamlPath,
+				error: err instanceof Error ? err.message : String(err),
+			}),
 		);
 	}
 }
@@ -234,7 +236,7 @@ function writeSeedFile(path: string, config: BootstrapConfig, log: (msg: string)
 			mode: 0o600,
 		});
 	}
-	log(`[bootstrap] first boot — seeded bootstrap config from ENV to ${path}`);
+	log(logText("log.bootstrap.seeded", { path }));
 }
 
 /**
@@ -270,13 +272,8 @@ function maybeSeedDashboardCredentials(
 	const username = env.BN_DASHBOARD_USER || "admin";
 	const password = randomBytes(18).toString("base64url");
 	config.auth = { ...config.auth, basicAuth: { username, password } };
-	log(
-		"[bootstrap] dashboard auth 未配置且监听 non-loopback —— 已自动生成登录凭据:\n" +
-			`             username: ${username}\n` +
-			`             password: ${password}\n` +
-			"           凭据已写入 bootstrap yaml(host 端 ./config/bn.config.yaml)。" +
-			"登录后可在系统页修改账号密码。",
-	);
+	// 既有首次启动凭据提示，仅沿调用方的单次启动出口；不另写运行期日志。
+	log(logText("log.bootstrap.credentialsSeeded", { username, password }));
 }
 
 type PathState = "missing" | "directory" | "file";

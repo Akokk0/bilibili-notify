@@ -220,6 +220,13 @@ export function checkDictionaries({
 			const sentences = layers[layer];
 			if (sentences === undefined) continue;
 			for (const [stem, group] of sentences) {
+				if (
+					layer === "maid" &&
+					(stem.startsWith("log.") ||
+						PACKAGE_KEY_ROOTS.some((root) => stem.startsWith(`${root}.log.`)))
+				) {
+					report("log-voice", locale, layer, stem, "日志固定使用平实层，不按交互口吻覆盖");
+				}
 				// 同一句里不许既有不带后缀的、又有带类别的。从严不放宽:一句话在各语言里要么都带数量、
 				// 要么都不带,混着写译者容易漏(漏了的类别运行时拿到的是另一条的话)
 				if (group.bare && group.categories.length > 0) {
@@ -765,5 +772,26 @@ describe("BN 的译文目录", () => {
 		for (const locale of [...COMPLETE_LOCALES, ...MAID_LOCALES, BASE_LOCALE]) {
 			expect(LOCALES).toContain(locale);
 		}
+	});
+});
+
+describe("日志固定平实层", () => {
+	it("宿主和包日志不能在女仆层覆盖，普通交互仍可覆盖", () => {
+		const issues = checkDictionaries({
+			locales: {
+				"zh-CN": {
+					plain: { "log.host.ready": "运行中", "storage.log.ready": "已读取", "a.greet": "你好" },
+					maid: {
+						"log.host.ready": "主人开好啦",
+						"storage.log.ready": "主人读好啦",
+						"a.greet": "主人好",
+					},
+				},
+			},
+		});
+		expect(issues.filter((one) => one.code === "log-voice").map((one) => one.subject)).toEqual([
+			"log.host.ready",
+			"storage.log.ready",
+		]);
 	});
 });

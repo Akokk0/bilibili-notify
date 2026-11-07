@@ -1,1 +1,11 @@
-{}
+{
+	"storage.log.masterReadFailed": "既存のマスターキーを読み取れません。ファイルを保持して読み込みを中止します",
+	"storage.log.masterLoaded": "マスターキーを読み込みました",
+	"storage.log.masterInvalid": "マスターキーファイルの形式が無効です（64 桁の16進数が必要）。再生成により既存の認証情報を復号できなくなるため、再ログインまたは再設定が必要です",
+	"storage.log.masterCreating": "有効なマスターキーがないため、新しいキーを生成します",
+	"storage.log.masterCreated": "新しいマスターキーをディスクに保存しました",
+	"storage.log.passphraseDerived": "注入されたパスフレーズから AES-256 キーを導出しました",
+	"storage.log.saltReadFailed": "既存の kdf.salt を読み取れません。ファイルを保持して読み込みを中止します",
+	"storage.log.saltInvalid": "kdf.salt の形式が無効です（32 桁の16進数が必要）。再生成により既存の認証情報を復号できなくなるため、再ログインまたは再設定が必要です",
+	"storage.log.keyFileFallback": "注入キーが未設定のため、ローカルキーファイルによる難読化のみを使用します"
+}

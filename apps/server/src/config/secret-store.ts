@@ -7,6 +7,8 @@ import {
 	type KeyProvider,
 } from "@bilibili-notify/storage";
 
+import { logText } from "../i18n/index.js";
+
 /**
  * Encrypted at-rest bag for runtime config secrets that must never sit in the
  * plaintext `state/*.json` files. Currently the AI apiKeys (每家两把).
@@ -72,7 +74,9 @@ export function createSecretStore(opts: CreateSecretStoreOptions): SecretStore {
 				return bag && typeof bag === "object" ? bag : {};
 			} catch (e) {
 				opts.logger.warn(
-					`[secrets] config-secrets 无法解密（旧格式或密钥变更），按空处理: ${(e as Error).message}`,
+					logText("log.storage.configSecretsInvalid"),
+					{ event: "storage.config_secrets_invalid", path: opts.filePath },
+					e,
 				);
 				return {};
 			}

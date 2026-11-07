@@ -1,1 +1,11 @@
-{}
+{
+	"storage.log.masterReadFailed": "Cannot read the existing master key; preserving the file and stopping the load",
+	"storage.log.masterLoaded": "Master key loaded",
+	"storage.log.masterInvalid": "Invalid master key file (expected 64 hexadecimal characters); regenerating it will make existing credentials unreadable and require login or configuration again",
+	"storage.log.masterCreating": "No valid master key found; creating a new key",
+	"storage.log.masterCreated": "New master key written to disk",
+	"storage.log.passphraseDerived": "AES-256 key derived from the injected passphrase",
+	"storage.log.saltReadFailed": "Cannot read the existing kdf.salt; preserving the file and stopping the load",
+	"storage.log.saltInvalid": "Invalid kdf.salt (expected 32 hexadecimal characters); regenerating it will make existing credentials unreadable and require login or configuration again",
+	"storage.log.keyFileFallback": "No injected key; using a local key file provides obfuscation only"
+}

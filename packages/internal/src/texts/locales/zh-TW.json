@@ -1,1 +1,11 @@
-{}
+{
+	"storage.log.masterReadFailed": "主金鑰讀取失敗（非缺失），保留原檔案並停止載入",
+	"storage.log.masterLoaded": "主金鑰已載入",
+	"storage.log.masterInvalid": "主金鑰檔案格式無效（應為 64 位十六進位），將重新產生；原有憑證將無法解密，需重新登入或設定",
+	"storage.log.masterCreating": "找不到有效主金鑰，產生新金鑰",
+	"storage.log.masterCreated": "新主金鑰已寫入磁碟",
+	"storage.log.passphraseDerived": "已使用注入金鑰衍生 AES-256 金鑰",
+	"storage.log.saltReadFailed": "kdf.salt 讀取失敗（非缺失），保留原檔案並停止載入",
+	"storage.log.saltInvalid": "kdf.salt 格式無效（應為 32 位十六進位），將重新產生；原有憑證將無法解密，需重新登入或設定",
+	"storage.log.keyFileFallback": "未提供注入金鑰，使用本機金鑰檔僅能混淆資料"
+}

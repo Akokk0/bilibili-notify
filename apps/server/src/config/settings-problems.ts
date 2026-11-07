@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 /**
  * 核心设置的坏格表 → 问题表里的那一条,以及那句话。
  *
@@ -255,27 +255,6 @@ export function brokenInstanceIdTakenMessage(id: string): string {
 	);
 }
 
-/** 日志里每格一段:路径与原因,不带原文。 */
-function logLine(entries: readonly InvalidSettingEntry[]): string {
-	const instances = entries.filter(isInstance);
-	const cells = entries
-		.map((e) => (isInstance(e) ? `AI 服务商 ${labelOf(e, false)}` : labelOf(e, false)))
-		.join("；");
-	if (instances.length === 0) {
-		return `[config] 核心设置有 ${entries.length} 格读不懂,先按默认值在跑,盘上原文没动:${cells}`;
-	}
-	return `[config] 核心设置有 ${entries.length} 处读不懂(坏的 AI 服务商先当它不在,别格先按默认值在跑),盘上原文没动:${cells}`;
-}
-
-/** `ai` 请别在面板上改的格被隔离:原文里若手写了明文 key,它没被上提、还留在文件里。 */
-const AI_PLAINTEXT_NOTE =
-	"[config] ai 的格被隔离了:那一格里如果手写了明文 key,它还留在 core.json 里(没进加密袋),改对那一格后下次开机才会上提;" +
-	"别在面板里重存这一格:面板上显示的是默认值,保存会把这一格原来的内容(含手写的明文 key,整格 / 整张表的还有加密袋里存着的 key)一起换掉,请改文件再重启";
-
-/** 单家被隔离:那一家里手写的明文 key 同理。 */
-const INSTANCE_PLAINTEXT_NOTE =
-	"[config] 有 AI 服务商被隔离了:这一家里如果手写了明文 key,它还留在 core.json 里(没进加密袋),改对之后下次开机才会上提";
-
 /**
  * 把当前的坏格表对到问题表:有条目就报(同一条,只换文案),空了就清且不补「已恢复」。
  * 每次有条目时记一行 warn(逐格路径与原因,不带原文)。
@@ -289,8 +268,27 @@ export function syncSettingsProblem(
 		problems.resolve(KEY, { notify: false });
 		return;
 	}
-	logger.warn(logLine(entries));
-	if (entries.some(isHandsOff)) logger.warn(AI_PLAINTEXT_NOTE);
-	if (entries.some(isInstance)) logger.warn(INSTANCE_PLAINTEXT_NOTE);
+	logger.warn(logText("log.config.settingsInvalid"), {
+		event: "config.settings_invalid",
+		count: entries.length,
+		entries: entries.map(({ path, issues }) => {
+			const instanceId = instanceIdOfEntry(path);
+			return {
+				path: instanceId === undefined ? path : ["ai", "providers", shortenInstanceId(instanceId)],
+				issues: issues.map(({ path, message }) => ({
+					...(path === undefined ? {} : { path }),
+					message,
+				})),
+			};
+		}),
+	});
+	if (entries.some(isHandsOff))
+		logger.warn(logText("log.config.aiPlaintextNote"), {
+			event: "config.ai_plaintext_quarantined",
+		});
+	if (entries.some(isInstance))
+		logger.warn(logText("log.config.instancePlaintextNote"), {
+			event: "config.provider_plaintext_quarantined",
+		});
 	problems.report({ ...KEY, message: () => settingsInvalidMessage(entries) });
 }

@@ -9,7 +9,7 @@ import {
 	quarantineFile,
 	readJsonFile,
 } from "@bilibili-notify/storage";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { type DataRootKey, dataPath } from "../runtime/roots.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { parseStoredEntries, STORE_FILE_VERSION, serializeEntries } from "./key-value-store.js";
@@ -82,18 +82,25 @@ export async function readIntegrationStateFile(opts: ReadContext): Promise<Store
 	}
 	if (read.kind === "missing") return { kind: "ok", entries: new Map() };
 	if (read.kind === "corrupt") {
-		opts.logger.warn(
-			`[integration-store] ${opts.key} 的 state.json 不是合法 JSON(${read.message}),已隔离为 ${read.quarantinedPath},按空处理`,
-		);
+		opts.logger.warn(logText("log.storage.stateCorrupt"), {
+			event: "storage.integration_state_corrupt",
+			integrationKey: opts.key,
+			path,
+			quarantinedPath: read.quarantinedPath,
+			reason: read.message,
+		});
 		return { kind: "ok", entries: new Map() };
 	}
 	const entries = parseStoredEntries(read.value);
 	if (entries) return { kind: "ok", entries };
 	try {
 		const quarantined = await quarantineFile(path);
-		opts.logger.warn(
-			`[integration-store] ${opts.key} 的 state.json 形状不认,已隔离为 ${quarantined},按空处理`,
-		);
+		opts.logger.warn(logText("log.storage.stateShape"), {
+			event: "storage.integration_state_shape",
+			integrationKey: opts.key,
+			path,
+			quarantinedPath: quarantined,
+		});
 		return { kind: "ok", entries: new Map() };
 	} catch (err) {
 		return { kind: "unreadable", message: errorMessageOf(err) };
@@ -156,12 +163,16 @@ export async function readIntegrationSecretsFile(
 	try {
 		const entries = parseStoredEntries(JSON.parse(gcmDecrypt(key, JSON.parse(raw))));
 		if (entries) return { kind: "ok", entries };
-		opts.logger.warn(
-			`[integration-store] ${opts.key} 的 secrets.enc 解开了但形状不认,按空处理(下次写入会盖掉它)`,
-		);
+		opts.logger.warn(logText("log.storage.secretsShape"), {
+			event: "storage.integration_secrets_shape",
+			integrationKey: opts.key,
+			path,
+		});
 	} catch (err) {
 		opts.logger.warn(
-			`[integration-store] ${opts.key} 的 secrets.enc 无法解密(换了密钥或被改过),按空处理(下次写入会盖掉它):${errorMessageOf(err)}`,
+			logText("log.storage.secretsInvalid"),
+			{ event: "storage.integration_secrets_invalid", integrationKey: opts.key, path },
+			err,
 		);
 	}
 	return { kind: "ok", entries: new Map() };

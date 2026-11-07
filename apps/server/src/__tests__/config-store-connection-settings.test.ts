@@ -154,7 +154,10 @@ describe("ConfigStore — 连接的 settings", () => {
 			expect(store.getConnections()[0]?.platformSnapshot).toEqual(
 				neutralPlatformSnapshot("onebot"),
 			);
-			expect(warn).toHaveBeenCalledWith(expect.stringContaining("platformSnapshot"));
+			expect(warn).toHaveBeenCalledWith(expect.any(String), {
+				event: "config.platform_snapshot_invalid",
+				connectionId: bad.id,
+			});
 			expect(await rawOnDisk()).toEqual([bad]);
 		});
 

@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 /**
  * 系统页「存储占用」的服务端(㉙d,ADR-0027 决策 10 / 17;路由见 `routes/system.ts`):一张用量表、
  * 四类的整类清空、手动清一次图库。**清空不可恢复**,所以每一类删什么、经哪条写队都在这里写死。
@@ -239,7 +239,11 @@ export function createStorageUsage(opts: StorageClearOptions): StorageUsage {
 		try {
 			return (await opts.imageStore.sweep({ now: opts.now() })).removedBytes;
 		} catch (err) {
-			opts.logger.warn(`[storage] 清理后的图库清扫失败,图留给下一轮: ${String(err)}`);
+			opts.logger.warn(
+				logText("log.storage.sweepFailed"),
+				{ event: "storage.cleanup_sweep_failed" },
+				err,
+			);
 			return 0;
 		}
 	}

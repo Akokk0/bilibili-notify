@@ -10,6 +10,8 @@
  * - 两端在建 store 的文件里调一次 `bindPackageText(i18n.t)`,把自己的取字口交进来:包里的话从此跟着
  *   那一端的语言与口吻走。没交过的(单测、打进拓展包里的那份)按简体中文取,和今天写死的字一样。
  *
+ * 包日志使用 `<包名>.log.*`，不写女仆层覆盖；字典守卫据 ADR-0039 保证其平实口吻。
+ *
  * 核心不建 store(`createI18n` 那条规矩):这里只存一个交进来的函数。
  * 不许引入 zod 或 schema;值级 import 只有同样零依赖的 `i18n.ts` 与 JSON。
  */
@@ -39,7 +41,7 @@ import zhTW from "./locales/zh-TW.json";
  */
 export type PackageTextKey = DictKey<(typeof PACKAGE_DICTS)["zh-CN"]["plain"]>;
 
-/** 四种语言的包字典。繁体、英文、日文第 5 期才翻,在那之前缺的句子拿简体中文打底。 */
+/** 四种语言的包字典。繁体、英文、日文在第 5 期逐片补齐,缺的句子拿简体中文打底。 */
 export const PACKAGE_DICTS = {
 	"zh-CN": { plain: zhCN, maid: zhCNMaid },
 	"zh-TW": { plain: zhTW },

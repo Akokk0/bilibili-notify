@@ -1,3 +1,4 @@
+import { logMessage } from "./support/log-message.js";
 /**
  * 配置仓的「集成设置」:一个集成一个文件(`config/settings/<键>.json`),登记在组装处(ADR-0021 决策 42 下
  * 10-01 的 🔗)。这里钉仓这一半的通用机制 —— 用一个只在测试里用的小集成(`poke`、`other`)登记进去,不借真正的
@@ -233,7 +234,9 @@ describe("集成设置 — load", () => {
 
 		await store.load();
 
-		const lines = vi.mocked(ctx.logger.warn).mock.calls.map(([msg]) => String(msg));
+		const lines = vi
+			.mocked(ctx.logger.warn)
+			.mock.calls.map(([msg, ...args]) => logMessage(msg, args));
 		const mine = lines.filter((l) => l.includes("poke.json"));
 		expect(mine).toHaveLength(1);
 		expect(mine[0]).toContain("count");
@@ -260,7 +263,7 @@ describe("集成设置 — load", () => {
 		expect(r.ok).toBe(false);
 		expect(JSON.stringify(r)).not.toContain(leak);
 		const logged = (["info", "warn", "error", "debug"] as const).flatMap((k) =>
-			vi.mocked(ctx.logger[k]).mock.calls.map((c) => String(c[0])),
+			vi.mocked(ctx.logger[k]).mock.calls.map(([msg, ...args]) => logMessage(msg, args)),
 		);
 		expect(logged.some((l) => l.includes("poke.json"))).toBe(true);
 		expect(logged.join("\n")).not.toContain(leak);

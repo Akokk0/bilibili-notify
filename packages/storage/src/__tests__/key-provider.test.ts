@@ -11,6 +11,12 @@
 import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	PACKAGE_DICTS,
+	type PackageTextKey,
+} from "@bilibili-notify/internal/texts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	createKeyProvider,
@@ -54,8 +60,14 @@ describe("createKeyProvider — 选型", () => {
 	it("回退 File 时在选择点打高可见告警(端中立,不提 BN_COOKIE_KEY)", () => {
 		const logger = makeLogger();
 		createKeyProvider({ logger, ...paths() });
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("未提供注入密钥"));
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("仅为混淆"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("未提供注入密钥"),
+			expect.objectContaining({ event: "storage.key_file_fallback" }),
+		);
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("仅能混淆"),
+			expect.objectContaining({ event: "storage.key_file_fallback" }),
+		);
 		// 端中立:不得在共享选择点出现 app 专属变量名。
 		const msg = (logger.warn as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
 		expect(msg).not.toContain("BN_COOKIE_KEY");
@@ -81,7 +93,10 @@ describe("PassphraseKeyProvider — kdf.salt 策略 (P1)", () => {
 		const p = createKeyProvider({ passphrase: "pw", logger, ...paths() });
 		const k = await p.getKey();
 		expect(k.length).toBe(32);
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("kdf.salt 格式非法"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("kdf.salt 格式非法"),
+			expect.objectContaining({ event: "storage.salt_invalid" }),
+		);
 		await expect(readFile(paths().saltPath, "utf8")).resolves.toMatch(/^[0-9a-f]{32}$/i);
 	});
 
@@ -90,7 +105,10 @@ describe("PassphraseKeyProvider — kdf.salt 策略 (P1)", () => {
 		const logger = makeLogger();
 		const p = createKeyProvider({ passphrase: "pw", logger, ...paths() });
 		await p.getKey();
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("kdf.salt 格式非法"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("kdf.salt 格式非法"),
+			expect.objectContaining({ event: "storage.salt_invalid" }),
+		);
 		await expect(readFile(paths().saltPath, "utf8")).resolves.toMatch(/^[0-9a-f]{32}$/i);
 	});
 
@@ -110,7 +128,11 @@ describe("PassphraseKeyProvider — kdf.salt 策略 (P1)", () => {
 		const logger = makeLogger();
 		const p = createKeyProvider({ passphrase: "pw", logger, ...paths() });
 		await expect(p.getKey()).rejects.toMatchObject({ code: "EISDIR" });
-		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("读取失败（非缺失）"));
+		expect(logger.error).toHaveBeenCalledWith(
+			expect.stringContaining("读取失败（非缺失）"),
+			expect.objectContaining({ event: "storage.salt_read_failed" }),
+			expect.objectContaining({ code: "EISDIR" }),
+		);
 	});
 });
 
@@ -159,7 +181,10 @@ describe("FileKeyProvider", () => {
 		await p.getKey(); // app 启动预加载
 		await p.getKey(); // 后续 SecretStore.save / 集成存储的读写复用缓存
 		expect(logger.info).toHaveBeenCalledTimes(1);
-		expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("主密钥加载成功"));
+		expect(logger.info).toHaveBeenCalledWith(
+			expect.stringContaining("主密钥已加载"),
+			expect.objectContaining({ event: "storage.master_key_loaded" }),
+		);
 	});
 });
 
@@ -218,5 +243,50 @@ describe("readKeyMaterial — 只读地取密钥,缺了不造", () => {
 
 		expect(read).toEqual({ kind: "missing" });
 		expect(await readFile(paths().keyPath, "utf8")).toBe("not-a-key");
+	});
+});
+
+describe("密钥日志的语言与诊断", () => {
+	it("沿包字典现取四语平实提示，模式与路径独立记录且不写出密钥", async () => {
+		const texts = createI18n<PackageTextKey, Locale>({
+			dicts: PACKAGE_DICTS,
+			fallback: "zh-CN",
+			locale: "zh-CN",
+			voice: "maid",
+		});
+		const binding = bindPackageText(texts.t);
+		try {
+			for (const [locale, expected] of [
+				["en", "No injected key; using a local key file provides obfuscation only"],
+				["ja", "注入キーが未設定のため、ローカルキーファイルによる難読化のみを使用します"],
+				["zh-TW", "未提供注入金鑰，使用本機金鑰檔僅能混淆資料"],
+				["zh-CN", "未提供注入密钥，使用本地密钥文件仅能混淆数据"],
+			] as const) {
+				texts.set({ locale, voice: "maid" });
+				const logger = makeLogger();
+				const provider = createKeyProvider({
+					...paths(),
+					keyPath: join(dir, locale, "master.key"),
+					logger,
+				});
+				const key = await provider.getKey();
+				expect(logger.warn).toHaveBeenCalledExactlyOnceWith(expected, {
+					event: "storage.key_file_fallback",
+					mode: "file",
+				});
+				expect(JSON.stringify([logger.info.mock.calls, logger.warn.mock.calls])).not.toContain(
+					key.toString("hex"),
+				);
+				expect(logger.info).toHaveBeenCalledWith(
+					expect.any(String),
+					expect.objectContaining({
+						event: "storage.master_key_created",
+						path: join(dir, locale, "master.key"),
+					}),
+				);
+			}
+		} finally {
+			binding.dispose();
+		}
 	});
 });

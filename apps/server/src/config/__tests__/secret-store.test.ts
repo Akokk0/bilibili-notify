@@ -138,7 +138,11 @@ describe("createSecretStore", () => {
 			logger,
 		});
 		expect(await wrong.load()).toEqual({});
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("无法解密"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("无法解密"),
+			expect.objectContaining({ event: "storage.config_secrets_invalid" }),
+			expect.any(Error),
+		);
 	});
 });
 

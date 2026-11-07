@@ -5,6 +5,8 @@
 
 import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { logMessage } from "../../__tests__/support/log-message.js";
+import { i18n } from "../../i18n/index.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import type { InvalidSettingEntry } from "../core-settings.js";
 import {
@@ -287,7 +289,7 @@ describe("shortenInstanceId", () => {
 		syncSettingsProblem(table, [inst(long, "model", "R")], logger);
 		const lines = vi
 			.mocked(logger.warn)
-			.mock.calls.map((c) => String(c[0]))
+			.mock.calls.map(([message, ...args]) => logMessage(message, args))
 			.join("\n");
 		expect(lines).toContain(`${long.slice(0, 32)}…`);
 		expect(lines).not.toContain(long);
@@ -323,19 +325,25 @@ describe("syncSettingsProblem 的日志:单家", () => {
 	const linesOf = (logger: Logger) =>
 		vi
 			.mocked(logger.warn)
-			.mock.calls.map((c) => String(c[0]))
-			.filter((l) => l.startsWith("[config]"));
+			.mock.calls.map(([message, ...args]) => logMessage(message, args))
+			.filter((l) => l.includes('"event":"config.'));
 
 	it("单家:一行带「AI 服务商 id（字段：原因）」,另有单家的明文 key 提醒;不带原文、不带整格那句", () => {
 		const { table, logger } = mkTable();
 		syncSettingsProblem(table, [inst("deepseek", "model", "R")], logger);
 		const lines = linesOf(logger);
-		expect(lines[0]).toBe(
-			"[config] 核心设置有 1 处读不懂(坏的 AI 服务商先当它不在,别格先按默认值在跑),盘上原文没动:AI 服务商 deepseek（model：R）",
-		);
-		expect(lines[1]).toBe(
-			"[config] 有 AI 服务商被隔离了:这一家里如果手写了明文 key,它还留在 core.json 里(没进加密袋),改对之后下次开机才会上提",
-		);
+		expect(lines[0]).toContain("核心设置存在无效项");
+		expect(logger.warn).toHaveBeenCalledWith(expect.any(String), {
+			event: "config.settings_invalid",
+			count: 1,
+			entries: [
+				{
+					path: ["ai", "providers", "deepseek"],
+					issues: [{ path: ["model"], message: "R" }, { message: "第二条不该出现" }],
+				},
+			],
+		});
+		expect(lines[1]).toContain("这一家里如果手写了明文 key");
 		expect(lines).toHaveLength(2);
 		const all = lines.join("\n");
 		expect(all).not.toContain("sk-SECRET-RAW");
@@ -419,8 +427,8 @@ describe("syncSettingsProblem", () => {
 		// 问题表自己也往同一个 logger 记它收到的话(那是问题条目的文案,另有断言),这里只看配置这边的那几行。
 		const lines = vi
 			.mocked(logger.warn)
-			.mock.calls.map((c) => String(c[0]))
-			.filter((l) => l.startsWith("[config]"))
+			.mock.calls.map(([message, ...args]) => logMessage(message, args))
+			.filter((l) => l.includes('"event":"config.'))
 			.join("\n");
 		expect(lines).toContain("history");
 		expect(lines).toContain("R1");
@@ -436,7 +444,7 @@ describe("syncSettingsProblem", () => {
 		expect(
 			vi
 				.mocked(logger.warn)
-				.mock.calls.map((c) => String(c[0]))
+				.mock.calls.map(([message, ...args]) => logMessage(message, args))
 				.join("\n"),
 		).not.toContain("明文 key");
 
@@ -444,7 +452,7 @@ describe("syncSettingsProblem", () => {
 		syncSettingsProblem(ai.table, [entry(["ai", "providers"], "R")], ai.logger);
 		const aiLines = vi
 			.mocked(ai.logger.warn)
-			.mock.calls.map((c) => String(c[0]))
+			.mock.calls.map(([message, ...args]) => logMessage(message, args))
 			.join("\n");
 		expect(aiLines).toContain("明文 key");
 		expect(aiLines).toContain("别在面板里重存这一格");
@@ -453,8 +461,39 @@ describe("syncSettingsProblem", () => {
 		expect(
 			vi
 				.mocked(whole.logger.warn)
-				.mock.calls.map((c) => String(c[0]))
+				.mock.calls.map(([message, ...args]) => logMessage(message, args))
 				.join("\n"),
 		).toContain("明文 key");
+	});
+});
+
+describe("配置日志语言", () => {
+	it("新日志使用当前语言和平实说明，坏项只记录路径和原因，不记录配置原文", () => {
+		const previous = i18n.state();
+		try {
+			i18n.set({ locale: "en", voice: "maid" });
+			const logger = mkLogger();
+			syncSettingsProblem(
+				{ report: vi.fn(), resolve: vi.fn() } as never,
+				[entry(["history"], "Invalid input", "sk-RAW-SECRET")],
+				logger,
+			);
+			expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
+				"Invalid core settings; using defaults for affected fields and disabling invalid AI providers; the source file is unchanged",
+				{
+					event: "config.settings_invalid",
+					count: 1,
+					entries: [
+						{
+							path: ["history"],
+							issues: [{ message: "Invalid input" }, { message: "第二条不该出现" }],
+						},
+					],
+				},
+			);
+			expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain("sk-RAW-SECRET");
+		} finally {
+			i18n.set(previous);
+		}
 	});
 });

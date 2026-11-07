@@ -12,7 +12,7 @@ import {
 	type Result,
 } from "@bilibili-notify/internal";
 import { type KeyProvider, removeDirectory } from "@bilibili-notify/storage";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { stringLeaves, type ValueRedactor } from "../logs/value-redactor.js";
 import { dataPath } from "../runtime/roots.js";
 import { errorMessageOf } from "../util/error-message.js";
@@ -148,9 +148,12 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 		read: StoreFileReadResult,
 	): string | undefined {
 		if (read.kind === "ok") return undefined;
-		logger.error(
-			`[integration-store] ${key} 的 ${file} 在盘上但读不了(${read.message}):这一份读一律空、写一律拒,盘上原文件不动`,
-		);
+		logger.error(logText("log.storage.unreadable"), {
+			event: "storage.integration_unreadable",
+			integrationKey: key,
+			file,
+			reason: read.message,
+		});
 		return serverText("service.integration-store.store.text.1", {
 			value0: key,
 			value1: file,
@@ -288,7 +291,14 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 			);
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-			logger.warn(`[integration-store] 列不了 secrets/extensions/:${errorMessageOf(err)}`);
+			logger.warn(
+				logText("log.storage.listFailed"),
+				{
+					event: "storage.extensions_list_failed",
+					path: dataPath(dataRoot, "secrets", "extensions"),
+				},
+				err,
+			);
 			return [];
 		}
 	}
@@ -314,7 +324,11 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 					reservedIntegrationKeys,
 				});
 				if (read.kind === "unreadable") {
-					logger.warn(`[integration-store] 备份跳过 ${key} 的密钥:${read.message}`);
+					logger.warn(logText("log.storage.backupSkipped"), {
+						event: "storage.backup_secrets_skipped",
+						integrationKey: key,
+						reason: read.message,
+					});
 					continue;
 				}
 				entries = read.entries;
@@ -338,7 +352,9 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 				await hook();
 			} catch (err) {
 				logger.error(
-					`[integration-store] ${key} 登记的「密钥被换了」回调抛了:${errorMessageOf(err)}`,
+					logText("log.storage.replacedHookFailed"),
+					{ event: "storage.secrets_replaced_callback_failed", integrationKey: key },
+					err,
 				);
 			}
 		}

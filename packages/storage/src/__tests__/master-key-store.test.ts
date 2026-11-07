@@ -56,7 +56,10 @@ describe("MasterKeyStore.loadOrCreate — ENOENT-discriminate (P0-A)", () => {
 		const km = new MasterKeyStore(keyPath(), logger);
 		const k = await km.loadOrCreate();
 		expect(k.length).toBe(32);
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("主密钥文件格式非法"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("主密钥文件格式非法"),
+			expect.objectContaining({ event: "storage.master_key_invalid" }),
+		);
 		await expect(readFile(keyPath(), "utf8")).resolves.toMatch(/^[0-9a-f]{64}$/i);
 	});
 
@@ -66,7 +69,11 @@ describe("MasterKeyStore.loadOrCreate — ENOENT-discriminate (P0-A)", () => {
 		const logger = makeLogger();
 		const km = new MasterKeyStore(keyPath(), logger);
 		await expect(km.loadOrCreate()).rejects.toMatchObject({ code: "EISDIR" });
-		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("读取失败（非缺失）"));
+		expect(logger.error).toHaveBeenCalledWith(
+			expect.stringContaining("读取失败（非缺失）"),
+			expect.objectContaining({ event: "storage.master_key_read_failed" }),
+			expect.objectContaining({ code: "EISDIR" }),
+		);
 		// 关键:keyPath 仍是目录(没有被 createNew 的原子 rename 覆盖成新 key 文件)
 		const { stat } = await import("node:fs/promises");
 		expect((await stat(keyPath())).isDirectory()).toBe(true);

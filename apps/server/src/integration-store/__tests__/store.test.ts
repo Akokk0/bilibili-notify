@@ -20,6 +20,7 @@ import { join } from "node:path";
 import type { Json, Logger } from "@bilibili-notify/internal";
 import { createKeyProvider, gcmDecrypt } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { logMessage } from "../../__tests__/support/log-message.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
 import { dataPath } from "../../runtime/roots.js";
 import { integrationSecretsFile, integrationStateFile } from "../files.js";
@@ -32,8 +33,8 @@ function setup(reservedIntegrationKeys: readonly string[] = BUILTIN_INTEGRATION_
 	lines = [];
 	const logger: Logger = {
 		info: () => {},
-		warn: (m) => lines.push(`warn ${m}`),
-		error: (m) => lines.push(`error ${m}`),
+		warn: (m, ...args) => lines.push(`warn ${logMessage(m, args)}`),
+		error: (m, ...args) => lines.push(`error ${logMessage(m, args)}`),
 		debug: () => {},
 	};
 	const keyProvider = createKeyProvider({

@@ -53,9 +53,8 @@ import {
 } from "@bilibili-notify/subscription";
 import type { ZodType, z } from "zod";
 import { extensionIdSchema } from "../extensions/identity.js";
-import { t as tr } from "../i18n/index.js";
+import { logText, t as tr } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
-import { errorMessageOf } from "../util/error-message.js";
 import {
 	applyAiSecrets,
 	collectAiSecrets,
@@ -1208,9 +1207,10 @@ class NodeConfigStore implements ConfigStore {
 			Object.keys(collectAiSecrets(g)).length > 0
 		) {
 			this.plaintextApiKeyWarned = true;
-			this.serviceCtx.logger.warn(
-				"[secret] AI apiKey 以明文写入 settings/core.json(未配置加密密钥)。建议设置 passphrase 启用 SecretStore 加密。",
-			);
+			this.serviceCtx.logger.warn(logText("log.config.plaintextKeys"), {
+				event: "config.plaintext_api_keys",
+				path: this.path("globals"),
+			});
 		}
 		const disk = this.secretStore ? stripApiKeyForDisk(g) : g;
 		await atomicWriteJson(this.path("globals"), withRawSettings(disk, entries));
@@ -1236,9 +1236,10 @@ class NodeConfigStore implements ConfigStore {
 				aiApiKeys: { ...(this.secretBag.aiApiKeys ?? {}), ...plaintext },
 			};
 			await this.secretStore.save(this.secretBag);
-			this.serviceCtx.logger.info(
-				"[secrets] 已把明文 apiKey 从 settings/core.json 迁移进加密 secrets 文件",
-			);
+			this.serviceCtx.logger.info(logText("log.config.keysMigrated"), {
+				event: "config.api_keys_migrated",
+				path: this.path("globals"),
+			});
 		}
 		// Hydrate in-memory (pipeline/routes keep reading ai.apiKey).
 		//
@@ -1277,9 +1278,12 @@ class NodeConfigStore implements ConfigStore {
 		if ("issue" in read) {
 			this.integrationSettings.set(key, segment.schema.parse({}));
 			this.integrationUnreadable.set(key, read.issue);
-			this.serviceCtx.logger.warn(
-				`[config] settings/${key}.json 读不懂,这个集成读它的那几样先停着: ${read.issue.message}`,
-			);
+			this.serviceCtx.logger.warn(logText("log.config.integrationUnreadable"), {
+				event: "config.integration_settings_unreadable",
+				integrationKey: key,
+				path,
+				reason: read.issue.message,
+			});
 			return;
 		}
 		const parsed = parseIntegrationCells(segment.schema, read.value);
@@ -1287,9 +1291,13 @@ class NodeConfigStore implements ConfigStore {
 		if (parsed.invalid.length === 0) return;
 		this.integrationInvalid.set(key, parsed.invalid);
 		for (const entry of parsed.invalid) {
-			this.serviceCtx.logger.warn(
-				`[config] settings/${key}.json 的「${entry.path.join(".")}」读不懂,先按默认值跑: ${entry.issues.map((i) => i.message).join("; ")}`,
-			);
+			this.serviceCtx.logger.warn(logText("log.config.integrationInvalid"), {
+				event: "config.integration_setting_invalid",
+				integrationKey: key,
+				file: path,
+				path: entry.path,
+				issues: entry.issues.map(({ path, message }) => ({ path, message })),
+			});
 		}
 	}
 
@@ -1367,19 +1375,24 @@ class NodeConfigStore implements ConfigStore {
 			const cleaned = withoutUnknownTags(file.subscriptions, file.tags);
 			this.subscriptions = cleaned.next;
 			if (cleaned.dropped.length > 0) {
-				this.serviceCtx.logger.warn(
-					`[config] subscriptions.json 里有订阅挂着标签表里没有的标签,已经剥掉:${[...new Set(cleaned.dropped)].join("、")}`,
-				);
+				this.serviceCtx.logger.warn(logText("log.config.unknownTags"), {
+					event: "config.unknown_tags_removed",
+					tagIds: [...new Set(cleaned.dropped)],
+				});
 			}
 			this.meta.subscriptions.exists = true;
 			this.meta.subscriptions.lastUpdatedAt = existed ? null : new Date().toISOString();
 			// 老版本留下的同身份重复:照读,只记一句警告 —— 拒收会让开机起不来。
 			const duplicates = findIdentityDuplicates(this.subscriptions);
 			if (duplicates.length > 0) {
-				const listed = duplicates.map((d) => describeDuplicate(d, (s) => s.id)).join("；");
-				this.serviceCtx.logger.warn(
-					`[config] subscriptions.json 里同一个人订了不止一条：${listed}。同一个人只能有一条订阅，在订阅页删掉多余的那条`,
-				);
+				const listed = duplicates.map(({ identity, subscriptions }) => ({
+					identity,
+					subscriptionIds: subscriptions.map(({ id }) => id),
+				}));
+				this.serviceCtx.logger.warn(logText("log.config.duplicateSubscriptions"), {
+					event: "config.duplicate_subscriptions",
+					duplicates: listed,
+				});
 			}
 		}
 
@@ -1392,13 +1405,21 @@ class NodeConfigStore implements ConfigStore {
 			this.onInvalidSubscriptionsChanged?.(
 				this.subscriptionEntries.filter((e) => e.kind === "invalid").length,
 			);
-		} catch {
-			this.serviceCtx.logger.warn("[config] invalid subscription notification failed");
+		} catch (err) {
+			this.serviceCtx.logger.warn(
+				logText("log.config.subscriptionNotifyFailed"),
+				{ event: "config.invalid_subscriptions_notify_failed" },
+				err,
+			);
 		}
 		if (this.invalidSettings.length > 0) this.notifyInvalidSettings();
-		this.serviceCtx.logger.info(
-			`config-store loaded (stateDir=${this.stateDir} subs=${this.subscriptions.length} connections=${this.connections.length} targets=${this.targets.length})`,
-		);
+		this.serviceCtx.logger.info(logText("log.config.loaded"), {
+			event: "config.loaded",
+			stateDir: this.stateDir,
+			subscriptions: this.subscriptions.length,
+			connections: this.connections.length,
+			targets: this.targets.length,
+		});
 	}
 
 	/**
@@ -1441,7 +1462,7 @@ class NodeConfigStore implements ConfigStore {
 		}
 
 		this.connections = connectionsRaw.map((raw, idx) =>
-			readConnection(raw, idx, (msg) => this.serviceCtx.logger.warn(msg)),
+			readConnection(raw, idx, (msg, ...args) => this.serviceCtx.logger.warn(msg, ...args)),
 		);
 		this.meta.connections.exists = true;
 
@@ -1712,7 +1733,11 @@ class NodeConfigStore implements ConfigStore {
 				this.getInvalidSettings().map(({ path, issues }) => ({ path, issues })),
 			);
 		} catch (err) {
-			this.serviceCtx.logger.warn(`[config] 通知核心设置的坏格表失败: ${errorMessageOf(err)}`);
+			this.serviceCtx.logger.warn(
+				logText("log.config.settingsNotifyFailed"),
+				{ event: "config.invalid_settings_notify_failed" },
+				err,
+			);
 		}
 	}
 
@@ -2552,7 +2577,11 @@ function parseAll(scope: ConfigScope, items: readonly unknown[]): unknown[] {
  * (读盘那一刻一个适配器都不在场),所以「隔离」不存在配置仓里,用的时候现算。
  * `platformSnapshot` / `probeState` 是宿主自己写的派生物,坏了在内存里退成中性快照 / 没探过,盘上不动。
  */
-function readConnection(raw: unknown, idx: number, warn: (msg: string) => void): Connection {
+function readConnection(
+	raw: unknown,
+	idx: number,
+	warn: (msg: string, ...args: unknown[]) => void,
+): Connection {
 	const shell = ConnectionShellSchema.safeParse(raw);
 	if (!shell.success) {
 		throw ConfigValidationError.fromZod("connections", shell.error, {
@@ -2563,7 +2592,10 @@ function readConnection(raw: unknown, idx: number, warn: (msg: string) => void):
 	const record = raw as Record<string, unknown>;
 	const snapshot = PlatformSnapshotSchema.safeParse(record.platformSnapshot);
 	if (!snapshot.success) {
-		warn(`[config] 连接「${shell.data.name}」的 platformSnapshot 读不了,先按认不出的平台画`);
+		warn(logText("log.config.snapshotInvalid"), {
+			event: "config.platform_snapshot_invalid",
+			connectionId: shell.data.id,
+		});
 	}
 	const probe = ConnectionProbeStateSchema.safeParse(record.probeState);
 	return {

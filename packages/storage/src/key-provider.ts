@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Logger } from "@bilibili-notify/internal";
+import { packageText } from "@bilibili-notify/internal/texts";
 import { atomicWriteFile } from "./atomic-file";
 import { MasterKeyStore, parseMasterKeyHex } from "./master-key-store";
 import { deriveKeyFromPassphrase } from "./secret-box";
@@ -60,7 +61,10 @@ export class PassphraseKeyProvider implements KeyProvider {
 		if (this.cached) return this.cached;
 		const salt = await this.loadOrCreateSalt();
 		this.cached = deriveKeyFromPassphrase(this.passphrase, salt);
-		this.logger.debug("[key] 使用注入密钥派生 AES-256 密钥 (scrypt)");
+		this.logger.debug(packageText("storage.log.passphraseDerived"), {
+			event: "storage.key_derived",
+			algorithm: "scrypt",
+		});
 		return this.cached;
 	}
 
@@ -72,7 +76,11 @@ export class PassphraseKeyProvider implements KeyProvider {
 			if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
 				// 文件存在但读不了(EACCES/EIO…):绝不能静默重生成 —— 那会换 key,
 				// 把所有用注入密钥加密的 secrets 一次性变为无法解密且无声重登。
-				this.logger.error(`[key] kdf.salt 读取失败（非缺失）: ${(e as Error).message}`);
+				this.logger.error(
+					packageText("storage.log.saltReadFailed"),
+					{ event: "storage.salt_read_failed", path: this.saltPath },
+					e,
+				);
 				throw e;
 			}
 			// ENOENT → 首次运行,正常创建
@@ -80,10 +88,10 @@ export class PassphraseKeyProvider implements KeyProvider {
 		if (hex !== null) {
 			const salt = parseSaltHex(hex);
 			if (salt) return salt;
-			this.logger.warn(
-				"[key] kdf.salt 格式非法（非 32 位十六进制），将重新生成 —— " +
-					"既有用注入密钥加密的 secrets（来源凭据 / AI apiKey）届时无法解密、需重新登录。",
-			);
+			this.logger.warn(packageText("storage.log.saltInvalid"), {
+				event: "storage.salt_invalid",
+				path: this.saltPath,
+			});
 		}
 		const salt = randomBytes(16);
 		// P2:原子写用唯一 tmp(pid + rand)。固定 `${saltPath}.tmp` 在并发首启
@@ -111,10 +119,10 @@ export function createKeyProvider(opts: CreateKeyProviderOptions): KeyProvider {
 	// 任何其它调用方落到回退时静默无声。
 	// 文案保持端中立(不提 BN_COOKIE_KEY,那是 app 专属);app
 	// 在 bootstrap 另加可执行指引。
-	opts.logger.warn(
-		"[key] 未提供注入密钥:secrets（来源凭据 / AI apiKey）使用本地随机密钥，" +
-			"且密钥与密文同目录 —— 仅为混淆，不构成真正的静态加密。",
-	);
+	opts.logger.warn(packageText("storage.log.keyFileFallback"), {
+		event: "storage.key_file_fallback",
+		mode: "file",
+	});
 	return new FileKeyProvider(opts.keyPath, opts.logger);
 }
 

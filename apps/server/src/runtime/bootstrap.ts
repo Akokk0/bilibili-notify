@@ -27,7 +27,7 @@ import { createRepushRunner, type RepushRunner } from "../history/repush-runner.
 import { createRepushStore, listRepushImageRefs } from "../history/repush-store.js";
 import { listHistoryImageRefs } from "../history/retention.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
-import { i18n, t } from "../i18n/index.js";
+import { i18n, logText, t } from "../i18n/index.js";
 import { createImageFetcher, type ImageFetcher } from "../images/image-fetcher.js";
 import { IMAGE_REFERRERS } from "../images/image-referrers.js";
 import { createImageStore, type ImageStore, type ImageWriter } from "../images/image-store.js";
@@ -308,16 +308,18 @@ export function createAppRuntime(
 		logger: serviceCtx.logger,
 	});
 	if (keyProvider.protected) {
-		serviceCtx.logger.info(
-			"[secrets] 已启用注入密钥（BN_COOKIE_KEY）→ cookie / AI apiKey 使用 AES-256-GCM 静态加密",
-		);
+		serviceCtx.logger.info(logText("log.storage.encryptionEnabled"), {
+			event: "storage.encryption_enabled",
+			algorithm: "AES-256-GCM",
+			source: "BN_COOKIE_KEY",
+		});
 	} else {
 		// 通用「仅混淆」告警已由 createKeyProvider 统一发出;这里只补服务端
 		// 专属的可执行指引(设置 BN_COOKIE_KEY)。
-		serviceCtx.logger.warn(
-			"[secrets] 生产部署请设置环境变量 BN_COOKIE_KEY（生成命令：openssl rand -base64 32），" +
-				"设置后自动启用 AES-256-GCM 真静态加密。",
-		);
+		serviceCtx.logger.warn(logText("log.storage.encryptionAdvice"), {
+			event: "storage.encryption_advice",
+			source: "BN_COOKIE_KEY",
+		});
 	}
 
 	const secretStore = createSecretStore({

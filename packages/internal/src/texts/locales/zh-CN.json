@@ -619,5 +619,14 @@
 	"image.icons.topic": "话题",
 	"image.icons.view": "播放量",
 	"image.icons.danmaku": "弹幕",
-	"image.icons.duration": "时长"
+	"image.icons.duration": "时长",
+	"storage.log.masterReadFailed": "主密钥读取失败（非缺失），保留原文件并停止加载",
+	"storage.log.masterLoaded": "主密钥已加载",
+	"storage.log.masterInvalid": "主密钥文件格式非法（应为 64 位十六进制），将重新生成；原有凭据将无法解密，需重新登录或配置",
+	"storage.log.masterCreating": "未找到有效主密钥，生成新密钥",
+	"storage.log.masterCreated": "新主密钥已写入磁盘",
+	"storage.log.passphraseDerived": "已使用注入密钥派生 AES-256 密钥",
+	"storage.log.saltReadFailed": "kdf.salt 读取失败（非缺失），保留原文件并停止加载",
+	"storage.log.saltInvalid": "kdf.salt 格式非法（应为 32 位十六进制），将重新生成；原有凭据将无法解密，需重新登录或配置",
+	"storage.log.keyFileFallback": "未提供注入密钥，使用本地密钥文件仅能混淆数据"
 }

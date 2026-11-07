@@ -31,6 +31,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { parse as parseYaml } from "yaml";
+import { i18n } from "../../i18n/index.js";
 import { loadBootstrapConfig } from "../loader.js";
 
 let cwd: string;
@@ -74,7 +75,7 @@ describe("loadBootstrapConfig — B 模型 first-boot seed", () => {
 		expect((fileObj.server as Record<string, unknown>).host).toBe("1.1.1.1");
 		expect((fileObj.server as Record<string, unknown>).port).toBe(9999);
 		expect(fileObj.dataDir).toBe("/seed/data");
-		expect(logged.some((m) => m.includes("first boot"))).toBe(true);
+		expect(logged.some((m) => m.includes("首次启动"))).toBe(true);
 	});
 
 	it("seed 也填入 schema defaults(用户能看到完整可配字段)", async () => {
@@ -151,7 +152,7 @@ describe("loadBootstrapConfig — B 模型:file 存在,env 被忽略", () => {
 			cwd,
 			log: (m) => logged.push(m),
 		});
-		expect(logged.some((m) => m.includes("first boot"))).toBe(false);
+		expect(logged.some((m) => m.includes("首次启动"))).toBe(false);
 	});
 
 	it("CLI 仍可叠加(file 存在分支也允许一次性 escape hatch)— 顶层 + nested 字段都验", async () => {
@@ -484,7 +485,7 @@ describe("loadBootstrapConfig — legacy:默认值", () => {
 		// 走 legacy → env 仍生效(BN_HOST 覆盖默认)
 		expect(c.server.host).toBe("1.1.1.1");
 		// 不 seed
-		expect(logged.some((m) => m.includes("first boot"))).toBe(false);
+		expect(logged.some((m) => m.includes("首次启动"))).toBe(false);
 	});
 });
 
@@ -789,5 +790,30 @@ describe("loadBootstrapConfig — ${VAR} 插值", () => {
 		const c = loadBootstrapConfig({ argv: [], env: {}, cwd });
 		expect(c.dataDir).toBe("/from/procenv");
 		expect(c.cookieEncryptionKey).toBe("${BN_UNDEFINED_VAR}");
+	});
+});
+
+describe("启动配置日志的语言", () => {
+	it("首次写入提示按当前语言输出，第二次读取不重复提示", () => {
+		const previous = i18n.state();
+		try {
+			i18n.set({ locale: "en", voice: "maid" });
+			const path = join(cwd, "translated.yaml");
+			const logged: string[] = [];
+			const opts = {
+				argv: [],
+				env: { BN_CONFIG: path, BN_HOST: "127.0.0.1" },
+				cwd,
+				log: (line: string) => logged.push(line),
+			};
+			loadBootstrapConfig(opts);
+			expect(logged).toEqual([
+				`[bootstrap] First boot: wrote bootstrap configuration from environment variables to ${path}`,
+			]);
+			loadBootstrapConfig(opts);
+			expect(logged).toHaveLength(1);
+		} finally {
+			i18n.set(previous);
+		}
 	});
 });

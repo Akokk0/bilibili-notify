@@ -2752,72 +2752,7 @@ export const NON_DISPLAY_TEXTS = {
 			slot: pinnedSource("template[35]"),
 		},
 	],
-	"apps/server/src/config/settings-problems.ts": [
-		{
-			owner: "logLine/cells",
-			text: pinnedSource("`AI 服务商 @{labelOf(e, false)}`"),
-			reason: "设置隔离专用日志，用户问题由独立的人用格式化函数出字",
-			site: pinnedSource(
-				'cells = entries\n\t\t.map((e) => (isInstance(e) ? `AI 服务商 @{labelOf(e, false)}` : labelOf(e, false)))\n\t\t.join("；")',
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "logLine",
-			text: pinnedSource(
-				"`[config] 核心设置有 @{entries.length} 格读不懂,先按默认值在跑,盘上原文没动:@{cells}`",
-			),
-			reason: "设置隔离专用日志，用户问题由独立的人用格式化函数出字",
-			site: pinnedSource(
-				"return `[config] 核心设置有 @{entries.length} 格读不懂,先按默认值在跑,盘上原文没动:@{cells}`;",
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "logLine",
-			text: pinnedSource(
-				"`[config] 核心设置有 @{entries.length} 处读不懂(坏的 AI 服务商先当它不在,别格先按默认值在跑),盘上原文没动:@{cells}`",
-			),
-			reason: "设置隔离专用日志，用户问题由独立的人用格式化函数出字",
-			site: pinnedSource(
-				"return `[config] 核心设置有 @{entries.length} 处读不懂(坏的 AI 服务商先当它不在,别格先按默认值在跑),盘上原文没动:@{cells}`;",
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "AI_PLAINTEXT_NOTE",
-			text: pinnedSource(
-				'"[config] ai 的格被隔离了:那一格里如果手写了明文 key,它还留在 core.json 里(没进加密袋),改对那一格后下次开机才会上提;"',
-			),
-			reason: "设置隔离专用日志，用户问题由独立的人用格式化函数出字",
-			site: pinnedSource(
-				'AI_PLAINTEXT_NOTE =\n\t"[config] ai 的格被隔离了:那一格里如果手写了明文 key,它还留在 core.json 里(没进加密袋),改对那一格后下次开机才会上提;" +\n\t"别在面板里重存这一格:面板上显示的是默认值,保存会把这一格原来的内容(含手写的明文 key,整格 / 整张表的还有加密袋里存着的 key)一起换掉,请改文件再重启"',
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "AI_PLAINTEXT_NOTE",
-			text: pinnedSource(
-				'"别在面板里重存这一格:面板上显示的是默认值,保存会把这一格原来的内容(含手写的明文 key,整格 / 整张表的还有加密袋里存着的 key)一起换掉,请改文件再重启"',
-			),
-			reason: "设置隔离专用日志，用户问题由独立的人用格式化函数出字",
-			site: pinnedSource(
-				'AI_PLAINTEXT_NOTE =\n\t"[config] ai 的格被隔离了:那一格里如果手写了明文 key,它还留在 core.json 里(没进加密袋),改对那一格后下次开机才会上提;" +\n\t"别在面板里重存这一格:面板上显示的是默认值,保存会把这一格原来的内容(含手写的明文 key,整格 / 整张表的还有加密袋里存着的 key)一起换掉,请改文件再重启"',
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "INSTANCE_PLAINTEXT_NOTE",
-			text: pinnedSource(
-				'"[config] 有 AI 服务商被隔离了:这一家里如果手写了明文 key,它还留在 core.json 里(没进加密袋),改对之后下次开机才会上提"',
-			),
-			reason: "设置隔离专用日志，用户问题由独立的人用格式化函数出字",
-			site: pinnedSource(
-				'INSTANCE_PLAINTEXT_NOTE =\n\t"[config] 有 AI 服务商被隔离了:这一家里如果手写了明文 key,它还留在 core.json 里(没进加密袋),改对之后下次开机才会上提"',
-			),
-			slot: pinnedSource(""),
-		},
-	],
+
 	"apps/server/src/index.ts": [
 		{
 			owner: "startServer",

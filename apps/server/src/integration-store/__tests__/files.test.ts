@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { Json, Logger } from "@bilibili-notify/internal";
 import { createKeyProvider, gcmDecrypt, gcmEncrypt } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { logMessage } from "../../__tests__/support/log-message.js";
 import { dataPath } from "../../runtime/roots.js";
 import {
 	integrationSecretsFile,
@@ -26,8 +27,8 @@ function recordingLogger() {
 	const lines: string[] = [];
 	const logger: Logger = {
 		info: () => {},
-		warn: (m) => lines.push(`warn ${m}`),
-		error: (m) => lines.push(`error ${m}`),
+		warn: (m, ...args) => lines.push(`warn ${logMessage(m, args)}`),
+		error: (m, ...args) => lines.push(`error ${logMessage(m, args)}`),
 		debug: () => {},
 	};
 	return { logger, lines };
@@ -131,7 +132,7 @@ describe("state.json", () => {
 			await writeFile(path(), body);
 			const { logger, lines } = recordingLogger();
 			expect(await read(logger)).toEqual({ kind: "ok", entries: new Map() });
-			expect(lines.some((l) => l.startsWith("warn") && l.includes("形状不认"))).toBe(true);
+			expect(lines.some((l) => l.startsWith("warn") && l.includes("格式无效"))).toBe(true);
 			const names = await readdir(join(path(), ".."));
 			expect(names.some((n) => n.startsWith("state.json.corrupt-"))).toBe(true);
 		});
@@ -233,7 +234,7 @@ describe("secrets.enc", () => {
 		await writeFile(path(), JSON.stringify(gcmEncrypt(await keyProvider.getKey(), '{"a":1}')));
 		const { logger, lines } = recordingLogger();
 		expect(await readWith(dataRoot, logger)).toEqual({ kind: "ok", entries: new Map() });
-		expect(lines.some((l) => l.startsWith("warn") && l.includes("形状不认"))).toBe(true);
+		expect(lines.some((l) => l.startsWith("warn") && l.includes("格式无效"))).toBe(true);
 	});
 
 	it("在但读不了(拿一个目录冒充文件)→ unreadable,不抛,原样留着", async () => {
