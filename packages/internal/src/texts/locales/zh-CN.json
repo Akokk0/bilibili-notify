@@ -648,5 +648,18 @@
 	"push.log.routeRemoved": "目标已移出订阅路由，放弃发送",
 	"push.log.retriesExhausted": "目标持续不可达，重试次数已用尽，放弃发送",
 	"push.log.retryPending": "目标暂不可达，等待后重试",
-	"push.log.deliveryIndeterminate": "派发器抛错，发送结果不明，不自动重试"
+	"push.log.deliveryIndeterminate": "派发器抛错，发送结果不明，不自动重试",
+	"ai.log.usage.unknown": "未知",
+	"ai.log.usage.rounds": "轮",
+	"ai.log.usage.images": "张",
+	"ai.log.usage.unfinished": "· 未完成",
+	"ai.log.usage.line": "[usage] {label} · 模型={model} · {count} {unit} · 输入 {input}(缓存命中 {cached})· 输出 {output}(思考 {reasoning}){unfinished}",
+	"ai.log.usage.label.post": "作品点评",
+	"ai.log.usage.label.liveSummary": "下播总结",
+	"ai.log.usage.label.other": "其他点评",
+	"ai.log.usage.label.testPush": "试推送",
+	"ai.log.usage.label.chat": "面板聊天",
+	"ai.log.usage.label.structured": "结构化生成",
+	"ai.log.usage.label.vision": "看图",
+	"ai.log.usage.label.title": "起标题"
 }

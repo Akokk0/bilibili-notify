@@ -697,7 +697,12 @@ export class CommentaryGenerator implements CommentaryProvider {
 		);
 		const shaped = await this.resolveImages(content, imageUrls);
 		const result = await this.callAPI(
-			scene === "post" ? "作品点评" : scene === "liveSummary" ? "下播总结" : "其他点评",
+			() =>
+				scene === "post"
+					? packageText("ai.log.usage.label.post")
+					: scene === "liveSummary"
+						? packageText("ai.log.usage.label.liveSummary")
+						: packageText("ai.log.usage.label.other"),
 			systemPrompt,
 			[{ role: "user", content: shaped.content }],
 			searchExec
@@ -840,7 +845,10 @@ export class CommentaryGenerator implements CommentaryProvider {
 		});
 		if (usages.length > 0) {
 			this.logger.info(
-				formatUsageLine("看图", model, usages, { unit: "张", unfinished: failed > 0 }),
+				formatUsageLine(packageText("ai.log.usage.label.vision"), model, usages, {
+					unit: "image",
+					unfinished: failed > 0,
+				}),
 			);
 		}
 		return descriptions;
@@ -931,7 +939,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...(searchExec ? { webSearch: searchExec } : {}),
 		};
 		const result = await this.callAPI(
-			"试推送",
+			() => packageText("ai.log.usage.label.testPush"),
 			systemPrompt,
 			withVisionNote([{ role: "user", content }], vision),
 			toolOptions,
@@ -1045,7 +1053,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			...(searchExec ? { webSearch: searchExec } : {}),
 		};
 		const result = await this.callAPI(
-			"面板聊天",
+			() => packageText("ai.log.usage.label.chat"),
 			systemPrompt,
 			withVisionNote(trimmed, vision),
 			toolOptions,
@@ -1144,7 +1152,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 无条件走流式(传了 onDelta 就是流式):非流式时网关要整份生成完才回响应头,
 		// SDK 那道闸于是压满全程 —— 一份 skin.json 写三分钟就必然被误杀。
 		const result = await this.callAPI(
-			"结构化生成",
+			() => packageText("ai.log.usage.label.structured"),
 			system,
 			[{ role: "user", content: user }],
 			undefined,
@@ -1205,7 +1213,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 			throw CommentaryGenerator.rejectionOf(e) ?? new Error(this.sanitizeErr(e));
 		}
 		// 请求回来了就记 —— 后面洗出来是空标题照样抛,但这一发的 token 已经花了。
-		this.logger.info(formatUsageLine("起标题", model, [readTokenUsage(res.usage)]));
+		this.logger.info(
+			formatUsageLine(packageText("ai.log.usage.label.title"), model, [readTokenUsage(res.usage)]),
+		);
 
 		const title = clipTitle(stripTitleDecoration(res.choices?.[0]?.message?.content ?? ""));
 		// 空标题比「你好」更糟 —— 侧栏那一行会变成一片空白,看着像会话坏了。
@@ -1485,7 +1495,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	private async callAPI(
 		/** 日志里这次调用叫什么(动态点评 / 面板聊天 …)。 */
-		label: string,
+		label: () => string,
 		systemPrompt: string,
 		messages: ConversationMessage[],
 		toolOptions?: CallToolOptions,
@@ -1517,7 +1527,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		} finally {
 			if (rounds.length > 0) {
 				this.logger.info(
-					formatUsageLine(label, override?.model ?? this.config.model, rounds, {
+					formatUsageLine(label(), override?.model ?? this.config.model, rounds, {
 						unfinished: !finished,
 					}),
 				);

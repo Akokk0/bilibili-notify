@@ -27,5 +27,18 @@
 	"push.log.routeRemoved": "通知先が購読のルーティングから削除されたため、配信を中止します",
 	"push.log.retriesExhausted": "通知先に接続できず、再試行回数の上限に達したため、配信を中止します",
 	"push.log.retryPending": "通知先に一時的に接続できないため、待機して再試行します",
-	"push.log.deliveryIndeterminate": "送信処理で例外が発生しました。配信結果が不明なため、自動再試行は行いません"
+	"push.log.deliveryIndeterminate": "送信処理で例外が発生しました。配信結果が不明なため、自動再試行は行いません",
+	"ai.log.usage.unknown": "不明",
+	"ai.log.usage.rounds": "回",
+	"ai.log.usage.images": "枚",
+	"ai.log.usage.unfinished": "· 未完了",
+	"ai.log.usage.line": "[usage] {label} · モデル={model} · {count} {unit} · 入力 {input}(キャッシュ命中 {cached})· 出力 {output}(推論 {reasoning}){unfinished}",
+	"ai.log.usage.label.post": "作品コメント",
+	"ai.log.usage.label.liveSummary": "配信終了まとめ",
+	"ai.log.usage.label.other": "その他のコメント",
+	"ai.log.usage.label.testPush": "テスト通知",
+	"ai.log.usage.label.chat": "ダッシュボードチャット",
+	"ai.log.usage.label.structured": "構造化生成",
+	"ai.log.usage.label.vision": "画像説明",
+	"ai.log.usage.label.title": "タイトル生成"
 }

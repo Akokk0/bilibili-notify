@@ -15,6 +15,12 @@
  */
 
 import { ok, type ServiceContext } from "@bilibili-notify/internal";
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	PACKAGE_DICTS,
+	type PackageTextKey,
+} from "@bilibili-notify/internal/texts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorSettings } from "../commentary-generator";
 import { aiConfig, streamOf, testNouns, textChunk } from "./harness";
@@ -763,4 +769,48 @@ describe("用量日志 —— 不走 callAPI 的两条副路", () => {
 			"[usage] 看图 · 模型=qwen-vl · 2 张 · 输入 1400(缓存命中 100)· 输出 50(思考 5)",
 		);
 	});
+});
+
+it("用量行和调用标签在输出时取四语，切语言不改变已发出的请求与回答", async () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: PACKAGE_DICTS,
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "maid",
+	});
+	const binding = bindPackageText(texts.t);
+	try {
+		const { gen, info } = makeGen();
+		for (const [locale, expected] of [
+			[
+				"en",
+				"[usage] Post comment · Model=gpt-test · Rounds=1 · Input 10(cache hits 0)· Output 2(reasoning 0)",
+			],
+			[
+				"ja",
+				"[usage] 作品コメント · モデル=gpt-test · 1 回 · 入力 10(キャッシュ命中 0)· 出力 2(推論 0)",
+			],
+			["zh-TW", "[usage] 作品點評 · 模型=gpt-test · 1 輪 · 輸入 10(快取命中 0)· 輸出 2(思考 0)"],
+			["zh-CN", "[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 10(缓存命中 0)· 输出 2(思考 0)"],
+		] as const) {
+			texts.set({ locale: locale === "zh-CN" ? "en" : "zh-CN", voice: "maid" });
+			let finish: ((value: ReturnType<typeof msgResp>) => void) | undefined;
+			oai.chatCreate.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						finish = resolve;
+					}),
+			);
+			const running = gen.comment("原素材", "post");
+			await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+			texts.set({ locale, voice: "maid" });
+			finish?.(msgResp("回答保持原样", chatUsage(10, 0, 2, 0)));
+			await expect(running).resolves.toBe("回答保持原样");
+			expect(usageLines(info).at(-1)).toBe(expected);
+		}
+		expect(usageLines(info)).toHaveLength(4);
+		expect(oai.chatCreate).toHaveBeenCalledTimes(4);
+	} finally {
+		binding.dispose();
+	}
 });

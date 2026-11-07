@@ -24,7 +24,7 @@ describe("withPackageDicts", () => {
 		expect(i18n.t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
 		i18n.set({ locale: "en", voice: "plain" });
 		expect(i18n.t("web.hi")).toBe("Hi");
-		// 英文的包字典还空着:拿简体打底
+		// 这条共用命令尚无英文译文，按简中回落
 		expect(i18n.t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
 	});
 
@@ -52,7 +52,7 @@ describe("withPackageDicts", () => {
 	});
 
 	it("本端与包都没有女仆层的语言照旧没有女仆层(口吻那一项在这种语言下不出现)", () => {
-		expect(withPackageDicts(END)["zh-TW"]).toEqual({ plain: {} });
+		expect(withPackageDicts(END)["zh-TW"]).toEqual({ plain: PACKAGE_DICTS["zh-TW"].plain });
 		expect("maid" in withPackageDicts(END).en).toBe(false);
 	});
 });

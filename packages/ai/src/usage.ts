@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 一次 AI 调用花了多少 token —— 读法与记账。
  *
@@ -93,9 +94,23 @@ export function formatUsageLine(
 	label: string,
 	model: string,
 	rounds: readonly TokenUsage[],
-	opts: { unfinished?: boolean; unit?: "轮" | "张" } = {},
+	opts: { unfinished?: boolean; unit?: "round" | "image" } = {},
 ): string {
 	const t = sumRounds(rounds);
-	const n = (v: number | undefined) => (v === undefined ? "未知" : String(v));
-	return `[usage] ${label} · 模型=${model} · ${rounds.length} ${opts.unit ?? "轮"} · 输入 ${n(t.input)}(缓存命中 ${n(t.cached)})· 输出 ${n(t.output)}(思考 ${n(t.reasoning)})${opts.unfinished ? "· 未完成" : ""}`;
+	const n = (v: number | undefined) =>
+		v === undefined ? packageText("ai.log.usage.unknown") : String(v);
+	return packageText("ai.log.usage.line", {
+		label,
+		model,
+		count: rounds.length,
+		unit:
+			opts.unit === "image"
+				? packageText("ai.log.usage.images")
+				: packageText("ai.log.usage.rounds"),
+		input: n(t.input),
+		cached: n(t.cached),
+		output: n(t.output),
+		reasoning: n(t.reasoning),
+		unfinished: opts.unfinished ? packageText("ai.log.usage.unfinished") : "",
+	});
 }

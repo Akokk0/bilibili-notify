@@ -27,5 +27,18 @@
 	"push.log.routeRemoved": "目標已移出訂閱路由，放棄傳送",
 	"push.log.retriesExhausted": "目標持續無法連線，重試次數已用盡，放棄傳送",
 	"push.log.retryPending": "目標暫時無法連線，等待後重試",
-	"push.log.deliveryIndeterminate": "派發器擲出錯誤，傳送結果不明，不自動重試"
+	"push.log.deliveryIndeterminate": "派發器擲出錯誤，傳送結果不明，不自動重試",
+	"ai.log.usage.unknown": "未知",
+	"ai.log.usage.rounds": "輪",
+	"ai.log.usage.images": "張",
+	"ai.log.usage.unfinished": "· 未完成",
+	"ai.log.usage.line": "[usage] {label} · 模型={model} · {count} {unit} · 輸入 {input}(快取命中 {cached})· 輸出 {output}(思考 {reasoning}){unfinished}",
+	"ai.log.usage.label.post": "作品點評",
+	"ai.log.usage.label.liveSummary": "下播總結",
+	"ai.log.usage.label.other": "其他點評",
+	"ai.log.usage.label.testPush": "測試推播",
+	"ai.log.usage.label.chat": "面板聊天",
+	"ai.log.usage.label.structured": "結構化產生",
+	"ai.log.usage.label.vision": "看圖",
+	"ai.log.usage.label.title": "產生標題"
 }

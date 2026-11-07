@@ -180,46 +180,6 @@ export const NON_DISPLAY_TEXTS = {
 			),
 		},
 		{
-			owner: "CommentaryGenerator/comment/result",
-			text: pinnedSource('"作品点评"'),
-			reason: "只传给用量日志的调用标签或单位；不进入用户返回结果",
-			site: pinnedSource(
-				'result = await this.callAPI(\n\t\t\tscene === "post" ? "作品点评" : scene === "liveSummary" ? "下播总结" : "其他点评",\n\t\t\tsystemPrompt,\n\t\t\t[{ role: "user", content: shaped.content }],\n\t\t\tsearchExec\n\t\t\t\t? {\n\t\t\t\t\t\ttools: [WEB_SEARCH_TOOL],\n\t\t\t\t\t\t// web_search 由 callAPI 内部截胡执行;这条路没有别的工具,\n\t\t\t\t\t\t// onToolCall 缺席时 execToolCall 统一回「未知工具」失败资料。\n\t\t\t\t\t\twebSearch: searchExec,\n\t\t\t\t\t}\n\t\t\t\t: undefined,\n\t\t\tshaped.passthrough,\n\t\t\toverride,\n\t\t)',
-			),
-		},
-		{
-			owner: "CommentaryGenerator/comment/result",
-			text: pinnedSource('"下播总结"'),
-			reason: "只传给用量日志的调用标签或单位；不进入用户返回结果",
-			site: pinnedSource(
-				'result = await this.callAPI(\n\t\t\tscene === "post" ? "作品点评" : scene === "liveSummary" ? "下播总结" : "其他点评",\n\t\t\tsystemPrompt,\n\t\t\t[{ role: "user", content: shaped.content }],\n\t\t\tsearchExec\n\t\t\t\t? {\n\t\t\t\t\t\ttools: [WEB_SEARCH_TOOL],\n\t\t\t\t\t\t// web_search 由 callAPI 内部截胡执行;这条路没有别的工具,\n\t\t\t\t\t\t// onToolCall 缺席时 execToolCall 统一回「未知工具」失败资料。\n\t\t\t\t\t\twebSearch: searchExec,\n\t\t\t\t\t}\n\t\t\t\t: undefined,\n\t\t\tshaped.passthrough,\n\t\t\toverride,\n\t\t)',
-			),
-		},
-		{
-			owner: "CommentaryGenerator/comment/result",
-			text: pinnedSource('"其他点评"'),
-			reason: "只传给用量日志的调用标签或单位；不进入用户返回结果",
-			site: pinnedSource(
-				'result = await this.callAPI(\n\t\t\tscene === "post" ? "作品点评" : scene === "liveSummary" ? "下播总结" : "其他点评",\n\t\t\tsystemPrompt,\n\t\t\t[{ role: "user", content: shaped.content }],\n\t\t\tsearchExec\n\t\t\t\t? {\n\t\t\t\t\t\ttools: [WEB_SEARCH_TOOL],\n\t\t\t\t\t\t// web_search 由 callAPI 内部截胡执行;这条路没有别的工具,\n\t\t\t\t\t\t// onToolCall 缺席时 execToolCall 统一回「未知工具」失败资料。\n\t\t\t\t\t\twebSearch: searchExec,\n\t\t\t\t\t}\n\t\t\t\t: undefined,\n\t\t\tshaped.passthrough,\n\t\t\toverride,\n\t\t)',
-			),
-		},
-		{
-			owner: "CommentaryGenerator/chat/result",
-			text: pinnedSource('"试推送"'),
-			reason: "只传给用量日志的调用标签或单位；不进入用户返回结果",
-			site: pinnedSource(
-				'result = await this.callAPI(\n\t\t\t"试推送",\n\t\t\tsystemPrompt,\n\t\t\twithVisionNote([{ role: "user", content }], vision),\n\t\t\ttoolOptions,\n\t\t\t// 配了副模型就不再把图下挂给主模型 —— 它可能根本不支持多模态。\n\t\t\tvision.ctx ? undefined : this.mainModelCanSeeImages() ? imageUrls : undefined,\n\t\t)',
-			),
-		},
-		{
-			owner: "CommentaryGenerator/chatStatelessImpl/result",
-			text: pinnedSource('"面板聊天"'),
-			reason: "只传给用量日志的调用标签或单位；不进入用户返回结果",
-			site: pinnedSource(
-				'result = await this.callAPI(\n\t\t\t"面板聊天",\n\t\t\tsystemPrompt,\n\t\t\twithVisionNote(trimmed, vision),\n\t\t\ttoolOptions,\n\t\t\tvision.ctx ? undefined : this.mainModelCanSeeImages() ? opts?.imageUrls : undefined,\n\t\t\t// 只带思考两项的最小 override —— 聊天的思考设置与自动生成分了家。\n\t\t\topts?.thinking,\n\t\t\topts?.onDelta,\n\t\t\topts?.onReasoning,\n\t\t)',
-			),
-		},
-		{
 			owner: "CommentaryGenerator/toolImagesFor",
 			text: pinnedSource(
 				"`@{text}\\n\\n(这张图你看不见:当前模型不支持看图,也没配看图副模型。照实告诉主人,请主人自己看预览。)`",
@@ -237,14 +197,6 @@ export const NON_DISPLAY_TEXTS = {
 			reason: "只进入模型上下文的指令、素材说明或工具结果；ADR-0037 决策11",
 			site: pinnedSource(
 				"return ok({\n\t\t\ttext: block\n\t\t\t\t? `@{text}\\n\\n@{block}`\n\t\t\t\t: `@{text}\\n\\n(看图副模型这次没看成,图的样子不清楚。照实告诉主人,请主人自己看预览。)`,\n\t\t});",
-			),
-		},
-		{
-			owner: "CommentaryGenerator/generateRaw/result",
-			text: pinnedSource('"结构化生成"'),
-			reason: "只传给用量日志的调用标签或单位；不进入用户返回结果",
-			site: pinnedSource(
-				'result = await this.callAPI(\n\t\t\t"结构化生成",\n\t\t\tsystem,\n\t\t\t[{ role: "user", content: user }],\n\t\t\tundefined,\n\t\t\tundefined,\n\t\t\t{ timeoutMs: STRUCTURED_TIMEOUT_MS, signal: stream?.signal },\n\t\t\t(text) => {\n\t\t\t\tstream?.onText?.(text);\n\t\t\t\tchars += text.length;\n\t\t\t\tif (chars - reported < PROGRESS_STEP_CHARS) return;\n\t\t\t\treported = chars;\n\t\t\t\tonProgress?.(chars);\n\t\t\t},\n\t\t)',
 			),
 		},
 		{
@@ -814,52 +766,6 @@ export const NON_DISPLAY_TEXTS = {
 			text: pinnedSource("`未知工具: @{name}`"),
 			reason: "给模型的提示词、工具描述或工具结果；ADR-0037 决策11（tools原50处经4-55批准）",
 			site: pinnedSource('default:\nreturn fail("not_found", `未知工具: @{name}`);'),
-		},
-	],
-	"packages/ai/src/usage.ts": [
-		{
-			owner: "formatUsageLine",
-			text: pinnedSource('"轮"'),
-			reason: "只供调用用量日志的标签、单位类型与排版；不进入面板或模型输出",
-			site: pinnedSource('opts: { unfinished?: boolean; unit?: "轮" | "张" } = {}'),
-		},
-		{
-			owner: "formatUsageLine",
-			text: pinnedSource('"张"'),
-			reason: "只供调用用量日志的标签、单位类型与排版；不进入面板或模型输出",
-			site: pinnedSource('opts: { unfinished?: boolean; unit?: "轮" | "张" } = {}'),
-		},
-		{
-			owner: "formatUsageLine/n",
-			text: pinnedSource('"未知"'),
-			reason: "只供调用用量日志的标签、单位类型与排版；不进入面板或模型输出",
-			site: pinnedSource('n = (v: number | undefined) => (v === undefined ? "未知" : String(v))'),
-		},
-		{
-			owner: "formatUsageLine",
-			text: pinnedSource(
-				'`[usage] @{label} · 模型=@{model} · @{rounds.length} @{opts.unit ?? "轮"} · 输入 @{n(t.input)}(缓存命中 @{n(t.cached)})· 输出 @{n(t.output)}(思考 @{n(t.reasoning)})@{opts.unfinished ? "· 未完成" : ""}`',
-			),
-			reason: "只供调用用量日志的标签、单位类型与排版；不进入面板或模型输出",
-			site: pinnedSource(
-				'return `[usage] @{label} · 模型=@{model} · @{rounds.length} @{opts.unit ?? "轮"} · 输入 @{n(t.input)}(缓存命中 @{n(t.cached)})· 输出 @{n(t.output)}(思考 @{n(t.reasoning)})@{opts.unfinished ? "· 未完成" : ""}`;',
-			),
-		},
-		{
-			owner: "formatUsageLine",
-			text: pinnedSource('"轮"'),
-			reason: "只供调用用量日志的标签、单位类型与排版；不进入面板或模型输出",
-			site: pinnedSource(
-				'return `[usage] @{label} · 模型=@{model} · @{rounds.length} @{opts.unit ?? "轮"} · 输入 @{n(t.input)}(缓存命中 @{n(t.cached)})· 输出 @{n(t.output)}(思考 @{n(t.reasoning)})@{opts.unfinished ? "· 未完成" : ""}`;',
-			),
-		},
-		{
-			owner: "formatUsageLine",
-			text: pinnedSource('"· 未完成"'),
-			reason: "只供调用用量日志的标签、单位类型与排版；不进入面板或模型输出",
-			site: pinnedSource(
-				'return `[usage] @{label} · 模型=@{model} · @{rounds.length} @{opts.unit ?? "轮"} · 输入 @{n(t.input)}(缓存命中 @{n(t.cached)})· 输出 @{n(t.output)}(思考 @{n(t.reasoning)})@{opts.unfinished ? "· 未完成" : ""}`;',
-			),
 		},
 	],
 	"packages/ai/src/vision.ts": [

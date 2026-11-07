@@ -27,5 +27,18 @@
 	"push.log.routeRemoved": "Target removed from subscription routing; abandoning delivery",
 	"push.log.retriesExhausted": "Target remains unreachable and retries are exhausted; abandoning delivery",
 	"push.log.retryPending": "Target is temporarily unreachable; waiting before retrying",
-	"push.log.deliveryIndeterminate": "Dispatch threw; delivery is indeterminate and will not be retried automatically"
+	"push.log.deliveryIndeterminate": "Dispatch threw; delivery is indeterminate and will not be retried automatically",
+	"ai.log.usage.unknown": "unknown",
+	"ai.log.usage.rounds": "Rounds",
+	"ai.log.usage.images": "Images",
+	"ai.log.usage.unfinished": "· Incomplete",
+	"ai.log.usage.line": "[usage] {label} · Model={model} · {unit}={count} · Input {input}(cache hits {cached})· Output {output}(reasoning {reasoning}){unfinished}",
+	"ai.log.usage.label.post": "Post comment",
+	"ai.log.usage.label.liveSummary": "Stream summary",
+	"ai.log.usage.label.other": "Other comment",
+	"ai.log.usage.label.testPush": "Test push",
+	"ai.log.usage.label.chat": "Dashboard chat",
+	"ai.log.usage.label.structured": "Structured generation",
+	"ai.log.usage.label.vision": "Image description",
+	"ai.log.usage.label.title": "Title generation"
 }
