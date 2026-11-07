@@ -94,7 +94,10 @@ export function keyRootProblems({ packageKeys, endKeys }) {
  * 仓里拓展自带的译文目录(ADR-0037 决策 14)。**不进 `DICT_DIRS`**:拓展的译文没有女仆层、不要求
  * 每种语言都有、也不拿简中当打底去对键,它的判据是宿主读目录时那一份解析(逐条丢坏的),这里要的是「零问题」。
  */
-export const EXTENSION_LOCALE_DIRS = ["extensions/fake-source/locales"];
+export const EXTENSION_LOCALE_DIRS = [
+	"extensions/bridge/locales",
+	"extensions/fake-source/locales",
+];
 
 /** 打底的语言:别的语言的句子都得是它句子的子集。 */
 export const BASE_LOCALE = "zh-CN";
