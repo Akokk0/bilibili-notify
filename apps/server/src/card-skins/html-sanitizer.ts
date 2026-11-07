@@ -27,6 +27,9 @@ import {
 	CARD_SKIN_LIMITS,
 	type CardKind,
 	type CardSkinFieldType,
+	fail,
+	ok,
+	type Result,
 } from "@bilibili-notify/internal";
 import {
 	type DefaultTreeAdapterTypes,
@@ -438,19 +441,23 @@ export interface SanitizeCardHtmlOptions {
 	assets: ReadonlySet<string>;
 }
 
-export type SanitizeCardHtmlResult =
-	| {
-			ok: true;
-			html: string;
-			warnings: string[];
-			/**
-			 * 留在产物里的 svg `id`,按出现顺序。清洗器一次只看一个块,**查不了跨块重名** ——
-			 * 而整张卡渲染出来是一份文档,`id` 是全卡一个命名空间。所以这里只负责如实报出来,
-			 * 汇总与判重归 package 那一层(只有它同时看得见一张卡的所有块)。
-			 */
-			ids: string[];
-	  }
-	| { ok: false; errors: string[] };
+export type SanitizeCardHtmlResult = Result<{
+	html: string;
+	warnings: string[];
+	/**
+	 * 留在产物里的 svg `id`,按出现顺序。清洗器一次只看一个块,**查不了跨块重名** ——
+	 * 而整张卡渲染出来是一份文档,`id` 是全卡一个命名空间。所以这里只负责如实报出来,
+	 * 汇总与判重归 package 那一层(只有它同时看得见一张卡的所有块)。
+	 */
+	ids: string[];
+}>;
+
+/** 整块拒收的逐条原因，原文与顺序同时供摘要及调用方的列表使用。 */
+function rejectHtml(messages: string[]) {
+	return fail("invalid", messages.join("\n"), {
+		issues: messages.map((message) => ({ message })),
+	});
+}
 
 type Element = DefaultTreeAdapterTypes.Element;
 type ParentNode = DefaultTreeAdapterTypes.ParentNode;
@@ -769,10 +776,9 @@ export function sanitizeCardBlockHtml(
 	const max = CARD_SKIN_LIMITS.maxHtmlBytes;
 	// 按 UTF-8 字节算,不是 `input.length` —— 那是 UTF-16 单元数,一个汉字才记 1。
 	if (Buffer.byteLength(input, "utf8") > max) {
-		return {
-			ok: false,
-			errors: [serverText("service.card-skins.html-sanitizer.text.19", { value0: max / 1024 })],
-		};
+		return rejectHtml([
+			serverText("service.card-skins.html-sanitizer.text.19", { value0: max / 1024 }),
+		]);
 	}
 
 	const ctx: Ctx = {
@@ -789,23 +795,21 @@ export function sanitizeCardBlockHtml(
 	rebuild(source.childNodes, out, ctx);
 
 	if (ctx.unknownPaths.size > 0) {
-		return {
-			ok: false,
-			errors: [...ctx.unknownPaths].map((p) =>
+		return rejectHtml(
+			[...ctx.unknownPaths].map((p) =>
 				serverText("service.card-skins.html-sanitizer.text.20", { value0: p, value1: opts.kind }),
 			),
-		};
+		);
 	}
 
 	const html = serialize(out);
 	if (html.trim() === "")
-		return { ok: false, errors: [serverText("service.card-skins.html-sanitizer.text.21")] };
+		return rejectHtml([serverText("service.card-skins.html-sanitizer.text.21")]);
 	// 上限量的也是**存盘那份**:转义会让文本变长(`&` → `&amp;`),所以产物得自己再过一次闸。
 	if (Buffer.byteLength(html, "utf8") > max) {
-		return {
-			ok: false,
-			errors: [serverText("service.card-skins.html-sanitizer.text.22", { value0: max / 1024 })],
-		};
+		return rejectHtml([
+			serverText("service.card-skins.html-sanitizer.text.22", { value0: max / 1024 }),
+		]);
 	}
-	return { ok: true, html, warnings: ctx.warnings, ids: ctx.ids };
+	return ok({ html, warnings: ctx.warnings, ids: ctx.ids });
 }

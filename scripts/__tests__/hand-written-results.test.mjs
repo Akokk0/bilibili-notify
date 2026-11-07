@@ -44,7 +44,6 @@ export const ALLOWLIST = {
  */
 export const RATCHET = {
 	"apps/server/src/card-skins/ai-css.ts": 7,
-	"apps/server/src/card-skins/html-sanitizer.ts": 5,
 	"apps/server/src/card-skins/package.ts": 6,
 	"apps/server/src/card-skins/preview-html.ts": 2,
 	"apps/server/src/extensions/marketplace.ts": 14,

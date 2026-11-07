@@ -232,6 +232,34 @@ describe("zip bomb 两道闸", () => {
 });
 
 describe("checkCardSkinPackage:清单层", () => {
+	it("HTML 多条拒绝保留块路径、原文和顺序", () => {
+		const result = checkCardSkinPackage(
+			manifest({
+				cards: {
+					live: {
+						width: 600,
+						blocks: [
+							{
+								id: "note",
+								kind: "custom",
+								grid: { row: 1, column: 1, span: 12 },
+								html: "<p>{missing.one} {missing.two} {missing.one}</p>",
+							},
+						],
+					},
+				},
+			}),
+			new Set(),
+		);
+		expect(result).toEqual({
+			ok: false,
+			errors: [
+				"cards.live.blocks[0]「note」.html: 占位符「{missing.one}」不在 live 卡的字段表里",
+				"cards.live.blocks[0]「note」.html: 占位符「{missing.two}」不在 live 卡的字段表里",
+			],
+		});
+	});
+
 	it("形状不对 → 拒,错误指得出是哪个块", () => {
 		const r = checkCardSkinPackage(
 			manifest({

@@ -18,7 +18,7 @@ function run(input: string, kind: "live" | "superchat" | "membership" = "live") 
 
 function ok(input: string, kind: "live" | "superchat" | "membership" = "live") {
 	const res = run(input, kind);
-	expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
+	expect(res.ok, res.ok ? "" : res.message).toBe(true);
 	if (!res.ok) throw new Error("unreachable");
 	return { html: res.html, warnings: res.warnings };
 }
@@ -27,7 +27,7 @@ function bad(input: string, kind: "live" | "superchat" | "membership" = "live") 
 	const res = run(input, kind);
 	expect(res.ok).toBe(false);
 	if (res.ok) throw new Error("unreachable");
-	return res.errors;
+	return (res.issues ?? [res]).map((issue) => issue.message);
 }
 
 describe("标签白名单", () => {
@@ -346,6 +346,34 @@ describe("转义与形状", () => {
 });
 
 describe("硬失败", () => {
+	it("占位符拒绝用标准结果逐条返回原因，去重后保留首次出现顺序", () => {
+		expect(run("<p>{missing.one} {missing.two} {missing.one}</p>")).toEqual({
+			ok: false,
+			code: "invalid",
+			message:
+				"占位符「{missing.one}」不在 live 卡的字段表里\n占位符「{missing.two}」不在 live 卡的字段表里",
+			issues: [
+				{ message: "占位符「{missing.one}」不在 live 卡的字段表里" },
+				{ message: "占位符「{missing.two}」不在 live 卡的字段表里" },
+			],
+		});
+	});
+
+	it.each([
+		["x".repeat(8193), ["自定义 HTML 超过 8KB 上限"]],
+		["&".repeat(2000), ["清洗后的 HTML 超过 8KB 上限"]],
+		["<script>bad</script>", ["清洗后这个块什么都不剩"]],
+		[
+			"<p>{missing.one} {missing.two} {missing.one}</p>",
+			[
+				"占位符「{missing.one}」不在 live 卡的字段表里",
+				"占位符「{missing.two}」不在 live 卡的字段表里",
+			],
+		],
+	])("拒绝 HTML 时保留完整提示及顺序", (input, messages) => {
+		expect(bad(input)).toEqual(messages);
+	});
+
 	it("超过 maxHtmlBytes → error", () => {
 		const big = "<div>x</div>".repeat(1000);
 		expect(Buffer.byteLength(big, "utf8")).toBeGreaterThan(CARD_SKIN_LIMITS.maxHtmlBytes);

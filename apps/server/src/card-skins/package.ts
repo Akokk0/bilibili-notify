@@ -224,7 +224,7 @@ export function checkCardSkinPackage(
 			if (block.kind !== "custom") return;
 			const res = sanitizeCardBlockHtml(block.html, { kind, assets: assetNames });
 			if (!res.ok) {
-				errors.push(...res.errors.map((e) => `${at}.html: ${e}`));
+				errors.push(...(res.issues ?? [res]).map((issue) => `${at}.html: ${issue.message}`));
 			} else {
 				warnings.push(...res.warnings.map((w) => `${at}.html: ${w}`));
 				block.html = res.html;
