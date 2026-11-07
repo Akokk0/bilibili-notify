@@ -82,9 +82,11 @@ describe("拓展市场 e2e", () => {
 				id: "official",
 				official: true,
 				ok: false,
-				err: expect.stringContaining("拿不到"),
+				code: "unavailable",
+				message: expect.stringContaining("拿不到"),
 			}),
 		]);
+		expect(body.sources[0]).not.toHaveProperty("err");
 		expect(seen).toContain(EXTENSION_MARKETPLACE_URL);
 	});
 });
