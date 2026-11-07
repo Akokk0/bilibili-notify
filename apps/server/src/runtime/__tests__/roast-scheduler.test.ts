@@ -288,6 +288,10 @@ describe("调度器 — 到点之后", () => {
 	it("一个目标都没配 → 跳过并说明,不白生成一份扔掉", async () => {
 		const { sched } = armed({ targets: [] });
 		await sched.runBoardOnce();
+		expect(logger.warn).toHaveBeenCalledWith("锐评未配置推送目标，跳过生成", {
+			kind: "board",
+			subscriptionId: undefined,
+		});
 		expect(generateBoardRoast).not.toHaveBeenCalled();
 		expect(deliverRoast).not.toHaveBeenCalled();
 		expect(tellMaster).toHaveBeenCalledTimes(1);
@@ -427,7 +431,10 @@ describe("调度器 — 到点之后", () => {
 
 		expect(ctx.tracked).toHaveLength(1);
 		await expect(ctx.tracked[0]).resolves.toBeUndefined();
-		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("磁盘满了"));
+		expect(logger.error).toHaveBeenCalledWith(
+			"锐评轮次因异常终止",
+			expect.objectContaining({ error: expect.objectContaining({ message: "磁盘满了" }) }),
+		);
 	});
 
 	it("私聊自己抛错 → 不影响这一轮的结论(通知是锦上添花)", async () => {

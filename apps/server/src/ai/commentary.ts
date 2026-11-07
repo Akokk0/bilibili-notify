@@ -14,7 +14,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { resolveAIProfile } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import type { LiveTable } from "../live/live-table.js";
 import { builtinPersonasOf, toGeneratorConfig } from "../runtime/ai-config.js";
 import type { SubscriptionStateStore } from "../runtime/subscription-state-store.js";
@@ -132,7 +132,7 @@ export function createCommentary(deps: CommentaryDeps): CommentaryGenerator | nu
 		c.start();
 		return c;
 	} catch (err) {
-		deps.logger.warn(`[ai] commentary init failed: ${String(err)}`);
+		deps.logger.warn(logText("log.ai.initializeFailed"), { error: err });
 		return null;
 	}
 }
@@ -154,7 +154,7 @@ export function reloadCommentary(
 	}
 	if (needsCommentary && !current) {
 		const next = createCommentary(deps);
-		if (next) deps.logger.info("[ai] commentary 已激活");
+		if (next) deps.logger.info(logText("log.ai.activated"));
 		return next;
 	}
 	if (current) {
@@ -162,9 +162,13 @@ export function reloadCommentary(
 		current.updateConfig(next);
 		// 报**真正推给生成器的那份人格**(指针指的那份),不是 `a.persona` ——
 		// 后者永远冻在老值上,照它打日志等于给排查的人指错方向。
-		deps.logger.info(
-			`[ai] commentary 配置已更新: profile=${a.activeProfile}(${ap.provider}), model=${ap.model}, persona.name=${next.persona.name}, traits=${next.persona.traits}`,
-		);
+		deps.logger.info(logText("log.ai.configurationUpdated"), {
+			profile: a.activeProfile,
+			provider: ap.provider,
+			model: ap.model,
+			personaName: next.persona.name,
+			traits: next.persona.traits,
+		});
 		return current;
 	}
 	return null;

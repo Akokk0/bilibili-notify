@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import {
 	builtinCommandAliases,
 	displayedBuiltinCommandAliases,
@@ -121,7 +121,7 @@ export function createReportCommand(opts: ReportCommandOptions): CommandDef {
 				// 这里接住而不是往外抛:要把原因交给主人(抛出去只剩「出错了,详情在日志里」),
 				// 闸也靠下面的 finally 松开。
 				const why = errorMessageOf(err);
-				opts.logger.warn(`[command] 周报跑失败: ${why}`);
+				opts.logger.warn(logText("log.command.reportFailed"), { error: err });
 				return fail("unavailable", why);
 			} finally {
 				// finally 不能省 —— 见文件头那条「异常锁死」。

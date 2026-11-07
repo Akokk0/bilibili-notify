@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import {
 	builtinCommandAliases,
 	displayedBuiltinCommandAliases,
@@ -17,7 +17,6 @@ import {
 import { type AuthState, type Logger, ok } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
 import type { SourceLoginView, SourceView } from "../subscriptions/registry.js";
-import { errorMessageOf } from "../util/error-message.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
 
 /** 一次状态快照。字段少是刻意的,见文件头。 */
@@ -99,7 +98,11 @@ export function readSourceHealth(
 		try {
 			rows.push({ label, summary: view.health().summary });
 		} catch (err) {
-			logger.error(`[status] 来源「${label}」的 health() 抛错: ${errorMessageOf(err)}`);
+			logger.error(logText("log.command.sourceStateFailed"), {
+				sourceLabel: label,
+				operation: "health",
+				error: err,
+			});
 			rows.push({ label, summary: unreadable() });
 		}
 	}
@@ -118,7 +121,11 @@ export function readLogins(
 		try {
 			return { label, state: auth.state() };
 		} catch (err) {
-			logger.error(`[status] 来源「${label}」的 auth.state() 抛错: ${errorMessageOf(err)}`);
+			logger.error(logText("log.command.sourceStateFailed"), {
+				sourceLabel: label,
+				operation: "auth.state",
+				error: err,
+			});
 			return { label, state: undefined };
 		}
 	});

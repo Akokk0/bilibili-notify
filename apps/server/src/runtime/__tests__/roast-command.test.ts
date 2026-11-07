@@ -210,7 +210,7 @@ describe("审批指令处理", () => {
 		await expect(feed(h, "y")).resolves.toBe(true);
 
 		expect(deliver).not.toHaveBeenCalled();
-		expect(warn).toHaveBeenCalledWith(expect.stringContaining("处理指令失败"));
+		expect(warn).toHaveBeenCalledWith("锐评指令处理失败", { error: expect.any(Error) });
 	});
 });
 

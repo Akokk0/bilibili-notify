@@ -1,3 +1,4 @@
+import { logText } from "../i18n/index.js";
 /**
  * 定时锐评调度器 —— 两条线:全局一条榜单周报,每位 UP 各一条单人锐评(B 站与拓展订阅都有,按订阅 id
  * 排、跑、发 —— ADR-0020 决策 14 / 18)。
@@ -127,9 +128,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		try {
 			await opts.tellMaster(text);
 		} catch (err) {
-			logger.warn(
-				`[roast-sched] 通知主人失败: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			logger.warn(logText("log.roast.notifyFailed"), { error: err });
 		}
 	}
 
@@ -138,16 +137,14 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		try {
 			await opts.tellMasterPayload(payload);
 		} catch (err) {
-			logger.warn(
-				`[roast-sched] 私聊审批预览失败: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			logger.warn(logText("log.roast.previewFailed"), { error: err });
 		}
 	}
 
 	/**
 	 * 一条流水线跑一趟。
 	 *
-	 * `label` 只进日志与私聊,用来区分是榜单还是哪位 UP —— 主人收到「这周没发」时
+	 * `label` 只进私聊,用来区分是榜单还是哪位 UP —— 主人收到「这周没发」时
 	 * 得知道说的是哪一条。
 	 */
 	async function runOnce(
@@ -162,12 +159,12 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		// 一个目标都没配、或配的全都停用了 —— 先拦住,别白调一次模型再把结果扔掉。
 		// 两句话分开说:「没配」和「都停用了」对主人是两件事,后者他明明配过。
 		if (cfg.targets.length === 0) {
-			logger.warn(`[roast-sched] ${label}:没有配置推送目标,跳过`);
+			logger.warn(logText("log.roast.noTargets"), { kind, subscriptionId });
 			if (cfg.notifyOnError) await tell(t("roastScheduler.noTargets", { label }));
 			return { kind: "no-targets" };
 		}
 		if (allTargetsPaused(cfg.targets)) {
-			logger.warn(`[roast-sched] ${label}:配置的推送目标都已停用,跳过`);
+			logger.warn(logText("log.roast.targetsPaused"), { kind, subscriptionId });
 			if (cfg.notifyOnError) await tell(t("roastScheduler.allTargetsPaused", { label }));
 			return { kind: "no-targets" };
 		}
@@ -188,7 +185,12 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 
 		if (!gen.ok) {
 			// 失败自带给人看的话(码与话在 roast-generate.ts 产生的地方定好);这里只取话。
-			logger.warn(`[roast-sched] ${label} 生成失败:${gen.message}`);
+			logger.warn(logText("log.roast.generationFailed"), {
+				kind,
+				subscriptionId,
+				code: gen.code,
+				message: gen.message,
+			});
 			// 「这周没发」后面必须跟得上原因,否则主人对着沉默猜。
 			if (cfg.notifyOnError)
 				await tell(t("roastScheduler.generationFailed", { label, message: gen.message }));
@@ -205,7 +207,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 				targets: cfg.targets,
 				result: gen.result,
 			});
-			logger.info(`[roast-sched] ${label} 已生成,等待审批(id=${draft.id})`);
+			logger.info(logText("log.roast.awaitingApproval"), {
+				kind,
+				subscriptionId,
+				draftId: draft.id,
+			});
 
 			// 私聊里**必须带上正文** —— 曾经这条消息只有「已经生成好了」加一个编号,
 			// 主人对着它只能盲批,审批这功能整个是假的。而且发的是渲染好的那一份
@@ -224,7 +230,13 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			return { kind: "pending-approval", draftId: draft.id };
 		}
 
-		return await deliverAndReport(kind, gen.result as BoardLike | SoloLike, cfg, label);
+		return await deliverAndReport(
+			kind,
+			gen.result as BoardLike | SoloLike,
+			cfg,
+			label,
+			subscriptionId,
+		);
 	}
 
 	/** 发送 + 善后(部分失败汇总、抄送)。审批通过后也走这里,所以单独成函数。 */
@@ -233,6 +245,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		result: BoardLike | SoloLike,
 		cfg: Pick<RoastSchedule, "days" | "targets" | "notifyOnError">,
 		label: string,
+		subscriptionId?: string,
 	): Promise<RoastRunResult> {
 		const out = await deliverRoast(deps, {
 			kind,
@@ -245,9 +258,16 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		const skipped = out.skipped.length;
 		if (out.failed.length > 0) {
 			const detail = out.failed.map((f) => `${f.targetId}：${f.failure.message}`).join("\n");
-			logger.warn(
-				`[roast-sched] ${label} 部分目标推送失败${skipped > 0 ? `,跳过 ${skipped} 个已停用` : ""}:\n${detail}`,
-			);
+			logger.warn(logText("log.roast.deliveryFailed"), {
+				kind,
+				subscriptionId,
+				skipped,
+				failures: out.failed.map((f) => ({
+					targetId: f.targetId,
+					code: f.failure.code,
+					message: f.failure.message,
+				})),
+			});
 			// 管线自己已经退避重试过了,到这儿就是终局 —— 说清哪些没成即可。
 			if (cfg.notifyOnError) {
 				await tell(
@@ -260,9 +280,13 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 				);
 			}
 		} else {
-			logger.info(
-				`[roast-sched] ${label} 已发送到 ${out.sent.length} 个目标(${out.mode})${skipped > 0 ? `,跳过 ${skipped} 个已停用` : ""}`,
-			);
+			logger.info(logText("log.roast.delivered"), {
+				kind,
+				subscriptionId,
+				sent: out.sent.length,
+				mode: out.mode,
+				skipped,
+			});
 		}
 
 		return {
@@ -313,6 +337,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 				: sub
 					? soloLabel(sub)
 					: t("roastScheduler.approvedLabel"),
+			draft.subscriptionId,
 		);
 	}
 
@@ -340,17 +365,15 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	 * —— 不 catch 的话一个手滑的表达式能让整个独立端在启动 / reconcile 期崩掉
 	 * (profile-refresh 与 dynamic-poller 都为同一件事留过注释)。
 	 */
-	function arm(key: string, cron: string, onTick: () => void, label: string): void {
+	function arm(key: string, cron: string, onTick: () => void): void {
 		try {
 			const timezone = deps.store.getGlobals().timezone;
 			const job = new CronJob(cron, onTick, null, false, timezone);
 			job.start();
 			jobs.set(key, { cron, timezone, job });
-			logger.info(`[roast-sched] ${label} 已排程:cron='${cron}'`);
+			logger.info(logText("log.roast.scheduled"), { key, cron });
 		} catch (err) {
-			logger.error(
-				`[roast-sched] ${label} 的 cron='${cron}' 无法解析,未排程：${err instanceof Error ? err.message : String(err)}`,
-			);
+			logger.error(logText("log.roast.cronInvalid"), { key, cron, error: err });
 		}
 	}
 
@@ -360,20 +383,13 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	 * `run` 的返回值这里**故意丢掉**(`Promise<unknown>`)—— 结论是给「试一次」按钮
 	 * 看的,cron 到点自动跑时没人在场,该说的话已经落进日志与私聊了。
 	 */
-	function desired(): Map<
-		string,
-		{ cron: string; run: () => Promise<unknown>; label: () => string }
-	> {
-		const out = new Map<
-			string,
-			{ cron: string; run: () => Promise<unknown>; label: () => string }
-		>();
+	function desired(): Map<string, { cron: string; run: () => Promise<unknown> }> {
+		const out = new Map<string, { cron: string; run: () => Promise<unknown> }>();
 		const board = deps.store.getGlobals().roastSchedule;
 		if (board?.enabled) {
 			out.set(BOARD_KEY, {
 				cron: board.cron,
 				run: runBoardOnce,
-				label: () => t("roastScheduler.boardLabel"),
 			});
 		}
 		for (const sub of deps.store.getSubscriptions()) {
@@ -382,7 +398,6 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			out.set(sub.id, {
 				cron: s.cron,
 				run: () => runSoloOnce(sub.id),
-				label: () => soloLabel(sub),
 			});
 		}
 		return out;
@@ -403,7 +418,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		const sub = findSub(subscriptionId);
 		if (!sub) {
 			// 订阅在这一轮之间被删掉了。reconcile 会撤掉这条 job,这里只是兜底。
-			logger.debug(`[roast-sched] 订阅 ${subscriptionId} 已不在订阅列表,跳过`);
+			logger.debug(logText("log.roast.subscriptionMissing"), { subscriptionId });
 			return {
 				kind: "gen-failed",
 				code: "not_found",
@@ -422,7 +437,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			if (!next || next.cron !== cur.cron || deps.store.getGlobals().timezone !== cur.timezone) {
 				cur.job.stop();
 				jobs.delete(key);
-				if (!next) logger.info(`[roast-sched] 撤销排程 ${key}`);
+				if (!next) logger.info(logText("log.roast.unscheduled"), { key });
 			}
 		}
 		for (const [key, w] of want) {
@@ -433,23 +448,16 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			// 这类小事,会让整个服务停摆。
 			//
 			// 一轮要生成、落草稿、发群:登记进 track,关停等这一轮收尾(草稿库才能安心关门)。
-			arm(
-				key,
-				w.cron,
-				() => {
-					deps.runtime.serviceCtx.track(
-						w.run().then(
-							() => undefined,
-							(err) => {
-								logger.error(
-									`[roast-sched] ${w.label()} 本轮异常终止：${err instanceof Error ? err.message : String(err)}`,
-								);
-							},
-						),
-					);
-				},
-				w.label(),
-			);
+			arm(key, w.cron, () => {
+				deps.runtime.serviceCtx.track(
+					w.run().then(
+						() => undefined,
+						(err) => {
+							logger.error(logText("log.roast.runFailed"), { key, error: err });
+						},
+					),
+				);
+			});
 		}
 	}
 

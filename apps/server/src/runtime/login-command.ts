@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import {
 	builtinCommandAliases,
 	displayedBuiltinCommandAliases,
@@ -125,15 +125,17 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 			const begun = await auth.beginLogin();
 			if (!begun.ok) {
 				// 发起就失败了:快照可能还是上一次的内容(比如「已登录」),读它回话会骗人,以结果里的话为准。
-				opts.logger.warn(
-					`[command] 扫码发起失败(${source.sourceKey}): ${begun.code} ${begun.message}`,
-				);
+				opts.logger.warn(logText("log.command.loginFailed"), {
+					sourceKey: source.sourceKey,
+					code: begun.code,
+					message: begun.message,
+				});
 				return fail(begun.code, begun.message);
 			}
 			const state = auth.state();
 			const png = state.status === "awaiting-scan" ? decodeDataUrl(state.qr.dataUrl) : undefined;
 			if (!png) {
-				opts.logger.warn(`[command] 扫码没拿到二维码: status=${state.status}`);
+				opts.logger.warn(logText("log.command.loginQrMissing"), { status: state.status });
 				// 状态自带的那句话已经是人话(「获取二维码失败，请重试」),照转即可 ——
 				// 在这儿再写一份就是第二份会跟它跑偏的文案。
 				const hint =

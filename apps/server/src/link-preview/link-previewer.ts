@@ -1,3 +1,4 @@
+import { logText } from "../i18n/index.js";
 /**
  * 链接解析 —— 群里有人贴了某个集成的解析器认得的链接(今天是 B 站视频),机器人自动回一张卡片
  * (图片卡或原生分享卡),或者只回一段文字(作者名 + 作品文字)。
@@ -202,9 +203,6 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 		return caps?.nativeShare.state === "supported";
 	}
 
-	/** 日志里「在哪个群」那一段,各处共用。 */
-	const whereOf = (dest: LinkReplyDestination): string => `group=${dest.address}`;
-
 	/**
 	 * 发什么:原生分享(形式 × 能力由调用方算好)发失败就回落图片卡,群里不会空着。
 	 * 发的就是解析器交的那份中立描述(`appId` 一并带着),怎么签归适配器。
@@ -217,17 +215,21 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 		}
 		// 解析器没交原生分享描述就没有原生分享可发,直接走图片卡。
 		if (route === "nativeShare" && preview.nativeShare) {
-			const where = whereOf(dest);
 			const result = await opts.send(dest, { kind: "native-share", ...preview.nativeShare });
 			if (result.ok) {
-				opts.logger.info(
-					`[link] 已回复原生分享 ${where} ${preview.canonicalId}(${result.latencyMs}ms)`,
-				);
+				opts.logger.info(logText("log.link.nativeShareSent"), {
+					destination: dest,
+					canonicalId: preview.canonicalId,
+					latencyMs: result.latencyMs,
+				});
 				return;
 			}
-			opts.logger.warn(
-				`[link] 原生分享发送失败 ${where} ${preview.canonicalId}: ${result.message},回落图片卡`,
-			);
+			opts.logger.warn(logText("log.link.nativeFailed"), {
+				destination: dest,
+				canonicalId: preview.canonicalId,
+				code: result.code,
+				message: result.message,
+			});
 		}
 		await replyWithImageCard(dest, preview);
 	}
@@ -235,14 +237,20 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 	/** 回文字:最轻的一档,发失败只记一行 warn,不回落(文字都发不出去,图更发不出去)。 */
 	async function replyWithText(dest: LinkReplyDestination, preview: LinkPreview) {
 		const result = await opts.send(dest, { kind: "text", text: textReplyOf(preview.post) });
-		const where = whereOf(dest);
 		if (!result.ok) {
-			opts.logger.warn(
-				`[link] 文字回复发送失败 ${where} ${preview.canonicalId}: ${result.message}`,
-			);
+			opts.logger.warn(logText("log.link.textFailed"), {
+				destination: dest,
+				canonicalId: preview.canonicalId,
+				code: result.code,
+				message: result.message,
+			});
 			return;
 		}
-		opts.logger.info(`[link] 已回复文字 ${where} ${preview.canonicalId}(${result.latencyMs}ms)`);
+		opts.logger.info(logText("log.link.textSent"), {
+			destination: dest,
+			canonicalId: preview.canonicalId,
+			latencyMs: result.latencyMs,
+		});
 	}
 
 	async function replyWithImageCard(dest: LinkReplyDestination, preview: LinkPreview) {
@@ -254,17 +262,21 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 		// 作品里的图(封面等)已由解析器抓进图库,这里直接出卡。
 		const buffer = await renderer.generatePostCard(preview.post, { cardSkin }, { priority: "low" });
 		const result = await opts.send(dest, { kind: "image", image: { buffer, mime: "image/jpeg" } });
-		const where = whereOf(dest);
 		if (!result.ok) {
-			opts.logger.warn(
-				`[link] 链接卡片发送失败 ${where} ${preview.canonicalId}: ${result.message}`,
-			);
+			opts.logger.warn(logText("log.link.imageFailed"), {
+				destination: dest,
+				canonicalId: preview.canonicalId,
+				code: result.code,
+				message: result.message,
+			});
 			return;
 		}
 		// 成功也留一行:群里没回话只有两种解释(没触发 / 发失败),日志得能分清。
-		opts.logger.info(
-			`[link] 已回复链接卡片 ${where} ${preview.canonicalId}(${result.latencyMs}ms)`,
-		);
+		opts.logger.info(logText("log.link.imageSent"), {
+			destination: dest,
+			canonicalId: preview.canonicalId,
+			latencyMs: result.latencyMs,
+		});
 	}
 
 	async function handleMessage(msg: InboundLinkMessage): Promise<void> {
@@ -297,7 +309,6 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 				connectionId: msg.connectionId,
 				address: msg.address,
 			};
-			const where = whereOf(dest);
 			// 这条消息里的链接真能发出什么,三路:文字直接可发(不碰渲染器、不问能力);
 			// 原生分享要形式选了且这条连接签得了;其余要渲染器 —— 原生分享签不了就回落图片卡,
 			// 而图片卡又没渲染器(没装 Chrome)的话,一张也发不出来,整条静默走人。
@@ -323,11 +334,17 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 					const rawKey = rawCooldownKey(scope, resolverKey, url);
 					if (coolingDown(rawKey, cooldownMs)) continue;
 					if (inflight >= limits.maxInflight) {
-						opts.logger.debug(`[link] 同时在处理的链接卡已满(${limits.maxInflight}),放弃 ${where}`);
+						opts.logger.debug(logText("log.link.concurrentLimit"), {
+							destination: dest,
+							limit: limits.maxInflight,
+						});
 						break;
 					}
 					if (groupExhausted(scope)) {
-						opts.logger.debug(`[link] 群一分钟额度已用完(${limits.groupPerMinute}),放弃 ${where}`);
+						opts.logger.debug(logText("log.link.groupLimit"), {
+							destination: dest,
+							limit: limits.groupPerMinute,
+						});
 						break;
 					}
 					// 冷却从**开始处理**起算,不是发出去才算:一条坏链接被反复贴,不该每次都去打
@@ -339,7 +356,12 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 					try {
 						const resolved = await resolver.resolve(url, opts.signal);
 						if (!resolved.ok) {
-							opts.logger.warn(`[link] ${resolver.label}没查出来 ${where}: ${resolved.message}`);
+							opts.logger.warn(logText("log.link.resolveFailed"), {
+								destination: dest,
+								resolverLabel: resolver.label,
+								code: resolved.code,
+								message: resolved.message,
+							});
 							continue;
 						}
 						const hereKey = `${resolverKey}\n${resolved.canonicalId}`;
@@ -354,12 +376,12 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 					}
 				} catch (e) {
 					// 单个链接失败不回话、不影响同一条消息里的下一个。
-					opts.logger.warn(`[link] 解析失败 ${where}:${String(e)}`);
+					opts.logger.warn(logText("log.link.failed"), { destination: dest, error: e });
 				}
 			}
 		} catch (e) {
 			// 这是在入站回调里被调的,抛出去就是一个 unhandledRejection。
-			opts.logger.error(`[link] 处理入站消息失败: ${String(e)}`);
+			opts.logger.error(logText("log.link.inboundFailed"), { error: e });
 		}
 	}
 

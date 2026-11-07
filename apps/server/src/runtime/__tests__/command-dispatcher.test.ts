@@ -667,8 +667,10 @@ describe("run 的结果:失败由框架统一回话", () => {
 
 		expect(reply.mock.calls).toEqual([["出错了，详情在日志里"]]);
 		expect(error).toHaveBeenCalledOnce();
-		expect(error.mock.calls[0]?.[0]).toContain("status");
-		expect(error.mock.calls[0]?.[0]).toContain("boom");
+		expect(error.mock.calls[0]?.[1]).toMatchObject({
+			command: "status",
+			error: expect.objectContaining({ message: "boom" }),
+		});
 	});
 
 	it("办成了 → 框架不多说一个字(只有指令自己的回话)", async () => {
@@ -703,7 +705,10 @@ describe("run 的结果:失败由框架统一回话", () => {
 		).resolves.toBeUndefined();
 
 		expect(warn).toHaveBeenCalledOnce();
-		expect(warn).toHaveBeenCalledWith(expect.stringContaining("连接断了"));
+		expect(warn).toHaveBeenCalledWith(
+			"指令回复未送达",
+			expect.objectContaining({ message: "连接断了" }),
+		);
 		expect(error).not.toHaveBeenCalled();
 	});
 
@@ -732,9 +737,15 @@ describe("run 的结果:失败由框架统一回话", () => {
 		).resolves.toBeUndefined();
 
 		expect(error).toHaveBeenCalledOnce();
-		expect(error).toHaveBeenCalledWith(expect.stringContaining("boom"));
+		expect(error).toHaveBeenCalledWith("指令执行抛出异常", {
+			command: "status",
+			error: expect.objectContaining({ message: "boom" }),
+		});
 		expect(warn).toHaveBeenCalledOnce();
-		expect(warn).toHaveBeenCalledWith(expect.stringContaining("派发器炸了"));
+		expect(warn).toHaveBeenCalledWith(
+			"指令错误提示发送失败",
+			expect.objectContaining({ error: expect.objectContaining({ message: "派发器炸了" }) }),
+		);
 	});
 });
 
@@ -847,6 +858,9 @@ describe("回话回到发指令的会话", () => {
 		).resolves.toBeUndefined();
 
 		expect(seen).toBe(failure);
-		expect(warn).toHaveBeenCalledWith(expect.stringContaining("连接断了"));
+		expect(warn).toHaveBeenCalledWith(
+			"指令回复未送达",
+			expect.objectContaining({ message: "连接断了" }),
+		);
 	});
 });

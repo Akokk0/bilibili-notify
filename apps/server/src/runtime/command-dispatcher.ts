@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 /**
  * 指令分发器 —— 主人在私聊里敲的那几条指令,从这里认出来、校验参数、交出去。
  *
@@ -32,7 +32,6 @@ import {
 	sameChatIdentity,
 } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
-import { errorMessageOf } from "../util/error-message.js";
 import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
 import { suggestCommand } from "./command-suggest.js";
 
@@ -290,7 +289,11 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 				{ scope: "private", address: msg.address },
 				typeof payload === "string" ? { kind: "text", text: payload } : payload,
 			);
-			if (!result.ok) opts.logger.warn(`[command] 回复没送到: ${result.message}`);
+			if (!result.ok)
+				opts.logger.warn(logText("log.command.replyFailed"), {
+					code: result.code,
+					message: result.message,
+				});
 			return result;
 		};
 	}
@@ -348,7 +351,7 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 			return;
 		}
 
-		opts.logger.info(`[command] 主人触发了「${hit.spec.name}」`);
+		opts.logger.info(logText("log.command.invoked"), { command: hit.spec.name });
 		try {
 			const result = await hit.spec.run(parsed.values, { reply });
 			// 办不成统一在这儿说;回话没送到由 reply 自己记 warn,不再套一层。
@@ -357,10 +360,13 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		} catch (err) {
 			// 一条指令炸了不该带塌这条入站链路 —— 它还担着审批的 y/n。抛错是 bug:原因只进日志,
 			// 主人只被告知「出错了」,不然他对着一个没回音的指令干等。
-			opts.logger.error(`[command] 「${hit.spec.name}」抛错了: ${errorMessageOf(err)}`);
+			opts.logger.error(logText("log.command.threw"), { command: hit.spec.name, error: err });
 			// reply 正常不拒绝(没送到它自己记 warn、回结果);真拒绝了也不能带塌入站链路,但要留一行。
 			await reply(t("command.framework.crashed")).catch((replyErr: unknown) => {
-				opts.logger.warn(`[command] 「出错了」那句也没回出去: ${errorMessageOf(replyErr)}`);
+				opts.logger.warn(logText("log.command.errorReplyFailed"), {
+					command: hit.spec.name,
+					error: replyErr,
+				});
 			});
 		}
 	}
@@ -375,9 +381,7 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 				// unhandledRejection,而独立端装了处理器会直接关掉整个进程。保存那一刻
 				// 已经查过重(见 globals 路由),能走到这儿说明是从别的路径写进来的
 				// (恢复备份、手改盘上的 json)—— 那更不该拿整个服务陪葬。
-				opts.logger.error(
-					`[command] 指令表重建失败,仍按上一份配置工作:${err instanceof Error ? err.message : String(err)}`,
-				);
+				opts.logger.error(logText("log.command.rebuildFailed"), { error: err });
 			}
 		},
 	};

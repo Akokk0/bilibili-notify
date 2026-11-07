@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 /**
  * 审批指令 —— 主人在私聊里回的那句 `y` / `n`。
  *
@@ -118,12 +118,12 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		}
 
 		if (cmd.kind === "reject") {
-			logger.info(`[roast-cmd] 主人丢弃了草稿 ${taken.id}`);
+			logger.info(logText("log.roast.draftDiscarded"), { draftId: taken.id });
 			await reply(serverText("service.runtime.roast-command.text.6", { value0: taken.id }));
 			return;
 		}
 
-		logger.info(`[roast-cmd] 主人批准了草稿 ${taken.id}`);
+		logger.info(logText("log.roast.draftApproved"), { draftId: taken.id });
 		await opts.deliver(taken);
 	}
 
@@ -149,7 +149,7 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		try {
 			await run(cmd, ctx.reply);
 		} catch (err) {
-			logger.warn(`[roast-cmd] 处理指令失败: ${err instanceof Error ? err.message : String(err)}`);
+			logger.warn(logText("log.roast.commandFailed"), { error: err });
 		}
 		return true;
 	}

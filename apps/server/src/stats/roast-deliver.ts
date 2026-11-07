@@ -1,5 +1,5 @@
 import { type SourceNounsView, sourceNounsOf } from "@bilibili-notify/contract";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 /**
  * 把一份锐评发出去 —— 文案、卡片、降级、多目标。
  *
@@ -232,9 +232,7 @@ export async function buildRoastPayload(
 			text,
 		};
 	} catch (err) {
-		deps.runtime.serviceCtx.logger.warn(
-			`[roast] 卡片渲染失败，降级为文字推送: ${err instanceof Error ? err.message : String(err)}`,
-		);
+		deps.runtime.serviceCtx.logger.warn(logText("log.roast.renderFailed"), { error: err });
 		return { mode: "text", payload: { kind: "text", text }, text };
 	}
 }

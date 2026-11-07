@@ -228,7 +228,11 @@ describe("readSourceHealth —— 取在册来源各自交的一行", () => {
 			{ label: "乙", summary: "二" },
 		]);
 		expect(error).toHaveBeenCalledTimes(1);
-		expect(String(error.mock.calls[0]?.[0])).toContain("boom");
+		expect(error).toHaveBeenCalledWith("来源状态读取失败", {
+			sourceLabel: "甲",
+			operation: "health",
+			error: expect.objectContaining({ message: "boom" }),
+		});
 	});
 
 	it("调用时 this 是视图自己(登记表手抄视图不许丢上下文)", () => {
@@ -271,7 +275,11 @@ describe("readLogins —— 取带登录口的来源各自的登录态", () => {
 			{ error },
 		);
 		expect(error).toHaveBeenCalledTimes(1);
-		expect(String(error.mock.calls[0]?.[0])).toBe("[status] 来源「甲」的 auth.state() 抛错: boom");
+		expect(error).toHaveBeenCalledWith("来源状态读取失败", {
+			sourceLabel: "甲",
+			operation: "auth.state",
+			error: expect.objectContaining({ message: "boom" }),
+		});
 
 		const replies: string[] = [];
 		const spec = createStatusCommand({

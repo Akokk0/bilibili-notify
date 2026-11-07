@@ -455,13 +455,17 @@ describe("createLinkPreviewer", () => {
 			await expect(feed(h.parser, groupFrame(LINK))).resolves.toBeUndefined();
 			expect(h.generatePostCard).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
-			expect(h.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
+			expect(h.warn).toHaveBeenCalledWith(
+				"链接解析器未返回结果",
+				expect.objectContaining({ message: "boom" }),
+			);
 		});
 
 		it("解析器自己抛了(它的 bug):同样不发、不抛,并且不影响同一条消息里的下一个", async () => {
+			const resolverError = new Error("解析器炸了", { cause: new Error("upstream") });
 			const h = makeParser({ cooldownSec: 0 }, undefined, {
 				resolve: async (url) => {
-					if (url.endsWith("bad")) throw new Error("解析器炸了");
+					if (url.endsWith("bad")) throw resolverError;
 					return ok(previewOf("good"));
 				},
 			});
@@ -469,7 +473,10 @@ describe("createLinkPreviewer", () => {
 				feed(h.parser, groupFrame(`${link("bad")} ${link("good")}`)),
 			).resolves.toBeUndefined();
 			expect(h.sent).toHaveLength(1);
-			expect(h.warn).toHaveBeenCalledWith(expect.stringContaining("解析器炸了"));
+			expect(h.warn).toHaveBeenCalledWith(
+				"链接处理失败",
+				expect.objectContaining({ error: resolverError }),
+			);
 		});
 
 		it("渲染失败:不发任何东西", async () => {
@@ -484,7 +491,10 @@ describe("createLinkPreviewer", () => {
 			h.send.mockResolvedValue(fail("invalid", "group: groupId missing"));
 			await expect(feed(h.parser, groupFrame(LINK))).resolves.toBeUndefined();
 			// 失败的原话得进日志:群里没回话时,这一行是唯一说得清原因的地方。
-			expect(h.warn).toHaveBeenCalledWith(expect.stringContaining("group: groupId missing"));
+			expect(h.warn).toHaveBeenCalledWith(
+				"链接卡片发送失败",
+				expect.objectContaining({ message: "group: groupId missing" }),
+			);
 		});
 	});
 
@@ -801,7 +811,8 @@ describe("createLinkPreviewer", () => {
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["native-share", "image"]);
 			expect(h.warn).toHaveBeenCalledWith(
-				expect.stringContaining("签小程序卡失败: packet 后端未就绪,回落图片卡"),
+				"原生分享发送失败，回落图片卡",
+				expect.objectContaining({ message: "签小程序卡失败: packet 后端未就绪" }),
 			);
 		});
 
