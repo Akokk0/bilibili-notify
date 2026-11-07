@@ -92,6 +92,17 @@ function mount(path: string, request?: (path: string, init?: RequestInit) => Res
 	);
 }
 
+it("资源库接入共用页面入场动效，分类切换保留同一页面容器", async () => {
+	mount("/library?category=fonts");
+	await screen.findByText("示例字体.woff2");
+	const page = screen.getByText("资源库", { exact: true }).closest(".bn-anim-page-in");
+	expect(page).not.toBeNull();
+	expect(page?.classList.contains("motion-reduce:animate-none!")).toBe(true);
+	await userEvent.click(screen.getByRole("button", { name: "图片" }));
+	expect(screen.getByText("资源库", { exact: true }).closest(".bn-anim-page-in")).toBe(page);
+	expect(await screen.findByText("还没有图片")).toBeTruthy();
+});
+
 it("字体分类链接直接展示字体，保留原有管理操作", async () => {
 	mount("/library?category=fonts");
 	expect(await screen.findByText("示例字体.woff2")).toBeTruthy();

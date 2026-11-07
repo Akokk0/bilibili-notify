@@ -60,7 +60,7 @@ export default function Library() {
 	];
 	const category = categories.find((item) => item.id === kind);
 	return (
-		<div className="grid min-w-0 grid-cols-1 gap-5">
+		<div className="bn-anim-page-in motion-reduce:animate-none! grid min-w-0 grid-cols-1 gap-5">
 			<HeroStrip
 				icon={<Icon.library size={26} />}
 				title={t("library.title")}
