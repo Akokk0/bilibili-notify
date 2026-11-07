@@ -1,3 +1,4 @@
 {
-	"log.chat.markdownUnavailable": "Markdownモジュールを読み込めないため、プレーンテキストで表示します"
+	"log.chat.markdownUnavailable": "Markdownモジュールを読み込めないため、プレーンテキストで表示します",
+	"log.fields.missing": "設定項目の表示説明がありません"
 }

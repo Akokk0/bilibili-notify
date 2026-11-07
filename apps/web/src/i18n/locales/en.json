@@ -1,3 +1,4 @@
 {
-	"log.chat.markdownUnavailable": "Failed to load Markdown module; displaying plain text"
+	"log.chat.markdownUnavailable": "Failed to load Markdown module; displaying plain text",
+	"log.fields.missing": "Setting field has no display description"
 }

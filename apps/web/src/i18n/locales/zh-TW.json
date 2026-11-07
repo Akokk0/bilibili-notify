@@ -1,3 +1,4 @@
 {
-	"log.chat.markdownUnavailable": "Markdown 模組載入失敗，使用純文字顯示"
+	"log.chat.markdownUnavailable": "Markdown 模組載入失敗，使用純文字顯示",
+	"log.fields.missing": "設定欄位缺少顯示說明"
 }

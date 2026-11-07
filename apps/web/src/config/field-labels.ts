@@ -18,7 +18,7 @@
 
 import { AI_PROVIDER_IDS, type AIProviderId, providerMeta } from "@bilibili-notify/internal/ai";
 import { LINK_LIMITS } from "@bilibili-notify/internal/link-preview";
-import { i18n } from "../i18n/index";
+import { i18n, logText } from "../i18n/index";
 
 /** 字段分组,灵动岛 expand panel 按 section 分组渲染。 */
 export type FieldSection =
@@ -1385,7 +1385,7 @@ export function getFieldLabel(code: string): FieldLabel | null {
 		}
 	}
 	if (import.meta.env.DEV) {
-		console.warn(`[field-labels] missing entry for code="${code}"`);
+		console.warn(logText("log.fields.missing"), { code });
 	}
 	return null;
 }

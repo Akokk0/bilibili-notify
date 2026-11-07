@@ -3235,5 +3235,6 @@
 	"healthCard.emptyHint": "来源及已配置连接的推送集成会出现在这里。",
 	"healthCard.viewExtensions": "查看拓展",
 	"healthCard.manage": "前往管理",
-	"log.chat.markdownUnavailable": "Markdown 模块加载失败，使用纯文本显示"
+	"log.chat.markdownUnavailable": "Markdown 模块加载失败，使用纯文本显示",
+	"log.fields.missing": "设置字段缺少显示说明"
 }

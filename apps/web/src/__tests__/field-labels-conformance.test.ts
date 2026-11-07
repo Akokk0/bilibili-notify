@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { FIELD_LABELS, getFieldLabel } from "../config/field-labels.js";
 import { i18n } from "../i18n";
 import { listSources } from "./walk.js";
@@ -84,4 +84,25 @@ it("AI body draft fields name scenes and display AI/template instead of generic 
 it("账号排序的草稿差异有可读名称", () => {
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 	expect(getFieldLabel("core.accounts.order")?.label).toBe("账号顺序");
+});
+
+it("缺少字段说明时只在开发环境输出当前语言的平实诊断，保留字段码", () => {
+	const state = i18n.state();
+	const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+	try {
+		for (const [locale, message] of [
+			["zh-CN", "设置字段缺少显示说明"],
+			["en", "Setting field has no display description"],
+			["ja", "設定項目の表示説明がありません"],
+			["zh-TW", "設定欄位缺少顯示說明"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			expect(getFieldLabel("unknown.field")).toBeNull();
+			expect(warn).toHaveBeenLastCalledWith(message, { code: "unknown.field" });
+		}
+		expect(warn).toHaveBeenCalledTimes(4);
+	} finally {
+		i18n.set({ locale: state.locale, voice: state.voice });
+		warn.mockRestore();
+	}
 });
