@@ -17,6 +17,7 @@ import type { Connection, NotificationPayload, PushTarget } from "@bilibili-noti
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { i18n } from "../../i18n/index.js";
 import { createWebhookAdapter } from "../webhook.js";
 
 const FIXED_NOW = new Date("2026-10-07T08:00:00.000Z");
@@ -35,6 +36,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 });
 
 function connection(platform: string, secret?: string): Connection {
@@ -274,4 +276,42 @@ describe("webhook 线上格式 — 机器人方言(只有文字,无内部名)", 
 			});
 		}
 	}
+});
+
+describe("Webhook 诊断", () => {
+	it("输出时使用四语平实说明，仍先按连接配置脱敏，不把请求正文放进日志", async () => {
+		logger.warn.mockClear();
+		fetchMock.mockRejectedValue(
+			new Error("fetch failed at http://hook.local/in with private-secret"),
+		);
+		for (const [locale, text] of [
+			["zh-CN", "Webhook 请求未成功"],
+			["en", "Webhook request was unsuccessful"],
+			["ja", "Webhookリクエストに成功しませんでした"],
+			["zh-TW", "Webhook 請求未成功"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			const result = await send(
+				"generic",
+				{ kind: "text", text: "private payload" },
+				"private-secret",
+			);
+			expect(result).toMatchObject({ ok: false, code: "unavailable" });
+			expect(logger.warn).toHaveBeenLastCalledWith(
+				text,
+				expect.objectContaining({
+					connectionId: "w1",
+					destinationId: "wt1",
+					platform: "generic",
+					code: "unavailable",
+					message: expect.stringContaining("fetch failed"),
+				}),
+			);
+		}
+		expect(logger.warn).toHaveBeenCalledTimes(4);
+		const logged = JSON.stringify(logger.warn.mock.calls);
+		expect(logged).not.toContain("private-secret");
+		expect(logged).not.toContain("private payload");
+		expect(logged).not.toContain("http://hook.local/in");
+	});
 });

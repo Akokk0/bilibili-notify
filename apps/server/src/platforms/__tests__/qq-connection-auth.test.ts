@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
+import { i18n } from "../../i18n/index.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createQQConnectionAuth } from "../qq-bind.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
@@ -80,6 +81,7 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.unstubAllGlobals();
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	vi.useRealTimers();
 	delete process.env.BN_QQ_BIND_HOST;
 });
@@ -402,5 +404,20 @@ describe("接线", () => {
 		expect(await auth.begin(signal())).toEqual(expected);
 		expect(await auth.state(b.taskId, signal())).toMatchObject({ ok: false, code: "not_found" });
 		expect(up.fetchMock).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("QQ 绑定诊断", () => {
+	it("创建绑定失败记录平实说明与错误对象，不记录预递钥匙或任务数据", async () => {
+		i18n.set({ locale: "en", voice: "maid" });
+		up.state.createFails = () => res(200, { retcode: 1001, msg: "raw upstream busy" });
+		const { auth, log } = make();
+		expect(await auth.begin(signal())).toMatchObject({ ok: false, code: "unavailable" });
+		expect(log.warn).toHaveBeenCalledWith("Failed to start QQ bot binding", {
+			error: expect.objectContaining({ message: expect.stringContaining("raw upstream busy") }),
+		});
+		const metadata = log.warn.mock.calls[0]?.[1] as { error: unknown };
+		expect(metadata.error).toBeInstanceOf(Error);
+		expect(Object.keys(metadata)).toEqual(["error"]);
 	});
 });

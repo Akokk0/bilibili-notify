@@ -23,7 +23,7 @@ import { fail, ok, settingsFieldsFromSchema } from "@bilibili-notify/internal";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
@@ -695,7 +695,10 @@ class ForwardConn {
 				this.serviceCtx,
 				inboundSink(this.inbound, this.connectionId),
 			);
-			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.connectionId} url=${this.url}`);
+			this.log.info(logText("log.onebot.forwardConnected"), {
+				connectionId: this.connectionId,
+				url: this.url,
+			});
 		});
 		ws.on("error", (err) => {
 			this.lastError = upstreamMessage(err);
@@ -765,21 +768,29 @@ class ReverseListener {
 		this.wss = wss;
 		wss.on("listening", () => {
 			this.bindError = null;
-			this.log.info(`[onebot] 反向 WS 监听就绪 adapter=${this.connectionId} port=${this.port}`);
+			this.log.info(logText("log.onebot.reverseListening"), {
+				connectionId: this.connectionId,
+				port: this.port,
+			});
 		});
 		wss.on("error", (err: Error) => {
 			const code = (err as NodeJS.ErrnoException).code;
 			this.bindError = code ? `${code}: ${err.message}` : err.message;
-			this.log.warn(`[onebot] 反向 WS 端口 ${this.port} 监听失败: ${this.bindError}`);
+			this.log.warn(logText("log.onebot.reverseBindFailed"), {
+				connectionId: this.connectionId,
+				port: this.port,
+				error: err,
+			});
 		});
 		wss.on("connection", (ws: WebSocket, req: IncomingMessage) => this.onConnection(ws, req));
 	}
 
 	private onConnection(ws: WebSocket, req: IncomingMessage): void {
 		if (!this.checkAuth(req)) {
-			this.log.warn(
-				`[onebot] 反向 WS 鉴权失败 adapter=${this.connectionId} port=${this.port},拒绝连接`,
-			);
+			this.log.warn(logText("log.onebot.reverseUnauthorized"), {
+				connectionId: this.connectionId,
+				port: this.port,
+			});
 			ws.close(1008, "unauthorized");
 			return;
 		}
@@ -791,16 +802,18 @@ class ReverseListener {
 		);
 		const entry = { ws, channel };
 		this.bots.add(entry);
-		this.log.info(
-			`[onebot] 反向 WS bot 已连入 adapter=${this.connectionId}(在线 ${this.bots.size})`,
-		);
+		this.log.info(logText("log.onebot.reverseConnected"), {
+			connectionId: this.connectionId,
+			count: this.bots.size,
+		});
 		if (this.bots.size > 1) {
 			// 一个反向 WS 端口正常只对应一个 bot;多个时推送只发往最近连入的那个,
 			// 其余静默闲置 —— 大概率是把多个 bot 误指到同一端口,告警提示。
-			this.log.warn(
-				`[onebot] 反向 WS adapter=${this.connectionId} 端口 ${this.port} 有 ${this.bots.size} 个 bot 连入,` +
-					"推送只发往最近连入的那个;通常一个端口应只对应一个 bot",
-			);
+			this.log.warn(logText("log.onebot.reverseMultipleBots"), {
+				connectionId: this.connectionId,
+				port: this.port,
+				count: this.bots.size,
+			});
 		}
 		ws.on("close", () => {
 			channel.rejectAll(new Error(t("onebot.reverse.botClosed")));
@@ -843,9 +856,10 @@ class ReverseListener {
 		if ((accessToken ?? "") === (this.accessToken ?? "")) return;
 		this.accessToken = accessToken;
 		if (this.bots.size > 0) {
-			this.log.info(
-				`[onebot] 反向 WS 的 token 换了 adapter=${this.connectionId},断开凭旧 token 连入的 ${this.bots.size} 个 bot`,
-			);
+			this.log.info(logText("log.onebot.reverseTokenChanged"), {
+				connectionId: this.connectionId,
+				count: this.bots.size,
+			});
 		}
 		this.dropBots(t("onebot.reverse.tokenChanged"), 1008);
 	}
@@ -978,7 +992,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			if (!verdict.ok) return null;
 			return parseLoginInfo(res.data);
 		} catch (e) {
-			log.warn(`[onebot] adapter=${connection.id} get_login_info 失败: ${String(e)}`);
+			log.warn(logText("log.onebot.identityFailed"), { connectionId: connection.id, error: e });
 			return null;
 		}
 	}
@@ -1081,9 +1095,11 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 */
 	async function probeNativeShare(connection: OnebotConnection): Promise<CapabilitySupport> {
 		let result: CapabilitySupport;
+		let probeError: unknown;
 		try {
 			result = interpretArkProbe(await callOnce(connection, "get_mini_app_ark", {}));
 		} catch (e) {
+			probeError = e;
 			result = { state: "unknown", reason: e instanceof Error ? e.message : String(e) };
 		}
 		nativeShareSupport.set(connection.id, result);
@@ -1091,9 +1107,16 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		// 收到图片卡时,这是唯一能解释原因的地方;没探出来多半是还没连上,宿主每分钟会再试,
 		// 放 debug 免得刷屏。
 		if (result.state === "unsupported") {
-			log.info(`[onebot] adapter=${connection.id} 发不了小程序卡:${result.reason}`);
+			log.info(logText("log.onebot.nativeShareUnsupported"), {
+				connectionId: connection.id,
+				message: result.reason,
+			});
 		} else if (result.state === "unknown") {
-			log.debug(`[onebot] adapter=${connection.id} 小程序卡能力还没探出来:${result.reason ?? "?"}`);
+			log.debug(logText("log.onebot.nativeShareUnknown"), {
+				connectionId: connection.id,
+				message: result.reason,
+				...(probeError === undefined ? {} : { error: probeError }),
+			});
 		}
 		return result;
 	}
@@ -1222,17 +1245,28 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				);
 				const verdict = interpretResponse(result);
 				if (!verdict.ok) {
-					log.warn(
-						`[onebot] target=${describeDestination(destination)} send failed: ${verdict.message}`,
-					);
+					log.warn(logText("log.onebot.deliveryFailed"), {
+						connectionId: connection.id,
+						destination: describeDestination(destination),
+						transport: cfg.transport,
+						code: verdict.code,
+						upstreamCode: verdict.upstreamCode,
+						message: verdict.message,
+					});
 					return verdict;
 				}
 				return ok({ latencyMs: Date.now() - t0 });
 			} catch (e) {
 				const failure = thrownFailure(e, "sent");
-				log.warn(
-					`[onebot] target=${describeDestination(destination)} send threw: ${failure.message} (baseUrl=${cfg.baseUrl})`,
-				);
+				log.warn(logText("log.onebot.deliveryThrew"), {
+					connectionId: connection.id,
+					destination: describeDestination(destination),
+					transport: cfg.transport,
+					baseUrl: cfg.baseUrl,
+					code: failure.code,
+					message: failure.message,
+					error: e,
+				});
 				return failure;
 			}
 		}
@@ -1263,7 +1297,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		const maxRetries = cfg.maxRetries ?? 0;
 		const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
 		let last: Failure = fail("unavailable", "ws send failed");
+		let lastError: unknown;
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			lastError = undefined;
 			const channel =
 				cfg.transport === "ws"
 					? (forwardConns.get(connectionId)?.getChannel() ?? null)
@@ -1279,6 +1315,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 					if (verdict.ok) return ok({ latencyMs: Date.now() - t0 });
 					last = verdict;
 				} catch (e) {
+					lastError = e;
 					last = thrownFailure(e, "sent");
 					// 结果未知(超时/连接中断):帧已发出,bot 可能已把消息发进群。send_*
 					// 非幂等 —— 盲重试 = 群里收到 maxRetries+1 份(用户实测的图集重复
@@ -1290,7 +1327,15 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				await new Promise((r) => setTimeout(r, retryIntervalMs));
 			}
 		}
-		log.warn(`[onebot] target=${targetId} ws send failed: ${last.message}`);
+		log.warn(logText("log.onebot.deliveryFailed"), {
+			connectionId,
+			destination: targetId,
+			transport: cfg.transport,
+			code: last.code,
+			upstreamCode: last.upstreamCode,
+			message: last.message,
+			...(lastError === undefined ? {} : { error: lastError }),
+		});
 		return last;
 	}
 

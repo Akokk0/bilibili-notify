@@ -30,6 +30,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { WebSocket, WebSocketServer } from "ws";
 import { fakeAdapterContext, reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { i18n } from "../../i18n/index.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createWebhookAdapter } from "../webhook.js";
 
@@ -109,6 +110,7 @@ afterEach(async () => {
 	}
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 });
 
 /** 假 fetch:不回应,直到请求客户端的超时(或调用方)中止它。 */
@@ -281,6 +283,41 @@ function obTarget(over: Record<string, unknown> = {}): PushTarget {
 	} as unknown as PushTarget;
 }
 const TEXT: NotificationPayload = { kind: "text", text: "hello" };
+
+describe("OneBot 投递诊断", () => {
+	it("同一适配器输出时读取四语平实说明，保留拒绝码且不记录消息或凭据", async () => {
+		const logger = makeLogger();
+		const ad = startedOnebot(obOpts(logger));
+		for (const [locale, text] of [
+			["zh-CN", "OneBot 投递未成功"],
+			["en", "OneBot delivery was unsuccessful"],
+			["ja", "OneBotの送信に成功しませんでした"],
+			["zh-TW", "OneBot 傳送未成功"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			fetchMock.mockResolvedValueOnce(
+				res({ ok: true, json: { status: "failed", retcode: 100, wording: "raw bot rejection" } }),
+			);
+			const result = await ad.send(obConnection(), obTarget(), {
+				kind: "text",
+				text: "private message body",
+			});
+			expect(result).toMatchObject({ ok: false, message: "raw bot rejection", upstreamCode: 100 });
+			expect(logger.warn).toHaveBeenLastCalledWith(
+				text,
+				expect.objectContaining({
+					connectionId: "a1",
+					destination: "group:123",
+					upstreamCode: 100,
+					message: "raw bot rejection",
+				}),
+			);
+		}
+		expect(logger.warn).toHaveBeenCalledTimes(4);
+		expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("private message body");
+		expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("Bearer tok");
+	});
+});
 
 describe("onebot — send 路由", () => {
 	it("start 之前 send / probe → unavailable(生产里登记即 start,这一支到不了)", async () => {

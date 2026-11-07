@@ -11,6 +11,8 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { type WebSocket, WebSocketServer } from "ws";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
+import { logMessage } from "../../__tests__/support/log-message.js";
+import { i18n } from "../../i18n/index.js";
 import { createQQGatewayConn, QQ_OPCODE, type QQDiscoveredSession } from "../qq-official";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -47,6 +49,7 @@ function makeServiceCtx(): ServiceContext {
 
 const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	for (const c of cleanups.splice(0)) {
 		try {
 			await c();
@@ -601,8 +604,12 @@ describe("createQQGatewayConn — RECONNECT/RESUMED 日志开关", () => {
 		gw.dispatch("RESUMED", {});
 		await sleep(30);
 
-		const warned = (logger.warn as ReturnType<typeof vi.fn>).mock.calls.flat().join(" ");
-		const infoed = (logger.info as ReturnType<typeof vi.fn>).mock.calls.flat().join(" ");
+		const warned = (logger.warn as ReturnType<typeof vi.fn>).mock.calls
+			.map(([message, ...args]) => logMessage(String(message), args))
+			.join(" ");
+		const infoed = (logger.info as ReturnType<typeof vi.fn>).mock.calls
+			.map(([message, ...args]) => logMessage(String(message), args))
+			.join(" ");
 		expect(warned).not.toContain("RECONNECT");
 		expect(infoed).not.toContain("RESUMED");
 	});
@@ -622,14 +629,51 @@ describe("createQQGatewayConn — RECONNECT/RESUMED 日志开关", () => {
 		await waitFor(
 			() =>
 				(logger.info as ReturnType<typeof vi.fn>).mock.calls.some((c) =>
-					String(c[0]).includes("RESUMED"),
+					logMessage(String(c[0]), c.slice(1)).includes("RESUMED"),
 				),
 			5000,
 		);
 
-		const warned = (logger.warn as ReturnType<typeof vi.fn>).mock.calls.flat().join(" ");
-		const infoed = (logger.info as ReturnType<typeof vi.fn>).mock.calls.flat().join(" ");
+		const warned = (logger.warn as ReturnType<typeof vi.fn>).mock.calls
+			.map(([message, ...args]) => logMessage(String(message), args))
+			.join(" ");
+		const infoed = (logger.info as ReturnType<typeof vi.fn>).mock.calls
+			.map(([message, ...args]) => logMessage(String(message), args))
+			.join(" ");
 		expect(warned).toContain("RECONNECT");
 		expect(infoed).toContain("RESUMED");
+	});
+});
+
+describe("QQ 网关诊断", () => {
+	it("取凭据失败按输出时四语给平实说明，保留原错误和cause，不记录凭据", async () => {
+		const gw = await startFakeGateway();
+		const error = new Error("raw token failure", { cause: new Error("network") });
+		const logger = makeLogger();
+		for (const [locale, text] of [
+			["zh-CN", "QQ 网关获取访问凭据失败，关闭当前连接"],
+			["en", "QQ gateway access token retrieval failed; closing the current connection"],
+			["ja", "QQゲートウェイのアクセストークン取得に失敗したため、現在の接続を閉じます"],
+			["zh-TW", "QQ 閘道取得存取憑據失敗，關閉目前連線"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			const conn = createQQGatewayConn(
+				connOpts(gw, {
+					logger,
+					reconnectBaseMs: 1000,
+					getToken: async () => {
+						throw error;
+					},
+				}),
+			);
+			cleanups.push(() => conn.close());
+			await waitFor(() => vi.mocked(logger.warn).mock.calls.length > 0);
+			expect(logger.warn).toHaveBeenLastCalledWith(text, { connectionId: "a1", error });
+			expect(
+				(vi.mocked(logger.warn).mock.calls.at(-1)?.[1] as { error: unknown } | undefined)?.error,
+			).toBe(error);
+			conn.close();
+			vi.mocked(logger.warn).mockClear();
+		}
 	});
 });

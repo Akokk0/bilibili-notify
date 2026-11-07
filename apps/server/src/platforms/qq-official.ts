@@ -26,7 +26,7 @@ import { fail, ok, settingsFieldsFromSchema } from "@bilibili-notify/internal";
 import type { RawData } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
@@ -249,7 +249,7 @@ export function createQQTokenRefresher(opts: QQTokenRefresherOptions): QQTokenRe
 				const p = refresh();
 				tokenPromise = p;
 				p.catch((e) => {
-					opts.logger.warn(`[qq] App Access Token 刷新失败,下次发送将重试: ${String(e)}`);
+					opts.logger.warn(logText("log.qq.tokenRefreshFailed"), { error: e });
 					if (tokenPromise === p) tokenPromise = null;
 				});
 			}, delayMs);
@@ -552,7 +552,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		if (!ws || ws.readyState !== WS_OPEN) return;
 		if (!acked) {
 			// 上一拍心跳没收到 ACK = 僵尸连接,关掉触发重连(对齐 @satorijs)。
-			logger.warn(`[qq] adapter=${connectionId} 心跳无 ACK,判定僵尸连接,关闭重连`);
+			logger.warn(logText("log.qq.heartbeatUnacknowledged"), { connectionId });
 			try {
 				ws.close();
 			} catch {
@@ -574,7 +574,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			token = await opts.getToken();
 		} catch (e) {
 			state.lastError = t("qqOfficial.token.getFailed", { error: String(e) });
-			logger.warn(`[qq] adapter=${connectionId} ${state.lastError}`);
+			logger.warn(logText("log.qq.gatewayTokenFailed"), { connectionId, error: e });
 			try {
 				ws?.close();
 			} catch {
@@ -612,9 +612,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		try {
 			sink(msg);
 		} catch (err) {
-			logger.warn(
-				`[qq] adapter=${connectionId} 处理入站${route === "private" ? "私聊" : "群消息"}失败: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			logger.warn(logText("log.qq.inboundFailed"), { connectionId, route, error: err });
 		}
 	}
 
@@ -625,17 +623,17 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		if (eventName === "READY") {
 			if (typeof d.session_id === "string") sessionId = d.session_id;
 			markOnline();
-			logger.info(`[qq] adapter=${connectionId} 网关已就绪(READY)`);
+			logger.info(logText("log.qq.gatewayReady"), { connectionId, event: "READY" });
 			return;
 		}
 		if (eventName === "RESUMED") {
 			markOnline();
 			if (opts.shouldLogReconnects?.())
-				logger.info(`[qq] adapter=${connectionId} 网关已续连(RESUMED)`);
+				logger.info(logText("log.qq.gatewayResumed"), { connectionId, event: "RESUMED" });
 			return;
 		}
 		if (eventName === "MESSAGE_AUDIT_REJECT") {
-			logger.warn(`[qq] adapter=${connectionId} 消息审核未通过(MESSAGE_AUDIT_REJECT)`);
+			logger.warn(logText("log.qq.auditRejected"), { connectionId, event: "MESSAGE_AUDIT_REJECT" });
 			return;
 		}
 		if (typeof eventName === "string") {
@@ -662,11 +660,11 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			case QQ_OPCODE.INVALID_SESSION:
 				sessionId = "";
 				lastSeq = null;
-				logger.warn(`[qq] adapter=${connectionId} 会话失效(INVALID_SESSION),将重新鉴权`);
+				logger.warn(logText("log.qq.sessionInvalid"), { connectionId, event: "INVALID_SESSION" });
 				break;
 			case QQ_OPCODE.RECONNECT:
 				if (opts.shouldLogReconnects?.())
-					logger.warn(`[qq] adapter=${connectionId} 服务端要求重连(RECONNECT)`);
+					logger.warn(logText("log.qq.reconnectRequested"), { connectionId, event: "RECONNECT" });
 				try {
 					ws?.close();
 				} catch {
@@ -1511,7 +1509,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					),
 				});
 			} catch (e) {
-				logger.warn(`[qq] connection=${connection.id} 列频道失败: ${upstreamMessage(e)}`);
+				logger.warn(logText("log.qq.channelListFailed"), { connectionId: connection.id, error: e });
 				return fail(
 					"unavailable",
 					t("qqOfficial.channels.listFailed", { reason: upstreamMessage(e) }),
@@ -1640,17 +1638,23 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					);
 					const verdict = interpretQQSend(status, body);
 					if (!verdict.ok) {
-						logger.warn(
-							`[qq] target=${describeDestination(destination)} markdown 图集发送失败: ${verdict.message}`,
-						);
+						logger.warn(logText("log.qq.markdownFailed"), {
+							connectionId: connection.id,
+							destination: describeDestination(destination),
+							code: verdict.code,
+							upstreamCode: verdict.upstreamCode,
+							message: verdict.message,
+						});
 						return verdict;
 					}
 					return ok({ latencyMs: Date.now() - t0 });
 				} catch (e) {
 					const message = e instanceof Error ? e.message : String(e);
-					logger.warn(
-						`[qq] target=${describeDestination(destination)} markdown 图集发送异常: ${message}`,
-					);
+					logger.warn(logText("log.qq.markdownThrew"), {
+						connectionId: connection.id,
+						destination: describeDestination(destination),
+						error: e,
+					});
 					return fail("unavailable", message);
 				}
 			}
@@ -1660,6 +1664,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 			// QQ 一条 media 只能带一张图,多片段逐条发;任一条失败即整体失败(已发的无法回滚)。
 			let failure: Failure | null = null;
+			let failureError: unknown;
 			for (const part of parts) {
 				try {
 					const r = await sendPart(http, base, headers, scope, address, endpoint.path, part);
@@ -1674,14 +1679,20 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 						break;
 					}
 				} catch (e) {
+					failureError = e;
 					failure = fail("unavailable", e instanceof Error ? e.message : String(e));
 					break;
 				}
 			}
 			if (failure) {
-				logger.warn(
-					`[qq] target=${describeDestination(destination)} send failed: ${failure.message}`,
-				);
+				logger.warn(logText("log.qq.deliveryFailed"), {
+					connectionId: connection.id,
+					destination: describeDestination(destination),
+					code: failure.code,
+					upstreamCode: failure.upstreamCode,
+					message: failure.message,
+					...(failureError === undefined ? {} : { error: failureError }),
+				});
 				return failure;
 			}
 			return ok({ latencyMs: Date.now() - t0 });

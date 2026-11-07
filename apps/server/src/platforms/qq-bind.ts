@@ -18,7 +18,7 @@ import { createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import type { AuthState, ConnectionAuth, HttpClient, Logger } from "@bilibili-notify/internal";
 import { fail, ok } from "@bilibili-notify/internal";
 import QRCode from "qrcode";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { upstreamMessage } from "./upstream-message.js";
 
 /**
@@ -238,7 +238,7 @@ export function createQQConnectionAuth(opts: {
 				});
 				return ok({ taskId, state, pollIntervalSeconds: BIND_POLL_INTERVAL_SECONDS });
 			} catch (err) {
-				logger.warn(`[qq] 发起绑定失败: ${upstreamMessage(err)}`);
+				logger.warn(logText("log.qq.bindStartFailed"), { error: err });
 				return upstreamFailure(err, t("qqBind.message.text9"));
 			}
 		},
@@ -257,7 +257,7 @@ export function createQQConnectionAuth(opts: {
 				polled = await pollBindTask(http, entry.upstreamTaskId, entry.bindKey, bindHost());
 			} catch (err) {
 				// 上游故障保留任务,下一轮接着问。
-				logger.warn(`[qq] 查询绑定结果失败: ${upstreamMessage(err)}`);
+				logger.warn(logText("log.qq.bindPollFailed"), { error: err });
 				return upstreamFailure(err, t("qqBind.message.text12"));
 			}
 			// await 期间这一项可能被取走 / 被清扫 / 被 clear:不复活它(复活 = 把明文草稿留在没人来取的表里)。

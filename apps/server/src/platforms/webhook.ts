@@ -20,7 +20,7 @@ import {
 } from "@bilibili-notify/internal";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { imageGroupUrls } from "./image-group.js";
 import { isWebhookPlatform, type WebhookPlatform } from "./platform-descriptors.js";
@@ -161,8 +161,15 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			try {
 				req = buildWebhookRequest(provider, cfg, destination, payload);
 			} catch (e) {
+				// 原异常可能带完整地址与签名，只记录经连接专有脱敏后的诊断。
 				const message = sanitizeWebhookError(e instanceof Error ? e.message : String(e), cfg);
-				log.warn(`[webhook] target=${destination.id} send failed: ${message}`);
+				log.warn(logText("log.webhook.buildFailed"), {
+					connectionId: connection.id,
+					destinationId: destination.id,
+					platform: provider,
+					code: "invalid",
+					message,
+				});
 				return fail("invalid", message);
 			}
 			const t0 = Date.now();
@@ -176,7 +183,13 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			});
 			if (!delivered.ok) {
 				const message = sanitizeWebhookError(delivered.message, cfg);
-				log.warn(`[webhook] target=${destination.id} send failed: ${message}`);
+				log.warn(logText("log.webhook.requestFailed"), {
+					connectionId: connection.id,
+					destinationId: destination.id,
+					platform: provider,
+					code: delivered.code === "timeout" ? "indeterminate" : "unavailable",
+					message,
+				});
 				// 我们自己的超时掐断:请求已经发出去了,对端可能照样处理完 —— 结果不明,不是「没通」。
 				return delivered.code === "timeout"
 					? fail("indeterminate", message)
