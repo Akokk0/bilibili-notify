@@ -37,7 +37,7 @@ import {
 	type HistoryRepushResponse,
 	type HistoryResponse,
 	historyQueryKey,
-} from "../services/dashboard";
+} from "../services/overview";
 import type { PushTarget, Subscription } from "../types/domain";
 import { imageUrl } from "../utils/image-url";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
@@ -53,7 +53,7 @@ import { subscriptionPlatformOf } from "./up/subscription-source";
  *
  * 一行 = 一次推送 × 一个目标:首条本体当文案,多条挂「N 条」胶囊,行可展开逐条看
  * (文案 / 图缩略 / 结果);状态四态。八把特性键折进四个家族筛选(直播 / 动态 /
- * SC / 舰长),与 `services/dashboard.ts` 同吃 `FEATURE_DESCRIPTORS` 的 family,和概览趋势图对得上。
+ * SC / 舰长),与 `services/overview.ts` 同吃 `FEATURE_DESCRIPTORS` 的 family,和概览趋势图对得上。
  *
  * The "重发" column from the design source is intentionally not ported:
  * POST /api/targets/:id/test sends a dummy text payload, so a button labelled

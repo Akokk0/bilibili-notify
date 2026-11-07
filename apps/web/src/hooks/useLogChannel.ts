@@ -1,7 +1,7 @@
 import { LOG_LEVELS } from "@bilibili-notify/contract";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { type LogLineView, type LogsResponse, logsQueryKey } from "../services/dashboard";
+import { type LogLineView, type LogsResponse, logsQueryKey } from "../services/overview";
 import { isWsEvent, type WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
 

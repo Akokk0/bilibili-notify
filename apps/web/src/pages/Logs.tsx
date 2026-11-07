@@ -6,13 +6,13 @@ import { LOG_LEVEL_TONE, LOG_LEVEL_TONE_CONSOLE } from "../config/log-levels";
 import { useLogChannel } from "../hooks/useLogChannel";
 import { i18n, useT } from "../i18n";
 import { api, apiErrorOf } from "../services/api";
+import { withDesktopTokenHeader } from "../services/desktop-token";
 import {
 	type LogLineLevel,
 	type LogLineView,
 	type LogsResponse,
 	logsQueryKey,
-} from "../services/dashboard";
-import { withDesktopTokenHeader } from "../services/desktop-token";
+} from "../services/overview";
 
 /**
  * `/logs` — 日志输出 Tab。落盘 jsonl 归档(<dataDir>/logs/<日>.jsonl)的

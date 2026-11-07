@@ -10,9 +10,9 @@ import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract"
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import type { HistoryEntryView } from "../../services/dashboard";
+import type { HistoryEntryView } from "../../services/overview";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
-import { TimelinePanel } from "../Dashboard";
+import { TimelinePanel } from "../Overview";
 import { makeSource } from "../rules/__tests__/fixtures";
 
 afterEach(cleanup);

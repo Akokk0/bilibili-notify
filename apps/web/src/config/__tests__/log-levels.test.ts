@@ -90,7 +90,7 @@ describe("日志等级色表", () => {
 		}
 		// 三份旧的本地表,一个都不许复活。
 		expect((await read("../../pages/Logs.tsx")).includes("const LEVEL_TONE")).toBe(false);
-		expect((await read("../../pages/Dashboard.tsx")).includes("const LOG_LEVEL_TONE")).toBe(false);
+		expect((await read("../../pages/Overview.tsx")).includes("const LOG_LEVEL_TONE")).toBe(false);
 		expect((await read("../../components/forms.tsx")).includes('label: "调试", color: "#')).toBe(
 			false,
 		);

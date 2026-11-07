@@ -144,7 +144,7 @@ describe("没有第二份推送色表", () => {
 	 */
 	const CONSUMERS = [
 		"components/toast-shell.tsx",
-		"pages/Dashboard.tsx",
+		"pages/Overview.tsx",
 		"pages/History.tsx",
 		"pages/Cards.tsx",
 		"pages/up/UpCard.tsx",

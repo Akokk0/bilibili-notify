@@ -398,7 +398,7 @@ const PANEL_COVERAGE = [
 					"对比表 / 热力图两支都列:名字照订阅、拓展行带平台徽章与在播,颜色与订阅卡同一个;汇总两支一起算",
 			},
 			{
-				file: "apps/web/src/pages/__tests__/dashboard-health-details.test.tsx",
+				file: "apps/web/src/pages/__tests__/overview-health-details.test.tsx",
 				title: "每个集成一格，未运行或清单不可读的集成仍可查看",
 			},
 		],

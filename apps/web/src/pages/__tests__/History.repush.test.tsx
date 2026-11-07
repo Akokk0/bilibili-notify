@@ -27,7 +27,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { handlePushEnvelope } from "../../hooks/usePushEventsChannel";
-import { type HistoryEntryView, historyQueryKey } from "../../services/dashboard";
+import { type HistoryEntryView, historyQueryKey } from "../../services/overview";
 import History from "../History";
 
 vi.mock("../../services/api", () => ({

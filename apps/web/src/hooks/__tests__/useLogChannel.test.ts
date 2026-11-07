@@ -11,7 +11,7 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vite-plus/test";
-import { type LogsResponse, logsQueryKey } from "../../services/dashboard";
+import { type LogsResponse, logsQueryKey } from "../../services/overview";
 import type { WsEnvelope } from "../../services/ws";
 import { handleLogStreamEnvelope, LOG_CACHE_CAP, parseLogEnvelope } from "../useLogChannel";
 import { eventFrameMaker } from "./ws-frames";

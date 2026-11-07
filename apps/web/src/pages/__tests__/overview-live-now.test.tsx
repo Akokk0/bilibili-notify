@@ -12,14 +12,14 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { i18n } from "../../i18n";
-import type { LiveListeningEntry } from "../../services/dashboard";
+import type { LiveListeningEntry } from "../../services/overview";
 import {
 	DEFAULT_FEATURE_FLAGS,
 	type FeatureFlagValues,
 	makeEmptySubscription,
 	type Subscription,
 } from "../../types/domain";
-import { LiveNowPanel } from "../Dashboard";
+import { LiveNowPanel } from "../Overview";
 import { makeSource } from "../rules/__tests__/fixtures";
 
 beforeEach(() => {

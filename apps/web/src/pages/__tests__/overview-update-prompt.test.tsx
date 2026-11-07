@@ -10,7 +10,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { SystemHealthCard } from "../Dashboard";
+import { SystemHealthCard } from "../Overview";
 import { runningHealth } from "./support/health";
 
 vi.stubGlobal("__WEB_VERSION__", "0.0.0-test");

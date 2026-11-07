@@ -31,7 +31,7 @@ import {
 	historyQueryKey,
 	type LiveListeningEntry,
 	localDayKey,
-} from "../../services/dashboard";
+} from "../../services/overview";
 import type { WsEnvelope } from "../../services/ws";
 import type { PushEventView } from "../../store/notifications";
 import { HISTORY_CACHE_CAP, handlePushEnvelope } from "../usePushEventsChannel";

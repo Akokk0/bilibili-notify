@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
 import type { ModuleLogLevels } from "../../types/globals";
-import { SystemHealthCard } from "../Dashboard";
+import { SystemHealthCard } from "../Overview";
 import { integrationHealth, runningHealth } from "./support/health";
 
 vi.mock("../../services/api", () => ({ api: { get: vi.fn() }, ApiError: class extends Error {} }));

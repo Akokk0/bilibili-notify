@@ -32,12 +32,12 @@ import Ai from "./pages/Ai";
 import CardSkinEditor from "./pages/CardSkinEditor";
 import Cards from "./pages/Cards";
 import Chat from "./pages/Chat";
-import Dashboard from "./pages/Dashboard";
 import ExtensionDetail from "./pages/ExtensionDetail";
 import Extensions from "./pages/Extensions";
 import History from "./pages/History";
 import Library from "./pages/Library";
 import Logs from "./pages/Logs";
+import Overview from "./pages/Overview";
 import Rules from "./pages/Rules";
 import Stats from "./pages/Stats";
 import Subs from "./pages/Subs";
@@ -217,7 +217,7 @@ function AuthedApp({ processId }: { processId: string }) {
 					{/* 一页渲染炸了只丢这一页:边界在 main 里面,顶栏与角落里那几块在它外面(见组件注释)。 */}
 					<PageErrorBoundary>
 						<Routes>
-							<Route path="/" element={<Dashboard />} />
+							<Route path="/" element={<Overview />} />
 							<Route path="/subs" element={<Subs />} />
 							<Route path="/targets" element={<Targets />} />
 							<Route path="/extensions" element={<Extensions />} />

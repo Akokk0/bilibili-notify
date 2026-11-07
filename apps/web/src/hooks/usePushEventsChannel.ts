@@ -11,7 +11,7 @@ import {
 	historyQueryKey,
 	type LiveListeningEntry,
 	localDayKey,
-} from "../services/dashboard";
+} from "../services/overview";
 import { isWsEvent, type WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
 import { type PushEventView, useToastStore } from "../store/notifications";

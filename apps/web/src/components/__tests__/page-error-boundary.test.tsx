@@ -2,7 +2,7 @@
 
 /**
  * 一页渲染时抛了错,**只丢这一页**:顶栏还在、还能点去别的页;这一页说一句出了什么错、带上
- * 报错原文,给重试与回首页。没有这层边界时,React 会把整棵树卸掉 —— 面板整个白屏。
+ * 报错原文,给重试与回概览。没有这层边界时,React 会把整棵树卸掉 —— 面板整个白屏。
  *
  * 渲染的是真的 `App`(边界摆在哪儿正是要钉的事:包到顶栏外面去,一页炸了顶栏也跟着没)。
  * 顶栏与角落里那几块换成桩:它们各自拖着一串查询与 WS,而这里要看的只是「它们还在不在」。
@@ -59,7 +59,7 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-vi.mock("../../pages/Dashboard", () => ({
+vi.mock("../../pages/Overview", () => ({
 	default: () => {
 		if (crash.home) throw new TypeError("Cannot read properties of undefined (reading 'map')");
 		return <p>首页内容</p>;
@@ -132,20 +132,20 @@ describe("一页渲染抛错", () => {
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
-	it("点「回首页」去首页", async () => {
+	it("点「回概览」去首页", async () => {
 		crash.subs = true;
 		renderAt("/subs");
 		await screen.findByRole("alert");
-		fireEvent.click(screen.getByRole("button", { name: "回首页" }));
+		fireEvent.click(screen.getByRole("button", { name: "回概览" }));
 		expect(await screen.findByText("首页内容")).toBeTruthy();
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
-	it("首页自己炸了就不给「回首页」—— 那一下和重试是同一件事", async () => {
+	it("首页自己炸了就不给「回概览」—— 那一下和重试是同一件事", async () => {
 		crash.home = true;
 		renderAt("/");
 		await screen.findByRole("alert");
-		expect(screen.queryByRole("button", { name: "回首页" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "回概览" })).toBeNull();
 	});
 
 	it("从顶栏换一页,那一页照常画 —— 错误不跟着走", async () => {

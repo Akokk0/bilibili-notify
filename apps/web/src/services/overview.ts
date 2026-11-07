@@ -1,5 +1,5 @@
 /**
- * Dashboard 数据形状 + query-key 工具。
+ * Overview 数据形状 + query-key 工具。
  *
  * wire 类型的单一来源是 `@bilibili-notify/contract`(apps/server 同源消费),
  * 这里只做 re-export 与旧名别名(`import type`,编译后全擦除);本文件自留的
@@ -31,7 +31,7 @@ export type {
 } from "@bilibili-notify/contract";
 
 /**
- * HI1:history 缓存按 limit 分键的消费者集合 —— Dashboard(100,KPI/趋势)
+ * HI1:history 缓存按 limit 分键的消费者集合 —— Overview(100,KPI/趋势)
  * 与 History 页(200,完整列表)。三处(两页 + usePushEventsChannel 的 WS
  * patch)共用此单一来源,避免魔数漂移导致缓存键/WS patch 不一致。
  */
@@ -78,7 +78,7 @@ function barKeyOf(feature: FeatureKey): keyof Omit<DailyBucket, "d"> {
 }
 
 export const HISTORY_DAILY_DAYS = 7;
-/** 单一来源:Dashboard 的 useQuery 与 usePushEventsChannel 的 WS patch 共用此键。 */
+/** 单一来源:Overview 的 useQuery 与 usePushEventsChannel 的 WS patch 共用此键。 */
 export const HISTORY_DAILY_QUERY_KEY = ["history-daily", { days: HISTORY_DAILY_DAYS }] as const;
 
 /** tzOffset 用 JS getTimezoneOffset() 口径(UTC+8 → -480),日界跟随客户端本地时区。 */

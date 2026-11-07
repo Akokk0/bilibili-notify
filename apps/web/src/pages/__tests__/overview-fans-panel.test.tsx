@@ -11,7 +11,7 @@ import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { FollowersRefreshEntry } from "../../services/dashboard";
+import type { FollowersRefreshEntry } from "../../services/overview";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { makeSource } from "../rules/__tests__/fixtures";
 
@@ -21,7 +21,7 @@ vi.mock("../../services/api", () => ({
 }));
 
 import { api } from "../../services/api";
-import { FansPanel } from "../Dashboard";
+import { FansPanel } from "../Overview";
 
 afterEach(() => {
 	cleanup();

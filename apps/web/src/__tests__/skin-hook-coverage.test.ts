@@ -230,7 +230,7 @@ describe("RailDot 的调用点", () => {
 describe("数据展示不吃 --font-mono", () => {
 	const DATA_FILES = [
 		"apps/web/src/pages/Stats.tsx",
-		"apps/web/src/pages/Dashboard.tsx",
+		"apps/web/src/pages/Overview.tsx",
 		"apps/web/src/pages/stats/charts.tsx",
 		"apps/web/src/pages/stats/RoastCard.tsx",
 		"apps/web/src/pages/stats/SoloRoastCard.tsx",

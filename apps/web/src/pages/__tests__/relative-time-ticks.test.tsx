@@ -11,7 +11,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { HistoryEntryView } from "../../services/dashboard";
+import type { HistoryEntryView } from "../../services/overview";
 import { makeEmptySubscription } from "../../types/domain";
 import History from "../History";
 import { makeSource } from "../rules/__tests__/fixtures";

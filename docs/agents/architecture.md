@@ -169,7 +169,7 @@ src/
 
 ```
 src/
-  pages/        Dashboard / Subs / Targets / History / Rules / Cards / Ai / System / Logs
+  pages/        Overview / Subs / Targets / History / Rules / Cards / Ai / System / Logs
   components/   共享原子组件 + 图标
   hooks/        useAuthChannel / use-source-auth(登录态的唯一读口:`["source-auth", 来源键]` 查询缓存,读的地方各自点名要哪个来源;`store/auth.ts` 已删)/ usePushEventsChannel / useAlertChannel / useLogChannel / useStateChannel / ...
   services/     HTTP client(api.ts)+ 类型化封装(dashboard.ts,wire 类型 re-export 自 @bilibili-notify/contract)

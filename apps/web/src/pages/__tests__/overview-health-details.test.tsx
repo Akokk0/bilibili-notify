@@ -3,7 +3,7 @@
  * 首页健康卡通过真实页面和HTTP边界读取核心、集成、账号与问题快照。
  * 详情失败、生命周期变化和缺失数据都不从登录态或旧模块字段猜测。
  *
- * 这里整页渲染首页,钉的是**接线**:卡片自己按 prop 怎么画由 `dashboard-plugin-matrix` 管,这条管
+ * 这里整页渲染首页,钉的是**接线**:卡片自己按 prop 怎么画由 `overview-plugin-matrix` 管,这条管
  * 「数据从哪来」—— 改回旧来源或遗漏接线时，这里应当报错。
  */
 
@@ -40,7 +40,7 @@ import {
 	makeEmptySubscription,
 	type Subscription,
 } from "../../types/domain";
-import Dashboard from "../Dashboard";
+import Overview from "../Overview";
 import { integrationHealth, runningHealth } from "./support/health";
 
 /** 短版:只有这四格。 */
@@ -108,7 +108,7 @@ function renderDashboard() {
 	render(
 		<QueryClientProvider client={qc}>
 			<MemoryRouter initialEntries={["/"]}>
-				<Dashboard />
+				<Overview />
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { type DailyHistoryCountView, foldDailyBuckets, localDayKey } from "../dashboard";
+import { type DailyHistoryCountView, foldDailyBuckets, localDayKey } from "../overview";
 
 describe("localDayKey", () => {
 	it("formats a date as zero-padded local YYYY-MM-DD", () => {

@@ -49,7 +49,7 @@ import {
 	historyQueryKey,
 	type LiveListeningEntry,
 	localDayKey,
-} from "../services/dashboard";
+} from "../services/overview";
 import {
 	type FeatureFlagValues,
 	identityColor,
@@ -638,7 +638,7 @@ export function FansPanel({
 
 export { SystemHealthCard } from "../components/system-health-card";
 
-export default function Dashboard() {
+export default function Overview() {
 	const tx = useT();
 	const [healthHeight, setHealthHeight] = useState(0);
 	const [resourceHeight, setResourceHeight] = useState(0);
