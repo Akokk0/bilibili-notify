@@ -1,4 +1,4 @@
-import { t as serverText } from "./i18n/index.js";
+import { logText, t as serverText } from "./i18n/index.js";
 /**
  * 自包含 bundle 的启动入口 —— 镜像里跑的是 `node boot.mjs`,不是 `index.mjs`。
  *
@@ -112,8 +112,11 @@ export async function bootSelectedPayload({
 			// **刻意不销账**:这一次的尝试要留在账上,累够次数才判死。
 			// 日志里必须带上是哪一版、为什么 —— 否则用户只看到「更新完版本没变」。
 			log(
-				`[boot] 载荷 ${selection.version} 起不来,回落到镜像自带的 ${preinstalledVersion}:` +
-					`${err instanceof Error ? err.message : String(err)}`,
+				logText("log.host.payloadFallback", {
+					version: selection.version,
+					preinstalledVersion,
+					message: err instanceof Error ? err.message : String(err),
+				}),
 			);
 		}
 	}
@@ -181,7 +184,7 @@ if (isEntrypoint(import.meta.url)) {
 		loadPayload: importPayload,
 		log: stderrLineRedacted,
 	}).catch((err) => {
-		consoleErrorRedacted("fatal startup error", err);
+		consoleErrorRedacted(logText("log.host.fatalStartup"), err);
 		process.exit(1);
 	});
 }

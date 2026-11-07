@@ -52,7 +52,8 @@ describe("createNodeMessageBus", () => {
 		await Promise.resolve();
 
 		expect(errSpy).toHaveBeenCalledWith(
-			expect.stringContaining('async handler for "ready" rejected'),
+			"异步事件监听者执行失败",
+			{ event: "ready" },
 			expect.objectContaining({ name: "Error", message: "boom" }),
 		);
 	});

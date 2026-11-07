@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { BusEvents, MessageBus } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import { consoleErrorRedacted } from "../logs/console-fallback.js";
 
 /**
@@ -22,7 +23,7 @@ export function createNodeMessageBus(options: NodeMessageBusOptions = {}): Messa
 	const reportHandlerError =
 		options.onHandlerError ??
 		((event, error) =>
-			consoleErrorRedacted(`[message-bus] async handler for "${String(event)}" rejected:`, error));
+			consoleErrorRedacted(logText("log.host.asyncHandlerFailed"), { event }, error));
 	const emitter = new EventEmitter();
 	emitter.setMaxListeners(0); // unbounded; the bus is internally shared by every engine
 

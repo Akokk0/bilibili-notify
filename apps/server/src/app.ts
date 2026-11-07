@@ -23,6 +23,7 @@ import type { ExtensionEntry } from "./extensions/loader.js";
 import type { Marketplace } from "./extensions/marketplace.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
 import type { ReportDiscrepancyTable } from "./extensions/report-discrepancies.js";
+import { logText } from "./i18n/index.js";
 import type { IntegrationStore } from "./integration-store/store.js";
 import { createMaidSkillReader } from "./maid-skills/reader.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
@@ -597,9 +598,12 @@ function createAppShell(
 	const loginRateLimiter = createIpRateLimiter({
 		onEvent: (event) => {
 			if (event.type === "blocked") {
-				logger.warn(`session-login ip=${event.ip} blocked retryAfterMs=${event.retryAfterMs}`);
+				logger.warn(logText("log.auth.loginBlocked"), {
+					ip: event.ip,
+					retryAfterMs: event.retryAfterMs,
+				});
 			} else if (event.type === "failure" && event.failures >= 3) {
-				logger.warn(`session-login ip=${event.ip} failures=${event.failures}`);
+				logger.warn(logText("log.auth.loginFailures"), { ip: event.ip, failures: event.failures });
 			}
 		},
 	});

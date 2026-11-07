@@ -1568,5 +1568,16 @@
 	"log.health.sourceThrew": "来源健康状态读取抛出异常",
 	"log.skill.toolMissing": "技能声明的工具当前不可用",
 	"log.update.notesReadFailed": "更新说明读取失败，本次更新仅显示标题",
-	"log.update.notesInvalid": "更新说明格式无效，本次更新仅显示标题"
+	"log.update.notesInvalid": "更新说明格式无效，本次更新仅显示标题",
+	"log.host.asyncHandlerFailed": "异步事件监听者执行失败",
+	"log.auth.loginBlocked": "面板登录请求受到限流",
+	"log.auth.loginFailures": "面板登录连续失败",
+	"log.host.connectionCallbackFailed": "连接变更回调执行失败",
+	"log.host.masterNotifyFailed": "通知未确认送达",
+	"log.host.privateHandlerFailed": "私聊消息处理失败",
+	"log.host.groupHandlerFailed": "群消息处理失败",
+	"log.host.draftSweepFailed": "过期锐评草稿清理失败",
+	"log.host.extensionNotLoaded": "拓展未加载",
+	"log.host.extensionsSyncFailed": "拓展启停同步失败",
+	"log.host.payloadFallback": "载荷 {version} 启动失败，回落预装版本 {preinstalledVersion}：{message}"
 }

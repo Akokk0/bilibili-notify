@@ -385,5 +385,16 @@
 	"log.health.sourceThrew": "來源健康狀態讀取拋出例外",
 	"log.skill.toolMissing": "技能宣告的工具目前無法使用",
 	"log.update.notesReadFailed": "更新說明讀取失敗，本次更新僅顯示標題",
-	"log.update.notesInvalid": "更新說明格式無效，本次更新僅顯示標題"
+	"log.update.notesInvalid": "更新說明格式無效，本次更新僅顯示標題",
+	"log.host.asyncHandlerFailed": "非同步事件監聽者執行失敗",
+	"log.auth.loginBlocked": "面板登入請求受到流量限制",
+	"log.auth.loginFailures": "面板登入連續失敗",
+	"log.host.connectionCallbackFailed": "連線變更回呼執行失敗",
+	"log.host.masterNotifyFailed": "通知未確認送達",
+	"log.host.privateHandlerFailed": "私人訊息處理失敗",
+	"log.host.groupHandlerFailed": "群組訊息處理失敗",
+	"log.host.draftSweepFailed": "過期銳評草稿清理失敗",
+	"log.host.extensionNotLoaded": "擴充功能未載入",
+	"log.host.extensionsSyncFailed": "擴充功能啟停同步失敗",
+	"log.host.payloadFallback": "載荷 {version} 啟動失敗，改用預裝版本 {preinstalledVersion}：{message}"
 }

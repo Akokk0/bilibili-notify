@@ -385,5 +385,16 @@
 	"log.health.sourceThrew": "ソースの稼働状態の読み取りで例外が発生しました",
 	"log.skill.toolMissing": "スキルが宣言したツールは現在利用できません",
 	"log.update.notesReadFailed": "更新内容を読み込めないため、タイトルのみ表示します",
-	"log.update.notesInvalid": "更新内容の形式が不正なため、タイトルのみ表示します"
+	"log.update.notesInvalid": "更新内容の形式が不正なため、タイトルのみ表示します",
+	"log.host.asyncHandlerFailed": "非同期イベントハンドラーの実行に失敗しました",
+	"log.auth.loginBlocked": "ダッシュボードへのログイン要求の頻度が制限されました",
+	"log.auth.loginFailures": "ダッシュボードへのログインに連続して失敗しました",
+	"log.host.connectionCallbackFailed": "接続変更コールバックの実行に失敗しました",
+	"log.host.masterNotifyFailed": "通知の配信を確認できませんでした",
+	"log.host.privateHandlerFailed": "プライベートメッセージの処理に失敗しました",
+	"log.host.groupHandlerFailed": "グループメッセージの処理に失敗しました",
+	"log.host.draftSweepFailed": "期限切れの辛口コメントの下書きを削除できませんでした",
+	"log.host.extensionNotLoaded": "拡張機能を読み込めませんでした",
+	"log.host.extensionsSyncFailed": "拡張機能の有効状態を同期できませんでした",
+	"log.host.payloadFallback": "ペイロード {version} を起動できないため、プリインストール版 {preinstalledVersion} に戻します：{message}"
 }

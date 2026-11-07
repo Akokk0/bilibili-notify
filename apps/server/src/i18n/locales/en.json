@@ -385,5 +385,16 @@
 	"log.health.sourceThrew": "Source health status read threw an exception",
 	"log.skill.toolMissing": "Tool declared by skill is currently unavailable",
 	"log.update.notesReadFailed": "Failed to read release notes; showing only update title",
-	"log.update.notesInvalid": "Invalid release notes format; showing only update title"
+	"log.update.notesInvalid": "Invalid release notes format; showing only update title",
+	"log.host.asyncHandlerFailed": "Asynchronous event handler failed",
+	"log.auth.loginBlocked": "Dashboard login request rate limited",
+	"log.auth.loginFailures": "Repeated dashboard login failures",
+	"log.host.connectionCallbackFailed": "Connection change callback failed",
+	"log.host.masterNotifyFailed": "Notification delivery was not confirmed",
+	"log.host.privateHandlerFailed": "Private message processing failed",
+	"log.host.groupHandlerFailed": "Group message processing failed",
+	"log.host.draftSweepFailed": "Failed to remove expired roast drafts",
+	"log.host.extensionNotLoaded": "Extension not loaded",
+	"log.host.extensionsSyncFailed": "Failed to synchronize extension activation",
+	"log.host.payloadFallback": "Payload {version} failed to start; falling back to preinstalled version {preinstalledVersion}: {message}"
 }

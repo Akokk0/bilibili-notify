@@ -779,7 +779,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				try {
 					fn();
 				} catch (err) {
-					log.error(`连接变更的回调抛了: ${err instanceof Error ? err.message : String(err)}`);
+					log.error(logText("log.host.connectionCallbackFailed"), { error: err });
 				}
 			});
 
@@ -1094,7 +1094,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		/** 服务端主动私聊主人(定时锐评、过期提醒)。发不出去由调用方各自兜住(不让它拖垮流程)。 */
 		const tellMasterPayload = async (payload: string | NotificationPayload): Promise<void> => {
 			const r = await pipeline?.push.notifyMaster(payload);
-			if (r && !r.ok) log.warn(`[master] 通知主人没送到: ${r.message}`);
+			if (r && !r.ok)
+				log.warn(logText("log.host.masterNotifyFailed"), { code: r.code, message: r.message });
 		};
 		// 审批预览要发的是渲染好的那一份(出图就发图),所以另有 payload 版;文字版只是它的字符串入参。
 		const tellMaster = (text: string): Promise<void> => tellMasterPayload(text);
@@ -1243,9 +1244,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		onInboundPrivate = (msg, meta) => {
 			runtime.serviceCtx.track(
 				commandDispatcher.handleMessage(msg, meta).catch((err) => {
-					log.warn(
-						`[command] 私聊消息处理出错: ${err instanceof Error ? err.message : String(err)}`,
-					);
+					log.warn(logText("log.host.privateHandlerFailed"), { error: err });
 				}),
 			);
 		};
@@ -1257,7 +1256,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						connectionId: meta.connectionId,
 					})
 					.catch((err) => {
-						log.warn(`[link] 群消息处理出错: ${err instanceof Error ? err.message : String(err)}`);
+						log.warn(logText("log.host.groupHandlerFailed"), { error: err });
 					}),
 			);
 		};
@@ -1289,9 +1288,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 							}
 						})
 						.catch((err) => {
-							log.warn(
-								`[roast-draft] 过期清理失败: ${err instanceof Error ? err.message : String(err)}`,
-							);
+							log.warn(logText("log.host.draftSweepFailed"), { error: err });
 						}),
 				);
 			},
@@ -1387,9 +1384,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 开机时没起来的说出来。
 		for (const entry of loadedExtensions.list()) {
 			if (entry.state !== "running" && entry.state !== "disabled")
-				log.warn(
-					`[ext] ${entry.id} 没加载(${entry.state})${entry.detail ? `:${entry.detail}` : ""}`,
-				);
+				log.warn(logText("log.host.extensionNotLoaded"), {
+					extensionId: entry.id,
+					state: entry.state,
+					detail: entry.detail,
+				});
 		}
 
 		// 拨开关即热装卸(决策 10)。`sync()` 自己吞异常、自己排队,这里只负责把「全局配置
@@ -1400,7 +1399,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			if (scope === "globals") {
 				runtime.serviceCtx.track(
 					extensions.sync().catch((err) => {
-						log.warn(`[ext] 同步拓展开关失败: ${err instanceof Error ? err.message : String(err)}`);
+						log.warn(logText("log.host.extensionsSyncFailed"), { error: err });
 					}),
 				);
 			}

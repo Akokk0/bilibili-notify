@@ -42,8 +42,9 @@ describe("createAppRuntime 里的总线", () => {
 		runtime.bus.emit("ready");
 		await new Promise((resolve) => setTimeout(resolve, 10));
 
-		const entry = seen.find((e) => e.msg.includes("async handler"));
+		const entry = seen.find((e) => e.msg === "异步事件监听者执行失败");
 		expect(entry?.level).toBe("error");
+		expect(entry?.args?.[0]).toEqual({ event: "ready" });
 		const text = JSON.stringify(entry);
 		expect(text).toContain("boom Bearer ***");
 		expect(text).not.toContain("zzzzzzzz9");
