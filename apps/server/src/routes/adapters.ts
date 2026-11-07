@@ -10,7 +10,7 @@ import { type ConnectionAuth, type Failure, fail, type Result } from "@bilibili-
 import { Hono } from "hono";
 import { manifestPushView } from "../extensions/context.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
@@ -91,7 +91,7 @@ export function createAdaptersRoute(deps: RouteDeps, opts: AdaptersRouteOptions)
 		try {
 			return await call();
 		} catch (err) {
-			log.error(`${where} threw: ${errorMessageOf(err)}`);
+			log.error(logText("log.http.operationFailed"), { operation: where, error: err });
 			return fail("unavailable", errorMessageOf(err));
 		}
 	}
@@ -111,7 +111,10 @@ export function createAdaptersRoute(deps: RouteDeps, opts: AdaptersRouteOptions)
 			return c.json(body);
 		} catch (err) {
 			// 适配器「不许抛」;真抛了算 bug,记 error、回 `unavailable`。
-			log.error(`GET /api/adapters/:adapterKey/candidates threw: ${errorMessageOf(err)}`);
+			log.error(logText("log.http.operationFailed"), {
+				operation: "GET /api/adapters/:adapterKey/candidates",
+				error: err,
+			});
 			return respondFailure(c, fail("unavailable", errorMessageOf(err)));
 		}
 	});

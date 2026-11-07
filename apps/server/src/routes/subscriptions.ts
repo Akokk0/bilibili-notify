@@ -14,7 +14,7 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
 import {
 	type ExternalIdSpec,
@@ -203,7 +203,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			await deps.store.upsertSubscription(subBody as never);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("POST /api/subscriptions failed", err);
+			log.error(logText("log.http.operationFailed"), { operation: "POST /api/subscriptions" }, err);
 			throw err;
 		}
 		if (seed) await seedProfile(sub, seed, avatarBytes);
@@ -225,9 +225,13 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			try {
 				const stored = await deps.runtime.profileImages.put(avatarBytes);
 				if (stored.ok) return stored.ref;
-				log.warn(`[sub] 订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${stored.message}`);
+				log.warn(logText("log.http.avatarStoreFailed"), {
+					subscriptionId: sub.id,
+					code: stored.code,
+					message: stored.message,
+				});
 			} catch (err) {
-				log.warn(`[sub] 订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${String(err)}`);
+				log.warn(logText("log.http.avatarStoreFailed"), { subscriptionId: sub.id, error: err });
 			}
 			return undefined;
 		};
@@ -242,7 +246,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				};
 			});
 		} catch (err) {
-			log.warn(`[sub] 订阅 ${sub.id} 的资料缓存没写进去: ${String(err)}`);
+			log.warn(logText("log.http.profileWriteFailed"), { subscriptionId: sub.id, error: err });
 		}
 	}
 
@@ -284,7 +288,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			return c.json(subscriptionViews(), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("POST /api/subscriptions failed", err);
+			log.error(logText("log.http.operationFailed"), { operation: "POST /api/subscriptions" }, err);
 			throw err;
 		}
 	});
@@ -329,7 +333,11 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			return c.json(subscriptionView(next, problemsBySubscription()));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("PATCH /api/subscriptions/:id failed", err);
+			log.error(
+				logText("log.http.operationFailed"),
+				{ operation: "PATCH /api/subscriptions/:id" },
+				err,
+			);
 			throw err;
 		}
 	});

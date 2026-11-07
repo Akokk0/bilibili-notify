@@ -163,6 +163,9 @@ describe("GET /:adapterKey/candidates", () => {
 		expect(res.status).toBe(503);
 		expect(await res.json()).toMatchObject({ code: "unavailable", message: "桥炸了" });
 		expect(log.error).toHaveBeenCalledTimes(1);
-		expect(String(log.error.mock.calls[0]?.[0])).toContain("桥炸了");
+		expect(log.error).toHaveBeenCalledWith("接口操作失败", {
+			operation: "GET /api/adapters/:adapterKey/candidates",
+			error: expect.objectContaining({ message: "桥炸了" }),
+		});
 	});
 });

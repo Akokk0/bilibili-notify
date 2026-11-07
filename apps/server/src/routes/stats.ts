@@ -17,7 +17,7 @@ import {
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import type { RoastRunResult } from "../runtime/roast-scheduler.js";
 import {
 	countPosts,
@@ -328,7 +328,7 @@ export function roastOverviewFetcher(
 		try {
 			return await read(days, tz);
 		} catch (err) {
-			deps.runtime.serviceCtx.logger.error("unhandled request error", err);
+			deps.runtime.serviceCtx.logger.error(logText("log.http.unhandled"), err);
 			return null;
 		}
 	};

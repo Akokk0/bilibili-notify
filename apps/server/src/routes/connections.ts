@@ -7,7 +7,7 @@ import type {
 import { fail, NewConnectionSchema, PushTargetScopeSchema } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { ConfigValidationError } from "../config/store.js";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { maskedCellsFailure } from "./masked-cells.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { pipelineNotReadyMessage, respondFailure } from "./respond-failure.js";
@@ -114,7 +114,10 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		try {
 			candidates = await adapter.listConnectionCandidates(c.req.raw.signal);
 		} catch (err) {
-			log.warn(`POST /api/connections: ${draft.data.adapterKey} 的候选列不出来: ${String(err)}`);
+			log.warn(logText("log.http.connectionCandidatesFailed"), {
+				adapterKey: draft.data.adapterKey,
+				error: err,
+			});
 			return respondFailure(
 				c,
 				fail("unavailable", serverText("service.routes.connections.text.4")),
@@ -142,7 +145,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			return c.json(viewsOf(), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("POST /api/connections failed", err);
+			log.error(logText("log.http.operationFailed"), { operation: "POST /api/connections" }, err);
 			throw err;
 		}
 	});
@@ -158,7 +161,11 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			return c.json(connectionView(next, deps.connectionSecrets));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("PATCH /api/connections/:id failed", err);
+			log.error(
+				logText("log.http.operationFailed"),
+				{ operation: "PATCH /api/connections/:id" },
+				err,
+			);
 			throw err;
 		}
 	});
@@ -188,7 +195,11 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			return c.body(null, 204);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("DELETE /api/connections/:id failed", err);
+			log.error(
+				logText("log.http.operationFailed"),
+				{ operation: "DELETE /api/connections/:id" },
+				err,
+			);
 			throw err;
 		}
 	});

@@ -6,7 +6,7 @@ import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { isDesktopWsTokenAllowed } from "../auth/desktop-token.js";
 import { isOriginAllowed, normalizeAllowedOrigins } from "../auth/origin.js";
 import type { WsTicketStore } from "../auth/ws-ticket.js";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import type { NodeServiceContext } from "../runtime/service-context.js";
 import { attachChannelWiring, buildStateHydrate } from "./channels.js";
 import { createLogChannel, type LogChannel } from "./log-channel.js";
@@ -188,7 +188,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		// Origin gate first — if a request is not from a trusted origin we don't
 		// even tell it auth is required, just terminate.
 		if (!checkOrigin(req)) {
-			log.warn(`ws upgrade rejected: origin=${String(req.headers.origin)} not in allowedOrigins`);
+			log.warn(logText("log.ws.originRejected"), { origin: req.headers.origin });
 			try {
 				socket.destroy();
 			} catch {
@@ -197,13 +197,13 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 			return;
 		}
 		if (desktopToken && !isDesktopWsTokenAllowed(req.url, desktopToken)) {
-			log.warn("ws upgrade rejected: missing or invalid desktop token");
+			log.warn(logText("log.ws.desktopRejected"));
 			rejectUnauthorized(socket);
 			return;
 		}
 		// Auth gate — emit a real 401 so curl/clients see the right code.
 		if (!checkAuth(req)) {
-			log.warn("ws upgrade rejected: missing or invalid auth");
+			log.warn(logText("log.ws.authRejected"));
 			rejectUnauthorized(socket);
 			return;
 		}
@@ -220,9 +220,10 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		if (client.socket.bufferedAmount > SEND_BACKPRESSURE_THRESHOLD_BYTES) {
 			if (!client.backpressureWarned) {
 				client.backpressureWarned = true;
-				log.warn(
-					`ws client ${client.id} buffered>${SEND_BACKPRESSURE_THRESHOLD_BYTES}B, dropping messages`,
-				);
+				log.warn(logText("log.ws.backpressure"), {
+					clientId: client.id,
+					thresholdBytes: SEND_BACKPRESSURE_THRESHOLD_BYTES,
+				});
 			}
 			return;
 		}
@@ -233,7 +234,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		try {
 			client.socket.send(JSON.stringify(envelope));
 		} catch (err) {
-			log.warn(`ws client ${client.id} send failed: ${String(err)}`);
+			log.warn(logText("log.ws.sendFailed"), { clientId: client.id, error: err });
 		}
 	}
 
@@ -284,7 +285,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		const now = Date.now();
 		for (const client of [...clients]) {
 			if (!client.alive) {
-				log.warn(`ws client ${client.id} timed out (no pong); terminating`);
+				log.warn(logText("log.ws.pongTimeout"), { clientId: client.id });
 				try {
 					client.socket.terminate();
 				} catch {
@@ -318,7 +319,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 					// we use connection time.
 					const last = (client as WsClient & { lastPongAt?: number }).lastPongAt ?? 0;
 					if (last > 0 && last < cutoff) {
-						log.warn(`ws client ${client.id} pong overdue; terminating`);
+						log.warn(logText("log.ws.pongTimeout"), { clientId: client.id });
 						try {
 							client.socket.terminate();
 						} catch {
@@ -342,7 +343,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 			lastPongAt: Date.now(),
 		};
 		clients.add(client);
-		log.debug(`ws client ${client.id} connected (total=${clients.size})`);
+		log.debug(logText("log.ws.connected"), { clientId: client.id, total: clients.size });
 
 		const cleanup = (): void => {
 			if (!clients.delete(client)) return;
@@ -350,12 +351,12 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 			client.subscriptions.clear();
 			// 关掉页面走的是这条路,不是显式 unsubscribe —— 摘监听两边都得管。
 			syncResourceListener();
-			log.debug(`ws client ${client.id} disconnected (total=${clients.size})`);
+			log.debug(logText("log.ws.disconnected"), { clientId: client.id, total: clients.size });
 		};
 
 		socket.on("close", cleanup);
 		socket.on("error", (err) => {
-			log.warn(`ws client ${client.id} socket error: ${String(err)}`);
+			log.warn(logText("log.ws.socketError"), { clientId: client.id, error: err });
 			cleanup();
 		});
 

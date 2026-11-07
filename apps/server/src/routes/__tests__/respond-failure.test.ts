@@ -2,6 +2,7 @@ import { FAILURE_CODES, type Failure, type FailureCode, fail } from "@bilibili-n
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	errorBodyOf,
 	failureOfHttpException,
@@ -145,14 +146,27 @@ describe("requestErrorHandler:全局出错处理(app.ts 与被进程内直接 re
 	}
 
 	it("普通抛错是 bug:503 unavailable + 固定一句话,原始错误进错误日志、不回给客户端", async () => {
-		const boom = new Error("ENOENT: no such file or directory, open 'state/x.json'");
-		const { app, logger } = appThatThrows(boom);
+		const state = i18n.state();
+		try {
+			for (const [locale, message] of [
+				["zh-CN", "请求处理发生未捕获异常"],
+				["en", "Unhandled request error"],
+				["ja", "リクエスト処理で未処理の例外が発生しました"],
+				["zh-TW", "請求處理發生未攔截例外"],
+			] as const) {
+				i18n.set({ locale, voice: "maid" });
+				const boom = new Error("ENOENT: no such file or directory, open 'state/x.json'");
+				const { app, logger } = appThatThrows(boom);
 
-		const res = await app.request("/");
+				const res = await app.request("/");
 
-		expect(res.status).toBe(503);
-		expect(await res.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
-		expect(logger.error).toHaveBeenCalledWith("unhandled request error", boom);
+				expect(res.status).toBe(503);
+				expect(await res.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
+				expect(logger.error).toHaveBeenCalledWith(message, boom);
+			}
+		} finally {
+			i18n.set({ locale: state.locale, voice: state.voice });
+		}
 	});
 
 	it("HTTPException 按它的状态码挑码,状态码与 message 照原样;4xx 不记错误日志", async () => {

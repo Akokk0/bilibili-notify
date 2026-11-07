@@ -899,7 +899,10 @@ describe("cards route — /preview 挑了订阅:真数据问来源", () => {
 		expect(await res.json()).toMatchObject({ ok: true, sampleReason: "来源炸了" });
 		const error = (deps.runtime.serviceCtx.logger as unknown as { error: ReturnType<typeof vi.fn> })
 			.error;
-		expect(error).toHaveBeenCalledWith(expect.stringContaining("来源炸了"));
+		expect(error).toHaveBeenCalledWith("来源预览调用失败", {
+			sourceKey: "bilibili",
+			error: expect.objectContaining({ message: "来源炸了" }),
+		});
 	});
 
 	it("来源交回的不是这一种卡 → 示例卡,说清是哪不对", async () => {

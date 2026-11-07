@@ -3,7 +3,7 @@ import { fail, issuesFromZod, type NotificationPayload } from "@bilibili-notify/
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { pipelineNotReadyMessage, respondFailure } from "./respond-failure.js";
 import { testResultOfDelivery } from "./test-result.js";
@@ -82,7 +82,7 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 			return c.json(deps.store.getTargets(), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("POST /api/targets failed", err);
+			log.error(logText("log.http.operationFailed"), { operation: "POST /api/targets" }, err);
 			throw err;
 		}
 	});
@@ -96,7 +96,7 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 			return c.json(next);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("PATCH /api/targets/:id failed", err);
+			log.error(logText("log.http.operationFailed"), { operation: "PATCH /api/targets/:id" }, err);
 			throw err;
 		}
 	});
@@ -155,7 +155,7 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 			return c.body(null, 204);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("DELETE /api/targets/:id failed", err);
+			log.error(logText("log.http.operationFailed"), { operation: "DELETE /api/targets/:id" }, err);
 			throw err;
 		}
 	});

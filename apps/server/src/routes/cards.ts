@@ -1,4 +1,5 @@
 import { packageText } from "@bilibili-notify/internal/texts";
+import { logText } from "../i18n/index.js";
 /**
  * `POST /api/cards/preview` —— 卡片页右侧的预览:用 puppeteer-core 画一张卡,回 data URL。
  *
@@ -319,7 +320,10 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			if (got.ok && got.kind !== options.kind) return fail("invalid", t("cards.preview.wrongKind"));
 			return got;
 		} catch (err) {
-			log.error(`[cards] ${identity.sourceKey} 的 fetchPreview 抛了:${errorMessageOf(err)}`);
+			log.error(logText("log.http.previewFetchFailed"), {
+				sourceKey: identity.sourceKey,
+				error: err,
+			});
 			return fail("unavailable", errorMessageOf(err));
 		}
 	}
@@ -814,7 +818,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			log.warn(`[cards] preview render failed (${kind}): ${msg}`);
+			log.warn(logText("log.http.cardRenderFailed"), { kind, stage: "preview", error: err });
 			return c.json<PreviewResponse>(
 				fail("unavailable", t("cards.preview.renderFailed", { message: msg })),
 			);
@@ -890,7 +894,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			log.warn(`[cards] skin screenshot render failed (${kind}): ${msg}`);
+			log.warn(logText("log.http.cardRenderFailed"), { kind, stage: "skinScreenshot", error: err });
 			return c.json<CardSkinShotResponse>(
 				fail("unavailable", t("cards.skinShot.failed", { message: msg })),
 			);
@@ -931,7 +935,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			log.warn(`[cards] test render failed (${kind}): ${msg}`);
+			log.warn(logText("log.http.cardRenderFailed"), { kind, stage: "test", error: err });
 			return c.json<TestPushResponse>(
 				fail("unavailable", t("cards.preview.renderFailed", { message: msg })),
 			);

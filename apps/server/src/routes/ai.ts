@@ -38,7 +38,7 @@ import {
 	slimCardToolArgs,
 } from "../card-skins/chat-tools.js";
 import type { CardSkinStore } from "../card-skins/store.js";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { type ImageStore, imageExtOf, isValidImageRef } from "../images/image-store.js";
 import { createSkillChatTool, skillInstruction } from "../maid-skills/chat-tool.js";
 import type { MaidSkillReader } from "../maid-skills/reader.js";
@@ -177,7 +177,7 @@ export function createAiRoute(
 		} catch (err) {
 			// 模型那头的错(密钥不对、余额不足、网络)—— 对端给的原因就是主人要看的,原话进 `message`。
 			const msg = err instanceof Error ? err.message : String(err);
-			deps.runtime.serviceCtx.logger.warn(`[ai] 试一句:女仆没答上来: ${msg}`);
+			deps.runtime.serviceCtx.logger.warn(logText("log.http.aiTestFailed"), { error: err });
 			return c.json<AiTestPushResponse>(
 				fail("unavailable", serverText("service.routes.ai.text.8", { value0: msg })),
 			);
@@ -251,7 +251,10 @@ export function createAiRoute(
 			if (!stored.ok) {
 				if (stored.code === "invalid") return respondFailure(c, stored);
 				// 磁盘写失败之类是环境的事:原话(里头可能带路径)只进日志,客户端拿一句固定的话 —— 与全局出错处理同一个口径。
-				deps.runtime.serviceCtx.logger.error("[ai] 附件存不进图库", new Error(stored.message));
+				deps.runtime.serviceCtx.logger.error(logText("log.http.attachmentWriteFailed"), {
+					code: stored.code,
+					message: stored.message,
+				});
 				return respondFailure(c, fail(stored.code, unhandledErrorMessage()));
 			}
 			return c.json(ok({ id: stored.ref }));
@@ -301,8 +304,7 @@ export function createAiRoute(
 			// warn 而不是 debug:界面上这条是**静默**失败(标题原样留着),主人只会
 			// 看到「标题还是我那句提问」,却不知道为什么。日志页里得留下原因,
 			// 否则这就是一条无从下手的故障。
-			const msg = err instanceof Error ? err.message : String(err);
-			deps.runtime.serviceCtx.logger.warn(`[ai-chat] 起标题失败,保留原标题: ${msg}`);
+			deps.runtime.serviceCtx.logger.warn(logText("log.http.chatTitleFailed"), { error: err });
 		}
 		return c.json({ conversation: toMeta(conv) } satisfies AiConversationMetaResponse);
 	});

@@ -16,12 +16,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { manifestSourceDescriptor } from "../extensions/extension-source.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { imageRefDataUrl } from "../images/image-data-url.js";
 import type { ImageStore } from "../images/image-store.js";
 import type { SourceView } from "../subscriptions/registry.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
-import { errorMessageOf } from "../util/error-message.js";
 import { pipelineNotReadyMessage, respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
@@ -186,7 +185,10 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 		try {
 			return c.json(responseOf(found.auth));
 		} catch (err) {
-			log.error(`GET /api/sources/:sourceKey/auth threw: ${errorMessageOf(err)}`);
+			log.error(logText("log.http.operationFailed"), {
+				operation: "GET /api/sources/:sourceKey/auth",
+				error: err,
+			});
 			return respondFailure(c, fail("unavailable", t("sources.auth.readFailed")));
 		}
 	});
@@ -202,7 +204,10 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 			if (!begun.ok) return respondFailure(c, begun);
 			return c.json(responseOf(found.auth));
 		} catch (err) {
-			log.error(`POST /api/sources/:sourceKey/auth threw: ${errorMessageOf(err)}`);
+			log.error(logText("log.http.operationFailed"), {
+				operation: "POST /api/sources/:sourceKey/auth",
+				error: err,
+			});
 			return respondFailure(c, fail("unavailable", t("sources.auth.beginFailed")));
 		}
 	});
@@ -215,7 +220,10 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 			if (!out.ok) return respondFailure(c, out);
 			return c.json(responseOf(found.auth));
 		} catch (err) {
-			log.error(`DELETE /api/sources/:sourceKey/auth threw: ${errorMessageOf(err)}`);
+			log.error(logText("log.http.operationFailed"), {
+				operation: "DELETE /api/sources/:sourceKey/auth",
+				error: err,
+			});
 			return respondFailure(c, fail("unavailable", t("sources.auth.logoutFailed")));
 		}
 	});

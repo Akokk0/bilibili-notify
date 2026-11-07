@@ -7,7 +7,7 @@ import type {
 import { aiProfileAt, fail, ok, type Result } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ConfigStore, ConfigValidationError, type SettingsSnapshot } from "../config/store.js";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
 import { checkCommandAliases } from "./command-alias-guard.js";
 import { maskedCellsFailure } from "./masked-cells.js";
@@ -160,7 +160,7 @@ export function createSettingsRoute(deps: RouteDeps): Hono {
 				const rejected = err.scope === "globals" ? err.under(["core"]) : err;
 				return respondFailure(c, rejected.toFailure());
 			}
-			log.error("PATCH /api/settings failed", err);
+			log.error(logText("log.http.operationFailed"), { operation: "PATCH /api/settings" }, err);
 			throw err;
 		}
 	});

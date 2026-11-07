@@ -182,7 +182,12 @@ describe("三个口", () => {
 			code: "unavailable",
 			message: "发起扫码登录失败，详情在日志里",
 		});
-		expect(log.error).toHaveBeenCalledWith(expect.stringContaining("internal-explosion"));
+		expect(log.error).toHaveBeenCalledWith(
+			"接口操作失败",
+			expect.objectContaining({
+				error: expect.objectContaining({ message: expect.stringContaining("internal-explosion") }),
+			}),
+		);
 	});
 
 	// 验红:把路由里的逐格挑改成把 account 整个放进回包,这条红。

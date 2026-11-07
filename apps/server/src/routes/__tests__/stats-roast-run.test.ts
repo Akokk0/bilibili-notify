@@ -110,7 +110,7 @@ describe("POST /roast/run", () => {
 		const res = await app.request("/api/stats/roast/run", { method: "POST" });
 		expect(res.status).toBe(503);
 		expect(await res.json()).toEqual({ code: "unavailable", message: unhandledErrorMessage() });
-		expect(logger.error).toHaveBeenCalledWith("unhandled request error", boom);
+		expect(logger.error).toHaveBeenCalledWith("请求处理发生未捕获异常", boom);
 	});
 });
 

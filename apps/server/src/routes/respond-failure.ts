@@ -3,7 +3,7 @@ import { type Failure, type FailureCode, fail, type Logger } from "@bilibili-not
 import type { Context, ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 
 /**
  * 失败的出口(ADR-0026 决策 6):HTTP 非 2xx 的错误体一律经 {@link respondFailure} 回,
@@ -131,10 +131,10 @@ export function requestErrorHandler(logger: Pick<Logger, "error">): ErrorHandler
 	return (err, c) => {
 		if (err instanceof HTTPException) {
 			const { failure, status } = failureOfHttpException(err);
-			if (status >= 500) logger.error("http exception", err);
+			if (status >= 500) logger.error(logText("log.http.exception"), err);
 			return respondFailure(c, failure, status);
 		}
-		logger.error("unhandled request error", err);
+		logger.error(logText("log.http.unhandled"), err);
 		return respondFailure(c, fail("unavailable", unhandledErrorMessage()));
 	};
 }

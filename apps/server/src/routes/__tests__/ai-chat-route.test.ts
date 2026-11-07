@@ -806,7 +806,9 @@ describe("POST /conversations/:id/title — AI 起标题", () => {
 		await retitle(app, id);
 		const warn = (deps.runtime.serviceCtx.logger as unknown as { warn: ReturnType<typeof vi.fn> })
 			.warn;
-		expect(warn.mock.calls.some((c) => String(c[0]).includes("402"))).toBe(true);
+		expect(warn).toHaveBeenCalledWith("会话标题生成失败，保留原标题", {
+			error: expect.objectContaining({ message: expect.stringContaining("402") }),
+		});
 	});
 
 	it("起名失败 → 标题原样留着,不清空也不报错给主人看", async () => {

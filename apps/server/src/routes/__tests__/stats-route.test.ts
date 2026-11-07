@@ -187,7 +187,7 @@ describe("取数抛错 —— 挂进带全局出错处理的父实例后是失�
 		const body = (await res.json()) as any;
 		expect(body.code).toBe("unavailable");
 		expect(JSON.stringify(body)).not.toContain("盘挂了");
-		expect(error).toHaveBeenCalledWith("unhandled request error", expect.any(Error));
+		expect(error).toHaveBeenCalledWith("请求处理发生未捕获异常", expect.any(Error));
 	});
 
 	it("锐评取数抛错:原话进错误日志,锐评那头只拿到失败(统计数据读取失败)", async () => {
@@ -203,7 +203,7 @@ describe("取数抛错 —— 挂进带全局出错处理的父实例后是失�
 
 		expect(res.status).toBe(503);
 		expect(((await res.json()) as any).message).toContain("统计数据读取失败");
-		expect(error).toHaveBeenCalledWith("unhandled request error", expect.any(Error));
+		expect(error).toHaveBeenCalledWith("请求处理发生未捕获异常", expect.any(Error));
 	});
 });
 
