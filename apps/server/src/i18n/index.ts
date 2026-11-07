@@ -2,9 +2,13 @@
 // import attributes 的写法与 routes/health.ts 读各包 package.json 一致。
 import {
 	createI18n,
+	type Dict,
 	type DictKey,
 	type Locale,
 	type LocaleDicts,
+	mergeDict,
+	type TextValues,
+	translate,
 } from "@bilibili-notify/internal/i18n";
 import {
 	bindPackageText,
@@ -45,3 +49,16 @@ export const t = i18n.t;
 
 // 包里的话(`packageText`)跟着服务端的语言与口吻走(ADR-0037 决策 6 下 10-28 的 🔗)
 bindPackageText(i18n.t);
+
+/** 日志只用平实层；字典可预合成，当前语言在每次输出时读取。 */
+const plainLogDicts = {
+	"zh-CN": zhCN,
+	"zh-TW": mergeDict(zhCN, zhTW),
+	en: mergeDict(zhCN, en),
+	ja: mergeDict(zhCN, ja),
+} satisfies Record<Locale, Dict>;
+
+export function logText(key: Extract<ServerTextKey, `log.${string}`>, values?: TextValues): string {
+	const locale = i18n.state().locale;
+	return translate(plainLogDicts[locale], locale, key, values);
+}

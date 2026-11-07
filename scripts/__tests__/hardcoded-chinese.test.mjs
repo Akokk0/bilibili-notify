@@ -2820,17 +2820,6 @@ export const NON_DISPLAY_TEXTS = {
 	],
 	"apps/server/src/index.ts": [
 		{
-			owner: "startServer/message",
-			text: pinnedSource(
-				"`auth not configured but listening on @{host} (non-loopback). 拒绝启动以避免裸暴露。请设置 auth.basicAuth.{username,password} 或 BN_DASHBOARD_USER/BN_DASHBOARD_PASS;或者把 server.host 改为 127.0.0.1 / BN_HOST=127.0.0.1;或者用 BN_ALLOW_NO_AUTH=1 强制允许(自担风险)。`",
-			),
-			reason: "开机/内存/安全拒绝启动的固定诊断，仅日志或启动异常；按主人批准保持原文",
-			site: pinnedSource(
-				"message = `auth not configured but listening on @{host} (non-loopback). 拒绝启动以避免裸暴露。请设置 auth.basicAuth.{username,password} 或 BN_DASHBOARD_USER/BN_DASHBOARD_PASS;或者把 server.host 改为 127.0.0.1 / BN_HOST=127.0.0.1;或者用 BN_ALLOW_NO_AUTH=1 强制允许(自担风险)。`",
-			),
-			slot: pinnedSource(""),
-		},
-		{
 			owner: "startServer",
 			text: pinnedSource("`弹幕 @{s.subscriptions} 房/@{s.words} 词/@{s.senders} 人`"),
 			reason: "开机/内存/安全拒绝启动的固定诊断，仅日志或启动异常；按主人批准保持原文",
@@ -2838,57 +2827,6 @@ export const NON_DISPLAY_TEXTS = {
 				'return s ? `弹幕 @{s.subscriptions} 房/@{s.words} 词/@{s.senders} 人` : "";',
 			),
 			slot: pinnedSource(""),
-		},
-		{
-			owner: "describeBootSweep/list",
-			text: pinnedSource('`@{shown.join("、")} 等`'),
-			reason: "开机/内存/安全拒绝启动的固定诊断，仅日志或启动异常；按主人批准保持原文",
-			site: pinnedSource(
-				'return paths.length > shown.length ? `@{shown.join("、")} 等` : shown.join("、");',
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "describeBootSweep",
-			text: pinnedSource(
-				"`清掉 @{report.removed.length} 个临时文件 / 暂存目录(@{list(report.removed)})`",
-			),
-			reason: "开机/内存/安全拒绝启动的固定诊断，仅日志或启动异常；按主人批准保持原文",
-			site: pinnedSource(
-				"parts.push(`清掉 @{report.removed.length} 个临时文件 / 暂存目录(@{list(report.removed)})`);",
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "describeBootSweep",
-			text: pinnedSource(
-				"`把 @{report.restored.length} 个换到一半的目录挪回原位(@{list(report.restored)})`",
-			),
-			reason: "开机/内存/安全拒绝启动的固定诊断，仅日志或启动异常；按主人批准保持原文",
-			site: pinnedSource(
-				"parts.push(`把 @{report.restored.length} 个换到一半的目录挪回原位(@{list(report.restored)})`);",
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "describeBootSweep",
-			text: pinnedSource('`[storage] 开机清扫,上次进程没收拾完的:@{parts.join(",")}`'),
-			reason: "开机/内存/安全拒绝启动的固定诊断，仅日志或启动异常；按主人批准保持原文",
-			site: pinnedSource(
-				'return {\n\t\tcleaned: parts.length > 0 ? `[storage] 开机清扫,上次进程没收拾完的:@{parts.join(",")}` : null,\n\t\tskipped:\n\t\t\tskipped.length > 0\n\t\t\t\t? `[storage] 开机清扫没做完:@{skipped.length} 处读不动或清不掉,跳过了(@{list(skipped.map((s) => s.path))};第一处:@{skipped[0]?.message})—— 那里上次留下的临时文件可能还在,不影响启动`\n\t\t\t\t: null,\n\t};',
-			),
-			slot: pinnedSource("cleaned"),
-		},
-		{
-			owner: "describeBootSweep",
-			text: pinnedSource(
-				"`[storage] 开机清扫没做完:@{skipped.length} 处读不动或清不掉,跳过了(@{list(skipped.map((s) => s.path))};第一处:@{skipped[0]?.message})—— 那里上次留下的临时文件可能还在,不影响启动`",
-			),
-			reason: "开机/内存/安全拒绝启动的固定诊断，仅日志或启动异常；按主人批准保持原文",
-			site: pinnedSource(
-				'return {\n\t\tcleaned: parts.length > 0 ? `[storage] 开机清扫,上次进程没收拾完的:@{parts.join(",")}` : null,\n\t\tskipped:\n\t\t\tskipped.length > 0\n\t\t\t\t? `[storage] 开机清扫没做完:@{skipped.length} 处读不动或清不掉,跳过了(@{list(skipped.map((s) => s.path))};第一处:@{skipped[0]?.message})—— 那里上次留下的临时文件可能还在,不影响启动`\n\t\t\t\t: null,\n\t};',
-			),
-			slot: pinnedSource("skipped"),
 		},
 	],
 	"apps/server/src/integrations/context.ts": [

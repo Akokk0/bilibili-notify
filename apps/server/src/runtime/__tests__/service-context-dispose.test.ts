@@ -8,6 +8,7 @@
 
 import { Writable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { DICTS, i18n } from "../../i18n/index.js";
 import type { LogEntry } from "../../ws/types.js";
 import { createNodeServiceContext } from "../service-context.js";
 
@@ -21,13 +22,14 @@ function harness() {
 		destination: new Writable({ write: (_chunk, _enc, cb) => cb() }),
 	});
 	const at = (level: LogEntry["level"]) => seen.filter((e) => e.level === level).map((e) => e.msg);
-	return { ctx, warns: () => at("warn"), errors: () => at("error") };
+	return { ctx, entries: seen, warns: () => at("warn"), errors: () => at("error") };
 }
 
 const forever = (): Promise<void> => new Promise(() => {});
 
 afterEach(() => {
 	vi.useRealTimers();
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 });
 
 describe("createNodeServiceContext — 分段收尾", () => {
@@ -162,7 +164,7 @@ describe("createNodeServiceContext — track", () => {
 describe("createNodeServiceContext — 预算", () => {
 	it("前面有钩子挂住时,只等到给 flush 留的余量为止", async () => {
 		vi.useFakeTimers();
-		const { ctx, warns } = harness();
+		const { ctx, entries } = harness();
 		const order: string[] = [];
 		ctx.onDispose(forever, "stop");
 		ctx.onDispose(() => void order.push("flush"), "flush");
@@ -175,7 +177,12 @@ describe("createNodeServiceContext — 预算", () => {
 		await done;
 
 		expect(order).toEqual(["flush", "dispose"]);
-		expect(warns().some((msg) => msg.includes("stop"))).toBe(true);
+		expect(entries).toContainEqual(
+			expect.objectContaining({
+				level: "warn",
+				args: [{ event: "lifecycle.phase_timeout", phase: "stop", remainingHooks: 0 }],
+			}),
+		);
 	});
 
 	it("后台活超出 flush 之前的预算就不再等", async () => {
@@ -240,5 +247,52 @@ describe("createNodeServiceContext — 定时器", () => {
 		await vi.advanceTimersByTimeAsync(20_000);
 
 		expect(fired).toEqual([]);
+	});
+});
+
+describe("宿主清理日志的语言与诊断", () => {
+	it("现取平实语言，历史整句不变，Error及cause统一脱敏且保持等级", async () => {
+		const maid = DICTS["zh-CN"].maid as Record<string, string>;
+		const key = "log.lifecycle.backgroundFailed";
+		const old = maid[key];
+		maid[key] = "主人，后台任务出错啦";
+		try {
+			i18n.set({ locale: "en", voice: "plain" });
+			i18n.set({ locale: "zh-CN", voice: "maid" });
+			const { ctx, entries } = harness();
+			ctx.track(
+				Promise.reject(
+					new Error("upstream Bearer abcdefgh123", {
+						cause: new Error("cause Bearer abcdefgh123"),
+					}),
+				),
+			);
+			await vi.waitFor(() => expect(entries).toHaveLength(1));
+			expect(entries[0]).toMatchObject({
+				level: "error",
+				msg: "后台任务失败，调用方未处理",
+				args: [
+					{ event: "lifecycle.background_failed" },
+					{ message: "upstream Bearer ***", cause: { message: "cause Bearer ***" } },
+				],
+			});
+			i18n.set({ locale: "en", voice: "plain" });
+			ctx.onDispose(() => {
+				throw new Error("close Bearer abcdefgh123");
+			});
+			await ctx.dispose();
+			expect(entries[1]).toMatchObject({
+				level: "error",
+				msg: "Cleanup hook failed",
+				args: [{ event: "lifecycle.hook_failed" }, { message: "close Bearer ***" }],
+			});
+			expect(entries[0]?.msg).toBe("后台任务失败，调用方未处理");
+			expect(JSON.stringify(entries)).not.toContain("abcdefgh123");
+		} finally {
+			if (old === undefined) delete maid[key];
+			else maid[key] = old;
+			i18n.set({ locale: "en", voice: "plain" });
+			i18n.set({ locale: "zh-CN", voice: "maid" });
+		}
 	});
 });

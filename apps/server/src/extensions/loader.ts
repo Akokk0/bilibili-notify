@@ -17,7 +17,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import type { ZodType } from "zod";
-import { t as serverText, t } from "../i18n/index.js";
+import { logText, t as serverText, t } from "../i18n/index.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { IntegrationStore, IntegrationStoreHandle } from "../integration-store/store.js";
 import { createIntegrationHttp } from "../integrations/http.js";
@@ -499,7 +499,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		if (key === ledgerError) return;
 		ledgerError = key;
 		host.logger.warn(
-			`[ext] 失败记账写不进去(${message})—— 拓展照常加载,但「连着失败就自动停用」此刻不起作用`,
+			logText("log.extension.ledgerFailed"),
+			{ event: "extension.ledger_failed" },
+			err,
 		);
 	}
 
@@ -575,12 +577,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		const signature = JSON.stringify(issues);
 		if (loggedLocaleIssues.get(dir.id) === signature) return;
 		loggedLocaleIssues.set(dir.id, signature);
-		host.logger.warn(
-			`[ext] ${dir.id} 的译文有 ${issues.length} 处没收下(只丢这几条,拓展照常用):${issues
-				.slice(0, 5)
-				.map((issue) => `${issue.locale}.json ${issue.path.join(".") || "-"} ${issue.code}`)
-				.join(";")}`,
-		);
+		host.logger.warn(logText("log.extension.localeIssues"), {
+			event: "extension.locale_issues",
+			extensionId: dir.id,
+			issueCount: issues.length,
+			issues: issues.slice(0, 5),
+		});
 	}
 
 	/** 面板那一行,从格子现推。 */
@@ -641,7 +643,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			reportSettingsInvalid(id, () =>
 				t("extension.settings.fileBroken", { name: manifestOf(dir).name, detail: broken.message }),
 			);
-			host.logger.warn(`[ext] ${id} v${manifest.version} 设置文件读不懂,不跑:${broken.message}`);
+			host.logger.warn(logText("log.extension.settingsFileInvalid"), {
+				event: "extension.settings_file_invalid",
+				extensionId: id,
+				version: manifest.version,
+				detail: broken.message,
+			});
 			return;
 		}
 
@@ -651,9 +658,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		const url = urlFor(id, dir.entry, print, fresh);
 		if (url === undefined) {
 			// 一行代码都不跑、也不记账:这不是它的错,是这个进程换不上。那一行由 `stagedOf` 推出来。
-			host.logger.warn(
-				`[ext] ${id} v${manifest.version} 换不上:这个进程跑过它的另一份代码 —— 重启 BN,或在它的详情页里只重载它`,
-			);
+			host.logger.warn(logText("log.extension.restartRequired"), {
+				event: "extension.restart_required",
+				extensionId: id,
+				version: manifest.version,
+			});
 			return;
 		}
 		// 记账**现读**:热装卸期间失败也要算数,拿开机那一刻的快照会漏掉。
@@ -684,7 +693,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				state: "failed",
 				detail: serverText("service.extensions.loader.text.5", { value0: why }),
 			};
-			host.logger.warn(`[ext] ${id} v${manifest.version} 存储打不开,不跑:${why}`);
+			host.logger.warn(
+				logText("log.extension.storeFailed"),
+				{ event: "extension.store_failed", extensionId: id, version: manifest.version },
+				err,
+			);
 			return;
 		}
 
@@ -812,7 +825,14 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			// 带上代码指纹:「现在跑的是哪一份」一眼对得上盘上那份;软链那份把落点也印出来 ——
 			// 开发版跑的其实是仓里的工作树,「我改的那个到底跑没跑」不必再查一遍。
 			host.logger.info(
-				`[ext] ${id} v${manifest.version} ${fresh ? "已重载" : "已加载"}(代码 ${print?.slice(0, 8) ?? "?"})${dir.linkedTo ? `(→ ${dir.linkedTo})` : ""}`,
+				fresh ? logText("log.extension.reloaded") : logText("log.extension.loaded"),
+				{
+					event: fresh ? "extension.reloaded" : "extension.loaded",
+					extensionId: id,
+					version: manifest.version,
+					fingerprint: print?.slice(0, 8) ?? "?",
+					...(dir.linkedTo ? { linkedTo: dir.linkedTo } : {}),
+				},
 			);
 		} catch (err) {
 			const detail =
@@ -828,7 +848,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				const step = at.step;
 				loading.then(
 					() => {
-						runtime.ctx.logger.warn(`${step} 超时之后才回来 —— 已经按加载失败收过摊,不再登记`);
+						runtime.ctx.logger.warn(logText("log.extension.lateActivation"), {
+							event: "extension.late_activation",
+							extensionId: id,
+							step,
+						});
 						return runtime.dispose();
 					},
 					() => {},
@@ -837,7 +861,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			// 半个拓展不许留在那:`activate` 抛之前注册过的定时器 / 端点当场回收。
 			// 留着的话面板写「没起来」而它的定时器还在跑 —— 那比要求重启难查得多。
 			await runtime.dispose();
-			runtime.ctx.logger.error(`加载失败:${detail}`);
+			runtime.ctx.logger.error(
+				logText("log.extension.activationFailed"),
+				{ event: "extension.activation_failed", extensionId: id, step: at.step, detail },
+				err,
+			);
 			slot.miss = { state: "failed", detail };
 		}
 		if (slot.running?.runtime !== runtime) return;
@@ -849,9 +877,17 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				);
 			} catch (err) {
 				if (err instanceof Overdue) {
-					host.logger.warn(`[ext] ${id} 开发入口超过 ${activateTimeoutMs / 1000} 秒没回来`);
+					host.logger.warn(logText("log.extension.devtoolsTimeout"), {
+						event: "extension.devtools_timeout",
+						extensionId: id,
+						timeoutMs: activateTimeoutMs,
+					});
 				} else {
-					host.logger.warn(`[ext] ${id} 开发入口没加载上:${errorMessageOf(err)}`);
+					host.logger.warn(
+						logText("log.extension.devtoolsFailed"),
+						{ event: "extension.devtools_failed", extensionId: id },
+						err,
+					);
 				}
 			}
 		}
@@ -877,7 +913,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		slot.miss = { state: "settings-invalid", detail: unreadableDetail(why), schemas };
 		// 🔴 必须在 `dispose()` 之后:收摊会 `clearReporter(拓展 id)`,先报的话刚记的这一条被一起清掉。
 		reportSettingsInvalid(manifest.id, problemText(dir, why));
-		host.logger.warn(`[ext] ${manifest.id} v${manifest.version} 设置读不了,不跑:${why}`);
+		host.logger.warn(logText("log.extension.settingsInvalid"), {
+			event: "extension.settings_invalid",
+			extensionId: manifest.id,
+			version: manifest.version,
+			detail: why,
+		});
 	}
 
 	/**
@@ -907,7 +948,10 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		// 收摊自己吞异常,拆到一半也会把剩下的拆完。
 		if (!running) return;
 		await running.runtime.dispose();
-		host.logger.info(`[ext] ${running.dir.id} 已停下`);
+		host.logger.info(logText("log.extension.stopped"), {
+			event: "extension.stopped",
+			extensionId: running.dir.id,
+		});
 	}
 
 	/**
@@ -946,9 +990,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			const after = stagedOf(slot);
 			// 每次重扫都会走到这儿(装别的拓展也扫):只在头一回标上 / 换了一版时记。
 			if (after && after.version !== before?.version) {
-				host.logger.info(
-					`[ext] ${dir.id} 盘上换成了 v${after.version},跑的还是 v${slot.running.dir.manifest.version} —— 等着换上(重启 BN 或只重载它)`,
-				);
+				host.logger.info(logText("log.extension.staged"), {
+					event: "extension.staged",
+					extensionId: dir.id,
+					diskVersion: after.version,
+					runningVersion: slot.running.dir.manifest.version,
+				});
 			}
 			return;
 		}
@@ -1060,9 +1107,15 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 					),
 					activateTimeoutMs,
 				);
-			} catch {
+			} catch (err) {
 				host.logger.warn(
-					`[ext] ${disk.id} 的设置校验 ${activateTimeoutMs / 1000} 秒没判完,这一次不管它`,
+					logText("log.extension.settingsTimeout"),
+					{
+						event: "extension.settings_timeout",
+						extensionId: disk.id,
+						timeoutMs: activateTimeoutMs,
+					},
+					err,
 				);
 				continue;
 			}
@@ -1078,7 +1131,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	/** 排一趟 {@link settleSettings}。自己吞异常 —— 喊它的是 bus 与 ctx,那一发拒绝没人接。 */
 	function settleLater(): void {
 		enqueue(settleSettings).catch((err) =>
-			host.logger.error(`[ext] 对设置那一侧的账时抛了:${(err as Error).message}`),
+			host.logger.error(
+				logText("log.extension.settingsReconcileFailed"),
+				{ event: "extension.settings_reconcile_failed" },
+				err,
+			),
 		);
 	}
 

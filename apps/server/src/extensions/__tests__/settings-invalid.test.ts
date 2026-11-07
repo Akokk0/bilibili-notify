@@ -482,7 +482,7 @@ describe("设置文件读不懂(不是合法 JSON)", () => {
 		const h = await boot({ issues: { douyin: BROKEN } });
 		const detail = h.entry()?.detail;
 		expect(h.entry()?.state).toBe("settings-invalid");
-		const parked = () => h.lines.filter((line) => line.includes("设置文件读不懂")).length;
+		const parked = () => h.lines.filter((line) => line.includes("拓展设置文件无法读取")).length;
 		expect(parked()).toBe(1);
 
 		h.write({ links: [GOOD] });

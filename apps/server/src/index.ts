@@ -62,7 +62,7 @@ import { createReportDiscrepancyTable } from "./extensions/report-discrepancies.
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { bindTextSettings } from "./i18n/bind-settings.js";
-import { i18n, t as serverText, t } from "./i18n/index.js";
+import { i18n, logText, t as serverText, t } from "./i18n/index.js";
 import { localeReaderOf } from "./i18n/locale-reader.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { settingsReaderOptionsOf } from "./integrations/settings-reader.js";
@@ -294,7 +294,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	const close = async (reason = "shutdown"): Promise<void> => {
 		if (shutdownPromise) return shutdownPromise;
 		shutdownPromise = (async () => {
-			log.info(`received ${reason}, shutting down…`);
+			log.info(logText("log.host.stopping"), { event: "host.stopping", reason });
 			// 各部件装配时就把自己的收尾登记进了 serviceCtx 的那一段(DisposePhase),这里只给预算。
 			// 一个钩子抛错只记一条、不连累后面的 —— 统计补帧、日志落盘以前会被前面一处抛错整个跳过。
 			// 日志 hook 一直挂着,关停期的日志照样进归档;归档自己在最后一段落盘。
@@ -332,34 +332,41 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		} catch (err) {
 			// close() 自己不抛(钩子各自兜错),这里只是兜底。真抛了也得退 0:这时进程反正
 			// 要没了,非 0 只会让编排系统当成崩溃去退避重启。
-			log.error(
-				`${reason}: graceful close failed, exiting anyway: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			log.error(logText("log.host.closeFailed"), { event: "host.close_failed", reason }, err);
 		} finally {
 			process.exit(0);
 		}
 	};
 
 	try {
-		log.info(
-			`starting bilibili-notify server: host=${bootstrap.server.host} port=${bootstrap.server.port} dataDir=${bootstrap.dataDir} logLevel=${bootstrap.logLevel}`,
-		);
+		log.info(logText("log.host.starting"), {
+			event: "host.starting",
+			host: bootstrap.server.host,
+			port: bootstrap.server.port,
+			dataDir: bootstrap.dataDir,
+			logLevel: bootstrap.logLevel,
+		});
 		log.info(
 			generation.kind === "use"
-				? `[data] 用第 ${generation.seq} 代:${generation.dir}`
-				: `[data] 这次开机要从第 0 代迁出第 ${generation.seq} 代:${generation.dir}`,
+				? logText("log.host.generationSelected")
+				: logText("log.host.generationMigration"),
+			{
+				event: generation.kind === "use" ? "host.generation_selected" : "host.generation_migration",
+				generation: generation.seq,
+				dir: generation.dir,
+			},
 		);
 		if (generationFailure) {
-			log.error(`[data] 主人要求开的新代没开成,接着用第 ${generation.seq} 代:${generationFailure}`);
+			log.error(logText("log.host.generationFallback"), {
+				event: "host.generation_fallback",
+				generation: generation.seq,
+				detail: generationFailure,
+			});
 		}
 		if ("error" in bootSweep) {
-			log.warn(
-				`[storage] 开机清扫没做完(${bootSweep.error instanceof Error ? bootSweep.error.message : String(bootSweep.error)})—— 上次留下的临时文件可能还在,不影响启动`,
-			);
+			log.warn(logText("log.host.sweepFailed"), { event: "host.sweep_failed" }, bootSweep.error);
 		} else {
-			const swept = describeBootSweep(bootSweep.report, runtime.hostRoot);
-			if (swept.cleaned) log.info(swept.cleaned);
-			if (swept.skipped) log.warn(swept.skipped);
+			logBootSweep(bootSweep.report, runtime.hostRoot, log);
 		}
 
 		// Dashboard 鉴权策略:监听 loopback 时允许 bare(本地 dev / 反代后端);否则
@@ -376,18 +383,18 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		);
 		if (!basicAuthCredentials) {
 			if (shouldRefuseBareAuth({ host, hasBasicAuth: false, allowNoAuth })) {
-				const message = `auth not configured but listening on ${host} (non-loopback). 拒绝启动以避免裸暴露。请设置 auth.basicAuth.{username,password} 或 BN_DASHBOARD_USER/BN_DASHBOARD_PASS;或者把 server.host 改为 127.0.0.1 / BN_HOST=127.0.0.1;或者用 BN_ALLOW_NO_AUTH=1 强制允许(自担风险)。`;
-				log.error(message);
+				const message = logText("log.host.authRequired");
+				log.error(message, { event: "host.auth_required", host });
 				throw new Error(message);
 			}
-			log.warn(
-				`auth not configured, dashboard exposed without auth (host=${host}${allowNoAuth ? " allow_no_auth=1" : ""})`,
-			);
+			log.warn(logText("log.host.authDisabled"), {
+				event: "host.auth_disabled",
+				host,
+				allowNoAuth,
+			});
 		}
 		if (allowedOrigins.length === 0 && !desktopToken) {
-			log.warn(
-				"auth.allowedOrigins not configured, WebSocket Origin check disabled (any browser origin may upgrade)",
-			);
+			log.warn(logText("log.host.originCheckDisabled"), { event: "host.origin_check_disabled" });
 		}
 
 		const webDist = await resolveEffectiveWebDistDir({
@@ -402,16 +409,18 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		if (webDist.source === "explicit" && isBootstrapFileModel) {
 			// 钉死一个绝对路径 = 前端不再跟着载荷走。在线升级之后这里仍指着旧那份,
 			// 症状是「升完了界面没变 / 某个新功能点了没反应」,而且服务端一声不吭。
-			log.warn(
-				`webDistDir is pinned to ${webDist.dir}; dashboard assets will NOT follow in-app updates. 想让它跟着升级走,就把 webDistDir(或 BN_WEB_DIST)删掉。`,
-			);
+			log.warn(logText("log.host.webPinned"), { event: "host.web_pinned", dir: webDist.dir });
 		} else if (webDist.source === "disabled" && isBootstrapFileModel) {
-			log.warn(
-				`dashboard static assets disabled: ${webDist.payloadDir}/index.html was not found. Dashboard GET / will return 404;载荷似乎不完整,建议重拉镜像或重装。`,
-			);
+			log.warn(logText("log.host.webMissing"), {
+				event: "host.web_missing",
+				payloadDir: webDist.payloadDir,
+			});
 		}
 		if (effectiveWebDistDir) {
-			log.info(`serving dashboard static assets from ${effectiveWebDistDir}`);
+			log.info(logText("log.host.webServing"), {
+				event: "host.web_serving",
+				dir: effectiveWebDistDir,
+			});
 		}
 		// WS ticket store:仅当 basicAuth 启用时才需要。前端 WebSocket 无法附带
 		// Authorization 头,改用 `POST /api/ws/ticket` 换短时 token,再用 `?ticket=`
@@ -457,7 +466,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					const target = resolveCredentialsTarget({ env });
 					if (!target.ok) return target;
 					await persistDashboardCredentials(target.path, creds);
-					log.info(`[auth] 面板账号已改,写回 ${target.path};此前的登录全部失效`);
+					log.info(logText("log.host.credentialsSaved"), {
+						event: "host.credentials_saved",
+						path: target.path,
+					});
 					return ok();
 				}
 			: undefined;
@@ -490,7 +502,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				},
 				(info) => {
 					listeningPort = info.port;
-					log.info(`listening on http://${info.address}:${info.port}`);
+					log.info(logText("log.host.listening"), {
+						event: "host.listening",
+						url: `http://${info.address}:${info.port}`,
+						address: info.address,
+						port: info.port,
+					});
 					resolveServe();
 				},
 			);
@@ -542,7 +559,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				// 抛出去的话 boot.mjs 会退回预装的那一版 —— 应用内升上来的桌面用户会被送回 0.x。没人拉的话只能抛。
 				const message = await recordGenerationFailure(current.dir, generation.source.kind, error);
 				log.error(
-					`[data] 主人要求开的第 ${generation.seq} 代没开成,原来的第 ${current.seq} 代还在:${message}`,
+					logText("log.host.migrationFailed"),
+					{
+						event: "host.migration_failed",
+						generation: generation.seq,
+						previousGeneration: current.seq,
+						detail: message,
+					},
+					error,
 				);
 				if (!restartAbility().can) throw error;
 				await stopAndExit("requested generation failed");
@@ -550,13 +574,16 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			}
 			startupMessage = () => t("startup.starting");
 			startupDetails = { phase: "starting", progress: null };
-			log.info(
-				`[data] 第 ${generation.seq} 代迁好了:搬了 ${report?.transfers.length ?? 0} 个文件,第 0 代原样留着当备份`,
-			);
+			log.info(logText("log.host.migrationCompleted"), {
+				event: "host.migration_completed",
+				generation: generation.seq,
+				transferredCount: report?.transfers.length ?? 0,
+			});
 			if (report && report.skipped.length > 0) {
-				log.info(
-					`[data] 没带过来的:${report.skipped.map((s) => `${s.path}(${s.reason})`).join("、")}`,
-				);
+				log.info(logText("log.host.migrationSkipped"), {
+					event: "host.migration_skipped",
+					skipped: report.skipped,
+				});
 			}
 			await createSystemNoticeStore({
 				dir: generation.dir,
@@ -668,9 +695,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				logger: log,
 			});
 		} else {
-			log.warn(
-				"chromePath / chromeEndpoint 均未配置，卡片图片渲染将退化为文字推送（设置 BN_CHROME_PATH、BN_CHROME_ENDPOINT 或 yaml 对应字段后启用）",
-			);
+			log.warn(logText("log.host.browserDisabled"), { event: "host.browser_disabled" });
 		}
 
 		// Engine layer (Stage 4 P0). The order matters:
@@ -860,7 +885,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						pipeline?.tickLiveSessionNow(subscriptionId) ?? Promise.resolve(false),
 				},
 		});
-		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
+		if (devtools)
+			log.info(logText("log.host.devtoolsEnabled"), {
+				event: "host.devtools_enabled",
+				path: "/api/dev",
+			});
 
 		// ---------- 卡片皮肤库(ADR-0014)----------
 		// **全进程唯一一家店**:出图(pipeline 的 ImageRenderer)、面板的皮肤库路由、卡片
@@ -985,7 +1014,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			startParentWatch({
 				expectedParent,
 				onOrphaned: () => {
-					log.warn("launcher 进程已消失,sidecar 主动退出,避免变成孤儿占住数据目录");
+					log.warn(logText("log.host.launcherGone"), {
+						event: "host.launcher_gone",
+						parentPid: expectedParent,
+					});
 					// 走 SIGTERM 而不是直接 exit —— 复用已装好的优雅关停路径,
 					// 别在这里另起一条收尾逻辑。
 					process.kill(process.pid, "SIGTERM");
@@ -1509,7 +1541,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		return handle;
 	} catch (err) {
 		await close("startup failure").catch((shutdownErr) => {
-			log.error("error during startup cleanup", shutdownErr);
+			log.error(
+				logText("log.host.startupCleanupFailed"),
+				{ event: "host.startup_cleanup_failed" },
+				shutdownErr,
+			);
 		});
 		throw err;
 	}
@@ -1558,29 +1594,30 @@ async function sweepBootRoots(roots: readonly string[], hostRoot: string): Promi
 	return merged;
 }
 
-function describeBootSweep(
+function logBootSweep(
 	report: SweepReport,
 	hostRoot: string,
-): { cleaned: string | null; skipped: string | null } {
-	const list = (paths: readonly string[]): string => {
-		const shown = paths.slice(0, 5).map((path) => relative(hostRoot, path) || ".");
-		return paths.length > shown.length ? `${shown.join("、")} 等` : shown.join("、");
-	};
-	const parts: string[] = [];
-	if (report.removed.length > 0) {
-		parts.push(`清掉 ${report.removed.length} 个临时文件 / 暂存目录(${list(report.removed)})`);
+	log: Pick<Logger, "info" | "warn">,
+): void {
+	const paths = (items: readonly string[]) =>
+		items.slice(0, 5).map((path) => relative(hostRoot, path) || ".");
+	if (report.removed.length > 0 || report.restored.length > 0) {
+		log.info(logText("log.host.sweepCompleted"), {
+			event: "host.sweep_completed",
+			removedCount: report.removed.length,
+			removedPaths: paths(report.removed),
+			restoredCount: report.restored.length,
+			restoredPaths: paths(report.restored),
+		});
 	}
-	if (report.restored.length > 0) {
-		parts.push(`把 ${report.restored.length} 个换到一半的目录挪回原位(${list(report.restored)})`);
+	if (report.skipped.length > 0) {
+		log.warn(logText("log.host.sweepSkipped"), {
+			event: "host.sweep_skipped",
+			skippedCount: report.skipped.length,
+			skippedPaths: paths(report.skipped.map((entry) => entry.path)),
+			detail: report.skipped[0]?.message,
+		});
 	}
-	const skipped = report.skipped;
-	return {
-		cleaned: parts.length > 0 ? `[storage] 开机清扫,上次进程没收拾完的:${parts.join(",")}` : null,
-		skipped:
-			skipped.length > 0
-				? `[storage] 开机清扫没做完:${skipped.length} 处读不动或清不掉,跳过了(${list(skipped.map((s) => s.path))};第一处:${skipped[0]?.message})—— 那里上次留下的临时文件可能还在,不影响启动`
-				: null,
-	};
 }
 
 async function hasReadableIndexHtml(dir: string): Promise<boolean> {
@@ -1618,9 +1655,11 @@ async function drainHttp(
 	if (inTime) return;
 	const droppedWs = wsServer?.terminate() ?? 0;
 	http.closeAllConnections();
-	log.warn(
-		`[shutdown] HTTP 排空超过 ${Math.round(capMs)}ms,强制断开剩下的连接(其中 ${droppedWs} 个是没回关闭帧的 WS)`,
-	);
+	log.warn(logText("log.host.httpDrainTimeout"), {
+		event: "host.http_drain_timeout",
+		timeoutMs: Math.round(capMs),
+		droppedWs,
+	});
 }
 
 function normalizeOptionalEnv(value: string | undefined): string | undefined {
@@ -1648,16 +1687,18 @@ function installProcessHandlers(
 		// 关停有总预算兜着,到点一定退;这时硬杀只会把正在落盘的写道截断。记 info 不记 warn:
 		// `vp run dev:apps` 下按一次 Ctrl-C 服务端就收到两发(实测相隔几毫秒),这是常态。
 		if (exiting) {
-			log.info(
-				`[shutdown] 收到 ${reason},已在收尾,最多 ${Math.ceil(shutdownTimeoutMs / 1000)} 秒后退出`,
-			);
+			log.info(logText("log.host.alreadyStopping"), {
+				event: "host.already_stopping",
+				reason,
+				timeoutMs: shutdownTimeoutMs,
+			});
 			return;
 		}
 		exiting = true;
 		handle.close(reason).then(
 			() => process.exit(code),
 			(err) => {
-				logError("shutdown failed", err);
+				logError(logText("log.host.shutdownFailed"), { event: "host.shutdown_failed" }, err);
 				process.exit(1);
 			},
 		);
@@ -1665,11 +1706,11 @@ function installProcessHandlers(
 	const onSigint = () => closeThenExit("SIGINT", 0);
 	const onSigterm = () => closeThenExit("SIGTERM", 0);
 	const onUncaughtException = (err: unknown) => {
-		logError("uncaughtException", err);
+		logError(logText("log.host.uncaughtException"), { event: "host.uncaught_exception" }, err);
 		closeThenExit("uncaughtException", 1);
 	};
 	const onUnhandledRejection = (err: unknown) => {
-		logError("unhandledRejection", err);
+		logError(logText("log.host.unhandledRejection"), { event: "host.unhandled_rejection" }, err);
 		closeThenExit("unhandledRejection", 1);
 	};
 	process.on("SIGINT", onSigint);
@@ -1686,7 +1727,7 @@ function installProcessHandlers(
 
 if (isEntrypoint(import.meta.url)) {
 	startServer({ installProcessHandlers: true }).catch((err) => {
-		consoleErrorRedacted("fatal startup error", err);
+		consoleErrorRedacted(logText("log.host.fatalStartup"), { event: "host.startup_failed" }, err);
 		process.exit(1);
 	});
 }

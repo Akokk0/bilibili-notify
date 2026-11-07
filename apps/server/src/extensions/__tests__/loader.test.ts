@@ -1,4 +1,5 @@
 import { fixedTimezone } from "../../__tests__/support/integration-io.js";
+import { logMessage } from "../../__tests__/support/log-message.js";
 import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 加载器 —— 把「扫出来的目录」「主人按的开关」「失败记账」「窄面 ctx」串成一条。
@@ -34,6 +35,7 @@ import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { i18n } from "../../i18n/index.js";
 import type { LocaleReader } from "../../i18n/locale-reader.js";
 import type { IntegrationStoreHandle } from "../../integration-store/store.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
@@ -49,11 +51,16 @@ let root: string;
 function fakeHost() {
 	const lines: string[] = [];
 	const timers = new Set<() => void>();
+	const records: { level: string; msg: string; args: unknown[] }[] = [];
+	const record = (level: string, msg: string, args: unknown[], id?: string) => {
+		records.push({ level, msg, args });
+		lines.push(`${level} ${id ? `${id}: ` : ""}${logMessage(msg, args)}`);
+	};
 	const logger: Logger = {
-		info: (m) => lines.push(`info ${m}`),
-		warn: (m) => lines.push(`warn ${m}`),
-		error: (m) => lines.push(`error ${m}`),
-		debug: (m) => lines.push(`debug ${m}`),
+		info: (m, ...args) => record("info", m, args),
+		warn: (m, ...args) => record("warn", m, args),
+		error: (m, ...args) => record("error", m, args),
+		debug: (m, ...args) => record("debug", m, args),
 	};
 	const ctx: ServiceContext = {
 		logger,
@@ -71,12 +78,12 @@ function fakeHost() {
 	};
 	// 拓展自己的日志器(按 id 要):行进同一份 `lines`,开头带上 id —— 真宿主里标签就是 id,这里用它代替标签,好断言是谁的行。
 	const loggerOf = (id: string): Logger => ({
-		info: (m) => lines.push(`info ${id}: ${m}`),
-		warn: (m) => lines.push(`warn ${id}: ${m}`),
-		error: (m) => lines.push(`error ${id}: ${m}`),
-		debug: (m) => lines.push(`debug ${id}: ${m}`),
+		info: (m, ...args) => record("info", m, args, id),
+		warn: (m, ...args) => record("warn", m, args, id),
+		error: (m, ...args) => record("error", m, args, id),
+		debug: (m, ...args) => record("debug", m, args, id),
 	});
-	return { ctx, lines, loggerOf, pending: () => timers.size };
+	return { ctx, lines, records, loggerOf, pending: () => timers.size };
 }
 
 /** 装载器要的两格:宿主上下文,和按 id 要日志器。 */
@@ -165,10 +172,12 @@ function run(opts: {
 }
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	root = await mkdtemp(join(tmpdir(), "bn-ext-loader-"));
 });
 
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	await rm(root, { recursive: true, force: true });
 });
 
@@ -728,7 +737,9 @@ describe("装载目录", () => {
 			["alpha", "running"],
 			["zeta", "running"],
 		]);
-		const warned = host.lines.filter((line) => /^warn .*失败记账写不进去/.test(line));
+		const warned = host.lines.filter(
+			(line) => line.startsWith("warn ") && line.includes('"event":"extension.ledger_failed"'),
+		);
 		expect(warned).toHaveLength(1);
 		expect(warned[0]).toContain("自动停用");
 	});
@@ -1823,7 +1834,14 @@ describe("挂住了的拓展", () => {
 		expect(host.pending()).toBe(0);
 		expect(loaded.status("hang")).toBeUndefined();
 		expect((await app.request("/ext/hang/x")).status).toBe(404);
-		expect(host.lines.some((line) => /^warn .*hang.*超时之后/.test(line))).toBe(true);
+		expect(host.records).toContainEqual(
+			expect.objectContaining({
+				level: "warn",
+				args: [
+					expect.objectContaining({ event: "extension.late_activation", extensionId: "hang" }),
+				],
+			}),
+		);
 	});
 
 	it("收摊钩子迟迟不回 → 记一行,按已收摊处理;机件照样拆掉,队接着走", async () => {
@@ -1874,35 +1892,59 @@ describe("宿主日志:跑的是哪一份代码看得见", () => {
 			.digest("hex")
 			.slice(0, 8);
 
-	it("起来、停下、盘上换了、只重载 —— 每一步各记一行,带着版本与代码指纹", async () => {
+	it("四语装卸日志保留版本与指纹，换语言不改历史也不额外加载", async () => {
 		await plant("bridge", says("旧的"));
 		const host = fakeHost();
-		const said = (re: RegExp) => host.lines.some((line) => re.test(line));
 		let on = true;
+		i18n.set({ locale: "en", voice: "plain" });
 		const loaded = await run({
 			host,
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			enabled: () => on,
 		});
-		const oldPrint = await printOnDisk();
-		expect(said(new RegExp(`^info .*bridge v1\\.0\\.0 已加载.*${oldPrint}`))).toBe(true);
-
-		on = false;
-		await loaded.sync();
-		expect(said(/^info .*bridge 已停下/)).toBe(true);
-
-		host.lines.length = 0;
-		on = true;
-		await loaded.sync();
-		expect(said(new RegExp(`^info .*bridge v1\\.0\\.0 已加载.*${oldPrint}`))).toBe(true);
-
-		await plant("bridge", says("新的"), { version: "2.0.0" });
-		await loaded.rescan();
-		expect(said(/^info .*bridge 盘上换成了 v2\.0\.0,跑的还是 v1\.0\.0/)).toBe(true);
-
-		const newPrint = await printOnDisk();
-		await loaded.swap("bridge");
-		expect(said(new RegExp(`^info .*bridge v2\\.0\\.0 已重载.*${newPrint}`))).toBe(true);
+		const event = (name: string) =>
+			host.records.filter((r) => (r.args[0] as { event?: string } | undefined)?.event === name);
+		try {
+			const oldPrint = await printOnDisk();
+			expect(event("extension.loaded")).toEqual([
+				{
+					level: "info",
+					msg: "Extension loaded",
+					args: [
+						expect.objectContaining({
+							extensionId: "bridge",
+							version: "1.0.0",
+							fingerprint: oldPrint,
+						}),
+					],
+				},
+			]);
+			i18n.set({ locale: "ja", voice: "plain" });
+			on = false;
+			await loaded.sync();
+			expect(event("extension.stopped").at(-1)?.msg).toBe("拡張機能を停止しました");
+			i18n.set({ locale: "zh-TW", voice: "plain" });
+			on = true;
+			await loaded.sync();
+			expect(event("extension.loaded").at(-1)?.msg).toBe("拓展已載入");
+			await plant("bridge", says("新的"), { version: "2.0.0" });
+			await loaded.rescan();
+			expect(event("extension.staged").at(-1)).toMatchObject({
+				level: "info",
+				args: [{ extensionId: "bridge", diskVersion: "2.0.0", runningVersion: "1.0.0" }],
+			});
+			const newPrint = await printOnDisk();
+			i18n.set({ locale: "zh-CN", voice: "maid" });
+			await loaded.swap("bridge");
+			expect(event("extension.reloaded").at(-1)).toMatchObject({
+				msg: "拓展已重载",
+				args: [{ extensionId: "bridge", version: "2.0.0", fingerprint: newPrint }],
+			});
+			expect(event("extension.loaded")[0]?.msg).toBe("Extension loaded");
+			expect(event("extension.loaded")).toHaveLength(2);
+		} finally {
+			await loaded.dispose();
+		}
 	});
 
 	it("关着装进去、拨开也换不上 → 记一句警告,说清为什么、怎么办", async () => {
@@ -1923,9 +1965,14 @@ describe("宿主日志:跑的是哪一份代码看得见", () => {
 		await loaded.sync();
 
 		expect(loaded.list()[0]?.state).toBe("staged");
-		expect(host.lines.some((line) => /^warn .*bridge v2\.0\.0 换不上.*重启 BN/.test(line))).toBe(
-			true,
-		);
+		expect(
+			host.records.some(
+				(entry) =>
+					entry.level === "warn" &&
+					entry.msg.includes("重启") &&
+					(entry.args[0] as { event?: string })?.event === "extension.restart_required",
+			),
+		).toBe(true);
 	});
 });
 
@@ -2034,7 +2081,12 @@ describe("拓展的译文(ADR-0037 决策 14)", () => {
 		]);
 		loaded.list();
 		loaded.list();
-		const warns = () => host.lines.filter((line) => /^warn \[ext\] bridge.*译文/.test(line));
+		const warns = () =>
+			host.records.filter(
+				(entry) =>
+					entry.level === "warn" &&
+					(entry.args[0] as { event?: string })?.event === "extension.locale_issues",
+			);
 		expect(warns()).toHaveLength(1);
 		// 重扫一遍、盘上没变:不再记
 		await loaded.rescan();

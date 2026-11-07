@@ -30,7 +30,7 @@ import type {
 import type { ExtensionView } from "@bilibili-notify/internal/extension/wire";
 import { type Dict, translate } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { ImageStore } from "../images/image-store.js";
 import type { IntegrationStoreHandle } from "../integration-store/store.js";
@@ -339,7 +339,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			try {
 				opts.onDisposed?.();
 			} catch (err) {
-				integration.ctx.logger.error(`通知宿主「拓展停了」时抛了:${(err as Error).message}`);
+				integration.ctx.logger.error(
+					logText("log.extension.stopNotifyFailed"),
+					{ event: "extension.stop_notify_failed", extensionId: id },
+					err,
+				);
 			}
 			// 挂着的那一发不发了:收摊之后再冒出一帧,面板会去重读一个已经停了的拓展。
 			statusCoalescer.cancelAll();
@@ -357,7 +361,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 */
 	function wrapHandler(what: string, fn: () => void): () => void {
 		const report = (err: unknown) => {
-			logger.error(`拓展 ${id} 的 ${what} 回调抛了:${errorMessageOf(err)}`);
+			logger.error(
+				logText("log.extension.callbackFailed"),
+				{ event: "extension.callback_failed", extensionId: id, callback: what },
+				err,
+			);
 		};
 		return () => {
 			try {
@@ -421,7 +429,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		} catch (err) {
 			// 一样抛了不许耽误撤下一样。
 			logger.error(
-				`撤${slot.what === "adapter" ? "平台适配器" : "订阅源"}登记时抛了:${errorMessageOf(err)}`,
+				logText("log.extension.revokeFailed"),
+				{ event: "extension.revoke_failed", extensionId: id, registrationKind: slot.what },
+				err,
 			);
 		}
 	}
@@ -452,7 +462,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		};
 		const reject = (err: unknown): Result => {
 			logger.warn(
-				`${what === "adapter" ? "平台适配器" : "订阅源"}登记失败: ${errorMessageOf(err)}`,
+				logText("log.extension.registrationFailed"),
+				{ event: "extension.registration_failed", extensionId: id, registrationKind: what },
+				err,
 			);
 			return fail("unavailable", errorMessageOf(err));
 		};

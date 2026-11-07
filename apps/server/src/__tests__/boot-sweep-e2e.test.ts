@@ -120,7 +120,7 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 		// 清了东西就记一行(logger 起来之后才能记,所以是开机日志里的一行,不是清扫时记的)。
 		const lines = logged.split("\n").filter((line) => line.includes("开机清扫"));
 		expect(lines).toHaveLength(1);
-		expect(lines[0]).toContain("清掉 4 个");
+		expect(lines[0]).toContain('"removedCount":4');
 		expect(lines[0]).toContain("x.json.bn-tmp.123.abcdef");
 	});
 
@@ -188,8 +188,9 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 
 		const logged = await bootAndClose();
 
-		expect(logged).toContain("starting bilibili-notify server");
-		expect(logged).not.toContain("开机清扫");
+		expect(logged).toContain('"event":"host.starting"');
+		expect(logged).not.toContain('"event":"host.sweep_completed"');
+		expect(logged).not.toContain('"event":"host.sweep_skipped"');
 	});
 
 	it("换到一半的整目录替换:目标不在就把旧目录挪回原位", async () => {
@@ -205,7 +206,7 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 		expect(await readFile(join(generation, "misc", "pack", "skin.json"), "utf8")).toBe(
 			'{"id":"pack"}',
 		);
-		expect(logged).toContain("挪回原位");
+		expect(logged).toContain('"restoredCount":1');
 	});
 
 	/**
@@ -222,8 +223,8 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 			try {
 				const logged = await bootAndClose();
 
-				expect(logged).toContain("开机清扫没做完");
-				expect(logged).toContain("starting bilibili-notify server");
+				expect(logged).toContain('"event":"host.sweep_skipped"');
+				expect(logged).toContain('"event":"host.starting"');
 			} finally {
 				await chmod(locked, 0o755);
 			}

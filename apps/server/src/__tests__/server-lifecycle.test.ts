@@ -7,6 +7,7 @@ import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
+import { i18n } from "../i18n/index.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { activeGeneration, openTestGeneration } from "./support/generation.js";
 import { installBridgeInto } from "./support/install-bridge.js";
@@ -91,6 +92,7 @@ describe("server lifecycle", () => {
 	let handle: ServerHandle | undefined;
 
 	beforeEach(async () => {
+		i18n.set({ locale: "zh-CN", voice: "maid" });
 		dataDir = await mkdtemp(join(tmpdir(), "bn-server-lifecycle-"));
 	});
 
@@ -109,7 +111,57 @@ describe("server lifecycle", () => {
 		await handle?.close("test cleanup").catch(() => {});
 		handle = undefined;
 		vi.restoreAllMocks();
+		i18n.set({ locale: "zh-CN", voice: "maid" });
 		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	it("启动日志保留地址参数，切语言后的退出日志平实且只记录一次", async () => {
+		const port = await findFreePort();
+		handle = await startServer({
+			argv: [
+				"--host",
+				"127.0.0.1",
+				"--port",
+				String(port),
+				"--data-dir",
+				dataDir,
+				"--log-level",
+				"info",
+			],
+			env: makeEnv(),
+		});
+		const changed = await fetch(`${handle.url}/api/settings`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ core: { locale: "en", voice: "plain" } }),
+		});
+		expect(changed.status).toBe(200);
+		await handle.close("locale-test");
+		await handle.close("second-close");
+		const records = (await readLogArchive(dataDir))
+			.split("\n")
+			.filter(Boolean)
+			.map((line) => JSON.parse(line) as { msg: string; args?: { event?: string }[] });
+		expect(records).toContainEqual(
+			expect.objectContaining({
+				msg: "正在启动 bilibili-notify 服务",
+				args: [expect.objectContaining({ event: "host.starting", host: "127.0.0.1", port })],
+			}),
+		);
+		expect(records).toContainEqual(
+			expect.objectContaining({
+				msg: "服务已开始监听",
+				args: [
+					expect.objectContaining({ event: "host.listening", url: `http://127.0.0.1:${port}` }),
+				],
+			}),
+		);
+		expect(records.filter((r) => r.args?.[0]?.event === "host.stopping")).toEqual([
+			expect.objectContaining({
+				msg: "Shutdown requested; stopping service",
+				args: [{ event: "host.stopping", reason: "locale-test" }],
+			}),
+		]);
 	});
 
 	it("启动 loopback server 后可访问匿名 /api/health,close 不调用 process.exit", async () => {
@@ -403,7 +455,7 @@ describe("server lifecycle", () => {
 				env: { BN_CONFIG_DISABLED: "1" },
 				shutdownTimeoutMs: 1_000,
 			}),
-		).rejects.toThrow(/auth not configured/);
+		).rejects.toThrow(/未配置面板认证/);
 		expect(exitSpy).not.toHaveBeenCalled();
 	});
 
@@ -592,8 +644,9 @@ describe("server lifecycle", () => {
 		expect(elapsed).toBeLessThan(900);
 		expect(closedByServer).toBe(true);
 		const archive = await readLogArchive(dataDir);
-		expect(archive).toContain("received test shutdown, shutting down");
-		expect(archive).toContain("强制断开");
+		expect(archive).toContain('"event":"host.stopping"');
+		expect(archive).toContain('"reason":"test shutdown"');
+		expect(archive).toContain('"event":"host.http_drain_timeout"');
 	});
 
 	it("installProcessHandlers:关停中处理器一直挂着,再来的信号不另起一次关停", async () => {

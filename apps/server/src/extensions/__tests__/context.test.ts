@@ -1,3 +1,4 @@
+import { logMessage } from "../../__tests__/support/log-message.js";
 /**
  * 交给拓展的那面 ctx —— **第一版刻意很窄**(ADR-0012 决策 13:窄面加宽容易,反过来不行)。
  *
@@ -26,11 +27,12 @@ import { createExtensionUpgrades } from "../upgrade.js";
 function fakeHost() {
 	const lines: string[] = [];
 	const timers = new Set<() => void>();
+
 	const logger: Logger = {
-		info: (m) => lines.push(`info ${m}`),
-		warn: (m) => lines.push(`warn ${m}`),
-		error: (m) => lines.push(`error ${m}`),
-		debug: (m) => lines.push(`debug ${m}`),
+		info: (m, ...args) => lines.push(`info ${logMessage(m, args)}`),
+		warn: (m, ...args) => lines.push(`warn ${logMessage(m, args)}`),
+		error: (m, ...args) => lines.push(`error ${logMessage(m, args)}`),
+		debug: (m, ...args) => lines.push(`debug ${logMessage(m, args)}`),
 	};
 	const ctx: ServiceContext = {
 		logger,
@@ -56,10 +58,10 @@ function fakeHost() {
 	const loggerOf = (id: string): Logger => {
 		asked.push(id);
 		return {
-			info: (m) => lines.push(`info ${id}: ${m}`),
-			warn: (m) => lines.push(`warn ${id}: ${m}`),
-			error: (m) => lines.push(`error ${id}: ${m}`),
-			debug: (m) => lines.push(`debug ${id}: ${m}`),
+			info: (m, ...args) => lines.push(`info ${id}: ${logMessage(m, args)}`),
+			warn: (m, ...args) => lines.push(`warn ${id}: ${logMessage(m, args)}`),
+			error: (m, ...args) => lines.push(`error ${id}: ${logMessage(m, args)}`),
+			debug: (m, ...args) => lines.push(`debug ${id}: ${logMessage(m, args)}`),
 		};
 	};
 	return {

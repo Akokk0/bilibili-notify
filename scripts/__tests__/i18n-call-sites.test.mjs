@@ -100,7 +100,7 @@ export const ENDS = {
 		root: "apps/server/src",
 		store: "apps/server/src/i18n/index",
 		localeDir: "apps/server/src/i18n/locales",
-		valueNames: ["t", "i18n"],
+		valueNames: ["t", "logText", "i18n"],
 		minCalls: 1,
 		layeredOnPackages: true,
 	},
@@ -599,6 +599,7 @@ export function analyzeFile(source, end, sentences) {
 	// 入口导出的名字 → 本地名的集合(同一个名字可以引入多次:`import { t as tr, t }`)
 	const localsOf = {
 		t: new Set(),
+		logText: new Set(),
 		i18n: new Set(),
 		useT: new Set(),
 		useTextOptions: new Set(),
@@ -676,7 +677,7 @@ export function analyzeFile(source, end, sentences) {
 	const translatorDeclarations = new Map();
 	const defaultNodes = defaultUiTextNodes(source, localsOf.packageText);
 	// 包里的 packageText 与两端的 t 是同一种:只认直接调用
-	const tNames = new Set([...localsOf.t, ...localsOf.packageText]);
+	const tNames = new Set([...localsOf.t, ...localsOf.logText, ...localsOf.packageText]);
 
 	// 2. 面板:`const x = useT()` 接住的名字就是取字函数
 	const okDeclarations = new Set();
@@ -942,6 +943,27 @@ const serverOf = (body, imports = SERVER_IMPORT) =>
 const webOf = (body, imports = WEB_IMPORT) =>
 	analyzeFile(parseSource(WEB_FILE, imports + body), ENDS.web, SENTENCES);
 const codes = (result) => result.findings.map((finding) => finding.code);
+
+describe("宿主日志取字入口", () => {
+	it("具名logText及别名沿用键、占位符和使用时机的严格核对", () => {
+		const imports = 'import { logText as say } from "../i18n/index.js";\n';
+		expect(
+			serverOf('export function run() { return say("a.greet", { name: "x" }); }', imports).findings,
+		).toEqual([]);
+		expect(codes(serverOf('export const run = () => say("a.nope");', imports))).toContain(
+			"unknown-key",
+		);
+		expect(
+			codes(serverOf('export const run = () => say("a.greet", { wrong: "x" });', imports)),
+		).toContain("values");
+		expect(codes(serverOf('export const frozen = say("a.plain");', imports))).toContain(
+			"top-level",
+		);
+		expect(
+			codes(serverOf('export function run(say: any) { return say("a.plain"); }', imports)),
+		).toContain("unrecognised");
+	});
+});
 
 describe("统计例外的真实取字读者", () => {
 	const key = "sourceUi.pages.Stats.plainPosts";

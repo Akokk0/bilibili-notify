@@ -1,3 +1,4 @@
+import { logMessage } from "../../__tests__/support/log-message.js";
 /**
  * ctx 上那几格「与核心打交道」的口(ADR-0012 决策 29 / 30 / 31 / 36)。
  *
@@ -97,10 +98,10 @@ function harness(
 	let statusChanges = 0;
 	const lines: string[] = [];
 	const logger: Logger = {
-		info: (m) => lines.push(`info ${m}`),
-		warn: (m) => lines.push(`warn ${m}`),
-		error: (m) => lines.push(`error ${m}`),
-		debug: (m) => lines.push(`debug ${m}`),
+		info: (m, ...args) => lines.push(`info ${logMessage(m, args)}`),
+		warn: (m, ...args) => lines.push(`warn ${logMessage(m, args)}`),
+		error: (m, ...args) => lines.push(`error ${logMessage(m, args)}`),
+		debug: (m, ...args) => lines.push(`debug ${logMessage(m, args)}`),
 	};
 	const host: ServiceContext = {
 		logger,

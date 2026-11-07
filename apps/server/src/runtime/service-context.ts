@@ -1,6 +1,7 @@
 import type { Disposable, DisposePhase, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { type DestinationStream, type Logger as PinoLogger, pino } from "pino";
 import prettyFactory from "pino-pretty";
+import { logText } from "../i18n/index.js";
 import { redactLogCall } from "../logs/redact.js";
 import type { ValueRedactor } from "../logs/value-redactor.js";
 import type { LogEntry, LogLevel } from "../ws/types.js";
@@ -218,7 +219,9 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 	const runHook = (fn: () => void | Promise<void>): Promise<void> =>
 		Promise.resolve()
 			.then(fn)
-			.catch((err: unknown) => logger.error("onDispose hook threw", err));
+			.catch((err: unknown) =>
+				logger.error(logText("log.lifecycle.hookFailed"), { event: "lifecycle.hook_failed" }, err),
+			);
 
 	const onDisposeImpl: ServiceContext["onDispose"] = (fn, phase = "dispose") => {
 		if (finishedPhases.has(phase)) {
@@ -231,7 +234,12 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 	const trackImpl: ServiceContext["track"] = (task) => {
 		const settled = task.then(
 			() => undefined,
-			(err: unknown) => logger.error("后台任务失败(调用方没接住)", err),
+			(err: unknown) =>
+				logger.error(
+					logText("log.lifecycle.backgroundFailed"),
+					{ event: "lifecycle.background_failed" },
+					err,
+				),
 		);
 		tracked.add(settled);
 		void settled.then(() => tracked.delete(settled));
@@ -267,9 +275,11 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 			if (overBudget) continue;
 			if (!(await settlesBy(run, until))) {
 				overBudget = true;
-				logger.warn(
-					`[dispose] ${phase} 段超出关停预算，不再等;剩下的 ${list.length} 个钩子照样调用`,
-				);
+				logger.warn(logText("log.lifecycle.phaseTimeout"), {
+					event: "lifecycle.phase_timeout",
+					phase,
+					remainingHooks: list.length,
+				});
 			}
 		}
 		finishedPhases.add(phase);
@@ -279,7 +289,10 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 		// 活里还会接着登记新活，所以一轮一轮等到空。
 		while (tracked.size > 0) {
 			if (!(await settlesBy(Promise.all(tracked), until))) {
-				logger.warn(`[dispose] 还有 ${tracked.size} 件后台任务没落定，超出关停预算，不再等`);
+				logger.warn(logText("log.lifecycle.tasksTimeout"), {
+					event: "lifecycle.tasks_timeout",
+					pendingTasks: tracked.size,
+				});
 				return;
 			}
 		}

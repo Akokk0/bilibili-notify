@@ -1,3 +1,4 @@
+import { logMessage } from "../../__tests__/support/log-message.js";
 /**
  * `ctx.i18n`(ADR-0037 决策 14):拓展按当前语言取自己包里的译文。
  *
@@ -116,7 +117,7 @@ describe("ctx.i18n", () => {
 			info: () => {},
 			warn: () => {},
 			debug: () => {},
-			error: (m) => lines.push(m),
+			error: (m, ...args) => lines.push(logMessage(m, args)),
 		};
 		const { i18n, reader } = boot(SAMPLE, "zh-CN", ignoredProblems, logger);
 		const seen: string[] = [];
