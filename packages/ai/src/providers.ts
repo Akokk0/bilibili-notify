@@ -27,7 +27,7 @@ const BUDGET_BY_LEVEL: Record<ThinkingLevel, number> = {
 	high: 32768,
 };
 
-export interface BuildProviderParamsInput {
+export interface BuildProviderParamsOptions {
 	provider: AIProviderId;
 	enableThinking: boolean;
 	thinkingLevel: ThinkingLevel;
@@ -38,7 +38,7 @@ export interface BuildProviderParamsInput {
  * 合并是另一层(见 `./extra-params`),这样降级重试时可以只摘掉我们自己加的
  * 这部分,保留主人手写的那部分。
  */
-export function buildProviderParams(input: BuildProviderParamsInput): Record<string, unknown> {
+export function buildProviderParams(input: BuildProviderParamsOptions): Record<string, unknown> {
 	const { provider, enableThinking, thinkingLevel } = input;
 	const meta = providerMeta(provider);
 	if (!meta.supportsThinking) return {};

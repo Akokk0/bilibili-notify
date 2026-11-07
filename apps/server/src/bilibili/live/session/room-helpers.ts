@@ -2,7 +2,7 @@ import type { Failure } from "@bilibili-notify/internal";
 import type { LiveRoomDanmakuResponse } from "../../api/index.js";
 import { t as serverText } from "../../i18n.js";
 
-type DanmakuInfo = LiveRoomDanmakuResponse["data"];
+type LiveRoomDanmaku = LiveRoomDanmakuResponse["data"];
 
 export class LiveRoomAccessDeniedError extends Error {
 	constructor(readonly reason: string) {
@@ -26,7 +26,7 @@ export function reasonOfFailure(failure: Failure): string {
 	});
 }
 
-export function describeLiveRoomDanmakuAccessDenied(info: DanmakuInfo): string | undefined {
+export function describeLiveRoomDanmakuAccessDenied(info: LiveRoomDanmaku): string | undefined {
 	if (!info) return serverText("bilibili.live.session.room-helpers.text.4");
 	const token = typeof info.token === "string" ? info.token.trim() : "";
 	if (!token) return serverText("bilibili.live.session.room-helpers.text.5");

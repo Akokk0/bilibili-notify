@@ -32,7 +32,7 @@ export interface SkinAiGenerator {
 	generateRaw(system: string, user: string, onProgress?: (chars: number) => void): Promise<string>;
 }
 
-export interface SkinAiEditInput {
+export interface SkinAiEditOptions {
 	generateRaw: SkinAiGenerator["generateRaw"];
 	/** 包内资产清单(assets/<名>,图与字体的全集);AI 只许引用这里面的东西。 */
 	assets: string[];
@@ -197,7 +197,7 @@ export async function runSkinAiRound(input: {
 	return tryParse(second, input.assets);
 }
 
-export async function runSkinAiEdit(input: SkinAiEditInput): Promise<SkinAiEditResult> {
+export async function runSkinAiEdit(input: SkinAiEditOptions): Promise<SkinAiEditResult> {
 	return runSkinAiRound({
 		generateRaw: input.generateRaw,
 		system: buildSkinAiSystemPrompt(input.assets, "edit", input.assetNames ?? {}),

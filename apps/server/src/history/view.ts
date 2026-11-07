@@ -1,4 +1,4 @@
-import type { HistoryEntryView, HistoryRepushInfo } from "@bilibili-notify/contract";
+import type { HistoryEntryView, HistoryRepushView } from "@bilibili-notify/contract";
 import type { HistoryEntry, HistoryMessageResult } from "@bilibili-notify/internal";
 import { fail, ok } from "@bilibili-notify/internal";
 import { originalCount, unsentIndices } from "./repush.js";
@@ -53,7 +53,7 @@ export function toHistoryView(
  * 不查盘、不看配置:原件还在不在、路由里还有没有这个目标、目标停没停用、是不是正在补,这里一概
  * 不知道,所以给的一律是「能补」。刚落的行(WS)这总是对的;列表路由对每一行另问 `canRepush`。
  */
-function repushOffer(entry: HistoryEntry): HistoryRepushInfo | undefined {
+function repushOffer(entry: HistoryEntry): HistoryRepushView | undefined {
 	// 被过滤的行只留痕:那条消息没有结果、也没被挡,按「还差哪几条」数它是「没发」,可它压根不是
 	// 推送、没有原件。按状态显式排除,不靠「它的目标那一格恰好也空着」。
 	if (entry.status === "filtered") return undefined;

@@ -23,7 +23,7 @@ export {
 	renderPromptNouns,
 } from "./prompt-nouns";
 export { type AiProbeFields, probeAiProvider } from "./provider-probe";
-export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
+export { type BuildProviderParamsOptions, buildProviderParams } from "./providers";
 export {
 	type AiCandidateView,
 	type AiPostView,

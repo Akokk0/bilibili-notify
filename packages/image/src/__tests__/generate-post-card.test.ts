@@ -122,7 +122,7 @@ async function htmlOf(p: Post, options: HarnessOptions = {}): Promise<string> {
 
 describe("generatePostCard — 皮肤契约从作品取", () => {
 	/**
-	 * 验红:把 `skin/card-data.ts` 里 `post.hasVideo` / `post.hasRepost` 或 `images.*` 改成读别处(比如写死空值),
+	 * 验红:把 `skin/card-fields.ts` 里 `post.hasVideo` / `post.hasRepost` 或 `images.*` 改成读别处(比如写死空值),
 	 * 这条红。
 	 */
 	it("有没有视频 / 转发、图廊张数与首图都从作品上取", async () => {

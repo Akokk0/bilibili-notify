@@ -55,7 +55,7 @@ import { createSourcesRoute } from "./routes/sources.js";
 import { createStatsRoute, type StatsOverviewReader } from "./routes/stats.js";
 import { createStatsFollowersRoute } from "./routes/stats-followers.js";
 import { createSubscriptionsRoute } from "./routes/subscriptions.js";
-import { type CreateSystemRouteInput, createSystemRoute } from "./routes/system.js";
+import { type CreateSystemRouteOptions, createSystemRoute } from "./routes/system.js";
 import { createSystemBackupRoute } from "./routes/system-backup.js";
 import { createSystemLogsRoute } from "./routes/system-logs.js";
 import { createSystemUpdateRoute } from "./routes/system-update.js";
@@ -248,7 +248,7 @@ export interface CreateAppOptions {
 	 * 系统级动作(现在只有「重启一下」)。同样由 index.ts 构建 —— 只有它知道怎么优雅地
 	 * 关掉自己,以及这台机器上退了之后有没有人拉。省略 → `/api/system` 不挂载。
 	 */
-	system?: CreateSystemRouteInput;
+	system?: CreateSystemRouteOptions;
 	/**
 	 * devtools(造状态 / 造事件)的 `/api/dev` 子应用,由 `devtools/index.ts` 建好交过来。
 	 * 这里**只收一个 Hono**、不 import 任何 devtools 模块:整套 devtools 只从 `src/index.ts`

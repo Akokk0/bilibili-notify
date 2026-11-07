@@ -12,13 +12,13 @@
  */
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["127.0.0.1", "localhost", "::1"]);
 
-export interface BareAuthPolicyInput {
+export interface BareAuthPolicyOptions {
 	host: string;
 	hasBasicAuth: boolean;
 	allowNoAuth: boolean;
 }
 
-export function shouldRefuseBareAuth(input: BareAuthPolicyInput): boolean {
+export function shouldRefuseBareAuth(input: BareAuthPolicyOptions): boolean {
 	if (input.hasBasicAuth) return false;
 	if (input.allowNoAuth) return false;
 	if (LOOPBACK_HOSTS.has(input.host)) return false;

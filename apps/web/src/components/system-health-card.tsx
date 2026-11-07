@@ -81,7 +81,7 @@ export function SystemHealthCard({
 	const selectedCore = selection?.type === "core" ? selection.key : null;
 	const accounts = useAccounts({ enabled: reachable });
 	const sources = useSources({ enabled: reachable });
-	function accountOf(item: IntegrationHealthView): AccountInfo | undefined {
+	function accountOf(item: IntegrationHealthView): HealthAccountView | undefined {
 		if (item.sourceKey === undefined) return;
 		const source = sources.isError
 			? undefined
@@ -744,7 +744,7 @@ function HealthDialog({
 	);
 }
 
-type AccountInfo = {
+type HealthAccountView = {
 	sourceKey: string;
 	source?: SourceEntry;
 	account?: AccountView;
@@ -754,7 +754,7 @@ function AccountSummary({
 	info,
 	detail = false,
 }: {
-	info: AccountInfo | undefined;
+	info: HealthAccountView | undefined;
 	detail?: boolean;
 }) {
 	const t = useT();

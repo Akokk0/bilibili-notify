@@ -11,7 +11,7 @@
 
 import type { SettingsField } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { checkExtensionView, faultedExtensionView, type ViewCheckInput } from "../view-check.js";
+import { checkExtensionView, faultedExtensionView, type ViewCheckOptions } from "../view-check.js";
 
 const PNG =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
@@ -55,9 +55,9 @@ const SETTINGS = {
 /** 清单声明过的动作(决策 42:只有名字的一串)。 */
 const ACTIONS = ["poll.now", "login.start"];
 
-const INPUT: ViewCheckInput = { fields: FIELDS, actions: ACTIONS, settings: SETTINGS };
+const INPUT: ViewCheckOptions = { fields: FIELDS, actions: ACTIONS, settings: SETTINGS };
 
-const check = (raw: unknown, over: Partial<ViewCheckInput> = {}) =>
+const check = (raw: unknown, over: Partial<ViewCheckOptions> = {}) =>
 	checkExtensionView(raw, { ...INPUT, ...over });
 
 const NOTICE = { type: "notice", tone: "info", text: "照常" } as const;

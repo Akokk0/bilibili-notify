@@ -17,8 +17,8 @@ export type {
 	HistoryDailyResponse,
 	HistoryEntryView,
 	HistoryMessageView,
-	HistoryRepushInfo,
 	HistoryRepushResponse,
+	HistoryRepushView,
 	HistoryResponse,
 	// `/api/live/listening` 的一行:一条此刻在播的订阅,来源看 `identity`。
 	LiveListeningEntry,

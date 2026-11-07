@@ -1,5 +1,5 @@
 import {
-	type SourceNounsInput,
+	type SourceNounsView,
 	type StatsRoastResponse,
 	type StatsRoastResult,
 	sourceNounsOf,
@@ -16,7 +16,7 @@ import { RoastShell, roastError } from "./RoastShell";
 
 interface UpMeta {
 	sourceKey: string;
-	nouns: SourceNounsInput;
+	nouns: SourceNounsView;
 	name: string;
 	color: string;
 	/** 头像:B 站是 CDN 图链,拓展是面板同源的相对地址;没缓存到时 Avatar 退回首字母。 */

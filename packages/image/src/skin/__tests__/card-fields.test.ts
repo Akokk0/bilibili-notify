@@ -1,5 +1,5 @@
 /**
- * 契约数据层(`skin/card-data.ts`)的四条钉子。
+ * 契约数据层(`skin/card-fields.ts`)的四条钉子。
  *
  * 一、**对表**:七种卡各造一份「样样都有」的夹具,产出的字段路径集合必须与
  *    `CARD_SKIN_FIELDS[kind]` 一字不差(多一个 = 皮肤引用不到的死数据,少一个 = 皮肤写了
@@ -26,7 +26,7 @@ import type { PostCardView, PostNode } from "../../templates/post-card";
 import type { RoastBoardCardInput, RoastSoloCardInput } from "../../templates/roast-card";
 import type { SuperchatCardView } from "../../templates/superchat-card";
 import type { WordCloudCardInput } from "../../templates/wordcloud-card";
-import { buildCardData, type CardData, type CardDataValue, readCardField } from "../card-data";
+import { type CardFields, type CardFieldValue, cardFieldsOf, readCardField } from "../card-fields";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
 
@@ -200,22 +200,22 @@ function wordCloudProps(over: Partial<WordCloudCardInput> = {}): WordCloudCardIn
 }
 
 /** 七种卡的「样样都有」夹具。 */
-const FULL: Record<CardKind, () => CardData> = {
-	live: () => buildCardData("live", liveProps()),
+const FULL: Record<CardKind, () => CardFields> = {
+	live: () => cardFieldsOf("live", liveProps()),
 	post: () =>
-		buildCardData("post", dynamicProps(dynamicNode({ video: NODE_VIDEO, images: FULL_PICS }))),
-	superchat: () => buildCardData("superchat", scProps()),
-	membership: () => buildCardData("membership", guardProps()),
-	roastBoard: () => buildCardData("roastBoard", roastBoardProps()),
-	roastSolo: () => buildCardData("roastSolo", roastSoloProps()),
-	wordcloud: () => buildCardData("wordcloud", wordCloudProps()),
+		cardFieldsOf("post", dynamicProps(dynamicNode({ video: NODE_VIDEO, images: FULL_PICS }))),
+	superchat: () => cardFieldsOf("superchat", scProps()),
+	membership: () => cardFieldsOf("membership", guardProps()),
+	roastBoard: () => cardFieldsOf("roastBoard", roastBoardProps()),
+	roastSolo: () => cardFieldsOf("roastSolo", roastSoloProps()),
+	wordcloud: () => cardFieldsOf("wordcloud", wordCloudProps()),
 };
 
 /** 七种卡的「什么都没有」夹具:可选字段全缺、作品卡的 node 上没有标签、视频与图。 */
-const EMPTY: Record<CardKind, () => CardData> = {
-	live: () => buildCardData("live", emptyLiveProps()),
+const EMPTY: Record<CardKind, () => CardFields> = {
+	live: () => cardFieldsOf("live", emptyLiveProps()),
 	post: () =>
-		buildCardData(
+		cardFieldsOf(
 			"post",
 			dynamicProps({
 				creatorAvatarUrl: "",
@@ -224,20 +224,19 @@ const EMPTY: Record<CardKind, () => CardData> = {
 				time: "",
 			}),
 		),
-	superchat: () => buildCardData("superchat", emptySCProps()),
-	membership: () => buildCardData("membership", emptyGuardProps()),
-	roastBoard: () =>
-		buildCardData("roastBoard", roastBoardProps({ days: 0, roast: [], scores: [] })),
+	superchat: () => cardFieldsOf("superchat", emptySCProps()),
+	membership: () => cardFieldsOf("membership", emptyGuardProps()),
+	roastBoard: () => cardFieldsOf("roastBoard", roastBoardProps({ days: 0, roast: [], scores: [] })),
 	roastSolo: () =>
-		buildCardData("roastSolo", roastSoloProps({ days: 0, creator: { name: "", color: "" } })),
-	wordcloud: () => buildCardData("wordcloud", { creatorName: "" }),
+		cardFieldsOf("roastSolo", roastSoloProps({ days: 0, creator: { name: "", color: "" } })),
+	wordcloud: () => cardFieldsOf("wordcloud", { creatorName: "" }),
 };
 
 // ── 工具 ──────────────────────────────────────────────────────────────────────
 
 /** 两层对象 → 「a.b」→ 值 的平表。 */
-function flatten(data: CardData): Map<string, CardDataValue> {
-	const out = new Map<string, CardDataValue>();
+function flatten(data: CardFields): Map<string, CardFieldValue> {
+	const out = new Map<string, CardFieldValue>();
 	for (const [group, bucket] of Object.entries(data)) {
 		for (const [key, value] of Object.entries(bucket)) out.set(`${group}.${key}`, value);
 	}
@@ -253,7 +252,7 @@ const TYPEOF_OF: Record<CardSkinFieldType, string> = {
 
 // ── 一、对表 ──────────────────────────────────────────────────────────────────
 
-describe("buildCardData 与 CARD_SKIN_FIELDS 对表", () => {
+describe("cardFieldsOf 与 CARD_SKIN_FIELDS 对表", () => {
 	for (const kind of CARD_KINDS) {
 		it(`${kind} 卡的产出恰好覆盖契约字段,且类型对得上`, () => {
 			const produced = flatten(FULL[kind]());
@@ -276,7 +275,7 @@ describe("buildCardData 与 CARD_SKIN_FIELDS 对表", () => {
  * 空夹具下**不是**空值的字段:它的「没有」本来就有形状。列在这里是为了让它也被钉住,而不是从通用断言里漏出去。
  * 今天没有 —— 金额排好的字在视图里就是空串(㉓c 起金额由出卡入口经 `formatAmount` 排,不再是块里恒画的「¥ + 数字」)。
  */
-const EMPTY_EXCEPTIONS: Record<string, CardDataValue> = {};
+const EMPTY_EXCEPTIONS: Record<string, CardFieldValue> = {};
 
 describe("缺数据时每个字段仍有值", () => {
 	for (const kind of CARD_KINDS) {
@@ -310,7 +309,7 @@ describe("缺数据时每个字段仍有值", () => {
 describe("直播卡的几种状态", () => {
 	it("开播与直播中:isStreaming、在看人数、当前粉丝数(点赞与累计观看为空)", () => {
 		for (const status of ["start", "streaming"] as const) {
-			const d = buildCardData("live", liveProps({ status }));
+			const d = cardFieldsOf("live", liveProps({ status }));
 			expect(d.live.isStreaming, status).toBe(true);
 			expect(d.live.isEnded, status).toBe(false);
 			expect(d.stats.currentViewers, status).toBe("1.2万");
@@ -322,7 +321,7 @@ describe("直播卡的几种状态", () => {
 
 	/** 决策 76:下播卡画点赞与累计观看。验红:把 `likes` 改回恒取视图的点赞(下播以外也给值),或把下播的 `currentViewers` 改成有值。 */
 	it("下播:isEnded、点赞、累计观看(在看人数与粉丝数为空)", () => {
-		const d = buildCardData("live", liveProps({ status: "end" }));
+		const d = cardFieldsOf("live", liveProps({ status: "end" }));
 		expect(d.live.isStreaming).toBe(false);
 		expect(d.live.isEnded).toBe(true);
 		expect(d.stats.likes).toBe("3000");
@@ -332,7 +331,7 @@ describe("直播卡的几种状态", () => {
 	});
 
 	it("没在播:两个 is* 都为假,在看人数照给,别的三格为空", () => {
-		const d = buildCardData("live", liveProps({ status: "offline" }));
+		const d = cardFieldsOf("live", liveProps({ status: "offline" }));
 		expect(d.live.isStreaming).toBe(false);
 		expect(d.live.isEnded).toBe(false);
 		expect(d.stats.currentViewers).toBe("1.2万");
@@ -343,11 +342,11 @@ describe("直播卡的几种状态", () => {
 
 	it("粉丝数变化哪种状态都照给(自己做皮肤的人想画就能画)", () => {
 		for (const status of ["start", "streaming", "end", "offline"] as const) {
-			const d = buildCardData("live", liveProps({ status }));
+			const d = cardFieldsOf("live", liveProps({ status }));
 			expect(d.stats.followersDelta, status).toBe("+123");
 			expect(d.stats.hasFollowersDelta, status).toBe(true);
 		}
-		expect(buildCardData("live", liveProps({ followersDelta: "" })).stats.hasFollowersDelta).toBe(
+		expect(cardFieldsOf("live", liveProps({ followersDelta: "" })).stats.hasFollowersDelta).toBe(
 			false,
 		);
 	});
@@ -372,26 +371,26 @@ describe("直播卡 stats 四格各状态取哪一格", () => {
 	] as const)(
 		"%s:currentViewers = %s,likes = %s,followers = %s,totalViewers = %s",
 		(status, currentViewers, likes, followers, totalViewers) => {
-			const d = buildCardData("live", liveProps({ status, ...SOURCES }));
+			const d = cardFieldsOf("live", liveProps({ status, ...SOURCES }));
 			expect(d.stats).toMatchObject({ currentViewers, likes, followers, totalViewers });
 		},
 	);
 
 	it("来源格是空串:下播没有点赞 / 累计观看 → 对应格空(不退回别的格);开播没有粉丝数 / 在看人数 → 对应格空", () => {
-		const ended = buildCardData("live", liveProps({ status: "end", likes: "", totalViewers: "" }));
+		const ended = cardFieldsOf("live", liveProps({ status: "end", likes: "", totalViewers: "" }));
 		expect(ended.stats.likes).toBe("");
 		expect(ended.stats.totalViewers).toBe("");
 		expect(
-			buildCardData("live", liveProps({ status: "streaming", followers: "" })).stats.followers,
+			cardFieldsOf("live", liveProps({ status: "streaming", followers: "" })).stats.followers,
 		).toBe("");
 		expect(
-			buildCardData("live", liveProps({ status: "streaming", currentViewers: "" })).stats
+			cardFieldsOf("live", liveProps({ status: "streaming", currentViewers: "" })).stats
 				.currentViewers,
 		).toBe("");
 	});
 
 	it("没有 stats.area(分类只在 live.category)", () => {
-		const d = buildCardData("live", liveProps({ category: "虚拟主播" }));
+		const d = cardFieldsOf("live", liveProps({ category: "虚拟主播" }));
 		expect("area" in d.stats).toBe(false);
 		expect(d.live.category).toBe("虚拟主播");
 	});
@@ -403,7 +402,7 @@ describe("直播卡的封面", () => {
 	// `generateLiveCard`(`__tests__/neutral-live-card.test.ts` 钉着)各管一段。契约说的就是
 	// 视图里那张,与封面块画的是同一张。
 	it("就是视图里生效的那张", () => {
-		const d = buildCardData("live", liveProps());
+		const d = cardFieldsOf("live", liveProps());
 		expect(d.live.cover).toBe("https://img/cover.jpg");
 		expect(d.live.hasCover).toBe(true);
 	});
@@ -412,7 +411,7 @@ describe("直播卡的封面", () => {
 	// 钉着);契约照视图说:`live.cover` 就是那张占位图,`live.hasCover` 如实为假。
 	// 验红:把 `hasCover` 改回按「封面非空」判,这条红(占位图不是空串)。
 	it("没有真封面 → cover 是视图里的占位图,hasCover 为假", () => {
-		const d = buildCardData("live", liveProps({ cover: liveCoverPlaceholder(), hasCover: false }));
+		const d = cardFieldsOf("live", liveProps({ cover: liveCoverPlaceholder(), hasCover: false }));
 		expect(d.live.cover).toBe(liveCoverPlaceholder());
 		expect(d.live.hasCover).toBe(false);
 	});
@@ -424,7 +423,7 @@ describe("作品卡的视频与图廊", () => {
 	 * 验红:把 `post.hasVideo` / `images.*` 改回从别处取(或写死空值),这条红。
 	 */
 	it("视频、图廊两组都从 node 取", () => {
-		const d = buildCardData(
+		const d = cardFieldsOf(
 			"post",
 			dynamicProps(dynamicNode({ video: NODE_VIDEO, images: FULL_PICS })),
 		);
@@ -441,7 +440,7 @@ describe("作品卡的视频与图廊", () => {
 	});
 
 	it("node 上没有视频与图:两组字段全空,两个 has* 为假,别的字段照常", () => {
-		const d = buildCardData("post", dynamicProps());
+		const d = cardFieldsOf("post", dynamicProps());
 		expect(d.post.hasVideo).toBe(false);
 		expect(d.video.title).toBe("");
 		expect(d.video.cover).toBe("");
@@ -467,7 +466,7 @@ describe("作品卡的视频与图廊", () => {
 	 * 验红:把 `hasVideo` 改回 `videoTitle !== ""`,这条红。
 	 */
 	it("标题是空的投稿:hasVideo 仍为真 —— 判据是有没有这张卡,不是有没有标题", () => {
-		const d = buildCardData(
+		const d = cardFieldsOf(
 			"post",
 			dynamicProps(dynamicNode({ video: { ...NODE_VIDEO, title: "" } })),
 		);
@@ -477,7 +476,7 @@ describe("作品卡的视频与图廊", () => {
 	});
 
 	it("不是视频作品:video 全空,图廊照取", () => {
-		const d = buildCardData("post", dynamicProps(dynamicNode({ images: FULL_PICS })));
+		const d = cardFieldsOf("post", dynamicProps(dynamicNode({ images: FULL_PICS })));
 		expect(d.post.hasVideo).toBe(false);
 		expect(d.video.duration).toBe("");
 		expect(d.images.count).toBe(2);
@@ -486,7 +485,7 @@ describe("作品卡的视频与图廊", () => {
 
 describe("会员卡的数据", () => {
 	it("档位的各项原样取自视图:rank、档名、徽章、宣告语;观众与主播的头像也是视图里的地址", () => {
-		const d = buildCardData("membership", guardProps());
+		const d = cardFieldsOf("membership", guardProps());
 		expect(d.membership).toEqual({
 			rank: 1,
 			tierName: "舰长",
@@ -500,7 +499,7 @@ describe("会员卡的数据", () => {
 	// 没有 rank 的体系(档位由主播自定的那种)交上来的档没有 `rank`:视图里是 0,字段就是 0 —— `rank` 本身从 1 起,
 	// 所以 0 不会与真档混淆。数字类型的字段「缺了」都是 0(`num()`),不单为它开一个例外。
 	it("没有 rank 的档 → membership.rank 是 0;没声明宣告语 → 空串;没有徽章 → 空串", () => {
-		const d = buildCardData(
+		const d = cardFieldsOf(
 			"membership",
 			guardProps({ rank: 0, announcement: "", iconUrl: "", tierName: "自定义档" }),
 		);
@@ -508,13 +507,13 @@ describe("会员卡的数据", () => {
 	});
 
 	it("rank 不是有限的数 → 0(契约里的数字永不是 NaN)", () => {
-		expect(buildCardData("membership", guardProps({ rank: Number.NaN })).membership.rank).toBe(0);
+		expect(cardFieldsOf("membership", guardProps({ rank: Number.NaN })).membership.rank).toBe(0);
 	});
 });
 
 describe("醒目留言卡的数据", () => {
 	it("金额是视图里排好的字、数字另给;rank 是夹进 1–6 的有效档位;时长是排好的字", () => {
-		const d = buildCardData(
+		const d = cardFieldsOf(
 			"superchat",
 			scProps({ amount: "US$30", amountValue: 30, rank: 4, duration: "30分" }),
 		);
@@ -529,23 +528,23 @@ describe("醒目留言卡的数据", () => {
 	});
 
 	it("来源没给留言时长 → superchat.duration 是空串;观众头像没有 → viewer.avatar 是空串", () => {
-		const d = buildCardData("superchat", scProps({ duration: "", viewerAvatarUrl: "" }));
+		const d = cardFieldsOf("superchat", scProps({ duration: "", viewerAvatarUrl: "" }));
 		expect(d.superchat.duration).toBe("");
 		expect(d.viewer.avatar).toBe("");
 		expect(d.viewer.name).toBe("热心观众");
 	});
 
 	it("主播头像没给 → creator.avatar 是空串", () => {
-		expect(
-			buildCardData("superchat", scProps({ creatorAvatarUrl: undefined })).creator.avatar,
-		).toBe("");
+		expect(cardFieldsOf("superchat", scProps({ creatorAvatarUrl: undefined })).creator.avatar).toBe(
+			"",
+		);
 	});
 });
 
 // ── 四、取值 ──────────────────────────────────────────────────────────────────
 
 describe("readCardField", () => {
-	const data = buildCardData("live", liveProps());
+	const data = cardFieldsOf("live", liveProps());
 
 	it("两段路径取得到值", () => {
 		expect(readCardField(data, "creator.name")).toBe("阿可");

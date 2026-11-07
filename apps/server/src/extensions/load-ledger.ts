@@ -39,7 +39,7 @@ export function readLoadLedger(root: string): { blocked: readonly string[] } {
 	return { blocked: readState(root).blocked };
 }
 
-export interface RecordLoadAttemptInput {
+export interface RecordLoadAttemptOptions {
 	root: string;
 	id: string;
 	version: string;
@@ -68,7 +68,7 @@ export function recordLoadAttempt({
 	version,
 	maxFailures,
 	onUnwritable,
-}: RecordLoadAttemptInput): void {
+}: RecordLoadAttemptOptions): void {
 	const state = readState(root);
 	const key = ledgerKey(id, version);
 	const attempts = (state.attempts[key] ?? 0) + 1;
@@ -95,7 +95,7 @@ export function markLoadSucceeded({
 	id,
 	version,
 	onUnwritable,
-}: Omit<RecordLoadAttemptInput, "maxFailures">): void {
+}: Omit<RecordLoadAttemptOptions, "maxFailures">): void {
 	const state = readState(root);
 	const key = ledgerKey(id, version);
 	if (state.attempts[key] === undefined && !state.blocked.includes(key)) return;

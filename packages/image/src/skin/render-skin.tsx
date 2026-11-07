@@ -49,7 +49,7 @@ import { escapeHtml } from "../html-escape";
 import { renderCard } from "../render";
 import type { PostCardView } from "../templates/post-card";
 import type { PostNode } from "../templates/post-content";
-import { buildCardData, type CardData, readCardField } from "./card-data";
+import { type CardFields, cardFieldsOf, readCardField } from "./card-fields";
 import type { ResolvedKnobAssets } from "./knob-assets";
 
 /**
@@ -184,7 +184,7 @@ function isImageField(kind: CardKind, path: string): boolean {
 function renderCustomHtml(
 	html: string,
 	kind: CardKind,
-	data: CardData,
+	data: CardFields,
 	resolveAsset?: (name: string) => string | undefined,
 ): string {
 	return html.replace(
@@ -427,7 +427,7 @@ function placeBlocks(ctx: SkinAssemblyState, props: unknown): VNode[] {
 	const { kind, card } = ctx;
 	// 契约数据每层各算一份:`showIf` 与这一层所有自定义块的占位符共用它。(重载签名按 kind
 	// 分支,这里 kind 是运行时值,按同一份实现的宽签名调。)
-	const data = (buildCardData as (k: CardKind, p: unknown) => CardData)(kind, props);
+	const data = (cardFieldsOf as (k: CardKind, p: unknown) => CardFields)(kind, props);
 	const table = BLOCK_TABLES[kind] as Record<string, BlockRenderer<unknown>>;
 	const blockProps = blockPropsOf(ctx, props);
 

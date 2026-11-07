@@ -33,7 +33,7 @@ import { isClearableCategory } from "../runtime/storage-usage.js";
 import type { SystemNoticeStore } from "../runtime/system-notices.js";
 import { respondFailure } from "./respond-failure.js";
 
-export interface CreateSystemRouteInput {
+export interface CreateSystemRouteOptions {
 	/**
 	 * 这台机器上按重启还回不回得来 —— 判据见 `runtime/restart-ability.ts`。每次现问:拉不起来时那句话按此刻的语言取。
 	 */
@@ -114,7 +114,7 @@ function parseSeq(raw: string): number | undefined {
 	return Number.isSafeInteger(seq) ? seq : undefined;
 }
 
-export function createSystemRoute(input: CreateSystemRouteInput): Hono {
+export function createSystemRoute(input: CreateSystemRouteOptions): Hono {
 	const app = new Hono();
 
 	/** 回话,然后关自己 —— 重启与开新代共用。调用前先判过拉不拉得起来。 */

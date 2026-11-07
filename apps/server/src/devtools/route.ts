@@ -30,13 +30,13 @@ export interface DevCapturesApi {
 	purgeHistory(): Promise<number>;
 }
 
-export interface CreateDevRouteInput {
+export interface CreateDevRouteOptions {
 	registry: DevRegistry;
 	/** 不给就不挂 `/captures`,404。 */
 	captures?: DevCapturesApi;
 }
 
-export function createDevRoute({ registry, captures }: CreateDevRouteInput): Hono {
+export function createDevRoute({ registry, captures }: CreateDevRouteOptions): Hono {
 	const app = new Hono();
 
 	app.get("/", (c) => {

@@ -1,7 +1,7 @@
-import type { CreatorSearchInput, Identity } from "@bilibili-notify/internal";
+import type { CreatorSearchKind, Identity } from "@bilibili-notify/internal";
 
 /** 一个来源报给叫法函数的几格(都来自来源描述符或拓展清单)。 */
-export interface SourceNounsInput {
+export interface SourceNounsView {
 	label?: string;
 	creatorNoun?: string;
 	postNoun?: string;
@@ -20,7 +20,7 @@ export interface SourceNouns {
  * 给人看的中性词从字典取;给模型的中性词用 `packages/ai` 的 `PROMPT_NEUTRAL_NOUNS`。
  */
 export function sourceNounsOf(
-	platforms: readonly SourceNounsInput[],
+	platforms: readonly SourceNounsView[],
 	neutral: SourceNouns,
 ): SourceNouns {
 	if (platforms.length === 1) {
@@ -76,7 +76,7 @@ export interface CreatorSearchHintWords {
  */
 export function creatorSearchHint(
 	descriptor: {
-		searchAccepts?: readonly CreatorSearchInput[];
+		searchAccepts?: readonly CreatorSearchKind[];
 		externalIdNoun?: string;
 		creatorNoun?: string;
 	},

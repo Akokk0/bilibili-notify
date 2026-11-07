@@ -57,11 +57,11 @@ export { isEmbeddedUrl } from "./puppeteer";
 export { buildFontFace, renderCard, USER_FONT_FAMILY } from "./render";
 // 卡片皮肤的对外数据契约(ADR-0014 决策 14):内部 props → `CARD_SKIN_FIELDS` 那张表。
 export {
-	buildCardData,
-	type CardData,
-	type CardDataValue,
+	type CardFields,
+	type CardFieldValue,
+	cardFieldsOf,
 	readCardField,
-} from "./skin/card-data";
+} from "./skin/card-fields";
 // 字体 / 图两档旋钮的**宿主解析**(ADR-0014 决策 16 的 🔗):这两档的值是主人资产库里的
 // 一个 id,要 await 读盘才变得成 CSS,所以 `cardSkinKnobCss` 那条同步路径上做不了。
 // **凡是自己拼 `renderCardWithSkin` 入参的调用方都得调它** —— 只传 `knobValues` 的话,

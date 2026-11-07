@@ -30,7 +30,7 @@ const FileSchema = z.object({
 	),
 });
 
-export interface ReadReleaseNotesInput {
+export interface ReadReleaseNotesOptions {
 	/** 载荷所在的目录。 */
 	payloadDir: string;
 	/** 正在跑的版本:开发版没有这份文件是常态,不出声。 */
@@ -43,7 +43,7 @@ export interface ReadReleaseNotesInput {
  * 开发版源码里从不装配,缺文件是常态,不出声。
  */
 export async function readReleaseNotes(
-	input: ReadReleaseNotesInput,
+	input: ReadReleaseNotesOptions,
 ): Promise<Omit<ReleaseNoteEntry, "releaseUrl">[]> {
 	const path = join(input.payloadDir, RELEASE_NOTES_FILE);
 	let text: string;

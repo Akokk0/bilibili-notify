@@ -29,7 +29,7 @@ export type LiveMonitorFeatures = Record<
  * {@link needsLiveMonitor} 的入参:折好的开关(`resolve` 之后的 `features`,多出来的键不看)与订阅的特别关注名单
  * (`sub.specialViewers`,只看每个条目带哪些特性键)。调用处直接递这两样,不自己摆,也不自己做「开关 ∧ 名单」。
  */
-export interface LiveMonitorInput {
+export interface LiveMonitorOptions {
 	features: LiveMonitorFeatures;
 	specialViewers: readonly { features: readonly FeatureKey[] }[];
 }
@@ -40,7 +40,7 @@ export interface LiveMonitorInput {
  * 没人带它,同样不监听。只看折好的生效值,不看有没有推送目标、不依赖房间上下文。
  * 拓展订阅没有设置特别关注的入口,名单天然是空。
  */
-export function needsLiveMonitor(sub: LiveMonitorInput): boolean {
+export function needsLiveMonitor(sub: LiveMonitorOptions): boolean {
 	const listed = (feature: FeatureKey) =>
 		sub.specialViewers.some((v) => v.features.includes(feature));
 	return (

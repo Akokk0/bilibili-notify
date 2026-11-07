@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import { LIVE_ROOM_CREATOR_KEYS, type LiveMonitorInput, needsLiveMonitor } from "../live-monitor";
+import { LIVE_ROOM_CREATOR_KEYS, type LiveMonitorOptions, needsLiveMonitor } from "../live-monitor";
 
-const allOff = (): LiveMonitorInput => ({
+const allOff = (): LiveMonitorOptions => ({
 	features: {
 		liveStart: false,
 		liveStreaming: false,
@@ -16,9 +16,9 @@ const allOff = (): LiveMonitorInput => ({
 
 /** 在 {@link allOff} 上改开关与名单。 */
 const input = (
-	features: Partial<LiveMonitorInput["features"]>,
-	specialViewers: LiveMonitorInput["specialViewers"] = [],
-): LiveMonitorInput => ({
+	features: Partial<LiveMonitorOptions["features"]>,
+	specialViewers: LiveMonitorOptions["specialViewers"] = [],
+): LiveMonitorOptions => ({
 	features: { ...allOff().features, ...features },
 	specialViewers,
 });

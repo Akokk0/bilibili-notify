@@ -56,7 +56,7 @@ export interface TargetScopeTable {
 	targetEnabled(targetId: string): boolean;
 }
 
-export interface ResolveTargetScopeInput {
+export interface ResolveTargetScopeOptions {
 	subscriptions: readonly Subscription[];
 	targets: readonly PushTarget[];
 	connections: readonly Connection[];
@@ -67,7 +67,7 @@ export function resolveTargetScope({
 	subscriptions,
 	targets,
 	connections,
-}: ResolveTargetScopeInput): TargetScopeTable {
+}: ResolveTargetScopeOptions): TargetScopeTable {
 	// 路由按订阅自己的 id 收**全部**订阅(ADR-0019 决策 50):同一个 UP 的两条订阅各有各的路由。
 	const routing = new Map<string, Subscription["routing"]>();
 	// 身份那一问按「来源键 → 外部 id」两层查(不拼成一串:外部 id 是来源给的不透明字符串,拼就得选

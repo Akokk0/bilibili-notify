@@ -1,8 +1,8 @@
 import type {
 	ClearableStorageCategory,
 	GenerationDeleteResponse,
-	GenerationInfo,
 	GenerationsResponse,
+	GenerationView,
 	ImageSweepResponse,
 	SettingsResponse,
 	StorageCategory,
@@ -32,7 +32,7 @@ import { generationLockText, storageCategoryText, storageClearScope } from "./st
 type ClearableRow = StorageUsageRow & { category: ClearableStorageCategory };
 type StorageAction =
 	| { kind: "clear"; row: ClearableRow }
-	| { kind: "generation"; generation: GenerationInfo }
+	| { kind: "generation"; generation: GenerationView }
 	| { kind: "sweep" };
 type StorageActionResult =
 	| (StorageClearResponse & { kind: "clear" | "generation" })

@@ -24,7 +24,7 @@ import { hostPath } from "../runtime/roots.js";
  */
 export const DEFAULT_DATA_DIR = "./data";
 
-export interface ResolveVersionsRootInput {
+export interface ResolveVersionsRootOptions {
 	argv: readonly string[];
 	env: NodeJS.ProcessEnv;
 	/** 相对路径按它解析,同 loader。 */
@@ -53,7 +53,7 @@ function readFileDataDir(configPath: string): string | undefined {
 	}
 }
 
-export function resolveDataDir({ argv, env, cwd }: ResolveVersionsRootInput): string {
+export function resolveDataDir({ argv, env, cwd }: ResolveVersionsRootOptions): string {
 	const fromCli = readCliDataDir(argv);
 	if (fromCli) return resolve(cwd, fromCli);
 
@@ -78,6 +78,6 @@ export function versionsRootIn(hostRoot: string): string {
 	return resolve(hostPath(hostRoot, "versions"));
 }
 
-export function resolveVersionsRoot(input: ResolveVersionsRootInput): string {
+export function resolveVersionsRoot(input: ResolveVersionsRootOptions): string {
 	return versionsRootIn(resolveDataDir(input));
 }

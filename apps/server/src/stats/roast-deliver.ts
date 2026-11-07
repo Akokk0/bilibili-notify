@@ -1,4 +1,4 @@
-import { type SourceNounsInput, sourceNounsOf } from "@bilibili-notify/contract";
+import { type SourceNounsView, sourceNounsOf } from "@bilibili-notify/contract";
 import { t } from "../i18n/index.js";
 /**
  * 把一份锐评发出去 —— 文案、卡片、降级、多目标。
@@ -190,7 +190,7 @@ export async function buildRoastPayload(
 ): Promise<RoastPayload> {
 	const ids = mentionedIds(opts.kind, opts.result);
 	const subById = new Map(deps.store.getSubscriptions().map((sub) => [sub.id, sub]));
-	const sources = new Map<string | undefined, SourceNounsInput>();
+	const sources = new Map<string | undefined, SourceNounsView>();
 	for (const id of ids) {
 		const sub = subById.get(id);
 		const key = sub ? subscriptionIdentityOf(sub).sourceKey : undefined;

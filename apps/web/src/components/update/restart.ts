@@ -27,7 +27,7 @@ export type RestartResult =
 	| { kind: "fell-back"; version: string }
 	| { kind: "timed-out" };
 
-export interface AwaitRestartInput {
+export interface AwaitRestartOptions {
 	/** 要换掉的那个进程的 `startedAt` —— 之后只认和它不同的回答。 */
 	before: string;
 	/** 期望换到的版本。 */
@@ -42,7 +42,7 @@ export interface AwaitRestartInput {
 
 const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-export async function awaitRestartedServer(input: AwaitRestartInput): Promise<RestartResult> {
+export async function awaitRestartedServer(input: AwaitRestartOptions): Promise<RestartResult> {
 	const sleep = input.sleep ?? realSleep;
 	const now = input.now ?? Date.now;
 	const deadline = now() + input.timeoutMs;

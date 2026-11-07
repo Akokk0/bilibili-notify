@@ -3,7 +3,7 @@ import { readBestEffortJson, writeBestEffortJson } from "./durable-json.js";
 import { installedVersions } from "./version-dirs.js";
 import { compareVersions } from "./version-order.js";
 
-export interface SelectVersionForBootInput {
+export interface SelectVersionForBootOptions {
 	/** 镜像 / 安装包自带的版本 —— 换不掉的那个底。 */
 	preinstalledVersion: string;
 	/** 镜像自带那份载荷的位置(容器里是 `/app`)。 */
@@ -97,7 +97,7 @@ export function selectVersionForBoot({
 	preinstalledPath,
 	versionsRoot,
 	maxBootFailures,
-}: SelectVersionForBootInput): BootSelection {
+}: SelectVersionForBootOptions): BootSelection {
 	const state = readState(versionsRoot);
 	const installed = installedVersions(versionsRoot);
 
@@ -160,7 +160,7 @@ function recordAttempt(
 	return { version, path: join(versionsRoot, version), isPreinstalledVersion: false };
 }
 
-export interface ReadBootViewInput {
+export interface ReadBootViewOptions {
 	versionsRoot: string;
 	preinstalledVersion: string;
 }
@@ -201,7 +201,7 @@ export function readFailedVersions(versionsRoot: string): string[] {
  * 分三次读的话面板会看到一幅拼接出来的、任何一刻都不曾真实存在过的图景 ——
  * 而这幅图景正是用来预测「下次开机会发生什么」的。顺带也省掉两次同步 IO。
  */
-export function readBootView({ versionsRoot, preinstalledVersion }: ReadBootViewInput): BootView {
+export function readBootView({ versionsRoot, preinstalledVersion }: ReadBootViewOptions): BootView {
 	const state = readState(versionsRoot);
 	const installed = installedVersions(versionsRoot);
 	return {
@@ -232,7 +232,7 @@ export function markVersionRevoked({
 	writeState(versionsRoot, { ...state, revoked: [...state.revoked, version] });
 }
 
-export interface PinVersionInput {
+export interface PinVersionOptions {
 	versionsRoot: string;
 	version: string;
 }
@@ -242,7 +242,7 @@ export interface PinVersionInput {
  * 这份状态是启发,坏了不该让进程起不来。代价是这次回退没生效,而那是用户看得见、
  * 能重试的事。
  */
-export function pinVersion({ versionsRoot, version }: PinVersionInput): void {
+export function pinVersion({ versionsRoot, version }: PinVersionOptions): void {
 	writeState(versionsRoot, { ...readState(versionsRoot), pinned: version });
 }
 
@@ -252,7 +252,7 @@ export function clearPinnedVersion({ versionsRoot }: { versionsRoot: string }): 
 	writeState(versionsRoot, rest);
 }
 
-export interface MarkBootSucceededInput {
+export interface MarkBootSucceededOptions {
 	versionsRoot: string;
 	version: string;
 }
@@ -268,7 +268,7 @@ export interface MarkBootSucceededInput {
  * —— 而它这次起来了。起来了就不是死的,只清计数不清黑名单的话,它从下一次开机起
  * 就被永久打入冷宫。
  */
-export function markBootSucceeded({ versionsRoot, version }: MarkBootSucceededInput): void {
+export function markBootSucceeded({ versionsRoot, version }: MarkBootSucceededOptions): void {
 	const state = readState(versionsRoot);
 	const wasCounted = state.attempts[version] !== undefined;
 	const wasFailed = state.failed.includes(version);

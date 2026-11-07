@@ -52,7 +52,7 @@ const DEFAULT_TEXT = "devtools 造的一条动态:今天也要元气满满！";
 /** 没头像时的兜底图(B 站默认头像)。封面 / 图集也用它 —— 得是一张真能拉到的图。 */
 const FALLBACK_PIC = "https://i0.hdslb.com/bfs/face/member/noface.jpg";
 
-interface FakeInput {
+interface FakePostOptions {
 	id: string;
 	kind: Kind;
 	/** 作者:UID 与卡上的名字。 */
@@ -74,7 +74,7 @@ function pubTime(ts: number): string {
 	return `${d.slice(5, 10)} ${d.slice(11, 16)}`;
 }
 
-function author(who: FakeInput["author"], ts: number, pubAction: string, avatar: string) {
+function author(who: FakePostOptions["author"], ts: number, pubAction: string, avatar: string) {
 	return {
 		face: avatar,
 		following: true,
@@ -94,7 +94,7 @@ function author(who: FakeInput["author"], ts: number, pubAction: string, avatar:
 
 const ZERO_STAT = { comment: { count: 0 }, forward: { count: 0 }, like: { count: 0 } };
 
-function buildFake(input: FakeInput, avatar: string): FeedItem {
+function buildFake(input: FakePostOptions, avatar: string): FeedItem {
 	const { id, kind, author: who, text, ts } = input;
 	const pic = avatar;
 	const base = {

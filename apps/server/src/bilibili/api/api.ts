@@ -24,8 +24,8 @@ import { createMyselfCache, type MyselfCache } from "./self-info-cache";
 import type {
 	LiveRoomDanmakuResponse,
 	LiveRoomResponse,
+	LiveUpResponse,
 	LoginQrCodeResponse,
-	MasterInfoData,
 	MyselfResponse,
 	RelationsResponse,
 	TicketResponse,
@@ -960,7 +960,7 @@ export class Api {
 		return "";
 	}
 
-	async getMasterInfo(uid: string): Promise<MasterInfoData> {
+	async getMasterInfo(uid: string): Promise<LiveUpResponse> {
 		return this.getJson(`${EP.MASTER_INFO_URL}?uid=${encodeURIComponent(uid)}`, "getMasterInfo");
 	}
 

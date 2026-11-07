@@ -46,7 +46,7 @@ export type { UpdateErrorReason, UpdateState };
 /** `GET /api/system/update` 的响应形状,契约在 `@bilibili-notify/contract`。 */
 export type UpdateStatus = UpdateStatusView;
 
-export interface CreateUpdateServiceInput {
+export interface CreateUpdateServiceOptions {
 	/** 当前正在跑的那份载荷的版本。 */
 	currentVersion: string;
 	/** 镜像 / 安装包自带的版本 —— 回退的地板。 */
@@ -85,7 +85,7 @@ export interface UpdateService {
 	probeMirrors(prefixes: readonly string[]): Promise<MirrorProbeResult[]>;
 }
 
-export function createUpdateService(input: CreateUpdateServiceInput): UpdateService {
+export function createUpdateService(input: CreateUpdateServiceOptions): UpdateService {
 	const {
 		currentVersion,
 		preinstalledVersion,

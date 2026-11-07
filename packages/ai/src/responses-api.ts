@@ -13,7 +13,7 @@
 
 import { providerMeta } from "@bilibili-notify/internal";
 import type OpenAI from "openai";
-import type { BuildProviderParamsInput } from "./providers";
+import type { BuildProviderParamsOptions } from "./providers";
 
 /**
  * 思考 → 标准 `reasoning.effort`。返回请求体**顶层**字段,与
@@ -29,7 +29,9 @@ import type { BuildProviderParamsInput } from "./providers";
  * - OpenRouter / custom(默认关):`none` 不是 OpenAI 词表里的标准档,乱发
  *   换来 400;不传、交给上游默认(真被拒还有摘 reasoning 的降级重试兜底)。
  */
-export function buildResponsesReasoning(input: BuildProviderParamsInput): Record<string, unknown> {
+export function buildResponsesReasoning(
+	input: BuildProviderParamsOptions,
+): Record<string, unknown> {
 	if (!input.enableThinking) {
 		return providerMeta(input.provider).thinkingDefaultsOn ? { reasoning: { effort: "none" } } : {};
 	}

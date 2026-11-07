@@ -44,7 +44,7 @@ import { t as serverText } from "../i18n/index.js";
  * schema 里没有这一层,它造不出一条假的「宿主报错」。
  */
 
-export interface ViewCheckInput {
+export interface ViewCheckOptions {
 	/** 清单里声明的设置项(v2 的 `settings.fields`)—— `items` 的第一层键只认其中的列表。 */
 	fields: readonly SettingsField[];
 	/**
@@ -128,7 +128,7 @@ function itemIdsOf(settings: unknown, list: string): string[] {
  * 整份都用不了(不是一个对象、交回的是 Promise、回调抛了……)—— 页上一条提示,**每一条现存的项
  * 也各一条**:那张卡写「状态未知」加同一句话,主人在「配置」页签上也看得见为什么。
  */
-export function faultedExtensionView(reason: string, input: ViewCheckInput): ViewCheckResult {
+export function faultedExtensionView(reason: string, input: ViewCheckOptions): ViewCheckResult {
 	const fault: ExtensionViewFault = { where: wholeWhere(), reason };
 	const items: Record<string, Record<string, ExtensionPanelItem>> = {};
 	for (const list of listsOf(input.fields).keys()) {
@@ -147,7 +147,7 @@ export function faultedExtensionView(reason: string, input: ViewCheckInput): Vie
 }
 
 /** 核一份视图,见文件头。`raw` 是拓展回调交回的东西,原样。 */
-export function checkExtensionView(raw: unknown, input: ViewCheckInput): ViewCheckResult {
+export function checkExtensionView(raw: unknown, input: ViewCheckOptions): ViewCheckResult {
 	if (!isPlainObject(raw)) {
 		return faultedExtensionView(
 			serverText("service.extensions.view-check.text.11", {
@@ -347,7 +347,7 @@ type PanelItems = Map<string, Map<string, ExtensionPanelItem>>;
 
 function checkItems(
 	raw: unknown,
-	input: ViewCheckInput,
+	input: ViewCheckOptions,
 	images: CheckedImages,
 	actions: ReadonlySet<string>,
 	problems: string[],

@@ -119,7 +119,7 @@ function useChatMarkdown(): MarkdownComp {
  * `ok` 缺席 = 还在跑。落盘后的痕迹一定是有结论的(服务端只存收了尾的),所以
  * 「进行中」这个态只会出现在在途那一份上。
  */
-export interface ToolChipData {
+export interface ToolChipView {
 	name: string;
 	args: Record<string, string>;
 	/** 给人看的名字,服务端随痕迹下发;没带就显示 `name`。 */
@@ -148,7 +148,7 @@ export interface MessageListProps {
 	pending?: {
 		ask: string;
 		draft: string;
-		tools: readonly ToolChipData[];
+		tools: readonly ToolChipView[];
 		/** 正在逐字长出来的思考草稿(思考模型专有);空串 = 这轮没思考(或还没开始)。 */
 		think: string;
 		/** 这一问带上去的图(显示地址)。在途期间也得看得见,否则像是没发出去。 */
@@ -353,7 +353,7 @@ function AssistantTurn({
 }: {
 	/** 入场动画类(含尾随空格)或空串。 */
 	animClass: string;
-	tools?: readonly ToolChipData[];
+	tools?: readonly ToolChipView[];
 	text: string;
 	/** 卡片工坊里这一轮碰过的皮肤;落盘那一份才有(在途时还不知道碰了哪几套)。 */
 	cardSkins?: readonly AiCardSkinTouchView[];
@@ -565,7 +565,7 @@ function ToolChips({
 	open: openKeys,
 	onToggle,
 }: {
-	traces: readonly ToolChipData[];
+	traces: readonly ToolChipView[];
 	open: ReadonlySet<string>;
 	onToggle: (key: string) => void;
 }) {

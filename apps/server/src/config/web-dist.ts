@@ -15,7 +15,7 @@ import { parseDocument } from "yaml";
  */
 export const LEGACY_IMAGE_WEB_DIST = "/app/web-dist";
 
-export interface ResolveWebDistDirInput {
+export interface ResolveWebDistDirOptions {
 	/** bootstrap yaml 里的 `webDistDir`。 */
 	configured: string | undefined;
 	/** `BN_WEB_DIST`。 */
@@ -53,7 +53,7 @@ export function resolveWebDistDir({
 	configured,
 	envValue,
 	bundleUrl,
-}: ResolveWebDistDirInput): ResolvedWebDistDir {
+}: ResolveWebDistDirOptions): ResolvedWebDistDir {
 	const explicit = pickExplicit(configured) ?? pickExplicit(envValue);
 	if (explicit) return { dir: explicit, source: "explicit" };
 	return { dir: join(payloadDirOf(bundleUrl), "web-dist"), source: "payload" };

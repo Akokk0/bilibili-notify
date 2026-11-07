@@ -11,7 +11,7 @@ import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
 import { POST_BLOCKS } from "../blocks/post";
-import { buildCardData } from "../skin/card-data";
+import { cardFieldsOf } from "../skin/card-fields";
 import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
 import { nodeFromPost } from "../templates/post-node";
 
@@ -96,8 +96,8 @@ describe("动作标签:视图、皮肤字段与默认皮肤的两块", () => {
 		const outer = nodeFromPost(REPOST_VIDEO, FMT);
 		const inner = outer.repost;
 		if (!inner) throw new Error("应有转发内层");
-		const o = buildCardData("post", { node: outer });
-		const i = buildCardData("post", { node: inner });
+		const o = cardFieldsOf("post", { node: outer });
+		const i = cardFieldsOf("post", { node: inner });
 		expect(o.post.time).toBe("T1700000000");
 		expect(o.post.label).toBe("转发了动态");
 		expect(i.post.time).toBe("T1700000000");
@@ -106,12 +106,12 @@ describe("动作标签:视图、皮肤字段与默认皮肤的两块", () => {
 
 	it("没有 label 的作品:post.time 是纯时间、post.label 为空(内外层一样)", () => {
 		const outer = nodeFromPost(post({ repost: post() }), FMT);
-		const d = buildCardData("post", { node: outer });
+		const d = cardFieldsOf("post", { node: outer });
 		expect(d.post.time).toBe("T1700000000");
 		expect(d.post.label).toBe("");
 		const inner = outer.repost;
 		if (!inner) throw new Error("应有转发内层");
-		expect(buildCardData("post", { node: inner }).post.label).toBe("");
+		expect(cardFieldsOf("post", { node: inner }).post.label).toBe("");
 	});
 
 	/** 默认皮肤的 `name` / `time` 块画出的文字(去掉标签)。 */

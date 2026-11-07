@@ -1,7 +1,7 @@
 import type { Manifest } from "./signed-manifest.js";
 import { compareVersions, isPrerelease } from "./version-order.js";
 
-export interface DecideUpdateInput {
+export interface DecideUpdateOptions {
 	/** 当前**实际生效**的版本 —— 注意不是镜像里那份,是启动选版真正加载的那份。 */
 	currentVersion: string;
 	manifest: Manifest;
@@ -26,7 +26,7 @@ export function decideUpdate({
 	manifest,
 	runtime,
 	allowPrerelease = false,
-}: DecideUpdateInput): UpdateDecision {
+}: DecideUpdateOptions): UpdateDecision {
 	const revoked = manifest.revoked ?? [];
 	const isNewer = compareVersions(manifest.version, currentVersion) > 0;
 	// 正在跑的版本被撤回时,清单那版**哪怕更旧**也是目标:发出去的坏版本收不回来,已经

@@ -640,7 +640,7 @@ function settingsOf(adapterKey: string, config: unknown, connector: unknown): un
 
 // ── 新代里的两份文件 ──────────────────────────────────────────────────────────
 
-export interface ConnectionFilesInput {
+export interface ConnectionFilesOptions {
 	/** 新代的 `config/`:`connections.json`、`targets.json` 已经从第 0 代搬了过来(复制)。 */
 	configDir: string;
 	/** 第 0 代的 `state/adapters.json`:`connections.json` 的旧名,只作输入。 */
@@ -653,7 +653,7 @@ export interface ConnectionFilesInput {
  * 只重写变了的,而且写的是**新文件**(原子换名),不原地写。
  * 认不得的内容(不是 JSON、不是数组)原样留着,由配置仓开机时报出来 —— 那里的报错指得到是哪个文件、哪一行。
  */
-export async function migrateConnectionFiles(input: ConnectionFilesInput): Promise<string[]> {
+export async function migrateConnectionFiles(input: ConnectionFilesOptions): Promise<string[]> {
 	const connectionsPath = join(input.configDir, "connections.json");
 	const targetsPath = join(input.configDir, "targets.json");
 	const rewritten: string[] = [];

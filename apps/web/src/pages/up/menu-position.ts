@@ -1,4 +1,4 @@
-export interface MenuPositionInput {
+export interface MenuPositionOptions {
 	/** 触发点(鼠标 / 手指)相对视口的 X 坐标。 */
 	anchorX: number;
 	/** 触发点相对视口的 Y 坐标。 */
@@ -24,7 +24,7 @@ export interface MenuPlacement {
  * 算出右键 / 长按菜单浮层左上角应放置的坐标。默认锚在触发点、向右下展开;
  * 贴近视口右 / 下边缘时翻转到触发点左 / 上，且最终 clamp 进视口不溢出。
  */
-export function computeMenuPosition(input: MenuPositionInput): MenuPlacement {
+export function computeMenuPosition(input: MenuPositionOptions): MenuPlacement {
 	const margin = input.margin ?? 8;
 	let x = input.anchorX;
 	let y = input.anchorY;

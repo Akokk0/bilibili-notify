@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { GenerationInfo, StorageUsageResponse } from "@bilibili-notify/contract";
+import type { GenerationView, StorageUsageResponse } from "@bilibili-notify/contract";
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -28,7 +28,7 @@ const USAGE: StorageUsageResponse = {
 		{ category: "logs", sizeBytes: 16384, clearable: false },
 	],
 };
-const GENERATIONS: GenerationInfo[] = [];
+const GENERATIONS: GenerationView[] = [];
 const clients: QueryClient[] = [];
 
 function renderSystem(initialEntry = "/system") {
@@ -78,7 +78,7 @@ beforeEach(() => {
 	});
 });
 
-function generation(seq: number, patch: Partial<GenerationInfo> = {}): GenerationInfo {
+function generation(seq: number, patch: Partial<GenerationView> = {}): GenerationView {
 	return {
 		seq,
 		current: false,

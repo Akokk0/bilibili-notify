@@ -25,7 +25,7 @@ import type { DevScenarioDef } from "../registry.js";
  * id 从来没被 import 过,装它与「拨开关第一次启用」是同一档事实。已经装着的那些**改代码**
  * 仍要按一下「重载」:换掉已加载的代码是另一回事(决策 39)。
  */
-export interface ExtensionScenariosInput {
+export interface ExtensionScenariosOptions {
 	/** 仓里那个 `extensions/`。devtools 只在源码运行时存在,所以这条路一定在。 */
 	repoDir: string;
 	/** 唯一那个装载根 —— `<数据根>/extensions/`。 */
@@ -62,7 +62,7 @@ async function exists(path: string): Promise<boolean> {
 	}
 }
 
-export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioDef[] {
+export function extensionScenarios(input: ExtensionScenariosOptions): DevScenarioDef[] {
 	const ids = repoExtensionIds(input.repoDir);
 	// 仓里一个拓展都没有 → 这三条场景没有可选的东西,不如不出现。
 	if (ids.length === 0) return [];
@@ -182,7 +182,7 @@ interface WatchState {
  * 但这就是它**默认关着、要主人自己拨开**的原因 —— 挂成常开等于让它无声地漏。
  */
 function watchScenario(
-	input: ExtensionScenariosInput,
+	input: ExtensionScenariosOptions,
 	pick: DevParamField,
 	installedAt: (id: string) => string,
 ): DevScenarioDef {

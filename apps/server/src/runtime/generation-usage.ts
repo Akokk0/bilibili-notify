@@ -18,7 +18,7 @@
 import type { Dirent, Stats } from "node:fs";
 import { lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { GenerationInfo, GenerationLockReason } from "@bilibili-notify/contract";
+import type { GenerationLockReason, GenerationView } from "@bilibili-notify/contract";
 import { removeDirectory, type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
 import {
 	ZERO_GENERATION_LAYOUT,
@@ -88,12 +88,12 @@ function decide(
  * 量大小是全树 `lstat`:一代可能几个 GB、几万到几十万个文件,几秒到几十秒;按目录一层层异步读、分批并发,
  * 不阻塞事件循环。**不加缓存**(只有面板打开「旧版本数据」才调,且每一代各量一次)。
  */
-export async function listGenerationUsage(opts: GenerationUsageOptions): Promise<GenerationInfo[]> {
+export async function listGenerationUsage(opts: GenerationUsageOptions): Promise<GenerationView[]> {
 	const entries = await listGenerationEntries(opts.hostRoot);
 	const zeroExists = (await existingZeroKeys(opts.hostRoot)).length > 0;
 	const all = [...(zeroExists ? [{ seq: 0, partial: false }] : []), ...entries];
 	const current = entries.find((e) => e.seq === opts.currentSeq && !e.partial);
-	const out: GenerationInfo[] = [];
+	const out: GenerationView[] = [];
 
 	if (zeroExists) {
 		const decision = decide(

@@ -119,7 +119,7 @@ export interface BackupEnvelope {
 	secrets?: EncryptedSecrets;
 }
 
-export interface BuildBackupInput {
+export interface BuildBackupOptions {
 	kind: BackupKind;
 	createdAt: string;
 	sections: BackupSections;
@@ -127,7 +127,7 @@ export interface BuildBackupInput {
 }
 
 /** Assemble a backup envelope from already-prepared sections. Pure. */
-export function buildBackup(input: BuildBackupInput): BackupEnvelope {
+export function buildBackup(input: BuildBackupOptions): BackupEnvelope {
 	const env: BackupEnvelope = {
 		format: BACKUP_FORMAT,
 		schemaVersion: BACKUP_SCHEMA_VERSION,

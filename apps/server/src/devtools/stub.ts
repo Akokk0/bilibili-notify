@@ -1,4 +1,4 @@
-import type { CreateDevtoolsInput, Devtools } from "./index.js";
+import type { CreateDevtoolsOptions, Devtools } from "./index.js";
 
 /**
  * 构建产物里的 devtools —— 也就是没有。
@@ -10,6 +10,6 @@ import type { CreateDevtoolsInput, Devtools } from "./index.js";
  * 导出与真的那份**同名同形**,index.ts 那边一行不用改:`createDevtools` 恒回 null
  * (登记回调一次都不会被调)。类型从别处拿的都是 `import type`,擦掉之后不会把真模块牵进来。
  */
-export function createDevtools(_input: CreateDevtoolsInput): Devtools | null {
+export function createDevtools(_input: CreateDevtoolsOptions): Devtools | null {
 	return null;
 }

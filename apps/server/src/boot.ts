@@ -37,7 +37,7 @@ interface PayloadModule {
 	startStandaloneServer?: StartEntry;
 }
 
-export interface BootSelectedPayloadInput {
+export interface BootSelectedPayloadOptions {
 	/** 镜像 / 安装包自带的版本。 */
 	preinstalledVersion: string;
 	/** 镜像自带那份载荷所在目录(容器里是 `/app`)。 */
@@ -58,7 +58,7 @@ export interface BootResult {
 }
 
 async function start(
-	loadPayload: BootSelectedPayloadInput["loadPayload"],
+	loadPayload: BootSelectedPayloadOptions["loadPayload"],
 	dir: string,
 	preinstalled: { version: string; path: string },
 	env: NodeJS.ProcessEnv,
@@ -88,7 +88,7 @@ export async function bootSelectedPayload({
 	loadPayload,
 	log,
 	env = process.env,
-}: BootSelectedPayloadInput): Promise<BootResult> {
+}: BootSelectedPayloadOptions): Promise<BootResult> {
 	const selection = selectVersionForBoot({
 		preinstalledVersion,
 		preinstalledPath,

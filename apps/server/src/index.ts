@@ -42,7 +42,11 @@ import {
 	persistChromeSource,
 	persistDashboardCredentials,
 } from "./config/persist.js";
-import { payloadDirOf, type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
+import {
+	payloadDirOf,
+	type ResolveWebDistDirOptions,
+	resolveWebDistDir,
+} from "./config/web-dist.js";
 import { createDevtools } from "./devtools/index.js";
 import { extensionsRootIn } from "./extensions/discover.js";
 import { manifestSourceDescriptor } from "./extensions/extension-source.js";
@@ -1526,7 +1530,7 @@ export const startStandaloneServer = startServer;
  * **跟着载荷算出来的那个只是推断**,里面没有 `index.html` 就说明这份载荷根本没带前端 ——
  * 与其挂一个空壳目录让所有请求撞进 404,不如干脆不挂,日志里说清楚。
  */
-async function resolveEffectiveWebDistDir(input: ResolveWebDistDirInput): Promise<
+async function resolveEffectiveWebDistDir(input: ResolveWebDistDirOptions): Promise<
 	| { dir: string; source: "explicit" | "payload" }
 	// 只有这一档要说出「我们本来打算挂哪个目录」——而走到这里时它就是上面算出来的那个:
 	// 用户点名的目录已经在上一行 return 了。

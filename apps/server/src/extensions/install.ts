@@ -306,7 +306,7 @@ export function openExtensionPackage(
 	});
 }
 
-export interface InstallExtensionPackageInput {
+export interface InstallExtensionPackageOptions {
 	/** 装载根 —— `<数据根>/extensions/`。不存在就建。 */
 	root: string;
 	pkg: OpenedExtensionPackage;
@@ -321,7 +321,7 @@ export interface InstallExtensionPackageInput {
  */
 const installQueues = new Map<string, Promise<unknown>>();
 
-export interface UninstallExtensionInput {
+export interface UninstallExtensionOptions {
 	/** 装载根(`<数据根>/extensions`)。 */
 	root: string;
 	/** 拓展 id。调用方**必须**先按 `ExtensionIdSchema` 验过 —— 它同时是目录名。 */
@@ -346,7 +346,7 @@ export type UninstallExtensionResult = Result<{ removed: boolean }>;
 export async function uninstallExtension({
 	root,
 	id,
-}: UninstallExtensionInput): Promise<UninstallExtensionResult> {
+}: UninstallExtensionOptions): Promise<UninstallExtensionResult> {
 	const at = join(root, id);
 	const existing = await lstat(at).catch(() => undefined);
 	if (!existing) return ok({ removed: false });
@@ -377,7 +377,9 @@ export async function uninstallExtension({
  * 目标是 devtools 链进来的软链时抛 {@link ExtensionConflictError}(可预期的拒绝,路由回 `conflict`);
  * 别的抛错是磁盘写失败之类,不是它,交给全局出错处理。
  */
-export async function installExtensionPackage(input: InstallExtensionPackageInput): Promise<void> {
+export async function installExtensionPackage(
+	input: InstallExtensionPackageOptions,
+): Promise<void> {
 	const previous = installQueues.get(input.root) ?? Promise.resolve();
 	const run = previous.catch(() => undefined).then(() => installExtensionPackageUnlocked(input));
 	installQueues.set(input.root, run);
@@ -388,7 +390,9 @@ export async function installExtensionPackage(input: InstallExtensionPackageInpu
 	}
 }
 
-async function installExtensionPackageUnlocked(input: InstallExtensionPackageInput): Promise<void> {
+async function installExtensionPackageUnlocked(
+	input: InstallExtensionPackageOptions,
+): Promise<void> {
 	const { root, pkg } = input;
 	const at = join(root, pkg.id);
 

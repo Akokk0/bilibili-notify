@@ -7,7 +7,7 @@
  *
  * 三条纪律:
  * - **产出与字段表一一对应**:多一个字段 = 皮肤引用不到的死数据,少一个 = 皮肤写了取不到值。
- *   `__tests__/card-data.test.ts` 逐 kind 对表钉死(路径集合与每个值的 typeof 都对)。
+ *   `__tests__/card-fields.test.ts` 逐 kind 对表钉死(路径集合与每个值的 typeof 都对)。
  * - **永不 undefined**:缺数据一律回落成空串 / 0 / false,占位符替换时不会冒出 "undefined"。
  * - **已格式化的文本直接给**(「1.2 万」「已开播 1 小时」),占位符不带过滤器。
  */
@@ -21,13 +21,13 @@ import type { SuperchatCardView } from "../templates/superchat-card";
 import type { WordCloudCardInput } from "../templates/wordcloud-card";
 
 /** 契约里一个字段的值。对应 `CardSkinFieldType`:`text` / `image` → string。 */
-export type CardDataValue = string | number | boolean;
+export type CardFieldValue = string | number | boolean;
 
 /**
  * 一张卡的契约数据。恰好两层 —— 外层是字段路径的第一段(`creator` / `live` / `stats`…),
  * 内层是第二段。字段路径只有两段,所以这里不需要更深的嵌套。
  */
-export type CardData = Record<string, Record<string, CardDataValue>>;
+export type CardFields = Record<string, Record<string, CardFieldValue>>;
 
 // ── 小工具 ────────────────────────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ function num(v: unknown): number {
  * 直播卡的数据全从 {@link LiveCardView} 取 —— 与块库(`blocks/live.tsx`)吃的是同一份,
  * 判据也同一套:开播与直播中是同一种样子(`isStreaming`),下播是另一种(`isEnded`)。
  */
-function liveData(p: LiveCardView): CardData {
+function liveFields(p: LiveCardView): CardFields {
 	const onAir = p.status === "start" || p.status === "streaming";
 	const ended = p.status === "end";
 	const followersDelta = str(p.followersDelta);
@@ -92,7 +92,7 @@ function liveData(p: LiveCardView): CardData {
  * 各的,判据迟早分叉(从前拿「标题非空」当 `hasVideo`,一条没标题的投稿会画出封面,却告诉
  * 皮肤的 `showIf` 说没视频)。
  */
-function dynamicData(p: PostCardView): CardData {
+function postFields(p: PostCardView): CardFields {
 	const node = p.node;
 	const images = node.images ?? [];
 	const video = node.video;
@@ -138,7 +138,7 @@ function dynamicData(p: PostCardView): CardData {
  * 醒目留言卡的数据全从 {@link SuperchatCardView} 取 —— 与块库(`blocks/superchat.tsx`)吃的是同一份。金额与时长都是视图里
  * 排好的文字(`formatAmount` / `formatDuration`,时长缺了是空串);`rank` 是夹进 1–6 的有效档位,与取色用的是同一个值。
  */
-function scData(p: SuperchatCardView): CardData {
+function superchatFields(p: SuperchatCardView): CardFields {
 	return {
 		viewer: { name: str(p.viewerName), avatar: str(p.viewerAvatarUrl) },
 		creator: { name: str(p.creatorName), avatar: str(p.creatorAvatarUrl) },
@@ -158,7 +158,7 @@ function scData(p: SuperchatCardView): CardData {
  * 会员卡的数据全从 {@link MembershipCardView} 取。`rank` 是档位(1 最低),没有 rank 的档是 0(`rank` 本身从 1 起,
  * 0 不会与真档混淆 —— 契约里数字类型的字段「缺了」就是 0);宣告语是视图里已经填好的那一句,没声明就是空串。
  */
-function guardData(p: MembershipCardView): CardData {
+function membershipFields(p: MembershipCardView): CardFields {
 	return {
 		viewer: { name: str(p.viewerName), avatar: str(p.viewerAvatarUrl) },
 		creator: { name: str(p.creatorName), avatar: str(p.creatorAvatarUrl) },
@@ -174,52 +174,52 @@ function guardData(p: MembershipCardView): CardData {
 // ── roast / wordcloud ────────────────────────────────────────────────────────
 
 /** 榜单周报不属于任何单个创作者,契约里没有创作者那两格。 */
-function roastBoardData(p: RoastBoardCardInput): CardData {
+function roastBoardFields(p: RoastBoardCardInput): CardFields {
 	return { report: { days: num(p.days) } };
 }
 
-function roastSoloData(p: RoastSoloCardInput): CardData {
+function roastSoloFields(p: RoastSoloCardInput): CardFields {
 	return {
 		creator: { name: str(p.creator?.name), avatar: str(p.creator?.avatar) },
 		report: { days: num(p.days) },
 	};
 }
 
-function wordCloudData(p: WordCloudCardInput): CardData {
+function wordCloudFields(p: WordCloudCardInput): CardFields {
 	return { creator: { name: str(p.creatorName), avatar: str(p.creatorAvatarUrl) } };
 }
 
 // ── 入口 ──────────────────────────────────────────────────────────────────────
 
-export function buildCardData(kind: "live", props: LiveCardView): CardData;
-export function buildCardData(kind: "post", props: PostCardView): CardData;
-export function buildCardData(kind: "superchat", props: SuperchatCardView): CardData;
-export function buildCardData(kind: "membership", props: MembershipCardView): CardData;
-export function buildCardData(kind: "roastBoard", props: RoastBoardCardInput): CardData;
-export function buildCardData(kind: "roastSolo", props: RoastSoloCardInput): CardData;
-export function buildCardData(kind: "wordcloud", props: WordCloudCardInput): CardData;
+export function cardFieldsOf(kind: "live", props: LiveCardView): CardFields;
+export function cardFieldsOf(kind: "post", props: PostCardView): CardFields;
+export function cardFieldsOf(kind: "superchat", props: SuperchatCardView): CardFields;
+export function cardFieldsOf(kind: "membership", props: MembershipCardView): CardFields;
+export function cardFieldsOf(kind: "roastBoard", props: RoastBoardCardInput): CardFields;
+export function cardFieldsOf(kind: "roastSolo", props: RoastSoloCardInput): CardFields;
+export function cardFieldsOf(kind: "wordcloud", props: WordCloudCardInput): CardFields;
 /**
  * 把一张卡的 props 翻成它那份契约数据。产出的路径集合与 `CARD_SKIN_FIELDS[kind]` 一字不差。
  */
-export function buildCardData(
+export function cardFieldsOf(
 	kind: CardKind | "roastSolo" | "wordcloud",
 	props: unknown,
-): CardData {
+): CardFields {
 	switch (kind) {
 		case "live":
-			return liveData(props as LiveCardView);
+			return liveFields(props as LiveCardView);
 		case "post":
-			return dynamicData(props as PostCardView);
+			return postFields(props as PostCardView);
 		case "superchat":
-			return scData(props as SuperchatCardView);
+			return superchatFields(props as SuperchatCardView);
 		case "membership":
-			return guardData(props as MembershipCardView);
+			return membershipFields(props as MembershipCardView);
 		case "roastBoard":
-			return roastBoardData(props as RoastBoardCardInput);
+			return roastBoardFields(props as RoastBoardCardInput);
 		case "roastSolo":
-			return roastSoloData(props as RoastSoloCardInput);
+			return roastSoloFields(props as RoastSoloCardInput);
 		case "wordcloud":
-			return wordCloudData(props as WordCloudCardInput);
+			return wordCloudFields(props as WordCloudCardInput);
 	}
 }
 
@@ -232,7 +232,7 @@ const FORBIDDEN_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
 /**
  * 按字段路径取值。只认 `a.b` 两段、只认自有属性,取不到回 undefined(调用方决定怎么兜)。
  */
-export function readCardField(data: CardData, path: string): CardDataValue | undefined {
+export function readCardField(data: CardFields, path: string): CardFieldValue | undefined {
 	const parts = path.split(".");
 	if (parts.length !== 2) return undefined;
 	const [group, key] = parts;

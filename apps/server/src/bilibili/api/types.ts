@@ -64,7 +64,7 @@ export interface UserCardSpace {
 }
 
 /** Body of `UserCardResponse.data` — exported for client-side consumers. */
-export interface UserCardInfo {
+export interface UserCardDetails {
 	card: UserCard;
 	space: UserCardSpace;
 	like_num: number;
@@ -72,7 +72,7 @@ export interface UserCardInfo {
 
 export interface UserCardResponse {
 	code: number;
-	data: UserCardInfo;
+	data: UserCardDetails;
 }
 
 export interface LoginQrCodeResponse {
@@ -132,7 +132,7 @@ export interface LiveRoomDanmakuResponse {
 	} | null;
 }
 
-export interface MasterInfoData {
+export interface LiveUpResponse {
 	code: number;
 	data: {
 		info: {

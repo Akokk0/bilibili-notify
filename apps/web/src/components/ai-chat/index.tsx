@@ -38,7 +38,7 @@ import { useAiChatStore } from "../../store/aiChat";
 
 import { imageUrl } from "../../utils/image-url";
 import { Composer, type ComposerAttachment, MAX_ATTACHMENTS } from "./composer";
-import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages";
+import { MessageList, preloadChatMarkdown, type ToolChipView } from "./messages";
 import { resolveChatPersona } from "./persona";
 import { SearchControl } from "./search-control";
 import { ChatSidebar } from "./sidebar";
@@ -132,7 +132,7 @@ export function AiChatDock() {
  * 在途的一条工具痕迹。比落盘那份多一个 `id` —— `end` 事件靠它认回自己的 `start`,
  * 而落盘时结论已定,不再需要这个中间量,所以契约里没有它。
  */
-type PendingTool = ToolChipData & { id: string };
+type PendingTool = ToolChipView & { id: string };
 
 /**
  * 一次发送的全部输入 —— 正文**与附件**。

@@ -14,9 +14,9 @@
 import type {
 	ClearableStorageCategory,
 	GenerationDeleteResponse,
-	GenerationInfo,
 	GenerationSourceKind,
 	GenerationsResponse,
+	GenerationView,
 	ImageSweepResponse,
 	RestartAbility,
 	RestartResponse,
@@ -27,17 +27,17 @@ import type {
 } from "@bilibili-notify/contract";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { GenerationRemoval } from "../../runtime/generation-usage.js";
-import { type CreateSystemRouteInput, createSystemRoute } from "../system.js";
+import { type CreateSystemRouteOptions, createSystemRoute } from "../system.js";
 
 const STARTED = "2026-09-10T00:00:00.000Z";
 
 function boot(
 	ability: RestartAbility,
 	restart = vi.fn(async () => {}),
-	over: Partial<CreateSystemRouteInput> = {},
+	over: Partial<CreateSystemRouteOptions> = {},
 ) {
 	const requestGeneration = vi.fn(async (_source: GenerationSourceKind) => {});
-	const input: CreateSystemRouteInput = {
+	const input: CreateSystemRouteOptions = {
 		ability: () => ability,
 		startedAt: STARTED,
 		version: "0.10.1",
@@ -267,7 +267,7 @@ describe("POST /api/system/generations", () => {
 });
 
 describe("/api/system/generations(㉙c 旧版本数据)", () => {
-	const info: GenerationInfo = {
+	const info: GenerationView = {
 		seq: 0,
 		current: false,
 		partial: false,
@@ -348,7 +348,7 @@ describe("/api/system/generations(㉙c 旧版本数据)", () => {
 });
 
 describe("存储占用(㉙d)", () => {
-	function withStorage(over: Partial<CreateSystemRouteInput["storage"]> = {}) {
+	function withStorage(over: Partial<CreateSystemRouteOptions["storage"]> = {}) {
 		const clear = vi.fn(
 			async (_category: ClearableStorageCategory): Promise<StorageClearResponse> => ({
 				freedBytes: 123,

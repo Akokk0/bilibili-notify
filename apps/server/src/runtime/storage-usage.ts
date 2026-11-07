@@ -13,7 +13,7 @@ import { t as serverText } from "../i18n/index.js";
 
 import type {
 	ClearableStorageCategory,
-	GenerationInfo,
+	GenerationView,
 	ImageSweepResponse,
 	StorageCategory,
 	StorageClearResponse,
@@ -131,7 +131,7 @@ export interface StorageUsageOptions {
 	hostRoot: string;
 	imageStore: Pick<ImageStore, "usage" | "sweep">;
 	/** 旧代列表(`listGenerationUsage` 绑好参数)。 */
-	listGenerations: () => Promise<GenerationInfo[]>;
+	listGenerations: () => Promise<GenerationView[]>;
 }
 
 export interface StorageUsage {

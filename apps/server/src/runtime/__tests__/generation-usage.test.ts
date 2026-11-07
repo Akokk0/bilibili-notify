@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { link, mkdir, mkdtemp, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { GenerationInfo } from "@bilibili-notify/contract";
+import type { GenerationView } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	listGenerationUsage,
@@ -70,7 +70,7 @@ function opts(currentSeq: number, nowMs: number) {
 	return { hostRoot: host, currentSeq, formatVersion: 1, now: () => nowMs };
 }
 
-function summary(list: GenerationInfo[]) {
+function summary(list: GenerationView[]) {
 	return list.map((g) => [g.seq, g.partial ? "partial" : "", g.lockReason, g.deletableAt]);
 }
 

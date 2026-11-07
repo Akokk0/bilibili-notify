@@ -720,7 +720,7 @@ export interface HistoryEntryView {
 	 * 它的原件必然还在);**列表(REST)给的核实过** —— 原件还在不在、路由里还有没有这个目标、目标停没停用、
 	 * 是不是正在补,不能补就是 `can: false` 带原因。
 	 */
-	repush?: HistoryRepushInfo;
+	repush?: HistoryRepushView;
 	/**
 	 * 这一行过了保留期(ADR-0022 决策 9):它的图和重推原件已经清掉,文字还在。**过了才带**(值恒为 true),
 	 * WS 推来的新行不带 —— 刚落的行不可能过期。面板在原来画图的位置写「图已清理」。
@@ -732,7 +732,7 @@ export interface HistoryEntryView {
  * 能不能补,以及补几条。**条数由服务端算**(`originalCount` / `unsentIndices`,按身份号
  * 而不是按消息条数)—— 面板自己再算一遍就是第二份实现,判定规则一改两边就漂。
  */
-export type HistoryRepushInfo =
+export type HistoryRepushView =
 	| {
 			can: true;
 			/** 整行**本来**有几条(重投不算)——「重推全部」发这么多。 */

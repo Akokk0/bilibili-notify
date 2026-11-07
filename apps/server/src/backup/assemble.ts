@@ -23,7 +23,7 @@ import { applyRedactions, collectRedactions, redactBackupSections } from "./sani
  * decrypts and merges those back to rebuild the ready-to-persist config.
  */
 
-export interface FullBackupInput {
+export interface FullBackupOptions {
 	globals?: GlobalSettings;
 	integrations?: Record<string, unknown>;
 	extensionSettings?: Record<string, unknown>;
@@ -66,7 +66,7 @@ function readIntegrationSecrets(raw: unknown): Record<string, Record<string, Jso
 }
 
 export function assembleFullBackup(
-	input: FullBackupInput,
+	input: FullBackupOptions,
 	pin: string,
 	createdAt: string,
 	/** 连接的 settings 与拓展设置里哪些格是密钥(适配器的 schema 标记 + 拓展声明的键)—— 明文段照它一并抹平。 */

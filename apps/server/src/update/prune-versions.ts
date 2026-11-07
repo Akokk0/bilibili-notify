@@ -21,14 +21,14 @@ import { LEFTOVER_DIR_RE, VERSION_DIR_RE } from "./version-dirs.js";
  * 所以扫到的 `.staging-*` 一定不是正在解压的那个。
  */
 
-export interface PruneOldVersionsInput {
+export interface PruneOldVersionsOptions {
 	versionsRoot: string;
 	/** 留下来的版本号。不在这里面、又长得像版本号的目录会被删掉。 */
 	keep: readonly string[];
 }
 
 /** @returns 真的删掉了哪几个 —— 给日志用。 */
-export function pruneOldVersions({ versionsRoot, keep }: PruneOldVersionsInput): string[] {
+export function pruneOldVersions({ versionsRoot, keep }: PruneOldVersionsOptions): string[] {
 	const kept = new Set(keep);
 	const removed: string[] = [];
 	let entries: string[];

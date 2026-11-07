@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { GenerationInfo } from "@bilibili-notify/contract";
+import type { GenerationView } from "@bilibili-notify/contract";
 import { vi } from "vite-plus/test";
 import { type ConversationStore, createConversationStore } from "../../ai/conversation-store.js";
 import { createFollowersStore, type FollowersStore } from "../../followers/store.js";
@@ -55,7 +55,7 @@ export interface StorageWorld {
 	pollerReset: ReturnType<typeof vi.fn>;
 	invalidate: ReturnType<typeof vi.fn>;
 	/** 假的旧代列表(测试直接改它)。 */
-	generations: GenerationInfo[];
+	generations: GenerationView[];
 	storage: StorageUsage;
 	/** 造 `storage` 用的那份依赖:想换掉其中一两样(比如换成真的粉丝轮询)的测试展开它再改。 */
 	options: StorageClearOptions;
@@ -124,7 +124,7 @@ export async function makeStorageWorld(): Promise<StorageWorld> {
 
 	const pollerReset = vi.fn(async () => {});
 	const invalidate = vi.fn();
-	const generations: GenerationInfo[] = [];
+	const generations: GenerationView[] = [];
 	const tracked: Promise<unknown>[] = [];
 
 	const options: StorageClearOptions = {

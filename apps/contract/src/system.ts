@@ -118,7 +118,7 @@ export interface SystemNoticesResponse {
  *   真损坏的代只能手动清盘;
  * - `newer-format` —— 格式版本比这一版认得的新:那是更新版本的数据;
  * - `protected-source` / `protected-previous` —— 当前代的来源代 / 上一代,要等当前代满 30 天,
- *   到期时刻见 {@link GenerationInfo.deletableAt};两者同时算时报 `protected-source`;
+ *   到期时刻见 {@link GenerationView.deletableAt};两者同时算时报 `protected-source`;
  * - `current-age-unknown` —— 当前代自己的创建时间读不到,没法算满没满,一律当作没满、全部锁住。
  */
 export type GenerationLockReason =
@@ -131,7 +131,7 @@ export type GenerationLockReason =
 	| "current-age-unknown";
 
 /** `GET /api/system/generations` 里的一代。第 0 代(0.x 留在宿主根上的数据)序号是 0。 */
-export interface GenerationInfo {
+export interface GenerationView {
 	seq: number;
 	current: boolean;
 	/** 写到一半的(`<序号>.partial/`);同一个序号可以同时有一份完整的和一份写到一半的。 */
@@ -156,16 +156,16 @@ export interface GenerationInfo {
 
 /** `GET /api/system/generations` 的回话:第 0 代(存在才列)与 `generations/` 下的每一代,序号小的在前。 */
 export interface GenerationsResponse {
-	generations: GenerationInfo[];
+	generations: GenerationView[];
 }
 
 /**
  * `DELETE /api/system/generations/:seq` 的回话。删除**不可恢复**。
- * 不能删是 409 `conflict`(只带人话;原因码读列表里的 {@link GenerationInfo.lockReason});序号不是纯数字是 400,
+ * 不能删是 409 `conflict`(只带人话;原因码读列表里的 {@link GenerationView.lockReason});序号不是纯数字是 400,
  * 没有这一代是 404(与别的 `DELETE` 同口径,不做幂等)。
  */
 export interface GenerationDeleteResponse {
-	/** 腾出的字节数:删之前量的 {@link GenerationInfo.reclaimableBytes}(下界)。 */
+	/** 腾出的字节数:删之前量的 {@link GenerationView.reclaimableBytes}(下界)。 */
 	freedBytes: number;
 }
 

@@ -165,7 +165,7 @@ export interface PuppeteerAdapterOptions {
 }
 
 /** 浏览器进程现在处于什么状态 —— 资源卡「浏览器」那一行照它说话。 */
-export interface BrowserProcessInfo {
+export interface BrowserProcessView {
 	state: BrowserProcessState;
 	/** 本地跑着才有;其余三态都是 null。 */
 	pid: number | null;
@@ -178,7 +178,7 @@ export interface PuppeteerAdapter extends PuppeteerLike {
 	 * `closed` 空闲省内存关了(下次渲染自动重启)、`remote` 进程在别人机器上量不到。
 	 * 合成一个「有没有」会把后两者说成「没有」,那正是最容易让人误会的两种。
 	 */
-	browserProcess(): BrowserProcessInfo;
+	browserProcess(): BrowserProcessView;
 	/**
 	 * 把空闲关闭提前到现在(devtools「Chrome 空闲计时器提前到期」)。有活跃页或压根没
 	 * 浏览器在跑就不动、回 false;关了回 true。下次渲染照常重启。
@@ -307,7 +307,7 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Puppeteer
 
 	return {
 		renderQueueDepth: () => renderGate.waiting(),
-		browserProcess(): BrowserProcessInfo {
+		browserProcess(): BrowserProcessView {
 			// 远程那台的进程不在我们机器上,pid 无从谈起 —— 状态先于「有没有 browser」判,
 			// 否则断开重连的间隙会被说成「已关」。
 			if (remote) return { state: "remote", pid: null };

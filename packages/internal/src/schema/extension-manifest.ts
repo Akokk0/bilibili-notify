@@ -8,7 +8,7 @@ import { EXTENSION_SOURCE_FEATURES, FEATURE_KEYS } from "../features";
 import { RESERVED_EXTENSION_IDS } from "../identity";
 import { fail, type Issue, ok, type Result } from "../result";
 import type { SettingsField, SettingsListField } from "../settings-field";
-import { CREATOR_SEARCH_INPUTS } from "../source";
+import { CREATOR_SEARCH_KINDS } from "../source";
 import { packageText } from "../texts";
 import { checkUserRegex } from "../util/regex-safety";
 
@@ -598,7 +598,7 @@ const ContributesSchema = z
 				 * 叫法函数随第 4 期,在那之前面板对拓展一律用通用说法。
 				 */
 				searchAccepts: z
-					.array(z.enum(CREATOR_SEARCH_INPUTS))
+					.array(z.enum(CREATOR_SEARCH_KINDS))
 					.min(1)
 					.refine(
 						(inputs) => new Set(inputs).size === inputs.length,

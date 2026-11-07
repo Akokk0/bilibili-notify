@@ -14,7 +14,7 @@ import type { RestartAbility } from "@bilibili-notify/contract";
 import { t } from "../i18n/index.js";
 import { resolveExpectedParent } from "./parent-watch.js";
 
-export interface RestartAbilityInput {
+export interface RestartAbilityOptions {
 	/** 桌面外壳传的 `BN_PARENT_PID` —— 有个看得懂的值就说明壳在盯着这个 sidecar。 */
 	parentPid?: string;
 	/** tsx 直跑源码(开发版)。判据与 devtools 那道门同一个:入口是不是 `.ts`。 */
@@ -23,7 +23,7 @@ export interface RestartAbilityInput {
 	inContainer: boolean;
 }
 
-export function resolveRestartAbility(input: RestartAbilityInput): RestartAbility {
+export function resolveRestartAbility(input: RestartAbilityOptions): RestartAbility {
 	// 壳优先:它是唯一一个**明确承诺**见 0 就拉起的(apps/desktop 的 sidecar_exit_disposition),
 	// 而且开发版也可能跑在壳里(dev:desktop)—— 判的是有没有人拉,不是哪种构建。
 	if (resolveExpectedParent(input.parentPid) !== null) return { can: true, how: "desktop" };

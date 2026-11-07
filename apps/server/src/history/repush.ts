@@ -60,7 +60,7 @@ export function unsentIndices(messages: readonly HistoryMessage[]): number[] {
  * 一把钥匙都没给它(决策 11:这是主人此刻按下的显式动作,不是引擎自动推送),目标
  * 当下可不可达也没给(决策 12:那正是重推要解决的,交给发送层的退避重试)。
  */
-export interface RepushGateInput {
+export interface RepushGateOptions {
 	/** 要补的那一行。 */
 	entry: HistoryEntry;
 	/**
@@ -86,7 +86,7 @@ const noTarget = () => serverText("service.history.repush.text.2");
  * 四档各有各的说法:一句含糊的「不能重推」会让主人对着黑盒猜,而这四件事的下一步
  * 完全不同(什么都不用做 / 去路由里加回来 / 去把目标启用 / 等一下)。
  */
-export function repushDenial(input: RepushGateInput): Failure | null {
+export function repushDenial(input: RepushGateOptions): Failure | null {
 	const { entry, routedTargets, targetEnabled, running } = input;
 	// 被过滤的行目标那一格也空着,可它不是没配目标 —— 先按状态认出它,各说各的。
 	if (entry.status === "filtered") return fail("conflict", filtered());

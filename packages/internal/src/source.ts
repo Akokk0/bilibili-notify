@@ -43,7 +43,7 @@ export interface SourceDescriptor {
 	 */
 	externalIdRegex?: string;
 	/** 搜人输入框收哪几种输入;提示句由核心按这份声明拼,不让来源写句子。不给就是「搜索{creatorNoun}」。 */
-	searchAccepts?: readonly CreatorSearchInput[];
+	searchAccepts?: readonly CreatorSearchKind[];
 	/** 支持哪些特性:面板的特性开关只列这几种;订阅上「开没开」才叫 `features`。 */
 	supportedFeatures: readonly FeatureKey[];
 	/** 特性开关的小字；只覆盖显示，不声明能力。不给时由核心推导中性默认。 */
@@ -190,8 +190,8 @@ export interface CreatorProfileReport {
 }
 
 /** 订阅源搜人输入框接受的输入种类;提示句按这份声明拼(contract 的 `creatorSearchHint`),不让来源自己写一句。 */
-export const CREATOR_SEARCH_INPUTS = ["id", "link", "name"] as const;
-export type CreatorSearchInput = (typeof CREATOR_SEARCH_INPUTS)[number];
+export const CREATOR_SEARCH_KINDS = ["id", "link", "name"] as const;
+export type CreatorSearchKind = (typeof CREATOR_SEARCH_KINDS)[number];
 
 /**
  * `searchCreators` 交的一个候选(最多 10 个)。`externalId` 就是选中后新建订阅用的外部 id;

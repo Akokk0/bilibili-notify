@@ -26,7 +26,7 @@ import { buildSkinAiSystemPrompt, runSkinAiRound, type SkinAiEditResult } from "
 const FALLBACK_OVERLAY = 0.35;
 const FALLBACK_BLUR = 12;
 
-export interface SkinAiCreateInput {
+export interface SkinAiCreateOptions {
 	generateRaw: SkinAiGenerator["generateRaw"];
 	/** 主人想要的皮肤(自然语言),由聊天里的女仆转述、补全细节后递进来。 */
 	brief: string;
@@ -51,7 +51,7 @@ export interface SkinAiCreateInput {
 /** 与 edit 同形:成功给清洗后的 manifest + 清洗警告,失败给能转述给主人的错误串。 */
 export type SkinAiCreateResult = SkinAiEditResult;
 
-export async function runSkinAiCreate(input: SkinAiCreateInput): Promise<SkinAiCreateResult> {
+export async function runSkinAiCreate(input: SkinAiCreateOptions): Promise<SkinAiCreateResult> {
 	const assets = [...(input.assets ?? [])];
 	const result = await runSkinAiRound({
 		generateRaw: input.generateRaw,

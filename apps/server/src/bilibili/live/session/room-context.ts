@@ -16,7 +16,7 @@ import {
 	reasonOfFailure,
 } from "./room-helpers.js";
 
-type DanmakuInfo = LiveRoomDanmakuResponse["data"];
+type LiveRoomDanmaku = LiveRoomDanmakuResponse["data"];
 
 export type LiveProblems = Pick<
 	ProblemLayers,
@@ -32,7 +32,7 @@ export const liveRiskPath = (externalId: string): string => `live:${externalId}`
 export interface RoomContextOptions {
 	api: {
 		fetchLiveRoomInfo(roomId: string): Promise<LiveRoomResponse>;
-		fetchLiveRoomInfoStreamKey(roomId: string): Promise<Result<{ data: DanmakuInfo }>>;
+		fetchLiveRoomInfoStreamKey(roomId: string): Promise<Result<{ data: LiveRoomDanmaku }>>;
 		fetchUserInfo(externalId: string): Promise<Result<{ data: UserInfoResponse["data"] }>>;
 		getMasterInfo(externalId: string): Promise<unknown>;
 		getMyselfInfoCached(): Promise<MyselfResponse>;
@@ -101,7 +101,7 @@ export class RoomContext {
 			return true;
 		}
 
-		let preflight: Result<{ data: DanmakuInfo }>;
+		let preflight: Result<{ data: LiveRoomDanmaku }>;
 		try {
 			preflight = await this.api.fetchLiveRoomInfoStreamKey(roomId);
 		} catch (error) {
