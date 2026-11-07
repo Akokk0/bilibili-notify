@@ -369,5 +369,21 @@
 	"log.ws.pongTimeout": "WebSocketのハートビート応答がタイムアウトしたため、接続を終了します",
 	"log.ws.connected": "WebSocketのクライアントが接続されました",
 	"log.ws.disconnected": "WebSocketのクライアントが切断されました",
-	"log.ws.socketError": "WebSocketの接続でエラーが発生しました"
+	"log.ws.socketError": "WebSocketの接続でエラーが発生しました",
+	"log.resources.heapWarning": "ヒープ使用量が上限に近づいています。増加が続くとプロセスが終了する可能性があります。NODE_OPTIONS=--max-old-space-size=<MB> で上限を調整できます",
+	"log.resources.memorySample": "プロセスのメモリー使用量",
+	"log.browser.closeFailed": "ブラウザーを解放できませんでした",
+	"log.browser.idleReleased": "ブラウザーがアイドル状態のため解放します。次の描画時に再接続または再起動します",
+	"log.browser.connecting": "リモートブラウザーに接続します",
+	"log.browser.launching": "ローカルブラウザーを起動します",
+	"log.browser.requestBlocked": "描画ページからの外部リクエストを遮断しました",
+	"log.browser.probeFailed": "ブラウザーの接続確認に失敗しました",
+	"log.browser.sourceWriteFailed": "ブラウザーの接続先を保存できませんでした。切り替えは適用済みで、以前のブラウザーは保持されています",
+	"log.browser.rendererEnabled": "カード描画の接続先を有効にしました",
+	"log.skin.fallback": "カードの描画で既定のスキンに切り替えました",
+	"log.skin.indexWarning": "スキンライブラリーの初期化で無効な項目をスキップしました",
+	"log.health.sourceThrew": "ソースの稼働状態の読み取りで例外が発生しました",
+	"log.skill.toolMissing": "スキルが宣言したツールは現在利用できません",
+	"log.update.notesReadFailed": "更新内容を読み込めないため、タイトルのみ表示します",
+	"log.update.notesInvalid": "更新内容の形式が不正なため、タイトルのみ表示します"
 }

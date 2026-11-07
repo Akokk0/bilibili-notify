@@ -267,18 +267,21 @@ describe("ResourceMonitor 内存自检日志", () => {
 			serviceCtx: ctx,
 			readers,
 			memoryLogEnabled: () => true,
-			probes: [() => "弹幕 3 房/12000 词/8000 人"],
+			probes: [() => ({ viewerSubscriptions: 3, viewerWords: 12000, viewerSenders: 8000 })],
 		});
 
 		fire(2000);
 		// 第一个 tick 就落一行 —— 启动后的第一份曲线点不该等 10 分钟。
 		expect(logger.info).toHaveBeenCalledTimes(1);
-		const line = String(logger.info.mock.calls[0]?.[0] ?? "");
-		expect(line).toContain("210");
-		expect(line).toContain("512");
-		expect(line).toContain("41%");
-		expect(line).toMatch(/250\s*MB/);
-		expect(line).toContain("弹幕 3 房/12000 词/8000 人");
+		expect(logger.info).toHaveBeenCalledWith(
+			"进程内存采样",
+			expect.objectContaining({
+				heapUsedMB: 210,
+				heapLimitMB: 512,
+				heapRatioPercent: 41,
+				heapCommittedMB: 250,
+			}),
+		);
 
 		// 之后 2 秒一 tick 不能 2 秒一行 —— 一天 43200 行会把按天分卷的归档刷爆。
 		for (let i = 0; i < 299; i++) {
@@ -321,13 +324,14 @@ describe("ResourceMonitor 内存自检日志", () => {
 				() => {
 					throw new Error("引擎还没起来");
 				},
-				() => "弹幕 3 房/12000 词/8000 人",
+				() => ({ viewerSubscriptions: 3, viewerWords: 12000, viewerSenders: 8000 }),
 			],
 		});
 		fire(2000);
-		const line = String(logger.info.mock.calls[0]?.[0] ?? "");
-		expect(line).toContain("210");
-		expect(line).toContain("弹幕 3 房/12000 词/8000 人");
+		expect(logger.info.mock.calls[0]?.[1]).toMatchObject({ heapUsedMB: 210 });
+		expect(logger.info.mock.calls[0]?.[1]).toMatchObject({
+			probes: [{ viewerSubscriptions: 3, viewerWords: 12000, viewerSenders: 8000 }],
+		});
 	});
 
 	it("85% warn 是独立安全网:开关关着也响,越线一次只响一次,回落到 80% 以下才重新武装", () => {
@@ -345,7 +349,7 @@ describe("ResourceMonitor 内存自检日志", () => {
 		fire(2000);
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 		const line = String(logger.warn.mock.calls[0]?.[0] ?? "");
-		expect(line).toContain("88%");
+		expect(logger.warn.mock.calls[0]?.[1]).toMatchObject({ heapRatioPercent: 88 });
 		expect(line).toMatch(/上限|FATAL|退出/);
 		expect(line).toContain("max-old-space-size");
 

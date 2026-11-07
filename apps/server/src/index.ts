@@ -908,8 +908,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 默认皮肤并记一笔 fallback(2026-09-19 审查)。
 		cardSkinStore = createCardSkinStore(runtime.dataRoot);
 		await cardSkinStore.ensureReady();
-		for (const w of cardSkinStore.warnings()) log.warn(`[card-skin] ${w}`);
-		const cardSkinFallbacks = createCardSkinFallbackLog({ logger: { warn: (m) => log.warn(m) } });
+		for (const w of cardSkinStore.warnings())
+			log.warn(logText("log.skin.indexWarning"), { diagnostic: w });
+		const cardSkinFallbacks = createCardSkinFallbackLog({ logger: log });
 		const skins = cardSkinStore;
 
 		// 拓展详情页的「上报出入」(ADR-0019 决策 60):ctx 那个出口与拓展直播的计时器(周期推送跳过的那一轮,
@@ -1002,7 +1003,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			probes: [
 				() => {
 					const s = pipeline?.viewerChatStats();
-					return s ? `弹幕 ${s.subscriptions} 房/${s.words} 词/${s.senders} 人` : "";
+					return s
+						? {
+								viewerSubscriptions: s.subscriptions,
+								viewerWords: s.words,
+								viewerSenders: s.senders,
+							}
+						: undefined;
 				},
 			],
 		});

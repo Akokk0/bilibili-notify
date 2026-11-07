@@ -7,6 +7,7 @@ import type {
 	ResourcesHydrate,
 } from "@bilibili-notify/contract";
 import type { Disposable, ServiceContext } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import { makeCgroupMemUsedReader, readCgroup } from "./cgroup.js";
 
 /**
@@ -136,7 +137,7 @@ export interface ResourceMonitorDeps {
 	 * 「堆涨了」本身不指向任何人;要定位得知道**同一时刻哪个结构在涨**。所以这些计数
 	 * 必须和进程级数字同行输出,分开写就得靠时间戳配对,读日志的人不会干。
 	 */
-	probes?: ReadonlyArray<() => string>;
+	probes?: ReadonlyArray<() => Readonly<Record<string, number>> | undefined>;
 }
 
 export interface ResourceMonitor {
@@ -258,31 +259,25 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 	let lastLogAt: number | null = null;
 	let warnArmed = true;
 
-	function memoryLine(mem: ReturnType<ResourceReaders["memoryUsage"]>): string {
-		const limit = staticInfo.heapLimit;
-		const ratio = mem.heapUsed / limit;
-		// heapUsed 只说「现在装了多少」。跟已提交量(heapTotal)一起看,才知道 V8 为此
-		// 实际占了多少、又有多少是回收不掉的碎片 —— used 平、committed 一路涨,
-		// 就是碎片化而不是业务在存东西。
-		return (
-			`[mem] heap ${mb(mem.heapUsed)}/${mb(limit)}MB (${Math.round(ratio * 100)}%, 已提交 ${mb(mem.heapTotal)}MB) ` +
-			`rss ${mb(mem.rss)}MB external ${mb(mem.external)}MB${probeTail()}`
-		);
-	}
-
-	function probeTail(): string {
-		// 采样点是「顺便问一句」,不是主线 —— 谁抛了就跳过谁,绝不能让一个业务计数把
-		// 整条内存曲线带断。
-		const extra: string[] = [];
+	function memoryDetails(mem: ReturnType<ResourceReaders["memoryUsage"]>) {
+		const probes: Readonly<Record<string, number>>[] = [];
 		for (const probe of deps.probes ?? []) {
 			try {
-				const s = probe();
-				if (s) extra.push(s);
+				const values = probe();
+				if (values) probes.push(values);
 			} catch {
-				// 推送链路可能还没就绪 / 已经收摊,不是内存自检该管的事。
+				// 业务采样失败不打断进程内存采样。
 			}
 		}
-		return extra.length > 0 ? ` | ${extra.join(" | ")}` : "";
+		return {
+			heapUsedMB: mb(mem.heapUsed),
+			heapLimitMB: mb(staticInfo.heapLimit),
+			heapRatioPercent: Math.round((mem.heapUsed / staticInfo.heapLimit) * 100),
+			heapCommittedMB: mb(mem.heapTotal),
+			rssMB: mb(mem.rss),
+			externalMB: mb(mem.external),
+			probes,
+		};
 	}
 
 	function watchHeap(at: number, mem: ReturnType<ResourceReaders["memoryUsage"]>): void {
@@ -291,10 +286,7 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 			if (warnArmed) {
 				warnArmed = false;
 				// 后果必须写出来。只报一个百分比,读日志的人不知道该不该管它。
-				deps.serviceCtx.logger.warn(
-					`${memoryLine(mem)} —— 已逼近堆上限,再涨会 FATAL(Reached heap limit)整个进程退出。` +
-						`可在 compose 的 environment 里设 NODE_OPTIONS=--max-old-space-size=<更大的值> 先撑住。`,
-				);
+				deps.serviceCtx.logger.warn(logText("log.resources.heapWarning"), memoryDetails(mem));
 			}
 		} else if (ratio < HEAP_REARM_RATIO) {
 			warnArmed = true;
@@ -303,7 +295,7 @@ export function startResourceMonitor(deps: ResourceMonitorDeps): ResourceMonitor
 		if (!deps.memoryLogEnabled?.()) return;
 		if (lastLogAt !== null && at - lastLogAt < MEMORY_LOG_INTERVAL_MS) return;
 		lastLogAt = at;
-		deps.serviceCtx.logger.info(memoryLine(mem));
+		deps.serviceCtx.logger.info(logText("log.resources.memorySample"), memoryDetails(mem));
 	}
 
 	deps.serviceCtx.setInterval(tick, SAMPLE_INTERVAL_MS);

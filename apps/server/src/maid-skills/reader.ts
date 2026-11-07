@@ -6,6 +6,7 @@ import {
 } from "@bilibili-notify/ai";
 import type { Logger, MaidSkill } from "@bilibili-notify/internal";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
+import { logText } from "../i18n/index.js";
 import type { MaidSkillEntry, MaidSkillStore, SkillProblem } from "./store.js";
 
 /** 技能声明得着的工具名，与编辑器勾选框共用这一份。 */
@@ -62,7 +63,7 @@ export function createMaidSkillReader(opts: {
 			}
 			if (warnedMissing.has(key)) continue;
 			warnedMissing.add(key);
-			logger.warn(`[maid-skills] 技能「${skill.name}」声明的工具「${toolName}」当前不存在`);
+			logger.warn(logText("log.skill.toolMissing"), { skillName: skill.name, toolName });
 		}
 	}
 

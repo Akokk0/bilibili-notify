@@ -18,10 +18,9 @@ import {
 } from "@bilibili-notify/internal";
 import { findIdentityDuplicates } from "@bilibili-notify/subscription";
 import { type ExtensionEntry, entryIdentity } from "../extensions/loader.js";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import type { SourceRegistry, SourceView } from "../subscriptions/registry.js";
-import { errorMessageOf } from "../util/error-message.js";
 import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
 /** 核心格只报告已知的接入事实,问题不按文字猜分给某一格。 */
@@ -78,7 +77,7 @@ export function integrationHealthViews(options: {
 		try {
 			return { health: ok({ summary: view.health().summary }) };
 		} catch (err) {
-			options.logger.error(`source health threw: ${errorMessageOf(err)}`);
+			options.logger.error(logText("log.health.sourceThrew"), { error: err });
 			return { health: fail("unavailable", t("health.sourceReadFailed")) };
 		}
 	};

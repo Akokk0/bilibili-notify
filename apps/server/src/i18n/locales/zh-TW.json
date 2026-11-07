@@ -369,5 +369,21 @@
 	"log.ws.pongTimeout": "WebSocket 心跳回應逾時，終止連線",
 	"log.ws.connected": "WebSocket 用戶端已連線",
 	"log.ws.disconnected": "WebSocket 用戶端已斷線",
-	"log.ws.socketError": "WebSocket 連線例外"
+	"log.ws.socketError": "WebSocket 連線例外",
+	"log.resources.heapWarning": "堆積使用量已接近上限，繼續增加可能導致程序結束；可透過 NODE_OPTIONS=--max-old-space-size=<MB> 調整上限",
+	"log.resources.memorySample": "程序記憶體取樣",
+	"log.browser.closeFailed": "瀏覽器釋放失敗",
+	"log.browser.idleReleased": "瀏覽器閒置，釋放執行個體；下次繪製時重新連線或啟動",
+	"log.browser.connecting": "連線至遠端瀏覽器",
+	"log.browser.launching": "啟動本機瀏覽器",
+	"log.browser.requestBlocked": "已攔截繪製頁面的外部請求",
+	"log.browser.probeFailed": "瀏覽器連線探測失敗",
+	"log.browser.sourceWriteFailed": "瀏覽器來源儲存失敗；切換已生效，原瀏覽器仍保留",
+	"log.browser.rendererEnabled": "卡片繪製來源已啟用",
+	"log.skin.fallback": "卡片繪製已改用預設皮膚",
+	"log.skin.indexWarning": "皮膚庫初始化時略過無效項目",
+	"log.health.sourceThrew": "來源健康狀態讀取拋出例外",
+	"log.skill.toolMissing": "技能宣告的工具目前無法使用",
+	"log.update.notesReadFailed": "更新說明讀取失敗，本次更新僅顯示標題",
+	"log.update.notesInvalid": "更新說明格式無效，本次更新僅顯示標題"
 }

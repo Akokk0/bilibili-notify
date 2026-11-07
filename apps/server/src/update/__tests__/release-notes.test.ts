@@ -93,7 +93,10 @@ describe("readReleaseNotes", () => {
 	it("不在 → 空表,日志里说缺了文件", async () => {
 		expect(await read()).toEqual([]);
 		expect(logger.warn).toHaveBeenCalledOnce();
-		expect(String(logger.warn.mock.calls[0]?.[0])).toContain("release-notes.json");
+		expect(logger.warn).toHaveBeenCalledWith("更新说明读取失败，本次更新仅显示标题", {
+			path: expect.stringContaining("release-notes.json"),
+			error: expect.any(Error),
+		});
 	});
 
 	it("开发版缺文件 → 空表,不出声", async () => {

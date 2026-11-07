@@ -1552,5 +1552,21 @@
 	"log.ws.pongTimeout": "WebSocket 心跳响应超时，终止连接",
 	"log.ws.connected": "WebSocket 客户端已连接",
 	"log.ws.disconnected": "WebSocket 客户端已断开",
-	"log.ws.socketError": "WebSocket 连接异常"
+	"log.ws.socketError": "WebSocket 连接异常",
+	"log.resources.heapWarning": "堆用量已接近上限，继续增长可能导致进程退出；可通过 NODE_OPTIONS=--max-old-space-size=<MB> 调整上限",
+	"log.resources.memorySample": "进程内存采样",
+	"log.browser.closeFailed": "浏览器释放失败",
+	"log.browser.idleReleased": "浏览器空闲，释放实例；下次渲染时重新连接或启动",
+	"log.browser.connecting": "连接远程浏览器",
+	"log.browser.launching": "启动本地浏览器",
+	"log.browser.requestBlocked": "已拦截渲染页的外部请求",
+	"log.browser.probeFailed": "浏览器连接探测失败",
+	"log.browser.sourceWriteFailed": "浏览器来源保存失败；切换已生效，原浏览器仍保留",
+	"log.browser.rendererEnabled": "卡片渲染来源已启用",
+	"log.skin.fallback": "卡片皮肤渲染已回落默认皮肤",
+	"log.skin.indexWarning": "皮肤库初始化时跳过无效条目",
+	"log.health.sourceThrew": "来源健康状态读取抛出异常",
+	"log.skill.toolMissing": "技能声明的工具当前不可用",
+	"log.update.notesReadFailed": "更新说明读取失败，本次更新仅显示标题",
+	"log.update.notesInvalid": "更新说明格式无效，本次更新仅显示标题"
 }

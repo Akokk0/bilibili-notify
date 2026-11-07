@@ -249,9 +249,11 @@ describe("createPuppeteerAdapter remote endpoint", () => {
 
 	it("connects to a ws:// endpoint (browserWSEndpoint) instead of launching", async () => {
 		const launcher = makeFakeLauncher();
+		const logger = makeLogger();
+		const endpoint = "ws://user:password@browserless:3000/devtools?token=private#secret";
 		const adapter = createPuppeteerAdapter({
-			chromeEndpoint: "ws://browserless:3000",
-			logger: makeLogger(),
+			chromeEndpoint: endpoint,
+			logger,
 			launcher,
 			idleTimeoutMs: 0,
 		});
@@ -259,7 +261,10 @@ describe("createPuppeteerAdapter remote endpoint", () => {
 		expect(launcher.launch).not.toHaveBeenCalled();
 		expect(launcher.connect).toHaveBeenCalledTimes(1);
 		expect(launcher.connect.mock.calls[0]?.[0]).toMatchObject({
-			browserWSEndpoint: "ws://browserless:3000",
+			browserWSEndpoint: endpoint,
+		});
+		expect(logger.info).toHaveBeenCalledWith("连接远程浏览器", {
+			endpoint: "ws://browserless:3000/devtools",
 		});
 	});
 
@@ -490,8 +495,9 @@ describe("createPuppeteerAdapter 渲染页请求闸", () => {
 		expect(request.abort).toHaveBeenCalledTimes(1);
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 		// 查询串里可能有签名、令牌,不进日志。
-		const line = String(vi.mocked(logger.warn).mock.calls[0]?.[0]);
-		expect(line).toContain("https://example.invalid/a.png");
-		expect(line).not.toContain("token");
+		expect(logger.warn).toHaveBeenCalledWith("已拦截渲染页的外部请求", {
+			url: "https://example.invalid/a.png",
+		});
+		expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain("token");
 	});
 });

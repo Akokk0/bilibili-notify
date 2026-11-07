@@ -2497,17 +2497,6 @@ export const NON_DISPLAY_TEXTS = {
 		},
 	],
 
-	"apps/server/src/index.ts": [
-		{
-			owner: "startServer",
-			text: pinnedSource("`弹幕 @{s.subscriptions} 房/@{s.words} 词/@{s.senders} 人`"),
-			reason: "开机/内存/安全拒绝启动的固定诊断，仅日志或启动异常；按主人批准保持原文",
-			site: pinnedSource(
-				'return s ? `弹幕 @{s.subscriptions} 房/@{s.words} 词/@{s.senders} 人` : "";',
-			),
-			slot: pinnedSource(""),
-		},
-	],
 	"apps/server/src/integrations/context.ts": [
 		{
 			owner: "createIntegrationContext/acceptProblem",
@@ -3193,19 +3182,6 @@ export const NON_DISPLAY_TEXTS = {
 				'DURATION_UNITS: readonly (readonly [string, number])[] = [\n\t["小时", 3600_000],\n\t["小時", 3600_000],\n\t["時間", 3600_000],\n\t["分钟", 60_000],\n\t["分鐘", 60_000],\n\t["ms", 1],\n\t["秒", 1000],\n\t["分", 60_000],\n\t["时", 3600_000],\n\t["時", 3600_000],\n\t["天", 86400_000],\n\t["日", 86400_000],\n\t["s", 1000],\n\t["m", 60_000],\n\t["h", 3600_000],\n\t["d", 86400_000],\n]',
 			),
 			slot: pinnedSource("[11]/[0]"),
-		},
-	],
-	"apps/server/src/runtime/resource-monitor.ts": [
-		{
-			owner: "startResourceMonitor/memoryLine",
-			text: pinnedSource(
-				"`[mem] heap @{mb(mem.heapUsed)}/@{mb(limit)}MB (@{Math.round(ratio * 100)}%, 已提交 @{mb(mem.heapTotal)}MB) `",
-			),
-			reason: "仅交日志的状态、回收/排队标签或监控片段；不交给业务失败回应",
-			site: pinnedSource(
-				"return (\n\t\t\t`[mem] heap @{mb(mem.heapUsed)}/@{mb(limit)}MB (@{Math.round(ratio * 100)}%, 已提交 @{mb(mem.heapTotal)}MB) ` +\n\t\t\t`rss @{mb(mem.rss)}MB external @{mb(mem.external)}MB@{probeTail()}`\n\t\t);",
-			),
-			slot: pinnedSource(""),
 		},
 	],
 	"apps/server/src/skins/ai-create.ts": [

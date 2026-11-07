@@ -369,5 +369,21 @@
 	"log.ws.pongTimeout": "WebSocket heartbeat response timed out; terminating connection",
 	"log.ws.connected": "WebSocket client connected",
 	"log.ws.disconnected": "WebSocket client disconnected",
-	"log.ws.socketError": "WebSocket connection error"
+	"log.ws.socketError": "WebSocket connection error",
+	"log.resources.heapWarning": "Heap usage is near its limit; further growth may terminate the process. Adjust the limit with NODE_OPTIONS=--max-old-space-size=<MB>",
+	"log.resources.memorySample": "Process memory sample",
+	"log.browser.closeFailed": "Failed to release browser",
+	"log.browser.idleReleased": "Browser idle; releasing instance and reconnecting or restarting on next render",
+	"log.browser.connecting": "Connecting to remote browser",
+	"log.browser.launching": "Launching local browser",
+	"log.browser.requestBlocked": "Blocked external request from render page",
+	"log.browser.probeFailed": "Browser connection probe failed",
+	"log.browser.sourceWriteFailed": "Failed to persist browser source; switch is active and previous browser is retained",
+	"log.browser.rendererEnabled": "Card rendering source enabled",
+	"log.skin.fallback": "Card rendering fell back to default skin",
+	"log.skin.indexWarning": "Skipped invalid entry during skin library initialization",
+	"log.health.sourceThrew": "Source health status read threw an exception",
+	"log.skill.toolMissing": "Tool declared by skill is currently unavailable",
+	"log.update.notesReadFailed": "Failed to read release notes; showing only update title",
+	"log.update.notesInvalid": "Invalid release notes format; showing only update title"
 }

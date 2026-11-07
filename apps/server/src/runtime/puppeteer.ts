@@ -1,3 +1,5 @@
+import { logText } from "../i18n/index.js";
+import { logUrl } from "../logs/url.js";
 /**
  * The server's `PuppeteerLike` adapter — wraps `puppeteer-core` (the lean
  * variant that does NOT bundle a chromium binary) so the operator brings their
@@ -232,9 +234,7 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Puppeteer
 			if (remote) await b.disconnect();
 			else await b.close();
 		} catch (e) {
-			opts.logger.warn(
-				`[puppeteer] ${reason} ${remote ? "disconnect" : "close"} failed: ${String(e)}`,
-			);
+			opts.logger.warn(logText("log.browser.closeFailed"), { reason, remote, error: e });
 		}
 	}
 
@@ -245,11 +245,7 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Puppeteer
 		const b = browser;
 		browser = null;
 		if (!b) return;
-		opts.logger.info(
-			`[puppeteer] 空闲 ${Math.round(idleTimeoutMs / 1000)}s,${
-				remote ? "断开远程浏览器连接" : "关闭 chromium 释放内存"
-			}(下次渲染自动${remote ? "重连" : "重启"})`,
-		);
+		opts.logger.info(logText("log.browser.idleReleased"), { idleTimeoutMs, remote });
 		await shutdownBrowser(b, "idle");
 	}
 
@@ -273,14 +269,14 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Puppeteer
 			let b: BrowserHandle;
 			if (opts.chromeEndpoint) {
 				const endpoint = opts.chromeEndpoint;
-				opts.logger.info(`[puppeteer] 连接远程浏览器 · ${endpoint}`);
+				opts.logger.info(logText("log.browser.connecting"), { endpoint: logUrl(endpoint) });
 				b = await launcher.connect(
 					endpoint.startsWith("http")
 						? { browserURL: endpoint, defaultViewport }
 						: { browserWSEndpoint: endpoint, defaultViewport },
 				);
 			} else if (opts.chromePath) {
-				opts.logger.info(`[puppeteer] 启动 chromium · executablePath=${opts.chromePath}`);
+				opts.logger.info(logText("log.browser.launching"), { executablePath: opts.chromePath });
 				b = await launcher.launch({
 					executablePath: opts.chromePath,
 					headless: true,
@@ -373,10 +369,6 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Puppeteer
 }
 
 /** 日志里的地址不带参数:查询串里可能有签名、令牌,而排障只要知道是哪台主机的哪个路径。 */
-function withoutQuery(url: string): string {
-	return url.split(/[?#]/, 1)[0] ?? url;
-}
-
 /**
  * 渲染页的请求闸:只放行内嵌内容(`data:`),别的请求一律掐断。每一页都开,本机与远程
  * Chrome 同一套 —— 卡里的图在出卡前都已转成 data URL,渲染页不该有任何别的请求。
@@ -397,7 +389,7 @@ async function guardPageRequests(
 		// 内嵌内容不处理:开了拦截它也会来,但 puppeteer 拦不了它,abort / continue 都是空操作。
 		if (isEmbeddedUrl(url)) return;
 		if (onBlockedRequest) onBlockedRequest(url);
-		else logger.warn(`[puppeteer] 渲染页的请求被掐断(只放行 data:)· ${withoutQuery(url)}`);
+		else logger.warn(logText("log.browser.requestBlocked"), { url: logUrl(url) });
 		// 关页瞬间还在途的请求,掐它会拒绝(目标已经没了)—— 本来就是要它别发出去,吞掉。
 		request.abort().catch(() => {});
 	});

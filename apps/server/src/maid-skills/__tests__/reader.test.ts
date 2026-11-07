@@ -163,8 +163,10 @@ describe("MaidSkillReader", () => {
 		expect(current.get("mine")).toBeDefined();
 		expect(current.list().some((candidate) => candidate.name === "mine")).toBe(true);
 		expect(warn).toHaveBeenCalledTimes(1);
-		expect(warn.mock.calls[0]?.[0]).toContain("mine");
-		expect(warn.mock.calls[0]?.[0]).toContain("acme_inprocess__late");
+		expect(warn).toHaveBeenCalledWith("技能声明的工具当前不可用", {
+			skillName: "mine",
+			toolName: "acme_inprocess__late",
+		});
 
 		const claim = providers.register("acme.inprocess", {
 			readOnly: [tool("late")],

@@ -1,5 +1,6 @@
 import { packageText } from "@bilibili-notify/internal/texts";
 import { logText } from "../i18n/index.js";
+import { logUrl } from "../logs/url.js";
 /**
  * `POST /api/cards/preview` —— 卡片页右侧的预览:用 puppeteer-core 画一张卡,回 data URL。
  *
@@ -397,7 +398,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			} catch (err) {
 				await pup.dispose();
 				const detail = err instanceof Error ? err.message : String(err);
-				log.warn(`[cards] 浏览器探测失败 · ${JSON.stringify(source)}: ${detail}`);
+				log.warn(logText("log.browser.probeFailed"), { source: sourceForLog(source), error: err });
 				return respondFailure(
 					c,
 					fail("unavailable", t("cards.renderer.connectFailed", { detail })),
@@ -426,7 +427,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			await opts.persistChromeSource?.(source);
 		} catch (err) {
 			const detail = err instanceof Error ? err.message : String(err);
-			log.error(`[cards] 浏览器来源持久化失败(切换已生效,旧浏览器未销毁) · ${detail}`);
+			log.error(logText("log.browser.sourceWriteFailed"), { error: err });
 			return respondFailure(c, fail("unavailable", t("cards.renderer.persistFailed", { detail })));
 		}
 		if (old) {
@@ -434,13 +435,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 失败一次 —— 切换是人工低频操作,可接受。
 			await old.dispose();
 		}
-		log.info(
-			`[cards] 卡片渲染已${replacing ? "热切换" : "热启用"} · ${
-				source.chromeEndpoint
-					? `chromeEndpoint=${source.chromeEndpoint}`
-					: `chromePath=${source.chromePath}`
-			}`,
-		);
+		log.info(logText("log.browser.rendererEnabled"), { replacing, source: sourceForLog(source) });
 		return c.json(ok(source));
 	});
 
@@ -1095,4 +1090,10 @@ async function screenshotHtml(pup: PuppeteerAdapter, html: string): Promise<Buff
 	} finally {
 		await page.close();
 	}
+}
+
+function sourceForLog(source: ChromeSource) {
+	return source.chromeEndpoint
+		? { chromeEndpoint: logUrl(source.chromeEndpoint) }
+		: { chromePath: source.chromePath };
 }

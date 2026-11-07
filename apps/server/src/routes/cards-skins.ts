@@ -1,4 +1,5 @@
-import { t as serverText } from "../i18n/index.js";
+import type { Logger } from "@bilibili-notify/internal";
+import { logText, t as serverText } from "../i18n/index.js";
 /**
  * 卡片皮肤库 API(ADR-0014 决策 2 / 5 / 17)。上传是 multipart zip(闸在 parseBody 之前,
  * 见 upload-limit.ts);校验 / 清洗 / 路径穿越防御在 `card-skins/package.ts` 与
@@ -91,7 +92,7 @@ export function createCardsSkinsRoute(deps: {
 	store: CardSkinStore;
 	config: ConfigStore;
 	/** 开机读盘跳过了哪些目录 —— 只打一次,别让皮肤悄悄消失。 */
-	logger?: { warn: (msg: string) => void };
+	logger?: Pick<Logger, "warn">;
 	/**
 	 * 出图回落的账本(`card-skins/fallbacks.ts`)。列表里带上它,面板才看得见
 	 * 「皮肤 XX 渲染失败已回落」——ADR-0014 决策 19 的「回落必须可见」。没接 = 空。
@@ -115,7 +116,8 @@ export function createCardsSkinsRoute(deps: {
 	app.use("*", async (_c, next) => {
 		ready ??= (async () => {
 			await store.ensureReady();
-			for (const w of store.warnings()) deps.logger?.warn(`[card-skin] ${w}`);
+			for (const w of store.warnings())
+				deps.logger?.warn(logText("log.skin.indexWarning"), { diagnostic: w });
 		})();
 		await ready;
 		await next();

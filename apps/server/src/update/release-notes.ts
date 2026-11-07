@@ -1,3 +1,4 @@
+import { logText } from "../i18n/index.js";
 /**
  * 升级之后「本次更新」要念的说明。
  *
@@ -13,7 +14,6 @@ import { join } from "node:path";
 import type { ReleaseNoteEntry } from "@bilibili-notify/contract";
 import type { Logger } from "@bilibili-notify/internal";
 import { z } from "zod";
-import { errorMessageOf } from "../util/error-message.js";
 import { compareVersions, isDevBuild, isPrerelease } from "./version-order.js";
 
 /** 与 `scripts/server-bundle-assets.mjs` 的 `RELEASE_NOTES_FILE` 同名 —— 那边是 .mjs,这边引不到。 */
@@ -51,18 +51,14 @@ export async function readReleaseNotes(
 		text = await readFile(path, "utf8");
 	} catch (error) {
 		if (!isDevBuild(input.runningVersion)) {
-			input.logger.warn(
-				`[update] 载荷里没有 ${RELEASE_NOTES_FILE},「本次更新」只会有标题:${path}(${(error as NodeJS.ErrnoException).code ?? "读不了"})`,
-			);
+			input.logger.warn(logText("log.update.notesReadFailed"), { path, error });
 		}
 		return [];
 	}
 	try {
 		return FileSchema.parse(JSON.parse(text)).releases;
 	} catch (error) {
-		input.logger.warn(
-			`[update] ${RELEASE_NOTES_FILE} 读不懂,「本次更新」只会有标题:${errorMessageOf(error)}`,
-		);
+		input.logger.warn(logText("log.update.notesInvalid"), { file: RELEASE_NOTES_FILE, error });
 		return [];
 	}
 }

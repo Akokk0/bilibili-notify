@@ -29,6 +29,10 @@ describe("createCardSkinFallbackLog", () => {
 		]);
 		// 日志同样只打第一次:每条推送刷一行的话,日志就成了这套坏皮肤的专栏。
 		expect(warn).toHaveBeenCalledTimes(1);
+		expect(warn).toHaveBeenCalledWith(
+			"卡片皮肤渲染已回落默认皮肤",
+			expect.objectContaining({ skinId: "s1", cardKind: "live" }),
+		);
 	});
 
 	it("换了卡种 / 换了原因就是另一条", () => {
