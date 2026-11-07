@@ -29,7 +29,7 @@ export interface DevRunRequest {
 	params?: DevParamValues;
 }
 
-export interface DevStatusDTO {
+export interface DevStatusView {
 	scenarios: DevScenarioDescriptor[];
 	active: DevInjection[];
 }
@@ -38,7 +38,7 @@ export interface DevStatusDTO {
  * `GET /api/dev/active`:只有生效表。面板有注入生效时每几秒看一眼的是**这个**,不是
  * `GET /api/dev` —— 那份带着整张场景表(十几 KB 的静态声明),按秒重发只是在搬同样的字节。
  */
-export interface DevActiveDTO {
+export interface DevActiveView {
 	active: DevInjection[];
 }
 
@@ -79,7 +79,7 @@ export interface DevCapturedDelivery {
 	images: number;
 }
 
-export interface DevCapturesDTO {
+export interface DevCapturesView {
 	enabled: boolean;
 	entries: DevCapturedDelivery[];
 }

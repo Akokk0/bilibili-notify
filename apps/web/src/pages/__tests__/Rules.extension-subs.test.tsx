@@ -11,7 +11,7 @@
  * - 存得进、清得掉:发出去的 patch 只带 overrides(拓展订阅没有特别关注那一格)。
  */
 
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -31,7 +31,7 @@ import { api } from "../../services/api";
 /** 描述符声明的特性。 */
 type Declared = SourceEntry["descriptor"]["supportedFeatures"];
 
-const DOUYIN: ExtensionDTO = {
+const DOUYIN: ExtensionEntryView = {
 	id: "douyin",
 	name: "抖音订阅",
 	dir: "/data/extensions/douyin",

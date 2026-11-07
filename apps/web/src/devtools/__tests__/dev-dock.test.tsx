@@ -8,7 +8,7 @@ import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
  * 所有查询(更新状态那条链路靠这一刷才动)、收摊打的是对的 id。
  */
 
-import type { DevStatusDTO, UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { DevStatusView, UpdateStatusView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -31,7 +31,7 @@ import { ApiError, api } from "../../services/api";
 import { useToastStore } from "../../store/notifications";
 import { DevDock } from "../dock";
 
-const UPDATE_STATE: DevStatusDTO["scenarios"][number] = {
+const UPDATE_STATE: DevStatusView["scenarios"][number] = {
 	id: "core.update.state",
 	provider: "core",
 	group: "state",
@@ -54,10 +54,10 @@ const UPDATE_STATE: DevStatusDTO["scenarios"][number] = {
 	],
 };
 
-const STATUS: DevStatusDTO = { scenarios: [UPDATE_STATE], active: [] };
+const STATUS: DevStatusView = { scenarios: [UPDATE_STATE], active: [] };
 
 /** 开发版上 `/api/system/update` 报的形状,`state` 是注入进去的那份。 */
-function dto(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
+function dto(state: UpdateStatusView["state"]): UpdateStatusView {
 	return { currentVersion: "0.0.0-dev", rollbackTarget: null, pinnedVersion: null, state };
 }
 

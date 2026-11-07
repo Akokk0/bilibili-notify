@@ -69,7 +69,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 ## 资料与头像
 
-**资料缓存**是 `SubscriptionStateStore`（`apps/server/src/runtime/subscription-state-store.ts`，`<数据根>/runtime/subscription-state.json`，按订阅 id）里的 `cachedProfile: CreatorProfile { name, avatar?, bio?, followers?, fanClubName?, refreshedAt }`。它**不是配置**：写它不发 `config-changed`（那一档会重建路由表、通知拓展、让来源 reconcile），面板看得见的名字 / 头像 / 粉丝变了才经 `runtime/profile-cache.ts` 合并发 `subscription-profiles-changed`。`GET /api/subscriptions` 在 `toDTO` 里把它 join 进 DTO。
+**资料缓存**是 `SubscriptionStateStore`（`apps/server/src/runtime/subscription-state-store.ts`，`<数据根>/runtime/subscription-state.json`，按订阅 id）里的 `cachedProfile: CreatorProfile { name, avatar?, bio?, followers?, fanClubName?, refreshedAt }`。它**不是配置**：写它不发 `config-changed`（那一档会重建路由表、通知拓展、让来源 reconcile），面板看得见的名字 / 头像 / 粉丝变了才经 `runtime/profile-cache.ts` 合并发 `subscription-profiles-changed`。`GET /api/subscriptions` 在 `subscriptionView` 里把它 join 进 视图。
 
 | | B 站 | 拓展 |
 |---|---|---|
@@ -108,7 +108,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只接受当�
 - `supportedFeatures`：`post` / `liveStart` / `liveStreaming` / `liveEnd` 的非空、不重复子集 —— **这就是能力声明**。声明 `liveStreaming` 必须同时声明 `liveStart` 与 `liveEnd`，且来源要实现 `fetchLiveStatus`；没声明 `liveStreaming` 的不自动获得周期直播。面板与服务端直接读这一格。
 - `featureHints?`（4-27）：`Partial<Record<FeatureKey, string>>`，键可用全部 8 个领域特性，但不扩大上述四项能力。清单拒空串、纯空白、未知键与非字符串；非空原文保留首尾空格。`$manifest.contributes.subscription.featureHints` 按键取当前语言 → 简中 → 英文 → 清单原字，坏译文逐条丢弃。公共来源表透传提示，订阅详情总开关与目标自定义矩阵只用它覆盖小字，不生成特性、路由或运行态；未校验来源的空白提示按缺省。缺省时作品 / 醒目留言使用中性提醒，会员串实际 rank 排序的档名，下播串「下播卡片」与已声明附加项；开播与周期直播沿既有说明。B 站两项提示在访问描述符时取当前翻译。两处共用提示行自然换行、无空格长词可断行（`c185aa777` 修复首轮390宽截断）；统筹独审与整轮11组Chrome通过。UpDialog能力 / 运行态为实际真页操作，规则页只作全局页冒烟；按来源规则节显隐由 Rules.extension-subs / section-scope 自动测试负责。HTTP fixture不证明落盘或真实拓展装载，验收边界见 phase-4-plan 的4-27完成记录。
 - `cardSkin?`：自带皮肤目录（决策 13 / 14，⑤ 施工）。
-- 拓展来源的描述符就是这一段（去掉 `cardSkin`）：`manifestSourceDescriptor`（`apps/server/src/extensions/extension-source.ts`），登记来源与 `GET /api/sources` 共用 —— **只从清单来、不问代码**，所以拓展停着也画得出订阅是哪个平台的（决策 41）。面板读来源表（`hooks/useSources.ts`），不读拓展表；拓展表 `ExtensionDTO` 上没有订阅那一格。清单与描述符逐格相等由 `packages/internal/src/extension/manifest-shape-pin.ts` 钉着。
+- 拓展来源的描述符就是这一段（去掉 `cardSkin`）：`manifestSourceDescriptor`（`apps/server/src/extensions/extension-source.ts`），登记来源与 `GET /api/sources` 共用 —— **只从清单来、不问代码**，所以拓展停着也画得出订阅是哪个平台的（决策 41）。面板读来源表（`hooks/useSources.ts`），不读拓展表；拓展表 `ExtensionEntryView` 上没有订阅那一格。清单与描述符逐格相等由 `packages/internal/src/extension/manifest-shape-pin.ts` 钉着。
 
 ### 契约档位与契约小号（决策 18 / 59）
 
@@ -146,7 +146,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只接受当�
 | 外部 id 不在名下（多半是订阅刚删） | 忽略、正常 resolve，只记 debug |
 | 名下订阅都停用了 | 事件、直播状态与资料都不往下发，也不进首页在播 |
 
-- 上报一律返回 `void`，被拒也不回话。拒与丢格都从**唯一**的出口 `recordDiscrepancy` 走：日志一行 + `onReportDiscrepancy` → `extensions/report-discrepancies.ts`（每个拓展最近 20 条、只在内存、卸载清空）→ `ExtensionDTO.reportDiscrepancies` → 拓展详情页「上报出入」框（决策 60）。种类是 `post` / `live` / `profile` / `problem`；问题上报被拒也进这张表。不私聊主人。
+- 上报一律返回 `void`，被拒也不回话。拒与丢格都从**唯一**的出口 `recordDiscrepancy` 走：日志一行 + `onReportDiscrepancy` → `extensions/report-discrepancies.ts`（每个拓展最近 20 条、只在内存、卸载清空）→ `ExtensionEntryView.reportDiscrepancies` → 拓展详情页「上报出入」框（决策 60）。种类是 `post` / `live` / `profile` / `problem`；问题上报被拒也进这张表。不私聊主人。
 - 施工定下的数：上报时刻一律是**带时区的 ISO 8601**（宿主进门统一成 `Z` 结尾的 UTC）；图先由来源经 `ctx.storeImage` 存进图库，上报只交 `ImageRef`，作品图最多 30 张；作品正文 / 视频标题超长时截断收下，认识的可选格坏了只丢那一格（拉取式直播状态、取资料同一套）；话题与富文本按 `extension-report.ts` 的形状核，片段拼起来对不上正文就丢 `richText` 并记进「上报出入」。
 - 🔴 **判新归拓展，BN 不兜底**（决策 53）：不判新、不按作品 id 去重、不限流，报什么收什么；开机第一轮只记基线不报是拓展自己的事（假源照这条写）。
 - 今天的消费者：

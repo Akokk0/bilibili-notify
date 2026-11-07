@@ -1,4 +1,4 @@
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { UpdateService } from "../../update/service.js";
 import { createSystemUpdateRoute } from "../system-update.js";
@@ -15,7 +15,7 @@ const STARTED = "2026-09-04T00:00:00.000Z";
  */
 
 function fakeService(overrides: Partial<UpdateService> = {}): UpdateService {
-	const status: UpdateStatusDTO = {
+	const status: UpdateStatusView = {
 		currentVersion: "0.8.0",
 		rollbackTarget: null,
 		pinnedVersion: null,

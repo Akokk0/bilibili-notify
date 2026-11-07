@@ -7,7 +7,7 @@
  * 就把自己按的回退撤销了)。以及查到新版之后通知卡要出、没新版不出。
  */
 
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
@@ -24,7 +24,7 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-function dto(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
+function dto(state: UpdateStatusView["state"]): UpdateStatusView {
 	return { currentVersion: "0.8.0", rollbackTarget: null, pinnedVersion: null, state };
 }
 
@@ -38,7 +38,7 @@ function Harness() {
  * StrictMode 里 effect 只跑**一次**,`render` 才会跑两次。前者会让「网络只能打一次」那条
  * 断言变成空跑 —— 把实现里的 fired 守卫删掉照样绿。
  */
-function mount(before: UpdateStatusDTO, after: UpdateStatusDTO) {
+function mount(before: UpdateStatusView, after: UpdateStatusView) {
 	vi.mocked(api.get).mockResolvedValue(before);
 	vi.mocked(api.post).mockResolvedValue(after);
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -159,7 +159,7 @@ describe("useUpdateCheckOnOpen —— 刷新回来先报重启的结果", () => 
 		sessionStorage.clear();
 	});
 
-	function current(version: string): UpdateStatusDTO {
+	function current(version: string): UpdateStatusView {
 		return {
 			currentVersion: version,
 			rollbackTarget: null,
@@ -206,7 +206,7 @@ describe("useUpdateCheckOnOpen —— 通知卡正文", () => {
 	 * 这一档的状态句。老清单没概述,就只剩状态句 —— 别留一行空的。
 	 */
 	const NOTES = "链接解析学会了认群。";
-	const cases: { state: UpdateStatusDTO["state"]; title: string; line: string }[] = [
+	const cases: { state: UpdateStatusView["state"]; title: string; line: string }[] = [
 		{
 			state: {
 				phase: "available",

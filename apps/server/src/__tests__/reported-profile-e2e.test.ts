@@ -13,7 +13,7 @@ import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import type { SubscriptionView } from "@bilibili-notify/contract";
 import type { ConfigScope } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { isValidImageRef } from "../images/image-store.js";
@@ -148,7 +148,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 	/** 这一条的资料。 */
 	async function profile() {
 		const res = await api("/api/subscriptions");
-		const list = (await res.json()) as SubscriptionDTO[];
+		const list = (await res.json()) as SubscriptionView[];
 		return list.find((s) => s.id === SUB.id)?.cachedProfile;
 	}
 

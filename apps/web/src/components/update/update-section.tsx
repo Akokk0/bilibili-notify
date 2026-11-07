@@ -2,7 +2,7 @@ import {
 	canApplyUpdate,
 	type UpdateApplyResponse,
 	type UpdateErrorReason,
-	type UpdateStatusDTO,
+	type UpdateStatusView,
 } from "@bilibili-notify/contract";
 import type { UpdateSettings } from "@bilibili-notify/internal";
 import {
@@ -119,7 +119,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 
 	const act = useMutation({
 		mutationFn: (path: "check" | "download" | "rollback") =>
-			api.post<UpdateStatusDTO>(`/api/system/update/${path}`, {}),
+			api.post<UpdateStatusView>(`/api/system/update/${path}`, {}),
 		// 上一次重启留下的旁注(回落了 / 没回来)到此为止 —— 用户已经在做别的事了。
 		onMutate: () => dismissRestart(),
 		onSuccess: (next) => qc.setQueryData(UPDATE_QUERY_KEY, next),

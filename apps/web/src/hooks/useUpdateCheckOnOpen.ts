@@ -1,4 +1,4 @@
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { restartNotice, takeRestartMark } from "../components/update/restart";
@@ -33,7 +33,7 @@ export async function checkUpdateOnOpen(
 	// 只会各打一次请求 —— react-query 只能对它自己发起的那些去重。顺带把缓存填好。
 	const before = await qc.fetchQuery({
 		queryKey: UPDATE_QUERY_KEY,
-		queryFn: () => api.get<UpdateStatusDTO>("/api/system/update"),
+		queryFn: () => api.get<UpdateStatusView>("/api/system/update"),
 	});
 	// 「立即重启并应用」那条路的最后一步:换成了就整页刷新,刷新前留了记号。先把它取走
 	// (取一次就没了),对得上现在跑的版本才说 —— 这一步放在下面几个「不查」的出口之前,
@@ -47,7 +47,7 @@ export async function checkUpdateOnOpen(
 	if (before.state.phase === "disabled" || before.state.phase === "rolled-back") return;
 	if (before.pinnedVersion !== null) return;
 
-	const after = await api.post<UpdateStatusDTO>("/api/system/update/check", {});
+	const after = await api.post<UpdateStatusView>("/api/system/update/check", {});
 	qc.setQueryData(UPDATE_QUERY_KEY, after);
 
 	const target = newerVersionOf(after);

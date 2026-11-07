@@ -1,4 +1,4 @@
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionEntryView } from "@bilibili-notify/contract";
 import { Icon, WarnNote } from "@bilibili-notify/ui";
 import { useT } from "../../i18n";
 
@@ -7,7 +7,7 @@ import { useT } from "../../i18n";
  * **服务端已经按当前语言取好**(`ext.localeIssues`),这里原样列出、不再翻;只有标题是面板自己的字。
  * **有问题才出现**:没有这一格(老服务端)或是空数组都不画。
  */
-export function LocaleIssuesNote({ ext }: { ext: ExtensionDTO }) {
+export function LocaleIssuesNote({ ext }: { ext: ExtensionEntryView }) {
 	const t = useT();
 	const issues = ext.localeIssues ?? [];
 	if (issues.length === 0) return null;

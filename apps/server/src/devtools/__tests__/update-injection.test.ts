@@ -1,4 +1,4 @@
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { UpdateService } from "../../update/service.js";
 import { injectableUpdateService } from "../update-injection.js";
@@ -12,7 +12,7 @@ import { injectableUpdateService } from "../update-injection.js";
  * 这条最想看的路反而永远走不到。收摊只有 devtools 那一个口。
  */
 
-const REAL: UpdateStatusDTO = {
+const REAL: UpdateStatusView = {
 	currentVersion: "0.0.0-dev",
 	rollbackTarget: null,
 	pinnedVersion: null,

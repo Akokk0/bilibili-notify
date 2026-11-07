@@ -1,4 +1,4 @@
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { useQuery } from "@tanstack/react-query";
 import { i18n } from "../../i18n";
 import { api } from "../../services/api";
@@ -21,14 +21,14 @@ export const UPDATE_SECTION_PATH = `/system${UPDATE_SECTION_HASH}`;
  * 下载是唯一在后台自己往前走的 —— 打开面板那次自动检查开着自动下载时,用户走到系统页
  * 看见「正在下载」,没人刷新的话它就永远停在那儿,两个按钮都不出现。
  */
-export function updateRefetchInterval(status: UpdateStatusDTO | undefined): number | false {
+export function updateRefetchInterval(status: UpdateStatusView | undefined): number | false {
 	return status?.state.phase === "downloading" ? 2_000 : false;
 }
 
 export function useUpdateStatus() {
 	return useQuery({
 		queryKey: UPDATE_QUERY_KEY,
-		queryFn: () => api.get<UpdateStatusDTO>("/api/system/update"),
+		queryFn: () => api.get<UpdateStatusView>("/api/system/update"),
 		refetchInterval: (query) => updateRefetchInterval(query.state.data),
 	});
 }
@@ -38,7 +38,7 @@ export function useUpdateStatus() {
  * 以及要重拉镜像才能换的 —— 最后一种也得让人知道有这么一版。回退目标比现在旧,
  * 不算。
  */
-export function newerVersionOf(status: UpdateStatusDTO): string | null {
+export function newerVersionOf(status: UpdateStatusView): string | null {
 	const s = status.state;
 	switch (s.phase) {
 		case "available":
@@ -51,7 +51,7 @@ export function newerVersionOf(status: UpdateStatusDTO): string | null {
 	}
 }
 
-export function phaseLabel(status: UpdateStatusDTO): string {
+export function phaseLabel(status: UpdateStatusView): string {
 	switch (status.state.phase) {
 		case "disabled":
 			return status.state.reason === "dev-build"
@@ -81,7 +81,7 @@ export function phaseLabel(status: UpdateStatusDTO): string {
  * + 这一档的状态句一行。老清单没概述就只剩状态句,别留一行空的。只对「有一版比现在新」
  * 的那四档有意义(见 `newerVersionOf`);别的档不会出卡。
  */
-export function noticeBody(status: UpdateStatusDTO): string {
+export function noticeBody(status: UpdateStatusView): string {
 	const s = status.state;
 	return withNotes("notes" in s ? s.notes : undefined, statusLine(status));
 }
@@ -91,7 +91,7 @@ export function withNotes(notes: string | undefined, line: string): string {
 	return notes ? `${notes}\n${line}` : line;
 }
 
-function statusLine(status: UpdateStatusDTO): string {
+function statusLine(status: UpdateStatusView): string {
 	switch (status.state.phase) {
 		case "downloading":
 			return i18n.t("panelUi.components.update.status.11");

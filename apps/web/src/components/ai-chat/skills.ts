@@ -9,7 +9,7 @@
  * 等于命令,于是主人打 `/锐评 只看这三个人` 时技能一个字都不进(ADR-0001 背景第 1 条)。
  */
 
-import type { MaidSkillDTO } from "@bilibili-notify/contract";
+import type { MaidSkillView } from "@bilibili-notify/contract";
 
 /** 输入的第一段(到第一个空白为止)。 */
 function headOf(input: string): string {
@@ -22,7 +22,7 @@ function headOf(input: string): string {
  * 只认**第一段**:打完 `/weekly-report ` 再补充要求时菜单该收起来让位给正文,
  * 而不是一直悬在输入框上方挡着。
  */
-export function matchSkills(input: string, skills: readonly MaidSkillDTO[]): MaidSkillDTO[] {
+export function matchSkills(input: string, skills: readonly MaidSkillView[]): MaidSkillView[] {
 	if (!input.startsWith("/")) return [];
 	const head = headOf(input);
 	// 打完整条命令又加了空格 → head 仍等于命令,但 input 比 head 长,说明已经在
@@ -45,7 +45,7 @@ export interface OutgoingMessage {
  * 认不得的命令**不点名任何技能**,原样当普通消息发:服务端会拒掉一个不存在的
  * 技能名,而主人打错一个字时他要的只是把这句话说出去,不是一个 400。
  */
-export function resolveOutgoing(input: string, skills: readonly MaidSkillDTO[]): OutgoingMessage {
+export function resolveOutgoing(input: string, skills: readonly MaidSkillView[]): OutgoingMessage {
 	const trimmed = input.trim();
 	if (!trimmed.startsWith("/")) return { text: trimmed };
 	const head = headOf(trimmed);

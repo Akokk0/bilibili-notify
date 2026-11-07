@@ -2,7 +2,7 @@ import type { AiChatMode, AiSkinTarget } from "@bilibili-notify/contract";
 import { EmptyNote, Icon, IconButton } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { useT } from "../../i18n";
-import { type AiConversationMetaDTO, groupConversations } from "../../services/aiChat";
+import { type AiConversationMetaView, groupConversations } from "../../services/aiChat";
 import { ThinkingLevelSetting } from "./thinking-level-setting";
 
 /**
@@ -13,7 +13,7 @@ import { ThinkingLevelSetting } from "./thinking-level-setting";
  */
 
 export interface ChatSidebarProps {
-	conversations: readonly AiConversationMetaDTO[];
+	conversations: readonly AiConversationMetaView[];
 	activeId: string | null;
 	onSelect: (id: string) => void;
 	/**

@@ -85,7 +85,7 @@ export function complainAboutSkill(d: {
 }
 
 /** 一条技能。`builtin` 的改不动也删不掉(只读、跟版本走)。 */
-export interface MaidSkillDTO {
+export interface MaidSkillView {
 	name: string;
 	description: string;
 	/** 只在内置技能上出现:旧斜杠名,敲对了照认(正名精确匹配优先,别名最后才认)。 */
@@ -99,16 +99,16 @@ export interface MaidSkillDTO {
 }
 
 /** 盘上读不进来的一条 —— 主人手放的文件写错了,得让他看得见。 */
-export interface MaidSkillProblemDTO {
+export interface MaidSkillProblemView {
 	/** `<dataDir>/maid-skills/` 下的目录名。 */
 	dir: string;
 	reason: string;
 }
 
 export interface MaidSkillsListResponse {
-	list: MaidSkillDTO[];
+	list: MaidSkillView[];
 	/** 空数组 = 盘上一切正常。非空时界面要显眼地提一句,否则主人以为自己没放对地方。 */
-	problems: MaidSkillProblemDTO[];
+	problems: MaidSkillProblemView[];
 	/**
 	 * 现在真的存在的工具名 —— 编辑器拿它摆 `allowed-tools` 的勾选框。
 	 *
@@ -122,7 +122,7 @@ export interface MaidSkillsListResponse {
 }
 
 /** 新建 / 修改的请求体。`builtin` 与 `aliases` 不收 —— 那是服务端的判定,不是主人能声明的。 */
-export type MaidSkillWriteRequest = Omit<MaidSkillDTO, "builtin" | "aliases">;
+export type MaidSkillWriteRequest = Omit<MaidSkillView, "builtin" | "aliases">;
 
 /** 文件只解析预览，确认后沿用新建接口保存。 */
 export type MaidSkillImportPreviewResponse = Result<{ skill: MaidSkillWriteRequest }>;

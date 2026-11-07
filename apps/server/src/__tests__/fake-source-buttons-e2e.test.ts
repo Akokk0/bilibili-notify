@@ -16,10 +16,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
 	CreatorsResponse,
-	ExtensionDTO,
+	ExtensionEntryView,
 	ExtensionsResponse,
 	LiveListeningEntry,
-	SubscriptionDTO,
+	SubscriptionView,
 } from "@bilibili-notify/contract";
 import type { PostEvent } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -92,7 +92,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		expect(res.status, await res.clone().text()).toBe(200);
 	}
 
-	async function fakeRow(): Promise<ExtensionDTO | undefined> {
+	async function fakeRow(): Promise<ExtensionEntryView | undefined> {
 		const body = (await (await api("/api/ext")).json()) as ExtensionsResponse;
 		return body.extensions.find((e) => e.id === FAKE);
 	}
@@ -106,7 +106,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 	}
 
 	async function profileOf(subscriptionId: string) {
-		const list = (await (await api("/api/subscriptions")).json()) as SubscriptionDTO[];
+		const list = (await (await api("/api/subscriptions")).json()) as SubscriptionView[];
 		return list.find((s) => s.id === subscriptionId)?.cachedProfile;
 	}
 

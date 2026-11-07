@@ -3,7 +3,7 @@ import type {
 	MirrorProbeResult,
 	UpdateErrorReason,
 	UpdateState,
-	UpdateStatusDTO,
+	UpdateStatusView,
 } from "@bilibili-notify/contract";
 import type { ServiceContext, UpdateSettings } from "@bilibili-notify/internal";
 import { ok, fail as resultFail } from "@bilibili-notify/internal";
@@ -44,7 +44,7 @@ const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024;
 export type { UpdateErrorReason, UpdateState };
 
 /** `GET /api/system/update` 的响应形状,契约在 `@bilibili-notify/contract`。 */
-export type UpdateStatus = UpdateStatusDTO;
+export type UpdateStatus = UpdateStatusView;
 
 export interface CreateUpdateServiceInput {
 	/** 当前正在跑的那份载荷的版本。 */

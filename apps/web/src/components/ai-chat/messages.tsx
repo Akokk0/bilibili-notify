@@ -1,4 +1,4 @@
-import type { AiCardSkinTouchDTO } from "@bilibili-notify/contract";
+import type { AiCardSkinTouchView } from "@bilibili-notify/contract";
 import { ErrorNote, Icon } from "@bilibili-notify/ui";
 import {
 	Fragment,
@@ -9,7 +9,7 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { useT } from "../../i18n";
-import type { AiChatMessageDTO } from "../../services/aiChat";
+import type { AiChatMessageView } from "../../services/aiChat";
 import { imageUrl } from "../../utils/image-url";
 import { CardSkinPreviews } from "./card-skin-preview";
 import { describeTool } from "./tools";
@@ -139,7 +139,7 @@ export interface ToolChipData {
 }
 
 export interface MessageListProps {
-	messages: readonly AiChatMessageDTO[];
+	messages: readonly AiChatMessageView[];
 	/**
 	 * 在途的这一轮 —— 还没落盘,只活在这次渲染里。`ask` 是主人刚发出的那句,
 	 * `draft` 是正在逐字长出来的回复(空串 = 第一个字还没到),`tools` 是这一轮
@@ -356,7 +356,7 @@ function AssistantTurn({
 	tools?: readonly ToolChipData[];
 	text: string;
 	/** 卡片工坊里这一轮碰过的皮肤;落盘那一份才有(在途时还不知道碰了哪几套)。 */
-	cardSkins?: readonly AiCardSkinTouchDTO[];
+	cardSkins?: readonly AiCardSkinTouchView[];
 	/** 思考草稿。空 / 缺席 = 这一轮没思考,块整个不画。 */
 	reasoning?: string;
 	/** 还在想(正文一个字都没有)→ 标头是进行时「思考中…」。 */

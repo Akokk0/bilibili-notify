@@ -26,7 +26,7 @@ import type {
 	ExtensionsResponse,
 	HistoryResponse,
 	StatsOverviewResponse,
-	SubscriptionDTO,
+	SubscriptionView,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
@@ -296,7 +296,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 
 	it("卡是照作品画的:作者名与存下的头像(转成 data URL)、正文、九宫格里的图都在卡上", async () => {
 		// 甲的头像在资料缓存里是图库引用,面板从图库的同源读口取。
-		const profileA = ((await (await api("/api/subscriptions")).json()) as SubscriptionDTO[]).find(
+		const profileA = ((await (await api("/api/subscriptions")).json()) as SubscriptionView[]).find(
 			(s) => s.id === SUBS.a.id,
 		)?.cachedProfile;
 		const avatar = await api(`/api/images/${profileA?.avatar}`);

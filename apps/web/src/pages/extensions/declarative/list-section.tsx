@@ -1,5 +1,5 @@
 import type {
-	ExtensionDTO,
+	ExtensionEntryView,
 	ExtensionItemView,
 	ExtensionPanelItem,
 	ExtensionSettingsOp,
@@ -163,7 +163,7 @@ const revealKey = (id: string, key: string) => JSON.stringify([id, key]);
  * 就该是今天那一页。卡上每一块归三处之一 —— **清单**声明的(标题、方块、字段行、停用 / 启用)、
  * **视图**交来的(状态、药丸、副标题、按钮、积木)、**BN** 自己画的(删除、图例、三句盖章)。
  */
-export function ListSection({ ext, field }: { ext: ExtensionDTO; field: SettingsListField }) {
+export function ListSection({ ext, field }: { ext: ExtensionEntryView; field: SettingsListField }) {
 	const tx = useT();
 
 	const [dialog, setDialog] = useState<Dialog | null>(null);

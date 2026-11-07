@@ -7,7 +7,7 @@
  * 头像是那条订阅的。起点 / 24h / 7d 三格两支同一个画法。
  */
 
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -28,7 +28,7 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-const DOUYIN: ExtensionDTO = {
+const DOUYIN: ExtensionEntryView = {
 	id: "douyin",
 	name: "抖音订阅",
 	dir: "/data/extensions/douyin",
@@ -82,7 +82,7 @@ const EXT_ENTRY: FollowersRefreshEntry = {
 };
 
 /** 来源表照装着的拓展列:装了抖音订阅源,表里就有它那一行。 */
-function sourcesOf(extensions: ExtensionDTO[] | undefined): SourceEntry[] | undefined {
+function sourcesOf(extensions: ExtensionEntryView[] | undefined): SourceEntry[] | undefined {
 	return [
 		makeSource(),
 		...(extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : [])) ?? []),
@@ -92,7 +92,7 @@ function sourcesOf(extensions: ExtensionDTO[] | undefined): SourceEntry[] | unde
 function renderPanel(
 	entries: FollowersRefreshEntry[],
 	subs: Subscription[],
-	extensions?: ExtensionDTO[],
+	extensions?: ExtensionEntryView[],
 ) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path === "/api/stats/followers") return Promise.resolve({ entries });

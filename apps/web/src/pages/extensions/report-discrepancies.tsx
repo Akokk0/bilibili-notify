@@ -1,4 +1,8 @@
-import type { ExtensionDTO, ReportDiscrepancyView, SourceEntry } from "@bilibili-notify/contract";
+import type {
+	ExtensionEntryView,
+	ReportDiscrepancyView,
+	SourceEntry,
+} from "@bilibili-notify/contract";
 import { GlassBox, Icon, Pill } from "@bilibili-notify/ui";
 import { useSources } from "../../hooks/useSources";
 import { i18n, useT } from "../../i18n";
@@ -20,7 +24,7 @@ export function ReportDiscrepanciesBox({
 	ext,
 	subs,
 }: {
-	ext: ExtensionDTO;
+	ext: ExtensionEntryView;
 	/** 订阅列表 —— 按订阅 id 印名字。还没回来时先印外部 id。 */
 	subs: readonly Subscription[] | undefined;
 }) {

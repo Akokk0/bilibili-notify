@@ -6,7 +6,7 @@
  * (文案 / 图 / 结果);目标列写目标名。
  */
 
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -64,7 +64,7 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 function mockApi(
 	entries: HistoryEntryView[],
 	subs: Subscription[] = [],
-	extensions: ExtensionDTO[] = [],
+	extensions: ExtensionEntryView[] = [],
 ) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path.startsWith("/api/history")) return Promise.resolve({ entries });
@@ -446,7 +446,7 @@ const DOUYIN = {
 	state: "running",
 	apiVersion: 1,
 	provides: ["subscription"],
-} as ExtensionDTO;
+} as ExtensionEntryView;
 
 /** 来源表里抖音那一行:平台名与徽章照它(取自清单)。 */
 const DOUYIN_SOURCE: SourceEntry = {

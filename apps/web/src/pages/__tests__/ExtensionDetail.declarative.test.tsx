@@ -12,7 +12,7 @@
  */
 
 import type {
-	ExtensionDTO,
+	ExtensionEntryView,
 	ExtensionPanelView,
 	ExtensionsResponse,
 	RestartAbility,
@@ -42,7 +42,7 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-const DOUYIN: ExtensionDTO = {
+const DOUYIN: ExtensionEntryView = {
 	id: "douyin",
 	name: "抖音订阅",
 	description: "盯着抖音作者的新作品与开播。",
@@ -77,7 +77,7 @@ const VIEW: ExtensionPanelView = {
 };
 
 interface Setup {
-	ext?: ExtensionDTO;
+	ext?: ExtensionEntryView;
 	/** 状态那一口:一份视图,或一个错(`NotFound` = 404)。 */
 	status?: ExtensionPanelView | Error;
 	settings?: Record<string, unknown>;
@@ -265,7 +265,7 @@ describe("v2 拓展的详情页", () => {
  * 那一档与开着却没跑那一档都要;**没有新代码时一颗也不给**(生产上不给随手漏模块的口子)。
  */
 describe("新版等着换上", () => {
-	const STAGED: ExtensionDTO = { ...DOUYIN, staged: { version: "0.2.0" } };
+	const STAGED: ExtensionEntryView = { ...DOUYIN, staged: { version: "0.2.0" } };
 
 	it("跑着旧的、盘上换了新版 → 头卡里两条出路,说清两边各是哪一版", async () => {
 		renderDetail({ ext: STAGED });
@@ -349,7 +349,7 @@ describe("版本不合的拓展(第 1 版的退路已删):没有清单、没有�
 		"%s:头卡里只有状态那句原因与「没有交上来自己的面板」,不摆「配置」,不问状态,删除确认里没有桥的那句",
 		async (id) => {
 			// 清单读不出来(版本不合):服务端不给 apiVersion / provides,只有身份那几格与原因。
-			const legacy: ExtensionDTO = {
+			const legacy: ExtensionEntryView = {
 				id,
 				name: "老拓展",
 				description: "还停在 v1",

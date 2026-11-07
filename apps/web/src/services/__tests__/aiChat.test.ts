@@ -5,7 +5,7 @@
  * 到了当天下午仍该是「今天」,而不是因为过了 24 小时就掉进「昨天」。
  */
 
-import type { AiConversationMetaDTO } from "@bilibili-notify/contract";
+import type { AiConversationMetaView } from "@bilibili-notify/contract";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	createSseParser,
@@ -204,7 +204,7 @@ describe("groupLabel", () => {
 });
 
 describe("groupConversations", () => {
-	const meta = (id: string, updatedAt: string): AiConversationMetaDTO => ({
+	const meta = (id: string, updatedAt: string): AiConversationMetaView => ({
 		id,
 		title: id,
 		createdAt: updatedAt,

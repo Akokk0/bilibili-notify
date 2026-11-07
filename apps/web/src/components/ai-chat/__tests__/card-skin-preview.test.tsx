@@ -7,7 +7,7 @@
  * 不去请求一张画不出来的预览。
  */
 
-import type { AiChatMessageDTO } from "@bilibili-notify/contract";
+import type { AiChatMessageView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -153,7 +153,7 @@ describe("预览块", () => {
 
 describe("消息流里的位置", () => {
 	const AT = "2026-09-17T00:00:00.000Z";
-	const reply = (over: Partial<AiChatMessageDTO>): AiChatMessageDTO => ({
+	const reply = (over: Partial<AiChatMessageView>): AiChatMessageView => ({
 		id: "a1",
 		role: "assistant",
 		content: "做好啦",

@@ -5,7 +5,7 @@ import type {
 	HealthResponse,
 	IntegrationHealthView,
 	SourceEntry,
-	UpdateStatusDTO,
+	UpdateStatusView,
 } from "@bilibili-notify/contract";
 import { subscriptionIdentityLabel } from "@bilibili-notify/contract";
 import { formatDuration } from "@bilibili-notify/internal/format";
@@ -65,7 +65,7 @@ export function SystemHealthCard({
 }: {
 	health: HealthResponse | undefined;
 	reachable: boolean;
-	update?: UpdateStatusDTO;
+	update?: UpdateStatusView;
 	onDefaultHeightChange?: (height: number) => void;
 }) {
 	const t = useT();

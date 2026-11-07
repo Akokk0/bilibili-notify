@@ -1,7 +1,7 @@
 import {
-	type ExtensionDTO,
+	type ExtensionEntryView,
 	type SourceEntry,
-	type SubscriptionDTO,
+	type SubscriptionView,
 	sourceNounsOf,
 } from "@bilibili-notify/contract";
 import { type FormatCountOptions, formatAgo, formatCount } from "@bilibili-notify/internal/format";
@@ -134,7 +134,7 @@ function upMetaOf(
 	r: UpStatsRow,
 	sub: Subscription | undefined,
 	sources: readonly SourceEntry[] | undefined,
-	_extensions: readonly ExtensionDTO[] | undefined,
+	_extensions: readonly ExtensionEntryView[] | undefined,
 ): UpMeta {
 	const base = {
 		color: identityColor(r.identity, subscriptionPlatformOf(r.identity, sources)),
@@ -596,7 +596,7 @@ function StatsContent() {
 	});
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<SubscriptionDTO[]>("/api/subscriptions"),
+		queryFn: () => api.get<SubscriptionView[]>("/api/subscriptions"),
 	});
 	// 拓展行的平台名与徽章照来源表里的描述符(取自装着的拓展清单);没回来时写拓展 id。
 	const extensions = useExtensions({ retry: false }).data?.extensions;

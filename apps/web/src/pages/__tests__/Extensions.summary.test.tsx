@@ -8,7 +8,11 @@
  * 「N 条连接」那一行,它的 summary 也得有地方摆。
  */
 
-import type { ExtensionDTO, ExtensionView, MarketplaceResponse } from "@bilibili-notify/contract";
+import type {
+	ExtensionEntryView,
+	ExtensionView,
+	MarketplaceResponse,
+} from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -33,7 +37,7 @@ const MARKET: MarketplaceResponse = {
 	extensions: [],
 };
 
-const DOUYIN: ExtensionDTO = {
+const DOUYIN: ExtensionEntryView = {
 	id: "douyin",
 	name: "抖音订阅",
 	version: "0.1.0",
@@ -44,7 +48,7 @@ const DOUYIN: ExtensionDTO = {
 	dir: "/data/extensions/douyin",
 };
 
-const PUSHER: ExtensionDTO = {
+const PUSHER: ExtensionEntryView = {
 	id: "relay",
 	name: "中继推送",
 	version: "0.1.0",
@@ -56,7 +60,7 @@ const PUSHER: ExtensionDTO = {
 };
 
 function renderPage(
-	extensions: ExtensionDTO[],
+	extensions: ExtensionEntryView[],
 	views: Record<string, ExtensionView>,
 	/** 页面打开之前缓存里已经有的状态(刚关掉的拓展,上一份视图还在)。 */
 	cached: Record<string, ExtensionView> = {},

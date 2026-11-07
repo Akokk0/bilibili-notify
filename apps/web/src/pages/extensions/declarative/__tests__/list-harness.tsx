@@ -15,7 +15,7 @@
 
 import type {
 	ErrorResponse,
-	ExtensionDTO,
+	ExtensionEntryView,
 	ExtensionPanelView,
 	ExtensionSettingsOp,
 	ExtensionSettingsPatch,
@@ -85,7 +85,7 @@ export const LINKS_FIELD: SettingsListField = {
 };
 
 /** 迁到 v2 的桥:设置里只有那一格列表。 */
-export const BRIDGE: ExtensionDTO = {
+export const BRIDGE: ExtensionEntryView = {
 	id: "bridge",
 	name: "机器人框架桥接",
 	description: "把 koishi / AstrBot 里已经配好的机器人借给 BN 用。",
@@ -150,7 +150,7 @@ export class NotFound extends Error {
 export interface ListSetup {
 	invalid?: import("@bilibili-notify/contract").InvalidSettingView[];
 	/** 拓展本身 —— 开关、状态、清单里的设置项。 */
-	ext?: ExtensionDTO;
+	ext?: ExtensionEntryView;
 	/**
 	 * 那份列表;`null` = 设置那一口读不到(401 / 服务端炸了 / 断网),`"pending"` = 那一口
 	 * 一直没回来。
@@ -169,7 +169,7 @@ export interface ListSetup {
  * 假服务端存着的那份设置(**原文**,密钥也在)与它的版本号。`renderList` 按 setup 摆好;
  * `GET /api/ext/:id/settings` 读它(密钥遮住),`answerPatch` 照 ops 改它。
  */
-let served: { ext: ExtensionDTO; revision: number; settings: Record<string, unknown> } = {
+let served: { ext: ExtensionEntryView; revision: number; settings: Record<string, unknown> } = {
 	ext: BRIDGE,
 	revision: 1,
 	settings: {},

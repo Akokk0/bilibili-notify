@@ -10,7 +10,7 @@
  * 不是某一种积木怎么炸。
  */
 
-import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, ExtensionsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -48,7 +48,7 @@ vi.mock("../extensions/declarative/settings-form", async (importOriginal) => ({
 	},
 }));
 
-const DOUYIN: ExtensionDTO = {
+const DOUYIN: ExtensionEntryView = {
 	id: "douyin",
 	name: "抖音订阅",
 	description: "盯着抖音作者的新作品与开播。",

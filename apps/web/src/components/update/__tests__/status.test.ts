@@ -1,14 +1,14 @@
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { newerVersionOf, phaseLabel, updateRefetchInterval } from "../status";
 
-function status(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
+function status(state: UpdateStatusView["state"]): UpdateStatusView {
 	return { currentVersion: "0.8.0", rollbackTarget: null, pinnedVersion: null, state };
 }
 
 describe("newerVersionOf —— 「有一版比现在新」这件事只在一处判", () => {
 	it("有新版 / 正在下 / 已就绪 / 要新镜像:都算有新版,给版本号", () => {
-		const t = (state: UpdateStatusDTO["state"]) => newerVersionOf(status(state));
+		const t = (state: UpdateStatusView["state"]) => newerVersionOf(status(state));
 		expect(
 			t({
 				phase: "available",

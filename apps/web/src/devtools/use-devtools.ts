@@ -1,10 +1,10 @@
 import type {
-	DevActiveDTO,
+	DevActiveView,
 	DevInjection,
 	DevParamValues,
 	DevResetResponse,
 	DevRunResponse,
-	DevStatusDTO,
+	DevStatusView,
 } from "@bilibili-notify/contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../services/api";
@@ -25,13 +25,13 @@ export const DEV_ACTIVE_KEY = ["dev", "active"] as const;
 export type DevAvailability =
 	| { status: "loading" }
 	| { status: "absent" }
-	| { status: "ready"; data: DevStatusDTO };
+	| { status: "ready"; data: DevStatusView };
 
 /**
  * 有注入生效时每几秒看一眼:生效条上的话会变(截流的「拦下 N 条」随真推送涨),而这些
  * 变化发生在服务端、面板没按任何键。什么都没注入时不打扰。
  */
-export function devRefetchInterval(data: DevActiveDTO | undefined): number | false {
+export function devRefetchInterval(data: DevActiveView | undefined): number | false {
 	return data && data.active.length > 0 ? 3_000 : false;
 }
 
@@ -42,7 +42,7 @@ export function devRefetchInterval(data: DevActiveDTO | undefined): number | fal
 export function useDevStatus(): DevAvailability {
 	const q = useQuery({
 		queryKey: DEV_QUERY_KEY,
-		queryFn: () => api.get<DevStatusDTO>("/api/dev"),
+		queryFn: () => api.get<DevStatusView>("/api/dev"),
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});
@@ -58,7 +58,7 @@ export function useDevStatus(): DevAvailability {
 export function useDevActive(initial: DevInjection[]): DevInjection[] {
 	const q = useQuery({
 		queryKey: DEV_ACTIVE_KEY,
-		queryFn: () => api.get<DevActiveDTO>("/api/dev/active"),
+		queryFn: () => api.get<DevActiveView>("/api/dev/active"),
 		retry: false,
 		initialData: { active: initial },
 		refetchInterval: (query) => devRefetchInterval(query.state.data),
@@ -72,7 +72,7 @@ export function useDevActive(initial: DevInjection[]): DevInjection[] {
 function useApplyActive() {
 	const qc = useQueryClient();
 	return (active: DevInjection[]) => {
-		qc.setQueryData<DevActiveDTO>(DEV_ACTIVE_KEY, { active });
+		qc.setQueryData<DevActiveView>(DEV_ACTIVE_KEY, { active });
 	};
 }
 

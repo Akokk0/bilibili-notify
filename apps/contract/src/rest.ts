@@ -1,6 +1,6 @@
 import type { SourceRunStatus } from "./health";
 /**
- * REST wire 契约 —— apps/server 各路由的响应 DTO,apps/web 按原样消费。
+ * REST wire 契约 —— apps/server 各路由的响应 视图,apps/web 按原样消费。
  * 域模型本体(Subscription / GlobalConfig / …)在 `@bilibili-notify/internal`,
  * 这里只放「服务端 join / 投影出来的」wire 形状。
  */
@@ -121,13 +121,6 @@ export interface AdaptersResponse {
 // ---- /api/extensions ------------------------------------------------------
 
 /**
- * 一个拓展现在处于什么状态 —— 与主人按的那个开关是**两件事**。
- *
- * 开关开着而它没跑,恰恰是最需要看见的那一格(连败自动停用、清单坏了、版本不合)。
- */
-export type ExtensionStateDTO = ExtensionRunState;
-
-/**
  * 拓展挂载点的前缀 —— `/ext/<id>/*`。
  *
  * 🔴 **住契约是因为两头都要拼这条路**:服务端在这儿挂路由,面板要把桥该连的地址印给主人
@@ -141,7 +134,7 @@ export const EXTENSION_MOUNT_PREFIX = "/ext";
  *
  * 清单读得出来的字段才有;读不出来时 `name` 退回目录名,`detail` 说明为什么。
  */
-export interface ExtensionDTO {
+export interface ExtensionEntryView {
 	id: string;
 	/** 清单里的名字;清单读不出来时是目录名。 */
 	name: string;
@@ -174,7 +167,7 @@ export interface ExtensionDTO {
 	linkedTo?: string;
 	/** 主人按的那个开关(`globals.extensions.<id>.enabled`)。 */
 	enabled: boolean;
-	state: ExtensionStateDTO;
+	state: ExtensionRunState;
 	/** 没跑起来时那句「为什么」。 */
 	detail?: string;
 	/**
@@ -210,7 +203,7 @@ export interface ExtensionDTO {
  */
 export type ReportDiscrepancyKind = "post" | "live" | "profile" | "problem";
 
-/** 一条「上报出入」(见 {@link ExtensionDTO.reportDiscrepancies})。 */
+/** 一条「上报出入」(见 {@link ExtensionEntryView.reportDiscrepancies})。 */
 export interface ReportDiscrepancyView {
 	/** 什么时候(毫秒时间戳)。 */
 	at: number;
@@ -436,7 +429,7 @@ export interface ExtensionInstallResponse {
 	name: string;
 	version: string;
 	/**
-	 * 装完重扫之后,装载器那一行带不带 `staged`(`ExtensionDTO.staged`,ADR-0012 决策 47)——
+	 * 装完重扫之后,装载器那一行带不带 `staged`(`ExtensionEntryView.staged`,ADR-0012 决策 47)——
 	 * 盖掉了一份这个进程**跑过的**代码,ESM 在这个进程里干净地换不掉(决策 10)。出口有两个:
 	 * 重启 BN,或只重载这个拓展(后者只在开着时给)。
 	 *
@@ -477,7 +470,7 @@ export interface ExtensionInstallResponse {
 }
 
 export interface ExtensionsResponse {
-	extensions: ExtensionDTO[];
+	extensions: ExtensionEntryView[];
 	/**
 	 * 这台机器上「重启 BN」按下去回不回得来(ADR-0005 决策 22)。详情页上某个拓展有新版等着换上
 	 * 时,据此决定并排的那颗「重启 BN」给不给;不给就换成那句手动重启的说明。
@@ -608,8 +601,8 @@ export interface MarketplaceInstallRequest {
  *   走面板鉴权;引用随内容变,可以放心缓存),没有头像就**缺这一格**(不再写空串)。B 站头像的来源地址住在
  *   B 站自己的状态里,核心资料缓存不带。`cachedProfile.followers` 可能没有 —— 拓展不一定知道粉丝数,别补成 0。
  */
-export type SubscriptionDTO = Subscription &
-	SubscriptionRuntimeDTO & {
+export type SubscriptionView = Subscription &
+	SubscriptionRuntimeView & {
 		/**
 		 * 问题表里关于这条订阅的(`about.subscriptionId` 是它),按 `since` 先后,与 `GET /api/problems` 同形;
 		 * 没有就是空数组。订阅卡每条出一个提示,不分来源、不看 `code`;变了服务端发 `problems-changed`。
@@ -618,7 +611,7 @@ export type SubscriptionDTO = Subscription &
 	};
 
 /** 外置运行时字段(服务端 SubscriptionStateStore join 回来的)。 */
-interface SubscriptionRuntimeDTO {
+interface SubscriptionRuntimeView {
 	cachedProfile?: CreatorProfile;
 }
 
@@ -1078,7 +1071,7 @@ export type AiTestPushResponse = Result<{ latencyMs: number; reply: string }>;
  * 真身把在途副本换下来的那一刻,这几条就凭空消失了,刷新之后也再看不到她当时
  * 查过什么。
  */
-export interface AiToolTraceDTO {
+export interface AiToolTraceView {
 	/** 工具名(`list_subscriptions` 之类),界面上翻成中文再显示。 */
 	name: string;
 	/** 归一成字符串的入参,与真正交给工具的那份一致。 */
@@ -1105,13 +1098,13 @@ export interface AiToolTraceDTO {
 }
 
 /** 一条聊天消息。`id` 供前端当列表 key,`ts` 是服务端落盘时刻(ISO)。 */
-export interface AiChatMessageDTO {
+export interface AiChatMessageView {
 	id: string;
 	role: "user" | "assistant";
 	content: string;
 	ts: string;
 	/** 助手消息专有:答这一句时调过的工具。没调过就整个字段缺席。 */
-	tools?: AiToolTraceDTO[];
+	tools?: AiToolTraceView[];
 	/**
 	 * 助手消息专有:答这一句之前的思考过程(思考模型的那段草稿)。前端折叠展示,
 	 * 永不回传给模型。没思考就整个字段缺席。
@@ -1126,11 +1119,11 @@ export interface AiChatMessageDTO {
 	 * 助手消息专有:卡片工坊里这条回复碰过的皮肤,按先后。消息末尾的预览块照它画
 	 * (ADR-0015 决策 20 的 🔗)。没碰过就整个字段缺席。
 	 */
-	cardSkins?: AiCardSkinTouchDTO[];
+	cardSkins?: AiCardSkinTouchView[];
 }
 
 /** 一条回复碰过的一套卡片皮肤。`kinds` 是这条回复写过的卡种,按先后;只改了名字时为空。 */
-export interface AiCardSkinTouchDTO {
+export interface AiCardSkinTouchView {
 	id: string;
 	kinds: CardKind[];
 }
@@ -1183,7 +1176,7 @@ export const AI_CARD_WORKSHOP_TOOLS = {
 	setSkinMeta: "set_skin_meta",
 } as const;
 
-export interface AiConversationMetaDTO {
+export interface AiConversationMetaView {
 	id: string;
 	title: string;
 	createdAt: string;
@@ -1210,18 +1203,18 @@ export interface AiConversationMetaDTO {
 }
 
 /** 一整个会话(含消息)。`GET /api/ai/conversations/:id` 的载荷。 */
-export interface AiConversationDTO extends AiConversationMetaDTO {
-	messages: AiChatMessageDTO[];
+export interface AiConversationView extends AiConversationMetaView {
+	messages: AiChatMessageView[];
 }
 
 /** `GET /api/ai/conversations` 响应,按最近聊过的排在前。 */
 export interface AiConversationListResponse {
-	conversations: AiConversationMetaDTO[];
+	conversations: AiConversationMetaView[];
 }
 
 /** `POST /api/ai/conversations` / `GET /api/ai/conversations/:id` 响应。 */
 export interface AiConversationResponse {
-	conversation: AiConversationDTO;
+	conversation: AiConversationView;
 }
 
 /**
@@ -1231,7 +1224,7 @@ export interface AiConversationResponse {
  * 前端照常拿它更新侧栏那一行就行。
  */
 export interface AiConversationMetaResponse {
-	conversation: AiConversationMetaDTO;
+	conversation: AiConversationMetaView;
 }
 
 /**
@@ -1246,11 +1239,11 @@ export interface AiConversationMetaResponse {
  */
 export interface AiChatReplyResponse {
 	/** 落盘后的用户消息(id / ts 已定)。 */
-	user: AiChatMessageDTO;
+	user: AiChatMessageView;
 	/** 女仆的回复。 */
-	reply: AiChatMessageDTO;
+	reply: AiChatMessageView;
 	/** 更新后的会话元信息 —— 标题可能刚由这条首问定下来,侧栏要跟着改。 */
-	conversation: AiConversationMetaDTO;
+	conversation: AiConversationMetaView;
 }
 
 /**
@@ -1265,7 +1258,7 @@ export interface AiChatReplyResponse {
 export type PreviewResponse = Result<{ dataUrl: string; sampleReason?: string }>;
 
 /** 卡片渲染的浏览器来源(二选一;都在时 endpoint 生效)。 */
-export interface ChromeSourceDTO {
+export interface ChromeSourceView {
 	chromePath?: string;
 	chromeEndpoint?: string;
 }
@@ -1275,7 +1268,7 @@ export interface RenderSourceResponse {
 	/** 渲染器当前是否可用(有 adapter 在位)。 */
 	enabled: boolean;
 	/** 在用来源;未启用时 null。 */
-	source: ChromeSourceDTO | null;
+	source: ChromeSourceView | null;
 	/** false = 无可写 bootstrap 配置(legacy/desktop),切换生效但重启不保留。 */
 	persistable: boolean;
 }

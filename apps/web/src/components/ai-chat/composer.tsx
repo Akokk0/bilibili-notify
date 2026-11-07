@@ -1,4 +1,4 @@
-import type { MaidSkillDTO } from "@bilibili-notify/contract";
+import type { MaidSkillView } from "@bilibili-notify/contract";
 import { Icon, IconButton, MenuItem, PopoverShell, useDismiss } from "@bilibili-notify/ui";
 import {
 	type KeyboardEvent,
@@ -73,7 +73,7 @@ export interface ComposerProps {
 	 * 可用的女仆技能 —— `/` 唤起的那份菜单。缺省空数组:技能拉不到时斜杠只是
 	 * 一个普通字符,聊天照常。
 	 */
-	skills?: readonly MaidSkillDTO[];
+	skills?: readonly MaidSkillView[];
 }
 
 export function Composer({
@@ -132,7 +132,7 @@ export function Composer({
 		setIndex((i) => (i >= matches.length ? 0 : i));
 	}, [matches.length]);
 
-	const pick = (s: MaidSkillDTO) => {
+	const pick = (s: MaidSkillView) => {
 		// 补一个空格:选完技能光标停在命令后面,主人接着打就是追加要求。
 		onChange(`/${s.name} `);
 		setClosed(true);

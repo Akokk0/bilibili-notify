@@ -11,7 +11,7 @@
  * - 挑中的候选(B 站的也一样)经同一个配置弹层建订阅,`cachedProfile` 用候选预填,不编没有的格。
  */
 
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -78,7 +78,7 @@ const STOPPED_SOURCE: SourceEntry = {
 	descriptor: { label: "快手", color: "#ff4906", supportedFeatures: ["post"] },
 };
 
-function extension(id: string): ExtensionDTO {
+function extension(id: string): ExtensionEntryView {
 	return {
 		id,
 		name: `${id} 订阅`,

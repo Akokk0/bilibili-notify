@@ -1,4 +1,4 @@
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { useEffect, useRef } from "react";
 import {
 	noticeBody,
@@ -21,8 +21,8 @@ import { type NoticeView, useToastStore } from "../store/notifications";
  * 都是用户自己按的,他正看着。
  */
 export function transitionNotice(
-	before: UpdateStatusDTO,
-	after: UpdateStatusDTO,
+	before: UpdateStatusView,
+	after: UpdateStatusView,
 ): NoticeView | null {
 	if (before.state.phase !== "downloading") return null;
 	const { target, notes } = before.state;
@@ -55,7 +55,7 @@ export function transitionNotice(
 export function useUpdateTransitionNotice(): void {
 	const { data } = useUpdateStatus();
 	const notify = useToastStore((s) => s.notify);
-	const previous = useRef<UpdateStatusDTO | undefined>(undefined);
+	const previous = useRef<UpdateStatusView | undefined>(undefined);
 	useEffect(() => {
 		const before = previous.current;
 		previous.current = data;

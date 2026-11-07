@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, ExtensionsResponse } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
@@ -102,7 +102,7 @@ describe("上报出入 e2e:丢格与整条拒进了拓展列表那一口", () =>
 
 	const api = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${port}${path}`, init);
 
-	async function probeRow(): Promise<ExtensionDTO | undefined> {
+	async function probeRow(): Promise<ExtensionEntryView | undefined> {
 		const body = (await (await api("/api/ext")).json()) as ExtensionsResponse;
 		return body.extensions.find((e) => e.id === FIXTURE_ID);
 	}

@@ -8,7 +8,7 @@
  * 不太好」,则是把一次可能的攻击轻描淡写掉。
  */
 
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -29,8 +29,8 @@ const SETTINGS = { channel: "stable", autoDownload: true, mirrors: [] };
 
 let health = healthScript("offline");
 
-function serve(state: UpdateStatusDTO["state"], over: Partial<UpdateStatusDTO> = {}) {
-	const status: UpdateStatusDTO = {
+function serve(state: UpdateStatusView["state"], over: Partial<UpdateStatusView> = {}) {
+	const status: UpdateStatusView = {
 		currentVersion: "0.8.0",
 		rollbackTarget: null,
 		pinnedVersion: null,
@@ -359,7 +359,7 @@ describe("UpdateSection —— 从别处「去更新」跳过来", () => {
 		const gate = new Promise<void>((r) => {
 			release = r;
 		});
-		const status: UpdateStatusDTO = {
+		const status: UpdateStatusView = {
 			currentVersion: "0.8.0",
 			rollbackTarget: null,
 			pinnedVersion: null,

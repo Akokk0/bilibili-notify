@@ -6,7 +6,7 @@
  * 快照带着的 `subscriptionId` 说的才是这间直播间是替哪一条开的。
  */
 
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { colorFromSeed } from "@bilibili-notify/internal";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -96,7 +96,7 @@ function extSub(id: string, name: string): Subscription {
 }
 
 /** 装着的抖音订阅源。 */
-const DOUYIN: ExtensionDTO = {
+const DOUYIN: ExtensionEntryView = {
 	id: "douyin",
 	name: "抖音订阅",
 	dir: "/data/extensions/douyin",
@@ -124,7 +124,7 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 	function renderPanel(
 		live: LiveListeningEntry[],
 		subs: Subscription[],
-		extensions?: ExtensionDTO[],
+		extensions?: ExtensionEntryView[],
 	) {
 		return render(
 			<MemoryRouter initialEntries={["/"]}>

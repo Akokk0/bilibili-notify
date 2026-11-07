@@ -11,7 +11,7 @@
  *   走;榜单的结果按订阅 id 回指,名字 / 颜色照统计行那一份。
  */
 
-import type { ExtensionDTO, SourceEntry, UpStatsRow } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry, UpStatsRow } from "@bilibili-notify/contract";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
@@ -101,7 +101,7 @@ const EXT_SUB: Subscription = {
 	},
 };
 
-const DOUYIN: ExtensionDTO = {
+const DOUYIN: ExtensionEntryView = {
 	id: "douyin",
 	name: "抖音订阅",
 	dir: "/data/extensions/douyin",
@@ -126,7 +126,7 @@ const DOUYIN_SOURCE: SourceEntry = {
 function mockApi(
 	rows: UpStatsRow[],
 	subs: Subscription[],
-	extensions: ExtensionDTO[] = [DOUYIN],
+	extensions: ExtensionEntryView[] = [DOUYIN],
 	enabled = true,
 ) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {

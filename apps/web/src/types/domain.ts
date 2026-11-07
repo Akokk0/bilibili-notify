@@ -2,7 +2,7 @@
  * 独立端 Dashboard 的域类型门面(原「手维护镜像」,已退役)。
  *
  * 类型的单一来源:域模型在 `@bilibili-notify/internal`(全部 `import type`,
- * 编译后擦除,web 产物不含核心代码);wire DTO 在 `@bilibili-notify/contract`。
+ * 编译后擦除,web 产物不含核心代码);wire 视图 在 `@bilibili-notify/contract`。
  * 值级常量(FEATURE_KEYS / DEFAULT_FEATURE_FLAGS)从 internal 的各领域零依赖子路径
  * 运行时导入 —— 这些模块不含 zod,bundle
  * 零增量。本文件自留的只剩 UI 文案、工厂函数与表单辅助。
@@ -14,8 +14,8 @@
 
 import type {
 	ConnectionCandidatesResponse,
-	SubscriptionDTO,
 	SubscriptionTag,
+	SubscriptionView,
 } from "@bilibili-notify/contract";
 import type { Connection, NewConnection, PushTarget } from "@bilibili-notify/internal";
 import { DEFAULT_ROAST_SCHEDULE } from "@bilibili-notify/internal/ai";
@@ -55,14 +55,14 @@ export {
 };
 
 /**
- * Dashboard 消费的订阅一直是 wire DTO 形状(internal Subscription + 服务端
+ * Dashboard 消费的订阅一直是 wire 视图 形状(internal Subscription + 服务端
  * join 回来的 cachedProfile / problems),沿用旧名 Subscription。
  *
  * 订阅只有一种形状(ADR-0021 决策 14、15):「这条订阅订的是谁」一律读
  * `subscriptionIdentityOf(sub)` 的身份(`sourceKey` + `externalId`);`specialViewers` 是公共的,
  * `problems` 必带(挂在这条订阅上的问题,没有就是空数组;没关注 UP 也在里面,`code: "follow_failed"`)。
  */
-export type Subscription = SubscriptionDTO;
+export type Subscription = SubscriptionView;
 
 export type {
 	AIOverride,

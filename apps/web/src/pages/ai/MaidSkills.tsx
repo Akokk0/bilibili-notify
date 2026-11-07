@@ -9,7 +9,7 @@
  * 它们怎么写的,自己写第一条时才有个照着抄的样子。
  */
 
-import type { MaidSkillDTO, MaidSkillWriteRequest } from "@bilibili-notify/contract";
+import type { MaidSkillView, MaidSkillWriteRequest } from "@bilibili-notify/contract";
 import { complainAboutSkill, MAID_SKILL_LIMITS } from "@bilibili-notify/contract";
 import {
 	AddFileButton,
@@ -51,7 +51,7 @@ const BLANK: MaidSkillWriteRequest = {
 /** 左栏那颗「新建」的哨兵 id —— 与任何合法技能名都撞不上(名字里没有斜杠)。 */
 const NEW_ID = "/new";
 
-function copyName(name: string, list: readonly MaidSkillDTO[]): string {
+function copyName(name: string, list: readonly MaidSkillView[]): string {
 	for (let n = 1; ; n++) {
 		const suffix = n === 1 ? "-copy" : `-copy-${n}`;
 		const candidate = `${name.slice(0, MAID_SKILL_LIMITS.nameChars - suffix.length).replace(/-+$/, "")}${suffix}`;
@@ -59,7 +59,7 @@ function copyName(name: string, list: readonly MaidSkillDTO[]): string {
 	}
 }
 
-function toDraft(s: MaidSkillDTO): MaidSkillWriteRequest {
+function toDraft(s: MaidSkillView): MaidSkillWriteRequest {
 	const draft: MaidSkillWriteRequest = {
 		name: s.name,
 		description: s.description,

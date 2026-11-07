@@ -78,7 +78,7 @@ B 站来源(createPipelineRuntime 之后) → compose.ts: createBiliContext(...)
 
 ### `apps/contract`
 
-独立端两端共同消费的 **wire 契约**:REST 响应 DTO(SubscriptionDTO / history / fans / logs / live / health)+ WS channel 注册表与 envelope。只放纯类型与纯常量、零运行时依赖 —— web 端 `import type` 零成本,server 端可 import 值(CHANNELS / LOG_LEVELS);zod 校验 schema 是服务端职责,留在 apps/server,用契约类型注解防漂移。注意它在 `apps/` 下、不在 `./packages/*` glob 内 —— 根脚本的 packages 预构建过滤器要显式带上 `--filter '@bilibili-notify/contract'`(dev / build:update-payload / dev:desktop / build:desktop 已配)。
+独立端两端共同消费的 **wire 契约**:REST 响应 视图(SubscriptionView / history / fans / logs / live / health)+ WS channel 注册表与 envelope。只放纯类型与纯常量、零运行时依赖 —— web 端 `import type` 零成本,server 端可 import 值(CHANNELS / LOG_LEVELS);zod 校验 schema 是服务端职责,留在 apps/server,用契约类型注解防漂移。注意它在 `apps/` 下、不在 `./packages/*` glob 内 —— 根脚本的 packages 预构建过滤器要显式带上 `--filter '@bilibili-notify/contract'`(dev / build:update-payload / dev:desktop / build:desktop 已配)。
 
 ### `apps/server`
 
@@ -226,7 +226,7 @@ src/
   `contributes.push` 填、每次读按当前语言盖好译文;全部适配器(内置三个 + 拓展,停着的也在)的描述列在
   `GET /api/adapters`。4-29 起交 `{ key, descriptor, has }`，扫码 / 列地址入口由 `has` 决定；
   内置连接字段由设置规则导出（条件字段、记录表、分支草稿、候选提示），拓展仍只开放原标量字段。
-  `ExtensionDTO.push` 已删，面板连接徽章读描述与已保存快照。新建统一读候选，列候选时宿主按
+  `ExtensionEntryView.push` 已删，面板连接徽章读描述与已保存快照。新建统一读候选，列候选时宿主按
   `adapterKey + platform` 刷新既有快照，不改设置、不触发重连。平台闭集与三份规则仍留 4-30 搬出。
 - **打包 = 清单 + 一个自包含 `index.mjs`**:每个拓展自己 `vp pack` 出 `dist/`,第三方**全内联**
   —— 装它的地方旁边没有 node_modules,留一个裸依赖是「构建全绿、主人拨开关那一刻才
@@ -279,7 +279,7 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
   并当场收窄工具面)。两条路都在消息流里留一枚 `load_skill` 痕迹胶囊。列表路由、
   `load_skill` 目录与斜杠点名都读 `maid-skills/reader.ts` 的读口;缺工具的内置 /
   提供方技能不列、点名拿不到,主人技能照列、照交集收窄、只记一条 warn。
-- **内置技能旧斜杠名是别名**(`aliases`,经 DTO 下发);面板按正名优先认。
+- **内置技能旧斜杠名是别名**(`aliases`,经 视图 下发);面板按正名优先认。
 - **`allowed-tools` 只减不加。** 收窄是对现有工具表做交集(`narrowTools`),写一个
   不存在的名字长不出工具来 —— 用户可写的数据永远不能扩大能力面。收窄只活一次请求。
 - **正文追加在人格之后**,不顶掉它:主人要的是「按这套步骤做事」,不是换个女仆。

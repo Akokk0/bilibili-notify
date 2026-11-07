@@ -7,11 +7,11 @@
  * 其实在跟模型说一句它不认识的暗号(ADR-0001 背景第 1 条)。
  */
 
-import type { MaidSkillDTO } from "@bilibili-notify/contract";
+import type { MaidSkillView } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { matchSkills, resolveOutgoing } from "../skills";
 
-const skill = (name: string, over: Partial<MaidSkillDTO> = {}): MaidSkillDTO => ({
+const skill = (name: string, over: Partial<MaidSkillView> = {}): MaidSkillView => ({
 	name,
 	description: `${name} 干什么`,
 	disableModelInvocation: false,

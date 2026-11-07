@@ -2,7 +2,7 @@ import {
 	AI_CARD_WORKSHOP_TOOLS,
 	AI_TOOL_CREATE_SKIN,
 	type AiChatMode,
-	type AiConversationDTO,
+	type AiConversationView,
 	type AiSkinTarget,
 } from "@bilibili-notify/contract";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/ai";
@@ -30,7 +30,7 @@ import {
 import { errorTextOf } from "../../services/error-text";
 import {
 	listMaidSkillsSafe,
-	type MaidSkillDTO,
+	type MaidSkillView,
 	maidSkillsQueryKey,
 } from "../../services/maidSkill";
 import { syncActiveSkinToStore } from "../../services/skin-active";
@@ -166,7 +166,7 @@ type SendVars = {
 const STICK_SLACK_PX = 48;
 
 /** 技能还没拉到时的稳定空表 —— 每次渲染现造一个 `[]` 会让 Composer 白白重渲。 */
-const EMPTY_SKILLS: readonly MaidSkillDTO[] = [];
+const EMPTY_SKILLS: readonly MaidSkillView[] = [];
 
 /**
  * 一场对话的面孔:模式 + 带不带人格 + 工坊做哪种皮肤。开局定死,见 contract 的
@@ -570,7 +570,7 @@ export function ChatPage() {
 			// 已退场、真身还没到,整轮问答会从屏幕上消失再出现(会话里只有这一轮时
 			// 更狠,直接闪回空态问候页)。done 事件本来就把落盘后的两条带回来了,
 			// 再去问服务端要一遍纯属白等。
-			qc.setQueryData<AiConversationDTO>(conversationQueryKey(id), (prev) => ({
+			qc.setQueryData<AiConversationView>(conversationQueryKey(id), (prev) => ({
 				...res.conversation,
 				messages: [...(prev?.messages ?? []), res.user, res.reply],
 			}));

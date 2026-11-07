@@ -1,6 +1,6 @@
 import type { Subscription } from "@bilibili-notify/internal";
 
-/** 认得出订的是谁、带着订阅 id 的最小订阅形状 —— 线上的 DTO、测试里的半截订阅都能直接传。 */
+/** 认得出订的是谁、带着订阅 id 的最小订阅形状 —— 线上的 视图、测试里的半截订阅都能直接传。 */
 export type KeyedSubscription = Pick<Subscription, "id" | "identity">;
 
 /**

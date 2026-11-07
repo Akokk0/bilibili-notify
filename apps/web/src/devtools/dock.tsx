@@ -14,7 +14,7 @@ import type {
 	DevParamField,
 	DevParamValues,
 	DevScenarioGroup,
-	DevStatusDTO,
+	DevStatusView,
 } from "@bilibili-notify/contract";
 import {
 	Btn,
@@ -128,7 +128,7 @@ function Ready({
 	data,
 	webScenarios,
 }: {
-	data: DevStatusDTO;
+	data: DevStatusView;
 	webScenarios: readonly WebDevScenario[];
 }) {
 	const serverActive = useDevActive(data.active);

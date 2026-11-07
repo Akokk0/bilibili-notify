@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:f
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import type { SubscriptionView } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { IMAGE_GRACE_MS, isValidImageRef } from "../images/image-store.js";
 import { type ServerHandle, startServer } from "../index.js";
@@ -124,7 +124,7 @@ describe("头像 e2e:新建认真的拓展名单、头像进图库、删订阅�
 			}),
 		});
 		expect(created.status, await created.clone().text()).toBe(200);
-		const row = ((await created.json()) as SubscriptionDTO[]).find((s) => s.id === SUB_ID);
+		const row = ((await created.json()) as SubscriptionView[]).find((s) => s.id === SUB_ID);
 		const ref = row?.cachedProfile?.avatar ?? "";
 		expect(isValidImageRef(ref)).toBe(true);
 		expect(await imageFiles()).toEqual([ref]);

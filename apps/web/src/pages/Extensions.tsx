@@ -1,4 +1,4 @@
-import type { ExtensionDTO, MarketplaceEntryView } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, MarketplaceEntryView } from "@bilibili-notify/contract";
 import {
 	BELOW_HEADER_TOP,
 	Btn,
@@ -61,7 +61,7 @@ interface ConnectionRow {
 	adapterKey?: string;
 }
 
-type Provides = NonNullable<ExtensionDTO["provides"]>[number];
+type Provides = NonNullable<ExtensionEntryView["provides"]>[number];
 
 function useProvidesLabels() {
 	const t = useT();
@@ -105,7 +105,7 @@ function ExtensionCard({
 	installer,
 	elsewhere,
 }: {
-	ext: ExtensionDTO;
+	ext: ExtensionEntryView;
 	/** 从它借来的 bot 建了几条连接。 */
 	count: number;
 	onToggle: (enabled: boolean) => void;
@@ -289,7 +289,7 @@ export default function Extensions() {
 	const unknownCount = extensions.filter((ext) => ext.provides === undefined).length;
 	const counts = countByExtension(connections.data ?? []);
 
-	const grid = (items: ExtensionDTO[]) => (
+	const grid = (items: ExtensionEntryView[]) => (
 		<div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
 			{items.map((ext) => (
 				// 传送的落点靠这个属性找(`install-flight.tsx`)。包一层是因为 GlassBox 不透传

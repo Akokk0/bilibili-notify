@@ -1,5 +1,5 @@
 import type {
-	ExtensionDTO,
+	ExtensionEntryView,
 	ExtensionInstallResponse,
 	ExtensionsResponse,
 	MarketplaceResponse,
@@ -184,7 +184,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	app.get("/", async (c) => {
 		await opts.settle?.();
 		const globals = opts.store.getGlobals();
-		const extensions: ExtensionDTO[] = opts.extensions().map((entry) => {
+		const extensions: ExtensionEntryView[] = opts.extensions().map((entry) => {
 			// 版本不合的只有身份那几格(那一档的格式可能不认识),名字与版本照样印得出来。
 			const identity = entryIdentity(entry);
 			return {

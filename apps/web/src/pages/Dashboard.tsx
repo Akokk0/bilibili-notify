@@ -1,4 +1,4 @@
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { displayNameOf } from "@bilibili-notify/contract";
 import { formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import { needsLiveMonitor } from "@bilibili-notify/internal/live-monitor";
@@ -80,7 +80,7 @@ function liveRowFace(
 	r: LiveListeningEntry,
 	lookup: SubscriptionLookup,
 	sources: readonly SourceEntry[] | undefined,
-	_extensions: readonly ExtensionDTO[] | undefined,
+	_extensions: readonly ExtensionEntryView[] | undefined,
 ): {
 	name: string;
 	color: string;
@@ -140,7 +140,7 @@ export function LiveNowPanel({
 	/** 来源表 —— 拓展订阅那几行的平台徽章照描述符画(取自清单)。没回来时徽章退拓展名或拓展 id。 */
 	sources?: readonly SourceEntry[];
 	/** 装着的拓展 —— 来源表里没有时退它的名字。 */
-	extensions?: readonly ExtensionDTO[];
+	extensions?: readonly ExtensionEntryView[];
 	/** 全局特性开关(`core.defaults.features`),订阅覆盖压过它;未读取时countStatus不得成功。 */
 	globalFeatures?: FeatureFlagValues;
 }) {
@@ -365,7 +365,7 @@ export function TimelinePanel({
 	/** 来源表 —— 拓展行对不上名字时写「平台名 · 外部 id」,平台名照描述符(取自清单)。没回来时写拓展 id。 */
 	sources?: readonly SourceEntry[];
 	/** 装着的拓展 —— 来源表里没有时退它的名字。 */
-	extensions?: readonly ExtensionDTO[];
+	extensions?: readonly ExtensionEntryView[];
 }) {
 	const tx = useT();
 	// 历史行先按 `subscriptionId` 对订阅,不在了再按身份找(B 站行按 uid、拓展行按拓展 id + 外部 id,
@@ -505,7 +505,7 @@ function fansRowFace(
 	e: FollowersRefreshEntry,
 	lookup: SubscriptionLookup,
 	sources: readonly SourceEntry[] | undefined,
-	_extensions: readonly ExtensionDTO[] | undefined,
+	_extensions: readonly ExtensionEntryView[] | undefined,
 ): { name: string; color: string; avatar?: string; platform?: { label: string; color?: string } } {
 	const sub = lookup.byId(e.subscriptionId);
 	const base = {
@@ -551,7 +551,7 @@ export function FansPanel({
 	/** 来源表 —— 拓展行的平台徽章照描述符(取自清单);没回来时徽章写拓展名或拓展 id。 */
 	sources?: readonly SourceEntry[];
 	/** 装着的拓展 —— 来源表里没有时退它的名字。 */
-	extensions?: readonly ExtensionDTO[];
+	extensions?: readonly ExtensionEntryView[];
 }) {
 	const tx = useT();
 	// 不轮询 — 由 usePushEventsChannel 的 `followers-refreshed` 覆盖式刷新缓存。

@@ -36,7 +36,7 @@ import type {
 	LiveListeningEntry,
 	ProblemsResponse,
 	SourcesResponse,
-	SubscriptionDTO,
+	SubscriptionView,
 } from "@bilibili-notify/contract";
 import type {
 	ExtensionManifest,
@@ -648,8 +648,8 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		return rows.sort((x, y) => x.subscriptionId.localeCompare(y.subscriptionId));
 	}
 
-	async function subscriptions(): Promise<SubscriptionDTO[]> {
-		return okJson<SubscriptionDTO[]>(await api("/api/subscriptions"));
+	async function subscriptions(): Promise<SubscriptionView[]> {
+		return okJson<SubscriptionView[]>(await api("/api/subscriptions"));
 	}
 
 	async function createConnection(id: string, name: string, platform: string, settings: object) {
@@ -940,7 +940,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		}
 		expect(face?.label).toBe("假平台");
 		drove("PushCell", "label", "shortLabel", "color", "icon", "settingsFields");
-		// 适配器描述由宿主照清单填，不再经拓展生命周期 DTO 中转。
+		// 适配器描述由宿主照清单填，不再经拓展生命周期 视图 中转。
 		drove("PlatformAdapter", "descriptor");
 	});
 

@@ -6,13 +6,13 @@
  * 这几条都是一闪而过的行为,在页面上靠肉眼很难反复验,所以钉在这里。
  */
 
-import type { MaidSkillDTO } from "@bilibili-notify/contract";
+import type { MaidSkillView } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { Composer } from "../composer";
 
 /** 菜单里那几条。技能现在从服务端来,所以测试自己造一份喂进去。 */
-const SKILLS: MaidSkillDTO[] = ["weekly-report", "unsub-cleanup", "up-pk"].map((name) => ({
+const SKILLS: MaidSkillView[] = ["weekly-report", "unsub-cleanup", "up-pk"].map((name) => ({
 	name,
 	description: `${name} 干什么`,
 	disableModelInvocation: false,

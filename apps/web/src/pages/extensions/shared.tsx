@@ -1,4 +1,4 @@
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionEntryView } from "@bilibili-notify/contract";
 import { ErrorNote, Icon, WarnNote } from "@bilibili-notify/ui";
 import { type UseMutationResult, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invalidateExtensionTables } from "../../hooks/useExtensions";
@@ -57,7 +57,7 @@ export function SectionCaption({ children }: { children: string }) {
  * 「为什么没跑起来」。分红黄两档不是口味:清单坏了 / 加载炸了要主人去动手,而连败自动
  * 停用与版本不合是「换一版就好」,同一个红盒会让前者被当成后者放着不管。
  */
-export function ExtensionStateDetail({ ext }: { ext: ExtensionDTO }) {
+export function ExtensionStateDetail({ ext }: { ext: ExtensionEntryView }) {
 	if (!ext.detail) return null;
 	const { severity } = EXTENSION_STATE_META[ext.state];
 	if (severity === "err") return <ErrorNote size="sm">{ext.detail}</ErrorNote>;

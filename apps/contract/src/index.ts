@@ -12,6 +12,7 @@
  */
 
 export type {
+	ExtensionRunState,
 	PlatformAdapterDescriptor,
 	SettingsField,
 	SettingsListField,

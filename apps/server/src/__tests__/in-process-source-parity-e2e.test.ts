@@ -29,7 +29,7 @@ import type {
 	SourceAuthResponse,
 	SourcesResponse,
 	StatsOverviewResponse,
-	SubscriptionDTO,
+	SubscriptionView,
 } from "@bilibili-notify/contract";
 import {
 	fail,
@@ -3618,7 +3618,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				}),
 			),
 		);
-		const row = ((await created.json()) as SubscriptionDTO[]).find((one) => one.id === id);
+		const row = ((await created.json()) as SubscriptionView[]).find((one) => one.id === id);
 		expect(row?.identity).toEqual({ sourceKey: IN_PROCESS_KEY, externalId: "cand-1" });
 		expect(row?.cachedProfile).toMatchObject({ name: "候选甲", followers: 11 });
 		expect((await api(`/api/subscriptions/${id}`, { method: "DELETE" })).status).toBe(204);

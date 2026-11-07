@@ -12,7 +12,7 @@ import type { ReportDiscrepancy } from "./context.js";
  * - 不私聊主人:一个系统性的 bug 就是每条作品一条私聊(决策 60)。
  *
  * 写的一头是 ctx 里唯一那个「上报出入」出口(`onReportDiscrepancy`),读的一头是拓展列表那一口
- * (`ExtensionDTO.reportDiscrepancies`)。记了新的就叫面板重取(`onChanged` → bus 的
+ * (`ExtensionEntryView.reportDiscrepancies`)。记了新的就叫面板重取(`onChanged` → bus 的
  * `extension-report-discrepancies-changed`),**按拓展、在尾沿合并** —— 自己一个窗口,不借 `ctx.statusChanged()`
  * 那一声:那一声说的是「拓展的视图变了」,借了的话桥每喊一次都要多拉一遍拓展表,上报出入每记一条又要多
  * 重读一次视图。

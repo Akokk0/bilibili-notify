@@ -4,7 +4,7 @@
  * 按钮。没新版、或者后端失联(那份状态只是快照)时什么都不加。
  */
 
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -20,11 +20,11 @@ function LocationProbe() {
 	return <div data-testid="loc">{`${loc.pathname}${loc.hash}`}</div>;
 }
 
-function dto(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
+function dto(state: UpdateStatusView["state"]): UpdateStatusView {
 	return { currentVersion: "0.8.0", rollbackTarget: null, pinnedVersion: null, state };
 }
 
-function renderCard(over: { update?: UpdateStatusDTO; reachable?: boolean } = {}) {
+function renderCard(over: { update?: UpdateStatusView; reachable?: boolean } = {}) {
 	const qc = new QueryClient({
 		defaultOptions: { queries: { retry: false, staleTime: Infinity } },
 	});

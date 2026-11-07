@@ -7,14 +7,14 @@
  */
 
 import type {
-	MaidSkillDTO,
 	MaidSkillImportPreviewResponse,
 	MaidSkillsListResponse,
+	MaidSkillView,
 	MaidSkillWriteRequest,
 } from "@bilibili-notify/contract";
 import { api } from "./api";
 
-export type { MaidSkillDTO, MaidSkillProblemDTO } from "@bilibili-notify/contract";
+export type { MaidSkillProblemView, MaidSkillView } from "@bilibili-notify/contract";
 
 export const maidSkillsQueryKey = ["ai", "skills"] as const;
 
@@ -45,7 +45,7 @@ export function exportMaidSkill(name: string): Promise<Blob> {
 }
 
 /** 只给聊天菜单用的那份 —— 拉不到就当没有技能,别让斜杠菜单把整个聊天拖垮。 */
-export async function listMaidSkillsSafe(): Promise<MaidSkillDTO[]> {
+export async function listMaidSkillsSafe(): Promise<MaidSkillView[]> {
 	try {
 		const res = await listMaidSkills();
 		// 形状也验一下:回来的东西不是数组时给个空表,别把 undefined 当清单交出去 ——

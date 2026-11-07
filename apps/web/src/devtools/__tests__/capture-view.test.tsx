@@ -4,7 +4,7 @@
  * 回执真的显示出来了」,列表长什么样不守。
  */
 
-import type { DevCapturesDTO } from "@bilibili-notify/contract";
+import type { DevCapturesView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -18,7 +18,7 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 import { CaptureView } from "../capture-view";
 
-const CAPTURES: DevCapturesDTO = {
+const CAPTURES: DevCapturesView = {
 	enabled: true,
 	entries: [
 		{

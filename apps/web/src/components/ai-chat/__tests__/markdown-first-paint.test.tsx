@@ -20,11 +20,11 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { AiChatMessageDTO } from "../../../services/aiChat";
+import type { AiChatMessageView } from "../../../services/aiChat";
 
 afterEach(cleanup);
 
-function reply(content: string): AiChatMessageDTO {
+function reply(content: string): AiChatMessageView {
 	return { id: "m1", role: "assistant", content, ts: "2026-07-25T00:00:00.000Z" };
 }
 

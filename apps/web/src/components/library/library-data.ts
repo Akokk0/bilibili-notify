@@ -24,7 +24,7 @@ export interface LibraryEntry {
 export const libraryQueryKey = (kind: LibraryKind) => ["library", kind] as const;
 const libraryPath = (kind: LibraryKind) => `/api/library/${kind}`;
 
-/** Keep the existing resource DTOs in cache; both browser forms share one read side. */
+/** Keep the existing resource views in cache; both browser forms share one read side. */
 export function useLibrary(kind: LibraryKind) {
 	const query = useQuery<LibraryImagesResponse | LibraryFontsResponse>({
 		queryKey: libraryQueryKey(kind),

@@ -8,7 +8,7 @@
  * 那句原话(哪一块、为什么)是拓展作者与主人唯一能照着查的线索,不许吞成一句「出错了」。
  */
 
-import type { ExtensionDTO, ExtensionPanelView } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, ExtensionPanelView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -23,7 +23,7 @@ import { api } from "../../../../services/api";
 import { DeclarativeHead, ExtensionSummary } from "../extension-page";
 import { answerPatch, cardOf, findCard, HOME, OFFICE, renderList } from "./list-harness";
 
-const DOUYIN: ExtensionDTO = {
+const DOUYIN: ExtensionEntryView = {
 	id: "douyin",
 	name: "抖音订阅",
 	version: "0.1.0",

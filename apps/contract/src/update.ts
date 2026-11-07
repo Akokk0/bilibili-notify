@@ -96,7 +96,7 @@ export interface UpdateApplyResponse {
 	mode: "update" | "rollback";
 }
 
-export interface UpdateStatusDTO {
+export interface UpdateStatusView {
 	/** 当前正在跑的那份载荷的版本。 */
 	currentVersion: string;
 	/** 退一步会退到哪。`null` = 已经在最底下那版,回退按钮该是灰的。 */

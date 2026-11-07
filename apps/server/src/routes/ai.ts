@@ -1,13 +1,13 @@
 import { CommentaryGenerator, type ConversationMessage } from "@bilibili-notify/ai";
 import type {
-	AiChatMessageDTO,
+	AiChatMessageView,
 	AiChatReplyResponse,
-	AiConversationDTO,
 	AiConversationListResponse,
 	AiConversationMetaResponse,
 	AiConversationResponse,
+	AiConversationView,
 	AiTestPushResponse,
-	AiToolTraceDTO,
+	AiToolTraceView,
 } from "@bilibili-notify/contract";
 import { AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
 import {
@@ -677,7 +677,7 @@ export function createAiRoute(
 					return;
 				}
 
-				const traces = slots.filter((s): s is AiToolTraceDTO => s.ok !== undefined);
+				const traces = slots.filter((s): s is AiToolTraceView => s.ok !== undefined);
 				const updated = await store().appendMessages(conv.id, [
 					// 存**能用的那些**引用,不是主人递进来的原样 —— 存进去的每一个都得
 					// 在图库里真实存在,否则重开会话时那几个格子就是一片碎图。
@@ -703,8 +703,8 @@ export function createAiRoute(
 				}
 
 				const [user, assistant] = updated.messages.slice(-2) as [
-					AiChatMessageDTO,
-					AiChatMessageDTO,
+					AiChatMessageView,
+					AiChatMessageView,
 				];
 				const payload: AiChatReplyResponse = {
 					user,
@@ -789,7 +789,7 @@ function toMeta(conv: Conversation): ConversationMeta {
 }
 
 /** 会话 → 详情载荷(元信息 + 全部消息)。 */
-function toDetail(conv: Conversation): AiConversationDTO {
+function toDetail(conv: Conversation): AiConversationView {
 	return {
 		...toMeta(conv),
 		messages: conv.messages,

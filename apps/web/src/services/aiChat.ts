@@ -1,11 +1,11 @@
 import type {
 	AiChatMode,
 	AiChatReplyResponse,
-	AiConversationDTO,
 	AiConversationListResponse,
-	AiConversationMetaDTO,
 	AiConversationMetaResponse,
+	AiConversationMetaView,
 	AiConversationResponse,
+	AiConversationView,
 	AiSkinTarget,
 	ErrorResponse,
 } from "@bilibili-notify/contract";
@@ -22,11 +22,11 @@ import { withDesktopTokenHeader } from "./desktop-token";
  */
 
 export type {
-	AiChatMessageDTO,
+	AiChatMessageView,
 	AiChatMode,
-	AiConversationDTO,
-	AiConversationMetaDTO,
-	AiToolTraceDTO,
+	AiConversationMetaView,
+	AiConversationView,
+	AiToolTraceView,
 } from "@bilibili-notify/contract";
 
 export const conversationsQueryKey = ["ai", "conversations"] as const;
@@ -44,12 +44,12 @@ export async function createConversation(init?: {
 	mode?: AiChatMode;
 	persona?: boolean;
 	skinTarget?: AiSkinTarget;
-}): Promise<AiConversationDTO> {
+}): Promise<AiConversationView> {
 	const res = await api.post<AiConversationResponse>("/api/ai/conversations", init ?? {});
 	return res.conversation;
 }
 
-export async function getConversation(id: string): Promise<AiConversationDTO> {
+export async function getConversation(id: string): Promise<AiConversationView> {
 	const res = await api.get<AiConversationResponse>(
 		`/api/ai/conversations/${encodeURIComponent(id)}`,
 	);
@@ -62,7 +62,7 @@ export async function getConversation(id: string): Promise<AiConversationDTO> {
  * 失败不抛给主人看 —— 服务端那头起名失败也回 200 + 当前标题(等于没变)。标题
  * 是装饰,不值得为它在刚聊完的界面上弹一条红字。
  */
-export async function retitleConversation(id: string): Promise<AiConversationMetaDTO> {
+export async function retitleConversation(id: string): Promise<AiConversationMetaView> {
 	const res = await api.post<AiConversationMetaResponse>(
 		`/api/ai/conversations/${encodeURIComponent(id)}/title`,
 	);
@@ -251,10 +251,10 @@ export function groupLabel(updatedAt: string, now = new Date()): string {
 
 /** 按 {@link groupLabel} 分组,保持服务端给的倒序。 */
 export function groupConversations(
-	items: readonly AiConversationMetaDTO[],
+	items: readonly AiConversationMetaView[],
 	now = new Date(),
-): Array<{ label: string; items: AiConversationMetaDTO[] }> {
-	const out: Array<{ label: string; items: AiConversationMetaDTO[] }> = [];
+): Array<{ label: string; items: AiConversationMetaView[] }> {
+	const out: Array<{ label: string; items: AiConversationMetaView[] }> = [];
 	for (const item of items) {
 		const label = groupLabel(item.updatedAt, now);
 		const last = out[out.length - 1];

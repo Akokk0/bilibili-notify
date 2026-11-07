@@ -189,7 +189,7 @@ function routeWith(
 	inbound: ConnectionCapabilities["inbound"] | null,
 	opts: { pipeline?: boolean } = {},
 ) {
-	// 放行时路由要把改完的订阅回成 DTO,所以替身得回一条有身份的订阅,不能是 `{}`。
+	// 放行时路由要把改完的订阅回成 视图,所以替身得回一条有身份的订阅,不能是 `{}`。
 	const patchSubscription = vi.fn(async () => ({
 		id: "s1",
 		identity: { sourceKey: "bilibili", externalId: "1" },

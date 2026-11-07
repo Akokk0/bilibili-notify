@@ -6,7 +6,7 @@
  * 已经关掉了「正在下载」那张,收尾时照样再弹(主人拍板的「下完再提醒」);其余迁移一律不出声。
  */
 
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -21,7 +21,7 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-function dto(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
+function dto(state: UpdateStatusView["state"]): UpdateStatusView {
 	return { currentVersion: "0.8.0", rollbackTarget: null, pinnedVersion: null, state };
 }
 
@@ -71,7 +71,7 @@ describe("transitionNotice", () => {
 		});
 	});
 
-	it.each<[string, UpdateStatusDTO, UpdateStatusDTO]>([
+	it.each<[string, UpdateStatusView, UpdateStatusView]>([
 		["还没查 → 正在下载(开面板那张卡由检查钩子发)", dto({ phase: "idle" }), downloading],
 		[
 			"有新版 → 已就绪(用户自己按的下载,系统页看得见)",
@@ -105,7 +105,7 @@ describe("useUpdateTransitionNotice", () => {
 		return null;
 	}
 
-	function mount(initial: UpdateStatusDTO) {
+	function mount(initial: UpdateStatusView) {
 		vi.mocked(api.get).mockResolvedValue(initial);
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		render(

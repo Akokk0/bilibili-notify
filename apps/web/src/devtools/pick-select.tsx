@@ -9,7 +9,7 @@
  *   所以这里也只列那个来源启用的订阅、按人去重(ADR-0031 决策 2)。
  */
 
-import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import type { SubscriptionView } from "@bilibili-notify/contract";
 import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { TSelect, type TSelectOption } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
@@ -28,7 +28,7 @@ function disabledTag(enabled: boolean): string {
 }
 
 /** 订阅给人看的那一行:名字 · 外部 id。 */
-function subLabel(sub: SubscriptionDTO): string {
+function subLabel(sub: SubscriptionView): string {
 	const { externalId } = subscriptionIdentityOf(sub);
 	return `${sub.cachedProfile?.name ?? externalId} · ${externalId}`;
 }
@@ -37,7 +37,7 @@ function subLabel(sub: SubscriptionDTO): string {
 function useOptions(kind: PickKind, provider: string | undefined): Option[] {
 	const subs = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<SubscriptionDTO[]>("/api/subscriptions"),
+		queryFn: () => api.get<SubscriptionView[]>("/api/subscriptions"),
 		enabled: kind === "sub" || kind === "creator",
 	});
 	const targets = useQuery({

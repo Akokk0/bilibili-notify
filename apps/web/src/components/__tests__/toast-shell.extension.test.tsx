@@ -6,7 +6,7 @@
  * 单开一个文件:`toast-shell.test.tsx` 里有假定时器,这里要等拓展清单回来(`findBy*`)。
  */
 
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -24,7 +24,7 @@ const DOUYIN = {
 	state: "running",
 	apiVersion: 1,
 	provides: ["subscription"],
-} as ExtensionDTO;
+} as ExtensionEntryView;
 
 /** 来源表里抖音那一行:平台名与徽章照它(取自清单)。 */
 const DOUYIN_SOURCE: SourceEntry = {

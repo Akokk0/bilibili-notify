@@ -11,7 +11,7 @@ import { useT } from "../../i18n";
  */
 
 import type {
-	AiCardSkinTouchDTO,
+	AiCardSkinTouchView,
 	CardSkinManifestResponse,
 	CardSkinPreviewResponse,
 } from "@bilibili-notify/contract";
@@ -41,7 +41,7 @@ const FALLBACK_WIDTH = 600;
 
 const KIND_TABS = CARD_KINDS.map((id) => ({ id, label: CARD_KIND_NAMES[id] }));
 
-export function CardSkinPreviews({ touches }: { touches: readonly AiCardSkinTouchDTO[] }) {
+export function CardSkinPreviews({ touches }: { touches: readonly AiCardSkinTouchView[] }) {
 	return (
 		<div className="flex flex-col gap-3">
 			{touches.map((t) => (
@@ -51,7 +51,7 @@ export function CardSkinPreviews({ touches }: { touches: readonly AiCardSkinTouc
 	);
 }
 
-function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
+function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchView }) {
 	const tx = useT();
 
 	const list = useCardSkinList();

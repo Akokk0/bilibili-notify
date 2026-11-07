@@ -1,9 +1,9 @@
 /**
  * 单元测试 — /api/subscriptions 的「外置 runtime 字段回 join」+「POST 新建只种不刷」。
  *
- * cachedProfile 已从 Subscription 外置(M2)。DTO 必须把 cachedProfile 从 SubscriptionStateStore join 回(有才带,
+ * cachedProfile 已从 Subscription 外置(M2)。视图 必须把 cachedProfile 从 SubscriptionStateStore join 回(有才带,
  * 无则 undefined)。从前还补一个恒为「未知」的 `state` 常量,没人写过它,1.0 第 2 期 ⑫ 删掉 —— 这里钉着它不再回来。
- * POST 新建不带资料就只建订阅,不当场请来源取(4-15 主人定只种不刷)。GET/POST/PATCH 响应都走同一 toDTO,
+ * POST 新建不带资料就只建订阅,不当场请来源取(4-15 主人定只种不刷)。GET/POST/PATCH 响应都走同一 subscriptionView,
  * 保证前端缓存一致。
  */
 
@@ -154,7 +154,7 @@ describe("/api/subscriptions GET — runtime 字段 join", () => {
 		expect(row.identity).toEqual(SUB.identity);
 	});
 
-	it("有 cachedProfile 时 join 回 DTO", async () => {
+	it("有 cachedProfile 时 join 回 视图", async () => {
 		const h = makeHarness({
 			rtRecord: {
 				[SUB.id]: {
@@ -170,7 +170,7 @@ describe("/api/subscriptions GET — runtime 字段 join", () => {
 	});
 });
 
-// 挂在订阅上的问题(问题表里 about 这条订阅的)随 DTO 带给面板:各归各、按 since 先后、没有就是空数组。
+// 挂在订阅上的问题(问题表里 about 这条订阅的)随 视图 带给面板:各归各、按 since 先后、没有就是空数组。
 describe("/api/subscriptions — 带上挂在订阅上的问题", () => {
 	const OTHER_ID = "22222222-2222-2222-2222-222222222222";
 	const OTHER = { ...SUB, id: OTHER_ID, identity: { sourceKey: "bilibili", externalId: "999" } };
@@ -303,7 +303,7 @@ describe("/api/subscriptions POST — 新建只种不刷", () => {
 describe("/api/subscriptions PATCH — 响应同样 join", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
-	it("PATCH 返回单条 joined DTO(cachedProfile)", async () => {
+	it("PATCH 返回单条 joined 视图(cachedProfile)", async () => {
 		const h = makeHarness({ rtRecord: { [SUB.id]: { cachedProfile: PROFILE } } });
 		const res = await h.app.request(`/${SUB.id}`, {
 			method: "PATCH",

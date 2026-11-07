@@ -6,7 +6,11 @@
  * 为什么。原因只写进日志的话,主人看见「卡片少了一张图」不会想到去日志里搜。
  */
 
-import type { ExtensionDTO, ReportDiscrepancyView, SourceEntry } from "@bilibili-notify/contract";
+import type {
+	ExtensionEntryView,
+	ReportDiscrepancyView,
+	SourceEntry,
+} from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -30,7 +34,7 @@ vi.mock("../../services/api", () => ({
 			if (url === "/api/subscriptions") return disk.subs;
 			if (url.endsWith("/docs")) return {};
 			if (url === "/api/ext") {
-				const douyin: ExtensionDTO = {
+				const douyin: ExtensionEntryView = {
 					id: "douyin",
 					name: "抖音订阅",
 					version: "0.1.0",

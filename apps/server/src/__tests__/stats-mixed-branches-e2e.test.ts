@@ -30,7 +30,7 @@ import type {
 	StatsOverviewResponse,
 	StatsRoastResponse,
 	StatsRoastRunNowResponse,
-	SubscriptionDTO,
+	SubscriptionView,
 } from "@bilibili-notify/contract";
 import { identityColor, type SubscriptionTag } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
@@ -245,8 +245,8 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		}
 	}
 
-	async function extSub(): Promise<SubscriptionDTO | undefined> {
-		const list = (await (await api("/api/subscriptions")).json()) as SubscriptionDTO[];
+	async function extSub(): Promise<SubscriptionView | undefined> {
+		const list = (await (await api("/api/subscriptions")).json()) as SubscriptionView[];
 		return list.find((s) => s.id === S_EXT);
 	}
 

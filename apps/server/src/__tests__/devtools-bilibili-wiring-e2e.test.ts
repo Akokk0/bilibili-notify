@@ -11,7 +11,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { DevStatusDTO } from "@bilibili-notify/contract";
+import type { DevStatusView } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
 
@@ -85,7 +85,7 @@ describe("devtools 的 B 站场景 → 真入口接的 Proxy", () => {
 	it("B 站的场景在面板的表里,id 带 bilibili. 前缀,没有不带前缀的那份", async () => {
 		const res = await fetch(`${base}/api/dev`);
 		expect(res.status).toBe(200);
-		const ids = ((await res.json()) as DevStatusDTO).scenarios.map((s) => s.id);
+		const ids = ((await res.json()) as DevStatusView).scenarios.map((s) => s.id);
 		expect(ids).toContain("bilibili.auth.login-state");
 		expect(ids).toContain("bilibili.live.start");
 		expect(ids).not.toContain("auth.login-state");

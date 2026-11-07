@@ -8,7 +8,7 @@
  * 落盘与在途两条路都要有 —— 重开会话时来源不该消失。
  */
 
-import type { AiChatMessageDTO } from "@bilibili-notify/contract";
+import type { AiChatMessageView } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { MessageList } from "../messages";
@@ -27,14 +27,14 @@ const SOURCES = [
 	{ title: "第二条", url: "https://example.com/b" },
 ];
 
-function msg(over: Partial<AiChatMessageDTO> = {}): AiChatMessageDTO {
+function msg(over: Partial<AiChatMessageView> = {}): AiChatMessageView {
 	return {
 		id: "m1",
 		role: "assistant",
 		content: "查完了,主人。",
 		ts: "2026-08-13T00:00:00.000Z",
 		...over,
-	} as AiChatMessageDTO;
+	} as AiChatMessageView;
 }
 
 function mountList(props: Partial<Parameters<typeof MessageList>[0]> = {}) {

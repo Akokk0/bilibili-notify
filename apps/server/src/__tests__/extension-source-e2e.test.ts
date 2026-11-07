@@ -18,7 +18,7 @@ import type {
 	DevCapturedDelivery,
 	ExtensionsResponse,
 	LiveListeningEntry,
-	SubscriptionDTO,
+	SubscriptionView,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
@@ -329,7 +329,7 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 		await press("report.profile");
 		await vi.waitFor(
 			async () => {
-				const subs = (await (await api("/api/subscriptions")).json()) as SubscriptionDTO[];
+				const subs = (await (await api("/api/subscriptions")).json()) as SubscriptionView[];
 				const profile = subs.find((s) => s.id === SUB_ID)?.cachedProfile;
 				expect(profile).toMatchObject({ name: "探针本人", followers: 123 });
 			},

@@ -19,7 +19,7 @@
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import type { SubscriptionView } from "@bilibili-notify/contract";
 import { makeEmptySubscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -158,8 +158,8 @@ function post(body: unknown) {
 	});
 }
 
-async function listed(): Promise<SubscriptionDTO[]> {
-	return (await (await app.request("/api/subscriptions")).json()) as SubscriptionDTO[];
+async function listed(): Promise<SubscriptionView[]> {
+	return (await (await app.request("/api/subscriptions")).json()) as SubscriptionView[];
 }
 
 /** 图库里此刻有哪些图(目录还没建就是空)。 */

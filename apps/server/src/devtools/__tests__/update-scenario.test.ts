@@ -1,4 +1,4 @@
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import type { UpdateService } from "../../update/service.js";
 import { updateStateScenario } from "../scenarios/update.js";
@@ -10,7 +10,7 @@ import { coreDevRegistry } from "./support/core-registry.js";
  * 面板按相位挑措辞,缺一个字段(`checkedAt` / `releaseUrl`)就是一处 undefined 渲染。
  */
 
-const REAL: UpdateStatusDTO = {
+const REAL: UpdateStatusView = {
 	currentVersion: "0.0.0-dev",
 	rollbackTarget: null,
 	pinnedVersion: null,

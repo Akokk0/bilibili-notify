@@ -1,6 +1,6 @@
 import {
 	displayNameOf,
-	type ExtensionDTO,
+	type ExtensionEntryView,
 	type SourceEntry,
 	subscriptionIdentityLabel,
 } from "@bilibili-notify/contract";
@@ -209,7 +209,7 @@ function HistoryTable({
 	subs: SubscriptionLookup;
 	targetById: Map<string, PushTarget>;
 	sources: readonly SourceEntry[] | undefined;
-	extensions: readonly ExtensionDTO[] | undefined;
+	extensions: readonly ExtensionEntryView[] | undefined;
 }) {
 	const tx = useT();
 	return (
@@ -280,7 +280,7 @@ function HistoryRow({
 	sub: Subscription | undefined;
 	target: PushTarget | undefined;
 	sources: readonly SourceEntry[] | undefined;
-	extensions: readonly ExtensionDTO[] | undefined;
+	extensions: readonly ExtensionEntryView[] | undefined;
 	isLast: boolean;
 }) {
 	const tx = useT();

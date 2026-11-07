@@ -1,4 +1,4 @@
-import type { SubscriptionCreateRequest, SubscriptionDTO } from "@bilibili-notify/contract";
+import type { SubscriptionCreateRequest, SubscriptionView } from "@bilibili-notify/contract";
 import {
 	type Failure,
 	fail,
@@ -27,7 +27,7 @@ import { checkApprovalReachable } from "./roast-approval-guard.js";
 import { createSubscriptionTagsRoute } from "./subscription-tags.js";
 import type { RouteDeps } from "./types.js";
 
-// DTO 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
+// 视图 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
 // SubscriptionStateStore join 回来的外置运行时字段。
 
 /** 搜人不在这里(在来源那一摊:`GET /api/sources/:sourceKey/creators`)。 */
@@ -128,7 +128,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	}
 
 	/** Join the externalized runtime fields back onto a config Subscription. */
-	function toDTO(sub: Subscription, problems: Map<string, Problem[]>): SubscriptionDTO {
+	function subscriptionView(sub: Subscription, problems: Map<string, Problem[]>): SubscriptionView {
 		const rt = deps.runtime.subscriptionStateStore.get(sub.id);
 		return {
 			...sub,
@@ -137,10 +137,10 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		};
 	}
 
-	/** 整张订阅表的 DTO(GET / POST 的回应)。 */
-	function toDTOs(): SubscriptionDTO[] {
+	/** 整张订阅表的 视图(GET / POST 的回应)。 */
+	function subscriptionViews(): SubscriptionView[] {
 		const problems = problemsBySubscription();
-		return deps.store.getSubscriptions().map((sub) => toDTO(sub, problems));
+		return deps.store.getSubscriptions().map((sub) => subscriptionView(sub, problems));
 	}
 
 	/**
@@ -207,7 +207,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			throw err;
 		}
 		if (seed) await seedProfile(sub, seed, avatarBytes);
-		return c.json(toDTOs(), 200);
+		return c.json(subscriptionViews(), 200);
 	}
 
 	/**
@@ -246,7 +246,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		}
 	}
 
-	app.get("/", (c) => c.json(toDTOs()));
+	app.get("/", (c) => c.json(subscriptionViews()));
 
 	// 标签表(ADR-0034):这一摊底下的固定子路径。这一摊没有 `GET /:id` / `PUT /:id`,
 	// 撞不上;挂在 `/:id` 那几条前面,以后真加了也先认它。
@@ -281,7 +281,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		try {
 			// upsertSubscription validates via Zod internally
 			await deps.store.upsertSubscription(body as never);
-			return c.json(toDTOs(), 200);
+			return c.json(subscriptionViews(), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("POST /api/subscriptions failed", err);
@@ -326,7 +326,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		}
 		try {
 			const next = await deps.store.patchSubscription(id, read.body);
-			return c.json(toDTO(next, problemsBySubscription()));
+			return c.json(subscriptionView(next, problemsBySubscription()));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/subscriptions/:id failed", err);

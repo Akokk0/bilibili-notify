@@ -1,5 +1,5 @@
 import type {
-	ExtensionDTO,
+	ExtensionEntryView,
 	SettingsField,
 	SettingsListField,
 	SettingsScalarField,
@@ -22,7 +22,7 @@ import { ViewText } from "./view-text";
  */
 
 /** 清单里声明的设置项(没在跑的也有,决策 17)。 */
-export function settingsFieldsOf(ext: ExtensionDTO) {
+export function settingsFieldsOf(ext: ExtensionEntryView) {
 	return ext.settings?.fields ?? [];
 }
 
@@ -32,7 +32,7 @@ export function settingsFieldsOf(ext: ExtensionDTO) {
  * 跑着却 404 = **还没交过视图**(只有设置项的拓展一辈子都这样),不是出错,什么都不画;别的
  * 失败(断网 / 500)把原话摆出来 —— 那一块本来该有东西,空着不说等于说「一切正常」。
  */
-export function DeclarativeHead({ ext }: { ext: ExtensionDTO }) {
+export function DeclarativeHead({ ext }: { ext: ExtensionEntryView }) {
 	const tx = useT();
 
 	const running = isRunning(ext);
@@ -62,7 +62,7 @@ export function DeclarativeHead({ ext }: { ext: ExtensionDTO }) {
  * 发生,打开时拓展才读 —— 「装好 → 填 → 启用」这个顺序靠它才走得通。今天桥「关着就压暗成
  * 一行一条、不给按钮」那一档随之退役。
  */
-export function DeclarativeConfig({ ext }: { ext: ExtensionDTO }) {
+export function DeclarativeConfig({ ext }: { ext: ExtensionEntryView }) {
 	return (
 		<>
 			<RunStateNote ext={ext} />
@@ -111,7 +111,7 @@ function configGroupsOf(fields: readonly SettingsField[]): ConfigGroup[] {
  * 关着与没跑起来**分开说**:两者都没有状态,但要主人做的事正相反 —— 前者是他自己刚拨的开关,
  * 后者要去查日志。
  */
-function RunStateNote({ ext }: { ext: ExtensionDTO }) {
+function RunStateNote({ ext }: { ext: ExtensionEntryView }) {
 	const tx = useT();
 
 	if (!ext.enabled) {
@@ -169,7 +169,7 @@ export function ExtensionSummary({
 	divider = false,
 	standalone = false,
 }: {
-	ext: ExtensionDTO;
+	ext: ExtensionEntryView;
 	divider?: boolean;
 	standalone?: boolean;
 }) {

@@ -6,7 +6,7 @@
  * 标题那一句是面板自己的字,从面板字典取。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionEntryView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -26,7 +26,7 @@ vi.mock("../../services/api", () => ({
 			if (url === "/api/subscriptions") return [];
 			if (url.endsWith("/docs")) return {};
 			if (url === "/api/ext") {
-				const ext: ExtensionDTO = {
+				const ext: ExtensionEntryView = {
 					id: "douyin",
 					name: "抖音订阅",
 					version: "0.1.0",

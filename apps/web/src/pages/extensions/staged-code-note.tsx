@@ -14,7 +14,11 @@ import { i18n, useT } from "../../i18n";
  * ⛔ 那颗重启按钮仍然**不是常驻的**:它只在这件确实需要它的事旁边出现。
  */
 
-import type { ExtensionDTO, RestartAbility, RestartResponse } from "@bilibili-notify/contract";
+import type {
+	ExtensionEntryView,
+	RestartAbility,
+	RestartResponse,
+} from "@bilibili-notify/contract";
 import { Btn, ErrorNote, HintNote, LoadingBlock } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -55,12 +59,12 @@ function headlineOf(stagedVersion: string, runningVersion: string | undefined): 
  * 从拓展表那一行读出这块提示要的东西。没有 `staged` 就是 `null` —— 那时**不许**画这块
  * (生产上不给随手重载的口子)。
  *
- * 三种样子(契约 `ExtensionDTO.staged`):跑着的那一行 `version` 是旧的、`staged.version` 是
+ * 三种样子(契约 `ExtensionEntryView.staged`):跑着的那一行 `version` 是旧的、`staged.version` 是
  * 新的;`state: "staged"` 那一行开着却没跑、关着的那一行没在跑,`version` 都已经是新的,没有
  * 「跑着的」那一版可说。只重载只在开着时给 —— 与服务端 `swap()` 那道闸是同一句「开着 && 带 staged」。
  */
 export function stagedFactsOf(
-	ext: ExtensionDTO,
+	ext: ExtensionEntryView,
 ): { stagedVersion: string; runningVersion?: string; swappable: boolean } | null {
 	if (!ext.staged) return null;
 	return ext.state === "running" && ext.version !== undefined

@@ -1,4 +1,4 @@
-import type { ExtensionStateDTO } from "@bilibili-notify/contract";
+import type { ExtensionRunState } from "@bilibili-notify/contract";
 import { i18n } from "../../i18n";
 
 /**
@@ -12,7 +12,7 @@ import { i18n } from "../../i18n";
  * 设计稿上的两个词,只给「开着且跑着」与「关着」这两档;其余几档各说各的。
  */
 export const EXTENSION_STATE_META: Record<
-	ExtensionStateDTO,
+	ExtensionRunState,
 	{ label: string; accent: string; severity: "none" | "warn" | "err" }
 > = {
 	running: {

@@ -1,4 +1,4 @@
-import type { UpdateStatusDTO } from "@bilibili-notify/contract";
+import type { UpdateStatusView } from "@bilibili-notify/contract";
 import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
@@ -18,7 +18,7 @@ import { createDevtools } from "../index.js";
  * 设上,版本号不能;alpha 也不给 —— 它是发出去给人用的构建。
  */
 
-const REAL: UpdateStatusDTO = {
+const REAL: UpdateStatusView = {
 	currentVersion: "0.0.0-dev",
 	rollbackTarget: null,
 	pinnedVersion: null,

@@ -3,7 +3,7 @@
  * 名称、字段和外观由各自读口提供，是否在场仍读拓展生命周期。
  */
 
-import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, ExtensionsResponse } from "@bilibili-notify/contract";
 import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
 import { ACCOUNTS_QUERY_KEY } from "./useAccounts";
@@ -32,7 +32,7 @@ export function invalidateExtensionTables(qc: QueryClient): Promise<void> {
  * ⚠️ 清单里的外观(适配器与来源读口的描述符)**不看这个**:它照清单给、停着也有(ADR-0019
  * 决策 41)。两件事别混 —— 「有外观」当「在场」的话,点进去就是一个问不到的拓展。
  */
-export function isExtensionPresent(ext: ExtensionDTO): boolean {
+export function isExtensionPresent(ext: ExtensionEntryView): boolean {
 	return ext.state === "running";
 }
 

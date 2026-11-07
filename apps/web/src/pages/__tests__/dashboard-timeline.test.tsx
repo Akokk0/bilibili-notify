@@ -6,7 +6,7 @@
  * B 站行「UID xxx」,拓展行「平台名 · 外部 id」—— 平台名照已装拓展的清单,拓展卸载了取不到就写拓展 id。
  */
 
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -37,7 +37,7 @@ function extRow(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 }
 
 /** 装着的抖音订阅源。 */
-const DOUYIN: ExtensionDTO = {
+const DOUYIN: ExtensionEntryView = {
 	id: "douyin",
 	name: "抖音订阅",
 	dir: "/data/extensions/douyin",
@@ -62,7 +62,7 @@ const DOUYIN_SOURCE: SourceEntry = {
 function renderPanel(
 	entries: HistoryEntryView[],
 	subs: Subscription[] = [],
-	extensions?: readonly ExtensionDTO[],
+	extensions?: readonly ExtensionEntryView[],
 ) {
 	return render(
 		<MemoryRouter initialEntries={["/"]}>

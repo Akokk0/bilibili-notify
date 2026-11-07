@@ -3,7 +3,7 @@ import type {
 	ConnectionCandidatesResponse,
 	ConnectionTestResponse,
 	ConnectionView,
-	ExtensionDTO,
+	ExtensionEntryView,
 	TestResponse,
 } from "@bilibili-notify/contract";
 import type { PlatformSnapshot } from "@bilibili-notify/internal";
@@ -762,7 +762,7 @@ function ConnectionCandidatePicker({
  */
 function absentExtensionOf(
 	connection: Pick<NewConnection, "adapterKey">,
-	extensions: readonly ExtensionDTO[] | undefined,
+	extensions: readonly ExtensionEntryView[] | undefined,
 ): string | undefined {
 	if (extensions === undefined) return undefined;
 	const ext = extensions.find((one) => one.id === connection.adapterKey);

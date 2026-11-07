@@ -14,7 +14,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { AiConversationMetaDTO } from "../../../services/aiChat";
+import type { AiConversationMetaView } from "../../../services/aiChat";
 import { ChatSidebar } from "../sidebar";
 
 vi.mock("../../../services/api", () => ({
@@ -23,7 +23,7 @@ vi.mock("../../../services/api", () => ({
 }));
 
 const AT = "2026-08-19T00:00:00.000Z";
-function conv(over: Partial<AiConversationMetaDTO>): AiConversationMetaDTO {
+function conv(over: Partial<AiConversationMetaView>): AiConversationMetaView {
 	return {
 		id: "x",
 		title: "会话",
@@ -38,7 +38,7 @@ function conv(over: Partial<AiConversationMetaDTO>): AiConversationMetaDTO {
 }
 
 function mount(props: {
-	conversations?: AiConversationMetaDTO[];
+	conversations?: AiConversationMetaView[];
 	onNew?: (m: "chat" | "skin") => void;
 }) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

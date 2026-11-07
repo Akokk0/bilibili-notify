@@ -6,11 +6,11 @@
  */
 
 import type {
-	DevActiveDTO,
-	DevCapturesDTO,
+	DevActiveView,
+	DevCapturesView,
 	DevPurgeHistoryResponse,
 	DevRunResponse,
-	DevStatusDTO,
+	DevStatusView,
 } from "@bilibili-notify/contract";
 import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
@@ -25,7 +25,7 @@ const RunBody = z.object({
 
 /** 截流那一组的口:列表 / 清空 / 清掉截流期间的历史行。 */
 export interface DevCapturesApi {
-	status(): DevCapturesDTO;
+	status(): DevCapturesView;
 	clear(): void;
 	purgeHistory(): Promise<number>;
 }
@@ -40,13 +40,13 @@ export function createDevRoute({ registry, captures }: CreateDevRouteInput): Hon
 	const app = new Hono();
 
 	app.get("/", (c) => {
-		const body: DevStatusDTO = { scenarios: registry.list(), active: registry.active() };
+		const body: DevStatusView = { scenarios: registry.list(), active: registry.active() };
 		return c.json(body);
 	});
 
 	// 轮询打这里:生效表会在面板没按任何键的时候变(截流拦下的条数随真推送涨),而场景表不会。
 	app.get("/active", (c) => {
-		const body: DevActiveDTO = { active: registry.active() };
+		const body: DevActiveView = { active: registry.active() };
 		return c.json(body);
 	});
 

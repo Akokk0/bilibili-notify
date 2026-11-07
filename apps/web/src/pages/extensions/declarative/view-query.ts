@@ -1,4 +1,4 @@
-import type { ExtensionDTO, ExtensionPanelView } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, ExtensionPanelView } from "@bilibili-notify/contract";
 import { useQuery } from "@tanstack/react-query";
 import { extensionStatusKey } from "../../../hooks/useExtensions";
 import { api } from "../../../services/api";
@@ -45,7 +45,7 @@ export function liveViewOf(
  * **只在「开着且跑着」时问状态**:关着的问了也是 404;没跑起来的(加载失败 / 自动停用 / 版本
  * 不合)同理,而那两件事拓展表里的 `state` 已经说清楚了,用不着再拿一次 404 去猜。
  */
-export function isRunning(ext: ExtensionDTO): boolean {
+export function isRunning(ext: ExtensionEntryView): boolean {
 	return ext.enabled && ext.state === "running";
 }
 

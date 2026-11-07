@@ -7,7 +7,7 @@
 
 import type {
 	DevCapturedDelivery,
-	DevCapturesDTO,
+	DevCapturesView,
 	DevPurgeHistoryResponse,
 } from "@bilibili-notify/contract";
 import { Btn, EmptyNote, HintNote, Icon, Pill, PlatformIcon } from "@bilibili-notify/ui";
@@ -18,7 +18,7 @@ import { api } from "../services/api";
 export const CAPTURES_QUERY_KEY = ["dev", "captures"] as const;
 
 /** 拦下的条目只在闸开着时增长;开着就每两秒看一眼,关着就不打扰。 */
-function refetchInterval(data: DevCapturesDTO | undefined): number | false {
+function refetchInterval(data: DevCapturesView | undefined): number | false {
 	return data?.enabled ? 2_000 : false;
 }
 
@@ -26,13 +26,13 @@ export function CaptureView() {
 	const qc = useQueryClient();
 	const q = useQuery({
 		queryKey: CAPTURES_QUERY_KEY,
-		queryFn: () => api.get<DevCapturesDTO>("/api/dev/captures"),
+		queryFn: () => api.get<DevCapturesView>("/api/dev/captures"),
 		refetchInterval: (query) => refetchInterval(query.state.data),
 		// 同 use-devtools 那条:人在别的窗口看推送有没有真出网时,这张列表得自己长。
 		refetchIntervalInBackground: true,
 	});
 	const clear = useMutation({
-		mutationFn: () => api.post<DevCapturesDTO>("/api/dev/captures/clear", {}),
+		mutationFn: () => api.post<DevCapturesView>("/api/dev/captures/clear", {}),
 		onSuccess: (data) => qc.setQueryData(CAPTURES_QUERY_KEY, data),
 	});
 	const [purged, setPurged] = useState<number | null>(null);

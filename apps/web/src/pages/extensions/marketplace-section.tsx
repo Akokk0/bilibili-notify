@@ -299,7 +299,7 @@ function EntryAction({
 		case "installed-elsewhere":
 			return null;
 		case "incompatible":
-			// DTO只有要求版本与状态,没有宿主范围;保留小号事实,不猜升级方向。
+			// 视图只有要求版本与状态,没有宿主范围;保留小号事实,不猜升级方向。
 			return (
 				<span className="text-bn-2xs text-bn-text-tertiary">
 					{entry.apiRevision

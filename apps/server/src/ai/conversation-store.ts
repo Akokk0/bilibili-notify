@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readdir, readFile, rm, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import type { AiCardSkinTouchDTO, AiChatMode, AiSkinTarget } from "@bilibili-notify/contract";
+import type { AiCardSkinTouchView, AiChatMode, AiSkinTarget } from "@bilibili-notify/contract";
 import {
 	CARD_KINDS,
 	createSerialQueue,
@@ -72,7 +72,7 @@ export interface StoredMessage {
 	/**
 	 * 助手消息专有:卡片工坊里这条回复碰过的皮肤(预览块照它画)。没碰过就整个字段缺席。
 	 */
-	cardSkins?: AiCardSkinTouchDTO[];
+	cardSkins?: AiCardSkinTouchView[];
 }
 
 /**
@@ -96,7 +96,7 @@ export interface NewMessage {
 	tools?: readonly StoredToolTrace[];
 	reasoning?: string;
 	images?: readonly ImageRef[];
-	cardSkins?: readonly AiCardSkinTouchDTO[];
+	cardSkins?: readonly AiCardSkinTouchView[];
 }
 
 export interface Conversation {

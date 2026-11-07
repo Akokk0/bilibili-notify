@@ -6,7 +6,7 @@
  * 新建订阅弹窗(选平台、搜人、挑候选)在 `Subs.new-subscription.test.tsx`。
  */
 
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -27,7 +27,7 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-function source(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
+function source(over: Partial<ExtensionEntryView> = {}): ExtensionEntryView {
 	return {
 		id: "douyin",
 		name: "抖音订阅",
@@ -82,7 +82,7 @@ const BILI: Subscription = {
 };
 
 let subs: Subscription[];
-let extensions: Promise<{ extensions: ExtensionDTO[] }>;
+let extensions: Promise<{ extensions: ExtensionEntryView[] }>;
 let sources: SourceEntry[];
 
 beforeEach(() => {
