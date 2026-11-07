@@ -17,7 +17,8 @@ import { findNodes, listSources, parseSource, srcRootsUnder, ts } from "../sourc
  *   字符串字面量(含类型位置的、对象的字符串键、JSX 属性值)、不带插值的反引号串、带插值的模板
  *   (头和各段里任何一段带汉字,整个模板算**一处**,里面嵌的字符串另算)、JSX 文字。判 `node.text`(转义已解开),
  *   不判源码原文。
- * - 日志调用的参数(深一层也算在内)不算(决策 13,日志不翻):方法是 `trace` / `debug` / `info` / `warn` / `error` /
+ * - 日志参数(含深层数据)不进入本条显示文字计数；ADR-0039已把日志说明纳入翻译，
+ *   取字/字典守卫与docs/1.0/logging-audit.md另行核对说明、原始诊断及实际读者。识别方法是 `trace` / `debug` / `info` / `warn` / `error` /
  *   `fatal` / `log`,接收者最后一段叫 `log` / `logger` / `console`(`this.logger`、`ctx.logger`、`opts.logger?.warn`);
  *   另加裸函数 `log(...)` / `warn(...)`。
  * - 整目录不扫:三个开发版调试面板(`devtools/`),只在开发版源码上跑,构建时换成空桩或摇掉。
