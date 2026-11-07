@@ -11,7 +11,6 @@ import {
 	fail,
 	type Identity,
 	type InboundHandlers,
-	type Issue,
 	type Logger,
 	OffsetIsoTimeSchema,
 	ok,
@@ -52,7 +51,7 @@ import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
 import {
 	judgeStoredSettings,
 	judgeStoredSettingsSync,
-	type StoredSettingsVerdict,
+	type StoredSettingsResult,
 } from "./settings-io.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
 import { checkExtensionView, faultedExtensionView, type ViewCheck } from "./view-check.js";
@@ -641,13 +640,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let settingsRound = 0;
 
 	/** 记下「解不开」:`get()` 换成 `invalid`(交过的每一份都读不懂了,原因是整份设置的,不分哪份 zod)。 */
-	function markUnreadable(unreadable: { detail: string; issues: Issue[] }): void {
-		settingsProblem = unreadable.detail;
-		const failure = fail("invalid", unreadable.detail, { issues: unreadable.issues });
+	function markUnreadable(unreadable: Extract<StoredSettingsResult, { ok: false }>): void {
+		settingsProblem = unreadable.message;
+		const failure = unreadable;
 		for (const schema of handedSchemas) settingsReads.set(schema, failure);
 	}
 
-	function settingsUnreadable(unreadable: { detail: string; issues: Issue[] }): void {
+	function settingsUnreadable(unreadable: Extract<StoredSettingsResult, { ok: false }>): void {
 		markUnreadable(unreadable);
 		opts.onSettingsInvalid?.();
 	}
@@ -692,7 +691,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			if (now === lastSettingsSeen) return;
 			lastSettingsSeen = now;
 			const round = ++settingsRound;
-			const settle = (verdict: StoredSettingsVerdict) => {
+			const settle = (verdict: StoredSettingsResult) => {
 				// 判的已经是过时的那份(中间又落了一次盘),或者已经收摊了:作废。
 				if (round !== settingsRound || integration.disposed) return;
 				if (verdict.ok) {
@@ -762,7 +761,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 当场抛:拓展不该拿着一份解不开的设置接着往下起。吞了这一抛也作数 —— 记在上面那一格。
 			settingsUnreadable(verdict);
 			throw new ExtensionSettingsUnreadable(
-				t("extension.settings.unreadable", { id, detail: verdict.detail }),
+				t("extension.settings.unreadable", { id, detail: verdict.message }),
 			);
 		} else {
 			// 同步判不完(异步 refine):activate 里交的,装载器 activate 之后还会判一次;这里补上

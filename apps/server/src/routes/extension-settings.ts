@@ -203,7 +203,7 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 		if (revision !== current) return respondFailure(c, conflict());
 
 		const applied = applySettingsOps(fields, stored, ops);
-		if (!applied.ok) return respondFailure(c, invalid(applied.issues));
+		if (!applied.ok) return respondFailure(c, invalid(applied.issues ?? []));
 
 		// 拓展在跑时再过它自己那份 zod(决策 35 第三点)。在队外跑:它是异步的、是拓展的代码,
 		// 挂住的话不能连累之后所有的全局设置写入。
@@ -235,7 +235,7 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 		}
 
 		const committed = await commitSettings(opts.store, id, revision, applied.next);
-		if (!committed.ok) return respondFailure(c, conflict());
+		if (!committed.ok) return respondFailure(c, committed);
 		opts.settingsChanged?.(id);
 		const body: ExtensionSettingsWriteResponse = {
 			...(await view(id, fields, committed.settings)),

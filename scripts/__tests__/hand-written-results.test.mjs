@@ -44,7 +44,6 @@ export const ALLOWLIST = {
  */
 export const RATCHET = {
 	"apps/server/src/extensions/marketplace.ts": 14,
-	"apps/server/src/extensions/settings-io.ts": 8,
 	"apps/server/src/routes/ai.ts": 2,
 	"apps/server/src/update/fetch-signed-manifest.ts": 8,
 	"apps/server/src/update/fetch-through-mirrors.ts": 2,

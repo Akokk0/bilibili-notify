@@ -41,7 +41,7 @@ import {
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
 import { type LocaleIssue, localizeManifest } from "./locales.js";
 import type { ExtensionMounts } from "./mount.js";
-import { judgeStoredSettings, type StoredSettingsVerdict } from "./settings-io.js";
+import { judgeStoredSettings, type StoredSettingsResult } from "./settings-io.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
 
 /** 一个拓展现在处于什么状态 —— 拓展页那张列表印的就是它。 */
@@ -1050,7 +1050,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			// 文件读不懂的没交过 zod,下面的判定对空名单恒过 —— 必须先看原因还在不在:在就不起(重存写盘
 			// 成功后原因才清,清了才轮到起)。
 			if (opts.settingsIssue?.(disk.id) !== undefined) continue;
-			let verdict: StoredSettingsVerdict;
+			let verdict: StoredSettingsResult;
 			try {
 				// 判的是拓展的 zod(可能带异步 refine,那是它的代码):挂住了不能让整条队陪着等。
 				verdict = await within(
@@ -1069,9 +1069,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			}
 			if (verdict.ok) await start(slot);
 			else {
-				slot.miss = { ...miss, detail: unreadableDetail(verdict.detail) };
+				slot.miss = { ...miss, detail: unreadableDetail(verdict.message) };
 				// 还是读不了,只换原因:同键再报只换文案、`since` 不动。
-				reportSettingsInvalid(disk.id, problemText(disk, verdict.detail));
+				reportSettingsInvalid(disk.id, problemText(disk, verdict.message));
 			}
 		}
 	}

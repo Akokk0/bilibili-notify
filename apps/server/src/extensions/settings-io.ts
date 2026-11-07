@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { ExtensionSettingsIssue, ExtensionSettingsOp } from "@bilibili-notify/contract";
 import {
-	type Issue,
+	fail,
 	isSecretField,
 	issuesFromZod,
 	maskCell,
+	ok,
+	type Result,
 	type SettingsField,
 	type SettingsListField,
 	settingsFieldSchema,
@@ -113,17 +115,14 @@ function plainPath(path: readonly PropertyKey[]): Path {
 	return path.map((segment) => (typeof segment === "symbol" ? String(segment) : segment));
 }
 
-export type AppliedSettingsOps =
-	| {
-			ok: true;
-			/** 套完之后的那一份。 */
-			next: Record<string, unknown>;
-			/** 每个 `add` 生成的 id,按 op 顺序。 */
-			added: string[];
-			/** 一条问题(路径从设置那一层往下数,列表项按 id)是第几步惹的;认不出就是 `undefined`。 */
-			opOf: (path: Path) => number | undefined;
-	  }
-	| { ok: false; issues: ExtensionSettingsIssue[] };
+export type AppliedSettingsOpsResult = Result<{
+	/** 套完之后的设置副本。 */
+	next: Record<string, unknown>;
+	/** 每个 add 生成的 ID，按操作顺序。 */
+	added: string[];
+	/** 逐格原因对应的操作序号。 */
+	opOf: (path: Path) => number | undefined;
+}> & { issues?: ExtensionSettingsIssue[] };
 
 /**
  * 把一串操作按顺序套在存着的那份上,**只校验这一步动到的**(决策 35):`set` 照清单校验那一格,
@@ -137,7 +136,7 @@ export function applySettingsOps(
 	fields: readonly SettingsField[],
 	stored: unknown,
 	ops: readonly ExtensionSettingsOp[],
-): AppliedSettingsOps {
+): AppliedSettingsOpsResult {
 	// Map 不用普通对象:键是面板给的,`constructor` 这类会顺着原型链被当成「声明过」。
 	const byKey = new Map(fields.map((field) => [field.key, field]));
 	const next: Record<string, unknown> = isPlainObject(stored) ? structuredClone(stored) : {};
@@ -258,14 +257,14 @@ export function applySettingsOps(
 
 	for (const [index, op] of ops.entries()) issues.push(...step(op, index));
 
-	if (issues.length > 0) return { ok: false, issues };
-	return {
-		ok: true,
+	if (issues.length > 0)
+		return { ...fail("invalid", issues.map((issue) => issue.message).join(";")), issues };
+	return ok({
 		next,
 		added,
-		opOf: (path) =>
+		opOf: (path: Path) =>
 			touched.get(pathKey(path.slice(0, 2))) ?? touched.get(pathKey(path.slice(0, 1))),
-	};
+	});
 }
 
 // ---- 拓展自己那份 zod:只拦这次新冒出来的 ------------------------------------------------
@@ -333,15 +332,12 @@ export async function newExtensionIssues(
  * 存着的那份对拓展交过的每一份 zod 的判决(决策 36)。`values` 按 schema 放读到的结果 ——
  * 拓展 `get()` 拿到的就是它:`{ settings }` 是过了那份 zod 的值;`{ notConfigured }` 是「没设过,
  * 而空对象过不了这份 zod」(不算坏,拓展照跑,`get()` 回 `not_configured`),带的是给人看的原因。
- * `detail` 是给主人看的那句「哪一格、为什么」;`issues` 是同一批原因的逐条版(`SettingsReader.get()`
+ * `message` 是给主人看的那句「哪一格、为什么」;`issues` 是同一批原因的逐条版(`SettingsReader.get()`
  * 回 `invalid` 时带给拓展,路径从设置那一层往下数)。
  */
-export type StoredSettingsVerdict =
-	| {
-			ok: true;
-			values: ReadonlyMap<ZodType, { settings: unknown } | { notConfigured: string }>;
-	  }
-	| { ok: false; detail: string; issues: Issue[] };
+export type StoredSettingsResult = Result<{
+	values: ReadonlyMap<ZodType, { settings: unknown } | { notConfigured: string }>;
+}>;
 
 type ParsedSettings = ReturnType<ZodType["safeParse"]>;
 
@@ -430,13 +426,13 @@ function describeSettingsIssues(
  * 🔴 两种都不按 `instanceof` 分 —— 拓展内联的是**另一份 zod**,它抛的异步错不是宿主这份的实例。
  *
  * 没设过(`undefined` / `null`)不算坏:拿空对象过每份 schema(extension-contract「设置」第二条)——
- * 过得了就是成功并带默认值,过不了记 `notConfigured`(见 {@link StoredSettingsVerdict})。
+ * 过得了就是成功并带默认值,过不了记 `notConfigured`(见 {@link StoredSettingsResult})。
  */
 export function judgeStoredSettingsSync(
 	schemas: readonly ZodType[],
 	fields: readonly SettingsField[],
 	raw: unknown,
-): StoredSettingsVerdict | undefined {
+): StoredSettingsResult | undefined {
 	const unset = raw === undefined || raw === null;
 	const values = new Map<ZodType, { settings: unknown } | { notConfigured: string }>();
 	const issues: ZodError["issues"] = [];
@@ -450,7 +446,7 @@ export function judgeStoredSettingsSync(
 		recordParsed(schema, parsed, unset, fields, values, issues);
 	}
 	if (issues.length > 0) return unreadable(fields, raw, issues);
-	return { ok: true, values };
+	return ok({ values });
 }
 
 /** 解不开的判决:一句人话(给面板)+ 逐条原因(给 `get()` 的 `invalid`)。 */
@@ -458,12 +454,10 @@ function unreadable(
 	fields: readonly SettingsField[],
 	raw: unknown,
 	issues: ZodError["issues"],
-): StoredSettingsVerdict {
-	return {
-		ok: false,
-		detail: describeSettingsIssues(fields, raw, issues),
+): StoredSettingsResult {
+	return fail("invalid", describeSettingsIssues(fields, raw, issues), {
 		issues: issuesFromZod({ issues }),
-	};
+	});
 }
 
 /**
@@ -474,7 +468,7 @@ export async function judgeStoredSettings(
 	schemas: readonly ZodType[],
 	fields: readonly SettingsField[],
 	raw: unknown,
-): Promise<StoredSettingsVerdict> {
+): Promise<StoredSettingsResult> {
 	const sync = judgeStoredSettingsSync(schemas, fields, raw);
 	if (sync) return sync;
 	const unset = raw === undefined || raw === null;
@@ -487,29 +481,25 @@ export async function judgeStoredSettings(
 		} catch (err) {
 			const reason = err instanceof Error ? err.message : String(err);
 			const detail = serverText("service.extensions.settings-io.text.17", { value0: reason });
-			return { ok: false, detail, issues: [{ message: detail }] };
+			return fail("unavailable", detail, { issues: [{ message: detail }] });
 		}
 		recordParsed(schema, parsed, unset, fields, values, issues);
 	}
 	if (issues.length > 0) return unreadable(fields, raw, issues);
-	return { ok: true, values };
+	return ok({ values });
 }
 
 // ---- 原子地写进去 ----------------------------------------------------------------------
 
 /** 队里比对时撞上的那一发 —— 只在 {@link commitSettings} 里抛、里接。 */
-class RevisionMoved extends Error {
-	constructor(readonly revision: string) {
-		super("revision moved");
-	}
-}
+class RevisionMoved extends Error {}
 
 /**
  * 按版本号把新的那份写进去:**比对与落盘在设置那条排队里是一件事**。
  *
  * 路由在队外先比过一次、算好新值、跑完校验(拓展的 zod 是异步的,不许进队,见
  * `ConfigStore.updateExtensionSettings`);那之后到这里之间,别人可能已经写过这一份。所以到了队里再比一次:
- * 版本号还是那个,才说明算新值时依据的就是现在这份。对不上回 `{ ok: false, revision: 现在的 }`,
+ * 版本号还是那个,才说明算新值时依据的就是现在这份。对不上回标准 `conflict` 结果,
  * 一个字都不写 —— 否则两发带同一个版本号同时到,后落盘的那发拿着它读到的旧名单整份写回,
  * 先写的那条接入静默消失。
  */
@@ -518,16 +508,17 @@ export async function commitSettings(
 	id: string,
 	expected: string,
 	next: Record<string, unknown>,
-): Promise<{ ok: true; settings: unknown } | { ok: false; revision: string }> {
+): Promise<Result<{ settings: unknown }>> {
 	try {
 		const saved = await store.updateExtensionSettings(id, (current) => {
 			const now = settingsRevision(current);
-			if (now !== expected) throw new RevisionMoved(now);
+			if (now !== expected) throw new RevisionMoved("revision moved");
 			return next;
 		});
-		return { ok: true, settings: saved };
+		return ok({ settings: saved });
 	} catch (err) {
-		if (err instanceof RevisionMoved) return { ok: false, revision: err.revision };
+		if (err instanceof RevisionMoved)
+			return fail("conflict", serverText("extension.settings.conflict"));
 		throw err;
 	}
 }
