@@ -5,6 +5,7 @@ import type {
 	MyselfResponse,
 	UserInfoResponse,
 } from "../../api/index.js";
+import { logText } from "../../i18n.js";
 import type { ProblemLayers } from "../../problem-layers.js";
 import { connectLiveRoom, type DanmakuHost } from "../protocol/client.js";
 import type { LiveEvent } from "../protocol/events.js";
@@ -91,13 +92,11 @@ export class RoomContext {
 		if (aborted()) return false;
 		const roomIdNumber = Number.parseInt(roomId, 10);
 		if (!Number.isFinite(roomIdNumber) || roomIdNumber <= 0) {
-			this.logger.error(
-				`[conn] roomId 非法（"${roomId}"），跳过 listener 创建。请检查订阅配置或用户是否开通直播间`,
-			);
+			this.logger.error(logText("log.bilibili.live.invalidRoomId"), { roomId });
 			return false;
 		}
 		if (this.listenerRecord[roomId]) {
-			this.logger.warn(`[conn] 直播间 [${roomId}] 连接已存在，跳过创建`);
+			this.logger.warn(logText("log.bilibili.live.duplicateListener"), { roomId });
 			return true;
 		}
 
@@ -105,7 +104,7 @@ export class RoomContext {
 		try {
 			preflight = await this.api.fetchLiveRoomInfoStreamKey(roomId);
 		} catch (error) {
-			this.logger.warn(`[conn] 获取弹幕连接信息异常，房间 [${roomId}]：${String(error)}`);
+			this.logger.warn(logText("log.bilibili.live.preflightThrew"), { roomId, error });
 			return false;
 		}
 		if (!preflight.ok) {
@@ -114,9 +113,12 @@ export class RoomContext {
 					throw new LiveRoomPreflightBlockedError(reasonOfFailure(preflight));
 				case "unauthorized":
 				case "unavailable":
-					this.logger.warn(
-						`[conn] 预检没拿到连接信息，房间 [${roomId}]：${reasonOfFailure(preflight)}`,
-					);
+					this.logger.warn(logText("log.bilibili.live.preflightRejected"), {
+						roomId,
+						code: preflight.code,
+						upstreamCode: preflight.upstreamCode,
+						message: preflight.message,
+					});
 					return false;
 				default:
 					throw new LiveRoomAccessDeniedError(reasonOfFailure(preflight));
@@ -134,7 +136,7 @@ export class RoomContext {
 			}
 		}
 		if (!token || hostList.length === 0) {
-			this.logger.warn(`[conn] 直播间 [${roomId}] 弹幕连接信息不完整,视为本轮失败`);
+			this.logger.warn(logText("log.bilibili.live.connectionInfoIncomplete"), { roomId });
 			return false;
 		}
 
@@ -142,13 +144,14 @@ export class RoomContext {
 		try {
 			self = await this.api.fetchCachedMyself();
 		} catch (error) {
-			this.logger.warn(`[conn] 获取个人信息异常，房间 [${roomId}]：${String(error)}`);
+			this.logger.warn(logText("log.bilibili.live.selfInfoThrew"), { roomId, error });
 			return false;
 		}
 		if (self.code !== 0 || !self.data) {
-			this.logger.warn(
-				`[conn] 获取个人信息失败 code=${self.code}，无法创建直播间 [${roomId}] 连接`,
-			);
+			this.logger.warn(logText("log.bilibili.live.selfInfoRejected"), {
+				roomId,
+				upstreamCode: self.code,
+			});
 			return false;
 		}
 		const buvid = await this.api.fetchCachedBuvid3();
@@ -172,7 +175,7 @@ export class RoomContext {
 			return false;
 		}
 		this.listenerRecord[roomId] = listener;
-		this.logger.info(`[conn] 直播间 [${roomId}] 连接已建立`);
+		this.logger.info(logText("log.bilibili.live.listenerCreated"), { roomId });
 		this.logSideEffectState(`listener:created room=${roomId}`);
 		return true;
 	}
@@ -182,7 +185,7 @@ export class RoomContext {
 			const response = await this.api.fetchLiveRoomInfo(roomId);
 			return response.data;
 		} catch (error) {
-			this.logger.error(`[conn] 获取直播间信息失败：${String(error)}`);
+			this.logger.error(logText("log.bilibili.live.roomInfoThrew"), { roomId, error });
 			return undefined;
 		}
 	}
@@ -202,9 +205,10 @@ export class RoomContext {
 				...(fanClubName === undefined ? {} : { fanClubName }),
 			};
 		} catch (error) {
-			this.logger.warn(
-				`[live] 直播间 [${this.roomIds.get(externalId) ?? ""}] 取粉丝牌名失败：${String(error)}`,
-			);
+			this.logger.warn(logText("log.bilibili.live.fanClubThrew"), {
+				roomId: this.roomIds.get(externalId) ?? "",
+				error,
+			});
 			return {};
 		}
 	}
@@ -212,17 +216,17 @@ export class RoomContext {
 	closeListener(roomId: string): void {
 		const listener = this.listenerRecord[roomId];
 		if (!listener) {
-			this.logger.debug(`[conn] 直播间 [${roomId}] 连接不存在，跳过关闭`);
+			this.logger.debug(logText("log.bilibili.live.listenerMissing"), { roomId });
 			return;
 		}
 		if (listener.closed) {
-			this.logger.debug(`[conn] 直播间 [${roomId}] 连接已结束,跳过关闭`);
+			this.logger.debug(logText("log.bilibili.live.listenerEnded"), { roomId });
 			delete this.listenerRecord[roomId];
 			return;
 		}
 		listener.close();
 		delete this.listenerRecord[roomId];
-		this.logger.info(`[conn] 直播间 [${roomId}] 连接已关闭`);
+		this.logger.info(logText("log.bilibili.live.listenerClosed"), { roomId });
 		this.logSideEffectState(`listener:closed room=${roomId}`);
 	}
 
@@ -233,8 +237,11 @@ export class RoomContext {
 	}
 
 	private logSideEffectState(stage: string): void {
-		this.logger.debug(
-			`[conn] [live:${this.instanceId}] ${stage} listeners=${Object.keys(this.listenerRecord).length} disposed=${this.disposed}`,
-		);
+		this.logger.debug(logText("log.bilibili.live.listenerState"), {
+			instanceId: this.instanceId,
+			stage,
+			listeners: Object.keys(this.listenerRecord).length,
+			disposed: this.disposed,
+		});
 	}
 }

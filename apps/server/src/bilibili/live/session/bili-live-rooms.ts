@@ -15,7 +15,7 @@ import {
 import { errorMessageOf } from "../../../util/error-message.js";
 import type { Api } from "../../api/index.js";
 import { failureFromBili } from "../../error-codes.js";
-import { t } from "../../i18n.js";
+import { logText, t } from "../../i18n.js";
 import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
 import { isLoginLost, watchLoginEdges } from "../../login-edges.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
@@ -47,7 +47,7 @@ export class BiliLiveRooms implements Disposable {
 	start(ctx: SourceContext, subscriptions: readonly SourceSubscriptionView[]): void {
 		if (this.listener) throw new Error("bilibili live rooms are already started");
 		this.sourceCtx = ctx;
-		ctx.logger.info("[start] 直播监听启动，正在连直播间...");
+		ctx.logger.info(logText("log.bilibili.live.started"));
 		this.roomContext = new RoomContext({
 			api: this.opts.api,
 			liveContext: this.opts.liveContext,
@@ -67,11 +67,11 @@ export class BiliLiveRooms implements Disposable {
 		this.handles.push(
 			watchLoginEdges(this.opts.auth, {
 				onLost: () => {
-					ctx.logger.warn("[auth] 账号登录已失效，直播间监听已全部关闭（登录恢复后重建）");
+					ctx.logger.warn(logText("log.bilibili.live.authLost"));
 					this.listener?.teardown();
 				},
 				onRestored: () => {
-					ctx.logger.info("[auth] 账号登录已恢复，正在重建直播间监听");
+					ctx.logger.info(logText("log.bilibili.live.authRestored"));
 					// 恢复 = 整批重建:先静默清掉旧会话(连同压着的停止监听问题),再按当前名单重开。
 					this.listener?.teardown();
 					this.syncSessions(this.sourceCtx?.subscriptions() ?? []);
@@ -145,7 +145,7 @@ export class BiliLiveRooms implements Disposable {
 			});
 			return live;
 		} catch (error) {
-			this.sourceCtx.logger.warn(`[live] 房间 [${roomId}] 这一轮取直播状态失败：${String(error)}`);
+			this.sourceCtx.logger.warn(logText("log.bilibili.live.statusThrew"), { roomId, error });
 			this.reportStatusUnavailable(externalId, roomId);
 			return fail("unavailable", "live status is unavailable");
 		}

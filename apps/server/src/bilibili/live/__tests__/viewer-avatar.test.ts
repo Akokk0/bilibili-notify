@@ -4,7 +4,8 @@
  */
 
 import { fail, type ImageRef, ok } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n/index.js";
 import { failureFromBili } from "../../error-codes.js";
 import { createViewerAvatarFetcher, VIEWER_AVATAR_COOLDOWN_MS } from "../viewer-avatar.js";
 
@@ -97,8 +98,12 @@ describe("createViewerAvatarFetcher", () => {
 		await w.fetcher.fetch("9", "u1");
 
 		expect(w.logger.warn).toHaveBeenCalledTimes(1);
-		expect(w.logger.warn.mock.calls[0]?.[0]).toContain("-352");
-		expect(w.logger.warn.mock.calls[0]?.[0]).toContain("风控校验失败");
+		expect(w.logger.warn).toHaveBeenCalledWith("观众头像查询被限流，冷却期间所有直播间暂停查询", {
+			code: "rate_limited",
+			upstreamCode: -352,
+			message: "风控校验失败",
+			cooldownMs: 300000,
+		});
 	});
 
 	it("过了冷却:再查一次;又撞到就再冷却一轮、再记一条 warn;查成功了就恢复", async () => {
@@ -129,4 +134,30 @@ describe("createViewerAvatarFetcher", () => {
 
 		expect(w.logger.warn).toHaveBeenCalledTimes(1);
 	});
+});
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+it("观众头像冷却日志随语言切换，原码与冷却窗口保持", async () => {
+	const w = setup(() => failureFromBili(-352, "raw risk denial"));
+	for (const [locale, message] of [
+		["zh-CN", "观众头像查询被限流，冷却期间所有直播间暂停查询"],
+		["en", "Viewer avatar lookup rate limited; pausing lookups in all rooms during cooldown"],
+		["ja", "視聴者アバターの取得が制限されたため、待機中はすべての部屋で取得を停止します"],
+		["zh-TW", "觀眾頭像查詢遭限流，冷卻期間所有直播間暫停查詢"],
+	] as const) {
+		i18n.set({ locale, voice: "maid" });
+		await w.fetcher.fetch("7", "u1");
+		expect(w.logger.warn).toHaveBeenLastCalledWith(message, {
+			code: "rate_limited",
+			upstreamCode: -352,
+			message: "raw risk denial",
+			cooldownMs: 300000,
+		});
+		await w.fetcher.fetch("8", "u2");
+		w.advance(VIEWER_AVATAR_COOLDOWN_MS);
+	}
+	expect(w.fetchUserInfoInLive).toHaveBeenCalledTimes(4);
+	expect(w.logger.warn).toHaveBeenCalledTimes(4);
+	expect(w.fetchImage).not.toHaveBeenCalled();
 });

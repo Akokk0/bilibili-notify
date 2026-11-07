@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../../i18n/index.js";
 import { PROBLEM_TEXTS } from "../../../problem-texts.js";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "../room-helpers.js";
 import { makeSessionHarness } from "./support/room-session.js";
@@ -75,9 +76,10 @@ describe("RoomSession 退避状态机 — codex review minor-4", () => {
 
 		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(6);
 		expect(h.problems.reportFailure).toHaveBeenCalledTimes(1);
-		expect(h.warnings.map((args) => String(args[0]))).toContainEqual(
-			expect.stringContaining("连接错误后连接持续失败,重试 5 次后放弃监听"),
-		);
+		expect(h.warnings).toContainEqual([
+			"直播连接持续失败，退避次数已耗尽，放弃监听",
+			expect.objectContaining({ roomId: "r1", reason: "error", maxAttempts: 5 }),
+		]);
 		const failure = h.problems.reportFailure.mock.calls[0]?.[0];
 		expect(failure?.code).toBe("live_monitor_stopped");
 		expect(failure?.message()).toContain(PROBLEM_TEXTS.liveStopReasons.gaveUp());
@@ -346,9 +348,10 @@ describe("预检被 -352 风控拦截 → 长尾退避,不放弃", () => {
 		await h.bootstrap();
 		expect(h.problems.reportFailure).not.toHaveBeenCalled();
 		expect(h.timeoutDelays).toEqual([60_000]);
-		expect(h.warnings.map((args) => String(args[0]))).toContainEqual(
-			expect.stringContaining("弹幕预检被风控拦截,60s 后重试预检(长尾第 1 次,不放弃)"),
-		);
+		expect(h.warnings).toContainEqual([
+			"直播连接预检受阻，进入长尾退避，继续监测",
+			{ roomId: "r1", reason: "preflight", delayMs: 60000, attempt: 1 },
+		]);
 
 		await h.runTimeouts();
 		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(2);
@@ -473,4 +476,34 @@ describe("预检被 -352 风控拦截 → 长尾退避,不放弃", () => {
 		expect(waiting?.disposed).toBe(true);
 		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(before);
 	});
+});
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+it("同一直播会话的重连诊断随语言切换并保留原异常，退避与请求次数不变", async () => {
+	const h = makeSessionHarness();
+	await h.bootstrap();
+	const error = new Error("raw websocket failure", { cause: new Error("socket reset") });
+	for (const [locale, message] of [
+		["zh-CN", "直播连接中断，已安排退避重连"],
+		["en", "Live connection interrupted; reconnect scheduled after backoff"],
+		["ja", "ライブ接続が中断したため、待機後の再接続を設定しました"],
+		["zh-TW", "直播連線中斷，已安排退避重新連線"],
+	] as const) {
+		i18n.set({ locale, voice: "maid" });
+		const running = h.dispatch({ kind: "error", error });
+		await h.settle();
+		expect(h.warnings.at(-1)).toEqual([
+			message,
+			{ roomId: "r1", reason: "error", error, delayMs: 1000, attempt: 1, maxAttempts: 5 },
+		]);
+		const fields = h.warnings.at(-1)?.[1] as { error: Error } | undefined;
+		expect(fields?.error).toBe(error);
+		await h.runTimeouts();
+		await running;
+	}
+	expect(h.timeoutDelays).toEqual([1000, 1000, 1000, 1000]);
+	expect(h.startLiveRoomListener).toHaveBeenCalledTimes(5);
+	expect(h.problems.reportFailure).not.toHaveBeenCalled();
+	h.session.cancel();
 });

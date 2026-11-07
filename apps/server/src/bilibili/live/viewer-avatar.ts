@@ -11,6 +11,7 @@
 
 import type { ImageRef, Logger } from "@bilibili-notify/internal";
 import type { Api } from "../api/index.js";
+import { logText } from "../i18n.js";
 import { fetchAvatar, type ImagesDeps } from "../images";
 
 /** 撞到限流之后的冷却时长:这段时间里不查头像地址。 */
@@ -52,10 +53,12 @@ export function createViewerAvatarFetcher(deps: ViewerAvatarFetcherDeps): Viewer
 						const alreadyCooling = now() < cooldownUntil;
 						cooldownUntil = now() + VIEWER_AVATAR_COOLDOWN_MS;
 						if (!alreadyCooling) {
-							deps.logger.warn(
-								`[viewer-avatar] 查上舰观众的头像地址被限流(code=${result.upstreamCode ?? result.code} ${result.message}),` +
-									`${VIEWER_AVATAR_COOLDOWN_MS / 60_000} 分钟内所有直播间的上舰卡不再查观众头像`,
-							);
+							deps.logger.warn(logText("log.bilibili.live.avatarLimited"), {
+								code: result.code,
+								upstreamCode: result.upstreamCode,
+								message: result.message,
+								cooldownMs: VIEWER_AVATAR_COOLDOWN_MS,
+							});
 						}
 					}
 					// 别的失败(没登录、没对照的码、回应形状不对)只是这一张卡没有头像;没对照的码请求层已记过 warn。
@@ -67,9 +70,7 @@ export function createViewerAvatarFetcher(deps: ViewerAvatarFetcherDeps): Viewer
 					? await fetchAvatar(avatarUrl, imagesDeps)
 					: undefined;
 			} catch (e) {
-				deps.logger.warn(
-					`[viewer-avatar] 查上舰观众的头像地址失败,这一张卡没有观众头像：${(e as Error).message}`,
-				);
+				deps.logger.warn(logText("log.bilibili.live.avatarFailed"), { error: e });
 				return undefined;
 			}
 		},

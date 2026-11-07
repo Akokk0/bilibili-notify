@@ -11,8 +11,11 @@ describe("RoomSessionCoordinator 的问题清理", () => {
 
 		await h.sync(["u1"]);
 
-		expect(warn).toHaveBeenCalledWith(expect.stringContaining("rate_limited"));
-		expect(warn).toHaveBeenCalledWith(expect.stringContaining("被限流"));
+		expect(warn).toHaveBeenCalledWith("直播间号解析失败", {
+			externalId: "u1",
+			code: "rate_limited",
+			message: "被限流",
+		});
 		h.manager.dispose();
 	});
 

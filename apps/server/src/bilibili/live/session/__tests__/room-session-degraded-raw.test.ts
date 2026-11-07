@@ -27,15 +27,15 @@ describe("degraded raw → 漂移报警(限流)", () => {
 
 		await h.dispatch(event);
 		expect(h.warnings).toHaveLength(1);
-		expect(h.warnings[0]?.[0]).toContain("SUPER_CHAT_MESSAGE");
-		expect(h.warnings[0]?.[0]).toContain("r1");
+		expect(h.warnings[0]?.[1]).toEqual({ roomId: "r1", cmd: "SUPER_CHAT_MESSAGE", count: 1 });
+		expect(h.warnings[0]?.[0]).toBe("已知直播命令解析降级，请检查是否需要更新");
 
 		for (let i = 2; i <= 99; i++) await h.dispatch(event);
 		expect(h.warnings).toHaveLength(1);
 
 		await h.dispatch(event);
 		expect(h.warnings).toHaveLength(2);
-		expect(h.warnings[1]?.[0]).toContain("100");
+		expect(h.warnings[1]?.[1]).toEqual({ roomId: "r1", cmd: "SUPER_CHAT_MESSAGE", count: 100 });
 	});
 
 	it("不同 cmd 各自计数,各自首条都报", async () => {

@@ -1,5 +1,6 @@
 import type { Disposable, SourceSubscriptionView } from "@bilibili-notify/internal";
 import { riskBackoffStepMs } from "../../api/index.js";
+import { logText } from "../../i18n.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import { LIVE_ROOM_NOT_FOUND_CODE, liveRiskPath, type RoomContext } from "./room-context.js";
 import { RoomSession } from "./room-session.js";
@@ -45,9 +46,10 @@ export class RoomSessionCoordinator {
 	private async applySubscriptions(wanted: Set<string>): Promise<void> {
 		if (this.disposed) return;
 		this.wanted = wanted;
-		this.ctx.logger.debug(
-			`[start] 启动直播监听，共 ${wanted.size} 个 UID：${[...wanted].join(", ")}`,
-		);
+		this.ctx.logger.debug(logText("log.bilibili.live.roster"), {
+			count: wanted.size,
+			externalIds: [...wanted],
+		});
 		for (const externalId of new Set([
 			...this.active.keys(),
 			...this.retries.keys(),
@@ -116,7 +118,7 @@ export class RoomSessionCoordinator {
 		session
 			.bootstrap()
 			.catch((error) =>
-				this.ctx.logger.error(`[start] 启动直播监听失败 UID=${externalId}：${String(error)}`),
+				this.ctx.logger.error(logText("log.bilibili.live.startFailed"), { externalId, error }),
 			);
 	}
 
@@ -133,14 +135,14 @@ export class RoomSessionCoordinator {
 				notify: PROBLEM_TEXTS.liveRoomNotFound.notify,
 				lasting: true,
 			});
-			this.ctx.logger.warn(
-				`[start] UID=${externalId} 未开通直播间或 live_room 解析失败，跳过 listener 创建`,
-			);
+			this.ctx.logger.warn(logText("log.bilibili.live.roomNotFound"), { externalId });
 			return;
 		}
-		this.ctx.logger.warn(
-			`[start] UID=${externalId} 解析直播间号失败：${failure.code}：${failure.message}`,
-		);
+		this.ctx.logger.warn(logText("log.bilibili.live.roomIdRejected"), {
+			externalId,
+			code: failure.code,
+			message: failure.message,
+		});
 	}
 
 	private scheduleRetry(externalId: string, riskControl: boolean, existing?: RoomIdRetry): void {

@@ -8,6 +8,7 @@ import {
 } from "@bilibili-notify/internal";
 import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/index.js";
+import { logText } from "../i18n.js";
 
 /**
  * 两次解析请求之间至少隔 300ms。冷启动时直播监听会对名单里的每位 UP 一起要房号;
@@ -107,9 +108,11 @@ export function createRoomIds(opts: {
 		if (subscribedIds().has(externalId)) {
 			const written = await stateTask(() => opts.state.set(`room:${externalId}`, resolved));
 			if (!written.ok) {
-				opts.logger.warn(
-					`[room-ids] uid=${externalId} 的房号没写进去: ${written.code}: ${written.message}`,
-				);
+				opts.logger.warn(logText("log.bilibili.live.roomIdWriteFailed"), {
+					externalId,
+					code: written.code,
+					message: written.message,
+				});
 			}
 		}
 		return ok({ roomId: resolved });
@@ -135,9 +138,11 @@ export function createRoomIds(opts: {
 				if (current.has(externalId)) continue;
 				void stateTask(() => opts.state.delete(`room:${externalId}`)).then((removed) => {
 					if (removed.ok) return;
-					opts.logger.warn(
-						`[room-ids] uid=${externalId} 的房号没删掉: ${removed.code}: ${removed.message}`,
-					);
+					opts.logger.warn(logText("log.bilibili.live.roomIdDeleteFailed"), {
+						externalId,
+						code: removed.code,
+						message: removed.message,
+					});
 				});
 			}
 			knownExternalIds = current;

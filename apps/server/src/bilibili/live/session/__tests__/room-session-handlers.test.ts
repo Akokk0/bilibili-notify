@@ -86,7 +86,7 @@ describe("上舰翻译", () => {
 		const h = await listening();
 		await h.dispatch({ ...CAPTAIN, guardLevel: 0 });
 		expect(h.interactions).toEqual([]);
-		expect(h.warnings.some((args) => String(args[0]).includes("认不出的档位"))).toBe(true);
+		expect(h.warnings.some((args) => String(args[0]).includes("认不出的会员档位"))).toBe(true);
 	});
 });
 
