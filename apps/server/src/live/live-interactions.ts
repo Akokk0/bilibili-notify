@@ -23,11 +23,11 @@ import { callSource, type SourceGates } from "../subscriptions/call-source.js";
 import type { SourceView } from "../subscriptions/registry.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
 import { errorMessageOf } from "../util/error-message.js";
-import type { LiveNotifySend, LiveTextPushType } from "./live-notify.js";
+import type { LiveNotifySend, LiveTextPushKind } from "./live-notify.js";
 import { type LiveSessionEngine, liveSubscriptionPushable } from "./live-sessions.js";
 import { type LiveSettings, wantsLiveEndExtras } from "./live-settings.js";
 import type { LiveTable } from "./live-table.js";
-import { LivePushType } from "./live-types.js";
+import { LivePushKind } from "./live-types.js";
 import { pushMembership } from "./membership.js";
 import type { ViewerChatCollector } from "./recap/viewer-chat-collector.js";
 import { pushViewerChat, pushViewerEnter } from "./special-viewers.js";
@@ -147,7 +147,7 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 	};
 
 	/** 把「推一句文字」绑到这条订阅上:过推送层,出错记日志、不重试。 */
-	const textSender = (id: string, type: LiveTextPushType) => (text: string) => {
+	const textSender = (id: string, type: LiveTextPushKind) => (text: string) => {
 		if (disposed) return;
 		opts.serviceCtx.track(
 			opts
@@ -164,7 +164,7 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 	const superchatSender = (id: string) => (segment: MessageLayoutSegment) => {
 		if (disposed) return Promise.resolve();
 		return opts
-			.sendFor(id)([[segment]], LivePushType.Superchat)
+			.sendFor(id)([[segment]], LivePushKind.Superchat)
 			.catch((err) => {
 				log.error(
 					`[live-interactions] 订阅 ${id} 的醒目留言推送出错(不重试): ${errorMessageOf(err)}`,
@@ -176,7 +176,7 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 	const membershipSender = (id: string) => (segments: readonly MessageLayoutSegment[]) => {
 		if (disposed) return Promise.resolve();
 		return opts
-			.sendFor(id)([[...segments]], LivePushType.LiveGuardBuy)
+			.sendFor(id)([[...segments]], LivePushKind.Membership)
 			.catch((err) => {
 				log.error(`[live-interactions] 订阅 ${id} 的会员推送出错(不重试): ${errorMessageOf(err)}`);
 			});
@@ -271,7 +271,7 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 							settings: settings.specialViewerChat,
 							creator,
 						},
-						{ send: textSender(subscriptionId, LivePushType.ViewerChat) },
+						{ send: textSender(subscriptionId, LivePushKind.ViewerChat) },
 					);
 					return;
 				case "viewerEnter":
@@ -282,7 +282,7 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 							settings: settings.specialViewerEnter,
 							creator,
 						},
-						{ send: textSender(subscriptionId, LivePushType.ViewerEnter) },
+						{ send: textSender(subscriptionId, LivePushKind.ViewerEnter) },
 					);
 					return;
 				case "superchat": {

@@ -44,22 +44,23 @@ export interface LivePushAnchor {
  * 一种推送,是下播那次推送里的锚点(`LivePushAnchor`),按附加项的键认 —— 原先的 5 / 10 两档
  * 随之删掉,编号空着不复用。
  */
-export enum LivePushType {
+export const LivePushKind = {
 	/** 周期「正在直播」(`liveStreaming`)。 */
-	Live = 0,
-	StartBroadcasting = 3,
-	LiveGuardBuy = 4,
-	Superchat = 6,
-	ViewerChat = 7,
-	ViewerEnter = 8,
-	LiveEnd = 9,
+	LiveStreaming: 0,
+	LiveStart: 3,
+	Membership: 4,
+	Superchat: 6,
+	ViewerChat: 7,
+	ViewerEnter: 8,
+	LiveEnd: 9,
 	/**
 	 * 重启补报(`liveStart.catchUpOnBoot`):启动时发现正在播,补一张开播。卡与文字是「正在直播」那一套,
-	 * 但走开播(`liveStart`)的目标、历史记成开播、**不 @全体**。与周期那一档({@link Live})分成两档,
+	 * 但走开播(`liveStart`)的目标、历史记成开播、**不 @全体**。与周期那一档({@link LivePushKind.LiveStreaming})分成两档,
 	 * 宿主的翻译表才分得出一个归 `liveStart`、一个归 `liveStreaming`。
 	 */
-	CatchUp = 11,
-}
+	CatchUp: 11,
+} as const;
+export type LivePushKind = (typeof LivePushKind)[keyof typeof LivePushKind];
 
 /**
  * 直播封面轮换选择器:给定 scopeKey(`uid:live-cover`)与完整图列表,返回本次该用的那张

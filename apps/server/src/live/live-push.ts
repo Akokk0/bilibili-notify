@@ -20,12 +20,12 @@ import {
 } from "@bilibili-notify/internal";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
 import { liveCardInputFromDetails } from "./live-card-input.js";
-import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
+import { type LiveNotifyPushKind, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
 import { type LiveSessionEngine, liveSubscriptionPushable } from "./live-sessions.js";
 import type { LiveSettings } from "./live-settings.js";
 import type { LiveTable } from "./live-table.js";
 import { type LiveTextKind, renderLiveText } from "./live-text.js";
-import { type LivePushAnchor, LivePushType } from "./live-types.js";
+import { type LivePushAnchor, LivePushKind } from "./live-types.js";
 import type { LiveSummaryRequester } from "./recap/live-summary-requester.js";
 import { recapAnchors } from "./recap/recap-anchors.js";
 import type { ViewerChatCollector } from "./recap/viewer-chat-collector.js";
@@ -153,7 +153,7 @@ function anyLiveSwitchOn(settings: LiveSettings): boolean {
 /** 一张要推的卡。 */
 interface CardJob {
 	status: LiveCardInput["status"];
-	pushType: LiveNotifyPushType;
+	pushKind: LiveNotifyPushKind;
 	textKind: LiveTextKind;
 	/** 卡上与文案要的直播那几格(图是图库引用,含直播间链接)。 */
 	facts: LiveDetails;
@@ -316,7 +316,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				liveCover: opts.liveCover(sub, settings),
 				cardSkin: settings.cardSkin,
 				cardSkinKnobs: settings.cardSkinKnobs,
-				pushType: job.pushType,
+				pushKind: job.pushKind,
 				extras: job.extras,
 				label: `sub=${id}`,
 			},
@@ -340,13 +340,13 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 
 	/**
 	 * 「正在直播」卡:在播表里最新那一份(跑到时现取),时长算到此刻,粉丝数是资料里现在的。排队期间这一场
-	 * 已经不是当前那场(开播事件把它换掉了、下播收掉了)就不推。`pushType`:周期那一档 `Live`,或者重启补报的
+	 * 已经不是当前那场(开播事件把它换掉了、下播收掉了)就不推。`pushKind`:周期那一档 `Live`,或者重启补报的
 	 * `CatchUp` —— 两者画的卡、用的文案一样,走的目标与历史不一样。
 	 */
 	function pushStreaming(
 		id: string,
 		run: LiveRun,
-		pushType: LivePushType.Live | LivePushType.CatchUp,
+		pushKind: typeof LivePushKind.LiveStreaming | typeof LivePushKind.CatchUp,
 	): Promise<void> {
 		if (runs.get(id) !== run) {
 			log.debug(`[live-push] 订阅 ${id} 排队期间换了一场,这张「正在直播」卡不推`);
@@ -361,7 +361,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const startedAt = millisOf(run.session.startedAt) ?? row?.startedAt;
 		return pushCard(id, {
 			status: "streaming",
-			pushType,
+			pushKind,
 			textKind: "liveStreaming",
 			facts: details,
 			startedAt,
@@ -399,7 +399,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			enqueue(id, "开播", () =>
 				pushCard(id, {
 					status: "start",
-					pushType: LivePushType.StartBroadcasting,
+					pushKind: LivePushKind.LiveStart,
 					textKind: "liveStart",
 					facts: details,
 					startedAt,
@@ -444,7 +444,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		runs.set(id, run);
 		if (first && settings.catchUpOnBoot && settings.liveStart) {
 			log.info(`[live-push] 订阅 ${id} 在 BN 起来之前就开播了,补报一张「正在直播」`);
-			enqueue(id, "「正在直播」(重启补报)", () => pushStreaming(id, run, LivePushType.CatchUp));
+			enqueue(id, "「正在直播」(重启补报)", () => pushStreaming(id, run, LivePushKind.CatchUp));
 		} else {
 			log.debug(`[live-push] 订阅 ${id} 正在播,接上这一场(不补报)`);
 		}
@@ -463,7 +463,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		runs.set(id, run);
 		if (!ready.settings.liveStreaming) return;
 		const current = run;
-		enqueue(id, STREAMING_WHAT, () => pushStreaming(id, current, LivePushType.Live));
+		enqueue(id, STREAMING_WHAT, () => pushStreaming(id, current, LivePushKind.LiveStreaming));
 	}
 
 	/** 下播进了断流等待:换上带着等待的那份场次(周期推送的停由核心的计时管)。 */
@@ -505,7 +505,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 					: undefined;
 			return pushCard(id, {
 				status: "end",
-				pushType: LivePushType.LiveEnd,
+				pushKind: LivePushKind.LiveEnd,
 				textKind: "liveEnd",
 				facts,
 				startedAt,

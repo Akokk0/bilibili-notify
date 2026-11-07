@@ -16,17 +16,17 @@ import {
 	type MessageKindLayout,
 	type MessageLayoutSegment,
 } from "@bilibili-notify/internal";
-import type { LivePushAnchor, LivePushType } from "./live-types";
+import type { LivePushAnchor, LivePushKind } from "./live-types";
 
 /** 直播卡的四种推送:开播 / 周期「正在直播」/ 重启补报(卡与文字同「正在直播」)/ 下播。 */
-export type LiveNotifyPushType =
-	| LivePushType.StartBroadcasting
-	| LivePushType.Live
-	| LivePushType.CatchUp
-	| LivePushType.LiveEnd;
+export type LiveNotifyPushKind =
+	| typeof LivePushKind.LiveStart
+	| typeof LivePushKind.LiveStreaming
+	| typeof LivePushKind.CatchUp
+	| typeof LivePushKind.LiveEnd;
 
 /** 特别关注的两种文字推送:特别弹幕 / 特别进场(没有卡,只有一句文字)。 */
-export type LiveTextPushType = LivePushType.ViewerChat | LivePushType.ViewerEnter;
+export type LiveTextPushKind = typeof LivePushKind.ViewerChat | typeof LivePushKind.ViewerEnter;
 
 /**
  * 绑到这条订阅上的发送。装配只交「推什么」:按版式分好的消息组(至少一组;一组是一条消息,
@@ -35,7 +35,11 @@ export type LiveTextPushType = LivePushType.ViewerChat | LivePushType.ViewerEnte
  */
 export type LiveNotifySend = (
 	groups: MessageLayoutSegment[][],
-	type: LiveNotifyPushType | LiveTextPushType | LivePushType.Superchat | LivePushType.LiveGuardBuy,
+	type:
+		| LiveNotifyPushKind
+		| LiveTextPushKind
+		| typeof LivePushKind.Superchat
+		| typeof LivePushKind.Membership,
 	/** 本体之后的附加项锚点(下播的词云、总结);没有就不带。 */
 	extras?: readonly LivePushAnchor[],
 ) => Promise<void>;
@@ -56,7 +60,7 @@ export interface LiveNotifyParams extends CardSkinChoice {
 	layout: MessageKindLayout;
 	/** 这一张卡的自定义封面(资产 id,已轮好);不给 = 卡吃来源自己的封面。 */
 	liveCover?: string;
-	pushType: LiveNotifyPushType;
+	pushKind: LiveNotifyPushKind;
 	/** 本体之后的附加项锚点;没有就不带。 */
 	extras?: readonly LivePushAnchor[];
 	/** 日志里怎么称呼这条订阅(比如 `uid=…`、`sub=…`)。 */
@@ -102,6 +106,6 @@ export async function pushLiveNotify(
 		deps.logger.debug(`[push] ${params.label} 消息版式所有部件隐藏/缺失,本次不推送`);
 		return;
 	}
-	if (params.extras === undefined) await deps.send(groups, params.pushType);
-	else await deps.send(groups, params.pushType, params.extras);
+	if (params.extras === undefined) await deps.send(groups, params.pushKind);
+	else await deps.send(groups, params.pushKind, params.extras);
 }

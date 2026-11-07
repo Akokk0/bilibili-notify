@@ -10,7 +10,7 @@ import type { LiveCardInput } from "@bilibili-notify/image";
 import type { Logger, MessageKindLayout, MessageLayoutSegment } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { type LiveNotifyParams, type LiveNotifySend, pushLiveNotify } from "../live-notify";
-import { LivePushType } from "../live-types";
+import { LivePushKind } from "../live-types";
 
 const CARD = Buffer.from("card-jpeg");
 const LINK = "https://example.com/live/1";
@@ -39,7 +39,7 @@ function params(over: Partial<LiveNotifyParams> = {}): LiveNotifyParams {
 		text: "开播啦",
 		link: LINK,
 		layout: layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]),
-		pushType: LivePushType.StartBroadcasting,
+		pushKind: LivePushKind.LiveStart,
 		label: "sub=s1",
 		...over,
 	};
@@ -150,11 +150,11 @@ describe("pushLiveNotify — 分组与发送", () => {
 
 	it("推送类型原样交给发送,除了消息组与类型不再带别的", async () => {
 		const d = deps();
-		await pushLiveNotify(params({ pushType: LivePushType.LiveEnd }), d.deps);
-		await pushLiveNotify(params({ pushType: LivePushType.Live }), d.deps);
-		expect(d.send.mock.calls[0]?.[1]).toBe(LivePushType.LiveEnd);
+		await pushLiveNotify(params({ pushKind: LivePushKind.LiveEnd }), d.deps);
+		await pushLiveNotify(params({ pushKind: LivePushKind.LiveStreaming }), d.deps);
+		expect(d.send.mock.calls[0]?.[1]).toBe(LivePushKind.LiveEnd);
 		expect(d.send.mock.calls[0]).toHaveLength(2);
-		expect(d.send.mock.calls[1]?.[1]).toBe(LivePushType.Live);
+		expect(d.send.mock.calls[1]?.[1]).toBe(LivePushKind.LiveStreaming);
 	});
 
 	it("所有部件都藏起来 → 不出卡、不发送", async () => {

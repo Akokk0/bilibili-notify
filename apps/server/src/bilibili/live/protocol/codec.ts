@@ -26,12 +26,12 @@ const CLIENT_SEQUENCE = 1;
 const textEncoder = new TextEncoder();
 
 /** 服务器下行版本号。客户端上行恒为 1。 */
-enum WsVersion {
-	Json = 0,
-	Number = 1,
-	Zlib = 2,
-	Brotli = 3,
-}
+const WsVersion = {
+	Json: 0,
+	Number: 1,
+	Zlib: 2,
+	Brotli: 3,
+} as const;
 
 /** 编码一个客户端上行包(心跳 / 认证)。body 为对象时 JSON 序列化。 */
 export function encodePacket(op: WsOp, body: string | object): Uint8Array {

@@ -120,14 +120,14 @@ export function boundPostPush(
 }
 
 /**
- * 一种直播推送交给推送层时的那两格:特性键({@link liveTypeToFeature}),以及只有开播许 @全体
- * ({@link liveTypeAllowsAtAll})—— 重启补报也走 `liveStart` 那把键,不显式抑制就每条都 @。
+ * 一种直播推送交给推送层时的那两格:特性键({@link liveKindToFeature}),以及只有开播许 @全体
+ * ({@link liveKindAllowsAtAll})—— 重启补报也走 `liveStart` 那把键,不显式抑制就每条都 @。
  * B 站直播间与拓展订阅的直播共用这一处映射。
  */
 function livePushHead(type: number): Pick<Push, "feature" | "allowAtAll"> {
 	return {
-		feature: liveTypeToFeature(type),
-		...(liveTypeAllowsAtAll(type) ? {} : { allowAtAll: false }),
+		feature: liveKindToFeature(type),
+		...(liveKindAllowsAtAll(type) ? {} : { allowAtAll: false }),
 	};
 }
 
@@ -157,12 +157,12 @@ export function boundLivePush(
 }
 
 /**
- * LivePushType → 特性键(管开关与路由)。周期「正在直播」(0)有自己的 liveStreaming(⑬d 拆键,
+ * LivePushKind → 特性键(管开关与路由)。周期「正在直播」(0)有自己的 liveStreaming(⑬d 拆键,
  * 各有开关与目标);开播(3)与重启补报(11,补的就是一次开播)走 liveStart。下播的词云 / 总结
  * 不是单独的一种推送:它们是下播(9)那次推送里的附加项锚点,自然跟着下播那把键走。
  */
-export function liveTypeToFeature(type: number): FeatureKey {
-	switch (type) {
+export function liveKindToFeature(kind: number): FeatureKey {
+	switch (kind) {
 		case 0:
 			return "liveStreaming";
 		case 3:
@@ -184,12 +184,12 @@ export function liveTypeToFeature(type: number): FeatureKey {
 }
 
 /**
- * 一条 LivePushType 是否允许 @全体成员。仅 `StartBroadcasting`(=3,开播)允许;
+ * 一条 LivePushKind 是否允许 @全体成员。仅 `LiveStart`(=3,开播)允许;
  * 重启补报(`CatchUp`=11)也翻译成 `feature === "liveStart"`,光看 feature 区分不出
  * 真开播 vs 补报 —— push 层据本结果决定是否进 atAll 分支,否则每条补报都 @全体
- * (从前周期复推就这么出过 bug)。裸数字 3 = LivePushType.StartBroadcasting,与
- * apps/server/src/live 的 LivePushType 保持一致。
+ * (从前周期复推就这么出过 bug)。裸数字 3 = LivePushKind.LiveStart,与
+ * apps/server/src/live 的 LivePushKind 保持一致。
  */
-export function liveTypeAllowsAtAll(type: number): boolean {
-	return type === 3;
+export function liveKindAllowsAtAll(kind: number): boolean {
+	return kind === 3;
 }

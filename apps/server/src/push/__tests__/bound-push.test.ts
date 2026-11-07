@@ -1,7 +1,7 @@
 /**
  * 引擎 → 推送层那一跳的守卫。
  *
- * 隔壁 `live-type-to-feature.test.ts` 钉的是**翻译表本身**（3 → 允许 @全体、9 → liveEnd）。
+ * 隔壁 `live-kind-to-feature.test.ts` 钉的是**翻译表本身**（3 → 允许 @全体、9 → liveEnd）。
  * 这份钉的是**那张表真的被用上了**、锚点真的原样翻过去了 —— 两件事，两条测试。
  *
  * 为什么非要单独一条：2026-09-19 实测过，把适配器里直播那一跳的翻译整个换成裸的转交，
@@ -23,8 +23,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	boundLivePush,
 	boundPostPush,
-	liveTypeAllowsAtAll,
-	liveTypeToFeature,
+	liveKindAllowsAtAll,
+	liveKindToFeature,
 } from "../bound-push";
 
 /** 只拦 `push`，把交进来的那次推送原样记下来。 */
@@ -129,35 +129,35 @@ describe("作品那一路(boundPostPush)真的把锚点翻过去了", () => {
  * 剪掉这一跳(适配器把 uid 原样交下去),推送层按 id 一条订阅都找不到,每条推送静默丢掉。
  */
 
-// Mirror of koishi/live/src/__tests__/live-type-to-feature.test.ts — the two
+// Mirror of koishi/live/src/__tests__/live-kind-to-feature.test.ts — the two
 // adapter helpers MUST stay byte-consistent across ends (same business core,
-// different shells). liveTypeAllowsAtAll guards the @全体 bug fix: only
+// different shells). liveKindAllowsAtAll guards the @全体 bug fix: only
 // StartBroadcasting(3) is at-all-eligible; periodic「正在直播」(0) and the boot catch-up (11) are NOT.
 describe("apps/server adapter live-type map (cross-end mirror)", () => {
-	it("liveTypeToFeature 完整映射表 + 未知兜底 liveStart", () => {
-		expect(liveTypeToFeature(0)).toBe("liveStreaming"); // 周期「正在直播」有自己的特性键(⑬d 拆键)
-		expect(liveTypeToFeature(3)).toBe("liveStart");
-		expect(liveTypeToFeature(4)).toBe("membership");
-		expect(liveTypeToFeature(6)).toBe("superchat");
-		expect(liveTypeToFeature(7)).toBe("viewerChat");
-		expect(liveTypeToFeature(8)).toBe("viewerEnter");
-		expect(liveTypeToFeature(9)).toBe("liveEnd");
-		expect(liveTypeToFeature(11)).toBe("liveStart"); // 重启补报走开播的路由
-		expect(liveTypeToFeature(999)).toBe("liveStart");
+	it("liveKindToFeature 完整映射表 + 未知兜底 liveStart", () => {
+		expect(liveKindToFeature(0)).toBe("liveStreaming"); // 周期「正在直播」有自己的特性键(⑬d 拆键)
+		expect(liveKindToFeature(3)).toBe("liveStart");
+		expect(liveKindToFeature(4)).toBe("membership");
+		expect(liveKindToFeature(6)).toBe("superchat");
+		expect(liveKindToFeature(7)).toBe("viewerChat");
+		expect(liveKindToFeature(8)).toBe("viewerEnter");
+		expect(liveKindToFeature(9)).toBe("liveEnd");
+		expect(liveKindToFeature(11)).toBe("liveStart"); // 重启补报走开播的路由
+		expect(liveKindToFeature(999)).toBe("liveStart");
 	});
 
-	it("liveTypeAllowsAtAll:仅开播(3)允许,0/补报(11)/其它/未知一律 false", () => {
-		expect(liveTypeAllowsAtAll(3)).toBe(true);
-		expect(liveTypeAllowsAtAll(0)).toBe(false);
+	it("liveKindAllowsAtAll:仅开播(3)允许,0/补报(11)/其它/未知一律 false", () => {
+		expect(liveKindAllowsAtAll(3)).toBe(true);
+		expect(liveKindAllowsAtAll(0)).toBe(false);
 		for (const t of [4, 6, 7, 8, 9, 11, 999]) {
-			expect(liveTypeAllowsAtAll(t)).toBe(false);
+			expect(liveKindAllowsAtAll(t)).toBe(false);
 		}
 	});
 });
 
 /**
  * 拓展订阅的直播那一跳(ADR-0019 决策 67):装配交来的消息组 → 推送层的一次推送,**特性键与 @全体 照 B 站的映射**
- * (`liveTypeToFeature` / `liveTypeAllowsAtAll`)。掉了哪一样都是静默的:开关与路由按错的特性走、每条
+ * (`liveKindToFeature` / `liveKindAllowsAtAll`)。掉了哪一样都是静默的:开关与路由按错的特性走、每条
  * 「正在直播」都 @全体、历史把周期推送记成开播。
  */
 describe("boundLivePush — 拓展直播的四种推送照 B 站的映射交给推送层", () => {

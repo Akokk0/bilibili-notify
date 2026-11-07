@@ -667,7 +667,7 @@ describe("漏收下播的兜底(核心按开播时刻周期核对)", () => {
 // - 核心周期计时忽略设置里的小时数 → 第一条红(一小时就推了);
 // - `tickPushAtTime` 里 `const watched = this.liveData.watchedNum` 改成 `= undefined` → 第一条红(印成「暂未获取到」);
 // - `room-session.ts` 里 `this.ctx.emitViewers(…)` 删掉 → 第一条红(没有观看人数事件);
-// - `room-helpers.ts` 的 `livePushTypeOf` 最后一行改成回 `LivePushType.StartBroadcasting` → 「不 @」那条与只开周期推送的两条红
+// - `room-helpers.ts` 的 `livePushKindOf` 最后一行改成回 `LivePushKind.LiveStart` → 「不 @」那条与只开周期推送的两条红
 //   (周期那一条成了开播:走开播的开关、带 @全体)。
 //
 // 核心按每一场的开播时刻(11:58:30)起算。

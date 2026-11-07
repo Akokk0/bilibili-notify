@@ -99,7 +99,7 @@ export type AiOverrides = z.infer<typeof AiOverridesSchema>;
  *
  * 作用范围:
  * - `atAllPost`:过了过滤器的作品都 @(任意作品类型)
- * - `atAllLiveStart`:仅作用于 LivePushType.StartBroadcasting(真开播;重启补报与周期「正在直播」都不 @),不冲 liveEnd / SC / 上舰 / 词云 / AI 总结
+ * - `atAllLiveStart`:仅作用于 LivePushKind.LiveStart(真开播;重启补报与周期「正在直播」都不 @),不冲 liveEnd / SC / 上舰 / 词云 / AI 总结
  * - `wordcloud` / `liveSummary`:下播那次推送的两条后续消息
  */
 export const SubscriptionExtraTargetsSchema = z.object(

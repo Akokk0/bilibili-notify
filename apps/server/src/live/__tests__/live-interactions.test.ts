@@ -36,7 +36,7 @@ import {
 import { createLiveSessionEngine, type LiveSessionEngine } from "../live-sessions.js";
 import type { LiveSettings } from "../live-settings.js";
 import { createLiveTable, type LiveTable } from "../live-table.js";
-import { LivePushType } from "../live-types.js";
+import { LivePushKind } from "../live-types.js";
 import { ViewerChatCollector } from "../recap/viewer-chat-collector.js";
 
 const EXT = "acme.inprocess";
@@ -346,7 +346,7 @@ describe("特别弹幕", () => {
 	it("名单命中且开关开着:按订阅现折的文案交出一句,走特别弹幕这一种推送", () => {
 		chat("123");
 		expect(sent).toEqual([
-			{ id: SUB.id, text: "主播A 的直播间里 小明 说:你好呀", type: LivePushType.ViewerChat },
+			{ id: SUB.id, text: "主播A 的直播间里 小明 说:你好呀", type: LivePushKind.ViewerChat },
 		]);
 	});
 
@@ -394,7 +394,7 @@ describe("特别进场", () => {
 	it("名单命中且开关开着:交出一句,走特别进场这一种推送", () => {
 		enter("123");
 		expect(sent).toEqual([
-			{ id: SUB.id, text: "小明 进入了 主播A 的直播间", type: LivePushType.ViewerEnter },
+			{ id: SUB.id, text: "小明 进入了 主播A 的直播间", type: LivePushKind.ViewerEnter },
 		]);
 	});
 
@@ -442,7 +442,7 @@ describe("醒目留言", () => {
 		expect(sentSegments).toEqual([
 			{
 				id: SUB.id,
-				type: LivePushType.Superchat,
+				type: LivePushKind.Superchat,
 				segments: [{ kind: "image", buffer: SC_CARD, mime: "image/jpeg" }],
 			},
 		]);
@@ -470,7 +470,7 @@ describe("醒目留言", () => {
 		superchat({ amount: 5, currency: "USD" });
 		await flush();
 		expect(superchatCard).toHaveBeenCalledTimes(1);
-		expect(sentSegments[0]?.type).toBe(LivePushType.Superchat);
+		expect(sentSegments[0]?.type).toBe(LivePushKind.Superchat);
 	});
 
 	it("出不了卡:来源给了兜底句就用它", async () => {
@@ -478,7 +478,7 @@ describe("醒目留言", () => {
 		superchat({ fallbackText: "来源自己的兜底句" });
 		await flush();
 		expect(avatarAsked).toBe(0);
-		expect(sent).toEqual([{ id: SUB.id, text: "来源自己的兜底句", type: LivePushType.Superchat }]);
+		expect(sent).toEqual([{ id: SUB.id, text: "来源自己的兜底句", type: LivePushKind.Superchat }]);
 	});
 
 	it("出不了卡、来源没给兜底句:用核心字典里那句中性的", async () => {
@@ -529,7 +529,7 @@ describe("醒目留言", () => {
 		await flush();
 		expect(superchatCard.mock.calls[0]?.[0]).toMatchObject({ viewer: { name: "粉丝" } });
 		expect(superchatCard.mock.calls[0]?.[0]).not.toHaveProperty("viewer.avatar");
-		expect(sentSegments[0]?.type).toBe(LivePushType.Superchat);
+		expect(sentSegments[0]?.type).toBe(LivePushKind.Superchat);
 	});
 
 	it("来源一直不回:超时后卡照出、没有观众头像,记一条错误日志", async () => {
@@ -600,7 +600,7 @@ describe("会员", () => {
 		});
 		await flush();
 		expect(sent).toEqual([
-			{ id: SUB.id, text: "船员 成为了 自定义贵族", type: LivePushType.LiveGuardBuy },
+			{ id: SUB.id, text: "船员 成为了 自定义贵族", type: LivePushKind.Membership },
 		]);
 		expect(membershipCard).not.toHaveBeenCalled();
 		expect(tierAsked).toBe(0);
@@ -630,7 +630,7 @@ describe("会员", () => {
 			},
 		});
 		expect(tierAsked).toBe(0);
-		expect(sentSegments[0]?.type).toBe(LivePushType.LiveGuardBuy);
+		expect(sentSegments[0]?.type).toBe(LivePushKind.Membership);
 	});
 
 	it("声明档没带 icon.ref:经懒取口补一次,卡照出", async () => {

@@ -39,7 +39,7 @@ import {
 } from "../live-sessions.js";
 import type { LiveSettings } from "../live-settings.js";
 import { createLiveTable, type LiveTable } from "../live-table.js";
-import { type LivePushAnchor, LivePushType } from "../live-types.js";
+import { type LivePushAnchor, LivePushKind } from "../live-types.js";
 import type { LiveSummaryRequester } from "../recap/live-summary-requester.js";
 import { ViewerChatCollector } from "../recap/viewer-chat-collector.js";
 
@@ -416,13 +416,13 @@ describe("下播回顾", () => {
 		await settle();
 		liveEnd();
 		await settle();
-		expect(sent.at(-1)?.type).toBe(LivePushType.LiveEnd);
+		expect(sent.at(-1)?.type).toBe(LivePushKind.LiveEnd);
 		expect(sent.at(-1)?.extras.map((anchor) => anchor.extra)).toEqual(["wordcloud", "liveSummary"]);
 
 		// BN 手里没有这一场:下播事件仍要推一张兜底下播卡,回顾照样挂在它后面。
 		liveEnd();
 		await settle();
-		expect(sent.at(-1)?.type).toBe(LivePushType.LiveEnd);
+		expect(sent.at(-1)?.type).toBe(LivePushKind.LiveEnd);
 		expect(sent.at(-1)?.extras.map((anchor) => anchor.extra)).toEqual(["wordcloud", "liveSummary"]);
 
 		// 断流等待到期才真正结束。
@@ -436,7 +436,7 @@ describe("下播回顾", () => {
 		liveEnd();
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
 		await settle();
-		expect(sent.at(-1)?.type).toBe(LivePushType.LiveEnd);
+		expect(sent.at(-1)?.type).toBe(LivePushKind.LiveEnd);
 		expect(sent.at(-1)?.extras.map((anchor) => anchor.extra)).toEqual(["wordcloud", "liveSummary"]);
 	});
 
@@ -620,7 +620,7 @@ describe("周期「正在直播」", () => {
 		expect(sent.map((s) => s.type)).toEqual([3]);
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([3, LivePushType.Live]);
+		expect(sent.map((s) => s.type)).toEqual([3, LivePushKind.LiveStreaming]);
 	});
 
 	it("周期只看自己的开关:开播推送(liveStart)关着、周期开着,照样按间隔推「正在直播」", async () => {
@@ -630,7 +630,7 @@ describe("周期「正在直播」", () => {
 		await settle();
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([LivePushType.Live]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushKind.LiveStreaming]);
 	});
 
 	it("热更:开着时把开关关掉(全局设置变了)→ 到点不再推", async () => {
@@ -655,7 +655,7 @@ describe("周期「正在直播」", () => {
 		expect(sent.map((s) => s.type)).toEqual([3]); // 旧的一小时间隔已作废
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([3, LivePushType.Live]);
+		expect(sent.map((s) => s.type)).toEqual([3, LivePushKind.LiveStreaming]);
 	});
 
 	it("热更:关着时把开关打开 → 这一场到点就推", async () => {
@@ -667,7 +667,7 @@ describe("周期「正在直播」", () => {
 		bus.emit("config-changed", { scope: "globals" });
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([3, LivePushType.Live]);
+		expect(sent.map((s) => s.type)).toEqual([3, LivePushKind.LiveStreaming]);
 	});
 
 	// 周期「正在直播」只对实现了 `fetchLiveStatus` 的来源成立(声明了周期直播的拓展登记时就核过要交,见
@@ -776,7 +776,7 @@ describe("重启补报", () => {
 		liveStatus({ totalViewers: 6 });
 		await settle();
 
-		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushKind.CatchUp]);
 		expect(sent[0]?.text).toBe(`抖音甲 正在直播，已播 30分，累计观看：5\n${URL}`);
 		expect(sent[0]?.input).toMatchObject({
 			status: "streaming",
@@ -792,7 +792,7 @@ describe("重启补报", () => {
 		await settle();
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp, LivePushType.Live]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushKind.CatchUp, LivePushKind.LiveStreaming]);
 	});
 
 	it("补报关着:不补报,周期推送照挂", async () => {
@@ -804,7 +804,7 @@ describe("重启补报", () => {
 		expect(sent).toEqual([]);
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([LivePushType.Live]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushKind.LiveStreaming]);
 	});
 
 	it("补报开着、开播推送(liveStart)关着:不补报 —— 补的是开播,开播关着就没有什么可补", async () => {
@@ -902,7 +902,7 @@ describe("重启补报", () => {
 		// 停着的时候开的播(或者一直在播):重新跑起来报的第一份就是在播。
 		liveStatus();
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp, LivePushType.CatchUp]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushKind.CatchUp, LivePushKind.CatchUp]);
 	});
 
 	it("拓展停过又跑起来、先报了不在播:之后的在播照常接上,不补推", async () => {
@@ -914,7 +914,7 @@ describe("重启补报", () => {
 		report({ kind: "status", isLive: false, details: {} });
 		liveStatus();
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushKind.CatchUp]);
 	});
 
 	it("别的拓展停了:这条订阅的「见过」不动,不补推", async () => {
@@ -928,7 +928,7 @@ describe("重启补报", () => {
 		bus.emit("extension-stopped", { extensionId: "kuaishou" });
 		liveStatus();
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp, 9]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushKind.CatchUp, 9]);
 	});
 });
 

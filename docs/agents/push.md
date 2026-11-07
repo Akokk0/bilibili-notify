@@ -50,14 +50,14 @@
 
 ### ② 适配 —— 唯一同时懂两套词的地方
 
-来源与装配说 `LivePushType`，推送层说 `FeatureKey`。翻译只在这一处，一进来分出两样（`livePushHead`）：
+来源与装配说 `LivePushKind`，推送层说 `FeatureKey`。翻译只在这一处，一进来分出两样（`livePushHead`）：
 
 | 函数 | 产出 | 管什么 |
 |---|---|---|
-| `liveTypeToFeature` | `FeatureKey` | 开关与路由 |
-| `liveTypeAllowsAtAll` | `boolean` | 允不允许 @全体（不允许就给这次推送带 `allowAtAll: false`） |
+| `liveKindToFeature` | `FeatureKey` | 开关与路由 |
+| `liveKindAllowsAtAll` | `boolean` | 允不允许 @全体（不允许就给这次推送带 `allowAtAll: false`） |
 
-附加项不靠推送类型认：来源与装配交来的锚点自己带着附加项的键（`LivePushAnchor.extra`，词云 `wordcloud`、总结 `liveSummary`），`toPushAnchors` 把角色与键原样带过去、内容（现成的或约定，`messages` 与有才带的 `aiMessages`）逐条翻成载荷。`LivePushType` 里原先给词云 / 总结用的 5、10 两档已删。
+附加项不靠推送类型认：来源与装配交来的锚点自己带着附加项的键（`LivePushAnchor.extra`，词云 `wordcloud`、总结 `liveSummary`），`toPushAnchors` 把角色与键原样带过去、内容（现成的或约定，`messages` 与有才带的 `aiMessages`）逐条翻成载荷。`LivePushKind` 里原先给词云 / 总结用的 5、10 两档已删。
 
 历史行记的就是特性键（⑬f 起没有单独的推送种类）：开播（3）→ `liveStart`、可以 @全体；重启补报（`CatchUp`，11）→ `liveStart`、不 @全体，卡与文字仍是「正在直播」那一套；周期「正在直播」（0）→ `liveStreaming`、不 @全体。⚠️ **本体那个锚点不带附加项的键** —— 带上键的话整张卡会被那张附加项三态表收窄掉。
 
