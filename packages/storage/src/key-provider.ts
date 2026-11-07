@@ -82,7 +82,7 @@ export class PassphraseKeyProvider implements KeyProvider {
 			if (salt) return salt;
 			this.logger.warn(
 				"[key] kdf.salt 格式非法（非 32 位十六进制），将重新生成 —— " +
-					"既有用注入密钥加密的 secrets（B 站 cookie / AI apiKey）届时无法解密、需重新登录。",
+					"既有用注入密钥加密的 secrets（来源凭据 / AI apiKey）届时无法解密、需重新登录。",
 			);
 		}
 		const salt = randomBytes(16);
@@ -112,7 +112,7 @@ export function createKeyProvider(opts: CreateKeyProviderOptions): KeyProvider {
 	// 文案保持端中立(不提 BN_COOKIE_KEY,那是 standalone 专属);standalone
 	// 在 bootstrap 另加可执行指引。
 	opts.logger.warn(
-		"[key] 未提供注入密钥:secrets（B 站 cookie / AI apiKey）使用本地随机密钥，" +
+		"[key] 未提供注入密钥:secrets（来源凭据 / AI apiKey）使用本地随机密钥，" +
 			"且密钥与密文同目录 —— 仅为混淆，不构成真正的静态加密。",
 	);
 	return new FileKeyProvider(opts.keyPath, opts.logger);

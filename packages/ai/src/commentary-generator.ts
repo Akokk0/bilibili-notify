@@ -697,7 +697,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		);
 		const shaped = await this.resolveImages(content, imageUrls);
 		const result = await this.callAPI(
-			scene === "dynamic" ? "动态点评" : scene === "liveSummary" ? "下播总结" : "其他点评",
+			scene === "dynamic" ? "作品点评" : scene === "liveSummary" ? "下播总结" : "其他点评",
 			systemPrompt,
 			[{ role: "user", content: shaped.content }],
 			searchExec

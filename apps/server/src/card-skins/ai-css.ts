@@ -99,7 +99,7 @@ ${vars}
 
 /** 与框无关的那半:这张卡是什么、选择器怎么写、清洗器收什么。 */
 export function buildCardCssAiSystem(): string {
-	return `你给 B 站推送卡片的皮肤写 CSS,每次只写**一个框**:一个块的 CSS,或整张卡外框的 CSS。
+	return `你给推送通知卡片的皮肤写 CSS,每次只写**一个框**:一个块的 CSS,或整张卡外框的 CSS。
 
 ## 这张卡是什么
 - 卡片由服务端用 Chromium 渲染成一张**静态 PNG**:没有鼠标、没有动画。:hover、:focus、transition、animation 写了也画不出来,别写。

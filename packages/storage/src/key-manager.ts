@@ -31,7 +31,7 @@ export class KeyManager {
 			}
 			this.logger.warn(
 				"[key] 主密钥文件格式非法（非 64 位十六进制），将重新生成 —— " +
-					"既有用该密钥加密的 secrets（B 站 cookie / AI apiKey）届时无法解密、需重新登录。",
+					"既有用该密钥加密的 secrets（来源凭据 / AI apiKey）届时无法解密、需重新登录。",
 			);
 		}
 		this.logger.info("[key] 未找到有效密钥，生成新密钥");

@@ -691,7 +691,7 @@ export class ImageRenderer {
 			time: (seconds) => this.unixTimestampToString(seconds),
 			imageUrl: (ref) => resolved.get(ref),
 		});
-		this.logger.debug(`[dynamic] 开始渲染动态卡片：${node.creatorName}`);
+		this.logger.debug(`[dynamic] 开始渲染作品卡片：${node.creatorName}`);
 		return this.renderWithSkin({
 			kind: "post",
 			title: packageText("image.image-renderer.7"),
@@ -703,7 +703,7 @@ export class ImageRenderer {
 		})
 			.then((buf) => {
 				this.logger.debug(
-					`[dynamic] 动态卡片渲染完成：${node.creatorName}（${Date.now() - t0}ms）`,
+					`[dynamic] 作品卡片渲染完成：${node.creatorName}（${Date.now() - t0}ms）`,
 				);
 				return buf;
 			})

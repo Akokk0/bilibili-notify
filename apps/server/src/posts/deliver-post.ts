@@ -307,7 +307,7 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 		if (commentText) {
 			const imageUrls = await commentImagesOf(post, deps);
 			logger.debug(
-				`[ai] 开始生成动态点评，文本长度=${commentText.length}，图片数=${imageUrls.length}${settings.aiOverride ? "，命中 per-UP override" : ""}`,
+				`[ai] 开始生成作品点评，文本长度=${commentText.length}，图片数=${imageUrls.length}${settings.aiOverride ? "，命中 per-UP override" : ""}`,
 			);
 			try {
 				// 给模型看:提示词中性词写死中文,不随界面语言翻。
@@ -323,17 +323,17 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 					settings.aiWebSearch ? { ...settings.aiOverride, webSearch: true } : settings.aiOverride,
 					[event.identity.sourceKey],
 				);
-				logger.debug(`[ai] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
+				logger.debug(`[ai] 作品点评生成完毕，长度=${aiComment?.length ?? 0}`);
 				// 点评回来是空串 / 只有空白等于 AI 没写出来:当没有 AI 版,所有目标用模板(不推一条空文字)。
 				if (aiComment !== undefined && aiComment.trim() === "") {
-					logger.warn("[ai] 动态点评回来是空的，回退到普通文字");
+					logger.warn("[ai] 作品点评回来是空的，回退到普通文字");
 					aiComment = undefined;
 				}
 			} catch (e) {
 				logger.error(`[ai] AI 点评生成失败：${errorMessageOf(e)}，回退到普通文字`);
 			}
 		} else {
-			logger.debug("[ai] 动态无可提取文本，跳过 AI 点评");
+			logger.debug("[ai] 作品无可提取文本，跳过 AI 点评");
 		}
 	}
 
@@ -402,7 +402,7 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 function noteCardFailure(err: unknown, deps: DeliverPostDeps): void {
 	const streak = deps.cardFailures.recordFailure();
 	const reason = errorMessageOf(err);
-	deps.logger.error(`[image] 生成动态图片失败 (连续 ${streak} 次): ${reason}`);
+	deps.logger.error(`[image] 生成作品图片失败 (连续 ${streak} 次): ${reason}`);
 	const notice = deps.cardFailures.claimNotice();
 	if (!notice) return;
 	try {

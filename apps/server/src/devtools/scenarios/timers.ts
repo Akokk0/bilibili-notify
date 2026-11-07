@@ -40,7 +40,7 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		group: "timer",
 		title: "免扰时钟",
 		icon: "sun",
-		desc: "推送的免扰判定当作现在是这个时刻(只这一处,不是假时钟)。设成免扰时段里再造一条开播 / 动态,看它被免扰挡下、记成「已静音」。",
+		desc: "推送的免扰判定当作现在是这个时刻(只这一处,不是假时钟)。设成免扰时段里再造一条开播 / 作品,看它被免扰挡下、记成「已静音」。",
 		params: [{ key: "time", label: "当作现在是(HH:mm)", kind: "text", default: "03:00" }],
 		run(params) {
 			const m = /^(\d{1,2}):(\d{2})$/.exec(String(params.time ?? ""));

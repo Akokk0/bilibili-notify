@@ -43,8 +43,8 @@ describe("list_subscriptions", () => {
 		const out = await run("list_subscriptions", {});
 		expect(out.ok).toBe(true);
 		const [bili, ext] = sayOf(out).split("\n");
-		expect(bili).toBe("晨风（B 站 · creator: bilibili:1）动态:✓ 直播:✓");
-		expect(ext).toBe("抖音甲（抖音 · creator: douyin:20001）动态:✓ 直播:✓");
+		expect(bili).toBe("晨风（B 站 · creator: bilibili:1）作品:✓ 直播:✓");
+		expect(ext).toBe("抖音甲（抖音 · creator: douyin:20001）作品:✓ 直播:✓");
 		expect(sayOf(out)).not.toContain("UID");
 	});
 

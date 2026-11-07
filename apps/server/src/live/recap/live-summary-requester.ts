@@ -108,7 +108,7 @@ export class LiveSummaryRequester {
 		const prompt = [
 			"请生成直播总结",
 			`弹幕发言人数：${senderCount}`,
-			...(fanClubName ? [`粉丝牌名：${fanClubName}`] : []),
+			...(fanClubName ? [`粉丝团名：${fanClubName}`] : []),
 			`弹幕总数：${viewerChatCount}`,
 			`热词TOP10：${top10Words.join("、")}`,
 			`弹幕排行TOP5：${topSenders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,

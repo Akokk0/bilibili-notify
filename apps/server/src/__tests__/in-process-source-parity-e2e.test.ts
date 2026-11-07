@@ -2788,7 +2788,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				},
 				{ timeout: 20_000 },
 			);
-			expect(aiAsked.join("\n")).toContain(`粉丝牌名：${ALICE_FAN_CLUB_NAME}`);
+			expect(aiAsked.join("\n")).toContain(`粉丝团名：${ALICE_FAN_CLUB_NAME}`);
 			expect(await livePushCount(who, "liveEnd")).toBeGreaterThanOrEqual(1);
 		} finally {
 			await patchCore({

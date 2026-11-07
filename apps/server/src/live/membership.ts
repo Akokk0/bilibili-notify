@@ -66,7 +66,7 @@ async function imageSegmentOf(
 	const image = await deps.readImage(ref);
 	if (image === undefined) {
 		deps.logger.warn(
-			`[guard] ${source === "custom" ? "自定义图" : "徽章"}在图库里读不到，这条上舰只发文字`,
+			`[guard] ${source === "custom" ? "自定义图" : "徽章"}在图库里读不到，这条会员提醒只发文字`,
 		);
 		return undefined;
 	}
@@ -80,7 +80,7 @@ async function customImageSegment(
 ): Promise<ImageSegment | undefined> {
 	const fetched = await deps.fetchImage(url);
 	if (!fetched.ok) {
-		deps.logger.warn(`[guard] 自定义图抓不到：${fetched.message}，这条上舰只发文字`);
+		deps.logger.warn(`[guard] 自定义图抓不到：${fetched.message}，这条会员提醒只发文字`);
 		return undefined;
 	}
 	return await imageSegmentOf(fetched.ref, "custom", deps);
@@ -95,7 +95,7 @@ async function badgeSegment(
 		const icon = await tierIcon();
 		return icon === undefined ? undefined : await imageSegmentOf(icon.ref, "badge", deps);
 	} catch (e) {
-		deps.logger.warn(`[guard] 取徽章失败：${errorMessageOf(e)}，这条上舰只发文字`);
+		deps.logger.warn(`[guard] 取徽章失败：${errorMessageOf(e)}，这条会员提醒只发文字`);
 		return undefined;
 	}
 }

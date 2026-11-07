@@ -73,7 +73,7 @@ describe("executeTool —— 成功与「查了、没有」仍是成功", () => 
 	it("list_subscriptions:有订阅、没订阅都是成功", async () => {
 		expect(await run("list_subscriptions", {})).toEqual({
 			ok: true,
-			text: "小绫（示例 · creator: acme:111）动态:✓ 直播:✓",
+			text: "小绫（示例 · creator: acme:111）作品:✓ 直播:✓",
 		});
 		expect(await executeTool("list_subscriptions", {}, null)).toEqual({
 			ok: true,

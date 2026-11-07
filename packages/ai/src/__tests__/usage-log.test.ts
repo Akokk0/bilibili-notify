@@ -119,14 +119,14 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("用量日志 —— 接线", () => {
-	it("动态点评结束后,info 里记一行用量", async () => {
+	it("作品点评结束后,info 里记一行用量", async () => {
 		const { gen, info } = makeGen();
 		oai.chatCreate.mockResolvedValueOnce(msgResp("好", chatUsage(12345, 11000, 321, 120)));
 
 		await gen.comment("一条动态", "dynamic");
 
 		expect(usageLines(info)).toEqual([
-			"[usage] 动态点评 · 模型=gpt-test · 1 轮 · 输入 12345(缓存命中 11000)· 输出 321(思考 120)",
+			"[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 12345(缓存命中 11000)· 输出 321(思考 120)",
 		]);
 	});
 });
@@ -138,7 +138,7 @@ describe("用量日志 —— 每种逻辑调用有自己的标签", () => {
 	const history = [{ role: "user" as const, content: "在吗" }];
 
 	it.each<[string, string, (gen: CommentaryGenerator) => Promise<unknown>, () => void]>([
-		["comment(dynamic)", "动态点评", (gen) => gen.comment("x", "dynamic"), nonStream],
+		["comment(dynamic)", "作品点评", (gen) => gen.comment("x", "dynamic"), nonStream],
 		["comment(liveSummary)", "下播总结", (gen) => gen.comment("x", "liveSummary"), nonStream],
 		["comment() 无场景(锐评等)", "其他点评", (gen) => gen.comment("x"), nonStream],
 		["chat()", "试推送", (gen) => gen.chat("x"), nonStream],
@@ -236,7 +236,7 @@ describe("用量日志 —— 一次逻辑调用只记一行,各轮加总", () =
 		await gen.comment("x", "dynamic");
 
 		expect(usageLines(info)).toEqual([
-			"[usage] 动态点评 · 模型=gpt-test · 1 轮 · 输入 未知(缓存命中 未知)· 输出 未知(思考 未知)",
+			"[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 未知(缓存命中 未知)· 输出 未知(思考 未知)",
 		]);
 	});
 
@@ -263,7 +263,7 @@ describe("用量日志 —— 一次逻辑调用只记一行,各轮加总", () =
 
 		expect(oai.chatCreate).toHaveBeenCalledTimes(2);
 		expect(usageLines(info)).toEqual([
-			"[usage] 动态点评 · 模型=gpt-test · 1 轮 · 输入 60(缓存命中 30)· 输出 6(思考 0)",
+			"[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 60(缓存命中 30)· 输出 6(思考 0)",
 		]);
 	});
 
@@ -279,7 +279,7 @@ describe("用量日志 —— 一次逻辑调用只记一行,各轮加总", () =
 
 		expect(oai.chatCreate).toHaveBeenCalledTimes(2);
 		expect(usageLines(info)).toEqual([
-			"[usage] 动态点评 · 模型=gpt-test · 1 轮 · 输入 70(缓存命中 0)· 输出 7(思考 0)",
+			"[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 70(缓存命中 0)· 输出 7(思考 0)",
 		]);
 	});
 
@@ -639,7 +639,7 @@ describe("用量日志 —— 不走 callAPI 的两条副路", () => {
 
 		expect(usageLines(info)).toEqual([
 			"[usage] 看图 · 模型=qwen-vl · 2 张 · 输入 1400(缓存命中 100)· 输出 50(思考 5)",
-			"[usage] 动态点评 · 模型=gpt-test · 1 轮 · 输入 200(缓存命中 100)· 输出 10(思考 0)",
+			"[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 200(缓存命中 100)· 输出 10(思考 0)",
 		]);
 	});
 
@@ -681,7 +681,7 @@ describe("用量日志 —— 不走 callAPI 的两条副路", () => {
 		await gen.comment("看我的猫狗", "dynamic", ["https://img/cat.jpg", "https://img/dog.jpg"]);
 
 		expect(usageLines(info)).toEqual([
-			"[usage] 动态点评 · 模型=gpt-test · 1 轮 · 输入 200(缓存命中 100)· 输出 10(思考 0)",
+			"[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 200(缓存命中 100)· 输出 10(思考 0)",
 		]);
 	});
 

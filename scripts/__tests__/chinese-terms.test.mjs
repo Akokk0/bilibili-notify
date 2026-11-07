@@ -97,30 +97,8 @@ export const ADVICE =
  * 棘轮表:文件 → 命中的上限(4-09 开张时的现数:65 个文件 298 处)。只许往下调;第 4 期面板按描述符重画时成片消,第 5 期末清零。
  */
 export const RATCHET = {
-	"apps/contract/src/skin.ts": 1,
-	"apps/server/src/card-skins/ai-css.ts": 1,
-	"apps/server/src/devtools/scenarios/capture.ts": 1,
-	"apps/server/src/devtools/scenarios/timers.ts": 1,
-	// 4-24: 主人2026-10-31批准迁移事实搬字典的精确5处增量，原文不改、判据与白名单不动。
-	// 4-27：主人批准来源提示专栏精确1处增量，完整键与命中词由下方断言钉住。
-	// 4-28: 主人批准旧档位表七处原文精确迁入,全仓叫法总数不变。
 	"apps/server/src/i18n/locales/zh-CN.json": 41,
 	"apps/server/src/i18n/locales/zh-CN.maid.json": 1,
-	"apps/server/src/live/membership.ts": 3,
-	"apps/server/src/live/recap/live-summary-requester.ts": 1,
-	"apps/server/src/posts/deliver-post.ts": 5,
-	// 4-26：主人批准真实 B 语境 5 plain + 3 maid，精确键与命中词由下方实扫断言钉住。
-	"apps/web/src/i18n/locales/zh-CN.json": 4,
-	"apps/web/src/i18n/locales/zh-CN.maid.json": 2,
-
-	"apps/web/src/devtools/ext-motion.ts": 2,
-	// 4-43：沿4-29持续授权原文搬家，6=1+4+1，归期不改。
-
-	"packages/ai/src/commentary-generator.ts": 1,
-	"packages/ai/src/tools.ts": 1,
-	"packages/image/src/image-renderer.ts": 2,
-	"packages/storage/src/key-manager.ts": 1,
-	"packages/storage/src/key-provider.ts": 2,
 };
 
 /** 一段文字里出现的叫法(去掉这个文件放行的那几个);没有就是空数组。 */
@@ -164,16 +142,8 @@ export function jsonTermHits(json, allowed = [], file = "") {
 
 /** 批准的叫法与同词原节点闭集，词以 termsIn 的规范形式记录。 */
 export const JSON_TERM_PINS = {
-	"apps/web/src/i18n/locales/zh-CN.json": {
-		"skinUi.SkinEditor.64": ["动态"],
-		"sourceUi.config.field.labels.label.1": ["B站"],
-		"sourceUi.config.field.labels.hint.8": ["B站"],
-		"sourceUi.config.field.labels.hint.12": ["B站"],
-	},
-	"apps/web/src/i18n/locales/zh-CN.maid.json": {
-		"sourceUi.config.field.labels.hint.8": ["B站"],
-		"sourceUi.config.field.labels.hint.12": ["B站"],
-	},
+	"apps/web/src/i18n/locales/zh-CN.json": {},
+	"apps/web/src/i18n/locales/zh-CN.maid.json": {},
 	"apps/server/src/i18n/locales/zh-CN.json": {
 		"bilibili.guard.name": ["大航海"],
 		"bilibili.guard.captain.name": ["舰长"],
@@ -389,20 +359,17 @@ export function scanRepo() {
  */
 describe("核心与面板里的 B 站叫法只降不涨", () => {
 	it("B 站余量必须保留精确键和命中词，挪位或加词不能拿总额度抵消", () => {
-		const file = "apps/web/src/i18n/locales/zh-CN.maid.json";
+		const file = "apps/server/src/i18n/locales/zh-CN.maid.json";
 		const json = readFileSync(join(REPO_ROOT, file), "utf8");
 		expect(auditJsonPins(json, file)).toEqual([]);
 		expect(
 			auditJsonPins(
-				json.replace(
-					'"sourceUi.config.field.labels.hint.8"',
-					'"sourceUi.pages.History.unapproved"',
-				),
+				json.replace('"migration.zero.biliLoginFailed"', '"migration.zero.unapproved"'),
 				file,
 			),
 		).not.toEqual([]);
 		expect(
-			auditJsonPins(json.replace("这一档同时管 B 站来源", "这一档同时管 B 站 UID 来源"), file),
+			auditJsonPins(json.replace("B 站登录没带过来", "B 站 UID 登录没带过来"), file),
 		).not.toEqual([]);
 	});
 	it("4-27 服务端新增叫法只来自批准的完整来源提示键与专栏一词", () => {

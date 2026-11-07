@@ -444,7 +444,7 @@ export async function executeTool(
 			const text = subscriptions
 				.map(
 					(s) =>
-						`${s.name}（${s.platform} · creator: ${s.creator}）动态:${s.post ? "✓" : "✗"} 直播:${s.live ? "✓" : "✗"}`,
+						`${s.name}（${s.platform} · creator: ${s.creator}）作品:${s.post ? "✓" : "✗"} 直播:${s.live ? "✓" : "✗"}`,
 				)
 				.join("\n");
 			return ok({ text });
