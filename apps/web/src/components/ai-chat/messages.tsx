@@ -8,7 +8,7 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
-import { useT } from "../../i18n";
+import { logText, useT } from "../../i18n";
 import type { AiChatMessageView } from "../../services/aiChat";
 import { imageUrl } from "../../utils/image-url";
 import { CardSkinPreviews } from "./card-skin-preview";
@@ -58,7 +58,7 @@ function loadMarkdown(): Promise<MarkdownModule | null> {
 			// 把 inflight 清掉,下一次预热(空闲 / hover / 面板挂载)能重试;这期间
 			// 正文一直按纯文本显示,不白屏。
 			markdownInflight = null;
-			console.error("[ai-chat] Markdown 渲染模块没取到,先按纯文本显示", err);
+			console.error(logText("log.chat.markdownUnavailable"), err);
 			return null;
 		},
 	);

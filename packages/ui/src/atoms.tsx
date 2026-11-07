@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 import { useUiText } from "./texts";
 /**
  * Atoms — Tailwind/JSX ports of `.bn-design/shared.jsx`. Inline-style escapes
@@ -59,7 +60,7 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 						referrerPolicy="no-referrer"
 						onError={() => {
 							// 图裂的原因不止一种(地址过时、CDN 拒绝、文件被清掉):退回首字母,但留一行能查的。
-							console.warn(`头像加载失败,退回首字母:${url}`);
+							console.warn(packageText("ui.log.avatarFailed"), { url: avatarLogUrl(url) });
 							setBrokenUrl(url);
 						}}
 					/>
@@ -1703,4 +1704,18 @@ export function Row({
 			{children}
 		</div>
 	);
+}
+
+function avatarLogUrl(raw: string): string {
+	if (/^(?:data|blob):/i.test(raw)) return raw.slice(0, raw.indexOf(":") + 1);
+	try {
+		const url = new URL(raw, "https://bn.invalid");
+		url.username = "";
+		url.password = "";
+		url.search = "";
+		url.hash = "";
+		return /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(raw) ? url.toString() : url.pathname;
+	} catch {
+		return "invalid-url";
+	}
 }

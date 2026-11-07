@@ -23,7 +23,7 @@
 
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
-| `Avatar` | 圆头像:有 `url` 显图,没有或图裂了显首字母渐变底(图裂时 `console.warn` 出地址,地址变了重试);`status` 加 LIVE 角标或呼吸点 |
+| `Avatar` | 圆头像:有 `url` 显图,没有或图裂了显首字母渐变底(图裂时 `console.warn` 使用当前语言平实说明，地址去凭据与查询参数,地址变了重试);`status` 加 LIVE 角标或呼吸点 |
 | `Btn` | 按钮,7 变体(`primary` 粉实底 / `blue` 蓝实底 / `ghost` / `outline` 中性描边 / `danger` 纯红字 / `danger-outline` 红描边 / `danger-solid` 红实底)× 3 尺寸。**`danger` 与 `danger-outline` 的区别只在那圈边**(纯红字钮夹在说明文字里认不出可点),行内小钮的底保持透明;`danger-solid` 是确认弹窗「确认销毁」那一档,分量与 `primary` 对等。**实心底档(primary/blue/danger-solid)一律挂 `btn btn-primary` 双挂点、前景走 `on-solid` token** —— 单挂 `btn` 会被皮肤刷成中性底,实底前景浮上去就隐形(爱发电按钮的车;守卫在 web 的 skin-hook-coverage 测试) |
 | `Pill` | 圆角小徽章(**不可点**的 `<span>`);`subtle` = 12% 底色染色字,否则实底白字 |
 | `MonoChip` | 等宽小字的浅灰底胶囊(`<span>`,只收字符串):地址、token、遮住的密钥这种「一串要照抄的东西」装在它里面。宽度 / 截断 / 内边距走 `className`(遮住的密钥那一格是 `min-w-0 flex-1 truncate`) |

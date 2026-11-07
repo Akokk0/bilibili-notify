@@ -74,5 +74,6 @@
 	"image.log.renderStarted": "Starting card rendering",
 	"image.log.renderFinished": "Card rendering completed",
 	"image.log.imageRefFailed": "Image reference resolution failed; using a placeholder",
-	"image.log.requestsBlocked": "Render page requests blocked; affected images cannot be displayed"
+	"image.log.requestsBlocked": "Render page requests blocked; affected images cannot be displayed",
+	"ui.log.avatarFailed": "Avatar failed to load; using initial"
 }

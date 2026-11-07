@@ -100,7 +100,12 @@ describe("Markdown 首帧", () => {
 		await waitFor(() => expect(container.querySelector("strong")).toBeTruthy());
 	});
 
-	it("chunk 取不到就一直用纯文本 —— 不许整个聊天白屏", async () => {
+	it.each([
+		["zh-CN", "Markdown 模块加载失败，使用纯文本显示"],
+		["en", "Failed to load Markdown module; displaying plain text"],
+		["ja", "Markdownモジュールを読み込めないため、プレーンテキストで表示します"],
+		["zh-TW", "Markdown 模組載入失敗，使用純文字顯示"],
+	] as const)("%s:chunk 取不到就一直用纯文本并用当前语言记录原因", async (locale, message) => {
 		// 挂在 lazy 上时这儿没有 error boundary:离线、或部署换版本后旧 chunk 404,
 		// 就是整个聊天界面白屏。
 		const err = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -110,10 +115,12 @@ describe("Markdown 首帧", () => {
 				throw new Error("chunk 404");
 			});
 			const { MessageList } = await import("../messages");
+			const { i18n } = await import("../../../i18n");
+			i18n.set({ locale, voice: "maid" });
 			const { container } = render(
 				<MessageList messages={[reply("她说 **加粗** 了")]} busy={false} aiSelf="小绫" />,
 			);
-			await waitFor(() => expect(err).toHaveBeenCalled());
+			await waitFor(() => expect(err).toHaveBeenCalledWith(message, expect.any(Error)));
 			expect(container.textContent).toContain("加粗");
 			expect(container.querySelector("strong")).toBeNull();
 		} finally {

@@ -3234,5 +3234,6 @@
 	"healthCard.insightUnknown": "直播状态尚未确认，读取完成后会显示提示。",
 	"healthCard.emptyHint": "来源及已配置连接的推送集成会出现在这里。",
 	"healthCard.viewExtensions": "查看拓展",
-	"healthCard.manage": "前往管理"
+	"healthCard.manage": "前往管理",
+	"log.chat.markdownUnavailable": "Markdown 模块加载失败，使用纯文本显示"
 }

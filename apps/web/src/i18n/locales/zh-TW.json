@@ -1,1 +1,3 @@
-{}
+{
+	"log.chat.markdownUnavailable": "Markdown 模組載入失敗，使用純文字顯示"
+}

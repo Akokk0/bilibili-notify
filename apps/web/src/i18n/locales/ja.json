@@ -1,1 +1,3 @@
-{}
+{
+	"log.chat.markdownUnavailable": "Markdownモジュールを読み込めないため、プレーンテキストで表示します"
+}

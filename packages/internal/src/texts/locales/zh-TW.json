@@ -74,5 +74,6 @@
 	"image.log.renderStarted": "開始算繪卡片",
 	"image.log.renderFinished": "卡片算繪完成",
 	"image.log.imageRefFailed": "圖庫參照解析失敗，使用替代圖示",
-	"image.log.requestsBlocked": "算繪頁面請求遭攔截，相關圖片無法顯示"
+	"image.log.requestsBlocked": "算繪頁面請求遭攔截，相關圖片無法顯示",
+	"ui.log.avatarFailed": "頭像載入失敗，使用首字母"
 }

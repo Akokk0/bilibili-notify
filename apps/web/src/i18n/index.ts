@@ -2,10 +2,14 @@
 // 再包一层是两份状态,直接喂给 `useSyncExternalStore`。所以放 `i18n/` 而不放 `store/`。
 import {
 	createI18n,
+	type Dict,
 	type DictKey,
 	LOCALES,
 	type Locale,
 	type LocaleDicts,
+	mergeDict,
+	type TextValues,
+	translate,
 } from "@bilibili-notify/internal/i18n";
 import {
 	bindPackageText,
@@ -59,4 +63,17 @@ export function useTextOptions() {
 		voice: state.voice,
 		maidLocales: LOCALES.filter((locale) => "maid" in DICTS[locale]),
 	};
+}
+
+const plainLogDicts = {
+	"zh-CN": zhCN,
+	"zh-TW": mergeDict(zhCN, zhTW),
+	en: mergeDict(zhCN, en),
+	ja: mergeDict(zhCN, ja),
+} satisfies Record<Locale, Dict>;
+
+/** Console diagnostics read the current language when emitted and always use plain voice. */
+export function logText(key: Extract<WebTextKey, `log.${string}`>, values?: TextValues): string {
+	const locale = i18n.state().locale;
+	return translate(plainLogDicts[locale], locale, key, values);
 }

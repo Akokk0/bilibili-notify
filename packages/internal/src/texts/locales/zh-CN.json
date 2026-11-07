@@ -693,5 +693,6 @@
 	"image.log.renderStarted": "开始渲染卡片",
 	"image.log.renderFinished": "卡片渲染完成",
 	"image.log.imageRefFailed": "图库引用解析失败，使用占位",
-	"image.log.requestsBlocked": "渲染页请求被拦截，相关图片无法显示"
+	"image.log.requestsBlocked": "渲染页请求被拦截，相关图片无法显示",
+	"ui.log.avatarFailed": "头像加载失败，使用首字母"
 }

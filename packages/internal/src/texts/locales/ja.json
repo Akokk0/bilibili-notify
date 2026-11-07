@@ -74,5 +74,6 @@
 	"image.log.renderStarted": "カードのレンダリングを開始します",
 	"image.log.renderFinished": "カードのレンダリングが完了しました",
 	"image.log.imageRefFailed": "画像参照を解決できなかったため、代替表示を使用します",
-	"image.log.requestsBlocked": "レンダリングページのリクエストが遮断されたため、対象画像を表示できません"
+	"image.log.requestsBlocked": "レンダリングページのリクエストが遮断されたため、対象画像を表示できません",
+	"ui.log.avatarFailed": "アバターを読み込めないため、頭文字を表示します"
 }

@@ -108,7 +108,7 @@ export const ENDS = {
 		root: "apps/web/src",
 		store: "apps/web/src/i18n/index",
 		localeDir: "apps/web/src/i18n/locales",
-		valueNames: ["useT", "i18n", "useTextOptions"],
+		valueNames: ["useT", "logText", "i18n", "useTextOptions"],
 		minCalls: 5,
 		// 面板的组件里取字要订阅(useT),直接调 i18n.t 不会在切语言后重画
 		react: true,
@@ -981,6 +981,14 @@ describe("宿主日志取字入口", () => {
 		expect(
 			codes(serverOf('export function run(say: any) { return say("a.plain"); }', imports)),
 		).toContain("unrecognised");
+	});
+	it("面板的控制台logText也按实际读者、键与输出时机核对", () => {
+		const imports = 'import { logText as say } from "../i18n/index";\n';
+		expect(webOf('export function run() { return say("a.plain"); }', imports).findings).toEqual([]);
+		expect(codes(webOf('export function run() { return say("a.nope"); }', imports))).toContain(
+			"unknown-key",
+		);
+		expect(codes(webOf('export const frozen = say("a.plain");', imports))).toContain("top-level");
 	});
 });
 
