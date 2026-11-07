@@ -11,7 +11,7 @@ import {
 	type Result,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { originalCount, repushDenial, unsentIndices } from "./repush.js";
 import type { RepushMessage, RepushStore } from "./repush-store.js";
 import type { HistoryStore } from "./store.js";
@@ -145,9 +145,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 			run(entry, createdAt, snapshot.messages, indices)
 				.catch((err) => {
 					// 追进历史行失败(写道关了、盘满了)—— 以前这条 promise 没人接,是一次 unhandledRejection。
-					opts.logger.warn(
-						`[history] 重推 ${rowId} 中途出错：${err instanceof Error ? err.message : String(err)}`,
-					);
+					opts.logger.warn(logText("log.history.repushAborted"), { rowId, error: err });
 				})
 				.finally(() => running.delete(rowId)),
 		);
@@ -193,7 +191,11 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 				// 静默停住、行上什么都不留,主人只看得见「点了没反应」。抛错算 bug(ADR-0026 决策 1):
 				// 按「暂时不可用」记进行里,并留一条 error 日志。
 				const message = err instanceof Error ? err.message : String(err);
-				opts.logger.error(`[history] 重推第 ${i} 条时发送口抛错:${message}`);
+				opts.logger.error(logText("log.history.repushSenderThrew"), {
+					rowId: entry.id,
+					messageIndex: i,
+					error: err,
+				});
 				result = fail("unavailable", message);
 			}
 			// 关停把发送层叫醒回来的失败是生命周期的产物(消息从没出过网),不是这个目标真的不通 ——
@@ -203,7 +205,12 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 				{ payload: m.payload, role: m.role, result, repushOf: i },
 			]);
 			if (!result.ok) {
-				opts.logger.info(`[history] 重推第 ${i} 条没成，这一趟到此为止：${result.message}`);
+				opts.logger.info(logText("log.history.repushStopped"), {
+					rowId: entry.id,
+					messageIndex: i,
+					code: result.code,
+					message: result.message,
+				});
 				break;
 			}
 		}

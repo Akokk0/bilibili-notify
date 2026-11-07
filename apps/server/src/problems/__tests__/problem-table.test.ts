@@ -7,6 +7,7 @@
 
 import type { Disposable, Logger } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	createProblemTable,
 	PROBLEMS_CHANGED_COALESCE_MS,
@@ -139,8 +140,10 @@ describe("问题表 · 换语言与口吻", () => {
 
 		expect(table.list().map((p) => p.message)).toEqual(["旧话", "新话"]);
 		expect(changes.map((c) => c.problem.code)).toEqual(["good"]);
-		const warns = vi.mocked(logger.warn).mock.calls.map((c) => String(c[0]));
-		expect(warns.some((line) => line.includes("取字坏了"))).toBe(true);
+		expect(logger.warn).toHaveBeenCalledWith(
+			"问题文案重新生成失败，保留原文",
+			expect.objectContaining({ error: expect.objectContaining({ message: "取字坏了" }) }),
+		);
 	});
 
 	it("按语言认换说法:语言变了之后同键再报带 reworded,同语言内换一句不带", () => {
@@ -556,8 +559,10 @@ describe("createProblemTable 的 onChanged 合并", () => {
 		table.report({ reporter: "b", code: "c", message: "1" });
 		vi.advanceTimersByTime(W);
 		expect(onChanged.mock.calls.map((c) => c[0]).sort()).toEqual(["a", "b"]);
-		const warns = vi.mocked(logger.warn).mock.calls.map((c) => String(c[0]));
-		expect(warns).toContain("[problems] 通知「问题变了」失败 reporter=a: 面板那头坏了");
+		expect(logger.warn).toHaveBeenCalledWith("问题变更回调失败", {
+			reporter: "a",
+			error: expect.objectContaining({ message: "面板那头坏了" }),
+		});
 	});
 
 	it("onChanged 抛错不带倒表", () => {
@@ -634,5 +639,61 @@ describe("问题表 · 关于连接", () => {
 		table.report({ reporter: "a", about: { connectionId: "s1" }, code: "x", message: "连接" });
 		table.clearSubscription("s1");
 		expect(table.list()).toHaveLength(1);
+	});
+});
+
+describe("问题表诊断", () => {
+	it("输出按当前语言取平实说明，保留原句与监听错误，后续订阅方照常收到变更", () => {
+		const error = new Error("listener failed", { cause: new Error("upstream") });
+		const { table, logger } = makeTable();
+		const text = vi.fn(() => "integration-authored message");
+		table.subscribe(() => {
+			throw error;
+		});
+		const listener = vi.fn();
+		table.subscribe(listener);
+		try {
+			for (const [locale, opened, failed] of [
+				["zh-CN", "问题已登记", "问题变更订阅方抛错，继续通知其他订阅方"],
+				[
+					"en",
+					"Problem registered",
+					"Problem change listener threw; continuing with other listeners",
+				],
+				[
+					"ja",
+					"問題を登録しました",
+					"問題変更リスナーで例外が発生しました。他のリスナーへの通知を続行します",
+				],
+				["zh-TW", "問題已登記", "問題變更訂閱方拋出例外，繼續通知其他訂閱方"],
+			] as const) {
+				i18n.set({ locale, voice: "maid" });
+				table.report({
+					reporter: "raw-source",
+					code: locale,
+					about: { connectionId: "raw-connection" },
+					message: text,
+				});
+				expect(logger.warn).toHaveBeenNthCalledWith(logger.warn.mock.calls.length - 1, opened, {
+					reporter: "raw-source",
+					code: locale,
+					connectionId: "raw-connection",
+					message: "integration-authored message",
+				});
+				expect(logger.warn).toHaveBeenLastCalledWith(failed, {
+					reporter: "raw-source",
+					code: locale,
+					connectionId: "raw-connection",
+					error,
+				});
+				expect(logger.warn.mock.calls.at(-1)?.[1]?.error).toBe(error);
+			}
+			expect(text).toHaveBeenCalledTimes(4);
+			expect(listener).toHaveBeenCalledTimes(4);
+			expect(table.list()).toHaveLength(4);
+		} finally {
+			table.dispose();
+			i18n.set({ locale: "zh-CN", voice: "maid" });
+		}
 	});
 });

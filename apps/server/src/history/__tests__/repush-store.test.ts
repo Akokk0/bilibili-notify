@@ -377,7 +377,7 @@ describe("load — 对不上号就整份作废", () => {
 		await rm(join(dataDir, "images"), { recursive: true, force: true });
 		expect(await store.load(id, TS, 1)).toBeNull();
 		expect(warn).toHaveBeenCalledTimes(1);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("图读不回来");
+		expect(String(warn.mock.calls[0]?.[0])).toContain("图片读取失败");
 	});
 });
 

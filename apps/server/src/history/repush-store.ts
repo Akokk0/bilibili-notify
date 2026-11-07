@@ -12,7 +12,7 @@ import {
 } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import { z } from "zod";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import type { ImageStore, ImageWriter } from "../images/image-store.js";
 import { dataPath } from "../runtime/roots.js";
 
@@ -282,9 +282,11 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		if (!snapshot) return null;
 		// 条数对不上 = 原件与历史行错位了(某一次 append 没写成)。补错消息比补不了更糟。
 		if (snapshot.messages.length !== expectLen) {
-			opts.logger.warn(
-				`[history] 重推原件与历史行对不上号(原件 ${snapshot.messages.length} 条、行 ${expectLen} 条),作废:${rowId}`,
-			);
+			opts.logger.warn(logText("log.history.snapshotMismatch"), {
+				rowId,
+				snapshotCount: snapshot.messages.length,
+				expectedCount: expectLen,
+			});
 			return null;
 		}
 		try {
@@ -295,7 +297,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 			return { messages };
 		} catch (err) {
 			// 图库里没有某张图了(过了宽限期又没人引用的被清扫收走,或者盘上的文件被动过)。原件不完整,补不出原样。
-			opts.logger.warn(`[history] 重推原件的图读不回来,作废:${rowId} — ${String(err)}`);
+			opts.logger.warn(logText("log.history.snapshotImageFailed"), { rowId, error: err });
 			return null;
 		}
 	}

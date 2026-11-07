@@ -9,6 +9,7 @@ import type { PushRouter } from "@bilibili-notify/push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { deferred, makeTrackingContext, stillPending } from "../../__tests__/support/track-context";
+import { i18n } from "../../i18n/index.js";
 import { MasterNotifier } from "../master-notifier";
 import { createNodeMessageBus } from "../message-bus";
 
@@ -29,6 +30,41 @@ function makePush() {
 		notifyMaster: vi.fn().mockResolvedValue({ ok: true, latencyMs: 1 }),
 	} as unknown as PushRouter & { notifyMaster: ReturnType<typeof vi.fn> };
 }
+
+describe("链路错误通知诊断", () => {
+	it("切语言后使用平实说明，原始事件仍逐条可查，发送抛错保留原对象", async () => {
+		const bus = createNodeMessageBus();
+		const error = new Error("raw send error", { cause: new Error("socket") });
+		const push = makePush();
+		push.notifyMaster.mockRejectedValue(error);
+		const logger = makeSilentLogger();
+		const ctx = makeTrackingContext();
+		const notifier = new MasterNotifier({ bus, push, logger, serviceCtx: ctx });
+		notifier.install();
+		try {
+			for (const [locale, text] of [
+				["zh-CN", "链路错误私聊发送抛错，结果未确认"],
+				["en", "Pipeline error notification threw; delivery was not confirmed"],
+				["ja", "パイプラインエラー通知で例外が発生しました。到達を確認できませんでした"],
+				["zh-TW", "鏈路錯誤私訊傳送拋出例外，結果未確認"],
+			] as const) {
+				i18n.set({ locale, voice: "maid" });
+				bus.emit("pipeline-error", { source: locale, message: "original pipeline diagnostic" });
+				await ctx.settled();
+				expect(logger.warn).toHaveBeenLastCalledWith(text, { sourceKey: locale, error });
+				expect(logger.warn.mock.calls.at(-1)?.[1]?.error).toBe(error);
+			}
+			expect(logger.warn).toHaveBeenCalledTimes(8);
+			expect(
+				logger.warn.mock.calls.filter((c) => c[1]?.message === "original pipeline diagnostic"),
+			).toHaveLength(4);
+			expect(push.notifyMaster).toHaveBeenLastCalledWith("[zh-TW] original pipeline diagnostic");
+		} finally {
+			notifier.dispose();
+			i18n.set({ locale: "zh-CN", voice: "maid" });
+		}
+	});
+});
 
 describe("MasterNotifier — pipeline-error → 私聊", () => {
 	beforeEach(() => {
@@ -51,7 +87,10 @@ describe("MasterNotifier — pipeline-error → 私聊", () => {
 		expect(push.notifyMaster).toHaveBeenCalledTimes(1);
 		expect(push.notifyMaster).toHaveBeenCalledWith("[dynamic] 服务出错");
 		// 不变量:pipeline-error 必须同时落 warn 日志,主人 push 未配置时日志是唯一通道。
-		expect(logger.warn).toHaveBeenCalledWith("[dynamic] 服务出错");
+		expect(logger.warn).toHaveBeenCalledWith("推送链路报告错误", {
+			sourceKey: "dynamic",
+			message: "服务出错",
+		});
 	});
 
 	it("同 source 60s 内重复触发 → DM 仅放行第一条;窗口外重新放行;warn 日志不被节流", async () => {
@@ -126,14 +165,12 @@ describe("MasterNotifier — pipeline-error → 私聊", () => {
 		bus.emit("pipeline-error", { source: "dynamic", message: "出错了" });
 		await vi.runAllTimersAsync();
 
-		// 一条是 pipeline-error 自己落的 warn,一条是私信没送到
-		const warns = (logger.warn as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) =>
-			String(c[0]),
-		);
-		expect(warns).toHaveLength(2);
-		const failed = warns.find((w) => w.includes("私信没送到"));
-		expect(failed).toMatch(/source=dynamic/);
-		expect(failed).toMatch(/没有配置主人目标/);
+		expect(logger.warn).toHaveBeenCalledTimes(2);
+		expect(logger.warn).toHaveBeenLastCalledWith("链路错误私聊未确认送达", {
+			sourceKey: "dynamic",
+			code: "not_configured",
+			message: "没有配置主人目标",
+		});
 	});
 
 	it("push.notifyMaster 抛出 → 走 logger.warn,不向外传播", async () => {
@@ -146,12 +183,11 @@ describe("MasterNotifier — pipeline-error → 私聊", () => {
 		bus.emit("pipeline-error", { source: "dynamic", message: "出错了" });
 		await vi.runAllTimersAsync();
 
-		const warnMock = logger.warn as unknown as ReturnType<typeof vi.fn>;
-		const warns = warnMock.mock.calls.map((c) => String(c[0]));
-		expect(warns).toHaveLength(2);
-		const failed = warns.find((w) => w.includes("私信失败"));
-		expect(failed).toMatch(/source=dynamic/);
-		expect(failed).toMatch(/net down/);
+		expect(logger.warn).toHaveBeenCalledTimes(2);
+		expect(logger.warn).toHaveBeenLastCalledWith("链路错误私聊发送抛错，结果未确认", {
+			sourceKey: "dynamic",
+			error: expect.objectContaining({ message: "net down" }),
+		});
 	});
 });
 
@@ -208,6 +244,9 @@ describe("MasterNotifier — 登记进 track", () => {
 		bus.emit("pipeline-error", { source: "dynamic", message: "出错了" });
 
 		await expect(ctx.tracked[0]).resolves.toBeUndefined();
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("master unreachable"));
+		expect(logger.warn).toHaveBeenCalledWith("链路错误私聊发送抛错，结果未确认", {
+			sourceKey: "dynamic",
+			error: expect.objectContaining({ message: "master unreachable" }),
+		});
 	});
 });

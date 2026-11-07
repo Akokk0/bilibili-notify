@@ -110,6 +110,37 @@ afterEach(() => {
 	i18n.set({ locale: "zh-CN", voice: "maid" });
 });
 
+describe("问题通知诊断", () => {
+	it("发送抛错时保留原错误，四语均说明结果未确认且不重试，不输出私聊正文", async () => {
+		const error = new Error("raw transport failure", { cause: new Error("socket") });
+		const { table, notify, logger } = setup(async () => {
+			throw error;
+		});
+		for (const [locale, text] of [
+			["zh-CN", "问题私聊未确认送达"],
+			["en", "Problem notification delivery was not confirmed"],
+			["ja", "問題通知の到達を確認できませんでした"],
+			["zh-TW", "問題私訊未確認送達"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			open(table, { code: locale, message: "private problem text" });
+			await flush();
+			expect(logger.warn).toHaveBeenLastCalledWith(text, {
+				reporter: "src",
+				problemCode: locale,
+				code: "indeterminate",
+				message: "raw transport failure",
+				error,
+			});
+			expect(logger.warn.mock.calls.at(-1)?.[1]?.error).toBe(error);
+		}
+		await advance(20 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(4);
+		expect(logger.warn).toHaveBeenCalledTimes(4);
+		expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("private problem text");
+	});
+});
+
 describe("问题私聊:发不发、发几条", () => {
 	it("notify 缺省(假)的问题不私聊", async () => {
 		const { table, notify } = setup();
@@ -493,7 +524,7 @@ describe("没送到的再送", () => {
 		await advance(60 * 60_000);
 		expect(notify).toHaveBeenCalledTimes(6);
 		expect(warnsBefore).toBeGreaterThan(0);
-		expect(logger.warn.mock.calls.some((c) => String(c[0]).includes("放弃"))).toBe(true);
+		expect(logger.warn.mock.calls.some((c) => String(c[0]).includes("重试次数已用完"))).toBe(true);
 	});
 
 	it.each(["unavailable", "timeout", "rate_limited"] as const)("失败码 %s 会再送", async (code) => {
@@ -1056,7 +1087,9 @@ describe("按节流键对账", () => {
 		await advance(3 * 60 * 60_000);
 
 		expect(notify).toHaveBeenCalledTimes(6);
-		expect(logger.warn.mock.calls.filter((c) => String(c[0]).includes("放弃"))).toHaveLength(1);
+		expect(
+			logger.warn.mock.calls.filter((c) => String(c[0]).includes("重试次数已用完")),
+		).toHaveLength(1);
 		expect(vi.getTimerCount()).toBe(0);
 	});
 

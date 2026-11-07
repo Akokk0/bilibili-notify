@@ -38,6 +38,7 @@ import {
 	stillPending,
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
+import { i18n } from "../../i18n/index.js";
 import { createHistoryRoute } from "../../routes/history.js";
 import type { RouteDeps } from "../../routes/types.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
@@ -55,7 +56,7 @@ let ctx: TrackingContext;
 let sent: Array<{ targetId: string; text: string; subscriptionId: string; feature: FeatureKey }>;
 let failOn: (nth: number) => boolean;
 /** 给了就让发送口在第 n 次调用时抛这句话(发送口本不该抛,这是在演 bug)。 */
-let throwOn: ((nth: number) => string | undefined) | null;
+let throwOn: ((nth: number) => string | Error | undefined) | null;
 let log: ReturnType<typeof logger>;
 /** 卡住发送 —— 用来看「立刻回」。 */
 let gate: (() => void) | null;
@@ -105,7 +106,10 @@ beforeEach(async () => {
 		serviceCtx: ctx,
 	});
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+	vi.restoreAllMocks();
+	i18n.set({ locale: "zh-CN", voice: "maid" });
+});
 
 /** 发送口的替身:记一笔,按 `failOn` 回成败;`gate` 在时先卡住。 */
 async function recordingSend(
@@ -124,7 +128,7 @@ async function recordingSend(
 		feature: routing.feature,
 	});
 	const boom = throwOn?.(sent.length);
-	if (boom !== undefined) throw new Error(boom);
+	if (boom !== undefined) throw boom instanceof Error ? boom : new Error(boom);
 	return (failOn(sent.length) ? FAIL : OK) as DeliveryResult;
 }
 
@@ -255,7 +259,9 @@ describe("结果写回历史", () => {
 	// 这一趟到此为止 —— 不能静默停住、行上什么都不留。
 	it("发送口抛错 → 记成一次失败(行里留原话)+ error 日志,后面那条不再发", async () => {
 		const entry = await seedPartial();
-		throwOn = (n) => (n === 1 ? "sender exploded" : undefined);
+		const error = new Error("sender exploded", { cause: new Error("network") });
+		throwOn = (n) => (n === 1 ? error : undefined);
+		i18n.set({ locale: "en", voice: "maid" });
 		await runner.start(entry.id, entry.createdAt, "missing");
 		const row = await settled(entry);
 		expect(sent.map((s) => s.text)).toEqual(["词云"]);
@@ -264,7 +270,13 @@ describe("结果写回历史", () => {
 			repushOf: 1,
 			result: { ok: false, code: "unavailable", message: "sender exploded" },
 		});
-		expect(log.error).toHaveBeenCalledWith(expect.stringContaining("sender exploded"));
+		expect(log.error).toHaveBeenCalledWith("Repush sender threw; recording a failed attempt", {
+			rowId: entry.id,
+			messageIndex: 1,
+			error,
+		});
+		expect(log.error.mock.calls[0]?.[1]?.error).toBe(error);
+		expect(JSON.stringify(log.error.mock.calls)).not.toContain("词云");
 	});
 });
 
@@ -635,7 +647,10 @@ describe("关停", () => {
 		await localCtx.settled();
 
 		await expect(localCtx.tracked[0]).resolves.toBeUndefined();
-		expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("queue closed"));
+		expect(log.warn).toHaveBeenCalledWith("重推任务异常终止", {
+			rowId: entry.id,
+			error: expect.objectContaining({ message: "queue closed" }),
+		});
 		expect(local.isRunning(entry.id)).toBe(false);
 	});
 });

@@ -6,7 +6,7 @@ import {
 	type Logger,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-table.js";
 
@@ -185,12 +185,13 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 	const throttles = new Map<string, ThrottleState>();
 	let disposed = false;
 
-	async function deliver(text: string): Promise<DeliveryResult> {
+	// 原异常只随这一次诊断传递，不放进对外 DeliveryResult，也不进入通知或重试账本。
+	async function deliver(text: string): Promise<{ result: DeliveryResult; error?: unknown }> {
 		try {
-			return await options.notify(text);
+			return { result: await options.notify(text) };
 		} catch (err) {
 			// 抛出来的异常不知道送没送到(`unknown` 是确知没送到的那一类),按结果不明算。
-			return fail("indeterminate", errorMessageOf(err));
+			return { result: fail("indeterminate", errorMessageOf(err)), error: err };
 		}
 	}
 
@@ -268,7 +269,10 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			// 窗口里,而开窗的那一句所属的问题还开着:欠着的都由它盖住
 			for (const entry of owed) entry.coveredBy = state.lastSaid;
 			if (owed.length > 0) {
-				logger.debug(`[problems] 私聊被节流吞掉(由已说的那条盖住) key=${key} 共 ${owed.length} 条`);
+				logger.debug(logText("log.problems.notificationCovered"), {
+					throttleKey: key,
+					count: owed.length,
+				});
 			}
 			owed = [];
 		}
@@ -300,17 +304,22 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		};
 		state.sending = sending;
 		serviceCtx.track(
-			deliver(reportText(sending.writtenBy, sending.text)).then((result) => {
+			deliver(reportText(sending.writtenBy, sending.text)).then(({ result, error }) => {
 				state.sending = undefined;
 				if (disposed) return;
-				settle(state, sending, result);
+				settle(state, sending, result, error);
 				reconcile(key);
 			}),
 		);
 	}
 
 	/** 一次发送落定:记账,不决定下一步(下一步由对账定)。 */
-	function settle(state: ThrottleState, sending: SendState, result: DeliveryResult): void {
+	function settle(
+		state: ThrottleState,
+		sending: SendState,
+		result: DeliveryResult,
+		error?: unknown,
+	): void {
 		const { entry, text, recovery, writtenBy, closed, reworded } = sending;
 		// 途中换过说法:记的是这条此刻的说法(发出去的与记的是同一件事,只是换了语言或口吻)
 		const settledText = reworded ? entry.message : text;
@@ -334,9 +343,13 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			}
 			return;
 		}
-		logger.warn(
-			`[problems] 私聊没送到 reporter=${entry.reporter} code=${entry.code}: ${result.message}`,
-		);
+		logger.warn(logText("log.problems.notificationUnconfirmed"), {
+			reporter: entry.reporter,
+			problemCode: entry.code,
+			code: result.code,
+			message: result.message,
+			...(error === undefined ? {} : { error }),
+		});
 		const { retry } = FAILURE_CODES[result.code];
 		if (retry !== "later") {
 			// 结果不明(码表里「绝不重发」):这一句可能已经送到了,那一条不再说。别的不可重试的失败确知没送到,只让键停下。
@@ -347,9 +360,11 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		}
 		const delay = RETRY_DELAYS_MS[state.retriesUsed];
 		if (delay === undefined) {
-			logger.warn(
-				`[problems] 私聊再送 ${RETRY_DELAYS_MS.length} 次都没送到,放弃 reporter=${entry.reporter} code=${entry.code}`,
-			);
+			logger.warn(logText("log.problems.notificationRetriesExhausted"), {
+				reporter: entry.reporter,
+				problemCode: entry.code,
+				retries: RETRY_DELAYS_MS.length,
+			});
 			state.halted = true;
 			return;
 		}
@@ -365,12 +380,16 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 	): void {
 		const key = throttleKey(problem);
 		serviceCtx.track(
-			deliver(recoveryText(sentWrittenBy, sentText, sentRecovery)).then((result) => {
+			deliver(recoveryText(sentWrittenBy, sentText, sentRecovery)).then(({ result, error }) => {
 				if (disposed) return;
 				if (!result.ok) {
-					logger.warn(
-						`[problems] 「已恢复」没送到 reporter=${problem.reporter} code=${problem.code}: ${result.message}`,
-					);
+					logger.warn(logText("log.problems.recoveryUnconfirmed"), {
+						reporter: problem.reporter,
+						problemCode: problem.code,
+						code: result.code,
+						message: result.message,
+						...(error === undefined ? {} : { error }),
+					});
 					return;
 				}
 				// 送到了 = 通道是通的:这把键要是停下了就放开,欠着的重新对账

@@ -29,7 +29,7 @@ import {
 	IMAGE_REF_PATTERN,
 } from "@bilibili-notify/internal";
 import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { dataPath } from "../runtime/roots.js";
 import { RecencyTable } from "../util/recency-table.js";
@@ -311,7 +311,11 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			throw new Error(
 				serverText("service.history.store.text.1", { value0: label, value1: stored.message }),
 			);
-		opts.logger.warn(`[history] 配图存不进图库,这条消息不带图:${label} — ${stored.message}`);
+		opts.logger.warn(logText("log.history.imageRejected"), {
+			label,
+			code: stored.code,
+			message: stored.message,
+		});
 		return undefined;
 	}
 
@@ -321,7 +325,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		try {
 			return (await opts.images.keep(ref)) ? ref : undefined;
 		} catch (err) {
-			opts.logger.warn(`[history] 头像快照续期失败,这一行不带头像:${String(err)}`);
+			opts.logger.warn(logText("log.history.avatarKeepFailed"), { error: err });
 			return undefined;
 		}
 	}
@@ -435,7 +439,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			);
 		} catch (err) {
 			// 原件留不下只是「这一行将来重推不了」,不该连累这次推送的历史。
-			opts.logger.warn(`[history] 重推原件写入失败,这一行将来补不了:${rowId} — ${String(err)}`);
+			opts.logger.warn(logText("log.history.snapshotWriteFailed"), { rowId, error: err });
 		}
 	}
 
@@ -444,9 +448,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		// recording corrupt jsonl is worse than rejecting the write.
 		const parsed = HistoryEntrySchema.safeParse(entry);
 		if (!parsed.success) {
-			opts.logger.error(
-				`[history] entry rejected by schema, dropping: ${JSON.stringify(parsed.error.issues)}`,
-			);
+			opts.logger.error(logText("log.history.entryRejected"), { issues: parsed.error.issues });
 			throw new Error("history entry schema validation failed");
 		}
 		return parsed.data;

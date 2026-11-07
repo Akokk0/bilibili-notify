@@ -1,5 +1,5 @@
 import type { Disposable, Logger, Problem } from "@bilibili-notify/internal";
-import { errorMessageOf } from "../util/error-message.js";
+import { logText } from "../i18n/index.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 
 /**
@@ -155,7 +155,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 		windowMs: PROBLEMS_CHANGED_COALESCE_MS,
 		onFire: (reporter) => options.onChanged?.(reporter),
 		onError: (reporter, err) =>
-			logger.warn(`[problems] 通知「问题变了」失败 reporter=${reporter}: ${errorMessageOf(err)}`),
+			logger.warn(logText("log.problems.changedCallbackFailed"), { reporter, error: err }),
 	});
 
 	function emit(change: ProblemChange): void {
@@ -164,18 +164,20 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 			try {
 				fn(change);
 			} catch (err) {
-				logger.warn(`[problems] 订阅方抛错,已忽略: ${errorMessageOf(err)}`);
+				logger.warn(logText("log.problems.listenerThrew"), {
+					...problemFields(change.problem),
+					error: err,
+				});
 			}
 		}
 	}
 
-	function describe(problem: Problem): string {
-		const about = !problem.about
-			? ""
-			: "subscriptionId" in problem.about
-				? ` subscription=${problem.about.subscriptionId}`
-				: ` connection=${problem.about.connectionId}`;
-		return `reporter=${problem.reporter}${about} code=${problem.code}`;
+	function problemFields(problem: Problem) {
+		return {
+			reporter: problem.reporter,
+			code: problem.code,
+			...problem.about,
+		};
 	}
 
 	/** 宿主在清:挑出符合的那几条整条删掉,每条一个不补「已恢复」的 closed。 */
@@ -183,7 +185,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 		for (const [key, entry] of [...entries]) {
 			if (!matches(entry.problem)) continue;
 			entries.delete(key);
-			logger.info(`[problems] 清掉(宿主) ${describe(entry.problem)}`);
+			logger.info(logText("log.problems.clearedByHost"), problemFields(entry.problem));
 			emit({
 				kind: "closed",
 				problem: entry.problem,
@@ -210,9 +212,10 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 				if (entry.messageText !== undefined) message = entry.messageText();
 				if (entry.recoveryText !== undefined) recoveryMessage = entry.recoveryText();
 			} catch (err) {
-				logger.warn(
-					`[problems] 换语言时重算问题句失败 ${describe(entry.problem)}: ${errorMessageOf(err)}`,
-				);
+				logger.warn(logText("log.problems.rewordFailed"), {
+					...problemFields(entry.problem),
+					error: err,
+				});
 				entry.locale = locale;
 				continue;
 			}
@@ -221,7 +224,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 			entry.problem = { ...entry.problem, message };
 			if (recoveryMessage === undefined) delete entry.recoveryMessage;
 			else entry.recoveryMessage = recoveryMessage;
-			logger.debug(`[problems] 换说法 ${describe(entry.problem)}: ${message}`);
+			logger.debug(logText("log.problems.reworded"), { ...problemFields(entry.problem), message });
 			emit({
 				kind: "updated",
 				problem: entry.problem,
@@ -264,7 +267,10 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 				else existing.recoveryMessage = recoveryMessage;
 				if (input.writtenBy === undefined) delete existing.writtenBy;
 				else existing.writtenBy = input.writtenBy;
-				logger.debug(`[problems] 换文案 ${describe(existing.problem)}: ${message}`);
+				logger.debug(logText("log.problems.updated"), {
+					...problemFields(existing.problem),
+					message,
+				});
 				emit({
 					kind: "updated",
 					problem: existing.problem,
@@ -294,7 +300,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 				...(locale === undefined ? {} : { locale }),
 			};
 			entries.set(key, entry);
-			logger.warn(`[problems] 开 ${describe(problem)}: ${message}`);
+			logger.warn(logText("log.problems.opened"), { ...problemFields(problem), message });
 			emit({ kind: "opened", problem, notify, ...recoveryOf(entry), ...writtenByOf(entry) });
 		},
 		resolve(key, resolveOptions) {
@@ -302,7 +308,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 			const entry = entries.get(id);
 			if (!entry) return;
 			entries.delete(id);
-			logger.info(`[problems] 清掉 ${describe(entry.problem)}`);
+			logger.info(logText("log.problems.resolved"), problemFields(entry.problem));
 			emit({
 				kind: "closed",
 				problem: entry.problem,

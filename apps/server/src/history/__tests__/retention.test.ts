@@ -28,6 +28,7 @@ import {
 	stillPending,
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
+import { i18n } from "../../i18n/index.js";
 import { IMAGE_GRACE_MS, type ImageStore } from "../../images/image-store.js";
 import { createRepushStore, listRepushDays } from "../repush-store.js";
 import { listHistoryImageRefs, readClearedThrough, startHistoryRetention } from "../retention.js";
@@ -78,6 +79,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
 	vi.restoreAllMocks();
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	await rm(dataDir, { recursive: true, force: true });
 });
 
@@ -224,8 +226,33 @@ describe("startHistoryRetention — 登记进 track", () => {
 		const [task] = ctx.tracked;
 		await expect(task).resolves.toBeUndefined();
 		expect(logger.warn).toHaveBeenCalledWith(
-			expect.stringContaining("initial retention pass failed"),
+			"历史留存清理失败",
+			expect.objectContaining({ stage: "startup", error: expect.any(Error) }),
 		);
+	});
+});
+
+describe("留存诊断", () => {
+	it("同一个清扫任务按输出时语言记录平实说明，并保留原错误与 cause", async () => {
+		const cause = new Error("disk unavailable");
+		const error = new Error("raw sweep failure", { cause });
+		imageStore.sweep.mockRejectedValue(error);
+		start(30);
+		await ctx.settled();
+		expect(logger.warn).toHaveBeenLastCalledWith("图库清扫失败", { error });
+		for (const [locale, text] of [
+			["en", "Image library sweep failed"],
+			["ja", "画像ライブラリのクリーンアップに失敗しました"],
+			["zh-TW", "圖片庫清理失敗"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			setInterval_.mock.calls[0]?.[0]();
+			await ctx.settled();
+			expect(logger.warn).toHaveBeenLastCalledWith(text, { error });
+			expect(logger.warn.mock.calls.at(-1)?.[1]?.error).toBe(error);
+		}
+		expect(imageStore.sweep).toHaveBeenCalledTimes(4);
+		expect(cause.message).toBe("disk unavailable");
 	});
 });
 
@@ -255,7 +282,9 @@ describe("图库清扫挂在同一个活上", () => {
 
 		const [task] = ctx.tracked;
 		await expect(task).resolves.toBeUndefined();
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("读不了盘"));
+		expect(logger.warn).toHaveBeenCalledWith("图库清扫失败", {
+			error: expect.objectContaining({ message: "读不了盘" }),
+		});
 	});
 
 	it("历史那半抛错,图库照清:聊天附件、头像的图不该等历史修好", async () => {
@@ -274,7 +303,8 @@ describe("图库清扫挂在同一个活上", () => {
 
 		expect(imageStore.sweep).toHaveBeenCalledTimes(1);
 		expect(logger.warn).toHaveBeenCalledWith(
-			expect.stringContaining("initial retention pass failed"),
+			"历史留存清理失败",
+			expect.objectContaining({ stage: "startup", error: expect.any(Error) }),
 		);
 	});
 
@@ -288,7 +318,7 @@ describe("图库清扫挂在同一个活上", () => {
 		start(30);
 		await ctx.settled();
 
-		expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("2 unreferenced image(s)"));
+		expect(logger.info).toHaveBeenCalledWith("已清理未被引用的图片", { count: 2 });
 	});
 });
 
@@ -325,7 +355,10 @@ describe("startHistoryRetention", () => {
 		await ctx.settled();
 
 		expect(await listRepushDays(dataDir)).toEqual(["1999-01-01"]);
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("1999-01-01"));
+		expect(logger.warn).toHaveBeenCalledWith(expect.any(String), {
+			day: "1999-01-01",
+			error: expect.any(Error),
+		});
 		expect(await readClearedThrough(dataDir)).toBe("2026-05-15");
 	});
 

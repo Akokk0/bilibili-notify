@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Disposable, ImageRef, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import type { ConfigStore } from "../config/store.js";
+import { logText } from "../i18n/index.js";
 import type { ImageStore } from "../images/image-store.js";
 import { dataPath } from "../runtime/roots.js";
 import { dropRepushDay, listRepushDays } from "./repush-store.js";
@@ -115,7 +116,7 @@ export async function sweepHistoryRetention(
 			await dropRepushDay(opts.dataRoot, day);
 			snapshotDays.push(day);
 		} catch (err) {
-			opts.logger.warn(`[history] failed to drop repush snapshots of ${day}: ${String(err)}`);
+			opts.logger.warn(logText("log.history.dropSnapshotsFailed"), { day, error: err });
 		}
 	}
 
@@ -152,14 +153,14 @@ export function startHistoryRetention(opts: RetentionRunnerOptions): Disposable 
 	const handle = opts.serviceCtx.setInterval(() => {
 		opts.serviceCtx.track(
 			runOnce(opts).catch((err) => {
-				opts.logger.warn(`[history] retention pass failed: ${String(err)}`);
+				opts.logger.warn(logText("log.history.retentionFailed"), { stage: "interval", error: err });
 			}),
 		);
 	}, interval);
 	// Run once on boot so we don't carry over stale state for hours.
 	opts.serviceCtx.track(
 		runOnce(opts).catch((err) => {
-			opts.logger.warn(`[history] initial retention pass failed: ${String(err)}`);
+			opts.logger.warn(logText("log.history.retentionFailed"), { stage: "startup", error: err });
 		}),
 	);
 	return handle;
@@ -175,9 +176,10 @@ async function runOnce(opts: RetentionRunnerOptions): Promise<void> {
 			logger: opts.logger,
 		});
 		if (report.snapshotDays.length > 0) {
-			opts.logger.info(
-				`[history] retention cleared repush snapshots of ${report.snapshotDays.length} day(s) through ${report.clearedThrough}`,
-			);
+			opts.logger.info(logText("log.history.snapshotsCleared"), {
+				days: report.snapshotDays.length,
+				clearedThrough: report.clearedThrough,
+			});
 		}
 	} finally {
 		// 历史那半出了错图库也照清:图库里不止历史的图,聊天附件、头像不该等历史修好。
@@ -190,9 +192,9 @@ async function sweepImages(opts: RetentionRunnerOptions, now: Date): Promise<voi
 	try {
 		const { removed } = await opts.images.sweep({ now });
 		if (removed.length > 0) {
-			opts.logger.info(`[images] sweep removed ${removed.length} unreferenced image(s)`);
+			opts.logger.info(logText("log.history.imagesRemoved"), { count: removed.length });
 		}
 	} catch (err) {
-		opts.logger.warn(`[images] sweep failed: ${String(err)}`);
+		opts.logger.warn(logText("log.history.imageSweepFailed"), { error: err });
 	}
 }

@@ -1,5 +1,6 @@
 import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import type { PushRouter } from "@bilibili-notify/push";
+import { logText } from "../i18n/index.js";
 
 /**
  * 60s 节流窗口。同一 sourceKey 上次告警之后 60s 内的后续告警吞掉，避免连串错误
@@ -44,7 +45,10 @@ export class MasterNotifier {
 				// 每条 pipeline-error 都先落 warn(不节流) —— 主人 push 未配置 / send
 				// PrivateMsg no-op 时,日志是唯一可观测通道,丢日志=运行时错误对运维
 				// 彻底静默。DM 仍走 notify() 的 per-source 60s 节流避免刷屏。两端对称。
-				this.opts.logger.warn(`[${source}] ${message}`);
+				this.opts.logger.warn(logText("log.masterNotifier.pipelineError"), {
+					sourceKey: source,
+					message,
+				});
 				this.opts.serviceCtx.track(this.notify(source, `[${source}] ${message}`));
 			}),
 		);
@@ -62,10 +66,14 @@ export class MasterNotifier {
 		try {
 			const r = await this.opts.push.notifyMaster(text);
 			if (!r.ok) {
-				this.opts.logger.warn(`[master-notifier] 私信没送到 source=${sourceKey}：${r.message}`);
+				this.opts.logger.warn(logText("log.masterNotifier.deliveryUnconfirmed"), {
+					sourceKey,
+					code: r.code,
+					message: r.message,
+				});
 			}
 		} catch (e) {
-			this.opts.logger.warn(`[master-notifier] 私信失败 source=${sourceKey}：${String(e)}`);
+			this.opts.logger.warn(logText("log.masterNotifier.senderThrew"), { sourceKey, error: e });
 		}
 	}
 }

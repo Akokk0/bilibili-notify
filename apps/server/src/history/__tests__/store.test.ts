@@ -154,7 +154,7 @@ describe("record — payload reduce + 落盘 + emit", () => {
 			expect(only(entry).payload).toEqual({ kind: "image", text: "没图", image: undefined });
 			expect(entry.status).toBe("delivered");
 			expect(logger.warn).toHaveBeenCalledTimes(1);
-			expect(logger.warn.mock.calls[0]?.[0]).toContain("配图存不进图库");
+			expect(logger.warn.mock.calls[0]?.[0]).toContain("配图未通过图库校验");
 			// 落盘的那一行也没有 image 格,读得回来。
 			const [row] = await store.query({ limit: 1 });
 			expect(row?.messages[0]?.payload).toEqual({ kind: "image", text: "没图" });
