@@ -24,7 +24,7 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { createSerialGate, type SerialGate } from "@bilibili-notify/internal";
-import { errorMessageOf } from "../util/error-message.js";
+import { logText } from "../i18n/index.js";
 import { type DeliverPostDeps, deliverPost } from "./deliver-post";
 
 export interface PostQueueOptions {
@@ -70,27 +70,57 @@ export function createPostQueue(options: PostQueueOptions): PostQueue {
 			const id = event.subscriptionId;
 			try {
 				if (deps.settings(id) === undefined) {
-					logger.debug(`[post] 订阅 ${id} 已停用 / 已删 / 不该推,作品 ${event.postId} 不收`);
+					logger.debug(logText("log.posts.queueSkipped"), {
+						event: "post.queue_skipped",
+						subscriptionId: id,
+						identity: event.identity,
+						postId: event.postId,
+					});
 					return;
 				}
 				try {
 					bus.emit("post-detected", event);
 				} catch (e) {
 					// 总线上的监听者坏了不该挡住装配:这条作品照常往下走。
-					logger.error(`[post] post-detected 的监听者抛错(忽略): ${errorMessageOf(e)}`);
+					logger.error(
+						logText("log.posts.listenerFailed"),
+						{
+							event: "post.listener_failed",
+							subscriptionId: id,
+							identity: event.identity,
+							postId: event.postId,
+						},
+						e,
+					);
 				}
 				serviceCtx.track(
 					gateOf(id)
 						.run(() => deliverPost(event, deps))
 						.catch((err: unknown) => {
 							logger.error(
-								`[post] 订阅 ${id} 的作品 ${event.postId} 推送途中出错(不重试): ${errorMessageOf(err)}`,
+								logText("log.posts.processingFailed"),
+								{
+									event: "post.processing_failed",
+									subscriptionId: id,
+									identity: event.identity,
+									postId: event.postId,
+								},
+								err,
 							);
 						}),
 				);
 			} catch (e) {
 				// 入口永不抛:连设置读口自己出了意外也只记一笔。
-				logger.error(`[post] 订阅 ${id} 的作品 ${event.postId} 入队失败: ${errorMessageOf(e)}`);
+				logger.error(
+					logText("log.posts.enqueueFailed"),
+					{
+						event: "post.enqueue_failed",
+						subscriptionId: id,
+						identity: event.identity,
+						postId: event.postId,
+					},
+					e,
+				);
 			}
 		},
 		dispose() {

@@ -4249,26 +4249,7 @@ export const NON_DISPLAY_TEXTS = {
 			slot: pinnedSource("[15]"),
 		},
 	],
-	"apps/server/src/subscriptions/source-context.ts": [
-		{
-			owner: "createSourceContext/ctx/reportProblem",
-			text: pinnedSource('"报"'),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				'forEachProblemObject("报", problem, parseProblemReport, (report, about) =>\n\t\t\t\topts.problems.report({\n\t\t\t\t\treporter: sourceKey,\n\t\t\t\t\twrittenBy: opts.label?.() ?? descriptor.label,\n\t\t\t\t\t...(about ? { about } : {}),\n\t\t\t\t\tcode: report.code,\n\t\t\t\t\tmessage: report.message,\n\t\t\t\t\t...(report.notify === undefined ? {} : { notify: report.notify }),\n\t\t\t\t\t...(report.recoveryMessage === undefined\n\t\t\t\t\t\t? {}\n\t\t\t\t\t\t: { recoveryMessage: report.recoveryMessage }),\n\t\t\t\t}),\n\t\t\t);',
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "createSourceContext/ctx/resolveProblem",
-			text: pinnedSource('"清"'),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				'forEachProblemObject("清", problem, parseProblemResolve, (report, about) =>\n\t\t\t\topts.problems.resolve(\n\t\t\t\t\t{ reporter: sourceKey, ...(about ? { about } : {}), code: report.code },\n\t\t\t\t\treport.notify === undefined ? undefined : { notify: report.notify },\n\t\t\t\t),\n\t\t\t);',
-			),
-			slot: pinnedSource(""),
-		},
-	],
+
 	"apps/server/src/runtime/builtin-command-aliases.ts": [
 		{
 			owner: "ALIASES",

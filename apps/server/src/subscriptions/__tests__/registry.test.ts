@@ -322,7 +322,11 @@ describe("createSourceRegistry", () => {
 		const handle = await registry.register(SOURCE_KEY, source, ctx);
 		await handle.dispose();
 		expect(logger.warn).toHaveBeenCalledTimes(1);
-		expect(logger.warn.mock.calls[0]?.[0]).toContain(`[source] ${SOURCE_KEY} stop 超过 20ms`);
+		expect(logger.warn).toHaveBeenCalledWith(expect.any(String), {
+			event: "source.stop_timed_out",
+			sourceKey: SOURCE_KEY,
+			timeoutMs: 20,
+		});
 	});
 
 	it("stop 失败只记一行 warn,不往外抛(同步抛与异步拒绝都一样)", async () => {
@@ -344,7 +348,11 @@ describe("createSourceRegistry", () => {
 			const handle = await registry.register(SOURCE_KEY, source, ctx);
 			expect(() => handle.dispose()).not.toThrow();
 			await vi.waitFor(() => expect(logger.warn).toHaveBeenCalledTimes(1));
-			expect(logger.warn.mock.calls[0]?.[0]).toContain(`[source] ${SOURCE_KEY} stop 失败`);
+			expect(logger.warn).toHaveBeenCalledWith(
+				expect.any(String),
+				{ event: "source.stop_failed", sourceKey: SOURCE_KEY },
+				expect.any(Error),
+			);
 		}
 	});
 });

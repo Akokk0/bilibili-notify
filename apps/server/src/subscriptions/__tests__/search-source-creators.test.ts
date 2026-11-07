@@ -101,7 +101,11 @@ describe("searchSourceCreators", () => {
 		if (out.ok) throw new Error("应当失败");
 		expect(out.message).not.toContain("secret-detail");
 		expect(logger.error).toHaveBeenCalledTimes(1);
-		expect(String(logger.error.mock.calls[0]?.[0])).toContain("内部炸了 secret-detail");
+		expect(logger.error).toHaveBeenCalledWith(
+			expect.any(String),
+			{ event: "source.call_failed", sourceKey: "acme", member: "searchCreators" },
+			expect.objectContaining({ message: "内部炸了 secret-detail" }),
+		);
 	});
 
 	// 验红:把超时那一支去掉,这条红(一直等下去)。

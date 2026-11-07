@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 /**
  * **作品装配**(ADR-0019 决策 66):一条作品进了核心之后的那一段 —— 现折这条订阅的设置 → 过滤(挡下的留痕)→
  * 出卡 → AI 点评 → 回问订阅还在不在 → 套模板 → 按版式装配 → 推送 → 图集。B 站动态与拓展作品共用这一份:
@@ -226,7 +226,11 @@ async function commentImagesOf(post: Post, deps: DeliverPostDeps): Promise<strin
 				urls.push(bytesDataUrl(found.mime, found.bytes));
 			}
 		} catch (e) {
-			deps.logger.debug(`[post] 读图库里的图失败,这张不给 AI 看:${errorMessageOf(e)}`);
+			deps.logger.debug(
+				logText("log.posts.commentImageReadFailed"),
+				{ event: "post.comment_image_read_failed", imageRef: image.ref },
+				e,
+			);
 		}
 	}
 	return urls;
@@ -242,19 +246,26 @@ async function commentImagesOf(post: Post, deps: DeliverPostDeps): Promise<strin
 export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Promise<void> {
 	const { logger } = deps;
 	const { post, subscriptionId } = event;
-	const tag = `sub=${subscriptionId}`;
+	const logContext = { subscriptionId, identity: event.identity, postId: event.postId };
 
 	// 现折:在串行闸里排了一阵才跑到,订阅可能已停用 / 删掉 / 换了设置。这一份用到装配结束。
 	const settings = deps.settings(subscriptionId);
 	if (settings === undefined) {
-		logger.debug(`[post] ${tag} 已停用 / 已删 / 不该推,作品 ${event.postId} 不推`);
+		logger.debug(logText("log.posts.deliverySkipped"), {
+			event: "post.delivery_skipped",
+			...logContext,
+		});
 		return;
 	}
 
 	// 过滤:吃中立的 `Post`,一份实现所有来源同一个。挡下的只在推送历史里留一行,不出卡、不点评、不推。
 	const filtered = filterPost(post, settings.filter, logger);
 	if (filtered.blocked && filtered.reason) {
-		logger.debug(`[post] ${tag} 的作品 ${event.postId} 被过滤,原因:${filtered.reason}`);
+		logger.debug(logText("log.posts.filtered"), {
+			event: "post.filtered",
+			...logContext,
+			reason: filtered.reason,
+		});
 		// best-effort:记不下就算了,绝不因此让装配往外抛。
 		try {
 			deps.recordFiltered({
@@ -264,7 +275,11 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 				url: event.url,
 			});
 		} catch (e) {
-			logger.warn(`[post] 被过滤的作品留痕失败(忽略): ${errorMessageOf(e)}`);
+			logger.warn(
+				logText("log.posts.filteredRecordFailed"),
+				{ event: "post.filtered_record_failed", ...logContext },
+				e,
+			);
 		}
 		return;
 	}
@@ -289,14 +304,19 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 				cardSkinKnobs: settings.cardSkinKnobs,
 			});
 		} catch (e) {
-			noteCardFailure(e, deps);
+			noteCardFailure(e, deps, event);
 			card = undefined;
 		}
 	}
 	// 出图成功后复位失败计数,恢复之后的下一串失败才能再提醒。
 	if (card) {
 		const before = deps.cardFailures.recordSuccess();
-		if (before > 0) logger.info(`[image] 图片渲染已恢复（之前连续失败 ${before} 次）`);
+		if (before > 0)
+			logger.info(logText("log.posts.cardRecovered"), {
+				event: "post.card_recovered",
+				...logContext,
+				previousFailures: before,
+			});
 	}
 
 	// AI 点评 —— per-UP 的 aiOverride 只对这一次调用生效;缺失时走生成器的全局配置。
@@ -306,9 +326,13 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 		const commentText = postText(post, "labeled");
 		if (commentText) {
 			const imageUrls = await commentImagesOf(post, deps);
-			logger.debug(
-				`[ai] 开始生成作品点评，文本长度=${commentText.length}，图片数=${imageUrls.length}${settings.aiOverride ? "，命中 per-UP override" : ""}`,
-			);
+			logger.debug(logText("log.posts.commentStarted"), {
+				event: "post.comment_started",
+				...logContext,
+				textLength: commentText.length,
+				imageCount: imageUrls.length,
+				hasOverride: Boolean(settings.aiOverride),
+			});
 			try {
 				// 给模型看:提示词中性词写死中文,不随界面语言翻。
 				aiComment = await ai.comment(
@@ -323,24 +347,41 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 					settings.aiWebSearch ? { ...settings.aiOverride, webSearch: true } : settings.aiOverride,
 					[event.identity.sourceKey],
 				);
-				logger.debug(`[ai] 作品点评生成完毕，长度=${aiComment?.length ?? 0}`);
+				logger.debug(logText("log.posts.commentCompleted"), {
+					event: "post.comment_completed",
+					...logContext,
+					textLength: aiComment?.length ?? 0,
+				});
 				// 点评回来是空串 / 只有空白等于 AI 没写出来:当没有 AI 版,所有目标用模板(不推一条空文字)。
 				if (aiComment !== undefined && aiComment.trim() === "") {
-					logger.warn("[ai] 作品点评回来是空的，回退到普通文字");
+					logger.warn(logText("log.posts.commentEmpty"), {
+						event: "post.comment_empty",
+						...logContext,
+					});
 					aiComment = undefined;
 				}
 			} catch (e) {
-				logger.error(`[ai] AI 点评生成失败：${errorMessageOf(e)}，回退到普通文字`);
+				logger.error(
+					logText("log.posts.commentFailed"),
+					{ event: "post.comment_failed", ...logContext },
+					e,
+				);
 			}
 		} else {
-			logger.debug("[ai] 作品无可提取文本，跳过 AI 点评");
+			logger.debug(logText("log.posts.commentNoText"), {
+				event: "post.comment_no_text",
+				...logContext,
+			});
 		}
 	}
 
 	// 回问:跨出卡 / 点评几个 await 之后,订阅可能已停用 / 删掉 / 来源停了。给已退订的推送是打扰。
 	// 模板与版式仍用开头折的那一份(拿陈旧的设置推也不对,但这一条已经装配到这儿了)。
 	if (deps.settings(subscriptionId) === undefined) {
-		logger.debug(`[post] ${tag} 在本条处理途中停用 / 删掉了,作品 ${event.postId} 没发`);
+		logger.debug(logText("log.posts.deliveryCancelled"), {
+			event: "post.delivery_cancelled",
+			...logContext,
+		});
 		return;
 	}
 
@@ -369,7 +410,10 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 	// 宿主的历史落同一行。开关、静音与免扰就在交出去的这一刻判一次。
 	const anchors: PostPushAnchor[] = [];
 	if (messages.length === 0) {
-		logger.debug(`[push] ${tag} 消息版式所有部件隐藏/缺失,本条不推送`);
+		logger.debug(logText("log.posts.layoutEmpty"), {
+			event: "post.main_layout_empty",
+			...logContext,
+		});
 	} else {
 		anchors.push({ role: "main", messages, ...(aiMessages ? { aiMessages } : {}) });
 	}
@@ -399,10 +443,19 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
  * 发射是同步的,没有「在路上」与「没送达」,所以发射完就算提醒过;只有发射同步抛了才放回去、下一次失败再试。
  * 提醒在发之前领(`claimNotice`),并发的几条失败只有一条发。
  */
-function noteCardFailure(err: unknown, deps: DeliverPostDeps): void {
+function noteCardFailure(err: unknown, deps: DeliverPostDeps, event: PostEvent): void {
 	const streak = deps.cardFailures.recordFailure();
 	const reason = errorMessageOf(err);
-	deps.logger.error(`[image] 生成作品图片失败 (连续 ${streak} 次): ${reason}`);
+	const logContext = {
+		subscriptionId: event.subscriptionId,
+		identity: event.identity,
+		postId: event.postId,
+	};
+	deps.logger.error(
+		logText("log.posts.cardFailed"),
+		{ event: "post.card_render_failed", ...logContext, streak },
+		err,
+	);
 	const notice = deps.cardFailures.claimNotice();
 	if (!notice) return;
 	try {
@@ -410,6 +463,10 @@ function noteCardFailure(err: unknown, deps: DeliverPostDeps): void {
 		notice.settle(true);
 	} catch (notifyErr) {
 		notice.settle(false);
-		deps.logger.warn(`[image] 失败告警发射失败,下轮将重试: ${errorMessageOf(notifyErr)}`);
+		deps.logger.warn(
+			logText("log.posts.cardNoticeFailed"),
+			{ event: "post.card_notice_failed", ...logContext, streak },
+			notifyErr,
+		);
 	}
 }

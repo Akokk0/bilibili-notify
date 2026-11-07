@@ -6,7 +6,7 @@ import {
 	type SourceAuth,
 	type SourceContext,
 } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { DISPOSE_TIMEOUT_MS } from "../integrations/context.js";
 import { createRegistry } from "../integrations/registry.js";
 import { stopQuietly } from "../integrations/stop-quietly.js";
@@ -195,14 +195,21 @@ export function createSourceRegistry(opts: CreateSourceRegistryOptions = {}): So
 					runs.delete(sourceKey);
 					const stopped = stopQuietly(
 						() => source.stop(),
-						(err) => ctx.logger.warn(`[source] ${sourceKey} stop 失败: ${errorMessageOf(err)}`),
+						(err) =>
+							ctx.logger.warn(
+								logText("log.source.stopFailed"),
+								{ event: "source.stop_failed", sourceKey },
+								err,
+							),
 					);
 					// 来源的 `stop` 一直不落定也不能把收尾拖死:到时限记一行 warn,照常往下。
 					disposing = new Promise<void>((resolve) => {
 						const timer = setTimeout(() => {
-							ctx.logger.warn(
-								`[source] ${sourceKey} stop 超过 ${disposeTimeoutMs}ms 没落定,不再等`,
-							);
+							ctx.logger.warn(logText("log.source.stopTimedOut"), {
+								event: "source.stop_timed_out",
+								sourceKey,
+								timeoutMs: disposeTimeoutMs,
+							});
 							resolve();
 						}, disposeTimeoutMs);
 						void stopped.then(() => {

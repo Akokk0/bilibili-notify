@@ -8,8 +8,8 @@ import {
 	type Result,
 	type SerialGate,
 } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import { LOOKUP_TIMEOUT_MS } from "../integrations/lookup-timeout.js";
-import { errorMessageOf } from "../util/error-message.js";
 import type { SourceRegistry } from "./registry.js";
 
 export interface CallSourceOptions<R> {
@@ -74,7 +74,11 @@ export async function callSource<R>(opts: CallSourceOptions<R>): Promise<R> {
 		} catch (err) {
 			// 被撤销时来源常常因此抛出中止错误:那不是它的 bug,不记。
 			if (external?.aborted) return aborted();
-			opts.logger.error(`[source] ${opts.sourceKey} ${opts.member} 抛了: ${errorMessageOf(err)}`);
+			opts.logger.error(
+				logText("log.source.callFailed"),
+				{ event: "source.call_failed", sourceKey: opts.sourceKey, member: opts.member },
+				err,
+			);
 			return opts.onThrow();
 		}
 	})();

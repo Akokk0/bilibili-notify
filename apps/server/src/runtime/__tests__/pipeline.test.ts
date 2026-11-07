@@ -2056,7 +2056,12 @@ describe("createPipelineRuntime — config-changed globals 热重载", () => {
 		c.source.ctx?.reportPost("sec-uid-1", extensionPostReport(false));
 		await settleTracked(c);
 		expect(subsystemCtx(c, "posts", "core").logger.debug).toHaveBeenCalledWith(
-			expect.stringContaining("不收"),
+			expect.any(String),
+			expect.objectContaining({
+				event: "post.queue_skipped",
+				subscriptionId: sub.id,
+				postId: "p1",
+			}),
 		);
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
@@ -2077,7 +2082,13 @@ describe("createPipelineRuntime — config-changed globals 热重载", () => {
 		c.source.ctx?.reportPost("sec-uid-1", extensionPostReport(true));
 		await settleTracked(c);
 		expect(subsystemCtx(c, "posts", "core").logger.debug).toHaveBeenCalledWith(
-			expect.stringContaining("被过滤"),
+			expect.any(String),
+			expect.objectContaining({
+				event: "post.filtered",
+				subscriptionId: sub.id,
+				postId: "p1",
+				reason: "blocked-videos",
+			}),
 		);
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});

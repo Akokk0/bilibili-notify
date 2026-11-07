@@ -20,6 +20,8 @@ import {
 import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { logMessage } from "../../__tests__/support/log-message.js";
+import { i18n } from "../../i18n/index.js";
 import {
 	type CardFailureTracker,
 	createCardFailureTracker,
@@ -98,7 +100,7 @@ interface Harness {
 	readImage: ReturnType<typeof vi.fn>;
 	recordFiltered: ReturnType<typeof vi.fn>;
 	emitPipelineError: ReturnType<typeof vi.fn>;
-	logs: Array<{ level: string; msg: string }>;
+	logs: Array<{ level: string; msg: string; args: unknown[] }>;
 }
 
 function harness(
@@ -131,9 +133,11 @@ function harness(
 	const recordFiltered = vi.fn();
 	const emitPipelineError = vi.fn();
 	const logs: Harness["logs"] = [];
-	const rec = (level: string) => (msg: unknown) => {
-		logs.push({ level, msg: String(msg) });
-	};
+	const rec =
+		(level: string) =>
+		(msg: string, ...args: unknown[]) => {
+			logs.push({ level, msg, args });
+		};
 	const fixed = settingsOf(over.settings);
 	let calls = 0;
 	const settings = vi.fn((_id: string) => {
@@ -424,7 +428,9 @@ describe("deliverPost — 出图连续失败只提醒一次", () => {
 		});
 		await run(h);
 		expect(tracker.notified).toBe(false);
-		expect(h.logs.some((l) => l.level === "warn" && l.msg.includes("bus down"))).toBe(true);
+		expect(
+			h.logs.some((l) => l.level === "warn" && logMessage(l.msg, l.args).includes("bus down")),
+		).toBe(true);
 		await run(h);
 		expect(h.emitPipelineError).toHaveBeenCalledTimes(2);
 		expect(tracker.notified).toBe(true);
@@ -439,9 +445,19 @@ describe("deliverPost — 出图连续失败只提醒一次", () => {
 		await run(good);
 		expect(tracker.streak).toBe(0);
 		expect(tracker.notified).toBe(false);
-		expect(good.logs.some((l) => l.level === "info" && l.msg.includes("之前连续失败 1 次"))).toBe(
-			true,
-		);
+		expect(good.logs).toContainEqual({
+			level: "info",
+			msg: "作品图片渲染已恢复",
+			args: [
+				{
+					event: "post.card_recovered",
+					subscriptionId: "s1",
+					identity: { sourceKey: "fake", externalId: "x1" },
+					postId: "p1",
+					previousFailures: 1,
+				},
+			],
+		});
 		const badAgain = harness({ cardFailures: tracker });
 		failing(badAgain);
 		await run(badAgain);
@@ -597,7 +613,9 @@ describe("deliverPost — AI 点评", () => {
 		expect(segsOf(h)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
 		// 没有 AI 版:键缺失,不是 undefined 值。
 		expect("aiMessages" in mainAnchorOf(h)).toBe(false);
-		expect(h.logs.some((l) => l.level === "error" && l.msg.includes("额度用完"))).toBe(true);
+		expect(
+			h.logs.some((l) => l.level === "error" && logMessage(l.msg, l.args).includes("额度用完")),
+		).toBe(true);
 	});
 
 	it("生成了点评:本体锚点带两份,messages 是模板那一串、aiMessages 是点评那一串,卡片两份都在;只调一次 AI", async () => {
@@ -908,7 +926,9 @@ describe("deliverPost — 过滤", () => {
 			throw new Error("历史写不进");
 		});
 		await expect(run(h)).resolves.toBeUndefined();
-		expect(h.logs.some((l) => l.level === "warn" && l.msg.includes("历史写不进"))).toBe(true);
+		expect(
+			h.logs.some((l) => l.level === "warn" && logMessage(l.msg, l.args).includes("历史写不进")),
+		).toBe(true);
 		expect(h.push).not.toHaveBeenCalled();
 	});
 });
@@ -1042,4 +1062,37 @@ describe("deliverPost — 发送失败与图集", () => {
 		await run(many);
 		expect((segsOf(many, 1)[0] as { mergeForward?: boolean }).mergeForward).toBe(true);
 	});
+});
+
+it("出卡失败用平实英文记录原错误及计数，降级推送和告警次数不变", async () => {
+	const previous = i18n.state();
+	try {
+		i18n.set({ locale: "en", voice: "maid" });
+		const h = harness({ post: { text: "PRIVATE-POST-CONTENT" } });
+		const error = new Error("chrome crash", { cause: new Error("worker exited") });
+		h.generatePostCard.mockRejectedValue(error);
+		await deliverPost(h.event, h.deps);
+		expect(h.logs.filter((l) => l.level === "error")).toEqual([
+			{
+				level: "error",
+				msg: "Post card rendering failed; falling back to text",
+				args: [
+					{
+						event: "post.card_render_failed",
+						subscriptionId: "s1",
+						identity: { sourceKey: "fake", externalId: "x1" },
+						postId: "p1",
+						streak: 1,
+					},
+					error,
+				],
+			},
+		]);
+		expect(h.logs.find((l) => l.level === "error")?.args[1]).toBe(error);
+		expect(h.push).toHaveBeenCalledTimes(1);
+		expect(h.emitPipelineError).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(h.logs)).not.toContain("PRIVATE-POST-CONTENT");
+	} finally {
+		i18n.set(previous);
+	}
 });

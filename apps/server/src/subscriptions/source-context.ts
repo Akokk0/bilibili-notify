@@ -16,6 +16,7 @@ import type {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
+import { logText } from "../i18n/index.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
 import {
 	parseProblemReport,
@@ -24,7 +25,6 @@ import {
 	problemRejectionReason,
 } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
-import { errorMessageOf } from "../util/error-message.js";
 import { sourceSubscriptionViews } from "./source-subscriptions.js";
 
 export interface CreateSourceContextOptions {
@@ -85,9 +85,11 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	const { integration, sourceKey, descriptor, logger } = opts;
 	const listeners = new Set<() => void>();
 	let disposed = false;
-	// 被拒的问题上报记成什么等级(内置缺省 error,拓展 warn)。名字叫 `log`:字符串写在日志调用里,不算写死的中文。
-	const log = (message: string): void =>
-		opts.rejectedProblemLevel === "warn" ? logger.warn(message) : logger.error(message);
+	// 按来源类别选择拒收诊断等级,参数仍交现有日志器统一脱敏。
+	const log = (message: string, ...args: unknown[]): void =>
+		opts.rejectedProblemLevel === "warn"
+			? logger.warn(message, ...args)
+			: logger.error(message, ...args);
 
 	/** 被拒的上报里带的 externalId:只认字符串 —— 第三方交来的可能是别的,原样交给 `onRejectedProblem` 没有意义。 */
 	function externalIdOf(report: unknown): { externalId?: string } {
@@ -102,7 +104,11 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			try {
 				fn();
 			} catch (err) {
-				logger.error(`[source] ${sourceKey} 的名单回调抛错(忽略): ${errorMessageOf(err)}`);
+				logger.error(
+					logText("log.source.listenerFailed"),
+					{ event: "source.subscription_listener_failed", sourceKey },
+					err,
+				);
 			}
 		}
 	};
@@ -115,14 +121,19 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	 * 上报先经 `problems/problem-report.ts` 解析成干净副本,问题表只写副本里的那几格。
 	 */
 	const forEachProblemObject = <T extends { externalId?: string; code: string }>(
-		what: string,
+		action: "report" | "resolve",
 		report: unknown,
 		parse: (raw: unknown) => Result<T>,
 		visit: (problem: T, about: { subscriptionId: string } | undefined) => void,
 	): void => {
 		const code = problemCodePreview(report);
 		if (disposed) {
-			log(`[source] ${sourceKey} 已停下还在${what}问题 ${code}(丢弃;来源的 bug)`);
+			log(logText("log.source.problemAfterStop"), {
+				event: "source.problem_after_stop",
+				sourceKey,
+				action,
+				code,
+			});
 			opts.onRejectedProblem?.({
 				...externalIdOf(report),
 				reason: problemRejectionReason(code, true),
@@ -131,9 +142,13 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		}
 		const problem = parse(report);
 		if (!problem.ok) {
-			log(
-				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;来源的 bug): ${code}(${problem.message})`,
-			);
+			log(logText("log.source.problemInvalid"), {
+				event: "source.problem_invalid",
+				sourceKey,
+				action,
+				code,
+				reason: problem.message,
+			});
 			opts.onRejectedProblem?.({
 				...externalIdOf(report),
 				reason: problemRejectionReason(code, false, problem.message),
@@ -149,9 +164,13 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			externalId: problem.externalId,
 		});
 		if (subs.length === 0) {
-			logger.debug(
-				`[source] ${sourceKey}:${problem.externalId} 没有订阅,${what}的问题 ${problem.code} 不收`,
-			);
+			logger.debug(logText("log.source.problemNoSubscriptions"), {
+				event: "source.problem_without_subscription",
+				sourceKey,
+				externalId: problem.externalId,
+				action,
+				code: problem.code,
+			});
 			return;
 		}
 		// 停用着的订阅照记,不在这里筛。
@@ -214,15 +233,25 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		},
 		reportPost(externalId: string, report: PostReport) {
 			if (disposed) {
-				logger.error(
-					`[source] ${sourceKey} 已停下还在上报作品 ${report.postId}(丢弃;内置来源的 bug)`,
-				);
+				logger.error(logText("log.source.reportAfterStop"), {
+					event: "source.report_after_stop",
+					sourceKey,
+					externalId,
+					kind: "post",
+					postId: report.postId,
+				});
 				return;
 			}
 			const identity = { sourceKey, externalId };
 			const subs = opts.subscriptions.listByIdentity(identity);
 			if (subs.length === 0) {
-				logger.debug(`[source] ${sourceKey}:${externalId} 没有订阅,作品 ${report.postId} 不收`);
+				logger.debug(logText("log.source.reportNoSubscriptions"), {
+					event: "source.report_without_subscription",
+					sourceKey,
+					externalId,
+					kind: "post",
+					postId: report.postId,
+				});
 				return;
 			}
 			// 停用的、作品开关关着的不在这里筛:作品入口按订阅现折设置,不该推的由它丢。
@@ -239,33 +268,53 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		},
 		reportLive(externalId: string, report: LiveSignalReport) {
 			if (disposed) {
-				logger.error(
-					`[source] ${sourceKey} 已停下还在上报直播 ${report.kind}(丢弃;内置来源的 bug)`,
-				);
+				logger.error(logText("log.source.reportAfterStop"), {
+					event: "source.report_after_stop",
+					sourceKey,
+					externalId,
+					kind: "live",
+					signal: report.kind,
+				});
 				return;
 			}
 			// 形状核:时刻能解析、下播必带 endedAt。内置来源交了坏形状就是 BN 的 bug,丢弃并记 error。
 			const unparsable = (value: string | undefined): boolean =>
 				value !== undefined && Number.isNaN(Date.parse(value));
 			if (unparsable(report.startedAt)) {
-				logger.error(
-					`[source] ${sourceKey} 上报直播 ${report.kind} 的 startedAt 不是时刻(丢弃;内置来源的 bug): ${report.startedAt}`,
-				);
+				logger.error(logText("log.source.liveTimeInvalid"), {
+					event: "source.live_time_invalid",
+					sourceKey,
+					externalId,
+					kind: report.kind,
+					field: "startedAt",
+					value: String(report.startedAt),
+				});
 				return;
 			}
 			if (
 				report.kind === "end" &&
 				(typeof report.endedAt !== "string" || unparsable(report.endedAt))
 			) {
-				logger.error(
-					`[source] ${sourceKey} 上报直播下播的 endedAt 缺失或不是时刻(丢弃;内置来源的 bug): ${String(report.endedAt)}`,
-				);
+				logger.error(logText("log.source.liveTimeInvalid"), {
+					event: "source.live_time_invalid",
+					sourceKey,
+					externalId,
+					kind: report.kind,
+					field: "endedAt",
+					value: String(report.endedAt),
+				});
 				return;
 			}
 			const identity = { sourceKey, externalId };
 			const subs = opts.subscriptions.listByIdentity(identity);
 			if (subs.length === 0) {
-				logger.debug(`[source] ${sourceKey}:${externalId} 没有订阅,直播 ${report.kind} 不收`);
+				logger.debug(logText("log.source.reportNoSubscriptions"), {
+					event: "source.report_without_subscription",
+					sourceKey,
+					externalId,
+					kind: "live",
+					signal: report.kind,
+				});
 				return;
 			}
 			// 停用的不在这里筛:场次引擎按订阅现判该不该记。
@@ -275,14 +324,24 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		},
 		reportLiveInteraction(externalId: string, report: LiveInteractionReport) {
 			if (disposed) {
-				logger.error(
-					`[source] ${sourceKey} 已停下还在上报直播互动 ${report.kind}(丢弃;内置来源的 bug)`,
-				);
+				logger.error(logText("log.source.reportAfterStop"), {
+					event: "source.report_after_stop",
+					sourceKey,
+					externalId,
+					kind: "liveInteraction",
+					interaction: report.kind,
+				});
 				return;
 			}
 			const subs = opts.subscriptions.listByIdentity({ sourceKey, externalId });
 			if (subs.length === 0) {
-				logger.debug(`[source] ${sourceKey}:${externalId} 没有订阅,直播互动 ${report.kind} 不收`);
+				logger.debug(logText("log.source.reportNoSubscriptions"), {
+					event: "source.report_without_subscription",
+					sourceKey,
+					externalId,
+					kind: "liveInteraction",
+					interaction: report.kind,
+				});
 				return;
 			}
 			// 停用的不在这里筛:互动入口按订阅现折设置、现看订阅还该不该推。
@@ -290,7 +349,12 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		},
 		reportProfile(externalId: string, report: CreatorProfileReport) {
 			if (disposed) {
-				logger.error(`[source] ${sourceKey} 已停下还在上报资料 ${externalId}(丢弃;内置来源的 bug)`);
+				logger.error(logText("log.source.reportAfterStop"), {
+					event: "source.report_after_stop",
+					sourceKey,
+					externalId,
+					kind: "profile",
+				});
 				return;
 			}
 			// 停用的订阅不收资料(契约:停用的不收);重新启用后等下一轮资料刷新或下一次上报补上。
@@ -299,13 +363,17 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 				.filter((sub) => sub.enabled)
 				.map((sub) => sub.id);
 			if (ids.length === 0) {
-				logger.debug(`[source] ${sourceKey}:${externalId} 没有启用中的订阅,资料不收`);
+				logger.debug(logText("log.source.profileNoEnabled"), {
+					event: "source.profile_without_enabled_subscription",
+					sourceKey,
+					externalId,
+				});
 				return;
 			}
 			opts.profiles(ids, report);
 		},
 		reportProblem(problem) {
-			forEachProblemObject("报", problem, parseProblemReport, (report, about) =>
+			forEachProblemObject("report", problem, parseProblemReport, (report, about) =>
 				opts.problems.report({
 					reporter: sourceKey,
 					writtenBy: opts.label?.() ?? descriptor.label,
@@ -320,7 +388,7 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			);
 		},
 		resolveProblem(problem) {
-			forEachProblemObject("清", problem, parseProblemResolve, (report, about) =>
+			forEachProblemObject("resolve", problem, parseProblemResolve, (report, about) =>
 				opts.problems.resolve(
 					{ reporter: sourceKey, ...(about ? { about } : {}), code: report.code },
 					report.notify === undefined ? undefined : { notify: report.notify },
@@ -329,7 +397,11 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		},
 		registerLinkResolver(resolver) {
 			if (disposed) {
-				logger.error(`[source] ${sourceKey} 已停下还在登记链接解析器(丢弃;内置来源的 bug)`);
+				logger.error(logText("log.source.registrationAfterStop"), {
+					event: "source.registration_after_stop",
+					sourceKey,
+					member: "registerLinkResolver",
+				});
 				return { dispose() {} };
 			}
 			// 键被占(含这个来源自己已经登过一个)时由登记表抛,原样出去。
@@ -340,7 +412,11 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		},
 		registerAiToolProvider(provider) {
 			if (disposed) {
-				logger.error(`[source] ${sourceKey} 已停下还在登记 AI 工具提供方(丢弃;内置来源的 bug)`);
+				logger.error(logText("log.source.registrationAfterStop"), {
+					event: "source.registration_after_stop",
+					sourceKey,
+					member: "registerAiToolProvider",
+				});
 				return { dispose() {} };
 			}
 			// 键与工具名撞了由登记表抛,原样出去。

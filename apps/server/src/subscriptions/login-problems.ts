@@ -1,7 +1,6 @@
 import type { Disposable, Logger, SourceAuth } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import type { ProblemTable } from "../problems/problem-table.js";
-import { errorMessageOf } from "../util/error-message.js";
 
 /** 登录问题的 code:记在来源键名下,面板按它认。 */
 const LOGIN_CODE = "auth_lost";
@@ -74,7 +73,11 @@ export function watchLoginProblems(options: WatchLoginProblemsOptions): Disposab
 		try {
 			apply(auth.state().status);
 		} catch (err) {
-			logger.warn(`[login-problems] 读登录状态失败(已忽略): ${errorMessageOf(err)}`);
+			logger.warn(
+				logText("log.source.loginStateFailed"),
+				{ event: "source.login_state_failed", sourceKey },
+				err,
+			);
 		}
 	}
 

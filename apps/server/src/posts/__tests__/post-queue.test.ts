@@ -15,11 +15,13 @@ import {
 	type SubscriptionOp,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { logMessage } from "../../__tests__/support/log-message.js";
 import {
 	deferred,
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
+import { i18n } from "../../i18n/index.js";
 import { createCardFailureTracker, type DeliverPostDeps, type PostSettings } from "../deliver-post";
 import { createPostQueue } from "../post-queue";
 
@@ -87,10 +89,12 @@ function makeQueue(
 ) {
 	const b = makeBus();
 	const ctx = makeTrackingContext();
-	const logs: Array<{ level: string; msg: string }> = [];
-	const rec = (level: string) => (msg: unknown) => {
-		logs.push({ level, msg: String(msg) });
-	};
+	const logs: Array<{ level: string; msg: string; args: unknown[] }> = [];
+	const rec =
+		(level: string) =>
+		(msg: string, ...args: unknown[]) => {
+			logs.push({ level, msg, args });
+		};
 	const logger = { info: rec("info"), warn: rec("warn"), error: rec("error"), debug: rec("debug") };
 	/** 推出去的每一条:订阅 id 与作品标签(装配出的文字以作品地址收尾,地址末段就是 postId)。 */
 	const pushed: Array<{ id: string; label: string }> = [];
@@ -167,7 +171,9 @@ describe("PostQueue.enqueue — 订阅不该推就丢", () => {
 		expect(q.detected().map((e) => (e as PostEvent).subscriptionId)).toEqual(["here"]);
 		expect(q.pushed.map((p) => p.id)).toEqual(["here"]);
 		expect(q.ctx.tracked).toHaveLength(1);
-		expect(q.logs.some((l) => l.level === "debug" && l.msg.includes("gone"))).toBe(true);
+		expect(
+			q.logs.some((l) => l.level === "debug" && logMessage(l.msg, l.args).includes("gone")),
+		).toBe(true);
 	});
 });
 
@@ -270,7 +276,12 @@ describe("PostQueue — 登记进 track 与失败", () => {
 		expect(calls).toBe(2); // 没有重试:两条各推一次
 		expect(q.pushed).toHaveLength(1);
 		expect(
-			q.logs.some((l) => l.level === "error" && l.msg.includes("bot 掉线") && l.msg.includes("s1")),
+			q.logs.some(
+				(l) =>
+					l.level === "error" &&
+					logMessage(l.msg, l.args).includes("bot 掉线") &&
+					logMessage(l.msg, l.args).includes("s1"),
+			),
 		).toBe(true);
 	});
 
@@ -282,7 +293,9 @@ describe("PostQueue — 登记进 track 与失败", () => {
 		expect(() => q.queue.enqueue(eventOf("s1"))).not.toThrow();
 		await q.ctx.settled();
 		expect(q.pushed).toHaveLength(1);
-		expect(q.logs.some((l) => l.level === "error" && l.msg.includes("监听者坏了"))).toBe(true);
+		expect(
+			q.logs.some((l) => l.level === "error" && logMessage(l.msg, l.args).includes("监听者坏了")),
+		).toBe(true);
 	});
 });
 
@@ -311,5 +324,54 @@ describe("PostQueue.dispose", () => {
 		hold.resolve();
 		await q.ctx.settled();
 		expect(q.pushed.map((p) => p.label)).toEqual(["一"]);
+	});
+});
+
+describe("作品队列诊断语言", () => {
+	it("处理失败按当前四语平实记录原错误，不记录正文，也不自动重试", async () => {
+		const previous = i18n.state();
+		try {
+			for (const [locale, message] of [
+				["en", "Post processing failed; this post will not be retried"],
+				["ja", "投稿の処理に失敗しました。この投稿の自動再試行は行いません"],
+				["zh-TW", "作品處理失敗，不自動重試此作品"],
+				["zh-CN", "作品处理失败，不自动重试此作品"],
+			] as const) {
+				i18n.set({ locale, voice: "maid" });
+				const error = new Error("delivery failed", { cause: new Error("socket closed") });
+				const push = vi.fn(async () => {
+					throw error;
+				});
+				const q = makeQueue({ push });
+				try {
+					expect(() => q.queue.enqueue(eventOf("s1", "p1", "PRIVATE-POST-CONTENT"))).not.toThrow();
+					await q.ctx.settled();
+					expect(push).toHaveBeenCalledTimes(1);
+					expect(q.logs.filter((l) => l.level === "error")).toEqual([
+						{
+							level: "error",
+							msg: message,
+							args: [
+								{
+									event: "post.processing_failed",
+									subscriptionId: "s1",
+									identity: { sourceKey: "fake", externalId: "ext-s1" },
+									postId: "p1",
+								},
+								error,
+							],
+						},
+					]);
+					expect(q.logs.find((l) => l.level === "error")?.args[1]).toBe(error);
+					expect(JSON.stringify(q.logs)).not.toContain("PRIVATE-POST-CONTENT");
+					i18n.set({ locale: "zh-CN" });
+					expect(q.logs.find((l) => l.level === "error")?.msg).toBe(message);
+				} finally {
+					q.queue.dispose();
+				}
+			}
+		} finally {
+			i18n.set(previous);
+		}
 	});
 });

@@ -51,7 +51,11 @@ describe("callSource", () => {
 		});
 		expect(result).toBe("thrown");
 		expect(logger.error).toHaveBeenCalledTimes(1);
-		expect(String(logger.error.mock.calls[0]?.[0])).toContain("boom-detail");
+		expect(logger.error).toHaveBeenCalledWith(
+			expect.any(String),
+			{ event: "source.call_failed", sourceKey: "acme", member: "fetchLiveStatus" },
+			expect.objectContaining({ message: "boom-detail" }),
+		);
 	});
 
 	it("调用方撤销:叫停来源手里的 signal,立刻回 onAbort 那份;来源因此抛的中止错误不记日志", async () => {
@@ -177,7 +181,11 @@ describe("fetchSourceProfile", () => {
 			identity,
 		);
 		expect(out).toMatchObject({ ok: false, code: "unavailable" });
-		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("profile-boom-detail"));
+		expect(logger.error).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ event: "source.call_failed", member: "fetchProfile" }),
+			expect.objectContaining({ message: "profile-boom-detail" }),
+		);
 	});
 
 	it("同一来源两发串行", async () => {

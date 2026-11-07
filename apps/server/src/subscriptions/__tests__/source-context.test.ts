@@ -10,6 +10,7 @@ import {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
+import { i18n } from "../../i18n/index.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createSourceContext } from "../source-context.js";
 import {
@@ -204,7 +205,11 @@ describe("createSourceContext", () => {
 		expect(() => bus.emit("config-changed", { scope: "globals" })).not.toThrow();
 		expect(after).toHaveBeenCalledTimes(1);
 		expect(logger.error).toHaveBeenCalledTimes(1);
-		expect(logger.error.mock.calls[0]?.[0]).toContain("boom");
+		expect(logger.error).toHaveBeenCalledWith(
+			expect.any(String),
+			{ event: "source.subscription_listener_failed", sourceKey: SOURCE_KEY },
+			expect.objectContaining({ message: "boom" }),
+		);
 	});
 
 	it("onSubscriptionsChanged 交回的把手能摘掉自己", () => {
@@ -618,4 +623,34 @@ describe("createSourceContext · reportProblem / resolveProblem", () => {
 		expect(problems.resolve).not.toHaveBeenCalled();
 		expect(logger.error).toHaveBeenCalledTimes(2);
 	});
+});
+
+it("停止后的作品上报以四语平实诊断丢弃，不记录作品正文", () => {
+	const previous = i18n.state();
+	try {
+		for (const [locale, message] of [
+			["en", "Source has stopped; dropping the report"],
+			["ja", "ソースが停止済みのため、報告を破棄します"],
+			["zh-TW", "來源已停止，捨棄上報"],
+			["zh-CN", "来源已停止，丢弃上报"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			const { handle, logger, enqueue } = setup();
+			handle.dispose();
+			const input = report("p1");
+			input.post.text = "PRIVATE-POST-CONTENT";
+			expect(() => handle.ctx.reportPost("1", input)).not.toThrow();
+			expect(enqueue).not.toHaveBeenCalled();
+			expect(logger.error).toHaveBeenCalledExactlyOnceWith(message, {
+				event: "source.report_after_stop",
+				sourceKey: SOURCE_KEY,
+				externalId: "1",
+				kind: "post",
+				postId: "p1",
+			});
+			expect(JSON.stringify(logger.error.mock.calls)).not.toContain("PRIVATE-POST-CONTENT");
+		}
+	} finally {
+		i18n.set(previous);
+	}
 });
