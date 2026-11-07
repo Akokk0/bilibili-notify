@@ -1,5 +1,6 @@
 import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { logMessage } from "../../../__tests__/support/log-message.js";
 import { makeApi, makeServiceContext } from "./support/make-api";
 
 /**
@@ -12,7 +13,7 @@ async function setup() {
 		info() {},
 		debug() {},
 		error() {},
-		warn: (message: string) => void warns.push(message),
+		warn: (message, ...args) => void warns.push(logMessage(message, args)),
 	};
 	const onAuthLost = vi.fn();
 	const w = await makeApi({

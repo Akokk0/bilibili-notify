@@ -212,9 +212,16 @@ describe("Api — 登出再登录:客户端是同一个,罐子里是新内容", 
 		const { api, client, http, loadSession } = await makeApi();
 		const fetched = vi.spyOn(http, "fetch");
 		await loadSession(session("sess_A", "jct_A"));
-		await (api as unknown as { terminateSession(msg: string): Promise<void> }).terminateSession(
-			"test",
-		);
+		// 从公开续期入口收到 -101，走真实终态清理，之后的请求仍使用同一个客户端与罐子。
+		fetched.mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			headers: new Headers(),
+			isSuccess: true,
+			text: () => JSON.stringify({ code: -101, message: "expired" }),
+		} as never);
+		await api.checkIfTokenNeedRefresh("rt", "jct_A");
+		fetched.mockClear();
 		expect(jarKeys(api)).toEqual([]);
 		expect(api.http).toBe(http);
 		await api.http.fetch(`${baseURL}/x`);

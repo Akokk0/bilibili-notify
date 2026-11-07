@@ -114,10 +114,10 @@ describe("AuthSystem — 续期落盘之后的回调", () => {
 		expect(committed.ok).toBe(true);
 		vi.mocked(ctx.logger.info).mockClear();
 		for (const [locale, text] of [
-			["zh-CN", "B站登录续期已落盘"],
-			["en", "Bilibili login renewal persisted"],
-			["ja", "Bilibiliのログイン更新を保存しました"],
-			["zh-TW", "B站登入續期已儲存"],
+			["zh-CN", "登录续期已落盘"],
+			["en", "Login renewal persisted"],
+			["ja", "ログイン更新を保存しました"],
+			["zh-TW", "登入續期已儲存"],
 		] as const) {
 			i18n.set({ locale, voice: "maid" });
 			await captured.callbacks?.onCookiesRefreshed?.();

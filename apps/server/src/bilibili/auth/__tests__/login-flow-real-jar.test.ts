@@ -105,7 +105,7 @@ describe("扫码登录(真罐子)", () => {
 		await w.pass(1_000);
 
 		expect(w.host.logger.error).toHaveBeenCalledWith(
-			"B站扫码登录状态保存失败",
+			"扫码登录状态保存失败",
 			expect.objectContaining({ code: "unavailable", message: expect.any(String) }),
 		);
 		expect(w.secrets.persists).toHaveLength(0);

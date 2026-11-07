@@ -13,8 +13,11 @@
  */
 
 import type { Logger } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n/index.js";
 import { makeApi, makeServiceContext } from "./support/make-api";
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function makeHost() {
 	const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -142,12 +145,13 @@ describe("triggerRefreshCheck — 登记进 track", () => {
 	it("刷新检查抛错:登记进去的这件事不拒,记一条 warn,并放开「已在刷新」的闸", async () => {
 		const host = makeHost();
 		const { api, loadSession } = await makeApi({ serviceCtx: host.serviceCtx });
-		vi.spyOn(api, "checkIfTokenNeedRefresh").mockRejectedValue(new Error("network down"));
+		const error = new Error("network down");
+		vi.spyOn(api, "checkIfTokenNeedRefresh").mockRejectedValue(error);
 
 		await loadSession(COOKIES, "rt");
 
 		await expect(host.tracked[0]).resolves.toBeUndefined();
-		expect(host.logger.warn).toHaveBeenCalledWith(expect.stringContaining("network down"));
+		expect(host.logger.warn).toHaveBeenCalledWith("续期检查异常，本轮结束", { error });
 		// 闸放开了:再来一次(重新恢复登录)照样发起新的一轮。
 		await loadSession(COOKIES, "rt");
 		expect(host.tracked).toHaveLength(2);
@@ -283,6 +287,53 @@ describe("续期链:闸与提交", () => {
 		return w.secrets.persists.length - before;
 	}
 
+	it("同一请求客户端的续期探测日志跟随当前语言，保留原错误与 cause，不强制刷新", async () => {
+		const error = new Error("raw upstream failure", { cause: new Error("socket closed") });
+		const w = await world({ probeThrows: error });
+		for (const [locale, message] of [
+			["zh-CN", "续期探测异常，跳过本轮，不强制刷新"],
+			["en", "Renewal probe failed; skipping this cycle without forcing a refresh"],
+			["ja", "更新確認で例外が発生したため、強制更新せず今回は見送ります"],
+			["zh-TW", "續期探測異常，略過本輪，不強制更新"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			await w.api.checkIfTokenNeedRefresh("T0", "jct0");
+			expect(w.host.logger.warn).toHaveBeenLastCalledWith(message, { error });
+			const fields = vi.mocked(w.host.logger.warn).mock.lastCall?.[1] as
+				| { error: Error }
+				| undefined;
+			expect(fields?.error).toBe(error);
+		}
+		expect(w.host.logger.warn).toHaveBeenCalledTimes(4);
+		expect(w.postForm).not.toHaveBeenCalled();
+		expect(w.onAuthLost).not.toHaveBeenCalled();
+		expect(await savesAfterTouch(w)).toBe(1);
+	});
+
+	it.each([
+		["refresh", -412],
+		["confirm", -412],
+		["refresh", -101],
+		["confirm", -101],
+	] as const)("定时触发的%s失败(%i)只记一次告警，仍保留未提交状态", async (stage, code) => {
+		const w = await world({ [stage]: () => ({ code, message: "raw upstream failure" }) });
+		await w.api.resumeStoredLogin();
+		await Promise.all(w.host.tracked);
+
+		expect(w.host.logger.warn).toHaveBeenCalledTimes(1);
+		expect(w.host.logger.warn).toHaveBeenCalledWith(expect.any(String), {
+			stage,
+			code: code === -101 ? "unauthorized" : "rate_limited",
+			upstreamCode: code,
+			message: "raw upstream failure",
+		});
+		expect(w.onAuthLost).toHaveBeenCalledTimes(code === -101 ? 1 : 0);
+		if (code === -101) expect(w.jar.serialize()).toEqual([]);
+		expect(w.onCookiesRefreshed).not.toHaveBeenCalled();
+		expect(w.secrets.persists).toHaveLength(0);
+		expect(await savesAfterTouch(w)).toBe(0);
+	});
+
 	const run = (w: World, generation?: number) =>
 		generation === undefined
 			? w.api.checkIfTokenNeedRefresh("T0", "jct0")
@@ -343,7 +394,10 @@ describe("续期链:闸与提交", () => {
 
 		expect(w.onAuthLost).not.toHaveBeenCalled();
 		expect(w.jar.serialize()).not.toEqual([]);
-		expect(w.host.logger.warn).toHaveBeenCalledWith(expect.stringContaining("-412"));
+		expect(w.host.logger.warn).toHaveBeenCalledWith(
+			"续期请求失败，保留会话，等待下轮检查",
+			expect.objectContaining({ stage: "refresh", code: "rate_limited", upstreamCode: -412 }),
+		);
 		expect(await savesAfterTouch(w)).toBe(0);
 		expect((await w.api.commitLogin("T0")).ok).toBe(true);
 		expect(await savesAfterTouch(w)).toBe(1);
@@ -383,7 +437,10 @@ describe("续期链:闸与提交", () => {
 
 		expect(w.postForm).not.toHaveBeenCalled();
 		expect(w.onAuthLost).not.toHaveBeenCalled();
-		expect(w.host.logger.warn).toHaveBeenCalledWith(expect.stringContaining("-412"));
+		expect(w.host.logger.warn).toHaveBeenCalledWith(
+			"续期请求失败，保留会话，等待下轮检查",
+			expect.objectContaining({ stage: "probe", code: "rate_limited", upstreamCode: -412 }),
+		);
 		expect(await savesAfterTouch(w)).toBe(1);
 	});
 
@@ -410,7 +467,10 @@ describe("续期链:闸与提交", () => {
 
 		await run(w);
 
-		expect(w.host.logger.error).toHaveBeenCalledWith(expect.stringContaining("存盘失败"));
+		expect(w.host.logger.error).toHaveBeenCalledWith(expect.stringContaining("存盘失败"), {
+			code: "unavailable",
+			message: "测试里让这次落盘失败",
+		});
 		expect(w.onCookiesRefreshed).not.toHaveBeenCalled();
 		expect(w.secrets.persists).toHaveLength(0);
 		// 闸留着(失败那一次已经用掉了):到点也不写 —— 否则盘上是「新 cookie + 旧令牌」。
@@ -434,14 +494,17 @@ describe("续期链:闸与提交", () => {
 	});
 
 	it("探测那次请求抛错:跳过本轮(不强制刷新、不抛),没有刷新 POST,闸放了,零散变化到点照常存", async () => {
-		const w = await world({ probeThrows: new Error("network down") });
+		const error = new Error("network down");
+		const w = await world({ probeThrows: error });
 
 		await run(w); // 探测失败在链内接住,不往外抛
 
 		expect(w.postForm).not.toHaveBeenCalled();
 		expect(w.onCookiesRefreshed).not.toHaveBeenCalled();
 		expect(w.onAuthLost).not.toHaveBeenCalled();
-		expect(w.host.logger.warn).toHaveBeenCalledWith(expect.stringContaining("network down"));
+		expect(w.host.logger.warn).toHaveBeenCalledWith("续期探测异常，跳过本轮，不强制刷新", {
+			error,
+		});
 		expect(await savesAfterTouch(w)).toBe(1);
 	});
 

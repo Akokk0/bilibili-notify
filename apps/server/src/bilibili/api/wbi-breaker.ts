@@ -1,4 +1,5 @@
 import type { Logger } from "@bilibili-notify/internal";
+import { logText } from "../i18n.js";
 import { RISK_BACKOFF_STEPS_MS, RiskControlError, riskBackoffStepMs } from "./risk-control";
 
 export interface WbiBreakerOptions {
@@ -47,9 +48,11 @@ export function createWbiBreaker(options: WbiBreakerOptions): WbiBreaker {
 					const remainingMs = open.until - options.now();
 					if (remainingMs > 0) {
 						const remainingSeconds = Math.ceil(remainingMs / 1_000);
-						options.logger.debug(
-							`[wbi] 熔断中，约 ${remainingSeconds}s 后放一个试探；上一次：${open.lastError.message}`,
-						);
+						options.logger.debug(logText("log.bilibili.wbi.blocked"), {
+							remainingSeconds,
+							upstreamCode: open.lastError.upstreamCode,
+							error: open.lastError,
+						});
 						throw new RiskControlError(
 							`wbi requests are paused by the breaker; one probe goes out in about ${remainingSeconds} seconds. Last failure: ${open.lastError.message}`,
 							open.lastError.upstreamCode,
@@ -79,7 +82,7 @@ export function createWbiBreaker(options: WbiBreakerOptions): WbiBreaker {
 					const result = await call();
 					if (probe && callEpoch === epoch && probeInFlight === probe) {
 						open = undefined;
-						options.logger.info("[wbi] 试探成功，熔断关闭");
+						options.logger.info(logText("log.bilibili.wbi.recovered"));
 					}
 					return result;
 				} catch (error) {
@@ -89,18 +92,29 @@ export function createWbiBreaker(options: WbiBreakerOptions): WbiBreaker {
 							const windowMs = riskBackoffStepMs(level);
 							open = { until: options.now() + windowMs, level, lastError: error };
 							if (level === 0) {
-								options.logger.warn(
-									`[wbi] 熔断开闸 ${windowMs / 1_000}s；上一次：${error.message}`,
-								);
+								options.logger.warn(logText("log.bilibili.wbi.opened"), {
+									windowMs,
+									level: open.level,
+									upstreamCode: error.upstreamCode,
+									error,
+								});
 							} else {
-								options.logger.warn(
-									`[wbi] 熔断升级到 ${windowMs / 1_000}s；上一次：${error.message}`,
-								);
+								options.logger.warn(logText("log.bilibili.wbi.escalated"), {
+									windowMs,
+									level: open.level,
+									upstreamCode: error.upstreamCode,
+									error,
+								});
 							}
 						} else if (!open) {
 							const windowMs = riskBackoffStepMs(0);
 							open = { until: options.now() + windowMs, level: 0, lastError: error };
-							options.logger.warn(`[wbi] 熔断开闸 ${windowMs / 1_000}s；上一次：${error.message}`);
+							options.logger.warn(logText("log.bilibili.wbi.opened"), {
+								windowMs,
+								level: open.level,
+								upstreamCode: error.upstreamCode,
+								error,
+							});
 						}
 					}
 					throw error;

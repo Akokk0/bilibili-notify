@@ -1,6 +1,7 @@
 import type { CookieJar } from "@bilibili-notify/http";
 import {
 	type Disposable,
+	type Failure,
 	type FailureCode,
 	fail,
 	type HttpClient,
@@ -12,11 +13,10 @@ import {
 	type WebSocketLike,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
-import { errorMessageOf } from "../../util/error-message";
 import { type BiliContext, REFRESH_TOKEN_KEY } from "../context";
 import type { AllDynamicResponse } from "../dynamic/types";
 import { failureFromBili } from "../error-codes";
-import { t as serverText, t } from "../i18n.js";
+import { logText, t as serverText, t } from "../i18n.js";
 import { ApiClient } from "./api-client";
 import * as EP from "./endpoints";
 import { RiskControlError } from "./risk-control";
@@ -74,6 +74,9 @@ export interface ApiOptions {
 	 */
 	ctx: BiliContext;
 }
+
+/** 已由续期阶段记过的失败，触发器只接住，不重复告警。 */
+class ReportedRefreshError extends Error {}
 
 export class Api {
 	readonly logger: Logger;
@@ -169,14 +172,14 @@ export class Api {
 	 * 开机预取会让「开机那一刻连不上 B 站」变成整台 BN 起不来(见 start-offline.test.ts)。
 	 */
 	async start(): Promise<void> {
-		this.logger.debug("[init] HTTP 客户端初始化完成");
+		this.logger.debug(logText("log.bilibili.api.initialized"));
 
 		// Daily ticket refresh at midnight (Beijing time, where bilibili.com lives).
 		this.ticketJob = new CronJob(
 			"0 0 * * *",
 			() => {
 				this.updateBiliTicket().catch((e: Error) =>
-					this.logger.error(`[init] 更新 TicketResponse 失败: ${e.message}`),
+					this.logger.error(logText("log.bilibili.api.ticketFailed"), { error: e }),
 				);
 			},
 			null,
@@ -227,7 +230,7 @@ export class Api {
 	private maybeFireAuthLost(code: number, generation = this.generation): void {
 		if (code !== -101) return;
 		if (generation !== this.generation) {
-			this.logger.debug("[auth] 迟到的 -101 问的是上一段登录,不作数");
+			this.logger.debug(logText("log.bilibili.api.staleUnauthorized"));
 			return;
 		}
 		this.fireAuthLost(generation);
@@ -249,7 +252,7 @@ export class Api {
 		try {
 			this.callbacks.onAuthLost?.();
 		} catch (e) {
-			this.logger.warn(`[auth] onAuthLost 回调抛错: ${e}`);
+			this.logger.warn(logText("log.bilibili.api.authLostCallbackFailed"), { error: e });
 		}
 	}
 
@@ -258,8 +261,16 @@ export class Api {
 	 * 仅 B1 做了 timer dispose + loginInfoLoaded 清理,B2/confirm 只 emit 没清,
 	 * 死会话每小时继续 RSA 轮换、isLoginInfoLoaded 仍误报已登录。收敛到一处。
 	 */
-	private async terminateSession(logMsg: string): Promise<void> {
-		this.logger.warn(logMsg);
+	private async terminateSession(
+		stage: "probe" | "refresh" | "confirm",
+		failure: Failure,
+	): Promise<void> {
+		this.logger.warn(logText("log.bilibili.api.sessionTerminated"), {
+			stage,
+			code: failure.code,
+			upstreamCode: failure.upstreamCode,
+			message: failure.message,
+		});
 		// 报的是刚结束的那一段(与拦截器在同一段里报过的那次互相去抖),所以先记下代再往前走。
 		const ended = this.generation;
 		this.closeLoginSession();
@@ -333,7 +344,7 @@ export class Api {
 		try {
 			return JSON.stringify(this.jar.serialize());
 		} catch (e) {
-			this.logger.warn(`[cookie] 获取 cookies 失败: ${e instanceof Error ? e.message : String(e)}`);
+			this.logger.warn(logText("log.bilibili.api.cookiesReadFailed"), { error: e });
 			return undefined;
 		}
 	}
@@ -422,9 +433,11 @@ export class Api {
 			]);
 		}
 
-		this.logger.debug(
-			`[cookie] 载入 ${cookies.length} 条 Cookie,bili_jct=${biliJctCookie ? "存在" : "缺失"},refreshToken=${this.ctx.secrets.get(REFRESH_TOKEN_KEY) === undefined ? "缺失" : "存在"}`,
-		);
+		this.logger.debug(logText("log.bilibili.api.cookiesLoaded"), {
+			count: cookies.length,
+			hasCsrf: Boolean(biliJctCookie),
+			hasRefreshToken: this.ctx.secrets.get(REFRESH_TOKEN_KEY) !== undefined,
+		});
 	}
 
 	/**
@@ -438,11 +451,11 @@ export class Api {
 	private triggerRefreshCheck(): void {
 		const refreshToken = this.ctx.secrets.get<string>(REFRESH_TOKEN_KEY);
 		if (!refreshToken) {
-			this.logger.debug("[cookie] 没有续期令牌,不触发刷新检查");
+			this.logger.debug(logText("log.bilibili.api.noRefreshToken"));
 			return;
 		}
 		if (this.refreshInFlight) {
-			this.logger.debug("[cookie] 刷新检查已在进行,跳过本次触发");
+			this.logger.debug(logText("log.bilibili.api.refreshInFlight"));
 			return;
 		}
 		this.refreshInFlight = true;
@@ -450,7 +463,10 @@ export class Api {
 		// 关停得等它落完再让各写道关门。失败在交进去之前接住。
 		this.serviceCtx.track(
 			this.checkIfTokenNeedRefresh(refreshToken, this.getCSRF() ?? "")
-				.catch((e: Error) => this.logger.warn(`[cookie] Cookie 刷新检查失败: ${e.message}`))
+				.catch((e: unknown) => {
+					if (!(e instanceof ReportedRefreshError))
+						this.logger.warn(logText("log.bilibili.api.refreshCheckFailed"), { error: e });
+				})
 				.finally(() => {
 					this.refreshInFlight = false;
 				}),
@@ -472,7 +488,7 @@ export class Api {
 		// 这一段登录结束:作废任何 in-flight refresh(登出后它不得再 commitLogin 写盘)、停续期、清账号身份缓存。
 		this.closeLoginSession();
 		this.jar.clear();
-		this.logger.info("[cookie] 内存 cookie jar 已清空");
+		this.logger.info(logText("log.bilibili.api.cookiesCleared"));
 	}
 
 	private enableRefreshCookiesInterval(): void {
@@ -493,7 +509,7 @@ export class Api {
 		// 入口 + 每次跨 await 后比对 generation(登录代):一段登录成立(开机恢复 / 恢复备份 / 扫码确认成功)或结束
 		// (登出 / 会话终态 / stop)都会让它往前走,本轮(及其重试链)随即作废,绝不把过期结果写回。
 		if (generation !== this.generation) {
-			this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代,跳过本轮");
+			this.logger.debug(logText("log.bilibili.api.refreshSuperseded"), { stage: "entry" });
 			return;
 		}
 		// 这一串刷新进行中,罐子不许自动存中间状态。闸怎么处置**只在下面的 finally 里决定一次**:
@@ -508,7 +524,7 @@ export class Api {
 				// 跨 await 后必须重校 generation(②修不全:此前缺这一处,旧 refreshToken
 				// 在重登/登出后仍用新 jar 继续刷新)。
 				if (generation !== this.generation) {
-					this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代(fetchCookieInfo 后),跳过本轮");
+					this.logger.debug(logText("log.bilibili.api.refreshSuperseded"), { stage: "probe" });
 					return;
 				}
 				// 续期只在会话真死(请求层翻成 unauthorized,即 -101)时登出;风控、没对照的码、回应形状不对都当
@@ -517,12 +533,15 @@ export class Api {
 				if (!probed.ok) {
 					if (probed.code === "unauthorized") {
 						// 探测即 -101:会话已死,直接终态,不再跑 RSA 链。
-						await this.terminateSession(serverText("bilibili.api.api.text.1"));
+						await this.terminateSession("probe", probed);
 						return;
 					}
-					this.logger.warn(
-						`[cookie] fetchCookieInfo 失败 code=${probed.upstreamCode ?? probed.code} msg=${probed.message},跳过本轮(不判定登录失效,等下轮再试)`,
-					);
+					this.logger.warn(logText("log.bilibili.api.renewalRejected"), {
+						stage: "probe",
+						code: probed.code,
+						upstreamCode: probed.upstreamCode,
+						message: probed.message,
+					});
 					return;
 				}
 				if (!probed.data?.refresh) return;
@@ -532,7 +551,7 @@ export class Api {
 				// 占住 refreshInFlight 阻塞 hourly timer 数分钟。内层 retry 已足够吸收
 				// 瞬时抖动;失败即放弃本轮,等下个 interval 再探(绝不 fall through
 				// 强制刷新 —— 一次抖动触发整条 RSA 轮换会放大风控)。
-				this.logger.warn(`[cookie] 刷新探测失败,跳过本轮(不强制刷新): ${(e as Error).message}`);
+				this.logger.warn(logText("log.bilibili.api.probeFailed"), { error: e });
 				return;
 			}
 
@@ -561,13 +580,17 @@ export class Api {
 			// 加密那两步也跨了 await。罐子只有一个、换号原地换(⑭a 起),换号之后这条旧链再发请求,带的就是新号的 cookie,
 			// 回来的 Set-Cookie 会被当成新会话的收进去 —— 每跨一次 await 都比对,换了就不再发。
 			if (generation !== this.generation) {
-				this.logger.debug("[cookie] 刷新在算 correspond 期间被取代,丢弃");
+				this.logger.debug(logText("log.bilibili.api.refreshSuperseded"), {
+					stage: "correspond-key",
+				});
 				return;
 			}
 
 			const html = await this.client.get(`${EP.COOKIE_REFRESH_CORRESPOND_PATH}/${correspondPath}`);
 			if (generation !== this.generation) {
-				this.logger.debug("[cookie] 刷新在取 correspond 页期间被取代,丢弃");
+				this.logger.debug(logText("log.bilibili.api.refreshSuperseded"), {
+					stage: "correspond-page",
+				});
 				return;
 			}
 			// jsdom 时代取 getElementById("1-name").textContent;页面即
@@ -598,7 +621,7 @@ export class Api {
 			// RSA/correspond/refresh 这串网络往返期间若 cookie 状态已被替换,
 			// 后面的 jar 重置 / 持久化都基于过期前提,丢弃本轮。
 			if (generation !== this.generation) {
-				this.logger.debug("[cookie] 刷新结果在网络往返期间被取代,丢弃");
+				this.logger.debug(logText("log.bilibili.api.refreshSuperseded"), { stage: "refresh" });
 				return;
 			}
 			// 刷新 POST 走过了:罐里可能已经是新 cookie、新令牌还没存。从这里起,除非提交成功或会话终态(`terminateSession`
@@ -609,20 +632,23 @@ export class Api {
 				const shownCode = refreshed.upstreamCode ?? refreshed.code;
 				if (refreshed.code !== "unauthorized") {
 					// 只有 -101 才是会话终态;风控、没对照的码、回应形状不对都是一时失败。不判定登录失效、
-					// 不拆 timer —— 抛可重试错(triggerRefreshCheck 记 warn),闸留着,下个 interval 再试。
+					// 不拆 timer —— 本阶段记一次 warn 后抛错,闸留着,下个 interval 再试。
 					// 死会话由普通请求撞 -101 时清;把别的码也当终态,会把瞬时风控误升级成被动登出。
-					this.logger.warn(
-						`[cookie] 刷新失败 code=${shownCode} msg=${refreshed.message},跳过本轮(不判定登录失效,等下轮再试)`,
+					this.logger.warn(logText("log.bilibili.api.renewalRejected"), {
+						stage: "refresh",
+						code: refreshed.code,
+						upstreamCode: refreshed.upstreamCode,
+						message: refreshed.message,
+					});
+					throw new ReportedRefreshError(
+						serverText("bilibili.api.api.text.3", { value0: shownCode }),
 					);
-					throw new Error(serverText("bilibili.api.api.text.3", { value0: shownCode }));
 				}
 				// 终态(-101):②3 —— B2 此前只 emit 不清理,死会话每小时
 				// 继续 RSA 轮换、isLoginInfoLoaded 误报。统一走 terminateSession 清净。
 				fate = "release";
-				await this.terminateSession(
-					serverText("bilibili.api.api.text.4", { value0: shownCode, value1: refreshed.message }),
-				);
-				throw new Error(
+				await this.terminateSession("refresh", refreshed);
+				throw new ReportedRefreshError(
 					serverText("bilibili.api.api.text.5", { value0: shownCode, value1: refreshed.message }),
 				);
 			}
@@ -641,7 +667,7 @@ export class Api {
 			// confirm POST 返回之后、看码之前先比代数(与刷新那一步同序):被取代的链不许走风控 / 终态分支 ——
 			// 终态会清别人的罐子、判定登录失效、留闸;下面接着就是写盘,同样不能用过期 generation 的结果覆盖更新的登录态。
 			if (generation !== this.generation) {
-				this.logger.debug("[cookie] 刷新确认返回时已被取代,丢弃(不看码、不回写)");
+				this.logger.debug(logText("log.bilibili.api.refreshSuperseded"), { stage: "confirm" });
 				fate = "release";
 				return;
 			}
@@ -650,22 +676,32 @@ export class Api {
 				const shownCode = accepted.upstreamCode ?? accepted.code;
 				if (accepted.code !== "unauthorized") {
 					// confirm 步:同刷新那一步,只有 -101 是终态,别的退避等下轮(不判定登录失效/不拆 timer)。
-					this.logger.warn(`[cookie] 刷新确认失败 code=${shownCode},跳过本轮(等下轮再试)`);
-					throw new Error(serverText("bilibili.api.api.text.7", { value0: shownCode }));
+					this.logger.warn(logText("log.bilibili.api.renewalRejected"), {
+						stage: "confirm",
+						code: accepted.code,
+						upstreamCode: accepted.upstreamCode,
+						message: accepted.message,
+					});
+					throw new ReportedRefreshError(
+						serverText("bilibili.api.api.text.7", { value0: shownCode }),
+					);
 				}
 				// confirm 终态:新旧 cookie 状态不可信,清罐 + 判定登录失效(②3 同款)。
 				fate = "release";
-				await this.terminateSession(serverText("bilibili.api.api.text.8", { value0: shownCode }));
-				throw new Error(serverText("bilibili.api.api.text.9", { value0: shownCode }));
+				await this.terminateSession("confirm", accepted);
+				throw new ReportedRefreshError(
+					serverText("bilibili.api.api.text.9", { value0: shownCode }),
+				);
 			}
 
 			// 提交:罐子此刻的内容(新 cookie)+ 新令牌,同一次原子写。失败时内存里已是新 cookie、盘上仍是上一对,
 			// 响亮记 error;闸留着,下一次提交成功才放。
 			const committed = await this.commitLogin(refreshed.data.refresh_token);
 			if (!committed.ok) {
-				this.logger.error(
-					`[cookie] 刷新后的登录状态存盘失败(内存 cookie 已更新,盘上为旧值,下次启动将回退): ${committed.message}`,
-				);
+				this.logger.error(logText("log.bilibili.api.persistFailed"), {
+					code: committed.code,
+					message: committed.message,
+				});
 				return;
 			}
 			fate = "release";
@@ -673,7 +709,7 @@ export class Api {
 			try {
 				await this.callbacks.onCookiesRefreshed?.();
 			} catch (e) {
-				this.logger.error(`[cookie] onCookiesRefreshed 回调抛了: ${errorMessageOf(e)}`);
+				this.logger.error(logText("log.bilibili.api.refreshedCallbackFailed"), { error: e });
 			}
 		} finally {
 			if (fate === "keep") this.keepUnsaved(hold);
@@ -735,7 +771,7 @@ export class Api {
 			};
 			const data = await once();
 			if (data && typeof data === "object" && data.code === -352) {
-				this.logger.debug("[wbi] 签名请求返回 -352（WBI key 疑似轮换），刷新 wbiKeys 后重试一次");
+				this.logger.debug(logText("log.bilibili.api.wbiKeyRetry"), { upstreamCode: -352 });
 				this.wbiKeys = { imgKey: "", subKey: "" }; // 强制下次 getWbi 重新拉 ticket
 				const retried = await once();
 				// P2:二次仍 -352 时此前**静默返回 -352 body**,外层 this.retry 只认
@@ -759,9 +795,13 @@ export class Api {
 			attempts: 4, // 1 initial + 3 retries
 			baseDelayMs: 200,
 			shouldRetry: (error) => !(error instanceof RiskControlError),
-			onRetry: (err, attempt) => {
-				const message = errorMessageOf(err);
-				this.logger.warn(`[retry] ${label}() 第 ${attempt} 次失败: ${message}`);
+			onRetry: (err, attempt, delayMs) => {
+				this.logger.warn(logText("log.bilibili.api.retry"), {
+					label,
+					attempt,
+					delayMs,
+					error: err,
+				});
 			},
 		});
 	}
@@ -834,7 +874,11 @@ export class Api {
 			: failureFromBili(code, message);
 		if (failure.code === "unknown" && !this.unknownCodesSeen.has(code)) {
 			this.unknownCodesSeen.add(code);
-			this.logger.warn(`[api] ${label}() 收到没有对照的错误码 ${code}：${message}`);
+			this.logger.warn(logText("log.bilibili.api.unknownCode"), {
+				label,
+				upstreamCode: code,
+				message,
+			});
 		}
 		return failure;
 	}
@@ -955,7 +999,7 @@ export class Api {
 				return b3;
 			}
 		} catch (e) {
-			this.logger.warn(`[conn] finger/spi 获取 buvid3 失败: ${(e as Error).message}`);
+			this.logger.warn(logText("log.bilibili.api.buvidFailed"), { error: e });
 		}
 		return "";
 	}

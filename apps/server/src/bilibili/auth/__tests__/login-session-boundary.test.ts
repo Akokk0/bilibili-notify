@@ -324,7 +324,7 @@ describe("⑤ 落盘失败的扫码成功照样是一段新登录", () => {
 		w.secrets.failNext(1);
 		await w.scan("new");
 		expect(w.host.logger.error).toHaveBeenCalledWith(
-			"B站扫码登录状态保存失败",
+			"扫码登录状态保存失败",
 			expect.objectContaining({ code: "unavailable", message: expect.any(String) }),
 		);
 		expect(w.flow.authState().status).toBe("logged-in");

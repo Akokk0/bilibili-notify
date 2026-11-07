@@ -403,7 +403,7 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 		await h.scFake.intervals[0]?.handle.fire();
 
 		await expect(h.scFake.tracked[0]).resolves.toBeUndefined();
-		expect(h.scFake.logger.warn).toHaveBeenCalledWith("B站扫码轮询任务发生异常", {
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith("扫码轮询任务发生异常", {
 			error: expect.objectContaining({ message: "boom" }),
 		});
 		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
@@ -545,7 +545,7 @@ describe("LoginFlow.beginLogin() — 扫码期间的存盘闸", () => {
 
 		await h.scFake.intervals[0]?.handle.fire();
 
-		expect(h.scFake.logger.error).toHaveBeenCalledWith("B站扫码登录状态保存失败", {
+		expect(h.scFake.logger.error).toHaveBeenCalledWith("扫码登录状态保存失败", {
 			code: "unavailable",
 			message: "disk full",
 		});
@@ -1151,7 +1151,7 @@ describe("LoginFlow — 账号头像这条后台线", () => {
 		expect(h.flow.account()).toEqual({ name: "n" });
 		expect(rawOf(h.flow)).toMatchObject({ status: "logged-in", reason: "loggedIn" });
 		expect(h.edges.length).toBe(eventsBefore);
-		expect(h.scFake.logger.warn).toHaveBeenCalledWith("B站账号头像获取失败，本次不写入头像", {
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith("账号头像获取失败，本次不写入头像", {
 			error: expect.objectContaining({ message: "boom" }),
 		});
 	});
@@ -1278,7 +1278,7 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, "风控"));
 		await h.flow.reportAccountInfo();
-		expect(h.scFake.logger.warn).toHaveBeenCalledWith("B站用户卡片获取未成功", {
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith("用户卡片获取未成功", {
 			upstreamCode: -352,
 			code: "rate_limited",
 			message: "风控",
@@ -1319,10 +1319,9 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		expect(rawOf(h.flow).status).toBe("logged-in");
 		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 		expect(liveHeartbeat(h)).toBeDefined();
-		expect(h.scFake.logger.error).toHaveBeenCalledWith(
-			"B站登录状态订阅方抛错，继续通知其他订阅方",
-			{ error: expect.objectContaining({ message: "listener boom" }) },
-		);
+		expect(h.scFake.logger.error).toHaveBeenCalledWith("登录状态订阅方抛错，继续通知其他订阅方", {
+			error: expect.objectContaining({ message: "listener boom" }),
+		});
 	});
 
 	it("算对外的变化本身抛了(防御):接住记 error,状态机照走", async () => {
@@ -1340,7 +1339,7 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		// 账号算不出来也照状态通知:动态轮询与直播监听听的恢复边不能被吞。
 		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 		expect(liveHeartbeat(h)).toBeDefined();
-		expect(h.scFake.logger.error).toHaveBeenCalledWith("B站账号信息计算失败，本次仅比较登录状态", {
+		expect(h.scFake.logger.error).toHaveBeenCalledWith("账号信息计算失败，本次仅比较登录状态", {
 			error: expect.objectContaining({ message: "account boom" }),
 		});
 	});
@@ -2331,13 +2330,10 @@ describe("B站账号诊断", () => {
 		const error = new Error("raw account request failed", { cause: new Error("network") });
 		let count = 0;
 		for (const [locale, text] of [
-			["zh-CN", "B站登录检查暂时失败，保留当前登录状态"],
-			["en", "Bilibili login check temporarily failed; keeping the current login state"],
-			[
-				"ja",
-				"Bilibiliのログイン確認で一時的なエラーが発生しました。現在のログイン状態を保持します",
-			],
-			["zh-TW", "B站登入檢查暫時失敗，保留目前登入狀態"],
+			["zh-CN", "登录检查暂时失败，保留当前登录状态"],
+			["en", "Login check temporarily failed; keeping the current login state"],
+			["ja", "ログイン確認で一時的なエラーが発生しました。現在のログイン状態を保持します"],
+			["zh-TW", "登入檢查暫時失敗，保留目前登入狀態"],
 		] as const) {
 			i18n.set({ locale, voice: "maid" });
 			h.api.fetchMyselfInfo.mockRejectedValueOnce(error);
@@ -2367,10 +2363,9 @@ describe("B站扫码与通知诊断", () => {
 		i18n.set({ locale: "en", voice: "maid" });
 		h.api.fetchLoginQrCode.mockRejectedValueOnce(error);
 		expect(await h.flow.beginLogin()).toMatchObject({ ok: false, code: "unavailable" });
-		expect(h.scFake.logger.warn).toHaveBeenCalledWith(
-			"Failed to fetch the Bilibili login QR code",
-			{ error },
-		);
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith("Failed to fetch the login QR code", {
+			error,
+		});
 		expect(
 			(vi.mocked(h.scFake.logger.warn).mock.calls.at(-1)?.[1] as { error: unknown } | undefined)
 				?.error,

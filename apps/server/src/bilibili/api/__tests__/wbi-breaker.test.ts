@@ -1,5 +1,6 @@
 import type { Logger } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n/index.js";
 import { RiskControlError } from "../risk-control";
 import { createWbiBreaker } from "../wbi-breaker";
 
@@ -204,5 +205,41 @@ describe("wbi 熔断", () => {
 		breaker.reset();
 		await expect(breaker.run(call)).resolves.toBe("after reset");
 		expect(call).toHaveBeenCalledTimes(2);
+	});
+});
+
+afterEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
+});
+
+describe("WBI 熔断诊断", () => {
+	it("开闸后不再出网，按输出时四语给平实说明并保留原风险错误", async () => {
+		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const breaker = createWbiBreaker({ now: () => 1000, logger });
+		const error = new RiskControlError("raw upstream risk", -352);
+		error.cause = new Error("upstream cause");
+		const call = vi.fn(async () => {
+			throw error;
+		});
+		await expect(breaker.run(call)).rejects.toBe(error);
+		for (const [locale, text] of [
+			["zh-CN", "WBI 请求熔断中，暂不发起请求"],
+			["en", "WBI circuit is open; skipping the request"],
+			["ja", "WBIサーキットが開いているため、リクエストを送信しません"],
+			["zh-TW", "WBI 請求熔斷中，暫不發起請求"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			await expect(breaker.run(call)).rejects.toMatchObject({
+				upstreamCode: -352,
+				message: expect.stringContaining("raw upstream risk"),
+			});
+			expect(logger.debug).toHaveBeenLastCalledWith(text, {
+				remainingSeconds: 60,
+				upstreamCode: -352,
+				error,
+			});
+			expect(logger.debug.mock.calls.at(-1)?.[1]?.error).toBe(error);
+		}
+		expect(call).toHaveBeenCalledTimes(1);
 	});
 });
