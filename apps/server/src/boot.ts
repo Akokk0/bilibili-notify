@@ -39,9 +39,9 @@ interface PayloadModule {
 
 export interface BootSelectedPayloadInput {
 	/** 镜像 / 安装包自带的版本。 */
-	imageVersion: string;
+	preinstalledVersion: string;
 	/** 镜像自带那份载荷所在目录(容器里是 `/app`)。 */
-	imagePath: string;
+	preinstalledPath: string;
 	/** 已装载荷的根,如 `/data/versions`。 */
 	versionsRoot: string;
 	maxBootFailures: number;
@@ -54,20 +54,23 @@ export interface BootSelectedPayloadInput {
 
 export interface BootResult {
 	version: string;
-	isImageVersion: boolean;
+	isPreinstalledVersion: boolean;
 }
 
 async function start(
 	loadPayload: BootSelectedPayloadInput["loadPayload"],
 	dir: string,
-	image: { version: string; path: string },
+	preinstalled: { version: string; path: string },
 	env: NodeJS.ProcessEnv,
 ) {
 	// 载荷自己看不见镜像 —— 它只知道自己在哪。可「能退回到哪一版」得知道地板在哪,
 	// 所以由这里传下去。经 env 而不是函数参数:那个导出是**冻在镜像里**的向前兼容
 	// 契约,加参数就等于要求所有未来载荷都跟着改签名。
-	env.BN_IMAGE_VERSION = image.version;
-	env.BN_IMAGE_PATH = image.path;
+	env.BN_PREINSTALLED_VERSION = preinstalled.version;
+	env.BN_PREINSTALLED_PATH = preinstalled.path;
+	// 与 Node 24 的旧载荷兼容；旧名按 ADR-0005 留到下次换 Node 大版本。
+	env.BN_IMAGE_VERSION = preinstalled.version;
+	env.BN_IMAGE_PATH = preinstalled.path;
 	const mod = (await loadPayload(join(dir, "index.mjs"))) as PayloadModule;
 	const startEntry =
 		typeof mod.startServer === "function" ? mod.startServer : mod.startStandaloneServer;
@@ -78,8 +81,8 @@ async function start(
 }
 
 export async function bootSelectedPayload({
-	imageVersion,
-	imagePath,
+	preinstalledVersion,
+	preinstalledPath,
 	versionsRoot,
 	maxBootFailures,
 	loadPayload,
@@ -87,24 +90,29 @@ export async function bootSelectedPayload({
 	env = process.env,
 }: BootSelectedPayloadInput): Promise<BootResult> {
 	const selection = selectVersionForBoot({
-		imageVersion,
-		imagePath,
+		preinstalledVersion,
+		preinstalledPath,
 		versionsRoot,
 		maxBootFailures,
 	});
 
-	if (!selection.isImageVersion) {
+	if (!selection.isPreinstalledVersion) {
 		try {
-			await start(loadPayload, selection.path, { version: imageVersion, path: imagePath }, env);
+			await start(
+				loadPayload,
+				selection.path,
+				{ version: preinstalledVersion, path: preinstalledPath },
+				env,
+			);
 			// 起来了才销账。反过来的话计数永远回到零,坏版本会被无限重试 ——
 			// 自愈等于没有。
 			markBootSucceeded({ versionsRoot, version: selection.version });
-			return { version: selection.version, isImageVersion: false };
+			return { version: selection.version, isPreinstalledVersion: false };
 		} catch (err) {
 			// **刻意不销账**:这一次的尝试要留在账上,累够次数才判死。
 			// 日志里必须带上是哪一版、为什么 —— 否则用户只看到「更新完版本没变」。
 			log(
-				`[boot] 载荷 ${selection.version} 起不来,回落到镜像自带的 ${imageVersion}:` +
+				`[boot] 载荷 ${selection.version} 起不来,回落到镜像自带的 ${preinstalledVersion}:` +
 					`${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
@@ -112,9 +120,14 @@ export async function bootSelectedPayload({
 
 	// 镜像那份要是也起不来,就让它抛出去。静默退 0 的容器会被编排系统当成「正常
 	// 结束」—— 不重启、不报警,用户只看到服务没了而日志里什么都没有。
-	await start(loadPayload, imagePath, { version: imageVersion, path: imagePath }, env);
-	markBootSucceeded({ versionsRoot, version: imageVersion });
-	return { version: imageVersion, isImageVersion: true };
+	await start(
+		loadPayload,
+		preinstalledPath,
+		{ version: preinstalledVersion, path: preinstalledPath },
+		env,
+	);
+	markBootSucceeded({ versionsRoot, version: preinstalledVersion });
+	return { version: preinstalledVersion, isPreinstalledVersion: true };
 }
 
 /**
@@ -135,7 +148,7 @@ async function importPayload(entryPath: string): Promise<unknown> {
  * 入口存在的全部意义就是「在加载服务端之前只牵最少的东西」。往上找的那一步与它共用
  * 一个只牵 node 内建的小模块(`runtime/nearest-package-json.ts`),别再各抄一份。
  */
-function readImageVersion(here: string): string {
+function readPreinstalledVersion(here: string): string {
 	// bundle 形态下 package.json 与 boot.mjs 同级(容器),外置 lib 形态下它在 `lib/`
 	// 的上一层(桌面壳);再多一层是余量。
 	const pkgPath = findNearestPackageJson(here, 2);
@@ -155,8 +168,8 @@ function readImageVersion(here: string): string {
 if (isEntrypoint(import.meta.url)) {
 	const here = dirname(fileURLToPath(import.meta.url));
 	void bootSelectedPayload({
-		imageVersion: readImageVersion(here),
-		imagePath: here,
+		preinstalledVersion: readPreinstalledVersion(here),
+		preinstalledPath: here,
 		// 桌面壳用 `--data-dir` 传用户数据目录,容器把它写在 yaml 里 —— 只看
 		// BN_DATA_DIR 的话这两条路都会去错目录找版本,而且两边都不报错。
 		versionsRoot: resolveVersionsRoot({

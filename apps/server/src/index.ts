@@ -722,7 +722,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
 			// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
 			// 「没得退」,而不是瞎猜一个版本号。
-			imageVersion: normalizeOptionalEnv(env.BN_IMAGE_VERSION) ?? payloadVersion,
+			preinstalledVersion:
+				normalizeOptionalEnv(env.BN_PREINSTALLED_VERSION?.trim()) ??
+				normalizeOptionalEnv(env.BN_IMAGE_VERSION?.trim()) ??
+				payloadVersion,
 			// 和 boot.mjs 那侧(update/versions-root.ts)算的是同一个目录 —— 这段路径
 			// 只写一处,写岔了两边都不报错,症状是「升完了重启还是旧版本」。
 			versionsRoot: versionsRootIn(runtime.hostRoot),

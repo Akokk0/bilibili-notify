@@ -53,7 +53,7 @@ describe("升级之后的「本次更新」接在开机路径上 e2e", () => {
 	let handle: ServerHandle | undefined;
 
 	const url = (path: string) => `http://127.0.0.1:${port}${path}`;
-	const boot = async (version: string) => {
+	const boot = async (version: string, extraEnv: NodeJS.ProcessEnv = {}) => {
 		running.version = version;
 		handle = await startServer({
 			argv: [
@@ -66,7 +66,7 @@ describe("升级之后的「本次更新」接在开机路径上 e2e", () => {
 				"--log-level",
 				"silent",
 			],
-			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1", ...extraEnv },
 			bundleUrl: pathToFileURL(join(payloadDir, "index.mjs")).href,
 		});
 	};
@@ -120,6 +120,21 @@ describe("升级之后的「本次更新」接在开机路径上 e2e", () => {
 
 		await boot("1.1.0");
 		expect(await noticesOf()).toHaveLength(1);
+	});
+
+	it.each([
+		[{ BN_PREINSTALLED_VERSION: "0.9.0", BN_IMAGE_VERSION: "0.8.0" }, "0.9.0"],
+		[{ BN_IMAGE_VERSION: "0.8.0" }, "0.8.0"],
+		[{ BN_PREINSTALLED_VERSION: "  ", BN_IMAGE_VERSION: "0.8.0" }, "0.8.0"],
+		[{}, null],
+	])("预装版本新名优先、旧名回退，直接启动以自身为底：%j", async (env, expected) => {
+		await boot("1.0.0", env);
+		const response = await fetch(url("/api/system/update"));
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			currentVersion: "1.0.0",
+			rollbackTarget: expected,
+		});
 	});
 
 	it("开发版开机什么都不记", async () => {

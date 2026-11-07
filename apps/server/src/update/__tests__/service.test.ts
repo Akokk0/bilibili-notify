@@ -169,7 +169,7 @@ function makeService(
 	overrides: {
 		root?: string;
 		currentVersion?: string;
-		imageVersion?: string;
+		preinstalledVersion?: string;
 		trustedKeys?: readonly string[];
 		settings?: Partial<UpdateSettings>;
 		nodeMajor?: number;
@@ -184,7 +184,7 @@ function makeService(
 		ctx,
 		service: createUpdateService({
 			currentVersion: overrides.currentVersion ?? "0.8.0",
-			imageVersion: overrides.imageVersion ?? "0.8.0",
+			preinstalledVersion: overrides.preinstalledVersion ?? "0.8.0",
 			versionsRoot,
 			nodeMajor: overrides.nodeMajor ?? 24,
 			trustedKeys: overrides.trustedKeys ?? [],
@@ -513,7 +513,7 @@ describe("createUpdateService —— 装完顺手打扫", () => {
 		const { service, versionsRoot } = makeService({
 			trustedKeys: [key.spkiBase64],
 			currentVersion: "0.10.0",
-			imageVersion: "0.8.0",
+			preinstalledVersion: "0.8.0",
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
 		mkdirSync(join(versionsRoot, "0.10.0"), { recursive: true });
@@ -686,7 +686,7 @@ describe("createUpdateService —— 回退", () => {
 		const { service, versionsRoot } = makeService({
 			trustedKeys: [key.spkiBase64],
 			currentVersion: "0.10.0",
-			imageVersion: "0.8.0",
+			preinstalledVersion: "0.8.0",
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
 		mkdirSync(join(versionsRoot, "0.10.0"), { recursive: true });
@@ -702,7 +702,7 @@ describe("createUpdateService —— 回退", () => {
 		const { service, versionsRoot } = makeService({
 			trustedKeys: [key.spkiBase64],
 			currentVersion: "0.9.0",
-			imageVersion: "0.8.0",
+			preinstalledVersion: "0.8.0",
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
 
@@ -718,7 +718,7 @@ describe("createUpdateService —— 回退", () => {
 		// 一行日志都没有 —— 最难查的那类症状。
 		const { service, versionsRoot } = makeService({
 			currentVersion: "1.3.0",
-			imageVersion: "1.2.0",
+			preinstalledVersion: "1.2.0",
 			trustedKeys: [makeKey().spkiBase64],
 		});
 		mkdirSync(join(versionsRoot, "1.1.0"), { recursive: true });
@@ -734,7 +734,7 @@ describe("createUpdateService —— 回退", () => {
 	it("上一版已被自愈判死 → 跳过它,别把人退进一个开不了机的版本", async () => {
 		const { service, versionsRoot } = makeService({
 			currentVersion: "0.10.0",
-			imageVersion: "0.8.0",
+			preinstalledVersion: "0.8.0",
 			trustedKeys: [makeKey().spkiBase64],
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
@@ -748,7 +748,7 @@ describe("createUpdateService —— 回退", () => {
 	});
 
 	it("已经在镜像那版上 → 没得退,别给用户一个按了没反应的按钮", async () => {
-		const { service } = makeService({ currentVersion: "0.8.0", imageVersion: "0.8.0" });
+		const { service } = makeService({ currentVersion: "0.8.0", preinstalledVersion: "0.8.0" });
 
 		expect(service.getStatus().rollbackTarget).toBeNull();
 		expect((await service.rollback()).state).toMatchObject({
@@ -763,7 +763,7 @@ describe("createUpdateService —— 回退", () => {
 		// 活不过一次开面板。钉子在盘上,状态就得把它报出来。
 		const { service, versionsRoot } = makeService({
 			currentVersion: "0.9.0",
-			imageVersion: "0.8.0",
+			preinstalledVersion: "0.8.0",
 			trustedKeys: [makeKey().spkiBase64],
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
@@ -776,7 +776,7 @@ describe("createUpdateService —— 回退", () => {
 	it("钉的那版目录已经没了 → 报没钉(和选版那边同一套判定,别让一颗死钉子永远压着自动检查)", async () => {
 		const { service, versionsRoot } = makeService({
 			currentVersion: "0.9.0",
-			imageVersion: "0.8.0",
+			preinstalledVersion: "0.8.0",
 			trustedKeys: [makeKey().spkiBase64],
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
@@ -795,7 +795,7 @@ describe("createUpdateService —— 回退", () => {
 		const { service, versionsRoot } = makeService({
 			trustedKeys: [key.spkiBase64],
 			currentVersion: "0.9.0",
-			imageVersion: "0.8.0",
+			preinstalledVersion: "0.8.0",
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
 		await service.rollback();
@@ -1038,7 +1038,7 @@ describe("createUpdateService —— 撤回", () => {
 		const { service, versionsRoot } = makeService({
 			trustedKeys: [key.spkiBase64],
 			currentVersion: "0.9.1",
-			imageVersion: "0.8.0",
+			preinstalledVersion: "0.8.0",
 		});
 		mkdirSync(join(versionsRoot, "0.9.1"), { recursive: true });
 
@@ -1085,7 +1085,7 @@ describe("createUpdateService —— 回退撞上进行中的下载", () => {
 		const { service, versionsRoot } = makeService({
 			trustedKeys: [key.spkiBase64],
 			currentVersion: "0.9.0",
-			imageVersion: "0.8.0",
+			preinstalledVersion: "0.8.0",
 		});
 		mkdirSync(join(versionsRoot, "0.9.0"), { recursive: true });
 

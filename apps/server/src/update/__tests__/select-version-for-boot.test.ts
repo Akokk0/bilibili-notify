@@ -45,15 +45,15 @@ describe("selectVersionForBoot", () => {
 		const versionsRoot = versionsWith(root, "0.9.0");
 
 		const selection = selectVersionForBoot({
-			imageVersion: "0.8.0",
-			imagePath: join(root, "app"),
+			preinstalledVersion: "0.8.0",
+			preinstalledPath: join(root, "app"),
 			versionsRoot,
 			maxBootFailures: 3,
 		});
 
 		expect(selection.version).toBe("0.9.0");
 		expect(selection.path).toBe(join(versionsRoot, "0.9.0"));
-		expect(selection.isImageVersion).toBe(false);
+		expect(selection.isPreinstalledVersion).toBe(false);
 	});
 
 	it("不像版本号的目录一律不当候选 —— 一个日期命名的备份会被读成主版本 2026", () => {
@@ -64,8 +64,8 @@ describe("selectVersionForBoot", () => {
 		const versionsRoot = versionsWith(root, "0.9.0", "2026-09-01", "backup");
 
 		const selection = selectVersionForBoot({
-			imageVersion: "0.8.0",
-			imagePath: join(root, "app"),
+			preinstalledVersion: "0.8.0",
+			preinstalledPath: join(root, "app"),
 			versionsRoot,
 			maxBootFailures: 3,
 		});
@@ -79,8 +79,8 @@ describe("selectVersionForBoot", () => {
 		const root = tempRoot();
 		const versionsRoot = versionsWith(root, "0.8.0", "0.9.0");
 		const input = {
-			imageVersion: "0.7.0",
-			imagePath: join(root, "app"),
+			preinstalledVersion: "0.7.0",
+			preinstalledPath: join(root, "app"),
 			versionsRoot,
 			maxBootFailures: 3,
 		};
@@ -98,8 +98,8 @@ describe("selectVersionForBoot", () => {
 		const root = tempRoot();
 		const versionsRoot = versionsWith(root, "0.8.0", "0.9.0");
 		const input = {
-			imageVersion: "0.7.0",
-			imagePath: join(root, "app"),
+			preinstalledVersion: "0.7.0",
+			preinstalledPath: join(root, "app"),
 			versionsRoot,
 			maxBootFailures: 3,
 		};
@@ -122,8 +122,8 @@ describe("selectVersionForBoot", () => {
 		const root = tempRoot();
 		const versionsRoot = versionsWith(root, "0.8.0", "0.9.0");
 		const input = {
-			imageVersion: "0.7.0",
-			imagePath: join(root, "app"),
+			preinstalledVersion: "0.7.0",
+			preinstalledPath: join(root, "app"),
 			versionsRoot,
 			maxBootFailures: 3,
 		};
@@ -140,8 +140,8 @@ describe("selectVersionForBoot", () => {
 		const root = tempRoot();
 
 		const selection = selectVersionForBoot({
-			imageVersion: "0.8.0",
-			imagePath: join(root, "app"),
+			preinstalledVersion: "0.8.0",
+			preinstalledPath: join(root, "app"),
 			// 目录压根还不存在 —— 这是绝大多数用户的常态,不是错误。
 			versionsRoot: join(root, "versions"),
 			maxBootFailures: 3,
@@ -149,7 +149,7 @@ describe("selectVersionForBoot", () => {
 
 		expect(selection.version).toBe("0.8.0");
 		expect(selection.path).toBe(join(root, "app"));
-		expect(selection.isImageVersion).toBe(true);
+		expect(selection.isPreinstalledVersion).toBe(true);
 	});
 
 	it("用户拉了更新的镜像 → 不被 /data 里的旧载荷压住", () => {
@@ -160,14 +160,14 @@ describe("selectVersionForBoot", () => {
 		const versionsRoot = versionsWith(root, "0.9.0");
 
 		const selection = selectVersionForBoot({
-			imageVersion: "0.10.0",
-			imagePath: join(root, "app"),
+			preinstalledVersion: "0.10.0",
+			preinstalledPath: join(root, "app"),
 			versionsRoot,
 			maxBootFailures: 3,
 		});
 
 		expect(selection.version).toBe("0.10.0");
-		expect(selection.isImageVersion).toBe(true);
+		expect(selection.isPreinstalledVersion).toBe(true);
 	});
 });
 
@@ -185,15 +185,15 @@ describe("selectVersionForBoot —— 回退用的钉子", () => {
 		pinVersion({ versionsRoot, version: "0.9.0" });
 
 		const selection = selectVersionForBoot({
-			imageVersion: "0.8.0",
-			imagePath: "/app",
+			preinstalledVersion: "0.8.0",
+			preinstalledPath: "/app",
 			versionsRoot,
 			maxBootFailures: 3,
 		});
 
 		// 不钉的话这里会选 0.10.0 —— 而 0.10.0 正是用户刚刚退出来的那一版。
 		expect(selection.version).toBe("0.9.0");
-		expect(selection.isImageVersion).toBe(false);
+		expect(selection.isPreinstalledVersion).toBe(false);
 	});
 
 	it("钉住镜像自带那版 → 跑镜像那份", () => {
@@ -203,13 +203,13 @@ describe("selectVersionForBoot —— 回退用的钉子", () => {
 		pinVersion({ versionsRoot, version: "0.8.0" });
 
 		const selection = selectVersionForBoot({
-			imageVersion: "0.8.0",
-			imagePath: "/app",
+			preinstalledVersion: "0.8.0",
+			preinstalledPath: "/app",
 			versionsRoot,
 			maxBootFailures: 3,
 		});
 
-		expect(selection).toEqual({ version: "0.8.0", path: "/app", isImageVersion: true });
+		expect(selection).toEqual({ version: "0.8.0", path: "/app", isPreinstalledVersion: true });
 	});
 
 	it("钉住的版本起不来 → 自愈压过钉子,不能钉死在一个开不了机的版本上", () => {
@@ -222,15 +222,15 @@ describe("selectVersionForBoot —— 回退用的钉子", () => {
 		// 脱身的死局。
 		for (let i = 0; i < 3; i++)
 			selectVersionForBoot({
-				imageVersion: "0.8.0",
-				imagePath: "/app",
+				preinstalledVersion: "0.8.0",
+				preinstalledPath: "/app",
 				versionsRoot,
 				maxBootFailures: 3,
 			});
 
 		const selection = selectVersionForBoot({
-			imageVersion: "0.8.0",
-			imagePath: "/app",
+			preinstalledVersion: "0.8.0",
+			preinstalledPath: "/app",
 			versionsRoot,
 			maxBootFailures: 3,
 		});
@@ -243,8 +243,8 @@ describe("selectVersionForBoot —— 回退用的钉子", () => {
 		pinVersion({ versionsRoot, version: "0.9.0" });
 
 		const selection = selectVersionForBoot({
-			imageVersion: "0.8.0",
-			imagePath: "/app",
+			preinstalledVersion: "0.8.0",
+			preinstalledPath: "/app",
 			versionsRoot,
 			maxBootFailures: 3,
 		});
@@ -260,13 +260,13 @@ describe("selectVersionForBoot —— 回退用的钉子", () => {
 		// 拉新镜像是一次明确的用户动作,它压过之前那次回退的意思。否则用户会
 		// 拉着 0.11.0 的镜像、看着 0.9.0 的界面,而且没有任何线索。
 		const selection = selectVersionForBoot({
-			imageVersion: "0.11.0",
-			imagePath: "/app",
+			preinstalledVersion: "0.11.0",
+			preinstalledPath: "/app",
 			versionsRoot,
 			maxBootFailures: 3,
 		});
 
-		expect(selection).toEqual({ version: "0.11.0", path: "/app", isImageVersion: true });
+		expect(selection).toEqual({ version: "0.11.0", path: "/app", isPreinstalledVersion: true });
 	});
 
 	it("拔掉钉子就回到取最新", () => {
@@ -278,8 +278,8 @@ describe("selectVersionForBoot —— 回退用的钉子", () => {
 
 		expect(
 			selectVersionForBoot({
-				imageVersion: "0.8.0",
-				imagePath: "/app",
+				preinstalledVersion: "0.8.0",
+				preinstalledPath: "/app",
 				versionsRoot,
 				maxBootFailures: 3,
 			}).version,
@@ -312,7 +312,9 @@ describe("撤回判死与自愈判死", () => {
 		markVersionRevoked({ versionsRoot, version: "0.9.0" });
 		markBootSucceeded({ versionsRoot, version: "0.9.0" });
 
-		expect(readBootView({ versionsRoot, imageVersion: "0.8.0" }).unbootable).toContain("0.9.0");
+		expect(readBootView({ versionsRoot, preinstalledVersion: "0.8.0" }).unbootable).toContain(
+			"0.9.0",
+		);
 	});
 
 	it("选版不选被撤回的版本,哪怕它最新", () => {
@@ -321,8 +323,8 @@ describe("撤回判死与自愈判死", () => {
 		markVersionRevoked({ versionsRoot, version: "0.9.0" });
 
 		const selection = selectVersionForBoot({
-			imageVersion: "0.8.0",
-			imagePath: join(root, "app"),
+			preinstalledVersion: "0.8.0",
+			preinstalledPath: join(root, "app"),
 			versionsRoot,
 			maxBootFailures: 3,
 		});
@@ -336,6 +338,6 @@ describe("撤回判死与自愈判死", () => {
 		pinVersion({ versionsRoot, version: "0.9.0" });
 		markVersionRevoked({ versionsRoot, version: "0.9.0" });
 
-		expect(readBootView({ versionsRoot, imageVersion: "0.8.0" }).pinned).toBeNull();
+		expect(readBootView({ versionsRoot, preinstalledVersion: "0.8.0" }).pinned).toBeNull();
 	});
 });

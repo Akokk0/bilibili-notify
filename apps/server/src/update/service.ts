@@ -50,7 +50,7 @@ export interface CreateUpdateServiceInput {
 	/** 当前正在跑的那份载荷的版本。 */
 	currentVersion: string;
 	/** 镜像 / 安装包自带的版本 —— 回退的地板。 */
-	imageVersion: string;
+	preinstalledVersion: string;
 	versionsRoot: string;
 	nodeMajor: number;
 	/** 内置信任列表。**空 = 这个构建不做自主升级**。 */
@@ -88,7 +88,7 @@ export interface UpdateService {
 export function createUpdateService(input: CreateUpdateServiceInput): UpdateService {
 	const {
 		currentVersion,
-		imageVersion,
+		preinstalledVersion,
 		versionsRoot,
 		nodeMajor,
 		trustedKeys,
@@ -150,15 +150,15 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 		let best: string | null = null;
 		for (const candidate of installed) {
 			if (compareVersions(candidate, currentVersion) >= 0) continue;
-			if (compareVersions(candidate, imageVersion) < 0) continue;
+			if (compareVersions(candidate, preinstalledVersion) < 0) continue;
 			if (unbootable.includes(candidate)) continue;
 			if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 		}
 		if (best !== null) return best;
 		// 镜像那份不在 `installed` 里(它不住在 versionsRoot),但同样要过判死这一关 ——
 		// 撤回的就是它时,退回去等于把用户送回一个厂商已经召回的构建。
-		if (unbootable.includes(imageVersion)) return null;
-		return compareVersions(imageVersion, currentVersion) < 0 ? imageVersion : null;
+		if (unbootable.includes(preinstalledVersion)) return null;
+		return compareVersions(preinstalledVersion, currentVersion) < 0 ? preinstalledVersion : null;
 	}
 
 	/**
@@ -208,7 +208,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	function status(): UpdateStatus {
 		// 每次现读:钉子是靠重启生效的,内存态活不过那一下,盘上的才是真相。一次读出
 		// 整幅快照,回退目标、钉子、和「算不算 ready」说的才是同一个盘面。
-		const view = readBootView({ versionsRoot, imageVersion });
+		const view = readBootView({ versionsRoot, preinstalledVersion });
 		return {
 			currentVersion,
 			rollbackTarget: rollbackTarget(view),
@@ -517,7 +517,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 			// 「轮到我时还在跑的那趟」—— 前面那趟检查可能正是在这条排队期间把下载发起的。
 			return queued(async () => {
 				while (downloadJob !== null) await downloadJob;
-				const target = rollbackTarget(readBootView({ versionsRoot, imageVersion }));
+				const target = rollbackTarget(readBootView({ versionsRoot, preinstalledVersion }));
 				if (target === null) return fail("nothing-to-roll-back");
 				pinVersion({ versionsRoot, version: target });
 				state = { phase: "rolled-back", target };

@@ -5,9 +5,9 @@ import { compareVersions } from "./version-order.js";
 
 export interface SelectVersionForBootInput {
 	/** 镜像 / 安装包自带的版本 —— 换不掉的那个底。 */
-	imageVersion: string;
+	preinstalledVersion: string;
 	/** 镜像自带那份载荷的位置(容器里是 `/app`)。 */
-	imagePath: string;
+	preinstalledPath: string;
 	/** 已装载荷的根,如 `/data/versions`。 */
 	versionsRoot: string;
 	/** 连续启动失败多少次就把一个版本判死。 */
@@ -82,7 +82,7 @@ export interface BootSelection {
 	version: string;
 	path: string;
 	/** 选中的是镜像自带那份(没有可用载荷,或载荷都比它旧/被判死)。 */
-	isImageVersion: boolean;
+	isPreinstalledVersion: boolean;
 }
 
 /**
@@ -93,18 +93,18 @@ export interface BootSelection {
  * 否则症状是「我明明拉了新镜像,怎么还是旧版」,而且完全没有线索。
  */
 export function selectVersionForBoot({
-	imageVersion,
-	imagePath,
+	preinstalledVersion,
+	preinstalledPath,
 	versionsRoot,
 	maxBootFailures,
 }: SelectVersionForBootInput): BootSelection {
 	const state = readState(versionsRoot);
 	const installed = installedVersions(versionsRoot);
 
-	const pinned = usablePin(state, installed, imageVersion);
+	const pinned = usablePin(state, installed, preinstalledVersion);
 	if (pinned !== null) {
-		if (pinned === imageVersion)
-			return { version: imageVersion, path: imagePath, isImageVersion: true };
+		if (pinned === preinstalledVersion)
+			return { version: preinstalledVersion, path: preinstalledPath, isPreinstalledVersion: true };
 		return recordAttempt(state, versionsRoot, pinned, maxBootFailures);
 	}
 
@@ -112,11 +112,12 @@ export function selectVersionForBoot({
 	let best: string | null = null;
 	for (const candidate of installed) {
 		if (blocked.includes(candidate)) continue;
-		if (compareVersions(candidate, imageVersion) <= 0) continue;
+		if (compareVersions(candidate, preinstalledVersion) <= 0) continue;
 		if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 	}
 
-	if (best === null) return { version: imageVersion, path: imagePath, isImageVersion: true };
+	if (best === null)
+		return { version: preinstalledVersion, path: preinstalledPath, isPreinstalledVersion: true };
 
 	return recordAttempt(state, versionsRoot, best, maxBootFailures);
 }
@@ -131,13 +132,13 @@ export function selectVersionForBoot({
 function usablePin(
 	state: BootState,
 	installed: readonly string[],
-	imageVersion: string,
+	preinstalledVersion: string,
 ): string | null {
 	const { pinned } = state;
 	if (!pinned) return null;
 	if (unbootable(state).includes(pinned)) return null;
-	if (compareVersions(imageVersion, pinned) > 0) return null;
-	if (pinned === imageVersion) return pinned;
+	if (compareVersions(preinstalledVersion, pinned) > 0) return null;
+	if (pinned === preinstalledVersion) return pinned;
 	return installed.includes(pinned) ? pinned : null;
 }
 
@@ -156,12 +157,12 @@ function recordAttempt(
 	if (attempts >= maxBootFailures) next.failed = [...state.failed, version];
 	writeState(versionsRoot, next);
 	// 版本目录的路径只在这一处拼 —— 这个文件存在的理由就是这条公式只有一份。
-	return { version, path: join(versionsRoot, version), isImageVersion: false };
+	return { version, path: join(versionsRoot, version), isPreinstalledVersion: false };
 }
 
 export interface ReadBootViewInput {
 	versionsRoot: string;
-	imageVersion: string;
+	preinstalledVersion: string;
 }
 
 /** 下次开机时选版看到的那幅图景。 */
@@ -200,11 +201,11 @@ export function readFailedVersions(versionsRoot: string): string[] {
  * 分三次读的话面板会看到一幅拼接出来的、任何一刻都不曾真实存在过的图景 ——
  * 而这幅图景正是用来预测「下次开机会发生什么」的。顺带也省掉两次同步 IO。
  */
-export function readBootView({ versionsRoot, imageVersion }: ReadBootViewInput): BootView {
+export function readBootView({ versionsRoot, preinstalledVersion }: ReadBootViewInput): BootView {
 	const state = readState(versionsRoot);
 	const installed = installedVersions(versionsRoot);
 	return {
-		pinned: usablePin(state, installed, imageVersion),
+		pinned: usablePin(state, installed, preinstalledVersion),
 		unbootable: unbootable(state),
 		installed,
 	};
