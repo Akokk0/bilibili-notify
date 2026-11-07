@@ -40,7 +40,7 @@ import type {
 	ExtensionSourceContext,
 	SourceDef,
 } from "@bilibili-notify/internal/extension";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import type { ImageStore } from "../images/image-store.js";
 import { pickBoundMembers } from "../util/bound-members.js";
 import { errorMessageOf } from "../util/error-message.js";
@@ -278,9 +278,9 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	/** 上一次 `health()` 的毛病;同一句连读只记一遍,好了再坏会重新记。 */
 	let lastHealthProblem: string | undefined;
 
-	function refuseHealth(problem: string): never {
+	function refuseHealth(problem: string, error?: unknown): never {
 		if (lastHealthProblem !== problem) {
-			logger.warn(`拓展来源 ${id} 的 health(): ${problem}`);
+			logger.warn(logText("log.extension.healthInvalid"), { extensionId: id, problem, error });
 			lastHealthProblem = problem;
 		}
 		throw new Error(`extension ${id}: health() ${problem}`);
@@ -291,7 +291,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		try {
 			raw = def.health?.();
 		} catch (err) {
-			return refuseHealth(`threw: ${errorMessageOf(err)}`);
+			return refuseHealth(`threw: ${errorMessageOf(err)}`, err);
 		}
 		if (catchThenableRejection(raw)) {
 			// 同步读口不等人;是 thenable 就接住它日后的拒绝,再拒收。
@@ -398,11 +398,11 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		try {
 			stored = await opts.images.read(ref);
 		} catch (err) {
-			logger.debug(`图库读 ${ref} 出错,这张图只放引用: ${errorMessageOf(err)}`);
+			logger.debug(logText("log.extension.imageReadFailed"), { ref, error: err });
 			return { ref };
 		}
 		if (stored === undefined) {
-			logger.debug(`图库里读不到 ${ref},这张图只放引用`);
+			logger.debug(logText("log.extension.imageMissing"), { ref });
 			return { ref };
 		}
 		return {
@@ -520,17 +520,17 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	 */
 	function stillOpen(kind: ExtensionReportKind): boolean {
 		if (!stopped) return true;
-		logger.debug(`来源已停下,队里还没交出去的 ${kind} 上报丢弃`);
+		logger.debug(logText("log.extension.queuedReportDropped"), { kind });
 		return false;
 	}
 
 	function enqueue(kind: ExtensionReportKind, job: () => void | Promise<void>): void {
 		if (stopped) {
-			logger.warn(`来源已停下,还在上报 ${kind}(丢弃;拓展的 stop() 之后不许再上报)`);
+			logger.warn(logText("log.extension.stoppedReportDropped"), { kind });
 			return;
 		}
 		queue.run(REPORT_QUEUE_KEY, job).catch((err: unknown) => {
-			logger.error(`处理拓展的 ${kind} 上报时出错(丢弃): ${errorMessageOf(err)}`);
+			logger.error(logText("log.extension.reportFailed"), { kind, error: err });
 		});
 	}
 
@@ -599,7 +599,10 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			try {
 				raw = await def.searchCreators(query, signal);
 			} catch (err) {
-				logger.warn(`搜人抛了: ${errorMessageOf(err)}`);
+				logger.warn(logText("log.extension.sourceCallFailed"), {
+					operation: "searchCreators",
+					error: err,
+				});
 				return fail("unavailable", reasonOf(err));
 			}
 			const read = readResult(raw);
@@ -610,7 +613,10 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			if (!parsed.success) {
 				// 🔴 点名哪儿不对:吞成一句「出错了」的话,拓展作者只能对着黑盒猜。
 				const detail = formatZodIssues(parsed.error).join(";");
-				logger.warn(`搜人交回的候选形状不对: ${detail}`);
+				logger.warn(logText("log.extension.sourceResultInvalid"), {
+					operation: "searchCreators",
+					detail,
+				});
 				return fail("invalid", t("extension.source.invalidCandidates", { detail }));
 			}
 			return ok({ candidates: parsed.data as CreatorCandidate[] });
@@ -622,13 +628,19 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			try {
 				raw = await fetchProfile(identity, signal);
 			} catch (err) {
-				logger.warn(`取资料抛了: ${errorMessageOf(err)}`);
+				logger.warn(logText("log.extension.sourceCallFailed"), {
+					operation: "fetchProfile",
+					error: err,
+				});
 				return fail("unavailable", reasonOf(err));
 			}
 			const read = readResult(raw);
 			if (read.kind === "failure") return read.failure;
 			const refuse = (reasons: readonly string[]): Failure => {
-				logger.warn(`取资料交回的形状不对: ${reasons.join(";")}`);
+				logger.warn(logText("log.extension.sourceResultInvalid"), {
+					operation: "fetchProfile",
+					reasons,
+				});
 				reject("profile", identity.externalId, reasons);
 				return invalidResult(reasons);
 			};
@@ -653,14 +665,20 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 								signal,
 							);
 						} catch (err) {
-							logger.warn(`拉取直播状态抛了: ${errorMessageOf(err)}`);
+							logger.warn(logText("log.extension.sourceCallFailed"), {
+								operation: "fetchLiveStatus",
+								error: err,
+							});
 							return fail("unavailable", reasonOf(err));
 						}
 						const checked = checkExtensionLiveStatus(raw);
 						if (!checked.ok) {
 							const reasons = checked.issues.map(describeIssue);
 							const detail = reasons.join(";");
-							logger.warn(`拉取直播状态交回的形状不对: ${detail}`);
+							logger.warn(logText("log.extension.sourceResultInvalid"), {
+								operation: "fetchLiveStatus",
+								detail,
+							});
 							reject("live", identity.externalId, reasons);
 							return fail("invalid", t("extension.source.invalidResult", { detail }));
 						}

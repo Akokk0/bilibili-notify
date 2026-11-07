@@ -1,3 +1,4 @@
+import { logMessage } from "../../__tests__/support/log-message.js";
 /**
  * 集成上下文 —— 「名册 + 收尾钩子 + 时限 + 停后拒收」这套生命周期。
  *
@@ -11,6 +12,7 @@ import { inertSettings } from "../../__tests__/support/inert-settings.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { i18n } from "../../i18n/index.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { createIntegrationContext } from "../context.js";
@@ -18,10 +20,10 @@ import { createIntegrationContext } from "../context.js";
 function recordingLogger() {
 	const lines: string[] = [];
 	const logger: Logger = {
-		info: (m) => lines.push(`info ${m}`),
-		warn: (m) => lines.push(`warn ${m}`),
-		error: (m) => lines.push(`error ${m}`),
-		debug: (m) => lines.push(`debug ${m}`),
+		info: (m, ...args) => lines.push(`info ${logMessage(m, args)}`),
+		warn: (m, ...args) => lines.push(`warn ${logMessage(m, args)}`),
+		error: (m, ...args) => lines.push(`error ${logMessage(m, args)}`),
+		debug: (m, ...args) => lines.push(`debug ${logMessage(m, args)}`),
 	};
 	return { logger, lines };
 }
@@ -48,6 +50,33 @@ function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {
 }
 
 describe("createIntegrationContext", () => {
+	it("收尾失败日志在输出时取当前语言、保留错误链并继续收尾", async () => {
+		const state = i18n.state();
+		const error = new Error("dispose", { cause: new Error("io") });
+		try {
+			for (const [locale, message] of [
+				["zh-CN", "集成收尾钩子执行失败"],
+				["en", "Integration disposal hook failed"],
+				["ja", "連携の終了フックの実行に失敗しました"],
+				["zh-TW", "整合結束掛鉤執行失敗"],
+			] as const) {
+				const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+				const { handle } = make({ logger: log });
+				const ran = vi.fn();
+				handle.ctx.onDispose(ran);
+				handle.ctx.onDispose(() => {
+					throw error;
+				});
+				i18n.set({ locale, voice: "maid" });
+				await handle.dispose();
+				expect(log.error).toHaveBeenCalledExactlyOnceWith(message, { error });
+				expect(ran).toHaveBeenCalledTimes(1);
+			}
+		} finally {
+			i18n.set({ locale: state.locale, voice: state.voice });
+		}
+	});
+
 	it("收尾钩子后登记的先跑", async () => {
 		const { handle } = make();
 		const order: string[] = [];
@@ -71,7 +100,9 @@ describe("createIntegrationContext", () => {
 		handle.ctx.onDispose(() => void ran.push("c"));
 		await handle.dispose();
 		expect(ran).toEqual(["c", "a"]);
-		expect(lines).toContain("error 收摊钩子抛了:boom");
+		expect(lines).toEqual(
+			expect.arrayContaining([expect.stringContaining("error 集成收尾钩子执行失败")]),
+		);
 	});
 
 	it("钩子跑的时候 signal 已经中止,原因是给的那句", async () => {
@@ -129,7 +160,11 @@ describe("createIntegrationContext", () => {
 		// 后登记的先跑:挂住的那个排在前面,最早登记的那个被时限挡在外面。
 		expect(ran).toEqual([]);
 		expect(disposedEntry).toBe(1);
-		expect(lines).toContain("warn 收摊钩子 0.02 秒没跑完 —— 按已收摊处理,排在它后面的钩子不再跑");
+		expect(lines).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("warn 集成收尾钩子超时，停止后续钩子并继续回收"),
+			]),
+		);
 	});
 
 	it("track 交回的把手撤掉后,收尾时不再撤第二次", async () => {
@@ -156,7 +191,9 @@ describe("createIntegrationContext", () => {
 			},
 		});
 		expect(count).toBe(1);
-		expect(lines).toContain("warn 已经卸载了,又来登记的一项当场撤掉");
+		expect(lines).toEqual(
+			expect.arrayContaining([expect.stringContaining("warn 集成已卸载，立即回收新登记项")]),
+		);
 		late.dispose();
 		expect(count).toBe(1);
 	});
@@ -171,7 +208,9 @@ describe("createIntegrationContext", () => {
 				},
 			}),
 		).not.toThrow();
-		expect(lines).toContain("error 回收注册项时抛了:撤不掉");
+		expect(lines).toEqual(
+			expect.arrayContaining([expect.stringContaining("error 集成登记项回收失败")]),
+		);
 	});
 
 	it("收尾时名册里没撤的注册项逐个撤掉", async () => {
@@ -195,7 +234,9 @@ describe("createIntegrationContext", () => {
 		handle.track({ dispose: () => void gone.push("c") });
 		await handle.dispose();
 		expect(gone).toEqual(["a", "c"]);
-		expect(lines).toContain("error 回收注册项时抛了:拆不掉");
+		expect(lines).toEqual(
+			expect.arrayContaining([expect.stringContaining("error 集成登记项回收失败")]),
+		);
 	});
 
 	it("收尾之后 onDispose 与 refuse 不生效,各记一行 warn", async () => {
@@ -210,8 +251,12 @@ describe("createIntegrationContext", () => {
 		expect(() => refused.dispose()).not.toThrow();
 		await handle.dispose();
 		expect(ran).toBe(false);
-		expect(lines).toContain("warn 已经卸载了,onDispose 不再受理");
-		expect(lines).toContain("warn 已经卸载了,setTimeout 不再受理");
+		expect(lines).toEqual(
+			expect.arrayContaining([expect.stringContaining("warn 集成已卸载，拒绝登记")]),
+		);
+		expect(lines).toEqual(
+			expect.arrayContaining([expect.stringContaining("warn 集成已卸载，拒绝登记")]),
+		);
 	});
 
 	it("dispose 幂等:钩子与 onStopping 只跑一次,一进门 disposed 就是 true", async () => {

@@ -1,3 +1,4 @@
+import { logMessage } from "../../__tests__/support/log-message.js";
 /**
  * `ctx.registerSource(def)`(第 3 版订阅源的注册口):宿主这一侧的规矩。
  *
@@ -91,10 +92,10 @@ function harness(
 ) {
 	const lines: string[] = [];
 	const logger: Logger = {
-		info: (m) => lines.push(`info ${m}`),
-		warn: (m) => lines.push(`warn ${m}`),
-		error: (m) => lines.push(`error ${m}`),
-		debug: (m) => lines.push(`debug ${m}`),
+		info: (m, ...args) => lines.push(`info ${logMessage(m, args)}`),
+		warn: (m, ...args) => lines.push(`warn ${logMessage(m, args)}`),
+		error: (m, ...args) => lines.push(`error ${logMessage(m, args)}`),
+		debug: (m, ...args) => lines.push(`debug ${logMessage(m, args)}`),
 	};
 	const host = {
 		logger,

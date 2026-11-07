@@ -106,11 +106,12 @@ describe("拓展挂载点", () => {
 		const res = await appWith(mounts).request("/ext/bad/x?token=s3cret");
 		expect(JSON.stringify(await res.json())).not.toContain("exploded");
 		expect(error).toHaveBeenCalledTimes(1);
-		const [line, err] = error.mock.calls[0] as [string, unknown];
-		expect(line).toContain("bad");
+		const [line, details, err] = error.mock.calls[0] as [string, unknown, unknown];
+		expect(line).toBe("拓展 HTTP 请求处理失败");
+		expect(details).toEqual({ extensionId: "bad", method: "GET", path: "/ext/bad/x" });
 		// 路径进日志,查询串不进:token 之类只该待在请求里。
-		expect(line).toContain("/ext/bad/x");
-		expect(line).not.toContain("s3cret");
+		expect(JSON.stringify([line, details])).toContain("/ext/bad/x");
+		expect(JSON.stringify([line, details])).not.toContain("s3cret");
 		expect(err).toBe(boom);
 	});
 

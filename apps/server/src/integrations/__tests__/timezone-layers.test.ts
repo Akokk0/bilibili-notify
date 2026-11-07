@@ -121,7 +121,9 @@ it.each(["source", "adapter"] as const)(
 			expect(saved.timezone).toBe("Asia/Kathmandu");
 			expect(seen).toHaveBeenCalledTimes(1);
 			expect(unhandled).toEqual([]);
-			expect(logger.error.mock.calls.flat().join("\n")).toContain(`async timezone ${layer}`);
+			expect(logger.error).toHaveBeenCalledWith("集成时区变更回调执行失败", {
+				error: expect.objectContaining({ message: `async timezone ${layer}` }),
+			});
 		} finally {
 			process.off("unhandledRejection", hearUnhandled);
 			stop();

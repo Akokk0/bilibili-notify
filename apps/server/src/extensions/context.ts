@@ -515,9 +515,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		if (!parsed.success) {
 			if (!badCapabilityCheckedAt.has(key)) {
 				badCapabilityCheckedAt.add(key);
-				logger.warn(
-					`拓展 ${id} 交来的能力 ${slot}.checkedAt 不是带时区的 ISO(连接 ${connectionId},收到 ${JSON.stringify(support.checkedAt)}),这一格按「还不知道」算`,
-				);
+				logger.warn(logText("log.extension.capabilityTimeInvalid"), {
+					extensionId: id,
+					slot,
+					connectionId,
+					checkedAt: support.checkedAt,
+				});
 			}
 			return { state: "unknown" };
 		}
@@ -607,11 +610,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 */
 	function recordDiscrepancy(discrepancy: Omit<ReportDiscrepancy, "extensionId" | "at">): void {
 		const { externalId } = discrepancy;
-		logger.warn(
-			discrepancy.outcome === "rejected"
-				? `上报 ${discrepancy.kind}${externalId === undefined ? "" : `(外部 id ${externalId})`} 整条拒了:${discrepancy.reasons.join(";")}`
-				: `上报 ${discrepancy.kind}${externalId === undefined ? "" : `(外部 id ${externalId})`} 动了 ${discrepancy.reasons.length} 格:${discrepancy.reasons.join(";")}`,
-		);
+		logger.warn(logText("log.extension.reportDiscrepancy"), {
+			kind: discrepancy.kind,
+			externalId,
+			outcome: discrepancy.outcome,
+			reasons: discrepancy.reasons,
+		});
 		opts.onReportDiscrepancy?.({ ...discrepancy, extensionId: id, at: Date.now() });
 	}
 
@@ -725,7 +729,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			}
 			judgeStoredSettings(schemas, settingsFields, raw)
 				.then(settle)
-				.catch((err) => logger.error(`设置变更的订阅者抛了:${(err as Error).message}`));
+				.catch((err) =>
+					logger.error(logText("log.extension.settingsCallbackFailed"), { error: err }),
+				);
 		}),
 	);
 
@@ -1088,7 +1094,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		const { view, problems } = checkedView(viewFn);
 		const now = new Set(problems);
 		for (const problem of now) {
-			if (!lastViewProblems.has(problem)) logger.warn(`交上来的视图:${problem}`);
+			if (!lastViewProblems.has(problem))
+				logger.warn(logText("log.extension.viewInvalid"), { problem });
 		}
 		lastViewProblems = now;
 		return view;
@@ -1161,7 +1168,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					return ok();
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
-					logger.warn(`动作 ${name} 抛了:${message}`);
+					logger.warn(logText("log.extension.actionFailed"), { action: name, error: err });
 					// 拓展抛了个没写原话的错时也得给一句:失败的话不许是空的。
 					return fail(
 						"unavailable",

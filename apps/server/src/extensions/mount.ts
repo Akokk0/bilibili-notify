@@ -2,7 +2,7 @@ import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
 import { fail, type Logger } from "@bilibili-notify/internal";
 import type { ExtensionFetchHandler } from "@bilibili-notify/internal/extension";
 import { type Context, Hono } from "hono";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { createRegistry } from "../integrations/registry.js";
 import { respondFailure } from "../routes/respond-failure.js";
 
@@ -62,7 +62,8 @@ export function createExtensionMounts(options: { logger: Logger }): ExtensionMou
 		} catch (err) {
 			// 一个拓展炸了只炸它自己这一条请求 —— 别让它带走整个进程或别的拓展。
 			options.logger?.error(
-				`extension ${id} failed to handle ${raw.method} ${new URL(raw.url).pathname}`,
+				logText("log.extension.httpFailed"),
+				{ extensionId: id, method: raw.method, path: new URL(raw.url).pathname },
 				err,
 			);
 			return respondFailure(c, fail("unavailable", serverText("service.extensions.mount.text.2")));

@@ -9,8 +9,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import type { ConfigStore } from "../config/store.js";
-import { t as serverText } from "../i18n/index.js";
-import { errorMessageOf } from "../util/error-message.js";
+import { logText, t as serverText } from "../i18n/index.js";
 
 export interface CreateSettingsReaderOptions<T> {
 	schema: ZodType<T>;
@@ -69,7 +68,7 @@ export function createSettingsReader<T>(opts: CreateSettingsReaderOptions<T>): {
 			try {
 				fn();
 			} catch (err) {
-				logger.error(`[settings] 设置变化的回调抛错(忽略): ${errorMessageOf(err)}`);
+				logger.error(logText("log.integration.settingsCallbackFailed"), { error: err });
 			}
 		}
 	});

@@ -1871,7 +1871,7 @@ describe("挂住了的拓展", () => {
 		expect(loaded.list()[0]?.state).toBe("disabled");
 		expect(host.pending()).toBe(0);
 		expect((await app.request("/ext/bridge/x")).status).toBe(404);
-		expect(host.lines.some((line) => /^warn .*bridge.*收摊钩子.*没跑完/.test(line))).toBe(true);
+		expect(host.lines.some((line) => /^warn .*bridge.*集成收尾钩子超时/.test(line))).toBe(true);
 
 		on = true;
 		await loaded.sync();

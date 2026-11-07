@@ -1,3 +1,4 @@
+import { logMessage } from "../../__tests__/support/log-message.js";
 import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 集成的请求那一套(`integrations/http.ts`):身份读升写、罐子自动存与闸、「集成的键 + 罐子」同一次写、恢复后的通知。
@@ -85,7 +86,7 @@ function silentLogger() {
 	const logger: Logger = {
 		info: () => {},
 		warn: (m) => warns.push(m),
-		error: (m) => errors.push(m),
+		error: (m, ...args) => errors.push(logMessage(m, args)),
 		debug: () => {},
 	};
 	return { logger, errors, warns };
@@ -201,7 +202,7 @@ describe("1. 开机装罐不触发存盘", () => {
 			const w = world({ secrets: { [HTTP_COOKIES_KEY]: bad } });
 			const { http, errors, clock } = await build(w);
 			expect(http.cookies.jar.getValue("SESSDATA")).toBeUndefined();
-			expect(errors.join("\n")).toContain("按空罐起");
+			expect(errors.join("\n")).toContain("使用空容器");
 			clock.advance(60_000);
 			await settle();
 			expect(w.secrets.persists).toHaveLength(0);
@@ -214,7 +215,7 @@ describe("1. 开机装罐不触发存盘", () => {
 			const { http, errors, clock } = await build(w);
 			expect(http.cookies.jar.serialize()).toEqual([]);
 			expect(errors).toHaveLength(1);
-			expect(errors[0]).toContain("按空罐起");
+			expect(errors[0]).toContain("使用空容器");
 			clock.advance(60_000);
 			await settle();
 			expect(w.secrets.persists).toHaveLength(0);

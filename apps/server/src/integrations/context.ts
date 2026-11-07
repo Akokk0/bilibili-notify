@@ -6,6 +6,7 @@ import type {
 	Logger,
 	Result,
 } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import { createImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
 import {
@@ -15,7 +16,6 @@ import {
 	problemRejectionReason,
 } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
-import { errorMessageOf } from "../util/error-message.js";
 import { isThenable } from "../util/is-thenable.js";
 
 /**
@@ -122,18 +122,18 @@ export function createIntegrationContext(
 
 	/** 卸载之后还来注册 —— 不生效,但要留一行:那是调用方没收干净自己的异步尾巴。 */
 	function refuse(what: string): Disposable {
-		logger.warn(`已经卸载了,${what} 不再受理`);
+		logger.warn(logText("log.integration.refused"), { operation: what });
 		return NOOP_DISPOSABLE;
 	}
 
 	function track(inner: Disposable): Disposable {
 		if (disposed) {
 			// 名册早清空了、`dispose()` 幂等不会再跑:记进去就永远撤不掉,所以当场撤。
-			logger.warn("已经卸载了,又来登记的一项当场撤掉");
+			logger.warn(logText("log.integration.lateRegistration"));
 			try {
 				inner.dispose();
 			} catch (err) {
-				logger.error(`回收注册项时抛了:${(err as Error).message}`);
+				logger.error(logText("log.integration.registrationDisposeFailed"), { error: err });
 			}
 			return NOOP_DISPOSABLE;
 		}
@@ -195,7 +195,7 @@ export function createIntegrationContext(
 			if (disposed) return refuse("onTimezoneChanged");
 			let active = true;
 			const report = (err: unknown): void => {
-				logger.error(`时区变更回调抛了:${errorMessageOf(err)}`);
+				logger.error(logText("log.integration.timezoneCallbackFailed"), { error: err });
 			};
 			const inner = opts.timezoneReader.onTimezoneChanged(() => {
 				if (!active || disposed) return;
@@ -286,7 +286,7 @@ export function createIntegrationContext(
 			try {
 				opts.onStopping?.();
 			} catch (err) {
-				logger.error(`收摊开始的通知抛了:${(err as Error).message}`);
+				logger.error(logText("log.integration.stoppingFailed"), { error: err });
 			}
 			// 🔴 在跑的东西先叫停,再跑收摊钩子 —— 钩子里能等它们收尾;不叫停的话,集成都停了,
 			// 它的 handler 还在背后接着轮询平台。
@@ -304,7 +304,7 @@ export function createIntegrationContext(
 						await fn();
 					} catch (err) {
 						// 一个钩子抛了不许打断其余的回收:收一半的集成是最难查的那种。
-						logger.error(`收摊钩子抛了:${(err as Error).message}`);
+						logger.error(logText("log.integration.hookFailed"), { error: err });
 					}
 				}
 			})();
@@ -318,7 +318,7 @@ export function createIntegrationContext(
 			try {
 				if ((await Promise.race([hooksDone, deadline])) === "overdue") {
 					overdue = true;
-					logger.warn(`收摊钩子 ${limit / 1000} 秒没跑完 —— 按已收摊处理,排在它后面的钩子不再跑`);
+					logger.warn(logText("log.integration.hooksTimeout"), { timeoutMs: limit });
 				}
 			} finally {
 				clearTimeout(timer);
@@ -327,13 +327,13 @@ export function createIntegrationContext(
 				try {
 					entry.dispose();
 				} catch (err) {
-					logger.error(`回收注册项时抛了:${(err as Error).message}`);
+					logger.error(logText("log.integration.registrationDisposeFailed"), { error: err });
 				}
 			}
 			try {
 				opts.settings.dispose();
 			} catch (err) {
-				logger.error(`回收设置读手时抛了:${(err as Error).message}`);
+				logger.error(logText("log.integration.settingsDisposeFailed"), { error: err });
 			}
 			registered.clear();
 			// 登记的临时凭据撤在最后:收摊钩子里打的日志(比如收尾失败的原因)里还可能带着它们。

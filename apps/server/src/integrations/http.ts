@@ -14,10 +14,9 @@ import {
 	type Logger,
 	type Result,
 } from "@bilibili-notify/internal";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { HTTP_COOKIES_KEY, HTTP_IDENTITY_KEY } from "../integration-store/host-keys.js";
 import type { IntegrationStoreHandle } from "../integration-store/store.js";
-import { errorMessageOf } from "../util/error-message.js";
 
 /**
  * 宿主替一个集成造请求客户端、cookie 罐、浏览器身份,并管罐子的存盘(ADR-0025 决策 6、9、10)。
@@ -113,9 +112,10 @@ async function resolveIdentity(
 	if (identity === stored) return identity;
 	const written = await stores.hostState.set(HTTP_IDENTITY_KEY, { ...identity });
 	if (!written.ok) {
-		logger.warn(
-			`[integrations/http] 浏览器身份写不进存储,这次先用内存里的,下次开机再试:${written.message}`,
-		);
+		logger.warn(logText("log.integration.identityWriteFailed"), {
+			code: written.code,
+			message: written.message,
+		});
 	}
 	return identity;
 }
@@ -167,7 +167,7 @@ export async function createIntegrationHttp(
 				if (!Array.isArray(parsed)) throw new Error(serverText("service.integrations.http.text.1"));
 				jar.load(parsed as Cookie[]);
 			} catch (err) {
-				logger.error(`[integrations/http] 存着的 cookie 读不进(${errorMessageOf(err)}),按空罐起`);
+				logger.error(logText("log.integration.cookiesLoadFailed"), { error: err });
 				jar.clear();
 			}
 		} finally {
@@ -211,7 +211,10 @@ export async function createIntegrationHttp(
 	async function save(): Promise<void> {
 		const result = await writeJar([]);
 		if (!result.ok) {
-			logger.error(`[integrations/http] cookie 存盘失败(下次变化再试):${result.message}`);
+			logger.error(logText("log.integration.cookiesSaveFailed"), {
+				code: result.code,
+				message: result.message,
+			});
 		}
 	}
 
@@ -231,7 +234,7 @@ export async function createIntegrationHttp(
 			try {
 				await fn();
 			} catch (err) {
-				logger.error(`[integrations/http] 登记的「罐子被恢复了」回调抛了:${errorMessageOf(err)}`);
+				logger.error(logText("log.integration.cookiesRestoredFailed"), { error: err });
 			}
 		}
 	});

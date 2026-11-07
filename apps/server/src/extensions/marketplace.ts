@@ -21,7 +21,7 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { readBestEffortJson, writeBestEffortJson } from "../update/durable-json.js";
 import { fetchSignedJson, signedFailureKind } from "../update/fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "../update/fetch-through-mirrors.js";
@@ -642,9 +642,11 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			if (err instanceof ExtensionConflictError) return err.toFailure();
 			throw err;
 		}
-		deps.logger.info(
-			`marketplace: installed ${entry.id}@${entry.version} from ${source.view.name}`,
-		);
+		deps.logger.info(logText("log.extension.marketInstalled"), {
+			extensionId: entry.id,
+			version: entry.version,
+			sourceName: source.view.name,
+		});
 		return ok({
 			id: entry.id,
 			name: opened.pkg.manifest.name,
