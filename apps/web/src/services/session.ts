@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal/result";
 import { i18n } from "../i18n";
 /**
  * Dashboard session HTTP calls. Kept separate from `services/api.ts` so the
@@ -14,18 +15,8 @@ export interface SessionStatus {
 	authed: boolean;
 }
 
-export type LoginResult =
-	| { ok: true }
-	| { ok: false; kind: "invalid"; message: string }
-	| { ok: false; kind: "rate_limited"; retryAfterSec: number; message: string }
-	/**
-	 * 后端权威告知「未启用鉴权」(`POST /api/session/login` → `unsupported`)。AuthGate 的
-	 * `fetchSessionStatus` 在初始探测失败(503/瞬时网络错)时会兜底成 authRequired:true
-	 * 弹 dialog —— 用户随后真去提交登录就会撞到这条。此时 LoginDialog 应据此把 store
-	 * 同步回 authRequired:false 让壳关闭,而不是只显示一条用户无法处理的报错。
-	 */
-	| { ok: false; kind: "auth_disabled" }
-	| { ok: false; kind: "error"; message: string };
+/** Retry-After 由响应头取得，仅供登录框倒计时。 */
+export type LoginResult = Result & { retryAfterSec?: number };
 
 /** `GET /api/session` — always 200 in practice; treats failure as "unknown → not authed". */
 export async function fetchSessionStatus(): Promise<SessionStatus> {
@@ -49,7 +40,7 @@ export async function fetchSessionStatus(): Promise<SessionStatus> {
  * 通用错误而不会被当成「没开登录」把登录框关掉。
  */
 export async function classifyLoginResponse(res: Response): Promise<LoginResult> {
-	if (res.ok) return { ok: true };
+	if (res.ok) return ok();
 	const err = apiErrorOf(
 		res.status,
 		await res.json().catch(() => undefined),
@@ -60,18 +51,17 @@ export async function classifyLoginResponse(res: Response): Promise<LoginResult>
 			const hdr = Number(res.headers.get("Retry-After"));
 			const retryAfterSec = Number.isFinite(hdr) && hdr > 0 ? hdr : 60;
 			return {
-				ok: false,
-				kind: "rate_limited",
+				...fail("rate_limited", i18n.t("panelUi.services.session.2", { value0: retryAfterSec })),
 				retryAfterSec,
-				message: i18n.t("panelUi.services.session.2", { value0: retryAfterSec }),
 			};
 		}
 		case "unauthorized":
-			return { ok: false, kind: "invalid", message: err.message };
+			return fail("unauthorized", err.message);
+		// 只有服务端明确告知未启用鉴权时，登录框才关闭；不可从裸 HTTP 状态推断。
 		case "unsupported":
-			return { ok: false, kind: "auth_disabled" };
+			return fail("unsupported", err.message);
 		default:
-			return { ok: false, kind: "error", message: err.message };
+			return fail(err.code ?? "unavailable", err.message);
 	}
 }
 
@@ -85,7 +75,7 @@ export async function submitLogin(username: string, password: string): Promise<L
 			body: JSON.stringify({ username, password }),
 		});
 	} catch {
-		return { ok: false, kind: "error", message: i18n.t("panelUi.services.session.3") };
+		return fail("unavailable", i18n.t("panelUi.services.session.3"));
 	}
 	return classifyLoginResponse(res);
 }

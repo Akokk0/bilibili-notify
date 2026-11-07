@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal/result";
 /**
  * 「播放安装动画 / 播放更新动画」—— 拓展卡片上那两段动画,不装东西也能反复看。
  *
@@ -29,19 +30,19 @@ const ID_PARAM = {
 /** 页上找那张卡;找不到时回一句给主人看的话。 */
 function findCard(
 	params: Record<string, string | number>,
-): { ok: true; id: string; el: HTMLElement } | { ok: false; why: string } {
+): Result<{ id: string; el: HTMLElement }> {
 	const cards = [...document.querySelectorAll<HTMLElement>(`[${EXT_CARD_ANCHOR}]`)];
 	if (cards.length === 0) {
-		return { ok: false, why: "页上一张拓展卡都没有 —— 先打开「拓展」页(得装着至少一个拓展)再按。" };
+		return fail("not_found", "页上一张拓展卡都没有 —— 先打开「拓展」页(得装着至少一个拓展)再按。");
 	}
 	const want = String(params.id ?? "").trim();
 	// 比属性值而不是拼选择器:id 里有引号 / 方括号也不会把选择器拼坏。
 	const el = want === "" ? cards[0] : cards.find((c) => c.getAttribute(EXT_CARD_ANCHOR) === want);
 	if (!el) {
 		const onPage = cards.map((c) => c.getAttribute(EXT_CARD_ANCHOR)).join("、");
-		return { ok: false, why: `页上没有 ${want} 这张卡(页上有:${onPage})。` };
+		return fail("not_found", `页上没有 ${want} 这张卡(页上有:${onPage})。`);
 	}
-	return { ok: true, id: el.getAttribute(EXT_CARD_ANCHOR) ?? want, el };
+	return ok({ id: el.getAttribute(EXT_CARD_ANCHOR) ?? want, el });
 }
 
 export const installMotion: WebDevScenario = {
@@ -53,7 +54,7 @@ export const installMotion: WebDevScenario = {
 	params: [ID_PARAM],
 	run(params) {
 		const found = findCard(params);
-		if (!found.ok) return found.why;
+		if (!found.ok) return found.message;
 		// 起点:与落点卡一样大、贴着视口底部居中。真的起点是下面市场那一节里的一张卡,
 		// 位置因人因滚动而异 —— 这里只要一个「从下面飞上去」的看得见的起点。
 		const box = found.el.getBoundingClientRect();
@@ -92,7 +93,7 @@ export const updateMotion: WebDevScenario = {
 	],
 	run(params) {
 		const found = findCard(params);
-		if (!found.ok) return found.why;
+		if (!found.ok) return found.message;
 		// 只认**这张卡里**的那颗「更新」钮 —— 有新版时才画。别的卡上那颗与这次无关。认的是
 		// 标记不是文字:文案一改,按文字找就悄悄退回「从上方落下」。
 		const button = found.el.querySelector<HTMLElement>(`[${EXT_UPDATE_BUTTON}]`);

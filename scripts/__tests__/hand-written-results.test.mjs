@@ -42,12 +42,7 @@ export const ALLOWLIST = {
  * - 面板:登录的 `{ ok, kind, message }` 与 devtools 的几处。
  * - 不是结果但带 `ok` 的:AI 工具结束的 SSE 帧。
  */
-export const RATCHET = {
-	"apps/server/src/routes/ai.ts": 2,
-	"apps/web/src/devtools/dock.tsx": 2,
-	"apps/web/src/devtools/ext-motion.ts": 3,
-	"apps/web/src/services/session.ts": 6,
-};
+export const RATCHET = {};
 
 /** 剥掉只改类型、不改值的外壳:括号、`as`、`satisfies`、`<T>x`、`x!`。 */
 function unwrapValue(expression) {

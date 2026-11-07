@@ -64,12 +64,12 @@ export function LoginDialog({ variant }: { variant: "cold" | "overlay" }) {
 		}
 		// 后端权威告知未启用鉴权 —— 同步 store 让 AuthGate 关掉 dialog,
 		// 而不是把一条用户无法处理的报错挂在表单上。
-		if (result.kind === "auth_disabled") {
+		if (result.code === "unsupported") {
 			setStatus({ authRequired: false, authed: true });
 			return;
 		}
 		setError(result.message);
-		if (result.kind === "rate_limited") startLockCountdown(result.retryAfterSec);
+		if (result.code === "rate_limited") startLockCountdown(result.retryAfterSec ?? 60);
 	}
 
 	const disabled = busy || lockSec > 0;

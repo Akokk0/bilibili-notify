@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal/result";
 /**
  * DevDock —— devtools 在面板里的整套:左下角药丸 + 底边面板。
  *
@@ -136,7 +137,7 @@ function Ready({
 	);
 }
 
-type RunResult = { ok: true; summary?: string } | { ok: false; err: string };
+type RunResult = Result<{ summary?: string }>;
 
 function Dock({
 	scenarios,
@@ -179,12 +180,12 @@ function Dock({
 			{ id: entry.decl.id, side: entry.side, params },
 			{
 				onSuccess: (out) => {
-					setResults((r) => ({ ...r, [entry.decl.id]: { ok: true, summary: out.summary } }));
+					setResults((r) => ({ ...r, [entry.decl.id]: ok({ summary: out.summary }) }));
 				},
 				onError: (err) =>
 					setResults((r) => ({
 						...r,
-						[entry.decl.id]: { ok: false, err: err instanceof Error ? err.message : String(err) },
+						[entry.decl.id]: fail("unavailable", err instanceof Error ? err.message : String(err)),
 					})),
 			},
 		);
@@ -412,7 +413,7 @@ function ScenarioCard({
 			) : null}
 			{result && !result.ok ? (
 				<ErrorNote size="sm" className="mt-3">
-					{result.err}
+					{result.message}
 				</ErrorNote>
 			) : null}
 		</div>

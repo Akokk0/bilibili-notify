@@ -572,14 +572,14 @@ export function createAiRoute(
 						label: LOAD_SKILL_LABEL.label,
 						argText: pickedSkill.name,
 					};
-					slots.push({ ...ev, ok: true });
+					slots.push({ ...ev, ...ok() });
 					await sse.writeSSE({
 						event: "tool",
 						data: JSON.stringify({ phase: "start", id: "skill", ...ev }),
 					});
 					await sse.writeSSE({
 						event: "tool",
-						data: JSON.stringify({ phase: "end", id: "skill", ...ev, ok: true }),
+						data: JSON.stringify({ phase: "end", id: "skill", ...ev, ...ok() }),
 					});
 				}
 
