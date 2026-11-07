@@ -9,7 +9,7 @@ import { targetDisplay } from "../components/target-display";
  * one kind you open its tab. On a kind tab the middle column holds the live cover
  * gallery (live only) and 测试推送 + preview-content form, and the right column is
  * the single live puppeteer preview. 设置只剩出图总开关与直播封面(㉔e):全局绑
- * `GlobalConfig.defaults.cards`,per-UP 绑该订阅的 `overrides.cards`(只有直播封面),
+ * `GlobalSettings.defaults.cards`,per-UP 绑该订阅的 `overrides.cards`(只有直播封面),
  * 由「覆盖全局」开关控制。
  *
  * 排版归卡片皮肤(ADR-0014):「全局」tab 上的皮肤库是整套外观的入口,per-UP 挑一套

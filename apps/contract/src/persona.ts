@@ -1,9 +1,9 @@
-import type { AIPersona, Result } from "@bilibili-notify/internal";
+import type { AiPersonaSettings, Result } from "@bilibili-notify/internal";
 
 /** 分享包不携带本地身份、默认或订阅指针。 */
 export interface PersonaContent {
 	label: string;
-	persona: AIPersona;
+	persona: AiPersonaSettings;
 	dynamicPrompt?: string;
 	liveSummaryPrompt?: string;
 }

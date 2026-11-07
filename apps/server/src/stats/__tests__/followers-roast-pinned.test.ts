@@ -13,8 +13,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { GlobalConfig, Subscription } from "@bilibili-notify/internal";
-import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalSettings, Subscription } from "@bilibili-notify/internal";
+import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
@@ -88,7 +88,7 @@ const SUBS: Subscription[] = [
 const NAMES: Record<string, string> = { "b-a": "甲", "e-b": "乙", "b-c": "丙" };
 
 function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	globals.ai = {
 		...globals.ai,
 		enabled: true,
@@ -101,7 +101,7 @@ function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
 				model: "m",
 			},
 		},
-	} as GlobalConfig["ai"];
+	} as GlobalSettings["ai"];
 	const runtime = {
 		pipeline: {
 			liveSession: () => undefined,

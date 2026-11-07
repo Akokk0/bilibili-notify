@@ -11,7 +11,7 @@ import {
 	deterministicUuid,
 	FEATURE_KEYS,
 	type MessageBus,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type PushTarget,
 	type ServiceContext,
@@ -198,10 +198,10 @@ describe("ConfigStore", () => {
 		const globalsRaw = await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8");
 		const subsRaw = await readFile(join(stateDir, "subscriptions.json"), "utf8");
 		const tgtsRaw = await readFile(join(stateDir, "targets.json"), "utf8");
-		expect(JSON.parse(globalsRaw)).toEqual(makeDefaultGlobalConfig());
+		expect(JSON.parse(globalsRaw)).toEqual(makeDefaultGlobalSettings());
 		expect(JSON.parse(subsRaw)).toEqual({ tags: [], subscriptions: [] });
 		expect(JSON.parse(tgtsRaw)).toEqual([]);
-		expect(store.getGlobals()).toEqual(makeDefaultGlobalConfig());
+		expect(store.getGlobals()).toEqual(makeDefaultGlobalSettings());
 	});
 
 	it("getGlobals/getSubscriptions/getTargets return cloned snapshots", () => {

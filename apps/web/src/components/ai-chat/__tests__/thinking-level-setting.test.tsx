@@ -12,7 +12,7 @@
  * 4. custom + responses 解禁 —— 那套协议里思考是标准字段。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -26,7 +26,7 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 
 function globalsWith(provider: "deepseek" | "custom", flavor: "chat" | "responses" = "chat") {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.activeProfile = "p1";
 	g.ai.providers = {
 		p1: {

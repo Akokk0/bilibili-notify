@@ -1,7 +1,7 @@
 import {
 	type Connection,
 	type Disposable,
-	type GlobalConfig,
+	type GlobalSettings,
 	mapMarked,
 	type SettingsField,
 } from "@bilibili-notify/internal";
@@ -30,7 +30,7 @@ const KIND = "settings";
 
 /** 面板打码的三个函数(入口从 `routes/secret-view.ts` 递进来)。 */
 interface SettingsRedactionViews {
-	globals(globals: GlobalConfig): unknown;
+	globals(globals: GlobalSettings): unknown;
 	connection(connection: Connection, lookup: SecretCellsReader): { settings?: unknown };
 	integrationSettings(schema: unknown, settings: unknown): unknown;
 }
@@ -64,7 +64,7 @@ function maskedStrings(original: unknown, masked: unknown): string[] {
  */
 export function secretSettingValues(input: {
 	views: SettingsRedactionViews;
-	globals: GlobalConfig;
+	globals: GlobalSettings;
 	connections: readonly Connection[];
 	connectionSecrets: SecretCellsReader;
 	integrationSettings: ReadonlyArray<{ schema: unknown; settings: unknown }>;

@@ -13,7 +13,7 @@ import {
 	withTemplateDefaults,
 } from "../texts/builtin";
 import type {
-	AISettings,
+	AiSettings,
 	CardsSettings,
 	ContentFilters,
 	FeatureFlags,
@@ -22,13 +22,13 @@ import type {
 	LiveStartSettings,
 	LiveStreamingSettings,
 	MembershipSettings,
-	ScheduleConfig,
+	ScheduleSettings,
 	SuperchatSettings,
 } from "./common";
 import type { GlobalDefaults } from "./globals";
 import { type MessageLayout, normalizeMessageLayout } from "./message-layout";
 import type {
-	AIOverride,
+	AiOverrides,
 	SpecialViewer,
 	Subscription,
 	SubscriptionExtraTargets,
@@ -53,7 +53,7 @@ export interface EffectiveSubscription {
 
 	features: FeatureFlags;
 	filters: ContentFilters;
-	schedule: ScheduleConfig;
+	schedule: ScheduleSettings;
 	/** 启动补报(⑬d 起自成一段,原先在 `schedule` 里)。 */
 	liveStart: LiveStartSettings;
 	/** 周期「正在直播」的间隔(⑬d 起自成一段,原先在 `schedule` 里);开关在 `features.liveStreaming`。 */
@@ -145,8 +145,8 @@ export function resolveTemplates(
  * @param builtins 当前语言的内置人格(设置里不存它们的内容,每次按语言取)。
  */
 export function resolveSubscriptionPersona(
-	ai: AISettings,
-	override: AIOverride | undefined,
+	ai: AiSettings,
+	override: AiOverrides | undefined,
 	builtins: readonly AIBuiltinPresetShape[],
 ): ActivePersonaShape {
 	// 全局此刻用的是哪份人格 —— 读法只有一处(`resolveActivePersona`),各端共用。

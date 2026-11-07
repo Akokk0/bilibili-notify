@@ -19,11 +19,11 @@ import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import type { Connection, PushTarget } from "../../types/domain";
-import type { AISettingsDraft } from "../../types/globals";
+import type { AiSettingsDraft } from "../../types/globals";
 
 const MAX_MESSAGE = 500;
 
-export function AiTestPanel({ draft }: { draft: AISettingsDraft }) {
+export function AiTestPanel({ draft }: { draft: AiSettingsDraft }) {
 	const connectionsQuery = useQuery({
 		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/connections"),

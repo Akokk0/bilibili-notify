@@ -1,21 +1,21 @@
 /**
  * AI 写正文(`ai.writing`,ADR-0032):动态与直播总结各一份「默认 + 按目标例外」。
- * 形状只经 `GlobalConfigSchema.parse` 验,折叠只经 `aiWritingFor` / `aiWritingNeeded` 验。
+ * 形状只经 `GlobalSettingsSchema.parse` 验,折叠只经 `aiWritingFor` / `aiWritingNeeded` 验。
  */
 
 import { describe, expect, it } from "vite-plus/test";
 import { aiWritingFor, aiWritingNeeded } from "../ai-writing";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
 
 describe("schema:ai.writing", () => {
 	it("老设置没有 writing 这一格 → 两份都是 { isOnByDefault: true, byTarget: {} }", () => {
-		const old = structuredClone(makeDefaultGlobalConfig()) as Record<string, unknown>;
+		const old = structuredClone(makeDefaultGlobalSettings()) as Record<string, unknown>;
 		const ai = { ...(old.ai as Record<string, unknown>) };
 		delete ai.writing;
-		const parsed = GlobalConfigSchema.parse({ ...old, ai });
+		const parsed = GlobalSettingsSchema.parse({ ...old, ai });
 		expect(parsed.ai.writing).toEqual({
 			post: { isOnByDefault: true, byTarget: {} },
 			liveSummary: { isOnByDefault: true, byTarget: {} },
@@ -23,8 +23,8 @@ describe("schema:ai.writing", () => {
 	});
 
 	it("写了的例外原样读回,两个方向都行", () => {
-		const base = structuredClone(makeDefaultGlobalConfig());
-		const parsed = GlobalConfigSchema.parse({
+		const base = structuredClone(makeDefaultGlobalSettings());
+		const parsed = GlobalSettingsSchema.parse({
 			...base,
 			ai: {
 				...base.ai,
@@ -42,8 +42,8 @@ describe("schema:ai.writing", () => {
 	});
 
 	it("目标 id 不是 uuid → 整份解析不过", () => {
-		const base = structuredClone(makeDefaultGlobalConfig());
-		const r = GlobalConfigSchema.safeParse({
+		const base = structuredClone(makeDefaultGlobalSettings());
+		const r = GlobalSettingsSchema.safeParse({
 			...base,
 			ai: { ...base.ai, writing: { post: { byTarget: { 不是uuid: true } } } },
 		});

@@ -17,7 +17,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Rules from "../Rules";
 import { makeAi, makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
@@ -66,10 +66,10 @@ function extSub(over: Partial<Subscription> = {}): Subscription {
 
 const BILI: Subscription = makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" });
 
-function globals(): GlobalConfig {
+function globals(): GlobalSettings {
 	const defaults = makeDefaults();
 	defaults.schedule.quietHours = [{ start: 23, end: 7 }];
-	return { logging: {}, master: {}, defaults, ai: makeAi() } as unknown as GlobalConfig;
+	return { logging: {}, master: {}, defaults, ai: makeAi() } as unknown as GlobalSettings;
 }
 
 let subs: Subscription[];

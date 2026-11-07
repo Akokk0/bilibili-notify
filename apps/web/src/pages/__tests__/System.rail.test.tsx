@@ -16,7 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Link, MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { GlobalConfigPatch } from "../../types/globals";
+import type { GlobalSettingsPatch } from "../../types/globals";
 import System from "../System";
 
 // ── 子节全部换成哑桩:这条测试问的是「哪一格里有什么」,不是各节自己画得对不对 ──
@@ -27,7 +27,7 @@ vi.mock("../../components/commands-settings", () => ({
 		onPatch,
 	}: {
 		draft: { commands: { prefix: string } };
-		onPatch: (d: GlobalConfigPatch) => void;
+		onPatch: (d: GlobalSettingsPatch) => void;
 	}) => (
 		<div data-testid="sec-commands">
 			<span data-testid="prefix-echo">{draft.commands.prefix}</span>

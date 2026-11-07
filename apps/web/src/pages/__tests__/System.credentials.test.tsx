@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -23,7 +23,7 @@ function renderSystem() {
 	vi.mocked(api.get).mockImplementation(async (path) => {
 		if (path === "/api/settings")
 			return {
-				core: makeDefaultGlobalConfig(),
+				core: makeDefaultGlobalSettings(),
 				bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
 			};
 		if (path === "/api/sources/bilibili/auth") return { state: { status: "logged-out" } };

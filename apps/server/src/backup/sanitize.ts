@@ -1,5 +1,5 @@
 import {
-	GlobalConfigSchema,
+	GlobalSettingsSchema,
 	mapMarked,
 	REDACTED_URL_HOST,
 	type SecretMark,
@@ -135,7 +135,7 @@ export function redactBackupSections<T>(sections: T, lookup: SecretCellsReader =
 
 /** 有 schema 的一节:凭据靠标记。别的几节没有凭据字段,继续按键名;连接另走 {@link redactConnections}。 */
 const TYPED_SECTIONS: Record<string, z.ZodType | undefined> = {
-	globals: GlobalConfigSchema,
+	globals: GlobalSettingsSchema,
 };
 
 /** 命中标记的叶子抹成什么:网络地址换占位(要能恢复),其余抹成空串。 */

@@ -6,7 +6,7 @@ import {
 import type {
 	CreatorCandidate,
 	CreatorProfileReport,
-	GlobalConfig,
+	GlobalSettings,
 	Identity,
 	Logger,
 	Result,
@@ -31,7 +31,7 @@ import type { AiToolProviderRegistry } from "./tool-provider-registry.js";
 
 export interface CommentaryDeps {
 	serviceCtx: ServiceContext;
-	globals: () => GlobalConfig;
+	globals: () => GlobalSettings;
 	logger: Logger;
 	subscriptionStore: SubscriptionStore;
 	subscriptionStateStore: SubscriptionStateStore;
@@ -54,7 +54,7 @@ export interface CommentaryDeps {
 // 折好的 aiEnabled 在每次推送前热判断。这样用户在 dashboard 把 AI 开关切关再切开
 // 不需要重启服务。配置变了走下方 `reloadCommentary`。
 //
-// `AISettings` → CommentaryGeneratorConfig 的翻译(含字段改名与「人格看指针」)
+// `AiSettings` → CommentaryGeneratorSettings 的翻译(含字段改名与「人格看指针」)
 // 本体在 `runtime/ai-config.ts` —— 「试一句」与统计页的锐评用的是同一份映射,人格该
 // 从哪儿读只能有一个答案。指针指向一个还没添加的服务商时 resolveAIProfile 兜一套
 // 空值回来,下方 createCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。

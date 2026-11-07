@@ -258,7 +258,7 @@ export function resolvePreviewScene(kind: CardKind, scene?: string): PreviewScen
 /**
  * 块在网格里的位置(与 `CardSkinBlockSchema` 的 `grid` 同形)。声明在这里而不是 schema 里,
  * 是为了让**零依赖**的 {@link rowMapOf} 也能用上 —— 画布经 `@bilibili-notify/internal/card-skin` 子路径运行时
- * 消费它,不能把 zod 拖进前端 bundle(与 {@link AIProviderProfileShape} 同一条理由)。
+ * 消费它,不能把 zod 拖进前端 bundle(与 {@link AiProviderProfileShape} 同一条理由)。
  */
 export interface CardSkinGrid {
 	row: number;

@@ -1,10 +1,10 @@
-import { type ConnectionCapabilities, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { type ConnectionCapabilities, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { checkApprovalEnable, shouldRunAiEnableCheck } from "../settings.js";
 
 /** 默认 globals + AI 启用 + 连接字段齐备。 */
 function enabledAiGlobals() {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.enabled = true;
 	// 连接字段住在服务商桶里(各家一套配置)。
 	g.ai.activeProfile = "deepseek";
@@ -94,7 +94,7 @@ describe("shouldRunAiEnableCheck", () => {
 	});
 
 	it("AI 最终为禁用态:改任何字段都不探活", () => {
-		const cur = makeDefaultGlobalConfig(); // disabled
+		const cur = makeDefaultGlobalSettings(); // disabled
 		expect(shouldRunAiEnableCheck(cur, { ai: { persona: { name: "x" } } })).toBe(false);
 		expect(shouldRunAiEnableCheck(cur, aiPatch({ apiKey: "k2" }))).toBe(false);
 	});
@@ -170,7 +170,7 @@ describe("checkApprovalEnable", () => {
 	type Connections = any;
 
 	function withApproval(on: boolean) {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.roastSchedule = { ...g.roastSchedule, approval: on };
 		return g;
 	}
@@ -256,7 +256,7 @@ describe("checkApprovalEnable", () => {
 
 describe("checkApprovalEnable — 拦下的一律是 not_configured", () => {
 	function withApproval(on: boolean) {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.roastSchedule = { ...g.roastSchedule, approval: on };
 		return g;
 	}

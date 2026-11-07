@@ -4,7 +4,7 @@
  * 输入从冻住的 0.12 出厂夹具起步,只经完整迁移流水;期望值独立写成字面量,不拿运行时的内置表反算。
  */
 
-import { GlobalConfigSchema } from "@bilibili-notify/internal";
+import { GlobalSettingsSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { migrateGlobalsToCurrent } from "../settings.js";
 import { makeZeroGlobals } from "./zero-fixtures.js";
@@ -182,6 +182,6 @@ describe("0.x 内置人格 → removedBuiltinPresets", () => {
 		for (const key of ["persona", "dynamicPrompt", "liveSummaryPrompt"]) {
 			expect(out.ai).not.toHaveProperty(key);
 		}
-		expect(GlobalConfigSchema.safeParse(out).success).toBe(true);
+		expect(GlobalSettingsSchema.safeParse(out).success).toBe(true);
 	});
 });

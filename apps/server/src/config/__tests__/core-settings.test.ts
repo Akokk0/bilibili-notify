@@ -3,7 +3,7 @@
  * 只经 `parseCoreSettings` / `withRawSettings` 的入参与返回值断言,不 mock schema。
  */
 
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { instanceIdOfEntry, parseCoreSettings, withRawSettings } from "../core-settings.js";
 import { ConfigValidationError } from "../validation-error.js";
@@ -13,7 +13,7 @@ type Json = Record<string, any>;
 
 /** 一份盘上长相的核心设置(JSON 值),好几格故意取非默认值,断言「别的格是入参里的值」才有分量。 */
 function goodDisk(): Json {
-	const disk = structuredClone(makeDefaultGlobalConfig()) as Json;
+	const disk = structuredClone(makeDefaultGlobalSettings()) as Json;
 	disk.history = { retentionDays: 30 };
 	disk.profileRefreshCron = "*/5 * * * *";
 	disk.mutedUntil = 123;
@@ -23,15 +23,15 @@ function goodDisk(): Json {
 	disk.ai.activeProfile = "p1";
 	disk.ai.providers = { p1: { provider: "openrouter", label: "我的实例", model: "m" } };
 	// 过一遍 schema 补齐带默认的子格:这样「别的格是入参里的值」可以直接 toEqual 入参那一格。
-	return structuredClone(GlobalConfigSchema.parse(disk)) as Json;
+	return structuredClone(GlobalSettingsSchema.parse(disk)) as Json;
 }
 
 describe("parseCoreSettings", () => {
-	it("全好的一份:没有坏格,settings 等于它过 GlobalConfigSchema 的结果", () => {
+	it("全好的一份:没有坏格,settings 等于它过 GlobalSettingsSchema 的结果", () => {
 		const disk = goodDisk();
 		const { settings, invalid } = parseCoreSettings(disk);
 		expect(invalid).toEqual([]);
-		expect(settings).toEqual(GlobalConfigSchema.parse(disk));
+		expect(settings).toEqual(GlobalSettingsSchema.parse(disk));
 		expect(settings.history.retentionDays).toBe(30);
 		expect(settings.defaults.filters.blockKeywords).toEqual(["广告"]);
 	});
@@ -40,7 +40,7 @@ describe("parseCoreSettings", () => {
 		const disk = goodDisk();
 		disk.history = "三十天";
 		const { settings, invalid } = parseCoreSettings(disk);
-		expect(settings.history).toEqual(makeDefaultGlobalConfig().history);
+		expect(settings.history).toEqual(makeDefaultGlobalSettings().history);
 		expect(settings.profileRefreshCron).toBe("*/5 * * * *");
 		expect(settings.mutedUntil).toBe(123);
 		expect(settings.ai.providers).toEqual(disk.ai.providers);
@@ -55,7 +55,7 @@ describe("parseCoreSettings", () => {
 		const disk = goodDisk();
 		delete disk.logging;
 		const { settings, invalid } = parseCoreSettings(disk);
-		expect(settings.logging).toEqual(makeDefaultGlobalConfig().logging);
+		expect(settings.logging).toEqual(makeDefaultGlobalSettings().logging);
 		expect(settings.history.retentionDays).toBe(30);
 		expect(invalid).toHaveLength(1);
 		expect(invalid[0]?.path).toEqual(["logging"]);
@@ -69,7 +69,7 @@ describe("parseCoreSettings", () => {
 		delete disk.history;
 		const { settings, invalid } = parseCoreSettings(disk);
 		expect(invalid).toEqual([]);
-		expect(settings.history).toEqual(makeDefaultGlobalConfig().history);
+		expect(settings.history).toEqual(makeDefaultGlobalSettings().history);
 		expect(settings.mutedUntil).toBe(123);
 	});
 
@@ -77,7 +77,7 @@ describe("parseCoreSettings", () => {
 		const disk = goodDisk();
 		disk.history = { retentionDays: 45 };
 		const { settings, invalid } = parseCoreSettings(disk);
-		expect(settings.history).toEqual(makeDefaultGlobalConfig().history);
+		expect(settings.history).toEqual(makeDefaultGlobalSettings().history);
 		expect(invalid).toHaveLength(1);
 		expect(invalid[0]?.path).toEqual(["history"]);
 		expect(invalid[0]?.raw).toEqual({ retentionDays: 45 });
@@ -100,7 +100,7 @@ describe("parseCoreSettings", () => {
 		const disk = goodDisk();
 		disk.defaults.filters = { blockReposts: "是" };
 		const { settings, invalid } = parseCoreSettings(disk);
-		expect(settings.defaults.filters).toEqual(makeDefaultGlobalConfig().defaults.filters);
+		expect(settings.defaults.filters).toEqual(makeDefaultGlobalSettings().defaults.filters);
 		expect(settings.defaults.imageGroup).toEqual(disk.defaults.imageGroup);
 		expect(settings.defaults.imageGroup.enabled).toBe(false);
 		expect(invalid).toHaveLength(1);
@@ -121,7 +121,7 @@ describe("parseCoreSettings", () => {
 		const rawB = structuredClone(disk.ai.providers.b);
 		const { settings, invalid } = parseCoreSettings(disk);
 		expect(Object.keys(settings.ai.providers)).toEqual(["a", "c"]);
-		const expectedA = GlobalConfigSchema.shape.ai.shape.providers.parse({
+		const expectedA = GlobalSettingsSchema.shape.ai.shape.providers.parse({
 			a: disk.ai.providers.a,
 		}).a;
 		expect(settings.ai.providers.a).toEqual(expectedA);
@@ -134,7 +134,7 @@ describe("parseCoreSettings", () => {
 		expect(invalid[0]?.missing).toBe(false);
 		expect(invalid[0]?.issues.length).toBeGreaterThan(0);
 		// 内存里的核心设置永远过得了 schema。
-		expect(GlobalConfigSchema.safeParse(settings).success).toBe(true);
+		expect(GlobalSettingsSchema.safeParse(settings).success).toBe(true);
 	});
 
 	// ADR-0032:ai.writing 写坏只隔离这一格,内存里是默认(两份开、无例外),ai 别的子格照盘上的值。
@@ -152,7 +152,7 @@ describe("parseCoreSettings", () => {
 		expect(invalid).toHaveLength(1);
 		expect(invalid[0]?.path).toEqual(["ai", "writing"]);
 		expect(invalid[0]?.raw).toEqual({ post: { isOnByDefault: "不是布尔" } });
-		expect(GlobalConfigSchema.safeParse(settings).success).toBe(true);
+		expect(GlobalSettingsSchema.safeParse(settings).success).toBe(true);
 	});
 
 	// N2:各种坏法。
@@ -222,7 +222,7 @@ describe("parseCoreSettings", () => {
 		expect(invalid).toEqual([]);
 	});
 
-	// 题 2:原型名当实例 id 是坏的那一家。键的规则取自 GlobalConfigSchema(.unwrap 得到 record,.keyType / .valueType)。
+	// 题 2:原型名当实例 id 是坏的那一家。键的规则取自 GlobalSettingsSchema(.unwrap 得到 record,.keyType / .valueType)。
 	it("实例 id 是原型名(constructor):记成单家的坏格、原文留着,别家还在", () => {
 		const disk = goodDisk();
 		disk.ai.providers = {
@@ -264,7 +264,7 @@ describe("parseCoreSettings", () => {
 		const disk = goodDisk();
 		disk.ai = "关掉";
 		const { settings, invalid } = parseCoreSettings(disk);
-		expect(settings.ai).toEqual(makeDefaultGlobalConfig().ai);
+		expect(settings.ai).toEqual(makeDefaultGlobalSettings().ai);
 		expect(settings.history.retentionDays).toBe(30);
 		expect(invalid).toHaveLength(1);
 		expect(invalid[0]?.path).toEqual(["ai"]);
@@ -275,7 +275,7 @@ describe("parseCoreSettings", () => {
 		const disk = goodDisk();
 		disk.defaults = [1, 2];
 		const { settings, invalid } = parseCoreSettings(disk);
-		expect(settings.defaults).toEqual(makeDefaultGlobalConfig().defaults);
+		expect(settings.defaults).toEqual(makeDefaultGlobalSettings().defaults);
 		expect(invalid).toHaveLength(1);
 		expect(invalid[0]?.path).toEqual(["defaults"]);
 		expect(invalid[0]?.raw).toEqual([1, 2]);
@@ -285,7 +285,7 @@ describe("parseCoreSettings", () => {
 		const disk = goodDisk();
 		delete disk.ai.enabled;
 		const { settings, invalid } = parseCoreSettings(disk);
-		expect(settings.ai.enabled).toBe(makeDefaultGlobalConfig().ai.enabled);
+		expect(settings.ai.enabled).toBe(makeDefaultGlobalSettings().ai.enabled);
 		expect(settings.ai.activePreset).toBe("analyst");
 		expect(invalid.map((e) => [e.path, e.missing])).toEqual([[["ai", "enabled"], true]]);
 	});
@@ -309,7 +309,7 @@ describe("parseCoreSettings", () => {
 		const disk = goodDisk();
 		disk.templatesSeen = "账本";
 		const { settings, invalid } = parseCoreSettings(disk);
-		expect(settings.templatesSeen).toEqual(makeDefaultGlobalConfig().templatesSeen);
+		expect(settings.templatesSeen).toEqual(makeDefaultGlobalSettings().templatesSeen);
 		expect(settings.templatesSeen).toEqual({});
 		expect(invalid.map((e) => e.path)).toEqual([["templatesSeen"]]);
 	});

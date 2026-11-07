@@ -33,7 +33,7 @@ import type {
 } from "@bilibili-notify/contract";
 import {
 	fail,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	ok,
 	type Post,
 	type PostReport,
@@ -634,7 +634,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		return ((await res.json()) as StatsOverviewResponse).rows;
 	}
 
-	const aiSettings = (base: ReturnType<typeof makeDefaultGlobalConfig>["ai"]) => {
+	const aiSettings = (base: ReturnType<typeof makeDefaultGlobalSettings>["ai"]) => {
 		const { presets: _presets, removedBuiltinPresets: _removed, ...selection } = base;
 		return {
 			...selection,
@@ -879,7 +879,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 					{
 						core: {
 							master: { targetId: ID.master },
-							ai: { ...aiSettings(makeDefaultGlobalConfig().ai), enabled: false },
+							ai: { ...aiSettings(makeDefaultGlobalSettings().ai), enabled: false },
 						},
 					},
 					"PATCH",

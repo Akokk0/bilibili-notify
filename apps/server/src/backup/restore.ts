@@ -1,6 +1,6 @@
 import {
 	type Connection,
-	type GlobalConfig,
+	type GlobalSettings,
 	type PushTarget,
 	type Subscription,
 	type SubscriptionTag,
@@ -29,7 +29,7 @@ import {
 export type ImportMode = "overwrite" | "merge";
 
 export interface CurrentState {
-	globals: GlobalConfig;
+	globals: GlobalSettings;
 	subscriptions: Subscription[];
 	subscriptionTags: SubscriptionTag[];
 	connections: Connection[];
@@ -37,7 +37,7 @@ export interface CurrentState {
 }
 
 export interface ImportSections {
-	globals?: GlobalConfig;
+	globals?: GlobalSettings;
 	integrations?: Record<string, unknown>;
 	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
@@ -48,7 +48,7 @@ export interface ImportSections {
 
 /** 折好的终态 —— ConfigStore.replaceSections 要的形状。 */
 export interface FoldedSections {
-	globals?: GlobalConfig;
+	globals?: GlobalSettings;
 	integrations?: Record<string, unknown>;
 	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
@@ -63,7 +63,7 @@ interface ScopePlan<T> {
 }
 
 export interface ImportPlan {
-	setGlobals?: GlobalConfig;
+	setGlobals?: GlobalSettings;
 	/** 覆盖模式下备份带着的各集成的设置(整份换)。 */
 	setIntegrations?: Record<string, unknown>;
 	/** 覆盖模式下备份带着的各拓展的设置(带来的那几个整份换)。 */

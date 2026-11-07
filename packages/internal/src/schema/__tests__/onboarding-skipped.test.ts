@@ -6,7 +6,7 @@
  *
  * 这里守配置层的两条不变量:
  *
- * ① **老配置缺这个字段照样能读** —— 独立端启动时 `GlobalConfigSchema.parse` 失败
+ * ① **老配置缺这个字段照样能读** —— 独立端启动时 `GlobalSettingsSchema.parse` 失败
  *    是直接挂掉的(同 `templatesSeen` / `imageGroup` 那批)。
  * ② **「缺失」必须原样穿透,不许被 default 补成 false** —— 缺失的意思是「还没问
  *    过用户」,询问框全靠它弹;补成 false 等于永远不问、对老用户直接开导览,
@@ -14,26 +14,26 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 
 describe("onboarding.skipped 三态", () => {
 	it("老 globals.json 没有 onboarding 段 → 解析成功,skipped 保持缺失(= 该弹询问框)", () => {
-		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		const g = makeDefaultGlobalSettings() as unknown as Record<string, unknown>;
 		delete g.onboarding;
-		const parsed = GlobalConfigSchema.safeParse(g);
+		const parsed = GlobalSettingsSchema.safeParse(g);
 		expect(parsed.success).toBe(true);
 		expect(parsed.data?.onboarding?.skipped).toBeUndefined();
 	});
 
 	it("全新安装 → skipped 同样缺失:新装用户第一次开面板也要被问一次", () => {
-		expect(makeDefaultGlobalConfig().onboarding?.skipped).toBeUndefined();
+		expect(makeDefaultGlobalSettings().onboarding?.skipped).toBeUndefined();
 	});
 
 	it("已作出的选择原样保留:true 与 false 都不被改写", () => {
-		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		const g = makeDefaultGlobalSettings() as unknown as Record<string, unknown>;
 		g.onboarding = { skipped: true };
-		expect(GlobalConfigSchema.parse(g).onboarding?.skipped).toBe(true);
+		expect(GlobalSettingsSchema.parse(g).onboarding?.skipped).toBe(true);
 		g.onboarding = { skipped: false };
-		expect(GlobalConfigSchema.parse(g).onboarding?.skipped).toBe(false);
+		expect(GlobalSettingsSchema.parse(g).onboarding?.skipped).toBe(false);
 	});
 });

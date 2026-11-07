@@ -1,7 +1,7 @@
 import {
 	FEATURE_KEYS,
 	type FeatureKey,
-	type GlobalConfig,
+	type GlobalSettings,
 	needsLiveMonitor,
 	resolve,
 	type SourceSubscriptionView,
@@ -23,7 +23,7 @@ import {
 export function sourceSubscriptionViews(
 	subscriptions: readonly Subscription[],
 	sourceKey: string,
-	defaults: GlobalConfig["defaults"],
+	defaults: GlobalSettings["defaults"],
 ): SourceSubscriptionView[] {
 	const merged = new Map<string, { features: Set<FeatureKey>; monitorsLive: boolean }>();
 	for (const sub of subscriptions) {

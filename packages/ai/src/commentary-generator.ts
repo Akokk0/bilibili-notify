@@ -225,7 +225,7 @@ interface ToolCallOutput {
 const TOOL_IMAGE_NOTE = "(以下是上面工具调用交回的图,不是主人贴的。)";
 
 /** 平台中立的人格配置。 */
-export interface PersonaConfig {
+export interface CommentaryPersonaSettings {
 	/** AI 名字 */
 	name?: string;
 	/** 称呼用户的方式 */
@@ -246,7 +246,7 @@ export interface PersonaConfig {
  * CommentaryGenerator 的运行时配置。
  * 不包含 logLevel(由宿主在外部配置 logger)。
  */
-export interface CommentaryGeneratorConfig {
+export interface CommentaryGeneratorSettings {
 	apiKey: string;
 	baseURL: string;
 	model: string;
@@ -254,7 +254,7 @@ export interface CommentaryGeneratorConfig {
 	// OpenAI 推理模型收到它直接 400。想调的主人写进 `extraParams`。
 
 	/** 结构化人格配置 */
-	persona: PersonaConfig;
+	persona: CommentaryPersonaSettings;
 
 	/** 动态点评时追加到人格提示词之后的场景说明 */
 	dynamicPrompt: string;
@@ -329,7 +329,7 @@ export interface CommentaryGeneratorConfig {
  * preset / inherit / partial 折叠（见 `@bilibili-notify/internal#resolve`)。
  */
 export interface CommentaryCallOverride {
-	persona?: PersonaConfig;
+	persona?: CommentaryPersonaSettings;
 	dynamicPrompt?: string;
 	liveSummaryPrompt?: string;
 	model?: string;
@@ -425,7 +425,7 @@ export interface CommentaryProvider {
 
 export interface CommentaryGeneratorOptions {
 	serviceCtx: ServiceContext;
-	config: CommentaryGeneratorConfig;
+	config: CommentaryGeneratorSettings;
 	/** 按这次涉及的来源键现取提示词叫法;不给键表示聊天 / 试一句的全局范围。 */
 	nouns: (sourceKeys?: readonly string[]) => PromptNouns;
 	/** 给人看的工具小条叫法,与提示词分开取当前语言;空键列表落中性词。 */
@@ -525,7 +525,7 @@ export interface ChatStatelessOptions {
  */
 export class CommentaryGenerator implements CommentaryProvider {
 	private readonly logger: Logger;
-	private config: CommentaryGeneratorConfig;
+	private config: CommentaryGeneratorSettings;
 	private readonly nouns: CommentaryGeneratorOptions["nouns"];
 	private readonly toolNouns: CommentaryGeneratorOptions["toolNouns"];
 
@@ -586,7 +586,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/** 替换运行时配置(宿主在 dashboard 编辑后调用)。 */
-	updateConfig(config: CommentaryGeneratorConfig): void {
+	updateConfig(config: CommentaryGeneratorSettings): void {
 		this.config = config;
 		const { name, traits } = config.persona;
 		this.logger.info(

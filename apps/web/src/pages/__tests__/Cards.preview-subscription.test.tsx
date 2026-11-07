@@ -13,7 +13,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Cards from "../Cards";
 import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
@@ -25,7 +25,7 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-const GLOBALS = { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalConfig;
+const GLOBALS = { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalSettings;
 
 const BILI: Subscription = makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" });
 const DOUYIN: Subscription = makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" });

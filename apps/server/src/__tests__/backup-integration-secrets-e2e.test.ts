@@ -12,7 +12,7 @@ import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { createKeyProvider, gcmDecrypt } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { type BackupStore, createBackupService } from "../backup/service.js";
@@ -52,7 +52,7 @@ async function world() {
 
 /** 备份服务的配置那一半:这条测试只关心密钥,配置给一份空的、替换时什么都不做。 */
 function emptyConfigStore(): BackupStore {
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	return {
 		getInvalidSettingsPaths: () => [],
 		getGlobals: () => globals,

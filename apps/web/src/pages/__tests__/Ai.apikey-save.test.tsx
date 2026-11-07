@@ -12,7 +12,7 @@
  *   已保存态,否则草稿里的明文与基线遮挡永不相等、灵动岛永久 dirty。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -30,7 +30,7 @@ const MASK = { masked: "••••••••" };
 
 /** 后端 GET / PATCH 都返回打码过的 globals —— 配了的 apiKey 恒为 { masked }。 */
 function redactedGlobals() {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.enabled = true;
 	// 连接字段住在服务商桶里(各家一套配置)。
 	g.ai.activeProfile = "deepseek";

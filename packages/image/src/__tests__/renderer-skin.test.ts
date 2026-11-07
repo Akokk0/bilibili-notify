@@ -28,8 +28,8 @@ import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	ImageRenderer,
-	type ImageRendererConfig,
 	type ImageRendererOptions,
+	type ImageRendererSettings,
 } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
 import { CSS_CUSTOM_PROPERTY_MAX_CHARS } from "../skin/knob-assets";
@@ -46,7 +46,7 @@ const SERVICE_CTX: ServiceContext = {
 	track: () => {},
 };
 
-const BASE_CONFIG: ImageRendererConfig = {
+const BASE_CONFIG: ImageRendererSettings = {
 	font: "PingFang SC, sans-serif",
 };
 
@@ -216,7 +216,7 @@ describe("ImageRenderer 皮肤旋钮", () => {
 		name: "带旋钮的皮肤",
 		knobs: [{ key: "accent", label: "主色", type: "color", default: "#fb7299" }],
 	};
-	const withSkin = (knobs?: ImageRendererConfig["cardSkinKnobs"]): Harness =>
+	const withSkin = (knobs?: ImageRendererSettings["cardSkinKnobs"]): Harness =>
 		makeHarness({
 			config: { ...BASE_CONFIG, ...(knobs ? { cardSkinKnobs: knobs } : {}) },
 			resolveCardSkin: (id) => (id === "knobby" ? KNOB_SKIN : undefined),
@@ -244,7 +244,7 @@ describe("ImageRenderer 皮肤旋钮", () => {
 				{ key: "wallpaper", label: "壁纸", type: "image" },
 			],
 		};
-		const withAssets = (knobs: ImageRendererConfig["cardSkinKnobs"]): Harness =>
+		const withAssets = (knobs: ImageRendererSettings["cardSkinKnobs"]): Harness =>
 			makeHarness({
 				config: { ...BASE_CONFIG, cardSkinKnobs: knobs },
 				resolveCardSkin: (id) => (id === "assetty" ? ASSET_SKIN : undefined),
@@ -326,7 +326,7 @@ describe("ImageRenderer per-UP 旋钮覆盖", () => {
 			{ key: "wallpaper", label: "壁纸", type: "image" },
 		],
 	};
-	const withGlobal = (global: ImageRendererConfig["cardSkinKnobs"]): Harness =>
+	const withGlobal = (global: ImageRendererSettings["cardSkinKnobs"]): Harness =>
 		makeHarness({
 			config: { ...BASE_CONFIG, cardSkinKnobs: global },
 			resolveCardSkin: (id) => (id === "upskin" ? UP_SKIN : undefined),
@@ -335,7 +335,7 @@ describe("ImageRenderer per-UP 旋钮覆盖", () => {
 		});
 	const upLive = (
 		renderer: ImageRenderer,
-		cardSkinKnobs?: ImageRendererConfig["cardSkinKnobs"],
+		cardSkinKnobs?: ImageRendererSettings["cardSkinKnobs"],
 	): Promise<Buffer> =>
 		renderer.generateLiveCard(LIVE_INPUT, {
 			cardSkin: "upskin",

@@ -4,14 +4,14 @@
  * 用真的 `NodeServiceContext` 捕获输出,看的是各日志器真实的放行,不是 spy 调用次数。
  */
 
-import type { ConfigScope, GlobalConfig } from "@bilibili-notify/internal";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import type { ConfigScope, GlobalSettings } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { LogEntry } from "../../ws/types.js";
 import { bindLogLevels } from "../log-levels.js";
 import { createNodeServiceContext } from "../service-context.js";
 
-function setup(initial: (g: GlobalConfig) => void = () => {}) {
+function setup(initial: (g: GlobalSettings) => void = () => {}) {
 	const seen: LogEntry[] = [];
 	const serviceCtx = createNodeServiceContext({
 		name: "core",
@@ -19,7 +19,7 @@ function setup(initial: (g: GlobalConfig) => void = () => {}) {
 		pretty: false,
 		onLog: (e) => seen.push(e),
 	});
-	let globals = makeDefaultGlobalConfig();
+	let globals = makeDefaultGlobalSettings();
 	initial(globals);
 	const handlers = new Set<(scope: ConfigScope) => void>();
 	const configStore = {
@@ -29,7 +29,7 @@ function setup(initial: (g: GlobalConfig) => void = () => {}) {
 			return { dispose: () => void handlers.delete(fn) };
 		},
 	};
-	const change = (mutate: (g: GlobalConfig) => void, scope: ConfigScope = "globals") => {
+	const change = (mutate: (g: GlobalSettings) => void, scope: ConfigScope = "globals") => {
 		const next = structuredClone(globals);
 		mutate(next);
 		globals = next;

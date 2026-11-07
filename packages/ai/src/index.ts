@@ -2,12 +2,12 @@ export {
 	type AIScene,
 	type CommentaryCallOverride,
 	CommentaryGenerator,
-	type CommentaryGeneratorConfig,
 	type CommentaryGeneratorOptions,
+	type CommentaryGeneratorSettings,
+	type CommentaryPersonaSettings,
 	type CommentaryProvider,
 	type ConversationMessage,
 	type ConversationRole,
-	type PersonaConfig,
 	type ToolTraceEvent,
 } from "./commentary-generator";
 export { creatorOf, parseCreator } from "./creator";
@@ -46,7 +46,7 @@ export {
 	WEB_SEARCH_TOOL_NAME,
 	WebSearchError,
 	type WebSearchExecutor,
-	type WebSearchExecutorConfig,
+	type WebSearchExecutorOptions,
 	type WebSearchResult,
 	type WebSearchSourceRef,
 	webSearchExecutorFromSettings,

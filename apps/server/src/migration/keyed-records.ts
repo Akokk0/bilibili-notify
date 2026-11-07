@@ -6,7 +6,7 @@ import { t as serverText } from "./i18n.js";
  * schema 对未知键是 strip,老键下次写盘时悄悄消失,必填键则是整份开机被拒,而类型、测试、构建全绿。
  *
  * 守卫(`__tests__/keyed-records.test.ts`)怎么用它:
- * - (a) 判定函数在四个存盘的根(`GlobalConfig` / `Subscription` / `HistoryEntry` / `CardSkinManifest`)上找出所有用这几套
+ * - (a) 判定函数在四个存盘的根(`GlobalSettings` / `Subscription` / `HistoryEntry` / `CardSkinManifest`)上找出所有用这几套
  *   词表做键的位置,和这张表两头对:schema 里有、表里没登记 → 红;表里有、schema 里找不到(字段删了、挪了)→ 也红,免得表烂掉;
  * - (b) 归 `settings` / `subscription` 的每一条:用冻住的 0.x 词表(`zero-vocabulary.ts`)在 0.x 的路径上摆满旧键,跑那一族的
  *   1.0 步骤(改名 + 直播拆键),断言 `path` 上出来的键都在活词表里、0.x 的旧键一个不剩、每个 0.x 键的值都落进了某个新键;
@@ -39,7 +39,11 @@ export const KEYED_VOCABULARIES: Record<KeyedVocabulary, readonly string[]> = {
 };
 
 /** 存盘的根:一个仓读写的那份 schema。 */
-export type KeyedRecordRoot = "GlobalConfig" | "Subscription" | "HistoryEntry" | "CardSkinManifest";
+export type KeyedRecordRoot =
+	| "GlobalSettings"
+	| "Subscription"
+	| "HistoryEntry"
+	| "CardSkinManifest";
 
 /**
  * 谁负责把这条记录从 0.x 迁到 1.0:
@@ -69,13 +73,13 @@ export interface KeyedRecordEntry {
 export const KEYED_RECORD_ENTRIES: readonly KeyedRecordEntry[] = [
 	// 全局设置
 	{
-		root: "GlobalConfig",
+		root: "GlobalSettings",
 		path: "defaults.features",
 		vocabulary: "FeatureKey",
 		handledBy: { kind: "settings" },
 	},
 	{
-		root: "GlobalConfig",
+		root: "GlobalSettings",
 		path: "defaults.features.extras",
 		vocabulary: "ExtraKey",
 		handledBy: { kind: "settings" },

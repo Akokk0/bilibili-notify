@@ -8,7 +8,7 @@
  * 纯变换本身另有单测(`pages/ai/__tests__/model-ops.test.ts`),这里只管接线接对没有。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -25,7 +25,7 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-type Globals = ReturnType<typeof makeDefaultGlobalConfig>;
+type Globals = ReturnType<typeof makeDefaultGlobalSettings>;
 type Bucket = NonNullable<Globals["ai"]["providers"]["deepseek"]>;
 
 function bucket(over: Partial<Bucket> = {}): Bucket {
@@ -51,7 +51,7 @@ const BUILTINS = builtinPresetsFor("zh-CN");
 const BASE_PERSONA = (BUILTINS[0] as (typeof BUILTINS)[number]).persona;
 
 function globalsWith(mutate: (g: Globals) => void): Globals {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.enabled = true;
 	mutate(g);
 	return JSON.parse(JSON.stringify(g));

@@ -20,7 +20,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
-import type { GlobalConfig } from "../../../types/globals";
+import type { GlobalSettings } from "../../../types/globals";
 import { PerUpEditor } from "../PerUpEditor";
 import { makeDefaults } from "./fixtures";
 
@@ -42,7 +42,7 @@ const PERSONA = {
 };
 
 /** 两份已有人格 —— 「挑一份」这件事至少要有两份才谈得上。 */
-function presetsOfTwo(): GlobalConfig["ai"]["presets"] {
+function presetsOfTwo(): GlobalSettings["ai"]["presets"] {
 	return [
 		{ id: "gentle-maid", label: "温柔女仆", persona: PERSONA },
 		{ id: "tsundere", label: "傲娇毒舌", persona: { ...PERSONA, name: "阿绫" } },
@@ -195,7 +195,7 @@ describe("per-UP AI 人格 — 老的自定义残留不许被写回磁盘", () =
 	});
 
 	it("残留的 temperature 同样显式清除 —— 它已整个退役,请求里一律不发", async () => {
-		// temperature 不再有任何读者(见 schema/subscriptions.ts 的 AIOverrideSchema),
+		// temperature 不再有任何读者(见 schema/subscriptions.ts 的 AiOverridesSchema),
 		// 原样写回去就是又一份看得见、不起作用的死配置。
 		const staleWithTemperature = { ...STALE, temperature: 1.5 };
 		const { container } = mount({ ...staleWithTemperature });

@@ -18,7 +18,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Cards from "../Cards";
 import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
@@ -48,7 +48,7 @@ const GLOBALS = {
 	logging: {},
 	master: {},
 	defaults: makeDefaults(),
-} as unknown as GlobalConfig;
+} as unknown as GlobalSettings;
 
 const NO_CHROME = "puppeteer 未配置 — 设置 BN_CHROME_PATH（本地 Chromium 路径）";
 const NOT_READY = "服务还没准备好，请稍后重试";

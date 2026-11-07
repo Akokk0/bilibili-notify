@@ -6,10 +6,10 @@
  * 各写各的 queryFn 的话,先拉的那一处决定缓存里是什么形状,别处读到的就是另一个形状。
  */
 
-import type { GlobalConfigView, SettingsResponse } from "@bilibili-notify/contract";
+import type { GlobalSettingsView, SettingsResponse } from "@bilibili-notify/contract";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
-import type { GlobalConfigPatch, SettingsPatch } from "../types/globals";
+import type { GlobalSettingsPatch, SettingsPatch } from "../types/globals";
 
 /** `/api/settings` 的 react-query 键(失效、乐观写都认它)。 */
 export const SETTINGS_KEY = ["settings"] as const;
@@ -20,7 +20,7 @@ export const SETTINGS_QUERY = queryOptions({
 	queryFn: () => api.get<SettingsResponse>("/api/settings"),
 });
 
-const coreOf = (settings: SettingsResponse): GlobalConfigView => settings.core;
+const coreOf = (settings: SettingsResponse): GlobalSettingsView => settings.core;
 
 /** 整份设置(核心那份在 `core` 下,各集成的挂在自己的键下)。 */
 export function useSettings() {
@@ -46,6 +46,6 @@ export function patchSettings(patch: SettingsPatch): Promise<SettingsResponse> {
 }
 
 /** 只改核心那份。 */
-export function patchCoreSettings(patch: GlobalConfigPatch): Promise<SettingsResponse> {
+export function patchCoreSettings(patch: GlobalSettingsPatch): Promise<SettingsResponse> {
 	return patchSettings({ core: patch });
 }

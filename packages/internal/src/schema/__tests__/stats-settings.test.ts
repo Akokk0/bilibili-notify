@@ -6,17 +6,17 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
 	DEFAULT_STATS_SETTINGS,
-	GlobalConfigSchema,
-	makeDefaultGlobalConfig,
+	GlobalSettingsSchema,
+	makeDefaultGlobalSettings,
 	StatsSettingsSchema,
 } from "../globals";
 
 describe("stats.enabled", () => {
 	it("出厂开着;缺 `stats` 这一节的老设置读进来也是开着", () => {
 		expect(DEFAULT_STATS_SETTINGS).toEqual({ enabled: true });
-		expect(makeDefaultGlobalConfig().stats).toEqual({ enabled: true });
-		const { stats: _dropped, ...withoutStats } = makeDefaultGlobalConfig();
-		expect(GlobalConfigSchema.parse(withoutStats).stats).toEqual({ enabled: true });
+		expect(makeDefaultGlobalSettings().stats).toEqual({ enabled: true });
+		const { stats: _dropped, ...withoutStats } = makeDefaultGlobalSettings();
+		expect(GlobalSettingsSchema.parse(withoutStats).stats).toEqual({ enabled: true });
 	});
 
 	it("`stats` 节在、但没写 enabled:也是开着", () => {
@@ -24,8 +24,8 @@ describe("stats.enabled", () => {
 	});
 
 	it("关掉的值原样读回,不被默认值盖掉", () => {
-		const base = makeDefaultGlobalConfig();
-		expect(GlobalConfigSchema.parse({ ...base, stats: { enabled: false } }).stats.enabled).toBe(
+		const base = makeDefaultGlobalSettings();
+		expect(GlobalSettingsSchema.parse({ ...base, stats: { enabled: false } }).stats.enabled).toBe(
 			false,
 		);
 	});
@@ -35,6 +35,6 @@ describe("stats.enabled", () => {
 	});
 
 	it("它是顶层一节,不挂在 `defaults` 下(订阅覆盖不了它)", () => {
-		expect(makeDefaultGlobalConfig().defaults).not.toHaveProperty("stats");
+		expect(makeDefaultGlobalSettings().defaults).not.toHaveProperty("stats");
 	});
 });

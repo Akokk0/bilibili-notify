@@ -15,7 +15,7 @@ import { packageText } from "../texts";
  *   一个别名都不要),键不在 = 用内置的那几个。区分这两者是必要的:否则「我不想要
  *   任何别名」和「我没动过」在盘上长得一样。
  */
-export const CommandConfigSchema = z.object({
+export const CommandSettingsSchema = z.object({
 	enabled: z.boolean().default(true),
 	prefix: z
 		.string()
@@ -42,9 +42,9 @@ export const CommandConfigSchema = z.object({
 		)
 		.default({}),
 });
-export type CommandConfig = z.infer<typeof CommandConfigSchema>;
+export type CommandSettings = z.infer<typeof CommandSettingsSchema>;
 
-export const DEFAULT_COMMAND_CONFIG: CommandConfig = {
+export const DEFAULT_COMMAND_SETTINGS: CommandSettings = {
 	enabled: true,
 	prefix: "/",
 	aliases: {},

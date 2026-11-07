@@ -89,7 +89,7 @@ export const ContentFiltersPartialSchema = ContentFiltersSchema.partial().extend
 });
 export type ContentFiltersPartial = z.infer<typeof ContentFiltersPartialSchema>;
 
-export const ScheduleConfigSchema = z.object({
+export const ScheduleSettingsSchema = z.object({
 	quietHours: z.array(TimeRangeSchema),
 	/**
 	 * 断流接续:开启后,UP 下播不立刻通知,先等 `liveEndGraceMinutes` 分钟。期间若重新
@@ -101,17 +101,17 @@ export const ScheduleConfigSchema = z.object({
 	/** 断流接续等待时长(分钟,1–10,默认 2)。仅 `liveEndGrace=true` 时生效。 */
 	liveEndGraceMinutes: z.number().int().min(1).max(10).default(2),
 });
-export type ScheduleConfig = z.infer<typeof ScheduleConfigSchema>;
+export type ScheduleSettings = z.infer<typeof ScheduleSettingsSchema>;
 
 // 同 ContentFiltersPartialSchema:`.partial()` 不剥 `.default()`,per-UP 只覆盖 quietHours 等
 // 字段时会被注入 liveEndGrace:false / liveEndGraceMinutes:2。schedule 整段归「直播阈值」section
 // 独占,注入默认值虽不跨 section 污染,但会让 override 落盘多出用户没设的字段、并在 resolve merge
-// 时强制盖掉全局对应值。override 维度须为无默认纯可选,与全局 ScheduleConfigSchema 分开。
-export const ScheduleConfigPartialSchema = ScheduleConfigSchema.partial().extend({
+// 时强制盖掉全局对应值。override 维度须为无默认纯可选,与全局 ScheduleSettingsSchema 分开。
+export const ScheduleSettingsPartialSchema = ScheduleSettingsSchema.partial().extend({
 	liveEndGrace: z.boolean().optional(),
 	liveEndGraceMinutes: z.number().int().min(1).max(10).optional(),
 });
-export type ScheduleConfigPartial = z.infer<typeof ScheduleConfigPartialSchema>;
+export type ScheduleSettingsPartial = z.infer<typeof ScheduleSettingsPartialSchema>;
 
 /**
  * 开播推送的设置(⑬d 起自成一段,原先在 `schedule` 里)。`catchUpOnBoot`:启动时发现正在播,补报一次开播 ——
@@ -122,7 +122,7 @@ export const LiveStartSettingsSchema = z.object({
 });
 export type LiveStartSettings = z.infer<typeof LiveStartSettingsSchema>;
 
-// per-UP 那份是「无默认的纯可选」(同 ScheduleConfigPartialSchema 的理由):这一段今天没有 `.default()`,
+// per-UP 那份是「无默认的纯可选」(同 ScheduleSettingsPartialSchema 的理由):这一段今天没有 `.default()`,
 // `.partial()` 就够;将来谁给全局那份某一格补了 `.default()`,partial 不会剥它 —— 到时照 schedule 的写法
 // 在这里 `.extend` 成纯可选,别让 per-UP 落盘多出没设的字段、再在 resolve 里盖掉全局。
 export const LiveStartSettingsPartialSchema = LiveStartSettingsSchema.partial();
@@ -233,7 +233,7 @@ export const TemplateBundlePartialSchema = TemplateBundleSchema.extend({
 });
 export type TemplateBundlePartial = z.infer<typeof TemplateBundlePartialSchema>;
 
-export const AIPersonaSchema = z.object({
+export const AiPersonaSettingsSchema = z.object({
 	name: z.string(),
 	addressUser: z.string(),
 	addressSelf: z.string(),
@@ -244,12 +244,12 @@ export const AIPersonaSchema = z.object({
 	/** 追加到 system prompt 末尾的额外指令,用于微调 AI 行为(指代偏好、安全约束等)。 */
 	extraSystemPrompt: z.string().default(""),
 });
-export type AIPersona = z.infer<typeof AIPersonaSchema>;
+export type AiPersonaSettings = z.infer<typeof AiPersonaSettingsSchema>;
 
 /**
  * **一份服务商实例的整套配置。**
  *
- * 按**实例**各存一份(见 {@link AISettingsSchema} 的 `providers`),同一家服务商
+ * 按**实例**各存一份(见 {@link AiSettingsSchema} 的 `providers`),同一家服务商
  * 可以有多份实例(两个 DeepSeek 号、一个测试用的百炼)。换来换去不必把 key 重敲
  * 一遍,也不会出现「地址还是上一份的、模型名已经换了」这种半截状态。
  *
@@ -257,7 +257,7 @@ export type AIPersona = z.infer<typeof AIPersonaSchema>;
  * 余下由 schema 补齐。`provider` 刻意**无默认**:桶键只是实例 id,方言归属认不出
  * 又没写明时(手改坏的数据)宁可拒收,也不猜一个、更不悄悄吞掉。
  */
-export const AIProviderProfileSchema = z.object({
+export const AiProviderProfileSchema = z.object({
 	/**
 	 * 这桶配置属于哪家服务商 —— 决定「开思考」翻译成哪家的方言。上一代配置
 	 * 以服务商名当桶键,开新代时由迁移器按键名盖章(`apps/server/src/migration/ai.ts`)。
@@ -325,10 +325,10 @@ export const AIProviderProfileSchema = z.object({
 		})
 		.default({ baseUrl: "", apiKey: "", model: "" }),
 });
-export type AIProviderProfile = z.infer<typeof AIProviderProfileSchema>;
+export type AiProviderProfile = z.infer<typeof AiProviderProfileSchema>;
 
-/** AI 总配置（在 GlobalConfig.ai 出现）。 */
-const AISettingsObjectSchema = z.object({
+/** AI 总配置（在 GlobalSettings.ai 出现）。 */
+const AiSettingsObjectSchema = z.object({
 	enabled: z.boolean(),
 	/**
 	 * 当前用哪份实例(指向 {@link providers} 的键)。**只认主人明确选过的那一份,
@@ -358,7 +358,7 @@ const AISettingsObjectSchema = z.object({
 			z.string().refine((id) => !isPrototypeName(id), {
 				error: () => prototypeNameMessage(packageText("internal.settings.aiProviderId")),
 			}),
-			AIProviderProfileSchema,
+			AiProviderProfileSchema,
 		)
 		.default({}),
 	/**
@@ -439,14 +439,14 @@ const AISettingsObjectSchema = z.object({
 	 * 主人自己建的人格(含从内置「修改」另存的副本 —— 另存的是当时那种语言的内容,之后不再跟语言)。
 	 * 不装内置那几份;老代的盘上若混着内置 id 的条目,`presetsOf` 以内置为准、跳过它们。
 	 *
-	 * per-UP 的 `overrides.ai.preset` 指的就是 `presetsOf` 清单里的 `id`(详见 `AIOverrideSchema`)。
+	 * per-UP 的 `overrides.ai.preset` 指的就是 `presetsOf` 清单里的 `id`(详见 `AiOverridesSchema`)。
 	 */
 	presets: z
 		.array(
 			z.object({
 				id: z.string(),
 				label: z.string(),
-				persona: AIPersonaSchema,
+				persona: AiPersonaSettingsSchema,
 				dynamicPrompt: z.string().optional(),
 				liveSummaryPrompt: z.string().optional(),
 			}),
@@ -458,8 +458,8 @@ const AISettingsObjectSchema = z.object({
  * AI 设置。0.x 的老形状(扁平连接字段、「一家一桶」、手改的人格、预设上线前的 `presets: []`)由迁移器
  * 改写(`apps/server/src/migration/ai.ts`),这里只认新形状。
  */
-export const AISettingsSchema = AISettingsObjectSchema;
-export type AISettings = z.infer<typeof AISettingsSchema>;
+export const AiSettingsSchema = AiSettingsObjectSchema;
+export type AiSettings = z.infer<typeof AiSettingsSchema>;
 
 /**
  * 卡片设置(㉔e,ADR-0023 决策 3 的 2026-10-06 🔗)。从前这里是 `cardStyle`(出图开关、直播封面与一批退役字段)加
@@ -501,7 +501,7 @@ export const DEFAULT_CONTENT_FILTERS: ContentFilters = {
 	allowRegex: [],
 };
 
-export const DEFAULT_SCHEDULE: ScheduleConfig = {
+export const DEFAULT_SCHEDULE: ScheduleSettings = {
 	quietHours: [],
 	liveEndGrace: false,
 	liveEndGraceMinutes: 2,

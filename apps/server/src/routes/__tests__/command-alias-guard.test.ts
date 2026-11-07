@@ -5,7 +5,7 @@
  * 掉线、怀疑权限,唯独想不到是自己起的那个别名。所以拦在保存那一刻。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { checkCommandAliases } from "../command-alias-guard.js";
 
@@ -16,7 +16,7 @@ const COMMANDS = [
 ];
 
 function check(patch: Record<string, unknown>, currentAliases: Record<string, string[]> = {}) {
-	const current = makeDefaultGlobalConfig();
+	const current = makeDefaultGlobalSettings();
 	current.commands.aliases = currentAliases;
 	return checkCommandAliases({ current, patch, commands: COMMANDS });
 }

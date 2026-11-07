@@ -16,7 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Rules from "../Rules";
 import { makeAi, makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
@@ -41,7 +41,7 @@ function globalsWith(
 		d: ReturnType<typeof makeDefaults>,
 		top: { templatesSeen: Record<string, string> },
 	) => void = () => {},
-): GlobalConfig {
+): GlobalSettings {
 	const defaults = makeDefaults();
 	defaults.templates = { wordcloudStopWords: "", membership: {} } as never;
 	const top = { templatesSeen: {} as Record<string, string> };
@@ -52,7 +52,7 @@ function globalsWith(
 		defaults,
 		ai: makeAi(),
 		templatesSeen: top.templatesSeen,
-	} as unknown as GlobalConfig;
+	} as unknown as GlobalSettings;
 }
 
 function resetStore(): void {
@@ -64,7 +64,7 @@ function resetStore(): void {
 	});
 }
 
-function mount(g: GlobalConfig) {
+function mount(g: GlobalSettings) {
 	vi.mocked(api.get).mockImplementation((url: string) =>
 		Promise.resolve(
 			url === "/api/sources"
@@ -221,7 +221,7 @@ describe("两个动作与账本", () => {
 		cleanup();
 		resetStore();
 		// 服务端回来的就是存好的账本。
-		mount({ ...g, templatesSeen: { liveStart: FP_LIVE_START } } as GlobalConfig);
+		mount({ ...g, templatesSeen: { liveStart: FP_LIVE_START } } as GlobalSettings);
 		await gotoLiveMsg();
 		await waitFor(() => expect(liveStartInput()).toBeTruthy());
 		expect(noticeOfLiveStart()).toBeNull();

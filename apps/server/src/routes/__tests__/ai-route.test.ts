@@ -8,8 +8,8 @@
  * 与 `/api/cards/test`(草稿样式 + 真实推送)同形,只是把「渲染卡片」换成
  * 「问一句 AI」。OpenAI 那一跳是外部边界,mock 掉。
  */
-import type { GlobalConfig } from "@bilibili-notify/internal";
-import { fail, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalSettings } from "@bilibili-notify/internal";
+import { fail, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createAiRoute } from "../ai.js";
@@ -56,10 +56,10 @@ beforeEach(() => {
  * 照老样子直接改 `ai.persona` 是造不出来的形状。
  */
 function draftAi(
-	bucket: Partial<GlobalConfig["ai"]["providers"]["deepseek"]> = {},
-	over: Partial<GlobalConfig["ai"]> = {},
+	bucket: Partial<GlobalSettings["ai"]["providers"]["deepseek"]> = {},
+	over: Partial<GlobalSettings["ai"]> = {},
 ) {
-	const ai = makeDefaultGlobalConfig().ai;
+	const ai = makeDefaultGlobalSettings().ai;
 	return {
 		...ai,
 		enabled: true,
@@ -104,7 +104,7 @@ function makeDeps(opts: { sendFails?: boolean } = {}) {
 			? fail("unavailable", "OneBot 连接已断开")
 			: { ok: true as const, latencyMs: 12 },
 	);
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	// store 里已存的那把 —— 必须与草稿选中的**同一个桶**,否则会拿 A 家的 key
 	// 去打 B 家的接口。
 	globals.ai.activeProfile = "deepseek";

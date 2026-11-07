@@ -1,6 +1,6 @@
 import type {
 	Connection,
-	GlobalConfig,
+	GlobalSettings,
 	Json,
 	PushTarget,
 	Subscription,
@@ -24,7 +24,7 @@ import { applyRedactions, collectRedactions, redactBackupSections } from "./sani
  */
 
 export interface FullBackupInput {
-	globals?: GlobalConfig;
+	globals?: GlobalSettings;
 	integrations?: Record<string, unknown>;
 	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];

@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { makeDefaultGlobalConfig } from "../globals";
+import { makeDefaultGlobalSettings } from "../globals";
 import { resolve } from "../resolve";
 import {
 	CreatorProfileSchema,
@@ -77,12 +77,12 @@ describe("M2: SubscriptionSchema 剥离 cachedProfile / state", () => {
 		expect("name" in BASE).toBe(false);
 		const parsed = SubscriptionSchema.parse({ ...BASE, name: "Asaki大人" });
 		expect("name" in parsed).toBe(false);
-		const eff = resolve(parsed, makeDefaultGlobalConfig().defaults);
+		const eff = resolve(parsed, makeDefaultGlobalSettings().defaults);
 		expect("name" in eff).toBe(false);
 	});
 
 	it("resolve() 输出不含 cachedProfile / state", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const eff = resolve(BASE as Subscription, globals.defaults) as unknown as Record<
 			string,
 			unknown
@@ -92,7 +92,7 @@ describe("M2: SubscriptionSchema 剥离 cachedProfile / state", () => {
 	});
 
 	it("旧记录经 resolve() 同样不渗出 cachedProfile / state", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const parsed = SubscriptionSchema.parse(LEGACY_RAW);
 		const eff = resolve(parsed, globals.defaults) as unknown as Record<string, unknown>;
 		expect("cachedProfile" in eff).toBe(false);

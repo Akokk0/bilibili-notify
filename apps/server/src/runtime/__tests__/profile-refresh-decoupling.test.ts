@@ -16,7 +16,7 @@
  *   3. 整个 tick 期间 bus 上没有 config-changed / subscription-changed 冒泡。
  */
 
-import { type GlobalConfig, ok } from "@bilibili-notify/internal";
+import { type GlobalSettings, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages, PROFILE_IMAGE_REF } from "../../__tests__/support/profile-images.js";
 
@@ -48,7 +48,7 @@ const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = {
 	profileRefreshCron: "*/2 * * * *",
-} as unknown as GlobalConfig;
+} as unknown as GlobalSettings;
 
 const SUB = {
 	id: "sub-1",

@@ -17,7 +17,7 @@
  * 后半段守的是 `comment()` 的**第四个参数** —— per-UP 人格覆盖。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createStatsRoute } from "../routes/stats.js";
 import type { RouteDeps } from "../routes/types.js";
@@ -116,7 +116,7 @@ function makeDeps(
 ): RouteDeps {
 	// 全局 defaults 取默认整份再覆盖 ai:resolve() 会读 features / cardStyle /
 	// presets 等一系列字段,只喂 { ai } 的话 per-UP 覆盖那条路径会当场炸。
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	globals.ai = { ...globals.ai, ...AI_SETTINGS };
 	// per-UP 覆盖只认人设库里的 id,所以那一份得先在库里躺着。
 	globals.ai.presets = [...globals.ai.presets, PER_UP_PRESET];

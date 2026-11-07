@@ -11,7 +11,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { CommentaryGenerator, CommentaryGeneratorConfig } from "../commentary-generator";
+import type { CommentaryGenerator, CommentaryGeneratorSettings } from "../commentary-generator";
 import { makeGen as baseGen } from "./harness";
 
 const oai = vi.hoisted(() => {
@@ -56,7 +56,7 @@ function msgResp(content: string) {
  * 主模型的 key / baseURL / 模型名**必须**是自己的一套:这个文件靠「哪个 model
  * 被调用了」分辨主模型与看图副模型两次请求(见下面 mainCall)。其余吃公共底。
  */
-function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGenerator {
+function makeGen(over: Partial<CommentaryGeneratorSettings> = {}): CommentaryGenerator {
 	return baseGen({
 		apiKey: "sk-main",
 		baseURL: "https://main.test/v1",

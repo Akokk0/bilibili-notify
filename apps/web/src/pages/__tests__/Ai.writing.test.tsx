@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -54,7 +54,7 @@ const targets: PushTarget[] = [
 	},
 	{ id: ENDPOINT, name: "工作室通知", connectionId: CONNECTION, kind: "endpoint", enabled: false },
 ];
-function mount(config = makeDefaultGlobalConfig()) {
+function mount(config = makeDefaultGlobalSettings()) {
 	vi.mocked(api.get).mockImplementation(async (path) => {
 		if (path === "/api/targets") return targets;
 		if (path === "/api/connections") return connections;
@@ -118,7 +118,7 @@ it("edits the default body through the existing AI draft and settings request", 
 });
 
 it("keeps scenes and explicit same-default choices independent across AI tabs; discard restores both", async () => {
-	const config = makeDefaultGlobalConfig();
+	const config = makeDefaultGlobalSettings();
 	config.ai.enabled = true;
 	config.ai.writing.post.byTarget = { [PRIVATE]: false, [DELETED]: true };
 	mount(config);
@@ -158,7 +158,7 @@ it("keeps scenes and explicit same-default choices independent across AI tabs; d
 });
 
 it("inherit sends null, false survives, deleted target preferences survive unrelated saves", async () => {
-	const config = makeDefaultGlobalConfig();
+	const config = makeDefaultGlobalSettings();
 	config.ai.writing.post.byTarget = { [PRIVATE]: false, [DELETED]: true };
 	mount(config);
 	await screen.findByRole("region", { name: "女仆写正文" });
@@ -178,7 +178,7 @@ it("inherit sends null, false survives, deleted target preferences survive unrel
 });
 
 it("failed save keeps edits for retry, successful response becomes the saved baseline", async () => {
-	const config = makeDefaultGlobalConfig();
+	const config = makeDefaultGlobalSettings();
 	mount(config);
 	await screen.findByRole("region", { name: "女仆写正文" });
 	fireEvent.click(defaultRow().getByRole("button", { name: "模板" }));
@@ -196,7 +196,7 @@ it("failed save keeps edits for retry, successful response becomes the saved bas
 });
 
 it("reads failures honestly and retries without dropping the default or touching hidden exceptions", async () => {
-	const config = makeDefaultGlobalConfig();
+	const config = makeDefaultGlobalSettings();
 	config.ai.writing.post.byTarget = { [DELETED]: true };
 	mount(config);
 	vi.mocked(api.get).mockImplementation(async (path) => {
@@ -226,7 +226,7 @@ it("has an editable default without targets; changing voice preserves draft and 
 	vi.mocked(api.get).mockImplementation(async (path) =>
 		path === "/api/targets" || path === "/api/connections"
 			? []
-			: { core: makeDefaultGlobalConfig() },
+			: { core: makeDefaultGlobalSettings() },
 	);
 	await screen.findByText("还没有推送目标。默认正文可以先设置，添加目标后再单独指定例外。");
 	fireEvent.click(defaultRow().getByRole("button", { name: "模板" }));

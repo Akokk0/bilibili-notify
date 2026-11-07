@@ -9,13 +9,13 @@ import { i18n } from "../../i18n";
  * 按不动时必须说得出为什么:让人填完需求、等一圈、再被服务端拒绝(没配模型是 `not_configured`)是最气人的那一种。
  */
 
-import type { GlobalConfigView } from "@bilibili-notify/contract";
+import type { GlobalSettingsView } from "@bilibili-notify/contract";
 import { resolveAIProfile } from "@bilibili-notify/internal/ai";
 
 export type CardSkinAiReadiness = { ready: true } | { ready: false; reason: string };
 
 export function cardSkinAiReadiness(input: {
-	globals: GlobalConfigView | undefined;
+	globals: GlobalSettingsView | undefined;
 	/** 内置的默认皮肤:草稿改得动但存不下来。 */
 	readOnly: boolean;
 }): CardSkinAiReadiness {

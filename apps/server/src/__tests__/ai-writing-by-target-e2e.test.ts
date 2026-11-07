@@ -24,7 +24,7 @@ import type {
 	ExtensionsResponse,
 	HistoryResponse,
 } from "@bilibili-notify/contract";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
@@ -196,7 +196,7 @@ describe("AI 写正文按目标选 e2e:同一条作品,不同目标收到不同�
 			presets: _presets,
 			removedBuiltinPresets: _removed,
 			...ai
-		} = makeDefaultGlobalConfig().ai;
+		} = makeDefaultGlobalSettings().ai;
 		await patchCore({
 			defaults: { imageGroup: { enabled: false } },
 			ai: {

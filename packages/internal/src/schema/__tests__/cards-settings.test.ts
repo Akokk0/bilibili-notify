@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { CardsOverridesSchema, CardsSettingsSchema } from "../common";
-import { DEFAULT_CARDS, GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { DEFAULT_CARDS, GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 import { resolve } from "../resolve";
 import { makeEmptySubscription, SubscriptionSchema } from "../subscriptions";
 
@@ -15,7 +15,7 @@ describe("CardsSettings(全局)", () => {
 			enabled: true,
 			liveCoverImageIds: [],
 		});
-		expect(makeDefaultGlobalConfig().defaults.cards).toEqual(DEFAULT_CARDS);
+		expect(makeDefaultGlobalSettings().defaults.cards).toEqual(DEFAULT_CARDS);
 	});
 
 	it("缺的格子补默认(缺 enabled 补 true,缺 liveCoverImageIds 补 [])", () => {
@@ -39,9 +39,9 @@ describe("CardsSettings(全局)", () => {
 	});
 
 	it("整份 defaults 里缺 `cards`(1.0 开发期落的盘)→ 补出厂值,开机不挂", () => {
-		const defaults = { ...makeDefaultGlobalConfig().defaults } as Record<string, unknown>;
+		const defaults = { ...makeDefaultGlobalSettings().defaults } as Record<string, unknown>;
 		delete defaults.cards;
-		const parsed = GlobalConfigSchema.parse({ ...makeDefaultGlobalConfig(), defaults });
+		const parsed = GlobalSettingsSchema.parse({ ...makeDefaultGlobalSettings(), defaults });
 		expect(parsed.defaults.cards).toEqual(DEFAULT_CARDS);
 	});
 });
@@ -60,7 +60,7 @@ describe("CardsOverrides(逐订阅)", () => {
 	});
 
 	it("覆盖有就用覆盖(空列表也算:这位 UP 不用自定义封面),没有就用全局的", () => {
-		const defaults = makeDefaultGlobalConfig().defaults;
+		const defaults = makeDefaultGlobalSettings().defaults;
 		defaults.cards.liveCoverImageIds = ["cover-a", "cover-b"];
 		const follow = resolve(SubscriptionSchema.parse({ ...BASE }), defaults);
 		expect(follow.cards.liveCoverImageIds).toEqual(["cover-a", "cover-b"]);

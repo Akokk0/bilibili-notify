@@ -14,9 +14,9 @@ import { dirname, join } from "node:path";
 import {
 	type BusEvents,
 	type Disposable,
-	type GlobalConfig,
+	type GlobalSettings,
 	type MessageBus,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { createKeyProvider } from "@bilibili-notify/storage";
@@ -122,7 +122,7 @@ const pokeFile = () => join(dataDir, ...integrationSettingsFile("poke"));
 
 /** 一份盘上长相的核心设置,几格故意取非默认值:断言「别的格是盘上的值」才有分量。 */
 function baseDisk(): Json {
-	const disk = structuredClone(makeDefaultGlobalConfig()) as Json;
+	const disk = structuredClone(makeDefaultGlobalSettings()) as Json;
 	disk.profileRefreshCron = "*/5 * * * *";
 	disk.mutedUntil = 123;
 	disk.defaults.imageGroup = { ...disk.defaults.imageGroup, enabled: false };
@@ -238,7 +238,7 @@ describe("带坏格开机", () => {
 			await store.load();
 
 			const settings = store.getGlobals();
-			expect(at(settings, kind.path)).toEqual(at(makeDefaultGlobalConfig(), kind.path));
+			expect(at(settings, kind.path)).toEqual(at(makeDefaultGlobalSettings(), kind.path));
 			expect(settings.profileRefreshCron).toBe("*/5 * * * *");
 			expect(settings.mutedUntil).toBe(123);
 			if (kind.sibling) expect(at(settings, kind.sibling.path)).toEqual(kind.sibling.value);
@@ -357,7 +357,7 @@ describe("落盘时放回原文", () => {
 		expect(onDisk.profileRefreshCron).toBe("*/9 * * * *");
 		if (kind.missing) expect(at(onDisk, kind.path)).toBeUndefined();
 		else expect(at(onDisk, kind.path)).toEqual(at(disk, kind.path));
-		expect(at(store.getGlobals(), kind.path)).toEqual(at(makeDefaultGlobalConfig(), kind.path));
+		expect(at(store.getGlobals(), kind.path)).toEqual(at(makeDefaultGlobalSettings(), kind.path));
 		expect(paths(store)).toEqual([kind.path]);
 	});
 
@@ -453,11 +453,11 @@ describe("落盘时放回原文", () => {
 		await store.load();
 		onInvalid.mockClear();
 
-		const restored: GlobalConfig = { ...store.getGlobals(), profileRefreshCron: "*/7 * * * *" };
+		const restored: GlobalSettings = { ...store.getGlobals(), profileRefreshCron: "*/7 * * * *" };
 		await store.replaceSections({ globals: restored });
 
 		const onDisk = await readDisk();
-		expect(onDisk.history).toEqual(makeDefaultGlobalConfig().history);
+		expect(onDisk.history).toEqual(makeDefaultGlobalSettings().history);
 		expect(onDisk.profileRefreshCron).toBe("*/7 * * * *");
 		expect(store.getInvalidSettings()).toEqual([]);
 		expect(onInvalid).toHaveBeenCalledTimes(1);
@@ -1031,10 +1031,10 @@ describe("ai.providers 一家坏只隔离那一家", () => {
 			const { secret, store } = await setup();
 			const diskBefore = await readFile(corePath, "utf8");
 			const bagBefore = await secret.load();
-			const withMid = (g: GlobalConfig): GlobalConfig => {
+			const withMid = (g: GlobalSettings): GlobalSettings => {
 				const next = structuredClone(g) as unknown as Json;
 				next.ai.providers.mid = { provider: "deepseek" };
-				return next as unknown as GlobalConfig;
+				return next as unknown as GlobalSettings;
 			};
 
 			await expect(store.updateGlobals((g) => withMid(g))).rejects.toBeInstanceOf(
@@ -1118,7 +1118,7 @@ describe("ai 的子格坏着、到面板重存(真 SecretStore、真文件)", ()
 
 	/** 每一格:怎么弄坏、面板重存时发的合法新值(要与内存里的默认值不同,才算「重存了那一格」)。 */
 	const OTHER_CELLS: Array<[cell: string, broken: unknown, fixed: () => unknown]> = [
-		["enabled", "开", () => !makeDefaultGlobalConfig().ai.enabled],
+		["enabled", "开", () => !makeDefaultGlobalSettings().ai.enabled],
 		["removedBuiltinPresets", "坏的", () => ["genki"]],
 		["activeProfile", 5, () => "openrouter"],
 		["activePreset", 5, () => "some-preset"],

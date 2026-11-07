@@ -4,11 +4,11 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { AISettingsSchema } from "../common";
-import { makeDefaultGlobalConfig } from "../globals";
+import { AiSettingsSchema } from "../common";
+import { makeDefaultGlobalSettings } from "../globals";
 
 describe("新装的 ai", () => {
-	const ai = makeDefaultGlobalConfig().ai as Record<string, unknown>;
+	const ai = makeDefaultGlobalSettings().ai as Record<string, unknown>;
 
 	it("presets 是空数组,没有 removedBuiltinPresets,指针指首份内置", () => {
 		expect(ai.presets).toEqual([]);
@@ -23,7 +23,7 @@ describe("新装的 ai", () => {
 	});
 
 	it("老盘上的顶层三格读时剥掉;removedBuiltinPresets 照收", () => {
-		const parsed = AISettingsSchema.parse({
+		const parsed = AiSettingsSchema.parse({
 			...ai,
 			persona: { name: "x" },
 			dynamicPrompt: "x",
@@ -36,7 +36,7 @@ describe("新装的 ai", () => {
 	});
 
 	it("解析后再解析,新装的形状不会长出 removedBuiltinPresets", () => {
-		const parsed = AISettingsSchema.parse(ai) as Record<string, unknown>;
+		const parsed = AiSettingsSchema.parse(ai) as Record<string, unknown>;
 		expect("removedBuiltinPresets" in parsed).toBe(false);
 	});
 });

@@ -12,7 +12,7 @@
  */
 
 import type { ExtensionEntryView, SourceEntry, UpStatsRow } from "@bilibili-notify/contract";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -131,7 +131,7 @@ function mockApi(
 ) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path === "/api/settings")
-			return Promise.resolve({ core: { ...makeDefaultGlobalConfig(), stats: { enabled } } });
+			return Promise.resolve({ core: { ...makeDefaultGlobalSettings(), stats: { enabled } } });
 		if (path.startsWith("/api/stats/overview")) return Promise.resolve({ days: DAYS, rows });
 		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
@@ -297,7 +297,7 @@ describe("统计 CSV 当前来源叫法与原始身份", () => {
 			? [first, { ...BILI_ROW, identity: { sourceKey: "bilibili", externalId: "0012" } }]
 			: [first];
 		vi.mocked(api.get).mockImplementation(async (path) => {
-			if (path === "/api/settings") return { core: makeDefaultGlobalConfig() };
+			if (path === "/api/settings") return { core: makeDefaultGlobalSettings() };
 			if (path.startsWith("/api/stats/overview")) return { days: DAYS, rows };
 			if (path === "/api/subscriptions") return [];
 			if (path === "/api/sources")
@@ -450,7 +450,7 @@ describe("统计总开关", () => {
 		expect(screen.getByRole("table")).toBeTruthy();
 		mockApi([BILI_ROW], [BILI_SUB], [], false);
 		vi.mocked(api.patch).mockResolvedValueOnce({
-			core: { ...makeDefaultGlobalConfig(), stats: { enabled: false } },
+			core: { ...makeDefaultGlobalSettings(), stats: { enabled: false } },
 		});
 		await userEvent.click(within(controls).getByRole("button", { name: "停用" }));
 		await waitFor(() => expect(screen.queryByRole("table")).toBeNull());
@@ -469,7 +469,7 @@ describe("统计总开关", () => {
 		).toBe("true");
 		mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, EXT_SUB], [DOUYIN], false);
 		vi.mocked(api.patch).mockResolvedValueOnce({
-			core: { ...makeDefaultGlobalConfig(), stats: { enabled: false } },
+			core: { ...makeDefaultGlobalSettings(), stats: { enabled: false } },
 		});
 		await userEvent.click(within(controls).getByRole("button", { name: "停用" }));
 		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
@@ -535,7 +535,7 @@ describe("统计总开关", () => {
 		expect(vi.mocked(api.get).mock.calls.map(([path]) => path)).toEqual(["/api/settings"]);
 		expect(api.delete).not.toHaveBeenCalled();
 		mockApi([BILI_ROW], [BILI_SUB], []);
-		vi.mocked(api.patch).mockResolvedValueOnce({ core: makeDefaultGlobalConfig() });
+		vi.mocked(api.patch).mockResolvedValueOnce({ core: makeDefaultGlobalSettings() });
 		await userEvent.click(screen.getByRole("button", { name: "启用" }));
 		await screen.findByRole("table");
 		expect(screen.queryByRole("alert")).toBeNull();
@@ -558,7 +558,7 @@ describe("统计总开关", () => {
 		expect(screen.getByRole("button", { name: "停用" }).matches(":disabled")).toBe(true);
 		expect(screen.queryByRole("table")).toBeNull();
 		mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, EXT_SUB]);
-		await act(async () => finish({ core: makeDefaultGlobalConfig() }));
+		await act(async () => finish({ core: makeDefaultGlobalSettings() }));
 		await screen.findByRole("table");
 		expect(tableRow("抖音乙")).toBeTruthy();
 		expect(

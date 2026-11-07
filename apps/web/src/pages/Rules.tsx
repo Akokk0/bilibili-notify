@@ -1,4 +1,4 @@
-import type { GlobalConfigView } from "@bilibili-notify/contract";
+import type { GlobalSettingsView } from "@bilibili-notify/contract";
 import { presetsOf } from "@bilibili-notify/internal/ai";
 import { DEFAULT_LOCALE, textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { buildPatch } from "@bilibili-notify/internal/patch";
@@ -27,7 +27,7 @@ import { useSources } from "../hooks/useSources";
 import { useT } from "../i18n";
 import { api } from "../services/api";
 import { type Subscription, subscriptionIdentityOf } from "../types/domain";
-import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
+import type { GlobalDefaults, GlobalSettings, GlobalSettingsPatch } from "../types/globals";
 import { buildOverridesPatch } from "./rules/overrides-patch";
 import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
 import { isSectionCustomized } from "./rules/section-scope";
@@ -54,7 +54,7 @@ import {
 // 账本(「默认文案有更新」)按简体原文算,不随语言变:换语言不亮,以后补上别的语言的译文也不亮。
 // 输入框显示的「没存时的默认」才跟当前语言(见 `Rules` 里的 `factory`)。
 const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
-const NO_SEEN: GlobalConfig["templatesSeen"] = Object.freeze({});
+const NO_SEEN: GlobalSettings["templatesSeen"] = Object.freeze({});
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -129,7 +129,7 @@ function SectionList({
  * 清空一个可选字段(上舰提示里某一档的文案)靠它 —— 拿掉之后草稿里就没有这个键,保存时 `buildPatch` 拿草稿与基线一比,
  * 才会编出显式 null 去服务端真的删;存成 `null` 的话界面读到的是 `null`、草稿与基线对不上又说不清是改了还是没改。
  */
-function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
+function deepMerge<T>(base: T, patch: GlobalSettingsPatch): T {
 	if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return patch as T;
 	const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
 	for (const k of Object.keys(patch)) {
@@ -147,7 +147,7 @@ function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
 			typeof bv === "object" &&
 			!Array.isArray(bv)
 		) {
-			out[k] = deepMerge(bv, pv as GlobalConfigPatch);
+			out[k] = deepMerge(bv, pv as GlobalSettingsPatch);
 		} else {
 			out[k] = pv;
 		}
@@ -179,8 +179,8 @@ export function GlobalDraftBinder({
 	defaults: GlobalDefaults;
 	baseline: GlobalDefaults;
 	/** 「默认文案看过哪一版」的账本:在核心设置顶层、不在 `defaults` 里,所以另带一格。 */
-	templatesSeen: GlobalConfig["templatesSeen"];
-	baselineTemplatesSeen: GlobalConfig["templatesSeen"];
+	templatesSeen: GlobalSettings["templatesSeen"];
+	baselineTemplatesSeen: GlobalSettings["templatesSeen"];
 	onSave: () => Promise<unknown> | unknown;
 	onDiscard: () => void;
 }): null {
@@ -244,7 +244,7 @@ export default function Rules() {
 
 	const [scope, setScope] = useState<Scope>("__global");
 	const [section, setSection] = useState<SectionId>("filter");
-	const [draft, setDraft] = useState<GlobalConfigView | null>(null);
+	const [draft, setDraft] = useState<GlobalSettingsView | null>(null);
 	// 用户主动通过「添加 UP」加进来,但还没设任何 override 的 sub.id;客户端内存,刷新即清空。
 	const [addedSubIds, setAddedSubIds] = useState<Set<string>>(new Set());
 	// 待确认移除的 per-UP(有实际覆盖项,点 tab 的 x 后先弹确认 dialog 再清空)。
@@ -255,7 +255,7 @@ export default function Rules() {
 	}, [globalsQuery.data]);
 
 	const save = useMutation({
-		mutationFn: async (next: GlobalConfigView) => {
+		mutationFn: async (next: GlobalSettingsView) => {
 			// Only the scopes this page actually edits — filter / live thresholds /
 			// templates / imageGroup。Posting the full draft would put
 			// `defaults.cards` and `ai` into the body and trigger the
@@ -332,7 +332,7 @@ export default function Rules() {
 	// 账本(`templatesSeen`)在编辑这一层跟着「存没存」走:一条文字从没存变成存了,记下此刻简体出厂原文的指纹;
 	// 变回没存(恢复默认、用新默认、编辑到与默认一字不差)就拿掉。账本因此始终是草稿的纯函数,
 	// 改了又改回、丢弃草稿都不会留脏条目 —— 放在保存那一层就得再拿基线比一遍,保存条的 diff 也看不见这笔。
-	const patchDraft = useCallback((delta: GlobalConfigPatch): void => {
+	const patchDraft = useCallback((delta: GlobalSettingsPatch): void => {
 		setDraft((d) => {
 			if (!d) return d;
 			const next = deepMerge(d, delta);
@@ -376,7 +376,7 @@ export default function Rules() {
 			patchDraft({
 				defaults: {
 					templates: nestByPath(path, null) as NonNullable<
-						GlobalConfigPatch["defaults"]
+						GlobalSettingsPatch["defaults"]
 					>["templates"],
 				},
 				templatesSeen: { [path]: null },

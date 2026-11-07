@@ -120,7 +120,7 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
  * from its own config store. The `logLevel` field is intentionally dropped — the
  * host is responsible for setting the logger level externally.
  */
-export interface ImageRendererConfig {
+export interface ImageRendererSettings {
 	// 🪦 `backgroundImage` 2026-09-20 删掉(整条 `cardStyle.backgroundImages` 链):背景图
 	// 归皮肤自己的 `image` 旋钮,值经 `cardSkinKnobs` → `resolveKnobAssets` 进来。
 	/**
@@ -145,7 +145,7 @@ export interface ImageRendererConfig {
 export interface ImageRendererOptions {
 	serviceCtx: ServiceContext;
 	puppeteer: PuppeteerLike;
-	config: ImageRendererConfig;
+	config: ImageRendererSettings;
 	/**
 	 * 把卡片背景图资产 id 解析成可渲染的 data URL(宿主注入,读 `<dataDir>/assets/card-bg`)。
 	 * 解析不出来返回空串。
@@ -207,7 +207,7 @@ export interface ImageRendererOptions {
 export class ImageRenderer {
 	readonly logger: Logger;
 	private readonly puppeteer: PuppeteerLike;
-	private config: ImageRendererConfig;
+	private config: ImageRendererSettings;
 	/**
 	 * 图片旋钮的轮换游标 → 已经出过几张。全局那串记在 `<皮肤 id>:<旋钮 key>`;per-UP 那串
 	 * 另记一格(见 {@link knobCursorKey}),两边不互相拨动。
@@ -278,7 +278,7 @@ export class ImageRenderer {
 	 * 热更运行时配置(卡片配色 / 字体 / 显示选项)。adapter 在 dashboard 编辑后调用,
 	 * 后续渲染的卡片立刻用新配色,无需重启 server。
 	 */
-	updateConfig(config: ImageRendererConfig): void {
+	updateConfig(config: ImageRendererSettings): void {
 		const prev = this.config;
 		this.config = config;
 		// 仅在配置**实际变化**时记录 —— 预览每次渲染(尤其切卡片类型时样式没变)都会

@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
@@ -28,7 +28,7 @@ describe("核心设置坏格 → 问题表的接线", () => {
 	async function putCore(mutate: (disk: Record<string, unknown>) => void): Promise<void> {
 		const path = join(dataDir, ...CORE_SETTINGS_FILE);
 		await mkdir(dirname(path), { recursive: true });
-		const disk = structuredClone(makeDefaultGlobalConfig()) as unknown as Record<string, unknown>;
+		const disk = structuredClone(makeDefaultGlobalSettings()) as unknown as Record<string, unknown>;
 		mutate(disk);
 		await writeFile(path, JSON.stringify(disk, null, 2), "utf8");
 	}

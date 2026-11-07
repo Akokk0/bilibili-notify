@@ -12,7 +12,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import { CommandsSettings } from "../commands-settings";
 
 vi.mock("../../services/api", () => ({
@@ -38,8 +38,8 @@ const REGISTRY = {
 	],
 };
 
-function draftWith(aliases: Record<string, string[]>): GlobalConfig {
-	return { commands: { enabled: true, prefix: "/", aliases } } as unknown as GlobalConfig;
+function draftWith(aliases: Record<string, string[]>): GlobalSettings {
+	return { commands: { enabled: true, prefix: "/", aliases } } as unknown as GlobalSettings;
 }
 
 /** 学真实父层的样子:onPatch 同步落进草稿并重渲(System 页就是这么干的)。 */

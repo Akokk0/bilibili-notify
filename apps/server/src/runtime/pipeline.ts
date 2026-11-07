@@ -23,7 +23,7 @@ import type {
 	CreatorProfileReport,
 	DeliveryResult,
 	Disposable,
-	GlobalConfig,
+	GlobalSettings,
 	Identity,
 	ImageRef,
 	LinkPreviewPolicy,
@@ -347,7 +347,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 		opts.sources.get(sourceKey)?.fetchLiveStatus !== undefined;
 	const aiCtx = opts.serviceCtx.forSubsystem("ai", "ai");
 	const imageCtx = opts.serviceCtx.forSubsystem("image", "image");
-	const globals = (): GlobalConfig => opts.configStore.getGlobals();
+	const globals = (): GlobalSettings => opts.configStore.getGlobals();
 	/** 现存推送目标的 id(含停用的),每次现取:作品与直播总结的 AI 生成门共用,悬空的例外 id 不算数。 */
 	const targetIds = (): string[] => opts.configStore.getTargets().map((t) => t.id);
 	const sourceStatus = createSourceStatusReader({
@@ -683,7 +683,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	// 链接卡(群里贴链接自动出的那张)的呈现与开关。呈现就是全局那套皮肤。做成随
 	// config-changed 刷新的快照 ——
 	// 群里每句带链接的话都要读开关,而 `globals()` 是整份深拷贝,不该按条付这个钱。
-	const linkCardViewOf = (g: GlobalConfig) => ({
+	const linkCardViewOf = (g: GlobalSettings) => ({
 		settings: g.linkPreview,
 		// 链接卡没有 UP 可言,吃的就是全局那套皮肤(与推送动态卡在没有 per-UP 覆盖时同源)。
 		cardSkin: g.defaults.cardSkin,

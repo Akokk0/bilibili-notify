@@ -15,7 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { api } from "../services/api";
-import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
+import type { GlobalSettings, GlobalSettingsPatch } from "../types/globals";
 import { Field, TInput } from "./forms";
 
 interface CommandEntry {
@@ -46,8 +46,8 @@ export function CommandsSettings({
 	draft,
 	onPatch,
 }: {
-	draft: Pick<GlobalConfig, "commands">;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	draft: Pick<GlobalSettings, "commands">;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
 

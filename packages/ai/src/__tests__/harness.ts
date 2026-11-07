@@ -14,7 +14,7 @@
  */
 
 import { fail, ok, type Result, type ServiceContext } from "@bilibili-notify/internal";
-import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import { CommentaryGenerator, type CommentaryGeneratorSettings } from "../commentary-generator";
 import { PROMPT_NEUTRAL_NOUNS, type PromptNouns } from "../prompt-nouns";
 import type { CreatorReader } from "../tools";
 
@@ -64,7 +64,9 @@ export function fakeServiceCtx(): ServiceContext {
  * 任何可选路径(不思考、不看图、custom 方言),于是每个测试文件只需要写出**它
  * 自己要拨动的那一项**,读的人一眼就知道这条测试在乎什么。
  */
-export function aiConfig(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGeneratorConfig {
+export function aiConfig(
+	over: Partial<CommentaryGeneratorSettings> = {},
+): CommentaryGeneratorSettings {
 	return {
 		apiKey: "sk-test",
 		baseURL: "https://api.test/v1",
@@ -82,7 +84,7 @@ export function aiConfig(over: Partial<CommentaryGeneratorConfig> = {}): Comment
 }
 
 /** 一台按公共底装好的 generator。`api` 是空壳 —— 用得到它的测试自己传。 */
-export function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGenerator {
+export function makeGen(over: Partial<CommentaryGeneratorSettings> = {}): CommentaryGenerator {
 	return new CommentaryGenerator({
 		serviceCtx: fakeServiceCtx(),
 		config: aiConfig(over),

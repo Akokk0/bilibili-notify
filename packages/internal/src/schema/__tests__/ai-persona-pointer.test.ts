@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { resolveActivePersona } from "../../ai";
 import { builtinPresetsFor } from "../../texts/builtin";
-import { AISettingsSchema } from "../common";
+import { AiSettingsSchema } from "../common";
 
 const BUILTINS = builtinPresetsFor("zh-CN");
 
@@ -34,12 +34,12 @@ const HAND_WRITTEN = {
  */
 describe("resolveActivePersona —— 当前用哪份人格,单一读法", () => {
 	it("指针指着内置 → 用那份内置的人格", () => {
-		const ai = AISettingsSchema.parse(modern({ activePreset: "tsundere" }));
+		const ai = AiSettingsSchema.parse(modern({ activePreset: "tsundere" }));
 		expect(resolveActivePersona(ai, BUILTINS).persona.name).toBe("凛子");
 	});
 
 	it("两段 prompt 也跟着那份预设走 —— 只换人格不换口吻等于换了一半", () => {
-		const ai = AISettingsSchema.parse(
+		const ai = AiSettingsSchema.parse(
 			modern({
 				activePreset: "mine",
 				presets: [
@@ -58,7 +58,7 @@ describe("resolveActivePersona —— 当前用哪份人格,单一读法", () =>
 	});
 
 	it("那份预设没写 prompt → 回落内置首份的那段,不发一段空的", () => {
-		const ai = AISettingsSchema.parse(
+		const ai = AiSettingsSchema.parse(
 			modern({
 				activePreset: "mine",
 				presets: [{ id: "mine", label: "我的", persona: HAND_WRITTEN }],
@@ -71,9 +71,9 @@ describe("resolveActivePersona —— 当前用哪份人格,单一读法", () =>
 	});
 
 	it("指针落空(没填 / 指着一份已删掉的)→ 回落清单第一份", () => {
-		const ai = AISettingsSchema.parse(modern({ activePreset: "gone" }));
+		const ai = AiSettingsSchema.parse(modern({ activePreset: "gone" }));
 		expect(resolveActivePersona(ai, BUILTINS).persona).toEqual(BUILTINS[0]?.persona);
-		expect(resolveActivePersona(AISettingsSchema.parse(modern()), BUILTINS).persona).toEqual(
+		expect(resolveActivePersona(AiSettingsSchema.parse(modern()), BUILTINS).persona).toEqual(
 			BUILTINS[0]?.persona,
 		);
 	});
@@ -81,13 +81,13 @@ describe("resolveActivePersona —— 当前用哪份人格,单一读法", () =>
 
 describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 	it("没有 activePreset 的配置 → 不会被补上指针", () => {
-		const ai = AISettingsSchema.parse(modern());
+		const ai = AiSettingsSchema.parse(modern());
 		expect(ai.activePreset).toBeUndefined();
 		expect(ai.presets).toEqual([]);
 	});
 
 	it("老盘上的顶层 persona / 两段提示词 → 读时剥掉,手改的 persona 也不会被造成一份预设", () => {
-		const ai = AISettingsSchema.parse(
+		const ai = AiSettingsSchema.parse(
 			modern({ persona: HAND_WRITTEN, dynamicPrompt: "老的", liveSummaryPrompt: "老的" }),
 		) as Record<string, unknown>;
 		expect("persona" in ai).toBe(false);
@@ -97,7 +97,7 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 	});
 
 	it("指针指着一份不存在的预设 → 原样收下,不会被收回到第一份", () => {
-		const ai = AISettingsSchema.parse(modern({ activePreset: "gone" }));
+		const ai = AiSettingsSchema.parse(modern({ activePreset: "gone" }));
 		expect(ai.activePreset).toBe("gone");
 	});
 });

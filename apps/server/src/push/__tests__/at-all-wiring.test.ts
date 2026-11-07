@@ -17,7 +17,7 @@ import {
 	FEATURE_KEYS,
 	type GlobalDefaults,
 	type Logger,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type NotificationPayload,
 	ok,
@@ -124,7 +124,7 @@ function makeStore(subs: Subscription[]): SubscriptionStore {
 }
 
 function openDefaults(): GlobalDefaults {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	for (const k of FEATURE_KEYS) g.defaults.features[k] = true;
 	g.defaults.schedule.quietHours = [];
 	return g.defaults;

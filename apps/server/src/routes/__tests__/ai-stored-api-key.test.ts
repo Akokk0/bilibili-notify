@@ -6,8 +6,8 @@
  */
 
 import {
-	type AISettings,
-	AISettingsSchema,
+	type AiSettings,
+	AiSettingsSchema,
 	DEFAULT_AI,
 	EMPTY_AI_PROVIDER_PROFILE,
 } from "@bilibili-notify/internal";
@@ -15,8 +15,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { withStoredApiKey } from "../ai.js";
 
 /** 不拿整份去过 schema:要造的正是 schema 会拒的指针(防的是绕过了 schema 的那一条路)。 */
-function settings(over: Partial<AISettings> = {}): AISettings {
-	return { ...AISettingsSchema.parse(structuredClone(DEFAULT_AI)), ...over };
+function settings(over: Partial<AiSettings> = {}): AiSettings {
+	return { ...AiSettingsSchema.parse(structuredClone(DEFAULT_AI)), ...over };
 }
 
 describe("withStoredApiKey", () => {

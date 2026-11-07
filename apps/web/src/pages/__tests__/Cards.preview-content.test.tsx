@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Cards from "../Cards";
 import { makeDefaults } from "../rules/__tests__/fixtures";
 
@@ -28,7 +28,7 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-const GLOBALS = { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalConfig;
+const GLOBALS = { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalSettings;
 const SOURCES: SourcesResponse = {
 	sources: [
 		{

@@ -11,8 +11,8 @@
 
 import {
 	DEFAULT_CONTENT_FILTERS,
-	type GlobalConfig,
-	makeDefaultGlobalConfig,
+	type GlobalSettings,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type Subscription,
 } from "@bilibili-notify/internal";
@@ -31,7 +31,7 @@ const biliSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
 
 describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 	it("没有任何覆盖 → 每一格都取全局;B 站与拓展订阅一样", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.filters.blockVideos = true;
 		g.defaults.templates.post = "全局动态 {name}";
 		g.defaults.templates.postVideo = "全局视频 {name}";
@@ -57,7 +57,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 	});
 
 	it("设置里没存作品文案 → 取出厂那句(简体字典原文);存了的照存", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		expect(g.defaults.templates.post).toBeUndefined();
 		const s = postSettingsOf(biliSub(), g, false);
 		expect(s.template).toBe("{name}发布了一条{postNoun}");
@@ -69,7 +69,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 	});
 
 	it("订阅的覆盖盖过全局:模板、图集、皮肤;过滤是折好的整份(覆盖的键盖全局,没覆盖的键沿用全局)", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.templates.post = "全局动态 {name}";
 		g.defaults.templates.postVideo = "全局视频 {name}";
 		g.defaults.imageGroup = { enabled: false, mergeForward: false };
@@ -96,14 +96,14 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 	});
 
 	it("只覆盖图集的一个键(开关):另一个键(合并转发)沿用全局", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.imageGroup = { enabled: false, mergeForward: true };
 		const s = postSettingsOf(biliSub({ imageGroup: { enabled: true } }), g, true);
 		expect(s.imageGroup).toEqual({ enabled: true, mergeForward: true });
 	});
 
 	it("每次现折:全局改了,下一次折出来就是新的(不是攥着旧的)", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		const sub = biliSub();
 		const before = postSettingsOf(sub, g, true);
 		g.defaults.templates.post = "改过的 {name}";
@@ -115,7 +115,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 	});
 
 	it("aiOverride 只在这位 UP 真有 AI 覆盖时才有(留 undefined 才跟着全局人格热更,折进来就冻住了)", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		expect(postSettingsOf(biliSub(), g, true).aiOverride).toBeUndefined();
 		expect(
 			postSettingsOf(biliSub({ ai: { preset: "inherit" } }), g, true).aiOverride,
@@ -123,7 +123,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 	});
 
 	it("订阅的旋钮覆盖原样给、不折全局(渲染器出图时与全局那份逐枚合并)", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.cardSkinKnobs = { default: { "gradient-end": "#222222" } };
 		const knobs = { default: { "gradient-start": "#aaaaaa" } };
 		expect(postSettingsOf(biliSub({ cardSkinKnobs: knobs }), g, true).cardSkinKnobs).toEqual(knobs);
@@ -133,7 +133,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 	it("订阅设了直播封面 → 作品设置不读它:没有任何卡片样式覆盖这一格", () => {
 		const s = postSettingsOf(
 			biliSub({ cards: { liveCoverImageIds: ["up-cover.png"] } }),
-			makeDefaultGlobalConfig(),
+			makeDefaultGlobalSettings(),
 			true,
 		);
 		expect(s).not.toHaveProperty("customCardStyle");
@@ -155,7 +155,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 				},
 			},
 		});
-		const { filter } = postSettingsOf(sub, makeDefaultGlobalConfig(), true);
+		const { filter } = postSettingsOf(sub, makeDefaultGlobalSettings(), true);
 		expect(filter).toMatchObject({
 			blockReposts: true,
 			blockArticles: true,
@@ -175,11 +175,16 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 describe("makePostSettingsReader — 不该推就回 undefined", () => {
 	/** 一条订阅 + 一份全局 + 来源在不在跑,做成可以被测试随时改的读口。 */
 	function setup(
-		initial: { sub?: Subscription; g?: GlobalConfig; running?: boolean; targetIds?: string[] } = {},
+		initial: {
+			sub?: Subscription;
+			g?: GlobalSettings;
+			running?: boolean;
+			targetIds?: string[];
+		} = {},
 	) {
 		const state = {
 			sub: "sub" in initial ? initial.sub : biliSub(),
-			g: initial.g ?? makeDefaultGlobalConfig(),
+			g: initial.g ?? makeDefaultGlobalSettings(),
 			running: initial.running ?? true,
 			targetIds: initial.targetIds ?? [],
 		};
@@ -215,7 +220,7 @@ describe("makePostSettingsReader — 不该推就回 undefined", () => {
 	});
 
 	it("作品开关关着 → undefined:全局关着且没单独开,或这位 UP 单独关掉;这位 UP 单独开压过全局关", () => {
-		const globalOff = makeDefaultGlobalConfig();
+		const globalOff = makeDefaultGlobalSettings();
 		globalOff.defaults.features.post = false;
 		expect(setup({ g: globalOff }).read(ID)).toBeUndefined();
 		// 对照:全局关着、这位 UP 单独开 → 有。
@@ -258,7 +263,7 @@ describe("makePostSettingsReader — 要不要生成点评(aiEnabled 的折法,A
 		master?: boolean;
 		targetIds?: string[];
 	}): boolean | undefined {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.enabled = opts.master ?? true;
 		g.ai.writing.post = { isOnByDefault: opts.enabled, byTarget: opts.byTarget ?? {} };
 		const sub = biliSub();
@@ -293,7 +298,7 @@ describe("makePostSettingsReader — 要不要生成点评(aiEnabled 的折法,A
 	});
 
 	it("目标表是现读的:例外指着的目标后来删了,下一次就不生成", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.enabled = true;
 		g.ai.writing.post = { isOnByDefault: false, byTarget: { [T1]: true } };
 		let ids = [T1];

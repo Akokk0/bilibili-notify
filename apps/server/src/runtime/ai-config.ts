@@ -1,5 +1,5 @@
 /**
- * `AISettings` → `CommentaryGeneratorConfig` —— **唯一一处翻译**。
+ * `AiSettings` → `CommentaryGeneratorSettings` —— **唯一一处翻译**。
  *
  * 三条路都要造这个对象:常驻 generator(`pipeline.ts`,聊天与推送都用它)、AI 页的
  * 「试一句」(吃页面草稿)、统计页的锐评与周报。此前它们各写了一份一模一样的映射,
@@ -14,7 +14,7 @@
  *   谁绕开这一处自己翻 `presets`,就是「主人换了人格 / 语言,女仆开口还是原来那位」。
  *
  * 字段名映射:schema 用面向用户的 `baseRole` / `extraSystemPrompt`,AI 生成器的
- * `PersonaConfig` 沿用 `customBase` / `extraPrompt` 历史命名,
+ * `CommentaryPersonaSettings` 沿用 `customBase` / `extraPrompt` 历史命名,
  * 在这里做一次性翻译,推送链路不感知差异。
  */
 
@@ -22,7 +22,7 @@ import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import {
 	type ActivePersonaShape,
 	type AIBuiltinPresetShape,
-	type AISettings,
+	type AiSettings,
 	resolveActivePersona,
 	resolveAIProfile,
 	resolveSubscriptionPersona,
@@ -36,7 +36,7 @@ export function builtinPersonasOf(settings: Parameters<typeof textSettingsOf>[0]
 	return builtinPresetsFor(textSettingsOf(settings).locale);
 }
 
-export function toGeneratorConfig(ai: AISettings, builtins: readonly AIBuiltinPresetShape[]) {
+export function toGeneratorConfig(ai: AiSettings, builtins: readonly AIBuiltinPresetShape[]) {
 	const p = resolveAIProfile(ai);
 	const active = resolveActivePersona(ai, builtins);
 	return {
@@ -79,7 +79,7 @@ export function toGeneratorConfig(ai: AISettings, builtins: readonly AIBuiltinPr
  */
 export function resolveAiOverride(
 	sub: Subscription,
-	ai: AISettings,
+	ai: AiSettings,
 	builtins: readonly AIBuiltinPresetShape[],
 ): CommentaryCallOverride | undefined {
 	return sub.overrides.ai

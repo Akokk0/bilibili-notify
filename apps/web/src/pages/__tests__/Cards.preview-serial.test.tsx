@@ -20,7 +20,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Cards from "../Cards";
 import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
@@ -36,7 +36,7 @@ const GLOBALS = {
 	logging: {},
 	master: {},
 	defaults: makeDefaults(),
-} as unknown as GlobalConfig;
+} as unknown as GlobalSettings;
 
 /** 卡住不 resolve 的预览请求 —— 用它观察「下一个有没有抢跑」。 */
 function gate() {

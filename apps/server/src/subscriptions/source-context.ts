@@ -1,7 +1,7 @@
 import type {
 	CreatorProfileReport,
 	Disposable,
-	GlobalConfig,
+	GlobalSettings,
 	IntegrationContext,
 	LiveInteractionReport,
 	LiveSignal,
@@ -34,7 +34,7 @@ export interface CreateSourceContextOptions {
 	descriptor: SourceDescriptor;
 	subscriptions: Pick<SubscriptionStore, "list" | "listByIdentity">;
 	/** 全局默认,现读(折特性开关用)。 */
-	defaults: () => GlobalConfig["defaults"];
+	defaults: () => GlobalSettings["defaults"];
 	bus: Pick<MessageBus, "on">;
 	logger: Logger;
 	/** 作品入口(`PostQueue.enqueue`)。 */

@@ -8,7 +8,7 @@ import { DEFAULT_LOCALE, type Dict } from "../../i18n";
 import { type BuiltinDicts, templateDefaultsFor, withTemplateDefaults } from "../../texts/builtin";
 import zhCN from "../../texts/builtin/locales/zh-CN.json";
 import { TemplateBundleSchema } from "../common";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 import { resolveTemplates } from "../resolve";
 import { makeEmptySubscription, type Subscription } from "../subscriptions";
 
@@ -38,8 +38,8 @@ const TEXT_KEYS = [
 ] as const;
 
 describe("新装的设置形状", () => {
-	it("makeDefaultGlobalConfig 的 defaults.templates 没有任何文字格", () => {
-		const { templates } = makeDefaultGlobalConfig().defaults;
+	it("makeDefaultGlobalSettings 的 defaults.templates 没有任何文字格", () => {
+		const { templates } = makeDefaultGlobalSettings().defaults;
 		for (const key of TEXT_KEYS) expect(templates[key]).toBeUndefined();
 		expect(templates.membership).toEqual({});
 		// 不是文字的格照今天的默认留着
@@ -47,8 +47,8 @@ describe("新装的设置形状", () => {
 	});
 
 	it("经 schema 读一遍再序列化,文字格不会被填回来(一读一写不落盘)", () => {
-		const roundTrip = GlobalConfigSchema.parse(
-			JSON.parse(JSON.stringify(makeDefaultGlobalConfig())),
+		const roundTrip = GlobalSettingsSchema.parse(
+			JSON.parse(JSON.stringify(makeDefaultGlobalSettings())),
 		);
 		for (const key of TEXT_KEYS)
 			expect(Object.hasOwn(roundTrip.defaults.templates, key)).toBe(false);
@@ -70,28 +70,28 @@ describe("新装的设置形状", () => {
 
 describe("resolveTemplates", () => {
 	it("没存:取出厂那句(简体字典原文)", () => {
-		const t = resolveTemplates(SUB, makeDefaultGlobalConfig().defaults, ZH);
+		const t = resolveTemplates(SUB, makeDefaultGlobalSettings().defaults, ZH);
 		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(t.post).toBe("{name}发布了一条{postNoun}");
 		expect(t.membership("guard").default.template).toBe("{viewer} 成为了 {name} 的{tier}！");
 	});
 
 	it("没存、换成英文默认:取英文那条;字典里没有的键拿简体打底", () => {
-		const t = resolveTemplates(SUB, makeDefaultGlobalConfig().defaults, EN_DEFAULTS);
+		const t = resolveTemplates(SUB, makeDefaultGlobalSettings().defaults, EN_DEFAULTS);
 		expect(t.liveStart).toBe("{name} is live");
 		expect(t.liveEnd).toBe(ZH.liveEnd);
 		expect(t.membership("guard").default.template).toBe("{viewer} joined {name} as {tier}!");
 	});
 
 	it("存了:照存的,不随语言变", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.templates.liveStart = "我自己写的";
 		expect(resolveTemplates(SUB, g.defaults, EN_DEFAULTS).liveStart).toBe("我自己写的");
 		expect(resolveTemplates(SUB, g.defaults, ZH).liveStart).toBe("我自己写的");
 	});
 
 	it("订阅覆盖 > 全局存的 > 出厂", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.templates.liveStart = "全局的";
 		g.defaults.templates.liveEnd = "全局的下播";
 		const sub: Subscription = { ...SUB, overrides: { templates: { liveStart: "订阅的" } } };
@@ -102,7 +102,7 @@ describe("resolveTemplates", () => {
 	});
 
 	it("会员·订阅覆盖开着就整份换", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.templates.membership.guard = {
 			enabled: true,
 			default: { template: "全局体系默认", imageUrl: "" },
@@ -131,7 +131,7 @@ describe("resolveTemplates", () => {
 	});
 
 	it("会员·条目里缺 default.template 取出厂那一句,其余照存", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.templates.membership.guard = {
 			enabled: true,
 			default: { imageUrl: "x.png" },
@@ -145,7 +145,7 @@ describe("resolveTemplates", () => {
 	});
 
 	it("会员·没有这个体系的条目:自定义关着、体系默认取出厂那句", () => {
-		const t = resolveTemplates(SUB, makeDefaultGlobalConfig().defaults, EN_DEFAULTS);
+		const t = resolveTemplates(SUB, makeDefaultGlobalSettings().defaults, EN_DEFAULTS);
 		expect(t.membership("acme-custom")).toEqual({
 			enabled: false,
 			default: { template: "{viewer} joined {name} as {tier}!", imageUrl: "" },

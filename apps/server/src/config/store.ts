@@ -18,14 +18,14 @@ import {
 	deterministicUuid,
 	EXTRA_KEYS,
 	fail,
-	type GlobalConfig,
-	GlobalConfigSchema,
+	type GlobalSettings,
+	GlobalSettingsSchema,
 	type Identity,
 	IdentitySchema,
 	type Issue,
 	isPrivateTarget,
 	type MessageBus,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	NewConnectionSchema,
 	neutralPlatformSnapshot,
 	normalizeMessageLayout,
@@ -100,7 +100,7 @@ import { ConfigValidationError } from "./validation-error.js";
 
 /**
  * Recursive partial. We use this for `patchGlobals` so callers can send a
- * deeply-nested subset of GlobalConfig and we merge it onto the current state.
+ * deeply-nested subset of GlobalSettings and we merge it onto the current state.
  */
 type DeepPartial<T> =
 	T extends Array<infer _U> ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
@@ -115,7 +115,7 @@ export interface ReplaceSectionsOptions {
  * 是两回事:后者是真的清空。
  */
 export interface ConfigSections {
-	globals?: GlobalConfig;
+	globals?: GlobalSettings;
 	/** 各集成的设置,按集成的键;只换给了的那几份。 */
 	integrations?: Record<string, unknown>;
 	/** 各拓展的设置,按拓展 id;只换给了的那几个(原样存,形状归拓展自己)。 */
@@ -157,13 +157,13 @@ export interface IntegrationSettingsSegment<T = unknown> {
 
 /** 一次设置写入:核心那份的补丁、各集成那份的补丁(按集成的键),给了哪份改哪份。 */
 export interface SettingsPatch {
-	core?: DeepPartial<GlobalConfig>;
+	core?: DeepPartial<GlobalSettings>;
 	integrations?: Record<string, unknown>;
 }
 
 /** 一次设置写入之后的两份(深拷贝)。 */
 export interface SettingsSnapshot {
-	core: GlobalConfig;
+	core: GlobalSettings;
 	integrations: Record<string, unknown>;
 }
 
@@ -178,7 +178,7 @@ export interface ConfigStore {
 	load(): Promise<void>;
 
 	// --- reads ------------------------------------------------------------
-	getGlobals(): GlobalConfig;
+	getGlobals(): GlobalSettings;
 	/**
 	 * 核心设置里读盘时被隔离的格(深拷贝):那一格在内存里是默认值,盘上原文在落盘时原样放回。
 	 * 密钥格的原文不出门：只交安全原因。非密钥格可读原值；原文账本独立供原样落盘。
@@ -231,8 +231,8 @@ export interface ConfigStore {
 	getTargetsMeta(): ConfigScopeMeta;
 
 	// --- writes -----------------------------------------------------------
-	setGlobals(next: GlobalConfig): Promise<void>;
-	patchGlobals(patch: DeepPartial<GlobalConfig>): Promise<GlobalConfig>;
+	setGlobals(next: GlobalSettings): Promise<void>;
+	patchGlobals(patch: DeepPartial<GlobalSettings>): Promise<GlobalSettings>;
 	/**
 	 * 在 globals 那条排队里「读当前 → 算新值 → 校验 → 落盘」一气做完 —— 「先看一眼再决定写什么」
 	 * 的写入(比对版本号再写)走这里。队外先读后写的话,读与写之间的那一发会从缝里溜过去。
@@ -240,10 +240,10 @@ export interface ConfigStore {
 	 * `update` 拿到的是当前那份的**深拷贝**,改好交回整份;它抛了就整次作废、一个字都不落盘,
 	 * 那一发原样交回调用方。详见实现处的注释。
 	 */
-	updateGlobals(update: (current: GlobalConfig) => GlobalConfig): Promise<GlobalConfig>;
+	updateGlobals(update: (current: GlobalSettings) => GlobalSettings): Promise<GlobalSettings>;
 	/** 同一事务内核对引用与版本；预期拒绝不写盘、不发变更事件。 */
 	updateGlobalsResult<T>(
-		update: (current: GlobalConfig) => Result<{ globals: GlobalConfig; value: T }>,
+		update: (current: GlobalSettings) => Result<{ globals: GlobalSettings; value: T }>,
 	): Promise<Result<{ value: T }>>;
 	/**
 	 * 核心与各集成的设置一起改(`/api/settings` 的 PATCH):全部校验过才写,写到一半失败推回原样。没登记过的集成键
@@ -403,7 +403,7 @@ async function copyFileAtomic(from: string, to: string): Promise<void> {
  * 一把就是明文躺在盘上。内存里的 `this.globals` 留着真值(推送链路经 getGlobals 读),只有盘上那份被抠掉。
  * 具体规则见 `./ai-secrets.ts#stripAiSecrets`。
  */
-function stripApiKeyForDisk(g: GlobalConfig): GlobalConfig {
+function stripApiKeyForDisk(g: GlobalSettings): GlobalSettings {
 	return stripAiSecrets(deepClone(g));
 }
 
@@ -680,7 +680,7 @@ function assertConnectionIdentityStable(current: Connection, next: Connection): 
  * 发送时复检兜底,不能因为一个主人目标让整个服务起不来)。
  */
 function assertMasterTarget(
-	master: GlobalConfig["master"],
+	master: GlobalSettings["master"],
 	targets: readonly PushTarget[],
 	scope: ConfigScope,
 ): void {
@@ -1017,7 +1017,7 @@ class NodeConfigStore implements ConfigStore {
 	/** P2:明文 apiKey 告警只打一次(避免每次写盘刷屏)。 */
 	private plaintextApiKeyWarned = false;
 
-	private globals: GlobalConfig;
+	private globals: GlobalSettings;
 	/**
 	 * 读盘时被隔离的核心设置格:内存里是默认值、盘上原文落盘时放回。只在 `load()` 与 {@link writeGlobals}
 	 * (落盘成功之后)里换;值里的 `raw` 可能带明文 key,读口见 {@link ConfigStore.getInvalidSettings}。
@@ -1082,7 +1082,7 @@ class NodeConfigStore implements ConfigStore {
 		this.onInvalidSubscriptionsChanged = opts.onInvalidSubscriptionsChanged;
 		this.segments = segmentsByKey(opts.integrationSettings ?? []);
 		// Initialize with safe defaults; `load()` overwrites.
-		this.globals = makeDefaultGlobalConfig();
+		this.globals = makeDefaultGlobalSettings();
 		this.subscriptions = [];
 		this.connections = [];
 		this.targets = [];
@@ -1196,7 +1196,7 @@ class NodeConfigStore implements ConfigStore {
 	 * 反 —— 抠除只认合法的内存值,原文那种不合形状的会被它改成别的样子。
 	 */
 	private async persistGlobals(
-		g: GlobalConfig,
+		g: GlobalSettings,
 		entries: readonly InvalidSettingEntry[] = this.invalidSettings,
 	): Promise<void> {
 		// P2:无 SecretStore 的 legacy 路径,apiKey 明文落 settings/core.json。这是
@@ -1249,7 +1249,7 @@ class NodeConfigStore implements ConfigStore {
 		// 比相等(键序敏感),依赖「globals 永远是 zod parse 的规范形态」这一不变式 —— 万一哪天
 		// 键序偏了,重启后第一次改**任何** globals 字段(哪怕只是 profileRefreshCron),`ai`
 		// 都会被误判成「变了」,白白热重载一次 AI 实例并刷两条日志。
-		this.globals = GlobalConfigSchema.parse(
+		this.globals = GlobalSettingsSchema.parse(
 			applyAiSecrets(this.globals, this.secretBag.aiApiKeys ?? {}),
 		);
 		// Scrub disk if it ever held the plaintext.
@@ -1303,7 +1303,7 @@ class NodeConfigStore implements ConfigStore {
 		{
 			const { value, existed } = await readJsonOrInit<unknown>(
 				this.path("globals"),
-				makeDefaultGlobalConfig,
+				makeDefaultGlobalSettings,
 			);
 			// 逐格解析:一格坏了只那一格退默认、盘上原文留着(落盘时放回),不挡开机;只有信封坏了
 			// (解析不了、顶层不是对象)才抛。
@@ -1476,13 +1476,13 @@ class NodeConfigStore implements ConfigStore {
 		return this.bus.on("config-changed", ({ scope }) => handler(scope));
 	}
 
-	getGlobals(): GlobalConfig {
+	getGlobals(): GlobalSettings {
 		return deepClone(this.globals);
 	}
 
 	getInvalidSettings(): (InvalidSettingView & { path: string[] })[] {
 		return this.invalidSettings.map((entry) => {
-			let schema: unknown = GlobalConfigSchema;
+			let schema: unknown = GlobalSettingsSchema;
 			for (const key of entry.path) {
 				const node = schema as {
 					shape?: Record<string, unknown>;
@@ -1624,12 +1624,12 @@ class NodeConfigStore implements ConfigStore {
 	// ---- write surface --------------------------------------------------
 
 	/**
-	 * Persist a validated GlobalConfig. With a SecretStore the apiKey is routed
+	 * Persist a validated GlobalSettings. With a SecretStore the apiKey is routed
 	 * into the encrypted bag and scrubbed from the on-disk settings/core.json; the
 	 * in-memory copy keeps the real value so pipeline/routes are unaffected.
 	 */
 	private async writeGlobals(
-		g: GlobalConfig,
+		g: GlobalSettings,
 		mode: "compare" | "replace" = "compare",
 	): Promise<void> {
 		// 哪些被隔离的格这次仍算「没动」:新旧两份在那条路径上比值(两边都是 zod 的规范形态,比 JSON 就够)。
@@ -1690,7 +1690,7 @@ class NodeConfigStore implements ConfigStore {
 	 * 逐格原因的路径是 `["ai","providers","<id>"]`。**要在写任何东西之前调**(存袋之前、同一发补丁里的集成设置文件
 	 * 落盘之前):放行的话新的一家会把坏的那一家的原文与存着的密钥悄悄换掉。
 	 */
-	private assertNoBrokenInstanceIdTaken(g: GlobalConfig): void {
+	private assertNoBrokenInstanceIdTaken(g: GlobalSettings): void {
 		const taken = this.invalidSettings.flatMap((e) => {
 			const id = instanceIdOfEntry(e.path);
 			return id !== undefined && Object.hasOwn(g.ai.providers, id) ? [id] : [];
@@ -1723,9 +1723,9 @@ class NodeConfigStore implements ConfigStore {
 		this.notifyInvalidSettings();
 	}
 
-	async setGlobals(next: GlobalConfig): Promise<void> {
+	async setGlobals(next: GlobalSettings): Promise<void> {
 		await this.runScoped("globals", async () => {
-			const parsed = GlobalConfigSchema.safeParse(next);
+			const parsed = GlobalSettingsSchema.safeParse(next);
 			if (!parsed.success) {
 				throw ConfigValidationError.fromZod("globals", parsed.error);
 			}
@@ -1736,7 +1736,7 @@ class NodeConfigStore implements ConfigStore {
 		this.bus.emit("config-changed", { scope: "globals" });
 	}
 
-	async patchGlobals(patch: DeepPartial<GlobalConfig>): Promise<GlobalConfig> {
+	async patchGlobals(patch: DeepPartial<GlobalSettings>): Promise<GlobalSettings> {
 		return (await this.patchSettings({ core: patch })).core;
 	}
 
@@ -1744,9 +1744,9 @@ class NodeConfigStore implements ConfigStore {
 		const keys = Object.keys(patch.integrations ?? {});
 		const result = await this.runScoped("globals", async () => {
 			// ---- 1) 全部校验:任一份不过就整个作废,一个字都不写 ----
-			let core: GlobalConfig | undefined;
+			let core: GlobalSettings | undefined;
 			if (patch.core !== undefined) {
-				const parsed = GlobalConfigSchema.safeParse(deepMerge(this.globals, patch.core));
+				const parsed = GlobalSettingsSchema.safeParse(deepMerge(this.globals, patch.core));
 				if (!parsed.success) throw ConfigValidationError.fromZod("globals", parsed.error);
 				// 撞上坏着的那一家的 id:这一步就拒收,同一发里的集成设置文件还没动。
 				this.assertNoBrokenInstanceIdTaken(parsed.data);
@@ -1855,9 +1855,11 @@ class NodeConfigStore implements ConfigStore {
 	 * 慢的校验(拓展自己那份 zod 是异步的、还可能挂住)要放在队外先做好,再到队里按版本号比对一次
 	 * —— 写成 async 的话,一个挂住的校验会让之后所有的全局设置都存不进去。
 	 */
-	async updateGlobals(update: (current: GlobalConfig) => GlobalConfig): Promise<GlobalConfig> {
+	async updateGlobals(
+		update: (current: GlobalSettings) => GlobalSettings,
+	): Promise<GlobalSettings> {
 		const result = await this.runScoped("globals", async () => {
-			const parsed = GlobalConfigSchema.safeParse(update(deepClone(this.globals)));
+			const parsed = GlobalSettingsSchema.safeParse(update(deepClone(this.globals)));
 			if (!parsed.success) {
 				throw ConfigValidationError.fromZod("globals", parsed.error);
 			}
@@ -1871,12 +1873,12 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	async updateGlobalsResult<T>(
-		update: (current: GlobalConfig) => Result<{ globals: GlobalConfig; value: T }>,
+		update: (current: GlobalSettings) => Result<{ globals: GlobalSettings; value: T }>,
 	): Promise<Result<{ value: T }>> {
 		const result = await this.runAllScopes(async () => {
 			const next = update(deepClone(this.globals));
 			if (!next.ok) return next;
-			const parsed = GlobalConfigSchema.safeParse(next.globals);
+			const parsed = GlobalSettingsSchema.safeParse(next.globals);
 			if (!parsed.success)
 				return ConfigValidationError.fromZod("globals", parsed.error).toFailure();
 			await this.writeGlobals(parsed.data);
@@ -2333,9 +2335,9 @@ class NodeConfigStore implements ConfigStore {
 	): Promise<ConfigScope[]> {
 		const changed = await this.runAllScopes(async () => {
 			// ---- 1) 校验:任一分区不过就整个中止,不写任何东西 ----------------
-			let globals: GlobalConfig | undefined;
+			let globals: GlobalSettings | undefined;
 			if (next.globals !== undefined) {
-				const r = GlobalConfigSchema.safeParse(next.globals);
+				const r = GlobalSettingsSchema.safeParse(next.globals);
 				if (!r.success) throw ConfigValidationError.fromZod("globals", r.error);
 				globals = r.data;
 			}

@@ -30,7 +30,7 @@ import { useSources } from "../../hooks/useSources";
 import { useT } from "../../i18n";
 import { errorTextOf } from "../../services/error-text";
 import type { Connection, PushTarget } from "../../types/domain";
-import type { GlobalConfigPatch } from "../../types/globals";
+import type { GlobalSettingsPatch } from "../../types/globals";
 import { MasterSection } from "./master-section";
 
 /** Keep dormant keys in their slots; repeated active keys remain inert at the end. */
@@ -77,7 +77,7 @@ export function AccountSection({
 	draft: SettingsResponse | null;
 	targets: PushTarget[];
 	connections: Connection[];
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT(),
 		location = useLocation();

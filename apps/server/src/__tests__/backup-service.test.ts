@@ -2,7 +2,7 @@ import {
 	type Connection,
 	fail,
 	type Json,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	ok,
 	type PushTarget,
@@ -78,7 +78,7 @@ function makeFakeStore(
 		extensionSettings: Record<string, unknown>;
 	}> = {},
 ) {
-	let globals = makeDefaultGlobalConfig();
+	let globals = makeDefaultGlobalSettings();
 	let integrations: Record<string, unknown> = init.integrations ?? { bilibili: BILIBILI_SETTINGS };
 	let extensionSettings: Record<string, unknown> = init.extensionSettings ?? {};
 	let subs = [...(init.subscriptions ?? [])];
@@ -828,12 +828,12 @@ describe("BackupService × 各集成的设置", () => {
 
 		it("overwrite 只带 globals → true", async () => {
 			expect(
-				(await restore({ globals: makeDefaultGlobalConfig() }, "overwrite")).globalsApplied,
+				(await restore({ globals: makeDefaultGlobalSettings() }, "overwrite")).globalsApplied,
 			).toBe(true);
 		});
 
 		it("merge 两样都带着 → false(合并不动设置)", async () => {
-			const sections = { globals: makeDefaultGlobalConfig(), integrations: SETTINGS };
+			const sections = { globals: makeDefaultGlobalSettings(), integrations: SETTINGS };
 			expect((await restore(sections, "merge")).globalsApplied).toBe(false);
 		});
 

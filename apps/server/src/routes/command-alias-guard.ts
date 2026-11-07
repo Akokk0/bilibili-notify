@@ -10,7 +10,7 @@ import { t as serverText } from "../i18n/index.js";
  * 各写一份的话,这里放行的配置到了那边照样撞,而那边只会记一行日志。
  */
 
-import { fail, type GlobalConfig, ok, type Result } from "@bilibili-notify/internal";
+import { fail, type GlobalSettings, ok, type Result } from "@bilibili-notify/internal";
 import { effectiveAliases } from "../runtime/command-dispatcher.js";
 
 /** 检查只需要主名和内置别名,不需要 handler。 */
@@ -27,7 +27,7 @@ export type AliasCheckResult = Result;
  *   跟别的指令**内置**别名撞就查不出来了 —— 所以别省。
  */
 export function checkCommandAliases(args: {
-	current: GlobalConfig;
+	current: GlobalSettings;
 	patch: Record<string, unknown>;
 	commands: readonly AliasCheckCommand[];
 }): AliasCheckResult {

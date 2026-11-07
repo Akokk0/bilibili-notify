@@ -212,11 +212,11 @@ export function canProfileThink(p: { provider: AIProviderId; apiFlavor?: APIFlav
 }
 
 /**
- * 一家服务商的整套配置(与 `schema/common.ts#AIProviderProfileSchema` 同形)。
+ * 一家服务商的整套配置(与 `schema/common.ts#AiProviderProfileSchema` 同形)。
  * 类型声明在这里而不是 schema 里,是为了让**零依赖**的 {@link resolveAIProfile}
  * 也能用上 —— 设置页经 `@bilibili-notify/internal/ai` 子路径运行时消费它,不能把 zod 拖进前端 bundle。
  */
-export interface AIProviderProfileShape<S = string> {
+export interface AiProviderProfileShape<S = string> {
 	/**
 	 * 这桶配置属于哪家服务商 —— 决定「开思考」翻译成哪家方言。桶键只是**实例 id**
 	 * (同一家可以有多份实例),方言归属必须写在桶里,不能再从键名推。
@@ -238,10 +238,10 @@ export interface AIProviderProfileShape<S = string> {
 }
 
 /**
- * 一套「什么都没配」的档案。**必须与 `AIProviderProfileSchema` 的各字段默认值逐一
+ * 一套「什么都没配」的档案。**必须与 `AiProviderProfileSchema` 的各字段默认值逐一
  * 一致** —— 那边有一条测试拿 `parse({})` 与这里比深等,写歪了会当场红。
  */
-export const EMPTY_AI_PROVIDER_PROFILE: AIProviderProfileShape = {
+export const EMPTY_AI_PROVIDER_PROFILE: AiProviderProfileShape = {
 	provider: "custom",
 	label: "",
 	apiKey: "",
@@ -268,8 +268,8 @@ export const EMPTY_AI_PROVIDER_PROFILE: AIProviderProfileShape = {
  */
 export function resolveAIProfile<S = string>(ai: {
 	activeProfile?: string;
-	providers?: Record<string, AIProviderProfileShape<S> | undefined>;
-}): AIProviderProfileShape<S | string> {
+	providers?: Record<string, AiProviderProfileShape<S> | undefined>;
+}): AiProviderProfileShape<S | string> {
 	return aiProfileAt(ai.providers, ai.activeProfile ?? "") ?? EMPTY_AI_PROVIDER_PROFILE;
 }
 
@@ -298,17 +298,17 @@ export function aiProfileAt<P>(
  */
 export function resolveChatThinkingLevel<S = string>(ai: {
 	activeProfile?: string;
-	providers?: Record<string, AIProviderProfileShape<S> | undefined>;
+	providers?: Record<string, AiProviderProfileShape<S> | undefined>;
 	chat?: { thinkingLevel?: ThinkingLevel };
 }): ThinkingLevel {
 	return ai.chat?.thinkingLevel ?? resolveAIProfile(ai).thinkingLevel;
 }
 
 /**
- * 一份人格(与 `schema/common.ts#AIPersonaSchema` 同形)。类型声明在这里的理由与
- * {@link AIProviderProfileShape} 一样:让下面那个**零依赖**的解析函数能直供浏览器端。
+ * 一份人格(与 `schema/common.ts#AiPersonaSettingsSchema` 同形)。类型声明在这里的理由与
+ * {@link AiProviderProfileShape} 一样:让下面那个**零依赖**的解析函数能直供浏览器端。
  */
-export interface AIPersonaShape {
+export interface AiPersonaSettingsShape {
 	name: string;
 	addressUser: string;
 	addressSelf: string;
@@ -321,14 +321,14 @@ export interface AIPersonaShape {
 /** 人格库里的一份 —— 两段 prompt 缺席 = 「用内置首份的那段」。 */
 export interface AIPresetShape {
 	id: string;
-	persona: AIPersonaShape;
+	persona: AiPersonaSettingsShape;
 	dynamicPrompt?: string;
 	liveSummaryPrompt?: string;
 }
 
 /** 当前生效的那份人格与它的两段 prompt。 */
 export interface ActivePersonaShape {
-	persona: AIPersonaShape;
+	persona: AiPersonaSettingsShape;
 	dynamicPrompt: string;
 	liveSummaryPrompt: string;
 }

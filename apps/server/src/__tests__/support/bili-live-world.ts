@@ -21,7 +21,7 @@ import {
 	FEATURE_KEYS,
 	type FeatureKey,
 	type Identity,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type NotificationPayload,
 	ok,
@@ -148,7 +148,7 @@ export async function bootBiliLiveWorld(
 		commentary?: (prompt: string) => Promise<string>;
 	} = {},
 ) {
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	const on = new Set<string>([...(opts.features ?? []), ...(opts.extras ?? [])]);
 	for (const key of FEATURE_KEYS) globals.defaults.features[key] = on.has(key);
 	for (const key of EXTRA_KEYS) globals.defaults.features.extras[key] = on.has(key);

@@ -15,9 +15,9 @@ import { AI_PURPLE } from "../../config/colors";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import type { Connection, PushTarget } from "../../types/domain";
-import type { AISettingsDraft } from "../../types/globals";
+import type { AiSettingsDraft } from "../../types/globals";
 
-type Writing = AISettingsDraft["writing"];
+type Writing = AiSettingsDraft["writing"];
 type Scene = keyof Writing;
 
 /** Value updates remain in the AI page's single draft; inherit removes an override. */
@@ -25,7 +25,7 @@ export function WritingSettings({
 	ai,
 	onChange,
 }: {
-	ai: AISettingsDraft;
+	ai: AiSettingsDraft;
 	onChange: (writing: Writing) => void;
 }) {
 	const tx = useT();

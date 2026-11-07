@@ -7,24 +7,24 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 
 describe("logging.memoryLog.enabled", () => {
 	it("盘上没有这个字段 → 解析成功,补成 false", () => {
-		const g = makeDefaultGlobalConfig() as unknown as { logging: Record<string, unknown> };
+		const g = makeDefaultGlobalSettings() as unknown as { logging: Record<string, unknown> };
 		delete g.logging.memoryLog;
-		const parsed = GlobalConfigSchema.safeParse(g);
+		const parsed = GlobalSettingsSchema.safeParse(g);
 		expect(parsed.success).toBe(true);
 		expect(parsed.data?.logging.memoryLog.enabled).toBe(false);
 	});
 
 	it("全新安装默认关", () => {
-		expect(makeDefaultGlobalConfig().logging.memoryLog.enabled).toBe(false);
+		expect(makeDefaultGlobalSettings().logging.memoryLog.enabled).toBe(false);
 	});
 
 	it("拨开了就保持 true", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.logging.memoryLog.enabled = true;
-		expect(GlobalConfigSchema.parse(g).logging.memoryLog.enabled).toBe(true);
+		expect(GlobalSettingsSchema.parse(g).logging.memoryLog.enabled).toBe(true);
 	});
 });

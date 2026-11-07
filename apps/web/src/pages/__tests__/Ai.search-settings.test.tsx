@@ -13,7 +13,7 @@
  * 4. 这些改动会让灵动岛变 dirty —— 不喂给 packIsland 的话保存条不亮,主人一走就丢。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -29,7 +29,7 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 
 function globals() {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.enabled = true;
 	return JSON.parse(JSON.stringify(g));
 }

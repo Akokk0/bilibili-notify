@@ -1,5 +1,5 @@
 /**
- * AI 设置页服务商管理与默认性格选择 —— 对 `AISettingsDraft` 草稿的纯变换。
+ * AI 设置页服务商管理与默认性格选择 —— 对 `AiSettingsDraft` 草稿的纯变换。
  *
  * 抽出来是因为这里的分支最容易悄悄错、又最难在界面上看出来:删掉正在用的那份之后
  * 指针指向哪、删到一份不剩会不会炸、新实例的 id 撞没撞上。性格内容管理由资源库负责。
@@ -15,9 +15,9 @@ import {
 } from "@bilibili-notify/internal/ai";
 import type { BuiltinPreset } from "@bilibili-notify/internal/texts/builtin";
 import { i18n } from "../../i18n";
-import type { AISettingsDraft } from "../../types/globals";
+import type { AiSettingsDraft } from "../../types/globals";
 
-type AIPreset = AISettingsDraft["presets"][number];
+type AIPreset = AiSettingsDraft["presets"][number];
 /** 当前语言的内置人格(设置里不存它们的内容,每次按当前语言取)。 */
 type Builtins = readonly BuiltinPreset[];
 /** 左栏里的一份:没删的内置,或主人自己的。 */
@@ -41,7 +41,7 @@ export interface ProfileRailItem {
  * 纯键序的话,主人先加硅基后加 OpenRouter,左栏就与「+ 添加服务商」清单里的
  * 顺序不一致;删掉再加回来还会自己换位置。
  */
-function railOrder(ai: AISettingsDraft): string[] {
+function railOrder(ai: AiSettingsDraft): string[] {
 	const rank = new Map<string, number>(AI_PROVIDER_IDS.map((id, i) => [id, i]));
 	return Object.keys(ai.providers)
 		.map((id, at) => ({
@@ -53,7 +53,7 @@ function railOrder(ai: AISettingsDraft): string[] {
 		.map((x) => x.id);
 }
 
-export function profileRailItems(ai: AISettingsDraft): ProfileRailItem[] {
+export function profileRailItems(ai: AiSettingsDraft): ProfileRailItem[] {
 	return railOrder(ai).map((id) => {
 		const p = ai.providers[id];
 		const provider = p?.provider ?? "custom";
@@ -73,9 +73,9 @@ export function profileRailItems(ai: AISettingsDraft): ProfileRailItem[] {
  *   头一份添加的就成了在用的那份,否则主人填好密钥、女仆却仍然「没配齐」。
  */
 export function addProfile(
-	ai: AISettingsDraft,
+	ai: AiSettingsDraft,
 	provider: AIProviderId,
-): { ai: AISettingsDraft; id: string } {
+): { ai: AiSettingsDraft; id: string } {
 	const taken = new Set(Object.keys(ai.providers));
 	let id: string = provider;
 	let n = 1;
@@ -105,13 +105,13 @@ export function addProfile(
  * 桶不存在就**不动**:指向一份没添加过的实例是悬空引用,左栏里没有它、
  * `resolveAIProfile` 兜一套空档案,于是女仆静默停工而主人以为选好了。
  */
-export function setActiveProfile(ai: AISettingsDraft, id: string): AISettingsDraft {
+export function setActiveProfile(ai: AiSettingsDraft, id: string): AiSettingsDraft {
 	if (ai.providers[id] === undefined) return ai;
 	return { ...ai, activeProfile: id };
 }
 
 /** 给实例改显示名。清空 = 回落到注册表里那家的名字(见 {@link profileRailItems})。 */
-export function renameProfile(ai: AISettingsDraft, id: string, label: string): AISettingsDraft {
+export function renameProfile(ai: AiSettingsDraft, id: string, label: string): AiSettingsDraft {
 	const p = ai.providers[id];
 	if (p === undefined) return ai;
 	return { ...ai, providers: { ...ai.providers, [id]: { ...p, label } } };
@@ -127,7 +127,7 @@ export function renameProfile(ai: AISettingsDraft, id: string, label: string): A
  * 收敛顺序:看的那份还在 → 原样;否则落到在用的那份;在用的那份也没添加过(全新
  * 配置、或删到只剩别份)→ 左栏第一项(与渲染同序);一份都没有 → null,右侧出添加面板。
  */
-export function resolveEditingProfile(ai: AISettingsDraft, id: string | null): string | null {
+export function resolveEditingProfile(ai: AiSettingsDraft, id: string | null): string | null {
 	if (id !== null && aiProfileAt(ai.providers, id) !== undefined) return id;
 	if (aiProfileAt(ai.providers, ai.activeProfile) !== undefined) return ai.activeProfile;
 	return railOrder(ai)[0] ?? null;
@@ -143,11 +143,11 @@ export function resolveEditingProfile(ai: AISettingsDraft, id: string | null): s
  * 这份的密钥不用在这里处理:落盘时 `writeGlobals` 用 `collectAiSecrets` 整袋重算,
  * 桶没了它自然不再写进加密袋。
  */
-export function removeProfile(ai: AISettingsDraft, id: string): AISettingsDraft {
+export function removeProfile(ai: AiSettingsDraft, id: string): AiSettingsDraft {
 	if (ai.providers[id] === undefined) return ai;
 	// 用「浅拷贝 + delete」而非计算键 rest 解构:后者会让 TS 把 rest 推成 `{}`,
 	// 之后按字符串索引就报隐式 any。
-	const rest: AISettingsDraft["providers"] = { ...ai.providers };
+	const rest: AiSettingsDraft["providers"] = { ...ai.providers };
 	delete rest[id];
 	const fallback = railOrder({ ...ai, providers: rest })[0];
 	return {
@@ -175,11 +175,11 @@ export interface PersonaRailItem {
 }
 
 /** 左栏里的全部人格(顺序即左栏顺序)。 */
-function railPresets(ai: AISettingsDraft, builtins: Builtins): RailPreset[] {
+function railPresets(ai: AiSettingsDraft, builtins: Builtins): RailPreset[] {
 	return presetsOf(ai, builtins);
 }
 
-export function personaRailItems(ai: AISettingsDraft, builtins: Builtins): PersonaRailItem[] {
+export function personaRailItems(ai: AiSettingsDraft, builtins: Builtins): PersonaRailItem[] {
 	return railPresets(ai, builtins).map((p) => ({
 		id: `${PRESET_RAIL_PREFIX}${p.id}`,
 		presetId: p.id,
@@ -188,7 +188,7 @@ export function personaRailItems(ai: AISettingsDraft, builtins: Builtins): Perso
 }
 
 /** 左栏 id → 左栏里的下标。不是预设、或该预设已不在左栏时返回 -1。 */
-function railIndex(ai: AISettingsDraft, builtins: Builtins, railId: string): number {
+function railIndex(ai: AiSettingsDraft, builtins: Builtins, railId: string): number {
 	if (!railId.startsWith(PRESET_RAIL_PREFIX)) return -1;
 	const id = railId.slice(PRESET_RAIL_PREFIX.length);
 	return railPresets(ai, builtins).findIndex((p) => p.id === id);
@@ -201,7 +201,7 @@ function railIndex(ai: AISettingsDraft, builtins: Builtins, railId: string): num
  * 右侧却显示着别的内容 —— 高亮项与内容各说各话。
  */
 export function resolvePersonaRailId(
-	ai: AISettingsDraft,
+	ai: AiSettingsDraft,
 	builtins: Builtins,
 	railId: string,
 ): string {
@@ -211,7 +211,7 @@ export function resolvePersonaRailId(
 }
 
 /** 全局此刻用的是哪一份 —— 读 `ai.activePreset` 指针,换算成左栏 id。 */
-export function globalPersonaRailId(ai: AISettingsDraft, builtins: Builtins): string {
+export function globalPersonaRailId(ai: AiSettingsDraft, builtins: Builtins): string {
 	return resolvePersonaRailId(ai, builtins, `${PRESET_RAIL_PREFIX}${ai.activePreset ?? ""}`);
 }
 
@@ -223,10 +223,10 @@ export function globalPersonaRailId(ai: AISettingsDraft, builtins: Builtins): st
  * 一并解决。
  */
 export function setGlobalPersona(
-	ai: AISettingsDraft,
+	ai: AiSettingsDraft,
 	builtins: Builtins,
 	railId: string,
-): AISettingsDraft {
+): AiSettingsDraft {
 	const i = railIndex(ai, builtins, railId);
 	if (i < 0) return ai;
 	return { ...ai, activePreset: railPresets(ai, builtins)[i]?.id };

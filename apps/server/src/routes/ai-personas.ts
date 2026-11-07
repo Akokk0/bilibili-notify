@@ -5,9 +5,9 @@ import {
 	type PersonaEntry,
 } from "@bilibili-notify/contract";
 import {
-	AIPersonaSchema,
+	AiPersonaSettingsSchema,
 	fail,
-	type GlobalConfig,
+	type GlobalSettings,
 	issuesFromZod,
 	ok,
 } from "@bilibili-notify/internal";
@@ -25,7 +25,7 @@ import { MULTIPART_OVERHEAD_BYTES } from "./upload-limit.js";
 const contentSchema = z
 	.object({
 		label: z.string().trim().min(1),
-		persona: AIPersonaSchema.strict(),
+		persona: AiPersonaSettingsSchema.strict(),
 		dynamicPrompt: z.string().optional(),
 		liveSummaryPrompt: z.string().optional(),
 	})
@@ -56,8 +56,8 @@ const requestSchema = z.discriminatedUnion("op", [
 	z.object({ op: z.literal("remove"), revision: z.string(), id: z.string() }).strict(),
 	z.object({ op: z.literal("restore"), revision: z.string(), id: z.string() }).strict(),
 ]);
-const builtinsOf = (globals: GlobalConfig) => builtinPresetsFor(textSettingsOf(globals).locale);
-const revisionOf = (globals: GlobalConfig) =>
+const builtinsOf = (globals: GlobalSettings) => builtinPresetsFor(textSettingsOf(globals).locale);
+const revisionOf = (globals: GlobalSettings) =>
 	createHash("sha256")
 		.update(
 			JSON.stringify([
@@ -68,7 +68,7 @@ const revisionOf = (globals: GlobalConfig) =>
 		)
 		.digest("hex");
 
-function entriesOf(globals: GlobalConfig, store: ConfigStore): PersonaEntry[] {
+function entriesOf(globals: GlobalSettings, store: ConfigStore): PersonaEntry[] {
 	const builtins = builtinsOf(globals);
 	const list = presetsOf(globals.ai, builtins);
 	const active = list.some((p) => p.id === globals.ai.activePreset)

@@ -1,8 +1,8 @@
 import {
-	AIProviderProfileSchema,
+	AiProviderProfileSchema,
 	ConnectionSchema,
-	GlobalConfigSchema,
-	makeDefaultGlobalConfig,
+	GlobalSettingsSchema,
+	makeDefaultGlobalSettings,
 	stringLeavesOf,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
@@ -34,14 +34,14 @@ const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")
 const base = { name: "n", enabled: true } as const;
 
 function sections() {
-	const globals = makeDefaultGlobalConfig();
-	globals.ai.providers.ds = AIProviderProfileSchema.parse({
+	const globals = makeDefaultGlobalSettings();
+	globals.ai.providers.ds = AiProviderProfileSchema.parse({
 		provider: "deepseek",
 		apiKey: "k-main",
 		baseUrl: "https://api.example/v1",
 		vision: { apiKey: "k-vision", baseUrl: "https://v.example/v1" },
 	});
-	globals.ai.providers.other = AIProviderProfileSchema.parse({ provider: "custom" });
+	globals.ai.providers.other = AiProviderProfileSchema.parse({ provider: "custom" });
 	globals.ai.search.keys = { bocha: "k-bocha", tavily: "" };
 	globals.bootstrap = {
 		server: { host: "0.0.0.0", port: 8787 },
@@ -195,7 +195,7 @@ describe("守卫:键名像密钥的字符串叶子必须带标记", () => {
 	// 连接外壳里 `settings` 是 `z.unknown()`,拿外壳当样本叶子集会悄悄变空、守卫恒绿 ——
 	// 样本是三份真的设置规则(onebot 联合的三支、webhook、QQ 官方)。
 	const schemas: Array<[string, unknown]> = [
-		["GlobalConfig", GlobalConfigSchema],
+		["GlobalSettings", GlobalSettingsSchema],
 		["OnebotConnectionSettings", OnebotConnectionSettingsSchema],
 		["WebhookConnectionSettings", WebhookConnectionSettingsSchema],
 		["QQOfficialConnectionSettings", QQOfficialConnectionSettingsSchema],

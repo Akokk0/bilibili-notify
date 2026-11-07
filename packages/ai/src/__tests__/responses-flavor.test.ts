@@ -17,7 +17,7 @@ import { ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type {
 	CommentaryGenerator,
-	CommentaryGeneratorConfig,
+	CommentaryGeneratorSettings,
 	ToolTraceEvent,
 } from "../commentary-generator";
 import type { WebSearchResult } from "../web-search";
@@ -70,7 +70,7 @@ vi.mock("../tools", () => ({
  * 这个文件专测 responses 风味,所以那几项**必须**是自己的:方言走 deepseek、
  * apiFlavor 钉死 responses。其余全吃公共底。
  */
-function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGenerator {
+function makeGen(over: Partial<CommentaryGeneratorSettings> = {}): CommentaryGenerator {
 	return baseGen({
 		baseURL: "https://api.test",
 		model: "ds-test",

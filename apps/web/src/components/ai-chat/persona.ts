@@ -14,7 +14,7 @@ import { i18n } from "../../i18n";
  * - {@link ChatPersona.user} 是**她怎么称呼主人**:同样只用在她口吻的句子里
  */
 
-/** 人格里与称呼有关的那几栏。只声明用得到的,不绑整个 GlobalConfig。 */
+/** 人格里与称呼有关的那几栏。只声明用得到的,不绑整个 GlobalSettings。 */
 export interface PersonaSource {
 	name?: string;
 	addressSelf?: string;

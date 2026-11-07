@@ -27,7 +27,7 @@ import type {
 	AuthState,
 	Connection,
 	ConnectionCapabilities,
-	GlobalConfig,
+	GlobalSettings,
 	PlatformAdapter,
 	Post,
 	PostEvent,
@@ -43,7 +43,7 @@ import {
 	DEFAULT_MESSAGE_LAYOUT,
 	fail,
 	type Identity,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	ok,
 	sameIdentity,
@@ -246,7 +246,7 @@ function makeServiceCtx() {
 }
 
 function makeConfigStore(
-	initial: GlobalConfig,
+	initial: GlobalSettings,
 	bus: ReturnType<typeof createNodeMessageBus>,
 	initialBilibili: BiliSettings,
 ) {
@@ -271,7 +271,7 @@ function makeConfigStore(
 		patchConnection: vi.fn(async () => {}),
 		recordConnectionProbeState: vi.fn(async () => {}),
 		recordTargetReachability: vi.fn(async () => {}),
-		_set: (next: GlobalConfig) => {
+		_set: (next: GlobalSettings) => {
 			g = next;
 		},
 		_getBilibili: () => bilibili,
@@ -308,7 +308,7 @@ interface Ctx {
 }
 
 function setup(opts?: {
-	globals?: GlobalConfig;
+	globals?: GlobalSettings;
 	/** 开机那一刻的 B 站设置(只给要改的几格,其余取格式的默认值);不给 = 全默认。 */
 	bilibili?: Partial<BiliSettings>;
 	puppeteer?: boolean;
@@ -358,7 +358,7 @@ function setup(opts?: {
 	const bus = createNodeMessageBus();
 	const configStore = Object.assign(
 		makeConfigStore(
-			opts?.globals ?? makeDefaultGlobalConfig(),
+			opts?.globals ?? makeDefaultGlobalSettings(),
 			bus,
 			BiliSettingsSchema.parse(opts?.bilibili ?? {}),
 		),
@@ -478,7 +478,7 @@ function subsystemCtx(c: Ctx, name: string, levelKey: string): ReturnType<typeof
 	return found;
 }
 
-function patchGlobals(c: Ctx, mutate: (g: GlobalConfig) => void): void {
+function patchGlobals(c: Ctx, mutate: (g: GlobalSettings) => void): void {
 	const next = structuredClone(c.configStore.getGlobals());
 	mutate(next);
 	c.configStore._set(next);
@@ -494,8 +494,8 @@ function patchBilibili(c: Ctx, mutate: (b: BiliSettings) => void): void {
 	c.configStore._setBilibili(BiliSettingsSchema.parse(next));
 }
 
-function aiGlobals(): GlobalConfig {
-	const g = makeDefaultGlobalConfig();
+function aiGlobals(): GlobalSettings {
+	const g = makeDefaultGlobalSettings();
 	// 连接字段住在服务商桶里(各家一套配置)。
 	g.ai.activeProfile = "deepseek";
 	g.ai.providers = {
@@ -561,8 +561,8 @@ async function anchorTexts(field: "messages" | "aiMessages"): Promise<string[]> 
 	}
 	return out;
 }
-const TEMPLATE_GLOBALS = (template: string): GlobalConfig => {
-	const g = makeDefaultGlobalConfig();
+const TEMPLATE_GLOBALS = (template: string): GlobalSettings => {
+	const g = makeDefaultGlobalSettings();
 	g.defaults.templates.post = template;
 	return g;
 };
@@ -968,7 +968,7 @@ describe("createPipelineRuntime — 作品过滤接线", () => {
 		extReport(sub, { text: "返图", images: [{ ref: IMAGE_REF }] });
 	const textReport = (sub: { id: string }) => extReport(sub, { text: "只有字" });
 
-	function extSetup(over: { globals?: GlobalConfig; sub?: Subscription } = {}) {
+	function extSetup(over: { globals?: GlobalSettings; sub?: Subscription } = {}) {
 		const sub =
 			over.sub ?? makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const c = setup({
@@ -980,8 +980,8 @@ describe("createPipelineRuntime — 作品过滤接线", () => {
 		active = c;
 		return { c, sub };
 	}
-	const globalsWith = (filters: Partial<GlobalConfig["defaults"]["filters"]>): GlobalConfig => {
-		const g = makeDefaultGlobalConfig();
+	const globalsWith = (filters: Partial<GlobalSettings["defaults"]["filters"]>): GlobalSettings => {
+		const g = makeDefaultGlobalSettings();
 		Object.assign(g.defaults.filters, filters);
 		return g;
 	};
@@ -1187,7 +1187,7 @@ describe("createPipelineRuntime — 作品过滤接线", () => {
 describe("createPipelineRuntime — 拓展直播接上推送", () => {
 	it("开播 → 推送层收到按订阅 id 的开播", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.features.liveStreaming = true;
 		g.defaults.liveStreaming.streamingIntervalHours = 1;
 		const c = setup({
@@ -1265,7 +1265,7 @@ describe("createPipelineRuntime — 来源周期核对", () => {
 	// live/core 上下文上都不该有一小时的 setInterval(验红:在 `bindLivePush` 里加回一个 `serviceCtx.setInterval(…, 小时)`,
 	// 同时把 `serviceCtx` 的类型放回 `setInterval`,这条红)。
 	it("推送这头不挂自己的周期计时器(周期归场次的计时)", async () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.features.liveStreaming = true;
 		g.defaults.liveStreaming.streamingIntervalHours = 1;
 		const hourly = async (fetchLiveStatus?: Source["fetchLiveStatus"]): Promise<number[]> => {
@@ -1978,7 +1978,7 @@ describe("createPipelineRuntime — config-changed globals 热重载", () => {
 
 	// 作品设置每条现折:改全局图集开关,下一条作品就按新的,不经推送链路的热更门(此前 imageGroup 整个漏在门外)。
 	it("改 defaults.imageGroup:不经推送链路热更,下一条带图的作品立即多一个图集的附加项锚点", async () => {
-		const closed = makeDefaultGlobalConfig();
+		const closed = makeDefaultGlobalSettings();
 		closed.defaults.imageGroup = { enabled: false, mergeForward: false };
 		const c = setup({ subs: [biliSubOf("1")], globals: closed });
 		active = c;
@@ -2049,7 +2049,7 @@ describe("createPipelineRuntime — config-changed globals 热重载", () => {
 	// 验红:把 pipeline.ts 里 `createPostQueue` 的 `deps.logger: postsCtx.logger` 换成 `liveCtx.logger`,这条红。
 	it("作品装配(deliverPost)记的日志走 posts/core 那一个(被过滤)", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.filters.blockVideos = true;
 		const c = setup({
 			puppeteer: true,
@@ -2461,7 +2461,7 @@ describe("createPipelineRuntime — 背景轮换游标落盘", () => {
 
 	it("推进过就在 dispose 时落盘", async () => {
 		const sub = biliSubOf("57", "sub-57");
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.defaults.cards.liveCoverImageIds = ids.slice(0, 2);
 		const c = setup({
 			dataDir,
@@ -2531,7 +2531,7 @@ describe("createPipelineRuntime — 默认 globals", () => {
 
 describe("createPipelineRuntime — 消息版式", () => {
 	it("postSettingsOf 折叠 eff.messageLayout 的作品切片", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		const sub = makeEmptySubscription({
 			id: "s1",
 			identity: { sourceKey: "bilibili", externalId: "1" },
@@ -2889,7 +2889,7 @@ describe("createPipelineRuntime — 连接所在平台的能力", () => {
  */
 describe("createPipelineRuntime — 推送层的 aiWriting 读口接的是活的全局设置", () => {
 	it("读口回当前的 ai.writing;全局换了新的一份,下一次读到的就是新的", () => {
-		const first = makeDefaultGlobalConfig();
+		const first = makeDefaultGlobalSettings();
 		first.ai.writing.post = { isOnByDefault: false, byTarget: { "t-1": true } };
 		const c = setup({ globals: first });
 		active = c;
@@ -3105,7 +3105,7 @@ describe("createPipelineRuntime — 后台写登记进 track", () => {
 					toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"],
 				});
 				let up = true;
-				const globals = makeDefaultGlobalConfig();
+				const globals = makeDefaultGlobalSettings();
 				if (opts.masterOnThisConnection) globals.master.targetId = MASTER_TARGET;
 				const c = setup({
 					globals,

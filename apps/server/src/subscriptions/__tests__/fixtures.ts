@@ -5,7 +5,7 @@ import {
 	type IntegrationContext,
 	type LiveInteractionReader,
 	type Logger,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	ok,
 	type PostReport,
@@ -117,7 +117,7 @@ export const makeWorld = (subs: Subscription[] = []) => {
 	const bus = createNodeMessageBus();
 	const store = createSubscriptionStore(bus);
 	for (const s of subs) store.upsert(s);
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	return { bus, store, globals };
 };
 

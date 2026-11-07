@@ -17,7 +17,7 @@ import { chooseSelect } from "../../__tests__/select-controls";
 import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Rules from "../Rules";
 import { makeAi, makeDefaults } from "../rules/__tests__/fixtures";
 
@@ -39,10 +39,10 @@ function resetStore(): void {
 
 function globalsWith(
 	mutate: (d: ReturnType<typeof makeDefaults>) => void = () => {},
-): GlobalConfig {
+): GlobalSettings {
 	const defaults = makeDefaults();
 	mutate(defaults);
-	return { logging: {}, master: {}, defaults, ai: makeAi() } as unknown as GlobalConfig;
+	return { logging: {}, master: {}, defaults, ai: makeAi() } as unknown as GlobalSettings;
 }
 
 const SOURCES = {
@@ -70,7 +70,7 @@ const SOURCES = {
 	],
 };
 
-function mount(g: GlobalConfig, subs: Subscription[] = []) {
+function mount(g: GlobalSettings, subs: Subscription[] = []) {
 	vi.mocked(api.get).mockImplementation((url: string) =>
 		Promise.resolve(
 			url.includes("/api/subscriptions")

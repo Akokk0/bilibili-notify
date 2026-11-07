@@ -2,7 +2,7 @@
  * 锐评定时推送的配置契约。
  *
  * 两份调度、两个落点,而且**都不是继承关系**:
- *   - `GlobalConfig.roastSchedule` —— 榜单周报,全局唯一的一条
+ *   - `GlobalSettings.roastSchedule` —— 榜单周报,全局唯一的一条
  *   - `Subscription.roastSchedule` —— 单人锐评,每位 UP 自己一条
  *
  * 所以它们都挂在顶层,不进 `defaults` / `overrides`:那两处的语义是「per-UP 缺
@@ -10,7 +10,7 @@
  * 配置。`specialViewers` 是同类先例(per-UP 独有、不参与折叠)。
  *
  * 守三条不变量:
- * ① 老配置缺这个字段照样能读 —— `GlobalConfigSchema.parse` 在独立端启动路径上,
+ * ① 老配置缺这个字段照样能读 —— `GlobalSettingsSchema.parse` 在独立端启动路径上,
  *    新字段不带 `.default` 就是让所有老用户开不了机。
  * ② **默认必须是关的** —— 存量用户升级上来,不该有任何东西开始自己往群里发帖。
  * ③ 它不参与 `resolve()` 折叠 —— 一旦被顺手塞进 overrides,单人调度就会去继承
@@ -19,7 +19,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "../../ai";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 import { resolve } from "../resolve";
 import { RoastScheduleSchema } from "../roast-schedule";
 import { makeEmptySubscription, SubscriptionSchema } from "../subscriptions";
@@ -66,9 +66,9 @@ describe("RoastScheduleSchema", () => {
 
 describe("roastSchedule 在配置里的落点", () => {
 	it("老 globals.json 没有 roastSchedule → 自动补默认,不是解析失败", () => {
-		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		const g = makeDefaultGlobalSettings() as unknown as Record<string, unknown>;
 		delete g.roastSchedule;
-		const parsed = GlobalConfigSchema.safeParse(g);
+		const parsed = GlobalSettingsSchema.safeParse(g);
 		expect(parsed.success).toBe(true);
 		expect(parsed.data?.roastSchedule.enabled).toBe(false);
 	});
@@ -89,7 +89,7 @@ describe("roastSchedule 在配置里的落点", () => {
 			id: "22222222-2222-4222-8222-222222222222",
 			identity: { sourceKey: "bilibili", externalId: "456" },
 		});
-		const eff = resolve(sub, makeDefaultGlobalConfig().defaults);
+		const eff = resolve(sub, makeDefaultGlobalSettings().defaults);
 		// 有朝一日谁把它塞进 overrides,这条会红:届时单人锐评会去继承榜单的
 		// cron / targets,配出来的东西跟界面上显示的对不上。
 		expect(eff).not.toHaveProperty("roastSchedule");

@@ -11,8 +11,8 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { GlobalConfig } from "@bilibili-notify/internal";
-import { fail, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalSettings } from "@bilibili-notify/internal";
+import { fail, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import {
@@ -115,7 +115,7 @@ function memDrafts() {
 	return createRoastDraftStore({ dataRoot: dataDir, logger });
 }
 
-let globals: GlobalConfig;
+let globals: GlobalSettings;
 let tellMaster: ReturnType<typeof vi.fn>;
 let tellMasterPayload: ReturnType<typeof vi.fn>;
 /** 目标表。跑之前会看目标是不是停用了,所以夹具里的目标得带 enabled 与 connectionId。 */
@@ -169,7 +169,7 @@ beforeEach(() => {
 	ctx = makeTrackingContext();
 	storageWriteGate.reset();
 	cronMock.instances.length = 0;
-	globals = makeDefaultGlobalConfig();
+	globals = makeDefaultGlobalSettings();
 	targetsTable = [
 		{ id: "t1", enabled: true, connectionId: ADAPTER },
 		{ id: "t2", enabled: true, connectionId: ADAPTER },

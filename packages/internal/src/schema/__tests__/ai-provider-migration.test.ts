@@ -22,7 +22,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { EMPTY_AI_PROVIDER_PROFILE, resolveAIProfile } from "../../ai";
-import { AIProviderProfileSchema, AISettingsSchema } from "../common";
+import { AiProviderProfileSchema, AiSettingsSchema } from "../common";
 
 /** 当代形状的骨架(桶里写明 `provider`、指针叫 `activeProfile`);`over` 覆盖各条测试关心的那几项。 */
 function modern(over: Record<string, unknown> = {}) {
@@ -46,7 +46,7 @@ function modern(over: Record<string, unknown> = {}) {
 
 describe("当代:实例桶", () => {
 	it("同一家可以有多份实例 —— 这正是分实例的意义", () => {
-		const ai = AISettingsSchema.parse(
+		const ai = AiSettingsSchema.parse(
 			modern({
 				activeProfile: "deepseek-2",
 				providers: {
@@ -61,7 +61,7 @@ describe("当代:实例桶", () => {
 	});
 
 	it("写明 provider 的桶,键名可以随便叫 —— 键只是实例 id", () => {
-		const ai = AISettingsSchema.parse(
+		const ai = AiSettingsSchema.parse(
 			modern({ providers: { "my-bailian": { provider: "bailian", apiKey: "sk" } } }),
 		);
 		expect(ai.providers["my-bailian"]?.provider).toBe("bailian");
@@ -72,7 +72,7 @@ describe("当代:实例桶", () => {
 			activeProfile: "deepseek",
 			providers: { deepseek: { provider: "deepseek", label: "主号", apiKey: "sk-ds" } },
 		});
-		const ai = AISettingsSchema.parse(input);
+		const ai = AiSettingsSchema.parse(input);
 		expect(ai.activeProfile).toBe("deepseek");
 		expect(ai.providers.deepseek).toMatchObject({ provider: "deepseek", label: "主号" });
 	});
@@ -80,7 +80,7 @@ describe("当代:实例桶", () => {
 
 describe("桶内字段的默认值与拒收", () => {
 	it("只填了 provider 和 apiKey 的桶,其余项自动补齐", () => {
-		const ai = AISettingsSchema.parse(
+		const ai = AiSettingsSchema.parse(
 			modern({ providers: { deepseek: { provider: "deepseek", apiKey: "sk-ds" } } }),
 		);
 		expect(ai.providers.deepseek).toMatchObject({
@@ -97,13 +97,13 @@ describe("桶内字段的默认值与拒收", () => {
 
 	it("provider 写了个不认识的名字 → 直接拒", () => {
 		expect(
-			AISettingsSchema.safeParse(modern({ providers: { x: { provider: "openai", apiKey: "sk" } } }))
+			AiSettingsSchema.safeParse(modern({ providers: { x: { provider: "openai", apiKey: "sk" } } }))
 				.success,
 		).toBe(false);
 	});
 
 	it("非法的思考等级直接拒", () => {
-		const r = AISettingsSchema.safeParse(
+		const r = AiSettingsSchema.safeParse(
 			modern({ providers: { deepseek: { provider: "deepseek", thinkingLevel: "ultra" } } }),
 		);
 		expect(r.success).toBe(false);
@@ -116,7 +116,7 @@ describe("桶内字段的默认值与拒收", () => {
 
 describe("取当前生效的那一套", () => {
 	it("按 activeProfile 指针取对应的桶", () => {
-		const ai = AISettingsSchema.parse(
+		const ai = AiSettingsSchema.parse(
 			modern({
 				activeProfile: "deepseek-2",
 				providers: {
@@ -131,7 +131,7 @@ describe("取当前生效的那一套", () => {
 	it("指针指向一个已不存在的实例 → 返回一套空默认值,而不是 undefined", () => {
 		// 主人可能刚把当前这份删掉。调用方拿到空 model 会照既有规矩判定「还没配齐」
 		// 并停用 AI;返回 undefined 则会在各处炸出读属性的 TypeError。
-		const ai = AISettingsSchema.parse(modern({ activeProfile: "gone", providers: {} }));
+		const ai = AiSettingsSchema.parse(modern({ activeProfile: "gone", providers: {} }));
 		expect(resolveAIProfile(ai).model).toBe("");
 		expect(resolveAIProfile(ai).provider).toBe("custom");
 	});
@@ -143,7 +143,7 @@ describe("零依赖的空档案与 schema 默认值同步", () => {
 		// 拖进浏览器 bundle(见 ai.ts 顶部的零依赖约定)。代价是有走偏的风险,
 		// 这条测试就是那道锁 —— 一处改了另一处忘改,这里当场红。
 		expect(EMPTY_AI_PROVIDER_PROFILE).toEqual(
-			AIProviderProfileSchema.parse({ provider: "custom" }),
+			AiProviderProfileSchema.parse({ provider: "custom" }),
 		);
 	});
 });
@@ -154,7 +154,7 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 	// 这几条就红(那会让同一份迁移逻辑在 schema 和迁移器里各住一份)。
 
 	it("最老一代的扁平连接字段(没有 providers)→ 扁平键被剥掉,不会造出 custom 桶,指针也不会被选上", () => {
-		const ai = AISettingsSchema.parse(
+		const ai = AiSettingsSchema.parse(
 			modern({
 				baseUrl: "https://api.deepseek.com",
 				apiKey: "sk-old",
@@ -170,7 +170,7 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 	});
 
 	it("上一代「一家一桶」:桶里没写 provider → 拒收,不会按键名盖章", () => {
-		const r = AISettingsSchema.safeParse(
+		const r = AiSettingsSchema.safeParse(
 			modern({ provider: "deepseek", providers: { deepseek: { apiKey: "sk-ds" } } }),
 		);
 		expect(r.success).toBe(false);
@@ -178,7 +178,7 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 	});
 
 	it("上一代的 provider 指针不会被改名成 activeProfile:老键被剥掉,指针留空", () => {
-		const ai = AISettingsSchema.parse(
+		const ai = AiSettingsSchema.parse(
 			modern({
 				provider: "deepseek",
 				providers: { deepseek: { provider: "deepseek", apiKey: "sk-ds" } },

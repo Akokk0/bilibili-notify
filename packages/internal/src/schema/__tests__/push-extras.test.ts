@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { EXTRA_KEYS, FEATURE_KEYS, PUSH_EXTRAS } from "../../features";
 import { FeatureFlagsPartialSchema, FeatureFlagsSchema } from "../common";
-import { makeDefaultGlobalConfig } from "../globals";
+import { makeDefaultGlobalSettings } from "../globals";
 import { resolve } from "../resolve";
 import {
 	makeEmptySubscription,
@@ -86,7 +86,7 @@ describe("推送类型缩到 8 个", () => {
 	});
 
 	it("出厂默认:下播开着,附加项照注册表(作品 @全体 关、开播 @全体 开、词云 / 总结开)", () => {
-		expect(makeDefaultGlobalConfig().defaults.features).toEqual({
+		expect(makeDefaultGlobalSettings().defaults.features).toEqual({
 			post: true,
 			liveStart: true,
 			liveStreaming: false,
@@ -107,7 +107,7 @@ describe("推送类型缩到 8 个", () => {
 
 describe("resolve():附加项是嵌套合并", () => {
 	it("per-UP 只关词云 → 总结仍继承全局,下播开关也继承", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const sub: Subscription = {
 			...SUB_BASE,
 			overrides: { features: { extras: { wordcloud: false } } },
@@ -123,7 +123,7 @@ describe("resolve():附加项是嵌套合并", () => {
 	});
 
 	it("没覆盖时附加项就是全局那份", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.defaults.features.extras = {
 			atAllPost: true,
 			atAllLiveStart: false,

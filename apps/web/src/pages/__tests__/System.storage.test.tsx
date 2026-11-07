@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { GenerationInfo, StorageUsageResponse } from "@bilibili-notify/contract";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -67,7 +67,7 @@ beforeEach(() => {
 	vi.resetAllMocks();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation(async (path) => {
-		if (path === "/api/settings") return { core: makeDefaultGlobalConfig() };
+		if (path === "/api/settings") return { core: makeDefaultGlobalSettings() };
 		if (path === "/api/settings/invalid") return { entries: [] };
 		if (path === "/api/settings/integrations") return { integrations: [] };
 		if (path === "/api/sources/bilibili/auth") return { state: { status: "logged-out" } };

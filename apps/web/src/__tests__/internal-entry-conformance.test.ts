@@ -67,7 +67,7 @@ describe("apps/web 不得从 internal 根入口拿值", () => {
 		// 这条测的是判据而不是仓库现状:上面那条在仓库干净时无论判据对不对都是绿的,
 		// 所以判据得自己有一条测试。
 		const from = (clause: string) => offendersIn(`import ${clause} from "${INTERNAL_ROOT}";`);
-		expect(from("type { GlobalConfig }")).toEqual([]);
+		expect(from("type { GlobalSettings }")).toEqual([]);
 		expect(from("{ type A, type B }")).toEqual([]);
 		expect(from("type Everything")).toEqual([]);
 		expect(from("{ colorFromSeed, UP_COLORS }")).toHaveLength(1);
@@ -79,7 +79,7 @@ describe("apps/web 不得从 internal 根入口拿值", () => {
 	it("护栏认得 export … from、跨行列表、副作用与动态引用;认不得的是注释、字符串和别的入口", () => {
 		expect(offendersIn(`export { colorFromSeed } from "${INTERNAL_ROOT}";`)).toHaveLength(1);
 		expect(offendersIn(`export * from "${INTERNAL_ROOT}";`)).toHaveLength(1);
-		expect(offendersIn(`export type { GlobalConfig } from "${INTERNAL_ROOT}";`)).toEqual([]);
+		expect(offendersIn(`export type { GlobalSettings } from "${INTERNAL_ROOT}";`)).toEqual([]);
 		// 跨行的具名列表:最后一项不带 type 就是值。
 		expect(
 			offendersIn(`import {\n\ttype A,\n\ttype B,\n\tcolorFromSeed,\n} from "${INTERNAL_ROOT}";`),
@@ -87,7 +87,7 @@ describe("apps/web 不得从 internal 根入口拿值", () => {
 		expect(offendersIn(`import {\n\ttype A,\n\ttype B,\n} from "${INTERNAL_ROOT}";`)).toEqual([]);
 		expect(offendersIn(`import "${INTERNAL_ROOT}";`)).toHaveLength(1);
 		expect(offendersIn(`const m = await import("${INTERNAL_ROOT}");`)).toHaveLength(1);
-		expect(offendersIn(`type T = import("${INTERNAL_ROOT}").GlobalConfig;`)).toEqual([]);
+		expect(offendersIn(`type T = import("${INTERNAL_ROOT}").GlobalSettings;`)).toEqual([]);
 
 		// 零依赖子路径是合法的取值入口;别的包不归这条管。
 		expect(offendersIn(`import { UP_COLORS } from "${INTERNAL_ROOT}/identity";`)).toEqual([]);

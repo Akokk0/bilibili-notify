@@ -1,9 +1,9 @@
-import { type ConfigScope, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { type ConfigScope, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { expect, it } from "vite-plus/test";
 import { timezoneReaderOf } from "../timezone-reader.js";
 
 it("共同读源现读,只通知真变的globals,每份订阅独立去重并可回收", () => {
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	globals.timezone = "UTC";
 	const listeners = new Set<(scope: ConfigScope) => void>();
 	const reader = timezoneReaderOf({

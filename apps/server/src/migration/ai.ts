@@ -2,7 +2,7 @@
  * AI 设置 `defaults.ai` 的 0.x 老形状:扁平的连接字段(→ `providers.custom`)、上一代「一家一桶」与
  * `provider` 指针(→ 实例桶 + `activeProfile`)、手改过的 `persona` 与预设上线前的清单(→ 预设 +
  * `activePreset`),以及上提到顶层后拆掉内置人格、只留下主人删过哪几份。⑥c 从 internal 的
- * `AISettingsSchema` preprocess 里原样收进来,前三步的顺序不变。
+ * `AiSettingsSchema` preprocess 里原样收进来,前三步的顺序不变。
  */
 
 import { AI_PROVIDER_IDS } from "@bilibili-notify/internal";
@@ -13,7 +13,7 @@ import { ZERO_BUILTIN_PRESET_IDS } from "./zero-vocabulary.js";
  * 上一版的扁平连接字段。读老配置时整份搬进 `providers.custom`。
  *
  * 当年的扁平字段里还有 `temperature`,它已整个退役,所以不在这张表里:老配置残留的
- * 那个键留在 ai 这一层,被 {@link AISettingsObjectSchema} 剥掉(裸 z.object,不会整份
+ * 那个键留在 ai 这一层,被 {@link AiSettingsObjectSchema} 剥掉(裸 z.object,不会整份
  * 拒收)。也不该让它单独撑起一个 custom 桶 —— 光有它不算「配过连接」。
  */
 const LEGACY_FLAT_KEYS = [

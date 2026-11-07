@@ -3,7 +3,7 @@ import type { ImageRenderer } from "@bilibili-notify/image";
 import {
 	aiWritingNeeded,
 	type Disposable,
-	type GlobalConfig,
+	type GlobalSettings,
 	type ImageRef,
 	type LiveInteractionReport,
 	type LiveSession,
@@ -46,7 +46,7 @@ export interface LiveRuntimeOptions {
 	hasLiveStatus: (sourceKey: string) => boolean;
 	sourceStatus: Pick<SourceStatusReader, "running">;
 	labelDeps: PlatformLabelDeps;
-	globals: () => GlobalConfig;
+	globals: () => GlobalSettings;
 	targetIds: () => string[];
 	commentary: CommentaryGenerator | null;
 	imageRenderer: () => ImageRenderer | null;

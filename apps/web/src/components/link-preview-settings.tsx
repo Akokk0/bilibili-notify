@@ -32,7 +32,7 @@ import { Link } from "react-router-dom";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { i18n, useT } from "../i18n";
 import type { Connection, PushTarget } from "../types/domain";
-import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
+import type { GlobalSettings, GlobalSettingsPatch } from "../types/globals";
 import { Field } from "./forms";
 import { TargetExceptions } from "./target-exceptions";
 
@@ -93,8 +93,8 @@ export function LinkPreviewSettings({
 	connections,
 	capabilities,
 }: {
-	draft: Pick<GlobalConfig, "linkPreview">;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	draft: Pick<GlobalSettings, "linkPreview">;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 	/** 推送目标表(由页面取数),这里只挑群类的列出来。 */
 	targets: readonly PushTarget[];
 	/** 连接表(由页面取数)，每条按能力回应显示。 */
@@ -293,8 +293,8 @@ function GroupCells({
 	onPatch,
 }: {
 	target: PushTarget;
-	cfg: GlobalConfig["linkPreview"];
-	onPatch: (delta: GlobalConfigPatch) => void;
+	cfg: GlobalSettings["linkPreview"];
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
 	const replyFormLabel = useReplyFormLabel();

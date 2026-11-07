@@ -25,14 +25,14 @@
  * - `temperature` 不在老键清单里:它是退役键,迁移器刻意留在 ai 这一层、由 schema 剥掉(见 `ai.ts`),「哪一层都没有它」
  *   只能在 parse 出来的值上看(`ai-temperature-retired` 那条)。
  *
- * `migrateGlobals` 吐的是 0.x 最新的形状(特性键仍是 0.x 的名字);整份过 `GlobalConfigSchema` 的几处要走完整条
+ * `migrateGlobals` 吐的是 0.x 最新的形状(特性键仍是 0.x 的名字);整份过 `GlobalSettingsSchema` 的几处要走完整条
  * `migrateGlobalsToCurrent` 流水线(改名、搬家、拆键、上提),文件级迁移里也是这条,活 schema 只认 1.0 的键。
  */
 
 import {
 	AI_PROVIDER_IDS,
-	AISettingsSchema,
-	GlobalConfigSchema,
+	AiSettingsSchema,
+	GlobalSettingsSchema,
 	LinkPreviewSettingsSchema,
 } from "@bilibili-notify/internal";
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
@@ -99,7 +99,7 @@ function migrateAi(old: unknown): unknown {
 
 /** AI 设置:先迁移、再过 schema。 */
 function parseAi(old: unknown) {
-	return AISettingsSchema.parse(migrateAi(old));
+	return AiSettingsSchema.parse(migrateAi(old));
 }
 
 /** 链接设置整条迁移:0.x 的 `linkParsing` 先到 0.x 最新形状,再改成 `linkPreview` 五格(盘上的 core.json 经过的就是这两步)。 */
@@ -293,12 +293,12 @@ describe("AI 迁移 · 桶内字段的默认值与拒收", () => {
 		// 迁移器不替它盖章 —— 猜一个方言归属比报错更糟;拒收是 schema 的事。
 		const migrated = migrateAi(modern({ providers: { openai: { apiKey: "sk" } } })) as MigratedAi;
 		expect(migrated.providers?.openai).not.toHaveProperty("provider");
-		expect(AISettingsSchema.safeParse(migrated).success).toBe(false);
+		expect(AiSettingsSchema.safeParse(migrated).success).toBe(false);
 	});
 
 	it("非法的思考等级直接拒", () => {
 		const migrated = migrateAi(modern({ providers: { deepseek: { thinkingLevel: "ultra" } } }));
-		const r = AISettingsSchema.safeParse(migrated);
+		const r = AiSettingsSchema.safeParse(migrated);
 		expect(r.success).toBe(false);
 		// 拒的得是「等级不合法」,不是「桶没盖章」—— 盖章那一步迁移器已经做了(上面 migrateAi 钉过)。
 		expect(r.error?.issues.map((i) => i.path.join("."))).toContain(
@@ -485,7 +485,7 @@ describe("AI 迁移 · temperature 退役 —— 老配置照样装得进来", (
 		expect(migrateGlobals(migrated)).toEqual(migrated);
 
 		// 整条流水线走完(`migrateGlobalsToCurrent`,含 AI 上提到顶层)才是 schema 认的形状。
-		const r = GlobalConfigSchema.safeParse(migrateGlobalsToCurrent(migrated));
+		const r = GlobalSettingsSchema.safeParse(migrateGlobalsToCurrent(migrated));
 		expect(r.success).toBe(true);
 		const ai = r.data?.ai;
 		// 连接字段照旧搬进 custom 桶 —— 退役的只是 temperature 这一格。
@@ -808,7 +808,7 @@ describe("整份 globals 迁移(ai / linkParsing / templates)", () => {
 		expect(without(migrated)).toEqual(without(input));
 
 		expect(migrateGlobals(migrated)).toEqual(migrated);
-		expect(GlobalConfigSchema.safeParse(migrateGlobalsToCurrent(migrated)).success).toBe(true);
+		expect(GlobalSettingsSchema.safeParse(migrateGlobalsToCurrent(migrated)).success).toBe(true);
 	});
 
 	it("0.9.1 的范围 + 白名单经整条流水线到五格:enabled 开、isOnByDefault 关、A 显式开;迁完没有 linkParsing,过 schema", () => {
@@ -820,7 +820,7 @@ describe("整份 globals 迁移(ai / linkParsing / templates)", () => {
 			replyForm: "image",
 			byTarget: { [A]: { isOn: true } },
 		});
-		expect(GlobalConfigSchema.parse(out).linkPreview).toEqual({
+		expect(GlobalSettingsSchema.parse(out).linkPreview).toEqual({
 			...FRESH_LINK,
 			enabled: true,
 			isOnByDefault: false,
@@ -909,7 +909,7 @@ describe("历史保留天数 → history.retentionDays(七档)", () => {
 		expect(out.history).toEqual({ retentionDays: 60 });
 		expect(out).not.toHaveProperty("app");
 		expect(out.logging).not.toHaveProperty("historyRetentionDays");
-		const parsed = GlobalConfigSchema.safeParse(out);
+		const parsed = GlobalSettingsSchema.safeParse(out);
 		expect(parsed.success).toBe(true);
 		expect(parsed.data?.history.retentionDays).toBe(60);
 	});

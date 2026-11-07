@@ -9,7 +9,7 @@ import { useT } from "../../i18n";
  */
 
 import type { MarketplaceSourceView } from "@bilibili-notify/contract";
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalSettings } from "@bilibili-notify/internal";
 import {
 	Btn,
 	ErrorNote,
@@ -33,7 +33,7 @@ interface SourceRow {
 	url: string;
 }
 
-function sourcesOf(globals: Pick<GlobalConfig, "marketplace"> | undefined): SourceRow[] {
+function sourcesOf(globals: Pick<GlobalSettings, "marketplace"> | undefined): SourceRow[] {
 	return globals?.marketplace?.sources ?? [];
 }
 

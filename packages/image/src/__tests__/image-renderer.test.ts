@@ -9,8 +9,8 @@ import type { ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	ImageRenderer,
-	type ImageRendererConfig,
 	type ImageRendererOptions,
+	type ImageRendererSettings,
 } from "../image-renderer";
 import type { PageOptions, PuppeteerLike } from "../puppeteer";
 import type { LiveCardInput } from "../templates/live-card";
@@ -19,7 +19,7 @@ import type { LiveCardInput } from "../templates/live-card";
 type AnyRenderer = any;
 
 function makeRenderer(
-	config: Partial<ImageRendererConfig> = {},
+	config: Partial<ImageRendererSettings> = {},
 	extra: Partial<ImageRendererOptions> = {},
 ): ImageRenderer {
 	const ctx: ServiceContext = {
@@ -67,11 +67,11 @@ describe("ImageRenderer 纯映射辅助", () => {
 // ---------------------------------------------------------------------------
 
 describe("ImageRenderer.updateConfig", () => {
-	const BASE: ImageRendererConfig = {
+	const BASE: ImageRendererSettings = {
 		font: "sans-serif",
 	};
 
-	function makeWithSpyLogger(config: ImageRendererConfig) {
+	function makeWithSpyLogger(config: ImageRendererSettings) {
 		const info = vi.fn();
 		const serviceCtx: ServiceContext = {
 			logger: { debug() {}, info, warn() {}, error() {} },
@@ -110,7 +110,7 @@ describe("ImageRenderer.updateConfig", () => {
 /** 把 info 日志收进数组的渲染器 —— 热更日志那几条共用。 */
 function makeLoggingRenderer(
 	infos: string[],
-	config: Partial<ImageRendererConfig> = {},
+	config: Partial<ImageRendererSettings> = {},
 ): ImageRenderer {
 	const r = makeRenderer(config) as AnyRenderer;
 	r.logger = {
@@ -122,7 +122,7 @@ function makeLoggingRenderer(
 	return r as ImageRenderer;
 }
 
-const BASE_CONFIG: ImageRendererConfig = {
+const BASE_CONFIG: ImageRendererSettings = {
 	font: "sans-serif",
 };
 

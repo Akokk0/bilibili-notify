@@ -7,7 +7,7 @@
  * 它别退化成去比对 key 内容。没配时灰着并指路设置页。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -21,7 +21,7 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 
 function globalsWith(bochaKey: string | { masked: string }) {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	// GET 出来的形态:key 非空时是 `{ masked }`,不是明文;没配是空串。
 	g.ai.search.keys.bocha = bochaKey as string;
 	return g;

@@ -15,12 +15,12 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 import { makeEmptySubscription, SubscriptionSchema } from "../subscriptions";
 
 /** 一份默认 globals 的纯 JSON 副本,拿来就地改成盘上的老形状。 */
 function rawGlobals(): { ai: Record<string, unknown> } {
-	return JSON.parse(JSON.stringify(makeDefaultGlobalConfig()));
+	return JSON.parse(JSON.stringify(makeDefaultGlobalSettings()));
 }
 
 describe("temperature 退役 —— 老配置照样装得进来", () => {
@@ -36,7 +36,7 @@ describe("temperature 退役 —— 老配置照样装得进来", () => {
 			},
 		};
 
-		const r = GlobalConfigSchema.safeParse(raw);
+		const r = GlobalSettingsSchema.safeParse(raw);
 		expect(r.success).toBe(true);
 		const bucket = r.data?.ai.providers.deepseek;
 		expect(bucket).toMatchObject({

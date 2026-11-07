@@ -20,7 +20,7 @@ import { t as serverText } from "../i18n/index.js";
 
 import {
 	type ChatIdentity,
-	type CommandConfig,
+	type CommandSettings,
 	type DeliveryResult,
 	type InboundMeta,
 	type InboundPrivateMessage,
@@ -153,7 +153,7 @@ export interface CommandDispatcherOptions {
 	 * 主人改完保存,前缀与总开关立刻按新的算;别名进了触发词表,要 {@link
 	 * CommandDispatcher.reconcile} 重建。
 	 */
-	config: () => CommandConfig;
+	config: () => CommandSettings;
 	commands: readonly CommandDef[];
 	/** 待确认队列。不传 = 这条链路上没有需要确认的东西。 */
 	confirmation?: ConfirmationWindow;

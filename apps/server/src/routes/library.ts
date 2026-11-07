@@ -10,7 +10,7 @@ import {
 	CARD_SKIN_UPLOAD_PREFIX,
 	type CardSkinKnobOverrides,
 	fail,
-	type GlobalConfig,
+	type GlobalSettings,
 	ok,
 	type Subscription,
 	subscriptionIdentityOf,
@@ -57,7 +57,7 @@ type SubscriptionLabeler = (s: Subscription) => string;
  * 多扫一个同形状的值也只是多拦一次删除。
  */
 function knobReferences(
-	globals: GlobalConfig,
+	globals: GlobalSettings,
 	subs: Subscription[],
 	hit: (value: unknown) => boolean,
 	labelOf: SubscriptionLabeler,
@@ -97,7 +97,7 @@ function knobReferences(
  * 指向空气的 id,出图时静静回落渐变 —— 主人只会觉得「壁纸自己没了」。
  */
 function cardBgReferences(
-	globals: GlobalConfig,
+	globals: GlobalSettings,
 	subs: Subscription[],
 	id: string,
 	labelOf: SubscriptionLabeler,
@@ -135,7 +135,7 @@ function cardBgReferences(
  * 与 {@link cardBgReferences} 不同:那边扫的 `liveCoverImages` 是**还活着**的字段。
  */
 function fontAssetReferences(
-	globals: GlobalConfig,
+	globals: GlobalSettings,
 	subs: Subscription[],
 	id: string,
 	labelOf: SubscriptionLabeler,

@@ -16,7 +16,7 @@
  * 静默漏掉新那家。
  */
 
-import { AI_PROVIDER_IDS, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { AI_PROVIDER_IDS, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	aiSecretKey,
@@ -56,7 +56,7 @@ function profile(over: Record<string, unknown> = {}) {
 
 /** 每家都配齐、两把 key 都填了。 */
 function withAllBuckets() {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.providers = Object.fromEntries(
 		AI_PROVIDER_IDS.map((id) => [
 			id,
@@ -79,14 +79,14 @@ describe("collectAiSecrets", () => {
 	});
 
 	it("空 key 不进袋 —— 袋里存个空串等于把「未配置」写成「配置了空的」", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.providers = { deepseek: profile({ apiKey: "sk-x" }) };
 		const bag = collectAiSecrets(g);
 		expect(bag).toEqual({ deepseek: "sk-x" });
 	});
 
 	it("一家都没添加时是个空袋", () => {
-		expect(collectAiSecrets(makeDefaultGlobalConfig())).toEqual({});
+		expect(collectAiSecrets(makeDefaultGlobalSettings())).toEqual({});
 	});
 });
 
@@ -98,7 +98,7 @@ describe("stripAiSecrets — 落盘前抠干净", () => {
 	});
 
 	it("抠的是密钥,不碰同桶的别的字段", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.providers = {
 			deepseek: profile({
 				apiKey: "sk-x",
@@ -142,7 +142,7 @@ describe("applyAiSecrets — 读回时灌回内存", () => {
 		// 下游 `!p.apiKey` 判「还没配齐」,undefined 也成立;但空串能与 zod
 		// 的默认形状对上,避免 globals 偏离 parse 后的规范形态(那会让引擎的
 		// config-changed diff 误判)。
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.providers = { deepseek: profile({ apiKey: "sk-x" }) };
 		const out = applyAiSecrets(stripAiSecrets(g), {});
 		expect(out.ai.providers.deepseek?.apiKey).toBe("");
@@ -151,7 +151,7 @@ describe("applyAiSecrets — 读回时灌回内存", () => {
 	it("袋里有一把属于「还没添加的家」→ 忽略,不凭空造桶", () => {
 		// 主人删掉一家但袋里还留着它的 key 时会走到这儿。造出桶来的话,
 		// 设置页左栏会凭空多一块。
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.providers = { deepseek: profile({ apiKey: "sk-x" }) };
 		const out = applyAiSecrets(g, { deepseek: "sk-x", openrouter: "sk-ghost" });
 		expect(Object.keys(out.ai.providers)).toEqual(["deepseek"]);
@@ -165,7 +165,7 @@ describe("联网搜索的 key 也走袋子", () => {
 	 * 不会撞车。漏收 = 明文躺进不加密的 globals.json;漏灌 = 重启后搜索静默失效。
 	 */
 	function withSearchKeys() {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.search.keys = { bocha: "sk-bocha", tavily: "tvly-x" };
 		return g;
 	}
@@ -177,7 +177,7 @@ describe("联网搜索的 key 也走袋子", () => {
 	});
 
 	it("collect:空 key 不进袋 —— 「未配置」不该被记成「配置了个空的」", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.search.keys = { bocha: "sk-bocha", tavily: "" };
 		const bag = collectAiSecrets(g);
 		expect(bag["search:bocha"]).toBe("sk-bocha");
@@ -203,21 +203,21 @@ describe("联网搜索的 key 也走袋子", () => {
 
 /**
  * 恢复路径会把**未经 schema 迁移**的老备份 globals 原样递进 applyAiSecrets
- * (assemble.ts 的 openFullBackup 在 GlobalConfigSchema 补默认之前灌密钥)。
+ * (assemble.ts 的 openFullBackup 在 GlobalSettingsSchema 补默认之前灌密钥)。
  * 老备份可能没有 ai.search 段(搜索上线前)、甚至没有 providers 桶(扁平时代)。
  * 曾经这里无守卫地 Object.keys(undefined) —— 于是升级前的所有全量备份不可恢复。
  * 缺段就跳过:密钥灌回只对存在的形状负责,补默认是下游 schema parse 的事。
  */
 describe("applyAiSecrets — 老备份缺段不许炸", () => {
 	it("缺 ai.search 段(搜索上线前的备份)→ 原样跳过,不抛 TypeError", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		delete (g.ai as Record<string, unknown>).search;
 		const out = applyAiSecrets(g, { deepseek: "sk-x" });
 		expect((out.ai as Record<string, unknown>).search).toBeUndefined();
 	});
 
 	it("缺 providers 桶(实例桶迁移前的扁平备份)→ 原样跳过,搜索段照灌", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		delete (g.ai as Record<string, unknown>).providers;
 		const out = applyAiSecrets(g, { "search:bocha": "sk-b" });
 		expect((out.ai as Record<string, unknown>).providers).toBeUndefined();
@@ -225,7 +225,7 @@ describe("applyAiSecrets — 老备份缺段不许炸", () => {
 	});
 
 	it("连 ai 都没有(AI 上线前的化石备份)→ 原物返回", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		delete (g as Record<string, unknown>).ai;
 		expect(applyAiSecrets(g, {})).toEqual(g);
 	});

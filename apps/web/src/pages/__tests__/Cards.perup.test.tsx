@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Cards from "../Cards";
 import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
@@ -48,7 +48,7 @@ const GLOBALS = {
 	logging: {},
 	master: {},
 	defaults: makeDefaults(),
-} as unknown as GlobalConfig;
+} as unknown as GlobalSettings;
 
 /** 皮肤库列表(GET /api/cards/skins):内置那份 + 一套自制的。 */
 const SKINS = {

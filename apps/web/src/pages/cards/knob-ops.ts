@@ -19,11 +19,11 @@ import {
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
 } from "@bilibili-notify/internal/card-skin";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import type { FontChoice } from "./font-ops";
 
 /** 全表:皮肤 id → 该套皮肤拧过的键。形状从配置类型里取,免得两边各写一份会漂。 */
-export type CardSkinKnobsBySkin = GlobalConfig["defaults"]["cardSkinKnobs"];
+export type CardSkinKnobsBySkin = GlobalSettings["defaults"]["cardSkinKnobs"];
 /** 一套皮肤拧过的那些键。 */
 export type CardSkinKnobOverrides = CardSkinKnobsBySkin[string];
 export type CardSkinKnobValue = CardSkinKnobOverrides[string];

@@ -1,6 +1,6 @@
 import type {
 	Connection,
-	GlobalConfig,
+	GlobalSettings,
 	PushTarget,
 	Subscription,
 	SubscriptionTag,
@@ -92,7 +92,7 @@ export type BackupKind = "full" | "sanitized";
 
 /** Non-secret config payload carried in plaintext in every backup. */
 export interface BackupSections {
-	globals?: GlobalConfig;
+	globals?: GlobalSettings;
 	/** 各集成的设置(今天只有 B 站),按集成的键;与 `globals` 同一个勾选(「设置」)。 */
 	integrations?: Record<string, unknown>;
 	/**

@@ -17,8 +17,8 @@
 import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import {
 	DEFAULT_CARD_SKIN_ID,
-	type GlobalConfig,
-	makeDefaultGlobalConfig,
+	type GlobalSettings,
+	makeDefaultGlobalSettings,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -36,8 +36,8 @@ const PER_UP = {
 	cyberpunk: { neon: "#00f0ff" },
 };
 
-function globalsWith(knobs: GlobalConfig["defaults"]["cardSkinKnobs"] = {}): GlobalConfig {
-	const g = makeDefaultGlobalConfig();
+function globalsWith(knobs: GlobalSettings["defaults"]["cardSkinKnobs"] = {}): GlobalSettings {
+	const g = makeDefaultGlobalSettings();
 	g.defaults.cardSkinKnobs = knobs;
 	return g;
 }

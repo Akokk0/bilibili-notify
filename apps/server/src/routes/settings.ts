@@ -18,7 +18,7 @@ import { globalConfigView } from "./secret-view.js";
 import type { RouteDeps } from "./types.js";
 
 /**
- * `/api/settings` — read + patch the runtime settings: the core GlobalConfig under `core`, plus each
+ * `/api/settings` — read + patch the runtime settings: the core GlobalSettings under `core`, plus each
  * registered integration's settings under its key (`bilibili` and the three built-in adapters,
  * ADR-0021 decision 42's 10-01 🔗).
  *
@@ -231,7 +231,7 @@ function publicSettings(snapshot: SettingsSnapshot): SettingsResponse {
 // ---------------------------------------------------------------------------
 
 interface EnableCheckArgs {
-	current: import("@bilibili-notify/internal").GlobalConfig;
+	current: import("@bilibili-notify/internal").GlobalSettings;
 	patch: Record<string, unknown>;
 	puppeteer: PuppeteerAdapter | null;
 	targets: readonly import("@bilibili-notify/internal").PushTarget[];
@@ -253,7 +253,7 @@ interface EnableCheckArgs {
  * 判据是**主人那条私聊通道**所在的平台 —— 草稿预览就是发给他的。
  */
 export function checkApprovalEnable(
-	current: import("@bilibili-notify/internal").GlobalConfig,
+	current: import("@bilibili-notify/internal").GlobalSettings,
 	patch: Record<string, unknown>,
 	targets: readonly import("@bilibili-notify/internal").PushTarget[],
 	connections: readonly import("@bilibili-notify/internal").Connection[],
@@ -332,7 +332,7 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<Result> {
 
 /** 本次 patch 生效后当前用哪份实例 —— 指针可能就在这个 patch 里被换掉。 */
 export function aiActiveProfileAfterPatch(
-	current: import("@bilibili-notify/internal").GlobalConfig,
+	current: import("@bilibili-notify/internal").GlobalSettings,
 	patch: Record<string, unknown>,
 ): string {
 	const inPatch = pluck(patch, ["ai", "activeProfile"]);
@@ -352,7 +352,7 @@ export function aiActiveProfileAfterPatch(
  * 带着它写回是 400),pluck 自然取不到。
  */
 export function shouldRunAiEnableCheck(
-	current: import("@bilibili-notify/internal").GlobalConfig,
+	current: import("@bilibili-notify/internal").GlobalSettings,
 	patch: Record<string, unknown>,
 ): boolean {
 	const aiEnabled = mergedFlag(current.ai.enabled, pluck(patch, ["ai", "enabled"]));

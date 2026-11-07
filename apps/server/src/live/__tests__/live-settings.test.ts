@@ -1,4 +1,4 @@
-import { makeDefaultGlobalConfig, makeEmptySubscription } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings, makeEmptySubscription } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createLiveSettingsCache, rotateLiveCover } from "../live-settings";
@@ -107,7 +107,7 @@ describe("B 站封面轮换游标", () => {
 describe("createLiveSettingsCache", () => {
 	it("同一订阅对象读两次只折一次;globals 变了、换了订阅对象才重折", () => {
 		const bus = createNodeMessageBus();
-		const globals = vi.fn(() => makeDefaultGlobalConfig());
+		const globals = vi.fn(() => makeDefaultGlobalSettings());
 		const cache = createLiveSettingsCache({ bus, getGlobals: globals });
 		const sub = makeEmptySubscription({
 			id: "s1",

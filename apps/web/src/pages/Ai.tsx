@@ -58,7 +58,11 @@ import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
 import { useSettingsDraft } from "../hooks/useSettingsDraft";
 import { useT } from "../i18n/index";
-import type { AIProviderProfileDraft, AISettingsDraft, GlobalConfigPatch } from "../types/globals";
+import type {
+	AiProviderProfileDraft,
+	AiSettingsDraft,
+	GlobalSettingsPatch,
+} from "../types/globals";
 import {
 	addProfile,
 	globalPersonaRailId,
@@ -95,7 +99,7 @@ type TopTab = "global" | "model";
  * `(未设置) → ""` 的噪音。真有内容的桶被删掉时照样逐字段亮;全默认的那只桶靠
  * 下面那行 providerList 兜(它就是为这一刻存在的)。
  */
-function packProviders(ai: AISettingsDraft, keys: readonly string[]): Record<string, unknown> {
+function packProviders(ai: AiSettingsDraft, keys: readonly string[]): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const id of keys) out[id] = ai.providers[id] ?? EMPTY_AI_PROVIDER_PROFILE;
 	return out;
@@ -108,7 +112,7 @@ function packProviders(ai: AISettingsDraft, keys: readonly string[]): Record<str
  * 连接与参数按服务商实例打包；性格只保留选用指针。资源内容在素材库独立保存，
  * 不加入本页差异，以免后台刷新资源时误报配置改动。
  */
-function packIsland(ai: AISettingsDraft, providerKeys: readonly string[]) {
+function packIsland(ai: AiSettingsDraft, providerKeys: readonly string[]) {
 	const { enabled, activeProfile, activePreset, search, writing } = ai;
 	return {
 		ai: {
@@ -165,7 +169,7 @@ export default function Ai() {
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
 
-	const [draft, setDraft] = useSettingsDraft<AISettingsDraft>(globalsQuery.data?.ai);
+	const [draft, setDraft] = useSettingsDraft<AiSettingsDraft>(globalsQuery.data?.ai);
 	const [tab, setTab] = useState<TopTab>("global");
 	// 左栏在看哪一份实例 —— **纯界面状态**,与「女仆在用哪一份」(`ai.activeProfile`)
 	// 无关。两者曾经共用一个字段,于是点左栏想看看另一份 = 当场换掉了在用的那份。
@@ -174,7 +178,7 @@ export default function Ai() {
 	const [addingProvider, setAddingProvider] = useState(false);
 
 	const save = useMutation({
-		mutationFn: async (payload: { ai: AISettingsDraft }) => {
+		mutationFn: async (payload: { ai: AiSettingsDraft }) => {
 			// 只挑本页编辑的 scope 做 diff:草稿里消失的键(被删掉的服务商桶)由
 			// buildPatch 变成显式 null,服务端 deepMerge 据此删键。手写 payload 时这些
 			// 消失的键会被 JSON.stringify 一起丢掉 → 服务端当「不改」→ 删了却没真删。
@@ -182,7 +186,7 @@ export default function Ai() {
 			// 草稿的密钥格类型上还可能是遮挡,但两边都是遮挡(没动)的格 buildPatch 不发,换了的是明文 ——
 			// 发出去的正是核心那份的补丁。
 			return await patchCoreSettings(
-				buildPatch({ ai: payload.ai }, { ai: base?.ai }) as GlobalConfigPatch,
+				buildPatch({ ai: payload.ai }, { ai: base?.ai }) as GlobalSettingsPatch,
 			);
 		},
 		// 用 PATCH 的**响应**(后端返回的正是 redact 后的新 globals)把 draft 拉回已保存态。
@@ -270,7 +274,7 @@ export default function Ai() {
 
 	const personaRail = personaRailItems(draft, builtins);
 
-	function setAi<K extends keyof AISettingsDraft>(k: K, v: AISettingsDraft[K]): void {
+	function setAi<K extends keyof AiSettingsDraft>(k: K, v: AiSettingsDraft[K]): void {
 		setDraft((d) => (d ? { ...d, [k]: v } : d));
 	}
 	/**
@@ -280,9 +284,9 @@ export default function Ai() {
 	 * 补上其余的 —— 漏一层内 spread 就是静默丢兄弟键(换后端丢另一家的 key)。
 	 */
 	function setSearch(delta: {
-		backend?: AISettingsDraft["search"]["backend"];
-		keys?: Partial<AISettingsDraft["search"]["keys"]>;
-		scenes?: Partial<AISettingsDraft["search"]["scenes"]>;
+		backend?: AiSettingsDraft["search"]["backend"];
+		keys?: Partial<AiSettingsDraft["search"]["keys"]>;
+		scenes?: Partial<AiSettingsDraft["search"]["scenes"]>;
 	}): void {
 		setDraft((d) =>
 			d
@@ -302,9 +306,9 @@ export default function Ai() {
 	 * 改**正在编辑**那家桶里的一项(不是在用的那家 —— 两者可以不是同一家)。
 	 * 桶不存在时按当前显示值(空默认)建出来。
 	 */
-	function setProfile<K extends keyof AIProviderProfileDraft>(
+	function setProfile<K extends keyof AiProviderProfileDraft>(
 		k: K,
-		v: AIProviderProfileDraft[K],
+		v: AiProviderProfileDraft[K],
 	): void {
 		if (editing === null) return;
 		setDraft((d) =>
@@ -438,7 +442,7 @@ export default function Ai() {
 						badge="search"
 					>
 						<Field code="ai.search.backend" full>
-							<Picker<AISettingsDraft["search"]["backend"]>
+							<Picker<AiSettingsDraft["search"]["backend"]>
 								value={draft.search.backend}
 								onChange={(v) => setSearch({ backend: v })}
 								options={WEB_SEARCH_BACKENDS.map((b) => ({ value: b.id, label: b.label }))}

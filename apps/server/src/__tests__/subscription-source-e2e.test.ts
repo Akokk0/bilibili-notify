@@ -109,7 +109,7 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 	}
 
 	/**
-	 * globals 先跑一趟空启动再改(`GlobalConfigSchema` 有几段没默认值,手写一份缺格的会在开机时
+	 * globals 先跑一趟空启动再改(`GlobalSettingsSchema` 有几段没默认值,手写一份缺格的会在开机时
 	 * 整份被判废);拓展摆进唯一那个装载根、开关拨开;订阅直接写进拓展订阅住的那个文件。
 	 */
 	beforeAll(async () => {

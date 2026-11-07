@@ -18,7 +18,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Cards from "../Cards";
 import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
@@ -112,7 +112,7 @@ async function openPerUp(sub: Subscription): Promise<void> {
 			});
 		}
 		return Promise.resolve({
-			core: { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalConfig,
+			core: { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalSettings,
 		});
 	});
 	renderCards();

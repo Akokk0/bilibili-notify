@@ -1,8 +1,8 @@
-import type { ConnectionView, GlobalConfigView } from "@bilibili-notify/contract";
+import type { ConnectionView, GlobalSettingsView } from "@bilibili-notify/contract";
 import {
 	type Connection,
-	type GlobalConfig,
-	GlobalConfigSchema,
+	type GlobalSettings,
+	GlobalSettingsSchema,
 	type MapMarkedHandlers,
 	mapMarked,
 	maskCell,
@@ -77,8 +77,8 @@ export function connectionView(connection: Connection, lookup: SecretCellsReader
 }
 
 /** 核心设置下发时的样子(AI 各实例的两把 key 与联网搜索 key 换成遮挡)。 */
-export function globalConfigView(globals: GlobalConfig): GlobalConfigView {
-	return mapMarked(GlobalConfigSchema, globals, MASK_SECRETS) as GlobalConfigView;
+export function globalConfigView(globals: GlobalSettings): GlobalSettingsView {
+	return mapMarked(GlobalSettingsSchema, globals, MASK_SECRETS) as GlobalSettingsView;
 }
 
 /**

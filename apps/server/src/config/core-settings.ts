@@ -8,11 +8,11 @@
  */
 
 import {
-	type GlobalConfig,
-	GlobalConfigSchema,
+	type GlobalSettings,
+	GlobalSettingsSchema,
 	type Issue,
 	issuesFromZod,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import { ConfigValidationError } from "./validation-error.js";
@@ -31,18 +31,18 @@ export interface InvalidSettingEntry {
 type Cells = Record<string, ZodType>;
 type Json = Record<string, unknown>;
 
-const TOP_CELLS: Cells = GlobalConfigSchema.shape;
+const TOP_CELLS: Cells = GlobalSettingsSchema.shape;
 /** 要再细一层的两格:顶层键 → 它的子格表。 */
 const SUB_CELLS: Record<string, Cells> = {
-	defaults: GlobalConfigSchema.shape.defaults.shape,
-	ai: GlobalConfigSchema.shape.ai.shape,
+	defaults: GlobalSettingsSchema.shape.defaults.shape,
+	ai: GlobalSettingsSchema.shape.ai.shape,
 };
 
 /**
- * 实例表(`ai.providers`)的键规则与值规则,取自 `GlobalConfigSchema` 本身:值的规矩只有一个出处,表哪天换了
+ * 实例表(`ai.providers`)的键规则与值规则,取自 `GlobalSettingsSchema` 本身:值的规矩只有一个出处,表哪天换了
  * 规则这里跟着变。`.unwrap()` 剥掉 `.default({})`,得到 record,再取它的 `keyType` / `valueType`。
  */
-const PROVIDERS_TABLE = GlobalConfigSchema.shape.ai.shape.providers.unwrap();
+const PROVIDERS_TABLE = GlobalSettingsSchema.shape.ai.shape.providers.unwrap();
 const PROVIDER_KEY_SCHEMA: ZodType = PROVIDERS_TABLE.keyType;
 const PROVIDER_VALUE_SCHEMA: ZodType = PROVIDERS_TABLE.valueType;
 
@@ -122,23 +122,23 @@ export function parseCell(
  * 盘上读进来的核心设置 → 规范形态的 `settings`,加上被隔离的格。顶层不是普通对象是信封坏(全部格一起退默认
  * 比挡开机更隐蔽:目标清空、AI 关掉、拓展全关),照整份校验不过的老办法抛。
  *
- * 退默认取 `makeDefaultGlobalConfig()` 同一路径上的值而不是 schema 的 `.default`:出厂值才是"新装的样子"。
+ * 退默认取 `makeDefaultGlobalSettings()` 同一路径上的值而不是 schema 的 `.default`:出厂值才是"新装的样子"。
  * 账本 `templatesSeen` 曾是两边唯一不一致的一格(出厂值填满账本);现在新装账本也是空的(只在主人改某条时才记),
  * 两边已经一致,这条理由不再靠它撑着,取出厂值的写法留着是为了日后哪一格再分叉时不必回头改这里。
  */
 export function parseCoreSettings(raw: unknown): {
-	settings: GlobalConfig;
+	settings: GlobalSettings;
 	invalid: InvalidSettingEntry[];
 } {
 	if (!isPlainObject(raw)) {
-		const parsed = GlobalConfigSchema.safeParse(raw);
+		const parsed = GlobalSettingsSchema.safeParse(raw);
 		if (parsed.success) throw new Error("core settings: a non-object passed the schema");
 		throw ConfigValidationError.fromZod("globals", parsed.error, { subject: "settings/core.json" });
 	}
 
 	// 入参不许被改写、返回值也不与入参共享引用:先深拷一份,后面都在副本上取。
 	const source = structuredClone(raw) as Json;
-	const fallback = makeDefaultGlobalConfig() as unknown as Json;
+	const fallback = makeDefaultGlobalSettings() as unknown as Json;
 	const invalid: InvalidSettingEntry[] = [];
 	const assembled: Json = {};
 
@@ -172,7 +172,7 @@ export function parseCoreSettings(raw: unknown): {
 	}
 
 	// 拼好的整份理应过得了;抛了就是这个函数自己的 bug,不接。
-	return { settings: GlobalConfigSchema.parse(assembled), invalid };
+	return { settings: GlobalSettingsSchema.parse(assembled), invalid };
 }
 
 /**

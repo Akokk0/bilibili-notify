@@ -1,5 +1,5 @@
 /**
- * AI 设置页左栏的增删操作 —— 全是对 `AISettings` 草稿的纯变换。
+ * AI 设置页左栏的增删操作 —— 全是对 `AiSettings` 草稿的纯变换。
  *
  * 之所以抽成纯函数而不是散在 `Ai.tsx` 的 setState 里:这里的分支恰恰是**最容易
  * 悄悄出错、又最难在界面上看出来**的那几处 —— 删掉正在用的那家之后指针指向哪、
@@ -10,7 +10,7 @@ import { type AIProviderId, EMPTY_AI_PROVIDER_PROFILE } from "@bilibili-notify/i
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it } from "vite-plus/test";
-import type { AIPersona, AISettings } from "../../../types/globals";
+import type { AiPersonaSettings, AiSettings } from "../../../types/globals";
 import {
 	addProfile,
 	globalPersonaRailId,
@@ -26,7 +26,7 @@ import {
 // 内置人格每次按当前语言取,设置里不存(ADR-0037 决策 11)
 const BUILTINS = builtinPresetsFor("zh-CN");
 
-const PERSONA: AIPersona = {
+const PERSONA: AiPersonaSettings = {
 	name: "",
 	addressUser: "",
 	addressSelf: "",
@@ -36,7 +36,7 @@ const PERSONA: AIPersona = {
 	extraSystemPrompt: "",
 };
 
-function settings(over: Partial<AISettings> = {}): AISettings {
+function settings(over: Partial<AiSettings> = {}): AiSettings {
 	return {
 		enabled: true,
 		activeProfile: "",
@@ -57,7 +57,7 @@ function settings(over: Partial<AISettings> = {}): AISettings {
 }
 
 /** 一只属于某家的实例桶。 */
-function bucket(provider: AIProviderId, over: Partial<AISettings["providers"][string]> = {}) {
+function bucket(provider: AIProviderId, over: Partial<AiSettings["providers"][string]> = {}) {
 	return { ...EMPTY_AI_PROVIDER_PROFILE, provider, ...over };
 }
 
@@ -262,7 +262,7 @@ describe("resolveEditingProfile —— 左栏在看哪一份", () => {
 
 describe("removeProfile", () => {
 	/** 三份实例(两只 DeepSeek + 一只 OpenRouter),当前用 deepseek。 */
-	function three(): AISettings {
+	function three(): AiSettings {
 		return settings({
 			activeProfile: "deepseek",
 			providers: {
@@ -327,7 +327,7 @@ describe("removeProfile", () => {
 const ALL_BUILTIN_IDS = [...BUILTIN_PRESET_IDS];
 
 /** 只有主人自己的人格(四份内置都标成已删)。 */
-function ownerOnly(...labels: string[]): AISettings {
+function ownerOnly(...labels: string[]): AiSettings {
 	return settings({
 		removedBuiltinPresets: ALL_BUILTIN_IDS,
 		presets: labels.map((label, i) => ({

@@ -10,7 +10,7 @@
  */
 
 import type { Connection, DeliveryResult, PushTarget } from "@bilibili-notify/internal";
-import { fail, identityColor, makeDefaultGlobalConfig, ok } from "@bilibili-notify/internal";
+import { fail, identityColor, makeDefaultGlobalSettings, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	type BoardLike,
@@ -60,7 +60,7 @@ function makeDeps() {
 			subscriptionStateStore: { get: () => undefined },
 		},
 		store: {
-			getGlobals: () => makeDefaultGlobalConfig(),
+			getGlobals: () => makeDefaultGlobalSettings(),
 			getSubscriptions: () => [],
 			getTargets: () => [
 				target(T_ON, ADAPTER, true),
@@ -243,7 +243,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 				},
 			},
 			store: {
-				getGlobals: () => makeDefaultGlobalConfig(),
+				getGlobals: () => makeDefaultGlobalSettings(),
 				getSubscriptions: () => [BILI, BILI_STORED, EXT, EXT_BARE],
 			},
 		} as unknown as RoastDeliverDeps;

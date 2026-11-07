@@ -1,11 +1,11 @@
 /**
- * `toGeneratorConfig` 是 AISettings → 引擎配置的**唯一一处翻译**(常驻 generator、
+ * `toGeneratorConfig` 是 AiSettings → 引擎配置的**唯一一处翻译**(常驻 generator、
  * 试一句、锐评三条路共用)。这里钉「接口风味跟桶走」:漏了这一行的症状是
  * 设置页选了 responses、引擎却仍打 chat completions —— 选得动、存得住、就是
  * 不生效,正是 [[pointer-field-orphan-readers]] 那类坑,所以单独钉死。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it } from "vite-plus/test";
 import { toGeneratorConfig } from "../ai-config";
@@ -13,7 +13,7 @@ import { toGeneratorConfig } from "../ai-config";
 const BUILTINS = builtinPresetsFor("zh-CN");
 
 function aiWith(flavor?: "chat" | "responses") {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.activeProfile = "p1";
 	g.ai.providers = {
 		p1: {

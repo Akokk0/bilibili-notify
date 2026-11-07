@@ -2,7 +2,7 @@
  * 0.x 最新版(0.12)的词表 —— 冻住,不随 internal 改名。
  *
  * 迁移器的 0.x 那一遍(`features.ts` / `templates.ts` / `history.ts`)认的是 0.12 当年的特性键、附加项键、默认文案、
- * 推送种类。它们从前直接取 internal 的活词表(`EXTRA_KEYS` / `PUSH_EXTRAS` / `makeDefaultGlobalConfig()` /
+ * 推送种类。它们从前直接取 internal 的活词表(`EXTRA_KEYS` / `PUSH_EXTRAS` / `makeDefaultGlobalSettings()` /
  * `PushKind`),活词表一改名,0.x 这一步就会悄悄吐出 1.0 的键。所以收成迁移模块自己的一份:每个值都以 tag `v0.12.0`
  * 的 `packages/internal/src/` 下当时代码(后来已按领域拆开)与 `schema/common.ts`、`schema/message-layout.ts`、`schema/history.ts` 为准核过,
  * 今天的活词表与它字节一致(改名之前)。1.0 的改名一步(`feature-renames.ts`)拿这里的键类型当「改名之前」的一侧。

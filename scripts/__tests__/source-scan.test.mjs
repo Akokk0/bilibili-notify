@@ -210,7 +210,7 @@ describe("importsOf:各种写法与 kind", () => {
 	});
 
 	it('类型位置的 import("x") 也是引用,且是纯类型', () => {
-		expect(refs(`type T = import("@bilibili-notify/internal").GlobalConfig;`)).toEqual([
+		expect(refs(`type T = import("@bilibili-notify/internal").GlobalSettings;`)).toEqual([
 			{ specifier: "@bilibili-notify/internal", typeOnly: true, kind: "dynamic", line: 1 },
 		]);
 	});

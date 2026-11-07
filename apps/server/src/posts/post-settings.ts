@@ -1,7 +1,7 @@
 import {
 	aiWritingNeeded,
 	type EffectiveSubscription,
-	type GlobalConfig,
+	type GlobalSettings,
 	resolve,
 	resolveTemplates,
 	type Subscription,
@@ -25,7 +25,7 @@ import type { PostSettings } from "./deliver-post.js";
  */
 export function postSettingsOf(
 	sub: Subscription,
-	globals: GlobalConfig,
+	globals: GlobalSettings,
 	aiWriting: boolean,
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
 ): PostSettings {
@@ -56,7 +56,7 @@ export function postSettingsOf(
  */
 export function makePostSettingsReader(deps: {
 	subscription: (id: string) => Subscription | undefined;
-	globals: () => GlobalConfig;
+	globals: () => GlobalSettings;
 	/** 这条订阅的来源还在跑吗(问来源登记表:内置来源登着就在;拓展看它自己在不在跑)。 */
 	sourceRunning: (sub: Subscription) => boolean;
 	/** 现存目标的 id:AI 正文的例外只数还在的目标,指向已删目标的例外不算开着。 */

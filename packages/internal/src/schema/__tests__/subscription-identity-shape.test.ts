@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { FEATURE_KEYS } from "../../features";
-import { makeDefaultGlobalConfig } from "../globals";
+import { makeDefaultGlobalSettings } from "../globals";
 import { resolve } from "../resolve";
 import {
 	EXTERNAL_ID_MAX,
@@ -235,7 +235,7 @@ describe("resolve() 折叠", () => {
 				SubscriptionSchema.parse(
 					minimalRow({ identity, routing: { ...emptyRouting(), liveStart: [T1] } }),
 				),
-				makeDefaultGlobalConfig().defaults,
+				makeDefaultGlobalSettings().defaults,
 			);
 			expect(eff.identity).toEqual(identity);
 			expect(eff.routing.liveStart).toEqual([T1]);
@@ -248,7 +248,7 @@ describe("resolve() 折叠", () => {
 
 	it("折叠出来的 identity 是独立的一份:改它不牵连订阅本体", () => {
 		const sub = makeEmptySubscription({ id: T1, identity: { ...BILI } });
-		const eff = resolve(sub, makeDefaultGlobalConfig().defaults);
+		const eff = resolve(sub, makeDefaultGlobalSettings().defaults);
 		eff.identity.externalId = "changed";
 		expect(sub.identity.externalId).toBe("12345");
 	});

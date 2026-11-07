@@ -11,7 +11,7 @@
  * 滑块 —— 两种形态都要确认已经不在了。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -28,7 +28,7 @@ import { api } from "../../services/api";
 type ProviderId = "deepseek" | "siliconflow" | "custom";
 
 function globals(provider: ProviderId, enableThinking: boolean) {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.enabled = true;
 	g.ai.activeProfile = "p1";
 	g.ai.providers = {

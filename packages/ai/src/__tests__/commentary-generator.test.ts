@@ -14,7 +14,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import { CommentaryGenerator, type CommentaryGeneratorSettings } from "../commentary-generator";
 import {
 	aiConfig,
 	fakeServiceCtx,
@@ -68,7 +68,7 @@ vi.mock("../tools", () => ({
 // ---------------------------------------------------------------------------
 
 /** 场景提示词取两个好认的哨兵串 —— 断言靠它们分辨这一段有没有拼进 prompt。 */
-function makeConfig(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGeneratorConfig {
+function makeConfig(over: Partial<CommentaryGeneratorSettings> = {}): CommentaryGeneratorSettings {
 	return aiConfig({
 		dynamicPrompt: "DYN_SCENE_PROMPT",
 		liveSummaryPrompt: "LIVE_SCENE_PROMPT",
@@ -77,7 +77,7 @@ function makeConfig(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGe
 }
 
 /** 一台 generator 与公开 logger 上的告警监听;不关心告警的用例只取 gen。 */
-function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
+function makeGen(over: Partial<CommentaryGeneratorSettings> = {}): {
 	gen: CommentaryGenerator;
 	warn: ReturnType<typeof vi.fn>;
 } {

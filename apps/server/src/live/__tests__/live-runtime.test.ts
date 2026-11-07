@@ -8,7 +8,7 @@
 
 import {
 	fail,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	type ServiceContext,
 	type Subscription,
 } from "@bilibili-notify/internal";
@@ -26,7 +26,7 @@ const SUB: Subscription = makeExtensionSubscription({
 
 function setup() {
 	const bus = createNodeMessageBus();
-	const globals = vi.fn(() => makeDefaultGlobalConfig());
+	const globals = vi.fn(() => makeDefaultGlobalSettings());
 	const runtime = createLiveRuntime({
 		bus,
 		serviceCtx: {

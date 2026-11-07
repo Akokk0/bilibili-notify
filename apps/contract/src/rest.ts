@@ -1,14 +1,14 @@
 import type { SourceRunStatus } from "./health";
 /**
  * REST wire 契约 —— apps/server 各路由的响应 视图,apps/web 按原样消费。
- * 域模型本体(Subscription / GlobalConfig / …)在 `@bilibili-notify/internal`,
+ * 域模型本体(Subscription / GlobalSettings / …)在 `@bilibili-notify/internal`,
  * 这里只放「服务端 join / 投影出来的」wire 形状。
  */
 
 import type {
 	AddressCandidate,
-	AIProviderProfile,
-	AISettings,
+	AiProviderProfile,
+	AiSettings,
 	AuthState,
 	CardKind,
 	Connection,
@@ -21,7 +21,7 @@ import type {
 	FailureCode,
 	FeatureKey,
 	FollowersRefreshEntry,
-	GlobalConfig,
+	GlobalSettings,
 	HistoryPayload,
 	Identity,
 	ImageRef,
@@ -302,29 +302,29 @@ export type ConnectionView = Omit<Connection, "settings"> & {
 };
 
 /** 一份服务商实例下发时的样子:主模型与看图副模型两把 key。`S` 缺省是下发形状,草稿用 {@link SecretCellDraft}。 */
-export type AIProviderProfileView<S = SecretCellView> = Omit<
-	CellsAs<AIProviderProfile, "apiKey", S>,
+export type AiProviderProfileView<S = SecretCellView> = Omit<
+	CellsAs<AiProviderProfile, "apiKey", S>,
 	"vision"
-> & { vision: CellsAs<AIProviderProfile["vision"], "apiKey", S> };
+> & { vision: CellsAs<AiProviderProfile["vision"], "apiKey", S> };
 
 /** AI 设置下发时的样子:各实例的 key 与联网搜索的 key。 */
-export type AISettingsView<S = SecretCellView> = Omit<AISettings, "providers" | "search"> & {
-	providers: Record<string, AIProviderProfileView<S>>;
-	search: Omit<AISettings["search"], "keys"> & {
-		keys: { [Backend in keyof AISettings["search"]["keys"]]: S };
+export type AiSettingsView<S = SecretCellView> = Omit<AiSettings, "providers" | "search"> & {
+	providers: Record<string, AiProviderProfileView<S>>;
+	search: Omit<AiSettings["search"], "keys"> & {
+		keys: { [Backend in keyof AiSettings["search"]["keys"]]: S };
 	};
 };
 
 /** `GET /api/settings` 的核心那一份(挂在 `core` 下,见 {@link SettingsResponse})。 */
-export type GlobalConfigView<S = SecretCellView> = Omit<GlobalConfig, "ai"> & {
-	ai: AISettingsView<S>;
+export type GlobalSettingsView<S = SecretCellView> = Omit<GlobalSettings, "ai"> & {
+	ai: AiSettingsView<S>;
 };
 
 /**
  * `GET /api/settings`(以及 `PATCH` 的回话):核心那份在 `core` 下,各集成的设置挂在自己的键下(`bilibili`、
  * 三个内置适配器……,形状由各集成定)。`PATCH` 收同一个形状的深层补丁,顶层只认 `core` 与登记过的集成键。
  */
-export type SettingsResponse = { readonly core: GlobalConfigView } & {
+export type SettingsResponse = { readonly core: GlobalSettingsView } & {
 	readonly [integrationKey: string]: unknown;
 };
 

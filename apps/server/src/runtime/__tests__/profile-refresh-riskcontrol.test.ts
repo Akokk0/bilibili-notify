@@ -6,7 +6,7 @@
  *    下一拍也照常再问来源。
  */
 
-import { fail, type GlobalConfig, ok } from "@bilibili-notify/internal";
+import { fail, type GlobalSettings, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 
@@ -36,7 +36,7 @@ const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = {
 	profileRefreshCron: "*/10 * * * *",
-} as unknown as GlobalConfig;
+} as unknown as GlobalSettings;
 
 const PROFILE = {
 	name: "UP",

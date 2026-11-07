@@ -9,7 +9,7 @@
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
 import type {
 	ExtensionManifest,
-	GlobalConfig,
+	GlobalSettings,
 	Logger,
 	ServiceContext,
 } from "@bilibili-notify/internal";
@@ -76,7 +76,7 @@ function boot() {
 	});
 	const app = createExtensionsRoute({
 		store: {
-			getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
+			getGlobals: () => ({ extensions: {} }) as unknown as GlobalSettings,
 			getConnections: () => [],
 		} as unknown as ConfigStore,
 		extensions: () => [],

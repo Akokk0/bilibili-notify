@@ -13,17 +13,17 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { adapterKeyFor, snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import { LinkPreviewSettings } from "../link-preview-settings";
 
-type LinkPreviewValue = GlobalConfig["linkPreview"];
+type LinkPreviewValue = GlobalSettings["linkPreview"];
 
 const T_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const T_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const T_PRIVATE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const T_WEBHOOK = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
-function draftWith(over: Partial<LinkPreviewValue> = {}): GlobalConfig {
+function draftWith(over: Partial<LinkPreviewValue> = {}): GlobalSettings {
 	const linkPreview: LinkPreviewValue = {
 		enabled: true,
 		cooldownSec: 60,
@@ -32,7 +32,7 @@ function draftWith(over: Partial<LinkPreviewValue> = {}): GlobalConfig {
 		byTarget: {},
 		...over,
 	};
-	return { linkPreview } as unknown as GlobalConfig;
+	return { linkPreview } as unknown as GlobalSettings;
 }
 
 function target(id: string, name: string, over: Partial<PushTarget> = {}): PushTarget {
@@ -113,7 +113,7 @@ const CAPS: ConnectionCapabilitiesMap = {
 };
 
 function renderCard(
-	draft: GlobalConfig,
+	draft: GlobalSettings,
 	onPatch = vi.fn(),
 	targets: PushTarget[] = TARGETS,
 	extra: { connections?: Connection[]; capabilities?: ConnectionCapabilitiesMap } = {},

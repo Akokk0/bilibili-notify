@@ -6,7 +6,7 @@
  * 观感调整一律走皮肤包。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -21,7 +21,7 @@ vi.mock("../../../services/api", () => ({
 import { api } from "../../../services/api";
 
 function mountSidebar() {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.activeProfile = "p1";
 	g.ai.providers = {
 		p1: {

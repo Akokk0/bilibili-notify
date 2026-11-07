@@ -1,6 +1,6 @@
 import { i18n, useT } from "../../i18n";
 /**
- * Rules page sections — bound to live GlobalConfig.defaults shapes. Each
+ * Rules page sections — bound to live GlobalSettings.defaults shapes. Each
  * section accepts the relevant slice + an `onPatch` that builds a deep-partial
  * delta for /api/settings.
  */
@@ -29,13 +29,13 @@ import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents"
 import type { FeatureKey, MessageKindLayoutFull, Subscription } from "../../types/domain";
 import type {
 	ContentFilters,
-	GlobalConfigPatch,
+	GlobalSettingsPatch,
 	ImageGroupSettings,
 	LiveStartSettings,
 	LiveStreamingSettings,
 	MembershipSettings,
 	MembershipTemplateEntry,
-	ScheduleConfig,
+	ScheduleSettings,
 	SuperchatSettings,
 	TemplateBundle,
 } from "../../types/globals";
@@ -274,7 +274,7 @@ export function FilterSection({
 	onPatch,
 }: {
 	value: ContentFilters;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
 	const set = <K extends keyof ContentFilters>(key: K, v: ContentFilters[K]) => {
@@ -365,7 +365,7 @@ export function ImageGroupSection({
 	onPatch,
 }: {
 	value: ImageGroupSettings;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
 	const set = <K extends keyof ImageGroupSettings>(key: K, v: ImageGroupSettings[K]) => {
@@ -409,7 +409,7 @@ export function LiveThresholdsSection({
 	superchat: SuperchatSettings;
 	/** 会员门槛(㉓d,原先是 `filters.minGuardLevel`):按体系存,B 站的体系是 `guard`。 */
 	membership: MembershipSettings;
-	schedule: ScheduleConfig;
+	schedule: ScheduleSettings;
 	/** 启动补报(⑬d 起自成一段,原先在 `schedule` 里)。 */
 	liveStart: LiveStartSettings;
 	/** 周期「正在直播」的间隔(⑬d 起自成一段,原先在 `schedule` 里),整数小时 1–24。 */
@@ -417,11 +417,11 @@ export function LiveThresholdsSection({
 	/** 周期「正在直播」的全局开关(`features.liveStreaming`):出厂关,各订阅可在订阅弹框里单独覆盖。 */
 	liveStreamingOn: boolean;
 	programs?: readonly MembershipProgram[];
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
-	const setS = <K extends keyof ScheduleConfig>(k: K, v: ScheduleConfig[K]) =>
-		onPatch({ defaults: { schedule: { [k]: v } as Partial<ScheduleConfig> } });
+	const setS = <K extends keyof ScheduleSettings>(k: K, v: ScheduleSettings[K]) =>
+		onPatch({ defaults: { schedule: { [k]: v } as Partial<ScheduleSettings> } });
 	return (
 		<GlassBox
 			title={tx("sourceUi.pages.rules.sections.title.35")}
@@ -524,7 +524,7 @@ export function SummarySection({
 	templates: TemplateBundle;
 	/** 当前语言的出厂文字:没存的格显示它,编辑到与它一字不差就回到没存。 */
 	factory: BuiltinTemplates;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
 	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
@@ -882,7 +882,7 @@ export function LiveMsgSection({
 	templates: TemplateBundle;
 	factory: BuiltinTemplates;
 	layout: MessageKindLayoutFull;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
 	const setText = (k: ReturnType<typeof liveTemplateTabsOf>[number]["key"], v: string) =>
@@ -949,7 +949,7 @@ export function DynamicMsgSection({
 	templates: TemplateBundle;
 	factory: BuiltinTemplates;
 	layout: MessageKindLayoutFull;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
 	const setText = (k: ReturnType<typeof dynamicTemplateTabsOf>[number]["key"], v: string) =>
@@ -1148,7 +1148,7 @@ function MembershipProgramSection({
 	program: MembershipProgram;
 	templates: TemplateBundle;
 	factory: BuiltinTemplates;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
 	const guard = guardBundleOf(templates, factory, program.id);
@@ -1204,7 +1204,7 @@ export function GuardSection({
 	programs?: readonly MembershipProgram[];
 	templates: TemplateBundle;
 	factory: BuiltinTemplates;
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	return (
 		<>

@@ -19,7 +19,7 @@
  * 时袋键就是服务商名 —— 迁移刻意保留桶键,袋子无需搬迁。
  */
 
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalSettings } from "@bilibili-notify/internal";
 
 /** 视觉副模型那把 key 在袋子里的后缀。 */
 const VISION_SUFFIX = ":vision";
@@ -63,7 +63,7 @@ export function isInstanceSecretKey(bagKey: string, profileId: string): boolean 
  * **空值不进袋**:袋里存个空串等于把「未配置」记成「配置了一个空的」,
  * 而 {@link applyAiSecrets} 回填时两者的表现是一样的,于是这个区别会静默丢失。
  */
-export function collectAiSecrets(g: GlobalConfig): Record<string, string> {
+export function collectAiSecrets(g: GlobalSettings): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const [id, p] of Object.entries(g.ai.providers)) {
 		if (!p) continue;
@@ -86,7 +86,7 @@ export function collectAiSecrets(g: GlobalConfig): Record<string, string> {
  *
  * 不改动传进来的那份 —— 内存里的明文还要继续给引擎用。
  */
-export function stripAiSecrets(g: GlobalConfig): GlobalConfig {
+export function stripAiSecrets(g: GlobalSettings): GlobalSettings {
 	return mapAiSecrets(
 		g,
 		() => "",
@@ -100,7 +100,7 @@ export function stripAiSecrets(g: GlobalConfig): GlobalConfig {
  * 袋里有而 `providers` 里没有的键**一律忽略**:主人删掉一家、袋里却还留着它的
  * key 时会走到这儿,凭空造出桶来会让设置页左栏多一块本该没有的。
  */
-export function applyAiSecrets(g: GlobalConfig, bag: Record<string, string>): GlobalConfig {
+export function applyAiSecrets(g: GlobalSettings, bag: Record<string, string>): GlobalSettings {
 	return mapAiSecrets(
 		g,
 		(id, vision) => bag[aiSecretKey(id, vision)] ?? "",
@@ -113,20 +113,20 @@ export function applyAiSecrets(g: GlobalConfig, bag: Record<string, string>): Gl
  * 只读入参,返回新对象。**没有早退**:就算一个实例桶都没有,搜索 key 也要照走。
  */
 function mapAiSecrets(
-	g: GlobalConfig,
+	g: GlobalSettings,
 	next: (profileId: string, vision: boolean) => string,
 	nextSearch: (backend: string) => string,
-): GlobalConfig {
+): GlobalSettings {
 	// 生产里的调用方只有配置仓(store.ts):`applyAiSecrets` 在 `hydrateSecrets` 里、`stripAiSecrets` 在落盘前,
 	// 递进来的都是读盘 / 内存里已过 schema 的 globals。备份恢复(assemble.ts 的 openFullBackup)并不经过这里,
 	// 它是用备份信封里的 `redacted` 清单填回密钥。这里仍保留「缺哪段就原样跳过哪段」的守卫(没有 ai、没有
-	// providers 桶、没有 ai.search 段):补默认是下游 GlobalConfigSchema parse 的事,这里只对存在的形状灌密钥;
+	// providers 桶、没有 ai.search 段):补默认是下游 GlobalSettingsSchema parse 的事,这里只对存在的形状灌密钥;
 	// 这道守卫的来历:恢复路径曾经把老备份的 globals 原样递进来,无守卫的 Object.keys(undefined) 让升级前的
 	// 全量备份全都恢复不了。
-	const ai = g.ai as GlobalConfig["ai"] | undefined;
+	const ai = g.ai as GlobalSettings["ai"] | undefined;
 	if (!ai) return g;
-	const search = ai.search as GlobalConfig["ai"]["search"] | undefined;
-	const providers = ai.providers as GlobalConfig["ai"]["providers"] | undefined;
+	const search = ai.search as GlobalSettings["ai"]["search"] | undefined;
+	const providers = ai.providers as GlobalSettings["ai"]["providers"] | undefined;
 	return {
 		...g,
 		ai: {
@@ -151,7 +151,7 @@ function mapAiSecrets(
 							...search,
 							keys: Object.fromEntries(
 								Object.keys(search.keys).map((backend) => [backend, nextSearch(backend)]),
-							) as GlobalConfig["ai"]["search"]["keys"],
+							) as GlobalSettings["ai"]["search"]["keys"],
 						},
 					}
 				: {}),

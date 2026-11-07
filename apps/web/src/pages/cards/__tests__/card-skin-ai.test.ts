@@ -5,14 +5,14 @@
  * 不管这颗钮。默认皮肤一律按不动 —— 它的草稿存不下来。按不动时必须说得出为什么。
  */
 
-import type { GlobalConfigView } from "@bilibili-notify/contract";
+import type { GlobalSettingsView } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { cardSkinAiReadiness } from "../card-skin-ai";
 
 function globals(
 	profile: { apiKey?: unknown; baseUrl?: string },
 	enabled = true,
-): GlobalConfigView {
+): GlobalSettingsView {
 	return {
 		ai: {
 			enabled,
@@ -21,7 +21,7 @@ function globals(
 				p1: { provider: "custom", apiKey: "", baseUrl: "", model: "m", ...profile },
 			},
 		},
-	} as unknown as GlobalConfigView;
+	} as unknown as GlobalSettingsView;
 }
 
 describe("cardSkinAiReadiness", () => {
@@ -50,7 +50,7 @@ describe("cardSkinAiReadiness", () => {
 		const dangling = globals({ apiKey: "k", baseUrl: "u" });
 		(dangling.ai as { activeProfile: string }).activeProfile = "gone";
 		expect(cardSkinAiReadiness({ globals: dangling, readOnly: false }).ready).toBe(false);
-		expect(cardSkinAiReadiness({ globals: {} as GlobalConfigView, readOnly: false }).ready).toBe(
+		expect(cardSkinAiReadiness({ globals: {} as GlobalSettingsView, readOnly: false }).ready).toBe(
 			false,
 		);
 	});

@@ -11,7 +11,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Rules from "../Rules";
 import { makeAi, makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
@@ -32,7 +32,7 @@ const GLOBALS = {
 	master: {},
 	defaults: makeDefaults(),
 	ai: makeAi(),
-} as unknown as GlobalConfig;
+} as unknown as GlobalSettings;
 
 function resetStore(): void {
 	useDraftStore.setState({

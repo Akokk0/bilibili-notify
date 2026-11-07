@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { i18n } from "../../i18n";
 import { useTextSettings } from "../../i18n/use-text-settings";
 import { useDraftStore } from "../../store/draft";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import System from "../System";
 
 vi.mock("../../services/api", () => ({
@@ -24,9 +24,9 @@ function SettingsShell() {
 	return <System />;
 }
 
-async function renderAppearance(overrides: Partial<GlobalConfig> = {}) {
+async function renderAppearance(overrides: Partial<GlobalSettings> = {}) {
 	const settings = {
-		core: { ...makeDefaultGlobalConfig(), locale: "zh-CN" as const, ...overrides },
+		core: { ...makeDefaultGlobalSettings(), locale: "zh-CN" as const, ...overrides },
 		bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
 	};
 	vi.mocked(api.get).mockImplementation(async (path) => {

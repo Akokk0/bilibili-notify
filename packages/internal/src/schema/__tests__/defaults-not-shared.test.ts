@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { FEATURE_KEYS } from "../../features";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 import { makeEmptySubscription, SubscriptionSchema } from "../subscriptions";
 
 /** 值里能被原地改的容器,连同它在树里的路径。 */
@@ -46,13 +46,13 @@ const diskRow = (identity: { sourceKey: string; externalId: string }) => ({
 });
 
 describe("出厂配置与解析结果不共用可变容器", () => {
-	it("makeDefaultGlobalConfig 两次", () => {
-		expect(sharedPaths(makeDefaultGlobalConfig(), makeDefaultGlobalConfig())).toEqual([]);
+	it("makeDefaultGlobalSettings 两次", () => {
+		expect(sharedPaths(makeDefaultGlobalSettings(), makeDefaultGlobalSettings())).toEqual([]);
 	});
 
 	it("只有必填段的 globals.json 解析两次(其余段全走 schema 的默认值)", () => {
 		const onlyRequired = () => {
-			const { defaults, ai } = makeDefaultGlobalConfig();
+			const { defaults, ai } = makeDefaultGlobalSettings();
 			const { features, filters, schedule, liveStart, liveStreaming, templates, cards } = defaults;
 			return {
 				logging: {},
@@ -69,8 +69,8 @@ describe("出厂配置与解析结果不共用可变容器", () => {
 				ai,
 			};
 		};
-		const a = GlobalConfigSchema.parse(onlyRequired());
-		const b = GlobalConfigSchema.parse(onlyRequired());
+		const a = GlobalSettingsSchema.parse(onlyRequired());
+		const b = GlobalSettingsSchema.parse(onlyRequired());
 		expect(sharedPaths(a, b)).toEqual([]);
 	});
 

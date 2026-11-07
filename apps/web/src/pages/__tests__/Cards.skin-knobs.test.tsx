@@ -19,7 +19,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Cards from "../Cards";
 import { makeDefaults } from "../rules/__tests__/fixtures";
 
@@ -58,7 +58,7 @@ const SKIN_LIST = {
 function mockApi(knobs: Record<string, Record<string, unknown>>): void {
 	const defaults = makeDefaults() as unknown as Record<string, unknown>;
 	defaults.cardSkinKnobs = knobs;
-	const globals = { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
+	const globals = { logging: {}, master: {}, defaults } as unknown as GlobalSettings;
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);

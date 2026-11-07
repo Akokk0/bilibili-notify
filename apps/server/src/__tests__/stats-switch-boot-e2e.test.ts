@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { FOLLOWERS_DIR } from "../followers/store.js";
@@ -85,7 +85,7 @@ describe("统计关着:压缩与运行记录照跑 e2e", () => {
 		await mkdir(dirname(settings), { recursive: true });
 		await writeFile(
 			settings,
-			JSON.stringify({ ...makeDefaultGlobalConfig(), stats: { enabled: false } }),
+			JSON.stringify({ ...makeDefaultGlobalSettings(), stats: { enabled: false } }),
 		);
 		const fansFile = join(gen, ...FOLLOWERS_DIR, `${KEY}.jsonl`);
 		await mkdir(dirname(fansFile), { recursive: true });

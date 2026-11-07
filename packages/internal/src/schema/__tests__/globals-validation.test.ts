@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 
 describe("core settings validation rejects invalid values at stable paths", () => {
 	it.each([
@@ -11,7 +11,7 @@ describe("core settings validation rejects invalid values at stable paths", () =
 		],
 		[{ timezone: "not-a-timezone" }, ["timezone"]],
 	])("rejects invalid settings at the same path: %j", (patch, path) => {
-		const result = GlobalConfigSchema.safeParse({ ...makeDefaultGlobalConfig(), ...patch });
+		const result = GlobalSettingsSchema.safeParse({ ...makeDefaultGlobalSettings(), ...patch });
 		expect(result.success).toBe(false);
 		if (result.success) return;
 		expect(result.error.issues[0]?.path).toEqual(path);

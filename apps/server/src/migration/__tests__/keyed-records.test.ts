@@ -17,7 +17,7 @@
 
 import {
 	CardSkinManifestSchema,
-	GlobalConfigSchema,
+	GlobalSettingsSchema,
 	HistoryEntrySchema,
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
@@ -234,7 +234,7 @@ describe("判定函数:穿透包装", () => {
 // ── 守卫 ────────────────────────────────────────────────────────────────────────
 
 const ROOTS = {
-	GlobalConfig: GlobalConfigSchema,
+	GlobalSettings: GlobalSettingsSchema,
 	Subscription: SubscriptionSchema,
 	HistoryEntry: HistoryEntrySchema,
 	CardSkinManifest: CardSkinManifestSchema,
@@ -299,7 +299,7 @@ interface Family {
 
 const FAMILIES: Record<"settings" | "subscription", Family> = {
 	settings: {
-		root: "GlobalConfig",
+		root: "GlobalSettings",
 		inputs: () => [["设置", makeZeroGlobals()]],
 		run: migrateGlobalsToCurrent,
 	},

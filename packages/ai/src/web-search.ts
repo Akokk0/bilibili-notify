@@ -48,14 +48,14 @@ function clip(s: string): string {
 	return s.length > SNIPPET_MAX ? `${s.slice(0, SNIPPET_MAX)}…` : s;
 }
 
-export interface WebSearchExecutorConfig {
+export interface WebSearchExecutorOptions {
 	backend: WebSearchBackendId;
 	apiKey: string;
 	/** 每次搜索返回几条,默认 {@link DEFAULT_COUNT}。 */
 	count?: number;
 }
 
-export function createWebSearchExecutor(cfg: WebSearchExecutorConfig): WebSearchExecutor {
+export function createWebSearchExecutor(cfg: WebSearchExecutorOptions): WebSearchExecutor {
 	const count = cfg.count ?? DEFAULT_COUNT;
 	const isBocha = cfg.backend === "bocha";
 	const call = isBocha ? searchBocha : searchTavily;

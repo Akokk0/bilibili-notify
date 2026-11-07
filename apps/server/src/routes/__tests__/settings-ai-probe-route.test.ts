@@ -6,7 +6,7 @@
  * 这里走整条路由、拦住出网的 `fetch`,看探活**真的打了什么**(`shouldRunAiEnableCheck` 的纯函数用例在 `settings.test.ts`)。
  */
 
-import { type GlobalConfig, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { type GlobalSettings, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { createSettingsRoute } from "../settings.js";
 
@@ -28,14 +28,14 @@ function bucket(over: Record<string, unknown> = {}) {
 }
 
 /** AI 已启用、当前实例 deepseek;另有一份没在用的 deepseek-2(key 不同)。 */
-function enabledAiGlobals(): GlobalConfig {
-	const g = makeDefaultGlobalConfig();
+function enabledAiGlobals(): GlobalSettings {
+	const g = makeDefaultGlobalSettings();
 	g.ai.enabled = true;
 	g.ai.activeProfile = "deepseek";
 	g.ai.providers = {
 		deepseek: bucket(),
 		"deepseek-2": bucket({ apiKey: "k-second", baseUrl: "https://second.example.com" }),
-	} as unknown as GlobalConfig["ai"]["providers"];
+	} as unknown as GlobalSettings["ai"]["providers"];
 	return g;
 }
 
@@ -44,7 +44,7 @@ interface Probe {
 	authorization: string;
 }
 
-function setup(current: GlobalConfig) {
+function setup(current: GlobalSettings) {
 	const probes: Probe[] = [];
 	vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
 		probes.push({

@@ -16,7 +16,7 @@ import { join } from "node:path";
 import {
 	FEATURE_KEYS,
 	type MessageBus,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type ServiceContext,
 	type Subscription,
@@ -567,7 +567,7 @@ describe("按 UP 覆盖(ADR-0019 决策 64):拓展来源的订阅存得进、清
 				allowRegex: [],
 			},
 			ai: { preset: "maid" },
-			messageLayout: makeDefaultGlobalConfig().defaults.messageLayout,
+			messageLayout: makeDefaultGlobalSettings().defaults.messageLayout,
 		};
 		const overrides = {
 			...kept,

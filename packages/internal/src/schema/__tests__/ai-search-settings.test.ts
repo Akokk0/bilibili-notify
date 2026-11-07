@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { AISettingsSchema } from "../common";
+import { AiSettingsSchema } from "../common";
 
 const BASE = {
 	enabled: true,
@@ -27,7 +27,7 @@ const BASE = {
 
 describe("schema:ai.search", () => {
 	it("老配置没有 search 段 → 全套默认:博查在前、key 全空、引擎全关", () => {
-		const ai = AISettingsSchema.parse(BASE);
+		const ai = AiSettingsSchema.parse(BASE);
 		expect(ai.search).toEqual({
 			backend: "bocha",
 			keys: { bocha: "", tavily: "" },
@@ -36,14 +36,14 @@ describe("schema:ai.search", () => {
 	});
 
 	it("半截的 search 段也补齐 —— 只写 backend,keys/scenes 照样有", () => {
-		const ai = AISettingsSchema.parse({ ...BASE, search: { backend: "tavily" } });
+		const ai = AiSettingsSchema.parse({ ...BASE, search: { backend: "tavily" } });
 		expect(ai.search.backend).toBe("tavily");
 		expect(ai.search.keys).toEqual({ bocha: "", tavily: "" });
 		expect(ai.search.scenes.post).toBe(false);
 	});
 
 	it("写入值原样往返:换到 Tavily 后博查的 key 还在", () => {
-		const ai = AISettingsSchema.parse({
+		const ai = AiSettingsSchema.parse({
 			...BASE,
 			search: {
 				backend: "tavily",
@@ -57,14 +57,14 @@ describe("schema:ai.search", () => {
 	});
 
 	it("未知后端拒收 —— 宁可报错也不猜一家替主人发 key", () => {
-		const r = AISettingsSchema.safeParse({ ...BASE, search: { backend: "bing" } });
+		const r = AiSettingsSchema.safeParse({ ...BASE, search: { backend: "bing" } });
 		expect(r.success).toBe(false);
 	});
 });
 
 describe("search scenes", () => {
 	it("defaults to independent post, live and roast scenes without legacy keys", () => {
-		expect(AISettingsSchema.parse(BASE).search).toEqual({
+		expect(AiSettingsSchema.parse(BASE).search).toEqual({
 			backend: "bocha",
 			keys: { bocha: "", tavily: "" },
 			scenes: { post: false, live: false, roast: false },
@@ -78,19 +78,19 @@ describe("search scene validation", () => {
 		[{ scenes: {} }, { post: false, live: false, roast: false }],
 		[{ scenes: { post: true } }, { post: true, live: false, roast: false }],
 	])("fills only missing switches for %j", (search, expected) => {
-		expect(AISettingsSchema.parse({ ...BASE, search }).search.scenes).toEqual(expected);
+		expect(AiSettingsSchema.parse({ ...BASE, search }).search.scenes).toEqual(expected);
 	});
 	it.each([null, [], false, "false", 7])("does not coerce an invalid scene bag: %j", (scenes) => {
-		expect(AISettingsSchema.safeParse({ ...BASE, search: { scenes } }).success).toBe(false);
+		expect(AiSettingsSchema.safeParse({ ...BASE, search: { scenes } }).success).toBe(false);
 	});
 	it.each([null, "false", 0])("does not coerce an invalid switch: %j", (post) => {
-		expect(AISettingsSchema.safeParse({ ...BASE, search: { scenes: { post } } }).success).toBe(
+		expect(AiSettingsSchema.safeParse({ ...BASE, search: { scenes: { post } } }).success).toBe(
 			false,
 		);
 	});
 	it("strips unknown keys and never reads the old bag", () => {
 		expect(
-			AISettingsSchema.parse({
+			AiSettingsSchema.parse({
 				...BASE,
 				search: {
 					extra: 1,

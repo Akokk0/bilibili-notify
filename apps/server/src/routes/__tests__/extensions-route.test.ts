@@ -19,7 +19,7 @@ import {
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
 	fail,
-	type GlobalConfig,
+	type GlobalSettings,
 	ok,
 	RESERVED_EXTENSION_IDS,
 	type ServiceContext,
@@ -110,7 +110,9 @@ function boot(
 		({
 			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			getGlobals: () =>
-				({ extensions: { bridge: { enabled: over.enabled ?? false } } }) as unknown as GlobalConfig,
+				({
+					extensions: { bridge: { enabled: over.enabled ?? false } },
+				}) as unknown as GlobalSettings,
 			getConnections: () => over.connections ?? [],
 			removeExtension,
 		} as unknown as ConfigStore);
@@ -330,7 +332,7 @@ function reportingExtension(reportDiscrepancies: ReportDiscrepancyTable) {
 					list: () => [],
 					listByIdentity: () => [],
 				},
-				defaults: () => ({}) as GlobalConfig["defaults"],
+				defaults: () => ({}) as GlobalSettings["defaults"],
 				bus: { on: () => ({ dispose() {} }) },
 				logger: entry.logger,
 				enqueue() {},
@@ -760,7 +762,7 @@ describe("GET /api/ext/:id/status", () => {
 		const app = createExtensionsRoute({
 			store: {
 				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
-				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
+				getGlobals: () => ({ extensions: {} }) as unknown as GlobalSettings,
 				getConnections: () => [],
 			} as unknown as ConfigStore,
 			extensions: () => [],
@@ -1004,7 +1006,7 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 		const app = createExtensionsRoute({
 			store: {
 				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
-				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
+				getGlobals: () => ({ extensions: {} }) as unknown as GlobalSettings,
 				getConnections: () => [],
 			} as unknown as ConfigStore,
 			extensions: () => [],
@@ -1714,7 +1716,7 @@ describe("拓展自己的文档", () => {
 		const app = createExtensionsRoute({
 			store: {
 				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
-				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
+				getGlobals: () => ({ extensions: {} }) as unknown as GlobalSettings,
 				getConnections: () => [],
 			} as unknown as ConfigStore,
 			extensions: () => [],

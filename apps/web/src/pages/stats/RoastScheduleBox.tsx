@@ -6,7 +6,7 @@ import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/us
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleFields";
 
 /**
@@ -25,7 +25,7 @@ export function RoastScheduleBox() {
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
 
-	const [draft, setDraft] = useState<GlobalConfig["roastSchedule"] | null>(null);
+	const [draft, setDraft] = useState<GlobalSettings["roastSchedule"] | null>(null);
 	useEffect(() => {
 		if (globalsQuery.data) setDraft(globalsQuery.data.roastSchedule);
 	}, [globalsQuery.data]);
@@ -34,7 +34,7 @@ export function RoastScheduleBox() {
 
 	const save = useMutation({
 		// 要发的东西走 variables,不从闭包里捞 —— 闭包捞到的是这一轮渲染的旧值。
-		mutationFn: async (next: GlobalConfig["roastSchedule"]) => {
+		mutationFn: async (next: GlobalSettings["roastSchedule"]) => {
 			const base = globalsQuery.data?.roastSchedule;
 			// 与基线 diff 而不是整份回传:`targets` 清空时,整份发是「[]」、
 			// buildPatch 才知道这是一次真的清除。

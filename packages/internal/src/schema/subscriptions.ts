@@ -14,7 +14,7 @@ import {
 	LiveStartSettingsPartialSchema,
 	LiveStreamingSettingsPartialSchema,
 	MembershipSettingsPartialSchema,
-	ScheduleConfigPartialSchema,
+	ScheduleSettingsPartialSchema,
 	SuperchatSettingsPartialSchema,
 	TemplateBundlePartialSchema,
 } from "./common";
@@ -65,7 +65,7 @@ export const CreatorProfileSchema = z.object({
 export type CreatorProfile = z.infer<typeof CreatorProfileSchema>;
 
 /**
- * AI 覆盖 —— per-UP 只做一件事:**从 `GlobalConfig.ai.presets` 里挑一份**。
+ * AI 覆盖 —— per-UP 只做一件事:**从 `GlobalSettings.ai.presets` 里挑一份**。
  *
  * `preset` 是**指针**:指向 presets 里的一份。指不着就完整继承全局 —— 老值 `'inherit'`
  * (当年那档「继承全局」)、`'custom'`(当年那档「完全自定义」)、以及指向一份已被删掉
@@ -82,10 +82,10 @@ export type CreatorProfile = z.infer<typeof CreatorProfileSchema>;
  * 单 schema:preset 取何值都允许。写成 z.union 会让 TS 在「具名 id vs 那两个历史常量」
  * 之间 narrowing 失败。
  */
-export const AIOverrideSchema = z.object({
+export const AiOverridesSchema = z.object({
 	preset: z.string(),
 });
-export type AIOverride = z.infer<typeof AIOverrideSchema>;
+export type AiOverrides = z.infer<typeof AiOverridesSchema>;
 
 /**
  * 附加项的 **per-目标** 覆写表(ADR-0016 决策 2 的第三层),订阅顶层的 `extraTargets`。每把附加项一张 Map,三态:
@@ -113,19 +113,19 @@ function emptyExtraTargets(): SubscriptionExtraTargets {
 }
 
 /**
- * 单 UP 的覆盖配置；任意字段为 undefined 表示继承 GlobalConfig.defaults。
+ * 单 UP 的覆盖配置；任意字段为 undefined 表示继承 GlobalSettings.defaults。
  */
 export const SubscriptionOverridesSchema = z.object({
 	features: FeatureFlagsPartialSchema.optional(),
 	filters: ContentFiltersPartialSchema.optional(),
-	schedule: ScheduleConfigPartialSchema.optional(),
+	schedule: ScheduleSettingsPartialSchema.optional(),
 	liveStart: LiveStartSettingsPartialSchema.optional(),
 	liveStreaming: LiveStreamingSettingsPartialSchema.optional(),
 	// 醒目留言与会员的门槛覆盖(㉓d):`superchat.minAmount` 覆盖有就用覆盖(0 也算);`membership.minRank` 按体系逐键合并。
 	superchat: SuperchatSettingsPartialSchema.optional(),
 	membership: MembershipSettingsPartialSchema.optional(),
 	templates: TemplateBundlePartialSchema.optional(),
-	ai: AIOverrideSchema.optional(),
+	ai: AiOverridesSchema.optional(),
 	// 卡片设置的覆盖(㉔e):只有直播封面能按订阅覆盖。
 	cards: CardsOverridesSchema.optional(),
 	// 这个 UP 单独用哪套卡片皮肤(ADR-0014 决策 17:per-UP = 选皮肤 + 变量覆盖,不再

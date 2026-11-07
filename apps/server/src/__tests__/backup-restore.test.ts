@@ -1,5 +1,5 @@
 import {
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type Subscription,
 	type SubscriptionTag,
@@ -19,7 +19,7 @@ function sub(uid: string): Subscription {
 
 function currentWith(subs: Subscription[], subscriptionTags: SubscriptionTag[] = []): CurrentState {
 	return {
-		globals: makeDefaultGlobalConfig(),
+		globals: makeDefaultGlobalSettings(),
 		subscriptions: subs,
 		subscriptionTags,
 		connections: [],
@@ -52,7 +52,7 @@ describe("planImport", () => {
 
 	it("overwrite applies globals when the backup carries them", () => {
 		const current = currentWith([]);
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.activeProfile = "deepseek";
 		g.ai.providers = {
 			deepseek: {
@@ -77,7 +77,7 @@ describe("planImport", () => {
 
 	it("merge never touches globals, even when the backup carries them", () => {
 		const current = currentWith([]);
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.activeProfile = "deepseek";
 		g.ai.providers = {
 			deepseek: {

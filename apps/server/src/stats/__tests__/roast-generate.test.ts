@@ -10,11 +10,11 @@
  */
 
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalSettings } from "@bilibili-notify/internal";
 import {
 	EMPTY_AI_PROVIDER_PROFILE,
 	FAILURE_CODES,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { RoastGenDeps } from "../roast-generate";
@@ -85,7 +85,7 @@ const PLATFORM_LABELS: Record<string, string> = { douyin: "抖音" };
 
 /** 测试替身:只填生成路径真正读到的那几个字段,其余靠一次 unknown 断言收口。 */
 function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): RoastGenDeps {
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	globals.ai = {
 		...globals.ai,
 		enabled: aiEnabled,
@@ -100,7 +100,7 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 				model: "m",
 			},
 		},
-	} as GlobalConfig["ai"];
+	} as GlobalSettings["ai"];
 	const profiles = new Map(
 		exts.flatMap((e) => (e.profileName ? [[e.id, { name: e.profileName }] as const] : [])),
 	);

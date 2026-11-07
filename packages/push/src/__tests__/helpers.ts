@@ -6,7 +6,7 @@ import {
 	type FeatureKey,
 	type GlobalDefaults,
 	type Logger,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type NotificationPayload,
 	type ServiceContext,
@@ -19,7 +19,7 @@ export const silentLogger: Logger = { debug() {}, info() {}, warn() {}, error() 
 
 /** 全部 feature 开、无免扰时段 —— 只让 routing 说话的 defaults。 */
 function loopbackDefaults(): GlobalDefaults {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	for (const k of FEATURE_KEYS) g.defaults.features[k] = true;
 	g.defaults.schedule.quietHours = [];
 	return g.defaults;

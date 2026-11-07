@@ -8,7 +8,7 @@
  */
 
 import {
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type Problem,
 } from "@bilibili-notify/internal";
@@ -108,7 +108,7 @@ function makeHarness(opts?: {
 			getSubscriptions,
 			upsertSubscription,
 			patchSubscription,
-			getGlobals: () => makeDefaultGlobalConfig(),
+			getGlobals: () => makeDefaultGlobalSettings(),
 		},
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },

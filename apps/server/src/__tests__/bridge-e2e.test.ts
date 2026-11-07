@@ -163,7 +163,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 	 * 摆一份**主人已经配好**的数据目录:桥拓展开着、一条接入(带 token,住桥的设置里)、
 	 * 一条绑到那条接入上某个 bot 的连接、一个挂在连接名下的群目标(ADR-0012 决策 45)。
 	 *
-	 * globals 先跑一趟空启动再改,而不是手写一份 —— `GlobalConfigSchema` 的 `app` /
+	 * globals 先跑一趟空启动再改,而不是手写一份 —— `GlobalSettingsSchema` 的 `app` /
 	 * `master` / `defaults` 都没有默认值,手写一份缺格的会在开机 parse 时整份被判废。
 	 */
 	beforeAll(async () => {

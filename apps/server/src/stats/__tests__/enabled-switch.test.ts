@@ -6,7 +6,7 @@
  */
 
 import type { MessageBus } from "@bilibili-notify/internal";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createStatsEnabled } from "../enabled.js";
 
@@ -30,7 +30,7 @@ function makeBus() {
 
 function setup() {
 	const { bus, changed, listeners } = makeBus();
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	const getGlobals = vi.fn(() => globals);
 	const sw = createStatsEnabled({ bus, getGlobals });
 	return { sw, getGlobals, globals, changed, listeners };

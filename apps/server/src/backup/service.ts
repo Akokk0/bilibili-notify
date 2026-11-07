@@ -1,7 +1,7 @@
 import type { BackupExportPreviewResponse, ImportResult } from "@bilibili-notify/contract";
 import type {
 	Connection,
-	GlobalConfig,
+	GlobalSettings,
 	Json,
 	PushTarget,
 	Subscription,
@@ -42,7 +42,7 @@ import { redactBackupSections } from "./sanitize.js";
 /** The slice of `ConfigStore` the backup service depends on. */
 export interface BackupStore {
 	getInvalidSettingsPaths(): string[][];
-	getGlobals(): GlobalConfig;
+	getGlobals(): GlobalSettings;
 	getAllIntegrationSettings(): Record<string, unknown>;
 	getAllExtensionSettings(): Record<string, unknown>;
 	getSubscriptions(): Subscription[];
@@ -51,7 +51,7 @@ export interface BackupStore {
 	getTargets(): PushTarget[];
 	replaceSections(
 		next: {
-			globals?: GlobalConfig;
+			globals?: GlobalSettings;
 			integrations?: Record<string, unknown>;
 			extensionSettings?: Record<string, unknown>;
 			subscriptions?: Subscription[];

@@ -13,7 +13,7 @@
  *    不再是「方言未知不敢发」。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -31,7 +31,7 @@ import { api } from "../../services/api";
 type ProviderId = "deepseek" | "siliconflow" | "custom";
 
 function globals(provider: ProviderId, flavor: "chat" | "responses" = "chat") {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.enabled = true;
 	g.ai.activeProfile = "p1";
 	g.ai.providers = {

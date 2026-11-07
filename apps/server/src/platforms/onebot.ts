@@ -182,9 +182,9 @@ export const onebotSettingsSegment: IntegrationSettingsSegment = {
 
 const isMine = (c: Connection): c is OnebotConnection => c.adapterKey === ADAPTER_KEY;
 
-type OnebotHttpConfig = Extract<OnebotConnectionSettings, { transport: "http" }>;
-type OnebotWsConfig = Extract<OnebotConnectionSettings, { transport: "ws" }>;
-type OnebotWsReverseConfig = Extract<OnebotConnectionSettings, { transport: "ws-reverse" }>;
+type OnebotHttpSettings = Extract<OnebotConnectionSettings, { transport: "http" }>;
+type OnebotWsSettings = Extract<OnebotConnectionSettings, { transport: "ws" }>;
+type OnebotWsReverseSettings = Extract<OnebotConnectionSettings, { transport: "ws-reverse" }>;
 
 interface OneBotMessageSegment {
 	type: "text" | "image" | "at" | "json";
@@ -448,7 +448,7 @@ function trimTrailingSlash(s: string): string {
 
 async function postOnebotOnce(
 	http: HttpClient,
-	cfg: OnebotHttpConfig,
+	cfg: OnebotHttpSettings,
 	endpoint: string,
 	body: Record<string, unknown>,
 	timeoutMs: number,
@@ -489,7 +489,7 @@ async function postOnebotOnce(
 
 async function postOnebot(
 	http: HttpClient,
-	cfg: OnebotHttpConfig,
+	cfg: OnebotHttpSettings,
 	endpoint: string,
 	body: Record<string, unknown>,
 	fallbackTimeoutMs: number,
@@ -874,14 +874,14 @@ class ReverseListener {
 }
 
 /** 正向 WS 握手头:合并自定义 headers + `Authorization: Bearer <token>`。 */
-function forwardHeaders(cfg: OnebotWsConfig): Record<string, string> {
+function forwardHeaders(cfg: OnebotWsSettings): Record<string, string> {
 	const headers: Record<string, string> = { ...cfg.headers };
 	if (cfg.accessToken) headers.Authorization = `Bearer ${cfg.accessToken}`;
 	return headers;
 }
 
 /** 正向连接配置指纹 —— 仅取影响连接的字段,变了才重连。 */
-function forwardFingerprint(cfg: OnebotWsConfig): string {
+function forwardFingerprint(cfg: OnebotWsSettings): string {
 	return JSON.stringify({ url: cfg.url, accessToken: cfg.accessToken ?? "", headers: cfg.headers });
 }
 
@@ -1025,7 +1025,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	/** `atAll` / `inbound` 是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻(UTC ISO)。 */
 	const adapterStartedAt = new Date().toISOString();
 
-	function channelOf(connectionId: string, cfg: OnebotWsConfig | OnebotWsReverseConfig) {
+	function channelOf(connectionId: string, cfg: OnebotWsSettings | OnebotWsReverseSettings) {
 		return cfg.transport === "ws"
 			? (forwardConns.get(connectionId)?.getChannel() ?? null)
 			: (reverseListeners.get(connectionId)?.getChannel() ?? null);
@@ -1249,7 +1249,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	/** WS / WS-reverse 共用的发送(echo 帧 + 重试)。 */
 	async function sendOverWs(
 		connectionId: string,
-		cfg: OnebotWsConfig | OnebotWsReverseConfig,
+		cfg: OnebotWsSettings | OnebotWsReverseSettings,
 		action: string,
 		params: Record<string, unknown>,
 		targetId: string,
@@ -1326,7 +1326,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		}
 
 		// --- 正向 ws ---
-		const desiredFwd = new Map<string, OnebotWsConfig>();
+		const desiredFwd = new Map<string, OnebotWsSettings>();
 		for (const a of onebots) {
 			const cfg = a.settings;
 			if (cfg.transport === "ws") desiredFwd.set(a.id, cfg);
@@ -1359,7 +1359,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		}
 
 		// --- 反向 ws ---
-		const desiredRev = new Map<string, OnebotWsReverseConfig>();
+		const desiredRev = new Map<string, OnebotWsReverseSettings>();
 		for (const a of onebots) {
 			const cfg = a.settings;
 			if (cfg.transport === "ws-reverse") desiredRev.set(a.id, cfg);

@@ -1,4 +1,4 @@
-import { type Connection, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { type Connection, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZodType } from "zod";
 import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
@@ -23,7 +23,7 @@ import { snapshotFor } from "./support/connection-snapshot.js";
  * cookie / adapter config)进 PIN 加密块。open 用正确 PIN 把机密并回、重建可落盘
  * 的完整配置 + cookie;错 PIN 抛错。
  */
-function withDeepseekKey(g: ReturnType<typeof makeDefaultGlobalConfig>, k: string) {
+function withDeepseekKey(g: ReturnType<typeof makeDefaultGlobalSettings>, k: string) {
 	g.ai.activeProfile = "deepseek";
 	g.ai.providers = {
 		deepseek: {
@@ -45,7 +45,7 @@ function withDeepseekKey(g: ReturnType<typeof makeDefaultGlobalConfig>, k: strin
 
 function globalsWithApiKey(k: string) {
 	// 密钥现在住在服务商桶里(各家一套配置);这里固定用 deepseek 桶做样本。
-	return withDeepseekKey(makeDefaultGlobalConfig(), k);
+	return withDeepseekKey(makeDefaultGlobalSettings(), k);
 }
 
 /** 内置三个适配器在场(各回自己的真 schema)、没有拓展声明 —— 即生产里一个拓展都没装时的查表。 */
@@ -226,7 +226,7 @@ describe("full backup assemble/open", () => {
 	 * 不在这一节里,明文与恢复都原样。
 	 */
 	it("拓展 settings 里的密钥原样恢复", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.extensions = { bridge: { enabled: true } };
 		const env = assembleFullBackup(
 			{

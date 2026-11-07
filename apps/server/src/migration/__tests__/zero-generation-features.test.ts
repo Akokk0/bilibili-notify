@@ -21,7 +21,7 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { makeDefaultGlobalConfig, type PushTarget } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings, type PushTarget } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { useZeroSandbox } from "./support.js";
 import { makeZeroGlobals, withoutZeroBilibiliApp } from "./zero-fixtures.js";
@@ -407,7 +407,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 	it("已经是 1.0 形状的设置只补 locale:核心设置要改写,订阅与连接仍原样", async () => {
 		await placeConnectionsAndTargets();
 		// 1.0 的出厂设置(特性键 / 文案键 / 版式键都是 1.0 的名字):这是「已经是新键」的输入,改名那一步对它是空操作。
-		await sandbox.placeZero("state/globals.json", makeDefaultGlobalConfig());
+		await sandbox.placeZero("state/globals.json", makeDefaultGlobalSettings());
 
 		const report = await sandbox.migrate();
 
@@ -420,7 +420,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		).toBe(false);
 		const store = await sandbox.load();
 		expect(store.getGlobals().defaults.features).toEqual(
-			makeDefaultGlobalConfig().defaults.features,
+			makeDefaultGlobalSettings().defaults.features,
 		);
 		expect(store.getGlobals().locale).toBe("zh-CN");
 	});

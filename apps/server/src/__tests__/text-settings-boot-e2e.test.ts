@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { i18n } from "../i18n/index.js";
@@ -108,7 +108,7 @@ describe("语言与口吻两项设置接在开机路径上", () => {
 		const generationDir = await openTestGeneration(dataDir);
 		const file = join(generationDir, ...CORE_SETTINGS_FILE);
 		await mkdir(dirname(file), { recursive: true });
-		await writeFile(file, JSON.stringify({ ...makeDefaultGlobalConfig(), locale: "ja" }), "utf8");
+		await writeFile(file, JSON.stringify({ ...makeDefaultGlobalSettings(), locale: "ja" }), "utf8");
 		await boot();
 		expect(i18n.state().locale).toBe("ja");
 	});

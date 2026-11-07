@@ -1,7 +1,7 @@
 /**
  * 迁移测试的 0.x 夹具 —— 冻住的字面量,**不取 internal 的活工厂**。
  *
- * 迁移器的输入是 0.x 盘上的形状。这些夹具从前由 internal 的活工厂现造(`makeDefaultGlobalConfig` /
+ * 迁移器的输入是 0.x 盘上的形状。这些夹具从前由 internal 的活工厂现造(`makeDefaultGlobalSettings` /
  * `makeEmptySubscription` / `FEATURE_KEYS`),活词表一改名,「0.x 的输入」就悄悄变成 1.0 的键,测试照绿、
  * 迁移器却再没被 0.x 的形状考过。所以这里把 0.12 的形状抄成字面量(值以 tag `v0.12.0` 的出厂配置与空订阅为准核过)。
  * 迁移测试要造 0.x 输入就从这里取,别回头去 import 活工厂。**期望值**要钉的若是「迁完、经配置仓 / 活 schema 装载出来的东西」,
@@ -103,7 +103,7 @@ export interface ZeroGlobals {
 }
 
 /**
- * 0.12 出厂的整份 globals —— 全新装 0.12 写下的那一份(`makeDefaultGlobalConfig()` 在 `v0.12.0` 的输出)。
+ * 0.12 出厂的整份 globals —— 全新装 0.12 写下的那一份(`makeDefaultGlobalSettings()` 在 `v0.12.0` 的输出)。
  * `app` 里带着 B 站那三格里的两格(`dynamicCron` / `healthCheckMinutes`;1.0 把它们搬进了 settings/bilibili.json)。
  */
 const ZERO_DEFAULT_GLOBALS: ZeroGlobals = {

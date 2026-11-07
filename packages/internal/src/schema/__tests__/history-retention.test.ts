@@ -6,13 +6,13 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { HISTORY_RETENTION_DAY_OPTIONS } from "../../history";
-import { GlobalConfigSchema, HistorySettingsSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, HistorySettingsSchema, makeDefaultGlobalSettings } from "../globals";
 
 describe("history.retentionDays", () => {
 	it("出厂值 30;缺 `history` 这一节的老设置读进来也是 30", () => {
-		expect(makeDefaultGlobalConfig().history).toEqual({ retentionDays: 30 });
-		const { history: _dropped, ...withoutHistory } = makeDefaultGlobalConfig();
-		expect(GlobalConfigSchema.parse(withoutHistory).history).toEqual({ retentionDays: 30 });
+		expect(makeDefaultGlobalSettings().history).toEqual({ retentionDays: 30 });
+		const { history: _dropped, ...withoutHistory } = makeDefaultGlobalSettings();
+		expect(GlobalSettingsSchema.parse(withoutHistory).history).toEqual({ retentionDays: 30 });
 	});
 
 	it("七档是 90 / 60 / 30 / 15 / 7 / 3 / 1,每一档都收", () => {
@@ -27,8 +27,8 @@ describe("history.retentionDays", () => {
 	});
 
 	it("`logging` 里没有 historyRetentionDays:写了也读不进来", () => {
-		const base = makeDefaultGlobalConfig();
-		const parsed = GlobalConfigSchema.parse({
+		const base = makeDefaultGlobalSettings();
+		const parsed = GlobalSettingsSchema.parse({
 			...base,
 			logging: { ...base.logging, historyRetentionDays: 45 },
 		});

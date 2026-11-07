@@ -15,7 +15,7 @@
 
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { ImageRenderer, type ImageRendererConfig } from "../image-renderer";
+import { ImageRenderer, type ImageRendererSettings } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
 import { buildFontFace, USER_FONT_FAMILY } from "../render";
 
@@ -23,7 +23,7 @@ import { buildFontFace, USER_FONT_FAMILY } from "../render";
 type AnyRenderer = any;
 
 function makeRenderer(
-	config: Partial<ImageRendererConfig> = {},
+	config: Partial<ImageRendererSettings> = {},
 	resolveFontFace?: (id: string) => Promise<string>,
 ): ImageRenderer {
 	const ctx: ServiceContext = {

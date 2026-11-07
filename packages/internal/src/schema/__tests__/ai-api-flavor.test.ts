@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { API_FLAVOR_IDS, canProfileThink, providerMeta } from "../../ai";
-import { AISettingsSchema } from "../common";
+import { AiSettingsSchema } from "../common";
 
 const BASE = {
 	enabled: true,
@@ -29,7 +29,7 @@ const BASE = {
 
 describe("schema:apiFlavor", () => {
 	it("老配置的桶里没有 apiFlavor → 默认 chat,不被静默换协议", () => {
-		const ai = AISettingsSchema.parse({
+		const ai = AiSettingsSchema.parse({
 			...BASE,
 			providers: { deepseek: { provider: "deepseek" } },
 		});
@@ -37,7 +37,7 @@ describe("schema:apiFlavor", () => {
 	});
 
 	it("写明 responses → 原样保留", () => {
-		const ai = AISettingsSchema.parse({
+		const ai = AiSettingsSchema.parse({
 			...BASE,
 			providers: { ds2: { provider: "deepseek", apiFlavor: "responses" } },
 		});
@@ -45,7 +45,7 @@ describe("schema:apiFlavor", () => {
 	});
 
 	it("未知风味 → 拒收,不猜", () => {
-		const parsed = AISettingsSchema.safeParse({
+		const parsed = AiSettingsSchema.safeParse({
 			...BASE,
 			providers: { x: { provider: "deepseek", apiFlavor: "assistants" } },
 		});

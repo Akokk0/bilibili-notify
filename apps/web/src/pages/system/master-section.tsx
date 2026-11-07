@@ -4,7 +4,7 @@ import { Field, TSelect } from "../../components/forms";
 import { targetDisplay } from "../../components/target-display";
 import { useT } from "../../i18n";
 import type { Connection, PushTarget } from "../../types/domain";
-import type { GlobalConfig, GlobalConfigPatch } from "../../types/globals";
+import type { GlobalSettings, GlobalSettingsPatch } from "../../types/globals";
 
 /** 接收运行异常通知的私聊目标，与来源登录分开。 */
 export function MasterSection({
@@ -13,10 +13,10 @@ export function MasterSection({
 	connections = [],
 	onPatch,
 }: {
-	draft: Pick<GlobalConfig, "master">;
+	draft: Pick<GlobalSettings, "master">;
 	targets: PushTarget[];
 	connections?: readonly Connection[];
-	onPatch: (delta: GlobalConfigPatch) => void;
+	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
 	const master = draft.master;

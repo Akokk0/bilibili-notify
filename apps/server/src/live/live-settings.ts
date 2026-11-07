@@ -9,7 +9,7 @@ import {
 	type Disposable,
 	type EffectiveSubscription,
 	type ExtraKey,
-	type GlobalConfig,
+	type GlobalSettings,
 	type MessageBus,
 	type MessageKindLayout,
 	resolve,
@@ -137,7 +137,7 @@ export function wantsLiveEndExtras(
  */
 export function liveSettingsOf(
 	sub: Subscription,
-	globals: GlobalConfig,
+	globals: GlobalSettings,
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
 ): LiveSettings {
 	// 文字模板设置里只存主人改过的:缺的此刻按当前语言取出厂,不写盘(换语言立即生效)。
@@ -226,7 +226,7 @@ export interface LiveSettingsCache extends Disposable {
  */
 export function createLiveSettingsCache(opts: {
 	bus: MessageBus;
-	getGlobals: () => GlobalConfig;
+	getGlobals: () => GlobalSettings;
 }): LiveSettingsCache {
 	let bySubscription = new WeakMap<Subscription, LiveSettings>();
 	const subscription = opts.bus.on("config-changed", ({ scope }) => {

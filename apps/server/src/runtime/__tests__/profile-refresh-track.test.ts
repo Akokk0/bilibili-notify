@@ -6,7 +6,7 @@
  * 这件事此刻还悬着 → 放行 → 断言写已经落定。
  */
 
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import {
@@ -35,7 +35,7 @@ vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 const { startMigratedProfileRefresh } = await import("./profile-refresh-support.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
-const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as unknown as GlobalConfig;
+const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as unknown as GlobalSettings;
 const SUB = {
 	id: "sub-1",
 	identity: { sourceKey: "bilibili", externalId: "12345" },

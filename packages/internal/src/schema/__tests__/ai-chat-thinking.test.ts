@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { resolveChatThinkingLevel } from "../../ai";
-import { AISettingsSchema } from "../common";
+import { AiSettingsSchema } from "../common";
 
 const BASE = {
 	enabled: true,
@@ -31,7 +31,7 @@ const BASE = {
 };
 
 function withProfile(chat?: Record<string, unknown>) {
-	return AISettingsSchema.parse({
+	return AiSettingsSchema.parse({
 		...BASE,
 		activeProfile: "deepseek",
 		providers: {
@@ -43,7 +43,7 @@ function withProfile(chat?: Record<string, unknown>) {
 
 describe("schema:ai.chat", () => {
 	it("老配置没有 chat 段 → 补一个空对象,不是 undefined", () => {
-		const ai = AISettingsSchema.parse(BASE);
+		const ai = AiSettingsSchema.parse(BASE);
 		expect(ai.chat).toEqual({});
 	});
 
@@ -54,7 +54,7 @@ describe("schema:ai.chat", () => {
 	});
 
 	it("非法等级拒收 —— 别让一个坏档位悄悄变成默认档", () => {
-		const r = AISettingsSchema.safeParse({ ...BASE, chat: { thinkingLevel: "ultra" } });
+		const r = AiSettingsSchema.safeParse({ ...BASE, chat: { thinkingLevel: "ultra" } });
 		expect(r.success).toBe(false);
 	});
 });
@@ -69,7 +69,7 @@ describe("resolveChatThinkingLevel — 继承与分家", () => {
 	});
 
 	it("指针悬空(实例刚被删)→ 落回空档案的 medium,不炸", () => {
-		const ai = AISettingsSchema.parse({ ...BASE, activeProfile: "ghost" });
+		const ai = AiSettingsSchema.parse({ ...BASE, activeProfile: "ghost" });
 		expect(resolveChatThinkingLevel(ai)).toBe("medium");
 	});
 });

@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { LINK_REPLY_FORMS } from "../../link-preview";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 import { DEFAULT_LINK_PREVIEW, LinkPreviewSettingsSchema, linkPreviewFor } from "../link-preview";
 
 const A = "11111111-1111-4111-8111-111111111111";
@@ -27,15 +27,15 @@ const FRESH = {
 
 describe("linkPreview 配置段", () => {
 	it("老 core.json 没有 linkPreview → 解析成功并补成默认", () => {
-		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		const g = makeDefaultGlobalSettings() as unknown as Record<string, unknown>;
 		delete g.linkPreview;
-		const parsed = GlobalConfigSchema.safeParse(g);
+		const parsed = GlobalSettingsSchema.safeParse(g);
 		expect(parsed.success).toBe(true);
 		expect(parsed.data?.linkPreview).toEqual(FRESH);
 	});
 
 	it("全新安装总开关关、默认回图片;形式有图片 / 原生分享 / 文字三档", () => {
-		expect(makeDefaultGlobalConfig().linkPreview.enabled).toBe(false);
+		expect(makeDefaultGlobalSettings().linkPreview.enabled).toBe(false);
 		expect(DEFAULT_LINK_PREVIEW).toEqual(FRESH);
 		expect(LINK_REPLY_FORMS).toEqual(["image", "nativeShare", "text"]);
 	});

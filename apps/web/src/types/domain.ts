@@ -65,7 +65,7 @@ export {
 export type Subscription = SubscriptionView;
 
 export type {
-	AIOverride,
+	AiOverrides,
 	// 推送平台类型直接用 internal 的定义:将来薄插件桥接进来的平台加进那条 union 就自动出现在这里。
 	Connection,
 	ContentFiltersPartial as ContentFiltersOverride,
@@ -80,7 +80,7 @@ export type {
 	NewConnection,
 	PushTarget,
 	PushTargetScope,
-	ScheduleConfigPartial as ScheduleOverride,
+	ScheduleSettingsPartial as ScheduleOverride,
 	SpecialViewer,
 	SubscriptionOverrides as OverridesShape,
 	SubscriptionRouting,

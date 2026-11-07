@@ -7,10 +7,10 @@ import { packageText } from "../texts";
 import { DEFAULT_TIMEZONE, isTimezone } from "../timezone";
 import { MIRROR_PREFIX_RE } from "../update";
 import { CardSkinIdSchema, CardSkinKnobOverridesSchema, DEFAULT_CARD_SKIN_ID } from "./card-skin";
-import { CommandConfigSchema, DEFAULT_COMMAND_CONFIG } from "./commands";
+import { CommandSettingsSchema, DEFAULT_COMMAND_SETTINGS } from "./commands";
 import {
-	type AISettings,
-	AISettingsSchema,
+	type AiSettings,
+	AiSettingsSchema,
 	type CardsSettings,
 	CardsSettingsSchema,
 	ContentFiltersSchema,
@@ -26,7 +26,7 @@ import {
 	LiveStartSettingsSchema,
 	LiveStreamingSettingsSchema,
 	MembershipSettingsSchema,
-	ScheduleConfigSchema,
+	ScheduleSettingsSchema,
 	SuperchatSettingsSchema,
 	TemplateBundleSchema,
 } from "./common";
@@ -151,11 +151,11 @@ export const LoggingSettingsSchema = z.object({
 });
 export type LoggingSettings = z.infer<typeof LoggingSettingsSchema>;
 
-export const MasterConfigSchema = z.object({
+export const MasterSettingsSchema = z.object({
 	/** 用于错误私聊的 PushTarget.id,只许指向私聊目标(`isPrivateTarget`);undefined 时不发私聊。 */
 	targetId: z.uuid().optional(),
 });
-export type MasterConfig = z.infer<typeof MasterConfigSchema>;
+export type MasterSettings = z.infer<typeof MasterSettingsSchema>;
 
 /**
  * 全局默认值；resolve(sub, globals) 在 per-UP overrides 缺字段时回退到这里。
@@ -164,7 +164,7 @@ export type MasterConfig = z.infer<typeof MasterConfigSchema>;
 export const GlobalDefaultsSchema = z.object({
 	features: FeatureFlagsSchema,
 	filters: ContentFiltersSchema,
-	schedule: ScheduleConfigSchema,
+	schedule: ScheduleSettingsSchema,
 	// 直播拆键(⑬d):启动补报与周期间隔各一段,开关在 `features`(`liveStart` / `liveStreaming`)。
 	liveStart: LiveStartSettingsSchema,
 	liveStreaming: LiveStreamingSettingsSchema,
@@ -212,13 +212,13 @@ export type GlobalDefaults = z.infer<typeof GlobalDefaultsSchema>;
  * 落在配置而非 localStorage:「这台实例问过了没」是实例级事实,换台机器、换个
  * 浏览器开面板不该再被问一遍。
  */
-export const OnboardingConfigSchema = z.object({
+export const OnboardingSettingsSchema = z.object({
 	skipped: z.boolean().optional(),
 });
-export type OnboardingConfig = z.infer<typeof OnboardingConfigSchema>;
+export type OnboardingSettings = z.infer<typeof OnboardingSettingsSchema>;
 
 /** 全新安装 = 还没问过:第一次开面板弹询问框,由用户自己选。 */
-export const DEFAULT_ONBOARDING: OnboardingConfig = {};
+export const DEFAULT_ONBOARDING: OnboardingSettings = {};
 
 /**
  * 应用内自主升级的用户可调项。
@@ -310,7 +310,7 @@ export const AccountsSettingsSchema = z.object({
 });
 export type AccountsSettings = z.infer<typeof AccountsSettingsSchema>;
 
-export const GlobalConfigSchema = z.object({
+export const GlobalSettingsSchema = z.object({
 	accounts: AccountsSettingsSchema.optional(),
 	logging: LoggingSettingsSchema,
 	/**
@@ -332,7 +332,7 @@ export const GlobalConfigSchema = z.object({
 	/** 推送历史:图片与重推原件的保留天数。缺这一节的老设置补默认。 */
 	history: HistorySettingsSchema.default(() => structuredClone(DEFAULT_HISTORY_SETTINGS)),
 	stats: StatsSettingsSchema.default(() => structuredClone(DEFAULT_STATS_SETTINGS)),
-	master: MasterConfigSchema,
+	master: MasterSettingsSchema,
 	defaults: GlobalDefaultsSchema,
 	/**
 	 * 「这条我改的时候,简体默认长这样」的账本:点路径 → 那一刻**简体**出厂原文的指纹。
@@ -353,7 +353,7 @@ export const GlobalConfigSchema = z.object({
 	 *
 	 * 必填、不带 default:与原来的 `defaults.ai` 同一个松紧。
 	 */
-	ai: AISettingsSchema,
+	ai: AiSettingsSchema,
 	/**
 	 * 榜单周报的定时推送 —— 全局唯一一条。
 	 *
@@ -382,7 +382,7 @@ export const GlobalConfigSchema = z.object({
 	 *
 	 * 放顶层同 `roastSchedule`:它不是「per-UP overrides 缺字段时的回退」。
 	 */
-	commands: CommandConfigSchema.default(() => structuredClone(DEFAULT_COMMAND_CONFIG)),
+	commands: CommandSettingsSchema.default(() => structuredClone(DEFAULT_COMMAND_SETTINGS)),
 	/**
 	 * 链接预览(群里贴视频链接自动出卡片),五格:总开关、默认回不回、回复形式、逐目标例外、冷却。
 	 * 独立端专有,放顶层同 `commands`。
@@ -396,7 +396,7 @@ export const GlobalConfigSchema = z.object({
 	 * `.default(...)` 是老配置兜底 —— 独立端启动时 `parse` 会补上,理由见
 	 * `./__tests__/onboarding-skipped.test.ts`。
 	 */
-	onboarding: OnboardingConfigSchema.default(DEFAULT_ONBOARDING),
+	onboarding: OnboardingSettingsSchema.default(DEFAULT_ONBOARDING),
 	/**
 	 * 自主升级的用户可调项。放顶层同 `commands` —— 它不是「per-UP overrides 缺字段
 	 * 时的回退」。`.default(...)` 是老配置兜底:独立端启动时 `parse` 会补上,
@@ -432,7 +432,7 @@ export const GlobalConfigSchema = z.object({
 	),
 	bootstrap: BootstrapConfigSchema.optional(),
 });
-export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
+export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>;
 
 /**
  * 这个拓展模块开了没有。**缺失 = 关着**:开关是用户按的,桥接模块一开就是在对外收长
@@ -452,7 +452,7 @@ export const DEFAULT_AI = {
 	activeProfile: "",
 	providers: {},
 	// 内置人格不落盘(只记删了哪几份,缺 = 一份没删);`presets` 只装主人自己建的。
-	presets: [] as AISettings["presets"],
+	presets: [] as AiSettings["presets"],
 	// 全新安装的人格指针直接指着首份内置人格。
 	activePreset: "gentle-maid",
 } as const;
@@ -460,9 +460,9 @@ export const DEFAULT_AI = {
 /** 出厂的卡片设置:出图开着、没有自定义直播封面。 */
 export const DEFAULT_CARDS: CardsSettings = { enabled: true, liveCoverImageIds: [] };
 
-/** 工厂:创建一份完整的默认 GlobalConfig(不含 bootstrap)—— server 的出厂值与测试夹具共用。 */
-export function makeDefaultGlobalConfig(): GlobalConfig {
-	return GlobalConfigSchema.parse({
+/** 工厂:创建一份完整的默认 GlobalSettings(不含 bootstrap)—— server 的出厂值与测试夹具共用。 */
+export function makeDefaultGlobalSettings(): GlobalSettings {
+	return GlobalSettingsSchema.parse({
 		logging: {},
 		master: {},
 		defaults: {

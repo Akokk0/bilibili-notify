@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import { builtinPresetsFor, templateDefaultsFor } from "../../texts/builtin";
 import { DEFAULT_CARD_SKIN_ID } from "../card-skin";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 import { DEFAULT_MESSAGE_LAYOUT } from "../message-layout";
 import { resolve, resolveSubscriptionPersona, resolveTemplates } from "../resolve";
-import { type AIOverride, makeEmptySubscription, type Subscription } from "../subscriptions";
+import { type AiOverrides, makeEmptySubscription, type Subscription } from "../subscriptions";
 
 // 内置人格每次按当前语言取,设置里不存(ADR-0037 决策 11)
 const BUILTINS = builtinPresetsFor("zh-CN");
@@ -17,7 +17,7 @@ const SUB_BASE: Subscription = makeEmptySubscription({
 
 describe("resolve()", () => {
 	it("inherits all defaults when overrides are empty", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const eff = resolve(SUB_BASE, globals.defaults);
 
 		expect(eff.features).toEqual(globals.defaults.features);
@@ -34,14 +34,14 @@ describe("resolve()", () => {
 	});
 
 	it("inherits global wordcloudStopWords when no per-UP override", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.defaults.templates.wordcloudStopWords = "全局,词";
 		const templates = resolveTemplates(SUB_BASE, globals.defaults, templateDefaultsFor("zh-CN"));
 		expect(templates.wordcloudStopWords).toBe("全局,词");
 	});
 
 	it("per-UP wordcloudStopWords override replaces global", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.defaults.templates.wordcloudStopWords = "全局,词";
 		const sub: Subscription = {
 			...SUB_BASE,
@@ -52,7 +52,7 @@ describe("resolve()", () => {
 	});
 
 	it("inherits global live-end grace settings when no per-UP override", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.defaults.schedule.liveEndGrace = true;
 		globals.defaults.schedule.liveEndGraceMinutes = 5;
 		const eff = resolve(SUB_BASE, globals.defaults);
@@ -61,7 +61,7 @@ describe("resolve()", () => {
 	});
 
 	it("per-UP schedule override flips live-end grace independently", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const sub: Subscription = {
 			...SUB_BASE,
 			overrides: { schedule: { liveEndGrace: true, liveEndGraceMinutes: 3 } },
@@ -74,7 +74,7 @@ describe("resolve()", () => {
 	});
 
 	it("直播拆键:开播补报与周期间隔各是一段设置,per-UP 只覆盖写了的那一格,别的继承全局", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.defaults.liveStart.catchUpOnBoot = true;
 		globals.defaults.liveStreaming.streamingIntervalHours = 3;
 
@@ -96,7 +96,7 @@ describe("resolve()", () => {
 	});
 
 	it("直播拆键:liveStreaming 开关与别的特性开关同一套继承,出厂是关的", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		expect(resolve(SUB_BASE, globals.defaults).features.liveStreaming).toBe(false);
 		const on = resolve(
 			{ ...SUB_BASE, overrides: { features: { liveStreaming: true } } },
@@ -108,7 +108,7 @@ describe("resolve()", () => {
 	});
 
 	it("merges partial features override on top of defaults", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const sub: Subscription = {
 			...SUB_BASE,
 			overrides: {
@@ -123,7 +123,7 @@ describe("resolve()", () => {
 	});
 
 	it("AI override 'inherit' returns base ai unchanged", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const sub: Subscription = {
 			...SUB_BASE,
 			overrides: { ai: { preset: "inherit" } },
@@ -138,7 +138,7 @@ describe("resolve()", () => {
 		// 那一档撤掉了(人格一律在「智能女仆」页里写,per-UP 只负责挑一份),盘上
 		// 却还留着当年写下的字段。**它们不再参与解析** —— 留着继续生效的话就成了
 		// 界面上看不见、实际仍在起作用的鬼配置,日后排查起来最费劲。
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const customPersona = {
 			name: "助手",
 			addressUser: "您",
@@ -158,7 +158,7 @@ describe("resolve()", () => {
 					dynamicPrompt: "老的动态模板",
 					liveSummaryPrompt: "老的总结模板",
 					temperature: 1.5,
-				} as unknown as AIOverride,
+				} as unknown as AiOverrides,
 			},
 		};
 		const eff = resolveSubscriptionPersona(globals.ai, sub.overrides.ai, BUILTINS);
@@ -171,7 +171,7 @@ describe("resolve()", () => {
 	});
 
 	it("AI named preset takes priority over base; missing preset falls back gracefully", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const presetPersona = {
 			name: "傲娇",
 			addressUser: "笨蛋",
@@ -209,7 +209,7 @@ describe("resolve()", () => {
 	});
 
 	it("订阅挑的那份人格没写的那段 prompt 回落全局 —— 缺席是「跟全局一样」,不是空串", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.ai.presets = [
 			{
 				id: "mine-tsundere",
@@ -225,7 +225,7 @@ describe("resolve()", () => {
 	});
 
 	it("挑了具名人格时,盘上残留的 persona / prompt 一概不参与 —— 挑哪份就是哪份", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const presetPersona = {
 			name: "preset名",
 			addressUser: "preset你",
@@ -255,7 +255,7 @@ describe("resolve()", () => {
 					preset: "mine-tsundere",
 					persona: overridePersona,
 					dynamicPrompt: "残留模板",
-				} as unknown as AIOverride,
+				} as unknown as AiOverrides,
 			},
 		};
 		const eff = resolveSubscriptionPersona(globals.ai, sub.overrides.ai, BUILTINS);
@@ -266,14 +266,14 @@ describe("resolve()", () => {
 	});
 
 	it("inherits the global card skin when the UP has no override", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		expect(globals.defaults.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
 		const eff = resolve(SUB_BASE, globals.defaults);
 		expect(eff.cardSkin).toBe(DEFAULT_CARD_SKIN_ID);
 	});
 
 	it("a per-UP card skin replaces the global one outright", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.defaults.cardSkin = "k1abc-deadbeef";
 		const sub: Subscription = {
 			...SUB_BASE,
@@ -283,13 +283,13 @@ describe("resolve()", () => {
 	});
 
 	it("inherits global messageLayout when no per-UP override", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const eff = resolve(SUB_BASE, globals.defaults);
 		expect(eff.messageLayout).toEqual(globals.defaults.messageLayout);
 	});
 
 	it("replaces messageLayout wholesale on per-UP override and normalizes it", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const sub: Subscription = {
 			...SUB_BASE,
 			overrides: {
@@ -316,7 +316,7 @@ describe("resolve()", () => {
 	// 回归守护 — P2:resolve() 必须深隔离,消费方就地改不得污染 defaults / sub。
 	describe("深隔离 (P2)", () => {
 		it("改 EffectiveSubscription 的嵌套数组/对象不污染 globals.defaults", () => {
-			const globals = makeDefaultGlobalConfig();
+			const globals = makeDefaultGlobalSettings();
 			const eff = resolve(SUB_BASE, globals.defaults);
 			eff.filters.blockKeywords.push("x");
 			eff.features.liveStart = !eff.features.liveStart;
@@ -324,7 +324,7 @@ describe("resolve()", () => {
 		});
 
 		it("改 EffectiveSubscription.routing 不污染原始 sub", () => {
-			const globals = makeDefaultGlobalConfig();
+			const globals = makeDefaultGlobalSettings();
 			const eff = resolve(SUB_BASE, globals.defaults);
 			eff.routing.post.push("550e8400-e29b-41d4-a716-446655440000");
 			expect(SUB_BASE.routing.post).toHaveLength(0);
@@ -348,19 +348,19 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 	};
 
 	it("不填 → 回落清单第一份。这是**安全网**,不是常态", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.ai.activePreset = undefined;
 		expect(resolveSubscriptionPersona(globals.ai, undefined, BUILTINS).persona.name).toBe("小绫");
 	});
 
 	it("默认配置指向第一份「温柔女仆」", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		expect(globals.ai.activePreset).toBe("gentle-maid");
 		expect(resolveSubscriptionPersona(globals.ai, undefined, BUILTINS).persona.name).toBe("小绫");
 	});
 
 	it("指向主人自己的一份 → 全局改用那份的人格与它写了的 prompt", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.ai.presets = [
 			{ id: "mine", label: "傲娇", persona: TSUNDERE, dynamicPrompt: "傲娇动态" },
 		];
@@ -371,7 +371,7 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 	});
 
 	it("那份没写的那段 prompt 回落内置首份的那段", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.ai.presets = [{ id: "mine", label: "傲娇", persona: TSUNDERE }];
 		globals.ai.activePreset = "mine";
 		expect(resolveSubscriptionPersona(globals.ai, undefined, BUILTINS).liveSummaryPrompt).toBe(
@@ -380,7 +380,7 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 	});
 
 	it("指向一份已不存在的预设 → 回落清单第一份,不炸也不留空人格", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.ai.removedBuiltinPresets = ["gentle-maid"];
 		globals.ai.activePreset = "gone";
 		expect(resolveSubscriptionPersona(globals.ai, undefined, BUILTINS).persona.name).toBe(
@@ -389,7 +389,7 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 	});
 
 	it("per-UP 覆盖仍然压过全局指针 —— per-UP 的语义一点没变", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.ai.presets = [
 			{ id: "mine", label: "傲娇", persona: TSUNDERE },
 			{ id: "critic", label: "评论家", persona: { ...TSUNDERE, name: "评论家" } },
@@ -402,7 +402,7 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 	});
 
 	it("per-UP 显式 inherit → 继承的是**全局指针指的那份**", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.ai.presets = [{ id: "mine", label: "傲娇", persona: TSUNDERE }];
 		globals.ai.activePreset = "mine";
 		const sub: Subscription = { ...SUB_BASE, overrides: { ai: { preset: "inherit" } } };
@@ -412,7 +412,7 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 	});
 
 	it("per-UP 挑一份内置 → 取传进来的(当前语言)内置内容", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		const sub: Subscription = { ...SUB_BASE, overrides: { ai: { preset: "tsundere" } } };
 		expect(resolveSubscriptionPersona(globals.ai, sub.overrides.ai, BUILTINS).persona.name).toBe(
 			BUILTINS[1]?.persona.name,
@@ -422,7 +422,7 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 
 describe("直播拆键(⑬d):全局的出厂值与范围", () => {
 	it("出厂:周期「正在直播」关、间隔 1 小时、启动补报关(与拆键前的出厂行为一致)", () => {
-		const { defaults } = makeDefaultGlobalConfig();
+		const { defaults } = makeDefaultGlobalSettings();
 		expect(defaults.features.liveStreaming).toBe(false);
 		expect(defaults.liveStreaming).toEqual({ streamingIntervalHours: 1 });
 		expect(defaults.liveStart).toEqual({ catchUpOnBoot: false });
@@ -436,9 +436,9 @@ describe("直播拆键(⑬d):全局的出厂值与范围", () => {
 
 	it("间隔是 1–24 的整数:0(旧的「关」)、25、小数都拒收,关的意思交给开关", () => {
 		const withInterval = (hours: number) => {
-			const g = structuredClone(makeDefaultGlobalConfig());
+			const g = structuredClone(makeDefaultGlobalSettings());
 			g.defaults.liveStreaming.streamingIntervalHours = hours;
-			return GlobalConfigSchema.safeParse(g).success;
+			return GlobalSettingsSchema.safeParse(g).success;
 		};
 		expect([0, 25, 1.5, -1].map(withInterval)).toEqual([false, false, false, false]);
 		expect([1, 12, 24].map(withInterval)).toEqual([true, true, true]);

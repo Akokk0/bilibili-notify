@@ -15,7 +15,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import Cards from "../Cards";
 import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
@@ -64,7 +64,7 @@ const GLOBAL_KNOBS = { default: { "glass-opacity": 0.5 } };
 function mockApi(sub: Subscription): void {
 	const defaults = makeDefaults() as unknown as Record<string, unknown>;
 	defaults.cardSkinKnobs = GLOBAL_KNOBS;
-	const globals = { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
+	const globals = { logging: {}, master: {}, defaults } as unknown as GlobalSettings;
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([sub]);
 		if (url === "/api/connections") return Promise.resolve([]);

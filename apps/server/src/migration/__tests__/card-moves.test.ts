@@ -17,7 +17,7 @@
  * 验红:`mutate.py` 式逐条破坏 —— 见每条用例的「验红」。
  */
 
-import { GlobalConfigSchema, SubscriptionSchema } from "@bilibili-notify/internal";
+import { GlobalSettingsSchema, SubscriptionSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { moveGlobalCards, moveSubscriptionCards } from "../card-moves.js";
 import { ZERO_GLOBAL_LIVE_FACTS } from "../live-split.js";
@@ -105,7 +105,7 @@ describe("全局设置:cardStyle / cardStyleByKind → cards", () => {
 			d.cardStyleByKind = {};
 		});
 		expect(defaults.cards).toEqual({ liveCoverImageIds: ["c.png"] });
-		const parsed = GlobalConfigSchema.shape.defaults.shape.cards.parse(defaults.cards);
+		const parsed = GlobalSettingsSchema.shape.defaults.shape.cards.parse(defaults.cards);
 		expect(parsed).toEqual({ enabled: true, liveCoverImageIds: ["c.png"] });
 	});
 

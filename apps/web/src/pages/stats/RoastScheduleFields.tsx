@@ -10,7 +10,7 @@ import { useCoreSettings } from "../../hooks/useSettings";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import type { Connection, PushTarget } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import { RoastRunNowBox } from "./RoastRunNowBox";
 import { STATS_RANGES } from "./ranges";
 
@@ -30,7 +30,7 @@ import { STATS_RANGES } from "./ranges";
  * 并说明,服务端也有同一道闸(见 checkApprovalReachable)。
  */
 
-export type RoastScheduleValue = GlobalConfig["roastSchedule"];
+export type RoastScheduleValue = GlobalSettings["roastSchedule"];
 
 /**
  * 排程卡的**渲染半** —— GlassPanel 壳 + 右上启用开关 + 表单 + 「试一次」的拼装。

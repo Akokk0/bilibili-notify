@@ -13,7 +13,7 @@ import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { PushTarget } from "../../types/domain";
-import type { GlobalConfig } from "../../types/globals";
+import type { GlobalSettings } from "../../types/globals";
 import { MasterSection } from "../system/master-section";
 
 vi.mock("../../hooks/useDirtyDraft", () => ({ useDirtyDraft: () => {} }));
@@ -59,7 +59,7 @@ const TARGETS = [
 ];
 
 function renderCard(targetId: string | undefined, onPatch = vi.fn()) {
-	const draft = { master: { targetId } } as unknown as GlobalConfig;
+	const draft = { master: { targetId } } as unknown as GlobalSettings;
 	render(<MasterSection draft={draft} targets={TARGETS} onPatch={onPatch} />);
 	return onPatch;
 }

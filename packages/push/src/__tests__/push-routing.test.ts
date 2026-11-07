@@ -17,7 +17,7 @@ import {
 	type DeliveryResult,
 	FEATURE_KEYS,
 	type GlobalDefaults,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type NotificationPayload,
 	type PushTarget,
@@ -85,7 +85,7 @@ function makeStore(subs: Subscription[]): SubscriptionStore {
 
 function loopbackDefaults(): GlobalDefaults {
 	// 任意 features=true、quietHours=空,使 runtime gate 直接放行
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	for (const k of FEATURE_KEYS) g.defaults.features[k] = true;
 	g.defaults.schedule.quietHours = [];
 	return g.defaults;

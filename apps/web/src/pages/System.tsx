@@ -18,7 +18,7 @@ import { useSettingsDraft } from "../hooks/useSettingsDraft";
 import { i18n, useT, useTextOptions } from "../i18n";
 import { api } from "../services/api";
 import type { Connection, PushTarget } from "../types/domain";
-import type { GlobalConfigPatch, SettingsPatch } from "../types/globals";
+import type { GlobalSettingsPatch, SettingsPatch } from "../types/globals";
 import { SkinSection } from "./skins/SkinSection";
 import { AccountSection } from "./system/account-section";
 import { CredentialsSection } from "./system/credentials-section";
@@ -121,7 +121,7 @@ const HASH_SECTION: Readonly<Record<string, SystemSectionId>> = {
  * 「拷一份、删掉那个键、整份回传」,而整份回传走的是合并,被删的键当场被合回来
  * (同时有两个以上模块覆盖时尤其明显:只剩一个时删空成 undefined 反而歪打正着)。
  */
-function deepMerge<T>(base: T, patch: GlobalConfigPatch | SettingsPatch): T {
+function deepMerge<T>(base: T, patch: GlobalSettingsPatch | SettingsPatch): T {
 	if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return patch as T;
 	const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
 	for (const k of Object.keys(patch)) {
@@ -139,7 +139,7 @@ function deepMerge<T>(base: T, patch: GlobalConfigPatch | SettingsPatch): T {
 			typeof bv === "object" &&
 			!Array.isArray(bv)
 		) {
-			out[k] = deepMerge(bv, pv as GlobalConfigPatch);
+			out[k] = deepMerge(bv, pv as GlobalSettingsPatch);
 		} else {
 			out[k] = pv;
 		}
@@ -201,7 +201,7 @@ export default function System() {
 		setDraft((d) => (d ? deepMerge(d, delta) : d));
 	}
 	/** 只改核心那份的几张卡(主人目标、指令、链接解析)用它:它们认的是核心那份的形状。 */
-	function patchCoreDraft(delta: GlobalConfigPatch): void {
+	function patchCoreDraft(delta: GlobalSettingsPatch): void {
 		patchDraft({ core: delta });
 	}
 

@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { MessageBus, ServiceContext } from "@bilibili-notify/internal";
-import { type Disposable, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { type Disposable, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../config/schema.js";
 import { CORE_SETTINGS_FILE, createConfigStore } from "../config/store.js";
@@ -58,7 +58,7 @@ describe("stats.enabled × 配置仓", () => {
 	}
 
 	it("老的设置文件(盘上没有 stats 这一节)开机读得进来,补成开着", async () => {
-		const { stats: _dropped, ...old } = makeDefaultGlobalConfig();
+		const { stats: _dropped, ...old } = makeDefaultGlobalSettings();
 		const file = join(dataDir, ...CORE_SETTINGS_FILE);
 		await mkdir(dirname(file), { recursive: true });
 		await writeFile(file, JSON.stringify(old));
@@ -73,7 +73,7 @@ describe("stats.enabled × 配置仓", () => {
 		const store = open();
 		await store.load();
 		await store.setGlobals({ ...store.getGlobals(), stats: { enabled: false } });
-		const { stats: _dropped, ...fromOldBackup } = makeDefaultGlobalConfig();
+		const { stats: _dropped, ...fromOldBackup } = makeDefaultGlobalSettings();
 
 		await store.replaceSections({ globals: fromOldBackup as never });
 
@@ -83,7 +83,7 @@ describe("stats.enabled × 配置仓", () => {
 	it("setGlobals 收到没有 stats 的整份设置也一样补成开着", async () => {
 		const store = open();
 		await store.load();
-		const { stats: _dropped, ...old } = makeDefaultGlobalConfig();
+		const { stats: _dropped, ...old } = makeDefaultGlobalSettings();
 		await store.setGlobals(old as never);
 		expect(store.getGlobals().stats).toEqual({ enabled: true });
 	});

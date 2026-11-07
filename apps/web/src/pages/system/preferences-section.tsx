@@ -1,17 +1,17 @@
-import type { GlobalConfigView } from "@bilibili-notify/contract";
+import type { GlobalSettingsView } from "@bilibili-notify/contract";
 import { DEFAULT_VOICE, LOCALES, type Locale, type Voice } from "@bilibili-notify/internal/i18n";
 import { GlassBox, Icon } from "@bilibili-notify/ui";
 import { Field, Picker, TInput } from "../../components/forms";
 import { useT, useTextOptions } from "../../i18n";
-import type { GlobalConfigPatch } from "../../types/globals";
+import type { GlobalSettingsPatch } from "../../types/globals";
 
 /** 只编辑系统共用草稿；保存成功之前不切全局字典或浏览器偏好。 */
 export function PreferencesSection({
 	draft,
 	onPatch,
 }: {
-	draft: GlobalConfigView;
-	onPatch: (patch: GlobalConfigPatch) => void;
+	draft: GlobalSettingsView;
+	onPatch: (patch: GlobalSettingsPatch) => void;
 }) {
 	const t = useT();
 	const textOptions = useTextOptions();

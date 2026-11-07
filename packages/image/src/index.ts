@@ -25,8 +25,8 @@ export { formatCardTime } from "./format";
 export { htmlToPlain } from "./html-to-plain";
 export {
 	ImageRenderer,
-	type ImageRendererConfig,
 	type ImageRendererOptions,
+	type ImageRendererSettings,
 	type RoastBoardData,
 	type RoastSoloData,
 } from "./image-renderer";

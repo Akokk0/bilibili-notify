@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { AIProviderProfileSchema } from "../common";
-import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { AiProviderProfileSchema } from "../common";
+import { GlobalSettingsSchema, makeDefaultGlobalSettings } from "../globals";
 import {
 	hasSecretCells,
 	mapMarked,
@@ -167,8 +167,8 @@ describe("通用设置规则上的标记", () => {
 		return out;
 	};
 	it("AI 的两把 key 与搜索 key 是 secret,两处 baseUrl 与市场源 url 是仅备份", () => {
-		const g = makeDefaultGlobalConfig();
-		g.ai.providers.ds = AIProviderProfileSchema.parse({
+		const g = makeDefaultGlobalSettings();
+		g.ai.providers.ds = AiProviderProfileSchema.parse({
 			provider: "deepseek",
 			apiKey: "k-main",
 			baseUrl: "https://api.example/v1",
@@ -176,7 +176,7 @@ describe("通用设置规则上的标记", () => {
 		});
 		g.ai.search.keys = { bocha: "k-bocha", tavily: "k-tavily" };
 		g.marketplace = { sources: [{ id: "s1", url: "https://m.example/index.json" }] };
-		const got = marked(GlobalConfigSchema, g);
+		const got = marked(GlobalSettingsSchema, g);
 		expect(got).toEqual(
 			expect.arrayContaining([
 				{ mark: "secret", value: "k-main" },

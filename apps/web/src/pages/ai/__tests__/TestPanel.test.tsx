@@ -11,7 +11,7 @@ import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-control
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { AISettingsDraft } from "../../../types/globals";
+import type { AiSettingsDraft } from "../../../types/globals";
 import { AiTestPanel } from "../TestPanel";
 
 vi.mock("../../../services/api", () => ({
@@ -45,7 +45,7 @@ const DRAFT = {
 	model: "test-model",
 	persona: { name: "恶魔兔", traits: "调皮，会整活" },
 	presets: [],
-} as unknown as AISettingsDraft;
+} as unknown as AiSettingsDraft;
 
 function renderPanel() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

@@ -39,7 +39,7 @@ import { SECTION_ACCENT } from "../../config/section-accents";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import {
-	type AIOverride,
+	type AiOverrides,
 	type ContentFiltersOverride,
 	type FeatureKey,
 	type ImageGroupOverride,
@@ -55,7 +55,7 @@ import {
 	subscriptionIdentityOf,
 	type TemplateOverride,
 } from "../../types/domain";
-import type { AISettings, GlobalDefaults, ImageGroupSettings } from "../../types/globals";
+import type { AiSettings, GlobalDefaults, ImageGroupSettings } from "../../types/globals";
 import { displayName, profileAvatarUrl, subscriptionColor } from "../up/helpers";
 import { type SubscriptionPlatform, subscriptionPlatformOf } from "../up/subscription-source";
 import { MessageLayoutEditor } from "./MessageLayoutEditor";
@@ -126,7 +126,7 @@ export interface PerUpEditorProps {
 	/** 当前语言的出厂文字:全局没存的文字格,订阅覆盖的基线取它。 */
 	factory: BuiltinTemplates;
 	/** 全局的人格库(没删的内置 + 主人自己的,内置取当前语言):「AI 人格」那一节从里面挑一份。 */
-	presets: AISettings["presets"];
+	presets: AiSettings["presets"];
 	section: SectionId;
 }
 
@@ -1291,7 +1291,7 @@ function SpecialViewerBox({
  * schema/subscriptions.ts 的说明)。原样带上就等于把一份死配置重新写回盘上,下一个人
  * 打开文件照样看得见,还以为它在起作用;从零造之后 buildPatch 会对它们发显式 null。
  */
-function pickAiOverride(presetId: string): AIOverride {
+function pickAiOverride(presetId: string): AiOverrides {
 	return { preset: presetId };
 }
 
@@ -1300,9 +1300,9 @@ function AiOverrideBox({
 	onChange,
 	presets,
 }: {
-	value: AIOverride | undefined;
-	onChange: (next: AIOverride | undefined) => void;
-	presets: AISettings["presets"];
+	value: AiOverrides | undefined;
+	onChange: (next: AiOverrides | undefined) => void;
+	presets: AiSettings["presets"];
 }) {
 	const tx = useT();
 	// 人格一律在「智能女仆」页里写,这里只负责**挑一份**。所以选项就是已有的那几份,

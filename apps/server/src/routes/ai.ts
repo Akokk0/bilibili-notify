@@ -11,8 +11,8 @@ import type {
 } from "@bilibili-notify/contract";
 import { AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
 import {
-	type AISettings,
-	AISettingsSchema,
+	type AiSettings,
+	AiSettingsSchema,
 	aiProfileAt,
 	type CardKind,
 	fail,
@@ -73,7 +73,7 @@ const TestPushRequestSchema = z.object({
 	targetId: z.uuid(),
 	message: z.string().min(1).max(500),
 	/** AI 页的草稿配置 —— 未保存的人格改动就靠它进来。 */
-	ai: AISettingsSchema,
+	ai: AiSettingsSchema,
 });
 
 // AiTestPushResponse 在 @bilibili-notify/contract(web 同源消费)。
@@ -858,10 +858,10 @@ async function resolveAttachedImages(
  * 主模型与视觉副模型两把各自判断:主人可能只换了其中一把。
  */
 export function withStoredApiKey(
-	draft: AISettings,
-	stored: AISettings,
+	draft: AiSettings,
+	stored: AiSettings,
 	rawDraft: unknown,
-): AISettings {
+): AiSettings {
 	const id = draft.activeProfile;
 	const d = aiProfileAt(draft.providers, id);
 	if (!d) return draft;
@@ -888,6 +888,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
-// 草稿 AI 配置 → CommentaryGeneratorConfig 的翻译住在 `runtime/ai-config.ts` ——
+// 草稿 AI 配置 → CommentaryGeneratorSettings 的翻译住在 `runtime/ai-config.ts` ——
 // 常驻 generator 与统计页的锐评用的是同一份映射。这里曾经自带一份一模一样的,
 // 于是「人格该从哪儿读」有了两个答案,修一处另一处照旧。

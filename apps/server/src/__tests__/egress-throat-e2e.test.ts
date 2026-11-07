@@ -26,7 +26,7 @@ import type {
 	ExtensionsResponse,
 	HistoryResponse,
 } from "@bilibili-notify/contract";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
@@ -293,7 +293,7 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 
 		// —— 智能女仆:指向假模型服务(启用前的预检会真问它一句,假服务答得上)。锐评的定时配置:
 		// 审批开着、目标是测试群(审批预览那条用)。
-		const ai = makeDefaultGlobalConfig().ai;
+		const ai = makeDefaultGlobalSettings().ai;
 		const { presets: _presets, removedBuiltinPresets: _removed, ...selection } = aiSettings(ai);
 		await okRes(
 			await api(
@@ -318,7 +318,7 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 	});
 
 	/** 指向假模型服务的 AI 草稿设置(同时给 `/api/ai/test` 当请求体、给设置的 PATCH 当补丁)。 */
-	function aiSettings(base: ReturnType<typeof makeDefaultGlobalConfig>["ai"]) {
+	function aiSettings(base: ReturnType<typeof makeDefaultGlobalSettings>["ai"]) {
 		return {
 			...base,
 			activeProfile: "fake",
@@ -411,7 +411,7 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 					json({
 						targetId: ID.group,
 						message: "在吗?",
-						ai: { ...aiSettings(makeDefaultGlobalConfig().ai), enabled: true },
+						ai: { ...aiSettings(makeDefaultGlobalSettings().ai), enabled: true },
 					}),
 				),
 			);

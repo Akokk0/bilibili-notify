@@ -4,13 +4,13 @@
  * store 用真的 `createI18n` 搭的小样例,看的是 `state()` 真实的语言与口吻。
  */
 
-import type { ConfigScope, GlobalConfig } from "@bilibili-notify/internal";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import type { ConfigScope, GlobalSettings } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
 import { describe, expect, it } from "vite-plus/test";
 import { bindTextSettings } from "../bind-settings.js";
 
-function setup(initial: (g: GlobalConfig) => void = () => {}) {
+function setup(initial: (g: GlobalSettings) => void = () => {}) {
 	const i18n = createI18n<string, Locale>({
 		dicts: {
 			"zh-CN": { plain: { hi: "你好" }, maid: { hi: "主人好" } },
@@ -23,7 +23,7 @@ function setup(initial: (g: GlobalConfig) => void = () => {}) {
 		locale: "en",
 		voice: "plain",
 	});
-	let globals = makeDefaultGlobalConfig();
+	let globals = makeDefaultGlobalSettings();
 	initial(globals);
 	const handlers = new Set<(scope: ConfigScope) => void>();
 	const configStore = {
@@ -33,7 +33,7 @@ function setup(initial: (g: GlobalConfig) => void = () => {}) {
 			return { dispose: () => void handlers.delete(fn) };
 		},
 	};
-	const change = (mutate: (g: GlobalConfig) => void, scope: ConfigScope = "globals") => {
+	const change = (mutate: (g: GlobalSettings) => void, scope: ConfigScope = "globals") => {
 		const next = structuredClone(globals);
 		mutate(next);
 		globals = next;

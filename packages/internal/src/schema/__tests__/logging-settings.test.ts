@@ -8,9 +8,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
 	DEFAULT_PROFILE_REFRESH_CRON,
-	GlobalConfigSchema,
+	GlobalSettingsSchema,
 	LoggingSettingsSchema,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 } from "../globals";
 
 describe("LoggingSettingsSchema", () => {
@@ -63,7 +63,7 @@ describe("LoggingSettingsSchema", () => {
 
 describe("核心设置的顶层形状", () => {
 	it("全新安装:logging 与 profileRefreshCron 是出厂值,没有 app", () => {
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		expect(g.logging).toEqual({
 			level: "info",
 			levels: {},
@@ -76,22 +76,22 @@ describe("核心设置的顶层形状", () => {
 	});
 
 	it("缺 profileRefreshCron 的盘补默认;缺 logging 照旧抛(与原来的 app 同一个松紧)", () => {
-		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		const g = makeDefaultGlobalSettings() as unknown as Record<string, unknown>;
 		delete g.profileRefreshCron;
-		expect(GlobalConfigSchema.parse(g).profileRefreshCron).toBe(DEFAULT_PROFILE_REFRESH_CRON);
+		expect(GlobalSettingsSchema.parse(g).profileRefreshCron).toBe(DEFAULT_PROFILE_REFRESH_CRON);
 		delete g.logging;
-		expect(GlobalConfigSchema.safeParse(g).success).toBe(false);
+		expect(GlobalSettingsSchema.safeParse(g).success).toBe(false);
 	});
 
 	it("顶层写 app 被剥掉、不抛", () => {
-		const g = { ...makeDefaultGlobalConfig(), app: { logLevel: "debug" } };
-		const parsed = GlobalConfigSchema.parse(g);
+		const g = { ...makeDefaultGlobalSettings(), app: { logLevel: "debug" } };
+		const parsed = GlobalSettingsSchema.parse(g);
 		expect("app" in parsed).toBe(false);
 		expect(parsed.logging.level).toBe("info");
 	});
 
 	it("profileRefreshCron 保留任意字符串(语法不在 schema 里校验)", () => {
-		const g = { ...makeDefaultGlobalConfig(), profileRefreshCron: "not a cron" };
-		expect(GlobalConfigSchema.parse(g).profileRefreshCron).toBe("not a cron");
+		const g = { ...makeDefaultGlobalSettings(), profileRefreshCron: "not a cron" };
+		expect(GlobalSettingsSchema.parse(g).profileRefreshCron).toBe("not a cron");
 	});
 });

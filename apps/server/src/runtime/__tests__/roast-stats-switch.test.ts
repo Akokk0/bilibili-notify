@@ -9,7 +9,7 @@
  */
 
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
-import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { generateBoardRoast, generateSoloRoast } from "../../stats/roast-generate.js";
 import { createRoastScheduler } from "../roast-scheduler.js";
@@ -31,7 +31,7 @@ const STATS_OFF_MESSAGE = "主人，数据统计已关闭，开启后女仆才�
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
 function makeGlobals(statsEnabled: boolean) {
-	const globals = makeDefaultGlobalConfig();
+	const globals = makeDefaultGlobalSettings();
 	globals.stats.enabled = statsEnabled;
 	globals.ai = {
 		...globals.ai,

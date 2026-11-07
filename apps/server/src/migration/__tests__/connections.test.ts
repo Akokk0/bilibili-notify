@@ -75,7 +75,7 @@ describe("migrateConfigSections —— connector 从 config.transport 提上来"
 	});
 
 	it("onebot 没有 transport 字段的史前条目回落 http —— 与 schema 的 default 同一个答案", () => {
-		// OnebotHttpConfigSchema 的 `transport: z.literal("http").default("http")` 就是为这批人留的。
+		// OnebotHttpSettingsSchema 的 `transport: z.literal("http").default("http")` 就是为这批人留的。
 		const out = migrateConfigSections({
 			connections: [onebotV1({ config: { baseUrl: "http://host" } })],
 		});

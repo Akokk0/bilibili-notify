@@ -16,7 +16,7 @@
 
 import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import { CommentaryGenerator, type CommentaryGeneratorSettings } from "../commentary-generator";
 import { aiConfig, streamOf, testNouns, textChunk } from "./harness";
 
 // ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ vi.mock("../tools", () => ({
 // ---------------------------------------------------------------------------
 
 /** 一台记下全部 info 日志的 generator。 */
-function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
+function makeGen(over: Partial<CommentaryGeneratorSettings> = {}): {
 	gen: CommentaryGenerator;
 	info: string[];
 } {

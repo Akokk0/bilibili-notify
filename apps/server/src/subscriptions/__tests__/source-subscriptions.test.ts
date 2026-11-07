@@ -1,6 +1,6 @@
 import {
-	type GlobalConfig,
-	makeDefaultGlobalConfig,
+	type GlobalSettings,
+	makeDefaultGlobalSettings,
 	makeEmptySubscription,
 	type Subscription,
 } from "@bilibili-notify/internal";
@@ -20,7 +20,7 @@ const sub = (
 	...patch,
 });
 
-const defaults = (): GlobalConfig["defaults"] => makeDefaultGlobalConfig().defaults;
+const defaults = (): GlobalSettings["defaults"] => makeDefaultGlobalSettings().defaults;
 
 describe("sourceSubscriptionViews", () => {
 	it("只列本来源的、启用中的订阅", () => {
@@ -39,7 +39,7 @@ describe("sourceSubscriptionViews", () => {
 
 	it("features 取自折好的开关:订阅覆盖压过全局默认", () => {
 		const base = defaults();
-		const globalOff: GlobalConfig["defaults"] = {
+		const globalOff: GlobalSettings["defaults"] = {
 			...base,
 			features: { ...base.features, post: false, liveStart: true },
 		};
@@ -135,7 +135,10 @@ describe("sourceSubscriptionViews", () => {
 
 	it("全局的作品开关一翻、订阅没单独覆盖:features 里的 post 跟着翻;订阅单独开压过全局关", () => {
 		const base = defaults();
-		const off: GlobalConfig["defaults"] = { ...base, features: { ...base.features, post: false } };
+		const off: GlobalSettings["defaults"] = {
+			...base,
+			features: { ...base.features, post: false },
+		};
 		const subs = [sub("a", "1"), sub("b", "2", { overrides: { features: { post: true } } })];
 		const on = sourceSubscriptionViews(subs, KEY, base);
 		const flipped = sourceSubscriptionViews(subs, KEY, off);

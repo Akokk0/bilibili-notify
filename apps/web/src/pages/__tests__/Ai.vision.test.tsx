@@ -13,7 +13,7 @@
  * 那两格 —— 写串了就是拿副模型的 key 去发主请求)。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -29,7 +29,7 @@ import { api } from "../../services/api";
 
 /** 主模型落在 DeepSeek —— 正是「主模型没有视觉能力」那一档,副模型必然在别家。 */
 function globals() {
-	const g = makeDefaultGlobalConfig();
+	const g = makeDefaultGlobalSettings();
 	g.ai.enabled = true;
 	g.ai.activeProfile = "deepseek";
 	g.ai.providers = {

@@ -4,7 +4,7 @@ import type {
 	HealthResponse,
 	SystemNotice,
 } from "@bilibili-notify/contract";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -60,7 +60,7 @@ function mountApp(
 		session?: { authRequired: boolean; authed: boolean };
 	} = {},
 ) {
-	const core = { ...makeDefaultGlobalConfig(), locale: "zh-CN", voice: "plain" };
+	const core = { ...makeDefaultGlobalSettings(), locale: "zh-CN", voice: "plain" };
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.stubGlobal(
 		"WebSocket",
@@ -768,7 +768,7 @@ it("系统账号按来源扫码，默认可排序且不需要进入调整模式"
 
 it("排序沿系统草稿保存，失败保稿，保留暂不在册键和重复键", async () => {
 	const core = {
-		...makeDefaultGlobalConfig(),
+		...makeDefaultGlobalSettings(),
 		locale: "zh-CN",
 		voice: "plain",
 		onboarding: { skipped: true },
@@ -887,7 +887,7 @@ it("多个来源等待扫码时只打开一个弹窗，可分别继续原码", a
 
 it("素材库可独立打开，按图片与字体展示已有元数据", async () => {
 	const core = {
-		...makeDefaultGlobalConfig(),
+		...makeDefaultGlobalSettings(),
 		locale: "zh-CN",
 		voice: "plain",
 		onboarding: { skipped: true },
@@ -925,7 +925,7 @@ it("素材库图片预览使用鉴权读取的对象地址，并在关闭大图�
 		},
 	);
 	const core = {
-		...makeDefaultGlobalConfig(),
+		...makeDefaultGlobalSettings(),
 		locale: "zh-CN",
 		voice: "plain",
 		onboarding: { skipped: true },
@@ -957,7 +957,7 @@ it("删除字体先确认，被引用时保留原话与文件，解除引用后�
 	let deletes = 0;
 	const reason = "该字体被全局默认使用，请先换掉再删除";
 	const core = {
-		...makeDefaultGlobalConfig(),
+		...makeDefaultGlobalSettings(),
 		locale: "zh-CN",
 		voice: "plain",
 		onboarding: { skipped: true },
@@ -1008,7 +1008,7 @@ it("确认导入图片失败保留清单，取消后再传同一文件可确认�
 	let ids: string[] = [];
 	let failed = true;
 	const core = {
-		...makeDefaultGlobalConfig(),
+		...makeDefaultGlobalSettings(),
 		locale: "zh-CN",
 		voice: "plain",
 		onboarding: { skipped: true },
@@ -1060,7 +1060,7 @@ it("图片删除失败可重试，等待响应时不重复发起，成功后刷�
 		deletes = 0;
 	let release: (response: Response) => void = () => {};
 	const core = {
-		...makeDefaultGlobalConfig(),
+		...makeDefaultGlobalSettings(),
 		locale: "zh-CN",
 		voice: "plain",
 		onboarding: { skipped: true },
@@ -1103,7 +1103,7 @@ it("素材读取失败不展示旧缓存为空库，重试成功后恢复清单"
 	const id = `${"4".repeat(32)}.png`;
 	let failed = false;
 	const core = {
-		...makeDefaultGlobalConfig(),
+		...makeDefaultGlobalSettings(),
 		locale: "zh-CN",
 		voice: "plain",
 		onboarding: { skipped: true },

@@ -8,7 +8,7 @@ import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 
 import {
 	type Connection,
-	makeDefaultGlobalConfig,
+	makeDefaultGlobalSettings,
 	markBackupOnly,
 	markSecret,
 	neutralPlatformSnapshot,
@@ -74,7 +74,7 @@ const LIST_FIELD = {
 function baseInput() {
 	return {
 		views,
-		globals: makeDefaultGlobalConfig(),
+		globals: makeDefaultGlobalSettings(),
 		connections: [] as Connection[],
 		connectionSecrets: createSecretCellsReader(
 			{
@@ -90,7 +90,7 @@ function baseInput() {
 
 describe("secretSettingValues", () => {
 	it("核心设置:AI 两把 apiKey 与搜索的 key 收进来;baseUrl 与默认空串不收", () => {
-		const globals = makeDefaultGlobalConfig();
+		const globals = makeDefaultGlobalSettings();
 		globals.ai.providers = {
 			deepseek: {
 				provider: "deepseek",
@@ -187,7 +187,7 @@ describe("bindSettingsRedaction", () => {
 	function setup() {
 		const redactor = createValueRedactor();
 		const replace = vi.spyOn(redactor, "replace");
-		let globals = makeDefaultGlobalConfig();
+		let globals = makeDefaultGlobalSettings();
 		let connections: Connection[] = [];
 		let extensionSettings: Record<string, unknown> = {};
 		let fields: readonly SettingsField[] | undefined = [SECRET_FIELD, PLAIN_FIELD];
@@ -244,7 +244,7 @@ describe("bindSettingsRedaction", () => {
 
 	it("开机推一次;globals 改了 key 之后旧 key 不再遮、新 key 遮", () => {
 		const ctx = setup();
-		const g = makeDefaultGlobalConfig();
+		const g = makeDefaultGlobalSettings();
 		g.ai.providers = {
 			deepseek: {
 				provider: "deepseek",

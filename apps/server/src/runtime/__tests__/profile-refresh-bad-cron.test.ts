@@ -9,7 +9,7 @@
  * 桌面端"升级后端起不来,清空数据才恢复"报告)。
  */
 
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 
@@ -42,7 +42,7 @@ vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 const { startMigratedProfileRefresh } = await import("./profile-refresh-support.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
-const GLOBALS = { profileRefreshCron: "BAD CRON" } as unknown as GlobalConfig;
+const GLOBALS = { profileRefreshCron: "BAD CRON" } as unknown as GlobalSettings;
 const SUB = { id: "sub-1", uid: "12345", enabled: true };
 
 let handle: { dispose(): void } | undefined;
