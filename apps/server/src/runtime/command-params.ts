@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 /**
  * 指令参数 —— 签名声明与入参解析。
@@ -96,10 +97,8 @@ export function parseSignature(signature: string): ParamSpec[] {
 /** 解析出来的参数值。`text` 与 `string` 是字符串,`number` 与 `duration` 是数字。 */
 export type ParamValue = string | number;
 
-export type ParseResult =
-	| { ok: true; values: Record<string, ParamValue> }
-	/** `message` 是直接发给主人的人话,不是给日志看的。 */
-	| { ok: false; message: string };
+/** 输入不合法回 `invalid`，`message` 仍是直接发给主人的原提示。 */
+export type ParseArgsResult = Result<{ values: Record<string, ParamValue> }>;
 
 /**
  * 时长单位 → 毫秒。中英文都收 —— 主人是在手机上敲这些字的。
@@ -184,7 +183,7 @@ export function parseArgs(
 	specs: readonly ParamSpec[],
 	input: string,
 	labels?: Readonly<Record<string, string>>,
-): ParseResult {
+): ParseArgsResult {
 	const text = input.trim();
 	const values: Record<string, ParamValue> = {};
 	// 用游标而不是 split:`text` 要拿到**原始**的剩余文本,split 会把中间的连续空白
@@ -195,39 +194,39 @@ export function parseArgs(
 		if (pos >= text.length) {
 			// 可选参数缺席是正常的:不塞进 values,handler 那边就是 undefined。
 			if (!spec.required) continue;
-			return {
-				ok: false,
-				message: serverText("service.runtime.command-params.text.8", {
+			return fail(
+				"invalid",
+				serverText("service.runtime.command-params.text.8", {
 					value0: labels?.[spec.name] ?? spec.label ?? spec.name,
 				}),
-			};
+			);
 		}
 		// text 吞掉剩余全部(含空白)。parseSignature 保证了它只能是最后一个。
 		const token = spec.type === "text" ? text.slice(pos) : readToken(text, pos);
 		pos += token.length;
 		const value = coerce(spec, token);
 		if (value === null) {
-			return {
-				ok: false,
-				message: serverText("service.runtime.command-params.text.9", {
+			return fail(
+				"invalid",
+				serverText("service.runtime.command-params.text.9", {
 					value0: labels?.[spec.name] ?? spec.label ?? spec.name,
 					value1: describe(spec.type),
 				}),
-			};
+			);
 		}
 		values[spec.name] = value;
 	}
 	// 多余的内容不能静默丢掉 —— 主人会以为它生效了。
 	// (最后一个参数是 text 时不会走到这儿:它已经吞完了。)
 	if (text.slice(pos).trim()) {
-		return {
-			ok: false,
-			message: specs.length
+		return fail(
+			"invalid",
+			specs.length
 				? serverText("service.runtime.command-params.text.10", { count: specs.length })
 				: serverText("service.runtime.command-params.text.11"),
-		};
+		);
 	}
-	return { ok: true, values };
+	return ok({ values });
 }
 
 // ---------------------------------------------------------------------------

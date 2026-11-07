@@ -54,6 +54,38 @@ describe("parseSignature", () => {
 });
 
 describe("parseArgs", () => {
+	it("输入拒绝返回标准 invalid 结果，调用方仍能直接读取原提示", () => {
+		expect([
+			parseArgs(parseSignature("<duration:duration|时长>"), ""),
+			parseArgs(parseSignature("[days:number|天数]"), "七天"),
+			parseArgs(parseSignature("<duration:duration|时长>"), "一会儿"),
+			parseArgs(parseSignature("<duration:duration|时长>"), "3h 多余"),
+			parseArgs([], "多余"),
+			parseArgs(parseSignature("<duration:duration|时长>"), "", { duration: "Period" }),
+		]).toEqual([
+			{ ok: false, code: "invalid", message: "缺少参数「时长」" },
+			{ ok: false, code: "invalid", message: "参数「天数」看不懂:要填一个整数" },
+			{
+				ok: false,
+				code: "invalid",
+				message: "参数「时长」看不懂:要填一段时长，比如 3h、30分钟、1天",
+			},
+			{ ok: false, code: "invalid", message: "参数给多了，这条指令只要 1 个" },
+			{ ok: false, code: "invalid", message: "这条指令不需要参数" },
+			{ ok: false, code: "invalid", message: "缺少参数「Period」" },
+		]);
+	});
+
+	it.each([
+		["<duration:duration|时长>", "", "缺少参数「时长」"],
+		["[days:number|天数]", "七天", "参数「天数」看不懂:要填一个整数"],
+		["<duration:duration|时长>", "一会儿", "参数「时长」看不懂:要填一段时长，比如 3h、30分钟、1天"],
+		["<duration:duration|时长>", "3h 多余", "参数给多了，这条指令只要 1 个"],
+		["", "多余", "这条指令不需要参数"],
+	])("拒绝 %s 的输入 %s 时保留原提示", (signature, input, message) => {
+		expect(parseArgs(parseSignature(signature), input)).toMatchObject({ ok: false, message });
+	});
+
 	it("string:取一段不含空白的文本", () => {
 		const specs = parseSignature("<uid:string>");
 		expect(parseArgs(specs, "12345")).toEqual({ ok: true, values: { uid: "12345" } });
@@ -203,6 +235,7 @@ it("reads supplied argument labels without changing the machine signature", () =
 	const specs = parseSignature("<duration:duration>");
 	expect(parseArgs(specs, "", { duration: "Period" })).toEqual({
 		ok: false,
+		code: "invalid",
 		message: "缺少参数「Period」",
 	});
 	expect(parseArgs(specs, "3h", { duration: "Period" })).toEqual({

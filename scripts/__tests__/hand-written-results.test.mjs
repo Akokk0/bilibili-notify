@@ -50,7 +50,6 @@ export const RATCHET = {
 	"apps/server/src/extensions/marketplace.ts": 14,
 	"apps/server/src/extensions/settings-io.ts": 8,
 	"apps/server/src/routes/ai.ts": 2,
-	"apps/server/src/runtime/command-params.ts": 4,
 	"apps/server/src/skins/ai-edit.ts": 3,
 	"apps/server/src/skins/package.ts": 5,
 	"apps/server/src/skins/schema.ts": 5,

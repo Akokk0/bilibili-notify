@@ -110,6 +110,22 @@ describe("路由", () => {
 });
 
 describe("参数", () => {
+	it.each([
+		["", "缺少参数「时长」"],
+		[" 一会儿", "参数「时长」看不懂:要填一段时长，比如 3h、30分钟、1天"],
+		[" 3h 多余", "参数给多了，这条指令只要 1 个"],
+	])("参数拒绝 %s 只回复原提示且不执行指令", async (args, message) => {
+		const run = vi.fn(async () => {});
+		const { dispatcher, reply } = makeDispatcher([
+			{ name: "mute", signature: "<duration:duration|时长>", run },
+		]);
+
+		await dispatcher.handleMessage({ address: MASTER, text: `/mute${args}` }, META);
+
+		expect(reply.mock.calls).toEqual([[message]]);
+		expect(run).not.toHaveBeenCalled();
+	});
+
 	it("按签名解析后再交给 handler —— handler 拿到的是已校验的值,不是原始文本", async () => {
 		const run = vi.fn(async () => {});
 		const { dispatcher } = makeDispatcher([{ name: "静音", signature: "<时长:duration>", run }]);
