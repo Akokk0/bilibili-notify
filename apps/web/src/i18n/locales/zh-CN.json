@@ -3127,7 +3127,7 @@
 	"library.dashboardSelectHint": "为浅色、深色模式分别选用皮肤；整理、调整与导入导出请前往资源库。",
 	"library.skinsReadFailed": "皮肤列表暂时无法读取，请重试。",
 	"library.manageResources": "管理资源",
-	"library.manageResourcesHint": "在新页面打开资源库，保留当前选择与未保存的设置",
+	"library.manageResourcesHint": "前往资源库的对应分类",
 	"library.imagesDescription": "卡片中反复选用的图片",
 	"library.fontsDescription": "卡片渲染使用的字体文件",
 	"library.imagesTitle": "图片",

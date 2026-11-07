@@ -8,6 +8,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { api } from "../../../services/api";
 import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
@@ -65,11 +66,24 @@ vi.mock("../../../services/api", () => ({
 	},
 }));
 
+function Location() {
+	const location = useLocation();
+	return (
+		<output aria-label="当前位置">
+			{location.pathname}
+			{location.search}
+		</output>
+	);
+}
+
 function renderSection(mode: "manage" | "select" = "manage") {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<SkinSection mode={mode} />
+			<MemoryRouter>
+				<Location />
+				<SkinSection mode={mode} />
+			</MemoryRouter>
 		</QueryClientProvider>,
 	);
 }
@@ -95,17 +109,16 @@ describe("SkinSection", () => {
 		return screen.getByRole("group", { name });
 	}
 
-	it("系统页只选用；管理在新页打开，不改当前深浅色槽位", async () => {
+	it("系统页只选用；管理在当前页跳转，不改当前深浅色槽位", async () => {
 		const open = vi.spyOn(window, "open").mockReturnValue(null);
 		try {
 			renderSection("select");
 			await screen.findAllByText("樱花夜");
 			fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
-			expect(open).toHaveBeenCalledWith(
+			expect(screen.getByLabelText("当前位置").textContent).toBe(
 				"/library?category=dashboard-skins",
-				"_blank",
-				"noopener,noreferrer",
 			);
+			expect(open).not.toHaveBeenCalled();
 			expect(H.putCalls).toEqual([]);
 			expect(screen.queryByRole("button", { name: "调整" })).toBeNull();
 			expect(screen.queryByRole("button", { name: "上传皮肤包" })).toBeNull();

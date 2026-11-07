@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import { GalleryPicker } from "../GalleryPicker";
@@ -27,9 +28,24 @@ vi.mock("../../../services/api", () => ({
 	},
 }));
 
+function Location() {
+	const location = useLocation();
+	return (
+		<output aria-label="当前位置">
+			{location.pathname}
+			{location.search}
+		</output>
+	);
+}
+
 function renderWithQuery(node: ReactNode) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
+	return render(
+		<MemoryRouter>
+			<Location />
+			<QueryClientProvider client={qc}>{node}</QueryClientProvider>
+		</MemoryRouter>,
+	);
 }
 
 const REAL = `${"1".repeat(32)}.png`;
@@ -45,7 +61,7 @@ describe("GalleryPicker", () => {
 	});
 	afterEach(() => cleanup());
 
-	it("管理资源在新页打开图片分类，保留选择窗中尚未确认的选择", async () => {
+	it("管理资源在当前页进入图片分类，不提交未确认选择", async () => {
 		const open = vi.spyOn(window, "open").mockReturnValue(null);
 		const onChange = vi.fn();
 		try {
@@ -53,15 +69,10 @@ describe("GalleryPicker", () => {
 			fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
 			fireEvent.click(await screen.findByRole("button", { name: "选择图片 1" }));
 			fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
-			expect(open).toHaveBeenCalledWith(
-				"/library?category=images",
-				"_blank",
-				"noopener,noreferrer",
-			);
+			expect(screen.getByLabelText("当前位置").textContent).toBe("/library?category=images");
+			expect(open).not.toHaveBeenCalled();
 			expect(screen.getByText("已选择 1 张")).toBeTruthy();
 			expect(onChange).not.toHaveBeenCalled();
-			fireEvent.click(screen.getByRole("button", { name: "使用所选" }));
-			expect(onChange).toHaveBeenCalledWith([REAL]);
 		} finally {
 			open.mockRestore();
 		}

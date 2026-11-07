@@ -99,18 +99,14 @@ it("素材库改变后保留模型草稿，保存不回写性格内容", async (
 	expect(body.core.ai).not.toHaveProperty("removedBuiltinPresets");
 });
 
-it("技能管理新页打开资源库，AI页保留当前设置", async () => {
+it("AI页不再重复显示性格和技能管理按钮，保留原有配置Tab", async () => {
 	const open = vi.spyOn(window, "open").mockReturnValue(null);
 	try {
 		mount(globalsWith(() => {}));
-		fireEvent.click(await screen.findByRole("button", { name: "管理技能" }));
-		expect(open).toHaveBeenCalledWith("/library?category=skills", "_blank", "noopener,noreferrer");
-		fireEvent.click(screen.getByRole("button", { name: "管理性格" }));
-		expect(open).toHaveBeenCalledWith(
-			"/library?category=personas",
-			"_blank",
-			"noopener,noreferrer",
-		);
+		await screen.findByRole("tab", { name: /全局配置/ });
+		expect(screen.queryByRole("button", { name: "管理技能" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "管理性格" })).toBeNull();
+		expect(open).not.toHaveBeenCalled();
 		expect(screen.queryByRole("tab", { name: /女仆性格/ })).toBeNull();
 		expect(screen.queryByRole("tab", { name: /女仆技能/ })).toBeNull();
 		expect(api.patch).not.toHaveBeenCalled();

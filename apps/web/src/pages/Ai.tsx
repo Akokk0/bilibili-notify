@@ -50,7 +50,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Field, Picker, TArea, TInput } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
-import { ManageResourcesButton } from "../components/library/manage-resources-button";
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
 import { AI_PURPLE } from "../config/colors";
@@ -382,8 +381,6 @@ export default function Ai() {
 						hint={TAB_HINTS[tab]}
 					/>
 				</div>
-				<ManageResourcesButton category="personas" label={tx("personas.manage")} />
-				<ManageResourcesButton category="skills" label={tx("maidSkills.manage")} />
 			</div>
 
 			{tab === "global" ? (

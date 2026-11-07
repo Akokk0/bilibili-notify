@@ -11,6 +11,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import { FontPicker } from "../FontPicker";
@@ -40,6 +41,16 @@ import { api } from "../../../services/api";
 
 const UPLOADED = `${"a".repeat(32)}.woff2`;
 
+function Location() {
+	const location = useLocation();
+	return (
+		<output aria-label="当前位置">
+			{location.pathname}
+			{location.search}
+		</output>
+	);
+}
+
 function mount(value: FontChoice, fonts: Array<{ id: string; name: string; size?: number }> = []) {
 	vi.mocked(api.get).mockResolvedValue({ ok: true, fonts } as never);
 	const onChange = vi.fn();
@@ -58,7 +69,10 @@ function mount(value: FontChoice, fonts: Array<{ id: string; name: string; size?
 	}
 	render(
 		<QueryClientProvider client={qc}>
-			<Host />
+			<MemoryRouter>
+				<Location />
+				<Host />
+			</MemoryRouter>
 		</QueryClientProvider>,
 	);
 	return onChange;
@@ -231,17 +245,16 @@ describe("大字体提醒随当前选中走", () => {
 });
 
 describe("素材库字体端点接线", () => {
-	it("管理资源直达字体分类，暂存的字体仍需确认才写回字段", async () => {
+	it("管理资源在当前页直达字体分类，不开新页面或提交暂存选择", async () => {
 		const open = vi.spyOn(window, "open").mockReturnValue(null);
 		try {
 			const changed = mount({ font: "fallback" }, [{ id: UPLOADED, name: "keep.woff2" }]);
 			await openFonts();
 			fireEvent.click(await screen.findByRole("button", { name: "选择字体 keep.woff2" }));
 			fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
-			expect(open).toHaveBeenCalledWith("/library?category=fonts", "_blank", "noopener,noreferrer");
+			expect(screen.getByLabelText("当前位置").textContent).toBe("/library?category=fonts");
+			expect(open).not.toHaveBeenCalled();
 			expect(changed).not.toHaveBeenCalled();
-			await applyFont();
-			expect(changed).toHaveBeenCalledWith({ font: "fallback", fontAsset: UPLOADED });
 		} finally {
 			open.mockRestore();
 		}

@@ -13,7 +13,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CardSkinSection } from "../CardSkinSection";
 
@@ -65,11 +65,22 @@ const LIST = {
 	active: "aurora",
 };
 
+function Location() {
+	const location = useLocation();
+	return (
+		<output aria-label="当前位置">
+			{location.pathname}
+			{location.search}
+		</output>
+	);
+}
+
 function renderSection(mode: "select" | "manage" = "manage") {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	// 「编辑」那颗钮要跳路由,所以这一节现在吃 router context。
 	return render(
 		<MemoryRouter>
+			<Location />
 			<QueryClientProvider client={qc}>
 				<CardSkinSection mode={mode} />
 			</QueryClientProvider>
@@ -159,17 +170,14 @@ describe("卡片皮肤库", () => {
 		expect(api.put).not.toHaveBeenCalled();
 	});
 
-	it("管理资源新页直达卡片皮肤分类，不切换当前默认皮肤", async () => {
+	it("管理资源当前页直达卡片皮肤分类，不切换当前默认皮肤", async () => {
 		const open = vi.spyOn(window, "open").mockReturnValue(null);
 		try {
 			renderSection("select");
 			await screen.findByText("极光");
 			fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
-			expect(open).toHaveBeenCalledWith(
-				"/library?category=card-skins",
-				"_blank",
-				"noopener,noreferrer",
-			);
+			expect(screen.getByLabelText("当前位置").textContent).toBe("/library?category=card-skins");
+			expect(open).not.toHaveBeenCalled();
 			expect(api.put).not.toHaveBeenCalled();
 			expect(screen.getByRole("combobox")).toBeTruthy();
 		} finally {
