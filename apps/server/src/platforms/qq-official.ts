@@ -1026,25 +1026,37 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 // PlatformAdapter 工厂 —— send 编排(上传→media)+ probe/reconcile/dispose 生命周期
 // ---------------------------------------------------------------------------
 
-/**
- * 发消息的两个原语共用的收尾:没走通(连不上、超时、被中止)抛错 —— `send` 的循环接住记成
- * unavailable,与原生 fetch 连不上抛错时同一条路;走通了回 `{status, body}`(body 解析失败回退 {})。
- */
-function qqSendOutcome(res: Result<HttpResponse>): { status: number; body: unknown } {
-	if (!res.ok) throw new Error(res.message);
+type QQPostResult = Result<{ status: number; body: unknown }>;
+
+/** 传输未拿到有效响应，是否可能已投递由上传/提交两阶段各自判定。 */
+function qqPostOutcome(res: Result<HttpResponse>): QQPostResult {
+	if (!res.ok) return fail("unavailable", res.message);
 	const parsed = res.json();
-	return { status: res.status, body: parsed.ok ? parsed.value : {} };
+	return ok({ status: res.status, body: parsed.ok ? parsed.value : {} });
 }
 
-/** JSON POST,返回 `{status, body}`(body 解析失败回退 {})。 */
+/** 提交结果不明，或已有分段提交后失败，都不能重发整条payload。 */
+function indeterminateQQDelivery(failure: Failure, submittedParts = 0): Failure {
+	const message =
+		submittedParts > 0
+			? t("qqOfficial.delivery.partial", { count: submittedParts, reason: failure.message })
+			: t("qqOfficial.delivery.indeterminate", { reason: failure.message });
+	return fail(
+		"indeterminate",
+		message,
+		failure.upstreamCode === undefined ? {} : { upstreamCode: failure.upstreamCode },
+	);
+}
+
+/** JSON POST回Result，成功带status/body（解析失败沿用{}回退），传输失败不抛异常。 */
 async function qqPostJson(
 	http: HttpClient,
 	base: string,
 	headers: Record<string, string>,
 	path: string,
 	body: unknown,
-): Promise<{ status: number; body: unknown }> {
-	return qqSendOutcome(
+): Promise<QQPostResult> {
+	return qqPostOutcome(
 		await qqFetch(http, `${base}${path}`, {
 			method: "POST",
 			headers: { ...headers, "content-type": "application/json" },
@@ -1053,25 +1065,12 @@ async function qqPostJson(
 	);
 }
 
-/** 频道图片走 multipart `file_image`(直传 Buffer,不需公网 URL,不设 content-type 让运行时补 boundary)。 */
-async function qqPostChannelForm(
-	http: HttpClient,
-	base: string,
-	headers: Record<string, string>,
-	channelId: string,
-	content: string,
-	buffer: Buffer,
-): Promise<{ status: number; body: unknown }> {
+/** 频道图片请求的准备只造multipart，不提交消息；content-type由运行时补boundary。 */
+function qqChannelForm(content: string, buffer: Buffer): FormData {
 	const form = new FormData();
 	form.append("content", content);
 	form.append("file_image", new Blob([buffer]), "image.png");
-	return qqSendOutcome(
-		await qqFetch(http, `${base}/channels/${channelId}/messages`, {
-			method: "POST",
-			headers,
-			body: form,
-		}),
-	);
+	return form;
 }
 
 /** 群/C2C 富媒体两步第一步:上传拿 file_info。 */
@@ -1083,13 +1082,9 @@ async function qqUploadMedia(
 	openid: string,
 	upload: QQFileUploadBody | { file_type: number; srv_send_msg: boolean; url: string },
 ): Promise<Result<{ media: QQFileMedia }>> {
-	const { status, body } = await qqPostJson(
-		http,
-		base,
-		headers,
-		qqFilesPath(scope, openid),
-		upload,
-	);
+	const uploaded = await qqPostJson(http, base, headers, qqFilesPath(scope, openid), upload);
+	if (!uploaded.ok) return uploaded;
+	const { status, body } = uploaded;
 	const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 	const fileInfo = data.file_info;
 	if (typeof fileInfo === "string") return ok({ media: { ...data, file_info: fileInfo } });
@@ -1351,54 +1346,41 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	}
 	serviceCtx.onDispose(disposeAll, "stop");
 
-	/** 发一个片段。返回 REST `{status, body}`,或上传那一步的失败。 */
-	async function sendPart(
+	/** 准备一个片段：可上传文件（srv_send_msg=false），但绝不提交消息。 */
+	async function preparePart(
 		client: HttpClient,
 		base: string,
 		headers: Record<string, string>,
 		scope: PushTargetScope,
 		address: string,
-		messagesPath: string,
 		part: QQSendPart,
-	): Promise<{ status: number; body: unknown } | Failure> {
+	): Promise<Result<{ body: string | FormData }>> {
 		if (scope === "channel") {
-			if (part.kind === "text") {
-				return qqPostJson(client, base, headers, messagesPath, { content: part.text });
-			}
+			if (part.kind === "text") return ok({ body: JSON.stringify({ content: part.text }) });
 			if (part.kind === "image-url") {
-				return qqPostJson(client, base, headers, messagesPath, {
-					content: part.caption ?? " ",
-					image: part.url,
-				});
+				return ok({ body: JSON.stringify({ content: part.caption ?? " ", image: part.url }) });
 			}
-			return qqPostChannelForm(client, base, headers, address, part.caption ?? " ", part.buffer);
+			return ok({ body: qqChannelForm(part.caption ?? " ", part.buffer) });
 		}
-		// group / private:文本直发;图片两步上传→media。
-		const gScope = scope === "group" ? "group" : "private";
 		if (part.kind === "text") {
-			return qqPostJson(
-				client,
-				base,
-				headers,
-				messagesPath,
-				buildQQV2Message({ content: part.text }),
-			);
+			return ok({ body: JSON.stringify(buildQQV2Message({ content: part.text })) });
 		}
 		const upload =
 			part.kind === "image-buffer"
 				? buildQQFileUpload(part.buffer)
 				: { file_type: QQ_FILE_TYPE_IMAGE, srv_send_msg: false, url: part.url };
-		const up = await qqUploadMedia(client, base, headers, gScope, address, upload);
-		if (!up.ok) return up;
-		const content =
-			part.kind === "image-buffer" || part.kind === "image-url" ? part.caption : undefined;
-		return qqPostJson(
+		const up = await qqUploadMedia(
 			client,
 			base,
 			headers,
-			messagesPath,
-			buildQQV2Message({ content, media: up.media }),
+			scope === "group" ? "group" : "private",
+			address,
+			upload,
 		);
+		if (!up.ok) return up;
+		return ok({
+			body: JSON.stringify(buildQQV2Message({ content: part.caption, media: up.media })),
+		});
 	}
 
 	function reconcile(connections: readonly Connection[], ctx: GatewayContext): void {
@@ -1629,14 +1611,16 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				gallery.length > 0
 			) {
 				try {
-					const { status, body } = await qqPostJson(
+					const response = await qqPostJson(
 						http,
 						base,
 						headers,
 						endpoint.path,
 						buildQQV2MarkdownMessage(buildQQMarkdownGallery(gallery)),
 					);
-					const verdict = interpretQQSend(status, body);
+					const verdict = response.ok
+						? interpretQQSend(response.status, response.body)
+						: indeterminateQQDelivery(response);
 					if (!verdict.ok) {
 						logger.warn(logText("log.qq.markdownFailed"), {
 							connectionId: connection.id,
@@ -1655,7 +1639,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 						destination: describeDestination(destination),
 						error: e,
 					});
-					return fail("unavailable", message);
+					return indeterminateQQDelivery(fail("unavailable", message));
 				}
 			}
 
@@ -1665,27 +1649,52 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			// QQ 一条 media 只能带一张图,多片段逐条发;任一条失败即整体失败(已发的无法回滚)。
 			let failure: Failure | null = null;
 			let failureError: unknown;
+			let submittedParts = 0;
 			for (const part of parts) {
+				let prepared: Result<{ body: string | FormData }>;
 				try {
-					const r = await sendPart(http, base, headers, scope, address, endpoint.path, part);
-					// 上传那一步就没成:失败原样带出。
-					if ("ok" in r) {
-						failure = r;
-						break;
-					}
-					const verdict = interpretQQSend(r.status, r.body);
-					if (!verdict.ok) {
-						failure = verdict;
-						break;
-					}
+					prepared = await preparePart(http, base, headers, scope, address, part);
 				} catch (e) {
 					failureError = e;
 					failure = fail("unavailable", e instanceof Error ? e.message : String(e));
 					break;
 				}
+				if (!prepared.ok) {
+					failure = prepared;
+					break;
+				}
+				try {
+					const response = qqPostOutcome(
+						await qqFetch(http, `${base}${endpoint.path}`, {
+							method: "POST",
+							headers:
+								typeof prepared.body === "string"
+									? { ...headers, "content-type": "application/json" }
+									: headers,
+							body: prepared.body,
+						}),
+					);
+					const verdict = response.ok
+						? interpretQQSend(response.status, response.body)
+						: fail("indeterminate", response.message);
+					if (!verdict.ok) {
+						failure = verdict;
+						break;
+					}
+					submittedParts++;
+				} catch (e) {
+					failureError = e;
+					failure = fail("indeterminate", e instanceof Error ? e.message : String(e));
+					break;
+				}
 			}
 			if (failure) {
+				// 适配器对外是一条payload；前段已提交时，重试整条会再次发送前段。
+				if (submittedParts > 0 || failure.code === "indeterminate") {
+					failure = indeterminateQQDelivery(failure, submittedParts);
+				}
 				logger.warn(logText("log.qq.deliveryFailed"), {
+					submittedParts,
 					connectionId: connection.id,
 					destination: describeDestination(destination),
 					code: failure.code,

@@ -1403,5 +1403,7 @@
 	"log.qq.bindStartFailed": "QQ 机器人绑定发起失败",
 	"log.qq.bindPollFailed": "QQ 机器人绑定状态查询失败，保留任务待下次查询",
 	"log.webhook.buildFailed": "Webhook 请求构造失败，尚未发送",
-	"log.webhook.requestFailed": "Webhook 请求未成功"
+	"log.webhook.requestFailed": "Webhook 请求未成功",
+	"qqOfficial.delivery.indeterminate": "QQ 发送结果不明，消息可能已经送达；为避免重复，不能再次发送。原因：{reason}",
+	"qqOfficial.delivery.partial": "已有{count}条消息提交，后续发送失败；为避免重复，不能重发整条。原因：{reason}"
 }

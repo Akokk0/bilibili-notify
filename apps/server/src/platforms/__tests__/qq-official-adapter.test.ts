@@ -403,7 +403,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		expect((await pending).ok).toBe(true);
 	});
 
-	it("发消息的请求满 300 秒仍没回 → 客户端掐断,翻成 unavailable", async () => {
+	it("发消息的请求满300秒仍没回 → 结果不明，不可重复发送", async () => {
 		vi.useFakeTimers();
 		route((url, init) => {
 			if (url.includes("getAppAccessToken"))
@@ -413,7 +413,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		const ad = startedQQ();
 		const pending = ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
 		await vi.advanceTimersByTimeAsync(300_000);
-		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
+		expect(await pending).toMatchObject({ ok: false, code: "indeterminate" });
 	});
 
 	it("private:POST /v2/users/{openid}/messages", async () => {
@@ -478,7 +478,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		expect(r).not.toHaveProperty("upstreamCode");
 	});
 
-	it("发消息时连不上(fetch 抛错)→ unavailable", async () => {
+	it("提交消息后连接中断 → 结果不明，保留底层原因", async () => {
 		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
@@ -487,7 +487,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
 		// 话是请求客户端的话,底层原因仍在里面。
-		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
 		expect(!r.ok && r.message).toContain("socket hang up");
 	});
 });
@@ -600,6 +600,51 @@ describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () =
 	});
 });
 
+describe("QQ 分段提交后失败", () => {
+	it.each(["upload-error", "upload-rejected", "message-rejected", "message-lost"] as const)(
+		"第一段已提交审核，后段 %s 时不允许重发整条，并停止后续分段",
+		async (failureAt) => {
+			let uploads = 0;
+			let messages = 0;
+			route(async (url) => {
+				if (url.includes("getAppAccessToken"))
+					return res(200, { access_token: "T", expires_in: 7200 });
+				if (url.endsWith("/files")) {
+					uploads++;
+					if (uploads === 2 && failureAt === "upload-error") throw new Error("second upload lost");
+					if (uploads === 2 && failureAt === "upload-rejected")
+						return res(403, { code: 11253, message: "second upload denied" });
+					return res(200, { file_info: "FILEINFO" });
+				}
+				messages++;
+				if (messages === 2 && failureAt === "message-rejected")
+					return res(429, { code: 22009, message: "second message rate limited" });
+				if (messages === 2 && failureAt === "message-lost") throw new Error("second receipt lost");
+				return res(202, { code: 304023, data: { message_audit: { audit_id: "AUDIT1" } } });
+			});
+			const ad = startedQQ();
+			const result = await ad.send(qqConnection(), qqTarget("group", "G1"), {
+				kind: "image-group",
+				mergeForward: false,
+				images: [
+					{ url: "https://example.test/1.png", width: 1, height: 1 },
+					{ url: "https://example.test/2.png", width: 1, height: 1 },
+					{ url: "https://example.test/3.png", width: 1, height: 1 },
+				],
+			});
+			expect(result).toMatchObject({
+				ok: false,
+				code: "indeterminate",
+				message: expect.stringContaining("已有1条消息提交"),
+			});
+			if (failureAt === "upload-rejected") expect(result).toHaveProperty("upstreamCode", 11253);
+			if (failureAt === "message-rejected") expect(result).toHaveProperty("upstreamCode", 22009);
+			expect(uploads).toBe(2);
+			expect(messages).toBe(failureAt.startsWith("upload") ? 1 : 2);
+		},
+	);
+});
+
 describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 	it("202 + 审核中 → DeliveryResult ok(已提交)", async () => {
 		route(async (url) => {
@@ -643,6 +688,26 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 		expect(r).toMatchObject({ ok: false, code: "rate_limited", upstreamCode: 22009 });
 	});
 
+	it("私域Markdown图集提交后响应丢失 → indeterminate，不再提交第二次", async () => {
+		route(async (url) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "T", expires_in: 7200 });
+			throw new Error("markdown receipt lost");
+		});
+		const ad = startedQQ();
+		const result = await ad.send(qqConnection({ botType: "private" }), qqTarget("group", "G1"), {
+			kind: "image-group",
+			images: [{ url: "https://example.test/a.png" }],
+			mergeForward: true,
+		});
+		expect(result).toMatchObject({
+			ok: false,
+			code: "indeterminate",
+			message: expect.stringContaining("markdown receipt lost"),
+		});
+		expect(callsTo("/messages")).toHaveLength(1);
+	});
+
 	it("私域图集(markdown)被拒 → 同一套码", async () => {
 		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
@@ -671,6 +736,27 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 			image: { buffer: Buffer.from("x"), mime: "image/png" },
 		} as NotificationPayload);
 		expect(r).toMatchObject({ ok: false, code: "unauthorized", upstreamCode: 11253 });
+		expect(callsTo("/messages")).toHaveLength(0);
+	});
+
+	it("首个文件上传断线尚未提交消息，仍为unavailable且不调用messages", async () => {
+		route(async (url) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "T", expires_in: 7200 });
+			if (url.endsWith("/files")) throw new Error("upload connection lost");
+			return res(200, { id: "MSG1" });
+		});
+		const ad = startedQQ();
+		const result = await ad.send(qqConnection(), qqTarget("group", "G1"), {
+			kind: "image",
+			image: { buffer: Buffer.from("x"), mime: "image/png" },
+		});
+		expect(result).toMatchObject({
+			ok: false,
+			code: "unavailable",
+			message: expect.stringContaining("upload connection lost"),
+		});
+		expect(callsTo("/files")).toHaveLength(1);
 		expect(callsTo("/messages")).toHaveLength(0);
 	});
 

@@ -220,5 +220,7 @@
 	"log.qq.bindStartFailed": "QQ 機器人綁定發起失敗",
 	"log.qq.bindPollFailed": "QQ 機器人綁定狀態查詢失敗，保留工作待下次查詢",
 	"log.webhook.buildFailed": "Webhook 請求建立失敗，尚未傳送",
-	"log.webhook.requestFailed": "Webhook 請求未成功"
+	"log.webhook.requestFailed": "Webhook 請求未成功",
+	"qqOfficial.delivery.indeterminate": "QQ 傳送結果不明，訊息可能已經送達；為避免重複，不能再次傳送。原因：{reason}",
+	"qqOfficial.delivery.partial": "已有{count}則訊息提交，後續傳送失敗；為避免重複，不能重傳整筆。原因：{reason}"
 }

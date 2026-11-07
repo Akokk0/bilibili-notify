@@ -220,5 +220,7 @@
 	"log.qq.bindStartFailed": "QQボットの連携開始に失敗しました",
 	"log.qq.bindPollFailed": "QQボットの連携状態を取得できませんでした。次の確認までタスクを保持します",
 	"log.webhook.buildFailed": "Webhookリクエストを構築できませんでした。まだ送信していません",
-	"log.webhook.requestFailed": "Webhookリクエストに成功しませんでした"
+	"log.webhook.requestFailed": "Webhookリクエストに成功しませんでした",
+	"qqOfficial.delivery.indeterminate": "QQの到達結果が不明です。すでに届いている可能性があるため、重複を防ぐために再送できません。理由：{reason}",
+	"qqOfficial.delivery.partial": "すでに{count}件のメッセージを送信処理に渡した後、後続の処理に失敗しました。重複を防ぐため、全体を再送できません。理由：{reason}"
 }

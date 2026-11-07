@@ -220,5 +220,7 @@
 	"log.qq.bindStartFailed": "Failed to start QQ bot binding",
 	"log.qq.bindPollFailed": "QQ bot binding status lookup failed; keeping the task for the next poll",
 	"log.webhook.buildFailed": "Failed to build the Webhook request; nothing was sent",
-	"log.webhook.requestFailed": "Webhook request was unsuccessful"
+	"log.webhook.requestFailed": "Webhook request was unsuccessful",
+	"qqOfficial.delivery.indeterminate": "QQ delivery is indeterminate and the message may already have arrived. Resending is blocked to avoid duplicates. Reason: {reason}",
+	"qqOfficial.delivery.partial": "{count} message(s) were already submitted before a later failure. Resending the whole payload is blocked to avoid duplicates. Reason: {reason}"
 }
