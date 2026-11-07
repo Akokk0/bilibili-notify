@@ -187,10 +187,10 @@ describe("CommentaryGenerator.comment", () => {
 		expect(await gen.comment("x")).toBe("");
 	});
 
-	it("scene=dynamic → system prompt 叠加 dynamicPrompt", async () => {
+	it("scene=post → system prompt 叠加 dynamicPrompt", async () => {
 		const { gen } = makeGen();
 		oai.create.mockResolvedValueOnce(msgResp("ok"));
-		await gen.comment("内容", "dynamic");
+		await gen.comment("内容", "post");
 		const sys = createParams(0).messages[0]?.content as string;
 		expect(sys).toContain("DYN_SCENE_PROMPT");
 	});
@@ -198,14 +198,14 @@ describe("CommentaryGenerator.comment", () => {
 	it("override.model 覆盖 config 值", async () => {
 		const { gen } = makeGen();
 		oai.create.mockResolvedValueOnce(msgResp("ok"));
-		await gen.comment("内容", "dynamic", undefined, { model: "override-model" });
+		await gen.comment("内容", "post", undefined, { model: "override-model" });
 		expect(createParams(0).model).toBe("override-model");
 	});
 
 	it("enableVision=true + imageUrls → user 消息变多模态(text + image_url)", async () => {
 		const { gen } = makeGen({ enableVision: true });
 		oai.create.mockResolvedValueOnce(msgResp("ok"));
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 		// 注:round 循环会把 assistant 响应 push 进同一 apiMessages 引用,故定位
 		// content 为数组的那条 user 消息,而非取末元素。
 		const msgs = createParams(0).messages;
@@ -218,7 +218,7 @@ describe("CommentaryGenerator.comment", () => {
 	it("enableVision=false + imageUrls → 不下挂图片(user content 仍是纯字符串)", async () => {
 		const { gen } = makeGen({ enableVision: false });
 		oai.create.mockResolvedValueOnce(msgResp("ok"));
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 		const msgs = createParams(0).messages;
 		const userMsg = msgs.find((m) => m.role === "user");
 		expect(typeof userMsg?.content).toBe("string");
@@ -1480,7 +1480,7 @@ describe("CommentaryGenerator — Markdown 约束的作用域", () => {
 	it("动态点评:约束照旧 —— 这一路直奔 QQ / Telegram", async () => {
 		const { gen } = makeGen();
 		oai.create.mockResolvedValueOnce(msgResp("点评"));
-		await gen.comment("某 UP 发了动态", "dynamic");
+		await gen.comment("某 UP 发了动态", "post");
 		expect(sysPrompt(0)).toContain(PLAIN_TEXT_RULE);
 	});
 
@@ -1792,7 +1792,7 @@ describe("CommentaryGenerator — 副路两把闸也别放大超时", () => {
 	it("视觉客户端 maxRetries 归零", async () => {
 		const { gen } = makeGen({ vision: { model: "v-test" } });
 		oai.create.mockResolvedValue(msgResp("一张图"));
-		await gen.comment("看图说话", "dynamic", ["https://img.test/a.png"]);
+		await gen.comment("看图说话", "post", ["https://img.test/a.png"]);
 		const visionCtor = oai.ctorArgs.find((a) => (a as { timeout?: number }).timeout === 60_000);
 		expect(visionCtor).toMatchObject({ maxRetries: 0 });
 	});

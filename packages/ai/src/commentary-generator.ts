@@ -166,7 +166,7 @@ export interface ConversationMessage {
 	content: string;
 }
 
-export type AIScene = "dynamic" | "liveSummary";
+export type AiScene = "post" | "liveSummary";
 
 /** chat 风味取回的一轮:回复本身,外加这一轮的 token 用量(拿不到的格子是 undefined)。 */
 interface ChatRound {
@@ -416,7 +416,7 @@ export type ToolTraceEvent =
 export interface CommentaryProvider {
 	comment(
 		content: string,
-		scene?: AIScene,
+		scene?: AiScene,
 		imageUrls?: string[],
 		override?: CommentaryCallOverride,
 		sourceKeys?: readonly string[],
@@ -612,7 +612,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	getSystemPrompt(
 		opts: {
-			scene?: AIScene;
+			scene?: AiScene;
 			/** per-call 覆盖 persona/prompt,未指定字段回退到 this.config。 */
 			override?: CommentaryCallOverride;
 			/** 这次涉及的来源;不给表示全局范围。 */
@@ -642,7 +642,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		override: CommentaryCallOverride | undefined,
 		nouns: PromptNouns,
 		opts: {
-			scene?: AIScene;
+			scene?: AiScene;
 			allowMarkdown?: boolean;
 			withTools?: boolean;
 			withPersona?: boolean;
@@ -660,7 +660,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const dynamicPrompt = override?.dynamicPrompt ?? this.config.dynamicPrompt;
 		const liveSummaryPrompt = override?.liveSummaryPrompt ?? this.config.liveSummaryPrompt;
 		const sceneTemplate =
-			scene === "dynamic" ? dynamicPrompt : scene === "liveSummary" ? liveSummaryPrompt : "";
+			scene === "post" ? dynamicPrompt : scene === "liveSummary" ? liveSummaryPrompt : "";
 		const sceneAddition = sceneTemplate ? renderPromptNouns(sceneTemplate, nouns) : "";
 
 		return sceneAddition ? `${personaPrompt}\n${sceneAddition}` : personaPrompt;
@@ -672,7 +672,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	async comment(
 		content: string,
-		scene?: AIScene,
+		scene?: AiScene,
 		imageUrls?: string[],
 		override?: CommentaryCallOverride,
 		sourceKeys?: readonly string[],
@@ -697,7 +697,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		);
 		const shaped = await this.resolveImages(content, imageUrls);
 		const result = await this.callAPI(
-			scene === "dynamic" ? "作品点评" : scene === "liveSummary" ? "下播总结" : "其他点评",
+			scene === "post" ? "作品点评" : scene === "liveSummary" ? "下播总结" : "其他点评",
 			systemPrompt,
 			[{ role: "user", content: shaped.content }],
 			searchExec

@@ -39,7 +39,7 @@ describe("CommentaryGenerator —— 提示词叫法的范围与落点", () => {
 			return BILI_NOUNS;
 		});
 
-		await gen.comment("内容", "dynamic", undefined, undefined, ["bilibili", "acme"]);
+		await gen.comment("内容", "post", undefined, undefined, ["bilibili", "acme"]);
 
 		expect(seen).toEqual([["bilibili", "acme"]]);
 	});
@@ -78,7 +78,7 @@ describe("CommentaryGenerator —— 提示词叫法的范围与落点", () => {
 			nouns: () => BILI_NOUNS,
 		});
 
-		await gen.comment("内容", "dynamic", undefined, undefined, ["bilibili"]);
+		await gen.comment("内容", "post", undefined, undefined, ["bilibili"]);
 
 		const params = oai.create.mock.calls[0]?.[0] as {
 			messages: Array<{ content: string }>;
@@ -93,7 +93,7 @@ describe("CommentaryGenerator —— 提示词叫法的范围与落点", () => {
 
 		await gen.comment(
 			"内容",
-			"dynamic",
+			"post",
 			undefined,
 			{
 				dynamicPrompt: "把{creatorNoun}的新{postNoun}讲清楚。",

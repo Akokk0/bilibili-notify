@@ -143,7 +143,7 @@ beforeEach(() => {
 
 describe("哪条路发工具铁律", () => {
 	it("动态锐评不发 —— 它的 callAPI 压根没挂工具", async () => {
-		await makeGen().comment("UP 主发了新动态", "dynamic");
+		await makeGen().comment("UP 主发了新动态", "post");
 		const sys = sentSystemPrompt();
 		expect(sys).not.toContain(TOOL_LAW);
 		expect(sys).toContain(NO_TOOL_RULE);

@@ -302,7 +302,7 @@ describe("CommentaryGenerator × 提供方工具的多条出口", () => {
 		const gen = makeGen();
 
 		gen.setProvidedTools(() => [makeTool()]);
-		await gen.comment("动态正文", "dynamic");
+		await gen.comment("动态正文", "post");
 
 		expect(toolNames(0)).not.toContain("provided_lookup");
 	});

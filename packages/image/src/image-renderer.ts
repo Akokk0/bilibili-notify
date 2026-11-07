@@ -691,7 +691,7 @@ export class ImageRenderer {
 			time: (seconds) => this.unixTimestampToString(seconds),
 			imageUrl: (ref) => resolved.get(ref),
 		});
-		this.logger.debug(`[dynamic] 开始渲染作品卡片：${node.creatorName}`);
+		this.logger.debug(`[post] 开始渲染作品卡片：${node.creatorName}`);
 		return this.renderWithSkin({
 			kind: "post",
 			title: packageText("image.image-renderer.7"),
@@ -702,9 +702,7 @@ export class ImageRenderer {
 			props: { node },
 		})
 			.then((buf) => {
-				this.logger.debug(
-					`[dynamic] 作品卡片渲染完成：${node.creatorName}（${Date.now() - t0}ms）`,
-				);
+				this.logger.debug(`[post] 作品卡片渲染完成：${node.creatorName}（${Date.now() - t0}ms）`);
 				return buf;
 			})
 			.catch((e) => {

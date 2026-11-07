@@ -317,7 +317,7 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 						value1: postNounsOf(event, PROMPT_NEUTRAL_NOUNS).postNoun,
 						value2: commentText,
 					}),
-					"dynamic",
+					"post",
 					imageUrls,
 					// 联网搜索是全局开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
 					settings.aiWebSearch ? { ...settings.aiOverride, webSearch: true } : settings.aiOverride,

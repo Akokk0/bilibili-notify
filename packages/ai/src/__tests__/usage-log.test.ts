@@ -123,7 +123,7 @@ describe("用量日志 —— 接线", () => {
 		const { gen, info } = makeGen();
 		oai.chatCreate.mockResolvedValueOnce(msgResp("好", chatUsage(12345, 11000, 321, 120)));
 
-		await gen.comment("一条动态", "dynamic");
+		await gen.comment("一条动态", "post");
 
 		expect(usageLines(info)).toEqual([
 			"[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 12345(缓存命中 11000)· 输出 321(思考 120)",
@@ -138,7 +138,7 @@ describe("用量日志 —— 每种逻辑调用有自己的标签", () => {
 	const history = [{ role: "user" as const, content: "在吗" }];
 
 	it.each<[string, string, (gen: CommentaryGenerator) => Promise<unknown>, () => void]>([
-		["comment(dynamic)", "作品点评", (gen) => gen.comment("x", "dynamic"), nonStream],
+		["comment(post)", "作品点评", (gen) => gen.comment("x", "post"), nonStream],
 		["comment(liveSummary)", "下播总结", (gen) => gen.comment("x", "liveSummary"), nonStream],
 		["comment() 无场景(锐评等)", "其他点评", (gen) => gen.comment("x"), nonStream],
 		["chat()", "试推送", (gen) => gen.chat("x"), nonStream],
@@ -165,7 +165,7 @@ describe("用量日志 —— 每种逻辑调用有自己的标签", () => {
 		const { gen, info } = makeGen();
 		nonStream();
 
-		await gen.comment("x", "dynamic", undefined, { model: "per-up-model" });
+		await gen.comment("x", "post", undefined, { model: "per-up-model" });
 
 		expect(usageLines(info)[0]).toContain("· 模型=per-up-model ·");
 	});
@@ -233,7 +233,7 @@ describe("用量日志 —— 一次逻辑调用只记一行,各轮加总", () =
 		const { gen, info } = makeGen();
 		oai.chatCreate.mockResolvedValueOnce(msgResp("好"));
 
-		await gen.comment("x", "dynamic");
+		await gen.comment("x", "post");
 
 		expect(usageLines(info)).toEqual([
 			"[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 未知(缓存命中 未知)· 输出 未知(思考 未知)",
@@ -259,7 +259,7 @@ describe("用量日志 —— 一次逻辑调用只记一行,各轮加总", () =
 			.mockRejectedValueOnce(Object.assign(new Error("unknown field thinking"), { status: 400 }))
 			.mockResolvedValueOnce(msgResp("好", chatUsage(60, 30, 6, 0)));
 
-		await gen.comment("x", "dynamic");
+		await gen.comment("x", "post");
 
 		expect(oai.chatCreate).toHaveBeenCalledTimes(2);
 		expect(usageLines(info)).toEqual([
@@ -275,7 +275,7 @@ describe("用量日志 —— 一次逻辑调用只记一行,各轮加总", () =
 			)
 			.mockResolvedValueOnce(msgResp("好", chatUsage(70, 0, 7, 0)));
 
-		await gen.comment("x", "dynamic");
+		await gen.comment("x", "post");
 
 		expect(oai.chatCreate).toHaveBeenCalledTimes(2);
 		expect(usageLines(info)).toEqual([
@@ -287,7 +287,7 @@ describe("用量日志 —— 一次逻辑调用只记一行,各轮加总", () =
 		const { gen, info } = makeGen();
 		oai.chatCreate.mockRejectedValueOnce(Object.assign(new Error("402"), { status: 402 }));
 
-		await expect(gen.comment("x", "dynamic")).rejects.toThrow();
+		await expect(gen.comment("x", "post")).rejects.toThrow();
 
 		expect(usageLines(info)).toEqual([]);
 	});
@@ -440,7 +440,7 @@ describe("stream_options.include_usage —— 只在要它的家 + 流式那一�
 		const { gen } = makeGen({ provider: "bailian" });
 		oai.chatCreate.mockResolvedValueOnce(msgResp("好"));
 
-		await gen.comment("x", "dynamic");
+		await gen.comment("x", "post");
 
 		expect(chatParams(0)).not.toHaveProperty("stream_options");
 	});
@@ -464,7 +464,7 @@ describe("stream_options.include_usage —— 只在要它的家 + 流式那一�
 			.mockRejectedValueOnce(Object.assign(new Error("unknown field"), { status: 400 }))
 			.mockResolvedValueOnce(msgResp("好"));
 
-		await gen.comment("x", "dynamic");
+		await gen.comment("x", "post");
 
 		expect(oai.chatCreate).toHaveBeenCalledTimes(2);
 		expect(chatParams(1)).not.toHaveProperty("stream_options");
@@ -635,7 +635,7 @@ describe("用量日志 —— 不走 callAPI 的两条副路", () => {
 			.mockResolvedValueOnce(msgResp("一只狗", chatUsage(600, 100, 20, 5)))
 			.mockResolvedValueOnce(msgResp("好可爱", chatUsage(200, 100, 10, 0)));
 
-		await gen.comment("看我的猫狗", "dynamic", ["https://img/cat.jpg", "https://img/dog.jpg"]);
+		await gen.comment("看我的猫狗", "post", ["https://img/cat.jpg", "https://img/dog.jpg"]);
 
 		expect(usageLines(info)).toEqual([
 			"[usage] 看图 · 模型=qwen-vl · 2 张 · 输入 1400(缓存命中 100)· 输出 50(思考 5)",
@@ -650,7 +650,7 @@ describe("用量日志 —— 不走 callAPI 的两条副路", () => {
 			.mockResolvedValueOnce(msgResp("一只狗", chatUsage(600, 100, 20, 5)))
 			.mockResolvedValueOnce(msgResp("好可爱", chatUsage(200, 100, 10, 0)));
 
-		await gen.comment("看我的猫狗", "dynamic", ["https://img/cat.jpg", "https://img/dog.jpg"]);
+		await gen.comment("看我的猫狗", "post", ["https://img/cat.jpg", "https://img/dog.jpg"]);
 
 		expect(usageLines(info)[0]).toBe(
 			"[usage] 看图 · 模型=qwen-vl · 1 张 · 输入 600(缓存命中 100)· 输出 20(思考 5)· 未完成",
@@ -664,7 +664,7 @@ describe("用量日志 —— 不走 callAPI 的两条副路", () => {
 			.mockResolvedValueOnce(msgResp("一只狗", chatUsage(600, 100, 20, 5)))
 			.mockResolvedValueOnce(msgResp("好可爱", chatUsage(200, 100, 10, 0)));
 
-		await gen.comment("看我的猫狗", "dynamic", ["https://img/cat.jpg", "https://img/dog.jpg"]);
+		await gen.comment("看我的猫狗", "post", ["https://img/cat.jpg", "https://img/dog.jpg"]);
 
 		expect(usageLines(info)[0]).toBe(
 			"[usage] 看图 · 模型=qwen-vl · 1 张 · 输入 600(缓存命中 100)· 输出 20(思考 5)· 未完成",
@@ -678,7 +678,7 @@ describe("用量日志 —— 不走 callAPI 的两条副路", () => {
 			.mockRejectedValueOnce(new Error("拉不动图"))
 			.mockResolvedValueOnce(msgResp("好可爱", chatUsage(200, 100, 10, 0)));
 
-		await gen.comment("看我的猫狗", "dynamic", ["https://img/cat.jpg", "https://img/dog.jpg"]);
+		await gen.comment("看我的猫狗", "post", ["https://img/cat.jpg", "https://img/dog.jpg"]);
 
 		expect(usageLines(info)).toEqual([
 			"[usage] 作品点评 · 模型=gpt-test · 1 轮 · 输入 200(缓存命中 100)· 输出 10(思考 0)",

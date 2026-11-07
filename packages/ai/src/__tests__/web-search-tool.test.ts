@@ -222,7 +222,7 @@ describe("comment() × web_search(引擎路径)", () => {
 		oai.create.mockResolvedValueOnce(msgResp("点评好了"));
 		const gen = makeGen();
 		gen.setWebSearchSource(() => makeExecutor());
-		await gen.comment("UP 主发了条动态", "dynamic", undefined, { webSearch: true });
+		await gen.comment("UP 主发了条动态", "post", undefined, { webSearch: true });
 		expect(toolNames(0)).toEqual(["web_search"]);
 	});
 
@@ -230,7 +230,7 @@ describe("comment() × web_search(引擎路径)", () => {
 		oai.create.mockResolvedValueOnce(msgResp("点评好了"));
 		const gen = makeGen();
 		gen.setWebSearchSource(() => makeExecutor());
-		await gen.comment("UP 主发了条动态", "dynamic");
+		await gen.comment("UP 主发了条动态", "post");
 		expect(createParams(0).tools).toBeUndefined();
 	});
 
@@ -241,7 +241,7 @@ describe("comment() × web_search(引擎路径)", () => {
 		const gen = makeGen();
 		const ex = makeExecutor();
 		gen.setWebSearchSource(() => ex);
-		const reply = await gen.comment("UP 主发了条动态", "dynamic", undefined, { webSearch: true });
+		const reply = await gen.comment("UP 主发了条动态", "post", undefined, { webSearch: true });
 
 		expect(reply).toBe("查完的点评");
 		expect(ex.search).toHaveBeenCalledWith("这件事的背景");

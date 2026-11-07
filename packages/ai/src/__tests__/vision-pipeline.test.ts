@@ -94,7 +94,7 @@ describe("comment() — 配了视觉副模型", () => {
 
 	it("图不再下挂给主模型 —— 主模型可能根本不支持多模态", async () => {
 		const gen = makeGen({ vision: VISION });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		const user = mainCall().messages.find((m) => m.role === "user");
 		expect(typeof user?.content).toBe("string");
@@ -102,7 +102,7 @@ describe("comment() — 配了视觉副模型", () => {
 
 	it("描述被拼进了主模型的 user 消息", async () => {
 		const gen = makeGen({ vision: VISION });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		const user = mainCall().messages.find((m) => m.role === "user");
 		expect(String(user?.content)).toContain("橘猫");
@@ -113,7 +113,7 @@ describe("comment() — 配了视觉副模型", () => {
 
 	it("副模型用自己那套 baseURL / apiKey / model", async () => {
 		const gen = makeGen({ vision: VISION });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		expect(oai.ctorArgs).toContainEqual(
 			expect.objectContaining({ baseURL: "https://vision.test/v1", apiKey: "sk-vision" }),
@@ -128,7 +128,7 @@ describe("comment() — 配了视觉副模型", () => {
 
 	it("视觉 baseURL / apiKey 留空 → 继承主模型的(聚合网关只填一个模型名即可)", async () => {
 		const gen = makeGen({ vision: { model: "deepseek-v4-vl" } });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		// 硅基流动 / OpenRouter 这类聚合网关上,主模型与视觉模型同 key 同址。
 		expect(visionCalls()).toHaveLength(1);
@@ -137,7 +137,7 @@ describe("comment() — 配了视觉副模型", () => {
 
 	it("四张图并发交给副模型,一次点评只烧一次主模型", async () => {
 		const gen = makeGen({ vision: VISION });
-		await gen.comment("看图", "dynamic", ["a", "b", "c", "d"]);
+		await gen.comment("看图", "post", ["a", "b", "c", "d"]);
 
 		expect(visionCalls()).toHaveLength(4);
 		expect(
@@ -147,7 +147,7 @@ describe("comment() — 配了视觉副模型", () => {
 
 	it("没有图时一次副模型都不调 —— 纯文字动态不该多烧一笔", async () => {
 		const gen = makeGen({ vision: VISION });
-		await gen.comment("纯文字动态", "dynamic", []);
+		await gen.comment("纯文字动态", "post", []);
 
 		expect(visionCalls()).toHaveLength(0);
 	});
@@ -161,7 +161,7 @@ describe("comment() — 副模型挂了", () => {
 			return msgResp("点评正文");
 		});
 
-		const out = await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		const out = await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		expect(out).toBe("点评正文");
 		const user = mainCall().messages.find((m) => m.role === "user");
@@ -196,7 +196,7 @@ describe("comment() — 没配视觉副模型(向后兼容,一字不变)", () =>
 
 	it("enableVision=true → 图仍旧直接下挂给主模型", async () => {
 		const gen = makeGen({ enableVision: true });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		const user = mainCall().messages.find((m) => m.role === "user" && Array.isArray(m.content));
 		const parts = user?.content as Array<{ type: string }>;
@@ -206,7 +206,7 @@ describe("comment() — 没配视觉副模型(向后兼容,一字不变)", () =>
 
 	it("enableVision=false → 图完全不参与", async () => {
 		const gen = makeGen({ enableVision: false });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		const user = mainCall().messages.find((m) => m.role === "user");
 		expect(typeof user?.content).toBe("string");
@@ -215,7 +215,7 @@ describe("comment() — 没配视觉副模型(向后兼容,一字不变)", () =>
 
 	it("vision.model 是空串也算没配 —— 输入框里敲了个空格不该开启功能", async () => {
 		const gen = makeGen({ enableVision: false, vision: { model: "  " } });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		expect(visionCalls()).toHaveLength(0);
 	});
@@ -231,7 +231,7 @@ describe("enableVision 必须过服务商能力位这一关", () => {
 		// —— 而藏起开关的同时,主人连关掉它的入口都没有了。所以把关的地方必须在这儿,
 		// 不能只在界面上。往 DeepSeek 发 image_url 的下场是整条点评 400。
 		const gen = makeGen({ provider: "deepseek", enableVision: true });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		const user = mainCall().messages.find((m) => m.role === "user");
 		expect(typeof user?.content).toBe("string");
@@ -239,7 +239,7 @@ describe("enableVision 必须过服务商能力位这一关", () => {
 
 	it("这家支持视觉时照旧下挂 —— 不许顺手把能用的人也一起关掉", async () => {
 		const gen = makeGen({ provider: "openrouter", enableVision: true });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		const user = mainCall().messages.find((m) => m.role === "user");
 		expect(Array.isArray(user?.content)).toBe(true);
@@ -247,7 +247,7 @@ describe("enableVision 必须过服务商能力位这一关", () => {
 
 	it("兜底档(自定义)当作支持 —— 主人自己接的网关,女仆无从判断,按他说的办", async () => {
 		const gen = makeGen({ provider: "custom", enableVision: true });
-		await gen.comment("看图", "dynamic", ["http://img/1.jpg"]);
+		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 
 		const user = mainCall().messages.find((m) => m.role === "user");
 		expect(Array.isArray(user?.content)).toBe(true);

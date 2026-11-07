@@ -1,5 +1,5 @@
 export {
-	type AIScene,
+	type AiScene,
 	type CommentaryCallOverride,
 	CommentaryGenerator,
 	type CommentaryGeneratorOptions,

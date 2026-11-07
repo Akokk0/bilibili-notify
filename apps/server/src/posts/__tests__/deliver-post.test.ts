@@ -522,7 +522,7 @@ describe("deliverPost — AI 点评", () => {
 		await run(custom);
 		expect(custom.comment).toHaveBeenCalledWith(
 			"阿绫发布了一条作品，内容如下：\n正文",
-			"dynamic",
+			"post",
 			[],
 			aiOverride,
 			["fake"],
