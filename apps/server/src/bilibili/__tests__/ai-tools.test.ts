@@ -9,11 +9,12 @@ import type { AiTool } from "@bilibili-notify/internal";
 import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
-import { i18n, t } from "../../i18n/index.js";
+import { i18n } from "../../i18n/index.js";
 import { skillToolNames } from "../../maid-skills/reader.js";
 import { createBiliAiToolProvider } from "../ai-tools.js";
 import { makeApi, makeServiceContext } from "../api/__tests__/support/make-api.js";
 import type { Api } from "../api/index.js";
+import { t } from "../i18n.js";
 
 afterEach(() => {
 	i18n.set({ locale: "zh-CN", voice: "maid" });

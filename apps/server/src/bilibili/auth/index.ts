@@ -5,12 +5,12 @@ import {
 	type ServiceContext,
 	type SourceAuth,
 } from "@bilibili-notify/internal";
-import { t as serverText } from "../../i18n/index.js";
 import { createImageFetcher } from "../../images/image-fetcher.js";
 import type { ImageWriter } from "../../images/image-store.js";
 import { errorMessageOf } from "../../util/error-message.js";
 import { Api } from "../api/index.js";
 import type { BiliContext } from "../context.js";
+import { t as serverText } from "../i18n.js";
 import { fetchAvatar } from "../images.js";
 import { LoginFlow } from "./login-flow.js";
 

@@ -1,3 +1,4 @@
+import { DICTS as BILI_DICTS } from "../bilibili/i18n.js";
 /**
  * 自定义 UA 删了(浏览器身份一律由 `packages/http` 生成,UA 与 `sec-ch-ua` 永远配套,ADR-0025 决策 7)。
  *
@@ -12,7 +13,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IntegrationSettingsDescriptorsResponse } from "@bilibili-notify/contract";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
@@ -78,25 +79,31 @@ describe("PATCH /api/settings × bilibili.userAgent(已删的一格)", () => {
 
 	it("描述在请求时读取当前语言，已有规则与设置不重建", async () => {
 		const { runtime, app } = await boot();
-		const translator = vi
-			.spyOn(i18n.state(), "t")
-			.mockImplementation((key) =>
-				key === "bilibili.source.dynamicCell" ? "First label" : String(key),
-			);
+		const state = i18n.state();
+		const key = "bilibili.source.dynamicCell";
+		const english = BILI_DICTS.en.plain as Record<string, string>;
+		const japanese = BILI_DICTS.ja.plain as Record<string, string>;
+		const previousEn = english[key];
+		const previousJa = japanese[key];
+		english[key] = "First label";
+		japanese[key] = "Changed label";
+		i18n.set({ locale: "en", voice: "plain" });
 		try {
 			const first = (await (
 				await app.request("/api/settings/integrations")
 			).json()) as IntegrationSettingsDescriptorsResponse;
 			expect(first.integrations[0]?.fields[0]?.label).toBe("First label");
-			translator.mockImplementation((key) =>
-				key === "bilibili.source.dynamicCell" ? "Changed label" : String(key),
-			);
+			i18n.set({ locale: "ja" });
 			const second = (await (
 				await app.request("/api/settings/integrations")
 			).json()) as IntegrationSettingsDescriptorsResponse;
 			expect(second.integrations[0]?.fields[0]?.label).toBe("Changed label");
 		} finally {
-			translator.mockRestore();
+			if (previousEn === undefined) delete english[key];
+			else english[key] = previousEn;
+			if (previousJa === undefined) delete japanese[key];
+			else japanese[key] = previousJa;
+			i18n.set({ locale: state.locale, voice: state.voice });
 			await runtime.dispose();
 		}
 	});

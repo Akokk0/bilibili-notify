@@ -1,5 +1,5 @@
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
-import { t } from "../i18n/index.js";
+import { t } from "./i18n.js";
 /**
  * 第 0 代 → 新的一代(ADR-0022 决策 4、7)。第 0 代就是 0.x 留在宿主根上的那些文件,它只读、一个字节不动;
  * 新的一代由调用方(`runtime/generations.ts` 的 `createGeneration`)在 `.partial` 里交给这里填。

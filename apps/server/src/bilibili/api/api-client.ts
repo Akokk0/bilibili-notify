@@ -5,7 +5,7 @@ import type {
 	WebSocketLike,
 	WebSocketOptions,
 } from "@bilibili-notify/internal";
-import { t as serverText } from "../../i18n/index.js";
+import { t as serverText } from "../i18n.js";
 import { RiskControlError } from "./risk-control";
 
 /**

@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * 待审的锐评草稿 `runtime/roast-drafts.json`:0.x 按 uid 回指一位 UP → 按订阅 id 回指(ADR-0020 决策 18)。
  * 收进来之前是草稿库读盘时翻(⑥c),草稿库开机只认最新的形状。

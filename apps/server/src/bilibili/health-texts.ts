@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * B 站来源 `health()` 的那一句话。集中放这里:`status` 指令里 B 站那一行读什么,改这一个文件。
  *

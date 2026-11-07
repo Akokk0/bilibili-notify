@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * 连接与推送目标这一族:0.x 各个版本留在盘上的形状 → 1.0 的形状(ADR-0022 决策 4)。⑥c 从配置仓和
  * internal 的 schema 里收进迁移模块 —— 旧格式的知识只住在这里,配置仓开机只认最新的形状。

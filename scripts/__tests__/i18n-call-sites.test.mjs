@@ -80,6 +80,22 @@ const PACKAGE_LOCALE_DIR = "packages/internal/src/texts/locales";
 
 /** 两端各自的译文入口,加上包这一家。`minCalls`:至少扫到几处调用(扫空了比没有还糟);面板从 3b-43 提交 6 起有 2 处(拓展详情页的译文问题标题、装包后的跳过语言文件),3b-31 提交 4 又加了链接预览回复形式的 3 档标签,共 5 处,下限收到 5。 */
 export const ENDS = {
+	bilibili: {
+		root: "apps/server/src/bilibili",
+		store: "apps/server/src/bilibili/i18n",
+		localeDir: "apps/server/src/bilibili/locales",
+		valueNames: ["t"],
+		minCalls: 1,
+		fallbackDirs: [PACKAGE_LOCALE_DIR, "apps/server/src/i18n/locales"],
+	},
+	migration: {
+		root: "apps/server/src/migration",
+		store: "apps/server/src/migration/i18n",
+		localeDir: "apps/server/src/migration/locales",
+		valueNames: ["t"],
+		minCalls: 1,
+		fallbackDirs: [PACKAGE_LOCALE_DIR, "apps/server/src/i18n/locales"],
+	},
 	server: {
 		root: "apps/server/src",
 		store: "apps/server/src/i18n/index",
@@ -140,9 +156,18 @@ const readJson = (path) => JSON.parse(readFileSync(join(REPO_ROOT, path), "utf8"
 function loadSentences(end) {
 	const layer = (dir, file) => readJson(`${dir}/${file}`);
 	const under = end.layeredOnPackages ? PACKAGE_LOCALE_DIR : undefined;
+	const extra = end.fallbackDirs ?? [];
 	return sentencesOf(
-		{ ...(under && layer(under, "zh-CN.json")), ...layer(end.localeDir, "zh-CN.json") },
-		{ ...(under && layer(under, "zh-CN.maid.json")), ...layer(end.localeDir, "zh-CN.maid.json") },
+		{
+			...Object.assign({}, ...extra.map((dir) => layer(dir, "zh-CN.json"))),
+			...(under && layer(under, "zh-CN.json")),
+			...layer(end.localeDir, "zh-CN.json"),
+		},
+		{
+			...Object.assign({}, ...extra.map((dir) => layer(dir, "zh-CN.maid.json"))),
+			...(under && layer(under, "zh-CN.maid.json")),
+			...layer(end.localeDir, "zh-CN.maid.json"),
+		},
 	);
 }
 

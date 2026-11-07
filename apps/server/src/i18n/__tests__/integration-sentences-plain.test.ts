@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
+import biliPlain from "../../bilibili/locales/zh-CN.json" with { type: "json" };
+import biliMaid from "../../bilibili/locales/zh-CN.maid.json" with { type: "json" };
 import zhCN from "../locales/zh-CN.json" with { type: "json" };
 import zhCNMaid from "../locales/zh-CN.maid.json" with { type: "json" };
 
@@ -10,8 +12,8 @@ import zhCNMaid from "../locales/zh-CN.maid.json" with { type: "json" };
 const INTEGRATION_FAMILIES = ["bilibili.problem.", "qqOfficial.gateway."] as const;
 const FORBIDDEN = ["主人", "女仆", "面板", "指令", "重启", "login"] as const;
 
-const entries = Object.entries(zhCN as Record<string, string>).filter(([key]) =>
-	INTEGRATION_FAMILIES.some((family) => key.startsWith(family)),
+const entries = Object.entries({ ...zhCN, ...biliPlain } as Record<string, string>).filter(
+	([key]) => INTEGRATION_FAMILIES.some((family) => key.startsWith(family)),
 );
 
 describe("集成写的问题句是平实的", () => {
@@ -29,7 +31,7 @@ describe("集成写的问题句是平实的", () => {
 	});
 
 	it("女仆层没有这两族的键(口吻只在宿主加的引子里)", () => {
-		const maidKeys = Object.keys(zhCNMaid);
+		const maidKeys = Object.keys({ ...zhCNMaid, ...biliMaid });
 		expect(
 			maidKeys.filter((key) => INTEGRATION_FAMILIES.some((family) => key.startsWith(family))),
 		).toEqual([]);

@@ -5,9 +5,9 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
 import { stripHtmlTags } from "../util/strip-html-tags.js";
 import type { Api } from "./api/index.js";
+import { t } from "./i18n.js";
 import { fetchAvatar, type ImagesDeps, runLimited } from "./images.js";
 
 /** 一次最多回几个候选(契约上限)。 */

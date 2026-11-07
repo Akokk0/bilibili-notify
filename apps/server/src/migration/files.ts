@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * 迁移器改写文件的共用几件:读一份 JSON(分得清没有 / 读不懂 / 读到了)、写一份新文件替掉旧的(原子换名、
  * 沿用原件的权限)、逐行改写一份 jsonl、判一坨东西是不是普通对象、认第 0 代里的残留。

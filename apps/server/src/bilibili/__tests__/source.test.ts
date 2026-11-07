@@ -1,4 +1,5 @@
 import { GUARD_PROGRAM } from "../guard-program.js";
+import { DICTS as BILI_DICTS } from "../i18n.js";
 /**
  * B 站来源:`start(ctx)` 里造并启动动态轮询,`stop()` 里停它。
  *
@@ -459,16 +460,15 @@ describe("createBiliSource", () => {
 				post: "投稿 / 转发 / 专栏",
 				superchat: "Super Chat 提醒",
 			});
+			const english = BILI_DICTS.en.plain as Record<string, string>;
+			const previous = english[key];
+			english[key] = "Current post hint";
 			i18n.set({ locale: "en" });
-			const translate = vi
-				.spyOn(i18n.state(), "t")
-				.mockImplementation((requested) =>
-					requested === key ? "Current post hint" : String(requested),
-				);
 			try {
 				expect(source.descriptor.featureHints?.post).toBe("Current post hint");
 			} finally {
-				translate.mockRestore();
+				if (previous === undefined) delete english[key];
+				else english[key] = previous;
 			}
 		} finally {
 			i18n.set({ locale: state.locale, voice: state.voice });
@@ -543,7 +543,6 @@ describe("createBiliSource", () => {
 				CONTEXT_IMAGE_REF,
 				CONTEXT_IMAGE_REF,
 			]);
-			i18n.set({ locale: "en" });
 			const translated = new Map([
 				["bilibili.guard.name", "Fleet"],
 				["bilibili.guard.captain.name", "Captain"],
@@ -553,9 +552,10 @@ describe("createBiliSource", () => {
 				["bilibili.guard.commander.announcement", "{viewer} commands {name}'s fleet"],
 				["bilibili.guard.governor.announcement", "{viewer} governs {name}'s fleet"],
 			]);
-			const translate = vi
-				.spyOn(i18n.state(), "t")
-				.mockImplementation((key) => translated.get(key) ?? String(key));
+			const english = BILI_DICTS.en.plain as Record<string, string>;
+			const previous = { ...english };
+			Object.assign(english, Object.fromEntries(translated));
+			i18n.set({ locale: "en" });
 			try {
 				expect(program?.name).toBe("Fleet");
 				expect(
@@ -566,7 +566,8 @@ describe("createBiliSource", () => {
 					["governor", "Governor", 3, "{viewer} governs {name}'s fleet", CONTEXT_IMAGE_REF],
 				]);
 			} finally {
-				translate.mockRestore();
+				for (const key of Object.keys(english)) delete english[key];
+				Object.assign(english, previous);
 			}
 		} finally {
 			await source.stop();
@@ -1826,21 +1827,39 @@ it("reads descriptor nouns through both the shared descriptor and existing sourc
 	const source = createBiliSource(makeDeps().deps);
 	const descriptor = source.descriptor;
 	const state = i18n.state();
+	const dict = BILI_DICTS.en.plain as Record<string, string>;
+	const keys = ["bilibili.source.label", "bilibili.source.creatorNoun", "bilibili.source.postNoun"];
+	const originals = keys.map((key) => dict[key]);
 	try {
+		for (const key of keys) dict[key] = `Current ${key}`;
 		i18n.set({ locale: "en", voice: "plain" });
-		const translate = vi.spyOn(i18n.state(), "t").mockImplementation((key) => `Current ${key}`);
-		try {
-			for (const object of [BILI_SOURCE_DESCRIPTOR, descriptor]) {
-				expect(object.label).toBe("Current bilibili.source.label");
-				expect(object.creatorNoun).toBe("Current bilibili.source.creatorNoun");
-				expect(object.postNoun).toBe("Current bilibili.source.postNoun");
-				expect(object.externalIdRegex).toBe("^\\d+$");
-				expect(object.shortLabel).toBe("B");
-			}
-			expect(source.descriptor).toBe(descriptor);
-		} finally {
-			translate.mockRestore();
+		for (const object of [BILI_SOURCE_DESCRIPTOR, descriptor]) {
+			expect(object.label).toBe("Current bilibili.source.label");
+			expect(object.creatorNoun).toBe("Current bilibili.source.creatorNoun");
+			expect(object.postNoun).toBe("Current bilibili.source.postNoun");
+			expect(object.externalIdRegex).toBe("^\\d+$");
+			expect(object.shortLabel).toBe("B");
 		}
+		expect(source.descriptor).toBe(descriptor);
+	} finally {
+		keys.forEach((key, index) => {
+			const original = originals[index];
+			if (original === undefined) delete dict[key];
+			else dict[key] = original;
+		});
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
+});
+
+it("来源叫法随宿主切语言，缺译文时保留原文", () => {
+	const state = i18n.state();
+	try {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		expect(BILI_SOURCE_DESCRIPTOR.label).toBe("B 站");
+		expect(BILI_SOURCE_DESCRIPTOR.creatorNoun).toBe("UP主");
+		i18n.set({ locale: "en", voice: "plain" });
+		expect(BILI_SOURCE_DESCRIPTOR.label).toBe("B 站");
+		expect(BILI_SOURCE_DESCRIPTOR.creatorNoun).toBe("UP主");
 	} finally {
 		i18n.set({ locale: state.locale, voice: state.voice });
 	}

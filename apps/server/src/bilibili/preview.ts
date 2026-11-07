@@ -16,13 +16,13 @@ import {
 	type PreviewReport,
 	type Result,
 } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
 import { dynamicLink } from "./dynamic/dynamic-poller.js";
 import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./dynamic/index.js";
 import type { Dynamic } from "./dynamic/types.js";
 import { failureFromBili } from "./error-codes.js";
+import { t } from "./i18n.js";
 import { fetchPostImages, type ImagesDeps } from "./images.js";
 
 export interface BiliPostPreviewDeps {

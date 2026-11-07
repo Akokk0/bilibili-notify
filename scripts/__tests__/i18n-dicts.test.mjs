@@ -41,6 +41,8 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** BN 自己放译文的目录。目录叫 `locales/`,拓展同名(ADR-0037 决策 14 下的 🔗)。 */
 export const DICT_DIRS = [
+	"apps/server/src/bilibili/locales",
+	"apps/server/src/migration/locales",
 	"apps/server/src/i18n/locales",
 	"apps/web/src/i18n/locales",
 	"packages/internal/src/texts/locales",

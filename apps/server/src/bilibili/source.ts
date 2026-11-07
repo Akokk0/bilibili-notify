@@ -20,7 +20,6 @@ import {
 	type SourceHealth,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { errorMessageOf } from "../util/error-message.js";
@@ -33,6 +32,7 @@ import { BILI_EXTERNAL_ID_REGEX } from "./external-id.js";
 import { watchFollows } from "./follow-sync.js";
 import { GUARD_PROGRAM } from "./guard-program.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
+import { t } from "./i18n.js";
 import { fetchAvatar, IMAGE_REQUEST_HEADERS } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
 import { createRoomIds, type RoomIds } from "./live/room-ids.js";

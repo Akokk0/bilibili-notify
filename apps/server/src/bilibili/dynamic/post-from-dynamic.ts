@@ -1,4 +1,4 @@
-import { t as serverText } from "../../i18n/index.js";
+import { t as serverText } from "../i18n.js";
 /**
  * B 站原始动态 → 平台中立的作品 `Post`(㉑c 第 5 步,ADR-0021 决策 19–25)。
  *
@@ -37,7 +37,7 @@ import {
 	type RichText,
 	type RichTextSegment,
 } from "@bilibili-notify/internal";
-import { t } from "../../i18n/index.js";
+import { t } from "../i18n.js";
 import { parseClock, parseCount } from "./bili-display-values";
 import type { Dynamic } from "./types";
 

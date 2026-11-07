@@ -1,5 +1,5 @@
 import type { AuthState } from "@bilibili-notify/internal";
-import { t as serverText } from "../../i18n/index.js";
+import { t as serverText } from "../i18n.js";
 
 /** 二维码登录失败的原因键(`failed` 状态里带的那几种)。 */
 export type LoginFailureKey =

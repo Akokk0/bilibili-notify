@@ -10,10 +10,10 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
 import { BILI_AI_TOOL_TEXTS } from "./ai-tool-texts.js";
 import type { Api } from "./api/index.js";
 import { BILI_EXTERNAL_ID_REGEX } from "./external-id.js";
+import { t } from "./i18n.js";
 import { BILI_WEEKLY_REPORT_SKILL } from "./weekly-report-skill.js";
 
 type BiliAiApi = Pick<Api, "fetchUserUpstat" | "fetchUserNavnum" | "fetchUserVideos">;

@@ -1,4 +1,4 @@
-import { t as serverText } from "../../../i18n/index.js";
+import { t as serverText } from "../../i18n.js";
 /**
  * 直播信息流 WSS 客户端 —— 哑管道。
  *

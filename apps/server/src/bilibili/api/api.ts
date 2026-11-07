@@ -12,11 +12,11 @@ import {
 	type WebSocketLike,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
-import { t as serverText, t } from "../../i18n/index.js";
 import { errorMessageOf } from "../../util/error-message";
 import { type BiliContext, REFRESH_TOKEN_KEY } from "../context";
 import type { AllDynamicResponse } from "../dynamic/types";
 import { failureFromBili } from "../error-codes";
+import { t as serverText, t } from "../i18n.js";
 import { ApiClient } from "./api-client";
 import * as EP from "./endpoints";
 import { RiskControlError } from "./risk-control";

@@ -1,5 +1,5 @@
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * B 站这个集成的设置:`config/settings/bilibili.json`(ADR-0021 决策 42 下 10-01 的 🔗)。格式由 B 站自己定,
  * 登记进配置仓(今天在 `runtime/bootstrap.ts`,3a 起在组装根);核心不读这一份(守卫 12)。

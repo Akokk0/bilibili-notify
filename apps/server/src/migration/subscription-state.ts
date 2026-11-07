@@ -1,6 +1,5 @@
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import { CreatorProfileSchema, type Json } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
 import { integrationStateFile, writeIntegrationStateFile } from "../integration-store/files.js";
 import {
 	createKeyValueStores,
@@ -11,6 +10,7 @@ import {
 import { dataPath } from "../runtime/roots.js";
 import { SUBSCRIPTION_STATE_FILE } from "../runtime/subscription-state-store.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
+import { t } from "./i18n.js";
 import type { BiliSubscriptionKey } from "./subscriptions.js";
 
 /** 报告里的相对路径也从运行态仓与集成状态模块的活路径派生。 */

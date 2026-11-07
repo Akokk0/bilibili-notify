@@ -7,10 +7,10 @@ import {
 	type SourceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
 import { ensureFollowed, FOLLOWED_ATTRIBUTES, riskBackoffStepMs } from "./api/index.js";
+import { t } from "./i18n.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 

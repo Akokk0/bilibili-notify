@@ -1,5 +1,5 @@
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * 订阅:0.x 的两份文件 `state/subscriptions.json`(B 站)与 `state/extension-subscriptions.json`(拓展)→ 新代
  * 里的一个 `config/subscriptions.json`,行行带 `identity`(ADR-0021 决策 14、15)。先把 0.x 各个版本留下的形状

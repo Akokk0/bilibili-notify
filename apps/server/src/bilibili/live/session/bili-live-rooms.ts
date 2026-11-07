@@ -12,10 +12,10 @@ import {
 	type SourceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
-import { t } from "../../../i18n/index.js";
 import { errorMessageOf } from "../../../util/error-message.js";
 import type { Api } from "../../api/index.js";
 import { failureFromBili } from "../../error-codes.js";
+import { t } from "../../i18n.js";
 import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
 import { isLoginLost, watchLoginEdges } from "../../login-edges.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";

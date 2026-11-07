@@ -1,6 +1,6 @@
 import type { Disposable, LiveDetails, LiveInteractionReport } from "@bilibili-notify/internal";
-import { t as serverText } from "../../../i18n/index.js";
 import { riskBackoffStepMs } from "../../api/index.js";
+import { t as serverText } from "../../i18n.js";
 import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import { liveDetailsFromRoomInfo, liveTimeToIso } from "../live-card-input.js";

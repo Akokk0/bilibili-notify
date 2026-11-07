@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * 迁移清单(守卫 13 前半):盘上存的记录里,所有「用特性键 / 附加项键 / 卡种做键」的位置,以及每一条由谁负责从 0.x 迁到 1.0。
  *

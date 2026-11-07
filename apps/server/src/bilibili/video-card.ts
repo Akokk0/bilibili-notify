@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * 把一条视频信息直接造成「投稿了视频」形态的作品,喂给出卡器(`ImageRenderer.generatePostCard`)。
  *

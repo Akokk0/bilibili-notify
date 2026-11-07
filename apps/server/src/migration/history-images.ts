@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * 推送历史里跟图有关的格 → 图库(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗,⑳d)。
  *

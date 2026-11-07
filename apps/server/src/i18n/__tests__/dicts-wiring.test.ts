@@ -2,6 +2,8 @@ import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { LocaleDicts } from "@bilibili-notify/internal/i18n";
 import { describe, expect, it } from "vite-plus/test";
+import { DICTS as BILI_DICTS } from "../../bilibili/i18n.js";
+import { DICTS as MIGRATION_DICTS } from "../../migration/i18n.js";
 import { DICTS } from "../index.js";
 
 /**
@@ -10,22 +12,29 @@ import { DICTS } from "../index.js";
  * 所以把文件接错了槽位也会红(即使两份都是 `{}`)。
  * 服务端的 tsconfig 没有 vite 的类型,所以不用 `import.meta.glob`,而是读目录再逐个动态引。
  */
-const localesDir = fileURLToPath(new URL("../locales/", import.meta.url));
-const names = readdirSync(localesDir)
-	.filter((name) => name.endsWith(".json"))
-	.sort();
+const groups = [
+	["../locales/", DICTS],
+	["../../bilibili/locales/", BILI_DICTS],
+	["../../migration/locales/", MIGRATION_DICTS],
+] as const;
+const names = groups.flatMap(([dir, dicts]) =>
+	readdirSync(fileURLToPath(new URL(dir, import.meta.url)))
+		.filter((name) => name.endsWith(".json"))
+		.sort()
+		.map((name) => ({ dir, dicts, name })),
+);
 
 describe("服务端译文文件都接进了 DICTS", () => {
 	it("目录里至少有文件(扫空了比没有还糟)", () => {
 		expect(names.length).toBeGreaterThan(0);
 	});
 
-	it.each(names)("%s", async (name) => {
+	it.each(names)("$dir$name", async ({ dir, dicts: catalog, name }) => {
 		const match = /^(.+?)(\.maid)?\.json$/.exec(name);
 		if (match === null) throw new Error(`认不出的文件名: ${name}`);
 		const [, locale, maid] = match;
-		const { default: content } = await import(`../locales/${name}`, { with: { type: "json" } });
-		const dicts = (DICTS as Record<string, LocaleDicts | undefined>)[locale as string];
+		const { default: content } = await import(`${dir}${name}`, { with: { type: "json" } });
+		const dicts = (catalog as Record<string, LocaleDicts | undefined>)[locale as string];
 		expect(dicts, `${locale} 没接进 DICTS`).toBeDefined();
 		expect(maid === undefined ? dicts?.plain : dicts?.maid).toBe(content);
 	});

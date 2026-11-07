@@ -1,6 +1,5 @@
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
 import type { IntegrationContext, ServiceContext } from "@bilibili-notify/internal";
-import { t as serverText } from "../i18n/index.js";
 import { disposeThenClose, type IntegrationStore } from "../integration-store/store.js";
 import type { CreateIntegrationContextOptions } from "../integrations/context.js";
 import type { CookieJarHandle } from "../integrations/http.js";
@@ -10,6 +9,7 @@ import {
 	type settingsReaderOptionsOf,
 } from "../integrations/settings-reader.js";
 import { defaultHeaders } from "./api/default-headers.js";
+import { t as serverText } from "./i18n.js";
 import { BILI_SOURCE_DESCRIPTOR } from "./source.js";
 
 /** 单跳超时:无 timeout 时一个挂起连接(对端不回 / 半开 TCP)会让该请求永不结束。 */

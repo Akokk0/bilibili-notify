@@ -14,8 +14,9 @@
 
 import { DYNAMIC_SAMPLE_POSTS } from "@bilibili-notify/image/testing";
 import { normalizePost, type Post } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { i18n } from "../../../i18n/index.js";
+import { DICTS as BILI_DICTS } from "../../i18n.js";
 import { emojiUrlsOf, postFromDynamic } from "../post-from-dynamic";
 import type { Dynamic } from "../types";
 import { BILI_DYNAMIC_SAMPLES, LIVE_RCMD_DYNAMIC } from "./fixtures/bili-dynamic-fixtures";
@@ -1115,8 +1116,11 @@ describe("emojiUrlsOf:表情文字 → 图片地址(出卡前抓表情图用)", 
 
 it("recognizes platform badge and reservation status words independently of the output language", () => {
 	const state = i18n.state();
+	const dict = BILI_DICTS.en.plain as Record<string, string>;
+	const key = "bilibili.dynamic.post-from-dynamic.text.6";
+	const original = dict[key];
+	dict[key] = "Translated label";
 	i18n.set({ locale: "en", voice: "plain" });
-	const spy = vi.spyOn(i18n.state(), "t").mockReturnValue("Translated label");
 	try {
 		const video = postFromDynamic(
 			raw("DYNAMIC_TYPE_AV", {
@@ -1148,7 +1152,8 @@ it("recognizes platform badge and reservation status words independently of the 
 		);
 		expect(reserve.attachment).toMatchObject({ button: { text: "已结束", enabled: false } });
 	} finally {
-		spy.mockRestore();
+		if (original === undefined) delete dict[key];
+		else dict[key] = original;
 		i18n.set({ locale: state.locale, voice: state.voice });
 	}
 });

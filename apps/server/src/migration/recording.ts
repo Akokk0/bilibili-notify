@@ -1,5 +1,5 @@
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * 统计的「在记」小账:从 0.x 留下的数据**推出**老日子哪些小时在记,按小时区间写进新代的
  * `stats/recording/<订阅 id>.jsonl`(ADR-0027 决策 3 / 13;㉖f)。迁移之后,老日子在 `/overview` 上哪些格有数、

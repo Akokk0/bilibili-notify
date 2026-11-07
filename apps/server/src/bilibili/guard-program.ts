@@ -4,7 +4,7 @@
  */
 
 import type { MembershipProgram, MembershipTier } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
+import { t } from "./i18n.js";
 
 /** 官方徽章图。来源经 ctx.fetchImage 存进图库,核心只读描述符里的引用。 */
 const BADGE_BASE = "https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/";

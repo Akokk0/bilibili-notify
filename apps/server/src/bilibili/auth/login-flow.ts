@@ -10,10 +10,10 @@ import {
 	type SourceAccount,
 } from "@bilibili-notify/internal";
 import QRCode from "qrcode";
-import { t as serverText } from "../../i18n/index.js";
 import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/api";
 import type { MyselfResponse } from "../api/types";
+import { t as serverText } from "../i18n.js";
 import {
 	authStateFromLoginState,
 	type BiliAccount,

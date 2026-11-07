@@ -1,4 +1,4 @@
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * 迁移压老粉丝样本(ADR-0027 决策 8、15;㉘c):把新代 `stats/followers/<订阅 id>.jsonl` 里 0.x 的 `{ ts, value }`
  * 行改成新形状 `{ sampledAt, followers }`,同时按「现在」压一遍(最近 8 天原样,更早的每小时留最晚的一条、

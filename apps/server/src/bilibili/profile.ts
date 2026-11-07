@@ -10,9 +10,9 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
-import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
+import { t } from "./i18n.js";
 import { type ImagesDeps, type ProfileAvatarFields, syncProfileAvatar } from "./images.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 

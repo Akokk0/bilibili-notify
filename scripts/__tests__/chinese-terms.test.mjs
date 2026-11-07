@@ -96,10 +96,7 @@ export const ADVICE =
 /**
  * 棘轮表:文件 → 命中的上限(4-09 开张时的现数:65 个文件 298 处)。只许往下调;第 4 期面板按描述符重画时成片消,第 5 期末清零。
  */
-export const RATCHET = {
-	"apps/server/src/i18n/locales/zh-CN.json": 41,
-	"apps/server/src/i18n/locales/zh-CN.maid.json": 1,
-};
+export const RATCHET = {};
 
 /** 一段文字里出现的叫法(去掉这个文件放行的那几个);没有就是空数组。 */
 export function termsIn(text, allowed = []) {
@@ -144,7 +141,9 @@ export function jsonTermHits(json, allowed = [], file = "") {
 export const JSON_TERM_PINS = {
 	"apps/web/src/i18n/locales/zh-CN.json": {},
 	"apps/web/src/i18n/locales/zh-CN.maid.json": {},
-	"apps/server/src/i18n/locales/zh-CN.json": {
+	"apps/server/src/i18n/locales/zh-CN.json": {},
+	"apps/server/src/i18n/locales/zh-CN.maid.json": {},
+	"apps/server/src/bilibili/locales/zh-CN.json": {
 		"bilibili.guard.name": ["大航海"],
 		"bilibili.guard.captain.name": ["舰长"],
 		"bilibili.guard.commander.name": ["提督"],
@@ -161,13 +160,6 @@ export const JSON_TERM_PINS = {
 		"bilibili.response.codeOnly": ["B站"],
 		"bilibili.search.failed": ["B站"],
 		"bilibili.search.failedWithReason": ["B站"],
-		"migration.subscriptionState.biliStateUnreadable": ["B站"],
-		"migration.subscriptionState.biliStateUnwritable": ["B站"],
-		"migration.subscriptionState.roomsDropped": ["B站", "B站"],
-		"migration.zero.layout.secrets": ["B站"],
-		"migration.zero.inputs.cookies": ["B站"],
-		"migration.zero.labels.biliLogin": ["B站"],
-		"migration.zero.biliLoginFailed": ["B站"],
 		"bilibili.source.dynamicCell": ["动态"],
 		"bilibili.source.label": ["B站"],
 		"bilibili.source.creatorNoun": ["UP主"],
@@ -187,9 +179,19 @@ export const JSON_TERM_PINS = {
 		"bilibili.live.session.room-helpers.text.6": ["B站"],
 		"bilibili.live.session.room-session.text.3": ["大航海"],
 	},
-	"apps/server/src/i18n/locales/zh-CN.maid.json": {
+	"apps/server/src/migration/locales/zh-CN.json": {
+		"migration.subscriptionState.biliStateUnreadable": ["B站"],
+		"migration.subscriptionState.biliStateUnwritable": ["B站"],
+		"migration.subscriptionState.roomsDropped": ["B站", "B站"],
+		"migration.zero.layout.secrets": ["B站"],
+		"migration.zero.inputs.cookies": ["B站"],
+		"migration.zero.labels.biliLogin": ["B站"],
 		"migration.zero.biliLoginFailed": ["B站"],
 	},
+	"apps/server/src/migration/locales/zh-CN.maid.json": {
+		"migration.zero.biliLoginFailed": ["B站"],
+	},
+	"apps/server/src/bilibili/locales/zh-CN.maid.json": {},
 };
 
 /** 4-53c：五个来源描述/设置名只准在B站的对应getter里取，核心读描述符。 */
@@ -359,7 +361,7 @@ export function scanRepo() {
  */
 describe("核心与面板里的 B 站叫法只降不涨", () => {
 	it("B 站余量必须保留精确键和命中词，挪位或加词不能拿总额度抵消", () => {
-		const file = "apps/server/src/i18n/locales/zh-CN.maid.json";
+		const file = "apps/server/src/migration/locales/zh-CN.maid.json";
 		const json = readFileSync(join(REPO_ROOT, file), "utf8");
 		expect(auditJsonPins(json, file)).toEqual([]);
 		expect(
@@ -373,7 +375,7 @@ describe("核心与面板里的 B 站叫法只降不涨", () => {
 		).not.toEqual([]);
 	});
 	it("4-27 服务端新增叫法只来自批准的完整来源提示键与专栏一词", () => {
-		const file = "apps/server/src/i18n/locales/zh-CN.json";
+		const file = "apps/server/src/bilibili/locales/zh-CN.json";
 		const dict = JSON.parse(readFileSync(join(REPO_ROOT, file), "utf8"));
 		expect(
 			Object.entries(dict)
@@ -385,7 +387,7 @@ describe("核心与面板里的 B 站叫法只降不涨", () => {
 		]);
 	});
 	it("4-28 档位原文只迁到批准的七个完整键,不扩大叫法范围", () => {
-		const file = "apps/server/src/i18n/locales/zh-CN.json";
+		const file = "apps/server/src/bilibili/locales/zh-CN.json";
 		const dict = JSON.parse(readFileSync(join(REPO_ROOT, file), "utf8"));
 		expect(
 			Object.fromEntries(

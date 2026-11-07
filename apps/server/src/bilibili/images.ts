@@ -1,5 +1,5 @@
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/contract";
-import { t as serverText } from "../i18n/index.js";
+import { t as serverText } from "./i18n.js";
 /**
  * B 站集成自己把图存进图库:作品里的图、正文表情图、直播卡的封面在**出卡之前**抓进图库,交给出卡器的只带图库引用
  * (ADR-0021 决策 22)。翻译(`postFromDynamic`、`liveCardInputFromRoomInfo`)是同步的、只填 `url`,抓图是这里

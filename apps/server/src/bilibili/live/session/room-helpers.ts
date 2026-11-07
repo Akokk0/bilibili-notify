@@ -1,6 +1,6 @@
 import type { Failure } from "@bilibili-notify/internal";
-import { t as serverText } from "../../../i18n/index.js";
 import type { LiveRoomDanmakuResponse } from "../../api/index.js";
+import { t as serverText } from "../../i18n.js";
 
 type DanmakuInfo = LiveRoomDanmakuResponse["data"];
 

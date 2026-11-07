@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import md5 from "md5";
-import { t as serverText } from "../../i18n/index.js";
+import { t as serverText } from "../i18n.js";
 
 // Bilibili WBI signing constant table
 const MIXIN_KEY_ENC_TAB = [
