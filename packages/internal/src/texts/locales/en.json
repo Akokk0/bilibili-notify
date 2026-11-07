@@ -66,5 +66,13 @@
 	"ai.log.extraParamsObject": "Extra request parameters must be a JSON object, for example {example}",
 	"ai.log.visionImageFailed": "Image description failed; no description for this image this cycle",
 	"ai.log.visionTimedOut": "Image description timed out; no description for this image this cycle",
-	"ai.log.visionInlineImage": "Inline image, approximately {kilobytes} KB"
+	"ai.log.visionInlineImage": "Inline image, approximately {kilobytes} KB",
+	"image.log.configUpdated": "Image rendering configuration updated",
+	"image.log.knobBudgetExceeded": "Skin knob image exceeds the CSS custom property limit; image not injected",
+	"image.log.skinAssetFailed": "Failed to read a skin asset",
+	"image.log.skinFallback": "Card skin unavailable; falling back to the default skin",
+	"image.log.renderStarted": "Starting card rendering",
+	"image.log.renderFinished": "Card rendering completed",
+	"image.log.imageRefFailed": "Image reference resolution failed; using a placeholder",
+	"image.log.requestsBlocked": "Render page requests blocked; affected images cannot be displayed"
 }

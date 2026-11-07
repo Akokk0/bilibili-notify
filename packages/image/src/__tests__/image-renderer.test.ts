@@ -6,6 +6,12 @@
  */
 
 import type { ServiceContext } from "@bilibili-notify/internal";
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	PACKAGE_DICTS,
+	type PackageTextKey,
+} from "@bilibili-notify/internal/texts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	ImageRenderer,
@@ -90,6 +96,14 @@ describe("ImageRenderer.updateConfig", () => {
 		expect(info).toHaveBeenCalledTimes(1);
 	});
 
+	it("清除字体覆盖时仍记录明确的重置值", () => {
+		const { r, info } = makeWithSpyLogger({ ...BASE });
+		r.updateConfig({ font: undefined });
+		expect(info).toHaveBeenCalledWith("图片渲染配置已更新", { changed: { font: null } });
+		r.updateConfig({ font: undefined });
+		expect(info).toHaveBeenCalledTimes(1);
+	});
+
 	it("相同配置重复 updateConfig → 不记录(切卡片类型时样式没变)", () => {
 		const { r, info } = makeWithSpyLogger({ ...BASE });
 		r.updateConfig({ ...BASE });
@@ -101,21 +115,19 @@ describe("ImageRenderer.updateConfig", () => {
 		const { r, info } = makeWithSpyLogger({ ...BASE });
 		r.updateConfig({ ...BASE, fontAsset: "font-1" });
 		expect(info).toHaveBeenCalledTimes(1);
-		const [msg] = info.mock.calls[0] as [string];
-		expect(msg).toContain("fontAsset");
-		expect(msg).not.toContain("font=");
+		expect(info).toHaveBeenCalledWith("图片渲染配置已更新", { changed: { fontAsset: true } });
 	});
 });
 
 /** 把 info 日志收进数组的渲染器 —— 热更日志那几条共用。 */
 function makeLoggingRenderer(
-	infos: string[],
+	infos: unknown[][],
 	config: Partial<ImageRendererSettings> = {},
 ): ImageRenderer {
 	const r = makeRenderer(config) as AnyRenderer;
 	r.logger = {
 		debug() {},
-		info: (m: string) => infos.push(m),
+		info: (m: string, ...args: unknown[]) => infos.push([m, ...args]),
 		warn() {},
 		error() {},
 	};
@@ -134,12 +146,12 @@ const BASE_CONFIG: ImageRendererSettings = {
  */
 describe("ImageRenderer.updateConfig 预览实例静默", () => {
 	it("quietConfigUpdates 时热更日志走 debug、不打 info", () => {
-		const infos: string[] = [];
-		const debugs: string[] = [];
+		const infos: unknown[][] = [];
+		const debugs: unknown[][] = [];
 		const r = makeRenderer({ font: "sans-serif" }, { quietConfigUpdates: true }) as AnyRenderer;
 		r.logger = {
-			debug: (m: string) => debugs.push(m),
-			info: (m: string) => infos.push(m),
+			debug: (m: string, ...args: unknown[]) => debugs.push([m, ...args]),
+			info: (m: string, ...args: unknown[]) => infos.push([m, ...args]),
 			warn() {},
 			error() {},
 		};
@@ -147,16 +159,16 @@ describe("ImageRenderer.updateConfig 预览实例静默", () => {
 		(r as ImageRenderer).updateConfig({ ...BASE_CONFIG, font: "serif" });
 
 		expect(infos).toHaveLength(0);
-		expect(debugs[0]).toContain("font=serif");
+		expect(debugs[0]).toEqual(["图片渲染配置已更新", { changed: { font: "serif" } }]);
 	});
 
 	it("默认(推送渲染器)仍然打 info —— 那才是真的生效了", () => {
-		const infos: string[] = [];
+		const infos: unknown[][] = [];
 		const r = makeLoggingRenderer(infos, { font: "sans-serif" });
 
 		r.updateConfig({ ...BASE_CONFIG, font: "serif" });
 
-		expect(infos[0]).toContain("font=serif");
+		expect(infos[0]).toEqual(["图片渲染配置已更新", { changed: { font: "serif" } }]);
 	});
 });
 
@@ -226,7 +238,7 @@ describe("generateLiveCard 自定义封面", () => {
 
 describe("ImageRenderer 渲染页拦下的请求", () => {
 	it("一张卡里被拦下的请求汇总成一条警告(几个、去了哪些主机,不带路径与参数),计数照加", async () => {
-		const warns: string[] = [];
+		const warns: unknown[][] = [];
 		// 这一张卡渲染期间,适配层的闸会拦下哪些请求。
 		let blockedDuringRender: string[] = [];
 		let onBlockedRequest: PageOptions["onBlockedRequest"];
@@ -249,7 +261,12 @@ describe("ImageRenderer 渲染页拦下的请求", () => {
 			},
 		};
 		const serviceCtx: ServiceContext = {
-			logger: { debug() {}, info() {}, warn: (m: string) => warns.push(m), error() {} },
+			logger: {
+				debug() {},
+				info() {},
+				warn: (m: string, ...args: unknown[]) => warns.push([m, ...args]),
+				error() {},
+			},
 			setInterval: () => ({ dispose() {} }),
 			setTimeout: () => ({ dispose() {} }),
 			onDispose: () => {},
@@ -273,17 +290,57 @@ describe("ImageRenderer 渲染页拦下的请求", () => {
 
 		expect((renderer as AnyRenderer).blockedRequestCount).toBe(3);
 		expect(warns).toHaveLength(1);
-		expect(warns[0]).toContain("渲染页拦下 3 个请求");
+		expect(warns[0]).toEqual([
+			"渲染页请求被拦截，相关图片无法显示",
+			{ count: 3, targets: ["example.invalid", "file:"] },
+		]);
 		// 同一台主机只报一次;没有主机的(`file:`)报协议。
-		expect(warns[0]?.split("example.invalid")).toHaveLength(2);
-		expect(warns[0]).toContain("file:");
-		expect(warns[0]).not.toContain("token");
-		expect(warns[0]).not.toContain("a.png");
-		expect(warns[0]).not.toContain("/etc/hosts");
+		expect(JSON.stringify(warns[0]).split("example.invalid")).toHaveLength(2);
+		expect(JSON.stringify(warns[0])).toContain("file:");
+		expect(JSON.stringify(warns[0])).not.toContain("token");
+		expect(JSON.stringify(warns[0])).not.toContain("a.png");
+		expect(JSON.stringify(warns[0])).not.toContain("/etc/hosts");
 
 		// 下一张卡从头数,不把上一张的带过来。
 		blockedDuringRender = [];
 		await renderer.screenshotHtml("<html><body></body></html>");
 		expect(warns).toHaveLength(1);
 	});
+});
+
+it("同一图片渲染器配置日志随语言切换，只报真实变更，相同配置仍静默", () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: PACKAGE_DICTS,
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "maid",
+	});
+	const binding = bindPackageText(texts.t);
+	try {
+		const info = vi.fn();
+		const serviceCtx: ServiceContext = {
+			logger: { info, debug() {}, warn() {}, error() {} },
+			setInterval: () => ({ dispose() {} }),
+			setTimeout: () => ({ dispose() {} }),
+			onDispose() {},
+			signal: new AbortController().signal,
+			track() {},
+		};
+		const renderer = makeRenderer({ font: "sans-serif" }, { serviceCtx });
+		for (const [locale, message] of [
+			["zh-CN", "图片渲染配置已更新"],
+			["en", "Image rendering configuration updated"],
+			["ja", "画像レンダリング設定を更新しました"],
+			["zh-TW", "圖片算繪設定已更新"],
+		] as const) {
+			texts.set({ locale, voice: "maid" });
+			const config = { font: `font-${locale}` };
+			renderer.updateConfig(config);
+			renderer.updateConfig(config);
+			expect(info).toHaveBeenLastCalledWith(message, { changed: { font: `font-${locale}` } });
+		}
+		expect(info).toHaveBeenCalledTimes(4);
+	} finally {
+		binding.dispose();
+	}
 });

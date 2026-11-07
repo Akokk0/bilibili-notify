@@ -63,7 +63,7 @@ function blockedTargetOf(url: string): string {
 		const parsed = new URL(url);
 		return parsed.host || parsed.protocol;
 	} catch {
-		return "(解析不了的地址)";
+		return "invalid-url";
 	}
 }
 
@@ -277,17 +277,17 @@ export class ImageRenderer {
 		// updateConfig,无脑打 info 会刷屏并让人误以为「已保存」。重复传入相同配置则静默。
 		// 日志内容只列**真正变化**的字段(此前无脑打印一整份配置,改玻璃片透明度这类字段时
 		// 看起来像"别的项又被打印了一遍",容易被误读成没热更新到实际改的项)。
-		const diffs: string[] = [];
-		if (prev.font !== config.font) diffs.push(`font=${config.font}`);
+		const changed: Record<string, string | boolean | null> = {};
+		if (prev.font !== config.font) changed.font = config.font ?? null;
 		if (prev.fontAsset !== config.fontAsset) {
-			diffs.push(`fontAsset=${config.fontAsset ? "(自带字体)" : "(无)"}`);
+			changed.fontAsset = Boolean(config.fontAsset);
 			// 换了一款就把缓存里那份几十兆的 base64 放掉,别攥着已经不用的字体。
 			this.fontCache = null;
 		}
-		if (diffs.length === 0) return;
-		const line = `[image] 配置已更新: ${diffs.join(", ")}`;
-		if (this.quietConfigUpdates) this.logger.debug(line);
-		else this.logger.info(line);
+		if (Object.keys(changed).length === 0) return;
+		if (this.quietConfigUpdates)
+			this.logger.debug(packageText("image.log.configUpdated"), { changed });
+		else this.logger.info(packageText("image.log.configUpdated"), { changed });
 	}
 
 	// ── 公共工具方法 ─────────────────────────────────────────────────────────────
@@ -359,7 +359,8 @@ export class ImageRenderer {
 		});
 		// **这一层的失败全是静默的**(图不出、字体回落),不说出来主人只能对着一张
 		// 少了背景的卡片猜。
-		for (const w of out.warnings) this.logger.warn(`[card-skin] ${w}`);
+		for (const warning of out.warnings)
+			this.logger.warn(packageText("image.log.knobBudgetExceeded"), warning);
 		return out;
 	}
 
@@ -426,7 +427,11 @@ export class ImageRenderer {
 					const url = await resolve(skinId, name);
 					if (url) out.set(name, url);
 				} catch (e) {
-					this.logger.warn(`[card-skin] 皮肤「${skinId}」的资产 ${name} 取不到:${e}`);
+					this.logger.warn(packageText("image.log.skinAssetFailed"), {
+						skinId,
+						assetName: name,
+						error: e,
+					});
 				}
 			}),
 		);
@@ -493,10 +498,16 @@ export class ImageRenderer {
 			return await withRetry(() => this.renderHtml(html, args.waitFor, args.priority));
 		};
 
+		let fallbackError: unknown;
 		const fallback = async (from: string, reason: string): Promise<Buffer> => {
 			// 只报事实,去重与「怎么让主人看见」归宿主 —— 同一套坏皮肤每张卡都会走到这儿。
 			this.onCardSkinFallback?.({ skinId: from, kind, reason });
-			this.logger.debug(`[card-skin] 皮肤「${from}」的 ${kind} 卡${reason},回落默认皮肤`);
+			this.logger.debug(packageText("image.log.skinFallback"), {
+				skinId: from,
+				cardKind: kind,
+				reason,
+				error: fallbackError,
+			});
 			return (await once(DEFAULT_CARD_SKIN_ID, DEFAULT_CARD_SKIN)).buffer;
 		};
 
@@ -519,6 +530,7 @@ export class ImageRenderer {
 		} catch (e) {
 			// 默认皮肤自己画不出来 = 渲染管线的问题,往外抛(推送那侧本来就有降级兜底)。
 			if (isDefault) throw e;
+			fallbackError = e;
 			return await fallback(id, `渲染失败(${e instanceof Error ? e.message : String(e)})`);
 		}
 	}
@@ -545,7 +557,10 @@ export class ImageRenderer {
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		const username = input.creator.name;
-		this.logger.debug(`[live] 开始渲染直播卡片：${username}`);
+		this.logger.debug(packageText("image.log.renderStarted"), {
+			cardKind: "live",
+			creatorName: username,
+		});
 		// 自定义封面解析成 data URL;解析为 "" 时用输入里那张,特性自动无感。
 		const coverOverride = await this.resolveBg(colorOptions.liveCoverImage);
 		// 自定义封面盖住输入的封面时,输入里那张引用不必白读一遍。
@@ -567,7 +582,11 @@ export class ImageRenderer {
 			}),
 		})
 			.then((buf) => {
-				this.logger.debug(`[live] 直播卡片渲染完成：${username}（${Date.now() - t0}ms）`);
+				this.logger.debug(packageText("image.log.renderFinished"), {
+					cardKind: "live",
+					creatorName: username,
+					durationMs: Date.now() - t0,
+				});
 				return buf;
 			})
 			.catch((e) => {
@@ -590,9 +609,12 @@ export class ImageRenderer {
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		const { viewer, creator, tier } = input;
-		this.logger.debug(
-			`[membership] 开始渲染会员卡片：${viewer.name} → ${creator.name}（${tier.name}）`,
-		);
+		this.logger.debug(packageText("image.log.renderStarted"), {
+			cardKind: "membership",
+			viewerName: viewer.name,
+			creatorName: creator.name,
+			tierName: tier.name,
+		});
 		const refs = new Set<ImageRef>();
 		if (viewer.avatar !== undefined) refs.add(viewer.avatar);
 		if (creator.avatar !== undefined) refs.add(creator.avatar);
@@ -608,7 +630,11 @@ export class ImageRenderer {
 			props: buildMembershipCardView(input, { imageUrl: (ref) => resolved.get(ref) }),
 		})
 			.then((buf) => {
-				this.logger.debug(`[membership] 会员卡片渲染完成：${viewer.name}（${Date.now() - t0}ms）`);
+				this.logger.debug(packageText("image.log.renderFinished"), {
+					cardKind: "membership",
+					viewerName: viewer.name,
+					durationMs: Date.now() - t0,
+				});
 				return buf;
 			})
 			.catch((e) => {
@@ -630,9 +656,12 @@ export class ImageRenderer {
 	): Promise<Buffer> {
 		const t0 = Date.now();
 		const { viewer, creator } = input;
-		this.logger.debug(
-			`[superchat] 开始渲染醒目留言卡片：${viewer.name} → ${creator.name}（${formatAmount(input.amount, input.currency)}）`,
-		);
+		this.logger.debug(packageText("image.log.renderStarted"), {
+			cardKind: "superchat",
+			viewerName: viewer.name,
+			creatorName: creator.name,
+			amount: formatAmount(input.amount, input.currency),
+		});
 		const refs = new Set<ImageRef>();
 		if (viewer.avatar !== undefined) refs.add(viewer.avatar);
 		if (creator.avatar !== undefined) refs.add(creator.avatar);
@@ -647,9 +676,11 @@ export class ImageRenderer {
 			props: buildSuperchatCardView(input, { imageUrl: (ref) => resolved.get(ref) }),
 		})
 			.then((buf) => {
-				this.logger.debug(
-					`[superchat] 醒目留言卡片渲染完成：${viewer.name}（${Date.now() - t0}ms）`,
-				);
+				this.logger.debug(packageText("image.log.renderFinished"), {
+					cardKind: "superchat",
+					viewerName: viewer.name,
+					durationMs: Date.now() - t0,
+				});
 				return buf;
 			})
 			.catch((e) => {
@@ -683,7 +714,10 @@ export class ImageRenderer {
 			time: (seconds) => this.unixTimestampToString(seconds),
 			imageUrl: (ref) => resolved.get(ref),
 		});
-		this.logger.debug(`[post] 开始渲染作品卡片：${node.creatorName}`);
+		this.logger.debug(packageText("image.log.renderStarted"), {
+			cardKind: "post",
+			creatorName: node.creatorName,
+		});
 		return this.renderWithSkin({
 			kind: "post",
 			title: packageText("image.image-renderer.7"),
@@ -694,7 +728,11 @@ export class ImageRenderer {
 			props: { node },
 		})
 			.then((buf) => {
-				this.logger.debug(`[post] 作品卡片渲染完成：${node.creatorName}（${Date.now() - t0}ms）`);
+				this.logger.debug(packageText("image.log.renderFinished"), {
+					cardKind: "post",
+					creatorName: node.creatorName,
+					durationMs: Date.now() - t0,
+				});
 				return buf;
 			})
 			.catch((e) => {
@@ -713,7 +751,7 @@ export class ImageRenderer {
 					const url = await resolve(ref);
 					if (url) resolved.set(ref, url);
 				} catch (e) {
-					this.logger.debug(`[image] 图库引用 ${ref} 解析失败,画占位:${String(e)}`);
+					this.logger.debug(packageText("image.log.imageRefFailed"), { ref, error: e });
 				}
 			}),
 		);
@@ -734,7 +772,11 @@ export class ImageRenderer {
 		opts: CardSkinChoice = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		this.logger.debug(`[wordcloud] 开始渲染词云卡片：${creatorName}（${words.length} 词）`);
+		this.logger.debug(packageText("image.log.renderStarted"), {
+			cardKind: "wordcloud",
+			creatorName,
+			words: words.length,
+		});
 		// 画布(`#wordCloudCanvas`)在内置块里,皮肤路径出的 HTML 照样有它 —— 画词的脚本
 		// 原样注进 `</body>` 之前(`wordCloudInitScript`,读盘拼脚本那一半单独住在那儿)。
 		const script = wordCloudInitScript(words, ASSET_DIR);
@@ -753,7 +795,11 @@ export class ImageRenderer {
 			props: { creatorName, creatorAvatarUrl },
 		})
 			.then((buf) => {
-				this.logger.debug(`[wordcloud] 词云卡片渲染完成：${creatorName}（${Date.now() - t0}ms）`);
+				this.logger.debug(packageText("image.log.renderFinished"), {
+					cardKind: "wordcloud",
+					creatorName,
+					durationMs: Date.now() - t0,
+				});
 				return buf;
 			})
 			.catch((e) => {
@@ -767,7 +813,10 @@ export class ImageRenderer {
 		opts: { cardSkin?: string } = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		this.logger.debug(`[roast] 开始渲染周报卡片：近 ${data.days} 天`);
+		this.logger.debug(packageText("image.log.renderStarted"), {
+			cardKind: "roastBoard",
+			days: data.days,
+		});
 		return this.renderWithSkin({
 			kind: "roastBoard",
 			title: packageText("image.image-renderer.11"),
@@ -776,7 +825,10 @@ export class ImageRenderer {
 			props: { ...data },
 		})
 			.then((buf) => {
-				this.logger.debug(`[roast] 周报卡片渲染完成（${Date.now() - t0}ms）`);
+				this.logger.debug(packageText("image.log.renderFinished"), {
+					cardKind: "roastBoard",
+					durationMs: Date.now() - t0,
+				});
 				return buf;
 			})
 			.catch((e) => {
@@ -790,7 +842,10 @@ export class ImageRenderer {
 		opts: { cardSkin?: string } = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		this.logger.debug(`[roast] 开始渲染单人锐评卡片：${data.creator.name}`);
+		this.logger.debug(packageText("image.log.renderStarted"), {
+			cardKind: "roastSolo",
+			creatorName: data.creator.name,
+		});
 		return this.renderWithSkin({
 			kind: "roastSolo",
 			title: packageText("image.image-renderer.13"),
@@ -799,9 +854,11 @@ export class ImageRenderer {
 			props: { ...data },
 		})
 			.then((buf) => {
-				this.logger.debug(
-					`[roast] 单人锐评卡片渲染完成：${data.creator.name}（${Date.now() - t0}ms）`,
-				);
+				this.logger.debug(packageText("image.log.renderFinished"), {
+					cardKind: "roastSolo",
+					creatorName: data.creator.name,
+					durationMs: Date.now() - t0,
+				});
 				return buf;
 			})
 			.catch((e) => {
@@ -871,8 +928,11 @@ export class ImageRenderer {
 		} finally {
 			await page.close().catch(() => {}); // Chrome 已崩溃时 close() 也会抛错，忽略之
 			if (blocked.length > 0) {
-				const targets = [...new Set(blocked.map(blockedTargetOf))].join("、");
-				this.logger.warn(`[image] 渲染页拦下 ${blocked.length} 个请求(这些图画不出来)· ${targets}`);
+				const targets = [...new Set(blocked.map(blockedTargetOf))];
+				this.logger.warn(packageText("image.log.requestsBlocked"), {
+					count: blocked.length,
+					targets,
+				});
 			}
 		}
 	}

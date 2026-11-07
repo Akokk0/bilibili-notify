@@ -66,5 +66,13 @@
 	"ai.log.extraParamsObject": "追加リクエストパラメーターはJSONオブジェクトである必要があります。例: {example}",
 	"ai.log.visionImageFailed": "画像の説明に失敗したため、今回はこの画像の説明がありません",
 	"ai.log.visionTimedOut": "画像の説明がタイムアウトしたため、今回はこの画像の説明がありません",
-	"ai.log.visionInlineImage": "インライン画像、約{kilobytes} KB"
+	"ai.log.visionInlineImage": "インライン画像、約{kilobytes} KB",
+	"image.log.configUpdated": "画像レンダリング設定を更新しました",
+	"image.log.knobBudgetExceeded": "スキンの画像設定がCSSカスタムプロパティの上限を超えたため、画像を注入しませんでした",
+	"image.log.skinAssetFailed": "スキンのアセットを読み取れませんでした",
+	"image.log.skinFallback": "カードスキンを使用できないため、既定のスキンに戻します",
+	"image.log.renderStarted": "カードのレンダリングを開始します",
+	"image.log.renderFinished": "カードのレンダリングが完了しました",
+	"image.log.imageRefFailed": "画像参照を解決できなかったため、代替表示を使用します",
+	"image.log.requestsBlocked": "レンダリングページのリクエストが遮断されたため、対象画像を表示できません"
 }

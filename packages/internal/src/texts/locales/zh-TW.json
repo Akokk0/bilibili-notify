@@ -66,5 +66,13 @@
 	"ai.log.extraParamsObject": "額外請求參數必須是 JSON 物件，例如 {example}",
 	"ai.log.visionImageFailed": "視覺圖片處理失敗，本輪該圖片沒有描述",
 	"ai.log.visionTimedOut": "視覺圖片處理逾時，本輪該圖片沒有描述",
-	"ai.log.visionInlineImage": "一張內嵌圖片，約 {kilobytes} KB"
+	"ai.log.visionInlineImage": "一張內嵌圖片，約 {kilobytes} KB",
+	"image.log.configUpdated": "圖片算繪設定已更新",
+	"image.log.knobBudgetExceeded": "皮膚旋鈕圖片超過CSS自訂屬性容量，未注入該圖片",
+	"image.log.skinAssetFailed": "皮膚資產讀取失敗",
+	"image.log.skinFallback": "卡片皮膚無法使用，改用預設皮膚",
+	"image.log.renderStarted": "開始算繪卡片",
+	"image.log.renderFinished": "卡片算繪完成",
+	"image.log.imageRefFailed": "圖庫參照解析失敗，使用替代圖示",
+	"image.log.requestsBlocked": "算繪頁面請求遭攔截，相關圖片無法顯示"
 }

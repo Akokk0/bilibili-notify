@@ -84,45 +84,21 @@ function pinnedSource(text) {
 export const NON_DISPLAY_TEXTS = {
 	"packages/image/src/image-renderer.ts": [
 		{
-			owner: "blockedTargetOf",
-			text: pinnedSource('"(解析不了的地址)"'),
-			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
-			site: pinnedSource('return "(解析不了的地址)";'),
-		},
-		{
-			owner: "ImageRenderer/updateConfig",
-			text: pinnedSource('"(自带字体)"'),
-			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
-			site: pinnedSource('diffs.push(`fontAsset=@{config.fontAsset ? "(自带字体)" : "(无)"}`);'),
-		},
-		{
-			owner: "ImageRenderer/updateConfig",
-			text: pinnedSource('"(无)"'),
-			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
-			site: pinnedSource('diffs.push(`fontAsset=@{config.fontAsset ? "(自带字体)" : "(无)"}`);'),
-		},
-		{
-			owner: "ImageRenderer/updateConfig/line",
-			text: pinnedSource('`[image] 配置已更新: @{diffs.join(", ")}`'),
-			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
-			site: pinnedSource('line = `[image] 配置已更新: @{diffs.join(", ")}`'),
-		},
-		{
 			owner: "ImageRenderer/renderWithSkin",
 			text: pinnedSource('"皮肤不存在"'),
-			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			reason: "既有皮肤回落回调的原始reason；本日志片保留回调载荷，日志只作为诊断数据记录。",
 			site: pinnedSource('return await fallback(id, "皮肤不存在");'),
 		},
 		{
 			owner: "ImageRenderer/renderWithSkin",
 			text: pinnedSource('"皮肤没有这种卡"'),
-			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			reason: "既有皮肤回落回调的原始reason；本日志片保留回调载荷，日志只作为诊断数据记录。",
 			site: pinnedSource('return await fallback(id, "皮肤没有这种卡");'),
 		},
 		{
 			owner: "ImageRenderer/renderWithSkin",
 			text: pinnedSource("`卡片高度 @{Math.round(cardHeight)} 超过上限 @{max}`"),
-			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			reason: "既有皮肤回落回调的原始reason；本日志片保留回调载荷，日志只作为诊断数据记录。",
 			site: pinnedSource(
 				"return await fallback(id, `卡片高度 @{Math.round(cardHeight)} 超过上限 @{max}`);",
 			),
@@ -130,7 +106,7 @@ export const NON_DISPLAY_TEXTS = {
 		{
 			owner: "ImageRenderer/renderWithSkin",
 			text: pinnedSource("`渲染失败(@{e instanceof Error ? e.message : String(e)})`"),
-			reason: "日志专用诊断：配置变更、回落或拦截来源；不交给业务失败回应。",
+			reason: "既有皮肤回落回调的原始reason；本日志片保留回调载荷，日志只作为诊断数据记录。",
 			site: pinnedSource(
 				"return await fallback(id, `渲染失败(@{e instanceof Error ? e.message : String(e)})`);",
 			),

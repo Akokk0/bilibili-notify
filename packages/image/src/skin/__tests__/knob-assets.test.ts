@@ -13,7 +13,7 @@
 
 import type { CardSkinKnob } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { CSS_CUSTOM_PROPERTY_MAX_CHARS, resolveKnobAssets } from "../knob-assets";
+import { CSS_CUSTOM_PROPERTY_MAX_CHARS, IMAGE_URL_BUDGET, resolveKnobAssets } from "../knob-assets";
 
 const FONT: CardSkinKnob = { key: "font", label: "字体", type: "font", default: "" };
 const WALL: CardSkinKnob = { key: "wallpaper", label: "壁纸", type: "image" };
@@ -120,8 +120,11 @@ describe("resolveKnobAssets — 自定义属性的 2 MiB 天花板", () => {
 		const r = resolvers({ image: vi.fn(async () => oversized()) });
 		const out = await resolveKnobAssets([WALL], { wallpaper: ["big"] }, r);
 		expect(out.vars).toBe("");
-		expect(out.warnings.join()).toContain("wallpaper");
-		expect(out.warnings.join()).toMatch(/2 ?MiB|上限|太大/);
+		expect(out.warnings[0]).toMatchObject({
+			knobKey: "wallpaper",
+			assetId: "big",
+			budgetChars: IMAGE_URL_BUDGET,
+		});
 	});
 
 	it("给了压缩器 → 用压出来的那一份", async () => {
@@ -165,4 +168,17 @@ describe("resolveKnobAssets — 自定义属性的 2 MiB 天花板", () => {
 		expect(shrinkImage).not.toHaveBeenCalled();
 		expect(out.warnings).toEqual([]);
 	});
+});
+
+it("超限图片只返回结构化诊断，供两个日志读者在输出时翻译", async () => {
+	const huge = "x".repeat(CSS_CUSTOM_PROPERTY_MAX_CHARS + 100);
+	const out = await resolveKnobAssets(
+		[WALL],
+		{ wallpaper: ["big"] },
+		resolvers({ image: async () => huge }),
+	);
+	expect(out.vars).toBe("");
+	expect(out.warnings).toEqual([
+		{ knobKey: "wallpaper", assetId: "big", sizeChars: huge.length, budgetChars: IMAGE_URL_BUDGET },
+	]);
 });

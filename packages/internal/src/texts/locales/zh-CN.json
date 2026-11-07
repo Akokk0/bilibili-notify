@@ -139,7 +139,6 @@
 	"image.render.1": "通知",
 	"image.rich-text.1": "...（全文过长，已省略）",
 	"image.rich-text.2": "...（全文过长，已省略）",
-	"image.skin.knob-assets.1": "旋钮「{value0}」的图「{value1}」压不进 CSS 自定义属性的 2 MiB 上限({value2} / 上限 {value3}),这一张没画上去",
 	"image.templates.post-content.1": "动图",
 	"image.templates.post-content.2": "长图",
 	"internal.schema.extension-manifest.1": "只能是小写字母、数字与连字符,且首尾必须是字母或数字",
@@ -686,5 +685,13 @@
 	"ai.log.extraParamsObject": "额外请求参数必须是一个 JSON 对象,比如 {example}",
 	"ai.log.visionImageFailed": "视觉图片处理失败，本轮该图片没有描述",
 	"ai.log.visionTimedOut": "视觉图片处理超时，本轮该图片没有描述",
-	"ai.log.visionInlineImage": "一张内联图,约 {kilobytes} KB"
+	"ai.log.visionInlineImage": "一张内联图,约 {kilobytes} KB",
+	"image.log.configUpdated": "图片渲染配置已更新",
+	"image.log.knobBudgetExceeded": "皮肤旋钮图片超过CSS自定义属性容量，未注入该图片",
+	"image.log.skinAssetFailed": "皮肤资产读取失败",
+	"image.log.skinFallback": "卡片皮肤不可用，回落默认皮肤",
+	"image.log.renderStarted": "开始渲染卡片",
+	"image.log.renderFinished": "卡片渲染完成",
+	"image.log.imageRefFailed": "图库引用解析失败，使用占位",
+	"image.log.requestsBlocked": "渲染页请求被拦截，相关图片无法显示"
 }

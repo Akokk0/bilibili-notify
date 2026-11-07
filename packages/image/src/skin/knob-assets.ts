@@ -1,4 +1,3 @@
-import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 字体 / 图两档旋钮的**宿主解析**(ADR-0014 决策 16 的 🔗,2026-09-14 主人拍板)。
  *
@@ -65,6 +64,13 @@ export interface KnobAssetResolvers {
 	onImageResolved?: (assetId: string, url: string) => void;
 }
 
+interface KnobAssetWarning {
+	knobKey: string;
+	assetId: string;
+	sizeChars: number;
+	budgetChars: number;
+}
+
 export interface ResolvedKnobAssets {
 	/** 额外的 `@font-face`,拼在皮肤自带的那些后面。 */
 	fontFaces: string;
@@ -74,7 +80,7 @@ export interface ResolvedKnobAssets {
 	 * 哪一枚旋钮没注进去、为什么。**这一层的失败全是静默的**(图不出、字体回落),
 	 * 调用方要把它摆到主人看得见的地方去(回落台账 / 日志)。
 	 */
-	warnings: string[];
+	warnings: KnobAssetWarning[];
 }
 
 /** 每次都给一份新的 —— `warnings` 是数组,共用一份会跨调用串味。 */
@@ -88,7 +94,7 @@ export async function resolveKnobAssets(
 	if (!knobs?.length || !overrides) return empty();
 	let fontFaces = "";
 	let vars = "";
-	const warnings: string[] = [];
+	const warnings: KnobAssetWarning[] = [];
 	// 同一款字体被两枚旋钮指着时只内联一次:一款中文字库 base64 之后二三十兆,而镜像里
 	// V8 的 old-space 上限只有 512MB —— 内联两份就是一次 OOM。
 	const seenFonts = new Set<string>();
@@ -142,20 +148,17 @@ async function fitUrl(
 	resolvers: KnobAssetResolvers,
 	key: string,
 	id: string,
-	warnings: string[],
+	warnings: KnobAssetWarning[],
 ): Promise<string> {
 	if (url === "" || url.length <= IMAGE_URL_BUDGET) return url;
 	const shrunk = await resolvers.shrinkImage?.(url, IMAGE_URL_BUDGET, id);
 	if (shrunk !== undefined && shrunk !== null && shrunk.length <= IMAGE_URL_BUDGET) return shrunk;
-	const mb = (n: number) => `${(n / 1024 / 1024).toFixed(2)}MB`;
-	warnings.push(
-		packageText("image.skin.knob-assets.1", {
-			value0: key,
-			value1: id,
-			value2: mb(shrunk?.length ?? url.length),
-			value3: mb(IMAGE_URL_BUDGET),
-		}),
-	);
+	warnings.push({
+		knobKey: key,
+		assetId: id,
+		sizeChars: shrunk?.length ?? url.length,
+		budgetChars: IMAGE_URL_BUDGET,
+	});
 	return "";
 }
 

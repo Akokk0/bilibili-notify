@@ -1,3 +1,4 @@
+import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * `POST /api/cards/preview` —— 卡片页右侧的预览:用 puppeteer-core 画一张卡,回 data URL。
  *
@@ -759,7 +760,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 预览画兜底渐变 —— 而推送那头压了,两边就分家了。
 			shrinkImage: (url, budget) => shrinkImageForCssVar(puppeteer, url, budget),
 		});
-		for (const w of knobAssets.warnings) log.warn(`[card-skin] ${w}`);
+		for (const warning of knobAssets.warnings)
+			log.warn(packageText("image.log.knobBudgetExceeded"), warning);
 		// 自带字体优先于家族名(与 ImageRenderer#resolveFont 同一套判断);资产悬空时
 		// fontFace 是空串,静静回落家族名。
 		// 两支只差那个字面量(重载靠它收窄 props 的类型),选项一份就够 —— 分成两份写,

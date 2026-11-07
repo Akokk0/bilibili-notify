@@ -28,7 +28,6 @@
 	"image.image-renderer.16": "主人，无法获取 boundingBox",
 	"image.image-renderer.17": "主人，截图超时（20s）",
 	"image.preview.sample-cards.25": "主人，上会员卡的示例需要调用方给一档(options.membershipTier)",
-	"image.skin.knob-assets.1": "主人，旋钮「{value0}」的图「{value1}」压不进 CSS 自定义属性的 2 MiB 上限({value2} / 上限 {value3}),这一张没画上去",
 	"internal.schema.extension-manifest.1": "主人，只能是小写字母、数字与连字符,且首尾必须是字母或数字",
 	"internal.schema.extension-manifest.2": "主人，{value0}不能用 JS 对象原型上的名字(constructor / toString / valueOf 这类):它会被当成键去查表,查一个没有的名字也会摸到内置函数",
 	"internal.schema.extension-manifest.3": "主人，拓展 id 只能是小写字母、数字与连字符(可用一个点分出命名空间),且每段首尾必须是字母或数字",
