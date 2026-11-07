@@ -55,7 +55,7 @@ const WS_OPEN = 1;
 
 export interface QQAccessToken {
 	token: string;
-	/** 有效期(秒),通常 7200;token 管理器据此提前刷新。 */
+	/** 有效期(秒),通常 7200;token 刷新器据此提前刷新。 */
 	expiresInSec: number;
 }
 
@@ -74,7 +74,7 @@ class QQTokenError extends Error {
 
 /**
  * 调 QQ 开放平台换取 App Access Token。后续 REST(`Authorization: QQBot {token}`)
- * 与 WS Identify 都带它。失败抛错,由 token 管理器决定重试/降级。
+ * 与 WS Identify 都带它。失败抛错,由 token 刷新器决定重试/降级。
  */
 export async function fetchAppAccessToken(
 	http: HttpClient,
@@ -88,7 +88,7 @@ export async function fetchAppAccessToken(
 		body: JSON.stringify({ appId, clientSecret }),
 		signal,
 	});
-	// 没走通(连不上、超时、被中止):抛普通错,token 管理器与 `tokenFailure` 记成 unavailable。
+	// 没走通(连不上、超时、被中止):抛普通错,token 刷新器与 `tokenFailure` 记成 unavailable。
 	if (!res.ok) throw new Error(res.message);
 	if (!res.isSuccess) {
 		throw new QQTokenError(`getAppAccessToken HTTP ${res.status}`, res.status);
@@ -204,14 +204,14 @@ export function qqShouldResetSessionOnClose(code: number): boolean {
 /** token 提前刷新缓冲(秒);对齐上游 koishi 框架的 qq adapter(快到期前 40s 换新 token)。 */
 const QQ_TOKEN_REFRESH_BUFFER_SEC = 40;
 
-export interface QQTokenManager {
+export interface QQTokenRefresher {
 	/** 取当前有效 token;未就绪则发起获取并缓存,并发共享同一 Promise。 */
 	getToken(): Promise<string>;
 	/** 关闭:停掉刷新定时器,后续 getToken 拒绝。 */
 	dispose(): void;
 }
 
-export interface QQTokenManagerOptions {
+export interface QQTokenRefresherOptions {
 	/** 换 token 走这个集成的请求客户端。 */
 	http: HttpClient;
 	appId: string;
@@ -223,11 +223,11 @@ export interface QQTokenManagerOptions {
 }
 
 /**
- * App Access Token 管理器:首次 getToken 拉取并缓存,按 `expires_in - buffer` 排一个
+ * App Access Token 刷新器:首次 getToken 拉取并缓存,按 `expires_in - buffer` 排一个
  * 提前刷新定时器(到点自动换新 token,长连无需重连)。失败结果不缓存 → 下次 getToken 重试。
  * dispose 停定时器(对齐有状态 adapter 生命周期)。
  */
-export function createQQTokenManager(opts: QQTokenManagerOptions): QQTokenManager {
+export function createQQTokenRefresher(opts: QQTokenRefresherOptions): QQTokenRefresher {
 	const buffer = opts.refreshBufferSec ?? QQ_TOKEN_REFRESH_BUFFER_SEC;
 	let tokenPromise: Promise<string> | null = null;
 	let refreshTimer: Disposable | null = null;
@@ -1170,7 +1170,7 @@ export interface QQOfficialAdapterOptions {
 }
 
 interface QQLive {
-	tm: QQTokenManager;
+	tokenRefresher: QQTokenRefresher;
 	conn: QQGatewayConn;
 	fingerprint: string;
 	/** `logReconnects` 的活值容器 —— 这个开关不影响连接本身,不该被塞进
@@ -1225,7 +1225,7 @@ const GATEWAY_OFFLINE_CODE = "gateway_offline";
 
 /**
  * QQ 官方机器人(q.qq.com)平台 adapter。有状态:每 adapter 一条 WS 网关长连(捞 openid
- * 进 registry)+ 一个 token 管理器,由 reconcile 按配置指纹 start/stop/rebind,dispose 全关。
+ * 进 registry)+ 一个 token 刷新器,由 reconcile 按配置指纹 start/stop/rebind,dispose 全关。
  * send 把 NotificationPayload 译成有序片段逐条 REST 发(频道 multipart file_image;群/C2C
  * 富媒体两步上传→media),A+ 投递语义(202 审核中算 ok)。
  */
@@ -1258,7 +1258,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		});
 	}
 	/** reconcile 未跑时 send 仍可独立取 token 的兜底管理器(无网关连接)。 */
-	const tokenOnly = new Map<string, QQTokenManager>();
+	const tokenOnly = new Map<string, QQTokenRefresher>();
 	let disposed = false;
 	/** `start(ctx)` 接住的请求客户端;还没 start(或已 stop)时是 `undefined`,出网的几个口回 unavailable。 */
 	let http: HttpClient | undefined;
@@ -1267,8 +1267,11 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻(UTC ISO)。 */
 	const adapterStartedAt = new Date().toISOString();
 
-	function makeTokenManager(cfg: QQOfficialConnectionSettings, client: HttpClient): QQTokenManager {
-		return createQQTokenManager({
+	function makeTokenRefresher(
+		cfg: QQOfficialConnectionSettings,
+		client: HttpClient,
+	): QQTokenRefresher {
+		return createQQTokenRefresher({
 			http: client,
 			appId: cfg.appId,
 			clientSecret: cfg.appSecret,
@@ -1280,14 +1283,14 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	function makeLive(connection: QQOfficialConnection, ctx: GatewayContext): QQLive {
 		const { inbound, http: client } = ctx;
 		const cfg = connection.settings;
-		const tm = makeTokenManager(cfg, client);
+		const tokenRefresher = makeTokenRefresher(cfg, client);
 		const base = qqApiBase(cfg.sandbox);
 		const logReconnectsBox = { value: cfg.logReconnects };
 		const conn = createQQGatewayConn({
 			http: client,
 			connectionId: connection.id,
 			resolveGatewayUrl: async () => {
-				const token = await tm.getToken();
+				const token = await tokenRefresher.getToken();
 				const res = await qqFetch(client, `${base}/gateway`, {
 					headers: qqRestHeaders(token, cfg.appId),
 				});
@@ -1298,7 +1301,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				if (typeof body.url !== "string") throw new Error(t("qqOfficial.gateway.noUrl"));
 				return qqGatewayUrlForHost(body.url, cfg.sandbox);
 			},
-			getToken: () => tm.getToken(),
+			getToken: () => tokenRefresher.getToken(),
 			onDiscovered: (s) => registry.record(connection.id, s, Date.now()),
 			// 平台不在这儿报:宿主按连接补(`ctx.inbound` 只收 `connectionId`)。
 			onInboundPrivate: (m: InboundPrivateMessage) =>
@@ -1318,19 +1321,22 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				});
 			},
 		});
-		return { tm, conn, fingerprint: qqConnectionFingerprint(cfg), logReconnectsBox };
+		return { tokenRefresher, conn, fingerprint: qqConnectionFingerprint(cfg), logReconnectsBox };
 	}
 
 	/** send 取 token:优先复用网关连接的 manager,否则起一个仅 token 的兜底。 */
-	function tokenManagerFor(connection: QQOfficialConnection, client: HttpClient): QQTokenManager {
+	function tokenRefresherFor(
+		connection: QQOfficialConnection,
+		client: HttpClient,
+	): QQTokenRefresher {
 		const l = live.get(connection.id);
-		if (l) return l.tm;
-		let tm = tokenOnly.get(connection.id);
-		if (!tm) {
-			tm = makeTokenManager(connection.settings, client);
-			tokenOnly.set(connection.id, tm);
+		if (l) return l.tokenRefresher;
+		let tokenRefresher = tokenOnly.get(connection.id);
+		if (!tokenRefresher) {
+			tokenRefresher = makeTokenRefresher(connection.settings, client);
+			tokenOnly.set(connection.id, tokenRefresher);
 		}
-		return tm;
+		return tokenRefresher;
 	}
 
 	function disposeAll(): void {
@@ -1339,10 +1345,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		bindAuth.clear();
 		for (const l of live.values()) {
 			l.conn.close();
-			l.tm.dispose();
+			l.tokenRefresher.dispose();
 		}
 		live.clear();
-		for (const tm of tokenOnly.values()) tm.dispose();
+		for (const tokenRefresher of tokenOnly.values()) tokenRefresher.dispose();
 		tokenOnly.clear();
 	}
 	serviceCtx.onDispose(disposeAll, "stop");
@@ -1413,7 +1419,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			const want = desired.get(id);
 			if (!want || qqConnectionFingerprint(want.settings) !== l.fingerprint) {
 				l.conn.close();
-				l.tm.dispose();
+				l.tokenRefresher.dispose();
 				live.delete(id);
 				registry.clear(id);
 				// 连接不再适用(停用、删了、换了设置):报过的「网关连不上」随它清,不补「已恢复」。
@@ -1434,10 +1440,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			if (want) l.logReconnectsBox.value = want.settings.logReconnects;
 		}
 		// 全清兜底 token-only:它仅在 reconcile 跑之前给 send 取 token 用。reconcile 后,
-		// desired 的连接都有 live(自带 tm),非 desired 的会被 isAvailable 挡掉不再 send ——
+		// desired 的连接都有 live(自带 tokenRefresher),非 desired 的会被 isAvailable 挡掉不再 send ——
 		// 故此刻所有 tokenOnly 都是 stale。逐 id 只清 desired 会漏掉「曾被 send、后被删除/
 		// 禁用」的连接,泄漏其刷新定时器,这里整张清掉根治。
-		for (const tm of tokenOnly.values()) tm.dispose();
+		for (const tokenRefresher of tokenOnly.values()) tokenRefresher.dispose();
 		tokenOnly.clear();
 	}
 
@@ -1574,7 +1580,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			const base = qqApiBase(cfg.sandbox);
 			let token: string;
 			try {
-				token = await tokenManagerFor(connection, http).getToken();
+				token = await tokenRefresherFor(connection, http).getToken();
 			} catch (e) {
 				return tokenFailure(e);
 			}
@@ -1609,7 +1615,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			const base = qqApiBase(cfg.sandbox);
 			let token: string;
 			try {
-				token = await tokenManagerFor(connection, http).getToken();
+				token = await tokenRefresherFor(connection, http).getToken();
 			} catch (e) {
 				return tokenFailure(e);
 			}

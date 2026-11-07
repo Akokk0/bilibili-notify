@@ -21,14 +21,14 @@ import { isLoginLost, watchLoginEdges } from "../../login-edges.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import { liveDetailsFromRoomInfo, liveTimeToIso } from "../live-card-input.js";
 import type { RoomIds } from "../room-ids.js";
-import { ListenerManager } from "./listener-manager.js";
 import { type LiveProblems, RoomContext } from "./room-context.js";
+import { RoomSessionCoordinator } from "./room-session-coordinator.js";
 
 const LIVE_STATUS_UNAVAILABLE = "live_status_unavailable";
 
 export class BiliLiveRooms implements Disposable {
 	private roomContext: RoomContext | undefined;
-	private listener: ListenerManager | undefined;
+	private listener: RoomSessionCoordinator | undefined;
 	private sourceCtx: SourceContext | undefined;
 	private readonly handles: Disposable[] = [];
 
@@ -57,7 +57,7 @@ export class BiliLiveRooms implements Disposable {
 			rememberFanClubName: this.opts.rememberFanClubName,
 			rememberSuperchatAvatar: this.opts.rememberSuperchatAvatar ?? (() => {}),
 		});
-		this.listener = new ListenerManager(this.roomContext);
+		this.listener = new RoomSessionCoordinator(this.roomContext);
 		this.syncSessions(subscriptions);
 		this.handles.push(
 			ctx.onSubscriptionsChanged(() => {

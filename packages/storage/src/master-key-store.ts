@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { Logger } from "@bilibili-notify/internal";
 import { atomicWriteFile } from "./atomic-file";
 
-export class KeyManager {
+export class MasterKeyStore {
 	constructor(
 		private readonly keyPath: string,
 		private readonly logger: Logger,

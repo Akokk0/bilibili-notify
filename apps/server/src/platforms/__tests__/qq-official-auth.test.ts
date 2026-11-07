@@ -1,7 +1,7 @@
 import type { HttpClient, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
-import { createQQTokenManager, fetchAppAccessToken } from "../qq-official";
+import { createQQTokenRefresher, fetchAppAccessToken } from "../qq-official";
 
 // 底下的 fetch 用 vi.stubGlobal mock,不打真实网络;请求客户端是真的(对齐 adapters.test.ts)。
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -115,11 +115,11 @@ function makeTestCtx() {
 	return { ctx, timers, logger };
 }
 
-describe("createQQTokenManager", () => {
+describe("createQQTokenRefresher", () => {
 	it("getToken 缓存:第二次不再请求", async () => {
 		fetchMock.mockImplementation(async () => jsonRes({ access_token: "T1", expires_in: 7200 }));
 		const { ctx, logger } = makeTestCtx();
-		const mgr = createQQTokenManager({
+		const mgr = createQQTokenRefresher({
 			http,
 			appId: "a",
 			clientSecret: "s",
@@ -135,7 +135,7 @@ describe("createQQTokenManager", () => {
 	it("按 expires_in - buffer 排提前刷新定时器", async () => {
 		fetchMock.mockImplementation(async () => jsonRes({ access_token: "T1", expires_in: 7200 }));
 		const { ctx, timers, logger } = makeTestCtx();
-		const mgr = createQQTokenManager({
+		const mgr = createQQTokenRefresher({
 			http,
 			appId: "a",
 			clientSecret: "s",
@@ -153,7 +153,7 @@ describe("createQQTokenManager", () => {
 			.mockResolvedValueOnce(jsonRes({ access_token: "T1", expires_in: 7200 }))
 			.mockResolvedValueOnce(jsonRes({ access_token: "T2", expires_in: 7200 }));
 		const { ctx, timers, logger } = makeTestCtx();
-		const mgr = createQQTokenManager({
+		const mgr = createQQTokenRefresher({
 			http,
 			appId: "a",
 			clientSecret: "s",
@@ -172,7 +172,7 @@ describe("createQQTokenManager", () => {
 			.mockResolvedValueOnce(jsonRes({}, { status: 500 }))
 			.mockResolvedValueOnce(jsonRes({ access_token: "T1", expires_in: 7200 }));
 		const { ctx, logger } = makeTestCtx();
-		const mgr = createQQTokenManager({
+		const mgr = createQQTokenRefresher({
 			http,
 			appId: "a",
 			clientSecret: "s",
@@ -187,7 +187,7 @@ describe("createQQTokenManager", () => {
 	it("dispose 后 getToken 拒绝,且定时器已停", async () => {
 		fetchMock.mockImplementation(async () => jsonRes({ access_token: "T1", expires_in: 7200 }));
 		const { ctx, timers, logger } = makeTestCtx();
-		const mgr = createQQTokenManager({
+		const mgr = createQQTokenRefresher({
 			http,
 			appId: "a",
 			clientSecret: "s",

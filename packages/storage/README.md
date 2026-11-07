@@ -7,4 +7,4 @@
 
 ## 功能
 
-- `KeyManager` — 管理本地加密密钥（`master.key`）
+- `MasterKeyStore` — 管理本地加密密钥（`master.key`）

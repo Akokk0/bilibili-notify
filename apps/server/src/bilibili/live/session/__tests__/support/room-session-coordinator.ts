@@ -8,13 +8,13 @@ import { vi } from "vite-plus/test";
 import { memoryKeyValueStores } from "../../../../../__tests__/support/memory-key-value-store.js";
 import type { LiveEvent } from "../../../protocol/events.js";
 import { createRoomIds } from "../../../room-ids.js";
-import { ListenerManager } from "../../listener-manager.js";
 import type { LiveProblems } from "../../room-context.js";
+import { RoomSessionCoordinator } from "../../room-session-coordinator.js";
 import { makeLiveProblems } from "./live-problems.js";
 
 type EventHandler = (event: LiveEvent) => void | Promise<void>;
 
-export function makeListenerManagerHarness(
+export function makeRoomSessionCoordinatorHarness(
 	options: {
 		listener?: (roomId: string, handler: EventHandler) => Promise<boolean>;
 		roomInfo?: (roomId: string) => Promise<Record<string, unknown> | undefined>;
@@ -94,7 +94,7 @@ export function makeListenerManagerHarness(
 		fetchMasterSnapshot: async () => ({ name: "U", fanClubName: "牌" }),
 		isDisposed: () => false,
 	};
-	const manager = new ListenerManager(ctx as never);
+	const manager = new RoomSessionCoordinator(ctx as never);
 	const subscription = (externalId: string): SourceSubscriptionView => ({
 		externalId,
 		features: new Set(["liveStart"]),

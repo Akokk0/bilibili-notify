@@ -80,7 +80,7 @@ export class RoomSession {
 	}
 
 	/**
-	 * 直播间状态轮询核到的在播 / 不在播,由 `ListenerManager` 转给当前活着的那一个会话。
+	 * 直播间状态轮询核到的在播 / 不在播,由 `RoomSessionCoordinator` 转给当前活着的那一个会话。
 	 * 没有活着的会话时这一下就落空 —— 断线期间核到的在播不会写进下一个会话。
 	 */
 	noteLiveStatus(live: boolean): void {

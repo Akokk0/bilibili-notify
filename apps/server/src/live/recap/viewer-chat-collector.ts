@@ -13,7 +13,7 @@ import { cut as jiebaCut } from "jieba-wasm";
  *   been dispatched (or the start of a new live session for that subscription).
  *
  * The collector intentionally does NOT decide whether collection is enabled —
- * the listener-manager checks the wordcloud / liveSummary master+target gates
+ * the room-session-coordinator checks the wordcloud / liveSummary master+target gates
  * before calling `recordViewerChat`. This keeps the collector zero-config.
  */
 export class ViewerChatCollector {

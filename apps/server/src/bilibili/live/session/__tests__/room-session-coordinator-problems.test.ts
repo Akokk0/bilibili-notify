@@ -1,11 +1,11 @@
 import { fail, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { LiveRoomAccessDeniedError } from "../room-helpers.js";
-import { makeListenerManagerHarness } from "./support/listener-manager.js";
+import { makeRoomSessionCoordinatorHarness } from "./support/room-session-coordinator.js";
 
-describe("ListenerManager 的问题清理", () => {
+describe("RoomSessionCoordinator 的问题清理", () => {
 	it("房号解析失败时 warn 带失败码与 message", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("rate_limited", "被限流"));
 		const warn = vi.spyOn(h.ctx.logger, "warn");
 
@@ -17,7 +17,7 @@ describe("ListenerManager 的问题清理", () => {
 	});
 
 	it("对照:受限房的 UP 起来之后,表里有他的「受限」", async () => {
-		const h = makeListenerManagerHarness({
+		const h = makeRoomSessionCoordinatorHarness({
 			listener: async () => Promise.reject(new LiveRoomAccessDeniedError("B 站拒绝弹幕连接")),
 		});
 		await h.sync(["u1"]);
@@ -27,7 +27,7 @@ describe("ListenerManager 的问题清理", () => {
 	});
 
 	it("stopForUid(关开关、退订):只清这位 UP 的,别人的还在", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		await h.sync(["u1", "u2"]);
 		h.problems.reportFailure.mockClear();
 		h.problems.resolveFailure.mockClear();
@@ -46,7 +46,7 @@ describe("ListenerManager 的问题清理", () => {
 	});
 
 	it("disposeAll(直播监听停下、登录失效拆会话):全清", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		await h.sync(["u1", "u2"]);
 		h.manager.dispose();
 		expect(h.closeListener).toHaveBeenCalledWith("100");
@@ -60,7 +60,7 @@ describe("ListenerManager 的问题清理", () => {
 	});
 
 	it("startAll(整批重建):旧会话的先清掉,不留到新一轮", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		await h.sync(["u1"]);
 		h.problems.resolveFailure.mockClear();
 
@@ -75,9 +75,9 @@ describe("ListenerManager 的问题清理", () => {
 	});
 });
 
-describe("ListenerManager 未开通直播间的问题", () => {
+describe("RoomSessionCoordinator 未开通直播间的问题", () => {
 	it("开着直播推送但房号解析为 not_found 时,报在这位 UP 名下且只进表", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("not_found", "没开通直播间"));
 
 		await h.sync(["u1"]);
@@ -96,7 +96,7 @@ describe("ListenerManager 未开通直播间的问题", () => {
 	});
 
 	it("关掉直播推送(人还在名单里、monitorsLive 翻成 false)时静默清掉", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("not_found", "没开通直播间"));
 		await h.sync(["u1"]);
 		h.problems.resolveFailure.mockClear();
@@ -114,7 +114,7 @@ describe("ListenerManager 未开通直播间的问题", () => {
 	// 停用与删掉在这一层是同一个输入:sourceSubscriptionViews 只收 enabled 的订阅
 	// (subscriptions/source-subscriptions.ts 的 `!sub.enabled` 跳过),停用的和删掉的都从视图里消失。
 	it("订阅停用或删掉、人从视图里消失时静默清掉", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("not_found", "没开通直播间"));
 		await h.sync(["u1"]);
 		h.problems.resolveFailure.mockClear();
@@ -130,7 +130,7 @@ describe("ListenerManager 未开通直播间的问题", () => {
 	});
 
 	it("之后房号解析成功时清掉", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		h.ctx.api.fetchUserInfo = vi
 			.fn()
 			.mockResolvedValueOnce(fail("not_found", "没开通直播间"))
@@ -148,7 +148,7 @@ describe("ListenerManager 未开通直播间的问题", () => {
 	});
 
 	it("没开直播推送、不在监听名单里时不报", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("not_found", "没开通直播间"));
 
 		await h.manager.sync([
@@ -162,7 +162,7 @@ describe("ListenerManager 未开通直播间的问题", () => {
 	});
 });
 
-describe("ListenerManager 房号解析长尾重试", () => {
+describe("RoomSessionCoordinator 房号解析长尾重试", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});
@@ -172,7 +172,7 @@ describe("ListenerManager 房号解析长尾重试", () => {
 	});
 
 	it("风控只报一次,按 60s / 5m 重试,成功后真解除并起会话", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		const fetchUserInfo = vi
 			.fn()
 			.mockResolvedValueOnce(fail("rate_limited", "被限流"))
@@ -202,7 +202,7 @@ describe("ListenerManager 房号解析长尾重试", () => {
 	});
 
 	it("长尾用尽后仍每 30 分钟重试,不放弃", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		const fetchUserInfo = vi.fn(async () => fail("rate_limited", "持续被限流"));
 		h.ctx.api.fetchUserInfo = fetchUserInfo;
 
@@ -218,7 +218,7 @@ describe("ListenerManager 房号解析长尾重试", () => {
 	});
 
 	it("stop 收掉排着的重试,并按不再适用清掉房号解析报的风控", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		const fetchUserInfo = vi.fn(async () => fail("rate_limited", "被限流"));
 		h.ctx.api.fetchUserInfo = fetchUserInfo;
 
@@ -232,7 +232,7 @@ describe("ListenerManager 房号解析长尾重试", () => {
 	});
 
 	it("名单移出这个人时和 stop 一样收定时器并静默清风控", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		const fetchUserInfo = vi.fn(async () => fail("rate_limited", "被限流"));
 		h.ctx.api.fetchUserInfo = fetchUserInfo;
 
@@ -246,7 +246,7 @@ describe("ListenerManager 房号解析长尾重试", () => {
 	});
 
 	it("没开通直播间不排重试", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		const fetchUserInfo = vi.fn(async () => fail("not_found", "没开通直播间"));
 		h.ctx.api.fetchUserInfo = fetchUserInfo;
 
@@ -259,7 +259,7 @@ describe("ListenerManager 房号解析长尾重试", () => {
 	});
 
 	it("重试后确认没开通直播间时收掉旧风控与重试", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		const fetchUserInfo = vi
 			.fn()
 			.mockResolvedValueOnce(fail("rate_limited", "被限流"))
@@ -278,7 +278,7 @@ describe("ListenerManager 房号解析长尾重试", () => {
 	});
 
 	it("暂时不可用时排重试,但只记日志不报问题", async () => {
-		const h = makeListenerManagerHarness();
+		const h = makeRoomSessionCoordinatorHarness();
 		const fetchUserInfo = vi
 			.fn()
 			.mockResolvedValueOnce(fail("unavailable", "接口短暂不可用"))

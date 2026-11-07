@@ -36,7 +36,7 @@ describe("getBuvid3", () => {
 	});
 
 	it("并发调用在途合流:N 个房间同时 bootstrap 只打一次 finger/spi", async () => {
-		// 启动时 ListenerManager 对每个订阅 fire-and-forget,缓存落位前的并发
+		// 启动时 RoomSessionCoordinator 对每个订阅 fire-and-forget,缓存落位前的并发
 		// 调用若各自联网,等于把 N 条相同请求同时打在风控敏感面上。
 		const { api, calls } = await makeApi();
 		const results = await Promise.all([api.getBuvid3(), api.getBuvid3(), api.getBuvid3()]);

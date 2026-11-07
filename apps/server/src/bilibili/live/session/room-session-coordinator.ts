@@ -16,7 +16,7 @@ interface RoomIdRetry {
 	timer?: Disposable;
 }
 
-export class ListenerManager {
+export class RoomSessionCoordinator {
 	private readonly active = new Map<string, ActiveRoom>();
 	private readonly retries = new Map<string, RoomIdRetry>();
 	private readonly starting = new Set<string>();

@@ -8,7 +8,6 @@ export {
 	syncDirectory,
 } from "./atomic-file";
 export { copyFileAtomic } from "./copy-file";
-export { KeyManager } from "./key-manager";
 export {
 	createKeyProvider,
 	FileKeyProvider,
@@ -17,6 +16,7 @@ export {
 	PassphraseKeyProvider,
 	readKeyMaterial,
 } from "./key-provider";
+export { MasterKeyStore } from "./master-key-store";
 export {
 	type JsonFileState,
 	quarantineFile,

@@ -23,7 +23,7 @@
 
 ### ① 来源与装配 —— 只认总开关
 
-直播那头 `ListenerManager`（`apps/server/src/bilibili/live/session/listener-manager.ts`）只给名单里 `monitorsLive` 为真的人开连接，动态那头的推送名单只收名单里 `features` 含 `post` 的人（名单由来源上下文给，见 [subscriptions.md](./subscriptions.md)「来源登记表与名单」）；当年按目标拦的 `hasTargets` 已删。渲不渲图、开不开 WS、攒不攒弹幕，全在这一层定；**一个目标都没配也照渲照发**，发不出去是下游的事。
+直播那头 `RoomSessionCoordinator`（`apps/server/src/bilibili/live/session/room-session-coordinator.ts`）只给名单里 `monitorsLive` 为真的人开连接，动态那头的推送名单只收名单里 `features` 含 `post` 的人（名单由来源上下文给，见 [subscriptions.md](./subscriptions.md)「来源登记表与名单」）；当年按目标拦的 `hasTargets` 已删。渲不渲图、开不开 WS、攒不攒弹幕，全在这一层定；**一个目标都没配也照渲照发**，发不出去是下游的事。
 
 直播与动态来源拿的都是 `SourceSubscriptionView { externalId, features, monitorsLive }`，3a-28 起原先那套订阅视图与订阅操作词表在动态这一侧已删：作品设置不在来源里，核心每条作品现折。这个扁平形状是刻意的：`apps/server/src/bilibili/live/session` 因此不可能知道 @全体 存在（ADR-0016 决策 6）。
 

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "../room-helpers.js";
-import { deferred, makeListenerManagerHarness } from "./support/listener-manager.js";
 import { makeRecordingLayers } from "./support/live-problems.js";
+import { deferred, makeRoomSessionCoordinatorHarness } from "./support/room-session-coordinator.js";
 
 describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 	it("对照:不停会话,预检回「被拦」→ 表里有这一路风控", async () => {
-		const h = makeListenerManagerHarness({
+		const h = makeRoomSessionCoordinatorHarness({
 			listener: async () => Promise.reject(new LiveRoomPreflightBlockedError("B 站返回 code=-352")),
 		});
 		await h.sync(["u1"]);
@@ -14,7 +14,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 
 	it("停掉这位 UP 之后才放行「被拦」:没有风控路留下,之后别的失败照常进表", async () => {
 		const gate = deferred<boolean>();
-		const h = makeListenerManagerHarness({ listener: async () => gate.promise });
+		const h = makeRoomSessionCoordinatorHarness({ listener: async () => gate.promise });
 		const sync = h.sync(["u1"]);
 		await h.settle();
 		h.manager.stop("u1");
@@ -25,7 +25,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 	});
 
 	it("对照:不停会话,预检回「没有 token」→ 表里有这个房间的「受限」", async () => {
-		const h = makeListenerManagerHarness({
+		const h = makeRoomSessionCoordinatorHarness({
 			listener: async () => {
 				throw new LiveRoomAccessDeniedError("B 站未返回弹幕 token");
 			},
@@ -38,7 +38,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 
 	it("停掉这位 UP 之后才放行「受限」:表里不多一条,也没有上报过", async () => {
 		const gate = deferred<boolean>();
-		const h = makeListenerManagerHarness({ listener: async () => gate.promise });
+		const h = makeRoomSessionCoordinatorHarness({ listener: async () => gate.promise });
 		const sync = h.sync(["u1"]);
 		await h.settle();
 		h.manager.stop("u1");
@@ -49,7 +49,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 	});
 
 	it("对照:不停会话,预检过了但建连没成(取个人信息失败)→ 表里有「停止监听」", async () => {
-		const h = makeListenerManagerHarness({ listener: async () => false });
+		const h = makeRoomSessionCoordinatorHarness({ listener: async () => false });
 		await h.sync(["u1"]);
 		expect(h.problems.reportFailure).toHaveBeenCalledWith(
 			expect.objectContaining({ externalId: "u1", code: "live_monitor_stopped" }),
@@ -58,7 +58,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 
 	it("停掉这位 UP 之后才放行「没连上」:表里不多一条,也没有上报过", async () => {
 		const gate = deferred<boolean>();
-		const h = makeListenerManagerHarness({ listener: async () => gate.promise });
+		const h = makeRoomSessionCoordinatorHarness({ listener: async () => gate.promise });
 		const sync = h.sync(["u1"]);
 		await h.settle();
 		h.manager.stop("u1");
@@ -70,7 +70,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 
 	it("对照:不停会话,连上后取房间信息失败 → 表里有「停止监听」", async () => {
 		const gate = deferred<Record<string, unknown> | undefined>();
-		const h = makeListenerManagerHarness({ roomInfo: async () => gate.promise });
+		const h = makeRoomSessionCoordinatorHarness({ roomInfo: async () => gate.promise });
 		const sync = h.sync(["u1"]);
 		await h.settle();
 		gate.resolve(undefined);
@@ -82,7 +82,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 
 	it("连上之后、取房间信息在途时停掉:迟到的失败不上报", async () => {
 		const gate = deferred<Record<string, unknown> | undefined>();
-		const h = makeListenerManagerHarness({ roomInfo: async () => gate.promise });
+		const h = makeRoomSessionCoordinatorHarness({ roomInfo: async () => gate.promise });
 		const sync = h.sync(["u1"]);
 		await h.settle();
 		h.manager.stop("u1");
@@ -94,7 +94,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 
 	it("整批停掉(disposeAll)之后才放行:同样什么都不报", async () => {
 		const gate = deferred<boolean>();
-		const h = makeListenerManagerHarness({ listener: async () => gate.promise });
+		const h = makeRoomSessionCoordinatorHarness({ listener: async () => gate.promise });
 		const first = h.sync(["u1"]);
 		const second = h.sync(["u2"]);
 		await h.settle();
@@ -111,7 +111,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 describe("整批停掉 / 重建时的次序:先静默清问题,再 cancel", () => {
 	async function riskWorld() {
 		const recording = makeRecordingLayers();
-		const h = makeListenerManagerHarness({
+		const h = makeRoomSessionCoordinatorHarness({
 			problems: recording.layers,
 			listener: async (roomId) => {
 				if (roomId === "100") {
