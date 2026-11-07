@@ -331,7 +331,7 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<Result> {
 }
 
 /** 本次 patch 生效后当前用哪份实例 —— 指针可能就在这个 patch 里被换掉。 */
-export function aiActiveProfileAfterPatch(
+function aiActiveProfileAfterPatch(
 	current: import("@bilibili-notify/internal").GlobalSettings,
 	patch: Record<string, unknown>,
 ): string {

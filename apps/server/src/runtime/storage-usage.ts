@@ -126,7 +126,7 @@ export const DATA_ROOT_STORAGE_COVERAGE = {
 	StorageCategory | readonly StorageCategory[] | { excluded: string }
 >;
 
-export interface StorageUsageOptions {
+interface StorageUsageOptions {
 	dataRoot: string;
 	hostRoot: string;
 	imageStore: Pick<ImageStore, "usage" | "sweep">;

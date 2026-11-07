@@ -98,7 +98,7 @@ async function cardUp(
  * 订阅 id → 名称 / 头像 / 配色(两支订阅都行,ADR-0020 决策 18)。名字走 `roast-subject.ts`(与提示词里的
  * 同一份);头像要读盘,所以先把这份锐评提到的人一次备齐,返回的查表是同步的。
  */
-export async function makeUpMeta(
+async function makeUpMeta(
 	deps: RoastDeliverDeps,
 	subscriptionIds: Iterable<string>,
 ): Promise<(subscriptionId: string) => RoastCardCreator> {
@@ -121,7 +121,7 @@ function mentionedIds(kind: "board" | "solo", result: BoardLike | SoloLike): str
 }
 
 /** 推送正文。模型给了 pushText 就用它,否则按类型拼一段兜底。 */
-export function roastPushText(
+function roastPushText(
 	kind: "board" | "solo",
 	result: BoardLike | SoloLike,
 	days: number,

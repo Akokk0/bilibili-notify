@@ -48,7 +48,7 @@ import {
  * 添加第三方源时要提示的风险,这里只保证「装到盘上的确实是索引说的那个包」。
  */
 
-export const MARKETPLACE_OFFICIAL_SOURCE_ID = "official";
+const MARKETPLACE_OFFICIAL_SOURCE_ID = "official";
 /** 住在装载根里的来源记录。它是系统状态不是用户配置,所以不进 globals。 */
 export const MARKETPLACE_PROVENANCE_FILE = ".marketplace.json";
 
@@ -57,7 +57,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 60_000;
 const DEFAULT_CACHE_MS = 5 * 60_000;
 
-export interface MarketplaceOfficialSource {
+interface MarketplaceOfficialSource {
 	/** 官方索引的固定地址(`extensions` 那个滚动 release 上的 `marketplace.json`)。 */
 	url: string;
 	/** 内置信任列表 —— 与自主升级同一对公钥。 */

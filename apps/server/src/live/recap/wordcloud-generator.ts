@@ -6,10 +6,10 @@ import type { ImageRef, Logger } from "@bilibili-notify/internal";
  * original `live-service` heuristic: a board-level wordcloud needs a baseline
  * vocabulary or it looks empty.
  */
-export const WORDCLOUD_MIN_WORDS = 50;
+const WORDCLOUD_MIN_WORDS = 50;
 
 /** Cap on how many top words are passed into the wordcloud renderer. */
-export const WORDCLOUD_TOP_WORDS = 90;
+const WORDCLOUD_TOP_WORDS = 90;
 
 /**
  * Wraps {@link ImageRenderer.generateWordCloudImg} with the engine's gating

@@ -81,7 +81,7 @@ for (const name of Object.keys(CUSTOM_CARDS)) {
 }
 
 /** 这份夹具该用哪张皮肤卡。 */
-export function skinCardOf(fixture: CardFixture): CardSkinCard {
+function skinCardOf(fixture: CardFixture): CardSkinCard {
 	return CUSTOM_CARDS[fixture.name]?.() ?? base(fixture.kind);
 }
 

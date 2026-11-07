@@ -21,7 +21,7 @@ import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
  * 引用)被拖进浏览器 bundle,只为一个调色板。其余对 internal 的引用一律 `import type`
  * (编译后擦除),见 `types/domain.ts` 开头那段。
  */
-export { CREATOR_COLORS, colorFromSeed } from "@bilibili-notify/internal/identity";
+export { colorFromSeed } from "@bilibili-notify/internal/identity";
 export { shouldSendAtAll } from "@bilibili-notify/internal/push-target";
 // displayName 真身在 utils/creator-display(组件层也要用,不能反向 import 页面层),这里转口。
 export { displayName, profileAvatarUrl, subscriptionColor } from "../../utils/creator-display";

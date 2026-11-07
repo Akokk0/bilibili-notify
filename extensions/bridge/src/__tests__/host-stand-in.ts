@@ -26,7 +26,7 @@ import { fail, ok } from "@bilibili-notify/extension";
 import { WebSocket } from "ws";
 import { memoryKeyValueStore } from "./memory-key-value-store.js";
 
-export const EXTENSION_ID = "bridge";
+const EXTENSION_ID = "bridge";
 export const MOUNT_PREFIX = `/ext/${EXTENSION_ID}`;
 /** 视图里这条接入的那一项。 */
 export function itemView(status: unknown): ExtensionItemView | undefined {
@@ -41,7 +41,7 @@ export function botRows(status: unknown): readonly (readonly ExtensionTableCell[
 
 export const LINK_ID = "link-home";
 export const CONNECTION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
-export const TARGET_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const TARGET_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 export const TOKEN = "protocol-walk-token";
 export const BOT_ID = "bot-9";
 /** 桥随 bot 报上来的平台图标 —— 面板拿它画 bot 行左边那枚方块。 */

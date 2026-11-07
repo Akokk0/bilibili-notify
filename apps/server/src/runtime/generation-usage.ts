@@ -29,7 +29,7 @@ import { type GenerationEntry, listGenerationEntries } from "./generations.js";
 import { hostPath } from "./roots.js";
 
 /** 来源代与上一代的保护期:从当前代的创建时刻起算。 */
-export const GENERATION_PROTECTION_MS = 30 * 24 * 60 * 60 * 1000;
+const GENERATION_PROTECTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface GenerationUsageOptions {
 	hostRoot: string;

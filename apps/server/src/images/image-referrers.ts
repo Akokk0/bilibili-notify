@@ -44,5 +44,3 @@ export const IMAGE_REFERRERS = {
 		return serverText("service.images.image-referrers.text.9");
 	},
 } as const;
-
-export type ImageReferrerName = (typeof IMAGE_REFERRERS)[keyof typeof IMAGE_REFERRERS];

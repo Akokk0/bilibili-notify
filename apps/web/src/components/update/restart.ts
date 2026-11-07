@@ -161,7 +161,7 @@ export interface RestartIntent extends RestartMark {
  * 按下重启之后面板的三种样子。「换成了」不在这里:那一刻整页刷新,刷新后的那句话
  * 由打开面板那次检查来说。
  */
-export type RestartView =
+type RestartView =
 	| { kind: "waiting"; intent: RestartIntent }
 	| { kind: "fell-back"; intent: RestartIntent; version: string }
 	| { kind: "timed-out"; intent: RestartIntent };

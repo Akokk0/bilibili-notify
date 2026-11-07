@@ -13,7 +13,7 @@ import { parseDocument } from "yaml";
  * 挂载时迁移写不进去,那条路上也不能让用户坏掉。跑镜像自带那份载荷时,两种理解
  * 算出来是同一个目录,所以对现有部署**行为完全不变**。
  */
-export const LEGACY_IMAGE_WEB_DIST = "/app/web-dist";
+const LEGACY_IMAGE_WEB_DIST = "/app/web-dist";
 
 export interface ResolveWebDistDirOptions {
 	/** bootstrap yaml 里的 `webDistDir`。 */

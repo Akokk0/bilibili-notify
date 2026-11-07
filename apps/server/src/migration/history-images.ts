@@ -113,7 +113,7 @@ function swapMessageImages(
 	});
 }
 
-export interface HistoryImageResult {
+interface HistoryImageResult {
 	/** 复制进图库的图:第 0 代里的路径(相对第 0 代根,`/` 分隔)→ 引用,每个源文件一条。 */
 	copied: { from: string; ref: ImageRef }[];
 	/** `history/img/` 里只被过了保留期的行引用的文件有几个(没带过来)。 */

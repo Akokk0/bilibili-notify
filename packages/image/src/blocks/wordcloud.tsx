@@ -35,7 +35,7 @@ import type { BlockRenderer } from "./types";
  * Fragment 插锚点注释(`<!--[-->`),多套一层就凭空多两条注释 —— 那既是白白的字节,
  * 也会被 UnoCSS 的 extractor 当成「任意值方括号」吞掉紧随其后的类名(见 `render.ts`)。
  */
-export function wordCloudBodyChildren(p: WordCloudCardInput): VNode[] {
+function wordCloudBodyChildren(p: WordCloudCardInput): VNode[] {
 	return [
 		/* ── 头部：头像 + 标题 ── */
 		<div class="flex items-center gap-[10px] px-[16px] pt-[14px] pb-[10px]">

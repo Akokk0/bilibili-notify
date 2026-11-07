@@ -10,7 +10,7 @@ import { create } from "zustand";
 import { canHideNav, moveNavPath, NAV_ITEMS, orderedNav } from "../config/nav";
 
 export const NAV_HIDDEN_KEY = "bn.nav.hidden";
-export const NAV_ORDER_KEY = "bn.nav.order";
+const NAV_ORDER_KEY = "bn.nav.order";
 
 /**
  * localStorage 在隐私模式 / 某些内嵌 WebView 里读写**都会抛**,所以一律包 try ——
@@ -57,7 +57,7 @@ export function readNavOrder(): string[] {
 	return readPathList(NAV_ORDER_KEY);
 }
 
-export function writeNavOrder(order: readonly string[]): void {
+function writeNavOrder(order: readonly string[]): void {
 	writePathList(NAV_ORDER_KEY, order);
 }
 

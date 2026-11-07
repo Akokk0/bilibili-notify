@@ -197,7 +197,6 @@ export type BridgeMessageKind = (typeof BRIDGE_MESSAGE_KINDS)[number];
 // ---------------------------------------------------------------------------
 
 export const BRIDGE_TO_SERVER_FRAME_TYPES = ["hello", "bots", "inbound", "result", "pong"] as const;
-export type BridgeToServerFrameType = (typeof BRIDGE_TO_SERVER_FRAME_TYPES)[number];
 
 /**
  * 握手 —— 连上后桥发的**第一帧**。BN 在 {@link BRIDGE_HANDSHAKE_TIMEOUT_MS} 内没收到
@@ -303,9 +302,6 @@ export type BridgeToServerFrame =
 // Server → Bridge 帧
 // ---------------------------------------------------------------------------
 
-export const SERVER_TO_BRIDGE_FRAME_TYPES = ["welcome", "send", "ping", "error"] as const;
-export type ServerToBridgeFrameType = (typeof SERVER_TO_BRIDGE_FRAME_TYPES)[number];
-
 /**
  * BN 要什么入站消息。桥在**自己那侧**过滤,省的是带宽与隐私,不是 BN 的工作量。
  *
@@ -318,7 +314,7 @@ export interface BridgeInboundSubscription {
 }
 
 /** 握手回执。版本不兼容时 BN 不发这一帧,直接按 {@link BRIDGE_CLOSE_CODES} 断连。 */
-export interface BridgeWelcomeFrame {
+interface BridgeWelcomeFrame {
 	type: "welcome";
 	protocol: BridgeProtocolVersion;
 	server: {
@@ -350,7 +346,7 @@ export interface BridgeSendFrame {
 	message: BridgeMessage;
 }
 
-export interface BridgePingFrame {
+interface BridgePingFrame {
 	type: "ping";
 	/**
 	 * 1.3 起:探活(面板那颗「测试」)要量**这一趟**的往返,同一条 socket 上心跳的 pong
@@ -363,7 +359,7 @@ export interface BridgePingFrame {
 }
 
 /** 出错但还不至于断连(比如一条 `send` 引用了不存在的 bot)。断连一律走 close code。 */
-export interface BridgeErrorFrame {
+interface BridgeErrorFrame {
 	type: "error";
 	code: FailureCode;
 	message: string;

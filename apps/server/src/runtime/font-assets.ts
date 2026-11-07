@@ -34,7 +34,7 @@ import { dataPath } from "./roots.js";
  * 本身多大定的,没算出图开销(base64 内联再涨三分之一,而镜像堆上限只有 512MB),但降
  * 上限会把主人已经传上去的那款挡在门外。
  */
-export { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES };
+export { MAX_FONT_ASSET_BYTES };
 
 /** 名字清单的文件名。它住在资产目录里,故 id 校验不会让它被当成一款字体读出去。 */
 const MANIFEST = "index.json";

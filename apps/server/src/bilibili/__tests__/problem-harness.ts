@@ -18,7 +18,7 @@ import { createProblemTable } from "../../problems/problem-table.js";
 import { watchLoginProblems } from "../../subscriptions/login-problems.js";
 import { createProblemLayers } from "../problem-layers.js";
 
-export const HARNESS_REPORTER = "bilibili";
+const HARNESS_REPORTER = "bilibili";
 const HARNESS_LABEL = "B 站";
 
 /** 宿主看登录状态报的三句(宿主写的整句,私聊时不加引子);来源键 `bilibili`、来源名「B 站」。 */
@@ -28,7 +28,7 @@ export const LOGIN_MISSING_TEXT =
 	"主人还没有登录B 站的账号，那边订阅的内容暂时收不到。到面板的账号页扫码登录就好，私聊发「login bilibili」也行。";
 export const LOGIN_RECOVERED_TEXT = "主人，好消息：B 站的登录已经恢复啦。";
 
-export function makeQuietLogger(): Logger {
+function makeQuietLogger(): Logger {
 	return { debug() {}, info() {}, warn() {}, error() {} };
 }
 

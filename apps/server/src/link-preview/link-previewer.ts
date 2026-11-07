@@ -80,12 +80,12 @@ export interface LinkReplyDestination {
 }
 
 /** adapter 归一化好的一条群消息,再带上它从哪条连接来。 */
-export interface InboundLinkMessage extends InboundGroupMessage {
+interface InboundLinkMessage extends InboundGroupMessage {
 	connectionId: string;
 }
 
 /** 一张链接卡的呈现;缺省项交给渲染器的全局配置兜底。 */
-export interface LinkCardPresentation {
+interface LinkCardPresentation {
 	/** 用哪套卡片皮肤(ADR-0014)。链接卡没有 UP 可言,吃的是全局那套。 */
 	cardSkin?: string;
 }

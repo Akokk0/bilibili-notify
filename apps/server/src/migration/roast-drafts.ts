@@ -17,7 +17,7 @@ type WithLegacyUid<T> = T & { uid?: unknown; subscriptionId?: unknown };
  * - 榜单:鸽王 / 勤奋 UP 任一对不上 → 整份丢(同 `parseRoastReply`:卡的主体缺一半没什么可发的);锐评与
  *   评分里对不上的那几条丢掉,其余照发。
  */
-export function upgradeLegacyDraft(
+function upgradeLegacyDraft(
 	raw: Record<string, unknown>,
 	idOf: (uid: string) => string | undefined,
 ): Record<string, unknown> | string {

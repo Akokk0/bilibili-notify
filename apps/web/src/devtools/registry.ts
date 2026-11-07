@@ -96,7 +96,7 @@ export function findWebScenario(
 }
 
 /** 前端半边现在生效着的注入。 */
-export function webActive(scenarios: readonly WebDevScenario[]): DevInjection[] {
+function webActive(scenarios: readonly WebDevScenario[]): DevInjection[] {
 	const out: DevInjection[] = [];
 	for (const s of scenarios) {
 		const injection = s.active?.();

@@ -18,7 +18,7 @@ const TEXT_LIMIT = 200;
 /** 列表封顶;满了丢最旧的。dev-only,不落盘。 */
 const ENTRY_CAP = 200;
 
-export interface CaptureWindow {
+interface CaptureWindow {
 	from: number;
 	/** null = 还开着。 */
 	to: number | null;

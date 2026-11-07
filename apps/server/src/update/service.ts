@@ -41,8 +41,6 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 /** 清单是一份几百字节的 JSON。给到 256KB 已经是天大的余量,再多就是对方在灌我们。 */
 const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024;
 
-export type { UpdateFailureCode, UpdateState };
-
 /** `GET /api/system/update` 的响应形状,契约在 `@bilibili-notify/contract`。 */
 export type UpdateStatus = UpdateStatusView;
 

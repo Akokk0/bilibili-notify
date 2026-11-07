@@ -32,7 +32,7 @@ import { LOG_LEVELS, type LogEntry } from "../ws/types.js";
  */
 
 const LOG_FLUSH_INTERVAL_MS = 1_000;
-export const MAX_BATCH = 100;
+const MAX_BATCH = 100;
 const QUERY_CAP = 500;
 
 /**

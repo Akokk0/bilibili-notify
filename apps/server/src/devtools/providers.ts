@@ -4,7 +4,7 @@ import { createRegistry } from "../integrations/registry.js";
 export type { DevtoolsProvider } from "@bilibili-notify/internal";
 
 /** 核心自己那一家的提供方 id:建表时就占着,别家认领不到(它也是保留的拓展 id)。 */
-export const CORE_DEVTOOLS_PROVIDER = "core";
+const CORE_DEVTOOLS_PROVIDER = "core";
 
 /**
  * 别家的场景能用的参数种类。`sub` / `target` / `connection` 是站内的订阅 / 目标 / 连接 id,只给核心

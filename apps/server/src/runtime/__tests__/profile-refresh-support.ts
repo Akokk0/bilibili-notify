@@ -40,7 +40,7 @@ interface MigratedOptions {
 	images: MigratedImages;
 }
 
-export type FetchProfile = (
+type FetchProfile = (
 	identity: Identity,
 	signal: AbortSignal,
 ) => Promise<Result<CreatorProfileReport>>;

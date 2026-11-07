@@ -148,8 +148,6 @@ const stopwords = new Set([
 	"某天",
 ]);
 
-export default stopwords;
-
 /**
  * 把英文逗号分隔的停用词串解析成去空白、去空项的词数组。
  * 全局停用词合并(mergeStopWords)与单条订阅下播回顾的过滤共用,保证两处解析口径一致。

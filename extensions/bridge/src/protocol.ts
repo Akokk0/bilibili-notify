@@ -152,7 +152,7 @@ type BridgeFrameContractAligned = ParsedBridgeFrame extends BridgeToServerFrame
 		: never
 	: never;
 
-export const BRIDGE_FRAME_CONTRACT_ALIGNED: BridgeFrameContractAligned = true;
+void (true satisfies BridgeFrameContractAligned);
 
 // ---------------------------------------------------------------------------
 // 解析
@@ -193,7 +193,7 @@ export function parseBridgeFrame(raw: unknown): BridgeFrameParseResult {
 }
 
 // 同名的正本住在 internal;拓展只拿到 `FailureCode` 类型,运行时不能从核心借这张表。
-// 两边由 `BRIDGE_FAILURE_CODES_ALIGNED` 双向钉住:任何一边加码而另一边没跟上,类型检查当场红。
+// 两边由 下方的类型断言双向钉住:任何一边加码而另一边没跟上,类型检查当场红。
 const FAILURE_CODES = [
 	"not_found",
 	"invalid",
@@ -209,7 +209,7 @@ const FAILURE_CODES = [
 ] as const satisfies readonly FailureCode[];
 
 type UncoveredFailureCode = Exclude<FailureCode, (typeof FAILURE_CODES)[number]>;
-export const BRIDGE_FAILURE_CODES_ALIGNED: UncoveredFailureCode extends never ? true : never = true;
+void (true satisfies UncoveredFailureCode extends never ? true : never);
 
 const KNOWN_FAILURE_CODES: ReadonlySet<string> = new Set(FAILURE_CODES);
 
@@ -265,7 +265,7 @@ const CAPABILITY_STATES: ReadonlySet<string> = new Set(BRIDGE_CAPABILITY_STATES)
  * 桥多报的键静默丢掉,让协议两个方向都能单边演进。
  */
 /** 图标 data URL 的上限。名单一变就整份重发,一枚图标不该比一条消息还重。 */
-export const BRIDGE_BOT_ICON_MAX_BYTES = 32 * 1024;
+const BRIDGE_BOT_ICON_MAX_BYTES = 32 * 1024;
 
 const BOT_ICON_DATA_URL = /^data:image\/(?:png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/]+=*$/;
 

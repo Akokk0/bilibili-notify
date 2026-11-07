@@ -92,7 +92,7 @@ export function imageExtOf(ref: string): string | undefined {
 export const IMAGE_GRACE_MS = 24 * 60 * 60 * 1000;
 
 /** 一家引用方:落盘的东西里装着图库引用的那一处(会话、资料缓存、历史行、重推原件)。 */
-export interface ImageReferrer {
+interface ImageReferrer {
 	/** 给人看的名字,也是登记表里的键;重名当场抛。 */
 	name: string;
 	/**
@@ -117,7 +117,7 @@ export interface ImageWriter {
 }
 
 /** 一轮清扫的结果。 */
-export interface ImageSweepReport {
+interface ImageSweepReport {
 	/** 删掉的图。 */
 	removed: ImageRef[];
 	/** 删掉的图一共多少字节(删的那一刻重看的文件大小之和)。 */

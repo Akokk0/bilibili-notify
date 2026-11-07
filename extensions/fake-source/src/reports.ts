@@ -22,7 +22,7 @@ const PICTURES: readonly Uint8Array[] = FAKE_AVATARS;
 const PROFILE_PICTURES: readonly Uint8Array[] = FAKE_PROFILE_AVATARS;
 
 /** 第 `i` 张(轮着取)。 */
-export function pictureAt(i: number): Uint8Array {
+function pictureAt(i: number): Uint8Array {
 	return PICTURES[i % PICTURES.length] as Uint8Array;
 }
 

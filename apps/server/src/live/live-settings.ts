@@ -74,7 +74,7 @@ export interface LiveWorkSettings extends CardSkinChoice {
  */
 export type PushExtrasLike = Record<ExtraKey, boolean>;
 
-export interface CustomLiveSummaryLike {
+interface CustomLiveSummaryLike {
 	liveSummary: string;
 }
 

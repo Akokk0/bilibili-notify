@@ -58,7 +58,7 @@ const PLAIN_SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
  *   (`1.0.0-beta` → `1.0.0-beta.1`)—— 两种按 semver 都排在装着那版后面,仍是预发布;
  * - 版本号读不出来(清单坏了,卡上本来也不印版本)→ 当它是 `0.0.0`,给 `0.0.1`。
  */
-export function bumpedVersion(version: string | undefined): string {
+function bumpedVersion(version: string | undefined): string {
 	if (version === undefined) return "0.0.1";
 	const plain = PLAIN_SEMVER.exec(version);
 	if (plain) return `${plain[1]}.${plain[2]}.${Number(plain[3]) + 1}`;

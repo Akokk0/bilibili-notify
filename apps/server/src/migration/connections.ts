@@ -54,7 +54,7 @@ export interface RawConfigSections {
 }
 
 /** 哪些分区被改写过 —— 调用方据此决定回写哪个文件,别把没动的那份也重写一遍。 */
-export interface MigratedSectionFlags {
+interface MigratedSectionFlags {
 	connections: boolean;
 	targets: boolean;
 }
@@ -340,7 +340,7 @@ function isLegacyTargetFile(rows: readonly unknown[]): boolean {
  * 连接的 id 按「第一个用到它的那条老目标」算,确定的:从第 0 代重迁(主人手动重迁、开发期抬修订号)拆出来的
  * 还是同一批 id,摘要守卫也看得见产出变没变。不拿连接参数算 —— 里面有 token 与 secret。
  */
-export function migrateLegacyTargets(raw: readonly unknown[]): {
+function migrateLegacyTargets(raw: readonly unknown[]): {
 	connections: Connection[];
 	targets: PushTarget[];
 } {

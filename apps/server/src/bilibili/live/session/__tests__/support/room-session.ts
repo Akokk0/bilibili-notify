@@ -1,4 +1,4 @@
-import type { LiveDetails, SourceContext } from "@bilibili-notify/internal";
+import type { SourceContext } from "@bilibili-notify/internal";
 import { vi } from "vite-plus/test";
 import { PROBLEM_TEXTS } from "../../../../problem-texts.js";
 import type { LiveEvent } from "../../../protocol/events.js";
@@ -6,9 +6,8 @@ import type { LiveProblems } from "../../room-context.js";
 import { RoomSession } from "../../room-session.js";
 import { makeLiveProblems } from "./live-problems.js";
 
-export const EXTERNAL_ID = "u1";
-export const ROOM_ID = "r1";
-export const STARTED_AT = "2026-01-01T02:00:00.000Z";
+const EXTERNAL_ID = "u1";
+const ROOM_ID = "r1";
 
 const DEFAULT_ROOM = {
 	uid: 1,
@@ -205,17 +204,6 @@ export function makeSessionHarness(options: SessionHarnessOptions = {}) {
 		get reportedLive() {
 			return reportedLiveOf(session);
 		},
-	};
-}
-
-export function liveDetails(totalViewers?: number): LiveDetails {
-	return {
-		title: "标题",
-		cover: { url: "https://i0.hdslb.com/bfs/live/cover.jpg", ref: `${"c".repeat(64)}.webp` },
-		category: "分区",
-		url: "https://live.bilibili.com/1",
-		description: "简介",
-		...(totalViewers === undefined ? {} : { totalViewers }),
 	};
 }
 

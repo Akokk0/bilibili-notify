@@ -14,7 +14,7 @@ export interface ActiveSkin {
  * 主人在浅色页上改的每一笔都落进了看不见的那一套(真机症状:「壁纸在,纱和糊
  * 怎么调都不出来」,那张壁纸其实是深色那套的)。试穿不点名,照旧跟主题走。
  */
-export interface PreviewSkin extends ActiveSkin {
+interface PreviewSkin extends ActiveSkin {
 	mode?: ResolvedTheme;
 }
 

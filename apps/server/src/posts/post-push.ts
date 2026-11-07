@@ -25,20 +25,20 @@ export interface FilteredPost {
 }
 
 /** 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
-export interface PushImagePart {
+interface PushImagePart {
 	kind: "image";
 	buffer: Buffer;
 	mime: string;
 }
 
 /** 文本片段。 */
-export interface PushTextPart {
+interface PushTextPart {
 	kind: "text";
 	text: string;
 }
 
 /** 用于「专题」转发图集等需要折叠成 forward message 的多段图片。 */
-export interface PushImageGroup {
+interface PushImageGroup {
 	kind: "image-group";
 	mergeForward: boolean;
 	/** 图集单图(url + 可选 B站原始尺寸,透传给需要尺寸的平台如 QQ 原生 markdown)。 */

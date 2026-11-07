@@ -18,9 +18,9 @@ import { findWebScenario, type WebDevScenario } from "./registry";
  * dev 而后端连着一个正式镜像时就是这样),那就整个不出现。连不上也一样不出现:壳层自有
  * 错误态,devtools 不必再说一遍。
  */
-export const DEV_QUERY_KEY = ["dev"] as const;
+const DEV_QUERY_KEY = ["dev"] as const;
 /** 生效表单独一个 key:它是被轮询的那份,别让轮询把整张场景表也一起搬。 */
-export const DEV_ACTIVE_KEY = ["dev", "active"] as const;
+const DEV_ACTIVE_KEY = ["dev", "active"] as const;
 
 export type DevAvailability =
 	| { status: "loading" }
@@ -31,7 +31,7 @@ export type DevAvailability =
  * 有注入生效时每几秒看一眼:生效条上的话会变(截流的「拦下 N 条」随真推送涨),而这些
  * 变化发生在服务端、面板没按任何键。什么都没注入时不打扰。
  */
-export function devRefetchInterval(data: DevActiveView | undefined): number | false {
+function devRefetchInterval(data: DevActiveView | undefined): number | false {
 	return data && data.active.length > 0 ? 3_000 : false;
 }
 

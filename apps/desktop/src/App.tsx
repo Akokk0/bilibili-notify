@@ -23,7 +23,7 @@ export interface LauncherState {
 	dockHidden: boolean;
 }
 
-export type Invoke = (cmd: string) => Promise<unknown>;
+type Invoke = (cmd: string) => Promise<unknown>;
 
 declare global {
 	interface Window {

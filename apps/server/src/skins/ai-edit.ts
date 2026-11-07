@@ -135,7 +135,7 @@ ${SKIN_PSEUDO_NOTES}
 }
 
 /** 剥掉模型爱加的 \`\`\`json 围栏与首尾闲话,尽力取出 JSON 本体。 */
-export function stripJsonFences(text: string): string {
+function stripJsonFences(text: string): string {
 	const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text)?.[1];
 	if (fenced !== undefined) return fenced.trim();
 	const t = text.trim();

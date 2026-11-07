@@ -19,7 +19,6 @@ import { isConflict } from "./list-items";
  *
  * 键住在 `hooks/useExtensions.ts`(WS 那条失效也从那儿取);这里转出去,照声明画的几处从这儿拿。
  */
-export { extensionSettingsKey };
 
 export function useExtensionSettings(extensionId: string) {
 	return useQuery({

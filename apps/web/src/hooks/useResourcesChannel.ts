@@ -22,7 +22,7 @@ export interface ResourcesState {
 	history: ResourceSample[];
 }
 
-export const EMPTY_RESOURCES: ResourcesState = { static: null, history: [] };
+const EMPTY_RESOURCES: ResourcesState = { static: null, history: [] };
 
 /**
  * 一条 envelope 落地成新状态。纯函数,好在测试里直接喂帧。

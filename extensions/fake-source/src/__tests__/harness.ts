@@ -63,7 +63,7 @@ export interface BootOptions {
 }
 
 /** 适配器上下文收到的一条入站私聊。 */
-export interface HeardInbound {
+interface HeardInbound {
 	msg: InboundPrivateMessage;
 	meta: Pick<InboundMeta, "connectionId">;
 }

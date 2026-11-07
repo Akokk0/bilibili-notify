@@ -50,20 +50,3 @@ export function deferImageWrites(writer: Pick<ImageWriter, "put">): {
 		},
 	};
 }
-
-/**
- * 存一张图,回引用;图库不收(`invalid`:格式不认、超限)回 `undefined`,那一格缺着。别的失败(磁盘写失败回的
- * `unavailable`)抛 —— 与 {@link deferImageWrites} 的 `commit()` 同一个口径:这一次出卡失败,装配降级成纯文字,
- * 不是悄悄少一张图。拓展直播卡(`liveCardInputFromReport`)拿到的口是 `deferImageWrites` 的 `sink`(不碰盘,只回 ok / `invalid`),
- * 走不到抛的那一支;拓展作品那条路拿的是真写口,绑定在自己给的口里把 `unavailable` 接成「那张图缺着」,也走不到。
- * 抛的这一支防的是别的调用方把真图库的口直接传进来。
- */
-export async function storeOrSkip(
-	images: Pick<ImageWriter, "put">,
-	bytes: Uint8Array,
-): Promise<ImageRef | undefined> {
-	const stored = await images.put(bytes);
-	if (stored.ok) return stored.ref;
-	if (stored.code === "invalid") return undefined;
-	throw new Error(serverText("service.images.image-writes.text.4", { value0: stored.message }));
-}

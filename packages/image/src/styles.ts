@@ -17,7 +17,7 @@ export const DEFAULT_TIER_COLORS = [
 ] as const;
 
 /** 默认配色表里的最大 `rank`。 */
-export const DEFAULT_TIER_RANK_MAX = DEFAULT_TIER_COLORS.length;
+const DEFAULT_TIER_RANK_MAX = DEFAULT_TIER_COLORS.length;
 
 /**
  * `rank`(从 1 起、1 最低)→ 它在默认配色表里的有效档位:超出 6 用最后一档,没有(或不是有限的数、小于 1)用第 1 档。

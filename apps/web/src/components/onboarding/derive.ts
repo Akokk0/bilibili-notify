@@ -43,7 +43,7 @@ const targetReachability = (t: TargetRow): ReachabilityView | undefined =>
 		at: t.reachability.changedAt,
 	};
 
-export interface OnboardingAccount {
+interface OnboardingAccount {
 	sourceKey: string;
 	label: string;
 	loggedIn: boolean;

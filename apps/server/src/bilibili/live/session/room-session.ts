@@ -15,7 +15,7 @@ import {
 } from "./room-context.js";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers.js";
 
-export const LIVE_EVENT_COOLDOWN = 10 * 1000;
+const LIVE_EVENT_COOLDOWN = 10 * 1000;
 export const LIVE_WS_STALE_MS = 180_000;
 
 const VIEWERS_EMIT_THROTTLE_MS = 2_000;

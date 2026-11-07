@@ -65,7 +65,7 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  */
 
 /** 节流窗口:同一 报的人 + code,上次私聊送到之后这么久之内不再发问题私聊。 */
-export const NOTIFY_WINDOW_MS = 60_000;
+const NOTIFY_WINDOW_MS = 60_000;
 
 /**
  * 沉淀时间:一把键上清掉一条之后,这么久之内不发问题私聊。要盖住「一批清」落完的时长(逐个取消会话时中间
@@ -74,7 +74,7 @@ export const NOTIFY_WINDOW_MS = 60_000;
 export const CLOSE_SETTLE_MS = 5_000;
 
 /** 再送的间隔(从上一次没送到算起),五次。 */
-export const RETRY_DELAYS_MS = [10_000, 30_000, 60_000, 300_000, 900_000] as const;
+const RETRY_DELAYS_MS = [10_000, 30_000, 60_000, 300_000, 900_000] as const;
 
 export interface CreateProblemNotifierOptions {
 	table: Pick<ProblemTable, "subscribe">;

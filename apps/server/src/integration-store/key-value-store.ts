@@ -18,7 +18,7 @@ import { errorMessageOf } from "../util/error-message.js";
  */
 
 /** `http.` 开头的键归宿主(ADR-0025 决策 9)。 */
-export const HOST_KEY_PREFIX = "http.";
+const HOST_KEY_PREFIX = "http.";
 
 /** 盘上文件的版本判别,今天只认 1。 */
 export const STORE_FILE_VERSION = 1;

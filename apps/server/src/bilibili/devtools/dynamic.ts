@@ -28,7 +28,7 @@ import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
 /** 动态类型的四选 + 转发。 */
 type Kind = "word" | "draw" | "av" | "article" | "forward";
 
-export interface DynamicPollerLike {
+interface DynamicPollerLike {
 	detectNow(): Promise<void>;
 }
 

@@ -51,7 +51,7 @@ export function buildStateHydrate(): WsEventEnvelope<"state"> {
  * 造一帧。`data` 的类型按 contract 的事件表(`WsEvents`)查 —— 频道、事件名、载荷三者对不上就
  * 编译不过。
  */
-export function envelope<C extends ChannelName, E extends keyof WsEvents[C]>(
+function envelope<C extends ChannelName, E extends keyof WsEvents[C]>(
 	channel: C,
 	event: E,
 	data: WsEvents[C][E],

@@ -47,8 +47,6 @@ export const SECTION_ACCENT = {
 	diagnostic: "#94a3b8",
 } as const;
 
-export type SectionAccent = (typeof SECTION_ACCENT)[keyof typeof SECTION_ACCENT];
-
 /**
  * 从任意强调色现算一档「压得住底色的标题字」。
  *

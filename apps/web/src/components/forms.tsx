@@ -23,21 +23,13 @@ import { i18n, useT } from "../i18n";
 
 export {
 	ArrayEditor,
-	type ArrayEditorProps,
 	Picker,
-	type PickerProps,
 	QuietHoursEditor,
-	type QuietHoursEditorProps,
 	TArea,
-	type TAreaProps,
 	TColor,
-	type TColorProps,
 	TInput,
-	type TInputProps,
 	TNum,
-	type TNumProps,
 	TSelect,
-	type TSelectProps,
 } from "@bilibili-notify/ui";
 
 // ── Field ────────────────────────────────────────────────────────────────────

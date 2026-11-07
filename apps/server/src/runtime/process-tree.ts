@@ -99,7 +99,7 @@ const POWERSHELL_QUERY =
 	"Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize | ConvertTo-Csv -NoTypeInformation";
 
 /** 取一次全表。取不到(命令缺失 / 超时 / 权限)回 null,由调用方显示「—」。 */
-export async function readProcessTable(): Promise<ProcTable | null> {
+async function readProcessTable(): Promise<ProcTable | null> {
 	if (platform() === "win32") {
 		const out = await run("powershell.exe", [
 			"-NoProfile",
@@ -117,7 +117,7 @@ export async function readProcessTable(): Promise<ProcTable | null> {
  * Linux 专用的零子进程路径:直接读 `/proc`。容器里 `ps` 常常压根没装,而每 10 秒起一次
  * 子进程本身也是笔开销。
  */
-export async function readProcTableFromProcfs(deps: {
+async function readProcTableFromProcfs(deps: {
 	listPids: () => Promise<string[]>;
 	readStatus: (pid: number) => Promise<string | null>;
 }): Promise<ProcTable> {
@@ -137,7 +137,7 @@ export async function readProcTableFromProcfs(deps: {
 	return out;
 }
 
-export const procfsDeps = {
+const procfsDeps = {
 	listPids: (): Promise<string[]> => readdir("/proc"),
 	readStatus: (pid: number) => readTextOrNull(`/proc/${pid}/status`),
 };

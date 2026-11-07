@@ -1,7 +1,7 @@
 import { CronTime } from "cron";
 
 /** cron 读不出来时拓展上报粉丝的间隔 —— 与默认的 `DEFAULT_PROFILE_REFRESH_CRON`(`*\/10 * * * *`)同一个数。 */
-export const DEFAULT_FOLLOWERS_SAMPLE_GAP_MS = 10 * 60_000;
+const DEFAULT_FOLLOWERS_SAMPLE_GAP_MS = 10 * 60_000;
 
 /** 往后看几次触发。够跨过一个小时的边界(`*\/7` 那种在整点处只隔 4 分钟),算一次也就几毫秒。 */
 const CRON_LOOKAHEAD = 32;

@@ -28,7 +28,7 @@ import { dataPath } from "../runtime/roots.js";
  * 上限盯着,不让它无限涨。
  */
 
-export type ConversationRole = "user" | "assistant";
+type ConversationRole = "user" | "assistant";
 
 /**
  * 女仆为了答这一句而调过的一个工具。
@@ -36,7 +36,7 @@ export type ConversationRole = "user" | "assistant";
  * 跟着回复一起落盘而不是只活在那次流里:只在流里显示的话,`done` 一到、真身把
  * 在途副本换下来的那一刻,这几条就凭空消失了,刷新之后也再看不到她查过什么。
  */
-export interface StoredToolTrace {
+interface StoredToolTrace {
 	name: string;
 	args: Record<string, string>;
 	ok: boolean;
@@ -49,7 +49,7 @@ export interface StoredToolTrace {
 }
 
 /** 一条聊天消息。`id` 供前端当 React key,`ts` 是落盘时刻(ISO)。 */
-export interface StoredMessage {
+interface StoredMessage {
 	id: string;
 	role: ConversationRole;
 	content: string;
@@ -80,17 +80,17 @@ export interface StoredMessage {
  *
  * 不跟着消息走、**当场落盘**:等一轮成功才记的话,中途失败的那一轮会让下一句再复制一份。
  */
-export interface CardSkinLedger {
+interface CardSkinLedger {
 	/** 这场对话建出来的皮肤(含复制出来的副本),按先后。 */
 	owned: string[];
 	/** 原件 id → 副本 id。 */
 	forks: Record<string, string>;
 }
 
-export type CardSkinLedgerEntry = { owned: string } | { fork: { from: string; to: string } };
+type CardSkinLedgerEntry = { owned: string } | { fork: { from: string; to: string } };
 
 /** 追加消息时的入参 —— id / ts 由 store 生成,调用方不许自己编。 */
-export interface NewMessage {
+interface NewMessage {
 	role: ConversationRole;
 	content: string;
 	tools?: readonly StoredToolTrace[];

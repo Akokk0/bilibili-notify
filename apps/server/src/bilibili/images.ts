@@ -80,7 +80,7 @@ export function scaledImageUrl(url: string, maxWidth: number = SCALED_MAX_WIDTH)
 export const IMAGE_REQUEST_HEADERS = { Referer: "https://www.bilibili.com/" } as const;
 
 /** 一次最多同时抓几张。 */
-export const FETCH_CONCURRENCY = 3;
+const FETCH_CONCURRENCY = 3;
 
 /** 还没存进图库的图:有地址、没有引用。 */
 const needsFetch = (image: PostImage | undefined): image is PostImage & { url: string } =>

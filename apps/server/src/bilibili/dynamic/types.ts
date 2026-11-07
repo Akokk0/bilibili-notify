@@ -1,6 +1,6 @@
 // ---- Dynamic API response types ----
 
-export type RichTextNode = {
+type RichTextNode = {
 	orig_text: string;
 	text: string;
 	type: string;

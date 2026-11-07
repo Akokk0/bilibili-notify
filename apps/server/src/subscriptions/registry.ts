@@ -19,7 +19,7 @@ import { errorMessageOf } from "../util/error-message.js";
 export type SourceView = Omit<Source, "start" | "stop"> & { sourceKey: string };
 
 /** 宿主持有的启动结论,失败释放登记键后仍可读取。 */
-export interface SourceRunView {
+interface SourceRunView {
 	sourceKey: string;
 	descriptor: Source["descriptor"];
 	status: "running" | "failed" | "unknown";

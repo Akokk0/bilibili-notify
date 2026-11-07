@@ -67,7 +67,7 @@ import { textPreview } from "../util/text-preview.js";
  */
 
 /** `status` 里来源健康那一行的上限;超出截断,不拒整行。 */
-export const SOURCE_HEALTH_SUMMARY_MAX_CHARS = 120;
+const SOURCE_HEALTH_SUMMARY_MAX_CHARS = 120;
 
 /** 一条该记进「上报出入」的事(宿主再补时刻与「哪条订阅」)。 */
 export interface ExtensionSourceDiscrepancy {

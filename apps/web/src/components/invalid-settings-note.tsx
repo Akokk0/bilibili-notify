@@ -4,7 +4,7 @@ import { useInvalidSettings } from "../hooks/useInvalidSettings";
 import { useT } from "../i18n";
 
 /** Only the server's safe projection is rendered; secret cells never get a value view. */
-export function InvalidSettingsNote({ entries }: { entries: readonly InvalidSettingView[] }) {
+function InvalidSettingsNote({ entries }: { entries: readonly InvalidSettingView[] }) {
 	const t = useT();
 	if (entries.length === 0) return null;
 	return (

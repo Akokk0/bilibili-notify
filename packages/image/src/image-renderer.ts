@@ -88,14 +88,6 @@ function knobCursorKey(
 	return `${skinId}:${key}@up:${JSON.stringify(perUp[key])}`;
 }
 
-/**
- * 锐评卡的**业务**入参。渐变 / 玻璃那几项 2026-09-20 从 props 上整批删掉(外观归皮肤的
- * 外框 CSS 与旋钮),所以这两个别名今天与 props 一字不差 —— 留着名字是因为它们是对外
- * 导出的入参契约,调用方(`apps/server` 的周报投递)写的是这个名。
- */
-export type RoastBoardData = RoastBoardCardInput;
-export type RoastSoloData = RoastSoloCardInput;
-
 async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs = 1000): Promise<T> {
 	let lastError: unknown;
 	for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -770,7 +762,7 @@ export class ImageRenderer {
 	}
 
 	async generateRoastBoardCard(
-		data: RoastBoardData,
+		data: RoastBoardCardInput,
 		/** 用哪套皮肤;榜单整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。 */
 		opts: { cardSkin?: string } = {},
 	): Promise<Buffer> {
@@ -793,7 +785,7 @@ export class ImageRenderer {
 	}
 
 	async generateRoastSoloCard(
-		data: RoastSoloData,
+		data: RoastSoloCardInput,
 		/** 用哪套皮肤;单人锐评整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。 */
 		opts: { cardSkin?: string } = {},
 	): Promise<Buffer> {

@@ -27,8 +27,8 @@ import { distinctPng } from "./chat-images.js";
 import { silentLogger } from "./silent-logger.js";
 
 /** 测试里的「此刻」:所有清扫、保留水位都按它算,不碰真时钟。 */
-export const NOW = Date.parse("2026-10-06T12:00:00.000Z");
-export const DAY = 24 * 60 * 60 * 1000;
+const NOW = Date.parse("2026-10-06T12:00:00.000Z");
+const DAY = 24 * 60 * 60 * 1000;
 /** 比宽限期老(2 天前)与还在宽限期里(1 小时前)的修改时间。 */
 export const OLD_MTIME = NOW - 2 * DAY;
 export const FRESH_MTIME = NOW - 60 * 60 * 1000;

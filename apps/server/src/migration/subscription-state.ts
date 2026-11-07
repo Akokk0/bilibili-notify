@@ -19,7 +19,7 @@ const BILI_STATE_PATH = integrationStateFile(BILIBILI_SOURCE_KEY, [BILIBILI_SOUR
 
 const POSITIVE_INTEGER_STRING = /^[1-9]\d*$/;
 
-export interface SubscriptionStateMigrationSummary {
+interface SubscriptionStateMigrationSummary {
 	profilesConverted: number;
 	droppedProfiles: number;
 	droppedRecords: number;

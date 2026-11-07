@@ -18,7 +18,7 @@
  */
 
 /** 检查间隔。孤儿的代价是持续占着数据目录,几秒的发现延迟无所谓,别空转太勤。 */
-export const PARENT_WATCH_INTERVAL_MS = 3_000;
+const PARENT_WATCH_INTERVAL_MS = 3_000;
 
 /**
  * 解析 `BN_PARENT_PID`。

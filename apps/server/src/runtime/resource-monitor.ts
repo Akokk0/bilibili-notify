@@ -18,31 +18,31 @@ import { makeCgroupMemUsedReader, readCgroup } from "./cgroup.js";
  */
 
 /** 采样节奏:2 秒。面板推帧、环形缓冲、都是这一个 tick。 */
-export const SAMPLE_INTERVAL_MS = 2_000;
+const SAMPLE_INTERVAL_MS = 2_000;
 
 /** 环形缓冲长度:5 分钟 ÷ 2 秒。再多 sparkline 也画不出更多信息,只是白占内存。 */
-export const HISTORY_POINTS = 150;
+const HISTORY_POINTS = 150;
 
 /**
  * 内存自检那行 info 的节奏:10 分钟。一天 144 行在按天分卷的 jsonl 归档里什么都不是;
  * 跟着 2 秒的采样 tick 走就是一天 43200 行,谁也不想要那个。
  */
-export const MEMORY_LOG_INTERVAL_MS = 600_000;
+const MEMORY_LOG_INTERVAL_MS = 600_000;
 
 /**
  * 浏览器子树 RSS 的测量节奏:10 秒。它是三平台里唯一要起子进程的一项(macOS 的 `ps`、
  * Windows 的 PowerShell),跟着 2 秒的采样 tick 走等于每分钟起 30 次子进程。
  */
-export const BROWSER_MEASURE_INTERVAL_MS = 10_000;
+const BROWSER_MEASURE_INTERVAL_MS = 10_000;
 
 /** 堆占上限超过这个比例就 warn —— 留给用户反应的余地,而不是等 FATAL。 */
-export const HEAP_WARN_RATIO = 0.85;
+const HEAP_WARN_RATIO = 0.85;
 
 /**
  * warn 响过一次后,要回落到这条线以下才重新武装。没有这段回滞的话,卡在 85% 附近
  * 抖动的堆会 2 秒一条 warn 刷屏。
  */
-export const HEAP_REARM_RATIO = 0.8;
+const HEAP_REARM_RATIO = 0.8;
 
 const BYTES_PER_MB = 1024 * 1024;
 
@@ -100,7 +100,7 @@ function readCgroupMemUsed(): number | null {
 	return cgroupMemUsedReader();
 }
 
-export const defaultResourceReaders: ResourceReaders = {
+const defaultResourceReaders: ResourceReaders = {
 	now: () => Date.now(),
 	cpuUsage: () => process.cpuUsage(),
 	hostCpuTimes: sumHostCpuTimes,
@@ -114,7 +114,7 @@ export const defaultResourceReaders: ResourceReaders = {
 };
 
 /** 浏览器那一行的数据源。省掉 = 这台没接 puppeteer,状态恒 `none`。 */
-export interface BrowserSource {
+interface BrowserSource {
 	/** 现在是什么状态、pid 多少(本地跑着才有 pid)。同步、极便宜。 */
 	info(): { state: BrowserProcessState; pid: number | null };
 	/** 量一次子树 RSS(可能起子进程);量不到回 null。 */

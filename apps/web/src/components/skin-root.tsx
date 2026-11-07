@@ -20,7 +20,7 @@ import { type ActiveSkin, effectiveSkin, type SkinState, useSkinStore } from "..
 import type { ResolvedTheme } from "../store/theme";
 import { useThemeStore } from "../store/theme";
 
-export function skinAssetUrl(id: string, name: string): string {
+function skinAssetUrl(id: string, name: string): string {
 	return `/api/dashboard/skins/${id}/assets/${name.slice("assets/".length)}`;
 }
 
@@ -50,7 +50,7 @@ function resolveCurrent(
 }
 
 /** 此刻生效的皮肤及其当前模式;没换装/逃生舱下为 null。装饰层/文案槽共用。 */
-export function useCurrentSkinMode(): { id: string; mode: SkinMode } | null {
+function useCurrentSkinMode(): { id: string; mode: SkinMode } | null {
 	const active = useSkinStore((s) => s.active);
 	const preview = useSkinStore((s) => s.preview);
 	const killSwitch = useSkinStore((s) => s.killSwitch);

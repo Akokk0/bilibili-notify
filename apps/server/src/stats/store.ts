@@ -177,7 +177,7 @@ export interface StatsStore {
 }
 
 /** 一次账压缩的结果。 */
-export interface RecordingCompactReport {
+interface RecordingCompactReport {
 	/** 压缩前认得的行数(坏行与空行不算)。 */
 	rowsBefore: number;
 	/** 压缩后的行数。 */

@@ -49,7 +49,7 @@ export const SECRET_KEYS: readonly string[] = [
  * per-key denylist above can never keep up as new backends land; the container
  * name is the stable signal.
  */
-export const SECRET_CONTAINER_KEYS: readonly string[] = ["keys", "headers"];
+const SECRET_CONTAINER_KEYS: readonly string[] = ["keys", "headers"];
 
 /**
  * Key names whose values are URLs. A URL carries credentials in places the key
@@ -59,7 +59,7 @@ export const SECRET_CONTAINER_KEYS: readonly string[] = ["keys", "headers"];
  * by {@link REDACTED_URL}, keeping only the scheme so the sanitized config still
  * satisfies `z.url()` and OneBot's `wss?://` regex on import.
  */
-export const URL_KEYS: readonly string[] = ["url", "baseUrl"];
+const URL_KEYS: readonly string[] = ["url", "baseUrl"];
 
 /**
  * Schemes we know how to hand back as a valid placeholder. Anything else (a
@@ -101,7 +101,6 @@ export function redactSecretKeys<T>(value: T, secrets: ReadonlySet<string> = SEC
  * 会顺着原型链摸 —— `{}["toString"]` 是个长度 0 的函数,被当成「一格都没声明」,那个拓展的密钥
  * 原样进备份;`{}["constructor"]` 则让导出直接炸。
  */
-export type ExtensionSecretCodes = ReadonlyMap<string, readonly string[]>;
 
 /** 备份分区里,拓展能插手的那一格。只写出用得上的形状。 */
 interface ExtensionScopedSections {

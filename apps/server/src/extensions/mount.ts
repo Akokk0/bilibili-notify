@@ -14,7 +14,7 @@ import { respondFailure } from "../routes/respond-failure.js";
 export { EXTENSION_MOUNT_PREFIX };
 
 /** 一条挂上去的总入口。`prefix` 是宿主分配的,拓展自己不该猜(ADR-0012 决策 12)。 */
-export interface ExtensionMountHandle {
+interface ExtensionMountHandle {
 	readonly prefix: string;
 	dispose(): void;
 }

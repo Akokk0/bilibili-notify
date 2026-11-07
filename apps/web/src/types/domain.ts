@@ -33,7 +33,6 @@ import {
 	type Identity,
 	identityColor,
 	type SourceKey,
-	sameIdentity,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal/identity";
 
@@ -50,7 +49,6 @@ export {
 	isTargetPaused,
 	PUSH_EXTRAS,
 	platformOfTarget,
-	sameIdentity,
 	subscriptionIdentityOf,
 };
 

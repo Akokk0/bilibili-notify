@@ -45,7 +45,7 @@ import { MessageLayoutEditor } from "./MessageLayoutEditor";
  * 文字模板输入框的下发值(ADR-0037 决策 10):编辑到与当前语言的默认一字不差 = 回到「没存」(`null` 删键),
  * 否则存主人写的这句。草稿合并认 `null` 删键,`buildPatch` 据此下发 `null`。
  */
-export function templateValueToStore(value: string, factoryText: string): string | null {
+function templateValueToStore(value: string, factoryText: string): string | null {
 	return value === factoryText ? null : value;
 }
 
@@ -129,7 +129,7 @@ export const globalSectionsOf = (): SectionMeta[] => [
  * per-UP 9 个分类:全局 5 个 + 特别关注弹幕 / 进房 / 卡片样式 / AI 人格。
  * 每项独立 toggle 到「覆盖中」才会写入 Subscription.overrides;关闭即继承全局。
  */
-export const subscriptionSectionsOf = (): SectionMeta[] => [
+const subscriptionSectionsOf = (): SectionMeta[] => [
 	{
 		id: "filter",
 		label: i18n.t("sourceUi.pages.rules.sections.label.1"),
@@ -1013,7 +1013,7 @@ interface GuardBundlePatch {
  * 画 B 站体系文案用的整份:配置里没有这个体系(新装、或手改删掉了)就是出厂那一份 —— 自定义关着,体系默认是当前语言的出厂文案;
  * 体系默认的文字没存(没改过)也取出厂那一句。
  */
-export function guardBundleOf(
+function guardBundleOf(
 	templates: Pick<TemplateBundle, "membership">,
 	factory: BuiltinTemplates,
 	programId: string,

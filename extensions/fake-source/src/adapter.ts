@@ -47,7 +47,7 @@ export const FakeConnectionSettingsSchema = z.object({
 export type FakeConnectionSettings = z.infer<typeof FakeConnectionSettingsSchema>;
 
 /** 记账环的容量。 */
-export const SENT_RING_SIZE = 50;
+const SENT_RING_SIZE = 50;
 /** 记进账里的一段文字最长这么多字,再长截短。 */
 const SHOWN_TEXT_MAX = 80;
 

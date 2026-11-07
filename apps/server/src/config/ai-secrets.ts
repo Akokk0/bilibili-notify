@@ -37,7 +37,7 @@ export function aiSecretKey(profileId: string, vision = false): string {
  * 与实例桶的袋键不同域:实例 id 由 addProfile 生成(`<provider>` / `<provider>-<N>`),
  * 永不带冒号,不会撞车。
  */
-export function searchSecretKey(backend: string): string {
+function searchSecretKey(backend: string): string {
 	return `${SEARCH_PREFIX}${backend}`;
 }
 

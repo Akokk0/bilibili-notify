@@ -32,7 +32,7 @@ export interface NodeServiceContextOptions {
 }
 
 /** 设置里日志等级的那两格:总等级,与按键(核心的格或集成键)单独写的等级。 */
-export interface LogLevelTable {
+interface LogLevelTable {
 	level: string;
 	levels: Readonly<Record<string, string>>;
 }

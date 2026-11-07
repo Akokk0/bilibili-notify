@@ -26,7 +26,6 @@ export type {
 	AiChatMode,
 	AiConversationMetaView,
 	AiConversationView,
-	AiToolTraceView,
 } from "@bilibili-notify/contract";
 
 export const conversationsQueryKey = ["ai", "conversations"] as const;
@@ -115,7 +114,7 @@ export function createSseParser(): (chunk: string) => SseFrame[] {
  * 工具轮不产生正文,所以那几秒在界面上跟「模型卡住了」长得一模一样 —— 这几拍
  * 就是把那段空白讲出来。`progress` / `end` 都靠 `id` 认回自己的 `start`。
  */
-export type ChatToolEvent =
+type ChatToolEvent =
 	| {
 			phase: "start";
 			id: string;

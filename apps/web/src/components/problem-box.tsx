@@ -21,7 +21,7 @@ import { useT } from "../i18n";
 import { api } from "../services/api";
 import type { Subscription } from "../types/domain";
 
-export const PROBLEMS_HASH = "#problems";
+const PROBLEMS_HASH = "#problems";
 export function ProblemBox() {
 	const t = useT(),
 		navigate = useNavigate(),

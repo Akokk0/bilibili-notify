@@ -7,8 +7,7 @@ import { fieldText } from "./settings-field-text.js";
  * QQ 官方机器人公域/私域类型。私域可发原生 markdown,公域只能发模板 markdown ——
  * 决定 adapter 的 markdown 能力门控(私域默认开、公域默认关)。
  */
-export const QQOfficialBotTypeSchema = z.enum(["public", "private"]);
-export type QQOfficialBotType = z.infer<typeof QQOfficialBotTypeSchema>;
+const QQOfficialBotTypeSchema = z.enum(["public", "private"]);
 
 /**
  * QQ 官方机器人(q.qq.com,非 OneBot/NapCat)连接设置。

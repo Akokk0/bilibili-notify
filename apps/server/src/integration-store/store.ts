@@ -72,7 +72,7 @@ export interface IntegrationStore {
 }
 
 /** 经把手 `redact` 登记的值的种类(闭集;宿主自己的 `secrets` 那一种不经这个口)。 */
-export type RedactKind = "cookies" | "redact";
+type RedactKind = "cookies" | "redact";
 
 export interface IntegrationStoreHandle {
 	/** 集成那一面:`http.` 开头的键拒。 */

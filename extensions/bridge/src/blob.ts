@@ -28,12 +28,12 @@ export const BRIDGE_BLOB_SEGMENT = "/blob";
  * 一张图能等多久。`send` 的回执窗口是 30 秒(桥要下载大图),给它两倍 —— 桥取图必然
  * 发生在那个窗口里,过了还没来取就是不会来了。
  */
-export const DEFAULT_BRIDGE_BLOB_TTL_MS = 60_000;
+const DEFAULT_BRIDGE_BLOB_TTL_MS = 60_000;
 
 /** 攒着的图最多占多少内存。到顶了淘汰最老的 —— 桥一直不来取也不能把内存吃光。 */
-export const DEFAULT_BRIDGE_BLOB_MAX_BYTES = 64 * 1024 * 1024;
+const DEFAULT_BRIDGE_BLOB_MAX_BYTES = 64 * 1024 * 1024;
 
-export interface BridgeBlob {
+interface BridgeBlob {
 	buffer: Buffer;
 	mime: string;
 }

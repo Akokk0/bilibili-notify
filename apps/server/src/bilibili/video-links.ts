@@ -49,6 +49,6 @@ export function extractVideoLinks(text: string): VideoLinkRef[] {
  * 加第四种 `kind` 或改写法只会改到其中一边 —— 一边还在去重、另一边已经不压了,
  * 而两种症状都只在群里看得见,门禁一声不吭。
  */
-export function videoLinkKey(ref: VideoLinkRef): string {
+function videoLinkKey(ref: VideoLinkRef): string {
 	return ref.kind === "bvid" ? ref.bvid : ref.kind === "aid" ? `av${ref.aid}` : ref.url;
 }

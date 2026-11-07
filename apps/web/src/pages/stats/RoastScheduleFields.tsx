@@ -253,7 +253,7 @@ export function RoastScheduleFields({
 	);
 }
 
-export function SwitchRow({
+function SwitchRow({
 	label,
 	hint,
 	value,

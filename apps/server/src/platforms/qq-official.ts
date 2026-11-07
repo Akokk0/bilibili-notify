@@ -356,7 +356,7 @@ export function extractQQPrivateMessage(
  * 不带消息 id:官机的主动群消息已经没有条数限制(2026-09-02 主人告知),回复走主动路径,
  * 被动回复的 `msg_id` 用不上 —— 留一个没人接的字段只会让人以为被动路径存在。
  */
-export function extractQQGroupMessage(
+function extractQQGroupMessage(
 	eventType: string,
 	data: Record<string, unknown>,
 ): InboundGroupMessage | null {
@@ -481,7 +481,7 @@ export interface QQGatewayConnOptions {
 }
 
 /** 网关连续不在线多久才报,毫秒。 */
-export const QQ_GATEWAY_OFFLINE_REPORT_MS = 60_000;
+const QQ_GATEWAY_OFFLINE_REPORT_MS = 60_000;
 
 export interface QQGatewayConn {
 	/** 是否已 READY/RESUMED 在线。 */

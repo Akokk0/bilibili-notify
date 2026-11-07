@@ -38,7 +38,7 @@ export interface MyselfResponse {
 	};
 }
 
-export interface UserCard {
+interface UserCard {
 	mid: string;
 	name: string;
 	face: string;
@@ -58,13 +58,13 @@ export interface UserCard {
 	};
 }
 
-export interface UserCardSpace {
+interface UserCardSpace {
 	s_img: string;
 	l_img: string;
 }
 
 /** Body of `UserCardResponse.data` — exported for client-side consumers. */
-export interface UserCardDetails {
+interface UserCardDetails {
 	card: UserCard;
 	space: UserCardSpace;
 	like_num: number;
@@ -87,7 +87,7 @@ export interface LoginQrCodeResponse {
  * 与某个用户的关系。`attribute`:0=未关注 / 2=已关注 / 6=互相关注 / 128=已拉黑。
  * (悄悄关注的 1 早已废弃。)
  */
-export interface UserRelation {
+interface UserRelation {
 	mid?: number;
 	attribute?: number;
 }

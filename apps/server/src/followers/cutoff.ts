@@ -6,7 +6,7 @@
 export const HOUR_MS = 3_600_000;
 
 /** 保留原样的时长:8 天。 */
-export const KEEP_RAW_MS = 8 * 24 * HOUR_MS;
+const KEEP_RAW_MS = 8 * 24 * HOUR_MS;
 
 /** UTC 小时序号(自纪元起第几个整点小时)。 */
 export function hourIndexOf(ms: number): number {

@@ -18,16 +18,11 @@ export type {
 	HistoryEntryView,
 	HistoryMessageView,
 	HistoryRepushResponse,
-	HistoryRepushView,
 	HistoryResponse,
-	// `/api/live/listening` 的一行:一条此刻在播的订阅,来源看 `identity`。
 	LiveListeningEntry,
-	// `/api/system/logs` 归档行与 WS `log` 帧共用的行视图。
 	LogArchiveEntry as LogLineView,
-	// wire 4 值日志级别(含 warn)比 3 值配置枚举宽,别名维持旧命名。
 	LogLevel as LogLineLevel,
 	LogsResponse,
-	PushStatus,
 } from "@bilibili-notify/contract";
 
 /**

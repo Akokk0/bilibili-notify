@@ -19,7 +19,7 @@ import { api } from "../../services/api";
 import { CARD_SKINS_KEY } from "./card-skins-query";
 
 /** 某一套皮肤完整清单的 react-query 键。 */
-export const cardSkinManifestKey = (id: string) => ["card-skin-manifest", id] as const;
+const cardSkinManifestKey = (id: string) => ["card-skin-manifest", id] as const;
 
 /**
  * 某一套皮肤的完整清单。`enabled` 是给**出厂那份**留的口:接管一种卡时要抄它,而多数
@@ -52,7 +52,7 @@ export function useSaveCardSkin(id: string) {
 }
 
 /** 某一套皮肤盘上有哪些资产。字体那张表照它画候选。 */
-export const cardSkinAssetsKey = (id: string) => ["card-skin-assets", id] as const;
+const cardSkinAssetsKey = (id: string) => ["card-skin-assets", id] as const;
 
 export function useCardSkinAssets(id: string) {
 	return useQuery({
@@ -96,7 +96,7 @@ export function useDeleteCardSkinAsset(id: string) {
  * react-query,所以两处**没有**共用缓存。这里不去追它:配 Chrome 的入口在另一页,
  * 主人配完再回编辑器就是一次重新挂载(`refetchOnMount` 默认开着),当场就是新的。
  */
-export const RENDER_SOURCE_KEY = ["cards", "renderer"] as const;
+const RENDER_SOURCE_KEY = ["cards", "renderer"] as const;
 
 export function useRenderSource() {
 	return useQuery({

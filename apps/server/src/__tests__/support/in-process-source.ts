@@ -69,7 +69,7 @@ export const IN_PROCESS_ECHO_TOOL_NAME = "acme_inprocess__echo";
 /** 那把工具在小条上给人看的名字。 */
 export const IN_PROCESS_ECHO_TOOL_LABEL = "对拍回声";
 /** 假提供方带来的技能:本名、宿主加命名空间后的全名与正文。 */
-export const IN_PROCESS_SKILL_NAME = "echo-check";
+const IN_PROCESS_SKILL_NAME = "echo-check";
 export const IN_PROCESS_SKILL_FULL_NAME = "acme-inprocess-echo-check";
 export const IN_PROCESS_SKILL_BODY = "P43: call acme_inprocess__echo before answering.";
 
@@ -107,14 +107,14 @@ export function createInProcessAiToolProvider(): AiToolProvider {
 }
 
 /** 假来源的设置:两格,`threshold` 有范围,好摆「一格坏」。 */
-export const InProcessSettingsSchema = z.object({
+const InProcessSettingsSchema = z.object({
 	mode: z.string().default("normal"),
 	threshold: z.number().int().min(1).max(100).default(10),
 });
-export type InProcessSettings = z.infer<typeof InProcessSettingsSchema>;
+type InProcessSettings = z.infer<typeof InProcessSettingsSchema>;
 
 /** 登记进配置仓的设置段(`BUILTIN_INTEGRATION_SETTINGS` 后面追加这一段)。 */
-export const inProcessSettingsSegment: IntegrationSettingsSegment<InProcessSettings> = {
+const inProcessSettingsSegment: IntegrationSettingsSegment<InProcessSettings> = {
 	key: IN_PROCESS_KEY,
 	schema: InProcessSettingsSchema,
 };
@@ -137,7 +137,7 @@ export interface InProcessOptions {
 }
 
 /** 假来源登录口的内存状态机。 */
-export interface InProcessAuth extends SourceAuth {
+interface InProcessAuth extends SourceAuth {
 	/** 测试直接把状态摆成某个值并通知订阅者。 */
 	set(state: AuthState, account?: { name: string; avatar?: string }): void;
 }
@@ -250,7 +250,7 @@ function createAuth(): InProcessAuth {
 }
 
 /** 造一个假来源和它的探针。来源只做 `Source` 接口上有的事,别的什么都不碰。 */
-export function createInProcessSource(options: InProcessOptions = {}): {
+function createInProcessSource(options: InProcessOptions = {}): {
 	source: Source;
 	probe: InProcessProbe;
 } {

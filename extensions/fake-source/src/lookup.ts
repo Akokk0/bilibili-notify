@@ -83,10 +83,7 @@ function untilAborted(signal: AbortSignal): Promise<never> {
  * 三个各缺一样,面板那三种样子一次看全:有头像有粉丝、有头像不报粉丝、没头像只报粉丝。
  * id 是摘要的前 16 位加一个字母,再长的查询也只有二十来字(宿主上限 256)。
  */
-export async function fakeCandidates(
-	store: StorePicture,
-	query: string,
-): Promise<CreatorCandidate[]> {
+async function fakeCandidates(store: StorePicture, query: string): Promise<CreatorCandidate[]> {
 	const digest = createHash("sha256").update(query).digest("hex");
 	const seed = Number.parseInt(digest.slice(0, 8), 16);
 	const idOf = (tag: string) => `fake-${digest.slice(0, 16)}-${tag}`;

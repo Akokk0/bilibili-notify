@@ -63,7 +63,7 @@ function renderConnections(connections: StatusReport["connections"]): string {
 const unreadable = () => serverText("service.runtime.status-command.text.4");
 
 /** 登录态的一行人话。`confirming` 没带 `message` 时写「正在确认」;`undefined`(读口抛了)写「状态读不到」。 */
-export function renderLogin(state: AuthState | undefined): string {
+function renderLogin(state: AuthState | undefined): string {
 	if (state === undefined) return unreadable();
 	switch (state.status) {
 		case "logged-in":
@@ -124,7 +124,7 @@ export function readLogins(
 	});
 }
 
-export function renderStatus(report: StatusReport, now: number): string {
+function renderStatus(report: StatusReport, now: number): string {
 	const lines = [
 		// 登录排在来源自己的行之前:掉线是「怎么没动静」的头号嫌疑。
 		...report.logins.map(

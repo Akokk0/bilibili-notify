@@ -46,7 +46,6 @@ import type { ExtensionUpgrades } from "./upgrade.js";
 
 /** 一个拓展现在处于什么状态 —— 拓展页那张列表印的就是它。 */
 /** 六档状态的定义住 `@bilibili-notify/internal`(面板契约也从那儿转出,只写一份)。 */
-export type { ExtensionRunState };
 
 export interface ExtensionEntry {
 	id: string;
@@ -182,7 +181,7 @@ export interface LoadedExtensions {
 }
 
 /** 拓展的 `index.mjs` 要导出的东西 —— 第一版只有这一个。 */
-export interface ExtensionModule {
+interface ExtensionModule {
 	activate(ctx: ExtensionContext): void | Promise<void>;
 }
 
@@ -200,7 +199,7 @@ export const EXTENSION_MAX_LOAD_FAILURES = 3;
  * 🔴 等不起:装载排在一条队里,开机那一趟还挡在 HTTP 起来之前 —— 一个挂住的 `activate` 会让
  * 整个面板连不上,之后的开关、装包、只重载全排在它后面(ADR-0019 决策 45)。
  */
-export const ACTIVATE_TIMEOUT_MS = 30_000;
+const ACTIVATE_TIMEOUT_MS = 30_000;
 
 export interface LoadExtensionsOptions {
 	reservedIntegrationKeys: readonly string[];

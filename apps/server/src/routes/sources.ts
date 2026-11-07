@@ -26,7 +26,7 @@ import { pipelineNotReadyMessage, respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /** 搜人那句话最多几个字(输入框里粘一段长链接也够)。 */
-export const CREATOR_QUERY_MAX_CHARS = 1024;
+const CREATOR_QUERY_MAX_CHARS = 1024;
 
 /**
  * 搜人的 `q`:首尾空白去掉(粘链接时常带进来),除此之外一个字不动 —— 怎么解读是来源的事。话在出字那一刻取

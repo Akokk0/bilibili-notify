@@ -5,7 +5,6 @@ import { WEBHOOK_PLATFORMS } from "./platform-descriptors.js";
 import { fieldText } from "./settings-field-text.js";
 
 /** webhook 支持的模板平台。 */
-export const WebhookPlatformSchema = z.enum(WEBHOOK_PLATFORMS);
 
 /**
  * 出站 webhook 的连接设置。

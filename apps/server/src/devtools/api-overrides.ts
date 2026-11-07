@@ -15,7 +15,7 @@ type AnyFn = (...args: any[]) => any;
 type MethodNames<T> = { [K in keyof T]: T[K] extends AnyFn ? K : never }[keyof T];
 
 /** 盖上去的实现:第一个参数是绑好 `this` 的真实现,后面是原参数。 */
-export type Override<T, K extends MethodNames<T>> = T[K] extends AnyFn
+type Override<T, K extends MethodNames<T>> = T[K] extends AnyFn
 	? (real: T[K], ...args: Parameters<T[K]>) => ReturnType<T[K]>
 	: never;
 

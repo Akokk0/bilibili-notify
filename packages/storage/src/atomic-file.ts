@@ -153,7 +153,7 @@ export async function syncDirectory(dir: string): Promise<void> {
 }
 
 /** {@link syncDirectory} 的同步版。 */
-export function syncDirectorySync(dir: string): void {
+function syncDirectorySync(dir: string): void {
 	if (process.platform === "win32") return;
 	try {
 		const fd = openSync(dir, "r");

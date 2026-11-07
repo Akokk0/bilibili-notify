@@ -13,6 +13,7 @@ import { createLogChannel, type LogChannel } from "./log-channel.js";
 import {
 	CHANNELS,
 	type ChannelName,
+	type ClientControl,
 	ClientControlSchema,
 	DEFAULT_HEARTBEAT_INTERVAL_MS,
 	DEFAULT_HEARTBEAT_TIMEOUT_MS,
@@ -26,7 +27,7 @@ import {
  * `resources` 频道要的那点能力 —— 结构性口,WS 这层不认识采样器本体。
  * 生产实现是 `runtime/resource-monitor.ts` 的 `ResourceMonitor`。
  */
-export interface ResourceMonitorSource {
+interface ResourceMonitorSource {
 	hydrate(): ResourcesHydrate;
 	subscribe(listener: (sample: ResourceSample) => void): Disposable;
 }
@@ -397,10 +398,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 		});
 	});
 
-	function handleControl(
-		client: WsClient & { lastPongAt: number },
-		msg: import("./types.js").ClientControl,
-	): void {
+	function handleControl(client: WsClient & { lastPongAt: number }, msg: ClientControl): void {
 		// Any control frame counts as liveness — refresh tracking.
 		client.alive = true;
 		client.lastPongAt = Date.now();

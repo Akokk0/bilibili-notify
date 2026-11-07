@@ -57,7 +57,7 @@ export type KeyedRecordRoot =
  * `zeroPath`:这条记录在 0.x 里住的路径;1.0 挪过窝才写(订阅顶层的逐目标表 `extras` → `extraTargets`、历史行的 `kind` →
  * `feature`),缺省同 `path`。
  */
-export type KeyedRecordHandledBy =
+type KeyedRecordHandledBy =
 	| { kind: "settings" | "subscription" | "history"; zeroPath?: string }
 	| { kind: "rejected"; note: string }
 	| { kind: "pending"; slice: string; note: string };

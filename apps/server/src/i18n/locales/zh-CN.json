@@ -755,7 +755,6 @@
 	"service.images.image-writes.text.1": "不是图库收的图(只收 png / jpg / gif / webp,单张不超过 8 MiB)",
 	"service.images.image-writes.text.2": "作品配图存不进图库:{value0}",
 	"service.images.image-writes.text.3": "作品配图的引用对不上:算出 {value0},图库给 {value1}",
-	"service.images.image-writes.text.4": "图存不进图库:{value0}",
 	"service.index.text.1": "指令名",
 	"service.index.text.2": "看看能敲哪些指令",
 	"service.integration-store.files.text.1": "写 state.json 失败:{value0}",

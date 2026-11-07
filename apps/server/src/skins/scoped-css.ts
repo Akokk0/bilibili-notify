@@ -60,7 +60,7 @@ export type SanitizeCssResult = Result<{ css: string; warnings: string[] }>;
  * 两种形态都只管属性**名**。`position` 的值域、`content` 的值域、`!important` 的摘除
  * 是另一码事,两档同规。
  */
-export type CssPropPolicy =
+type CssPropPolicy =
 	| { exact: ReadonlySet<string>; prefixes: readonly string[] }
 	| { deny: ReadonlySet<string> };
 
@@ -76,7 +76,7 @@ export type CssPropPolicy =
  * `free` 档里 `[data-bn=…]` 的写法仍然只认**精确等号**且按 `opts.hooks` 对表:挂点是
  * 稳定 API,`~=` / `^=` / `*=` 能一把网住一串挂点,放行等于对表那道闸不存在。
  */
-export type SelectorPolicy =
+type SelectorPolicy =
 	| { mode: "hooked" }
 	| {
 			mode: "free";
@@ -176,7 +176,7 @@ function literalOpacity(raw: string): number | null {
  * `@keyframes` 挂得到宿主身上,所以里面的 opacity 必须按宿主从严,哪怕
  * keyframe 块本身按「装饰」放行 position。
  */
-export interface DeclScope {
+interface DeclScope {
 	pseudo: boolean;
 	keyframes: boolean;
 }
@@ -385,11 +385,7 @@ function prefixFreeSelector(
  * 「装饰」= 伪元素**且不在** keyframes 里;宿主的 `position` 与低 `opacity` 一律
  * 拒收(理由见 {@link filterRuleList} 上方那段),装饰自己的照旧放行。
  */
-export function rejectDeclaration(
-	decl: Declaration,
-	scope: DeclScope,
-	opts: DeclOptions,
-): string | null {
+function rejectDeclaration(decl: Declaration, scope: DeclScope, opts: DeclOptions): string | null {
 	const prop = decl.property.toLowerCase();
 	// **谁算「装饰」,只准有这一处口径**(下方 position/opacity 那几支同用;来历见
 	// 那边的注释 —— 抄第二遍就是它破的方式)。

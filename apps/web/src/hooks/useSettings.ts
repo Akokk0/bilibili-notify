@@ -15,7 +15,7 @@ import type { GlobalSettingsPatch, SettingsPatch } from "../types/globals";
 export const SETTINGS_KEY = ["settings"] as const;
 
 /** 问 `/api/settings` 的整份选项,连 queryFn 一起。 */
-export const SETTINGS_QUERY = queryOptions({
+const SETTINGS_QUERY = queryOptions({
 	queryKey: SETTINGS_KEY,
 	queryFn: () => api.get<SettingsResponse>("/api/settings"),
 });

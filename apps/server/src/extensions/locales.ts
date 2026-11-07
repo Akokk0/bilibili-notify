@@ -44,7 +44,7 @@ export interface LocaleIssue {
 }
 
 /** 核心逐条解析给的码,外加宿主读文件这一步才有的两种整份丢。 */
-export type LocaleIssueCode = ExtensionLocaleIssueCode | "invalid-json" | "too-large";
+type LocaleIssueCode = ExtensionLocaleIssueCode | "invalid-json" | "too-large";
 
 /** 一个拓展目录里读好的全部译文。 */
 export interface ExtensionLocales {

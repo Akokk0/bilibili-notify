@@ -112,7 +112,7 @@ function legacyTagNames(row: unknown): string[] {
 }
 
 /** 新代里的订阅文件(ADR-0034):标签表 + 订阅。 */
-export interface SubscriptionFileValue {
+interface SubscriptionFileValue {
 	tags: Array<{ id: string; name: string }>;
 	subscriptions: unknown[];
 }
@@ -122,7 +122,7 @@ export interface SubscriptionFileValue {
  * 的排法一样,主人升上来看到的顺序不变);标签 id 由名字定(`deterministicUuid`),重迁拆出同一批 id。行里的
  * `groups` 在原位换成 `tagIds`,行内同名只挂一次;没有 `groups` 的行原样留着(schema 的默认值是空表)。
  */
-export function toTaggedFile(rows: readonly unknown[]): SubscriptionFileValue {
+function toTaggedFile(rows: readonly unknown[]): SubscriptionFileValue {
 	const names = [...new Set(rows.flatMap(legacyTagNames))].sort((a, b) =>
 		a.localeCompare(b, "zh-Hans-CN"),
 	);

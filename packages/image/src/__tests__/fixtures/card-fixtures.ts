@@ -56,16 +56,6 @@ export function blockPropsOf(kind: CardKind, input: CardRenderInput): unknown {
 	return { node: input.props.node, renderForward: (): [] => [] };
 }
 
-/**
- * 剥掉皮肤挂点属性(`data-bn="…"`)。
- *
- * 挂点是加在现有元素上的**纯附加属性**,除它之外一个字节都不该变 —— 所以「逐字节」的基准
- * 与「原子块逐字出现在复合块里」的对表都先剥一遍再比(ADR-0014 决策 9)。
- */
-export function stripCardHooks(html: string): string {
-	return html.replace(/ data-bn="[^"]*"/g, "");
-}
-
 // ── 公共常量 ──────────────────────────────────────────────────────────────────
 
 /** 出厂默认字体(DEFAULT_CARD_STYLE.font)。全部快照固定用它,不传 fontFace。 */

@@ -45,8 +45,6 @@ export function parseRoastCommand(raw: string): RoastCommand {
 	return m[1] === "y" || m[1] === "yes" ? { kind: "approve", id } : { kind: "reject", id };
 }
 
-export type { InboundPrivateMessage };
-
 export interface RoastCommandHandlerOptions {
 	drafts: RoastDraftStore;
 	logger: Logger;

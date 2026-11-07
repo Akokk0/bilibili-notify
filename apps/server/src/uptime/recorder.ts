@@ -12,7 +12,7 @@ import type { UptimeStore } from "./store.js";
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 
-export interface UptimeTimers {
+interface UptimeTimers {
 	/** 排一次性的定时器;真实现必须 `unref`,不挡进程退出。回调返回的 Promise 只有测试会等。 */
 	set(fn: () => Promise<void>, ms: number): unknown;
 	clear(handle: unknown): void;

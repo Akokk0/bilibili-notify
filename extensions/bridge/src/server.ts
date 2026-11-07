@@ -55,22 +55,22 @@ import {
 } from "./protocol.js";
 
 /** 服务端多久催桥说一次话。ping 本身不是判据,见 {@link DEFAULT_BRIDGE_HEARTBEAT_TIMEOUT_MS}。 */
-export const DEFAULT_BRIDGE_HEARTBEAT_INTERVAL_MS = 30_000;
+const DEFAULT_BRIDGE_HEARTBEAT_INTERVAL_MS = 30_000;
 
 /** 多久没听见任何动静就踢掉。判据是「最近说过话」,不是「回过 pong」—— 桥推 bot 名单、
  * 回执、入站消息一样算活着,没必要非等一个 pong。 */
-export const DEFAULT_BRIDGE_HEARTBEAT_TIMEOUT_MS = 90_000;
+const DEFAULT_BRIDGE_HEARTBEAT_TIMEOUT_MS = 90_000;
 
 /** 单帧上限。对面是不受信的第三方插件,`ws` 超限自己会关 1009。 */
-export const MAX_BRIDGE_FRAME_BYTES = 1024 * 1024;
+const MAX_BRIDGE_FRAME_BYTES = 1024 * 1024;
 
 /**
  * 一条 `send` 等回执等多久。桥那边要下载图再交给平台,给得宽一点;但**必须有上限** ——
  * 推送有时效,吊着不如早点告诉用户失败。
  */
-export const DEFAULT_BRIDGE_SEND_TIMEOUT_MS = 30_000;
+const DEFAULT_BRIDGE_SEND_TIMEOUT_MS = 30_000;
 /** 探活等 pong 的上限。比 send 短得多:量的是往返,5 秒还没回来这条桥就不算「通」。 */
-export const DEFAULT_BRIDGE_PING_TIMEOUT_MS = 5_000;
+const DEFAULT_BRIDGE_PING_TIMEOUT_MS = 5_000;
 
 export interface BridgeServerOptions {
 	logger: Logger;

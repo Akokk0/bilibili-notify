@@ -33,7 +33,7 @@ export interface CssDecl {
 }
 
 /** 块里的一样东西。`at` 是它在原文里的偏移 —— 位置就是身份,面板拿它当 key。 */
-export type CssRuleItem =
+type CssRuleItem =
 	| { kind: "decl"; decl: CssDecl; at: number }
 	| { kind: "comment"; text: string; at: number };
 

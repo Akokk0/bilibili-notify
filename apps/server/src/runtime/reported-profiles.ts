@@ -10,8 +10,6 @@ import { followersSampleGapMs } from "../stats/followers-sample-gap.js";
 import type { StatsRecorderCore } from "../stats/recorder.js";
 import type { ProfileCacheUpdate, ProfileCacheWriter } from "./profile-cache.js";
 
-export { PROFILES_CHANGED_COALESCE_MS } from "./profile-cache.js";
-
 /**
  * 来源报的资料更新落盘(ADR-0019 决策 7 / 49 / 62):由 `createSourceContext` 的 `profiles` 选项直接交进来,
  * 逐条写进它对上的每条订阅的资料缓存(`SubscriptionStateStore.cachedProfile`)。

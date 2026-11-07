@@ -185,7 +185,7 @@ const DROPPED_APP_KEYS = ["userAgent"] as const;
  * 一条解析不了的老 cron 也照搬,B 站那份读盘是宽松的。`userAgent` 一并从核心那份拿掉、不进 B 站那份:
  * 它是 0.x 的自定义 UA,1.0 的身份只有一处来源。
  */
-export function splitBilibiliSettings(core: unknown): {
+function splitBilibiliSettings(core: unknown): {
 	core: unknown;
 	bilibili: Record<string, unknown>;
 } {
@@ -205,7 +205,7 @@ export function splitBilibiliSettings(core: unknown): {
  * 核心设置里各拓展的 `settings` 拆出来:回只剩开关的核心那份、和各拓展的设置(按 id)。拓展 id 不合 id 的形状的
  * (手改过的配置)不拆 —— 它要拼进文件名;那一格原样留在核心那份里,配置仓读的时候剥掉。
  */
-export function splitExtensionSettings(core: unknown): {
+function splitExtensionSettings(core: unknown): {
 	core: unknown;
 	extensions: Map<string, unknown>;
 } {

@@ -106,7 +106,7 @@ type DeepPartial<T> =
 	T extends Array<infer _U> ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
 
 /** Validate the full replacement without writing files, state or events. */
-export interface ReplaceSectionsOptions {
+interface ReplaceSectionsOptions {
 	dryRun?: boolean;
 }
 
@@ -114,7 +114,7 @@ export interface ReplaceSectionsOptions {
  * 一次整体替换要写进去的分区。缺席的分区保持不动 —— 「不给」和「给一个空数组」
  * 是两回事:后者是真的清空。
  */
-export interface ConfigSections {
+interface ConfigSections {
 	globals?: GlobalSettings;
 	/** 各集成的设置,按集成的键;只换给了的那几份。 */
 	integrations?: Record<string, unknown>;

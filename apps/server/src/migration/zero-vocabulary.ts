@@ -81,7 +81,7 @@ export const ZERO_SPECIAL_USER_KINDS = ["enter", "danmaku"] as const;
 export type ZeroSpecialUserKind = (typeof ZERO_SPECIAL_USER_KINDS)[number];
 
 /** 0.x 的文案键(0.12 `TemplateBundleSchema`),按它的顺序;`templateDefaultsSeen` 账本点路径的第一段也是它们。 */
-export const ZERO_TEMPLATE_KEYS = [
+const ZERO_TEMPLATE_KEYS = [
 	"liveStart",
 	"liveOngoing",
 	"liveEnd",
@@ -97,7 +97,7 @@ export const ZERO_TEMPLATE_KEYS = [
 export type ZeroTemplateKey = (typeof ZERO_TEMPLATE_KEYS)[number];
 
 /** 0.x 文案键里 1.0 **搬出** `templates` 原位的一个(㉓d):`guardBuy` 成了 `membership.guard`,搬法在 `membership-moves.ts`。 */
-export const ZERO_MOVED_TEMPLATE_KEYS = ["guardBuy"] as const satisfies readonly ZeroTemplateKey[];
+const ZERO_MOVED_TEMPLATE_KEYS = ["guardBuy"] as const satisfies readonly ZeroTemplateKey[];
 
 export type ZeroMovedTemplateKey = (typeof ZERO_MOVED_TEMPLATE_KEYS)[number];
 
@@ -107,7 +107,7 @@ export const ZERO_GUARD_ROLES = ["captain", "commander", "governor"] as const;
 export type ZeroGuardRole = (typeof ZERO_GUARD_ROLES)[number];
 
 /** 0.x 消息版式里带版式的两组(0.12 `MessageLayoutSchema` 去掉 `version`):作品叫 `dynamic`,直播叫 `live`。 */
-export const ZERO_MESSAGE_LAYOUT_KEYS = ["dynamic", "live"] as const;
+const ZERO_MESSAGE_LAYOUT_KEYS = ["dynamic", "live"] as const;
 
 export type ZeroMessageLayoutKey = (typeof ZERO_MESSAGE_LAYOUT_KEYS)[number];
 
@@ -182,7 +182,6 @@ export const ZERO_PAYLOAD_KINDS = [
 export type ZeroPayloadKind = (typeof ZERO_PAYLOAD_KINDS)[number];
 
 /** 0.x 卡片设置里按卡种分开存的键(0.12 `CardStyleByKindSchema`):只有 `live` 下的直播封面有人读,别的卡种下的东西丢掉。 */
-export const ZERO_CARD_KIND_KEYS = ["live", "dynamic", "sc", "guard"] as const;
 
 /** 0.x 里唯一内置的卡片皮肤 id。0.x 的卡片皮肤整体不迁(老皮肤格式作废),所以指针只有指它的才留。 */
 export const ZERO_BUILTIN_CARD_SKIN_ID = "default";

@@ -70,7 +70,7 @@ const ZERO_PUSH_KIND_TO_FEATURE = {
 } satisfies Record<ZeroPushKind, FeatureKey>;
 
 /** 一行老历史 → 新形状(推送种类那一格还叫 `kind`);不是老行的原样回(同一个对象)。 */
-export function migrateLegacyHistoryEntry(raw: unknown): unknown {
+function migrateLegacyHistoryEntry(raw: unknown): unknown {
 	if (typeof raw !== "object" || raw === null) return raw;
 	const r = raw as Record<string, unknown>;
 	if (!("source" in r) || "kind" in r) return raw;

@@ -27,8 +27,6 @@ export {
 	ImageRenderer,
 	type ImageRendererOptions,
 	type ImageRendererSettings,
-	type RoastBoardData,
-	type RoastSoloData,
 } from "./image-renderer";
 // 直播卡的中立输入 → 块与皮肤契约吃的视图(ADR-0019 决策 68)。绕开 ImageRenderer 自己拼
 // `renderCardWithSkin` 入参的调用方(预览路由)用它,与推送出图排出同一份。

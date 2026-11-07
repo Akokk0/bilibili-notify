@@ -37,9 +37,9 @@ export const CARD_SKIN_MANIFEST_FILE = "card-skin.json";
  * 与 dashboard 的 `isSkinAssetName` 同一把尺:这个名字要拼进磁盘路径、拼进出图 HTML 的
  * `src`,所以 `/` 与 `..` 连正则都进不来 —— 安全性由构造保证,不靠调用方记得检查。
  */
-export const CARD_SKIN_IMAGE_RE = /^assets\/[a-z0-9._-]+\.(png|jpe?g|webp|gif)$/;
+const CARD_SKIN_IMAGE_RE = /^assets\/[a-z0-9._-]+\.(png|jpe?g|webp|gif)$/;
 /** 包内字体。卡片皮肤能自带字(皮肤级 `fonts` 在出图时注成 `@font-face`)。 */
-export const CARD_SKIN_FONT_RE = /^assets\/[a-z0-9._-]+\.(woff2|woff|ttf|otf)$/;
+const CARD_SKIN_FONT_RE = /^assets\/[a-z0-9._-]+\.(woff2|woff|ttf|otf)$/;
 
 /** 这个名字能不能作为包内资产落盘 / 回读 —— 写盘、列清单、回读三道闸共用它。 */
 export function isCardSkinAssetName(name: string): boolean {
@@ -68,7 +68,7 @@ export const MAX_CARD_SKIN_MANIFEST_BYTES = Math.ceil(
  * 的包主人真正要听的是「资产最多 12 份,删掉用不上的再传」—— 不留这一格,下面那句
  * 说得清的错误永远轮不到开口。
  */
-export const MAX_CARD_SKIN_PACKAGE_FILES = CARD_SKIN_LIMITS.maxAssets + 2;
+const MAX_CARD_SKIN_PACKAGE_FILES = CARD_SKIN_LIMITS.maxAssets + 2;
 
 /** 解压后总量上限:满配资产 + 满配清单,再多就当 zip bomb 拦下。 */
 export const MAX_CARD_SKIN_TOTAL_BYTES =

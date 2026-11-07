@@ -51,7 +51,7 @@ export interface ProfileCacheWriter extends Disposable {
  * 「资料变了」合并的窗口:第一条变化起算,窗口里的变化在尾沿一起发一次,不因为又变了一条而往后推 ——
  * 与 `ctx.statusChanged()` 的合并窗口同一个数、同一个道理(`STATUS_CHANGED_COALESCE_MS`)。
  */
-export const PROFILES_CHANGED_COALESCE_MS = 250;
+const PROFILES_CHANGED_COALESCE_MS = 250;
 
 /** 「资料变了」合并窗口的唯一一个键。 */
 const CHANGED_KEY = "profiles-changed";

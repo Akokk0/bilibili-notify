@@ -104,7 +104,7 @@ const RepushSnapshotSchema = z.object({
 type RepushSnapshot = z.infer<typeof RepushSnapshotSchema>;
 
 /** 交给 {@link RepushStore.append} 的一条:原始 payload,加上历史那边已经算好的那一条。 */
-export interface RepushAppendItem {
+interface RepushAppendItem {
 	payload: NotificationPayload;
 	role: PushMessageRole;
 }

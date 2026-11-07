@@ -25,7 +25,7 @@ export const BRIDGE_KIND_FACES = {
 	astrbot: { label: "AstrBot", icon: ASTRBOT_ICON },
 } as const satisfies Record<(typeof BRIDGE_KINDS)[number], { label: string; icon: string }>;
 
-export const BridgeLinkSchema = z.object({
+const BridgeLinkSchema = z.object({
 	/** 接入自己的 id —— 会话按它记,连接的 config 拿它回指。BN 生成、不出栏。 */
 	id: z.string().min(1),
 	/**
@@ -85,4 +85,3 @@ export const BridgeSettingsSchema = z.object({
 });
 
 export type BridgeLink = z.infer<typeof BridgeLinkSchema>;
-export type BridgeSettings = z.infer<typeof BridgeSettingsSchema>;

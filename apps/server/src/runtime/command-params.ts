@@ -1,5 +1,6 @@
 import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
+
 /**
  * 指令参数 —— 签名声明与入参解析。
  *
@@ -16,7 +17,7 @@ import { t as serverText } from "../i18n/index.js";
  */
 
 /** 参数类型。刻意只有这几个,不做 flag/option(`-c` 那种)—— 首批指令用不上。 */
-export type ParamType = "string" | "number" | "duration" | "text";
+type ParamType = "string" | "number" | "duration" | "text";
 
 export interface ParamSpec {
 	/** 进代码的名字:`values[name]`。英文,合代码惯例。 */
@@ -95,7 +96,7 @@ export function parseSignature(signature: string): ParamSpec[] {
 }
 
 /** 解析出来的参数值。`text` 与 `string` 是字符串,`number` 与 `duration` 是数字。 */
-export type ParamValue = string | number;
+type ParamValue = string | number;
 
 /** 输入不合法回 `invalid`，`message` 仍是直接发给主人的原提示。 */
 export type ParseArgsResult = Result<{ values: Record<string, ParamValue> }>;

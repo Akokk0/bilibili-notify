@@ -28,7 +28,7 @@ interface BoundaryState {
 	error: unknown;
 }
 
-export class ErrorBoundary extends Component<BoundaryProps, BoundaryState> {
+class ErrorBoundary extends Component<BoundaryProps, BoundaryState> {
 	state: BoundaryState = { failed: false, error: undefined };
 
 	static getDerivedStateFromError(error: unknown): BoundaryState {
@@ -69,7 +69,7 @@ function keysChanged(a: readonly unknown[] = [], b: readonly unknown[] = []): bo
  * 报错原文。**连错误的种类一起**(`TypeError: …`)—— 渲染期的错十有八九是「读了 undefined 的某一格」,
  * 只剩 message 的话少了一半线索。吞成一句「出错了」等于让人对着黑盒猜。
  */
-export function crashText(error: unknown): string {
+function crashText(error: unknown): string {
 	if (error instanceof Error) {
 		return error.message ? `${error.name}: ${error.message}` : error.name;
 	}

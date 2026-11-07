@@ -30,7 +30,7 @@ interface ApprovedCardDiffBase {
 	readonly hash: string;
 }
 
-export type ApprovedCardDiffEntry =
+type ApprovedCardDiffEntry =
 	| (ApprovedCardDiffBase & { readonly category: PreApprovedCategory })
 	| (ApprovedCardDiffBase & { readonly category: "master-approved"; readonly approvedOn: string });
 

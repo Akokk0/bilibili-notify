@@ -62,28 +62,6 @@ export enum LivePushType {
 }
 
 /**
- * Channel-level feature keys (mirror `@bilibili-notify/push`'s `PushFeature`).
- * Each entry on `SubItemView.target` maps to a list of resolved channel
- * identifiers; an empty / missing list means "not subscribed for this feature".
- */
-export type LivePushFeature =
-	| "post"
-	| "liveStart"
-	| "liveStreaming"
-	| "liveEnd"
-	| "membership"
-	| "superchat"
-	| "viewerChat"
-	| "viewerEnter";
-
-/**
- * Master-level feature keys — the boolean toggles set per-UP. Subset of
- * `LivePushFeature` which omits `viewerChat` / `viewerEnter`
- * (those are gated by the special viewer list instead).
- */
-export type LiveCreatorFeature = Exclude<LivePushFeature, "viewerChat" | "viewerEnter">;
-
-/**
  * 直播封面轮换选择器:给定 scopeKey(`uid:live-cover`)与完整图列表,返回本次该用的那张
  * (并在实现内推进游标)。宿主注入(独立端有 fs 持久化游标);返回 undefined = 不轮换。
  *

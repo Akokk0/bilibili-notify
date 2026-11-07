@@ -37,7 +37,7 @@ import { DeclarativeConfig } from "../extension-page";
 /** 两种桥各一枚图 —— 清单里的枚举选项图标只收图片 data URL(决策 31)。 */
 export const KOISHI_PNG =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-export const ASTRBOT_SVG = `data:image/svg+xml;base64,${btoa("<svg xmlns='http://www.w3.org/2000/svg'/>")}`;
+const ASTRBOT_SVG = `data:image/svg+xml;base64,${btoa("<svg xmlns='http://www.w3.org/2000/svg'/>")}`;
 
 /** 桥那一格列表 —— 照清单 v2 的写法。 */
 export const LINKS_FIELD: SettingsListField = {
@@ -142,7 +142,7 @@ export function shown(view: ExtensionView): ExtensionPanelView {
 }
 
 /** 状态那一口的 `not_found`:拓展跑着、但还没交过视图。面板认的是标准码,不是状态码。 */
-export class NotFound extends Error {
+class NotFound extends Error {
 	readonly status = 404;
 	readonly code = "not_found";
 }

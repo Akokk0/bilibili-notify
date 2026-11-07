@@ -8,9 +8,9 @@ import { t as serverText, t } from "../i18n/index.js";
 import { respondFailure } from "./respond-failure.js";
 
 /** 新密码至少几位(面板改账号密码)。 */
-export const PASSWORD_MIN_CHARS = 8;
+const PASSWORD_MIN_CHARS = 8;
 /** 账号与密码最长几个字符。 */
-export const CREDENTIAL_MAX_CHARS = 256;
+const CREDENTIAL_MAX_CHARS = 256;
 
 /** 登录与改账号密码共用的两句。 */
 const rateLimited = () => serverText("service.routes.session.text.1");

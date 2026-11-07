@@ -49,10 +49,10 @@ import {
 import { IMAGE_MAX_BYTES, type ImageWriter } from "./image-store.js";
 
 /** 抓一张图的单跳超时。 */
-export const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+const IMAGE_FETCH_TIMEOUT_MS = 15_000;
 
 /** 抓一张图最多跟几跳重定向。 */
-export const IMAGE_FETCH_MAX_REDIRECTS = 5;
+const IMAGE_FETCH_MAX_REDIRECTS = 5;
 
 export interface ImageFetcherDeps {
 	/** 调用方的请求客户端:抓图用它的 cookie、身份与默认头。 */

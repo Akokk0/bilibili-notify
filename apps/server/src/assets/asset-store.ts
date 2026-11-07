@@ -69,10 +69,10 @@ export class AssetRejectedError extends Error {
 }
 
 /** 存一件资产的结果:成功给 id,可预期的拒收回 `invalid`。磁盘写失败是抛错。 */
-export type AssetPutResult = { ok: true; id: string } | (Failure & { code: "invalid" });
+type AssetPutResult = { ok: true; id: string } | (Failure & { code: "invalid" });
 
 /** 列表里的一件资产。 */
-export interface AssetView {
+interface AssetView {
 	id: string;
 	/** 文件字节数;读不到(刚被删)记 0,不影响列出。 */
 	size: number;

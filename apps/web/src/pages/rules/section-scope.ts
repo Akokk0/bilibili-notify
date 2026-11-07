@@ -67,7 +67,7 @@ export interface LiveThresholdSlices {
 }
 
 /** 门槛那两段是否有任何覆盖:金额门槛,或 B 站的上舰档位门槛(别的体系的门槛没有界面,不看)。 */
-export function hasLiveGateOverride(
+function hasLiveGateOverride(
 	slices: LiveThresholdSlices,
 	programs: readonly MembershipProgram[],
 ): boolean {

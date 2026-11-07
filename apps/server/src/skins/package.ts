@@ -37,7 +37,7 @@ export const MAX_SKIN_ASSETS = 12;
  * + 原名清单 `assets/index.json`。这两样是包里仅有的非资产文件(见下面那张白名单),
  * 所以 +2 不是留富余,是**正好装得下自己导出的满包**。
  */
-export const MAX_PACKAGE_FILES = MAX_SKIN_ASSETS + 2;
+const MAX_PACKAGE_FILES = MAX_SKIN_ASSETS + 2;
 export const MAX_ASSET_BYTES = 5 * 1024 * 1024;
 
 /**
@@ -73,7 +73,7 @@ export function referencedImages(manifest: SkinManifest): Set<string> {
 }
 
 /** manifest 各处引用的字体文件集合(每套模式一款)。 */
-export function referencedFonts(manifest: SkinManifest): Set<string> {
+function referencedFonts(manifest: SkinManifest): Set<string> {
 	const referenced = new Set<string>();
 	for (const mode of [manifest.modes.light, manifest.modes.dark]) {
 		if (mode?.fonts?.asset) referenced.add(mode.fonts.asset);

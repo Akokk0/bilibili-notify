@@ -81,7 +81,7 @@ export function resolveChromePath(
 }
 
 /** wrapPage 实际消费的页面最小面 —— 真 puppeteer Page 结构性满足,单测注入假实现。 */
-export interface PageHandle {
+interface PageHandle {
 	setContent(html: string, options?: SetContentOptions): Promise<void>;
 	waitForFunction(
 		// biome-ignore lint/suspicious/noExplicitAny: mirrors puppeteer's waitForFunction overload
@@ -104,7 +104,7 @@ export interface PageHandle {
 }
 
 /** adapter 消费的浏览器最小面 —— close 杀本地进程,disconnect 只断远端连接。 */
-export interface BrowserHandle {
+interface BrowserHandle {
 	readonly connected: boolean;
 	newPage(): Promise<PageHandle>;
 	close(): Promise<void>;
@@ -129,7 +129,7 @@ export interface BrowserConnectOptions {
 }
 
 /** puppeteer-core 门面。生产用默认实现;单测注入假 launcher 测生命周期。 */
-export interface BrowserLauncher {
+interface BrowserLauncher {
 	launch(options: BrowserLaunchOptions): Promise<BrowserHandle>;
 	connect(options: BrowserConnectOptions): Promise<BrowserHandle>;
 }
@@ -142,7 +142,7 @@ const defaultLauncher: BrowserLauncher = {
 };
 
 /** 空闲多久后自动关浏览器的默认值(5 分钟)。 */
-export const DEFAULT_CHROME_IDLE_MS = 300_000;
+const DEFAULT_CHROME_IDLE_MS = 300_000;
 
 export interface PuppeteerAdapterOptions {
 	/** 本地浏览器二进制路径。`chromeEndpoint` 未设时必填。 */
@@ -165,7 +165,7 @@ export interface PuppeteerAdapterOptions {
 }
 
 /** 浏览器进程现在处于什么状态 —— 资源卡「浏览器」那一行照它说话。 */
-export interface BrowserProcessView {
+interface BrowserProcessView {
 	state: BrowserProcessState;
 	/** 本地跑着才有;其余三态都是 null。 */
 	pid: number | null;

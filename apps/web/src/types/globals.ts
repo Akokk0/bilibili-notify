@@ -14,8 +14,6 @@ import type { GlobalSettings } from "@bilibili-notify/internal";
 export type {
 	AiPersonaSettings,
 	AiSettings,
-	CardKind,
-	CardsOverrides,
 	CardsSettings,
 	ContentFilters,
 	GlobalDefaults,
@@ -26,7 +24,6 @@ export type {
 	LoggingSettings,
 	LogLevel,
 	MembershipSettings,
-	MembershipTemplateBundle,
 	MembershipTemplateEntry,
 	ModuleLogLevels,
 	ScheduleSettings,

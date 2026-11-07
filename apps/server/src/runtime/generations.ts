@@ -57,7 +57,7 @@ const PendingGenerationSchema = z.object({
 const PENDING_FILE = "pending.json";
 
 export type GenerationSource = z.infer<typeof GenerationSourceSchema>;
-export type PendingGeneration = z.infer<typeof PendingGenerationSchema>;
+type PendingGeneration = z.infer<typeof PendingGenerationSchema>;
 export type GenerationFile = z.infer<typeof GenerationFileSchema>;
 
 export type GenerationSelection =

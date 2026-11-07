@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../services/api";
 
-export const CAPTURES_QUERY_KEY = ["dev", "captures"] as const;
+const CAPTURES_QUERY_KEY = ["dev", "captures"] as const;
 
 /** 拦下的条目只在闸开着时增长;开着就每两秒看一眼,关着就不打扰。 */
 function refetchInterval(data: DevCapturesView | undefined): number | false {

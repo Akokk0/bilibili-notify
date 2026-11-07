@@ -56,23 +56,22 @@ import { gcmEncrypt } from "@bilibili-notify/storage";
 import { zeroBiliRow, zeroExtensionRow } from "./zero-fixtures.js";
 
 /** 统计与粉丝的天数:一整年(两档一样)。 */
-export const FULL_YEAR_DAYS = 365;
+const FULL_YEAR_DAYS = 365;
 /** 粉丝采样间隔(分钟)。 */
-export const FOLLOWER_SAMPLE_MINUTES = 10;
+const FOLLOWER_SAMPLE_MINUTES = 10;
 /**
  * 每隔几个粉丝文件有一份「粉丝数一整年不变」的(第 0、4、8 … 份,也就是 `index % 4 === 0`)。其余的值每十分钟都在变,
  * 压缩时每小时留一个点、永远合不了段;这几份让「相邻同值小时合成一段」在耗时测试里真的发生(满量 11 份、四分之一量 3 份)。
  */
-export const FLAT_FOLLOWER_EVERY = 4;
+const FLAT_FOLLOWER_EVERY = 4;
 /** 一个订阅的粉丝文件有多少行:每天 144 个点。 */
-export const followerRowsPerSubscription = (days: number) =>
-	(days * 24 * 60) / FOLLOWER_SAMPLE_MINUTES;
+const followerRowsPerSubscription = (days: number) => (days * 24 * 60) / FOLLOWER_SAMPLE_MINUTES;
 
 /**
  * **0.x** 推送历史保留天数的最大值:0.x 的设置里最多能调到 365,文字和图一起留。1.0 的新规则(文字不设上限、图片最多
  * 90 天)与这份 0.x 输入无关。
  */
-export const ZERO_MAX_HISTORY_DAYS = 365;
+const ZERO_MAX_HISTORY_DAYS = 365;
 
 /** 数据的第一天(UTC):2025-10-01,往后 365 天到 2026-09-30。 */
 const START_MS = Date.UTC(2025, 9, 1);
@@ -82,7 +81,7 @@ const DAY_MS = 86_400_000;
 const FIXED = { skins: 4, maidSkills: 6, cardBackgrounds: 6, fonts: 2 } as const;
 
 /** 这一档摆多少:每一块会涨的东西随 `scale` 取 1/4,取法见文件头的表。 */
-export interface SyntheticZeroPlan {
+interface SyntheticZeroPlan {
 	scale: number;
 	/** 统计与粉丝覆盖多少天:两档都是一整年。 */
 	days: number;
@@ -111,7 +110,7 @@ function scaled(full: number, scale: number): number {
 	return Math.max(1, Math.floor(full * scale + 1e-9));
 }
 
-export function planSyntheticZero(scale: number): SyntheticZeroPlan {
+function planSyntheticZero(scale: number): SyntheticZeroPlan {
 	const days = FULL_YEAR_DAYS;
 	return {
 		scale,
@@ -130,7 +129,7 @@ export function planSyntheticZero(scale: number): SyntheticZeroPlan {
 	};
 }
 
-export interface SyntheticSubscription {
+interface SyntheticSubscription {
 	id: string;
 	uid: string;
 }

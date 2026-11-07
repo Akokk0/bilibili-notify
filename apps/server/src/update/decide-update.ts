@@ -11,7 +11,7 @@ export interface DecideUpdateOptions {
 	allowPrerelease?: boolean;
 }
 
-export interface RuntimeCapabilities {
+interface RuntimeCapabilities {
 	nodeMajor: number;
 }
 

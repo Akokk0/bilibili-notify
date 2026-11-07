@@ -81,10 +81,10 @@ export type ActionResult = Result;
  * ⚠️ 装载器认的不是这一抛(拓展 try/catch 吞了它也照样作数),是记在 runtime 上的那一格
  * ({@link ExtensionRuntime.settingsProblem})。它是单独一类,只为了日志里一眼分得出。
  */
-export class ExtensionSettingsUnreadable extends Error {}
+class ExtensionSettingsUnreadable extends Error {}
 
 /** 一个动作最多等多久。面板那头的按钮一直转着,比报一句超时更难受。 */
-export const ACTION_TIMEOUT_MS = 30_000;
+const ACTION_TIMEOUT_MS = 30_000;
 
 /**
  * 一条「上报出入」(ADR-0019 决策 60):订阅源拓展报上来的东西,整条拒了或者动了几格(丢掉或截断)。

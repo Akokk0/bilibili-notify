@@ -107,7 +107,7 @@ export interface CardFailureTracker {
 }
 
 /** 领到的那一次提醒。 */
-export interface CardFailureNotice {
+interface CardFailureNotice {
 	/**
 	 * 报结果:发出去了 → 这一串算提醒过;发射同步抛了 → 放回去,下一次失败再领。出图恢复时
 	 * (`recordSuccess` 复位过)这张凭据作废、报什么都不算 —— 记到下一串头上的话,下一串失败就一声不吭了。

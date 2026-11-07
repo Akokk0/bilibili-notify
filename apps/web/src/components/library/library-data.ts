@@ -21,7 +21,7 @@ export interface LibraryEntry {
 	name?: string;
 	size?: number;
 }
-export const libraryQueryKey = (kind: LibraryKind) => ["library", kind] as const;
+const libraryQueryKey = (kind: LibraryKind) => ["library", kind] as const;
 const libraryPath = (kind: LibraryKind) => `/api/library/${kind}`;
 
 /** Keep the existing resource views in cache; both browser forms share one read side. */

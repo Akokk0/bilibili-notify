@@ -200,11 +200,7 @@ function railIndex(ai: AiSettingsDraft, builtins: Builtins, railId: string): num
  * 选中项可能凭空消失(刚被删掉、备份导入换了一批)。不收敛的话左栏没有任何一项高亮、
  * 右侧却显示着别的内容 —— 高亮项与内容各说各话。
  */
-export function resolvePersonaRailId(
-	ai: AiSettingsDraft,
-	builtins: Builtins,
-	railId: string,
-): string {
+function resolvePersonaRailId(ai: AiSettingsDraft, builtins: Builtins, railId: string): string {
 	if (railIndex(ai, builtins, railId) >= 0) return railId;
 	const first = railPresets(ai, builtins)[0];
 	return first ? `${PRESET_RAIL_PREFIX}${first.id}` : "";

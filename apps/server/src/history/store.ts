@@ -52,7 +52,7 @@ import type { RepushStore } from "./repush-store.js";
  * `deleteRange` 都只动行与重推原件,图由图库的按引用清扫收走。
  */
 
-export interface HistoryRecordMessage {
+interface HistoryRecordMessage {
 	payload: NotificationPayload;
 	role: PushMessageRole;
 	/** 无目标行没有它;被前一条失败中止、从没出过网的那几条也没有;被挡下的也没有。 */
@@ -89,7 +89,7 @@ export interface NewHistoryEntry {
  * 人工重推补进来的一条。`repushOf` **必填** —— 这条路径只服务重推,而一条没说清楚
  * 「补的是第几条」的重投会让四态算错(每一号只认它最后那次尝试)。
  */
-export interface HistoryRepushMessage extends HistoryRecordMessage {
+interface HistoryRepushMessage extends HistoryRecordMessage {
 	/** 补的是行里第几条(那一条在 `messages` 里的下标)。 */
 	repushOf: number;
 }
@@ -114,7 +114,7 @@ interface DailyAggregateOptions {
 
 // DailyHistoryCount 的类型本体在 @bilibili-notify/contract(web 同源消费)。
 
-export interface DeleteRangeOptions {
+interface DeleteRangeOptions {
 	/** 闭区间,ms。 */
 	fromMs: number;
 	toMs: number;

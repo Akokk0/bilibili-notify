@@ -14,7 +14,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { api } from "./api";
 
-export type { MaidSkillProblemView, MaidSkillView } from "@bilibili-notify/contract";
+export type { MaidSkillView } from "@bilibili-notify/contract";
 
 export const maidSkillsQueryKey = ["ai", "skills"] as const;
 

@@ -77,7 +77,7 @@ export interface CardWorkshopLedger {
 	forks: Readonly<Record<string, string>>;
 }
 
-export type CardWorkshopLedgerEntry = { owned: string } | { fork: { from: string; to: string } };
+type CardWorkshopLedgerEntry = { owned: string } | { fork: { from: string; to: string } };
 
 export interface CardWorkshopDeps {
 	store: CardSkinStore;

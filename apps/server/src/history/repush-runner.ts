@@ -35,14 +35,14 @@ import type { HistoryStore } from "./store.js";
  */
 
 /** 补哪些:`all` = 整行从头再发一遍(含已经送达的);`missing` = 只补没到的。 */
-export type RepushMode = "all" | "missing";
+type RepushMode = "all" | "missing";
 
 /**
  * 补一行的结果(ADR-0026 的结果形状)。放行回 `count` = 这一趟要补几条;拒了回码与**给人看的**那句:
  * `not_found` = 这一行压根不存在(端点回 404),`conflict` = 有这一行但现在补不了(409)。
  * 契约上的 `HistoryRepushResponse` 是同一个形状。
  */
-export type RepushStartResult = Result<{ count: number }>;
+type RepushStartResult = Result<{ count: number }>;
 
 export interface RepushRunner {
 	/**

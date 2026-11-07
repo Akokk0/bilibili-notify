@@ -63,7 +63,7 @@ const AUTH_LOST_DEBOUNCE_MS = 60_000;
  * 这套判定是当年 koishi 插件的 subscription-loader 跑了很久验证过的,提到共享包里,
  * 免得两端各写一份、各错一份。
  */
-export const FOLLOW_SUCCESS_CODES: ReadonlySet<number> = new Set([0, 22014, 22001]);
+const FOLLOW_SUCCESS_CODES: ReadonlySet<number> = new Set([0, 22014, 22001]);
 
 export interface ApiOptions {
 	serviceCtx: ServiceContext;
