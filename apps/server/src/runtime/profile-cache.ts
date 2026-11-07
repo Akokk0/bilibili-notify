@@ -7,6 +7,7 @@ import {
 	type MessageBus,
 	type Subscription,
 } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import type { SubscriptionStateStore } from "./subscription-state-store.js";
@@ -111,7 +112,7 @@ export function createProfileCacheWriter(opts: {
 		try {
 			return (await opts.images.keep(prev)) ? prev : undefined;
 		} catch (err) {
-			log.warn(`[sub-profile] 订阅 ${id} 原来的头像没能续期,照旧沿用: ${String(err)}`);
+			log.warn(logText("log.profile.avatarKeepFailed"), { subscriptionId: id, error: err });
 			return prev;
 		}
 	}

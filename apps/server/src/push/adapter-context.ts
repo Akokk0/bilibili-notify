@@ -7,7 +7,7 @@ import type {
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import { t as serverText, t } from "../i18n/index.js";
+import { logText, t as serverText, t } from "../i18n/index.js";
 import {
 	parseProblemReport,
 	parseProblemResolve,
@@ -140,16 +140,16 @@ export function createPlatformAdapterContext(
 		deliver: (meta: InboundMeta) => void,
 	): void {
 		if (stopped()) {
-			integration.logger.warn(
-				`丢掉一条${route === "private" ? "私聊" : "群"}消息:适配器 ${adapterKey} 已停下`,
-			);
+			integration.logger.warn(logText("log.adapter.inboundStopped"), { route, adapterKey });
 			return;
 		}
 		const ownership = ownershipOf(meta.connectionId);
 		if (ownership.kind !== "mine") {
-			integration.logger.warn(
-				`丢掉一条${route === "private" ? "私聊" : "群"}消息:连接 ${meta.connectionId} 不是适配器 ${adapterKey} 的`,
-			);
+			integration.logger.warn(logText("log.adapter.inboundNotOwned"), {
+				route,
+				adapterKey,
+				connectionId: meta.connectionId,
+			});
 			return;
 		}
 		deliver({
@@ -239,9 +239,12 @@ export function createPlatformAdapterContext(
 				const reason = settingsIssueMessage(resolved.issues ?? []);
 				if (warned.get(connection.id) !== reason) {
 					warned.set(connection.id, reason);
-					integration.logger.warn(
-						`[connection] 连接「${connection.name}」(${connection.id})${reason},先不交给适配器 ${adapterKey}`,
-					);
+					integration.logger.warn(logText("log.adapter.connectionInvalid"), {
+						connectionId: connection.id,
+						connectionName: connection.name,
+						adapterKey,
+						reason,
+					});
 				}
 			}
 			// 好了的、没了的:忘掉,下次再坏会再记一次。

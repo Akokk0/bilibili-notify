@@ -223,7 +223,10 @@ describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
 		const handle = await registry.register(adapter, ctx);
 		expect(() => handle.dispose()).not.toThrow();
 		expect(warn).toHaveBeenCalledTimes(1);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("sync-fail");
+		expect(warn).toHaveBeenCalledWith(
+			"适配器停止失败",
+			expect.objectContaining({ error: expect.objectContaining({ message: "sync-fail" }) }),
+		);
 		// 抛了也已经摘掉、放了键。
 		expect(registry.list()).toEqual([]);
 	});
@@ -238,7 +241,10 @@ describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
 		expect(() => handle.dispose()).not.toThrow();
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(warn).toHaveBeenCalledTimes(1);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("async-fail");
+		expect(warn).toHaveBeenCalledWith(
+			"适配器停止失败",
+			expect.objectContaining({ error: expect.objectContaining({ message: "async-fail" }) }),
+		);
 	});
 
 	it("stop 回一个非原生 thenable(reject)→ 同样不往外抛,失败落下来时记一行 warn", async () => {
@@ -259,7 +265,10 @@ describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
 		expect(() => handle.dispose()).not.toThrow();
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(warn).toHaveBeenCalledTimes(1);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("thenable-fail");
+		expect(warn).toHaveBeenCalledWith(
+			"适配器停止失败",
+			expect.objectContaining({ error: expect.objectContaining({ message: "thenable-fail" }) }),
+		);
 	});
 
 	it("视图上没有 send / start / stop —— 启停只归登记表,运行时也真的没有", async () => {

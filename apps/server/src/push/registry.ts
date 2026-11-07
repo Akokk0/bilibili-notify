@@ -3,8 +3,8 @@ import type {
 	PlatformAdapter,
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import { stopQuietly } from "../integrations/stop-quietly.js";
-import { errorMessageOf } from "../util/error-message.js";
 import { pickAdapterMembers } from "./adapter-members.js";
 
 /**
@@ -119,7 +119,7 @@ export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 					try {
 						watch.dispose();
 					} catch (err) {
-						ctx.logger.warn(`适配器时区通知回收失败:${errorMessageOf(err)}`);
+						ctx.logger.warn(logText("log.adapter.timezoneDisposeFailed"), { error: err });
 					}
 				}
 				timezoneWatches.clear();
@@ -165,7 +165,10 @@ export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 					stopQuietly(
 						() => adapter.stop(),
 						(err) =>
-							ctx.logger.warn(`[adapter] ${adapter.adapterKey} stop 失败: ${errorMessageOf(err)}`),
+							ctx.logger.warn(logText("log.adapter.stopFailed"), {
+								adapterKey: adapter.adapterKey,
+								error: err,
+							}),
 					);
 				},
 			};

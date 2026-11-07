@@ -93,7 +93,10 @@ describe("ProfileRefresh — 无法解析的 profileRefreshCron", () => {
 		}).not.toThrow();
 
 		expect(cronMock.instances).toHaveLength(0);
-		expect(errorLog).toHaveBeenCalledWith(expect.stringContaining("BAD CRON"));
+		expect(errorLog).toHaveBeenCalledWith("资料刷新计划无效，未启动刷新任务", {
+			cron: "BAD CRON",
+			error: expect.any(Error),
+		});
 
 		expect(() => handle?.dispose()).not.toThrow();
 	});

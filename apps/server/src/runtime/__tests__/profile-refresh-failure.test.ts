@@ -54,9 +54,11 @@ describe("资料刷新单条失败", () => {
 				expect.objectContaining({ subscriptionId: "ext", current: 330 }),
 			]),
 		);
-		expect(p.logger.debug).toHaveBeenCalledWith(expect.stringContaining("rate_limited"));
-		const logged = p.logger.debug.mock.calls.flat().join(" ");
-		expect(logged).toContain("-352");
-		expect(logged).toContain("upstream blocked");
+		expect(p.logger.debug).toHaveBeenCalledWith("资料刷新未取得资料", {
+			identity: { sourceKey: "alpha", externalId: "bad" },
+			code: "rate_limited",
+			upstreamCode: -352,
+			message: "upstream blocked",
+		});
 	});
 });

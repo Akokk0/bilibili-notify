@@ -5,6 +5,7 @@ import {
 	type Logger,
 	type Subscription,
 } from "@bilibili-notify/internal";
+import { logText } from "../i18n/index.js";
 import { statsFileKey } from "../stats/file-key.js";
 import { followersSampleGapMs } from "../stats/followers-sample-gap.js";
 import type { StatsRecorderCore } from "../stats/recorder.js";
@@ -89,12 +90,12 @@ export function createProfileReportHandler(
 			try {
 				if (await opts.profileCache.write(id, updateOf(id))) changed.push(id);
 			} catch (err) {
-				log.warn(`[sub-profile] 订阅 ${id} 的资料没写进去: ${String(err)}`);
+				log.warn(logText("log.profile.reportWriteFailed"), { subscriptionId: id, error: err });
 				continue;
 			}
 			const sub = opts.subscription(id);
 			if (sub === undefined || !sub.enabled) {
-				log.debug(`[sub-profile] 订阅 ${id} 已经不在了或停用了,这次不记样本`);
+				log.debug(logText("log.profile.reportSkipped"), { subscriptionId: id });
 				continue;
 			}
 			onAlive?.(id);
@@ -135,7 +136,7 @@ export function createProfileReportHandler(
 		report(subscriptionIds, report) {
 			queue
 				.run("reported-profiles", () => apply(subscriptionIds, report))
-				.catch((err) => log.warn(`[sub-profile] 处理一条资料上报时抛了: ${String(err)}`));
+				.catch((err) => log.warn(logText("log.profile.reportFailed"), { error: err }));
 		},
 		idle: () => queue.flush(),
 		close: () => queue.close(),

@@ -16,12 +16,11 @@ import { CronJob } from "cron";
 import type { ConfigStore } from "../config/store.js";
 import { HOUR_MS } from "../followers/cutoff.js";
 import type { FollowersStore } from "../followers/store.js";
-import { t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 import { statsFileKey } from "../stats/file-key.js";
 import type { StatsRecorderCore } from "../stats/recorder.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
-import { errorMessageOf } from "../util/error-message.js";
 import type { ProfileCacheWriter } from "./profile-cache.js";
 import {
 	pruneOrphanSubscriptionState,
@@ -199,9 +198,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		try {
 			result = await opts.fetchProfile(identity, opts.serviceCtx.signal);
 		} catch (err) {
-			logger.debug(
-				`[profile-refresh] ${identity.sourceKey}/${identity.externalId} 拉资料抛了: ${String(err)}`,
-			);
+			logger.debug(logText("log.profile.fetchThrew"), { identity, error: err });
 			return;
 		}
 		if (!result.ok) {
@@ -218,10 +215,12 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 					notify: false,
 				});
 			}
-			logger.debug(
-				`[profile-refresh] ${identity.sourceKey}/${identity.externalId} 没拉到资料 ` +
-					`code=${result.code} upstreamCode=${String(result.upstreamCode)} msg=${result.message}`,
-			);
+			logger.debug(logText("log.profile.fetchFailed"), {
+				identity,
+				code: result.code,
+				upstreamCode: result.upstreamCode,
+				message: result.message,
+			});
 			return;
 		}
 		if (disposed || subscriptionNow(sub.id) === undefined) return;
@@ -245,9 +244,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 				...(profile.fanClubName === undefined ? {} : { fanClubName: profile.fanClubName }),
 			});
 		} catch (err) {
-			logger.warn(
-				`[profile-refresh] ${identity.sourceKey}/${identity.externalId} 资料缓存没写进去: ${String(err)}`,
-			);
+			logger.warn(logText("log.profile.writeFailed"), { identity, error: err });
 			return;
 		}
 		if (changed) opts.profileCache.announce([sub.id]);
@@ -312,14 +309,14 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 	function tickOnce(): Promise<boolean> {
 		if (disposed) return Promise.resolve(false);
 		if (running) {
-			logger.debug("[profile-refresh] previous tick still running, skipping");
+			logger.debug(logText("log.profile.busy"));
 			return Promise.resolve(false);
 		}
 		running = true;
 		return runTick()
 			.then(() => true)
 			.catch((err) => {
-				logger.warn(`[profile-refresh] tick failed: ${String(err)}`);
+				logger.warn(logText("log.profile.tickFailed"), { error: err });
 				return true;
 			})
 			.finally(() => {
@@ -340,23 +337,22 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 				currentTimezone,
 			);
 		} catch (err) {
-			logger.error(
-				`[profile-refresh] cron='${currentCron}' 无法解析,资料刷新未启动: ${errorMessageOf(err)}`,
-			);
+			logger.error(logText("log.profile.cronInvalid"), { cron: currentCron, error: err });
 			job = undefined;
 			return;
 		}
 		job.start();
-		logger.info(`[profile-refresh] scheduled with cron='${currentCron}'`);
+		logger.info(logText("log.profile.scheduled"), { cron: currentCron });
 	}
 
 	function reconcileCron(): void {
 		const globals = configStore.getGlobals();
 		const next = globals.profileRefreshCron;
 		if (next === currentCron && globals.timezone === currentTimezone) return;
-		logger.info(
-			`[profile-refresh] schedule changed: cron='${currentCron}' timezone='${currentTimezone}' -> cron='${next}' timezone='${globals.timezone}'`,
-		);
+		logger.info(logText("log.profile.scheduleChanged"), {
+			previous: { cron: currentCron, timezone: currentTimezone },
+			next: { cron: next, timezone: globals.timezone },
+		});
 		job?.stop();
 		currentCron = next;
 		currentTimezone = globals.timezone;
@@ -393,13 +389,13 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 			if (disposed) return;
 			if (lastBySub.size > 0) {
 				emitSnapshot();
-				logger.info(`[profile-refresh] restored ${lastBySub.size} entries from disk`);
+				logger.info(logText("log.profile.restored"), { count: lastBySub.size });
 			}
 			await sleepUnlessShutdown(START_DELAY_MS);
 			if (disposed || opts.serviceCtx.signal.aborted) return;
 			await tickOnce();
 		})().catch((err) => {
-			logger.warn(`[profile-refresh] 首轮启动失败: ${String(err)}`);
+			logger.warn(logText("log.profile.startFailed"), { error: err });
 		}),
 	);
 
@@ -430,7 +426,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		if (removed) {
 			opts.serviceCtx.track(
 				pruneOrphanSubscriptionState(subscriptionStateStore, configStore).catch((err) => {
-					logger.warn(`[profile-refresh] 清理已删订阅的资料缓存失败: ${String(err)}`);
+					logger.warn(logText("log.profile.pruneFailed"), { error: err });
 				}),
 			);
 		}

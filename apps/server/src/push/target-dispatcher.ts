@@ -17,7 +17,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { fail, isTargetPaused, shouldSendAtAll } from "@bilibili-notify/internal";
 import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
-import { t as serverText } from "../i18n/index.js";
+import { logText, t as serverText } from "../i18n/index.js";
 import { findAdapter, resolveConnection } from "./dispatch.js";
 import { type PlatformAdapterRegistry, sendableAdapters } from "./registry.js";
 
@@ -219,13 +219,23 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 				c.enabled ? undefined : fail("not_configured", `connection disabled: connectionId=${c.id}`),
 			);
 			if (!route.ok) {
-				log.warn(`[sink] ${route.message} (sendToAddress, connectionId=${connectionId})`);
+				log.warn(logText("log.dispatch.routeRejected"), {
+					operation: "sendToAddress",
+					connectionId,
+					code: route.code,
+					message: route.message,
+				});
 				return route;
 			}
 			const connection = route.connection;
 			if (!route.adapter.isAvailable(route.connection, destination)) {
 				const result = fail("unavailable", `connection unavailable: connectionId=${connection.id}`);
-				log.warn(`[sink] ${result.message} (sendToAddress)`);
+				log.warn(logText("log.dispatch.connectionUnavailable"), {
+					operation: "sendToAddress",
+					connectionId,
+					code: result.code,
+					message: result.message,
+				});
 				return result;
 			}
 			// 不触发 onDelivery:它会去写 `target.reachability`,这里没有目标表里的那条。不重试、不落历史。
@@ -265,7 +275,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 			try {
 				return await route.adapter.probe(route.connection);
 			} catch (e) {
-				return thrown(e, `connection=${route.connection.id} probe`);
+				return thrown(e, { operation: "probe", connectionId: route.connection.id });
 			}
 		},
 
@@ -283,7 +293,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 			try {
 				return await adapter.listAddressCandidates(connection, scope, signal);
 			} catch (e) {
-				return thrown(e, `connection=${connection.id} listAddressCandidates`);
+				return thrown(e, { operation: "listAddressCandidates", connectionId: connection.id });
 			}
 		},
 	};
@@ -295,11 +305,15 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 	 */
 	function thrown(
 		e: unknown,
-		where: string,
+		details: {
+			operation: "send" | "probe" | "listAddressCandidates";
+			connectionId: string;
+			targetId?: string;
+		},
 		code: "unavailable" | "indeterminate" = "unavailable",
 	) {
 		const message = e instanceof Error ? e.message : String(e);
-		log.error(`[sink] platform adapter threw (${where}): ${message}`);
+		log.error(logText("log.dispatch.adapterThrew"), { ...details, code, error: e });
 		return fail(code, message);
 	}
 
@@ -308,7 +322,12 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		if (!target) return fail("not_found", "target not found");
 		const route = routeOf(target.connectionId, undefined, (c) => refusal(target, c));
 		if (!route.ok) {
-			log.warn(`[sink] ${route.message} (target=${target.id})`);
+			log.warn(logText("log.dispatch.routeRejected"), {
+				operation: "send",
+				targetId: target.id,
+				code: route.code,
+				message: route.message,
+			});
 			opts.onDelivery?.(target, payload, route);
 			return route;
 		}
@@ -336,7 +355,15 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		try {
 			return await adapter.send(connection, destination, payload);
 		} catch (e) {
-			return thrown(e, `${target ? `target=${target.id}` : "sendToAddress"} send`, "indeterminate");
+			return thrown(
+				e,
+				{
+					operation: "send",
+					connectionId: connection.id,
+					...(target ? { targetId: target.id } : {}),
+				},
+				"indeterminate",
+			);
 		}
 	}
 }

@@ -1,3 +1,4 @@
+import { logText } from "../i18n/index.js";
 /**
  * **作品过滤**:吃平台中立的 `Post`,一份实现,所有来源(B 站、拓展)同一个(ADR-0021 决策 43、ADR-0028 决策 1)。
  *
@@ -19,7 +20,6 @@ import {
 	type Post,
 	PostFilterReason,
 } from "@bilibili-notify/internal";
-import { errorMessageOf } from "../util/error-message.js";
 import { postText } from "./post-text";
 
 // 原因的词表住 `@bilibili-notify/internal`(历史行的 `filteredBy` 也用它);这里照旧转出,过滤的调用方不用换路。
@@ -53,7 +53,10 @@ function safeRegexTest(pattern: string, text: string, logger?: Logger): boolean 
 	const check = checkUserRegex(pattern);
 	if (!check.ok) {
 		// logger 缺省 = silent(纯函数语义);装配层应传入 ctx.logger 让 warn 走标准日志通道。
-		logger?.warn(`[post] 拒绝执行正则(${check.message}):"${pattern.slice(0, 80)}"`);
+		logger?.warn(logText("log.post.regexRejected"), {
+			pattern: pattern.slice(0, 80),
+			message: check.message,
+		});
 		return false;
 	}
 	try {
@@ -66,7 +69,7 @@ function safeRegexTest(pattern: string, text: string, logger?: Logger): boolean 
 			text.length > MAX_REGEX_TEST_TEXT_LEN ? text.slice(0, MAX_REGEX_TEST_TEXT_LEN) : text;
 		return new RegExp(pattern).test(subject);
 	} catch (e) {
-		logger?.warn(`[post] 无效的正则表达式 "${pattern}": ${errorMessageOf(e)}`);
+		logger?.warn(logText("log.post.regexInvalid"), { pattern, error: e });
 		return false;
 	}
 }

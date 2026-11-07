@@ -1,3 +1,4 @@
+import { logText } from "../i18n/index.js";
 /**
  * 连接探测:宿主按自己的时钟,定时问每条启用的连接「通不通」,把结果写回连接的 `probeState`,
  * 断了、好了记进问题表。
@@ -253,14 +254,14 @@ export function createConnectionProbeEngine(
 				message: result.message,
 			});
 		} catch (e) {
-			log.warn(`[probe] connection ${connectionId} update failed: ${String(e)}`);
+			log.warn(logText("log.probe.updateFailed"), { connectionId, stage: "background", error: e });
 		} finally {
 			inFlight.delete(connectionId);
 		}
 	}
 
 	const warnRateLimited = (connectionId: string, message: string): void =>
-		log.warn(`[probe] connection ${connectionId} rate limited: ${message}`);
+		log.warn(logText("log.probe.rateLimited"), { connectionId, message });
 
 	/** 主人点「测试」:每次都写盘;通了当场清问题,不通不加失败次数;被限流则什么都不动。 */
 	async function settleManual(connectionId: string, result: ProbeResult): Promise<void> {
@@ -290,7 +291,7 @@ export function createConnectionProbeEngine(
 				});
 			}
 		} catch (e) {
-			log.warn(`[probe] connection ${connectionId} manual update failed: ${String(e)}`);
+			log.warn(logText("log.probe.updateFailed"), { connectionId, stage: "manual", error: e });
 		}
 	}
 
@@ -382,7 +383,7 @@ export function createConnectionProbeEngine(
 	// 引擎起来先探一轮,之后按定时器轮询。
 	// 探测结果经 recordProbeState 写回连接表:登记进 track,关停等这笔写交进 config 写道。
 	const trackProbe = (): void => {
-		serviceCtx.track(probeAll().catch((e) => log.warn(`[probe] 健康探测失败: ${String(e)}`)));
+		serviceCtx.track(probeAll().catch((e) => log.warn(logText("log.probe.failed"), { error: e })));
 	};
 	trackProbe();
 	const timer = setInterval(trackProbe, opts.intervalMs ?? CONNECTION_PROBE_INTERVAL_MS);

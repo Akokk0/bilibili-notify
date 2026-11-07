@@ -1,3 +1,4 @@
+import { logMessage } from "../../__tests__/support/log-message.js";
 /**
  * 适配器拿到的上下文 —— 集成上下文加「现读的自己的连接名单」与「变了叫我」。
  *
@@ -212,7 +213,8 @@ describe("createPlatformAdapterContext — settings 先按适配器的规则解"
 		ctx.connections();
 		ctx.connections();
 		expect(logger.warn).toHaveBeenCalledTimes(1);
-		const line = String(logger.warn.mock.calls[0]?.[0]);
+		const [message, ...args] = logger.warn.mock.calls[0] ?? [];
+		const line = logMessage(String(message), args);
 		expect(line).toContain("b");
 		expect(line).toContain("设置不合法");
 		expect(line).toContain("url");
@@ -460,7 +462,7 @@ describe("createPlatformAdapterContext · inbound", () => {
 		ctx.inbound.group(GROUP_MSG, { connectionId: "o1" });
 		expect(seen).toEqual([]);
 		expect(warn).toHaveBeenCalledTimes(2);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("o1");
+		expect(warn.mock.calls[0]?.[1]).toMatchObject({ connectionId: "o1" });
 	});
 
 	it("不存在的连接 → 丢掉并记一行 warn", () => {
@@ -522,10 +524,10 @@ describe("createPlatformAdapterContext · inbound", () => {
 		ctx.inbound.group(GROUP_MSG, { connectionId: "b1" });
 		expect(seen).toEqual([]);
 		expect(warn).toHaveBeenCalledTimes(2);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("bridge");
-		expect(String(warn.mock.calls[0]?.[0])).toContain("私聊");
-		expect(String(warn.mock.calls[0]?.[0])).toContain("已停下");
-		expect(String(warn.mock.calls[1]?.[0])).toContain("群");
+		expect(warn.mock.calls).toEqual([
+			["适配器已停止，丢弃入站消息", { adapterKey: "bridge", route: "private" }],
+			["适配器已停止，丢弃入站消息", { adapterKey: "bridge", route: "group" }],
+		]);
 	});
 
 	it("下一层没接的那一路 → 静默丢掉,不抛", () => {

@@ -199,6 +199,8 @@ describe("profile refresh × ctx.track", () => {
 		await expect(dropTask).resolves.toBeUndefined();
 		await expect(pruneTask).resolves.toBeUndefined();
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("disk gone"));
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("queue closed"));
+		expect(logger.warn).toHaveBeenCalledWith("已删除订阅的资料缓存清理失败", {
+			error: expect.objectContaining({ message: "queue closed" }),
+		});
 	});
 });

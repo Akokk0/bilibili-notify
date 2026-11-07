@@ -210,7 +210,13 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 			code: "not_found",
 			message: "connection not found: connectionId=ghost",
 		});
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("connection not found"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			"投递路由被拒绝",
+			expect.objectContaining({
+				message: expect.stringContaining("connection not found"),
+				targetId: "t1",
+			}),
+		);
 		expect(onDelivery).toHaveBeenCalledTimes(1);
 		expect(onDelivery.mock.calls[0]?.[2]).toBe(r);
 	});
@@ -234,7 +240,8 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 			message: "no platform adapter for telegram",
 		});
 		expect(logger.warn).toHaveBeenCalledWith(
-			expect.stringContaining("no platform adapter for telegram"),
+			"投递路由被拒绝",
+			expect.objectContaining({ message: "no platform adapter for telegram" }),
 		);
 		expect(onDelivery).toHaveBeenCalledTimes(1);
 	});
@@ -272,11 +279,12 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", () => {
 	it("send 抛错 → indeterminate(帧可能已经出去了,不能让人重发)+ error 日志,onDelivery 照样收到这条失败", async () => {
 		const logger = makeLogger();
+		const thrownError = new Error("adapter exploded", { cause: new Error("transport") });
 		const onDelivery = vi.fn<OnDeliveryFn>();
 		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const pa = makePlatformAdapter("webhook", {
 			send: vi.fn(async () => {
-				throw new Error("adapter exploded");
+				throw thrownError;
 			}),
 		});
 		const dispatcher = createTargetDispatcher({
@@ -287,7 +295,13 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 		});
 		const r = await dispatcher.send("t1", PAYLOAD);
 		expect(r).toEqual({ ok: false, code: "indeterminate", message: "adapter exploded" });
-		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("adapter exploded"));
+		expect(logger.error).toHaveBeenCalledExactlyOnceWith("适配器调用抛出异常", {
+			operation: "send",
+			connectionId: "a1",
+			targetId: "t1",
+			code: "indeterminate",
+			error: thrownError,
+		});
 		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r);
 	});
 
@@ -308,7 +322,10 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 			code: "unavailable",
 			message: "probe exploded",
 		});
-		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("probe exploded"));
+		expect(logger.error).toHaveBeenCalledWith(
+			"适配器调用抛出异常",
+			expect.objectContaining({ error: expect.objectContaining({ message: "probe exploded" }) }),
+		);
 	});
 
 	it("适配器回的失败原样透出(码与 upstreamCode 不动)", async () => {
@@ -701,7 +718,10 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		const { dispatcher, pa, logger } = setup();
 		const r = await dispatcher.sendToAddress("ghost", SESSION, PAYLOAD);
 		expect(r).toMatchObject({ ok: false, code: "not_found" });
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("ghost"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ connectionId: "ghost" }),
+		);
 		expect(pa.send).not.toHaveBeenCalled();
 	});
 
@@ -711,7 +731,10 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		});
 		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
 		expect(r).toMatchObject({ ok: false, code: "not_configured" });
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("a1"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ connectionId: "a1" }),
+		);
 		expect(pa.send).not.toHaveBeenCalled();
 	});
 
@@ -725,7 +748,10 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 			code: "unavailable",
 			message: "no platform adapter for telegram",
 		});
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("a1"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ connectionId: "a1" }),
+		);
 	});
 
 	it("适配器说不可达(isAvailable 假)→ unavailable + warn,不发", async () => {
@@ -733,7 +759,10 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		const { dispatcher, logger } = setup({ pa });
 		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
 		expect(r).toMatchObject({ ok: false, code: "unavailable" });
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("a1"));
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ connectionId: "a1" }),
+		);
 		expect(pa.send).not.toHaveBeenCalled();
 	});
 
@@ -746,7 +775,10 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		const { dispatcher, logger } = setup({ pa });
 		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
 		expect(r).toEqual({ ok: false, code: "indeterminate", message: "adapter exploded" });
-		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("adapter exploded"));
+		expect(logger.error).toHaveBeenCalledWith(
+			"适配器调用抛出异常",
+			expect.objectContaining({ error: expect.objectContaining({ message: "adapter exploded" }) }),
+		);
 	});
 
 	it("不触发 onDelivery(临时目标不在表里,它会去写 reachability):成功与失败都不", async () => {
