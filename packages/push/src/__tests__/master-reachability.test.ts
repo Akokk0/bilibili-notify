@@ -14,18 +14,26 @@ import type {
 	NotificationPayload,
 	PushTarget,
 } from "@bilibili-notify/internal";
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	PACKAGE_DICTS,
+	type PackageTextKey,
+} from "@bilibili-notify/internal/texts";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { PushRouter } from "../push-router";
 import { type FakeDispatcher, pushBase } from "./helpers";
 
-type LogRec = { level: "info" | "warn" | "error" | "debug"; msg: string };
+type LogRec = { level: "info" | "warn" | "error" | "debug"; msg: string; args: readonly unknown[] };
 
 function makeLogger(): { logger: Logger; logs: LogRec[] } {
 	const logs: LogRec[] = [];
-	const rec = (level: LogRec["level"]) => (msg: unknown) => {
-		logs.push({ level, msg: String(msg) });
-	};
+	const rec =
+		(level: LogRec["level"]) =>
+		(msg: string, ...args: unknown[]) => {
+			logs.push({ level, msg, args });
+		};
 	return {
 		logger: { debug: rec("debug"), info: rec("info"), warn: rec("warn"), error: rec("error") },
 		logs,
@@ -77,12 +85,12 @@ describe("PushRouter — master 可达性边沿状态机(Q5)", () => {
 		const push = new PushRouter({ ...pushBase(), dispatcher, store: emptyStore, master, logger });
 
 		push.start(); // 首次未知→不可达 → error 一次
-		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(1);
+		expect(lv(logs, "error", "运行状态通知将无法送达")).toHaveLength(1);
 
 		expect(await push.notifyMaster(text)).toMatchObject({ ok: false, code: "unavailable" }); // 仍不可达
 		expect(await push.notifyMaster(text)).toMatchObject({ ok: false, code: "unavailable" }); // 仍不可达
 		// 不再追加 error;两次调用各一条 debug 跳过
-		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(1);
+		expect(lv(logs, "error", "运行状态通知将无法送达")).toHaveLength(1);
 		expect(lv(logs, "debug", "跳过本次私信通知")).toHaveLength(2);
 	});
 
@@ -97,12 +105,12 @@ describe("PushRouter — master 可达性边沿状态机(Q5)", () => {
 
 		box.up = true; // 恢复
 		const res = await push.notifyMaster(text);
-		expect(lv(logs, "info", "master 目标已恢复可达")).toHaveLength(1);
+		expect(lv(logs, "info", "通知目标已恢复可达")).toHaveLength(1);
 		expect(res.ok).toBe(true);
 		expect(sent).toEqual(["m1"]); // 真正投递到 master
 		// 不抖动:再次可达不重复 info
 		await push.notifyMaster(text);
-		expect(lv(logs, "info", "master 目标已恢复可达")).toHaveLength(1);
+		expect(lv(logs, "info", "通知目标已恢复可达")).toHaveLength(1);
 	});
 
 	it("健康启动(master 可达)→ 不打 error/info 噪音", () => {
@@ -111,8 +119,8 @@ describe("PushRouter — master 可达性边沿状态机(Q5)", () => {
 		const { logger, logs } = makeLogger();
 		const push = new PushRouter({ ...pushBase(), dispatcher, store: emptyStore, master, logger });
 		push.start();
-		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(0);
-		expect(lv(logs, "info", "master 目标已恢复可达")).toHaveLength(0);
+		expect(lv(logs, "error", "运行状态通知将无法送达")).toHaveLength(0);
+		expect(lv(logs, "info", "通知目标已恢复可达")).toHaveLength(0);
 	});
 	it("setMaster 切目标重置边沿:新目标首次不可达是一次全新 error", async () => {
 		const box = { up: true };
@@ -129,6 +137,95 @@ describe("PushRouter — master 可达性边沿状态机(Q5)", () => {
 			scope: "private",
 		} as unknown as PushTarget); // 重置边沿
 		await push.notifyMaster(text); // 新目标不可达 → 全新 error 一次
-		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(1);
+		expect(lv(logs, "error", "运行状态通知将无法送达")).toHaveLength(1);
 	});
+});
+
+describe("推送日志语言", () => {
+	it("通知目标不可达的说明按当前四语输出，口吻保持平实且不重复报错", async () => {
+		const texts = createI18n<PackageTextKey, Locale>({
+			dicts: PACKAGE_DICTS,
+			fallback: "zh-CN",
+			locale: "zh-CN",
+			voice: "maid",
+		});
+		const binding = bindPackageText(texts.t);
+		try {
+			for (const [locale, expected] of [
+				[
+					"en",
+					"Notification target is unreachable; runtime status notifications cannot be delivered",
+				],
+				["ja", "通知先に接続できないため、稼働状態の通知を配信できません"],
+				["zh-TW", "通知目標無法連線，執行狀態通知將無法送達"],
+				["zh-CN", "通知目标不可达，运行状态通知将无法送达"],
+			] as const) {
+				texts.set({ locale, voice: "maid" });
+				const { dispatcher } = makeDispatcher({ up: false });
+				const { logger, logs } = makeLogger();
+				const router = new PushRouter({
+					...pushBase(),
+					dispatcher,
+					store: emptyStore,
+					master,
+					logger,
+				});
+				router.start();
+				await router.notifyMaster(text);
+				await router.notifyMaster(text);
+				expect(logs.filter(({ level }) => level === "error")).toEqual([
+					{
+						level: "error",
+						msg: expected,
+						args: [{ event: "push.master_unreachable", targetId: "m1" }],
+					},
+				]);
+				expect(logs.filter(({ level }) => level === "debug")).toHaveLength(2);
+				texts.set({ locale: "zh-CN" });
+				expect(logs[0]?.msg).toBe(expected);
+				router.stop();
+			}
+		} finally {
+			binding.dispose();
+		}
+	});
+});
+
+it("派发器抛错时保留原错误与 cause，日志明确结果不明且不自动重试", async () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: PACKAGE_DICTS,
+		fallback: "zh-CN",
+		locale: "en",
+		voice: "maid",
+	});
+	const binding = bindPackageText(texts.t);
+	try {
+		const cause = new Error("socket closed after write");
+		const error = new Error("uncertain delivery", { cause });
+		const send = vi.fn(async () => {
+			throw error;
+		});
+		const { dispatcher } = makeDispatcher({ up: true });
+		const { logger, logs } = makeLogger();
+		const router = new PushRouter({
+			...pushBase(),
+			dispatcher: { ...dispatcher, send },
+			store: emptyStore,
+			logger,
+		});
+		const result = await router.sendToTarget("target-1", text);
+		expect(result).toEqual({ ok: false, code: "indeterminate", message: "uncertain delivery" });
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(logs).toEqual([
+			{
+				level: "error",
+				msg: "Dispatch threw; delivery is indeterminate and will not be retried automatically",
+				args: [{ event: "push.delivery_indeterminate", targetId: "target-1" }, error],
+			},
+		]);
+		expect(logs[0]?.args[1]).toBe(error);
+		router.stop();
+	} finally {
+		binding.dispose();
+	}
 });

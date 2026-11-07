@@ -81,5 +81,14 @@
 	"log.bootstrap.seeded": "[bootstrap] 首次啟動：已將環境變數中的啟動設定寫入 {path}",
 	"log.bootstrap.webDistRemoved": "[bootstrap] 已從 {path} 移除首次啟動寫入的 webDistDir，面板資源將跟隨載荷",
 	"log.bootstrap.webDistRemoveFailed": "[bootstrap] 無法從 {path} 移除 webDistDir：{error}。不影響啟動，面板資源仍跟隨載荷；可手動刪除此行",
-	"log.bootstrap.credentialsSeeded": "[bootstrap] 面板未設定登入憑證且監聽非回環位址，已自動產生登入憑證：\n             username: {username}\n             password: {password}\n           憑證已寫入啟動設定檔（宿主端 ./config/bn.config.yaml）。登入後可在系統頁修改帳號密碼"
+	"log.bootstrap.credentialsSeeded": "[bootstrap] 面板未設定登入憑證且監聽非回環位址，已自動產生登入憑證：\n             username: {username}\n             password: {password}\n           憑證已寫入啟動設定檔（宿主端 ./config/bn.config.yaml）。登入後可在系統頁修改帳號密碼",
+	"log.pipeline.reachabilityWriteFailed": "回寫推送目標連線狀態失敗",
+	"log.pipeline.historyRecordFailed": "記錄推送歷史失敗",
+	"log.pipeline.cursorWriteFailed": "儲存背景輪替游標失敗",
+	"log.pipeline.sourceDisposeFailed": "撤銷來源註冊失敗",
+	"log.pipeline.pushStopFailed": "停止推送路由失敗",
+	"log.pipeline.masterNotifierStopFailed": "停止執行狀態通知器失敗",
+	"log.pipeline.problemNotifierStopFailed": "停止問題通知器失敗",
+	"log.pipeline.liveSignalDropped": "未組裝場次引擎，捨棄本次直播訊號",
+	"log.pipeline.liveInteractionDropped": "未組裝直播互動入口，捨棄本次互動"
 }

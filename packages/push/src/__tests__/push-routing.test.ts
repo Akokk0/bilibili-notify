@@ -722,25 +722,28 @@ describe("PushRouter.push — 按订阅 id 找订阅", () => {
 });
 
 /**
- * 日志里认得出「是谁」(`subscriptionLabel`):所有来源均写 `<来源键>:<外部 id>`。
+ * 日志参数保留订阅 id 和中立身份，来源键与外部 id 分开记录。
  * 仅影响日志，发送仍按订阅 id 路由。
  */
 describe("PushRouter.push — 日志里的订阅标签", () => {
-	async function gateLogLine(sub: Subscription): Promise<string> {
+	async function gateLogEntry(sub: Subscription) {
 		const defaults = loopbackDefaults();
 		defaults.features.liveStart = false;
-		const lines: string[] = [];
+		const lines: { msg: string; args: unknown[] }[] = [];
 		const { dispatcher } = makeDispatcher();
 		const push = new PushRouter({
 			...pushBase(),
 			dispatcher,
 			store: makeStore([sub]),
-			logger: { ...silentLogger, debug: (msg: string) => lines.push(msg) },
+			logger: {
+				...silentLogger,
+				debug: (msg: string, ...args: unknown[]) => lines.push({ msg, args }),
+			},
 			defaults: () => defaults,
 		});
 		push.start();
 		await pushMain(push, sub.id, "liveStart", { kind: "text", text: "x" });
-		return lines.find((l) => l.includes("总开关 OFF")) ?? "";
+		return lines[0];
 	}
 
 	it("B 站订阅也用来源键和外部 id", async () => {
@@ -749,12 +752,32 @@ describe("PushRouter.push — 日志里的订阅标签", () => {
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
 		sub.routing.liveStart = ["t1"];
-		expect(await gateLogLine(sub)).toBe("[push] bilibili:u1 feature=liveStart 总开关 OFF，跳过");
+		expect(await gateLogEntry(sub)).toEqual({
+			msg: "特性总开关已关闭，跳过推送",
+			args: [
+				{
+					event: "push.feature_disabled",
+					subscriptionId: "s1",
+					identity: { sourceKey: "bilibili", externalId: "u1" },
+					feature: "liveStart",
+				},
+			],
+		});
 	});
 
 	it("拓展订阅 → <拓展 id>:<外部 id>", async () => {
 		const ext = makeExtensionSub({ id: "sE", extensionId: "douyin", externalId: "sec-1" });
 		ext.routing.liveStart = ["tE"];
-		expect(await gateLogLine(ext)).toBe("[push] douyin:sec-1 feature=liveStart 总开关 OFF，跳过");
+		expect(await gateLogEntry(ext)).toEqual({
+			msg: "特性总开关已关闭，跳过推送",
+			args: [
+				{
+					event: "push.feature_disabled",
+					subscriptionId: "sE",
+					identity: { sourceKey: "douyin", externalId: "sec-1" },
+					feature: "liveStart",
+				},
+			],
+		});
 	});
 });

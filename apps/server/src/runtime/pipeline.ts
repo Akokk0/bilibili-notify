@@ -52,6 +52,7 @@ import type { CreatorStatsReader } from "../ai/creator-stats.js";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
+import { logText } from "../i18n/index.js";
 import type { ImageFetcher } from "../images/image-fetcher.js";
 import { resolveLinkPreviewPolicies } from "../link-preview/link-scope.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
@@ -75,7 +76,6 @@ import { subscriptionIdentityLabelOf } from "../subscriptions/platform-label.js"
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
-import { errorMessageOf } from "../util/error-message.js";
 import {
 	CARD_BG_CURSORS_FILE,
 	makeExistingCardBgPicker,
@@ -388,7 +388,11 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 					opts.configStore
 						.recordTargetReachability(target.id, next)
 						.catch((e) =>
-							log.warn(`[sink] target ${target.id} reachability writeback failed: ${String(e)}`),
+							log.warn(
+								logText("log.pipeline.reachabilityWriteFailed"),
+								{ event: "pipeline.target_reachability_write_failed", targetId: target.id },
+								e,
+							),
 						),
 				);
 			}
@@ -423,9 +427,19 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	/** 往历史仓记一行。发出去不等,但登记进 track:关停得等这行历史(含图片落盘)交进历史写道,写道才能关门。 */
 	const recordHistory = (input: Parameters<typeof opts.historyStore.record>[0]): void => {
 		opts.serviceCtx.track(
-			opts.historyStore
-				.record(input)
-				.catch((e) => log.warn(`[history] record failed: ${String(e)}`)),
+			opts.historyStore.record(input).catch((e) =>
+				log.warn(
+					logText("log.pipeline.historyRecordFailed"),
+					{
+						event: "pipeline.history_record_failed",
+						pushId: input.pushId,
+						subscriptionId: input.subscriptionId,
+						targetId: input.targetId,
+						feature: input.feature,
+					},
+					e,
+				),
+			),
 		);
 	};
 	/**
@@ -563,7 +577,11 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 			atomicWriteJsonSync(cursorFile, cardBgRotator.snapshot());
 			cardBgRotator.clearDirty();
 		} catch (e) {
-			log.warn(`[pipeline] 背景轮换游标落盘失败: ${String(e)}`);
+			log.warn(
+				logText("log.pipeline.cursorWriteFailed"),
+				{ event: "pipeline.background_cursors_write_failed", path: cursorFile },
+				e,
+			);
 		}
 	};
 	const cursorFlushTimer = setInterval(flushCursors, 30_000);
@@ -787,7 +805,11 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 			try {
 				registration.dispose();
 			} catch (e) {
-				log.warn(`[pipeline] source dispose failed: ${errorMessageOf(e)}`);
+				log.warn(
+					logText("log.pipeline.sourceDisposeFailed"),
+					{ event: "pipeline.source_dispose_failed" },
+					e,
+				);
 			}
 		}
 		await Promise.all(sourceClosings);
@@ -801,17 +823,25 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 		try {
 			push.stop();
 		} catch (e) {
-			log.warn(`[pipeline] push.stop failed: ${String(e)}`);
+			log.warn(logText("log.pipeline.pushStopFailed"), { event: "pipeline.push_stop_failed" }, e);
 		}
 		try {
 			masterNotifier.dispose();
 		} catch (e) {
-			log.warn(`[pipeline] masterNotifier.dispose failed: ${String(e)}`);
+			log.warn(
+				logText("log.pipeline.masterNotifierStopFailed"),
+				{ event: "pipeline.master_notifier_dispose_failed" },
+				e,
+			);
 		}
 		try {
 			problemNotifier.dispose();
 		} catch (e) {
-			log.warn(`[pipeline] problemNotifier.dispose failed: ${String(e)}`);
+			log.warn(
+				logText("log.pipeline.problemNotifierStopFailed"),
+				{ event: "pipeline.problem_notifier_dispose_failed" },
+				e,
+			);
 		}
 	};
 	opts.serviceCtx.onDispose(dispose, "stop");
@@ -832,18 +862,22 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 				// 没接拓展订阅的直播(没有场次引擎)时来源报直播是接线漏了:丢弃并记 error,不静默吞。
 				liveSignals: (signal) => {
 					if (!live) {
-						coreLiveCtx.logger.error(
-							`[pipeline] 没有场次引擎,${signal.identity.sourceKey} 报的直播 ${signal.kind} 丢弃`,
-						);
+						coreLiveCtx.logger.error(logText("log.pipeline.liveSignalDropped"), {
+							event: "pipeline.live_signal_dropped",
+							identity: signal.identity,
+							kind: signal.kind,
+						});
 						return;
 					}
 					live.applySignal(signal);
 				},
 				liveInteractions: (subscriptionId, report) => {
 					if (!live) {
-						coreLiveCtx.logger.error(
-							`[pipeline] 没有直播互动入口,订阅 ${subscriptionId} 的直播互动 ${report.kind} 丢弃`,
-						);
+						coreLiveCtx.logger.error(logText("log.pipeline.liveInteractionDropped"), {
+							event: "pipeline.live_interaction_dropped",
+							subscriptionId,
+							kind: report.kind,
+						});
 						return;
 					}
 					live.applyInteraction(subscriptionId, report);
@@ -866,7 +900,11 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 					if (at !== -1) sourceRegistrations.splice(at, 1);
 					// 收尾记进 `sourceClosings`,关停时等它;把手同步返回、不等(拓展那头发了就不管)。
 					const closing = registration.dispose().catch((e: unknown) => {
-						log.warn(`[pipeline] source dispose failed: ${errorMessageOf(e)}`);
+						log.warn(
+							logText("log.pipeline.sourceDisposeFailed"),
+							{ event: "pipeline.source_dispose_failed", sourceKey: entry.sourceKey },
+							e,
+						);
 					});
 					sourceClosings.add(closing);
 					void closing.then(() => sourceClosings.delete(closing));

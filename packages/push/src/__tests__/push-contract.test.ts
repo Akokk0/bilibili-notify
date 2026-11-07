@@ -406,7 +406,7 @@ function setupPush(sub: Subscription = subWith([T1, T2])) {
 	const subs = [sub];
 	const { dispatcher, calls } = makeDispatcher();
 	const seen: PushSendResult[] = [];
-	const warns: string[] = [];
+	const warns: unknown[][] = [];
 	const { base, tracked, settled } = trackedPushBase();
 	const defaults = base.defaults();
 	defaults.schedule.quietHours = [{ start: 2, end: 4 }];
@@ -419,7 +419,7 @@ function setupPush(sub: Subscription = subWith([T1, T2])) {
 		...base,
 		dispatcher,
 		store: makeStore(subs),
-		logger: { ...silentLogger, warn: (message: unknown) => void warns.push(String(message)) },
+		logger: { ...silentLogger, warn: (...args: unknown[]) => void warns.push(args) },
 		onSend: (info) => seen.push(info),
 		muted: () => clock.muted,
 		quietHoursNow: () => clock.now,
@@ -815,7 +815,15 @@ describe("一次推送按锚点发", () => {
 			[T1, [["总结", "extra", true]]],
 		]);
 		expect(s.warns).toHaveLength(1);
-		expect(s.warns[0]).toContain("词云画不出来");
+		expect(s.warns[0]).toEqual([
+			expect.any(String),
+			expect.objectContaining({
+				event: "push.anchor_content_failed",
+				subscriptionId: "s1",
+				extra: "wordcloud",
+			}),
+			expect.objectContaining({ message: "词云画不出来" }),
+		]);
 		expect(unhandled.reasons).toEqual([]);
 	});
 

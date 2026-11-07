@@ -254,7 +254,11 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		const result = await push.sendToTarget("t", { kind: "text", text: "x" });
 
 		expect(result).toEqual({ ok: false, code: "indeterminate", message: "dispatcher exploded" });
-		expect(error).toHaveBeenCalledWith(expect.stringContaining("dispatcher exploded"));
+		expect(error).toHaveBeenCalledWith(
+			expect.any(String),
+			{ event: "push.delivery_indeterminate", targetId: "t" },
+			expect.objectContaining({ message: "dispatcher exploded" }),
+		);
 	});
 
 	// 上一条用的是永不 fire 的假时钟;这条用 pushBase() 的真时钟,验 stop() 抢在 backoff 到期前唤醒。

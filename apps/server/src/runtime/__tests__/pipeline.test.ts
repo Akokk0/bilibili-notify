@@ -66,6 +66,7 @@ import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js
 import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
+import { i18n } from "../../i18n/index.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import type { LiveTable, LiveTableEntry } from "../../live/live-table.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
@@ -1389,9 +1390,23 @@ describe("createPipelineRuntime — 直播接线刻画", () => {
 
 		expect(changes).toEqual([]);
 		expect(errors).toHaveBeenCalledTimes(2);
-		expect(errors.mock.calls.map(([message]) => message)).toEqual([
-			"[pipeline] 没有场次引擎,bilibili 报的直播 start 丢弃",
-			"[pipeline] 没有直播互动入口,订阅 sub-57 的直播互动 viewerChat 丢弃",
+		expect(errors.mock.calls).toEqual([
+			[
+				"未装配场次引擎，丢弃本次直播信号",
+				{
+					event: "pipeline.live_signal_dropped",
+					identity: { sourceKey: "bilibili", externalId: "57" },
+					kind: "start",
+				},
+			],
+			[
+				"未装配直播互动入口，丢弃本次互动",
+				{
+					event: "pipeline.live_interaction_dropped",
+					subscriptionId: "sub-57",
+					kind: "viewerChat",
+				},
+			],
 		]);
 	});
 });
@@ -2970,29 +2985,47 @@ describe("createPipelineRuntime — 后台写登记进 track", () => {
 		}
 	});
 
-	it("onSend:历史写失败 —— 登记进去的这件事不拒,记一条 warn", async () => {
-		const sub = makeEmptySubscription({
-			id: SUB_ID,
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const record = vi.fn(async () => {
-			throw new Error("queue closed");
-		});
-		const c = setup({ subs: [sub], overrides: { historyStore: { record } } });
-		active = c;
-		await new Promise((r) => setTimeout(r, 0));
-		const before = c.serviceCtx.tracking.tracked.length;
-
-		H.push[0].opts.onSend({
-			pushId: "p1",
-			subscriptionId: SUB_ID,
-			feature: "post",
-			target: null,
-			messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
-		});
-
-		await expect(newlyTracked(c, before)).resolves.toBeDefined();
-		expect(c.serviceCtx.logger.warn).toHaveBeenCalledWith(expect.stringContaining("queue closed"));
+	it("onSend:历史写失败按当前语言记录，保留原错误与 cause，不记录消息正文", async () => {
+		const previous = i18n.state();
+		try {
+			i18n.set({ locale: "en", voice: "maid" });
+			const sub = makeEmptySubscription({
+				id: SUB_ID,
+				identity: { sourceKey: "bilibili", externalId: "1" },
+			});
+			const error = new Error("queue closed", { cause: new Error("disk unavailable") });
+			const record = vi.fn(async () => {
+				throw error;
+			});
+			const c = setup({ subs: [sub], overrides: { historyStore: { record } } });
+			active = c;
+			await c.sourceReady;
+			const before = c.serviceCtx.tracking.tracked.length;
+			H.push[0].opts.onSend({
+				pushId: "p1",
+				subscriptionId: SUB_ID,
+				feature: "post",
+				target: null,
+				messages: [{ payload: { kind: "text", text: "PRIVATE-MESSAGE-CONTENT" }, role: "main" }],
+			});
+			await expect(newlyTracked(c, before)).resolves.toBeDefined();
+			expect(c.serviceCtx.logger.warn).toHaveBeenCalledExactlyOnceWith(
+				"Failed to record push history",
+				{
+					event: "pipeline.history_record_failed",
+					pushId: "p1",
+					subscriptionId: SUB_ID,
+					targetId: null,
+					feature: "post",
+				},
+				error,
+			);
+			expect(JSON.stringify(c.serviceCtx.logger.warn.mock.calls)).not.toContain(
+				"PRIVATE-MESSAGE-CONTENT",
+			);
+		} finally {
+			i18n.set(previous);
+		}
 	});
 
 	it("投递回调回写目标可达性:登记进 track —— 写交进 config 写道,它才落定", async () => {

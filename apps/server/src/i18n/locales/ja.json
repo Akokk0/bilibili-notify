@@ -81,5 +81,14 @@
 	"log.bootstrap.seeded": "[bootstrap] 初回起動：環境変数から起動設定を {path} に保存しました",
 	"log.bootstrap.webDistRemoved": "[bootstrap] {path} から初回起動時の webDistDir を削除しました。ダッシュボードのリソースはペイロードに従います",
 	"log.bootstrap.webDistRemoveFailed": "[bootstrap] {path} から webDistDir を削除できませんでした：{error}。起動は続行し、ダッシュボードのリソースはペイロードに従います。該当行を手動で削除できます",
-	"log.bootstrap.credentialsSeeded": "[bootstrap] ダッシュボードが非ループバックアドレスで待ち受けていますが認証情報が未設定のため、ログイン情報を生成しました：\n             username: {username}\n             password: {password}\n           認証情報を起動設定ファイル（ホスト側の ./config/bn.config.yaml）に保存しました。ログイン後にシステムページでユーザー名とパスワードを変更できます"
+	"log.bootstrap.credentialsSeeded": "[bootstrap] ダッシュボードが非ループバックアドレスで待ち受けていますが認証情報が未設定のため、ログイン情報を生成しました：\n             username: {username}\n             password: {password}\n           認証情報を起動設定ファイル（ホスト側の ./config/bn.config.yaml）に保存しました。ログイン後にシステムページでユーザー名とパスワードを変更できます",
+	"log.pipeline.reachabilityWriteFailed": "通知先の接続状態の保存に失敗しました",
+	"log.pipeline.historyRecordFailed": "プッシュ通知履歴の記録に失敗しました",
+	"log.pipeline.cursorWriteFailed": "背景ローテーションのカーソルの保存に失敗しました",
+	"log.pipeline.sourceDisposeFailed": "ソース登録の解除に失敗しました",
+	"log.pipeline.pushStopFailed": "プッシュルーターの停止に失敗しました",
+	"log.pipeline.masterNotifierStopFailed": "稼働状態通知の停止に失敗しました",
+	"log.pipeline.problemNotifierStopFailed": "問題通知の停止に失敗しました",
+	"log.pipeline.liveSignalDropped": "ライブセッションエンジンが接続されていないため、このライブ信号を破棄します",
+	"log.pipeline.liveInteractionDropped": "ライブのインタラクション処理が接続されていないため、このイベントを破棄します"
 }

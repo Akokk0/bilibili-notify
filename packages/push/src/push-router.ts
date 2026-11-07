@@ -41,7 +41,7 @@ function makeAtAllPayload(): NotificationPayload {
 }
 
 /**
- * 日志里认得出「是谁」的那一截:所有来源均写 `<来源键>:<外部 id>`。
+ * 返回原因与诊断标签里认得出「是谁」的那一截:写 `<来源键>:<外部 id>`。
  * 只拿来给人看 —— 推送链认的是订阅自己的 id(ADR-0019 决策 50),查不到订阅时日志就写 `sub=<id>`。
  */
 function subscriptionLabel(sub: Subscription): string {
@@ -61,11 +61,6 @@ function aiWritingEntryOf(
 ): AiWritingSettings["post"] | undefined {
 	if (role === "main") return feature === "post" ? writing.post : undefined;
 	return extra === "liveSummary" ? writing.liveSummary : undefined;
-}
-
-/** 约定被拒绝的原因,给日志用。 */
-function rejectionReason(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 const INITIAL_RETRY_DELAY_MS = 3000;
@@ -306,7 +301,11 @@ export class PushRouter {
 		if (prev !== target?.id) {
 			// 目标变了:重置边沿状态,新目标首次不可达应是一次全新 error。
 			this.masterReachable = undefined;
-			this.logger.info(`[push] master 目标已切换: ${prev ?? "(无)"} → ${target?.id ?? "(无)"}`);
+			this.logger.info(packageText("push.log.masterChanged"), {
+				event: "push.master_changed",
+				previousTargetId: prev ?? null,
+				targetId: target?.id ?? null,
+			});
 		}
 	}
 
@@ -324,12 +323,18 @@ export class PushRouter {
 		const available = this.dispatcher.isAvailable(this.master.id);
 		if (available) {
 			if (this.masterReachable === false) {
-				this.logger.info("[push] master 目标已恢复可达");
+				this.logger.info(packageText("push.log.masterRecovered"), {
+					event: "push.master_recovered",
+					targetId: this.master.id,
+				});
 			}
 			this.masterReachable = true;
 		} else {
 			if (this.masterReachable !== false) {
-				this.logger.error("[push] master 目标不可达，运行状态通知将无法送达——告警背channel已断");
+				this.logger.error(packageText("push.log.masterUnreachable"), {
+					event: "push.master_unreachable",
+					targetId: this.master.id,
+				});
 			}
 			this.masterReachable = false;
 		}
@@ -388,7 +393,14 @@ export class PushRouter {
 						(payloads) => (payloads && payloads.length > 0 ? payloads : undefined),
 						(error: unknown) => {
 							this.logger.warn(
-								`[push] ${this.labelOf(subscriptionId)} feature=${feature} AI 版正文没做出来，改用模板：${rejectionReason(error)}`,
+								packageText("push.log.aiFallback"),
+								{
+									event: "push.ai_content_fallback",
+									subscriptionId,
+									subscription: this.labelOf(subscriptionId),
+									feature,
+								},
+								error,
 							);
 							return undefined;
 						},
@@ -410,7 +422,17 @@ export class PushRouter {
 			if (this.disposed || this.generation !== myGen) return [];
 			if ("error" in content) {
 				this.logger.warn(
-					`[push] ${this.labelOf(subscriptionId)} feature=${feature} 有一个锚点的内容没做出来，跳过：${rejectionReason(content.error)}`,
+					packageText("push.log.anchorFailed"),
+					{
+						event: "push.anchor_content_failed",
+						subscriptionId,
+						subscription: this.labelOf(subscriptionId),
+						feature,
+						anchorIndex: i,
+						role: anchor.role,
+						extra: anchor.extra,
+					},
+					content.error,
 				);
 				return [];
 			}
@@ -438,7 +460,11 @@ export class PushRouter {
 						await sendAt(i);
 					}
 				})().catch((e: unknown) => {
-					this.logger.error(`[push] 附加项发送出错: ${e instanceof Error ? e.message : e}`);
+					this.logger.error(
+						packageText("push.log.extraFailed"),
+						{ event: "push.extra_delivery_failed", subscriptionId, feature, pushId },
+						e,
+					);
 				}),
 			);
 		}
@@ -456,23 +482,42 @@ export class PushRouter {
 	): "allowed" | "silenced" | "dropped" {
 		const sub = this.store.findById(subscriptionId);
 		if (!sub) {
-			this.logger.debug(`[push] sub=${subscriptionId} 无订阅记录，跳过 feature=${feature}`);
+			this.logger.debug(packageText("push.log.subscriptionMissing"), {
+				event: "push.subscription_missing",
+				subscriptionId,
+				feature,
+			});
 			return "dropped";
 		}
-		const who = subscriptionLabel(sub);
+		const identity = subscriptionIdentityOf(sub);
 		// 「features 总开关」与「quietHours 免扰时段」:把 sub 折叠成 EffectiveSubscription 后
 		// 按此刻的 globals 判定。
 		const eff = resolve(sub, this.defaults());
 		if (!eff.features[feature]) {
-			this.logger.debug(`[push] ${who} feature=${feature} 总开关 OFF，跳过`);
+			this.logger.debug(packageText("push.log.featureOff"), {
+				event: "push.feature_disabled",
+				subscriptionId,
+				identity,
+				feature,
+			});
 			return "dropped";
 		}
 		if (this.muted()) {
-			this.logger.debug(`[push] ${who} feature=${feature} 处于全局静音，只记不发`);
+			this.logger.debug(packageText("push.log.muted"), {
+				event: "push.globally_muted",
+				subscriptionId,
+				identity,
+				feature,
+			});
 			return "silenced";
 		}
 		if (inQuietHours(eff.schedule.quietHours, this.quietHoursNow(), this.timezone())) {
-			this.logger.debug(`[push] ${who} feature=${feature} 落在免扰时段，只记不发`);
+			this.logger.debug(packageText("push.log.quietHours"), {
+				event: "push.quiet_hours",
+				subscriptionId,
+				identity,
+				feature,
+			});
 			return "silenced";
 		}
 		return "allowed";
@@ -507,10 +552,14 @@ export class PushRouter {
 
 		const sub = this.store.findById(subscriptionId);
 		if (!sub) {
-			this.logger.debug(`[push] sub=${subscriptionId} 推送途中订阅没了，跳过 feature=${feature}`);
+			this.logger.debug(packageText("push.log.subscriptionRemoved"), {
+				event: "push.subscription_removed",
+				subscriptionId,
+				feature,
+			});
 			return [];
 		}
-		const who = subscriptionLabel(sub);
+		const identity = subscriptionIdentityOf(sub);
 		const eff = resolve(sub, this.defaults());
 
 		// 这个锚点有 AI 版时,每个目标收哪一份由 `ai.writing` 决定(现取);没有 AI 版、或这类锚点不归它管,
@@ -525,7 +574,12 @@ export class PushRouter {
 		// 只有启用的目标才是候选:停用的目标 / 停用的连接不进重试、不落历史。
 		const routed = (sub.routing[feature] ?? []).filter((id) => this.dispatcher.isEnabled(id));
 		if (routed.length === 0) {
-			this.logger.debug(`[push] ${who} feature=${feature} 无可用目标`);
+			this.logger.debug(packageText("push.log.noTargets"), {
+				event: "push.no_enabled_targets",
+				subscriptionId,
+				identity,
+				feature,
+			});
 			this.onSend?.({
 				...ctx,
 				target: null,
@@ -548,14 +602,26 @@ export class PushRouter {
 		if (targetIds.length === 0) {
 			// 收窄成空**不是「无目标」**(决策 7):本体那一行已经在了、而且是「已送达」,
 			// 这个附加项只是谁都没订 —— 是配置意图不是故障,不落行、不弹卡、不记失败。
-			this.logger.debug(`[push] ${who} feature=${feature} 附加项 ${extraKey} 无人订阅，跳过`);
+			this.logger.debug(packageText("push.log.extraNoTargets"), {
+				event: "push.extra_has_no_targets",
+				subscriptionId,
+				identity,
+				feature,
+				extra: extraKey,
+			});
 			return [];
 		}
 
 		if (round.isSilenced) {
 			// 先算目标、再记被挡:无可用目标与收窄成空在上面已经各走各的了,走到这里的都是
 			// 「没有静音的话这个目标本来会收到」的。
-			this.logger.debug(`[push] ${who} feature=${feature} 被挡下,记 ${targetIds.length} 个目标`);
+			this.logger.debug(packageText("push.log.silenced"), {
+				event: "push.silenced_targets",
+				subscriptionId,
+				identity,
+				feature,
+				targetCount: targetIds.length,
+			});
 			for (const id of targetIds) {
 				this.emit(
 					ctx,
@@ -574,7 +640,13 @@ export class PushRouter {
 					? "atAllLiveStart"
 					: null;
 
-		this.logger.info(`[push] ${who} feature=${feature} → ${targetIds.length} 个目标`);
+		this.logger.info(packageText("push.log.dispatching"), {
+			event: "push.delivery_started",
+			subscriptionId,
+			identity,
+			feature,
+			targetCount: targetIds.length,
+		});
 		if (!atAllKey) {
 			return this.sendBatch(targetIds, payloadsFor, ctx);
 		}
@@ -763,16 +835,29 @@ export class PushRouter {
 					subscription: who,
 					feature: routing.feature,
 				});
-				this.logger.info(`[push] ${msg}`);
+				this.logger.info(packageText("push.log.routeRemoved"), {
+					event: "push.route_removed",
+					targetId,
+					subscriptionId: routing.subscriptionId,
+					subscription: who,
+					feature: routing.feature,
+				});
 				return fail("conflict", msg);
 			}
 			if (!this.dispatcher.isAvailable(targetId)) {
 				if (delay > MAX_RETRY_DELAY_MS) {
 					const msg = packageText("push.router.unreachable", { targetId });
-					this.logger.error(`[push] ${msg}`);
+					this.logger.error(packageText("push.log.retriesExhausted"), {
+						event: "push.retries_exhausted",
+						targetId,
+					});
 					return fail("unavailable", msg);
 				}
-				this.logger.debug(`[push] target=${targetId} 暂不可达，${delay / 1000}s 后重试`);
+				this.logger.debug(packageText("push.log.retryPending"), {
+					event: "push.retry_pending",
+					targetId,
+					delayMs: delay,
+				});
 				await this.sleep(delay);
 				delay *= 2;
 				continue;
@@ -784,7 +869,11 @@ export class PushRouter {
 				// 抛错只留给 bug(ADR-0026 决策 1):派发器自己不该抛。这是发送,抛之前可能已经发出去了,
 				// 按「结果不明」记(回「暂时不可用」会让上面的人再发一遍)。
 				const message = e instanceof Error ? e.message : String(e);
-				this.logger.error(`[push] target=${targetId} 发送失败: ${message}`);
+				this.logger.error(
+					packageText("push.log.deliveryIndeterminate"),
+					{ event: "push.delivery_indeterminate", targetId },
+					e,
+				);
 				return fail("indeterminate", message);
 			}
 		}
@@ -822,7 +911,10 @@ export class PushRouter {
 			);
 		}
 		if (!this.refreshMasterReachability()) {
-			this.logger.debug("[push] master 目标不可达，跳过本次私信通知");
+			this.logger.debug(packageText("push.log.masterSkipped"), {
+				event: "push.master_notification_skipped",
+				targetId: this.master.id,
+			});
 			return fail("unavailable", packageText("push.router.masterUnreachable"));
 		}
 		const message: NotificationPayload =

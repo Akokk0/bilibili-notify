@@ -81,5 +81,14 @@
 	"log.bootstrap.seeded": "[bootstrap] First boot: wrote bootstrap configuration from environment variables to {path}",
 	"log.bootstrap.webDistRemoved": "[bootstrap] Removed the seeded webDistDir from {path}; dashboard assets now follow the payload",
 	"log.bootstrap.webDistRemoveFailed": "[bootstrap] Could not remove webDistDir from {path}: {error}. Startup continues and dashboard assets follow the payload; you can delete that line manually",
-	"log.bootstrap.credentialsSeeded": "[bootstrap] Dashboard credentials were not configured for a non-loopback listener; generated login credentials:\n             username: {username}\n             password: {password}\n           Credentials were saved to the bootstrap configuration (./config/bn.config.yaml on the host). Change the username and password on the System page after login"
+	"log.bootstrap.credentialsSeeded": "[bootstrap] Dashboard credentials were not configured for a non-loopback listener; generated login credentials:\n             username: {username}\n             password: {password}\n           Credentials were saved to the bootstrap configuration (./config/bn.config.yaml on the host). Change the username and password on the System page after login",
+	"log.pipeline.reachabilityWriteFailed": "Failed to persist push target reachability",
+	"log.pipeline.historyRecordFailed": "Failed to record push history",
+	"log.pipeline.cursorWriteFailed": "Failed to save background rotation cursors",
+	"log.pipeline.sourceDisposeFailed": "Failed to dispose a source registration",
+	"log.pipeline.pushStopFailed": "Failed to stop the push router",
+	"log.pipeline.masterNotifierStopFailed": "Failed to stop the runtime status notifier",
+	"log.pipeline.problemNotifierStopFailed": "Failed to stop the problem notifier",
+	"log.pipeline.liveSignalDropped": "Live session engine is not wired; dropping this live signal",
+	"log.pipeline.liveInteractionDropped": "Live interaction handler is not wired; dropping this interaction"
 }
