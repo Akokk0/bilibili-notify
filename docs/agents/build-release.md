@@ -46,7 +46,7 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 
 ### git tag = 唯一发布事实源
 
-独立端发布版本取自 git tag 名 `v<VERSION>`,例如 `v0.1.0-alpha.7`。源码中的独立端版本元数据保持开发占位 `0.0.0-dev`;发布 workflow 在构建前运行 `.github/scripts/shared/sync-standalone-version.sh`,按 tag 或手动 dry-run 输入把以下文件临时改成发布版本:
+独立端发布版本取自 git tag 名 `v<VERSION>`,例如 `v0.1.0-alpha.7`。源码中的独立端版本元数据保持开发占位 `0.0.0-dev`;发布 workflow 在构建前运行 `.github/scripts/shared/sync-app-version.sh`,按 tag 或手动 dry-run 输入把以下文件临时改成发布版本:
 
 - `apps/server/package.json#version` —— 后端运行时 `/api/health.version` 与 Docker 镜像内版本。
 - `apps/web/package.json#version` —— 前端概览页展示。
@@ -54,7 +54,7 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 
 这些改动只发生在 CI checkout / Docker build context 里,不需要回写仓库。`apps/server`、`apps/web`、`apps/desktop` 都是 `private`、永不发 npm。
 
-运行时 `resolveAppVersion`(`apps/server/src/routes/health.ts`)读构建时已同步的 `apps/server/package.json#version`;`/api/health` 的 `version` 与概览页「后端 X」据此显示。Desktop workflow 中 web dist 的前端版本由 `BN_STANDALONE_VERSION` 注入,因此 apps runtime 可先于版本文件 sync 构建;Tauri/Cargo/server package 元数据仍在 bundle 前 sync。
+运行时 `resolveAppVersion`(`apps/server/src/routes/health.ts`)读构建时已同步的 `apps/server/package.json#version`;`/api/health` 的 `version` 与概览页「后端 X」据此显示。Desktop workflow 中 web dist 的前端版本由 `BN_APP_VERSION` 注入,因此 apps runtime 可先于版本文件 sync 构建;Tauri/Cargo/server package 元数据仍在 bundle 前 sync。
 
 ### Tag 创建(`.github/workflows/version-tag.yml`)
 
@@ -74,9 +74,9 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 - `.github/workflows/desktop-release.yml` —— macOS / Windows Desktop 产物与 GitHub Release assets。
 - `.github/workflows/update-payload.yml` —— 应用内更新的载荷 zip 与签名清单,挂到同一个 release,并覆盖滚动 tag `update-channel` 上的渠道清单。清单的 `notes` 是从 `apps/CHANGELOG.md` 该版本段抽的概述(`scripts/changelog-section.mjs`,构建前就抽,找不到 / 为空 / 超 120 字直接红)。**没配 `BN_UPDATE_SIGNING_KEY` 时整条跳过并打 warning**,不让发版红着。详见 [self-update.md](./self-update.md)。
 
-GitHub Release 的正文由 `create-standalone-github-release.sh` 拼(desktop-release 与 update-payload 共用,谁先到谁建):开头是同一个脚本抽出的 CHANGELOG **整段**,后面才是产物清单与 compare 链接;CHANGELOG 里没有这一版就红。所以 **tag 必须指向已含 CHANGELOG 段的 commit**。
+GitHub Release 的正文由 `create-app-github-release.sh` 拼(desktop-release 与 update-payload 共用,谁先到谁建):开头是同一个脚本抽出的 CHANGELOG **整段**,后面才是产物清单与 compare 链接;CHANGELOG 里没有这一版就红。所以 **tag 必须指向已含 CHANGELOG 段的 commit**。
 
-两个 workflow 都先校验 tag commit 可从 `origin/dev` 到达,再从 tag 读取版本并运行 `sync-standalone-version.sh`;Docker 与 Desktop 依赖同一个版本 tag,但彼此不再互相等待。某个 workflow 失败时只重跑对应 workflow。
+两个 workflow 都先校验 tag commit 可从 `origin/dev` 到达,再从 tag 读取版本并运行 `sync-app-version.sh`;Docker 与 Desktop 依赖同一个版本 tag,但彼此不再互相等待。某个 workflow 失败时只重跑对应 workflow。
 
 拓展与本体分开发布(ADR-0013):
 

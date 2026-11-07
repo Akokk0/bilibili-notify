@@ -103,7 +103,7 @@ base64 < ~/secrets/bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
 3. `node scripts/build-update-payload.mjs` —— 打 zip,交出 sha256 / size
 4. `node scripts/sign-update-manifest.mjs --notes …` —— 生成并签署清单信封
 5. 上传到 `v<VERSION>` release(不存在就**自己建** —— 与 desktop-release 共用同一个幂等脚本
-   `create-standalone-github-release.sh`,谁先到谁建,**不等对方**;release 正文开头贴的是同一个
+   `create-app-github-release.sh`,谁先到谁建,**不等对方**;release 正文开头贴的是同一个
    脚本抽出的 CHANGELOG **整段**,更新一节的「打开发布页」就能看到完整改动与 ⚠️),再覆盖
    `update-channel` 上对应渠道的清单
 

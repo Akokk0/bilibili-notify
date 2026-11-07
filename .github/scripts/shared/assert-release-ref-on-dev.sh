@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Release safety guard: tag-triggered standalone release workflows must publish a
+# Release safety guard: tag-triggered app release workflows must publish a
 # commit that is reachable from origin/dev. This keeps manually pushed tags from
 # releasing arbitrary side commits while still allowing the tag commit to be an
 # older dev commit if dev has advanced after tagging.
@@ -30,7 +30,7 @@ fi
 
 if ! git merge-base --is-ancestor HEAD "$base_ref"; then
 	echo "::error::release commit $(git rev-parse --short=12 HEAD) is not reachable from $remote/$base_branch"
-	echo "::error::push the release commit to $base_branch before publishing a standalone tag"
+	echo "::error::push the release commit to $base_branch before publishing a app tag"
 	exit 1
 fi
 

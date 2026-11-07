@@ -26,7 +26,7 @@ on:
         type: boolean
         default: true
       version:
-        description: "Standalone version for dry-run builds, e.g. 0.9.0"
+        description: "App version for dry-run builds, e.g. 0.9.0"
         type: string
         required: true
 
@@ -64,9 +64,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Assert standalone tag format
+      - name: Assert app tag format
         if: startsWith(github.ref, 'refs/tags/v')
-        run: bash .github/scripts/shared/assert-ref-matches-standalone-version.sh
+        run: bash .github/scripts/shared/assert-ref-matches-app-version.sh
 
       - name: Assert release commit is on dev
         if: startsWith(github.ref, 'refs/tags/v')
@@ -83,11 +83,11 @@ jobs:
 
       # dry-run 没有 tag,版本从 dispatch 输入来(同 desktop-release);tag 触发时输入为空,
       # 脚本改读 GITHUB_REF_NAME。以前这里没传,dry-run 在这一步就红 —— 第一次跑 dry-run 才发现。
-      - name: Read standalone version
+      - name: Read app version
         id: ver
         env:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
-        run: bash .github/scripts/shared/read-standalone-version.sh
+        run: bash .github/scripts/shared/read-app-version.sh
 
       # 通知卡上念的那句概述,从 apps/CHANGELOG.md 该版本段的第一段抽(规矩见
       # .claude/skills/release/changelog.md)。放在构建之前:找不到该段 / 概述为空 / 超长
@@ -101,10 +101,10 @@ jobs:
       # 版本号只在构建前临时写进各处元数据,不回写仓库(同 Docker / Desktop 两条路)。
       # 载荷里那份 package.json 的 version 就是从这来的 —— 也就是客户端升级后
       # `/api/health` 报出来的版本。
-      - name: Sync standalone version metadata
+      - name: Sync app version metadata
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-        run: bash .github/scripts/shared/sync-standalone-version.sh
+        run: bash .github/scripts/shared/sync-app-version.sh
 
       - name: Fetch afdian sponsors
         env:
@@ -114,7 +114,7 @@ jobs:
 
       - name: Build self-contained payload artifacts
         env:
-          BN_STANDALONE_VERSION: ${{ steps.ver.outputs.value }}
+          BN_APP_VERSION: ${{ steps.ver.outputs.value }}
         run: vp run build:update-payload
 
       - name: Pack payload zip
@@ -150,7 +150,7 @@ jobs:
           PRERELEASE: ${{ steps.ver.outputs.prerelease }}
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: bash .github/scripts/shared/create-standalone-github-release.sh
+        run: bash .github/scripts/shared/create-app-github-release.sh
 
       # 载荷先于渠道清单上传(下面两步):清单一旦发布就有客户端来拉,它指的包必须已经在。
       - name: Upload payload + manifest to the version release

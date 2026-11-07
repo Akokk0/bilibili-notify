@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Patch standalone version metadata from the release source before CI builds.
-# Source order matches read-standalone-version.sh:
+# Patch app version metadata from the release source before CI builds.
+# Source order matches read-app-version.sh:
 #   - VERSION env for manual dry-runs / tag helper workflows; or
 #   - GITHUB_REF_NAME=v<VERSION> for tag-triggered releases.
 #
@@ -12,8 +12,8 @@
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-# shellcheck source=.github/scripts/shared/standalone-version-lib.sh
-source "$script_dir/standalone-version-lib.sh"
+# shellcheck source=.github/scripts/shared/app-version-lib.sh
+source "$script_dir/app-version-lib.sh"
 
 raw="${VERSION:-}"
 if [ -z "$raw" ] && [[ "${GITHUB_REF_NAME:-}" == v* ]]; then
@@ -22,11 +22,11 @@ fi
 raw="${raw#v}"
 
 if [ -z "$raw" ]; then
-	echo "::error::standalone version is required: set VERSION or run on a v<VERSION> tag"
+	echo "::error::app version is required: set VERSION or run on a v<VERSION> tag"
 	exit 1
 fi
-if ! is_valid_standalone_version "$raw"; then
-	print_invalid_standalone_version_error "$raw"
+if ! is_valid_app_version "$raw"; then
+	print_invalid_app_version_error "$raw"
 	exit 1
 fi
 

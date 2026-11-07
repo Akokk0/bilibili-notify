@@ -23,10 +23,10 @@ inputs:
     description: Directory create-manifest-list.sh reads per-arch digest files from
     required: true
   version:
-    description: Standalone version (without leading v), from read-standalone-version.sh
+    description: App version (without leading v), from read-app-version.sh
     required: true
   prerelease:
-    description: "'true' / 'false', from read-standalone-version.sh"
+    description: "'true' / 'false', from read-app-version.sh"
     required: true
   commit_short:
     description: Short commit SHA (12 chars)

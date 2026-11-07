@@ -8,7 +8,7 @@ import { defineConfig } from "vite";
 const webPkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as {
 	version: string;
 };
-const webVersion = process.env.BN_STANDALONE_VERSION || webPkg.version;
+const webVersion = process.env.BN_APP_VERSION || webPkg.version;
 
 // 测试走 vitest 默认 node 环境 + 默认 include — 4 个 channel hook 的事件分发已拆
 // 成纯 handler 函数,不渲染 React,无需 jsdom。

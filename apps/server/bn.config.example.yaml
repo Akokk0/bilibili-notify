@@ -1,4 +1,4 @@
-# Bootstrap config for the standalone server.
+# Bootstrap config for the app server.
 #
 # Usage: copy to `bn.config.yaml` (which is gitignored) and edit.
 #

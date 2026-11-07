@@ -19,7 +19,7 @@ import { digestOf } from "./reproducible-zip.mjs";
  * - `fetchPayloadDigest` —— sha256 与 size 从**真的那份已发布的包**上算出来。
  */
 
-/** 与 `assert-ref-matches-standalone-version.sh` 认的是同一种形状:裸 semver,不带 `v`。 */
+/** 与 `assert-ref-matches-app-version.sh` 认的是同一种形状:裸 semver,不带 `v`。 */
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 const CHANNELS_BY_CHOICE = {

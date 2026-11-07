@@ -6,7 +6,7 @@
 #
 # 资产名 `bilibili-notify-payload-<VERSION>.zip` 由 scripts/release-urls.mjs 的
 # payloadAssetName() 声明;这里拼的、sign-payload-manifest.sh 里清单指向的下载链接、
-# create-standalone-github-release.sh 念给用户的文件名必须是同一个名字,
+# create-app-github-release.sh 念给用户的文件名必须是同一个名字,
 # release-urls.test.mjs 会拿这几个文件去对。
 #
 # 必需 env:

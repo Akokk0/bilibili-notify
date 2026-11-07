@@ -1,6 +1,6 @@
 /**
  * Platform-neutral Puppeteer abstraction. The image-engine consumes only this
- * surface; the standalone runtime wraps the npm `puppeteer-core` package.
+ * surface; the host runtime wraps the npm `puppeteer-core` package.
  *
  * The signatures intentionally mirror the subset of the real Puppeteer API the
  * renderer actually invokes — see `image-renderer.ts`.

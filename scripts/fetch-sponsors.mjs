@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
  * fetch-sponsors —— 半自动赞助者名单。**挂在独立端发版流程**(image-release /
  * desktop-release)的 web build 之前由 CI 跑一次:调爱发电 `query-sponsor` 接口,
  * 把 `apps/web/public/sponsors.json`(仅昵称 + 头像 data URI)就地生成,随后 vite build
- * 打进 dist/镜像。**不 commit 回仓库** —— 仿 sync-standalone-version.sh,产物只活在
+ * 打进 dist/镜像。**不 commit 回仓库** —— 仿 sync-app-version.sh,产物只活在
  * CI 构建上下文,仓库里的 sponsors.json 保持空占位。token 只放 CI secret,运行时/镜像
  * 零密钥。无定时任务(去掉了旧的 sponsors.yml cron + 每日空提交)。
  *

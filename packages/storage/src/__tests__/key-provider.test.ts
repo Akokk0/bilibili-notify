@@ -56,7 +56,7 @@ describe("createKeyProvider — 选型", () => {
 		createKeyProvider({ logger, ...paths() });
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("未提供注入密钥"));
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("仅为混淆"));
-		// 端中立:不得在共享选择点出现 standalone 专属变量名。
+		// 端中立:不得在共享选择点出现 app 专属变量名。
 		const msg = (logger.warn as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
 		expect(msg).not.toContain("BN_COOKIE_KEY");
 	});
@@ -156,7 +156,7 @@ describe("FileKeyProvider", () => {
 		await writeFile(keyPath, "a".repeat(64), "utf8");
 		const logger = makeLogger();
 		const p = createKeyProvider({ logger, keyPath, saltPath: join(dir, "x.salt") });
-		await p.getKey(); // standalone 启动预加载
+		await p.getKey(); // app 启动预加载
 		await p.getKey(); // 后续 SecretStore.save / 集成存储的读写复用缓存
 		expect(logger.info).toHaveBeenCalledTimes(1);
 		expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("主密钥加载成功"));

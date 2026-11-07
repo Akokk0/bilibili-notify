@@ -1,7 +1,7 @@
 import { i18n } from "../i18n";
 /**
  * Thin fetch wrapper for /api/* endpoints. Vite dev server proxies these to
- * the standalone Hono server (see vite.config.ts). In production the dashboard
+ * the Hono server (see vite.config.ts). In production the dashboard
  * is served from the same origin, so relative paths just work.
  */
 

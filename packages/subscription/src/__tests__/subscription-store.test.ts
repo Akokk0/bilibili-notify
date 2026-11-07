@@ -1,7 +1,7 @@
 /**
  * 单元测试 — `createSubscriptionStore` CRUD + diff 行为。
  *
- * 业务核心:store 是 SubscriptionStore 接口的唯一实现,koishi 和 standalone 两端
+ * 业务核心:store 是 SubscriptionStore 接口的唯一实现,宿主
  * adapter 都消费。CRUD 操作和 subscription-changed 事件 ops 是双端 engine 增量
  * apply 的唯一数据来源。
  *

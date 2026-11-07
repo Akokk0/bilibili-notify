@@ -5,7 +5,7 @@ name: bilibili-notify — build + publish
 
 on:
   # 推 v<VERSION> tag 后触发。Docker 以 tag 为发布版本源,
-  # 构建前由 sync-standalone-version.sh 临时写入各处版本元数据。
+  # 构建前由 sync-app-version.sh 临时写入各处版本元数据。
   push:
     tags:
       - "v*"
@@ -16,7 +16,7 @@ on:
         type: boolean
         default: true
       version:
-        description: "Standalone version for dry-run builds, e.g. 0.1.0-alpha.7"
+        description: "App version for dry-run builds, e.g. 0.1.0-alpha.7"
         type: string
         required: true
 
@@ -84,9 +84,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Assert standalone tag format
+      - name: Assert app tag format
         if: startsWith(github.ref, 'refs/tags/v')
-        run: bash .github/scripts/shared/assert-ref-matches-standalone-version.sh
+        run: bash .github/scripts/shared/assert-ref-matches-app-version.sh
 
       - name: Assert release commit is on dev
         if: startsWith(github.ref, 'refs/tags/v')
@@ -98,13 +98,13 @@ jobs:
           node-version-file: .node-version
           cache: true
 
-      - name: Sync standalone version metadata
+      - name: Sync app version metadata
         env:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
-        run: bash .github/scripts/shared/sync-standalone-version.sh
+        run: bash .github/scripts/shared/sync-app-version.sh
 
       # 就地生成 apps/web/public/sponsors.json,经 Dockerfile `COPY . .` 进 builder →
-      # vite build 打进 web dist/镜像。不回写仓库(同 sync-standalone-version)。未配
+      # vite build 打进 web dist/镜像。不回写仓库(同 sync-app-version)。未配
       # AFDIAN secret(如 fork)时脚本优雅跳过,镜像内名单回退空态。
       - name: Fetch afdian sponsors
         env:
@@ -254,10 +254,10 @@ jobs:
 
       # 独立端版本号来自当前 v<VERSION> tag。
       # 含 prerelease 标识(有 `-`,如 0.1.0-alpha.0)→ alpha 渠道,否则正式。
-      # 脚本本体在 .github/scripts/shared/read-standalone-version.sh。
-      - name: Read standalone version
+      # 脚本本体在 .github/scripts/shared/read-app-version.sh。
+      - name: Read app version
         id: ver
-        run: bash .github/scripts/shared/read-standalone-version.sh
+        run: bash .github/scripts/shared/read-app-version.sh
 
       - name: Read checkout commit
         id: commit

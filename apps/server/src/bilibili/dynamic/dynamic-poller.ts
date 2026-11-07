@@ -114,7 +114,7 @@ function getDynamicPostTime(author: Dynamic["modules"]["module_author"]): number
 }
 
 /**
- * Runtime configuration for {@link DynamicPoller}. The standalone runtime fills it
+ * Runtime configuration for {@link DynamicPoller}. The host runtime fills it
  * from its config store. The `logLevel` field is intentionally dropped — the host
  * sets logger level externally via {@link ServiceContext}.
  *

@@ -40,7 +40,7 @@ describe("载荷资产名只有一份声明", () => {
 	});
 
 	it("release 正文里给用户念的那个文件名也一致", () => {
-		const sh = read(".github/scripts/shared/create-standalone-github-release.sh");
+		const sh = read(".github/scripts/shared/create-app-github-release.sh");
 		expect(sh).toContain(withVersion(payloadAssetName("0.0.0")));
 	});
 

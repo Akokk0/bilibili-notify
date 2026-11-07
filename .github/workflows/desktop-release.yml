@@ -2,7 +2,7 @@ name: bilibili-notify — desktop release
 
 on:
   # 推 v<VERSION> tag 后触发。Desktop 以 tag 为发布版本源,
-  # 构建前由 sync-standalone-version.sh 临时写入各处版本元数据。
+  # 构建前由 sync-app-version.sh 临时写入各处版本元数据。
   push:
     tags:
       - "v*"
@@ -13,7 +13,7 @@ on:
         type: boolean
         default: true
       version:
-        description: "Standalone version for dry-run builds, e.g. 0.1.0-alpha.7"
+        description: "App version for dry-run builds, e.g. 0.1.0-alpha.7"
         type: string
         required: true
 
@@ -62,9 +62,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Assert standalone tag format
+      - name: Assert app tag format
         if: startsWith(github.ref, 'refs/tags/v')
-        run: bash .github/scripts/shared/assert-ref-matches-standalone-version.sh
+        run: bash .github/scripts/shared/assert-ref-matches-app-version.sh
 
       - name: Assert release commit is on dev
         if: startsWith(github.ref, 'refs/tags/v')
@@ -76,12 +76,12 @@ jobs:
           node-version-file: .node-version
           cache: true
 
-      - name: Read standalone version
+      - name: Read app version
         id: ver
         shell: bash
         env:
           VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
-        run: bash .github/scripts/shared/read-standalone-version.sh
+        run: bash .github/scripts/shared/read-app-version.sh
 
       # Rust 的质量门(fmt / clippy / test / check)**不在这儿** —— 搬去了
       # `rust-check.yml`,只在 `apps/desktop/**` 真的动了时跑。从前每打一个 tag 都在
@@ -109,15 +109,15 @@ jobs:
       # 版本先同步再构建:桌面版装的是与 Docker / 应用内更新同一份自包含载荷,装配时
       # 写进 dist/package.json 的版本就是外壳起来后 /api/health 报的那个 —— 顺序反了,
       # 安装包会永远自报 0.0.0-dev。
-      - name: Sync standalone version metadata
+      - name: Sync app version metadata
         shell: bash
         env:
           VERSION: ${{ steps.ver.outputs.value }}
-        run: bash .github/scripts/shared/sync-standalone-version.sh
+        run: bash .github/scripts/shared/sync-app-version.sh
 
       - name: Build self-contained payload (server bundle + dashboard)
         env:
-          BN_STANDALONE_VERSION: ${{ steps.ver.outputs.value }}
+          BN_APP_VERSION: ${{ steps.ver.outputs.value }}
         run: vp run build:update-payload
 
       - name: Verify macOS arm64 runner
@@ -191,9 +191,9 @@ jobs:
           pattern: desktop-*
           merge-multiple: true
 
-      - name: Read standalone version
+      - name: Read app version
         id: ver
-        run: bash .github/scripts/shared/read-standalone-version.sh
+        run: bash .github/scripts/shared/read-app-version.sh
 
       - name: Assert version tag compatibility
         env:
@@ -207,7 +207,7 @@ jobs:
           PRERELEASE: ${{ steps.ver.outputs.prerelease }}
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           REPO: ${{ github.repository }}
-        run: bash .github/scripts/shared/create-standalone-github-release.sh
+        run: bash .github/scripts/shared/create-app-github-release.sh
 
       - name: Upload release assets
         env:

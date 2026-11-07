@@ -14,5 +14,5 @@ set -euo pipefail
 : "${GITHUB_REF:?GITHUB_REF env 必填(GHA 自动提供;本地跑请手动指定)}"
 
 echo "::error::version-tag can only run on dev; got $GITHUB_REF"
-echo "::error::switch the workflow ref to dev before creating or dry-running a standalone tag"
+echo "::error::switch the workflow ref to dev before creating or dry-running a app tag"
 exit 1

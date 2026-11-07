@@ -48,18 +48,18 @@ describe("引用是怎么认出来的", () => {
 		const yml = [
 			"      - run: bash .github/scripts/extension-release/pack-extension.sh",
 			"        run: ./.github/scripts/desktop-release/collect-windows.ps1",
-			"        run: bash .github/scripts/shared/read-standalone-version.sh",
+			"        run: bash .github/scripts/shared/read-app-version.sh",
 		].join("\n");
 		expect(scriptRefsInYaml(yml)).toEqual([
 			"extension-release/pack-extension.sh",
 			"desktop-release/collect-windows.ps1",
-			"shared/read-standalone-version.sh",
+			"shared/read-app-version.sh",
 		]);
 	});
 
 	it("整行注释里的路径不算引用(脚本头上的本地用法、workflow 里的说明)", () => {
 		const yml = [
-			"  # 脚本本体在 .github/scripts/shared/read-standalone-version.sh。",
+			"  # 脚本本体在 .github/scripts/shared/read-app-version.sh。",
 			"        run: bash .github/scripts/shared/a.sh",
 		].join("\n");
 		expect(scriptRefsInYaml(yml)).toEqual(["shared/a.sh"]);

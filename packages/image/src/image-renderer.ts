@@ -108,7 +108,7 @@ async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs =
 }
 
 /**
- * Runtime configuration for {@link ImageRenderer}. The standalone runtime fills it
+ * Runtime configuration for {@link ImageRenderer}. The host runtime fills it
  * from its own config store. The `logLevel` field is intentionally dropped — the
  * host is responsible for setting the logger level externally.
  */

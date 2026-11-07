@@ -244,7 +244,7 @@ export interface PushRouterOptions {
 /**
  * Platform-neutral push router.
  *
- * The standalone runtime's push router. Routing comes from
+ * The host runtime's push router. Routing comes from
  * store.findById(subscriptionId)?.routing[feature] → targetId[] → dispatcher.send(targetId, payload).
  * 键是订阅 id；来源身份由宿主映射为订阅，路由层不读取平台用户号(ADR-0019 决策 50)。
  * The old pushArrMap, broadcastToTargets, sendToMaster/sendPrivateMsg/sendErrorMsg are gone —— 主人通知只剩 notifyMaster。

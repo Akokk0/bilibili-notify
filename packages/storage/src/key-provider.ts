@@ -107,9 +107,9 @@ export interface CreateKeyProviderOptions {
 export function createKeyProvider(opts: CreateKeyProviderOptions): KeyProvider {
 	const pass = opts.passphrase?.trim();
 	if (pass) return new PassphraseKeyProvider(pass, opts.saltPath, opts.logger);
-	// 回退选择点统一打高可见告警 —— 此前仅 standalone 的 bootstrap.ts 警示,
+	// 回退选择点统一打高可见告警 —— 此前仅 app 的 bootstrap.ts 警示,
 	// 任何其它调用方落到回退时静默无声。
-	// 文案保持端中立(不提 BN_COOKIE_KEY,那是 standalone 专属);standalone
+	// 文案保持端中立(不提 BN_COOKIE_KEY,那是 app 专属);app
 	// 在 bootstrap 另加可执行指引。
 	opts.logger.warn(
 		"[key] 未提供注入密钥:secrets（来源凭据 / AI apiKey）使用本地随机密钥，" +
