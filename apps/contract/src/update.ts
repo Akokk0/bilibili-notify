@@ -11,7 +11,7 @@ import type { Result } from "@bilibili-notify/internal/result";
  * 升不上去的原因。**分得这么细是有代价的,但混成一句「更新失败」的代价更大** ——
  * 代理站抽风会被当成安全事件去查,而真的有人在中间改包会被当成小毛病忽略。
  */
-export type UpdateErrorReason =
+export type UpdateFailureCode =
 	/** 每个候选站都试过了,一个都没拿到。多半是网络 / 加速前缀填错。 */
 	| "unreachable"
 	/** 签名验不过 —— 分发链上可能有人动过手脚。**只有这一条该弹红字。** */
@@ -22,15 +22,15 @@ export type UpdateErrorReason =
 	 * 签名没问题,但比之前见过的清单**旧**。多半是加速站缓存了旧文件(换个站或直连);
 	 * 也可能是有人在回放一份被撤回版本的清单 —— 两种都不该收。
 	 */
-	| "stale-manifest"
+	| "stale_manifest"
 	/** 清单拿到了,包没下下来。 */
-	| "download-failed"
+	| "download_failed"
 	/** 包下下来了,但不是清单说的那一坨字节。 */
-	| "checksum-mismatch"
+	| "checksum_mismatch"
 	/** 包是对的,写进版本目录时失败(磁盘满 / 只读 / 包里有越界路径)。 */
-	| "install-failed"
+	| "install_failed"
 	/** 已经在最底下那一版上了,没得退。 */
-	| "nothing-to-roll-back";
+	| "nothing_to_roll_back";
 
 export type UpdateState =
 	/**
@@ -62,7 +62,7 @@ export type UpdateState =
 	/** 钉子已落,重启就会回到上一版。 */
 	| { phase: "rolled-back"; target: string }
 	/** `helpUrl` 是「下不动就给个链接让用户自己去下」那条兜底出口。 */
-	| { phase: "error"; reason: UpdateErrorReason; helpUrl?: string; checkedAt: string };
+	| { phase: "error"; code: UpdateFailureCode; helpUrl?: string; checkedAt: string };
 
 /**
  * 这一档按「立即重启并应用」有没有意义。

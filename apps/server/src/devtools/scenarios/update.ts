@@ -1,4 +1,4 @@
-import type { UpdateErrorReason, UpdateState } from "@bilibili-notify/contract";
+import type { UpdateFailureCode, UpdateState } from "@bilibili-notify/contract";
 import { ok } from "@bilibili-notify/internal";
 import { RELEASES_PAGE_URL, releaseUrlOf } from "../../update/trusted-keys.js";
 import type { DevScenarioDef } from "../registry.js";
@@ -24,15 +24,15 @@ const PHASES: ReadonlyArray<{ value: UpdateState["phase"]; label: string }> = [
 	{ value: "error", label: "error · 升不上去" },
 ];
 
-const REASONS: ReadonlyArray<{ value: UpdateErrorReason; label: string }> = [
+const FAILURE_CODES: ReadonlyArray<{ value: UpdateFailureCode; label: string }> = [
 	{ value: "unreachable", label: "unreachable · 连不上" },
 	{ value: "untrusted", label: "untrusted · 验签失败(红字)" },
 	{ value: "malformed", label: "malformed · 清单不成形" },
-	{ value: "stale-manifest", label: "stale-manifest · 清单比见过的旧" },
-	{ value: "download-failed", label: "download-failed · 包没下下来" },
-	{ value: "checksum-mismatch", label: "checksum-mismatch · 摘要对不上" },
-	{ value: "install-failed", label: "install-failed · 写盘失败" },
-	{ value: "nothing-to-roll-back", label: "nothing-to-roll-back · 没得退" },
+	{ value: "stale_manifest", label: "stale_manifest · 清单比见过的旧" },
+	{ value: "download_failed", label: "download_failed · 包没下下来" },
+	{ value: "checksum_mismatch", label: "checksum_mismatch · 摘要对不上" },
+	{ value: "install_failed", label: "install_failed · 写盘失败" },
+	{ value: "nothing_to_roll_back", label: "nothing_to_roll_back · 没得退" },
 ];
 
 /** `notes` 是可选字段:空串不带 —— 带了面板会渲染一行空白的说明。 */
@@ -44,9 +44,9 @@ function withNotes<T extends object>(base: T, notes: string): T & { notes?: stri
  * 注册表按上面的 schema 补完默认值、挡掉不在选项里的值之后,交过来的就是这个形状 ——
  * `run` 里那一句断言只是把 schema 已经保证的事告诉编译器。
  */
-type Params = {
+type UpdateScenarioValues = {
 	phase: UpdateState["phase"];
-	reason: UpdateErrorReason;
+	code: UpdateFailureCode;
 	disabledReason: "no-keys" | "dev-build";
 	target: string;
 	notes: string;
@@ -54,7 +54,7 @@ type Params = {
 
 const DEFAULT_TARGET = "0.99.0";
 
-function buildState(p: Params): UpdateState {
+function buildState(p: UpdateScenarioValues): UpdateState {
 	const now = new Date().toISOString();
 	// 输入框被清空时注册表给的是空串(默认值只在这个键**缺席**时才补)。空版本号会渲染成
 	// 一张没有版本号的卡,「查看发布页」还指到 `.../tag/v`。
@@ -78,14 +78,14 @@ function buildState(p: Params): UpdateState {
 		case "rolled-back":
 			return { phase: "rolled-back", target };
 		case "error":
-			return { phase: "error", reason: p.reason, helpUrl: RELEASES_PAGE_URL, checkedAt: now };
+			return { phase: "error", code: p.code, helpUrl: RELEASES_PAGE_URL, checkedAt: now };
 	}
 }
 
 /** 生效条上那句:带版本号的相位把版本号也念出来。 */
 function labelOf(state: UpdateState): string {
 	const target = "target" in state ? ` ${state.target}` : "";
-	const reason = state.phase === "error" ? ` (${state.reason})` : "";
+	const reason = state.phase === "error" ? ` (${state.code})` : "";
 	return `更新状态 → ${state.phase}${target}${reason}`;
 }
 
@@ -100,10 +100,10 @@ export function updateStateScenario(injectable: InjectableUpdateService): DevSce
 		params: [
 			{ key: "phase", label: "相位", kind: "enum", options: PHASES, default: "available" },
 			{
-				key: "reason",
+				key: "code",
 				label: "归因(error 时)",
 				kind: "enum",
-				options: REASONS,
+				options: FAILURE_CODES,
 				default: "unreachable",
 			},
 			{
@@ -125,7 +125,7 @@ export function updateStateScenario(injectable: InjectableUpdateService): DevSce
 			},
 		],
 		run(params) {
-			injectable.inject(buildState(params as Params));
+			injectable.inject(buildState(params as UpdateScenarioValues));
 			return ok();
 		},
 		active() {

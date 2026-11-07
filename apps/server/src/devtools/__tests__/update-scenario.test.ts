@@ -37,7 +37,7 @@ describe("update.state 场景", () => {
 		expect(decl?.id).toBe("core.update.state");
 		expect(decl?.group).toBe("state");
 		const phase = decl?.params.find((p) => p.key === "phase");
-		const reason = decl?.params.find((p) => p.key === "reason");
+		const reason = decl?.params.find((p) => p.key === "code");
 		expect(phase?.kind === "enum" && phase.options.map((o) => o.value)).toEqual([
 			"disabled",
 			"idle",
@@ -53,11 +53,11 @@ describe("update.state 场景", () => {
 			"unreachable",
 			"untrusted",
 			"malformed",
-			"stale-manifest",
-			"download-failed",
-			"checksum-mismatch",
-			"install-failed",
-			"nothing-to-roll-back",
+			"stale_manifest",
+			"download_failed",
+			"checksum_mismatch",
+			"install_failed",
+			"nothing_to_roll_back",
 		]);
 	});
 
@@ -86,10 +86,10 @@ describe("update.state 场景", () => {
 
 	it("error:归因照给,checkedAt 是 UTC ISO,helpUrl 指向发布页", async () => {
 		const { reg, service } = setup();
-		await reg.run("core.update.state", { phase: "error", reason: "untrusted" });
+		await reg.run("core.update.state", { phase: "error", code: "untrusted" });
 
 		const { state } = service.getStatus();
-		expect(state).toMatchObject({ phase: "error", reason: "untrusted" });
+		expect(state).toMatchObject({ phase: "error", code: "untrusted" });
 		expect(state.phase === "error" && state.checkedAt).toMatch(
 			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
 		);

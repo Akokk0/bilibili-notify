@@ -41,7 +41,7 @@ describe("newerVersionOf —— 「有一版比现在新」这件事只在一处
 		expect(newerVersionOf(status({ phase: "disabled", reason: "no-keys" }))).toBeNull();
 		expect(
 			newerVersionOf(
-				status({ phase: "error", reason: "unreachable", checkedAt: "2026-10-27T00:00:00.000Z" }),
+				status({ phase: "error", code: "unreachable", checkedAt: "2026-10-27T00:00:00.000Z" }),
 			),
 		).toBeNull();
 	});

@@ -100,7 +100,7 @@ describe("UpdateSection —— 报错的归因", () => {
 	});
 
 	it("验签失败才是红字 —— 那是唯一可能真有人动了手脚的一条", async () => {
-		serve({ phase: "error", reason: "untrusted", checkedAt: "2026-10-27T00:00:00.000Z" });
+		serve({ phase: "error", code: "untrusted", checkedAt: "2026-10-27T00:00:00.000Z" });
 		renderSection();
 
 		const alert = await screen.findByRole("alert");
@@ -110,7 +110,7 @@ describe("UpdateSection —— 报错的归因", () => {
 	it("连不上不是红字 —— 代理站抽风被渲染成安全警告,只会训练用户忽略红字", async () => {
 		serve({
 			phase: "error",
-			reason: "unreachable",
+			code: "unreachable",
 			helpUrl: "https://x/releases",
 			checkedAt: "2026-10-27T00:00:00.000Z",
 		});
@@ -121,7 +121,7 @@ describe("UpdateSection —— 报错的归因", () => {
 	});
 
 	it("清单读不出来时明说是我们的锅,别让用户去查自己的网络", async () => {
-		serve({ phase: "error", reason: "malformed", checkedAt: "2026-10-27T00:00:00.000Z" });
+		serve({ phase: "error", code: "malformed", checkedAt: "2026-10-27T00:00:00.000Z" });
 		renderSection();
 
 		expect(await screen.findByText(/我们发版时出的岔子/)).toBeTruthy();
@@ -130,7 +130,7 @@ describe("UpdateSection —— 报错的归因", () => {
 
 	it("校验和对不上时要说清『盘上没留东西』", async () => {
 		// 用户最怕的是「装了一半」。这句话省不得 —— 它决定他要不要去手动清理。
-		serve({ phase: "error", reason: "checksum-mismatch", checkedAt: "2026-10-27T00:00:00.000Z" });
+		serve({ phase: "error", code: "checksum_mismatch", checkedAt: "2026-10-27T00:00:00.000Z" });
 		renderSection();
 
 		expect(await screen.findByText(/盘上没留东西/)).toBeTruthy();
@@ -139,7 +139,7 @@ describe("UpdateSection —— 报错的归因", () => {
 	it("下不动时给得出一条自己去下载的路", async () => {
 		serve({
 			phase: "error",
-			reason: "download-failed",
+			code: "download_failed",
 			helpUrl: "https://github.com/o/r/releases/tag/v0.9.0",
 			checkedAt: "2026-10-27T00:00:00.000Z",
 		});

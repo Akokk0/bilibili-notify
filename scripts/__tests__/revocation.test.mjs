@@ -7,7 +7,7 @@ import { fetchPayloadDigest, planRevocation } from "../revocation.mjs";
  *
  * 它以前只有一段写在文档里的手抄步骤:去坏版本该被换成的那一版的 release 页上抄
  * sha256 和字节数,拼一条很长的命令。出事那天手抖抄错一位的下场是:签出来的清单
- * 指着一个校验和对不上的包,所有人的「更新」从此报 `checksum-mismatch` ——
+ * 指着一个校验和对不上的包,所有人的「更新」从此报 `checksum_mismatch` ——
  * 而那正是我们教用户「可能有人在中间改包」的那一档。所以这两件事必须是代码:
  * 规矩(谁能撤、刷哪条渠道)和取数(sha256/size 从真的那份包上算)。
  */

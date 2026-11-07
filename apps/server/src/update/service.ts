@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
 	MirrorProbeResult,
-	UpdateErrorReason,
+	UpdateFailureCode,
 	UpdateState,
 	UpdateStatusView,
 } from "@bilibili-notify/contract";
@@ -30,7 +30,7 @@ import { compareVersions, isDevBuild } from "./version-order.js";
  *
  * 这一层真正的职责是**把「升不上去」拆开归因**。连不上、我们自己签错了东西、有人在
  * 中间改包 —— 三件事的处置完全不同,混成一句「更新失败」的话,代理站抽风会被当成
- * 安全事件,而真篡改会被当成小毛病。所以下面每一条失败都带着自己的 `reason`,
+ * 安全事件,而真篡改会被当成小毛病。所以下面每一条失败都带着自己的 `code`,
  * 以及(拿得到的话)一个用户能自己动手的链接。
  *
  * **它不负责重启。** 应用新版本要停掉正在跑的这个进程,那是 index.ts 的事 ——
@@ -41,7 +41,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 /** 清单是一份几百字节的 JSON。给到 256KB 已经是天大的余量,再多就是对方在灌我们。 */
 const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024;
 
-export type { UpdateErrorReason, UpdateState };
+export type { UpdateFailureCode, UpdateState };
 
 /** `GET /api/system/update` 的响应形状,契约在 `@bilibili-notify/contract`。 */
 export type UpdateStatus = UpdateStatusView;
@@ -217,8 +217,8 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 		};
 	}
 
-	function fail(reason: UpdateErrorReason, helpUrl?: string): UpdateStatus {
-		state = { phase: "error", reason, helpUrl, checkedAt: new Date().toISOString() };
+	function recordFailure(code: UpdateFailureCode, helpUrl?: string): UpdateStatus {
+		state = { phase: "error", code, helpUrl, checkedAt: new Date().toISOString() };
 		return status();
 	}
 
@@ -254,8 +254,8 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 		}
 		// 清单在手,所以这里能精确指到**那一版**的发布页,比只给发布列表有用得多。
 		if (!fetched.ok) {
-			return fail(
-				fetched.code === "conflict" ? "checksum-mismatch" : "download-failed",
+			return recordFailure(
+				fetched.code === "conflict" ? "checksum_mismatch" : "download_failed",
 				manifest.releaseUrl,
 			);
 		}
@@ -267,8 +267,8 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 			versionsRoot,
 		});
 		if (!installed.ok) {
-			return fail(
-				installed.code === "conflict" ? "checksum-mismatch" : "install-failed",
+			return recordFailure(
+				installed.code === "conflict" ? "checksum_mismatch" : "install_failed",
 				manifest.releaseUrl,
 			);
 		}
@@ -311,7 +311,7 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 			notes: manifest.notes,
 		};
 		const job: Promise<UpdateStatus> = installFrom(manifest, mirrors)
-			.catch(() => fail("install-failed", manifest.releaseUrl))
+			.catch(() => recordFailure("install_failed", manifest.releaseUrl))
 			.finally(() => {
 				if (downloadJob === job) downloadJob = null;
 			});
@@ -410,7 +410,7 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 			// 清单都没拿到,给不出「那一版」的发布页,只能给发布列表 —— 但必须给得出:
 			// 「下不动就通知 + 给个链接」是设计里的兜底出口。
 			const kind = signedFailureKind(fetched);
-			return fail(kind === "stale" ? "stale-manifest" : kind, releasesPageUrl);
+			return recordFailure(kind === "stale" ? "stale_manifest" : kind, releasesPageUrl);
 		}
 
 		const manifest = fetched.manifest;
@@ -518,7 +518,7 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 			return queued(async () => {
 				while (downloadJob !== null) await downloadJob;
 				const target = rollbackTarget(readBootView({ versionsRoot, preinstalledVersion }));
-				if (target === null) return fail("nothing-to-roll-back");
+				if (target === null) return recordFailure("nothing_to_roll_back");
 				pinVersion({ versionsRoot, version: target });
 				state = { phase: "rolled-back", target };
 				return status();

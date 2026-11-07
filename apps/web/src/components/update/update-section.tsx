@@ -1,7 +1,7 @@
 import {
 	canApplyUpdate,
 	type UpdateApplyResponse,
-	type UpdateErrorReason,
+	type UpdateFailureCode,
 	type UpdateStatusView,
 } from "@bilibili-notify/contract";
 import type { UpdateSettings } from "@bilibili-notify/internal";
@@ -59,12 +59,12 @@ const CHANNEL_OPTIONS = [
 /**
  * 报错文案。措辞按归因分档,别混成一句「更新失败」。
  *
- * 写成 `Record<UpdateErrorReason, …>` 而不是带兜底的 switch:契约里加一档新归因时,
+ * 写成 `Record<UpdateFailureCode, …>` 而不是带兜底的 switch:契约里加一档新归因时,
  * 这里要么被编译器点名、要么就悄悄以「这次没成」发出去 —— 而后者正是这一节存在的
  * 理由的反面(同页的 `phaseLabel` 与加速站那张 `FAILURE_LABEL` 也都是这个写法)。
  */
-const ERROR_COPY: Record<UpdateErrorReason, string> = {
-	// 唯一该弹红字的一条(见下面的 DANGEROUS_REASON):分发链上可能真的有人动过手脚。
+const ERROR_COPY: Record<UpdateFailureCode, string> = {
+	// 唯一该弹红字的一条(见下面的 DANGEROUS_CODE):分发链上可能真的有人动过手脚。
 	get untrusted() {
 		return i18n.t("panelUi.components.update.update-section.3");
 	},
@@ -74,25 +74,25 @@ const ERROR_COPY: Record<UpdateErrorReason, string> = {
 	get unreachable() {
 		return i18n.t("panelUi.components.update.update-section.5");
 	},
-	get "stale-manifest"() {
+	get stale_manifest() {
 		return i18n.t("panelUi.components.update.update-section.6");
 	},
-	get "checksum-mismatch"() {
+	get checksum_mismatch() {
 		return i18n.t("panelUi.components.update.update-section.7");
 	},
-	get "download-failed"() {
+	get download_failed() {
 		return i18n.t("panelUi.components.update.update-section.8");
 	},
-	get "install-failed"() {
+	get install_failed() {
 		return i18n.t("panelUi.components.update.update-section.9");
 	},
-	get "nothing-to-roll-back"() {
+	get nothing_to_roll_back() {
 		return i18n.t("panelUi.components.update.update-section.10");
 	},
 };
 
 /** 唯一弹红字的一条。其余一律中性旁注 —— 把代理站抽风渲染成安全警告只会训练用户忽略它。 */
-const DANGEROUS_REASON: UpdateErrorReason = "untrusted";
+const DANGEROUS_CODE: UpdateFailureCode = "untrusted";
 
 export interface UpdateSectionProps {
 	/** 只给测试压短等待;正常挂载不传。 */
@@ -229,10 +229,10 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 						<HintNote tone="neutral">{tx("panelUi.components.update.update-section.20")}</HintNote>
 					) : null}
 
-					{state.phase !== "error" ? null : state.reason === DANGEROUS_REASON ? (
-						<ErrorNote>{ERROR_COPY[state.reason]}</ErrorNote>
+					{state.phase !== "error" ? null : state.code === DANGEROUS_CODE ? (
+						<ErrorNote>{ERROR_COPY[state.code]}</ErrorNote>
 					) : (
-						<HintNote tone="neutral">{ERROR_COPY[state.reason]}</HintNote>
+						<HintNote tone="neutral">{ERROR_COPY[state.code]}</HintNote>
 					)}
 
 					{canApply && !restarting ? (

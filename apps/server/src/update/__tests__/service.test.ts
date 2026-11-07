@@ -537,7 +537,7 @@ describe("createUpdateService —— 三种『升不上去』要分得清清楚�
 
 		const status = await service.check();
 
-		expect(status.state).toMatchObject({ phase: "error", reason: "unreachable" });
+		expect(status.state).toMatchObject({ phase: "error", code: "unreachable" });
 		// 清单都没拿到,所以给不出「那一版」的发布页,只能给发布列表 —— 但**必须
 		// 给得出**,「下不动就通知 + 给链接」是设计里的兜底出口。
 		expect(status.state).toMatchObject({ helpUrl: RELEASES_PAGE });
@@ -555,7 +555,7 @@ describe("createUpdateService —— 三种『升不上去』要分得清清楚�
 		});
 		const { service } = makeService({ trustedKeys: [ours.spkiBase64] });
 
-		expect((await service.check()).state).toMatchObject({ phase: "error", reason: "untrusted" });
+		expect((await service.check()).state).toMatchObject({ phase: "error", code: "untrusted" });
 	});
 
 	it("签名没问题但清单不成形 → malformed:是我们自己发错了,别说成被人改过", async () => {
@@ -563,10 +563,10 @@ describe("createUpdateService —— 三种『升不上去』要分得清清楚�
 		stubNetwork({ manifestBody: envelope(key.privateKey, { version: "0.9.0" }) });
 		const { service } = makeService({ trustedKeys: [key.spkiBase64] });
 
-		expect((await service.check()).state).toMatchObject({ phase: "error", reason: "malformed" });
+		expect((await service.check()).state).toMatchObject({ phase: "error", code: "malformed" });
 	});
 
-	it("清单对但包对不上校验和 → checksum-mismatch,而且盘上不留半个版本", async () => {
+	it("清单对但包对不上校验和 → checksum_mismatch,而且盘上不留半个版本", async () => {
 		const key = makeKey();
 		const zip = makePayloadZip("0.9.0");
 		// 清单按真包算 sha256,实际发下来的是另一坨字节 —— 代理站掉包就是这个形状。
@@ -580,12 +580,13 @@ describe("createUpdateService —— 三种『升不上去』要分得清清楚�
 		expect((await service.check()).state.phase).toBe("downloading");
 		const status = await settled(service);
 
-		expect(status.state).toMatchObject({ phase: "error", reason: "checksum-mismatch" });
+		expect(status.state).toMatchObject({ phase: "error", code: "checksum_mismatch" });
+		expect(status.state).not.toHaveProperty("reason");
 		// 只看目录:boot-state / manifest-freshness 这类记账文件不算「半个版本」。
 		expect(readdirSync(versionsRoot).filter((n) => !n.endsWith(".json"))).toEqual([]);
 	});
 
-	it("清单拿到了但包下不动 → download-failed,并给那一版的发布页", async () => {
+	it("清单拿到了但包下不动 → download_failed,并给那一版的发布页", async () => {
 		const key = makeKey();
 		const zip = makePayloadZip("0.9.0");
 		stubNetwork({
@@ -600,7 +601,7 @@ describe("createUpdateService —— 三种『升不上去』要分得清清楚�
 		// 这条比 unreachable 好:清单在手,能精确告诉用户去哪一版的发布页自己下。
 		expect(status.state).toMatchObject({
 			phase: "error",
-			reason: "download-failed",
+			code: "download_failed",
 			helpUrl: "https://github.com/o/r/releases/tag/v0.9.0",
 		});
 	});
@@ -651,8 +652,8 @@ describe("createUpdateService —— 加速前缀", () => {
 		expect(status.state).toMatchObject({ phase: "available", target: "0.9.0" });
 	});
 
-	it("加速站对包回 200 垃圾 → 直连兜底,不报成 checksum-mismatch", async () => {
-		// 同一件事发生在载荷上更糟:checksum-mismatch 在契约里写的是「包下下来了,但不是
+	it("加速站对包回 200 垃圾 → 直连兜底,不报成 checksum_mismatch", async () => {
+		// 同一件事发生在载荷上更糟:checksum_mismatch 在契约里写的是「包下下来了,但不是
 		// 清单说的那一坨字节」—— 正是要弹红字的安全事件。代理站抽风不配这个待遇。
 		const key = makeKey();
 		const zip = makePayloadZip("0.9.0");
@@ -753,7 +754,7 @@ describe("createUpdateService —— 回退", () => {
 		expect(service.getStatus().rollbackTarget).toBeNull();
 		expect((await service.rollback()).state).toMatchObject({
 			phase: "error",
-			reason: "nothing-to-roll-back",
+			code: "nothing_to_roll_back",
 		});
 	});
 
@@ -880,7 +881,7 @@ describe("createUpdateService —— 「下载」按钮到底下不下", () => {
 		expect((await service.check()).state).toMatchObject({ phase: "error" });
 		const downloaded = await service.download();
 
-		expect(downloaded.state).toMatchObject({ phase: "error", reason: "unreachable" });
+		expect(downloaded.state).toMatchObject({ phase: "error", code: "unreachable" });
 		expect(payloadFetches(fetchMock)).toBe(0);
 	});
 
@@ -956,7 +957,7 @@ describe("createUpdateService —— 清单新鲜度", () => {
 		expect(status.state).toMatchObject({ phase: "available", target: "0.9.2" });
 	});
 
-	it("回放一份签名有效的旧清单 → stale-manifest,不会把人推回已撤回的版本", async () => {
+	it("回放一份签名有效的旧清单 → stale_manifest,不会把人推回已撤回的版本", async () => {
 		// 不可信中间人拿不出未签名的代码,但**拿得出我们签过的旧清单**。没有新鲜度的话:
 		// 0.9.1 被判坏并撤回、0.9.2 是修复版,一个被接管的加速站一直回放 0.9.1 那份清单 →
 		// 客户端判 newer → 默认自动下载 → 装上一个厂商已经召回的构建,面板全程绿。
@@ -986,8 +987,8 @@ describe("createUpdateService —— 清单新鲜度", () => {
 		const nextBoot = makeService({ root: join(versionsRoot, ".."), trustedKeys: [key.spkiBase64] });
 		const afterRestart = await nextBoot.service.check();
 
-		expect(replayed.state).toMatchObject({ phase: "error", reason: "stale-manifest" });
-		expect(afterRestart.state).toMatchObject({ phase: "error", reason: "stale-manifest" });
+		expect(replayed.state).toMatchObject({ phase: "error", code: "stale_manifest" });
+		expect(afterRestart.state).toMatchObject({ phase: "error", code: "stale_manifest" });
 		expect(existsSync(join(versionsRoot, "0.9.1"))).toBe(false);
 	});
 });

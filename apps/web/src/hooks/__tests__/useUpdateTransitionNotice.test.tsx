@@ -36,7 +36,7 @@ const downloading = dto({
 const ready = dto({ phase: "ready", target: "0.9.0", releaseUrl: "https://x", notes: NOTES });
 const failed = dto({
 	phase: "error",
-	reason: "download-failed",
+	code: "download_failed",
 	helpUrl: "https://x",
 	checkedAt: "2026-10-27T00:00:00.000Z",
 });
