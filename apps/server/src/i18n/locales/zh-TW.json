@@ -174,7 +174,7 @@
 	"log.history.snapshotMismatch": "重推原件數量與歷史列不符，拒絕載入",
 	"log.history.snapshotImageFailed": "重推原件圖片讀取失敗，拒絕載入",
 	"log.history.repushAborted": "重推工作異常終止",
-	"log.history.repushSenderThrew": "重推傳送介面拋出例外，記錄為一次失敗",
+	"log.history.repushSenderThrew": "重推傳送介面拋出例外，傳送結果不明，本次重推停止",
 	"log.history.repushStopped": "本次重推未成功，停止處理後續訊息",
 	"log.problems.changedCallbackFailed": "問題變更回呼失敗",
 	"log.problems.listenerThrew": "問題變更訂閱方拋出例外，繼續通知其他訂閱方",
@@ -190,5 +190,6 @@
 	"log.problems.recoveryUnconfirmed": "恢復通知未確認送達",
 	"log.masterNotifier.pipelineError": "推播鏈路回報錯誤",
 	"log.masterNotifier.deliveryUnconfirmed": "鏈路錯誤私訊未確認送達",
-	"log.masterNotifier.senderThrew": "鏈路錯誤私訊傳送拋出例外，結果未確認"
+	"log.masterNotifier.senderThrew": "鏈路錯誤私訊傳送拋出例外，結果未確認",
+	"history.repushIndeterminate": "這行包含傳送結果不明的訊息，可能已經送達；為避免重複傳送，不能再次重推。"
 }

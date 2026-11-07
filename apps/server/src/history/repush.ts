@@ -56,6 +56,20 @@ export function unsentIndices(messages: readonly HistoryMessage[]): number[] {
 }
 
 /**
+ * 发送结果不明的消息可能已经送达（ADR-0026），整行重推和只补没到都必须拒绝。
+ * 与行状态一样只认各身份最后一次结果；不改写旧历史，也不把结果不明当成已送达。
+ * WS 投影和服务端闸共用，避免实时更新先给出可安全补发的提示。
+ */
+export function indeterminateRepushDenial(messages: readonly HistoryMessage[]): Failure | null {
+	for (const message of latestByIdentity(messages).values()) {
+		if (message.result?.ok === false && message.result.code === "indeterminate") {
+			return fail("conflict", serverText("history.repushIndeterminate"));
+		}
+	}
+	return null;
+}
+
+/**
  * 闸的入参。**这里没有的东西就是这个闸不判的东西** —— 全局静音、免扰时段、特性总开关
  * 一把钥匙都没给它(决策 11:这是主人此刻按下的显式动作,不是推送链路的自动任务),目标
  * 当下可不可达也没给(决策 12:那正是重推要解决的,交给发送层的退避重试)。
@@ -83,7 +97,7 @@ const noTarget = () => serverText("service.history.repush.text.2");
 /**
  * 能不能补。拒了回 `conflict`(有这一行,但现在补不了)和一句**给人看的**理由,`null` = 放行。
  *
- * 四档各有各的说法:一句含糊的「不能重推」会让主人对着黑盒猜,而这四件事的下一步
+ * 各档有各自的说法:一句含糊的「不能重推」会让主人对着黑盒猜,而这四件事的下一步
  * 完全不同(什么都不用做 / 去路由里加回来 / 去把目标启用 / 等一下)。
  */
 export function repushDenial(input: RepushGateOptions): Failure | null {
@@ -92,6 +106,8 @@ export function repushDenial(input: RepushGateOptions): Failure | null {
 	if (entry.status === "filtered") return fail("conflict", filtered());
 	// 无目标行连目标都没有,补不成(它的消息全都「没发」,所以要先于下一句判)。
 	if (entry.targetId === null) return fail("conflict", noTarget());
+	const uncertain = indeterminateRepushDenial(entry.messages);
+	if (uncertain) return uncertain;
 	// 决策 6:行里还有没送到的或被挡下的消息才有得补。
 	if (unsentIndices(entry.messages).length === 0) {
 		return fail("conflict", serverText("service.history.repush.text.3"));

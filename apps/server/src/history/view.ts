@@ -1,7 +1,7 @@
 import type { HistoryEntryView, HistoryRepushView } from "@bilibili-notify/contract";
 import type { HistoryEntry, HistoryMessageResult } from "@bilibili-notify/internal";
 import { fail, ok } from "@bilibili-notify/internal";
-import { originalCount, unsentIndices } from "./repush.js";
+import { indeterminateRepushDenial, originalCount, unsentIndices } from "./repush.js";
 
 /**
  * HistoryEntry → wire view。REST 列表与 WS 两个事件共用这一处投影 —— 面板上的行、
@@ -51,7 +51,7 @@ export function toHistoryView(
  * 被挡下的消息(`unsentIndices`,与补发闸、原件去留同一个函数)。没有就不带这一格,面板据此不画按钮。
  *
  * 不查盘、不看配置:原件还在不在、路由里还有没有这个目标、目标停没停用、是不是正在补,这里一概
- * 不知道,所以给的一律是「能补」。刚落的行(WS)这总是对的;列表路由对每一行另问 `canRepush`。
+ * 不知道。行内结果不明时明确禁用；其余给「能补」，列表路由再问 `canRepush`。
  */
 function repushOffer(entry: HistoryEntry): HistoryRepushView | undefined {
 	// 被过滤的行只留痕:那条消息没有结果、也没被挡,按「还差哪几条」数它是「没发」,可它压根不是
@@ -59,6 +59,8 @@ function repushOffer(entry: HistoryEntry): HistoryRepushView | undefined {
 	if (entry.status === "filtered") return undefined;
 	// 无目标行的消息全都没发,可它没有目标可补。
 	if (entry.targetId === null) return undefined;
+	const uncertain = indeterminateRepushDenial(entry.messages);
+	if (uncertain) return { can: false, code: uncertain.code, message: uncertain.message };
 	const missing = unsentIndices(entry.messages).length;
 	if (missing === 0) return undefined;
 	return { can: true, total: originalCount(entry.messages), missing };

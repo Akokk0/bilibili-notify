@@ -1357,7 +1357,7 @@
 	"log.history.snapshotMismatch": "重推原件数量与历史行不符，拒绝加载",
 	"log.history.snapshotImageFailed": "重推原件图片读取失败，拒绝加载",
 	"log.history.repushAborted": "重推任务异常终止",
-	"log.history.repushSenderThrew": "重推发送口抛错，记录为一次失败",
+	"log.history.repushSenderThrew": "重推发送口抛错，发送结果不明，本次重推停止",
 	"log.history.repushStopped": "本次重推未成功，停止处理后续消息",
 	"log.problems.changedCallbackFailed": "问题变更回调失败",
 	"log.problems.listenerThrew": "问题变更订阅方抛错，继续通知其他订阅方",
@@ -1373,5 +1373,6 @@
 	"log.problems.recoveryUnconfirmed": "恢复通知未确认送达",
 	"log.masterNotifier.pipelineError": "推送链路报告错误",
 	"log.masterNotifier.deliveryUnconfirmed": "链路错误私聊未确认送达",
-	"log.masterNotifier.senderThrew": "链路错误私聊发送抛错，结果未确认"
+	"log.masterNotifier.senderThrew": "链路错误私聊发送抛错，结果未确认",
+	"history.repushIndeterminate": "这行包含发送结果不明的消息，可能已经送达；为避免重复发送，不能再次重推。"
 }

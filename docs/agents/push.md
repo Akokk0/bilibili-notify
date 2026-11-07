@@ -107,6 +107,8 @@
 
 **人工重推**（ADR-0017，`history/repush-runner.ts`）从历史行再发一次：发送口固定注入 `PushRouter.sendToTarget(…, { routing })` —— 所以静音 / 免扰 / 总开关三道（在它上游的 `PushRouter.push` 里）天然不参与，退避重试与重试前复检 routing 照有；订阅按上面那条规矩找回，结果追加进原来那一行。能补的是「有目标、且行里还有没送到的或被挡下的消息」的行（`history/repush.ts` 的 `unsentIndices`，看消息不看 `status`；补发闸、列表与 WS 投影给不给 `repush`、补完删不删原件三处同一个判据）；被挡下的消息算「没送到的」，补发不带 @全体（被挡时没记它）。无目标行与被过滤的行不能补，拒绝的话各说各的。
 
+发送抛错按`indeterminate`记录（ADR-0026），原错误仍进统一脱敏日志；关停期间也要等结果不明写回历史。任一消息最后一次结果不明时，该行两种重推模式均由`indeterminateRepushDenial`拒绝，REST回409/conflict，列表与WS投影禁用并说明可能已送达；不伪装成已送达、不删除原件。旧记录只写着`unavailable`时不按原话猜改。其他确定失败、静音/免扰补发与正常关停规则保持。
+
 **保留分两层**（ADR-0022 决策 9，`history/retention.ts`）：文字不设上限，日文件一份都不删；图与重推原件按保留天数清。清到哪一天记成一条水位线 `history/retention.json` 的 `clearedThrough`（UTC 日、含当天，只往前走），清扫每 6 小时加开机一次，只处理水位线之后、到期日及以前的那几天：删那几天的重推原件目录，再把水位线推过去，紧接着跑一轮图库清扫。**清扫本身不碰图**：图在图库 `images/`，历史行的配图（`payload.image`）与头像快照（`avatarSnapshot`）、重推原件里的图各是图库的一家引用方（`listHistoryImageRefs` 只读水位线之后的日文件，本体行与补丁行都数，读不动就抛；`listRepushImageRefs` 读盘上每份原件），水位线一推过去，那几天的行就不再留住它们的图，由图库按引用收走。`deleteRange`、重推原件的 `drop` 同样只删行与 JSON，不删图。列表接口给水位线及以前的行带上 `isPastRetention`，面板在原来画图的位置写「图已清理」（消息的 `kind` 是 `image`、或带着 `image` 格；迁移时过期的老行图格已拿掉，所以要靠 `kind`），这些行的头像快照面板也不用；这些行的原件也没了，重推按钮照旧因为「原件不在」而灰掉。唯一还会删文字的是 devtools 清截流记录用的 `deleteRange`。从 0.x 迁上来时，迁移在「推送历史」那一步里先跑一次同样的清扫（`migration/history.ts` 的 `sweepMigratedHistory`，水位线随新代一起就位），再迁日文件与原件：`history/img/` 不整目录搬，保留期内的行与原件引用着的逐张复制进图库（`migration/history-images.ts`），过了保留期的行只拿掉图格、不读图文件，孤儿不搬。保留天数是 `history.retentionDays`，只许 90 / 60 / 30 / 15 / 7 / 3 / 1 七档。
 
 同 `pushId` 的后续消息（@全体 / 图集 / 词云 / 总结）追加到同一行。六态（`computeStatus(targetId, messages, filteredBy?)`，消息的纯函数外加行上的 `filteredBy`，按每条消息的最后一次尝试算）：

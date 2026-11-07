@@ -174,7 +174,7 @@
 	"log.history.snapshotMismatch": "Repush snapshot count differs from history; refusing to load it",
 	"log.history.snapshotImageFailed": "Repush snapshot image could not be read; refusing to load it",
 	"log.history.repushAborted": "Repush task aborted with an error",
-	"log.history.repushSenderThrew": "Repush sender threw; recording a failed attempt",
+	"log.history.repushSenderThrew": "Repush sender threw; delivery is indeterminate and this repush task will stop",
 	"log.history.repushStopped": "Repush attempt was unsuccessful; stopping subsequent messages",
 	"log.problems.changedCallbackFailed": "Problem change callback failed",
 	"log.problems.listenerThrew": "Problem change listener threw; continuing with other listeners",
@@ -190,5 +190,6 @@
 	"log.problems.recoveryUnconfirmed": "Recovery notification delivery was not confirmed",
 	"log.masterNotifier.pipelineError": "Push pipeline reported an error",
 	"log.masterNotifier.deliveryUnconfirmed": "Pipeline error notification delivery was not confirmed",
-	"log.masterNotifier.senderThrew": "Pipeline error notification threw; delivery was not confirmed"
+	"log.masterNotifier.senderThrew": "Pipeline error notification threw; delivery was not confirmed",
+	"history.repushIndeterminate": "This row contains a message with an indeterminate delivery result that may already have arrived. Repushing is blocked to avoid duplicates."
 }

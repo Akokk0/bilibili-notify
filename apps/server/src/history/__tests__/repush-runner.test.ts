@@ -255,9 +255,9 @@ describe("结果写回历史", () => {
 		expect(sent.map((s) => s.text)).toEqual(["词云"]);
 	});
 
-	// 发送口不许抛;真抛了算 bug(ADR-0026 决策 1):按一次失败记进行里(`unavailable` + 原话),并留 error 日志,
+	// 发送口不许抛;真抛了算 bug(ADR-0026 决策 1):按结果不明记进行里(`indeterminate` + 原话),并留 error 日志,
 	// 这一趟到此为止 —— 不能静默停住、行上什么都不留。
-	it("发送口抛错 → 记成一次失败(行里留原话)+ error 日志,后面那条不再发", async () => {
+	it("发送口抛错 → 记录结果不明与原错误，后面那条不再发", async () => {
 		const entry = await seedPartial();
 		const error = new Error("sender exploded", { cause: new Error("network") });
 		throwOn = (n) => (n === 1 ? error : undefined);
@@ -268,13 +268,16 @@ describe("结果写回历史", () => {
 		expect(row.messages).toHaveLength(4);
 		expect(row.messages[3]).toMatchObject({
 			repushOf: 1,
-			result: { ok: false, code: "unavailable", message: "sender exploded" },
+			result: { ok: false, code: "indeterminate", message: "sender exploded" },
 		});
-		expect(log.error).toHaveBeenCalledWith("Repush sender threw; recording a failed attempt", {
-			rowId: entry.id,
-			messageIndex: 1,
-			error,
-		});
+		expect(log.error).toHaveBeenCalledWith(
+			"Repush sender threw; delivery is indeterminate and this repush task will stop",
+			{
+				rowId: entry.id,
+				messageIndex: 1,
+				error,
+			},
+		);
 		expect(log.error.mock.calls[0]?.[1]?.error).toBe(error);
 		expect(JSON.stringify(log.error.mock.calls)).not.toContain("词云");
 	});
@@ -287,6 +290,82 @@ describe("结果写回历史", () => {
  * 「原件已经不在的行,按钮灰掉**并说明原因**」,不是把按钮藏掉:藏掉的话主人要么以为
  * 这行没失败过,要么以为功能坏了。
  */
+describe("结果不明时拒绝再次重推", () => {
+	it.each(["throw", "result"] as const)(
+		"发送口以 %s 报告结果不明，重启后列表和两种补发入口均拒绝，不再发送",
+		async (kind) => {
+			const entry = await seedPartial();
+			const active = createRepushRunner({
+				history,
+				repush,
+				serviceCtx: ctx,
+				logger: log,
+				routedTargets: () => routed,
+				currentSubscriptionOf: (row) => row.subscriptionId,
+				targetEnabled: () => enabled,
+				send: async (...args) => {
+					await recordingSend(...args);
+					if (kind === "throw") throw new Error("delivery receipt lost");
+					return fail("indeterminate", "delivery receipt lost");
+				},
+			});
+			expect(started(await active.start(entry.id, entry.createdAt, "missing"))).toBe(2);
+			await ctx.settled();
+			expect(sent.map((s) => s.text)).toEqual(["词云"]);
+
+			// 不靠原 runner 的内存判断：重新读取落盘的原行和补丁。
+			const images = makeHistoryImages(dataDir);
+			const reopened = createHistoryStore({
+				dataRoot: dataDir,
+				bus: createNodeMessageBus(),
+				logger: log,
+				images: images.historyImages,
+				repush,
+			});
+			const row = await reopened.findRow(entry.id, entry.createdAt);
+			if (!row) throw new Error("row gone");
+			const restartedCtx = makeTrackingContext();
+			const restarted = createRepushRunner({
+				history: reopened,
+				repush,
+				serviceCtx: restartedCtx,
+				logger: log,
+				send: recordingSend,
+				routedTargets: () => routed,
+				currentSubscriptionOf: (current) => current.subscriptionId,
+				targetEnabled: () => enabled,
+			});
+			const denial = {
+				ok: false,
+				code: "conflict",
+				message: "这行包含发送结果不明的消息，可能已经送达；为避免重复发送，不能再次重推。",
+			};
+			expect(await restarted.canRepush(row)).toEqual(denial);
+			expect(await listedRepush(restarted, entry)).toEqual({
+				can: false,
+				code: denial.code,
+				message: denial.message,
+			});
+			const app = createHistoryRoute({
+				runtime: { dataRoot: dataDir, historyStore: reopened, repushRunner: restarted },
+			} as unknown as RouteDeps);
+			for (const mode of ["missing", "all"]) {
+				const response = await app.request(`/${entry.id}/repush`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ createdAt: entry.createdAt, mode }),
+				});
+				expect(response.status).toBe(409);
+				expect(await response.json()).toEqual({ code: denial.code, message: denial.message });
+			}
+			await restartedCtx.settled();
+			expect(sent.map((s) => s.text)).toEqual(["词云"]);
+			expect((await reopened.findRow(entry.id, entry.createdAt))?.messages).toHaveLength(4);
+			expect(await repush.has(entry.id, entry.createdAt)).toBe(true);
+		},
+	);
+});
+
 describe("canRepush — 给面板的预判", () => {
 	it("能补 → null", async () => {
 		const entry = await seedPartial();
@@ -606,6 +685,32 @@ describe("关停", () => {
 		expect(appendSpy).toHaveBeenCalledTimes(1); // 落定之后没有再写
 		const row = await history.findRow(entry.id, entry.createdAt);
 		expect(row?.messages).toHaveLength(4);
+	});
+
+	it("关停期间发送抛错也必须写回结果不明，后续预检拒绝", async () => {
+		const entry = await seedPartial();
+		const parked = () => {};
+		gate = parked;
+		throwOn = () => new Error("receipt lost during shutdown");
+		await runner.start(entry.id, entry.createdAt, "missing");
+		await vi.waitFor(() => expect(gate).not.toBe(parked));
+		ctx.abort();
+		(gate as () => void)();
+		await ctx.settled();
+		const row = await history.findRow(entry.id, entry.createdAt);
+		if (!row) throw new Error("row gone");
+		expect(row.messages).toHaveLength(4);
+		expect(row.messages[3]?.result).toMatchObject({
+			ok: false,
+			code: "indeterminate",
+			message: "receipt lost during shutdown",
+		});
+		expect(await runner.canRepush(row)).toMatchObject({
+			ok: false,
+			code: "conflict",
+			message: expect.stringContaining("结果不明"),
+		});
+		expect(sent.map((s) => s.text)).toEqual(["词云"]);
 	});
 
 	it("关停把发送层叫醒回来的失败不写进行里(那不是这个目标真的不通)", async () => {

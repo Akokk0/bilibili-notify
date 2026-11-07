@@ -189,18 +189,18 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 			} catch (err) {
 				// 发送层自己不抛,但注入进来的东西不是我们能打包票的。吞掉会让这一趟
 				// 静默停住、行上什么都不留,主人只看得见「点了没反应」。抛错算 bug(ADR-0026 决策 1):
-				// 按「暂时不可用」记进行里,并留一条 error 日志。
+				// 抛错前可能已经发出:按「结果不明」记进行里,并留一条 error 日志。
 				const message = err instanceof Error ? err.message : String(err);
 				opts.logger.error(logText("log.history.repushSenderThrew"), {
 					rowId: entry.id,
 					messageIndex: i,
 					error: err,
 				});
-				result = fail("unavailable", message);
+				result = fail("indeterminate", message);
 			}
-			// 关停把发送层叫醒回来的失败是生命周期的产物(消息从没出过网),不是这个目标真的不通 ——
-			// 记进行里等于凭空添一条假失败。成功的照记:那条已经发出去了。
-			if (!result.ok && opts.serviceCtx.signal.aborted) break;
+			// 关停唤醒的确定失败不伪记为目标故障；成功与结果不明必须写回，
+			// 后者可能已经发出，漏记会让重启后的人工补发再次发送它。
+			if (!result.ok && result.code !== "indeterminate" && opts.serviceCtx.signal.aborted) break;
 			latest = await opts.history.appendToRow(entry.id, createdAt, [
 				{ payload: m.payload, role: m.role, result, repushOf: i },
 			]);

@@ -227,3 +227,44 @@ describe("toHistoryView — 能不能补(不查盘的那一半)", () => {
 		expect(toHistoryView({ ...ROW, status: "failed" })).not.toHaveProperty("repush");
 	});
 });
+
+describe("toHistoryView — 结果不明的实时行", () => {
+	it("初次推送和补发结果不明都给禁用原因，不能先显示可补发", () => {
+		const failed = {
+			payload: { kind: "text" as const, text: "message" },
+			role: "main" as const,
+			result: {
+				ok: false as const,
+				code: "indeterminate" as const,
+				message: "raw uncertain result",
+			},
+		};
+		for (const messages of [
+			[failed],
+			[
+				{
+					...failed,
+					result: { ok: false as const, code: "unavailable" as const, message: "offline" },
+				},
+				{ ...failed, repushOf: 0 },
+			],
+		]) {
+			const view = toHistoryView({
+				...ROW,
+				targetId: "44444444-4444-4444-8444-444444444444",
+				status: "failed",
+				messages,
+			});
+			expect(view.repush).toEqual({
+				can: false,
+				code: "conflict",
+				message: "这行包含发送结果不明的消息，可能已经送达；为避免重复发送，不能再次重推。",
+			});
+			expect(view.messages.at(-1)).toMatchObject({
+				ok: false,
+				code: "indeterminate",
+				message: "raw uncertain result",
+			});
+		}
+	});
+});
