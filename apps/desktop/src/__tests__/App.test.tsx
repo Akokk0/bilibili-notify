@@ -24,7 +24,7 @@ function state(over: Partial<LauncherState> = {}): LauncherState {
 		statusLabel: "正在启动后端服务",
 		message: "正在启动本机后端。服务就绪后会自动打开 Dashboard。",
 		detail: "",
-		panelUrl: null,
+		dashboardUrl: null,
 		dockToggleAvailable: true,
 		dockHidden: false,
 		...over,
@@ -60,10 +60,14 @@ describe("App — 启动中", () => {
 		).toBe(true);
 	});
 
-	it("非 starting 且有 panelUrl 时按钮解禁", async () => {
+	it("非 starting 且有 dashboardUrl 时按钮解禁", async () => {
 		const invoke = vi.fn(async (cmd: string) =>
 			cmd === "get_launcher_state"
-				? state({ status: "failed", statusLabel: "启动失败", panelUrl: "http://127.0.0.1:8787" })
+				? state({
+						status: "failed",
+						statusLabel: "启动失败",
+						dashboardUrl: "http://127.0.0.1:8787",
+					})
 				: undefined,
 		);
 		render(<App invoke={invoke} navigate={vi.fn()} />);
@@ -112,11 +116,11 @@ describe("App — 状态点对 Rust 真实状态串的映射", () => {
 });
 
 describe("App — ready 自动跳转", () => {
-	it("ready 且有 panelUrl → navigate(panelUrl)", async () => {
+	it("ready 且有 dashboardUrl → navigate(dashboardUrl)", async () => {
 		const navigate = vi.fn();
 		const invoke = vi.fn(async (cmd: string) =>
 			cmd === "get_launcher_state"
-				? state({ status: "ready", statusLabel: "已就绪", panelUrl: "http://127.0.0.1:8787" })
+				? state({ status: "ready", statusLabel: "已就绪", dashboardUrl: "http://127.0.0.1:8787" })
 				: undefined,
 		);
 		render(<App invoke={invoke} navigate={navigate} />);
@@ -126,11 +130,11 @@ describe("App — ready 自动跳转", () => {
 		});
 	});
 
-	it("ready 但没有 panelUrl → 不跳", async () => {
+	it("ready 但没有 dashboardUrl → 不跳", async () => {
 		const navigate = vi.fn();
 		const invoke = vi.fn(async (cmd: string) =>
 			cmd === "get_launcher_state"
-				? state({ status: "ready", statusLabel: "已就绪", panelUrl: null })
+				? state({ status: "ready", statusLabel: "已就绪", dashboardUrl: null })
 				: undefined,
 		);
 		render(<App invoke={invoke} navigate={navigate} />);
@@ -161,7 +165,11 @@ describe("App — 按钮 invoke 语义", () => {
 	it("打开 Dashboard / 日志 / 数据目录 / 退出各自击发对应命令", async () => {
 		const invoke = vi.fn(async (cmd: string) =>
 			cmd === "get_launcher_state"
-				? state({ status: "failed", statusLabel: "启动失败", panelUrl: "http://127.0.0.1:8787" })
+				? state({
+						status: "failed",
+						statusLabel: "启动失败",
+						dashboardUrl: "http://127.0.0.1:8787",
+					})
 				: undefined,
 		);
 		render(<App invoke={invoke} navigate={vi.fn()} />);
@@ -177,7 +185,7 @@ describe("App — 按钮 invoke 语义", () => {
 
 		const cmds = invoke.mock.calls.map(([c]) => c);
 		for (const cmd of [
-			"open_panel_in_browser",
+			"open_dashboard_in_browser",
 			"open_server_log_dir",
 			"open_launcher_log_dir",
 			"open_data_dir",
@@ -211,7 +219,7 @@ describe("App — 按钮 invoke 语义", () => {
 	it("命令失败时错误信息落进 detail 区", async () => {
 		const invoke = vi.fn(async (cmd: string) => {
 			if (cmd === "get_launcher_state")
-				return state({ status: "failed", statusLabel: "启动失败", panelUrl: "http://x" });
+				return state({ status: "failed", statusLabel: "启动失败", dashboardUrl: "http://x" });
 			if (cmd === "open_data_dir") throw new Error("没权限打开目录");
 			return undefined;
 		});

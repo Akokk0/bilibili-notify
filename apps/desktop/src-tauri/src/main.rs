@@ -40,7 +40,7 @@ struct LauncherInner {
     status: LauncherStatus,
     message: String,
     detail: Option<String>,
-    panel_url: Option<String>,
+    dashboard_url: Option<String>,
     paths: Option<LauncherPaths>,
     service: Option<ServiceProcess>,
     quitting: bool,
@@ -54,7 +54,7 @@ impl Default for LauncherInner {
             status: LauncherStatus::Stopped,
             message: "正在初始化桌面壳。".to_string(),
             detail: None,
-            panel_url: None,
+            dashboard_url: None,
             paths: None,
             service: None,
             quitting: false,
@@ -117,7 +117,7 @@ struct LauncherStateView {
     status_label: String,
     message: String,
     detail: Option<String>,
-    panel_url: Option<String>,
+    dashboard_url: Option<String>,
     data_dir: Option<String>,
     server_log_dir: Option<String>,
     launcher_log_dir: Option<String>,
@@ -145,7 +145,7 @@ fn main() {
             open_launcher_log_dir,
             open_data_dir,
             open_server_log_dir,
-            open_panel_in_browser,
+            open_dashboard_in_browser,
             toggle_dock_icon,
             quit_app
         ])
@@ -332,7 +332,7 @@ fn build_action_menu_items(app: &App, zh: bool) -> tauri::Result<Vec<MenuItem<ta
         )?,
         MenuItem::with_id(
             app,
-            "open_panel",
+            "open_dashboard",
             t(zh, "用浏览器打开面板", "Open Panel in Browser"),
             true,
             None::<&str>,
@@ -517,7 +517,7 @@ fn handle_launcher_menu_event(app: &AppHandle, id: &str) {
     match id {
         "show_about" => open_about_page(app),
         "show_window" => toggle_main_window(app),
-        "open_panel" => open_panel(app),
+        "open_dashboard" => open_dashboard(app),
         "restart_service" => start_service_async(app.clone()),
         "open_data_dir" => open_known_path(app, KnownPath::Data),
         "open_server_log_dir" => open_known_path(app, KnownPath::ServerLogs),
@@ -529,16 +529,16 @@ fn handle_launcher_menu_event(app: &AppHandle, id: &str) {
 }
 
 /// 菜单栏「About」→ 跳应用内「关于」页(dashboard `/about`),而非系统 About 面板。
-/// 在已就绪的 panel_url 上把路径换成 `/about`、保留 `#desktopToken` 片段(鉴权照常),
+/// 在已就绪的 dashboard_url 上把路径换成 `/about`、保留 `#desktopToken` 片段(鉴权照常),
 /// 导航主窗口过去。dashboard 尚未就绪时静默 no-op(此时点 About 罕见)。
 fn open_about_page(app: &AppHandle) {
-    let panel = {
+    let dashboard = {
         let state = app.state::<LauncherState>();
         let inner = state.inner.lock().expect("launcher state poisoned");
-        inner.panel_url.clone()
+        inner.dashboard_url.clone()
     };
-    let Some(panel) = panel else { return };
-    if let Ok(mut url) = Url::parse(&panel) {
+    let Some(dashboard) = dashboard else { return };
+    if let Ok(mut url) = Url::parse(&dashboard) {
         url.set_path("/about");
         navigate_main_window(app, url.as_str());
     }
@@ -552,7 +552,7 @@ fn get_launcher_state(state: State<'_, LauncherState>) -> LauncherStateView {
         status_label: inner.status.label().to_string(),
         message: inner.message.clone(),
         detail: inner.detail.clone(),
-        panel_url: inner.panel_url.clone(),
+        dashboard_url: inner.dashboard_url.clone(),
         data_dir: inner
             .paths
             .as_ref()
@@ -592,8 +592,8 @@ fn open_server_log_dir(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn open_panel_in_browser(app: AppHandle) -> Result<(), String> {
-    open_panel_result(&app)
+fn open_dashboard_in_browser(app: AppHandle) -> Result<(), String> {
+    open_dashboard_result(&app)
 }
 
 #[tauri::command]
@@ -617,7 +617,7 @@ fn start_service_async(app: AppHandle) {
         inner.status = LauncherStatus::Starting;
         inner.message = "正在启动本机后端。服务就绪后会自动打开 Dashboard。".to_string();
         inner.detail = None;
-        inner.panel_url = None;
+        inner.dashboard_url = None;
     }
     thread::spawn(move || {
         if let Err(err) = restart_service_blocking(&app) {
@@ -634,7 +634,7 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     let port = allocate_port()?;
     let url = format!("http://{HOST}:{port}");
     let desktop_token = generate_desktop_token()?;
-    let panel_url = panel_url_with_token(&url, &desktop_token);
+    let dashboard_url = dashboard_url_with_token(&url, &desktop_token);
     let browser = detect_browser_path();
 
     append_launcher_log(
@@ -705,7 +705,7 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
             sidecar_data_dir.display(),
             paths.launcher_log_dir.display()
         ));
-        inner.panel_url = Some(panel_url.clone());
+        inner.dashboard_url = Some(dashboard_url.clone());
         pid
     };
     spawn_child_monitor(app.clone(), pid);
@@ -727,10 +727,10 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         inner.status = LauncherStatus::Ready;
         inner.message = format!("Dashboard 已就绪：{url}");
         inner.detail = None;
-        inner.panel_url = Some(panel_url.clone());
+        inner.dashboard_url = Some(dashboard_url.clone());
     }
     append_launcher_log(&paths.launcher_log_dir, &format!("sidecar ready url={url}"));
-    navigate_main_window(app, &panel_url);
+    navigate_main_window(app, &dashboard_url);
     Ok(())
 }
 
@@ -917,7 +917,7 @@ fn mark_service_failed(app: &AppHandle, err: String) {
         inner.status = LauncherStatus::Failed;
         inner.message = "后端服务启动失败，请重试或查看日志。".to_string();
         inner.detail = Some(err.clone());
-        inner.panel_url = None;
+        inner.dashboard_url = None;
     }
     if let Ok(paths) = current_paths(app) {
         append_launcher_log(
@@ -980,7 +980,7 @@ fn hex_encode(bytes: &[u8]) -> String {
     out
 }
 
-fn panel_url_with_token(base_url: &str, token: &str) -> String {
+fn dashboard_url_with_token(base_url: &str, token: &str) -> String {
     format!("{base_url}/#{DESKTOP_TOKEN_QUERY}={token}")
 }
 
@@ -1243,15 +1243,15 @@ fn app_status_url(app: &AppHandle) -> Url {
     Url::parse("tauri://localhost/index.html").expect("valid app status url")
 }
 
-fn open_panel(app: &AppHandle) {
-    let _ = open_panel_result(app);
+fn open_dashboard(app: &AppHandle) {
+    let _ = open_dashboard_result(app);
 }
 
-fn open_panel_result(app: &AppHandle) -> Result<(), String> {
+fn open_dashboard_result(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<LauncherState>();
     let inner = state.inner.lock().expect("launcher state poisoned");
     let url = inner
-        .panel_url
+        .dashboard_url
         .clone()
         .ok_or_else(|| "Dashboard 尚未就绪。".to_string())?;
     open_url_with_system(&url)

@@ -18,7 +18,7 @@ export interface LauncherState {
 	statusLabel: string;
 	message: string;
 	detail?: string | null;
-	panelUrl?: string | null;
+	dashboardUrl?: string | null;
 	dockToggleAvailable: boolean;
 	dockHidden: boolean;
 }
@@ -72,9 +72,9 @@ export function App({
 			const state = (await invoke("get_launcher_state")) as LauncherState;
 			setSt(state);
 			setDetail(state.detail ?? "");
-			if (state.status === "ready" && state.panelUrl) {
+			if (state.status === "ready" && state.dashboardUrl) {
 				const nav = navigateRef.current ?? ((url: string) => window.location.replace(url));
-				nav(state.panelUrl);
+				nav(state.dashboardUrl);
 			}
 		} catch (err) {
 			setDetail(errText(err));
@@ -146,8 +146,8 @@ export function App({
 					</Btn>
 					<Btn
 						variant="outline"
-						disabled={busy || !st?.panelUrl}
-						onClick={() => void fire("open_panel_in_browser")}
+						disabled={busy || !st?.dashboardUrl}
+						onClick={() => void fire("open_dashboard_in_browser")}
 					>
 						打开 Dashboard
 					</Btn>
