@@ -1215,7 +1215,7 @@ export const qqOfficialSettingsSegment: IntegrationSettingsSegment = {
 const isMine = (c: Connection): c is QQOfficialConnection => c.adapterKey === ADAPTER_KEY;
 
 /** 网关长连要用的那几个上下文口:入站交宿主,「连不上」报问题。 */
-type GatewayCtx = Pick<
+type GatewayContext = Pick<
 	PlatformAdapterContext,
 	"http" | "inbound" | "reportProblem" | "resolveProblem"
 >;
@@ -1277,7 +1277,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		});
 	}
 
-	function makeLive(connection: QQOfficialConnection, ctx: GatewayCtx): QQLive {
+	function makeLive(connection: QQOfficialConnection, ctx: GatewayContext): QQLive {
 		const { inbound, http: client } = ctx;
 		const cfg = connection.settings;
 		const tm = makeTokenManager(cfg, client);
@@ -1397,7 +1397,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		);
 	}
 
-	function reconcile(connections: readonly Connection[], ctx: GatewayCtx): void {
+	function reconcile(connections: readonly Connection[], ctx: GatewayContext): void {
 		if (disposed) return;
 		const desired = new Map<string, QQOfficialConnection>();
 		for (const a of connections) {

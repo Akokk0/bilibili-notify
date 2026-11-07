@@ -18,7 +18,7 @@ import {
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { t as serverText } from "../i18n/index.js";
-import type { RoastRunOutcome } from "../runtime/roast-scheduler.js";
+import type { RoastRunResult } from "../runtime/roast-scheduler.js";
 import {
 	countPosts,
 	dailyActivityCounts,
@@ -348,7 +348,7 @@ export interface StatsRouteOptions {
 	 * 端点回 503 而不是假装成功。**它调的就是 cron 到点调的那个函数** —— 另写一条
 	 * 「测试专用」的路径,测出来的就不是真到点时会发生的事。
 	 */
-	runRoastNow?: (subscriptionId?: string) => Promise<RoastRunOutcome>;
+	runRoastNow?: (subscriptionId?: string) => Promise<RoastRunResult>;
 }
 
 export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {}): Hono {

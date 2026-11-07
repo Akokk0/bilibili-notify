@@ -76,13 +76,13 @@ function useApplyActive() {
 	};
 }
 
-export interface RunInput {
+export interface RunScenarioOptions {
 	id: string;
 	side: "server" | "web";
 	params: DevParamValues;
 }
 
-export interface RunOutcome {
+export interface RunScenarioResult {
 	summary?: string;
 }
 
@@ -101,7 +101,7 @@ export function useRunScenario(webScenarios: readonly WebDevScenario[]) {
 	const qc = useQueryClient();
 	const applyActive = useApplyActive();
 	return useMutation({
-		mutationFn: async ({ id, side, params }: RunInput): Promise<RunOutcome> => {
+		mutationFn: async ({ id, side, params }: RunScenarioOptions): Promise<RunScenarioResult> => {
 			if (side === "web") {
 				const scenario = findWebScenario(id, webScenarios);
 				if (!scenario) throw new Error(`没有这个前端场景:${id}`);

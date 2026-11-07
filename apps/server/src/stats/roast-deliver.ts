@@ -43,7 +43,7 @@ export interface SoloLike {
 	highlights: Array<{ label: string; comment: string }>;
 }
 
-export interface DeliverOutcome {
+export interface RoastDeliveryResult {
 	/** 实际发出去的形态。渲染不可用或失败时降级成 text。 */
 	mode: "image" | "text";
 	/** 成功送达的 targetId。 */
@@ -247,7 +247,7 @@ export async function deliverRoast(
 		days: number;
 		targetIds: readonly string[];
 	},
-): Promise<DeliverOutcome> {
+): Promise<RoastDeliveryResult> {
 	const pipeline = deps.runtime.pipeline;
 	const { mode, payload, text } = await buildRoastPayload(deps, opts);
 
@@ -255,7 +255,7 @@ export async function deliverRoast(
 	const connections = deps.store.getConnections();
 	const sent: string[] = [];
 	const skipped: string[] = [];
-	const failed: DeliverOutcome["failed"] = [];
+	const failed: RoastDeliveryResult["failed"] = [];
 	for (const targetId of opts.targetIds) {
 		const target = targetsById.get(targetId);
 		if (target && isTargetPaused(target, connections)) {

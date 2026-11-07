@@ -18,7 +18,7 @@ import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import { CARD_SKINS_DIR, CardSkinStore } from "./card-skins/store.js";
 import type { ChromeSource } from "./config/persist.js";
-import type { ActionOutcome } from "./extensions/context.js";
+import type { ActionResult } from "./extensions/context.js";
 import type { ExtensionEntry } from "./extensions/loader.js";
 import type { Marketplace } from "./extensions/marketplace.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
@@ -64,7 +64,7 @@ import type { RouteDeps } from "./routes/types.js";
 import { createWsRoute } from "./routes/ws.js";
 import type { AppRuntime } from "./runtime/bootstrap.js";
 import type { PuppeteerAdapter } from "./runtime/puppeteer.js";
-import type { RoastRunOutcome } from "./runtime/roast-scheduler.js";
+import type { RoastRunResult } from "./runtime/roast-scheduler.js";
 import { dataPath } from "./runtime/roots.js";
 import { DASHBOARD_SKINS_DIR, SkinStore } from "./skins/store.js";
 import { createMembershipTierReader } from "./subscriptions/membership-tiers.js";
@@ -110,7 +110,7 @@ export interface CreateAppOptions {
 		 */
 		status: (id: string) => unknown;
 		/** 跑某个拓展的一个动作。拓展没在跑就是 undefined。没接 → 那一口永远 404。 */
-		runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
+		runAction?: (id: string, name: string) => Promise<ActionResult | undefined>;
 		/**
 		 * 某个拓展经 `ctx.settings(schema)` 交过的 zod(装载器的 `settingsSchemas()`)—— 写它的设置时
 		 * 再过一道(ADR-0019 决策 35)。没在跑是 undefined。没接 → 只有清单那一道。
@@ -160,7 +160,7 @@ export interface CreateAppOptions {
 	 * 立刻跑一轮 —— 面板上的「试一次」。带订阅 id 跑那条订阅的单人锐评(两支都行),不带跑榜单。
 	 * 由 `index.ts` 交给调度器;不传就是「还没就绪」,端点回 503。
 	 */
-	runRoastNow?: (subscriptionId?: string) => Promise<RoastRunOutcome>;
+	runRoastNow?: (subscriptionId?: string) => Promise<RoastRunResult>;
 	/**
 	 * Session codec used to sign/verify the `bn_session` cookie. Must be
 	 * provided exactly when `basicAuthCredentials` is — `index.ts` builds it

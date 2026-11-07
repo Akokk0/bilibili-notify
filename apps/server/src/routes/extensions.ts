@@ -18,7 +18,7 @@ import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import type { ConfigStore } from "../config/store.js";
 import { ExtensionConflictError } from "../extensions/conflict-error.js";
-import type { ActionOutcome } from "../extensions/context.js";
+import type { ActionResult } from "../extensions/context.js";
 import { readExtensionDocs } from "../extensions/docs.js";
 import { extensionIdSchema } from "../extensions/identity.js";
 import {
@@ -58,7 +58,7 @@ export interface ExtensionsRouteOptions {
 	 * 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`(→ `not_found`)。没接这
 	 * 一格的话那一口永远 `not_found`。
 	 */
-	runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
+	runAction?: (id: string, name: string) => Promise<ActionResult | undefined>;
 	/**
 	 * **只重载这个拓展**(装载器的 `swap()`,ADR-0012 决策 47):它没标着「新版等着换上」时
 	 * 抛 {@link ExtensionConflictError},那句话原样交给面板(→ `conflict`)。别的抛错是 bug,交给全局
@@ -439,7 +439,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		if (!id.success || !name.success) {
 			return respondFailure(c, fail("invalid", t("extensions.route.badActionRef")));
 		}
-		const outcome: ActionOutcome | undefined = await opts.runAction?.(id.data, name.data);
+		const outcome: ActionResult | undefined = await opts.runAction?.(id.data, name.data);
 		if (!outcome)
 			return respondFailure(
 				c,

@@ -12,13 +12,13 @@ export { KeyManager } from "./key-manager";
 export {
 	createKeyProvider,
 	FileKeyProvider,
-	type KeyMaterialRead,
+	type KeyMaterialState,
 	type KeyProvider,
 	PassphraseKeyProvider,
 	readKeyMaterial,
 } from "./key-provider";
 export {
-	type JsonFileRead,
+	type JsonFileState,
 	quarantineFile,
 	quarantineFileSync,
 	readJsonFile,

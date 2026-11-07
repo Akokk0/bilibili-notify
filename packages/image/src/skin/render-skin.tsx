@@ -242,7 +242,7 @@ function frameVariables(props: unknown): string {
  * (数据换成内层那条动态)。这条递归以前走的是模板那条一维竖栈,而且因为全仓已经没人往
  * props 里传 `layout`,实际是钉死在出厂默认版式上:换皮肤不跟,迁移过自己版式的也拿不回来。
  */
-function blockPropsOf(ctx: AssembleCtx, props: unknown): unknown {
+function blockPropsOf(ctx: SkinAssemblyState, props: unknown): unknown {
 	if (ctx.kind !== "post") return props;
 	const p = props as PostCardView;
 	return {
@@ -404,7 +404,7 @@ function wrapCell(id: string, style: string, inner: VNode): VNode {
  * 同一批 class,所以同一段 CSS 只写一次,而内层独有的块(外层被 `showIf` 筛掉的那些)
  * 也得记上 —— 漏了它的规则就只有内层没样式。
  */
-interface AssembleCtx {
+interface SkinAssemblyState {
 	kind: CardKind;
 	/** 这张卡的版式。**只有这一份** —— 出图端没有形态,每一层拿的都是它。 */
 	card: CardSkinCard;
@@ -423,7 +423,7 @@ interface AssembleCtx {
  * 按 `renderBlocks` 那三条规矩收分割线,最后才压行号 —— 反过来的话,被收起的块会在网格
  * 里留一行空白,而 `gap` 会把那行空白撑成看得见的缝。
  */
-function placeBlocks(ctx: AssembleCtx, props: unknown): VNode[] {
+function placeBlocks(ctx: SkinAssemblyState, props: unknown): VNode[] {
 	const { kind, card } = ctx;
 	// 契约数据每层各算一份:`showIf` 与这一层所有自定义块的占位符共用它。(重载签名按 kind
 	// 分支,这里 kind 是运行时值,按同一份实现的宽签名调。)
@@ -520,7 +520,7 @@ function rankOf(kind: CardKind, props: unknown): number | undefined {
 export function renderSkinnedCard<K extends CardKind>(o: SkinRenderOptions<K>): SkinRenderResult {
 	const { kind, card } = o;
 	const { props } = o;
-	const ctx: AssembleCtx = {
+	const ctx: SkinAssemblyState = {
 		kind,
 		card,
 		resolveAsset: o.resolveAsset,

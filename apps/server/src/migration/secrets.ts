@@ -9,7 +9,7 @@
  */
 
 import type { Logger } from "@bilibili-notify/internal";
-import type { KeyMaterialRead } from "@bilibili-notify/storage";
+import type { KeyMaterialState } from "@bilibili-notify/storage";
 import { createSecretStore } from "../config/secret-store.js";
 
 /** 0.x 的袋子:比现在多一格单把的 `aiApiKey`。 */
@@ -25,7 +25,7 @@ const QUIET: Logger = { debug() {}, info() {}, warn() {}, error() {} };
  * 新代里的加密袋迁成最新的形状,回改写过的文件(绝对路径)。单把那格并进 `custom` 时,分桶里已有的 `custom`
  * 优先。
  */
-export async function migrateSecretBag(path: string, key: KeyMaterialRead): Promise<string[]> {
+export async function migrateSecretBag(path: string, key: KeyMaterialState): Promise<string[]> {
 	if (key.kind !== "ok") return [];
 	const store = createSecretStore({
 		filePath: path,

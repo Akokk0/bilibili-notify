@@ -13,7 +13,7 @@
 
 import { describe, expect, it, vi } from "vite-plus/test";
 import { recordingCtx } from "../../__tests__/support/command-ctx.js";
-import { createReportCommand, type ReportOutcome } from "../report-command.js";
+import { createReportCommand, type ReportResult } from "../report-command.js";
 
 /** 手动控制的一轮运行:`finish` 之前一直挂着。 */
 function deferred<T>() {
@@ -26,9 +26,9 @@ function deferred<T>() {
 	return { promise, resolve, reject };
 }
 
-const SENT: ReportOutcome = { kind: "sent", mode: "image", sent: 2, failed: [] };
+const SENT: ReportResult = { kind: "sent", mode: "image", sent: 2, failed: [] };
 
-function setup(outcome: ReportOutcome = SENT) {
+function setup(outcome: ReportResult = SENT) {
 	const replies: string[] = [];
 	const run = vi.fn(async () => outcome);
 	const spec = createReportCommand({
@@ -58,7 +58,7 @@ describe("report 指令", () => {
 
 	// 几十秒的活儿不吭声,主人只会以为没收到,然后再敲一次 —— 而每一次都是真金白银。
 	it("先 ack,不等跑完", async () => {
-		const gate = deferred<ReportOutcome>();
+		const gate = deferred<ReportResult>();
 		const replies: string[] = [];
 		const ctx = recordingCtx(replies);
 		const spec = createReportCommand({
@@ -77,7 +77,7 @@ describe("report 指令", () => {
 
 	// 真正挡住重复 AI 调用的是这道闸,ack 只是止住手。
 	it("跑着的时候再敲 → 不跑第二次", async () => {
-		const gate = deferred<ReportOutcome>();
+		const gate = deferred<ReportResult>();
 		const run = vi.fn(() => gate.promise);
 		const replies: string[] = [];
 		const ctx = recordingCtx(replies);

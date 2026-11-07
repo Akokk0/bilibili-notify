@@ -283,7 +283,7 @@ export type ExtensionReportFailure = Failure & {
 	issues: ExtensionReportFailureIssue[];
 };
 
-export type ExtensionReportCheck<K extends ExtensionReportKind> =
+export type ExtensionReportResult<K extends ExtensionReportKind> =
 	| {
 			ok: true;
 			value: ExtensionReportValue<K>;
@@ -301,7 +301,7 @@ function reportIssue(
 	return issue;
 }
 
-type CellOutcome =
+type CellResult =
 	| { accepted: true; value: unknown }
 	| { accepted: false; fatal: boolean; issue: ExtensionReportIssue };
 
@@ -357,7 +357,7 @@ function walkObject(
 	raw: Record<string, unknown>,
 	path: (string | number)[],
 	state: WalkState,
-): CellOutcome {
+): CellResult {
 	const unknown = Object.keys(raw).filter((key) => !Object.hasOwn(shape, key));
 	if (unknown.length > 0) {
 		return {
@@ -424,7 +424,7 @@ function walkCell(
 	value: unknown,
 	path: (string | number)[],
 	state: WalkState,
-): CellOutcome {
+): CellResult {
 	if (schema instanceof z.ZodObject) {
 		if (!isRecord(value)) {
 			return { accepted: false, fatal: false, issue: reportIssue(path, "type") };
@@ -556,7 +556,7 @@ function checkObject(
 export function checkExtensionReport<K extends ExtensionReportKind>(
 	kind: K,
 	raw: unknown,
-): ExtensionReportCheck<K> {
+): ExtensionReportResult<K> {
 	try {
 		if (!isRecord(raw)) {
 			return rejected([reportIssue([], "type")]);

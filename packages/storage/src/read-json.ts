@@ -8,12 +8,12 @@ import { readFile, rename } from "node:fs/promises";
  *
  * 同步版(`…Sync`)三种结果与隔离方式都和异步版一致 —— 给开机早期的同步小状态用。
  */
-export type JsonFileRead =
+export type JsonFileState =
 	| { kind: "ok"; value: unknown }
 	| { kind: "missing" }
 	| { kind: "corrupt"; quarantinedPath: string; message: string };
 
-export async function readJsonFile(path: string): Promise<JsonFileRead> {
+export async function readJsonFile(path: string): Promise<JsonFileState> {
 	let text: string;
 	try {
 		text = await readFile(path, "utf8");
@@ -40,7 +40,7 @@ export async function quarantineFile(path: string): Promise<string> {
 }
 
 /** {@link readJsonFile} 的同步版。 */
-export function readJsonFileSync(path: string): JsonFileRead {
+export function readJsonFileSync(path: string): JsonFileState {
 	let text: string;
 	try {
 		text = readFileSync(path, "utf8");

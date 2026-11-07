@@ -25,7 +25,7 @@ import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { ExtensionConflictError } from "./conflict-error.js";
 import {
-	type ActionOutcome,
+	type ActionResult,
 	type CreateExtensionContextOptions,
 	createExtensionContext,
 	type ExtensionRuntime,
@@ -35,7 +35,7 @@ import {
 	apiVersionMismatch,
 	discoverExtensions,
 	EXTENSION_ENTRY_FILE,
-	type ExtensionDirRead,
+	type ExtensionDirState,
 	readExtensionDir,
 } from "./discover.js";
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
@@ -112,7 +112,7 @@ export interface LoadedExtensions {
 	 */
 	status(id: string): unknown;
 	/** 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`。 */
-	runAction(id: string, name: string): Promise<ActionOutcome | undefined>;
+	runAction(id: string, name: string): Promise<ActionResult | undefined>;
 	/**
 	 * 某个拓展经 `ctx.settings(schema)` 交过的 zod —— 写它的设置时再过一道(ADR-0019 决策 35)。
 	 * 没在跑就是 `undefined`;跑着但没交过是空表。**现取**:跑着的认跑着的那一份,换过代码的交的是
@@ -325,9 +325,9 @@ async function within<T>(work: Promise<T>, ms: number): Promise<T> {
 }
 
 /** 读得懂、版本合的那一份目录。 */
-type ReadyDir = Extract<ExtensionDirRead, { state: "ready" }>;
+type ReadyDir = Extract<ExtensionDirState, { state: "ready" }>;
 /** 扫出来的一条(没有清单的子目录不进表,见 `discoverExtensions`)。 */
-type DiskRead = Exclude<ExtensionDirRead, { state: "absent" }>;
+type DiskState = Exclude<ExtensionDirState, { state: "absent" }>;
 
 /**
  * 一条记录的样子(入口指纹 + 清单 + 译文)—— 「这是哪一份」就认这三样。译文算进来:盘上只换了
@@ -353,7 +353,7 @@ interface Slot {
 	 * 盘上那份,最近一次读到的样子(开机 / 重扫 / 换代码时现读)。**下一次起它用的就是这份** ——
 	 * 跑着的那份另记在 `running` 里,盘上换了不碰它。
 	 */
-	disk: DiskRead;
+	disk: DiskState;
 	/** `disk` 读得懂时,它入口文件的指纹。 */
 	print?: string;
 	/** 上一次落实过的开关。热装卸只认**变化**,见 `sync()` 的注释。 */
@@ -567,7 +567,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 * 读目录读出译文问题时记一条 warn(一次,不是每次 `list()`):重扫每次都会把盘上那份读一遍,
 	 * 同样的问题只在头一回与变了的时候说。
 	 */
-	function noteLocaleIssues(dir: DiskRead): void {
+	function noteLocaleIssues(dir: DiskState): void {
 		const issues = dir.state === "ready" ? dir.locales.issues : [];
 		if (issues.length === 0) {
 			loggedLocaleIssues.delete(dir.id);
@@ -918,7 +918,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 * 顺序是刻意的:**先判断,再决定要不要 import**。清单存在的理由就在这儿 —— 没启用的、
 	 * 版本不合的、已经被记账停用的,都不该有一行代码跑起来(ADR-0012 决策 8)。
 	 */
-	async function admit(dir: DiskRead): Promise<void> {
+	async function admit(dir: DiskState): Promise<void> {
 		const slot: Slot = { disk: dir, applied: false };
 		slots.set(dir.id, slot);
 		// 盘上换了一版 / 新装:上一格留下的「设置读不了」随旧格作废(没人起它就不该留着)。
@@ -937,7 +937,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 * 「等着换上」由 `stagedOf` 推出来。没跑的:没换过不碰 —— 加载失败的那个也不借重扫重试
 	 * (开关不动就不重试,见 `sync()`);换过了就换成新记录再收一遍,换不换得上由 `start()` 判。
 	 */
-	async function revisit(slot: Slot, dir: DiskRead): Promise<void> {
+	async function revisit(slot: Slot, dir: DiskState): Promise<void> {
 		const print = dir.state === "ready" ? await fingerprintOf(dir.entry) : undefined;
 		noteLocaleIssues(dir);
 		if (slot.running) {

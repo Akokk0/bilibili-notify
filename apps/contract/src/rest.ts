@@ -979,13 +979,13 @@ export type StatsRoastPushResponse = Result<{
 }>;
 
 /**
- * 一轮定时周报跑完的结局。与服务端 `RoastRunOutcome` 同构 —— 那边是权威定义,
+ * 一轮定时周报跑完的结局。与服务端 `RoastRunResult` 同构 —— 那边是权威定义,
  * 这里是过 wire 的那份契约。
  *
  * **业务性失败不是 HTTP 失败**:生成不出来、没配目标都是 200 + 这里的 kind。
  * 用 4xx 表达的话,前端 error 分支只拿得到一句 HTTP 错误,原因就丢了。
  */
-export type StatsRoastRunOutcome =
+export type StatsRoastRunResult =
 	/** 一个推送目标都没配,连模型都没调。 */
 	| { kind: "no-targets" }
 	/** 生成这一步就没过去(AI 没开、数据不够、模型报错…)。 */
@@ -1008,7 +1008,7 @@ export type StatsRoastRunOutcome =
  */
 export interface StatsRoastRunNowResponse {
 	ok: true;
-	outcome: StatsRoastRunOutcome;
+	outcome: StatsRoastRunResult;
 }
 
 export interface StatsOverviewResponse {

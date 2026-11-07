@@ -39,7 +39,7 @@ import {
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import { type ConfigStore, createConfigStore, extensionSettingsFile } from "../../config/store.js";
-import type { ActionOutcome } from "../../extensions/context.js";
+import type { ActionResult } from "../../extensions/context.js";
 import { createExtensionContext } from "../../extensions/context.js";
 import {
 	type ExtensionEntry,
@@ -87,7 +87,7 @@ function boot(
 		canRestart?: boolean;
 		marketplace?: { list: ReturnType<typeof vi.fn>; install: ReturnType<typeof vi.fn> };
 		/** `<id>/<动作名>` → 那一次跑的结果;没有的就当拓展没在跑。 */
-		actions?: Record<string, ActionOutcome>;
+		actions?: Record<string, ActionResult>;
 		/**
 		 * 接一个**真的**装载器(装载根就是 `installRoot`):名单、装完重扫、只重载都走它 ——
 		 * 「盖掉之后换不换得上」是装载器按指纹判的,拿假名单钉等于替它把答案写好了。
@@ -1748,7 +1748,7 @@ describe("POST /api/ext/:id/actions/:name", () => {
 	});
 
 	// 话在 `runAction` 里造(那儿才知道动作名与实际等了多久),路由原样交出去、状态码从码推。
-	it.each<[string, ActionOutcome | undefined, number, string, string]>([
+	it.each<[string, ActionResult | undefined, number, string, string]>([
 		["拓展没在跑", undefined, 404, "not_found", "没在跑"],
 		[
 			"清单里没这个动作",

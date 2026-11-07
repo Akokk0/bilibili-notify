@@ -22,7 +22,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
 	copyFileAtomic,
-	type KeyMaterialRead,
+	type KeyMaterialState,
 	readKeyMaterial,
 	syncDirectory,
 } from "@bilibili-notify/storage";
@@ -357,7 +357,7 @@ export interface MigrateZeroGenerationOptions {
 export function readZeroGenerationKey(
 	zeroRoot: string,
 	passphrase: string | undefined,
-): Promise<KeyMaterialRead> {
+): Promise<KeyMaterialState> {
 	return readKeyMaterial({
 		passphrase,
 		keyPath: zeroPath(zeroRoot, "secrets", "master.key"),

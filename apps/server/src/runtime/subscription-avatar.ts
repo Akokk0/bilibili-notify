@@ -21,14 +21,14 @@ import { t as serverText } from "../i18n/index.js";
  */
 
 /** 过关回头像的字节,不过回点名原因的 `invalid`(路由原样交给面板)。 */
-export type AvatarCheck = Result<{ bytes: Buffer }>;
+export type AvatarResult = Result<{ bytes: Buffer }>;
 
 /**
  * 把一张头像 data URL 解成字节,并核对魔数。不合规矩的回一句点名的原因(路由原样交给面板)。
  *
  * 新建订阅那条路在落盘**之前**先拿它核一遍 —— 不能等订阅建好了才发现头像不收。
  */
-export function decodeSubscriptionAvatar(dataUrl: string): AvatarCheck {
+export function decodeSubscriptionAvatar(dataUrl: string): AvatarResult {
 	const parsed = SubscriptionAvatarSchema.safeParse(dataUrl);
 	if (!parsed.success) {
 		return fail("invalid", parsed.error.issues.map((i) => i.message).join(";"));

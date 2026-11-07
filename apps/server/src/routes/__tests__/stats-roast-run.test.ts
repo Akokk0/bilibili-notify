@@ -11,7 +11,7 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { RoastRunOutcome } from "../../runtime/roast-scheduler.js";
+import type { RoastRunResult } from "../../runtime/roast-scheduler.js";
 import { requestErrorHandler, unhandledErrorMessage } from "../respond-failure.js";
 import { createStatsRoute } from "../stats.js";
 import type { RouteDeps } from "../types.js";
@@ -22,8 +22,8 @@ const deps = {
 	runtime: { serviceCtx: { logger } },
 } as unknown as RouteDeps;
 
-function appWith(outcome: RoastRunOutcome | null) {
-	const runRoastNow = vi.fn(async (_subscriptionId?: string) => outcome as RoastRunOutcome);
+function appWith(outcome: RoastRunResult | null) {
+	const runRoastNow = vi.fn(async (_subscriptionId?: string) => outcome as RoastRunResult);
 	// null = 调度器还没建好(启动早期 / 引擎没起来)。
 	const app = createStatsRoute(deps, outcome === null ? {} : { runRoastNow });
 	return { app, runBoardNow: runRoastNow, runRoastNow };

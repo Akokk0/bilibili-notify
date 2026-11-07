@@ -23,20 +23,20 @@ type ConnectionRow = Pick<Connection, "enabled" | "probeState">;
 type TargetRow = Pick<PushTarget, "enabled" | "reachability">;
 
 /** 最近一次不通:原因,与它发生的时刻(连接取 lastCheckedAt、目标取 changedAt)。 */
-interface Outcome {
+interface ReachabilityView {
 	status: string;
 	message?: string | undefined;
 	at: string;
 }
 
-const connectionOutcome = (a: ConnectionRow): Outcome | undefined =>
+const connectionReachability = (a: ConnectionRow): ReachabilityView | undefined =>
 	a.probeState && {
 		status: a.probeState.status,
 		message: a.probeState.message,
 		at: a.probeState.lastCheckedAt,
 	};
 
-const targetOutcome = (t: TargetRow): Outcome | undefined =>
+const targetReachability = (t: TargetRow): ReachabilityView | undefined =>
 	t.reachability && {
 		status: t.reachability.status,
 		message: t.reachability.message,
@@ -81,7 +81,9 @@ export interface OnboardingView {
 	failNote: { text: string; at: string } | null;
 }
 
-function failNoteFrom(outcomes: readonly (Outcome | undefined)[]): OnboardingView["failNote"] {
+function failNoteFrom(
+	outcomes: readonly (ReachabilityView | undefined)[],
+): OnboardingView["failNote"] {
 	const st = outcomes.find((o) => o?.status === "unreachable");
 	return st
 		? {
@@ -123,9 +125,9 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 		// 拿它当当前失败讲纯属误导(2026-08-31 审查)。
 		failNote:
 			activeKey === "connection"
-				? failNoteFrom(inputs.connections.filter((a) => a.enabled).map(connectionOutcome))
+				? failNoteFrom(inputs.connections.filter((a) => a.enabled).map(connectionReachability))
 				: activeKey === "test"
-					? failNoteFrom(inputs.targets.filter((t) => t.enabled).map(targetOutcome))
+					? failNoteFrom(inputs.targets.filter((t) => t.enabled).map(targetReachability))
 					: null,
 		tails: [
 			{ key: "image", done: inputs.modules?.image === true },

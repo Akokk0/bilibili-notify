@@ -22,7 +22,7 @@ import type { NoticeView } from "../../store/notifications";
 /** 等重启时从 `/api/health` 读的两格:`startedAt` 换了才算换了进程,`version` 说换到了哪版。 */
 export type RestartProbe = Pick<HealthResponse, "version" | "startedAt">;
 
-export type RestartOutcome =
+export type RestartResult =
 	| { kind: "switched"; version: string }
 	| { kind: "fell-back"; version: string }
 	| { kind: "timed-out" };
@@ -42,7 +42,7 @@ export interface AwaitRestartInput {
 
 const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-export async function awaitRestartedServer(input: AwaitRestartInput): Promise<RestartOutcome> {
+export async function awaitRestartedServer(input: AwaitRestartInput): Promise<RestartResult> {
 	const sleep = input.sleep ?? realSleep;
 	const now = input.now ?? Date.now;
 	const deadline = now() + input.timeoutMs;

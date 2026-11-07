@@ -58,7 +58,7 @@ export interface ViewCheckInput {
 	maxBytes?: number;
 }
 
-export interface ViewCheck {
+export interface ViewCheckResult {
 	/** 交给面板的那一份。 */
 	view: ExtensionPanelView;
 	/** 这一次不合规矩的每一处,一句一条 —— ctx 拿去记日志(同一句只记一次)。 */
@@ -128,7 +128,7 @@ function itemIdsOf(settings: unknown, list: string): string[] {
  * 整份都用不了(不是一个对象、交回的是 Promise、回调抛了……)—— 页上一条提示,**每一条现存的项
  * 也各一条**:那张卡写「状态未知」加同一句话,主人在「配置」页签上也看得见为什么。
  */
-export function faultedExtensionView(reason: string, input: ViewCheckInput): ViewCheck {
+export function faultedExtensionView(reason: string, input: ViewCheckInput): ViewCheckResult {
 	const fault: ExtensionViewFault = { where: wholeWhere(), reason };
 	const items: Record<string, Record<string, ExtensionPanelItem>> = {};
 	for (const list of listsOf(input.fields).keys()) {
@@ -147,7 +147,7 @@ export function faultedExtensionView(reason: string, input: ViewCheckInput): Vie
 }
 
 /** 核一份视图,见文件头。`raw` 是拓展回调交回的东西,原样。 */
-export function checkExtensionView(raw: unknown, input: ViewCheckInput): ViewCheck {
+export function checkExtensionView(raw: unknown, input: ViewCheckInput): ViewCheckResult {
 	if (!isPlainObject(raw)) {
 		return faultedExtensionView(
 			serverText("service.extensions.view-check.text.11", {

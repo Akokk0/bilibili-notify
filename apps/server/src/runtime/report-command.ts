@@ -30,8 +30,8 @@ import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
 
-/** 与 `RoastRunOutcome` 同形。这里重述一遍是为了不把指令层绑死在调度器的类型上。 */
-export type ReportOutcome =
+/** 与 `RoastRunResult` 同形。这里重述一遍是为了不把指令层绑死在调度器的类型上。 */
+export type ReportResult =
 	| { kind: "no-targets" }
 	| { kind: "gen-failed"; code: FailureCode; message: string }
 	| { kind: "pending-approval"; draftId: string }
@@ -44,7 +44,7 @@ export type ReportOutcome =
 
 export interface ReportCommandOptions {
 	/** 跑一轮榜单周报。`days` 不传 = 用配置里的天数。 */
-	run: (days?: number) => Promise<ReportOutcome>;
+	run: (days?: number) => Promise<ReportResult>;
 	logger: Logger;
 }
 
@@ -55,7 +55,7 @@ export interface ReportCommandOptions {
  * `pending-approval` 返回 null 是刻意的:调度器已经把草稿连同「回复 y <id>」私聊过去
  * 了,这里再补一句就是同一件事说两遍,而两份措辞迟早跑偏。
  */
-function describeSent(outcome: Extract<ReportOutcome, { kind: "pending-approval" | "sent" }>) {
+function describeSent(outcome: Extract<ReportResult, { kind: "pending-approval" | "sent" }>) {
 	switch (outcome.kind) {
 		case "pending-approval":
 			return null;

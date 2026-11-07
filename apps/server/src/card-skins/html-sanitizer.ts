@@ -422,7 +422,12 @@ const ANY_PLACEHOLDER_RE = /\{[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+\}/;
  * 顺带治一个更常咬人的毛病:写进属性的占位符**拼错字段名是完全静默的** —— 同一个不存在
  * 的字段写在文本里整包拒收(`checkPlaceholders`),写在 `style` 里连一条警告都没有。
  */
-function rejectsPlaceholder(tag: string, name: string, value: string, ctx: Ctx): boolean {
+function rejectsPlaceholder(
+	tag: string,
+	name: string,
+	value: string,
+	ctx: HtmlSanitizerState,
+): boolean {
 	if (!ANY_PLACEHOLDER_RE.test(value)) return false;
 	ctx.warnings.push(
 		serverText("service.card-skins.html-sanitizer.text.1", { value0: tag, value1: name }),
@@ -463,7 +468,7 @@ type Element = DefaultTreeAdapterTypes.Element;
 type ParentNode = DefaultTreeAdapterTypes.ParentNode;
 type ChildNode = DefaultTreeAdapterTypes.ChildNode;
 
-interface Ctx {
+interface HtmlSanitizerState {
 	kind: CardKind;
 	assets: ReadonlySet<string>;
 	fields: Map<string, CardSkinFieldType>;
@@ -481,7 +486,7 @@ interface Ctx {
  * 会带着一个空洞被推到群里;原样留 `{xxx}` 更糟,推出去的是一行大括号(ADR-0014 决策 12)。
  * `{` 后面不是路径形状的(`{ margin }`、`{1}`)照字面保留 —— 那是作者真想写的花括号。
  */
-function checkPlaceholders(text: string, ctx: Ctx): void {
+function checkPlaceholders(text: string, ctx: HtmlSanitizerState): void {
 	for (const m of text.matchAll(PLACEHOLDER_RE)) {
 		const path = m[1] as string;
 		if (!ctx.fields.has(path)) ctx.unknownPaths.add(path);
@@ -499,7 +504,7 @@ function checkPlaceholders(text: string, ctx: Ctx): void {
  *
  * 返回 null = 放行(值已归一化),字符串 = 丢弃原因。
  */
-function checkSrc(raw: string, ctx: Ctx): { value: string } | { reason: string } {
+function checkSrc(raw: string, ctx: HtmlSanitizerState): { value: string } | { reason: string } {
 	const value = raw.trim();
 	if (value.startsWith(ASSET_PREFIX)) {
 		const name = value.slice(ASSET_PREFIX.length);
@@ -537,7 +542,7 @@ function checkSrc(raw: string, ctx: Ctx): { value: string } | { reason: string }
 }
 
 /** `class`:HTML 与 svg 同一条规矩。返回 null = 丢掉这个属性(warning 已记)。 */
-function cleanClass(tag: string, value: string, ctx: Ctx): Token.Attribute | null {
+function cleanClass(tag: string, value: string, ctx: HtmlSanitizerState): Token.Attribute | null {
 	const tokens = value.split(/\s+/).filter((t) => t !== "");
 	if (tokens.length === 0 || !tokens.every((t) => CLASS_TOKEN_RE.test(t))) {
 		ctx.warnings.push(
@@ -553,7 +558,7 @@ function cleanClass(tag: string, value: string, ctx: Ctx): Token.Attribute | nul
  * static / relative / absolute(内联样式没有伪元素,「装饰」那一档整个不适用)。
  * svg 元素同一条:`style="fill:url(#g)"` 会被拒,要用属性写 `fill="url(#g)"`。
  */
-function cleanStyle(tag: string, value: string, ctx: Ctx): Token.Attribute | null {
+function cleanStyle(tag: string, value: string, ctx: HtmlSanitizerState): Token.Attribute | null {
 	const cleaned = sanitizeDeclarationList(value, CARD_DECL_OPTIONS);
 	if (!cleaned) {
 		ctx.warnings.push(serverText("service.card-skins.html-sanitizer.text.7", { value0: tag }));
@@ -573,7 +578,7 @@ function cleanStyle(tag: string, value: string, ctx: Ctx): Token.Attribute | nul
  * - 表现属性里出现 `url(` 时整个值必须恰好是 `url(#id)`;
  * - 带命名空间前缀的其它属性(`xml:space` / `xmlns:xlink`)与不在 {@link SVG_ATTRS} 的一律丢。
  */
-function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
+function filterSvgAttrs(el: Element, ctx: HtmlSanitizerState): Token.Attribute[] {
 	const tag = el.tagName;
 	const out: Token.Attribute[] = [];
 	let hasHref = false;
@@ -663,7 +668,7 @@ function filterSvgAttrs(el: Element, ctx: Ctx): Token.Attribute[] {
 }
 
 /** 过滤一个 HTML 元素的属性;返回 null = 这个元素整个丢掉。 */
-function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
+function filterAttrs(el: Element, ctx: HtmlSanitizerState): Token.Attribute[] | null {
 	const tag = el.tagName;
 	const allowed = EXTRA_ATTRS.get(tag) ?? null;
 	/** `src` 先判:它不合格时整个 `<img>` 就没了,后面的属性连看都不用看。 */
@@ -732,7 +737,7 @@ function filterAttrs(el: Element, ctx: Ctx): Token.Attribute[] | null {
 }
 
 /** 往新树里逐个搬认识的节点;不认识的标签**连子树一起**留在原地不搬。 */
-function rebuild(nodes: readonly ChildNode[], parent: ParentNode, ctx: Ctx): void {
+function rebuild(nodes: readonly ChildNode[], parent: ParentNode, ctx: HtmlSanitizerState): void {
 	for (const node of nodes) {
 		if (defaultTreeAdapter.isTextNode(node)) {
 			checkPlaceholders(node.value, ctx);
@@ -781,7 +786,7 @@ export function sanitizeCardBlockHtml(
 		]);
 	}
 
-	const ctx: Ctx = {
+	const ctx: HtmlSanitizerState = {
 		kind: opts.kind,
 		assets: opts.assets,
 		fields: new Map(CARD_SKIN_FIELDS[opts.kind].map((f) => [f.path, f.type])),

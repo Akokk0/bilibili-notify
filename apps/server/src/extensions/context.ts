@@ -54,7 +54,7 @@ import {
 	type StoredSettingsResult,
 } from "./settings-io.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
-import { checkExtensionView, faultedExtensionView, type ViewCheck } from "./view-check.js";
+import { checkExtensionView, faultedExtensionView, type ViewCheckResult } from "./view-check.js";
 
 /**
  * 拓展契约的本体住 `@bilibili-notify/internal/extension` 与 `/extension/wire`;
@@ -72,7 +72,7 @@ import { checkExtensionView, faultedExtensionView, type ViewCheck } from "./view
  *
  * `message` 在这里造:这一层才知道动作名、拓展 id 和实际等了多久。路由原样交给 `respondFailure`。
  */
-export type ActionOutcome = Result;
+export type ActionResult = Result;
 
 /**
  * `ctx.settings(schema)` 那一下,存着的那份过不了这份 zod(ADR-0019 决策 36)—— 拓展不该拿着
@@ -181,7 +181,7 @@ export interface ExtensionRuntime {
 	 * 跑面板按下的那个动作(ADR-0019 决策 22 / 42)。超时与收摊时经 `signal` 叫停 handler;同一个动作
 	 * 在跑时回 `conflict`,不同的动作互不相干。
 	 */
-	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionOutcome>;
+	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionResult>;
 	/**
 	 * 这个拓展的登记(平台适配器、订阅源)都落定了没有:登记是后台异步的(登记即 `start`),装载器在 `activate`
 	 * 之后等它 —— 有一份失败就回失败(原话带着),这一次加载就失败。什么都没登记就是成功。
@@ -1049,7 +1049,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 交的视图**先核再下发**(ADR-0019 决策 40):坏的只换掉那一块 / 那一项,每一处都点名哪儿、
 	 * 为什么 —— 静默吞掉的话,面板上那块就是一片空白,谁也不知道为什么。核法在 `view-check.ts`。
 	 */
-	function checkedView(fn: () => ExtensionView): ViewCheck {
+	function checkedView(fn: () => ExtensionView): ViewCheckResult {
 		const input = {
 			fields: settingsFields,
 			// 「调拓展」的按钮只认清单声明过的动作(决策 42)。
@@ -1128,7 +1128,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			const unlink = linkToStop(controller);
 			runningActions.set(name, controller);
 			let timer: ReturnType<typeof setTimeout> | undefined;
-			const timeout = new Promise<ActionOutcome>((resolve) => {
+			const timeout = new Promise<ActionResult>((resolve) => {
 				timer = setTimeout(() => {
 					// 🔴 宿主不等了就叫它停:主人那头只看见一句「超时」,它却在背后接着把事做完(扫码登录
 					// 会多存下一份账号)。TimeoutError 是 `AbortSignal.timeout()` 那个名字,拓展照惯例认得。
@@ -1143,7 +1143,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					);
 				}, timeoutMs);
 			});
-			const run = (async (): Promise<ActionOutcome> => {
+			const run = (async (): Promise<ActionResult> => {
 				try {
 					await handler(controller.signal);
 					return ok();

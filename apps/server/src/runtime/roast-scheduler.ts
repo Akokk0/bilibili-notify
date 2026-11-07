@@ -63,7 +63,7 @@ export interface CreateRoastSchedulerOptions {
  * 「试一次」按钮用的 —— 点了之后总得回答「成了没、发给了谁、还是在等我批」,
  * 而落进日志的结论对着浏览器的人是看不见的。
  */
-export type RoastRunOutcome =
+export type RoastRunResult =
 	/** 一个推送目标都没配,连模型都没调。 */
 	| { kind: "no-targets" }
 	/** 生成这一步就没过去(AI 没开、数据不够、模型报错…)。 */
@@ -90,9 +90,9 @@ export interface RoastScheduler {
 	 *
 	 * `days` 只覆盖统计天数(私聊里 `/report 14` 用),其余照配置走;不传 = 全按配置。
 	 */
-	runBoardOnce(days?: number): Promise<RoastRunOutcome>;
+	runBoardOnce(days?: number): Promise<RoastRunResult>;
 	/** 立刻跑一次某条订阅的单人锐评(两支订阅都行)。 */
-	runSoloOnce(subscriptionId: string): Promise<RoastRunOutcome>;
+	runSoloOnce(subscriptionId: string): Promise<RoastRunResult>;
 	/**
 	 * 把一份**已经获批**的草稿发出去。审批指令链路调它。
 	 *
@@ -155,7 +155,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		cfg: RoastSchedule,
 		label: string,
 		subscriptionId?: string,
-	): Promise<RoastRunOutcome> {
+	): Promise<RoastRunResult> {
 		if (stopped)
 			return { kind: "gen-failed", code: "unavailable", message: t("roastScheduler.stopped") };
 
@@ -233,7 +233,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		result: BoardLike | SoloLike,
 		cfg: Pick<RoastSchedule, "days" | "targets" | "notifyOnError">,
 		label: string,
-	): Promise<RoastRunOutcome> {
+	): Promise<RoastRunResult> {
 		const out = await deliverRoast(deps, {
 			kind,
 			result,
@@ -270,7 +270,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			mode: out.mode,
 			sent: out.sent.length,
 			skipped: out.skipped,
-			// 这一轮的结局里每个没成的目标只带原话(contract 的 `RoastRunOutcome`);码留在投递那层。
+			// 这一轮的结局里每个没成的目标只带原话(contract 的 `RoastRunResult`);码留在投递那层。
 			failed: out.failed.map((f) => ({ targetId: f.targetId, message: f.failure.message })),
 		};
 	}
@@ -388,7 +388,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		return out;
 	}
 
-	async function runBoardOnce(days?: number): Promise<RoastRunOutcome> {
+	async function runBoardOnce(days?: number): Promise<RoastRunResult> {
 		const cfg = boardConfig();
 		// 只覆盖 days,目标与出错通知照旧走配置 —— 主人在私聊里说的是「统计多少天」,
 		// 不是「这次发给谁」。cron 那条调用不传,行为逐字不变。
@@ -399,7 +399,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		);
 	}
 
-	async function runSoloOnce(subscriptionId: string): Promise<RoastRunOutcome> {
+	async function runSoloOnce(subscriptionId: string): Promise<RoastRunResult> {
 		const sub = findSub(subscriptionId);
 		if (!sub) {
 			// 订阅在这一轮之间被删掉了。reconcile 会撤掉这条 job,这里只是兜底。

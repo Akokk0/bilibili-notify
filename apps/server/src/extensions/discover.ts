@@ -78,7 +78,7 @@ export const EXTENSION_DOC_MAX_BYTES = 512 * 1024;
  * `/ext/<id>/*`,两处都按目录算。而且清单读不出来的时候(最容易炸的正是这一步)
  * 目录名是唯一还拿得到的身份 —— 失败记账要有个键。
  */
-export type ExtensionDirRead =
+export type ExtensionDirState =
 	/** 目录里根本没有清单 —— 不是拓展目录。不记账、不报错,跳过。 */
 	| { state: "absent"; id: string; dir: string }
 	/** 有清单但用不了。**要列出来**:消失的东西没法排查。 */
@@ -174,7 +174,7 @@ export function apiVersionMismatch(
 export async function readExtensionDir(
 	dir: string,
 	options: ReadExtensionDirOptions,
-): Promise<ExtensionDirRead> {
+): Promise<ExtensionDirState> {
 	const range = options.hostApiRange ?? EXTENSION_API_RANGE;
 	const id = basename(dir);
 	let text: string;
@@ -277,7 +277,7 @@ export interface DiscoverExtensionsOptions {
 export async function discoverExtensions(
 	root: string,
 	options: DiscoverExtensionsOptions,
-): Promise<Array<Exclude<ExtensionDirRead, { state: "absent" }>>> {
+): Promise<Array<Exclude<ExtensionDirState, { state: "absent" }>>> {
 	let entries: Dirent[];
 	try {
 		entries = await readdir(root, { withFileTypes: true });
@@ -301,6 +301,6 @@ export async function discoverExtensions(
 	return reads
 		.filter((read) => read.state !== "absent")
 		.sort((a, b) => a.id.localeCompare(b.id)) as Array<
-		Exclude<ExtensionDirRead, { state: "absent" }>
+		Exclude<ExtensionDirState, { state: "absent" }>
 	>;
 }

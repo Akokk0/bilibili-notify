@@ -127,7 +127,7 @@ function parseSaltHex(text: string): Buffer | null {
 	return /^[0-9a-f]{32}$/i.test(hex) ? Buffer.from(hex, "hex") : null;
 }
 
-export type KeyMaterialRead = { kind: "ok"; key: Buffer } | { kind: "missing" };
+export type KeyMaterialState = { kind: "ok"; key: Buffer } | { kind: "missing" };
 
 /**
  * 只读地取这一处的密钥:和 {@link createKeyProvider} 选同一种(有口令就派生,否则读 master.key),
@@ -138,7 +138,7 @@ export type KeyMaterialRead = { kind: "ok"; key: Buffer } | { kind: "missing" };
  */
 export async function readKeyMaterial(
 	opts: Omit<CreateKeyProviderOptions, "logger">,
-): Promise<KeyMaterialRead> {
+): Promise<KeyMaterialState> {
 	const pass = opts.passphrase?.trim();
 	const text = await readTextIfExists(pass ? opts.saltPath : opts.keyPath);
 	if (text === null) return { kind: "missing" };

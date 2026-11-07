@@ -19,7 +19,7 @@ import { createCommandDispatcher } from "../command-dispatcher.js";
 import { createLoginCommand } from "../login-command.js";
 import { createMuteCommand } from "../mute-command.js";
 import { createMuteState } from "../mute-state.js";
-import { createReportCommand, type ReportOutcome } from "../report-command.js";
+import { createReportCommand, type ReportResult } from "../report-command.js";
 import { createStatusCommand } from "../status-command.js";
 
 const MASTER = "10001";
@@ -177,7 +177,7 @@ describe("login 办不成", () => {
 });
 
 describe("report 办不成", () => {
-	function reportHarness(outcome: ReportOutcome | Error, gate?: Promise<void>) {
+	function reportHarness(outcome: ReportResult | Error, gate?: Promise<void>) {
 		return harness([
 			createReportCommand({
 				logger: quietLogger,

@@ -15,7 +15,7 @@ import { t as serverText } from "./i18n.js";
 
 import { readFile } from "node:fs/promises";
 import type { Json } from "@bilibili-notify/internal";
-import { gcmDecrypt, isGcmBlob, type KeyMaterialRead } from "@bilibili-notify/storage";
+import { gcmDecrypt, isGcmBlob, type KeyMaterialState } from "@bilibili-notify/storage";
 import { integrationSecretsFile, writeIntegrationSecretsFile } from "../integration-store/files.js";
 import { errorMessageOf } from "../util/error-message.js";
 
@@ -36,7 +36,7 @@ export interface MigrateBiliLoginOptions {
 	/** 新代的根(`.partial`):密钥文件写在它底下 `secrets/bilibili/secrets.enc`。 */
 	targetDir: string;
 	/** 第 0 代的主密钥(`readZeroGenerationKey`)。 */
-	key: KeyMaterialRead;
+	key: KeyMaterialState;
 }
 
 /** 新密钥文件在新代里的相对路径(`/` 分隔),给汇报用。 */

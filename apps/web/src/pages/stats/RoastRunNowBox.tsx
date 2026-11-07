@@ -1,4 +1,4 @@
-import type { StatsRoastRunNowResponse, StatsRoastRunOutcome } from "@bilibili-notify/contract";
+import type { StatsRoastRunNowResponse, StatsRoastRunResult } from "@bilibili-notify/contract";
 import { Btn, ConfirmDialog } from "@bilibili-notify/ui";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
@@ -145,7 +145,7 @@ export function OutcomeLine({
 	outcome,
 	targetName,
 }: {
-	outcome: StatsRoastRunOutcome;
+	outcome: StatsRoastRunResult;
 	targetName: (id: string) => string;
 }) {
 	const tx = useT();
