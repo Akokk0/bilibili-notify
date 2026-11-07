@@ -13,14 +13,19 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const apiGet = vi.hoisted(() => vi.fn(async (_path: string) => null as unknown));
 const apiPatch = vi.hoisted(() => vi.fn(async (_p: string, _b?: unknown) => ({})));
 
 vi.mock("../../../services/api", () => ({ api: { get: apiGet, patch: apiPatch } }));
+
+function Location() {
+	const location = useLocation();
+	return <output aria-label="当前位置">{location.pathname}</output>;
+}
 
 async function mount(path: string) {
 	apiGet.mockImplementation(async (p: string) => {
@@ -54,6 +59,7 @@ async function mount(path: string) {
 	return render(
 		<QueryClientProvider client={qc}>
 			<MemoryRouter initialEntries={[path]}>
+				<Location />
 				<Routes>
 					<Route path="/about/:section?/:chapter?" element={<About />} />
 				</Routes>
@@ -72,6 +78,19 @@ afterEach(() => {
 });
 
 describe("关于页 · 新手指引 section", () => {
+	it("章节使用横向Tab，深链选中与切换后的正文同步", async () => {
+		await mount("/about/guide/login");
+		expect(
+			(await screen.findByRole("tab", { name: "登录来源账号" })).getAttribute("aria-selected"),
+		).toBe("true");
+		fireEvent.click(screen.getByRole("tab", { name: "总览与选型" }));
+		expect(screen.getByLabelText("当前位置").textContent).toBe("/about/guide");
+		expect(screen.getByRole("tab", { name: "总览与选型" }).getAttribute("aria-selected")).toBe(
+			"true",
+		);
+		expect(await screen.findByText(/群推送/)).toBeTruthy();
+	});
+
 	it("/about/guide 渲染总览:开头是 QQ 通道选型表", async () => {
 		await mount("/about/guide");
 		// 选型表的判据维度(grilling 定案四维)至少出现「群推送」这一最硬分流

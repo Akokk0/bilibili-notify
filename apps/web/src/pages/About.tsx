@@ -121,8 +121,8 @@ export default function About() {
 	const section: AboutSectionId = isSectionId(params.section) ? params.section : "sponsor";
 
 	return (
-		<div className="bn-anim-page-in flex flex-col gap-4">
-			<div className="grid gap-4 xl:grid-bn-rail">
+		<div className="bn-anim-page-in flex min-w-0 flex-col gap-4">
+			<div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-bn-rail">
 				<SectionNav
 					heading={tx("panelUi.pages.About.9")}
 					activeId={section}

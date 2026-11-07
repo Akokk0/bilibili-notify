@@ -1,4 +1,4 @@
-import { GlassPanel, Picker, Pill, StatusDot } from "@bilibili-notify/ui";
+import { GlassPanel, Pill, StatusDot, TabBar } from "@bilibili-notify/ui";
 import { useNavigate } from "react-router-dom";
 import { useOnboardingState } from "../../components/onboarding/use-onboarding-view";
 import { useT } from "../../i18n";
@@ -63,34 +63,34 @@ export function GuidePanel({ chapter }: { chapter?: string | undefined }) {
 
 	return (
 		<div className="flex flex-col gap-4">
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				{/* 章节切换走库件 Picker(段选钮组);URL 仍是真源 —— 选中态由路由推回来 */}
-				<Picker
-					value={current.key}
-					onChange={(key) =>
-						// replace 同 About 的 section 切换:翻章节不是「去了别的地方」,
-						// push 会让读完三章的人按三次返回才退得出去。
-						navigate(key === "overview" ? "/about/guide" : `/about/guide/${key}`, {
-							replace: true,
-						})
-					}
-					options={CHAPTERS.map((c) => ({ value: c.key, label: c.title }))}
-				/>
-				{view ? (
-					<span className="flex items-center gap-1.5">
-						{view.steps.map((s) => (
-							<StatusDot
-								key={`${s.key}:${s.sourceKey ?? ""}`}
-								kind={s.done ? "ok" : "pending"}
-								size="sm"
-							/>
-						))}
-						<Pill subtle size="sm" className="ml-1">
-							{view.doneCount}/{view.steps.length}
-						</Pill>
-					</span>
-				) : null}
-			</div>
+			{/* 章节切换复用横向Tab；URL仍是真源，进度沿用原判据。 */}
+			<TabBar
+				value={current.key}
+				onChange={(key) =>
+					// replace 同 About 的 section 切换:翻章节不是「去了别的地方」,
+					// push 会让读完三章的人按三次返回才退得出去。
+					navigate(key === "overview" ? "/about/guide" : `/about/guide/${key}`, {
+						replace: true,
+					})
+				}
+				items={CHAPTERS.map((c) => ({ id: c.key, label: c.title }))}
+				hint={
+					view ? (
+						<span className="flex items-center gap-1.5">
+							{view.steps.map((s) => (
+								<StatusDot
+									key={`${s.key}:${s.sourceKey ?? ""}`}
+									kind={s.done ? "ok" : "pending"}
+									size="sm"
+								/>
+							))}
+							<Pill subtle size="sm" className="ml-1">
+								{view.doneCount}/{view.steps.length}
+							</Pill>
+						</span>
+					) : null
+				}
+			/>
 			<GlassPanel title={current.title}>
 				<div className="max-w-180">
 					<GuideMarkdown source={current.source} />
