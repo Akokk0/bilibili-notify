@@ -2,7 +2,7 @@
 
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vite-plus/test";
@@ -238,6 +238,54 @@ it("性格分类复用字段编辑器，内置只读，复制后独立保存而�
 	expect(screen.getAllByDisplayValue(source.persona.name)[0]).toHaveProperty("disabled", false);
 	expect(screen.queryByRole("button", { name: "设为默认" })).toBeNull();
 	expect(screen.getByRole("button", { name: "保存性格" })).toBeTruthy();
+});
+
+it("切换语言后重新读取内置性格，当前参照内容与副本同步更新", async () => {
+	const builtin = builtinPresetsFor("zh-CN")[0];
+	if (!builtin) throw new Error("missing fixture");
+	mount("/library?category=personas", (path) => {
+		if (path !== "/api/ai/personas") return undefined;
+		const english = i18n.state().locale === "en";
+		return Response.json({
+			revision: english ? "en-v1" : "zh-v1",
+			entries: [
+				{
+					...builtin,
+					label: english ? "Gentle maid" : "温柔女仆",
+					persona: { ...builtin.persona, name: english ? "Aya" : "语言参照" },
+					builtin: true,
+					usedBy: [],
+				},
+			],
+			removedBuiltins: [],
+		});
+	});
+	await screen.findByDisplayValue("语言参照");
+	act(() => i18n.set({ locale: "en" }));
+	expect(await screen.findByDisplayValue("Aya")).toHaveProperty("disabled", true);
+	await userEvent.click(screen.getByRole("button", { name: i18n.t("personas.copy") }));
+	expect(screen.getByDisplayValue("Aya")).toHaveProperty("disabled", false);
+});
+
+it("切换语言保留自建性格未保存草稿，新目录版本由主人重新读取", async () => {
+	const builtin = builtinPresetsFor("zh-CN")[0];
+	if (!builtin) throw new Error("missing fixture");
+	mount("/library?category=personas", (path) =>
+		path === "/api/ai/personas"
+			? Response.json({
+					revision: i18n.state().locale === "en" ? "en-v1" : "zh-v1",
+					entries: [{ ...builtin, id: "local", label: "我的性格", builtin: false, usedBy: [] }],
+					removedBuiltins: [],
+				})
+			: undefined,
+	);
+	const name = await screen.findByRole("textbox", { name: "性格名称" });
+	await userEvent.clear(name);
+	await userEvent.type(name, "尚未保存的名字");
+	act(() => i18n.set({ locale: "en" }));
+	expect(await screen.findByRole("button", { name: i18n.t("personas.reload") })).toBeTruthy();
+	expect(screen.getByDisplayValue("尚未保存的名字")).toBeTruthy();
+	expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
 });
 
 it("性格导入预览保留原字段、初始焦点及取消语义，不写配置或资源", async () => {

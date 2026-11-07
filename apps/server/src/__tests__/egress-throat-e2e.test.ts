@@ -294,13 +294,14 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 		// —— 智能女仆:指向假模型服务(启用前的预检会真问它一句,假服务答得上)。锐评的定时配置:
 		// 审批开着、目标是测试群(审批预览那条用)。
 		const ai = makeDefaultGlobalConfig().ai;
+		const { presets: _presets, removedBuiltinPresets: _removed, ...selection } = aiSettings(ai);
 		await okRes(
 			await api(
 				"/api/settings",
 				json(
 					{
 						core: {
-							ai: { ...aiSettings(ai), enabled: true },
+							ai: { ...selection, enabled: true },
 							roastSchedule: { targets: [ID.group], approval: true },
 						},
 					},

@@ -634,25 +634,28 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		return ((await res.json()) as StatsOverviewResponse).rows;
 	}
 
-	const aiSettings = (base: ReturnType<typeof makeDefaultGlobalConfig>["ai"]) => ({
-		...base,
-		activeProfile: "fake",
-		providers: {
-			fake: {
-				provider: "deepseek" as const,
-				apiFlavor: "chat",
-				label: "",
-				apiKey: "sk-fake",
-				baseUrl: aiBaseUrl,
-				model: "fake-model",
-				enableThinking: false,
-				thinkingLevel: "medium" as const,
-				extraParams: "",
-				enableVision: false,
-				vision: { baseUrl: "", apiKey: "", model: "" },
+	const aiSettings = (base: ReturnType<typeof makeDefaultGlobalConfig>["ai"]) => {
+		const { presets: _presets, removedBuiltinPresets: _removed, ...selection } = base;
+		return {
+			...selection,
+			activeProfile: "fake",
+			providers: {
+				fake: {
+					provider: "deepseek" as const,
+					apiFlavor: "chat",
+					label: "",
+					apiKey: "sk-fake",
+					baseUrl: aiBaseUrl,
+					model: "fake-model",
+					enableThinking: false,
+					thinkingLevel: "medium" as const,
+					extraParams: "",
+					enableVision: false,
+					vision: { baseUrl: "", apiKey: "", model: "" },
+				},
 			},
-		},
-	});
+		};
+	};
 
 	/**
 	 * 开一场新对话,让假模型先调一把工具再说话,回喂给模型的 `tool` 消息正文(`seen`)与痕迹里的工具行(`tools`)。

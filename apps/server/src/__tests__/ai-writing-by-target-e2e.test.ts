@@ -192,10 +192,15 @@ describe("AI 写正文按目标选 e2e:同一条作品,不同目标收到不同�
 		const listed = (await (await api("/api/ext")).json()) as ExtensionsResponse;
 		expect(listed.extensions.find((e) => e.id === FAKE)?.state).toBe("running");
 		// 不出图集:消息就是一条纯文字。AI 开着,服务商指向上面的回环假服务。
+		const {
+			presets: _presets,
+			removedBuiltinPresets: _removed,
+			...ai
+		} = makeDefaultGlobalConfig().ai;
 		await patchCore({
 			defaults: { imageGroup: { enabled: false } },
 			ai: {
-				...makeDefaultGlobalConfig().ai,
+				...ai,
 				enabled: true,
 				activeProfile: "fake",
 				providers: {

@@ -23,7 +23,7 @@ import { ResourceImportDialog } from "../../components/library/resource-import-d
 import { getFieldLabel } from "../../config/field-labels";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { SETTINGS_KEY } from "../../hooks/useSettings";
-import { useT } from "../../i18n";
+import { useT, useTextOptions } from "../../i18n";
 import { ApiError } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import {
@@ -128,7 +128,9 @@ function PersonaFields({
 export function PersonaLibrary() {
 	const t = useT(),
 		qc = useQueryClient();
-	const query = useQuery({ queryKey: personaQueryKey, queryFn: listPersonas });
+	const { locale } = useTextOptions();
+	const catalogKey = [...personaQueryKey, locale];
+	const query = useQuery({ queryKey: catalogKey, queryFn: listPersonas });
 	const [active, setActive] = useState<string | null>(null);
 	const [draft, setDraft] = useState<PersonaContent>(BLANK);
 	const [baseline, setBaseline] = useState<PersonaContent>(BLANK);
@@ -185,8 +187,13 @@ export function PersonaLibrary() {
 		setNotice(null);
 	}, []);
 	useEffect(() => {
-		if (active !== null || !query.data?.entries[0]) return;
-		select(query.data.entries[0].id, query.data.entries[0], query.data.revision);
+		if (!query.data) return;
+		const entry =
+			active === null
+				? query.data.entries[0]
+				: query.data.entries.find((entry) => entry.id === active && entry.builtin);
+		// 内置是当前语言的只读参照；自建草稿仍由显式重新读取接收新版本。
+		if (entry) select(entry.id, entry, query.data.revision);
 	}, [active, query.data, select]);
 	function guard(action: () => void) {
 		if (dirty) setPendingAction(() => action);
@@ -208,7 +215,7 @@ export function PersonaLibrary() {
 			}
 			await qc.invalidateQueries({ queryKey: personaQueryKey });
 			void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
-			const next = qc.getQueryData<Awaited<ReturnType<typeof listPersonas>>>(personaQueryKey);
+			const next = qc.getQueryData<Awaited<ReturnType<typeof listPersonas>>>(catalogKey);
 			const entry = next?.entries.find((p) => p.id === result.id) ?? next?.entries[0];
 			if (entry && next) select(entry.id, entry, next.revision);
 			if (change.op === "create") {

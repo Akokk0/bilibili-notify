@@ -1,8 +1,8 @@
 /**
- * AI 设置页两个左栏的增删操作 —— 对 `AISettingsDraft` 草稿的纯变换,一律返回新对象。
+ * AI 设置页服务商管理与默认性格选择 —— 对 `AISettingsDraft` 草稿的纯变换。
  *
  * 抽出来是因为这里的分支最容易悄悄错、又最难在界面上看出来:删掉正在用的那份之后
- * 指针指向哪、删到一份不剩会不会炸、新实例 / 新人格的 id 撞没撞上。
+ * 指针指向哪、删到一份不剩会不会炸、新实例的 id 撞没撞上。性格内容管理由资源库负责。
  */
 
 import {
@@ -13,9 +13,9 @@ import {
 	presetsOf,
 	providerMeta,
 } from "@bilibili-notify/internal/ai";
-import { BUILTIN_PRESET_IDS, type BuiltinPreset } from "@bilibili-notify/internal/texts/builtin";
+import type { BuiltinPreset } from "@bilibili-notify/internal/texts/builtin";
 import { i18n } from "../../i18n";
-import type { AIPersona, AISettingsDraft } from "../../types/globals";
+import type { AISettingsDraft } from "../../types/globals";
 
 type AIPreset = AISettingsDraft["presets"][number];
 /** 当前语言的内置人格(设置里不存它们的内容,每次按当前语言取)。 */
@@ -187,13 +187,6 @@ export function personaRailItems(ai: AISettingsDraft, builtins: Builtins): Perso
 	}));
 }
 
-/** 右侧表单当前编辑的那一份人格。 */
-export interface PersonaDraft {
-	persona: AIPersona;
-	dynamicPrompt: string;
-	liveSummaryPrompt: string;
-}
-
 /** 左栏 id → 左栏里的下标。不是预设、或该预设已不在左栏时返回 -1。 */
 function railIndex(ai: AISettingsDraft, builtins: Builtins, railId: string): number {
 	if (!railId.startsWith(PRESET_RAIL_PREFIX)) return -1;
@@ -217,137 +210,6 @@ export function resolvePersonaRailId(
 	return first ? `${PRESET_RAIL_PREFIX}${first.id}` : "";
 }
 
-/**
- * 取出当前该显示在右侧的那一份。
- *
- * 主人自己那份的两段 prompt 是 optional,`undefined` = 用内置首份的那段,
- * 这里**照实显示为空**而不是把内置文案搬过来充数 —— 后者一保存就把「跟随」坐实成
- * 一份副本,此后内置改了再也带不动它,而界面上完全看不出发生了这件事。
- */
-export function personaAt(ai: AISettingsDraft, builtins: Builtins, railId: string): PersonaDraft {
-	const list = railPresets(ai, builtins);
-	const id = resolvePersonaRailId(ai, builtins, railId).slice(PRESET_RAIL_PREFIX.length);
-	// 左栏恒非空(最后一份删不掉);手改配置把它清空了就显示内置首份,与引擎的回落一致
-	const preset = list.find((p) => p.id === id) ?? builtins[0];
-	return {
-		persona: preset?.persona ?? { ...EMPTY_PERSONA },
-		dynamicPrompt: preset?.dynamicPrompt ?? "",
-		liveSummaryPrompt: preset?.liveSummaryPrompt ?? "",
-	};
-}
-
-/**
- * 把一次编辑写回对应的那一份(只有主人自己的能改,内置在这里被拦下)。
- *
- * 两段 prompt 走一道转换:**清空 → `undefined`**,也就是恢复「用内置首份的那段」。存成 `""`
- * 的话读取处的 `??` 链不会再落到内置(空串不是 nullish),该预设从此强制发
- * 一段**空** prompt —— 主人看到的是输入框空着,实际效果却截然不同。
- */
-export function updatePersonaAt(
-	ai: AISettingsDraft,
-	builtins: Builtins,
-	railId: string,
-	patch: Partial<PersonaDraft>,
-): AISettingsDraft {
-	const id = resolvePersonaRailId(ai, builtins, railId).slice(PRESET_RAIL_PREFIX.length);
-	// 内置那几份是只读的参照库。界面上字段已经禁掉,这里是第二道闸 —— 一处漏了
-	// 另一处还拦得住,而「内置被改花了」是不可逆的(此后无从恢复)。
-	if (!id || isBuiltinPersona(id)) return ai;
-	const blankToUndefined = (v: string): string | undefined => (v === "" ? undefined : v);
-	const presets = ai.presets.map((p) => {
-		if (p.id !== id) return p;
-		const next: AIPreset = { ...p };
-		if (patch.persona !== undefined) next.persona = patch.persona;
-		if (patch.dynamicPrompt !== undefined) {
-			next.dynamicPrompt = blankToUndefined(patch.dynamicPrompt);
-		}
-		if (patch.liveSummaryPrompt !== undefined) {
-			next.liveSummaryPrompt = blankToUndefined(patch.liveSummaryPrompt);
-		}
-		return next;
-	});
-	return { ...ai, presets };
-}
-
-const EMPTY_PERSONA: AIPersona = {
-	name: "",
-	addressUser: "",
-	addressSelf: "",
-	traits: "",
-	catchphrase: "",
-	baseRole: "",
-	extraSystemPrompt: "",
-};
-
-/** 一个没被内置与主人自己的占用的 `persona-N` id。 */
-function freshPersonaId(ai: AISettingsDraft): string {
-	const taken = new Set<string>([...BUILTIN_PRESET_IDS, ...ai.presets.map((p) => p.id)]);
-	let n = 1;
-	while (taken.has(`persona-${n}`)) n += 1;
-	return `persona-${n}`;
-}
-
-/**
- * 添加一份空白人格,并把它的左栏 id 交回调用方(好当场切过去)。
- *
- * id 逐个递增到不与**任何**已有 id 相撞为止。撞 id 的后果不是报错而是静默串台:
- * per-UP `overrides.ai.preset` 指着那个 id,读取处用 `find()` 取第一个匹配 ——
- * 两份同 id 的预设永远只有前一份生效,主人改后一份怎么改都不见效果。
- *
- * 两段 prompt 留 `undefined` = 一开始就用内置首份的那段,而不是塞两段空串把它坐实。
- */
-export function addPersona(
-	ai: AISettingsDraft,
-	label = i18n.t("aiSettings.persona.new"),
-): { ai: AISettingsDraft; railId: string } {
-	const id = freshPersonaId(ai);
-	return {
-		ai: { ...ai, presets: [...ai.presets, { id, label, persona: { ...EMPTY_PERSONA } }] },
-		railId: `${PRESET_RAIL_PREFIX}${id}`,
-	};
-}
-
-/**
- * 删掉一份人格:内置的 = 把 id 记进 `removedBuiltinPresets`(内容不动,「从内置恢复」随时找回);
- * 主人自己的 = 从 `presets` 拿掉。
- *
- * **最后一份删不掉**(按左栏总数算:没删的内置 + 主人的)—— AI 总得有一份人格,列表空了右侧就没东西可显示。
- * 删掉的正是全局用着的那份时,指针落到剩下的第一份(而不是变成悬空引用:那会跟着备份导出,
- * 日后又添加一份同 id 的预设时莫名复活)。
- */
-export function removePersona(
-	ai: AISettingsDraft,
-	builtins: Builtins,
-	railId: string,
-): AISettingsDraft {
-	const list = railPresets(ai, builtins);
-	const i = railIndex(ai, builtins, railId);
-	const target = i >= 0 ? list[i] : undefined;
-	if (!target || list.length <= 1) return ai;
-	const next: AISettingsDraft = isBuiltinPersona(target.id)
-		? {
-				...ai,
-				removedBuiltinPresets: [...new Set([...(ai.removedBuiltinPresets ?? []), target.id])],
-			}
-		: { ...ai, presets: ai.presets.filter((p) => p.id !== target.id) };
-	if (ai.activePreset !== undefined && ai.activePreset === target.id) {
-		next.activePreset = railPresets(next, builtins)[0]?.id;
-	}
-	return next;
-}
-
-/** 给人格改名(内置的锁着,只有主人自己的能改)。 */
-export function renamePersona(
-	ai: AISettingsDraft,
-	builtins: Builtins,
-	railId: string,
-	label: string,
-): AISettingsDraft {
-	const id = resolvePersonaRailId(ai, builtins, railId).slice(PRESET_RAIL_PREFIX.length);
-	if (!id || isBuiltinPersona(id)) return ai;
-	return { ...ai, presets: ai.presets.map((p) => (p.id === id ? { ...p, label } : p)) };
-}
-
 /** 全局此刻用的是哪一份 —— 读 `ai.activePreset` 指针,换算成左栏 id。 */
 export function globalPersonaRailId(ai: AISettingsDraft, builtins: Builtins): string {
 	return resolvePersonaRailId(ai, builtins, `${PRESET_RAIL_PREFIX}${ai.activePreset ?? ""}`);
@@ -368,85 +230,4 @@ export function setGlobalPersona(
 	const i = railIndex(ai, builtins, railId);
 	if (i < 0) return ai;
 	return { ...ai, activePreset: railPresets(ai, builtins)[i]?.id };
-}
-
-// ── 内置人格:只读的参照库 ──────────────────────────────────────────────
-//
-// 内置那四份在界面上**锁死**:可以删、可以「从内置修改」另存一份可改的副本,但不能
-// 就地改。理由很实在:「从内置恢复」要有个稳定的东西可恢复,内置被改花了这条路就断了。
-// 判据是 **id** 而不是内容 —— 按内容判会出现「同样是傲娇毒舌,这份能改那份不能」。
-
-const BUILTIN_IDS: ReadonlySet<string> = new Set(BUILTIN_PRESET_IDS);
-
-export function isBuiltinPersona(presetId: string): boolean {
-	return BUILTIN_IDS.has(presetId);
-}
-
-/** 被删掉的内置人格 —— 「从内置恢复」列的就是这些(按内置的顺序)。空数组 = 一份没删,入口收起来。 */
-export function missingBuiltinPersonas(
-	ai: AISettingsDraft,
-	builtins: Builtins,
-): { id: string; label: string }[] {
-	const removed = new Set(ai.removedBuiltinPresets ?? []);
-	return builtins
-		.filter((p) => removed.has(p.id))
-		.map((p) => ({
-			id: p.id,
-			label: p.label,
-		}));
-}
-
-/** 深拷贝一份预设。浅拷贝会让副本与原件共享 persona 对象 —— 改副本等于就地改原件。 */
-function clonePreset(p: AIPreset): AIPreset {
-	return {
-		...p,
-		persona: { ...p.persona },
-	};
-}
-
-/**
- * 把某份内置人格找回来:从 `removedBuiltinPresets` 里拿掉它的 id(拿空了就删键)。
- * 内置的位置由内置的顺序定,恢复一次清单不会乱。
- */
-export function restoreBuiltinPersona(
-	ai: AISettingsDraft,
-	presetId: string,
-): { ai: AISettingsDraft; railId: string } {
-	const railId = `${PRESET_RAIL_PREFIX}${presetId}`;
-	const removed = ai.removedBuiltinPresets;
-	if (!removed?.includes(presetId)) return { ai, railId };
-	const left = removed.filter((id) => id !== presetId);
-	if (left.length > 0) return { ai: { ...ai, removedBuiltinPresets: left }, railId };
-	// 拿空了 = 一份没删 = 不记这一格(缺这一格的草稿与基线一比就是显式删键)
-	const { removedBuiltinPresets: _gone, ...rest } = ai;
-	return { ai: rest, railId };
-}
-
-/**
- * 「从内置修改」——以某一份为蓝本另存一份**可改**的。
- *
- * 抄的是**左栏里那一份**的当下内容(内置的取当前语言)。新 id 走 `persona-N`,
- * 它从此是主人自己的:不再是内置、不受只读闸限制、也不再跟着语言变。
- */
-export function duplicatePersona(
-	ai: AISettingsDraft,
-	builtins: Builtins,
-	railId: string,
-): { ai: AISettingsDraft; railId: string } {
-	const i = railIndex(ai, builtins, railId);
-	const src = i >= 0 ? railPresets(ai, builtins)[i] : undefined;
-	if (!src) return { ai, railId };
-
-	const id = freshPersonaId(ai);
-	const copy: AIPreset = {
-		...clonePreset(src),
-		id,
-		label: i18n.t("aiSettings.persona.copy", {
-			name: src.label || i18n.t("aiSettings.persona.unnamed"),
-		}),
-	};
-	return {
-		ai: { ...ai, presets: [...ai.presets, copy] },
-		railId: `${PRESET_RAIL_PREFIX}${id}`,
-	};
 }

@@ -996,7 +996,14 @@ it("删除字体先确认，被引用时保留原话与文件，解除引用后�
 	expect(deletes).toBe(2);
 });
 
-it("上传图片失败保留清单，再传同一文件成功即入库，不提交设置", async () => {
+it("确认导入图片失败保留清单，取消后再传同一文件可确认入库，不提交设置", async () => {
+	vi.stubGlobal(
+		"URL",
+		class extends URL {
+			static createObjectURL = () => "blob:import-preview";
+			static revokeObjectURL = vi.fn();
+		},
+	);
 	const id = `${"2".repeat(32)}.png`;
 	let ids: string[] = [];
 	let failed = true;
@@ -1010,6 +1017,8 @@ it("上传图片失败保留清单，再传同一文件成功即入库，不提�
 		path: "/library",
 		request: async (path, init) => {
 			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/library/images/import-preview")
+				return Response.json({ ok: true, name: "sample.png", warnings: [], conflict: false });
 			if (path === "/api/library/images" && init?.method === "POST") {
 				if (failed)
 					return Response.json(
@@ -1029,10 +1038,13 @@ it("上传图片失败保留清单，再传同一文件成功即入库，不提�
 	const file = new File(["png"], "sample.png", { type: "image/png" });
 	const { fireEvent } = await import("@testing-library/react");
 	fireEvent.change(input, { target: { files: [file] } });
+	await userEvent.click(await screen.findByRole("button", { name: "确认导入" }));
 	expect(await screen.findByText("上传未完成，请重试")).toBeTruthy();
 	expect(screen.getByText("还没有图片")).toBeTruthy();
+	await userEvent.click(screen.getByRole("button", { name: "取消" }));
 	failed = false;
 	fireEvent.change(input, { target: { files: [file] } });
+	await userEvent.click(await screen.findByRole("button", { name: "确认导入" }));
 	expect(await screen.findByRole("button", { name: "预览图片 1" })).toBeTruthy();
 	expect(screen.queryByText("上传未完成，请重试")).toBeNull();
 	expect(
