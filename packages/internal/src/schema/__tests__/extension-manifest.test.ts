@@ -17,7 +17,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import * as wire from "../../extension/wire";
-import { bindPackageText } from "../../texts";
+import { createI18n, type Locale } from "../../i18n";
+import { bindPackageText, type PackageTextKey, withPackageDicts } from "../../texts";
 import {
 	ActionNameSchema,
 	apiVersionAccepted,
@@ -1311,4 +1312,37 @@ it("已加载的清单schema在校验发生时取当前文案", () => {
 		binding.dispose();
 	}
 	expect(ExtensionIdSchema.safeParse("INVALID ID")).toEqual(original);
+});
+
+it("reports contract incompatibility in the current language and keeps extension identity intact", () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "plain",
+	});
+	const binding = bindPackageText(texts.t, () => texts.state().locale);
+	try {
+		for (const [locale, message] of [
+			["en", "The extension requires contract version 99, which is incompatible with this host."],
+			["ja", "拡張機能が要求する契約バージョン99は、このホストと互換性がありません。"],
+			["zh-TW", "拓展要求的契約版本 99 與此宿主不相容。"],
+		] as const) {
+			texts.set({ locale });
+			expect(parseExtensionManifest(currentManifest({ apiVersion: 99 }))).toMatchObject({
+				ok: false,
+				code: "unsupported",
+				message,
+				requires: { apiVersion: 99 },
+				identity: { id: "demo-ext", name: "抖音订阅", version: "0.1.0" },
+			});
+		}
+	} finally {
+		binding.dispose();
+	}
 });
