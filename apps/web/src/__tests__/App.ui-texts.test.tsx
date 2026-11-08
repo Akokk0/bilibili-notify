@@ -1176,3 +1176,109 @@ it("the document language follows the current locale before login without replac
 	}
 	expect(vi.mocked(fetch).mock.calls.map(([path]) => String(path))).toEqual(["/api/session"]);
 });
+
+it("startup translations retain the last migration progress and keep business pages closed until readiness", async () => {
+	let failed = false;
+	let details: HealthDetailsResponse = {
+		phase: "migrating",
+		progress: { step: 4, total: 12, label: "原始阶段" },
+	};
+	mountApp({ details: () => (failed ? Promise.reject(new Error("offline")) : details) });
+	await screen.findByRole("heading", { name: "正在搬家" });
+	for (const [locale, heading, step] of [
+		["en", "Migrating data", "Step 4 / 12"],
+		["ja", "データを移行中", "ステップ 4 / 12"],
+		["zh-TW", "正在搬移資料", "步驟 4 / 12"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+		expect(screen.getByRole("progressbar").getAttribute("aria-valuetext")).toBe(step);
+		expect(screen.getByText("原始阶段")).toBeTruthy();
+		expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/settings")).toBe(
+			false,
+		);
+	}
+	failed = true;
+	await act(async () => {
+		await qc.invalidateQueries({ queryKey: ["health", "details"] });
+	});
+	for (const [locale, heading, last, step] of [
+		["en", "Waiting to reconnect", "Last progress · 原始阶段", "Step 4 / 12"],
+		["ja", "再接続を待機中", "最後の進捗 · 原始阶段", "ステップ 4 / 12"],
+		["zh-TW", "正在等待重新連線", "最後進度 · 原始阶段", "步驟 4 / 12"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+		expect(screen.getByText(last)).toBeTruthy();
+		expect(screen.getByRole("progressbar").getAttribute("aria-valuetext")).toBe(step);
+		expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/settings")).toBe(
+			false,
+		);
+	}
+	failed = false;
+	details = { phase: "starting", progress: null };
+	await userEvent.click(screen.getByRole("button", { name: "重試" }));
+	expect(await screen.findByRole("heading", { name: "正在啟動服務" })).toBeTruthy();
+	expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/settings")).toBe(
+		false,
+	);
+	details = runningDetails;
+	await act(async () => {
+		await qc.invalidateQueries({ queryKey: ["health", "details"] });
+	});
+	expect((await screen.findAllByRole("button", { name: /添加一行/ })).length).toBeGreaterThan(0);
+	expect(
+		vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/system/generations"),
+	).toBe(false);
+});
+
+it("startup checking and first-probe failure translate without opening protected business pages", async () => {
+	let rejectDetails!: (error: Error) => void;
+	const pending = new Promise<HealthDetailsResponse>((_resolve, reject) => {
+		rejectDetails = reject;
+	});
+	mountApp({ details: () => pending });
+	await screen.findByRole("heading", { name: "正在确认启动状态" });
+	for (const [locale, heading, hint] of [
+		[
+			"en",
+			"Checking startup status",
+			"Checking whether the service is ready. Business pages remain closed.",
+		],
+		["ja", "起動状況を確認中", "サービスの準備状況を確認しています。業務画面はまだ開きません。"],
+		["zh-TW", "正在確認啟動狀態", "正在確認服務是否就緒，暫不開啟業務頁面。"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/settings")).toBe(
+			false,
+		);
+	}
+	await act(async () => rejectDetails(new Error("offline")));
+	await screen.findByRole("heading", { name: "暫時無法確認啟動狀態" });
+	for (const [locale, heading, unknown, retry] of [
+		[
+			"en",
+			"Startup status unavailable",
+			"Could not read startup status. Business pages remain closed.",
+			"Retry",
+		],
+		[
+			"ja",
+			"起動状況を確認できません",
+			"起動状況を取得できないため、業務画面はまだ開きません。",
+			"再試行",
+		],
+		["zh-TW", "暫時無法確認啟動狀態", "無法讀取啟動狀態，尚未開啟業務頁面。", "重試"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+		expect(screen.getByText(unknown)).toBeTruthy();
+		expect(screen.getByRole("button", { name: retry })).toBeTruthy();
+		expect(screen.queryByRole("progressbar")).toBeNull();
+		expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/settings")).toBe(
+			false,
+		);
+	}
+});
