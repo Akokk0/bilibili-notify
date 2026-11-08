@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { api } from "../../../services/api";
 import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
 import { SkinSection } from "../SkinSection";
@@ -89,6 +90,7 @@ function renderSection(mode: "manage" | "select" = "manage") {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	H.putCalls = [];
 	H.uploadWarnings = [];
 	H.list.active = { light: null, dark: null };

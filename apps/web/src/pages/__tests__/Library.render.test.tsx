@@ -516,3 +516,44 @@ it("技能导出通过鉴权读取文件，以SKILL.md名称下载，不修改�
 		.mock.calls.find(([path]) => String(path).endsWith("/weekly-report/export"));
 	expect(request?.[1]?.credentials).toBe("include");
 });
+
+it("library navigation and deletion text translate while keeping the file and category address", async () => {
+	mount("/library?category=fonts&from=cards");
+	const filename = await screen.findByText("示例字体.woff2");
+	for (const [locale, fonts, images, skills] of [
+		["en", "Fonts", "Images", "Maid skills"],
+		["ja", "フォント", "画像", "メイドスキル"],
+		["zh-TW", "字型", "圖片", "女僕技能"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByRole("button", { name: fonts }).getAttribute("aria-current")).toBe("true");
+		expect(screen.getByRole("button", { name: images })).toBeTruthy();
+		expect(screen.getByRole("button", { name: skills })).toBeTruthy();
+		expect(screen.getByText("示例字体.woff2")).toBe(filename);
+		expect(screen.getByLabelText("当前位置").textContent).toBe(
+			"/library?category=fonts&from=cards",
+		);
+	}
+	await userEvent.click(screen.getByRole("button", { name: "刪除字型 示例字体.woff2" }));
+	const dialog = screen.getByRole("dialog");
+	for (const [locale, title, remove] of [
+		["en", "Delete this font?", "Delete"],
+		["ja", "このフォントを削除しますか？", "削除"],
+		["zh-TW", "刪除此字型？", "刪除"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(within(dialog).getByText(title)).toBeTruthy();
+		expect(within(dialog).getByText("示例字体.woff2")).toBeTruthy();
+		expect(within(dialog).getByRole("button", { name: remove })).toBeTruthy();
+		expect(
+			vi.mocked(fetch).mock.calls.some(([, init]) => init?.method && init.method !== "GET"),
+		).toBe(false);
+	}
+	await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(screen.getByText("示例字体.woff2")).toBe(filename);
+	expect(
+		vi.mocked(fetch).mock.calls.some(([, init]) => init?.method && init.method !== "GET"),
+	).toBe(false);
+});
