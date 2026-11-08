@@ -111,6 +111,58 @@ afterEach(() => {
 });
 
 describe("Cards per-UP 作用域接线", () => {
+	it("localized skin inheritance retains the subscription and explicitly clears only its skin override", async () => {
+		const skinned = { ...CUSTOMIZED, overrides: { ...CUSTOMIZED.overrides, cardSkin: "aurora" } };
+		const baseGet = vi.mocked(api.get).getMockImplementation();
+		if (!baseGet) throw new Error("base API fixture is not configured");
+		vi.mocked(api.get).mockImplementation((url: string) =>
+			url.includes("/api/subscriptions") ? Promise.resolve([skinned]) : baseGet(url),
+		);
+		const { container, qc } = renderCards();
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+		const select = await waitFor(() => {
+			const el = container.querySelector('[data-code="cardSkin"] [role="combobox"]');
+			if (!el) throw new Error("card skin picker is not ready");
+			return el as HTMLButtonElement;
+		});
+		for (const [locale, inherit, builtin, noName] of [
+			["en", "Follow global (默认皮肤)", "默认皮肤 (built-in)", "Follow global"],
+			["ja", "全体設定に従う（默认皮肤）", "默认皮肤（内蔵）", "全体設定に従う"],
+			["zh-TW", "跟隨全域（默认皮肤）", "默认皮肤（內建）", "跟隨全域"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const options = selectOptionsOf(select).map((x) => x.textContent);
+			expect(options).toContain(inherit);
+			expect(options).toContain(builtin);
+			expect(select.textContent).toBe("极光");
+			fireEvent.keyDown(select, { key: "Escape" });
+			act(() => qc.setQueryData(["cards", "skins"], { ...SKINS, active: "" }));
+			await waitFor(() =>
+				expect(selectOptionsOf(select).map((x) => x.textContent)).toContain(noName),
+			);
+			fireEvent.keyDown(select, { key: "Escape" });
+			act(() => qc.setQueryData(["cards", "skins"], SKINS));
+			await waitFor(() =>
+				expect(selectOptionsOf(select).map((x) => x.textContent)).toContain(inherit),
+			);
+			fireEvent.keyDown(select, { key: "Escape" });
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+		chooseSelect(select, "跟隨全域（默认皮肤）");
+		expect(api.patch).not.toHaveBeenCalled();
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave();
+		});
+		expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${CUSTOMIZED.id}`, {
+			overrides: {
+				cards: { liveCoverImageIds: ["per-up-cover"] },
+				cardSkin: null,
+				cardSkinKnobs: null,
+			},
+		});
+	});
+
 	it("来源与语言刷新保留未保存皮肤覆盖，显式保存仍只改卡片", async () => {
 		const { qc } = renderCards();
 		fireEvent.click(await screen.findByText("UID 123456"));

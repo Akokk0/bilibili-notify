@@ -232,7 +232,7 @@ function SkinManagement() {
 							key={entry.id}
 							name={entry.name}
 							desc={[
-								entry.author ? tx("skinUi.SkinSection.author", { author: entry.author }) : null,
+								entry.author ? tx("library.author", { author: entry.author }) : null,
 								entry.description ?? null,
 							]
 								.filter(Boolean)

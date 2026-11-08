@@ -72,7 +72,10 @@ function sortSkins(skins: readonly CardSkinSummary[]): CardSkinSummary[] {
 
 /** 「by 作者 · 描述」那一行(两样都没有就整行不出)。 */
 function skinDesc(skin: CardSkinSummary): string {
-	return [skin.author ? `by ${skin.author}` : null, skin.description ?? null]
+	return [
+		skin.author ? i18n.t("library.author", { author: skin.author }) : null,
+		skin.description ?? null,
+	]
 		.filter(Boolean)
 		.join(" · ");
 }

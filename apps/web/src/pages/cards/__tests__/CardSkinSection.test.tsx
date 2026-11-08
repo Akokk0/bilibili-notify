@@ -127,6 +127,74 @@ afterEach(() => {
  * 以及**「知道了」真的打到服务端**(只在前端藏起来的话,刷一下页面它又回来了)。
  */
 describe("卡片皮肤库 · 回落告警", () => {
+	it("localized fallback notices keep original reasons and unknown skin IDs while acknowledging the existing ledger", async () => {
+		vi.mocked(api.get).mockResolvedValue({
+			...LIST,
+			fallbacks: [
+				{
+					skinId: "aurora",
+					kind: "live",
+					reason: "Original timeout 原因",
+					at: 1757000000000,
+					count: 1,
+				},
+				{
+					skinId: "orphan-skin",
+					kind: "live",
+					reason: "Original timeout 原因",
+					at: 1757000000000,
+					count: 3,
+				},
+			],
+		});
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					title: "Some cards could not use their skin and fell back to the built-in default.",
+					known: "极光 · Live card: Original timeout 原因",
+					unknown: "Skin orphan-skin · Live card: Original timeout 原因",
+					count: "(3 times)",
+					ack: "Acknowledge",
+				},
+			],
+			[
+				"ja",
+				{
+					title: "一部のカードをスキンで描画できず、内蔵の既定スキンに切り替えました。",
+					known: "极光・配信カード：Original timeout 原因",
+					unknown: "スキン orphan-skin・配信カード：Original timeout 原因",
+					count: "（3回）",
+					ack: "確認",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					title: "部分卡片無法套用外觀，已回退至內建預設外觀。",
+					known: "极光的直播卡片：Original timeout 原因",
+					unknown: "外觀 orphan-skin的直播卡片：Original timeout 原因",
+					count: "（3 次）",
+					ack: "了解",
+				},
+			],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			vi.mocked(api.delete).mockClear();
+			const { unmount } = renderSection("select");
+			await screen.findByText(w.title);
+			expect(screen.getByText((text) => text.startsWith(w.known))).toBeTruthy();
+			expect(
+				screen.getByText((text) => text.startsWith(w.unknown) && text.includes(w.count)),
+			).toBeTruthy();
+			expect(api.delete).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: w.ack }));
+			await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/cards/skins/fallbacks"));
+			expect(api.put).not.toHaveBeenCalled();
+			unmount();
+		}
+	});
+
 	const WITH_FALLBACK = {
 		...LIST,
 		fallbacks: [
@@ -167,6 +235,167 @@ describe("卡片皮肤库 · 回落告警", () => {
 });
 
 describe("卡片皮肤库", () => {
+	it("empty libraries and the builtin appearance badge are localized without selecting or importing resources", async () => {
+		for (const [locale, builtin, empty] of [
+			["en", "Built-in skin", "The skin library is empty. Upload a skin package to get started."],
+			[
+				"ja",
+				"内蔵スキン",
+				"スキンライブラリーは空です。スキンパッケージをアップロードしてください。",
+			],
+			["zh-TW", "內建外觀", "外觀資源庫是空的，請先上傳外觀套件。"],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			vi.mocked(api.get).mockResolvedValue({ ...LIST, active: "default" });
+			const view = renderSection();
+			await screen.findByText(builtin);
+			view.unmount();
+			vi.mocked(api.get).mockResolvedValue({ skins: [], active: "default" });
+			const blank = renderSection();
+			await screen.findByText(empty);
+			expect(api.put).not.toHaveBeenCalled();
+			expect(api.upload).not.toHaveBeenCalled();
+			blank.unmount();
+		}
+	});
+
+	it("localized deletion requires confirmation and preserves the server conflict explanation", async () => {
+		const reason = "Original owner 原订阅 still uses this skin";
+		vi.mocked(api.delete).mockRejectedValue(
+			new FakeApiError(409, { code: "conflict", message: reason }, reason),
+		);
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					remove: "Delete",
+					title: "Delete card skin",
+					message: "Delete “极光”? This cannot be undone.",
+					cancel: "Cancel",
+					failure: "Operation failed: ",
+				},
+			],
+			[
+				"ja",
+				{
+					remove: "削除",
+					title: "カードスキンを削除",
+					message: "「极光」を削除しますか？この操作は取り消せません。",
+					cancel: "キャンセル",
+					failure: "操作に失敗しました：",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					remove: "刪除",
+					title: "刪除卡片外觀",
+					message: "確定刪除「极光」？刪除後無法復原。",
+					cancel: "取消",
+					failure: "操作失敗：",
+				},
+			],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			vi.mocked(api.delete).mockClear();
+			const { unmount } = renderSection();
+			const row = within(await rowOf("极光"));
+			fireEvent.click(row.getByRole("button", { name: w.remove }));
+			const dialog = await screen.findByRole("dialog");
+			expect(within(dialog).getByText(w.title)).toBeTruthy();
+			expect(within(dialog).getByText(w.message)).toBeTruthy();
+			fireEvent.click(within(dialog).getByRole("button", { name: w.cancel }));
+			expect(api.delete).not.toHaveBeenCalled();
+			fireEvent.click(row.getByRole("button", { name: w.remove }));
+			fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: w.remove }));
+			await screen.findByText(`${w.failure}${reason}`);
+			expect(api.delete).toHaveBeenCalledWith("/api/cards/skins/aurora");
+			expect(api.put).not.toHaveBeenCalled();
+			unmount();
+		}
+	});
+
+	it("localized library controls retain original resources and copy builtins before editing", async () => {
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					title: "Card skins · card-skin",
+					hint: "Import and manage notification card skins. Choose one in card settings. Built-in skins are read-only; copy them before editing.",
+					applied: "Skin applied",
+					builtin: "Built-in",
+					used: "In use",
+					upload: "Upload skin package",
+					copyEdit: "Copy and edit",
+					edit: "Edit",
+					copy: "Duplicate",
+					export: "Export",
+					remove: "Delete",
+					author: "Author: 伦伦酱 · 冷色玻璃",
+				},
+			],
+			[
+				"ja",
+				{
+					title: "カードスキン · card-skin",
+					hint: "通知カードのスキンをインポート・管理します。使用するスキンはカード設定で選びます。内蔵スキンは読み取り専用のため、編集前にコピーしてください。",
+					applied: "スキン適用中",
+					builtin: "内蔵",
+					used: "使用中",
+					upload: "スキンをアップロード",
+					copyEdit: "コピーして編集",
+					edit: "編集",
+					copy: "複製",
+					export: "エクスポート",
+					remove: "削除",
+					author: "作者：伦伦酱 · 冷色玻璃",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					title: "卡片外觀 · card-skin",
+					hint: "匯入與管理通知卡片的外觀；選用請到卡片設定。內建外觀為唯讀，修改前請先複製。",
+					applied: "已套用外觀",
+					builtin: "內建",
+					used: "使用中",
+					upload: "上傳外觀套件",
+					copyEdit: "複製並編輯",
+					edit: "編輯",
+					copy: "複製一份",
+					export: "匯出",
+					remove: "刪除",
+					author: "作者：伦伦酱 · 冷色玻璃",
+				},
+			],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			vi.mocked(api.post).mockClear();
+			const { unmount } = renderSection();
+			const builtin = within(await rowOf("默认皮肤"));
+			const custom = within(await rowOf("极光"));
+			expect(screen.getByText(w.title)).toBeTruthy();
+			expect(screen.getByText(w.hint)).toBeTruthy();
+			expect(screen.getByText(w.applied)).toBeTruthy();
+			expect(screen.getByLabelText(w.upload)).toBeTruthy();
+			expect(builtin.getByText(w.builtin)).toBeTruthy();
+			expect(builtin.queryByRole("button", { name: w.remove })).toBeNull();
+			expect(custom.getByText(w.used)).toBeTruthy();
+			expect(custom.getByRole("button", { name: w.edit })).toBeTruthy();
+			expect(custom.getByRole("button", { name: w.copy })).toBeTruthy();
+			expect(custom.getByRole("button", { name: w.export })).toBeTruthy();
+			expect(custom.getByRole("button", { name: w.remove })).toBeTruthy();
+			expect(screen.getByText(w.author)).toBeTruthy();
+			fireEvent.click(builtin.getByRole("button", { name: w.copyEdit }));
+			await waitFor(() =>
+				expect(screen.getByLabelText("当前位置").textContent).toBe("/cards/skins/aurora-copy"),
+			);
+			expect(api.post).toHaveBeenCalledWith("/api/cards/skins/default/duplicate", {});
+			expect(api.put).not.toHaveBeenCalled();
+			unmount();
+		}
+	});
+
 	it("内置皮肤复制后才编辑，不启用副本", async () => {
 		renderSection();
 		fireEvent.click(within(await rowOf("默认皮肤")).getByRole("button", { name: "复制并编辑" }));
@@ -202,7 +431,7 @@ describe("卡片皮肤库", () => {
 		expect(within(await rowOf("极光")).getByText("使用中")).toBeTruthy();
 		expect(within(await rowOf("默认皮肤")).queryByText("使用中")).toBeNull();
 		// 作者与描述合成一行。
-		expect(screen.getByText("by 伦伦酱 · 冷色玻璃")).toBeTruthy();
+		expect(screen.getByText("作者：伦伦酱 · 冷色玻璃")).toBeTruthy();
 	});
 
 	it("「启用」打 PUT /api/cards/skins/active", async () => {
