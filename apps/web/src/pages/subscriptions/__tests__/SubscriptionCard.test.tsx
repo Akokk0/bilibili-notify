@@ -59,6 +59,38 @@ describe("SubscriptionCard 描述符身份", () => {
 });
 
 describe("SubscriptionCard 菜单触发", () => {
+	it.each(["Enter", " "])("opens details when the card itself receives %s", (key) => {
+		const onClick = vi.fn();
+		const view = render(<SubscriptionCard {...props({ onClick })} />);
+		const card = view.getByRole("button", { name: /UID 100/ });
+		expect(fireEvent.keyDown(card, { key })).toBe(false);
+		expect(onClick).toHaveBeenCalledTimes(1);
+	});
+
+	it.each(["Enter", " "])(
+		"leaves %s activation to the focused inner control without opening details",
+		(key) => {
+			const onClick = vi.fn();
+			const onToggleSelect = vi.fn();
+			const onToggleEnabled = vi.fn();
+			const view = render(
+				<SubscriptionCard {...props({ onClick, onToggleSelect, onToggleEnabled })} />,
+			);
+			const select = view.getByRole("button", { name: "选择" });
+			expect(fireEvent.keyDown(select, { key })).toBe(true);
+			expect(onClick).not.toHaveBeenCalled();
+			fireEvent.click(select);
+			expect(onToggleSelect).toHaveBeenCalledTimes(1);
+			expect(onClick).not.toHaveBeenCalled();
+			const toggle = view.getByRole("button", { name: "" });
+			expect(fireEvent.keyDown(toggle, { key })).toBe(true);
+			expect(onClick).not.toHaveBeenCalled();
+			fireEvent.click(toggle);
+			expect(onToggleEnabled).toHaveBeenCalledWith(false);
+			expect(onClick).not.toHaveBeenCalled();
+		},
+	);
+
 	it("右键卡片 → onRequestMenu(带触发点坐标)", () => {
 		const onRequestMenu = vi.fn();
 		const { container } = render(<SubscriptionCard {...props({ onRequestMenu })} />);
