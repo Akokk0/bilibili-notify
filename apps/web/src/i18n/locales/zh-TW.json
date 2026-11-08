@@ -2334,5 +2334,17 @@
 	"sourceUi.pages.up.UpDialog.ExtraPerTargetToggle.40": "已明確設為{value1}（訂閱預設為{value2}）",
 	"sourceUi.pages.up.UpDialog.label.41": "將{value1}重設為跟隨訂閱預設",
 	"sourceUi.pages.up.UpDialog.atAllBlockedNote.42": "{value1}，傳送時會自動略過 @全體。",
-	"sourceUi.pages.up.UpDialog.text.43": "連線已不存在，無法判斷是否支援 @全體。"
+	"sourceUi.pages.up.UpDialog.text.43": "連線已不存在，無法判斷是否支援 @全體。",
+	"skins.select.image": "桌布圖片",
+	"skins.select.wallpaper": "桌布",
+	"skins.select.noWallpaper": "（不使用桌布）",
+	"skins.select.fit": "{prefix}顯示方式",
+	"skins.select.fitDefault": "預設（填滿）",
+	"skins.select.fitCover": "填滿",
+	"skins.select.fitContain": "完整顯示",
+	"skins.select.fitTile": "平鋪",
+	"skins.select.chatImage": "聊天桌布",
+	"skins.select.font": "內附字型",
+	"skins.select.noFont": "（不使用內附字型）",
+	"skins.select.default": "預設"
 }

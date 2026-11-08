@@ -2387,5 +2387,17 @@
 	"sourceUi.pages.up.UpDialog.ExtraPerTargetToggle.40": "Explicitly set to {value1} (subscription default: {value2})",
 	"sourceUi.pages.up.UpDialog.label.41": "Reset {value1} to subscription defaults",
 	"sourceUi.pages.up.UpDialog.atAllBlockedNote.42": "{value1}; @everyone will be skipped when sending.",
-	"sourceUi.pages.up.UpDialog.text.43": "The connection is missing; @everyone support cannot be checked."
+	"sourceUi.pages.up.UpDialog.text.43": "The connection is missing; @everyone support cannot be checked.",
+	"skins.select.image": "Wallpaper image",
+	"skins.select.wallpaper": "Wallpaper",
+	"skins.select.noWallpaper": "(No wallpaper)",
+	"skins.select.fit": "{prefix} fit",
+	"skins.select.fitDefault": "Default (fill)",
+	"skins.select.fitCover": "Fill",
+	"skins.select.fitContain": "Show full image",
+	"skins.select.fitTile": "Tile",
+	"skins.select.chatImage": "Chat wallpaper",
+	"skins.select.font": "Bundled font",
+	"skins.select.noFont": "(No bundled font)",
+	"skins.select.default": "Default"
 }

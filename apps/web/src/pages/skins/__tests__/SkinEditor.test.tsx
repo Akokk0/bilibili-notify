@@ -112,6 +112,7 @@ function renderEditor(overrides?: {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	H.putCalls = [];
 	H.postCalls = [];
 	H.uploadCalls = [];
@@ -133,6 +134,173 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SkinEditor", () => {
+	it("bundled font choices and default markers translate without rewriting resource names or the font fallback list", async () => {
+		const manifest = makeManifest();
+		manifest.modes.light = { ...manifest.modes.light, fonts: { body: ["Original body font"] } };
+		H.defaultManifest = structuredClone(manifest);
+		renderEditor({ manifest });
+		const nameRow = screen.getByLabelText("皮肤名").parentElement as HTMLElement;
+		await waitFor(() => expect(within(nameRow).getByText("默认")).toBeTruthy());
+		openFontFold();
+		for (const [locale, words] of [
+			["en", { font: "Bundled font", none: "(No bundled font)", defaults: "Default" }],
+			["ja", { font: "同梱フォント", none: "（同梱フォントを使わない）", defaults: "既定" }],
+			["zh-TW", { font: "內附字型", none: "（不使用內附字型）", defaults: "預設" }],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(within(nameRow).getByText(words.defaults)).toBeTruthy();
+			const font = screen.getByRole("combobox", { name: words.font });
+			expect(selectOptionsOf(font).map((option) => option.textContent)).toEqual([
+				words.none,
+				"霞鹜文楷 Light.woff2",
+			]);
+			chooseSelect(font, "霞鹜文楷 Light.woff2");
+			await waitFor(() =>
+				expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.asset).toBe(
+					"assets/font-a1b2c3d4.woff2",
+				),
+			);
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.body).toEqual([
+				"Original body font",
+			]);
+		}
+		chooseSelect(screen.getByRole("combobox", { name: "內附字型" }), "（不使用內附字型）");
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.asset).toBeUndefined(),
+		);
+		expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.body).toEqual([
+			"Original body font",
+		]);
+		expect(H.putCalls).toEqual([]);
+		expect(H.postCalls).toEqual([]);
+		expect(H.uploadCalls).toEqual([]);
+	});
+
+	it("chat wallpaper selectors translate without changing page wallpaper or removing the chat background", async () => {
+		const manifest = makeManifest();
+		manifest.modes.light = {
+			...manifest.modes.light,
+			chat: { background: "#123456", wallpaper: { image: "assets/deco.webp", fit: "contain" } },
+		};
+		renderEditor({ manifest });
+		fireEvent.click(screen.getByText("AI 聊天"));
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					image: "Chat wallpaper",
+					fit: "Chat wallpaper fit",
+					tile: "Tile",
+					none: "(No wallpaper)",
+				},
+			],
+			[
+				"ja",
+				{
+					image: "チャットの壁紙",
+					fit: "チャットの壁紙の表示方法",
+					tile: "タイル状に並べる",
+					none: "（壁紙なし）",
+				},
+			],
+			[
+				"zh-TW",
+				{ image: "聊天桌布", fit: "聊天桌布顯示方式", tile: "平鋪", none: "（不使用桌布）" },
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			chooseSelect(screen.getByRole("combobox", { name: words.image }), "assets/deco.webp");
+			chooseSelect(screen.getByRole("combobox", { name: words.fit }), words.tile);
+			await waitFor(() =>
+				expect(useSkinStore.getState().preview?.manifest.modes.light?.chat?.wallpaper?.fit).toBe(
+					"tile",
+				),
+			);
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.image).toBe(
+				"assets/bg.png",
+			);
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.fit).toBeUndefined();
+		}
+		chooseSelect(screen.getByRole("combobox", { name: "聊天桌布" }), "（不使用桌布）");
+		await waitFor(() =>
+			expect(
+				useSkinStore.getState().preview?.manifest.modes.light?.chat?.wallpaper,
+			).toBeUndefined(),
+		);
+		expect(useSkinStore.getState().preview?.manifest.modes.light?.chat?.background).toBe("#123456");
+		expect(H.putCalls).toEqual([]);
+		expect(H.postCalls).toEqual([]);
+		expect(H.uploadCalls).toEqual([]);
+	});
+
+	it("wallpaper selectors translate while asset names and the selected fit remain in the local preview", async () => {
+		renderEditor();
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					image: "Wallpaper image",
+					fit: "Wallpaper fit",
+					none: "(No wallpaper)",
+					defaults: "Default (fill)",
+					cover: "Fill",
+					contain: "Show full image",
+					tile: "Tile",
+				},
+			],
+			[
+				"ja",
+				{
+					image: "壁紙画像",
+					fit: "壁紙の表示方法",
+					none: "（壁紙なし）",
+					defaults: "既定（全面に表示）",
+					cover: "領域を埋める",
+					contain: "画像全体を表示",
+					tile: "タイル状に並べる",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					image: "桌布圖片",
+					fit: "桌布顯示方式",
+					none: "（不使用桌布）",
+					defaults: "預設（填滿）",
+					cover: "填滿",
+					contain: "完整顯示",
+					tile: "平鋪",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const image = screen.getByRole("combobox", { name: words.image });
+			expect(selectOptionsOf(image).map((option) => option.textContent)).toEqual([
+				words.none,
+				"assets/bg.png",
+				"assets/deco.webp",
+			]);
+			chooseSelect(image, "assets/bg.png");
+			const fit = screen.getByRole("combobox", { name: words.fit });
+			expect(selectOptionsOf(fit).map((option) => option.textContent)).toEqual([
+				words.defaults,
+				words.cover,
+				words.contain,
+				words.tile,
+			]);
+			chooseSelect(fit, words.tile);
+			await waitFor(() =>
+				expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.fit).toBe("tile"),
+			);
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.image).toBe(
+				"assets/bg.png",
+			);
+		}
+		expect(H.putCalls).toEqual([]);
+		expect(H.postCalls).toEqual([]);
+		expect(H.uploadCalls).toEqual([]);
+	});
+
 	it("挂载:editing=true 且 preview=当前 draft;卸载:两者复位", () => {
 		const { unmount } = renderEditor();
 		expect(useSkinStore.getState().editing).toBe(true);

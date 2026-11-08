@@ -2334,5 +2334,17 @@
 	"sourceUi.pages.up.UpDialog.ExtraPerTargetToggle.40": "{value1}に個別設定済み（購読の既定値：{value2}）",
 	"sourceUi.pages.up.UpDialog.label.41": "{value1}を購読の既定値に戻す",
 	"sourceUi.pages.up.UpDialog.atAllBlockedNote.42": "{value1}。送信時に全員メンションを省略します。",
-	"sourceUi.pages.up.UpDialog.text.43": "接続が見つからないため、全員メンションの対応状況を確認できません。"
+	"sourceUi.pages.up.UpDialog.text.43": "接続が見つからないため、全員メンションの対応状況を確認できません。",
+	"skins.select.image": "壁紙画像",
+	"skins.select.wallpaper": "壁紙",
+	"skins.select.noWallpaper": "（壁紙なし）",
+	"skins.select.fit": "{prefix}の表示方法",
+	"skins.select.fitDefault": "既定（全面に表示）",
+	"skins.select.fitCover": "領域を埋める",
+	"skins.select.fitContain": "画像全体を表示",
+	"skins.select.fitTile": "タイル状に並べる",
+	"skins.select.chatImage": "チャットの壁紙",
+	"skins.select.font": "同梱フォント",
+	"skins.select.noFont": "（同梱フォントを使わない）",
+	"skins.select.default": "既定"
 }
