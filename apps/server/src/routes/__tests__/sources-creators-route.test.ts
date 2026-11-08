@@ -23,6 +23,7 @@ import { noProfile } from "../../__tests__/support/no-candidates.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import { settingsSegment } from "../../bilibili/settings.js";
 import type { BootstrapConfig } from "../../config/schema.js";
+import { i18n } from "../../i18n/index.js";
 import { createAppRuntime } from "../../runtime/bootstrap.js";
 import type { PipelineRuntime } from "../../runtime/pipeline.js";
 import { makeIntegration } from "../../subscriptions/__tests__/fixtures.js";
@@ -83,6 +84,36 @@ describe("GET /api/sources/:sourceKey/creators", () => {
 		});
 		return { app, runtime };
 	}
+
+	it("localizes source query rejection on a held route and preserves candidate data", async () => {
+		const candidate = { externalId: "raw-77", name: "原名 / Mixed" };
+		const search = vi.fn(async () => ok({ candidates: [candidate] }));
+		const { app, runtime } = await boot(search);
+		const previous = i18n.state();
+		try {
+			for (const [locale, message] of [
+				["en", "q must not be blank."],
+				["ja", "qを空にすることはできません。"],
+				["zh-TW", "q 不能為空白。"],
+			] as const) {
+				i18n.set({ locale, voice: "plain" });
+				const calls = search.mock.calls.length;
+				const rejected = await app.request("/api/sources/douyin/creators?q=");
+				expect(rejected.status).toBe(400);
+				expect(await rejected.json()).toEqual({ code: "invalid", message });
+				expect(search).toHaveBeenCalledTimes(calls);
+				const accepted = await app.request(
+					`/api/sources/douyin/creators?q=${encodeURIComponent("原查 Mixed")}`,
+				);
+				expect(accepted.status).toBe(200);
+				expect(await accepted.json()).toEqual({ candidates: [candidate] });
+				expect(search).toHaveBeenLastCalledWith("原查 Mixed");
+			}
+		} finally {
+			i18n.set(previous);
+			await runtime.dispose();
+		}
+	});
 
 	it("一个都认不出 —— 200 加一张空表,不是 404", async () => {
 		const { app } = await boot(async () => ok({ candidates: [] }));

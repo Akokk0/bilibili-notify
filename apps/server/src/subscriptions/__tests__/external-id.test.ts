@@ -1,5 +1,6 @@
 import { EXTERNAL_ID_MAX } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { externalIdRefusal } from "../external-id.js";
 
 const DIGITS = { label: "某站", externalIdRegex: "^\\d+$" };
@@ -65,3 +66,35 @@ describe("externalIdRefusal:回给面板的整句话", () => {
 		});
 	});
 });
+
+it.each([
+	[
+		"en",
+		"The external ID format for Custom 源 is invalid; a subscription cannot be created.",
+		"This ID does not match the format declared by Custom 源.",
+	],
+	[
+		"ja",
+		"Custom 源の外部IDの形式が正しくないため、購読を作成できません。",
+		"このIDはCustom 源が指定する形式に合っていません。",
+	],
+	["zh-TW", "Custom 源的外部 ID 格式不正確，無法建立訂閱。", "此 ID 不符合 Custom 源 要求的格式。"],
+] as const)(
+	"localizes declared identity validation in %s while keeping source labels and issue paths",
+	(locale, message, issue) => {
+		const previous = i18n.state();
+		const spec = { ...DIGITS, label: "Custom 源" };
+		try {
+			i18n.set({ locale, voice: "plain" });
+			expect(externalIdRefusal(spec, "invalid-id")).toEqual({
+				ok: false,
+				code: "invalid",
+				message,
+				issues: [{ path: ["identity", "externalId"], message: issue }],
+			});
+			expect(externalIdRefusal(spec, "123")).toBeUndefined();
+		} finally {
+			i18n.set(previous);
+		}
+	},
+);
