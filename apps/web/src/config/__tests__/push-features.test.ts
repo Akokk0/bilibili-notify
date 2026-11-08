@@ -13,7 +13,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { FEATURE_KEYS } from "../../types/domain";
 import { FEATURE_DESCRIPTORS, familyTone, PUSH_STATUS_META, PUSH_TONE } from "../push-features";
 
@@ -248,4 +249,85 @@ describe("没有第二份推送色表", () => {
 		const hit = hexes.filter((h) => src.includes(h.toLowerCase()));
 		expect(hit.length < 3, `凑齐了 ${hit.join(" ")} —— 这已经是一张推送色表了`).toBe(true);
 	});
+});
+
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
+
+it("feature and delivery labels read current locale without changing their keys or presentation metadata", () => {
+	const live = FEATURE_DESCRIPTORS.liveStreaming;
+	for (const [
+		locale,
+		start,
+		streaming,
+		end,
+		event,
+		delivered,
+		partial,
+		failed,
+		none,
+		muted,
+		filtered,
+	] of [
+		[
+			"en",
+			"Live start",
+			"Live",
+			"Live end",
+			"Streaming",
+			"Delivered",
+			"Partially failed",
+			"Failed",
+			"No targets",
+			"Silenced",
+			"Filtered",
+		],
+		[
+			"ja",
+			"配信開始",
+			"配信",
+			"配信終了",
+			"配信中",
+			"送信済み",
+			"一部失敗",
+			"失敗",
+			"送信先なし",
+			"通知停止",
+			"フィルター済み",
+		],
+		[
+			"zh-TW",
+			"開播",
+			"直播",
+			"下播",
+			"正在直播",
+			"已送達",
+			"部分失敗",
+			"失敗",
+			"無目標",
+			"已靜音",
+			"已過濾",
+		],
+	] as const) {
+		i18n.set({ locale, voice: "plain" });
+		expect([
+			FEATURE_DESCRIPTORS.liveStart.label,
+			live.label,
+			FEATURE_DESCRIPTORS.liveEnd.label,
+		]).toEqual([start, streaming, end]);
+		expect(live.eventLabel).toBe(event);
+		expect([
+			PUSH_STATUS_META.delivered.label,
+			PUSH_STATUS_META.partial.label,
+			PUSH_STATUS_META.failed.label,
+			PUSH_STATUS_META["no-targets"].label,
+			PUSH_STATUS_META.silenced.label,
+			PUSH_STATUS_META.filtered.label,
+		]).toEqual([delivered, partial, failed, none, muted, filtered]);
+		expect(FEATURE_DESCRIPTORS.liveStreaming).toBe(live);
+		expect(live.family).toBe("live");
+		expect(live.icon).toBe("live");
+		expect(live.tone).toBe("#FB7299");
+	}
 });

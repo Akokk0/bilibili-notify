@@ -27,6 +27,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { handlePushEnvelope } from "../../hooks/usePushEventsChannel";
+import { i18n } from "../../i18n";
 import { type HistoryEntryView, historyQueryKey } from "../../services/overview";
 import History from "../History";
 
@@ -587,4 +588,9 @@ describe("被过滤的行", () => {
 		expect(screen.getByText(label)).toBeTruthy();
 		expect(screen.queryByText("未发送")).toBeNull();
 	});
+});
+
+// This scenario explicitly tests Chinese labels.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 });

@@ -9,6 +9,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { makeSource } from "../../pages/rules/__tests__/fixtures";
 import { AUTO_DISMISS_MS, type PushEventView, useToastStore } from "../../store/notifications";
 import { ToastShell } from "../toast-shell";
@@ -253,4 +254,9 @@ describe("推送 toast —— 无目标", () => {
 		act(() => useToastStore.getState().push(pushView("h1")));
 		expect(screen.queryByRole("button", { name: "去配置" })).toBeNull();
 	});
+});
+
+// This scenario explicitly tests Chinese labels.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 });
