@@ -1282,3 +1282,236 @@ it("startup checking and first-probe failure translate without opening protected
 		);
 	}
 });
+
+it.each([1, 2])(
+	"%s translated migration notices preserve follow-ups and snoozing does not acknowledge them",
+	async (count) => {
+		const migrated = { ...migratedNotice, id: "migrated/raw" };
+		let left: SystemNotice[] = count === 1 ? [migrated] : [migrated, updateNotice];
+		mountApp({
+			notices: () => left,
+			request: async (path, init) => {
+				if (path === "/api/system/notices/migrated%2Fraw/acknowledge" && init?.method === "POST") {
+					left = left.slice(1);
+					return jsonResponse({ notices: left });
+				}
+			},
+		});
+		await screen.findByText("数据已迁移完成");
+		await screen.findAllByRole("button", { name: /添加一行/ });
+		for (const [locale, title, skins, master, cards, owner] of [
+			[
+				"en",
+				"Data migration complete",
+				"Recreate card skins",
+				"Select the owner target again",
+				"Open card settings",
+				"Select owner target",
+			],
+			[
+				"ja",
+				"データの移行が完了しました",
+				"カードスキンの作り直しが必要です",
+				"管理者の通知先を選び直してください",
+				"カード設定へ",
+				"管理者の通知先を選択",
+			],
+			[
+				"zh-TW",
+				"資料搬移完成",
+				"卡片外觀需要重新製作",
+				"請重新選擇主人目標",
+				"前往卡片設定",
+				"選擇主人目標",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(skins)).toBeTruthy();
+			expect(screen.getByText(master)).toBeTruthy();
+			expect(screen.getByRole("button", { name: cards })).toBeTruthy();
+			expect(screen.getByRole("button", { name: owner })).toBeTruthy();
+			expect(
+				vi
+					.mocked(fetch)
+					.mock.calls.some(
+						([, init]) => init?.method === "POST" && String(init?.body).includes("empty"),
+					),
+			).toBe(false);
+		}
+		await userEvent.click(screen.getByRole("button", { name: "稍後提醒" }));
+		for (const [locale, label, view] of [
+			["en", count === 1 ? "Startup notice · 1 unread" : "Startup notices · 2 unread", "View"],
+			["ja", `起動時のお知らせ · 未読${count}件`, "表示"],
+			["zh-TW", `啟動提示 · ${count} 則未讀`, "查看"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(label)).toBeTruthy();
+			expect(screen.getByRole("button", { name: view })).toBeTruthy();
+			expect(
+				vi
+					.mocked(fetch)
+					.mock.calls.filter(
+						([path, init]) => init?.method === "POST" && String(path).endsWith("/acknowledge"),
+					),
+			).toHaveLength(0);
+		}
+		await userEvent.click(screen.getByRole("button", { name: "查看" }));
+		expect(await screen.findByText("資料搬移完成")).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "沿用已搬移資料" }));
+		await waitFor(() => expect(screen.queryByText("資料搬移完成")).toBeNull());
+		expect(
+			vi
+				.mocked(fetch)
+				.mock.calls.filter(
+					([path, init]) => init?.method === "POST" && String(path).endsWith("/acknowledge"),
+				)
+				.map(([path]) => String(path)),
+		).toEqual(["/api/system/notices/migrated%2Fraw/acknowledge"]);
+	},
+);
+
+it.each([
+	[
+		"updated",
+		"Updated · 1.0.1",
+		"今回の更新 · 1.0.1",
+		"本次更新 · 1.0.1",
+		"The service was updated to 1.0.1. Release notes for the versions included in this update are below.",
+		"サービスを1.0.1に更新しました。今回の更新に含まれる各バージョンの変更内容を以下に表示します。",
+		"服務已更新至 1.0.1。下方列出本次更新所涵蓋版本的說明。",
+	],
+	[
+		"zero",
+		"Could not create new data",
+		"新しいデータを作成できませんでした",
+		"無法建立新資料",
+		"Migration from the old data could not finish. The service is still using its previous data.",
+		"旧データからの再移行が完了しなかったため、引き続き元のデータを使用しています。",
+		"無法完成從舊資料重新搬移，服務仍使用原本的資料。",
+	],
+	[
+		"empty",
+		"Could not create new data",
+		"新しいデータを作成できませんでした",
+		"無法建立新資料",
+		"Starting fresh failed. The service is still using its previous data.",
+		"新規作成が完了しなかったため、引き続き元のデータを使用しています。",
+		"無法完成全新開始，服務仍使用原本的資料。",
+	],
+	[
+		"rollback",
+		"Automatically rolled back to a working version",
+		"起動できるバージョンへ自動で戻しました",
+		"已自動退回可用版本",
+		"Version 1.0.2 did not start. The service automatically rolled back to the running version, test.",
+		"バージョン1.0.2を起動できなかったため、現在稼働中のtestへ自動で戻しました。",
+		"版本 1.0.2 無法啟動，已自動退回目前執行中的 test。",
+	],
+] as const)(
+	"%s notice translates its explanation and preserves original release notes or diagnostics",
+	async (kind, enTitle, jaTitle, twTitle, enHint, jaHint, twHint) => {
+		const notice: SystemNotice =
+			kind === "updated"
+				? {
+						...updateNotice,
+						releases: [
+							{
+								version: "1.0.1",
+								date: "2026-11-04",
+								summary: "**历史说明原文**",
+								caution: "注意事项原文",
+								releaseUrl: "https://example.test/releases/1.0.1",
+							},
+						],
+					}
+				: kind === "rollback"
+					? {
+							id: "receipt/raw",
+							kind: "rolled-back",
+							createdAt: "2026-11-04T00:00:00Z",
+							version: "1.0.2",
+						}
+					: {
+							id: "receipt/raw",
+							kind: "generation-failed",
+							createdAt: "2026-11-04T00:00:00Z",
+							source: kind,
+							message: "磁盘空间不足（原文）",
+						};
+		mountApp({ notices: () => [notice] });
+		await screen.findByText(
+			kind === "updated"
+				? "本次更新 · 1.0.1"
+				: kind === "rollback"
+					? "已自动退回可用版本"
+					: "未能创建新数据",
+		);
+		await screen.findAllByRole("button", { name: /添加一行/ });
+		if (kind === "updated") await screen.findByText("历史说明原文", { selector: "strong" });
+		for (const [locale, title, hint, ack] of [
+			["en", enTitle, enHint, "Got it"],
+			["ja", jaTitle, jaHint, "了解"],
+			["zh-TW", twTitle, twHint, "了解"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(hint)).toBeTruthy();
+			expect(screen.getByRole("button", { name: ack })).toBeTruthy();
+			if (kind === "updated") {
+				expect(screen.getByText("历史说明原文", { selector: "strong" })).toBeTruthy();
+				expect(screen.getByText("注意事项原文")).toBeTruthy();
+			} else if (kind !== "rollback") expect(screen.getByText("磁盘空间不足（原文）")).toBeTruthy();
+			expect(
+				vi
+					.mocked(fetch)
+					.mock.calls.filter(
+						([path, init]) => init?.method === "POST" && String(path).endsWith("/acknowledge"),
+					),
+			).toHaveLength(0);
+			expect(
+				vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/system/generations"),
+			).toBe(false);
+		}
+	},
+);
+
+it("notice read failures translate and retry without marking unknown notices read", async () => {
+	let failing = true;
+	mountApp({
+		notices: () => [updateNotice],
+		request: async (path) =>
+			path === "/api/system/notices" && failing
+				? jsonResponse({ code: "unavailable", message: "读提示失败原文" }, 503)
+				: undefined,
+	});
+	await screen.findByText("读提示失败原文");
+	await screen.findAllByRole("button", { name: /添加一行/ });
+	for (const [locale, message, retry] of [
+		["en", "Could not read startup notices. No notices were marked as read.", "Retry"],
+		["ja", "起動時のお知らせを取得できませんでした。既読にはしていません。", "再試行"],
+		["zh-TW", "無法讀取啟動提示，未將任何提示標記為已讀。", "重試"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(message)).toBeTruthy();
+		expect(screen.getByText("读提示失败原文")).toBeTruthy();
+		expect(screen.getByRole("button", { name: retry })).toBeTruthy();
+		expect(screen.queryByText(/^Startup notices? ·|^起動時のお知らせ ·|^啟動提示 ·/)).toBeNull();
+		expect(
+			vi.mocked(fetch).mock.calls.filter(([path]) => String(path) === "/api/system/notices"),
+		).toHaveLength(1);
+	}
+	failing = false;
+	await userEvent.click(screen.getByRole("button", { name: "重試" }));
+	expect(await screen.findByText("本次更新 · 1.0.1")).toBeTruthy();
+	expect(
+		vi.mocked(fetch).mock.calls.filter(([path]) => String(path) === "/api/system/notices"),
+	).toHaveLength(2);
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.filter(
+				([path, init]) => init?.method === "POST" && String(path).endsWith("/acknowledge"),
+			),
+	).toHaveLength(0);
+});
