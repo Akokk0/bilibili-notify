@@ -526,5 +526,8 @@
 	"adapters.payload.empty": "Empty payload.",
 	"onebot.destination.missing": "{what} missing",
 	"onebot.ws.sendFailed": "WebSocket send failed.",
-	"onebot.connection.adapterMismatch": "Unexpected OneBot adapter: {adapterKey}"
+	"onebot.connection.adapterMismatch": "Unexpected OneBot adapter: {adapterKey}",
+	"qqOfficial.destination.missing": "{scope}: {what} missing",
+	"qqOfficial.token.managerClosed": "QQ token manager has been closed.",
+	"qqOfficial.connection.adapterMismatch": "Unexpected QQ bot adapter: {adapterKey}"
 }

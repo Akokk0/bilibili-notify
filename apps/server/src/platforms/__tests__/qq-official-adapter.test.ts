@@ -435,7 +435,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 	it("session 缺字段 → 直接失败,不发 token/REST", async () => {
 		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", ""), TEXT);
-		expect(r).toEqual({ ok: false, code: "invalid", message: "group: groupOpenid missing" });
+		expect(r).toEqual({ ok: false, code: "invalid", message: "group: 缺少 groupOpenid" });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -456,7 +456,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 			kind: "composite",
 			segments: [],
 		});
-		expect(empty).toEqual({ ok: false, code: "invalid", message: "empty payload" });
+		expect(empty).toEqual({ ok: false, code: "invalid", message: "发送内容为空。" });
 	});
 
 	it("取 token 被拒(HTTP 401)→ unauthorized,一条消息都没发", async () => {
@@ -884,4 +884,16 @@ describe("createQQOfficialAdapter — reconcile 拒绝空密钥", () => {
 
 		ad.stop();
 	});
+});
+
+it("rejects mismatched QQ adapters with a readable diagnostic before network access", async () => {
+	const ad = startedQQ();
+	const wrong = { ...qqConnection(), adapterKey: "onebot" } as unknown as Connection;
+	const expected = { ok: false, code: "invalid", message: "QQ 官方机器人适配器不匹配：onebot" };
+	expect(await ad.probe(wrong)).toEqual(expected);
+	expect(await ad.send(wrong, qqTarget("group", "G1"), TEXT)).toEqual(expected);
+	expect(await ad.listAddressCandidates?.(wrong, "group", new AbortController().signal)).toEqual(
+		expected,
+	);
+	expect(fetchMock).not.toHaveBeenCalled();
 });

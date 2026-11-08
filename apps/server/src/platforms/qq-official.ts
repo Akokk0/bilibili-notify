@@ -259,7 +259,7 @@ export function createQQTokenRefresher(opts: QQTokenRefresherOptions): QQTokenRe
 
 	return {
 		getToken() {
-			if (disposed) return Promise.reject(new Error("qq token manager disposed"));
+			if (disposed) return Promise.reject(new Error(t("qqOfficial.token.managerClosed")));
 			if (!tokenPromise) {
 				tokenPromise = refresh().catch((e) => {
 					tokenPromise = null; // 失败不缓存,允许下次重试
@@ -775,7 +775,7 @@ export function qqMessageEndpoint(
 	if (!address) {
 		const what =
 			scope === "channel" ? "channelId" : scope === "group" ? "groupOpenid" : "userOpenid";
-		return fail("invalid", `${scope}: ${what} missing`);
+		return fail("invalid", t("qqOfficial.destination.missing", { scope, what }));
 	}
 	if (scope === "channel") return ok({ path: `/channels/${address}/messages` });
 	if (scope === "group") return ok({ path: `/v2/groups/${address}/messages` });
@@ -1458,7 +1458,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			signal: AbortSignal,
 		): Promise<Result<{ candidates: readonly AddressCandidate[] }>> {
 			if (!isMine(connection)) {
-				return fail("invalid", `wrong platform: adapter=${connection.adapterKey}`);
+				return fail(
+					"invalid",
+					t("qqOfficial.connection.adapterMismatch", { adapterKey: connection.adapterKey }),
+				);
 			}
 			if (scope !== "channel") {
 				// 群 / 私聊:内存发现表里现成的,不出网。表里已是「最近的在前」。
@@ -1548,7 +1551,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			const t0 = Date.now();
 			if (!isMine(connection)) {
-				return fail("invalid", `wrong platform: ${connection.adapterKey}`);
+				return fail(
+					"invalid",
+					t("qqOfficial.connection.adapterMismatch", { adapterKey: connection.adapterKey }),
+				);
 			}
 			// 实际推送走 REST(token + /v2/.../messages),与 WS 网关(仅用于捞 openid)彼此独立
 			// —— 探连通性应该测「REST 能不能通」,不是「WS 握手有没有跑完」。此前用
@@ -1581,10 +1587,17 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		): Promise<DeliveryResult> {
 			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			if (!isMine(connection)) {
-				return fail("invalid", `wrong platform: adapter=${connection.adapterKey}`);
+				return fail(
+					"invalid",
+					t("qqOfficial.connection.adapterMismatch", { adapterKey: connection.adapterKey }),
+				);
 			}
 			// 端点目标没有会话可言(也没有 scope):与它原来恒为 channel、地址为空时的话一样。
-			if (destination.kind !== "session") return fail("invalid", "channel: channelId missing");
+			if (destination.kind !== "session")
+				return fail(
+					"invalid",
+					t("qqOfficial.destination.missing", { scope: "channel", what: "channelId" }),
+				);
 			const { scope, address } = destination;
 			// 先校验地址:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
 			const endpoint = qqMessageEndpoint(scope, address);
@@ -1644,7 +1657,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			}
 
 			const parts = qqPayloadToParts(payload);
-			if (parts.length === 0) return fail("invalid", "empty payload");
+			if (parts.length === 0) return fail("invalid", t("adapters.payload.empty"));
 
 			// QQ 一条 media 只能带一张图,多片段逐条发;任一条失败即整体失败(已发的无法回滚)。
 			let failure: Failure | null = null;

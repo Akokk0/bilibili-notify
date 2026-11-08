@@ -1,6 +1,7 @@
 import type { HttpClient, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
+import { i18n } from "../../i18n/index.js";
 import { createQQTokenRefresher, fetchAppAccessToken } from "../qq-official";
 
 // 底下的 fetch 用 vi.stubGlobal mock,不打真实网络;请求客户端是真的(对齐 adapters.test.ts)。
@@ -116,6 +117,33 @@ function makeTestCtx() {
 }
 
 describe("createQQTokenRefresher", () => {
+	it("localizes a held closed token manager without requesting or restarting timers", async () => {
+		const { ctx, timers, logger } = makeTestCtx();
+		const manager = createQQTokenRefresher({
+			http,
+			appId: "a",
+			clientSecret: "s",
+			serviceCtx: ctx,
+			logger,
+		});
+		manager.dispose();
+		const previous = i18n.state();
+		try {
+			for (const [locale, message] of [
+				["en", "QQ token manager has been closed."],
+				["ja", "QQトークン管理は終了しています。"],
+				["zh-TW", "QQ 權杖管理器已關閉。"],
+			] as const) {
+				i18n.set({ locale, voice: "plain" });
+				await expect(manager.getToken()).rejects.toThrow(message);
+			}
+			expect(fetchMock).not.toHaveBeenCalled();
+			expect(timers).toEqual([]);
+		} finally {
+			i18n.set(previous);
+		}
+	});
+
 	it("getToken 缓存:第二次不再请求", async () => {
 		fetchMock.mockImplementation(async () => jsonRes({ access_token: "T1", expires_in: 7200 }));
 		const { ctx, logger } = makeTestCtx();
@@ -197,6 +225,6 @@ describe("createQQTokenRefresher", () => {
 		await mgr.getToken();
 		mgr.dispose();
 		expect(timers.at(-1)?.disposed).toBe(true);
-		await expect(mgr.getToken()).rejects.toThrow(/disposed/);
+		await expect(mgr.getToken()).rejects.toThrow("QQ 令牌管理器已关闭。");
 	});
 });

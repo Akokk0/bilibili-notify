@@ -526,5 +526,8 @@
 	"adapters.payload.empty": "送信内容が空です。",
 	"onebot.destination.missing": "{what}がありません",
 	"onebot.ws.sendFailed": "WebSocketでの送信に失敗しました。",
-	"onebot.connection.adapterMismatch": "OneBotのアダプターが一致しません：{adapterKey}"
+	"onebot.connection.adapterMismatch": "OneBotのアダプターが一致しません：{adapterKey}",
+	"qqOfficial.destination.missing": "{scope}: {what}がありません",
+	"qqOfficial.token.managerClosed": "QQトークン管理は終了しています。",
+	"qqOfficial.connection.adapterMismatch": "QQ公式ボットのアダプターが一致しません：{adapterKey}"
 }

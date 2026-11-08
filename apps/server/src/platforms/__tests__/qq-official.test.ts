@@ -1,5 +1,6 @@
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	buildQQFileUpload,
 	buildQQMarkdownGallery,
@@ -35,7 +36,7 @@ describe("qqMessageEndpoint — target scope + 地址 → 发消息 REST 路径"
 		expect(qqMessageEndpoint("channel", "")).toEqual({
 			ok: false,
 			code: "invalid",
-			message: "channel: channelId missing",
+			message: "channel: 缺少 channelId",
 		});
 	});
 
@@ -43,7 +44,7 @@ describe("qqMessageEndpoint — target scope + 地址 → 发消息 REST 路径"
 		expect(qqMessageEndpoint("group", "")).toEqual({
 			ok: false,
 			code: "invalid",
-			message: "group: groupOpenid missing",
+			message: "group: 缺少 groupOpenid",
 		});
 	});
 
@@ -51,7 +52,7 @@ describe("qqMessageEndpoint — target scope + 地址 → 发消息 REST 路径"
 		expect(qqMessageEndpoint("private", "")).toEqual({
 			ok: false,
 			code: "invalid",
-			message: "private: userOpenid missing",
+			message: "private: 缺少 userOpenid",
 		});
 	});
 });
@@ -220,3 +221,28 @@ describe("buildQQV2MarkdownMessage — 群/C2C 原生 markdown 消息体", () =>
 		expect("content" in body).toBe(false);
 	});
 });
+
+it.each([
+	["en", "group: groupOpenid missing"],
+	["ja", "group: groupOpenidがありません"],
+	["zh-TW", "group: 缺少 groupOpenid"],
+] as const)(
+	"localizes QQ endpoint validation in %s while keeping REST identifiers",
+	(locale, message) => {
+		const previous = i18n.state();
+		i18n.set({ locale, voice: "plain" });
+		try {
+			expect(qqMessageEndpoint("group", "")).toEqual({ ok: false, code: "invalid", message });
+			expect(qqMessageEndpoint("group", "G123")).toEqual({
+				ok: true,
+				path: "/v2/groups/G123/messages",
+			});
+			expect(qqMessageEndpoint("private", "U456")).toEqual({
+				ok: true,
+				path: "/v2/users/U456/messages",
+			});
+		} finally {
+			i18n.set({ locale: previous.locale, voice: previous.voice });
+		}
+	},
+);

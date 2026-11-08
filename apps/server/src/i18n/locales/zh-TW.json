@@ -526,5 +526,8 @@
 	"adapters.payload.empty": "傳送內容為空。",
 	"onebot.destination.missing": "缺少 {what}",
 	"onebot.ws.sendFailed": "WebSocket 傳送失敗。",
-	"onebot.connection.adapterMismatch": "OneBot 配接器不符：{adapterKey}"
+	"onebot.connection.adapterMismatch": "OneBot 配接器不符：{adapterKey}",
+	"qqOfficial.destination.missing": "{scope}: 缺少 {what}",
+	"qqOfficial.token.managerClosed": "QQ 權杖管理器已關閉。",
+	"qqOfficial.connection.adapterMismatch": "QQ 官方機器人配接器不符：{adapterKey}"
 }

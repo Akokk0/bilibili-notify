@@ -1589,5 +1589,8 @@
 	"adapters.payload.empty": "发送内容为空。",
 	"onebot.destination.missing": "缺少 {what}",
 	"onebot.ws.sendFailed": "WebSocket 发送失败。",
-	"onebot.connection.adapterMismatch": "OneBot 适配器不匹配：{adapterKey}"
+	"onebot.connection.adapterMismatch": "OneBot 适配器不匹配：{adapterKey}",
+	"qqOfficial.destination.missing": "{scope}: 缺少 {what}",
+	"qqOfficial.token.managerClosed": "QQ 令牌管理器已关闭。",
+	"qqOfficial.connection.adapterMismatch": "QQ 官方机器人适配器不匹配：{adapterKey}"
 }
