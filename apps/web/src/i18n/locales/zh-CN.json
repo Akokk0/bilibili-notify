@@ -2587,7 +2587,7 @@
 	"panelUi.pages.extensions.marketplace-section.18": "正在拉市场索引",
 	"panelUi.pages.extensions.marketplace-section.19": "市场问不到:",
 	"panelUi.pages.extensions.marketplace-section.20": "这个构建没有官方源(没有内置信任公钥,fork 出去自己构建的就是这样)。可以在「源」里加一个第三方源。",
-	"panelUi.pages.extensions.marketplace-section.21": "源「",
+	"panelUi.pages.extensions.marketplace-section.21": "源「{name}」:{reason}",
 	"panelUi.pages.extensions.marketplace-section.22": "市场里的拓展都装上了",
 	"panelUi.pages.extensions.marketplace-section.23": "市场里现在没有能装的拓展",
 	"panelUi.pages.extensions.marketplace-sources-dialog.1": "索引地址必须是 https:// 开头",

@@ -456,8 +456,10 @@ export function MarketplaceSection({
 
 			{failed.map((source) => (
 				<ErrorNote key={source.id} size="sm">
-					{tx("panelUi.pages.extensions.marketplace-section.21")}
-					{source.name}」:{source.message}
+					{tx("panelUi.pages.extensions.marketplace-section.21", {
+						name: source.name,
+						reason: source.message ?? "",
+					})}
 				</ErrorNote>
 			))}
 

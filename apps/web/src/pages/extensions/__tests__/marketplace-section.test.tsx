@@ -10,7 +10,7 @@
 import type { MarketplaceResponse } from "@bilibili-notify/contract";
 import { ErrorNote } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -177,7 +177,10 @@ function Host() {
 }
 
 /** `strict`:照 `main.tsx` 那样套一层 StrictMode(effect 先拆一次再装回来)。 */
-function renderSection(market: MarketplaceResponse = MARKET, { strict = false } = {}) {
+function renderSection(
+	market: MarketplaceResponse | Promise<MarketplaceResponse> = MARKET,
+	{ strict = false } = {},
+) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url.startsWith("/api/ext/marketplace")) return market;
 		if (url === "/api/settings") return { core: GLOBALS };
@@ -220,6 +223,262 @@ afterEach(() => {
 });
 
 describe("拓展市场", () => {
+	it("third-party installation translates its confirmation and pending state without resending", async () => {
+		let reject!: (error: Error) => void;
+		apiPostMock.mockReturnValue(
+			new Promise((_, fail) => {
+				reject = fail;
+			}),
+		);
+		renderSection();
+		await cardOf("抖音订阅");
+		for (const [locale, install, title, confirm, cancel] of [
+			["en", "Install", "Install third-party extension “抖音订阅”?", "Install anyway", "Cancel"],
+			[
+				"ja",
+				"インストール",
+				"サードパーティの拡張機能「抖音订阅」をインストールしますか？",
+				"インストールを続行",
+				"キャンセル",
+			],
+			["zh-TW", "安裝", "安裝第三方拓展「抖音订阅」？", "仍要安裝", "取消"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			await userEvent.click(
+				within(await cardOf("抖音订阅")).getByRole("button", { name: install }),
+			);
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByRole("button", { name: confirm })).toBeTruthy();
+			expect(within(screen.getByRole("dialog")).getByText(/alice/)).toBeTruthy();
+			expect(apiPostMock).not.toHaveBeenCalled();
+			await userEvent.click(screen.getByRole("button", { name: cancel }));
+			expect(screen.queryByRole("dialog")).toBeNull();
+		}
+		await userEvent.click(within(await cardOf("抖音订阅")).getByRole("button", { name: "安裝" }));
+		await userEvent.click(screen.getByRole("button", { name: "仍要安裝" }));
+		for (const [locale, pending, install] of [
+			["en", "Installing…", "Install"],
+			["ja", "インストール中…", "インストール"],
+			["zh-TW", "正在安裝…", "安裝"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(
+				(
+					within(await cardOf("抖音订阅")).getByRole("button", {
+						name: pending,
+					}) as HTMLButtonElement
+				).disabled,
+			).toBe(true);
+			expect(
+				(
+					within(await cardOf("机器人框架桥接")).getByRole("button", {
+						name: install,
+					}) as HTMLButtonElement
+				).disabled,
+			).toBe(true);
+			expect(apiPostMock).toHaveBeenCalledExactlyOnceWith("/api/ext/marketplace/install", {
+				source: "s1",
+				id: "alice.douyin",
+			});
+		}
+		await act(async () => reject(new Error("Original install failure")));
+		expect(await screen.findByText(/Original install failure/)).toBeTruthy();
+		expect(apiPostMock).toHaveBeenCalledOnce();
+	});
+
+	it.each(["read-failed", "source-failed", "no-official", "empty", "all-installed"] as const)(
+		"%s market feedback translates without changing the reported source or turning failures into an empty market",
+		async (result) => {
+			let finish!: (market: MarketplaceResponse) => void;
+			let fail!: (error: Error) => void;
+			const pending = new Promise<MarketplaceResponse>((resolve, reject) => {
+				finish = resolve;
+				fail = reject;
+			});
+			renderSection(pending);
+			await screen.findByText("正在拉市场索引…");
+			for (const [locale, loading] of [
+				["en", "Reading marketplace index…"],
+				["ja", "マーケットのインデックスを読み込んでいます…"],
+				["zh-TW", "正在讀取市場索引…"],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(screen.getByText(loading)).toBeTruthy();
+			}
+			await act(async () => {
+				if (result === "read-failed") fail(new Error("索引离线 / EHOST"));
+				else
+					finish({
+						...MARKET,
+						available: result !== "no-official",
+						sources:
+							result === "source-failed"
+								? [
+										{
+											id: "official",
+											name: "原来源 / Original",
+											official: true,
+											ok: false,
+											code: "unauthorized",
+											message: "签名不符 / raw signature",
+										},
+									]
+								: [],
+						extensions:
+							result === "all-installed"
+								? MARKET.extensions.filter((entry) => entry.state === "updatable")
+								: [],
+					});
+			});
+			for (const [
+				locale,
+				title,
+				refresh,
+				sources,
+				readFailed,
+				sourceFailed,
+				noOfficial,
+				empty,
+				allInstalled,
+			] of [
+				[
+					"en",
+					"Extension marketplace",
+					"Refresh index",
+					"Marketplace sources",
+					"Could not reach the marketplace: 索引离线 / EHOST",
+					"Source “原来源 / Original”: 签名不符 / raw signature",
+					"This build has no official source because it has no built-in trust key. This is expected for self-built forks. You can add a third-party source in “Sources”.",
+					"No extensions are currently available to install.",
+					"All marketplace extensions are installed.",
+				],
+				[
+					"ja",
+					"拡張機能マーケット",
+					"インデックスを再取得",
+					"マーケットの配布元",
+					"マーケットに接続できません：索引离线 / EHOST",
+					"配布元「原来源 / Original」：签名不符 / raw signature",
+					"このビルドには信頼する公開鍵が組み込まれていないため、公式の配布元はありません。フォークを自分でビルドした場合はこの状態になります。「配布元」でサードパーティの配布元を追加できます。",
+					"現在インストールできる拡張機能はありません。",
+					"マーケットの拡張機能はすべてインストール済みです。",
+				],
+				[
+					"zh-TW",
+					"拓展市場",
+					"重新讀取索引",
+					"市場來源",
+					"無法連線至市場：索引离线 / EHOST",
+					"來源「原来源 / Original」：签名不符 / raw signature",
+					"此版本沒有官方來源，因為未內建信任公鑰；自行編譯的分支會是此狀態。可在「來源」加入第三方來源。",
+					"市場目前沒有可安裝的拓展。",
+					"市場中的拓展已全部安裝。",
+				],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(screen.getByText(title)).toBeTruthy();
+				expect(screen.getByRole("button", { name: refresh })).toBeTruthy();
+				expect(screen.getByRole("button", { name: sources })).toBeTruthy();
+				expect(
+					await screen.findByText(
+						result === "read-failed"
+							? readFailed
+							: result === "source-failed"
+								? sourceFailed
+								: result === "no-official"
+									? noOfficial
+									: result === "empty"
+										? empty
+										: allInstalled,
+					),
+				).toBeTruthy();
+				if (result === "read-failed" || result === "source-failed")
+					expect(screen.queryByText(empty)).toBeNull();
+			}
+			expect(apiPostMock).not.toHaveBeenCalled();
+			expect(apiPatchMock).not.toHaveBeenCalled();
+		},
+	);
+
+	it("marketplace card translations retain source metadata and never offer installation for incompatible or revoked entries", async () => {
+		const base = MARKET.extensions[0];
+		if (!base) throw new Error("Missing marketplace fixture");
+		renderSection({
+			...MARKET,
+			extensions: MARKET.extensions
+				.map((entry) =>
+					entry.id === "bridge"
+						? { ...entry, prerelease: true, notes: "发布说明 / Original" }
+						: entry,
+				)
+				.concat([
+					{
+						...base,
+						id: "revision",
+						name: "Revision / Original",
+						apiVersion: 3,
+						apiRevision: 8,
+						state: "incompatible",
+					},
+				]),
+		});
+		await cardOf("机器人框架桥接");
+		for (const [locale, official, from, install, prerelease, incompatible, revision, revoked] of [
+			[
+				"en",
+				"Official",
+				"From alice",
+				"Install",
+				"v0.0.2 · Prerelease",
+				"Requires host contract v3, which does not match this BN version",
+				"Requires host contract v3 revision 8, which does not match this BN version",
+				"This release has been revoked",
+			],
+			[
+				"ja",
+				"公式",
+				"配布元：alice",
+				"インストール",
+				"v0.0.2 · プレリリース",
+				"ホスト契約v3が必要ですが、このBNのバージョンとは一致しません",
+				"ホスト契約v3のリビジョン8が必要ですが、このBNのバージョンとは一致しません",
+				"このリリースは撤回されています",
+			],
+			[
+				"zh-TW",
+				"官方",
+				"來自 alice",
+				"安裝",
+				"v0.0.2 · 預先發行版",
+				"需要宿主契約 v3，與此版 BN 不相容",
+				"需要宿主契約 v3 修訂 8，與此版 BN 不相容",
+				"此版本已撤回",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			const bridge = await cardOf("机器人框架桥接");
+			expect(within(bridge).getByText(official)).toBeTruthy();
+			expect(within(bridge).getByText(prerelease)).toBeTruthy();
+			expect(within(bridge).getByText("借机器人")).toBeTruthy();
+			expect(within(bridge).getByText("发布说明 / Original")).toBeTruthy();
+			expect(within(bridge).getByRole("button", { name: install })).toBeTruthy();
+			expect(within(await cardOf("抖音订阅")).getByText(from)).toBeTruthy();
+			for (const [name, warning] of [
+				["Bar", incompatible],
+				["Revision / Original", revision],
+				["Qux", revoked],
+			]) {
+				const card = await cardOf(name);
+				expect(within(card).getByText(warning)).toBeTruthy();
+				expect(within(card).queryByRole("button")).toBeNull();
+			}
+			expect(screen.queryByText("Foo")).toBeNull();
+			expect(screen.queryByText("Baz")).toBeNull();
+			expect(screen.queryByText("Quux")).toBeNull();
+		}
+		expect(apiPostMock).not.toHaveBeenCalled();
+	});
+
 	it("没装的各画各的:装 / 契约不匹配 / 已撤回;官方与来源标清", async () => {
 		renderSection();
 		const bridge = await cardOf("机器人框架桥接");
