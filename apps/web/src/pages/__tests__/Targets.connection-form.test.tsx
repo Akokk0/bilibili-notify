@@ -19,7 +19,7 @@ import {
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { PlatformMetaRoot } from "../../components/platform-meta";
 import Targets from "../Targets";
@@ -237,3 +237,56 @@ it("尚未保存的候选也使用候选描述中的图标", async () => {
 
 // These scenarios assert Chinese UI labels explicitly.
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
+it("reverse address guidance and copy feedback translate without changing the address or draft", async () => {
+	const dialog = await openNewConnection();
+	click(dialog, "反向 WS");
+	const port = control(dialog, "settings.port");
+	fireEvent.change(port, { target: { value: "9898" } });
+	const previous = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+	const writeText = vi.fn().mockResolvedValue(undefined);
+	Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+	try {
+		for (const [locale, label, copy, copied, hint] of [
+			[
+				"en",
+				"Enter this address in the bot",
+				"Copy",
+				"Copied",
+				"The path at the end is optional and can be anything. Use an address reachable from the bot’s device; if BN runs on a NAS or in a container, make sure the hostname is reachable.",
+			],
+			[
+				"ja",
+				"ボット側に設定するアドレス",
+				"コピー",
+				"コピーしました",
+				"末尾のパスは自由に指定でき、省略も可能です。ボットの端末からアクセスできるアドレスを使用してください。BNをNASやコンテナーで動かす場合は、ホスト名に到達できるか確認してください。",
+			],
+			[
+				"zh-TW",
+				"在機器人端填入此位址",
+				"複製",
+				"已複製",
+				"結尾路徑可自由填寫，也可留空。請使用機器人所在裝置能存取的位址；若 BN 在 NAS 或容器中執行，請確認主機名稱可連通。",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(within(dialog).getByText(label)).toBeTruthy();
+			expect(within(dialog).getByText(hint)).toBeTruthy();
+			expect(within(dialog).getByText(`ws://${window.location.hostname}:9898/`)).toBeTruthy();
+			if (locale === "en") fireEvent.click(within(dialog).getByRole("button", { name: copy }));
+			expect(await within(dialog).findByRole("button", { name: copied })).toBeTruthy();
+			expect(within(dialog).getByDisplayValue("9898")).toBe(port);
+			expect(api.post).not.toHaveBeenCalled();
+		}
+		expect(writeText).toHaveBeenCalledOnce();
+		expect(writeText).toHaveBeenCalledWith(`ws://${window.location.hostname}:9898/`);
+		click(dialog, "正向 WS");
+		fireEvent.click(within(dialog).getByRole("button", { name: "+ 新增標頭" }));
+		expect(within(dialog).getByDisplayValue("X-Header")).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+	} finally {
+		if (previous) Object.defineProperty(navigator, "clipboard", previous);
+		else Reflect.deleteProperty(navigator, "clipboard");
+	}
+});

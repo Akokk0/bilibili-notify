@@ -399,3 +399,60 @@ describe("连接动过之后的 bot 名单", () => {
 
 // These scenarios assert Chinese UI labels explicitly.
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
+it("translated candidate states retain the current platform, selected bot and edited name", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	renderPage({
+		connections: [{ ...EXISTING, settings: { link: "old-link", botId: "telegram:old" } }],
+		bots: {
+			candidates: [
+				...BOTS,
+				{
+					...BOTS[1],
+					name: "已占用的原名称",
+					settings: { link: "other-link", botId: "telegram:taken" },
+					boundConnectionId: "22222222-2222-4222-8222-222222222222",
+				},
+			],
+		},
+	});
+	fireEvent.click(await screen.findByRole("button", { name: "Configure" }));
+	const dialog = await screen.findByRole("dialog");
+	await within(dialog).findByRole("button", { name: /已占用的原名称/ });
+	const name = within(dialog).getByDisplayValue("小电视");
+	fireEvent.change(name, { target: { value: "原草稿名称" } });
+	for (const [locale, current, different, taken, selected] of [
+		[
+			"en",
+			"Current connection",
+			"Changing platforms requires a new connection",
+			"Already added",
+			"Selected",
+		],
+		["ja", "現在の接続", "プラットフォームを変えるには接続を新規作成", "追加済み", "選択中"],
+		["zh-TW", "目前連線", "更換平台需重建連線", "已新增", "已選取"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		if (locale === "en") expect(within(dialog).getByText(current)).toBeTruthy();
+		expect(
+			within(dialog)
+				.getByRole("button", { name: /阿库娅/ })
+				.hasAttribute("disabled"),
+		).toBe(true);
+		expect(within(dialog).getByText(different)).toBeTruthy();
+		expect(
+			within(dialog)
+				.getByRole("button", { name: /已占用的原名称/ })
+				.hasAttribute("disabled"),
+		).toBe(true);
+		expect(within(dialog).getByText(taken)).toBeTruthy();
+		if (locale === "en") fireEvent.click(within(dialog).getByRole("button", { name: /小电视/ }));
+		expect(within(dialog).getByText(selected)).toBeTruthy();
+		expect(within(dialog).getByDisplayValue("原草稿名称")).toBe(name);
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.put).not.toHaveBeenCalled();
+	}
+	fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+	await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	expect(api.post).not.toHaveBeenCalled();
+});

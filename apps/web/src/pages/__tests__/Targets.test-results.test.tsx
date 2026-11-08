@@ -470,3 +470,28 @@ it("translated test confirmation keeps raw recipients and sends only after expli
 	expect(api.post).toHaveBeenCalledOnce();
 	expect(api.post).toHaveBeenCalledWith(`/api/targets/${target.id}/test`, { kind: "text" });
 });
+
+it("a connection without session types translates the refusal and never creates a target", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const connection = {
+		...ONEBOT_CONNECTION,
+		platformSnapshot: { ...ONEBOT_CONNECTION.platformSnapshot, scopes: [] },
+	};
+	renderPage([connection], []);
+	fireEvent.click(
+		(await screen.findAllByRole("button", { name: "+ New push target" }))[0] as HTMLElement,
+	);
+	for (const [locale, message] of [
+		[
+			"en",
+			"This connection declares no available session types, so a target cannot be created yet.",
+		],
+		["ja", "この接続には利用可能なセッション種別が宣言されていないため、送信先を作成できません。"],
+		["zh-TW", "此連線未宣告可用的會話類型，目前無法新增目標。"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(await screen.findByText(message)).toBeTruthy();
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+});

@@ -17,7 +17,7 @@ import {
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import Targets from "../Targets";
@@ -174,3 +174,54 @@ it("shows every safe settings reason instead of dropping all but the first", asy
 
 // These scenarios assert Chinese UI labels explicitly.
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
+it("connection editor language changes preserve name drafts and never submit masked settings", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	renderPage();
+	fireEvent.click(await screen.findByRole("button", { name: "Configure" }));
+	const dialog = await screen.findByRole("dialog");
+	const name = within(dialog).getByDisplayValue("家里那台");
+	fireEvent.change(name, { target: { value: "改了名" } });
+	for (const [locale, title, label, parameters, warning] of [
+		[
+			"en",
+			"Configure connection",
+			"Adapter",
+			"Connection parameters",
+			"This connection’s settings are unavailable because its adapter is stopped or the settings are invalid. You can still change its name and enabled state.",
+		],
+		[
+			"ja",
+			"接続の設定",
+			"アダプター",
+			"接続パラメーター",
+			"アダプターが停止中、または設定が無効なため、接続設定を表示できません。名前と有効・無効は変更できます。",
+		],
+		[
+			"zh-TW",
+			"設定連線",
+			"介接器",
+			"連線參數",
+			"介接器未執行或設定無效，目前無法查看此連線的設定；仍可修改名稱與啟用狀態。",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(within(dialog).getByText(title)).toBeTruthy();
+		expect(within(dialog).getByText(label)).toBeTruthy();
+		expect(within(dialog).getByText(parameters)).toBeTruthy();
+		expect(within(dialog).getByText(warning)).toBeTruthy();
+		expect(within(dialog).getByDisplayValue("改了名")).toBe(name);
+		expect(dialog.querySelector('[data-code^="settings."]')).toBeNull();
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+	fireEvent.click(within(dialog).getByRole("button", { name: "儲存" }));
+	await screen.findByText("連線已儲存");
+	expect(api.patch).toHaveBeenCalledOnce();
+	expect(api.patch).toHaveBeenCalledWith(`/api/connections/${ID}`, {
+		id: ID,
+		adapterKey: "onebot",
+		platform: "onebot",
+		enabled: true,
+		name: "改了名",
+	});
+});
