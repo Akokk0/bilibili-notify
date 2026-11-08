@@ -10,6 +10,7 @@ import { afterEach, beforeEach, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import { BUILTIN_INTEGRATION_SETTINGS } from "../../compose.js";
+import { i18n } from "../../i18n/index.js";
 import { createAppRuntime } from "../../runtime/bootstrap.js";
 
 let dir: string;
@@ -228,3 +229,49 @@ function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error("missing fixture entry");
 	return value;
 }
+
+it.each([
+	[
+		"en",
+		"Global default",
+		"This persona could not be found. Reload the library.",
+		"Built-in personas are read-only. Make a copy to edit.",
+	],
+	[
+		"ja",
+		"全体の既定",
+		"この性格が見つかりません。ライブラリーを再読み込みしてください。",
+		"内蔵の性格は読み取り専用です。コピーしてから編集してください。",
+	],
+	["zh-TW", "全域預設", "找不到此性格，請重新載入資源庫。", "內建性格為唯讀，請複製後再編輯。"],
+] as const)(
+	"localizes persona management in %s without changing identities or revisions",
+	async (locale, usage, missing, readonly) => {
+		const before = await catalog();
+		const builtin = required(before.entries[0]);
+		const previous = i18n.state();
+		try {
+			i18n.set({ locale, voice: "plain" });
+			const listed = await catalog();
+			expect(listed.revision).toBe(before.revision);
+			expect(listed.entries.map((entry) => entry.id)).toEqual(
+				before.entries.map((entry) => entry.id),
+			);
+			expect(listed.entries.find((entry) => entry.id === builtin.id)?.usedBy).toContain(usage);
+			const absent = await app.request("/api/ai/personas/missing-persona/export");
+			expect(absent.status).toBe(404);
+			expect(await absent.json()).toEqual({ code: "not_found", message: missing });
+			const rejected = await write({
+				op: "update",
+				revision: before.revision,
+				id: builtin.id,
+				content: { label: builtin.label, persona: builtin.persona },
+			});
+			expect(rejected.status).toBe(409);
+			expect(await rejected.json()).toEqual({ code: "conflict", message: readonly });
+			expect((await catalog()).revision).toBe(before.revision);
+		} finally {
+			i18n.set(previous);
+		}
+	},
+);

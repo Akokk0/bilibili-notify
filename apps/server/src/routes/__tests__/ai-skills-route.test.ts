@@ -27,6 +27,7 @@ import {
 	type AiToolProviderRegistry,
 	createAiToolProviderRegistry,
 } from "../../ai/tool-provider-registry.js";
+import { i18n } from "../../i18n/index.js";
 import { BUILTIN_SKILLS } from "../../maid-skills/builtin.js";
 import { parseSkillFile } from "../../maid-skills/parse.js";
 import { createMaidSkillReader } from "../../maid-skills/reader.js";
@@ -432,3 +433,24 @@ describe("DELETE /:name", () => {
 		}
 	});
 });
+
+it.each([
+	["en", "Missing frontmatter: the file must start with a line containing only `---`."],
+	["ja", "frontmatterがありません。ファイルの先頭行には`---`のみを書いてください。"],
+	["zh-TW", "缺少 frontmatter：檔案必須以單獨一行的 `---` 開頭。"],
+] as const)(
+	"localizes skill import diagnostics in %s without creating resources",
+	async (locale, message) => {
+		const previous = i18n.state();
+		const before = await readdir(dir);
+		try {
+			i18n.set({ locale, voice: "plain" });
+			const response = await previewFile("Original skill content without frontmatter / 原稿");
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ code: "invalid", message });
+			expect(await readdir(dir)).toEqual(before);
+		} finally {
+			i18n.set(previous);
+		}
+	},
+);
