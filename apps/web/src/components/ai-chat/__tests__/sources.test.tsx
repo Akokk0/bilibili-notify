@@ -9,8 +9,9 @@
  */
 
 import type { AiChatMessageView } from "@bilibili-notify/contract";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { MessageList } from "../messages";
 import { describeTool } from "../tools";
 
@@ -20,6 +21,7 @@ vi.mock("../markdown", () => ({
 	ChatMarkdown: ({ text }: { text: string }) => <span>{text}</span>,
 }));
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 const SOURCES = [
@@ -40,6 +42,77 @@ function msg(over: Partial<AiChatMessageView> = {}): AiChatMessageView {
 function mountList(props: Partial<Parameters<typeof MessageList>[0]> = {}) {
 	return render(<MessageList messages={[]} pending={null} busy={false} aiSelf="小绫" {...props} />);
 }
+
+it("message annotations translate while expanded sources and original reply content stay intact", () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	mountList({
+		messages: [
+			msg({
+				reasoning: "原始思考内容",
+				tools: [{ name: "web_search", args: {}, ok: true, sources: SOURCES.slice(0, 1) }],
+			}),
+		],
+		error: "原始诊断 {unchanged}",
+	});
+	fireEvent.click(screen.getByText("Source · 1"));
+	fireEvent.click(screen.getByText("Reasoned"));
+	const link = screen.getByRole("link", { name: /B 站财报解读/ });
+	for (const [locale, sources, thought, error] of [
+		["en", "Source · 1", "Reasoned", "小绫 encountered an error: 原始诊断 {unchanged}"],
+		["ja", "出典 · 1", "思考済み", "小绫でエラーが発生しました：原始诊断 {unchanged}"],
+		["zh-TW", "來源 · 1", "已深度思考", "小绫發生錯誤：原始诊断 {unchanged}"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(sources)).toBeTruthy();
+		expect(screen.getByText(thought)).toBeTruthy();
+		expect(screen.getByText(error)).toBeTruthy();
+		expect(screen.getByText("原始思考内容")).toBeTruthy();
+		expect(screen.getByText("查完了,主人。")).toBeTruthy();
+		expect(screen.getByRole("link", { name: /B 站财报解读/ })).toBe(link);
+		expect(link.getAttribute("href")).toBe("https://example.com/a");
+	}
+});
+
+it.each([
+	[1, "Writing · 1 character", "Wrote 1 character", "1"],
+	[2, "Writing · 2 characters", "Wrote 2 characters", "2"],
+	[3247, "Writing · 3.2k characters", "Wrote 3.2k characters", "3.2k"],
+] as const)(
+	"tool progress uses the numeric count for English plurals: %s",
+	(progress, running, done, value) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		const pending = {
+			ask: "原始问题",
+			draft: "",
+			think: "",
+			tools: [{ name: "write_card", label: "原始工具名", args: {}, progress }],
+		};
+		const view = mountList({ pending });
+		expect(screen.getByText(running)).toBeTruthy();
+		for (const [locale, label] of [
+			["ja", `執筆中 · ${value} 文字`],
+			["zh-TW", `已寫 ${value} 字`],
+			["en", running],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(label)).toBeTruthy();
+			expect(screen.getByText("原始问题")).toBeTruthy();
+			expect(screen.getByText("原始工具名")).toBeTruthy();
+		}
+		view.rerender(
+			<MessageList
+				messages={[]}
+				pending={{
+					...pending,
+					tools: [{ ...pending.tools[0], name: "write_card", args: {}, ok: true }],
+				}}
+				busy={false}
+				aiSelf="小绫"
+			/>,
+		);
+		expect(screen.getByText(done)).toBeTruthy();
+	},
+);
 
 describe("describeTool × web_search", () => {
 	it("服务端下发的「联网搜索」标签带上搜索词", () => {

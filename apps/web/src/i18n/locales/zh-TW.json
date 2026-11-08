@@ -1311,5 +1311,16 @@
 	"panelUi.components.ai-chat.thinking-level-setting.3": "高",
 	"panelUi.components.ai-chat.thinking-level-setting.4": "思考深度",
 	"panelUi.components.ai-chat.thinking-level-setting.5": "調整 ✦ 開啟後的思考深度；初始沿用所選實例的等級，調整後會獨立儲存聊天等級。",
-	"panelUi.components.ai-chat.thinking-level-setting.6": "此實例使用自訂服務商，不會自動傳送專屬思考參數；如有需要，請填入該實例的「額外請求參數」。"
+	"panelUi.components.ai-chat.thinking-level-setting.6": "此實例使用自訂服務商，不會自動傳送專屬思考參數；如有需要，請填入該實例的「額外請求參數」。",
+	"aiChat.messages.thinking": "{name}正在思考",
+	"aiChat.messages.error": "{name}發生錯誤：{message}",
+	"aiChat.messages.image": "使用者傳送的圖片",
+	"aiChat.messages.thinkingLive": "思考中…",
+	"aiChat.messages.thought": "已深度思考",
+	"aiChat.messages.sources#other": "來源 · {count}",
+	"aiChat.messages.state.running": "處理中",
+	"aiChat.messages.state.ok": "已完成",
+	"aiChat.messages.state.failed": "未完成",
+	"aiChat.messages.writing#other": "已寫 {value} 字",
+	"aiChat.messages.written#other": "寫了 {value} 字"
 }

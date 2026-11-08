@@ -1203,9 +1203,6 @@
 	"aiChat.messages.image": "用户发送的图片",
 	"aiChat.messages.thinkingLive": "思考中…",
 	"aiChat.messages.thought": "已深度思考",
-	"aiChat.messages.sources": "来源 · {count}",
-	"aiChat.messages.writing": "已写 {count} 字",
-	"aiChat.messages.written": "写了 {count} 字",
 	"aiChat.messages.state.running": "正在查",
 	"aiChat.messages.state.ok": "已完成",
 	"aiChat.messages.state.failed": "没查成",
@@ -3234,5 +3231,8 @@
 	"notices.messages#other": "{count} 条",
 	"logging.retentionDays#other": "{count} 天",
 	"library.selectedImages#other": "已选择 {count} 张",
-	"library.images.rotation#other": "{count} 张 · 每次推送顺序轮换"
+	"library.images.rotation#other": "{count} 张 · 每次推送顺序轮换",
+	"aiChat.messages.sources#other": "来源 · {count}",
+	"aiChat.messages.writing#other": "已写 {value} 字",
+	"aiChat.messages.written#other": "写了 {value} 字"
 }

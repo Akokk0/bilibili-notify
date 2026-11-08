@@ -1332,5 +1332,19 @@
 	"panelUi.components.ai-chat.thinking-level-setting.3": "High",
 	"panelUi.components.ai-chat.thinking-level-setting.4": "Thinking depth",
 	"panelUi.components.ai-chat.thinking-level-setting.5": "Controls depth when ✦ is on. Initially follows the selected instance’s level; changing it saves a separate chat level.",
-	"panelUi.components.ai-chat.thinking-level-setting.6": "This instance uses a custom provider. No provider-specific reasoning parameters are sent automatically. If needed, enter them in the instance’s Extra request parameters."
+	"panelUi.components.ai-chat.thinking-level-setting.6": "This instance uses a custom provider. No provider-specific reasoning parameters are sent automatically. If needed, enter them in the instance’s Extra request parameters.",
+	"aiChat.messages.thinking": "{name} is thinking",
+	"aiChat.messages.error": "{name} encountered an error: {message}",
+	"aiChat.messages.image": "Image sent by the user",
+	"aiChat.messages.thinkingLive": "Thinking…",
+	"aiChat.messages.thought": "Reasoned",
+	"aiChat.messages.sources#other": "Sources · {count}",
+	"aiChat.messages.state.running": "Working",
+	"aiChat.messages.state.ok": "Done",
+	"aiChat.messages.state.failed": "Failed",
+	"aiChat.messages.sources#one": "Source · {count}",
+	"aiChat.messages.writing#other": "Writing · {value} characters",
+	"aiChat.messages.written#other": "Wrote {value} characters",
+	"aiChat.messages.writing#one": "Writing · {value} character",
+	"aiChat.messages.written#one": "Wrote {value} character"
 }

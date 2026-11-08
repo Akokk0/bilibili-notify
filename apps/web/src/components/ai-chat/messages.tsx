@@ -587,8 +587,8 @@ function ToolChips({
 				const progress =
 					t.progress && state !== "failed"
 						? state === "running"
-							? tx("aiChat.messages.writing", { count: formatChars(t.progress) })
-							: tx("aiChat.messages.written", { count: formatChars(t.progress) })
+							? tx("aiChat.messages.writing", { count: t.progress, value: formatChars(t.progress) })
+							: tx("aiChat.messages.written", { count: t.progress, value: formatChars(t.progress) })
 						: null;
 				const key = toolArgKey(t.name, argText);
 				const open = openKeys.has(key);

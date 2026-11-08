@@ -1311,5 +1311,16 @@
 	"panelUi.components.ai-chat.thinking-level-setting.3": "高",
 	"panelUi.components.ai-chat.thinking-level-setting.4": "思考の深さ",
 	"panelUi.components.ai-chat.thinking-level-setting.5": "✦ が有効なときの思考の深さです。初期状態では選択中のインスタンスに従い、変更するとチャット用の段階を別に保存します。",
-	"panelUi.components.ai-chat.thinking-level-setting.6": "このインスタンスはカスタムプロバイダーです。専用の思考パラメーターは自動では送りません。必要な場合は、そのインスタンスの「追加リクエストパラメーター」に入力してください。"
+	"panelUi.components.ai-chat.thinking-level-setting.6": "このインスタンスはカスタムプロバイダーです。専用の思考パラメーターは自動では送りません。必要な場合は、そのインスタンスの「追加リクエストパラメーター」に入力してください。",
+	"aiChat.messages.thinking": "{name}が思考中",
+	"aiChat.messages.error": "{name}でエラーが発生しました：{message}",
+	"aiChat.messages.image": "ユーザーが送信した画像",
+	"aiChat.messages.thinkingLive": "思考中…",
+	"aiChat.messages.thought": "思考済み",
+	"aiChat.messages.sources#other": "出典 · {count}",
+	"aiChat.messages.state.running": "処理中",
+	"aiChat.messages.state.ok": "完了",
+	"aiChat.messages.state.failed": "失敗",
+	"aiChat.messages.writing#other": "執筆中 · {value} 文字",
+	"aiChat.messages.written#other": "執筆済み · {value} 文字"
 }
