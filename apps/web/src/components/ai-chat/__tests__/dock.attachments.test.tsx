@@ -20,6 +20,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 
 vi.mock("../../../services/aiChat", async (orig) => {
 	const actual = (await orig()) as Record<string, unknown>;
@@ -116,6 +117,7 @@ function sentImageIds(): readonly string[] | undefined {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	vi.mocked(sendChatMessage).mockClear();
 	vi.mocked(uploadChatImage).mockClear();
 	useAiChatStore.setState({ rail: true, activeId: null });

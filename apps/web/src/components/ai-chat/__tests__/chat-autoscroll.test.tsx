@@ -22,6 +22,7 @@ import {
 	it,
 	vi,
 } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 
 const H = vi.hoisted(() => ({
 	/** 容器内容总高,由测试在每片到来之前设好。 */
@@ -181,6 +182,7 @@ async function sendOne(): Promise<HTMLElement> {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	H.height = 1000;
 	H.gate = [];
 });

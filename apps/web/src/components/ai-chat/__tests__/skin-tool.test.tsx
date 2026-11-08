@@ -15,6 +15,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 
 const H = vi.hoisted(() => ({
 	/** 这一轮要吐的工具事件(在正文之前),与真实顺序一致。 */
@@ -126,6 +127,7 @@ async function typeAndSend(text: string) {
 const skinGets = () => H.gets.filter((p) => p === "/api/dashboard/skins/active");
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	H.toolEvents = [];
 	H.gets = [];
 	useSkinStore.setState({ active: EMPTY_SLOTS, preview: null });

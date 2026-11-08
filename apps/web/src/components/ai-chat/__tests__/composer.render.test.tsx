@@ -7,8 +7,9 @@
  */
 
 import type { MaidSkillView } from "@bilibili-notify/contract";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { Composer } from "../composer";
 
 /** 菜单里那几条。技能现在从服务端来,所以测试自己造一份喂进去。 */
@@ -20,6 +21,7 @@ const SKILLS: MaidSkillView[] = ["weekly-report", "unsub-cleanup", "up-pk"].map(
 	builtin: true,
 }));
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 /** 受控组件:自己接住 onChange,免得每条测试都写一遍 wrapper。 */
@@ -54,6 +56,43 @@ function renderComposer(initial = "", over: Partial<Parameters<typeof Composer>[
 	const textarea = () => screen.getByLabelText("聊天输入");
 	return { onSubmit, rerenderWith, textarea };
 }
+
+it("composer translations retain slash selection and attachment identity without sending", () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const onChange = vi.fn(),
+		onRemoveAttachment = vi.fn();
+	const { onSubmit } = renderComposer("/", {
+		onChange,
+		onRemoveAttachment,
+		attachments: [{ id: "image-1", url: "/sample.png" }],
+	});
+	expect(screen.getByRole("listbox", { name: "Maid skills" })).toBeTruthy();
+	const input = screen.getByRole("textbox"),
+		image = screen.getByRole("img", { name: "Image ready to send" });
+	fireEvent.keyDown(input, { key: "ArrowDown" });
+	for (const [locale, menu, label, remove, imageAlt, enter] of [
+		["en", "Maid skills", "Chat input", "Remove image", "Image ready to send", "Enter Confirm"],
+		["ja", "メイドのスキル", "チャット入力", "画像を外す", "送信予定の画像", "Enter 確定"],
+		["zh-TW", "女僕技能", "聊天輸入", "移除圖片", "待傳送的圖片", "Enter 確認"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("listbox", { name: menu })).toBeTruthy();
+		expect(screen.getByRole("option", { selected: true }).textContent).toContain("/unsub-cleanup");
+		expect(screen.getByRole("textbox", { name: label })).toBe(input);
+		expect(input).toHaveProperty("value", "/");
+		expect(screen.getByRole("button", { name: remove })).toBeTruthy();
+		expect(screen.getByRole("img", { name: imageAlt })).toBe(image);
+		expect(screen.getByText(enter)).toBeTruthy();
+		expect(onChange).not.toHaveBeenCalled();
+		expect(onRemoveAttachment).not.toHaveBeenCalled();
+		expect(onSubmit).not.toHaveBeenCalled();
+	}
+	fireEvent.keyDown(input, { key: "Enter" });
+	expect(onChange).toHaveBeenCalledExactlyOnceWith("/unsub-cleanup ");
+	expect(onSubmit).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "移除圖片" }));
+	expect(onRemoveAttachment).toHaveBeenCalledExactlyOnceWith("image-1");
+});
 
 describe("Composer — 技能菜单", () => {
 	it("打 / 弹出菜单,列出全部技能", () => {

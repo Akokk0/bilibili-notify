@@ -10,9 +10,11 @@
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { Composer } from "../composer";
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 afterEach(cleanup);
 
 type Attachment = { id: string; url: string };

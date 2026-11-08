@@ -14,6 +14,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { COMPOSER_MAX_HEIGHT, Composer } from "../composer";
 
 /** 让 scrollHeight 听我的:返回「当前内容需要多高」。 */
@@ -53,6 +54,7 @@ function mount(value: string) {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	// 一行 24px,每 20 个字算一行。
 	fakeScrollHeight((v) => 24 * Math.max(1, Math.ceil(v.length / 20)));
 });
