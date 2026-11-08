@@ -268,6 +268,27 @@ describe("copy", () => {
 		expect(screen.getByText("桥那台机器").tagName).toBe("STRONG");
 	});
 
+	it("long addresses remain complete on screen and in the copied value", async () => {
+		const address =
+			"wss://long-instance.example/very/long/path/ext/alice.bridge?mode=full&revision=1234567890";
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+		try {
+			renderBlocks([
+				{ type: "copy", label: "Original address", value: address, note: "Original note" },
+			]);
+			expect(screen.getByText(address)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: "复制 Original address" }));
+			await waitFor(() => expect(writeText).toHaveBeenCalledWith(address));
+			expect(
+				await screen.findByRole("button", { name: "复制 Original address(已复制)" }),
+			).toBeTruthy();
+			expect(screen.getByText("Original note")).toBeTruthy();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it("值是字符串就原样摆", () => {
 		renderBlocks([{ type: "copy", label: "设备码", value: "ABCD-1234" }]);
 		expect(screen.getByText("ABCD-1234")).toBeTruthy();

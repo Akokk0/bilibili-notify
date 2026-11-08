@@ -543,9 +543,9 @@ function CopyBlock({
 
 	return (
 		<div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-0.5">
-			<div className="flex items-center gap-[7px] text-bn-xs text-bn-text-secondary">
+			<div className="flex min-w-0 max-w-full items-center gap-[7px] text-bn-xs text-bn-text-secondary">
 				<span className="text-bn-text-tertiary">{label}</span>
-				<MonoChip>{value}</MonoChip>
+				<MonoChip className="min-w-0 break-all">{value}</MonoChip>
 				<CopyControl
 					iconOnly
 					label={tx("panelUi.pages.extensions.declarative.blocks.2", { value0: label })}
