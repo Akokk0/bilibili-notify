@@ -100,15 +100,15 @@ const PREVIEW_COL_MAX = 720;
  */
 const INSPECTOR_COL = 380;
 
-/** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_KINDS`。 */
-const KIND_META: Record<CardKind, { label: string; icon: keyof typeof Icon }> = {
-	live: { label: CARD_KIND_SHORT_NAMES.live, icon: "live" },
-	post: { label: CARD_KIND_SHORT_NAMES.post, icon: "dyn" },
-	superchat: { label: CARD_KIND_SHORT_NAMES.superchat, icon: "sc" },
-	membership: { label: CARD_KIND_SHORT_NAMES.membership, icon: "guard" },
-	roastBoard: { label: CARD_KIND_SHORT_NAMES.roastBoard, icon: "trophy" },
-	roastSolo: { label: CARD_KIND_SHORT_NAMES.roastSolo, icon: "feather" },
-	wordcloud: { label: CARD_KIND_SHORT_NAMES.wordcloud, icon: "sparkle" },
+/** Stable card icons; localized names are read during rendering. */
+const KIND_ICONS: Record<CardKind, keyof typeof Icon> = {
+	live: "live",
+	post: "dyn",
+	superchat: "sc",
+	membership: "guard",
+	roastBoard: "trophy",
+	roastSolo: "feather",
+	wordcloud: "sparkle",
 };
 
 export default function CardSkinEditor() {
@@ -279,8 +279,7 @@ export default function CardSkinEditor() {
 				<div className="shrink-0">
 					<div className="flex flex-wrap gap-1 rounded-md bg-bn-surface-muted p-1">
 						{CARD_KINDS.map((k) => {
-							const meta = KIND_META[k];
-							const IconComp = Icon[meta.icon];
+							const IconComp = Icon[KIND_ICONS[k]];
 							const active = k === kind;
 							return (
 								<button
@@ -294,7 +293,7 @@ export default function CardSkinEditor() {
 									}`}
 								>
 									<IconComp size={13} />
-									{meta.label}
+									{CARD_KIND_SHORT_NAMES[k]}
 									{draft?.cards[k] === undefined ? (
 										<span className="text-bn-text-disabled" title={tx("skinUi.CardSkinEditor.5")}>
 											·
@@ -361,7 +360,7 @@ export default function CardSkinEditor() {
 							style={{ "--bn-inspector-col": `${INSPECTOR_COL}px` } as CSSProperties}
 						>
 							<GlassBox
-								title={tx("skinUi.CardSkinEditor.11", { value0: KIND_META[kind].label })}
+								title={tx("skinUi.CardSkinEditor.11", { value0: CARD_KIND_SHORT_NAMES[kind] })}
 								subtitle={tx("skinUi.CardSkinEditor.12")}
 								icon={<Icon.square size={14} />}
 							>

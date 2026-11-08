@@ -114,12 +114,11 @@ function previewContentOf(
 	return { ...content[kind], ...picked };
 }
 
-const KIND_LABELS: Record<PreviewKind, { label: string; tone: string; icon: IconName }> = {
-	live: { label: CARD_KIND_EVENT_NAMES.live, tone: PUSH_TONE.live, icon: "live" },
-	post: { label: CARD_KIND_EVENT_NAMES.post, tone: PUSH_TONE.post, icon: "dyn" },
-	superchat: { label: CARD_KIND_EVENT_NAMES.superchat, tone: PUSH_TONE.superchat, icon: "sc" },
+const KIND_META: Record<PreviewKind, { tone: string; icon: IconName }> = {
+	live: { tone: PUSH_TONE.live, icon: "live" },
+	post: { tone: PUSH_TONE.post, icon: "dyn" },
+	superchat: { tone: PUSH_TONE.superchat, icon: "sc" },
 	membership: {
-		label: CARD_KIND_EVENT_NAMES.membership,
 		tone: PUSH_TONE.membership,
 		icon: "guard",
 	},
@@ -444,7 +443,7 @@ export function PerUpCoverSection({
 		<GlassBox
 			title={t("cards.cover.title")}
 			subtitle={t("cards.cover.perSubSubtitle")}
-			accent={KIND_LABELS.live.tone}
+			accent={KIND_META.live.tone}
 			icon={<Icon.live size={14} />}
 			badge={active ? t("cards.cover.badgeOwn") : t("cards.cover.badgeInherit")}
 			right={<Toggle value={active} onChange={toggleOverride} />}
@@ -1113,10 +1112,10 @@ export default function Cards() {
 							icon: <Icon.edit size={15} />,
 						},
 						...(["live", "post", "superchat", "membership"] as const).map((k) => {
-							const Ic = Icon[KIND_LABELS[k].icon];
+							const Ic = Icon[KIND_META[k].icon];
 							return {
 								id: k,
-								label: KIND_LABELS[k].label,
+								label: CARD_KIND_EVENT_NAMES[k],
 								desc: kindDesc[k],
 								icon: <Ic size={15} />,
 							};
@@ -1177,7 +1176,7 @@ export default function Cards() {
 							<GlassBox
 								title={t("cards.cover.title")}
 								subtitle={t("cards.cover.globalSubtitle")}
-								accent={KIND_LABELS.live.tone}
+								accent={KIND_META.live.tone}
 								icon={<Icon.live size={14} />}
 								badge="liveCover"
 							>
@@ -1244,12 +1243,12 @@ export default function Cards() {
 										<EmptyNote size="sm">{t("cards.preview.membershipUnavailable")}</EmptyNote>
 									) : null}
 									{familyPreviews.map(({ fk, style, content: fcontent }) => {
-										const FkIcon = Icon[KIND_LABELS[fk].icon];
+										const FkIcon = Icon[KIND_META[fk].icon];
 										return (
 											<div key={fk} className="flex min-h-0 flex-col gap-1">
 												<div className="flex items-center gap-1 text-bn-xs font-bold text-bn-text-tertiary">
 													<FkIcon size={11} />
-													{KIND_LABELS[fk].label}
+													{CARD_KIND_EVENT_NAMES[fk]}
 												</div>
 												<div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
 													<PreviewImage

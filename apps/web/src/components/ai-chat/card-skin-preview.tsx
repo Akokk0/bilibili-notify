@@ -39,8 +39,6 @@ const VIEW_H = 460;
 /** 量不到可用宽度时(首帧、jsdom 里没有 ResizeObserver)的兜底。 */
 const FALLBACK_WIDTH = 600;
 
-const KIND_TABS = CARD_KINDS.map((id) => ({ id, label: CARD_KIND_NAMES[id] }));
-
 export function CardSkinPreviews({ touches }: { touches: readonly AiCardSkinTouchView[] }) {
 	return (
 		<div className="flex flex-col gap-3">
@@ -53,6 +51,7 @@ export function CardSkinPreviews({ touches }: { touches: readonly AiCardSkinTouc
 
 function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchView }) {
 	const tx = useT();
+	const kindTabs = CARD_KINDS.map((id) => ({ id, label: CARD_KIND_NAMES[id] }));
 
 	const list = useCardSkinList();
 	const skin = list.data?.skins.find((s) => s.id === touch.id);
@@ -115,7 +114,7 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchView }) {
 				<HintNote>{tx("panelUi.components.ai-chat.card-skin-preview.4")}</HintNote>
 			) : (
 				<>
-					<TabBar items={KIND_TABS} value={kind} onChange={setKind} />
+					<TabBar items={kindTabs} value={kind} onChange={setKind} />
 					<div ref={stageRef} className="flex justify-center">
 						{preview.data ? (
 							<SkinHtmlFrame

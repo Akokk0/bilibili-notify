@@ -26,7 +26,13 @@ vi.mock("../../services/api", () => ({
 	OFFLINE_STATUS: 0,
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const GLOBALS = { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalSettings;
 const SOURCES: SourcesResponse = {

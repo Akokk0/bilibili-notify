@@ -9,7 +9,7 @@
 
 import type { AiChatMessageView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -53,8 +53,14 @@ vi.mock("../../../services/api", () => ({
 	},
 }));
 
+import { i18n } from "../../../i18n";
 import { CardSkinPreviews } from "../card-skin-preview";
 import { MessageList } from "../messages";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 function wrap(node: ReactNode) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -178,4 +184,30 @@ describe("消息流里的位置", () => {
 		expect(within(turns[0] as HTMLElement).queryByTestId("card-skin-preview")).not.toBeNull();
 		expect(within(turns[1] as HTMLElement).queryByTestId("card-skin-preview")).toBeNull();
 	});
+});
+
+it("updates chat preview tabs after locale changes without applying a skin", async () => {
+	wrap(<CardSkinPreviews touches={[{ id: "s1", kinds: ["superchat"] }]} />);
+	const block = await screen.findByTestId("card-skin-preview");
+	const live = within(block).getByRole("tab", { name: "直播卡" });
+	const selected = within(block).getByRole("tab", { selected: true });
+	const previous = i18n.state();
+	try {
+		for (const [locale, name] of [
+			["en", "Live card"],
+			["ja", "配信カード"],
+			["zh-TW", "直播卡片"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(within(block).getByRole("tab", { name })).toBe(live);
+			expect(within(block).getByRole("tab", { selected: true })).toBe(selected);
+		}
+		expect(H.puts).toEqual([]);
+	} finally {
+		await act(async () => {
+			i18n.set(previous);
+		});
+	}
 });

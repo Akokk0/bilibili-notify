@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
+import { i18n } from "../../i18n";
 
 /**
  * 卡片页预览挑订阅(4-14):全局作用域的房间号 / uid 输入框换成「从订阅里挑一条」(可不挑)。挑了,预览请求带上
@@ -24,6 +25,11 @@ vi.mock("../../services/api", () => ({
 }));
 
 import { api } from "../../services/api";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const GLOBALS = { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalSettings;
 

@@ -34,6 +34,11 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
+
 // 已定制 UP:只有 cards 覆盖(无 cardSkin),并带一个无关 slice(imageGroup)
 // 用来确认 per-UP 保存不会动它。
 const CUSTOMIZED: Subscription = {
@@ -467,4 +472,29 @@ describe("Cards per-UP 作用域接线", () => {
 		expect("cardSkin" in overrides).toBe(true);
 		expect(overrides.cardSkin).toBeNull();
 	});
+});
+
+it("updates card event labels on the mounted page while retaining the selected subscription", async () => {
+	renderCards();
+	fireEvent.click(await screen.findByText("UID 123456"));
+	const live = await screen.findByRole("button", { name: "直播开播" });
+	const previous = i18n.state();
+	try {
+		for (const [locale, name] of [
+			["en", "Stream started"],
+			["ja", "配信開始"],
+			["zh-TW", "直播開始"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole("button", { name })).toBe(live);
+			expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup");
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+	} finally {
+		await act(async () => {
+			i18n.set(previous);
+		});
+	}
 });

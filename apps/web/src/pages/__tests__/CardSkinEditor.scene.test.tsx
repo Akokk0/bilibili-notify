@@ -9,7 +9,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -18,8 +18,14 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 import CardSkinEditor from "../CardSkinEditor";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 /** 动态卡摆三块:头像共有,图廊只属图文,视频封面只属视频投稿。 */
 const MANIFEST = {
@@ -131,4 +137,29 @@ describe("编辑器 · 画布跟着场景的接线", () => {
 		fireEvent.click(screen.getByRole("button", { name: "转发" }));
 		expect(blockEl("avatar")?.getAttribute("aria-pressed")).toBe("true");
 	});
+});
+
+it("updates editor card labels after locale changes without switching the card or saving", async () => {
+	await openDynamic();
+	const selected = screen.getByRole("button", { name: "作品" });
+	const previous = i18n.state();
+	try {
+		for (const [locale, name] of [
+			["en", "Post"],
+			["ja", "投稿"],
+			["zh-TW", "作品"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole("button", { name })).toBe(selected);
+			expect(selected.getAttribute("aria-pressed")).toBe("true");
+			expect(blockEl("avatar")).toBeTruthy();
+		}
+		expect(api.put).not.toHaveBeenCalled();
+	} finally {
+		await act(async () => {
+			i18n.set(previous);
+		});
+	}
 });
