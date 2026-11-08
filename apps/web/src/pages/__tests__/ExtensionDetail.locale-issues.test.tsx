@@ -8,11 +8,12 @@
 
 import type { ExtensionEntryView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
 import zhCN from "../../i18n/locales/zh-CN.json";
+import { api } from "../../services/api";
 import ExtensionDetail from "../ExtensionDetail";
 
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
@@ -80,6 +81,26 @@ describe("拓展详情页:译文问题", () => {
 
 		expect(await screen.findByText(TITLE)).toBeTruthy();
 		for (const issue of disk.issues) expect(screen.getByText(issue)).toBeTruthy();
+	});
+
+	it("translation warning headings change language while host diagnostics remain intact", async () => {
+		disk.issues = ["en.json: unknown.key / Invalid placeholder {raw}"];
+		renderDetail();
+		const diagnostic = await screen.findByText(disk.issues[0] as string);
+		for (const [locale, title] of [
+			["en", "Some translations supplied by this extension were not used"],
+			["ja", "この拡張機能の一部の翻訳は適用されませんでした"],
+			["zh-TW", "此拓展提供的部分譯文未套用"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(disk.issues[0] as string)).toBe(diagnostic);
+			expect(screen.getAllByText("抖音订阅").length).toBeGreaterThan(0);
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
 	});
 
 	it("没有这一格 → 不画", async () => {

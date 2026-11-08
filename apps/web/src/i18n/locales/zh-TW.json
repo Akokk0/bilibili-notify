@@ -2074,5 +2074,18 @@
 	"logging.readFailed": "無法讀取日誌等級，目前狀態未知。",
 	"logging.retryRead": "重試讀取日誌等級",
 	"logging.extensionHint": "僅修改此拓展的日誌等級，選擇後立即儲存；未覆寫時跟隨全域。",
-	"logging.saveFailed": "無法儲存日誌等級：{reason}"
+	"logging.saveFailed": "無法儲存日誌等級：{reason}",
+	"extension.detail.localeIssuesTitle": "此拓展提供的部分譯文未套用",
+	"extension.reportDiscrepancies.kindProblem": "問題",
+	"sourceUi.pages.extensions.report.discrepancies.arialabel.1": "回報差異",
+	"sourceUi.pages.extensions.report.discrepancies.subtitle.2": "此拓展送來、BN 未照單全收的回報（最近 20 筆，重新啟動 BN 後清除）",
+	"sourceUi.pages.extensions.report.discrepancies.outcomeLabel.3": "整筆拒收",
+	"sourceUi.pages.extensions.report.discrepancies.outcomeLabel.4": "調整 {value1} 個欄位",
+	"sourceUi.pages.extensions.report.discrepancies.kindLabel.5": "資料",
+	"panelUi.pages.extensions.declarative.extension-page.1": "無法讀取目前狀態：",
+	"panelUi.pages.extensions.declarative.extension-page.2": "此拓展已關閉，目前不會執行任何工作。",
+	"panelUi.pages.extensions.declarative.extension-page.3": "下方設定仍可修改，啟用拓展後生效；連線狀態需等拓展執行後才會顯示。",
+	"panelUi.pages.extensions.declarative.extension-page.4": "已儲存的設定不符合此拓展的規則，因此尚未執行；在下方修正後會自動啟動。",
+	"panelUi.pages.extensions.declarative.extension-page.5": "新版已安裝但尚未載入，下方只有設定、沒有狀態；請在上方卡片選擇載入方式。",
+	"panelUi.pages.extensions.declarative.extension-page.6": "此拓展尚未啟動，下方只有設定、沒有狀態；請到日誌查看原因。"
 }

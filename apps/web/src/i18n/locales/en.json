@@ -2124,5 +2124,18 @@
 	"logging.readFailed": "Could not read the log level. Its current value is unknown.",
 	"logging.retryRead": "Retry reading log level",
 	"logging.extensionHint": "Changes only this extension’s log level and saves immediately. Without an override, it uses the global level.",
-	"logging.saveFailed": "Could not save the log level: {reason}"
+	"logging.saveFailed": "Could not save the log level: {reason}",
+	"extension.detail.localeIssuesTitle": "Some translations supplied by this extension were not used",
+	"extension.reportDiscrepancies.kindProblem": "Problem",
+	"sourceUi.pages.extensions.report.discrepancies.arialabel.1": "Report discrepancies",
+	"sourceUi.pages.extensions.report.discrepancies.subtitle.2": "Reports from this extension that BN did not accept as submitted (latest 20; cleared when BN restarts)",
+	"sourceUi.pages.extensions.report.discrepancies.outcomeLabel.3": "Report rejected",
+	"sourceUi.pages.extensions.report.discrepancies.outcomeLabel.4": "Fields adjusted: {value1}",
+	"sourceUi.pages.extensions.report.discrepancies.kindLabel.5": "Profile",
+	"panelUi.pages.extensions.declarative.extension-page.1": "Could not read the current status: ",
+	"panelUi.pages.extensions.declarative.extension-page.2": "This extension is disabled. It is not performing any work.",
+	"panelUi.pages.extensions.declarative.extension-page.3": "You can still edit settings below. They take effect when you enable the extension; connection status is available only while it is running.",
+	"panelUi.pages.extensions.declarative.extension-page.4": "The saved settings do not meet this extension’s requirements, so it is not running. Correct them below and it will start automatically.",
+	"panelUi.pages.extensions.declarative.extension-page.5": "The new version is installed but has not been loaded. Only settings are available below; choose how to load it in the card above.",
+	"panelUi.pages.extensions.declarative.extension-page.6": "This extension could not start. Only settings are available below; check the logs for the cause."
 }

@@ -2074,5 +2074,18 @@
 	"logging.readFailed": "ログレベルを読み込めません。現在の値は不明です。",
 	"logging.retryRead": "ログレベルを再読み込み",
 	"logging.extensionHint": "この拡張機能のログレベルだけを変更し、選択後すぐに保存します。上書きがない場合は全体の設定に従います。",
-	"logging.saveFailed": "ログレベルを保存できませんでした：{reason}"
+	"logging.saveFailed": "ログレベルを保存できませんでした：{reason}",
+	"extension.detail.localeIssuesTitle": "この拡張機能の一部の翻訳は適用されませんでした",
+	"extension.reportDiscrepancies.kindProblem": "問題",
+	"sourceUi.pages.extensions.report.discrepancies.arialabel.1": "報告内容の調整・拒否",
+	"sourceUi.pages.extensions.report.discrepancies.subtitle.2": "この拡張機能の報告をBNがそのまま受理しなかった履歴です（直近20件。BNの再起動で消去）。",
+	"sourceUi.pages.extensions.report.discrepancies.outcomeLabel.3": "報告を拒否",
+	"sourceUi.pages.extensions.report.discrepancies.outcomeLabel.4": "{value1}項目を調整",
+	"sourceUi.pages.extensions.report.discrepancies.kindLabel.5": "プロフィール",
+	"panelUi.pages.extensions.declarative.extension-page.1": "現在の状態を読み込めません：",
+	"panelUi.pages.extensions.declarative.extension-page.2": "この拡張機能は無効です。現在は何も実行していません。",
+	"panelUi.pages.extensions.declarative.extension-page.3": "下の設定は変更できます。有効にすると反映されます。接続状態は拡張機能の実行中のみ表示されます。",
+	"panelUi.pages.extensions.declarative.extension-page.4": "保存済みの設定が拡張機能の要件を満たしていないため、停止しています。下の設定を修正すると自動的に起動します。",
+	"panelUi.pages.extensions.declarative.extension-page.5": "新しいバージョンはインストール済みですが、まだ読み込まれていません。下には設定のみ表示されます。読み込み方法は上のカードで選べます。",
+	"panelUi.pages.extensions.declarative.extension-page.6": "この拡張機能は起動できていません。下には設定のみ表示されます。原因はログを確認してください。"
 }

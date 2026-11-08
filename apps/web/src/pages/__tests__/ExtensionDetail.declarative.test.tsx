@@ -18,7 +18,7 @@ import type {
 	RestartAbility,
 } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
@@ -259,6 +259,92 @@ describe("v2 拓展的详情页", () => {
 		const dialog = await screen.findByRole("dialog");
 		expect(dialog.textContent).not.toContain("桥");
 		expect(dialog.textContent).toContain("删掉它的设置也会一起没");
+	});
+});
+
+describe("localized declarative availability", () => {
+	it.each([
+		[
+			"disabled",
+			false,
+			"This extension is disabled. It is not performing any work.",
+			"この拡張機能は無効です。現在は何も実行していません。",
+			"此拓展已關閉，目前不會執行任何工作。",
+		],
+		[
+			"settings-invalid",
+			true,
+			"The saved settings do not meet this extension’s requirements, so it is not running. Correct them below and it will start automatically.",
+			"保存済みの設定が拡張機能の要件を満たしていないため、停止しています。下の設定を修正すると自動的に起動します。",
+			"已儲存的設定不符合此拓展的規則，因此尚未執行；在下方修正後會自動啟動。",
+		],
+		[
+			"staged",
+			true,
+			"The new version is installed but has not been loaded. Only settings are available below; choose how to load it in the card above.",
+			"新しいバージョンはインストール済みですが、まだ読み込まれていません。下には設定のみ表示されます。読み込み方法は上のカードで選べます。",
+			"新版已安裝但尚未載入，下方只有設定、沒有狀態；請在上方卡片選擇載入方式。",
+		],
+		[
+			"failed",
+			true,
+			"This extension could not start. Only settings are available below; check the logs for the cause.",
+			"この拡張機能は起動できていません。下には設定のみ表示されます。原因はログを確認してください。",
+			"此拓展尚未啟動，下方只有設定、沒有狀態；請到日誌查看原因。",
+		],
+	] as const)(
+		"%s guidance translates while the editable draft remains intact",
+		async (state, enabled, en, ja, tw) => {
+			renderDetail({ ext: { ...DOUYIN, state, enabled } });
+			const field = await screen.findByLabelText("检查间隔");
+			fireEvent.change(field, { target: { value: "120" } });
+			vi.mocked(api.post).mockClear();
+			vi.mocked(api.delete).mockClear();
+			for (const [locale, expected, disabledHint] of [
+				[
+					"en",
+					en,
+					"You can still edit settings below. They take effect when you enable the extension; connection status is available only while it is running.",
+				],
+				[
+					"ja",
+					ja,
+					"下の設定は変更できます。有効にすると反映されます。接続状態は拡張機能の実行中のみ表示されます。",
+				],
+				["zh-TW", tw, "下方設定仍可修改，啟用拓展後生效；連線狀態需等拓展執行後才會顯示。"],
+			] as const) {
+				await act(async () => {
+					i18n.set({ locale, voice: "plain" });
+				});
+				expect(screen.getByText(expected)).toBeTruthy();
+				if (!enabled) expect(screen.getByText(disabledHint, { exact: false })).toBeTruthy();
+				expect(screen.getByLabelText("检查间隔")).toBe(field);
+				expect((field as HTMLInputElement).value).toBe("120");
+				expect(screen.getAllByText("抖音订阅").length).toBeGreaterThan(0);
+			}
+			expect(statusCalls()).toBe(0);
+			expect(apiPatchMock).not.toHaveBeenCalled();
+			expect(api.post).not.toHaveBeenCalled();
+			expect(api.delete).not.toHaveBeenCalled();
+		},
+	);
+
+	it("unavailable live state translates the explanation and preserves the host error", async () => {
+		renderDetail({ status: new Error("原始读取诊断 / ECONNRESET") });
+		const note = await within(await headCard()).findByRole("alert");
+		for (const [locale, prefix] of [
+			["en", "Could not read the current status:"],
+			["ja", "現在の状態を読み込めません："],
+			["zh-TW", "無法讀取目前狀態："],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(note.textContent).toContain(prefix);
+			expect(note.textContent).toContain("原始读取诊断 / ECONNRESET");
+			expect(screen.getByLabelText("检查间隔")).toBeTruthy();
+		}
+		expect(apiPatchMock).not.toHaveBeenCalled();
 	});
 });
 

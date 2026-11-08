@@ -17,6 +17,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
 import zhCN from "../../i18n/locales/zh-CN.json";
+import { api } from "../../services/api";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import ExtensionDetail from "../ExtensionDetail";
 
@@ -226,6 +227,106 @@ describe("拓展详情页:上报出入", () => {
 			expect(within(box).getByText(count)).toBeTruthy();
 			expect(within(box).getByText("原始原因")).toBe(reason);
 		}
+	});
+
+	it("report explanations translate without changing subscriptions, platform nouns or diagnostic reasons", async () => {
+		disk.subs = [extSub("s1", "sec-1", "原始作者")];
+		disk.discrepancies = [
+			{
+				at: Date.now(),
+				kind: "problem",
+				subscriptionIds: [],
+				outcome: "rejected",
+				reasons: ["problem 原文 / bad_code"],
+			},
+			{
+				at: Date.now(),
+				kind: "profile",
+				externalId: "orphan-id",
+				subscriptionIds: [],
+				outcome: "rejected",
+				reasons: ["profile 原文 / EINVAL"],
+			},
+			{
+				at: Date.now(),
+				kind: "live",
+				subscriptionIds: ["s1"],
+				outcome: "dropped",
+				reasons: ["live 原文 A", "live 原文 B"],
+			},
+			{
+				at: Date.now(),
+				kind: "post",
+				subscriptionIds: ["s1"],
+				outcome: "dropped",
+				reasons: ["post 原文 / images[0]"],
+			},
+		];
+		renderDetail();
+		await screen.findByRole("region", { name: "上报出入" });
+		for (const [locale, title, subtitle, problem, profile, live, rejected, twoFields, oneField] of [
+			[
+				"en",
+				"Report discrepancies",
+				"Reports from this extension that BN did not accept as submitted (latest 20; cleared when BN restarts)",
+				"Problem",
+				"Profile",
+				"Live",
+				"Report rejected",
+				"Fields adjusted: 2",
+				"Fields adjusted: 1",
+			],
+			[
+				"ja",
+				"報告内容の調整・拒否",
+				"この拡張機能の報告をBNがそのまま受理しなかった履歴です（直近20件。BNの再起動で消去）。",
+				"問題",
+				"プロフィール",
+				"配信",
+				"報告を拒否",
+				"2項目を調整",
+				"1項目を調整",
+			],
+			[
+				"zh-TW",
+				"回報差異",
+				"此拓展送來、BN 未照單全收的回報（最近 20 筆，重新啟動 BN 後清除）",
+				"問題",
+				"資料",
+				"直播",
+				"整筆拒收",
+				"調整 2 個欄位",
+				"調整 1 個欄位",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			const box = screen.getByRole("region", { name: title });
+			expect(within(box).getByText(subtitle)).toBeTruthy();
+			const rows = within(box).getAllByRole("listitem");
+			expect(rows).toHaveLength(4);
+			const first = within(rows[0] as HTMLElement);
+			expect(first.getByText(problem)).toBeTruthy();
+			expect(first.getByText(rejected)).toBeTruthy();
+			expect(first.getByText("problem 原文 / bad_code")).toBeTruthy();
+			const second = within(rows[1] as HTMLElement);
+			expect(second.getByText(profile)).toBeTruthy();
+			expect(second.getByText("orphan-id")).toBeTruthy();
+			expect(second.getByText("profile 原文 / EINVAL")).toBeTruthy();
+			const third = within(rows[2] as HTMLElement);
+			expect(third.getByText(live)).toBeTruthy();
+			expect(third.getByText(twoFields)).toBeTruthy();
+			expect(third.getByText("原始作者")).toBeTruthy();
+			expect(third.getByText("live 原文 A")).toBeTruthy();
+			expect(third.getByText("live 原文 B")).toBeTruthy();
+			const fourth = within(rows[3] as HTMLElement);
+			expect(fourth.getByText("作品")).toBeTruthy();
+			expect(fourth.getByText(oneField)).toBeTruthy();
+			expect(fourth.getByText("post 原文 / images[0]")).toBeTruthy();
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
 	});
 
 	it("没有问题:不出这个框", async () => {
