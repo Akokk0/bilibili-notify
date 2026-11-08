@@ -35,9 +35,15 @@ export function HeroStrip({
 }: HeroStripProps) {
 	return (
 		<div
-			className={`bn-glass bn-hero-tint relative rounded-bn-card shadow-bn-card ${compact ? "p-4" : "p-5"}`}
+			className={`bn-glass bn-hero-tint @container/hero relative rounded-bn-card shadow-bn-card ${compact ? "p-4" : "p-5"}`}
 		>
-			<div className="flex items-center gap-3.5">
+			<div
+				className={
+					compact
+						? "grid grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-3.5 @min-[480px]/hero:grid-cols-[2.5rem_minmax(0,1fr)_auto]"
+						: "flex items-center gap-3.5"
+				}
+			>
 				<div
 					className={`bn-hero-badge grid shrink-0 place-items-center text-bn-on-solid ${
 						compact ? "h-10 w-10 rounded-xl" : "h-13 w-13 rounded-2xl"
@@ -59,7 +65,11 @@ export function HeroStrip({
 						children
 					)}
 				</div>
-				{right}
+				{compact && right != null ? (
+					<div className="col-start-2 justify-self-end @min-[480px]/hero:col-start-3">{right}</div>
+				) : (
+					right
+				)}
 			</div>
 		</div>
 	);

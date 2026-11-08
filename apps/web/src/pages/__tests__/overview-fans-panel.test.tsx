@@ -9,7 +9,7 @@
 
 import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FollowersRefreshEntry } from "../../services/overview";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
@@ -105,11 +105,12 @@ function renderPanel(
 		return Promise.reject(new Error(`没料到的请求 ${path}`));
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const view = render(
 		<QueryClientProvider client={qc}>
 			<FansPanel subs={subs} sources={sourcesOf(extensions)} extensions={extensions} />
 		</QueryClientProvider>,
 	);
+	return { ...view, qc };
 }
 
 describe("粉丝数变化 · 拓展订阅", () => {
@@ -194,4 +195,31 @@ describe("粉丝数变化 · 拓展订阅", () => {
 		await waitFor(() => expect(screen.getByText("抖音同号")).toBeTruthy());
 		expect(screen.getAllByText("B 站甲")).toHaveLength(1);
 	});
+});
+
+it("follower labels redraw without changing the profile and use singular and plural counts", async () => {
+	const entry = { ...BILI_ENTRY, current: 1 };
+	const { qc } = renderPanel([entry], [biliSub("s-bili", "12345", "原名")]);
+	const profile = await screen.findByText("原名");
+	for (const [locale, title, badge, total] of [
+		["en", "Follower changes", "● 1 subscription", "1 follower"],
+		["ja", "フォロワー数の変化", "● 購読 1件", "1人のフォロワー"],
+		["zh-TW", "粉絲數變化", "● 1 筆訂閱", "1 位粉絲"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByText(badge)).toBeTruthy();
+		expect(screen.getByText(total)).toBeTruthy();
+		expect(screen.getByText("原名")).toBe(profile);
+	}
+	await act(async () => {
+		i18n.set({ locale: "en", voice: "plain" });
+	});
+	vi.mocked(api.get).mockResolvedValue({ entries: [{ ...entry, current: 2 }] });
+	await act(async () => {
+		await qc.invalidateQueries({ queryKey: ["stats", "followers"] });
+	});
+	expect(await screen.findByText("2 followers")).toBeTruthy();
 });

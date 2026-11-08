@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import type { HistoryEntryView } from "../../services/overview";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import History from "../History";
@@ -537,4 +538,9 @@ describe("推送历史 · 平台徽章", () => {
 		expect(platform.textContent).toBe("");
 		expect(platform.querySelector("svg")).not.toBeNull();
 	});
+});
+
+// This scenario explicitly tests the Chinese UI.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 });

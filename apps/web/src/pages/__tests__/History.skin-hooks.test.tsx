@@ -12,6 +12,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import History from "../History";
 
 vi.mock("../../services/api", () => ({
@@ -94,4 +95,9 @@ describe("推送历史 · 类型筛选", () => {
 		// 没选中的那几段不带 —— 同 ToneChip:未选中是中性档。
 		expect(chip("直播").style.getPropertyValue("--bn-tint")).toBe("");
 	});
+});
+
+// This scenario explicitly tests the Chinese UI.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 });

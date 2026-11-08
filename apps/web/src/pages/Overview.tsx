@@ -324,9 +324,7 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 					</span>
 				))}
 				<span className="ml-auto tabular-nums text-bn-xs text-bn-text-secondary">
-					{tx("sourceUi.pages.Dashboard.TrendPanel.5")}
-					{total}
-					{tx("sourceUi.pages.Dashboard.TrendPanel.6")}
+					{tx("dashboard.trend.total", { count: total })}
 				</span>
 			</div>
 		</GlassPanel>
@@ -584,8 +582,7 @@ export function FansPanel({
 			icon={<Icon.heart width={15} height={15} />}
 			right={
 				<Pill color="var(--color-bn-pink)" size="sm">
-					● {entries.length}
-					{tx("sourceUi.pages.Dashboard.right.16")}
+					{tx("dashboard.fans.subscriptions", { count: entries.length })}
 				</Pill>
 			}
 		>
@@ -620,8 +617,10 @@ export function FansPanel({
 										) : null}
 									</div>
 									<div className="tabular-nums text-bn-xs text-bn-text-tertiary">
-										{formatCount(e.current)}
-										{tx("sourceUi.pages.Dashboard.FansPanel.19")}
+										{tx("dashboard.fans.total", {
+											count: e.current,
+											value: formatCount(e.current),
+										})}
 									</div>
 								</div>
 								<FansDeltaCol
@@ -771,12 +770,12 @@ export default function Overview() {
 				<GlassStatCard
 					label={tx("sourceUi.pages.Dashboard.label.63")}
 					value={todayPushes}
-					suffix={tx("sourceUi.pages.Dashboard.suffix.64")}
+					suffix={tx("dashboard.pushUnit", { count: todayPushes })}
 					color="var(--color-bn-purple)"
 					footer={
-						<>
+						<div className="flex w-full flex-wrap items-center gap-1.5">
 							<DeltaTag v={pushDelta} size={11.5} />
-							<span className="text-bn-2xs text-bn-text-secondary">
+							<span className="whitespace-nowrap text-bn-2xs text-bn-text-secondary">
 								{tx("sourceUi.pages.Dashboard.footer.65")}
 							</span>
 							<span className="ml-auto">
@@ -787,13 +786,13 @@ export default function Overview() {
 									height={20}
 								/>
 							</span>
-						</>
+						</div>
 					}
 				/>
 				<GlassStatCard
 					label={tx("sourceUi.pages.Dashboard.label.66")}
 					value={todayFailed}
-					suffix={tx("sourceUi.pages.Dashboard.suffix.64")}
+					suffix={tx("dashboard.pushUnit", { count: todayFailed })}
 					color={todayFailed > 0 ? "var(--color-bn-danger)" : "var(--color-bn-success)"}
 					pulse={todayFailed > 0}
 				/>

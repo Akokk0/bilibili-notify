@@ -9,7 +9,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { SystemHealthCard } from "../Overview";
 import { runningHealth } from "./support/health";
 
@@ -92,4 +93,9 @@ describe("SystemHealthCard —— 有新版时", () => {
 		});
 		expect(screen.queryByRole("button", { name: "前往更新" })).toBeNull();
 	});
+});
+
+// This scenario explicitly tests the Chinese UI.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 });

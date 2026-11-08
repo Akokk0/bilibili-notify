@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import Subscriptions from "../Subscriptions";
 
@@ -93,4 +94,9 @@ describe("Subscriptions · ?open= 直达", () => {
 		expect(screen.queryByText("推送目标", { selector: "section *" })).toBeNull();
 		expect(scrolled).toHaveLength(0);
 	});
+});
+
+// This scenario explicitly tests the Chinese UI.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 });

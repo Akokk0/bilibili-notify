@@ -438,8 +438,6 @@
 	"sourceUi.pages.Dashboard.subtitle.2": "按推送类型分布",
 	"sourceUi.pages.Dashboard.TrendPanel.3": "作品",
 	"sourceUi.pages.Dashboard.TrendPanel.4": "会员",
-	"sourceUi.pages.Dashboard.TrendPanel.5": "近 7 天共 ",
-	"sourceUi.pages.Dashboard.TrendPanel.6": " 次",
 	"sourceUi.pages.Dashboard.right.7": "查看完整总结 →",
 	"sourceUi.pages.Dashboard.AiInsightStrip.8": "AI 直播洞察 · ",
 	"sourceUi.pages.Dashboard.title.9": "最近推送活动",
@@ -449,10 +447,8 @@
 	"sourceUi.pages.Dashboard.TimelinePanel.13": "先去「推送目标」配置好通道，订阅以后就会出现在这里 ~",
 	"sourceUi.pages.Dashboard.title.14": "粉丝数变化",
 	"sourceUi.pages.Dashboard.subtitle.15": "自订阅起点 / 近 24h / 近 7d",
-	"sourceUi.pages.Dashboard.right.16": " 位订阅",
 	"sourceUi.pages.Dashboard.FansPanel.17": "采样中…",
 	"sourceUi.pages.Dashboard.FansPanel.18": "第一轮资料刷新完成后会填充",
-	"sourceUi.pages.Dashboard.FansPanel.19": " 粉丝",
 	"sourceUi.pages.Dashboard.label.20": "起点",
 	"sourceUi.pages.Dashboard.title.21": "按模块覆盖",
 	"sourceUi.pages.Dashboard.SystemHealthCard.33": "未启用",
@@ -463,7 +459,6 @@
 	"sourceUi.pages.Dashboard.Dashboard.58": " 配置通道。",
 	"sourceUi.pages.Dashboard.label.62": "已启用订阅",
 	"sourceUi.pages.Dashboard.label.63": "今日推送",
-	"sourceUi.pages.Dashboard.suffix.64": "次",
 	"sourceUi.pages.Dashboard.footer.65": "较昨日",
 	"sourceUi.pages.Dashboard.label.66": "今日失败",
 	"sourceUi.pages.History.placeholder.1": "按名称、内容、目标搜索…",
@@ -3236,5 +3231,9 @@
 	"healthCard.manage": "前往管理",
 	"log.chat.markdownUnavailable": "Markdown 模块加载失败，使用纯文本显示",
 	"log.fields.missing": "设置字段缺少显示说明",
-	"resources.cores#other": "{count} 核"
+	"resources.cores#other": "{count} 核",
+	"dashboard.fans.subscriptions#other": "● {count} 位订阅",
+	"dashboard.fans.total#other": "{value} 粉丝",
+	"dashboard.trend.total#other": "近 7 天共 {count} 次",
+	"dashboard.pushUnit#other": "次"
 }

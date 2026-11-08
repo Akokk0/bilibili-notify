@@ -16,7 +16,7 @@ import type {
 	SourceEntry,
 } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -35,6 +35,7 @@ vi.mock("../../services/wsSingleton", () => ({
 }));
 
 import { api } from "../../services/api";
+import { HISTORY_DAILY_QUERY_KEY } from "../../services/overview";
 import {
 	DEFAULT_FEATURE_FLAGS,
 	makeEmptySubscription,
@@ -805,4 +806,55 @@ describe("首页直播读数的未知态", () => {
 			qc.clear();
 		}
 	});
+});
+
+it("overview totals use translated whole sentences and quantity-aware units without changing daily data", async () => {
+	mockApi({ loggedIn: false, details: async () => runningHealth() });
+	const fallback = vi.mocked(api.get).getMockImplementation();
+	let total = 1;
+	vi.mocked(api.get).mockImplementation(async (path) => {
+		if (path.startsWith("/api/history/daily"))
+			return {
+				days: [
+					{
+						d: "2026-11-08",
+						total,
+						failures: 0,
+						counts: {
+							post: total,
+							liveStart: 0,
+							liveStreaming: 0,
+							liveEnd: 0,
+							membership: 0,
+							superchat: 0,
+							viewerChat: 0,
+							viewerEnter: 0,
+						},
+					},
+				],
+			};
+		return fallback?.(path);
+	});
+	i18n.set({ locale: "en", voice: "plain" });
+	const qc = renderDashboard();
+	expect(await screen.findByText("1 push in the last 7 days")).toBeTruthy();
+	expect(screen.getByText("time")).toBeTruthy();
+	expect(screen.getByText("times")).toBeTruthy();
+	for (const [locale, title, summary] of [
+		["ja", "今週の送信推移", "直近7日間の送信回数：1回"],
+		["zh-TW", "本週推播趨勢", "最近 7 天共 1 次"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByText(summary)).toBeTruthy();
+	}
+	total = 2;
+	await act(async () => {
+		i18n.set({ locale: "en", voice: "plain" });
+		await qc.invalidateQueries({ queryKey: HISTORY_DAILY_QUERY_KEY });
+	});
+	expect(await screen.findByText("2 pushes in the last 7 days")).toBeTruthy();
+	qc.clear();
 });
