@@ -711,5 +711,17 @@
 	"panelUi.components.chrome-autodetect.12": " (for slim images or systems without a local browser, e.g. a browserless container):",
 	"panelUi.components.chrome-autodetect.13": "ws://browser:3000?token=… or http://host:9222",
 	"panelUi.components.chrome-autodetect.14": "Connecting…",
-	"panelUi.components.chrome-autodetect.15": "Connect remote browser"
+	"panelUi.components.chrome-autodetect.15": "Connect remote browser",
+	"panelUi.components.commands-settings.1": "Core · Private-message commands",
+	"panelUi.components.commands-settings.2": "Commands available in IM private chats · globals.commands",
+	"panelUi.components.commands-settings.3": "Prefix {value0}",
+	"panelUi.components.commands-settings.4": "(empty)",
+	"panelUi.components.commands-settings.5": "Disabled",
+	"panelUi.components.commands-settings.6": "Private-message commands",
+	"panelUi.components.commands-settings.7": "Loading commands",
+	"panelUi.components.commands-settings.8": "Could not load commands: ",
+	"panelUi.components.commands-settings.9": "Restore the built-in aliases",
+	"panelUi.components.commands-settings.10": "Restore defaults",
+	"panelUi.components.commands-settings.11": "Aliases, separated by spaces; leave empty to use only the primary name",
+	"panelUi.components.commands-settings.12": "Example: "
 }

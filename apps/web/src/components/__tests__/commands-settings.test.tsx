@@ -10,7 +10,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { GlobalSettings } from "../../types/globals";
 import { CommandsSettings } from "../commands-settings";
@@ -20,6 +20,7 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 
 const REGISTRY = {
@@ -73,7 +74,10 @@ function mount(aliases: Record<string, string[]>) {
 
 const aliasInput = async () => (await screen.findByPlaceholderText(/别名/)) as HTMLInputElement;
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+	vi.clearAllMocks();
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 afterEach(cleanup);
 
 describe("CommandsSettings — 别名输入框与草稿的一致性", () => {
@@ -94,4 +98,42 @@ describe("CommandsSettings — 别名输入框与草稿的一致性", () => {
 		rerenderWith({});
 		expect((await aliasInput()).value).toBe("静音");
 	});
+});
+
+it("command settings translate and refresh registry descriptions without rewriting aliases", async () => {
+	mount({});
+	const input = await aliasInput();
+	fireEvent.change(input, { target: { value: "静音 " } });
+	const descriptions = { en: "Mute notifications", ja: "通知をミュート", "zh-TW": "靜音通知" };
+	vi.mocked(api.get).mockImplementation(async () => ({
+		...REGISTRY,
+		commands: [
+			{
+				...REGISTRY.commands[0],
+				description: descriptions[i18n.state().locale as keyof typeof descriptions],
+			},
+		],
+	}));
+	for (const [locale, title, placeholder] of [
+		[
+			"en",
+			"Core · Private-message commands",
+			"Aliases, separated by spaces; leave empty to use only the primary name",
+		],
+		[
+			"ja",
+			"Core · 個別メッセージのコマンド",
+			"別名を空白で区切って入力。空欄なら元の名前だけを使います",
+		],
+		["zh-TW", "Core · 私訊指令", "別名以空白分隔；留空則只使用主要名稱"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(await screen.findByText(descriptions[locale])).toBeTruthy();
+		expect(screen.getByPlaceholderText(placeholder)).toBe(input);
+		expect(input.value).toBe("静音 ");
+		expect(screen.getByText("/mute")).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	}
 });

@@ -696,5 +696,17 @@
 	"panelUi.components.chrome-autodetect.12": "に接続してください（slim イメージやローカルブラウザーがない環境向け。例: browserless コンテナー）:",
 	"panelUi.components.chrome-autodetect.13": "ws://browser:3000?token=… または http://host:9222",
 	"panelUi.components.chrome-autodetect.14": "接続中…",
-	"panelUi.components.chrome-autodetect.15": "リモートブラウザーに接続"
+	"panelUi.components.chrome-autodetect.15": "リモートブラウザーに接続",
+	"panelUi.components.commands-settings.1": "Core · 個別メッセージのコマンド",
+	"panelUi.components.commands-settings.2": "IM の個別チャットで使えるコマンド · globals.commands",
+	"panelUi.components.commands-settings.3": "接頭辞 {value0}",
+	"panelUi.components.commands-settings.4": "（なし）",
+	"panelUi.components.commands-settings.5": "無効",
+	"panelUi.components.commands-settings.6": "個別メッセージのコマンドを有効にする",
+	"panelUi.components.commands-settings.7": "コマンド一覧を読み込み中",
+	"panelUi.components.commands-settings.8": "コマンド一覧を読み込めませんでした: ",
+	"panelUi.components.commands-settings.9": "組み込みの別名に戻す",
+	"panelUi.components.commands-settings.10": "既定に戻す",
+	"panelUi.components.commands-settings.11": "別名を空白で区切って入力。空欄なら元の名前だけを使います",
+	"panelUi.components.commands-settings.12": "例: "
 }

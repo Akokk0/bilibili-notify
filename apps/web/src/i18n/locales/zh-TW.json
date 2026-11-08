@@ -696,5 +696,17 @@
 	"panelUi.components.chrome-autodetect.12": "（適用於 slim 映像或沒有本機瀏覽器的環境，例如 browserless 容器）：",
 	"panelUi.components.chrome-autodetect.13": "ws://browser:3000?token=… 或 http://host:9222",
 	"panelUi.components.chrome-autodetect.14": "連線中…",
-	"panelUi.components.chrome-autodetect.15": "連線至遠端瀏覽器"
+	"panelUi.components.chrome-autodetect.15": "連線至遠端瀏覽器",
+	"panelUi.components.commands-settings.1": "Core · 私訊指令",
+	"panelUi.components.commands-settings.2": "可在 IM 私訊中使用的指令 · globals.commands",
+	"panelUi.components.commands-settings.3": "前綴 {value0}",
+	"panelUi.components.commands-settings.4": "（空白）",
+	"panelUi.components.commands-settings.5": "已關閉",
+	"panelUi.components.commands-settings.6": "私訊指令總開關",
+	"panelUi.components.commands-settings.7": "正在載入指令清單",
+	"panelUi.components.commands-settings.8": "載入指令清單失敗：",
+	"panelUi.components.commands-settings.9": "還原內建別名",
+	"panelUi.components.commands-settings.10": "還原預設",
+	"panelUi.components.commands-settings.11": "別名以空白分隔；留空則只使用主要名稱",
+	"panelUi.components.commands-settings.12": "範例："
 }

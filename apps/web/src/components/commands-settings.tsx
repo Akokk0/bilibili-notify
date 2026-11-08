@@ -1,4 +1,4 @@
-import { useT } from "../i18n";
+import { useT, useTextOptions } from "../i18n";
 /**
  * 系统页的「私聊指令」卡片 —— 前缀 / 别名 / 总开关。
  *
@@ -11,7 +11,7 @@ import { useT } from "../i18n";
  */
 
 import { Btn, GlassBox, Icon, LoadingBlock, Toggle } from "@bilibili-notify/ui";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { api } from "../services/api";
@@ -50,9 +50,12 @@ export function CommandsSettings({
 	onPatch: (delta: GlobalSettingsPatch) => void;
 }) {
 	const tx = useT();
+	const { locale, voice } = useTextOptions();
 
 	const registry = useQuery({
-		queryKey: ["commands"],
+		// Registry descriptions are rendered by the server in the instance language.
+		queryKey: ["commands", locale, voice],
+		placeholderData: keepPreviousData,
 		queryFn: () => api.get<CommandsResponse>("/api/commands"),
 	});
 	const cfg = draft.commands;
