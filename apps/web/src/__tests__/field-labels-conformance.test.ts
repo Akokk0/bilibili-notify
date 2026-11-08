@@ -134,3 +134,26 @@ it("runtime and message field descriptions follow locale without changing field 
 		i18n.set({ locale: state.locale, voice: state.voice });
 	}
 });
+
+it("AI field descriptions localize while provider credentials stay secret and protocol keys stay literal", () => {
+	const state = i18n.state();
+	try {
+		for (const [locale, extraLabel, visionLabel, personaLabel] of [
+			["en", "Extra request parameters", "Vision API Key", "Default personality"],
+			["ja", "追加のリクエストパラメーター", "画像認識用 API Key", "既定の性格"],
+			["zh-TW", "額外請求參數", "視覺 API Key", "預設性格"],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			expect(getFieldLabel("ai.extraParams")?.label).toBe(extraLabel);
+			expect(getFieldLabel("ai.vision.apiKey")?.label).toBe(visionLabel);
+			expect(getFieldLabel("ai.activePreset")?.label).toBe(personaLabel);
+			expect(getFieldLabel("ai.extraParams")?.hint).toContain("model / messages / tools");
+			expect(getFieldLabel("ai.search.keys.bocha")?.hint).toContain("open.bochaai.com");
+			expect(getFieldLabel("ai.vision.apiKey")?.secret).toBe(true);
+			expect(getFieldLabel("ai.search.keys.bocha")?.secret).toBe(true);
+			expect(getFieldLabel("ai.apiKey")?.secret).toBe(true);
+		}
+	} finally {
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
+});
