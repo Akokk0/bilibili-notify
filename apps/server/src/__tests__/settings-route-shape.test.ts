@@ -15,6 +15,7 @@ import { createApp, createCardSkinStore } from "../app.js";
 import { BUILTIN_INTEGRATION_SETTINGS } from "../compose.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
+import { i18n } from "../i18n/index.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
 type SettingsBody = { core: Record<string, unknown> } & Record<string, unknown>;
@@ -52,6 +53,50 @@ describe("/api/settings 的形状", () => {
 			});
 		return { runtime, app, patch };
 	}
+
+	it.each([
+		[
+			"en",
+			"core must be an object containing the core settings patch.",
+			"The owner's push target does not exist. Select another private-message target.",
+		],
+		[
+			"ja",
+			"coreには、コア設定の変更内容をオブジェクトで指定してください。",
+			"管理者の送信先が存在しません。別の個人チャットの送信先を選択してください。",
+		],
+		[
+			"zh-TW",
+			"core 必須是包含核心設定變更的物件。",
+			"主人的推播目標不存在，請重新選擇一個私訊目標。",
+		],
+	] as const)(
+		"localizes rejected settings patches in %s without changing state or issue paths",
+		async (locale, shapeMessage, masterMessage) => {
+			const { runtime, patch } = await boot();
+			const previous = i18n.state();
+			const before = runtime.configStore.getGlobals();
+			try {
+				i18n.set({ locale, voice: "plain" });
+				const shape = await patch({ core: "original invalid input" });
+				expect(shape.status).toBe(400);
+				expect(await shape.json()).toMatchObject({ code: "invalid", message: shapeMessage });
+				const master = await patch({
+					core: { master: { targetId: "cbd744bc-3fe8-4b72-b038-f606f3b162c7" } },
+				});
+				expect(master.status).toBe(400);
+				expect(await master.json()).toMatchObject({
+					code: "invalid",
+					message: masterMessage,
+					issues: [{ path: ["core", "master", "targetId"] }],
+				});
+				expect(runtime.configStore.getGlobals()).toEqual(before);
+			} finally {
+				i18n.set(previous);
+				await runtime.dispose();
+			}
+		},
+	);
 
 	const coreFile = () => join(dataDir, ...CORE_SETTINGS_FILE);
 

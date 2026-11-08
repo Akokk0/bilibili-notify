@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { i18n } from "../../i18n/index.js";
 import { ConfigValidationError } from "../validation-error.js";
 
 const Schema = z.object({
@@ -106,3 +107,26 @@ describe("toFailure", () => {
 		expect(failure).not.toHaveProperty("issues");
 	});
 });
+
+it.each([
+	["en", "Connections: 1 invalid field. originalName：Raw diagnostic / 原始"],
+	["ja", "接続に無効な項目が1件あります：originalName：Raw diagnostic / 原始"],
+	["zh-TW", "連線有 1 個無效欄位：originalName：Raw diagnostic / 原始"],
+] as const)(
+	"localizes the configuration summary in %s while preserving original issues",
+	(locale, message) => {
+		const previous = i18n.state();
+		try {
+			i18n.set({ locale, voice: "plain" });
+			const issues = [{ path: ["originalName"], message: "Raw diagnostic / 原始" }];
+			expect(ConfigValidationError.fromIssues("connections", issues).toFailure()).toEqual({
+				ok: false,
+				code: "invalid",
+				message,
+				issues,
+			});
+		} finally {
+			i18n.set(previous);
+		}
+	},
+);
