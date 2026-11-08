@@ -15,6 +15,7 @@ import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import type { GlobalSettings } from "../../types/globals";
 import Rules from "../Rules";
@@ -83,6 +84,7 @@ function mount(g: GlobalSettings) {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.patch).mockResolvedValue({});

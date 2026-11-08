@@ -168,3 +168,39 @@ it("rule removal confirmation translates in place and preserves the original sub
 	fireEvent.click(screen.getByRole("button", { name: "取消" }));
 	expect(api.patch).not.toHaveBeenCalled();
 });
+
+it("rule navigation translates in global and subscription scopes without replacing the active editor", async () => {
+	const get = vi.mocked(api.get).getMockImplementation();
+	vi.mocked(api.get).mockImplementation(async (url) =>
+		url.includes("/api/subscriptions")
+			? [{ ...CUSTOMIZED, cachedProfile: { name: "规则作者", followers: 0, refreshedAt: "t" } }]
+			: get?.(url),
+	);
+	renderRules();
+	fireEvent.click(await screen.findByRole("button", { name: "作品图集" }));
+	const editor = document.querySelector('[data-code="imageGroup.enabled"]');
+	for (const [locale, gallery, live, membership] of [
+		["en", "Post image galleries", "Live thresholds", "Membership notifications"],
+		["ja", "作品の画像一覧", "配信の通知条件", "会員通知"],
+		["zh-TW", "作品圖集", "直播門檻", "會員提示"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByRole("button", { name: gallery }).getAttribute("aria-current")).toBe("true");
+		expect(screen.getByRole("button", { name: live })).toBeTruthy();
+		expect(screen.getByRole("button", { name: membership })).toBeTruthy();
+		expect(document.querySelector('[data-code="imageGroup.enabled"]')).toBe(editor);
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByText("规则作者", { selector: "span" }));
+	for (const [locale, personality, viewers] of [
+		["en", "AI personality", "Special viewer messages"],
+		["ja", "AI の性格", "注目する視聴者のコメント"],
+		["zh-TW", "AI 性格", "特別關注彈幕"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByRole("button", { name: personality })).toBeTruthy();
+		expect(screen.getByRole("button", { name: viewers })).toBeTruthy();
+		expect(screen.getByText("规则作者", { selector: "span" })).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+});
