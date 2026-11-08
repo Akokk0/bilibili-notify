@@ -17,6 +17,12 @@
 
 import type { CardSkinManifest, ImageRef, ServiceContext } from "@bilibili-notify/internal";
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	type PackageTextKey,
+	withPackageDicts,
+} from "@bilibili-notify/internal/texts";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { ImageRenderer } from "../image-renderer";
@@ -533,4 +539,45 @@ describe("generateLiveCard — 头像", () => {
 		expect(await upFace(input())).toBe(FACE);
 		expect(await upFace(input({ creator: { name: "示例主播" } }))).toBe("");
 	});
+});
+
+it("renders live labels in the current language without translating creator content", async () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "plain",
+	});
+	const binding = bindPackageText(texts.t);
+	const { renderer, captured } = makeRenderer();
+	try {
+		for (const [locale, status, time, likes] of [
+			["en", "Ended", "Started at: 2026-09-13 20:00:00", "Likes: 123"],
+			["ja", "配信終了", "開始時刻：2026-09-13 20:00:00", "いいね：123"],
+			["zh-TW", "已結束直播", "開播時間：2026-09-13 20:00:00", "按讚：123"],
+		] as const) {
+			texts.set({ locale });
+			await renderer.generateLiveCard(input({ status: "end", likes: 123 }));
+			const doc = new JSDOM(captured.at(-1) ?? "");
+			try {
+				const block = (name: string) =>
+					doc.window.document.querySelector(`[data-block="${name}"]`)?.textContent?.trim();
+				expect(block("status")).toBe(status);
+				expect(block("time")).toBe(time);
+				expect(block("likes")).toBe(likes);
+				expect(block("creatorName")).toBe("示例主播");
+				expect(block("title")).toBe("一场直播");
+				expect(block("description")).toBe("纯文本简介");
+			} finally {
+				doc.window.close();
+			}
+		}
+	} finally {
+		binding.dispose();
+	}
 });
