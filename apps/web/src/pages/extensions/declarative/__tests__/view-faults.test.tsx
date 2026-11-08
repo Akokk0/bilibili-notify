@@ -10,7 +10,7 @@
 
 import type { ExtensionEntryView, ExtensionPanelView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -19,6 +19,7 @@ vi.mock("../../../../services/api", async (importOriginal) => ({
 	ApiError: (await importOriginal<typeof import("../../../../services/api")>()).ApiError,
 }));
 
+import { i18n } from "../../../../i18n";
 import { api } from "../../../../services/api";
 import { DeclarativeHead, ExtensionSummary } from "../extension-page";
 import { answerPatch, cardOf, findCard, HOME, OFFICE, renderList } from "./list-harness";
@@ -48,6 +49,7 @@ function renderWith(view: ExtensionPanelView, node: ReactNode) {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.mocked(api.get).mockReset();
 	vi.mocked(api.patch).mockReset();
 	vi.mocked(api.patch).mockImplementation(answerPatch);
@@ -162,4 +164,31 @@ describe("列表按项", () => {
 		expect((await within(home).findByRole("alert")).textContent).toContain("不认识「chart」");
 		expect(home.querySelector("[data-list-status]")?.textContent).toBe("已停用");
 	});
+});
+
+it("view fault sentences translate while the host location, reason and healthy blocks remain intact", async () => {
+	renderWith(
+		{
+			page: [
+				{ block: { type: "notice", tone: "info", text: "Original healthy block" } },
+				{ fault: { where: "Original block 2", reason: "原始诊断 / rows.0.0" } },
+			],
+		},
+		<DeclarativeHead ext={DOUYIN} />,
+	);
+	await screen.findByRole("alert");
+	const healthy = screen.getByText("Original healthy block");
+	for (const [locale, message] of [
+		["en", "Could not display Original block 2: 原始诊断 / rows.0.0"],
+		["ja", "Original block 2を表示できません：原始诊断 / rows.0.0"],
+		["zh-TW", "無法顯示 Original block 2：原始诊断 / rows.0.0"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByRole("alert").textContent).toBe(message);
+		expect(screen.getByText("Original healthy block")).toBe(healthy);
+	}
+	expect(api.patch).not.toHaveBeenCalled();
+	expect(api.post).not.toHaveBeenCalled();
 });

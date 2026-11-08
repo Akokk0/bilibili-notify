@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 vi.mock("../../../../utils/clipboard", () => ({ copyToClipboard: vi.fn() }));
 
+import { i18n } from "../../../../i18n";
 import { copyToClipboard } from "../../../../utils/clipboard";
 import { CopyControl } from "../parts";
 
@@ -19,6 +20,7 @@ const OLD = "0123456789abcdef0123456789abcdef";
 const NEW = "ffffffffffffffffffffffffffffffff";
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.mocked(copyToClipboard).mockReset();
 	vi.mocked(copyToClipboard).mockResolvedValue(true);
 });
@@ -65,3 +67,47 @@ describe("CopyControl:换了一串就回到「没复制」", () => {
 		expect(screen.getByRole("button", { name: "复制 token" }).textContent).toBe("复制");
 	});
 });
+
+it.each([false, true])(
+	"copied feedback translates without copying again and resets for a new value (iconOnly=%s)",
+	async (iconOnly) => {
+		const { rerender } = render(
+			<CopyControl iconOnly={iconOnly} label="Original token" text={OLD} />,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Original token" }));
+		await waitFor(() => expect(copyToClipboard).toHaveBeenCalledWith(OLD));
+		await waitFor(() => {
+			if (iconOnly)
+				expect(screen.getByRole("button", { name: "Original token(已复制)" })).toBeTruthy();
+			else
+				expect(screen.getByRole("button", { name: "Original token" }).textContent).toBe("已复制");
+		});
+		for (const [locale, copiedText, copiedLabel] of [
+			["en", "Copied", "Original token (copied)"],
+			["ja", "コピー済み", "Original token（コピー済み）"],
+			["zh-TW", "已複製", "Original token（已複製）"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			const button = screen.getByRole("button", {
+				name: iconOnly ? copiedLabel : "Original token",
+			});
+			if (!iconOnly) expect(button.textContent).toBe(copiedText);
+			expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		}
+		rerender(<CopyControl iconOnly={iconOnly} label="Original token" text={NEW} />);
+		for (const [locale, copyText] of [
+			["en", "Copy"],
+			["ja", "コピー"],
+			["zh-TW", "複製"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			const button = screen.getByRole("button", { name: "Original token" });
+			if (!iconOnly) expect(button.textContent).toBe(copyText);
+			expect(copyToClipboard).toHaveBeenCalledTimes(1);
+		}
+	},
+);

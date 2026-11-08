@@ -2110,5 +2110,14 @@
 	"panelUi.pages.extensions.declarative.settings-form.21": "剛產生的值尚未儲存；儲存後只會顯示頭尾，需要全文請現在複製。",
 	"panelUi.pages.extensions.declarative.parts.4": "重新產生 {value0}",
 	"panelUi.pages.extensions.declarative.parts.5": "重新產生",
-	"panelUi.pages.extensions.declarative.settings-form.18": "尚未儲存 {field}；還原已去除機密資料的備份後會出現此情況，請產生新值。"
+	"panelUi.pages.extensions.declarative.settings-form.18": "尚未儲存 {field}；還原已去除機密資料的備份後會出現此情況，請產生新值。",
+	"panelUi.pages.extensions.declarative.parts.1": "{value0}（已複製）",
+	"panelUi.pages.extensions.declarative.parts.2": "已複製",
+	"panelUi.pages.extensions.declarative.parts.3": "複製",
+	"panelUi.pages.extensions.declarative.blocks.2": "複製 {value0}",
+	"panelUi.pages.extensions.declarative.blocks.3": "QR 碼",
+	"panelUi.pages.extensions.declarative.parts.6": "圖例",
+	"panelUi.pages.extensions.declarative.blocks.4": "「{label}」仍在執行：{reason}",
+	"panelUi.pages.extensions.declarative.blocks.5": "「{label}」未成功：{reason}",
+	"panelUi.pages.extensions.declarative.blocks.1": "無法顯示 {where}：{reason}"
 }

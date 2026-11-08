@@ -2160,5 +2160,14 @@
 	"panelUi.pages.extensions.declarative.settings-form.21": "Newly generated and not yet saved. After saving, only its beginning and end are visible; copy the full value now if you need it.",
 	"panelUi.pages.extensions.declarative.parts.4": "Regenerate {value0}",
 	"panelUi.pages.extensions.declarative.parts.5": "Regenerate",
-	"panelUi.pages.extensions.declarative.settings-form.18": "No {field} is stored. This can happen after restoring a redacted backup; generate a new value."
+	"panelUi.pages.extensions.declarative.settings-form.18": "No {field} is stored. This can happen after restoring a redacted backup; generate a new value.",
+	"panelUi.pages.extensions.declarative.parts.1": "{value0} (copied)",
+	"panelUi.pages.extensions.declarative.parts.2": "Copied",
+	"panelUi.pages.extensions.declarative.parts.3": "Copy",
+	"panelUi.pages.extensions.declarative.blocks.2": "Copy {value0}",
+	"panelUi.pages.extensions.declarative.blocks.3": "QR code",
+	"panelUi.pages.extensions.declarative.parts.6": "Legend",
+	"panelUi.pages.extensions.declarative.blocks.4": "“{label}” is still running: {reason}",
+	"panelUi.pages.extensions.declarative.blocks.5": "“{label}” failed: {reason}",
+	"panelUi.pages.extensions.declarative.blocks.1": "Could not display {where}: {reason}"
 }

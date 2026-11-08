@@ -10,7 +10,7 @@
 
 import type { ExtensionBlock } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../../i18n";
 import { ApiError, api } from "../../../../services/api";
@@ -484,3 +484,87 @@ describe("button", () => {
 		expect(api.post).not.toHaveBeenCalled();
 	});
 });
+
+it("block copy labels, QR alternatives and legend labels translate while extension content stays original", async () => {
+	renderBlocks(
+		[
+			{
+				type: "copy",
+				label: "Original address",
+				value: { host: "extensionUrl" },
+				note: "Original note",
+			},
+			{ type: "qr", image: "qr", caption: "Original caption" },
+			{
+				type: "table",
+				title: "Original matrix",
+				columns: [{ kind: "tristate", label: "Original capability" }],
+				rows: [[{ kind: "tristate", value: "unknown" }]],
+			},
+		],
+		{ id: "bridge", images: { qr: PNG }, legend: true },
+	);
+	for (const [locale, copy, qr, legend] of [
+		["en", "Copy Original address", "QR code", "Legend"],
+		["ja", "Original addressをコピー", "QRコード", "凡例"],
+		["zh-TW", "複製 Original address", "QR 碼", "圖例"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByRole("button", { name: copy })).toBeTruthy();
+		expect(screen.getByRole("img", { name: qr }).getAttribute("src")).toBe(PNG);
+		expect(screen.getAllByRole("list", { name: legend })).toHaveLength(1);
+		expect(screen.getByText("Original caption")).toBeTruthy();
+		expect(screen.getByText("Original matrix")).toBeTruthy();
+		expect(screen.getByText("Original note")).toBeTruthy();
+		expect(screen.getByText("ws://192.168.1.20:8787/ext/bridge")).toBeTruthy();
+	}
+	expect(api.post).not.toHaveBeenCalled();
+});
+
+it.each([true, false])(
+	"action feedback translates the complete sentence and retains the original diagnostic (conflict=%s)",
+	async (conflict) => {
+		const reason = "原始原因 / timeout";
+		vi.mocked(api.post).mockRejectedValue(
+			new ApiError(
+				409,
+				{ code: conflict ? "conflict" : "not_configured", message: reason },
+				reason,
+			),
+		);
+		renderBlocks([
+			{ type: "button", button: { kind: "action", label: "Original action", action: "poll.now" } },
+		]);
+		fireEvent.click(screen.getByRole("button", { name: "Original action" }));
+		const role = conflict ? "status" : "alert";
+		await screen.findByRole(role);
+		for (const [locale, running, failed] of [
+			[
+				"en",
+				"“Original action” is still running: 原始原因 / timeout",
+				"“Original action” failed: 原始原因 / timeout",
+			],
+			[
+				"ja",
+				"「Original action」はまだ実行中です：原始原因 / timeout",
+				"「Original action」に失敗しました：原始原因 / timeout",
+			],
+			[
+				"zh-TW",
+				"「Original action」仍在執行：原始原因 / timeout",
+				"「Original action」未成功：原始原因 / timeout",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole(role).textContent).toBe(conflict ? running : failed);
+			expect(screen.queryByRole(conflict ? "alert" : "status")).toBeNull();
+			expect(screen.getByRole("button", { name: "Original action" })).toBeTruthy();
+		}
+		expect(api.post).toHaveBeenCalledTimes(1);
+		expect(api.post).toHaveBeenCalledWith("/api/ext/douyin/actions/poll.now");
+	},
+);

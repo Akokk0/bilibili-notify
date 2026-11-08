@@ -2110,5 +2110,14 @@
 	"panelUi.pages.extensions.declarative.settings-form.21": "生成した値はまだ保存されていません。保存後は先頭と末尾のみ表示されます。必要な場合は今のうちに全文をコピーしてください。",
 	"panelUi.pages.extensions.declarative.parts.4": "{value0}を再生成",
 	"panelUi.pages.extensions.declarative.parts.5": "再生成",
-	"panelUi.pages.extensions.declarative.settings-form.18": "{field}が保存されていません。機密情報を除いたバックアップの復元後は、この状態になります。新しい値を生成してください。"
+	"panelUi.pages.extensions.declarative.settings-form.18": "{field}が保存されていません。機密情報を除いたバックアップの復元後は、この状態になります。新しい値を生成してください。",
+	"panelUi.pages.extensions.declarative.parts.1": "{value0}（コピー済み）",
+	"panelUi.pages.extensions.declarative.parts.2": "コピー済み",
+	"panelUi.pages.extensions.declarative.parts.3": "コピー",
+	"panelUi.pages.extensions.declarative.blocks.2": "{value0}をコピー",
+	"panelUi.pages.extensions.declarative.blocks.3": "QRコード",
+	"panelUi.pages.extensions.declarative.parts.6": "凡例",
+	"panelUi.pages.extensions.declarative.blocks.4": "「{label}」はまだ実行中です：{reason}",
+	"panelUi.pages.extensions.declarative.blocks.5": "「{label}」に失敗しました：{reason}",
+	"panelUi.pages.extensions.declarative.blocks.1": "{where}を表示できません：{reason}"
 }

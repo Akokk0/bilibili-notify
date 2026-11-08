@@ -76,9 +76,10 @@ export function ViewFaultNote({ fault }: { fault: ExtensionViewFault }) {
 
 	return (
 		<ErrorNote size="sm">
-			{fault.where}
-			{tx("panelUi.pages.extensions.declarative.blocks.1")}
-			{fault.reason}
+			{tx("panelUi.pages.extensions.declarative.blocks.1", {
+				where: fault.where,
+				reason: fault.reason,
+			})}
 		</ErrorNote>
 	);
 }
@@ -663,18 +664,14 @@ export function ActionFailure({ label, error }: { label: string; error: unknown 
 			// WarnNote 自己不带角色 —— 包一层 status,读屏的人按下去也听得到这一句。
 			<div role="status">
 				<WarnNote size="sm">
-					「{label}
-					{tx("panelUi.pages.extensions.declarative.blocks.4")}
-					{reasonOf(error)}
+					{tx("panelUi.pages.extensions.declarative.blocks.4", { label, reason: reasonOf(error) })}
 				</WarnNote>
 			</div>
 		);
 	}
 	return (
 		<ErrorNote size="sm">
-			「{label}
-			{tx("panelUi.pages.extensions.declarative.blocks.5")}
-			{reasonOf(error)}
+			{tx("panelUi.pages.extensions.declarative.blocks.5", { label, reason: reasonOf(error) })}
 		</ErrorNote>
 	);
 }
