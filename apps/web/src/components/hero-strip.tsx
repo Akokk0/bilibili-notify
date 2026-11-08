@@ -41,7 +41,7 @@ export function HeroStrip({
 				className={
 					compact
 						? "grid grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-3.5 @min-[480px]/hero:grid-cols-[2.5rem_minmax(0,1fr)_auto]"
-						: "flex items-center gap-3.5"
+						: "grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-3.5 @min-[480px]/hero:grid-cols-[3.25rem_minmax(0,1fr)_auto]"
 				}
 			>
 				<div
@@ -54,7 +54,7 @@ export function HeroStrip({
 				<div className="min-w-0 flex-1">
 					{title != null ? (
 						<>
-							<div className="flex items-center gap-2 text-bn-md font-bold text-bn-text-primary">
+							<div className="flex flex-wrap items-center gap-2 text-bn-md font-bold text-bn-text-primary">
 								{title}
 							</div>
 							{subtitle != null ? (
@@ -65,11 +65,9 @@ export function HeroStrip({
 						children
 					)}
 				</div>
-				{compact && right != null ? (
+				{right != null ? (
 					<div className="col-start-2 justify-self-end @min-[480px]/hero:col-start-3">{right}</div>
-				) : (
-					right
-				)}
+				) : null}
 			</div>
 		</div>
 	);

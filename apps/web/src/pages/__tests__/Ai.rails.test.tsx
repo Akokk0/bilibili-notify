@@ -73,6 +73,76 @@ function mount(g: Globals) {
 	};
 }
 
+it("model settings translate without replacing the current provider or its staged model", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	mount(
+		globalsWith((g) => {
+			g.ai.providers.primary = bucket({ label: "原实例", model: "saved-model" });
+			g.ai.activeProfile = "primary";
+		}),
+	);
+	fireEvent.click(await screen.findByRole("tab", { name: /Model settings/ }));
+	await screen.findByText("Model connection");
+	const model = screen.getByDisplayValue("saved-model");
+	fireEvent.change(model, { target: { value: "staged-model" } });
+	for (const [locale, connection, vision, generation] of [
+		["ja", "モデル接続", "画像理解", "生成パラメーター"],
+		["zh-TW", "模型連線", "圖片理解", "生成參數"],
+		["en", "Model connection", "Image understanding", "Generation parameters"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(connection)).toBeTruthy();
+		expect(screen.getByText(vision)).toBeTruthy();
+		expect(screen.getByText(generation)).toBeTruthy();
+		expect(screen.getByDisplayValue("staged-model")).toBe(model);
+		expect(screen.getByDisplayValue("原实例")).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	await act(async () => {
+		await useDraftStore.getState().current?.onSave();
+	});
+	expect(api.patch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+		core: {
+			ai: expect.objectContaining({
+				activeProfile: "primary",
+				providers: {
+					primary: expect.objectContaining({ label: "原实例", model: "staged-model" }),
+				},
+			}),
+		},
+	});
+});
+
+it("active model guidance says changes require saving and editing alone sends nothing", async () => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+	mount(
+		globalsWith((g) => {
+			g.ai.providers.primary = bucket({ model: "saved-model" });
+			g.ai.activeProfile = "primary";
+		}),
+	);
+	fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
+	fireEvent.change(await screen.findByDisplayValue("saved-model"), {
+		target: { value: "not-saved-yet" },
+	});
+	for (const [locale, note] of [
+		["zh-CN", /修改选项后，保存才会生效/],
+		["en", /Changes take effect after you save/],
+		["ja", /変更は保存後に適用されます/],
+		["zh-TW", /修改選項後，儲存才會生效/],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(note)).toBeTruthy();
+		expect(screen.getByDisplayValue("not-saved-yet")).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	act(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+	expect(screen.getByText(/保存后才会生效/)).toBeTruthy();
+	expect(api.patch).not.toHaveBeenCalled();
+});
+
 it("素材库改变后保留模型草稿，保存不回写性格内容", async () => {
 	const g = globalsWith((value) => {
 		value.ai.providers.deepseek = bucket();

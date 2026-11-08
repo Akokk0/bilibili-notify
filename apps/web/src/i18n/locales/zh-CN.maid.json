@@ -205,7 +205,7 @@
 	"aiSettings.page.global.profileNotePrefix": "主人，这里只决定",
 	"aiSettings.page.global.personaNotePrefix": "主人，这里只决定",
 	"aiSettings.page.models.currentPrefix": "女仆平时用的就是这份",
-	"aiSettings.page.models.currentSuffix": "。主人改哪一项都立刻算数喔。",
+	"aiSettings.page.models.currentSuffix": "。主人，修改后记得保存，保存后才会生效喔。",
 	"aiSettings.page.personas.builtinPrefix": "主人，这是",
 	"aiSettings.page.personas.duplicateSuffix": "就能另存一份可改的喔。",
 	"aiSettings.page.personas.currentPrefix": "女仆",

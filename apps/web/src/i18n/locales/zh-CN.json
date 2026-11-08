@@ -311,7 +311,7 @@
 	"aiSettings.page.actions.setDefault": "设为默认",
 	"aiSettings.page.actions.deletePrefix": "删除 ",
 	"aiSettings.page.models.currentPrefix": "当前默认使用这份配置",
-	"aiSettings.page.models.currentSuffix": "。修改任一选项都会立即生效。",
+	"aiSettings.page.models.currentSuffix": "。修改选项后，保存才会生效。",
 	"aiSettings.page.models.inactivePrefix": "这一份",
 	"aiSettings.page.models.inactiveEmphasis": "现在没在用",
 	"aiSettings.page.models.inactiveSuffix": "，配置仍然保留。要将它设为默认，点右上角「设为默认」，或在「全局配置」里选择。",
