@@ -274,7 +274,6 @@
 	"maidSkills.loading": "主人，正在读取技能喔。",
 	"maidSkills.builtinHint": "主人，内置技能跟版本走，想改就先复制并编辑自己的版本吧。",
 	"maidSkills.bodyHint": "主人，只需写这件事怎么做喔。这段 Markdown 会追加在人格设定之后。",
-	"maidSkills.problems": "主人，有 {count} 份技能读不进来：",
 	"maidSkills.nameHint": "主人，名字只收小写字母、数字和单个连字符，也是目录名喔。在聊天里输入 /{name} 就能用了。",
 	"maidSkills.descriptionHint": "主人，这句每轮对话都会带上，已写 {count} / {max} 字。",
 	"maidSkills.toolsHint": "主人，一把都不勾就是不限；勾了之后，这项技能就只用选中的这些工具喔。",
@@ -646,5 +645,6 @@
 	"healthCard.viewExtensions": "查看拓展",
 	"healthCard.manage": "前往管理",
 	"history.repush.pending#other": "主人，女仆正在补发（{count} 条），好了这一行会自动更新哦。",
-	"library.images.rotation#other": "主人，{count} 张图会在每次推送时顺序轮换。"
+	"library.images.rotation#other": "主人，{count} 张图会在每次推送时顺序轮换。",
+	"maidSkills.problems#other": "主人，有 {count} 份技能读不进来："
 }

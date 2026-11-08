@@ -94,6 +94,11 @@ beforeEach(() => {
 	];
 	H.problems = [];
 	H.tools = ["list_subscriptions", "get_creator_profile", "web_search"];
+	H.toolLabels = {
+		list_subscriptions: "列出订阅",
+		get_creator_profile: "查看创作者资料",
+		web_search: "联网搜索",
+	};
 	M.create.mockClear();
 	M.update.mockClear();
 	M.remove.mockClear();
@@ -102,6 +107,121 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+it("skill editor translations retain the draft, command and selected tools until explicit save", async () => {
+	H.problems = [{ dir: "broken-skill", reason: "原始诊断" }];
+	mount();
+	fireEvent.click(await screen.findByRole("tab", { name: "my-skill" }));
+	const name = nameBox(),
+		body = bodyBox();
+	fireEvent.change(name, { target: { value: "my-renamed-skill" } });
+	fireEvent.change(descBox(), { target: { value: "自写用途原文" } });
+	fireEvent.change(body, { target: { value: "自写步骤原文" } });
+	fireEvent.click(screen.getByRole("checkbox", { name: "联网搜索" }));
+	fireEvent.click(screen.getByRole("checkbox", { name: "仅通过斜杠命令使用" }));
+	for (const [locale, nameLabel, bodyLabel, manual] of [
+		["en", "Name · Slash command", "Body · Steps", "Only invoke with a slash command"],
+		["ja", "名前 · スラッシュコマンド", "本文 · 作業手順", "スラッシュコマンドからのみ実行"],
+		["zh-TW", "名稱 · 斜線指令", "內容 · 工作步驟", "僅透過斜線指令使用"],
+		["en", "Name · Slash command", "Body · Steps", "Only invoke with a slash command"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("textbox", { name: nameLabel })).toBe(name);
+		expect(screen.getByRole("textbox", { name: bodyLabel })).toBe(body);
+		expect(name.value).toBe("my-renamed-skill");
+		expect(body.value).toBe("自写步骤原文");
+		expect(screen.getByDisplayValue("自写用途原文")).toBeTruthy();
+		expect(screen.getByRole("checkbox", { name: manual })).toHaveProperty("checked", true);
+		expect(screen.getByRole("checkbox", { name: "联网搜索" })).toHaveProperty("checked", true);
+		expect(M.create).not.toHaveBeenCalled();
+		expect(M.update).not.toHaveBeenCalled();
+		expect(M.remove).not.toHaveBeenCalled();
+	}
+	expect(screen.getByText(/1 skill could not be read:/)).toBeTruthy();
+	expect(screen.getByText(/broken-skill\(原始诊断\)/)).toBeTruthy();
+	fireEvent.click(screen.getByRole("button", { name: "Save" }));
+	await waitFor(() =>
+		expect(M.update).toHaveBeenCalledExactlyOnceWith("my-skill", {
+			name: "my-renamed-skill",
+			description: "自写用途原文",
+			body: "自写步骤原文",
+			allowedTools: ["web_search"],
+			disableModelInvocation: true,
+		}),
+	);
+});
+
+it("skill tool names reload in the current language without replacing the edited body or tool choice", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	H.toolLabels = { ...H.toolLabels, web_search: "Web search" };
+	mount();
+	fireEvent.click(await screen.findByRole("tab", { name: "my-skill" }));
+	const body = screen.getByRole("textbox", { name: "Body · Steps" });
+	fireEvent.change(body, { target: { value: "尚未保存的步骤" } });
+	const search = screen.getByRole("checkbox", { name: "Web search" });
+	fireEvent.click(search);
+	act(() => {
+		H.toolLabels = { ...H.toolLabels, web_search: "ウェブ検索" };
+		i18n.set({ locale: "ja" });
+	});
+	expect(await screen.findByRole("checkbox", { name: "ウェブ検索" })).toBe(search);
+	expect(search).toHaveProperty("checked", true);
+	expect(screen.getByDisplayValue("尚未保存的步骤")).toBe(body);
+	expect(M.create).not.toHaveBeenCalled();
+	expect(M.update).not.toHaveBeenCalled();
+	expect(M.remove).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "保存" }));
+	await waitFor(() =>
+		expect(M.update).toHaveBeenCalledExactlyOnceWith("my-skill", {
+			name: "my-skill",
+			description: "我写的",
+			body: "尚未保存的步骤",
+			allowedTools: ["web_search"],
+			disableModelInvocation: false,
+		}),
+	);
+});
+
+it("skill import preview translates while preserving its raw content and the current editor draft", async () => {
+	M.preview.mockResolvedValue({
+		ok: true,
+		skill: {
+			name: "my-skill",
+			description: "导入用途原文",
+			body: "导入步骤原文",
+			allowedTools: ["web_search"],
+			disableModelInvocation: true,
+		},
+	});
+	mount();
+	fireEvent.click(await screen.findByRole("tab", { name: "my-skill" }));
+	fireEvent.change(bodyBox(), { target: { value: "未保存的本地步骤" } });
+	const file = new File(["skill"], "SKILL.md", { type: "text/markdown" });
+	fireEvent.change(screen.getByLabelText("导入 SKILL.md"), { target: { files: [file] } });
+	const dialog = await screen.findByRole("dialog");
+	const name = within(dialog).getByRole("textbox", { name: "导入后名称" });
+	fireEvent.change(name, { target: { value: "incoming-copy" } });
+	for (const [locale, title, label, tools] of [
+		["en", "Preview skill import", "Imported name", "Allowed tools: web_search"],
+		["ja", "スキルのインポートをプレビュー", "インポート後の名前", "許可するツール: web_search"],
+		["zh-TW", "技能匯入預覽", "匯入後名稱", "允許工具：web_search"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(within(dialog).getByText(title)).toBeTruthy();
+		expect(within(dialog).getByRole("textbox", { name: label })).toBe(name);
+		expect(name).toHaveProperty("value", "incoming-copy");
+		expect(within(dialog).getByText(tools)).toBeTruthy();
+		expect(within(dialog).getByText("导入用途原文")).toBeTruthy();
+		expect(within(dialog).getByText("导入步骤原文")).toBeTruthy();
+		expect(M.create).not.toHaveBeenCalled();
+		expect(M.update).not.toHaveBeenCalled();
+		expect(M.remove).not.toHaveBeenCalled();
+	}
+	fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(screen.getByDisplayValue("未保存的本地步骤")).toBeTruthy();
+	expect(M.preview).toHaveBeenCalledExactlyOnceWith(file);
+});
 
 it("导入先预览，默认保留同名原件；确认冲突后可改名重试，原编辑草稿保留", async () => {
 	M.preview.mockResolvedValue({

@@ -23,11 +23,11 @@ import {
 	TabBar,
 	WarnNote,
 } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { TArea, TInput } from "../../components/forms";
 import { ResourceImportDialog } from "../../components/library/resource-import-dialog";
-import { useT } from "../../i18n";
+import { useT, useTextOptions } from "../../i18n";
 import { errorTextOf } from "../../services/error-text";
 import {
 	createMaidSkill,
@@ -107,7 +107,12 @@ function LabeledField(props: {
 export function MaidSkills() {
 	const tx = useT();
 	const qc = useQueryClient();
-	const query = useQuery({ queryKey: maidSkillsQueryKey, queryFn: listMaidSkills });
+	const { locale, voice } = useTextOptions();
+	const query = useQuery({
+		queryKey: [...maidSkillsQueryKey, locale, voice],
+		queryFn: listMaidSkills,
+		placeholderData: keepPreviousData,
+	});
 	const list = query.data?.list ?? [];
 	const problems = query.data?.problems ?? [];
 	const tools = query.data?.tools ?? [];

@@ -1186,7 +1186,6 @@
 	"maidSkills.bodyLabel": "正文 · 做事的步骤",
 	"maidSkills.bodyHint": "支持 Markdown，追加在人格设定之后，只需说明具体步骤。",
 	"maidSkills.builtin": "内置",
-	"maidSkills.problems": "有 {count} 份技能无法读取：",
 	"maidSkills.nameHint": "名字仅支持小写字母、数字和单个连字符，同时作为目录名。聊天中输入 /{name} 即可使用。",
 	"maidSkills.namePlaceholder": "名字",
 	"maidSkills.descriptionHint": "{count} / {max} 字，每轮对话都会携带。",
@@ -3234,5 +3233,6 @@
 	"library.images.rotation#other": "{count} 张 · 每次推送顺序轮换",
 	"aiChat.messages.sources#other": "来源 · {count}",
 	"aiChat.messages.writing#other": "已写 {value} 字",
-	"aiChat.messages.written#other": "写了 {value} 字"
+	"aiChat.messages.written#other": "写了 {value} 字",
+	"maidSkills.problems#other": "有 {count} 份技能无法读取："
 }
