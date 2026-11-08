@@ -110,6 +110,7 @@ export const COMPLETE_LOCALES = ["zh-CN"];
 
 /** 翻译逐目录交付；已完成目录立即按完整语言集合检查，最终收尾合入全局名单。 */
 const COMPLETE_LOCALES_BY_DIR = {
+	"apps/server/src/bilibili/locales": ["zh-CN", "en", "ja", "zh-TW"],
 	"apps/server/src/migration/locales": ["zh-CN", "en", "ja", "zh-TW"],
 };
 

@@ -4,9 +4,39 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { PROBLEM_TEXTS } from "../problem-texts.js";
 
 describe("PROBLEM_TEXTS · 句子", () => {
+	it.each([
+		{
+			locale: "en" as const,
+			text: "The account is under risk control. Access is temporarily unavailable and will be retried automatically.",
+			recovery: "Risk-control restrictions have been lifted.",
+		},
+		{
+			locale: "ja" as const,
+			text: "アカウントがリスク制御の対象となり、一時的にアクセスできません。時間をおいて自動で再試行します。",
+			recovery: "リスク制御が解除されました。",
+		},
+		{
+			locale: "zh-TW" as const,
+			text: "帳號受到風險控管，暫時無法存取，稍後會自動重試。",
+			recovery: "風險控管已解除。",
+		},
+	])("$locale：集成問題與恢復句即時跟隨語言，不受宿主口吻影響", ({ locale, text, recovery }) => {
+		const previous = i18n.state();
+		try {
+			for (const voice of ["plain", "maid"] as const) {
+				i18n.set({ locale, voice });
+				expect(PROBLEM_TEXTS.riskControlled.text()).toBe(text);
+				expect(PROBLEM_TEXTS.riskControlled.recovery()).toBe(recovery);
+			}
+		} finally {
+			i18n.set({ locale: previous.locale, voice: previous.voice });
+		}
+	});
+
 	it("风控:进表的话、恢复句;私聊只看动态那一路", () => {
 		expect(PROBLEM_TEXTS.riskControlled.text()).toBe("账号被风控，暂时访问不了，会隔一阵自动再试");
 		expect(PROBLEM_TEXTS.riskControlled.recovery()).toBe("风控已解除");

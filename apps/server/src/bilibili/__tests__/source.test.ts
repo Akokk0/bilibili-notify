@@ -1853,15 +1853,20 @@ it("reads descriptor nouns through both the shared descriptor and existing sourc
 	}
 });
 
-it("来源叫法随宿主切语言，缺译文时保留原文", () => {
+it("来源叫法随宿主切语言，即时使用各语言译文", () => {
 	const state = i18n.state();
 	try {
-		i18n.set({ locale: "zh-CN", voice: "plain" });
-		expect(BILI_SOURCE_DESCRIPTOR.label).toBe("B 站");
-		expect(BILI_SOURCE_DESCRIPTOR.creatorNoun).toBe("UP主");
-		i18n.set({ locale: "en", voice: "plain" });
-		expect(BILI_SOURCE_DESCRIPTOR.label).toBe("B 站");
-		expect(BILI_SOURCE_DESCRIPTOR.creatorNoun).toBe("UP主");
+		for (const [locale, label, creatorNoun, postNoun] of [
+			["zh-CN", "B 站", "UP主", "动态"],
+			["en", "Bilibili", "uploader", "post"],
+			["ja", "Bilibili", "投稿者", "投稿"],
+			["zh-TW", "B 站", "UP 主", "動態"],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			expect(BILI_SOURCE_DESCRIPTOR.label).toBe(label);
+			expect(BILI_SOURCE_DESCRIPTOR.creatorNoun).toBe(creatorNoun);
+			expect(BILI_SOURCE_DESCRIPTOR.postNoun).toBe(postNoun);
+		}
 	} finally {
 		i18n.set({ locale: state.locale, voice: state.voice });
 	}

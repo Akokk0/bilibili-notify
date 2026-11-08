@@ -5,6 +5,7 @@
 
 import { interpolate } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { GUARD_PROGRAM, GUARD_PROGRAM_ID, guardTierOf } from "../guard-program.js";
 
 describe("guardTierOf —— B 站 guard_level → 档(倒序换算只在这一个文件)", () => {
@@ -90,6 +91,41 @@ describe("GUARD_PROGRAM —— 宣告语", () => {
 					tier: tier?.name ?? "",
 				}),
 			).toBe(expected);
+		},
+	);
+});
+
+describe("会员名称与宣告语随语言现取", () => {
+	it.each([
+		[
+			"en",
+			"Grand Voyage",
+			["Captain", "Admiral", "Governor"],
+			'"A" has joined\n"B"\'s Grand Voyage fleet!',
+		],
+		["ja", "大航海", ["艦長", "提督", "総督"], "「A」が\n「B」の大航海艦隊に参加しました！"],
+		["zh-TW", "大航海", ["艦長", "提督", "總督"], "「A號」加入\n「B」大航海艦隊！"],
+	] as const)(
+		"%s：已取得的档位也使用当前语言，插值与rank保持",
+		(locale, name, names, announcement) => {
+			const previous = i18n.state();
+			const tiers = GUARD_PROGRAM.tiers;
+			if (tiers === "custom") throw new Error("B站大航海是固定三档");
+			try {
+				i18n.set({ locale, voice: "plain" });
+				expect(GUARD_PROGRAM.name).toBe(name);
+				expect(tiers.map((tier) => tier.name)).toEqual(names);
+				expect(tiers.map((tier) => [tier.key, tier.rank])).toEqual([
+					["captain", 1],
+					["commander", 2],
+					["governor", 3],
+				]);
+				expect(interpolate(tiers[0]?.announcement ?? "", { viewer: "A", name: "B" })).toBe(
+					announcement,
+				);
+			} finally {
+				i18n.set({ locale: previous.locale, voice: previous.voice });
+			}
 		},
 	);
 });
