@@ -106,3 +106,31 @@ it("缺少字段说明时只在开发环境输出当前语言的平实诊断，�
 		warn.mockRestore();
 	}
 });
+
+it("runtime and message field descriptions follow locale without changing field identities", () => {
+	const state = i18n.state();
+	const cooldown = getFieldLabel("core.linkPreview.cooldownSec");
+	const prefix = getFieldLabel("core.commands.prefix");
+	const heartbeat = getFieldLabel("bilibili.healthCheckMinutes");
+	try {
+		for (const [locale, cooldownLabel, prefixLabel, heartbeatLabel, limitText] of [
+			["en", "Cooldown", "Command prefix", "Login heartbeat interval", "per minute"],
+			["ja", "クールダウン", "コマンドの接頭辞", "ログイン確認間隔", "1 分あたり"],
+			["zh-TW", "冷卻時間", "指令前綴", "登入心跳間隔", "每分鐘"],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			expect(cooldown?.label).toBe(cooldownLabel);
+			expect(prefix?.label).toBe(prefixLabel);
+			expect(heartbeat?.label).toBe(heartbeatLabel);
+			expect(cooldown?.hint).toContain(limitText);
+			expect(cooldown?.hint).not.toMatch(/\{value[12]\}/);
+			expect(getFieldLabel("core.linkPreview.isOnByDefault")?.hint).toContain("get_mini_app_ark");
+			expect(getFieldLabel("core.linkPreview.isOnByDefault")?.hint).toContain("NapCat");
+			expect(getFieldLabel("core.linkPreview.cooldownSec")).toBe(cooldown);
+			expect(prefix?.section).toBe("commands");
+			expect(heartbeat?.section).toBe("general");
+		}
+	} finally {
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
+});
