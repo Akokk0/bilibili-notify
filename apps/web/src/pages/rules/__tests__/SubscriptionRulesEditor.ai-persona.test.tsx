@@ -3,7 +3,7 @@ import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 /**
  * per-UP「AI 人格」—— 这里只负责**挑一份**已有人格。
  *
- * 人格一律在「智能女仆」页里写,所以这一块没有「继承全局」(关掉开关就是继承,
+ * 人格一律在「资源库 → 女仆性格」里写,所以这一块没有「继承全局」(关掉开关就是继承,
  * 再摆一个同义的选项是多此一举),也没有「完全自定义」(想要专属人格就去那边
  * 新建一份,回来挑它)。
  *
@@ -18,6 +18,7 @@ import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import type { GlobalSettings } from "../../../types/globals";
@@ -107,6 +108,7 @@ function resetStore(): void {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 });
@@ -218,4 +220,35 @@ describe("per-UP AI 人格 — 老的自定义残留不许被写回磁盘", () =
 
 		expect(await saveAndReadAi()).toBeNull();
 	});
+});
+
+it("subscription override text localizes and points to the personality library without rewriting its selection", async () => {
+	vi.mocked(api.patch).mockClear();
+	const { container } = mount({ preset: "tsundere" });
+	const selected = screen.getByRole("button", { name: "傲娇毒舌" });
+	expect(container.textContent).toContain("资源库 → 女仆性格");
+	for (const [locale, subtitle, destination] of [
+		[
+			"en",
+			"Choose a personality for this subscription; disable to inherit global settings.",
+			"Library → Maid personalities",
+		],
+		[
+			"ja",
+			"この購読の性格を選びます。無効にすると全体設定を引き継ぎます。",
+			"ライブラリー → メイドの性格",
+		],
+		["zh-TW", "為此訂閱選擇性格；關閉後沿用全域設定。", "資源庫 → 女僕性格"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(container.textContent).toContain(subtitle);
+		expect(container.textContent).toContain(destination);
+		expect(container.textContent).toContain("阿绫");
+		expect(screen.getByRole("button", { name: "傲娇毒舌" })).toBe(selected);
+		expect(selected.getAttribute("aria-pressed")).toBe("true");
+		expect(useDraftStore.getState().current?.diff).toEqual([]);
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "温柔女仆" }));
+	expect(await saveAndReadAi()).toEqual({ preset: "gentle-maid" });
 });

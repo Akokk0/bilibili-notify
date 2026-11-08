@@ -1308,7 +1308,7 @@ function AiOverrideBox({
 	presets: AiSettings["presets"];
 }) {
 	const tx = useT();
-	// 人格一律在「智能女仆」页里写,这里只负责**挑一份**。所以选项就是已有的那几份,
+	// 人格一律在「资源库 → 女仆性格」里写,这里只负责**挑一份**。所以选项就是已有的那几份,
 	// 没有「继承全局」(关掉开关就是继承,再摆一个同义的选项纯属多此一举),也没有
 	// 「完全自定义」(想要专属人格就去那边新建一份,再回来挑它)。
 	const presetOptions = presets.map((p) => ({ value: p.id, label: p.label }));
