@@ -231,7 +231,10 @@ function SkinManagement() {
 						<SkinRow
 							key={entry.id}
 							name={entry.name}
-							desc={[entry.author ? `by ${entry.author}` : null, entry.description ?? null]
+							desc={[
+								entry.author ? tx("skinUi.SkinSection.author", { author: entry.author }) : null,
+								entry.description ?? null,
+							]
 								.filter(Boolean)
 								.join(" · ")}
 							tags={
@@ -416,10 +419,10 @@ function RemoveSkinDialog(props: {
 			<div className="flex flex-col gap-2">
 				{(["light", "dark"] as const).map((theme) => (
 					<Btn key={theme} variant="outline" size="sm" onClick={() => props.onPickMode(theme)}>
-						{tx("skinUi.SkinSection.20")}
-						{MODE_LABEL[theme]}
-						{tx("skinUi.SkinSection.21")}
-						{MODE_LABEL[theme === "light" ? "dark" : "light"]})
+						{tx("skinUi.SkinSection.removeMode", {
+							mode: MODE_LABEL[theme],
+							keep: MODE_LABEL[theme === "light" ? "dark" : "light"],
+						})}
 					</Btn>
 				))}
 				<Btn variant="danger" size="sm" onClick={props.onRemoveAll}>

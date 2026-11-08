@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
@@ -36,17 +36,25 @@ const H = vi.hoisted(() => ({
 	putCalls: [] as unknown[],
 	/** 上传接口这一次要回的提示(清洗层摘了什么)。 */
 	uploadWarnings: [] as string[],
+	listGate: null as Promise<void> | null,
+	manifestFails: false,
 }));
 
 vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) => {
-			if (path === "/api/dashboard/skins") return H.list;
+			if (path === "/api/dashboard/skins") {
+				if (H.listGate) await H.listGate;
+				return H.list;
+			}
 			if (path === "/api/dashboard/skins/active") {
 				const slot = (id: string | null) => (id ? { id, manifest: H.manifest } : null);
 				return { active: { light: slot(H.list.active.light), dark: slot(H.list.active.dark) } };
 			}
-			if (path === "/api/dashboard/skins/s1/manifest") return { manifest: H.manifest, assets: [] };
+			if (path === "/api/dashboard/skins/s1/manifest") {
+				if (H.manifestFails) throw new Error("Original diagnostic 原因");
+				return { manifest: H.manifest, assets: [] };
+			}
 			throw new Error(`unexpected GET ${path}`);
 		}),
 		put: vi.fn(async (_path: string, body: unknown) => {
@@ -93,6 +101,8 @@ beforeEach(() => {
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 	H.putCalls = [];
 	H.uploadWarnings = [];
+	H.listGate = null;
+	H.manifestFails = false;
 	H.list.active = { light: null, dark: null };
 	H.list.list[0].modes = ["light", "dark"];
 	useSkinStore.setState({
@@ -107,6 +117,276 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SkinSection", () => {
+	it("loading and preview failures translate while raw diagnostics and inactive slots remain intact", async () => {
+		let release = () => {};
+		H.listGate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		H.manifestFails = true;
+		renderSection();
+		for (const [locale, reading] of [
+			["en", "Loading skin library"],
+			["ja", "スキンライブラリーを読み込み中"],
+			["zh-TW", "正在讀取外觀資源庫"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(`${reading}…`)).toBeTruthy();
+		}
+		await act(async () => {
+			release();
+		});
+		await screen.findByText("樱花夜");
+		fireEvent.click(screen.getByRole("button", { name: "試用" }));
+		await screen.findByText(/Original diagnostic 原因/);
+		for (const [locale, failure] of [
+			["en", "Operation failed:"],
+			["ja", "操作に失敗しました："],
+			["zh-TW", "操作失敗："],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(`${failure}Original diagnostic 原因`)).toBeTruthy();
+		}
+		expect(useSkinStore.getState().preview).toBeNull();
+		expect(useSkinStore.getState().active).toEqual(EMPTY_SLOTS);
+		expect(H.putCalls).toEqual([]);
+	});
+
+	it("translated deletion dialogs preserve original names and distinguish one variant from the whole package", async () => {
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					remove: "Delete",
+					title: "Delete skin",
+					dual: "“樱花夜” has Light and Dark variants. Which part should be deleted? This cannot be undone.",
+					single: "Delete “樱花夜”? This cannot be undone.",
+					light: "Delete Light only (keep Dark)",
+					dark: "Delete Dark only (keep Light)",
+					all: "Delete whole package",
+					cancel: "Cancel",
+				},
+			],
+			[
+				"ja",
+				{
+					remove: "削除",
+					title: "スキンを削除",
+					dual: "「樱花夜」にはライト版とダーク版があります。どちらを削除しますか？この操作は取り消せません。",
+					single: "「樱花夜」を削除しますか？この操作は取り消せません。",
+					light: "ライトのみ削除（ダークは残す）",
+					dark: "ダークのみ削除（ライトは残す）",
+					all: "パッケージ全体を削除",
+					cancel: "キャンセル",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					remove: "刪除",
+					title: "刪除外觀",
+					dual: "「樱花夜」有淺色和深色兩個版本。要刪除哪個部分？刪除後無法復原。",
+					single: "確定刪除「樱花夜」？刪除後無法復原。",
+					light: "只刪除淺色（保留深色）",
+					dark: "只刪除深色（保留淺色）",
+					all: "刪除整個套件",
+					cancel: "取消",
+				},
+			],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			H.list.list[0].modes = ["light", "dark"];
+			vi.mocked(api.delete).mockClear();
+			const dual = renderSection();
+			await screen.findByText("樱花夜");
+			fireEvent.click(screen.getByRole("button", { name: w.remove }));
+			const dialog = await screen.findByRole("dialog");
+			expect(within(dialog).getByText(w.title)).toBeTruthy();
+			expect(within(dialog).getByText(w.dual)).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: w.light })).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: w.dark })).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: w.all })).toBeTruthy();
+			fireEvent.click(within(dialog).getByRole("button", { name: w.cancel }));
+			expect(api.delete).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: w.remove }));
+			fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: w.light }));
+			await waitFor(() =>
+				expect(api.delete).toHaveBeenCalledWith("/api/dashboard/skins/s1/modes/light"),
+			);
+			dual.unmount();
+			H.list.list[0].modes = ["dark"];
+			vi.mocked(api.delete).mockClear();
+			const single = renderSection();
+			await screen.findByText("樱花夜");
+			fireEvent.click(screen.getByRole("button", { name: w.remove }));
+			const confirm = await screen.findByRole("dialog");
+			expect(within(confirm).getByText(w.single)).toBeTruthy();
+			fireEvent.click(within(confirm).getByRole("button", { name: w.remove }));
+			await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/dashboard/skins/s1"));
+			single.unmount();
+		}
+	});
+
+	it("translated appearance pickers retain separate slots and send only the explicitly selected slot", async () => {
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					native: "Default appearance",
+					light: "Light mode skins",
+					dark: "Dark mode skins",
+					lightLabel: "Light mode",
+					darkLabel: "Dark mode",
+					default: "Default",
+					used: "In use",
+				},
+			],
+			[
+				"ja",
+				{
+					native: "既定の外観",
+					light: "ライトモードのスキン",
+					dark: "ダークモードのスキン",
+					lightLabel: "ライトモード",
+					darkLabel: "ダークモード",
+					default: "既定",
+					used: "使用中",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					native: "預設外觀",
+					light: "淺色模式外觀",
+					dark: "深色模式外觀",
+					lightLabel: "淺色模式",
+					darkLabel: "深色模式",
+					default: "預設外觀",
+					used: "使用中",
+				},
+			],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			H.putCalls = [];
+			H.list.active = { light: null, dark: null };
+			const empty = renderSection();
+			await screen.findByText(w.native);
+			empty.unmount();
+			H.list.active = { light: "s1", dark: "s1" };
+			const managed = renderSection();
+			await screen.findByText(w.used);
+			managed.unmount();
+			const selection = renderSection("select");
+			await screen.findAllByText("樱花夜");
+			const light = within(screen.getByRole("group", { name: w.light }));
+			const dark = within(screen.getByRole("group", { name: w.dark }));
+			expect(light.getByText(w.lightLabel)).toBeTruthy();
+			expect(dark.getByText(w.darkLabel)).toBeTruthy();
+			expect(light.getByRole("button", { name: "樱花夜" }).getAttribute("aria-pressed")).toBe(
+				"true",
+			);
+			expect(dark.getByRole("button", { name: "樱花夜" }).getAttribute("aria-pressed")).toBe(
+				"true",
+			);
+			expect(H.putCalls).toEqual([]);
+			fireEvent.click(light.getByRole("button", { name: w.default }));
+			await waitFor(() => expect(H.putCalls).toEqual([{ theme: "light", id: null }]));
+			await waitFor(() =>
+				expect(light.getByRole("button", { name: w.default }).getAttribute("aria-pressed")).toBe(
+					"true",
+				),
+			);
+			expect(dark.getByRole("button", { name: "樱花夜" }).getAttribute("aria-pressed")).toBe(
+				"true",
+			);
+			selection.unmount();
+		}
+	});
+
+	it("localized management actions preserve skin names and preview without activating a skin", async () => {
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					title: "Dashboard skins · skins",
+					subtitle:
+						"Upload a skin package, or create one in the skin workshop in the maid chat sidebar.",
+					applied: "Skin applied",
+					usage: "Light · In use",
+					wallpaper: "Wallpaper",
+					upload: "Upload skin package",
+					preview: "Try on",
+					edit: "Edit",
+					export: "Export",
+					remove: "Delete",
+					author: "Author: 测试",
+					recovery: /If a skin makes the interface unreadable/,
+					restore: /forces the default appearance for this session/,
+				},
+			],
+			[
+				"ja",
+				{
+					title: "画面スキン · skins",
+					subtitle:
+						"スキンパッケージをアップロードするか、メイドチャットのサイドバーでスキン工房を作成します。",
+					applied: "スキン適用中",
+					usage: "ライト · 使用中",
+					wallpaper: "壁紙",
+					upload: "スキンをアップロード",
+					preview: "試着",
+					edit: "編集",
+					export: "エクスポート",
+					remove: "削除",
+					author: "作者：测试",
+					recovery: /スキンで画面が読みにくくなった場合/,
+					restore: /このセッションでは既定の外観を強制/,
+				},
+			],
+			[
+				"zh-TW",
+				{
+					title: "介面外觀 · skins",
+					subtitle: "上傳外觀套件，或到女僕聊天側欄建立外觀工坊來製作。",
+					applied: "已套用外觀",
+					usage: "淺色 · 使用中",
+					wallpaper: "桌布",
+					upload: "上傳外觀套件",
+					preview: "試用",
+					edit: "調整",
+					export: "匯出",
+					remove: "刪除",
+					author: "作者：测试",
+					recovery: /若外觀讓介面難以辨識/,
+					restore: /本次工作階段會強制使用預設外觀/,
+				},
+			],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			H.list.active = { light: "s1", dark: null };
+			const { unmount } = renderSection();
+			await screen.findByText("樱花夜");
+			expect(screen.getByText(w.title)).toBeTruthy();
+			expect(screen.getByText(w.subtitle)).toBeTruthy();
+			expect(screen.getByText(w.applied)).toBeTruthy();
+			expect(screen.getByText(w.usage)).toBeTruthy();
+			expect(screen.getByText(w.wallpaper)).toBeTruthy();
+			expect(screen.getByLabelText(w.upload)).toBeTruthy();
+			expect(screen.getByRole("button", { name: w.edit })).toBeTruthy();
+			expect(screen.getByRole("button", { name: w.export })).toBeTruthy();
+			expect(screen.getByRole("button", { name: w.remove })).toBeTruthy();
+			expect(screen.getByText(w.author)).toBeTruthy();
+			expect(screen.getByText(w.recovery)).toBeTruthy();
+			expect(screen.getByText(w.restore)).toBeTruthy();
+			expect(screen.getByText("?skin=off")).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: w.preview }));
+			await waitFor(() => expect(useSkinStore.getState().preview?.id).toBe("s1"));
+			expect(useSkinStore.getState().preview?.manifest.name).toBe("樱花夜");
+			expect(H.putCalls).toEqual([]);
+			unmount();
+			useSkinStore.getState().setPreview(null);
+		}
+	});
+
 	function pickerGroup(name: string): HTMLElement {
 		return screen.getByRole("group", { name });
 	}
