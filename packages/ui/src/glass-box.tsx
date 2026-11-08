@@ -30,6 +30,8 @@ export interface GlassBoxProps {
 	 */
 	aside?: ReactNode;
 	right?: ReactNode;
+	/** 窄卡头把操作区另起一行,并允许标题与状态换行;默认保持单行卡头。 */
+	responsiveHeader?: boolean;
 	dense?: boolean;
 	children: ReactNode;
 	className?: string;
@@ -44,6 +46,7 @@ export function GlassBox({
 	badge,
 	aside,
 	right,
+	responsiveHeader = false,
 	dense,
 	children,
 	className,
@@ -55,10 +58,12 @@ export function GlassBox({
 			// flex-col + 下面那个 flex-1 的正文:卡被摆进等高的 grid 行时(概览页「系统资源」
 			// 与「各模块」并排),给它 `h-full` 正文就跟着长满,不会在底下留一大片空玻璃。
 			// 不给高度时 flex-col 与块级排布完全等价,存量调用点一处不受影响。
-			className={`bn-glass relative flex flex-col overflow-hidden rounded-bn-card shadow-bn-card ${className ?? ""}`}
+			className={`bn-glass relative flex flex-col overflow-hidden rounded-bn-card shadow-bn-card ${responsiveHeader ? "@container/glass-box" : ""} ${className ?? ""}`}
 		>
 			<div className="pointer-events-none absolute right-0 top-0 h-40 w-40" style={radial} />
-			<div className="relative flex items-center gap-3 border-b border-bn-border-subtle px-[18px] pb-3 pt-3.5">
+			<div
+				className={`relative flex items-center gap-3 border-b border-bn-border-subtle px-[18px] pb-3 pt-3.5 ${responsiveHeader ? "flex-wrap @min-[480px]/glass-box:flex-nowrap" : ""}`}
+			>
 				{mark ? (
 					mark
 				) : icon ? (
@@ -70,7 +75,7 @@ export function GlassBox({
 					</div>
 				) : null}
 				<div className="min-w-0 flex-1">
-					<div className="flex items-center gap-2">
+					<div className={`flex items-center gap-2 ${responsiveHeader ? "flex-wrap" : ""}`}>
 						<span className="text-bn-base font-bold tracking-tight text-bn-text-primary">
 							{title}
 						</span>
@@ -85,7 +90,13 @@ export function GlassBox({
 						<div className="mt-0.5 text-bn-xs text-bn-text-secondary">{subtitle}</div>
 					) : null}
 				</div>
-				{right}
+				{responsiveHeader && right ? (
+					<div className="flex w-full min-w-0 justify-end @min-[480px]/glass-box:w-auto">
+						{right}
+					</div>
+				) : (
+					right
+				)}
 			</div>
 			<div
 				className={`relative flex-1 ${dense ? "px-[18px] pb-3.5 pt-2" : "px-[18px] pb-4 pt-2.5"}`}

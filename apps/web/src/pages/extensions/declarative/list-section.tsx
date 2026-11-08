@@ -578,6 +578,7 @@ function ListCard({
 	return (
 		<div data-list-card={item.id}>
 			<GlassBox
+				responsiveHeader
 				accent={TONE_ACCENT[status?.tone ?? "off"]}
 				mark={
 					mark ? (
@@ -608,7 +609,7 @@ function ListCard({
 					) : undefined
 				}
 				right={
-					<div className="flex shrink-0 items-center gap-2">
+					<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
 						{(itemView?.buttons ?? []).map((button, i) => (
 							<Btn
 								// biome-ignore lint/suspicious/noArrayIndexKey: 按钮是视图整份交来的一排,没有别的身份
