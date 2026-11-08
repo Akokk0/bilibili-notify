@@ -22,6 +22,7 @@ vi.mock("../../../../services/api", async (importOriginal) => ({
 	ApiError: (await importOriginal<typeof import("../../../../services/api")>()).ApiError,
 }));
 
+import { i18n } from "../../../../i18n";
 import { ApiError, api } from "../../../../services/api";
 import {
 	answerPatch,
@@ -64,6 +65,7 @@ function saveButton(dialog: HTMLElement): HTMLButtonElement {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.mocked(api.get).mockReset();
 	vi.mocked(api.patch).mockReset();
 	vi.mocked(api.patch).mockImplementation(answerPatch);

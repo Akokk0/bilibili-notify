@@ -17,7 +17,7 @@ import type {
 	SettingsScalarField,
 } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../../i18n";
 import { ApiError, api } from "../../../../services/api";
@@ -702,5 +702,349 @@ describe("校验", () => {
 		fireEvent.change(await screen.findByLabelText("备注"), { target: { value: "新备注" } });
 		fireEvent.click(save());
 		expect((await screen.findByRole("alert")).textContent).toContain("配置目录是只读的");
+	});
+});
+
+describe("localized settings interactions", () => {
+	it("client validation and form actions translate while invalid edits remain unsent", async () => {
+		stored = {
+			range: 20,
+			minimum: 20,
+			maximum: 20,
+			numeric: 20,
+			requiredNumber: 20,
+			requiredText: "original",
+		};
+		renderForm([
+			{ key: "range", type: "number", label: "Original range", min: 10, max: 30 },
+			{ key: "minimum", type: "number", label: "Original minimum", min: 10 },
+			{ key: "maximum", type: "number", label: "Original maximum", max: 20 },
+			{ key: "numeric", type: "number", label: "Original numeric" },
+			{ key: "requiredNumber", type: "number", label: "Original required number", required: true },
+			{ key: "requiredText", type: "string", label: "Original required text", required: true },
+		]);
+		await screen.findByLabelText("Original range");
+		for (const [label, value] of [
+			["Original range", "5"],
+			["Original minimum", "5"],
+			["Original maximum", "25"],
+			["Original numeric", "abc"],
+			["Original required number", ""],
+			["Original required text", ""],
+		]) {
+			fireEvent.change(screen.getByLabelText(label as string), { target: { value } });
+		}
+		for (const [
+			locale,
+			title,
+			subtitle,
+			saveLabel,
+			revertLabel,
+			range,
+			min,
+			max,
+			number,
+			required,
+		] of [
+			[
+				"en",
+				"Settings",
+				"Save to apply changes. You can configure the extension while it is disabled.",
+				"Save",
+				"Revert",
+				"Must be between 10 and 30",
+				"Must be at least 10",
+				"Must be at most 20",
+				"Enter a number",
+				"This field is required",
+			],
+			[
+				"ja",
+				"設定",
+				"保存すると変更が反映されます。拡張機能が無効な状態でも設定できます。",
+				"保存",
+				"元に戻す",
+				"10から30の間で入力してください",
+				"10以上で入力してください",
+				"20以下で入力してください",
+				"数値を入力してください",
+				"必須項目です",
+			],
+			[
+				"zh-TW",
+				"設定",
+				"修改後需儲存才會生效；拓展停用時也可先填好。",
+				"儲存",
+				"還原",
+				"請輸入 10 到 30 之間的數值",
+				"不可小於 10",
+				"不可大於 20",
+				"請輸入數值",
+				"此欄位為必填",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(subtitle)).toBeTruthy();
+			for (const [key, message] of [
+				["range", range],
+				["minimum", min],
+				["maximum", max],
+				["numeric", number],
+				["requiredNumber", required],
+				["requiredText", required],
+			]) {
+				expect(within(field(key as string)).getByRole("alert").textContent).toBe(message);
+			}
+			expect((screen.getByLabelText("Original numeric") as HTMLInputElement).value).toBe("abc");
+			expect(screen.getByRole("button", { name: saveLabel })).toHaveProperty("disabled", true);
+			expect(screen.getByRole("button", { name: revertLabel })).toHaveProperty("disabled", false);
+		}
+		fireEvent.click(screen.getByRole("button", { name: "還原" }));
+		expect((screen.getByLabelText("Original range") as HTMLInputElement).value).toBe("20");
+		expect((screen.getByLabelText("Original required text") as HTMLInputElement).value).toBe(
+			"original",
+		);
+		expect(screen.queryByRole("alert")).toBeNull();
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+	it("settings loading and read failure translate without offering a default-value form", async () => {
+		let rejectRead!: (error: Error) => void;
+		const reading = new Promise<never>((_, reject) => {
+			rejectRead = reject;
+		});
+		vi.mocked(api.get).mockReturnValue(reading);
+		renderForm();
+		for (const [locale, loading] of [
+			["en", "Loading settings"],
+			["ja", "設定を読み込み中"],
+			["zh-TW", "正在讀取設定"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByText(`${loading}…`)).toBeTruthy();
+			expect(screen.queryByLabelText("检查间隔")).toBeNull();
+		}
+		await act(async () => {
+			rejectRead(new Error("Original diagnostic / EIO"));
+		});
+		await screen.findByRole("alert");
+		for (const [locale, failed] of [
+			["en", "Could not read this extension’s settings:"],
+			["ja", "この拡張機能の設定を読み込めません："],
+			["zh-TW", "無法讀取此拓展的設定："],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole("alert").textContent).toContain(failed);
+			expect(screen.getByRole("alert").textContent).toContain("Original diagnostic / EIO");
+			expect(screen.queryByLabelText("检查间隔")).toBeNull();
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it("save progress and failure translate without resubmitting or discarding the draft", async () => {
+		let rejectSave!: (error: Error) => void;
+		const saving = new Promise<never>((_, reject) => {
+			rejectSave = reject;
+		});
+		vi.mocked(api.patch).mockReturnValue(saving);
+		renderForm();
+		const note = await screen.findByLabelText("备注");
+		fireEvent.change(note, { target: { value: "Original unsaved note" } });
+		fireEvent.click(save());
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		for (const [locale, pending, revertLabel] of [
+			["en", "Saving…", "Revert"],
+			["ja", "保存中…", "元に戻す"],
+			["zh-TW", "儲存中…", "還原"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole("button", { name: pending })).toHaveProperty("disabled", true);
+			expect(screen.getByRole("button", { name: revertLabel })).toHaveProperty("disabled", true);
+			expect((screen.getByLabelText("备注") as HTMLInputElement).value).toBe(
+				"Original unsaved note",
+			);
+		}
+		await act(async () => {
+			rejectSave(new Error("Original write diagnostic / EACCES"));
+		});
+		await screen.findByRole("alert");
+		for (const [locale, prefix] of [
+			["en", "Could not save:"],
+			["ja", "保存できません："],
+			["zh-TW", "未能儲存："],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole("alert").textContent).toContain(prefix);
+			expect(screen.getByRole("alert").textContent).toContain("Original write diagnostic / EACCES");
+			expect(screen.getByLabelText("备注")).toBe(note);
+			expect((note as HTMLInputElement).value).toBe("Original unsaved note");
+		}
+		expect(api.patch).toHaveBeenCalledTimes(1);
+		expect(sentSettings()).toEqual({ note: "Original unsaved note" });
+	});
+
+	it("conflict guidance translates while reread values and the unsaved edit remain available for an explicit retry", async () => {
+		renderForm();
+		fireEvent.change(await screen.findByLabelText("备注"), {
+			target: { value: "Original conflict draft" },
+		});
+		stored = { ...stored, interval: 300 };
+		revision += 1;
+		fireEvent.click(save());
+		await waitFor(() =>
+			expect((screen.getByLabelText("检查间隔") as HTMLInputElement).value).toBe("300"),
+		);
+		for (const [locale, message] of [
+			[
+				"en",
+				"The settings changed after you opened them. They have been reloaded; review the current values before trying again.",
+			],
+			[
+				"ja",
+				"開いた後に設定が変更されました。最新の設定を読み込み直しました。現在の内容を確認してから再度保存してください。",
+			],
+			["zh-TW", "設定在開啟後已被修改，現已重新讀取；請確認目前內容後再試一次。"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole("alert").textContent).toContain(message);
+			expect((screen.getByLabelText("检查间隔") as HTMLInputElement).value).toBe("300");
+			expect((screen.getByLabelText("备注") as HTMLInputElement).value).toBe(
+				"Original conflict draft",
+			);
+			expect(api.patch).toHaveBeenCalledTimes(1);
+		}
+		fireEvent.click(screen.getByRole("button", { name: "儲存" }));
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2));
+		expect(api.patch).toHaveBeenLastCalledWith("/api/ext/douyin/settings", {
+			revision: "rev-2",
+			ops: [{ op: "set", key: "note", value: "Original conflict draft" }],
+		});
+		await waitFor(() =>
+			expect(screen.getByRole("button", { name: "儲存" })).toHaveProperty("disabled", true),
+		);
+		expect(stored).toMatchObject({ note: "Original conflict draft", interval: 300 });
+	});
+
+	it("secret regeneration confirmation and fresh-value guidance translate before an explicit save", async () => {
+		renderForm();
+		await screen.findByText("检查间隔");
+		fireEvent.click(within(field("token")).getByRole("button", { name: "重新生成 token" }));
+		for (const [locale, title, warning, confirmLabel] of [
+			[
+				"en",
+				"Regenerate “token”?",
+				"The old value becomes invalid after you save. Replace it everywhere it is used.",
+				"Regenerate",
+			],
+			[
+				"ja",
+				"「token」を再生成しますか？",
+				"保存すると以前の値は無効になります。使用しているすべての場所で新しい値に置き換えてください。",
+				"再生成",
+			],
+			[
+				"zh-TW",
+				"重新產生「token」？",
+				"儲存後舊值就會失效，所有使用舊值的地方都必須換成新值。",
+				"重新產生",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			const dialog = screen.getByRole("dialog");
+			expect(within(dialog).getByText(title)).toBeTruthy();
+			expect(within(dialog).getByText(warning)).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: confirmLabel })).toBeTruthy();
+			expect(document.body.innerHTML).not.toContain(TOKEN);
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+		fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "重新產生" }));
+		const fresh = within(field("token")).getByText(/^[0-9a-f]{32}$/).textContent as string;
+		expect(fresh).not.toBe(TOKEN);
+		for (const [locale, regenerate, copy, hint] of [
+			[
+				"en",
+				"Regenerate token",
+				"Copy token",
+				"Newly generated and not yet saved. After saving, only its beginning and end are visible; copy the full value now if you need it.",
+			],
+			[
+				"ja",
+				"tokenを再生成",
+				"tokenをコピー",
+				"生成した値はまだ保存されていません。保存後は先頭と末尾のみ表示されます。必要な場合は今のうちに全文をコピーしてください。",
+			],
+			[
+				"zh-TW",
+				"重新產生 token",
+				"複製 token",
+				"剛產生的值尚未儲存；儲存後只會顯示頭尾，需要全文請現在複製。",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			const token = within(field("token"));
+			expect(token.getByRole("button", { name: regenerate })).toBeTruthy();
+			expect(token.getByRole("button", { name: copy })).toBeTruthy();
+			expect(token.getByText(hint)).toBeTruthy();
+			expect(token.getByText(fresh)).toBeTruthy();
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "儲存" }));
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		expect(sentSettings()).toEqual({ token: fresh });
+		await within(field("token")).findByText(maskOf(fresh));
+		expect(within(field("token")).queryByRole("button", { name: "複製 token" })).toBeNull();
+		expect(document.body.innerHTML).not.toContain(fresh);
+	});
+
+	it("missing-secret recovery translates and generates only a local draft", async () => {
+		stored = { ...stored, token: "" };
+		renderForm();
+		await screen.findByText("检查间隔");
+		for (const [locale, warning, regenerate] of [
+			[
+				"en",
+				"No token is stored. This can happen after restoring a redacted backup; generate a new value.",
+				"Regenerate token",
+			],
+			[
+				"ja",
+				"tokenが保存されていません。機密情報を除いたバックアップの復元後は、この状態になります。新しい値を生成してください。",
+				"tokenを再生成",
+			],
+			[
+				"zh-TW",
+				"尚未儲存 token；還原已去除機密資料的備份後會出現此情況，請產生新值。",
+				"重新產生 token",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			const token = within(field("token"));
+			expect(token.getByText(warning)).toBeTruthy();
+			expect(token.getByRole("button", { name: regenerate })).toBeTruthy();
+			expect(token.queryByRole("button", { name: /Copy|コピー|複製/ })).toBeNull();
+		}
+		fireEvent.click(within(field("token")).getByRole("button", { name: "重新產生 token" }));
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(within(field("token")).getByText(/^[0-9a-f]{32}$/)).toBeTruthy();
+		expect(within(field("token")).getByRole("button", { name: "複製 token" })).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
 	});
 });
