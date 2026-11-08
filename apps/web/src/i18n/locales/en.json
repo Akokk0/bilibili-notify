@@ -1818,5 +1818,14 @@
 	"panelUi.pages.backup.BackupExportDialog.13": "Cancel",
 	"panelUi.pages.backup.BackupExportDialog.14": "Exporting…",
 	"panelUi.pages.backup.BackupExportDialog.15": "Export",
-	"panelUi.pages.backup.dialog-bits.1": "Backup PIN (6 digits)"
+	"panelUi.pages.backup.dialog-bits.1": "Backup PIN (6 digits)",
+	"integrationSettings.subtitle": "Integration settings",
+	"integrationSettings.navHint": "Integration parameters",
+	"integrationSettings.unsupported": "This field cannot be edited here yet.",
+	"integrationSettings.identityTitle": "Browser identity",
+	"integrationSettings.identityHint": "The change takes effect the next time the service restarts. Current requests and live connections keep using the existing identity; sign-in state is preserved.",
+	"integrationSettings.reset": "Change identity",
+	"integrationSettings.dirty": "Save or discard the current draft before changing the browser identity.",
+	"integrationSettings.resetDone": "A new identity will be generated the next time the service restarts.",
+	"integrationSettings.resetConfirm": "Change browser identity?"
 }

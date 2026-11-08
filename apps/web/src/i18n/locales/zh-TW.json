@@ -1777,5 +1777,14 @@
 	"panelUi.pages.backup.BackupExportDialog.13": "取消",
 	"panelUi.pages.backup.BackupExportDialog.14": "匯出中…",
 	"panelUi.pages.backup.BackupExportDialog.15": "匯出",
-	"panelUi.pages.backup.dialog-bits.1": "備份 PIN（6 位數字）"
+	"panelUi.pages.backup.dialog-bits.1": "備份 PIN（6 位數字）",
+	"integrationSettings.subtitle": "整合設定",
+	"integrationSettings.navHint": "整合參數",
+	"integrationSettings.unsupported": "目前尚不支援編輯此欄位。",
+	"integrationSettings.identityTitle": "瀏覽器身分",
+	"integrationSettings.identityHint": "變更將於下次服務重新啟動時生效。目前的請求與直播連線會繼續使用現有身分，並保留登入狀態。",
+	"integrationSettings.reset": "更換身分",
+	"integrationSettings.dirty": "請先儲存或放棄目前草稿，再更換瀏覽器身分。",
+	"integrationSettings.resetDone": "已安排於下次服務重新啟動時產生新身分。",
+	"integrationSettings.resetConfirm": "更換瀏覽器身分？"
 }

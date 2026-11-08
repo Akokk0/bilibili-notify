@@ -490,3 +490,95 @@ it("invalid-setting guidance translates while original values, paths and diagnos
 		expect(api.patch).not.toHaveBeenCalled();
 	}
 });
+
+it("translated browser identity confirmation changes only the chosen integration and retains unsaved drafts", async () => {
+	await renderIntegrationSection();
+	for (const [locale, title, reset, hint] of [
+		[
+			"en",
+			"Browser identity",
+			"Change identity",
+			"The change takes effect the next time the service restarts. Current requests and live connections keep using the existing identity; sign-in state is preserved.",
+		],
+		[
+			"ja",
+			"ブラウザー識別情報",
+			"識別情報を変更",
+			"次回のサービス再起動時に反映されます。処理中のリクエストとライブ接続は現在の識別情報を使い続け、ログイン状態も保持されます。",
+		],
+		[
+			"zh-TW",
+			"瀏覽器身分",
+			"更換身分",
+			"變更將於下次服務重新啟動時生效。目前的請求與直播連線會繼續使用現有身分，並保留登入狀態。",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(screen.getByRole("button", { name: reset })).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "更換身分" }));
+	const dialog = await screen.findByRole("dialog");
+	for (const [locale, title, reset, hint] of [
+		[
+			"en",
+			"Change browser identity?",
+			"Change identity",
+			"The change takes effect the next time the service restarts. Current requests and live connections keep using the existing identity; sign-in state is preserved.",
+		],
+		[
+			"ja",
+			"ブラウザー識別情報を変更しますか？",
+			"識別情報を変更",
+			"次回のサービス再起動時に反映されます。処理中のリクエストとライブ接続は現在の識別情報を使い続け、ログイン状態も保持されます。",
+		],
+		[
+			"zh-TW",
+			"更換瀏覽器身分？",
+			"更換身分",
+			"變更將於下次服務重新啟動時生效。目前的請求與直播連線會繼續使用現有身分，並保留登入狀態。",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(within(dialog).getByText(title)).toBeTruthy();
+		expect(within(dialog).getByText(hint)).toBeTruthy();
+		expect(within(dialog).getByRole("button", { name: reset })).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	vi.mocked(api.post).mockResolvedValueOnce({ ok: true });
+	fireEvent.click(within(dialog).getByRole("button", { name: "更換身分" }));
+	await screen.findByText("已安排於下次服務重新啟動時產生新身分。");
+	fireEvent.change(inputOf("bilibili.dynamicCron"), { target: { value: "0 */10 * * * *" } });
+	for (const [locale, reset, done, dirty] of [
+		[
+			"en",
+			"Change identity",
+			"A new identity will be generated the next time the service restarts.",
+			"Save or discard the current draft before changing the browser identity.",
+		],
+		[
+			"ja",
+			"識別情報を変更",
+			"次回のサービス再起動時に新しい識別情報を生成します。",
+			"ブラウザー識別情報を変更する前に、現在の下書きを保存または破棄してください。",
+		],
+		[
+			"zh-TW",
+			"更換身分",
+			"已安排於下次服務重新啟動時產生新身分。",
+			"請先儲存或放棄目前草稿，再更換瀏覽器身分。",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(done)).toBeTruthy();
+		expect(await screen.findByText(dirty)).toBeTruthy();
+		expect((screen.getByRole("button", { name: reset }) as HTMLButtonElement).disabled).toBe(true);
+		expect(inputOf("bilibili.dynamicCron").value).toBe("0 */10 * * * *");
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+	expect(api.post).toHaveBeenCalledExactlyOnceWith(
+		"/api/settings/integrations/bilibili/reset-identity",
+	);
+});

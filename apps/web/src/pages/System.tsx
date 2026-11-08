@@ -4,7 +4,7 @@ import type {
 	SettingsResponse,
 } from "@bilibili-notify/contract";
 import { ErrorNote, Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { InvalidSettingsPanel } from "../components/invalid-settings-note";
@@ -161,6 +161,7 @@ export default function System() {
 	const descriptorsQuery = useQuery({
 		queryKey: ["integration-settings-descriptors", locale, voice],
 		queryFn: () => api.get<IntegrationSettingsDescriptorsResponse>("/api/settings/integrations"),
+		placeholderData: keepPreviousData,
 	});
 	const descriptors = descriptorsQuery.data?.integrations ?? [];
 	const integrationKey = integrationKeyFromHash(location.hash);

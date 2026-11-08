@@ -1777,5 +1777,14 @@
 	"panelUi.pages.backup.BackupExportDialog.13": "キャンセル",
 	"panelUi.pages.backup.BackupExportDialog.14": "エクスポート中…",
 	"panelUi.pages.backup.BackupExportDialog.15": "エクスポート",
-	"panelUi.pages.backup.dialog-bits.1": "バックアップPIN（数字6桁）"
+	"panelUi.pages.backup.dialog-bits.1": "バックアップPIN（数字6桁）",
+	"integrationSettings.subtitle": "連携設定",
+	"integrationSettings.navHint": "連携パラメーター",
+	"integrationSettings.unsupported": "この項目はまだ編集に対応していません。",
+	"integrationSettings.identityTitle": "ブラウザー識別情報",
+	"integrationSettings.identityHint": "次回のサービス再起動時に反映されます。処理中のリクエストとライブ接続は現在の識別情報を使い続け、ログイン状態も保持されます。",
+	"integrationSettings.reset": "識別情報を変更",
+	"integrationSettings.dirty": "ブラウザー識別情報を変更する前に、現在の下書きを保存または破棄してください。",
+	"integrationSettings.resetDone": "次回のサービス再起動時に新しい識別情報を生成します。",
+	"integrationSettings.resetConfirm": "ブラウザー識別情報を変更しますか？"
 }
