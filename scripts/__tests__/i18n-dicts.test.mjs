@@ -31,7 +31,7 @@ import { parseExtensionManifest } from "../../packages/internal/src/schema/exten
  *   「新开的译文目录不许被静默漏查」由 `findLocalesDirs` 那一条钉着:仓里叫 `locales` 的目录必须等于三张表之和；原生启动回落目录另按实际读者校验。
  * - 读的是 JSON 不是源码,没有「注释被当成代码」的问题。
  * - 简体中文打底(缺的句子运行时拿它补),所以「齐不齐」是**方向**判:别的语言不许有底里没有的句子;
- *   「要求齐的语言」名单今天只有 zh-CN,第 5 期翻完把 en、ja 加进 COMPLETE_LOCALES(不用 skip,免得忘了开);
+ *   全局齐全名单先为 zh-CN；分模块交付按目录登记，最终把四语合入 COMPLETE_LOCALES，不用 skip;
  *   反方向有棘轮:某种语言已经把打底的每一句都译了、却不在名单里,就红,逼着写进名单。
  * - 判据写成纯函数 + 样例(`checkDictionaries`),因为判据本身也会写错。
  * - 「取占位符」「拆单复数后缀」直接用核心导出的 `placeholdersOf` / `stemOf`,不在这里另抄一份。
@@ -107,6 +107,11 @@ export const BASE_LOCALE = "zh-CN";
 
 /** 要求句子齐全的语言。今天只有打底语言,第 5 期翻完把 en、ja 加进来。 */
 export const COMPLETE_LOCALES = ["zh-CN"];
+
+/** 翻译逐目录交付；已完成目录立即按完整语言集合检查，最终收尾合入全局名单。 */
+const COMPLETE_LOCALES_BY_DIR = {
+	"apps/server/src/migration/locales": ["zh-CN", "en", "ja", "zh-TW"],
+};
 
 /** 有女仆层的语言(ADR-0037 决策 4):今天 zh-CN,ja 第 5 期。其余语言出现女仆层文件就是错。 */
 export const MAID_LOCALES = ["zh-CN"];
@@ -760,7 +765,12 @@ describe("BN 的译文目录", () => {
 
 	it.each(DICT_DIRS)("%s:键、占位符、单复数、女仆层都对得上", (dir) => {
 		const { locales } = loadDictionaryDir(dir);
-		expect(checkDictionaries({ locales })).toEqual([]);
+		expect(
+			checkDictionaries({
+				locales,
+				completeLocales: COMPLETE_LOCALES_BY_DIR[dir] ?? COMPLETE_LOCALES,
+			}),
+		).toEqual([]);
 	});
 
 	it("包字典与垫着它的两端字典,键的第一段各守各的", () => {
@@ -802,6 +812,11 @@ describe("BN 的译文目录", () => {
 	});
 
 	it("要求齐的名单与有女仆层的名单只写 LOCALES 里的语言", () => {
+		for (const [dir, locales] of Object.entries(COMPLETE_LOCALES_BY_DIR)) {
+			expect(DICT_DIRS).toContain(dir);
+			for (const required of COMPLETE_LOCALES) expect(locales).toContain(required);
+			for (const locale of locales) expect(LOCALES).toContain(locale);
+		}
 		for (const locale of [...COMPLETE_LOCALES, ...MAID_LOCALES, BASE_LOCALE]) {
 			expect(LOCALES).toContain(locale);
 		}

@@ -12,6 +12,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { gcmDecrypt, gcmEncrypt } from "@bilibili-notify/storage";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	migrateZeroGeneration,
 	readZeroGenerationKey,
@@ -77,6 +78,35 @@ describe("0.x 的 B 站登录转成集成的密钥文件", () => {
 		expect(skips).toHaveLength(1);
 		expect(skips[0]?.reason).toContain("重新扫码");
 	}
+
+	it.each([
+		{
+			locale: "en" as const,
+			pattern: /^Bilibili login was not migrated \(.+\); scan the QR code again\.$/,
+		},
+		{
+			locale: "ja" as const,
+			pattern:
+				/^Bilibiliのログイン情報を移行できませんでした（.+）。QRコードを再度読み取ってください。$/,
+		},
+		{ locale: "zh-TW" as const, pattern: /^B 站登入資訊未移轉（.+），請重新掃描 QR Code。$/ },
+	])("$locale：報告使用生成時的語言，之後切換不改寫原報告", async ({ locale, pattern }) => {
+		const previous = i18n.state();
+		try {
+			i18n.set({ locale, voice: "plain" });
+			await placeKeyMaterial();
+			await sandbox.placeZero(COOKIES_FILE, {});
+			const report = await sandbox.migrate();
+			const reason = cookiesSkips(report)[0]?.reason;
+			expect(reason).toMatch(pattern);
+			expect(existsSync(join(sandbox.target, ...NEW_FILE))).toBe(false);
+			expect(report.transfers.filter((transfer) => transfer.from === COOKIES_FILE)).toEqual([]);
+			i18n.set({ locale: "zh-CN", voice: "maid" });
+			expect(cookiesSkips(report)[0]?.reason).toBe(reason);
+		} finally {
+			i18n.set({ locale: previous.locale, voice: previous.voice });
+		}
+	});
 
 	it("① cookie 与续期令牌:新文件用同一把密钥解得开,恰好两个键、值逐字相等;新代里没有 cookies.json", async () => {
 		await placeKeyMaterial();
