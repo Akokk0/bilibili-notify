@@ -171,6 +171,151 @@ afterEach(() => {
 });
 
 describe("系统页的按模块日志等级", () => {
+	it("log owner loading and partial failures translate while known rows and existing overrides stay available", async () => {
+		mockApi({ "missing.source": "warn" });
+		const read = vi.mocked(api.get).getMockImplementation();
+		let reject!: (error: Error) => void;
+		const pending = new Promise((_, fail) => {
+			reject = fail;
+		});
+		let recovered = false;
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path === "/api/sources" && !recovered) return pending;
+			return read?.(path);
+		});
+		await renderRuntimeSection();
+		for (const [locale, loading] of [
+			["en", "Reading log owners…"],
+			["ja", "ログの出力元を読み込んでいます…"],
+			["zh-TW", "正在讀取日誌歸屬…"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(loading)).toBeTruthy();
+			expect(screen.getByText("双口拓展")).toBeTruthy();
+			expect(screen.getByText("missing.source")).toBeTruthy();
+		}
+		await act(async () => reject(new Error("Original source list failure")));
+		for (const [locale, failure, retry, visible] of [
+			[
+				"en",
+				"The log owner list could not be read completely. Known owners and existing overrides are retained.",
+				"Retry reading log owners",
+				"Retry",
+			],
+			[
+				"ja",
+				"ログの出力元をすべて読み込めませんでした。取得済みの出力元と既存の上書き設定は保持しています。",
+				"ログの出力元を再読み込み",
+				"再試行",
+			],
+			["zh-TW", "無法完整讀取日誌歸屬清單，仍保留已知項目與既有覆寫。", "重試讀取日誌歸屬", "重試"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(failure)).toBeTruthy();
+			expect(screen.getByRole("button", { name: retry }).textContent).toBe(visible);
+			expect(screen.getByText("双口拓展")).toBeTruthy();
+			expect(screen.getByText("missing.source")).toBeTruthy();
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+		recovered = true;
+		fireEvent.click(screen.getByRole("button", { name: "重試讀取日誌歸屬" }));
+		await waitFor(() =>
+			expect(screen.queryByText("無法完整讀取日誌歸屬清單，仍保留已知項目與既有覆寫。")).toBeNull(),
+		);
+		expect(screen.getByText("内置来源")).toBeTruthy();
+		expect(screen.getByText("missing.source")).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it("log override translations preserve the edited level and unknown owners until an explicit save", async () => {
+		mockApi({ "old.source": "warn", core: "debug" });
+		await renderRuntimeSection();
+		fireEvent.click(
+			within(screen.getByRole("group", { name: "核心（core）日志等级" })).getByText("L1 · 错误"),
+		);
+		for (const [
+			locale,
+			title,
+			subtitle,
+			overrides,
+			hint,
+			core,
+			image,
+			ai,
+			unknown,
+			memory,
+			selected,
+		] of [
+			[
+				"en",
+				"Core · App",
+				"Backend runtime settings",
+				"Per-owner overrides",
+				"Uses the global level unless overridden. Saved changes apply without restarting.",
+				"Core (core) log level",
+				"Image rendering (image) log level",
+				"AI (ai) log level",
+				"Owner not recognized. Its existing override is retained.",
+				"Memory self-check logging",
+				"L1 · Error",
+			],
+			[
+				"ja",
+				"Core · アプリ",
+				"バックエンドの実行設定",
+				"出力元別の上書き",
+				"上書きしない場合は全体のログレベルに従います。保存後すぐに反映され、再起動は不要です。",
+				"コア（core）のログレベル",
+				"画像描画（image）のログレベル",
+				"AI（ai）のログレベル",
+				"出力元を識別できません。既存の上書き設定を保持しています。",
+				"メモリー自己診断ログ",
+				"L1 · エラー",
+			],
+			[
+				"zh-TW",
+				"Core · 應用程式",
+				"後端執行參數",
+				"依歸屬覆寫",
+				"未覆寫時跟隨全域等級；儲存後生效，不需重新啟動。",
+				"核心（core）日誌等級",
+				"圖片繪製（image）日誌等級",
+				"AI（ai）日誌等級",
+				"無法識別歸屬，仍保留既有覆寫。",
+				"記憶體自我檢查日誌",
+				"L1 · 錯誤",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			for (const text of [title, subtitle, overrides, hint, unknown])
+				expect(screen.getByText(text)).toBeTruthy();
+			expect(
+				within(screen.getByRole("group", { name: core }))
+					.getByRole("button", { name: selected })
+					.getAttribute("aria-pressed"),
+			).toBe("true");
+			expect(screen.getByRole("group", { name: image })).toBeTruthy();
+			expect(screen.getByRole("group", { name: ai })).toBeTruthy();
+			expect(screen.getByText("双口拓展")).toBeTruthy();
+			expect(screen.getByText("old.source")).toBeTruthy();
+			expect(screen.getByRole("button", { name: memory }).getAttribute("aria-pressed")).toBe(
+				"false",
+			);
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave();
+		});
+		expect(api.patch).toHaveBeenCalledExactlyOnceWith(
+			"/api/settings",
+			expect.objectContaining({
+				core: expect.objectContaining({
+					logging: expect.objectContaining({ levels: { "old.source": "warn", core: "error" } }),
+				}),
+			}),
+		);
+	});
+
 	it("未知归属覆盖继续可见，修改别的归属后保存仍保留它", async () => {
 		mockApi({ "old.source": "warn", core: "debug" });
 		await renderRuntimeSection();

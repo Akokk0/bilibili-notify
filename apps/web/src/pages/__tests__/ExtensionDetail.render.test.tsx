@@ -122,13 +122,14 @@ const VIEW = shown({
 
 function renderDetail(
 	id = "bridge",
-	settingsError?: Error,
+	settingsError?: Error | Promise<void>,
 	listed: ExtensionsResponse | Promise<ExtensionsResponse> = LISTED,
 ) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/ext") return listed;
 		if (url === "/api/settings") {
-			if (settingsError) throw settingsError;
+			if (settingsError instanceof Error) throw settingsError;
+			if (settingsError) await settingsError;
 			return { core: GLOBALS };
 		}
 		// 接入名单从拓展自己的设置口读(ADR-0019 决策 35);`/api/settings` 里已经没有设置那一格。
@@ -179,6 +180,111 @@ describe("拓展详情页", () => {
 	afterEach(() => {
 		cleanup();
 		vi.restoreAllMocks();
+	});
+
+	it("extension log read and save feedback translates without inventing a level or rewriting another owner", async () => {
+		let reject!: (error: Error) => void;
+		const pending = new Promise<void>((_, fail) => {
+			reject = fail;
+		});
+		renderDetail("bridge", pending);
+		const read = apiGetMock.getMockImplementation();
+		let recovered = false;
+		apiGetMock.mockImplementation(async (path: string) =>
+			path === "/api/settings" && recovered ? { core: GLOBALS } : read?.(path),
+		);
+		await screen.findByText("正在读取日志等级…");
+		for (const [locale, loading] of [
+			["en", "Reading log level…"],
+			["ja", "ログレベルを読み込んでいます…"],
+			["zh-TW", "正在讀取日誌等級…"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(loading)).toBeTruthy();
+		}
+		await act(async () => reject(new Error("Original settings read failure")));
+		for (const [locale, failure, retry, owner] of [
+			[
+				"en",
+				"Could not read the log level. Its current value is unknown.",
+				"Retry reading log level",
+				"机器人框架桥接 (bridge) log level",
+			],
+			[
+				"ja",
+				"ログレベルを読み込めません。現在の値は不明です。",
+				"ログレベルを再読み込み",
+				"机器人框架桥接（bridge）のログレベル",
+			],
+			[
+				"zh-TW",
+				"無法讀取日誌等級，目前狀態未知。",
+				"重試讀取日誌等級",
+				"机器人框架桥接（bridge）日誌等級",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(failure)).toBeTruthy();
+			expect(screen.getByRole("button", { name: retry })).toBeTruthy();
+			expect(screen.queryByRole("group", { name: owner })).toBeNull();
+			expect(apiPatchMock).not.toHaveBeenCalled();
+		}
+		recovered = true;
+		fireEvent.click(screen.getByRole("button", { name: "重試讀取日誌等級" }));
+		await screen.findByRole("group", { name: "机器人框架桥接（bridge）日誌等級" });
+		for (const [locale, hint] of [
+			[
+				"en",
+				"Changes only this extension’s log level and saves immediately. Without an override, it uses the global level.",
+			],
+			[
+				"ja",
+				"この拡張機能のログレベルだけを変更し、選択後すぐに保存します。上書きがない場合は全体の設定に従います。",
+			],
+			["zh-TW", "僅修改此拓展的日誌等級，選擇後立即儲存；未覆寫時跟隨全域。"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(hint)).toBeTruthy();
+			expect(apiPatchMock).not.toHaveBeenCalled();
+		}
+		apiPatchMock.mockRejectedValueOnce(new Error("原保存诊断 / EACCES"));
+		fireEvent.click(
+			within(screen.getByRole("group", { name: "机器人框架桥接（bridge）日誌等級" })).getByText(
+				"L1 · 錯誤",
+			),
+		);
+		await screen.findByText(/原保存诊断 \/ EACCES/);
+		for (const [locale, failure, owner, original] of [
+			[
+				"en",
+				"Could not save the log level: 原保存诊断 / EACCES",
+				"机器人框架桥接 (bridge) log level",
+				"L4 · Debug",
+			],
+			[
+				"ja",
+				"ログレベルを保存できませんでした：原保存诊断 / EACCES",
+				"机器人框架桥接（bridge）のログレベル",
+				"L4 · デバッグ",
+			],
+			[
+				"zh-TW",
+				"無法儲存日誌等級：原保存诊断 / EACCES",
+				"机器人框架桥接（bridge）日誌等級",
+				"L4 · 偵錯",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(failure)).toBeTruthy();
+			expect(
+				within(screen.getByRole("group", { name: owner }))
+					.getByText(original)
+					.getAttribute("aria-pressed"),
+			).toBe("true");
+			expect(apiPatchMock).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+				core: { logging: { levels: { bridge: "error" } } },
+			});
+		}
 	});
 
 	it.each(["read-failed", "not-found", "legacy"] as const)(
