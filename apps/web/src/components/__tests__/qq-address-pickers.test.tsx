@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { ChannelAddressPicker, SessionAddressPicker } from "../address-candidates";
 
 const { getMock } = vi.hoisted(() => ({ getMock: vi.fn() }));
@@ -15,6 +16,7 @@ function wrap(node: ReactNode) {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	getMock.mockReset();
 });
 afterEach(() => cleanup());
@@ -96,4 +98,80 @@ describe("ChannelAddressPicker", () => {
 		fireEvent.click(screen.getByRole("button", { name: "拉取频道" }));
 		await waitFor(() => expect(screen.getByText(/读取失败/)).toBeTruthy());
 	});
+});
+
+it.each(["group", "private"] as const)(
+	"%s address candidates translate without refetching or changing raw addresses",
+	async (scope) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		getMock.mockResolvedValue({
+			candidates: [{ address: "raw:G2" }, { address: "raw:G1", name: "原会话名称" }],
+		});
+		const onPick = vi.fn();
+		wrap(<SessionAddressPicker connectionId="c1" scope={scope} onPick={onPick} />);
+		await screen.findByText("原会话名称");
+		for (const [locale, group, user, unnamed, refresh] of [
+			["en", "Discovered group sessions", "Discovered user sessions", "(Unnamed)", "Refresh"],
+			[
+				"ja",
+				"検出されたグループセッション",
+				"検出されたユーザーセッション",
+				"（名前なし）",
+				"更新",
+			],
+			["zh-TW", "偵測到的群組會話", "偵測到的使用者會話", "（未命名）", "重新整理"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(scope === "group" ? group : user)).toBeTruthy();
+			expect(screen.getByText(unnamed)).toBeTruthy();
+			expect(screen.getByRole("button", { name: refresh })).toBeTruthy();
+			expect(screen.getByText("raw:G1")).toBeTruthy();
+			expect(getMock).toHaveBeenCalledOnce();
+			expect(onPick).not.toHaveBeenCalled();
+		}
+		fireEvent.click(screen.getByRole("button", { name: /原会话名称/ }));
+		expect(onPick).toHaveBeenCalledOnce();
+		expect(onPick).toHaveBeenCalledWith("raw:G1");
+		expect(getMock).toHaveBeenCalledWith(`/api/connections/c1/addresses?scope=${scope}`);
+	},
+);
+
+it("channel guidance translates without fetching until requested and preserves both selected addresses", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	getMock.mockResolvedValue({
+		candidates: [
+			{ address: "raw:C1", name: "原子频道", parentAddress: "raw:G1", parentName: "原频道" },
+		],
+	});
+	const onPick = vi.fn();
+	wrap(<ChannelAddressPicker connectionId="c1" onPick={onPick} />);
+	for (const [locale, title, action, hint] of [
+		[
+			"en",
+			"Channel addresses",
+			"Fetch channels",
+			"Choose “Fetch channels” to read channel addresses from this connection.",
+		],
+		[
+			"ja",
+			"チャンネルのアドレス候補",
+			"チャンネルを取得",
+			"「チャンネルを取得」で、この接続が提供するチャンネルのアドレスを読み込みます。",
+		],
+		["zh-TW", "頻道位址候選", "取得頻道", "點選「取得頻道」，讀取此連線提供的頻道位址。"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(screen.getByRole("button", { name: action })).toBeTruthy();
+		expect(getMock).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "取得頻道" }));
+	await screen.findByText("原频道");
+	act(() => i18n.set({ locale: "en" }));
+	fireEvent.click(screen.getByRole("button", { name: "原子频道" }));
+	expect(getMock).toHaveBeenCalledOnce();
+	expect(getMock).toHaveBeenCalledWith("/api/connections/c1/addresses?scope=channel");
+	expect(onPick).toHaveBeenCalledOnce();
+	expect(onPick).toHaveBeenCalledWith("raw:G1", "raw:C1");
 });

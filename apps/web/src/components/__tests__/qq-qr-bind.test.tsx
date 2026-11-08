@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { ApiError } from "../../services/api";
 import { ConnectionAuthButton, pollDelayMs } from "../connection-auth";
 
@@ -60,6 +61,7 @@ describe("ConnectionAuthButton", () => {
 	// 花括号不能省:箭头函数直接返回 mockReset() 的结果,vitest 会把返回的函数当清理钩子,
 	// 收摊时多调一发 postMock(undefined)。
 	beforeEach(() => {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
 		postMock.mockReset();
 		getMock.mockReset();
 	});
@@ -415,6 +417,151 @@ describe("ConnectionAuthButton", () => {
 		await waitFor(() => expect(screen.getByText(/创建绑定任务失败/)).toBeTruthy());
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
 	});
+	it("authorization language changes preserve the QR task and claim the original credential draft once", async () => {
+		vi.useFakeTimers();
+		try {
+			i18n.set({ locale: "en", voice: "plain" });
+			let resolveBegin: (value: typeof BEGIN_OK) => void = () => {
+				throw new Error("No pending authorization");
+			};
+			postRoutes({
+				[BEGIN]: () =>
+					new Promise((resolve) => {
+						resolveBegin = resolve;
+					}),
+				[DRAFT]: () => DRAFT_OK,
+			});
+			getMock.mockResolvedValue(loggedIn());
+			const got = vi.fn();
+			render(
+				<ConnectionAuthButton
+					adapterKey="qq-official"
+					experimental
+					description="原说明"
+					warning="原警告"
+					onCredentials={got}
+				/>,
+			);
+			fireEvent.click(screen.getByRole("button", { name: "Scan to connect / create" }));
+			for (const [locale, title, loading, badge] of [
+				["en", "Scan to connect / create a bot", "Creating authorization task", "Experimental"],
+				["ja", "QRコードでボットに接続・作成", "認証タスクを作成中", "試験的"],
+				["zh-TW", "掃碼連線／建立機器人", "正在建立授權工作", "實驗性"],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(screen.getByText(title)).toBeTruthy();
+				expect(screen.getByRole("status").textContent).toBe(`${loading}…`);
+				expect(screen.getByText(badge)).toBeTruthy();
+				expect(callsOf(postMock, BEGIN)).toBe(1);
+			}
+			await act(async () => resolveBegin(BEGIN_OK));
+			for (const [locale, alt] of [
+				["en", "Connection authorization QR code"],
+				["ja", "接続認証用QRコード"],
+				["zh-TW", "連線授權 QR 碼"],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect((screen.getByAltText(alt) as HTMLImageElement).src).toBe(BEGIN_OK.state.qr.dataUrl);
+				expect(screen.getByText("原警告")).toBeTruthy();
+				expect(getMock).not.toHaveBeenCalled();
+				expect(got).not.toHaveBeenCalled();
+			}
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(1000);
+			});
+			expect(got).toHaveBeenCalledOnce();
+			expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" });
+			expect(callsOf(postMock, BEGIN)).toBe(1);
+			expect(callsOf(postMock, DRAFT)).toBe(1);
+			expect(getMock).toHaveBeenCalledOnce();
+			expect(getMock).toHaveBeenCalledWith(STATE);
+			expect(screen.queryByRole("dialog")).toBeNull();
+		} finally {
+			cleanup();
+			vi.useRealTimers();
+		}
+	});
+
+	it.each([
+		[
+			"begin",
+			"Could not create authorization task: 原诊断",
+			"認証タスクを作成できませんでした: 原诊断",
+			"無法建立授權工作：原诊断",
+		],
+		[
+			"incomplete",
+			"The scan succeeded, but the returned credentials are incomplete. Enter them manually.",
+			"QRコードの読み取りは完了しましたが、認証情報が不完全です。手動で入力してください。",
+			"掃碼成功，但傳回的憑證不完整，請手動填寫。",
+		],
+		[
+			"missing",
+			"The authorization result is no longer available. It may have been claimed or expired. Scan again.",
+			"認証結果が見つかりません。取得済み、または期限切れの可能性があります。もう一度スキャンしてください。",
+			"授權結果已不存在，可能已取走或逾時，請重新掃碼。",
+		],
+		[
+			"unknown",
+			'Unknown authorization state: {"status":"unexpected","diagnostic":"原诊断"}',
+			'不明な認証状態: {"status":"unexpected","diagnostic":"原诊断"}',
+			'未知的授權狀態：{"status":"unexpected","diagnostic":"原诊断"}',
+		],
+		["raw", "原服务端诊断", "原服务端诊断", "原服务端诊断"],
+	] as const)(
+		"%s authorization failure follows the current language without restarting or re-claiming",
+		async (kind, en, ja, tw) => {
+			vi.useFakeTimers();
+			try {
+				i18n.set({ locale: "en", voice: "plain" });
+				postRoutes({
+					[BEGIN]: () => {
+						if (kind === "begin") throw new Error("原诊断");
+						return BEGIN_OK;
+					},
+					[DRAFT]: () => {
+						if (kind === "missing") throw new ApiError(404, { code: "not_found" }, "原诊断");
+						return { settings: {} };
+					},
+				});
+				getMock.mockResolvedValue(
+					kind === "unknown"
+						? { state: { status: "unexpected", diagnostic: "原诊断" } }
+						: kind === "raw"
+							? { state: { status: "error", message: "原服务端诊断" } }
+							: loggedIn(),
+				);
+				const got = vi.fn();
+				render(<ConnectionAuthButton adapterKey="qq-official" onCredentials={got} />);
+				await act(async () => {
+					fireEvent.click(screen.getByRole("button", { name: "Scan to connect / create" }));
+				});
+				if (kind !== "begin")
+					await act(async () => {
+						await vi.advanceTimersByTimeAsync(1000);
+					});
+				for (const [locale, message, retry] of [
+					["en", en, "Generate again"],
+					["ja", ja, "再生成"],
+					["zh-TW", tw, "重新產生"],
+				] as const) {
+					act(() => i18n.set({ locale }));
+					expect(screen.getByText(message)).toBeTruthy();
+					expect(screen.getByRole("button", { name: retry })).toBeTruthy();
+					expect(got).not.toHaveBeenCalled();
+				}
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(3000);
+				});
+				expect(callsOf(postMock, BEGIN)).toBe(1);
+				expect(callsOf(postMock, DRAFT)).toBe(kind === "incomplete" || kind === "missing" ? 1 : 0);
+				expect(getMock).toHaveBeenCalledTimes(kind === "begin" ? 0 : 1);
+			} finally {
+				cleanup();
+				vi.useRealTimers();
+			}
+		},
+	);
 });
 
 /**

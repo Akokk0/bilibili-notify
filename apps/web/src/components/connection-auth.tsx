@@ -5,7 +5,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { Btn, ErrorNote, ModalShell, Pill, QrPanel } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
-import { i18n, useT } from "../i18n";
+import { useT } from "../i18n";
 import { ApiError, api } from "../services/api";
 
 /**
@@ -14,6 +14,11 @@ import { ApiError, api } from "../services/api";
  */
 
 type Phase = "closed" | "starting" | "waiting" | "expired" | "error";
+
+type AuthError =
+	| { kind: "begin-failed" | "raw"; message: string }
+	| { kind: "incomplete" | "missing" }
+	| { kind: "unknown"; state: string };
 
 /** 缺失 / 不是数的时候按 server 当前的口径来。 */
 const POLL_FALLBACK_SEC = 2;
@@ -61,7 +66,7 @@ export function ConnectionAuthButton({
 	// 「正在取回凭据」:刻意不是 Phase —— 新增阶段值会让问询的 effect 重跑,旧闭包的 alive 变假,
 	// 而取草稿的请求已经发出、服务端已经清了草稿,回来的凭据就被丢掉(必现)。
 	const [retrieving, setRetrieving] = useState(false);
-	const [err, setErr] = useState<string | null>(null);
+	const [err, setErr] = useState<AuthError | null>(null);
 	// 回调走 ref:轮询 effect 不因父组件每次渲染换回调而重启。
 	const onCredentialsRef = useRef(onCredentials);
 	onCredentialsRef.current = onCredentials;
@@ -80,7 +85,7 @@ export function ConnectionAuthButton({
 			setQr(s.state.status === "awaiting-scan" ? s.state.qr.dataUrl : null);
 			setPhase("waiting");
 		} catch (e) {
-			setErr(tx("connectionAuth.connectionAuthButton.text1", { value0: (e as Error).message }));
+			setErr({ kind: "begin-failed", message: (e as Error).message });
 			setPhase("error");
 		}
 	}
@@ -114,19 +119,19 @@ export function ConnectionAuthButton({
 					return;
 				}
 				setRetrieving(false);
-				setErr(i18n.t("connectionAuth.connectionAuthButton.text2"));
+				setErr({ kind: "incomplete" });
 				setPhase("error");
 			} catch (e) {
 				if (!alive) return;
 				if (e instanceof ApiError && e.code === "not_found") {
 					setRetrieving(false);
-					setErr(i18n.t("connectionAuth.connectionAuthButton.text3"));
+					setErr({ kind: "missing" });
 					setPhase("error");
 					return;
 				}
 				if (e instanceof ApiError && e.code === "conflict") {
 					setRetrieving(false);
-					setErr(e.message);
+					setErr({ kind: "raw", message: e.message });
 					setPhase("error");
 					return;
 				}
@@ -158,16 +163,12 @@ export function ConnectionAuthButton({
 						setPhase("expired");
 						return;
 					case "error":
-						setErr(s.message);
+						setErr({ kind: "raw", message: s.message });
 						setPhase("error");
 						return;
 					default: {
 						const unhandled: never = s;
-						setErr(
-							i18n.t("connectionAuth.connectionAuthButton.text4", {
-								value0: JSON.stringify(unhandled),
-							}),
-						);
+						setErr({ kind: "unknown", state: JSON.stringify(unhandled) });
 						setPhase("error");
 						return;
 					}
@@ -190,6 +191,22 @@ export function ConnectionAuthButton({
 			clearTimeout(timer);
 		};
 	}, [phase, session, authPath]);
+
+	function errorText(): string | null {
+		if (!err) return null;
+		switch (err.kind) {
+			case "begin-failed":
+				return tx("connectionAuth.connectionAuthButton.text1", { value0: err.message });
+			case "incomplete":
+				return tx("connectionAuth.connectionAuthButton.text2");
+			case "missing":
+				return tx("connectionAuth.connectionAuthButton.text3");
+			case "unknown":
+				return tx("connectionAuth.connectionAuthButton.text4", { value0: err.state });
+			case "raw":
+				return err.message;
+		}
+	}
 
 	const open = phase !== "closed";
 	return (
@@ -229,7 +246,7 @@ export function ConnectionAuthButton({
 								{tx("connectionAuth.connectionAuthButton.text11")}
 							</div>
 						) : null}
-						{phase === "error" && err ? <ErrorNote>{err}</ErrorNote> : null}
+						{phase === "error" && err ? <ErrorNote>{errorText()}</ErrorNote> : null}
 						{phase === "expired" || phase === "error" ? (
 							<Btn variant="outline" size="sm" onClick={() => void start()}>
 								{tx("connectionAuth.connectionAuthButton.text12")}
