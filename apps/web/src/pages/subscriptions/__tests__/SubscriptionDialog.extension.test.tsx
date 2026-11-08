@@ -112,7 +112,7 @@ describe("SubscriptionDialog × 拓展订阅", () => {
 			act(() => i18n.set({ locale: "en", voice: "plain" }));
 			expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("尚未保存");
 			expect(save).not.toHaveBeenCalled();
-			fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+			fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
 			expect(save).toHaveBeenCalledWith(
 				expect.objectContaining({
 					notes: "尚未保存",

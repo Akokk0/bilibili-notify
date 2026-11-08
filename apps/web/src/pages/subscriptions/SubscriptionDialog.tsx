@@ -643,8 +643,11 @@ export function SubscriptionDialog({
 								<>
 									<span className="mx-1 opacity-70">·</span>
 									<span>
-										{formatCount(createProfile?.followers ?? draft.cachedProfile?.followers ?? 0)}{" "}
-										{tx("sourceUi.pages.up.UpDialog.UpDialog.15")}
+										{tx("sourceUi.pages.up.UpDialog.UpDialog.15", {
+											count: formatCount(
+												createProfile?.followers ?? draft.cachedProfile?.followers ?? 0,
+											),
+										})}
 									</span>
 								</>
 							) : null}

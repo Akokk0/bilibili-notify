@@ -732,7 +732,7 @@
 	"sourceUi.pages.up.UpDialog.wordcloud.12": "下播时作为附加消息一起推",
 	"sourceUi.pages.up.UpDialog.extraHint.13": "推送「{value1}」时附加一条",
 	"sourceUi.pages.up.UpDialog.extraOffHint.14": "需先开启「{value1}」才能推这个附加项",
-	"sourceUi.pages.up.UpDialog.UpDialog.15": "粉丝",
+	"sourceUi.pages.up.UpDialog.UpDialog.15": "{count} 粉丝",
 	"sourceUi.pages.up.UpDialog.label.16": "基础",
 	"sourceUi.pages.up.UpDialog.sub.17": "关闭后整体停止接收推送",
 	"sourceUi.pages.up.UpDialog.UpDialog.18": "编辑",
