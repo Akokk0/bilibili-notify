@@ -1482,6 +1482,25 @@ function ConnectionRail({
 	);
 }
 
+type TargetToastContent =
+	| {
+			kind:
+				| "connection-created"
+				| "connection-saved"
+				| "connection-removed"
+				| "target-created"
+				| "target-saved"
+				| "target-removed"
+				| "endpoint-missing"
+				| "adapter-missing"
+				| "connection-missing"
+				| "managed-endpoint"
+				| "session-scopes-missing"
+				| "managed-target-edit";
+	  }
+	| { kind: "delivered" | "connected"; latencyMs: number }
+	| { kind: "failed" | "test-failed" | "raw"; message: string };
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function Targets() {
@@ -1520,7 +1539,7 @@ export default function Targets() {
 	const [testing, setTesting] = useState<Record<string, TestState>>({});
 	const [targetTesting, setTargetTesting] = useState<Record<string, TestState>>({});
 	const [confirmTest, setConfirmTest] = useState<PushTarget | null>(null);
-	const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+	const [toast, setToast] = useState<{ content: TargetToastContent; ok: boolean } | null>(null);
 	// P2:toast 定时器句柄。此前裸 window.setTimeout 无 unmount 清理 →
 	// 组件卸载后仍 setToast(已卸载组件)+ 定时器泄漏。
 	const toastTimer = useRef<number | null>(null);
@@ -1565,8 +1584,8 @@ export default function Targets() {
 		? managedEndpointTargetForConnection(selectedConnection, targets)
 		: undefined;
 
-	const showToast = (msg: string, ok = true): void => {
-		setToast({ msg, ok });
+	const showToast = (content: TargetToastContent, ok = true): void => {
+		setToast({ content, ok });
 		if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
 		toastTimer.current = window.setTimeout(() => setToast(null), TOAST_DURATION_MS);
 	};
@@ -1605,8 +1624,8 @@ export default function Targets() {
 			qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
 			showToast(
 				connectionDraft?.base === undefined
-					? tx("targets.targets.text1")
-					: tx("targets.targets.text2"),
+					? { kind: "connection-created" }
+					: { kind: "connection-saved" },
 			);
 			setConnectionDraft(null);
 		},
@@ -1628,7 +1647,7 @@ export default function Targets() {
 			qc.invalidateQueries({ queryKey: ["targets"] });
 			// 删掉一条,它绑着的那个 bot 该重新挑得动 —— 同上,名单得当场作废。
 			qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
-			showToast(tx("targets.targets.text3"));
+			showToast({ kind: "connection-removed" });
 			setConfirmDelete(null);
 		},
 	});
@@ -1647,7 +1666,7 @@ export default function Targets() {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["targets"] });
 			showToast(
-				targetDraft?.mode === "add" ? tx("targets.targets.text4") : tx("targets.targets.text5"),
+				targetDraft?.mode === "add" ? { kind: "target-created" } : { kind: "target-saved" },
 			);
 			setTargetDraft(null);
 		},
@@ -1666,7 +1685,7 @@ export default function Targets() {
 		},
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["targets"] });
-			showToast(tx("targets.targets.text6"));
+			showToast({ kind: "target-removed" });
 			setConfirmDelete(null);
 		},
 	});
@@ -1675,7 +1694,7 @@ export default function Targets() {
 		if (isEndpointConnection(a)) {
 			const target = managedEndpointTargetForConnection(a, targets);
 			if (!target) {
-				showToast(tx("targets.targets.text7"), false);
+				showToast({ kind: "endpoint-missing" }, false);
 				return;
 			}
 			setTesting((p) => ({ ...p, [a.id]: "pending" }));
@@ -1688,8 +1707,8 @@ export default function Targets() {
 				setTargetTesting((p) => ({ ...p, [target.id]: res.ok ? "ok" : "fail" }));
 				showToast(
 					res.ok
-						? tx("targets.targets.text8", { value0: res.latencyMs })
-						: tx("targets.targets.text9", { value0: res.message }),
+						? { kind: "delivered", latencyMs: res.latencyMs }
+						: { kind: "failed", message: res.message },
 					res.ok,
 				);
 				qc.invalidateQueries({ queryKey: ["targets"] });
@@ -1697,7 +1716,7 @@ export default function Targets() {
 				setTesting((p) => ({ ...p, [a.id]: "fail" }));
 				setTargetTesting((p) => ({ ...p, [target.id]: "fail" }));
 				const msg = err instanceof ApiError ? err.message : String(err);
-				showToast(tx("targets.targets.text10", { value0: msg }), false);
+				showToast({ kind: "test-failed", message: msg }, false);
 			}
 			window.setTimeout(() => {
 				setTesting((p) => {
@@ -1725,21 +1744,21 @@ export default function Targets() {
 					delete next[a.id];
 					return next;
 				});
-				showToast(res.message, false);
+				showToast({ kind: "raw", message: res.message }, false);
 				return;
 			}
 			setTesting((p) => ({ ...p, [a.id]: res.ok ? "ok" : "fail" }));
 			showToast(
 				res.ok
-					? tx("targets.targets.text11", { value0: res.latencyMs })
-					: tx("targets.targets.text9", { value0: res.message }),
+					? { kind: "connected", latencyMs: res.latencyMs }
+					: { kind: "failed", message: res.message },
 				res.ok,
 			);
 			qc.invalidateQueries({ queryKey: ["connections"] });
 		} catch (err) {
 			setTesting((p) => ({ ...p, [a.id]: "fail" }));
 			const msg = err instanceof ApiError ? err.message : String(err);
-			showToast(tx("targets.targets.text10", { value0: msg }), false);
+			showToast({ kind: "test-failed", message: msg }, false);
 		}
 		window.setTimeout(() => {
 			setTesting((p) => {
@@ -1759,15 +1778,15 @@ export default function Targets() {
 			setTargetTesting((p) => ({ ...p, [t.id]: res.ok ? "ok" : "fail" }));
 			showToast(
 				res.ok
-					? tx("targets.targets.text8", { value0: res.latencyMs })
-					: tx("targets.targets.text9", { value0: res.message }),
+					? { kind: "delivered", latencyMs: res.latencyMs }
+					: { kind: "failed", message: res.message },
 				res.ok,
 			);
 			qc.invalidateQueries({ queryKey: ["targets"] });
 		} catch (err) {
 			setTargetTesting((p) => ({ ...p, [t.id]: "fail" }));
 			const msg = err instanceof ApiError ? err.message : String(err);
-			showToast(tx("targets.targets.text10", { value0: msg }), false);
+			showToast({ kind: "test-failed", message: msg }, false);
 		}
 		window.setTimeout(() => {
 			setTargetTesting((p) => {
@@ -1794,7 +1813,7 @@ export default function Targets() {
 
 	function startEditConnection(a: Connection): void {
 		if (!adapters.some((entry) => entry.key === a.adapterKey)) {
-			showToast(tx("targets.connectionEditorModal.text13"), false);
+			showToast({ kind: "adapter-missing" }, false);
 			return;
 		}
 		setError(null);
@@ -1811,15 +1830,15 @@ export default function Targets() {
 		setError(null);
 		const a = connection ?? selectedConnection ?? connections[0];
 		if (!a) {
-			showToast(tx("targets.targets.text12"), false);
+			showToast({ kind: "connection-missing" }, false);
 			return;
 		}
 		if (isEndpointConnection(a)) {
-			showToast(tx("targets.targets.text13"), false);
+			showToast({ kind: "managed-endpoint" }, false);
 			return;
 		}
 		if (a.platformSnapshot.scopes.length === 0) {
-			showToast(tx("targets.noSessionScopes"), false);
+			showToast({ kind: "session-scopes-missing" }, false);
 			return;
 		}
 		setTargetDraft({ mode: "add", value: makeEmptyTarget(a, "") });
@@ -1828,10 +1847,51 @@ export default function Targets() {
 	function startEditTarget(t: PushTarget): void {
 		setError(null);
 		if (t.kind === "endpoint" && t.managedBy === "connection") {
-			showToast(tx("targets.targets.text14"), false);
+			showToast({ kind: "managed-target-edit" }, false);
 			return;
 		}
 		setTargetDraft({ mode: "edit", value: t });
+	}
+
+	function toastText(): string {
+		if (!toast) return "";
+		const content = toast.content;
+		switch (content.kind) {
+			case "connection-created":
+				return tx("targets.targets.text1");
+			case "connection-saved":
+				return tx("targets.targets.text2");
+			case "connection-removed":
+				return tx("targets.targets.text3");
+			case "target-created":
+				return tx("targets.targets.text4");
+			case "target-saved":
+				return tx("targets.targets.text5");
+			case "target-removed":
+				return tx("targets.targets.text6");
+			case "endpoint-missing":
+				return tx("targets.targets.text7");
+			case "adapter-missing":
+				return tx("targets.connectionEditorModal.text13");
+			case "connection-missing":
+				return tx("targets.targets.text12");
+			case "managed-endpoint":
+				return tx("targets.targets.text13");
+			case "session-scopes-missing":
+				return tx("targets.noSessionScopes");
+			case "managed-target-edit":
+				return tx("targets.targets.text14");
+			case "delivered":
+				return tx("targets.targets.text8", { value0: content.latencyMs });
+			case "connected":
+				return tx("targets.targets.text11", { value0: content.latencyMs });
+			case "failed":
+				return tx("targets.targets.text9", { value0: content.message });
+			case "test-failed":
+				return tx("targets.targets.text10", { value0: content.message });
+			case "raw":
+				return content.message;
+		}
 	}
 
 	const selectedConnectionStatus =
@@ -2208,7 +2268,7 @@ export default function Targets() {
 				/>
 			) : null}
 
-			{toast ? <Toast tone={toast.ok ? "ok" : "err"}>{toast.msg}</Toast> : null}
+			{toast ? <Toast tone={toast.ok ? "ok" : "err"}>{toastText()}</Toast> : null}
 		</div>
 	);
 }

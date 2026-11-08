@@ -1588,5 +1588,16 @@
 	"statsSwitch.disable": "無効にする",
 	"statsSwitch.saveFailed": "統計記録の設定を保存できませんでした: {reason}",
 	"panelUi.services.stats.1": "今日",
-	"panelUi.services.stats.2#other": "{count}日前"
+	"panelUi.services.stats.2#other": "{count}日前",
+	"targets.targets.text9": "失敗: {value0}",
+	"targets.targets.text10": "テストに失敗しました: {value0}",
+	"targets.targets.text11": "接続できました · {value0}ms",
+	"targets.targets.text23": "テスト中…",
+	"targets.targets.text24": "接続済み",
+	"targets.targetCard.text10": "失敗",
+	"targets.targetCard.text11": "テスト",
+	"targets.targets.text8": "配信できました · {value0}ms",
+	"targets.targets.text25": "テスト送信",
+	"targets.targetCard.text8": "送信中…",
+	"targets.targetCard.text9": "配信済み"
 }

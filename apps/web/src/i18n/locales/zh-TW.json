@@ -1588,5 +1588,16 @@
 	"statsSwitch.disable": "停用",
 	"statsSwitch.saveFailed": "無法儲存統計開關：{reason}",
 	"panelUi.services.stats.1": "今天",
-	"panelUi.services.stats.2#other": "{count}天前"
+	"panelUi.services.stats.2#other": "{count}天前",
+	"targets.targets.text9": "失敗：{value0}",
+	"targets.targets.text10": "測試失敗：{value0}",
+	"targets.targets.text11": "已連通 · {value0}ms",
+	"targets.targets.text23": "測試中…",
+	"targets.targets.text24": "已連通",
+	"targets.targetCard.text10": "失敗",
+	"targets.targetCard.text11": "測試",
+	"targets.targets.text8": "已送達 · {value0}ms",
+	"targets.targets.text25": "發送測試",
+	"targets.targetCard.text8": "發送中…",
+	"targets.targetCard.text9": "已送達"
 }

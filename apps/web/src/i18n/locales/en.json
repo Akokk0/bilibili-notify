@@ -1628,5 +1628,16 @@
 	"statsSwitch.saveFailed": "Could not save statistics recording: {reason}",
 	"panelUi.services.stats.1": "Today",
 	"panelUi.services.stats.2#other": "{count} days ago",
-	"panelUi.services.stats.2#one": "{count} day ago"
+	"panelUi.services.stats.2#one": "{count} day ago",
+	"targets.targets.text9": "Failed: {value0}",
+	"targets.targets.text10": "Test failed: {value0}",
+	"targets.targets.text11": "Connected · {value0}ms",
+	"targets.targets.text23": "Testing…",
+	"targets.targets.text24": "Connected",
+	"targets.targetCard.text10": "Failed",
+	"targets.targetCard.text11": "Test",
+	"targets.targets.text8": "Delivered · {value0}ms",
+	"targets.targets.text25": "Send test",
+	"targets.targetCard.text8": "Sending…",
+	"targets.targetCard.text9": "Delivered"
 }

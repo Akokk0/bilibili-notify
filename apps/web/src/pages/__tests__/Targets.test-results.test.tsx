@@ -16,8 +16,8 @@ import {
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
 import Targets from "../Targets";
@@ -27,7 +27,10 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 const ONEBOT_ID = "11111111-1111-4111-8111-111111111111";
 const WEBHOOK_ID = "33333333-3333-4333-8333-333333333333";
@@ -145,4 +148,68 @@ describe("测试推送(webhook 连接的「发送测试」)", () => {
 		fireEvent.click(await screen.findByRole("button", { name: "发送测试" }));
 		await waitFor(() => expect(screen.getByText("失败:群不存在")).toBeTruthy());
 	});
+});
+
+it.each([
+	[
+		{ ok: true, latencyMs: 12 },
+		"Connected · 12ms",
+		"接続できました · 12ms",
+		"已連通 · 12ms",
+		"Connected",
+		"接続済み",
+		"已連通",
+	],
+	[
+		{ ok: false, code: "unavailable", message: "原始诊断" },
+		"Failed: 原始诊断",
+		"失敗: 原始诊断",
+		"失敗：原始诊断",
+		"Failed",
+		"失敗",
+		"失敗",
+	],
+] as const)(
+	"connection test feedback follows the current language without probing again (%s)",
+	async (response, en, ja, tw, enButton, jaButton, twButton) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		renderPage([ONEBOT_CONNECTION], []);
+		vi.mocked(api.post).mockResolvedValueOnce(response);
+		fireEvent.click(await screen.findByRole("button", { name: "Test" }));
+		await screen.findByText(en);
+		for (const [locale, text, button] of [
+			["ja", ja, jaButton],
+			["zh-TW", tw, twButton],
+			["en", en, enButton],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(text)).toBeTruthy();
+			expect(screen.getByRole("button", { name: button })).toBeTruthy();
+			expect(screen.getByRole("region", { name: "家里那台 OneBot" })).toBeTruthy();
+		}
+		expect(api.post).toHaveBeenCalledOnce();
+		expect(api.post).toHaveBeenCalledWith(`/api/connections/${ONEBOT_ID}/probe`, {});
+		expect(api.put).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	},
+);
+
+it("endpoint delivery feedback translates while retaining the managed target and sending only once", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	renderPage([WEBHOOK_CONNECTION], [MANAGED_TARGET]);
+	vi.mocked(api.post).mockResolvedValueOnce({ ok: true, latencyMs: 34 });
+	fireEvent.click(await screen.findByRole("button", { name: "Send test" }));
+	await screen.findByText("Delivered · 34ms");
+	for (const [locale, text, button] of [
+		["ja", "配信できました · 34ms", "配信済み"],
+		["zh-TW", "已送達 · 34ms", "已送達"],
+		["en", "Delivered · 34ms", "Delivered"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(text)).toBeTruthy();
+		expect(screen.getAllByRole("button", { name: button }).length).toBeGreaterThan(0);
+		expect(screen.getByRole("region", { name: "飞书群机器人" })).toBeTruthy();
+	}
+	expect(api.post).toHaveBeenCalledOnce();
+	expect(api.post).toHaveBeenCalledWith(`/api/targets/${MANAGED_TARGET.id}/test`, { kind: "text" });
 });
