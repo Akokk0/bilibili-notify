@@ -7,7 +7,11 @@
  */
 
 import type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contract";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 import {
 	activityLevel,
 	computeTotals,
@@ -335,4 +339,17 @@ describe("coveredActivityTotal — 「日均活动」的分子", () => {
 		expect(coveredActivityTotal(undefined)).toBe(0);
 		expect(coveredActivityTotal([null, null])).toBe(0);
 	});
+});
+
+it("sparse date labels follow the current language with one-day grammar and the same date positions", () => {
+	const dates = ["2026-11-06", "2026-11-07", "2026-11-08"];
+	for (const [locale, labels] of [
+		["en", ["2 days ago", "1 day ago", "Today"]],
+		["ja", ["2日前", "1日前", "今日"]],
+		["zh-TW", ["2天前", "1天前", "今天"]],
+	] as const) {
+		i18n.set({ locale, voice: "plain" });
+		expect(sparseLabels(dates, 1)).toEqual(labels);
+	}
+	expect(dates).toEqual(["2026-11-06", "2026-11-07", "2026-11-08"]);
 });

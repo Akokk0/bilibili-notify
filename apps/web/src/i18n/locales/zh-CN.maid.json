@@ -79,7 +79,6 @@
 	"sourceUi.pages.History.MessageItem.43": "女仆补发的",
 	"sourceUi.pages.Stats.hint.20": "主人，女仆正在清点统计记录，请稍等哦。",
 	"sourceUi.pages.Stats.Stats.24": "女仆正在帮主人跟踪 ",
-	"sourceUi.pages.Stats.Stats.25": " 条订阅的粉丝增减、投稿与直播频率哦。",
 	"sourceUi.pages.Dashboard.TimelinePanel.13": "主人，先在「推送目标」配好通道，再添加订阅，女仆就会把推送活动记在这里哦。",
 	"sources.membership.customHint": "主人，档位由创作者自定哦，女仆这里只设置体系默认文案与图片。",
 	"cards.content.membershipHint": "左侧渐变色管不到会员卡哦，背景色和徽章图是按会员档位自动定的～",
@@ -646,5 +645,6 @@
 	"healthCard.manage": "前往管理",
 	"history.repush.pending#other": "主人，女仆正在补发（{count} 条），好了这一行会自动更新哦。",
 	"library.images.rotation#other": "主人，{count} 张图会在每次推送时顺序轮换。",
-	"maidSkills.problems#other": "主人，有 {count} 份技能读不进来："
+	"maidSkills.problems#other": "主人，有 {count} 份技能读不进来：",
+	"sourceUi.pages.Stats.Stats.25#other": " 条订阅的粉丝增减、投稿与直播频率哦。"
 }

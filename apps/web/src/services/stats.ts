@@ -37,7 +37,7 @@ export function sparseLabels(days: string[], every = 6): string[] {
 	return days.map((_, i) => {
 		if (i === days.length - 1) return i18n.t("panelUi.services.stats.1");
 		if ((days.length - 1 - i) % every !== 0) return "";
-		return i18n.t("panelUi.services.stats.2", { value0: days.length - 1 - i });
+		return i18n.t("panelUi.services.stats.2", { count: days.length - 1 - i });
 	});
 }
 

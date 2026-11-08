@@ -31,13 +31,6 @@ import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 import Stats from "../Stats";
 
-vi.mock("../../i18n/locales/en.json", () => ({
-	default: {
-		"panelUi.pages.stats.columns.4": "Video posts",
-		"panelUi.pages.stats.radar.3": "Video output",
-	},
-}));
-
 const DAYS = 30;
 const fill = <T,>(v: T) => Array.from({ length: DAYS }, () => v);
 
@@ -591,9 +584,139 @@ it("切换语言刷新统计表头与画像轴名，保留选中的订阅", asyn
 	act(() => i18n.set({ locale: "en" }));
 	expect(screen.getByRole("columnheader", { name: /Video posts/ })).toBeTruthy();
 	await user.click(within(tableRow("抖音乙")).getByText("抖音乙"));
-	await screen.findByText("Video output");
+	expect(screen.getAllByText("Video posts").length).toBeGreaterThan(0);
 	act(() => i18n.set({ locale: "zh-CN" }));
-	expect(screen.queryByText("Video output")).toBeNull();
+	expect(screen.queryByText("Video posts")).toBeNull();
 	expect(screen.getByText("投稿量")).toBeTruthy();
 	expect(screen.getByText("AI 锐评 · 抖音乙")).toBeTruthy();
+});
+
+it("statistics page language changes retain the chosen window, creator and original measurements without writes", async () => {
+	const user = userEvent.setup();
+	renderStats();
+	await screen.findByRole("table");
+	act(() => i18n.set({ locale: "en" }));
+	expect(screen.getByText("Statistics · Followers and activity")).toBeTruthy();
+	expect(screen.getByText(/Tracking /).textContent).toBe(
+		"Tracking 2 subscriptions for follower changes, posts and live-stream frequency.",
+	);
+	const period = screen.getAllByRole("button", { name: "Past 7 days" })[0];
+	if (!period) throw new Error("The seven-day range is missing");
+	await user.click(period);
+	await user.click(within(tableRow("抖音乙")).getByText("抖音乙"));
+	for (const [locale, trend, content, live, current, window] of [
+		[
+			"ja",
+			"抖音乙 · フォロワー数の推移",
+			"コンテンツ構成",
+			"配信の概要",
+			"現在のフォロワー数",
+			"過去7日間の純増",
+		],
+		["zh-TW", "抖音乙 · 粉絲總量走勢", "內容組成", "直播概覽", "目前粉絲", "近7日淨增"],
+		[
+			"en",
+			"抖音乙 · Follower count trend",
+			"Content mix",
+			"Live overview",
+			"Current followers",
+			"7-day net change",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(trend)).toBeTruthy();
+		expect(screen.getByText(content)).toBeTruthy();
+		expect(screen.getByText(live)).toBeTruthy();
+		expect(screen.getAllByText(current).length).toBeGreaterThan(0);
+		expect(screen.getByText(window)).toBeTruthy();
+		expect(
+			screen.getByText(
+				locale === "ja"
+					? "AIレビュー · 抖音乙"
+					: locale === "zh-TW"
+						? "AI 銳評 · 抖音乙"
+						: "AI review · 抖音乙",
+			),
+		).toBeTruthy();
+		expect(screen.getAllByText("抖音乙").length).toBeGreaterThan(0);
+		expect(screen.getByText("12345")).toBeTruthy();
+		expect(screen.queryByRole("table")).toBeNull();
+	}
+	expect(api.patch).not.toHaveBeenCalled();
+	expect(api.post).not.toHaveBeenCalled();
+	expect(api.delete).not.toHaveBeenCalled();
+});
+
+it.each([1, 2])(
+	"English statistics pluralize the subscription, activity-day and stream units for count %s",
+	async (count) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		const activity = Array.from({ length: DAYS }, (_, i) => (i < count ? 1 : null));
+		mockApi(
+			count === 1
+				? [{ ...BILI_ROW, activity }]
+				: [
+						{ ...BILI_ROW, activity },
+						{ ...EXT_ROW, activity },
+					],
+			count === 1 ? [BILI_SUB] : [BILI_SUB, EXT_SUB],
+		);
+		renderStats();
+		await screen.findByRole("table");
+		expect(screen.getByText(/Tracking /).textContent).toBe(
+			count === 1
+				? "Tracking 1 subscription for follower changes, posts and live-stream frequency."
+				: "Tracking 2 subscriptions for follower changes, posts and live-stream frequency.",
+		);
+		expect(screen.getByText(count === 1 ? "video" : "videos")).toBeTruthy();
+		expect(screen.getByText(count === 1 ? "stream · 2h" : "streams · 4h")).toBeTruthy();
+		expect(
+			screen.getByText(count === 1 ? "per day · 1 day recorded" : "per day · 2 days recorded"),
+		).toBeTruthy();
+		await userEvent.setup().click(within(tableRow("B 站甲")).getByText("B 站甲"));
+		expect(screen.getByText("stream")).toBeTruthy();
+		expect(screen.getAllByText("video")).toHaveLength(2);
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	},
+);
+
+it("statistics recording controls translate while retaining a failed save and the confirmed enabled state", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	renderStats();
+	await screen.findByRole("table");
+	const controls = screen.getByRole("group", { name: "Statistics recording" });
+	vi.mocked(api.patch).mockRejectedValueOnce(new Error("原始诊断"));
+	await userEvent.setup().click(within(controls).getByRole("button", { name: "Disable" }));
+	await screen.findByRole("alert");
+	for (const [locale, group, enable, disable, error] of [
+		[
+			"ja",
+			"統計の記録",
+			"有効にする",
+			"無効にする",
+			"統計記録の設定を保存できませんでした: 原始诊断",
+		],
+		["zh-TW", "統計記錄", "啟用", "停用", "無法儲存統計開關：原始诊断"],
+		[
+			"en",
+			"Statistics recording",
+			"Enable",
+			"Disable",
+			"Could not save statistics recording: 原始诊断",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("group", { name: group })).toBe(controls);
+		expect(
+			within(controls).getByRole("button", { name: enable }).getAttribute("aria-pressed"),
+		).toBe("true");
+		expect(
+			within(controls).getByRole("button", { name: disable }).getAttribute("aria-pressed"),
+		).toBe("false");
+		expect(screen.getByRole("alert").textContent).toBe(error);
+		expect(screen.getByRole("table")).toBeTruthy();
+	}
+	expect(api.patch).toHaveBeenCalledOnce();
+	expect(api.patch).toHaveBeenCalledWith("/api/settings", { core: { stats: { enabled: false } } });
 });

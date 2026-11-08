@@ -483,7 +483,10 @@ function ContentMix({
 					<div className="text-bn-2xs text-bn-text-secondary">
 						{tx("sourceUi.pages.Stats.ContentMix.16")}
 						{coveredDays < days
-							? tx("sourceUi.pages.Stats.ContentMix.17", { value1: coveredDays })
+							? tx("sourceUi.pages.Stats.ContentMix.17", {
+									count: coveredDays,
+									value1: coveredDays,
+								})
 							: tx("sourceUi.pages.Stats.ContentMix.18", { value1: days })}
 					</div>
 				</div>
@@ -688,7 +691,7 @@ function StatsContent() {
 								<>
 									{tx("sourceUi.pages.Stats.Stats.24")}
 									<b style={{ color: PINK }}>{rows.length}</b>
-									{tx("sourceUi.pages.Stats.Stats.25")}
+									{tx("sourceUi.pages.Stats.Stats.25", { count: rows.length })}
 								</>
 							)}
 						</div>
@@ -755,7 +758,7 @@ function StatsContent() {
 						<GlassStatCard
 							label={tx("sourceUi.pages.Stats.ContentMix.13")}
 							value={dash(focused.videoPosts)}
-							suffix={tx("sourceUi.pages.Stats.suffix.30")}
+							suffix={tx("sourceUi.pages.Stats.suffix.30", { count: focused.videoPosts ?? 0 })}
 							color={AMBER}
 						/>
 						{/* KPI 行收尾在蓝:呼应「左粉右蓝」的品牌轴。 */}
@@ -763,6 +766,7 @@ function StatsContent() {
 							label={tx("sourceUi.pages.Stats.label.31")}
 							value={dash(focused.liveSessions)}
 							suffix={tx("sourceUi.pages.Stats.suffix.32", {
+								count: focused.liveSessions ?? 0,
 								value1: dash(focused.liveHours, hours),
 							})}
 							color={BLUE}
@@ -811,13 +815,14 @@ function StatsContent() {
 						<GlassStatCard
 							label={tx("sourceUi.pages.Stats.ContentMix.13")}
 							value={dash(totals?.videoPosts)}
-							suffix={tx("sourceUi.pages.Stats.suffix.30")}
+							suffix={tx("sourceUi.pages.Stats.suffix.30", { count: totals?.videoPosts ?? 0 })}
 							color={AMBER}
 						/>
 						<GlassStatCard
 							label={tx("sourceUi.pages.Stats.label.31")}
 							value={dash(totals?.liveSessions)}
 							suffix={tx("sourceUi.pages.Stats.suffix.32", {
+								count: totals?.liveSessions ?? 0,
 								value1: dash(totals?.liveHours, hours),
 							})}
 							color={BLUE}
@@ -995,7 +1000,7 @@ function StatsContent() {
 									[
 										tx("sourceUi.pages.Stats.Stats.55"),
 										dash(focused.liveSessions),
-										tx("sourceUi.pages.Stats.Stats.56"),
+										tx("sourceUi.pages.Stats.Stats.56", { count: focused.liveSessions ?? 0 }),
 									],
 									[tx("sourceUi.pages.Stats.Stats.57"), dash(focused.liveHours, hours), "h"],
 									[
@@ -1014,7 +1019,7 @@ function StatsContent() {
 									[
 										tx("sourceUi.pages.Stats.ContentMix.13"),
 										dash(focused.videoPosts),
-										tx("sourceUi.pages.Stats.suffix.30"),
+										tx("sourceUi.pages.Stats.suffix.30", { count: focused.videoPosts ?? 0 }),
 									],
 								] as Array<[string, string, string]>
 							).map(([label, v, unit]) => (

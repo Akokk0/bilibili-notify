@@ -164,3 +164,31 @@ describe("buildCsv", () => {
 		);
 	});
 });
+
+it("translated CSV headers leave original identities, raw names, numeric cells and missing values unchanged", () => {
+	for (const [locale, header] of [
+		[
+			"en",
+			"creator,Platform,ID,Followers,7-day follower change,30-day follower change,Video posts,Posts,Live streams,Live duration (h),Highest viewers per stream,Last activity",
+		],
+		[
+			"ja",
+			"クリエイター,プラットフォーム,ID,フォロワー数,過去7日のフォロワー増減,過去30日のフォロワー増減,動画投稿,投稿,配信回数,配信時間（h）,1配信の最多視聴者数,最終活動日時",
+		],
+		[
+			"zh-TW",
+			"創作者,平台,ID,粉絲數,近7日粉絲增減,近30日粉絲增減,影片投稿,動態,直播場次,直播時長（h）,單場最高觀看人數,最後活動時間",
+		],
+	] as const) {
+		i18n.set({ locale, voice: "plain" });
+		const csv = buildCsv([extSentinel({ followers: null, videoPosts: 0, posts: 0 })], 30, {
+			...who,
+			nameOf: () => "原作者甲",
+			platformOf: () => "原平台",
+		});
+		expect(csv.split("\n")).toEqual([
+			header,
+			"原作者甲,原平台,sec-1,,3,4,0,0,7,8.0,10,2026-05-16T00:00:00.000Z",
+		]);
+	}
+});
