@@ -4,8 +4,10 @@
 )]
 
 mod launcher_log;
+mod menu_content;
 
 use launcher_log::{append_launcher_log, LauncherLogEvent};
+use menu_content::{menu_content, MenuContent};
 use serde::Serialize;
 use std::{
     env,
@@ -300,84 +302,16 @@ fn setup_menu(app: &mut App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 菜单自定义文案是否用简体中文 —— 跟随系统语言:简体中文系统(zh-Hans / zh-CN /
-/// zh-SG / 裸 zh)用中文,繁体(zh-Hant / TW / HK / MO)与其余语言一律英文。系统
-/// 预定义项(复制/粘贴/退出等)由 OS 按系统语言自行本地化,这里只管自定义项,与之对齐。
-fn menu_use_zh() -> bool {
-    let locale = sys_locale::get_locale().unwrap_or_default().to_lowercase();
-    if !locale.starts_with("zh") {
-        return false;
-    }
-    // 已限定 zh-* 前缀,内部区域码判繁体即可(hant/tw/hk/mo),其余视为简体。
-    !(locale.contains("hant")
-        || locale.contains("tw")
-        || locale.contains("hk")
-        || locale.contains("mo"))
-}
-
-/// 按 `zh` 选中文/英文文案。
-fn t(zh: bool, zh_text: &'static str, en_text: &'static str) -> &'static str {
-    if zh {
-        zh_text
-    } else {
-        en_text
-    }
-}
-
-/// 启动器的 7 条自定义动作项 —— 托盘菜单与 macOS「Actions」子菜单共用,文案按
-/// 系统语言。id 与 `handle_launcher_menu_event` 的 case 一一对应。
-fn build_action_menu_items(app: &App, zh: bool) -> tauri::Result<Vec<MenuItem<tauri::Wry>>> {
-    Ok(vec![
-        MenuItem::with_id(
-            app,
-            "show_window",
-            t(zh, "显示/隐藏窗口", "Show/Hide Window"),
-            true,
-            None::<&str>,
-        )?,
-        MenuItem::with_id(
-            app,
-            "open_dashboard",
-            t(zh, "用浏览器打开面板", "Open Panel in Browser"),
-            true,
-            None::<&str>,
-        )?,
-        MenuItem::with_id(
-            app,
-            "restart_service",
-            t(zh, "重启服务", "Restart Service"),
-            true,
-            None::<&str>,
-        )?,
-        MenuItem::with_id(
-            app,
-            "open_data_dir",
-            t(zh, "打开数据目录", "Open Data Folder"),
-            true,
-            None::<&str>,
-        )?,
-        MenuItem::with_id(
-            app,
-            "open_server_log_dir",
-            t(zh, "打开后端日志目录", "Open Server Logs"),
-            true,
-            None::<&str>,
-        )?,
-        MenuItem::with_id(
-            app,
-            "open_launcher_log_dir",
-            t(zh, "打开启动器日志目录", "Open Launcher Logs"),
-            true,
-            None::<&str>,
-        )?,
-        MenuItem::with_id(
-            app,
-            "toggle_dock",
-            t(zh, "隐藏/显示 Dock 图标", "Hide/Show Dock Icon"),
-            true,
-            None::<&str>,
-        )?,
-    ])
+/// The tray and native menus share one set of localized custom actions.
+fn build_action_menu_items(
+    app: &App,
+    content: &MenuContent,
+) -> tauri::Result<Vec<MenuItem<tauri::Wry>>> {
+    content
+        .actions
+        .iter()
+        .map(|item| MenuItem::with_id(app, item.id, item.label, true, item.accelerator))
+        .collect()
 }
 
 /// macOS 原生菜单:App(关于/隐藏/退出)+ 编辑(撤销/剪切/复制/粘贴/全选)+
@@ -386,19 +320,15 @@ fn build_action_menu_items(app: &App, zh: bool) -> tauri::Result<Vec<MenuItem<ta
 fn build_macos_menu(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
     use tauri::menu::{PredefinedMenuItem, Submenu};
 
-    let zh = menu_use_zh();
+    let content = menu_content(sys_locale::get_locale().as_deref());
     // About 不走系统标准 About 面板,而是跳应用内「关于」页(dashboard /about),与多数
     // 桌面软件一致。故用自定义 id 的 MenuItem,经 on_menu_event → open_about_page 处理。
     let about = MenuItem::with_id(
         app,
-        "show_about",
-        t(
-            zh,
-            "关于 Bilibili Notify Desktop",
-            "About Bilibili Notify Desktop",
-        ),
+        content.about.id,
+        content.about.label,
         true,
-        None::<&str>,
+        content.about.accelerator,
     )?;
     let app_menu = Submenu::with_items(
         app,
@@ -416,7 +346,7 @@ fn build_macos_menu(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
     let edit_menu = Submenu::with_items(
         app,
-        t(zh, "编辑", "Edit"),
+        content.edit_title,
         true,
         &[
             &PredefinedMenuItem::undo(app, None)?,
@@ -430,7 +360,7 @@ fn build_macos_menu(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
     let window_menu = Submenu::with_items(
         app,
-        t(zh, "窗口", "Window"),
+        content.window_title,
         true,
         &[
             &PredefinedMenuItem::minimize(app, None)?,
@@ -448,13 +378,13 @@ fn build_macos_menu(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
 fn build_macos_actions_submenu(app: &App) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
     use tauri::menu::{IsMenuItem, Submenu};
 
-    let zh = menu_use_zh();
-    let items = build_action_menu_items(app, zh)?;
+    let content = menu_content(sys_locale::get_locale().as_deref());
+    let items = build_action_menu_items(app, &content)?;
     let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items
         .iter()
         .map(|i| i as &dyn IsMenuItem<tauri::Wry>)
         .collect();
-    Submenu::with_items(app, t(zh, "操作", "Actions"), true, &refs)
+    Submenu::with_items(app, content.actions_title, true, &refs)
 }
 
 fn setup_tray(app: &mut App) -> tauri::Result<()> {
@@ -501,14 +431,14 @@ fn setup_tray(app: &mut App) -> tauri::Result<()> {
 fn build_launcher_menu(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
     use tauri::menu::IsMenuItem;
 
-    let zh = menu_use_zh();
-    let items = build_action_menu_items(app, zh)?;
+    let content = menu_content(sys_locale::get_locale().as_deref());
+    let items = build_action_menu_items(app, &content)?;
     let quit = MenuItem::with_id(
         app,
-        "quit_app",
-        t(zh, "退出应用", "Quit"),
+        content.quit.id,
+        content.quit.label,
         true,
-        Some("CmdOrCtrl+Q"),
+        content.quit.accelerator,
     )?;
     let mut refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items
         .iter()
