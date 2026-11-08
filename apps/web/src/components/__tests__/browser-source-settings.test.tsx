@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { BrowserSourceSettings } from "../browser-source-settings";
 
 const { getMock, postMock } = vi.hoisted(() => ({
@@ -26,6 +27,7 @@ function mockGet({ status, detectPath = null }: { status: unknown; detectPath?: 
 
 describe("BrowserSourceSettings", () => {
 	beforeEach(() => {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
 		getMock.mockReset();
 		postMock.mockReset();
 	});
@@ -107,5 +109,38 @@ describe("BrowserSourceSettings", () => {
 		fireEvent.click(screen.getByRole("button", { name: /应用远程端点/ }));
 		expect(await screen.findByText(/ECONNREFUSED/)).toBeTruthy();
 		expect(screen.getByText("/usr/bin/chromium")).toBeTruthy(); // 原来源仍显示
+	});
+	it("browser settings change language without losing the edited endpoint or applying it", async () => {
+		mockGet({
+			status: {
+				enabled: true,
+				source: { chromeEndpoint: "ws://original-browser:3000" },
+				persistable: false,
+			},
+		});
+		postMock.mockResolvedValue({ ok: true, chromeEndpoint: "ws://edited-browser:3000" });
+		render(<BrowserSourceSettings />);
+		const current = await screen.findByTestId("browser-source-current");
+		await waitFor(() => expect(current.textContent).toContain("ws://original-browser:3000"));
+		const input = screen.getByPlaceholderText(/ws:\/\//) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "ws://edited-browser:3000" } });
+		for (const [locale, remote, apply] of [
+			["en", "Remote browser", "Apply remote endpoint"],
+			["ja", "リモートブラウザー", "リモート接続先を適用"],
+			["zh-TW", "遠端瀏覽器", "套用遠端端點"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(current.textContent).toContain(remote);
+			expect(current.textContent).toContain("ws://original-browser:3000");
+			expect(screen.getByPlaceholderText(/ws:\/\//)).toBe(input);
+			expect(input.value).toBe("ws://edited-browser:3000");
+			expect(screen.getByRole("button", { name: apply })).toBeTruthy();
+			expect(postMock).not.toHaveBeenCalled();
+		}
+		fireEvent.click(screen.getByRole("button", { name: "套用遠端端點" }));
+		await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
+		expect(postMock).toHaveBeenCalledWith("/api/cards/renderer", {
+			chromeEndpoint: "ws://edited-browser:3000",
+		});
 	});
 });

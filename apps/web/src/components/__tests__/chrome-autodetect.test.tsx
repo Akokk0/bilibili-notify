@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { ChromeAutoDetect } from "../chrome-autodetect";
 
 const { getMock, postMock } = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ vi.mock("../../services/api", () => ({
 
 describe("ChromeAutoDetect", () => {
 	beforeEach(() => {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
 		getMock.mockReset();
 		postMock.mockReset();
 	});
@@ -121,5 +123,28 @@ describe("ChromeAutoDetect", () => {
 		fireEvent.click(screen.getByRole("button", { name: /连接远程浏览器/ }));
 		expect(await screen.findByText(/ECONNREFUSED/)).toBeTruthy();
 		expect(onEnabled).not.toHaveBeenCalled();
+	});
+	it("detected browser and pending endpoint survive language changes without enabling rendering", async () => {
+		getMock.mockResolvedValue({ path: "/test/browser" });
+		const onEnabled = vi.fn();
+		render(<ChromeAutoDetect onEnabled={onEnabled} />);
+		fireEvent.click(screen.getByRole("button", { name: /自动探测/ }));
+		await screen.findByText("/test/browser");
+		const input = screen.getByPlaceholderText(/ws:\/\//) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "ws://pending-browser:3000" } });
+		for (const [locale, enable, connect] of [
+			["en", "Enable", "Connect remote browser"],
+			["ja", "有効にする", "リモートブラウザーに接続"],
+			["zh-TW", "啟用", "連線至遠端瀏覽器"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText("/test/browser")).toBeTruthy();
+			expect(screen.getByRole("button", { name: enable })).toBeTruthy();
+			expect(screen.getByRole("button", { name: connect })).toBeTruthy();
+			expect(screen.getByPlaceholderText(/ws:\/\//)).toBe(input);
+			expect(input.value).toBe("ws://pending-browser:3000");
+			expect(postMock).not.toHaveBeenCalled();
+			expect(onEnabled).not.toHaveBeenCalled();
+		}
 	});
 });
