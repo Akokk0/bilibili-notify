@@ -111,6 +111,86 @@ afterEach(() => {
 });
 
 describe("Cards per-UP 作用域接线", () => {
+	it.each([
+		[
+			"en",
+			"Card rendering",
+			"Global",
+			"Card previews · global settings",
+			"Card previews · this subscription’s settings",
+			"Card skin",
+			"Remove custom card settings for this subscription?",
+			"Cancel",
+			"Remove custom settings for UID 123456",
+		],
+		[
+			"ja",
+			"カード描画",
+			"全体設定",
+			"カード一覧プレビュー · 全体設定を反映",
+			"カード一覧プレビュー · この購読の設定を反映",
+			"カードスキン",
+			"この購読のカード個別設定を削除しますか？",
+			"キャンセル",
+			"UID 123456 の個別設定を削除",
+		],
+		[
+			"zh-TW",
+			"卡片繪製",
+			"全域",
+			"卡片總覽 · 即時反映全域設定",
+			"卡片總覽 · 即時反映此訂閱設定",
+			"卡片外觀",
+			"移除此訂閱的卡片個別設定？",
+			"取消",
+			"移除 UID 123456 的個別設定",
+		],
+	] as const)(
+		"%s card settings localize global and subscription scopes without saving or removing drafts",
+		async (locale, hero, global, family, subFamily, skin, removal, cancel, removeAction) => {
+			const { container } = renderCards();
+			await screen.findByText("UID 123456");
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(hero)).toBeTruthy();
+			expect(screen.getAllByRole("button", { name: global }).length).toBeGreaterThan(0);
+			expect(screen.getByText(family)).toBeTruthy();
+			await waitFor(() =>
+				expect(
+					screen.getAllByRole("img", {
+						name:
+							locale === "en"
+								? "Live card preview"
+								: locale === "ja"
+									? "カードのリアルタイムプレビュー"
+									: "卡片即時預覽",
+					}).length,
+				).toBe(4),
+			);
+			fireEvent.click(screen.getByText("UID 123456"));
+			await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+			expect(screen.getByText(subFamily)).toBeTruthy();
+			expect(screen.getAllByText(skin).length).toBeGreaterThan(0);
+			const picker = container.querySelector('[data-code="cardSkin"] [role="combobox"]');
+			if (!picker) throw new Error("card skin picker is not ready");
+			chooseSelect(picker as HTMLButtonElement, "极光");
+			fireEvent.click(screen.getByRole("button", { name: removeAction }));
+			expect(await screen.findByText(removal)).toBeTruthy();
+			expect(screen.getAllByText("UID 123456", { selector: "b" }).length).toBeGreaterThan(0);
+			fireEvent.click(screen.getByRole("button", { name: cancel }));
+			expect(picker.textContent).toBe("极光");
+			expect(api.patch).not.toHaveBeenCalled();
+			await act(async () => {
+				await useDraftStore.getState().current?.onSave();
+			});
+			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${CUSTOMIZED.id}`, {
+				overrides: {
+					cards: { liveCoverImageIds: ["per-up-cover"] },
+					cardSkin: "aurora",
+					cardSkinKnobs: null,
+				},
+			});
+		},
+	);
 	it("localized skin inheritance retains the subscription and explicitly clears only its skin override", async () => {
 		const skinned = { ...CUSTOMIZED, overrides: { ...CUSTOMIZED.overrides, cardSkin: "aurora" } };
 		const baseGet = vi.mocked(api.get).getMockImplementation();

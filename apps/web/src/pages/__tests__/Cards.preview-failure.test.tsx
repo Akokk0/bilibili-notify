@@ -14,7 +14,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
@@ -173,6 +173,67 @@ describe("测试推送的结果", () => {
 		await waitFor(() => expect(btn.disabled).toBe(false));
 		fireEvent.click(btn);
 	}
+
+	it.each([
+		[
+			"en",
+			"Sending…",
+			"Test push",
+			"Delivered · 12ms",
+			"A sample card was sent: Original reason 原因",
+			"Push failed: Original diagnostic 原文",
+		],
+		[
+			"ja",
+			"送信中…",
+			"テスト送信",
+			"送信完了 · 12ms",
+			"サンプルカードを送信しました：Original reason 原因",
+			"送信失敗：Original diagnostic 原文",
+		],
+		[
+			"zh-TW",
+			"推播中…",
+			"測試推播",
+			"已送達 · 12ms",
+			"已推播範例卡片：Original reason 原因",
+			"推播失敗：Original diagnostic 原文",
+		],
+	] as const)(
+		"%s test push localizes pending and result text while preserving diagnostics and sending once per click",
+		async (locale, pending, button, delivered, sample, failed) => {
+			let finish: ((response: unknown) => void) | undefined;
+			const response = new Promise((resolve) => {
+				finish = resolve;
+			});
+			await clickTestPush(() => response);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const sending = screen.getByRole("button", { name: pending }) as HTMLButtonElement;
+			expect(sending.disabled).toBe(true);
+			if (!finish) throw new Error("test push was not started");
+			await act(async () => {
+				finish?.({ ok: true, latencyMs: 12, sampleReason: "Original reason 原因" });
+			});
+			expect(await screen.findByText(delivered)).toBeTruthy();
+			expect(screen.getByText(sample)).toBeTruthy();
+			vi.mocked(api.post).mockImplementation(async (url: string) =>
+				url === "/api/cards/test"
+					? { ok: false, code: "unavailable", message: "Original diagnostic 原文" }
+					: { ok: true, dataUrl: "data:image/png;base64,xx" },
+			);
+			fireEvent.click(screen.getByRole("button", { name: button }));
+			expect(await screen.findByText(failed)).toBeTruthy();
+			const sent = vi.mocked(api.post).mock.calls.filter(([url]) => url === "/api/cards/test");
+			expect(sent).toHaveLength(2);
+			for (const [, body] of sent)
+				expect(body).toMatchObject({
+					targetId: "t1",
+					kind: "superchat",
+					content: { amount: 30, rank: 1, durationSec: 60 },
+				});
+			expect(api.patch).not.toHaveBeenCalled();
+		},
+	);
 
 	it("送达({ ok: true, latencyMs })→「已送达 · 耗时」", async () => {
 		await clickTestPush(async () => ({ ok: true, latencyMs: 12 }));

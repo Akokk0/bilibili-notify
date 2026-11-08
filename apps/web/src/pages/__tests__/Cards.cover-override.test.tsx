@@ -13,7 +13,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
@@ -33,7 +33,10 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 function resetStore(): void {
 	useDraftStore.setState({
@@ -99,7 +102,7 @@ afterEach(() => {
 
 type PatchBody = { overrides: { cards: { liveCoverImageIds?: string[] } | null } };
 
-async function openPerUp(sub: Subscription): Promise<void> {
+async function openPerUp(sub: Subscription, baseCovers: string[] = []): Promise<void> {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url === "/api/library/images") return Promise.resolve({ ok: true, ids: [] });
 		if (url.includes("/api/subscriptions")) return Promise.resolve([sub]);
@@ -112,7 +115,14 @@ async function openPerUp(sub: Subscription): Promise<void> {
 			});
 		}
 		return Promise.resolve({
-			core: { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalSettings,
+			core: {
+				logging: {},
+				master: {},
+				defaults: {
+					...makeDefaults(),
+					cards: { ...makeDefaults().cards, liveCoverImageIds: baseCovers },
+				},
+			} as unknown as GlobalSettings,
 		});
 	});
 	renderCards();
@@ -123,6 +133,39 @@ async function openPerUp(sub: Subscription): Promise<void> {
 }
 
 describe("逐订阅的直播封面覆盖", () => {
+	it.each([
+		[
+			"en",
+			"Live cover",
+			"Not selected (use the source’s original live cover)",
+			"Follow global covers (2 images)",
+		],
+		["ja", "配信カバー", "未選択（ソースの配信カバーを使用）", "全体設定のカバーを使用（2枚）"],
+		["zh-TW", "直播封面", "未選擇（使用來源的直播間原始封面）", "沿用全域封面（2 張）"],
+	] as const)(
+		"%s cover inheritance translates while explicitly clearing only the subscription override",
+		async (locale, title, empty, inherited) => {
+			await openPerUp(
+				{
+					...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
+					overrides: { cards: { liveCoverImageIds: [] } },
+				},
+				["global-1", "global-2"],
+			);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(empty)).toBeTruthy();
+			fireEvent.click(toggleOf(title));
+			expect(screen.getByText(inherited, { exact: false })).toBeTruthy();
+			expect(api.patch).not.toHaveBeenCalled();
+			await act(async () => {
+				await useDraftStore.getState().current?.onSave();
+			});
+			expect(api.patch).toHaveBeenCalledWith(expect.any(String), {
+				overrides: { cards: null, cardSkin: null, cardSkinKnobs: null },
+			});
+		},
+	);
 	// 验红:把 Cards.tsx 里 savePerUp 的 `: null` 换成 `: undefined`,键消失,这条红。
 	it("关掉覆盖 → PATCH 里 cards 显式为 null(否则后端当没说)", async () => {
 		await openPerUp({

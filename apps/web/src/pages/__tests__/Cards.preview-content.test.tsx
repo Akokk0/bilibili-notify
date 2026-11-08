@@ -106,6 +106,79 @@ afterEach(() => {
 });
 
 describe("预览请求体里的 SC 金额与上舰档", () => {
+	it.each([
+		[
+			"en",
+			"Display duration (seconds)",
+			"Sample amount (CNY)",
+			"Leave blank to use a sample message",
+			"Membership program",
+			"New member name",
+			"Leave blank to use the signed-in account name",
+			"Membership alert",
+		],
+		[
+			"ja",
+			"表示時間（秒）",
+			"サンプル金額（CNY）",
+			"空欄ならサンプルメッセージを使用",
+			"メンバーシップ制度",
+			"新しいメンバーの名前",
+			"空欄ならログイン中のアカウント名を使用",
+			"メンバーシップ通知",
+		],
+		[
+			"zh-TW",
+			"顯示時間（秒）",
+			"範例金額（CNY）",
+			"留空時使用範例留言",
+			"會員制度",
+			"新會員稱呼",
+			"留空時使用已登入的帳號名稱",
+			"會員提醒",
+		],
+	] as const)(
+		"%s preview controls translate without replacing edited message, amounts or source tier names",
+		async (locale, durationLabel, amountLabel, messagePlaceholder, programLabel, memberLabel, memberPlaceholder, memberTab) => {
+			renderCards();
+			fireEvent.click((await screen.findAllByRole("button", { name: "SC 提醒" }))[0]);
+			const duration = await screen.findByRole("spinbutton", { name: "展示时长（秒）" });
+			fireEvent.change(duration, { target: { value: "17" } });
+			fireEvent.click(screen.getByRole("button", { name: "6" }));
+			const message = screen.getByPlaceholderText("留空就用示例留言");
+			fireEvent.change(message, { target: { value: "Original message 原文" } });
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByRole("spinbutton", { name: durationLabel })).toBe(duration);
+			expect(screen.getByText(amountLabel)).toBeTruthy();
+			expect(screen.getByPlaceholderText(messagePlaceholder)).toBe(message);
+			await waitFor(
+				() =>
+					expect(previewBodies("superchat").at(-1)?.content).toMatchObject({
+						amount: 30,
+						rank: 6,
+						durationSec: 17,
+						text: "Original message 原文",
+					}),
+				{ timeout: 5000 },
+			);
+			fireEvent.click(screen.getAllByRole("button", { name: memberTab })[0]);
+			expect(await screen.findByText(programLabel)).toBeTruthy();
+			expect(screen.getByText(memberLabel)).toBeTruthy();
+			const member = screen.getByPlaceholderText(memberPlaceholder);
+			fireEvent.change(member, { target: { value: "Original member 原文" } });
+			chooseSelect(tierPicker(), "Gold");
+			await waitFor(
+				() =>
+					expect(previewBodies("membership").at(-1)?.content).toMatchObject({
+						program: "readers",
+						tierKey: "gold",
+						text: "Original member 原文",
+					}),
+				{ timeout: 5000 },
+			);
+			expect(api.patch).not.toHaveBeenCalled();
+		},
+	);
 	it("全家福:sc 带 amount、guard 带 program 与 tierKey(默认最低一档舰长),都不再带 price / level", async () => {
 		renderCards();
 		await waitFor(
