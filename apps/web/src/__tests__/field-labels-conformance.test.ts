@@ -183,3 +183,26 @@ it("subscription and membership descriptions translate without losing system and
 		i18n.set({ locale: state.locale, voice: state.voice });
 	}
 });
+
+it("delivery and report fields localize while secrets and approval commands keep their meaning", () => {
+	const state = i18n.state();
+	try {
+		for (const [locale, retryLabel, approvalLabel, secretHint] of [
+			["en", "Retries", "Confirm before sending", "Added to the x-bilibili-notify-secret header."],
+			["ja", "再試行回数", "送信前に確認", "x-bilibili-notify-secret ヘッダーに付けます。"],
+			["zh-TW", "重試次數", "傳送前確認", "加在 x-bilibili-notify-secret 標頭中。"],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			expect(getFieldLabel("settings.maxRetries")?.label).toBe(retryLabel);
+			expect(getFieldLabel("roastSchedule.approval")?.label).toBe(approvalLabel);
+			expect(getFieldLabel("roastSchedule.approval")?.hint).toMatch(/\by\b/);
+			expect(getFieldLabel("roastSchedule.approval")?.hint).toContain("48");
+			expect(getFieldLabel("roastSchedule.cron")?.hint).toContain("0 9 * * 1");
+			expect(getFieldLabel("settings.secret")?.hint).toBe(secretHint);
+			expect(getFieldLabel("settings.secret")?.secret).toBe(true);
+			expect(getFieldLabel("settings.appSecret")?.secret).toBe(true);
+		}
+	} finally {
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
+});
