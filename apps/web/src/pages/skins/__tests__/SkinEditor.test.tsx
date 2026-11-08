@@ -143,6 +143,351 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SkinEditor", () => {
+	it("semantic color labels translate while edited accent and success colors stay in their original fields", () => {
+		renderEditor();
+		fireEvent.click(screen.getByText("语义颜色"));
+		fireEvent.change(screen.getByLabelText("主强调色"), { target: { value: "#112233" } });
+		fireEvent.change(screen.getByLabelText("成功·底"), { target: { value: "rgba(1, 2, 3, 0.4)" } });
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					groups: ["Accent colors", "Text", "Surfaces and borders", "Status colors"],
+					labels: [
+						"Primary accent",
+						"Secondary accent",
+						"Highlight",
+						"Primary text",
+						"Secondary text",
+						"Tertiary text",
+						"Disabled text",
+						"Muted text",
+						"Surface",
+						"Strong surface",
+						"Muted surface",
+						"Input background",
+						"Border",
+						"Subtle border",
+						"Hover background",
+						"Row background",
+						"Row border",
+						"Code background",
+						"Overlay",
+						"Text on solid backgrounds",
+						"Danger",
+						"Danger background",
+						"Danger text",
+						"Danger border",
+						"Success",
+						"Success background",
+						"Success text",
+						"Success border",
+						"Warning",
+						"Warning background",
+						"Warning text",
+						"Warning border",
+					],
+					accent: "Primary accent",
+					success: "Success background",
+				},
+			],
+			[
+				"ja",
+				{
+					groups: ["アクセント色", "文字", "サーフェスと枠線", "状態色"],
+					labels: [
+						"メインアクセント",
+						"サブアクセント",
+						"ハイライト",
+						"本文の文字",
+						"補足の文字",
+						"補助の文字",
+						"無効時の文字",
+						"控えめな文字",
+						"サーフェス",
+						"強いサーフェス",
+						"控えめなサーフェス",
+						"入力欄の背景",
+						"枠線",
+						"薄い枠線",
+						"ホバー背景",
+						"行の背景",
+						"行の枠線",
+						"コード背景",
+						"オーバーレイ",
+						"塗りつぶし上の文字",
+						"危険",
+						"危険の背景",
+						"危険の文字",
+						"危険の枠線",
+						"成功",
+						"成功の背景",
+						"成功の文字",
+						"成功の枠線",
+						"警告",
+						"警告の背景",
+						"警告の文字",
+						"警告の枠線",
+					],
+					accent: "メインアクセント",
+					success: "成功の背景",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					groups: ["強調色", "文字", "表面與框線", "狀態色"],
+					labels: [
+						"主要強調色",
+						"次要強調色",
+						"醒目點綴",
+						"主要文字",
+						"次要文字",
+						"輔助文字",
+						"停用文字",
+						"淡化文字",
+						"表面",
+						"強調表面",
+						"淡化表面",
+						"輸入框底色",
+						"框線",
+						"淡色框線",
+						"懸停底色",
+						"列底色",
+						"列框線",
+						"程式碼底色",
+						"遮罩",
+						"實色底上的文字",
+						"危險",
+						"危險底色",
+						"危險文字",
+						"危險框線",
+						"成功",
+						"成功底色",
+						"成功文字",
+						"成功框線",
+						"警告",
+						"警告底色",
+						"警告文字",
+						"警告框線",
+					],
+					accent: "主要強調色",
+					success: "成功底色",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			for (const group of w.groups) expect(screen.getByText(group, { exact: true })).toBeTruthy();
+			for (const label of w.labels) expect(screen.getByLabelText(label)).toBeTruthy();
+			expect((screen.getByLabelText(w.accent) as HTMLInputElement).value).toBe("#112233");
+			expect((screen.getByLabelText(w.success) as HTMLInputElement).value).toBe(
+				"rgba(1, 2, 3, 0.4)",
+			);
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.colors).toEqual({
+				accent: "#112233",
+				successSoft: "rgba(1, 2, 3, 0.4)",
+			});
+		}
+		expect(H.putCalls).toEqual([]);
+	});
+
+	it("CSS guidance translates without rewriting hook identifiers or either CSS draft", async () => {
+		renderEditor();
+		fireEvent.click(screen.getByText("自定义 CSS"));
+		const shared = '[data-bn="glass"] { border-color: #112233; }';
+		const mode = '[data-bn="btn"]:hover { box-shadow: 0 0 2px #445566; }';
+		fireEvent.change(screen.getByLabelText("共用 CSS"), { target: { value: shared } });
+		fireEvent.change(screen.getByLabelText("本模式 CSS"), { target: { value: mode } });
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					title: "Custom CSS",
+					prefix: "Selectors must use",
+					rules: /properties are limited to visual styling/,
+					hooks: "Available hooks",
+					shared: "Shared CSS",
+					mode: "Current variant CSS",
+					placeholder: "Applies only to the current light/dark variant, after shared CSS.",
+					example: "e.g. ",
+				},
+			],
+			[
+				"ja",
+				{
+					title: "カスタムCSS",
+					prefix: "セレクターは",
+					rules: /保存時に許可されない指定を除外/,
+					hooks: "利用可能なフック",
+					shared: "共通CSS",
+					mode: "現在のバリエーションのCSS",
+					placeholder: "現在のライト／ダーク版にのみ、共通CSSの後に適用します。",
+					example: "例：",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					title: "自訂 CSS",
+					prefix: "選擇器僅限",
+					rules: /儲存時會逐項移除不允許的設定/,
+					hooks: "可用掛點",
+					shared: "共用 CSS",
+					mode: "目前版本 CSS",
+					placeholder: "僅套用至目前的淺色或深色版本，接續共用 CSS 生效。",
+					example: "例如 ",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(w.title)).toBeTruthy();
+			expect(screen.getByText(w.rules).textContent).toContain(w.prefix);
+			expect(screen.getByText('[data-bn="glass"]', { exact: true })).toBeTruthy();
+			const hooks = screen.getByRole("list", { name: w.hooks });
+			expect(within(hooks).getByText("glass", { exact: true })).toBeTruthy();
+			expect(within(hooks).getByText("btn", { exact: true })).toBeTruthy();
+			expect((screen.getByLabelText(w.shared) as HTMLTextAreaElement).value).toBe(shared);
+			expect((screen.getByLabelText(w.mode) as HTMLTextAreaElement).value).toBe(mode);
+			expect(
+				screen.getByPlaceholderText(
+					`${w.example}[data-bn="glass"]:hover { box-shadow: 0 0 24px rgba(251,114,153,0.4); }`,
+				),
+			).toBeTruthy();
+			expect(screen.getByPlaceholderText(w.placeholder)).toBeTruthy();
+		}
+		expect(useSkinStore.getState().preview?.manifest.css).toBe(shared);
+		expect(useSkinStore.getState().preview?.manifest.modes.light?.css).toBe(mode);
+		expect(H.putCalls).toEqual([]);
+	});
+
+	it("localized mode synchronization explains overwrites and keeps layout-only changes in preview", async () => {
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					sync: "Sync to Dark",
+					title: "Apply Light to Dark",
+					warning:
+						"The existing Dark settings will be overwritten. Changes are only previewed until saved; Cancel restores the original appearance.",
+					layout: "Copy layout only (keep colors)",
+					detail:
+						"Copy wallpaper, corners, fonts and glass blur. Keep colors, glass backgrounds and shadows.",
+					full: "Copy everything",
+					explanation: "Include colors so both variants match: Dark will look like Light.",
+					cancel: "Cancel",
+					feedback: "Changes applied to Dark in preview. Save to keep them.",
+				},
+			],
+			[
+				"ja",
+				{
+					sync: "同期先：ダーク",
+					title: "ライトをダークに適用",
+					warning:
+						"ダークの既存設定を上書きします。保存するまではプレビューのみです。キャンセルすると元の外観に戻ります。",
+					layout: "レイアウトのみコピー（色は維持）",
+					detail:
+						"壁紙、角丸、フォント、ガラスのぼかしをコピーします。配色、ガラス背景、影は変更しません。",
+					full: "すべてコピー",
+					explanation: "色も含めて揃え、ダークをライトと同じ外観にします。",
+					cancel: "キャンセル",
+					feedback: "ダークに適用してプレビュー中です。保存すると反映されます。",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					sync: "同步至深色",
+					title: "將淺色套用至深色",
+					warning: "深色原有的設定將被覆寫。儲存前僅供預覽，按「取消」即可恢復原本的外觀。",
+					layout: "只複製版面（保留配色）",
+					detail: "複製桌布、圓角、字型與玻璃模糊；配色、玻璃底色與陰影保持不變。",
+					full: "複製全部設定",
+					explanation: "連同配色一併複製，讓深色與淺色呈現相同外觀。",
+					cancel: "取消",
+					feedback: "已將目前調整套用至深色預覽，儲存後才會保留。",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const manifest = makeManifest();
+			manifest.modes.light = { ...manifest.modes.light, colors: { accent: "#112233" } };
+			manifest.modes.dark = { colors: { accent: "#445566" } };
+			const { unmount } = renderEditor({ manifest });
+			fireEvent.click(screen.getByRole("button", { name: w.sync }));
+			const dialog = screen.getByRole("dialog", { name: "" });
+			expect(within(dialog).getByText(w.title)).toBeTruthy();
+			expect(within(dialog).getByText(w.warning)).toBeTruthy();
+			expect(within(dialog).getByText(w.detail)).toBeTruthy();
+			expect(within(dialog).getByText(w.explanation)).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: w.full })).toBeTruthy();
+			fireEvent.click(within(dialog).getByRole("button", { name: w.cancel }));
+			expect(useSkinStore.getState().preview?.manifest.modes.dark).toEqual({
+				colors: { accent: "#445566" },
+			});
+			fireEvent.click(screen.getByRole("button", { name: w.sync }));
+			fireEvent.click(
+				within(screen.getByRole("dialog", { name: "" })).getByRole("button", { name: w.layout }),
+			);
+			await screen.findByText(w.feedback);
+			expect(useSkinStore.getState().preview?.manifest.modes.dark?.wallpaper?.image).toBe(
+				"assets/bg.png",
+			);
+			expect(useSkinStore.getState().preview?.manifest.modes.dark?.colors?.accent).toBe("#445566");
+			expect(H.putCalls).toEqual([]);
+			unmount();
+		}
+	});
+
+	it("localized mode controls add a missing variant and preserve each variant when switching", async () => {
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					light: "Light",
+					dark: "Dark",
+					add: "Add Dark",
+					hint: "The top-right theme switch selects the displayed variant. A skin with only one variant is locked to that mode.",
+				},
+			],
+			[
+				"ja",
+				{
+					light: "ライト",
+					dark: "ダーク",
+					add: "追加：ダーク",
+					hint: "右上のテーマ切替で表示するバリエーションを選びます。1種類だけのスキンは、そのモードに固定されます。",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					light: "淺色",
+					dark: "深色",
+					add: "新增深色",
+					hint: "右上角的主題切換決定目前顯示的版本；只有一個版本的外觀會固定使用該模式。",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const { unmount } = renderEditor();
+			expect(screen.getByText(w.hint)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: w.add }));
+			await waitFor(() =>
+				expect(useSkinStore.getState().preview?.manifest.modes.dark?.glass?.blur).toBe(16),
+			);
+			fireEvent.click(screen.getByRole("button", { name: w.dark }));
+			await waitFor(() => expect(useSkinStore.getState().preview?.mode).toBe("dark"));
+			fireEvent.click(screen.getByRole("button", { name: w.light }));
+			await waitFor(() => expect(useSkinStore.getState().preview?.mode).toBe("light"));
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.image).toBe(
+				"assets/bg.png",
+			);
+			expect(H.putCalls).toEqual([]);
+			unmount();
+		}
+	});
+
 	it("upload progress translates while the original filename and selected asset remain intact", async () => {
 		let release = () => {};
 		H.uploadGate = new Promise<void>((resolve) => {
