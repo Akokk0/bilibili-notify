@@ -10,7 +10,9 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { type ZodType, z } from "zod";
+import { createI18n, type Locale } from "../../i18n";
 import type { SettingsField, SettingsScalarField } from "../../settings-field";
+import { bindPackageText, type PackageTextKey, withPackageDicts } from "../../texts";
 import { assertConfigFieldsMatchSchema } from "../config-fields";
 
 const SCHEMA = z.object({
@@ -643,4 +645,34 @@ describe("对表:漏判 —— 漂了今天对不出来", () => {
 			expect(() => list(z.object({ id: z.string(), name: z.string() }))).not.toThrow();
 		});
 	});
+});
+
+it("localizes a config mismatch on each check without altering matching schemas", () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "plain",
+	});
+	const binding = bindPackageText(texts.t, () => texts.state().locale);
+	try {
+		for (const [locale, message] of [
+			["en", 'extension bridge: "typoo" in the field table is not a key in the config schema.'],
+			["ja", 'extension bridge: フィールド一覧の"typoo"はconfigスキーマのキーではありません。'],
+			["zh-TW", "extension bridge: 欄位表中的「typoo」不是 config 規則的鍵。"],
+		] as const) {
+			texts.set({ locale });
+			expect(() => check([...fields(), { type: "string", key: "typoo", label: "手滑" }])).toThrow(
+				message,
+			);
+			expect(() => check(fields())).not.toThrow();
+		}
+	} finally {
+		binding.dispose();
+	}
 });
