@@ -6,12 +6,14 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import {
+	CARD_KIND_NAMES,
 	CARD_KINDS,
 	CARD_PREVIEW_SCENES,
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_MODEL_CATALOG,
 	type CardKind,
 	cardSkinBytes,
 	parseCardSkinFontKnobValue,
@@ -1576,6 +1578,38 @@ it("localizes version rejection and built-in skin labels while preserving the sk
 			expect(skin.knobs?.[0]?.label).toBe(label);
 			expect(skin.knobs?.map((knob) => knob.key)).toEqual(knobKeys);
 			expect(parseCardSkin(minimal())).toMatchObject({ ok: true, manifest: { name: "测试皮肤" } });
+		}
+	} finally {
+		binding.dispose();
+	}
+});
+
+it("localizes held card catalogue entries while preserving model labels and field paths", () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "plain",
+	});
+	const binding = bindPackageText(texts.t, () => texts.state().locale);
+	const field = CARD_SKIN_FIELDS.live[0];
+	const cover = CARD_SKIN_BUILTIN_BLOCKS.live.cover;
+	try {
+		for (const [locale, kind, creator, label] of [
+			["en", "Live card", "Creator name", "Cover image"],
+			["ja", "配信カード", "クリエイター名", "カバー画像"],
+			["zh-TW", "直播卡片", "創作者名稱", "封面圖片"],
+		] as const) {
+			texts.set({ locale });
+			expect(CARD_KIND_NAMES.live).toBe(kind);
+			expect(field).toMatchObject({ path: "creator.name", type: "text", label: creator });
+			expect(cover?.label).toBe(label);
+			expect(CARD_SKIN_MODEL_CATALOG.fields.live[0]?.label).toBe("创作者名");
 		}
 	} finally {
 		binding.dispose();
