@@ -37,6 +37,7 @@ import {
  * React 具名 createContext 创建且被真实 Provider/useUiText 共同使用的 const context 默认函数;
  * UI 内从该 texts 入口具名引入的 useUiText（含别名）接成的函数只认 ui.* 键。例外只认节点与绑定,
  * 不豁免整份文件;其他传值、工厂、context 与任何遮蔽继续红。
+ * 5-99:包语言读取只认无参数直接调用并核对惰性；两端绑定须同时交当前语言读取函数。卡片目录只追五个真实常量到具名工厂，工厂参数仅在getter内直接取字，键/占位符照常核；原文只许在固定简中模型桥的精确表达式读取，别的引用和遮蔽继续红。
  * 全程走语法树,不建类型检查器:注释里、字符串里的 `t("x")` 天生不是调用节点。
  *
  * 认得哪些写法(其余一律红,见下):
@@ -120,7 +121,7 @@ export const ENDS = {
 		// 别的包按包名引入,internal 自己按相对路径引入
 		specifiers: ["@bilibili-notify/internal/texts"],
 		localeDir: PACKAGE_LOCALE_DIR,
-		valueNames: ["packageText"],
+		valueNames: ["packageText", "packageLocale"],
 		// 4-56 收的样例:指令前缀与别名的三句校验报错
 		minCalls: 3,
 	},
@@ -376,7 +377,7 @@ export function exportedNames(source) {
 }
 
 /**
- * 建 store 的文件里,模块顶层的 `bindPackageText(i18n.t)` 有几处(两端各要正好一处:
+ * 建 store 的文件里,模块顶层的 `bindPackageText(i18n.t, () => i18n.state().locale)` 有几处(两端各要正好一处:
  * 忘了交,包里的话永远是简体中文,别的全绿)。
  */
 export function packageBindingsOf(source) {
@@ -384,8 +385,27 @@ export function packageBindingsOf(source) {
 		if (!ts.isExpressionStatement(statement)) return false;
 		const call = unwrap(statement.expression);
 		if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) return false;
-		if (call.expression.text !== "bindPackageText" || call.arguments.length !== 1) return false;
+		if (call.expression.text !== "bindPackageText" || call.arguments.length !== 2) return false;
 		const arg = unwrap(call.arguments[0]);
+		const reader = unwrap(call.arguments[1]);
+		if (
+			!ts.isArrowFunction(reader) ||
+			reader.parameters.length !== 0 ||
+			reader.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
+		)
+			return false;
+		const locale = unwrap(reader.body);
+		if (!ts.isPropertyAccessExpression(locale) || locale.name.text !== "locale") return false;
+		const state = unwrap(locale.expression);
+		if (
+			!ts.isCallExpression(state) ||
+			state.arguments.length !== 0 ||
+			!ts.isPropertyAccessExpression(state.expression) ||
+			state.expression.name.text !== "state" ||
+			!ts.isIdentifier(state.expression.expression) ||
+			state.expression.expression.text !== "i18n"
+		)
+			return false;
 		return (
 			ts.isPropertyAccessExpression(arg) &&
 			ts.isIdentifier(arg.expression) &&
@@ -583,6 +603,172 @@ function defaultUiTextNodes(source, packageNames) {
 	return accepted;
 }
 
+// The five shared catalog factories return lazy getters. Follow only their real
+// top-level exports, and keep checking every translator call inside those getters.
+function cardCatalogNodes(source) {
+	const result = {
+		arguments: new Set(),
+		parameters: new Map(),
+		dictionaries: new Set(),
+		dictionaryReads: new Set(),
+	};
+	if (stripExt(source.path) !== "packages/internal/src/card-skin") return result;
+	const { ast } = source;
+	const translators = namedImports(source, "./texts/index", "packageText");
+	const constants = new Map();
+	for (const statement of ast.statements) {
+		if (
+			!ts.isVariableStatement(statement) ||
+			!(statement.declarationList.flags & ts.NodeFlags.Const)
+		)
+			continue;
+		for (const declaration of statement.declarationList.declarations) {
+			if (
+				ts.isIdentifier(declaration.name) &&
+				declaration.initializer &&
+				localDeclarations(ast, declaration.name.text).length === 1
+			)
+				constants.set(declaration.name.text, declaration);
+		}
+	}
+	// Field labels use a third callback argument which f stores behind a getter.
+	// Prove that helper instead of assuming every arrow passed to a function is lazy.
+	const field = constants.get("f");
+	const fieldArrow = field && unwrap(field.initializer);
+	if (
+		fieldArrow &&
+		ts.isArrowFunction(fieldArrow) &&
+		fieldArrow.parameters.length === 3 &&
+		!fieldArrow.modifiers?.length &&
+		fieldArrow.parameters.every(
+			(parameter) =>
+				ts.isIdentifier(parameter.name) && !parameter.initializer && !parameter.dotDotDotToken,
+		)
+	) {
+		const object = unwrap(fieldArrow.body);
+		if (ts.isObjectLiteralExpression(object) && object.properties.length === 3) {
+			const [path, type, getter] = object.properties;
+			const returned =
+				ts.isGetAccessor(getter) &&
+				getter.name.getText(ast) === "label" &&
+				getter.parameters.length === 0 &&
+				getter.body?.statements.length === 1 &&
+				ts.isReturnStatement(getter.body.statements[0])
+					? getter.body.statements[0].expression
+					: undefined;
+			if (
+				ts.isShorthandPropertyAssignment(path) &&
+				path.name.text === fieldArrow.parameters[0].name.text &&
+				ts.isShorthandPropertyAssignment(type) &&
+				type.name.text === fieldArrow.parameters[1].name.text &&
+				returned &&
+				ts.isCallExpression(returned) &&
+				ts.isIdentifier(returned.expression) &&
+				returned.expression.text === fieldArrow.parameters[2].name.text &&
+				returned.arguments.length === 0
+			)
+				result.fieldLabelFactory = "f";
+		}
+	}
+
+	for (const [name, factoryName] of [
+		["CARD_KIND_NAMES", "createCardKindNames"],
+		["CARD_SKIN_FIELDS", "createCardSkinFields"],
+		["CARD_SKIN_FRAME_HOOKS", "createCardSkinFrameHooks"],
+		["CARD_SKIN_VARIABLES", "createCardSkinVariables"],
+		["CARD_SKIN_BUILTIN_BLOCKS", "createCardSkinBuiltinBlocks"],
+	]) {
+		const declaration = constants.get(name);
+		const factory = ast.statements.find(
+			(node) => ts.isFunctionDeclaration(node) && node.name?.text === factoryName,
+		);
+		if (
+			!declaration ||
+			!factory ||
+			localDeclarations(ast, factoryName).length !== 1 ||
+			factory.parameters.length !== 1
+		)
+			continue;
+		const parameter = factory.parameters[0];
+		if (
+			!ts.isIdentifier(parameter.name) ||
+			parameter.initializer ||
+			parameter.dotDotDotToken ||
+			translators.has(parameter.name.text)
+		)
+			continue;
+		const call = unwrap(declaration.initializer);
+		if (
+			!ts.isCallExpression(call) ||
+			!ts.isIdentifier(call.expression) ||
+			call.expression.text !== factoryName ||
+			call.arguments.length !== 1
+		)
+			continue;
+		const argument = unwrap(call.arguments[0]);
+		if (
+			!ts.isIdentifier(argument) ||
+			!translators.has(argument.text) ||
+			localDeclarations(ast, argument.text).length !== 0
+		)
+			continue;
+		result.arguments.add(argument);
+		result.parameters.set(parameter.name, factory);
+	}
+	// Model metadata has a separate, fixed-Chinese translator. This proof permits
+	// only the dictionary read in that exact bridge; other raw dictionary reads fail.
+	const bridge = constants.get("modelText");
+	const arrow = bridge && unwrap(bridge.initializer);
+	if (
+		!arrow ||
+		!ts.isArrowFunction(arrow) ||
+		arrow.parameters.length !== 2 ||
+		arrow.modifiers?.length
+	)
+		return result;
+	const [key, values] = arrow.parameters;
+	if (
+		![key, values].every(
+			(parameter) =>
+				ts.isIdentifier(parameter.name) && !parameter.initializer && !parameter.dotDotDotToken,
+		)
+	)
+		return result;
+	const call = unwrap(arrow.body);
+	const translateNames = namedImports(source, "./i18n", "translate");
+	if (
+		!ts.isCallExpression(call) ||
+		!ts.isIdentifier(call.expression) ||
+		!translateNames.has(call.expression.text) ||
+		localDeclarations(ast, call.expression.text).length !== 0 ||
+		call.arguments.length !== 4
+	)
+		return result;
+	const [plain, locale, keyArg, valuesArg] = call.arguments;
+	if (
+		!ts.isPropertyAccessExpression(plain) ||
+		plain.name.text !== "plain" ||
+		!ts.isElementAccessExpression(plain.expression) ||
+		literalKey(plain.expression.argumentExpression) !== "zh-CN" ||
+		literalKey(locale) !== "zh-CN" ||
+		!ts.isIdentifier(keyArg) ||
+		keyArg.text !== key.name.text ||
+		!ts.isIdentifier(valuesArg) ||
+		valuesArg.text !== values.name.text
+	)
+		return result;
+	const dictionary = plain.expression.expression;
+	if (
+		!ts.isIdentifier(dictionary) ||
+		!namedImports(source, "./texts/index", "PACKAGE_DICTS").has(dictionary.text) ||
+		localDeclarations(ast, dictionary.text).length !== 0
+	)
+		return result;
+	result.dictionaries.add(dictionary.text);
+	result.dictionaryReads.add(dictionary);
+	return result;
+}
+
 /**
  * 分析一份源码。回 `{ findings, calls }`:
  * findings 的 code:`unrecognised`(认不出的写法)、`unknown-key`(键不在译文里)、
@@ -594,6 +780,8 @@ export function analyzeFile(source, end, sentences) {
 	const report = (code, node, detail) =>
 		findings.push({ code, line: lineOf(source, node), detail });
 	const { ast, path } = source;
+	const catalog =
+		end === ENDS.packages ? cardCatalogNodes(source) : cardCatalogNodes({ path: "", ast });
 
 	// 1. 入口的引入:只认具名的值引入,别的形式都认不出
 	// 入口导出的名字 → 本地名的集合(同一个名字可以引入多次:`import { t as tr, t }`)
@@ -604,6 +792,7 @@ export function analyzeFile(source, end, sentences) {
 		useT: new Set(),
 		useTextOptions: new Set(),
 		packageText: new Set(),
+		packageLocale: new Set(),
 	};
 	const uiHooks = new Set();
 	if (end === ENDS.packages && path.startsWith("packages/ui/src/")) {
@@ -654,7 +843,9 @@ export function analyzeFile(source, end, sentences) {
 			if (element.isTypeOnly) continue;
 			const imported = (element.propertyName ?? element.name).text;
 			if (end.valueNames.includes(imported)) localsOf[imported].add(element.name.text);
-			else
+			else if (imported === "PACKAGE_DICTS" && catalog.dictionaries.has(element.name.text)) {
+				/* Only the proven fixed-Chinese model bridge. */
+			} else
 				report(
 					"unrecognised",
 					element,
@@ -681,6 +872,12 @@ export function analyzeFile(source, end, sentences) {
 
 	// 2. 面板:`const x = useT()` 接住的名字就是取字函数
 	const okDeclarations = new Set();
+	const catalogAliases = new Set();
+	for (const parameter of catalog.parameters.keys()) {
+		tNames.add(parameter.text);
+		catalogAliases.add(parameter.text);
+		okDeclarations.add(parameter);
+	}
 	const isUseTCall = (node) => {
 		const call = unwrap(node);
 		return (
@@ -706,7 +903,13 @@ export function analyzeFile(source, end, sentences) {
 	};
 	collectDeclarations(ast);
 
-	const tracked = new Set([...tNames, ...i18nNames, ...useTNames]);
+	const tracked = new Set([
+		...tNames,
+		...i18nNames,
+		...useTNames,
+		...localsOf.packageLocale,
+		...catalog.dictionaries,
+	]);
 	if (tracked.size === 0) return { findings, calls: 0, literalCalls };
 
 	let calls = 0;
@@ -835,6 +1038,8 @@ export function analyzeFile(source, end, sentences) {
 			(ts.isPropertyAssignment(p) ||
 				ts.isPropertyDeclaration(p) ||
 				ts.isMethodDeclaration(p) ||
+				ts.isGetAccessor(p) ||
+				ts.isSetAccessor(p) ||
 				ts.isPropertySignature(p) ||
 				ts.isMethodSignature(p) ||
 				ts.isEnumMember(p)) &&
@@ -856,7 +1061,44 @@ export function analyzeFile(source, end, sentences) {
 			return;
 		}
 		const name = id.text;
+		if (catalog.dictionaries.has(name)) {
+			if (!catalog.dictionaryReads.has(id))
+				report("unrecognised", id, "包字典原文只允许固定中文模型桥的精确读取");
+			return;
+		}
 		if (tNames.has(name)) {
+			if (catalog.arguments.has(id)) return;
+			if (catalogAliases.has(name)) {
+				const owners = [...catalog.parameters]
+					.filter(([parameter]) => parameter.text === name)
+					.map(([, owner]) => owner);
+				let parent = id.parent;
+				while (parent && !owners.includes(parent)) parent = parent.parent;
+				if (!parent) {
+					report("unrecognised", id, "目录取字参数离开了已核对的工厂");
+					return;
+				}
+				const fn = functionOf(id);
+				const ownerCall = fn?.parent;
+				const deferredField =
+					catalog.fieldLabelFactory &&
+					fn &&
+					ts.isArrowFunction(fn) &&
+					fn.parameters.length === 0 &&
+					!fn.modifiers?.length &&
+					ts.isCallExpression(ownerCall) &&
+					ts.isIdentifier(ownerCall.expression) &&
+					ownerCall.expression.text === catalog.fieldLabelFactory &&
+					ownerCall.arguments.length === 3 &&
+					ownerCall.arguments[2] === fn;
+				if (
+					ts.isCallExpression(p) &&
+					p.expression === id &&
+					!ts.isGetAccessor(fn) &&
+					!deferredField
+				)
+					report("eager", id, "目录文字必须在getter读取时生成，不在工厂构造时生成");
+			}
 			if (defaultNodes.has(id) || isProviderValue(id)) return;
 			if (ts.isCallExpression(p) && p.expression === id) checkCall(p);
 			else report("unrecognised", id, `${name} 被当值用(传递、赋值或取成员),只认直接调用`);
@@ -872,6 +1114,11 @@ export function analyzeFile(source, end, sentences) {
 				}
 			}
 			report("unrecognised", id, "useT() 要直接接成 const x = useT()");
+			return;
+		}
+		if (localsOf.packageLocale.has(name)) {
+			if (ts.isCallExpression(p) && p.expression === id && p.arguments.length === 0) checkTiming(p);
+			else report("unrecognised", id, "packageLocale 只认无参数直接调用");
 			return;
 		}
 		if (i18nNames.has(name)) {
@@ -1497,6 +1744,83 @@ export function plain() { return new Intl.NumberFormat(i18n.state().locale); }
 		const pkgOf = (body, imports = PKG_IMPORT, file = PKG_FILE) =>
 			analyzeFile(parseSource(file, imports + body), ENDS.packages, SENTENCES);
 
+		it("card catalog factories retain key, placeholder, binding, and lazy-read checks", () => {
+			const imports = 'import { packageText, type PackageTranslator } from "./texts/index";\n';
+			const source = (expression = 'text("a.greet", { name: "x" })', getter = true) => `
+function createCardKindNames(text: PackageTranslator) {
+ return { ${getter ? "get live() { return " : "live: "}${expression}${getter ? "; }" : ""} };
+}
+export const CARD_KIND_NAMES = createCardKindNames(packageText);`;
+			const analyze = (body, file = "packages/internal/src/card-skin.ts") =>
+				pkgOf(body, imports, file);
+			const valid = analyze(source());
+			expect(valid.findings).toEqual([]);
+			expect(valid.literalCalls).toEqual(["a.greet"]);
+			expect(codes(analyze(source('text("a.nope")')))).toContain("unknown-key");
+			expect(codes(analyze(source('text("a.greet")')))).toContain("values");
+			expect(codes(analyze(source(undefined, false)))).toContain("eager");
+			for (const body of [
+				`${source()}\nexport const escape = packageText;`,
+				source().replace("createCardKindNames(packageText)", "other(packageText)"),
+				source().replace(
+					"createCardKindNames(packageText)",
+					"createCardKindNames(packageText, extra)",
+				),
+				source().replace(
+					'return text("a.greet", { name: "x" })',
+					'const text = other; return text("a.greet", { name: "x" })',
+				),
+				`${source()}\nfunction unrelated() { return text("a.greet", { name: "x" }); }`,
+			])
+				expect(codes(analyze(body)), body).toContain("unrecognised");
+			expect(codes(analyze(source(), "packages/internal/src/other.ts"))).toContain("unrecognised");
+		});
+
+		it("audits real catalog keys and permits raw dictionaries only in the fixed-Chinese model bridge", () => {
+			const file = "packages/internal/src/card-skin.ts";
+			const text = readFileSync(join(REPO_ROOT, file), "utf8");
+			const analyze = (body) =>
+				analyzeFile(parseSource(file, body), ENDS.packages, loadSentences(ENDS.packages));
+			const actual = analyze(text);
+			expect(actual.findings).toEqual([]);
+			for (const key of ["internal.card-skin.1", "internal.card-skin.95", "internal.card-skin.179"])
+				expect(actual.literalCalls).toContain(key);
+			expect(text).toContain("return label();");
+			expect(codes(analyze(text.replace("return label();", "return other();")))).toContain("eager");
+			const bridge = 'translate(PACKAGE_DICTS["zh-CN"].plain, "zh-CN", key, values)';
+			expect(text).toContain(bridge);
+			for (const invalid of [
+				text.replace(bridge, 'translate(PACKAGE_DICTS["en"].plain, "en", key, values)'),
+				text.replace("const modelText: PackageTranslator =", "let modelText: PackageTranslator ="),
+				`${text}\nexport const raw = PACKAGE_DICTS["zh-CN"].plain;`,
+				text.replace(
+					'import { translate } from "./i18n";',
+					'import { other as translate } from "./i18n";',
+				),
+			])
+				expect(codes(analyze(invalid))).toContain("unrecognised");
+		});
+
+		it("package locale reads remain lazy, direct, and unshadowed", () => {
+			const imports =
+				'import { packageLocale as currentLocale } from "@bilibili-notify/internal/texts";\n';
+			expect(
+				pkgOf("export function format() { return currentLocale(); }", imports).findings,
+			).toEqual([]);
+			expect(codes(pkgOf("export const frozen = currentLocale();", imports))).toContain(
+				"top-level",
+			);
+			expect(
+				codes(pkgOf("export class Formatter { locale = currentLocale(); }", imports)),
+			).toContain("eager");
+			for (const invalid of [
+				'export function format() { return currentLocale("en"); }',
+				"export function format() { return pass(currentLocale); }",
+				"export function format(currentLocale) { return currentLocale(); }",
+			])
+				expect(codes(pkgOf(invalid, imports)), invalid).toContain("unrecognised");
+		});
+
 		it("经包名引入、经相对路径引入都追得到;函数里的调用干净,zod 报错包成函数也干净", () => {
 			const viaName = pkgOf('export const f = () => packageText("a.greet", { name: "x" });');
 			expect(viaName.findings).toEqual([]);
@@ -1532,12 +1856,24 @@ export function plain() { return new Intl.NumberFormat(i18n.state().locale); }
 		});
 	});
 
-	it("packageBindingsOf:只数模块顶层的 bindPackageText(i18n.t)", () => {
+	it("packageBindingsOf: requires a live locale reader next to the translator at module scope", () => {
 		const count = (text) => packageBindingsOf(parseSource("apps/server/src/i18n/index.ts", text));
-		expect(count("bindPackageText(i18n.t);")).toBe(1);
-		expect(count("export function f() { bindPackageText(i18n.t); }")).toBe(0);
-		expect(count("bindPackageText(t);")).toBe(0);
-		expect(count("bindPackageText(i18n.t); bindPackageText(i18n.t);")).toBe(2);
+		const binding = "bindPackageText(i18n.t, () => i18n.state().locale);";
+		expect(count(binding)).toBe(1);
+		expect(count(`${binding} ${binding}`)).toBe(2);
+		for (const invalid of [
+			"bindPackageText(i18n.t);",
+			`export function f() { ${binding} }`,
+			"bindPackageText(t, () => i18n.state().locale);",
+			'bindPackageText(i18n.t, () => "en");',
+			"bindPackageText(i18n.t, () => other.state().locale);",
+			"bindPackageText(i18n.t, () => i18n.state().voice);",
+			"bindPackageText(i18n.t, i18n.state().locale);",
+			"bindPackageText(i18n.t, (value) => i18n.state().locale);",
+			"bindPackageText(i18n.t, async () => i18n.state().locale);",
+			"bindPackageText(i18n.t, () => i18n.state().locale, extra);",
+		])
+			expect(count(invalid), invalid).toBe(0);
 	});
 
 	describe("放行名单:按文件的数目,正好相等", () => {
