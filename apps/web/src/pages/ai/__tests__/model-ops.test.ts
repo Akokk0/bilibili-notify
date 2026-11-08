@@ -9,7 +9,8 @@
 import { type AIProviderId, EMPTY_AI_PROVIDER_PROFILE } from "@bilibili-notify/internal/ai";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import type { AiPersonaSettings, AiSettings } from "../../../types/globals";
 import {
 	addProfile,
@@ -25,6 +26,8 @@ import {
 
 // 内置人格每次按当前语言取,设置里不存(ADR-0037 决策 11)
 const BUILTINS = builtinPresetsFor("zh-CN");
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 const PERSONA: AiPersonaSettings = {
 	name: "",

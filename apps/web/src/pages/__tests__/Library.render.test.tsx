@@ -230,6 +230,55 @@ it("图片不能解码时给出预览失败说明，不露出坏图标", async (
 	expect(within(dialog).queryByRole("img", { name: "待导入图片" })).toBeNull();
 });
 
+it("personality editing and discard confirmation translate while user content stays original", async () => {
+	const builtin = builtinPresetsFor("zh-CN")[0];
+	if (!builtin) throw new Error("missing builtin fixture");
+	mount("/library?category=personas", (path) =>
+		path === "/api/ai/personas"
+			? Response.json({
+					revision: "v1",
+					entries: [
+						{ ...builtin, id: "local", label: "我的性格", builtin: false, usedBy: [] },
+						{ ...builtin, builtin: true, usedBy: [] },
+					],
+					removedBuiltins: [],
+				})
+			: undefined,
+	);
+	fireEvent.change(await screen.findByRole("textbox", { name: "性格名称" }), {
+		target: { value: "未保存的名字" },
+	});
+	await userEvent.click(screen.getByRole("tab", { name: builtin.label }));
+	for (const [locale, save, confirm, hint] of [
+		[
+			"en",
+			"Save personality",
+			"Confirm action",
+			"Switching or reloading discards the current draft. Deleting removes the personality.",
+		],
+		[
+			"ja",
+			"性格を保存",
+			"操作の確認",
+			"切り替えや再読み込みを行うと、現在の下書きは失われます。削除するとこの性格が一覧から消えます。",
+		],
+		["zh-TW", "儲存性格", "確認操作", "切換或重新讀取會放棄目前草稿；刪除會移除此性格。"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		await screen.findByRole("button", { name: save });
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByText(confirm)).toBeTruthy();
+		expect(within(dialog).getByText(hint)).toBeTruthy();
+		expect(screen.getByDisplayValue("未保存的名字")).toBeTruthy();
+		expect(screen.getByDisplayValue(builtin.dynamicPrompt ?? "")).toBeTruthy();
+		expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+	}
+	await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(screen.getByRole("tab", { name: "我的性格" }).getAttribute("aria-selected")).toBe("true");
+	expect(screen.getByDisplayValue("未保存的名字")).toBeTruthy();
+});
+
 it("性格分类复用字段编辑器，内置只读，复制后独立保存而不选用", async () => {
 	const builtin = builtinPresetsFor("zh-CN")[0];
 	if (!builtin) throw new Error("missing builtin fixture");
