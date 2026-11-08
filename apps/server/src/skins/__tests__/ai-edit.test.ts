@@ -10,7 +10,12 @@ import {
 	SKIN_CSS_HOOK_NOTES,
 	SKIN_CSS_MODEL_HOOK_NOTES,
 } from "@bilibili-notify/contract";
-import { bindPackageText } from "@bilibili-notify/internal/texts";
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	type PackageTextKey,
+	withPackageDicts,
+} from "@bilibili-notify/internal/texts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { buildSkinAiSystemPrompt, runSkinAiEdit } from "../ai-edit.js";
 
@@ -197,6 +202,37 @@ it("keeps model rules fixed while the human hook guide follows the current trans
 		expect(SKIN_CSS_HOOK_NOTES.glass).toBe("Changed human help");
 		expect(SKIN_CSS_MODEL_HOOK_NOTES.glass).toBe(original);
 		expect(buildSkinAiSystemPrompt(ASSETS)).toContain(original);
+	} finally {
+		binding.dispose();
+	}
+});
+
+it("human CSS help follows the locale while fixed model guidance stays Chinese", () => {
+	const original = SKIN_CSS_MODEL_HOOK_NOTES.input;
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "plain",
+	});
+	const binding = bindPackageText(texts.t);
+	try {
+		for (const [locale, header, caution] of [
+			["en", "Header (horizontal bar)", "Use `:focus-within`, not `:focus`"],
+			["ja", "ヘッダー（横長のバー）", "`:focus`ではなく`:focus-within`"],
+			["zh-TW", "頂欄（橫向長條）", "`:focus-within`，不要用`:focus`"],
+		] as const) {
+			texts.set({ locale });
+			expect(SKIN_CSS_HOOK_NOTES.header).toBe(header);
+			expect(SKIN_CSS_HOOK_NOTES.input).toContain(caution);
+			expect(SKIN_CSS_MODEL_HOOK_NOTES.input).toBe(original);
+			expect(SKIN_CSS_MODEL_HOOK_NOTES.input).toContain("包壳 div");
+		}
 	} finally {
 		binding.dispose();
 	}
