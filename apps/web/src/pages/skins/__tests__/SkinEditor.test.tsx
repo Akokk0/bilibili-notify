@@ -134,6 +134,217 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SkinEditor", () => {
+	it("font and motion section text translates without rewriting family names or effect colors", async () => {
+		renderEditor();
+		openFontFold();
+		fireEvent.change(screen.getByLabelText("正文字体栈"), {
+			target: { value: "Original Family, monospace" },
+		});
+		fireEvent.click(screen.getByText("动效"));
+		fireEvent.click(screen.getByLabelText("玻璃流光"));
+		fireEvent.change(screen.getByLabelText("流光颜色"), { target: { value: "#112233" } });
+		fireEvent.change(screen.getByLabelText("光斑颜色"), { target: { value: "#334455, #556677" } });
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					font: "Fonts",
+					upload: "Upload font",
+					family: "Body font stack",
+					motion: "Motion",
+					shine: "Glass shimmer",
+					color: "Shimmer color",
+					bokeh: "Bokeh colors",
+					placeholder: "1–4 comma-separated colors; blank disables the effect.",
+					reduced: "All effects respect the system’s reduced-motion preference.",
+				},
+			],
+			[
+				"ja",
+				{
+					font: "フォント",
+					upload: "フォントをアップロード",
+					family: "本文フォント",
+					motion: "動き",
+					shine: "ガラスのきらめき",
+					color: "きらめきの色",
+					bokeh: "光のぼけの色",
+					placeholder: "色1～4個をカンマで区切ります。空欄で無効化。",
+					reduced: "すべての動きは、システムのアニメーションを減らす設定に従います。",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					font: "字型",
+					upload: "上傳字型",
+					family: "內文字型清單",
+					motion: "動態效果",
+					shine: "玻璃流光",
+					color: "流光顏色",
+					bokeh: "光斑顏色",
+					placeholder: "以逗號分隔 1～4 個顏色，留空即可關閉。",
+					reduced: "所有動態效果均遵循系統的減少動態效果偏好設定。",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(words.font, { exact: true })).toBeTruthy();
+			expect(screen.getByLabelText(words.upload)).toBeTruthy();
+			expect((screen.getByLabelText(words.family) as HTMLInputElement).value).toBe(
+				"Original Family, monospace",
+			);
+			expect(screen.getByText(words.motion, { exact: true })).toBeTruthy();
+			expect(
+				(screen.getByRole("button", { name: words.shine }) as HTMLButtonElement).getAttribute(
+					"aria-pressed",
+				),
+			).toBe("true");
+			expect((screen.getByLabelText(words.color) as HTMLInputElement).value).toBe("#112233");
+			expect((screen.getByLabelText(words.bokeh) as HTMLInputElement).value).toBe(
+				"#334455, #556677",
+			);
+			expect(screen.getByPlaceholderText(words.placeholder)).toBeTruthy();
+			expect(screen.getByText(words.reduced)).toBeTruthy();
+			await waitFor(() =>
+				expect(useSkinStore.getState().preview?.manifest.modes.light?.effects).toEqual({
+					glassShine: { color: "#112233" },
+					bokeh: { colors: ["#334455", "#556677"] },
+				}),
+			);
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.body).toEqual([
+				"Original Family",
+				"monospace",
+			]);
+		}
+		expect(H.putCalls).toEqual([]);
+		expect(H.postCalls).toEqual([]);
+	});
+
+	it("layout section labels translate without resetting corner, sidebar or shadow edits", async () => {
+		renderEditor();
+		fireEvent.click(screen.getByText("圆角 · 阴影 · 版式"));
+		fireEvent.change(screen.getByLabelText("卡片圆角"), { target: { value: "18" } });
+		fireEvent.change(screen.getByLabelText("胶囊圆角"), { target: { value: "24" } });
+		fireEvent.change(screen.getByLabelText("左栏宽度"), { target: { value: "280" } });
+		fireEvent.change(screen.getByLabelText("卡片阴影"), { target: { value: "0 1px 3px #123456" } });
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					title: "Corners, shadows and layout",
+					card: "Card corner radius",
+					pill: "Pill corner radius",
+					rail: "Sidebar width",
+					shadow: "Card shadow",
+					floating: "Floating shadow",
+					example: "e.g. 0 10px 30px rgba(57,197,187,0.25)",
+				},
+			],
+			[
+				"ja",
+				{
+					title: "角丸・影・レイアウト",
+					card: "カードの角丸",
+					pill: "ピルの角丸",
+					rail: "サイドバー幅",
+					shadow: "カードの影",
+					floating: "浮いた要素の影",
+					example: "例：0 10px 30px rgba(57,197,187,0.25)",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					title: "圓角、陰影與版面",
+					card: "卡片圓角",
+					pill: "膠囊圓角",
+					rail: "側欄寬度",
+					shadow: "卡片陰影",
+					floating: "浮層陰影",
+					example: "例如 0 10px 30px rgba(57,197,187,0.25)",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(words.title, { exact: true })).toBeTruthy();
+			expect((screen.getByLabelText(words.card) as HTMLInputElement).value).toBe("18");
+			expect((screen.getByLabelText(words.pill) as HTMLInputElement).value).toBe("24");
+			expect((screen.getByLabelText(words.rail) as HTMLInputElement).value).toBe("280");
+			expect((screen.getByLabelText(words.shadow) as HTMLInputElement).value).toBe(
+				"0 1px 3px #123456",
+			);
+			expect(screen.getByLabelText(words.floating)).toBeTruthy();
+			expect(screen.getByPlaceholderText(words.example)).toBeTruthy();
+			await waitFor(() =>
+				expect(useSkinStore.getState().preview?.manifest.modes.light?.radius).toEqual({
+					card: 18,
+					pill: 24,
+				}),
+			);
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.railWidth).toBe(280);
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.shadows?.card).toBe(
+				"0 1px 3px #123456",
+			);
+		}
+		expect(H.putCalls).toEqual([]);
+		expect(H.postCalls).toEqual([]);
+	});
+
+	it("chat section guidance translates while an edited background remains separate from the page background", async () => {
+		renderEditor();
+		fireEvent.click(screen.getByText("AI 聊天"));
+		fireEvent.change(screen.getByLabelText("聊天页背景"), {
+			target: { value: "linear-gradient(#123456, #654321)" },
+		});
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					title: "AI chat",
+					field: "Chat background",
+					placeholder: "Solid color or gradient; leave blank to show the page’s skin background.",
+					hint: "An active skin styles the whole chat page and hides the four default color presets. The accent follows the main accent color, and glass uses the Glass section above. Only the chat background is configured here.",
+				},
+			],
+			[
+				"ja",
+				{
+					title: "AIチャット",
+					field: "チャット背景",
+					placeholder:
+						"単色またはグラデーション。空欄にするとページ全体のスキン背景が透けて見えます。",
+					hint: "スキンの適用中はチャット画面全体の外観が変わり、既定の4色プリセットは非表示になります。アクセント色はメインの色に従い、ガラスには上の「ガラスパネル」の設定を使います。ここではチャット背景のみを設定します。",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					title: "AI 聊天",
+					field: "聊天頁面背景",
+					placeholder: "純色或漸層；留空會透出整個頁面的外觀背景。",
+					hint: "套用外觀時，聊天頁面會整體換裝並隱藏預設的四色主題。強調色跟隨主強調色，玻璃元件使用上方「玻璃面板」的設定；此處僅設定聊天頁面的背景。",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByRole("button", { name: `${words.title}−` })).toBeTruthy();
+			expect(screen.getByText(words.hint)).toBeTruthy();
+			expect((screen.getByLabelText(words.field) as HTMLTextAreaElement).value).toBe(
+				"linear-gradient(#123456, #654321)",
+			);
+			expect(screen.getByPlaceholderText(words.placeholder)).toBeTruthy();
+			await waitFor(() =>
+				expect(useSkinStore.getState().preview?.manifest.modes.light?.chat?.background).toBe(
+					"linear-gradient(#123456, #654321)",
+				),
+			);
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.page).toBeUndefined();
+		}
+		expect(H.putCalls).toEqual([]);
+		expect(H.postCalls).toEqual([]);
+	});
+
 	it("editor field labels translate while name, text and wallpaper adjustments remain unsaved preview data", async () => {
 		renderEditor();
 		fireEvent.change(screen.getByLabelText("皮肤名"), { target: { value: "Original draft skin" } });
