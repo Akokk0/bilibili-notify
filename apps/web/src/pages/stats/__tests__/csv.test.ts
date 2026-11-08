@@ -11,7 +11,12 @@
  * 对账的照样对得上),拓展行的外部 id 另起一列,不塞进 UID(另一个平台上的另一个人,ADR-0019 决策 73)。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
+
+// These fixtures explicitly describe Chinese exports.
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 import type { UpStatsRow } from "../../../services/stats.js";
 import { buildCsv, type CsvWho, csvColumns } from "../csv.js";
 

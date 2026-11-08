@@ -13,19 +13,23 @@ import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-control
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { RoastCard } from "../RoastCard";
 import { RoastPushBox } from "../RoastPushBox";
 import { RoastRunNowBox } from "../RoastRunNowBox";
 import { roastError } from "../RoastShell";
+import { SoloRoastCard } from "../SoloRoastCard";
 
 vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn() },
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../../i18n";
 import { api } from "../../../services/api";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 /** 非 2xx 的请求失败:面板读 `message`,有 `issues` 就接在后面(与真 ApiError 同形)。 */
 class FakeApiError extends Error {
@@ -232,4 +236,147 @@ describe("RoastRunNowBox —— 「试一次」", () => {
 		await runOnce();
 		expect(await screen.findByText(/回一句「y a3」就发出去/)).toBeTruthy();
 	});
+});
+
+it("roast language changes retain the generated report without generating or sending again", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	vi.mocked(api.get).mockResolvedValue([]);
+	vi.mocked(api.post).mockResolvedValue({
+		ok: true,
+		result: {
+			pigeon: { subscriptionId: "s1", reason: "原始理由一" },
+			diligent: { subscriptionId: "s2", reason: "原始理由二" },
+			roast: [],
+			scores: [{ subscriptionId: "s1", score: 17 }],
+			pushText: "原始周报正文",
+		},
+	});
+	withQuery(
+		<RoastCard
+			days={7}
+			meta={
+				new Map([
+					["s1", { sourceKey: "acme", nouns: {}, name: "原作者甲", color: "red" }],
+					["s2", { sourceKey: "other", nouns: {}, name: "原作者乙", color: "blue" }],
+				])
+			}
+		/>,
+	);
+	expect(screen.getByText("AI review · Slacker vs diligent creator")).toBeTruthy();
+	expect(screen.getByText(/Using follower growth/).textContent).toBe(
+		"Using follower growth, posts and live streams for each creator over the past 7 days, select this period’s slacker and diligent creator and prepare a weekly report to send.",
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Generate AI review" }));
+	const report = await screen.findByText("原始周报正文");
+	for (const [locale, title, regenerate, score] of [
+		["ja", "AIレビュー · サボり王 vs 勤勉なクリエイター", "再生成", "総合勤勉度スコア"],
+		["zh-TW", "AI 銳評 · 鴿王 vs 勤奮創作者", "重新產生", "綜合勤奮度評分"],
+		["en", "AI review · Slacker vs diligent creator", "Regenerate", "Overall diligence score"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByRole("button", { name: regenerate })).toBeTruthy();
+		expect(screen.getByText(score)).toBeTruthy();
+		expect(screen.getByText("原始周报正文")).toBe(report);
+		expect(screen.getByText("原始理由一")).toBeTruthy();
+		expect(screen.getAllByText("原作者甲").length).toBeGreaterThan(0);
+	}
+	expect(api.post).toHaveBeenCalledTimes(1);
+	expect(api.post).toHaveBeenCalledWith(
+		expect.stringMatching(/^\/api\/stats\/roast\?days=7&tz=/),
+		{},
+	);
+});
+
+it.each([
+	["image", "✓ Sent (card image)", "✓ 送信済み（カード画像）", "✓ 已推播（卡片圖片）"],
+	["text", "✓ Sent (text)", "✓ 送信済み（テキスト）", "✓ 已推播（文字）"],
+] as const)(
+	"translated report delivery keeps its selected target and %s result",
+	async (mode, english, japanese, traditional) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		const second = { ...TARGET, id: "22222222-2222-4222-8222-222222222222", name: "原目标乙" };
+		vi.mocked(api.get).mockImplementation(async (path) =>
+			path === "/api/targets" ? [TARGET, second] : [],
+		);
+		vi.mocked(api.post).mockResolvedValue({ ok: true, mode });
+		const result = {
+			subscriptionId: "s/raw",
+			verdict: "原始评价",
+			score: 17,
+			highlights: [],
+			pushText: "原始周报",
+		};
+		withQuery(
+			<RoastPushBox
+				days={7}
+				label="Report"
+				text={result.pushText}
+				payload={{ kind: "solo", result }}
+			/>,
+		);
+		const select = await screen.findByRole("combobox", { name: "Push targets" });
+		chooseSelect(select, "原目标乙");
+		fireEvent.click(screen.getByRole("button", { name: "Send" }));
+		await screen.findByText(english);
+		for (const [locale, label, sent] of [
+			["ja", "送信", japanese],
+			["zh-TW", "推播", traditional],
+			["en", "Send", english],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByRole("button", { name: label })).toBeTruthy();
+			expect(screen.getByText(sent)).toBeTruthy();
+			expect(screen.getByRole("combobox")).toBe(select);
+			expect(select.textContent).toContain("原目标乙");
+			expect(screen.getByText("原始周报")).toBeTruthy();
+		}
+		expect(api.post).toHaveBeenCalledTimes(1);
+		expect(api.post).toHaveBeenCalledWith("/api/stats/roast/push", {
+			days: 7,
+			targetId: second.id,
+			kind: "solo",
+			result,
+		});
+	},
+);
+
+it("individual review translations preserve the original creator, window and generated assessment", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	vi.mocked(api.get).mockResolvedValue([]);
+	vi.mocked(api.post).mockResolvedValue({
+		ok: true,
+		result: {
+			subscriptionId: "source/a b",
+			verdict: "原始总评",
+			score: 31,
+			highlights: [{ label: "原维度", comment: "原始点评" }],
+			pushText: "原始短评正文",
+		},
+	});
+	withQuery(<SoloRoastCard subscriptionId="source/a b" name="原作者甲" color="blue" days={7} />);
+	expect(screen.getByText(/Review follower growth/).textContent).toBe(
+		"Review follower growth, posts and live streams for 原作者甲 over the past 7 days, then generate an overall verdict, detailed comments and a diligence score.",
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Generate AI review" }));
+	const assessment = await screen.findByText("原始总评");
+	for (const [locale, title, label, hint] of [
+		["ja", "AIレビュー · 原作者甲", "送信用の短評", "過去7日間のデータに基づく評価 · 0–100"],
+		["zh-TW", "AI 銳評 · 原作者甲", "可推播短評", "依據近7日資料評分 · 0–100"],
+		["en", "AI review · 原作者甲", "Short review to send", "Based on the past 7 days · 0–100"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByText(label)).toBeTruthy();
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(screen.getByText("原始总评")).toBe(assessment);
+		expect(screen.getByText("原维度")).toBeTruthy();
+		expect(screen.getByText("原始点评")).toBeTruthy();
+		expect(screen.getByText("31")).toBeTruthy();
+	}
+	expect(api.post).toHaveBeenCalledTimes(1);
+	expect(api.post).toHaveBeenCalledWith(
+		expect.stringMatching(/^\/api\/stats\/roast\/source%2Fa%20b\?days=7&tz=/),
+		{},
+	);
 });
