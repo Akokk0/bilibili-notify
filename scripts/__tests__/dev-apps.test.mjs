@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	buildWindowsTreeKillArgs,
@@ -377,6 +377,73 @@ it("dev startup resolves current contract source even when its compiled library 
 		expect(result.status, result.stderr || result.error?.message).toBe(0);
 		expect(result.error).toBeUndefined();
 		expect(result.stdout.trim()).toBe("current source");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+it("dev startup shares the package text binding between root and subpath imports", () => {
+	const root = mkdtempSync(join(tmpdir(), "bn-dev-text-binding-"));
+	const repo = fileURLToPath(new URL("../../", import.meta.url));
+	try {
+		const probe = join(root, "probe.mts");
+		writeFileSync(
+			probe,
+			[
+				`import { i18n } from ${JSON.stringify(pathToFileURL(join(repo, "apps/server/src/i18n/index.ts")).href)};`,
+				`import { CardSkinStore } from ${JSON.stringify(pathToFileURL(join(repo, "apps/server/src/card-skins/store.ts")).href)};`,
+				`const store = new CardSkinStore({ dir: ${JSON.stringify(join(root, "skins"))} });`,
+				'for (const locale of ["zh-CN", "en", "ja", "zh-TW"]) {',
+				'i18n.set({ locale, voice: "plain" });',
+				'const skin = store.list()[0]; const manifest = store.get("default");',
+				"console.log(JSON.stringify({ locale, name: skin.name, description: skin.description, manifestName: manifest.name }));",
+				"}",
+			].join("\n"),
+		);
+		const spec = createDevProcessSpecs(repo)[0];
+		const tsx = createRequire(join(repo, "apps/server/package.json")).resolve("tsx/cli");
+		const result = spawnSync(
+			process.execPath,
+			[tsx, "--tsconfig", spec.args[spec.args.indexOf("--tsconfig") + 1], probe],
+			{
+				cwd: spec.cwd,
+				encoding: "utf8",
+				timeout: 10000,
+			},
+		);
+		expect(result.status, result.stderr || result.error?.message).toBe(0);
+		expect(result.error).toBeUndefined();
+		expect(
+			result.stdout
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line)),
+		).toEqual([
+			{
+				locale: "zh-CN",
+				name: "默认",
+				manifestName: "默认",
+				description: "Bilibili-Notify 出厂的卡片外观。",
+			},
+			{
+				locale: "en",
+				name: "Default",
+				manifestName: "Default",
+				description: "The default card appearance included with Bilibili-Notify.",
+			},
+			{
+				locale: "ja",
+				name: "標準",
+				manifestName: "標準",
+				description: "Bilibili-Notifyに付属する標準のカードデザインです。",
+			},
+			{
+				locale: "zh-TW",
+				name: "預設",
+				manifestName: "預設",
+				description: "Bilibili-Notify 內建的卡片外觀。",
+			},
+		]);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
