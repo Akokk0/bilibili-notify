@@ -12,8 +12,9 @@ import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { TEMPLATE_VARIABLES, type TemplateKey } from "@bilibili-notify/internal/template-variables";
 import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { act, cleanup, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import {
 	DynamicMsgVariableHints,
 	GuardVariableHints,
@@ -27,6 +28,9 @@ import {
 
 const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 afterEach(cleanup);
 
 const codesOf = (container: HTMLElement): string[] =>
@@ -123,4 +127,28 @@ describe("提示条标题色", () => {
 		expect(bar.style.background).toContain("color-mix");
 		expect(bar.style.borderColor).toContain("color-mix");
 	});
+});
+
+it("template variable descriptions follow locale while every variable code stays unchanged", () => {
+	const { container } = render(
+		<>
+			<SummaryVariableHints />
+			<LiveMsgVariableHints />
+			<GuardVariableHints />
+			<SpecialDanmakuVariableHints />
+			<SpecialEnterVariableHints />
+		</>,
+	);
+	const codes = codesOf(container);
+	for (const [locale, creator, messages, tier] of [
+		["en", "Creator name", "Total chat messages", "Membership tier name"],
+		["ja", "クリエイター名", "コメントの総数", "会員ランク名"],
+		["zh-TW", "創作者名稱", "彈幕總數", "會員等級名稱"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(container.textContent).toContain(creator);
+		expect(container.textContent).toContain(messages);
+		expect(container.textContent).toContain(tier);
+		expect(codesOf(container)).toEqual(codes);
+	}
 });

@@ -805,19 +805,19 @@ function VariableHints({
 	vars,
 	accent = "var(--color-bn-purple)",
 }: {
-	vars: ReadonlyArray<VarSpec>;
+	vars: () => ReadonlyArray<VarSpec>;
 	accent?: string;
 }) {
 	const tx = useT();
 	return (
 		<HintBar accent={accent} title={tx("sourceUi.pages.rules.sections.title.67")}>
-			{vars.map((v, i) => (
+			{vars().map((v, i, currentVars) => (
 				<span key={v.code}>
 					<code className="mx-0.5 rounded-sm bg-bn-surface/70 px-1.5 py-px font-mono text-bn-xs">
 						{v.code}
 					</code>{" "}
 					{v.desc}
-					{i < vars.length - 1 ? " · " : ""}
+					{i < currentVars.length - 1 ? " · " : ""}
 				</span>
 			))}
 		</HintBar>
@@ -825,27 +825,27 @@ function VariableHints({
 }
 
 export function SummaryVariableHints() {
-	return <VariableHints vars={summaryVarsOf()} />;
+	return <VariableHints vars={summaryVarsOf} />;
 }
 
 export function LiveMsgVariableHints() {
-	return <VariableHints vars={liveMsgVarsOf()} accent="var(--color-bn-pink)" />;
+	return <VariableHints vars={liveMsgVarsOf} accent="var(--color-bn-pink)" />;
 }
 
 export function DynamicMsgVariableHints() {
-	return <VariableHints vars={dynamicMsgVarsOf()} accent={SECTION_ACCENT.message} />;
+	return <VariableHints vars={dynamicMsgVarsOf} accent={SECTION_ACCENT.message} />;
 }
 
 export function GuardVariableHints() {
-	return <VariableHints vars={guardVarsOf()} accent={SECTION_ACCENT.guard} />;
+	return <VariableHints vars={guardVarsOf} accent={SECTION_ACCENT.guard} />;
 }
 
 export function SpecialDanmakuVariableHints() {
-	return <VariableHints vars={specialDanmakuVarsOf()} accent={SECTION_ACCENT.persona} />;
+	return <VariableHints vars={specialDanmakuVarsOf} accent={SECTION_ACCENT.persona} />;
 }
 
 export function SpecialEnterVariableHints() {
-	return <VariableHints vars={specialEnterVarsOf()} accent="var(--color-bn-blue)" />;
+	return <VariableHints vars={specialEnterVarsOf} accent="var(--color-bn-blue)" />;
 }
 
 // ── 4. Live message templates ────────────────────────────────────────────────
@@ -857,19 +857,19 @@ const liveTemplateTabsOf = () =>
 			key: "liveStart",
 			label: i18n.t("sourceUi.pages.Stats.label.31"),
 			code: "templates.liveStart",
-			vars: liveStartVarsOf(),
+			vars: liveStartVarsOf,
 		},
 		{
 			key: "liveStreaming",
 			label: i18n.t("sourceUi.pages.rules.sections.label.68"),
 			code: "templates.liveStreaming",
-			vars: liveStreamingVarsOf(),
+			vars: liveStreamingVarsOf,
 		},
 		{
 			key: "liveEnd",
 			label: i18n.t("sourceUi.pages.rules.sections.label.69"),
 			code: "templates.liveEnd",
-			vars: liveEndVarsOf(),
+			vars: liveEndVarsOf,
 		},
 	] as const;
 
