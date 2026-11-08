@@ -309,5 +309,21 @@
 	"panelUi.config.push-features.17": "失敗",
 	"panelUi.config.push-features.18": "無目標",
 	"panelUi.config.push-features.19": "已靜音",
-	"panelUi.config.push-features.20": "已過濾"
+	"panelUi.config.push-features.20": "已過濾",
+	"logs.source.all": "全部來源",
+	"logs.source.label": "日誌來源",
+	"panelUi.pages.Logs.1": "下載失敗（HTTP {value0}）",
+	"panelUi.pages.Logs.2": "搜尋日誌內容 / 來源 / 參數…",
+	"panelUi.pages.Logs.3": "回到即時",
+	"panelUi.pages.Logs.4": "已暫停",
+	"panelUi.pages.Logs.5": "暫停",
+	"panelUi.pages.Logs.6": "自動捲動",
+	"panelUi.pages.Logs.7": "下載失敗：{value0}",
+	"panelUi.pages.Logs.8": "即時",
+	"panelUi.pages.Logs.9": "封存 · {value0}",
+	"panelUi.pages.Logs.12": " · 已凍結",
+	"panelUi.pages.Logs.13": "載入中…",
+	"panelUi.pages.Logs.14": "載入失敗：",
+	"panelUi.pages.Logs.15": "沒有符合條件的日誌",
+	"panelUi.pages.Logs.10#other": " · 顯示 {count} 行"
 }

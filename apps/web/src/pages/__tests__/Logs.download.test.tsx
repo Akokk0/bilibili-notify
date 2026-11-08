@@ -8,6 +8,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import Logs from "../Logs";
 
 vi.mock("../../hooks/useLogChannel", () => ({ useLogChannel: () => undefined }));
@@ -68,4 +69,9 @@ describe("日志下载失败", () => {
 		await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
 		expect(alertSpy).toHaveBeenCalledWith("下载失败:下载失败（HTTP 502）");
 	});
+});
+
+// This scenario explicitly tests the Chinese UI.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 });

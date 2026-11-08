@@ -316,5 +316,22 @@
 	"panelUi.config.push-features.17": "Failed",
 	"panelUi.config.push-features.18": "No targets",
 	"panelUi.config.push-features.19": "Silenced",
-	"panelUi.config.push-features.20": "Filtered"
+	"panelUi.config.push-features.20": "Filtered",
+	"logs.source.all": "All sources",
+	"logs.source.label": "Log source",
+	"panelUi.pages.Logs.1": "Download failed (HTTP {value0})",
+	"panelUi.pages.Logs.2": "Search log text / source / arguments…",
+	"panelUi.pages.Logs.3": "Back to live",
+	"panelUi.pages.Logs.4": "Paused",
+	"panelUi.pages.Logs.5": "Pause",
+	"panelUi.pages.Logs.6": "Auto-scroll",
+	"panelUi.pages.Logs.7": "Download failed: {value0}",
+	"panelUi.pages.Logs.8": "Live",
+	"panelUi.pages.Logs.9": "Archive · {value0}",
+	"panelUi.pages.Logs.12": " · Frozen",
+	"panelUi.pages.Logs.13": "Loading…",
+	"panelUi.pages.Logs.14": "Could not load: ",
+	"panelUi.pages.Logs.15": "No logs match the filters",
+	"panelUi.pages.Logs.10#other": " · Showing {count} lines",
+	"panelUi.pages.Logs.10#one": " · Showing {count} line"
 }

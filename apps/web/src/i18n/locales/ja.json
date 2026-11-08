@@ -309,5 +309,21 @@
 	"panelUi.config.push-features.17": "失敗",
 	"panelUi.config.push-features.18": "送信先なし",
 	"panelUi.config.push-features.19": "通知停止",
-	"panelUi.config.push-features.20": "フィルター済み"
+	"panelUi.config.push-features.20": "フィルター済み",
+	"logs.source.all": "すべてのソース",
+	"logs.source.label": "ログのソース",
+	"panelUi.pages.Logs.1": "ダウンロードに失敗しました（HTTP {value0}）",
+	"panelUi.pages.Logs.2": "ログ本文 / ソース / 引数を検索…",
+	"panelUi.pages.Logs.3": "リアルタイムに戻る",
+	"panelUi.pages.Logs.4": "一時停止中",
+	"panelUi.pages.Logs.5": "一時停止",
+	"panelUi.pages.Logs.6": "自動スクロール",
+	"panelUi.pages.Logs.7": "ダウンロードに失敗しました：{value0}",
+	"panelUi.pages.Logs.8": "リアルタイム",
+	"panelUi.pages.Logs.9": "アーカイブ · {value0}",
+	"panelUi.pages.Logs.12": " · 固定表示",
+	"panelUi.pages.Logs.13": "読み込み中…",
+	"panelUi.pages.Logs.14": "読み込めません：",
+	"panelUi.pages.Logs.15": "条件に一致するログはありません",
+	"panelUi.pages.Logs.10#other": " · {count}行を表示"
 }

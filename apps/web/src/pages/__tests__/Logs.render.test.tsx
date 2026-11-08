@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { chooseSelect } from "../../__tests__/select-controls";
+import { i18n } from "../../i18n";
 import Logs from "../Logs";
+
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const { apiGetMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(async (_url: string) => ({ entries: [] })),
@@ -57,6 +62,42 @@ describe("Logs page", () => {
 		await screen.findByText("没有符合条件的日志");
 		expect(screen.queryByText("apps/CHANGELOG.md")).toBeNull();
 		expect(screen.queryByText("更新日志")).toBeNull();
+	});
+
+	it("locale changes redraw log controls without rewriting existing log text or resetting filters and pause", async () => {
+		apiGetMock.mockResolvedValueOnce({
+			entries: [
+				{
+					ts: "2026-11-01T00:00:00Z",
+					level: "info",
+					name: "alpha",
+					msg: "原文说明",
+					args: [{ diagnostic: "原始诊断" }],
+				},
+			],
+		} as never);
+		renderLogs();
+		const line = await screen.findByText("原文说明");
+		const search = screen.getByPlaceholderText("搜索日志正文 / 源 / 参数...");
+		fireEvent.change(search, { target: { value: "原文" } });
+		chooseSelect(screen.getByRole("combobox"), "alpha");
+		fireEvent.click(screen.getByRole("button", { name: "暂停" }));
+		for (const [locale, placeholder, source, paused, count] of [
+			["en", "Search log text / source / arguments…", "Log source", "Paused", "Showing 1 line"],
+			["ja", "ログ本文 / ソース / 引数を検索…", "ログのソース", "一時停止中", "1行を表示"],
+			["zh-TW", "搜尋日誌內容 / 來源 / 參數…", "日誌來源", "已暫停", "顯示 1 行"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByPlaceholderText(placeholder)).toBe(search);
+			expect(search).toHaveProperty("value", "原文");
+			expect(screen.getByRole("combobox", { name: source }).textContent).toContain("alpha");
+			expect(screen.getByRole("button", { name: paused })).toBeTruthy();
+			expect(screen.getByText(new RegExp(count))).toBeTruthy();
+			expect(screen.getByText("原文说明")).toBe(line);
+			expect(screen.getByText('[{"diagnostic":"原始诊断"}]')).toBeTruthy();
+		}
 	});
 });
 
