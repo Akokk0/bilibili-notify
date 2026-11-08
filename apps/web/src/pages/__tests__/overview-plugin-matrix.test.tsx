@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { HealthResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -152,4 +152,27 @@ it("详情键盘焦点在弹窗内循环，关闭回到原入口", async () => {
 	await userEvent.keyboard("{Escape}");
 	expect(screen.queryByRole("dialog")).toBeNull();
 	expect(document.activeElement).toBe(opener);
+});
+
+it("health details redraw with language while the selected module and routes stay fixed", async () => {
+	const qc = renderCard({ logLevel: "warn" });
+	const dialog = await detail("存储");
+	for (const [locale, title, storage, logs, close] of [
+		["en", "System status", "Storage", "View logs", "Close"],
+		["ja", "システム状態", "ストレージ", "ログを表示", "閉じる"],
+		["zh-TW", "系統狀態", "儲存", "檢視日誌", "關閉"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByRole("region", { name: title })).toBeTruthy();
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(within(dialog).getByRole("document", { name: storage })).toBeTruthy();
+		expect(within(dialog).getByText("WARN")).toBeTruthy();
+		expect(within(dialog).getByText("0.7.0")).toBeTruthy();
+		expect(within(dialog).getByRole("link", { name: logs }).getAttribute("href")).toBe("/logs");
+		expect(within(dialog).getByRole("button", { name: close })).toBeTruthy();
+		expect(screen.getByText("测试来源")).toBeTruthy();
+	}
+	qc.clear();
 });
