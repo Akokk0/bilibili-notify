@@ -200,9 +200,10 @@ export function RoastScheduleFields({
 			];
 
 	return (
-		<>
+		<div className="@container">
 			<div className="grid gap-3">
 				<Field
+					responsive
 					code="roastSchedule.cron"
 					label={tx("panelUi.pages.stats.RoastScheduleFields.7")}
 					hint={tx("panelUi.pages.stats.RoastScheduleFields.8")}
@@ -214,6 +215,7 @@ export function RoastScheduleFields({
 					/>
 				</Field>
 				<Field
+					responsive
 					code="roastSchedule.days"
 					label={tx("panelUi.pages.stats.RoastScheduleFields.9")}
 					hint={tx("panelUi.pages.stats.RoastScheduleFields.10", { value0: noun })}
@@ -223,6 +225,7 @@ export function RoastScheduleFields({
 			</div>
 
 			<Field
+				responsive
 				code="roastSchedule.targets"
 				label={tx("panelUi.pages.stats.RoastScheduleFields.11")}
 				hint={tx("panelUi.pages.stats.RoastScheduleFields.12")}
@@ -252,7 +255,7 @@ export function RoastScheduleFields({
 					onChange={(v) => patch({ notifyOnError: v })}
 				/>
 			</div>
-		</>
+		</div>
 	);
 }
 

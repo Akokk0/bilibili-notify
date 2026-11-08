@@ -697,16 +697,16 @@ function StatsContent() {
 						</div>
 					</div>
 				</div>
-				<div className="flex items-center gap-2.5">
+				<div className="flex max-w-full flex-wrap items-center gap-2.5">
 					<UpPicker rows={rows} metaOf={metaOf} value={picked} onChange={setPicked} />
-					<div className="flex gap-1 rounded-bn-card border border-bn-border bg-bn-surface p-0.5">
+					<div className="flex max-w-full flex-wrap gap-1 rounded-bn-card border border-bn-border bg-bn-surface p-0.5">
 						{STATS_RANGES.map((r) => (
 							<button
 								key={r.days}
 								type="button"
 								onClick={() => setDays(r.days)}
 								data-bn={days === r.days ? "chip chip-active" : "chip"}
-								className="rounded-md px-3 py-1.5 text-bn-sm font-semibold"
+								className="whitespace-nowrap rounded-md px-3 py-1.5 text-bn-sm font-semibold"
 								style={{
 									background: days === r.days ? "var(--color-bn-surface-muted)" : "transparent",
 									color: days === r.days ? PINK : "var(--color-bn-text-tertiary)",

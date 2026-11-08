@@ -49,6 +49,8 @@ export interface FieldProps {
 	hint?: ReactNode;
 	required?: boolean;
 	full?: boolean;
+	/** Stack inside a narrow container; its parent supplies @container. */
+	responsive?: boolean;
 	/** 描述驱动字段不读取旧静态标签 / 提示表。 */
 	fromDescriptor?: boolean;
 	children: ReactNode;
@@ -61,7 +63,16 @@ export interface FieldProps {
  */
 export const FIELD_ROW_CHROME = "border-b border-dashed border-bn-border-subtle py-2.5";
 
-export function Field({ code, label, hint, required, full, fromDescriptor, children }: FieldProps) {
+export function Field({
+	code,
+	label,
+	hint,
+	required,
+	full,
+	responsive,
+	fromDescriptor,
+	children,
+}: FieldProps) {
 	const tx = useT();
 	const entry: FieldLabel | null = fromDescriptor ? null : getFieldLabel(code);
 	const effectiveLabel: ReactNode = label ?? entry?.label ?? code;
@@ -72,10 +83,16 @@ export function Field({ code, label, hint, required, full, fromDescriptor, child
 		<div
 			data-code={code}
 			className={`${FIELD_ROW_CHROME} ${
-				full ? "flex flex-col gap-1.5" : "flex flex-row gap-3.5"
+				full
+					? "flex flex-col gap-1.5"
+					: responsive
+						? "flex flex-col gap-3.5 @min-[30rem]:flex-row"
+						: "flex flex-row gap-3.5"
 			} last:border-b-0`}
 		>
-			<div className={`pt-1 ${full ? "flex-none" : "flex-none basis-50"}`}>
+			<div
+				className={`pt-1 ${full ? "flex-none" : responsive ? "flex-none @min-[30rem]:basis-50" : "flex-none basis-50"}`}
+			>
 				<div className="mb-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
 					<span className="text-bn-sm font-semibold text-bn-text-primary">{effectiveLabel}</span>
 					{required ? <span className="text-bn-xs text-bn-danger">*</span> : null}
