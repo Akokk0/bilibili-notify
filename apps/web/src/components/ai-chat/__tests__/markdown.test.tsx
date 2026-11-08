@@ -14,10 +14,12 @@
  *     rehype-raw**,这里有测试盯着。
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { ChatMarkdown } from "../markdown";
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 /** 渲染一段 markdown,返回容器供结构断言。 */
@@ -25,6 +27,25 @@ function md(source: string): HTMLElement {
 	const { container } = render(<ChatMarkdown text={source} />);
 	return container;
 }
+
+it("image fallback follows locale without changing supplied alt text or loading remote images", () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const container = md(
+		"![](https://example.com/empty.png) ![原始替换文字](https://example.com/alt.png)",
+	);
+	expect(screen.getByText("[Image]")).toBeTruthy();
+	const original = screen.getByText("原始替换文字");
+	for (const [locale, fallback] of [
+		["ja", "［画像］"],
+		["zh-TW", "[圖片]"],
+		["en", "[Image]"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(fallback)).toBeTruthy();
+		expect(screen.getByText("原始替换文字")).toBe(original);
+		expect(container.querySelectorAll("img")).toHaveLength(0);
+	}
+});
 
 describe("ChatMarkdown — 安全边界", () => {
 	it("图片一张都不渲染 —— 它不需要点击就会发出请求", () => {

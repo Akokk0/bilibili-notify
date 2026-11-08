@@ -5,8 +5,30 @@
  * 表现都是「侧栏写着 A、她自己开口自称 B」。兜底规则钉在这里。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { resolveChatPersona } from "../persona";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
+it.each([
+	["en", "Maid", "Master"],
+	["ja", "メイド", "ご主人様"],
+	["zh-TW", "女僕", "主人"],
+] as const)(
+	"empty chat names follow %s while user-provided names remain original",
+	(locale, maid, user) => {
+		i18n.set({ locale, voice: "plain" });
+		expect(resolveChatPersona()).toEqual({ name: maid, self: maid, user });
+		expect(
+			resolveChatPersona({ name: "自定名字", addressSelf: "自定自称", addressUser: "自定称呼" }),
+		).toEqual({
+			name: "自定名字",
+			self: "自定自称",
+			user: "自定称呼",
+		});
+	},
+);
 
 describe("resolveChatPersona", () => {
 	it("三栏都填了就照用", () => {

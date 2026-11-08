@@ -2,7 +2,7 @@ import { memo, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import { i18n } from "../../i18n";
+import { useT } from "../../i18n";
 import { safeHref } from "../../utils/safe-href";
 
 /**
@@ -64,11 +64,7 @@ const COMPONENTS: Components = {
 	},
 
 	// 图片不渲染,只留 alt。见文件头的理由。
-	img: ({ alt }) => (
-		<span className="text-bn-text-tertiary">
-			{alt || i18n.t("panelUi.components.ai-chat.markdown.1")}
-		</span>
-	),
+	img: ImageAlt,
 
 	ul: ({ children }) => (
 		<ul className="my-[0.5em] list-disc space-y-[0.2em] pl-[1.4em] first:mt-0 last:mb-0">
@@ -120,6 +116,16 @@ const COMPONENTS: Components = {
 
 	hr: () => <hr className="my-[0.8em] border-bn-border" />,
 };
+
+/** 正文按 text 记忆化，只有替换提示独立订阅语言，原 alt 保持原文。 */
+function ImageAlt({ alt }: { alt?: string }) {
+	const t = useT();
+	return (
+		<span className="text-bn-text-tertiary">
+			{alt || t("panelUi.components.ai-chat.markdown.1")}
+		</span>
+	);
+}
 
 /** h1~h6 一律画成加粗的一行。六个层级同一个样子 —— 对话里不需要层级感。 */
 function headingsAsBoldLine(): Components {

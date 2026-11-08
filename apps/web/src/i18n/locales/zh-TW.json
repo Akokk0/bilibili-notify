@@ -1331,5 +1331,8 @@
 	"panelUi.components.ai-chat.card-skin-preview.6": "無法繪製此卡片：",
 	"panelUi.components.ai-chat.card-skin-preview.7": "正在繪製預覽…",
 	"panelUi.components.ai-chat.card-skin-preview.8": "有幾點需要留意：",
-	"panelUi.components.ai-chat.card-skin-preview.9": "未能套用："
+	"panelUi.components.ai-chat.card-skin-preview.9": "未能套用：",
+	"panelUi.components.ai-chat.persona.1": "女僕",
+	"panelUi.components.ai-chat.persona.2": "主人",
+	"panelUi.components.ai-chat.markdown.1": "[圖片]"
 }

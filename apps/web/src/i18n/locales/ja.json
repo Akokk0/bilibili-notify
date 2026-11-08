@@ -1331,5 +1331,8 @@
 	"panelUi.components.ai-chat.card-skin-preview.6": "このカードを描画できません: ",
 	"panelUi.components.ai-chat.card-skin-preview.7": "プレビューを描画中…",
 	"panelUi.components.ai-chat.card-skin-preview.8": "確認が必要な点:",
-	"panelUi.components.ai-chat.card-skin-preview.9": "適用できません: "
+	"panelUi.components.ai-chat.card-skin-preview.9": "適用できません: ",
+	"panelUi.components.ai-chat.persona.1": "メイド",
+	"panelUi.components.ai-chat.persona.2": "ご主人様",
+	"panelUi.components.ai-chat.markdown.1": "［画像］"
 }
