@@ -15,8 +15,9 @@
  * 在 prototype 上挂 vi.fn() spy 即可。
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { type DraftRegistration, useDraftStore } from "../../store/draft";
 import type { FieldDiff } from "../../utils/walkTreeDiff";
 import { DraftIsland } from "../draft-island";
@@ -47,6 +48,7 @@ function resetStore() {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	resetStore();
 	// scrollIntoView 在 jsdom 不存在;Element.prototype 挂 vi.fn 全局 spy。
 	Element.prototype.scrollIntoView = vi.fn();
@@ -302,4 +304,54 @@ describe("DraftIsland dirty 态外圈流光线(grill-me 二轮:单色流动)", (
 		render(<DraftIsland />);
 		expect(screen.queryByTestId("draft-island-aura")).toBeNull();
 	});
+});
+
+it("draft controls redraw in current locale without saving, discarding or losing registered changes", async () => {
+	const onSave = vi.fn(),
+		onDiscard = vi.fn();
+	const registration = makeReg({ pageLabel: "原页面名", onSave, onDiscard });
+	useDraftStore.setState({ current: registration, uiState: "dirty", panelLocked: true });
+	render(<DraftIsland />);
+	const island = screen.getByRole("region", { name: "草稿状态" });
+	for (const [locale, title, count, save, discard, jump] of [
+		[
+			"en",
+			"Draft status",
+			"2 unsaved changes",
+			"Save",
+			"Discard all changes",
+			"Jump to blockKeywords",
+		],
+		["ja", "下書きの状態", "未保存の変更 2件", "保存", "変更をすべて破棄", "blockKeywordsに移動"],
+		["zh-TW", "草稿狀態", "2 項未儲存", "儲存", "放棄全部變更", "跳至 blockKeywords"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByRole("region", { name: title })).toBe(island);
+		expect(screen.getByLabelText(count)).toBeTruthy();
+		expect(screen.getByRole("button", { name: save })).toBeTruthy();
+		expect(screen.getByRole("button", { name: discard })).toBeTruthy();
+		expect(screen.getByTitle(jump)).toBeTruthy();
+		expect(screen.getByText("原页面名")).toBeTruthy();
+		expect(useDraftStore.getState().current?.diff).toEqual([
+			{ code: "blockKeywords", oldValue: [], newValue: ["spam"] },
+			{ code: "liveStreaming.streamingIntervalHours", oldValue: "09:00", newValue: "10:00" },
+		]);
+		expect(onSave).not.toHaveBeenCalled();
+		expect(onDiscard).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "儲存" }));
+	expect(onSave).toHaveBeenCalledTimes(1);
+	expect(onDiscard).not.toHaveBeenCalled();
+	await act(async () => {
+		i18n.set({ locale: "en", voice: "plain" });
+		useDraftStore.setState({
+			current: {
+				...registration,
+				diff: [{ code: "blockKeywords", oldValue: [], newValue: ["spam"] }],
+			},
+		});
+	});
+	expect(screen.getByLabelText("1 unsaved change")).toBeTruthy();
 });

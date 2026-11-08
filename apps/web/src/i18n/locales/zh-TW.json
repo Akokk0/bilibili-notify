@@ -380,5 +380,16 @@
 	"pipelineErrors.ai": "AI",
 	"pipelineErrors.link": "連結預覽",
 	"pipelineErrors.other": "其他",
-	"notices.messages#other": "{count} 則"
+	"notices.messages#other": "{count} 則",
+	"panelUi.components.draft-island.1": "草稿狀態",
+	"panelUi.components.draft-island.3": "儲存",
+	"panelUi.components.draft-island.4": "儲存中…",
+	"panelUi.components.draft-island.5": "已儲存",
+	"panelUi.components.draft-island.6": "儲存失敗",
+	"panelUi.components.draft-island.7": "關閉",
+	"panelUi.components.draft-island.9": "沒有欄位變更",
+	"panelUi.components.draft-island.10": "跳至 {value0}",
+	"panelUi.components.draft-island.11": "放棄全部變更",
+	"panelUi.components.draft-island.12": "點擊資料列可跳至對應欄位",
+	"panelUi.components.draft-island.2#other": "{count} 項未儲存"
 }

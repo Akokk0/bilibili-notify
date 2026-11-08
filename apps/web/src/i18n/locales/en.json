@@ -394,5 +394,17 @@
 	"pipelineErrors.link": "Link preview",
 	"pipelineErrors.other": "Other",
 	"notices.messages#other": "{count} messages",
-	"notices.messages#one": "{count} message"
+	"notices.messages#one": "{count} message",
+	"panelUi.components.draft-island.1": "Draft status",
+	"panelUi.components.draft-island.3": "Save",
+	"panelUi.components.draft-island.4": "Saving…",
+	"panelUi.components.draft-island.5": "Saved",
+	"panelUi.components.draft-island.6": "Save failed",
+	"panelUi.components.draft-island.7": "Close",
+	"panelUi.components.draft-island.9": "No field changes",
+	"panelUi.components.draft-island.10": "Jump to {value0}",
+	"panelUi.components.draft-island.11": "Discard all changes",
+	"panelUi.components.draft-island.12": "Click a row to jump to its field",
+	"panelUi.components.draft-island.2#other": "{count} unsaved changes",
+	"panelUi.components.draft-island.2#one": "{count} unsaved change"
 }
