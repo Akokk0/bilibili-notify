@@ -31,6 +31,9 @@ const H = vi.hoisted(() => ({
 	uploadFails: false,
 	/** 挂住上传用的闸:不为 null 时 upload 要等它开了才返回(仿真实网络的那几秒)。 */
 	uploadGate: null as Promise<void> | null,
+	putGate: null as Promise<void> | null,
+	postGate: null as Promise<void> | null,
+	postFails: false,
 }));
 
 vi.mock("../../../services/api", () => ({
@@ -45,10 +48,13 @@ vi.mock("../../../services/api", () => ({
 		}),
 		put: vi.fn(async (path: string, body: unknown) => {
 			H.putCalls.push({ path, body });
+			if (H.putGate) await H.putGate;
 			return { ok: true, warnings: [] };
 		}),
 		post: vi.fn(async (path: string, body: unknown) => {
 			H.postCalls.push({ path, body });
+			if (H.postGate) await H.postGate;
+			if (H.postFails) throw new Error("Original diagnostic 原因");
 			return {
 				ok: true,
 				manifest: { schemaVersion: 1, name: "AI 皮肤", modes: { light: {} } },
@@ -119,6 +125,9 @@ beforeEach(() => {
 	H.getCalls = [];
 	H.uploadFails = false;
 	H.uploadGate = null;
+	H.putGate = null;
+	H.postGate = null;
+	H.postFails = false;
 	H.defaultManifest = { schemaVersion: 1, name: "出厂樱花", modes: { light: {} } };
 	// 编辑器默认编当前主题那一套 —— 主题是这一层的入参,每条用例都从浅色起跑。
 	useThemeStore.setState({ preference: "light", systemPrefersDark: false, resolved: "light" });
@@ -134,6 +143,284 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SkinEditor", () => {
+	it("upload progress translates while the original filename and selected asset remain intact", async () => {
+		let release = () => {};
+		H.uploadGate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		renderEditor();
+		const file = new File(["image"], "Original image 原图.png", { type: "image/png" });
+		fireEvent.change(screen.getByLabelText("上传图片"), { target: { files: [file] } });
+		await screen.findByText("上传中…");
+		for (const [locale, progress, upload] of [
+			["en", "Uploading…", "Upload image"],
+			["ja", "アップロード中…", "画像をアップロード"],
+			["zh-TW", "上傳中…", "上傳圖片"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(progress)).toBeTruthy();
+			expect((screen.getByLabelText(upload) as HTMLInputElement).disabled).toBe(true);
+		}
+		expect(H.uploadCalls).toEqual([{ path: "/api/dashboard/skins/s1/assets", name: file.name }]);
+		await act(async () => {
+			release();
+		});
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.image).toBe(
+				"assets/img-abcd1234.png",
+			),
+		);
+		expect(screen.getByRole("combobox", { name: "桌布圖片" }).textContent).toContain(file.name);
+		expect(H.putCalls).toEqual([]);
+	});
+
+	it("saving stays disabled and localized until the original skin draft has been persisted", async () => {
+		let release = () => {};
+		H.putGate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const { onClose } = renderEditor();
+		fireEvent.change(screen.getByLabelText("皮肤名"), { target: { value: "Original skin 草稿" } });
+		fireEvent.click(screen.getByRole("button", { name: "保存" }));
+		await screen.findByRole("button", { name: "保存中…" });
+		for (const [locale, saving, cancel] of [
+			["en", "Saving…", "Cancel"],
+			["ja", "保存中…", "キャンセル"],
+			["zh-TW", "儲存中…", "取消"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect((screen.getByRole("button", { name: saving }) as HTMLButtonElement).disabled).toBe(
+				true,
+			);
+			expect((screen.getByRole("button", { name: cancel }) as HTMLButtonElement).disabled).toBe(
+				true,
+			);
+			expect(onClose).not.toHaveBeenCalled();
+		}
+		expect(H.putCalls).toHaveLength(1);
+		expect(H.putCalls[0].path).toBe("/api/dashboard/skins/s1/manifest");
+		expect((H.putCalls[0].body as SkinManifest).name).toBe("Original skin 草稿");
+		await act(async () => {
+			release();
+		});
+		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+	});
+
+	it("AI pending and failure descriptions follow the language while the request and diagnostic remain unchanged", async () => {
+		let release = () => {};
+		H.postGate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		H.postFails = true;
+		renderEditor();
+		fireEvent.change(screen.getByLabelText("修改要求"), {
+			target: { value: "Original request 原文" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: "让女仆改" }));
+		await screen.findByRole("button", { name: "女仆修改中…" });
+		for (const [locale, pending] of [
+			["en", "AI is editing…"],
+			["ja", "AIが編集中…"],
+			["zh-TW", "AI 修改中…"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect((screen.getByRole("button", { name: pending }) as HTMLButtonElement).disabled).toBe(
+				true,
+			);
+		}
+		expect(H.postCalls).toEqual([
+			{
+				path: "/api/dashboard/skins/s1/ai",
+				body: { instruction: "Original request 原文", draft: makeManifest() },
+			},
+		]);
+		await act(async () => {
+			release();
+		});
+		await screen.findByText(/Original diagnostic 原因/);
+		for (const [locale, failure, request] of [
+			["en", "Operation failed:", "Modification request"],
+			["ja", "操作に失敗しました：", "変更の依頼"],
+			["zh-TW", "操作失敗：", "修改需求"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(failure + "Original diagnostic 原因")).toBeTruthy();
+			expect((screen.getByLabelText(request) as HTMLTextAreaElement).value).toBe(
+				"Original request 原文",
+			);
+		}
+		expect(useSkinStore.getState().preview?.manifest.name).toBe("樱花夜");
+		expect(H.putCalls).toEqual([]);
+	});
+
+	it("localized default actions distinguish persisted snapshots from unsaved restoration previews", async () => {
+		for (const [locale, w] of [
+			[
+				"en",
+				{
+					pin: "Set as default",
+					pinHint: "Make the saved skin the default snapshot for this package.",
+					dirty: "Save your changes before setting the default.",
+					pinned: "The saved skin is now the default for this package.",
+					restore: "Restore default",
+					restoreHint: "Preview the default snapshot. Save to keep it.",
+					restored: "The default snapshot is being previewed. Save to keep it.",
+					missing: "This skin has no default snapshot. Use “Set as default” first.",
+				},
+			],
+			[
+				"ja",
+				{
+					pin: "既定に設定",
+					pinHint: "保存済みのスキンを、このパッケージの既定スナップショットにします。",
+					dirty: "既定に設定する前に変更を保存してください。",
+					pinned: "保存済みのスキンを、このパッケージの既定に設定しました。",
+					restore: "既定に戻す",
+					restoreHint: "既定のスナップショットをプレビューします。保存すると反映されます。",
+					restored: "既定のスナップショットをプレビュー中です。保存すると反映されます。",
+					missing: "既定のスナップショットがありません。先に「既定に設定」を使ってください。",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					pin: "設為預設值",
+					pinHint: "將已儲存的外觀設為這個套件的預設快照。",
+					dirty: "請先儲存變更，再設為預設值。",
+					pinned: "已將儲存的外觀設為這個套件的預設值。",
+					restore: "恢復預設值",
+					restoreHint: "預覽預設快照，儲存後才會保留。",
+					restored: "正在預覽預設快照，儲存後才會保留。",
+					missing: "這個外觀尚無預設快照，請先按「設為預設值」。",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			H.defaultManifest = {
+				schemaVersion: 1,
+				name: "Original snapshot",
+				modes: { light: { glass: { blur: 9 } } },
+			};
+			const { unmount } = renderEditor();
+			const pin = screen.getByRole("button", { name: w.pin }) as HTMLButtonElement;
+			expect(pin.title).toBe(w.pinHint);
+			const writes = H.putCalls.length;
+			fireEvent.click(pin);
+			await screen.findByText(w.pinned);
+			expect(H.putCalls.slice(writes)).toEqual([
+				{ path: "/api/dashboard/skins/s1/default", body: undefined },
+			]);
+			const restore = screen.getByRole("button", { name: w.restore }) as HTMLButtonElement;
+			expect(restore.title).toBe(w.restoreHint);
+			fireEvent.click(restore);
+			await screen.findByText(w.restored);
+			expect(screen.queryByText(w.pinned)).toBeNull();
+			expect(pin.disabled).toBe(true);
+			expect(pin.title).toBe(w.dirty);
+			await waitFor(() =>
+				expect(useSkinStore.getState().preview?.manifest.name).toBe("Original snapshot"),
+			);
+			expect(H.putCalls).toHaveLength(writes + 1);
+			unmount();
+			H.defaultManifest = null;
+			const empty = renderEditor();
+			const unavailable = screen.getByRole("button", { name: w.restore }) as HTMLButtonElement;
+			await waitFor(() => expect(unavailable.title).toBe(w.missing));
+			expect(unavailable.disabled).toBe(true);
+			empty.unmount();
+		}
+	});
+
+	it("translated editor actions preserve the request and ask before discarding unsaved skin changes", async () => {
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					drawer: "Skin editor",
+					title: "Edit skin",
+					hint: "Changes preview across the page immediately. Save to keep them.",
+					request: "Modification request",
+					example: "Describe a change, e.g. “Use a cyberpunk style with neon shimmer on cards.”",
+					preview: "Preview the result immediately; revise it as needed.",
+					ai: "Ask AI to edit",
+					cancel: "Cancel",
+					save: "Save",
+					discardTitle: "Discard changes",
+					discardMessage:
+						"These changes have not been saved. Closing restores the original appearance. Discard them?",
+					discard: "Discard",
+				},
+			],
+			[
+				"ja",
+				{
+					drawer: "スキン編集",
+					title: "スキンを編集",
+					hint: "変更はすぐにページ全体へプレビューされます。保存すると反映されます。",
+					request: "変更の依頼",
+					example: "例：「全体をサイバーパンク風にして、カードにネオンのきらめきを追加」",
+					preview: "結果をすぐにプレビューし、必要に応じて調整できます。",
+					ai: "AIに編集を依頼",
+					cancel: "キャンセル",
+					save: "保存",
+					discardTitle: "変更を破棄",
+					discardMessage:
+						"変更はまだ保存されていません。閉じると元の外観に戻ります。破棄しますか？",
+					discard: "破棄",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					drawer: "外觀編輯器",
+					title: "調整外觀",
+					hint: "每項變更都會立即在整個頁面預覽，儲存後才會保留。",
+					request: "修改需求",
+					example: "用一句話描述修改，例如「整體改成賽博龐克風格，卡片加上霓虹流光」",
+					preview: "修改後立即預覽，不滿意可再調整。",
+					ai: "請 AI 修改",
+					cancel: "取消",
+					save: "儲存",
+					discardTitle: "捨棄變更",
+					discardMessage: "變更尚未儲存，關閉後會恢復原本的外觀。確定捨棄嗎？",
+					discard: "捨棄",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+			const { onClose, unmount } = renderEditor();
+			fireEvent.change(screen.getByLabelText("修改要求"), {
+				target: { value: "Original request 原文" },
+			});
+			fireEvent.change(screen.getByLabelText("皮肤名"), {
+				target: { value: "Original skin 草稿" },
+			});
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByLabelText(words.drawer)).toBeTruthy();
+			expect(screen.getByText(words.title)).toBeTruthy();
+			expect(screen.getByText(words.hint)).toBeTruthy();
+			expect((screen.getByLabelText(words.request) as HTMLTextAreaElement).value).toBe(
+				"Original request 原文",
+			);
+			expect(screen.getByPlaceholderText(words.example)).toBeTruthy();
+			expect(screen.getByText(words.preview)).toBeTruthy();
+			expect((screen.getByRole("button", { name: words.ai }) as HTMLButtonElement).disabled).toBe(
+				false,
+			);
+			expect(screen.getByRole("button", { name: words.save })).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: words.cancel }));
+			const dialog = await screen.findByRole("dialog", { name: "" });
+			expect(within(dialog).getByText(words.discardTitle)).toBeTruthy();
+			expect(within(dialog).getByText(words.discardMessage)).toBeTruthy();
+			expect(onClose).not.toHaveBeenCalled();
+			fireEvent.click(within(dialog).getByRole("button", { name: words.discard }));
+			expect(onClose).toHaveBeenCalledTimes(1);
+			expect(H.putCalls).toEqual([]);
+			expect(H.postCalls).toEqual([]);
+			unmount();
+		}
+	});
+
 	it("font and motion section text translates without rewriting family names or effect colors", async () => {
 		renderEditor();
 		openFontFold();
