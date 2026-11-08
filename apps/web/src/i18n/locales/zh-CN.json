@@ -3234,5 +3234,8 @@
 	"sourceUi.pages.Stats.suffix.32#other": "场 · {value1}h",
 	"sourceUi.pages.Stats.Stats.56#other": "场",
 	"panelUi.services.stats.2#other": "{count}日前",
-	"targets.connectionRail.text5#other": "{value0} 个目标"
+	"targets.connectionRail.text5#other": "{value0} 个目标",
+	"panelUi.pages.backup.summary.listSeparator": "、",
+	"panelUi.pages.backup.summary.reasonOpen": "（",
+	"panelUi.pages.backup.summary.reasonClose": "）"
 }

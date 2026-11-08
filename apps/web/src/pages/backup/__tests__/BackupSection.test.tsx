@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import { BackupSection } from "../BackupSection";
@@ -234,3 +234,83 @@ describe("export effective-default preview", () => {
 		expect(post).not.toHaveBeenCalled();
 	});
 });
+
+it.each(["cancel", "confirm"] as const)(
+	"translated overwrite plan keeps the real deletion counts and waits for %s",
+	async (action) => {
+		const plan = {
+			subscriptions: { upserted: 2, deleted: 1 },
+			targets: { upserted: 0, deleted: 2 },
+			connections: { upserted: 0, deleted: 1 },
+			globalsApplied: true,
+			restoredIntegrations: [],
+			unrestoredIntegrations: [],
+		};
+		post.mockResolvedValue(plan);
+		renderSection();
+		fireEvent.click(screen.getByText("导入备份"));
+		pickFile("full");
+		fireEvent.change(await screen.findByPlaceholderText(/输入 6 位/), {
+			target: { value: "123456" },
+		});
+		fireEvent.click(screen.getByText("导入"));
+		const heading = await screen.findByText("覆盖导入会删除现有配置");
+		const dialog = heading.closest('[role="dialog"]') as HTMLElement;
+		for (const [locale, title, counts, confirm, cancel] of [
+			[
+				"en",
+				"Overwrite import will delete existing settings",
+				"Subscriptions: 1 item, Push targets: 2 items, Push connections: 1 item",
+				"Confirm overwrite",
+				"Go back",
+			],
+			[
+				"ja",
+				"上書きインポートで既存の設定が削除されます",
+				"購読 1件、送信先 2件、プッシュ接続 1件",
+				"上書きを確認",
+				"戻る",
+			],
+			[
+				"zh-TW",
+				"覆寫匯入將刪除現有設定",
+				"訂閱 1 項、推播目標 2 項、推播連線 1 項",
+				"確認覆寫",
+				"返回",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(dialog.isConnected).toBe(true);
+			expect(within(dialog).getByText(title)).toBeTruthy();
+			expect(dialog.textContent).toContain(counts);
+			expect(within(dialog).getByRole("button", { name: confirm })).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: cancel })).toBeTruthy();
+			expect(post).toHaveBeenCalledOnce();
+			expect(post).toHaveBeenLastCalledWith(
+				"/api/system/backup/import",
+				expect.objectContaining({ mode: "overwrite", pin: "123456", dryRun: true }),
+			);
+		}
+		fireEvent.click(
+			within(dialog).getByRole("button", { name: action === "confirm" ? "確認覆寫" : "返回" }),
+		);
+		if (action === "cancel") {
+			expect(post).toHaveBeenCalledOnce();
+			expect(screen.queryByText("覆寫匯入將刪除現有設定")).toBeNull();
+		} else {
+			await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+			expect(post).toHaveBeenLastCalledWith("/api/system/backup/import", {
+				backup: {
+					format: BACKUP_FORMAT,
+					schemaVersion: 1,
+					kind: "full",
+					createdAt: "2026-07-10T00:00:00.000Z",
+					sections: {},
+				},
+				mode: "overwrite",
+				pin: "123456",
+				dryRun: false,
+			});
+		}
+	},
+);

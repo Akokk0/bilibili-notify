@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import type { ImportResult } from "../summary";
 import { summarizeImport } from "../summary";
 
@@ -9,6 +10,8 @@ import { summarizeImport } from "../summary";
  * (schema 层的坑同时也修了:appSecret 曾经 `.min(1)`,脱敏档根本存不回去,直接
  * ConfigValidationError。见 packages/internal/src/schema/targets.ts。)
  */
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 const empty: ImportResult = {
 	subscriptions: { upserted: 0, deleted: 0 },
@@ -102,4 +105,55 @@ describe("summarizeImport", () => {
 			expect(s).not.toContain("不含凭据");
 		});
 	});
+});
+
+it("import summaries use the current language and preserve counts, integration keys and original diagnostics", () => {
+	const result: ImportResult = {
+		...empty,
+		subscriptions: { upserted: 1, deleted: 2 },
+		targets: { upserted: 2, deleted: 1 },
+		connections: { upserted: 1, deleted: 0 },
+		globalsApplied: true,
+		restoredIntegrations: ["bilibili", "onebot"],
+		unrestoredIntegrations: [
+			{ key: "onebot", message: "原诊断" },
+			{ key: "some-ext", message: "写盘失败" },
+		],
+	};
+	for (const [locale, expected] of [
+		[
+			"en",
+			"Import complete: Subscriptions: 1 item applied, 2 items deleted · Push targets: 2 items applied, 1 item deleted · Connections: 1 item applied · Global settings applied · Sign-ins and credentials restored (2 integrations) · 2 integrations not restored: onebot (原诊断), some-ext (写盘失败). This sanitized backup contains no credentials. Re-enter: Connection secrets, AI API Key",
+		],
+		[
+			"ja",
+			"インポートが完了しました: 購読 1件、削除2件 · 送信先 2件、削除1件 · 接続 1件 · 全体設定を適用しました · ログインと認証情報を復元しました（連携2件） · 2件を復元できませんでした: onebot（原诊断）、some-ext（写盘失败）。機密情報を除いたバックアップには認証情報が含まれません。再入力してください: 接続用シークレット、AI API Key",
+		],
+		[
+			"zh-TW",
+			"匯入完成：訂閱 1 項、刪除 2 項 · 推播目標 2 項、刪除 1 項 · 連線 1 項 · 已套用全域設定 · 已還原登入資訊與憑證（2 個整合） · 有 2 個整合未還原：onebot（原诊断）、some-ext（写盘失败）。移除機密後的備份不含憑證，請重新填寫：連線金鑰、AI API Key",
+		],
+	] as const) {
+		i18n.set({ locale, voice: "plain" });
+		expect(summarizeImport(result, "sanitized")).toBe(expected);
+	}
+});
+
+it("English receipts distinguish one integration and no changes without adding a credential warning", () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	expect(summarizeImport(empty, "full")).toBe(
+		"Import complete: the backup matches the current data; no changes were made.",
+	);
+	expect(
+		summarizeImport(
+			{
+				...empty,
+				restoredIntegrations: ["onebot"],
+				unrestoredIntegrations: [{ key: "raw-key", message: "原诊断" }],
+			},
+			"full",
+		),
+	).toBe(
+		"Import complete: Sign-ins and credentials restored (1 integration) · 1 integration not restored: raw-key (原诊断)",
+	);
 });

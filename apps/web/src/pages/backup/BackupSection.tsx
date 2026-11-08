@@ -209,7 +209,7 @@ export function BackupSection() {
 						<>
 							{tx("panelUi.pages.backup.BackupSection.17")}
 							<span className="font-bold text-bn-danger-text">
-								{deletions(pending.plan).join("、")}
+								{deletions(pending.plan).join(tx("panelUi.pages.backup.summary.listSeparator"))}
 							</span>
 							{tx("panelUi.pages.backup.BackupSection.18")}
 						</>

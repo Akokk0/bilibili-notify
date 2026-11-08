@@ -18,7 +18,12 @@ function blankedCredentials(r: ImportResult): string[] {
 /** 备份里有、但没带回来的集成:点名键与原因,多个用顿号隔开;没有就不出这一句。 */
 function unrestoredNote(unrestored: ImportResult["unrestoredIntegrations"]): string | null {
 	if (unrestored.length === 0) return null;
-	const named = unrestored.map((u) => `${u.key}（${u.message}）`).join("、");
+	const named = unrestored
+		.map(
+			(u) =>
+				`${u.key}${i18n.t("panelUi.pages.backup.summary.reasonOpen")}${u.message}${i18n.t("panelUi.pages.backup.summary.reasonClose")}`,
+		)
+		.join(i18n.t("panelUi.pages.backup.summary.listSeparator"));
 	return i18n.t("panelUi.pages.backup.summary.2", { count: unrestored.length, value1: named });
 }
 
@@ -57,6 +62,9 @@ export function summarizeImport(r: ImportResult, kind: BackupKind): string {
 
 	const blanked = kind === "sanitized" ? blankedCredentials(r) : [];
 	return blanked.length > 0
-		? i18n.t("panelUi.pages.backup.summary.12", { value0: head, value1: blanked.join("、") })
+		? i18n.t("panelUi.pages.backup.summary.12", {
+				value0: head,
+				value1: blanked.join(i18n.t("panelUi.pages.backup.summary.listSeparator")),
+			})
 		: head;
 }
