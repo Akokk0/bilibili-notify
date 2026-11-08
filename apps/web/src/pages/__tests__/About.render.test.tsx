@@ -7,10 +7,15 @@
  * 新手指引 section 的内容测试在 pages/guide/__tests__/guide.test.tsx。
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import About from "../About";
+
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 function renderAbout(path = "/about") {
 	return render(
@@ -112,4 +117,23 @@ describe("About page", () => {
 		expect(router.state.historyAction).toBe("REPLACE");
 		expect(router.state.location.pathname).toBe("/about/about");
 	});
+});
+
+it("about navigation follows locale while historical release notes keep their original text", async () => {
+	renderAbout("/about/changelog");
+	const original = await screen.findByRole("heading", { name: "Changelog · 独立端" });
+	for (const [locale, notes, support, project] of [
+		["en", "Release notes", "Support the project", "About this project"],
+		["ja", "リリースノート", "プロジェクトを応援", "このプロジェクトについて"],
+		["zh-TW", "更新日誌", "支持專案", "關於本專案"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getAllByRole("button", { name: notes }).length).toBeGreaterThan(0);
+		expect(screen.getAllByRole("button", { name: support }).length).toBeGreaterThan(0);
+		expect(screen.getAllByRole("button", { name: project }).length).toBeGreaterThan(0);
+		expect(screen.getByRole("heading", { name: "Changelog · 独立端" })).toBe(original);
+		expect(screen.getAllByText("apps/CHANGELOG.md").length).toBeGreaterThan(0);
+	}
 });
