@@ -425,7 +425,7 @@ type LiveInteractionReport =
 | 门槛 | 每套体系一个 `minRank`，在 `defaults.membership.minRank[体系 id]`，没配就是全推；逐订阅覆盖按体系合并；没有 rank 的体系只能开或关 |
 | SC 门槛 | `defaults.superchat.minAmount`，按人民币，没配就不设门槛；别的币种先放行 |
 | SC 的档 | `SuperchatEvent.tier`：卡按 `rank` 取色，默认配色照今天六档，皮肤可以按档换色；有 `durationSec` 就显示留言时长（走 `formatDuration`，写「1分」「30分」）。`rank` 从 1 起；超出默认六色用最后一色，没有档用第一色。皮肤自己定每档的色要加挂点，归 ㉔ |
-| 金额 | `formatAmount(amount, currency)`：按币种用 `Intl.NumberFormat` 排版，固定中文环境、不加千分位；人民币整数仍写「¥30」「¥2000」 |
+| 金额 | `formatAmount(amount, currency)`：按币种用 `Intl.NumberFormat` 排版，按整台当前语言（ADR-0037），不加千分位；简中人民币整数仍写「¥30」「¥2000」 |
 | 出图输入 | 只有一种会员卡。`viewer.name` / `viewer.avatar`；没有房管那一格（㉓ 删，见 ADR-0023 决策 3 的 🔗）；不再有 `captainImgUrl`，改用 `tier.icon`；「大航海舰队」文案在 `bilibili/`。皮肤可以按 `rank` 换色；没有 rank 的体系走默认样式。 |
 
 体系上不标「全平台 / 按主播」：不影响路由，先不加。
@@ -662,7 +662,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 
 ## 数字、时间与「不知道」
 
-- **计数排版只有一份** `formatCount`（internal），带正负号的变体也在里面。口径照搬卡片现有的：万和亿都一位小数、保留「.0」、万以下不加千分位；统计表「百万以上取整」是同一函数的紧凑档。统计图轴刻度另有 `formatAxisTick`。统一后看得见的变化（主人已知）：首页的亿从两位小数变一位，万以下去掉千分位（「9,500」→「9500」），统计表「1万」→「1.0万」；统计表和六处内联写法原来没有亿档（3 亿粉写成「30000.0万」），跟着修掉。
+- **计数排版只有一份** `formatCount`（internal），带正负号的变体也在里面。简中口径照搬卡片现有的：万和亿都一位小数、保留「.0」、万以下不加千分位；统计表「百万以上取整」是同一函数的紧凑档。ADR-0037下英文字段改用K/M/B，日文及繁体用对应单位，单位与缩放一并改变；金额与时间说明也跟整台语言，时区独立。统计图轴刻度另有 `formatAxisTick`。统一后看得见的变化（主人已知）：首页的亿从两位小数变一位，万以下去掉千分位（「9,500」→「9500」），统计表「1万」→「1.0万」；统计表和六处内联写法原来没有亿档（3 亿粉写成「30000.0万」），跟着修掉。
 - **直播人数传精确数**。B 站存 WATCHED_CHANGE 帧里的 num；「1.2万」的解析只在迁移模块。文字模板的 `{watched}` 缺数时，文字渲染器在出口印「暂未获取到」。缺数就缺键：卡上那一格不画，面板照旧显示「—」，`currentViewers` 不再 `?? 0`（现在缺了会印「人气：0」）。「暂未获取到」只在文字渲染器出口印，不再写回直播数据（现在会写回，下播卡可能印出「累计观看人数：暂未获取到」）。
 - **时长只有一种写法** `formatDuration(start, end)`，写成「2小时13分5秒」；文字与卡片、B 站与拓展、有没有配 Chrome 都走它。按秒数排时钟格式的另叫 `formatClock`。⑪ 已落（10-02）：卡片与文字、B 站与拓展都走 internal 的 `formatDuration`；`packages/live` 那份不带秒的兜底与 `getTimeDifference` 钩子已删，B 站的 `live_time` 一律经 `biliLiveTimeToIso` 按北京时间换成 ISO 再算。原先那份兜底按服务所在的时区读北京时间，跑在 UTC 的 Docker 里没开卡片渲染时会写成「-47分钟」；`live_time` 为空时以此刻代替的那句也改成按北京时间拼。B 站 `live_time` 的解析还有两份（`packages/image` 的 `parseBiliLiveTime`、`packages/live` 的 `biliLiveTimeToIso`），3a 搬进 `bilibili/` 时合一。
 - **进门换 ISO**：拓展契约的毫秒时刻、签名清单的秒、B 站不带时区的 `live_time`（北京时间），都在进门处换成 ISO。🔗 现状（3b-49，10-25）：拓展交来的时刻已改成带时区的 ISO（主人改判，见 ADR-0019 决策 62 下 3b-49 的 🔗）；签名清单的秒、B 站的 `live_time` 照旧。

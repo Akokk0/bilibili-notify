@@ -323,5 +323,19 @@
 	"ai.provider-probe.15": "請求失敗（HTTP {value0}）。回應：{value1}",
 	"ai.web-search.1": "搜尋請求無法送出：{value0}",
 	"ai.web-search.2": "搜尋後端傳回 {value0}：{value1}",
-	"ai.web-search.3": "搜尋後端傳回 200，但本文不是 JSON，可能是閘道維護頁或反向代理錯誤頁：{value0}"
+	"ai.web-search.3": "搜尋後端傳回 200，但本文不是 JSON，可能是閘道維護頁或反向代理錯誤頁：{value0}",
+	"internal.format.1": "{value0}億",
+	"internal.format.2": "1.0億",
+	"internal.format.3": "{value0}萬",
+	"internal.format.4": "1.0萬",
+	"internal.format.5": "剛剛",
+	"internal.format.9": "0秒",
+	"internal.format.14": "0秒",
+	"internal.format.6#other": "{count} 分鐘前",
+	"internal.format.7#other": "{count} 小時前",
+	"internal.format.8#other": "{count} 天前",
+	"internal.format.10#other": "{count}天",
+	"internal.format.11#other": "{count}小時",
+	"internal.format.12#other": "{count}分",
+	"internal.format.13#other": "{count}秒"
 }

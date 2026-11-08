@@ -48,7 +48,7 @@ export const i18n = createI18n<ServerTextKey | PackageTextKey, Locale>({
 export const t = i18n.t;
 
 // 包里的话(`packageText`)跟着服务端的语言与口吻走(ADR-0037 决策 6 下 10-28 的 🔗)
-bindPackageText(i18n.t);
+bindPackageText(i18n.t, () => i18n.state().locale);
 
 /** 日志只用平实层；字典可预合成，当前语言在每次输出时读取。 */
 const plainLogDicts = {

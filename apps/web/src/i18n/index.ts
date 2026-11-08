@@ -48,7 +48,7 @@ export const i18n = createI18n<WebTextKey | PackageTextKey, Locale>({
 });
 
 // 包里的话(`packageText`)跟着面板的语言与口吻走(ADR-0037 决策 6 下 10-28 的 🔗)
-bindPackageText(i18n.t);
+bindPackageText(i18n.t, () => i18n.state().locale);
 
 /** 组件里取字:`const t = useT()`。切语言或口吻后拿到的 `t` 换了引用,已画出来的组件自己重画。 */
 export function useT() {

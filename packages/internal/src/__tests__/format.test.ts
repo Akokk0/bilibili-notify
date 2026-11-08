@@ -5,7 +5,8 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { formatAgo, formatAmount, formatClock, formatCount, formatDuration } from "../format";
-import { bindPackageText } from "../texts";
+import { createI18n, type Locale } from "../i18n";
+import { bindPackageText, type PackageTextKey, withPackageDicts } from "../texts";
 
 describe("formatCount", () => {
 	it("卡片口径:万和亿都一位小数、保留「.0」、万以下原样不加千分位", () => {
@@ -199,4 +200,48 @@ it("reads translated units on each call while preserving numbers and source time
 		dispose.dispose();
 	}
 	expect(formatCount(10000)).toBe("1.0万");
+});
+
+it("formats counts, relative time, duration and currency in the current instance language", () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "plain",
+	});
+	const binding = bindPackageText(texts.t, () => texts.state().locale);
+	try {
+		texts.set({ locale: "en" });
+		expect(formatCount(12345)).toBe("12.3K");
+		expect(formatCount(123456789)).toBe("123.5M");
+		expect(formatCount(1234567890)).toBe("1.2B");
+		expect(formatCount(999950)).toBe("1.0M");
+		expect(formatCount(1234567, { compact: true, signed: true })).toBe("+1M");
+		expect(formatCount(-12345)).toBe("-12.3K");
+		expect(formatCount(999.7, { compact: true })).toBe("1.0K");
+		expect(formatAgo(0, 60000)).toBe("1 minute ago");
+		expect(formatAgo(0, 120000)).toBe("2 minutes ago");
+		expect(formatDuration(0, 90061000)).toBe("1d1h1m1s");
+		expect(formatAmount(30, "CNY")).toBe("CN¥30");
+		texts.set({ locale: "ja" });
+		expect(formatCount(123456789)).toBe("1.2億");
+		expect(formatAgo(0, 120000)).toBe("2分前");
+		expect(formatDuration(0, 90061000)).toBe("1日1時間1分1秒");
+		expect(formatAmount(30, "USD")).toBe("$30");
+		texts.set({ locale: "zh-TW" });
+		expect(formatCount(12345)).toBe("1.2萬");
+		expect(formatAgo(0, 120000)).toBe("2 分鐘前");
+		expect(formatDuration(0, 90061000)).toBe("1天1小時1分1秒");
+		texts.set({ locale: "zh-CN" });
+		expect(formatCount(12345)).toBe("1.2万");
+		expect(formatAmount(30, "USD")).toBe("US$30");
+	} finally {
+		binding.dispose();
+	}
+	expect(formatCount(12345)).toBe("1.2万");
 });

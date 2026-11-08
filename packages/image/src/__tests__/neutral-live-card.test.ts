@@ -553,13 +553,13 @@ it("renders live labels in the current language without translating creator cont
 		locale: "zh-CN",
 		voice: "plain",
 	});
-	const binding = bindPackageText(texts.t);
+	const binding = bindPackageText(texts.t, () => texts.state().locale);
 	const { renderer, captured } = makeRenderer();
 	try {
-		for (const [locale, status, time, likes] of [
-			["en", "Ended", "Started at: 2026-09-13 20:00:00", "Likes: 123"],
-			["ja", "配信終了", "開始時刻：2026-09-13 20:00:00", "いいね：123"],
-			["zh-TW", "已結束直播", "開播時間：2026-09-13 20:00:00", "按讚：123"],
+		for (const [locale, status, time, likes, totalViewers] of [
+			["en", "Ended", "Started at: 2026-09-13 20:00:00", "Likes: 123", "Total viewers: 31.2K"],
+			["ja", "配信終了", "開始時刻：2026-09-13 20:00:00", "いいね：123", "累計視聴者数：3.1万"],
+			["zh-TW", "已結束直播", "開播時間：2026-09-13 20:00:00", "按讚：123", "累計觀看人數：3.1萬"],
 		] as const) {
 			texts.set({ locale });
 			await renderer.generateLiveCard(input({ status: "end", likes: 123 }));
@@ -570,6 +570,7 @@ it("renders live labels in the current language without translating creator cont
 				expect(block("status")).toBe(status);
 				expect(block("time")).toBe(time);
 				expect(block("likes")).toBe(likes);
+				expect(block("totalViewers")).toBe(totalViewers);
 				expect(block("creatorName")).toBe("示例主播");
 				expect(block("title")).toBe("一场直播");
 				expect(block("description")).toBe("纯文本简介");

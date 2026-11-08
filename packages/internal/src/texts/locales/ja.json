@@ -323,5 +323,19 @@
 	"ai.provider-probe.15": "リクエストに失敗しました（HTTP {value0}）。レスポンス：{value1}",
 	"ai.web-search.1": "検索リクエストを送信できませんでした：{value0}",
 	"ai.web-search.2": "検索バックエンドが{value0}を返しました：{value1}",
-	"ai.web-search.3": "検索バックエンドは200を返しましたが、本文がJSONではありません（ゲートウェイのメンテナンス画面またはリバースプロキシのエラーページの可能性があります）：{value0}"
+	"ai.web-search.3": "検索バックエンドは200を返しましたが、本文がJSONではありません（ゲートウェイのメンテナンス画面またはリバースプロキシのエラーページの可能性があります）：{value0}",
+	"internal.format.1": "{value0}億",
+	"internal.format.2": "1.0億",
+	"internal.format.3": "{value0}万",
+	"internal.format.4": "1.0万",
+	"internal.format.5": "たった今",
+	"internal.format.9": "0秒",
+	"internal.format.14": "0秒",
+	"internal.format.6#other": "{count}分前",
+	"internal.format.7#other": "{count}時間前",
+	"internal.format.8#other": "{count}日前",
+	"internal.format.10#other": "{count}日",
+	"internal.format.11#other": "{count}時間",
+	"internal.format.12#other": "{count}分",
+	"internal.format.13#other": "{count}秒"
 }

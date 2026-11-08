@@ -1,4 +1,4 @@
-import { packageText } from "./texts/index";
+import { packageLocale, packageText } from "./texts/index";
 /**
  * 数字与时间的排版 —— 全仓只有这一份(data-model「数字、时间与「不知道」」;1.0 第 2 期 ⑪,
  * 2026-10-02 主人定口径)。卡片、推送文字、面板、`/status` 都走这里,守卫 4 钉着别处不许再有同名定义。
@@ -10,12 +10,12 @@ import { packageText } from "./texts/index";
 export interface FormatCountOptions {
 	/** 带正负号:正数加「+」,负数是普通的「-」,零就写「0」。 */
 	signed?: boolean;
-	/** 统计表的紧凑档:万以下取整,百万以上取整到万;其余同卡片口径。 */
+	/** 统计表的紧凑档:小数取整，百万以上中文/日文取整到万、英文取整到M/B。 */
 	compact?: boolean;
 }
 
 /**
- * 计数:万和亿都一位小数、保留「.0」,万以下原样、不加千分位(卡片现有的口径)。负数按绝对值
+ * 计数:中文/日文的万和亿一位小数、保留「.0」；英文用K/M/B一位小数。较小的数原样、不加千分位。负数按绝对值
  * 压缩;快到一亿时进位成「1.0亿」,不写「10000.0万」。
  */
 export function formatCount(
@@ -28,6 +28,18 @@ export function formatCount(
 }
 
 function magnitude(abs: number, compact: boolean): string {
+	if (packageLocale() === "en") {
+		const value = compact && abs < 1000 ? Math.round(abs) : abs;
+		if (value < 1000) return String(value);
+		const digits = compact && abs >= 1e6 ? 0 : 1;
+		return new Intl.NumberFormat("en", {
+			notation: "compact",
+			compactDisplay: "short",
+			useGrouping: false,
+			minimumFractionDigits: digits,
+			maximumFractionDigits: digits,
+		}).format(value);
+	}
 	if (abs >= 1e8) return packageText("internal.format.1", { value0: (abs / 1e8).toFixed(1) });
 	if (abs >= 1e4) {
 		const wan = compact && abs >= 1e6 ? String(Math.round(abs / 1e4)) : (abs / 1e4).toFixed(1);
@@ -94,8 +106,8 @@ export function formatClock(seconds: number): string {
 }
 
 /**
- * 金额:按币种用 `Intl.NumberFormat` 排,**固定中文环境**(不随机器语言变 —— 同一笔钱在哪台机器上画出来
- * 都是一个样)、**不加千分位**(与卡片上的数字口径一致:`formatCount` 万以下也不加)。人民币整数写「¥30」「¥2000」,
+ * 金额:按币种用 `Intl.NumberFormat` 排,使用整台当前语言(不随机器语言变)、**不加千分位**。
+ * 简中人民币整数写「¥30」「¥2000」,
  * 小数照写不补零(「¥30.5」),别的币种按它自己的符号(「US$30」「JP¥30」)。
  *
  * 两种不该出现、但来源说了算的情形都**不抛**:
@@ -106,7 +118,7 @@ export function formatAmount(amount: number, currency: string): string {
 	// 金额不是有限的数(NaN / ±Infinity)= 不知道,出口写空串 —— `Intl` 会写出「¥NaN」「¥∞」,比空着更糟。
 	if (!Number.isFinite(amount)) return "";
 	try {
-		return new Intl.NumberFormat("zh-CN", {
+		return new Intl.NumberFormat(packageLocale(), {
 			style: "currency",
 			currency,
 			minimumFractionDigits: 0,

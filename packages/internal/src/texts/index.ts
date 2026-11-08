@@ -81,21 +81,25 @@ const UNBOUND_DICT = mergeDict(
 	DEFAULT_VOICE === "maid" ? UNBOUND_LAYERS.maid : undefined,
 );
 
-let bound: PackageTranslator | undefined;
+let bound: { translator: PackageTranslator; locale: () => Locale } | undefined;
 
 /**
  * 两端把自己的取字口交进来。回的把手撤掉这一次交的,回到交之前的那个口(测试里临时换一个也能还原);
- * 撤过再撤不出错。
+ * 语言读取口供数字/金额格式现取，旧的只绑取字函数调用按规则默认语言；撤过再撤不出错。
  */
-export function bindPackageText(translator: PackageTranslator): Disposable {
+export function bindPackageText(
+	translator: PackageTranslator,
+	locale: () => Locale = () => DEFAULT_LOCALE,
+): Disposable {
 	const previous = bound;
-	bound = translator;
+	const current = { translator, locale };
+	bound = current;
 	let disposed = false;
 	return {
 		dispose() {
 			if (disposed) return;
 			disposed = true;
-			if (bound === translator) bound = previous;
+			if (bound === current) bound = previous;
 		},
 	};
 }
@@ -103,6 +107,11 @@ export function bindPackageText(translator: PackageTranslator): Disposable {
 /** 包里取字:出字那一刻调,别在模块顶层取好存起来。缺键回键本身。 */
 export function packageText(key: PackageTextKey, values?: TextValues): string {
 	return bound !== undefined
-		? bound(key, values)
+		? bound.translator(key, values)
 		: translate(UNBOUND_DICT, DEFAULT_LOCALE, key, values);
+}
+
+/** 包内数字等非句子格式的当前语言；两端与取字口一起交进来，出字时现取。 */
+export function packageLocale(): Locale {
+	return bound?.locale() ?? DEFAULT_LOCALE;
 }

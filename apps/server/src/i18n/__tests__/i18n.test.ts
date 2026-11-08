@@ -1,3 +1,4 @@
+import { formatAmount, formatCount } from "@bilibili-notify/internal/format";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { i18n, t } from "../index.js";
 
@@ -34,4 +35,14 @@ describe("服务端字典 store", () => {
 		expect(t("command.report.busy")).toBe("还在跑呢，稍等一下下～");
 		expect(i18n.state().voice).toBe("plain");
 	});
+});
+
+it("the host store drives package number formats on every call", () => {
+	i18n.set({ locale: "en" });
+	expect(formatCount(12345)).toBe("12.3K");
+	expect(formatAmount(30, "CNY")).toBe("CN¥30");
+	i18n.set({ locale: "zh-TW" });
+	expect(formatCount(12345)).toBe("1.2萬");
+	i18n.set({ locale: "zh-CN" });
+	expect(formatCount(12345)).toBe("1.2万");
 });
