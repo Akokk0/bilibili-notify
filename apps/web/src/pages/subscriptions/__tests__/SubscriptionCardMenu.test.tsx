@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { SubscriptionCardMenu, type SubscriptionCardMenuProps } from "../SubscriptionCardMenu";
 
 /**
@@ -9,6 +10,7 @@ import { SubscriptionCardMenu, type SubscriptionCardMenuProps } from "../Subscri
  * 负责画五项、把点击转成对应回调、并在 Esc / 点外时请求关闭。启用 / 禁用文案随
  * 订阅当前状态动态变化。
  */
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 function baseProps(overrides: Partial<SubscriptionCardMenuProps> = {}): SubscriptionCardMenuProps {

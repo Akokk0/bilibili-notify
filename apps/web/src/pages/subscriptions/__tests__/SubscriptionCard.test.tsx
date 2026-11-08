@@ -44,6 +44,95 @@ function props(overrides: Partial<SubscriptionCardProps> = {}): SubscriptionCard
 }
 
 describe("SubscriptionCard 描述符身份", () => {
+	it("card status and selection translate without replacing source labels, names, IDs or zero followers", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "original", externalId: "0012" }),
+			cachedProfile: {
+				name: "Original creator",
+				followers: 0,
+				refreshedAt: "2026-11-01T00:00:00Z",
+			},
+		};
+		const platform = subscriptionPlatformOf(sub.identity, [
+			{
+				key: "original",
+				status: "disabled",
+				descriptor: {
+					label: "Original source",
+					externalIdNoun: "Original ID",
+					supportedFeatures: [],
+				},
+			},
+		]);
+		const view = render(<SubscriptionCard {...props({ sub, platform })} />);
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					select: "Select",
+					selected: "Selected",
+					zero: "Followers: 0",
+					unknown: "Follower count not refreshed",
+					paused: "Original source is not running",
+					absent: "Original source is not installed",
+					empty: "No push features configured",
+					updated: /^Updated /,
+				},
+			],
+			[
+				"ja",
+				{
+					select: "選択",
+					selected: "選択済み",
+					zero: "フォロワー 0",
+					unknown: "フォロワー数は未更新です",
+					paused: "Original sourceは稼働していません",
+					absent: "Original sourceはインストールされていません",
+					empty: "通知機能が設定されていません",
+					updated: /^更新：/,
+				},
+			],
+			[
+				"zh-TW",
+				{
+					select: "選取",
+					selected: "已選取",
+					zero: "追蹤人數：0",
+					unknown: "追蹤人數尚未更新",
+					paused: "Original source未執行",
+					absent: "Original source未安裝",
+					empty: "尚未設定推送功能",
+					updated: /^更新於 /,
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			view.rerender(<SubscriptionCard {...props({ sub, platform })} />);
+			expect(view.getByRole("button", { name: words.select })).toBeTruthy();
+			expect(view.getByText(words.zero)).toBeTruthy();
+			expect(view.getByText(words.paused)).toBeTruthy();
+			expect(view.getByText(words.empty)).toBeTruthy();
+			expect(view.getByText(words.updated)).toBeTruthy();
+			expect(view.getByText("Original creator")).toBeTruthy();
+			expect(view.getAllByText("Original ID 0012").length).toBeGreaterThan(0);
+			view.rerender(
+				<SubscriptionCard
+					{...props({
+						sub: {
+							...sub,
+							cachedProfile: { name: "Original creator", refreshedAt: "2026-11-01T00:00:00Z" },
+						},
+						platform: { ...platform, absent: true },
+						selected: true,
+					})}
+				/>,
+			);
+			expect(view.getByRole("button", { name: words.selected })).toBeTruthy();
+			expect(view.getByText(words.unknown)).toBeTruthy();
+			expect(view.getByText(words.absent)).toBeTruthy();
+		}
+	});
+
 	it("非B来源显示声明身份标签并保留外部ID原文", () => {
 		const sub = makeEmptySubscription({ sourceKey: "library", externalId: "0012" });
 		const platform = subscriptionPlatformOf(sub.identity, [

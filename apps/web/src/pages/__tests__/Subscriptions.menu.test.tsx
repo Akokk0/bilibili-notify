@@ -80,12 +80,51 @@ afterEach(() => {
 });
 
 describe("Subscriptions 快捷菜单", () => {
+	it("context menu labels translate for enabled and disabled subscriptions without invoking their actions", async () => {
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("Expected the subscription API fixture");
+		vi.mocked(api.get).mockImplementation((path) =>
+			path === "/api/subscriptions"
+				? (Promise.resolve([SUB_A, { ...SUB_B, enabled: false }]) as never)
+				: get(path),
+		);
+		renderSubs();
+		await screen.findByText("UP甲");
+		fireEvent.contextMenu(screen.getByText("UP甲"), { clientX: 100, clientY: 100 });
+		for (const [locale, names] of [
+			[
+				"en",
+				["Edit details", "Disable subscription", "Copy UID", "Edit tags", "Delete subscription"],
+			],
+			["ja", ["詳細を編集", "購読を無効にする", "UIDをコピー", "タグを編集", "購読を削除"]],
+			["zh-TW", ["編輯詳細資料", "停用訂閱", "複製 UID", "編輯標籤", "刪除訂閱"]],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const menu = within(screen.getByRole("menu"));
+			for (const name of names) expect(menu.getByRole("menuitem", { name })).toBeTruthy();
+		}
+		fireEvent.keyDown(document, { key: "Escape" });
+		fireEvent.contextMenu(screen.getByText("UP乙"), { clientX: 100, clientY: 100 });
+		for (const [locale, name] of [
+			["en", "Enable subscription"],
+			["ja", "購読を有効にする"],
+			["zh-TW", "啟用訂閱"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(within(screen.getByRole("menu")).getByRole("menuitem", { name })).toBeTruthy();
+		}
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+		expect(copyToClipboard).not.toHaveBeenCalled();
+	});
+
 	it("list filters and selection labels translate while search, selected identities and user tag names remain unchanged", async () => {
 		i18n.set({ locale: "en", voice: "plain" });
 		renderSubs();
 		await screen.findByText("UP甲");
-		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
-		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
+		fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
 		for (const [locale, words] of [
 			[
 				"en",
@@ -172,8 +211,8 @@ describe("Subscriptions 快捷菜单", () => {
 	it("deletion warnings translate without losing selected identities or deleting before confirmation", async () => {
 		renderSubs();
 		await screen.findByText("UP甲");
-		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
-		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
+		fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
 		fireEvent.click(screen.getByRole("button", { name: "批量删除" }));
 		for (const [locale, title, warning, confirm] of [
 			[
@@ -276,8 +315,8 @@ describe("Subscriptions 快捷菜单", () => {
 				[words.enable, words.enabledError],
 				[words.disable, words.disabledError],
 			] as const) {
-				fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
-				fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+				fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
+				fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
 				fireEvent.click(screen.getByRole("button", { name: action }));
 				expect(await screen.findByText(message)).toBeTruthy();
 				await waitFor(() =>
@@ -289,8 +328,8 @@ describe("Subscriptions 快捷菜单", () => {
 				for (const sub of [SUB_A, SUB_B])
 					expect(api.post).toHaveBeenCalledWith("/api/subscriptions", { ...sub, enabled });
 			}
-			fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
-			fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+			fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
+			fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
 			fireEvent.click(screen.getByRole("button", { name: words.remove }));
 			expect(api.delete).not.toHaveBeenCalled();
 			fireEvent.click(
@@ -338,6 +377,70 @@ describe("Subscriptions 快捷菜单", () => {
 		expect(api.patch).not.toHaveBeenCalled();
 		expect(api.delete).not.toHaveBeenCalled();
 	});
+
+	it.each([
+		[
+			"en",
+			{
+				copy: "Copy UID",
+				copied: "Copied",
+				copyFailed: "Could not copy. Copy the value manually.",
+				disable: "Disable subscription",
+				saveFailed: "The operation failed. Try again later.",
+			},
+		],
+		[
+			"ja",
+			{
+				copy: "UIDをコピー",
+				copied: "コピーしました",
+				copyFailed: "コピーできませんでした。手動でコピーしてください。",
+				disable: "購読を無効にする",
+				saveFailed: "操作に失敗しました。しばらくしてから再試行してください。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				copy: "複製 UID",
+				copied: "已複製",
+				copyFailed: "無法複製，請手動複製。",
+				disable: "停用訂閱",
+				saveFailed: "操作失敗，請稍後再試。",
+			},
+		],
+	] as const)(
+		"copy and patch feedback translate while the original external ID and failed subscription are retained (%s)",
+		async (locale, words) => {
+			i18n.set({ locale, voice: "plain" });
+			vi.mocked(api.patch).mockRejectedValue(new Error("original denied"));
+			renderSubs();
+			await screen.findByText("UP甲");
+			for (const [result, feedback] of [
+				[false, words.copyFailed],
+				[true, words.copied],
+			] as const) {
+				vi.mocked(copyToClipboard).mockResolvedValue(result);
+				fireEvent.contextMenu(screen.getByText("UP甲"), { clientX: 100, clientY: 100 });
+				fireEvent.click(
+					within(screen.getByRole("menu")).getByRole("menuitem", { name: words.copy }),
+				);
+				expect(await screen.findByText(feedback, { exact: true })).toBeTruthy();
+			}
+			expect(copyToClipboard).toHaveBeenNthCalledWith(1, "111");
+			expect(copyToClipboard).toHaveBeenNthCalledWith(2, "111");
+			fireEvent.contextMenu(screen.getByText("UP甲"), { clientX: 100, clientY: 100 });
+			fireEvent.click(
+				within(screen.getByRole("menu")).getByRole("menuitem", { name: words.disable }),
+			);
+			expect(await screen.findByText(words.saveFailed)).toBeTruthy();
+			expect(screen.getByText("UP甲")).toBeTruthy();
+			expect(api.patch).toHaveBeenCalledTimes(1);
+			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`, { enabled: false });
+			expect(api.post).not.toHaveBeenCalled();
+			expect(api.delete).not.toHaveBeenCalled();
+		},
+	);
 
 	it("右键卡片 → 弹出快捷菜单", async () => {
 		renderSubs();
