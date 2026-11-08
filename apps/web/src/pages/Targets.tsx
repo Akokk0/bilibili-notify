@@ -1959,9 +1959,9 @@ export default function Targets() {
 							{/* Adapter detail header */}
 							<section
 								aria-label={selectedConnection.name || tx("targets.targetCard.text1")}
-								className="bn-glass rounded-bn-card p-4 shadow-bn-card"
+								className="bn-glass @container/connection-header rounded-bn-card p-4 shadow-bn-card"
 							>
-								<div className="flex items-start gap-3">
+								<div className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-3 @min-[480px]/connection-header:grid-cols-[2.75rem_minmax(0,1fr)_auto]">
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
 										style={{
@@ -2031,7 +2031,7 @@ export default function Targets() {
 											</EdgeBadge>
 										) : null}
 									</div>
-									<div className="flex max-w-[45%] shrink-0 flex-wrap items-center justify-end gap-1">
+									<div className="col-span-2 flex min-w-0 flex-wrap items-center justify-end gap-1 @min-[480px]/connection-header:col-span-1 @min-[480px]/connection-header:max-w-80">
 										<ExtensionSettingsButton id={selectedConnection.adapterKey} />
 										{/* 导览「测试连通性」一步的控件级灯位 */}
 										<Btn
