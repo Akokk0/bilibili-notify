@@ -264,7 +264,7 @@ describe("正在直播 · 没开直播推送的提示", () => {
 		subs: Subscription[],
 		globalFeatures: FeatureFlagValues = DEFAULT_FEATURE_FLAGS,
 	) {
-		render(
+		return render(
 			<MemoryRouter initialEntries={["/"]}>
 				<LiveNowPanel live={[]} subs={subs} globalFeatures={globalFeatures} />
 			</MemoryRouter>,
@@ -284,6 +284,39 @@ describe("正在直播 · 没开直播推送的提示", () => {
 				superchat: false,
 			},
 		},
+	});
+
+	it("live monitoring guidance redraws by locale and preserves subscription counts and destination", async () => {
+		const sub = liveOff(biliSub("s-1", "u1", "原名"));
+		const view = renderEmpty([sub]);
+		const link = screen.getByRole("link", { name: /有 1 项启用中的订阅没开直播监听/ });
+		for (const [locale, title, hint] of [
+			["en", "Live now", "Live monitoring is off for 1 enabled subscription →"],
+			["ja", "配信中", "有効な購読のうち1件で配信監視がオフです →"],
+			["zh-TW", "直播中", "有 1 筆已啟用的訂閱未開啟直播監聽 →"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByRole("link", { name: hint })).toBe(link);
+			expect(link.getAttribute("href")).toBe("/subs");
+		}
+		await act(async () => {
+			i18n.set({ locale: "en", voice: "plain" });
+		});
+		view.rerender(
+			<MemoryRouter>
+				<LiveNowPanel
+					live={[]}
+					subs={[sub, { ...sub, id: "s-2" }]}
+					globalFeatures={DEFAULT_FEATURE_FLAGS}
+				/>
+			</MemoryRouter>,
+		);
+		expect(
+			screen.getByRole("link", { name: "Live monitoring is off for 2 enabled subscriptions →" }),
+		).toBeTruthy();
 	});
 
 	it("启用着且直播开关全关的订阅计数;已开直播的拓展订阅与停用项不数", () => {

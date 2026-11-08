@@ -242,5 +242,17 @@
 	"healthCard.insightUnknown": "配信状態はまだ確認できていません。読み込み後に案内を表示します。",
 	"healthCard.emptyHint": "ソースと、接続設定のある送信連携機能をここに表示します。",
 	"healthCard.viewExtensions": "拡張機能を表示",
-	"healthCard.manage": "管理画面へ"
+	"healthCard.manage": "管理画面へ",
+	"dashboard.live.title": "配信中",
+	"dashboard.live.refresh": "リアルタイム更新",
+	"dashboard.live.count#other": "● {count}件配信中",
+	"dashboard.live.empty": "現在配信中の記録はありません",
+	"dashboard.live.hint": "配信関連の通知を有効にすると、配信中の記録をここで確認できます。",
+	"dashboard.live.unmonitored#other": "有効な購読のうち{count}件で配信監視がオフです →",
+	"dashboard.live.noTitle": "（配信タイトルを取得できません）",
+	"dashboard.live.loading": "配信状態を読み込み中…",
+	"dashboard.live.readFailed": "配信状態を読み込めません。現在配信中かどうかは不明です。",
+	"dashboard.live.countLoading": "購読と配信設定を読み込み中…",
+	"dashboard.live.countFailed": "購読または配信設定を読み込めません。配信監視がオフになっている購読数は、現在確認できません。",
+	"dashboard.live.noSubscriptions": "購読はまだありません。購読ページで追加 →"
 }

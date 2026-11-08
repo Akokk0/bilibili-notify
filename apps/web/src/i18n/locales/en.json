@@ -243,5 +243,19 @@
 	"healthCard.insightUnknown": "Live status is not yet confirmed. A hint appears after it loads.",
 	"healthCard.emptyHint": "Sources and push integrations with configured connections appear here.",
 	"healthCard.viewExtensions": "View extensions",
-	"healthCard.manage": "Manage"
+	"healthCard.manage": "Manage",
+	"dashboard.live.title": "Live now",
+	"dashboard.live.refresh": "Live updates",
+	"dashboard.live.count#other": "● {count} live",
+	"dashboard.live.empty": "Nothing is live right now",
+	"dashboard.live.hint": "Enable live-related notifications to see live records here.",
+	"dashboard.live.unmonitored#other": "Live monitoring is off for {count} enabled subscriptions →",
+	"dashboard.live.noTitle": "(Stream title unavailable)",
+	"dashboard.live.loading": "Loading live status…",
+	"dashboard.live.readFailed": "Could not load live status. It is unknown whether anyone is live.",
+	"dashboard.live.countLoading": "Loading subscriptions and live settings…",
+	"dashboard.live.countFailed": "Could not load subscriptions or live settings. The number of subscriptions without monitoring is currently unknown.",
+	"dashboard.live.noSubscriptions": "No subscriptions yet. Add one on the subscriptions page →",
+	"dashboard.live.unmonitored#one": "Live monitoring is off for {count} enabled subscription →",
+	"dashboard.live.count#one": "● {count} live"
 }
