@@ -139,5 +139,20 @@
 	"preferences.voice.maid": "メイド",
 	"preferences.voice.plain": "通常",
 	"preferences.timezone.label": "タイムゾーン",
-	"preferences.timezone.hint": "Asia/ShanghaiなどのIANAタイムゾーン名を入力します。カードの時刻、サーバーのスケジュール、通知を停止する時間帯に使います。保存後は今後の予定を組み直し、過去の予定は実行しません。ブラウザー内の統計グラフは引き続き端末のタイムゾーンで日付を区切ります。"
+	"preferences.timezone.hint": "Asia/ShanghaiなどのIANAタイムゾーン名を入力します。カードの時刻、サーバーのスケジュール、通知を停止する時間帯に使います。保存後は今後の予定を組み直し、過去の予定は実行しません。ブラウザー内の統計グラフは引き続き端末のタイムゾーンで日付を区切ります。",
+	"credentials.title": "ダッシュボードのアカウント",
+	"credentials.hint": "ダッシュボードのユーザー名とパスワードを変更します。保存すると、すべてのダッシュボードのログインが無効になります。新しいユーザー名とパスワードで再ログインしてください。",
+	"credentials.open": "ユーザー名とパスワードを変更",
+	"credentials.current": "現在のパスワード",
+	"credentials.username": "新しいユーザー名",
+	"credentials.password": "新しいパスワード",
+	"credentials.confirmation": "新しいパスワードの確認",
+	"credentials.cancel": "キャンセル",
+	"credentials.save": "保存して再ログイン",
+	"credentials.saving": "保存中…",
+	"credentials.failed": "変更できませんでした：{reason}",
+	"credentials.required": "ユーザー名とパスワードの全項目を入力してください。",
+	"credentials.mismatch": "新しいパスワードと確認用のパスワードが一致しません。",
+	"credentials.passwordHint": "新しいパスワードは8～256文字、ユーザー名は256文字以内で入力してください。",
+	"credentials.pendingDraft": "システム設定の変更を保存または破棄してから、ユーザー名とパスワードを変更してください。"
 }

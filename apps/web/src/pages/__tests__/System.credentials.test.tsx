@@ -59,6 +59,33 @@ afterEach(() => {
 });
 
 describe("系统页面板账号凭据", () => {
+	it("credential labels and new validation follow language while the entered account stays unchanged", async () => {
+		renderSystem();
+		fireEvent.click(await screen.findByRole("button", { name: "修改账号密码" }));
+		const username = screen.getByLabelText("新账号");
+		fireEvent.change(username, { target: { value: "原样名字" } });
+		for (const [locale, account, save, required] of [
+			["en", "New username", "Save and sign in again", "Fill in all account and password fields."],
+			[
+				"ja",
+				"新しいユーザー名",
+				"保存して再ログイン",
+				"ユーザー名とパスワードの全項目を入力してください。",
+			],
+			["zh-TW", "新帳號", "儲存並重新登入", "請完整填寫帳號與密碼欄位。"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByLabelText(account)).toBe(username);
+			expect(username).toHaveProperty("value", "原样名字");
+			fireEvent.click(screen.getByRole("button", { name: save }));
+			expect(await screen.findByRole("alert")).toHaveProperty("textContent", required);
+			expect(api.put).not.toHaveBeenCalled();
+			expect(useSessionStore.getState().authed).toBe(true);
+		}
+	});
+
 	it("有未保存系统草稿时先要求保存或放弃，不直接改密丢失草稿", async () => {
 		renderSystem();
 		await screen.findByText("主人账号");

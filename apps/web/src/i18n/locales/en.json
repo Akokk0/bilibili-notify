@@ -139,5 +139,20 @@
 	"preferences.voice.maid": "Maid",
 	"preferences.voice.plain": "Plain",
 	"preferences.timezone.label": "Time zone",
-	"preferences.timezone.hint": "Enter an IANA time zone, such as Asia/Shanghai. It controls card timestamps, server schedules and quiet hours. Saving reschedules future runs without catching up missed runs. Statistics charts in the browser still group days by your local time zone."
+	"preferences.timezone.hint": "Enter an IANA time zone, such as Asia/Shanghai. It controls card timestamps, server schedules and quiet hours. Saving reschedules future runs without catching up missed runs. Statistics charts in the browser still group days by your local time zone.",
+	"credentials.title": "Dashboard account",
+	"credentials.hint": "Change the dashboard username and password. Saving signs out all dashboard sessions; sign in again with the new credentials.",
+	"credentials.open": "Change username and password",
+	"credentials.current": "Current password",
+	"credentials.username": "New username",
+	"credentials.password": "New password",
+	"credentials.confirmation": "Confirm new password",
+	"credentials.cancel": "Cancel",
+	"credentials.save": "Save and sign in again",
+	"credentials.saving": "Saving…",
+	"credentials.failed": "Could not update credentials: {reason}",
+	"credentials.required": "Fill in all account and password fields.",
+	"credentials.mismatch": "The new passwords do not match.",
+	"credentials.passwordHint": "Use 8–256 characters for the new password and at most 256 for the username.",
+	"credentials.pendingDraft": "Save or discard your system settings changes before changing credentials."
 }

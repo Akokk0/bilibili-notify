@@ -139,5 +139,20 @@
 	"preferences.voice.maid": "女僕",
 	"preferences.voice.plain": "平實",
 	"preferences.timezone.label": "時區",
-	"preferences.timezone.hint": "填入 IANA 時區名稱，例如 Asia/Shanghai，用於卡片時間、伺服器排程與勿擾時段。儲存後會重新安排未來排程，不會補跑。瀏覽器中的統計圖表仍依本機時區劃分日期。"
+	"preferences.timezone.hint": "填入 IANA 時區名稱，例如 Asia/Shanghai，用於卡片時間、伺服器排程與勿擾時段。儲存後會重新安排未來排程，不會補跑。瀏覽器中的統計圖表仍依本機時區劃分日期。",
+	"credentials.title": "面板帳號",
+	"credentials.hint": "修改面板登入帳號與密碼。儲存成功後，所有面板登入階段都會失效，須使用新帳號與密碼重新登入。",
+	"credentials.open": "修改帳號密碼",
+	"credentials.current": "目前密碼",
+	"credentials.username": "新帳號",
+	"credentials.password": "新密碼",
+	"credentials.confirmation": "確認新密碼",
+	"credentials.cancel": "取消",
+	"credentials.save": "儲存並重新登入",
+	"credentials.saving": "儲存中…",
+	"credentials.failed": "修改失敗：{reason}",
+	"credentials.required": "請完整填寫帳號與密碼欄位。",
+	"credentials.mismatch": "兩次輸入的新密碼不一致。",
+	"credentials.passwordHint": "新密碼須為 8–256 個字元，帳號最多 256 個字元。",
+	"credentials.pendingDraft": "請先儲存或放棄系統設定的變更，再修改帳號密碼。"
 }
