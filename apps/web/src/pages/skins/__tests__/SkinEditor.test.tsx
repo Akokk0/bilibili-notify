@@ -134,6 +134,95 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SkinEditor", () => {
+	it("editor field labels translate while name, text and wallpaper adjustments remain unsaved preview data", async () => {
+		renderEditor();
+		fireEvent.change(screen.getByLabelText("皮肤名"), { target: { value: "Original draft skin" } });
+		fireEvent.change(screen.getByLabelText("顶栏标题"), {
+			target: { value: "Original header / 原文" },
+		});
+		fireEvent.change(screen.getByLabelText("壁纸遮罩"), { target: { value: "0.4" } });
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					name: "Name",
+					author: "Author",
+					description: "Description",
+					title: "Header title",
+					placeholder: "Chat placeholder",
+					page: "Page background",
+					overlay: "Wallpaper overlay",
+					blur: "Wallpaper blur",
+					position: "Wallpaper position",
+					glass: "Glass opacity",
+					clear: "Clear Wallpaper overlay",
+					color: "Pick Glass background color",
+				},
+			],
+			[
+				"ja",
+				{
+					name: "名前",
+					author: "作者",
+					description: "説明",
+					title: "ヘッダーのタイトル",
+					placeholder: "チャット入力欄の案内",
+					page: "ページ背景",
+					overlay: "壁紙のオーバーレイ",
+					blur: "壁紙のぼかし",
+					position: "壁紙の位置",
+					glass: "ガラスの不透明度",
+					clear: "壁紙のオーバーレイをクリア",
+					color: "ガラス背景の色を選択",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					name: "名稱",
+					author: "作者",
+					description: "描述",
+					title: "頂欄標題",
+					placeholder: "聊天輸入提示",
+					page: "頁面背景",
+					overlay: "桌布遮罩",
+					blur: "桌布模糊",
+					position: "桌布位置",
+					glass: "玻璃不透明度",
+					clear: "清除桌布遮罩",
+					color: "選取玻璃底色",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect((screen.getByLabelText(words.name) as HTMLInputElement).value).toBe(
+				"Original draft skin",
+			);
+			expect((screen.getByLabelText(words.title) as HTMLInputElement).value).toBe(
+				"Original header / 原文",
+			);
+			for (const label of [
+				words.author,
+				words.description,
+				words.placeholder,
+				words.page,
+				words.overlay,
+				words.blur,
+				words.position,
+				words.glass,
+				words.color,
+			])
+				expect(screen.getByLabelText(label)).toBeTruthy();
+			expect(screen.getByRole("button", { name: words.clear })).toBeTruthy();
+			await waitFor(() =>
+				expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.overlay).toBe(0.4),
+			);
+		}
+		expect(H.putCalls).toEqual([]);
+		expect(H.postCalls).toEqual([]);
+		expect(H.uploadCalls).toEqual([]);
+	});
+
 	it("bundled font choices and default markers translate without rewriting resource names or the font fallback list", async () => {
 		const manifest = makeManifest();
 		manifest.modes.light = { ...manifest.modes.light, fonts: { body: ["Original body font"] } };
