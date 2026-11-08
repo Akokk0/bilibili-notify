@@ -17,7 +17,8 @@ import {
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
 } from "../../card-skin";
-import { bindPackageText } from "../../texts";
+import { createI18n, type Locale } from "../../i18n";
+import { bindPackageText, type PackageTextKey, withPackageDicts } from "../../texts";
 import {
 	CARD_DATA_VERSION,
 	CARD_SKIN_SCHEMA_VERSION,
@@ -1525,5 +1526,58 @@ it("reads already loaded schema failures and skin version guidance at validation
 		).toContain("Current validation error");
 	} finally {
 		bound.dispose();
+	}
+});
+
+it("localizes version rejection and built-in skin labels while preserving the skin identity", () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "plain",
+	});
+	const binding = bindPackageText(texts.t, () => texts.state().locale);
+	const skin = DEFAULT_CARD_SKIN;
+	const knobKeys = skin.knobs?.map((knob) => knob.key);
+	try {
+		for (const [locale, name, label, message] of [
+			[
+				"en",
+				"Default",
+				"Background gradient start",
+				"This card skin was made with a newer version of BN. Update BN before installing it.",
+			],
+			[
+				"ja",
+				"標準",
+				"背景グラデーションの開始色",
+				"このカードスキンは新しいバージョンのBNで作成されています。BNを最新版に更新してからインストールしてください。",
+			],
+			[
+				"zh-TW",
+				"預設",
+				"背景漸層起始色",
+				"此卡片皮膚使用較新版本的 BN 製作，請先將 BN 更新至最新版再安裝。",
+			],
+		] as const) {
+			texts.set({ locale });
+			expect(parseCardSkin(minimal({ schemaVersion: 99 as never }))).toEqual({
+				ok: false,
+				code: "invalid",
+				message,
+				issues: [{ message }],
+			});
+			expect(skin.name).toBe(name);
+			expect(skin.knobs?.[0]?.label).toBe(label);
+			expect(skin.knobs?.map((knob) => knob.key)).toEqual(knobKeys);
+			expect(parseCardSkin(minimal())).toMatchObject({ ok: true, manifest: { name: "测试皮肤" } });
+		}
+	} finally {
+		binding.dispose();
 	}
 });
