@@ -13,7 +13,7 @@ import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { templateFingerprint } from "@bilibili-notify/internal/template-defaults";
 import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
@@ -383,3 +383,66 @@ describe("上舰文案的体系默认也接上「默认文案有更新」", () =
 		expect(body.templatesSeen).toEqual({ [GUARD_PATH]: FP_GUARD });
 	});
 });
+
+it.each(["keep", "accept", "reset"] as const)(
+	"translated default-text actions preserve custom content until %s is explicitly chosen",
+	async (action) => {
+		mount(
+			globalsWith((d, top) => {
+				d.templates.liveStart = "我自己的原文";
+				top.templatesSeen = { liveStart: templateFingerprint("上一版的开播文案") };
+			}),
+		);
+		await gotoLiveMsg();
+		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
+		const row = () => document.querySelector('[data-code="templates.liveStart"]') as HTMLElement;
+		for (const [locale, notice, accept, keep, reset, hint] of [
+			[
+				"en",
+				"Default text updated",
+				"Use new default",
+				"Keep mine",
+				"Restore default",
+				"Restore this text to the current default",
+			],
+			[
+				"ja",
+				"既定の文面が更新されました",
+				"新しい既定値を使う",
+				"自分の文面を維持",
+				"既定値に戻す",
+				"この文面を現在の既定値に戻す",
+			],
+			[
+				"zh-TW",
+				"預設文案有更新",
+				"使用新預設",
+				"保留我的",
+				"還原預設",
+				"將此文案還原為目前的預設值",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(row().textContent).toContain(notice);
+			expect([...row().querySelectorAll("button")].map((b) => b.textContent)).toEqual(
+				expect.arrayContaining([accept, keep, reset]),
+			);
+			expect(row().querySelector(`button[title="${hint}"]`)).toBeTruthy();
+			expect(liveStartInput().value).toBe("我自己的原文");
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+		const label = action === "keep" ? "保留我的" : action === "accept" ? "使用新預設" : "還原預設";
+		const button = [...row().querySelectorAll("button")].find((b) => b.textContent === label);
+		if (!button) throw new Error("Default-text action missing");
+		fireEvent.click(button);
+		await waitFor(() => expect(noticeOfLiveStart()).toBeNull());
+		if (action === "keep") expect(liveStartInput().value).toBe("我自己的原文");
+		expect(api.patch).not.toHaveBeenCalled();
+		const body = await saveAndGetBody();
+		if (action === "keep") expect(body.templatesSeen?.liveStart).toBe(FP_LIVE_START);
+		else {
+			expect(body.defaults.templates?.liveStart).toBeNull();
+			expect(body.templatesSeen?.liveStart).toBeNull();
+		}
+	},
+);

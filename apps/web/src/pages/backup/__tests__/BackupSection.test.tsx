@@ -9,6 +9,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { BackupSection } from "../BackupSection";
 import { BACKUP_FORMAT } from "../backup-file";
 
@@ -54,6 +55,7 @@ function pickFile(kind: "full" | "sanitized"): void {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	post.mockReset();
 	vi.mocked(api.get).mockReset().mockResolvedValue({ defaultedSettings: [] });
 	download.mockReset();

@@ -9,11 +9,13 @@
  * 不给 allowInherit 时那颗不出现。
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { LOG_LEVEL_TONE } from "../../config/log-levels";
+import { i18n } from "../../i18n";
 import { LogLevelPicker } from "../forms";
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 /** jsdom 会把 style 里的 hex 归一成 rgb(),两边同样过一遍才比得了。 */
@@ -67,4 +69,27 @@ describe("LogLevelPicker", () => {
 		render(<LogLevelPicker value={1} onChange={() => {}} allowInherit />);
 		expect(screen.getAllByRole("button")).toHaveLength(5);
 	});
+});
+
+it("log level labels follow the current language while numeric selection and inheritance remain unchanged", () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const onChange = vi.fn();
+	render(<LogLevelPicker value={2} onChange={onChange} allowInherit />);
+	for (const [locale, labels] of [
+		["en", ["Inherit global", "L1 · Error", "L2 · Warning", "L3 · Info", "L4 · Debug"]],
+		["ja", ["全体設定に従う", "L1 · エラー", "L2 · 警告", "L3 · 情報", "L4 · デバッグ"]],
+		["zh-TW", ["跟隨全域", "L1 · 錯誤", "L2 · 警告", "L3 · 資訊", "L4 · 偵錯"]],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(labels);
+		expect(screen.getByRole("button", { name: labels[2] }).getAttribute("aria-pressed")).toBe(
+			"true",
+		);
+		expect(onChange).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "跟隨全域" }));
+	expect(onChange).toHaveBeenCalledWith(null);
+	fireEvent.click(screen.getByRole("button", { name: "L4 · 偵錯" }));
+	expect(onChange).toHaveBeenLastCalledWith(4);
+	expect(onChange).toHaveBeenCalledTimes(2);
 });

@@ -431,3 +431,62 @@ describe("isolated settings on the System page", () => {
 		expect(api.patch).not.toHaveBeenCalled();
 	});
 });
+
+it("invalid-setting guidance translates while original values, paths and diagnostics stay visible", async () => {
+	await renderRuntimeSection(GLOBALS, DEFINITIONS, [
+		{
+			path: ["core", "stats", "enabled"],
+			secret: false,
+			raw: "原始无效值",
+			missing: false,
+			issues: [{ path: ["enabled"], message: "原诊断" }],
+		},
+		{
+			path: ["core", "ai", "providers", "hidden"],
+			secret: true,
+			issues: [{ path: [], message: "原密钥诊断" }],
+		},
+		{
+			path: [],
+			secret: false,
+			raw: null,
+			missing: true,
+			issues: [{ path: [], message: "缺少文件" }],
+		},
+	]);
+	for (const [locale, title, secret, original, missing, file] of [
+		[
+			"en",
+			"Invalid settings",
+			"Original secret values are not displayed",
+			"Original value",
+			"Missing setting",
+			"Settings file",
+		],
+		[
+			"ja",
+			"無効な設定",
+			"シークレットの元の値は表示しません",
+			"元の値",
+			"項目がありません",
+			"設定ファイル",
+		],
+		["zh-TW", "設定無效", "不顯示機密原值", "原值", "缺少此項", "設定檔"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(await screen.findByText(title)).toBeTruthy();
+		expect(screen.getByText(secret)).toBeTruthy();
+		expect(screen.getAllByText(original).length).toBeGreaterThan(0);
+		expect(screen.getByText(missing)).toBeTruthy();
+		expect(screen.getByText(file)).toBeTruthy();
+		expect(screen.getByText('"原始无效值"')).toBeTruthy();
+		expect(
+			within(screen.getByText('"原始无效值"').closest("li") as HTMLElement).getByText(
+				"core.stats.enabled",
+			),
+		).toBeTruthy();
+		expect(screen.getByText("原诊断")).toBeTruthy();
+		expect(screen.getByText("原密钥诊断")).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+});
