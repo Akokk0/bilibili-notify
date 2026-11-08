@@ -566,7 +566,6 @@
 	"internal.format.13#other": "{count}秒",
 	"ai.commentary-generator.1": "已取消",
 	"ai.commentary-generator.2": "视觉模型没能识别这张图",
-	"ai.commentary-generator.3": "（本条消息附带了 {value0} 张图片。你看不见它们,需要时请用 describe_image 工具按序号 1~{value1} 逐张查看。）",
 	"ai.commentary-generator.4": "视觉模型 apiKey 未配置(且主模型的也是空的)",
 	"ai.commentary-generator.5": "视觉模型 baseURL 未配置(且主模型的也是空的)",
 	"ai.commentary-generator.6": "视觉模型返回空 choices(疑似命中内容审查或上游异常)",

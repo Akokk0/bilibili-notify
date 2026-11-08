@@ -115,6 +115,16 @@ export const NON_DISPLAY_TEXTS = {
 	],
 	"packages/ai/src/commentary-generator.ts": [
 		{
+			owner: "CommentaryGenerator/chatVision/modelNote",
+			text: pinnedSource(
+				"`（本条消息附带了 @{n} 张图片。你看不见它们,需要时请用 describe_image 工具按序号 1~@{n} 逐张查看。）`",
+			),
+			reason: "原附图说明只进入模型上下文；按ADR-0037决策11从人用字典归回固定中文规则。",
+			site: pinnedSource(
+				"modelNote = `（本条消息附带了 @{n} 张图片。你看不见它们,需要时请用 describe_image 工具按序号 1~@{n} 逐张查看。）`",
+			),
+		},
+		{
 			owner: "TITLE_PROMPT",
 			text: pinnedSource('"你是一个会话标题生成器。"'),
 			reason: "只进入模型上下文的指令、素材说明或工具结果；ADR-0037 决策11",

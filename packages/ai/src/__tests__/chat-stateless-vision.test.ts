@@ -11,6 +11,7 @@
  *   - 没配副模型但主模型自己看得见 → 图以 image_url 直接下挂
  */
 
+import { bindPackageText } from "@bilibili-notify/internal/texts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { CommentaryGenerator, CommentaryGeneratorSettings } from "../commentary-generator";
 import { makeGen as baseGen } from "./harness";
@@ -153,4 +154,17 @@ describe("独立端聊天发图 — 主模型自己看得见", () => {
 		await ask(makeGen(), [IMG]);
 		expect(typeof lastUserMsg().content).toBe("string");
 	});
+});
+
+it("keeps the model-only attachment instruction outside the human translator", async () => {
+	const binding = bindPackageText(() => "Localized human message");
+	try {
+		await ask(makeGen({ vision: VISION }), [IMG, IMG]);
+		expect(String(lastUserMsg().content)).toContain(
+			"（本条消息附带了 2 张图片。你看不见它们,需要时请用 describe_image 工具按序号 1~2 逐张查看。）",
+		);
+		expect(String(lastUserMsg().content)).not.toContain("Localized human message");
+	} finally {
+		binding.dispose();
+	}
 });

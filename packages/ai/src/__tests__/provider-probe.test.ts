@@ -6,7 +6,12 @@
  * fetch 用 vi.stubGlobal 假掉,不打真实网络。
  */
 
-import { bindPackageText } from "@bilibili-notify/internal/texts";
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	type PackageTextKey,
+	withPackageDicts,
+} from "@bilibili-notify/internal/texts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { probeAiProvider } from "../provider-probe";
 
@@ -156,5 +161,39 @@ it("reads configuration error text at the call without making a request", async 
 		expect(fetchMock).not.toHaveBeenCalled();
 	} finally {
 		bound.dispose();
+	}
+});
+
+it("localizes probe failures while preserving upstream diagnostics and classification", async () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "plain",
+	});
+	const binding = bindPackageText(texts.t);
+	try {
+		for (const [locale, message] of [
+			["en", "apiKey authentication failed (HTTP 401). Response: 原始原因"],
+			["ja", "apiKeyの認証に失敗しました（HTTP 401）。レスポンス：原始原因"],
+			["zh-TW", "apiKey 驗證失敗（HTTP 401）。回應：原始原因"],
+		] as const) {
+			texts.set({ locale });
+			fetchMock.mockResolvedValue(httpResponse(401, "原始原因"));
+			expect(await probeAiProvider(fields)).toMatchObject({
+				ok: false,
+				code: "not_configured",
+				upstreamCode: 401,
+				message,
+			});
+		}
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+	} finally {
+		binding.dispose();
 	}
 });

@@ -811,6 +811,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		if (!model || !imageUrls?.length) return { tools, note: "" };
 
 		const n = imageUrls.length;
+		const modelNote = `（本条消息附带了 ${n} 张图片。你看不见它们,需要时请用 describe_image 工具按序号 1~${n} 逐张查看。）`;
 		return {
 			tools: [...tools, DESCRIBE_IMAGE_TOOL],
 			ctx: {
@@ -821,7 +822,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 					return text;
 				},
 			},
-			note: packageText("ai.commentary-generator.3", { value0: n, value1: n }),
+			note: modelNote,
 		};
 	}
 
