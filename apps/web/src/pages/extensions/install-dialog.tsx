@@ -64,7 +64,8 @@ export function ExtensionInstallDialog({
 						<li>
 							{t("extensions.dialog.packageStart")}
 							<span className="font-mono">extension.json</span> {t("extensions.dialog.and")}{" "}
-							<span className="font-mono">index.mjs</span>)
+							<span className="font-mono">index.mjs</span>
+							{t("extensions.dialog.packageEnd")}
 						</li>
 						{root ? (
 							<li>

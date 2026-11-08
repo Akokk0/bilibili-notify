@@ -12,7 +12,7 @@
 
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../../services/api", () => ({
@@ -57,6 +57,135 @@ afterEach(() => {
 });
 
 describe("装一个拓展", () => {
+	it("development guidance translates its explanation while retaining the actual untranslated devtools control names", () => {
+		vi.stubEnv("DEV", true);
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		renderDialog();
+		for (const [locale, group, reload, sentence] of [
+			[
+				"en",
+				"“拓展”",
+				"“重载”",
+				"In development builds, open the bottom-left devtools “拓展” group to symlink the repository’s built dist into the extension directory; it appears in the list immediately after installation. After changing code, choose “重载” without restarting the whole server.",
+			],
+			[
+				"ja",
+				"「拓展」",
+				"「重载」",
+				"開発ビルドでは、左下のdevtoolsの「拓展」で、リポジトリーでビルドした dist をシンボリックリンクでインストールできます。インストール後すぐに一覧へ表示されます。コード変更後は「重载」を選ぶと、サーバー全体を再起動せずに読み込み直せます。",
+			],
+			[
+				"zh-TW",
+				"「拓展」",
+				"「重载」",
+				"開發版可使用左下角 devtools 的「拓展」分組，將儲存庫中已建置的 dist 透過符號連結安裝，安裝後立即出現在清單中；修改程式碼後還可以選擇「重载」，不需重新啟動整個伺服器。",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(group).tagName).toBe("STRONG");
+			expect(screen.getByText(reload).tagName).toBe("STRONG");
+			expect(
+				screen.getByText("dist").closest("[data-bn]")?.textContent?.replace(/\s+/g, " ").trim(),
+			).toBe(sentence);
+			expect(api.post).not.toHaveBeenCalled();
+			expect(api.upload).not.toHaveBeenCalled();
+		}
+	});
+
+	it.each(["server-root", "legacy-root"] as const)(
+		"%s installation instructions translate without changing the reported directory or installing anything",
+		async (kind) => {
+			vi.stubEnv("DEV", false);
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			const root = "C:\\BN\\generations\\9\\extensions";
+			vi.mocked(api.get).mockResolvedValue(listed(kind === "server-root" ? { root } : {}));
+			renderDialog();
+			await screen.findByText(kind === "server-root" ? root : "<dataDir>/extensions/<拓展 id>/");
+			for (const [
+				locale,
+				title,
+				upload,
+				available,
+				manual,
+				server,
+				packageLine,
+				copy,
+				fallbackPath,
+				disabled,
+				noRestart,
+				close,
+			] of [
+				[
+					"en",
+					"Install an extension",
+					"① Upload a package",
+					"Available immediately",
+					"② Place a directory manually",
+					"For server deployments",
+					"Prepare the extension package (a directory containing extension.json and index.mjs)",
+					"Copy extension directory",
+					"<dataDir>/extensions/<extension id>/",
+					"disabled by default",
+					"(Uploading with ① needs no restart; it appears immediately after installation.)",
+					"Close",
+				],
+				[
+					"ja",
+					"拡張機能をインストール",
+					"① パッケージをアップロード",
+					"すぐに反映",
+					"② ディレクトリーを手動で配置",
+					"サーバーでの利用向け",
+					"拡張機能のパッケージを用意します（extension.json と index.mjsを含むディレクトリー）",
+					"拡張機能のディレクトリーをコピー",
+					"<dataDir>/extensions/<拡張機能ID>/",
+					"初期状態は無効です",
+					"（①でアップロードした場合は再起動不要で、インストール後すぐに表示されます）",
+					"閉じる",
+				],
+				[
+					"zh-TW",
+					"安裝拓展",
+					"① 上傳拓展套件",
+					"立即生效",
+					"② 手動放入目錄",
+					"適用於伺服器",
+					"準備拓展套件（一個目錄，包含 extension.json 與 index.mjs）",
+					"複製拓展目錄",
+					"<dataDir>/extensions/<拓展 ID>/",
+					"預設為關閉",
+					"（透過①上傳不需重新啟動，安裝後立即出現）",
+					"關閉",
+				],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				for (const text of [title, upload, available, manual, server, disabled, close])
+					expect(screen.getByText(text)).toBeTruthy();
+				expect(screen.getByText(noRestart, { exact: false })).toBeTruthy();
+				expect(
+					screen
+						.getByText("extension.json")
+						.closest("li")
+						?.textContent?.replace(/\s+/g, " ")
+						.trim(),
+				).toBe(packageLine);
+				if (kind === "server-root") {
+					expect(screen.getByText(root)).toBeTruthy();
+					expect(screen.getByRole("button", { name: copy })).toBeTruthy();
+				} else {
+					expect(screen.getByText(fallbackPath)).toBeTruthy();
+					expect(screen.queryByRole("button", { name: copy })).toBeNull();
+				}
+			}
+			if (kind === "server-root") {
+				fireEvent.click(screen.getByRole("button", { name: "複製拓展目錄" }));
+				expect(copyToClipboard).toHaveBeenCalledExactlyOnceWith(root);
+			}
+			expect(api.upload).not.toHaveBeenCalled();
+			expect(api.post).not.toHaveBeenCalled();
+		},
+	);
+
 	it("开发版:末尾有「开发版不用自己动手」那段", () => {
 		vi.stubEnv("DEV", true);
 		renderDialog();

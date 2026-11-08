@@ -12,7 +12,7 @@
 
 import type { ExtensionInstallResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -69,6 +69,72 @@ afterEach(() => {
 });
 
 describe("传包装拓展", () => {
+	it("upload guidance, pending and failure translate without changing or resending the chosen package", async () => {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		let reject!: (error: Error) => void;
+		vi.mocked(api.upload).mockReturnValueOnce(
+			new Promise((_, fail) => {
+				reject = fail;
+			}),
+		);
+		const { container } = renderSlot();
+		for (const [locale, title, description, trusted, code] of [
+			[
+				"en",
+				"Upload an extension package",
+				"A zip containing extension.json and index.mjs.",
+				"Only install packages you trust",
+				"— they run inside the BN process.",
+			],
+			[
+				"ja",
+				"拡張機能のパッケージをアップロード",
+				"extension.jsonとindex.mjsを含むzipです。",
+				"信頼できるパッケージだけをインストールしてください",
+				"— BNのプロセス内でコードを実行します。",
+			],
+			[
+				"zh-TW",
+				"上傳拓展套件",
+				"一個 zip，包含 extension.json 與 index.mjs。",
+				"只安裝信任的套件",
+				"— 套件會在 BN 程序內執行。",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(description, { exact: false })).toBeTruthy();
+			expect(screen.getByText(trusted).tagName).toBe("STRONG");
+			expect(screen.getByText(code, { exact: false })).toBeTruthy();
+			expect(api.upload).not.toHaveBeenCalled();
+		}
+		await pick(container);
+		for (const [locale, pending] of [
+			["en", "Installing…"],
+			["ja", "インストール中…"],
+			["zh-TW", "正在安裝…"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(pending)).toBeTruthy();
+			expect(api.upload).toHaveBeenCalledOnce();
+		}
+		const [path, form] = vi.mocked(api.upload).mock.calls[0] as [string, FormData];
+		expect(path).toBe("/api/ext/install");
+		expect((form.get("file") as File).name).toBe("bridge.zip");
+		await act(async () => reject(new Error("原包诊断 / invalid archive")));
+		for (const [locale, failure] of [
+			["en", "Could not install this package:"],
+			["ja", "このパッケージをインストールできません："],
+			["zh-TW", "無法安裝此套件："],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(failure)).toBeTruthy();
+			expect(screen.getByText("原包诊断 / invalid archive")).toBeTruthy();
+			expect(api.upload).toHaveBeenCalledOnce();
+			expect(api.post).not.toHaveBeenCalled();
+		}
+	});
+
 	it("挑一个 zip → 发上去,包确实交上去了,拓展表跟着刷新,不提重启", async () => {
 		vi.mocked(api.upload).mockResolvedValue(OK);
 		const { container, invalidate } = renderSlot();

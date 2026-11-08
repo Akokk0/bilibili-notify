@@ -3236,5 +3236,6 @@
 	"targets.connectionRail.text5#other": "{value0} 个目标",
 	"panelUi.pages.backup.summary.listSeparator": "、",
 	"panelUi.pages.backup.summary.reasonOpen": "（",
-	"panelUi.pages.backup.summary.reasonClose": "）"
+	"panelUi.pages.backup.summary.reasonClose": "）",
+	"extensions.dialog.packageEnd": ")"
 }
