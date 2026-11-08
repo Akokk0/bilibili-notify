@@ -776,9 +776,11 @@ export default function Subscriptions() {
 					// 状态条不是「选中的某一项」,不吃整句选中语汇 —— 只吃那块不透明粉底
 					// (旧 bg-bn-pink/12 的纱在壁纸皮肤下会隐形,同标签胶囊踩过的雷)。
 					<div
-						className={`flex items-center gap-2 rounded-md ${SELECTED_TINT_BG} px-2.5 py-1 text-bn-sm font-semibold text-bn-pink`}
+						className={`flex min-w-0 max-w-full flex-wrap items-center gap-2 rounded-md ${SELECTED_TINT_BG} px-2.5 py-1 text-bn-sm font-semibold text-bn-pink`}
 					>
-						{t("subs.selection.count", { count: selection.size })}
+						<span className="whitespace-nowrap">
+							{t("subs.selection.count", { count: selection.size })}
+						</span>
 						<Btn size="sm" variant="ghost" onClick={() => void bulkSetEnabled(true)}>
 							{t("subs.selection.enable")}
 						</Btn>
