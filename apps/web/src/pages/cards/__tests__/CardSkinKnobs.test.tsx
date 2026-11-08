@@ -15,6 +15,7 @@ import type { CardSkinKnob } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { CardSkinKnobsSection } from "../CardSkinKnobs";
 import type { CardSkinKnobsBySkin } from "../knob-ops";
 
@@ -90,6 +91,7 @@ function rowOf(container: HTMLElement, key: string): HTMLElement {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.mocked(api.get).mockResolvedValue(listWith(KNOBS));
 });
 afterEach(() => cleanup());

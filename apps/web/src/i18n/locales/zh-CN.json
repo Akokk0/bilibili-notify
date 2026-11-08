@@ -226,7 +226,6 @@
 	"library.images.upload": "上传",
 	"library.images.empty": "未选择(用渐变背景)",
 	"library.images.single": "单张固定背景",
-	"library.images.rotation": "{count} 张 · 每次推送顺序轮换",
 	"library.fonts.default": "默认（交给渲染那台机器）",
 	"library.fonts.defaultHint": "Docker 里是思源黑体，Windows 是微软雅黑，macOS 交给系统挑",
 	"library.fonts.uploaded": "自行上传",
@@ -3147,7 +3146,6 @@
 	"library.selectImage": "选择图片 {number}",
 	"library.chooseImagesHint": "可多选，数字表示轮换顺序。",
 	"library.chooseFontHint": "选择一款字体；默认与手填选项仍留在原字段。",
-	"library.selectedImages": "已选择 {count} 张",
 	"library.selectedFont": "已选择一款字体",
 	"library.noFontSelected": "尚未选择",
 	"library.useSelected": "使用所选",
@@ -3234,5 +3232,7 @@
 	"history.repush.pending#other": "正在补发（{count} 条），完成后此行会自动更新。",
 	"extension.reportDiscrepancies.count#other": "{count} 条",
 	"notices.messages#other": "{count} 条",
-	"logging.retentionDays#other": "{count} 天"
+	"logging.retentionDays#other": "{count} 天",
+	"library.selectedImages#other": "已选择 {count} 张",
+	"library.images.rotation#other": "{count} 张 · 每次推送顺序轮换"
 }

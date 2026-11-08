@@ -144,7 +144,6 @@
 	"library.images.upload": "给主人上传",
 	"library.images.empty": "主人，还没选图呢，现在用渐变背景。",
 	"library.images.single": "主人，就用这张固定背景啦。",
-	"library.images.rotation": "主人，{count} 张图会在每次推送时顺序轮换。",
 	"library.fonts.defaultHint": "主人，默认字体交给渲染那台机器挑：Docker 里是思源黑体，Windows 是微软雅黑，macOS 交给系统。",
 	"library.fonts.uploaded": "主人自己传的",
 	"library.fonts.delete": "给主人删除 {name}",
@@ -646,5 +645,6 @@
 	"healthCard.emptyHint": "主人，来源和配好推送连接的集成，会在这里出现哦。",
 	"healthCard.viewExtensions": "查看拓展",
 	"healthCard.manage": "前往管理",
-	"history.repush.pending#other": "主人，女仆正在补发（{count} 条），好了这一行会自动更新哦。"
+	"history.repush.pending#other": "主人，女仆正在补发（{count} 条），好了这一行会自动更新哦。",
+	"library.images.rotation#other": "主人，{count} 张图会在每次推送时顺序轮换。"
 }

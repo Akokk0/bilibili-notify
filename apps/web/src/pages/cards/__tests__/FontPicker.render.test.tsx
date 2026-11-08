@@ -352,3 +352,33 @@ it("失效字体且库为空时仍显示空态，不能确认不存在的文件"
 		true,
 	);
 });
+
+it("font selection translates upload controls while preserving a staged font and fallback family", async () => {
+	const next = `${"b".repeat(32)}.ttf`;
+	const changed = mount({ font: "兜底字体", fontAsset: UPLOADED }, [
+		{ id: UPLOADED, name: "原字体.woff2" },
+		{ id: next, name: "新字体.ttf" },
+	]);
+	fireEvent.click(screen.getByRole("button", { name: "选择字体" }));
+	fireEvent.click(await screen.findByRole("button", { name: "选择字体 新字体.ttf" }));
+	const selected = screen.getByRole("button", { name: "选择字体 新字体.ttf" });
+	for (const [locale, upload, select] of [
+		["en", "Upload font", "Select font 新字体.ttf"],
+		["ja", "フォントをアップロード", "フォント 新字体.ttf を選択"],
+		["zh-TW", "上傳字型", "選擇字型 新字体.ttf"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByLabelText(upload)).toBeTruthy();
+		expect(screen.getByRole("button", { name: select })).toBe(selected);
+		expect(selected.getAttribute("aria-pressed")).toBe("true");
+		expect(changed).not.toHaveBeenCalled();
+		expect(api.upload).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "取消" }));
+	expect(changed).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "選擇字型" }));
+	fireEvent.click(await screen.findByRole("button", { name: "選擇字型 新字体.ttf" }));
+	fireEvent.click(screen.getByRole("button", { name: "使用所選" }));
+	expect(changed).toHaveBeenCalledExactlyOnceWith({ font: "兜底字体", fontAsset: next });
+});

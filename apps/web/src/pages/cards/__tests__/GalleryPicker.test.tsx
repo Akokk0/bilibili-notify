@@ -240,3 +240,35 @@ it("取消选择不撤回已经上传的文件，也不改当前字段", async (
 	expect(changed).not.toHaveBeenCalled();
 	expect(deleteMock).not.toHaveBeenCalled();
 });
+
+it("image selection uses localized counts and keeps staged order across language changes", async () => {
+	getMock.mockReset().mockResolvedValue({ ok: true, ids: [REAL, GHOST] });
+	blobMock.mockReset().mockRejectedValue(new Error("no preview in test"));
+	deleteMock.mockClear();
+	uploadMock.mockClear();
+	const changed = vi.fn();
+	renderWithQuery(<GalleryPicker value={[REAL]} onChange={changed} />);
+	fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
+	await screen.findByRole("button", { name: "选择图片 2" });
+	act(() => i18n.set({ locale: "en", voice: "plain" }));
+	expect(screen.getByText("1 image selected")).toBeTruthy();
+	fireEvent.click(screen.getByRole("button", { name: "Select image 2" }));
+	for (const [locale, count] of [
+		["en", "2 images selected"],
+		["ja", "画像を 2 枚選択中"],
+		["zh-TW", "已選取 2 張圖片"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByText(count)).toBeTruthy();
+		expect(changed).not.toHaveBeenCalled();
+		expect(deleteMock).not.toHaveBeenCalled();
+		expect(uploadMock).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "取消" }));
+	expect(changed).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "選擇圖片" }));
+	expect(await screen.findByText("已選取 1 張圖片")).toBeTruthy();
+	fireEvent.click(screen.getByRole("button", { name: "選擇圖片 2" }));
+	fireEvent.click(screen.getByRole("button", { name: "使用所選" }));
+	expect(changed).toHaveBeenCalledExactlyOnceWith([REAL, GHOST]);
+});

@@ -557,3 +557,41 @@ it("library navigation and deletion text translate while keeping the file and ca
 		vi.mocked(fetch).mock.calls.some(([, init]) => init?.method && init.method !== "GET"),
 	).toBe(false);
 });
+
+it("resource import preview translates without changing the file, raw warning or confirmation boundary", async () => {
+	const writes: string[] = [];
+	mount("/library?category=fonts", (path, init) => {
+		if (init?.method !== "POST") return undefined;
+		writes.push(path);
+		if (path.endsWith("/import-preview"))
+			return Response.json({
+				ok: true,
+				name: "主人原字体.woff2",
+				warnings: ["原始诊断保留"],
+				conflict: true,
+			});
+		throw new Error("unexpected write before confirmation");
+	});
+	await screen.findByText("示例字体.woff2");
+	fireEvent.change(screen.getByLabelText("上传字体"), {
+		target: { files: [new File(["font"], "主人原字体.woff2", { type: "font/woff2" })] },
+	});
+	const dialog = await screen.findByRole("dialog");
+	for (const [locale, title, confirm, hint] of [
+		["en", "Preview import", "Confirm import", "The original is unchanged."],
+		["ja", "インポートのプレビュー", "インポートする", "元のリソースは変更しません。"],
+		["zh-TW", "匯入預覽", "確認匯入", "原件不會變更。"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(within(dialog).getByText(title)).toBeTruthy();
+		expect(within(dialog).getByRole("button", { name: confirm })).toBeTruthy();
+		expect(dialog.textContent).toContain(hint);
+		expect(dialog.textContent).toContain("主人原字体.woff2");
+		expect(dialog.textContent).toContain("原始诊断保留");
+		expect(writes).toEqual(["/api/library/fonts/import-preview"]);
+	}
+	await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(writes).toEqual(["/api/library/fonts/import-preview"]);
+});
