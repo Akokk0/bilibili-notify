@@ -10,7 +10,14 @@
  */
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
+
+// These assertions describe the Chinese UI, independent of untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
+
 import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-controls";
 import { LiveThresholdsSection } from "../sections";
 import { makeDefaults, makeSource } from "./fixtures";

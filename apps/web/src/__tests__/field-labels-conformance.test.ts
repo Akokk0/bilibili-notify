@@ -157,3 +157,29 @@ it("AI field descriptions localize while provider credentials stay secret and pr
 		i18n.set({ locale: state.locale, voice: state.voice });
 	}
 });
+
+it("subscription and membership descriptions translate without losing system and tier identities", () => {
+	const state = i18n.state();
+	try {
+		for (const [locale, quietLabel, tierLabel, templateLabel] of [
+			["en", "Quiet hours", "Minimum membership tier", "Membership tier text"],
+			["ja", "通知しない時間帯", "通知する最低会員ランク", "会員ランクのテキスト"],
+			["zh-TW", "勿擾時段", "最低會員等級", "會員等級文案"],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			expect(getFieldLabel("schedule.quietHours")?.label).toBe(quietLabel);
+			expect(getFieldLabel("membership.minRank.custom-system")?.label).toBe(
+				`custom-system · ${tierLabel}`,
+			);
+			expect(getFieldLabel("templates.membership.custom-system.tiers.tier-a.template")?.label).toBe(
+				`custom-system · tier-a · ${templateLabel}`,
+			);
+			expect(getFieldLabel("schedule.quietHours")?.hint).toContain("[start, end)");
+			expect(
+				getFieldLabel("templates.membership.custom-system.tiers.tier-a.template")?.section,
+			).toBe("templates");
+		}
+	} finally {
+		i18n.set({ locale: state.locale, voice: state.voice });
+	}
+});

@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
+
+// These assertions describe the Chinese UI, independent of untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
+
 import { getFieldLabel } from "../../../config/field-labels";
 import type { OverridesShape, SpecialViewer } from "../../../types/domain";
 import { groupDiffsBySection, sectionOf } from "../../../utils/groupDiffs";

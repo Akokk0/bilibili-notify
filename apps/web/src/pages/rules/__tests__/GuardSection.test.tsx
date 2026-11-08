@@ -7,7 +7,14 @@ import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
  */
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
+
+// These assertions describe the Chinese UI, independent of untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
+
 import { GuardSection } from "../sections";
 import { makeDefaults, makeSource } from "./fixtures";
 
