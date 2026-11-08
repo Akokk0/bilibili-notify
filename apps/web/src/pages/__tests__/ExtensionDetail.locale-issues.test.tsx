@@ -10,9 +10,12 @@ import type { ExtensionEntryView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import zhCN from "../../i18n/locales/zh-CN.json";
 import ExtensionDetail from "../ExtensionDetail";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 const { FakeApiError, disk } = vi.hoisted(() => {
 	class FakeApiError extends Error {}

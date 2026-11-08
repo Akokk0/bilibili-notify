@@ -10,7 +10,7 @@
 
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
@@ -120,9 +120,13 @@ const VIEW = shown({
 	},
 });
 
-function renderDetail(id = "bridge", settingsError?: Error) {
+function renderDetail(
+	id = "bridge",
+	settingsError?: Error,
+	listed: ExtensionsResponse | Promise<ExtensionsResponse> = LISTED,
+) {
 	apiGetMock.mockImplementation(async (url: string) => {
-		if (url === "/api/ext") return LISTED;
+		if (url === "/api/ext") return listed;
 		if (url === "/api/settings") {
 			if (settingsError) throw settingsError;
 			return { core: GLOBALS };
@@ -176,6 +180,85 @@ describe("拓展详情页", () => {
 		cleanup();
 		vi.restoreAllMocks();
 	});
+
+	it.each(["read-failed", "not-found", "legacy"] as const)(
+		"%s detail feedback translates while preserving its identity and the distinction between unreadable and absent",
+		async (result) => {
+			let finish!: (value: ExtensionsResponse) => void;
+			let fail!: (error: Error) => void;
+			const pending = new Promise<ExtensionsResponse>((resolve, reject) => {
+				finish = resolve;
+				fail = reject;
+			});
+			renderDetail(result === "not-found" ? "missing-id" : "bridge", undefined, pending);
+			await screen.findByText("正在读取拓展…");
+			for (const [locale, loading] of [
+				["en", "Reading extensions…"],
+				["ja", "拡張機能を読み込んでいます…"],
+				["zh-TW", "正在讀取拓展…"],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(screen.getByText(loading)).toBeTruthy();
+			}
+			await act(async () => {
+				if (result === "read-failed") fail(new Error("清单只读 / EACCES"));
+				else
+					finish({
+						restart: LISTED.restart,
+						extensions: result === "not-found" ? [] : [{ ...BRIDGE, apiVersion: undefined }],
+					});
+			});
+			for (const [locale, readFailed, missing, back, breadcrumb, title, legacy] of [
+				[
+					"en",
+					"Could not read installed extensions: 清单只读 / EACCES",
+					"No installed extension named missing-id.",
+					"← Back to extensions",
+					"Back to extensions",
+					"Extensions",
+					"This extension does not provide its own panel.",
+				],
+				[
+					"ja",
+					"インストール済みの拡張機能を読み込めません：清单只读 / EACCES",
+					"missing-idという拡張機能はインストールされていません。",
+					"← 拡張機能の一覧へ",
+					"拡張機能の一覧に戻る",
+					"拡張機能",
+					"この拡張機能には専用のパネルがありません。",
+				],
+				[
+					"zh-TW",
+					"無法讀取已安裝的拓展：清单只读 / EACCES",
+					"尚未安裝名為 missing-id 的拓展。",
+					"← 返回拓展清單",
+					"返回拓展清單",
+					"拓展",
+					"此拓展未提供專用面板。",
+				],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				if (result === "legacy") {
+					expect(await screen.findByText(legacy, { exact: false })).toBeTruthy();
+					expect(screen.getByRole("link", { name: breadcrumb }).getAttribute("href")).toBe(
+						"/extensions",
+					);
+					expect(screen.getByText(title)).toBeTruthy();
+					expect(
+						screen.getByRole("button", { name: BRIDGE.name }).getAttribute("aria-pressed"),
+					).toBe("true");
+					expect(screen.getByText(BRIDGE.description ?? "")).toBeTruthy();
+				} else {
+					expect(
+						await screen.findByText(result === "read-failed" ? readFailed : missing),
+					).toBeTruthy();
+					expect(screen.getByRole("link", { name: back }).getAttribute("href")).toBe("/extensions");
+					if (result === "read-failed") expect(screen.queryByText(missing)).toBeNull();
+				}
+			}
+			expect(apiPatchMock).not.toHaveBeenCalled();
+		},
+	);
 
 	it("头上印的是这个拓展自己的名字、说明与状态", async () => {
 		renderDetail();

@@ -21,6 +21,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 import ExtensionDetail from "../ExtensionDetail";
 
@@ -129,6 +130,7 @@ function statusCalls(id = "douyin"): number {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	apiGetMock.mockReset();
 	apiPatchMock.mockReset();
 	apiPatchMock.mockResolvedValue({});

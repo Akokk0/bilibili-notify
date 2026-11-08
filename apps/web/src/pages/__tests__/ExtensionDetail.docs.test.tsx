@@ -14,10 +14,11 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 import ExtensionDetail from "../ExtensionDetail";
 
@@ -95,9 +96,72 @@ function renderDetail() {
 }
 
 describe("详情页上的拓展文档", () => {
+	beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 	afterEach(() => {
 		cleanup();
 		vi.clearAllMocks();
+	});
+
+	it("document tabs translate while the selected document and third-party body remain unchanged", async () => {
+		docs.value = {
+			readme: "# 原始说明 / README\n\nOriginal README body",
+			changelog: "# 原始更新 / CHANGELOG\n\nOriginal changelog body",
+		};
+		renderDetail();
+		await screen.findByRole("tab", { name: "更新日志" });
+		await userEvent.click(screen.getByRole("tab", { name: "更新日志" }));
+		await screen.findByRole("heading", { name: "原始更新 / CHANGELOG" });
+		for (const [locale, config, readme, changelog] of [
+			["en", "Configuration", "Instructions", "Changelog"],
+			["ja", "設定", "説明", "変更履歴"],
+			["zh-TW", "設定", "說明", "更新紀錄"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByRole("tab", { name: config })).toBeTruthy();
+			expect(screen.getByRole("tab", { name: readme })).toBeTruthy();
+			expect(screen.getByRole("tab", { name: changelog }).getAttribute("aria-selected")).toBe(
+				"true",
+			);
+			expect(screen.getByRole("heading", { name: "原始更新 / CHANGELOG" })).toBeTruthy();
+			expect(screen.getByText("Original changelog body")).toBeTruthy();
+			expect(screen.queryByText("Original README body")).toBeNull();
+		}
+		await userEvent.click(screen.getByRole("tab", { name: "說明" }));
+		expect(await screen.findByRole("heading", { name: "原始说明 / README" })).toBeTruthy();
+		expect(api.get).toHaveBeenCalledWith("/api/ext/bridge/docs");
+		expect(
+			vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/ext/bridge/docs"),
+		).toHaveLength(1);
+		expect(api.delete).not.toHaveBeenCalled();
+	});
+
+	it("document read failures translate their recovery control without replacing the raw reason", async () => {
+		docs.value = new Error("原文档诊断 / EACCES");
+		renderDetail();
+		await screen.findByText(/原文档诊断 \/ EACCES/);
+		for (const [locale, failure, retry] of [
+			["en", "Could not read this extension’s documents: 原文档诊断 / EACCES", "Retry"],
+			["ja", "この拡張機能の文書を読み込めません：原文档诊断 / EACCES", "再試行"],
+			["zh-TW", "無法讀取此拓展的文件：原文档诊断 / EACCES", "重試"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(failure)).toBeTruthy();
+			expect(screen.getByRole("button", { name: retry })).toBeTruthy();
+			expect(
+				vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/ext/bridge/docs"),
+			).toHaveLength(1);
+		}
+		docs.value = { readme: "# Original recovered document" };
+		await userEvent.click(screen.getByRole("button", { name: "重試" }));
+		await screen.findByRole("tab", { name: "說明" });
+		await userEvent.click(screen.getByRole("tab", { name: "說明" }));
+		expect(
+			await screen.findByRole("heading", { name: "Original recovered document" }),
+		).toBeTruthy();
+		expect(
+			vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/ext/bridge/docs"),
+		).toHaveLength(2);
+		expect(api.delete).not.toHaveBeenCalled();
 	});
 
 	it("有 README → 切过去画得出来", async () => {

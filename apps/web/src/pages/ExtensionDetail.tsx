@@ -128,10 +128,7 @@ export default function ExtensionDetail() {
 		// 地址栏是能手敲的,拓展也可能刚被删掉 —— 白屏的话主人分不清是「没这个」还是「坏了」。
 		return (
 			<div className="bn-anim-page-in flex flex-col gap-3">
-				<EmptyNote>
-					{tx("panelUi.pages.ExtensionDetail.4")}
-					{id} {tx("panelUi.pages.ExtensionDetail.5")}
-				</EmptyNote>
+				<EmptyNote>{tx("panelUi.pages.ExtensionDetail.4", { id })}</EmptyNote>
 				<Link to="/extensions" className="text-bn-sm text-bn-pink">
 					{tx("panelUi.pages.ExtensionDetail.6")}
 				</Link>

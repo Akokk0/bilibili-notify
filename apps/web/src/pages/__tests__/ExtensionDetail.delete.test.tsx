@@ -13,7 +13,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 import ExtensionDetail from "../ExtensionDetail";
 
@@ -86,6 +87,7 @@ function renderDetail() {
 }
 
 describe("删掉一个拓展", () => {
+	beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 	afterEach(() => {
 		cleanup();
 		vi.clearAllMocks();
