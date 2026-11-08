@@ -9,14 +9,13 @@ import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "../texts/builtin";
 import zhCN from "../texts/builtin/locales/zh-CN.json";
 
 const zh = builtinPresetsFor("zh-CN");
-// 英文只填两个字段,别的靠简体打底 —— 够认出「取的是注入的那份」
+// 英文只填名称，别的靠简体打底；两段模型规则固定中文。
 const en = builtinPresetsFor("en", {
 	"zh-CN": zhCN as Record<string, string>,
 	"zh-TW": {},
 	ja: {},
 	en: {
 		"persona.gentle-maid.name": "Gentle Maid",
-		"persona.gentle-maid.dynamicPrompt": "Write a post comment.",
 		"persona.tsundere.name": "Rin",
 	},
 });
@@ -96,14 +95,14 @@ describe("resolveActivePersona —— 当前用哪份人格", () => {
 			en,
 		);
 		expect(a.persona.name).toBe("Gentle Maid");
-		expect(a.dynamicPrompt).toBe("Write a post comment.");
+		expect(a.dynamicPrompt).toBe(zh[0]?.dynamicPrompt);
 	});
 
 	it("主人那份缺提示词:逐段回落内置首份的那段", () => {
 		const { dynamicPrompt: _d, liveSummaryPrompt: _l, ...bare } = MINE;
 		const a = resolveActivePersona({ activePreset: "mine", presets: [bare] }, en);
 		expect(a.persona.name).toBe("阿绫");
-		expect(a.dynamicPrompt).toBe("Write a post comment.");
+		expect(a.dynamicPrompt).toBe(zh[0]?.dynamicPrompt);
 		expect(a.liveSummaryPrompt).toBe(en[0]?.liveSummaryPrompt);
 	});
 });

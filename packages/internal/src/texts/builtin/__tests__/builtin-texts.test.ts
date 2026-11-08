@@ -84,3 +84,15 @@ describe("出厂文案读口:真字典", () => {
 		}
 	});
 });
+
+it("keeps the two model prompt fields Chinese even when human dictionaries offer translations", () => {
+	const dicts = sparse({
+		"persona.gentle-maid.name": "Gentle Maid",
+		"persona.gentle-maid.dynamicPrompt": "Human translation must not replace this model rule.",
+		"persona.gentle-maid.liveSummaryPrompt": "Another human translation of a model rule.",
+	});
+	const preset = builtinPresetsFor("en", dicts)[0];
+	expect(preset?.persona.name).toBe("Gentle Maid");
+	expect(preset?.dynamicPrompt).toBe(before.presets[0]?.dynamicPrompt);
+	expect(preset?.liveSummaryPrompt).toBe(before.presets[0]?.liveSummaryPrompt);
+});

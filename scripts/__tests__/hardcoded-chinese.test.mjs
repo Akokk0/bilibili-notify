@@ -83,6 +83,56 @@ function pinnedSource(text) {
 }
 
 export const NON_DISPLAY_TEXTS = {
+	"packages/internal/src/texts/builtin/index.ts": [
+		{
+			owner: "GENTLE_MAID_DYNAMIC_PROMPT",
+			text: '"主人订阅的{creatorNoun}刚刚更新了{postNoun},请用温柔的语气向主人转述核心内容,并补一两句你的看法。"',
+			reason: "主人已确认这两段内置模型提示词保持中文；从人用字典归回固定规则，ADR-0037决策11。",
+			site: 'GENTLE_MAID_DYNAMIC_PROMPT =\n\t"主人订阅的{creatorNoun}刚刚更新了{postNoun},请用温柔的语气向主人转述核心内容,并补一两句你的看法。"',
+		},
+		{
+			owner: "GENTLE_MAID_LIVE_SUMMARY_PROMPT",
+			text: '"用温柔的语气向主人讲讲直播主要发生了什么(150-200 字),从弹幕和氛围中提炼亮点。"',
+			reason: "主人已确认这两段内置模型提示词保持中文；从人用字典归回固定规则，ADR-0037决策11。",
+			site: 'GENTLE_MAID_LIVE_SUMMARY_PROMPT =\n\t"用温柔的语气向主人讲讲直播主要发生了什么(150-200 字),从弹幕和氛围中提炼亮点。"',
+		},
+		{
+			owner: "TSUNDERE_DYNAMIC_PROMPT",
+			text: '"主人让你看的{creatorNoun}又更新{postNoun}了,用傲娇的语气吐槽一下,但内容核心要讲清楚,不要光吐槽不汇报。"',
+			reason: "主人已确认这两段内置模型提示词保持中文；从人用字典归回固定规则，ADR-0037决策11。",
+			site: 'TSUNDERE_DYNAMIC_PROMPT =\n\t"主人让你看的{creatorNoun}又更新{postNoun}了,用傲娇的语气吐槽一下,但内容核心要讲清楚,不要光吐槽不汇报。"',
+		},
+		{
+			owner: "TSUNDERE_LIVE_SUMMARY_PROMPT",
+			text: '"主人非要让你帮他看一整场直播,用傲娇的语气把这场直播总结一下,允许适当吐槽,但关键点要交代到。"',
+			reason: "主人已确认这两段内置模型提示词保持中文；从人用字典归回固定规则，ADR-0037决策11。",
+			site: 'TSUNDERE_LIVE_SUMMARY_PROMPT =\n\t"主人非要让你帮他看一整场直播,用傲娇的语气把这场直播总结一下,允许适当吐槽,但关键点要交代到。"',
+		},
+		{
+			owner: "ANALYST_DYNAMIC_PROMPT",
+			text: '"主人订阅的{creatorNoun}更新了{postNoun}。按「亮点 / 关键信息 / 简评」三段式向主人汇报,语言简洁克制,简评不超过两句,不做情绪渲染。"',
+			reason: "主人已确认这两段内置模型提示词保持中文；从人用字典归回固定规则，ADR-0037决策11。",
+			site: 'ANALYST_DYNAMIC_PROMPT =\n\t"主人订阅的{creatorNoun}更新了{postNoun}。按「亮点 / 关键信息 / 简评」三段式向主人汇报,语言简洁克制,简评不超过两句,不做情绪渲染。"',
+		},
+		{
+			owner: "ANALYST_LIVE_SUMMARY_PROMPT",
+			text: '"向主人汇报这场直播:涉及话题、互动热点、整体氛围。控制在 200 字内,保持敬语但不用颜文字与感叹号。"',
+			reason: "主人已确认这两段内置模型提示词保持中文；从人用字典归回固定规则，ADR-0037决策11。",
+			site: 'ANALYST_LIVE_SUMMARY_PROMPT =\n\t"向主人汇报这场直播:涉及话题、互动热点、整体氛围。控制在 200 字内,保持敬语但不用颜文字与感叹号。"',
+		},
+		{
+			owner: "GENKI_DYNAMIC_PROMPT",
+			text: '"用元气满满的语气把{creatorNoun}的新{postNoun}讲给用户听,内容核心要说出来,语气活泼但别过头。"',
+			reason: "主人已确认这两段内置模型提示词保持中文；从人用字典归回固定规则，ADR-0037决策11。",
+			site: 'GENKI_DYNAMIC_PROMPT =\n\t"用元气满满的语气把{creatorNoun}的新{postNoun}讲给用户听,内容核心要说出来,语气活泼但别过头。"',
+		},
+		{
+			owner: "GENKI_LIVE_SUMMARY_PROMPT",
+			text: '"用元气满满的语气帮用户回顾这场直播的重点(200 字内),保持热情但抓住关键点。"',
+			reason: "主人已确认这两段内置模型提示词保持中文；从人用字典归回固定规则，ADR-0037决策11。",
+			site: 'GENKI_LIVE_SUMMARY_PROMPT =\n\t"用元气满满的语气帮用户回顾这场直播的重点(200 字内),保持热情但抓住关键点。"',
+		},
+	],
 	"packages/image/src/image-renderer.ts": [
 		{
 			owner: "ImageRenderer/renderWithSkin",

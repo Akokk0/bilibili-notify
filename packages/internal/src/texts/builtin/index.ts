@@ -23,6 +23,40 @@ const BUNDLED_DICTS: BuiltinDicts = { "zh-CN": zhCN, "zh-TW": zhTW, en, ja };
 export const BUILTIN_PRESET_IDS = ["gentle-maid", "tsundere", "analyst", "genki"] as const;
 export type BuiltinPresetId = (typeof BUILTIN_PRESET_IDS)[number];
 
+/** Fixed model prompts are not human dictionary entries (ADR-0037). */
+const GENTLE_MAID_DYNAMIC_PROMPT =
+	"主人订阅的{creatorNoun}刚刚更新了{postNoun},请用温柔的语气向主人转述核心内容,并补一两句你的看法。";
+const GENTLE_MAID_LIVE_SUMMARY_PROMPT =
+	"用温柔的语气向主人讲讲直播主要发生了什么(150-200 字),从弹幕和氛围中提炼亮点。";
+const TSUNDERE_DYNAMIC_PROMPT =
+	"主人让你看的{creatorNoun}又更新{postNoun}了,用傲娇的语气吐槽一下,但内容核心要讲清楚,不要光吐槽不汇报。";
+const TSUNDERE_LIVE_SUMMARY_PROMPT =
+	"主人非要让你帮他看一整场直播,用傲娇的语气把这场直播总结一下,允许适当吐槽,但关键点要交代到。";
+const ANALYST_DYNAMIC_PROMPT =
+	"主人订阅的{creatorNoun}更新了{postNoun}。按「亮点 / 关键信息 / 简评」三段式向主人汇报,语言简洁克制,简评不超过两句,不做情绪渲染。";
+const ANALYST_LIVE_SUMMARY_PROMPT =
+	"向主人汇报这场直播:涉及话题、互动热点、整体氛围。控制在 200 字内,保持敬语但不用颜文字与感叹号。";
+const GENKI_DYNAMIC_PROMPT =
+	"用元气满满的语气把{creatorNoun}的新{postNoun}讲给用户听,内容核心要说出来,语气活泼但别过头。";
+const GENKI_LIVE_SUMMARY_PROMPT =
+	"用元气满满的语气帮用户回顾这场直播的重点(200 字内),保持热情但抓住关键点。";
+
+const MODEL_PROMPTS = {
+	"gentle-maid": {
+		dynamicPrompt: GENTLE_MAID_DYNAMIC_PROMPT,
+		liveSummaryPrompt: GENTLE_MAID_LIVE_SUMMARY_PROMPT,
+	},
+	tsundere: {
+		dynamicPrompt: TSUNDERE_DYNAMIC_PROMPT,
+		liveSummaryPrompt: TSUNDERE_LIVE_SUMMARY_PROMPT,
+	},
+	analyst: {
+		dynamicPrompt: ANALYST_DYNAMIC_PROMPT,
+		liveSummaryPrompt: ANALYST_LIVE_SUMMARY_PROMPT,
+	},
+	genki: { dynamicPrompt: GENKI_DYNAMIC_PROMPT, liveSummaryPrompt: GENKI_LIVE_SUMMARY_PROMPT },
+} as const satisfies Record<BuiltinPresetId, { dynamicPrompt: string; liveSummaryPrompt: string }>;
+
 /**
  * 出厂文字模板:只有按语言取的文字 —— 八条文字,加会员体系默认那一句(不分体系)。
  * 词云停用词、会员文案的开关 / 图片 / 分档都不是文字,不在这里(由用到的地方就地给空值 / 关着)。
@@ -192,8 +226,8 @@ export function builtinPresetsFor(
 				baseRole: text("baseRole"),
 				extraSystemPrompt: text("extraSystemPrompt"),
 			},
-			dynamicPrompt: text("dynamicPrompt"),
-			liveSummaryPrompt: text("liveSummaryPrompt"),
+			dynamicPrompt: MODEL_PROMPTS[id].dynamicPrompt,
+			liveSummaryPrompt: MODEL_PROMPTS[id].liveSummaryPrompt,
 		};
 	});
 }
