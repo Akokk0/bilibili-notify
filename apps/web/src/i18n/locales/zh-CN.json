@@ -115,7 +115,7 @@
 	"extension.install.skippedLocales": "包里这几个语言文件 BN 还不认得，没有写进去，其余照常装上了",
 	"extension.reportDiscrepancies.kindLive": "直播",
 	"extension.reportDiscrepancies.kindProblem": "问题",
-	"extensions.connectionCount": "条连接",
+	"extensions.connectionCount#other": "条连接",
 	"extensions.dialog.and": " 与",
 	"extensions.dialog.available": "立即生效",
 	"extensions.dialog.close": "关闭",

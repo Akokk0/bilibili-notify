@@ -6,7 +6,7 @@ import type {
 	MarketplaceResponse,
 } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
@@ -202,6 +202,310 @@ describe("拓展页", () => {
 		cleanup();
 		vi.restoreAllMocks();
 	});
+
+	it("extension manager language changes preserve the capability filter, raw state details, and switches", async () => {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		const states = [
+			"running",
+			"disabled",
+			"blocked",
+			"failed",
+			"unreadable",
+			"incompatible",
+			"staged",
+			"settings-invalid",
+		] as const;
+		renderPage({
+			extensions: states.map((state) => ({
+				...BRIDGE,
+				id: state,
+				name: `Original / ${state}`,
+				state,
+				enabled: state !== "disabled",
+				provides:
+					state === "unreadable"
+						? undefined
+						: state === "disabled"
+							? []
+							: state === "running"
+								? ["push", "subscription"]
+								: ["push"],
+				detail: `原诊断 / ${state}`,
+				apiVersion: undefined,
+			})),
+		});
+		await screen.findByRole("button", { name: "全部 8" });
+		fireEvent.click(screen.getByRole("button", { name: "订阅 1" }));
+		for (const [
+			locale,
+			title,
+			subtitle,
+			all,
+			push,
+			sub,
+			unknownHint,
+			unknown,
+			empty,
+			count,
+			manage,
+			install,
+			labels,
+		] of [
+			[
+				"en",
+				"Extensions",
+				"Add external features to BN. Install extensions separately and enable them to use their features.",
+				"All 8",
+				"Push 6",
+				"Subscription 1",
+				"Capabilities unknown: 1. Select “All” to view the affected extensions.",
+				"Capabilities unknown",
+				"No business capabilities declared",
+				"connections",
+				"Manage",
+				"Install extension",
+				[
+					"Enabled",
+					"Disabled",
+					"Automatically disabled",
+					"Failed to load",
+					"Manifest unreadable",
+					"Incompatible version",
+					"New code awaiting activation",
+					"Settings unreadable",
+				],
+			],
+			[
+				"ja",
+				"拡張機能",
+				"BNに外部の機能を追加します。拡張機能は別途インストールし、有効にすると利用できます。",
+				"すべて 8",
+				"送信 6",
+				"購読 1",
+				"1件の拡張機能の能力が不明です。「すべて」に切り替えると表示できます。",
+				"能力不明",
+				"業務機能の宣言なし",
+				"接続",
+				"管理",
+				"拡張機能をインストール",
+				[
+					"有効",
+					"無効",
+					"自動的に無効化",
+					"読み込み失敗",
+					"マニフェストを読み込めません",
+					"バージョン非互換",
+					"新しいコードの適用待ち",
+					"設定を読み込めません",
+				],
+			],
+			[
+				"zh-TW",
+				"拓展",
+				"為 BN 加入外部功能。拓展需另外安裝，啟用後生效。",
+				"全部 8",
+				"推播 6",
+				"訂閱 1",
+				"有 1 個拓展的能力尚不明確，可切換至「全部」查看。",
+				"能力未知",
+				"未宣告業務能力",
+				"條連線",
+				"管理",
+				"安裝拓展",
+				[
+					"已啟用",
+					"已停用",
+					"已自動停用",
+					"載入失敗",
+					"無法讀取資訊清單",
+					"版本不相容",
+					"新版等待載入",
+					"無法讀取設定",
+				],
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByRole("button", { name: sub }).getAttribute("aria-pressed")).toBe("true");
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(subtitle)).toBeTruthy();
+			expect(screen.getByText(unknownHint)).toBeTruthy();
+			expect(screen.queryByLabelText("Original / failed")).toBeNull();
+			expect(screen.getByRole("button", { name: push })).toBeTruthy();
+			expect(screen.getByRole("button", { name: install })).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: all }));
+			for (const [index, state] of states.entries()) {
+				const card = await cardOf(`Original / ${state}`);
+				const label = labels[index];
+				if (label === undefined) throw new Error("Missing translated state label");
+				expect(within(card).getByText(label)).toBeTruthy();
+				expect(
+					within(card).getByLabelText(`Original / ${state}`).getAttribute("aria-pressed"),
+				).toBe(String(state !== "disabled"));
+				expect(within(card).getByRole("link", { name: manage }).getAttribute("href")).toBe(
+					`/extensions/${state}`,
+				);
+				if (state !== "running" && state !== "disabled")
+					expect(within(card).getByText(`原诊断 / ${state}`)).toBeTruthy();
+			}
+			expect(within(await cardOf("Original / unreadable")).getByText(unknown)).toBeTruthy();
+			expect(within(await cardOf("Original / disabled")).getByText(empty)).toBeTruthy();
+			expect(within(await cardOf("Original / running")).getByText(count)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: sub }));
+		}
+		expect(apiPatchMock).not.toHaveBeenCalled();
+	});
+
+	it.each(["unreadable", "empty", "filtered"] as const)(
+		"%s extension list translates without treating a failed read as empty",
+		async (result) => {
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			let finish!: () => void;
+			let fail!: (error: Error) => void;
+			const pending = new Promise<void>((resolve, reject) => {
+				finish = resolve;
+				fail = reject;
+			});
+			renderPage(
+				{
+					extensions:
+						result === "filtered"
+							? [{ ...BRIDGE, provides: undefined, apiVersion: undefined }]
+							: [],
+				},
+				CONNECTIONS,
+				STATUS,
+				MARKET,
+				"/extensions",
+				pending,
+			);
+			await screen.findByText("正在读取拓展…");
+			for (const [locale, loading] of [
+				["en", "Reading extensions…"],
+				["ja", "拡張機能を読み込んでいます…"],
+				["zh-TW", "正在讀取拓展…"],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(screen.getByText(loading)).toBeTruthy();
+			}
+			await act(async () => {
+				if (result === "unreadable") fail(new Error("磁盘只读 / EACCES"));
+				else finish();
+			});
+			if (result === "filtered")
+				fireEvent.click(await screen.findByRole("button", { name: "推播 0" }));
+			for (const [locale, unreadable, empty, filtered] of [
+				[
+					"en",
+					"Could not read installed extensions: 磁盘只读 / EACCES",
+					"No extensions are installed. Install one from the marketplace or upload an extension package.",
+					"No extensions declare this capability. Select “All” to view other extensions.",
+				],
+				[
+					"ja",
+					"インストール済みの拡張機能を読み込めません：磁盘只读 / EACCES",
+					"拡張機能はまだインストールされていません。マーケットからインストールするか、拡張機能のパッケージをアップロードしてください。",
+					"この能力を宣言する拡張機能はありません。「すべて」に切り替えると、ほかの拡張機能を表示できます。",
+				],
+				[
+					"zh-TW",
+					"無法讀取已安裝的拓展：磁盘只读 / EACCES",
+					"尚未安裝拓展。可從拓展市場安裝，或上傳拓展套件。",
+					"沒有宣告此能力的拓展。可切換至「全部」查看其他拓展。",
+				],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(
+					await screen.findByText(
+						result === "unreadable" ? unreadable : result === "empty" ? empty : filtered,
+					),
+				).toBeTruthy();
+				if (result === "unreadable") expect(screen.queryByText(empty)).toBeNull();
+			}
+			expect(apiPatchMock).not.toHaveBeenCalled();
+		},
+	);
+
+	it("staged and different-source notices translate while a failed toggle stays on its original extension", async () => {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		apiPatchMock.mockRejectedValue(new Error("磁盘只读 / EACCES"));
+		renderPage(
+			{
+				extensions: [
+					{ ...BRIDGE, staged: { version: "1.0.0" } },
+					{ ...THIRD_PARTY, state: "disabled", enabled: false, staged: { version: "1.1.0" } },
+				],
+			},
+			CONNECTIONS,
+			STATUS,
+			marketWith({
+				...THIRD_PARTY_ENTRY,
+				id: BRIDGE.id,
+				version: "9.0.0",
+				state: "installed-elsewhere",
+			}),
+		);
+		await cardOf(BRIDGE.name);
+		fireEvent.click(screen.getByLabelText(BRIDGE.name));
+		await screen.findByText(/磁盘只读 \/ EACCES/);
+		for (const [locale, same, version, manage, elsewhere, failure] of [
+			[
+				"en",
+				"Code on disk has changed; waiting to load",
+				"v1.1.0 waiting to load",
+				"Choose how to load it in “Manage”",
+				"alice also offers v9.0.0. The installed version is not from that source, so no update is offered.",
+				"Could not change this switch: 磁盘只读 / EACCES",
+			],
+			[
+				"ja",
+				"ディスク上のコードが変更され、読み込み待ちです",
+				"v1.1.0は読み込み待ちです",
+				"「管理」で読み込み方法を選択してください",
+				"aliceにもv9.0.0がありますが、現在のバージョンはその配布元からインストールされていないため、更新は提示しません。",
+				"このスイッチを変更できませんでした：磁盘只读 / EACCES",
+			],
+			[
+				"zh-TW",
+				"磁碟上的程式碼已更換，等待載入",
+				"v1.1.0 等待載入",
+				"前往「管理」選擇載入方式",
+				"alice 也有 v9.0.0，但目前版本並非從該來源安裝，因此不提示更新。",
+				"無法切換此開關：磁盘只读 / EACCES",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			const running = await cardOf(BRIDGE.name);
+			const disabled = await cardOf(THIRD_PARTY.name);
+			expect(within(running).getByText(same)).toBeTruthy();
+			expect(within(disabled).getByText(version)).toBeTruthy();
+			expect(within(running).getByText(manage)).toBeTruthy();
+			expect(within(running).getByText(elsewhere)).toBeTruthy();
+			expect(screen.getByText(failure)).toBeTruthy();
+			expect(screen.getByLabelText(BRIDGE.name).getAttribute("aria-pressed")).toBe("true");
+			expect(screen.getByLabelText(THIRD_PARTY.name).getAttribute("aria-pressed")).toBe("false");
+			expect(apiPatchMock).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+				core: { extensions: { bridge: { enabled: false } } },
+			});
+		}
+	});
+
+	it.each([
+		[0, "connections"],
+		[1, "connection"],
+		[2, "connections"],
+	] as const)(
+		"%i borrowed connections use the matching English count label",
+		async (count, unit) => {
+			i18n.set({ locale: "en", voice: "plain" });
+			renderPage(
+				{ extensions: [{ ...BRIDGE, apiVersion: undefined }] },
+				CONNECTIONS.slice(0, count),
+			);
+			const card = await cardOf(BRIDGE.name);
+			expect(within(card).getByText(String(count))).toBeTruthy();
+			expect(within(card).getByText(unit)).toBeTruthy();
+		},
+	);
 
 	it("装了什么就列什么 —— 卡片文案来自服务端,不在前端再抄一份", async () => {
 		renderPage();

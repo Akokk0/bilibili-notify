@@ -81,7 +81,9 @@ function ConnectionCount({ count }: { count: number }) {
 	return (
 		<div className="flex items-baseline gap-[5px]">
 			<span className="text-bn-xl font-bold leading-none text-bn-text-primary">{count}</span>
-			<span className="text-bn-xs text-bn-text-tertiary">{t("extensions.connectionCount")}</span>
+			<span className="text-bn-xs text-bn-text-tertiary">
+				{t("extensions.connectionCount", { count })}
+			</span>
 		</div>
 	);
 }

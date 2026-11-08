@@ -17,6 +17,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import Extensions from "../Extensions";
 
 const { apiGetMock } = vi.hoisted(() => ({ apiGetMock: vi.fn() }));
@@ -98,6 +99,7 @@ async function card(name: string): Promise<HTMLElement> {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	apiGetMock.mockReset();
 });
 afterEach(() => {
