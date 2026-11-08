@@ -1786,5 +1786,22 @@
 	"integrationSettings.reset": "識別情報を変更",
 	"integrationSettings.dirty": "ブラウザー識別情報を変更する前に、現在の下書きを保存または破棄してください。",
 	"integrationSettings.resetDone": "次回のサービス再起動時に新しい識別情報を生成します。",
-	"integrationSettings.resetConfirm": "ブラウザー識別情報を変更しますか？"
+	"integrationSettings.resetConfirm": "ブラウザー識別情報を変更しますか？",
+	"panelUi.pages.backup.BackupImportDialog.3": "バックアップをインポート・復元",
+	"panelUi.pages.backup.BackupImportDialog.4": "バックアップファイルを選択（.bnbackup / .json）…",
+	"panelUi.pages.backup.BackupImportDialog.5": "検出: ",
+	"panelUi.pages.backup.BackupImportDialog.6": "完全バックアップ（シークレットを含む）",
+	"panelUi.pages.backup.BackupImportDialog.7": "機密情報を除いたエクスポート",
+	"panelUi.pages.backup.BackupImportDialog.8": "インポート方法",
+	"panelUi.pages.backup.BackupImportDialog.9": "上書き",
+	"panelUi.pages.backup.BackupImportDialog.10": "スナップショットに復元 · 余分な項目を削除",
+	"panelUi.pages.backup.BackupImportDialog.11": "統合",
+	"panelUi.pages.backup.BackupImportDialog.12": "既存データに統合 · 削除しない",
+	"panelUi.pages.backup.BackupImportDialog.13": "数字6桁のPINを入力",
+	"panelUi.pages.backup.BackupImportDialog.14": "キャンセル",
+	"panelUi.pages.backup.BackupImportDialog.15": "インポート中…",
+	"panelUi.pages.backup.BackupImportDialog.16": "インポート",
+	"panelUi.pages.backup.BackupImportDialog.1": "bilibili-notifyのバックアップファイルではありません",
+	"panelUi.pages.backup.BackupImportDialog.2": "ファイルを解析できません。バックアップファイルを選択したか確認してください。",
+	"panelUi.pages.backup.backup-file.1": "ファイルを読み込めませんでした"
 }

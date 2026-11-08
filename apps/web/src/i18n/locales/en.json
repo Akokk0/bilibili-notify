@@ -1827,5 +1827,22 @@
 	"integrationSettings.reset": "Change identity",
 	"integrationSettings.dirty": "Save or discard the current draft before changing the browser identity.",
 	"integrationSettings.resetDone": "A new identity will be generated the next time the service restarts.",
-	"integrationSettings.resetConfirm": "Change browser identity?"
+	"integrationSettings.resetConfirm": "Change browser identity?",
+	"panelUi.pages.backup.BackupImportDialog.3": "Import / restore backup",
+	"panelUi.pages.backup.BackupImportDialog.4": "Choose a backup file (.bnbackup / .json)…",
+	"panelUi.pages.backup.BackupImportDialog.5": "Detected: ",
+	"panelUi.pages.backup.BackupImportDialog.6": "Full backup (includes secrets)",
+	"panelUi.pages.backup.BackupImportDialog.7": "Sanitized export (no secrets)",
+	"panelUi.pages.backup.BackupImportDialog.8": "Import mode",
+	"panelUi.pages.backup.BackupImportDialog.9": "Overwrite",
+	"panelUi.pages.backup.BackupImportDialog.10": "Restore snapshot · Delete extra entries",
+	"panelUi.pages.backup.BackupImportDialog.11": "Merge",
+	"panelUi.pages.backup.BackupImportDialog.12": "Merge into existing data · Delete nothing",
+	"panelUi.pages.backup.BackupImportDialog.13": "Enter a 6-digit PIN",
+	"panelUi.pages.backup.BackupImportDialog.14": "Cancel",
+	"panelUi.pages.backup.BackupImportDialog.15": "Importing…",
+	"panelUi.pages.backup.BackupImportDialog.16": "Import",
+	"panelUi.pages.backup.BackupImportDialog.1": "This is not a bilibili-notify backup file",
+	"panelUi.pages.backup.BackupImportDialog.2": "Could not parse the file. Make sure you selected a backup file.",
+	"panelUi.pages.backup.backup-file.1": "Could not read the file"
 }

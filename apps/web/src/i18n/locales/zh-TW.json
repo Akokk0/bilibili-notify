@@ -1786,5 +1786,22 @@
 	"integrationSettings.reset": "更換身分",
 	"integrationSettings.dirty": "請先儲存或放棄目前草稿，再更換瀏覽器身分。",
 	"integrationSettings.resetDone": "已安排於下次服務重新啟動時產生新身分。",
-	"integrationSettings.resetConfirm": "更換瀏覽器身分？"
+	"integrationSettings.resetConfirm": "更換瀏覽器身分？",
+	"panelUi.pages.backup.BackupImportDialog.3": "匯入／還原備份",
+	"panelUi.pages.backup.BackupImportDialog.4": "選擇備份檔案（.bnbackup／.json）…",
+	"panelUi.pages.backup.BackupImportDialog.5": "偵測到：",
+	"panelUi.pages.backup.BackupImportDialog.6": "完整備份（包含機密）",
+	"panelUi.pages.backup.BackupImportDialog.7": "移除機密後的匯出檔",
+	"panelUi.pages.backup.BackupImportDialog.8": "匯入方式",
+	"panelUi.pages.backup.BackupImportDialog.9": "覆寫",
+	"panelUi.pages.backup.BackupImportDialog.10": "還原快照 · 刪除多餘項目",
+	"panelUi.pages.backup.BackupImportDialog.11": "合併",
+	"panelUi.pages.backup.BackupImportDialog.12": "併入現有資料 · 不刪除",
+	"panelUi.pages.backup.BackupImportDialog.13": "輸入 6 位數字 PIN",
+	"panelUi.pages.backup.BackupImportDialog.14": "取消",
+	"panelUi.pages.backup.BackupImportDialog.15": "匯入中…",
+	"panelUi.pages.backup.BackupImportDialog.16": "匯入",
+	"panelUi.pages.backup.BackupImportDialog.1": "這不是 bilibili-notify 備份檔案",
+	"panelUi.pages.backup.BackupImportDialog.2": "無法解析檔案，請確認選擇的是備份檔案。",
+	"panelUi.pages.backup.backup-file.1": "無法讀取檔案"
 }
