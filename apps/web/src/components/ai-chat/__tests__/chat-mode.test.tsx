@@ -18,6 +18,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 
 const H = vi.hoisted(() => ({
 	/** 最后一次发送带的 flags。 */
@@ -151,6 +152,7 @@ async function send(text: string) {
 const tab = (name: string) => screen.queryByRole("tab", { name });
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	H.lastFlags = null;
 	H.accounts = [];
 	H.lastInit = undefined;

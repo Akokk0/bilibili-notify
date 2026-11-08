@@ -10,6 +10,7 @@ import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { EMPTY_SLOTS, useSkinStore } from "../../../store/skin";
 import { ChatSidebar } from "../sidebar";
 
@@ -57,6 +58,7 @@ function mountSidebar() {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	vi.clearAllMocks();
 	useSkinStore.setState({
 		active: EMPTY_SLOTS,

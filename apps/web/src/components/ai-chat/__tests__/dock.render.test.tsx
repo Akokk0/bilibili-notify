@@ -179,6 +179,7 @@ vi.mock("../../../services/api", () => ({
 	},
 }));
 
+import { i18n } from "../../../i18n";
 import { createConversation, retitleConversation, sendChatMessage } from "../../../services/aiChat";
 import { useAiChatStore } from "../../../store/aiChat";
 import { AiChatDock, ChatPage } from "../index";
@@ -210,6 +211,7 @@ function shell() {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	H.conversations = [];
 	H.messages = [];
 	H.listCalls = 0;
@@ -224,6 +226,7 @@ beforeEach(() => {
 	H.replyReasoning = null;
 	vi.mocked(createConversation).mockClear();
 	vi.mocked(retitleConversation).mockClear();
+	vi.mocked(sendChatMessage).mockClear();
 	G.ai = {
 		// 模型名住在当前生效的那个服务商桶里(各家一套配置)。
 		activeProfile: "deepseek",
@@ -236,6 +239,41 @@ afterEach(() => {
 	// 卸载前把还挂着的 getConversation 放掉,免得未 settle 的 promise 跨用例悬着。
 	for (const open of H.convGate.splice(0)) open();
 	cleanup();
+});
+
+it("chat shell translates while preserving an unsent message and original conversation title", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	H.conversations = [
+		{
+			id: "saved-id",
+			title: "原始会话名称",
+			createdAt: "2026-07-24T00:00:00.000Z",
+			updatedAt: "2026-07-24T00:00:00.000Z",
+			messageCount: 0,
+		},
+	];
+	render(wrap(shell(), "/"));
+	fireEvent.click(screen.getByTitle("Open AI maid chat"));
+	await screen.findByRole("region", { name: "AI maid chat" });
+	await screen.findByText("原始会话名称");
+	const input = screen.getByRole("textbox");
+	fireEvent.change(input, { target: { value: "尚未发送的问题" } });
+	for (const [locale, region, back] of [
+		["ja", "AI メイドとのチャット", "ダッシュボードに戻る"],
+		["zh-TW", "女僕 AI 聊天", "返回控制台"],
+		["en", "AI maid chat", "Back to dashboard"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("region", { name: region })).toBeTruthy();
+		expect(screen.getByRole("button", { name: back })).toBeTruthy();
+		expect(screen.getByText("原始会话名称")).toBeTruthy();
+		expect(screen.getByDisplayValue("尚未发送的问题")).toBe(input);
+		expect(createConversation).not.toHaveBeenCalled();
+		expect(sendChatMessage).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "Back to dashboard" }));
+	await screen.findByTestId("console-page");
+	expect(screen.getByTitle("Open AI maid chat")).toBeTruthy();
 });
 
 describe("AiChatDock — 不在聊天页时", () => {

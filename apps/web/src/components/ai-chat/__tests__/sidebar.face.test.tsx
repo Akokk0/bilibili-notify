@@ -12,8 +12,9 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import type { AiConversationMetaView } from "../../../services/aiChat";
 import { ChatSidebar } from "../sidebar";
 
@@ -40,6 +41,8 @@ function conv(over: Partial<AiConversationMetaView>): AiConversationMetaView {
 function mount(props: {
 	conversations?: AiConversationMetaView[];
 	onNew?: (m: "chat" | "skin") => void;
+	onSelect?: (id: string) => void;
+	onDelete?: (id: string) => void;
 }) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
@@ -47,9 +50,9 @@ function mount(props: {
 			<ChatSidebar
 				conversations={props.conversations ?? []}
 				activeId={null}
-				onSelect={() => {}}
+				onSelect={props.onSelect ?? (() => {})}
 				onNew={props.onNew ?? (() => {})}
-				onDelete={() => {}}
+				onDelete={props.onDelete ?? (() => {})}
 				onCollapse={() => {}}
 				userName="主人"
 				aiName="伦伦"
@@ -58,7 +61,45 @@ function mount(props: {
 	);
 }
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
+
+it("sidebar actions and workshop labels translate while conversation titles and IDs stay original", () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const onSelect = vi.fn(),
+		onDelete = vi.fn(),
+		onNew = vi.fn();
+	mount({
+		conversations: [
+			conv({ id: "original-id", title: "原始会话", mode: "skin", skinTarget: "card" }),
+		],
+		onSelect,
+		onDelete,
+		onNew,
+	});
+	const title = screen.getByText("原始会话");
+	for (const [locale, label, start, remove] of [
+		["en", "Card workshop", "New chat", "Delete conversation “原始会话”"],
+		["ja", "カード工房", "新しいチャット", "会話「原始会话」を削除"],
+		["zh-TW", "卡片工坊", "開啟新對話", "刪除對話「原始会话」"],
+		["en", "Card workshop", "New chat", "Delete conversation “原始会话”"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(label)).toBeTruthy();
+		expect(screen.getByRole("button", { name: start })).toBeTruthy();
+		expect(screen.getByRole("button", { name: remove })).toBeTruthy();
+		expect(screen.getByText("原始会话")).toBe(title);
+		expect(onSelect).not.toHaveBeenCalled();
+		expect(onDelete).not.toHaveBeenCalled();
+		expect(onNew).not.toHaveBeenCalled();
+	}
+	fireEvent.click(title);
+	fireEvent.click(screen.getByRole("button", { name: "Delete conversation “原始会话”" }));
+	fireEvent.click(screen.getByRole("button", { name: "New skin workshop" }));
+	expect(onSelect).toHaveBeenCalledExactlyOnceWith("original-id");
+	expect(onDelete).toHaveBeenCalledExactlyOnceWith("original-id");
+	expect(onNew).toHaveBeenCalledExactlyOnceWith("skin");
+});
 
 describe("两个新建入口", () => {
 	it("日常聊天与皮肤工坊各有一颗按钮", () => {

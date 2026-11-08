@@ -24,6 +24,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 
 const P = vi.hoisted(() => ({ preload: vi.fn() }));
 
@@ -78,6 +79,7 @@ function wrap() {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	vi.useFakeTimers();
 	P.preload.mockClear();
 	useAiChatStore.setState({ rail: true, activeId: null });
