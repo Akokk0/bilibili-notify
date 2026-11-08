@@ -13,8 +13,9 @@
 
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { ThinkingControl } from "../thinking-control";
 
 vi.mock("../../../services/api", () => ({
@@ -61,8 +62,41 @@ function mount(
 	);
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+	vi.clearAllMocks();
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 afterEach(cleanup);
+
+it.each(["chat", "responses"] as const)(
+	"thinking translations preserve custom-provider capability and request syntax: %s",
+	async (flavor) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		const onToggle = vi.fn();
+		mount("custom", { on: false, onToggle }, flavor);
+		const button = (await screen.findByRole("button", { name: "Reasoning" })) as HTMLButtonElement;
+		for (const [locale, label, parameters] of [
+			["en", "Reasoning", "Extra request parameters"],
+			["ja", "思考", "追加リクエストパラメーター"],
+			["zh-TW", "深度思考", "額外請求參數"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByRole("button", { name: label })).toBe(button);
+			expect(button.disabled).toBe(flavor === "chat");
+			expect(button.getAttribute("aria-pressed")).toBe("false");
+			if (flavor === "chat") {
+				expect(button.title).toContain(parameters);
+				expect(button.title).toContain('{"thinking":{"type":"enabled"}}');
+			}
+			expect(onToggle).not.toHaveBeenCalled();
+			expect(api.patch).not.toHaveBeenCalled();
+			expect(api.post).not.toHaveBeenCalled();
+		}
+		fireEvent.click(button);
+		if (flavor === "chat") expect(onToggle).not.toHaveBeenCalled();
+		else expect(onToggle).toHaveBeenCalledExactlyOnceWith(true);
+	},
+);
 
 describe("ThinkingControl — 会话级受控胶囊", () => {
 	it("aria-pressed 跟 props 走:off 灭、on 亮", async () => {

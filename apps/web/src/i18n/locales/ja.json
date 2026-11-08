@@ -1297,5 +1297,19 @@
 	"panelUi.components.ai-chat.composer.15": "画像を追加",
 	"panelUi.components.ai-chat.composer.16": "メイドのスキル",
 	"panelUi.components.ai-chat.composer.17": "送信",
-	"panelUi.components.ai-chat.composer.18": "送信"
+	"panelUi.components.ai-chat.composer.18": "送信",
+	"panelUi.components.ai-chat.search-control.1": "ウェブ検索",
+	"panelUi.components.ai-chat.search-control.2": "ウェブ検索は有効です（{value0}）。この会話だけに適用します。",
+	"panelUi.components.ai-chat.search-control.3": "回答の前に検索します。リクエストごとの課金です。この会話だけに適用し、設定には保存しません。",
+	"panelUi.components.ai-chat.search-control.4": "検索が未設定です。「AI メイド → 全体設定 → ウェブ検索」で {value0} の API Key を入力してください。",
+	"panelUi.components.ai-chat.thinking-control.1": "思考",
+	"panelUi.components.ai-chat.thinking-control.2": "思考は有効です。この会話だけに適用します。深さはサイドバーの「設定」で調整できます。",
+	"panelUi.components.ai-chat.thinking-control.3": "回答前にモデルに思考させます。応答が遅くなる場合があります。この会話だけに適用し、設定には保存しません。",
+	"panelUi.components.ai-chat.thinking-control.4": "カスタムプロバイダーの思考パラメーター形式は不明です。「AI メイド」の「追加リクエストパラメーター」に入力してください（DeepSeek の例: {example}）。または、このインスタンスの API 形式を responses に変更すると、共通の思考フィールドを使えます。",
+	"panelUi.components.ai-chat.thinking-level-setting.1": "低",
+	"panelUi.components.ai-chat.thinking-level-setting.2": "中",
+	"panelUi.components.ai-chat.thinking-level-setting.3": "高",
+	"panelUi.components.ai-chat.thinking-level-setting.4": "思考の深さ",
+	"panelUi.components.ai-chat.thinking-level-setting.5": "✦ が有効なときの思考の深さです。初期状態では選択中のインスタンスに従い、変更するとチャット用の段階を別に保存します。",
+	"panelUi.components.ai-chat.thinking-level-setting.6": "このインスタンスはカスタムプロバイダーです。専用の思考パラメーターは自動では送りません。必要な場合は、そのインスタンスの「追加リクエストパラメーター」に入力してください。"
 }

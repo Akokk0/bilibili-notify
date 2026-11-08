@@ -14,8 +14,9 @@
 
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { ThinkingLevelSetting } from "../thinking-level-setting";
 
 vi.mock("../../../services/api", () => ({
@@ -57,8 +58,36 @@ function mount(g: ReturnType<typeof globalsWith>) {
 	);
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+	vi.clearAllMocks();
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 afterEach(cleanup);
+
+it("thinking level translations preserve the selected effort and save only on an explicit choice", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	mount(globalsWith("deepseek"));
+	const high = await screen.findByRole("button", { name: "High" });
+	for (const [locale, title, highLabel] of [
+		["en", "Thinking depth", "High"],
+		["ja", "思考の深さ", "高"],
+		["zh-TW", "思考深度", "高"],
+		["en", "Thinking depth", "High"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByRole("button", { name: highLabel })).toBe(high);
+		expect(high.getAttribute("aria-pressed")).toBe("true");
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "Low" }));
+	await waitFor(() =>
+		expect(api.patch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+			core: { ai: { chat: { thinkingLevel: "low" } } },
+		}),
+	);
+});
 
 describe("ThinkingLevelSetting — 侧栏里的思考深度", () => {
 	it("chat 段没写 → 跟随当前实例的等级(实例 high,「高」点亮)", async () => {

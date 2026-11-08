@@ -1297,5 +1297,19 @@
 	"panelUi.components.ai-chat.composer.15": "新增圖片",
 	"panelUi.components.ai-chat.composer.16": "女僕技能",
 	"panelUi.components.ai-chat.composer.17": "傳送",
-	"panelUi.components.ai-chat.composer.18": "傳送"
+	"panelUi.components.ai-chat.composer.18": "傳送",
+	"panelUi.components.ai-chat.search-control.1": "網路搜尋",
+	"panelUi.components.ai-chat.search-control.2": "網路搜尋已開啟（{value0}），僅適用於目前對話。",
+	"panelUi.components.ai-chat.search-control.3": "先搜尋再回答，按次計費。僅適用於目前對話，不會儲存到設定。",
+	"panelUi.components.ai-chat.search-control.4": "尚未設定搜尋後端，請到「智慧女僕 → 全域設定 → 網路搜尋」填寫 {value0} 的 API Key。",
+	"panelUi.components.ai-chat.thinking-control.1": "深度思考",
+	"panelUi.components.ai-chat.thinking-control.2": "深度思考已開啟，僅適用於目前對話；思考深度可在側欄「設定」調整。",
+	"panelUi.components.ai-chat.thinking-control.3": "讓模型先思考再回答，回應可能較慢。僅適用於目前對話，不會儲存到設定。",
+	"panelUi.components.ai-chat.thinking-control.4": "無法判定此自訂服務商的思考參數格式。請在「智慧女僕」的「額外請求參數」手動填寫（DeepSeek 例如 {example}）；也可將此實例的 API 格式改為 responses，該協定以標準欄位指定思考。",
+	"panelUi.components.ai-chat.thinking-level-setting.1": "低",
+	"panelUi.components.ai-chat.thinking-level-setting.2": "中",
+	"panelUi.components.ai-chat.thinking-level-setting.3": "高",
+	"panelUi.components.ai-chat.thinking-level-setting.4": "思考深度",
+	"panelUi.components.ai-chat.thinking-level-setting.5": "調整 ✦ 開啟後的思考深度；初始沿用所選實例的等級，調整後會獨立儲存聊天等級。",
+	"panelUi.components.ai-chat.thinking-level-setting.6": "此實例使用自訂服務商，不會自動傳送專屬思考參數；如有需要，請填入該實例的「額外請求參數」。"
 }

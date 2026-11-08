@@ -1318,5 +1318,19 @@
 	"panelUi.components.ai-chat.composer.15": "Add image",
 	"panelUi.components.ai-chat.composer.16": "Maid skills",
 	"panelUi.components.ai-chat.composer.17": "Send",
-	"panelUi.components.ai-chat.composer.18": "Send"
+	"panelUi.components.ai-chat.composer.18": "Send",
+	"panelUi.components.ai-chat.search-control.1": "Web search",
+	"panelUi.components.ai-chat.search-control.2": "Web search is on ({value0}) for this conversation only.",
+	"panelUi.components.ai-chat.search-control.3": "Search before answering, billed per request. Applies only to this conversation and is not saved.",
+	"panelUi.components.ai-chat.search-control.4": "Search is not configured. Enter the {value0} API key in AI maid → Global settings → Web search.",
+	"panelUi.components.ai-chat.thinking-control.1": "Reasoning",
+	"panelUi.components.ai-chat.thinking-control.2": "Reasoning is on for this conversation only. Adjust its depth in the sidebar’s Settings.",
+	"panelUi.components.ai-chat.thinking-control.3": "Let the model think before answering; responses may be slower. Applies only to this conversation and is not saved.",
+	"panelUi.components.ai-chat.thinking-control.4": "The reasoning format for this custom provider is unknown. Enter it in Extra request parameters on the AI maid page (for example, {example} for DeepSeek), or change this instance’s API format to responses, where reasoning is a standard field.",
+	"panelUi.components.ai-chat.thinking-level-setting.1": "Low",
+	"panelUi.components.ai-chat.thinking-level-setting.2": "Medium",
+	"panelUi.components.ai-chat.thinking-level-setting.3": "High",
+	"panelUi.components.ai-chat.thinking-level-setting.4": "Thinking depth",
+	"panelUi.components.ai-chat.thinking-level-setting.5": "Controls depth when ✦ is on. Initially follows the selected instance’s level; changing it saves a separate chat level.",
+	"panelUi.components.ai-chat.thinking-level-setting.6": "This instance uses a custom provider. No provider-specific reasoning parameters are sent automatically. If needed, enter them in the instance’s Extra request parameters."
 }

@@ -9,8 +9,9 @@
 
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { SearchControl } from "../search-control";
 
 vi.mock("../../../services/api", () => ({
@@ -40,8 +41,33 @@ function mount(
 	);
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+	vi.clearAllMocks();
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 afterEach(cleanup);
+
+it("search capsule translates without changing its session state or persisting settings", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const onToggle = vi.fn();
+	mount({ masked: "••••••••" }, { on: true, onToggle });
+	const button = await screen.findByRole("button", { name: "Web search" });
+	for (const [locale, label, hint] of [
+		["en", "Web search", "Web search is on (Bocha) for this conversation only."],
+		["ja", "ウェブ検索", "ウェブ検索は有効です（Bocha）。この会話だけに適用します。"],
+		["zh-TW", "網路搜尋", "網路搜尋已開啟（博查），僅適用於目前對話。"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("button", { name: label })).toBe(button);
+		expect(button.getAttribute("title")).toBe(hint);
+		expect(button.getAttribute("aria-pressed")).toBe("true");
+		expect(onToggle).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	fireEvent.click(button);
+	expect(onToggle).toHaveBeenCalledExactlyOnceWith(false);
+});
 
 describe("SearchControl — 会话级受控胶囊", () => {
 	it("key 已配(下发的是遮挡)→ 可点,点一下回调 onToggle 且不写配置", async () => {
