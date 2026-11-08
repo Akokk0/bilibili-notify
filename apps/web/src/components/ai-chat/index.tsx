@@ -10,7 +10,7 @@ import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { ErrorNote, Icon, TabBar } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { usePrimaryAccount } from "../../hooks/useAccounts";
 import { useCoreSettings } from "../../hooks/useSettings";
@@ -280,6 +280,16 @@ export function ChatPage() {
 
 	const rail = useAiChatStore((s) => s.rail);
 	const setRail = useAiChatStore((s) => s.setRail);
+	useLayoutEffect(() => {
+		if (typeof window.matchMedia !== "function") return;
+		const media = window.matchMedia("(max-width: 767px)");
+		const collapseNarrowRail = () => {
+			if (media.matches) setRail(false);
+		};
+		collapseNarrowRail();
+		media.addEventListener("change", collapseNarrowRail);
+		return () => media.removeEventListener("change", collapseNarrowRail);
+	}, [setRail]);
 	const activeId = useAiChatStore((s) => s.activeId);
 	const setActiveId = useAiChatStore((s) => s.setActiveId);
 
@@ -755,21 +765,23 @@ export function ChatPage() {
 			aria-label={tx("panelUi.components.ai-chat.index.7")}
 		>
 			{rail ? (
-				<ChatSidebar
-					conversations={conversations}
-					activeId={activeId}
-					onSelect={(id) => {
-						setActiveId(id);
-						setError(null);
-					}}
-					onNew={startNew}
-					onDelete={(id) => removeConv.mutate(id)}
-					onCollapse={() => setRail(false)}
-					modelName={modelName}
-					userName={userName}
-					userFace={card?.avatar ? imageUrl(card.avatar) : undefined}
-					aiName={persona.name}
-				/>
+				<div className="absolute inset-y-0 left-0 z-bn-local flex md:static md:contents">
+					<ChatSidebar
+						conversations={conversations}
+						activeId={activeId}
+						onSelect={(id) => {
+							setActiveId(id);
+							setError(null);
+						}}
+						onNew={startNew}
+						onDelete={(id) => removeConv.mutate(id)}
+						onCollapse={() => setRail(false)}
+						modelName={modelName}
+						userName={userName}
+						userFace={card?.avatar ? imageUrl(card.avatar) : undefined}
+						aiName={persona.name}
+					/>
+				</div>
 			) : null}
 
 			<div className="relative flex min-w-0 flex-1 flex-col">

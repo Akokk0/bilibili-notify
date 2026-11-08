@@ -241,6 +241,48 @@ afterEach(() => {
 	cleanup();
 });
 
+it("narrow chat collapses the rail without losing a draft and keeps wide-screen choices", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const events = new EventTarget();
+	let narrow = true;
+	const media = {
+		get matches() {
+			return narrow;
+		},
+		addEventListener: events.addEventListener.bind(events),
+		removeEventListener: events.removeEventListener.bind(events),
+	};
+	vi.stubGlobal(
+		"matchMedia",
+		vi.fn(() => media),
+	);
+	try {
+		render(wrap(<ChatPage />));
+		await screen.findByRole("button", { name: "Open sidebar" });
+		expect(screen.queryByRole("button", { name: "Collapse sidebar" })).toBeNull();
+		const input = screen.getByRole("textbox");
+		fireEvent.change(input, { target: { value: "尚未发送的窄屏草稿" } });
+		fireEvent.click(screen.getByRole("button", { name: "Open sidebar" }));
+		expect(screen.getByRole("button", { name: "Collapse sidebar" })).toBeTruthy();
+		expect(screen.getByDisplayValue("尚未发送的窄屏草稿")).toBe(input);
+		act(() => {
+			narrow = false;
+			events.dispatchEvent(new Event("change"));
+		});
+		expect(screen.getByRole("button", { name: "Collapse sidebar" })).toBeTruthy();
+		act(() => {
+			narrow = true;
+			events.dispatchEvent(new Event("change"));
+		});
+		expect(screen.getByRole("button", { name: "Open sidebar" })).toBeTruthy();
+		expect(screen.getByDisplayValue("尚未发送的窄屏草稿")).toBe(input);
+		expect(createConversation).not.toHaveBeenCalled();
+		expect(sendChatMessage).not.toHaveBeenCalled();
+	} finally {
+		vi.unstubAllGlobals();
+	}
+});
+
 it("chat shell translates while preserving an unsent message and original conversation title", async () => {
 	i18n.set({ locale: "en", voice: "plain" });
 	H.conversations = [

@@ -11,7 +11,7 @@
  * 测的是**这段逻辑**(照内容长、到顶就停、清空回落),不是浏览器的排版。
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
@@ -64,6 +64,50 @@ afterEach(() => {
 });
 
 describe("Composer 高度跟着内容长", () => {
+	it("空输入切换占位文字语言时重新量高，不改输入内容", () => {
+		let height = 24;
+		fakeScrollHeight(() => height);
+		const { ta } = mount("");
+		expect(ta.style.height).toBe("24px");
+		act(() => {
+			height = 72;
+			i18n.set({ locale: "ja", voice: "plain" });
+		});
+		expect(ta.style.height).toBe("72px");
+		expect(ta.value).toBe("");
+	});
+
+	it("可用宽度改变时重新量高，保留同一份输入，不等待下次打字", () => {
+		let height = 120,
+			width = 100,
+			notify = () => {};
+		fakeScrollHeight(() => height);
+		vi.stubGlobal(
+			"ResizeObserver",
+			class {
+				constructor(callback: ResizeObserverCallback) {
+					notify = () => callback([], this as unknown as ResizeObserver);
+				}
+				observe() {}
+				disconnect() {}
+			},
+		);
+		try {
+			const { ta } = mount("尚未发送的草稿");
+			Object.defineProperty(ta, "clientWidth", { get: () => width });
+			expect(ta.style.height).toBe("120px");
+			act(() => {
+				height = 48;
+				width = 320;
+				notify();
+			});
+			expect(ta.style.height).toBe("48px");
+			expect(ta.value).toBe("尚未发送的草稿");
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it("一行内容 → 一行高", () => {
 		const { ta } = mount("在吗");
 		expect(ta.style.height).toBe("24px");

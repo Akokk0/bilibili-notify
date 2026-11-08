@@ -76,6 +76,13 @@ export interface ComposerProps {
 	skills?: readonly MaidSkillView[];
 }
 
+/** 先撤固定高度再量内容；没有布局读数时保持 auto，不压成 0px。 */
+function fitTextarea(el: HTMLTextAreaElement | null) {
+	if (!el) return;
+	el.style.height = "auto";
+	if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`;
+}
+
 export function Composer({
 	value,
 	onChange,
@@ -95,6 +102,8 @@ export function Composer({
 	const full = attachments.length >= MAX_ATTACHMENTS;
 	// 皮肤文案槽:皮肤给了 chatPlaceholder 就整句替换默认提示。
 	const skinPlaceholder = useSkinText("chatPlaceholder");
+	const placeholder =
+		skinPlaceholder ?? tx("panelUi.components.ai-chat.composer.10", { value0: aiName });
 	const [focus, setFocus] = useState(false);
 	const [index, setIndex] = useState(0);
 	/** Esc 关掉菜单后,得等下一次输入变化才重新弹 —— 否则 Esc 按了跟没按一样。 */
@@ -108,17 +117,23 @@ export function Composer({
 	useDismiss(actionsRef, () => setActionsOpen(false), { enabled: actionsOpen, escape: true });
 
 	// 内容长到这儿就不再长高,改成自己滚 —— 再长下去输入框会把整页吃掉。
-	// biome-ignore lint/correctness/useExhaustiveDependencies: 只按 value 重算,函数体里不读别的
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 内容与占位文字变化时量高，不用改变 DOM 值来触发
+	useLayoutEffect(() => {
+		fitTextarea(taRef.current);
+	}, [value, placeholder]);
+
 	useLayoutEffect(() => {
 		const el = taRef.current;
-		if (!el) return;
-		// 先归零再读 scrollHeight:不归零的话读到的是「当前高度」的那个较大值,
-		// 框只会越来越高、从不回落(删字之后留一个空荡荡的大框)。
-		el.style.height = "auto";
-		// jsdom 不排版,scrollHeight 恒为 0 —— 那时别把高度写成 0px。
-		if (el.scrollHeight > 0)
-			el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`;
-	}, [value]);
+		if (!el || typeof ResizeObserver === "undefined") return;
+		let width = el.clientWidth;
+		const observer = new ResizeObserver(() => {
+			if (el.clientWidth === width) return;
+			width = el.clientWidth;
+			fitTextarea(el);
+		});
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, []);
 
 	const matches = matchSkills(value, skills);
 	const showMenu = matches.length > 0 && !closed;
@@ -288,9 +303,7 @@ export function Composer({
 					// 延后收焦点态:点技能菜单里的项会先触发 blur,立刻收会让菜单在
 					// click 落地前就消失,于是那一下点了个寂寞。
 					onBlur={() => setTimeout(() => setFocus(false), 120)}
-					placeholder={
-						skinPlaceholder ?? tx("panelUi.components.ai-chat.composer.10", { value0: aiName })
-					}
+					placeholder={placeholder}
 					aria-label={tx("panelUi.components.ai-chat.composer.11")}
 					className="w-full resize-none overflow-y-auto border-none bg-transparent px-2 pt-1.5 pb-1 text-bn-lg leading-relaxed text-bn-text-primary outline-none placeholder:text-bn-text-secondary"
 				/>
