@@ -27,7 +27,7 @@ describe("服务端字典 store", () => {
 	it("包字典垫在底下:包里的句子经服务端的 t 也取得到", () => {
 		expect(t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
 		i18n.set({ locale: "en" });
-		expect(t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
+		expect(t("internal.commands.prefixBlank")).toBe("The prefix cannot contain only whitespace.");
 	});
 
 	it("中文的女仆层第 4 期才写:现在要女仆口吻也还是底里那句", () => {

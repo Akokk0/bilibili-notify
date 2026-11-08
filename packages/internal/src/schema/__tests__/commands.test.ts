@@ -3,7 +3,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { bindPackageText } from "../../texts";
+import { createI18n, type Locale } from "../../i18n";
+import { bindPackageText, type PackageTextKey, withPackageDicts } from "../../texts";
 import { CommandSettingsSchema } from "../commands";
 
 /** 第一条拒收的原因。 */
@@ -67,4 +68,36 @@ describe("CommandSettingsSchema", () => {
 			binding.dispose();
 		}
 	});
+});
+
+it("validates the same command settings after a language switch and returns localized issues", () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "zh-CN",
+		voice: "plain",
+	});
+	const binding = bindPackageText(texts.t, () => texts.state().locale);
+	try {
+		for (const [locale, message] of [
+			["en", "The prefix cannot contain only whitespace."],
+			["ja", "プレフィックスを空白だけにすることはできません。"],
+			["zh-TW", "前綴不可全部為空白。"],
+		] as const) {
+			texts.set({ locale });
+			const result = CommandSettingsSchema.safeParse({ prefix: "   " });
+			expect(result.success).toBe(false);
+			expect(result.error?.issues[0]).toMatchObject({ code: "custom", path: ["prefix"], message });
+			expect(
+				CommandSettingsSchema.parse({ prefix: "bn ", aliases: { mute: ["靜音", "mute"] } }),
+			).toEqual({ enabled: true, prefix: "bn ", aliases: { mute: ["靜音", "mute"] } });
+		}
+	} finally {
+		binding.dispose();
+	}
 });

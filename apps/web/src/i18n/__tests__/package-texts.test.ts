@@ -15,7 +15,9 @@ describe("面板字典垫着包字典", () => {
 		i18n.set({ locale: "zh-CN", voice: "maid" });
 		expect(i18n.t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
 		i18n.set({ locale: "en" });
-		expect(i18n.t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
+		expect(i18n.t("internal.commands.prefixBlank")).toBe(
+			"The prefix cannot contain only whitespace.",
+		);
 	});
 });
 

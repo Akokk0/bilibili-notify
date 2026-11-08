@@ -24,8 +24,10 @@ describe("withPackageDicts", () => {
 		expect(i18n.t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
 		i18n.set({ locale: "en", voice: "plain" });
 		expect(i18n.t("web.hi")).toBe("Hi");
-		// 这条共用命令尚无英文译文，按简中回落
-		expect(i18n.t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
+		// 共享命令已有英文，真实合并后的包字典提供译文。
+		expect(i18n.t("internal.commands.prefixBlank")).toBe(
+			"The prefix cannot contain only whitespace.",
+		);
 	});
 
 	it("包的女仆层垫在女仆层底下:本端这种语言没写女仆层,包有,这种语言也出女仆口吻", () => {
