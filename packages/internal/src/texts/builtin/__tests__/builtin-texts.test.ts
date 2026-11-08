@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { LOCALES } from "../../../i18n";
-import { BUILTIN_PRESET_IDS, builtinPresetsFor, templateDefaultsFor } from "..";
+import {
+	BUILTIN_PRESET_IDS,
+	builtinPresetsFor,
+	templateDefaultsFor,
+	withTemplateDefaults,
+} from "..";
 import before from "./fixtures/builtin-texts-before-move.json";
 
 /** 一份只有几条的英文,别的键全靠简体打底。 */
@@ -78,9 +83,15 @@ describe("出厂文案读口:真字典", () => {
 		}
 	});
 
-	it("别的语言今天是空表,读出来同简体", () => {
+	it("四语默认模板均已提供，固定模型提示词仍与简中相同", () => {
 		for (const locale of LOCALES) {
-			expect(templateDefaultsFor(locale)).toEqual(templateDefaultsFor("zh-CN"));
+			if (locale !== "zh-CN")
+				expect(templateDefaultsFor(locale).liveStart).not.toBe(
+					templateDefaultsFor("zh-CN").liveStart,
+				);
+			expect(builtinPresetsFor(locale).map((p) => [p.dynamicPrompt, p.liveSummaryPrompt])).toEqual(
+				before.presets.map((p) => [p.dynamicPrompt, p.liveSummaryPrompt]),
+			);
 		}
 	});
 });
@@ -95,4 +106,28 @@ it("keeps the two model prompt fields Chinese even when human dictionaries offer
 	expect(preset?.persona.name).toBe("Gentle Maid");
 	expect(preset?.dynamicPrompt).toBe(before.presets[0]?.dynamicPrompt);
 	expect(preset?.liveSummaryPrompt).toBe(before.presets[0]?.liveSummaryPrompt);
+});
+
+it("provides localized factory personas and templates while retaining custom template text", () => {
+	for (const [locale, liveStart, label, name] of [
+		["en", "{name} is live. Current followers: {follower}", "Gentle Maid", "Ling"],
+		["ja", "{name}が配信を開始しました。現在のフォロワー数：{follower}", "優しいメイド", "アヤ"],
+		["zh-TW", "{name} 開播了，目前粉絲數：{follower}", "溫柔女僕", "小綾"],
+	] as const) {
+		const defaults = templateDefaultsFor(locale);
+		expect(defaults.liveStart).toBe(liveStart);
+		expect(withTemplateDefaults({ post: "主人自写", liveStart: "" }, defaults)).toMatchObject({
+			post: "主人自写",
+			liveStart: "",
+			liveEnd: defaults.liveEnd,
+		});
+		const preset = builtinPresetsFor(locale)[0];
+		expect(preset).toMatchObject({
+			id: "gentle-maid",
+			label,
+			persona: { name },
+			dynamicPrompt: before.presets[0]?.dynamicPrompt,
+			liveSummaryPrompt: before.presets[0]?.liveSummaryPrompt,
+		});
+	}
 });
