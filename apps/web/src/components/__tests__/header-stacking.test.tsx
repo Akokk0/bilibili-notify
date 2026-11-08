@@ -5,9 +5,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TabBarShell } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { ThemeRoot } from "../theme-root";
 
 const apiGet = vi.hoisted(() =>
@@ -141,3 +142,62 @@ it.each(["resize-event", "resize-observer"] as const)(
 		expect(document.documentElement.style.getPropertyValue("--bn-header-h")).toBe("212.25px");
 	},
 );
+
+it("keeps translated navigation accessible while hiding labels only when they do not fit", async () => {
+	const previous = i18n.state();
+	const resize = new Map<Element, () => void>();
+	vi.stubGlobal(
+		"ResizeObserver",
+		class {
+			constructor(private callback: () => void) {}
+			observe(element: Element) {
+				resize.set(element, this.callback);
+			}
+			disconnect() {}
+		},
+	);
+	i18n.set({ locale: "en", voice: "plain" });
+	try {
+		const { GlassHeader } = await import("../header");
+		const { container } = render(
+			<QueryClientProvider
+				client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+			>
+				<MemoryRouter>
+					<GlassHeader />
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+		const nav = container.querySelector('nav[data-bn="nav"]') as HTMLElement;
+		const link = screen.getByRole("link", { name: "Overview" });
+		const label = link.querySelector(".bn-header-nav-label") as HTMLElement;
+		let available = 1440;
+		let natural = 1676;
+		Object.defineProperty(nav, "clientWidth", { configurable: true, get: () => available });
+		Object.defineProperty(nav, "scrollWidth", {
+			configurable: true,
+			get: () => (label.hidden ? 600 : natural),
+		});
+		const notify = () => {
+			fireEvent(window, new Event("resize"));
+			resize.get(nav)?.();
+		};
+		act(notify);
+		expect(label.hidden).toBe(true);
+		expect(screen.getByRole("link", { name: "Overview" })).toBe(link);
+		available = 1920;
+		act(notify);
+		expect(label.hidden).toBe(false);
+		available = 1440;
+		natural = 1200;
+		await act(async () => {
+			i18n.set({ locale: "ja", voice: "plain" });
+		});
+		expect(label.hidden).toBe(false);
+		expect(screen.getByRole("link", { name: "概要" })).toBe(link);
+	} finally {
+		await act(async () => {
+			i18n.set(previous);
+		});
+	}
+});

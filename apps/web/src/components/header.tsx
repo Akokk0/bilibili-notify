@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { canHideNav, NAV_ITEMS, type NavItem, orderedNav, resolveNav } from "../config/nav";
 import { SOURCE_AUTH_QUERY_PREFIX } from "../hooks/use-source-auth";
@@ -448,6 +448,48 @@ export function GlassHeader() {
 		qc.invalidateQueries({ queryKey: ["targets"] });
 	}
 
+	const navRef = useRef<HTMLElement>(null);
+	const [compactNav, setCompactNav] = useState(false);
+	const measureNav = useCallback(() => {
+		const nav = navRef.current;
+		if (!nav || nav.clientWidth === 0) return;
+		// Measure full labels even while icons are shown, before the browser paints.
+		const hiddenLabels = Array.from(
+			nav.querySelectorAll<HTMLElement>(".bn-header-nav-label[hidden]"),
+		);
+		for (const label of hiddenLabels) label.hidden = false;
+		nav.setAttribute("data-measuring", "");
+		try {
+			setCompactNav(nav.scrollWidth > nav.clientWidth + 1);
+		} finally {
+			nav.removeAttribute("data-measuring");
+			for (const label of hiddenLabels) label.hidden = true;
+		}
+	}, []);
+	// Locale, visibility and count changes can change the natural content width.
+	useLayoutEffect(measureNav);
+	useLayoutEffect(() => {
+		const nav = navRef.current;
+		if (!nav) return;
+		let active = true;
+		const measure = () => {
+			if (active) measureNav();
+		};
+		const observer =
+			typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(measure);
+		observer?.observe(nav);
+		if (!observer) window.addEventListener("resize", measure);
+		const fonts = document.fonts;
+		fonts?.addEventListener("loadingdone", measure);
+		void fonts?.ready.then(measure);
+		return () => {
+			active = false;
+			observer?.disconnect();
+			window.removeEventListener("resize", measure);
+			fonts?.removeEventListener("loadingdone", measure);
+		};
+	}, [measureNav]);
+
 	// 把 header 实测高度发布到 `--bn-header-h`,供页面内的 SectionNav 竖栏/横向条精确锚定
 	// 吸顶位置(= header 高 + 间隔 = 元素自然起点)→ 滚动时零「往下带」,且账号名换行 / 窄视口
 	// 按钮换行导致 header 变高时自动跟随。useLayoutEffect 在首帧 paint 前写入,避免回流闪烁。
@@ -530,7 +572,12 @@ export function GlassHeader() {
 			{/* 挂 `nav` 挂点 —— 次级导航(TabBarShell / SectionNav)都挂了,唯独这条
 			    一级导航没挂。皮肤给 nav 画底色/描边时,Rules 的作用域条、Targets 的
 			    分区列表都换装,顶栏这排纹丝不动 —— 两者常常同屏,比"全都不生效"更露馅。 */}
-			<nav data-bn="nav" className="bn-header-nav relative flex">
+			<nav
+				ref={navRef}
+				data-bn="nav"
+				data-compact={compactNav || undefined}
+				className="bn-header-nav relative flex"
+			>
 				{shownNav.map((t) => {
 					// data-bn 是静态属性,NavLink 的 isActive 回调塞不进去 —— 选中态自己算。
 					// 除精确匹配外把子路径也算给父项(/about/guide/push 亮「关于」);
@@ -564,7 +611,9 @@ export function GlassHeader() {
 							}`}
 						>
 							<Glyph size={16} className="shrink-0" />
-							<span className="bn-header-nav-label">{t.label}</span>
+							<span className="bn-header-nav-label" hidden={compactNav}>
+								{t.label}
+							</span>
 							{t.countKey ? (
 								// 选中态**不自带颜色**,底与字都跟着这一格自己的文字色走。此前写死
 								// `text-bn-pink`,等于假设「选中格的背景仍是页面底色」—— 皮肤把

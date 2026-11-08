@@ -857,6 +857,59 @@
 		}
 	}
 
+	/* Localized labels may need more room than the viewport breakpoint predicts. */
+	.bn-header-nav[data-compact="true"] {
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		padding: 0.5rem 1rem 0.25rem;
+	}
+	.bn-header-nav[data-compact="true"] .bn-header-tab {
+		justify-content: center;
+		width: 2.75rem;
+		height: 2.75rem;
+		padding: 0;
+	}
+	.bn-header-nav[data-compact="true"] .bn-header-nav-count {
+		position: absolute;
+		inset-block-start: 0.125rem;
+		inset-inline-end: 0;
+		padding: 0 0.2rem;
+		font-size: 0.625rem;
+		line-height: 0.875rem;
+	}
+	.bn-header-nav[data-compact="true"] .bn-header-nav-editor {
+		display: flex;
+		width: 2.75rem;
+		height: 2.75rem;
+		align-items: center;
+		justify-content: center;
+	}
+	.bn-header-nav[data-measuring] {
+		flex-wrap: nowrap;
+		gap: 0;
+		padding: 0.75rem 1.25rem 0;
+	}
+	.bn-header-nav[data-measuring] .bn-header-tab {
+		justify-content: normal;
+		width: auto;
+		height: auto;
+		padding: 0.625rem 1rem;
+	}
+	.bn-header-nav[data-measuring] .bn-header-nav-label {
+		display: inline;
+	}
+	.bn-header-nav[data-measuring] .bn-header-nav-count {
+		position: static;
+		padding: 1px 0.375rem;
+		font-size: var(--text-bn-2xs);
+		line-height: var(--text-bn-2xs--line-height);
+	}
+	.bn-header-nav[data-measuring] .bn-header-nav-editor {
+		display: block;
+		width: auto;
+		height: auto;
+	}
+
 	.bn-header-reach {
 		@container bn-header (width < 72rem) {
 			min-width: 1.75rem;

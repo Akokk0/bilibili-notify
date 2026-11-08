@@ -12,9 +12,10 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { ThemeRoot } from "../theme-root";
 
 const apiGet = vi.hoisted(() => vi.fn(async (_path: string) => null as unknown));
@@ -22,6 +23,7 @@ const apiGet = vi.hoisted(() => vi.fn(async (_path: string) => null as unknown))
 vi.mock("../../services/api", () => ({ api: { get: apiGet } }));
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	apiGet.mockReset();
 	vi.stubGlobal(
 		"matchMedia",
@@ -95,4 +97,30 @@ describe("服务器可达徽章", () => {
 			"--color-bn-danger",
 		);
 	});
+});
+
+it("translates the mounted header without replacing its navigation or status badge", async () => {
+	await mount(true);
+	const previous = i18n.state();
+	const badge = await screen.findByText("服务器运行中");
+	const overview = screen.getByRole("link", { name: "概览" });
+	try {
+		for (const [locale, navLabel, library, status, refresh] of [
+			["en", "Overview", "Library", "Server reachable", "Refresh"],
+			["ja", "概要", "ライブラリー", "サーバー稼働中", "更新"],
+			["zh-TW", "概覽", "資源庫", "伺服器執行中", "重新整理"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole("link", { name: navLabel })).toBe(overview);
+			expect(screen.getByRole("link", { name: library }).getAttribute("href")).toBe("/library");
+			expect(screen.getByText(status)).toBe(badge);
+			expect(screen.getByRole("button", { name: refresh })).toBeTruthy();
+		}
+	} finally {
+		await act(async () => {
+			i18n.set(previous);
+		});
+	}
 });
