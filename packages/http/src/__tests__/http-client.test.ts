@@ -12,7 +12,13 @@
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { type AddressInfo, createServer as createNetServer, type Socket } from "node:net";
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
 import { ok } from "@bilibili-notify/internal/result";
+import {
+	bindPackageText,
+	type PackageTextKey,
+	withPackageDicts,
+} from "@bilibili-notify/internal/texts";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { BrowserIdentity } from "../browser-identity";
 import { CookieJar } from "../cookie-jar";
@@ -175,6 +181,38 @@ describe("HttpClient.fetch — 响应:状态码、响应头、原始字节", () 
 		const bad = html.json();
 		expect(bad.ok).toBe(false);
 		if (!bad.ok) expect(bad.code).toBe("invalid");
+	});
+
+	it("已收到的响应按解析时语言出错，原始字节和失败码不变且不重复请求", async () => {
+		const texts = createI18n<PackageTextKey, Locale>({
+			dicts: withPackageDicts({
+				"zh-CN": { plain: {} },
+				en: { plain: {} },
+				ja: { plain: {} },
+				"zh-TW": { plain: {} },
+			}),
+			fallback: "zh-CN",
+			locale: "zh-CN",
+			voice: "plain",
+		});
+		const binding = bindPackageText(texts.t);
+		try {
+			const response = await makeClient().fetch(`${baseURL}/html`);
+			if (!response.ok) throw new Error(response.message);
+			const body = [...response.body];
+			for (const [locale, message] of [
+				["en", "The response is not valid JSON."],
+				["ja", "レスポンスが有効なJSONではありません。"],
+				["zh-TW", "回應不是有效的 JSON。"],
+			] as const) {
+				texts.set({ locale });
+				expect(response.json()).toEqual({ ok: false, code: "invalid", message });
+				expect([...response.body]).toEqual(body);
+			}
+			expect(hits).toEqual(["GET /html"]);
+		} finally {
+			binding.dispose();
+		}
 	});
 
 	it("跟过重定向后,url 是最后落脚的那个地址", async () => {
