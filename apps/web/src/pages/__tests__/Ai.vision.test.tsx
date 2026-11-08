@@ -17,6 +17,7 @@ import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index";
 import { useDraftStore } from "../../store/draft";
 import Ai from "../Ai";
 
@@ -84,6 +85,7 @@ function fieldOrder(prefix: string, fields: readonly string[]): string[] {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	useDraftStore.setState({
 		current: null,
 		uiState: "idle",

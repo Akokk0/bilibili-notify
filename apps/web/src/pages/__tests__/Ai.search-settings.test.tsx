@@ -59,6 +59,43 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("global AI labels follow locale while a staged search scene stays unchanged until save", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	mount();
+	await screen.findByText("Web search");
+	expect(screen.getByRole("tab", { name: /Global settings/ })).toBeTruthy();
+	expect(screen.getByText("no providers have been added")).toBeTruthy();
+	const post = screen.getByRole("button", { name: "Web search for post commentary" });
+	fireEvent.click(post);
+	for (const [locale, title, label, persona] of [
+		["ja", "ウェブ検索", "作品コメントのウェブ検索", "既定の性格 · persona"],
+		["zh-TW", "網路搜尋", "作品短評網路搜尋", "預設性格 · persona"],
+		["en", "Web search", "Web search for post commentary", "Default personality · persona"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByText(persona)).toBeTruthy();
+		expect(screen.getByRole("button", { name: label })).toBe(post);
+		expect(post.getAttribute("aria-pressed")).toBe("true");
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	await act(async () => {
+		await useDraftStore.getState().current?.onSave();
+	});
+	expect(api.patch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+		core: {
+			ai: expect.objectContaining({
+				search: {
+					backend: "bocha",
+					keys: { bocha: "", tavily: "" },
+					scenes: { post: true, live: false, roast: false },
+				},
+			}),
+		},
+	});
+});
+
 describe("Ai 页 · 联网搜索设置块", () => {
 	it("后端 Picker 与博查的 key 输入框在场,key 是密文", async () => {
 		mount();
