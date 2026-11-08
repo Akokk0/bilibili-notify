@@ -13,7 +13,7 @@
 
 import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
@@ -142,8 +142,7 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-/** 打开新建弹窗,等来源表回来(平台一排与提示句要它);回弹窗那一块。 */
-async function openNewDialog() {
+function renderSubs() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	render(
 		<QueryClientProvider client={qc}>
@@ -152,6 +151,11 @@ async function openNewDialog() {
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);
+}
+
+/** 打开新建弹窗,等来源表回来(平台一排与提示句要它);回弹窗那一块。 */
+async function openNewDialog() {
+	renderSubs();
 	await screen.findByText("UP甲");
 	await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/sources"));
 	fireEvent.click(screen.getAllByText("添加")[0] as HTMLElement);
@@ -165,6 +169,63 @@ async function search(dialog: ReturnType<typeof within>, placeholder: string, qu
 }
 
 describe("平台一排", () => {
+	it("new subscription guidance translates while source labels and the unsubmitted search text remain original", async () => {
+		const dialog = await openNewDialog();
+		fireEvent.change(dialog.getByPlaceholderText("UID、主页链接或名字"), {
+			target: { value: "https://original.example/0012?raw=中文" },
+		});
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					title: "Add subscription",
+					description:
+						"Your input is passed unchanged to B 站. Choose a result to configure the subscription.",
+					placeholder: "UID, profile link or name",
+					search: "Search",
+					cancel: "Cancel",
+				},
+			],
+			[
+				"ja",
+				{
+					title: "購読を追加",
+					description: "入力内容はそのままB 站に渡されます。検索結果を選ぶと購読の設定に進みます。",
+					placeholder: "UID、プロフィールURLまたは名前",
+					search: "検索",
+					cancel: "キャンセル",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					title: "新增訂閱",
+					description: "輸入內容會原樣交給B 站辨識，選擇結果後即可設定訂閱。",
+					placeholder: "UID、個人頁面連結或名稱",
+					search: "搜尋",
+					cancel: "取消",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(dialog.getByText(words.title, { exact: true })).toBeTruthy();
+			expect(dialog.getByText(words.description, { exact: true })).toBeTruthy();
+			expect((dialog.getByPlaceholderText(words.placeholder) as HTMLInputElement).value).toBe(
+				"https://original.example/0012?raw=中文",
+			);
+			expect(dialog.getByRole("button", { name: words.search })).toBeTruthy();
+			expect(dialog.getByRole("button", { name: words.cancel })).toBeTruthy();
+			expect(dialog.getByRole("button", { name: "B 站" })).toBeTruthy();
+			expect(dialog.getByRole("button", { name: "抖音" })).toBeTruthy();
+		}
+		expect(
+			vi.mocked(api.get).mock.calls.filter(([path]) => path.includes("/creators?")),
+		).toHaveLength(0);
+		fireEvent.click(dialog.getByRole("button", { name: "取消" }));
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
 	// 验红:`registeredSources` 不看 `has`(停着的拓展也列),这条红(多出一颗「快手」)。
 	it("列出在册的全部来源,B 站只是其中一颗;没在跑的(不带 has)不列", async () => {
 		sources = [BILI_SOURCE, DOUYIN_SOURCE, STOPPED_SOURCE];
@@ -197,6 +258,74 @@ describe("平台一排", () => {
 });
 
 describe("提示句按 searchAccepts 拼", () => {
+	it("add entry points and source-specific search hints translate, and an empty result stays distinct from a source failure", async () => {
+		sources = [
+			{
+				key: "plain",
+				status: "running",
+				descriptor: {
+					label: "Original source",
+					supportedFeatures: ["post"],
+					searchAccepts: ["id", "name"],
+				},
+				has: NO_EXTRAS,
+			},
+			{
+				key: "generic",
+				status: "running",
+				descriptor: { label: "Original generic", supportedFeatures: ["post"] },
+				has: NO_EXTRAS,
+			},
+		];
+		creators.plain = async () => ({ candidates: [] });
+		creators.generic = async () => {
+			throw new Error("Original source failure / 原因");
+		};
+		i18n.set({ locale: "en", voice: "plain" });
+		renderSubs();
+		await screen.findByText("UP甲");
+		for (const [locale, add, label, hint] of [
+			["en", "Add", "Add subscription", "Search by name, ID or profile link"],
+			["ja", "追加", "購読を追加", "名前、ID、プロフィールURLで検索"],
+			["zh-TW", "新增", "新增訂閱", "依名稱、ID 或個人頁面連結搜尋"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByRole("button", { name: add })).toBeTruthy();
+			expect(screen.getByText(label, { exact: true })).toBeTruthy();
+			expect(screen.getByText(hint, { exact: true })).toBeTruthy();
+		}
+		fireEvent.click(screen.getByRole("button", { name: "新增" }));
+		const dialog = within(await screen.findByRole("dialog"));
+		for (const [locale, hint, generic] of [
+			["en", "account ID or name", "Search creator"],
+			["ja", "アカウントIDまたは名前", "クリエイターを検索"],
+			["zh-TW", "帳號 ID或名稱", "搜尋創作者"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			fireEvent.click(dialog.getByRole("button", { name: "Original source" }));
+			expect(dialog.getByPlaceholderText(hint)).toBeTruthy();
+			fireEvent.click(dialog.getByRole("button", { name: "Original generic" }));
+			expect(dialog.getByPlaceholderText(generic)).toBeTruthy();
+		}
+		fireEvent.click(dialog.getByRole("button", { name: "Original source" }));
+		fireEvent.change(dialog.getByPlaceholderText("帳號 ID或名稱"), { target: { value: "0012" } });
+		fireEvent.click(dialog.getByRole("button", { name: "搜尋" }));
+		for (const [locale, empty] of [
+			["en", "No matching creators found"],
+			["ja", "一致するクリエイターは見つかりませんでした"],
+			["zh-TW", "找不到符合的創作者"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(await dialog.findByText(empty)).toBeTruthy();
+		}
+		fireEvent.click(dialog.getByRole("button", { name: "Original generic" }));
+		fireEvent.change(dialog.getByPlaceholderText("搜尋創作者"), { target: { value: "raw" } });
+		fireEvent.click(dialog.getByRole("button", { name: "搜尋" }));
+		expect(await dialog.findByText("Original source failure / 原因")).toBeTruthy();
+		expect(dialog.queryByText("找不到符合的創作者")).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
 	// 验红:提示句改回写死的「搜索 UID 或 UP 主名字」,这条红。
 	it("B 站三种都收 → 「UID、主页链接或名字」;只收链接 → 「主页链接」;没声明 → 「搜索{creatorNoun}」", async () => {
 		sources = [
@@ -226,6 +355,84 @@ describe("提示句按 searchAccepts 拼", () => {
 });
 
 describe("搜人", () => {
+	it("pending search and candidate labels translate without repeating the search or making an existing identity selectable", async () => {
+		let resolveSearch!: (value: unknown) => void;
+		creators.bilibili = () =>
+			new Promise((resolve) => {
+				resolveSearch = resolve;
+			});
+		const dialog = await openNewDialog();
+		await search(dialog, "UID、主页链接或名字", "  original-query  ");
+		for (const [locale, searching] of [
+			["en", "Searching…"],
+			["ja", "検索中…"],
+			["zh-TW", "搜尋中…"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(
+				((await dialog.findByRole("button", { name: searching })) as HTMLButtonElement).disabled,
+			).toBe(true);
+		}
+		await act(async () =>
+			resolveSearch({
+				candidates: [
+					{ externalId: "111", name: "Original existing", followers: 5 },
+					{
+						externalId: "222",
+						name: "Original candidate",
+						followers: 0,
+						bio: "Original biography",
+					},
+				],
+			}),
+		);
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					subscribed: "Subscribed",
+					followers: "Followers: 5",
+					zero: "Followers: 0",
+					close: "Close",
+				},
+			],
+			[
+				"ja",
+				{
+					subscribed: "購読済み",
+					followers: "フォロワー 5",
+					zero: "フォロワー 0",
+					close: "閉じる",
+				},
+			],
+			[
+				"zh-TW",
+				{ subscribed: "已訂閱", followers: "追蹤人數：5", zero: "追蹤人數：0", close: "關閉" },
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(dialog.getByText(words.subscribed)).toBeTruthy();
+			expect(dialog.getByText(words.followers)).toBeTruthy();
+			expect(dialog.getByText(words.zero)).toBeTruthy();
+			const existing = dialog.getByRole("button", {
+				name: /Original existing/,
+			}) as HTMLButtonElement;
+			expect(existing.disabled).toBe(true);
+			fireEvent.click(existing);
+			expect(
+				(dialog.getByRole("button", { name: /Original candidate/ }) as HTMLButtonElement).disabled,
+			).toBe(false);
+			expect(dialog.getByTitle("Original biography")).toBeTruthy();
+			expect(dialog.getByRole("button", { name: words.close })).toBeTruthy();
+		}
+		expect(vi.mocked(api.get).mock.calls.filter(([path]) => path.includes("/creators?"))).toEqual([
+			["/api/sources/bilibili/creators?q=original-query"],
+		]);
+		expect(api.post).not.toHaveBeenCalled();
+		fireEvent.click(dialog.getByRole("button", { name: "關閉" }));
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
 	// 验红:B 站那一支改回问 `/api/subscriptions/search`,这条红。
 	it("走 /api/sources/:sourceKey/creators;订阅过的标「已订阅」、挑不了;描述符有 externalIdNoun 的写身份标签", async () => {
 		const dialog = await openNewDialog();
