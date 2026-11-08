@@ -2329,5 +2329,21 @@
 	"sourceUi.pages.up.UpCardMenu.label.6": "Delete subscription",
 	"subs.copy.done": "Copied",
 	"subs.copy.failed": "Could not copy. Copy the value manually.",
-	"subs.error.saveFailed": "The operation failed. Try again later."
+	"subs.error.saveFailed": "The operation failed. Try again later.",
+	"sources.features.post": "Content",
+	"sources.features.liveStart": "Live start",
+	"sources.features.liveStreaming": "Live",
+	"sources.features.liveEnd": "Live end",
+	"sources.features.superchat": "SC",
+	"sources.features.membership": "Membership",
+	"sources.features.viewerChat": "Special viewer messages",
+	"sources.features.viewerEnter": "Special viewer joins",
+	"sources.extras.atAllPost": "@everyone",
+	"sources.extras.atAllLiveStart": "@everyone",
+	"sources.extras.wordcloud": "Chat word cloud",
+	"sources.extras.liveSummary": "AI summary",
+	"sources.featureHints.post": "Content notifications",
+	"sources.featureHints.superchat": "Super Chat notifications",
+	"sources.featureHints.liveEnd": "End-of-stream card",
+	"sources.membership.customHint": "Creators define their own tiers. Only the program’s default text and image are configured here."
 }

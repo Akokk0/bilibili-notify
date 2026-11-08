@@ -12,7 +12,8 @@
 import type { SourceEntry } from "@bilibili-notify/contract";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import {
 	DEFAULT_FEATURE_FLAGS,
 	makeEmptySubscription,
@@ -22,6 +23,7 @@ import { makeSource } from "../../rules/__tests__/fixtures";
 import { SubscriptionDialog } from "../SubscriptionDialog";
 import { subscriptionPlatformOf } from "../subscription-source";
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 const biliSub = (): Subscription =>

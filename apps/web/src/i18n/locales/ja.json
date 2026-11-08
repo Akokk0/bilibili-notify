@@ -2276,5 +2276,21 @@
 	"sourceUi.pages.up.UpCardMenu.label.6": "購読を削除",
 	"subs.copy.done": "コピーしました",
 	"subs.copy.failed": "コピーできませんでした。手動でコピーしてください。",
-	"subs.error.saveFailed": "操作に失敗しました。しばらくしてから再試行してください。"
+	"subs.error.saveFailed": "操作に失敗しました。しばらくしてから再試行してください。",
+	"sources.features.post": "投稿",
+	"sources.features.liveStart": "配信開始",
+	"sources.features.liveStreaming": "配信中",
+	"sources.features.liveEnd": "配信終了",
+	"sources.features.superchat": "SC",
+	"sources.features.membership": "メンバーシップ",
+	"sources.features.viewerChat": "特別ユーザーのコメント",
+	"sources.features.viewerEnter": "特別ユーザーの入室",
+	"sources.extras.atAllPost": "全員メンション",
+	"sources.extras.atAllLiveStart": "全員メンション",
+	"sources.extras.wordcloud": "チャットのワードクラウド",
+	"sources.extras.liveSummary": "AI要約",
+	"sources.featureHints.post": "投稿の通知",
+	"sources.featureHints.superchat": "スーパーチャットの通知",
+	"sources.featureHints.liveEnd": "配信終了カード",
+	"sources.membership.customHint": "ランクはクリエイターが定義します。ここでは制度全体の既定テキストと画像のみを設定します。"
 }

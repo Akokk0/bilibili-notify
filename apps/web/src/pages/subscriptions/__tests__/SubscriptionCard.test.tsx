@@ -44,6 +44,68 @@ function props(overrides: Partial<SubscriptionCardProps> = {}): SubscriptionCard
 }
 
 describe("SubscriptionCard 描述符身份", () => {
+	it("feature labels follow the locale while source-provided post nouns keep their original wording", () => {
+		const sub = makeEmptySubscription({ sourceKey: "original", externalId: "0012" });
+		sub.overrides.features = {
+			post: true,
+			liveStart: true,
+			liveStreaming: true,
+			liveEnd: true,
+			membership: true,
+			superchat: true,
+			viewerChat: true,
+			viewerEnter: true,
+		};
+		const platform = subscriptionPlatformOf(sub.identity, [
+			{
+				key: "original",
+				status: "running",
+				descriptor: { label: "Original source", supportedFeatures: [...FEATURE_KEYS] },
+			},
+		]);
+		const view = render(<SubscriptionCard {...props({ sub, platform })} />);
+		for (const [locale, labels] of [
+			[
+				"en",
+				[
+					"Content",
+					"Live start",
+					"Live",
+					"Live end",
+					"SC",
+					"Membership",
+					"Special viewer messages",
+					"Special viewer joins",
+				],
+			],
+			[
+				"ja",
+				[
+					"投稿",
+					"配信開始",
+					"配信中",
+					"配信終了",
+					"SC",
+					"メンバーシップ",
+					"特別ユーザーのコメント",
+					"特別ユーザーの入室",
+				],
+			],
+			["zh-TW", ["作品", "開播", "直播中", "下播", "SC", "會員", "特別彈幕", "特別使用者進房"]],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			view.rerender(<SubscriptionCard {...props({ sub, platform })} />);
+			for (const label of labels) expect(view.getByText(label, { exact: true })).toBeTruthy();
+			view.rerender(
+				<SubscriptionCard
+					{...props({ sub, platform: { ...platform, postNoun: "Original post noun" } })}
+				/>,
+			);
+			expect(view.getByText("Original post noun", { exact: true })).toBeTruthy();
+			expect(view.queryByText(labels[0], { exact: true })).toBeNull();
+		}
+	});
+
 	it("card status and selection translate without replacing source labels, names, IDs or zero followers", () => {
 		const sub = {
 			...makeEmptySubscription({ sourceKey: "original", externalId: "0012" }),

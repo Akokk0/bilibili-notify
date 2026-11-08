@@ -2276,5 +2276,21 @@
 	"sourceUi.pages.up.UpCardMenu.label.6": "刪除訂閱",
 	"subs.copy.done": "已複製",
 	"subs.copy.failed": "無法複製，請手動複製。",
-	"subs.error.saveFailed": "操作失敗，請稍後再試。"
+	"subs.error.saveFailed": "操作失敗，請稍後再試。",
+	"sources.features.post": "作品",
+	"sources.features.liveStart": "開播",
+	"sources.features.liveStreaming": "直播中",
+	"sources.features.liveEnd": "下播",
+	"sources.features.superchat": "SC",
+	"sources.features.membership": "會員",
+	"sources.features.viewerChat": "特別彈幕",
+	"sources.features.viewerEnter": "特別使用者進房",
+	"sources.extras.atAllPost": "@全體",
+	"sources.extras.atAllLiveStart": "@全體",
+	"sources.extras.wordcloud": "彈幕詞雲",
+	"sources.extras.liveSummary": "AI 總結",
+	"sources.featureHints.post": "作品提醒",
+	"sources.featureHints.superchat": "醒目留言提醒",
+	"sources.featureHints.liveEnd": "下播卡片",
+	"sources.membership.customHint": "等級由創作者自訂；此處僅設定此制度的預設文案與圖片。"
 }

@@ -126,6 +126,60 @@ async function saveAndGetBody(): Promise<{ defaults: Record<string, unknown> }> 
 }
 
 describe("全局直播门槛:改了 → 保存条亮、PATCH 带着它", () => {
+	it("custom membership guidance translates without rewriting program names or an unsaved default template", async () => {
+		const { qc } = mount(
+			globalsWith((d) => {
+				d.templates.membership = {
+					custom: {
+						enabled: true,
+						default: { template: "Original {viewer}", imageUrl: "" },
+						tiers: {},
+					},
+				};
+			}),
+		);
+		await gotoSection("会员提示");
+		act(() =>
+			qc.setQueryData(["sources"], {
+				sources: [
+					{
+						key: "sample-source",
+						status: "running",
+						has: {},
+						descriptor: {
+							label: "Sample",
+							supportedFeatures: ["membership"],
+							membershipPrograms: [{ id: "custom", name: "Original membership", tiers: "custom" }],
+						},
+					},
+				],
+			}),
+		);
+		const input = await waitFor(() => {
+			const node = field("templates.membership.custom.default.template")?.querySelector("input");
+			expect(node).toBeTruthy();
+			return node as HTMLInputElement;
+		});
+		fireEvent.change(input, { target: { value: "Original draft {viewer}" } });
+		for (const [locale, hint] of [
+			[
+				"en",
+				"Creators define their own tiers. Only the program’s default text and image are configured here.",
+			],
+			[
+				"ja",
+				"ランクはクリエイターが定義します。ここでは制度全体の既定テキストと画像のみを設定します。",
+			],
+			["zh-TW", "等級由創作者自訂；此處僅設定此制度的預設文案與圖片。"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(hint)).toBeTruthy();
+			expect(screen.getAllByText("Original membership").length).toBeGreaterThan(0);
+			expect(screen.getByDisplayValue("Original draft {viewer}")).toBeTruthy();
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
 	it("来源与语言刷新保留脏草稿，保存其他格不清未知体系", async () => {
 		const { qc } = mount(
 			globalsWith((d) => {

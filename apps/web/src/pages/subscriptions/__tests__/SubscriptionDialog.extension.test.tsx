@@ -7,7 +7,7 @@
  */
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import {
 	type Connection,
@@ -70,6 +70,7 @@ function renderDialog(sub: Subscription, p: SubscriptionPlatform, targets: PushT
 	);
 }
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 describe("SubscriptionDialog × 拓展订阅", () => {

@@ -6,9 +6,10 @@
  * (`overrides.features.extras.wordcloud`),与默认值相同就不落 override。
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import {
 	type Connection,
 	makeEmptySubscription,
@@ -19,14 +20,15 @@ import { makeSource } from "../../rules/__tests__/fixtures";
 import { SubscriptionDialog } from "../SubscriptionDialog";
 import { subscriptionPlatformOf } from "../subscription-source";
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
-function renderDialog(sub: Subscription) {
+function renderDialog(sub: Subscription, source = makeSource()) {
 	const onSave = vi.fn();
 	render(
 		<SubscriptionDialog
 			sub={sub}
-			platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
+			platform={subscriptionPlatformOf(sub.identity, [source])}
 			targets={[]}
 			connections={[]}
 			onClose={() => {}}
@@ -44,6 +46,72 @@ function extraToggle(label: string): HTMLButtonElement {
 }
 
 describe("SubscriptionDialog · 下播的附加项", () => {
+	it("extra labels and default hints translate while source nouns and unsaved toggle choices remain unchanged", async () => {
+		const source = makeSource();
+		source.descriptor = { ...source.descriptor, postNoun: "Original posts" };
+		const { onSave } = renderDialog(
+			makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
+			source,
+		);
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					cloud: "Chat word cloud",
+					summary: "AI summary",
+					atAll: "@everyone",
+					liveStart: "Live start",
+					liveEnd: "Live end",
+					postHint: "Content notifications",
+					scHint: "Super Chat notifications",
+					endHint: "End-of-stream card / Chat word cloud / AI summary",
+				},
+			],
+			[
+				"ja",
+				{
+					cloud: "チャットのワードクラウド",
+					summary: "AI要約",
+					atAll: "全員メンション",
+					liveStart: "配信開始",
+					liveEnd: "配信終了",
+					postHint: "投稿の通知",
+					scHint: "スーパーチャットの通知",
+					endHint: "配信終了カード / チャットのワードクラウド / AI要約",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					cloud: "彈幕詞雲",
+					summary: "AI 總結",
+					atAll: "@全體",
+					liveStart: "開播",
+					liveEnd: "下播",
+					postHint: "作品提醒",
+					scHint: "醒目留言提醒",
+					endHint: "下播卡片 / 彈幕詞雲 / AI 總結",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const cloud = extraToggle(`${words.cloud} · ${words.liveEnd}`);
+			expect(extraToggle(`${words.summary} · ${words.liveEnd}`).disabled).toBe(false);
+			expect(extraToggle(`${words.atAll} · Original posts`)).toBeTruthy();
+			expect(extraToggle(`${words.atAll} · ${words.liveStart}`)).toBeTruthy();
+			expect(screen.getByText(words.postHint)).toBeTruthy();
+			expect(screen.getByText(words.scHint)).toBeTruthy();
+			expect(screen.getByText(words.endHint)).toBeTruthy();
+			if (locale === "en") await userEvent.click(cloud);
+			expect(cloud.getAttribute("aria-pressed")).toBe("false");
+			expect(onSave).not.toHaveBeenCalled();
+		}
+		act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+		await userEvent.click(screen.getByRole("button", { name: "保存配置" }));
+		const saved = onSave.mock.calls[0]?.[0] as Subscription;
+		expect(saved.overrides.features).toEqual({ extras: { wordcloud: false } });
+	});
+
 	it("下播下面挂着「弹幕词云」「AI 总结」两个子开关,默认都开", () => {
 		renderDialog(makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }));
 		expect(extraToggle("弹幕词云 · 下播").getAttribute("aria-pressed")).toBe("true");

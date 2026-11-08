@@ -9,7 +9,8 @@
 
 import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import {
 	type Connection,
 	makeEmptySubscription,
@@ -89,6 +90,7 @@ function atAllToggle(): HTMLButtonElement {
 	return screen.getAllByRole("button", { name: /^@全体 · 目标一/ })[0] as HTMLButtonElement;
 }
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 describe("SubscriptionDialog · 平台取自连接", () => {
