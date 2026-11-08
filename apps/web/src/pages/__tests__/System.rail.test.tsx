@@ -15,9 +15,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Link, MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import type { GlobalSettingsPatch } from "../../types/globals";
 import System from "../System";
+
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 // ── 子节全部换成哑桩:这条测试问的是「哪一格里有什么」,不是各节自己画得对不对 ──
 

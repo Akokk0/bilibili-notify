@@ -15,6 +15,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { ACCOUNTS_QUERY_KEY } from "../../../hooks/useAccounts";
+import { i18n } from "../../../i18n";
 import { useNavStore } from "../../../store/nav";
 
 const apiGet = vi.hoisted(() => vi.fn(async (_path: string) => null as unknown));
@@ -110,6 +111,7 @@ async function mount(s: Scenario) {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	apiGet.mockReset();
 	apiPatch.mockReset();
 	apiPatch.mockResolvedValue({});

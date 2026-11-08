@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
@@ -166,3 +166,47 @@ it("顶栏刷新会重读账号聚合，读取失败不继续显示旧资料", a
 	expect(await screen.findByRole("button", { name: "来源账号：账号读取失败" })).toBeTruthy();
 	expect(screen.queryByText("北窗")).toBeNull();
 });
+
+it.each([
+	["en", "Issues", "Close issues", "Source account: 北窗", "Manage accounts and order"],
+	[
+		"ja",
+		"対応が必要な問題",
+		"問題パネルを閉じる",
+		"ソースアカウント：北窗",
+		"アカウントと順序を管理",
+	],
+	["zh-TW", "待處理問題", "關閉問題視窗", "來源帳號：北窗", "管理帳號與順序"],
+] as const)(
+	"%s redraws open issues and account controls without rewriting received content",
+	async (locale, title, close, account, manage) => {
+		const fallback = get.getMockImplementation();
+		get.mockImplementation(async (path: string) =>
+			path === "/api/accounts"
+				? {
+						accounts: [
+							{
+								sourceKey: "library",
+								state: { status: "logged-in", loggedInAt: "2026-11-05T00:00:00Z" },
+								account: { name: "北窗" },
+							},
+						],
+					}
+				: fallback?.(path),
+		);
+		const qc = mount();
+		await userEvent.click(await screen.findByRole("button", { name: "待处理问题 1" }));
+		const raw = await screen.findByText("<script>原文</script>");
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByRole("dialog", { name: title })).toBeTruthy();
+		expect(screen.getByText("<script>原文</script>")).toBe(raw);
+		expect(screen.getByText("gone-sub")).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: close }));
+		await userEvent.click(screen.getByRole("button", { name: account }));
+		expect(screen.getByRole("menuitem", { name: manage })).toBeTruthy();
+		expect(screen.getAllByText("北窗").length).toBeGreaterThan(0);
+		qc.clear();
+	},
+);
