@@ -7,8 +7,9 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalSettings } from "../../types/globals";
@@ -53,6 +54,7 @@ function renderRules() {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation((url: string) =>
@@ -134,4 +136,35 @@ describe("高级规则 tab 关闭确认", () => {
 			}),
 		);
 	});
+});
+
+it("rule removal confirmation translates in place and preserves the original subscription name", async () => {
+	const get = vi.mocked(api.get).getMockImplementation();
+	vi.mocked(api.get).mockImplementation(async (url) =>
+		url.includes("/api/subscriptions")
+			? [{ ...CUSTOMIZED, cachedProfile: { name: "主人原昵称", followers: 0, refreshedAt: "t" } }]
+			: get?.(url),
+	);
+	renderRules();
+	fireEvent.click(await screen.findByTitle(/移除 主人原昵称 的个性化配置/));
+	const dialog = screen.getByRole("dialog");
+	for (const [locale, title, warning] of [
+		["en", "Remove this subscription’s custom settings?", "This cannot be undone."],
+		["ja", "この購読の個別設定を削除しますか？", "この操作は取り消せません。"],
+		["zh-TW", "移除此訂閱的個別設定？", "此操作無法復原。"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(
+			screen.getByRole("button", {
+				name: locale === "en" ? "Remove" : locale === "ja" ? "削除" : "移除",
+			}),
+		).toBeTruthy();
+		expect(dialog.textContent).toContain("主人原昵称");
+		expect(dialog.textContent).toContain(warning);
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "取消" }));
+	expect(api.patch).not.toHaveBeenCalled();
 });

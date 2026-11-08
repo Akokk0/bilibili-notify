@@ -635,7 +635,7 @@ export default function Rules() {
 							{tx("sourceUi.pages.Rules.message.7")}
 							<b className="text-bn-text-primary">
 								{displayName(pendingRemoval, platformOf(pendingRemoval))}
-							</b>{" "}
+							</b>
 							{tx("sourceUi.pages.Rules.message.8")}
 							{platformOf(pendingRemoval).features.some(
 								(feature) => feature === "viewerChat" || feature === "viewerEnter",

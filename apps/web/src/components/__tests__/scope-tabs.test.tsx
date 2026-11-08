@@ -10,13 +10,17 @@
  */
 
 import { TAB_ACTIVE_LANGUAGE, TAB_IDLE_LANGUAGE } from "@bilibili-notify/ui";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { makeSource } from "../../pages/rules/__tests__/fixtures";
 import { subscriptionPlatformOf } from "../../pages/subscriptions/subscription-source";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { ScopeTabs } from "../scope-tabs";
 
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 afterEach(cleanup);
 
 function makeSub(uid: string, name: string): Subscription {
@@ -161,4 +165,44 @@ describe("ScopeTabs 的「是谁」那一行", () => {
 		expect(screen.getByText("UID 111")).toBeTruthy();
 		expect(screen.getByText("抖音 · sec-2")).toBeTruthy();
 	});
+});
+
+it("scope labels translate while keeping the selected subscription and open add menu", () => {
+	const candidate = makeSub("222", "UP乙");
+	const onAdd = vi.fn();
+	const onChange = vi.fn();
+	const onRemove = vi.fn();
+	render(
+		<ScopeTabs
+			scope={SUB.id}
+			onChange={onChange}
+			tabSubs={[SUB]}
+			availableSubs={[candidate]}
+			onAddSub={onAdd}
+			onRemoveSub={onRemove}
+			overridesCountFor={() => 2}
+			platformOf={(identity) => subscriptionPlatformOf(identity, undefined)}
+		/>,
+	);
+	const selected = perUpTab();
+	fireEvent.click(screen.getByRole("button", { name: "添加订阅" }));
+	const option = screen.getByRole("button", { name: /UP乙/ });
+	for (const [locale, global, add, remove] of [
+		["en", "Global / All subscriptions", "Add subscription", "Remove custom settings for UP甲"],
+		["ja", "全体 / すべての購読", "購読を追加", "UP甲 の個別設定を削除"],
+		["zh-TW", "全域／全部訂閱", "新增訂閱", "移除 UP甲 的個別設定"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByText(global)).toBeTruthy();
+		expect(screen.getByRole("button", { name: add })).toBeTruthy();
+		expect(screen.getByLabelText(remove)).toBeTruthy();
+		expect(perUpTab()).toBe(selected);
+		expect(selected.getAttribute("data-bn")).toBe("tab tab-active");
+		expect(screen.getByRole("button", { name: /UP乙/ })).toBe(option);
+		expect(onAdd).not.toHaveBeenCalled();
+		expect(onChange).not.toHaveBeenCalled();
+		expect(onRemove).not.toHaveBeenCalled();
+	}
+	fireEvent.click(option);
+	expect(onAdd).toHaveBeenCalledExactlyOnceWith(candidate.id);
 });
