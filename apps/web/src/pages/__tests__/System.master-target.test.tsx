@@ -10,8 +10,9 @@ import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
  * - 选一个私聊目标 → 照常 patch。
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalSettings } from "../../types/globals";
 import { MasterSection } from "../system/master-section";
@@ -64,10 +65,46 @@ function renderCard(targetId: string | undefined, onPatch = vi.fn()) {
 	return onPatch;
 }
 
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
+
 const optionLabels = () => selectOptionsOf(screen.getByRole("combobox")).map((o) => o.textContent);
 
 describe("MasterSection 的下拉", () => {
 	afterEach(cleanup);
+
+	it("notification-account labels follow locale without rewriting targets or patching a stale selection", async () => {
+		const onPatch = renderCard("t-group");
+		for (const [locale, title, unset, invalid, hint] of [
+			[
+				"en",
+				"Owner notifications",
+				"Not configured",
+				"Invalid target",
+				"This target is not a private chat. Choose a private-chat target.",
+			],
+			[
+				"ja",
+				"管理者への通知",
+				"未設定",
+				"無効な送信先",
+				"この送信先は個人チャットではありません。個人チャットの送信先を選んでください。",
+			],
+			["zh-TW", "管理員通知", "未設定", "已失效", "此目標不是私聊，請選擇私聊目標。"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(optionLabels()).toEqual([unset, invalid, "主人私聊c1", "副号私聊c1"]);
+			expect(screen.getByRole("combobox").textContent).toBe(invalid);
+			expect(screen.getByText(hint)).toBeTruthy();
+			expect(onPatch).not.toHaveBeenCalled();
+		}
+		chooseSelect(screen.getByRole("combobox"), "副号私聊 · c1");
+		expect(onPatch).toHaveBeenCalledExactlyOnceWith({ master: { targetId: "t-priv2" } });
+	});
 
 	it("只列私聊目标:群与频道不在可选项里", () => {
 		renderCard(undefined);

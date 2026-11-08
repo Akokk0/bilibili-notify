@@ -13,10 +13,11 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Link, MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
+import { api } from "../../services/api";
 import type { GlobalSettingsPatch } from "../../types/globals";
 import System from "../System";
 
@@ -150,6 +151,37 @@ describe("系统页的分区导航", () => {
 	afterEach(() => {
 		cleanup();
 		vi.clearAllMocks();
+	});
+
+	it("system navigation follows locale without replacing the selected section or saving settings", async () => {
+		renderSystem();
+		await waitForDraft();
+		pickSection("运行");
+		const body = screen.getByTestId("sec-browser-source");
+		for (const [locale, runtime, labels] of [
+			[
+				"en",
+				"Runtime",
+				["Accounts", "Runtime", "Messaging", "Appearance", "Storage", "Maintenance"],
+			],
+			[
+				"ja",
+				"稼働設定",
+				["アカウント", "稼働設定", "メッセージ", "外観", "ストレージ", "メンテナンス"],
+			],
+			["zh-TW", "執行", ["帳號", "執行", "訊息", "外觀", "儲存", "維護"]],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			for (const label of labels)
+				expect(screen.getAllByRole("button", { name: label }).length).toBeGreaterThan(0);
+			expect(screen.getAllByRole("button", { name: runtime })[0].getAttribute("aria-current")).toBe(
+				"true",
+			);
+			expect(screen.getByTestId("sec-browser-source")).toBe(body);
+			expect(api.patch).not.toHaveBeenCalled();
+		}
 	});
 
 	it("五格都在", async () => {
