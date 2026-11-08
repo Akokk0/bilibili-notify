@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import {
 	DEFAULT_FEATURE_FLAGS,
 	FEATURE_KEYS,
@@ -19,6 +20,7 @@ import { type SubscriptionPlatform, subscriptionPlatformOf } from "../subscripti
  * 卡片的菜单触发接线:桌面右键(onContextMenu,阻止浏览器原生菜单)、触屏长按,都
  * 转成 onRequestMenu(坐标),由父层据此在该坐标弹 SubscriptionCardMenu。
  */
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 function props(overrides: Partial<SubscriptionCardProps> = {}): SubscriptionCardProps {

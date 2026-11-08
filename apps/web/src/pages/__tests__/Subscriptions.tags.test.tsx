@@ -550,3 +550,471 @@ it("keeps keyboard focus in the manager and restores its entry when closed", asy
 	fireEvent.click(manager.getByRole("button", { name: "取消" }));
 	expect(document.activeElement).toBe(entry);
 });
+
+it("tag management labels and duplicate feedback translate without changing names or submitting a draft", async () => {
+	renderSubs();
+	await screen.findByText("无标签");
+	fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	for (const [
+		locale,
+		title,
+		intro,
+		name,
+		list,
+		gameRow,
+		up,
+		down,
+		remove,
+		one,
+		two,
+		zero,
+		clean,
+		newName,
+		add,
+		save,
+		cancel,
+	] of [
+		[
+			"en",
+			"Manage tags",
+			"Rename, reorder or delete tags, then save all changes together. Unused tags are kept.",
+			"Tag name 1",
+			"Tag list",
+			"Tag 游戏",
+			"Move 游戏 up",
+			"Move 游戏 down",
+			"Delete 游戏",
+			"1 subscription",
+			"2 subscriptions",
+			"0 subscriptions · Unused",
+			"No unsaved changes",
+			"New tag name",
+			"Add",
+			"Save changes",
+			"Cancel",
+		],
+		[
+			"ja",
+			"タグを管理",
+			"タグの名前、順序、削除をまとめて保存します。購読に使われていないタグも保持します。",
+			"タグ名 1",
+			"タグ一覧",
+			"タグ「游戏」",
+			"游戏を上へ移動",
+			"游戏を下へ移動",
+			"游戏を削除",
+			"1件の購読",
+			"2件の購読",
+			"0件の購読 · 未使用",
+			"未保存の変更はありません",
+			"新しいタグ名",
+			"追加",
+			"変更を保存",
+			"キャンセル",
+		],
+		[
+			"zh-TW",
+			"管理標籤",
+			"重新命名、調整順序或刪除標籤後，統一儲存生效。未被訂閱使用的標籤也會保留。",
+			"標籤名稱 1",
+			"標籤清單",
+			"標籤 游戏",
+			"上移 游戏",
+			"下移 游戏",
+			"刪除 游戏",
+			"1 項訂閱",
+			"2 項訂閱",
+			"0 項訂閱 · 尚未使用",
+			"沒有未儲存的修改",
+			"新標籤名稱",
+			"新增",
+			"儲存變更",
+			"取消",
+		],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getByText(title)).toBeTruthy();
+		expect(manager.getByText(intro)).toBeTruthy();
+		expect((manager.getByRole("textbox", { name }) as HTMLInputElement).value).toBe("杂谈");
+		expect(manager.getByRole("region", { name: list })).toBeTruthy();
+		const game = within(manager.getByRole("group", { name: gameRow }));
+		expect(game.getByRole("button", { name: up })).toBeTruthy();
+		expect(game.getByRole("button", { name: down })).toBeTruthy();
+		expect(game.getByRole("button", { name: remove })).toBeTruthy();
+		expect(manager.getByText(one)).toBeTruthy();
+		expect(manager.getByText(two)).toBeTruthy();
+		expect(manager.getByText(zero)).toBeTruthy();
+		expect(manager.getByText(clean)).toBeTruthy();
+		expect(manager.getByRole("textbox", { name: newName })).toBeTruthy();
+		expect(manager.getByRole("button", { name: add })).toBeTruthy();
+		expect(manager.getByRole("button", { name: save })).toHaveProperty("disabled", true);
+		expect(manager.getByRole("button", { name: cancel })).toBeTruthy();
+	}
+	fireEvent.change(manager.getByRole("textbox", { name: "新標籤名稱" }), {
+		target: { value: " 游戏 " },
+	});
+	fireEvent.click(manager.getByRole("button", { name: "新增" }));
+	for (const [locale, newName, error, hint, dirty] of [
+		[
+			"en",
+			"New tag name",
+			"A tag with this name already exists. Choose another name.",
+			"Select Add to add the new tag to the draft, then save all changes together.",
+			"Unsaved changes",
+		],
+		[
+			"ja",
+			"新しいタグ名",
+			"同じ名前のタグがあります。別の名前を入力してください。",
+			"「追加」で新しいタグを下書きに加え、最後にまとめて保存してください。",
+			"未保存の変更があります",
+		],
+		[
+			"zh-TW",
+			"新標籤名稱",
+			"已有同名標籤，請使用其他名稱。",
+			"點擊「新增」將新標籤加入草稿，再統一儲存。",
+			"有未儲存的修改",
+		],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getByRole("alert").textContent).toBe(error);
+		expect(manager.getByText(hint)).toBeTruthy();
+		expect(manager.getByText(dirty)).toBeTruthy();
+		expect((manager.getByRole("textbox", { name: newName }) as HTMLInputElement).value).toBe(
+			" 游戏 ",
+		);
+	}
+	expect(api.put).not.toHaveBeenCalled();
+});
+
+it.each([
+	["游戏", 1],
+	["杂谈", 2],
+	["音乐", 0],
+	["游戏", undefined],
+] as const)(
+	"deletion impact and draft-only undo/discard translate without deleting subscriptions (%s, %s)",
+	async (name, count) => {
+		if (count === undefined) {
+			const get = vi.mocked(api.get).getMockImplementation();
+			vi.mocked(api.get).mockImplementation((path) =>
+				path === "/api/subscriptions"
+					? Promise.reject(new Error("Original subscription read diagnostic"))
+					: (get?.(path) as Promise<unknown>),
+			);
+		}
+		renderSubs();
+		fireEvent.click(await screen.findByRole("button", { name: "管理标签" }));
+		const manager = within(screen.getByRole("dialog"));
+		await manager.findByRole("textbox", { name: "标签名称 1" });
+		if (count === undefined) {
+			for (const [locale, unavailable] of [
+				["en", "Usage count unavailable"],
+				["ja", "使用数を確認できません"],
+				["zh-TW", "使用數量暫時無法取得"],
+			] as const) {
+				await act(async () => {
+					i18n.set({ locale, voice: "plain" });
+				});
+				expect(manager.getAllByText(unavailable)).toHaveLength(3);
+			}
+			await act(async () => {
+				i18n.set({ locale: "zh-CN", voice: "plain" });
+			});
+		}
+		fireEvent.click(manager.getByRole("button", { name: `删除 ${name}` }));
+		for (const [locale, title, known, unknown, hint, back, mark] of [
+			[
+				"en",
+				`Delete “${name}”?`,
+				count === 1
+					? "1 subscription uses this tag. Saving removes the tag; the subscription itself will not be deleted."
+					: `${count} subscriptions use this tag. Saving removes the tag; the subscriptions themselves will not be deleted.`,
+				"Saving removes this tag from any subscriptions using it. The subscriptions themselves will not be deleted.",
+				"This only marks the tag for deletion and can be undone. It takes effect when you select Save changes.",
+				"Back",
+				"Mark for deletion",
+			],
+			[
+				"ja",
+				`「${name}」を削除しますか？`,
+				`${count}件の購読で使用中です。保存するとタグを取り除きますが、購読自体は削除しません。`,
+				"保存すると、このタグを使用する購読からタグを取り除きます。購読自体は削除しません。",
+				"ここでは削除予定にするだけで、取り消せます。「変更を保存」を押すと反映されます。",
+				"戻る",
+				"削除予定にする",
+			],
+			[
+				"zh-TW",
+				`刪除「${name}」？`,
+				`${count} 項訂閱正在使用。儲存後會移除此標籤，訂閱本身不會刪除。`,
+				"儲存後會從使用此標籤的訂閱中移除，訂閱本身不會刪除。",
+				"此處只先標記刪除，可隨時復原；點擊「儲存變更」後才會生效。",
+				"返回",
+				"標記刪除",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(manager.getByText(title)).toBeTruthy();
+			expect(manager.getByText(count === undefined ? unknown : known)).toBeTruthy();
+			expect(manager.getByText(hint)).toBeTruthy();
+			expect(manager.getByRole("button", { name: back })).toBeTruthy();
+			expect(manager.getByRole("button", { name: mark })).toBeTruthy();
+		}
+		fireEvent.click(manager.getByRole("button", { name: "標記刪除" }));
+		for (const [locale, pending, undo] of [
+			["en", "Pending deletion", "Undo"],
+			["ja", "削除予定", "取り消す"],
+			["zh-TW", "待刪除", "復原"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(manager.getByText(pending)).toBeTruthy();
+			expect(manager.getByRole("button", { name: undo })).toBeTruthy();
+		}
+		fireEvent.click(manager.getByRole("button", { name: "取消" }));
+		for (const [locale, question, continueLabel, discard] of [
+			[
+				"en",
+				"Discard unsaved tag changes? Saved tags will remain unchanged.",
+				"Continue editing",
+				"Discard changes",
+			],
+			[
+				"ja",
+				"未保存のタグ変更を破棄しますか？保存済みのタグには影響しません。",
+				"編集を続ける",
+				"変更を破棄",
+			],
+			["zh-TW", "放棄尚未儲存的標籤修改？已儲存的標籤不受影響。", "繼續編輯", "放棄修改"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(manager.getByText(question)).toBeTruthy();
+			expect(manager.getByRole("button", { name: continueLabel })).toBeTruthy();
+			expect(manager.getByRole("button", { name: discard })).toBeTruthy();
+		}
+		fireEvent.click(manager.getByRole("button", { name: "繼續編輯" }));
+		fireEvent.click(manager.getByRole("button", { name: "復原" }));
+		expect(
+			[1, 2, 3].map(
+				(index) =>
+					(manager.getByRole("textbox", { name: `標籤名稱 ${index}` }) as HTMLInputElement).value,
+			),
+		).toEqual(["杂谈", "游戏", "音乐"]);
+		expect(api.put).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	},
+);
+
+it("tag reading and retry guidance translate without offering an empty writable registry", async () => {
+	const get = vi.mocked(api.get).getMockImplementation();
+	let rejectRead!: (error: Error) => void;
+	const reading = new Promise<never>((_, reject) => {
+		rejectRead = reject;
+	});
+	vi.mocked(api.get).mockImplementation((path) =>
+		path === "/api/subscriptions/tags" ? reading : (get?.(path) as Promise<unknown>),
+	);
+	renderSubs();
+	fireEvent.click(await screen.findByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	for (const [locale, loading] of [
+		["en", "Loading tags…"],
+		["ja", "タグを読み込み中…"],
+		["zh-TW", "正在讀取標籤…"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getByText(loading)).toBeTruthy();
+	}
+	await act(async () => {
+		rejectRead(new Error("Original tag registry diagnostic"));
+	});
+	await manager.findByRole("alert");
+	for (const [locale, error, retry, save] of [
+		["en", "The tag list could not be read. Saving is blocked.", "Retry", "Save changes"],
+		["ja", "タグ一覧を読み込めません。上書き保存はできません。", "再試行", "変更を保存"],
+		["zh-TW", "無法讀取標籤清單，無法覆寫儲存。", "重試", "儲存變更"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getByText(error)).toBeTruthy();
+		expect(manager.getByRole("button", { name: retry })).toBeTruthy();
+		expect(manager.getByRole("button", { name: save })).toHaveProperty("disabled", true);
+		expect(manager.queryByRole("textbox")).toBeNull();
+	}
+	vi.mocked(api.get).mockImplementation((path) => get?.(path) as Promise<unknown>);
+	fireEvent.click(manager.getByRole("button", { name: "重試" }));
+	await manager.findByRole("textbox", { name: "標籤名稱 1" });
+	expect((manager.getByRole("textbox", { name: "標籤名稱 1" }) as HTMLInputElement).value).toBe(
+		"杂谈",
+	);
+	expect(manager.queryByRole("alert")).toBeNull();
+	expect(api.put).not.toHaveBeenCalled();
+});
+
+it("tag validation and registry conflict guidance translate while local edits remain until an explicit reload", async () => {
+	const { qc } = renderSubs();
+	await screen.findByText("无标签");
+	fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	fireEvent.change(manager.getByRole("textbox", { name: "标签名称 2" }), {
+		target: { value: " " },
+	});
+	for (const [locale, message] of [
+		["en", "Name cannot be empty."],
+		["ja", "名前を入力してください。"],
+		["zh-TW", "名稱不可空白。"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getByText(message)).toBeTruthy();
+	}
+	fireEvent.change(manager.getByRole("textbox", { name: "標籤名稱 2" }), {
+		target: { value: "杂谈" },
+	});
+	for (const [locale, message] of [
+		["en", "This name is already used by another tag."],
+		["ja", "ほかのタグと名前が重複しています。"],
+		["zh-TW", "與其他標籤重名。"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getAllByText(message)).toHaveLength(2);
+	}
+	fireEvent.change(manager.getByRole("textbox", { name: "標籤名稱 2" }), {
+		target: { value: "Original local draft" },
+	});
+	act(() =>
+		qc.setQueryData(SUBSCRIPTION_TAGS_QUERY_KEY, [
+			{ ...CHAT, name: "Original remote name" },
+			GAME,
+			MUSIC,
+		]),
+	);
+	for (const [locale, message, reload, name, save] of [
+		[
+			"en",
+			"The tag list was updated elsewhere. Reloading will discard your changes.",
+			"Reload and discard changes",
+			"Tag name 2",
+			"Save changes",
+		],
+		[
+			"ja",
+			"タグ一覧が別の場所で更新されました。再読み込みすると今回の変更を破棄します。",
+			"再読み込みして変更を破棄",
+			"タグ名 2",
+			"変更を保存",
+		],
+		[
+			"zh-TW",
+			"標籤清單已在其他位置更新，重新載入會放棄此次修改。",
+			"重新載入並放棄修改",
+			"標籤名稱 2",
+			"儲存變更",
+		],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getByText(message)).toBeTruthy();
+		expect(manager.getByRole("button", { name: reload })).toBeTruthy();
+		expect(manager.getByRole("button", { name: save })).toHaveProperty("disabled", true);
+		expect((manager.getByRole("textbox", { name }) as HTMLInputElement).value).toBe(
+			"Original local draft",
+		);
+	}
+	fireEvent.click(manager.getByRole("button", { name: "重新載入並放棄修改" }));
+	expect((manager.getByRole("textbox", { name: "標籤名稱 1" }) as HTMLInputElement).value).toBe(
+		"Original remote name",
+	);
+	expect((manager.getByRole("textbox", { name: "標籤名稱 2" }) as HTMLInputElement).value).toBe(
+		"游戏",
+	);
+	expect(api.put).not.toHaveBeenCalled();
+});
+
+it("empty tag guidance and save progress translate while a failed write retains its draft and original reason", async () => {
+	const get = vi.mocked(api.get).getMockImplementation();
+	vi.mocked(api.get).mockImplementation((path) =>
+		path === "/api/subscriptions/tags" || path === "/api/subscriptions"
+			? Promise.resolve([])
+			: (get?.(path) as Promise<unknown>),
+	);
+	renderSubs();
+	fireEvent.click(await screen.findByRole("button", { name: "管理标签" }));
+	const manager = within(screen.getByRole("dialog"));
+	await manager.findByText("还没有标签。可以先创建，之后再分配给订阅。");
+	for (const [locale, empty] of [
+		["en", "No tags yet. Create one now and assign it to subscriptions later."],
+		["ja", "タグはまだありません。先に作成して、後から購読に割り当てられます。"],
+		["zh-TW", "還沒有標籤，可以先建立，之後再指派給訂閱。"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getByText(empty)).toBeTruthy();
+	}
+	fireEvent.change(manager.getByRole("textbox", { name: "新標籤名稱" }), {
+		target: { value: "Original new tag" },
+	});
+	fireEvent.click(manager.getByRole("button", { name: "新增" }));
+	let rejectWrite!: (error: Error) => void;
+	const writing = new Promise<never>((_, reject) => {
+		rejectWrite = reject;
+	});
+	vi.mocked(api.put).mockReturnValueOnce(writing);
+	fireEvent.click(manager.getByRole("button", { name: "儲存變更" }));
+	await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+	for (const [locale, saving, name] of [
+		["en", "Saving…", "Tag name 1"],
+		["ja", "保存中…", "タグ名 1"],
+		["zh-TW", "正在儲存…", "標籤名稱 1"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getByRole("button", { name: saving })).toHaveProperty("disabled", true);
+		expect((manager.getByRole("textbox", { name }) as HTMLInputElement).value).toBe(
+			"Original new tag",
+		);
+	}
+	await act(async () => {
+		rejectWrite(new Error("Original tag write diagnostic / EACCES"));
+	});
+	await manager.findByRole("alert");
+	for (const [locale, name, save] of [
+		["en", "Tag name 1", "Save changes"],
+		["ja", "タグ名 1", "変更を保存"],
+		["zh-TW", "標籤名稱 1", "儲存變更"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(manager.getByRole("alert").textContent).toBe("Original tag write diagnostic / EACCES");
+		expect((manager.getByRole("textbox", { name }) as HTMLInputElement).value).toBe(
+			"Original new tag",
+		);
+		expect(manager.getByRole("button", { name: save })).toHaveProperty("disabled", false);
+	}
+	expect(api.put).toHaveBeenCalledTimes(1);
+	expect(api.put).toHaveBeenCalledWith("/api/subscriptions/tags", [
+		{ id: expect.stringMatching(/^[a-f0-9-]{36}$/), name: "Original new tag" },
+	]);
+});
