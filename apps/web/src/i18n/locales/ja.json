@@ -1236,5 +1236,11 @@
 	"aiSettings.search.live.label": "配信要約のウェブ検索",
 	"aiSettings.search.live.hint": "有効にすると、配信終了後の要約ごとに検索回数（リクエストごとの課金）と数秒の待ち時間が増える場合があります。",
 	"aiSettings.search.roast.label": "辛口コメントのウェブ検索",
-	"aiSettings.search.roast.hint": "有効にすると、辛口コメントごとに検索回数（リクエストごとの課金）が増える場合があります。"
+	"aiSettings.search.roast.hint": "有効にすると、辛口コメントごとに検索回数（リクエストごとの課金）が増える場合があります。",
+	"aiPage.test.silent": "（テキストが返されませんでした）",
+	"aiPage.test.title": "ひと言試す",
+	"aiPage.test.subtitle": "未保存の変更も含む現在の性格設定で応答を試します。応答は選択した送信先に送られます。",
+	"aiPage.test.placeholder": "今日はどんな一日でしたか？",
+	"aiPage.test.thinking": "応答を生成中…",
+	"aiPage.test.delivered": "送信済み · {latencyMs} ms"
 }

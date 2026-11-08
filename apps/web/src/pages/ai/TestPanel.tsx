@@ -60,7 +60,7 @@ export function AiTestPanel({ draft }: { draft: AiSettingsDraft }) {
 			// 「试了没成」(女仆没答上来、投递没成)是 200 + { ok: false, code, message };请求本身不对
 			// (体不对、没这个目标、引擎没起)是非 2xx,走 onError。两条路都得显式接住,
 			// 否则失败会静静地什么都不显示,用户以为没点上。
-			if (r.ok) setReply(r.reply || tx("aiPage.test.silent"));
+			if (r.ok) setReply(r.reply);
 			else setErr(r.message);
 		},
 		onError: (e: unknown) => setErr(errorTextOf(e)),
@@ -106,7 +106,7 @@ export function AiTestPanel({ draft }: { draft: AiSettingsDraft }) {
 
 			{reply !== null && (
 				<div className="mt-2 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 text-bn-base leading-relaxed text-bn-text-primary">
-					{reply}
+					{reply || tx("aiPage.test.silent")}
 				</div>
 			)}
 			{err !== null && <ErrorNote className="mt-2">{err}</ErrorNote>}

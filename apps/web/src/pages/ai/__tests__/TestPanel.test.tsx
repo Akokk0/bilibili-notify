@@ -9,8 +9,9 @@ import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-control
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import type { AiSettingsDraft } from "../../../types/globals";
 import { AiTestPanel } from "../TestPanel";
 
@@ -56,10 +57,45 @@ function renderPanel() {
 	);
 }
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
 });
+
+it.each(["", "原始回复 {not-a-key}"])(
+	"test reply labels follow locale while target, message and raw reply remain unchanged: %s",
+	async (reply) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		vi.mocked(api.get).mockResolvedValue(TARGETS);
+		vi.mocked(api.post).mockResolvedValue({ ok: true, reply, latencyMs: 42 });
+		renderPanel();
+		await waitFor(() => expect(selectOptionsOf(screen.getByRole("combobox"))).toHaveLength(2));
+		chooseSelect(screen.getByRole("combobox"), "订阅群");
+		const message = screen.getByPlaceholderText("How was your day?");
+		fireEvent.change(message, { target: { value: "原始问题" } });
+		expect(api.post).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "Try a message" }));
+		await screen.findByText("Delivered · 42 ms");
+		for (const [locale, title, delivered, silent] of [
+			["ja", "ひと言試す", "送信済み · 42 ms", "（テキストが返されませんでした）"],
+			["zh-TW", "試說一句", "已送達 · 42 ms", "（未傳回文字）"],
+			["en", "Try a message", "Delivered · 42 ms", "(No text returned)"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByRole("button", { name: title })).toBeTruthy();
+			expect(screen.getByText(delivered)).toBeTruthy();
+			expect(screen.getByText(reply || silent)).toBeTruthy();
+			expect(screen.getByDisplayValue("原始问题")).toBe(message);
+			expect(screen.getByRole("combobox").textContent).toContain("订阅群");
+		}
+		expect(api.post).toHaveBeenCalledExactlyOnceWith(
+			"/api/ai/test",
+			expect.objectContaining({ targetId: TARGETS[1]?.id, message: "原始问题" }),
+		);
+	},
+);
 
 describe("AI 试一句面板", () => {
 	it("选目标 + 递一句话 → 带着草稿人格打 /api/ai/test,并就地显示回复", async () => {

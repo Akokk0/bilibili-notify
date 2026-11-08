@@ -1236,5 +1236,11 @@
 	"aiSettings.search.live.label": "直播摘要網路搜尋",
 	"aiSettings.search.live.hint": "啟用後，每次下播摘要都可能增加搜尋呼叫（按次計費）與數秒延遲。",
 	"aiSettings.search.roast.label": "犀利短評網路搜尋",
-	"aiSettings.search.roast.hint": "啟用後，每次犀利短評都可能增加搜尋呼叫（按次計費）。"
+	"aiSettings.search.roast.hint": "啟用後，每次犀利短評都可能增加搜尋呼叫（按次計費）。",
+	"aiPage.test.silent": "（未傳回文字）",
+	"aiPage.test.title": "試說一句",
+	"aiPage.test.subtitle": "使用目前的性格設定（包含尚未儲存的變更）測試回覆；回覆會傳送到所選目標。",
+	"aiPage.test.placeholder": "今天過得怎麼樣？",
+	"aiPage.test.thinking": "正在產生回覆…",
+	"aiPage.test.delivered": "已送達 · {latencyMs} ms"
 }

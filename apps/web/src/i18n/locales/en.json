@@ -1257,5 +1257,11 @@
 	"aiSettings.search.live.label": "Web search for live summaries",
 	"aiSettings.search.live.hint": "Enabling this may add search requests (billed per request) and a few seconds to each post-stream summary.",
 	"aiSettings.search.roast.label": "Web search for roasts",
-	"aiSettings.search.roast.hint": "Enabling this may add search requests (billed per request) to each roast."
+	"aiSettings.search.roast.hint": "Enabling this may add search requests (billed per request) to each roast.",
+	"aiPage.test.silent": "(No text returned)",
+	"aiPage.test.title": "Try a message",
+	"aiPage.test.subtitle": "Test a reply using the current personality settings, including unsaved changes. The reply is sent to the selected target.",
+	"aiPage.test.placeholder": "How was your day?",
+	"aiPage.test.thinking": "Generating a reply…",
+	"aiPage.test.delivered": "Delivered · {latencyMs} ms"
 }
