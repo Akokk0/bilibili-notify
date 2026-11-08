@@ -19,6 +19,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { handleStateEnvelope } from "../../hooks/useStateChannel";
 import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import System from "../System";
@@ -73,7 +74,10 @@ import { api } from "../../services/api";
  * `logLevels` 是这份配置里已有的按模块覆盖。`bilibili` 是 B 站自己的设置(动态 cron / UA / 登录心跳间隔),
  * `/api/settings` 把它挂在 `core` 的旁边下发 —— 系统页画那三格要读它,缺了整页画不出来。
  */
-function mockApi(logLevels: Record<string, string>): void {
+function mockApi(
+	logLevels: Record<string, string>,
+	metadata?: () => { source: string; adapter: string; extension: string },
+): void {
 	const settings = {
 		core: {
 			logging: {
@@ -94,14 +98,18 @@ function mockApi(logLevels: Record<string, string>): void {
 		if (url === "/api/sources")
 			return {
 				sources: [
-					{ key: "bilibili", descriptor: { label: "内置来源" }, status: "running" },
+					{
+						key: "bilibili",
+						descriptor: { label: metadata?.().source ?? "内置来源" },
+						status: "running",
+					},
 					{ key: "acme.dual", descriptor: { label: "双口来源" }, status: "disabled" },
 				],
 			};
 		if (url === "/api/adapters")
 			return {
 				adapters: [
-					{ key: "onebot", descriptor: { label: "适配器甲" } },
+					{ key: "onebot", descriptor: { label: metadata?.().adapter ?? "适配器甲" } },
 					{ key: "qq-official", descriptor: { label: "适配器乙" } },
 					{ key: "webhook", descriptor: { label: "适配器丙" } },
 					{ key: "acme.dual", descriptor: { label: "双口推送" } },
@@ -112,7 +120,7 @@ function mockApi(logLevels: Record<string, string>): void {
 				extensions: [
 					{
 						id: "acme.dual",
-						name: "双口拓展",
+						name: metadata?.().extension ?? "双口拓展",
 						state: "disabled",
 						provides: ["subscription", "push"],
 					},
@@ -149,6 +157,7 @@ async function renderRuntimeSection() {
 	fireEvent.click(screen.getAllByRole("button", { name: "运行" })[0]);
 	await screen.findByText("Core · 应用");
 	await screen.findByText("双口拓展");
+	return qc;
 }
 
 /** 某个模块那一行里的「跟随全局」钮 —— 四行各有一颗,按模块名定位。 */
@@ -450,4 +459,58 @@ describe("系统页的按模块日志等级", () => {
 		expect(body.logging.levels.image).toBeNull();
 		expect(body.logging.levels.ai).toBe("warn");
 	});
+});
+
+it("settings events refresh localized source, adapter and extension descriptions without discarding an active draft", async () => {
+	let metadata = { source: "内置来源", adapter: "适配器甲", extension: "双口拓展" };
+	mockApi({ core: "debug", "old.source": "warn" }, () => metadata);
+	const qc = await renderRuntimeSection();
+	fireEvent.click(
+		within(screen.getByRole("group", { name: "核心（core）日志等级" })).getByRole("button", {
+			name: "L1 · 错误",
+		}),
+	);
+	for (const [locale, source, adapter, extension, core, selected] of [
+		[
+			"en",
+			"Source English",
+			"Adapter English",
+			"Extension English",
+			"Core (core) log level",
+			"L1 · Error",
+		],
+		[
+			"ja",
+			"日本語のソース",
+			"日本語のアダプター",
+			"日本語の拡張機能",
+			"コア（core）のログレベル",
+			"L1 · エラー",
+		],
+		["zh-TW", "繁中來源", "繁中適配器", "繁中拓展", "核心（core）日誌等級", "L1 · 錯誤"],
+	] as const) {
+		metadata = { source, adapter, extension };
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+			handleStateEnvelope(
+				{
+					type: "state",
+					event: "config-changed",
+					data: { scope: "globals" },
+					ts: "2026-11-08T00:00:00.000Z",
+				},
+				qc,
+			);
+		});
+		expect(await screen.findByText(source)).toBeTruthy();
+		expect(await screen.findByText(adapter)).toBeTruthy();
+		expect(await screen.findByText(extension)).toBeTruthy();
+		expect(
+			within(screen.getByRole("group", { name: core }))
+				.getByRole("button", { name: selected })
+				.getAttribute("aria-pressed"),
+		).toBe("true");
+		expect(screen.getByText("old.source")).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+	}
 });
