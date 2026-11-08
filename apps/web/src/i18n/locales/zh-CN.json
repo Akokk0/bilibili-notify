@@ -2717,10 +2717,6 @@
 	"panelUi.pages.stats.SoloRoastScheduleBox.3": "到点自动点评 {value0} 并发到指定的群",
 	"panelUi.pages.stats.SoloRoastScheduleBox.4": "启用 {value0} 的定时锐评",
 	"panelUi.pages.stats.SoloRoastScheduleBox.5": "锐评",
-	"panelUi.pages.stats.chart-utils.1": "{value0}万",
-	"panelUi.pages.stats.chart-utils.2": "{value0}天前",
-	"panelUi.pages.stats.chart-utils.3": "{value0}天前",
-	"panelUi.pages.stats.chart-utils.4": "{value0}天前",
 	"panelUi.pages.stats.chart-utils.5": "今天",
 	"panelUi.pages.stats.charts.1": "近期走势",
 	"panelUi.pages.stats.charts.2": "这段时间还没有采集到数据",
@@ -3237,5 +3233,6 @@
 	"maidSkills.problems#other": "有 {count} 份技能无法读取：",
 	"stats.roast.targetSeparator": "、",
 	"stats.roast.failureSeparator": "；",
-	"stats.roast.reason": "（{reason}）"
+	"stats.roast.reason": "（{reason}）",
+	"panelUi.pages.stats.chart-utils.2#other": "{count}天前"
 }

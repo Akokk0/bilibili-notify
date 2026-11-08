@@ -204,3 +204,53 @@ describe("buildRadarAxes", () => {
 		expect(axis?.value as number).toBeLessThan(1);
 	});
 });
+
+it("radar translations preserve missing samples and relative values while pluralizing activity counts", () => {
+	const focused = row({
+		followers: null,
+		netWindow: null,
+		videoPosts: 1,
+		posts: 3,
+		liveSessions: 1,
+		liveHours: 2,
+	});
+	const peer = row({ uid: "2", videoPosts: 2, posts: 6, liveSessions: 2, liveHours: 4 });
+	for (const [locale, labels, displays, plural] of [
+		[
+			"en",
+			[
+				"Followers (current)",
+				"Follower growth",
+				"Video posts",
+				"Posts",
+				"Live streams",
+				"Live duration",
+			],
+			["No record", "No record", "1 video", "2 posts", "1 stream", "2h"],
+			["2 videos", "4 posts", "2 streams"],
+		],
+		[
+			"ja",
+			["現在のフォロワー数", "フォロワーの伸び", "動画投稿", "投稿", "配信回数", "配信時間"],
+			["記録なし", "記録なし", "1本", "2件", "1回", "2h"],
+			["2本", "4件", "2回"],
+		],
+		[
+			"zh-TW",
+			["目前粉絲規模", "粉絲成長趨勢", "投稿量", "動態量", "開播場次", "直播時長"],
+			["無紀錄", "無紀錄", "1 個", "2 則", "1 場", "2h"],
+			["2 個", "4 則", "2 場"],
+		],
+	] as const) {
+		i18n.set({ locale, voice: "plain" });
+		const axes = buildRadarAxes(focused, [focused, peer]);
+		expect(axes?.map((a) => a.label)).toEqual(labels);
+		expect(axes?.map((a) => a.display)).toEqual(displays);
+		expect(axes?.map((a) => a.value)).toEqual([null, null, 0.5, 0.5, 0.5, 0.5]);
+		expect(
+			buildRadarAxes(peer, [focused, peer])
+				?.slice(2, 5)
+				.map((a) => a.display),
+		).toEqual(plural);
+	}
+});

@@ -6,10 +6,10 @@
  * 但柱子照样是绿的,图就在拿推断值冒充实测值,而纯函数测试会全绿。
  */
 
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { i18n } from "../../../i18n";
-import { DeltaTag, NetBars, TrendChart } from "../charts";
+import { DeltaTag, Heatmap, NetBars, RadarChart, Sparkline, TrendChart } from "../charts";
 import { netFromCumulative } from "../gaps";
 
 // This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
@@ -145,4 +145,87 @@ describe("净增值的排版", () => {
 		expect(labels).not.toContain("+0");
 		expect(labels.join("")).not.toContain("\u2212");
 	});
+});
+
+it("chart descriptions and heat dates translate without replacing original names, missing samples or estimated bars", () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	render(
+		<>
+			<Sparkline data={[0, 1]} color="red" />
+			<TrendChart series={[]} width={320} />
+			<NetBars
+				data={[
+					{ value: 100, estimated: true },
+					{ value: 20, estimated: false },
+				]}
+				days={["2026-11-07", "2026-11-08"]}
+				width={320}
+			/>
+			<RadarChart axes={[]} color="red" />
+			<Heatmap
+				rows={[{ id: "raw-id", name: "原作者甲", color: "red", cells: [null, 0, 2] }]}
+				days={["2026-11-06", "2026-11-07", "2026-11-08"]}
+			/>
+		</>,
+	);
+	expect(screen.getByText("Recent trend")).toBeTruthy();
+	const missing = screen.getByTitle("2026-11-06 · No record");
+	const estimated = screen.getByText("2026-11-07 +100 (averaged by day during downtime)");
+	for (const [
+		locale,
+		recent,
+		empty,
+		net,
+		insufficient,
+		today,
+		missingText,
+		activityText,
+		estimate,
+	] of [
+		[
+			"ja",
+			"最近の推移",
+			"この期間の収集データはありません",
+			"1日あたりの純増",
+			"項目が不足しているため、チャートを表示できません",
+			"今日",
+			"記録なし",
+			"アクティビティ 2/4",
+			"2026-11-07 +100（停止期間中の日割り推定）",
+		],
+		[
+			"zh-TW",
+			"近期走勢",
+			"這段期間尚無已收集的資料",
+			"每日淨增",
+			"資料面向不足，無法繪製圖表",
+			"今天",
+			"無紀錄",
+			"活躍度 2/4",
+			"2026-11-07 +100（停機期間按日平均分攤）",
+		],
+		[
+			"en",
+			"Recent trend",
+			"No data collected in this period",
+			"Daily net change",
+			"Not enough dimensions to draw a profile",
+			"Today",
+			"No record",
+			"Activity 2/4",
+			"2026-11-07 +100 (averaged by day during downtime)",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(recent)).toBeTruthy();
+		expect(screen.getByText(empty)).toBeTruthy();
+		expect(screen.getByText(net)).toBeTruthy();
+		expect(screen.getByText(insufficient)).toBeTruthy();
+		expect(screen.getByText(today)).toBeTruthy();
+		expect(screen.getByTitle(`2026-11-06 · ${missingText}`)).toBe(missing);
+		expect(screen.getByTitle(`2026-11-08 · ${activityText}`)).toBeTruthy();
+		expect(screen.getByText(estimate)).toBe(estimated);
+		expect(screen.getByText("原作者甲")).toBeTruthy();
+	}
+	expect(screen.getAllByText("1 day ago")).toHaveLength(2);
 });

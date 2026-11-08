@@ -6,7 +6,11 @@
  * 正在直播的 UP 之后一眼看出来的 —— 而 typecheck、lint、既有测试全绿。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 import type { UpStatsRow } from "../../../services/stats";
 import { buildStatColumns, type StatColumnId } from "../columns";
 
@@ -44,7 +48,10 @@ const row: UpStatsRow = {
 };
 
 describe("buildStatColumns", () => {
-	const cols = buildStatColumns(30, PALETTE, FMT);
+	let cols: ReturnType<typeof buildStatColumns>;
+	beforeEach(() => {
+		cols = buildStatColumns(30, PALETTE, FMT);
+	});
 
 	it("每列取的都是自己 id 对应的字段 —— 表头和数据不许错位", () => {
 		for (const c of cols) {
@@ -100,4 +107,62 @@ describe("buildStatColumns", () => {
 		expect(viewers?.hint).toBe("按每场累计看过的人数算");
 		expect(cols.filter((c) => c.hint !== undefined).map((c) => c.id)).toEqual(["maxViewers"]);
 	});
+});
+
+it("translated comparison columns retain their metric identity, values and cumulative-viewer explanation", () => {
+	for (const [locale, labels, hint] of [
+		[
+			"en",
+			[
+				"7-day follower change",
+				"30-day follower change",
+				"Video posts",
+				"Posts",
+				"Live streams",
+				"Live duration",
+				"Highest viewers per stream",
+			],
+			"Based on cumulative viewers for each stream.",
+		],
+		[
+			"ja",
+			[
+				"過去7日のフォロワー増減",
+				"過去30日のフォロワー増減",
+				"動画投稿",
+				"投稿",
+				"配信回数",
+				"配信時間",
+				"1配信の最多視聴者数",
+			],
+			"各配信の累計視聴者数に基づきます。",
+		],
+		[
+			"zh-TW",
+			[
+				"近7日粉絲增減",
+				"近30日粉絲增減",
+				"影片投稿",
+				"動態",
+				"直播場次",
+				"直播時長",
+				"單場最高觀看人數",
+			],
+			"依每場累計觀看人數計算",
+		],
+	] as const) {
+		i18n.set({ locale, voice: "plain" });
+		const columns = buildStatColumns(30, PALETTE, FMT);
+		expect(columns.map((c) => c.label)).toEqual(labels);
+		expect(columns.map((c) => [c.id, c.value(row)])).toEqual([
+			["net7d", 11],
+			["netWindow", 22],
+			["videoPosts", 33],
+			["plainPosts", 66],
+			["liveSessions", 44],
+			["liveHours", 55],
+			["maxViewers", 77],
+		]);
+		expect(columns[6]?.hint).toBe(hint);
+	}
 });

@@ -11,19 +11,35 @@ import { i18n } from "../../i18n";
  * 「227万 / 227万 / 227万 / 228万」—— 三条网格线一模一样,读图的人根本判断不出
  * 一格值多少,这条轴等于没传达任何刻度信息。
  *
- * 精度取「刚好让相邻刻度不相同」所需的位数,上限 2 位:再多标签就长得挤不下,
- * 而 niceTicks 的步长恒为 1/2/5×10ⁿ,两位小数已覆盖到步长 100。
+ * 精度取「刚好让相邻刻度不相同」所需的位数。单位跟当前语言走:
+ * 英文 K/M/B,中文/日文万/亿;不能用显示总数时取整的 compact 档。
  */
 export function formatAxisTick(n: number, step: number): string {
 	const abs = Math.abs(n);
-	if (abs < 10_000) return String(Math.round(n));
-	const stepWan = Math.abs(step) / 10_000;
-	const digits = Math.min(2, Math.max(0, Math.ceil(-Math.log10(stepWan))));
-	const fixed = (n / 10_000).toFixed(digits);
-	// 尾随的 .0 / .00 去掉,但**只在真有小数位时**才去 —— 否则 "230" 会被当成
-	// 尾随零一路啃成 "23",230万 凭空缩水十倍。
-	const trimmed = digits > 0 ? fixed.replace(/\.?0+$/, "") : fixed;
-	return i18n.t("panelUi.pages.stats.chart-utils.1", { value0: trimmed });
+	const locale = i18n.state().locale;
+	const threshold = locale === "en" ? 1000 : 10_000;
+	if (abs < threshold) return String(Math.round(n));
+	// The unit is selected by the locale; precision follows the tick spacing, not the
+	// headline-count formatter (which intentionally rounds large compact counts).
+	const scale =
+		locale === "en"
+			? abs >= 1e12
+				? 1e12
+				: abs >= 1e9
+					? 1e9
+					: abs >= 1e6
+						? 1e6
+						: 1000
+			: abs >= 1e8
+				? 1e8
+				: 10_000;
+	const digits = step > 0 ? Math.min(20, Math.max(0, Math.ceil(Math.log10(scale / step)))) : 0;
+	return new Intl.NumberFormat(locale, {
+		notation: "compact",
+		compactDisplay: "short",
+		useGrouping: false,
+		maximumFractionDigits: digits,
+	}).format(n);
 }
 
 /**
@@ -179,12 +195,9 @@ export function heatCellStyle(v: number | null, accent: string): HeatCellStyle {
  */
 export function heatAxisLabels(dayCount: number): string[] {
 	const last = Math.max(0, dayCount - 1);
-	return [
-		i18n.t("panelUi.pages.stats.chart-utils.2", { value0: last }),
-		i18n.t("panelUi.pages.stats.chart-utils.3", { value0: Math.round((last * 2) / 3) }),
-		i18n.t("panelUi.pages.stats.chart-utils.4", { value0: Math.round(last / 3) }),
-		i18n.t("panelUi.pages.stats.chart-utils.5"),
-	];
+	return [last, Math.round((last * 2) / 3), Math.round(last / 3)]
+		.map((count) => i18n.t("panelUi.pages.stats.chart-utils.2", { count }))
+		.concat(i18n.t("panelUi.pages.stats.chart-utils.5"));
 }
 
 /**

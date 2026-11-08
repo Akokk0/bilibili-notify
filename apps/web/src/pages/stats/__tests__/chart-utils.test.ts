@@ -5,7 +5,11 @@
  * 哪里断开」「取值范围怎么算」钉在测试里,SVG 组件就只剩下摆坐标的活。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 import {
 	compactSeries,
 	dash,
@@ -288,4 +292,22 @@ describe("formatAxisTick — 刻度标签按步长定精度", () => {
 			);
 		}
 	});
+});
+
+it("English axis labels use K/M/B while retaining the precision needed to distinguish adjacent ticks", () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	expect([2_272_000, 2_274_000, 2_276_000, 2_278_000].map((n) => formatAxisTick(n, 2000))).toEqual([
+		"2.272M",
+		"2.274M",
+		"2.276M",
+		"2.278M",
+	]);
+	expect(formatAxisTick(12_500, 500)).toBe("12.5K");
+	expect(formatAxisTick(-12_500, 500)).toBe("-12.5K");
+	expect(formatAxisTick(1_250_000_000, 50_000_000)).toBe("1.25B");
+	expect(formatAxisTick(999, 1)).toBe("999");
+	i18n.set({ locale: "ja" });
+	expect(formatAxisTick(2_272_000, 2000)).toBe("227.2万");
+	i18n.set({ locale: "zh-TW" });
+	expect(formatAxisTick(2_272_000, 2000)).toBe("227.2萬");
 });
