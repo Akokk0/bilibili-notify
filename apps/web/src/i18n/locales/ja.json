@@ -962,5 +962,22 @@
 	"sourceUi.pages.rules.PerUpEditor.title.58": "作品の画像一覧の個別設定",
 	"sourceUi.pages.rules.PerUpEditor.subtitle.59": "有効: 作品の画像一覧を個別設定します。無効: 全体設定を引き継ぎます。",
 	"sourceUi.pages.rules.PerUpEditor.inheritNote.60": "この購読は全体の作品画像一覧の設定を引き継ぎます。",
-	"library.personasTitle": "メイドの性格"
+	"library.personasTitle": "メイドの性格",
+	"panelUi.pages.rules.MessageLayoutEditor.1": "描画したカード画像です。非表示にすると画像の描画自体も省略します",
+	"panelUi.pages.rules.MessageLayoutEditor.2": "AI コメントまたはメッセージテンプレート（この部品の下で編集）",
+	"panelUi.pages.rules.MessageLayoutEditor.3": "作品・動画・配信ルームへの独立したリンク",
+	"panelUi.pages.rules.MessageLayoutEditor.4": "メッセージ区切り · 前後を別のメッセージに分割",
+	"panelUi.pages.rules.MessageLayoutEditor.5": "メッセージ区切りを削除",
+	"panelUi.pages.rules.MessageLayoutEditor.6": "メッセージ区切りを挿入",
+	"panelUi.pages.rules.MessageLayoutEditor.7": "区切りで 1 回の通知を複数のメッセージに分割します。送信に失敗すると、その送信先への後続メッセージを中止します。",
+	"panelUi.pages.rules.MessageLayoutEditor.8": "同じメッセージ内の隣り合うテキスト部品（本文・リンク）をつなぎます。\\n は改行を表します。",
+	"panelUi.pages.rules.MessageLayoutEditor.9": "送信プレビュー:",
+	"panelUi.pages.rules.MessageLayoutEditor.10": "すべての部品が非表示です。この種類の通知ではメッセージを送信しません。",
+	"panelUi.pages.rules.MessageLayoutEditor.11": "メッセージ {value0}「{value1}」",
+	"panelUi.pages.rules.MessageLayoutEditor.12": "注意: ",
+	"panelUi.pages.rules.MessageLayoutEditor.13": "カード画像が先頭にないメッセージ: {messages}。QQ ではテキストの後に画像を送ると別々のメッセージに分かれます。画像を先頭に置くと 1 つにまとめられます。",
+	"panelUi.pages.rules.message-layout-utils.1": "カード画像",
+	"panelUi.pages.rules.message-layout-utils.2": "テキスト",
+	"panelUi.pages.rules.message-layout-utils.3": "リンク",
+	"panelUi.pages.rules.message-layout-utils.4": "メッセージ区切り"
 }

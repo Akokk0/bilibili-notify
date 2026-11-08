@@ -962,5 +962,22 @@
 	"sourceUi.pages.rules.PerUpEditor.title.58": "作品圖集覆寫",
 	"sourceUi.pages.rules.PerUpEditor.subtitle.59": "開啟：此訂閱使用自訂圖集設定；關閉：沿用全域設定。",
 	"sourceUi.pages.rules.PerUpEditor.inheritNote.60": "此訂閱會沿用全域作品圖集設定。",
-	"library.personasTitle": "女僕性格"
+	"library.personasTitle": "女僕性格",
+	"panelUi.pages.rules.MessageLayoutEditor.1": "渲染後的卡片圖片；隱藏時也會略過圖片渲染",
+	"panelUi.pages.rules.MessageLayoutEditor.2": "AI 點評或訊息範本（在此部件下方編輯範本）",
+	"panelUi.pages.rules.MessageLayoutEditor.3": "獨立的作品／影片／直播間連結",
+	"panelUi.pages.rules.MessageLayoutEditor.4": "分則符 · 將前後內容分成兩則訊息",
+	"panelUi.pages.rules.MessageLayoutEditor.5": "刪除分則符",
+	"panelUi.pages.rules.MessageLayoutEditor.6": "插入分則符",
+	"panelUi.pages.rules.MessageLayoutEditor.7": "分則符將一次推播拆成多則訊息；某則傳送失敗時，會停止向該目標傳送後續訊息。",
+	"panelUi.pages.rules.MessageLayoutEditor.8": "同一訊息中相鄰文字部件（文字／連結）的連接符；\\n 代表換行。",
+	"panelUi.pages.rules.MessageLayoutEditor.9": "傳送預覽：",
+	"panelUi.pages.rules.MessageLayoutEditor.10": "所有部件都已隱藏，此類推播不會傳送任何訊息。",
+	"panelUi.pages.rules.MessageLayoutEditor.11": "第 {value0} 則「{value1}」",
+	"panelUi.pages.rules.MessageLayoutEditor.12": "提示：",
+	"panelUi.pages.rules.MessageLayoutEditor.13": "卡片圖片不在最前的訊息：{messages}。QQ 會將先文字、後圖片的內容自動拆成兩則訊息；請將卡片圖片放在最前，才能合併成一則。",
+	"panelUi.pages.rules.message-layout-utils.1": "卡片圖片",
+	"panelUi.pages.rules.message-layout-utils.2": "文字",
+	"panelUi.pages.rules.message-layout-utils.3": "連結",
+	"panelUi.pages.rules.message-layout-utils.4": "分則符"
 }

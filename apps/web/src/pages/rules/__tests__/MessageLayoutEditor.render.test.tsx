@@ -5,11 +5,15 @@
  * 发送预览。编辑器是受控组件,断言以 onChange 收到的 next 值 + 预览文案为准。
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import type { MessageKindLayoutFull } from "../../../types/domain";
 import { MessageLayoutEditor } from "../MessageLayoutEditor";
 
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 afterEach(cleanup);
 
 function layoutOf(types: string[], separator = "\n"): MessageKindLayoutFull {
@@ -122,4 +126,28 @@ describe("MessageLayoutEditor", () => {
 		setup(layoutOf(["card", "text", "link"]));
 		expect(screen.queryByText(/QQ/)).toBeNull();
 	});
+});
+
+it("message layout labels translate without changing blocks or the encoded separator", () => {
+	const value = layoutOf(["text", "card", "split", "link"]);
+	const { onChange } = setup(value);
+	const separator = screen.getByDisplayValue("\\n") as HTMLInputElement;
+	for (const [locale, preview, add] of [
+		["en", "Message 1: “Text + Card image”", "Insert message break"],
+		["ja", "メッセージ 1「テキスト + カード画像」", "メッセージ区切りを挿入"],
+		["zh-TW", "第 1 則「文字 + 卡片圖片」", "插入分則符"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByText(preview, { exact: false })).toBeTruthy();
+		expect(screen.getByRole("button", { name: add })).toBeTruthy();
+		expect(screen.getByDisplayValue("\\n")).toBe(separator);
+		expect(separator.value).toBe("\\n");
+		expect(onChange).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "插入分則符" }));
+	expect(onChange).toHaveBeenCalledTimes(1);
+	const next = onChange.mock.calls[0]?.[0] as MessageKindLayoutFull;
+	expect(next.separator).toBe("\n");
+	expect(next.blocks.slice(0, 4)).toEqual(value.blocks);
+	expect(next.blocks.map((b) => b.type)).toEqual(["text", "card", "split", "link", "split"]);
 });

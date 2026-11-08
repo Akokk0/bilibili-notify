@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import type { MessageBlockFull } from "../../../types/domain";
 import {
 	decodeSeparator,
@@ -9,6 +10,10 @@ import {
 	moveBlock,
 	removeBlock,
 } from "../message-layout-utils";
+
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const b = (type: string, visible = true, id = type): MessageBlockFull => ({ id, type, visible });
 

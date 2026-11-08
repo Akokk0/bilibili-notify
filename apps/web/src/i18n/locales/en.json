@@ -978,5 +978,22 @@
 	"sourceUi.pages.rules.PerUpEditor.title.58": "Post image gallery override",
 	"sourceUi.pages.rules.PerUpEditor.subtitle.59": "Enabled: custom gallery settings. Disabled: inherit global settings.",
 	"sourceUi.pages.rules.PerUpEditor.inheritNote.60": "This subscription inherits global post image gallery settings.",
-	"library.personasTitle": "Maid personalities"
+	"library.personasTitle": "Maid personalities",
+	"panelUi.pages.rules.MessageLayoutEditor.1": "Rendered card image; hiding it also skips image rendering",
+	"panelUi.pages.rules.MessageLayoutEditor.2": "AI commentary or a message template (edit the template below this block)",
+	"panelUi.pages.rules.MessageLayoutEditor.3": "A separate post / Video / Livestream room link",
+	"panelUi.pages.rules.MessageLayoutEditor.4": "Message break · Splits the content into two messages",
+	"panelUi.pages.rules.MessageLayoutEditor.5": "Delete message break",
+	"panelUi.pages.rules.MessageLayoutEditor.6": "Insert message break",
+	"panelUi.pages.rules.MessageLayoutEditor.7": "Message breaks split one push into multiple messages. If one message fails, later messages for that target are stopped.",
+	"panelUi.pages.rules.MessageLayoutEditor.8": "Separates adjacent text blocks (text / links) in the same message; \\n means a line break.",
+	"panelUi.pages.rules.MessageLayoutEditor.9": "Send preview:",
+	"panelUi.pages.rules.MessageLayoutEditor.10": "All blocks are hidden. This type of push will send no messages.",
+	"panelUi.pages.rules.MessageLayoutEditor.11": "Message {value0}: “{value1}”",
+	"panelUi.pages.rules.MessageLayoutEditor.12": "Note: ",
+	"panelUi.pages.rules.MessageLayoutEditor.13": "The card image is not first (message positions: {messages}). On QQ, text followed by an image is split into two messages. Put the card image first to keep them together.",
+	"panelUi.pages.rules.message-layout-utils.1": "Card image",
+	"panelUi.pages.rules.message-layout-utils.2": "Text",
+	"panelUi.pages.rules.message-layout-utils.3": "Link",
+	"panelUi.pages.rules.message-layout-utils.4": "Message break"
 }
