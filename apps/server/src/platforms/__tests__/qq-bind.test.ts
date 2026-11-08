@@ -9,6 +9,7 @@ import { randomBytes } from "node:crypto";
 import type { HttpClient } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
+import { i18n } from "../../i18n/index.js";
 import { createBindTask, decryptBindSecret, generateBindKey, pollBindTask } from "../qq-bind.js";
 import { encryptLikeTencent } from "./tencent-bind-crypto.js";
 
@@ -218,3 +219,28 @@ describe("上游超时", () => {
 		}
 	});
 });
+
+it.each([
+	["en", "QQ binding API returned HTTP 502"],
+	["ja", "QQ連携APIがHTTP 502を返しました"],
+	["zh-TW", "QQ 綁定介面回應 HTTP 502"],
+] as const)(
+	"reports QQ binding HTTP failure in %s without changing the request",
+	async (locale, message) => {
+		const previous = i18n.state();
+		i18n.set({ locale, voice: "plain" });
+		try {
+			fetchMock.mockResolvedValue(res(502, { msg: "原始诊断" }));
+			await expect(createBindTask(http)).rejects.toThrow(message);
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+			const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+			expect(String(url)).toBe("https://q.qq.com/lite/create_bind_task");
+			expect(Object.fromEntries(new Headers(init.headers))).toEqual({
+				"content-type": "application/json",
+				accept: "application/json",
+			});
+		} finally {
+			i18n.set({ locale: previous.locale, voice: previous.voice });
+		}
+	},
+);
