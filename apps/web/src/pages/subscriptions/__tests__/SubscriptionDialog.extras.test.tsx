@@ -6,12 +6,13 @@
  * (`overrides.features.extras.wordcloud`),与默认值相同就不落 override。
  */
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import {
 	type Connection,
+	FEATURE_KEYS,
 	makeEmptySubscription,
 	type PushTarget,
 	type Subscription,
@@ -465,6 +466,101 @@ async function save() {
 }
 
 describe("SubscriptionDialog · 某个推送目标自己的附加项", () => {
+	it("per-target inheritance and explicit extra feedback translate without resetting the stored override", async () => {
+		const target = { ...customTarget(), name: "Original target" };
+		const sub = liveEndOnlySub(target.id);
+		sub.extraTargets.wordcloud = { [target.id]: false };
+		const { onSave } = renderWithTarget(sub, target);
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					explicit: "Explicitly set to Off (subscription default: On)",
+					follow:
+						"Following subscription defaults · currently On · Send as an additional message when the stream ends.",
+					reset: "Reset Chat word cloud to subscription defaults",
+					cloud: "Chat word cloud · Original target",
+				},
+			],
+			[
+				"ja",
+				{
+					explicit: "オフに個別設定済み（購読の既定値：オン）",
+					follow: "購読の既定値に従う・現在はオン · 配信終了時に追加メッセージとして送信します。",
+					reset: "チャットのワードクラウドを購読の既定値に戻す",
+					cloud: "チャットのワードクラウド · Original target",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					explicit: "已明確設為關閉（訂閱預設為開啟）",
+					follow: "跟隨訂閱預設 · 目前為開啟 · 下播時作為附加訊息一併推送。",
+					reset: "將彈幕詞雲重設為跟隨訂閱預設",
+					cloud: "彈幕詞雲 · Original target",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByTitle(words.explicit)).toBeTruthy();
+			expect(screen.getByTitle(words.follow)).toBeTruthy();
+			expect(screen.getByRole("button", { name: words.reset })).toBeTruthy();
+			expect(extraToggle(words.cloud).getAttribute("aria-pressed")).toBe("false");
+			expect(onSave).not.toHaveBeenCalled();
+		}
+		await userEvent.click(screen.getByRole("button", { name: "將彈幕詞雲重設為跟隨訂閱預設" }));
+		expect(extraToggle("彈幕詞雲 · Original target").getAttribute("aria-pressed")).toBe("true");
+		expect(screen.queryByRole("button", { name: "將彈幕詞雲重設為跟隨訂閱預設" })).toBeNull();
+		await userEvent.click(screen.getByRole("button", { name: "儲存設定" }));
+		const saved = onSave.mock.calls[0]?.[0] as Subscription;
+		expect(saved.extraTargets.wordcloud).toEqual({});
+		expect(saved.extraTargets.liveSummary).toEqual({});
+		expect(saved.routing.liveEnd).toEqual([target.id]);
+	});
+
+	it("target mode guidance translates while switching to custom remains a local route edit", async () => {
+		const target = { ...customTarget(), name: "Original target" };
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "0012" });
+		for (const feature of FEATURE_KEYS) sub.routing[feature] = [target.id];
+		sub.overrides.features = {
+			post: true,
+			liveStart: false,
+			liveStreaming: false,
+			liveEnd: false,
+			membership: false,
+			superchat: false,
+			viewerChat: false,
+			viewerEnter: false,
+		};
+		const { onSave } = renderWithTarget(sub, target);
+		for (const [locale, label] of [
+			["en", "Use subscription settings · 1 enabled"],
+			["ja", "購読設定に従う・1項目が有効"],
+			["zh-TW", "跟隨訂閱設定 · 已啟用 1 項"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(label)).toBeTruthy();
+			expect(screen.getByText("Original target")).toBeTruthy();
+		}
+		const header = screen.getByText("跟隨訂閱設定 · 已啟用 1 項").parentElement
+			?.parentElement as HTMLElement;
+		await userEvent.click(within(header).getByRole("button", { name: "" }));
+		for (const [locale, label] of [
+			["en", "Custom push content"],
+			["ja", "通知内容をカスタマイズ"],
+			["zh-TW", "自訂推播內容"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(label)).toBeTruthy();
+			expect(onSave).not.toHaveBeenCalled();
+		}
+		await userEvent.click(screen.getByRole("button", { name: "儲存設定" }));
+		const saved = onSave.mock.calls[0]?.[0] as Subscription;
+		expect(saved.routing.post).toEqual([target.id]);
+		expect(saved.routing.liveEnd).toEqual([]);
+		expect(saved.id).toBe(sub.id);
+	});
+
 	it("自定义面板的下播行下面也挂着那两个附加项,起手跟随订阅默认(开)", () => {
 		const t = customTarget();
 		renderWithTarget(liveEndOnlySub(t.id), t);

@@ -8,7 +8,7 @@
  */
 
 import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import {
@@ -94,6 +94,52 @@ beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
 describe("SubscriptionDialog · 平台取自连接", () => {
+	it.each(["unsupported", "missing"] as const)(
+		"translated %s guidance preserves the original capability reason and blocks the extra",
+		(kind) => {
+			const capabilities = capsWith({
+				state: "unsupported",
+				reason: "Original capability / 原因",
+				checkedAt: "2026-11-01T00:00:00Z",
+			});
+			renderDialog(target(), kind === "missing" ? [] : [connection("onebot")], capabilities);
+			for (const [locale, words] of [
+				[
+					"en",
+					{
+						blocked: "Original capability / 原因; @everyone will be skipped when sending.",
+						missing: "The connection is missing; @everyone support cannot be checked.",
+						extra: "@everyone · 目标一",
+					},
+				],
+				[
+					"ja",
+					{
+						blocked: "Original capability / 原因。送信時に全員メンションを省略します。",
+						missing: "接続が見つからないため、全員メンションの対応状況を確認できません。",
+						extra: "全員メンション · 目标一",
+					},
+				],
+				[
+					"zh-TW",
+					{
+						blocked: "Original capability / 原因，傳送時會自動略過 @全體。",
+						missing: "連線已不存在，無法判斷是否支援 @全體。",
+						extra: "@全體 · 目标一",
+					},
+				],
+			] as const) {
+				act(() => i18n.set({ locale, voice: "plain" }));
+				expect(screen.getByText(kind === "missing" ? words.missing : words.blocked)).toBeTruthy();
+				for (const toggle of screen.getAllByRole("button", { name: words.extra })) {
+					expect((toggle as HTMLButtonElement).disabled).toBe(true);
+					expect(toggle.getAttribute("aria-pressed")).toBe("false");
+				}
+				if (kind === "missing") expect(screen.queryByText(words.blocked)).toBeNull();
+			}
+		},
+	);
+
 	it("连接的 atAll 能力是不支持(QQ 官方)→ @全体置灰", () => {
 		renderDialog(target(), [connection("qq-official")], QQ_CAPS);
 		expect(screen.getByText(UNSUPPORTED_NOTE)).toBeTruthy();

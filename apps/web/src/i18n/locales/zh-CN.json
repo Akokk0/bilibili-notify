@@ -742,8 +742,7 @@
 	"sourceUi.pages.up.UpDialog.UpDialog.22": "尚未配置任何推送目标 · 请先到「推送目标」页面创建",
 	"sourceUi.pages.up.UpDialog.UpDialog.23": "该订阅尚未指定推送目标 · 点击下方「添加推送目标」选择",
 	"sourceUi.pages.up.UpDialog.UpDialog.24": "选择要添加的推送目标",
-	"sourceUi.pages.up.UpDialog.UpDialog.25": "添加推送目标 · 还有 ",
-	"sourceUi.pages.up.UpDialog.UpDialog.26": " 个未添加",
+	"sourceUi.pages.up.UpDialog.UpDialog.25": "添加推送目标 · 还有 {count} 个未添加",
 	"sourceUi.pages.up.UpDialog.label.27": "已失效的引用",
 	"sourceUi.pages.up.UpDialog.UpDialog.28": "下列推送目标已被删除,但路由中仍有引用 · 点击移除",
 	"sourceUi.pages.up.UpDialog.UpDialog.29": "未选中任何推送目标,保存后该订阅不会向任何地方推送消息",
@@ -3236,5 +3235,7 @@
 	"panelUi.pages.backup.summary.reasonClose": "）",
 	"extensions.dialog.packageEnd": ")",
 	"panelUi.pages.extensions.declarative.list-new-item.8#other": "把这{word}样填到对面去",
-	"extension.itemTitle": "「{name}」"
+	"extension.itemTitle": "「{name}」",
+	"sourceUi.pages.up.UpDialog.extraOn": "ON",
+	"sourceUi.pages.up.UpDialog.extraOff": "OFF"
 }

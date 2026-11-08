@@ -812,9 +812,9 @@ export function SubscriptionDialog({
 								) : (
 									<AddButton block onClick={() => setShowPicker(true)}>
 										<Icon.plus size={12} />
-										{tx("sourceUi.pages.up.UpDialog.UpDialog.25")}
-										{unattachedTargets.length}
-										{tx("sourceUi.pages.up.UpDialog.UpDialog.26")}
+										{tx("sourceUi.pages.up.UpDialog.UpDialog.25", {
+											count: unattachedTargets.length,
+										})}
 									</AddButton>
 								)
 							) : null}
@@ -1113,8 +1113,11 @@ function ExtraPerTargetToggle({
 	const isExplicit = explicit !== undefined;
 	const blocked = unsupported || !parentOn;
 	const display = !unsupported && parentOn && (explicit ?? inheritedValue);
+	const inheritedLabel = inheritedValue
+		? tx("sourceUi.pages.up.UpDialog.extraOn")
+		: tx("sourceUi.pages.up.UpDialog.extraOff");
 	const follow = tx("sourceUi.pages.up.UpDialog.ExtraPerTargetToggle.39", {
-		value1: inheritedValue ? "ON" : "OFF",
+		value1: inheritedLabel,
 	});
 	const hint = unsupported
 		? unsupportedNote
@@ -1122,8 +1125,10 @@ function ExtraPerTargetToggle({
 			? extraOffHint(extraKey, labelOf)
 			: isExplicit
 				? tx("sourceUi.pages.up.UpDialog.ExtraPerTargetToggle.40", {
-						value1: explicit ? "ON" : "OFF",
-						value2: inheritedValue ? "ON" : "OFF",
+						value1: explicit
+							? tx("sourceUi.pages.up.UpDialog.extraOn")
+							: tx("sourceUi.pages.up.UpDialog.extraOff"),
+						value2: inheritedLabel,
 					})
 				: `${follow} · ${extraHint(extraKey, labelOf)}`;
 	return (
