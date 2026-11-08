@@ -26,6 +26,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 	type Result,
 } from "@bilibili-notify/internal";
+import { bindPackageText } from "@bilibili-notify/internal/texts";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -716,4 +717,17 @@ describe("提示词从契约常量拼", () => {
 		expect(system).toContain("联网搜索");
 		expect(system).not.toContain("web_search");
 	});
+});
+
+it("keeps model catalogue guidance Chinese when human labels change", () => {
+	const nouns = { creatorNoun: "创作者", postNoun: "作品", sources: "各平台" };
+	const before = buildCardWorkshopSystem(nouns);
+	expect(before).toContain("创作者名");
+	const binding = bindPackageText((key) => `Human label: ${key}`);
+	try {
+		expect(CARD_SKIN_FIELDS.live[0]?.label).toBe("Human label: internal.card-skin.29");
+		expect(buildCardWorkshopSystem(nouns)).toBe(before);
+	} finally {
+		binding.dispose();
+	}
 });

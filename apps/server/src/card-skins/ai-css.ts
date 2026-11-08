@@ -16,12 +16,10 @@ import { t as serverText } from "../i18n/index.js";
  */
 
 import {
-	CARD_SKIN_BUILTIN_BLOCKS,
-	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_MODEL_CATALOG,
 	CARD_SKIN_RANK_GUIDE,
 	CARD_SKIN_SELF_HOOK,
-	CARD_SKIN_VARIABLES,
 	type CardKind,
 	type CardSkinAssetVars,
 	type CardSkinKnob,
@@ -38,6 +36,10 @@ import {
 } from "./css-sanitizer.js";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardKind]>;
+const CARD_SKIN_VARIABLES = CARD_SKIN_MODEL_CATALOG.variables;
+const CARD_SKIN_FRAME_HOOKS = CARD_SKIN_MODEL_CATALOG.frameHooks;
+const CARD_SKIN_BUILTIN_BLOCKS = CARD_SKIN_MODEL_CATALOG.blocks;
+
 type Block = Card["blocks"][number];
 
 /** 写哪个框:给了 `blockId` 是那一块,没给是这种卡的外框。 */

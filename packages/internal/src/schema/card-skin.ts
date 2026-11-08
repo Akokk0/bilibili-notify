@@ -47,6 +47,7 @@ import {
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
+	type CARD_SKIN_VARIABLES,
 	cardSkinBytes,
 	DIVIDER_TYPE,
 } from "../card-skin";
@@ -56,34 +57,7 @@ export const CardKindSchema = z.enum(CARD_KINDS);
 
 // ---- 变量 -------------------------------------------------------------------
 
-/**
- * 皮肤变量:**固定表**(ADR-0014 决策 16),注进根块的 CSS 自定义属性。
- *
- * 表里只剩两类:**用户的资产**(按 UP 单设的背景图 —— 换皮肤它还跟着人走)与**数据**
- * (SC / 上舰的档位色)。字体原先也在这张表里,但渲染器从没注过 `--bn-card-font`
- * (字体经 `renderCard` 的 `font` 进来,皮肤要调字体走字体旋钮),那一项已删。可调的观感一律归旋钮({@link CARD_SKIN_KNOB_LIMITS}),由皮肤
- * 自己声明 —— 2026-09-14 主人推翻「皮肤不带自定义旋钮」之后,玻璃白纱 / 模糊这两项
- * 也从这张表退成了默认皮肤自己的旋钮:赛博朋克那类没有玻璃层的皮肤,不该在面板上
- * 挂两根拧了没反应的滑杆。
- *
- * 渐变起 / 止色**不在表里**(决策 15 的 🔗):那两个色只喂外框底,归皮肤 CSS 自己写;
- * 默认皮肤把它俩做成了旋钮,所以用户照样调得动。
- */
-export const CARD_SKIN_VARIABLES = {
-	/** SC 按价位、上舰按舰长等级的档位色,只这两种卡有。 */
-	tierColor: {
-		css: "--bn-card-tier-color",
-		get label() {
-			return packageText("internal.schema.card-skin.3");
-		},
-	},
-	tierColorEnd: {
-		css: "--bn-card-tier-color-end",
-		get label() {
-			return packageText("internal.schema.card-skin.4");
-		},
-	},
-} as const;
+export { CARD_SKIN_VARIABLES } from "../card-skin";
 
 /**
  * 默认皮肤自己声明的那四枚旋钮的 key。**对外 API**:第三方皮肤想复刻默认皮肤的可调项

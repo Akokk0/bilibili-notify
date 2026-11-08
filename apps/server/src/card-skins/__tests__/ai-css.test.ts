@@ -16,6 +16,7 @@ import {
 	DEFAULT_CARD_SKIN,
 	fail,
 } from "@bilibili-notify/internal";
+import { bindPackageText } from "@bilibili-notify/internal/texts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { FORBIDDEN_VALUE, POSITION_VALUES } from "../../skins/scoped-css.js";
 import {
@@ -327,4 +328,23 @@ describe("一轮生成", () => {
 		expect(generate).toHaveBeenCalledTimes(1);
 		expect(generate.mock.calls[0]?.[2].signal).toBe(ctl.signal);
 	});
+});
+
+it("keeps CSS model context fixed while human catalogue labels change", () => {
+	const manifest = fixture();
+	const target = { kind: "live", blockId: "cover" } as const;
+	const before = prepareCardCssAi(manifest, target);
+	if (!before.ok) throw new Error(before.message);
+	const context = before.user("保留原要求");
+	const system = buildCardCssAiSystem();
+	const binding = bindPackageText((key) => `Human label: ${key}`);
+	try {
+		expect(CARD_SKIN_BUILTIN_BLOCKS.live.cover?.label).toBe("Human label: internal.card-skin.84");
+		const after = prepareCardCssAi(manifest, target);
+		if (!after.ok) throw new Error(after.message);
+		expect(after.user("保留原要求")).toBe(context);
+		expect(buildCardCssAiSystem()).toBe(system);
+	} finally {
+		binding.dispose();
+	}
 });
