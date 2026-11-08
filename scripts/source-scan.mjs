@@ -9,7 +9,7 @@ import { repoRoot } from "./vite-alias.mjs";
  * 各道守卫原先各抄一份「剥注释 + 正则」,注释、字符串、模板、正则字面量里的 `import(` /
  * `fetch(` 各自认错,遍历的跳过规则也各飘各的。这里一律走 TypeScript 语法树:字样在注释或
  * 字符串里,天生不是节点。只做语法层(`ts.createSourceFile`),不建 Program、不要类型检查器,
- * 解析全仓约 0.64 秒。
+ * 只取引用时不保留整棵树;真正访问 `ast` 才构建带父指针与 JSDoc 的完整树。
  *
  * 类型在 `source-scan.d.mts`。白名单与逐行放行标记是各守卫自己的事,不在这里。
  *
@@ -75,6 +75,8 @@ export function listSources(roots, options = {}) {
 
 /** 按路径缓存读盘解析的结果,同一进程里多道守卫共用。 */
 const cache = new Map();
+// 缓存的是同一份原文快照；引用读者只留元数据，节点读者才保留完整树。
+const sourceStates = new WeakMap();
 
 function scriptKindOf(path) {
 	switch (extname(path)) {
@@ -94,11 +96,33 @@ function scriptKindOf(path) {
  * @param text 给了就用它,不读盘也不进缓存 —— 写样例用
  */
 export function parseSource(path, text) {
-	const build = (content) => ({
-		path,
-		text: content,
-		ast: ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, scriptKindOf(path)),
-	});
+	const build = (content) => {
+		const state = {
+			createAst: (parents) =>
+				ts.createSourceFile(
+					path,
+					content,
+					parents
+						? ts.ScriptTarget.Latest
+						: {
+								languageVersion: ts.ScriptTarget.Latest,
+								jsDocParsingMode: ts.JSDocParsingMode.ParseNone,
+							},
+					parents,
+					scriptKindOf(path),
+				),
+		};
+		const source = {
+			path,
+			text: content,
+			get ast() {
+				state.ast ??= state.createAst(true);
+				return state.ast;
+			},
+		};
+		sourceStates.set(source, state);
+		return source;
+	};
 	if (text !== undefined) return build(text);
 
 	const absolute = isAbsolute(path) ? path : join(repoRoot(), path);
@@ -177,7 +201,10 @@ const everyItemIsType = (elements) => elements.length > 0 && elements.every((e) 
  * 编译后会留下一条真实引用。
  */
 export function importsOf(source) {
-	const { ast } = source;
+	const state = sourceStates.get(source);
+	if (state?.imports && !state.ast) return state.imports.map((ref) => ({ ...ref }));
+	// 沿用同一个TS语法解析器和遍历判据。引用清单不需要父指针/JSDoc，也不持有节点。
+	const ast = state ? (state.ast ?? state.createAst(false)) : source.ast;
 	const refs = [];
 	const add = (node, specifier, typeOnly, kind) => {
 		refs.push({ specifier, typeOnly, kind, line: lineOf(ast, node) });
@@ -233,6 +260,10 @@ export function importsOf(source) {
 		ts.forEachChild(node, visit);
 	};
 	visit(ast);
+	if (state && !state.ast) {
+		state.imports = refs;
+		return refs.map((ref) => ({ ...ref }));
+	}
 	return refs;
 }
 

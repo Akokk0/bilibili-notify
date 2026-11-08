@@ -12,6 +12,10 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 
 `pnpm-workspace.yaml` glob:`["packages/*", "apps/*", "extensions/*"]`。单 workspace、单 lockfile,pnpm 默认 isolated 布局;`apps/server` 经 pnpm `workspace:*` 协议消费业务核心。Koishi 插件与 AstrBot 插件不在 dev 上(维护线 `koishi-astrbot-maintenance`,见 build-release.md)。
 
+## 源码守卫工具
+
+`scripts/source-scan.mjs`提供目录遍历、`parseSource`原文快照、`importsOf`引用清单与`findNodes`节点查询。5-69将引用读者的缓存收窄为元数据：临时使用无父指针/JSDoc的语法树，扫描后不持有节点；真正访问`Source.ast`时才构建完整树，节点读者的父指针和JSDoc保持。引用结果逐次隔离，完整树已被读取时沿该树重新取引用。读盘快照、TSX及转义/模板内真实引用、扫描范围和守卫判据保持。
+
 ## 包清单
 
 ### 业务核心(`packages/`,零宿主框架依赖)

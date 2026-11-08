@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -248,6 +249,50 @@ describe("importsOf:各种写法与 kind", () => {
 	});
 });
 
+describe("引用扫描与完整语法树共享原文", () => {
+	it("先取引用后访问语法树，行号、JSDoc 和父指针仍完整", () => {
+		const source = at(
+			"lazy.ts",
+			[
+				"/** @deprecated use the replacement */",
+				'export const load = () => import("./lazy");',
+			].join("\r\n"),
+		);
+		const expected = [{ specifier: "./lazy", typeOnly: false, kind: "dynamic", line: 2 }];
+		expect(importsOf(source)).toEqual(expected);
+		const statement = source.ast.statements[0];
+		expect(statement.parent).toBe(source.ast);
+		expect(ts.getJSDocTags(statement).map((tag) => tag.tagName.text)).toEqual(["deprecated"]);
+		expect(importsOf(source)).toEqual(expected);
+	});
+
+	it("调用方修改返回的引用清单，不会污染下一次扫描", () => {
+		const source = at("isolated.ts", 'import type { T } from "./types";');
+		const first = importsOf(source);
+		first[0].specifier = "./changed";
+		first.push({ specifier: "extra", typeOnly: false, kind: "require", line: 99 });
+		expect(importsOf(source)).toEqual([
+			{ specifier: "./types", typeOnly: true, kind: "import", line: 1 },
+		]);
+	});
+
+	it("模板插值、JSX 内部和转义标识符中的 require 仍算真实引用", () => {
+		const source = at(
+			"nested.tsx",
+			[
+				`const message = \`\${require("./template")}\`;`,
+				'const element = <div>{() => require("./jsx")}</div>;',
+				'const escaped = requ\\u0069re("./escaped");',
+			].join("\n"),
+		);
+		expect(importsOf(source)).toEqual([
+			{ specifier: "./template", typeOnly: false, kind: "require", line: 1 },
+			{ specifier: "./jsx", typeOnly: false, kind: "require", line: 2 },
+			{ specifier: "./escaped", typeOnly: false, kind: "require", line: 3 },
+		]);
+	});
+});
+
 describe("解析:扩展名决定 ScriptKind", () => {
 	it("TSX:JSX 里的引用照样抠得出来", () => {
 		const text = [
@@ -397,6 +442,39 @@ describe("parseSource:读盘与缓存", () => {
 		const source = parseSource("scripts/vite-alias.mjs");
 		expect(source.path).toBe("scripts/vite-alias.mjs");
 		expect(importsOf(source).map((r) => r.specifier)).toContain("node:path");
+	});
+});
+
+describe("引用扫描的保留内存", () => {
+	it("扫描256份大文件只保留引用结果，回收后额外堆占用不超过32MiB", () => {
+		const directory = mkdtempSync(join(tmpdir(), "bn-source-scan-memory-"));
+		try {
+			const content = [
+				'import { value } from "./target";',
+				...Array.from({ length: 400 }, (_, index) => `export const item${index} = ${index};`),
+			].join("\n");
+			const files = Array.from({ length: 256 }, (_, index) => join(directory, `${index}.ts`));
+			for (const file of files) writeFileSync(file, content);
+			// 同一公开入口在独立进程里测保留量，隔开runner本身及其它测试的堆；不用墙钟断言。
+			const script = `
+				import { parseSource, importsOf } from ${JSON.stringify(new URL("../source-scan.mjs", import.meta.url).href)};
+				global.gc();
+				const before = process.memoryUsage().heapUsed;
+				let references = 0;
+				for (const file of ${JSON.stringify(files)}) references += importsOf(parseSource(file)).length;
+				global.gc();
+				console.log(JSON.stringify({ references, retainedBytes: process.memoryUsage().heapUsed - before }));
+			`;
+			const result = JSON.parse(
+				execFileSync(process.execPath, ["--expose-gc", "--input-type=module", "--eval", script], {
+					encoding: "utf8",
+				}),
+			);
+			expect(result.references).toBe(256);
+			expect(result.retainedBytes).toBeLessThan(32 * 1024 * 1024);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
 	});
 });
 

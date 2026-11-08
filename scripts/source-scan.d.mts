@@ -8,6 +8,7 @@ export interface Source {
 	/** 调用方给的路径(仓库相对或绝对),报告里直接用。 */
 	path: string;
 	text: string;
+	/** 按需构建并保留的完整语法树，含父指针与 JSDoc。 */
 	ast: ts.SourceFile;
 }
 
