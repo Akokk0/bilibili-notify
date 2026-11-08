@@ -11,7 +11,7 @@ import {
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
@@ -103,3 +103,53 @@ describe("目标弹窗的连接栏", () => {
 
 // These scenarios assert Chinese UI labels explicitly.
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
+it("target editor translations preserve the original connection, edited name and session address until explicit save", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	renderPage();
+	await screen.findByText("游戏交流群");
+	const edit = await screen.findAllByRole("button", { name: "Configure" });
+	const lastEdit = edit.at(-1);
+	if (!lastEdit) throw new Error("Target configuration button missing");
+	fireEvent.click(lastEdit);
+	const dialog = await screen.findByRole("dialog");
+	expect(within(dialog).getByText("Configure push target")).toBeTruthy();
+	const name = within(dialog).getByDisplayValue("游戏交流群");
+	const address = within(dialog).getByDisplayValue("10001");
+	fireEvent.change(name, { target: { value: "新群名称" } });
+	fireEvent.change(address, { target: { value: "20002" } });
+	for (const [locale, title, owner, scope, save] of [
+		["ja", "送信先の設定", "所属する接続", "セッション種別", "保存"],
+		["zh-TW", "設定推播目標", "所屬連線", "會話類型", "儲存"],
+		["en", "Configure push target", "Connection", "Session type", "Save"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(within(dialog).getByText(title)).toBeTruthy();
+		expect(within(dialog).getByText(owner)).toBeTruthy();
+		expect(within(dialog).getByText(scope)).toBeTruthy();
+		expect(within(dialog).getByRole("button", { name: save })).toBeTruthy();
+		expect(within(dialog).getByDisplayValue("新群名称")).toBe(name);
+		expect(within(dialog).getByDisplayValue("20002")).toBe(address);
+		expect(within(dialog).getByText("家里那台")).toBeTruthy();
+		expect(within(dialog).queryByRole("button", { name: /备用那台/ })).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	vi.mocked(api.post).mockResolvedValueOnce([]);
+	fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+	await waitFor(() => expect(api.post).toHaveBeenCalledOnce());
+	expect(api.post).toHaveBeenCalledWith("/api/targets", {
+		...TARGET,
+		name: "新群名称",
+		address: "20002",
+	});
+	await screen.findByText("Target saved");
+	for (const [locale, message] of [
+		["ja", "送信先を保存しました"],
+		["zh-TW", "目標已儲存"],
+		["en", "Target saved"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(message)).toBeTruthy();
+		expect(api.post).toHaveBeenCalledOnce();
+	}
+});

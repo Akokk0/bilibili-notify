@@ -749,5 +749,10 @@
 	"subscriptions.profile.followersType": "The follower count must be a number.",
 	"subscriptions.profile.nameBlank": "The name must not be empty.",
 	"subscriptions.profile.nameTooLong": "The name must not exceed {max} characters.",
-	"subscriptions.profile.nameType": "The name must be a string."
+	"subscriptions.profile.nameType": "The name must be a string.",
+	"service.routes.targets.text.1": "[Test push · Live started] Example creator is live! Title: Test stream",
+	"service.routes.targets.text.2": "[Test push · Post] Example creator published a test post",
+	"service.routes.targets.text.3": "[Test push · SC] ¥30 from Test user — Keep it up!",
+	"service.routes.targets.text.4": "[Test push · Membership] Example user joined the example membership tier!",
+	"service.routes.targets.text.5": "[bilibili-notify] Test push delivered ✓"
 }

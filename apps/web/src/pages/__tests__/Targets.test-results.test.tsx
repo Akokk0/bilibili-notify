@@ -16,7 +16,7 @@ import {
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
@@ -360,4 +360,113 @@ it("empty connection guidance follows the language without creating resources", 
 	}
 	expect(api.post).not.toHaveBeenCalled();
 	expect(api.put).not.toHaveBeenCalled();
+});
+
+it.each(["connection", "target", "managed"] as const)(
+	"translated %s removal confirmation preserves its subject and cancellation sends no request",
+	async (kind) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		const target = {
+			id: MANAGED_TARGET.id,
+			name: "原目标甲",
+			connectionId: ONEBOT_ID,
+			kind: "session",
+			scope: "group",
+			address: "10001",
+			enabled: true,
+		} as PushTarget;
+		const managed = kind === "managed";
+		renderPage(
+			managed ? [WEBHOOK_CONNECTION] : [ONEBOT_CONNECTION],
+			managed ? [MANAGED_TARGET] : [target],
+		);
+		const subject =
+			kind === "target" ? "原目标甲" : managed ? WEBHOOK_CONNECTION.name : ONEBOT_CONNECTION.name;
+		const header = await screen.findByRole("region", {
+			name: managed ? WEBHOOK_CONNECTION.name : ONEBOT_CONNECTION.name,
+		});
+		const headerDelete = within(header).getByRole("button", { name: "Delete" });
+		const button =
+			kind === "target"
+				? screen.getAllByRole("button", { name: "Delete" }).find((b) => b !== headerDelete)
+				: headerDelete;
+		if (!button) throw new Error("Removal button missing");
+		fireEvent.click(button);
+		const dialog = await screen.findByRole("dialog");
+
+		const hints = {
+			en: {
+				managed:
+					"This connection’s managed targets will also be deleted, and subscription references will be cleared.",
+				connection:
+					"Deletion fails while push targets reference this connection. Delete those targets first.",
+				target:
+					"References in subscription routes will become empty, so pushes will skip this target.",
+			},
+			ja: {
+				managed: "この接続が管理する送信先も削除され、購読側の参照も解除されます。",
+				connection:
+					"送信先から参照されている接続は削除できません。先に該当する送信先を削除してください。",
+				target: "購読ルートの参照先が空になり、この送信先への配信はスキップされます。",
+			},
+			"zh-TW": {
+				managed: "此連線的系統管理目標也會一併刪除，並清除訂閱中的引用。",
+				connection: "此連線仍被推播目標使用時無法刪除，請先刪除那些目標。",
+				target: "訂閱路由中對此目標的引用將變成空引用，推播會略過它。",
+			},
+		};
+
+		for (const [locale, connectionTitle, targetTitle, confirm, cancel] of [
+			["en", "Delete connection", "Delete push target", "Confirm removal", "Cancel"],
+			["ja", "接続を削除", "送信先を削除", "削除を確認", "キャンセル"],
+			["zh-TW", "刪除連線", "刪除推播目標", "確認移除", "取消"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(
+				within(dialog).getByText(kind === "target" ? targetTitle : connectionTitle),
+			).toBeTruthy();
+			expect(within(dialog).getByText(subject)).toBeTruthy();
+			expect(dialog.textContent).toContain(hints[locale][kind]);
+			expect(within(dialog).getByRole("button", { name: confirm })).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: cancel })).toBeTruthy();
+			expect(api.delete).not.toHaveBeenCalled();
+		}
+		fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		expect(api.delete).not.toHaveBeenCalled();
+	},
+);
+
+it("translated test confirmation keeps raw recipients and sends only after explicit confirmation", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const target = {
+		id: MANAGED_TARGET.id,
+		name: "原目标甲",
+		connectionId: ONEBOT_ID,
+		kind: "session",
+		scope: "group",
+		address: "10001",
+		enabled: true,
+	} as PushTarget;
+	renderPage([ONEBOT_CONNECTION], [target]);
+	vi.mocked(api.post).mockResolvedValueOnce({ ok: true, latencyMs: 7 });
+	fireEvent.click(await screen.findByTitle("Send a real test message to this target"));
+	const dialog = await screen.findByRole("dialog");
+	for (const [locale, title, sample, send] of [
+		["en", "Send a test push?", "[bilibili-notify] Test push delivered ✓", "Send"],
+		["ja", "テスト通知を送信しますか？", "[bilibili-notify] テスト通知が届きました ✓", "送信"],
+		["zh-TW", "傳送測試推播？", "[bilibili-notify] 測試推播已送達 ✓", "傳送"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(within(dialog).getByText(title)).toBeTruthy();
+		expect(within(dialog).getByText(sample)).toBeTruthy();
+		expect(within(dialog).getByText("原目标甲")).toBeTruthy();
+		expect(within(dialog).getByText("家里那台 OneBot")).toBeTruthy();
+		expect(within(dialog).getByRole("button", { name: send })).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	fireEvent.click(within(dialog).getByRole("button", { name: "傳送" }));
+	await screen.findByText("已送達 · 7ms");
+	expect(api.post).toHaveBeenCalledOnce();
+	expect(api.post).toHaveBeenCalledWith(`/api/targets/${target.id}/test`, { kind: "text" });
 });

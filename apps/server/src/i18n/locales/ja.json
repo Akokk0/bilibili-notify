@@ -744,5 +744,10 @@
 	"subscriptions.profile.followersType": "フォロワー数には数値を指定してください。",
 	"subscriptions.profile.nameBlank": "名前を空にすることはできません。",
 	"subscriptions.profile.nameTooLong": "名前は{max}文字以内で指定してください。",
-	"subscriptions.profile.nameType": "名前には文字列を指定してください。"
+	"subscriptions.profile.nameType": "名前には文字列を指定してください。",
+	"service.routes.targets.text.1": "[テスト通知 · 配信開始] サンプル作者が配信を開始しました！タイトル: テスト配信",
+	"service.routes.targets.text.2": "[テスト通知 · 投稿] サンプル作者がテスト投稿を公開しました",
+	"service.routes.targets.text.3": "[テスト通知 · SC] テストユーザーから ¥30 — 応援しています！",
+	"service.routes.targets.text.4": "[テスト通知 · メンバーシップ] サンプルユーザーがサンプルのメンバーシップに加入しました！",
+	"service.routes.targets.text.5": "[bilibili-notify] テスト通知が届きました ✓"
 }

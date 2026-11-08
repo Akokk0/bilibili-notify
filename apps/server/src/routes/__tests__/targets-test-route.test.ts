@@ -7,6 +7,7 @@
 
 import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { createTargetsRoute } from "../targets.js";
 import type { RouteDeps } from "../types.js";
 
@@ -159,4 +160,64 @@ describe("POST /api/targets/:id/test 投递的结果(照旧回 200,体是 Result
 		await post(app, { text: "你好" });
 		expect(sendToTarget).toHaveBeenCalledWith(TARGET_ID, { kind: "text", text: "你好" });
 	});
+});
+
+it("test message samples follow the active language at send time and preserve supplied text", async () => {
+	const previous = i18n.state();
+	const { app, sendToTarget } = makeApp();
+	try {
+		const samples = [
+			[
+				"en",
+				[
+					"[bilibili-notify] Test push delivered ✓",
+					"[Test push · Live started] Example creator is live! Title: Test stream",
+					"[Test push · Post] Example creator published a test post",
+					"[Test push · SC] ¥30 from Test user — Keep it up!",
+					"[Test push · Membership] Example user joined the example membership tier!",
+				],
+			],
+			[
+				"ja",
+				[
+					"[bilibili-notify] テスト通知が届きました ✓",
+					"[テスト通知 · 配信開始] サンプル作者が配信を開始しました！タイトル: テスト配信",
+					"[テスト通知 · 投稿] サンプル作者がテスト投稿を公開しました",
+					"[テスト通知 · SC] テストユーザーから ¥30 — 応援しています！",
+					"[テスト通知 · メンバーシップ] サンプルユーザーがサンプルのメンバーシップに加入しました！",
+				],
+			],
+			[
+				"zh-TW",
+				[
+					"[bilibili-notify] 測試推播已送達 ✓",
+					"[測試推播 · 開始直播] 範例創作者開始直播了！標題：測試直播",
+					"[測試推播 · 作品] 範例創作者發布了一則測試作品",
+					"[測試推播 · SC] 測試使用者贊助 ¥30 — 主播加油！",
+					"[測試推播 · 會員] 範例使用者加入了範例會員等級！",
+				],
+			],
+		] as const;
+		for (const [locale, expected] of samples) {
+			i18n.set({ locale, voice: "plain" });
+			const kinds = ["text", "liveStart", "post", "superchat", "membership"] as const;
+			for (const [index, kind] of kinds.entries()) {
+				const res = await post(app, kind === "text" ? undefined : { kind });
+				expect(res.status).toBe(200);
+				expect(await res.json()).toEqual({ ok: true, latencyMs: 7 });
+				expect(sendToTarget).toHaveBeenLastCalledWith(TARGET_ID, {
+					kind: "text",
+					text: expected[index],
+				});
+			}
+			await post(app, { text: "原始消息 그대로" });
+			expect(sendToTarget).toHaveBeenLastCalledWith(TARGET_ID, {
+				kind: "text",
+				text: "原始消息 그대로",
+			});
+		}
+		expect(sendToTarget).toHaveBeenCalledTimes(18);
+	} finally {
+		i18n.set(previous);
+	}
 });

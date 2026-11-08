@@ -31,6 +31,7 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
 
 /** 两个**不同平台**的连接 —— tint 逐平台不同,才验得出「没被抹成一个通用色」。 */
@@ -67,6 +68,7 @@ function renderPage() {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
 		if (url === "/api/adapters") return { adapters: builtinAdapters };
 		const candidates = builtinCandidatesResponse(url);

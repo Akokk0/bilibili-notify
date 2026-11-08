@@ -744,5 +744,10 @@
 	"subscriptions.profile.followersType": "粉絲數必須是數字。",
 	"subscriptions.profile.nameBlank": "名稱不能為空字串。",
 	"subscriptions.profile.nameTooLong": "名稱不能超過 {max} 個字元。",
-	"subscriptions.profile.nameType": "名稱必須是字串。"
+	"subscriptions.profile.nameType": "名稱必須是字串。",
+	"service.routes.targets.text.1": "[測試推播 · 開始直播] 範例創作者開始直播了！標題：測試直播",
+	"service.routes.targets.text.2": "[測試推播 · 作品] 範例創作者發布了一則測試作品",
+	"service.routes.targets.text.3": "[測試推播 · SC] 測試使用者贊助 ¥30 — 主播加油！",
+	"service.routes.targets.text.4": "[測試推播 · 會員] 範例使用者加入了範例會員等級！",
+	"service.routes.targets.text.5": "[bilibili-notify] 測試推播已送達 ✓"
 }
