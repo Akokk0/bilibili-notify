@@ -1937,5 +1937,20 @@
 	"lifecycle.noAutomaticRetry": "Check the logs for startup failure details. This notice does not retry the update automatically.",
 	"lifecycle.viewLogs": "Open logs",
 	"lifecycle.readFailed": "Could not read startup notices. No notices were marked as read.",
-	"lifecycle.retry": "Retry"
+	"lifecycle.retry": "Retry",
+	"lifecycle.freshQuestion": "Prefer to leave the old settings behind?",
+	"lifecycle.fresh": "Start fresh…",
+	"lifecycle.confirmFresh": "Start fresh?",
+	"lifecycle.loadingAbility": "Checking restart capability",
+	"lifecycle.emptyConsequences": "The service will restart with new, empty data. Current data will remain where it is.",
+	"lifecycle.reconfigure": "Subscriptions, targets, settings and history are not carried over. Complete onboarding again, sign in to source accounts, and re-enter connection credentials and AI keys.",
+	"lifecycle.keepPanelLogin": "The dashboard account and password are retained. Old data is not deleted.",
+	"lifecycle.abilityUnknown": "Restart capability is unknown. Try again.",
+	"lifecycle.back": "Back",
+	"lifecycle.createEmpty": "Start fresh and restart",
+	"lifecycle.containerRestart": "For container deployments, configure an automatic restart policy first so the service starts again after exiting.",
+	"lifecycle.restartTimedOut": "The new service process has not appeared yet. Check that another program will restart the service automatically.",
+	"lifecycle.keepWaiting": "Keep waiting",
+	"lifecycle.restartFellBack": "The service fell back to {version}. Reload this version to see the result.",
+	"lifecycle.reloadCurrent": "Reload current version"
 }

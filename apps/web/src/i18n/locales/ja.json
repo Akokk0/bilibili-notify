@@ -1890,5 +1890,20 @@
 	"lifecycle.noAutomaticRetry": "起動失敗の詳細はログで確認できます。この通知から更新を自動で再試行することはありません。",
 	"lifecycle.viewLogs": "ログを開く",
 	"lifecycle.readFailed": "起動時のお知らせを取得できませんでした。既読にはしていません。",
-	"lifecycle.retry": "再試行"
+	"lifecycle.retry": "再試行",
+	"lifecycle.freshQuestion": "旧設定を引き継がずに始めますか？",
+	"lifecycle.fresh": "最初から始める…",
+	"lifecycle.confirmFresh": "最初から始めますか？",
+	"lifecycle.loadingAbility": "再起動できるか確認中",
+	"lifecycle.emptyConsequences": "サービスを再起動し、新しい空のデータを使用します。現在のデータはそのまま保持します。",
+	"lifecycle.reconfigure": "購読・送信先・設定・履歴は引き継ぎません。初期ガイドをやり直し、ソースのアカウントにログインして、接続認証情報とAIキーを再入力する必要があります。",
+	"lifecycle.keepPanelLogin": "ダッシュボードのアカウントとパスワードは保持します。旧データは削除しません。",
+	"lifecycle.abilityUnknown": "再起動できるか確認できません。再試行してください。",
+	"lifecycle.back": "戻る",
+	"lifecycle.createEmpty": "最初から始めて再起動",
+	"lifecycle.containerRestart": "コンテナーでは、サービス終了後に再起動できるよう、自動再起動の設定を先に行ってください。",
+	"lifecycle.restartTimedOut": "新しいサービスプロセスを確認できません。外部プログラムが自動で再起動する設定になっているか確認してください。",
+	"lifecycle.keepWaiting": "待機を続ける",
+	"lifecycle.restartFellBack": "サービスは{version}に戻りました。このバージョンを再読み込みして結果を確認してください。",
+	"lifecycle.reloadCurrent": "現在のバージョンを再読み込み"
 }

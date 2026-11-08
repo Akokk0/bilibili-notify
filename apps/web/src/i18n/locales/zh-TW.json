@@ -1890,5 +1890,20 @@
 	"lifecycle.noAutomaticRetry": "啟動失敗的詳細資訊可至日誌查看；此提示不會自動重試更新。",
 	"lifecycle.viewLogs": "查看日誌",
 	"lifecycle.readFailed": "無法讀取啟動提示，未將任何提示標記為已讀。",
-	"lifecycle.retry": "重試"
+	"lifecycle.retry": "重試",
+	"lifecycle.freshQuestion": "希望不帶入舊設定？",
+	"lifecycle.fresh": "全新開始…",
+	"lifecycle.confirmFresh": "確認全新開始？",
+	"lifecycle.loadingAbility": "正在確認能否重新啟動",
+	"lifecycle.emptyConsequences": "服務將重新啟動並使用全新的空白資料，目前資料會保留在原處。",
+	"lifecycle.reconfigure": "訂閱、目標、設定與歷史不會帶入新資料；需要重新完成新手指引、登入來源帳號，並重新填寫連線憑證與 AI 金鑰。",
+	"lifecycle.keepPanelLogin": "面板帳號與密碼會保留，舊資料不會刪除。",
+	"lifecycle.abilityUnknown": "暫時無法確認重新啟動能力，請重試。",
+	"lifecycle.back": "返回",
+	"lifecycle.createEmpty": "確認全新開始並重新啟動",
+	"lifecycle.containerRestart": "容器部署請先設定自動重新啟動策略，服務結束後才會再次啟動。",
+	"lifecycle.restartTimedOut": "尚未等到新的服務程序，請確認是否有外部程式會自動重新啟動服務。",
+	"lifecycle.keepWaiting": "繼續等待",
+	"lifecycle.restartFellBack": "服務已退回 {version}，請重新載入目前版本查看結果。",
+	"lifecycle.reloadCurrent": "重新載入目前版本"
 }

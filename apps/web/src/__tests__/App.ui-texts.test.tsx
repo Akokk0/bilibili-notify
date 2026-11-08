@@ -6,7 +6,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vite-plus/test";
@@ -1515,3 +1515,194 @@ it("notice read failures translate and retry without marking unknown notices rea
 			),
 	).toHaveLength(0);
 });
+
+it.each(["container", "denied", "unknown"] as const)(
+	"%s fresh-start explanations translate and returning never creates data",
+	async (kind) => {
+		mountApp({
+			notices: () => [migratedNotice],
+			request: async (path) =>
+				path === "/api/ext"
+					? jsonResponse({
+							extensions: [],
+							...(kind === "unknown"
+								? {}
+								: {
+										restart:
+											kind === "container"
+												? { can: true, how: "container" }
+												: { can: false, code: "source_run", message: "只能手动重启（原文）" },
+									}),
+						})
+					: undefined,
+		});
+		await screen.findByText("数据已迁移完成");
+		await userEvent.click(screen.getByRole("button", { name: "全新开始…" }));
+		if (kind === "container") await screen.findByText(/容器.*自动重启策略/);
+		else if (kind === "denied") await screen.findByText("只能手动重启（原文）");
+		else await screen.findByText("暂时无法确认重启能力，请重试。");
+		for (const [locale, title, consequences, login, create, back, unknown, container] of [
+			[
+				"en",
+				"Start fresh?",
+				"The service will restart with new, empty data. Current data will remain where it is.",
+				"The dashboard account and password are retained. Old data is not deleted.",
+				"Start fresh and restart",
+				"Back",
+				"Restart capability is unknown. Try again.",
+				"For container deployments, configure an automatic restart policy first so the service starts again after exiting.",
+			],
+			[
+				"ja",
+				"最初から始めますか？",
+				"サービスを再起動し、新しい空のデータを使用します。現在のデータはそのまま保持します。",
+				"ダッシュボードのアカウントとパスワードは保持します。旧データは削除しません。",
+				"最初から始めて再起動",
+				"戻る",
+				"再起動できるか確認できません。再試行してください。",
+				"コンテナーでは、サービス終了後に再起動できるよう、自動再起動の設定を先に行ってください。",
+			],
+			[
+				"zh-TW",
+				"確認全新開始？",
+				"服務將重新啟動並使用全新的空白資料，目前資料會保留在原處。",
+				"面板帳號與密碼會保留，舊資料不會刪除。",
+				"確認全新開始並重新啟動",
+				"返回",
+				"暫時無法確認重新啟動能力，請重試。",
+				"容器部署請先設定自動重新啟動策略，服務結束後才會再次啟動。",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(consequences)).toBeTruthy();
+			expect(screen.getByText(login)).toBeTruthy();
+			expect(screen.getByRole("button", { name: back })).toBeTruthy();
+			expect((screen.getByRole("button", { name: create }) as HTMLButtonElement).disabled).toBe(
+				kind !== "container",
+			);
+			if (kind === "container") expect(screen.getByText(container)).toBeTruthy();
+			else if (kind === "denied") expect(screen.getByText("只能手动重启（原文）")).toBeTruthy();
+			else expect(screen.getByText(unknown)).toBeTruthy();
+			expect(
+				vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/system/generations"),
+			).toBe(false);
+		}
+		await userEvent.click(screen.getByRole("button", { name: "返回" }));
+		expect(await screen.findByText("資料搬移完成")).toBeTruthy();
+		expect(
+			vi.mocked(fetch).mock.calls.some(([path]) => String(path) === "/api/system/generations"),
+		).toBe(false);
+		expect(
+			vi
+				.mocked(fetch)
+				.mock.calls.filter(
+					([path, init]) => init?.method === "POST" && String(path).endsWith("/acknowledge"),
+				),
+		).toHaveLength(0);
+	},
+);
+
+it.each(["timed-out", "fell-back"] as const)(
+	"%s generation wait translates and its recovery action never resubmits the generation",
+	async (outcome) => {
+		let stage: "old" | "ready" | "fallback" = "old";
+		const reload = vi.spyOn(browser, "reload").mockImplementation(() => {});
+		mountApp({
+			notices: () => [migratedNotice],
+			health: () => ({
+				status: "ok",
+				version: stage === "fallback" ? "0.9.9" : "test",
+				startedAt: stage === "old" ? "2026-11-01T00:00:00Z" : "2026-11-04T00:00:00Z",
+				uptime: 0,
+			}),
+			request: async (path, init) => {
+				if (path === "/api/ext")
+					return jsonResponse({ extensions: [], restart: { can: true, how: "desktop" } });
+				if (path === "/api/system/generations" && init?.method === "POST") {
+					if (outcome === "fell-back") stage = "fallback";
+					return jsonResponse({
+						restarting: true,
+						startedAt: "2026-11-01T00:00:00Z",
+						version: "test",
+					});
+				}
+			},
+		});
+		await screen.findByText("数据已迁移完成");
+		await userEvent.click(screen.getByRole("button", { name: "全新开始…" }));
+		await waitFor(() =>
+			expect(
+				(screen.getByRole("button", { name: "确认全新开始并重启" }) as HTMLButtonElement).disabled,
+			).toBe(false),
+		);
+		vi.useFakeTimers();
+		try {
+			await act(async () => {
+				fireEvent.click(screen.getByRole("button", { name: "确认全新开始并重启" }));
+			});
+			if (outcome === "timed-out")
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(91000);
+				});
+			for (const [locale, timedOut, fellBack, waitLabel, reloadLabel] of [
+				[
+					"en",
+					"The new service process has not appeared yet. Check that another program will restart the service automatically.",
+					"The service fell back to 0.9.9. Reload this version to see the result.",
+					"Keep waiting",
+					"Reload current version",
+				],
+				[
+					"ja",
+					"新しいサービスプロセスを確認できません。外部プログラムが自動で再起動する設定になっているか確認してください。",
+					"サービスは0.9.9に戻りました。このバージョンを再読み込みして結果を確認してください。",
+					"待機を続ける",
+					"現在のバージョンを再読み込み",
+				],
+				[
+					"zh-TW",
+					"尚未等到新的服務程序，請確認是否有外部程式會自動重新啟動服務。",
+					"服務已退回 0.9.9，請重新載入目前版本查看結果。",
+					"繼續等待",
+					"重新載入目前版本",
+				],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(screen.getByText(outcome === "timed-out" ? timedOut : fellBack)).toBeTruthy();
+				expect(
+					screen.getByRole("button", { name: outcome === "timed-out" ? waitLabel : reloadLabel }),
+				).toBeTruthy();
+				expect(screen.queryByRole("banner")).toBeNull();
+				expect(reload).not.toHaveBeenCalled();
+				expect(
+					vi
+						.mocked(fetch)
+						.mock.calls.filter(
+							([path, init]) =>
+								String(path) === "/api/system/generations" && init?.method === "POST",
+						),
+				).toHaveLength(1);
+			}
+			if (outcome === "timed-out") {
+				stage = "ready";
+				await act(async () => {
+					fireEvent.click(screen.getByRole("button", { name: "繼續等待" }));
+				});
+			} else fireEvent.click(screen.getByRole("button", { name: "重新載入目前版本" }));
+			expect(reload).toHaveBeenCalledOnce();
+			expect(
+				vi
+					.mocked(fetch)
+					.mock.calls.filter(
+						([path, init]) => String(path) === "/api/system/generations" && init?.method === "POST",
+					),
+			).toHaveLength(1);
+		} finally {
+			cleanup();
+			useRestartStore.getState().dismiss();
+			vi.clearAllTimers();
+			vi.useRealTimers();
+		}
+	},
+);
