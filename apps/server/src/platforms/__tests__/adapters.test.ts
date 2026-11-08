@@ -951,6 +951,32 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		ad.stop();
 	});
 
+	it.each([
+		["en", "HTTP request timed out (50ms)", "Not retrying to avoid duplicate delivery."],
+		["ja", "HTTPリクエストがタイムアウトしました（50ms）", "重複送信を避けるため再試行しません"],
+		["zh-TW", "HTTP 請求逾時（50ms）", "為避免重複送達，不再重試"],
+	] as const)(
+		"localizes OneBot delivery uncertainty in %s without retrying the send",
+		async (locale, timeout, note) => {
+			i18n.set({ locale, voice: "plain" });
+			fetchMock.mockImplementation(hangUntilAborted);
+			const ad = startedOnebot(obOpts());
+			try {
+				const result = await ad.send(
+					obConnection({ timeoutMs: 50, maxRetries: 2, retryIntervalMs: 0 }),
+					obTarget(),
+					TEXT,
+				);
+				expect(result).toMatchObject({ ok: false, code: "indeterminate" });
+				expect(messageOf(result)).toContain(timeout);
+				expect(messageOf(result)).toContain(note);
+				expect(fetchMock).toHaveBeenCalledTimes(1);
+			} finally {
+				ad.stop();
+			}
+		},
+	);
+
 	it("HTTP 请求超时(客户端掐断):不重试,err 注明结果未知", async () => {
 		fetchMock.mockImplementation(hangUntilAborted);
 		const r = await startedOnebot(obOpts()).send(
