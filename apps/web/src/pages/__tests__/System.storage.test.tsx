@@ -373,3 +373,58 @@ it.each([
 		expect(api.patch).not.toHaveBeenCalled();
 	},
 );
+
+it("storage confirmation translates in place while keeping category, protection and actual freed bytes", async () => {
+	GENERATIONS.push(generation(3, { current: true, deletable: false, lockReason: "current" }));
+	vi.mocked(api.delete).mockResolvedValue({ freedBytes: 512 });
+	renderSystem();
+	const list = await openStorage();
+	const protectedButton = (await screen.findByRole("button", {
+		name: "删除第 3 代",
+	})) as HTMLButtonElement;
+	fireEvent.click(screen.getByRole("button", { name: "清空推送历史图片" }));
+	const dialog = screen.getByRole("dialog");
+	for (const [locale, confirm, today] of [
+		["en", "Confirm clear", "Keep today’s images"],
+		["ja", "削除する", "今日の画像は残します"],
+		["zh-TW", "確認清空", "保留今天的圖片"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(dialog.textContent).toContain(today);
+		expect(dialog.textContent).toContain("4 KiB");
+		expect(within(dialog).getByRole("button", { name: confirm })).toBeTruthy();
+		expect(list.querySelectorAll("li")).toHaveLength(7);
+		expect(protectedButton.disabled).toBe(true);
+		expect(api.delete).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+	fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+	expect(api.delete).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "清空推播歷史圖片" }));
+	fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "確認清空" }));
+	await screen.findByText("已清空，實際釋出 512 B。");
+	expect(api.delete).toHaveBeenCalledExactlyOnceWith("/api/system/storage/historyImages");
+});
+
+it("storage retention days use the current language and English singular without changing selection", async () => {
+	renderSystem("/system#storage");
+	await screen.findByRole("list", { name: "分类用量" });
+	const field = document.querySelector<HTMLElement>('[data-code="core.history.retentionDays"]');
+	expect(field).toBeTruthy();
+	if (!field) throw new Error("retention field missing");
+	for (const [locale, one, three, selected] of [
+		["en", "1 day", "3 days", "30 days"],
+		["ja", "1 日", "3 日", "30 日"],
+		["zh-TW", "1 天", "3 天", "30 天"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(within(field).getByRole("button", { name: one })).toBeTruthy();
+		expect(within(field).getByRole("button", { name: three })).toBeTruthy();
+		expect(within(field).getByRole("button", { name: selected }).getAttribute("aria-pressed")).toBe(
+			"true",
+		);
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+});

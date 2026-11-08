@@ -1260,7 +1260,6 @@
 	"logging.overridesHint": "未设置覆盖时跟随全局等级；保存后生效，无需重启。",
 	"logging.runtimeTitle": "Core · 应用",
 	"logging.runtimeSubtitle": "后端运行参数",
-	"logging.retentionDays": "{count} 天",
 	"logging.memoryLog": "内存自检打印",
 	"logging.readFailed": "日志等级读取失败，当前状态未知。",
 	"logging.readLoading": "正在读取日志等级",
@@ -3234,5 +3233,6 @@
 	"history.repush.count#other": "（{count} 条）",
 	"history.repush.pending#other": "正在补发（{count} 条），完成后此行会自动更新。",
 	"extension.reportDiscrepancies.count#other": "{count} 条",
-	"notices.messages#other": "{count} 条"
+	"notices.messages#other": "{count} 条",
+	"logging.retentionDays#other": "{count} 天"
 }
