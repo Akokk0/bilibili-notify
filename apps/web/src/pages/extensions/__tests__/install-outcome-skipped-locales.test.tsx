@@ -9,11 +9,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import zhCN from "../../../i18n/locales/zh-CN.json";
 import { ExtensionInstallOutcome } from "../install-outcome";
 
 vi.mock("../../../services/api", () => ({ api: { post: vi.fn() } }));
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 const BASE = {
 	id: "bridge",

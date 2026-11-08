@@ -203,6 +203,77 @@ describe("拓展页", () => {
 		vi.restoreAllMocks();
 	});
 
+	it.each(["install", "update"] as const)(
+		"%s feedback translates according to the submitted action without another installation",
+		async (action) => {
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			apiPostMock.mockReset();
+			apiPostMock.mockRejectedValue(new Error("原下载诊断 / EHOST"));
+			const base = UPDATABLE_MARKET.extensions[0];
+			if (!base) throw new Error("Missing marketplace fixture");
+			const entry = {
+				...base,
+				...(action === "update"
+					? { installed: { version: "1.0.0", source: "official", revoked: true as const } }
+					: { id: "new", name: "Original new", state: "installable" as const }),
+			};
+			renderPage(LISTED, CONNECTIONS, STATUS, { ...UPDATABLE_MARKET, extensions: [entry] });
+			const card = await cardOf(action === "update" ? BRIDGE.name : "Original new");
+			for (const [locale, revoked, offer, button] of [
+				[
+					"en",
+					"The installed release has been revoked",
+					"New version v1.1.0",
+					action === "update" ? "Update" : "Install",
+				],
+				[
+					"ja",
+					"インストール済みのリリースは撤回されています",
+					"新バージョン v1.1.0",
+					action === "update" ? "更新" : "インストール",
+				],
+				["zh-TW", "已安裝的版本已撤回", "有新版 v1.1.0", action === "update" ? "更新" : "安裝"],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				if (action === "update") {
+					expect(within(card).getByText(revoked)).toBeTruthy();
+					expect(within(card).getByText(offer)).toBeTruthy();
+				}
+				expect(within(card).getByRole("button", { name: button })).toBeTruthy();
+				expect(apiPostMock).not.toHaveBeenCalled();
+			}
+			fireEvent.click(
+				within(card).getByRole("button", { name: action === "update" ? "更新" : "安裝" }),
+			);
+			await screen.findByText(/原下载诊断 \/ EHOST/);
+			for (const [locale, failure] of [
+				[
+					"en",
+					action === "update"
+						? "Update failed: 原下载诊断 / EHOST"
+						: "Installation failed: 原下载诊断 / EHOST",
+				],
+				[
+					"ja",
+					action === "update"
+						? "更新できませんでした：原下载诊断 / EHOST"
+						: "インストールできませんでした：原下载诊断 / EHOST",
+				],
+				[
+					"zh-TW",
+					action === "update" ? "更新失敗：原下载诊断 / EHOST" : "安裝失敗：原下载诊断 / EHOST",
+				],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(screen.getByText(failure)).toBeTruthy();
+				expect(apiPostMock).toHaveBeenCalledExactlyOnceWith("/api/ext/marketplace/install", {
+					source: "official",
+					id: entry.id,
+				});
+			}
+		},
+	);
+
 	it("extension manager language changes preserve the capability filter, raw state details, and switches", async () => {
 		i18n.set({ locale: "zh-CN", voice: "plain" });
 		const states = [

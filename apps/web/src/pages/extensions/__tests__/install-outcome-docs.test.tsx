@@ -12,12 +12,19 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
+import { api } from "../../../services/api";
 import { ExtensionInstallOutcome } from "../install-outcome";
 
 vi.mock("../../../services/api", () => ({ api: { post: vi.fn() } }));
+
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+	vi.mocked(api.post).mockReset();
+});
 
 const BASE = {
 	id: "bridge",
@@ -44,6 +51,80 @@ function show(over: Record<string, unknown>) {
  */
 describe("装完、新版等着换上", () => {
 	afterEach(cleanup);
+
+	it.each(["running", "disabled", "staged-disabled"] as const)(
+		"%s install outcome translates without enabling the extension and keeps the correct documentation destination",
+		(kind) => {
+			show({
+				staged: kind === "staged-disabled",
+				enabled: kind === "running",
+				docs:
+					kind === "disabled"
+						? { readme: false, changelog: true }
+						: { readme: true, changelog: true },
+				skippedLocales: ["locales/xx-ZZ.json"],
+			});
+			for (const [
+				locale,
+				running,
+				disabled,
+				stagedDisabled,
+				readme,
+				changelog,
+				changes,
+				skipped,
+			] of [
+				[
+					"en",
+					"Installed and running. Use the switch on its extension card to enable or disable it.",
+					"Installed but disabled. Enable it on its extension card to start it.",
+					"Installed but disabled. This process has already loaded another copy of the extension, so enabling it cannot replace the code. Open its page and choose “Restart BN”, or enable it first and choose “Reload only this extension”.",
+					"Read instructions",
+					"Read changelog",
+					"See what changed",
+					"These language files are not supported by BN and were not written. The rest of the package was installed.",
+				],
+				[
+					"ja",
+					"インストールが完了し、稼働しています。有効・無効は拡張機能のカードのスイッチで切り替えます。",
+					"インストール済みですが無効になっています。拡張機能のカードで有効にすると起動します。",
+					"インストール済みですが無効になっています。このプロセスではすでに別のコードを読み込んでいるため、有効にしても置き換えられません。拡張機能のページで「BNを再起動」を選ぶか、有効にしてから「この拡張機能だけ再読み込み」を選んでください。",
+					"説明を読む",
+					"変更履歴を読む",
+					"変更内容を見る",
+					"これらの言語ファイルはBNが対応していないため、保存されませんでした。パッケージのほかの部分はインストール済みです。",
+				],
+				[
+					"zh-TW",
+					"已安裝並執行，可在拓展卡片上切換開關。",
+					"已安裝但尚未啟用，請到拓展卡片開啟開關。",
+					"已安裝但尚未啟用。此程序先前已載入另一份程式碼，開啟開關也無法替換；請到該拓展頁選擇「重新啟動 BN」，或先啟用再選擇「只重新載入此拓展」。",
+					"查看說明",
+					"查看更新紀錄",
+					"查看變更",
+					"這些語言檔案尚不受 BN 支援，因此未寫入；套件其餘部分已正常安裝。",
+				],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(
+					screen.getByText(
+						kind === "running" ? running : kind === "disabled" ? disabled : stagedDisabled,
+						{ exact: false },
+					),
+				).toBeTruthy();
+				expect(screen.getByText("机器人框架桥接")).toBeTruthy();
+				expect(screen.getByText(skipped)).toBeTruthy();
+				expect(screen.getByText("locales/xx-ZZ.json")).toBeTruthy();
+				const link = screen.getByRole("link", {
+					name: kind === "running" ? readme : kind === "disabled" ? changelog : changes,
+				});
+				expect(link.getAttribute("href")).toBe("/extensions/bridge");
+				expect(link.getAttribute("target")).toBe(kind === "staged-disabled" ? "_blank" : null);
+				expect(screen.queryByRole("button")).toBeNull();
+				expect(api.post).not.toHaveBeenCalled();
+			}
+		},
+	);
 
 	it("名字打头,说清装好了但换不上;「重启 BN」与「只重载这个拓展」并排", () => {
 		show({ staged: true, enabled: true, docs: undefined });

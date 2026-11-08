@@ -228,8 +228,7 @@ export function MarketplaceUpdateOffer({
 				</span>
 			) : null}
 			<Pill subtle size="sm">
-				{tx("panelUi.pages.extensions.marketplace-section.7")}
-				{entry.version}
+				{tx("panelUi.pages.extensions.marketplace-section.7", { version: entry.version })}
 			</Pill>
 			<Btn
 				variant="outline"

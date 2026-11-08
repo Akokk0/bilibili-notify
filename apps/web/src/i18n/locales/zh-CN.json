@@ -2573,7 +2573,7 @@
 	"panelUi.pages.extensions.marketplace-section.4": "照样更新",
 	"panelUi.pages.extensions.marketplace-section.5": "照样装",
 	"panelUi.pages.extensions.marketplace-section.6": "装着的这一版被撤回了",
-	"panelUi.pages.extensions.marketplace-section.7": "有新版 v",
+	"panelUi.pages.extensions.marketplace-section.7": "有新版 v{version}",
 	"panelUi.pages.extensions.marketplace-section.8": "更新",
 	"panelUi.pages.extensions.marketplace-section.9": "装着…",
 	"panelUi.pages.extensions.marketplace-section.10": "安装",
