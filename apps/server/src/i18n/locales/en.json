@@ -517,5 +517,14 @@
 	"webhook.platformUnsupported": "Unsupported Webhook platform: {platform}",
 	"webhook.response.notJson": "{provider} response is not JSON",
 	"webhook.response.notObject": "{provider} response is not an object",
-	"webhook.response.missingField": "{provider} response missing {field}{details}"
+	"webhook.response.missingField": "{provider} response missing {field}{details}",
+	"adapters.auth.unsupported": "QR setup is not available for this connection type.",
+	"adapters.notRunning": "The adapter for this connection type is not running.",
+	"connection.adapterNotStarted": "The adapter has not started.",
+	"connection.probe.timeout": "Probe timed out.",
+	"service.platforms.upstream-message.text.1": "Upstream provided no reason.",
+	"adapters.payload.empty": "Empty payload.",
+	"onebot.destination.missing": "{what} missing",
+	"onebot.ws.sendFailed": "WebSocket send failed.",
+	"onebot.connection.adapterMismatch": "Unexpected OneBot adapter: {adapterKey}"
 }

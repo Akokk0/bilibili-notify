@@ -332,7 +332,7 @@ function buildSendActionFromSegments(
 	destination: DestinationRef,
 	segments: OneBotMessageSegment[],
 ): Result<OnebotAction> {
-	if (segments.length === 0) return fail("invalid", "empty payload");
+	if (segments.length === 0) return fail("invalid", t("adapters.payload.empty"));
 	const to = onebotNumericAddress(destination);
 	if (!to.ok) return to;
 	const params: Record<string, unknown> = { message: segments };
@@ -355,10 +355,11 @@ function onebotNumericAddress(
 	destination: DestinationRef,
 ): Result<{ private: boolean; id: number }> {
 	// 端点目标没有会话可言(也没有 scope):按群的说法回,与它原来恒为 channel 时的话一样。
-	if (destination.kind !== "session") return fail("invalid", "group: groupId missing");
+	if (destination.kind !== "session")
+		return fail("invalid", t("onebot.destination.missing", { what: "group: groupId" }));
 	const isPrivate = destination.scope === "private";
 	const what = isPrivate ? "private: userId" : "group: groupId";
-	if (!destination.address) return fail("invalid", `${what} missing`);
+	if (!destination.address) return fail("invalid", t("onebot.destination.missing", { what }));
 	const id = Number(destination.address);
 	if (!Number.isFinite(id)) {
 		return fail(
@@ -1296,7 +1297,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		);
 		const maxRetries = cfg.maxRetries ?? 0;
 		const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
-		let last: Failure = fail("unavailable", "ws send failed");
+		let last: Failure = fail("unavailable", t("onebot.ws.sendFailed"));
 		let lastError: unknown;
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
 			lastError = undefined;
@@ -1475,7 +1476,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		async probe(connection: Connection): Promise<ProbeResult> {
 			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			if (!isMine(connection)) {
-				return fail("invalid", `wrong platform: ${connection.adapterKey}`);
+				return fail(
+					"invalid",
+					t("onebot.connection.adapterMismatch", { adapterKey: connection.adapterKey }),
+				);
 			}
 			const cfg = connection.settings;
 			const t0 = Date.now();
@@ -1524,7 +1528,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		): Promise<DeliveryResult> {
 			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			if (!isMine(connection)) {
-				return fail("invalid", `wrong platform: adapter=${connection.adapterKey}`);
+				return fail(
+					"invalid",
+					t("onebot.connection.adapterMismatch", { adapterKey: connection.adapterKey }),
+				);
 			}
 			if (payload.kind === "native-share") return sendNativeShare(connection, destination, payload);
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——

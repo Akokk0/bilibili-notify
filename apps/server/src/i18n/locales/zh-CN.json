@@ -1585,5 +1585,9 @@
 	"webhook.platformUnsupported": "Webhook 不支持平台：{platform}",
 	"webhook.response.notJson": "{provider} 响应不是 JSON",
 	"webhook.response.notObject": "{provider} 响应不是对象",
-	"webhook.response.missingField": "{provider} 响应缺少 {field}{details}"
+	"webhook.response.missingField": "{provider} 响应缺少 {field}{details}",
+	"adapters.payload.empty": "发送内容为空。",
+	"onebot.destination.missing": "缺少 {what}",
+	"onebot.ws.sendFailed": "WebSocket 发送失败。",
+	"onebot.connection.adapterMismatch": "OneBot 适配器不匹配：{adapterKey}"
 }

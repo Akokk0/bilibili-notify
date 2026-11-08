@@ -517,5 +517,14 @@
 	"webhook.platformUnsupported": "Webhookはこのプラットフォームに対応していません：{platform}",
 	"webhook.response.notJson": "{provider}の応答がJSONではありません",
 	"webhook.response.notObject": "{provider}の応答がオブジェクトではありません",
-	"webhook.response.missingField": "{provider}の応答に{field}がありません{details}"
+	"webhook.response.missingField": "{provider}の応答に{field}がありません{details}",
+	"adapters.auth.unsupported": "この接続方式ではQRコードによる設定はできません。",
+	"adapters.notRunning": "この接続方式のアダプターは稼働していません。",
+	"connection.adapterNotStarted": "アダプターは起動していません。",
+	"connection.probe.timeout": "接続確認がタイムアウトしました。",
+	"service.platforms.upstream-message.text.1": "接続先から理由が示されませんでした。",
+	"adapters.payload.empty": "送信内容が空です。",
+	"onebot.destination.missing": "{what}がありません",
+	"onebot.ws.sendFailed": "WebSocketでの送信に失敗しました。",
+	"onebot.connection.adapterMismatch": "OneBotのアダプターが一致しません：{adapterKey}"
 }

@@ -517,5 +517,14 @@
 	"webhook.platformUnsupported": "Webhook 不支援平台：{platform}",
 	"webhook.response.notJson": "{provider} 回應不是 JSON",
 	"webhook.response.notObject": "{provider} 回應不是物件",
-	"webhook.response.missingField": "{provider} 回應缺少 {field}{details}"
+	"webhook.response.missingField": "{provider} 回應缺少 {field}{details}",
+	"adapters.auth.unsupported": "此連線類型不支援掃碼建立連線。",
+	"adapters.notRunning": "此連線類型的配接器尚未運作。",
+	"connection.adapterNotStarted": "配接器尚未啟動。",
+	"connection.probe.timeout": "連線探測逾時。",
+	"service.platforms.upstream-message.text.1": "上游未提供原因。",
+	"adapters.payload.empty": "傳送內容為空。",
+	"onebot.destination.missing": "缺少 {what}",
+	"onebot.ws.sendFailed": "WebSocket 傳送失敗。",
+	"onebot.connection.adapterMismatch": "OneBot 配接器不符：{adapterKey}"
 }

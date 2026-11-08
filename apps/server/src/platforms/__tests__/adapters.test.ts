@@ -408,9 +408,9 @@ describe("onebot — send 路由", () => {
 	it("private 缺 userId / group 缺 groupId → ok:false 且不发请求", async () => {
 		const ad = startedOnebot(obOpts());
 		const p = await ad.send(obConnection(), obTarget({ scope: "private", address: "" }), TEXT);
-		expect(p).toEqual({ ok: false, code: "invalid", message: "private: userId missing" });
+		expect(p).toEqual({ ok: false, code: "invalid", message: "缺少 private: userId" });
 		const g = await ad.send(obConnection(), obTarget({ address: "" }), TEXT);
-		expect(g).toEqual({ ok: false, code: "invalid", message: "group: groupId missing" });
+		expect(g).toEqual({ ok: false, code: "invalid", message: "缺少 group: groupId" });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -425,7 +425,7 @@ describe("onebot — send 路由", () => {
 	it("空 composite payload → empty payload,不发请求", async () => {
 		const ad = startedOnebot(obOpts());
 		const r = await ad.send(obConnection(), obTarget(), { kind: "composite", segments: [] });
-		expect(r).toEqual({ ok: false, code: "invalid", message: "empty payload" });
+		expect(r).toEqual({ ok: false, code: "invalid", message: "发送内容为空。" });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -681,7 +681,7 @@ describe("onebot — send 路由", () => {
 			images: [{ url: "https://x/1.jpg" }],
 			mergeForward: true,
 		});
-		expect(r).toEqual({ ok: false, code: "invalid", message: "group: groupId missing" });
+		expect(r).toEqual({ ok: false, code: "invalid", message: "缺少 group: groupId" });
 		expect(fetchMock).toHaveBeenCalledTimes(0); // 没调 /get_login_info
 	});
 
@@ -847,7 +847,7 @@ describe("onebot — 失败与重试", () => {
 			TEXT,
 		);
 		expect(r).toMatchObject({ ok: false, code: "invalid" });
-		expect(messageOf(r)).toMatch(/groupId missing/);
+		expect(messageOf(r)).toBe("缺少 group: groupId");
 	});
 });
 
@@ -1303,12 +1303,12 @@ describe("onebot — isAvailable / probe", () => {
 		expect(messageOf(r)).toContain("ECONNREFUSED");
 	});
 
-	it("probe:wrong platform → ok:false", async () => {
+	it("probe:wrong adapter → ok:false", async () => {
 		const ad = startedOnebot(obOpts());
 		const wrong = { ...obConnection(), adapterKey: "webhook" } as unknown as Connection;
 		const r = await ad.probe(wrong);
 		expect(r).toMatchObject({ ok: false, code: "invalid" });
-		expect(messageOf(r)).toMatch(/wrong platform/);
+		expect(messageOf(r)).toBe("OneBot 适配器不匹配：webhook");
 	});
 });
 
@@ -2462,6 +2462,60 @@ it.each([
 				message: unsupported,
 			});
 			expect(fetchMock).toHaveBeenCalledTimes(2);
+		} finally {
+			adapter.stop();
+		}
+	},
+);
+
+it.each([
+	[
+		"en",
+		"The adapter has not started.",
+		"group: groupId missing",
+		"Empty payload.",
+		"Unexpected OneBot adapter: wrong",
+	],
+	[
+		"ja",
+		"アダプターは起動していません。",
+		"group: groupIdがありません",
+		"送信内容が空です。",
+		"OneBotのアダプターが一致しません：wrong",
+	],
+	[
+		"zh-TW",
+		"配接器尚未啟動。",
+		"缺少 group: groupId",
+		"傳送內容為空。",
+		"OneBot 配接器不符：wrong",
+	],
+] as const)(
+	"localizes adapter lifecycle and OneBot validation in %s without sending requests",
+	async (locale, notStarted, missing, empty, mismatch) => {
+		i18n.set({ locale, voice: "plain" });
+		const adapter = createOnebotAdapter(obOpts());
+		try {
+			expect(await adapter.send(obConnection(), obTarget(), TEXT)).toEqual({
+				ok: false,
+				code: "unavailable",
+				message: notStarted,
+			});
+			reconcileAdapter(adapter, []);
+			expect(await adapter.send(obConnection(), obTarget({ address: "" }), TEXT)).toEqual({
+				ok: false,
+				code: "invalid",
+				message: missing,
+			});
+			expect(
+				await adapter.send(obConnection(), obTarget(), { kind: "composite", segments: [] }),
+			).toEqual({ ok: false, code: "invalid", message: empty });
+			expect(await adapter.probe({ ...obConnection(), adapterKey: "wrong" })).toEqual({
+				ok: false,
+				code: "invalid",
+				message: mismatch,
+			});
+			expect(fetchMock).not.toHaveBeenCalled();
 		} finally {
 			adapter.stop();
 		}
