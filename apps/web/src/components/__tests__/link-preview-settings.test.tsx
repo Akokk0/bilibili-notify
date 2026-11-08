@@ -8,10 +8,11 @@
  */
 
 import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { adapterKeyFor, snapshotFor } from "../../__tests__/platform-snapshot";
+import { i18n } from "../../i18n";
 import type { Connection, PushTarget } from "../../types/domain";
 import type { GlobalSettings } from "../../types/globals";
 import { LinkPreviewSettings } from "../link-preview-settings";
@@ -139,6 +140,9 @@ const row = (name: string) =>
 /** 逐群表默认收起,要看行先展开。 */
 const openGroups = () => fireEvent.click(screen.getByRole("button", { name: "展开" }));
 
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 afterEach(cleanup);
 
 describe("LinkPreviewSettings", () => {
@@ -475,4 +479,33 @@ it("keeps explicit same-default preferences and an empty exception out of the co
 	).toBe("true");
 	fireEvent.click(screen.getByRole("button", { name: "收起" }));
 	expect(screen.queryByRole("group", { name: /^群 A · / })).toBeNull();
+});
+
+it("link preview labels translate without changing open target exceptions or inheritance patches", () => {
+	const onPatch = renderCard(
+		draftWith({ byTarget: { [T_A]: { isOn: false, replyForm: "nativeShare" }, [T_B]: {} } }),
+	);
+	openGroups();
+	const group = screen.getByRole("group", { name: /^群 A/ });
+	for (const [locale, off, mini, summary] of [
+		["en", "Off", "Mini-app card", "Groups: 2 · Overrides: 1"],
+		["ja", "オフ", "ミニアプリカード", "2 グループ · 例外 1 件"],
+		["zh-TW", "關", "小程式卡", "2 個群組 · 1 個例外"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByRole("group", { name: /^群 A/ })).toBe(group);
+		expect(within(group).getByRole("button", { name: off }).getAttribute("aria-pressed")).toBe(
+			"true",
+		);
+		expect(within(group).getByRole("button", { name: mini }).getAttribute("aria-pressed")).toBe(
+			"true",
+		);
+		expect(screen.getByText(summary)).toBeTruthy();
+		expect(screen.getByText("这个实现没有 get_mini_app_ark")).toBeTruthy();
+		expect(onPatch).not.toHaveBeenCalled();
+	}
+	fireEvent.click(within(group).getByRole("button", { name: "跟隨預設 · 開" }));
+	expect(onPatch).toHaveBeenCalledExactlyOnceWith({
+		linkPreview: { byTarget: { [T_A]: { isOn: null } } },
+	});
 });
