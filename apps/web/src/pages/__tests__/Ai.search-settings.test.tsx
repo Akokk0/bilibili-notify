@@ -96,6 +96,40 @@ it("global AI labels follow locale while a staged search scene stays unchanged u
 	});
 });
 
+it("visible search scene labels and fee hints translate without replacing the draft key", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	mount();
+	await screen.findByText("Web search");
+	expect(screen.getByText("Web search for post commentary")).toBeTruthy();
+	const key = inputAt("ai.search.keys.bocha");
+	if (!key) throw new Error("search key input not rendered");
+	fireEvent.change(key, { target: { value: "staged-search-key" } });
+	for (const [locale, live, roast, fee] of [
+		[
+			"ja",
+			"配信要約のウェブ検索",
+			"辛口コメントのウェブ検索",
+			"有効にすると、配信終了後の要約ごとに検索回数（リクエストごとの課金）と数秒の待ち時間が増える場合があります。",
+		],
+		[
+			"zh-TW",
+			"直播摘要網路搜尋",
+			"犀利短評網路搜尋",
+			"啟用後，每次下播摘要都可能增加搜尋呼叫（按次計費）與數秒延遲。",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(live)).toBeTruthy();
+		expect(screen.getByText(roast)).toBeTruthy();
+		expect(screen.getByText(fee)).toBeTruthy();
+		expect(inputAt("ai.search.keys.bocha")).toBe(key);
+		expect(key.value).toBe("staged-search-key");
+		expect(key.type).toBe("password");
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+});
+
 describe("Ai 页 · 联网搜索设置块", () => {
 	it("后端 Picker 与博查的 key 输入框在场,key 是密文", async () => {
 		mount();

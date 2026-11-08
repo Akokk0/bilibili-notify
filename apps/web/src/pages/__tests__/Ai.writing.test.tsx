@@ -87,6 +87,41 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("localized writing controls keep the selected scene and staged target override", async () => {
+	const config = makeDefaultGlobalSettings();
+	config.ai.writing.liveSummary.byTarget = { [DELETED]: true };
+	mount(config);
+	await screen.findByRole("region", { name: "女仆写正文" });
+	fireEvent.click(card().getByRole("button", { name: "直播总结" }));
+	await open();
+	fireEvent.click(row("读书会").getByRole("button", { name: "模板" }));
+	for (const [locale, title, scene, template, counts] of [
+		["en", "AI-written body", "Live summary", "Template", "3 targets · 1 explicit override"],
+		["ja", "AI による本文", "配信要約", "テンプレート", "送信先 3 件 · 個別設定 1 件"],
+		["zh-TW", "女僕撰寫內文", "直播摘要", "範本", "3 個目標 · 1 筆明確例外"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		const region = within(screen.getByRole("region", { name: title }));
+		expect(region.getByText(counts)).toBeTruthy();
+		expect(region.getByRole("button", { name: scene }).getAttribute("aria-pressed")).toBe("true");
+		expect(
+			within(region.getByRole("group", { name: /^读书会 · / }))
+				.getByRole("button", { name: template })
+				.getAttribute("aria-pressed"),
+		).toBe("true");
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	expect(screen.getByText("有 1 筆例外的目標已不存在，目前不會套用；設定仍會保留。")).toBeTruthy();
+	await save();
+	expect(api.patch).toHaveBeenCalledOnce();
+	expect(vi.mocked(api.patch).mock.calls[0]?.[1]).toMatchObject({
+		core: {
+			ai: { writing: { liveSummary: { byTarget: { [GROUP]: false, [DELETED]: true } } } },
+		},
+	});
+});
+
 it("edits the default body through the existing AI draft and settings request", async () => {
 	mount();
 	await screen.findByRole("region", { name: "女仆写正文" });
