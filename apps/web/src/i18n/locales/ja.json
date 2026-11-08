@@ -366,8 +366,19 @@
 	"subs.tags.all": "すべて",
 	"history.records#other": "全{count}件",
 	"history.retention#other": " · 画像の保存期間：{count}日",
-	"history.messages#other": "{count}件",
 	"history.repush.count#other": "（{count}件）",
 	"history.repush.pending#other": "{count}件を再送中です。処理が完了すると、この行が自動更新されます。",
-	"extension.reportDiscrepancies.count#other": "{count}件"
+	"extension.reportDiscrepancies.count#other": "{count}件",
+	"sourceUi.components.toast.shell.title.1": "送信失敗",
+	"sourceUi.components.toast.shell.ToastCard.3": "設定へ",
+	"pipelineErrors.title": "送信処理エラー ({count})",
+	"pipelineErrors.clear": "エラー記録を消去",
+	"pipelineErrors.live": "配信",
+	"pipelineErrors.post": "投稿の配信",
+	"pipelineErrors.push": "送信",
+	"pipelineErrors.image": "描画",
+	"pipelineErrors.ai": "AI",
+	"pipelineErrors.link": "リンクプレビュー",
+	"pipelineErrors.other": "その他",
+	"notices.messages#other": "{count}件"
 }

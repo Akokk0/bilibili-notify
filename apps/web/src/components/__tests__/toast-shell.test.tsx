@@ -260,3 +260,36 @@ describe("推送 toast —— 无目标", () => {
 beforeEach(() => {
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 });
+
+it("toast labels follow locale without rewriting the delivered text or changing its configure destination", async () => {
+	renderShell();
+	act(() =>
+		useToastStore.getState().push(
+			pushView("locale-toast", {
+				status: "no-targets",
+				targetId: null,
+				subscriptionId: "sub-9",
+				messages: [
+					{ text: "原推送内容", kind: "text", role: "main" },
+					{ text: "原附加内容", kind: "text", role: "extra" },
+				],
+			}),
+		),
+	);
+	const original = screen.getByText("原推送内容");
+	for (const [locale, count, configure] of [
+		["en", "2 messages", "Configure"],
+		["ja", "2件", "設定へ"],
+		["zh-TW", "2 則", "前往設定"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByText(count)).toBeTruthy();
+		expect(screen.getByRole("button", { name: configure })).toBeTruthy();
+		expect(screen.getByText("原推送内容")).toBe(original);
+	}
+	await userEvent.click(screen.getByRole("button", { name: "前往設定" }));
+	expect(screen.getByTestId("loc").textContent).toBe("/subs?open=sub-9");
+	expect(screen.queryByText("原推送内容")).toBeNull();
+});

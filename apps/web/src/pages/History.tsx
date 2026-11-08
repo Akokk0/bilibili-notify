@@ -370,7 +370,7 @@ function HistoryRow({
 						>
 							<span>
 								{count > 1
-									? tx("history.messages", { count })
+									? tx("notices.messages", { count })
 									: tx("sourceUi.pages.History.HistoryRow.23")}
 							</span>
 							<span aria-hidden="true">{open ? " ▴" : " ▾"}</span>

@@ -432,7 +432,6 @@
 	"sourceUi.components.scope.tabs.ScopeTabs.8": "仅作用于 ",
 	"sourceUi.components.scope.tabs.ScopeTabs.9": ",未开启的项继承全局",
 	"sourceUi.components.toast.shell.title.1": "推送失败",
-	"sourceUi.components.toast.shell.ToastCard.2": " 条",
 	"sourceUi.components.toast.shell.ToastCard.3": "去配置",
 	"sourceUi.pages.Dashboard.title.1": "本周推送趋势",
 	"sourceUi.pages.Dashboard.subtitle.2": "按推送类型分布",
@@ -3232,8 +3231,8 @@
 	"dashboard.pushUnit#other": "次",
 	"history.records#other": "共 {count} 条",
 	"history.retention#other": " · 图片留 {count} 天",
-	"history.messages#other": "{count} 条",
 	"history.repush.count#other": "（{count} 条）",
 	"history.repush.pending#other": "正在补发（{count} 条），完成后此行会自动更新。",
-	"extension.reportDiscrepancies.count#other": "{count} 条"
+	"extension.reportDiscrepancies.count#other": "{count} 条",
+	"notices.messages#other": "{count} 条"
 }

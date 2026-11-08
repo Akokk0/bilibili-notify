@@ -475,8 +475,7 @@ export function TimelinePanel({
 									</div>
 									{count > 1 ? (
 										<Pill color={tone} subtle size="sm">
-											{count}
-											{tx("sourceUi.components.toast.shell.ToastCard.2")}
+											{tx("notices.messages", { count })}
 										</Pill>
 									) : null}
 									<span className="text-bn-xs text-bn-text-secondary">→ {targetName}</span>

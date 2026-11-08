@@ -113,8 +113,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 				<ExtensionRowWho view={view} />
 				{count > 1 ? (
 					<Pill color={meta.tone} subtle size="sm">
-						{count}
-						{tx("sourceUi.components.toast.shell.ToastCard.2")}
+						{tx("notices.messages", { count })}
 					</Pill>
 				) : null}
 			</div>

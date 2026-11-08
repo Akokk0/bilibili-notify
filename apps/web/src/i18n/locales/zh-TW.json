@@ -366,8 +366,19 @@
 	"subs.tags.all": "全部",
 	"history.records#other": "共 {count} 筆",
 	"history.retention#other": " · 圖片保留 {count} 天",
-	"history.messages#other": "{count} 則",
 	"history.repush.count#other": "（{count} 則）",
 	"history.repush.pending#other": "正在補發（{count} 則），處理完成後此列會自動更新。",
-	"extension.reportDiscrepancies.count#other": "{count} 筆"
+	"extension.reportDiscrepancies.count#other": "{count} 筆",
+	"sourceUi.components.toast.shell.title.1": "推播失敗",
+	"sourceUi.components.toast.shell.ToastCard.3": "前往設定",
+	"pipelineErrors.title": "推播流程錯誤 ({count})",
+	"pipelineErrors.clear": "清空錯誤紀錄",
+	"pipelineErrors.live": "直播",
+	"pipelineErrors.post": "作品投遞",
+	"pipelineErrors.push": "推播",
+	"pipelineErrors.image": "繪製",
+	"pipelineErrors.ai": "AI",
+	"pipelineErrors.link": "連結預覽",
+	"pipelineErrors.other": "其他",
+	"notices.messages#other": "{count} 則"
 }
