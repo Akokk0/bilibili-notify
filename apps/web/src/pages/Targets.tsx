@@ -1450,7 +1450,7 @@ function ConnectionRail({
 				return {
 					id: a.id,
 					label: a.name || tx("targets.targetCard.text1"),
-					desc: `${platformLabel(face(a))} · ${isEndpointConnection(a) ? tx("targets.connectionRail.text4") : tx("targets.connectionRail.text5", { value0: count })}`,
+					desc: `${platformLabel(face(a))} · ${isEndpointConnection(a) ? tx("targets.connectionRail.text4") : tx("targets.connectionRail.text5", { count, value0: count })}`,
 					// 选中那格喂 currentColor —— 标识色是中等亮度,摆在皮肤画的实心块上会撞
 					// (QQ官方 #14b8a6 对主人那块粉只有 1.24:1)。平台名在副标题里写着,不丢。
 					icon: (

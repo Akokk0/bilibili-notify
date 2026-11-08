@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { i18n } from "../../i18n";
 import {
 	builtinAdapters,
 	builtinCandidatesResponse,
@@ -170,3 +171,6 @@ it("shows every safe settings reason instead of dropping all but the first", asy
 	expect(screen.getByText(/second reason/)).toBeTruthy();
 	expect(screen.queryByText("http://127.0.0.1")).toBeNull();
 });
+
+// These scenarios assert Chinese UI labels explicitly.
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));

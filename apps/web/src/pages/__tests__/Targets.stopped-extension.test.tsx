@@ -16,9 +16,9 @@ import {
 
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import { PlatformMetaRoot } from "../../components/platform-meta";
 import Targets from "../Targets";
@@ -28,7 +28,10 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 /** 停着的 v2 桥:`push` 是服务端照清单给的,跟跑着时一模一样。 */
 const STOPPED_BRIDGE: ExtensionsResponse["extensions"][number] = {
@@ -279,4 +282,39 @@ it("内置适配器连接不显示其他已安装拓展的入口", async () => {
 	renderPage({ connections: [{ ...CONNECTION, adapterKey: "onebot", platform: "onebot" }] });
 	await screen.findByRole("region", { name: "小电视" });
 	expect(screen.queryAllByRole("button", { name: /设置$/ })).toHaveLength(0);
+});
+
+it("stopped-extension status and its settings action follow the language without changing ownership", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	renderPage();
+	const card = await screen.findByRole("region", { name: "小电视" });
+	for (const [locale, status, explanation, action] of [
+		[
+			"en",
+			"(Extension not running)",
+			"机器人框架桥接 is not running — this connection cannot send. Enable it on the Extensions page first.",
+			"Settings for 机器人框架桥接",
+		],
+		[
+			"ja",
+			"（拡張機能が停止中）",
+			"机器人框架桥接は停止中です。この接続では送信できません。先に拡張機能ページで有効にしてください。",
+			"机器人框架桥接の設定",
+		],
+		[
+			"zh-TW",
+			"（拓展未執行）",
+			"机器人框架桥接未執行，這條連線目前無法發送；請先到拓展頁啟用它。",
+			"机器人框架桥接設定",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getAllByText(status).length).toBeGreaterThan(0);
+		expect(within(card).getByText(explanation)).toBeTruthy();
+		expect(within(card).getByRole("button", { name: action })).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	}
+	fireEvent.click(within(card).getByRole("button", { name: "机器人框架桥接設定" }));
+	expect(await screen.findByText("Extension settings destination")).toBeTruthy();
 });

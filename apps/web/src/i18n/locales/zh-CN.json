@@ -1042,7 +1042,6 @@
 	"targets.connectionRail.text2": "+ 新建",
 	"targets.connectionRail.text3": "尚未配置任何连接",
 	"targets.connectionRail.text4": "单向投递",
-	"targets.connectionRail.text5": "{value0} 个目标",
 	"targets.connectionRail.text6": "(停用)",
 	"targets.connectionRail.text7": "(拓展没在跑)",
 	"targets.targets.text1": "已新建连接",
@@ -3234,5 +3233,6 @@
 	"sourceUi.pages.Stats.suffix.30#other": "个",
 	"sourceUi.pages.Stats.suffix.32#other": "场 · {value1}h",
 	"sourceUi.pages.Stats.Stats.56#other": "场",
-	"panelUi.services.stats.2#other": "{count}日前"
+	"panelUi.services.stats.2#other": "{count}日前",
+	"targets.connectionRail.text5#other": "{value0} 个目标"
 }

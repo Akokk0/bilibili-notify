@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { i18n } from "../../i18n";
 import {
 	builtinAdapters,
 	builtinCandidatesResponse,
@@ -233,3 +234,6 @@ it("尚未保存的候选也使用候选描述中的图标", async () => {
 	const candidate = dialog.querySelector('[data-bn="option option-active"]');
 	expect(candidate?.querySelector("svg")).not.toBeNull();
 });
+
+// These scenarios assert Chinese UI labels explicitly.
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { i18n } from "../../i18n";
 import {
 	builtinAdapters,
 	builtinCandidatesResponse,
@@ -19,7 +20,7 @@ import {
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
 import Targets from "../Targets";
@@ -122,3 +123,6 @@ it("快照没有可用作用域时不擅自创建群目标", async () => {
 	expect(screen.queryByRole("dialog")).toBeNull();
 	expect(await screen.findByText(/没有声明可用的会话类型/)).toBeTruthy();
 });
+
+// These scenarios assert Chinese UI labels explicitly.
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));

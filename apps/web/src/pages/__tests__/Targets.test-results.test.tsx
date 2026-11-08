@@ -213,3 +213,151 @@ it("endpoint delivery feedback translates while retaining the managed target and
 	expect(api.post).toHaveBeenCalledOnce();
 	expect(api.post).toHaveBeenCalledWith(`/api/targets/${MANAGED_TARGET.id}/test`, { kind: "text" });
 });
+
+it("connection lists and stored target status translate without changing the selected connection or raw addresses", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const second = {
+		...ONEBOT_CONNECTION,
+		id: WEBHOOK_ID,
+		name: "原连接乙",
+		probeState: { status: "unreachable", message: "原连接诊断" },
+	} as Connection;
+	const target = (
+		id: string,
+		connectionId: string,
+		name: string,
+		address: string,
+		reachability: unknown,
+	) =>
+		({
+			id,
+			connectionId,
+			name,
+			address,
+			kind: "session",
+			scope: "group",
+			enabled: true,
+			reachability,
+		}) as PushTarget;
+	renderPage(
+		[ONEBOT_CONNECTION, second],
+		[
+			target("t1", ONEBOT_ID, "原目标甲", "raw-group-one", { status: "reachable", latencyMs: 3 }),
+			target("t2", WEBHOOK_ID, "原目标乙", "raw-group-two", {
+				status: "unreachable",
+				message: "原目标诊断",
+			}),
+			target("t3", WEBHOOK_ID, "原目标丙", "raw-group-three", {
+				status: "reachable",
+				latencyMs: 17,
+			}),
+		],
+	);
+	await screen.findByText("Push connections");
+	expect(await screen.findByText(/ · 1 target$/)).toBeTruthy();
+	expect(await screen.findByText(/ · 2 targets$/)).toBeTruthy();
+	const connectionButton = screen.getAllByRole("button", { name: /原连接乙/ })[0];
+	if (!connectionButton) throw new Error("The second connection is missing");
+	fireEvent.click(connectionButton);
+	const selected = screen.getByRole("region", { name: "原连接乙" });
+	for (const [locale, title, lastProbe, lastFailure, lastSuccess, group] of [
+		[
+			"ja",
+			"プッシュ接続",
+			"前回の接続テスト失敗 — 原连接诊断",
+			"前回の配信失敗 — 原目标诊断",
+			"前回の配信成功 · 17ms",
+			"グループ",
+		],
+		[
+			"zh-TW",
+			"推播連線",
+			"上次測試失敗 — 原连接诊断",
+			"上次推播失敗 — 原目标诊断",
+			"上次推播成功 · 17ms",
+			"群組",
+		],
+		[
+			"en",
+			"Push connections",
+			"Last test failed — 原连接诊断",
+			"Last push failed — 原目标诊断",
+			"Last push succeeded · 17ms",
+			"Group",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByRole("region", { name: "原连接乙" })).toBe(selected);
+		expect(screen.getByText(lastProbe)).toBeTruthy();
+		expect(screen.getByText(lastFailure)).toBeTruthy();
+		expect(screen.getByText(lastSuccess)).toBeTruthy();
+		expect(screen.getAllByText(group).length).toBeGreaterThan(0);
+		expect(screen.getByText(/raw-group-two/)).toBeTruthy();
+		expect(screen.getByText("原目标乙")).toBeTruthy();
+	}
+	expect(api.post).not.toHaveBeenCalled();
+	expect(api.put).not.toHaveBeenCalled();
+	expect(api.delete).not.toHaveBeenCalled();
+});
+
+it("a managed endpoint without its target translates its guidance and does not send a test to an absent target", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	renderPage([WEBHOOK_CONNECTION], []);
+	fireEvent.click(await screen.findByRole("button", { name: "Send test" }));
+	for (const [locale, title, empty, warning] of [
+		[
+			"en",
+			"One-way delivery target",
+			"Saving the connection creates its default delivery target automatically.",
+			"Save the connection first; the system will create a default delivery target automatically.",
+		],
+		[
+			"ja",
+			"一方向の送信先",
+			"接続を保存すると、標準の送信先が自動作成されます。",
+			"先に接続を保存してください。標準の送信先が自動作成されます。",
+		],
+		[
+			"zh-TW",
+			"單向投遞目標",
+			"儲存連線後，系統會自動建立預設投遞目標。",
+			"請先儲存連線，系統會自動建立預設投遞目標。",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(await screen.findByText(warning)).toBeTruthy();
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByText(empty)).toBeTruthy();
+		expect(screen.getByRole("region", { name: "飞书群机器人" })).toBeTruthy();
+	}
+	expect(api.post).not.toHaveBeenCalled();
+	expect(api.delete).not.toHaveBeenCalled();
+});
+
+it("empty connection guidance follows the language without creating resources", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	renderPage([], []);
+	for (const [locale, title, hint, button] of [
+		[
+			"en",
+			"No connections",
+			"Create a connection, then configure push targets for it.",
+			"+ New connection",
+		],
+		[
+			"ja",
+			"接続がありません",
+			"先に接続を作成してから、送信先を設定してください。",
+			"+ 接続を追加",
+		],
+		["zh-TW", "尚無連線", "請先新增連線，再設定它的推播目標。", "+ 新增連線"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(await screen.findByText(title)).toBeTruthy();
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(screen.getByRole("button", { name: button })).toBeTruthy();
+	}
+	expect(api.post).not.toHaveBeenCalled();
+	expect(api.put).not.toHaveBeenCalled();
+});

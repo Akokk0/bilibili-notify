@@ -29,7 +29,11 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
+
+// These scenarios assert Chinese UI labels explicitly.
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 const CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
 

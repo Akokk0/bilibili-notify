@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { i18n } from "../../i18n";
 import {
 	builtinAdapters,
 	builtinCandidatesResponse,
@@ -11,7 +12,7 @@ import {
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
 import Targets from "../Targets";
@@ -99,3 +100,6 @@ describe("目标弹窗的连接栏", () => {
 		expect(within(dialog).getByRole("button", { name: /备用那台/ })).toBeTruthy();
 	});
 });
+
+// These scenarios assert Chinese UI labels explicitly.
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));

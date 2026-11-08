@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { i18n } from "../../i18n";
 import {
 	builtinAdapters,
 	builtinCandidatesResponse,
@@ -395,3 +396,6 @@ describe("连接动过之后的 bot 名单", () => {
 		await waitFor(() => expect(invalidatedBots(invalidate)).toBe(true));
 	});
 });
+
+// These scenarios assert Chinese UI labels explicitly.
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));

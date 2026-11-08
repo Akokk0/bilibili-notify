@@ -25,7 +25,11 @@ vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
+
+// These scenarios assert Chinese UI labels explicitly.
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 function source(over: Partial<ExtensionEntryView> = {}): ExtensionEntryView {
 	return {
