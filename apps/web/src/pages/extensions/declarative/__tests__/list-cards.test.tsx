@@ -24,6 +24,7 @@ vi.mock("../../../../services/api", async (importOriginal) => ({
 }));
 
 import { handleStateEnvelope } from "../../../../hooks/useStateChannel";
+import { i18n } from "../../../../i18n";
 import { api } from "../../../../services/api";
 import {
 	answerPatch,
@@ -43,6 +44,11 @@ import {
 	TOKEN,
 	updatedValues,
 } from "./list-harness";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 beforeEach(() => {
 	vi.mocked(api.get).mockReset();

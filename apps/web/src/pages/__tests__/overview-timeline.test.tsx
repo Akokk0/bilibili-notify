@@ -9,11 +9,17 @@
 import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import type { HistoryEntryView } from "../../services/overview";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { TimelinePanel } from "../Overview";
 import { makeSource } from "../rules/__tests__/fixtures";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 afterEach(cleanup);
 

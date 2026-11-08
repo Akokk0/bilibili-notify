@@ -24,7 +24,13 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const base = { id: ID, name: "家里那台", enabled: true } as const;

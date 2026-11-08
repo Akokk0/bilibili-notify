@@ -7,7 +7,8 @@
  */
 
 import type { SettingsListField } from "@bilibili-notify/contract";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../../i18n";
 import { ApiError } from "../../../../services/api";
 import {
 	conflictText,
@@ -19,6 +20,11 @@ import {
 	writeFailureOf,
 	writeReasonOf,
 } from "../list-items";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const LINKS: SettingsListField = {
 	key: "links",

@@ -7,9 +7,15 @@
  */
 
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { DeltaTag, NetBars, TrendChart } from "../charts";
 import { netFromCumulative } from "../gaps";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 /** 与 charts.tsx 的 ESTIMATED 同值。写死在这里,改动必须两边同时想清楚。 */
 const GREY = "var(--color-bn-text-tertiary)";

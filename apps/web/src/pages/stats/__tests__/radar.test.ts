@@ -6,9 +6,15 @@
  * 这里,`RadarChart` 只剩下摆坐标的活。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import type { UpStatsRow } from "../../../services/stats.js";
 import { buildRadarAxes, normalizeAxis } from "../radar.js";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 function row(over: Partial<UpStatsRow> & { uid?: string } = {}): UpStatsRow {
 	const { uid = "1", ...rest } = over;

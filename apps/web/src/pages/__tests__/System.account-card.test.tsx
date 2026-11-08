@@ -18,7 +18,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { applySourceAuthChanged } from "../../hooks/use-source-auth";
+import { i18n } from "../../i18n";
 import System from "../System";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 vi.mock("../../hooks/useDirtyDraft", () => ({ useDirtyDraft: () => {} }));
 

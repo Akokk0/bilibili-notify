@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { classifyLoginResponse } from "../session";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 /** 登录失败的回应:平铺的 `{ code, message }`(ADR-0026),面板按 `code` 分。 */
 function failure(

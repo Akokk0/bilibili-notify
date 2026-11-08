@@ -15,7 +15,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { MaidSkills } from "../ai/MaidSkills";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 // vi.mock 的工厂被提升到文件顶部,所以它引用的东西也得先于它存在 —— 一律进
 // vi.hoisted,别在外面留 const(那会是 "Cannot access before initialization")。

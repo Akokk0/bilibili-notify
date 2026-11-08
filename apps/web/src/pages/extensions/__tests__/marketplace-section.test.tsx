@@ -26,6 +26,7 @@ vi.mock("../../../services/api", async (importOriginal) => ({
 	api: { get: apiGetMock, post: apiPostMock, patch: apiPatchMock, upload: vi.fn() },
 }));
 
+import { i18n } from "../../../i18n";
 import { type CardMotion, useCardMotionStore } from "../card-motion";
 import { ExtensionInstallOutcome } from "../install-outcome";
 import {
@@ -33,6 +34,11 @@ import {
 	MarketplaceSection,
 	useMarketplaceInstall,
 } from "../marketplace-section";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const MARKET: MarketplaceResponse = {
 	available: true,

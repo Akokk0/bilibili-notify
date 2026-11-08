@@ -26,6 +26,7 @@ vi.mock("../../../../services/api", async (importOriginal) => ({
 	ApiError: (await importOriginal<typeof import("../../../../services/api")>()).ApiError,
 }));
 
+import { i18n } from "../../../../i18n";
 import { ApiError, api } from "../../../../services/api";
 import { extensionStatusKey } from "../view-query";
 import {
@@ -46,6 +47,11 @@ import {
 	TOKEN,
 	updatedValues,
 } from "./list-harness";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 /** 一条带着 BN 不认识的键的项 —— 只动一格的写不许碰到它。 */
 const HOME_WITH_EXTRA = { ...HOME, addedBy: "拓展自己放的" };

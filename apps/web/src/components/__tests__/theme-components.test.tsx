@@ -7,8 +7,14 @@
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { ArrayEditor, LogLevelPicker, Picker, TArea, TInput, TSelect } from "../forms";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const LIGHT_ONLY_CLASS_RE =
 	/\b(?:bg-white(?:\/\d+)?|bg-gray-(?:50|100|200|300)|border-gray-(?:100|200|300)|text-gray-(?:600|700|800|900)|bg-amber-(?:50|100)|text-amber-(?:700|800|900)|hover:bg-black\/5|hover:bg-gray-50)\b/;

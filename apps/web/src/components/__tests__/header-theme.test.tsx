@@ -4,10 +4,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { THEME_STORAGE_KEY } from "../../services/theme";
 import { useSkinStore } from "../../store/skin";
 import { useThemeStore } from "../../store/theme";
 import { ThemeRoot } from "../theme-root";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const apiGet = vi.hoisted(() =>
 	vi.fn(async (path: string) => {

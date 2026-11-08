@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-controls";
+import { i18n } from "../../../i18n";
 
 /**
  * 网格画布 + 检查器那条回路(ADR-0014 决策 6 / 20 / 21)。
@@ -20,7 +21,7 @@ import {
 import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { SkinCanvas, type SkinSelection } from "../SkinCanvas";
 import { SkinInspector } from "../SkinInspector";
 import {
@@ -36,6 +37,11 @@ import {
 	setFrame,
 	setFrameCss,
 } from "../skin-draft-ops";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 /** CSS 那一节默认是结构视图,源码文本框得先切过去(ADR-0014 决策 21 的 2026-09-19 🔗)。 */
 const toSource = () => fireEvent.click(screen.getByRole("button", { name: "源码" }));

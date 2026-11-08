@@ -47,7 +47,13 @@ vi.mock("../../../services/api", () => ({
 	},
 }));
 
+import { i18n } from "../../../i18n";
 import { api } from "../../../services/api";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 /** 服务端刻意把内置那份排在后面 —— 首位是本节自己排出来的,不是抄来的顺序。 */
 const LIST = {

@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { getFieldLabel } from "../../config/field-labels";
+import { i18n } from "../../i18n";
 import { groupDiffsBySection, sectionOf } from "../groupDiffs";
 import type { FieldDiff } from "../walkTreeDiff";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const D = (code: string, oldV: unknown = 0, newV: unknown = 1): FieldDiff => ({
 	code,

@@ -17,14 +17,20 @@
 import type { ExtensionBlock } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../../i18n";
 import { Blocks } from "../declarative/blocks";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 /** 桥交来的那张 bot 表的样子:一行 onebot,三态三档都有。 */
 const BOTS: ExtensionBlock = {

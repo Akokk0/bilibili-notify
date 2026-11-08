@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { chooseSelect } from "../../__tests__/select-controls";
+import { i18n } from "../../i18n";
 
 /**
  * 编辑器的**皮肤这一档**:名字 / 作者 / 说明的接线(ADR-0014 第二步续)。
@@ -28,6 +29,11 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 import CardSkinEditor from "../CardSkinEditor";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const MANIFEST = {
 	schemaVersion: 2,

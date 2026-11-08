@@ -86,6 +86,12 @@ vi.mock("../../pages/System", () => ({ default: () => null }));
 vi.mock("../../pages/Targets", () => ({ default: () => null }));
 
 import App from "../../App";
+import { i18n } from "../../i18n";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 function renderAt(path: string) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

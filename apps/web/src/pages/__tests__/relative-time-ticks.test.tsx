@@ -23,7 +23,13 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const NOW = Date.UTC(2026, 8, 23, 12, 0, 0);
 const T1 = "22222222-2222-4222-8222-222222222222";

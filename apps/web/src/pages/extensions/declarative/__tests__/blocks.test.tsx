@@ -12,9 +12,15 @@ import type { ExtensionBlock } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../../i18n";
 import { ApiError, api } from "../../../../services/api";
 import { Blocks } from "../blocks";
 import { extensionStatusKey, useExtensionView } from "../view-query";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 // 面板按 `instanceof ApiError` + 状态码认 409 —— 用真的那个类,替身比它宽松的话测的就不是那条路。
 vi.mock("../../../../services/api", async (importOriginal) => ({

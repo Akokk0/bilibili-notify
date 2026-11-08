@@ -25,7 +25,13 @@ vi.mock("../../utils/clipboard", () => ({
 	copyToClipboard: vi.fn().mockResolvedValue(true),
 }));
 
+import { i18n } from "../../i18n";
 import { copyToClipboard } from "../../utils/clipboard";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 function makeSub(uid: string, name: string): Subscription {
 	return {

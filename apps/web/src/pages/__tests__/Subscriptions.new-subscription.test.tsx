@@ -36,7 +36,13 @@ vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 }));
 
+import { i18n } from "../../i18n";
 import { api } from "../../services/api";
+
+// This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 
 const AVATAR = "data:image/png;base64,iVBORw0KGgo=";
 
