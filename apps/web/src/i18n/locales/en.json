@@ -124,5 +124,20 @@
 	"accounts.guideTitle": "Sign in to {source}",
 	"accounts.guideShort": "{source} sign-in",
 	"accounts.guideHint": "Click the highlighted QR sign-in button, then scan and confirm in the {source} app. This guide advances automatically once you are signed in.",
-	"accounts.orderLabel": "Account order"
+	"accounts.orderLabel": "Account order",
+	"preferences.title": "Language and time",
+	"preferences.subtitle": "Saved changes apply to this server and dashboard.",
+	"preferences.navHint": "Skin · Language and time",
+	"preferences.locale.label": "Interface language",
+	"preferences.locale.hint": "One language is used throughout this server. Content not yet translated falls back to Simplified Chinese.",
+	"preferences.locale.zhCN": "简体中文",
+	"preferences.locale.zhTW": "繁體中文",
+	"preferences.locale.en": "English",
+	"preferences.locale.ja": "日本語",
+	"preferences.voice.label": "Text tone",
+	"preferences.voice.hint": "Choose the tone of interactions and prompts; titles and data labels stay neutral. This option is hidden for languages without maid translations, while your saved choice is kept.",
+	"preferences.voice.maid": "Maid",
+	"preferences.voice.plain": "Plain",
+	"preferences.timezone.label": "Time zone",
+	"preferences.timezone.hint": "Enter an IANA time zone, such as Asia/Shanghai. It controls card timestamps, server schedules and quiet hours. Saving reschedules future runs without catching up missed runs. Statistics charts in the browser still group days by your local time zone."
 }

@@ -75,6 +75,25 @@ afterEach(() => {
 });
 
 describe("系统外观的语言、口吻和时区", () => {
+	it("applied language redraws preferences without resetting the unsaved timezone", async () => {
+		await renderAppearance({ voice: "plain" });
+		const input = screen.getByRole("textbox", { name: "时区" });
+		fireEvent.change(input, { target: { value: "Europe/Paris" } });
+		for (const [locale, language, timezone] of [
+			["en", "Interface language", "Time zone"],
+			["ja", "表示言語", "タイムゾーン"],
+			["zh-TW", "介面語言", "時區"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole("group", { name: language })).toBeTruthy();
+			expect(screen.getByRole("textbox", { name: timezone })).toBe(input);
+			expect(input).toHaveProperty("value", "Europe/Paris");
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+	});
+
 	it("素材库保存刷新设置时保留系统页未保存的时区", async () => {
 		const { qc, settings } = await renderAppearance();
 		fireEvent.change(screen.getByRole("textbox", { name: "时区" }), {
@@ -172,15 +191,15 @@ describe("系统外观的语言、口吻和时区", () => {
 		await waitFor(() => expect(i18n.state().locale).toBe("en"));
 		expect(i18n.state().voice).toBe("plain");
 		expect(localStorage.getItem("bn.locale")).toBe("en");
-		expect(screen.queryByRole("group", { name: "文案口吻" })).toBeNull();
+		expect(screen.queryByRole("group", { name: "Text tone" })).toBeNull();
 		fireEvent.click(
-			within(screen.getByRole("group", { name: "界面语言" })).getByRole("button", {
+			within(screen.getByRole("group", { name: "Interface language" })).getByRole("button", {
 				name: "简体中文",
 			}),
 		);
 		expect(
-			within(screen.getByRole("group", { name: "文案口吻" }))
-				.getByRole("button", { name: "女仆" })
+			within(screen.getByRole("group", { name: "Text tone" }))
+				.getByRole("button", { name: "Maid" })
 				.getAttribute("aria-pressed"),
 		).toBe("true");
 		await act(async () => {

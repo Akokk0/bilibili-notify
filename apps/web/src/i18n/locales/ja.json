@@ -124,5 +124,20 @@
 	"accounts.guideTitle": "{source}にログイン",
 	"accounts.guideShort": "{source}のログイン",
 	"accounts.guideHint": "強調表示されたQRログインをクリックし、{source}のアプリでスキャンして確認してください。ログインが完了すると、自動で次の手順に進みます。",
-	"accounts.orderLabel": "アカウントの順序"
+	"accounts.orderLabel": "アカウントの順序",
+	"preferences.title": "言語と時刻",
+	"preferences.subtitle": "保存すると、このサーバーとダッシュボードに適用されます。",
+	"preferences.navHint": "スキン · 言語と時刻",
+	"preferences.locale.label": "表示言語",
+	"preferences.locale.hint": "サーバー全体で同じ言語を使います。未翻訳の内容は簡体字中国語で表示します。",
+	"preferences.locale.zhCN": "简体中文",
+	"preferences.locale.zhTW": "繁體中文",
+	"preferences.locale.en": "English",
+	"preferences.locale.ja": "日本語",
+	"preferences.voice.label": "文体",
+	"preferences.voice.hint": "操作や案内の文体を選びます。見出しやデータ名は通常の表記のままです。メイド文体の翻訳がない言語では、この項目を非表示にし、保存済みの選択は保持します。",
+	"preferences.voice.maid": "メイド",
+	"preferences.voice.plain": "通常",
+	"preferences.timezone.label": "タイムゾーン",
+	"preferences.timezone.hint": "Asia/ShanghaiなどのIANAタイムゾーン名を入力します。カードの時刻、サーバーのスケジュール、通知を停止する時間帯に使います。保存後は今後の予定を組み直し、過去の予定は実行しません。ブラウザー内の統計グラフは引き続き端末のタイムゾーンで日付を区切ります。"
 }
