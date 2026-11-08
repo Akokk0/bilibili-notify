@@ -182,7 +182,7 @@ export function OutcomeLine({
 		outcome.skipped.length > 0
 			? tx("panelUi.pages.stats.RoastRunNowBox.29", {
 					count: outcome.skipped.length,
-					value1: outcome.skipped.map(targetName).join("、"),
+					value1: outcome.skipped.map(targetName).join(tx("stats.roast.targetSeparator")),
 				})
 			: "";
 	if (outcome.failed.length > 0) {
@@ -193,7 +193,9 @@ export function OutcomeLine({
 					count: outcome.failed.length,
 					mode,
 				})}
-				{outcome.failed.map((f) => `${targetName(f.targetId)} ${f.message}`).join("；")}
+				{outcome.failed
+					.map((f) => `${targetName(f.targetId)} ${f.message}`)
+					.join(tx("stats.roast.failureSeparator"))}
 				{skipped}
 			</div>
 		);

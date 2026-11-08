@@ -138,7 +138,10 @@ export function useApprovalReachability(): { canApprove: boolean; hint?: string 
 	const inbound = capabilitiesQuery.data[masterTarget.connectionId]?.inbound;
 	if (canReceiveReply(inbound)) return { canApprove: true };
 	if (inbound?.state === "unsupported") return { canApprove: false, hint: inbound.reason };
-	const why = inbound?.state === "unknown" && inbound.reason ? `（${inbound.reason}）` : "";
+	const why =
+		inbound?.state === "unknown" && inbound.reason
+			? tx("stats.roast.reason", { reason: inbound.reason })
+			: "";
 	return {
 		canApprove: false,
 		hint: tx("panelUi.pages.stats.RoastScheduleFields.5", { value0: why }),

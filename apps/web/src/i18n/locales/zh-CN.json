@@ -3234,5 +3234,8 @@
 	"aiChat.messages.sources#other": "来源 · {count}",
 	"aiChat.messages.writing#other": "已写 {value} 字",
 	"aiChat.messages.written#other": "写了 {value} 字",
-	"maidSkills.problems#other": "有 {count} 份技能无法读取："
+	"maidSkills.problems#other": "有 {count} 份技能无法读取：",
+	"stats.roast.targetSeparator": "、",
+	"stats.roast.failureSeparator": "；",
+	"stats.roast.reason": "（{reason}）"
 }

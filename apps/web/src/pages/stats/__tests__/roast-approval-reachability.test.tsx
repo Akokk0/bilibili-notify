@@ -7,8 +7,9 @@
 
 import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import type { Connection, PushTarget } from "../../../types/domain";
 import { useApprovalReachability } from "../RoastScheduleFields";
 
@@ -74,6 +75,8 @@ function reachability(
 	});
 }
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 afterEach(cleanup);
 
 describe("useApprovalReachability · 看连接的 inbound 能力", () => {
@@ -119,4 +122,31 @@ describe("useApprovalReachability · 看连接的 inbound 能力", () => {
 		expect(vi.mocked(api.get)).toHaveBeenCalledWith("/api/connections/capabilities");
 		expect(result.current).toEqual({ canApprove: false });
 	});
+});
+
+it("unknown approval capability rewords its hint while retaining the original reason and denying approval", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const { result } = reachability(
+		master(),
+		[connection("onebot")],
+		inboundCaps({ state: "unknown", reason: "原始诊断" }),
+	);
+	await waitFor(() =>
+		expect(result.current.hint).toBe(
+			"It is not yet known whether this connection can receive the owner’s replies (原始诊断)",
+		),
+	);
+	for (const [locale, text] of [
+		["ja", "この接続で管理者の返信を受信できるかは未確認です（原始诊断）"],
+		["zh-TW", "尚未確認這條連線能否接收主人的回覆（原始诊断）"],
+		[
+			"en",
+			"It is not yet known whether this connection can receive the owner’s replies (原始诊断)",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(result.current).toEqual({ canApprove: false, hint: text });
+	}
+	expect(api.post).not.toHaveBeenCalled();
+	expect(api.patch).not.toHaveBeenCalled();
 });

@@ -380,3 +380,47 @@ it("individual review translations preserve the original creator, window and gen
 		{},
 	);
 });
+
+it.each([true, false])(
+	"run-now confirmation retains its %s approval choice and encoded subscription across languages",
+	async (approval) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		vi.mocked(api.post).mockResolvedValue({
+			ok: true,
+			outcome: { kind: "pending-approval", draftId: "raw-17" },
+		});
+		withQuery(
+			<RoastRunNowBox
+				approval={approval}
+				targetCount={1}
+				dirty={true}
+				targetName={(id) => id}
+				subscriptionId="source/a b"
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Run once" }));
+		const warning = screen.getByText(/Unsaved changes/);
+		const confirmText = approval
+			? "Generate a review now and send it to the owner in a private message for approval. No group messages will be sent. This also checks the reply-with-y approval route."
+			: "Generate a review now and send it to 1 group immediately. This is a real delivery. To review it first, enable approval above.";
+		expect(screen.getByText(/Generate a review now and/).textContent).toBe(confirmText);
+		for (const [locale, title, label] of [
+			["ja", "レビューを今すぐ実行", approval ? "生成して個別に送信" : "実際に送信"],
+			["zh-TW", "立即執行銳評", approval ? "產生並私訊給我" : "確定送出"],
+			["en", "Run review now", approval ? "Generate and send privately" : "Send for real"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByRole("button", { name: label })).toBeTruthy();
+			expect(warning.isConnected).toBe(true);
+			expect(api.post).not.toHaveBeenCalled();
+		}
+		fireEvent.click(
+			screen.getByRole("button", {
+				name: approval ? "Generate and send privately" : "Send for real",
+			}),
+		);
+		await waitFor(() => expect(api.post).toHaveBeenCalledOnce());
+		expect(api.post).toHaveBeenCalledWith("/api/stats/roast/run/source%2Fa%20b", {});
+	},
+);
