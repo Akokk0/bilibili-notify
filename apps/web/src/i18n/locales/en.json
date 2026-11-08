@@ -1346,5 +1346,14 @@
 	"aiChat.messages.writing#other": "Writing · {value} characters",
 	"aiChat.messages.written#other": "Wrote {value} characters",
 	"aiChat.messages.writing#one": "Writing · {value} character",
-	"aiChat.messages.written#one": "Wrote {value} character"
+	"aiChat.messages.written#one": "Wrote {value} character",
+	"panelUi.components.ai-chat.card-skin-preview.1": "Current appearance · Sample data",
+	"panelUi.components.ai-chat.card-skin-preview.2": "In use",
+	"panelUi.components.ai-chat.card-skin-preview.3": "Use this skin",
+	"panelUi.components.ai-chat.card-skin-preview.4": "This skin is no longer in the library, so its preview is unavailable.",
+	"panelUi.components.ai-chat.card-skin-preview.5": "{value0} · {value1}",
+	"panelUi.components.ai-chat.card-skin-preview.6": "Could not render this card: ",
+	"panelUi.components.ai-chat.card-skin-preview.7": "Rendering preview…",
+	"panelUi.components.ai-chat.card-skin-preview.8": "Review these notes:",
+	"panelUi.components.ai-chat.card-skin-preview.9": "Could not apply: "
 }

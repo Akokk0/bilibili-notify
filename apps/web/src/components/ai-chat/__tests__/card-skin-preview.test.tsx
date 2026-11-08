@@ -24,6 +24,8 @@ const H = vi.hoisted(() => ({
 	previews: [] as Drawn[],
 	puts: [] as unknown[],
 	warnings: [] as string[],
+	holdPreview: false,
+	previewGates: [] as Array<() => void>,
 }));
 
 vi.mock("../../../services/api", () => ({
@@ -35,11 +37,13 @@ vi.mock("../../../services/api", () => ({
 			throw new Error(`没安排的 GET ${path}`);
 		}),
 		post: vi.fn(async (path: string, body: { kind: string }) => {
+			const context = `${i18n.state().locale}:${i18n.state().voice}`;
 			const id = path.match(/^\/api\/cards\/skins\/([^/]+)\/preview$/)?.[1];
 			if (!id) throw new Error(`没安排的 POST ${path}`);
 			H.previews.push({ id, kind: body.kind });
+			if (H.holdPreview) await new Promise<void>((resolve) => H.previewGates.push(resolve));
 			return {
-				html: `<p>${id}:${body.kind}</p>`,
+				html: `<p>${id}:${body.kind}:${context}</p>`,
 				width: 600,
 				warnings: H.warnings,
 				scene: "default",
@@ -81,8 +85,51 @@ beforeEach(() => {
 	H.previews = [];
 	H.puts = [];
 	H.warnings = [];
+	H.holdPreview = false;
+	H.previewGates = [];
 });
-afterEach(cleanup);
+afterEach(() => {
+	for (const release of H.previewGates.splice(0)) release();
+	cleanup();
+});
+
+it("localized workshop previews retain the card kind and frame while requesting the current language", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	H.warnings = ["原始提醒"];
+	wrap(<CardSkinPreviews touches={[{ id: "s1", kinds: ["superchat"] }]} />);
+	const block = await screen.findByTestId("card-skin-preview");
+	await within(block).findByText("Current appearance · Sample data");
+	await waitFor(() => expect(frames()[0]?.getAttribute("srcdoc")).toContain("superchat:en:plain"));
+	H.holdPreview = true;
+	for (const [locale, note, apply, voice] of [
+		["ja", "現在の外観 · サンプルデータ", "このスキンを使う", "plain"],
+		["zh-TW", "目前外觀 · 範例資料", "套用此外觀", "plain"],
+		["zh-CN", "当前样子 · 示例数据", "换上这套", "plain"],
+		["zh-CN", "当前样子 · 示例数据", "换上这套", "maid"],
+	] as const) {
+		const previousFrame = frames()[0];
+		act(() => i18n.set({ locale, voice }));
+		await within(block).findByText(note);
+		await waitFor(() => expect(H.previewGates).toHaveLength(1));
+		expect(frames()[0]).toBe(previousFrame);
+		await act(async () => H.previewGates.shift()?.());
+		await waitFor(() =>
+			expect(frames()[0]?.getAttribute("srcdoc")).toContain(`superchat:${locale}:${voice}`),
+		);
+		expect(within(block).getByText("「樱花粉」")).toBeTruthy();
+		expect(within(block).getByText("原始提醒")).toBeTruthy();
+		expect(within(block).getByRole("button", { name: apply })).toBeTruthy();
+		expect(H.puts).toEqual([]);
+	}
+	expect(H.previews.every((preview) => preview.id === "s1" && preview.kind === "superchat")).toBe(
+		true,
+	);
+	H.holdPreview = false;
+	fireEvent.click(within(block).getByRole("button", { name: "换上这套" }));
+	await waitFor(() =>
+		expect(H.puts).toEqual([{ path: "/api/cards/skins/active", body: { id: "s1" } }]),
+	);
+});
 
 describe("预览块", () => {
 	it("每套一块,标题写着名字与「当前样子」,默认停在这一轮写过的第一种卡", async () => {

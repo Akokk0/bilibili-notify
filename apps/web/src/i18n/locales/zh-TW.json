@@ -1322,5 +1322,14 @@
 	"aiChat.messages.state.ok": "已完成",
 	"aiChat.messages.state.failed": "未完成",
 	"aiChat.messages.writing#other": "已寫 {value} 字",
-	"aiChat.messages.written#other": "寫了 {value} 字"
+	"aiChat.messages.written#other": "寫了 {value} 字",
+	"panelUi.components.ai-chat.card-skin-preview.1": "目前外觀 · 範例資料",
+	"panelUi.components.ai-chat.card-skin-preview.2": "正在使用",
+	"panelUi.components.ai-chat.card-skin-preview.3": "套用此外觀",
+	"panelUi.components.ai-chat.card-skin-preview.4": "此外觀已不在資源庫中，無法預覽。",
+	"panelUi.components.ai-chat.card-skin-preview.5": "「{value0}」的{value1}",
+	"panelUi.components.ai-chat.card-skin-preview.6": "無法繪製此卡片：",
+	"panelUi.components.ai-chat.card-skin-preview.7": "正在繪製預覽…",
+	"panelUi.components.ai-chat.card-skin-preview.8": "有幾點需要留意：",
+	"panelUi.components.ai-chat.card-skin-preview.9": "未能套用："
 }

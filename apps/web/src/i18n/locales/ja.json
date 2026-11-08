@@ -1322,5 +1322,14 @@
 	"aiChat.messages.state.ok": "完了",
 	"aiChat.messages.state.failed": "失敗",
 	"aiChat.messages.writing#other": "執筆中 · {value} 文字",
-	"aiChat.messages.written#other": "執筆済み · {value} 文字"
+	"aiChat.messages.written#other": "執筆済み · {value} 文字",
+	"panelUi.components.ai-chat.card-skin-preview.1": "現在の外観 · サンプルデータ",
+	"panelUi.components.ai-chat.card-skin-preview.2": "使用中",
+	"panelUi.components.ai-chat.card-skin-preview.3": "このスキンを使う",
+	"panelUi.components.ai-chat.card-skin-preview.4": "このスキンはライブラリーにないため、プレビューできません。",
+	"panelUi.components.ai-chat.card-skin-preview.5": "「{value0}」の{value1}",
+	"panelUi.components.ai-chat.card-skin-preview.6": "このカードを描画できません: ",
+	"panelUi.components.ai-chat.card-skin-preview.7": "プレビューを描画中…",
+	"panelUi.components.ai-chat.card-skin-preview.8": "確認が必要な点:",
+	"panelUi.components.ai-chat.card-skin-preview.9": "適用できません: "
 }

@@ -1,4 +1,4 @@
-import { useT } from "../../i18n";
+import { useT, useTextOptions } from "../../i18n";
 /**
  * 卡片工坊回复末尾的预览块(ADR-0015 决策 20 / 22 的 🔗)。
  *
@@ -27,7 +27,7 @@ import {
 	TabBar,
 	WarnNote,
 } from "@bilibili-notify/ui";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useActivateCardSkin, useCardSkinList } from "../../pages/cards/card-skins-query";
 import { SkinHtmlFrame, useStageWidth } from "../../pages/cards/SkinHtmlFrame";
@@ -51,6 +51,7 @@ export function CardSkinPreviews({ touches }: { touches: readonly AiCardSkinTouc
 
 function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchView }) {
 	const tx = useT();
+	const { locale, voice } = useTextOptions();
 	const kindTabs = CARD_KINDS.map((id) => ({ id, label: CARD_KIND_NAMES[id] }));
 
 	const list = useCardSkinList();
@@ -59,7 +60,16 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchView }) {
 	const [kind, setKind] = useState<CardKind>(touch.kinds[0] ?? CARD_KINDS[0]);
 
 	const preview = useQuery({
-		queryKey: ["ai-chat", "card-skin-preview", touch.id, kind, skin?.updatedAt ?? ""],
+		queryKey: [
+			"ai-chat",
+			"card-skin-preview",
+			touch.id,
+			kind,
+			skin?.updatedAt ?? "",
+			locale,
+			voice,
+		],
+		placeholderData: keepPreviousData,
 		queryFn: async () => {
 			const path = `/api/cards/skins/${encodeURIComponent(touch.id)}`;
 			const { manifest } = await api.get<CardSkinManifestResponse>(path);
