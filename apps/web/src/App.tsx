@@ -25,7 +25,7 @@ import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
 import { useUpdateCheckOnOpen } from "./hooks/useUpdateCheckOnOpen";
 import { useUpdateTransitionNotice } from "./hooks/useUpdateTransitionNotice";
-import { useT } from "./i18n";
+import { useT, useTextOptions } from "./i18n";
 import { useTextSettings } from "./i18n/use-text-settings";
 import About from "./pages/About";
 import Ai from "./pages/Ai";
@@ -58,6 +58,11 @@ const DevDock = import.meta.env.DEV
 	: null;
 
 export default function App() {
+	const { locale } = useTextOptions();
+	useLayoutEffect(() => {
+		document.documentElement.lang = locale;
+	}, [locale]);
+
 	return (
 		<AuthGate>
 			<StartupApp />

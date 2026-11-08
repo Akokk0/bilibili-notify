@@ -1161,3 +1161,18 @@ it("迁移提示首次与重新打开时先聚焦正文，Tab后才聚焦操作�
 			),
 	).toBe(false);
 });
+
+it("the document language follows the current locale before login without replacing the login draft or reading protected settings", async () => {
+	document.documentElement.lang = "zh-CN";
+	mountApp({ session: { authRequired: true, authed: false } });
+	await screen.findByRole("button", { name: /登录/ });
+	const password = screen.getByPlaceholderText("密码");
+	await userEvent.setup().type(password, "test-only-draft");
+	for (const locale of ["en", "ja", "zh-TW", "zh-CN"] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(document.documentElement.lang).toBe(locale);
+		expect(password.isConnected).toBe(true);
+		expect((password as HTMLInputElement).value).toBe("test-only-draft");
+	}
+	expect(vi.mocked(fetch).mock.calls.map(([path]) => String(path))).toEqual(["/api/session"]);
+});
