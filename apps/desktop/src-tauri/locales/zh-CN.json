@@ -1,0 +1,14 @@
+{
+	"log.desktop.dockReopen": "从 Dock 重新打开窗口。",
+	"log.desktop.setup": "启动器开始装配。",
+	"log.desktop.trayReady": "托盘已就绪。",
+	"log.desktop.trayFailed": "托盘装配失败。",
+	"log.desktop.sidecarStarting": "正在启动服务。",
+	"log.desktop.sidecarReady": "服务已就绪。",
+	"log.desktop.sidecarRestart": "服务正常退出，正在重启以应用更新或回退。",
+	"log.desktop.sidecarCrashed": "服务意外退出。",
+	"log.desktop.sidecarStopping": "正在停止服务。",
+	"log.desktop.sidecarStartFailed": "服务启动失败。",
+	"log.desktop.exitStopFailed": "退出时停止服务失败。",
+	"log.desktop.dockToggleFailed": "切换 Dock 显示状态失败。"
+}

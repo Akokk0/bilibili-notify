@@ -28,7 +28,7 @@ import { parseExtensionManifest } from "../../packages/internal/src/schema/exten
  * - 范围:BN 自己的译文目录(服务端、面板、internal 的包字典与出厂文字)。包字典垫在两端字典底下,
  *   所以另查一条「键的第一段」:包字典的键用包名开头,两端的不许(`keyRootProblems`)。仓里拓展自带的译文另列一张表(`EXTENSION_LOCALE_DIRS`),
  *   用宿主读目录时同一份解析查「零问题」,不进 `DICT_DIRS`。
- *   「新开的译文目录不许被静默漏查」由 `findLocalesDirs` 那一条钉着:仓里叫 `locales` 的目录必须等于两张表之和。
+ *   「新开的译文目录不许被静默漏查」由 `findLocalesDirs` 那一条钉着:仓里叫 `locales` 的目录必须等于三张表之和；原生启动回落目录另按实际读者校验。
  * - 读的是 JSON 不是源码,没有「注释被当成代码」的问题。
  * - 简体中文打底(缺的句子运行时拿它补),所以「齐不齐」是**方向**判:别的语言不许有底里没有的句子;
  *   「要求齐的语言」名单今天只有 zh-CN,第 5 期翻完把 en、ja 加进 COMPLETE_LOCALES(不用 skip,免得忘了开);
@@ -48,6 +48,9 @@ export const DICT_DIRS = [
 	"packages/internal/src/texts/locales",
 	"packages/internal/src/texts/builtin/locales",
 ];
+
+/** 原生启动器尚未读取宿主语言，只使用简中平实启动回落（ADR-0039）。 */
+const STARTUP_LOCALE_DIRS = ["apps/desktop/src-tauri/locales"];
 
 /** 包字典(ADR-0037 决策 6 下 10-28 的 🔗):各包与 contract 的话,两端建字典时垫在底下。 */
 export const PACKAGE_DICT_DIR = "packages/internal/src/texts/locales";
@@ -319,7 +322,7 @@ export function checkDictionaries({
 }
 
 /** 读一个译文目录:文件名 `<语言码>.json` / `<语言码>.maid.json`,点开头的文件跳过,其余的文件名是问题。 */
-export function loadDictionaryDir(dir, root = REPO_ROOT) {
+export function loadDictionaryDir(dir, root = REPO_ROOT, supportedLocales = LOCALES) {
 	const locales = {};
 	const problems = [];
 	const absolute = join(root, dir);
@@ -327,7 +330,7 @@ export function loadDictionaryDir(dir, root = REPO_ROOT) {
 	for (const file of readdirSync(absolute).sort()) {
 		if (file.startsWith(".")) continue; // .DS_Store 之类
 		const match = /^(.+?)(\.maid)?\.json$/.exec(file);
-		if (match === null || !LOCALES.includes(match[1])) {
+		if (match === null || !supportedLocales.includes(match[1])) {
 			problems.push(`${dir}/${file} 的文件名不是 <语言码>.json 或 <语言码>.maid.json`);
 			continue;
 		}
@@ -341,7 +344,7 @@ export function loadDictionaryDir(dir, root = REPO_ROOT) {
 		locales[match[1]] ??= {};
 		locales[match[1]][match[2] === undefined ? "plain" : "maid"] = parsed;
 	}
-	for (const locale of LOCALES) {
+	for (const locale of supportedLocales) {
 		if (locales[locale]?.plain === undefined) problems.push(`${dir} 缺 ${locale}.json`);
 	}
 	return { locales, problems };
@@ -670,6 +673,20 @@ describe("读目录的两个函数(临时目录样例)", () => {
 		);
 	});
 
+	it("启动回落目录只接受实际使用的简中平实文件，其他语言不静默漏查", () => {
+		withTree(
+			(root) => put(root, "d/zh-CN.json", '{"log.desktop.ready":"服务已就绪。"}'),
+			(root) => expect(loadDictionaryDir("d", root, ["zh-CN"]).problems).toEqual([]),
+		);
+		withTree(
+			(root) => {
+				put(root, "d/zh-CN.json", '{"log.desktop.ready":"服务已就绪。"}');
+				put(root, "d/en.json");
+			},
+			(root) => expect(loadDictionaryDir("d", root, ["zh-CN"]).problems).toHaveLength(1),
+		);
+	});
+
 	it("checkExtensionLocaleDir:干净的零问题;名字不对、写坏的键、清单里没有的条目、不是 JSON 各报一条", () => {
 		const manifest = JSON.stringify({
 			id: "e",
@@ -760,8 +777,24 @@ describe("BN 的译文目录", () => {
 		expect(keysOf(PACKAGE_DICT_DIR).length).toBeGreaterThan(0);
 	});
 
-	it("仓里叫 locales 的目录必须等于 DICT_DIRS 加 EXTENSION_LOCALE_DIRS —— 新开的译文目录不许被静默漏查", () => {
-		expect(findLocalesDirs(REPO_ROOT)).toEqual([...DICT_DIRS, ...EXTENSION_LOCALE_DIRS].sort());
+	it("仓里叫 locales 的目录必须等于运行期、启动期及拓展三张表 —— 新目录不许被静默漏查", () => {
+		expect(findLocalesDirs(REPO_ROOT)).toEqual(
+			[...DICT_DIRS, ...STARTUP_LOCALE_DIRS, ...EXTENSION_LOCALE_DIRS].sort(),
+		);
+	});
+
+	it.each(STARTUP_LOCALE_DIRS)("%s:只含原生读者支持的简中启动日志，无口吻或插值", (dir) => {
+		const { locales, problems } = loadDictionaryDir(dir, REPO_ROOT, [BASE_LOCALE]);
+		expect(problems).toEqual([]);
+		expect(checkDictionaries({ locales, completeLocales: [BASE_LOCALE], maidLocales: [] })).toEqual(
+			[],
+		);
+		const plain = locales[BASE_LOCALE].plain;
+		expect(Object.keys(plain).length).toBeGreaterThan(0);
+		for (const [key, text] of Object.entries(plain)) {
+			expect(key).toMatch(/^log\.desktop\.[A-Za-z0-9_-]+$/);
+			expect(placeholdersOf(text)).toEqual([]);
+		}
 	});
 
 	it.each(EXTENSION_LOCALE_DIRS)("%s:拓展的译文目录用宿主同一份解析查,零问题", (dir) => {

@@ -3,6 +3,9 @@
     windows_subsystem = "windows"
 )]
 
+mod launcher_log;
+
+use launcher_log::{append_launcher_log, LauncherLogEvent};
 use serde::Serialize;
 use std::{
     env,
@@ -14,7 +17,7 @@ use std::{
     process::{Child, Command, Stdio},
     sync::Mutex,
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 use tauri::{
     menu::{Menu, MenuItem},
@@ -183,7 +186,7 @@ fn handle_run_event(app: &AppHandle, event: RunEvent) {
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => {
             if let Ok(paths) = current_paths(app) {
-                append_launcher_log(&paths.launcher_log_dir, "dock reopen");
+                append_launcher_log(&paths.launcher_log_dir, LauncherLogEvent::DockReopen);
             }
             show_main_window(app);
         }
@@ -207,18 +210,20 @@ fn setup_launcher(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         inner.paths = Some(paths.clone());
         inner.dock_hidden = dock_hidden;
     }
-    append_launcher_log(&paths.launcher_log_dir, "launcher setup");
+    append_launcher_log(&paths.launcher_log_dir, LauncherLogEvent::Setup);
     setup_main_window(app)?;
     setup_menu(app)?;
     let tray_ready = match setup_tray(app) {
         Ok(()) => {
-            append_launcher_log(&paths.launcher_log_dir, "tray ready");
+            append_launcher_log(&paths.launcher_log_dir, LauncherLogEvent::TrayReady);
             true
         }
         Err(err) => {
             append_launcher_log(
                 &paths.launcher_log_dir,
-                &format!("setup tray failed: {err}"),
+                LauncherLogEvent::TrayFailed {
+                    error: &err.to_string(),
+                },
             );
             false
         }
@@ -639,15 +644,12 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
 
     append_launcher_log(
         &paths.launcher_log_dir,
-        &format!(
-            "starting sidecar port={port} data_dir={} web_dist={} browser={}",
-            sidecar_data_dir.display(),
-            resources.web_dist.display(),
-            browser
-                .as_ref()
-                .map(|_| "detected".to_string())
-                .unwrap_or_else(|| "none".to_string())
-        ),
+        LauncherLogEvent::SidecarStarting {
+            port,
+            data_dir: &sidecar_data_dir,
+            web_dist: &resources.web_dist,
+            browser_detected: browser.is_some(),
+        },
     );
 
     let stdout = OpenOptions::new()
@@ -729,7 +731,10 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
         inner.detail = None;
         inner.dashboard_url = Some(dashboard_url.clone());
     }
-    append_launcher_log(&paths.launcher_log_dir, &format!("sidecar ready url={url}"));
+    append_launcher_log(
+        &paths.launcher_log_dir,
+        LauncherLogEvent::SidecarReady { url: &url },
+    );
     navigate_main_window(app, &dashboard_url);
     Ok(())
 }
@@ -844,15 +849,12 @@ fn spawn_child_monitor(app: AppHandle, pid: u32) {
         };
         if restart {
             if let Some(paths) = paths {
-                append_launcher_log(
-                    &paths.launcher_log_dir,
-                    "sidecar exited with code 0: restarting to apply the update / rollback",
-                );
+                append_launcher_log(&paths.launcher_log_dir, LauncherLogEvent::SidecarRestart);
             }
             start_service_async(app.clone());
         } else {
             if let Some(paths) = paths {
-                append_launcher_log(&paths.launcher_log_dir, "sidecar exited unexpectedly");
+                append_launcher_log(&paths.launcher_log_dir, LauncherLogEvent::SidecarCrashed);
             }
             show_status_page(&app);
         }
@@ -872,10 +874,12 @@ fn stop_existing_service(app: &AppHandle, reason: &str) -> Result<(), String> {
     if let Ok(paths) = current_paths(app) {
         append_launcher_log(
             &paths.launcher_log_dir,
-            &format!(
-                "stopping sidecar reason={reason} pid={} port={} url={}",
-                service.pid, service.port, service.url
-            ),
+            LauncherLogEvent::SidecarStopping {
+                reason,
+                pid: service.pid,
+                port: service.port,
+                url: &service.url,
+            },
         );
     }
     terminate_child(&mut service.child);
@@ -922,7 +926,7 @@ fn mark_service_failed(app: &AppHandle, err: String) {
     if let Ok(paths) = current_paths(app) {
         append_launcher_log(
             &paths.launcher_log_dir,
-            &format!("sidecar startup failed: {err}"),
+            LauncherLogEvent::SidecarStartFailed { error: &err },
         );
     }
     show_status_page(app);
@@ -1349,7 +1353,7 @@ fn prepare_for_exit(app: &AppHandle, reason: &str) {
         if let Ok(paths) = current_paths(app) {
             append_launcher_log(
                 &paths.launcher_log_dir,
-                &format!("stop sidecar during exit failed: {err}"),
+                LauncherLogEvent::ExitStopFailed { error: &err },
             );
         }
     }
@@ -1360,7 +1364,7 @@ fn toggle_dock(app: &AppHandle) {
         if let Ok(paths) = current_paths(app) {
             append_launcher_log(
                 &paths.launcher_log_dir,
-                &format!("toggle dock failed: {err}"),
+                LauncherLogEvent::DockToggleFailed { error: &err },
             );
         }
     }
@@ -1513,22 +1517,200 @@ fn browser_candidates() -> Vec<PathBuf> {
     Vec::new()
 }
 
-fn append_launcher_log(log_dir: &Path, msg: &str) {
-    let _ = fs::create_dir_all(log_dir);
-    let path = log_dir.join("launcher.log");
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or_default();
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "{ts} {msg}");
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    use std::{
+        collections::HashMap,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    struct LogDirectory(PathBuf);
+
+    impl LogDirectory {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let directory = env::temp_dir().join(format!(
+                "bn-launcher-log-{}-{}-{id}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir_all(&directory).unwrap();
+            Self(directory)
+        }
+    }
+
+    impl Drop for LogDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn launcher_log_appends_timestamped_lines_without_overwriting() {
+        let directory = LogDirectory::new();
+        let nested = directory.0.join("logs");
+        let before = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        append_launcher_log(&nested, LauncherLogEvent::Setup);
+        append_launcher_log(&nested, LauncherLogEvent::TrayReady);
+        let after = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let contents = fs::read_to_string(nested.join("launcher.log")).unwrap();
+        let lines: Vec<_> = contents.lines().collect();
+        assert_eq!(lines.len(), 2);
+        for (line, message) in lines.iter().zip(["启动器开始装配。", "托盘已就绪。"])
+        {
+            let (timestamp, text) = line.split_once(' ').unwrap();
+            assert!((before..=after).contains(&timestamp.parse::<u64>().unwrap()));
+            assert_eq!(text, message);
+        }
+    }
+
+    #[test]
+    fn launcher_log_write_failure_does_not_interrupt_the_caller() {
+        let directory = LogDirectory::new();
+        let blocked_directory = directory.0.join("a-file");
+        fs::write(&blocked_directory, "keep").unwrap();
+        append_launcher_log(&blocked_directory, LauncherLogEvent::Setup);
+        assert_eq!(fs::read_to_string(blocked_directory).unwrap(), "keep");
+        fs::create_dir(directory.0.join("launcher.log")).unwrap();
+        append_launcher_log(&directory.0, LauncherLogEvent::Setup);
+        assert!(directory.0.join("launcher.log").is_dir());
+    }
+
+    #[test]
+    fn launcher_log_keeps_diagnostics_separate_from_startup_explanations() {
+        let directory = LogDirectory::new();
+        let error = "OS error 13: 权限不足\ncause=EACCES";
+        let cases = [
+            (LauncherLogEvent::DockReopen, "从 Dock 重新打开窗口。", None),
+            (
+                LauncherLogEvent::TrayFailed { error },
+                "托盘装配失败。",
+                Some(serde_json::json!({"error": error})),
+            ),
+            (
+                LauncherLogEvent::SidecarStarting {
+                    port: 8787,
+                    data_dir: Path::new("/资料/BN data"),
+                    web_dist: Path::new("/app/web-dist"),
+                    browser_detected: true,
+                },
+                "正在启动服务。",
+                Some(
+                    serde_json::json!({"port":8787, "data_dir":"/资料/BN data", "web_dist":"/app/web-dist", "browser":"detected"}),
+                ),
+            ),
+            (
+                LauncherLogEvent::SidecarReady {
+                    url: "http://127.0.0.1:8787",
+                },
+                "服务已就绪。",
+                Some(serde_json::json!({"url":"http://127.0.0.1:8787"})),
+            ),
+            (
+                LauncherLogEvent::SidecarRestart,
+                "服务正常退出，正在重启以应用更新或回退。",
+                None,
+            ),
+            (LauncherLogEvent::SidecarCrashed, "服务意外退出。", None),
+            (
+                LauncherLogEvent::SidecarStopping {
+                    reason: "exit-requested:0",
+                    pid: 4321,
+                    port: 8787,
+                    url: "http://127.0.0.1:8787",
+                },
+                "正在停止服务。",
+                Some(
+                    serde_json::json!({"reason":"exit-requested:0", "pid":4321,"port":8787,"url":"http://127.0.0.1:8787"}),
+                ),
+            ),
+            (
+                LauncherLogEvent::SidecarStartFailed { error },
+                "服务启动失败。",
+                Some(serde_json::json!({"error":error})),
+            ),
+            (
+                LauncherLogEvent::ExitStopFailed { error },
+                "退出时停止服务失败。",
+                Some(serde_json::json!({"error":error})),
+            ),
+            (
+                LauncherLogEvent::DockToggleFailed { error },
+                "切换 Dock 显示状态失败。",
+                Some(serde_json::json!({"error":error})),
+            ),
+        ];
+        let mut expected = Vec::new();
+        for (event, message, diagnostics) in cases {
+            append_launcher_log(&directory.0, event);
+            expected.push((message, diagnostics));
+        }
+        let contents = fs::read_to_string(directory.0.join("launcher.log")).unwrap();
+        let lines: Vec<_> = contents.lines().collect();
+        assert_eq!(
+            lines.len(),
+            expected.len(),
+            "one event remains one physical line"
+        );
+        for (line, (message, diagnostics)) in lines.iter().zip(expected) {
+            let (_, text) = line.split_once(' ').unwrap();
+            let suffix = text
+                .strip_prefix(message)
+                .expect("plain startup explanation");
+            if let Some(diagnostics) = diagnostics {
+                let actual: serde_json::Value = serde_json::from_str(suffix.trim_start()).unwrap();
+                assert_eq!(actual, diagnostics);
+            } else {
+                assert!(suffix.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn launcher_log_masks_desktop_tokens_in_urls_and_original_errors() {
+        let directory = LogDirectory::new();
+        let dashboard_url =
+            dashboard_url_with_token("http://127.0.0.1:8787", "test-desktop-secret");
+        append_launcher_log(
+            &directory.0,
+            LauncherLogEvent::SidecarReady {
+                url: &dashboard_url,
+            },
+        );
+        append_launcher_log(&directory.0, LauncherLogEvent::SidecarStartFailed {
+            error: "open http://127.0.0.1:8787/#desktopToken=second-secret&tab=logs failed: OS error 5",
+        });
+        let contents = fs::read_to_string(directory.0.join("launcher.log")).unwrap();
+        assert!(!contents.contains("test-desktop-secret"));
+        assert!(!contents.contains("second-secret"));
+        let lines: Vec<_> = contents.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let (_, ready) = lines[0].split_once("服务已就绪。 ").unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(ready).unwrap(),
+            serde_json::json!({
+                "url":"http://127.0.0.1:8787/#desktopToken=[REDACTED]",
+            })
+        );
+        let (_, failed) = lines[1].split_once("服务启动失败。 ").unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(failed).unwrap(),
+            serde_json::json!({
+                "error":"open http://127.0.0.1:8787/#desktopToken=[REDACTED]&tab=logs failed: OS error 5",
+            })
+        );
+    }
 
     // 这几条是「桌面版按『立即重启并应用』得到崩溃页」那个缺陷的守卫:服务端优雅退 0 是在
     // 请求重启,外壳得把它拉起来;只有非 0 / 被信号杀才是崩溃。
