@@ -503,5 +503,19 @@
 	"qqBind.message.text12": "連携結果の照会に失敗しました。",
 	"qqBind.message.text13": "QRコードの有効期限が切れました。再生成してください。",
 	"qqBind.message.text14": "QRコードの読み取りが完了していないため、結果を取得できません。",
-	"qqBind.message.text15": "QRコードの読み取りに失敗したため、結果を取得できません。"
+	"qqBind.message.text15": "QRコードの読み取りに失敗したため、結果を取得できません。",
+	"webhook.adapter.label": "Webhook",
+	"webhook.adapter.shortLabel": "Webhook",
+	"webhook.capability.inboundUnsupported": "Webhookは送信専用のHTTPリクエストで、受信経路がないため、この経路では返信できません。",
+	"webhook.capability.nativeShareUnsupported": "WebhookではQQミニアプリカードを送信できません。",
+	"webhook.text.atAll": "@全員",
+	"webhook.text.image": "［画像］",
+	"webhook.text.imageLinks": "画像：\n{urls}",
+	"webhook.text.notice": "［通知］",
+	"webhook.probe.unsupported": "Webhookは接続確認に対応していません。",
+	"webhook.connectionShape": "Webhookの接続形式が一致しません：connection={adapterKey} destination={kind}",
+	"webhook.platformUnsupported": "Webhookはこのプラットフォームに対応していません：{platform}",
+	"webhook.response.notJson": "{provider}の応答がJSONではありません",
+	"webhook.response.notObject": "{provider}の応答がオブジェクトではありません",
+	"webhook.response.missingField": "{provider}の応答に{field}がありません{details}"
 }

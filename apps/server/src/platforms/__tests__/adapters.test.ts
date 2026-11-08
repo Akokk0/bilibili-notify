@@ -1998,7 +1998,7 @@ describe("webhook — send", () => {
 		expect(invalid).toEqual({
 			ok: false,
 			code: "invalid",
-			message: "DingTalk response is not JSON",
+			message: "DingTalk 响应不是 JSON",
 		});
 	});
 
@@ -2059,7 +2059,7 @@ describe("webhook — send", () => {
 		expect(invalid).toEqual({
 			ok: false,
 			code: "invalid",
-			message: "Feishu response is not JSON",
+			message: "Feishu 响应不是 JSON",
 		});
 	});
 
@@ -2104,7 +2104,7 @@ describe("webhook — send", () => {
 		expect(invalid).toEqual({
 			ok: false,
 			code: "invalid",
-			message: "WeCom response is not JSON",
+			message: "WeCom 响应不是 JSON",
 		});
 	});
 
@@ -2315,7 +2315,7 @@ describe("webhook — send", () => {
 			TEXT,
 		);
 		expect(r).toMatchObject({ ok: false, code: "invalid" });
-		expect(messageOf(r)).toMatch(/wrong shape/);
+		expect(messageOf(r)).toBe("Webhook 连接类型不匹配：connection=webhook destination=session");
 	});
 });
 
@@ -2330,7 +2330,7 @@ describe("webhook — isAvailable / probe", () => {
 		const ad = startedWebhook({ logger: makeLogger() });
 		const r = await ad.probe(whConnection());
 		expect(r).toMatchObject({ ok: false, code: "unsupported" });
-		expect(messageOf(r)).toMatch(/does not support/);
+		expect(messageOf(r)).toBe("Webhook 不支持连接探测。");
 	});
 });
 
@@ -2410,3 +2410,60 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 		ad.stop();
 	});
 });
+
+it.each([
+	[
+		"en",
+		"[Image]",
+		"@everyone",
+		"WeCom response is not JSON",
+		"Webhook does not support connection probes.",
+	],
+	[
+		"ja",
+		"［画像］",
+		"@全員",
+		"WeComの応答がJSONではありません",
+		"Webhookは接続確認に対応していません。",
+	],
+	["zh-TW", "[圖片]", "@全體成員", "WeCom 回應不是 JSON", "Webhook 不支援連線探測。"],
+] as const)(
+	"localizes Webhook fallback text and protocol errors in %s",
+	async (locale, image, everyone, invalid, unsupported) => {
+		i18n.set({ locale, voice: "plain" });
+		const adapter = startedWebhook({ logger: makeLogger() });
+		try {
+			fetchMock.mockResolvedValueOnce(whResponse({ ok: true, json: { errcode: 0 } }));
+			expect(
+				(
+					await adapter.send(whConnection("wecom"), whTarget(), {
+						kind: "composite",
+						segments: [
+							{ kind: "text", text: "主人原文" },
+							{ kind: "image", buffer: Buffer.from("Q"), mime: "image/jpeg" },
+							{ kind: "at-all" },
+						],
+					})
+				).ok,
+			).toBe(true);
+			expect(lastBody()).toEqual({
+				msgtype: "text",
+				text: { content: `主人原文\n${image}\n${everyone}` },
+			});
+			fetchMock.mockResolvedValueOnce(whResponse({ ok: true, text: "not-json" }));
+			expect(await adapter.send(whConnection("wecom"), whTarget(), TEXT)).toEqual({
+				ok: false,
+				code: "invalid",
+				message: invalid,
+			});
+			expect(await adapter.probe(whConnection("wecom"))).toMatchObject({
+				ok: false,
+				code: "unsupported",
+				message: unsupported,
+			});
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+		} finally {
+			adapter.stop();
+		}
+	},
+);

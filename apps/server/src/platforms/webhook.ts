@@ -135,7 +135,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			// reject everything except the exact POST shape they expect. `unsupported`
 			// tells the UI to render "probe unsupported" and prompt the
 			// user to verify with a real send-test.
-			return fail("unsupported", "webhook does not support connection probe");
+			return fail("unsupported", t("webhook.probe.unsupported"));
 		},
 		async send(
 			connection: Connection,
@@ -147,14 +147,17 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			if (!isMine(connection) || destination.kind !== "endpoint") {
 				return fail(
 					"invalid",
-					`wrong shape: connection=${connection.adapterKey} ` + `destination=${destination.kind}`,
+					t("webhook.connectionShape", {
+						adapterKey: connection.adapterKey,
+						kind: destination.kind,
+					}),
 				);
 			}
 			const cfg = connection.settings;
 			// 方言由**连接的平台**说了算 —— 原先它藏在 config.provider 里。
 			const provider = connection.platform;
 			if (!isWebhookPlatform(provider)) {
-				return fail("invalid", `wrong platform: ${provider}`);
+				return fail("invalid", t("webhook.platformUnsupported", { platform: provider }));
 			}
 			// 请求拼不出来(配置的地址不合法,签名时 `new URL` 就抛)是输入的问题,一个字节都没发出去。
 			let req: WebhookHttpRequest;
@@ -360,10 +363,10 @@ function parseBusinessResponse(
 	try {
 		body = JSON.parse(text);
 	} catch {
-		return fail("invalid", `${providerLabel(provider)} response is not JSON`);
+		return fail("invalid", t("webhook.response.notJson", { provider: providerLabel(provider) }));
 	}
 	if (!isRecord(body))
-		return fail("invalid", `${providerLabel(provider)} response is not an object`);
+		return fail("invalid", t("webhook.response.notObject", { provider: providerLabel(provider) }));
 	switch (provider) {
 		case "dingtalk":
 			return parseDingTalkBusinessResult(body);
@@ -382,7 +385,14 @@ function parseDingTalkBusinessResult(body: Record<string, unknown>): Failure | n
 	if (code !== null) {
 		return rejectedByPeer(code, `DingTalk errcode=${code}${errmsg ? ` errmsg=${errmsg}` : ""}`);
 	}
-	return fail("invalid", `DingTalk response missing errcode${errmsg ? ` errmsg=${errmsg}` : ""}`);
+	return fail(
+		"invalid",
+		t("webhook.response.missingField", {
+			provider: "DingTalk",
+			field: "errcode",
+			details: errmsg ? ` errmsg=${errmsg}` : "",
+		}),
+	);
 }
 
 function parseFeishuBusinessResult(body: Record<string, unknown>): Failure | null {
@@ -391,7 +401,14 @@ function parseFeishuBusinessResult(body: Record<string, unknown>): Failure | nul
 	const msg = firstString(body.msg, body.message, body.StatusMessage, body.errmsg);
 	const code = businessCode(raw);
 	if (code !== null) return rejectedByPeer(code, `Feishu code=${code}${msg ? ` msg=${msg}` : ""}`);
-	return fail("invalid", `Feishu response missing code${msg ? ` msg=${msg}` : ""}`);
+	return fail(
+		"invalid",
+		t("webhook.response.missingField", {
+			provider: "Feishu",
+			field: "code",
+			details: msg ? ` msg=${msg}` : "",
+		}),
+	);
 }
 
 function parseWeComBusinessResult(body: Record<string, unknown>): Failure | null {
@@ -402,7 +419,14 @@ function parseWeComBusinessResult(body: Record<string, unknown>): Failure | null
 	if (code !== null) {
 		return rejectedByPeer(code, `WeCom errcode=${code}${errmsg ? ` errmsg=${errmsg}` : ""}`);
 	}
-	return fail("invalid", `WeCom response missing errcode${errmsg ? ` errmsg=${errmsg}` : ""}`);
+	return fail(
+		"invalid",
+		t("webhook.response.missingField", {
+			provider: "WeCom",
+			field: "errcode",
+			details: errmsg ? ` errmsg=${errmsg}` : "",
+		}),
+	);
 }
 
 /** 对端明确回了失败、只给了我们没有对照的业务码。 */

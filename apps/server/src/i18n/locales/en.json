@@ -503,5 +503,19 @@
 	"qqBind.message.text12": "Failed to query the binding result.",
 	"qqBind.message.text13": "The QR code has expired. Generate a new one.",
 	"qqBind.message.text14": "The QR scan is not complete; no result is available.",
-	"qqBind.message.text15": "The QR scan was unsuccessful; no result is available."
+	"qqBind.message.text15": "The QR scan was unsuccessful; no result is available.",
+	"webhook.adapter.label": "Webhook",
+	"webhook.adapter.shortLabel": "Webhook",
+	"webhook.capability.inboundUnsupported": "A webhook is an outbound HTTP request with no return channel, so you cannot reply through it.",
+	"webhook.capability.nativeShareUnsupported": "Webhooks cannot send QQ mini-app cards.",
+	"webhook.text.atAll": "@everyone",
+	"webhook.text.image": "[Image]",
+	"webhook.text.imageLinks": "Images:\n{urls}",
+	"webhook.text.notice": "[Notification]",
+	"webhook.probe.unsupported": "Webhook does not support connection probes.",
+	"webhook.connectionShape": "Webhook connection shape mismatch: connection={adapterKey} destination={kind}",
+	"webhook.platformUnsupported": "Unsupported Webhook platform: {platform}",
+	"webhook.response.notJson": "{provider} response is not JSON",
+	"webhook.response.notObject": "{provider} response is not an object",
+	"webhook.response.missingField": "{provider} response missing {field}{details}"
 }

@@ -1579,5 +1579,11 @@
 	"log.host.draftSweepFailed": "过期锐评草稿清理失败",
 	"log.host.extensionNotLoaded": "拓展未加载",
 	"log.host.extensionsSyncFailed": "拓展启停同步失败",
-	"log.host.payloadFallback": "载荷 {version} 启动失败，回落预装版本 {preinstalledVersion}：{message}"
+	"log.host.payloadFallback": "载荷 {version} 启动失败，回落预装版本 {preinstalledVersion}：{message}",
+	"webhook.probe.unsupported": "Webhook 不支持连接探测。",
+	"webhook.connectionShape": "Webhook 连接类型不匹配：connection={adapterKey} destination={kind}",
+	"webhook.platformUnsupported": "Webhook 不支持平台：{platform}",
+	"webhook.response.notJson": "{provider} 响应不是 JSON",
+	"webhook.response.notObject": "{provider} 响应不是对象",
+	"webhook.response.missingField": "{provider} 响应缺少 {field}{details}"
 }

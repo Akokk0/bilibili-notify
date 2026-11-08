@@ -503,5 +503,19 @@
 	"qqBind.message.text12": "查詢綁定結果失敗。",
 	"qqBind.message.text13": "QR 碼已過期，請重新產生。",
 	"qqBind.message.text14": "尚未完成掃碼，沒有可取得的結果。",
-	"qqBind.message.text15": "此次掃碼未成功，沒有可取得的結果。"
+	"qqBind.message.text15": "此次掃碼未成功，沒有可取得的結果。",
+	"webhook.adapter.label": "Webhook",
+	"webhook.adapter.shortLabel": "Webhook",
+	"webhook.capability.inboundUnsupported": "Webhook 只是送出的 HTTP 請求，沒有傳入通道，無法透過此通道回覆。",
+	"webhook.capability.nativeShareUnsupported": "Webhook 無法傳送 QQ 小程式卡片。",
+	"webhook.text.atAll": "@全體成員",
+	"webhook.text.image": "[圖片]",
+	"webhook.text.imageLinks": "圖片：\n{urls}",
+	"webhook.text.notice": "[通知]",
+	"webhook.probe.unsupported": "Webhook 不支援連線探測。",
+	"webhook.connectionShape": "Webhook 連線類型不符：connection={adapterKey} destination={kind}",
+	"webhook.platformUnsupported": "Webhook 不支援平台：{platform}",
+	"webhook.response.notJson": "{provider} 回應不是 JSON",
+	"webhook.response.notObject": "{provider} 回應不是物件",
+	"webhook.response.missingField": "{provider} 回應缺少 {field}{details}"
 }
