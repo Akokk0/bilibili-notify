@@ -18,6 +18,7 @@ import {
 } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { CARD_SKIN_MANIFEST_FILE } from "../package.js";
 import { CardSkinPackageError, CardSkinStore } from "../store.js";
 
@@ -62,6 +63,55 @@ afterEach(async () => {
 });
 
 describe("init 与内置那份", () => {
+	it.each([
+		["zh-CN", ["背景渐变起色", "背景渐变止色", "玻璃白纱", "玻璃模糊", "字体", "卡片背景图"]],
+		[
+			"en",
+			[
+				"Gradient start color",
+				"Gradient end color",
+				"Glass white overlay",
+				"Glass blur",
+				"Font",
+				"Card background image",
+			],
+		],
+		[
+			"ja",
+			[
+				"背景グラデーションの開始色",
+				"背景グラデーションの終了色",
+				"ガラスの白いオーバーレイ",
+				"ガラスのぼかし",
+				"フォント",
+				"カードの背景画像",
+			],
+		],
+		[
+			"zh-TW",
+			["背景漸層起始色", "背景漸層結束色", "玻璃白色遮罩", "玻璃模糊", "字型", "卡片背景圖片"],
+		],
+	] as const)(
+		"can duplicate the builtin skin in %s and retain the saved copy after a language change",
+		async (locale, labels) => {
+			const previous = i18n.state();
+			try {
+				i18n.set({ locale, voice: "plain" });
+				const { id } = await store.duplicate(DEFAULT_CARD_SKIN_ID, "Original copy 原文");
+				const copy = store.get(id);
+				expect(copy?.name).toBe("Original copy 原文");
+				expect(copy?.knobs?.map((knob) => knob.label)).toEqual(labels);
+				i18n.set({ locale: locale === "en" ? "ja" : "en", voice: "plain" });
+				const reopened = new CardSkinStore({ dir });
+				await reopened.init();
+				expect(reopened.get(id)).toEqual(copy);
+				expect(reopened.warnings()).toEqual([]);
+			} finally {
+				i18n.set(previous);
+			}
+		},
+	);
+
 	it("空目录(连目录都还没有)→ 只有内置那一套,摆在首位", async () => {
 		const fresh = new CardSkinStore({ dir: join(dir, "还没建") });
 		await fresh.init();

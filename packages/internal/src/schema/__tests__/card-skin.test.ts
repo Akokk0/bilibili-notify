@@ -1551,7 +1551,7 @@ it("localizes version rejection and built-in skin labels while preserving the sk
 			[
 				"en",
 				"Default",
-				"Background gradient start",
+				"Gradient start color",
 				"This card skin was made with a newer version of BN. Update BN before installing it.",
 			],
 			[
