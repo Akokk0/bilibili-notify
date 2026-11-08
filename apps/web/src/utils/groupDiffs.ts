@@ -24,7 +24,9 @@ const SECTION_LABELS: Record<GroupSectionKey, string> = {
 	get general() {
 		return i18n.t("panelUi.utils.groupDiffs.1");
 	},
-	master: "Master",
+	get master() {
+		return i18n.t("system.master.title");
+	},
 	get ai() {
 		return i18n.t("panelUi.utils.groupDiffs.2");
 	},

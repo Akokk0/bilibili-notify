@@ -1,4 +1,10 @@
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n";
+
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
+
 import { formatDiffValue } from "../formatDiffValue";
 
 describe("formatDiffValue", () => {
@@ -142,4 +148,24 @@ it("AI body choices render AI/template in draft diffs while inherit remains unse
 		formatDiffValue("ai.writing.post.byTarget.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", undefined)
 			.display,
 	).toBe("(未设置)");
+});
+
+it("draft value text follows locale while secrets remain hidden and user content remains original", () => {
+	const redacted = formatDiffValue("ai.providers.my-gateway.apiKey", "test-secret-never-visible");
+	const unset = formatDiffValue("core.master.targetId", null);
+	for (const [locale, changed, missing, on, acknowledged] of [
+		["en", "••• Changed", "(Not set)", "Enabled", "Acknowledged"],
+		["ja", "••• 変更済み", "（未設定）", "有効", "確認済み"],
+		["zh-TW", "••• 已變更", "（未設定）", "開啟", "已確認"],
+	] as const) {
+		i18n.set({ locale, voice: "plain" });
+		expect(redacted.display).toBe(changed);
+		expect(redacted.display).not.toContain("test-secret-never-visible");
+		expect(unset.display).toBe(missing);
+		expect(formatDiffValue("core.commands.enabled", true).display).toBe(on);
+		expect(formatDiffValue("templatesSeen.post", "original-fingerprint").display).toBe(
+			acknowledged,
+		);
+		expect(formatDiffValue("templates.post", "主人原来的文案").display).toBe("主人原来的文案");
+	}
 });

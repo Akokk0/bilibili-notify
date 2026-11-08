@@ -206,3 +206,23 @@ describe("groupDiffsBySection", () => {
 		});
 	});
 });
+
+it("draft sections translate without changing order or row identity", () => {
+	const diffs = [D("core.logging.level"), D("core.master.targetId"), D("core.commands.prefix")];
+	for (const [locale, labels] of [
+		["en", ["Owner notifications", "Private-message commands", "Logs"]],
+		["ja", ["管理者への通知", "個別メッセージのコマンド", "ログ"]],
+		["zh-TW", ["管理員通知", "私訊指令", "日誌"]],
+	] as const) {
+		i18n.set({ locale, voice: "plain" });
+		const groups = groupDiffsBySection(diffs);
+		expect(groups.map((g) => g.label)).toEqual(labels);
+		expect(groups.map((g) => g.section)).toEqual(["master", "commands", "logging"]);
+		expect(groups[0]?.rows[0]).toBe(diffs[1]);
+		expect(diffs.map((d) => d.code)).toEqual([
+			"core.logging.level",
+			"core.master.targetId",
+			"core.commands.prefix",
+		]);
+	}
+});
