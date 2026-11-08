@@ -260,7 +260,7 @@ function issueText(
 	const item = items.find((candidate) => candidate.id === id);
 	const title = item ? titleOf(field, item) : "";
 	const which = title
-		? `「${title}」`
+		? i18n.t("extension.itemTitle", { name: title })
 		: i18n.t("panelUi.pages.extensions.declarative.list-items.4", { value0: itemLabelOf(field) });
 	const sub = typeof subKey === "string" ? subFieldOf(field, subKey) : undefined;
 	return sub

@@ -223,11 +223,9 @@ export function ItemDialog({
 			onCancel={onCancel}
 			title={
 				editing
-					? tx("panelUi.pages.extensions.declarative.list-new-item.5", {
-							value0: title
-								? `「${title}」`
-								: tx("panelUi.pages.extensions.declarative.list-new-item.6", { value0: itemLabel }),
-						})
+					? title
+						? tx("panelUi.pages.extensions.declarative.list-new-item.5", { value0: title })
+						: tx("panelUi.pages.extensions.declarative.list-new-item.6", { value0: itemLabel })
 					: tx("panelUi.pages.extensions.declarative.list-new-item.7", { value0: field.label })
 			}
 			description={editing ? undefined : field.description}
@@ -262,9 +260,10 @@ export function ItemDialog({
 					<div data-new-item-copy>
 						<HintNote className="flex flex-col gap-[9px] p-3">
 							<span className="text-bn-xs font-bold text-bn-text-secondary">
-								{tx("panelUi.pages.extensions.declarative.list-new-item.8")}
-								{countWordOf(copies.length)}
-								{tx("panelUi.pages.extensions.declarative.list-new-item.9")}
+								{tx("panelUi.pages.extensions.declarative.list-new-item.8", {
+									count: copies.length,
+									word: countWordOf(copies.length),
+								})}
 							</span>
 							<div className="flex flex-col gap-[7px]">
 								{copies.map((row) => (
@@ -290,10 +289,14 @@ export function ItemDialog({
 				{error ? (
 					<ErrorNote size="sm">
 						{editing
-							? tx("panelUi.pages.extensions.declarative.list-new-item.11")
-							: tx("panelUi.pages.extensions.declarative.list-new-item.12")}
-						{tx("panelUi.pages.extensions.declarative.list-new-item.13")}
-						{itemLabel}:{error}
+							? tx("panelUi.pages.extensions.declarative.list-new-item.11", {
+									item: itemLabel,
+									reason: error,
+								})
+							: tx("panelUi.pages.extensions.declarative.list-new-item.12", {
+									item: itemLabel,
+									reason: error,
+								})}
 					</ErrorNote>
 				) : null}
 

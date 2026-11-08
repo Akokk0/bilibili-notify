@@ -14,7 +14,7 @@
  */
 
 import type { SettingsListField } from "@bilibili-notify/contract";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -522,4 +522,110 @@ describe("创建", () => {
 		await create(dialog);
 		expect(created().name).toBe("第一台");
 	});
+});
+
+it.each([
+	[
+		1,
+		"Enter this one value in the other client.",
+		"接続先に次の1項目を入力してください。",
+		"將這一項填入另一端。",
+	],
+	[
+		2,
+		"Enter these two values in the other client.",
+		"接続先に次の2項目を入力してください。",
+		"將這兩項填入另一端。",
+	],
+	[
+		3,
+		"Enter these three values in the other client.",
+		"接続先に次の3項目を入力してください。",
+		"將這三項填入另一端。",
+	],
+	[
+		8,
+		"Enter these eight values in the other client.",
+		"接続先に次の8項目を入力してください。",
+		"將這八項填入另一端。",
+	],
+] as const)(
+	"new item instructions translate as one sentence and keep the same generated value (%s copies)",
+	async (count, en, ja, tw) => {
+		const copies = [
+			{ host: "extensionUrl" as const, label: "BN 地址" },
+			...Array.from({ length: count - 1 }, () => ({ field: "token" })),
+		];
+		const dialog = await openDialog({ field: { ...LINKS_FIELD, newItemCopy: copies } });
+		await typeName(dialog, "Original draft");
+		const token = shownToken(dialog);
+		for (const [locale, title, instructions, copy, regenerate, cancel, create] of [
+			["en", "New 桥接入", en, "Copy BN 地址", "Regenerate token", "Cancel", "Create"],
+			["ja", "桥接入を新規作成", ja, "BN 地址をコピー", "tokenを再生成", "キャンセル", "作成"],
+			["zh-TW", "新增 桥接入", tw, "複製 BN 地址", "重新產生 token", "取消", "建立"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(within(dialog).getByText(title)).toBeTruthy();
+			expect(within(dialog).getByText(instructions)).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: copy })).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: regenerate })).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: cancel })).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: create })).toHaveProperty(
+				"disabled",
+				false,
+			);
+			expect(
+				(within(dialog).getByRole("textbox", { name: "名字" }) as HTMLInputElement).value,
+			).toBe("Original draft");
+			expect(shownToken(dialog)).toBe(token);
+			expect(within(dialog).getByText(ADDRESS)).toBeTruthy();
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+	},
+);
+
+it("creation progress and failure translate while the draft and generated secret stay available", async () => {
+	const dialog = await openDialog();
+	await typeName(dialog, "Original create draft");
+	const token = shownToken(dialog);
+	let rejectWrite!: (error: Error) => void;
+	const writing = new Promise<never>((_, reject) => {
+		rejectWrite = reject;
+	});
+	vi.mocked(api.patch).mockReturnValueOnce(writing);
+	await userEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+	await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+	for (const [locale, busy] of [
+		["en", "Creating…"],
+		["ja", "作成中…"],
+		["zh-TW", "建立中…"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(within(dialog).getByRole("button", { name: busy })).toHaveProperty("disabled", true);
+		expect(shownToken(dialog)).toBe(token);
+	}
+	await act(async () => {
+		rejectWrite(new Error("Original diagnostic / EACCES"));
+	});
+	await within(dialog).findByRole("alert");
+	for (const [locale, error] of [
+		["en", "Could not create this 接入: Original diagnostic / EACCES"],
+		["ja", "この接入を作成できません：Original diagnostic / EACCES"],
+		["zh-TW", "無法建立此 接入：Original diagnostic / EACCES"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(within(dialog).getByRole("alert").textContent).toBe(error);
+		expect((within(dialog).getByRole("textbox", { name: "名字" }) as HTMLInputElement).value).toBe(
+			"Original create draft",
+		);
+		expect(shownToken(dialog)).toBe(token);
+	}
+	expect(api.patch).toHaveBeenCalledTimes(1);
+	expect(created()).toMatchObject({ name: "Original create draft", token });
 });

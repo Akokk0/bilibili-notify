@@ -2486,15 +2486,12 @@
 	"panelUi.pages.extensions.declarative.list-new-item.2": "创建",
 	"panelUi.pages.extensions.declarative.list-new-item.3": "保存中…",
 	"panelUi.pages.extensions.declarative.list-new-item.4": "创建中…",
-	"panelUi.pages.extensions.declarative.list-new-item.6": "这条{value0}",
-	"panelUi.pages.extensions.declarative.list-new-item.5": "编辑{value0}",
+	"panelUi.pages.extensions.declarative.list-new-item.6": "编辑这条{value0}",
+	"panelUi.pages.extensions.declarative.list-new-item.5": "编辑「{value0}」",
 	"panelUi.pages.extensions.declarative.list-new-item.7": "新建{value0}",
-	"panelUi.pages.extensions.declarative.list-new-item.8": "把这",
-	"panelUi.pages.extensions.declarative.list-new-item.9": "样填到对面去",
 	"panelUi.pages.extensions.declarative.list-new-item.10": "复制 {value0}",
-	"panelUi.pages.extensions.declarative.list-new-item.11": "改不了",
-	"panelUi.pages.extensions.declarative.list-new-item.12": "建不了",
-	"panelUi.pages.extensions.declarative.list-new-item.13": "这条",
+	"panelUi.pages.extensions.declarative.list-new-item.11": "改不了这条{item}:{reason}",
+	"panelUi.pages.extensions.declarative.list-new-item.12": "建不了这条{item}:{reason}",
 	"panelUi.pages.extensions.declarative.list-new-item.14": "取消",
 	"panelUi.pages.extensions.declarative.list-new-item.15": "重新生成 {value0}",
 	"panelUi.pages.extensions.declarative.list-section.1": "已停用",
@@ -3237,5 +3234,7 @@
 	"panelUi.pages.backup.summary.listSeparator": "、",
 	"panelUi.pages.backup.summary.reasonOpen": "（",
 	"panelUi.pages.backup.summary.reasonClose": "）",
-	"extensions.dialog.packageEnd": ")"
+	"extensions.dialog.packageEnd": ")",
+	"panelUi.pages.extensions.declarative.list-new-item.8#other": "把这{word}样填到对面去",
+	"extension.itemTitle": "「{name}」"
 }

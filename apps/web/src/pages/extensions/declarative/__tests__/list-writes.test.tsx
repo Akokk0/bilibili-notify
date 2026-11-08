@@ -753,3 +753,49 @@ it("list secret recovery and reveal guidance translate while only the requested 
 	expect(sentOps()).toEqual([{ op: "update", list: "links", id: "c1", values: { token: fresh } }]);
 	expect(within(await findCard("c2")).getByText(/^ffff•+ffff$/)).toBeTruthy();
 });
+
+it.each([true, false])(
+	"field rejection explanations translate and preserve the named or missing item and original reason (known=%s)",
+	async (known) => {
+		vi.mocked(api.patch).mockRejectedValueOnce(
+			invalid([
+				{
+					path: ["links", known ? "c1" : "missing", "name"],
+					message: "Original field diagnostic / must_be_unique",
+				},
+			]),
+		);
+		renderList({ items: [HOME, OFFICE] });
+		await findCard("c1");
+		await userEvent.click(screen.getByRole("button", { name: "停用 家里那台" }));
+		await screen.findByRole("alert");
+		for (const [locale, named, missing] of [
+			[
+				"en",
+				"“家里那台” · 名字: Original field diagnostic / must_be_unique",
+				"this 接入 · 名字: Original field diagnostic / must_be_unique",
+			],
+			[
+				"ja",
+				"「家里那台」の名字：Original field diagnostic / must_be_unique",
+				"この接入の名字：Original field diagnostic / must_be_unique",
+			],
+			[
+				"zh-TW",
+				"「家里那台」的 名字：Original field diagnostic / must_be_unique",
+				"此 接入的 名字：Original field diagnostic / must_be_unique",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByRole("alert").textContent).toContain(known ? named : missing);
+			expect(within(await findCard("c1")).getByText("家里那台")).toBeTruthy();
+			expect(within(await findCard("c2")).getByText("机房那台")).toBeTruthy();
+		}
+		expect(api.patch).toHaveBeenCalledTimes(1);
+		expect(sentOps()).toEqual([
+			{ op: "update", list: "links", id: "c1", values: { enabled: false } },
+		]);
+	},
+);

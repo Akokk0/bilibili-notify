@@ -13,7 +13,7 @@
  */
 
 import type { SettingsListField } from "@bilibili-notify/contract";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -255,3 +255,68 @@ describe("编辑没成", () => {
 		expect(servedSettings().links).toEqual([{ ...HOME, name: "客厅那台", enabled: false }, OFFICE]);
 	});
 });
+
+it.each([true, false])(
+	"edit titles, progress and failures translate without rewriting an untouched secret (named=%s)",
+	async (named) => {
+		renderList({ items: [{ ...HOME, name: named ? HOME.name : "" }, OFFICE] });
+		await findCard("c1");
+		await userEvent.click(screen.getByRole("button", { name: named ? "编辑 家里那台" : "编辑" }));
+		const dialog = await screen.findByRole("dialog");
+		await userEvent.clear(nameBox(dialog));
+		await userEvent.type(nameBox(dialog), "Original edit draft");
+		for (const [locale, namedTitle, unnamedTitle, saveLabel] of [
+			["en", "Edit “家里那台”", "Edit this 接入", "Save"],
+			["ja", "「家里那台」を編集", "この接入を編集", "保存"],
+			["zh-TW", "編輯「家里那台」", "編輯此 接入", "儲存"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(within(dialog).getByText(named ? namedTitle : unnamedTitle)).toBeTruthy();
+			expect(within(dialog).getByRole("button", { name: saveLabel })).toHaveProperty(
+				"disabled",
+				false,
+			);
+			expect(nameBox(dialog).value).toBe("Original edit draft");
+			expect(dialog.querySelector("[data-generated]")).toBeNull();
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+		let rejectWrite!: (error: Error) => void;
+		const writing = new Promise<never>((_, reject) => {
+			rejectWrite = reject;
+		});
+		vi.mocked(api.patch).mockReturnValueOnce(writing);
+		await userEvent.click(within(dialog).getByRole("button", { name: "儲存" }));
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		for (const [locale, busy] of [
+			["en", "Saving…"],
+			["ja", "保存中…"],
+			["zh-TW", "儲存中…"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(within(dialog).getByRole("button", { name: busy })).toHaveProperty("disabled", true);
+		}
+		await act(async () => {
+			rejectWrite(new Error("Original edit diagnostic / EIO"));
+		});
+		await within(dialog).findByRole("alert");
+		for (const [locale, error] of [
+			["en", "Could not edit this 接入: Original edit diagnostic / EIO"],
+			["ja", "この接入を変更できません：Original edit diagnostic / EIO"],
+			["zh-TW", "無法修改此 接入：Original edit diagnostic / EIO"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(within(dialog).getByRole("alert").textContent).toBe(error);
+			expect(nameBox(dialog).value).toBe("Original edit draft");
+		}
+		expect(api.patch).toHaveBeenCalledTimes(1);
+		expect(sentOps()).toEqual([
+			{ op: "update", list: "links", id: "c1", values: { name: "Original edit draft" } },
+		]);
+	},
+);
