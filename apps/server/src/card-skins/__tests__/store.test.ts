@@ -64,6 +64,315 @@ afterEach(async () => {
 
 describe("init 与内置那份", () => {
 	it.each([
+		[
+			"en",
+			{
+				reserved: "This ID is reserved for the built-in skin; the directory will not be loaded.",
+				invalid: "Invalid manifest (",
+				reason:
+					"This card skin was made with a newer version of BN. Update BN before installing it.",
+			},
+		],
+		[
+			"ja",
+			{
+				reserved: "このIDは内蔵スキン用に予約されているため、このディレクトリは読み込みません。",
+				invalid: "マニフェストが不正です（",
+				reason:
+					"このカードスキンは新しいバージョンのBNで作成されています。BNを最新版に更新してからインストールしてください。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				reserved: "此 ID 保留給內建外觀，此目錄不會載入。",
+				invalid: "清單格式無效（",
+				reason: "此卡片皮膚使用較新版本的 BN 製作，請先將 BN 更新至最新版再安裝。",
+			},
+		],
+	] as const)(
+		"localizes skipped directory warnings in %s while preserving valid and invalid resources",
+		async (locale, w) => {
+			const previous = i18n.state();
+			try {
+				i18n.set({ locale, voice: "plain" });
+				const good = await store.install(pack(manifest({ name: "Original good skin" })));
+				for (const name of ["default", "original-bad"])
+					await mkdir(join(dir, name), { recursive: true });
+				await writeFile(join(dir, "default", CARD_SKIN_MANIFEST_FILE), JSON.stringify(manifest()));
+				await writeFile(
+					join(dir, "original-bad", CARD_SKIN_MANIFEST_FILE),
+					JSON.stringify(manifest({ schemaVersion: 99 })),
+				);
+				const reopened = new CardSkinStore({ dir });
+				await reopened.init();
+				const warnings = reopened.warnings().join("\n");
+				for (const phrase of ["default", "original-bad", w.reserved, w.invalid, w.reason])
+					expect(warnings).toContain(phrase);
+				expect(reopened.list().map((skin) => skin.id)).toEqual([DEFAULT_CARD_SKIN_ID, good.id]);
+				expect(reopened.get(good.id)?.name).toBe("Original good skin");
+				expect(await readdir(dir)).toEqual(
+					expect.arrayContaining(["default", "original-bad", good.id]),
+				);
+			} finally {
+				i18n.set(previous);
+			}
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			{
+				font: "Font Original Family",
+				prefix: "“assets/original.png” is still in use (",
+				card: "live card asset variables",
+				block: "live card block “raw-block”",
+				html: "HTML of live card block “raw-html”",
+				generic: "The manifest still contains references",
+			},
+		],
+		[
+			"ja",
+			{
+				font: "フォント Original Family",
+				prefix: "「assets/original.png」はまだ使用中です（",
+				card: "liveカードの素材変数",
+				block: "liveカードのブロック「raw-block」",
+				html: "liveカードのブロック「raw-html」のHTML",
+				generic: "マニフェスト内に参照が残っています",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				font: "字型 Original Family",
+				prefix: "「assets/original.png」仍被使用（",
+				card: "live 卡片的素材變數",
+				block: "live 卡片的區塊「raw-block」",
+				html: "live 卡片的區塊「raw-html」的 HTML",
+				generic: "清單中仍有其他位置引用此素材",
+			},
+		],
+	] as const)(
+		"localizes asset reference protection in %s while retaining family names and block IDs",
+		async (locale, w) => {
+			const previous = i18n.state();
+			try {
+				i18n.set({ locale, voice: "plain" });
+				const ref = "asset:assets/original.png";
+				const { id } = await store.install(
+					pack(
+						manifest({
+							fonts: [{ family: "Original Family", asset: "asset:assets/original.ttf" }],
+							cards: {
+								live: {
+									width: 600,
+									assets: { art: ref },
+									blocks: [
+										{
+											id: "raw-block",
+											kind: "builtin",
+											builtin: "cover",
+											grid: { row: 1, column: 1, span: 12 },
+											assets: { art: ref },
+										},
+										{
+											id: "raw-html",
+											kind: "custom",
+											grid: { row: 2, column: 1, span: 12 },
+											html: `<img src="${ref}">`,
+										},
+									],
+								},
+							},
+						}),
+						{ "assets/original.png": PNG, "assets/original.ttf": new Uint8Array([0, 1, 0, 0]) },
+					),
+				);
+				await expect(store.removeAsset(id, "assets/original.ttf")).rejects.toThrow(w.font);
+				const error = await store.removeAsset(id, "assets/original.png").catch((e) => e);
+				expect(error).toBeInstanceOf(CardSkinPackageError);
+				expect(error.code).toBe("conflict");
+				for (const phrase of [w.prefix, w.card, w.block, w.html])
+					expect(error.message).toContain(phrase);
+				expect(await store.readAsset(id, "assets/original.png")).toEqual(PNG);
+				const generic = await store.install(
+					pack(manifest({ description: `Original reference ${ref}` }), {
+						"assets/original.png": PNG,
+					}),
+				);
+				await expect(store.removeAsset(generic.id, "assets/original.png")).rejects.toThrow(
+					w.generic,
+				);
+				expect(await store.readAsset(generic.id, "assets/original.png")).toEqual(PNG);
+			} finally {
+				i18n.set(previous);
+			}
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			{
+				invalid:
+					"“bad.svg” is not a supported skin asset. Use png, jpg, webp, gif, woff2, woff, ttf or otf; names may contain lowercase letters, digits, ., _ and -.",
+				size: "“large.png” is too large. Each asset must be at most 5 MB.",
+				duplicate:
+					"An asset named “original.png” already exists. Remove it before uploading another.",
+				name: "Invalid asset name",
+				count:
+					"This skin already has 12 assets (limit: 12). Remove unused assets before uploading more.",
+			},
+		],
+		[
+			"ja",
+			{
+				invalid:
+					"「bad.svg」はスキン素材として使えません。png / jpg / webp / gif / woff2 / woff / ttf / otfに対応し、名前には英小文字、数字、.、_、-を使えます。",
+				size: "「large.png」が大きすぎます。素材1個の上限は5 MBです。",
+				duplicate:
+					"「original.png」という素材はすでにあります。先に削除してからアップロードしてください。",
+				name: "素材名が不正です",
+				count:
+					"このスキンにはすでに12個の素材があります（上限12個）。不要な素材を削除してからアップロードしてください。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				invalid:
+					"「bad.svg」無法作為外觀素材，僅支援 png / jpg / webp / gif 與 woff2 / woff / ttf / otf，名稱僅限小寫英文字母、數字、.、_、-。",
+				size: "「large.png」過大，單份素材上限為 5 MB。",
+				duplicate: "已存在名為「original.png」的素材，請先刪除再上傳。",
+				name: "素材名稱無效",
+				count: "此外觀已有 12 份素材，上限為 12 份，請先刪除不需要的素材再上傳。",
+			},
+		],
+	] as const)(
+		"localizes asset validation in %s while rejecting overwrites and preserving counts",
+		async (locale, w) => {
+			const previous = i18n.state();
+			try {
+				i18n.set({ locale, voice: "plain" });
+				const { id } = await store.install(pack());
+				await expect(store.addAsset(id, "bad.svg", PNG)).rejects.toThrow(w.invalid);
+				await expect(
+					store.addAsset(id, "large.png", new Uint8Array(5 * 1024 * 1024 + 1)),
+				).rejects.toThrow(w.size);
+				await store.addAsset(id, "original.png", PNG);
+				await expect(store.addAsset(id, "original.png", new Uint8Array([1, 2]))).rejects.toThrow(
+					w.duplicate,
+				);
+				await expect(store.removeAsset(id, "../original.png")).rejects.toThrow(w.name);
+				for (let i = 0; i < 11; i++) await store.addAsset(id, `original-${i}.png`, PNG);
+				await expect(store.addAsset(id, "extra.png", PNG)).rejects.toThrow(w.count);
+				expect(await store.listAssets(id)).toHaveLength(12);
+				expect(await store.readAsset(id, "assets/original.png")).toEqual(PNG);
+			} finally {
+				i18n.set(previous);
+			}
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			{
+				remove: "The built-in default skin cannot be deleted. Duplicate it before editing.",
+				add: "Assets cannot be added to the built-in default skin. Duplicate it before editing.",
+				assets: "The built-in default skin has no stored assets.",
+				save: "The built-in default skin cannot be edited directly. Duplicate it first.",
+				summary: "This skin failed validation (2 issues).",
+			},
+		],
+		[
+			"ja",
+			{
+				remove: "内蔵の標準スキンは削除できません。編集するには先に複製してください。",
+				add: "内蔵の標準スキンには素材を追加できません。編集するには先に複製してください。",
+				assets: "内蔵の標準スキンには保存済みの素材がありません。",
+				save: "内蔵の標準スキンは直接編集できません。先に複製してください。",
+				summary: "このスキンが検証に通りませんでした（計2件）。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				remove: "無法刪除內建預設外觀，請先複製再修改。",
+				add: "內建預設外觀無法新增素材，請先複製再修改。",
+				assets: "內建預設外觀沒有儲存於磁碟的素材。",
+				save: "內建預設外觀無法直接修改，請先複製。",
+				summary: "此外觀未通過檢查（共 2 項）。",
+			},
+		],
+	] as const)(
+		"localizes builtin restrictions and validation summaries in %s without mutating builtin resources",
+		async (locale, w) => {
+			const previous = i18n.state();
+			try {
+				i18n.set({ locale, voice: "plain" });
+				await expect(store.remove(DEFAULT_CARD_SKIN_ID)).rejects.toThrow(w.remove);
+				await expect(store.addAsset(DEFAULT_CARD_SKIN_ID, "original.png", PNG)).rejects.toThrow(
+					w.add,
+				);
+				await expect(
+					store.removeAsset(DEFAULT_CARD_SKIN_ID, "assets/original.png"),
+				).rejects.toThrow(w.assets);
+				await expect(store.save(DEFAULT_CARD_SKIN_ID, manifest())).rejects.toThrow(w.save);
+				expect(
+					new CardSkinPackageError(["Original issue A", "Original issue B"]).toFailure(),
+				).toEqual({
+					ok: false,
+					code: "invalid",
+					message: w.summary,
+					issues: [{ message: "Original issue A" }, { message: "Original issue B" }],
+				});
+				expect(store.list()).toHaveLength(1);
+				expect(await readdir(dir)).toEqual([]);
+			} finally {
+				i18n.set(previous);
+			}
+		},
+	);
+
+	it.each([
+		["en", "Original skin 原件 (copy)", "Skin not found: missing-skin", "Card skin not found"],
+		[
+			"ja",
+			"Original skin 原件のコピー",
+			"スキンが見つかりません：missing-skin",
+			"カードスキンが見つかりません",
+		],
+		["zh-TW", "Original skin 原件 副本", "找不到外觀：missing-skin", "找不到卡片外觀"],
+	] as const)(
+		"localizes generated copies and missing-skin errors in %s without rewriting IDs or original names",
+		async (locale, copyName, missing, missingAsset) => {
+			const previous = i18n.state();
+			try {
+				i18n.set({ locale, voice: "plain" });
+				const { id } = await store.install(pack(manifest({ name: "Original skin 原件" })));
+				const copied = await store.duplicate(id);
+				expect(store.get(copied.id)?.name).toBe(copyName);
+				expect(store.get(id)?.name).toBe("Original skin 原件");
+				await expect(store.duplicate("missing-skin")).rejects.toThrow(missing);
+				await expect(store.exportZip("missing-skin")).rejects.toThrow(missing);
+				await expect(store.remove("missing-skin")).rejects.toThrow(missing);
+				await expect(store.save("missing-skin", manifest())).rejects.toThrow(missing);
+				await expect(store.addAsset("missing-skin", "original.png", PNG)).rejects.toThrow(
+					missingAsset,
+				);
+				await expect(store.removeAsset("missing-skin", "assets/original.png")).rejects.toThrow(
+					missingAsset,
+				);
+			} finally {
+				i18n.set(previous);
+			}
+		},
+	);
+
+	it.each([
 		["zh-CN", ["背景渐变起色", "背景渐变止色", "玻璃白纱", "玻璃模糊", "字体", "卡片背景图"]],
 		[
 			"en",
