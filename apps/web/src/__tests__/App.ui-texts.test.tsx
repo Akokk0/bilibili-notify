@@ -6,7 +6,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vite-plus/test";
@@ -608,6 +608,231 @@ it("keeps third-party extension updates behind confirmation without marking the 
 	await userEvent.click(screen.getByRole("button", { name: "照样更新" }));
 	await waitFor(() => expect(installs).toBe(1));
 	expect(screen.getByText("数据已迁移完成")).toBeTruthy();
+	expect(
+		vi.mocked(fetch).mock.calls.filter(([path]) => String(path).endsWith("/acknowledge")),
+	).toEqual([]);
+});
+
+it("extension notice reads translate while retries preserve raw diagnostics and unavailable entries", async () => {
+	let finishRead!: (response: Response) => void;
+	const pending = new Promise<Response>((resolve) => {
+		finishRead = resolve;
+	});
+	let reads = 0;
+	let marketReads = 0;
+	mountApp({
+		notices: () => [migratedNotice],
+		request: async (path) => {
+			if (path === "/api/ext") {
+				reads++;
+				if (reads === 1) return pending;
+				return jsonResponse({
+					extensions: [
+						{
+							id: "alice.bridge",
+							name: "消息桥 / 原名",
+							dir: "/tmp/bridge",
+							state: "incompatible",
+							enabled: false,
+							detail: "需要契约 v3（原文）",
+						},
+						{
+							id: "alice.feed",
+							name: "源 · Original",
+							dir: "/tmp/feed",
+							state: "incompatible",
+							enabled: false,
+						},
+					],
+				});
+			}
+			if (path === "/api/ext/marketplace") {
+				marketReads++;
+				return marketReads === 1
+					? jsonResponse({ code: "unavailable", message: "索引签名不匹配（原文）" }, 503)
+					: jsonResponse({
+							available: true,
+							fetchedAt: "2026-11-04T00:00:00Z",
+							sources: [],
+							extensions: [],
+						});
+			}
+		},
+	});
+	await screen.findByText("正在读取拓展…");
+	for (const [locale, label] of [
+		["en", "Reading extensions"],
+		["ja", "拡張機能を読み込んでいます"],
+		["zh-TW", "正在讀取拓展"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(`${label}…`)).toBeTruthy();
+		expect(reads).toBe(1);
+	}
+	await act(async () =>
+		finishRead(jsonResponse({ code: "unavailable", message: "清单只读（原文）" }, 503)),
+	);
+	for (const [locale, label] of [
+		["en", "Could not read the extension list."],
+		["ja", "拡張機能の一覧を読み込めませんでした。"],
+		["zh-TW", "無法讀取拓展清單。"],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(label)).toBeTruthy();
+		expect(screen.getByText("清单只读（原文）")).toBeTruthy();
+	}
+	await userEvent.click(screen.getByRole("button", { name: "重試" }));
+	await screen.findByText("索引签名不匹配（原文）");
+	for (const [locale, heading, hint, manage] of [
+		[
+			"en",
+			"2 older extensions are unavailable",
+			"Could not check for updates. Retry or open extension management.",
+			"Manage 消息桥 / 原名",
+		],
+		[
+			"ja",
+			"旧バージョンの拡張機能2件が利用できません",
+			"更新を確認できません。再試行するか、拡張機能の管理を開いてください。",
+			"消息桥 / 原名の管理を開く",
+		],
+		[
+			"zh-TW",
+			"2 個舊版拓展暫時無法使用",
+			"暫時無法查詢可用更新，請重試或前往拓展管理。",
+			"前往消息桥 / 原名拓展管理",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(screen.getByRole("button", { name: manage })).toBeTruthy();
+		expect(screen.getByText("需要契约 v3（原文）")).toBeTruthy();
+		expect(screen.getByText("索引签名不匹配（原文）")).toBeTruthy();
+		expect(reads).toBe(2);
+		expect(marketReads).toBe(1);
+	}
+	await userEvent.click(screen.getByRole("button", { name: "重試" }));
+	await waitFor(() => expect(screen.queryByText("索引签名不匹配（原文）")).toBeNull());
+	expect(screen.getByText("消息桥 / 原名")).toBeTruthy();
+	expect(screen.getByText("源 · Original")).toBeTruthy();
+	expect(screen.queryByRole("button", { name: "更新" })).toBeNull();
+	expect(marketReads).toBe(2);
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.filter(([, init]) => init?.method === "POST")
+			.map(([path]) => String(path))
+			.filter((path) => path !== "/api/ws/ticket"),
+	).toEqual([]);
+});
+
+it("translated extension update confirmation retains its source and never installs on language changes or back", async () => {
+	let installs = 0;
+	const entry = {
+		source: "alice",
+		official: false,
+		id: "alice.bridge",
+		name: "消息桥 · Original",
+		description: "raw description",
+		version: "2.0.0-beta.1",
+		apiVersion: 3,
+		prerelease: true,
+		size: 100,
+		state: "updatable",
+	};
+	mountApp({
+		notices: () => [migratedNotice],
+		request: async (path, init) => {
+			if (path === "/api/ext")
+				return jsonResponse({
+					extensions: [
+						{
+							id: entry.id,
+							name: entry.name,
+							dir: "/tmp/demo",
+							state: "incompatible",
+							enabled: false,
+							detail: "契约太旧（原文）",
+						},
+					],
+				});
+			if (path === "/api/ext/marketplace")
+				return jsonResponse({
+					available: true,
+					fetchedAt: "2026-11-04T00:00:00Z",
+					sources: [{ id: "alice", name: "Alice 的源 / Original", official: false, ok: true }],
+					extensions: [entry],
+				});
+			if (path === "/api/ext/marketplace/install" && init?.method === "POST") {
+				installs++;
+				expect(JSON.parse(String(init.body))).toEqual({ source: "alice", id: entry.id });
+				return jsonResponse(
+					{
+						code: "unavailable",
+						message: "包校验失败（原文）",
+						issues: [{ path: ["sha256"], message: "摘要不符（原文）" }],
+					},
+					503,
+				);
+			}
+		},
+	});
+	await screen.findByRole("button", { name: "更新" });
+	for (const [locale, heading, update, title, warning, back, confirm] of [
+		[
+			"en",
+			"1 older extension is unavailable",
+			"Update",
+			"Update third-party extension “消息桥 · Original” to v2.0.0-beta.1?",
+			"This extension comes from “Alice 的源 / Original”, not BN. BN only verifies that the installed package matches its source; it does not review what the extension does. Installed extensions run code inside the BN process.",
+			"Back",
+			"Update anyway",
+		],
+		[
+			"ja",
+			"旧バージョンの拡張機能1件が利用できません",
+			"更新",
+			"サードパーティの拡張機能「消息桥 · Original」をv2.0.0-beta.1に更新しますか？",
+			"この拡張機能の配布元は「Alice 的源 / Original」で、BNではありません。BNが保証するのは、インストールするパッケージが配布元のものと一致することだけです。動作内容は審査していません。インストールすると、BNのプロセス内でコードを実行します。",
+			"戻る",
+			"更新を続行",
+		],
+		[
+			"zh-TW",
+			"1 個舊版拓展暫時無法使用",
+			"更新",
+			"將第三方拓展「消息桥 · Original」更新至 v2.0.0-beta.1？",
+			"此拓展來自「Alice 的源 / Original」，並非 BN 發行。BN 只確保安裝的套件與來源提供的套件相符，不審查其行為；安裝後會在 BN 程序內執行程式碼。",
+			"返回",
+			"仍要更新",
+		],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+		await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: update }));
+		expect(screen.getAllByRole("dialog")).toHaveLength(1);
+		expect(screen.getByText(title)).toBeTruthy();
+		expect(screen.getByText(warning)).toBeTruthy();
+		expect(screen.getByRole("button", { name: confirm })).toBeTruthy();
+		expect(installs).toBe(0);
+		await userEvent.click(screen.getByRole("button", { name: back }));
+		expect(screen.getByText("契约太旧（原文）")).toBeTruthy();
+		expect(installs).toBe(0);
+	}
+	await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "更新" }));
+	await userEvent.click(screen.getByRole("button", { name: "仍要更新" }));
+	await screen.findByText("sha256：摘要不符（原文）");
+	for (const [locale, lead] of [
+		["en", "Extension update failed:"],
+		["ja", "拡張機能を更新できませんでした："],
+		["zh-TW", "拓展更新失敗："],
+	] as const) {
+		act(() => i18n.set({ locale }));
+		expect(screen.getByText(lead)).toBeTruthy();
+		expect(screen.getByText("sha256：摘要不符（原文）")).toBeTruthy();
+		expect(installs).toBe(1);
+	}
 	expect(
 		vi.mocked(fetch).mock.calls.filter(([path]) => String(path).endsWith("/acknowledge")),
 	).toEqual([]);

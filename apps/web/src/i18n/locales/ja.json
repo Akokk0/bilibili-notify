@@ -1905,5 +1905,15 @@
 	"lifecycle.restartTimedOut": "新しいサービスプロセスを確認できません。外部プログラムが自動で再起動する設定になっているか確認してください。",
 	"lifecycle.keepWaiting": "待機を続ける",
 	"lifecycle.restartFellBack": "サービスは{version}に戻りました。このバージョンを再読み込みして結果を確認してください。",
-	"lifecycle.reloadCurrent": "現在のバージョンを再読み込み"
+	"lifecycle.reloadCurrent": "現在のバージョンを再読み込み",
+	"lifecycle.loadingExtensions": "拡張機能を読み込んでいます",
+	"lifecycle.extensionsFailed": "拡張機能の一覧を読み込めませんでした。",
+	"lifecycle.incompatibleCount#other": "旧バージョンの拡張機能{count}件が利用できません",
+	"lifecycle.manageExtension": "{name}の管理を開く",
+	"lifecycle.updateReadFailed": "更新を確認できません。再試行するか、拡張機能の管理を開いてください。",
+	"lifecycle.updateExtension": "更新",
+	"lifecycle.updateFailed": "拡張機能を更新できませんでした：",
+	"panelUi.pages.extensions.marketplace-section.1": "サードパーティの拡張機能「{value0}」をv{value1}に更新しますか？",
+	"panelUi.pages.extensions.marketplace-section.3": "この拡張機能の配布元は「{value0}」で、BNではありません。BNが保証するのは、インストールするパッケージが配布元のものと一致することだけです。動作内容は審査していません。インストールすると、BNのプロセス内でコードを実行します。",
+	"panelUi.pages.extensions.marketplace-section.4": "更新を続行"
 }

@@ -1905,5 +1905,15 @@
 	"lifecycle.restartTimedOut": "尚未等到新的服務程序，請確認是否有外部程式會自動重新啟動服務。",
 	"lifecycle.keepWaiting": "繼續等待",
 	"lifecycle.restartFellBack": "服務已退回 {version}，請重新載入目前版本查看結果。",
-	"lifecycle.reloadCurrent": "重新載入目前版本"
+	"lifecycle.reloadCurrent": "重新載入目前版本",
+	"lifecycle.loadingExtensions": "正在讀取拓展",
+	"lifecycle.extensionsFailed": "無法讀取拓展清單。",
+	"lifecycle.incompatibleCount#other": "{count} 個舊版拓展暫時無法使用",
+	"lifecycle.manageExtension": "前往{name}拓展管理",
+	"lifecycle.updateReadFailed": "暫時無法查詢可用更新，請重試或前往拓展管理。",
+	"lifecycle.updateExtension": "更新",
+	"lifecycle.updateFailed": "拓展更新失敗：",
+	"panelUi.pages.extensions.marketplace-section.1": "將第三方拓展「{value0}」更新至 v{value1}？",
+	"panelUi.pages.extensions.marketplace-section.3": "此拓展來自「{value0}」，並非 BN 發行。BN 只確保安裝的套件與來源提供的套件相符，不審查其行為；安裝後會在 BN 程序內執行程式碼。",
+	"panelUi.pages.extensions.marketplace-section.4": "仍要更新"
 }

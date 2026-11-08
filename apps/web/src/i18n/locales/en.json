@@ -1952,5 +1952,16 @@
 	"lifecycle.restartTimedOut": "The new service process has not appeared yet. Check that another program will restart the service automatically.",
 	"lifecycle.keepWaiting": "Keep waiting",
 	"lifecycle.restartFellBack": "The service fell back to {version}. Reload this version to see the result.",
-	"lifecycle.reloadCurrent": "Reload current version"
+	"lifecycle.reloadCurrent": "Reload current version",
+	"lifecycle.loadingExtensions": "Reading extensions",
+	"lifecycle.extensionsFailed": "Could not read the extension list.",
+	"lifecycle.incompatibleCount#other": "{count} older extensions are unavailable",
+	"lifecycle.manageExtension": "Manage {name}",
+	"lifecycle.updateReadFailed": "Could not check for updates. Retry or open extension management.",
+	"lifecycle.incompatibleCount#one": "{count} older extension is unavailable",
+	"lifecycle.updateExtension": "Update",
+	"lifecycle.updateFailed": "Extension update failed:",
+	"panelUi.pages.extensions.marketplace-section.1": "Update third-party extension “{value0}” to v{value1}?",
+	"panelUi.pages.extensions.marketplace-section.3": "This extension comes from “{value0}”, not BN. BN only verifies that the installed package matches its source; it does not review what the extension does. Installed extensions run code inside the BN process.",
+	"panelUi.pages.extensions.marketplace-section.4": "Update anyway"
 }
