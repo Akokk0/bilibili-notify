@@ -1961,5 +1961,17 @@
 	"panelUi.pages.extensions.marketplace-section.23": "市場目前沒有可安裝的拓展。",
 	"panelUi.pages.extensions.marketplace-section.2": "安裝第三方拓展「{value0}」？",
 	"panelUi.pages.extensions.marketplace-section.5": "仍要安裝",
-	"panelUi.pages.extensions.marketplace-section.9": "正在安裝…"
+	"panelUi.pages.extensions.marketplace-section.9": "正在安裝…",
+	"panelUi.pages.extensions.marketplace-sources-dialog.1": "索引網址必須以 https:// 開頭",
+	"panelUi.pages.extensions.marketplace-sources-dialog.2": "此網址已加入",
+	"panelUi.pages.extensions.marketplace-sources-dialog.3": "拓展市場來源",
+	"panelUi.pages.extensions.marketplace-sources-dialog.4": "每個來源是一份 marketplace.json，列出其提供的拓展。官方來源為內建；自行加入的來源由該網址的擁有者管理。",
+	"panelUi.pages.extensions.marketplace-sources-dialog.5": "內建 · 已驗證簽章",
+	"panelUi.pages.extensions.marketplace-sources-dialog.6": "移除 {value0}",
+	"panelUi.pages.extensions.marketplace-sources-dialog.7": "加入來源",
+	"panelUi.pages.extensions.marketplace-sources-dialog.8": "BN 不審查第三方拓展；安裝後，作者的程式碼會在 BN 程序內執行。請只加入信任的來源。",
+	"panelUi.pages.extensions.marketplace-sources-dialog.9": "索引網址",
+	"panelUi.pages.extensions.marketplace-sources-dialog.10": "加入",
+	"panelUi.pages.extensions.marketplace-sources-dialog.12": "關閉",
+	"panelUi.pages.extensions.marketplace-sources-dialog.11": "無法儲存："
 }

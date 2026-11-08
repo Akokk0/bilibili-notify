@@ -1961,5 +1961,17 @@
 	"panelUi.pages.extensions.marketplace-section.23": "現在インストールできる拡張機能はありません。",
 	"panelUi.pages.extensions.marketplace-section.2": "サードパーティの拡張機能「{value0}」をインストールしますか？",
 	"panelUi.pages.extensions.marketplace-section.5": "インストールを続行",
-	"panelUi.pages.extensions.marketplace-section.9": "インストール中…"
+	"panelUi.pages.extensions.marketplace-section.9": "インストール中…",
+	"panelUi.pages.extensions.marketplace-sources-dialog.1": "インデックスのURLはhttps://で始まる必要があります",
+	"panelUi.pages.extensions.marketplace-sources-dialog.2": "このURLはすでに追加されています",
+	"panelUi.pages.extensions.marketplace-sources-dialog.3": "拡張機能マーケットの配布元",
+	"panelUi.pages.extensions.marketplace-sources-dialog.4": "各配布元のmarketplace.jsonに、提供する拡張機能が記載されています。公式の配布元は組み込みです。自分で追加する配布元の内容は、そのアドレスの所有者が管理します。",
+	"panelUi.pages.extensions.marketplace-sources-dialog.5": "組み込み · 署名検証済み",
+	"panelUi.pages.extensions.marketplace-sources-dialog.6": "{value0}を削除",
+	"panelUi.pages.extensions.marketplace-sources-dialog.7": "配布元を追加",
+	"panelUi.pages.extensions.marketplace-sources-dialog.8": "BNはサードパーティの拡張機能を審査していません。インストールすると、作者のコードがBNのプロセス内で実行されます。信頼できる配布元だけを追加してください。",
+	"panelUi.pages.extensions.marketplace-sources-dialog.9": "インデックスのURL",
+	"panelUi.pages.extensions.marketplace-sources-dialog.10": "追加",
+	"panelUi.pages.extensions.marketplace-sources-dialog.12": "閉じる",
+	"panelUi.pages.extensions.marketplace-sources-dialog.11": "保存できませんでした："
 }

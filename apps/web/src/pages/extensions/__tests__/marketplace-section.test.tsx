@@ -223,6 +223,163 @@ afterEach(() => {
 });
 
 describe("拓展市场", () => {
+	it("source save failures translate without retrying a write and removal submits only the remaining list", async () => {
+		let reject!: (error: Error) => void;
+		apiPatchMock.mockReturnValueOnce(
+			new Promise((_, fail) => {
+				reject = fail;
+			}),
+		);
+		renderSection();
+		await userEvent.click(await screen.findByRole("button", { name: "市场源 · 1" }));
+		await screen.findByRole("button", { name: "删掉 alice" });
+		await userEvent.type(
+			screen.getByRole("textbox", { name: "索引地址" }),
+			" https://new.example/marketplace.json ",
+		);
+		for (const [locale, field] of [
+			["en", "Index URL"],
+			["ja", "インデックスのURL"],
+			["zh-TW", "索引網址"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect((screen.getByRole("textbox", { name: field }) as HTMLInputElement).value).toBe(
+				" https://new.example/marketplace.json ",
+			);
+			expect(apiPatchMock).not.toHaveBeenCalled();
+		}
+		await userEvent.click(screen.getByRole("button", { name: "加入" }));
+		expect(apiPatchMock).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+			core: {
+				marketplace: {
+					sources: [
+						{ id: "s1", name: "alice", url: "https://alice.example/m.json" },
+						{ id: expect.any(String), url: "https://new.example/marketplace.json" },
+					],
+				},
+			},
+		});
+		for (const [locale, add] of [
+			["en", "Add"],
+			["ja", "追加"],
+			["zh-TW", "加入"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect((screen.getByRole("button", { name: add }) as HTMLButtonElement).disabled).toBe(true);
+			expect(apiPatchMock).toHaveBeenCalledOnce();
+		}
+		await act(async () => reject(new Error("只读磁盘 / EACCES")));
+		for (const [locale, failure] of [
+			["en", "Could not save: 只读磁盘 / EACCES"],
+			["ja", "保存できませんでした：只读磁盘 / EACCES"],
+			["zh-TW", "無法儲存：只读磁盘 / EACCES"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(await screen.findByText(failure)).toBeTruthy();
+			expect(apiPatchMock).toHaveBeenCalledOnce();
+		}
+		await userEvent.click(screen.getByRole("button", { name: "移除 alice" }));
+		await waitFor(() => expect(apiPatchMock).toHaveBeenCalledTimes(2));
+		expect(apiPatchMock).toHaveBeenLastCalledWith("/api/settings", {
+			core: { marketplace: { sources: [] } },
+		});
+	});
+
+	it("source management translates its risk and validation while retaining the typed URL and original source names", async () => {
+		renderSection();
+		await userEvent.click(await screen.findByRole("button", { name: "市场源 · 1" }));
+		await screen.findByRole("button", { name: "删掉 alice" });
+		await userEvent.type(
+			screen.getByRole("textbox", { name: "索引地址" }),
+			"http://invalid.example/marketplace.json",
+		);
+		await userEvent.click(screen.getByRole("button", { name: "加进来" }));
+		for (const [
+			locale,
+			title,
+			hint,
+			verified,
+			remove,
+			addTitle,
+			risk,
+			field,
+			add,
+			invalid,
+			close,
+		] of [
+			[
+				"en",
+				"Extension marketplace sources",
+				"Each source is a marketplace.json listing the extensions it provides. The official source is built in; a custom source is controlled by the owner of its address.",
+				"Built in · signature verified",
+				"Remove alice",
+				"Add a source",
+				"BN does not review third-party extensions. Installing them lets their authors run code inside the BN process. Only add sources you trust.",
+				"Index URL",
+				"Add",
+				"The index URL must start with https://",
+				"Close",
+			],
+			[
+				"ja",
+				"拡張機能マーケットの配布元",
+				"各配布元のmarketplace.jsonに、提供する拡張機能が記載されています。公式の配布元は組み込みです。自分で追加する配布元の内容は、そのアドレスの所有者が管理します。",
+				"組み込み · 署名検証済み",
+				"aliceを削除",
+				"配布元を追加",
+				"BNはサードパーティの拡張機能を審査していません。インストールすると、作者のコードがBNのプロセス内で実行されます。信頼できる配布元だけを追加してください。",
+				"インデックスのURL",
+				"追加",
+				"インデックスのURLはhttps://で始まる必要があります",
+				"閉じる",
+			],
+			[
+				"zh-TW",
+				"拓展市場來源",
+				"每個來源是一份 marketplace.json，列出其提供的拓展。官方來源為內建；自行加入的來源由該網址的擁有者管理。",
+				"內建 · 已驗證簽章",
+				"移除 alice",
+				"加入來源",
+				"BN 不審查第三方拓展；安裝後，作者的程式碼會在 BN 程序內執行。請只加入信任的來源。",
+				"索引網址",
+				"加入",
+				"索引網址必須以 https:// 開頭",
+				"關閉",
+			],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			const dialog = within(screen.getByRole("dialog"));
+			expect(dialog.getByText(title)).toBeTruthy();
+			expect(dialog.getByText(hint)).toBeTruthy();
+			expect(dialog.getByText(verified)).toBeTruthy();
+			expect(dialog.getByText(addTitle)).toBeTruthy();
+			expect(dialog.getByText(risk)).toBeTruthy();
+			expect(dialog.getByText(invalid)).toBeTruthy();
+			expect(dialog.getByText("BN 官方拓展")).toBeTruthy();
+			expect(dialog.getByRole("button", { name: remove })).toBeTruthy();
+			expect(dialog.getByRole("button", { name: add })).toBeTruthy();
+			expect(dialog.getByRole("button", { name: close })).toBeTruthy();
+			expect((dialog.getByRole("textbox", { name: field }) as HTMLInputElement).value).toBe(
+				"http://invalid.example/marketplace.json",
+			);
+		}
+		await userEvent.clear(screen.getByRole("textbox", { name: "索引網址" }));
+		await userEvent.type(
+			screen.getByRole("textbox", { name: "索引網址" }),
+			"https://alice.example/m.json",
+		);
+		await userEvent.click(screen.getByRole("button", { name: "加入" }));
+		for (const [locale, duplicate] of [
+			["en", "This URL has already been added"],
+			["ja", "このURLはすでに追加されています"],
+			["zh-TW", "此網址已加入"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(duplicate)).toBeTruthy();
+		}
+		expect(apiPatchMock).not.toHaveBeenCalled();
+	});
+
 	it("third-party installation translates its confirmation and pending state without resending", async () => {
 		let reject!: (error: Error) => void;
 		apiPostMock.mockReturnValue(

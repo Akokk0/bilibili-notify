@@ -2010,5 +2010,17 @@
 	"panelUi.pages.extensions.marketplace-section.23": "No extensions are currently available to install.",
 	"panelUi.pages.extensions.marketplace-section.2": "Install third-party extension “{value0}”?",
 	"panelUi.pages.extensions.marketplace-section.5": "Install anyway",
-	"panelUi.pages.extensions.marketplace-section.9": "Installing…"
+	"panelUi.pages.extensions.marketplace-section.9": "Installing…",
+	"panelUi.pages.extensions.marketplace-sources-dialog.1": "The index URL must start with https://",
+	"panelUi.pages.extensions.marketplace-sources-dialog.2": "This URL has already been added",
+	"panelUi.pages.extensions.marketplace-sources-dialog.3": "Extension marketplace sources",
+	"panelUi.pages.extensions.marketplace-sources-dialog.4": "Each source is a marketplace.json listing the extensions it provides. The official source is built in; a custom source is controlled by the owner of its address.",
+	"panelUi.pages.extensions.marketplace-sources-dialog.5": "Built in · signature verified",
+	"panelUi.pages.extensions.marketplace-sources-dialog.6": "Remove {value0}",
+	"panelUi.pages.extensions.marketplace-sources-dialog.7": "Add a source",
+	"panelUi.pages.extensions.marketplace-sources-dialog.8": "BN does not review third-party extensions. Installing them lets their authors run code inside the BN process. Only add sources you trust.",
+	"panelUi.pages.extensions.marketplace-sources-dialog.9": "Index URL",
+	"panelUi.pages.extensions.marketplace-sources-dialog.10": "Add",
+	"panelUi.pages.extensions.marketplace-sources-dialog.12": "Close",
+	"panelUi.pages.extensions.marketplace-sources-dialog.11": "Could not save: "
 }
