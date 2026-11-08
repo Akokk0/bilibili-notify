@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { makeSource } from "../rules/__tests__/fixtures";
 import Subscriptions from "../Subscriptions";
@@ -38,6 +39,7 @@ const EXT = named(makeEmptySubscription({ sourceKey: "douyin", externalId: "Sec-
 
 let problems: unknown[] = [];
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	problems = [];
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。

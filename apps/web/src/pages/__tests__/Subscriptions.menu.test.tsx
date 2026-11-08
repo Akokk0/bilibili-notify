@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
@@ -80,6 +80,265 @@ afterEach(() => {
 });
 
 describe("Subscriptions 快捷菜单", () => {
+	it("list filters and selection labels translate while search, selected identities and user tag names remain unchanged", async () => {
+		i18n.set({ locale: "en", voice: "plain" });
+		renderSubs();
+		await screen.findByText("UP甲");
+		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+		for (const [locale, words] of [
+			[
+				"en",
+				{
+					search: "Search subscriptions by name or ID…",
+					all: "All2",
+					enabled: "Enabled2",
+					disabled: "Disabled0",
+					tags: "Tags",
+					untagged: "Untagged2",
+					selected: "2 selected",
+					enable: "Enable selected",
+					disable: "Disable selected",
+					remove: "Delete selected",
+					empty: "No matching subscriptions",
+					hint: "Try another search or filter.",
+				},
+			],
+			[
+				"ja",
+				{
+					search: "名前またはIDで購読を検索…",
+					all: "すべて2",
+					enabled: "有効2",
+					disabled: "無効0",
+					tags: "タグ",
+					untagged: "タグなし2",
+					selected: "2件を選択中",
+					enable: "選択項目を有効にする",
+					disable: "選択項目を無効にする",
+					remove: "選択項目を削除",
+					empty: "一致する購読はありません",
+					hint: "検索語や絞り込み条件を変更してください。",
+				},
+			],
+			[
+				"zh-TW",
+				{
+					search: "搜尋訂閱名稱或 ID…",
+					all: "全部2",
+					enabled: "已啟用2",
+					disabled: "已停用0",
+					tags: "標籤",
+					untagged: "無標籤2",
+					selected: "已選取 2 項",
+					enable: "啟用所選項目",
+					disable: "停用所選項目",
+					remove: "刪除所選項目",
+					empty: "沒有符合的訂閱",
+					hint: "請換個關鍵字或篩選條件。",
+				},
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const search = screen.getByPlaceholderText(words.search);
+			expect(screen.getAllByRole("button", { name: words.all })[0]).toBeTruthy();
+			expect(screen.getByRole("button", { name: words.enabled })).toBeTruthy();
+			expect(screen.getByRole("button", { name: words.untagged })).toBeTruthy();
+			expect(screen.getByText(words.tags, { exact: true })).toBeTruthy();
+			expect(screen.getByRole("button", { name: "游戏0" })).toBeTruthy();
+			expect(screen.getByText(words.selected, { exact: true })).toBeTruthy();
+			expect(screen.getByRole("button", { name: words.enable })).toBeTruthy();
+			expect(screen.getByRole("button", { name: words.disable })).toBeTruthy();
+			expect(screen.getByRole("button", { name: words.remove })).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: words.disabled }));
+			expect(screen.getByText(words.empty)).toBeTruthy();
+			expect(screen.getByText(words.hint)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: words.enabled }));
+			fireEvent.change(search, { target: { value: "UP甲" } });
+			expect(screen.queryByText("UP乙")).toBeNull();
+			act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+			expect((screen.getByPlaceholderText("搜索订阅的名字或 id…") as HTMLInputElement).value).toBe(
+				"UP甲",
+			);
+			fireEvent.change(screen.getByPlaceholderText("搜索订阅的名字或 id…"), {
+				target: { value: "" },
+			});
+		}
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	});
+
+	it("deletion warnings translate without losing selected identities or deleting before confirmation", async () => {
+		renderSubs();
+		await screen.findByText("UP甲");
+		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+		fireEvent.click(screen.getByRole("button", { name: "批量删除" }));
+		for (const [locale, title, warning, confirm] of [
+			[
+				"en",
+				"Delete the 2 selected subscriptions?",
+				"Deleting a subscription permanently removes all of its push settings.",
+				"Confirm deletion",
+			],
+			[
+				"ja",
+				"選択した2件の購読を削除しますか？",
+				"購読を削除すると、その購読の通知設定もすべて削除され、元に戻せません。",
+				"削除を確定",
+			],
+			[
+				"zh-TW",
+				"刪除所選的 2 項訂閱？",
+				"刪除訂閱時，該訂閱的所有推送設定也會一併移除，且無法復原。",
+				"確認刪除",
+			],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const dialog = within(screen.getByRole("dialog"));
+			expect(dialog.getByText(title)).toBeTruthy();
+			expect(dialog.getByText(warning)).toBeTruthy();
+			expect(dialog.getByRole("button", { name: confirm })).toBeTruthy();
+			expect(api.delete).not.toHaveBeenCalled();
+		}
+		fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
+		expect(screen.getByText("已選取 2 項", { exact: true })).toBeTruthy();
+		expect(api.delete).not.toHaveBeenCalled();
+		act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+		fireEvent.contextMenu(screen.getByText("UP甲"), { clientX: 100, clientY: 100 });
+		fireEvent.click(await screen.findByText("删除订阅"));
+		for (const [locale, title] of [
+			["en", "Delete this subscription?"],
+			["ja", "この購読を削除しますか？"],
+			["zh-TW", "刪除此訂閱？"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(within(screen.getByRole("dialog")).getByText(title)).toBeTruthy();
+		}
+		fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "確認刪除" }));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`));
+		expect(api.delete).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([
+		[
+			"en",
+			{
+				enable: "Enable selected",
+				disable: "Disable selected",
+				remove: "Delete selected",
+				confirm: "Confirm deletion",
+				enabledError: "Could not enable 1 of 2 subscriptions.",
+				disabledError: "Could not disable 1 of 2 subscriptions.",
+				deleteError: "Could not delete 1 of 2 subscriptions.",
+			},
+		],
+		[
+			"ja",
+			{
+				enable: "選択項目を有効にする",
+				disable: "選択項目を無効にする",
+				remove: "選択項目を削除",
+				confirm: "削除を確定",
+				enabledError: "2件中1件の購読を有効にできませんでした。",
+				disabledError: "2件中1件の購読を無効にできませんでした。",
+				deleteError: "2件中1件の購読を削除できませんでした。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				enable: "啟用所選項目",
+				disable: "停用所選項目",
+				remove: "刪除所選項目",
+				confirm: "確認刪除",
+				enabledError: "2 項訂閱中有 1 項無法啟用。",
+				disabledError: "2 項訂閱中有 1 項無法停用。",
+				deleteError: "2 項訂閱中有 1 項無法刪除。",
+			},
+		],
+	] as const)(
+		"partial bulk failures report translated counts without retrying successful subscriptions (%s)",
+		async (locale, words) => {
+			i18n.set({ locale, voice: "plain" });
+			vi.mocked(api.post).mockImplementation(async (_path, body) => {
+				if ((body as Subscription).id === SUB_B.id) throw new Error("original denied");
+				return [SUB_A, SUB_B] as never;
+			});
+			vi.mocked(api.delete).mockImplementation(async (path) => {
+				if (path.endsWith(SUB_B.id)) throw new Error("original denied");
+				return undefined as never;
+			});
+			renderSubs();
+			await screen.findByText("UP甲");
+			for (const [action, message] of [
+				[words.enable, words.enabledError],
+				[words.disable, words.disabledError],
+			] as const) {
+				fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+				fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+				fireEvent.click(screen.getByRole("button", { name: action }));
+				expect(await screen.findByText(message)).toBeTruthy();
+				await waitFor(() =>
+					expect(screen.queryByRole("button", { name: words.remove })).toBeNull(),
+				);
+			}
+			expect(api.post).toHaveBeenCalledTimes(4);
+			for (const enabled of [true, false]) {
+				for (const sub of [SUB_A, SUB_B])
+					expect(api.post).toHaveBeenCalledWith("/api/subscriptions", { ...sub, enabled });
+			}
+			fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+			fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
+			fireEvent.click(screen.getByRole("button", { name: words.remove }));
+			expect(api.delete).not.toHaveBeenCalled();
+			fireEvent.click(
+				within(screen.getByRole("dialog")).getByRole("button", { name: words.confirm }),
+			);
+			expect(await screen.findByText(words.deleteError)).toBeTruthy();
+			expect(api.delete).toHaveBeenCalledTimes(2);
+			expect(api.delete).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`);
+			expect(api.delete).toHaveBeenCalledWith(`/api/subscriptions/${SUB_B.id}`);
+			vi.mocked(api.post).mockResolvedValue([] as never);
+		},
+	);
+
+	it("subscription loading and read failure guidance translate without replacing the original diagnostic or writing data", async () => {
+		let rejectList!: (error: Error) => void;
+		const pending = new Promise<Subscription[]>((_resolve, reject) => {
+			rejectList = reject;
+		});
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("Expected the subscription API fixture");
+		vi.mocked(api.get).mockImplementation((path) =>
+			path === "/api/subscriptions" ? (pending as never) : get(path),
+		);
+		i18n.set({ locale: "en", voice: "plain" });
+		renderSubs();
+		for (const [locale, loading, hint] of [
+			["en", "Loading subscriptions…", "This should only take a moment."],
+			["ja", "購読一覧を読み込み中…", "まもなく完了します。"],
+			["zh-TW", "正在讀取訂閱清單…", "即將完成。"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(await screen.findByText(loading)).toBeTruthy();
+			expect(screen.getByText(hint)).toBeTruthy();
+		}
+		await act(async () => rejectList(new Error("original database EACCES / 原因")));
+		for (const [locale, message] of [
+			["en", "Could not load subscriptions: original database EACCES / 原因"],
+			["ja", "購読を読み込めませんでした：original database EACCES / 原因"],
+			["zh-TW", "無法載入訂閱：original database EACCES / 原因"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(await screen.findByText(message)).toBeTruthy();
+		}
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	});
+
 	it("右键卡片 → 弹出快捷菜单", async () => {
 		renderSubs();
 		await screen.findByText("UP甲");
