@@ -306,8 +306,10 @@ export function ListSection({ ext, field }: { ext: ExtensionEntryView; field: Se
 	if (settings.isError) {
 		return (
 			<ErrorNote size="sm">
-				{tx("panelUi.pages.extensions.declarative.list-section.5")}
-				{field.label}:{reasonOf(settings.error)}
+				{tx("panelUi.pages.extensions.declarative.list-section.5", {
+					list: field.label,
+					reason: reasonOf(settings.error),
+				})}
 			</ErrorNote>
 		);
 	}
@@ -341,8 +343,7 @@ export function ListSection({ ext, field }: { ext: ExtensionEntryView; field: Se
 						icon={<Icon.plus size={13} />}
 						onClick={() => open(() => setDialog({ kind: "new" }))}
 					>
-						{tx("panelUi.pages.extensions.declarative.list-section.6")}
-						{itemLabel}
+						{tx("panelUi.pages.extensions.declarative.list-section.6", { item: itemLabel })}
 					</Btn>
 				</div>
 			) : null}
@@ -416,7 +417,13 @@ export function ListSection({ ext, field }: { ext: ExtensionEntryView; field: Se
 							{/* 事情没成时框留在原地 —— 不说原因就是让人对着黑盒按第二下。 */}
 							{writeError ? (
 								<ErrorNote size="sm" className="mt-2.5">
-									{confirmation.errorLead}:{writeError}
+									{confirming.kind === "remove"
+										? tx("panelUi.pages.extensions.declarative.list-section.11", {
+												reason: writeError,
+											})
+										: tx("panelUi.pages.extensions.declarative.list-section.16", {
+												reason: writeError,
+											})}
 								</ErrorNote>
 							) : null}
 						</>
@@ -461,7 +468,6 @@ function confirmationOf(confirming: Confirming, field: SettingsListField) {
 						value1: field.removeWarning,
 					})
 				: i18n.t("panelUi.pages.extensions.declarative.list-section.10", { value0: title }),
-			errorLead: i18n.t("panelUi.pages.extensions.declarative.list-section.11"),
 			label: i18n.t("panelUi.pages.extensions.declarative.list-section.12"),
 			busyLabel: i18n.t("panelUi.pages.extensions.declarative.list-section.13"),
 		};
@@ -473,8 +479,6 @@ function confirmationOf(confirming: Confirming, field: SettingsListField) {
 			value0: title,
 			value1: label,
 		}),
-		// 写不进去时那句得贴着这一下说 —— 通用的「保存失败」等于让人对着黑盒按第二下。
-		errorLead: i18n.t("panelUi.pages.extensions.declarative.list-section.16"),
 		label: i18n.t("panelUi.pages.extensions.declarative.list-section.17"),
 		busyLabel: i18n.t("panelUi.pages.extensions.declarative.list-section.18"),
 	};
@@ -501,8 +505,7 @@ function ListEmpty({
 		<EmptyNote>
 			<div data-list-empty className="flex flex-col items-center">
 				<span className="text-bn-sm text-bn-text-secondary">
-					{tx("panelUi.pages.extensions.declarative.list-section.19")}
-					{field.label}。
+					{tx("panelUi.pages.extensions.declarative.list-section.19", { list: field.label })}
 				</span>
 				{field.description ? (
 					<span className="mt-[5px] text-bn-xs leading-[1.7] text-bn-text-tertiary">
@@ -517,8 +520,9 @@ function ListEmpty({
 						icon={<Icon.plus size={13} />}
 						onClick={onAdd}
 					>
-						{tx("panelUi.pages.extensions.declarative.list-section.20")}
-						{itemLabelOf(field)}
+						{tx("panelUi.pages.extensions.declarative.list-section.20", {
+							item: itemLabelOf(field),
+						})}
 					</Btn>
 				</div>
 			</div>
@@ -635,7 +639,11 @@ function ListCard({
 								variant="outline"
 								size="sm"
 								disabled={busy}
-								aria-label={`${paused ? tx("panelUi.pages.extensions.declarative.list-section.23") : tx("panelUi.pages.extensions.declarative.list-section.24")} ${title}`}
+								aria-label={
+									paused
+										? tx("panelUi.pages.extensions.declarative.list-section.23", { name: title })
+										: tx("panelUi.pages.extensions.declarative.list-section.24", { name: title })
+								}
 								onClick={() => actions.toggle(item)}
 							>
 								{paused

@@ -14,8 +14,12 @@
  * - 图例只在**真有三态格**时挂、只挂一次(决策 27)。
  */
 
-import type { ExtensionItemView, ExtensionPanelView } from "@bilibili-notify/contract";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import type {
+	ExtensionItemView,
+	ExtensionPanelView,
+	SettingsListField,
+} from "@bilibili-notify/contract";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../../../services/api", async (importOriginal) => ({
@@ -655,3 +659,159 @@ it("settings-invalid config shows safe originals including an entire secret list
 	expect(screen.getByText("密钥原值不显示")).toBeTruthy();
 	expect(api.patch).not.toHaveBeenCalled();
 });
+
+it("list statuses, boolean values and item actions translate while identities and values stay original", async () => {
+	const list: SettingsListField = {
+		...LINKS_FIELD,
+		label: "Original list",
+		itemLabel: "entry",
+		fields: [...LINKS_FIELD.fields, { key: "verified", type: "boolean", label: "Original flag" }],
+	};
+	renderList({
+		ext: { ...BRIDGE, enabled: false, state: "disabled", settings: { fields: [list] } },
+		items: [
+			{ ...HOME, verified: false },
+			{ ...OFFICE, enabled: false, verified: true },
+		],
+	});
+	await findCard("c1");
+	for (const [locale, newLabel, edit, remove, enable, disable, disabled, extensionOff, yes, no] of [
+		[
+			"en",
+			"New entry",
+			"Edit 家里那台",
+			"Delete 家里那台",
+			"Enable 机房那台",
+			"Disable 家里那台",
+			"Disabled",
+			"Extension disabled",
+			"Yes",
+			"No",
+		],
+		[
+			"ja",
+			"entryを新規作成",
+			"家里那台を編集",
+			"家里那台を削除",
+			"机房那台を有効にする",
+			"家里那台を無効にする",
+			"無効",
+			"拡張機能は無効",
+			"はい",
+			"いいえ",
+		],
+		[
+			"zh-TW",
+			"新增 entry",
+			"編輯 家里那台",
+			"刪除 家里那台",
+			"啟用 机房那台",
+			"停用 家里那台",
+			"已停用",
+			"拓展已關閉",
+			"是",
+			"否",
+		],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByRole("button", { name: newLabel })).toBeTruthy();
+		const home = within(cardOf("c1"));
+		const office = within(cardOf("c2"));
+		expect(home.getByText(extensionOff)).toBeTruthy();
+		expect(office.getByText(disabled)).toBeTruthy();
+		expect(home.getByText(no)).toBeTruthy();
+		expect(office.getByText(yes)).toBeTruthy();
+		expect(home.getByRole("button", { name: edit })).toBeTruthy();
+		expect(home.getByRole("button", { name: remove })).toBeTruthy();
+		expect(home.getByRole("button", { name: disable })).toBeTruthy();
+		expect(office.getByRole("button", { name: enable })).toBeTruthy();
+		expect(home.getByText("家里那台")).toBeTruthy();
+		expect(home.getByText("Original flag")).toBeTruthy();
+		expect(home.getByText(maskOf(TOKEN))).toBeTruthy();
+	}
+	expect(api.patch).not.toHaveBeenCalled();
+	expect(api.post).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+	"list empty and unreadable explanations translate without suggesting creation after a read failure (unreadable=%s)",
+	async (unreadable) => {
+		const list: SettingsListField = {
+			...LINKS_FIELD,
+			label: "Original list",
+			itemLabel: "entry",
+			description: "Original guidance",
+		};
+		renderList({ ext: { ...BRIDGE, settings: { fields: [list] } }, items: unreadable ? null : [] });
+		if (unreadable) await screen.findByRole("alert");
+		else await screen.findByText("还没有Original list。");
+		for (const [locale, failed, empty, create] of [
+			[
+				"en",
+				"Could not read Original list: 配置读不出来:500",
+				"No Original list yet.",
+				"Create first entry",
+			],
+			[
+				"ja",
+				"Original listを読み込めません：配置读不出来:500",
+				"Original listはまだありません。",
+				"最初のentryを作成",
+			],
+			[
+				"zh-TW",
+				"無法讀取 Original list：配置读不出来:500",
+				"還沒有 Original list。",
+				"新增第一個 entry",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			if (unreadable) {
+				expect(screen.getByRole("alert").textContent).toBe(failed);
+				expect(screen.queryByRole("button", { name: create })).toBeNull();
+				expect(screen.queryByText(empty)).toBeNull();
+			} else {
+				expect(screen.getByText(empty)).toBeTruthy();
+				expect(screen.getByText("Original guidance")).toBeTruthy();
+				expect(screen.getByRole("button", { name: create })).toBeTruthy();
+			}
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+	},
+);
+
+it.each(["read failure", "invalid row"])(
+	"unknown status translates without inventing a live state (%s)",
+	async (scenario) => {
+		renderList({
+			items: [HOME],
+			view:
+				scenario === "read failure"
+					? new Error("Original read failure")
+					: {
+							items: {
+								links: { c1: { fault: { where: "Original row", reason: "Original fault" } } },
+							},
+						},
+		});
+		await screen.findByText("状态未知");
+		for (const [locale, status] of [
+			["en", "Status unknown"],
+			["ja", "状態不明"],
+			["zh-TW", "狀態未知"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(within(cardOf("c1")).getByText(status)).toBeTruthy();
+			expect(within(cardOf("c1")).getByText("家里那台")).toBeTruthy();
+			if (scenario === "invalid row")
+				expect(within(cardOf("c1")).getByRole("alert").textContent).toContain("Original fault");
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+	},
+);

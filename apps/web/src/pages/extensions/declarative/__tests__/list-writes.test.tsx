@@ -16,7 +16,7 @@
  */
 
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -566,4 +566,190 @@ describe("写不进去的时候", () => {
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).queryByText(/删不掉/)).toBeNull();
 	});
+});
+
+it.each(["remove with warning", "remove without warning", "regenerate"])(
+	"confirmation, progress and failure translate without submitting twice (%s)",
+	async (mode) => {
+		const deleting = mode !== "regenerate";
+		const list = {
+			...LINKS_FIELD,
+			itemLabel: "entry",
+			removeWarning: mode === "remove with warning" ? "Original removal warning" : undefined,
+		};
+		renderList({ ext: { ...BRIDGE, settings: { fields: [list] } }, items: [HOME] });
+		await findCard("c1");
+		await userEvent.click(
+			screen.getByRole("button", {
+				name: deleting ? "删除 家里那台" : "重新生成 家里那台 的 token",
+			}),
+		);
+		const dialog = await screen.findByRole("dialog");
+		for (const [
+			locale,
+			title,
+			warningBody,
+			defaultBody,
+			regenerateBody,
+			removeLabel,
+			regenerateLabel,
+		] of [
+			[
+				"en",
+				deleting ? "Delete this entry?" : "Regenerate token?",
+				"After deleting “家里那台”: Original removal warning",
+				"Delete “家里那台” and its settings.",
+				"The old token for “家里那台” becomes invalid immediately. Any client using it will disconnect; copy the new value into that client to reconnect.",
+				"Delete",
+				"Regenerate",
+			],
+			[
+				"ja",
+				deleting ? "このentryを削除しますか？" : "「token」を再生成しますか？",
+				"「家里那台」を削除すると：Original removal warning",
+				"「家里那台」とその設定を削除します。",
+				"「家里那台」の既存のtokenはすぐに無効になります。使用中の接続先は切断されるため、新しい値をコピーして再設定してください。",
+				"削除",
+				"再生成",
+			],
+			[
+				"zh-TW",
+				deleting ? "刪除此 entry？" : "重新產生 token？",
+				"刪除「家里那台」後，Original removal warning",
+				"刪除「家里那台」及其設定。",
+				"「家里那台」的舊 token 會立即失效，使用中的另一端將當場中斷；請複製新值並重新填入。",
+				"刪除",
+				"重新產生",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(within(dialog).getByText(title)).toBeTruthy();
+			expect(
+				within(dialog).getByText(
+					deleting ? (mode === "remove with warning" ? warningBody : defaultBody) : regenerateBody,
+				),
+			).toBeTruthy();
+			expect(
+				within(dialog).getByRole("button", { name: deleting ? removeLabel : regenerateLabel }),
+			).toBeTruthy();
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+		let rejectWrite!: (error: Error) => void;
+		const writing = new Promise<never>((_, reject) => {
+			rejectWrite = reject;
+		});
+		vi.mocked(api.patch).mockReturnValue(writing);
+		await userEvent.click(
+			within(dialog).getByRole("button", { name: deleting ? "刪除" : "重新產生" }),
+		);
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		for (const [locale, removeBusy, regenerateBusy] of [
+			["en", "Deleting…", "Regenerating…"],
+			["ja", "削除中…", "再生成中…"],
+			["zh-TW", "刪除中…", "正在重新產生…"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(
+				within(dialog).getByRole("button", { name: deleting ? removeBusy : regenerateBusy }),
+			).toBeTruthy();
+			expect(api.patch).toHaveBeenCalledTimes(1);
+		}
+		await act(async () => {
+			rejectWrite(new Error("Original write diagnostic / EACCES"));
+		});
+		await within(dialog).findByRole("alert");
+		for (const [locale, deleteError, regenerateError] of [
+			[
+				"en",
+				"Could not delete: Original write diagnostic / EACCES",
+				"Could not regenerate: Original write diagnostic / EACCES",
+			],
+			[
+				"ja",
+				"削除できません：Original write diagnostic / EACCES",
+				"再生成できません：Original write diagnostic / EACCES",
+			],
+			[
+				"zh-TW",
+				"無法刪除：Original write diagnostic / EACCES",
+				"無法重新產生：Original write diagnostic / EACCES",
+			],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(within(dialog).getByRole("alert").textContent).toBe(
+				deleting ? deleteError : regenerateError,
+			);
+			expect(screen.getByText("家里那台")).toBeTruthy();
+			expect(api.patch).toHaveBeenCalledTimes(1);
+		}
+	},
+);
+
+it("list secret recovery and reveal guidance translate while only the requested item changes", async () => {
+	const list = { ...LINKS_FIELD, itemLabel: "entry" };
+	renderList({
+		ext: { ...BRIDGE, settings: { fields: [list] } },
+		items: [{ ...HOME, token: "" }, OFFICE],
+	});
+	const home = await findCard("c1");
+	for (const [locale, warning, regenerate] of [
+		[
+			"en",
+			"This entry has no token. This can happen after restoring a redacted backup; generate a new value.",
+			"Regenerate 家里那台 · token",
+		],
+		[
+			"ja",
+			"このentryにはtokenがありません。機密情報を除いたバックアップの復元後は、この状態になります。新しい値を生成してください。",
+			"家里那台のtokenを再生成",
+		],
+		[
+			"zh-TW",
+			"此 entry 尚無 token；還原已去除機密資料的備份後會出現此情況，請產生新值。",
+			"重新產生 家里那台 的 token",
+		],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(within(home).getByText(warning)).toBeTruthy();
+		expect(within(home).getByRole("button", { name: regenerate })).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+	}
+	await userEvent.click(within(home).getByRole("button", { name: "重新產生 家里那台 的 token" }));
+	const fresh = (await within(home).findByText(/^[0-9a-f]{32}$/)).textContent as string;
+	expect(screen.queryByRole("dialog")).toBeNull();
+	for (const [locale, copy, hint] of [
+		[
+			"en",
+			"Copy 家里那台 · token",
+			"Newly generated. The full value is visible only now; after leaving this page, only its beginning and end remain. Copy it now if you need it.",
+		],
+		[
+			"ja",
+			"家里那台のtokenをコピー",
+			"生成した値の全文を表示できるのは今だけです。このページを離れると先頭と末尾のみになります。必要な場合は今のうちにコピーしてください。",
+		],
+		[
+			"zh-TW",
+			"複製 家里那台 的 token",
+			"剛產生的值只有現在能看到全文；離開此頁後只會顯示頭尾，需要時請立即複製。",
+		],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(within(home).getByRole("button", { name: copy })).toBeTruthy();
+		expect(within(home).getByText(hint)).toBeTruthy();
+		expect(within(home).getByText(fresh)).toBeTruthy();
+	}
+	expect(api.patch).toHaveBeenCalledTimes(1);
+	expect(sentOps()).toEqual([{ op: "update", list: "links", id: "c1", values: { token: fresh } }]);
+	expect(within(await findCard("c2")).getByText(/^ffff•+ffff$/)).toBeTruthy();
 });
