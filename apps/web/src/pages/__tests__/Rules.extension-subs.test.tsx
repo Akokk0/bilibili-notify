@@ -15,6 +15,7 @@ import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalSettings } from "../../types/globals";
@@ -340,4 +341,9 @@ describe("高级规则 × 拓展订阅:存与清", () => {
 			}),
 		);
 	});
+});
+
+// This scenario explicitly tests the Chinese UI.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 });

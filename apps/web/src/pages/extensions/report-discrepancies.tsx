@@ -40,7 +40,7 @@ export function ReportDiscrepanciesBox({
 		<section aria-label={t("sourceUi.pages.extensions.report.discrepancies.arialabel.1")}>
 			<GlassBox
 				title={t("sourceUi.pages.extensions.report.discrepancies.arialabel.1")}
-				badge={t("sourceUi.pages.History.HistoryRow.22", { value1: discrepancies.length })}
+				badge={t("extension.reportDiscrepancies.count", { count: discrepancies.length })}
 				subtitle={t("sourceUi.pages.extensions.report.discrepancies.subtitle.2")}
 				accent="var(--color-bn-warning)"
 				icon={<Icon.warning size={15} />}

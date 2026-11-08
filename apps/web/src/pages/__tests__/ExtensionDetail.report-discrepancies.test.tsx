@@ -12,7 +12,7 @@ import type {
 	SourceEntry,
 } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
@@ -200,6 +200,32 @@ describe("拓展详情页:上报出入", () => {
 		expect(within(row as HTMLElement).getByText("整条拒了")).toBeTruthy();
 		// 人那一格整格不画,不是画一个用来占位的空 span。
 		expect((row as HTMLElement).querySelector(".text-bn-text-primary")).toBeNull();
+	});
+
+	it("report counts keep their own noun after locale changes and preserve the reported reason", async () => {
+		disk.discrepancies = [
+			{
+				at: Date.now(),
+				kind: "problem",
+				subscriptionIds: [],
+				outcome: "rejected",
+				reasons: ["原始原因"],
+			},
+		];
+		renderDetail();
+		const box = await screen.findByRole("region", { name: "上报出入" });
+		const reason = within(box).getByText("原始原因");
+		for (const [locale, count] of [
+			["en", "1 report"],
+			["ja", "1件"],
+			["zh-TW", "1 筆"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(within(box).getByText(count)).toBeTruthy();
+			expect(within(box).getByText("原始原因")).toBe(reason);
+		}
 	});
 
 	it("没有问题:不出这个框", async () => {

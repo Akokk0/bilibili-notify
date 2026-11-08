@@ -73,8 +73,6 @@
 	"sourceUi.pages.up.UpDialog.message.36": "主人，这条订阅还有没保存的修改，关闭后就丢掉了哦。",
 	"sourceUi.pages.History.hint.5": "主人，女仆正在核对历史记录，请稍等哦。",
 	"sourceUi.pages.History.title.25": "主人，让女仆补发没送到的消息吧。",
-	"sourceUi.pages.History.RepushBar.27": "主人，女仆正在补发（",
-	"sourceUi.pages.History.RepushBar.28": " 条），好了这一行会自动更新哦。",
 	"sourceUi.pages.History.RepushBar.30": "女仆这就去补发",
 	"sourceUi.pages.History.RepushBar.31": "主人，要女仆补哪些消息呢？",
 	"sourceUi.pages.History.MessageItem.42": "女仆后来已经补发过一次啦。",
@@ -647,5 +645,6 @@
 	"healthCard.insightUnknown": "主人，直播状态还没确认，读到后再给您提示哦。",
 	"healthCard.emptyHint": "主人，来源和配好推送连接的集成，会在这里出现哦。",
 	"healthCard.viewExtensions": "查看拓展",
-	"healthCard.manage": "前往管理"
+	"healthCard.manage": "前往管理",
+	"history.repush.pending#other": "主人，女仆正在补发（{count} 条），好了这一行会自动更新哦。"
 }

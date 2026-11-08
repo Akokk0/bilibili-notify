@@ -594,3 +594,38 @@ describe("被过滤的行", () => {
 beforeEach(() => {
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 });
+
+it("history controls follow locale while recorded content and missing-only resend semantics stay unchanged", async () => {
+	mockApi([row()]);
+	renderHistory();
+	const original = await screen.findByText("下播了");
+	await userEvent.click(screen.getByRole("button", { name: "补一次" }));
+	for (const [locale, missing, all] of [
+		["en", "Resend missing (2 messages)", "Resend entire row (3 messages)"],
+		["ja", "未送信のみ再送（2件）", "行全体を再送（3件）"],
+		["zh-TW", "只補未送達的（2 則）", "整列重送（3 則）"],
+	] as const) {
+		await act(async () => {
+			i18n.set({ locale, voice: "plain" });
+		});
+		expect(screen.getByRole("button", { name: missing })).toBeTruthy();
+		expect(screen.getByRole("button", { name: all })).toBeTruthy();
+		expect(screen.getByText("下播了")).toBe(original);
+		expect(api.post).not.toHaveBeenCalled();
+	}
+	vi.mocked(api.post).mockResolvedValueOnce({ count: 1 });
+	await userEvent.click(screen.getByRole("button", { name: "只補未送達的（2 則）" }));
+	expect(await screen.findByText("正在補發（1 則），處理完成後此列會自動更新。")).toBeTruthy();
+	await act(async () => {
+		i18n.set({ locale: "en", voice: "plain" });
+	});
+	expect(
+		screen.getByText("Resending 1 message. This row updates when processing finishes."),
+	).toBeTruthy();
+	expect(api.post).toHaveBeenCalledExactlyOnceWith("/api/history/h1/repush", {
+		createdAt: TS,
+		mode: "missing",
+	});
+	expect(screen.getByText("下播了")).toBe(original);
+	expect(screen.getByText("某UP")).toBeTruthy();
+});

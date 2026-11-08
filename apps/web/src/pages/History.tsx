@@ -169,12 +169,8 @@ export default function History() {
 				/>
 				<div className="flex-1" />
 				<span className="text-bn-xs text-bn-text-tertiary">
-					{tx("sourceUi.pages.History.History.2")}
-					{filtered.length}
-					{tx("sourceUi.components.toast.shell.ToastCard.2")}
-					{retentionDays != null
-						? tx("sourceUi.pages.History.History.3", { value1: retentionDays })
-						: ""}
+					{tx("history.records", { count: filtered.length })}
+					{retentionDays != null ? tx("history.retention", { count: retentionDays }) : ""}
 				</span>
 			</div>
 
@@ -374,7 +370,7 @@ function HistoryRow({
 						>
 							<span>
 								{count > 1
-									? tx("sourceUi.pages.History.HistoryRow.22", { value1: count })
+									? tx("history.messages", { count })
 									: tx("sourceUi.pages.History.HistoryRow.23")}
 							</span>
 							<span aria-hidden="true">{open ? " ▴" : " ▾"}</span>
@@ -440,17 +436,13 @@ function RepushBar({
 			return { count: res.count };
 		},
 	});
-	const n = (v: number) => tx("sourceUi.pages.History.RepushBar.26", { value1: v });
+	const n = (v: number) => tx("history.repush.count", { count: v });
 	// 服务端回的是「收下了」,消息一条都还没发出去 —— 所以说「去补」不说「补好了」。
 	// 真正的结果随后经 WS 一条条回来,这一行会自己变。
 	if (repush.isSuccess) {
 		return (
 			<div className="flex items-center gap-2 border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2 pl-38 text-bn-xs text-bn-text-secondary">
-				<span>
-					{tx("sourceUi.pages.History.RepushBar.27")}
-					{repush.data.count}
-					{tx("sourceUi.pages.History.RepushBar.28")}
-				</span>
+				<span>{tx("history.repush.pending", { count: repush.data.count })}</span>
 				<Btn size="sm" variant="ghost" onClick={onClose}>
 					{tx("sourceUi.pages.History.RepushBar.29")}
 				</Btn>

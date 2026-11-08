@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import Subscriptions from "../Subscriptions";
 
@@ -134,4 +135,9 @@ describe("Subscriptions 筛选胶囊 × 皮肤挂点", () => {
 		expect([...mutedCls].filter((c) => !normal.has(c))).toEqual(["border-dashed"]);
 		expect([...normal].filter((c) => !mutedCls.has(c))).toEqual([]);
 	});
+});
+
+// This scenario explicitly tests the Chinese UI.
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 });
