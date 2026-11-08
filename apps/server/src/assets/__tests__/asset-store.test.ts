@@ -10,6 +10,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	type AssetPutOptions,
 	type AssetStore,
@@ -689,4 +690,31 @@ describe("isValidAssetId", () => {
 			}
 		}
 	});
+});
+
+it("localizes asset rejection on a held store and leaves storage untouched", async () => {
+	const store = createAssetStore({
+		dir,
+		formats: IMAGE_FORMATS,
+		maxBytes: 1024,
+		naming: { kind: "random" },
+	});
+	const previous = i18n.state();
+	try {
+		for (const [locale, message] of [
+			["en", "Unsupported format: pdf (only png / jpg / webp)."],
+			["ja", "未対応の形式です：pdf（対応形式：png / jpg / webp）"],
+			["zh-TW", "不支援的格式：pdf（僅接受 png / jpg / webp）。"],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			expect(await store.put({ bytes: PNG, ext: "pdf" })).toEqual({
+				ok: false,
+				code: "invalid",
+				message,
+			});
+			expect(await store.list()).toEqual([]);
+		}
+	} finally {
+		i18n.set(previous);
+	}
 });

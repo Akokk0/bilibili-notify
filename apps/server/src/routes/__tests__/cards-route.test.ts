@@ -17,6 +17,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { CardSkinStore } from "../../card-skins/store.js";
+import { i18n } from "../../i18n/index.js";
 import { saveCardBg } from "../../runtime/card-assets.js";
 import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
 import { bilibiliLikeSources, sourceRegistryOf } from "../../subscriptions/__tests__/fixtures.js";
@@ -565,6 +566,33 @@ describe("cards route — /preview 示例数据", () => {
 			body: JSON.stringify(body),
 		});
 	}
+
+	it("localizes sample cards on each request through the same preview route", async () => {
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer() });
+		const previous = i18n.state();
+		try {
+			for (const [locale, creator, title, followers] of [
+				["en", "Sample creator", "Cyberpunk 2077: first playthrough of the expansion!", "2.15M"],
+				["ja", "サンプルクリエイター", "【サイバーパンク2077】拡張パックを初見プレイ！", "215万"],
+				["zh-TW", "範例創作者", "【電馭叛客 2077】資料片實況首播！", "215萬"],
+			] as const) {
+				i18n.set({ locale, voice: "plain" });
+				const response = await postPreview(app, { kind: "live", style: STYLE });
+				expect(response.status).toBe(200);
+				expect(await response.json()).toMatchObject({
+					ok: true,
+					dataUrl: expect.stringMatching(/^data:image\/png;base64,/),
+				});
+				const html = capturedHtml.at(-1);
+				expect(html).toContain(creator);
+				expect(html).toContain(title);
+				expect(html).toContain(followers);
+				expect(html).toContain("2026-05-09 19:00:00");
+			}
+		} finally {
+			i18n.set(previous);
+		}
+	});
 
 	/**
 	 * **这一条原来钉的是「悬空首张被跳过、第二张内联进了 HTML」。** 内联那一半 2026-09-19
