@@ -7,8 +7,9 @@
  */
 
 import type { ResourceSample, ResourceStatic } from "@bilibili-notify/contract";
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { heapTone, SystemResourceCard } from "../system-resource-card";
 
 const MB = 1024 * 1024;
@@ -71,9 +72,42 @@ function arcsOf(title: string): Array<{ len: number; color: string }> {
 /** 「其他」那一档的灰 —— 它是一句断言(「这些不是我们占的」),不是随手挑的颜色。 */
 const REST_TONE = "var(--color-bn-inactive)";
 
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+});
 afterEach(cleanup);
 
 describe("SystemResourceCard", () => {
+	it("resource labels follow language while measured values and the gauge remain unchanged", async () => {
+		const view = renderCard();
+		const gauge = screen.getByTitle("CPU 占用").closest("svg");
+		for (const [locale, title, cpu, browser, memory] of [
+			["en", "System resources", "CPU usage", "Not connected", "Memory"],
+			["ja", "システムリソース", "CPU使用率", "未接続", "メモリー"],
+			["zh-TW", "系統資源", "CPU 使用率", "未連接", "記憶體"],
+		] as const) {
+			await act(async () => {
+				i18n.set({ locale, voice: "plain" });
+			});
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(browser)).toBeTruthy();
+			expect(screen.getByText(memory)).toBeTruthy();
+			expect(screen.getByTitle(cpu).closest("svg")).toBe(gauge);
+			expect(screen.getByText("61%")).toBeTruthy();
+			expect(screen.getByText("38%")).toBeTruthy();
+		}
+		await act(async () => {
+			i18n.set({ locale: "en", voice: "plain" });
+		});
+		view.rerender(
+			<SystemResourceCard
+				state={{ static: { ...STATIC, hostCores: 1 }, history: [sample()] }}
+				reachable
+			/>,
+		);
+		expect(screen.getByText("AMD EPYC 7K62 48-Core Processor · 1 core")).toBeTruthy();
+	});
+
 	it("环心报的是**总**占用,底下把本体那份单列出来", () => {
 		renderCard();
 		// 61% 是这台机器一共用掉的,20% 是我们用掉的 —— 环心只报一个数时必须是总数,

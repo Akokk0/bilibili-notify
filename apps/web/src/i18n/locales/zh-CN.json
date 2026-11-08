@@ -2229,7 +2229,6 @@
 	"panelUi.components.system-resource-card.14": "内存",
 	"panelUi.components.system-resource-card.15": "本体 {value0}",
 	"panelUi.components.system-resource-card.16": "处理器",
-	"panelUi.components.system-resource-card.17": " 核",
 	"panelUi.components.system-resource-card.18": "容器配额",
 	"panelUi.components.system-resource-card.19": "宿主机内存",
 	"panelUi.components.system-resource-card.20": "本体堆",
@@ -3236,5 +3235,6 @@
 	"healthCard.viewExtensions": "查看拓展",
 	"healthCard.manage": "前往管理",
 	"log.chat.markdownUnavailable": "Markdown 模块加载失败，使用纯文本显示",
-	"log.fields.missing": "设置字段缺少显示说明"
+	"log.fields.missing": "设置字段缺少显示说明",
+	"resources.cores#other": "{count} 核"
 }

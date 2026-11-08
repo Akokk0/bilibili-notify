@@ -256,8 +256,7 @@ export function SystemResourceCard({
 									className="truncate text-bn-xs font-bold text-bn-text-primary"
 									title={statics.cpuModel}
 								>
-									{statics.cpuModel || "—"} · {statics.hostCores}{" "}
-									{tx("panelUi.components.system-resource-card.17")}
+									{statics.cpuModel || "—"} · {tx("resources.cores", { count: statics.hostCores })}
 								</div>
 							</div>
 							<Fact
