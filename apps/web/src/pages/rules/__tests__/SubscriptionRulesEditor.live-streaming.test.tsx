@@ -13,6 +13,7 @@ import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { api } from "../../../services/api";
 import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
@@ -76,6 +77,7 @@ function renderEditor(sub: Subscription, section: SectionId, platform?: Subscrip
 const diffCodes = (): string[] => useDraftStore.getState().current?.diff.map((d) => d.code) ?? [];
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.patch).mockResolvedValue({});
@@ -212,3 +214,52 @@ describe("拓展订阅「推送时段覆盖」× 周期间隔与启动补报", (
 		expect(input.value).toBe("5");
 	});
 });
+
+it.each([
+	[
+		"en",
+		"Live threshold override",
+		"Overriding",
+		"Inherited",
+		"Override: Live threshold override",
+		"No override · This subscription inherits global live thresholds and scheduling.",
+	],
+	[
+		"ja",
+		"配信通知条件の個別設定",
+		"上書き中",
+		"継承",
+		"配信通知条件の個別設定を上書き",
+		"上書きなし · この購読は全体の配信通知条件とスケジュールを引き継ぎます。",
+	],
+	[
+		"zh-TW",
+		"直播門檻覆寫",
+		"覆寫中",
+		"沿用",
+		"覆寫：直播門檻覆寫",
+		"未覆寫 · 此訂閱會沿用全域直播門檻與排程。",
+	],
+] as const)(
+	"%s localizes override states and controls while retaining explicit clearing of subscription settings",
+	async (locale, title, on, off, action, note) => {
+		i18n.set({ locale, voice: "plain" });
+		const { container } = renderEditor(
+			biliSub({ liveStreaming: { streamingIntervalHours: 3 } }),
+			"live",
+		);
+		expect(within(container).getByText(title)).toBeTruthy();
+		expect(within(container).getByText(on)).toBeTruthy();
+		fireEvent.click(within(container).getByRole("button", { name: action }));
+		expect(within(container).getByText(off)).toBeTruthy();
+		expect(container.textContent).toContain(note);
+		expect(api.patch).not.toHaveBeenCalled();
+		await useDraftStore.getState().current?.onSave();
+		await waitFor(() =>
+			expect(api.patch).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.objectContaining({ overrides: expect.objectContaining({ liveStreaming: null }) }),
+			),
+		);
+	},
+);

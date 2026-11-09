@@ -79,8 +79,9 @@ export const UNTRUSTED_MARKDOWN_COMPONENTS: Components = {
 		if (!safe) {
 			return (
 				<span className="text-bn-text-tertiary text-bn-sm">
-					[{alt || i18n.t("panelUi.components.untrusted-markdown.1")}{" "}
-					{i18n.t("panelUi.components.untrusted-markdown.2")}
+					{i18n.t("panelUi.components.untrusted-markdown.2", {
+						alt: alt || i18n.t("panelUi.components.untrusted-markdown.1"),
+					})}
 				</span>
 			);
 		}

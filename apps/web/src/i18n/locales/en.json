@@ -3220,5 +3220,19 @@
 	"panelUi.components.onboarding.tour-companion.18": "🎉 Setup complete!",
 	"panelUi.components.onboarding.tour-companion.19": "New posts and live starts from your subscriptions will be delivered automatically.",
 	"panelUi.components.onboarding.tour-companion.20": "Optional next steps:",
-	"panelUi.components.onboarding.tour-companion.21": "Close"
+	"panelUi.components.onboarding.tour-companion.21": "Close",
+	"panelUi.components.drag-handle.1": "Drag to reorder",
+	"panelUi.components.drag-handle.2": "Drag to reorder {value0}",
+	"panelUi.components.drag-handle.3": "Drag to reorder",
+	"panelUi.components.override-box.1": "Overriding",
+	"panelUi.components.override-box.2": "Inherited",
+	"panelUi.components.override-box.3": "Override: {value0}",
+	"panelUi.components.inherit-note.1": "No override · ",
+	"panelUi.components.untrusted-markdown.1": "Image",
+	"panelUi.components.untrusted-markdown.2": "[{alt} — see the source site]",
+	"panelUi.components.skin-preview-bar.1": "Previewing “{name}”",
+	"panelUi.components.skin-preview-bar.2": "This is a temporary preview; refreshing restores the saved skin.",
+	"panelUi.components.skin-preview-bar.3": "Applying…",
+	"panelUi.components.skin-preview-bar.4": "Apply",
+	"panelUi.components.skin-preview-bar.5": "Cancel"
 }

@@ -35,28 +35,33 @@ export function SkinPreviewBar() {
 	if (!preview || editing) return null;
 	return (
 		<div className="fixed inset-x-0 top-3 z-bn-preview flex justify-center px-4">
-			<div className="bn-glass-strong flex items-center gap-3 rounded-bn-pill px-4 py-2 shadow-bn-elev">
-				<span className="text-bn-sm text-bn-text-primary">
-					{tx("panelUi.components.skin-preview-bar.1")}
-					<b>「{preview.manifest.name}」</b>
+			<div className="bn-glass-strong flex max-w-full flex-wrap items-center gap-3 rounded-bn-card px-4 py-2 shadow-bn-elev sm:flex-nowrap sm:rounded-bn-pill">
+				<span className="min-w-0 flex-1 basis-full break-words text-bn-sm text-bn-text-primary sm:basis-auto">
+					<b>{tx("panelUi.components.skin-preview-bar.1", { name: preview.manifest.name })}</b>
 					<span className="ml-1 text-bn-text-secondary">
 						{tx("panelUi.components.skin-preview-bar.2")}
 					</span>
 				</span>
-				{error ? <span className="text-bn-sm text-bn-danger">{error}</span> : null}
-				<Btn size="sm" onClick={() => apply.mutate(preview.id)} disabled={apply.isPending}>
-					{apply.isPending
-						? tx("panelUi.components.skin-preview-bar.3")
-						: tx("panelUi.components.skin-preview-bar.4")}
-				</Btn>
-				<Btn
-					size="sm"
-					variant="outline"
-					onClick={() => useSkinStore.getState().setPreview(null)}
-					disabled={apply.isPending}
-				>
-					{tx("panelUi.components.skin-preview-bar.5")}
-				</Btn>
+				{error ? (
+					<span className="min-w-0 basis-full break-words text-bn-sm text-bn-danger sm:basis-auto">
+						{error}
+					</span>
+				) : null}
+				<div className="ml-auto flex shrink-0 items-center gap-3">
+					<Btn size="sm" onClick={() => apply.mutate(preview.id)} disabled={apply.isPending}>
+						{apply.isPending
+							? tx("panelUi.components.skin-preview-bar.3")
+							: tx("panelUi.components.skin-preview-bar.4")}
+					</Btn>
+					<Btn
+						size="sm"
+						variant="outline"
+						onClick={() => useSkinStore.getState().setPreview(null)}
+						disabled={apply.isPending}
+					>
+						{tx("panelUi.components.skin-preview-bar.5")}
+					</Btn>
+				</div>
 			</div>
 		</div>
 	);

@@ -11,7 +11,8 @@
 
 import { cleanup, render } from "@testing-library/react";
 import ReactMarkdown from "react-markdown";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { UNTRUSTED_MARKDOWN_COMPONENTS } from "../untrusted-markdown";
 
 function md(text: string): HTMLElement {
@@ -19,8 +20,25 @@ function md(text: string): HTMLElement {
 		.container;
 }
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 describe("不受信 markdown", () => {
 	afterEach(cleanup);
+	it.each([
+		["en", "[Image — see the source site]", "[Original alt 原文 — see the source site]"],
+		["ja", "[画像 — 配布元で確認]", "[Original alt 原文 — 配布元で確認]"],
+		["zh-TW", "[圖片 —— 請至原始網站查看]", "[Original alt 原文 —— 請至原始網站查看]"],
+	] as const)(
+		"%s localizes blocked-image placeholders while preserving original alt text and safe rendering",
+		(locale, empty, named) => {
+			i18n.set({ locale, voice: "plain" });
+			const c = md("![](docs/image.png) ![Original alt 原文](data:image/png;base64,AA==)");
+			expect(c.textContent).toContain(empty);
+			expect(c.textContent).toContain(named);
+			expect(c.querySelector("img")).toBeNull();
+			expect(c.querySelector("a")).toBeNull();
+		},
+	);
 
 	it("`javascript:` 链接不给 href —— 退成纯文字,不留一个假的可点物件", () => {
 		const c = md("[点我](javascript:alert(1))");

@@ -3151,5 +3151,19 @@
 	"panelUi.components.onboarding.tour-companion.18": "🎉 設定が完了しました！",
 	"panelUi.components.onboarding.tour-companion.19": "購読したクリエイターの新しい投稿とライブ開始が、自動で配信されます。",
 	"panelUi.components.onboarding.tour-companion.20": "必要に応じて追加設定：",
-	"panelUi.components.onboarding.tour-companion.21": "閉じる"
+	"panelUi.components.onboarding.tour-companion.21": "閉じる",
+	"panelUi.components.drag-handle.1": "ドラッグして並べ替え",
+	"panelUi.components.drag-handle.2": "{value0}をドラッグして並べ替え",
+	"panelUi.components.drag-handle.3": "ドラッグして並べ替え",
+	"panelUi.components.override-box.1": "上書き中",
+	"panelUi.components.override-box.2": "継承",
+	"panelUi.components.override-box.3": "{value0}を上書き",
+	"panelUi.components.inherit-note.1": "上書きなし · ",
+	"panelUi.components.untrusted-markdown.1": "画像",
+	"panelUi.components.untrusted-markdown.2": "[{alt} — 配布元で確認]",
+	"panelUi.components.skin-preview-bar.1": "「{name}」をプレビュー中",
+	"panelUi.components.skin-preview-bar.2": "一時的なプレビューです。再読み込みすると保存済みのスキンに戻ります。",
+	"panelUi.components.skin-preview-bar.3": "適用中…",
+	"panelUi.components.skin-preview-bar.4": "適用",
+	"panelUi.components.skin-preview-bar.5": "キャンセル"
 }

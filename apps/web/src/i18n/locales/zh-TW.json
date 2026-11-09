@@ -3151,5 +3151,19 @@
 	"panelUi.components.onboarding.tour-companion.18": "🎉 設定完成！",
 	"panelUi.components.onboarding.tour-companion.19": "訂閱的新作品與開播通知，之後都會自動傳送。",
 	"panelUi.components.onboarding.tour-companion.20": "還可以設定：",
-	"panelUi.components.onboarding.tour-companion.21": "關閉"
+	"panelUi.components.onboarding.tour-companion.21": "關閉",
+	"panelUi.components.drag-handle.1": "拖曳排序",
+	"panelUi.components.drag-handle.2": "拖曳排序 {value0}",
+	"panelUi.components.drag-handle.3": "拖曳排序",
+	"panelUi.components.override-box.1": "覆寫中",
+	"panelUi.components.override-box.2": "沿用",
+	"panelUi.components.override-box.3": "覆寫：{value0}",
+	"panelUi.components.inherit-note.1": "未覆寫 · ",
+	"panelUi.components.untrusted-markdown.1": "圖片",
+	"panelUi.components.untrusted-markdown.2": "[{alt} —— 請至原始網站查看]",
+	"panelUi.components.skin-preview-bar.1": "正在預覽「{name}」",
+	"panelUi.components.skin-preview-bar.2": "目前為暫時預覽，重新整理後會回復已儲存的佈景主題。",
+	"panelUi.components.skin-preview-bar.3": "套用中…",
+	"panelUi.components.skin-preview-bar.4": "套用",
+	"panelUi.components.skin-preview-bar.5": "取消"
 }

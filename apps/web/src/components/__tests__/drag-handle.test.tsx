@@ -10,15 +10,50 @@
  * 行内的开关/输入框点不动)、aria-label(键盘与读屏器唯一的抓手)。
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { DragHandle } from "../drag-handle";
 
 afterEach(cleanup);
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 const ATTRS = { role: "button", tabIndex: 0 } as never;
 
 describe("DragHandle", () => {
+	it.each([
+		["en", "Drag to reorder", "Drag to reorder Original row 原文"],
+		["ja", "ドラッグして並べ替え", "Original row 原文をドラッグして並べ替え"],
+		["zh-TW", "拖曳排序", "拖曳排序 Original row 原文"],
+	] as const)(
+		"%s localizes handle names while retaining the row label, activator and listener",
+		(locale, title, named) => {
+			i18n.set({ locale, voice: "plain" });
+			const onPointerDown = vi.fn();
+			const ref = vi.fn();
+			render(
+				<>
+					<DragHandle
+						attributes={ATTRS}
+						listeners={{ onPointerDown } as never}
+						setActivatorNodeRef={ref}
+						label="Original row 原文"
+					/>
+					<DragHandle attributes={ATTRS} listeners={undefined} setActivatorNodeRef={() => {}} />
+				</>,
+			);
+			const handle = screen.getByRole("button", { name: named });
+			expect(handle.getAttribute("title")).toBe(title);
+			expect(screen.getByRole("button", { name: title })).toBeTruthy();
+			expect(ref).toHaveBeenCalledWith(handle);
+			fireEvent.pointerDown(handle);
+			expect(onPointerDown).toHaveBeenCalledTimes(1);
+			act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+			expect(screen.getByRole("button", { name: "拖动排序 Original row 原文" })).toBe(handle);
+			expect(onPointerDown).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	it("触屏必须的 touch-none 与抓手光标都在", () => {
 		render(<DragHandle attributes={ATTRS} listeners={undefined} setActivatorNodeRef={() => {}} />);
 		const cls = screen.getByRole("button", { name: "拖动排序" }).className.split(/\s+/);

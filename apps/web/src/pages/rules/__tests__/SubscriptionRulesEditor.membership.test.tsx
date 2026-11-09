@@ -103,6 +103,7 @@ async function saveAndGetOverrides(sub: Subscription): Promise<Record<string, un
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.patch).mockResolvedValue({});
