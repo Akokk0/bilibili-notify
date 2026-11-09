@@ -87,7 +87,7 @@
 	"cards.preview.rendering": "正在画卡片，主人稍等～",
 	"cards.preview.sampleBecause": "主人，这张先拿示例顶上啦：{reason}",
 	"cards.remove.message": "主人，要清掉 {name} 的卡片样式与皮肤覆盖吗？清了以后它就跟着全局走，撤不回来哦。",
-	"cards.skin.byCardHint": "这种卡的排版与观感现在整个归皮肤管哦 —— 去下面的皮肤库挑一套，或者「复制一份」再改～",
+	"cards.skin.byCardHint": "主人，卡片排版与观感由皮肤控制喔。到「全局」分区挑一套；想复制或编辑皮肤，请前往资源库吧。",
 	"cards.testPush.delivered": "送到啦 · {ms}ms",
 	"cards.testPush.failed": "主人，没推出去：{reason}",
 	"cards.testPush.sampleBecause": "推出去的是示例卡哦，主人：{reason}",

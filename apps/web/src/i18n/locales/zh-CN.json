@@ -100,7 +100,7 @@
 	"cards.scope.perSubHint": "仅作用于 {name}，未开启的覆盖继承全局",
 	"cards.skin.badgeInherit": "跟随全局",
 	"cards.skin.badgeOwn": "单独指定",
-	"cards.skin.byCardHint": "这种卡的排版与观感现在整个归皮肤管 —— 去下面的皮肤库挑一套,或者「复制一份」再改。",
+	"cards.skin.byCardHint": "卡片排版与观感由皮肤控制。到「全局」分区选用皮肤；复制和编辑皮肤请前往资源库。",
 	"cards.skin.perSubSubtitle": "这条订阅的推送卡用哪套皮肤；不选就跟随全局。想单独改排版，先在全局皮肤库「复制一份」再改",
 	"cards.skin.perSubTitle": "卡片皮肤",
 	"cards.testPush.button": "测试推送",

@@ -108,6 +108,44 @@ afterEach(() => {
 describe("预览请求体里的 SC 金额与上舰档", () => {
 	it.each([
 		[
+			"zh-CN",
+			"plain",
+			"卡片排版与观感由皮肤控制。到「全局」分区选用皮肤；复制和编辑皮肤请前往资源库。",
+		],
+		[
+			"zh-CN",
+			"maid",
+			"主人，卡片排版与观感由皮肤控制喔。到「全局」分区挑一套；想复制或编辑皮肤，请前往资源库吧。",
+		],
+		[
+			"en",
+			"plain",
+			"The selected skin controls this card’s layout and appearance. Select a skin in the Global section. Duplicate or edit skins in the Library.",
+		],
+		[
+			"ja",
+			"plain",
+			"カードのレイアウトと外観はスキンで決まります。「全体設定」でスキンを選択し、複製や編集はライブラリーで行ってください。",
+		],
+		[
+			"zh-TW",
+			"plain",
+			"卡片版面與觀感由外觀控制。請到「全域」分區選用；複製或編輯外觀請前往資源庫。",
+		],
+	] as const)("%s %s 卡片皮肤指引指向现有全局分区和资源库", async (locale, voice, hint) => {
+		renderCards();
+		fireEvent.click((await screen.findAllByRole("button", { name: "SC 提醒" }))[0]);
+		await screen.findByRole("spinbutton", { name: "展示时长（秒）" });
+		act(() => i18n.set({ locale, voice }));
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(
+			vi.mocked(api.post).mock.calls.filter(([url]) => url === "/api/cards/test"),
+		).toHaveLength(0);
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		[
 			"en",
 			"Display duration (seconds)",
 			"Sample amount (CNY)",

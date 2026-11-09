@@ -2582,7 +2582,7 @@
 	"cards.scope.perSubHint": "{name} のみに適用し、個別設定のない項目は全体設定に従います",
 	"cards.skin.badgeInherit": "全体設定に従う",
 	"cards.skin.badgeOwn": "個別指定",
-	"cards.skin.byCardHint": "このカードのレイアウトと外観はスキンで決まります。下のスキンライブラリーで選ぶか、複製して編集してください。",
+	"cards.skin.byCardHint": "カードのレイアウトと外観はスキンで決まります。「全体設定」でスキンを選択し、複製や編集はライブラリーで行ってください。",
 	"cards.skin.perSubSubtitle": "この購読の通知カードに使うスキンです。未指定なら全体設定に従います。レイアウトを変えるには、全体設定のスキンライブラリーで先に複製してください。",
 	"cards.skin.perSubTitle": "カードスキン",
 	"cards.content.program": "メンバーシップ制度",

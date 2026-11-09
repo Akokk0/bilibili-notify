@@ -2636,7 +2636,7 @@
 	"cards.scope.perSubHint": "Only {name}; settings without overrides inherit global values",
 	"cards.skin.badgeInherit": "Follow global",
 	"cards.skin.badgeOwn": "Custom skin",
-	"cards.skin.byCardHint": "The skin controls this card’s layout and appearance. Choose one in the skin library below, or duplicate one to edit it.",
+	"cards.skin.byCardHint": "The selected skin controls this card’s layout and appearance. Select a skin in the Global section. Duplicate or edit skins in the Library.",
 	"cards.skin.perSubSubtitle": "Choose a skin for this subscription’s cards, or leave it unset to follow global settings. To customize the layout, duplicate a skin in the global skin library first.",
 	"cards.skin.perSubTitle": "Card skin",
 	"cards.content.program": "Membership program",

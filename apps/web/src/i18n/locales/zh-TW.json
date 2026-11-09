@@ -2582,7 +2582,7 @@
 	"cards.scope.perSubHint": "僅套用於 {name}，未個別設定的項目沿用全域值",
 	"cards.skin.badgeInherit": "跟隨全域",
 	"cards.skin.badgeOwn": "個別指定",
-	"cards.skin.byCardHint": "此卡片的版面與外觀由外觀決定；請在下方外觀庫選用，或複製一份後編輯。",
+	"cards.skin.byCardHint": "卡片版面與觀感由外觀控制。請到「全域」分區選用；複製或編輯外觀請前往資源庫。",
 	"cards.skin.perSubSubtitle": "選擇此訂閱通知卡片的外觀；未指定時沿用全域設定。若要調整版面，請先在全域外觀庫複製一份。",
 	"cards.skin.perSubTitle": "卡片外觀",
 	"cards.content.program": "會員制度",
