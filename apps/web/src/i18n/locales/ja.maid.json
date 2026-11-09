@@ -574,5 +574,6 @@
 	"skinUi.CardSkinSection.3": "ご主人様、ここで通知カードのスキンをインポート・管理し、カード設定で選んで使ってくださいね。内蔵スキンは読み取り専用なので、編集するなら先に複製しましょう。",
 	"skinUi.CardSkinSection.16": "ご主人様、スキンライブラリーは空です。スキンパッケージをアップロードしてみてくださいね。",
 	"skinUi.CardSkinSection.19": "ご主人様、「{value0}」を削除しますか？削除後は元に戻せませんよ。",
-	"skinUi.CardSkinSection.fallback": "ご主人様、{skin}の{kind}カードは既定スキンに切り替わりました：{reason}"
+	"skinUi.CardSkinSection.fallback": "ご主人様、{skin}の{kind}カードは既定スキンに切り替わりました：{reason}",
+	"cards.skin.globalSelectHint": "ご主人様、個別のスキンを指定していない購読で使う既定のスキンを選べますよ。選択すると自動で保存しますね。"
 }

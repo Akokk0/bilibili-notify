@@ -571,3 +571,66 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 		);
 	});
 });
+
+it.each([
+	[
+		"zh-CN",
+		"plain",
+		"为此订阅选择卡片皮肤；留空时跟随全局。需单独调整排版时，先在皮肤库复制一份再编辑",
+	],
+	[
+		"zh-CN",
+		"maid",
+		"主人，可以为这条订阅挑一套卡片皮肤；不选就跟随全局。想单独改排版，先去皮肤库复制一份吧。",
+	],
+	[
+		"en",
+		"plain",
+		"Choose a card skin for this subscription; leave empty to follow the global setting. To customize its layout, first duplicate a skin in the skin library and edit the copy.",
+	],
+	[
+		"ja",
+		"plain",
+		"この購読に使うカードスキンを選びます。空欄なら全体設定に従います。個別にレイアウトを変えるには、先にスキンライブラリで複製してから編集してください。",
+	],
+	[
+		"ja",
+		"maid",
+		"ご主人様、この購読だけで使うカードスキンを選べますよ。空欄なら全体設定に従います。個別にレイアウトを変えたい場合は、先にスキンライブラリーでコピーを作ってくださいね。",
+	],
+	[
+		"zh-TW",
+		"plain",
+		"為此訂閱選擇卡片外觀；留空則沿用全域設定。若需個別調整版面，請先在外觀庫複製一份再編輯。",
+	],
+	[
+		"zh-TW",
+		"maid",
+		"主人，可以為這筆訂閱挑選卡片外觀，不選就沿用全域設定。若想個別修改版面，先到外觀庫複製一份吧。",
+	],
+] as const)("%s %s 逐订阅皮肤说明维持继承语义，切语不写配置", async (locale, voice, hint) => {
+	const sub = {
+		...makeEmptySubscription({ sourceKey: "library", externalId: "0012" }),
+		overrides: { cardSkin: "default" },
+	};
+	vi.mocked(api.get).mockImplementation(async (url) => {
+		if (url === "/api/subscriptions") return [sub];
+		if (url.includes("/api/subscriptions") || url.includes("/api/targets")) return [];
+		if (url === "/api/sources") return SOURCES;
+		if (url === "/api/cards/skins")
+			return {
+				skins: [{ id: "default", name: "Original skin 原文", builtin: true, updatedAt: 0 }],
+				active: "default",
+				fallbacks: [],
+			};
+		return { core: GLOBALS };
+	});
+	renderCards();
+	fireEvent.click(await screen.findByText("Library · 0012"));
+	await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+	fireEvent.click(screen.getByRole("button", { name: "全局" }));
+	act(() => i18n.set({ locale, voice }));
+	expect(await screen.findByText(hint)).toBeTruthy();
+	expect(screen.getByText(/Original skin 原文/)).toBeTruthy();
+	expect(api.patch).not.toHaveBeenCalled();
+});

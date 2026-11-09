@@ -3181,5 +3181,6 @@
 	"sourceUi.pages.up.UpDialog.extraOff": "OFF",
 	"skinUi.SkinSection.removeMode": "只删{mode}(留下{keep})",
 	"library.author": "作者：{author}",
-	"panelUi.components.update.update-section.31#other": "重启后等了 {count} 秒，还没等到服务回来。请确认容器的 {policy} 策略；未开启时需要手动启动。桌面版请查看启动器日志。"
+	"panelUi.components.update.update-section.31#other": "重启后等了 {count} 秒，还没等到服务回来。请确认容器的 {policy} 策略；未开启时需要手动启动。桌面版请查看启动器日志。",
+	"cards.skin.globalSelectHint": "为未单独指定皮肤的订阅选择默认卡片皮肤，选择后自动保存。"
 }

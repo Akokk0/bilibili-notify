@@ -436,7 +436,12 @@ export function CardSkinPicker({
 
 	return (
 		<div className="space-y-3">
-			<Field code="cardSkin" full>
+			<Field
+				code="cardSkin"
+				full
+				label={inherit ? undefined : tx("library.cardSkinsTitle")}
+				hint={inherit ? undefined : tx("cards.skin.globalSelectHint")}
+			>
 				<TSelect
 					full
 					value={value ?? ""}

@@ -3250,5 +3250,6 @@
 	"panelUi.pages.guide.guide-panel.3": "Push channels",
 	"panelUi.pages.guide.guide-panel.4": "Add subscriptions",
 	"panelUi.pages.guide.guide-panel.5": "Image rendering",
-	"panelUi.pages.guide.guide-panel.6": "AI features"
+	"panelUi.pages.guide.guide-panel.6": "AI features",
+	"cards.skin.globalSelectHint": "Choose the default card skin for subscriptions without their own skin. Changes are saved automatically."
 }

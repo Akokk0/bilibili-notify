@@ -3181,5 +3181,6 @@
 	"panelUi.pages.guide.guide-panel.3": "通知経路",
 	"panelUi.pages.guide.guide-panel.4": "購読を追加",
 	"panelUi.pages.guide.guide-panel.5": "画像描画",
-	"panelUi.pages.guide.guide-panel.6": "AI機能"
+	"panelUi.pages.guide.guide-panel.6": "AI機能",
+	"cards.skin.globalSelectHint": "個別のスキンを指定していない購読で使う既定のカードスキンを選びます。選択すると自動で保存されます。"
 }

@@ -619,3 +619,49 @@ it.each([
 		);
 	},
 );
+
+it.each([
+	["zh-CN", "plain", "为未单独指定皮肤的订阅选择默认卡片皮肤，选择后自动保存。"],
+	[
+		"zh-CN",
+		"maid",
+		"主人，这里选的是没有单独指定皮肤的订阅所用的默认卡片皮肤，选好就会自动保存喔。",
+	],
+	[
+		"en",
+		"plain",
+		"Choose the default card skin for subscriptions without their own skin. Changes are saved automatically.",
+	],
+	[
+		"ja",
+		"plain",
+		"個別のスキンを指定していない購読で使う既定のカードスキンを選びます。選択すると自動で保存されます。",
+	],
+	[
+		"ja",
+		"maid",
+		"ご主人様、個別のスキンを指定していない購読で使う既定のスキンを選べますよ。選択すると自動で保存しますね。",
+	],
+	["zh-TW", "plain", "為未個別指定外觀的訂閱選擇預設卡片外觀，選取後會自動儲存。"],
+	[
+		"zh-TW",
+		"maid",
+		"主人，這裡選的是沒有個別指定外觀的訂閱所用的預設卡片外觀喔，選好就會自動儲存。",
+	],
+] as const)("%s %s 全局选择器说明默认作用域，明确选择才保存一次", async (locale, voice, hint) => {
+	renderSection("select");
+	await screen.findByText("极光");
+	act(() => i18n.set({ locale, voice }));
+	expect(screen.getByText(hint)).toBeTruthy();
+	expect(
+		screen.queryByText(
+			/为此订阅选择卡片皮肤|为这条订阅挑|this subscription;|この購読に使う|この購読だけで使う|為此訂閱選擇|為這筆訂閱挑選/,
+		),
+	).toBeNull();
+	expect(api.put).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("combobox"));
+	fireEvent.click(screen.getByRole("option", { name: /默认皮肤/ }));
+	await waitFor(() =>
+		expect(api.put).toHaveBeenCalledExactlyOnceWith("/api/cards/skins/active", { id: "default" }),
+	);
+});

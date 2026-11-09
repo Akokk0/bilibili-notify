@@ -574,5 +574,6 @@
 	"skinUi.CardSkinSection.3": "主人，在這裡匯入和管理卡片外觀，再到卡片設定選用喔。內建外觀是唯讀的，想修改請先複製一份。",
 	"skinUi.CardSkinSection.16": "主人，外觀資源庫是空的，試著上傳一個外觀套件吧。",
 	"skinUi.CardSkinSection.19": "主人，確定刪除「{value0}」嗎？刪除後就無法復原了。",
-	"skinUi.CardSkinSection.fallback": "主人，{skin}的{kind}卡片已回退：{reason}"
+	"skinUi.CardSkinSection.fallback": "主人，{skin}的{kind}卡片已回退：{reason}",
+	"cards.skin.globalSelectHint": "主人，這裡選的是沒有個別指定外觀的訂閱所用的預設卡片外觀喔，選好就會自動儲存。"
 }
