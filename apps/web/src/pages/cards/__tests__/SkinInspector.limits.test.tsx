@@ -12,10 +12,12 @@
 
 import { CARD_SKIN_LIMITS, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { SkinInspector } from "../SkinInspector";
 
 afterEach(cleanup);
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 type LooseManifest = { cards: Record<string, Record<string, unknown>> };
 
@@ -55,6 +57,37 @@ function withCustomBlock(html: string) {
 }
 
 describe("面板计数器按 UTF-8 字节报", () => {
+	it.each([
+		[
+			"en",
+			"This is 9000 bytes, above the 8192-byte limit. It cannot be saved.",
+			"This is 20000 bytes, above the 16384-byte limit. It cannot be saved.",
+		],
+		[
+			"ja",
+			"9000バイトで、上限の8192バイトを超えています。このままでは保存できません。",
+			"20000バイトで、上限の16384バイトを超えています。このままでは保存できません。",
+		],
+		["zh-TW", "9000 位元組，超過上限 8192，無法儲存。", "20000 位元組，超過上限 16384，無法儲存。"],
+	] as const)(
+		"%s reports both HTML and CSS byte limits without altering original content",
+		(locale, htmlError, cssError) => {
+			i18n.set({ locale, voice: "plain" });
+			mount(
+				(m) => {
+					withCustomBlock("字".repeat(3000))(m);
+					const blocks = m.cards.live.blocks as Array<Record<string, unknown>>;
+					blocks[blocks.length - 1].css = "x".repeat(20000);
+				},
+				{ kind: "block", id: CUSTOM_ID },
+			);
+			expect(screen.getByText(htmlError)).toBeTruthy();
+			expect(screen.getByText(cssError)).toBeTruthy();
+			expect((screen.getByRole("textbox", { name: /HTML/ }) as HTMLTextAreaElement).value).toBe(
+				"字".repeat(3000),
+			);
+		},
+	);
 	it("外框 CSS:一百个汉字报的是 300,不是 100", () => {
 		mount(
 			(m) => {

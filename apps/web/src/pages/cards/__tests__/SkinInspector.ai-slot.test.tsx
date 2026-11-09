@@ -12,7 +12,7 @@ import type { CardSkinManifest } from "@bilibili-notify/contract";
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import type { CardSkinAiDone, CardSkinAiHandlers } from "../../../services/cardSkinAi";
 import type { CardSkinAiReadiness } from "../card-skin-ai";
@@ -21,6 +21,7 @@ import { type InspectorAi, SkinInspector } from "../SkinInspector";
 import { setBlockCss, setFrameCss } from "../skin-draft-ops";
 
 afterEach(cleanup);
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 const ORIGINAL = '[data-bn="self"]{padding:1px}';
 

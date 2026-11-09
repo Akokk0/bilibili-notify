@@ -685,6 +685,102 @@ describe("检查器 · 显示条件", () => {
 	const lastDraft = (spy: ReturnType<typeof vi.fn>) =>
 		spy.mock.calls.at(-1)?.[0] as CardSkinManifest;
 
+	it.each([
+		[
+			"en",
+			"Row",
+			"Start column",
+			"Column span",
+			"Row span",
+			"Stack order",
+			"Display condition",
+			"Always show",
+			"Remove block",
+			"Remove this block?",
+			"Cancel",
+			"Remove",
+			"Block hooks",
+			"Whole block",
+		],
+		[
+			"ja",
+			"行",
+			"開始列",
+			"列の占有数",
+			"行の占有数",
+			"重なり順",
+			"表示条件",
+			"常に表示",
+			"ブロックを削除",
+			"このブロックを削除しますか？",
+			"キャンセル",
+			"削除",
+			"ブロックのフック",
+			"ブロック全体",
+		],
+		[
+			"zh-TW",
+			"列",
+			"起始欄",
+			"跨欄數",
+			"跨列數",
+			"堆疊順序",
+			"顯示條件",
+			"一律顯示",
+			"刪除此區塊",
+			"刪除此區塊？",
+			"取消",
+			"刪除",
+			"區塊掛點",
+			"整個區塊",
+		],
+	] as const)(
+		"%s block controls retain geometry, field paths and cancelled work",
+		(locale, row, column, span, rows, z, condition, always, remove, title, cancel, confirm, hooks, whole) => {
+			const onDraft = vi.fn();
+			render(<Harness onDraft={onDraft} />);
+			fireEvent.click(blockBtn("创作者名"));
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(onDraft).not.toHaveBeenCalled();
+			for (const [label, value] of [
+				[row, "4"],
+				[column, "2"],
+				[span, "5"],
+				[rows, "2"],
+				[z, "3"],
+			]) {
+				fireEvent.change(screen.getByLabelText(new RegExp(`^${label}\\(`)), { target: { value } });
+			}
+			expect(cardOf(lastDraft(onDraft), "live")?.blocks.find((b) => b.id === "name")?.grid).toEqual(
+				{ row: 4, column: 2, span: 5, rowSpan: 2, z: 3 },
+			);
+			const select = screen.getByRole("combobox", { name: condition });
+			chooseSelect(select, always);
+			expect(
+				cardOf(lastDraft(onDraft), "live")?.blocks.find((b) => b.id === "name"),
+			).not.toHaveProperty("showIf");
+			chooseSelect(select, /live.isEnded/);
+			expect(cardOf(lastDraft(onDraft), "live")?.blocks.find((b) => b.id === "name")?.showIf).toBe(
+				"live.isEnded",
+			);
+			expect(within(screen.getByLabelText(hooks)).getByText(whole)).toBeTruthy();
+			act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+			fireEvent.click(screen.getByRole("button", { name: /notice ·/ }));
+			act(() => i18n.set({ locale, voice: "plain" }));
+			onDraft.mockClear();
+			fireEvent.click(screen.getByRole("button", { name: remove }));
+			expect(screen.getByText(title)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: cancel }));
+			expect(onDraft).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: remove }));
+			fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: confirm }));
+			expect(cardOf(lastDraft(onDraft), "live")?.blocks.map((b) => b.id)).toEqual([
+				"cover",
+				"name",
+			]);
+		},
+	);
+
 	it("候选来自这种卡的字段契约,选一个就写进草稿", () => {
 		const onDraft = vi.fn();
 		render(<Harness onDraft={onDraft} />);
@@ -724,6 +820,52 @@ const lastHtml = (m: CardSkinManifest): string =>
 describe("检查器 · 自定义块的内容", () => {
 	const lastDraft = (spy: ReturnType<typeof vi.fn>) =>
 		spy.mock.calls.at(-1)?.[0] as CardSkinManifest;
+
+	it.each([
+		[
+			"en",
+			"Block HTML",
+			"Fields available to this card type",
+			"Creator name",
+			"Creator avatar",
+			"An empty custom block cannot be saved. The package validator checks whether anything remains after sanitizing.",
+		],
+		[
+			"ja",
+			"ブロックのHTML",
+			"この種類のカードで使えるフィールド",
+			"クリエイター名",
+			"クリエイターのアバター",
+			"空のカスタムブロックは保存できません。パッケージの検証では、安全でない内容を除去した後に何か残っているかを確認します。",
+		],
+		[
+			"zh-TW",
+			"區塊 HTML",
+			"此類型卡片可使用的欄位",
+			"創作者名稱",
+			"創作者頭像",
+			"空白的自訂區塊無法儲存。套件驗證會檢查清理後是否仍有內容。",
+		],
+	] as const)(
+		"%s HTML editing preserves original content and inserts typed field placeholders",
+		(locale, html, fieldsLabel, name, avatar, empty) => {
+			const onDraft = vi.fn();
+			render(<Harness onDraft={onDraft} />);
+			fireEvent.click(screen.getByRole("button", { name: /notice ·/ }));
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(onDraft).not.toHaveBeenCalled();
+			expect((screen.getByLabelText(html) as HTMLTextAreaElement).value).toBe("<div>公告</div>");
+			const fields = screen.getByLabelText(fieldsLabel);
+			fireEvent.click(within(fields).getByText(name));
+			fireEvent.click(within(fields).getByText(avatar));
+			expect(lastHtml(lastDraft(onDraft))).toBe(
+				'<div>公告</div>{creator.name}<img src="{creator.avatar}">',
+			);
+			fireEvent.change(screen.getByLabelText(html), { target: { value: " " } });
+			expect(screen.getByText(empty)).toBeTruthy();
+			expect(lastHtml(lastDraft(onDraft))).toBe(" ");
+		},
+	);
 
 	/** 从目录里添一个自定义块,回它的 id。 */
 	function addCustom(): void {
