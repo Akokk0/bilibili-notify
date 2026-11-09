@@ -468,5 +468,13 @@
 	"cards.testPush.delivered": "送達囉 · {ms}ms",
 	"cards.testPush.failed": "主人，沒能推播出去：{reason}",
 	"cards.testPush.sampleBecause": "主人，推播的是範例卡片喔：{reason}",
-	"cards.remove.message": "主人，要清除 {name} 的卡片樣式與外觀個別設定嗎？清除後會套用全域設定，無法復原喔。"
+	"cards.remove.message": "主人，要清除 {name} 的卡片樣式與外觀個別設定嗎？清除後會套用全域設定，無法復原喔。",
+	"panelUi.components.browser-source-settings.8": "主人，chromePath / chromeEndpoint 會先確認連線，成功後立即切換喔。",
+	"panelUi.components.browser-source-settings.11": "主人，目前沒有可寫入的設定檔。切換會立即生效，但重新啟動後不會保留，請改用環境變數或 YAML 設定喔。",
+	"panelUi.components.browser-source-settings.24": "主人，在常見位置找不到 Chrome / Chromium，請手動填入路徑喔。",
+	"panelUi.components.chrome-autodetect.9": "主人，在常見位置找不到 Chrome / Chromium，請手動將 chromePath 設為瀏覽器執行檔的路徑喔。",
+	"panelUi.components.header.1": "主人，「系統」不能隱藏喔，否則就沒有地方能把其他分頁改回來了。",
+	"panelUi.components.header.24": "主人，目前可連線至後端服務喔。這與推播開關無關；是否啟用推播，請查看各訂閱的規則設定。",
+	"panelUi.components.system-resource-card.8": "主人，目前無法連線至後端 API，資源讀數已停止更新；為免讓人誤以為一切正常，這裡不會繼續顯示最後一次的讀數喔。",
+	"panelUi.components.error-boundary.2": "主人，頂欄與其他頁面仍可使用喔，可以重試一次，或先前往其他頁面。"
 }

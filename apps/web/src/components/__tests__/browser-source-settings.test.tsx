@@ -26,6 +26,49 @@ function mockGet({ status, detectPath = null }: { status: unknown; detectPath?: 
 }
 
 describe("BrowserSourceSettings", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、chromePath / chromeEndpoint は接続を確認してから、その場で切り替えますよ。",
+			"ご主人様、この環境には書き込める設定ファイルがありませんよ。変更はすぐに反映しますが、再起動すると戻るので、環境変数か YAML で設定してくださいね。",
+			"ご主人様、一般的な場所には Chrome / Chromium が見つかりませんでした。パスを手動で入力してくださいね。",
+			"自動検出",
+		],
+		[
+			"zh-TW",
+			"主人，chromePath / chromeEndpoint 會先確認連線，成功後立即切換喔。",
+			"主人，目前沒有可寫入的設定檔。切換會立即生效，但重新啟動後不會保留，請改用環境變數或 YAML 設定喔。",
+			"主人，在常見位置找不到 Chrome / Chromium，請手動填入路徑喔。",
+			"自動偵測",
+		],
+	] as const)(
+		"%s 女仆浏览器提示保留原端点和未应用草稿",
+		async (locale, subtitle, persistence, missing, detect) => {
+			mockGet({
+				status: {
+					enabled: true,
+					source: { chromeEndpoint: "ws://original-browser:3000" },
+					persistable: false,
+				},
+			});
+			render(<BrowserSourceSettings />);
+			await screen.findByText(/重启后不保留/);
+			const input = screen.getByPlaceholderText(/ws:\/\//) as HTMLInputElement;
+			fireEvent.change(input, { target: { value: "ws://edited-browser:3000" } });
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(subtitle)).toBeTruthy();
+			expect(screen.getByText(persistence)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: detect }));
+			expect(await screen.findByText(missing)).toBeTruthy();
+			expect(screen.getByPlaceholderText(/ws:\/\//)).toBe(input);
+			expect(input.value).toBe("ws://edited-browser:3000");
+			expect(screen.getByTestId("browser-source-current").textContent).toContain(
+				"ws://original-browser:3000",
+			);
+			expect(postMock).not.toHaveBeenCalled();
+		},
+	);
+
 	it.each(["zh-CN", "en", "ja", "zh-TW"] as const)(
 		"%s 显式字段说明不误报缺失，切换口吻保留端点草稿",
 		async (locale) => {

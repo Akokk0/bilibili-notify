@@ -468,5 +468,13 @@
 	"cards.testPush.delivered": "ご主人様、届きましたよ · {ms}ms",
 	"cards.testPush.failed": "ご主人様、送信できませんでした：{reason}",
 	"cards.testPush.sampleBecause": "ご主人様、送ったのはサンプルカードですよ：{reason}",
-	"cards.remove.message": "ご主人様、{name}のカードスタイルとスキンの個別設定を削除しますか？削除すると全体設定に従います。元には戻せませんよ。"
+	"cards.remove.message": "ご主人様、{name}のカードスタイルとスキンの個別設定を削除しますか？削除すると全体設定に従います。元には戻せませんよ。",
+	"panelUi.components.browser-source-settings.8": "ご主人様、chromePath / chromeEndpoint は接続を確認してから、その場で切り替えますよ。",
+	"panelUi.components.browser-source-settings.11": "ご主人様、この環境には書き込める設定ファイルがありませんよ。変更はすぐに反映しますが、再起動すると戻るので、環境変数か YAML で設定してくださいね。",
+	"panelUi.components.browser-source-settings.24": "ご主人様、一般的な場所には Chrome / Chromium が見つかりませんでした。パスを手動で入力してくださいね。",
+	"panelUi.components.chrome-autodetect.9": "ご主人様、一般的な場所には Chrome / Chromium が見つかりませんでした。chromePath にブラウザーの実行ファイルを手動で指定してくださいね。",
+	"panelUi.components.header.1": "ご主人様、「システム」は非表示にできませんよ。他のタブを元に戻す場所がなくなってしまいます。",
+	"panelUi.components.header.24": "ご主人様、バックエンドには接続できていますよ。通知の有効・無効とは別なので、そちらは各購読のルール設定で確認してくださいね。",
+	"panelUi.components.system-resource-card.8": "ご主人様、バックエンド API に接続できないので、リソース値の更新を止めていますよ。正常に見えてしまわないように、最後の測定値も表示しません。",
+	"panelUi.components.error-boundary.2": "ご主人様、ヘッダーと他のページはそのまま使えますよ。もう一度試すか、先に別のページへ移動してくださいね。"
 }

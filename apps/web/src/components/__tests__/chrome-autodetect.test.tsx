@@ -15,6 +15,31 @@ vi.mock("../../services/api", () => ({
 }));
 
 describe("ChromeAutoDetect", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、一般的な場所には Chrome / Chromium が見つかりませんでした。chromePath にブラウザーの実行ファイルを手動で指定してくださいね。",
+		],
+		[
+			"zh-TW",
+			"主人，在常見位置找不到 Chrome / Chromium，請手動將 chromePath 設為瀏覽器執行檔的路徑喔。",
+		],
+	] as const)("%s 女仆自动探测未命中不丢端点草稿或启用浏览器", async (locale, missing) => {
+		getMock.mockResolvedValue({ path: null });
+		const onEnabled = vi.fn();
+		render(<ChromeAutoDetect onEnabled={onEnabled} />);
+		const input = screen.getByPlaceholderText(/ws:\/\//) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "ws://pending-browser:3000" } });
+		fireEvent.click(screen.getByRole("button", { name: /自动探测/ }));
+		await screen.findByText(/未.*找到|手动/);
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(missing)).toBeTruthy();
+		expect(screen.getByPlaceholderText(/ws:\/\//)).toBe(input);
+		expect(input.value).toBe("ws://pending-browser:3000");
+		expect(postMock).not.toHaveBeenCalled();
+		expect(onEnabled).not.toHaveBeenCalled();
+	});
+
 	beforeEach(() => {
 		i18n.set({ locale: "zh-CN", voice: "plain" });
 		getMock.mockReset();

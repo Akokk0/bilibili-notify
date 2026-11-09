@@ -14,7 +14,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Link, MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-const { crash } = vi.hoisted(() => ({ crash: { home: false, subs: false } }));
+const { crash, textSettings } = vi.hoisted(() => ({
+	crash: { home: false, subs: false },
+	textSettings: { locale: "zh-CN", voice: "plain" },
+}));
 
 vi.mock("../AuthGate", () => ({
 	AuthGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -52,7 +55,7 @@ vi.mock("../../services/api", () => ({
 			if (url === "/api/adapters") return { adapters: [] };
 			if (url === "/api/connections") return [];
 			if (url === "/api/dashboard/skins/active") return { active: { light: null, dark: null } };
-			if (url === "/api/settings") return { core: { locale: "zh-CN", voice: "plain" } };
+			if (url === "/api/settings") return { core: { ...textSettings } };
 			throw new Error(`没有这个口:${url}`);
 		}),
 	},
@@ -107,6 +110,8 @@ function renderAt(path: string) {
 beforeEach(() => {
 	crash.home = false;
 	crash.subs = false;
+	textSettings.locale = "zh-CN";
+	textSettings.voice = "plain";
 	// React 把接住的渲染错误往 console.error 打一大串(连组件栈)—— 这里是故意的,静音;断言照写。
 	vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -116,6 +121,27 @@ afterEach(() => {
 });
 
 describe("一页渲染抛错", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、ヘッダーと他のページはそのまま使えますよ。もう一度試すか、先に別のページへ移動してくださいね。",
+			"再試行",
+		],
+		["zh-TW", "主人，頂欄與其他頁面仍可使用喔，可以重試一次，或先前往其他頁面。", "重試"],
+	] as const)("%s 女仆故障说明保留诊断和顶栏且仍可重试", async (locale, hint, retry) => {
+		crash.subs = true;
+		textSettings.locale = locale;
+		textSettings.voice = "maid";
+		renderAt("/subs");
+		expect(await screen.findByText(hint)).toBeTruthy();
+		expect(screen.getByRole("alert").textContent).toContain("Error: 订阅页炸了");
+		expect(screen.getByTestId("shell-header")).toBeTruthy();
+		crash.subs = false;
+		fireEvent.click(screen.getByRole("button", { name: retry }));
+		expect(await screen.findByText("订阅页内容")).toBeTruthy();
+		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
 	it("顶栏还在;这一页说出了错、带报错原文", async () => {
 		crash.home = true;
 		renderAt("/");

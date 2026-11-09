@@ -66,6 +66,26 @@ async function mount(healthy: boolean) {
 }
 
 describe("服务器可达徽章", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、バックエンドには接続できていますよ。通知の有効・無効とは別なので、そちらは各購読のルール設定で確認してくださいね。",
+			"サーバー稼働中",
+		],
+		[
+			"zh-TW",
+			"主人，目前可連線至後端服務喔。這與推播開關無關；是否啟用推播，請查看各訂閱的規則設定。",
+			"伺服器執行中",
+		],
+	] as const)("%s 女仆状态说明仍只代表后端可访问", async (locale, hint, status) => {
+		await mount(true);
+		const badge = (await screen.findByText("服务器运行中")).closest('[data-bn="badge"]');
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByTitle(hint)).toBe(badge);
+		expect(screen.getByText(status).closest('[data-bn="badge"]')).toBe(badge);
+		expect(badge?.className).toContain("bg-bn-success-soft");
+	});
+
 	it("通的时候是绿的,措辞落在「服务器」而不是「推送」", async () => {
 		await mount(true);
 		const badge = (await screen.findByText("服务器运行中")).closest<HTMLElement>(

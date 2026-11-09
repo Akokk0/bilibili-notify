@@ -80,6 +80,28 @@ it("切换语言与口吻刷新标签并保留导航显隐和打开的编辑面�
 });
 
 describe("导航条 — 挑要显示的标签", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、「システム」は非表示にできませんよ。他のタブを元に戻す場所がなくなってしまいます。",
+			"システム",
+			"ログ",
+		],
+		["zh-TW", "主人，「系統」不能隱藏喔，否則就沒有地方能把其他分頁改回來了。", "系統", "日誌"],
+	] as const)("%s 女仆锁定说明保留已隐藏导航和打开的编辑器", async (locale, hint, system, logs) => {
+		renderHeader();
+		openEditor();
+		fireEvent.click(await screen.findByRole("checkbox", { name: "日志" }));
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByTitle(hint)).toBeTruthy();
+		expect((screen.getByRole("checkbox", { name: system }) as HTMLInputElement).disabled).toBe(
+			true,
+		);
+		expect((screen.getByRole("checkbox", { name: system }) as HTMLInputElement).checked).toBe(true);
+		expect((screen.getByRole("checkbox", { name: logs }) as HTMLInputElement).checked).toBe(false);
+		expect(document.querySelector('nav a[href="/logs"]')).toBeNull();
+	});
+
 	it("默认全都在", async () => {
 		renderHeader();
 		await waitFor(() => expect(navLabels()).toContain("日志"));

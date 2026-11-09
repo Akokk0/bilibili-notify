@@ -78,6 +78,30 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SystemResourceCard", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、バックエンド API に接続できないので、リソース値の更新を止めていますよ。正常に見えてしまわないように、最後の測定値も表示しません。",
+			"CPU使用率",
+		],
+		[
+			"zh-TW",
+			"主人，目前無法連線至後端 API，資源讀數已停止更新；為免讓人誤以為一切正常，這裡不會繼續顯示最後一次的讀數喔。",
+			"CPU 使用率",
+		],
+	] as const)("%s 女仆失联说明不把旧测量值当成当前值", async (locale, hint, cpu) => {
+		const view = renderCard({ reachable: false });
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(screen.getByRole("alert")).toBeTruthy();
+		expect(screen.queryByText("61%")).toBeNull();
+		expect(screen.queryByTitle(cpu)).toBeNull();
+		view.rerender(<SystemResourceCard state={{ static: STATIC, history: [sample()] }} reachable />);
+		expect(screen.queryByRole("alert")).toBeNull();
+		expect(screen.getByTitle(cpu)).toBeTruthy();
+		expect(screen.getByText("61%")).toBeTruthy();
+	});
+
 	it("resource labels follow language while measured values and the gauge remain unchanged", async () => {
 		const view = renderCard();
 		const gauge = screen.getByTitle("CPU 占用").closest("svg");
