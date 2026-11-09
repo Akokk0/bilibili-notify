@@ -1,4 +1,11 @@
 {
+	"service.config.loader.text.1": "  → This commonly happens when Docker bind-mounts a single YAML file that does not exist on the host, so Docker creates an empty directory.\n",
+	"service.config.loader.text.2": "  → In docker-compose.yaml, remove the single-file volume mount for bn.config.yaml\n",
+	"service.config.loader.text.3": "     and mount a directory instead; or first run 'rm -rf <host path>' to let the first boot seed the file.\n",
+	"service.config.loader.text.4": "  → See apps/docker-compose.example.yaml",
+	"service.config.loader.text.5": "Fix the YAML and restart, or run 'rm {value0}' to let the first boot seed it again",
+	"service.config.loader.text.6": "Check the BN_* environment variable values",
+	"service.config.loader.text.7": "# bilibili-notify bootstrap config (auto-generated on first boot)\n#\n# Model: environment variables are written to this file only on first boot. Later boots ignore them; this file is the source of truth.\n# After editing, restart the container: docker compose restart\n# To reset completely and seed from environment variables again: remove this file, then run docker compose up -d\n#\n",
 	"service.migration.files.text.1": "Temporary file left by the previous process",
 	"service.migration.files.text.2": "0.x backup",
 	"service.migration.files.text.3": "0.x temporary file",

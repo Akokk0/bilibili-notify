@@ -1,4 +1,11 @@
 {
+	"service.config.loader.text.1": "  → ホスト側に存在しない単一のYAMLファイルをDockerでバインドマウントすると、空のディレクトリが自動作成されることがあります。\n",
+	"service.config.loader.text.2": "  → docker-compose.yamlからbn.config.yamlの単一ファイルのボリュームマウントを削除し、\n",
+	"service.config.loader.text.3": "     ディレクトリをマウントしてください。または先に'rm -rf <ホスト側のパス>'を実行し、初回起動時にファイルを生成させてください。\n",
+	"service.config.loader.text.4": "  → apps/docker-compose.example.yamlを参照してください。",
+	"service.config.loader.text.5": "YAMLを修正して再起動するか、'rm {value0}'を実行して初回起動時に再生成してください",
+	"service.config.loader.text.6": "BN_*環境変数の値を確認してください",
+	"service.config.loader.text.7": "# bilibili-notify起動設定（初回起動時に自動生成）\n#\n# 環境変数は初回起動時にだけこのファイルへ書き込まれます。以後の起動では無視され、このファイルが設定の基準になります。\n# 編集後にコンテナーを再起動：docker compose restart\n# 環境変数から完全に再生成：このファイルを削除してからdocker compose up -dを実行\n#\n",
 	"service.migration.files.text.1": "前のプロセスが残した一時ファイル",
 	"service.migration.files.text.2": "0.xのバックアップ",
 	"service.migration.files.text.3": "0.xの一時ファイル",

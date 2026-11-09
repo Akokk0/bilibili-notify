@@ -46,11 +46,84 @@ beforeEach(async () => {
 	cwd = await mkdtemp(join(tmpdir(), "bn-cfg-"));
 });
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	for (const k of touchedEnv.splice(0)) delete process.env[k];
 	await rm(cwd, { recursive: true, force: true }).catch(() => {});
 });
 
 const write = (name: string, body: string) => writeFile(join(cwd, name), body, "utf8");
+
+describe("启动配置的说明与首次生成注释按当前语言取字", () => {
+	it.each([
+		{
+			locale: "en" as const,
+			directory:
+				"  → This commonly happens when Docker bind-mounts a single YAML file that does not exist on the host, so Docker creates an empty directory.\n  → In docker-compose.yaml, remove the single-file volume mount for bn.config.yaml\n     and mount a directory instead; or first run 'rm -rf <host path>' to let the first boot seed the file.\n  → See apps/docker-compose.example.yaml",
+			readHint: (path: string) =>
+				`Fix the YAML and restart, or run 'rm ${path}' to let the first boot seed it again`,
+			seedHint: "Check the BN_* environment variable values",
+			header:
+				"# bilibili-notify bootstrap config (auto-generated on first boot)\n#\n# Model: environment variables are written to this file only on first boot. Later boots ignore them; this file is the source of truth.\n# After editing, restart the container: docker compose restart\n# To reset completely and seed from environment variables again: remove this file, then run docker compose up -d\n#\n",
+		},
+		{
+			locale: "ja" as const,
+			directory:
+				"  → ホスト側に存在しない単一のYAMLファイルをDockerでバインドマウントすると、空のディレクトリが自動作成されることがあります。\n  → docker-compose.yamlからbn.config.yamlの単一ファイルのボリュームマウントを削除し、\n     ディレクトリをマウントしてください。または先に'rm -rf <ホスト側のパス>'を実行し、初回起動時にファイルを生成させてください。\n  → apps/docker-compose.example.yamlを参照してください。",
+			readHint: (path: string) =>
+				`YAMLを修正して再起動するか、'rm ${path}'を実行して初回起動時に再生成してください`,
+			seedHint: "BN_*環境変数の値を確認してください",
+			header:
+				"# bilibili-notify起動設定（初回起動時に自動生成）\n#\n# 環境変数は初回起動時にだけこのファイルへ書き込まれます。以後の起動では無視され、このファイルが設定の基準になります。\n# 編集後にコンテナーを再起動：docker compose restart\n# 環境変数から完全に再生成：このファイルを削除してからdocker compose up -dを実行\n#\n",
+		},
+		{
+			locale: "zh-TW" as const,
+			directory:
+				"  → 常見原因是 Docker 掛載單一 YAML 檔案時，主機端檔案尚不存在，Docker 便自動建立空目錄。\n  → 請在 docker-compose.yaml 移除 bn.config.yaml 的單一檔案掛載，\n     改為掛載目錄；或先執行 'rm -rf <主機路徑>'，讓首次啟動自動產生檔案。\n  → 詳見 apps/docker-compose.example.yaml",
+			readHint: (path: string) =>
+				`修正 YAML 後重新啟動，或執行 'rm ${path}'，讓首次啟動重新產生檔案`,
+			seedHint: "請檢查 BN_* 環境變數的值",
+			header:
+				"# bilibili-notify 啟動設定（首次啟動時自動產生）\n#\n# 環境變數僅在首次啟動時寫入此檔案；之後啟動會忽略環境變數，以此檔案為準。\n# 編輯後重新啟動容器：docker compose restart\n# 完全重設並重新從環境變數產生：刪除此檔案後執行 docker compose up -d\n#\n",
+		},
+	])("$locale：目录和坏配置拒绝不覆盖，首次注释只写一次", async (words) => {
+		i18n.set({ locale: words.locale, voice: "plain" });
+		const dirPath = join(cwd, "directory.yaml");
+		await mkdir(dirPath);
+		expect(() =>
+			loadBootstrapConfig({ argv: [], env: { BN_CONFIG: dirPath }, cwd, log: () => {} }),
+		).toThrow(words.directory);
+		const invalidPath = join(cwd, "invalid.yaml");
+		const original = "logLevel: bad-level\n";
+		await writeFile(invalidPath, original);
+		expect(() =>
+			loadBootstrapConfig({ argv: [], env: { BN_CONFIG: invalidPath }, cwd, log: () => {} }),
+		).toThrow(words.readHint(invalidPath));
+		expect(await readFile(invalidPath, "utf8")).toBe(original);
+		const seedPath = join(cwd, "seed.yaml");
+		expect(() =>
+			loadBootstrapConfig({
+				argv: [],
+				env: { BN_CONFIG: seedPath, BN_PORT: "0" },
+				cwd,
+				log: () => {},
+			}),
+		).toThrow(words.seedHint);
+		await expect(readFile(seedPath)).rejects.toMatchObject({ code: "ENOENT" });
+		const opts = {
+			argv: [],
+			env: { BN_CONFIG: seedPath, BN_HOST: "127.0.0.1" },
+			cwd,
+			log: () => {},
+		};
+		const first = loadBootstrapConfig(opts);
+		const seeded = await readFile(seedPath, "utf8");
+		expect(seeded.startsWith(words.header)).toBe(true);
+		expect(parseYaml(seeded)).toEqual(first);
+		i18n.set({ locale: "zh-CN", voice: "maid" });
+		expect(loadBootstrapConfig(opts)).toEqual(first);
+		expect(await readFile(seedPath, "utf8")).toBe(seeded);
+	});
+});
 
 // ---------------------------------------------------------------------------
 // B 模型 — BN_CONFIG 显式设置

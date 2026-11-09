@@ -1,4 +1,11 @@
 {
+	"service.config.loader.text.1": "  → 常見原因是 Docker 掛載單一 YAML 檔案時，主機端檔案尚不存在，Docker 便自動建立空目錄。\n",
+	"service.config.loader.text.2": "  → 請在 docker-compose.yaml 移除 bn.config.yaml 的單一檔案掛載，\n",
+	"service.config.loader.text.3": "     改為掛載目錄；或先執行 'rm -rf <主機路徑>'，讓首次啟動自動產生檔案。\n",
+	"service.config.loader.text.4": "  → 詳見 apps/docker-compose.example.yaml",
+	"service.config.loader.text.5": "修正 YAML 後重新啟動，或執行 'rm {value0}'，讓首次啟動重新產生檔案",
+	"service.config.loader.text.6": "請檢查 BN_* 環境變數的值",
+	"service.config.loader.text.7": "# bilibili-notify 啟動設定（首次啟動時自動產生）\n#\n# 環境變數僅在首次啟動時寫入此檔案；之後啟動會忽略環境變數，以此檔案為準。\n# 編輯後重新啟動容器：docker compose restart\n# 完全重設並重新從環境變數產生：刪除此檔案後執行 docker compose up -d\n#\n",
 	"service.migration.files.text.1": "前一個程序留下的暫存檔",
 	"service.migration.files.text.2": "0.x 的備份",
 	"service.migration.files.text.3": "0.x 的暫存檔",
