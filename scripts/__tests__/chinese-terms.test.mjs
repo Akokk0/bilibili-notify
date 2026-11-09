@@ -90,12 +90,18 @@ export const JSON_TERM_ALLOWLIST = {
 export const JSON_UUID_PINS = {
 	"apps/server/src/i18n/locales/en.json": {
 		"service.routes.targets.text.6": "The push target ID must be a UUID.",
+		"service.routes.ai.text.6":
+			"Invalid test request: include a push target (UUID), a message of 1–500 characters and AI settings.",
 	},
 	"apps/server/src/i18n/locales/ja.json": {
 		"service.routes.targets.text.6": "プッシュ送信先IDはUUIDで指定してください。",
+		"service.routes.ai.text.6":
+			"テストリクエストの形式が無効です。プッシュ送信先（UUID）、1〜500文字のメッセージ、AI設定が必要です。",
 	},
 	"apps/server/src/i18n/locales/zh-TW.json": {
 		"service.routes.targets.text.6": "推送目標 ID 必須是 UUID。",
+		"service.routes.ai.text.6":
+			"測試請求格式不正確：必須包含推送目標（UUID）、1～500 字的訊息及 AI 設定。",
 	},
 	"apps/server/src/i18n/locales/zh-CN.json": {
 		"service.routes.targets.text.6": "推送目标 id 要是 UUID",
@@ -411,6 +417,21 @@ describe("核心与面板里的 B 站叫法只降不涨", () => {
 			"apps/server/src/i18n/locales/zh-CN.json",
 			"service.routes.ai.text.6",
 			"试一句的请求格式不对：要带推送目标（UUID）和 1~500 字的话，以及 AI 配置",
+		],
+		[
+			"apps/server/src/i18n/locales/en.json",
+			"service.routes.ai.text.6",
+			"Invalid test request: include a push target (UUID), a message of 1–500 characters and AI settings.",
+		],
+		[
+			"apps/server/src/i18n/locales/ja.json",
+			"service.routes.ai.text.6",
+			"テストリクエストの形式が無効です。プッシュ送信先（UUID）、1〜500文字のメッセージ、AI設定が必要です。",
+		],
+		[
+			"apps/server/src/i18n/locales/zh-TW.json",
+			"service.routes.ai.text.6",
+			"測試請求格式不正確：必須包含推送目標（UUID）、1～500 字的訊息及 AI 設定。",
 		],
 	])("approved UUID in %s:%s is exact and does not exempt UID or other keys", (file, key, text) => {
 		expect(jsonTermHits(JSON.stringify({ [key]: text }), [], file)).toEqual([]);

@@ -11,7 +11,8 @@
 import type { GlobalSettings } from "@bilibili-notify/internal";
 import { fail, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { createAiRoute } from "../ai.js";
 import type { RouteDeps } from "../types.js";
 
@@ -46,6 +47,8 @@ beforeEach(() => {
 	H.instances.length = 0;
 	H.chatError = null;
 });
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /**
  * 造一份「AI 页草稿」。连接字段住在服务商桶里(各家一套配置),`bucket` 用来覆盖
@@ -150,6 +153,64 @@ function post(app: ReturnType<typeof createAiRoute>, body: unknown) {
 		body: JSON.stringify(body),
 	});
 }
+
+it.each([
+	[
+		"en",
+		{
+			invalid:
+				"Invalid test request: include a push target (UUID), a message of 1–500 characters and AI settings.",
+			missing: "Push target not found.",
+			failed: "AI request failed: Original upstream diagnostic 原文",
+		},
+	],
+	[
+		"ja",
+		{
+			invalid:
+				"テストリクエストの形式が無効です。プッシュ送信先（UUID）、1〜500文字のメッセージ、AI設定が必要です。",
+			missing: "プッシュ送信先が見つかりません。",
+			failed: "AIリクエストに失敗しました：Original upstream diagnostic 原文",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			invalid: "測試請求格式不正確：必須包含推送目標（UUID）、1～500 字的訊息及 AI 設定。",
+			missing: "找不到推送目標。",
+			failed: "AI 請求失敗：Original upstream diagnostic 原文",
+		},
+	],
+] as const)("%s:试一句的UUID提示统一大写,拒收与模型失败均不发送", async (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	const { deps, sendToTarget } = makeDeps();
+	const app = createAiRoute(deps);
+	const invalid = await post(app, {
+		targetId: "not-a-uuid",
+		message: "Original input",
+		ai: draftAi(),
+	});
+	expect(invalid.status).toBe(400);
+	expect(await invalid.json()).toMatchObject({
+		code: "invalid",
+		message: text.invalid,
+		issues: [{ path: ["targetId"], message: "Invalid UUID" }],
+	});
+	const missing = await post(app, {
+		targetId: "22222222-2222-4222-8222-222222222222",
+		message: "Original input",
+		ai: draftAi(),
+	});
+	expect(missing.status).toBe(404);
+	expect(await missing.json()).toEqual({ code: "not_found", message: text.missing });
+	expect(H.instances).toHaveLength(0);
+	H.chatError = new Error("Original upstream diagnostic 原文");
+	const failed = await post(app, { targetId: TARGET_ID, message: "Original input", ai: draftAi() });
+	expect(failed.status).toBe(200);
+	expect(await failed.json()).toEqual({ ok: false, code: "unavailable", message: text.failed });
+	expect(H.instances).toHaveLength(1);
+	expect(sendToTarget).not.toHaveBeenCalled();
+});
 
 describe("POST /api/ai/test", () => {
 	it("草稿人格 + 一句话 → 回复推到指定目标,并把回复带回页面", async () => {

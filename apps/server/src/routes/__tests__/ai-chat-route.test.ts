@@ -16,8 +16,9 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createConversationStore } from "../../ai/conversation-store.js";
+import { i18n } from "../../i18n/index.js";
 import { createAiRoute } from "../ai.js";
 import type { RouteDeps } from "../types.js";
 
@@ -167,6 +168,8 @@ beforeEach(() => {
 	summarizeTitle.mockClear();
 });
 
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
 /** 一条 SSE 事件。 */
 interface SseEvent {
 	event: string;
@@ -230,6 +233,75 @@ const chat = (app: App, id: string, body: unknown) =>
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body),
 	});
+
+it.each([
+	[
+		"en",
+		{
+			title: "New conversation",
+			empty: "Message cannot be empty.",
+			disabled: "AI is disabled. Enable it on the AI page first.",
+			missing: "The conversation does not exist or has been deleted.",
+			key: "AI baseUrl / apiKey settings are incomplete. Complete them on the AI page first.",
+			failed: "AI request failed: Original upstream diagnostic 原文",
+		},
+	],
+	[
+		"ja",
+		{
+			title: "新しい会話",
+			empty: "メッセージは空にできません。",
+			disabled: "AIが無効です。まずAIページで有効にしてください。",
+			missing: "会話が存在しないか、削除されています。",
+			key: "AIのbaseUrl / apiKeyが未入力です。まずAIページで設定してください。",
+			failed: "AIリクエストに失敗しました：Original upstream diagnostic 原文",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			title: "新對話",
+			empty: "訊息不得為空。",
+			disabled: "智慧女僕尚未啟用，請先到「智慧女僕」頁開啟。",
+			missing: "對話不存在或已刪除。",
+			key: "智慧女僕的 baseUrl / apiKey 尚未填妥，請先到「智慧女僕」頁補齊。",
+			failed: "AI 請求失敗：Original upstream diagnostic 原文",
+		},
+	],
+] as const)("%s:聊天提示与占位标题本地化,失败不保存半轮并保留上游原话", async (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	const opts = { aiEnabled: false };
+	const { deps, conversationStore } = await makeDeps(opts);
+	const app = createAiRoute(deps);
+	const created = (await readJson(await createConv(app))).conversation;
+	expect(created.title).toBe(text.title);
+	const empty = await chat(app, created.id, { message: " " });
+	expect(empty.status).toBe(400);
+	expect(await empty.json()).toEqual({ code: "invalid", message: text.empty });
+	const disabled = await chat(app, created.id, { message: "Original request" });
+	expect(disabled.status).toBe(409);
+	expect(await disabled.json()).toEqual({ code: "not_configured", message: text.disabled });
+	expect(chatStatelessStream).not.toHaveBeenCalled();
+	opts.aiEnabled = true;
+	const missing = await getConv(app, "missing");
+	expect(missing.status).toBe(404);
+	expect(await missing.json()).toEqual({ code: "not_found", message: text.missing });
+	H.error = new Error("Original upstream diagnostic 原文");
+	const failed = await chat(app, created.id, { message: "Original request" });
+	expect(failed.status).toBe(200);
+	expect(await readSse(failed)).toEqual([
+		{ event: "error", data: { code: "unavailable", message: text.failed } },
+	]);
+	expect((await conversationStore.get(created.id))?.messages).toEqual([]);
+	expect(await conversationStore.list()).toEqual([]);
+	const noKey = await makeDeps({ noCommentary: true });
+	const keyMissing = await chat(createAiRoute(noKey.deps), "missing", {
+		message: "Original request",
+	});
+	expect(keyMissing.status).toBe(409);
+	expect(await keyMissing.json()).toEqual({ code: "not_configured", message: text.key });
+	expect(chatStatelessStream).toHaveBeenCalledTimes(1);
+});
 
 describe("会话增删查", () => {
 	it("新装状态下列表是空的,不是 500", async () => {
