@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Failure, fail } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { createHistoryRoute } from "../history.js";
 import type { RouteDeps } from "../types.js";
 
@@ -30,6 +31,7 @@ let canRepushResult: Failure | null = null;
 
 /** 这条用例的数据根:路由从它底下读水位线 `history/retention.json`。 */
 let dataRoot: string;
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function makeApp(repushResult: unknown = { ok: true, count: 2 }) {
 	dataRoot = mkdtempSync(join(tmpdir(), "bn-history-route-"));
@@ -59,6 +61,74 @@ function repush(app: ReturnType<typeof makeApp>, body: unknown) {
 }
 
 describe("history route — limit/since 校验 (P2-J)", () => {
+	it.each([
+		[
+			"en",
+			[
+				"limit must be a number: raw",
+				"since must be an ISO timestamp: raw",
+				"kind has been renamed to feature. Use a feature key (post / liveStart / liveEnd …): kind=raw",
+				"feature must be a feature key (post / liveStart / liveEnd …): feature=raw",
+				"days must be a number: raw",
+				"tzOffset must be a number of minutes: raw",
+				"A repush request requires createdAt (the row’s ISO timestamp) and mode (all or missing).",
+			],
+		],
+		[
+			"ja",
+			[
+				"limitは数値で指定してください：raw",
+				"sinceはISOタイムスタンプで指定してください：raw",
+				"kindはfeatureに変更されました。機能キー（post / liveStart / liveEnd …）を指定してください：kind=raw",
+				"featureは機能キー（post / liveStart / liveEnd …）で指定してください：feature=raw",
+				"daysは数値で指定してください：raw",
+				"tzOffsetは分単位の数値で指定してください：raw",
+				"再送リクエストにはcreatedAt（行のISOタイムスタンプ）とmode（allまたはmissing）が必要です。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"limit 必須是數字：raw",
+				"since 必須是 ISO 時間戳記：raw",
+				"kind 已更名為 feature，請使用功能鍵（post / liveStart / liveEnd …）：kind=raw",
+				"feature 必須是功能鍵（post / liveStart / liveEnd …）：feature=raw",
+				"days 必須是數字：raw",
+				"tzOffset 必須是以分鐘為單位的數字：raw",
+				"重推請求必須提供 createdAt（此列的 ISO 時間戳記）和 mode（all 或 missing）。",
+			],
+		],
+	] as const)(
+		"%s localizes request rejection without invoking query, aggregation or repush",
+		async (locale, messages) => {
+			const app = makeApp();
+			i18n.set({ locale, voice: "plain" });
+			const urls = [
+				"/?limit=raw",
+				"/?since=raw",
+				"/?kind=raw",
+				"/?feature=raw",
+				"/daily?days=raw",
+				"/daily?tzOffset=raw",
+			];
+			for (const [i, url] of urls.entries()) {
+				const res = await app.request(url);
+				expect(res.status).toBe(400);
+				expect(await res.json()).toEqual({ code: "invalid", message: messages[i] });
+			}
+			for (const body of [{}, { createdAt: "raw", mode: "all" }, { createdAt: TS, mode: "bad" }]) {
+				const res = await repush(app, body);
+				expect(res.status).toBe(400);
+				expect(await res.json()).toEqual({ code: "invalid", message: messages[6] });
+			}
+			expect(query).not.toHaveBeenCalled();
+			expect(aggregateDaily).not.toHaveBeenCalled();
+			expect(startRepush).not.toHaveBeenCalled();
+			const accepted = await repush(app, { createdAt: TS, mode: "missing" });
+			expect(accepted.status).toBe(202);
+			expect(startRepush).toHaveBeenCalledExactlyOnceWith(ROW, TS, "missing");
+		},
+	);
 	beforeEach(() => {
 		vi.restoreAllMocks();
 	});

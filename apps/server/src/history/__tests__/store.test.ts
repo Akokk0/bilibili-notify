@@ -19,12 +19,13 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HistoryEntry } from "@bilibili-notify/internal";
+import { fail, type HistoryEntry, type NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { distinctPng } from "../../__tests__/support/chat-images.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
+import { i18n } from "../../i18n/index.js";
 import { IMAGE_MAX_BYTES, type ImageStore, type ImageWriter } from "../../images/image-store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
@@ -54,6 +55,7 @@ let historyImages: ImageWriter;
 let recorded: HistoryEntry[];
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	dataDir = await mkdtemp(join(tmpdir(), "bn-hist-"));
 	bus = createNodeMessageBus();
 	logger = makeLogger();
@@ -85,6 +87,126 @@ function only(entry: HistoryEntry) {
 }
 
 describe("record — payload reduce + 落盘 + emit", () => {
+	it.each([
+		[
+			"en",
+			{
+				cloud: "[Chat word cloud]",
+				card: "[Card image]",
+				single: "[Image group: 1 image]",
+				multiple: "[Image group: 2 images · Merged forward]",
+				share: "[Mini app card] Original title 原文",
+				mention: "@everyone",
+				error: "Could not save history image: ",
+			},
+		],
+		[
+			"ja",
+			{
+				cloud: "[チャットのワードクラウド]",
+				card: "[カード画像]",
+				single: "[画像集 1枚]",
+				multiple: "[画像集 2枚 · まとめて転送]",
+				share: "[ミニアプリカード] Original title 原文",
+				mention: "@全員",
+				error: "履歴画像を保存できません：",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				cloud: "[聊天室文字雲]",
+				card: "[卡片圖片]",
+				single: "[圖集 1 張]",
+				multiple: "[圖集 2 張 · 合併轉傳]",
+				share: "[小程式卡片] Original title 原文",
+				mention: "@全體",
+				error: "無法儲存歷史圖片：",
+			},
+		],
+	] as const)(
+		"%s stores localized summaries once, preserves titles and rejects incomplete image writes",
+		async (locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			const image: NotificationPayload = {
+				kind: "image",
+				image: { buffer: PNG_BYTES, mime: "image/png" },
+			};
+			const row = await store.record(
+				baseInput({
+					feature: "liveEnd",
+					messages: [
+						{ payload: image, role: "extra" },
+						{ payload: image, role: "main" },
+						{
+							payload: {
+								kind: "image-group",
+								images: [{ url: "https://example.test/1.png" }],
+								mergeForward: false,
+							},
+							role: "extra",
+						},
+						{
+							payload: {
+								kind: "image-group",
+								images: [
+									{ url: "https://example.test/1.png" },
+									{ url: "https://example.test/2.png" },
+								],
+								mergeForward: true,
+							},
+							role: "extra",
+						},
+						{
+							payload: {
+								kind: "native-share",
+								appId: "original.app",
+								title: "Original title 原文",
+								description: "Original description",
+								imageUrl: "https://example.test/p.png",
+								pagePath: "pages/original",
+								webUrl: "https://example.test",
+							},
+							role: "extra",
+						},
+						{
+							payload: {
+								kind: "composite",
+								segments: [{ kind: "at-all" }, { kind: "text", text: "Original body 原文" }],
+							},
+							role: "extra",
+						},
+					],
+				}),
+			);
+			const expected = [
+				text.cloud,
+				text.card,
+				text.single,
+				text.multiple,
+				text.share,
+				`${text.mention}\nOriginal body 原文`,
+			];
+			expect(row.messages.map((m) => m.payload.text)).toEqual(expected);
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			expect((await store.query({}))[0]?.messages.map((m) => m.payload.text)).toEqual(expected);
+			i18n.set({ locale, voice: "plain" });
+			const broken = createHistoryStore({
+				dataRoot: dataDir,
+				bus,
+				logger,
+				images: {
+					...historyImages,
+					put: async () => fail("unavailable", "Original disk failure 原文"),
+				},
+			});
+			await expect(
+				broken.record(baseInput({ messages: [{ payload: image, role: "main" }] })),
+			).rejects.toThrow(new RegExp(`^${text.error}.+-0 — Original disk failure 原文$`));
+			expect(recorded).toHaveLength(1);
+			expect(await store.query({})).toHaveLength(1);
+		},
+	);
 	it("text payload:写入日文件一行 + emit 解析后的 entry", async () => {
 		const entry = await store.record(baseInput());
 		expect(only(entry).payload).toEqual({ kind: "text", text: "hello" });

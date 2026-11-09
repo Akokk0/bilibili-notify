@@ -24,11 +24,12 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { NotificationPayload } from "@bilibili-notify/internal";
+import { fail, type NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { JPEG_BYTES, PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { distinctPng } from "../../__tests__/support/chat-images.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
+import { i18n } from "../../i18n/index.js";
 import { IMAGE_GRACE_MS, type ImageStore } from "../../images/image-store.js";
 import {
 	createRepushStore,
@@ -46,6 +47,7 @@ const TS = "2026-09-20T08:30:00.000Z";
 const DAY = "2026-09-20";
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	dataDir = await mkdtemp(join(tmpdir(), "bn-repush-"));
 	warn.mockClear();
 	const images = makeHistoryImages(dataDir);
@@ -73,6 +75,49 @@ const png = (n: number): NotificationPayload => ({
 });
 
 describe("盘上形状 —— 原件是 `{ version, messages }`(⑱c)", () => {
+	it.each([
+		[
+			"en",
+			"Could not save the image to the library: Original disk 原文",
+			"Image not found in the library: ",
+		],
+		[
+			"ja",
+			"画像ライブラリに保存できません：Original disk 原文",
+			"画像ライブラリに画像がありません：",
+		],
+		["zh-TW", "無法將圖片存入圖片庫：Original disk 原文", "圖片庫中找不到此圖片："],
+	] as const)(
+		"%s preserves diagnostics and image references when originals cannot be saved or loaded",
+		async (locale, failed, missing) => {
+			const broken = createRepushStore({
+				dataRoot: dataDir,
+				imageStore,
+				logger: { info: vi.fn(), warn, error: vi.fn(), debug: vi.fn() },
+				images: {
+					put: async () => fail("unavailable", "Original disk 原文"),
+					keep: async () => false,
+				},
+			});
+			i18n.set({ locale, voice: "plain" });
+			const badId = randomUUID();
+			await expect(broken.append(badId, TS, [{ payload: png(1), role: "main" }])).rejects.toThrow(
+				failed,
+			);
+			expect(await store.has(badId, TS)).toBe(false);
+			const id = randomUUID();
+			await store.append(id, TS, [{ payload: png(1), role: "main" }]);
+			const refs = await imagesOnDisk();
+			expect(refs).toHaveLength(1);
+			await rm(join(dataDir, "images"), { recursive: true, force: true });
+			expect(await store.load(id, TS, 1)).toBeNull();
+			expect(warn).toHaveBeenCalledTimes(1);
+			expect(warn.mock.calls[0]?.[1]).toMatchObject({
+				rowId: id,
+				error: { message: `${missing}${refs[0]}` },
+			});
+		},
+	);
 	it("写下去的原件:`version` 打头,不再有 `v`", async () => {
 		const id = randomUUID();
 		await store.append(id, TS, [{ payload: text("卡片"), role: "main" }]);

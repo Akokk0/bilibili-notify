@@ -24,12 +24,14 @@
 
 import { randomUUID } from "node:crypto";
 import type { HistoryEntry, HistoryMessage, PushStatus } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { originalCount, repushDenial, unsentIndices } from "../repush.js";
 
 const T1 = randomUUID();
 const OK = { ok: true, latencyMs: 5 } as const;
 const FAIL = { ok: false, code: "unknown", message: "boom" } as const;
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function msg(
 	role: HistoryMessage["role"],
@@ -133,6 +135,57 @@ describe("unsentIndices — 「只补没到的」要补哪几条", () => {
 });
 
 describe("repushDenial — 挡什么", () => {
+	it.each([
+		[
+			"en",
+			[
+				"This push was blocked by a filter rule and was never sent. There is nothing to repush.",
+				"This push had no available targets. Configure a target before repushing.",
+				"All messages in this row have been delivered. No repush is needed.",
+				"This target has been removed from the push routing.",
+				"This target or its connection is disabled. Enable it before repushing.",
+				"This row is being repushed. Try again later.",
+			],
+		],
+		[
+			"ja",
+			[
+				"このプッシュはフィルタールールでブロックされ、送信されていません。再送する内容はありません。",
+				"このプッシュには利用可能な送信先がありませんでした。再送前に送信先を設定してください。",
+				"この行のメッセージはすべて到達済みです。再送は不要です。",
+				"この送信先はプッシュのルーティングから削除されています。",
+				"この送信先または接続は無効です。再送前に有効にしてください。",
+				"この行を再送中です。しばらくしてから再試行してください。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"這筆推送當時已被篩選規則擋下，並未傳送，沒有可補發的內容。",
+				"這筆推送當時沒有可用目標，請先設定目標再重推。",
+				"此列訊息皆已送達，不需要重推。",
+				"此目標已從推送路由中移除。",
+				"此目標或其連線已停用，請先啟用再重推。",
+				"此列正在重推，請稍後再試。",
+			],
+		],
+	] as const)(
+		"%s distinguishes every repush gate without changing which rows can be sent",
+		(locale, messages) => {
+			const inputs = [
+				allow({ entry: entry({ status: "filtered", targetId: null }) }),
+				allow({ entry: entry({ targetId: null }) }),
+				allow({ entry: DELIVERED() }),
+				allow({ routedTargets: [] }),
+				allow({ targetEnabled: false }),
+				allow({ running: true }),
+			];
+			i18n.set({ locale, voice: "plain" });
+			for (const [i, input] of inputs.entries())
+				expect(repushDenial(input)).toEqual({ ok: false, code: "conflict", message: messages[i] });
+			expect(repushDenial(allow())).toBeNull();
+		},
+	);
 	it("一切都对 → 放行", () => {
 		expect(repushDenial(allow())).toBeNull();
 	});

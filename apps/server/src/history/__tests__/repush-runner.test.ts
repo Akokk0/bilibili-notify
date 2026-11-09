@@ -367,6 +367,46 @@ describe("结果不明时拒绝再次重推", () => {
 });
 
 describe("canRepush — 给面板的预判", () => {
+	it.each([
+		[
+			"en",
+			"The originals for this row are no longer available. Only pushes within the retention period with complete originals can be repushed.",
+			"This push history row was not found.",
+		],
+		[
+			"ja",
+			"この行の元データはすでにありません。保持期間内で元データが揃っているプッシュのみ再送できます。",
+			"このプッシュ履歴の行が見つかりません。",
+		],
+		[
+			"zh-TW",
+			"此列的原件已不存在，只有保留期間內且原件完整的推送可以重推。",
+			"找不到此列推送紀錄。",
+		],
+	] as const)(
+		"%s distinguishes missing originals from a missing row and sends neither",
+		async (locale, originals, missing) => {
+			const entry = await seedPartial();
+			await repush.drop(entry.id, entry.createdAt);
+			i18n.set({ locale, voice: "plain" });
+			expect(await runner.canRepush(entry)).toEqual({
+				ok: false,
+				code: "conflict",
+				message: originals,
+			});
+			expect(await runner.start(entry.id, entry.createdAt, "missing")).toEqual({
+				ok: false,
+				code: "conflict",
+				message: originals,
+			});
+			expect(await runner.start(randomUUID(), entry.createdAt, "all")).toEqual({
+				ok: false,
+				code: "not_found",
+				message: missing,
+			});
+			expect(sent).toEqual([]);
+		},
+	);
 	it("能补 → null", async () => {
 		const entry = await seedPartial();
 		expect(await runner.canRepush(entry)).toBeNull();
