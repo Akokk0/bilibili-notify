@@ -18,6 +18,7 @@ import { CookieJar, HttpClient, requirePublicAddress } from "@bilibili-notify/ht
 import { ok, type Result } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { gif, png } from "../../__tests__/support/report-images.js";
+import { i18n } from "../../i18n/index.js";
 import { createImageFetcher, type ImageFetcher } from "../image-fetcher.js";
 import {
 	createImageStore,
@@ -53,6 +54,7 @@ let fetcher: ImageFetcher;
 const url = (host: string, path: string) => `http://${host}:${port}${path}`;
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	routes = {};
 	seen = [];
 	server = createServer((req, res) => {
@@ -112,6 +114,92 @@ async function stored(ref: string): Promise<Uint8Array> {
 }
 
 describe("fetchImage — 抓到了", () => {
+	it.each([
+		[
+			"en",
+			{
+				invalid: "Unsupported image format. Only png / jpg / gif / webp are accepted.",
+				large: "The image is too large. The limit is 8 MiB per image.",
+				http: "The remote server returned HTTP 503: ",
+				url: "Invalid URL: not-a-url",
+				redirects: "The image was not reached after 5 redirects (HTTP 302): ",
+				location: "The remote server returned an invalid redirect URL (HTTP 302): ",
+				stopped: "Image storage was aborted.",
+			},
+		],
+		[
+			"ja",
+			{
+				invalid: "対応していない画像形式です。png / jpg / gif / webpのみ受け付けます。",
+				large: "画像が大きすぎます。1枚あたりの上限は8 MiBです。",
+				http: "接続先がHTTP 503を返しました：",
+				url: "無効なURLです：not-a-url",
+				redirects: "5回リダイレクトしても画像に到達しませんでした（HTTP 302）：",
+				location: "接続先が無効なリダイレクト先URLを返しました（HTTP 302）：",
+				stopped: "画像の保存が中断されました。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				invalid: "不支援此圖片格式，只接受 png / jpg / gif / webp。",
+				large: "圖片過大，每張上限為 8 MiB。",
+				http: "遠端伺服器回傳 HTTP 503：",
+				url: "無效的網址：not-a-url",
+				redirects: "經過 5 次重新導向仍未取得圖片（HTTP 302）：",
+				location: "遠端伺服器提供了無效的重新導向網址（HTTP 302）：",
+				stopped: "圖片儲存已中止。",
+			},
+		],
+	] as const)(
+		"%s localizes image failures without exposing query credentials or changing success bytes",
+		async (locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			expect(await fetcher.storeImage(new Uint8Array())).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.invalid,
+			});
+			expect(await fetcher.storeImage(new Uint8Array(IMAGE_MAX_BYTES + 1))).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.large,
+			});
+			expect(await fetcher.storeImage(PNG, { signal: AbortSignal.abort() })).toEqual({
+				ok: false,
+				code: "indeterminate",
+				message: text.stopped,
+			});
+			expect(await fetcher.fetchImage("not-a-url?token=private")).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.url,
+			});
+			expect(seen).toHaveLength(0);
+			routes["/failed"] = { status: 503 };
+			routes["/loop"] = { status: 302, headers: { location: "/loop?token=private" } };
+			routes["/location"] = { status: 302, headers: { location: "http://[" } };
+			routes["/invalid"] = { body: Uint8Array.from([1, 2, 3]) };
+			for (const [path, code, prefix] of [
+				["/failed", "unavailable", text.http],
+				["/loop", "unavailable", text.redirects],
+				["/location", "unavailable", text.location],
+				["/invalid", "invalid", `${text.invalid}: `],
+			] as const) {
+				expect(await fetcher.fetchImage(`${url("img.test", path)}?token=private`)).toEqual({
+					ok: false,
+					code,
+					message: `${prefix}${url("img.test", path)}`,
+				});
+			}
+			expect(await store.usage()).toEqual([]);
+			routes["/good"] = { body: PNG };
+			const result = await fetcher.fetchImage(url("img.test", "/good"));
+			expect(result).toEqual({ ok: true, ref: imageRefOf(PNG) });
+			if (!result.ok) throw new Error("image fetch failed");
+			expect(await stored(result.ref)).toEqual(PNG);
+		},
+	);
 	it.each([
 		["png", PNG],
 		["jpg", JPEG],

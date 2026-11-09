@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { createImageStore, type ImageStore } from "../../images/image-store.js";
 import { createImagesRoute } from "../images.js";
 import type { RouteDeps } from "../types.js";
@@ -23,6 +24,7 @@ let imageStore: ImageStore;
 let registered = 0;
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	dir = await mkdtemp(join(tmpdir(), "bn-images-route-"));
 	imageStore = createImageStore({ dir });
 	const deps = { runtime: { imageStore } } as unknown as RouteDeps;
@@ -42,6 +44,27 @@ async function putOk(bytes: Uint8Array): Promise<string> {
 }
 
 describe("GET /api/images/:ref", () => {
+	it.each([
+		["en", "This image was not found in the library."],
+		["ja", "この画像は画像ライブラリにありません。"],
+		["zh-TW", "圖片庫中找不到此圖片。"],
+	] as const)(
+		"%s localizes missing and invalid refs while preserving successful binary responses",
+		async (locale, message) => {
+			i18n.set({ locale, voice: "plain" });
+			for (const ref of ["invalid.png", `${PNG_SHA256}.png`]) {
+				const res = await app.request(`/api/images/${ref}`);
+				expect(res.status).toBe(404);
+				expect(await res.json()).toEqual({ code: "not_found", message });
+			}
+			const ref = await putOk(PNG);
+			const res = await app.request(`/api/images/${ref}`);
+			expect(res.status).toBe(200);
+			expect(res.headers.get("content-type")).toBe("image/png");
+			expect(res.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
+			expect(new Uint8Array(await res.arrayBuffer())).toEqual(PNG);
+		},
+	);
 	it("200:字节原样,Content-Type 按扩展名,缓存一年且 immutable", async () => {
 		const ref = await putOk(PNG);
 		const res = await app.request(`/api/images/${ref}`);

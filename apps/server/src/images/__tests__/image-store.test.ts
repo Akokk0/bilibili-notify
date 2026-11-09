@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IMAGE_REF_EXTENSIONS } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	createImageStore,
 	IMAGE_GRACE_MS,
@@ -37,6 +38,7 @@ let writer: ImageWriter;
 let held: string[];
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	dir = await mkdtemp(join(tmpdir(), "bn-images-"));
 	store = createImageStore({ dir });
 	held = [];
@@ -53,6 +55,56 @@ async function putOk(bytes: Uint8Array): Promise<string> {
 }
 
 describe("put / read", () => {
+	it.each([
+		[
+			"en",
+			"Unsupported image format. Only png / jpg / gif / webp are accepted.",
+			"Could not write the image library: ",
+			'Image referrer "Original holder 原名" was registered twice.',
+		],
+		[
+			"ja",
+			"対応していない画像形式です。png / jpg / gif / webpのみ受け付けます。",
+			"画像ライブラリに書き込めません：",
+			"画像の参照元「Original holder 原名」が重複して登録されています。",
+		],
+		[
+			"zh-TW",
+			"不支援此圖片格式，只接受 png / jpg / gif / webp。",
+			"無法寫入圖片庫：",
+			"圖片引用方「Original holder 原名」重複註冊。",
+		],
+	] as const)(
+		"%s localizes image validation and disk failures without changing refs or holder identity",
+		async (locale, invalid, disk, duplicate) => {
+			i18n.set({ locale, voice: "plain" });
+			expect(await writer.put(new Uint8Array())).toEqual({
+				ok: false,
+				code: "invalid",
+				message: invalid,
+			});
+			store.register({ name: "Original holder 原名", listRefs: async () => [] });
+			expect(() =>
+				store.register({ name: "Original holder 原名", listRefs: async () => [] }),
+			).toThrow(duplicate);
+			const blocked = join(dir, "Original-file");
+			await writeFile(blocked, "Original contents");
+			const broken = createImageStore({ dir: blocked }).register({
+				name: "original",
+				listRefs: async () => [],
+			});
+			const result = await broken.put(PNG);
+			expect(result).toMatchObject({
+				ok: false,
+				code: "unavailable",
+				message: expect.stringContaining("Original-file"),
+			});
+			if (result.ok) throw new Error("write unexpectedly succeeded");
+			expect(result.message.startsWith(disk)).toBe(true);
+			expect(result.message).toContain("ENOTDIR");
+			expect(await putOk(PNG)).toBe(`${PNG_SHA256}.png`);
+		},
+	);
 	it("引用是字节的 sha256 加嗅探出来的扩展名,读回同样的字节与 mime", async () => {
 		const ref = await putOk(PNG);
 		expect(ref).toBe(`${PNG_SHA256}.png`);

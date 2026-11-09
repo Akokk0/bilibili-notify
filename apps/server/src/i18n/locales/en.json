@@ -1131,5 +1131,19 @@
 	"service.routes.system-logs.text.3": "day must be a date in YYYY-MM-DD format: {value0}",
 	"service.routes.system-logs.text.4": "The day parameter (YYYY-MM-DD) is required.",
 	"service.routes.system-logs.text.5": "No log file was found for this day.",
-	"service.routes.system-logs.text.6": "No log file was found for this day."
+	"service.routes.system-logs.text.6": "No log file was found for this day.",
+	"service.images.image-store.text.1": "Unsupported image format. Only png / jpg / gif / webp are accepted.",
+	"service.images.image-store.text.2": "Could not write the image library: {value0}",
+	"service.images.image-store.text.3": "Image referrer \"{value0}\" was registered twice.",
+	"service.images.image-fetcher.text.1": "Unsupported image format. Only png / jpg / gif / webp are accepted.",
+	"service.images.image-fetcher.text.2": "The image is too large. The limit is {value0} MiB per image.",
+	"service.images.image-fetcher.text.3": "The remote server returned HTTP {value0}: {value1}",
+	"service.images.image-fetcher.text.4": "Invalid URL: {value0}",
+	"service.images.image-fetcher.text.5": "The image was not reached after {value0} redirects (HTTP {value1}): {value2}",
+	"service.images.image-fetcher.text.6": "The remote server returned an invalid redirect URL (HTTP {value0}): {value1}",
+	"service.images.image-fetcher.text.7": "Image storage was aborted.",
+	"service.images.image-writes.text.1": "Unsupported image. Only png / jpg / gif / webp up to 8 MiB per image are accepted.",
+	"service.images.image-writes.text.2": "Could not save the post image to the library: {value0}",
+	"service.images.image-writes.text.3": "Post image reference mismatch: expected {value0}, library returned {value1}",
+	"service.routes.images.text.1": "This image was not found in the library."
 }

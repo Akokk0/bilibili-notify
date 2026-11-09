@@ -1121,5 +1121,19 @@
 	"service.routes.system-logs.text.3": "day 必須是 YYYY-MM-DD 格式的日期：{value0}",
 	"service.routes.system-logs.text.4": "必須提供 day 參數（YYYY-MM-DD）。",
 	"service.routes.system-logs.text.5": "找不到這一天的日誌檔案。",
-	"service.routes.system-logs.text.6": "找不到這一天的日誌檔案。"
+	"service.routes.system-logs.text.6": "找不到這一天的日誌檔案。",
+	"service.images.image-store.text.1": "不支援此圖片格式，只接受 png / jpg / gif / webp。",
+	"service.images.image-store.text.2": "無法寫入圖片庫：{value0}",
+	"service.images.image-store.text.3": "圖片引用方「{value0}」重複註冊。",
+	"service.images.image-fetcher.text.1": "不支援此圖片格式，只接受 png / jpg / gif / webp。",
+	"service.images.image-fetcher.text.2": "圖片過大，每張上限為 {value0} MiB。",
+	"service.images.image-fetcher.text.3": "遠端伺服器回傳 HTTP {value0}：{value1}",
+	"service.images.image-fetcher.text.4": "無效的網址：{value0}",
+	"service.images.image-fetcher.text.5": "經過 {value0} 次重新導向仍未取得圖片（HTTP {value1}）：{value2}",
+	"service.images.image-fetcher.text.6": "遠端伺服器提供了無效的重新導向網址（HTTP {value0}）：{value1}",
+	"service.images.image-fetcher.text.7": "圖片儲存已中止。",
+	"service.images.image-writes.text.1": "不支援此圖片，只接受每張不超過 8 MiB 的 png / jpg / gif / webp。",
+	"service.images.image-writes.text.2": "無法將作品圖片存入圖片庫：{value0}",
+	"service.images.image-writes.text.3": "作品圖片引用不符：預期 {value0}，圖片庫回傳 {value1}",
+	"service.routes.images.text.1": "圖片庫中找不到此圖片。"
 }

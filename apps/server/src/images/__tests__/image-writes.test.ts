@@ -7,8 +7,10 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fail } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { png } from "../../__tests__/support/report-images.js";
+import { i18n } from "../../i18n/index.js";
 import {
 	createImageStore,
 	IMAGE_MAX_BYTES,
@@ -21,6 +23,7 @@ let dir: string;
 let store: ImageStore;
 let writer: ImageWriter;
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	dir = await mkdtemp(join(tmpdir(), "bn-image-writes-"));
 	store = createImageStore({ dir: join(dir, "images") });
 	writer = store.register({ name: "作品配图", listRefs: async () => [] });
@@ -34,6 +37,64 @@ const refOf = async (bytes: Uint8Array) => {
 	if (!stored.ok) throw new Error(`夹具图存不进图库:${stored.message}`);
 	return stored.ref;
 };
+
+describe("deferred image write feedback", () => {
+	it.each([
+		[
+			"en",
+			{
+				invalid:
+					"Unsupported image. Only png / jpg / gif / webp up to 8 MiB per image are accepted.",
+				disk: "Could not save the post image to the library: Original disk 原文",
+				expected: "Post image reference mismatch: expected ",
+				actual: ", library returned ",
+			},
+		],
+		[
+			"ja",
+			{
+				invalid: "対応していない画像です。1枚8 MiB以下のpng / jpg / gif / webpのみ受け付けます。",
+				disk: "投稿画像を画像ライブラリに保存できません：Original disk 原文",
+				expected: "投稿画像の参照が一致しません：期待値 ",
+				actual: "、画像ライブラリの戻り値 ",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				invalid: "不支援此圖片，只接受每張不超過 8 MiB 的 png / jpg / gif / webp。",
+				disk: "無法將作品圖片存入圖片庫：Original disk 原文",
+				expected: "作品圖片引用不符：預期 ",
+				actual: "，圖片庫回傳 ",
+			},
+		],
+	] as const)(
+		"%s localizes deferred-write failures without losing diagnostics or reference identity",
+		async (locale, text) => {
+			const bytes = png(10, 10, 1);
+			const expected = await refOf(bytes);
+			i18n.set({ locale, voice: "plain" });
+			const put = vi.fn(async () => fail("unavailable", "Original disk 原文"));
+			const broken = deferImageWrites({ put });
+			expect(await broken.sink.put(new Uint8Array())).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.invalid,
+			});
+			expect(put).not.toHaveBeenCalled();
+			expect(await broken.sink.put(bytes)).toEqual({ ok: true, ref: expected });
+			await expect(broken.commit()).rejects.toThrow(text.disk);
+			await expect(broken.commit()).rejects.toThrow(text.disk);
+			expect(put).toHaveBeenCalledTimes(1);
+			const actual = `${"f".repeat(64)}.png`;
+			const drifted = deferImageWrites({ put: async () => ({ ok: true, ref: actual }) });
+			await drifted.sink.put(bytes);
+			await expect(drifted.commit()).rejects.toThrow(
+				`${text.expected}${expected}${text.actual}${actual}`,
+			);
+		},
+	);
+});
 
 /**
  * 图的写盘推迟到出卡那一刻(㉑e)。过滤吃翻好的 `Post`,所以翻译要排在过滤之前 —— 而被屏蔽的、关了出图的、版式藏起卡片的

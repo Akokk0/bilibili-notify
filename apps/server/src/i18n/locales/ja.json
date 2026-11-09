@@ -1121,5 +1121,19 @@
 	"service.routes.system-logs.text.3": "dayはYYYY-MM-DD形式の日付で指定してください：{value0}",
 	"service.routes.system-logs.text.4": "dayパラメーター（YYYY-MM-DD）が必要です。",
 	"service.routes.system-logs.text.5": "この日のログファイルが見つかりません。",
-	"service.routes.system-logs.text.6": "この日のログファイルが見つかりません。"
+	"service.routes.system-logs.text.6": "この日のログファイルが見つかりません。",
+	"service.images.image-store.text.1": "対応していない画像形式です。png / jpg / gif / webpのみ受け付けます。",
+	"service.images.image-store.text.2": "画像ライブラリに書き込めません：{value0}",
+	"service.images.image-store.text.3": "画像の参照元「{value0}」が重複して登録されています。",
+	"service.images.image-fetcher.text.1": "対応していない画像形式です。png / jpg / gif / webpのみ受け付けます。",
+	"service.images.image-fetcher.text.2": "画像が大きすぎます。1枚あたりの上限は{value0} MiBです。",
+	"service.images.image-fetcher.text.3": "接続先がHTTP {value0}を返しました：{value1}",
+	"service.images.image-fetcher.text.4": "無効なURLです：{value0}",
+	"service.images.image-fetcher.text.5": "{value0}回リダイレクトしても画像に到達しませんでした（HTTP {value1}）：{value2}",
+	"service.images.image-fetcher.text.6": "接続先が無効なリダイレクト先URLを返しました（HTTP {value0}）：{value1}",
+	"service.images.image-fetcher.text.7": "画像の保存が中断されました。",
+	"service.images.image-writes.text.1": "対応していない画像です。1枚8 MiB以下のpng / jpg / gif / webpのみ受け付けます。",
+	"service.images.image-writes.text.2": "投稿画像を画像ライブラリに保存できません：{value0}",
+	"service.images.image-writes.text.3": "投稿画像の参照が一致しません：期待値 {value0}、画像ライブラリの戻り値 {value1}",
+	"service.routes.images.text.1": "この画像は画像ライブラリにありません。"
 }
