@@ -4,7 +4,8 @@
  */
 
 import type { Post } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	POST_SUMMARY_MAX_CHARS,
 	POST_TITLE_MAX_CHARS,
@@ -19,8 +20,39 @@ const base = (over: Partial<Post> = {}): Post => ({
 });
 const URL = "https://example.com/p/1";
 
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
 describe("postEntryExtras", () => {
-	it("带视频、话题、正文:五格都有,值是手写的字面量(摘要是取段函数的 AI 拼法)", () => {
+	it.each([
+		[
+			"en",
+			"Title: 我的标题\nOriginal 原文\nVideo title: Video 原题\n(Reposted from Unknown: Inner 原文)",
+		],
+		[
+			"ja",
+			"タイトル：我的标题\nOriginal 原文\n動画タイトル：Video 原题\n（リポスト元 不明：Inner 原文）",
+		],
+		["zh-TW", "標題：我的标题\nOriginal 原文\n影片標題：Video 原题\n（轉發自 未知：Inner 原文）"],
+	] as const)("%s：生成时翻译摘要标签，原内容和已生成摘要保持", (locale, summary) => {
+		const post = base({
+			title: "我的标题",
+			text: "Original 原文",
+			video: { cover: {}, title: "Video 原题", description: "", durationSec: 125 },
+			repost: base({ creator: { name: "" }, text: "Inner 原文" }),
+		});
+		const original = structuredClone(post);
+		i18n.set({ locale, voice: "plain" });
+		const saved = postEntryExtras({ url: URL, post });
+		expect(saved).toEqual({ url: URL, title: "我的标题", summary, videoDurationSec: 125 });
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		expect(postEntryExtras({ url: URL, post }).summary).toBe(
+			"标题：我的标题\nOriginal 原文\n视频标题：Video 原题\n（转发自 未知：Inner 原文）",
+		);
+		expect(saved.summary).toBe(summary);
+		expect(post).toEqual(original);
+	});
+
+	it("带视频、话题、正文:五格都有,摘要使用取段函数的标签拼法", () => {
 		const post = base({
 			text: "今天的正文",
 			topic: "旅行",
@@ -57,7 +89,7 @@ describe("postEntryExtras", () => {
 		);
 	});
 
-	it("摘要按取段函数的 AI 拼法带标签,转发的原作品并进去", () => {
+	it("摘要按取段函数的标签拼法,转发的原作品并进去", () => {
 		const post = base({
 			text: "我的话",
 			title: "我的标题",

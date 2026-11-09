@@ -1,4 +1,8 @@
 {
+	"service.posts.post-text.text.1": "標題：{value0}",
+	"service.posts.post-text.text.2": "影片標題：{value0}",
+	"service.posts.post-text.text.3": "未知",
+	"service.posts.post-text.text.4": "（轉發自 {value0}：{value1}）",
 	"service.integrations.settings-reader.text.1": "無法讀取設定",
 	"log.integration.cookiesNotArray": "Cookie 資料不是陣列。",
 	"service.integrations.http.text.2": "整合已停止，無法儲存 Cookie。",

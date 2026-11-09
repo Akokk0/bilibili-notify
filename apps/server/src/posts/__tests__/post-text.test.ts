@@ -1,5 +1,6 @@
 import type { Post } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { postText } from "../post-text";
 
 const creator = { name: "阿梓" };
@@ -8,7 +9,30 @@ function post(over: Partial<Post> = {}): Post {
 	return { creator, publishedAt: "2026-10-05T08:00:00.000Z", text: "", ...over };
 }
 
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
 describe("postText —— 作品文字只有一种拼法(ADR-0028 决策 1)", () => {
+	it.each(["zh-CN", "en", "ja", "zh-TW"] as const)(
+		"%s：模型标签固定中文，过滤文字保持原样且不插值原文",
+		(locale) => {
+			const p = post({
+				title: "Title {value0}",
+				text: "Original {value1}",
+				video: { cover: {}, title: "Video 原题", description: "" },
+				repost: post({ creator: { name: "" }, text: "Inner 原文" }),
+			});
+			const original = structuredClone(p);
+			i18n.set({ locale, voice: "maid" });
+			expect(postText(p, "prompt")).toBe(
+				"标题：Title {value0}\nOriginal {value1}\n视频标题：Video 原题\n（转发自 未知：Inner 原文）",
+			);
+			expect(postText(p, "plain")).toBe(
+				"Original {value1}\nTitle {value0}\nVideo 原题\nInner 原文",
+			);
+			expect(p).toEqual(original);
+		},
+	);
+
 	it("plain:正文、文章标题、视频标题各占一行,没有前缀", () => {
 		const p = post({
 			text: "今天也要加油",

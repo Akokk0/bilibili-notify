@@ -1,8 +1,8 @@
 import type { Post } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 
-/** `plain`:各段无前缀、换行拼接(过滤用);`labeled`:带「标题：」「视频标题：」「（转发自 X：…）」(给 AI 读)。 */
-export type PostTextStyle = "plain" | "labeled";
+/** `plain`:无前缀(过滤用);`labeled`:当前语言标签(给人看);`prompt`:同一取段逻辑、固定中文标签(给模型)。 */
+export type PostTextStyle = "plain" | "labeled" | "prompt";
 
 const filled = (text: string | undefined): text is string => !!text && text.trim() !== "";
 
@@ -12,10 +12,16 @@ function ownSections(post: Post, style: PostTextStyle): string[] {
 	const videoTitle = post.video?.title;
 	if (style === "plain") return [post.text, title, videoTitle].filter(filled);
 	return [
-		filled(title) ? serverText("service.posts.post-text.text.1", { value0: title }) : undefined,
+		filled(title)
+			? style === "prompt"
+				? `标题：${title}`
+				: serverText("service.posts.post-text.text.1", { value0: title })
+			: undefined,
 		post.text,
 		filled(videoTitle)
-			? serverText("service.posts.post-text.text.2", { value0: videoTitle })
+			? style === "prompt"
+				? `视频标题：${videoTitle}`
+				: serverText("service.posts.post-text.text.2", { value0: videoTitle })
 			: undefined,
 	].filter(filled);
 }
@@ -34,10 +40,14 @@ export function postText(post: Post, style: PostTextStyle): string {
 			const inner = postText(post.repost, style).replaceAll("\n", " ");
 			const name = filled(post.repost.creator.name)
 				? post.repost.creator.name
-				: serverText("service.posts.post-text.text.3");
+				: style === "prompt"
+					? "未知"
+					: serverText("service.posts.post-text.text.3");
 			if (inner !== "")
 				sections.push(
-					serverText("service.posts.post-text.text.4", { value0: name, value1: inner }),
+					style === "prompt"
+						? `（转发自 ${name}：${inner}）`
+						: serverText("service.posts.post-text.text.4", { value0: name, value1: inner }),
 				);
 		}
 	}

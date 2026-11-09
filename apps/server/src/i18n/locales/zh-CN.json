@@ -820,7 +820,6 @@
 	"service.migration.recording.text.2": "订阅文件读不懂,没推出「在记」小账",
 	"service.migration.subscriptions.text.1": "第 0 代的 state/extension-subscriptions.json 读不懂(不是 JSON 数组),拓展订阅没法迁过来",
 	"service.platforms.upstream-message.text.1": "上游没说原因",
-	"service.posts.deliver-post.text.1": "{value0}发布了一条{value1}，内容如下：\n{value2}",
 	"service.posts.deliver-post.text.2": "生成作品图片失败：{value0}，已降级为纯文字推送，请检查卡片渲染状态",
 	"service.posts.post-text.text.1": "标题：{value0}",
 	"service.posts.post-text.text.2": "视频标题：{value0}",

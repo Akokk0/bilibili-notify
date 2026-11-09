@@ -83,6 +83,56 @@ function pinnedSource(text) {
 }
 
 export const NON_DISPLAY_TEXTS = {
+	"apps/server/src/posts/post-text.ts": [
+		{
+			owner: "ownSections",
+			text: pinnedSource("`标题：@{title}`"),
+			reason:
+				"ADR-0037 decision 11: fixed Chinese labels for model input; human summaries use translated labels.",
+			site: pinnedSource(
+				'return [\n\t\tfilled(title)\n\t\t\t? style === "prompt"\n\t\t\t\t? `标题：@{title}`\n\t\t\t\t: serverText("service.posts.post-text.text.1", { value0: title })\n\t\t\t: undefined,\n\t\tpost.text,\n\t\tfilled(videoTitle)\n\t\t\t? style === "prompt"\n\t\t\t\t? `视频标题：@{videoTitle}`\n\t\t\t\t: serverText("service.posts.post-text.text.2", { value0: videoTitle })\n\t\t\t: undefined,\n\t].filter(filled);',
+			),
+		},
+		{
+			owner: "ownSections",
+			text: pinnedSource("`视频标题：@{videoTitle}`"),
+			reason:
+				"ADR-0037 decision 11: fixed Chinese labels for model input; human summaries use translated labels.",
+			site: pinnedSource(
+				'return [\n\t\tfilled(title)\n\t\t\t? style === "prompt"\n\t\t\t\t? `标题：@{title}`\n\t\t\t\t: serverText("service.posts.post-text.text.1", { value0: title })\n\t\t\t: undefined,\n\t\tpost.text,\n\t\tfilled(videoTitle)\n\t\t\t? style === "prompt"\n\t\t\t\t? `视频标题：@{videoTitle}`\n\t\t\t\t: serverText("service.posts.post-text.text.2", { value0: videoTitle })\n\t\t\t: undefined,\n\t].filter(filled);',
+			),
+		},
+		{
+			owner: "postText/name",
+			text: pinnedSource('"未知"'),
+			reason:
+				"ADR-0037 decision 11: fixed Chinese labels for model input; human summaries use translated labels.",
+			site: pinnedSource(
+				'name = filled(post.repost.creator.name)\n\t\t\t\t? post.repost.creator.name\n\t\t\t\t: style === "prompt"\n\t\t\t\t\t? "未知"\n\t\t\t\t\t: serverText("service.posts.post-text.text.3")',
+			),
+		},
+		{
+			owner: "postText",
+			text: pinnedSource("`（转发自 @{name}：@{inner}）`"),
+			reason:
+				"ADR-0037 decision 11: fixed Chinese labels for model input; human summaries use translated labels.",
+			site: pinnedSource(
+				'sections.push(\n\t\t\t\t\tstyle === "prompt"\n\t\t\t\t\t\t? `（转发自 @{name}：@{inner}）`\n\t\t\t\t\t\t: serverText("service.posts.post-text.text.4", { value0: name, value1: inner }),\n\t\t\t\t);',
+			),
+		},
+	],
+	"apps/server/src/posts/deliver-post.ts": [
+		{
+			owner: "deliverPost/prompt",
+			text: pinnedSource(
+				"`@{post.creator.name}发布了一条@{postNounsOf(event, PROMPT_NEUTRAL_NOUNS).postNoun}，内容如下：\\n@{commentText}`",
+			),
+			reason: "作品点评模型输入；从人用字典归回固定中文规则，ADR-0037决策11。",
+			site: pinnedSource(
+				"prompt = `@{post.creator.name}发布了一条@{postNounsOf(event, PROMPT_NEUTRAL_NOUNS).postNoun}，内容如下：\\n@{commentText}`",
+			),
+		},
+	],
 	"packages/internal/src/texts/builtin/index.ts": [
 		{
 			owner: "GENTLE_MAID_DYNAMIC_PROMPT",

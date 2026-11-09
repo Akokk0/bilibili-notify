@@ -585,22 +585,26 @@ describe("deliverPost — AI 点评", () => {
 		expect(dflt.comment.mock.calls[0]?.[0]).toBe("阿绫发布了一条作品，内容如下：\n正文");
 	});
 
-	it("提示词里的正文是 postText(labeled):标题 / 视频标题 / 转发原文都在", async () => {
-		const h = harness({
-			withImage: false,
-			withAi: true,
-			post: {
-				text: "今天发新歌",
-				article: { title: "专栏题" },
-				video: { cover: {}, title: "新歌 MV", description: "" },
-				repost: postOf({ creator: { name: "原作者" }, text: "原文" }),
-			},
-		});
-		await run(h);
-		expect(h.comment.mock.calls[0]?.[0]).toBe(
-			"阿绫发布了一条作品，内容如下：\n标题：专栏题\n今天发新歌\n视频标题：新歌 MV\n（转发自 原作者：原文）",
-		);
-	});
+	it.each(["zh-CN", "en", "ja", "zh-TW"] as const)(
+		"%s 提示词保持中文标签和原文：标题 / 视频标题 / 转发原文都在",
+		async (locale) => {
+			const h = harness({
+				withImage: false,
+				withAi: true,
+				post: {
+					text: "今天发新歌",
+					article: { title: "专栏题" },
+					video: { cover: {}, title: "新歌 MV", description: "" },
+					repost: postOf({ creator: { name: "原作者" }, text: "原文" }),
+				},
+			});
+			i18n.set({ locale, voice: "plain" });
+			await run(h);
+			expect(h.comment.mock.calls[0]?.[0]).toBe(
+				"阿绫发布了一条作品，内容如下：\n标题：专栏题\n今天发新歌\n视频标题：新歌 MV\n（转发自 原作者：原文）",
+			);
+		},
+	);
 
 	it("联网搜索开着 → override 带 webSearch:true;对照:没开就不带", async () => {
 		const on = harness({

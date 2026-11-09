@@ -323,7 +323,7 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 	let aiComment: string | undefined;
 	const ai = deps.ai();
 	if (ai && settings.aiEnabled && wantPart("text")) {
-		const commentText = postText(post, "labeled");
+		const commentText = postText(post, "prompt");
 		if (commentText) {
 			const imageUrls = await commentImagesOf(post, deps);
 			logger.debug(logText("log.posts.commentStarted"), {
@@ -335,12 +335,9 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 			});
 			try {
 				// 给模型看:提示词中性词写死中文,不随界面语言翻。
+				const prompt = `${post.creator.name}发布了一条${postNounsOf(event, PROMPT_NEUTRAL_NOUNS).postNoun}，内容如下：\n${commentText}`;
 				aiComment = await ai.comment(
-					serverText("service.posts.deliver-post.text.1", {
-						value0: post.creator.name,
-						value1: postNounsOf(event, PROMPT_NEUTRAL_NOUNS).postNoun,
-						value2: commentText,
-					}),
+					prompt,
 					"post",
 					imageUrls,
 					// 联网搜索是全局开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。

@@ -9,7 +9,7 @@ import type { PostEntry } from "./store.js";
  * 所以入参是 `{ url, post }`:B 站与拓展两支都经 {@link postEntryFromEvent} 拿 `PostEvent.url` 与 `PostEvent.post` 来调,
  * 两个来源不各写一套取法。
  *
- * - `summary`:唯一的取段函数 `postText` 的 AI 拼法(`"labeled"`,ADR-0028 决策 1),按字符截 {@link POST_SUMMARY_MAX_CHARS};
+ * - `summary`:唯一取段函数 `postText` 的当前语言标签拼法(`"labeled"`,ADR-0028 决策 1),生成后保留整句,按字符截 {@link POST_SUMMARY_MAX_CHARS};
  * - `title`:作品自己的标题 → 文章标题 → 视频标题,截 {@link POST_TITLE_MAX_CHARS}(规矩没有长度,取个够用的上限);
  * - `topic`、`videoDurationSec`:`Post` 上现成的;
  * - 没有的格不写(规矩 5:不编默认值)。

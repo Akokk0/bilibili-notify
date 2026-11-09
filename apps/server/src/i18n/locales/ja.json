@@ -1,4 +1,8 @@
 {
+	"service.posts.post-text.text.1": "タイトル：{value0}",
+	"service.posts.post-text.text.2": "動画タイトル：{value0}",
+	"service.posts.post-text.text.3": "不明",
+	"service.posts.post-text.text.4": "（リポスト元 {value0}：{value1}）",
 	"service.integrations.settings-reader.text.1": "設定を読み取れません",
 	"log.integration.cookiesNotArray": "Cookieデータが配列ではありません。",
 	"service.integrations.http.text.2": "統合機能が停止しているため、Cookieを保存できません。",

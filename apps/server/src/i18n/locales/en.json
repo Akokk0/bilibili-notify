@@ -1,4 +1,8 @@
 {
+	"service.posts.post-text.text.1": "Title: {value0}",
+	"service.posts.post-text.text.2": "Video title: {value0}",
+	"service.posts.post-text.text.3": "Unknown",
+	"service.posts.post-text.text.4": "(Reposted from {value0}: {value1})",
 	"service.integrations.settings-reader.text.1": "Unable to read settings",
 	"log.integration.cookiesNotArray": "Cookie data is not an array.",
 	"service.integrations.http.text.2": "The integration has stopped; cookies cannot be saved.",
