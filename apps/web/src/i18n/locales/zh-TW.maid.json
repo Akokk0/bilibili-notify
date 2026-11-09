@@ -535,5 +535,11 @@
 	"panelUi.pages.backup.BackupImportDialog.4": "主人，請選擇備份檔案（.bnbackup／.json）喔。",
 	"panelUi.pages.backup.BackupSection.5": "主人，完整備份已下載，裡面有您的帳號和密碼，請妥善保管、不要外傳喔。",
 	"panelUi.pages.About.13": "主人，Bilibili Notify 是採用 MIT 授權、永久免費的開源專案。伺服器、測試設備和持續開發都需要成本，如果有幫上您的忙，歡迎到愛發電請女僕喝杯奶茶喔。每一份心意，都會化為新功能和更少的 bug。",
-	"panelUi.pages.About.24": "主人，Bilibili Notify 會留意不同來源的作品與直播，繪製成卡片圖片並推播到目標喔。內建 Web 控制台，支援 Docker 映像檔和桌面應用程式部署，採用 MIT 開源授權。"
+	"panelUi.pages.About.24": "主人，Bilibili Notify 會留意不同來源的作品與直播，繪製成卡片圖片並推播到目標喔。內建 Web 控制台，支援 Docker 映像檔和桌面應用程式部署，採用 MIT 開源授權。",
+	"panelUi.components.ai-chat.search-control.3": "主人，網路搜尋會先查再答，按次計費喔。只用於目前對話，不會儲存到設定。",
+	"panelUi.components.ai-chat.thinking-control.4": "主人，這個自訂服務商的思考參數格式還不清楚，請到「智慧女僕」的「額外請求參數」手動填寫喔（DeepSeek 例如 {example}）。也可以把這個實例的 API 格式改成 responses，該協定有標準的思考欄位。",
+	"panelUi.components.ai-chat.thinking-level-setting.6": "主人，目前實例使用自訂服務商，女僕不會擅自傳送專屬思考參數喔。需要的話，請填進該實例的「額外請求參數」。",
+	"panelUi.components.ai-chat.card-skin-preview.4": "主人，這套卡片皮膚已經不在資源庫裡，沒辦法預覽了喔。",
+	"panelUi.components.ai-chat.index.11": "主人，說說想把推播卡片換成什麼樣子吧。氛圍、主色、先改哪些卡片都可以聊喔；女僕會一張張做好，在回覆下方讓您看預覽。",
+	"panelUi.components.skin-preview-bar.1": "正在試穿「{name}」喔"
 }

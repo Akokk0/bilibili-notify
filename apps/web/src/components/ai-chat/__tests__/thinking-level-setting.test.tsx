@@ -135,3 +135,23 @@ describe("ThinkingLevelSetting — 侧栏里的思考深度", () => {
 		expect(await screen.findByRole("button", { name: "中" })).toBeTruthy();
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、現在のインスタンスはカスタムプロバイダーなので、メイドが勝手に専用の思考パラメーターを送ることはありません。必要なら、そのインスタンスの「追加リクエストパラメーター」に入力してくださいね。",
+	],
+	[
+		"zh-TW",
+		"主人，目前實例使用自訂服務商，女僕不會擅自傳送專屬思考參數喔。需要的話，請填進該實例的「額外請求參數」。",
+	],
+] as const)("%s 女仆设置说明不显示或保存不支持的思考档位", async (locale, hint) => {
+	mount(globalsWith("custom"));
+	await screen.findByText(/额外请求参数/);
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(hint)).toBeTruthy();
+	for (const label of ["低", "中", "高"])
+		expect(screen.queryByRole("button", { name: label })).toBeNull();
+	expect(api.patch).not.toHaveBeenCalled();
+	expect(api.post).not.toHaveBeenCalled();
+});

@@ -139,3 +139,28 @@ describe("ThinkingControl — 会话级受控胶囊", () => {
 		}
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"思考",
+		'ご主人様、このカスタムプロバイダーの思考パラメーター形式はわかりません。「AI メイド」の「追加リクエストパラメーター」に入力してくださいね（DeepSeekなら {"thinking":{"type":"enabled"}}）。このインスタンスのAPI形式をresponsesに変えれば、共通の思考フィールドを使えますよ。',
+	],
+	[
+		"zh-TW",
+		"深度思考",
+		'主人，這個自訂服務商的思考參數格式還不清楚，請到「智慧女僕」的「額外請求參數」手動填寫喔（DeepSeek 例如 {"thinking":{"type":"enabled"}}）。也可以把這個實例的 API 格式改成 responses，該協定有標準的思考欄位。',
+	],
+] as const)("%s 女仆指路保留协议示例且不能开启未知方言", async (locale, label, hint) => {
+	const onToggle = vi.fn();
+	mount("custom", { on: false, onToggle });
+	const button = await screen.findByRole("button", { name: "深度思考" });
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByRole("button", { name: label })).toBe(button);
+	expect(button.title).toBe(hint);
+	expect((button as HTMLButtonElement).disabled).toBe(true);
+	fireEvent.click(button);
+	expect(onToggle).not.toHaveBeenCalled();
+	expect(api.patch).not.toHaveBeenCalled();
+	expect(api.post).not.toHaveBeenCalled();
+});

@@ -535,5 +535,11 @@
 	"panelUi.pages.backup.BackupImportDialog.4": "ご主人様、バックアップファイル（.bnbackup / .json）を選んでくださいね。",
 	"panelUi.pages.backup.BackupSection.5": "ご主人様、完全バックアップをダウンロードしました。アカウントとパスワードが入っているので、大切に保管し、ほかの方には渡さないでくださいね。",
 	"panelUi.pages.About.13": "ご主人様、Bilibili NotifyはMITライセンスのオープンソースで、これからも無料です。サーバーやテスト機器、開発を続けるためには費用がかかります。お役に立てたら、Afdianでメイドにミルクティーをごちそうしていただけるとうれしいです。いただいたお気持ちは、新機能の開発や不具合の修正につなげますね。",
-	"panelUi.pages.About.24": "ご主人様、Bilibili Notifyはさまざまなソースの投稿や配信を見守り、画像カードにして送信先へお届けします。Webダッシュボードを備え、Dockerイメージでもデスクトップアプリでも導入できますよ。MITライセンスのオープンソースです。"
+	"panelUi.pages.About.24": "ご主人様、Bilibili Notifyはさまざまなソースの投稿や配信を見守り、画像カードにして送信先へお届けします。Webダッシュボードを備え、Dockerイメージでもデスクトップアプリでも導入できますよ。MITライセンスのオープンソースです。",
+	"panelUi.components.ai-chat.search-control.3": "ご主人様、ウェブ検索では先に調べてからお答えします。検索ごとに料金がかかりますよ。この会話だけに適用し、設定には保存しません。",
+	"panelUi.components.ai-chat.thinking-control.4": "ご主人様、このカスタムプロバイダーの思考パラメーター形式はわかりません。「AI メイド」の「追加リクエストパラメーター」に入力してくださいね（DeepSeekなら {example}）。このインスタンスのAPI形式をresponsesに変えれば、共通の思考フィールドを使えますよ。",
+	"panelUi.components.ai-chat.thinking-level-setting.6": "ご主人様、現在のインスタンスはカスタムプロバイダーなので、メイドが勝手に専用の思考パラメーターを送ることはありません。必要なら、そのインスタンスの「追加リクエストパラメーター」に入力してくださいね。",
+	"panelUi.components.ai-chat.card-skin-preview.4": "ご主人様、このスキンはもうライブラリーにないので、プレビューできませんよ。",
+	"panelUi.components.ai-chat.index.11": "ご主人様、通知カードをどんな見た目にしたいか教えてくださいね。雰囲気や基調色、先に変えたいカードなど、何でもご相談ください。1枚ずつお作りして、お返事の下にプレビューをお見せしますよ。",
+	"panelUi.components.skin-preview-bar.1": "「{name}」をお試し中ですよ"
 }

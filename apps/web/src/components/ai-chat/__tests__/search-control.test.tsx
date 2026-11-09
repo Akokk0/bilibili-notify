@@ -94,3 +94,25 @@ describe("SearchControl — 会话级受控胶囊", () => {
 		expect(btn.getAttribute("aria-pressed")).toBe("true");
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ウェブ検索",
+		"ご主人様、ウェブ検索では先に調べてからお答えします。検索ごとに料金がかかりますよ。この会話だけに適用し、設定には保存しません。",
+	],
+	["zh-TW", "網路搜尋", "主人，網路搜尋會先查再答，按次計費喔。只用於目前對話，不會儲存到設定。"],
+] as const)("%s 女仆搜索说明不自动开关或保存", async (locale, label, hint) => {
+	const onToggle = vi.fn();
+	mount({ masked: "••••••••" }, { on: false, onToggle });
+	const button = await screen.findByRole("button", { name: "联网搜索" });
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByRole("button", { name: label })).toBe(button);
+	expect(button.title).toBe(hint);
+	expect(button.getAttribute("aria-pressed")).toBe("false");
+	expect(onToggle).not.toHaveBeenCalled();
+	expect(api.patch).not.toHaveBeenCalled();
+	expect(api.post).not.toHaveBeenCalled();
+	fireEvent.click(button);
+	expect(onToggle).toHaveBeenCalledExactlyOnceWith(true);
+});

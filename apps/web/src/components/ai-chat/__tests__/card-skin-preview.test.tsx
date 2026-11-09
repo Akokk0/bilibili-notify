@@ -258,3 +258,17 @@ it("updates chat preview tabs after locale changes without applying a skin", asy
 		});
 	}
 });
+
+it.each([
+	["ja", "ご主人様、このスキンはもうライブラリーにないので、プレビューできませんよ。"],
+	["zh-TW", "主人，這套卡片皮膚已經不在資源庫裡，沒辦法預覽了喔。"],
+] as const)("%s 女仆缺失提示不绘制或启用已删除的卡片皮肤", async (locale, hint) => {
+	wrap(<CardSkinPreviews touches={[{ id: "gone", kinds: ["live"] }]} />);
+	const block = await screen.findByTestId("card-skin-preview");
+	await within(block).findByText(/不在库里/);
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(within(block).getByText(hint)).toBeTruthy();
+	expect(H.previews).toEqual([]);
+	expect(H.puts).toEqual([]);
+	expect(within(block).queryByRole("button")).toBeNull();
+});

@@ -14,7 +14,7 @@
 
 import type { AccountView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -113,6 +113,7 @@ vi.mock("../../../services/api", () => ({
 	},
 }));
 
+import { createConversation, sendChatMessage } from "../../../services/aiChat";
 import { useAiChatStore } from "../../../store/aiChat";
 import { ChatPage } from "../index";
 
@@ -332,4 +333,34 @@ it("AI头像使用首位来源账号，首位未登录不借第二位资料", as
 	expect(screen.queryByText("旧账号")).toBeNull();
 	expect(screen.queryByText("后位账号")).toBeNull();
 	expect(screen.queryByAltText("旧账号")).toBeNull();
+});
+
+it.each([
+	[
+		"ja",
+		"ご主人様、通知カードをどんな見た目にしたいか教えてくださいね。雰囲気や基調色、先に変えたいカードなど、何でもご相談ください。1枚ずつお作りして、お返事の下にプレビューをお見せしますよ。",
+	],
+	[
+		"zh-TW",
+		"主人，說說想把推播卡片換成什麼樣子吧。氛圍、主色、先改哪些卡片都可以聊喔；女僕會一張張做好，在回覆下方讓您看預覽。",
+	],
+] as const)("%s 女仆卡片工坊说明保留草稿和选定目标，发送前不建会话", async (locale, hint) => {
+	vi.mocked(createConversation).mockClear();
+	vi.mocked(sendChatMessage).mockClear();
+	mountFresh();
+	await screen.findByLabelText("聊天输入");
+	fireEvent.click(screen.getByRole("button", { name: /新建皮肤工坊/ }));
+	fireEvent.click(await screen.findByRole("tab", { name: "推送卡片" }));
+	const input = screen.getByLabelText("聊天输入");
+	fireEvent.change(input, { target: { value: "Original draft 原文" } });
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(hint)).toBeTruthy();
+	expect(screen.getByDisplayValue("Original draft 原文")).toBe(input);
+	expect(createConversation).not.toHaveBeenCalled();
+	expect(sendChatMessage).not.toHaveBeenCalled();
+	fireEvent.keyDown(input, { key: "Enter" });
+	await waitFor(() => expect(sendChatMessage).toHaveBeenCalledTimes(1));
+	expect(createConversation).toHaveBeenCalledTimes(1);
+	expect(H.lastInit).toMatchObject({ mode: "skin", skinTarget: "card" });
+	expect(vi.mocked(sendChatMessage).mock.calls[0]?.[1]).toBe("Original draft 原文");
 });

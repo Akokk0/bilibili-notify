@@ -166,3 +166,19 @@ describe("SkinPreviewBar", () => {
 		expect(useSkinStore.getState().preview).toBeNull();
 	});
 });
+
+it.each([
+	["ja", "「Original skin 原文」をお試し中ですよ", "キャンセル"],
+	["zh-TW", "正在試穿「Original skin 原文」喔", "取消"],
+] as const)("%s 女仆试穿状态保留原皮肤身份，取消不落盘", (locale, caption, cancel) => {
+	const preview = { id: "original-id", manifest: { ...manifest, name: "Original skin 原文" } };
+	useSkinStore.getState().setPreview(preview);
+	renderBar();
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(caption)).toBeTruthy();
+	expect(useSkinStore.getState().preview).toEqual(preview);
+	expect(H.putCalls).toEqual([]);
+	fireEvent.click(screen.getByRole("button", { name: cancel }));
+	expect(useSkinStore.getState().preview).toBeNull();
+	expect(H.putCalls).toEqual([]);
+});
