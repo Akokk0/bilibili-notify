@@ -8,10 +8,60 @@
  * 这里守的是「解析与执行分离」:handler 永远拿到已校验的值,拿不到就根本不该被调用。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { parseArgs, parseSignature, type Values } from "../command-params.js";
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
 describe("parseSignature", () => {
+	it.each([
+		[
+			"en",
+			[
+				'Command signature "<duration|Original label:duration>" has "|" in parameter name "duration|Original label". Put the display label after the type: <name:type|label>.',
+				'Command signature "<original:unknown>" uses unknown parameter type "unknown". Supported types: string / number / duration / text.',
+				'Command signature "<note:text> <id:string>" places a parameter after text; text must be last.',
+				'Command signature "[page:number] <id:string>" places required parameter "id" after an optional parameter. Required parameters must come first.',
+			],
+		],
+		[
+			"ja",
+			[
+				"コマンドのシグネチャ「<duration|Original label:duration>」の引数名「duration|Original label」に「|」が含まれています。表示名は型の後に指定してください：<名前:型|表示名>。",
+				"コマンドのシグネチャ「<original:unknown>」の引数型「unknown」は不明です。対応する型：string / number / duration / text。",
+				"コマンドのシグネチャ「<note:text> <id:string>」でtextの後に引数が指定されています。textは最後にしてください。",
+				"コマンドのシグネチャ「[page:number] <id:string>」で必須引数「id」が省略可能な引数の後にあります。必須引数を先にしてください。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"指令簽名「<duration|Original label:duration>」的參數名稱「duration|Original label」含有「|」，顯示名稱必須放在類型後方：<名稱:類型|顯示名稱>。",
+				"指令簽名「<original:unknown>」使用了未知參數類型「unknown」，只支援 string / number / duration / text。",
+				"指令簽名「<note:text> <id:string>」在 text 後方放了參數，text 必須是最後一個參數。",
+				"指令簽名「[page:number] <id:string>」將必填參數「id」放在選填參數後方，必填參數必須排在前方。",
+			],
+		],
+	] as const)(
+		"%s preserves the rejected signature, names and supported type list in diagnostics",
+		(locale, messages) => {
+			i18n.set({ locale, voice: "plain" });
+			for (const [index, signature] of [
+				"<duration|Original label:duration>",
+				"<original:unknown>",
+				"<note:text> <id:string>",
+				"[page:number] <id:string>",
+			].entries()) {
+				expect(() => parseSignature(signature)).toThrow(messages[index]);
+			}
+			expect(parseSignature("<duration:duration|Original label> [note:text]")).toEqual([
+				{ name: "duration", label: "Original label", type: "duration", required: true },
+				{ name: "note", type: "text", required: false },
+			]);
+		},
+	);
+
 	it("尖括号 = 必填", () => {
 		expect(parseSignature("<时长:duration>")).toEqual([
 			{ name: "时长", type: "duration", required: true },
@@ -54,6 +104,94 @@ describe("parseSignature", () => {
 });
 
 describe("parseArgs", () => {
+	it.each([
+		[
+			"en",
+			{
+				missing: 'Missing argument "Original duration".',
+				number: 'Invalid argument "Original count": Enter an integer.',
+				duration:
+					'Invalid argument "Original duration": Enter a duration, such as 3h, 30分钟, or 1天.',
+				one: "Too many arguments; this command accepts 1 argument.",
+				two: "Too many arguments; this command accepts 2 arguments.",
+				none: "This command takes no arguments.",
+			},
+		],
+		[
+			"ja",
+			{
+				missing: "引数「Original duration」がありません。",
+				number: "引数「Original count」が無効です：整数を入力してください。",
+				duration:
+					"引数「Original duration」が無効です：3h、30分钟、1天などの時間を入力してください。",
+				one: "引数が多すぎます。このコマンドの引数は1個です。",
+				two: "引数が多すぎます。このコマンドの引数は2個です。",
+				none: "このコマンドに引数は不要です。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				missing: "缺少參數「Original duration」。",
+				number: "參數「Original count」無效：請輸入整數。",
+				duration: "參數「Original duration」無效：請輸入一段時間，例如 3h、30分钟、1天。",
+				one: "參數過多，此指令只接受 1 個參數。",
+				two: "參數過多，此指令只接受 2 個參數。",
+				none: "此指令不需要參數。",
+			},
+		],
+	] as const)(
+		"%s localizes argument refusals without changing machine names or accepted duration inputs",
+		(locale, text) => {
+			const duration = parseSignature("<duration:duration>");
+			const count = parseSignature("<count:number>");
+			const pair = parseSignature("<count:number> <id:string>");
+			i18n.set({ locale, voice: "plain" });
+			expect(parseArgs(duration, "", { duration: "Original duration" })).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.missing,
+			});
+			expect(parseArgs(count, "3.5", { count: "Original count" })).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.number,
+			});
+			expect(parseArgs(duration, "invalid", { duration: "Original duration" })).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.duration,
+			});
+			expect(parseArgs(duration, "3h extra")).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.one,
+			});
+			expect(parseArgs(pair, "3 Original extra")).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.two,
+			});
+			expect(parseArgs([], "extra")).toEqual({ ok: false, code: "invalid", message: text.none });
+			for (const [input, ms] of [
+				["3h", 10800000],
+				["2小时", 7200000],
+				["2小時", 7200000],
+				["3時間", 10800000],
+				["30分钟", 1800000],
+				["4分鐘", 240000],
+				["1天", 86400000],
+				["1日", 86400000],
+			] as const) {
+				expect(parseArgs(duration, input)).toEqual({ ok: true, values: { duration: ms } });
+			}
+			expect(parseArgs(parseSignature("<id:string> <note:text>"), "Original 前面   後面")).toEqual({
+				ok: true,
+				values: { id: "Original", note: "前面   後面" },
+			});
+		},
+	);
+
 	it("输入拒绝返回标准 invalid 结果，调用方仍能直接读取原提示", () => {
 		expect([
 			parseArgs(parseSignature("<duration:duration|时长>"), ""),

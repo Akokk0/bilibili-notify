@@ -5,8 +5,11 @@
  * 当示例的话,他把前缀改成 `bn ` 之后,帮助里每一个例子都是错的。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { renderHelp } from "../command-help.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 const COMMANDS = [
 	{ name: "status", aliases: ["状态"], description: "看看现在怎么样" },
@@ -21,6 +24,73 @@ const COMMANDS = [
 ];
 
 describe("renderHelp", () => {
+	it.each([
+		[
+			"en",
+			{
+				missing: 'No command named "Missing 原文". Enter bn help to see the available commands.',
+				example: "Example: bn mute 3h",
+				aliases: "Aliases: Visible alias",
+				heading: "Available commands:",
+			},
+		],
+		[
+			"ja",
+			{
+				missing:
+					"「Missing 原文」というコマンドはありません。bn helpで利用可能なコマンドを確認してください。",
+				example: "例：bn mute 3h",
+				aliases: "別名：Visible alias",
+				heading: "利用可能なコマンド：",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				missing: "沒有「Missing 原文」這個指令，請輸入 bn help 查看可用指令。",
+				example: "範例：bn mute 3h",
+				aliases: "別名：Visible alias",
+				heading: "可用指令：",
+			},
+		],
+	] as const)(
+		"%s localizes help framing and retains current prefixes, labels, descriptions and all accepted aliases",
+		(locale, text) => {
+			const commands = [
+				{
+					name: "mute",
+					aliases: ["静音", "靜音", "ミュート"],
+					displayAliases: ["Visible alias"],
+					signature: "<duration:duration>",
+					parameterLabels: { duration: "Original duration" },
+					description: "Original description 原文",
+					details: "Original details 原文",
+					example: "3h",
+				},
+			];
+			i18n.set({ locale, voice: "plain" });
+			expect(renderHelp(commands, "bn ", "Missing 原文")).toBe(text.missing);
+			const expected = [
+				"bn mute <Original duration>",
+				"Original description 原文",
+				text.example,
+				text.aliases,
+				"Original details 原文",
+			].join("\n");
+			for (const alias of ["mute", "静音", "靜音", "ミュート"])
+				expect(renderHelp(commands, "bn ", alias)).toBe(expected);
+			expect(renderHelp(commands, "bn ")).toBe(
+				[
+					text.heading,
+					"bn mute <Original duration> —— Original description 原文",
+					`　${text.example}　${text.aliases}`,
+				].join("\n"),
+			);
+			expect(renderHelp(commands, "/", "mute")).toContain("/mute 3h");
+			expect(renderHelp(commands, "/", "mute")).not.toContain("bn mute");
+		},
+	);
+
 	it("不带参数:列出全部指令", () => {
 		const text = renderHelp(COMMANDS, "/");
 		expect(text).toContain("status");

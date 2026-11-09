@@ -1019,5 +1019,22 @@
 	"service.backup.rejected-error.text.1": "完全バックアップにはPINが必要です。",
 	"backup.configInvalid": "バックアップ内の設定が検証に失敗したため、何も復元していません：{message}",
 	"backup.duplicateSubscription": "バックアップ内に同じ識別情報の購読が複数あります：{identity}。何も復元していません。元の環境で重複した購読を削除して、再度エクスポートしてください。",
-	"backup.integrationNotRunning": "この連携機能は現在実行中ではありません。"
+	"backup.integrationNotRunning": "この連携機能は現在実行中ではありません。",
+	"service.runtime.command-help.text.1": "「{value0}」というコマンドはありません。{value1}helpで利用可能なコマンドを確認してください。",
+	"service.runtime.command-help.text.2": "例：{value0}",
+	"service.runtime.command-help.text.3": "別名：{value0}",
+	"service.runtime.command-help.text.4": "例：{value0}",
+	"service.runtime.command-help.text.5": "別名：{value0}",
+	"service.runtime.command-help.text.6": "利用可能なコマンド：",
+	"service.runtime.command-params.text.5": "整数を入力してください。",
+	"service.runtime.command-params.text.6": "3h、30分钟、1天などの時間を入力してください。",
+	"service.runtime.command-params.text.7": "形式が無効です。",
+	"service.runtime.command-params.text.8": "引数「{value0}」がありません。",
+	"service.runtime.command-params.text.9": "引数「{value0}」が無効です：{value1}",
+	"service.runtime.command-params.text.10#other": "引数が多すぎます。このコマンドの引数は{count}個です。",
+	"service.runtime.command-params.text.11": "このコマンドに引数は不要です。",
+	"service.runtime.command-params.text.1": "コマンドのシグネチャ「{value0}」の引数名「{value1}」に「|」が含まれています。表示名は型の後に指定してください：<名前:型|表示名>。",
+	"service.runtime.command-params.text.2": "コマンドのシグネチャ「{value0}」の引数型「{value1}」は不明です。対応する型：{value2}。",
+	"service.runtime.command-params.text.3": "コマンドのシグネチャ「{value0}」でtextの後に引数が指定されています。textは最後にしてください。",
+	"service.runtime.command-params.text.4": "コマンドのシグネチャ「{value0}」で必須引数「{value1}」が省略可能な引数の後にあります。必須引数を先にしてください。"
 }

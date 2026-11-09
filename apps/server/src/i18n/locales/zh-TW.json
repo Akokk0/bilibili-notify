@@ -1019,5 +1019,22 @@
 	"service.backup.rejected-error.text.1": "完整備份必須設定 PIN。",
 	"backup.configInvalid": "備份中的設定未通過驗證，未還原任何資料：{message}",
 	"backup.duplicateSubscription": "備份中同一識別資料有多個訂閱：{identity}。未還原任何資料。請在原環境刪除重複訂閱後重新匯出。",
-	"backup.integrationNotRunning": "此整合功能目前未執行。"
+	"backup.integrationNotRunning": "此整合功能目前未執行。",
+	"service.runtime.command-help.text.1": "沒有「{value0}」這個指令，請輸入 {value1}help 查看可用指令。",
+	"service.runtime.command-help.text.2": "範例：{value0}",
+	"service.runtime.command-help.text.3": "別名：{value0}",
+	"service.runtime.command-help.text.4": "範例：{value0}",
+	"service.runtime.command-help.text.5": "別名：{value0}",
+	"service.runtime.command-help.text.6": "可用指令：",
+	"service.runtime.command-params.text.5": "請輸入整數。",
+	"service.runtime.command-params.text.6": "請輸入一段時間，例如 3h、30分钟、1天。",
+	"service.runtime.command-params.text.7": "格式無效。",
+	"service.runtime.command-params.text.8": "缺少參數「{value0}」。",
+	"service.runtime.command-params.text.9": "參數「{value0}」無效：{value1}",
+	"service.runtime.command-params.text.10#other": "參數過多，此指令只接受 {count} 個參數。",
+	"service.runtime.command-params.text.11": "此指令不需要參數。",
+	"service.runtime.command-params.text.1": "指令簽名「{value0}」的參數名稱「{value1}」含有「|」，顯示名稱必須放在類型後方：<名稱:類型|顯示名稱>。",
+	"service.runtime.command-params.text.2": "指令簽名「{value0}」使用了未知參數類型「{value1}」，只支援 {value2}。",
+	"service.runtime.command-params.text.3": "指令簽名「{value0}」在 text 後方放了參數，text 必須是最後一個參數。",
+	"service.runtime.command-params.text.4": "指令簽名「{value0}」將必填參數「{value1}」放在選填參數後方，必填參數必須排在前方。"
 }
