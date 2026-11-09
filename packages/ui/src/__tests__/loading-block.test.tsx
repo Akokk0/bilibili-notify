@@ -15,6 +15,26 @@ import { LoadingBlock } from "../glass";
 afterEach(cleanup);
 
 describe("LoadingBlock", () => {
+	it("富文本提示保留可访问的链接和原目标", () => {
+		render(<LoadingBlock label={<a href="/help">Loading help</a>} />);
+		expect(screen.getByRole("link", { name: "Loading help" }).getAttribute("href")).toBe("/help");
+		expect(screen.getByRole("status").textContent).toBe("Loading help…");
+	});
+	it("数字提示仍按原值显示", () => {
+		render(<LoadingBlock label={42} />);
+		expect(screen.getByRole("status").textContent).toBe("42…");
+	});
+
+	it.each([
+		["Loading", "Loading…"],
+		["Loading…", "Loading…"],
+		["Loading...", "Loading..."],
+		["正在读取……", "正在读取……"],
+	])("等待提示 %s 只保留一份省略号", (label, expected) => {
+		render(<LoadingBlock label={label} />);
+		expect(screen.getByRole("status").textContent).toBe(expected);
+	});
+
 	it("提示语裹进玻璃卡 —— 页级容器不许裸坐在背景上", () => {
 		const { container } = render(<LoadingBlock label="正在读取统计数据" />);
 		const card = container.firstElementChild;
