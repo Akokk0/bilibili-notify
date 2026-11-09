@@ -1145,5 +1145,17 @@
 	"service.images.image-writes.text.1": "Unsupported image. Only png / jpg / gif / webp up to 8 MiB per image are accepted.",
 	"service.images.image-writes.text.2": "Could not save the post image to the library: {value0}",
 	"service.images.image-writes.text.3": "Post image reference mismatch: expected {value0}, library returned {value1}",
-	"service.routes.images.text.1": "This image was not found in the library."
+	"service.routes.images.text.1": "This image was not found in the library.",
+	"service.routes.connections.text.1": "scope must be group / private / channel.",
+	"service.routes.connections.text.2": "Must be one of group / private / channel.",
+	"service.routes.connections.text.3": "The adapter for this connection is not running. A connection cannot be created.",
+	"service.routes.connections.text.4": "The adapter cannot list available platforms right now. Try again later.",
+	"service.routes.connections.text.5": "This adapter has no candidate for platform {value0}.",
+	"service.routes.connections.text.6": "Not among this adapter’s candidates.",
+	"service.routes.connections.text.7": "This connection was not found.",
+	"service.routes.connections.text.8": "This connection was not found.",
+	"service.routes.targets.text.6": "The push target ID must be a UUID.",
+	"service.routes.targets.text.7": "Test push kind must be one of {value0}.",
+	"service.routes.targets.text.8": "This push target was not found.",
+	"service.routes.targets.text.9": "This push target was not found."
 }

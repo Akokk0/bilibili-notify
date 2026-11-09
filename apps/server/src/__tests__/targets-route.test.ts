@@ -3,10 +3,13 @@
  * 自带标准码,路由按码回状态码,不嗅文案。守卫「错误体」在每条测试收尾对一遍回出去的体。
  */
 
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { ConfigValidationError } from "../config/store.js";
+import { i18n } from "../i18n/index.js";
 import { createTargetsRoute } from "../routes/targets.js";
 import type { RouteDeps } from "../routes/types.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function makeDeps(overrides: Partial<RouteDeps["store"]>): RouteDeps {
 	return {
@@ -33,6 +36,22 @@ function json(method: string, body: unknown): RequestInit {
 }
 
 describe("targets route 的失败", () => {
+	it.each([
+		["en", "This push target was not found."],
+		["ja", "このプッシュ送信先が見つかりません。"],
+		["zh-TW", "找不到此推送目標。"],
+	] as const)(
+		"%s returns a localized missing-target error on deletion",
+		async (locale, message) => {
+			const remove = vi.fn(async () => false);
+			const app = createTargetsRoute(makeDeps({ deleteTarget: remove }));
+			i18n.set({ locale, voice: "plain" });
+			const res = await app.request("/original-id", { method: "DELETE" });
+			expect(res.status).toBe(404);
+			expect(await res.json()).toEqual({ code: "not_found", message });
+			expect(remove).toHaveBeenCalledExactlyOnceWith("original-id");
+		},
+	);
 	it("POST 体不是合法 JSON → 400 invalid", async () => {
 		const app = createTargetsRoute(makeDeps({}));
 		const res = await app.request("/", json("POST", "{oops"));

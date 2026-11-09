@@ -86,6 +86,24 @@ export const JSON_TERM_ALLOWLIST = {
 	},
 };
 
+/** 2026-11-09 主人批准：展示统一大写 UUID，只登记完整键与完整表达式，不放行单独的 UID。 */
+export const JSON_UUID_PINS = {
+	"apps/server/src/i18n/locales/en.json": {
+		"service.routes.targets.text.6": "The push target ID must be a UUID.",
+	},
+	"apps/server/src/i18n/locales/ja.json": {
+		"service.routes.targets.text.6": "プッシュ送信先IDはUUIDで指定してください。",
+	},
+	"apps/server/src/i18n/locales/zh-TW.json": {
+		"service.routes.targets.text.6": "推送目標 ID 必須是 UUID。",
+	},
+	"apps/server/src/i18n/locales/zh-CN.json": {
+		"service.routes.targets.text.6": "推送目标 id 要是 UUID",
+		"service.routes.ai.text.6":
+			"试一句的请求格式不对：要带推送目标（UUID）和 1~500 字的话，以及 AI 配置",
+	},
+};
+
 /** 白名单:整个文件放行,写明理由(`auditRatchet` 的口径;今天没有)。 */
 export const ALLOWLIST = {};
 
@@ -127,7 +145,8 @@ export function jsonTermHits(json, allowed = [], file = "") {
 	const hits = [];
 	const walk = (value, key) => {
 		if (typeof value === "string") {
-			if (termsIn(value, [...allowed, ...(JSON_TERM_ALLOWLIST[file]?.[key] ?? [])]).length > 0)
+			const checked = JSON_UUID_PINS[file]?.[key] === value ? value.replace("UUID", "") : value;
+			if (termsIn(checked, [...allowed, ...(JSON_TERM_ALLOWLIST[file]?.[key] ?? [])]).length > 0)
 				hits.push({ line: key, text: value });
 		} else if (value && typeof value === "object") {
 			for (const [k, v] of Object.entries(value)) walk(v, key === "" ? k : `${key}.${k}`);
@@ -232,12 +251,19 @@ export function auditJsonPins(json, file) {
 	const actual = Object.fromEntries(
 		jsonTermHits(json, [], file).map(({ line, text }) => [line, termsIn(text)]),
 	);
-	const expected = JSON_TERM_PINS[file];
-	return [...new Set([...Object.keys(actual), ...Object.keys(expected)])].flatMap((key) =>
-		JSON.stringify(actual[key]) === JSON.stringify(expected[key])
-			? []
-			: [`${file}:${key}:批准的叫法键或命中词发生变化`],
+	const expected = JSON_TERM_PINS[file] ?? {};
+	const dict = JSON.parse(json);
+	const uuidIssues = Object.entries(JSON_UUID_PINS[file] ?? {}).flatMap(([key, text]) =>
+		dict[key] === text ? [] : [`${file}:${key}:批准的 UUID 完整表达式发生变化`],
 	);
+	return [
+		...uuidIssues,
+		...[...new Set([...Object.keys(actual), ...Object.keys(expected)])].flatMap((key) =>
+			JSON.stringify(actual[key]) === JSON.stringify(expected[key])
+				? []
+				: [`${file}:${key}:批准的叫法键或命中词发生变化`],
+		),
+	];
 }
 
 const sample = (text, file = "sample.ts", allowed) =>
@@ -360,6 +386,51 @@ export function scanRepo() {
  * 🔴 **真去扫仓里的代码与字典。** 上面的样例证明判据没写错;这一条证明表外没有人又写进 B 站的叫法。
  */
 describe("核心与面板里的 B 站叫法只降不涨", () => {
+	it.each([
+		[
+			"apps/server/src/i18n/locales/en.json",
+			"service.routes.targets.text.6",
+			"The push target ID must be a UUID.",
+		],
+		[
+			"apps/server/src/i18n/locales/ja.json",
+			"service.routes.targets.text.6",
+			"プッシュ送信先IDはUUIDで指定してください。",
+		],
+		[
+			"apps/server/src/i18n/locales/zh-TW.json",
+			"service.routes.targets.text.6",
+			"推送目標 ID 必須是 UUID。",
+		],
+		[
+			"apps/server/src/i18n/locales/zh-CN.json",
+			"service.routes.targets.text.6",
+			"推送目标 id 要是 UUID",
+		],
+		[
+			"apps/server/src/i18n/locales/zh-CN.json",
+			"service.routes.ai.text.6",
+			"试一句的请求格式不对：要带推送目标（UUID）和 1~500 字的话，以及 AI 配置",
+		],
+	])("approved UUID in %s:%s is exact and does not exempt UID or other keys", (file, key, text) => {
+		expect(jsonTermHits(JSON.stringify({ [key]: text }), [], file)).toEqual([]);
+		for (const changed of [
+			text.replace("UUID", "UID"),
+			`${text} UID`,
+			`${text} UUID`,
+			text.replace("UUID", "uuid"),
+		]) {
+			const dict = JSON.parse(readFileSync(join(REPO_ROOT, file), "utf8"));
+			dict[key] = changed;
+			expect(auditJsonPins(JSON.stringify(dict), file)).not.toEqual([]);
+		}
+		expect(jsonTermHits(JSON.stringify({ [`${key}.moved`]: text }), [], file)).toHaveLength(1);
+		expect(jsonTermHits(JSON.stringify({ [key]: text }), [], "another.json")).toHaveLength(1);
+		const dict = JSON.parse(readFileSync(join(REPO_ROOT, file), "utf8"));
+		expect(auditJsonPins(JSON.stringify(dict), file)).toEqual([]);
+		delete dict[key];
+		expect(auditJsonPins(JSON.stringify(dict), file)).not.toEqual([]);
+	});
 	it("B 站余量必须保留精确键和命中词，挪位或加词不能拿总额度抵消", () => {
 		const file = "apps/server/src/migration/locales/zh-CN.maid.json";
 		const json = readFileSync(join(REPO_ROOT, file), "utf8");
@@ -426,7 +497,7 @@ describe("核心与面板里的 B 站叫法只降不涨", () => {
 	});
 
 	it("两端字典恰好保留批准的完整键与命中词", () => {
-		for (const file of Object.keys(JSON_TERM_PINS))
+		for (const file of new Set([...Object.keys(JSON_TERM_PINS), ...Object.keys(JSON_UUID_PINS)]))
 			expect(auditJsonPins(readFileSync(join(REPO_ROOT, file), "utf8"), file)).toEqual([]);
 	});
 

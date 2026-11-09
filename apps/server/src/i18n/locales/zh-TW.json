@@ -1135,5 +1135,17 @@
 	"service.images.image-writes.text.1": "不支援此圖片，只接受每張不超過 8 MiB 的 png / jpg / gif / webp。",
 	"service.images.image-writes.text.2": "無法將作品圖片存入圖片庫：{value0}",
 	"service.images.image-writes.text.3": "作品圖片引用不符：預期 {value0}，圖片庫回傳 {value1}",
-	"service.routes.images.text.1": "圖片庫中找不到此圖片。"
+	"service.routes.images.text.1": "圖片庫中找不到此圖片。",
+	"service.routes.connections.text.1": "scope 只能是 group / private / channel。",
+	"service.routes.connections.text.2": "不是 group / private / channel 之一。",
+	"service.routes.connections.text.3": "此連線的適配器未執行，無法建立連線。",
+	"service.routes.connections.text.4": "此適配器目前無法列出可用平台，請稍後再試。",
+	"service.routes.connections.text.5": "此適配器沒有 {value0} 平台的候選項目。",
+	"service.routes.connections.text.6": "不在此適配器的候選項目中。",
+	"service.routes.connections.text.7": "找不到此連線。",
+	"service.routes.connections.text.8": "找不到此連線。",
+	"service.routes.targets.text.6": "推送目標 ID 必須是 UUID。",
+	"service.routes.targets.text.7": "測試推送的 kind 只能是 {value0}。",
+	"service.routes.targets.text.8": "找不到此推送目標。",
+	"service.routes.targets.text.9": "找不到此推送目標。"
 }

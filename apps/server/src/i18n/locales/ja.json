@@ -1135,5 +1135,17 @@
 	"service.images.image-writes.text.1": "対応していない画像です。1枚8 MiB以下のpng / jpg / gif / webpのみ受け付けます。",
 	"service.images.image-writes.text.2": "投稿画像を画像ライブラリに保存できません：{value0}",
 	"service.images.image-writes.text.3": "投稿画像の参照が一致しません：期待値 {value0}、画像ライブラリの戻り値 {value1}",
-	"service.routes.images.text.1": "この画像は画像ライブラリにありません。"
+	"service.routes.images.text.1": "この画像は画像ライブラリにありません。",
+	"service.routes.connections.text.1": "scopeはgroup / private / channelのいずれかで指定してください。",
+	"service.routes.connections.text.2": "group / private / channelのいずれでもありません。",
+	"service.routes.connections.text.3": "この接続のアダプターが動作していないため、接続を作成できません。",
+	"service.routes.connections.text.4": "アダプターが現在利用可能なプラットフォームを取得できません。しばらくしてから再試行してください。",
+	"service.routes.connections.text.5": "このアダプターにプラットフォーム{value0}の候補はありません。",
+	"service.routes.connections.text.6": "このアダプターの候補に含まれていません。",
+	"service.routes.connections.text.7": "この接続が見つかりません。",
+	"service.routes.connections.text.8": "この接続が見つかりません。",
+	"service.routes.targets.text.6": "プッシュ送信先IDはUUIDで指定してください。",
+	"service.routes.targets.text.7": "テストプッシュのkindは{value0}のいずれかで指定してください。",
+	"service.routes.targets.text.8": "このプッシュ送信先が見つかりません。",
+	"service.routes.targets.text.9": "このプッシュ送信先が見つかりません。"
 }

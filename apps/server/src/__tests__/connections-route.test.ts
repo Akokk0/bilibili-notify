@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { z } from "zod";
 import { settingsSegment } from "../bilibili/settings.js";
 import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
+import { i18n } from "../i18n/index.js";
 import { createSecretCellsReader } from "../push/connection-settings.js";
 import { createConnectionsRoute } from "../routes/connections.js";
 import type { RouteDeps } from "../routes/types.js";
@@ -14,6 +15,8 @@ import { fakeAdapterContext } from "./support/adapter-ctx.js";
 import { placeholderDescriptor } from "./support/adapter-descriptor.js";
 import { registerBuiltinAdapterStubs } from "./support/builtin-adapter-stubs.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /**
  * `GET /api/connections/capabilities` —— 面板「连接支持情况」读的那张表。索引一级:
@@ -219,6 +222,110 @@ describe("connections route — 写入的失败(真 store)", () => {
 		platform: "dingtalk",
 		settings: { url: "https://oapi.dingtalk.com/robot/send?access_token=tok", headers: {} },
 	};
+	it.each([
+		[
+			"en",
+			{
+				scope: "scope must be group / private / channel.",
+				issue: "Must be one of group / private / channel.",
+				stopped: "The adapter for this connection is not running. A connection cannot be created.",
+				candidates: "The adapter cannot list available platforms right now. Try again later.",
+				platform: "This adapter has no candidate for platform original-platform.",
+				platformIssue: "Not among this adapter’s candidates.",
+				missing: "This connection was not found.",
+			},
+		],
+		[
+			"ja",
+			{
+				scope: "scopeはgroup / private / channelのいずれかで指定してください。",
+				issue: "group / private / channelのいずれでもありません。",
+				stopped: "この接続のアダプターが動作していないため、接続を作成できません。",
+				candidates:
+					"アダプターが現在利用可能なプラットフォームを取得できません。しばらくしてから再試行してください。",
+				platform: "このアダプターにプラットフォームoriginal-platformの候補はありません。",
+				platformIssue: "このアダプターの候補に含まれていません。",
+				missing: "この接続が見つかりません。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				scope: "scope 只能是 group / private / channel。",
+				issue: "不是 group / private / channel 之一。",
+				stopped: "此連線的適配器未執行，無法建立連線。",
+				candidates: "此適配器目前無法列出可用平台，請稍後再試。",
+				platform: "此適配器沒有 original-platform 平台的候選項目。",
+				platformIssue: "不在此適配器的候選項目中。",
+				missing: "找不到此連線。",
+			},
+		],
+	] as const)(
+		"%s localizes connection rejection and leaves the connection store untouched",
+		async (locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			const scope = await app.request("/ghost/addresses?scope=raw");
+			expect(scope.status).toBe(400);
+			expect(await scope.json()).toEqual({
+				code: "invalid",
+				message: text.scope,
+				issues: [{ path: ["scope"], message: text.issue }],
+			});
+			const unavailable = await app.request(
+				"/",
+				jsonInit("POST", {
+					...webhookBody,
+					adapterKey: "original.adapter",
+					platform: "original-platform",
+				}),
+			);
+			expect(unavailable.status).toBe(503);
+			expect(await unavailable.json()).toEqual({ code: "unavailable", message: text.stopped });
+			let broken = true;
+			await runtime.adapterRegistry.register(
+				{
+					adapterKey: "original.adapter",
+					descriptor: placeholderDescriptor(),
+					settingsSchema: z.unknown(),
+					isAvailable: () => true,
+					send: async () => ({ ok: true, latencyMs: 1 }),
+					probe: async () => ({ ok: true, latencyMs: 1 }),
+					listConnectionCandidates: async () => {
+						if (broken) throw new Error("Original private diagnostic");
+						return [];
+					},
+					start() {},
+					stop() {},
+				},
+				fakeAdapterContext().ctx,
+			);
+			const body = {
+				...webhookBody,
+				adapterKey: "original.adapter",
+				platform: "original-platform",
+			};
+			const failed = await app.request("/", jsonInit("POST", body));
+			expect(failed.status).toBe(503);
+			expect(await failed.json()).toEqual({ code: "unavailable", message: text.candidates });
+			broken = false;
+			const wrong = await app.request("/", jsonInit("POST", body));
+			expect(wrong.status).toBe(400);
+			expect(await wrong.json()).toEqual({
+				code: "invalid",
+				message: text.platform,
+				issues: [{ path: ["platform"], message: text.platformIssue }],
+			});
+			for (const [url, method] of [
+				["/ghost/probe", "POST"],
+				["/ghost", "DELETE"],
+			] as const) {
+				const res = await app.request(url, { method });
+				expect(res.status).toBe(404);
+				expect(await res.json()).toEqual({ code: "not_found", message: text.missing });
+			}
+			expect(runtime.configStore.getConnections()).toEqual([]);
+		},
+	);
 
 	it("POST 新建:平台快照由宿主从适配器的候选里抄,体里带来的 platformSnapshot / probeState 一律忽略", async () => {
 		const res = await app.request(

@@ -47,6 +47,50 @@ function post(
 
 describe("POST /api/targets/:id/test 请求级失败(非 2xx 的错误体)", () => {
 	it.each([
+		[
+			"en",
+			"The push target ID must be a UUID.",
+			"Test push kind must be one of liveStart / post / superchat / membership / text.",
+			"This push target was not found.",
+		],
+		[
+			"ja",
+			"プッシュ送信先IDはUUIDで指定してください。",
+			"テストプッシュのkindはliveStart / post / superchat / membership / textのいずれかで指定してください。",
+			"このプッシュ送信先が見つかりません。",
+		],
+		[
+			"zh-TW",
+			"推送目標 ID 必須是 UUID。",
+			"測試推送的 kind 只能是 liveStart / post / superchat / membership / text。",
+			"找不到此推送目標。",
+		],
+	] as const)(
+		"%s returns target validation and missing-target messages without sending",
+		async (locale, invalidId, invalidKind, missing) => {
+			const { app, sendToTarget } = makeApp({ targets: [] });
+			i18n.set({ locale, voice: "plain" });
+			const id = await post(app, {}, "raw");
+			expect(id.status).toBe(400);
+			expect(await id.json()).toEqual({
+				code: "invalid",
+				message: invalidId,
+				issues: [{ message: "Invalid UUID" }],
+			});
+			const kind = await post(app, { kind: "raw" });
+			expect(kind.status).toBe(400);
+			expect(await kind.json()).toMatchObject({
+				code: "invalid",
+				message: invalidKind,
+				issues: [{ path: ["kind"] }],
+			});
+			const absent = await post(app);
+			expect(absent.status).toBe(404);
+			expect(await absent.json()).toEqual({ code: "not_found", message: missing });
+			expect(sendToTarget).not.toHaveBeenCalled();
+		},
+	);
+	it.each([
 		["en", "The service is not ready. Try again later."],
 		["ja", "サービスの準備ができていません。しばらくしてから再試行してください。"],
 		["zh-TW", "服務尚未準備就緒，請稍後再試。"],
