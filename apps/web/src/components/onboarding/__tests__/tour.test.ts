@@ -15,9 +15,18 @@
  *   说明步(advanceOnRoute)不配锚点(它在目标页面上一帧都不停留)。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { listSources } from "../../../__tests__/walk";
-import { MODAL_ONLY_ANCHORS, reconcileTourPos, TOUR_ANCHORS, TOUR_SCRIPT } from "../tour-script";
+import { i18n } from "../../../i18n";
+import {
+	MODAL_ONLY_ANCHORS,
+	reconcileTourPos,
+	STEP_DONE_MESSAGES,
+	TOUR_ANCHORS,
+	TOUR_SCRIPT,
+} from "../tour-script";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 describe("reconcileTourPos 判据跟随", () => {
 	it("初始(无位置)→ 落在当前 activeKey 的第一个子步", () => {
@@ -162,3 +171,136 @@ describe("锚点与页面挂点不脱节", () => {
 		}
 	});
 });
+
+it.each([
+	[
+		"en",
+		[
+			"Sign in to a source",
+			"Choose the highlighted QR sign-in, scan with the source app, and confirm. After sign-in succeeds, the guide advances automatically.",
+			"Choose a connection type first",
+			"BN supports QQ Official Bot, OneBot clients such as NapCat, group bots for Feishu, DingTalk and WeCom, and unspecified HTTP endpoints. Their capabilities and deployment requirements differ. Read the connection guide before choosing.",
+			"Connection guide",
+			"Create a push connection",
+			"Choose the highlighted “+ New” and select a platform. For QQ Official Bot, enter appId and appSecret, or use the form’s QR connection option to fill them in. For OneBot, choose a transport; reverse WebSocket is recommended, with a listening port. Then choose “Save”.",
+			"Connection guide",
+			"Test the connection",
+			"Choose “Test” on the new connection. When it succeeds, the status indicator turns green and the guide advances. If it fails, follow the error message; for OneBot, first check that NapCat is connected.",
+			"Add a push target",
+			"Choose the highlighted “+ New push target”, select the connection, and choose where to send messages. For OneBot, enter a group number or QQ number. For QQ Official Bot, first send the bot a message in QQ, then select that conversation in the form. Save to continue.",
+			"Send a test push",
+			"Choose “Test” on the target. Once the test message arrives, the delivery path is working. The last step is to add a subscription.",
+			"Add your first subscription",
+			"Choose the highlighted “Add subscription”, search for a creator by name or ID, and subscribe from the results. Select the push target you just created. New posts and live starts will then be delivered automatically.",
+			"Signed in!",
+			"Connection is working!",
+			"Push target created!",
+			"Test message delivered. The delivery path is working!",
+			"Subscribed. Setup is complete!",
+		],
+	],
+	[
+		"ja",
+		[
+			"ソースにログイン",
+			"強調表示されたQRログインを選び、ソースのアプリで読み取って確認してください。ログインに成功すると、自動で次のステップに進みます。",
+			"まず接続方式を選ぶ",
+			"BNはQQ公式ボット、NapCatなどのOneBotクライアント、Feishu・DingTalk・WeComのグループボット、および汎用HTTPエンドポイントに対応しています。機能と導入の手間が異なるため、接続ガイドを読んでから選んでください。",
+			"接続ガイド",
+			"配信接続を作成",
+			"強調表示された「+ 新規」を選び、プラットフォームを選択します。QQ公式ボットはappIdとappSecretを入力するか、フォーム内のQR接続機能で取得します。OneBotは接続方式を選びます。リバースWebSocketが推奨で、待ち受けポートを指定します。入力後に「保存」を選んでください。",
+			"接続ガイド",
+			"接続をテスト",
+			"作成した接続の「テスト」を選んでください。成功すると状態が緑色になり、自動で次のステップに進みます。失敗した場合はエラーの説明を確認してください。OneBotでは、まずNapCatが接続されているかを確認します。",
+			"送信先を追加",
+			"強調表示された「+ 送信先を追加」を選び、接続と配信先を指定します。OneBotはグループ番号またはQQ番号を入力します。QQ公式ボットは、先にQQでボットへメッセージを送り、フォームでその会話を選んでください。保存すると次に進みます。",
+			"テスト通知を送信",
+			"送信先の「テスト」を選んでください。テストメッセージが届けば、配信経路は正常です。最後に購読を追加します。",
+			"最初の購読を追加",
+			"強調表示された「購読を追加」を選び、名前またはIDでクリエイターを検索して、結果から購読します。作成した送信先を選んでください。新しい投稿とライブ開始が自動で配信されるようになります。",
+			"ログインしました！",
+			"接続できました！",
+			"送信先を作成しました！",
+			"テストメッセージが届き、配信経路を確認できました！",
+			"購読を追加しました。設定完了です！",
+		],
+	],
+	[
+		"zh-TW",
+		[
+			"登入來源",
+			"選擇反白顯示的 QR Code 登入，用來源應用程式掃描並確認。登入成功後會自動進入下一步。",
+			"先選擇連線方式",
+			"BN 支援 QQ 官方機器人、NapCat 等 OneBot 用戶端、Feishu／釘釘／企業微信的群組機器人，以及未指定的 HTTP 端點。各自的功能與部署成本不同，請先閱讀連線選型指引再決定。",
+			"連線選型指引",
+			"新增推播連線",
+			"選擇反白顯示的「+ 新增」並選擇平台。QQ 官方機器人需填入 appId／appSecret，也可使用表單中的掃碼連線功能自動填入。OneBot 請選擇連線方式，建議使用反向 WebSocket 並填入監聽連接埠，完成後選擇「儲存」。",
+			"連線選型指引",
+			"測試連線",
+			"在剛建立的連線上選擇「測試」。成功後狀態指示會變成綠色，並自動進入下一步。若失敗，請依錯誤提示檢查；OneBot 請先確認 NapCat 已連線。",
+			"新增推播目標",
+			"選擇反白顯示的「+ 新增推播目標」，選取連線並指定訊息的目的地。OneBot 可直接填入群組號碼或 QQ 號碼；QQ 官方機器人需先在 QQ 傳送一則訊息給機器人，再於表單選擇該會話。儲存後會進入下一步。",
+			"傳送測試推播",
+			"在目標上選擇「測試」。收到測試訊息就代表推播路徑已通，只差最後一步：新增訂閱。",
+			"新增第一筆訂閱",
+			"選擇反白顯示的「新增訂閱」，依名稱或 ID 搜尋創作者，從結果新增訂閱並勾選剛建立的推播目標。之後的新作品與開播通知就會自動傳送。",
+			"登入完成！",
+			"連線已通！",
+			"推播目標已建立！",
+			"測試訊息已送達，推播路徑已通！",
+			"訂閱成功，設定完成！",
+		],
+	],
+] as const)(
+	"%s reads translated step instructions and completion messages without changing tour positions",
+	(locale, text) => {
+		const refs = [
+			TOUR_SCRIPT.login[0],
+			...TOUR_SCRIPT.connection,
+			TOUR_SCRIPT.target[0],
+			TOUR_SCRIPT.test[0],
+			TOUR_SCRIPT.subs[0],
+		];
+		const anchors = refs.map((s) => s.anchor);
+		i18n.set({ locale, voice: "plain" });
+		expect(refs.map((s) => s.title)).toEqual([
+			text[0],
+			text[2],
+			text[5],
+			text[8],
+			text[10],
+			text[12],
+			text[14],
+		]);
+		expect(refs.map((s) => s.body)).toEqual([
+			text[1],
+			text[3],
+			text[6],
+			text[9],
+			text[11],
+			text[13],
+			text[15],
+		]);
+		expect(TOUR_SCRIPT.connection.slice(0, 2).map((s) => s.link)).toEqual([
+			{ to: "/about/guide", label: text[4] },
+			{ to: "/about/guide", label: text[7] },
+		]);
+		expect(Object.values(STEP_DONE_MESSAGES)).toEqual(text.slice(16));
+		expect(refs.map((s) => s.route)).toEqual([
+			"/system",
+			"/targets",
+			"/targets",
+			"/targets",
+			"/targets",
+			"/targets",
+			"/subs",
+		]);
+		expect(refs.map((s) => s.anchor)).toEqual(anchors);
+		expect(reconcileTourPos({ stepKey: "connection", subIndex: 1 }, "connection")).toEqual({
+			stepKey: "connection",
+			subIndex: 1,
+		});
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		expect(refs[2].title).toBe("新建推送连接");
+	},
+);

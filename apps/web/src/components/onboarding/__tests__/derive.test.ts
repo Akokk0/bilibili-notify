@@ -15,7 +15,8 @@
  * - `active` 是第一个未完成步,全绿则无 —— 导览靠它高亮「现在该做哪步」。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { deriveOnboarding, type OnboardingInputs } from "../derive";
 
 function inputs(partial: Partial<OnboardingInputs>): OnboardingInputs {
@@ -28,6 +29,51 @@ function inputs(partial: Partial<OnboardingInputs>): OnboardingInputs {
 		...partial,
 	};
 }
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
+it.each([
+	["en", "Test failed"],
+	["ja", "テストに失敗しました"],
+	["zh-TW", "測試未通過"],
+] as const)(
+	"%s translates a missing test reason while preserving original diagnostics and progress",
+	(locale, fallback) => {
+		i18n.set({ locale, voice: "plain" });
+		const base = inputs({
+			accounts: [{ sourceKey: "original.source", label: "Original source 原文", loggedIn: true }],
+			connections: [
+				{ enabled: true, probeState: { status: "unreachable", lastCheckedAt: "original-at" } },
+			],
+		});
+		const missing = deriveOnboarding(base);
+		expect(missing.failNote).toEqual({ text: fallback, at: "original-at" });
+		expect(missing.activeKey).toBe("connection");
+		expect(missing.steps[0]).toEqual({
+			key: "login",
+			sourceKey: "original.source",
+			label: "Original source 原文",
+			done: true,
+		});
+		const raw = deriveOnboarding({
+			...base,
+			connections: [
+				{
+					enabled: true,
+					probeState: {
+						status: "unreachable",
+						message: "Original diagnostic 原文",
+						lastCheckedAt: "raw-at",
+					},
+				},
+			],
+		});
+		expect(raw.failNote).toEqual({ text: "Original diagnostic 原文", at: "raw-at" });
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		expect(missing.failNote?.text).toBe("测试未通过");
+		expect(raw.failNote?.text).toBe("Original diagnostic 原文");
+	},
+);
 
 function stepMap(view: ReturnType<typeof deriveOnboarding>): Record<string, boolean> {
 	return Object.fromEntries(view.steps.map((s) => [s.key, s.done]));
