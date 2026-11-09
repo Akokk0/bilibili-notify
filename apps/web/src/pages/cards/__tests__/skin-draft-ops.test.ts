@@ -527,6 +527,47 @@ describe("setSkinMeta", () => {
  * 一句「name: 太短」,而主人根本不知道是哪儿的名字(块也有 id、字体也有 family)。
  */
 describe("skinMetaError", () => {
+	it.each([
+		[
+			"en",
+			"A skin name is required.",
+			"Skin name allows at most 40 characters; it currently has 41.",
+			"Author allows at most 40 characters; it currently has 41.",
+			"Description allows at most 200 characters; it currently has 201.",
+		],
+		[
+			"ja",
+			"スキン名を入力してください。",
+			"スキン名は40文字以内にしてください。現在41文字です。",
+			"作者は40文字以内にしてください。現在41文字です。",
+			"説明は200文字以内にしてください。現在201文字です。",
+		],
+		[
+			"zh-TW",
+			"請填寫外觀名稱。",
+			"外觀名稱最多 40 個字元，目前有 41 個。",
+			"作者最多 40 個字元，目前有 41 個。",
+			"說明最多 200 個字元，目前有 201 個。",
+		],
+	] as const)(
+		"%s identifies metadata validation errors without truncating the draft",
+		(locale, empty, name, author, description) => {
+			i18n.set({ locale, voice: "plain" });
+			const before = manifest();
+			expect(skinMetaError(setSkinMeta(before, { name: " " }))).toBe(empty);
+			for (const [key, value, expected] of [
+				["name", "字".repeat(41), name],
+				["author", "字".repeat(41), author],
+				["description", "字".repeat(201), description],
+			] as const) {
+				const draft = setSkinMeta(before, { [key]: value });
+				expect(skinMetaError(draft)).toBe(expected);
+				expect(draft[key]).toBe(value);
+			}
+			expect(before.name).toBe("测试皮肤");
+			expect(skinMetaError(before)).toBeNull();
+		},
+	);
 	it("名字空了 / 全是空格 → 说出是哪儿不对", () => {
 		expect(skinMetaError(setSkinMeta(manifest(), { name: "" }))).toBe("皮肤得有个名字");
 		expect(skinMetaError(setSkinMeta(manifest(), { name: "   " }))).toBe("皮肤得有个名字");
@@ -806,6 +847,54 @@ describe("knobsError 也管这三档", () => {
 describe("自带字体", () => {
 	const withFonts = (...fonts: unknown[]) =>
 		({ ...manifest(), fonts }) as unknown as CardSkinManifest;
+
+	it.each([
+		[
+			"en",
+			"A bundled font is missing its family name.",
+			"Font family “Original Font 原文” is duplicated.",
+			"Choose an asset for font “Original Font 原文”.",
+			"Font “Original Font 原文” refers to “assets/missing.ttf”, which is not bundled with this skin.",
+		],
+		[
+			"ja",
+			"同梱フォントに名前がない行があります。",
+			"フォント名「Original Font 原文」が重複しています。",
+			"フォント「Original Font 原文」のアセットを選んでください。",
+			"フォント「Original Font 原文」が参照する「assets/missing.ttf」は、このスキンに同梱されていません。",
+		],
+		[
+			"zh-TW",
+			"有一列附帶字型尚未填寫名稱。",
+			"字型名稱「Original Font 原文」重複。",
+			"請為字型「Original Font 原文」選取素材。",
+			"字型「Original Font 原文」引用「assets/missing.ttf」，但此外觀未附帶此素材。",
+		],
+	] as const)(
+		"%s reports font validation errors and preserves original names and package paths",
+		(locale, empty, duplicate, unselected, absent) => {
+			i18n.set({ locale, voice: "plain" });
+			expect(fontsError(withFonts({ family: " ", asset: "" }), [])).toBe(empty);
+			expect(
+				fontsError(
+					withFonts(
+						{ family: "Original Font 原文", asset: "asset:assets/a.ttf" },
+						{ family: "Original Font 原文", asset: "asset:assets/b.ttf" },
+					),
+					["assets/a.ttf", "assets/b.ttf"],
+				),
+			).toBe(duplicate);
+			expect(fontsError(withFonts({ family: "Original Font 原文", asset: "" }), [])).toBe(
+				unselected,
+			);
+			const draft = withFonts({ family: "Original Font 原文", asset: "asset:assets/missing.ttf" });
+			expect(fontsError(draft, [])).toBe(absent);
+			expect(fontsError(draft, ["assets/missing.ttf"])).toBeNull();
+			expect(draft.fonts).toEqual([
+				{ family: "Original Font 原文", asset: "asset:assets/missing.ttf" },
+			]);
+		},
+	);
 
 	it("加一行 / 改 / 删;删空了整个 fonts 键也没了", () => {
 		const one = addFont(manifest());

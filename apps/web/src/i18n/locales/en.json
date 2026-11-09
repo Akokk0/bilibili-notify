@@ -2872,5 +2872,15 @@
 	"skinUi.skin-draft-ops.1": "<div>New custom block</div>",
 	"skinUi.skin-draft-ops.7": "Option one",
 	"skinUi.skin-draft-ops.8": "New control",
-	"skinUi.skin-draft-ops.27": "Option {value0}"
+	"skinUi.skin-draft-ops.27": "Option {value0}",
+	"skinUi.skin-draft-ops.2": "A skin name is required.",
+	"skinUi.skin-draft-ops.3": "Skin name",
+	"skinUi.skin-draft-ops.4": "Author",
+	"skinUi.skin-draft-ops.5": "Description",
+	"skinUi.skin-draft-ops.6#other": "{value0} allows at most {count} characters; it currently has {value2}.",
+	"skinUi.skin-draft-ops.6#one": "{value0} allows at most {count} character; it currently has {value2}.",
+	"skinUi.skin-draft-ops.28": "A bundled font is missing its family name.",
+	"skinUi.skin-draft-ops.29": "Font family “{value0}” is duplicated.",
+	"skinUi.skin-draft-ops.30": "Choose an asset for font “{value0}”.",
+	"skinUi.skin-draft-ops.31": "Font “{value0}” refers to “{value1}”, which is not bundled with this skin."
 }

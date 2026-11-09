@@ -2810,5 +2810,14 @@
 	"skinUi.skin-draft-ops.1": "<div>新しいカスタムブロック</div>",
 	"skinUi.skin-draft-ops.7": "選択肢1",
 	"skinUi.skin-draft-ops.8": "新しい調整項目",
-	"skinUi.skin-draft-ops.27": "選択肢{value0}"
+	"skinUi.skin-draft-ops.27": "選択肢{value0}",
+	"skinUi.skin-draft-ops.2": "スキン名を入力してください。",
+	"skinUi.skin-draft-ops.3": "スキン名",
+	"skinUi.skin-draft-ops.4": "作者",
+	"skinUi.skin-draft-ops.5": "説明",
+	"skinUi.skin-draft-ops.6#other": "{value0}は{count}文字以内にしてください。現在{value2}文字です。",
+	"skinUi.skin-draft-ops.28": "同梱フォントに名前がない行があります。",
+	"skinUi.skin-draft-ops.29": "フォント名「{value0}」が重複しています。",
+	"skinUi.skin-draft-ops.30": "フォント「{value0}」のアセットを選んでください。",
+	"skinUi.skin-draft-ops.31": "フォント「{value0}」が参照する「{value1}」は、このスキンに同梱されていません。"
 }

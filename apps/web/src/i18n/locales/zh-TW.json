@@ -2810,5 +2810,14 @@
 	"skinUi.skin-draft-ops.1": "<div>新的自訂區塊</div>",
 	"skinUi.skin-draft-ops.7": "選項一",
 	"skinUi.skin-draft-ops.8": "新增調整項目",
-	"skinUi.skin-draft-ops.27": "選項 {value0}"
+	"skinUi.skin-draft-ops.27": "選項 {value0}",
+	"skinUi.skin-draft-ops.2": "請填寫外觀名稱。",
+	"skinUi.skin-draft-ops.3": "外觀名稱",
+	"skinUi.skin-draft-ops.4": "作者",
+	"skinUi.skin-draft-ops.5": "說明",
+	"skinUi.skin-draft-ops.6#other": "{value0}最多 {count} 個字元，目前有 {value2} 個。",
+	"skinUi.skin-draft-ops.28": "有一列附帶字型尚未填寫名稱。",
+	"skinUi.skin-draft-ops.29": "字型名稱「{value0}」重複。",
+	"skinUi.skin-draft-ops.30": "請為字型「{value0}」選取素材。",
+	"skinUi.skin-draft-ops.31": "字型「{value0}」引用「{value1}」，但此外觀未附帶此素材。"
 }
