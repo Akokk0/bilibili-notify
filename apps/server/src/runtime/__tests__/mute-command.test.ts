@@ -55,6 +55,24 @@ function setup() {
 describe("mute 指令", () => {
 	it.each([
 		[
+			"ja",
+			"かしこまりました、ご主人様。21:00までは通知を控えますね。（エラーはお知らせします）",
+			"はい、プッシュ通知を再開しましたよ。",
+		],
+		["zh-TW", "好的主人，21:00 之前不打擾您～（出錯還是會通知您喔）", "好囉，已恢復推播～"],
+	] as const)("%s：女仆回复保持到期时刻和真实静音切换", async (locale, confirmed, resumed) => {
+		const h = setup();
+		i18n.set({ locale, voice: "maid" });
+		expect(await h.mute(3 * HOUR)).toEqual({ ok: true });
+		expect(h.state.isMuted()).toBe(true);
+		expect(h.replies).toEqual([confirmed]);
+		expect(await h.mute(0)).toEqual({ ok: true });
+		expect(h.state.isMuted()).toBe(false);
+		expect(h.replies).toEqual([confirmed, resumed]);
+	});
+
+	it.each([
+		[
 			"en",
 			{
 				duration: "Duration",

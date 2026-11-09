@@ -9,6 +9,38 @@ afterEach(() => {
 
 describe("服务端字典 store", () => {
 	it.each([
+		[
+			"ja",
+			{
+				reported: "ご主人様、Original sourceから報告がありました：upstream {name}",
+				invalid:
+					"ご主人様、この値は設定ルールの検証に通りませんでした。該当する欄を確認してくださいね。",
+				mute: "かしこまりました、ご主人様。10:30までは通知を控えますね。（エラーはお知らせします）",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				reported: "主人，剛剛 Original source 回報：upstream {name}",
+				invalid: "主人，這個值未通過設定規則檢查，請檢查這一欄喔。",
+				mute: "好的主人，10:30 之前不打擾您～（出錯還是會通知您喔）",
+			},
+		],
+	] as const)("%s：宿主交互使用女仆层，切口吻不改原诊断与已生成句子", (locale, words) => {
+		i18n.set({ locale, voice: "maid" });
+		const saved = t("problem.relay.reported", {
+			name: "Original source",
+			message: "upstream {name}",
+		});
+		expect(saved).toBe(words.reported);
+		expect(t("settings.invalid.rule")).toBe(words.invalid);
+		expect(t("commands.mute.confirmed", { until: "10:30" })).toBe(words.mute);
+		i18n.set({ voice: "plain" });
+		expect(t("settings.invalid.rule")).not.toBe(words.invalid);
+		expect(saved).toBe(words.reported);
+	});
+
+	it.each([
 		["ja", "ご主人様、選んでくださいね。", "選択してください"],
 		["zh-TW", "請選擇喔，主人", "請選擇"],
 	] as const)("%s：真实服务端字典合并包女仆层，平实模式仍读底稿", (locale, maid, plain) => {
@@ -82,7 +114,7 @@ describe("服务端字典 store", () => {
 		expect(t("internal.commands.prefixBlank")).toBe("The prefix cannot contain only whitespace.");
 	});
 
-	it("中文的女仆层第 4 期才写:现在要女仆口吻也还是底里那句", () => {
+	it("没有女仆覆盖的句子沿用平实底稿", () => {
 		i18n.set({ voice: "plain" });
 		expect(t("command.report.busy")).toBe("还在跑呢，稍等一下下～");
 		expect(i18n.state().voice).toBe("plain");

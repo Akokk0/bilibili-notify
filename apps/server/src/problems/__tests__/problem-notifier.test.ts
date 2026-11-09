@@ -144,6 +144,50 @@ describe("问题通知诊断", () => {
 describe("问题私聊:发不发、发几条", () => {
 	it.each([
 		[
+			"ja",
+			"ご主人様、Original integration 原名から報告がありました：Original problem 原文",
+			"ご主人様、よいお知らせです。Original integration 原名からの報告です：Original recovery 原文",
+			"ご主人様、よいお知らせです。Original integration 原名が報告していた「Original problem 原文」は解消しました。",
+		],
+		[
+			"zh-TW",
+			"主人，剛剛 Original integration 原名 回報：Original problem 原文",
+			"主人，好消息，Original integration 原名回報：Original recovery 原文",
+			"主人，好消息，Original integration 原名先前回報的「Original problem 原文」已恢復囉。",
+		],
+	] as const)(
+		"%s：私聊女仆引子保留集成原文与恢复信息，不增加发送次数",
+		async (locale, reported, recovered, generic) => {
+			const { table, notify, notifier } = setup();
+			try {
+				i18n.set({ locale, voice: "maid" });
+				open(table, {
+					code: "explicit",
+					writtenBy: "Original integration 原名",
+					message: "Original problem 原文",
+					recoveryMessage: "Original recovery 原文",
+				});
+				await flush();
+				table.resolve({ reporter: "src", code: "explicit" });
+				await flush();
+				open(table, {
+					code: "generic",
+					writtenBy: "Original integration 原名",
+					message: "Original problem 原文",
+				});
+				await flush();
+				table.resolve({ reporter: "src", code: "generic" });
+				await flush();
+				expect(notify.mock.calls).toEqual([[reported], [recovered], [reported], [generic]]);
+			} finally {
+				notifier.dispose();
+				table.dispose();
+			}
+		},
+	);
+
+	it.each([
+		[
 			"en",
 			"Original integration 原名 reports: Original problem 原文",
 			"Original integration 原名 reports: Original recovery 原文",
