@@ -82,6 +82,47 @@ it.each([
 	},
 );
 
+it.each([
+	["zh-CN", "2026/11/2 17:04:05"],
+	["en", "11/2/2026, 5:04:05 PM"],
+	["ja", "2026/11/2 17:04:05"],
+	["zh-TW", "2026/11/2 下午5:04:05"],
+] as const)(
+	"%s problem time follows panel language while retaining the local instant and original report",
+	async (locale, expected) => {
+		// 固定本机墙上时间，让断言独立于测试机时区；面板仍使用本机时区。
+		const since = new Date(2026, 10, 2, 17, 4, 5).toISOString();
+		const fallback = get.getMockImplementation();
+		get.mockImplementation(async (path) =>
+			path === "/api/problems"
+				? {
+						problems: [
+							{
+								reporter: "missing.source",
+								code: "unknown_code",
+								message: "<script>原文</script>",
+								since,
+							},
+						],
+					}
+				: fallback?.(path),
+		);
+		mount();
+		await userEvent.click(await screen.findByRole("button", { name: "待处理问题 1" }));
+		const time = screen.getByRole("dialog").querySelector("time");
+		const original = screen.getByText("<script>原文</script>");
+		const requests = get.mock.calls.filter(([path]) => path === "/api/problems").length;
+		for (const voice of ["plain", "maid"] as const) {
+			act(() => i18n.set({ locale, voice }));
+			expect(screen.getByRole("dialog").querySelector("time")).toBe(time);
+			expect(time?.textContent?.replace(/\s+/g, " ")).toBe(expected);
+			expect(time?.dateTime).toBe(since);
+			expect(screen.getByText("<script>原文</script>")).toBe(original);
+		}
+		expect(get.mock.calls.filter(([path]) => path === "/api/problems")).toHaveLength(requests);
+	},
+);
+
 it("顶栏展示持续问题与安全原文，未知归属保留id且无清除入口", async () => {
 	mount();
 	await userEvent.click(await screen.findByRole("button", { name: "待处理问题 1" }));

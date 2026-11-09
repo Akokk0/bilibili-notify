@@ -17,7 +17,7 @@ import { useBackendReachable } from "../hooks/useBackendReachable";
 import { useExtensions } from "../hooks/useExtensions";
 import { useProblems } from "../hooks/useProblems";
 import { useSources } from "../hooks/useSources";
-import { useT } from "../i18n";
+import { useT, useTextOptions } from "../i18n";
 import { api } from "../services/api";
 import type { Subscription } from "../types/domain";
 
@@ -121,6 +121,7 @@ export function ProblemRows({
 	onClose: () => void;
 }) {
 	const t = useT();
+	const { locale } = useTextOptions();
 	const sources = useSources().data?.sources,
 		adapters = useAdapters().data?.adapters,
 		extensions = useExtensions().data?.extensions;
@@ -179,7 +180,7 @@ export function ProblemRows({
 						<p className="mt-2 whitespace-pre-wrap break-words text-bn-sm">{problem.message}</p>
 						<p className="mt-2 break-all text-bn-text-tertiary">
 							{problem.code} ·{" "}
-							<time dateTime={problem.since}>{new Date(problem.since).toLocaleString()}</time>
+							<time dateTime={problem.since}>{new Date(problem.since).toLocaleString(locale)}</time>
 						</p>
 						<Link to={path} onClick={onClose} className="mt-2 inline-flex text-bn-pink underline">
 							{path === "/logs" ? t("healthCard.viewLogs") : t("problems.manage")}
