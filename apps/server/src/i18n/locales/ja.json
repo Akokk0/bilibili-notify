@@ -960,5 +960,21 @@
 	"service.extensions.marketplace.text.17": "ダウンロードしたパッケージのチェックサムがインデックスと一致しません。転送中に置き換えられたか、ソースが誤ったパッケージを公開した可能性があります。",
 	"service.extensions.marketplace.text.18": "{value0}のパッケージをダウンロードできませんでした（{value1}）。",
 	"service.extensions.marketplace.text.19": "パッケージを展開できません：{value0}",
-	"service.extensions.marketplace.text.20": "パッケージのマニフェストは{value0}@{value1}ですが、インデックスは{value2}@{value3}です。ソースが誤ったパッケージを提供しています。"
+	"service.extensions.marketplace.text.20": "パッケージのマニフェストは{value0}@{value1}ですが、インデックスは{value2}@{value3}です。ソースが誤ったパッケージを提供しています。",
+	"extensions.route.noLoaderInstall": "このビルドには拡張機能ローダーがないため、拡張機能をインストールできません。",
+	"extensions.route.noLoaderUninstall": "このビルドには拡張機能ローダーがないため、拡張機能をアンインストールできません。",
+	"extensions.route.noLoaderDocs": "このビルドには拡張機能ローダーがないため、拡張機能のドキュメントを読み取れません。",
+	"extensions.route.noMarketplace": "このビルドには拡張機能マーケットプレイスがありません。",
+	"extensions.route.noMarketplaceInstall": "このビルドには拡張機能マーケットプレイスまたはローダーがないため、マーケットプレイスからインストールできません。",
+	"extensions.route.marketplaceInstallBody": "sourceとidを指定してください。",
+	"extensions.route.missingPackageFile": "拡張機能パッケージのファイルがありません（multipartのfileフィールド）。",
+	"extensions.route.packageNoun": "拡張機能パッケージ",
+	"service.routes.upload-limit.text.1": "{value0}が大きすぎます（上限{value1} MB）。",
+	"extensions.route.badId": "拡張機能IDが無効です。",
+	"extensions.route.badActionRef": "拡張機能IDまたはアクション名が無効です。",
+	"extensions.route.noStatus": "拡張機能{id}が実行中でないか、ダッシュボードのデータをまだ公開していません。",
+	"extensions.route.notInstalled": "拡張機能{id}はインストールされていません。",
+	"extensions.route.notRunning": "拡張機能{id}は実行中ではありません。",
+	"extensions.route.connectionsInUse": "この拡張機能を使用中の接続が{count}件あります。プッシュ先ページで接続を削除してから、アンインストールしてください。",
+	"extensions.route.stateNotCleared": "拡張機能はアンインストールされましたが、保存済みの状態と秘密情報を消去できませんでした：{reason}"
 }

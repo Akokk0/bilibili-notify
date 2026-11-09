@@ -960,5 +960,21 @@
 	"service.extensions.marketplace.text.17": "下載套件的檢查碼與索引不符，套件可能在傳輸途中被替換，或來源發布了錯誤的套件。",
 	"service.extensions.marketplace.text.18": "無法下載{value0} 的套件（{value1}）。",
 	"service.extensions.marketplace.text.19": "無法解開套件：{value0}",
-	"service.extensions.marketplace.text.20": "套件資訊清單為 {value0}@{value1}，但索引標示 {value2}@{value3}，來源提供了錯誤的套件。"
+	"service.extensions.marketplace.text.20": "套件資訊清單為 {value0}@{value1}，但索引標示 {value2}@{value3}，來源提供了錯誤的套件。",
+	"extensions.route.noLoaderInstall": "此組建未提供擴充功能載入器，無法安裝擴充功能。",
+	"extensions.route.noLoaderUninstall": "此組建未提供擴充功能載入器，無法解除安裝擴充功能。",
+	"extensions.route.noLoaderDocs": "此組建未提供擴充功能載入器，無法讀取擴充功能文件。",
+	"extensions.route.noMarketplace": "此組建未提供擴充功能市集。",
+	"extensions.route.noMarketplaceInstall": "此組建未提供擴充功能市集或載入器，無法從市集安裝擴充功能。",
+	"extensions.route.marketplaceInstallBody": "請提供 source 與 id。",
+	"extensions.route.missingPackageFile": "缺少擴充功能套件檔案（multipart 的 file 欄位）。",
+	"extensions.route.packageNoun": "擴充功能套件",
+	"service.routes.upload-limit.text.1": "{value0}過大（上限 {value1} MB）。",
+	"extensions.route.badId": "擴充功能 ID 無效。",
+	"extensions.route.badActionRef": "擴充功能 ID 或動作名稱無效。",
+	"extensions.route.noStatus": "擴充功能 {id} 未執行，或尚未提供面板資料。",
+	"extensions.route.notInstalled": "尚未安裝擴充功能 {id}。",
+	"extensions.route.notRunning": "擴充功能 {id} 未執行。",
+	"extensions.route.connectionsInUse": "仍有 {count} 個連線使用此擴充功能，請先到推播目標頁刪除連線，再解除安裝。",
+	"extensions.route.stateNotCleared": "擴充功能已解除安裝，但無法清除已儲存的狀態與機密資料：{reason}"
 }

@@ -965,5 +965,21 @@
 	"service.extensions.marketplace.text.17": "The downloaded package checksum does not match the index. The package may have been replaced in transit or published incorrectly by the source.",
 	"service.extensions.marketplace.text.18": "Could not download the package for {value0} ({value1}).",
 	"service.extensions.marketplace.text.19": "Could not unpack the package: {value0}",
-	"service.extensions.marketplace.text.20": "The package manifest says {value0}@{value1}, but the index says {value2}@{value3}. The source supplied the wrong package."
+	"service.extensions.marketplace.text.20": "The package manifest says {value0}@{value1}, but the index says {value2}@{value3}. The source supplied the wrong package.",
+	"extensions.route.noLoaderInstall": "This build has no extension loader and cannot install extensions.",
+	"extensions.route.noLoaderUninstall": "This build has no extension loader and cannot uninstall extensions.",
+	"extensions.route.noLoaderDocs": "This build has no extension loader and cannot read extension documentation.",
+	"extensions.route.noMarketplace": "This build has no extension marketplace.",
+	"extensions.route.noMarketplaceInstall": "This build has no extension marketplace or loader and cannot install extensions from the marketplace.",
+	"extensions.route.marketplaceInstallBody": "Provide source and id.",
+	"extensions.route.missingPackageFile": "Missing extension package file (multipart field file).",
+	"extensions.route.packageNoun": "Extension package",
+	"service.routes.upload-limit.text.1": "{value0} is too large (limit: {value1} MB).",
+	"extensions.route.badId": "Invalid extension ID.",
+	"extensions.route.badActionRef": "Invalid extension ID or action name.",
+	"extensions.route.noStatus": "Extension {id} is not running or has not published any panel data.",
+	"extensions.route.notInstalled": "Extension {id} is not installed.",
+	"extensions.route.notRunning": "Extension {id} is not running.",
+	"extensions.route.connectionsInUse": "This extension is still in use. Connections to remove: {count}. Delete them on the Push targets page before uninstalling.",
+	"extensions.route.stateNotCleared": "The extension was uninstalled, but its stored state and secrets could not be cleared: {reason}"
 }

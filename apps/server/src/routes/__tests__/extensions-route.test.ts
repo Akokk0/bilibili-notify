@@ -735,6 +735,71 @@ describe("GET /api/ext/:id/bots 已删(候选读口挂在 /api/adapters/:adapter
 });
 
 describe("GET /api/ext/:id/status", () => {
+	it.each([
+		[
+			"en",
+			{
+				id: "Invalid extension ID.",
+				action: "Invalid extension ID or action name.",
+				status: "Extension bridge is not running or has not published any panel data.",
+				missing: "Extension ghost is not installed.",
+				running: "Extension bridge is not running.",
+			},
+		],
+		[
+			"ja",
+			{
+				id: "拡張機能IDが無効です。",
+				action: "拡張機能IDまたはアクション名が無効です。",
+				status: "拡張機能bridgeが実行中でないか、ダッシュボードのデータをまだ公開していません。",
+				missing: "拡張機能ghostはインストールされていません。",
+				running: "拡張機能bridgeは実行中ではありません。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				id: "擴充功能 ID 無效。",
+				action: "擴充功能 ID 或動作名稱無效。",
+				status: "擴充功能 bridge 未執行，或尚未提供面板資料。",
+				missing: "尚未安裝擴充功能 ghost。",
+				running: "擴充功能 bridge 未執行。",
+			},
+		],
+	] as const)(
+		"%s localizes ID and lifecycle failures while preserving valid status and action results",
+		async (locale, text) => {
+			const app = boot({
+				status: { original: { text: "Original status 原文" } },
+				actions: { "original/poll.now": ok() },
+			});
+			i18n.set({ locale, voice: "plain" });
+			for (const [path, method, status, code, message] of [
+				["/Bad_ID/docs", "GET", 400, "invalid", text.id],
+				["/Bad_ID/swap", "POST", 400, "invalid", text.id],
+				["/Bad_ID", "DELETE", 400, "invalid", text.id],
+				["/Bad_ID/actions/poll.now", "POST", 400, "invalid", text.action],
+				["/bridge/actions/toString", "POST", 400, "invalid", text.action],
+				["/bridge/status", "GET", 404, "not_found", text.status],
+				["/ghost/docs", "GET", 404, "not_found", text.missing],
+				["/ghost/swap", "POST", 404, "not_found", text.missing],
+				["/bridge/actions/poll.now", "POST", 404, "not_found", text.running],
+			] as const) {
+				const response = await app.request(path, { method });
+				expect(response.status).toBe(status);
+				expect(await failureOf(response)).toEqual({ code, message });
+			}
+			expect(await (await app.request("/original/status")).json()).toEqual({
+				text: "Original status 原文",
+			});
+			expect(
+				await (await app.request("/original/actions/poll.now", { method: "POST" })).json(),
+			).toEqual({ ok: true });
+			expect(rescan).not.toHaveBeenCalled();
+			expect(removeExtension).not.toHaveBeenCalled();
+		},
+	);
+
 	it("拓展交上来什么就下发什么 —— 形状第一版不约束(决策 36)", async () => {
 		const res = await boot({
 			entries: [running("bridge")],
@@ -781,6 +846,101 @@ describe("GET /api/ext/:id/status", () => {
  * 后者是热的,前者要重启,而说错任何一边主人都会以为面板在骗他。
  */
 describe("POST /api/ext/install", () => {
+	it.each([
+		[
+			"en",
+			{
+				install: "This build has no extension loader and cannot install extensions.",
+				uninstall: "This build has no extension loader and cannot uninstall extensions.",
+				docs: "This build has no extension loader and cannot read extension documentation.",
+				market: "This build has no extension marketplace.",
+				marketInstall:
+					"This build has no extension marketplace or loader and cannot install extensions from the marketplace.",
+				body: "Provide source and id.",
+				file: "Missing extension package file (multipart field file).",
+				large: "Extension package is too large (limit: 10 MB).",
+			},
+		],
+		[
+			"ja",
+			{
+				install: "このビルドには拡張機能ローダーがないため、拡張機能をインストールできません。",
+				uninstall:
+					"このビルドには拡張機能ローダーがないため、拡張機能をアンインストールできません。",
+				docs: "このビルドには拡張機能ローダーがないため、拡張機能のドキュメントを読み取れません。",
+				market: "このビルドには拡張機能マーケットプレイスがありません。",
+				marketInstall:
+					"このビルドには拡張機能マーケットプレイスまたはローダーがないため、マーケットプレイスからインストールできません。",
+				body: "sourceとidを指定してください。",
+				file: "拡張機能パッケージのファイルがありません（multipartのfileフィールド）。",
+				large: "拡張機能パッケージが大きすぎます（上限10 MB）。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				install: "此組建未提供擴充功能載入器，無法安裝擴充功能。",
+				uninstall: "此組建未提供擴充功能載入器，無法解除安裝擴充功能。",
+				docs: "此組建未提供擴充功能載入器，無法讀取擴充功能文件。",
+				market: "此組建未提供擴充功能市集。",
+				marketInstall: "此組建未提供擴充功能市集或載入器，無法從市集安裝擴充功能。",
+				body: "請提供 source 與 id。",
+				file: "缺少擴充功能套件檔案（multipart 的 file 欄位）。",
+				large: "擴充功能套件過大（上限 10 MB）。",
+			},
+		],
+	] as const)(
+		"%s localizes unavailable capabilities and input limits without invoking installation",
+		async (locale, text) => {
+			const bare = createExtensionsRoute({
+				store: {
+					reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+					getGlobals: () => ({ extensions: {} }),
+					getConnections: () => [],
+				} as unknown as ConfigStore,
+				extensions: () => [],
+				status: () => undefined,
+			});
+			const market = { list: vi.fn(), install: vi.fn() };
+			const app = boot({ marketplace: market });
+			i18n.set({ locale, voice: "plain" });
+			for (const [path, method, message] of [
+				["/install", "POST", text.install],
+				["/bridge", "DELETE", text.uninstall],
+				["/bridge/docs", "GET", text.docs],
+				["/marketplace", "GET", text.market],
+				["/marketplace/install", "POST", text.marketInstall],
+			] as const) {
+				const response = await bare.request(path, { method });
+				expect(response.status).toBe(400);
+				expect(await failureOf(response)).toEqual({ code: "unsupported", message });
+			}
+			const invalidBody = await app.request("/marketplace/install", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: "{}",
+			});
+			expect(invalidBody.status).toBe(400);
+			expect(await failureOf(invalidBody)).toEqual({ code: "invalid", message: text.body });
+			const missingFile = await upload(app, form(undefined));
+			expect(missingFile.status).toBe(400);
+			expect(await failureOf(missingFile)).toEqual({ code: "invalid", message: text.file });
+			const oversized = await app.request("/install", {
+				method: "POST",
+				headers: {
+					"Content-Length": String(11 * 1024 * 1024),
+					"Content-Type": "application/octet-stream",
+				},
+				body: "",
+			});
+			expect(oversized.status).toBe(413);
+			expect(await failureOf(oversized)).toEqual({ code: "invalid", message: text.large });
+			expect(market.install).not.toHaveBeenCalled();
+			expect(rescan).not.toHaveBeenCalled();
+			expect(removeExtension).not.toHaveBeenCalled();
+		},
+	);
+
 	it("传一个新拓展 → 装进装载根,当场重扫,不必重启", async () => {
 		const res = await upload(boot(), form(pack()));
 
@@ -1191,6 +1351,78 @@ describe("DELETE /api/ext/:id", () => {
 		await mkdir(join(installRoot, "bridge"), { recursive: true });
 		await writeFile(join(installRoot, "bridge", "index.mjs"), "export function activate() {}");
 	}
+	it.each([
+		[
+			"en",
+			{
+				one: "This extension is still in use. Connections to remove: 1. Delete them on the Push targets page before uninstalling.",
+				two: "This extension is still in use. Connections to remove: 2. Delete them on the Push targets page before uninstalling.",
+				partial:
+					"The extension was uninstalled, but its stored state and secrets could not be cleared: Original storage diagnostic 原文",
+			},
+		],
+		[
+			"ja",
+			{
+				one: "この拡張機能を使用中の接続が1件あります。プッシュ先ページで接続を削除してから、アンインストールしてください。",
+				two: "この拡張機能を使用中の接続が2件あります。プッシュ先ページで接続を削除してから、アンインストールしてください。",
+				partial:
+					"拡張機能はアンインストールされましたが、保存済みの状態と秘密情報を消去できませんでした：Original storage diagnostic 原文",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				one: "仍有 1 個連線使用此擴充功能，請先到推播目標頁刪除連線，再解除安裝。",
+				two: "仍有 2 個連線使用此擴充功能，請先到推播目標頁刪除連線，再解除安裝。",
+				partial:
+					"擴充功能已解除安裝，但無法清除已儲存的狀態與機密資料：Original storage diagnostic 原文",
+			},
+		],
+	] as const)(
+		"%s distinguishes blocked uninstall from removal with failed storage cleanup",
+		async (locale, text) => {
+			await installed();
+			i18n.set({ locale, voice: "plain" });
+			for (const [connections, message] of [
+				[
+					[
+						{ id: "c1", adapterKey: "bridge" },
+						{ id: "other", adapterKey: "onebot" },
+					],
+					text.one,
+				],
+				[
+					[
+						{ id: "c1", adapterKey: "bridge" },
+						{ id: "c2", adapterKey: "bridge" },
+					],
+					text.two,
+				],
+			] as const) {
+				const response = await boot({ connections: [...connections] }).request("/bridge", {
+					method: "DELETE",
+				});
+				expect(response.status).toBe(409);
+				expect(await failureOf(response)).toEqual({ code: "conflict", message });
+				expect(await readFile(join(installRoot, "bridge", "index.mjs"), "utf8")).toBe(
+					"export function activate() {}",
+				);
+			}
+			expect(removeExtension).not.toHaveBeenCalled();
+			expect(rescan).not.toHaveBeenCalled();
+			const remove = vi.fn(async () => fail("unavailable", "Original storage diagnostic 原文"));
+			const response = await boot({ integrationStore: { remove } }).request("/bridge", {
+				method: "DELETE",
+			});
+			expect(response.status).toBe(503);
+			expect(await failureOf(response)).toEqual({ code: "unavailable", message: text.partial });
+			expect(remove).toHaveBeenCalledExactlyOnceWith("bridge");
+			expect(removeExtension).toHaveBeenCalledExactlyOnceWith("bridge");
+			expect(await lstat(join(installRoot, "bridge")).catch(() => null)).toBeNull();
+			expect(rescan).toHaveBeenCalledTimes(1);
+		},
+	);
 
 	/**
 	 * 🔴 **配置那一格必须跟着删**。装载器注释写得很清楚:盘上没了而它那一格还留着的话,
