@@ -685,6 +685,164 @@ describe("knobsError", () => {
 	const withKnobs = (...knobs: unknown[]) =>
 		({ ...manifest(), knobs }) as unknown as CardSkinManifest;
 
+	it.each([
+		[
+			"en",
+			"Control “Original corner”: Option “”: The value cannot be empty.",
+			"Control “Original badge”: “On” value: The value must not contain `;`.",
+			"Control “Original badge”: “Off” value: The value must be at most 80 characters.",
+		],
+		[
+			"ja",
+			"調整項目「Original corner」：選択肢「」：値を空にできません。",
+			"調整項目「Original badge」：「オン」の値：値に `;` は使えません。",
+			"調整項目「Original badge」：「オフ」の値：値は80文字以内にしてください。",
+		],
+		[
+			"zh-TW",
+			"調整項目「Original corner」：選項「」：此值不可為空白。",
+			"調整項目「Original badge」：「開啟」的值：此值不可包含 `;`。",
+			"調整項目「Original badge」：「關閉」的值：此值最多 80 個字元。",
+		],
+	] as const)(
+		"%s literal errors identify option and switch sides without rewriting unsafe input",
+		(locale, empty, unsafe, long) => {
+			i18n.set({ locale, voice: "plain" });
+			expect(
+				knobsError(
+					withKnobs({
+						key: "corner",
+						label: "Original corner",
+						type: "select",
+						default: "",
+						options: [{ value: "", label: "Original empty" }],
+					}),
+				),
+			).toBe(empty);
+			const toggle = {
+				key: "badge",
+				label: "Original badge",
+				type: "switch",
+				default: true,
+				on: "block",
+				off: "none",
+			};
+			const draft = withKnobs({ ...toggle, on: "block;display:none" });
+			expect(knobsError(draft)).toBe(unsafe);
+			expect(draft.knobs?.[0]).toMatchObject({ on: "block;display:none" });
+			expect(knobsError(withKnobs({ ...toggle, off: "x".repeat(81) }))).toBe(long);
+			expect(knobsError(withKnobs(toggle))).toBeNull();
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			"Control “Original blur”: Minimum 40 exceeds maximum 0.",
+			"Control “Original blur”: Initial value 30 is outside the range 0–24.",
+			"Control “Original corner”: At least one option is required.",
+			"Control “Original corner”: At most 8 options are allowed.",
+			"Control “Original corner”: Every option must have a label.",
+			"Control “Original corner”: Initial value “99px” is not in the options list.",
+		],
+		[
+			"ja",
+			"調整項目「Original blur」：最小値40が最大値0を超えています。",
+			"調整項目「Original blur」：初期値30は0〜24の範囲外です。",
+			"調整項目「Original corner」：選択肢を1つ以上用意してください。",
+			"調整項目「Original corner」：選択肢は8個までです。",
+			"調整項目「Original corner」：すべての選択肢に表示名を入力してください。",
+			"調整項目「Original corner」：初期値「99px」が選択肢にありません。",
+		],
+		[
+			"zh-TW",
+			"調整項目「Original blur」：最小值 40 大於最大值 0。",
+			"調整項目「Original blur」：起始值 30 不在 0–24 範圍內。",
+			"調整項目「Original corner」：至少需要一個選項。",
+			"調整項目「Original corner」：最多可設定 8 個選項。",
+			"調整項目「Original corner」：每個選項都必須有名稱。",
+			"調整項目「Original corner」：起始值「99px」不在選項清單中。",
+		],
+	] as const)(
+		"%s numeric and select validation reports the offending control without correcting user values",
+		(locale, range, initial, empty, full, unnamed, absent) => {
+			i18n.set({ locale, voice: "plain" });
+			const number = {
+				key: "blur",
+				label: "Original blur",
+				type: "number",
+				default: 30,
+				min: 0,
+				max: 40,
+			};
+			const select = {
+				key: "corner",
+				label: "Original corner",
+				type: "select",
+				default: "12px",
+				options: [{ value: "12px", label: "Original round" }],
+			};
+			expect(knobsError(withKnobs({ ...number, min: 40, max: 0 }))).toBe(range);
+			const draft = withKnobs({ ...number, max: 24 });
+			expect(knobsError(draft)).toBe(initial);
+			expect(draft.knobs?.[0]).toMatchObject({ default: 30, max: 24 });
+			expect(knobsError(withKnobs({ ...select, options: [] }))).toBe(empty);
+			expect(
+				knobsError(
+					withKnobs({
+						...select,
+						options: Array.from({ length: 9 }, (_, i) => ({
+							value: `v${i}`,
+							label: `Original ${i}`,
+						})),
+					}),
+				),
+			).toBe(full);
+			expect(knobsError(withKnobs({ ...select, options: [{ value: "12px", label: " " }] }))).toBe(
+				unnamed,
+			);
+			expect(knobsError(withKnobs({ ...select, default: "99px" }))).toBe(absent);
+			expect(knobsError(withKnobs(number, select))).toBeNull();
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			"Control key “Bad_Key” is invalid. Use lowercase kebab-case starting with a letter, such as accent or glass-opacity.",
+			"Control key “accent” is duplicated; both controls would inject the same variable.",
+			"Control “accent” needs a label.",
+			"The label for control “accent” must be at most 24 characters.",
+		],
+		[
+			"ja",
+			"調整項目のキー「Bad_Key」は無効です。accent や glass-opacity のように、小文字の英字で始まるkebab-caseを使ってください。",
+			"調整項目のキー「accent」が重複しています。同じ変数に複数の値が注入されます。",
+			"調整項目「accent」の表示名を入力してください。",
+			"調整項目「accent」の表示名は24文字以内にしてください。",
+		],
+		[
+			"zh-TW",
+			"調整項目鍵名「Bad_Key」無效。請使用小寫英文字母開頭的 kebab-case，例如 accent 或 glass-opacity。",
+			"調整項目鍵名「accent」重複；兩個項目會注入相同變數。",
+			"請填寫調整項目「accent」的名稱。",
+			"調整項目「accent」的名稱最多 24 個字元。",
+		],
+	] as const)(
+		"%s explains invalid control identities while preserving the input",
+		(locale, invalid, duplicate, empty, long) => {
+			i18n.set({ locale, voice: "plain" });
+			const knob = { key: "accent", label: "Original accent", type: "color", default: "#123456" };
+			expect(knobsError(withKnobs({ ...knob, key: "Bad_Key" }))).toBe(invalid);
+			expect(knobsError(withKnobs(knob, knob))).toBe(duplicate);
+			expect(knobsError(withKnobs({ ...knob, label: " " }))).toBe(empty);
+			const draft = withKnobs({ ...knob, label: "字".repeat(25) });
+			expect(knobsError(draft)).toBe(long);
+			expect(draft.knobs?.[0].label).toBe("字".repeat(25));
+			expect(knobsError(withKnobs(knob))).toBeNull();
+		},
+	);
+
 	it("没有旋钮 → 没有错", () => {
 		expect(knobsError(manifest())).toBeNull();
 	});
