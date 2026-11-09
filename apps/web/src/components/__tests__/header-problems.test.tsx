@@ -47,6 +47,41 @@ function mount(entry = "/") {
 	);
 	return qc;
 }
+it.each([
+	[
+		"ja",
+		"ご主人様、送信処理のエラーは右上に残ります。エラーを閉じても、ここにある問題は解消されませんよ。",
+		"送信処理のエラーは右上に別途表示されます。エラーを閉じても、ここにある問題は解消されません。",
+	],
+	[
+		"zh-TW",
+		"主人，推播流程的錯誤會留在右上角；關閉錯誤紀錄不會清除這裡的問題喔。",
+		"推播流程的錯誤會另外保留在右上角；關閉錯誤不會清除這裡的問題。",
+	],
+] as const)(
+	"%s maid problem explanation preserves original report and never clears or refetches it",
+	async (locale, maid, plain) => {
+		const requestsBefore = get.mock.calls.filter(([path]) => path === "/api/problems").length;
+		mount();
+		await userEvent.click(await screen.findByRole("button", { name: "待处理问题 1" }));
+		const panel = screen.getByRole("dialog");
+		const original = screen.getByText("<script>原文</script>");
+		for (const [voice, expected] of [
+			["maid", maid],
+			["plain", plain],
+		] as const) {
+			act(() => i18n.set({ locale, voice }));
+			expect(screen.getByRole("dialog")).toBe(panel);
+			expect(within(panel).getByText(expected)).toBeTruthy();
+			expect(screen.getByText("<script>原文</script>")).toBe(original);
+			expect(screen.getByText("missing.source")).toBeTruthy();
+		}
+		expect(get.mock.calls.filter(([path]) => path === "/api/problems")).toHaveLength(
+			requestsBefore + 1,
+		);
+	},
+);
+
 it("顶栏展示持续问题与安全原文，未知归属保留id且无清除入口", async () => {
 	mount();
 	await userEvent.click(await screen.findByRole("button", { name: "待处理问题 1" }));

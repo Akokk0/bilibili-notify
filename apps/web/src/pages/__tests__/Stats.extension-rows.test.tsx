@@ -681,6 +681,54 @@ it.each([1, 2])(
 	},
 );
 
+it.each([
+	[
+		"ja",
+		"統計の記録",
+		"無効にする",
+		"ご主人様、統計記録の設定を保存できませんでした：Original 診断 {reason}",
+		"統計記録の設定を保存できませんでした: Original 診断 {reason}",
+		"統計データをお預かりして、ランキングと週次レポートをお作りしますね。",
+	],
+	[
+		"zh-TW",
+		"統計記錄",
+		"停用",
+		"主人，統計開關沒能儲存成功：Original 診断 {reason}",
+		"無法儲存統計開關：Original 診断 {reason}",
+		"把統計資料交給女僕，評榜和週報都交給我喔～",
+	],
+] as const)(
+	"%s maid statistics hints keep failed-save diagnostics, data and enabled state",
+	async (locale, group, disable, maid, plain, roast) => {
+		renderStats();
+		const table = await screen.findByRole("table");
+		vi.mocked(api.patch).mockRejectedValueOnce(new Error("Original 診断 {reason}"));
+		await userEvent.click(screen.getByRole("button", { name: "停用" }));
+		await screen.findByRole("alert");
+		for (const [voice, expected] of [
+			["maid", maid],
+			["plain", plain],
+		] as const) {
+			act(() => i18n.set({ locale, voice }));
+			expect(screen.getByRole("alert")).toHaveProperty("textContent", expected);
+			expect(
+				within(screen.getByRole("group", { name: group }))
+					.getByRole("button", { name: disable })
+					.getAttribute("aria-pressed"),
+			).toBe("false");
+			expect(screen.getByRole("table")).toBe(table);
+			expect(tableRow("抖音乙")).toBeTruthy();
+			if (voice === "maid") expect(screen.getByText(roast)).toBeTruthy();
+		}
+		expect(api.patch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+			core: { stats: { enabled: false } },
+		});
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	},
+);
+
 it("statistics recording controls translate while retaining a failed save and the confirmed enabled state", async () => {
 	i18n.set({ locale: "en", voice: "plain" });
 	renderStats();

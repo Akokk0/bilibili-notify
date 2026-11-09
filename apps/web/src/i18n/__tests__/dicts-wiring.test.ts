@@ -9,7 +9,7 @@ import { DICTS } from "../index";
 const files = import.meta.glob("../locales/*.json", { eager: true, import: "default" });
 
 describe("面板译文文件都接进了 DICTS", () => {
-	it("设置、账号与启动交互的日文和繁体女仆覆盖与简中逐键一致", () => {
+	it("已交付分区的日文和繁体女仆覆盖与简中逐键一致", () => {
 		const prefixes = [
 			"forms.",
 			"system.master.",
@@ -20,6 +20,13 @@ describe("面板译文文件都接进了 DICTS", () => {
 			"startup.",
 			"lifecycle.",
 			"accounts.",
+			"healthCard.",
+			"dashboard.live.",
+			"statsSwitch.",
+			"stats.roast.",
+			"stats.push.",
+			"problems.",
+			"history.repush.",
 		];
 		const expected = Object.keys(DICTS["zh-CN"].maid)
 			.filter((key) => prefixes.some((prefix) => key.startsWith(prefix)))

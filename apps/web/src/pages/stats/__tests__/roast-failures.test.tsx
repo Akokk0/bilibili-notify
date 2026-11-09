@@ -136,6 +136,57 @@ describe("RoastPushBox —— 推送锐评", () => {
 		kind: "solo" as const,
 		result: { subscriptionId: "s1", verdict: "v", score: 1, highlights: [], pushText: "短评" },
 	};
+	it.each([
+		[
+			"ja",
+			false,
+			"送信して",
+			"ご主人様、送信できませんでした：Original upstream {error}",
+			"送信に失敗しました: Original upstream {error}",
+		],
+		["ja", true, "送信して", "✓ ご主人様、送信できましたよ（テキスト）", "✓ 送信済み（テキスト）"],
+		[
+			"zh-TW",
+			false,
+			"推播吧",
+			"主人，推播沒能成功：Original upstream {error}",
+			"推播失敗：Original upstream {error}",
+		],
+		["zh-TW", true, "推播吧", "✓ 已替主人推播（文字）", "✓ 已推播（文字）"],
+	] as const)(
+		"%s maid delivery result success=%s preserves payload and never sends again on voice change",
+		async (locale, success, send, maid, plain) => {
+			i18n.set({ locale, voice: "maid" });
+			vi.mocked(api.get).mockImplementation(async (path) =>
+				path === "/api/targets" ? [TARGET] : [],
+			);
+			vi.mocked(api.post).mockResolvedValue(
+				success
+					? { ok: true, mode: "text" }
+					: { ok: false, code: "unavailable", message: "Original upstream {error}" },
+			);
+			withQuery(
+				<RoastPushBox
+					days={7}
+					label="Original label 原文"
+					text="Original summary 原文 {error}"
+					payload={payload}
+				/>,
+			);
+			await screen.findByRole("combobox");
+			fireEvent.click(screen.getByRole("button", { name: send }));
+			expect(await screen.findByText(maid)).toBeTruthy();
+			act(() => i18n.set({ voice: "plain" }));
+			expect(screen.getByText(plain)).toBeTruthy();
+			expect(screen.getByText("Original summary 原文 {error}")).toBeTruthy();
+			expect(screen.getByText("我的群")).toBeTruthy();
+			expect(api.post).toHaveBeenCalledExactlyOnceWith("/api/stats/roast/push", {
+				targetId: TARGET.id,
+				days: 7,
+				...payload,
+			});
+		},
+	);
 
 	async function pushOnce() {
 		vi.mocked(api.get).mockResolvedValue([TARGET]);

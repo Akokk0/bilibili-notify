@@ -135,6 +135,55 @@ afterEach(() => {
 });
 
 describe("首页各模块的状态读详情口", () => {
+	it.each([
+		[
+			"ja",
+			"システム状態",
+			"ご主人様、コアと連携機能の状態はここで確認できますよ。",
+			"コアと連携機能の稼働状況",
+			"ご主人様、いまは配信中の記録がありませんよ。",
+			"現在配信中の記録はありません",
+			"Original source 原名 · 稼働中、詳細を表示",
+			"送信先 3件",
+		],
+		[
+			"zh-TW",
+			"系統狀態",
+			"主人，核心與整合功能的狀態都能在這裡查看喔。",
+			"核心與整合功能的執行概況",
+			"主人，女僕這裡暫時沒有直播中的紀錄喔。",
+			"目前沒有直播中的紀錄",
+			"Original source 原名 · 執行中，檢視詳細資料",
+			"3 個目標",
+		],
+	] as const)(
+		"%s：概览女仆提示随口吻变化，核心数量与来源原名不变",
+		async (locale, title, maid, plain, liveMaid, livePlain, source, targets) => {
+			mockApi({
+				loggedIn: false,
+				details: async () =>
+					runningHealth({
+						integrations: [integrationHealth({ descriptor: { label: "Original source 原名" } })],
+					}),
+			});
+			renderDashboard();
+			const region = await screen.findByRole("region", { name: "系统状态" });
+			for (const [voice, subtitle, empty] of [
+				["maid", maid, liveMaid],
+				["plain", plain, livePlain],
+			] as const) {
+				act(() => i18n.set({ locale, voice }));
+				expect(screen.getByRole("region", { name: title })).toBe(region);
+				expect(within(region).getByText(subtitle)).toBeTruthy();
+				expect(within(region).getByText(targets)).toBeTruthy();
+				expect(within(region).getByRole("button", { name: source })).toBeTruthy();
+				expect(await screen.findByText(empty)).toBeTruthy();
+				expect(api.post).not.toHaveBeenCalled();
+				expect(api.patch).not.toHaveBeenCalled();
+			}
+		},
+	);
+
 	it("系统资源先于系统状态呈现，窄屏和阅读顺序一致", async () => {
 		mockApi({ loggedIn: false, details: async () => runningHealth() });
 		renderDashboard();

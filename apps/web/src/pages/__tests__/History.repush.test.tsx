@@ -595,6 +595,29 @@ beforeEach(() => {
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 });
 
+it.each([
+	["ja", "ご主人様、2件を再送しています。終わるとこの行を自動で更新しますよ。"],
+	["zh-TW", "主人，女僕正在補發（2 則），完成後這一列會自動更新喔。"],
+] as const)(
+	"%s maid resend progress keeps recorded content and sends only once",
+	async (locale, pending) => {
+		mockApi([row()]);
+		renderHistory();
+		const original = await screen.findByText("下播了");
+		await userEvent.click(screen.getByRole("button", { name: "补一次" }));
+		await userEvent.click(screen.getByRole("button", { name: "只补没到的（2 条）" }));
+		await screen.findByText(/正在补发/);
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(pending)).toBeTruthy();
+		expect(screen.getByText("下播了")).toBe(original);
+		expect(screen.getByText("某UP")).toBeTruthy();
+		expect(api.post).toHaveBeenCalledExactlyOnceWith("/api/history/h1/repush", {
+			createdAt: TS,
+			mode: "missing",
+		});
+	},
+);
+
 it("history controls follow locale while recorded content and missing-only resend semantics stay unchanged", async () => {
 	mockApi([row()]);
 	renderHistory();
