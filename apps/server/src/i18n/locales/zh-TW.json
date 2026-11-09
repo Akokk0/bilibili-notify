@@ -790,5 +790,15 @@
 	"command.report.daysOutOfRange": "天數須介於 {min} 到 {max} 之間。",
 	"command.report.busy": "報表仍在執行，請稍候。",
 	"command.report.noTargets": "尚未設定推送目標，無法傳送週報。",
-	"command.status.loginLabel": "{label}登入"
+	"command.status.loginLabel": "{label}登入",
+	"extension.action.noActionsDeclared": "擴充功能 {id} 的資訊清單未宣告 actions，無法註冊動作「{name}」。",
+	"extension.action.notDeclared": "擴充功能 {id} 的 actions 未宣告「{name}」，請先在資訊清單宣告。",
+	"extension.action.alreadyHandled": "擴充功能 {id} 已註冊動作「{name}」的處理函式。",
+	"extension.action.notInManifest": "擴充功能 {id} 的資訊清單未宣告動作「{name}」。",
+	"extension.action.notHandled": "擴充功能 {id} 已宣告動作「{name}」，但尚未註冊處理函式。",
+	"extension.action.threwSilently": "動作「{name}」發生錯誤，但未提供訊息。",
+	"extension.action.stillRunning": "動作「{name}」仍在執行，完成前無法再次執行。",
+	"extension.action.timeout": "動作「{name}」未在 {seconds} 秒內完成。",
+	"extension.action.abortedTimeout": "動作「{name}」已超過 {seconds} 秒，BN 已停止等待。",
+	"extension.action.stillStopping": "動作「{name}」已超過 {seconds} 秒，雖已要求停止，但仍在執行；停止前無法再次執行。"
 }

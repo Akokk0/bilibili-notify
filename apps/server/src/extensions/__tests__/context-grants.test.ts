@@ -35,6 +35,7 @@ import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { i18n } from "../../i18n/index.js";
 import { adapterForConnection } from "../../push/dispatch.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import {
@@ -47,6 +48,7 @@ import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
 
 const CONFIG = z.object({ token: z.string(), bridgeKind: z.enum(["koishi", "astrbot"]) });
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function connection(over: Partial<Record<string, unknown>> = {}): Connection {
 	return {
@@ -716,6 +718,169 @@ describe("动作", () => {
 		actions: ["poll.now", "login.start"],
 		contributes: { push: { label: "桥", shortLabel: "桥", color: "#a855f7" } },
 	} as unknown as ExtensionManifest;
+	it.each([
+		[
+			"en",
+			{
+				busy: 'Action "poll.now" is still running. Another invocation cannot start until it finishes.',
+				timeout: 'Action "poll.now" did not finish within 0.02 seconds.',
+				aborted: 'Action "poll.now" exceeded 0.02 seconds. BN stopped waiting.',
+				stopping:
+					'Action "poll.now" exceeded 0.02 seconds and was asked to stop, but is still running. Another invocation cannot start until it stops.',
+			},
+		],
+		[
+			"ja",
+			{
+				busy: "アクション「poll.now」は実行中です。完了するまで再実行できません。",
+				timeout: "アクション「poll.now」が0.02秒以内に完了しませんでした。",
+				aborted: "アクション「poll.now」が0.02秒を超えたため、BNは待機を終了しました。",
+				stopping:
+					"アクション「poll.now」が0.02秒を超え、停止を要求しましたが、まだ実行中です。停止するまで再実行できません。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				busy: "動作「poll.now」仍在執行，完成前無法再次執行。",
+				timeout: "動作「poll.now」未在 0.02 秒內完成。",
+				aborted: "動作「poll.now」已超過 0.02 秒，BN 已停止等待。",
+				stopping: "動作「poll.now」已超過 0.02 秒，雖已要求停止，但仍在執行；停止前無法再次執行。",
+			},
+		],
+	] as const)(
+		"%s translates timeout and in-flight states without releasing the same-action gate early",
+		async (locale, text) => {
+			vi.useFakeTimers();
+			const h = harness({ manifest: V2 });
+			let signal: AbortSignal | undefined;
+			let finish = () => {};
+			let calls = 0;
+			h.ctx.onAction("poll.now", (seen) => {
+				signal = seen;
+				calls += 1;
+				return new Promise<void>((resolve) => {
+					finish = resolve;
+				});
+			});
+			const first = h.runtime.runAction("poll.now", { timeoutMs: 20 });
+			i18n.set({ locale, voice: "plain" });
+			try {
+				expect(await h.runtime.runAction("poll.now", { timeoutMs: 20 })).toEqual({
+					ok: false,
+					code: "conflict",
+					message: text.busy,
+				});
+				await vi.advanceTimersByTimeAsync(20);
+				expect(await first).toEqual({ ok: false, code: "timeout", message: text.timeout });
+				expect(signal?.aborted).toBe(true);
+				expect(signal?.reason).toMatchObject({ name: "TimeoutError", message: text.aborted });
+				expect(await h.runtime.runAction("poll.now", { timeoutMs: 20 })).toEqual({
+					ok: false,
+					code: "conflict",
+					message: text.stopping,
+				});
+				expect(calls).toBe(1);
+			} finally {
+				finish();
+				await first;
+				await h.runtime.dispose();
+				vi.useRealTimers();
+			}
+		},
+	);
+	it.each([
+		["en", 'Action "poll.now" threw an error without a message.'],
+		["ja", "アクション「poll.now」でエラーが発生しましたが、メッセージがありません。"],
+		["zh-TW", "動作「poll.now」發生錯誤，但未提供訊息。"],
+	] as const)(
+		"%s supplies a localized empty-error explanation without rewriting extension diagnostics",
+		async (locale, message) => {
+			const h = harness({ manifest: V2 });
+			let diagnostic = "";
+			h.ctx.onAction("poll.now", () => {
+				throw new Error(diagnostic);
+			});
+			i18n.set({ locale, voice: "plain" });
+			try {
+				expect(await h.runtime.runAction("poll.now")).toEqual({
+					ok: false,
+					code: "unavailable",
+					message,
+				});
+				diagnostic = "Original extension diagnostic 原文";
+				expect(await h.runtime.runAction("poll.now")).toEqual({
+					ok: false,
+					code: "unavailable",
+					message: diagnostic,
+				});
+			} finally {
+				await h.runtime.dispose();
+			}
+		},
+	);
+	it.each([
+		[
+			"en",
+			{
+				missing: 'Extension bridge does not declare actions; cannot register action "poll.now".',
+				undeclared:
+					'Extension bridge does not declare action "nope" in actions. Declare it in the manifest first.',
+				duplicate: 'Extension bridge already has a handler for action "poll.now".',
+				absent: 'Extension bridge does not declare action "nope" in its manifest.',
+				unhandled: 'Extension bridge declares action "login.start", but no handler is registered.',
+			},
+		],
+		[
+			"ja",
+			{
+				missing:
+					"拡張機能bridgeのマニフェストにactionsがないため、アクション「poll.now」を登録できません。",
+				undeclared:
+					"拡張機能bridgeのactionsに「nope」がありません。先にマニフェストへ宣言してください。",
+				duplicate: "拡張機能bridgeのアクション「poll.now」にはハンドラーが登録済みです。",
+				absent: "拡張機能bridgeのマニフェストにアクション「nope」がありません。",
+				unhandled:
+					"拡張機能bridgeはアクション「login.start」を宣言していますが、ハンドラーが未登録です。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				missing: "擴充功能 bridge 的資訊清單未宣告 actions，無法註冊動作「poll.now」。",
+				undeclared: "擴充功能 bridge 的 actions 未宣告「nope」，請先在資訊清單宣告。",
+				duplicate: "擴充功能 bridge 已註冊動作「poll.now」的處理函式。",
+				absent: "擴充功能 bridge 的資訊清單未宣告動作「nope」。",
+				unhandled: "擴充功能 bridge 已宣告動作「login.start」，但尚未註冊處理函式。",
+			},
+		],
+	] as const)(
+		"%s localizes action registration and invocation failures while preserving IDs and result codes",
+		async (locale, text) => {
+			const h = harness({ manifest: V2 });
+			const noActions = harness();
+			i18n.set({ locale, voice: "plain" });
+			try {
+				expect(() => noActions.ctx.onAction("poll.now", () => {})).toThrow(text.missing);
+				expect(() => h.ctx.onAction("nope", () => {})).toThrow(text.undeclared);
+				h.ctx.onAction("poll.now", () => {});
+				expect(() => h.ctx.onAction("poll.now", () => {})).toThrow(text.duplicate);
+				expect(await h.runtime.runAction("nope")).toEqual({
+					ok: false,
+					code: "unsupported",
+					message: text.absent,
+				});
+				expect(await h.runtime.runAction("login.start")).toEqual({
+					ok: false,
+					code: "unsupported",
+					message: text.unhandled,
+				});
+			} finally {
+				await h.runtime.dispose();
+				await noActions.runtime.dispose();
+			}
+		},
+	);
 
 	it("声明了、接了 —— 跑得到", async () => {
 		const h = harness({ manifest: V2 });

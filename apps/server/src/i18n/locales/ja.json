@@ -790,5 +790,15 @@
 	"command.report.daysOutOfRange": "日数は{min}〜{max}の範囲で指定してください。",
 	"command.report.busy": "レポートを実行中です。しばらくお待ちください。",
 	"command.report.noTargets": "レポートの送信先が設定されていません。",
-	"command.status.loginLabel": "{label}のログイン"
+	"command.status.loginLabel": "{label}のログイン",
+	"extension.action.noActionsDeclared": "拡張機能{id}のマニフェストにactionsがないため、アクション「{name}」を登録できません。",
+	"extension.action.notDeclared": "拡張機能{id}のactionsに「{name}」がありません。先にマニフェストへ宣言してください。",
+	"extension.action.alreadyHandled": "拡張機能{id}のアクション「{name}」にはハンドラーが登録済みです。",
+	"extension.action.notInManifest": "拡張機能{id}のマニフェストにアクション「{name}」がありません。",
+	"extension.action.notHandled": "拡張機能{id}はアクション「{name}」を宣言していますが、ハンドラーが未登録です。",
+	"extension.action.threwSilently": "アクション「{name}」でエラーが発生しましたが、メッセージがありません。",
+	"extension.action.stillRunning": "アクション「{name}」は実行中です。完了するまで再実行できません。",
+	"extension.action.timeout": "アクション「{name}」が{seconds}秒以内に完了しませんでした。",
+	"extension.action.abortedTimeout": "アクション「{name}」が{seconds}秒を超えたため、BNは待機を終了しました。",
+	"extension.action.stillStopping": "アクション「{name}」が{seconds}秒を超え、停止を要求しましたが、まだ実行中です。停止するまで再実行できません。"
 }

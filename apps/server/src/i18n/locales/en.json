@@ -795,5 +795,15 @@
 	"command.report.daysOutOfRange": "Days must be between {min} and {max}.",
 	"command.report.busy": "A report is already running. Please wait.",
 	"command.report.noTargets": "No push targets are configured for the report.",
-	"command.status.loginLabel": "{label} sign-in"
+	"command.status.loginLabel": "{label} sign-in",
+	"extension.action.noActionsDeclared": "Extension {id} does not declare actions; cannot register action \"{name}\".",
+	"extension.action.notDeclared": "Extension {id} does not declare action \"{name}\" in actions. Declare it in the manifest first.",
+	"extension.action.alreadyHandled": "Extension {id} already has a handler for action \"{name}\".",
+	"extension.action.notInManifest": "Extension {id} does not declare action \"{name}\" in its manifest.",
+	"extension.action.notHandled": "Extension {id} declares action \"{name}\", but no handler is registered.",
+	"extension.action.threwSilently": "Action \"{name}\" threw an error without a message.",
+	"extension.action.stillRunning": "Action \"{name}\" is still running. Another invocation cannot start until it finishes.",
+	"extension.action.timeout": "Action \"{name}\" did not finish within {seconds} seconds.",
+	"extension.action.abortedTimeout": "Action \"{name}\" exceeded {seconds} seconds. BN stopped waiting.",
+	"extension.action.stillStopping": "Action \"{name}\" exceeded {seconds} seconds and was asked to stop, but is still running. Another invocation cannot start until it stops."
 }
