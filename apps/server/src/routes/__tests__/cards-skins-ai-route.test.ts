@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { CARD_SKIN_MANIFEST_FILE } from "../../card-skins/package.js";
 import { CardSkinStore } from "../../card-skins/store.js";
 import type { ConfigStore } from "../../config/store.js";
+import { i18n } from "../../i18n/index.js";
 import { createCardsSkinsRoute } from "../cards-skins.js";
 
 function manifest(): Record<string, any> {
@@ -84,6 +85,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	await rm(dir, { recursive: true, force: true });
 });
 
@@ -124,6 +126,55 @@ function parseSse(text: string): SseEvent[] {
 	}
 	return out;
 }
+
+it.each([
+	[
+		"en",
+		{
+			builtin:
+				"The built-in default skin cannot be modified. Use Duplicate before using AI editing.",
+			model: "No model is configured. Configure a model on the AI page first.",
+			failed: "AI could not generate the style: Original upstream diagnostic 原文",
+		},
+	],
+	[
+		"ja",
+		{
+			builtin: "内蔵の既定スキンは変更できません。AIで編集する前に「複製」を使用してください。",
+			model: "モデルが設定されていません。まずAIページでモデルを設定してください。",
+			failed: "AIによるスタイルの生成に失敗しました：Original upstream diagnostic 原文",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			builtin: "無法修改內建預設外觀；使用 AI 編寫前，請先使用「複製一份」。",
+			model: "尚未設定模型，請先到「智慧女僕」頁設定模型。",
+			failed: "AI 無法產生樣式：Original upstream diagnostic 原文",
+		},
+	],
+] as const)("%s:开流前错误与SSE失败本地化,原始诊断保留且不保存草稿", async (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	const original = structuredClone(store.get(skinId));
+	const builtin = await post(BLOCK(), DEFAULT_CARD_SKIN_ID);
+	expect(builtin.status).toBe(409);
+	expect(await builtin.json()).toEqual({ code: "conflict", message: text.builtin });
+	engine = null;
+	const unconfigured = await post(BLOCK());
+	expect(unconfigured.status).toBe(409);
+	expect(await unconfigured.json()).toEqual({ code: "not_configured", message: text.model });
+	expect(generateRaw).not.toHaveBeenCalled();
+	engine = { generateRaw };
+	generateRaw.mockRejectedValue(new Error("Original upstream diagnostic 原文"));
+	const response = await post(BLOCK());
+	expect(response.status).toBe(200);
+	expect(response.headers.get("content-type")).toContain("text/event-stream");
+	expect(parseSse(await response.text())).toEqual([
+		{ event: "error", data: { code: "unavailable", message: text.failed } },
+	]);
+	expect(generateRaw).toHaveBeenCalledTimes(1);
+	expect(store.get(skinId)).toEqual(original);
+});
 
 describe("开流之前的拒绝", () => {
 	it("没配模型 → not_configured(409),按钮那头本该先禁用,这是兜底", async () => {

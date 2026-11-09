@@ -1588,5 +1588,6 @@
 	"settings.problem.entry": "{label}（{reason}）",
 	"settings.problem.listSeparator": "；",
 	"cardSkin.svgIdUser": "「{id}」",
-	"cardSkin.svgIdUserSeparator": "、"
+	"cardSkin.svgIdUserSeparator": "、",
+	"cardSkin.usedBySeparator": "，"
 }

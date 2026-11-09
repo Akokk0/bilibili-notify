@@ -252,7 +252,7 @@ export function createCardsSkinsRoute(deps: {
 				...(subscriptions.length > 0
 					? [serverText("service.routes.cards-skins.text.10", { value0: listUsers(subscriptions) })]
 					: []),
-			].join("，");
+			].join(serverText("cardSkin.usedBySeparator"));
 			return respondFailure(
 				c,
 				fail("conflict", serverText("service.routes.cards-skins.text.11", { value0: who })),

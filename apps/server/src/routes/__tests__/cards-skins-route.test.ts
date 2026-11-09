@@ -32,6 +32,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { CARD_SKIN_MANIFEST_FILE } from "../../card-skins/package.js";
 import { CardSkinStore } from "../../card-skins/store.js";
 import type { ConfigStore } from "../../config/store.js";
+import { i18n } from "../../i18n/index.js";
 import { createCardsSkinsRoute } from "../cards-skins.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -128,6 +129,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	await rm(dir, { recursive: true, force: true });
 });
 
@@ -142,6 +144,85 @@ async function install(
 	expect(res.status).toBe(201);
 	return ((await res.json()) as any).id as string;
 }
+
+it.each([
+	[
+		"en",
+		{
+			file: "Missing skin package file (multipart field: file).",
+			id: "Skin IDs may contain only lowercase letters, digits and hyphens.",
+			missing: "Card skin not found.",
+			builtin:
+				"The built-in default skin cannot be deleted. Use Duplicate first if you want to modify it.",
+			active: "id must be a skin ID.",
+			used: "This skin is still in use (Global default, Original author overrides it). Select another skin before deleting this one.",
+		},
+	],
+	[
+		"ja",
+		{
+			file: "スキンパッケージのファイルがありません（multipartのfileフィールド）。",
+			id: "スキンIDには小文字の英字、数字、ハイフンのみ使用できます。",
+			missing: "カードスキンが見つかりません。",
+			builtin: "内蔵の既定スキンは削除できません。変更する場合は、先に「複製」を使用してください。",
+			active: "idにはスキンIDを指定してください。",
+			used: "このスキンは使用中です（全体の既定値、Original authorが個別に指定）。別のスキンに変更してから削除してください。",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			file: "缺少卡片外觀套件檔案（multipart 欄位 file）。",
+			id: "卡片外觀 ID 只能包含小寫英文字母、數字及連字號。",
+			missing: "找不到卡片外觀。",
+			builtin: "無法刪除內建預設外觀；若要修改，請先使用「複製一份」。",
+			active: "id 必須是卡片外觀 ID。",
+			used: "這套卡片外觀仍在使用中（全域預設值、Original author 個別指定），請先換用其他外觀再刪除。",
+		},
+	],
+] as const)("%s:导入与删除保护提示本地化,引用人和原皮肤不变", async (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	const id = await install(manifest({ name: "Original skin 原文" }));
+	active = id;
+	subs = [{ uid: "Original author", cardSkin: id }];
+	const original = structuredClone(store.get(id));
+	for (const [request, status, code, message] of [
+		[
+			() => app.request("/import-preview", { method: "POST", body: new FormData() }),
+			400,
+			"invalid",
+			text.file,
+		],
+		[() => app.request("/Bad.Id"), 400, "invalid", text.id],
+		[() => app.request("/missing"), 404, "not_found", text.missing],
+		[
+			() => app.request(`/${DEFAULT_CARD_SKIN_ID}`, { method: "DELETE" }),
+			409,
+			"conflict",
+			text.builtin,
+		],
+		[
+			() =>
+				app.request("/active", {
+					method: "PUT",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ id: null }),
+				}),
+			400,
+			"invalid",
+			text.active,
+		],
+		[() => app.request(`/${id}`, { method: "DELETE" }), 409, "conflict", text.used],
+	] as const) {
+		const response = await request();
+		expect(response.status).toBe(status);
+		expect(await response.json()).toEqual({ code, message });
+	}
+	expect(store.get(id)).toEqual(original);
+	expect(store.has(DEFAULT_CARD_SKIN_ID)).toBe(true);
+	expect(active).toBe(id);
+	expect(patchGlobals).not.toHaveBeenCalled();
+});
 
 describe("GET / —— 皮肤库列表", () => {
 	it("ZIP 预览不写入，使用与安装相同的检查，同名安装仍保留原件", async () => {
