@@ -1,4 +1,10 @@
 {
+	"startup.starting": "BN 正在啟動，請稍候。",
+	"startup.migrating": "BN 正在移轉資料，請稍候。",
+	"startup.migratingStep": "BN 正在移轉資料（{done}/{total}）：{label}",
+	"roast.draftExpired": "編號 {id} 的銳評超過 {hours} 小時未回覆，已作廢。",
+	"service.boot.text.1": "載荷未匯出 startServer / startStandaloneServer：{value0}",
+	"integration.stopReason.shutdown": "BN 正在關閉",
 	"service.config.loader.text.1": "  → 常見原因是 Docker 掛載單一 YAML 檔案時，主機端檔案尚不存在，Docker 便自動建立空目錄。\n",
 	"service.config.loader.text.2": "  → 請在 docker-compose.yaml 移除 bn.config.yaml 的單一檔案掛載，\n",
 	"service.config.loader.text.3": "     改為掛載目錄；或先執行 'rm -rf <主機路徑>'，讓首次啟動自動產生檔案。\n",

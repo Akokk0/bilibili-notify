@@ -8,6 +8,38 @@ afterEach(() => {
 });
 
 describe("服务端字典 store", () => {
+	it.each([
+		{
+			locale: "en" as const,
+			migrating: "BN is migrating data. Please wait.",
+			progress: "BN is migrating data (2/24): 资料 {done}",
+			starting: "BN is starting. Please wait.",
+			expired: "Review a3 expired after 48 hours without a reply.",
+		},
+		{
+			locale: "ja" as const,
+			migrating: "BNはデータを移行中です。しばらくお待ちください。",
+			progress: "BNはデータを移行中です（2/24）：资料 {done}",
+			starting: "BNを起動中です。しばらくお待ちください。",
+			expired: "ID a3 のレビューは48時間返信がなかったため、無効になりました。",
+		},
+		{
+			locale: "zh-TW" as const,
+			migrating: "BN 正在移轉資料，請稍候。",
+			progress: "BN 正在移轉資料（2/24）：资料 {done}",
+			starting: "BN 正在啟動，請稍候。",
+			expired: "編號 a3 的銳評超過 48 小時未回覆，已作廢。",
+		},
+	])("$locale：开机进度和到期句子走真实字典，参数单遍替换", (words) => {
+		i18n.set({ locale: words.locale, voice: "plain" });
+		expect(t("startup.migrating")).toBe(words.migrating);
+		expect(t("startup.migratingStep", { done: 2, total: 24, label: "资料 {done}" })).toBe(
+			words.progress,
+		);
+		expect(t("startup.starting")).toBe(words.starting);
+		expect(t("roast.draftExpired", { id: "a3", hours: 48 })).toBe(words.expired);
+	});
+
 	it("t 对真键出今天写死的那句中文,并填占位符", () => {
 		expect(t("command.framework.crashed")).toBe("出错了，详情在日志里");
 		expect(t("command.framework.failed", { word: "login", message: "没拿到二维码" })).toBe(

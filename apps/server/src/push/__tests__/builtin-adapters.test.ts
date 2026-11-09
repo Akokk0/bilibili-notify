@@ -14,7 +14,7 @@ import {
 	type PlatformAdapter,
 	type PlatformAdapterContext,
 } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
@@ -24,12 +24,15 @@ import {
 	memoryIntegrationStore,
 	memoryStoreHandle,
 } from "../../__tests__/support/memory-key-value-store.js";
+import { i18n } from "../../i18n/index.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { registerBuiltinAdapters } from "../builtin-adapters.js";
 import { createPlatformAdapterRegistry } from "../registry.js";
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function direct(id: string, platform: string): Connection {
 	return {
@@ -134,6 +137,21 @@ async function setup() {
 }
 
 describe("registerBuiltinAdapters", () => {
+	it.each([
+		["en", "BN is shutting down"],
+		["ja", "BNを終了しています"],
+		["zh-TW", "BN 正在關閉"],
+	] as const)("%s：启动后换语，关停原因取新语言且各自只停一次", async (locale, message) => {
+		const { onebot, qq, webhook, builtin, registry } = await setup();
+		i18n.set({ locale, voice: "plain" });
+		await builtin.dispose();
+		for (const adapter of [onebot, qq, webhook]) {
+			expect(adapter.ctx?.signal.reason).toMatchObject({ name: "AbortError", message });
+			expect(adapter.stop).toHaveBeenCalledTimes(1);
+		}
+		expect(registry.list()).toEqual([]);
+	});
+
 	// 验红:`registerBuiltinAdapters` 里按别的键(例如写死 "onebot")向 `settingsOf` 要读法,这条红。
 	it("每个适配器的集成上下文按自己的适配器键要设置的读法", async () => {
 		const { settingsKeys, builtin } = await setup();

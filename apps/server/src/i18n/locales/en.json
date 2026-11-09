@@ -1,4 +1,10 @@
 {
+	"startup.starting": "BN is starting. Please wait.",
+	"startup.migrating": "BN is migrating data. Please wait.",
+	"startup.migratingStep": "BN is migrating data ({done}/{total}): {label}",
+	"roast.draftExpired": "Review {id} expired after {hours} hours without a reply.",
+	"service.boot.text.1": "The payload does not export startServer / startStandaloneServer: {value0}",
+	"integration.stopReason.shutdown": "BN is shutting down",
 	"service.config.loader.text.1": "  → This commonly happens when Docker bind-mounts a single YAML file that does not exist on the host, so Docker creates an empty directory.\n",
 	"service.config.loader.text.2": "  → In docker-compose.yaml, remove the single-file volume mount for bn.config.yaml\n",
 	"service.config.loader.text.3": "     and mount a directory instead; or first run 'rm -rf <host path>' to let the first boot seed the file.\n",

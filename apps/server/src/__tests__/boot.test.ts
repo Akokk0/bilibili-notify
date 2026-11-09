@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { bootSelectedPayload } from "../boot.js";
+import { i18n } from "../i18n/index.js";
 
 /**
  * 进程最早期决定跑哪一份载荷,然后**在同一个进程里**把它加载起来。
@@ -19,6 +20,7 @@ import { bootSelectedPayload } from "../boot.js";
 const created: string[] = [];
 
 afterEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -49,6 +51,18 @@ function deps(over: {
 }
 
 describe("bootSelectedPayload", () => {
+	it.each([
+		["en", "The payload does not export startServer / startStandaloneServer: "],
+		["ja", "ペイロードにstartServer / startStandaloneServerのエクスポートがありません："],
+		["zh-TW", "載荷未匯出 startServer / startStandaloneServer："],
+	] as const)("%s：预装载荷缺入口如实报错，路径与导出名保留", async (locale, prefix) => {
+		const { versionsRoot, preinstalledPath } = scaffold();
+		i18n.set({ locale, voice: "plain" });
+		await expect(
+			bootSelectedPayload(deps({ versionsRoot, preinstalledPath, loadPayload: async () => ({}) })),
+		).rejects.toThrow(`${prefix}${preinstalledPath}`);
+	});
+
 	it("有更新的载荷 → 加载载荷目录里那个 index.mjs,不是镜像那个", async () => {
 		const { versionsRoot, preinstalledPath } = scaffold("0.9.0");
 		const loadPayload = vi.fn(async () => ({ startStandaloneServer: async () => ({}) }));

@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HealthResponse } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../i18n/index.js";
 import { type ServerHandle, startServer } from "../index.js";
 
 const gate = vi.hoisted(() => ({
@@ -114,8 +115,42 @@ describe("开机先 listen 再读数据 e2e", () => {
 
 	afterEach(async () => {
 		await handle?.close("test cleanup").catch(() => {});
+		i18n.set({ locale: "zh-CN", voice: "maid" });
 		handle = undefined;
 		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	it.each([
+		["en", "BN is starting. Please wait."],
+		["ja", "BNを起動中です。しばらくお待ちください。"],
+		["zh-TW", "BN 正在啟動，請稍候。"],
+	] as const)("%s：开机业务503在出字时取语言，健康检查照常", async (locale, message) => {
+		let release!: () => void;
+		gate.hold = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const loading = new Promise<void>((resolve) => {
+			gate.loadStarted = resolve;
+		});
+		const starting = startServer({
+			argv: argv(),
+			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+		});
+		try {
+			await loading;
+			i18n.set({ locale, voice: "plain" });
+			const response = await fetch(url("/api/subscriptions"));
+			expect(response.status).toBe(503);
+			expect(await response.json()).toEqual({ code: "unavailable", message });
+			expect((await fetch(url("/api/health"))).status).toBe(200);
+			expect(await (await fetch(url("/api/health/details"))).json()).toEqual({
+				phase: "starting",
+				progress: null,
+			});
+		} finally {
+			release();
+			handle = await starting;
+		}
 	});
 
 	it("数据还没读完:短版与开机详情已经 200,启动入口还没返回", async () => {

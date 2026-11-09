@@ -1,4 +1,10 @@
 {
+	"startup.starting": "BNを起動中です。しばらくお待ちください。",
+	"startup.migrating": "BNはデータを移行中です。しばらくお待ちください。",
+	"startup.migratingStep": "BNはデータを移行中です（{done}/{total}）：{label}",
+	"roast.draftExpired": "ID {id} のレビューは{hours}時間返信がなかったため、無効になりました。",
+	"service.boot.text.1": "ペイロードにstartServer / startStandaloneServerのエクスポートがありません：{value0}",
+	"integration.stopReason.shutdown": "BNを終了しています",
 	"service.config.loader.text.1": "  → ホスト側に存在しない単一のYAMLファイルをDockerでバインドマウントすると、空のディレクトリが自動作成されることがあります。\n",
 	"service.config.loader.text.2": "  → docker-compose.yamlからbn.config.yamlの単一ファイルのボリュームマウントを削除し、\n",
 	"service.config.loader.text.3": "     ディレクトリをマウントしてください。または先に'rm -rf <ホスト側のパス>'を実行し、初回起動時にファイルを生成させてください。\n",
