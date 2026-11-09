@@ -151,3 +151,39 @@ it("message layout labels translate without changing blocks or the encoded separ
 	expect(next.blocks.slice(0, 4)).toEqual(value.blocks);
 	expect(next.blocks.map((b) => b.type)).toEqual(["text", "card", "split", "link", "split"]);
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、メッセージ区切りで1回の通知を複数に分けられますよ。途中の送信に失敗したら、その送信先への後続メッセージは中止します。",
+		"ご主人様、メッセージ1ではカード画像が先頭にありませんよ。QQはテキストの後に画像を送ると2件に分けるので、1件にまとめるには画像を先頭に置いてくださいね。",
+		"メッセージ区切りを挿入",
+	],
+	[
+		"zh-TW",
+		"主人，分則符會把一次推播分成多則訊息喔；其中一則傳送失敗，就會停止傳送該目標的後續訊息。",
+		"主人，第 1 則訊息的卡片圖片不在最前面喔。QQ 會把先文字、後圖片的內容自動拆成兩則，想合成一則的話，請把卡片圖片放在最前面。",
+		"插入分則符",
+	],
+] as const)("%s 女仆分条说明保留原版式和分隔符，明确插入才改草稿", (locale, hint, warning, add) => {
+	const value = layoutOf(["text", "card", "split", "link"], " | ");
+	const { onChange } = setup(value);
+	const separator = screen.getByRole("textbox") as HTMLInputElement;
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(hint)).toBeTruthy();
+	expect(screen.getByText(warning)).toBeTruthy();
+	expect(separator.value).toBe(" | ");
+	expect(onChange).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: add }));
+	expect(onChange).toHaveBeenCalledTimes(1);
+	const next = onChange.mock.calls[0]?.[0] as MessageKindLayoutFull;
+	expect(next.blocks.slice(0, 4)).toEqual(value.blocks);
+	expect(next.blocks.map((block) => block.type)).toEqual([
+		"text",
+		"card",
+		"split",
+		"link",
+		"split",
+	]);
+	expect(next.separator).toBe(" | ");
+});

@@ -475,3 +475,41 @@ it.each([true, false])(
 		expect(api.post).toHaveBeenCalledWith("/api/stats/roast/run/source%2Fa%20b", {});
 	},
 );
+
+it.each([
+	[
+		"ja",
+		"今すぐレビューを生成し、1件のグループに実際に送信しますよ。これは本当に送信する操作です。先に内容をご覧になりたいときは、上の「送信前に承認する」を有効にしてくださいね。",
+		"実際に送信",
+	],
+	[
+		"zh-TW",
+		"立即產生一份銳評，並實際發送到 1 個群組喔。這是真的傳送；想先看過內容的話，請先開啟上面的「發送前先給我確認」。",
+		"確定送出",
+	],
+] as const)(
+	"%s 女仆即时发送确认保留警示，明确确认才提交原订阅一次",
+	async (locale, message, confirm) => {
+		vi.mocked(api.post).mockResolvedValue({
+			ok: true,
+			outcome: { kind: "pending-approval", draftId: "raw-17" },
+		});
+		withQuery(
+			<RoastRunNowBox
+				approval={false}
+				targetCount={1}
+				dirty={true}
+				targetName={(id) => id}
+				subscriptionId="source/a b"
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "试一次" }));
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByRole("dialog").textContent).toContain(message);
+		expect(api.post).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: confirm }));
+		await waitFor(() =>
+			expect(api.post).toHaveBeenCalledExactlyOnceWith("/api/stats/roast/run/source%2Fa%20b", {}),
+		);
+	},
+);

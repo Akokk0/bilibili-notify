@@ -552,5 +552,11 @@
 	"panelUi.components.onboarding.tour-script.12": "ご主人様、強調表示された「+ 送信先を追加」から、接続と配信先を指定してくださいね。OneBotはグループ番号かQQ番号を入力します。QQ公式ボットは先にQQでボットへメッセージを送り、フォームでその会話を選んでください。保存したら次へ進みますよ。",
 	"panelUi.components.onboarding.tour-script.14": "ご主人様、送信先の「テスト」を選んでくださいね。テストメッセージが届けば、配信経路はつながっていますよ。最後に購読を追加しましょう。",
 	"panelUi.components.onboarding.tour-script.16": "ご主人様、強調表示された「購読を追加」から、名前やIDでクリエイターを探し、結果から購読してくださいね。作成した送信先にもチェックを入れましょう。購読できたら、新しい投稿とライブ開始を自動でお届けしますよ。",
-	"panelUi.components.onboarding.tour-script.17": "ご主人様、ログインできましたよ！"
+	"panelUi.components.onboarding.tour-script.17": "ご主人様、ログインできましたよ！",
+	"panelUi.pages.rules.MessageLayoutEditor.7": "ご主人様、メッセージ区切りで1回の通知を複数に分けられますよ。途中の送信に失敗したら、その送信先への後続メッセージは中止します。",
+	"panelUi.pages.rules.MessageLayoutEditor.13": "ご主人様、メッセージ{messages}ではカード画像が先頭にありませんよ。QQはテキストの後に画像を送ると2件に分けるので、1件にまとめるには画像を先頭に置いてくださいね。",
+	"panelUi.pages.stats.RoastScheduleFields.3": "ご主人様、この送信先は個別チャットではないので、メイドからこっそりお知らせできません。個別チャットの送信先を選んでくださいね。",
+	"panelUi.pages.stats.RoastScheduleFields.12": "ご主人様、複数のグループを選べますよ。1件の送信に失敗しても、ほかのグループへの送信は続けます。選択済みでも無効な送信先には送らず、再び有効にしたら自動で対象に戻ります。",
+	"panelUi.pages.stats.RoastScheduleFields.17": "ご主人様、生成に失敗したとき、送信先が未設定のとき、グループへ送れなかったときは、個別チャットで理由をお伝えしますね。",
+	"panelUi.pages.stats.RoastRunNowBox.11": "しますよ。これは本当に送信する操作です。先に内容をご覧になりたいときは、上の「送信前に承認する」を有効にしてくださいね。"
 }

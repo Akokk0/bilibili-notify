@@ -67,10 +67,12 @@ const VALUE: RoastScheduleValue = {
 	notifyOnError: true,
 };
 
-function renderFields(onChange = vi.fn()) {
+function renderFields(onChange = vi.fn(), masterTargetId?: string) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
 		if (path === "/api/targets") return [target(T_ON, "群 A", true), target(T_OFF, "群 B", false)];
-		if (path === "/api/settings") return { core: { master: {} } };
+		if (path === "/api/settings") return { core: { master: { targetId: masterTargetId } } };
+		if (path === "/api/connections") return connections;
+		if (path === "/api/connections/capabilities") return {};
 		throw new Error(`unexpected GET ${path}`);
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -215,3 +217,41 @@ it("schedule labels change language without resetting an edited cron, custom win
 	expect(api.post).not.toHaveBeenCalled();
 	expect(api.patch).not.toHaveBeenCalled();
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、この送信先は個別チャットではないので、メイドからこっそりお知らせできません。個別チャットの送信先を選んでくださいね。",
+		"ご主人様、複数のグループを選べますよ。1件の送信に失敗しても、ほかのグループへの送信は続けます。選択済みでも無効な送信先には送らず、再び有効にしたら自動で対象に戻ります。",
+		"ご主人様、生成に失敗したとき、送信先が未設定のとき、グループへ送れなかったときは、個別チャットで理由をお伝えしますね。",
+	],
+	[
+		"zh-TW",
+		"這個目標不是私訊，女僕沒辦法悄悄告訴主人喔，請換成私訊目標。",
+		"主人，可以選好幾個群組喔；一個群組傳送失敗，不影響其他群組。已停用的目標就算勾著也不會傳送，重新啟用後會自動生效。",
+		"主人，產生失敗、沒有設定目標，或群組傳送失敗時，都會私訊告訴您原因喔。",
+	],
+] as const)(
+	"%s 女仆排程提示保留原目标和时间，群目标不能开启私聊审批",
+	async (locale, privateHint, targetsHint, errorsHint) => {
+		const onChange = renderFields(vi.fn(), T_ON);
+		await screen.findByText(/不是私聊/);
+		act(() => i18n.set({ locale, voice: "maid" }));
+		for (const hint of [privateHint, targetsHint, errorsHint])
+			expect(screen.getByText(hint)).toBeTruthy();
+		const approval = screen.getByRole("button", {
+			name: locale === "ja" ? "送信前に承認する" : "發送前先給我確認",
+		}) as HTMLButtonElement;
+		expect(approval.disabled).toBe(true);
+		expect(approval.getAttribute("aria-pressed")).toBe("false");
+		fireEvent.click(approval);
+		expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("0 9 * * 1");
+		expect(screen.getByRole("button", { name: /群 A/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /群 B/ })).toBeTruthy();
+		expect(onChange).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: /群 B/ }));
+		expect(onChange).toHaveBeenCalledExactlyOnceWith({ ...VALUE, targets: [T_ON, T_OFF] });
+	},
+);

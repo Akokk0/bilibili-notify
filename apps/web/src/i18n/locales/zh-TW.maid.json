@@ -552,5 +552,11 @@
 	"panelUi.components.onboarding.tour-script.12": "主人，請從反白顯示的「+ 新增推播目標」選取連線，指定訊息要送去哪裡喔。OneBot 可直接填群組號碼或 QQ 號碼；QQ 官方機器人要先在 QQ 傳一則訊息給機器人，再到表單選那個會話。儲存後就會進入下一步。",
 	"panelUi.components.onboarding.tour-script.14": "主人，請在目標上選「測試」喔。收到測試訊息，就代表推播路徑通了。只差最後一步：新增訂閱。",
 	"panelUi.components.onboarding.tour-script.16": "主人，請從反白顯示的「新增訂閱」，用名稱或 ID 搜尋創作者，從結果新增訂閱，再勾選剛建立的推播目標喔。訂閱成功後，新作品和開播通知就會自動送達。",
-	"panelUi.components.onboarding.tour-script.17": "主人，登入完成啦！"
+	"panelUi.components.onboarding.tour-script.17": "主人，登入完成啦！",
+	"panelUi.pages.rules.MessageLayoutEditor.7": "主人，分則符會把一次推播分成多則訊息喔；其中一則傳送失敗，就會停止傳送該目標的後續訊息。",
+	"panelUi.pages.rules.MessageLayoutEditor.13": "主人，第 {messages} 則訊息的卡片圖片不在最前面喔。QQ 會把先文字、後圖片的內容自動拆成兩則，想合成一則的話，請把卡片圖片放在最前面。",
+	"panelUi.pages.stats.RoastScheduleFields.3": "這個目標不是私訊，女僕沒辦法悄悄告訴主人喔，請換成私訊目標。",
+	"panelUi.pages.stats.RoastScheduleFields.12": "主人，可以選好幾個群組喔；一個群組傳送失敗，不影響其他群組。已停用的目標就算勾著也不會傳送，重新啟用後會自動生效。",
+	"panelUi.pages.stats.RoastScheduleFields.17": "主人，產生失敗、沒有設定目標，或群組傳送失敗時，都會私訊告訴您原因喔。",
+	"panelUi.pages.stats.RoastRunNowBox.11": "喔。這是真的傳送；想先看過內容的話，請先開啟上面的「發送前先給我確認」。"
 }
