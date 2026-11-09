@@ -10,9 +10,12 @@
  */
 
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { SkinInspector } from "../SkinInspector";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 afterEach(cleanup);
 
@@ -79,6 +82,101 @@ describe("常用旋钮接在哪一层", () => {
 });
 
 describe("卡片外框 — 出血", () => {
+	it.each([
+		[
+			"en",
+			"Select a block in the canvas or choose Card frame at the bottom. Select the skin name in the header to edit its details.",
+			"This skin does not define this card type.",
+			"This card does not contain this block.",
+		],
+		[
+			"ja",
+			"キャンバスのブロックか、下部の「カードの外枠」を選んでください。スキン自体の情報を編集するには、ヘッダーのスキン名を選びます。",
+			"このスキンにはこの種類のカードがありません。",
+			"このカードにはこのブロックがありません。",
+		],
+		[
+			"zh-TW",
+			"請選取畫布中的區塊，或底部的「卡片外框」；若要編輯外觀資料，請點選頂欄的外觀名稱。",
+			"此外觀未定義此類型的卡片。",
+			"此卡片沒有這個區塊。",
+		],
+	] as const)(
+		"%s empty inspector states explain the selection without issuing edits",
+		(locale, empty, missingCard, missingBlock) => {
+			i18n.set({ locale, voice: "plain" });
+			const none = mount({ selection: null });
+			expect(screen.getByText(empty)).toBeTruthy();
+			expect(none.onFrame).not.toHaveBeenCalled();
+			cleanup();
+			const absent = mount({ manifest: { ...structuredClone(DEFAULT_CARD_SKIN), cards: {} } });
+			expect(screen.getByText(missingCard)).toBeTruthy();
+			expect(absent.onFrame).not.toHaveBeenCalled();
+			cleanup();
+			const block = mount({ selection: { kind: "block", id: "original-missing" } });
+			expect(screen.getByText(missingBlock)).toBeTruthy();
+			expect(block.onFrame).not.toHaveBeenCalled();
+		},
+	);
+	it.each([
+		[
+			"en",
+			"Card width",
+			"Row gap",
+			"Column gap",
+			"Bleed",
+			"Card frame",
+			"Return to default skin",
+			"Return this card type to the built-in default?",
+			"Cancel",
+		],
+		[
+			"ja",
+			"カード幅",
+			"行間",
+			"列間",
+			"塗り足し",
+			"カードの外枠",
+			"既定スキンに戻す",
+			"この種類のカードを内蔵の既定スキンに戻しますか？",
+			"キャンセル",
+		],
+		[
+			"zh-TW",
+			"卡片寬度",
+			"列間距",
+			"欄間距",
+			"出血",
+			"卡片外框",
+			"恢復預設外觀",
+			"將此類型卡片恢復為內建預設外觀？",
+			"取消",
+		],
+	] as const)(
+		"%s frame controls translate and preserve callback meanings and cancelled resets",
+		(locale, width, row, column, bleed, frameLabel, reset, confirm, cancel) => {
+			const onDropCard = vi.fn();
+			const { onFrame } = mount({ onDropCard });
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(frameLabel)).toBeTruthy();
+			expect(onFrame).not.toHaveBeenCalled();
+			for (const [label, value, patch] of [
+				[width, "640", { width: 640 }],
+				[row, "8", { gapRow: 8 }],
+				[column, "12", { gapColumn: 12 }],
+				[bleed, "24", { bleedSize: 24 }],
+			] as const) {
+				fireEvent.change(screen.getByLabelText(`${label}(`, { exact: false }), {
+					target: { value },
+				});
+				expect(onFrame).toHaveBeenLastCalledWith(patch);
+			}
+			fireEvent.click(screen.getByRole("button", { name: reset }));
+			expect(screen.getByText(confirm)).toBeTruthy();
+			fireEvent.click(screen.getByRole("button", { name: cancel }));
+			expect(onDropCard).not.toHaveBeenCalled();
+		},
+	);
 	it("有一个数字控件,改了它把 bleedSize 发出去", () => {
 		const { onFrame } = mount();
 		const input = screen.getByLabelText(/出血/);

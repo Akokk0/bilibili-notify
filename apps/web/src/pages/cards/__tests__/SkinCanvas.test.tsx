@@ -543,6 +543,34 @@ describe("检查器 · 按档换色的说明", () => {
 });
 
 describe("检查器 · 卡片外框", () => {
+	it.each([
+		["en", "Column 1 unit", "Column 1 width", "Column 1", "Fraction"],
+		["ja", "1列目の単位", "1列目の幅", "1列目", "比率"],
+		["zh-TW", "第 1 欄的單位", "第 1 欄的寬度", "第 1 欄", "比例"],
+	] as const)(
+		"%s column controls translate without changing units or untouched columns",
+		(locale, unit, width, caption, fraction) => {
+			const onDraft = vi.fn();
+			render(<Harness onDraft={onDraft} />);
+			fireEvent.click(screen.getByText("卡片外框"));
+			fireEvent.click(screen.getByLabelText("自定义列宽"));
+			expect(onDraft).toHaveBeenCalledTimes(1);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(caption)).toBeTruthy();
+			const field = screen.getByRole("group", { name: unit });
+			expect(within(field).getByRole("button", { name: fraction })).toBeTruthy();
+			expect(onDraft).toHaveBeenCalledTimes(1);
+			fireEvent.click(within(field).getByRole("button", { name: "px" }));
+			expect((screen.getByLabelText(width) as HTMLInputElement).value).toBe("50");
+			fireEvent.change(screen.getByLabelText(width), { target: { value: "24" } });
+			const next = lastDraft(onDraft);
+			expect(cardOf(next, "live")?.columns?.[0]).toEqual({ px: 24 });
+			expect(cardOf(next, "live")?.columns?.slice(1)).toEqual(
+				Array.from({ length: 11 }, () => ({ fr: 1 })),
+			);
+			expect(cardOf(next, "live")?.blocks).toEqual(manifest().cards.live?.blocks);
+		},
+	);
 	/** 最近一次回到调用方的草稿。 */
 	const lastDraft = (spy: ReturnType<typeof vi.fn>) =>
 		spy.mock.calls.at(-1)?.[0] as CardSkinManifest;
