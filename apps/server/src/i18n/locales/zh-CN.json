@@ -827,7 +827,7 @@
 	"service.posts.post-text.text.4": "（转发自 {value0}：{value1}）",
 	"service.push.adapter-context.text.1": "适配器已停下",
 	"service.push.connection-settings.text.1": "设置不合法",
-	"service.push.connection-settings.text.2": "设置不合法：{value0}{value1}",
+	"service.push.connection-settings.text.2": "设置不合法：{reason}",
 	"service.push.dispatch.text.1": "连接{value0}",
 	"service.push.target-dispatcher.text.1": "这种连接没有可列的地址",
 	"service.routes.ai-skills.text.1": "请求体不是一条技能的形状",

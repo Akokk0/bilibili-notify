@@ -34,9 +34,12 @@ import { fakeAdapterContext, registryOf } from "../../__tests__/support/adapter-
 import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import type { ConfigStore } from "../../config/store.js";
+import { i18n } from "../../i18n/index.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../target-dispatcher.js";
 
 const PAYLOAD: NotificationPayload = { kind: "text", text: "hi" };
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 // Test fakes use a deliberately loose `platform` (e.g. "telegram") to exercise
 // the "no platform adapter" branch, so we bypass the strict union via `unknown`.
@@ -432,6 +435,23 @@ describe("createTargetDispatcher — listAddressCandidates(挑地址)", () => {
 			code: "not_configured",
 		});
 		expect(listAddressCandidates).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["en", "This connection does not provide address candidates."],
+		["ja", "この接続では送信先アドレスの候補を取得できません。"],
+		["zh-TW", "此連線不提供目標位址候選項目。"],
+	] as const)("%s:不支持候选地址时明确说明,不触发发送或探测", async (locale, message) => {
+		i18n.set({ locale, voice: "plain" });
+		const adapter = makePlatformAdapter("onebot");
+		const dispatcher = dispatcherOf([makeConnection({ id: "a1", platform: "onebot" })], adapter);
+		expect(await dispatcher.listAddressCandidates("a1", "group", SIGNAL)).toEqual({
+			ok: false,
+			code: "unsupported",
+			message,
+		});
+		expect(adapter.send).not.toHaveBeenCalled();
+		expect(adapter.probe).not.toHaveBeenCalled();
 	});
 
 	it("适配器没有这个成员:unsupported", async () => {

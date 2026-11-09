@@ -1077,7 +1077,7 @@
 	"problem.connection.settingsInvalid": "連線「{name}」：{reason}",
 	"problem.connection.unreachable": "無法連上連線「{name}」：{reason}",
 	"service.push.connection-settings.text.1": "設定無效",
-	"service.push.connection-settings.text.2": "設定無效：{value0}{value1}",
+	"service.push.connection-settings.text.2": "設定無效：{reason}",
 	"problem.relay.reported": "{name} 回報：{message}",
 	"problem.relay.recovered": "{name} 回報：{message}",
 	"problem.relay.recoveredGeneric": "{name} 先前回報的問題已恢復：{message}",
@@ -1489,5 +1489,7 @@
 	"service.live.live-text.text.1": "尚未取得",
 	"service.routes.test-result.text.1": "無法確認送達，對端未提供原因。",
 	"service.routes.test-result.text.2": "此平台不支援連線探測。",
-	"service.routes.test-result.text.3": "連線探測未通過，對端未提供原因。"
+	"service.routes.test-result.text.3": "連線探測未通過，對端未提供原因。",
+	"service.push.dispatch.text.1": "連線{value0}",
+	"service.push.target-dispatcher.text.1": "此連線不提供目標位址候選項目。"
 }

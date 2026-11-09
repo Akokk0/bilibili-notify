@@ -17,13 +17,14 @@ import type {
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import type { ConfigStore } from "../../config/store.js";
+import { i18n } from "../../i18n/index.js";
 import { createOnebotAdapter } from "../../platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../../platforms/qq-official.js";
 import { createWebhookAdapter } from "../../platforms/webhook.js";
@@ -32,6 +33,8 @@ import { createTargetDispatcher } from "../target-dispatcher.js";
 const PAYLOAD: NotificationPayload = { kind: "text", text: "hi" };
 const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TARGET_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 const logger = (): Logger => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 
@@ -111,6 +114,24 @@ describe("被隔离的连接(settings 过不了适配器的规则)", () => {
 		});
 		return { dispatcher, send, probe, isAvailable };
 	}
+
+	it.each([
+		["en", "Connection: Invalid settings: url: Invalid input: expected string, received number"],
+		["ja", "接続の設定が無効です：url：Invalid input: expected string, received number"],
+		["zh-TW", "連線設定無效：url：Invalid input: expected string, received number"],
+	] as const)("%s:隔离原因及路径标点本地化,原始校验原因不翻译且不发送", async (locale, message) => {
+		i18n.set({ locale, voice: "plain" });
+		const { dispatcher, send, probe, isAvailable } = setup();
+		expect(await dispatcher.send(TARGET_ID, PAYLOAD)).toEqual({
+			ok: false,
+			code: "not_configured",
+			message,
+			issues: [{ path: ["url"], message: "Invalid input: expected string, received number" }],
+		});
+		expect(send).not.toHaveBeenCalled();
+		expect(probe).not.toHaveBeenCalled();
+		expect(isAvailable).not.toHaveBeenCalled();
+	});
 
 	it("经目标发送:回 not_configured、话里带原因,适配器没被调到", async () => {
 		const { dispatcher, send, isAvailable } = setup();

@@ -1086,7 +1086,7 @@
 	"problem.connection.settingsInvalid": "Connection \"{name}\": {reason}",
 	"problem.connection.unreachable": "Connection \"{name}\" is unreachable: {reason}",
 	"service.push.connection-settings.text.1": "Invalid settings",
-	"service.push.connection-settings.text.2": "Invalid settings: {value0}{value1}",
+	"service.push.connection-settings.text.2": "Invalid settings: {reason}",
 	"problem.relay.reported": "{name} reports: {message}",
 	"problem.relay.recovered": "{name} reports: {message}",
 	"problem.relay.recoveredGeneric": "The issue previously reported by {name} has been resolved: {message}",
@@ -1500,5 +1500,7 @@
 	"service.live.live-text.text.1": "Not available yet",
 	"service.routes.test-result.text.1": "Delivery could not be confirmed; the other end gave no reason.",
 	"service.routes.test-result.text.2": "This platform does not support connection probing.",
-	"service.routes.test-result.text.3": "The connection probe did not succeed; the other end gave no reason."
+	"service.routes.test-result.text.3": "The connection probe did not succeed; the other end gave no reason.",
+	"service.push.dispatch.text.1": "Connection: {value0}",
+	"service.push.target-dispatcher.text.1": "This connection does not provide address candidates."
 }

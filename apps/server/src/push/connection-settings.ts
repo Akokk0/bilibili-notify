@@ -25,10 +25,15 @@ export function resolveSettings(schema: ZodType, settings: unknown): Result<{ se
 export function settingsIssueMessage(issues: readonly Issue[]): string {
 	const first = issues[0];
 	if (!first) return serverText("service.push.connection-settings.text.1");
-	const where = first.path && first.path.length > 0 ? `${first.path.join(".")}：` : "";
+	const reason =
+		first.path && first.path.length > 0
+			? serverText("settings.problem.reason", {
+					field: first.path.join("."),
+					message: first.message,
+				})
+			: first.message;
 	return serverText("service.push.connection-settings.text.2", {
-		value0: where,
-		value1: first.message,
+		reason,
 	});
 }
 

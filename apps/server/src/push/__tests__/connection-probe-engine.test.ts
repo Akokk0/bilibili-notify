@@ -557,7 +557,7 @@ describe("ConnectionProbeEngine", () => {
 			[
 				"en",
 				'Connection "bot" is unreachable: 拒绝连接',
-				'Connection "bot": Invalid settings: token：Original validation 原文',
+				'Connection "bot": Invalid settings: token: Original validation 原文',
 				'Connection "bot" has been restored.',
 			],
 			[
