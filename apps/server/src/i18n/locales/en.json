@@ -1157,5 +1157,20 @@
 	"service.routes.targets.text.6": "The push target ID must be a UUID.",
 	"service.routes.targets.text.7": "Test push kind must be one of {value0}.",
 	"service.routes.targets.text.8": "This push target was not found.",
-	"service.routes.targets.text.9": "This push target was not found."
+	"service.routes.targets.text.9": "This push target was not found.",
+	"service.routes.system.text.1": "This generation is currently in use and cannot be deleted.",
+	"service.routes.system.text.2": "This generation is incomplete or was interrupted while being written. It cannot be deleted.",
+	"service.routes.system.text.3": "This generation’s generation.json cannot be read. It may have been written by a newer version. Deletion is blocked to protect the data.",
+	"service.routes.system.text.4": "This generation uses a newer data format than this version supports. It cannot be deleted.",
+	"service.routes.system.text.5": "This is the source of the current generation. It cannot be deleted until the current generation is 30 days old.",
+	"service.routes.system.text.6": "This is the previous generation. It cannot be deleted until the current generation is 30 days old.",
+	"service.routes.system.text.7": "The current generation’s creation time could not be read, so its age cannot be checked. Deletion is blocked for now.",
+	"service.routes.system.text.8": "Old-version data cannot be cleared as a category. Delete generations individually via /api/system/generations.",
+	"service.routes.system.text.9": "This category is read-only. Logs rotate by age; other images are collected when their references are removed.",
+	"service.routes.system.text.10": "Unknown category. Only stats / historyText / historyImages / ai can be cleared.",
+	"service.routes.system.text.11": "This notice was not found.",
+	"service.routes.system.text.12": "Invalid request body: {value0}",
+	"service.routes.system.text.13": "Generation 0 (0.x data) is no longer available for migration.",
+	"service.routes.system.text.14": "The sequence must contain digits only (use 0 for generation 0).",
+	"service.routes.system.text.15": "This generation was not found."
 }

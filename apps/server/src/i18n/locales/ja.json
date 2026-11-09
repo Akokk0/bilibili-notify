@@ -1147,5 +1147,20 @@
 	"service.routes.targets.text.6": "プッシュ送信先IDはUUIDで指定してください。",
 	"service.routes.targets.text.7": "テストプッシュのkindは{value0}のいずれかで指定してください。",
 	"service.routes.targets.text.8": "このプッシュ送信先が見つかりません。",
-	"service.routes.targets.text.9": "このプッシュ送信先が見つかりません。"
+	"service.routes.targets.text.9": "このプッシュ送信先が見つかりません。",
+	"service.routes.system.text.1": "この世代は使用中のため削除できません。",
+	"service.routes.system.text.2": "この世代は書き込みが未完了か、途中で中断されています。削除できません。",
+	"service.routes.system.text.3": "この世代のgeneration.jsonを読み取れません。新しいバージョンで作成された可能性があります。誤削除を防ぐため削除できません。",
+	"service.routes.system.text.4": "この世代のデータ形式は、このバージョンが対応する形式より新しいため削除できません。",
+	"service.routes.system.text.5": "これは現在の世代の移行元です。現在の世代の作成から30日が経過するまで削除できません。",
+	"service.routes.system.text.6": "これは直前の世代です。現在の世代の作成から30日が経過するまで削除できません。",
+	"service.routes.system.text.7": "現在の世代の作成日時を読み取れないため、30日が経過したか確認できません。現時点では削除できません。",
+	"service.routes.system.text.8": "旧バージョンのデータはカテゴリ単位で消去できません。/api/system/generationsから世代ごとに削除してください。",
+	"service.routes.system.text.9": "このカテゴリは読み取り専用です。ログは日数でローテーションされ、その他の画像は参照元がなくなると回収されます。",
+	"service.routes.system.text.10": "不明なカテゴリです。消去できるのはstats / historyText / historyImages / aiのみです。",
+	"service.routes.system.text.11": "このお知らせが見つかりません。",
+	"service.routes.system.text.12": "リクエスト本文が無効です：{value0}",
+	"service.routes.system.text.13": "第0世代（0.xのデータ）がすでにないため、再移行できません。",
+	"service.routes.system.text.14": "連番は数字のみで指定してください（第0世代は0）。",
+	"service.routes.system.text.15": "この世代が見つかりません。"
 }

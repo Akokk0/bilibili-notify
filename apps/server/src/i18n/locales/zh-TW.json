@@ -1147,5 +1147,20 @@
 	"service.routes.targets.text.6": "推送目標 ID 必須是 UUID。",
 	"service.routes.targets.text.7": "測試推送的 kind 只能是 {value0}。",
 	"service.routes.targets.text.8": "找不到此推送目標。",
-	"service.routes.targets.text.9": "找不到此推送目標。"
+	"service.routes.targets.text.9": "找不到此推送目標。",
+	"service.routes.system.text.1": "此資料代正在使用，無法刪除。",
+	"service.routes.system.text.2": "此資料代尚未寫入完成，或寫入途中曾中斷，無法刪除。",
+	"service.routes.system.text.3": "無法讀取此資料代的 generation.json，可能由較新版本建立。為避免誤刪，無法在此刪除。",
+	"service.routes.system.text.4": "此資料代的資料格式比目前版本新，無法刪除。",
+	"service.routes.system.text.5": "這是目前資料代的來源，必須等目前資料代建立滿 30 天後才能刪除。",
+	"service.routes.system.text.6": "這是目前資料代的上一代，必須等目前資料代建立滿 30 天後才能刪除。",
+	"service.routes.system.text.7": "無法讀取目前資料代的建立時間，因此無法判斷是否已滿 30 天，暫時無法刪除。",
+	"service.routes.system.text.8": "舊版本資料不能整類清空，請透過 /api/system/generations 逐代刪除。",
+	"service.routes.system.text.9": "此類別為唯讀，無法清理。日誌會依天數輪替；其他圖片會在引用它們的項目移除後一併回收。",
+	"service.routes.system.text.10": "沒有此類別，只有 stats / historyText / historyImages / ai 可以清理。",
+	"service.routes.system.text.11": "找不到此提示。",
+	"service.routes.system.text.12": "請求本文無效：{value0}",
+	"service.routes.system.text.13": "第 0 代（0.x 資料）已不存在，無法重新遷移。",
+	"service.routes.system.text.14": "序號只能包含數字（第 0 代請用 0）。",
+	"service.routes.system.text.15": "找不到此資料代。"
 }

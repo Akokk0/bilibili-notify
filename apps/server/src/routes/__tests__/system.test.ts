@@ -25,11 +25,13 @@ import type {
 	SystemNotice,
 	SystemNoticesResponse,
 } from "@bilibili-notify/contract";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import type { GenerationRemoval } from "../../runtime/generation-usage.js";
 import { type CreateSystemRouteOptions, createSystemRoute } from "../system.js";
 
 const STARTED = "2026-09-10T00:00:00.000Z";
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function boot(
 	ability: RestartAbility,
@@ -63,6 +65,144 @@ const json = (body: unknown): RequestInit => ({
 });
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
+
+describe("localized storage protection", () => {
+	it.each([
+		[
+			"en",
+			[
+				"This generation is currently in use and cannot be deleted.",
+				"This generation is incomplete or was interrupted while being written. It cannot be deleted.",
+				"This generation’s generation.json cannot be read. It may have been written by a newer version. Deletion is blocked to protect the data.",
+				"This generation uses a newer data format than this version supports. It cannot be deleted.",
+				"This is the source of the current generation. It cannot be deleted until the current generation is 30 days old.",
+				"This is the previous generation. It cannot be deleted until the current generation is 30 days old.",
+				"The current generation’s creation time could not be read, so its age cannot be checked. Deletion is blocked for now.",
+				"Old-version data cannot be cleared as a category. Delete generations individually via /api/system/generations.",
+				"This category is read-only. Logs rotate by age; other images are collected when their references are removed.",
+				"Unknown category. Only stats / historyText / historyImages / ai can be cleared.",
+				"This notice was not found.",
+				"Invalid request body: ",
+				"Generation 0 (0.x data) is no longer available for migration.",
+				"The sequence must contain digits only (use 0 for generation 0).",
+				"This generation was not found.",
+			],
+		],
+		[
+			"ja",
+			[
+				"この世代は使用中のため削除できません。",
+				"この世代は書き込みが未完了か、途中で中断されています。削除できません。",
+				"この世代のgeneration.jsonを読み取れません。新しいバージョンで作成された可能性があります。誤削除を防ぐため削除できません。",
+				"この世代のデータ形式は、このバージョンが対応する形式より新しいため削除できません。",
+				"これは現在の世代の移行元です。現在の世代の作成から30日が経過するまで削除できません。",
+				"これは直前の世代です。現在の世代の作成から30日が経過するまで削除できません。",
+				"現在の世代の作成日時を読み取れないため、30日が経過したか確認できません。現時点では削除できません。",
+				"旧バージョンのデータはカテゴリ単位で消去できません。/api/system/generationsから世代ごとに削除してください。",
+				"このカテゴリは読み取り専用です。ログは日数でローテーションされ、その他の画像は参照元がなくなると回収されます。",
+				"不明なカテゴリです。消去できるのはstats / historyText / historyImages / aiのみです。",
+				"このお知らせが見つかりません。",
+				"リクエスト本文が無効です：",
+				"第0世代（0.xのデータ）がすでにないため、再移行できません。",
+				"連番は数字のみで指定してください（第0世代は0）。",
+				"この世代が見つかりません。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"此資料代正在使用，無法刪除。",
+				"此資料代尚未寫入完成，或寫入途中曾中斷，無法刪除。",
+				"無法讀取此資料代的 generation.json，可能由較新版本建立。為避免誤刪，無法在此刪除。",
+				"此資料代的資料格式比目前版本新，無法刪除。",
+				"這是目前資料代的來源，必須等目前資料代建立滿 30 天後才能刪除。",
+				"這是目前資料代的上一代，必須等目前資料代建立滿 30 天後才能刪除。",
+				"無法讀取目前資料代的建立時間，因此無法判斷是否已滿 30 天，暫時無法刪除。",
+				"舊版本資料不能整類清空，請透過 /api/system/generations 逐代刪除。",
+				"此類別為唯讀，無法清理。日誌會依天數輪替；其他圖片會在引用它們的項目移除後一併回收。",
+				"沒有此類別，只有 stats / historyText / historyImages / ai 可以清理。",
+				"找不到此提示。",
+				"請求本文無效：",
+				"第 0 代（0.x 資料）已不存在，無法重新遷移。",
+				"序號只能包含數字（第 0 代請用 0）。",
+				"找不到此資料代。",
+			],
+		],
+	] as const)(
+		"%s explains every protection without clearing storage, writing migration intent or restarting",
+		async (locale, text) => {
+			let removal: GenerationRemoval = { kind: "not_found" };
+			const remove = vi.fn(async () => removal);
+			const clear = vi.fn(async () => ({ freedBytes: 0 }));
+			const { app, restart, requestGeneration } = boot({ can: true, how: "desktop" }, undefined, {
+				generations: { list: async () => [], remove },
+				zeroGenerationExists: async () => false,
+				storage: {
+					list: async () => ({ rows: [] }),
+					clear,
+					sweepImages: async () => ({
+						removedCount: 0,
+						removedBytes: 0,
+						referenced: 0,
+						inGrace: 0,
+					}),
+				},
+			});
+			i18n.set({ locale, voice: "plain" });
+			for (const [i, reason] of [
+				"current",
+				"partial",
+				"unreadable",
+				"newer-format",
+				"protected-source",
+				"protected-previous",
+				"current-age-unknown",
+			].entries()) {
+				removal = {
+					kind: "locked",
+					reason: reason as Extract<GenerationRemoval, { kind: "locked" }>["reason"],
+				};
+				const res = await app.request("/generations/1", { method: "DELETE" });
+				expect(res.status).toBe(409);
+				expect(await res.json()).toEqual({ code: "conflict", message: text[i] });
+			}
+			for (const [category, message] of [
+				["generations", text[7]],
+				["logs", text[8]],
+				["otherImages", text[8]],
+				["unknown", text[9]],
+			] as const) {
+				const res = await app.request(`/storage/${category}`, { method: "DELETE" });
+				expect(res.status).toBe(400);
+				expect(await res.json()).toEqual({ code: "invalid", message });
+			}
+			const notice = await app.request("/notices/absent/acknowledge", { method: "POST" });
+			expect(notice.status).toBe(404);
+			expect(await notice.json()).toEqual({ code: "not_found", message: text[10] });
+			const invalid = await app.request("/generations", json({ source: "raw" }));
+			expect(invalid.status).toBe(400);
+			const body = (await invalid.json()) as { code: string; message: string };
+			expect(body.code).toBe("invalid");
+			expect(body.message.startsWith(text[11])).toBe(true);
+			expect(body.message).toContain("source");
+			const zero = await app.request("/generations", json({ source: "zero" }));
+			expect(zero.status).toBe(404);
+			expect(await zero.json()).toEqual({ code: "not_found", message: text[12] });
+			const seq = await app.request("/generations/01", { method: "DELETE" });
+			expect(seq.status).toBe(400);
+			expect(await seq.json()).toEqual({ code: "invalid", message: text[13] });
+			expect(remove).toHaveBeenCalledTimes(7);
+			removal = { kind: "not_found" };
+			const missing = await app.request("/generations/99", { method: "DELETE" });
+			expect(missing.status).toBe(404);
+			expect(await missing.json()).toEqual({ code: "not_found", message: text[14] });
+			expect(clear).not.toHaveBeenCalled();
+			expect(requestGeneration).not.toHaveBeenCalled();
+			await settle();
+			expect(restart).not.toHaveBeenCalled();
+		},
+	);
+});
 
 describe("POST /api/system/restart", () => {
 	it("先回话,再关自己", async () => {
