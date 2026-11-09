@@ -3,14 +3,95 @@
  * 形状再怪,也只交回一份干净副本或一句点名哪一格的原因,不抛。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { parseProblemReport, parseProblemResolve, problemCodePreview } from "../problem-report.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /** 失败那一句原因;成功就返回 undefined(成功那一支才带得动 `message`)。 */
 const issueOf = (parsed: { ok: true } | { ok: false; message: string }) =>
 	parsed.ok ? undefined : parsed.message;
 
 describe("parseProblemReport", () => {
+	it.each([
+		[
+			"en",
+			{
+				record: "Report must be an object.",
+				type: '"message" must be a string.',
+				code: '"code" must use snake_case.',
+				boolean: '"notify" must be a boolean.',
+				empty: '"externalId" must not be an empty string.',
+				blank: '"message" must not be blank.',
+			},
+		],
+		[
+			"ja",
+			{
+				record: "報告はオブジェクトで指定してください。",
+				type: "「message」は文字列で指定してください。",
+				code: "「code」はsnake_case形式で指定してください。",
+				boolean: "「notify」は真偽値で指定してください。",
+				empty: "「externalId」は空文字列にできません。",
+				blank: "「message」は空白のみにできません。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				record: "上報內容必須是物件。",
+				type: "「message」必須是字串。",
+				code: "「code」必須使用 snake_case 格式。",
+				boolean: "「notify」必須是布林值。",
+				empty: "「externalId」不可為空字串。",
+				blank: "「message」不可只有空白。",
+			},
+		],
+	] as const)(
+		"%s localizes report validation and preserves original accepted fields and whitespace",
+		(locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			for (const [input, message] of [
+				[null, text.record],
+				[{ code: "x_down", message: 3 }, text.type],
+				[{ code: "Bad-Code", message: "raw" }, text.code],
+				[{ code: "x_down", message: "raw", notify: "false" }, text.boolean],
+				[{ code: "x_down", message: "raw", externalId: "" }, text.empty],
+				[{ code: "x_down", message: " \t " }, text.blank],
+			] as const) {
+				expect(parseProblemReport(input)).toEqual({ ok: false, code: "invalid", message });
+			}
+			for (const [input, message] of [
+				[null, text.record],
+				[{ code: "Bad-Code" }, text.code],
+				[{ code: "x_down", notify: "false" }, text.boolean],
+				[{ code: "x_down", externalId: "" }, text.empty],
+			] as const) {
+				expect(parseProblemResolve(input)).toEqual({ ok: false, code: "invalid", message });
+			}
+			const original = {
+				code: "x_down",
+				externalId: "Original ID 原文",
+				connectionId: "Original connection",
+				message: " Original message 原文 ",
+				recoveryMessage: " Original recovery 原文 ",
+				notify: false,
+			};
+			expect(parseProblemReport({ ...original, writtenBy: "untrusted" })).toEqual({
+				ok: true,
+				...original,
+			});
+			expect(parseProblemResolve({ ...original, message: 3 })).toEqual({
+				ok: true,
+				code: "x_down",
+				externalId: "Original ID 原文",
+				connectionId: "Original connection",
+				notify: false,
+			});
+		},
+	);
+
 	it("形状都对:交回只含已知格的干净副本", () => {
 		expect(
 			parseProblemReport({

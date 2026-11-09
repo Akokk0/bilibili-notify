@@ -1069,5 +1069,14 @@
 	"commands.mute.details": "Only subscription pushes are paused. Scheduled reports, commentary, and error notifications are still sent.",
 	"commands.mute.resumed": "Subscription pushes have resumed.",
 	"commands.mute.confirmed": "Subscription pushes are paused until {until}; error notifications will still be sent.",
-	"service.runtime.mute-command.text.1": "Duration"
+	"service.runtime.mute-command.text.1": "Duration",
+	"problem.report.issue.notRecord": "Report must be an object.",
+	"problem.report.issue.notString": "\"{cell}\" must be a string.",
+	"problem.report.issue.codePattern": "\"{cell}\" must use snake_case.",
+	"problem.report.issue.notBoolean": "\"{cell}\" must be a boolean.",
+	"problem.report.issue.empty": "\"{cell}\" must not be an empty string.",
+	"problem.report.issue.blank": "\"{cell}\" must not be blank.",
+	"extension.report.problemRejected": "Problem \"{code}\" rejected: {reason}",
+	"extension.report.problemRejectedStopped": "Problem \"{code}\" reported after shutdown.",
+	"problem.report.connectionNotOwned": "Connection {connectionId} does not belong to adapter {adapterKey}."
 }

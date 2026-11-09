@@ -1060,5 +1060,14 @@
 	"commands.mute.details": "停止するのは購読のプッシュ通知のみです。定期レポート、コメント生成、エラー通知は引き続き送信されます。",
 	"commands.mute.resumed": "購読のプッシュ通知を再開しました。",
 	"commands.mute.confirmed": "{until}まで購読のプッシュ通知を停止します。エラー通知は引き続き送信されます。",
-	"service.runtime.mute-command.text.1": "時間"
+	"service.runtime.mute-command.text.1": "時間",
+	"problem.report.issue.notRecord": "報告はオブジェクトで指定してください。",
+	"problem.report.issue.notString": "「{cell}」は文字列で指定してください。",
+	"problem.report.issue.codePattern": "「{cell}」はsnake_case形式で指定してください。",
+	"problem.report.issue.notBoolean": "「{cell}」は真偽値で指定してください。",
+	"problem.report.issue.empty": "「{cell}」は空文字列にできません。",
+	"problem.report.issue.blank": "「{cell}」は空白のみにできません。",
+	"extension.report.problemRejected": "問題「{code}」を拒否しました：{reason}",
+	"extension.report.problemRejectedStopped": "停止後に問題「{code}」が報告されました。",
+	"problem.report.connectionNotOwned": "接続{connectionId}はアダプター{adapterKey}に属していません。"
 }

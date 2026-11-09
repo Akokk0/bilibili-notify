@@ -1060,5 +1060,14 @@
 	"commands.mute.details": "只暫停訂閱推播。定時週報、評論與錯誤通知仍會傳送。",
 	"commands.mute.resumed": "已恢復訂閱推播。",
 	"commands.mute.confirmed": "{until} 前暫停訂閱推播，錯誤通知仍會傳送。",
-	"service.runtime.mute-command.text.1": "時間長度"
+	"service.runtime.mute-command.text.1": "時間長度",
+	"problem.report.issue.notRecord": "上報內容必須是物件。",
+	"problem.report.issue.notString": "「{cell}」必須是字串。",
+	"problem.report.issue.codePattern": "「{cell}」必須使用 snake_case 格式。",
+	"problem.report.issue.notBoolean": "「{cell}」必須是布林值。",
+	"problem.report.issue.empty": "「{cell}」不可為空字串。",
+	"problem.report.issue.blank": "「{cell}」不可只有空白。",
+	"extension.report.problemRejected": "已拒絕問題「{code}」：{reason}",
+	"extension.report.problemRejectedStopped": "停止後仍收到問題「{code}」的上報。",
+	"problem.report.connectionNotOwned": "連線 {connectionId} 不屬於適配器 {adapterKey}。"
 }

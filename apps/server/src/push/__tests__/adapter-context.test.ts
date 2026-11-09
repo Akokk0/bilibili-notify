@@ -14,17 +14,20 @@ import type {
 	InboundMeta,
 	InboundPrivateMessage,
 } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { inertSettings } from "../../__tests__/support/inert-settings.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
+import { i18n } from "../../i18n/index.js";
 import { createIntegrationContext } from "../../integrations/context.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { createPlatformAdapterContext } from "../adapter-context.js";
 
 const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function connectionOf(
 	id: string,
@@ -256,6 +259,63 @@ describe("createPlatformAdapterContext — settings 先按适配器的规则解"
  * 不带就是适配器自己的问题(同集成层)。
  */
 describe("createPlatformAdapterContext · reportProblem / resolveProblem", () => {
+	it.each([
+		[
+			"en",
+			{
+				invalid: 'Problem "x_down" rejected: "message" must be a string.',
+				foreign: 'Problem "x_down" rejected: Connection qq1 does not belong to adapter onebot.',
+				stopped: 'Problem "x_down" reported after shutdown.',
+			},
+		],
+		[
+			"ja",
+			{
+				invalid: "問題「x_down」を拒否しました：「message」は文字列で指定してください。",
+				foreign: "問題「x_down」を拒否しました：接続qq1はアダプターonebotに属していません。",
+				stopped: "停止後に問題「x_down」が報告されました。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				invalid: "已拒絕問題「x_down」：「message」必須是字串。",
+				foreign: "已拒絕問題「x_down」：連線 qq1 不屬於適配器 onebot。",
+				stopped: "停止後仍收到問題「x_down」的上報。",
+			},
+		],
+	] as const)(
+		"%s returns localized rejection reasons without accepting invalid, foreign or stopped reports",
+		async (locale, text) => {
+			const rejections: Array<{ externalId?: string; reason: string }> = [];
+			const { ctx, handle, problems } = build(
+				"onebot",
+				() => mine,
+				undefined,
+				z.unknown(),
+				{ ...silentLogger, error: vi.fn() },
+				{
+					onRejectedProblem: (rejection) => rejections.push(rejection),
+				},
+			);
+			i18n.set({ locale, voice: "plain" });
+			ctx.reportProblem({ connectionId: "ob1", code: "x_down" } as never);
+			ctx.reportProblem({ connectionId: "qq1", code: "x_down", message: "Original 原文" });
+			expect(rejections).toEqual([{ reason: text.invalid }, { reason: text.foreign }]);
+			expect(problems.list()).toEqual([]);
+			ctx.reportProblem({ connectionId: "ob1", code: "x_down", message: "Original 原文" });
+			expect(problems.list()).toHaveLength(1);
+			expect(problems.list()[0]?.message).toBe("Original 原文");
+			await handle.dispose();
+			ctx.reportProblem({ connectionId: "ob1", code: "x_down", message: "Original 原文" });
+			expect(rejections).toEqual([
+				{ reason: text.invalid },
+				{ reason: text.foreign },
+				{ reason: text.stopped },
+			]);
+			expect(problems.list()).toEqual([]);
+		},
+	);
 	const mine = [direct("ob1", "onebot"), direct("qq1", "qq-official")];
 
 	it("带自己的 connectionId:进表、about 是那条连接,报的人是适配器键", () => {
