@@ -137,3 +137,37 @@ it("about navigation follows locale while historical release notes keep their or
 		expect(screen.getAllByText("apps/CHANGELOG.md").length).toBeGreaterThan(0);
 	}
 });
+
+it.each([
+	[
+		"ja",
+		"/about",
+		"ご主人様、Bilibili NotifyはMITライセンスのオープンソースで、これからも無料です。サーバーやテスト機器、開発を続けるためには費用がかかります。お役に立てたら、Afdianでメイドにミルクティーをごちそうしていただけるとうれしいです。いただいたお気持ちは、新機能の開発や不具合の修正につなげますね。",
+		"afdian",
+	],
+	[
+		"zh-TW",
+		"/about",
+		"主人，Bilibili Notify 是採用 MIT 授權、永久免費的開源專案。伺服器、測試設備和持續開發都需要成本，如果有幫上您的忙，歡迎到愛發電請女僕喝杯奶茶喔。每一份心意，都會化為新功能和更少的 bug。",
+		"afdian",
+	],
+	[
+		"ja",
+		"/about/about",
+		"ご主人様、Bilibili Notifyはさまざまなソースの投稿や配信を見守り、画像カードにして送信先へお届けします。Webダッシュボードを備え、Dockerイメージでもデスクトップアプリでも導入できますよ。MITライセンスのオープンソースです。",
+		"github.com/Akokk0/bilibili-notify",
+	],
+	[
+		"zh-TW",
+		"/about/about",
+		"主人，Bilibili Notify 會留意不同來源的作品與直播，繪製成卡片圖片並推播到目標喔。內建 Web 控制台，支援 Docker 映像檔和桌面應用程式部署，採用 MIT 開源授權。",
+		"github.com/Akokk0/bilibili-notify",
+	],
+] as const)("%s %s 女仆说明不改项目与支持链接", (locale, path, description, destination) => {
+	renderAbout(path);
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(description)).toBeTruthy();
+	expect(
+		screen.getAllByRole("link").some((link) => link.getAttribute("href")?.includes(destination)),
+	).toBe(true);
+});

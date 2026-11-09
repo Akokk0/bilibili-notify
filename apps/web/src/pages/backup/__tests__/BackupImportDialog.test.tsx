@@ -180,3 +180,26 @@ it.each([
 		}
 	},
 );
+
+it.each([
+	[
+		"ja",
+		"ご主人様、バックアップファイル（.bnbackup / .json）を選んでくださいね。",
+		"インポート",
+		"キャンセル",
+	],
+	["zh-TW", "主人，請選擇備份檔案（.bnbackup／.json）喔。", "匯入", "取消"],
+] as const)("%s 女仆文件指引不提前导入", (locale, hint, importLabel, cancelLabel) => {
+	const onImport = vi.fn();
+	const onCancel = vi.fn();
+	render(<BackupImportDialog onCancel={onCancel} onImport={onImport} />);
+	act(() => i18n.set({ locale, voice: "maid" }));
+	const picker = screen.getByLabelText(hint) as HTMLInputElement;
+	expect(picker.accept).toBe(".json,.bnbackup,application/json");
+	expect((screen.getByRole("button", { name: importLabel }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
+	fireEvent.click(screen.getByRole("button", { name: cancelLabel }));
+	expect(onCancel).toHaveBeenCalledTimes(1);
+	expect(onImport).not.toHaveBeenCalled();
+});

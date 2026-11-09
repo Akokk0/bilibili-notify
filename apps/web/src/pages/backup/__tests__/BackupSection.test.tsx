@@ -314,3 +314,35 @@ it.each(["cancel", "confirm"] as const)(
 		}
 	},
 );
+
+it.each([
+	[
+		"ja",
+		"ご主人様、完全バックアップをダウンロードしました。アカウントとパスワードが入っているので、大切に保管し、ほかの方には渡さないでくださいね。",
+	],
+	["zh-TW", "主人，完整備份已下載，裡面有您的帳號和密碼，請妥善保管、不要外傳喔。"],
+] as const)("%s 女仆下载提醒随语言重画，不再次导出", async (locale, notice) => {
+	post.mockResolvedValue({
+		format: BACKUP_FORMAT,
+		kind: "full",
+		createdAt: "2026-07-10T09:00:00.000Z",
+	});
+	renderSection();
+	fireEvent.click(screen.getByText("导出备份"));
+	fireEvent.change(screen.getByPlaceholderText(/设置 6 位/), { target: { value: "123456" } });
+	await waitFor(() =>
+		expect((screen.getByRole("button", { name: "导出" }) as HTMLButtonElement).disabled).toBe(
+			false,
+		),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "导出" }));
+	await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(notice)).toBeTruthy();
+	expect(post).toHaveBeenCalledTimes(1);
+	expect(download).toHaveBeenCalledTimes(1);
+	expect(download).toHaveBeenCalledWith(
+		"bilibili-notify-full-2026-07-10.bnbackup",
+		expect.objectContaining({ kind: "full" }),
+	);
+});

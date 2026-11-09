@@ -11,7 +11,7 @@
  * (`services/skin.ts` 的 `skinKillSwitchActive`),不是某个碰巧没挂的元素。
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
 import { LoginDialog } from "../LoginDialog";
@@ -21,9 +21,10 @@ beforeEach(() => {
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 });
 
-vi.mock("../../services/session", () => ({ submitLogin: vi.fn() }));
-
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	vi.unstubAllGlobals();
+});
 
 describe("登录卡的挂点", () => {
 	for (const variant of ["cold", "overlay"] as const) {
@@ -44,5 +45,43 @@ describe("登录卡的挂点", () => {
 		expect(hooked.length).toBe(2);
 		expect(screen.getByPlaceholderText("用户名")).toBeTruthy();
 		expect(screen.getByPlaceholderText("密码")).toBeTruthy();
+	});
+});
+
+describe("登录限流提示随语言切换", () => {
+	it.each([
+		["ja", "ご主人様、ログインを試す回数が多すぎます。42秒待ってから、もう一度お試しくださいね。"],
+		["zh-TW", "主人，登入嘗試次數太多了，請等 42 秒後再試喔。"],
+	] as const)("%s 重画倒计时，不丢输入、不重发登录", async (locale, message) => {
+		const fetchMock = vi.fn(
+			async (_input: RequestInfo | URL, _init?: RequestInit) =>
+				new Response(JSON.stringify({ code: "rate_limited", message: "raw diagnostic" }), {
+					status: 429,
+					headers: { "content-type": "application/json", "Retry-After": "42" },
+				}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+		const { container } = render(<LoginDialog variant="cold" />);
+		fireEvent.change(screen.getByPlaceholderText("用户名"), {
+			target: { value: "original-owner" },
+		});
+		fireEvent.change(screen.getByPlaceholderText("密码"), { target: { value: "local-password" } });
+		await act(async () => {
+			fireEvent.submit(container.querySelector("form") as HTMLFormElement);
+		});
+		expect(screen.getByText("登录尝试过多,请 42 秒后再试")).toBeTruthy();
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(message)).toBeTruthy();
+		expect(screen.getByDisplayValue("original-owner")).toBeTruthy();
+		expect(screen.getByDisplayValue("local-password")).toBeTruthy();
+		expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+		await act(async () => {
+			fireEvent.submit(container.querySelector("form") as HTMLFormElement);
+		});
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+			username: "original-owner",
+			password: "local-password",
+		});
 	});
 });

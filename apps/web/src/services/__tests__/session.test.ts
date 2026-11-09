@@ -100,3 +100,38 @@ describe("classifyLoginResponse", () => {
 		expect(await classifyLoginResponse(bare400)).toMatchObject({ code: "unavailable" });
 	});
 });
+
+describe("登录失败的日文与繁体女仆提示", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、ログインに失敗しました（HTTP 502）",
+			"ご主人様、ログインを試す回数が多すぎます。42秒待ってから、もう一度お試しくださいね。",
+		],
+		["zh-TW", "主人，登入失敗了（HTTP 502）", "主人，登入嘗試次數太多了，請等 42 秒後再試喔。"],
+	] as const)("%s 区分无响应正文、限流和服务端原话", async (locale, fallback, limited) => {
+		i18n.set({ locale, voice: "maid" });
+		expect(await classifyLoginResponse(new Response("<html>502</html>", { status: 502 }))).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: fallback,
+		});
+		expect(
+			await classifyLoginResponse(
+				failure(429, "rate_limited", "raw upstream rate limit", { "Retry-After": "42" }),
+			),
+		).toEqual({
+			ok: false,
+			code: "rate_limited",
+			message: limited,
+			retryAfterSec: 42,
+		});
+		expect(
+			await classifyLoginResponse(failure(401, "unauthorized", "raw authentication diagnostic")),
+		).toEqual({
+			ok: false,
+			code: "unauthorized",
+			message: "raw authentication diagnostic",
+		});
+	});
+});

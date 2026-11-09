@@ -525,5 +525,15 @@
 	"panelUi.pages.extensions.marketplace-sources-dialog.4": "主人，每個來源都有一份 marketplace.json，列出可安裝的拓展喔。官方來源是內建的，自行新增來源的內容則由該網址的管理者決定。",
 	"panelUi.pages.extensions.marketplace-sources-dialog.8": "主人，BN 不審查第三方來源的內容喔；安裝其中的拓展，就等於讓來源作者在 BN 程序內執行程式碼，請只新增可信任的來源。",
 	"panelUi.pages.extensions.marketplace-section.3": "主人，這個拓展來自「{value0}」，並非 BN 發行喔。BN 只保證安裝到磁碟的是該來源指定的套件，不審查它的行為；安裝後，它會在 BN 程序內執行程式碼。",
-	"panelUi.pages.extensions.marketplace-section.20": "主人，此建置沒有內建信任的公開金鑰，因此沒有官方來源喔；自行 fork 後建置也會如此。可以到「來源」新增第三方來源。"
+	"panelUi.pages.extensions.marketplace-section.20": "主人，此建置沒有內建信任的公開金鑰，因此沒有官方來源喔；自行 fork 後建置也會如此。可以到「來源」新增第三方來源。",
+	"panelUi.services.session.1": "主人，登入失敗了（HTTP {value0}）",
+	"panelUi.services.session.2": "主人，登入嘗試次數太多了，請等 {value0} 秒後再試喔。",
+	"panelUi.components.LoginDialog.6": "主人，登入嘗試次數太多了，請等 {value0} 秒後再試喔。",
+	"panelUi.services.api.3": "主人，連線中斷了，{value0} 沒有收到伺服器回應（{value1}）。可能是服務重新啟動、網路斷線，或反向代理中斷了這次請求，請檢查一下喔。",
+	"panelUi.pages.Logs.1": "主人，下載失敗了（HTTP {value0}）",
+	"panelUi.pages.backup.BackupExportDialog.10": "主人，這份檔案含有帳號登入資訊和面板密碼，請妥善保管、不要外傳喔。6 位 PIN 只能避免誤操作，真正的安全還是靠保管好檔案本身。",
+	"panelUi.pages.backup.BackupImportDialog.4": "主人，請選擇備份檔案（.bnbackup／.json）喔。",
+	"panelUi.pages.backup.BackupSection.5": "主人，完整備份已下載，裡面有您的帳號和密碼，請妥善保管、不要外傳喔。",
+	"panelUi.pages.About.13": "主人，Bilibili Notify 是採用 MIT 授權、永久免費的開源專案。伺服器、測試設備和持續開發都需要成本，如果有幫上您的忙，歡迎到愛發電請女僕喝杯奶茶喔。每一份心意，都會化為新功能和更少的 bug。",
+	"panelUi.pages.About.24": "主人，Bilibili Notify 會留意不同來源的作品與直播，繪製成卡片圖片並推播到目標喔。內建 Web 控制台，支援 Docker 映像檔和桌面應用程式部署，採用 MIT 開源授權。"
 }

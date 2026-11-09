@@ -6,7 +6,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
 import Logs from "../Logs";
@@ -55,6 +55,21 @@ describe("日志下载失败", () => {
 		fireEvent.click(screen.getByText(/\.jsonl$/));
 		await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
 		expect(alertSpy).toHaveBeenCalledWith("下载失败:没有这一天的日志文件");
+	});
+
+	it.each([
+		["ja", "ダウンロードに失敗しました：ご主人様、ダウンロードに失敗しました（HTTP 502）"],
+		["zh-TW", "下載失敗：主人，下載失敗了（HTTP 502）"],
+	] as const)("%s 女仆口吻的下载回落保留 HTTP 状态且只请求一次", async (locale, message) => {
+		const fetchMock = vi.fn(async () => new Response("<html>502</html>", { status: 502 }));
+		vi.stubGlobal("fetch", fetchMock);
+		const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+		renderLogs();
+		await screen.findByText("没有符合条件的日志");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		fireEvent.click(screen.getByText(/\.jsonl$/));
+		await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(message));
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	it("体读不出来(反代的 HTML)→ 退回带状态码的一句,不抛出别的东西", async () => {

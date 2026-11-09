@@ -143,3 +143,31 @@ it("translated export checks retain the PIN and selected sections and require a 
 		sections: { globals: true, subscriptions: true, connections: false, targets: true },
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、このファイルにはアカウントのログイン情報とダッシュボードのパスワードが入っています。大切に保管し、ほかの方には渡さないでくださいね。数字6桁のPINは誤操作を防ぐだけなので、ファイル自体を守ることが大切です。",
+		"エクスポート",
+	],
+	[
+		"zh-TW",
+		"主人，這份檔案含有帳號登入資訊和面板密碼，請妥善保管、不要外傳喔。6 位 PIN 只能避免誤操作，真正的安全還是靠保管好檔案本身。",
+		"匯出",
+	],
+] as const)("%s 女仆安全提醒保留 PIN 和导出限制", (locale, warning, exportLabel) => {
+	const onExport = vi.fn();
+	render(<BackupExportDialog onCancel={vi.fn()} onExport={onExport} />);
+	fireEvent.change(screen.getByPlaceholderText(/6 位/), { target: { value: "12345" } });
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(warning)).toBeTruthy();
+	expect(screen.getByDisplayValue("12345")).toBeTruthy();
+	expect((screen.getByRole("button", { name: exportLabel }) as HTMLButtonElement).disabled).toBe(
+		true,
+	);
+	expect(onExport).not.toHaveBeenCalled();
+	fireEvent.change(screen.getByDisplayValue("12345"), { target: { value: "123456" } });
+	fireEvent.click(screen.getByRole("button", { name: exportLabel }));
+	expect(onExport).toHaveBeenCalledTimes(1);
+	expect(onExport).toHaveBeenCalledWith(expect.objectContaining({ kind: "full", pin: "123456" }));
+});

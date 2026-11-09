@@ -525,5 +525,15 @@
 	"panelUi.pages.extensions.marketplace-sources-dialog.4": "ご主人様、配布元ごとにmarketplace.jsonがあり、そこにインストールできる拡張機能が並んでいますよ。公式配布元は組み込みですが、自分で追加した配布元の内容は、そのアドレスの管理者が決めます。",
 	"panelUi.pages.extensions.marketplace-sources-dialog.8": "ご主人様、BNはサードパーティの配布元にある内容を審査しませんよ。インストールすると、その作者のコードがBNのプロセス内で動きます。信頼できる配布元だけを追加してくださいね。",
 	"panelUi.pages.extensions.marketplace-section.3": "ご主人様、これはBN公式ではなく「{value0}」からの拡張機能ですよ。BNは、その配布元が指定したパッケージをそのまま保存することだけを保証し、動作内容は審査しません。インストールするとBNのプロセス内でコードが動きます。",
-	"panelUi.pages.extensions.marketplace-section.20": "ご主人様、このビルドには信頼する公開鍵が組み込まれていないので、公式配布元がありませんよ。フォークして自分でビルドした場合も同じです。「配布元」でサードパーティの配布元を追加できます。"
+	"panelUi.pages.extensions.marketplace-section.20": "ご主人様、このビルドには信頼する公開鍵が組み込まれていないので、公式配布元がありませんよ。フォークして自分でビルドした場合も同じです。「配布元」でサードパーティの配布元を追加できます。",
+	"panelUi.services.session.1": "ご主人様、ログインに失敗しました（HTTP {value0}）",
+	"panelUi.services.session.2": "ご主人様、ログインを試す回数が多すぎます。{value0}秒待ってから、もう一度お試しくださいね。",
+	"panelUi.components.LoginDialog.6": "ご主人様、ログインを試す回数が多すぎます。{value0}秒待ってから、もう一度お試しくださいね。",
+	"panelUi.services.api.3": "ご主人様、接続が途切れ、{value0}はサーバーから応答を受け取れませんでした（{value1}）。サービスの再起動やネットワークの切断、リバースプロキシーによる中断がないか、ご確認くださいね。",
+	"panelUi.pages.Logs.1": "ご主人様、ダウンロードに失敗しました（HTTP {value0}）",
+	"panelUi.pages.backup.BackupExportDialog.10": "ご主人様、このファイルにはアカウントのログイン情報とダッシュボードのパスワードが入っています。大切に保管し、ほかの方には渡さないでくださいね。数字6桁のPINは誤操作を防ぐだけなので、ファイル自体を守ることが大切です。",
+	"panelUi.pages.backup.BackupImportDialog.4": "ご主人様、バックアップファイル（.bnbackup / .json）を選んでくださいね。",
+	"panelUi.pages.backup.BackupSection.5": "ご主人様、完全バックアップをダウンロードしました。アカウントとパスワードが入っているので、大切に保管し、ほかの方には渡さないでくださいね。",
+	"panelUi.pages.About.13": "ご主人様、Bilibili NotifyはMITライセンスのオープンソースで、これからも無料です。サーバーやテスト機器、開発を続けるためには費用がかかります。お役に立てたら、Afdianでメイドにミルクティーをごちそうしていただけるとうれしいです。いただいたお気持ちは、新機能の開発や不具合の修正につなげますね。",
+	"panelUi.pages.About.24": "ご主人様、Bilibili Notifyはさまざまなソースの投稿や配信を見守り、画像カードにして送信先へお届けします。Webダッシュボードを備え、Dockerイメージでもデスクトップアプリでも導入できますよ。MITライセンスのオープンソースです。"
 }

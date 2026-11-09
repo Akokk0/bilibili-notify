@@ -384,6 +384,34 @@ describe("api 断线", () => {
 		await expect(api.blob("/api/library/images/x")).rejects.toMatchObject({ status: 0 });
 	});
 
+	it.each([
+		[
+			"ja",
+			"ご主人様、接続が途切れ、POST /api/cards/previewはサーバーから応答を受け取れませんでした（raw socket reset）。サービスの再起動やネットワークの切断、リバースプロキシーによる中断がないか、ご確認くださいね。",
+		],
+		[
+			"zh-TW",
+			"主人，連線中斷了，POST /api/cards/preview 沒有收到伺服器回應（raw socket reset）。可能是服務重新啟動、網路斷線，或反向代理中斷了這次請求，請檢查一下喔。",
+		],
+	] as const)("%s 女仆提示保留请求与原诊断，不自动重试", async (locale, message) => {
+		i18n.set({ locale, voice: "maid" });
+		offline("raw socket reset");
+		await expect(api.post("/api/cards/preview", {})).rejects.toMatchObject({
+			name: "ApiError",
+			status: 0,
+			message,
+		});
+		await expect(api.upload("/api/library/fonts", new FormData())).rejects.toMatchObject({
+			status: 0,
+			message: expect.stringContaining("raw socket reset"),
+		});
+		await expect(api.blob("/api/library/images/original-id")).rejects.toMatchObject({
+			status: 0,
+			message: expect.stringContaining("GET /api/library/images/original-id"),
+		});
+		expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(3);
+	});
+
 	it("不吞掉真正的程序错误 —— 非 TypeError 原样抛出", async () => {
 		vi.stubGlobal(
 			"fetch",
