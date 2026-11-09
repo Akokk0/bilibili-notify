@@ -116,7 +116,7 @@ describe("预览失败:挂件与标题按码挑", () => {
 		});
 		renderCards();
 
-		await allFourFailed("puppeteer 未配置");
+		await allFourFailed("尚未配置渲染浏览器");
 		expect(screen.getAllByRole("button", AUTO_DETECT)).toHaveLength(4);
 	}, 12_000);
 
@@ -129,7 +129,7 @@ describe("预览失败:挂件与标题按码挑", () => {
 		await allFourFailed(NOT_READY);
 		expect(screen.getAllByText("渲染失败")).toHaveLength(4);
 		expect(screen.queryByRole("button", AUTO_DETECT)).toBeNull();
-		expect(screen.queryByText("puppeteer 未配置")).toBeNull();
+		expect(screen.queryByText("尚未配置渲染浏览器")).toBeNull();
 	}, 12_000);
 
 	it("渲染抛错(200 + 失败那一支)→ 同样按码读:原话显示,不摆挂件", async () => {
@@ -148,7 +148,7 @@ describe("预览失败:挂件与标题按码挑", () => {
 		failPreviewWith(async () => ({ ok: false, code: "not_configured", message: NO_CHROME }));
 		renderCards();
 
-		await allFourFailed("puppeteer 未配置");
+		await allFourFailed("尚未配置渲染浏览器");
 		expect(screen.getAllByRole("button", AUTO_DETECT)).toHaveLength(4);
 	}, 12_000);
 });

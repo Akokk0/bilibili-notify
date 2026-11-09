@@ -3079,5 +3079,9 @@
 	"skinUi.CssAiSlot.9": "Could not generate CSS: {reason}",
 	"skinUi.CssAiSlot.12": "Cancel",
 	"skinUi.CssAiSlot.instructionLimit#other": "Use at most {count} characters.",
-	"skinUi.CssAiSlot.instructionLimit#one": "Use at most {count} character."
+	"skinUi.CssAiSlot.instructionLimit#one": "Use at most {count} character.",
+	"skinUi.preview-error.1": "Connection lost",
+	"skinUi.preview-error.2": "Rendering browser not configured",
+	"skinUi.preview-error.3": "Rendering failed",
+	"skinUi.preview-error.4": "Card rendering can take time. If you use a reverse proxy, set its read timeout above 120 seconds. The server may also have restarted, for example after running out of memory."
 }

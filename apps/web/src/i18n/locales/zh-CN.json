@@ -1649,7 +1649,7 @@
 	"skinUi.cell-debug.2": "指到才显示",
 	"skinUi.cell-debug.3": "全部显示",
 	"skinUi.preview-error.1": "连接中断",
-	"skinUi.preview-error.2": "puppeteer 未配置",
+	"skinUi.preview-error.2": "尚未配置渲染浏览器",
 	"skinUi.preview-error.3": "渲染失败",
 	"skinUi.preview-error.4": "卡片渲染较慢，若经反向代理访问，请把读超时调到 120s 以上；也可能是服务端刚重启（内存不足时会被系统杀掉）。",
 	"skinUi.skin-draft-ops.1": "<div>新的自定义块</div>",

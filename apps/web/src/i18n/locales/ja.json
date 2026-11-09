@@ -3011,5 +3011,9 @@
 	"skinUi.CssAiSlot.16": "安全性チェックで除去した内容：{reason}",
 	"skinUi.CssAiSlot.9": "CSSを生成できませんでした：{reason}",
 	"skinUi.CssAiSlot.12": "中止",
-	"skinUi.CssAiSlot.instructionLimit#other": "{count}文字以内にしてください。"
+	"skinUi.CssAiSlot.instructionLimit#other": "{count}文字以内にしてください。",
+	"skinUi.preview-error.1": "接続が切れました",
+	"skinUi.preview-error.2": "描画用ブラウザーが未設定です",
+	"skinUi.preview-error.3": "描画に失敗しました",
+	"skinUi.preview-error.4": "カードの描画には時間がかかる場合があります。リバースプロキシを使用している場合は、読み取りタイムアウトを120秒より長くしてください。メモリー不足などでサーバーが再起動した可能性もあります。"
 }

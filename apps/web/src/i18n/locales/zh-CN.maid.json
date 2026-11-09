@@ -372,7 +372,7 @@
 	"skinUi.skin-draft-ops.11": "主人，旋钮「{value0}」还没有名字哦。",
 	"skinUi.skin-draft-ops.28": "主人，有一行字体还没有起名字哦。",
 	"skinUi.preview-error.1": "主人，连接中断了。",
-	"skinUi.preview-error.2": "主人，还没有配置 puppeteer 哦。",
+	"skinUi.preview-error.2": "主人，还没有配置渲染浏览器哦。",
 	"skinUi.preview-error.3": "主人，这次渲染失败了。",
 	"skinUi.skin-draft-ops.6#other": "主人，{value0}最多 {count} 个字,现在是 {value2}",
 	"skinUi.skin-draft-ops.12#other": "主人，旋钮「{value0}」的名字最多 {count} 个字",

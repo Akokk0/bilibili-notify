@@ -1,18 +1,62 @@
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { OFFLINE_STATUS } from "../../../services/api";
 import { errorTextOf } from "../../../services/error-text";
 import { previewErrorHint, previewErrorTitle, serverErrors } from "../preview-error";
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 describe("预览失败的标题", () => {
+	it.each([
+		[
+			"en",
+			"Connection lost",
+			"Rendering browser not configured",
+			"Rendering failed",
+			"Card rendering can take time. If you use a reverse proxy, set its read timeout above 120 seconds. The server may also have restarted, for example after running out of memory.",
+		],
+		[
+			"ja",
+			"接続が切れました",
+			"描画用ブラウザーが未設定です",
+			"描画に失敗しました",
+			"カードの描画には時間がかかる場合があります。リバースプロキシを使用している場合は、読み取りタイムアウトを120秒より長くしてください。メモリー不足などでサーバーが再起動した可能性もあります。",
+		],
+		[
+			"zh-TW",
+			"連線中斷",
+			"尚未設定繪製用瀏覽器",
+			"繪製失敗",
+			"卡片繪製可能較久。若透過反向代理存取，請將讀取逾時設為超過 120 秒；也可能是伺服器剛重新啟動，例如記憶體不足。",
+		],
+	] as const)(
+		"%s distinguishes transport, configuration and rendering errors while preserving diagnostics",
+		(locale, offline, unconfigured, failed, hint) => {
+			i18n.set({ locale, voice: "plain" });
+			expect(previewErrorTitle({ status: OFFLINE_STATUS })).toBe(offline);
+			expect(previewErrorTitle({ status: 409, code: "not_configured" })).toBe(unconfigured);
+			expect(previewErrorTitle({ status: 503, code: "unavailable" })).toBe(failed);
+			expect(previewErrorTitle(undefined)).toBe(failed);
+			expect(previewErrorHint(OFFLINE_STATUS)).toBe(hint);
+			expect(previewErrorHint(503)).toBeNull();
+			expect(
+				serverErrors(
+					Object.assign(new Error("Original diagnostic 原文"), {
+						issues: [{ message: "Original issue 原文" }],
+					}),
+				),
+			).toEqual(["Original issue 原文"]);
+		},
+	);
 	it("断线单独成一档 —— 不能和「渲染失败」混为一谈", () => {
 		// 服务端那边可能渲染得好好的,只是响应没送到,说「渲染失败」等于把人往错方向引。
 		expect(previewErrorTitle({ status: OFFLINE_STATUS })).toBe("连接中断");
 	});
 
-	it("按码挑:没配浏览器(not_configured)是「puppeteer 未配置」,与状态码无关", () => {
-		expect(previewErrorTitle({ status: 409, code: "not_configured" })).toBe("puppeteer 未配置");
+	it("按码挑:没配浏览器(not_configured)是「尚未配置渲染浏览器」,与状态码无关", () => {
+		expect(previewErrorTitle({ status: 409, code: "not_configured" })).toBe("尚未配置渲染浏览器");
 		// 200 + 失败那一支造出来的错也一样 —— 认的是码,不是 HTTP 状态。
-		expect(previewErrorTitle({ status: 200, code: "not_configured" })).toBe("puppeteer 未配置");
+		expect(previewErrorTitle({ status: 200, code: "not_configured" })).toBe("尚未配置渲染浏览器");
 	});
 
 	it("引擎还没就绪(unavailable)不是「未配置」:同样是 503 从前会被认成未配置", () => {

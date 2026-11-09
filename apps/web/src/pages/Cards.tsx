@@ -1228,17 +1228,17 @@ export default function Cards() {
 				</div>
 
 				{/* PREVIEW: 全局 tab = 四卡全家福;类型 tab = 单卡 */}
-				<div className="flex flex-col gap-2.5">
+				<div className="@container/card-previews flex flex-col gap-2.5">
 					{isGlobalTab ? (
 						<>
 							<PreviewHead
 								title={t("cards.preview.familyTitle", { scope: scopeName })}
 								note={t("cards.preview.familyNote")}
 							/>
-							{/* 一个框装四张卡:2×2 四宫格。固定高度(参考选项卡片满展开时的观感取值,不跟随它),
-							    四格 grid-rows-2 等分该高度,卡片 object-contain 缩放填格。 */}
-							<div className="flex h-180 flex-col rounded-bn-card border border-bn-border p-4">
-								<div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-3">
+							{/* 预览列够宽时保留固定高度的2×2布局；窄列改为单列自然增高，
+							    避免错误说明和浏览器设置表单被挤进半张卡或裁掉。 */}
+							<div className="flex h-auto flex-col rounded-bn-card border border-bn-border p-4 @min-[480px]/card-previews:h-180">
+								<div className="grid min-h-0 flex-1 grid-cols-1 gap-3 @min-[480px]/card-previews:grid-cols-2 @min-[480px]/card-previews:grid-rows-2">
 									{!membershipAvailable ? (
 										<EmptyNote size="sm">{t("cards.preview.membershipUnavailable")}</EmptyNote>
 									) : null}
