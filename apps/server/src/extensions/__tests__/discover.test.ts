@@ -79,6 +79,7 @@ async function plant(
 }
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	root = await mkdtemp(join(tmpdir(), "bn-ext-discover-"));
 });
 
@@ -87,6 +88,70 @@ afterEach(async () => {
 });
 
 describe("readExtensionDir", () => {
+	it.each([
+		[
+			"en",
+			"extension.json is not valid JSON:",
+			"extension.json is invalid —",
+			"Manifest ID original-id does not match directory name original-dir.",
+			"Entry file index.mjs is missing.",
+		],
+		[
+			"ja",
+			"extension.jsonは有効なJSONではありません：",
+			"extension.jsonが無効です：",
+			"マニフェストのidはoriginal-idですが、ディレクトリー名original-dirと一致しません。",
+			"エントリーファイルindex.mjsがありません。",
+		],
+		[
+			"zh-TW",
+			"extension.json 不是有效的 JSON：",
+			"extension.json 無效：",
+			"資訊清單的 id 為 original-id，與目錄名稱 original-dir 不符。",
+			"缺少進入點檔案 index.mjs。",
+		],
+	] as const)(
+		"%s translates directory-read failures while retaining filenames, IDs and parser diagnostics",
+		async (locale, jsonPrefix, schemaPrefix, mismatch, missing) => {
+			const brokenJson = await plant("broken-json", "{");
+			const brokenSchema = await plant("broken-schema", manifest({ id: "broken-schema", name: 0 }));
+			const mismatched = await plant("original-dir", manifest({ id: "original-id" }));
+			const noEntry = await plant("no-entry", manifest({ id: "no-entry" }), { entry: false });
+			i18n.set({ locale, voice: "plain" });
+			const options = { reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS };
+			const badJson = await readExtensionDir(brokenJson, options);
+			expect(badJson).toMatchObject({
+				state: "unreadable",
+				id: "broken-json",
+				detail: expect.stringContaining(jsonPrefix),
+			});
+			let parserMessage = "";
+			try {
+				JSON.parse("{");
+			} catch (err) {
+				parserMessage = (err as Error).message;
+			}
+			if (badJson.state === "unreadable") expect(badJson.detail).toContain(parserMessage);
+			const badSchema = await readExtensionDir(brokenSchema, options);
+			expect(badSchema).toMatchObject({
+				state: "unreadable",
+				id: "broken-schema",
+				detail: expect.stringContaining(schemaPrefix),
+			});
+			if (badSchema.state === "unreadable") expect(badSchema.detail).toContain("name");
+			expect(await readExtensionDir(mismatched, options)).toMatchObject({
+				state: "unreadable",
+				id: "original-dir",
+				detail: mismatch,
+			});
+			expect(await readExtensionDir(noEntry, options)).toMatchObject({
+				state: "unreadable",
+				id: "no-entry",
+				detail: missing,
+			});
+		},
+	);
+
 	it("清单齐、入口在 → ready,拿到清单本身与入口文件", async () => {
 		const dir = await plant("bridge", manifest());
 		const r = await readExtensionDir(dir, { reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS });

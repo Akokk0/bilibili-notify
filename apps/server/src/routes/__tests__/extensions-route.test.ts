@@ -53,6 +53,7 @@ import {
 	type ReportDiscrepancyTable,
 } from "../../extensions/report-discrepancies.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
+import { i18n } from "../../i18n/index.js";
 import type { IntegrationStore } from "../../integration-store/store.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -249,6 +250,7 @@ function form(file: Blob | undefined): FormData {
 }
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	installRoot = await mkdtemp(join(tmpdir(), "bn-ext-route-"));
 	rescan = vi.fn(async () => {});
 	removeExtension = vi.fn(async () => {});
@@ -1824,6 +1826,80 @@ describe("POST /api/ext/:id/actions/:name", () => {
  * 把译文的问题翻成句子;装包的回应把跳过的语言文件告诉面板。
  */
 describe("拓展的译文", () => {
+	it.each([
+		[
+			"en",
+			[
+				"en.json is not valid JSON; the entire file was ignored.",
+				"en.json is too large; the entire file was ignored.",
+				'Invalid translation key "Original path 原文" in en.json; this entry was ignored.',
+				'Translation "Original path 原文" in en.json must contain non-empty text; this entry was ignored.',
+				'Translation "Original path 原文" in en.json has a malformed placeholder; this entry was ignored.',
+				'Translation "Original path 原文" in en.json does not match a manifest entry; this entry was ignored.',
+				'Translation "Original path 原文" in en.json targets a non-translatable field; this entry was ignored.',
+				'Translation "Original path 原文" in en.json exceeds the length limit; this entry was ignored.',
+			],
+		],
+		[
+			"ja",
+			[
+				"en.jsonは有効なJSONではないため、ファイル全体を読み込みませんでした。",
+				"en.jsonが大きすぎるため、ファイル全体を読み込みませんでした。",
+				"en.jsonの「Original path 原文」はキーの形式が無効なため、無視しました。",
+				"en.jsonの「Original path 原文」には空でないテキストが必要なため、無視しました。",
+				"en.jsonの「Original path 原文」はプレースホルダーの形式が無効なため、無視しました。",
+				"en.jsonの「Original path 原文」に対応するマニフェスト項目がないため、無視しました。",
+				"en.jsonの「Original path 原文」は翻訳対象ではないフィールドを指すため、無視しました。",
+				"en.jsonの「Original path 原文」は文字数の上限を超えるため、無視しました。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"en.json 不是有效的 JSON，已忽略整個檔案。",
+				"en.json 過大，已忽略整個檔案。",
+				"en.json 中「Original path 原文」的鍵格式無效，已忽略此項。",
+				"en.json 中「Original path 原文」必須是非空文字，已忽略此項。",
+				"en.json 中「Original path 原文」的預留位置格式無效，已忽略此項。",
+				"en.json 中「Original path 原文」找不到對應的資訊清單項目，已忽略此項。",
+				"en.json 中「Original path 原文」指向不可翻譯的欄位，已忽略此項。",
+				"en.json 中「Original path 原文」超過字元上限，已忽略此項。",
+			],
+		],
+	] as const)(
+		"%s localizes every locale issue at request time while retaining file locale and entry identity",
+		async (locale, expected) => {
+			const entry: ExtensionEntry = {
+				...running("bridge"),
+				localeIssues: [
+					{ locale: "en", code: "invalid-json", path: [] },
+					{ locale: "en", code: "too-large", path: [] },
+					...[
+						"invalid-key",
+						"invalid-text",
+						"malformed-placeholder",
+						"unknown-entry",
+						"untranslatable-entry",
+						"too-long",
+					].map((code) => ({ locale: "en", code, path: ["Original path 原文"] }) as const),
+				] as ExtensionEntry["localeIssues"],
+			};
+			const app = boot({ entries: [entry] });
+			i18n.set({ locale, voice: "plain" });
+			const res = await app.request("/");
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as ExtensionsResponse;
+			expect(body.extensions[0]?.localeIssues).toEqual(expected);
+			expect(body.extensions[0]).toMatchObject({
+				id: "bridge",
+				name: "bridge 拓展",
+				state: "running",
+			});
+			expect(rescan).not.toHaveBeenCalled();
+			expect(removeExtension).not.toHaveBeenCalled();
+		},
+	);
+
 	it("列表带上译文问题,句子在宿主按当前语言取好", async () => {
 		const entry: ExtensionEntry = {
 			...running("bridge"),

@@ -860,5 +860,17 @@
 	"extension.report.issue.unknownField": "{cell}はBNが認識しないフィールドのため、報告全体を拒否しました。",
 	"extension.report.undeclared": "マニフェストのcontributes.subscription.supportedFeaturesに{feature}がないため、この種別の報告は受け付けません。",
 	"extension.report.undeclaredLiveStatus": "配信状態は、マニフェストのcontributes.subscription.supportedFeaturesにliveStartまたはliveEndが宣言されている場合のみ受け付けます。",
-	"extension.source.invalidCandidates": "拡張機能が無効な候補を返しました：{detail}"
+	"extension.source.invalidCandidates": "拡張機能が無効な候補を返しました：{detail}",
+	"extension.manifest.invalidJson": "{file}は有効なJSONではありません：{detail}",
+	"extension.manifest.invalid": "{file}が無効です：{detail}",
+	"extension.manifest.idMismatch": "マニフェストのidは{claimed}ですが、ディレクトリー名{id}と一致しません。",
+	"extension.manifest.missingEntry": "エントリーファイル{file}がありません。",
+	"extension.localeIssue.invalidJson": "{locale}.jsonは有効なJSONではないため、ファイル全体を読み込みませんでした。",
+	"extension.localeIssue.tooLarge": "{locale}.jsonが大きすぎるため、ファイル全体を読み込みませんでした。",
+	"extension.localeIssue.invalidKey": "{locale}.jsonの「{path}」はキーの形式が無効なため、無視しました。",
+	"extension.localeIssue.invalidText": "{locale}.jsonの「{path}」には空でないテキストが必要なため、無視しました。",
+	"extension.localeIssue.malformedPlaceholder": "{locale}.jsonの「{path}」はプレースホルダーの形式が無効なため、無視しました。",
+	"extension.localeIssue.unknownEntry": "{locale}.jsonの「{path}」に対応するマニフェスト項目がないため、無視しました。",
+	"extension.localeIssue.untranslatableEntry": "{locale}.jsonの「{path}」は翻訳対象ではないフィールドを指すため、無視しました。",
+	"extension.localeIssue.tooLong": "{locale}.jsonの「{path}」は文字数の上限を超えるため、無視しました。"
 }

@@ -860,5 +860,17 @@
 	"extension.report.issue.unknownField": "BN 不認得欄位 {cell}，已拒收整筆上報。",
 	"extension.report.undeclared": "資訊清單的 contributes.subscription.supportedFeatures 未宣告 {feature}，BN 不接受此類上報。",
 	"extension.report.undeclaredLiveStatus": "僅在資訊清單的 contributes.subscription.supportedFeatures 宣告 liveStart 或 liveEnd 時接受直播狀態。",
-	"extension.source.invalidCandidates": "擴充功能回傳的候選資料無效：{detail}"
+	"extension.source.invalidCandidates": "擴充功能回傳的候選資料無效：{detail}",
+	"extension.manifest.invalidJson": "{file} 不是有效的 JSON：{detail}",
+	"extension.manifest.invalid": "{file} 無效：{detail}",
+	"extension.manifest.idMismatch": "資訊清單的 id 為 {claimed}，與目錄名稱 {id} 不符。",
+	"extension.manifest.missingEntry": "缺少進入點檔案 {file}。",
+	"extension.localeIssue.invalidJson": "{locale}.json 不是有效的 JSON，已忽略整個檔案。",
+	"extension.localeIssue.tooLarge": "{locale}.json 過大，已忽略整個檔案。",
+	"extension.localeIssue.invalidKey": "{locale}.json 中「{path}」的鍵格式無效，已忽略此項。",
+	"extension.localeIssue.invalidText": "{locale}.json 中「{path}」必須是非空文字，已忽略此項。",
+	"extension.localeIssue.malformedPlaceholder": "{locale}.json 中「{path}」的預留位置格式無效，已忽略此項。",
+	"extension.localeIssue.unknownEntry": "{locale}.json 中「{path}」找不到對應的資訊清單項目，已忽略此項。",
+	"extension.localeIssue.untranslatableEntry": "{locale}.json 中「{path}」指向不可翻譯的欄位，已忽略此項。",
+	"extension.localeIssue.tooLong": "{locale}.json 中「{path}」超過字元上限，已忽略此項。"
 }
