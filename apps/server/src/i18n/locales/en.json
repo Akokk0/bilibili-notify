@@ -1,4 +1,13 @@
 {
+	"service.routes.system-update.text.1": "Probe prefixes must be empty strings or valid https:// addresses (up to 20).",
+	"service.routes.system-update.text.2": "No version is available to apply.",
+	"update.validation.checksum": "Downloaded content does not match the manifest checksum.",
+	"update.validation.unsafeEntry": "The update package contains a file path outside the destination directory.",
+	"update.validation.extract": "Could not extract or write the update package.",
+	"update.validation.stale": "The manifest is older than the latest issue time already seen.",
+	"update.validation.unreachable": "No candidate server provided usable download content.",
+	"update.validation.signature": "The signature could not be verified with a trusted public key.",
+	"update.validation.document": "The signed manifest has an invalid format.",
 	"roastScheduler.stopped": "The scheduler has stopped.",
 	"roastScheduler.noTargets": "{label} was not sent: no push targets are configured.",
 	"roastScheduler.allTargetsPaused": "{label} was not sent: all configured push targets are disabled.",

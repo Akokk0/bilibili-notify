@@ -1,5 +1,6 @@
 import { sign as cryptoSign, generateKeyPairSync, type KeyObject } from "node:crypto";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { loadSignedManifest } from "../signed-manifest.js";
 
 /**
@@ -36,7 +37,48 @@ function makeManifest(overrides: Record<string, unknown> = {}): Record<string, u
 	};
 }
 
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
 describe("loadSignedManifest", () => {
+	it.each([
+		[
+			"en",
+			"The signature could not be verified with a trusted public key.",
+			"The signed manifest has an invalid format.",
+		],
+		[
+			"ja",
+			"信頼された公開鍵で署名を検証できませんでした。",
+			"署名付きマニフェストの形式が無効です。",
+		],
+		["zh-TW", "簽章未通過信任公鑰驗證。", "簽章清單格式無效。"],
+	] as const)(
+		"%s：签名与内容各自拒绝，不交出未经验证的清单",
+		(locale, signatureMessage, documentMessage) => {
+			const key = makeKey();
+			const original = Buffer.from(JSON.stringify(makeManifest()));
+			const signature = signBytes(key.privateKey, original);
+			i18n.set({ locale, voice: "plain" });
+			expect(
+				loadSignedManifest(
+					Buffer.from(JSON.stringify(makeManifest({ version: "9.9.9" }))),
+					signature,
+					[key.spkiBase64],
+				),
+			).toEqual({ ok: false, code: "unauthorized", message: signatureMessage });
+			for (const invalid of ["not JSON", JSON.stringify({ version: "0.9.0" })]) {
+				const bytes = Buffer.from(invalid);
+				expect(
+					loadSignedManifest(bytes, signBytes(key.privateKey, bytes), [key.spkiBase64]),
+				).toEqual({ ok: false, code: "invalid", message: documentMessage });
+			}
+			expect(loadSignedManifest(original, signature, [key.spkiBase64])).toMatchObject({
+				ok: true,
+				manifest: makeManifest(),
+			});
+		},
+	);
+
 	it("备用公钥签的 manifest 照样验得过 —— 双密钥保险的命门", () => {
 		const primary = makeKey();
 		const backup = makeKey();

@@ -1,5 +1,6 @@
 import { sign as cryptoSign, generateKeyPairSync, type KeyObject } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { fetchSignedManifest } from "../fetch-signed-manifest.js";
 
 /**
@@ -13,6 +14,7 @@ const RELEASE_URL =
 	"https://github.com/Akokk0/bilibili-notify/releases/download/latest/latest.json";
 
 afterEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	vi.unstubAllGlobals();
 });
 
@@ -33,6 +35,64 @@ function serveOnce(body: string): void {
 }
 
 describe("fetchSignedManifest", () => {
+	it.each([
+		[
+			"en",
+			"The manifest is older than the latest issue time already seen.",
+			"No candidate server provided usable download content.",
+		],
+		[
+			"ja",
+			"マニフェストの発行日時が、すでに確認した最新の日時より古くなっています。",
+			"利用可能なダウンロード内容を取得できる候補サーバーがありませんでした。",
+		],
+		["zh-TW", "清單早於已確認的最新簽發時間。", "沒有候選站提供可用的下載內容。"],
+	] as const)(
+		"%s：旧签名清单与网络失败区分，按原顺序尝试",
+		async (locale, staleMessage, unreachableMessage) => {
+			const key = makeKey();
+			const inner = JSON.stringify({
+				version: "0.9.0",
+				payload: { url: "https://x/p.zip", sha256: "a".repeat(64), size: 1 },
+				releaseUrl: "https://x/release",
+				issuedAt: 50,
+			});
+			const input = {
+				url: RELEASE_URL,
+				mirrors: ["https://cache.example", ""],
+				trustedKeys: [key.spkiBase64],
+				timeoutMs: 1000,
+				maxBytes: 65536,
+				minIssuedAt: 100,
+			};
+			i18n.set({ locale, voice: "plain" });
+			const staleFetch = vi.fn(
+				async () =>
+					new Response(
+						JSON.stringify({ manifest: inner, signature: signText(key.privateKey, inner) }),
+					),
+			);
+			vi.stubGlobal("fetch", staleFetch);
+			expect(await fetchSignedManifest(input)).toEqual({
+				ok: false,
+				code: "conflict",
+				message: staleMessage,
+			});
+			expect(staleFetch).toHaveBeenCalledTimes(2);
+			const offlineFetch = vi.fn().mockRejectedValue(new Error("raw network failure"));
+			vi.stubGlobal("fetch", offlineFetch);
+			expect(await fetchSignedManifest(input)).toEqual({
+				ok: false,
+				code: "unavailable",
+				message: unreachableMessage,
+			});
+			expect(offlineFetch.mock.calls.map((call) => call[0])).toEqual([
+				`https://cache.example/${RELEASE_URL}`,
+				RELEASE_URL,
+			]);
+		},
+	);
+
 	it("内层字符串排版再怪也验得过 —— 验的是解析出来的那串字符,不是重新序列化的结果", async () => {
 		const key = makeKey();
 		// 键序反着、缩进乱七八糟。任何「把 manifest 展开成对象、验签时再重新序列化」

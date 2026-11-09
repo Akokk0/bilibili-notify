@@ -13,6 +13,7 @@ import { join, relative } from "node:path";
 import { replaceDirectory } from "@bilibili-notify/storage";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { installPayload } from "../install-payload.js";
 import { LEFTOVER_DIR_RE } from "../version-dirs.js";
 
@@ -42,6 +43,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -54,6 +56,53 @@ function sha256(bytes: Uint8Array): string {
 }
 
 describe("installPayload", () => {
+	it.each([
+		[
+			"en",
+			"Downloaded content does not match the manifest checksum.",
+			"The update package contains a file path outside the destination directory.",
+			"Could not extract or write the update package.",
+		],
+		[
+			"ja",
+			"ダウンロードした内容がマニフェストのチェックサムと一致しません。",
+			"更新パッケージに保存先ディレクトリの外を指すファイルパスが含まれています。",
+			"更新パッケージを展開または保存できませんでした。",
+		],
+		[
+			"zh-TW",
+			"下載內容與清單的總和檢查碼不符。",
+			"更新套件包含超出目的目錄的檔案路徑。",
+			"更新套件解壓縮或寫入失敗。",
+		],
+	] as const)(
+		"%s：校验、越界、解压与写入失败不改原版本",
+		async (locale, checksum, unsafeEntry, extract) => {
+			const versionsRoot = tempRoot();
+			mkdirSync(join(versionsRoot, "0.8.0"));
+			writeFileSync(join(versionsRoot, "0.8.0", "index.mjs"), "original bytes");
+			const good = makeZip({ "index.mjs": "new bytes" });
+			const unsafe = makeZip({ "../escape.mjs": "escape" });
+			const broken = strToU8("not ZIP");
+			const collision = makeZip({ app: "file", "app/index.mjs": "conflicting directory" });
+			i18n.set({ locale, voice: "plain" });
+			for (const [zip, expectedSha256, code, message] of [
+				[good, "0".repeat(64), "conflict", checksum],
+				[unsafe, sha256(unsafe), "invalid", unsafeEntry],
+				[broken, sha256(broken), "invalid", extract],
+				[collision, sha256(collision), "unavailable", extract],
+			] as const) {
+				expect(
+					await installPayload({ zip, expectedSha256, version: "0.9.0", versionsRoot }),
+				).toEqual({ ok: false, code, message });
+				expect(readdirSync(versionsRoot)).toEqual(["0.8.0"]);
+				expect(readFileSync(join(versionsRoot, "0.8.0", "index.mjs"), "utf8")).toBe(
+					"original bytes",
+				);
+			}
+		},
+	);
+
 	it("versionsRoot 是相对路径也装得上 —— 越界判定得先把根算成绝对路径", async () => {
 		// 配置里 dataDir 默认是 `./data`,用户手写 yaml 也常写相对路径。越界判定拿
 		// 绝对路径去跟相对根比前缀,会把**每一个**条目都判成越界 —— 好包永远装不上,

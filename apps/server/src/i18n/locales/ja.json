@@ -1,4 +1,13 @@
 {
+	"service.routes.system-update.text.1": "速度測定のプレフィックスは空文字列または有効なhttps://アドレスにしてください（最大20件）。",
+	"service.routes.system-update.text.2": "適用できるバージョンがありません。",
+	"update.validation.checksum": "ダウンロードした内容がマニフェストのチェックサムと一致しません。",
+	"update.validation.unsafeEntry": "更新パッケージに保存先ディレクトリの外を指すファイルパスが含まれています。",
+	"update.validation.extract": "更新パッケージを展開または保存できませんでした。",
+	"update.validation.stale": "マニフェストの発行日時が、すでに確認した最新の日時より古くなっています。",
+	"update.validation.unreachable": "利用可能なダウンロード内容を取得できる候補サーバーがありませんでした。",
+	"update.validation.signature": "信頼された公開鍵で署名を検証できませんでした。",
+	"update.validation.document": "署名付きマニフェストの形式が無効です。",
 	"roastScheduler.stopped": "スケジューラーは停止しています。",
 	"roastScheduler.noTargets": "{label}は送信されませんでした：送信先が設定されていません。",
 	"roastScheduler.allTargetsPaused": "{label}は送信されませんでした：設定された送信先がすべて無効です。",

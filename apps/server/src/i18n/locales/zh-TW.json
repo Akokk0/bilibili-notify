@@ -1,4 +1,13 @@
 {
+	"service.routes.system-update.text.1": "測速前綴必須為空字串或有效的 https:// 網址（最多 20 個）。",
+	"service.routes.system-update.text.2": "沒有可套用的版本。",
+	"update.validation.checksum": "下載內容與清單的總和檢查碼不符。",
+	"update.validation.unsafeEntry": "更新套件包含超出目的目錄的檔案路徑。",
+	"update.validation.extract": "更新套件解壓縮或寫入失敗。",
+	"update.validation.stale": "清單早於已確認的最新簽發時間。",
+	"update.validation.unreachable": "沒有候選站提供可用的下載內容。",
+	"update.validation.signature": "簽章未通過信任公鑰驗證。",
+	"update.validation.document": "簽章清單格式無效。",
 	"roastScheduler.stopped": "排程器已停止。",
 	"roastScheduler.noTargets": "{label}未發送：尚未設定推播目標。",
 	"roastScheduler.allTargetsPaused": "{label}未發送：設定的推播目標皆已停用。",

@@ -1,10 +1,13 @@
 import type { UpdateStatusView } from "@bilibili-notify/contract";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import type { UpdateService } from "../../update/service.js";
 import { createSystemUpdateRoute } from "../system-update.js";
 
 /** 这个进程的启动时刻:面板等新进程时只认和它不同的 /api/health 回答。 */
 const STARTED = "2026-09-04T00:00:00.000Z";
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /**
  * 升级 API 的 wire 层。判断全在 `update/service.ts`,这里只做四件事:把状态交出去、
@@ -32,6 +35,43 @@ function fakeService(overrides: Partial<UpdateService> = {}): UpdateService {
 }
 
 describe("update 路由", () => {
+	it.each([
+		[
+			"en",
+			"Probe prefixes must be empty strings or valid https:// addresses (up to 20).",
+			"No version is available to apply.",
+		],
+		[
+			"ja",
+			"速度測定のプレフィックスは空文字列または有効なhttps://アドレスにしてください（最大20件）。",
+			"適用できるバージョンがありません。",
+		],
+		["zh-TW", "測速前綴必須為空字串或有效的 https:// 網址（最多 20 個）。", "沒有可套用的版本。"],
+	] as const)("%s：坏前缀不探测、没有版本不重启", async (locale, invalid, unavailable) => {
+		const probeMirrors = vi.fn(async () => []);
+		const applyUpdate = vi.fn(async () => {});
+		const app = createSystemUpdateRoute({
+			startedAt: STARTED,
+			service: fakeService({ probeMirrors }),
+			applyUpdate,
+		});
+		i18n.set({ locale, voice: "plain" });
+		for (const prefixes of [["http://plain.example"], Array.from({ length: 21 }, () => "")]) {
+			const response = await app.request("/mirrors/probe", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ prefixes }),
+			});
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ code: "invalid", message: invalid });
+		}
+		expect(probeMirrors).not.toHaveBeenCalled();
+		const response = await app.request("/apply", { method: "POST" });
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({ code: "conflict", message: unavailable });
+		expect(applyUpdate).not.toHaveBeenCalled();
+	});
+
 	it("GET / 交出当前状态", async () => {
 		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
