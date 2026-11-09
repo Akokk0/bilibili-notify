@@ -7,10 +7,13 @@
  */
 
 import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { sanitizeCardBlockHtml } from "../html-sanitizer.js";
 
 const ASSETS = new Set(["bg.png", "sticker.webp"]);
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function run(input: string, kind: "live" | "superchat" | "membership" = "live") {
 	return sanitizeCardBlockHtml(input, { kind, assets: ASSETS });
@@ -29,6 +32,86 @@ function bad(input: string, kind: "live" | "superchat" | "membership" = "live") 
 	if (res.ok) throw new Error("unreachable");
 	return (res.issues ?? [res]).map((issue) => issue.message);
 }
+
+it.each([
+	[
+		"en",
+		{
+			warnings: [
+				"Attribute onclick on <p> is not allowed; discarded.",
+				"<script> is not an allowed tag; discarded along with its contents.",
+				'<img>: src references asset "absent.png", which is missing from the package; element discarded.',
+				'<img>: src placeholder "{live.title}" has type text; only image fields can be used as images; element discarded.',
+				'href "https://blocked.example/x.svg#i" on <use> is not a #fragment reference; discarded.',
+			],
+			missing: [
+				'Placeholder "{missing.one}" is not in the field list for live cards.',
+				'Placeholder "{missing.two}" is not in the field list for live cards.',
+			],
+			tooLarge: "Custom HTML exceeds the 8KB limit.",
+			cleanedTooLarge: "Sanitized HTML exceeds the 8KB limit.",
+			empty: "Nothing remains in this block after sanitization.",
+		},
+	],
+	[
+		"ja",
+		{
+			warnings: [
+				"<p>の属性onclickは許可されていないため、削除しました。",
+				"<script>は許可されたタグではないため、内容ごと削除しました。",
+				"<img>：srcが参照するアセット「absent.png」がパッケージにありません。要素全体を削除しました。",
+				"<img>：srcのプレースホルダー「{live.title}」はtext型です。画像にはimage型のフィールドのみ使用できます。要素全体を削除しました。",
+				"<use>のhref「https://blocked.example/x.svg#i」は#フラグメント参照ではないため、削除しました。",
+			],
+			missing: [
+				"プレースホルダー「{missing.one}」はliveカードのフィールド一覧にありません。",
+				"プレースホルダー「{missing.two}」はliveカードのフィールド一覧にありません。",
+			],
+			tooLarge: "カスタムHTMLが上限の8KBを超えています。",
+			cleanedTooLarge: "サニタイズ後のHTMLが上限の8KBを超えています。",
+			empty: "サニタイズ後、このブロックに内容が残りません。",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			warnings: [
+				"<p> 的屬性 onclick 不在允許清單中，已移除。",
+				"<script> 不在允許的標籤清單中，已連同內容移除。",
+				"<img>：src 參照的素材「absent.png」不在套件中，已移除整個元素。",
+				"<img>：src 的預留位置「{live.title}」是 text 型別，只有 image 型別的欄位可用作圖片，已移除整個元素。",
+				"<use> 的 href「https://blocked.example/x.svg#i」不是 #片段參照，已移除。",
+			],
+			missing: [
+				"預留位置「{missing.one}」不在 live 卡片的欄位清單中。",
+				"預留位置「{missing.two}」不在 live 卡片的欄位清單中。",
+			],
+			tooLarge: "自訂 HTML 超過 8KB 上限。",
+			cleanedTooLarge: "清理後的 HTML 超過 8KB 上限。",
+			empty: "清理後，這個區塊沒有剩餘內容。",
+		},
+	],
+] as const)("%s:HTML告警与拒绝原因本地化,保留内容及去重顺序不变", (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	const cleaned = run(
+		'<p onclick="bad()">Original {creator.name}</p><script>discard me</script><img src="asset:absent.png"><img src="{live.title}"><svg><use href="https://blocked.example/x.svg#i"></use></svg>',
+	);
+	expect(cleaned).toEqual({
+		ok: true,
+		html: "<p>Original {creator.name}</p><svg><use></use></svg>",
+		warnings: text.warnings,
+		ids: [],
+	});
+	expect(run("<p>{missing.one} {missing.two} {missing.one}</p>")).toEqual({
+		ok: false,
+		code: "invalid",
+		message: text.missing.join("\n"),
+		issues: text.missing.map((message) => ({ message })),
+	});
+	expect(bad("x".repeat(8193))).toEqual([text.tooLarge]);
+	expect(bad("&".repeat(2000))).toEqual([text.cleanedTooLarge]);
+	expect(bad("<script>discard me</script>")).toEqual([text.empty]);
+});
 
 describe("标签白名单", () => {
 	it("<script> 连同里面的代码一起丢 —— 出图的 puppeteer 是 --no-sandbox 的", () => {
