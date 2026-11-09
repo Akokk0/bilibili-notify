@@ -424,17 +424,25 @@ function BlockCatalogue({
 							{items.map(([name, meta]) => {
 								const only = sceneMarkOf(kind, meta);
 								return (
-									<Btn key={name} size="sm" variant="outline" onClick={() => onPick(name)}>
-										{meta.label}
-										{/* 独有块在目录里也打标:加进来之后别的场看不见它,先说在前头。 */}
-										{only ? (
-											<span className="text-bn-2xs text-bn-text-tertiary">{only}</span>
-										) : null}
-										{used.has(name) ? (
-											<span className="text-bn-2xs text-bn-text-tertiary">
-												{tx("skinUi.SkinCanvas.15")}
-											</span>
-										) : null}
+									<Btn
+										key={name}
+										size="sm"
+										variant="outline"
+										style={{ maxWidth: "100%", height: "auto" }}
+										onClick={() => onPick(name)}
+									>
+										<span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 py-1 whitespace-normal text-left">
+											<span className="min-w-0">{meta.label}</span>
+											{/* 独有块在目录里也打标:加进来之后别的场看不见它,先说在前头。 */}
+											{only ? (
+												<span className="text-bn-2xs text-bn-text-tertiary">{only}</span>
+											) : null}
+											{used.has(name) ? (
+												<span className="text-bn-2xs text-bn-text-tertiary">
+													{tx("skinUi.SkinCanvas.15")}
+												</span>
+											) : null}
+										</span>
 									</Btn>
 								);
 							})}
@@ -450,8 +458,7 @@ function BlockCatalogue({
 							{tx("skinUi.SkinCanvas.17")}
 						</Btn>
 						<span className="text-bn-2xs text-bn-text-tertiary">
-							{tx("skinUi.SkinCanvas.18")}
-							{"{creator.name}"} {tx("skinUi.SkinCanvas.19")}
+							{tx("skinUi.SkinCanvas.18", { example: "{creator.name}" })}
 						</span>
 					</div>
 				</div>

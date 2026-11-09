@@ -19,7 +19,7 @@ import {
 	type CardKind,
 } from "@bilibili-notify/internal/card-skin";
 import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { SkinCanvas, type SkinSelection } from "../SkinCanvas";
@@ -240,6 +240,89 @@ const blockBtn = (label: string): HTMLElement => {
 afterEach(() => cleanup());
 
 describe("网格画布", () => {
+	it.each([
+		[
+			"en",
+			"Card frame",
+			"Width 640 · Row gap 8 · Column gap 12",
+			"Custom column widths",
+			"Empty row",
+			"Block limit reached (40)",
+			"Add block",
+		],
+		[
+			"ja",
+			"カードの外枠",
+			"幅 640 · 行間 8 · 列間 12",
+			"列幅を個別指定",
+			"空の行",
+			"ブロック数の上限です（40）",
+			"ブロックを追加",
+		],
+		[
+			"zh-TW",
+			"卡片外框",
+			"寬度 640 · 列間距 8 · 欄間距 12",
+			"自訂欄寬",
+			"空白列",
+			"已達區塊數量上限（40）",
+			"新增區塊",
+		],
+	] as const)(
+		"%s frame geometry and full-card hints translate without changing selection or allowing more blocks",
+		(locale, frame, dimensions, customColumns, empty, full, add) => {
+			const base = cardOf(manifest(), "live");
+			if (!base) throw new Error("live card fixture is missing");
+			const card = {
+				...base,
+				width: 640,
+				gap: { row: 8, column: 12 },
+				columns: Array.from({ length: 12 }, () => ({ fr: 1 })),
+			};
+			const onSelect = vi.fn();
+			const onAdd = vi.fn();
+			const view = render(
+				<SkinCanvas
+					kind="live"
+					scene="streaming"
+					card={card}
+					selection={null}
+					onSelect={onSelect}
+				/>,
+			);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const frameButton = screen.getByText(frame).closest("button");
+			if (!frameButton) throw new Error("card frame button is missing");
+			expect(frameButton.textContent).toContain(dimensions);
+			expect(frameButton.textContent).toContain(customColumns);
+			expect(screen.getByText(empty)).toBeTruthy();
+			expect(onSelect).not.toHaveBeenCalled();
+			fireEvent.click(frameButton);
+			expect(onSelect).toHaveBeenCalledWith({ kind: "frame" });
+			const fullCard = {
+				...card,
+				blocks: Array.from({ length: 40 }, (_v, i) => ({
+					id: `original-${i}`,
+					kind: "builtin" as const,
+					builtin: "creatorName",
+					grid: { row: i + 1, column: 1, span: 12 },
+				})),
+			};
+			view.rerender(
+				<SkinCanvas
+					kind="live"
+					scene="streaming"
+					card={fullCard}
+					selection={null}
+					onSelect={onSelect}
+					onAdd={onAdd}
+				/>,
+			);
+			expect(screen.getByText(full)).toBeTruthy();
+			expect(screen.queryByRole("button", { name: add })).toBeNull();
+			expect(onAdd).not.toHaveBeenCalled();
+		},
+	);
 	it("块落在正确的 grid 位置 —— 行号占掉第一列,所以起始列要 +1", () => {
 		render(<Harness />);
 		// name 块:column 3 / span 6 → CSS 上是 4 起跨 6。
@@ -334,6 +417,54 @@ describe("检查器 · 位置", () => {
 });
 
 describe("添加块 / 删块", () => {
+	it.each([
+		[
+			"en",
+			"Add block",
+			"Available blocks",
+			"Custom block",
+			"Write custom HTML using field placeholders such as {creator.name}.",
+			"Already added",
+		],
+		[
+			"ja",
+			"ブロックを追加",
+			"追加できるブロック",
+			"カスタムブロック",
+			"HTMLを自由に書き、{creator.name} などのプレースホルダーでフィールドを参照できます。",
+			"追加済み",
+		],
+		[
+			"zh-TW",
+			"新增區塊",
+			"可新增的區塊",
+			"自訂區塊",
+			"自行撰寫 HTML，使用 {creator.name} 等預留位置引用欄位。",
+			"已新增",
+		],
+	] as const)(
+		"%s block catalogue localizes while adding a selected custom block without rewriting existing HTML",
+		(locale, add, catalogueLabel, custom, hint, used) => {
+			const onDraft = vi.fn();
+			render(<Harness onDraft={onDraft} />);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(onDraft).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: add }));
+			const choices = screen.getByRole("group", { name: catalogueLabel });
+			expect(within(choices).getByText(hint)).toBeTruthy();
+			expect(within(choices).getAllByText(used).length).toBeGreaterThan(0);
+			fireEvent.click(within(choices).getByRole("button", { name: custom }));
+			expect(onDraft).toHaveBeenCalledTimes(1);
+			const next = onDraft.mock.calls[0][0] as CardSkinManifest;
+			const blocks = next.cards.live?.blocks;
+			expect(blocks?.slice(0, 3)).toEqual(manifest().cards.live?.blocks);
+			const added = blocks?.at(-1);
+			expect(added?.kind).toBe("custom");
+			expect(
+				document.querySelector(`[data-block-id="${added?.id}"]`)?.getAttribute("aria-pressed"),
+			).toBe("true");
+		},
+	);
 	it("添加块 → 目录列出这种卡的内置块,点一个就落在最底下那一行并被选中", () => {
 		render(<Harness />);
 		expect(screen.queryByText("简介")).toBeNull();
@@ -620,6 +751,63 @@ describe("检查器 · 自定义块的内容", () => {
 });
 
 describe("接管 / 交还一种卡", () => {
+	it.each([
+		[
+			"en",
+			"Loading built-in skin…",
+			"Customize this card",
+			"This skin does not define this card type. Rendering uses the built-in default skin.",
+		],
+		[
+			"ja",
+			"内蔵スキンを読み込み中…",
+			"このカードをカスタマイズ",
+			"このスキンにはこの種類のカードがありません。描画時は内蔵の既定スキンを使います。",
+		],
+		[
+			"zh-TW",
+			"正在讀取內建外觀…",
+			"自訂此類型卡片",
+			"此外觀未定義此類型的卡片，繪製時使用內建預設外觀。",
+		],
+	] as const)(
+		"%s adoption hints translate while waiting for the built-in definition and adopt only on click",
+		(locale, loading, adopt, hint) => {
+			const onAdopt = vi.fn();
+			const onSelect = vi.fn();
+			const view = render(
+				<SkinCanvas
+					kind="live"
+					scene="streaming"
+					card={undefined}
+					selection={null}
+					onSelect={onSelect}
+					onAdopt={onAdopt}
+					adoptBusy
+				/>,
+			);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(hint)).toBeTruthy();
+			expect((screen.getByRole("button", { name: loading }) as HTMLButtonElement).disabled).toBe(
+				true,
+			);
+			expect(onAdopt).not.toHaveBeenCalled();
+			view.rerender(
+				<SkinCanvas
+					kind="live"
+					scene="streaming"
+					card={undefined}
+					selection={null}
+					onSelect={onSelect}
+					onAdopt={onAdopt}
+					adoptBusy={false}
+				/>,
+			);
+			fireEvent.click(screen.getByRole("button", { name: adopt }));
+			expect(onAdopt).toHaveBeenCalledTimes(1);
+			expect(onSelect).not.toHaveBeenCalled();
+		},
+	);
 	it("皮肤没定义这种卡 → 画布上就给一颗「接管」钮,不用去别处找", () => {
 		const onAdopt = vi.fn();
 		render(
