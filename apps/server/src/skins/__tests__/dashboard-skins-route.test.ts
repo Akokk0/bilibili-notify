@@ -15,7 +15,8 @@ import { join } from "node:path";
 import { fail } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { createDashboardSkinsRoute } from "../../routes/dashboard-skins.js";
 import { respondFailure, routeNotFoundMessage } from "../../routes/respond-failure.js";
 import { MAX_SKIN_ASSETS, SkinStore } from "../store.js";
@@ -62,6 +63,115 @@ beforeEach(async () => {
 	app = new Hono()
 		.notFound((c) => respondFailure(c, fail("not_found", routeNotFoundMessage())))
 		.route("/", createDashboardSkinsRoute({ skinStore: store }));
+});
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+it.each([
+	[
+		"en",
+		{
+			file: "Missing skin package file (multipart field: file).",
+			id: "id must be a skin ID or null.",
+			theme: "theme must be light or dark.",
+			missing: "Skin not found.",
+			asset: "Asset not found.",
+			ai: "AI is not configured or not ready. Configure a model in AI settings first.",
+			ref: "assets/missing.png: manifest references this file, but it is missing from the package.",
+			failure: "AI could not modify the skin: Original model diagnostic 原文",
+		},
+	],
+	[
+		"ja",
+		{
+			file: "スキンパッケージのファイルがありません（multipartのfileフィールド）。",
+			id: "idにはスキンIDまたはnullを指定してください。",
+			theme: "themeにはlightまたはdarkを指定してください。",
+			missing: "スキンが見つかりません。",
+			asset: "アセットが見つかりません。",
+			ai: "AIが未設定か、準備できていません。まずAI設定でモデルを設定してください。",
+			ref: "assets/missing.png：manifestが参照していますが、このファイルはパッケージにありません。",
+			failure: "AIによるスキンの変更に失敗しました：Original model diagnostic 原文",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			file: "缺少佈景主題套件檔案（multipart 欄位 file）。",
+			id: "id 必須是佈景主題 ID 或 null。",
+			theme: "theme 只能是 light 或 dark。",
+			missing: "找不到佈景主題。",
+			asset: "找不到素材。",
+			ai: "智慧女僕尚未設定或尚未就緒，請先到 AI 設定頁設定模型。",
+			ref: "assets/missing.png：manifest 參照了此檔案，但套件中沒有這個檔案。",
+			failure: "AI 無法修改佈景主題：Original model diagnostic 原文",
+		},
+	],
+] as const)("%s:预览及保存拒绝提示本地化,失败不改已存皮肤或启用状态", async (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	const form = new FormData();
+	form.set("file", makeZipFile(true));
+	const preview = await app.request("/import-preview", { method: "POST", body: form });
+	expect(preview.status).toBe(200);
+	expect(await preview.json()).toMatchObject({ name: "樱花夜", conflict: false });
+	expect(await store.list()).toEqual([]);
+	const created = await upload(app, makeZipFile(true));
+	expect(created.status).toBe(201);
+	const { id } = (await created.json()) as { id: string };
+	const original = await store.get(id);
+	for (const [request, status, code, message] of [
+		[
+			() => app.request("/import-preview", { method: "POST", body: new FormData() }),
+			400,
+			"invalid",
+			text.file,
+		],
+		[() => putActive(app, { id: 1 }), 400, "invalid", text.id],
+		[() => putActive(app, { id: null, theme: "blue" }), 400, "invalid", text.theme],
+		[() => app.request("/missing/manifest"), 404, "not_found", text.missing],
+		[() => app.request(`/${id}/assets/missing.png`), 404, "not_found", text.asset],
+		[() => app.request(`/${id}/ai`, { method: "POST" }), 409, "not_configured", text.ai],
+		[
+			() =>
+				app.request(`/${id}/manifest`, {
+					method: "PUT",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						schemaVersion: 1,
+						name: "Rejected",
+						modes: { light: { wallpaper: { image: "assets/missing.png" } } },
+					}),
+				}),
+			400,
+			"invalid",
+			text.ref,
+		],
+	] as const) {
+		const response = await request();
+		expect(response.status).toBe(status);
+		expect(await response.json()).toEqual({ code, message });
+	}
+	const failedAi = new Hono().route(
+		"/",
+		createDashboardSkinsRoute({
+			skinStore: store,
+			commentary: () => ({
+				generateRaw: async () => {
+					throw new Error("Original model diagnostic 原文");
+				},
+			}),
+		}),
+	);
+	const response = await failedAi.request(`/${id}/ai`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ instruction: "Original request", draft: original }),
+	});
+	expect(response.status).toBe(503);
+	expect(await response.json()).toEqual({ code: "unavailable", message: text.failure });
+	expect(await store.get(id)).toEqual(original);
+	expect(await store.list()).toHaveLength(1);
+	expect(store.getActive()).toEqual({ light: null, dark: null });
 });
 
 describe("skins route", () => {
