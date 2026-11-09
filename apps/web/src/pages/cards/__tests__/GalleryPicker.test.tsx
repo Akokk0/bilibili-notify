@@ -60,6 +60,41 @@ describe("GalleryPicker", () => {
 		deleteMock.mockReset();
 	});
 	afterEach(() => cleanup());
+	it.each([
+		[
+			"ja",
+			"ご主人様、2枚の画像を通知ごとに順番に切り替えますね。",
+			"2 枚 · 通知ごとに順番に切り替え",
+			"無効な画像の参照を削除",
+		],
+		[
+			"zh-TW",
+			"主人，這 2 張圖片會在每次推播時依序輪換喔。",
+			"2 張 · 每次推播依序輪換",
+			"移除失效引用",
+		],
+	] as const)(
+		"%s maid rotation hint retains image order and the missing reference until removal",
+		async (locale, maid, plain, remove) => {
+			const onChange = vi.fn();
+			renderWithQuery(<GalleryPicker value={[GHOST, REAL]} onChange={onChange} />);
+			const ghost = await screen.findByTestId("gallery-ghost");
+			for (const [voice, expected] of [
+				["maid", maid],
+				["plain", plain],
+			] as const) {
+				act(() => i18n.set({ locale, voice }));
+				expect(screen.getByText(expected)).toBeTruthy();
+				expect(screen.getByTestId("gallery-ghost")).toBe(ghost);
+				expect(ghost.textContent).toContain("1");
+				expect(onChange).not.toHaveBeenCalled();
+				expect(deleteMock).not.toHaveBeenCalled();
+			}
+			fireEvent.click(screen.getByRole("button", { name: remove }));
+			expect(onChange).toHaveBeenCalledExactlyOnceWith([REAL]);
+			expect(deleteMock).not.toHaveBeenCalled();
+		},
+	);
 
 	it("管理资源在当前页进入图片分类，不提交未确认选择", async () => {
 		const open = vi.spyOn(window, "open").mockReturnValue(null);

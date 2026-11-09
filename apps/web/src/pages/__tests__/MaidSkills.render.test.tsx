@@ -108,6 +108,45 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+it.each([
+	[
+		"ja",
+		"ご主人様、何も選ばなければ制限しません。選んだ場合、このスキルはそのツールだけを使いますよ。",
+		"未選択なら制限しません。選択すると、このスキルが使えるのは指定したツールだけになります。",
+		"ご主人様、1件のスキルを読み取れません：",
+	],
+	[
+		"zh-TW",
+		"主人，全部不勾選就不限制；勾選後，這項技能只會使用選取的工具喔。",
+		"全部不勾選表示不限制；勾選後，此技能僅可使用所選工具。",
+		"主人，有 1 份技能無法讀取：",
+	],
+] as const)(
+	"%s maid skill hints preserve edited Markdown, selected tools and original diagnostics",
+	async (locale, maid, plain, problems) => {
+		H.problems = [{ dir: "broken-skill", reason: "Original error 原文 {name}" }];
+		mount();
+		fireEvent.click(await screen.findByRole("tab", { name: "my-skill" }));
+		const body = bodyBox();
+		fireEvent.change(body, { target: { value: "Original steps 原文 {name}" } });
+		fireEvent.click(screen.getByRole("checkbox", { name: "联网搜索" }));
+		for (const [voice, expected] of [
+			["maid", maid],
+			["plain", plain],
+		] as const) {
+			act(() => i18n.set({ locale, voice }));
+			expect(screen.getByText(expected)).toBeTruthy();
+			expect(screen.getByDisplayValue("Original steps 原文 {name}")).toBe(body);
+			expect(screen.getByRole("checkbox", { name: "联网搜索" })).toHaveProperty("checked", true);
+			expect(screen.getByText(/broken-skill\(Original error 原文 \{name\}\)/)).toBeTruthy();
+			if (voice === "maid") expect(screen.getByText(problems, { exact: false })).toBeTruthy();
+			expect(M.create).not.toHaveBeenCalled();
+			expect(M.update).not.toHaveBeenCalled();
+			expect(M.remove).not.toHaveBeenCalled();
+		}
+	},
+);
+
 it("skill editor translations retain the draft, command and selected tools until explicit save", async () => {
 	H.problems = [{ dir: "broken-skill", reason: "原始诊断" }];
 	mount();

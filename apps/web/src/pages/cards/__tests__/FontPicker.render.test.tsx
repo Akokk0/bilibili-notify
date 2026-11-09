@@ -99,6 +99,37 @@ afterEach(() => {
 });
 
 describe("选中态落在哪一档", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、選んだファイルはフォントライブラリーにもうありません。いまは代替フォントを使っていますよ。",
+			"選択したファイルがフォントライブラリーにありません。現在は代替フォントを使っています。",
+		],
+		[
+			"zh-TW",
+			"主人，選取的字型檔已不在字型庫裡，目前先使用替代字型喔。",
+			"所選字型檔已不在字型庫中，目前實際使用替代字型。",
+		],
+	] as const)(
+		"%s maid missing-font hint preserves the asset selection and fallback family",
+		async (locale, maid, plain) => {
+			const onChange = mount({ font: "Original fallback 原文", fontAsset: UPLOADED }, []);
+			await screen.findByText(/已不在字体库里/);
+			const input = screen.getByDisplayValue("Original fallback 原文");
+			for (const [voice, expected] of [
+				["maid", maid],
+				["plain", plain],
+			] as const) {
+				act(() => i18n.set({ locale, voice }));
+				expect(screen.getByText(expected)).toBeTruthy();
+				expect(screen.getByDisplayValue("Original fallback 原文")).toBe(input);
+				expect(onChange).not.toHaveBeenCalled();
+				expect(api.delete).not.toHaveBeenCalled();
+				expect(api.upload).not.toHaveBeenCalled();
+			}
+		},
+	);
+
 	it("空配置 → 落在「默认」", async () => {
 		mount({ font: "" });
 		await waitFor(() => expect(picked()).toContain("默认"));

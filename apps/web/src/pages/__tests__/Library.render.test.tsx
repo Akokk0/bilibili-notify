@@ -566,6 +566,45 @@ it("技能导出通过鉴权读取文件，以SKILL.md名称下载，不修改�
 	expect(request?.[1]?.credentials).toBe("include");
 });
 
+it.each([
+	[
+		"ja",
+		"ご主人様、整理したリソースは対応するページで選んでくださいね。会話の添付ファイルとスキン同梱のファイルは、元の場所に残しておきますよ。",
+		"フォント 示例字体.woff2 を削除",
+		"ご主人様、削除すると元には戻せません。先に参照を確認し、使用中の素材は残しますね。",
+		"削除は取り消せません。事前に参照を確認し、設定で使っているリソースは残します。",
+	],
+	[
+		"zh-TW",
+		"主人，整理好後再到對應頁面選用；對話附件與皮膚內附檔案仍保留在原處喔。",
+		"刪除字型 示例字体.woff2",
+		"主人，刪除後就無法復原了；刪除前會檢查引用，仍在使用的素材會保留喔。",
+		"刪除後無法復原；刪除前會檢查引用，仍被設定使用的資源會保留。",
+	],
+] as const)(
+	"%s maid library guidance preserves the file, category URL and unconfirmed deletion",
+	async (locale, scope, remove, maid, plain) => {
+		mount("/library?category=fonts&from=cards");
+		const filename = await screen.findByText("示例字体.woff2");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(scope)).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: remove }));
+		const dialog = screen.getByRole("dialog");
+		expect(within(dialog).getByText(maid)).toBeTruthy();
+		act(() => i18n.set({ voice: "plain" }));
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(within(dialog).getByText(plain)).toBeTruthy();
+		expect(within(dialog).getByText("示例字体.woff2")).toBeTruthy();
+		expect(filename.isConnected).toBe(true);
+		expect(screen.getByLabelText("当前位置").textContent).toBe(
+			"/library?category=fonts&from=cards",
+		);
+		expect(
+			vi.mocked(fetch).mock.calls.some(([, init]) => init?.method && init.method !== "GET"),
+		).toBe(false);
+	},
+);
+
 it("library navigation and deletion text translate while keeping the file and category address", async () => {
 	mount("/library?category=fonts&from=cards");
 	const filename = await screen.findByText("示例字体.woff2");
