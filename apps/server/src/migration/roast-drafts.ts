@@ -1,4 +1,3 @@
-import { t as serverText } from "./i18n.js";
 /**
  * 待审的锐评草稿 `runtime/roast-drafts.json`:0.x 按 uid 回指一位 UP → 按订阅 id 回指(ADR-0020 决策 18)。
  * 收进来之前是草稿库读盘时翻(⑥c),草稿库开机只认最新的形状。
@@ -11,7 +10,7 @@ import type { BiliSubscriptionKey } from "./subscriptions.js";
 type WithLegacyUid<T> = T & { uid?: unknown; subscriptionId?: unknown };
 
 /**
- * 一份老草稿(按 uid 记)→ 新形状;对不上订阅回一句为什么丢。已经是新形状的原样放行。
+ * 一份老草稿(按 uid 记)→ 新形状;对不上订阅回 null，由调用方丢弃。已经是新形状的原样放行。
  *
  * - 单人:草稿的 `uid` 与结果的 `uid` 都换成那条订阅的 id。
  * - 榜单:鸽王 / 勤奋 UP 任一对不上 → 整份丢(同 `parseRoastReply`:卡的主体缺一半没什么可发的);锐评与
@@ -20,15 +19,14 @@ type WithLegacyUid<T> = T & { uid?: unknown; subscriptionId?: unknown };
 function upgradeLegacyDraft(
 	raw: Record<string, unknown>,
 	idOf: (uid: string) => string | undefined,
-): Record<string, unknown> | string {
+): Record<string, unknown> | null {
 	const lookup = (uid: unknown) => (typeof uid === "string" ? idOf(uid) : undefined);
 	const result = raw.result as Record<string, unknown> | null | undefined;
 	if (raw.kind === "solo") {
 		if (raw.uid === undefined) return raw;
 		const { uid, ...rest } = raw;
 		const subscriptionId = lookup(uid);
-		if (!subscriptionId)
-			return serverText("service.migration.roast-drafts.text.1", { value0: String(uid) });
+		if (!subscriptionId) return null;
 		const { uid: _resultUid, ...resultRest } = (result ?? {}) as Record<string, unknown>;
 		return { ...rest, subscriptionId, result: { ...resultRest, subscriptionId } };
 	}
@@ -44,7 +42,7 @@ function upgradeLegacyDraft(
 	const diligent = result.diligent as WithLegacyUid<{ reason: string }> | undefined;
 	const newPigeon = swap(pigeon);
 	const newDiligent = diligent ? swap(diligent) : null;
-	if (!newPigeon || !newDiligent) return serverText("service.migration.roast-drafts.text.2");
+	if (!newPigeon || !newDiligent) return null;
 	const list = (key: "roast" | "scores") =>
 		(Array.isArray(result[key]) ? (result[key] as WithLegacyUid<object>[]) : []).flatMap((r) => {
 			const one = swap(r);
@@ -80,7 +78,7 @@ export async function migrateRoastDraftsFile(
 		if (!isPlainObject(raw)) return [];
 		try {
 			const upgraded = upgradeLegacyDraft(raw, idOf);
-			return typeof upgraded === "string" ? [] : [upgraded];
+			return upgraded === null ? [] : [upgraded];
 		} catch {
 			return [];
 		}

@@ -1,4 +1,3 @@
-import { t as serverText } from "./i18n.js";
 /**
  * 迁移清单(守卫 13 前半):盘上存的记录里,所有「用特性键 / 附加项键 / 卡种做键」的位置,以及每一条由谁负责从 0.x 迁到 1.0。
  *
@@ -126,9 +125,7 @@ export const KEYED_RECORD_ENTRIES: readonly KeyedRecordEntry[] = [
 		vocabulary: "CardKind",
 		handledBy: {
 			kind: "rejected",
-			get note() {
-				return serverText("service.migration.keyed-records.text.1");
-			},
+			note: "ADR-0022 decision 12: card skin packages are not migrated; incompatible formats are rejected as a whole.",
 		},
 	},
 ];
