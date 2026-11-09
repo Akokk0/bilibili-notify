@@ -927,5 +927,18 @@
 	"service.extensions.loader.text.1": "資訊清單宣告了設定欄位，但 activate 未提供驗證用的 Zod 規則。請呼叫 ctx.settings(schema)，讓面板儲存的值也通過擴充功能自己的驗證。",
 	"service.extensions.loader.text.2": "已儲存的設定不符合此擴充功能的規則：{value0}。請在設定頁修正，正確後擴充功能會自動啟動。",
 	"service.extensions.loader.text.3": "此擴充功能的設定檔不是有效的 JSON，已暫停執行。請在設定頁重新填寫並儲存；若沒有設定頁，請修正檔案後重新啟動。{value0}",
-	"extension.settings.invalid": "擴充功能設定未通過檢查（共 {count} 個問題）。"
+	"extension.settings.invalid": "擴充功能設定未通過檢查（共 {count} 個問題）。",
+	"service.extensions.mount.text.1": "沒有此擴充功能。",
+	"service.extensions.mount.text.2": "擴充功能處理此請求時發生錯誤，詳情請查看日誌。",
+	"extension.stopReason.disabled": "擴充功能 {id} 已停用。",
+	"service.extensions.loader.text.9": "磁碟上的 {value0} 目前無法載入，不能替換現有程式碼，請先查看擴充功能頁的對應項目。",
+	"service.extensions.loader.text.10": "{value0} 沒有等待套用的新程式碼。每次重新載入都會在記憶體保留一份舊模組，因此不執行多餘的重新載入。",
+	"service.extensions.loader.text.11": "{value0} 已停用，套用新程式碼會使其啟動。若要維持停用，請重新啟動 BN 來套用，或先啟用此擴充功能。",
+	"service.extensions.loader.text.12": "尚未安裝擴充功能 {value0}，或無法讀取其資訊清單。",
+	"service.extensions.loader.text.13": "{value0} 已停用，請先啟用再重新載入。",
+	"service.extensions.loader.text.4": "連續載入失敗已達上限（{value0} 次），因此自動停用。安裝其他版本後會重新嘗試。",
+	"service.extensions.loader.text.5": "無法開啟儲存空間：{value0}",
+	"service.extensions.loader.text.6": "{value0} 未匯出 activate()。",
+	"service.extensions.loader.text.7": "驗證已儲存的設定",
+	"service.extensions.loader.text.8": "{value0} 超過 {value1} 秒仍未完成，已記為載入失敗。"
 }

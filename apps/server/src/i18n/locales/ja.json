@@ -927,5 +927,18 @@
 	"service.extensions.loader.text.1": "マニフェストに設定項目がありますが、activateで検証用のZodスキーマが渡されていません。ctx.settings(schema)を呼び、ダッシュボードから保存した値も拡張機能側で検証してください。",
 	"service.extensions.loader.text.2": "保存済みの設定がこの拡張機能のルールを満たしていません：{value0}。設定画面で修正すると、拡張機能は自動的に起動します。",
 	"service.extensions.loader.text.3": "この拡張機能の設定ファイルが有効なJSONではないため、実行を停止しています。設定画面で入力し直して保存してください。設定画面がない場合は、ファイルを修正して再起動してください。{value0}",
-	"extension.settings.invalid": "拡張機能の設定に{count}件の検証エラーがあります。"
+	"extension.settings.invalid": "拡張機能の設定に{count}件の検証エラーがあります。",
+	"service.extensions.mount.text.1": "この拡張機能は存在しません。",
+	"service.extensions.mount.text.2": "拡張機能でリクエストの処理中にエラーが発生しました。詳細はログを確認してください。",
+	"extension.stopReason.disabled": "拡張機能{id}は無効化されました。",
+	"service.extensions.loader.text.9": "ディスク上の{value0}を読み込めないため、コードを置き換えられません。まず拡張機能ページで該当項目を確認してください。",
+	"service.extensions.loader.text.10": "{value0}には適用待ちの新しいコードがありません。再読み込みのたびに古いモジュールがメモリーに残るため、不要な再読み込みは行いません。",
+	"service.extensions.loader.text.11": "{value0}は無効です。新しいコードを適用すると起動してしまうため、無効のまま適用するにはBNを再起動するか、先に有効にしてください。",
+	"service.extensions.loader.text.12": "拡張機能{value0}がインストールされていないか、マニフェストを読み取れません。",
+	"service.extensions.loader.text.13": "{value0}は無効です。再読み込みする前に有効にしてください。",
+	"service.extensions.loader.text.4": "連続した読み込み失敗が上限（{value0}回）に達したため、自動的に無効化しました。別のバージョンをインストールすると再試行できます。",
+	"service.extensions.loader.text.5": "ストレージを開けません：{value0}",
+	"service.extensions.loader.text.6": "{value0}はactivate()をエクスポートしていません。",
+	"service.extensions.loader.text.7": "保存済み設定の検証",
+	"service.extensions.loader.text.8": "{value0}が{value1}秒以内に完了しなかったため、読み込み失敗として記録しました。"
 }

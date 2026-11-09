@@ -10,9 +10,12 @@
  */
 
 import { Hono } from "hono";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { i18n } from "../../i18n/index.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function appWith(mounts: ReturnType<typeof createExtensionMounts>): Hono {
 	const app = new Hono();
@@ -21,6 +24,51 @@ function appWith(mounts: ReturnType<typeof createExtensionMounts>): Hono {
 }
 
 describe("拓展挂载点", () => {
+	it.each([
+		[
+			"en",
+			"No such extension.",
+			"The extension failed to handle this request. See the logs for details.",
+		],
+		[
+			"ja",
+			"この拡張機能は存在しません。",
+			"拡張機能でリクエストの処理中にエラーが発生しました。詳細はログを確認してください。",
+		],
+		["zh-TW", "沒有此擴充功能。", "擴充功能處理此請求時發生錯誤，詳情請查看日誌。"],
+	] as const)(
+		"%s localizes live mount failures and keeps handler diagnostics out of responses",
+		async (locale, missing, failed) => {
+			const error = vi.fn();
+			const mounts = createExtensionMounts({ logger: { ...silentLogger, error } });
+			const boom = new Error("Original handler diagnostic secret-key");
+			mounts.mount("bad", () => {
+				throw boom;
+			});
+			const handle = mounts.mount("good", () => new Response("Original response 原文"));
+			const app = appWith(mounts);
+			i18n.set({ locale, voice: "plain" });
+			const absent = await app.request("/ext/missing/x");
+			expect(absent.status).toBe(404);
+			expect(await absent.json()).toEqual({ code: "not_found", message: missing });
+			const response = await app.request("/ext/bad/x?token=private-query");
+			expect(response.status).toBe(503);
+			expect(await response.json()).toEqual({ code: "unavailable", message: failed });
+			expect(error.mock.calls).toHaveLength(1);
+			expect(error.mock.calls[0]?.slice(1)).toEqual([
+				{ extensionId: "bad", method: "GET", path: "/ext/bad/x" },
+				boom,
+			]);
+			expect(JSON.stringify(error.mock.calls)).not.toContain("private-query");
+			expect(await (await app.request("/ext/good/x")).text()).toBe("Original response 原文");
+			handle.dispose();
+			expect(await (await app.request("/ext/good/x")).json()).toEqual({
+				code: "not_found",
+				message: missing,
+			});
+		},
+	);
+
 	it("挂上之后打得进去,而且 handler 看到的是**去掉前缀**的路径", async () => {
 		const seen: string[] = [];
 		const mounts = createExtensionMounts({ logger: silentLogger });

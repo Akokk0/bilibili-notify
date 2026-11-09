@@ -932,5 +932,18 @@
 	"service.extensions.loader.text.1": "The manifest declares settings fields, but activate did not provide a Zod schema. Call ctx.settings(schema) so the extension also validates values saved through the dashboard.",
 	"service.extensions.loader.text.2": "Stored settings do not satisfy this extension's rules: {value0}. Correct them in its settings; the extension will start automatically once they are valid.",
 	"service.extensions.loader.text.3": "This extension's settings file is not valid JSON, so it has been paused. Re-enter and save its settings. If no settings page is available, fix the file and restart. {value0}",
-	"extension.settings.invalid": "Extension settings failed validation. Issues found: {count}."
+	"extension.settings.invalid": "Extension settings failed validation. Issues found: {count}.",
+	"service.extensions.mount.text.1": "No such extension.",
+	"service.extensions.mount.text.2": "The extension failed to handle this request. See the logs for details.",
+	"extension.stopReason.disabled": "Extension {id} was disabled.",
+	"service.extensions.loader.text.9": "The copy of {value0} on disk cannot be loaded, so it cannot replace the current code. Check its entry on the Extensions page first.",
+	"service.extensions.loader.text.10": "{value0} has no new code waiting to be applied. Each reload retains an old module in memory, so unnecessary reloads are refused.",
+	"service.extensions.loader.text.11": "{value0} is disabled. Applying new code would start it; restart BN to apply it while disabled, or enable it first.",
+	"service.extensions.loader.text.12": "Extension {value0} is not installed, or its manifest cannot be read.",
+	"service.extensions.loader.text.13": "{value0} is disabled. Enable it before reloading.",
+	"service.extensions.loader.text.4": "Disabled after consecutive load failures (limit: {value0}). Installing another version will allow a new attempt.",
+	"service.extensions.loader.text.5": "Cannot open storage: {value0}",
+	"service.extensions.loader.text.6": "{value0} does not export activate().",
+	"service.extensions.loader.text.7": "Validating stored settings",
+	"service.extensions.loader.text.8": "{value0} exceeded the load time limit ({value1} s) and was counted as a load failure."
 }

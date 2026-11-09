@@ -9,12 +9,13 @@ import { logMessage } from "../../__tests__/support/log-message.js";
 
 import type { ExtensionManifest, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { png } from "../../__tests__/support/report-images.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { i18n } from "../../i18n/index.js";
 import { imageRefOf } from "../../images/image-store.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
 import { createProblemTable } from "../../problems/problem-table.js";
@@ -22,6 +23,8 @@ import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createExtensionContext } from "../context.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /** 一个手动跑的假宿主 ctx:定时器不真的走时钟,由测试自己 `tick()`。 */
 function fakeHost() {
@@ -345,6 +348,30 @@ describe("拓展 ctx", () => {
 
 /** 问题上报与 `signal`:拓展的上下文继承集成的上下文,报的人是拓展 id,停用时清,被拒的只记 warn。 */
 describe("拓展 ctx · reportProblem / resolveProblem / signal", () => {
+	it.each([
+		["en", "Extension bridge was disabled."],
+		["ja", "拡張機能bridgeは無効化されました。"],
+		["zh-TW", "擴充功能 bridge 已停用。"],
+	] as const)(
+		"%s reads the current language when stopping an existing extension context",
+		async (locale, message) => {
+			const { runtime, ctx } = makeRuntime();
+			let atCleanup: unknown;
+			ctx.onDispose(() => {
+				atCleanup = ctx.signal.reason;
+			});
+			i18n.set({ locale, voice: "plain" });
+			expect(ctx.signal.aborted).toBe(false);
+			await runtime.dispose();
+			expect(ctx.signal.aborted).toBe(true);
+			expect(ctx.signal.reason).toBeInstanceOf(DOMException);
+			expect(ctx.signal.reason).toMatchObject({ name: "AbortError", message });
+			expect(atCleanup).toBe(ctx.signal.reason);
+			await runtime.dispose();
+			expect(ctx.signal.reason).toBe(atCleanup);
+		},
+	);
+
 	it("activate 拿到的 reportProblem 进问题表,报的人是拓展 id;停用后清掉", async () => {
 		const { ctx, runtime, problems } = makeRuntime("fake-source");
 		ctx.reportProblem({ code: "upstream_down", message: "对面连不上" });

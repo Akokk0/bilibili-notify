@@ -182,6 +182,135 @@ afterEach(async () => {
 });
 
 describe("加载拓展", () => {
+	it.each([
+		[
+			"en",
+			{
+				entry: "index.mjs does not export activate().",
+				blocked:
+					"Disabled after consecutive load failures (limit: 1). Installing another version will allow a new attempt.",
+				store: "Cannot open storage: Original storage diagnostic 原文",
+				activate:
+					"activate() exceeded the load time limit (0.02 s) and was counted as a load failure.",
+				judge:
+					"Validating stored settings exceeded the load time limit (0.02 s) and was counted as a load failure.",
+			},
+		],
+		[
+			"ja",
+			{
+				entry: "index.mjsはactivate()をエクスポートしていません。",
+				blocked:
+					"連続した読み込み失敗が上限（1回）に達したため、自動的に無効化しました。別のバージョンをインストールすると再試行できます。",
+				store: "ストレージを開けません：Original storage diagnostic 原文",
+				activate: "activate()が0.02秒以内に完了しなかったため、読み込み失敗として記録しました。",
+				judge:
+					"保存済み設定の検証が0.02秒以内に完了しなかったため、読み込み失敗として記録しました。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				entry: "index.mjs 未匯出 activate()。",
+				blocked: "連續載入失敗已達上限（1 次），因此自動停用。安裝其他版本後會重新嘗試。",
+				store: "無法開啟儲存空間：Original storage diagnostic 原文",
+				activate: "activate() 超過 0.02 秒仍未完成，已記為載入失敗。",
+				judge: "驗證已儲存的設定 超過 0.02 秒仍未完成，已記為載入失敗。",
+			},
+		],
+	] as const)(
+		"%s distinguishes entry, storage, automatic blocking and activation/settings timeouts",
+		async (locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			await plant("bare", "export const original = 1;");
+			const host = fakeHost();
+			const missing = await run({
+				host,
+				mounts: createExtensionMounts({ logger: silentLogger }),
+				maxFailures: 1,
+			});
+			try {
+				expect(missing.list()[0]).toMatchObject({ state: "failed", detail: text.entry });
+			} finally {
+				await missing.dispose();
+			}
+			const blocked = await run({
+				host,
+				mounts: createExtensionMounts({ logger: silentLogger }),
+				maxFailures: 1,
+			});
+			try {
+				expect(blocked.list()[0]).toMatchObject({ state: "blocked", detail: text.blocked });
+			} finally {
+				await blocked.dispose();
+			}
+			await rm(join(root, "bare"), { recursive: true });
+			await plant("stored", HEALTHY);
+			const storage = await loadExtensions({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				timezoneReader: fixedTimezone("Asia/Shanghai"),
+				transitImages: inertTransitImages,
+				locale: fixedLocale(),
+				root,
+				...hostOpts(host),
+				...coreStubs(),
+				mounts: createExtensionMounts({ logger: silentLogger }),
+				isEnabled: () => true,
+				maxFailures: 1,
+				integrationStore: {
+					open: async () => {
+						throw new Error("Original storage diagnostic 原文");
+					},
+				},
+			});
+			try {
+				expect(storage.list()[0]).toMatchObject({ state: "failed", detail: text.store });
+				expect(readLoadLedger(root).blocked).not.toContain("stored@1.0.0");
+			} finally {
+				await storage.dispose();
+			}
+			await rm(join(root, "stored"), { recursive: true });
+			await plant("hang", "export function activate() {}");
+			const activation = await run({
+				host,
+				mounts: createExtensionMounts({ logger: silentLogger }),
+				activateTimeoutMs: 20,
+				importModule: async () => ({ activate: () => new Promise(() => {}) }),
+			});
+			try {
+				expect(activation.list()[0]).toMatchObject({ state: "failed", detail: text.activate });
+			} finally {
+				await activation.dispose();
+			}
+			await rm(join(root, "hang"), { recursive: true });
+			await plant("judge", "export function activate() {}", {
+				settings: {
+					fields: [{ key: "count", label: "Original count", type: "number", default: 0 }],
+				},
+			});
+			const settings = await run({
+				host,
+				mounts: createExtensionMounts({ logger: silentLogger }),
+				activateTimeoutMs: 20,
+				importModule: async () => ({
+					activate: (ctx: ExtensionContext) => {
+						ctx.settings(
+							z
+								.object({ count: z.number().default(0) })
+								.refine(() => new Promise<boolean>(() => {})),
+						);
+					},
+				}),
+			});
+			try {
+				expect(settings.list()[0]).toMatchObject({ state: "failed", detail: text.judge });
+			} finally {
+				await settings.dispose();
+			}
+			expect(host.pending()).toBe(0);
+		},
+	);
+
 	it("启用着的正常拓展 → 跑起来,它注册的东西真的在", async () => {
 		await plant("bridge", HEALTHY);
 		const host = fakeHost();
@@ -1508,6 +1637,88 @@ describe("换了代码(等着换上)", () => {
 			return res.status === 200 ? res.text() : res.status;
 		};
 	}
+	it.each([
+		[
+			"en",
+			{
+				broken:
+					"The copy of bridge on disk cannot be loaded, so it cannot replace the current code. Check its entry on the Extensions page first.",
+				unchanged:
+					"bridge has no new code waiting to be applied. Each reload retains an old module in memory, so unnecessary reloads are refused.",
+				disabledSwap:
+					"bridge is disabled. Applying new code would start it; restart BN to apply it while disabled, or enable it first.",
+				missing: "Extension nobody is not installed, or its manifest cannot be read.",
+				disabledReload: "bridge is disabled. Enable it before reloading.",
+			},
+		],
+		[
+			"ja",
+			{
+				broken:
+					"ディスク上のbridgeを読み込めないため、コードを置き換えられません。まず拡張機能ページで該当項目を確認してください。",
+				unchanged:
+					"bridgeには適用待ちの新しいコードがありません。再読み込みのたびに古いモジュールがメモリーに残るため、不要な再読み込みは行いません。",
+				disabledSwap:
+					"bridgeは無効です。新しいコードを適用すると起動してしまうため、無効のまま適用するにはBNを再起動するか、先に有効にしてください。",
+				missing: "拡張機能nobodyがインストールされていないか、マニフェストを読み取れません。",
+				disabledReload: "bridgeは無効です。再読み込みする前に有効にしてください。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				broken: "磁碟上的 bridge 目前無法載入，不能替換現有程式碼，請先查看擴充功能頁的對應項目。",
+				unchanged:
+					"bridge 沒有等待套用的新程式碼。每次重新載入都會在記憶體保留一份舊模組，因此不執行多餘的重新載入。",
+				disabledSwap:
+					"bridge 已停用，套用新程式碼會使其啟動。若要維持停用，請重新啟動 BN 來套用，或先啟用此擴充功能。",
+				missing: "尚未安裝擴充功能 nobody，或無法讀取其資訊清單。",
+				disabledReload: "bridge 已停用，請先啟用再重新載入。",
+			},
+		],
+	] as const)(
+		"%s distinguishes reload refusals and keeps the queue usable without starting disabled code",
+		async (locale, text) => {
+			await plant("bridge", says("Original old response"));
+			let on = true;
+			const mounts = createExtensionMounts({ logger: silentLogger });
+			const body = serve(mounts);
+			const host = fakeHost();
+			const loaded = await run({ host, mounts, enabled: () => on });
+			i18n.set({ locale, voice: "plain" });
+			try {
+				await expect(loaded.reload("nobody")).rejects.toThrow(text.missing);
+				const unchanged = await loaded.swap("bridge").catch((err: unknown) => err);
+				expect(unchanged).toBeInstanceOf(ExtensionConflictError);
+				expect(unchanged).toMatchObject({ message: text.unchanged });
+				expect(await body()).toBe("Original old response");
+				on = false;
+				await loaded.sync();
+				await expect(loaded.reload("bridge")).rejects.toThrow(text.disabledReload);
+				await plant("bridge", says("Original new response"), { version: "2.0.0" });
+				await loaded.rescan();
+				const disabled = await loaded.swap("bridge").catch((err: unknown) => err);
+				expect(disabled).toBeInstanceOf(ExtensionConflictError);
+				expect(disabled).toMatchObject({ message: text.disabledSwap });
+				expect(loaded.list()[0]?.state).toBe("disabled");
+				expect(await body()).toBe(404);
+				on = true;
+				await writeFile(join(root, "bridge", "extension.json"), "{broken");
+				await expect(loaded.reload("bridge")).rejects.toThrow(text.broken);
+				expect(await body()).toBe(404);
+				await plant("bridge", says("Original new response"), { version: "2.0.0" });
+				await loaded.reload("bridge");
+				expect(loaded.list()[0]).toMatchObject({
+					state: "running",
+					manifest: { version: "2.0.0" },
+				});
+				expect(await body()).toBe("Original new response");
+			} finally {
+				await loaded.dispose();
+			}
+			expect(host.pending()).toBe(0);
+		},
+	);
 
 	it("删了再装、代码变了 → 不拿缓存里的旧代码跑,等着换上;只重载之后跑的是新的", async () => {
 		await plant("bridge", says("旧的"));
