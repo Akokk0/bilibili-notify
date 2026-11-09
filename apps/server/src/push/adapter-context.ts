@@ -7,7 +7,7 @@ import type {
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import { logText, t as serverText, t } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import {
 	parseProblemReport,
 	parseProblemResolve,
@@ -92,9 +92,14 @@ export function createPlatformAdapterContext(
 	}
 
 	/** 形状不对的上报:记一行并按选项把原因交出去;`code` 用安全预览,不直接插第三方交来的值。 */
-	function rejectProblem(what: string, report: unknown, issue: string): void {
+	function rejectProblem(operation: "report" | "resolve", report: unknown, issue: string): void {
 		const code = problemCodePreview(report);
-		integration.logger[opts.rejectedProblemLevel](`${what}问题 ${code} 被拒(丢弃):${issue}`);
+		integration.logger[opts.rejectedProblemLevel](logText("log.integration.problemInvalid"), {
+			operation,
+			code,
+			adapterKey,
+			issue,
+		});
 		opts.onRejectedProblem?.({ reason: problemRejectionReason(code, false, issue) });
 	}
 
@@ -106,22 +111,33 @@ export function createPlatformAdapterContext(
 	 * 上报不给这一格 —— 给一条不存在的连接记问题没有意义,照旧拒。
 	 */
 	function acceptConnectionProblem(
-		what: string,
+		operation: "report" | "resolve",
 		code: string,
 		connectionId: string,
 		allowRemoved: boolean,
 		apply: () => void,
 	): void {
 		const ownership = ownershipOf(connectionId);
-		const issue = stopped()
-			? serverText("service.push.adapter-context.text.1")
-			: ownership.kind === "foreign" || (ownership.kind === "removed" && !allowRemoved)
-				? t("problem.report.connectionNotOwned", { connectionId, adapterKey })
-				: undefined;
-		if (issue !== undefined) {
-			integration.logger[opts.rejectedProblemLevel](`${what}问题 ${code} 被拒(丢弃):${issue}`);
+		const hasStopped = stopped();
+		if (
+			hasStopped ||
+			ownership.kind === "foreign" ||
+			(ownership.kind === "removed" && !allowRemoved)
+		) {
+			integration.logger[opts.rejectedProblemLevel](
+				hasStopped
+					? logText("log.integration.problemAfterStop")
+					: logText("log.adapter.problemNotOwned"),
+				{ operation, code, adapterKey, connectionId },
+			);
 			opts.onRejectedProblem?.({
-				reason: problemRejectionReason(code, stopped(), issue),
+				reason: hasStopped
+					? problemRejectionReason(code, true)
+					: problemRejectionReason(
+							code,
+							false,
+							t("problem.report.connectionNotOwned", { connectionId, adapterKey }),
+						),
 			});
 			return;
 		}
@@ -175,7 +191,7 @@ export function createPlatformAdapterContext(
 		reportProblem(problem) {
 			const parsed = parseProblemReport(problem);
 			if (!parsed.ok) {
-				rejectProblem("报", problem, parsed.message);
+				rejectProblem("report", problem, parsed.message);
 				return;
 			}
 			if (parsed.connectionId === undefined) {
@@ -190,7 +206,7 @@ export function createPlatformAdapterContext(
 				return;
 			}
 			const connectionId = parsed.connectionId;
-			acceptConnectionProblem("报", parsed.code, connectionId, false, () =>
+			acceptConnectionProblem("report", parsed.code, connectionId, false, () =>
 				opts.problems.report({
 					reporter: adapterKey,
 					writtenBy: opts.label(),
@@ -207,7 +223,7 @@ export function createPlatformAdapterContext(
 		resolveProblem(problem) {
 			const parsed = parseProblemResolve(problem);
 			if (!parsed.ok) {
-				rejectProblem("清", problem, parsed.message);
+				rejectProblem("resolve", problem, parsed.message);
 				return;
 			}
 			if (parsed.connectionId === undefined) {
@@ -218,7 +234,7 @@ export function createPlatformAdapterContext(
 				return;
 			}
 			const connectionId = parsed.connectionId;
-			acceptConnectionProblem("清", parsed.code, connectionId, true, () =>
+			acceptConnectionProblem("resolve", parsed.code, connectionId, true, () =>
 				opts.problems.resolve(
 					{ reporter: adapterKey, about: { connectionId }, code: parsed.code },
 					parsed.notify === undefined ? undefined : { notify: parsed.notify },

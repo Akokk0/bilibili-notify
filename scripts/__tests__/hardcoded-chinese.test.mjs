@@ -2558,45 +2558,6 @@ export const NON_DISPLAY_TEXTS = {
 		},
 	],
 
-	"apps/server/src/integrations/context.ts": [
-		{
-			owner: "createIntegrationContext/acceptProblem",
-			text: pinnedSource("`@{what}问题 @{code} 被拒(丢弃):集成已停下`"),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				"logger[opts.rejectedProblemLevel](`@{what}问题 @{code} 被拒(丢弃):集成已停下`);",
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "createIntegrationContext/acceptProblem",
-			text: pinnedSource("`@{what}问题 @{code} 被拒(丢弃):@{parsed.message}`"),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				"logger[opts.rejectedProblemLevel](`@{what}问题 @{code} 被拒(丢弃):@{parsed.message}`);",
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "createIntegrationContext/ctx/reportProblem",
-			text: pinnedSource('"报"'),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				'acceptProblem("报", problem, parseProblemReport, (report) =>\n\t\t\t\topts.problems.report({\n\t\t\t\t\treporter: opts.reporter,\n\t\t\t\t\twrittenBy: opts.label(),\n\t\t\t\t\tcode: report.code,\n\t\t\t\t\tmessage: report.message,\n\t\t\t\t\t...(report.notify === undefined ? {} : { notify: report.notify }),\n\t\t\t\t\t...(report.recoveryMessage === undefined\n\t\t\t\t\t\t? {}\n\t\t\t\t\t\t: { recoveryMessage: report.recoveryMessage }),\n\t\t\t\t}),\n\t\t\t);',
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "createIntegrationContext/ctx/resolveProblem",
-			text: pinnedSource('"清"'),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				'acceptProblem("清", problem, parseProblemResolve, (report) =>\n\t\t\t\topts.problems.resolve(\n\t\t\t\t\t{ reporter: opts.reporter, code: report.code },\n\t\t\t\t\treport.notify === undefined ? undefined : { notify: report.notify },\n\t\t\t\t),\n\t\t\t);',
-			),
-			slot: pinnedSource(""),
-		},
-	],
-
 	"apps/server/src/live/recap/live-summary-requester.ts": [
 		{
 			owner: "LiveSummaryRequester/generate/prompt",
@@ -3090,58 +3051,6 @@ export const NON_DISPLAY_TEXTS = {
 				'ZERO_DEFAULT_TEMPLATES = {\n\tliveStart: "{name} 开播啦，当前粉丝数：{follower}",\n\tliveOngoing: "{name} 正在直播，已播 {time}，累计观看：{watched}",\n\tliveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",\n\tdynamic: "{name}发布了一条动态",\n\tdynamicVideo: "{name}发布了新视频",\n\tguardBuy: {\n\t\tcaptain: "{uname} 成为了 {mname} 的舰长！",\n\t\tcommander: "{uname} 成为了 {mname} 的提督！",\n\t\tgovernor: "{uname} 成为了 {mname} 的总督！",\n\t},\n} as const',
 			),
 			slot: pinnedSource("guardBuy/governor"),
-		},
-	],
-	"apps/server/src/push/adapter-context.ts": [
-		{
-			owner: "createPlatformAdapterContext/rejectProblem",
-			text: pinnedSource("`@{what}问题 @{code} 被拒(丢弃):@{issue}`"),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				"integration.logger[opts.rejectedProblemLevel](`@{what}问题 @{code} 被拒(丢弃):@{issue}`);",
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "createPlatformAdapterContext/acceptConnectionProblem",
-			text: pinnedSource("`@{what}问题 @{code} 被拒(丢弃):@{issue}`"),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				"integration.logger[opts.rejectedProblemLevel](`@{what}问题 @{code} 被拒(丢弃):@{issue}`);",
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "createPlatformAdapterContext/reportProblem",
-			text: pinnedSource('"报"'),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource('rejectProblem("报", problem, parsed.message);'),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "createPlatformAdapterContext/reportProblem",
-			text: pinnedSource('"报"'),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				'acceptConnectionProblem("报", parsed.code, connectionId, false, () =>\n\t\t\t\topts.problems.report({\n\t\t\t\t\treporter: adapterKey,\n\t\t\t\t\twrittenBy: opts.label(),\n\t\t\t\t\tabout: { connectionId },\n\t\t\t\t\tcode: parsed.code,\n\t\t\t\t\tmessage: parsed.message,\n\t\t\t\t\t...(parsed.notify === undefined ? {} : { notify: parsed.notify }),\n\t\t\t\t\t...(parsed.recoveryMessage === undefined\n\t\t\t\t\t\t? {}\n\t\t\t\t\t\t: { recoveryMessage: parsed.recoveryMessage }),\n\t\t\t\t}),\n\t\t\t);',
-			),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "createPlatformAdapterContext/resolveProblem",
-			text: pinnedSource('"清"'),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource('rejectProblem("清", problem, parsed.message);'),
-			slot: pinnedSource(""),
-		},
-		{
-			owner: "createPlatformAdapterContext/resolveProblem",
-			text: pinnedSource('"清"'),
-			reason: "问题上报日志的动作片段或动态等级日志语句；业务拒收原因由独立接口出字",
-			site: pinnedSource(
-				'acceptConnectionProblem("清", parsed.code, connectionId, true, () =>\n\t\t\t\topts.problems.resolve(\n\t\t\t\t\t{ reporter: adapterKey, about: { connectionId }, code: parsed.code },\n\t\t\t\t\tparsed.notify === undefined ? undefined : { notify: parsed.notify },\n\t\t\t\t),\n\t\t\t);',
-			),
-			slot: pinnedSource(""),
 		},
 	],
 	"apps/server/src/runtime/command-params.ts": [

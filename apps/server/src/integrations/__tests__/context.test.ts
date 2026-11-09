@@ -50,6 +50,79 @@ function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {
 }
 
 describe("createIntegrationContext", () => {
+	it.each([
+		[
+			"zh-CN",
+			"问题更新格式无效，拒绝接收",
+			"集成已停止，丢弃问题更新",
+			"message 不是字符串",
+			"notify 不是布尔",
+		],
+		[
+			"en",
+			"Invalid problem update rejected",
+			"Integration stopped; problem update discarded",
+			'"message" must be a string.',
+			'"notify" must be a boolean.',
+		],
+		[
+			"ja",
+			"問題の更新形式が無効なため、受け付けませんでした",
+			"連携は停止済みのため、問題の更新を破棄しました",
+			"「message」は文字列で指定してください。",
+			"「notify」は真偽値で指定してください。",
+		],
+		[
+			"zh-TW",
+			"問題更新格式無效，拒絕接收",
+			"整合已停止，捨棄問題更新",
+			"「message」必須是字串。",
+			"「notify」必須是布林值。",
+		],
+	] as const)(
+		"%s 问题拒收日志现取平实说明，诊断独立且不改变问题表",
+		async (locale, invalid, stopped, messageIssue, notifyIssue) => {
+			const state = i18n.state();
+			try {
+				for (const level of ["warn", "error"] as const) {
+					i18n.set({ locale: "zh-CN", voice: "plain" });
+					const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+					const { handle, problems } = make({ logger, rejectedProblemLevel: level });
+					try {
+						handle.ctx.reportProblem({ code: "x_down", message: "Original 原文" });
+						i18n.set({ locale, voice: "maid" });
+						handle.ctx.reportProblem({ code: "x_down" } as never);
+						handle.ctx.resolveProblem({ code: "x_down", notify: "bad" } as never);
+						expect(logger[level].mock.calls).toEqual([
+							[
+								invalid,
+								{ operation: "report", code: "x_down", reporter: "demo", issue: messageIssue },
+							],
+							[
+								invalid,
+								{ operation: "resolve", code: "x_down", reporter: "demo", issue: notifyIssue },
+							],
+						]);
+						expect(problems.list().map((problem) => problem.message)).toEqual(["Original 原文"]);
+						await handle.dispose();
+						handle.ctx.reportProblem({ code: "x_down", message: "Late 原文" });
+						handle.ctx.resolveProblem({ code: "x_down" });
+						expect(logger[level].mock.calls.slice(2)).toEqual([
+							[stopped, { operation: "report", code: "x_down", reporter: "demo" }],
+							[stopped, { operation: "resolve", code: "x_down", reporter: "demo" }],
+						]);
+						expect(logger[level === "warn" ? "error" : "warn"]).not.toHaveBeenCalled();
+						expect(problems.list()).toEqual([]);
+					} finally {
+						await handle.dispose();
+					}
+				}
+			} finally {
+				i18n.set({ locale: state.locale, voice: state.voice });
+			}
+		},
+	);
+
 	it("收尾失败日志在输出时取当前语言、保留错误链并继续收尾", async () => {
 		const state = i18n.state();
 		const error = new Error("dispose", { cause: new Error("io") });

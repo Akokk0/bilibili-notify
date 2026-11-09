@@ -261,6 +261,103 @@ describe("createPlatformAdapterContext — settings 先按适配器的规则解"
 describe("createPlatformAdapterContext · reportProblem / resolveProblem", () => {
 	it.each([
 		[
+			"zh-CN",
+			"问题更新格式无效，拒绝接收",
+			"连接不归当前适配器，拒绝问题更新",
+			"集成已停止，丢弃问题更新",
+			"message 不是字符串",
+			"notify 不是布尔",
+		],
+		[
+			"en",
+			"Invalid problem update rejected",
+			"Problem update rejected; connection belongs to another adapter or is missing",
+			"Integration stopped; problem update discarded",
+			'"message" must be a string.',
+			'"notify" must be a boolean.',
+		],
+		[
+			"ja",
+			"問題の更新形式が無効なため、受け付けませんでした",
+			"接続が他のアダプターに属するか存在しないため、問題の更新を拒否しました",
+			"連携は停止済みのため、問題の更新を破棄しました",
+			"「message」は文字列で指定してください。",
+			"「notify」は真偽値で指定してください。",
+		],
+		[
+			"zh-TW",
+			"問題更新格式無效，拒絕接收",
+			"連線不屬於目前的適配器，拒絕問題更新",
+			"整合已停止，捨棄問題更新",
+			"「message」必須是字串。",
+			"「notify」必須是布林值。",
+		],
+	] as const)(
+		"%s 连接问题拒收现取平实日志，保留归属隔离和删除后清理",
+		async (locale, invalid, notOwned, stopped, messageIssue, notifyIssue) => {
+			const state = i18n.state();
+			const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+			const { ctx, handle, problems } = build("onebot", () => mine, undefined, undefined, logger);
+			try {
+				ctx.reportProblem({ connectionId: "ob1", code: "x_down", message: "Original 原文" });
+				i18n.set({ locale, voice: "maid" });
+				ctx.reportProblem({ connectionId: "ob1", code: "x_down" } as never);
+				ctx.resolveProblem({ connectionId: "ob1", code: "x_down", notify: "bad" } as never);
+				expect(logger.error.mock.calls).toEqual([
+					[
+						invalid,
+						{ operation: "report", code: "x_down", adapterKey: "onebot", issue: messageIssue },
+					],
+					[
+						invalid,
+						{ operation: "resolve", code: "x_down", adapterKey: "onebot", issue: notifyIssue },
+					],
+				]);
+				logger.error.mockClear();
+				ctx.reportProblem({ connectionId: "qq1", code: "x_down", message: "Foreign 原文" });
+				ctx.resolveProblem({ connectionId: "qq1", code: "x_down" });
+				ctx.reportProblem({ connectionId: "removed", code: "x_down", message: "Removed 原文" });
+				ctx.resolveProblem({ connectionId: "removed", code: "x_down" });
+				expect(logger.error.mock.calls).toEqual([
+					[
+						notOwned,
+						{ operation: "report", code: "x_down", adapterKey: "onebot", connectionId: "qq1" },
+					],
+					[
+						notOwned,
+						{ operation: "resolve", code: "x_down", adapterKey: "onebot", connectionId: "qq1" },
+					],
+					[
+						notOwned,
+						{ operation: "report", code: "x_down", adapterKey: "onebot", connectionId: "removed" },
+					],
+				]);
+				expect(problems.list().map((problem) => problem.message)).toEqual(["Original 原文"]);
+				logger.error.mockClear();
+				await handle.dispose();
+				ctx.reportProblem({ connectionId: "ob1", code: "x_down", message: "Late 原文" });
+				ctx.resolveProblem({ connectionId: "ob1", code: "x_down" });
+				expect(logger.error.mock.calls).toEqual([
+					[
+						stopped,
+						{ operation: "report", code: "x_down", adapterKey: "onebot", connectionId: "ob1" },
+					],
+					[
+						stopped,
+						{ operation: "resolve", code: "x_down", adapterKey: "onebot", connectionId: "ob1" },
+					],
+				]);
+				expect(logger.warn).not.toHaveBeenCalled();
+				expect(problems.list()).toEqual([]);
+			} finally {
+				await handle.dispose();
+				i18n.set({ locale: state.locale, voice: state.voice });
+			}
+		},
+	);
+
+	it.each([
+		[
 			"en",
 			{
 				invalid: 'Problem "x_down" rejected: "message" must be a string.',

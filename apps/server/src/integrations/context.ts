@@ -151,20 +151,29 @@ export function createIntegrationContext(
 	 * 解析规矩三层共用一份(`problems/problem-report.ts`):先解析出干净副本,问题表只写副本里的那几格。
 	 */
 	function acceptProblem<T extends object>(
-		what: string,
+		operation: "report" | "resolve",
 		report: unknown,
 		parse: (raw: unknown) => Result<T>,
 		apply: (problem: T) => void,
 	): void {
 		const code = problemCodePreview(report);
 		if (disposed) {
-			logger[opts.rejectedProblemLevel](`${what}问题 ${code} 被拒(丢弃):集成已停下`);
+			logger[opts.rejectedProblemLevel](logText("log.integration.problemAfterStop"), {
+				operation,
+				code,
+				reporter: opts.reporter,
+			});
 			opts.onRejectedProblem?.({ reason: problemRejectionReason(code, true) });
 			return;
 		}
 		const parsed = parse(report);
 		if (!parsed.ok) {
-			logger[opts.rejectedProblemLevel](`${what}问题 ${code} 被拒(丢弃):${parsed.message}`);
+			logger[opts.rejectedProblemLevel](logText("log.integration.problemInvalid"), {
+				operation,
+				code,
+				reporter: opts.reporter,
+				issue: parsed.message,
+			});
 			opts.onRejectedProblem?.({
 				reason: problemRejectionReason(code, false, parsed.message),
 			});
@@ -239,7 +248,7 @@ export function createIntegrationContext(
 			opts.redactValues([...redacted]);
 		},
 		reportProblem(problem) {
-			acceptProblem("报", problem, parseProblemReport, (report) =>
+			acceptProblem("report", problem, parseProblemReport, (report) =>
 				opts.problems.report({
 					reporter: opts.reporter,
 					writtenBy: opts.label(),
@@ -253,7 +262,7 @@ export function createIntegrationContext(
 			);
 		},
 		resolveProblem(problem) {
-			acceptProblem("清", problem, parseProblemResolve, (report) =>
+			acceptProblem("resolve", problem, parseProblemResolve, (report) =>
 				opts.problems.resolve(
 					{ reporter: opts.reporter, code: report.code },
 					report.notify === undefined ? undefined : { notify: report.notify },
