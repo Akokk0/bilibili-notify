@@ -96,6 +96,7 @@ export function BrowserSourceSettings() {
 
 	return (
 		<GlassBox
+			className="@container"
 			title={tx("panelUi.components.browser-source-settings.7")}
 			subtitle={tx("panelUi.components.browser-source-settings.8")}
 			accent={status?.enabled ? "var(--color-bn-success)" : "var(--color-bn-inactive)"}
@@ -117,6 +118,7 @@ export function BrowserSourceSettings() {
 			) : null}
 			<Field
 				code="chromePath"
+				responsive
 				label={tx("panelUi.components.browser-source-settings.12")}
 				hint={tx("panelUi.components.browser-source-settings.13")}
 			>
@@ -142,6 +144,7 @@ export function BrowserSourceSettings() {
 			</Field>
 			<Field
 				code="chromeEndpoint"
+				responsive
 				label={tx("panelUi.components.browser-source-settings.19")}
 				hint={tx("panelUi.components.browser-source-settings.20")}
 			>
