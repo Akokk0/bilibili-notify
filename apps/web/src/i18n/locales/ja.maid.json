@@ -443,5 +443,18 @@
 	"logging.ownersFailed": "ご主人様、ログの出力元をすべて読み込めませんでした。取得済みの項目と既存の上書き設定は残してあるので、もう一度試してくださいね。",
 	"logging.ownersLoading": "ご主人様、ログの出力元を読み込んでいますよ…",
 	"logging.unidentified": "ご主人様、この出力元はまだ識別できませんが、既存の上書き設定は残しますね。",
-	"logging.overridesHint": "ご主人様、個別に設定しない出力元は全体のログレベルに従いますよ。保存後すぐに反映されるので、再起動は不要です。"
+	"logging.overridesHint": "ご主人様、個別に設定しない出力元は全体のログレベルに従いますよ。保存後すぐに反映されるので、再起動は不要です。",
+	"subscriptionTags.intro": "ご主人様、名前変更・並べ替え・削除は、保存するまでここだけの変更ですよ。どの購読でも使っていないタグも残しますね。",
+	"subscriptionTags.empty": "ご主人様、タグはまだありませんよ。先に作っておいて、あとで購読に付けることもできます。",
+	"subscriptionTags.loading": "ご主人様、タグを読み込んでいますよ",
+	"subscriptionTags.readFailed": "ご主人様、タグ一覧を読み込めないので、いまは上書き保存できませんよ。もう一度試してくださいね。",
+	"subscriptionTags.emptyName": "ご主人様、タグの名前を空欄にはできませんよ。",
+	"subscriptionTags.duplicate": "ご主人様、その名前はもう使われていますよ。別の名前にしてくださいね。",
+	"subscriptionTags.discardQuestion": "ご主人様、未保存のタグ変更を破棄しますか？保存済みのタグには影響しませんよ。",
+	"subscriptionTags.deleteImpact#other": "ご主人様、このタグは{count}件の購読で使われていますよ。保存してもタグを外すだけで、購読自体は残しますね。",
+	"subscriptionTags.deleteImpactUnknown": "ご主人様、保存すると、このタグを使っている購読からタグを外しますよ。購読自体は残しますね。",
+	"subscriptionTags.deleteHint": "ご主人様、ここでは削除予定にするだけなので、取り消せますよ。「変更を保存」を押して初めて反映されます。",
+	"subscriptionTags.addFirst": "ご主人様、先に「追加」で新しいタグを下書きに入れてから、一緒に保存してくださいね。",
+	"subscriptionTags.existingName": "ご主人様、そのタグはもうありますよ。別の名前にしてくださいね。",
+	"subscriptionTags.changed": "ご主人様、タグ一覧が別の場所で更新されました。読み込み直すと、今回の未保存の変更は破棄されますよ。"
 }

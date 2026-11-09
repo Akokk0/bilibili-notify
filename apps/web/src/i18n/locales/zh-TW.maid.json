@@ -443,5 +443,18 @@
 	"logging.ownersFailed": "主人，日誌歸屬還沒讀取完整；女僕保留了已知項目與既有覆寫，可以重試喔。",
 	"logging.ownersLoading": "主人，女僕正在讀取日誌歸屬喔…",
 	"logging.unidentified": "主人，暫時無法辨識這個歸屬，女僕會保留既有覆寫喔。",
-	"logging.overridesHint": "主人，未個別設定的項目會跟隨全域等級；儲存後立即生效，不必重新啟動喔。"
+	"logging.overridesHint": "主人，未個別設定的項目會跟隨全域等級；儲存後立即生效，不必重新啟動喔。",
+	"subscriptionTags.intro": "主人，重新命名、調整順序或刪除都先留在這裡，儲存後才會生效；未被訂閱使用的標籤也會保留喔。",
+	"subscriptionTags.empty": "主人，還沒有標籤，可以先建立，之後再分配給訂閱喔。",
+	"subscriptionTags.loading": "主人，女僕正在讀取標籤喔",
+	"subscriptionTags.readFailed": "主人，沒能讀取標籤清單，目前不能覆寫儲存，請重試喔。",
+	"subscriptionTags.emptyName": "主人，標籤名稱不能留空喔。",
+	"subscriptionTags.duplicate": "主人，這個名稱已經存在，換一個吧。",
+	"subscriptionTags.discardQuestion": "主人，要放棄尚未儲存的標籤修改嗎？已儲存的標籤不會受影響喔。",
+	"subscriptionTags.deleteImpact#other": "主人，有 {count} 項訂閱正在使用這個標籤。儲存後只會移除標籤，訂閱本身會保留喔。",
+	"subscriptionTags.deleteImpactUnknown": "主人，儲存後會從使用此標籤的訂閱中移除標籤，訂閱本身會保留喔。",
+	"subscriptionTags.deleteHint": "主人，這裡只先標記刪除，還能復原；點選「儲存變更」後才會生效喔。",
+	"subscriptionTags.addFirst": "主人，請先點選「新增」將新標籤放入草稿，再一起儲存喔。",
+	"subscriptionTags.existingName": "主人，這個標籤已經存在，換個名稱吧。",
+	"subscriptionTags.changed": "主人，標籤清單已在其他位置更新；重新載入會放棄這次尚未儲存的修改喔。"
 }

@@ -383,6 +383,58 @@ it("preserves unsaved edits but blocks overwriting a registry update already rec
 	expect(api.put).not.toHaveBeenCalled();
 });
 
+it.each([
+	[
+		"ja",
+		"ご主人様、名前変更・並べ替え・削除は、保存するまでここだけの変更ですよ。どの購読でも使っていないタグも残しますね。",
+		"ご主人様、そのタグはもうありますよ。別の名前にしてくださいね。",
+		"ご主人様、未保存のタグ変更を破棄しますか？保存済みのタグには影響しませんよ。",
+		"編集を続ける",
+	],
+	[
+		"zh-TW",
+		"主人，重新命名、調整順序或刪除都先留在這裡，儲存後才會生效；未被訂閱使用的標籤也會保留喔。",
+		"主人，這個標籤已經存在，換個名稱吧。",
+		"主人，要放棄尚未儲存的標籤修改嗎？已儲存的標籤不會受影響喔。",
+		"繼續編輯",
+	],
+] as const)(
+	"%s maid tag guidance preserves edits and validation without saving or deleting",
+	async (locale, intro, duplicate, question, continueLabel) => {
+		renderSubs();
+		await screen.findByText("无标签");
+		fireEvent.click(screen.getByRole("button", { name: "管理标签" }));
+		const manager = within(screen.getByRole("dialog"));
+		const input = manager.getByRole("textbox", { name: "标签名称 2" }) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "Original tag 原文" } });
+		const newInput = manager.getByRole("textbox", { name: "新标签名称" }) as HTMLInputElement;
+		fireEvent.change(newInput, { target: { value: " 杂谈 " } });
+		fireEvent.click(manager.getByRole("button", { name: "添加" }));
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(manager.getByText(intro)).toBeTruthy();
+		expect(manager.getByText(duplicate)).toBeTruthy();
+		expect(input.isConnected).toBe(true);
+		expect(input.value).toBe("Original tag 原文");
+		expect(newInput.value).toBe(" 杂谈 ");
+		act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+		fireEvent.click(manager.getByRole("button", { name: "取消" }));
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(manager.getByText(question)).toBeTruthy();
+		fireEvent.click(manager.getByRole("button", { name: continueLabel }));
+		expect(manager.getByDisplayValue("Original tag 原文")).toBeTruthy();
+		expect(
+			(
+				manager.getByRole("textbox", {
+					name: locale === "ja" ? "新しいタグ名" : "新標籤名稱",
+				}) as HTMLInputElement
+			).value,
+		).toBe(" 杂谈 ");
+		expect(api.put).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	},
+);
+
 it("keeps the draft and local validation current when voice changes", async () => {
 	renderSubs();
 	await screen.findByText("无标签");
