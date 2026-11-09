@@ -495,6 +495,35 @@ describe("读目录时读译文(ADR-0037 决策 14)", () => {
 	});
 });
 
+it.each([
+	[
+		"en",
+		"This extension uses contract v7, but this BN version accepts only v2–v4. Use an extension compatible with this BN version.",
+		"This extension requires contract v3 revision 8, but this BN version supports revision 5. Upgrade BN first.",
+	],
+	[
+		"ja",
+		"この拡張機能は契約v7を使用していますが、このBNが受け付けるのはv2–v4です。対応する拡張機能を使用してください。",
+		"この拡張機能には契約v3のリビジョン8が必要ですが、このBNはリビジョン5までの対応です。先にBNを更新してください。",
+	],
+	[
+		"zh-TW",
+		"此擴充功能使用契約 v7，但此版 BN 只接受 v2–v4；請使用相容的擴充功能。",
+		"此擴充功能需要契約 v3 的修訂號 8，但此版 BN 只支援修訂號 5；請先更新 BN。",
+	],
+] as const)(
+	"%s translates compatibility guidance while retaining required and supported contract versions",
+	(locale, version, revision) => {
+		i18n.set({ locale, voice: "plain" });
+		expect(apiVersionMismatch({ apiVersion: 7 }, { min: 2, current: 4, revision: 5 })).toBe(
+			version,
+		);
+		expect(
+			apiVersionMismatch({ apiVersion: 3, apiRevision: 8 }, { min: 2, current: 4, revision: 5 }),
+		).toBe(revision);
+	},
+);
+
 it("新旧大档不匹配只说换适配包,同档小号不足才说升级,口吻现取", () => {
 	try {
 		i18n.set({ locale: "zh-CN", voice: "plain" });

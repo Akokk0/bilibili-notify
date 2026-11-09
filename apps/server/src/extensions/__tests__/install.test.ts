@@ -26,6 +26,7 @@ import { join } from "node:path";
 import { EXTENSION_API_RANGE } from "@bilibili-notify/internal";
 import { strFromU8, strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { ExtensionConflictError } from "../conflict-error.js";
 import { EXTENSION_DOC_MAX_BYTES } from "../discover.js";
 import { installExtensionPackage, openExtensionPackage } from "../install.js";
@@ -91,6 +92,7 @@ function textOf(failure: { message: string; issues?: { message: string }[] }): s
 }
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	root = await mkdtemp(join(tmpdir(), "bn-ext-install-"));
 });
 afterEach(async () => {
@@ -98,6 +100,201 @@ afterEach(async () => {
 });
 
 describe("拆包", () => {
+	it.each([
+		[
+			"en",
+			{
+				count: "The package contains too many files (limit: 64).",
+				declared: "index.mjs is too large (declared uncompressed size: 9 MB; limit: 8 MB).",
+				total: "The package's declared uncompressed total is too large (56 MB; limit: 10.0 MB).",
+				manifest: "extension.json is too large.",
+				localeJson: "locales/en.json is not valid JSON:",
+				localeSize: "locales/en.json is too large (per-file limit: 256 KB).",
+				localeTotal: "The locales/ directory is too large (total limit: 2 MB).",
+			},
+		],
+		[
+			"ja",
+			{
+				count: "パッケージのファイル数が多すぎます（上限：64）。",
+				declared: "index.mjsが大きすぎます（申告された展開後サイズ：9 MB、上限：8 MB）。",
+				total: "パッケージの申告された展開後合計サイズが大きすぎます（56 MB、上限：10.0 MB）。",
+				manifest: "extension.jsonが大きすぎます。",
+				localeJson: "locales/en.jsonは有効なJSONではありません：",
+				localeSize: "locales/en.jsonが大きすぎます（1ファイルの上限：256 KB）。",
+				localeTotal: "locales/全体が大きすぎます（上限：2 MB）。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				count: "套件檔案過多（上限為 64）。",
+				declared: "index.mjs 過大（宣告的解壓縮大小為 9 MB，上限為 8 MB）。",
+				total: "套件宣告的解壓縮總量過大（56 MB，上限為 10.0 MB）。",
+				manifest: "extension.json 過大。",
+				localeJson: "locales/en.json 不是有效的 JSON：",
+				localeSize: "locales/en.json 過大（單一檔案上限為 256 KB）。",
+				localeTotal: "locales/ 總量過大（上限為 2 MB）。",
+			},
+		],
+	] as const)(
+		"%s localizes declared, actual and locale size limits without admitting an invalid package",
+		(locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			const open = (files: Record<string, string>) =>
+				openExtensionPackage(pack(files), BUILTIN_INTEGRATION_KEYS);
+			const many = {
+				...GOOD,
+				...Object.fromEntries(
+					Array.from({ length: 65 }, (_, index) => [`original-${index}.mjs`, "//"]),
+				),
+			};
+			expect(open(many)).toEqual({ ok: false, code: "invalid", message: text.count });
+			const forged = forgeUncompressedSize(pack(GOOD), "index.mjs", 9 * 1024 * 1024);
+			expect(openExtensionPackage(forged, BUILTIN_INTEGRATION_KEYS)).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.declared,
+			});
+			const chunks = {
+				...GOOD,
+				...Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`chunk${index}.mjs`, "//"])),
+			};
+			let total = pack(chunks);
+			for (let index = 0; index < 8; index++)
+				total = forgeUncompressedSize(total, `chunk${index}.mjs`, 7 * 1024 * 1024);
+			expect(openExtensionPackage(total, BUILTIN_INTEGRATION_KEYS)).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.total,
+			});
+			expect(open({ ...GOOD, "extension.json": "x".repeat(513 * 1024) })).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.manifest,
+			});
+			expect(open({ ...GOOD, "locales/en.json": "{" })).toMatchObject({
+				ok: false,
+				code: "invalid",
+				message: expect.stringContaining(text.localeJson),
+			});
+			expect(open({ ...GOOD, "locales/en.json": JSON.stringify("x".repeat(256 * 1024)) })).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.localeSize,
+			});
+			const locales = Object.fromEntries(
+				["ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi"].map((code) => [
+					`locales/${code}.json`,
+					JSON.stringify("x".repeat(250 * 1024)),
+				]),
+			);
+			expect(open({ ...GOOD, ...locales })).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.localeTotal,
+			});
+			expect(open(GOOD).ok).toBe(true);
+			expect(readdirSync(root)).toEqual([]);
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			{
+				invalid: "This is not a valid ZIP file.",
+				empty: "This ZIP file is empty.",
+				missingManifest: "The package is missing extension.json.",
+				missingEntry: "The package is missing index.mjs.",
+				json: "extension.json is not valid JSON:",
+				traversal: 'Package paths must not contain "..":',
+				subject: "This extension package",
+				allowed:
+					"Only extension.json, index.mjs, locales/<locale>.json, and optional README.md / CHANGELOG.md are allowed in an extension package.",
+			},
+		],
+		[
+			"ja",
+			{
+				invalid: "有効なZIPファイルではありません。",
+				empty: "ZIPファイルが空です。",
+				missingManifest: "パッケージにextension.jsonがありません。",
+				missingEntry: "パッケージにindex.mjsがありません。",
+				json: "extension.jsonは有効なJSONではありません：",
+				traversal: "パッケージのパスに..は使用できません：",
+				subject: "この拡張機能パッケージ",
+				allowed:
+					"拡張機能パッケージに含められるのはextension.json、index.mjs、locales/<言語コード>.jsonと、任意のREADME.md・CHANGELOG.mdのみです。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				invalid: "這不是有效的 ZIP 檔案。",
+				empty: "此 ZIP 檔案是空的。",
+				missingManifest: "套件缺少 extension.json。",
+				missingEntry: "套件缺少 index.mjs。",
+				json: "extension.json 不是有效的 JSON：",
+				traversal: "套件路徑不可包含 ..：",
+				subject: "此擴充功能套件",
+				allowed:
+					"擴充功能套件只接受 extension.json、index.mjs、locales/<語言代碼>.json，以及選用的 README.md 與 CHANGELOG.md。",
+			},
+		],
+	] as const)(
+		"%s translates package validation while retaining filenames and rejecting extra executable entries",
+		(locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			const open = (files: Record<string, string>, prefix = "") =>
+				openExtensionPackage(pack(files, prefix), BUILTIN_INTEGRATION_KEYS);
+			expect(openExtensionPackage(strToU8("not a zip"), BUILTIN_INTEGRATION_KEYS)).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.invalid,
+			});
+			expect(open({})).toEqual({ ok: false, code: "invalid", message: text.empty });
+			expect(open({ "index.mjs": "//" })).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.missingManifest,
+			});
+			expect(open({ "extension.json": manifest() })).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.missingEntry,
+			});
+			expect(open({ ...GOOD, "extension.json": "{" })).toMatchObject({
+				ok: false,
+				code: "invalid",
+				message: expect.stringContaining(text.json),
+			});
+			const traversal = open(GOOD, "../");
+			expect(traversal).toMatchObject({
+				ok: false,
+				code: "invalid",
+				message: expect.stringContaining(text.traversal),
+			});
+			if (!traversal.ok) expect(traversal.message).toContain("../index.mjs");
+			const extra = open({ ...GOOD, "original-a.mjs": "//", "original-b.mjs": "//" });
+			expect(extra).toMatchObject({
+				ok: false,
+				code: "invalid",
+				message: expect.stringContaining(text.subject),
+				issues: [
+					{ message: `original-a.mjs:${text.allowed}` },
+					{ message: `original-b.mjs:${text.allowed}` },
+				],
+			});
+			const invalidSchema = open({ ...GOOD, "extension.json": manifest({ name: 0, version: 0 }) });
+			expect(invalidSchema).toMatchObject({
+				ok: false,
+				code: "invalid",
+				message: expect.stringContaining(text.subject),
+			});
+		},
+	);
+
 	it("清单 + 入口 —— 读出来的身份以**清单**为准", () => {
 		const opened = openExtensionPackage(pack(GOOD), BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(true);

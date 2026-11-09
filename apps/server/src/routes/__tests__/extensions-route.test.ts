@@ -1148,6 +1148,43 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
  * 复用同一段「装完那句话」)。
  */
 describe("DELETE /api/ext/:id", () => {
+	it.each([
+		[
+			"en",
+			"bridge is a symlink installed by devtools. Remove it through devtools.",
+			"bridge is a symlink installed by devtools. Remove it through devtools before uploading a package.",
+		],
+		[
+			"ja",
+			"bridgeはdevtoolsで作成されたシンボリックリンクです。devtoolsから削除してください。",
+			"bridgeはdevtoolsで作成されたシンボリックリンクです。devtoolsから削除してからパッケージをアップロードしてください。",
+		],
+		[
+			"zh-TW",
+			"bridge 是 devtools 建立的符號連結，請從 devtools 移除。",
+			"bridge 是 devtools 建立的符號連結，請先從 devtools 移除再上傳套件。",
+		],
+	] as const)(
+		"%s translates symlink refusal without deleting or overwriting its target",
+		async (locale, deletion, replacement) => {
+			const target = join(installRoot, "__original-worktree");
+			await mkdir(target);
+			await writeFile(join(target, "original.txt"), "Original fixture 原文");
+			await symlink(target, join(installRoot, "bridge"));
+			const app = boot();
+			i18n.set({ locale, voice: "plain" });
+			const refusedUpload = await upload(app, form(pack()));
+			expect(refusedUpload.status).toBe(409);
+			expect(await failureOf(refusedUpload)).toEqual({ code: "conflict", message: replacement });
+			const refusedDelete = await app.request("/bridge", { method: "DELETE" });
+			expect(refusedDelete.status).toBe(409);
+			expect(await failureOf(refusedDelete)).toEqual({ code: "conflict", message: deletion });
+			expect((await lstat(join(installRoot, "bridge"))).isSymbolicLink()).toBe(true);
+			expect(await readFile(join(target, "original.txt"), "utf8")).toBe("Original fixture 原文");
+			expect(removeExtension).not.toHaveBeenCalled();
+		},
+	);
+
 	/** 装一份在盘上,好让删有东西可删。 */
 	async function installed(): Promise<void> {
 		const { mkdir } = await import("node:fs/promises");
