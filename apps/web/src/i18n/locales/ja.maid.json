@@ -498,5 +498,20 @@
 	"panelUi.components.update.status.13": "ご主人様、このバージョンには新しいイメージかインストーラーが必要ですよ。アプリ内では入れ替えられません。",
 	"panelUi.components.update.status.14": "ご主人様、「システム」からダウンロードしてくださいね。再起動して適用するタイミングはご主人様が選べますよ。",
 	"panelUi.components.update.restart.2": "ご主人様、BNが戻りましたよ。引き続き{value0}で動いています。",
-	"panelUi.components.update.restart.4": "ご主人様、再起動が完了し、このバージョンで動いていますよ。再び更新したいときは「システム」で「更新を確認」を選んでくださいね。"
+	"panelUi.components.update.restart.4": "ご主人様、再起動が完了し、このバージョンで動いていますよ。再び更新したいときは「システム」で「更新を確認」を選んでくださいね。",
+	"panelUi.pages.extensions.staged-code-note.1": "ご主人様、v{value0}はインストール済みですが、このプロセスには別のコードが読み込まれているので、そのままでは置き換えられませんよ。",
+	"panelUi.pages.extensions.staged-code-note.2": "ご主人様、ディスク上のコードは変わりましたが、バージョン番号は同じですよ。ここでは元のコードが動いています。",
+	"panelUi.pages.extensions.staged-code-note.3": "ご主人様、ディスク上はv{value0}ですが、いま動いているのはv{value1}ですよ。",
+	"panelUi.pages.extensions.staged-code-note.4": "ご主人様、ほかの通知送信とライブ監視は続きますよ。ただし旧コードのメモリーはBNを再起動するまで解放されません。1回につき数MBほどで、繰り返すと累積します。拡張機能がBNに登録していないタイマーや接続は、バックグラウンドで動き続ける可能性もあります。",
+	"panelUi.pages.extensions.staged-code-note.5": "ご主人様、スイッチがオフの間は再読み込みできませんよ。読み込むと拡張機能が起動するので、先に有効にしてくださいね。",
+	"panelUi.pages.extensions.staged-code-note.8": "ご主人様、最も確実な切り替え方法ですよ。すべての通知送信とライブ監視が数秒間中断します。",
+	"panelUi.pages.extensions.staged-code-note.6": "ご主人様、再読み込みが完了しましたよ。起動したかどうかは、拡張機能のカードで確認してくださいね。",
+	"panelUi.pages.extensions.install-outcome.4": "ご主人様、インストールはできましたが、まだ無効ですよ。このプロセスには別のコードが読み込まれているので、有効にするだけでは置き換わりません。詳細ページで「BNを再起動」を選ぶか、有効にしてから「この拡張機能だけ再読み込み」を選んでくださいね。",
+	"panelUi.pages.extensions.install-outcome.5": "ご主人様、インストールが完了して、もう動いていますよ。スイッチは拡張機能のカードにあります。",
+	"panelUi.pages.extensions.install-outcome.6": "ご主人様、インストールはできましたが、まだ無効ですよ。拡張機能のカードでスイッチをオンにすると動き始めます。",
+	"panelUi.pages.extensions.declarative.extension-page.3": "ご主人様、下の設定は無効のままでも変更できますよ。有効にすると反映されます。接続状態は起動してから表示しますね。",
+	"panelUi.pages.extensions.declarative.extension-page.4": "ご主人様、保存済みの設定が拡張機能の要件を満たさないため、いまは動いていませんよ。下で修正すると、自動で起動します。",
+	"panelUi.pages.extensions.declarative.extension-page.5": "ご主人様、新しいバージョンはインストール済みですが、まだ読み込まれていませんよ。下には設定だけを表示しています。読み込み方法は上のカードで選んでくださいね。",
+	"panelUi.pages.extensions.declarative.extension-page.6": "ご主人様、この拡張機能はいま動いていないので、下には設定だけを表示していますよ。起動できなかった理由はログを確認してくださいね。",
+	"panelUi.pages.ExtensionDetail.10": "ご主人様、アンインストールすると、ディスク上の本体と専用の設定も削除しますよ。拡張機能自体は、あとでまたインストールできます。"
 }

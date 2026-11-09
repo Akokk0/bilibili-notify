@@ -50,6 +50,46 @@ function show(over: Record<string, unknown>) {
  * 详情页头卡同一块,两个出口并排、代价写明。
  */
 describe("装完、新版等着换上", () => {
+	it.each([
+		[
+			"ja",
+			true,
+			false,
+			"ご主人様、インストールはできましたが、まだ無効ですよ。このプロセスには別のコードが読み込まれているので、有効にするだけでは置き換わりません。詳細ページで「BNを再起動」を選ぶか、有効にしてから「この拡張機能だけ再読み込み」を選んでくださいね。",
+		],
+		[
+			"ja",
+			false,
+			true,
+			"ご主人様、インストールが完了して、もう動いていますよ。スイッチは拡張機能のカードにあります。",
+		],
+		[
+			"ja",
+			false,
+			false,
+			"ご主人様、インストールはできましたが、まだ無効ですよ。拡張機能のカードでスイッチをオンにすると動き始めます。",
+		],
+		[
+			"zh-TW",
+			true,
+			false,
+			"主人，已安裝，但還沒啟用喔。此程序先前已載入另一份程式碼，只打開開關也無法替換；請到它的頁面選擇「重新啟動 BN」，或啟用後選擇「只重新載入此拓展」。",
+		],
+		["zh-TW", false, true, "主人，安裝完成，已經在執行囉，開關在拓展自己的卡片上。"],
+		["zh-TW", false, false, "主人，安裝完成，但還沒啟用喔。到拓展的卡片打開開關後才會執行。"],
+	] as const)(
+		"%s staged=%s enabled=%s 女仆安装结果不代替用户启动或重载",
+		(locale, staged, enabled, hint) => {
+			const view = show({ name: "Original extension 原文", version: "2.0.0", staged, enabled });
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(view.container.textContent).toContain(hint);
+			expect(screen.getByText("Original extension 原文")).toBeTruthy();
+			expect(view.container.textContent).toContain("2.0.0");
+			expect(screen.queryByRole("button")).toBeNull();
+			expect(api.post).not.toHaveBeenCalled();
+		},
+	);
+
 	afterEach(cleanup);
 
 	it.each(["running", "disabled", "staged-disabled"] as const)(

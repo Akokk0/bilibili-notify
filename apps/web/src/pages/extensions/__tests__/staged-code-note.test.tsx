@@ -56,6 +56,25 @@ afterEach(() => {
 });
 
 describe("新版等着换上的那块提示", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、再読み込みが完了しましたよ。起動したかどうかは、拡張機能のカードで確認してくださいね。",
+		],
+		["zh-TW", "主人，已重新載入囉，是否啟動請以拓展卡片的狀態為準。"],
+	] as const)("%s 女仆重载结果保留运行状态待核对且不重发", async (locale, done) => {
+		vi.mocked(api.post).mockResolvedValueOnce({ ok: true });
+		show();
+		await userEvent.click(screen.getByRole("button", { name: "只重载这个拓展" }));
+		await waitFor(() =>
+			expect(screen.queryByRole("button", { name: "只重载这个拓展" })).toBeNull(),
+		);
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(done)).toBeTruthy();
+		expect(api.post).toHaveBeenCalledExactlyOnceWith("/api/ext/bridge/swap", {});
+		expect(screen.queryByRole("button")).toBeNull();
+	});
+
 	it.each(["swap", "restart"] as const)(
 		"%s results translate without repeating an action or enabling recovery while waiting",
 		async (action) => {
@@ -181,6 +200,7 @@ describe("新版等着换上的那块提示", () => {
 			});
 			for (const [
 				locale,
+				voice,
 				different,
 				same,
 				unknown,
@@ -192,6 +212,7 @@ describe("新版等着换上的那块提示", () => {
 			] of [
 				[
 					"en",
+					"plain",
 					"Code on disk is v2.0.0; v1.0.0 is still running.",
 					"Code on disk has changed (same version); the original code is still running.",
 					"v2.0.0 is installed, but this process has already loaded another copy of the extension and cannot replace it.",
@@ -203,6 +224,7 @@ describe("新版等着换上的那块提示", () => {
 				],
 				[
 					"ja",
+					"plain",
 					"ディスク上はv2.0.0ですが、稼働中なのはv1.0.0です。",
 					"ディスク上のコードは変更されていますが（バージョン番号は同じ）、元のコードが稼働しています。",
 					"v2.0.0はインストール済みですが、このプロセスではすでに別のコードを読み込んでいるため、置き換えられません。",
@@ -214,6 +236,7 @@ describe("新版等着换上的那块提示", () => {
 				],
 				[
 					"zh-TW",
+					"plain",
 					"磁碟上已換成 v2.0.0，目前仍執行 v1.0.0。",
 					"磁碟上的程式碼已變更（版本號未變），目前仍執行原本的程式碼。",
 					"v2.0.0 已安裝，但此程序先前已載入另一份程式碼，無法直接替換。",
@@ -223,8 +246,32 @@ describe("新版等着换上的那块提示", () => {
 					"其他推播與直播監聽不會中斷。舊程式碼占用的記憶體要等 BN 下次重新啟動才會釋放（每次約數 MB，反覆載入會持續累積）；拓展未交由 BN 管理的計時器或連線，可能仍在背景執行。",
 					"開關關閉時無法只重新載入，因為載入後就會啟動拓展；請先啟用拓展。",
 				],
+				[
+					"ja",
+					"maid",
+					"ご主人様、ディスク上はv2.0.0ですが、いま動いているのはv1.0.0ですよ。",
+					"ご主人様、ディスク上のコードは変わりましたが、バージョン番号は同じですよ。ここでは元のコードが動いています。",
+					"ご主人様、v2.0.0はインストール済みですが、このプロセスには別のコードが読み込まれているので、そのままでは置き換えられませんよ。",
+					"BNを再起動",
+					"ご主人様、最も確実な切り替え方法ですよ。すべての通知送信とライブ監視が数秒間中断します。",
+					"この拡張機能だけ再読み込み",
+					"ご主人様、ほかの通知送信とライブ監視は続きますよ。ただし旧コードのメモリーはBNを再起動するまで解放されません。1回につき数MBほどで、繰り返すと累積します。拡張機能がBNに登録していないタイマーや接続は、バックグラウンドで動き続ける可能性もあります。",
+					"ご主人様、スイッチがオフの間は再読み込みできませんよ。読み込むと拡張機能が起動するので、先に有効にしてくださいね。",
+				],
+				[
+					"zh-TW",
+					"maid",
+					"主人，磁碟上已換成 v2.0.0，目前仍執行 v1.0.0 喔。",
+					"主人，磁碟上的程式碼已變更，版本號沒有改，目前仍執行原本的程式碼喔。",
+					"主人，v2.0.0 已安裝，但此程序先前已載入另一份程式碼，無法直接替換喔。",
+					"重新啟動 BN",
+					"主人，這是最乾淨的切換方式喔，所有推播與直播監聽會中斷幾秒。",
+					"只重新載入此拓展",
+					"主人，其他推播與直播監聽不會中斷喔。但舊程式碼占用的記憶體要等 BN 下次重新啟動才會釋放，每次約數 MB，反覆載入會持續累積；拓展未交由 BN 管理的計時器或連線，可能仍在背景執行。",
+					"主人，開關關閉時無法只重新載入喔，因為載入後就會啟動拓展；請先啟用拓展，再選擇重新載入。",
+				],
 			] as const) {
-				act(() => i18n.set({ locale }));
+				act(() => i18n.set({ locale, voice }));
 				expect(
 					screen.getByText(
 						kind === "same"

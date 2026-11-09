@@ -10,7 +10,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -87,6 +87,26 @@ function renderDetail() {
 }
 
 describe("删掉一个拓展", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、アンインストールすると、ディスク上の本体と専用の設定も削除しますよ。拡張機能自体は、あとでまたインストールできます。",
+			"キャンセル",
+		],
+		["zh-TW", "主人，解除安裝會刪除磁碟上的拓展本體及其設定喔；之後仍可重新安裝拓展。", "取消"],
+	] as const)("%s 女仆卸载说明保留设置删除风险且取消不卸载", async (locale, hint, cancel) => {
+		renderDetail();
+		await userEvent.click(await screen.findByRole("button", { name: "删除拓展" }));
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(document.body.textContent).toContain(hint);
+		expect(screen.getByRole("dialog").textContent).toContain("机器人框架桥接");
+		expect(api.delete).not.toHaveBeenCalled();
+		await userEvent.click(screen.getByRole("button", { name: cancel }));
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(api.delete).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
 	beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 	afterEach(() => {
 		cleanup();

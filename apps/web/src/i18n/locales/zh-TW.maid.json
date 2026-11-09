@@ -498,5 +498,20 @@
 	"panelUi.components.update.status.13": "主人，這個版本需要重新拉取映像檔或下載安裝程式，無法在應用程式內更換喔。",
 	"panelUi.components.update.status.14": "主人，請到「系統」下載，何時重新啟動並套用版本，由主人決定喔。",
 	"panelUi.components.update.restart.2": "主人，BN 回來了，仍使用 {value0} 版喔。",
-	"panelUi.components.update.restart.4": "主人，重新啟動完成，目前使用的就是這個版本喔。想再次更新時，請到「系統」點選「檢查更新」。"
+	"panelUi.components.update.restart.4": "主人，重新啟動完成，目前使用的就是這個版本喔。想再次更新時，請到「系統」點選「檢查更新」。",
+	"panelUi.pages.extensions.staged-code-note.1": "主人，v{value0} 已安裝，但此程序先前已載入另一份程式碼，無法直接替換喔。",
+	"panelUi.pages.extensions.staged-code-note.2": "主人，磁碟上的程式碼已變更，版本號沒有改，目前仍執行原本的程式碼喔。",
+	"panelUi.pages.extensions.staged-code-note.3": "主人，磁碟上已換成 v{value0}，目前仍執行 v{value1} 喔。",
+	"panelUi.pages.extensions.staged-code-note.4": "主人，其他推播與直播監聽不會中斷喔。但舊程式碼占用的記憶體要等 BN 下次重新啟動才會釋放，每次約數 MB，反覆載入會持續累積；拓展未交由 BN 管理的計時器或連線，可能仍在背景執行。",
+	"panelUi.pages.extensions.staged-code-note.5": "主人，開關關閉時無法只重新載入喔，因為載入後就會啟動拓展；請先啟用拓展，再選擇重新載入。",
+	"panelUi.pages.extensions.staged-code-note.8": "主人，這是最乾淨的切換方式喔，所有推播與直播監聽會中斷幾秒。",
+	"panelUi.pages.extensions.staged-code-note.6": "主人，已重新載入囉，是否啟動請以拓展卡片的狀態為準。",
+	"panelUi.pages.extensions.install-outcome.4": "主人，已安裝，但還沒啟用喔。此程序先前已載入另一份程式碼，只打開開關也無法替換；請到它的頁面選擇「重新啟動 BN」，或啟用後選擇「只重新載入此拓展」。",
+	"panelUi.pages.extensions.install-outcome.5": "主人，安裝完成，已經在執行囉，開關在拓展自己的卡片上。",
+	"panelUi.pages.extensions.install-outcome.6": "主人，安裝完成，但還沒啟用喔。到拓展的卡片打開開關後才會執行。",
+	"panelUi.pages.extensions.declarative.extension-page.3": "主人，下方設定仍可修改，啟用拓展後才會生效喔；連線狀態要等它開始執行後才看得到。",
+	"panelUi.pages.extensions.declarative.extension-page.4": "主人，已儲存的設定不符合拓展的規則，因此尚未執行喔；在下方修正後，它會自動啟動。",
+	"panelUi.pages.extensions.declarative.extension-page.5": "主人，新版已安裝但尚未載入，下方只有設定、沒有狀態喔；請在上方卡片選擇載入方式。",
+	"panelUi.pages.extensions.declarative.extension-page.6": "主人，這個拓展目前沒有開始執行，下方只有設定、沒有狀態喔；請到日誌查看未能啟動的原因。",
+	"panelUi.pages.ExtensionDetail.10": "主人，解除安裝會刪除磁碟上的拓展本體及其設定喔；之後仍可重新安裝拓展。"
 }

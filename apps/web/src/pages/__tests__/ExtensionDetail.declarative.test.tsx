@@ -300,21 +300,58 @@ describe("localized declarative availability", () => {
 			fireEvent.change(field, { target: { value: "120" } });
 			vi.mocked(api.post).mockClear();
 			vi.mocked(api.delete).mockClear();
-			for (const [locale, expected, disabledHint] of [
+			for (const [locale, voice, expected, disabledHint] of [
 				[
 					"en",
+					"plain",
 					en,
 					"You can still edit settings below. They take effect when you enable the extension; connection status is available only while it is running.",
 				],
 				[
 					"ja",
+					"plain",
 					ja,
 					"下の設定は変更できます。有効にすると反映されます。接続状態は拡張機能の実行中のみ表示されます。",
 				],
-				["zh-TW", tw, "下方設定仍可修改，啟用拓展後生效；連線狀態需等拓展執行後才會顯示。"],
+				[
+					"zh-TW",
+					"plain",
+					tw,
+					"下方設定仍可修改，啟用拓展後生效；連線狀態需等拓展執行後才會顯示。",
+				],
+				[
+					"ja",
+					"maid",
+					state === "disabled"
+						? ja
+						: {
+								"settings-invalid":
+									"ご主人様、保存済みの設定が拡張機能の要件を満たさないため、いまは動いていませんよ。下で修正すると、自動で起動します。",
+								staged:
+									"ご主人様、新しいバージョンはインストール済みですが、まだ読み込まれていませんよ。下には設定だけを表示しています。読み込み方法は上のカードで選んでくださいね。",
+								failed:
+									"ご主人様、この拡張機能はいま動いていないので、下には設定だけを表示していますよ。起動できなかった理由はログを確認してくださいね。",
+							}[state],
+					"ご主人様、下の設定は無効のままでも変更できますよ。有効にすると反映されます。接続状態は起動してから表示しますね。",
+				],
+				[
+					"zh-TW",
+					"maid",
+					state === "disabled"
+						? tw
+						: {
+								"settings-invalid":
+									"主人，已儲存的設定不符合拓展的規則，因此尚未執行喔；在下方修正後，它會自動啟動。",
+								staged:
+									"主人，新版已安裝但尚未載入，下方只有設定、沒有狀態喔；請在上方卡片選擇載入方式。",
+								failed:
+									"主人，這個拓展目前沒有開始執行，下方只有設定、沒有狀態喔；請到日誌查看未能啟動的原因。",
+							}[state],
+					"主人，下方設定仍可修改，啟用拓展後才會生效喔；連線狀態要等它開始執行後才看得到。",
+				],
 			] as const) {
 				await act(async () => {
-					i18n.set({ locale, voice: "plain" });
+					i18n.set({ locale, voice });
 				});
 				expect(screen.getByText(expected)).toBeTruthy();
 				if (!enabled) expect(screen.getByText(disabledHint, { exact: false })).toBeTruthy();
