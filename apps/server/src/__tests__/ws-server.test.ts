@@ -15,9 +15,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import type { BootstrapConfig } from "../config/schema.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
+import { i18n } from "../i18n/index.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { createNodeServiceContext, type NodeServiceContext } from "../runtime/service-context.js";
 import { createWsServer, type WsServer } from "../ws/server.js";
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -311,6 +314,37 @@ describe("WS server", () => {
 	 * 中文,`issues` 只有路径与原话 —— 不再是 `message: "invalid_control_message"` 这种机器串,
 	 * 也不把 zod 自己的字段(`code` / `expected` / `received` …)原样甩出去。
 	 */
+	it.each([
+		["en", "The control message is not valid JSON.", "The control message has an invalid format."],
+		["ja", "制御メッセージが有効なJSONではありません。", "制御メッセージの形式が無効です。"],
+		["zh-TW", "控制訊息不是有效的 JSON。", "控制訊息格式不符規範。"],
+	] as const)(
+		"%s：既有连接换语后两类错误取新文字，仍可合法订阅",
+		async (locale, syntaxMessage, shapeMessage) => {
+			const ws = await connect(port);
+			const frames = collect(ws);
+			try {
+				i18n.set({ locale, voice: "plain" });
+				ws.send("{not JSON");
+				const syntax = await frames.waitFor((frame) => frame.type === "error");
+				expect(syntax).toMatchObject({ type: "error", code: "invalid", message: syntaxMessage });
+				expect(syntax).not.toHaveProperty("issues");
+				send(ws, { type: "subscribe", channels: ["nope"] });
+				const shape = await frames.waitFor((frame) => frame.type === "error" && frame !== syntax);
+				expect(shape).toMatchObject({ type: "error", code: "invalid", message: shapeMessage });
+				expect(shape.issues).toEqual([
+					expect.objectContaining({ path: ["channels", 0], message: expect.any(String) }),
+				]);
+				send(ws, { type: "subscribe", channels: ["state"] });
+				expect(await frames.waitFor((frame) => frame.type === "subscribed")).toMatchObject({
+					channels: ["state"],
+				});
+			} finally {
+				ws.close();
+			}
+		},
+	);
+
 	it("invalid control message → error frame { code: invalid, message, issues }, connection stays open", async () => {
 		const ws = await connect(port);
 		const c = collect(ws);

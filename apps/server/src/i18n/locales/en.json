@@ -1,4 +1,9 @@
 {
+	"service.ws.server.text.1": "The control message is not valid JSON.",
+	"service.ws.server.text.2": "The control message has an invalid format.",
+	"service.runtime.subscription-avatar.text.1": "The avatar declares image/{value0}, but its content is not in that format.",
+	"restart.cannot.sourceRun": "This development process runs directly through tsx. After it exits, tsx watch waits for a file change instead of restarting it. Save a source file to restart.",
+	"restart.cannot.unsupervised": "No supervisor will restart this process after it exits: it is running outside the desktop app and a container. Stop it in the terminal and start it again.",
 	"service.routes.system-update.text.1": "Probe prefixes must be empty strings or valid https:// addresses (up to 20).",
 	"service.routes.system-update.text.2": "No version is available to apply.",
 	"update.validation.checksum": "Downloaded content does not match the manifest checksum.",

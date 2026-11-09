@@ -1,4 +1,9 @@
 {
+	"service.ws.server.text.1": "制御メッセージが有効なJSONではありません。",
+	"service.ws.server.text.2": "制御メッセージの形式が無効です。",
+	"service.runtime.subscription-avatar.text.1": "アバターはimage/{value0}として宣言されていますが、内容がその形式ではありません。",
+	"restart.cannot.sourceRun": "この開発プロセスはtsxで直接実行されています。終了してもtsx watchはファイル変更を待つだけで、再起動しません。ソースファイルを保存すると再起動できます。",
+	"restart.cannot.unsupervised": "このプロセスはデスクトップアプリやコンテナーの管理下にないため、終了しても自動で再起動しません。ターミナルで停止してから、起動し直してください。",
 	"service.routes.system-update.text.1": "速度測定のプレフィックスは空文字列または有効なhttps://アドレスにしてください（最大20件）。",
 	"service.routes.system-update.text.2": "適用できるバージョンがありません。",
 	"update.validation.checksum": "ダウンロードした内容がマニフェストのチェックサムと一致しません。",

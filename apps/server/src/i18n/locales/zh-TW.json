@@ -1,4 +1,9 @@
 {
+	"service.ws.server.text.1": "控制訊息不是有效的 JSON。",
+	"service.ws.server.text.2": "控制訊息格式不符規範。",
+	"service.runtime.subscription-avatar.text.1": "頭像宣告為 image/{value0}，但內容不是該格式。",
+	"restart.cannot.sourceRun": "開發版直接透過 tsx 執行；程序結束後，tsx watch 只會等待檔案變更，不會自動重新啟動。儲存來源檔即可觸發重啟。",
+	"restart.cannot.unsupervised": "這個程序未由桌面應用程式或容器管理，結束後不會自動重新啟動。請在終端機停止後再啟動。",
 	"service.routes.system-update.text.1": "測速前綴必須為空字串或有效的 https:// 網址（最多 20 個）。",
 	"service.routes.system-update.text.2": "沒有可套用的版本。",
 	"update.validation.checksum": "下載內容與清單的總和檢查碼不符。",
