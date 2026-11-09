@@ -217,6 +217,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	interactions.dispose();
 	sessions.dispose();
 	table.dispose();
@@ -236,6 +237,65 @@ const startSession = () =>
 		details: { title: "一场" },
 	});
 const flush = () => vi.runAllTimersAsync();
+
+it.each([
+	[
+		"en",
+		"Viewer 原文 sent a paid message in Creator {viewer}'s stream: Original text {name}",
+		"In Creator {viewer}'s stream, Viewer 原文 joined membership tier Original tier {text}.",
+	],
+	[
+		"ja",
+		"Creator {viewer}の配信で、Viewer 原文が有料メッセージを送りました：Original text {name}",
+		"Creator {viewer}の配信で、Viewer 原文がOriginal tier {text}の会員になりました。",
+	],
+	[
+		"zh-TW",
+		"在 Creator {viewer} 的直播中，Viewer 原文 傳送了一則付費留言：Original text {name}",
+		"在 Creator {viewer} 的直播中，Viewer 原文 成為了 Original tier {text} 會員。",
+	],
+] as const)(
+	"%s:无卡片时的互动回落本地化,来源句与作者/观众/档名原文优先",
+	async (locale, paid, member) => {
+		i18n.set({ locale, voice: "plain" });
+		renderer = null;
+		profileName = "Creator {viewer}";
+		const viewer = { id: "42", name: "Viewer 原文" };
+		interactions.apply(SUB.id, {
+			kind: "superchat",
+			viewer,
+			text: "Original text {name}",
+			amount: 50,
+			currency: "USD",
+			tier: { rank: 2, durationSec: 120 },
+		});
+		await flush();
+		interactions.apply(SUB.id, {
+			kind: "membership",
+			viewer,
+			program: "acme-custom",
+			tier: { key: "original", name: "Original tier {text}", rank: 2 },
+		});
+		await flush();
+		interactions.apply(SUB.id, {
+			kind: "superchat",
+			viewer,
+			text: "Original",
+			amount: 50,
+			currency: "USD",
+			tier: { rank: 2, durationSec: 120 },
+			fallbackText: "Original source fallback 原文",
+		});
+		await flush();
+		expect(sent).toEqual([
+			{ id: SUB.id, type: LivePushKind.Superchat, text: paid },
+			{ id: SUB.id, type: LivePushKind.Membership, text: member },
+			{ id: SUB.id, type: LivePushKind.Superchat, text: "Original source fallback 原文" },
+		]);
+		expect(superchatCard).not.toHaveBeenCalled();
+		expect(membershipCard).not.toHaveBeenCalled();
+	},
+);
 
 describe("场次互动汇总", () => {
 	it("推送开关全关也记,与推不推无关", () => {

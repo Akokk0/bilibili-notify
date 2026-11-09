@@ -3,13 +3,33 @@
  * (从 `bilibili/live/__tests__/template-renderer.test.ts` 跟着源文件搬来。)
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	renderLiveSummary,
 	renderLiveText,
 	renderViewerChat,
 	renderViewerEnter,
 } from "../live-text";
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+it.each([
+	["en", "Not available yet"],
+	["ja", "未取得"],
+	["zh-TW", "尚未取得"],
+] as const)("%s:缺观看数提示本地化,零值和来源成品文字照常", (locale, missing) => {
+	i18n.set({ locale, voice: "plain" });
+	const input = { name: "Original {time}", time: "Original duration" };
+	expect(renderLiveText("liveStreaming", "{name}|{watched}|{time}", input)).toBe(
+		`Original {time}|${missing}|Original duration`,
+	);
+	expect(renderLiveText("liveStreaming", "{watched}", { ...input, watched: 0 })).toBe("0");
+	expect(
+		renderLiveText("liveStart", "{follower}", { ...input, follower: "Original count 原文" }),
+	).toBe("Original count 原文");
+	expect(renderLiveText("liveStart", "{watched}", input)).toBe("{watched}");
+});
 
 /**
  * 三句直播文案的**中立渲染**(ADR-0019 决策 65 / 67):吃中立的值,B 站与拓展订阅的直播共用。数字排成

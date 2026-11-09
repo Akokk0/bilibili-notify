@@ -1482,5 +1482,9 @@
 	"service.runtime.login-command.text.2": "QRコードで再ログインします（配信元が複数ある場合は名前かキーを指定してください）。",
 	"service.runtime.login-command.text.3": "QRコードはこのプライベートチャットにのみ送信され、{value0}秒間有効です。期限が切れたら、コマンドを再実行してください。",
 	"service.index.text.1": "コマンド名",
-	"service.index.text.2": "利用可能なコマンドを表示"
+	"service.index.text.2": "利用可能なコマンドを表示",
+	"service.posts.deliver-post.text.2": "作品カードの描画に失敗しました：{value0}。テキストのみで送信しました。カードレンダラーの状態を確認してください。",
+	"live.superchatFallback": "{name}の配信で、{viewer}が有料メッセージを送りました：{text}",
+	"live.membershipFallback": "{name}の配信で、{viewer}が{tier}の会員になりました。",
+	"service.live.live-text.text.1": "未取得"
 }

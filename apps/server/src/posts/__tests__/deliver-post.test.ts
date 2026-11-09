@@ -19,7 +19,7 @@ import {
 } from "@bilibili-notify/internal";
 import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { logMessage } from "../../__tests__/support/log-message.js";
 import { i18n } from "../../i18n/index.js";
 import {
@@ -34,6 +34,8 @@ import {
 import type { PostPushAnchor } from "../post-push";
 
 const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 type Seg = { kind: string; text?: string; buffer?: Buffer; mime?: string };
 
@@ -176,6 +178,37 @@ function harness(
 
 const run = (h: Harness): Promise<void> => deliverPost(h.event, h.deps);
 const segsOf = (h: Harness, call = 0): Seg[] => h.pushedMessage.mock.calls[call]?.[0] as Seg[];
+
+it.each([
+	[
+		"en",
+		"Post card rendering failed: Original renderer diagnostic 原文. Delivery fell back to plain text; check the card renderer status.",
+	],
+	[
+		"ja",
+		"作品カードの描画に失敗しました：Original renderer diagnostic 原文。テキストのみで送信しました。カードレンダラーの状態を確認してください。",
+	],
+	[
+		"zh-TW",
+		"作品卡片產生失敗：Original renderer diagnostic 原文，已改用純文字推送，請檢查卡片繪製狀態。",
+	],
+] as const)(
+	"%s:作品出图告警本地化,原诊断与模板不翻译,连续失败只提醒一次",
+	async (locale, warning) => {
+		i18n.set({ locale, voice: "plain" });
+		const h = harness({
+			post: { creator: { name: "Original creator" }, text: "Original body 原文" },
+			settings: { template: "Original {name}" },
+		});
+		h.generatePostCard.mockRejectedValue(new Error("Original renderer diagnostic 原文"));
+		await run(h);
+		await run(h);
+		expect(h.emitPipelineError.mock.calls).toEqual([[warning]]);
+		expect(h.push).toHaveBeenCalledTimes(2);
+		expect(segsOf(h)[0]?.text).toBe(`Original Original creator\n${LINK}`);
+		expect(segsOf(h).some((segment) => segment.kind === "image")).toBe(false);
+	},
+);
 /** 交给推送口的本体锚点(第一次推送的第一个锚点)。 */
 const mainAnchorOf = (h: Harness): PostPushAnchor =>
 	(h.push.mock.calls[0]?.[1] as PostPushAnchor[] | undefined)?.[0] as PostPushAnchor;

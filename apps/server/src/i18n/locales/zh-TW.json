@@ -1482,5 +1482,9 @@
 	"service.runtime.login-command.text.2": "重新掃描 QR Code 登入（有多個來源時，請加上來源名稱或鍵）。",
 	"service.runtime.login-command.text.3": "QR Code 只會傳送到這個私人對話，有效時間為 {value0} 秒；過期後請重新執行指令。",
 	"service.index.text.1": "指令名稱",
-	"service.index.text.2": "查看可用指令"
+	"service.index.text.2": "查看可用指令",
+	"service.posts.deliver-post.text.2": "作品卡片產生失敗：{value0}，已改用純文字推送，請檢查卡片繪製狀態。",
+	"live.superchatFallback": "在 {name} 的直播中，{viewer} 傳送了一則付費留言：{text}",
+	"live.membershipFallback": "在 {name} 的直播中，{viewer} 成為了 {tier} 會員。",
+	"service.live.live-text.text.1": "尚未取得"
 }

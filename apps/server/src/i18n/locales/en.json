@@ -1493,5 +1493,9 @@
 	"service.runtime.login-command.text.2": "Scan a QR code to sign in again (if several sources are available, add the source name or key).",
 	"service.runtime.login-command.text.3": "The QR code is sent only to this private chat and is valid for {value0} seconds. Run the command again if it expires.",
 	"service.index.text.1": "Command name",
-	"service.index.text.2": "Show available commands"
+	"service.index.text.2": "Show available commands",
+	"service.posts.deliver-post.text.2": "Post card rendering failed: {value0}. Delivery fell back to plain text; check the card renderer status.",
+	"live.superchatFallback": "{viewer} sent a paid message in {name}'s stream: {text}",
+	"live.membershipFallback": "In {name}'s stream, {viewer} joined membership tier {tier}.",
+	"service.live.live-text.text.1": "Not available yet"
 }
