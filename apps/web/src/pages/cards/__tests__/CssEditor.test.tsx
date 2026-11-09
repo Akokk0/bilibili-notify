@@ -14,12 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { i18n } from "../../../i18n";
 import { CssEditor } from "../CssEditor";
 
-// Only this worker supplies an English label, to prove a live language switch.
+// Existing scenarios choose Chinese explicitly; localized scenarios override it.
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
-
-vi.mock("../../../i18n/locales/en.json", () => ({
-	default: { "skinUi.css-value-shapes.85": "Padding" },
-}));
 
 afterEach(cleanup);
 
@@ -59,6 +55,52 @@ it("切换语言与口吻保留未提交的CSS文本，并刷新字段名", () =
 });
 
 describe("结构视图 —— 读", () => {
+	it.each([
+		[
+			"en",
+			"Structure",
+			"Source",
+			"Cannot parse this CSS. Check for unmatched brackets in Source and fix the CSS to make Structure available again.",
+			"No rules yet. Choose a hook below to create one.",
+		],
+		[
+			"ja",
+			"構造",
+			"ソース",
+			"このCSSを解析できません。ソースで括弧の対応などを修正すると、構造ビューを再び使えます。",
+			"ルールはまだありません。下のフックを選ぶと作成できます。",
+		],
+		[
+			"zh-TW",
+			"結構",
+			"原始碼",
+			"無法剖析此 CSS。請在原始碼中檢查括號是否成對並修正，即可重新使用結構檢視。",
+			"尚無規則。請選取下方掛點建立一條規則。",
+		],
+	] as const)(
+		"%s switches views and explains invalid or empty CSS without rewriting source",
+		(locale, structure, source, invalid, empty) => {
+			const original = '/* Original 原文 */[data-bn="self"]{--raw:var(--original)}';
+			const { onChange } = mount(original);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(onChange).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: source }));
+			expect((screen.getByLabelText("这个块的 CSS") as HTMLTextAreaElement).value).toBe(original);
+			fireEvent.click(screen.getByRole("button", { name: structure }));
+			expect(input("--raw").value).toBe("var(--original)");
+			cleanup();
+			const broken = mount('[data-bn="self"]{color:red}}');
+			expect(screen.getByText(invalid)).toBeTruthy();
+			expect((screen.getByLabelText("这个块的 CSS") as HTMLTextAreaElement).value).toBe(
+				'[data-bn="self"]{color:red}}',
+			);
+			expect(broken.onChange).not.toHaveBeenCalled();
+			cleanup();
+			const blank = mount("");
+			expect(screen.getByText(empty)).toBeTruthy();
+			expect(blank.onChange).not.toHaveBeenCalled();
+		},
+	);
 	it("默认是结构视图:规则一节一条,选择器照原文,声明按值的形状给控件", () => {
 		mount('[data-bn="self"] {\n\tpadding: 12px;\n\tcolor: #fff;\n\ttext-align: center;\n}');
 		expect(input(/的选择器$/).value).toBe('[data-bn="self"]');
@@ -112,6 +154,96 @@ describe("结构视图 —— 读", () => {
 
 describe("结构视图 —— 写(整段只动那一截)", () => {
 	const CSS = '[data-bn="self"] {\n\tpadding: 12px; /* 留白 */\n\tcolor: #ffffff;\n}';
+
+	it.each([
+		["en", "Padding", "Padding unit", "Border width", "Border style", "Border color", "Dashed"],
+		["ja", "内側の余白", "内側の余白の単位", "枠線の幅", "枠線のスタイル", "枠線の色", "破線"],
+		["zh-TW", "內距", "內距的單位", "邊框寬度", "邊框樣式", "邊框色彩", "虛線"],
+	] as const)(
+		"%s typed controls translate without changing CSS units, styles or color syntax",
+		(locale, padding, unit, width, style, color, dashed) => {
+			const original = '[data-bn="self"]{padding:12px;border:1px solid #ff0000}';
+			const { onChange } = mount(original);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(input(padding).value).toBe("12");
+			expect(onChange).not.toHaveBeenCalled();
+			chooseSelect(input(unit), "em");
+			expect(last(onChange)).toBe('[data-bn="self"]{padding:12em;border:1px solid #ff0000}');
+			fireEvent.change(input(width), { target: { value: "2" } });
+			expect(last(onChange)).toBe('[data-bn="self"]{padding:12px;border:2px solid #ff0000}');
+			chooseSelect(input(style), dashed);
+			expect(last(onChange)).toBe('[data-bn="self"]{padding:12px;border:1px dashed #ff0000}');
+			fireEvent.change(input(color), { target: { value: "#abcdef" } });
+			expect(last(onChange)).toBe('[data-bn="self"]{padding:12px;border:1px solid #abcdef}');
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			'Selector for [data-bn="self"]',
+			"Property to add",
+			"Value to add",
+			"Add",
+			"Property suggestions",
+			"Remove --raw",
+			'Remove rule [data-bn="self"]',
+			"Add a rule:",
+		],
+		[
+			"ja",
+			'[data-bn="self"]のセレクター',
+			"追加するプロパティ",
+			"追加する値",
+			"追加",
+			"プロパティ候補",
+			"--rawを削除",
+			'ルール [data-bn="self"]を削除',
+			"ルールを追加：",
+		],
+		[
+			"zh-TW",
+			'[data-bn="self"] 的選擇器',
+			"新增屬性",
+			"新增值",
+			"加入",
+			"屬性候選",
+			"刪除--raw",
+			'刪除規則 [data-bn="self"]',
+			"新增規則：",
+		],
+	] as const)(
+		"%s rule and declaration controls preserve selectors, comments and original values",
+		(locale, selector, prop, value, add, suggestions, removeDeclLabel, removeRuleLabel, addRuleLabel) => {
+			const original = '/* Original 原文 */\n[data-bn="self"] {\n\t--raw: var(--original);\n}';
+			const { onChange } = mount(original);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(addRuleLabel)).toBeTruthy();
+			expect(onChange).not.toHaveBeenCalled();
+			fireEvent.change(input(selector), { target: { value: '[data-bn="self"]:hover' } });
+			fireEvent.blur(input(selector));
+			expect(last(onChange)).toBe(
+				'/* Original 原文 */\n[data-bn="self"]:hover {\n\t--raw: var(--original);\n}',
+			);
+			fireEvent.change(input(prop), { target: { value: "bo" } });
+			fireEvent.click(
+				within(screen.getByRole("group", { name: suggestions })).getByText("border-radius"),
+			);
+			fireEvent.change(input(value), { target: { value: "4px" } });
+			fireEvent.click(screen.getByRole("button", { name: add }));
+			expect(last(onChange)).toBe(
+				'/* Original 原文 */\n[data-bn="self"] {\n\t--raw: var(--original);\n\tborder-radius: 4px;\n}',
+			);
+			fireEvent.click(within(screen.getByLabelText("这个块的挂点")).getByText("头像"));
+			expect(last(onChange)).toBe(`${original}\n\n[data-bn="avatar"] {\n}`);
+			cleanup();
+			const simple = mount('[data-bn="self"]{--raw:var(--original)}');
+			fireEvent.click(screen.getByRole("button", { name: removeDeclLabel }));
+			expect(last(simple.onChange)).toBe('[data-bn="self"]{}');
+			fireEvent.click(screen.getByRole("button", { name: removeRuleLabel }));
+			expect(last(simple.onChange)).toBe("");
+		},
+	);
 
 	it("改数字 → 只换值", () => {
 		const { onChange } = mount(CSS);
