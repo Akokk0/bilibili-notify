@@ -156,6 +156,64 @@ describe("结构视图 —— 写(整段只动那一截)", () => {
 	const CSS = '[data-bn="self"] {\n\tpadding: 12px; /* 留白 */\n\tcolor: #ffffff;\n}';
 
 	it.each([
+		[
+			"en",
+			"Display",
+			"Grid",
+			"Image fit",
+			"Contain",
+			"Text alignment",
+			"Center",
+			"Font family",
+			"Width",
+		],
+		[
+			"ja",
+			"表示方式",
+			"グリッド",
+			"画像の収め方",
+			"全体を収める",
+			"文字揃え",
+			"中央揃え",
+			"フォント",
+			"幅",
+		],
+		["zh-TW", "顯示方式", "網格", "圖片填入方式", "完整放入", "文字對齊", "置中", "字型", "寬度"],
+	] as const)(
+		"%s property labels and keyword choices edit only CSS values and retain pending font text across a language switch",
+		(locale, display, grid, fit, contain, align, center, font, width) => {
+			const original =
+				'[data-bn="self"]{display:block;object-fit:cover;text-align:left;font-family:"Original Font";width:12px}';
+			const { onChange } = mount(original);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(input(width).value).toBe("12");
+			expect(input(font).value).toBe('"Original Font"');
+			expect(onChange).not.toHaveBeenCalled();
+			chooseSelect(input(display), grid);
+			expect(last(onChange)).toBe(
+				'[data-bn="self"]{display:grid;object-fit:cover;text-align:left;font-family:"Original Font";width:12px}',
+			);
+			chooseSelect(input(fit), contain);
+			expect(last(onChange)).toBe(
+				'[data-bn="self"]{display:block;object-fit:contain;text-align:left;font-family:"Original Font";width:12px}',
+			);
+			chooseSelect(input(align), center);
+			expect(last(onChange)).toBe(
+				'[data-bn="self"]{display:block;object-fit:cover;text-align:center;font-family:"Original Font";width:12px}',
+			);
+			onChange.mockClear();
+			fireEvent.change(input(font), { target: { value: '"Original Font 原文"' } });
+			act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+			expect(input("字体").value).toBe('"Original Font 原文"');
+			expect(onChange).not.toHaveBeenCalled();
+			fireEvent.blur(input("字体"));
+			expect(last(onChange)).toBe(
+				'[data-bn="self"]{display:block;object-fit:cover;text-align:left;font-family:"Original Font 原文";width:12px}',
+			);
+		},
+	);
+
+	it.each([
 		["en", "Padding", "Padding unit", "Border width", "Border style", "Border color", "Dashed"],
 		["ja", "内側の余白", "内側の余白の単位", "枠線の幅", "枠線のスタイル", "枠線の色", "破線"],
 		["zh-TW", "內距", "內距的單位", "邊框寬度", "邊框樣式", "邊框色彩", "虛線"],

@@ -6,7 +6,7 @@
  * `12px` 等于替作者把他写的东西删了,而他多半不会当场发现。
  */
 
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import {
 	formatShape,
@@ -18,13 +18,76 @@ import {
 
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
-vi.mock("../../../i18n/locales/en.json", () => ({
-	default: {
-		"skinUi.css-value-shapes.1": "Unitless",
-		"skinUi.css-value-shapes.8": "Center",
-		"skinUi.css-value-shapes.85": "Padding",
+it.each([
+	["en", "Border box", "Content box"],
+	["ja", "枠線・余白込み", "内容のみ"],
+	["zh-TW", "含邊框與內距", "僅計算內容"],
+] as const)(
+	"%s compact box sizing choices retain both CSS sizing modes",
+	(locale, border, content) => {
+		i18n.set({ locale, voice: "plain" });
+		expect(KEYWORD_OPTIONS["box-sizing"]).toEqual([
+			{ value: "border-box", label: border },
+			{ value: "content-box", label: content },
+		]);
 	},
-}));
+);
+
+it.each([
+	[
+		"en",
+		"Unitless",
+		["Left", "Center", "Right", "Justify"],
+		["Block", "Inline", "Inline block", "Flex", "Inline flex", "Grid", "Hidden"],
+		["Cover", "Contain", "Stretch", "Original size"],
+	],
+	[
+		"ja",
+		"単位なし",
+		["左揃え", "中央揃え", "右揃え", "両端揃え"],
+		[
+			"ブロック",
+			"インライン",
+			"インラインブロック",
+			"フレックス",
+			"インラインフレックス",
+			"グリッド",
+			"非表示",
+		],
+		["切り抜いて埋める", "全体を収める", "引き伸ばす", "元のサイズ"],
+	],
+	[
+		"zh-TW",
+		"無單位",
+		["靠左", "置中", "靠右", "左右對齊"],
+		["區塊", "行內", "行內區塊", "彈性", "行內彈性", "網格", "不顯示"],
+		["裁切填滿", "完整放入", "拉伸", "原始大小"],
+	],
+] as const)(
+	"%s keyword labels follow the current language while CSS keywords keep their meanings",
+	(locale, unitless, align, display, fit) => {
+		i18n.set({ locale, voice: "plain" });
+		expect(LENGTH_UNITS.at(-1)).toEqual({ value: "", label: unitless });
+		expect(KEYWORD_OPTIONS["text-align"]).toEqual([
+			{ value: "left", label: align[0] },
+			{ value: "center", label: align[1] },
+			{ value: "right", label: align[2] },
+			{ value: "justify", label: align[3] },
+		]);
+		expect(KEYWORD_OPTIONS.display).toEqual(
+			["block", "inline", "inline-block", "flex", "inline-flex", "grid", "none"].map(
+				(value, i) => ({ value, label: display[i] }),
+			),
+		);
+		expect(KEYWORD_OPTIONS["object-fit"]).toEqual(
+			["cover", "contain", "fill", "none"].map((value, i) => ({ value, label: fit[i] })),
+		);
+		const shape = shapeOf("text-align", "center");
+		if (shape.kind !== "keyword") throw new Error("expected keyword control");
+		expect(formatShape(shape)).toBe("center");
+		expect(shapeOf("text-align", "var(--original)")).toEqual({ kind: "text" });
+	},
+);
 
 it("已加载的候选表与属性名在读取时跟随当前语言，CSS值不改写", () => {
 	const { locale, voice } = i18n.state();
