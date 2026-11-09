@@ -17,7 +17,8 @@ import {
 	fail,
 } from "@bilibili-notify/internal";
 import { bindPackageText } from "@bilibili-notify/internal/texts";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { FORBIDDEN_VALUE, POSITION_VALUES } from "../../skins/scoped-css.js";
 import {
 	buildCardCssAiSystem,
@@ -25,9 +26,15 @@ import {
 	prepareCardCssAi,
 	runCardCssAiRound,
 } from "../ai-css.js";
-import { CARD_CSS_DENY_PROPS, sanitizeCardFrameCss } from "../css-sanitizer.js";
+import {
+	CARD_CSS_DENY_PROPS,
+	sanitizeCardBlockCss,
+	sanitizeCardFrameCss,
+} from "../css-sanitizer.js";
 
 type Block = NonNullable<CardSkinManifest["cards"]["live"]>["blocks"][number];
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /** 出厂皮肤的直播卡,几处正文换成认得出来的记号。 */
 function fixture(): CardSkinManifest {
@@ -63,6 +70,71 @@ function prepared(target: Parameters<typeof prepareCardCssAi>[1]) {
 	if (!ctx.ok) throw new Error(`没拼出来:${ctx.message}`);
 	return ctx;
 }
+
+it.each([
+	[
+		"en",
+		{
+			card: "This skin does not override membership cards yet. Enable the override in the editor first.",
+			block: 'The live card has no block with ID "missing".',
+			empty: "The output is empty.",
+			unknown:
+				'The live card has no built-in block named "missing"; this CSS is sanitized using only self.',
+		},
+	],
+	[
+		"ja",
+		{
+			card: "このスキンはまだmembershipカードを上書きしていません。先にエディターで上書きを有効にしてください。",
+			block: "liveカードにID「missing」のブロックがありません。",
+			empty: "出力が空です。",
+			unknown:
+				"liveカードに「missing」という内蔵ブロックがないため、このCSSはselfのみでサニタイズします。",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			card: "這套外觀尚未接管 membership 卡片，請先在編輯器中啟用接管。",
+			block: "live 卡片中沒有 ID 為「missing」的區塊。",
+			empty: "輸出為空。",
+			unknown: "live 卡片沒有名為「missing」的內建區塊，這段 CSS 只會依 self 清理。",
+		},
+	],
+] as const)("%s:卡片生成失败本地化,重试上限与未知区块的清理回退不变", async (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	const raw = fixture();
+	delete raw.cards.membership;
+	expect(prepareCardCssAi(raw, { kind: "membership" })).toEqual({
+		ok: false,
+		code: "invalid",
+		message: text.card,
+	});
+	expect(prepareCardCssAi(raw, { kind: "live", blockId: "missing" })).toEqual({
+		ok: false,
+		code: "invalid",
+		message: text.block,
+	});
+	const generated = vi.fn<CardCssAiGenerate>(async () => "");
+	const result = await runCardCssAiRound({
+		generate: generated,
+		system: "Original model instructions",
+		user: "Original request",
+		sanitize: sanitizeCardFrameCss,
+		onRule: () => {},
+	});
+	expect(result).toEqual({
+		ok: false,
+		code: "invalid",
+		message: text.empty,
+		issues: [{ message: text.empty }],
+	});
+	expect(generated).toHaveBeenCalledTimes(2);
+	expect(generated.mock.calls[1]?.[0]).toBe("Original model instructions");
+	expect(
+		sanitizeCardBlockCss('[data-bn="self"]{color:red}', { kind: "live", builtin: "missing" }),
+	).toEqual({ ok: true, css: '[data-bn="self"]{color:red}', warnings: [text.unknown] });
+});
 
 describe("提示词拼装", () => {
 	it("规则取自清洗器真在执行的那几份常量", () => {

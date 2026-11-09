@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CARD_SKIN, type MembershipTier } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { membershipTierUnavailable, renderSkinPreviewHtml } from "../preview-html.js";
 import { CardSkinStore } from "../store.js";
 
@@ -26,7 +27,48 @@ beforeEach(async () => {
 	store = new CardSkinStore({ dir });
 	await store.init();
 });
-afterEach(() => rm(dir, { recursive: true, force: true }));
+afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
+	await rm(dir, { recursive: true, force: true });
+});
+
+it.each([
+	[
+		"en",
+		"No running source declares membership tiers, so a membership card example cannot be rendered.",
+		"Skin preview · post",
+	],
+	[
+		"ja",
+		"動作中のソースから会員ランクが提供されていないため、会員カードのサンプルを描画できません。",
+		"スキンプレビュー · post",
+	],
+	["zh-TW", "沒有執行中的來源宣告會員等級，無法產生會員卡片範例。", "外觀預覽 · post"],
+] as const)(
+	"%s:预览标题与会员档位缺失提示本地化,不改皮肤和示例卡种",
+	async (locale, missing, title) => {
+		i18n.set({ locale, voice: "plain" });
+		expect(membershipTierUnavailable("membership", undefined)).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: missing,
+		});
+		expect(membershipTierUnavailable("post", undefined)).toBeUndefined();
+		const manifest = structuredClone(DEFAULT_CARD_SKIN);
+		const out = await renderSkinPreviewHtml({
+			store,
+			skinId: "default",
+			kind: "post",
+			manifest,
+			membershipTier: undefined,
+		});
+		expect(out.ok).toBe(true);
+		if (!out.ok) throw new Error(out.message);
+		expect(out.html).toContain(`<title>${title}</title>`);
+		expect(out.scene).toBe("text");
+		expect(manifest).toEqual(DEFAULT_CARD_SKIN);
+	},
+);
 
 /** 转发框:`repost` 原子块自己的根,挂着根挂点 `bubble`。 */
 const FORWARD_BUBBLE = 'data-bn="bubble"';

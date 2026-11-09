@@ -1459,5 +1459,11 @@
 	"service.ai.tool-label-texts.text.7": "カードを作成",
 	"service.ai.tool-label-texts.text.8": "ブロックを編集",
 	"service.ai.tool-label-texts.text.9": "ブロックを削除",
-	"service.ai.tool-label-texts.text.10": "カードスキンの名前を変更"
+	"service.ai.tool-label-texts.text.10": "カードスキンの名前を変更",
+	"service.card-skins.ai-css.text.1": "このスキンはまだ{value0}カードを上書きしていません。先にエディターで上書きを有効にしてください。",
+	"service.card-skins.ai-css.text.2": "{value0}カードにID「{value1}」のブロックがありません。",
+	"service.card-skins.ai-css.text.3": "出力が空です。",
+	"service.card-skins.css-sanitizer.text.1": "{value0}カードに「{value1}」という内蔵ブロックがないため、このCSSはselfのみでサニタイズします。",
+	"service.card-skins.preview-html.text.1": "動作中のソースから会員ランクが提供されていないため、会員カードのサンプルを描画できません。",
+	"service.card-skins.preview-html.text.2": "スキンプレビュー · {value0}"
 }

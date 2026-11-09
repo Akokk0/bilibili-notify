@@ -1470,5 +1470,11 @@
 	"service.ai.tool-label-texts.text.7": "Write card",
 	"service.ai.tool-label-texts.text.8": "Edit block",
 	"service.ai.tool-label-texts.text.9": "Remove block",
-	"service.ai.tool-label-texts.text.10": "Rename card skin"
+	"service.ai.tool-label-texts.text.10": "Rename card skin",
+	"service.card-skins.ai-css.text.1": "This skin does not override {value0} cards yet. Enable the override in the editor first.",
+	"service.card-skins.ai-css.text.2": "The {value0} card has no block with ID \"{value1}\".",
+	"service.card-skins.ai-css.text.3": "The output is empty.",
+	"service.card-skins.css-sanitizer.text.1": "The {value0} card has no built-in block named \"{value1}\"; this CSS is sanitized using only self.",
+	"service.card-skins.preview-html.text.1": "No running source declares membership tiers, so a membership card example cannot be rendered.",
+	"service.card-skins.preview-html.text.2": "Skin preview · {value0}"
 }

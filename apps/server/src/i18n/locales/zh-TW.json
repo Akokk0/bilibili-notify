@@ -1459,5 +1459,11 @@
 	"service.ai.tool-label-texts.text.7": "編寫卡片",
 	"service.ai.tool-label-texts.text.8": "修改卡片區塊",
 	"service.ai.tool-label-texts.text.9": "刪除卡片區塊",
-	"service.ai.tool-label-texts.text.10": "重新命名卡片外觀"
+	"service.ai.tool-label-texts.text.10": "重新命名卡片外觀",
+	"service.card-skins.ai-css.text.1": "這套外觀尚未接管 {value0} 卡片，請先在編輯器中啟用接管。",
+	"service.card-skins.ai-css.text.2": "{value0} 卡片中沒有 ID 為「{value1}」的區塊。",
+	"service.card-skins.ai-css.text.3": "輸出為空。",
+	"service.card-skins.css-sanitizer.text.1": "{value0} 卡片沒有名為「{value1}」的內建區塊，這段 CSS 只會依 self 清理。",
+	"service.card-skins.preview-html.text.1": "沒有執行中的來源宣告會員等級，無法產生會員卡片範例。",
+	"service.card-skins.preview-html.text.2": "外觀預覽 · {value0}"
 }
