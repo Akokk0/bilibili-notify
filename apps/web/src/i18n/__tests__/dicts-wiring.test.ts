@@ -9,6 +9,26 @@ import { DICTS } from "../index";
 const files = import.meta.glob("../locales/*.json", { eager: true, import: "default" });
 
 describe("面板译文文件都接进了 DICTS", () => {
+	it("设置、账号与启动交互的日文和繁体女仆覆盖与简中逐键一致", () => {
+		const prefixes = [
+			"forms.",
+			"system.master.",
+			"preferences.",
+			"credentials.",
+			"integrationSettings.",
+			"invalidSettings.",
+			"startup.",
+			"lifecycle.",
+			"accounts.",
+		];
+		const expected = Object.keys(DICTS["zh-CN"].maid)
+			.filter((key) => prefixes.some((prefix) => key.startsWith(prefix)))
+			.sort();
+		for (const locale of ["ja", "zh-TW"] as const) {
+			expect(Object.keys(DICTS[locale].maid).sort()).toEqual(expected);
+		}
+	});
+
 	it("目录里至少有文件(扫空了比没有还糟)", () => {
 		expect(Object.keys(files).length).toBeGreaterThan(0);
 	});

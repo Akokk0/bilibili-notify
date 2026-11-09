@@ -123,6 +123,31 @@ afterEach(() => {
 
 describe("系统页账号卡 · 六种登录状态", () => {
 	it.each([
+		[
+			"ja",
+			"ご主人様、书库のアカウントにはまだログインしていません。QRログインから始められますよ。",
+			"书库にはログインしていません。QRコードをスキャンしてログインしてください。",
+		],
+		[
+			"zh-TW",
+			"主人，還沒登入书库帳號，點擊掃碼登入就能開始囉。",
+			"尚未登入书库帳號，點擊掃碼登入即可開始。",
+		],
+	] as const)("%s：账号提示随口吻切换，来源原名保留且不自动登录", async (locale, maid, plain) => {
+		renderSystem();
+		await screen.findByText("尚未登录书库账号，点击扫码登录开始。");
+		for (const [voice, expected] of [
+			["maid", maid],
+			["plain", plain],
+		] as const) {
+			await act(async () => i18n.set({ locale, voice }));
+			expect(screen.getByText(expected)).toBeTruthy();
+			expect(H.posted).toEqual([]);
+			expect(H.deleted).toEqual([]);
+		}
+	});
+
+	it.each([
 		["en", "Raw sign-in snapshot"],
 		["ja", "ログイン状態の元データ"],
 		["zh-TW", "原始登入快照"],

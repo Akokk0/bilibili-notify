@@ -1457,6 +1457,64 @@ it("startup translations retain the last migration progress and keep business pa
 	).toBe(false);
 });
 
+it.each([
+	[
+		"ja",
+		"ご主人様、新しいデータ形式を準備しています。元のデータは大切に残し、完了したらダッシュボードへご案内しますね。",
+	],
+	["zh-TW", "主人，女僕正在整理新版資料，舊資料會好好保留；完成後會自動帶您進入面板喔。"],
+] as const)(
+	"%s maid startup hints retain migration progress and keep business pages closed",
+	async (locale, hint) => {
+		mountApp({
+			details: () => ({
+				phase: "migrating",
+				progress: { step: 2, total: 24, label: "Original 进度 {step}" },
+			}),
+		});
+		const progress = await screen.findByRole("progressbar");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(screen.getByText("Original 进度 {step}")).toBeTruthy();
+		expect(screen.getByRole("progressbar")).toBe(progress);
+		expect(progress).toHaveProperty("value", 2);
+		expect(progress).toHaveProperty("max", 24);
+		expect(
+			vi
+				.mocked(fetch)
+				.mock.calls.some(([path]) =>
+					["/api/settings", "/api/subscriptions"].includes(String(path)),
+				),
+		).toBe(false);
+	},
+);
+
+it.each([
+	[
+		"ja",
+		"ご主人様、旧データの移行ができましたよ。元のデータも大切に残してあります。このまま使うか、最初から始めるか選んでくださいね。",
+	],
+	["zh-TW", "主人，舊資料已經搬好了，原本的那份也好好保留著；可以接著使用，也可以全新開始喔。"],
+] as const)(
+	"%s maid migration notice redraws without acknowledging or starting fresh",
+	async (locale, hint) => {
+		mountApp({ notices: () => [migratedNotice] });
+		await screen.findByText("数据已迁移完成");
+		await screen.findAllByRole("button", { name: /添加一行/ });
+		const dialog = screen.getByRole("dialog");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(
+			vi
+				.mocked(fetch)
+				.mock.calls.filter(
+					([path, init]) => init?.method === "POST" && String(path).startsWith("/api/system/"),
+				),
+		).toEqual([]);
+	},
+);
+
 it("startup checking and first-probe failure translate without opening protected business pages", async () => {
 	let rejectDetails!: (error: Error) => void;
 	const pending = new Promise<HealthDetailsResponse>((_resolve, reject) => {

@@ -75,6 +75,41 @@ afterEach(() => {
 });
 
 describe("系统外观的语言、口吻和时区", () => {
+	it.each([
+		[
+			"ja",
+			"タイムゾーン",
+			"文体",
+			"ご主人様、選んで保存すると、このサーバーとダッシュボードに設定を適用しますね。",
+			"保存すると、このサーバーとダッシュボードに適用されます。",
+		],
+		[
+			"zh-TW",
+			"時區",
+			"文案語氣",
+			"主人，選好後儲存，女僕再將設定套用至這台服務與面板喔。",
+			"儲存後套用至這台服務與面板。",
+		],
+	] as const)(
+		"%s：外观提示随口吻重画，时区草稿与控件保留",
+		async (locale, timezone, voiceGroup, maid, plain) => {
+			await renderAppearance({ voice: "plain" });
+			const input = screen.getByRole("textbox", { name: "时区" });
+			fireEvent.change(input, { target: { value: "Europe/Paris" } });
+			for (const [voice, expected] of [
+				["maid", maid],
+				["plain", plain],
+			] as const) {
+				await act(async () => i18n.set({ locale, voice }));
+				expect(screen.getByText(expected)).toBeTruthy();
+				expect(screen.getByRole("group", { name: voiceGroup })).toBeTruthy();
+				expect(screen.getByRole("textbox", { name: timezone })).toBe(input);
+				expect(input).toHaveProperty("value", "Europe/Paris");
+				expect(api.patch).not.toHaveBeenCalled();
+			}
+		},
+	);
+
 	it("applied language redraws preferences without resetting the unsaved timezone", async () => {
 		await renderAppearance({ voice: "plain" });
 		const input = screen.getByRole("textbox", { name: "时区" });
@@ -138,7 +173,7 @@ describe("系统外观的语言、口吻和时区", () => {
 		await renderAppearance({ voice: "plain" });
 		fireEvent.click(
 			within(screen.getByRole("group", { name: "界面语言" })).getByRole("button", {
-				name: "日本語",
+				name: "English",
 			}),
 		);
 		expect(screen.queryByRole("group", { name: "文案口吻" })).toBeNull();

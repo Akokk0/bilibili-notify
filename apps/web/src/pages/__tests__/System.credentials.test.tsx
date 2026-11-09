@@ -59,6 +59,43 @@ afterEach(() => {
 });
 
 describe("系统页面板账号凭据", () => {
+	it.each([
+		[
+			"ja",
+			"新しいユーザー名",
+			"保存して再ログイン",
+			"ご主人様、ユーザー名とパスワードの全項目を入力してくださいね。",
+			"ユーザー名とパスワードの全項目を入力してください。",
+		],
+		[
+			"zh-TW",
+			"新帳號",
+			"儲存並重新登入",
+			"主人，請把帳號和密碼填完整喔。",
+			"請完整填寫帳號與密碼欄位。",
+		],
+	] as const)(
+		"%s：切换女仆口吻保留账号输入，校验现取口吻且不提交",
+		async (locale, account, save, maid, plain) => {
+			renderSystem();
+			fireEvent.click(await screen.findByRole("button", { name: "修改账号密码" }));
+			const username = screen.getByLabelText("新账号");
+			fireEvent.change(username, { target: { value: "Original 账号 {name}" } });
+			for (const [voice, expected] of [
+				["maid", maid],
+				["plain", plain],
+			] as const) {
+				await act(async () => i18n.set({ locale, voice }));
+				expect(screen.getByLabelText(account)).toBe(username);
+				expect(username).toHaveProperty("value", "Original 账号 {name}");
+				fireEvent.click(screen.getByRole("button", { name: save }));
+				expect(await screen.findByRole("alert")).toHaveProperty("textContent", expected);
+				expect(api.put).not.toHaveBeenCalled();
+				expect(useSessionStore.getState().authed).toBe(true);
+			}
+		},
+	);
+
 	it("credential labels and new validation follow language while the entered account stays unchanged", async () => {
 		renderSystem();
 		fireEvent.click(await screen.findByRole("button", { name: "修改账号密码" }));

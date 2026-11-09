@@ -19,20 +19,22 @@ import {
 import { useSyncExternalStore } from "react";
 import en from "./locales/en.json";
 import ja from "./locales/ja.json";
+import jaMaid from "./locales/ja.maid.json";
 import zhCN from "./locales/zh-CN.json";
 import zhCNMaid from "./locales/zh-CN.maid.json";
 import zhTW from "./locales/zh-TW.json";
+import zhTWMaid from "./locales/zh-TW.maid.json";
 import { readLocalePreference, readVoicePreference } from "./preference";
 
-/** 键的集合从简体中文那份取。面板的字随第 4 期重画才收,在那之前是 `never`。 */
+/** 键的集合从简体中文那份取。 */
 export type WebTextKey = DictKey<typeof zhCN>;
 
-// 繁体、英文、日文第 5 期才翻,在那之前缺的句子拿简体中文打底;中文的女仆层第 4 期才写,繁体的第 5 期。
+// 平实四语齐全；日文与台湾繁体女仆层逐模块补齐，未覆盖的句子沿用本语言平实层。
 export const DICTS = {
 	"zh-CN": { plain: zhCN, maid: zhCNMaid },
-	"zh-TW": { plain: zhTW },
+	"zh-TW": { plain: zhTW, maid: zhTWMaid },
 	en: { plain: en },
-	ja: { plain: ja },
+	ja: { plain: ja, maid: jaMaid },
 } satisfies Record<Locale, LocaleDicts>;
 
 /**
