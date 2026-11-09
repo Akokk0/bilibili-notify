@@ -239,28 +239,52 @@ export async function sendChatMessage(
  * 只分「今天 / 昨天 / 更早」三档:再细就得给每一天一个标题,而会话总数上限
  * 只有 50 条,分成十几组反而比不分更难扫。
  */
-export function groupLabel(updatedAt: string, now = new Date()): string {
-	const d = new Date(updatedAt);
-	if (Number.isNaN(d.getTime())) return i18n.t("panelUi.services.aiChat.3");
-	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-	if (d.getTime() >= startOfToday) return i18n.t("panelUi.services.aiChat.4");
-	if (d.getTime() >= startOfToday - 86_400_000) return i18n.t("panelUi.services.aiChat.5");
-	return i18n.t("panelUi.services.aiChat.6");
+type ConversationDay = "today" | "yesterday" | "earlier" | "invalid";
+
+function conversationDayLabel(day: ConversationDay): string {
+	switch (day) {
+		case "today":
+			return i18n.t("panelUi.services.aiChat.4");
+		case "yesterday":
+			return i18n.t("panelUi.services.aiChat.5");
+		case "earlier":
+			return i18n.t("panelUi.services.aiChat.6");
+		case "invalid":
+			return i18n.t("panelUi.services.aiChat.3");
+	}
 }
 
-/** 按 {@link groupLabel} 分组,保持服务端给的倒序。 */
+function conversationDayOf(updatedAt: string, now: Date): ConversationDay {
+	const d = new Date(updatedAt);
+	if (Number.isNaN(d.getTime())) return "invalid";
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+	if (d.getTime() >= startOfToday) return "today";
+	if (d.getTime() >= startOfToday - 86_400_000) return "yesterday";
+	return "earlier";
+}
+
+export function groupLabel(updatedAt: string, now = new Date()): string {
+	return conversationDayLabel(conversationDayOf(updatedAt, now));
+}
+
+/** 按本地日界分组，身份与显示文字分开；保持服务端给的倒序。 */
 export function groupConversations(
 	items: readonly AiConversationMetaView[],
 	now = new Date(),
-): Array<{ label: string; items: AiConversationMetaView[] }> {
-	const out: Array<{ label: string; items: AiConversationMetaView[] }> = [];
+): Array<{
+	key: Exclude<ConversationDay, "invalid">;
+	label: string;
+	items: AiConversationMetaView[];
+}> {
+	const out: ReturnType<typeof groupConversations> = [];
 	for (const item of items) {
-		const label = groupLabel(item.updatedAt, now);
+		const day = conversationDayOf(item.updatedAt, now);
+		const key = day === "invalid" ? "earlier" : day;
 		const last = out[out.length - 1];
 		// 列表已按 updatedAt 倒序,同组必然相邻 —— 只看上一组就够,不必用 Map
 		// 再排一次序(那样会丢掉服务端定好的组内次序)。
-		if (last && last.label === label) last.items.push(item);
-		else out.push({ label, items: [item] });
+		if (last && last.key === key) last.items.push(item);
+		else out.push({ key, label: conversationDayLabel(day), items: [item] });
 	}
 	return out;
 }

@@ -3015,5 +3015,14 @@
 	"skinUi.preview-error.1": "連線中斷",
 	"skinUi.preview-error.2": "尚未設定繪製用瀏覽器",
 	"skinUi.preview-error.3": "繪製失敗",
-	"skinUi.preview-error.4": "卡片繪製可能較久。若透過反向代理存取，請將讀取逾時設為超過 120 秒；也可能是伺服器剛重新啟動，例如記憶體不足。"
+	"skinUi.preview-error.4": "卡片繪製可能較久。若透過反向代理存取，請將讀取逾時設為超過 120 秒；也可能是伺服器剛重新啟動，例如記憶體不足。",
+	"panelUi.services.cardSkinAi.1": "請求失敗（{value0}）",
+	"panelUi.services.cardSkinAi.2": "CSS 尚未產生完成，連線已中斷。",
+	"panelUi.services.aiChat.1": "聊天請求失敗（{value0}）",
+	"panelUi.services.aiChat.2": "回覆尚未完成，連線已中斷。",
+	"panelUi.services.aiChat.7": "圖片上傳失敗",
+	"panelUi.services.aiChat.3": "更早",
+	"panelUi.services.aiChat.4": "今天",
+	"panelUi.services.aiChat.5": "昨天",
+	"panelUi.services.aiChat.6": "更早"
 }

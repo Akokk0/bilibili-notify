@@ -78,6 +78,9 @@ it("sidebar actions and workshop labels translate while conversation titles and 
 		onNew,
 	});
 	const title = screen.getByText("原始会话");
+	const row = title.closest("button");
+	if (!row) throw new Error("conversation has no selection button");
+	row.focus();
 	for (const [locale, label, start, remove] of [
 		["en", "Card workshop", "New chat", "Delete conversation “原始会话”"],
 		["ja", "カード工房", "新しいチャット", "会話「原始会话」を削除"],
@@ -88,6 +91,7 @@ it("sidebar actions and workshop labels translate while conversation titles and 
 		expect(screen.getByText(label)).toBeTruthy();
 		expect(screen.getByRole("button", { name: start })).toBeTruthy();
 		expect(screen.getByRole("button", { name: remove })).toBeTruthy();
+		expect(document.activeElement).toBe(row);
 		expect(screen.getByText("原始会话")).toBe(title);
 		expect(onSelect).not.toHaveBeenCalled();
 		expect(onDelete).not.toHaveBeenCalled();

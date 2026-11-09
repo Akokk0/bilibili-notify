@@ -4,7 +4,8 @@
  */
 
 import type { CardSkinAiCssEvent } from "@bilibili-notify/contract";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { ApiError } from "../api";
 import { streamCardSkinAiCss } from "../cardSkinAi";
 
@@ -23,11 +24,50 @@ function sse(events: CardSkinAiCssEvent[], split = 7): Response {
 
 const BODY = { kind: "live" as const, blockId: "cover", instruction: "圆角", manifest: {} };
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
 describe("streamCardSkinAiCss", () => {
+	it.each([
+		["en", "Request failed (502)", "The connection closed before CSS generation finished."],
+		["ja", "リクエストに失敗しました（502）", "CSSの生成が完了する前に接続が切れました。"],
+		["zh-TW", "請求失敗（502）", "CSS 尚未產生完成，連線已中斷。"],
+	] as const)(
+		"%s reports HTTP and unfinished stream failures while preserving server diagnostics and streamed CSS",
+		async (locale, http, interrupted) => {
+			i18n.set({ locale, voice: "plain" });
+			vi.stubGlobal("fetch", async () => new Response("bad gateway", { status: 502 }));
+			await expect(
+				streamCardSkinAiCss("neon", BODY, { onRule: () => {}, onRetry: () => {} }, undefined),
+			).rejects.toMatchObject({ message: http, status: 502 });
+			vi.stubGlobal(
+				"fetch",
+				async () =>
+					new Response(
+						JSON.stringify({ code: "unavailable", message: "Original diagnostic 原文" }),
+						{ status: 503 },
+					),
+			);
+			await expect(
+				streamCardSkinAiCss("neon", BODY, { onRule: () => {}, onRetry: () => {} }, undefined),
+			).rejects.toMatchObject({
+				message: "Original diagnostic 原文",
+				code: "unavailable",
+				status: 503,
+			});
+			vi.stubGlobal("fetch", async () =>
+				sse([{ event: "rule", data: { text: ".original{color:red}" } }]),
+			);
+			const rule = vi.fn();
+			await expect(
+				streamCardSkinAiCss("neon", BODY, { onRule: rule, onRetry: () => {} }, undefined),
+			).rejects.toThrow(interrupted);
+			expect(rule).toHaveBeenCalledWith(".original{color:red}");
+		},
+	);
 	it("rule / retry 逐个回调,done 的内容作为结果;请求带着草稿与取消信号", async () => {
 		const fetch = vi.fn(async () =>
 			sse([

@@ -3015,5 +3015,14 @@
 	"skinUi.preview-error.1": "接続が切れました",
 	"skinUi.preview-error.2": "描画用ブラウザーが未設定です",
 	"skinUi.preview-error.3": "描画に失敗しました",
-	"skinUi.preview-error.4": "カードの描画には時間がかかる場合があります。リバースプロキシを使用している場合は、読み取りタイムアウトを120秒より長くしてください。メモリー不足などでサーバーが再起動した可能性もあります。"
+	"skinUi.preview-error.4": "カードの描画には時間がかかる場合があります。リバースプロキシを使用している場合は、読み取りタイムアウトを120秒より長くしてください。メモリー不足などでサーバーが再起動した可能性もあります。",
+	"panelUi.services.cardSkinAi.1": "リクエストに失敗しました（{value0}）",
+	"panelUi.services.cardSkinAi.2": "CSSの生成が完了する前に接続が切れました。",
+	"panelUi.services.aiChat.1": "チャットのリクエストに失敗しました（{value0}）",
+	"panelUi.services.aiChat.2": "返信が完了する前に接続が切れました。",
+	"panelUi.services.aiChat.7": "画像のアップロードに失敗しました",
+	"panelUi.services.aiChat.3": "それ以前",
+	"panelUi.services.aiChat.4": "今日",
+	"panelUi.services.aiChat.5": "昨日",
+	"panelUi.services.aiChat.6": "それ以前"
 }

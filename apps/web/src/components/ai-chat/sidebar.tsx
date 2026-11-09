@@ -82,7 +82,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
 					</EmptyNote>
 				) : (
 					groups.map((g) => (
-						<div key={g.label} className="mb-1">
+						<div key={g.key} className="mb-1">
 							<div className="px-3 pb-[7px] pt-0.5 text-bn-2xs font-bold tracking-wider text-bn-text-secondary">
 								{g.label}
 							</div>

@@ -3083,5 +3083,14 @@
 	"skinUi.preview-error.1": "Connection lost",
 	"skinUi.preview-error.2": "Rendering browser not configured",
 	"skinUi.preview-error.3": "Rendering failed",
-	"skinUi.preview-error.4": "Card rendering can take time. If you use a reverse proxy, set its read timeout above 120 seconds. The server may also have restarted, for example after running out of memory."
+	"skinUi.preview-error.4": "Card rendering can take time. If you use a reverse proxy, set its read timeout above 120 seconds. The server may also have restarted, for example after running out of memory.",
+	"panelUi.services.cardSkinAi.1": "Request failed ({value0})",
+	"panelUi.services.cardSkinAi.2": "The connection closed before CSS generation finished.",
+	"panelUi.services.aiChat.1": "Chat request failed ({value0})",
+	"panelUi.services.aiChat.2": "The connection closed before the reply finished.",
+	"panelUi.services.aiChat.7": "Image upload failed",
+	"panelUi.services.aiChat.3": "Earlier",
+	"panelUi.services.aiChat.4": "Today",
+	"panelUi.services.aiChat.5": "Yesterday",
+	"panelUi.services.aiChat.6": "Earlier"
 }

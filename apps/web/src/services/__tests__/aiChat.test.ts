@@ -6,7 +6,8 @@
  */
 
 import type { AiConversationMetaView } from "@bilibili-notify/contract";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import {
 	createSseParser,
 	groupConversations,
@@ -15,6 +16,8 @@ import {
 	uploadChatImage,
 } from "../aiChat";
 import { ApiError } from "../api";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 describe("createSseParser — 分片边界不认帧边界", () => {
 	/**
@@ -215,6 +218,40 @@ describe("groupConversations", () => {
 		persona: true,
 	});
 
+	it.each([
+		["en", "Today", "Yesterday", "Earlier"],
+		["ja", "今日", "昨日", "それ以前"],
+		["zh-TW", "今天", "昨天", "更早"],
+	] as const)(
+		"%s translates local-day groups without reordering or renaming conversations",
+		(locale, today, yesterday, earlier) => {
+			const items = [
+				meta("Original today-a", at(24, 14)),
+				meta("Original today-b", at(24, 1)),
+				meta("Original yesterday", at(23, 23)),
+				meta("Original earlier", at(20, 12)),
+				meta("Original invalid 原文", "not-a-date"),
+			];
+			i18n.set({ locale, voice: "plain" });
+			const groups = groupConversations(items, NOW);
+			expect(groups.map((g) => g.key)).toEqual(["today", "yesterday", "earlier"]);
+			expect(groups.map((g) => g.label)).toEqual([today, yesterday, earlier]);
+			expect(groups.map((g) => g.items.map((item) => item.id))).toEqual([
+				["Original today-a", "Original today-b"],
+				["Original yesterday"],
+				["Original earlier", "Original invalid 原文"],
+			]);
+			expect(groups[0].items[0]).toBe(items[0]);
+			expect(groupLabel("not-a-date", NOW)).toBe(earlier);
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			const chinese = groupConversations(items, NOW);
+			expect(chinese.map((g) => g.label)).toEqual(["今天", "昨天", "更早"]);
+			expect(chinese.map((g) => g.key)).toEqual(["today", "yesterday", "earlier"]);
+			expect(groups.map((g) => g.label)).toEqual([today, yesterday, earlier]);
+			expect(items[4].title).toBe("Original invalid 原文");
+		},
+	);
+
 	it("按标签成组,组内保持服务端给的倒序", () => {
 		const got = groupConversations(
 			[meta("a", at(24, 14)), meta("b", at(24, 9)), meta("c", at(23, 20)), meta("d", at(19, 8))],
@@ -390,6 +427,54 @@ describe("sendChatMessage — 失败", () => {
 		}
 		throw new Error("本该抛错却没抛");
 	}
+
+	it.each([
+		[
+			"en",
+			"Chat request failed (502)",
+			"The connection closed before the reply finished.",
+			"Image upload failed",
+		],
+		[
+			"ja",
+			"チャットのリクエストに失敗しました（502）",
+			"返信が完了する前に接続が切れました。",
+			"画像のアップロードに失敗しました",
+		],
+		["zh-TW", "聊天請求失敗（502）", "回覆尚未完成，連線已中斷。", "圖片上傳失敗"],
+	] as const)(
+		"%s reports chat and upload fallbacks while retaining streamed text and server diagnostics",
+		async (locale, http, interrupted, upload) => {
+			i18n.set({ locale, voice: "plain" });
+			vi.stubGlobal("fetch", async () => new Response("bad gateway", { status: 502 }));
+			await expect(
+				sendChatMessage("c1", "Original instruction 原文", { onDelta: () => {} }),
+			).rejects.toMatchObject({ message: http, status: 502 });
+			vi.stubGlobal("fetch", async () =>
+				sse([{ event: "delta", data: { text: "Original partial 原文" } }]),
+			);
+			const delta = vi.fn();
+			await expect(
+				sendChatMessage("c1", "Original instruction 原文", { onDelta: delta }),
+			).rejects.toThrow(interrupted);
+			expect(delta).toHaveBeenCalledWith("Original partial 原文");
+			vi.stubGlobal("fetch", async () => new Response("{}", { status: 413 }));
+			const file = new File(["fixture"], "original.png", { type: "image/png" });
+			await expect(uploadChatImage(file)).rejects.toMatchObject({ message: upload, status: 413 });
+			vi.stubGlobal(
+				"fetch",
+				async () =>
+					new Response(JSON.stringify({ code: "invalid", message: "Original diagnostic 原文" }), {
+						status: 413,
+					}),
+			);
+			await expect(uploadChatImage(file)).rejects.toMatchObject({
+				message: "Original diagnostic 原文",
+				code: "invalid",
+				status: 413,
+			});
+		},
+	);
 
 	it("error 帧({ code, message })→ 抛成 ApiError:码与模型给的原因都在上面,已吐的分片照常回调过", async () => {
 		const deltas: string[] = [];
