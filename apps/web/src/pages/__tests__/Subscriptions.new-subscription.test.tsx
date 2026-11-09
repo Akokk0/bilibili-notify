@@ -169,6 +169,42 @@ async function search(dialog: ReturnType<typeof within>, placeholder: string, qu
 }
 
 describe("平台一排", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、入力内容はそのままB 站に渡しますよ。検索結果を選ぶと、購読の設定へ進めます。",
+			"ご主人様、一致するクリエイターが見つかりませんでした。",
+		],
+		[
+			"zh-TW",
+			"主人，輸入內容會原樣交給B 站辨識，選擇結果後就能設定訂閱囉。",
+			"主人，找不到符合的創作者呢。",
+		],
+	] as const)(
+		"%s maid lookup hints preserve the query and do not search or create again",
+		async (locale, description, noMatch) => {
+			creators.bilibili = async () => ({ candidates: [] });
+			const dialog = await openNewDialog();
+			const query = dialog.getByPlaceholderText("UID、主页链接或名字");
+			await search(dialog, "UID、主页链接或名字", "Original query 原文 {name}");
+			await dialog.findByText("没有找到匹配的人");
+			for (const voice of ["maid", "plain"] as const) {
+				act(() => i18n.set({ locale, voice }));
+				if (voice === "maid") {
+					expect(dialog.getByText(description)).toBeTruthy();
+					expect(dialog.getByText(noMatch)).toBeTruthy();
+				}
+				expect(dialog.getByDisplayValue("Original query 原文 {name}")).toBe(query);
+				expect(dialog.getByRole("button", { name: "B 站" })).toBeTruthy();
+				expect(
+					vi.mocked(api.get).mock.calls.filter(([path]) => path.includes("/creators?")),
+				).toHaveLength(1);
+				expect(api.post).not.toHaveBeenCalled();
+				expect(api.patch).not.toHaveBeenCalled();
+			}
+		},
+	);
+
 	it("new subscription guidance translates while source labels and the unsubmitted search text remain original", async () => {
 		const dialog = await openNewDialog();
 		fireEvent.change(dialog.getByPlaceholderText("UID、主页链接或名字"), {

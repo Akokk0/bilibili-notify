@@ -43,6 +43,53 @@ function props(overrides: Partial<SubscriptionCardProps> = {}): SubscriptionCard
 	};
 }
 
+it.each([
+	[
+		"ja",
+		"ご主人様、Original source 原文は稼働していませんよ。",
+		"ご主人様、Original source 原文はインストールされていませんよ。",
+	],
+	[
+		"zh-TW",
+		"主人，Original source 原文來源還沒執行喔。",
+		"主人，Original source 原文來源還沒安裝喔。",
+	],
+] as const)(
+	"%s maid source status keeps the creator and never toggles the subscription",
+	(locale, stopped, absent) => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "original", externalId: "0012" }),
+			cachedProfile: {
+				name: "Original creator 原文",
+				followers: 0,
+				refreshedAt: "2026-11-01T00:00:00Z",
+			},
+		};
+		const platform = subscriptionPlatformOf(sub.identity, [
+			{
+				key: "original",
+				status: "disabled",
+				descriptor: {
+					label: "Original source 原文",
+					externalIdNoun: "Original ID",
+					supportedFeatures: [],
+				},
+			},
+		]);
+		const base = props({ sub, platform });
+		const view = render(<SubscriptionCard {...base} />);
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(view.getByText(stopped)).toBeTruthy();
+		expect(view.getByText("Original creator 原文")).toBeTruthy();
+		expect(view.getAllByText("Original ID 0012").length).toBeGreaterThan(0);
+		view.rerender(<SubscriptionCard {...base} platform={{ ...platform, absent: true }} />);
+		expect(view.getByText(absent)).toBeTruthy();
+		expect(base.onToggleEnabled).not.toHaveBeenCalled();
+		expect(base.onClick).not.toHaveBeenCalled();
+		expect(base.onToggleSelect).not.toHaveBeenCalled();
+	},
+);
+
 describe("SubscriptionCard 描述符身份", () => {
 	it("feature labels follow the locale while source-provided post nouns keep their original wording", () => {
 		const sub = makeEmptySubscription({ sourceKey: "original", externalId: "0012" });

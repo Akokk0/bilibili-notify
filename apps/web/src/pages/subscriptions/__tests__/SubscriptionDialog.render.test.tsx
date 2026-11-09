@@ -89,6 +89,43 @@ function renderDialog(platform: string) {
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 afterEach(cleanup);
 
+it.each([
+	["ja", "ご主人様、削除された送信先への参照が残っています。参照を選ぶと外せますよ。"],
+	["zh-TW", "主人，下列目標已刪除，但還留有參照，點選就能移除參照喔。"],
+] as const)(
+	"%s maid routing guidance keeps selected and retired targets without saving",
+	(locale, stale) => {
+		const sub = customSubFor("target-a");
+		sub.routing.post.push("retired-target");
+		const target = { ...targetFor("onebot"), id: "target-a", name: "Original target 原文" };
+		const onSave = vi.fn(),
+			onDelete = vi.fn(),
+			onClose = vi.fn();
+		render(
+			<SubscriptionDialog
+				sub={sub}
+				platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
+				targets={[target]}
+				connections={[]}
+				onClose={onClose}
+				onSave={onSave}
+				onDelete={onDelete}
+				saving={false}
+			/>,
+		);
+		const retired = screen.getByRole("button", { name: "retired- ×" });
+		for (const voice of ["maid", "plain"] as const) {
+			act(() => i18n.set({ locale, voice }));
+			if (voice === "maid") expect(screen.getByText(stale)).toBeTruthy();
+			expect(screen.getByText("Original target 原文")).toBeTruthy();
+			expect(screen.getByRole("button", { name: "retired- ×" })).toBe(retired);
+			expect(onSave).not.toHaveBeenCalled();
+			expect(onDelete).not.toHaveBeenCalled();
+			expect(onClose).not.toHaveBeenCalled();
+		}
+	},
+);
+
 it("target selection and stale-reference guidance translate without changing names or deleting subscriptions", () => {
 	const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "0012" });
 	sub.routing.post = ["retired-target"];
