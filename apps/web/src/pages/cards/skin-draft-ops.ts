@@ -614,8 +614,10 @@ type KnobType = Knob["type"];
  * `image` 连 `default` 都没有(图是主人自己的东西,皮肤起不出默认值),而清单是 `strict`
  * 的:多带一个键就整份拒收。
  */
-const KNOB_SHAPES: { [T in KnobType]: Omit<Extract<Knob, { type: T }>, "key" | "label" | "type"> } =
-	{
+function knobShapes(): {
+	[T in KnobType]: Omit<Extract<Knob, { type: T }>, "key" | "label" | "type">;
+} {
+	return {
 		color: { default: "#ffffff" },
 		number: { default: 0, min: 0, max: 100 },
 		select: {
@@ -623,9 +625,7 @@ const KNOB_SHAPES: { [T in KnobType]: Omit<Extract<Knob, { type: T }>, "key" | "
 			options: [
 				{
 					value: "none",
-					get label() {
-						return i18n.t("skinUi.skin-draft-ops.7");
-					},
+					label: i18n.t("skinUi.skin-draft-ops.7"),
 				},
 			],
 		},
@@ -633,6 +633,7 @@ const KNOB_SHAPES: { [T in KnobType]: Omit<Extract<Knob, { type: T }>, "key" | "
 		font: { default: "" },
 		image: {},
 	};
+}
 
 const knobsOf = (manifest: CardSkinManifest): Knob[] => manifest.knobs ?? [];
 
@@ -653,7 +654,7 @@ export function addKnob(manifest: CardSkinManifest): AddedKnob | null {
 	return {
 		manifest: withKnobs(manifest, [
 			...knobs,
-			{ key, label: i18n.t("skinUi.skin-draft-ops.8"), type: "color", ...KNOB_SHAPES.color },
+			{ key, label: i18n.t("skinUi.skin-draft-ops.8"), type: "color", ...knobShapes().color },
 		]),
 		key,
 	};
@@ -681,7 +682,7 @@ export function setKnobDecl(
 	}));
 }
 
-/** 改档。key 与人话名留着,其余整份换成那一档的出厂形状(理由见 {@link KNOB_SHAPES})。 */
+/** 改档。key 与人话名留着,其余整份换成那一档的出厂形状(理由见 {@link knobShapes})。 */
 export function setKnobType(
 	manifest: CardSkinManifest,
 	key: string,
@@ -690,7 +691,7 @@ export function setKnobType(
 	return mapKnob(manifest, key, (k) =>
 		k.type === type
 			? k
-			: ({ key: k.key, label: k.label, type, ...KNOB_SHAPES[type] } as unknown as Knob),
+			: ({ key: k.key, label: k.label, type, ...knobShapes()[type] } as unknown as Knob),
 	);
 }
 

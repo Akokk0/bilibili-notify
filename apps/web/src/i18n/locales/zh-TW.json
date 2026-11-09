@@ -2806,5 +2806,9 @@
 	"skinUi.SkinInspector.113": "圖片沒有起始值。",
 	"skinUi.SkinInspector.114": "請在選項清單中選取起始值。",
 	"skinUi.SkinInspector.knobLimit#other": "已達 {count} 個調整項目的上限。",
-	"skinUi.SkinInspector.75": "宣告的項目會顯示於卡片設定頁的「外觀調整」。修改值會注入為 --bn-knob-<key>，可在此外觀的 CSS 中使用 var(--bn-knob-<key>, fallback) 引用。起始值不會注入，真正的預設值是 CSS 中的後備值。"
+	"skinUi.SkinInspector.75": "宣告的項目會顯示於卡片設定頁的「外觀調整」。修改值會注入為 --bn-knob-<key>，可在此外觀的 CSS 中使用 var(--bn-knob-<key>, fallback) 引用。起始值不會注入，真正的預設值是 CSS 中的後備值。",
+	"skinUi.skin-draft-ops.1": "<div>新的自訂區塊</div>",
+	"skinUi.skin-draft-ops.7": "選項一",
+	"skinUi.skin-draft-ops.8": "新增調整項目",
+	"skinUi.skin-draft-ops.27": "選項 {value0}"
 }

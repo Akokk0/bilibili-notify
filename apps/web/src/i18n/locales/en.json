@@ -2868,5 +2868,9 @@
 	"skinUi.SkinInspector.114": "Choose the initial value in the options list.",
 	"skinUi.SkinInspector.knobLimit#other": "The limit of {count} controls has been reached.",
 	"skinUi.SkinInspector.knobLimit#one": "The limit of {count} control has been reached.",
-	"skinUi.SkinInspector.75": "Each declaration adds a control to Skin controls on the card settings page. Changes are injected as --bn-knob-<key>; reference them in this skin’s CSS with var(--bn-knob-<key>, fallback). Initial values are not injected. The CSS fallback is the actual default."
+	"skinUi.SkinInspector.75": "Each declaration adds a control to Skin controls on the card settings page. Changes are injected as --bn-knob-<key>; reference them in this skin’s CSS with var(--bn-knob-<key>, fallback). Initial values are not injected. The CSS fallback is the actual default.",
+	"skinUi.skin-draft-ops.1": "<div>New custom block</div>",
+	"skinUi.skin-draft-ops.7": "Option one",
+	"skinUi.skin-draft-ops.8": "New control",
+	"skinUi.skin-draft-ops.27": "Option {value0}"
 }

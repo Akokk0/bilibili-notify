@@ -2806,5 +2806,9 @@
 	"skinUi.SkinInspector.113": "画像には初期値がありません。",
 	"skinUi.SkinInspector.114": "選択肢の一覧で初期値を選びます。",
 	"skinUi.SkinInspector.knobLimit#other": "調整項目数が上限の{count}個に達しています。",
-	"skinUi.SkinInspector.75": "宣言した項目は、カード設定画面の「スキンの調整」に表示されます。変更値は --bn-knob-<key> として注入され、スキンのCSSから var(--bn-knob-<key>, fallback) で参照できます。初期値は注入されません。実際の既定値はCSSのフォールバックです。"
+	"skinUi.SkinInspector.75": "宣言した項目は、カード設定画面の「スキンの調整」に表示されます。変更値は --bn-knob-<key> として注入され、スキンのCSSから var(--bn-knob-<key>, fallback) で参照できます。初期値は注入されません。実際の既定値はCSSのフォールバックです。",
+	"skinUi.skin-draft-ops.1": "<div>新しいカスタムブロック</div>",
+	"skinUi.skin-draft-ops.7": "選択肢1",
+	"skinUi.skin-draft-ops.8": "新しい調整項目",
+	"skinUi.skin-draft-ops.27": "選択肢{value0}"
 }

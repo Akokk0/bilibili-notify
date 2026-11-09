@@ -14,7 +14,8 @@
 
 import type { CardSkinManifest } from "@bilibili-notify/contract";
 import { CARD_SKIN_KNOB_LIMITS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/card-skin";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import {
 	addBlock,
 	addCustomBlock,
@@ -55,6 +56,51 @@ import {
 	skinMetaError,
 	stackingOf,
 } from "../skin-draft-ops";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
+describe("localized draft seeds", () => {
+	it.each([
+		["en", "<div>New custom block</div>", "New control", "Option one", "Option 2"],
+		["ja", "<div>新しいカスタムブロック</div>", "新しい調整項目", "選択肢1", "選択肢2"],
+		["zh-TW", "<div>新的自訂區塊</div>", "新增調整項目", "選項一", "選項 2"],
+	] as const)(
+		"%s seeds new content in the current language without relabeling earlier drafts",
+		(locale, html, label, first, second) => {
+			const old = addKnob(manifest());
+			if (!old) throw new Error("control was not added");
+			const previous = setKnobType(old.manifest, old.key, "select");
+			i18n.set({ locale, voice: "plain" });
+			const custom = addCustomBlock(manifest(), "live");
+			expect(custom).not.toBeNull();
+			expect(custom?.manifest.cards.live?.blocks.at(-1)).toMatchObject({ kind: "custom", html });
+			const added = addKnob(manifest());
+			if (!added) throw new Error("control was not added");
+			expect(added.manifest.knobs?.[0].label).toBe(label);
+			const selected = setKnobType(added.manifest, added.key, "select");
+			const withOption = addKnobOption(selected, added.key);
+			expect(withOption.knobs?.[0]).toMatchObject({
+				options: [
+					{ value: "none", label: first },
+					{ value: "option", label: second },
+				],
+			});
+			expect(previous.knobs?.[0]).toMatchObject({
+				label: "新旋钮",
+				options: [{ value: "none", label: "候选一" }],
+			});
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			expect(withOption.knobs?.[0]).toMatchObject({
+				label,
+				options: [
+					{ value: "none", label: first },
+					{ value: "option", label: second },
+				],
+			});
+			expect(selected.knobs?.[0]).toMatchObject({ options: [{ value: "none", label: first }] });
+		},
+	);
+});
 
 const manifest = (): CardSkinManifest =>
 	({
