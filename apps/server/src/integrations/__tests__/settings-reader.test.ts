@@ -1,6 +1,7 @@
 import { type Disposable, fail, ok, type Result } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { i18n } from "../../i18n/index.js";
 import { makeLogger } from "../../subscriptions/__tests__/fixtures.js";
 import {
 	createIntegrationSettings,
@@ -48,6 +49,39 @@ const setup = (initial: Raw = good()) => {
 };
 
 describe("createSettingsReader · get()", () => {
+	it("切语言不替换规则提供的诊断，仍完整返回字段路径且不改原设置", () => {
+		const state = i18n.state();
+		const raw = { cron: 5, minutes: "bad" };
+		const host = makeHost(ok({ settings: raw }));
+		const { reader, dispose } = createSettingsReader({
+			schema: z.object({
+				cron: z.string({ error: "Original cron 诊断" }),
+				minutes: z.number({ error: "Original minutes 诊断" }),
+			}),
+			read: host.read,
+			onChanged: host.onChanged,
+			logger: makeLogger(),
+		});
+		try {
+			for (const locale of ["zh-CN", "en", "ja", "zh-TW"] as const) {
+				i18n.set({ locale, voice: "plain" });
+				expect(reader.get()).toEqual({
+					ok: false,
+					code: "invalid",
+					message: "Original cron 诊断",
+					issues: [
+						{ path: ["cron"], message: "Original cron 诊断" },
+						{ path: ["minutes"], message: "Original minutes 诊断" },
+					],
+				});
+				expect(raw).toEqual({ cron: 5, minutes: "bad" });
+			}
+		} finally {
+			dispose();
+			i18n.set({ locale: state.locale, voice: state.voice });
+		}
+	});
+
 	it("自己那格好:回过了 zod 的值(zod 剥掉不认识的键)", () => {
 		const { reader } = setup(ok({ settings: { cron: "a", minutes: 1, extra: true } }));
 		expect(reader.get()).toEqual({ ok: true, settings: { cron: "a", minutes: 1 } });

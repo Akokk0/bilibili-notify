@@ -1,4 +1,5 @@
 {
+	"service.integrations.settings-reader.text.1": "Unable to read settings",
 	"log.integration.cookiesNotArray": "Cookie data is not an array.",
 	"service.integrations.http.text.2": "The integration has stopped; cookies cannot be saved.",
 	"startup.starting": "BN is starting. Please wait.",

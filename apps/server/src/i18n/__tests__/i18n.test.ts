@@ -9,6 +9,15 @@ afterEach(() => {
 
 describe("服务端字典 store", () => {
 	it.each([
+		["en", "Unable to read settings"],
+		["ja", "設定を読み取れません"],
+		["zh-TW", "無法讀取設定"],
+	] as const)("%s：无具体诊断时的设置读取提示使用当前语言", (locale, message) => {
+		i18n.set({ locale, voice: "plain" });
+		expect(t("service.integrations.settings-reader.text.1")).toBe(message);
+	});
+
+	it.each([
 		{
 			locale: "en" as const,
 			migrating: "BN is migrating data. Please wait.",
