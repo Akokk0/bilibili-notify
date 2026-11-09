@@ -6,12 +6,14 @@
  */
 
 import { strToU8, zipSync } from "fflate";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { MAX_SKIN_ASSETS, openSkinPackage } from "../package.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 /** woff2 的魔数 `wOF2`;内容不解析,只要求后缀过白名单。 */
 const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function makeZip(files: Record<string, Uint8Array>): Uint8Array {
 	return zipSync(files);
@@ -29,6 +31,115 @@ function manifestJson(extra?: Record<string, unknown>): Uint8Array {
 }
 
 describe("openSkinPackage", () => {
+	it.each([
+		[
+			"en",
+			{
+				zip: "Invalid zip file.",
+				missing: "The package is missing skin.json.",
+				json: "skin.json is not valid JSON.",
+				manifest: "skin.json is too large (limit: 512KB).",
+				forbidden:
+					"Original.sh: only skin.json and webp/jpg/png or woff2/woff/ttf/otf files under assets/ are allowed in the package.",
+				ref: "assets/Original.png: referenced by the manifest but missing from the package.",
+				unused:
+					"assets/Original.png: included in the package but not referenced by the manifest; it will not be used.",
+				assets:
+					"Too many assets in the package (13; limit: 12). Remove unused assets and upload again.",
+				files: "Too many files in the package (limit: 14).",
+			},
+		],
+		[
+			"ja",
+			{
+				zip: "無効なzipファイルです。",
+				missing: "パッケージにskin.jsonがありません。",
+				json: "skin.jsonが有効なJSONではありません。",
+				manifest: "skin.jsonが大きすぎます（上限512KB）。",
+				forbidden:
+					"Original.sh: パッケージに含められるのはskin.jsonとassets/内のwebp/jpg/pngおよびwoff2/woff/ttf/otfのみです。",
+				ref: "assets/Original.png: マニフェストに参照がありますが、パッケージにファイルがありません。",
+				unused:
+					"assets/Original.png: パッケージにありますがマニフェストから参照されていないため、使用されません。",
+				assets:
+					"パッケージのアセットが多すぎます（13個、上限12個）。不要なアセットを削除して再アップロードしてください。",
+				files: "パッケージ内のファイルが多すぎます（上限14個）。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				zip: "不是有效的 zip 檔案。",
+				missing: "套件中缺少 skin.json。",
+				json: "skin.json 不是有效的 JSON。",
+				manifest: "skin.json 過大（上限 512KB）。",
+				forbidden:
+					"Original.sh: 套件只允許 skin.json 與 assets/ 下的 webp/jpg/png、woff2/woff/ttf/otf 檔案。",
+				ref: "assets/Original.png: 清單有引用，但套件中沒有此檔案。",
+				unused: "assets/Original.png: 套件中有此檔案，但清單未引用，因此不會使用。",
+				assets: "套件內資源過多（13 份，上限 12 份），請刪除不需要的資源後再上傳。",
+				files: "套件內檔案過多（上限 14 個）。",
+			},
+		],
+	] as const)(
+		"%s localizes package rejection and unused-asset warnings while preserving original names and bytes",
+		(locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			const cases = [
+				[strToU8("Original invalid zip"), text.zip],
+				[makeZip({ "assets/Original.png": PNG }), text.missing],
+				[makeZip({ "skin.json": strToU8("{") }), text.json],
+				[makeZip({ "skin.json": new Uint8Array(512 * 1024 + 1) }), text.manifest],
+				[
+					makeZip({ "skin.json": manifestJson(), "Original.sh": strToU8("Original file") }),
+					text.forbidden,
+				],
+				[
+					makeZip({
+						"skin.json": manifestJson({
+							modes: { light: { wallpaper: { image: "assets/Original.png" } } },
+						}),
+					}),
+					text.ref,
+				],
+				[
+					makeZip({
+						"skin.json": manifestJson(),
+						...Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`assets/a${i}.png`, PNG])),
+					}),
+					text.assets,
+				],
+				[
+					makeZip({
+						"skin.json": manifestJson(),
+						...Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`assets/a${i}.png`, PNG])),
+					}),
+					text.files,
+				],
+			] as const;
+			for (const [bytes, message] of cases)
+				expect(openSkinPackage(bytes)).toEqual({
+					ok: false,
+					code: "invalid",
+					message,
+					issues: [{ message }],
+				});
+			const valid = openSkinPackage(
+				makeZip({
+					"skin.json": manifestJson({ name: "Original skin 原文" }),
+					"assets/Original.png": PNG,
+					"__MACOSX/._Original": PNG,
+					".DS_Store": PNG,
+				}),
+			);
+			expect(valid.ok).toBe(true);
+			if (!valid.ok) throw new Error(valid.message);
+			expect(valid.manifest.name).toBe("Original skin 原文");
+			expect(valid.warnings).toEqual([text.unused]);
+			expect([...valid.assets.keys()]).toEqual(["assets/Original.png"]);
+			expect(valid.assets.get("assets/Original.png")).toEqual(PNG);
+		},
+	);
 	it("skin.json + 被引用的壁纸 → ok,manifest 与资产都取出", () => {
 		const zip = makeZip({
 			"skin.json": manifestJson({

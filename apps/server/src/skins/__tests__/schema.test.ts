@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { parseSkinManifest } from "../schema";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /** 最小合法 manifest:骨架三件套 schemaVersion + name + 至少一个 mode。 */
 function minimal(): Record<string, unknown> {
@@ -7,6 +10,108 @@ function minimal(): Record<string, unknown> {
 }
 
 describe("parseSkinManifest / 骨架校验", () => {
+	it.each([
+		[
+			"en",
+			{
+				root: "skin.json must contain an object at the top level.",
+				version:
+					"schemaVersion: schemaVersion must be 1. This version is not recognized; an application update may be required.",
+				name: "name: name must not be empty.",
+				mode: "modes must include at least one of light / dark.",
+				css: "css: must be a CSS string",
+				image:
+					"modes.light.wallpaper.image: only in-package assets/<filename>.webp|jpg|png references are allowed",
+				top: "Original-field: unknown field; ignored",
+				color: "modes.light.colors.Original-color: unknown color key; ignored",
+				text: "texts.Original-slot: unknown text slot; ignored",
+			},
+		],
+		[
+			"ja",
+			{
+				root: "skin.jsonの最上位はオブジェクトで指定してください。",
+				version:
+					"schemaVersion: schemaVersionは1で指定してください。未対応のバージョンのため、アプリの更新が必要な場合があります。",
+				name: "name: nameは空にできません。",
+				mode: "modesにはlight / darkの少なくとも一方が必要です。",
+				css: "css: CSS文字列で指定してください",
+				image:
+					"modes.light.wallpaper.image: パッケージ内のassets/<filename>.webp|jpg|pngのみ参照できます",
+				top: "Original-field: 不明なフィールドのため無視しました",
+				color: "modes.light.colors.Original-color: 不明な色キーのため無視しました",
+				text: "texts.Original-slot: 不明なテキストスロットのため無視しました",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				root: "skin.json 最上層必須是物件。",
+				version: "schemaVersion: schemaVersion 必須是 1；此版本無法辨識，可能需要更新主程式。",
+				name: "name: name 不可為空。",
+				mode: "modes 至少必須提供 light / dark 其中一套。",
+				css: "css: 必須是 CSS 字串",
+				image: "modes.light.wallpaper.image: 只能引用套件內的 assets/<filename>.webp|jpg|png",
+				top: "Original-field: 無法辨識的欄位，已忽略",
+				color: "modes.light.colors.Original-color: 無法辨識的顏色鍵，已忽略",
+				text: "texts.Original-slot: 無法辨識的文案欄位，已忽略",
+			},
+		],
+	] as const)(
+		"%s distinguishes rejected manifests from ignored fields while preserving user names and values",
+		(locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			const root = parseSkinManifest(null);
+			expect(root).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.root,
+				issues: [{ message: text.root }],
+			});
+			const bad = parseSkinManifest({ ...minimal(), schemaVersion: 2, name: "" });
+			expect(bad).toMatchObject({
+				ok: false,
+				code: "invalid",
+				issues: [{ message: text.version }, { message: text.name }],
+			});
+			expect(parseSkinManifest({ ...minimal(), modes: {} })).toMatchObject({
+				ok: false,
+				code: "invalid",
+				message: text.mode,
+			});
+			const unsafe = parseSkinManifest({
+				...minimal(),
+				css: 42,
+				modes: { light: { wallpaper: { image: "../Original-file.png" } } },
+			});
+			expect(unsafe).toMatchObject({
+				ok: false,
+				code: "invalid",
+				issues: [{ message: text.css }, { message: text.image }],
+			});
+			const input = {
+				...minimal(),
+				name: "Original name 原文",
+				author: "Original author",
+				texts: { headerTitle: "Original title 原文", "Original-slot": "Ignored" },
+				"Original-field": true,
+				modes: { light: { colors: { accent: "#fb7299", "Original-color": "#ffffff" } } },
+			};
+			const parsed = parseSkinManifest(input);
+			expect(parsed.ok).toBe(true);
+			if (!parsed.ok) throw new Error(parsed.message);
+			expect(parsed.warnings).toEqual([text.top, text.text, text.color]);
+			expect(parsed.skin).toMatchObject({
+				name: "Original name 原文",
+				author: "Original author",
+				texts: { headerTitle: "Original title 原文" },
+				modes: { light: { colors: { accent: "#fb7299" } } },
+			});
+			expect(parsed.skin).not.toHaveProperty("Original-field");
+			expect(parsed.skin.texts).not.toHaveProperty("Original-slot");
+			expect(parsed.skin.modes.light?.colors).not.toHaveProperty("Original-color");
+		},
+	);
 	it("CSS 拒绝逐条保留全局与模式路径及原文", () => {
 		const css = "x".repeat(65537);
 		expect(parseSkinManifest({ ...minimal(), css, modes: { dark: { css } } })).toEqual(
