@@ -13,14 +13,17 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { CONFIG_DIR } from "../../config/store.js";
+import { i18n } from "../../i18n/index.js";
 import { migrateSubscriptionFiles } from "../subscriptions.js";
 import { migrateZeroGeneration } from "../zero-generation.js";
 import { SANDBOX_NOW, useZeroSandbox } from "./support.js";
 import { zeroBiliRow, zeroExtensionRow } from "./zero-fixtures.js";
 
 const sandbox = useZeroSandbox("bn-zero-subscriptions-");
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 const B1 = "11111111-1111-4111-8111-111111111111";
 const B2 = "22222222-2222-4222-8222-222222222222";
@@ -320,6 +323,27 @@ describe("只有一份的时候", () => {
 });
 
 describe("读不懂的那几种", () => {
+	it.each([
+		[
+			"en",
+			"Generation 0 state/extension-subscriptions.json could not be read as a JSON array; extension subscriptions cannot be migrated.",
+		],
+		[
+			"ja",
+			"第0世代のstate/extension-subscriptions.jsonをJSON配列として読み取れないため、拡張機能の購読を移行できません。",
+		],
+		[
+			"zh-TW",
+			"無法將第 0 代的 state/extension-subscriptions.json 讀取為 JSON 陣列，拓展訂閱無法移轉。",
+		],
+	] as const)("%s：坏拓展订阅拒绝迁移，不改原文件", async (locale, message) => {
+		const original = '{"not":"an array"}';
+		await sandbox.placeZeroText(ZERO_EXT, original);
+		i18n.set({ locale, voice: "plain" });
+		await expect(sandbox.migrate()).rejects.toThrow(message);
+		expect(await readFile(join(sandbox.zero, ZERO_EXT), "utf8")).toBe(original);
+	});
+
 	it.each([
 		["不是 JSON 数组(是对象)", JSON.stringify({ not: "an array" })],
 		["不是 JSON", "{这不是 JSON"],

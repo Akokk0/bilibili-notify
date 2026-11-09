@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { FOLLOWERS_DIR } from "../../followers/store.js";
+import { i18n } from "../../i18n/index.js";
 import { migrateFollowerCompression } from "../followers.js";
 
 const BILI = "b0000000-0000-4000-8000-000000000001";
@@ -31,6 +32,7 @@ beforeEach(async () => {
 	skipped = [];
 });
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	await rm(dir, { recursive: true, force: true });
 });
 
@@ -51,6 +53,29 @@ const COMPACTED =
 	'{"sampledAt":"2026-06-29T10:10:00.000Z","followers":201}\n';
 
 describe("migrateFollowerCompression", () => {
+	it.each([
+		[
+			"en",
+			"Skipped unreadable follower samples: 3 (invalid JSON, missing fields or invalid timestamps).",
+		],
+		[
+			"ja",
+			"読み取れないフォロワーサンプル3件を移行しませんでした（JSON不正、項目不足、または日時を解析できないため）。",
+		],
+		["zh-TW", "有 3 筆粉絲樣本無法讀取（JSON 格式錯誤、缺少欄位或時間無法解析），未予移轉。"],
+	] as const)("%s：三类坏样本合并说明，合法数据仍迁入", async (locale, message) => {
+		await put(
+			fileOf(BILI),
+			`not JSON\n{"value":1}\n${JSON.stringify({ ts: "invalid", value: 3 })}\n${old("2026-06-29T10:00:00.000Z", 200)}\n`,
+		);
+		i18n.set({ locale, voice: "plain" });
+		await run();
+		expect(skipped).toEqual([message]);
+		expect(await readFile(fileOf(BILI), "utf8")).toBe(
+			'{"sampledAt":"2026-06-29T10:00:00.000Z","followers":200}\n',
+		);
+	});
+
 	it("0.x 的 { ts, value } 行压成新形状写回:旧的同值小时合成段,切线之后原样;回写过的文件", async () => {
 		await put(fileOf(BILI), `${ZERO_ROWS.join("\n")}\n`);
 		expect(await run()).toEqual([fileOf(BILI)]);

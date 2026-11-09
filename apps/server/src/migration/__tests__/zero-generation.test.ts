@@ -28,6 +28,7 @@ import { dirname, join, relative, sep } from "node:path";
 import { gcmDecrypt, gcmEncrypt } from "@bilibili-notify/storage";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "../../__tests__/support/avatar-fixtures.js";
+import { i18n } from "../../i18n/index.js";
 import {
 	MIGRATION_REVISION,
 	type MigrationProgress,
@@ -35,10 +36,84 @@ import {
 	type ZeroMigrationResult,
 	zeroGenerationExists,
 } from "../zero-generation.js";
+import { useZeroSandbox } from "./support.js";
 
 let root: string;
 let zero: string;
 let target: string;
+
+describe("迁移报告细节按生成语言出字，原始文件与旧报告不改写", () => {
+	const sandbox = useZeroSandbox("bn-migration-report-details-");
+	afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+	it.each([
+		{
+			locale: "en" as const,
+			reasons: [
+				"Temporary file left by the previous process",
+				"0.x backup",
+				"0.x temporary file",
+				"Quarantined corrupt file",
+				"Historical images are read once during migration. Images referenced by retained history rows or repush originals are copied individually to images/ and listed as transferred; the rest and the original directory are not migrated.",
+				"Images stored with repush originals are read once during migration. Referenced images are copied to images/ and listed as transferred; unreferenced images are not migrated.",
+			],
+			expired:
+				"Repush originals from 2 days exceeded the retention period (30 days) and were not migrated.",
+		},
+		{
+			locale: "ja" as const,
+			reasons: [
+				"前のプロセスが残した一時ファイル",
+				"0.xのバックアップ",
+				"0.xの一時ファイル",
+				"隔離された破損ファイル",
+				"履歴画像は移行時に一度だけ読み取ります。保持期間内の履歴行または再送用原本が参照する画像をimages/へ個別にコピーし、移行済み一覧に記録します。それ以外の画像と元のディレクトリは移行しません。",
+				"再送用原本に付属する画像は移行時に一度だけ読み取ります。参照されている画像をimages/へコピーして移行済み一覧に記録し、参照されていない画像は移行しません。",
+			],
+			expired: "2日分の再送用原本が保持期間（30日）を過ぎていたため、移行しませんでした。",
+		},
+		{
+			locale: "zh-TW" as const,
+			reasons: [
+				"前一個程序留下的暫存檔",
+				"0.x 的備份",
+				"0.x 的暫存檔",
+				"已隔離的損毀檔案",
+				"歷史圖片僅在移轉時讀取一次；保留期間內的歷史列與重推原件參照的圖片會逐張複製到 images/，並記入已移轉清單；其餘圖片與原目錄不移轉。",
+				"重推原件自存的圖片僅在移轉時讀取一次；被參照的圖片會複製到 images/，並記入已移轉清單；未被參照的圖片不移轉。",
+			],
+			expired: "2 天份的重推原件已超過保留期間（30 天），未予移轉。",
+		},
+	])(
+		"$locale：残留、图片范围和到期天数明确，数据去向保持",
+		async ({ locale, reasons, expired }) => {
+			const paths = [
+				"state/globals.json.bn-tmp.123.abcdef",
+				"state/targets.json.bak",
+				"state/cache.tmp.99",
+				"state/cache.corrupt-123",
+				"history/img/orphan.png",
+				"history/repush/2026-09-30/own.png",
+			];
+			for (const path of paths) await sandbox.placeZeroText(path, "original bytes");
+			for (const day of ["2000-01-01", "2000-01-02"])
+				await sandbox.placeZero(`history/repush/${day}/a.json`, {});
+			i18n.set({ locale, voice: "plain" });
+			const report = await sandbox.migrate({ now: new Date("2026-10-01T00:00:00.000Z") });
+			for (const [index, path] of paths.entries()) {
+				expect(report.skipped).toContainEqual({
+					path: index === 4 ? "history/img" : path,
+					reason: expect.stringContaining(reasons[index] ?? "missing expectation"),
+				});
+				expect(await readFile(join(sandbox.zero, path), "utf8")).toBe("original bytes");
+				expect(report.transfers.some((transfer) => transfer.from === path)).toBe(false);
+			}
+			expect(report.skipped).toContainEqual({ path: "history/repush", reason: expired });
+			const recorded = JSON.stringify(report);
+			i18n.set({ locale: "zh-CN", voice: "maid" });
+			expect(JSON.stringify(report)).toBe(recorded);
+		},
+	);
+});
 
 /** 迁移里那次历史清扫按这一刻算:夹具的历史都在 2026-09-30,保留 30 天,没有哪一天到期。 */
 const NOW = new Date("2026-10-01T00:00:00.000Z");

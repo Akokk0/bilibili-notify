@@ -9,6 +9,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { compressRecordingEntries } from "../../stats/recording-compress.js";
 import type { RecordingEntry } from "../../stats/store.js";
 import { migrateRecordingLedger } from "../recording.js";
@@ -74,6 +75,7 @@ beforeEach(async () => {
 	skipped = [];
 });
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	await rm(dir, { recursive: true, force: true });
 });
 
@@ -237,6 +239,39 @@ describe("拓展订阅:seen 行所在的小时 = 在记", () => {
 });
 
 describe("收尾与读不懂", () => {
+	it.each([
+		[
+			"en",
+			"The subscription file or core settings could not be read; statistics tracking records were not reconstructed.",
+			"The subscription file could not be read; statistics tracking records were not reconstructed.",
+		],
+		[
+			"ja",
+			"購読ファイルまたはコア設定を読み取れないため、統計の記録状態を再構成しませんでした。",
+			"購読ファイルを読み取れないため、統計の記録状態を再構成しませんでした。",
+		],
+		[
+			"zh-TW",
+			"無法讀取訂閱檔案或核心設定，未重建統計記錄狀態。",
+			"無法讀取訂閱檔案，未重建統計記錄狀態。",
+		],
+	] as const)("%s：坏语法与坏形状分别说明，旧证据不删", async (locale, unreadable, malformed) => {
+		const evidence = jsonl([{ ts: at(2) }]);
+		await put(join("stats", "seen", `${EXT}.jsonl`), evidence);
+		for (const [raw, message] of [
+			["{not JSON", unreadable],
+			["{}", malformed],
+		] as const) {
+			await put(join("config", "subscriptions.json"), raw);
+			i18n.set({ locale, voice: "plain" });
+			skipped = [];
+			expect(await run()).toEqual([]);
+			expect(skipped).toEqual([message]);
+			expect(await readFile(join(dir, "stats", "seen", `${EXT}.jsonl`), "utf8")).toBe(evidence);
+			expect(await exists(join("stats", "recording"))).toBe(false);
+		}
+	});
+
 	it("seen 目录与 since 文件读完就删", async () => {
 		await putSubs([sub(EXT, "douyin")]);
 		await put(join("stats", "seen", `${EXT}.jsonl`), jsonl([{ ts: at(2) }]));

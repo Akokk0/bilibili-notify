@@ -33,9 +33,10 @@ import {
 	neutralPlatformSnapshot,
 	type PushTarget,
 } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { ConfigValidationError } from "../../config/store.js";
+import { i18n } from "../../i18n/index.js";
 import { resolveSettings } from "../../push/connection-settings.js";
 import { useZeroSandbox } from "./support.js";
 
@@ -94,6 +95,19 @@ async function adaptersUnder(dir: string): Promise<string[]> {
 
 describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 	const sandbox = useZeroSandbox("bn-legacy-connections-");
+	afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+	it.each([
+		["en", "Generation 0 state/adapters.json is not a JSON array; connections cannot be migrated."],
+		["ja", "第0世代のstate/adapters.jsonがJSON配列ではないため、接続を移行できません。"],
+		["zh-TW", "第 0 代的 state/adapters.json 不是 JSON 陣列，無法移轉連線。"],
+	] as const)("%s：旧连接坏文件明确拒绝，第0代原文保留", async (locale, message) => {
+		const original = "{not an array}";
+		await sandbox.placeZeroText("state/adapters.json", original);
+		i18n.set({ locale, voice: "plain" });
+		await expect(sandbox.migrate()).rejects.toThrow(message);
+		expect(await readFile(join(sandbox.zero, "state/adapters.json"), "utf8")).toBe(original);
+	});
 
 	// 连接那份从 adapters.json 改叫 connections.json。搬法是「读老的、写新的、老的一动不动」:第 0 代那份原样留着,
 	// 让回退到旧载荷仍然开得了机 —— 旧构建找的正是它,且它还是迁移前的形状。所以这几条盯的是「新的写出来了」
