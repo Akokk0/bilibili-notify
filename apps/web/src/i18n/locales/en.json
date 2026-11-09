@@ -3234,5 +3234,13 @@
 	"panelUi.components.skin-preview-bar.2": "This is a temporary preview; refreshing restores the saved skin.",
 	"panelUi.components.skin-preview-bar.3": "Applying…",
 	"panelUi.components.skin-preview-bar.4": "Apply",
-	"panelUi.components.skin-preview-bar.5": "Cancel"
+	"panelUi.components.skin-preview-bar.5": "Cancel",
+	"panelUi.pages.up.TagEditDialog.1": "Edit tags",
+	"panelUi.pages.up.TagEditDialog.4": "New tag name",
+	"panelUi.pages.up.TagEditDialog.5": "Add",
+	"panelUi.pages.up.TagEditDialog.6": "Cancel",
+	"panelUi.pages.up.TagEditDialog.8": "Confirm",
+	"panelUi.pages.up.TagEditDialog.2": "Tags have not loaded yet. Wait before creating one.",
+	"panelUi.pages.up.TagEditDialog.3": "No tags yet. Create one below.",
+	"panelUi.pages.up.TagEditDialog.7": "Saving…"
 }

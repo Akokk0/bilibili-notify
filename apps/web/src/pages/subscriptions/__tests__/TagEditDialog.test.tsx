@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	SUBSCRIPTION_TAGS_QUERY_KEY,
 	useSubscriptionTags,
 } from "../../../hooks/useSubscriptionTags";
+import { i18n } from "../../../i18n";
 import type { SubscriptionTag } from "../../../types/domain";
 import { TagEditDialog } from "../TagEditDialog";
 
@@ -61,6 +62,7 @@ const typeNew = (value: string) =>
 	fireEvent.change(screen.getByPlaceholderText("新建标签名"), { target: { value } });
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	// 服务端回存下的那张表;测试里就是请求体原样。
 	put.mockImplementation((_path: string, body: unknown) => Promise.resolve(body));
 	(api.get as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
@@ -72,6 +74,89 @@ afterEach(() => {
 });
 
 describe("TagEditDialog", () => {
+	it.each([
+		[
+			"en",
+			"Tags have not loaded yet. Wait before creating one.",
+			"No tags yet. Create one below.",
+			"Saving…",
+			"Add",
+			"Cancel",
+		],
+		[
+			"ja",
+			"タグ一覧をまだ読み込めていません。読み込み後に作成してください。",
+			"タグはまだありません。下で作成できます。",
+			"保存中…",
+			"追加",
+			"キャンセル",
+		],
+		[
+			"zh-TW",
+			"標籤清單尚未載入，請稍候再新增。",
+			"尚無標籤，可在下方新增。",
+			"儲存中…",
+			"新增",
+			"取消",
+		],
+	] as const)(
+		"%s translates unavailable, empty and saving states while guarding writes",
+		(locale, unavailable, empty, saving, add, cancel) => {
+			i18n.set({ locale, voice: "plain" });
+			const qc = new QueryClient();
+			const props = { current: [GAME.id], onConfirm: vi.fn(), onCancel: vi.fn() };
+			const view = render(
+				<QueryClientProvider client={qc}>
+					<TagEditDialog {...props} tags={undefined} />
+				</QueryClientProvider>,
+			);
+			expect(screen.getByText(unavailable)).toBeTruthy();
+			expect((screen.getByRole("button", { name: add }) as HTMLButtonElement).disabled).toBe(true);
+			view.rerender(
+				<QueryClientProvider client={qc}>
+					<TagEditDialog {...props} tags={[]} saving />
+				</QueryClientProvider>,
+			);
+			expect(screen.getByText(empty)).toBeTruthy();
+			expect((screen.getByRole("button", { name: saving }) as HTMLButtonElement).disabled).toBe(
+				true,
+			);
+			expect((screen.getByRole("button", { name: cancel }) as HTMLButtonElement).disabled).toBe(
+				true,
+			);
+			expect(put).not.toHaveBeenCalled();
+			expect(props.onConfirm).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		["en", "Edit tags", "New tag name", "Add", "Cancel", "Confirm"],
+		["ja", "タグを編集", "新しいタグ名", "追加", "キャンセル", "確定"],
+		["zh-TW", "編輯標籤", "新增標籤名稱", "新增", "取消", "確定"],
+	] as const)(
+		"%s switches controls without replacing tag names or draft selections",
+		(locale, title, placeholder, add, cancel, confirm) => {
+			const onConfirm = vi.fn();
+			const onCancel = vi.fn();
+			renderDialog([GAME, CHAT], { current: [CHAT.id], onConfirm, onCancel });
+			fireEvent.click(checkbox(GAME.name));
+			typeNew("Original name 原文");
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect((screen.getByPlaceholderText(placeholder) as HTMLInputElement).value).toBe(
+				"Original name 原文",
+			);
+			expect(screen.getByRole("button", { name: add })).toBeTruthy();
+			expect(checkbox(GAME.name).checked).toBe(true);
+			expect(checkbox(CHAT.name).checked).toBe(true);
+			fireEvent.click(screen.getByRole("button", { name: confirm }));
+			expect(onConfirm).toHaveBeenCalledWith([CHAT.id, GAME.id]);
+			fireEvent.click(screen.getByRole("button", { name: cancel }));
+			expect(onCancel).toHaveBeenCalledTimes(1);
+			expect(put).not.toHaveBeenCalled();
+		},
+	);
+
 	it("按标签表的顺序渲染所有标签,当前所挂的预先勾选", () => {
 		renderDialog([GAME, CHAT], { current: [CHAT.id], onConfirm: vi.fn() });
 

@@ -3165,5 +3165,13 @@
 	"panelUi.components.skin-preview-bar.2": "目前為暫時預覽，重新整理後會回復已儲存的佈景主題。",
 	"panelUi.components.skin-preview-bar.3": "套用中…",
 	"panelUi.components.skin-preview-bar.4": "套用",
-	"panelUi.components.skin-preview-bar.5": "取消"
+	"panelUi.components.skin-preview-bar.5": "取消",
+	"panelUi.pages.up.TagEditDialog.1": "編輯標籤",
+	"panelUi.pages.up.TagEditDialog.4": "新增標籤名稱",
+	"panelUi.pages.up.TagEditDialog.5": "新增",
+	"panelUi.pages.up.TagEditDialog.6": "取消",
+	"panelUi.pages.up.TagEditDialog.8": "確定",
+	"panelUi.pages.up.TagEditDialog.2": "標籤清單尚未載入，請稍候再新增。",
+	"panelUi.pages.up.TagEditDialog.3": "尚無標籤，可在下方新增。",
+	"panelUi.pages.up.TagEditDialog.7": "儲存中…"
 }

@@ -3165,5 +3165,13 @@
 	"panelUi.components.skin-preview-bar.2": "一時的なプレビューです。再読み込みすると保存済みのスキンに戻ります。",
 	"panelUi.components.skin-preview-bar.3": "適用中…",
 	"panelUi.components.skin-preview-bar.4": "適用",
-	"panelUi.components.skin-preview-bar.5": "キャンセル"
+	"panelUi.components.skin-preview-bar.5": "キャンセル",
+	"panelUi.pages.up.TagEditDialog.1": "タグを編集",
+	"panelUi.pages.up.TagEditDialog.4": "新しいタグ名",
+	"panelUi.pages.up.TagEditDialog.5": "追加",
+	"panelUi.pages.up.TagEditDialog.6": "キャンセル",
+	"panelUi.pages.up.TagEditDialog.8": "確定",
+	"panelUi.pages.up.TagEditDialog.2": "タグ一覧をまだ読み込めていません。読み込み後に作成してください。",
+	"panelUi.pages.up.TagEditDialog.3": "タグはまだありません。下で作成できます。",
+	"panelUi.pages.up.TagEditDialog.7": "保存中…"
 }
