@@ -1247,5 +1247,20 @@
 	"service.config.settings-problems.text.14#one": "{count}",
 	"settings.problem.reason": "{field}: {message}",
 	"settings.problem.entry": "{label} ({reason})",
-	"settings.problem.listSeparator": "; "
+	"settings.problem.listSeparator": "; ",
+	"service.routes.session.text.1": "Too many failed sign-in attempts. Try again later.",
+	"service.routes.session.text.2": "The request body must be JSON.",
+	"service.routes.session.text.3": "The request origin is not allowed.",
+	"service.routes.session.text.4": "Dashboard sign-in is disabled. Signing in is not required.",
+	"service.routes.session.text.5": "Incorrect username or password.",
+	"session.credentials.unsupported": "This deployment cannot change dashboard credentials because sign-in is disabled or credentials are not managed by a configuration file.",
+	"session.credentials.loginFirst": "Sign in before changing your credentials.",
+	"session.credentials.wrongPassword": "The current password is incorrect.",
+	"session.credentials.badUsername": "The username must contain 1 to 256 characters.",
+	"session.credentials.badPassword": "The new password must contain 8 to 256 characters.",
+	"session.credentials.legacyEnv": "Dashboard credentials are set in BN_DASHBOARD_USER / BN_DASHBOARD_PASS and overwrite the configuration file on each startup. Remove these variables or set BN_CONFIG to use a configuration file before changing credentials here.",
+	"session.credentials.noConfigFile": "No configuration file is available: BN_CONFIG is unset and the current directory has no bn.config.yaml. Create a configuration file or set BN_CONFIG before changing credentials here.",
+	"session.credentials.desktop": "Desktop mode does not use dashboard credentials.",
+	"service.auth.dashboard-auth.text.1": "Sign in to the dashboard first.",
+	"service.auth.desktop-token.text.1": "A desktop launcher access token is required."
 }

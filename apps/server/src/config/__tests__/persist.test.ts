@@ -4,8 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { parse as parseYaml } from "yaml";
+import { i18n } from "../../i18n/index.js";
 import { resolveConfigPath, resolveCredentialsTarget } from "../loader";
 import { persistChromeSource, persistDashboardCredentials } from "../persist";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 describe("persistChromeSource", () => {
 	let dir: string;
@@ -191,6 +194,67 @@ describe("resolveCredentialsTarget(面板改账号密码写到哪)", () => {
 	afterEach(async () => {
 		await rm(dir, { recursive: true, force: true });
 	});
+	it.each([
+		[
+			"en",
+			[
+				"Dashboard credentials are set in BN_DASHBOARD_USER / BN_DASHBOARD_PASS and overwrite the configuration file on each startup. Remove these variables or set BN_CONFIG to use a configuration file before changing credentials here.",
+				"No configuration file is available: BN_CONFIG is unset and the current directory has no bn.config.yaml. Create a configuration file or set BN_CONFIG before changing credentials here.",
+				"Desktop mode does not use dashboard credentials.",
+			],
+		],
+		[
+			"ja",
+			[
+				"ダッシュボードの認証情報はBN_DASHBOARD_USER / BN_DASHBOARD_PASSで設定され、起動のたびに設定ファイルを上書きします。これらの環境変数を削除するか、BN_CONFIGで設定ファイルを指定してから変更してください。",
+				"書き込み先の設定ファイルがありません。BN_CONFIGが未設定で、現在のディレクトリにもbn.config.yamlがありません。設定ファイルを作成するかBN_CONFIGを設定してから変更してください。",
+				"デスクトップ版ではダッシュボードのユーザー名とパスワードを使用しません。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"面板帳號密碼由環境變數 BN_DASHBOARD_USER / BN_DASHBOARD_PASS 設定，每次啟動都會覆蓋設定檔。請先移除這兩個環境變數，或以 BN_CONFIG 指定設定檔，再於此修改。",
+				"沒有可寫入的設定檔：未設定 BN_CONFIG，目前目錄中也沒有 bn.config.yaml。請先建立設定檔或設定 BN_CONFIG，再於此修改。",
+				"桌面版不使用面板帳號密碼。",
+			],
+		],
+	] as const)(
+		"%s explains deployment restrictions without exposing credentials or modifying files",
+		async (locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			for (const env of [
+				{ BN_DASHBOARD_USER: "Original private user" },
+				{ BN_DASHBOARD_PASS: "Original private password" },
+			]) {
+				expect(resolveCredentialsTarget({ env, cwd: dir })).toEqual({
+					ok: false,
+					code: "not_configured",
+					message: text[0],
+				});
+			}
+			expect(resolveCredentialsTarget({ env: {}, cwd: dir })).toEqual({
+				ok: false,
+				code: "not_configured",
+				message: text[1],
+			});
+			expect(resolveCredentialsTarget({ env: { BN_CONFIG_DISABLED: "1" }, cwd: dir })).toEqual({
+				ok: false,
+				code: "unsupported",
+				message: text[2],
+			});
+			expect(await readdir(dir)).toEqual([]);
+			const cfg = join(dir, "bn.config.yaml");
+			await writeFile(cfg, "Original file contents");
+			expect(
+				resolveCredentialsTarget({
+					env: { BN_CONFIG: cfg, BN_DASHBOARD_PASS: "Original private password" },
+					cwd: dir,
+				}),
+			).toEqual({ ok: true, path: cfg });
+			expect(await readFile(cfg, "utf8")).toBe("Original file contents");
+		},
+	);
 
 	it("设了 BN_CONFIG → 写那份文件(环境变量只在首次开机种一次,之后以文件为准)", () => {
 		const target = resolveCredentialsTarget({

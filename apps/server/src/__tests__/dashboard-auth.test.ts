@@ -7,6 +7,7 @@ import { createApp, createCardSkinStore } from "../app.js";
 import { createSessionCodec } from "../auth/session.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
+import { i18n } from "../i18n/index.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
 // ---------------------------------------------------------------------------
@@ -16,6 +17,7 @@ import { createAppRuntime } from "../runtime/bootstrap.js";
 
 const KEY = Buffer.from("test-key-material-32-bytes-long!!", "utf8");
 const CREDS = { username: "admin", password: "s3cret" };
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" };
@@ -30,6 +32,66 @@ describe("dashboard cookie auth", () => {
 	afterEach(async () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
+	it.each([
+		["en", "Sign in to the dashboard first.", "A desktop launcher access token is required."],
+		[
+			"ja",
+			"先にダッシュボードにログインしてください。",
+			"デスクトップランチャーのアクセストークンが必要です。",
+		],
+		["zh-TW", "請先登入面板。", "需要桌面啟動器的存取權杖。"],
+	] as const)(
+		"%s localizes both authentication gates without exposing secrets or rejecting valid credentials",
+		async (locale, cookieMessage, tokenMessage) => {
+			const runtime = createAppRuntime(
+				makeBootstrap(dataDir),
+				{ dataRoot: dataDir },
+				{ integrationSettings: [settingsSegment] },
+			);
+			await runtime.configStore.load();
+			try {
+				const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
+				const shared = { cardSkins: { store: createCardSkinStore(runtime.dataRoot) } };
+				const app = createApp(runtime, {
+					...shared,
+					basicAuthCredentials: CREDS,
+					sessionCodec: codec,
+				});
+				const desktop = createApp(runtime, { ...shared, desktopToken: "Original desktop secret" });
+				i18n.set({ locale, voice: "plain" });
+				const denied = await app.request("/api/settings");
+				expect(denied.status).toBe(401);
+				expect(denied.headers.get("www-authenticate")).toBeNull();
+				expect(await denied.json()).toEqual({ code: "unauthorized", message: cookieMessage });
+				const rejectedHeaders: Record<string, string>[] = [
+					{},
+					{ "x-bn-desktop-token": "Wrong token" },
+				];
+				for (const headers of rejectedHeaders) {
+					const res = await desktop.request("/api/settings", { headers });
+					expect(res.status).toBe(401);
+					expect(res.headers.get("set-cookie")).toBeNull();
+					expect(await res.json()).toEqual({ code: "unauthorized", message: tokenMessage });
+				}
+				expect(
+					(
+						await app.request("/api/settings", {
+							headers: { cookie: `bn_session=${codec.sign()}` },
+						})
+					).status,
+				).toBe(200);
+				expect(
+					(
+						await desktop.request("/api/settings", {
+							headers: { "x-bn-desktop-token": "Original desktop secret" },
+						})
+					).status,
+				).toBe(200);
+			} finally {
+				await runtime.dispose();
+			}
+		},
+	);
 
 	it.each([
 		"/api/settings/invalid",

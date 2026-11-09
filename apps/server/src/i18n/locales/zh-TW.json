@@ -1236,5 +1236,20 @@
 	"service.config.settings-problems.text.14#other": "有 {count} 家",
 	"settings.problem.reason": "{field}：{message}",
 	"settings.problem.entry": "{label}（{reason}）",
-	"settings.problem.listSeparator": "；"
+	"settings.problem.listSeparator": "；",
+	"service.routes.session.text.1": "登入失敗次數過多，請稍後再試。",
+	"service.routes.session.text.2": "請求本文必須是 JSON。",
+	"service.routes.session.text.3": "不允許此請求來源。",
+	"service.routes.session.text.4": "面板未啟用登入，不需要登入。",
+	"service.routes.session.text.5": "帳號或密碼錯誤。",
+	"session.credentials.unsupported": "此部署無法修改面板帳號密碼，可能未啟用登入，或帳號不由設定檔管理。",
+	"session.credentials.loginFirst": "請先登入，再修改帳號密碼。",
+	"session.credentials.wrongPassword": "目前密碼錯誤。",
+	"session.credentials.badUsername": "帳號不可為空，最多 256 個字元。",
+	"session.credentials.badPassword": "新密碼必須為 8 至 256 個字元。",
+	"session.credentials.legacyEnv": "面板帳號密碼由環境變數 BN_DASHBOARD_USER / BN_DASHBOARD_PASS 設定，每次啟動都會覆蓋設定檔。請先移除這兩個環境變數，或以 BN_CONFIG 指定設定檔，再於此修改。",
+	"session.credentials.noConfigFile": "沒有可寫入的設定檔：未設定 BN_CONFIG，目前目錄中也沒有 bn.config.yaml。請先建立設定檔或設定 BN_CONFIG，再於此修改。",
+	"session.credentials.desktop": "桌面版不使用面板帳號密碼。",
+	"service.auth.dashboard-auth.text.1": "請先登入面板。",
+	"service.auth.desktop-token.text.1": "需要桌面啟動器的存取權杖。"
 }

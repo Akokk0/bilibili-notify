@@ -1236,5 +1236,20 @@
 	"service.config.settings-problems.text.14#other": "{count}件",
 	"settings.problem.reason": "{field}：{message}",
 	"settings.problem.entry": "{label}（{reason}）",
-	"settings.problem.listSeparator": "；"
+	"settings.problem.listSeparator": "；",
+	"service.routes.session.text.1": "ログインの失敗回数が多すぎます。しばらくしてから再試行してください。",
+	"service.routes.session.text.2": "リクエスト本文はJSONで送信してください。",
+	"service.routes.session.text.3": "このリクエスト元は許可されていません。",
+	"service.routes.session.text.4": "ダッシュボードのログインは無効です。ログインする必要はありません。",
+	"service.routes.session.text.5": "ユーザー名またはパスワードが正しくありません。",
+	"session.credentials.unsupported": "この環境ではダッシュボードの認証情報を変更できません。ログインが無効か、認証情報が設定ファイルで管理されていません。",
+	"session.credentials.loginFirst": "認証情報を変更する前にログインしてください。",
+	"session.credentials.wrongPassword": "現在のパスワードが正しくありません。",
+	"session.credentials.badUsername": "ユーザー名は1～256文字で指定してください。",
+	"session.credentials.badPassword": "新しいパスワードは8～256文字で指定してください。",
+	"session.credentials.legacyEnv": "ダッシュボードの認証情報はBN_DASHBOARD_USER / BN_DASHBOARD_PASSで設定され、起動のたびに設定ファイルを上書きします。これらの環境変数を削除するか、BN_CONFIGで設定ファイルを指定してから変更してください。",
+	"session.credentials.noConfigFile": "書き込み先の設定ファイルがありません。BN_CONFIGが未設定で、現在のディレクトリにもbn.config.yamlがありません。設定ファイルを作成するかBN_CONFIGを設定してから変更してください。",
+	"session.credentials.desktop": "デスクトップ版ではダッシュボードのユーザー名とパスワードを使用しません。",
+	"service.auth.dashboard-auth.text.1": "先にダッシュボードにログインしてください。",
+	"service.auth.desktop-token.text.1": "デスクトップランチャーのアクセストークンが必要です。"
 }

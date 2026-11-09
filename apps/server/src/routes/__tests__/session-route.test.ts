@@ -1,14 +1,16 @@
 import { Buffer } from "node:buffer";
 import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { Hono } from "hono";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createDashboardAuth } from "../../auth/dashboard-auth.js";
 import { createIpRateLimiter } from "../../auth/ip-rate-limit.js";
 import { createSessionCodec, type SessionCreds } from "../../auth/session.js";
+import { i18n } from "../../i18n/index.js";
 import { createSessionRoute } from "../session.js";
 
 const KEY = Buffer.from("test-key-material-32-bytes-long!!", "utf8");
 const CREDS: SessionCreds = { username: "admin", password: "s3cret" };
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function makeApp(opts: {
 	auth: boolean;
@@ -71,6 +73,84 @@ describe("session route — GET /api/session", () => {
 });
 
 describe("session route — POST /api/session/login", () => {
+	it.each([
+		[
+			"en",
+			[
+				"Too many failed sign-in attempts. Try again later.",
+				"The request body must be JSON.",
+				"The request origin is not allowed.",
+				"Dashboard sign-in is disabled. Signing in is not required.",
+				"Incorrect username or password.",
+			],
+		],
+		[
+			"ja",
+			[
+				"ログインの失敗回数が多すぎます。しばらくしてから再試行してください。",
+				"リクエスト本文はJSONで送信してください。",
+				"このリクエスト元は許可されていません。",
+				"ダッシュボードのログインは無効です。ログインする必要はありません。",
+				"ユーザー名またはパスワードが正しくありません。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"登入失敗次數過多，請稍後再試。",
+				"請求本文必須是 JSON。",
+				"不允許此請求來源。",
+				"面板未啟用登入，不需要登入。",
+				"帳號或密碼錯誤。",
+			],
+		],
+	] as const)(
+		"%s localizes sign-in failures without changing origin, throttling or cookie behavior",
+		async (locale, text) => {
+			const app = makeApp({ auth: true, maxFailures: 1 });
+			i18n.set({ locale, voice: "plain" });
+			const foreign = makeApp({ auth: true, allowedOrigins: ["https://allowed.test"] });
+			const denied = await foreign.request("/api/session/login", {
+				method: "POST",
+				headers: { origin: "https://foreign.test" },
+				body: JSON.stringify(CREDS),
+			});
+			expect(denied.status).toBe(403);
+			expect(await failureOf(denied)).toEqual({ code: "invalid", message: text[2] });
+			const disabled = await makeApp({ auth: false }).request("/api/session/login", {
+				method: "POST",
+			});
+			expect(disabled.status).toBe(400);
+			expect(await failureOf(disabled)).toEqual({ code: "unsupported", message: text[3] });
+			const invalid = await app.request("/api/session/login", { method: "POST", body: "{" });
+			expect(invalid.status).toBe(400);
+			expect(await failureOf(invalid)).toEqual({ code: "invalid", message: text[1] });
+			const wrong = await app.request("/api/session/login", {
+				method: "POST",
+				body: JSON.stringify({ ...CREDS, password: "wrong" }),
+			});
+			expect(wrong.status).toBe(401);
+			expect(wrong.headers.get("set-cookie")).toBeNull();
+			expect(await failureOf(wrong)).toEqual({ code: "unauthorized", message: text[4] });
+			const blocked = await app.request("/api/session/login", {
+				method: "POST",
+				body: JSON.stringify(CREDS),
+			});
+			expect(blocked.status).toBe(429);
+			expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+			expect(await failureOf(blocked)).toEqual({ code: "rate_limited", message: text[0] });
+			const fresh = makeApp({ auth: true });
+			const success = await fresh.request("/api/session/login", {
+				method: "POST",
+				body: JSON.stringify(CREDS),
+			});
+			expect(success.status).toBe(200);
+			expect(await success.json()).toEqual({ ok: true });
+			expect(
+				(await fresh.request("/api/probe", { headers: { cookie: cookieFrom(success) } })).status,
+			).toBe(200);
+		},
+	);
 	it("valid credentials → 200 + Set-Cookie, gate then accepts the cookie", async () => {
 		const app = makeApp({ auth: true });
 		const res = await app.request("/api/session/login", {
@@ -358,6 +438,82 @@ describe("session route — PUT /api/session/credentials(面板改账号密码)"
 		});
 	}
 
+	it.each([
+		[
+			"en",
+			[
+				"This deployment cannot change dashboard credentials because sign-in is disabled or credentials are not managed by a configuration file.",
+				"Sign in before changing your credentials.",
+				"The current password is incorrect.",
+				"The username must contain 1 to 256 characters.",
+				"The new password must contain 8 to 256 characters.",
+			],
+		],
+		[
+			"ja",
+			[
+				"この環境ではダッシュボードの認証情報を変更できません。ログインが無効か、認証情報が設定ファイルで管理されていません。",
+				"認証情報を変更する前にログインしてください。",
+				"現在のパスワードが正しくありません。",
+				"ユーザー名は1～256文字で指定してください。",
+				"新しいパスワードは8～256文字で指定してください。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"此部署無法修改面板帳號密碼，可能未啟用登入，或帳號不由設定檔管理。",
+				"請先登入，再修改帳號密碼。",
+				"目前密碼錯誤。",
+				"帳號不可為空，最多 256 個字元。",
+				"新密碼必須為 8 至 256 個字元。",
+			],
+		],
+	] as const)(
+		"%s explains credential rejection without writing or rotating the session",
+		async (locale, text) => {
+			const write = vi.fn(async (_creds: SessionCreds) => ok());
+			const app = makeApp({ auth: true, changeCredentials: write });
+			const cookie = await login(app);
+			i18n.set({ locale, voice: "plain" });
+			const unsupported = await change(makeApp({ auth: true }), cookie, {});
+			expect(unsupported.status).toBe(400);
+			expect(await failureOf(unsupported)).toEqual({ code: "unsupported", message: text[0] });
+			const unauthenticated = await change(app, undefined, {});
+			expect(unauthenticated.status).toBe(401);
+			expect(await failureOf(unauthenticated)).toEqual({ code: "unauthorized", message: text[1] });
+			const wrong = await change(app, cookie, { currentPassword: "wrong", ...NEW });
+			expect(wrong.status).toBe(401);
+			expect(await failureOf(wrong)).toEqual({ code: "unauthorized", message: text[2] });
+			for (const username of ["", "x".repeat(257)]) {
+				const res = await change(app, cookie, {
+					currentPassword: CREDS.password,
+					...NEW,
+					username,
+				});
+				expect(res.status).toBe(400);
+				expect(await failureOf(res)).toEqual({ code: "invalid", message: text[3] });
+			}
+			for (const password of ["x".repeat(7), "x".repeat(257)]) {
+				const res = await change(app, cookie, {
+					currentPassword: CREDS.password,
+					...NEW,
+					password,
+				});
+				expect(res.status).toBe(400);
+				expect(await failureOf(res)).toEqual({ code: "invalid", message: text[4] });
+			}
+			expect(write).not.toHaveBeenCalled();
+			expect((await app.request("/api/probe", { headers: { cookie } })).status).toBe(200);
+			const changed = await change(app, cookie, { currentPassword: CREDS.password, ...NEW });
+			expect(changed.status).toBe(200);
+			expect(await changed.json()).toEqual({ ok: true });
+			expect(write).toHaveBeenCalledExactlyOnceWith(NEW);
+			expect(changed.headers.get("set-cookie")).toContain("Max-Age=0");
+			expect((await app.request("/api/probe", { headers: { cookie } })).status).toBe(401);
+			expect(await login(app, NEW)).toMatch(/^bn_session=/);
+		},
+	);
 	it("登录着、当前密码对 → 写回、清 cookie;旧会话当场失效,新账号登得进", async () => {
 		const written: SessionCreds[] = [];
 		const app = makeApp({
