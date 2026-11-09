@@ -88,6 +88,29 @@ beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 describe("重启记号", () => {
 	it.each([
 		[
+			"ja",
+			"ご主人様、BNが戻りましたよ。引き続き0.9.0で動いています。",
+			"ご主人様、再起動が完了し、このバージョンで動いていますよ。再び更新したいときは「システム」で「更新を確認」を選んでくださいね。",
+		],
+		[
+			"zh-TW",
+			"主人，BN 回來了，仍使用 0.9.0 版喔。",
+			"主人，重新啟動完成，目前使用的就是這個版本喔。想再次更新時，請到「系統」點選「檢查更新」。",
+		],
+	] as const)("%s 女仆重启通知不把原版本说成更新", (locale, restartBody, rollbackBody) => {
+		i18n.set({ locale, voice: "maid" });
+		expect(restartNotice({ target: "0.9.0", mode: "restart" })).toMatchObject({
+			id: "restarted:0.9.0",
+			body: restartBody,
+		});
+		expect(restartNotice({ target: "0.9.0", mode: "rollback" })).toMatchObject({
+			id: "restarted:0.9.0",
+			body: rollbackBody,
+		});
+	});
+
+	it.each([
+		[
 			"en",
 			["Restarted", "Rolled back to 0.9.0", "Updated to 0.9.0"],
 			[

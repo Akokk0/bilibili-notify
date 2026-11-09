@@ -53,6 +53,35 @@ describe("newerVersionOf —— 「有一版比现在新」这件事只在一处
 describe("phaseLabel", () => {
 	it.each([
 		[
+			"ja",
+			"ご主人様、このバージョンには新しいイメージかインストーラーが必要ですよ。アプリ内では入れ替えられません。",
+			"ご主人様、「システム」からダウンロードしてくださいね。再起動して適用するタイミングはご主人様が選べますよ。",
+		],
+		[
+			"zh-TW",
+			"主人，這個版本需要重新拉取映像檔或下載安裝程式，無法在應用程式內更換喔。",
+			"主人，請到「系統」下載，何時重新啟動並套用版本，由主人決定喔。",
+		],
+	] as const)("%s 女仆更新通知保留发行原文和自主重启边界", (locale, imageHint, availableHint) => {
+		i18n.set({ locale, voice: "maid" });
+		const release = {
+			target: "0.9.0",
+			releaseUrl: "https://example.invalid/release",
+			notes: "Original release notes 原文",
+			checkedAt: "2026-10-27T00:00:00Z",
+		};
+		expect(noticeBody(status({ phase: "needs-image-pull", ...release }))).toBe(
+			`Original release notes 原文\n${imageHint}`,
+		);
+		expect(noticeBody(status({ phase: "available", ...release }))).toBe(
+			`Original release notes 原文\n${availableHint}`,
+		);
+		expect(newerVersionOf(status({ phase: "needs-image-pull", ...release }))).toBe("0.9.0");
+		expect(updateRefetchInterval(status({ phase: "needs-image-pull", ...release }))).toBe(false);
+	});
+
+	it.each([
+		[
 			"en",
 			[
 				"Development build; update checks are disabled",

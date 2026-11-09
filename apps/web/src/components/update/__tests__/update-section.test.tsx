@@ -83,6 +83,7 @@ describe("UpdateSection —— 报错的归因", () => {
 	describe.each([
 		[
 			"en",
+			"plain",
 			[
 				"The update signature could not be verified. The downloaded content is not signed by our keys. Nothing was installed. Remove any download proxy and try again; if verification still fails, do not apply this update.",
 				"The update manifest could not be read. This is a release packaging problem, not a local settings issue. Try again later.",
@@ -96,6 +97,7 @@ describe("UpdateSection —— 报错的归因", () => {
 		],
 		[
 			"ja",
+			"plain",
 			[
 				"更新の署名を検証できませんでした。取得した内容は、こちらの鍵で署名されたものではありません。インストールは行っていません。ダウンロード用プロキシを外して再試行し、それでも検証できない場合は適用しないでください。",
 				"更新マニフェストを読み取れません。リリースのパッケージ作成側の問題で、ローカル設定の問題ではありません。しばらくしてから再試行してください。",
@@ -109,6 +111,7 @@ describe("UpdateSection —— 报错的归因", () => {
 		],
 		[
 			"zh-TW",
+			"plain",
 			[
 				"更新套件的簽章驗證失敗，取得的內容並非由我們的金鑰簽署。已停止，沒有安裝任何內容。若有設定下載代理站，請移除後再試；仍然失敗就先不要套用。",
 				"無法讀取更新資訊清單。這是發行套件製作時的問題，與本機設定無關，請稍後再試。",
@@ -120,7 +123,35 @@ describe("UpdateSection —— 报错的归因", () => {
 				"目前已是可用的最舊版本，沒有更早的版本可回復。",
 			],
 		],
-	] as const)("%s localized failure causes", (locale, messages) => {
+		[
+			"ja",
+			"maid",
+			[
+				"ご主人様、更新の署名を検証できませんでした。取得した内容はこちらの鍵で署名されたものではないので、何もインストールせずに止めましたよ。ダウンロード用プロキシを設定していたら外して再試行し、それでも検証できない場合は適用しないでくださいね。",
+				"ご主人様、更新マニフェストを読み取れませんでした。こちらのリリース作成時の問題で、ご主人様の設定のせいではありませんよ。しばらくしてから再試行してくださいね。",
+				"ご主人様、更新サーバーに接続できませんよ。下でダウンロード用プロキシを選ぶか、リリースページから手動でダウンロードしてくださいね。",
+				"ご主人様、以前見たものより古い更新マニフェストだったので、受け付けませんでしたよ。プロキシが古い内容をキャッシュしているかもしれません。別のプロキシか直接接続を試してくださいね。",
+				"ご主人様、パッケージのチェックサムが一致しなかったので、破棄しましたよ。ディスクには何も残していません。ダウンロードが途中で切れたかもしれないので、もう一度試してくださいね。",
+				"ご主人様、マニフェストは取得できましたが、パッケージをダウンロードできませんでした。別のダウンロード用プロキシを試すか、リリースページから手動でダウンロードしてくださいね。",
+				"ご主人様、パッケージの検証は通りましたが、データディレクトリーに書き込めませんでした。ディスクの空き容量と書き込み権限を確認してくださいね。",
+				"ご主人様、すでに利用可能な最も古いバージョンなので、戻せる前のバージョンはありませんよ。",
+			],
+		],
+		[
+			"zh-TW",
+			"maid",
+			[
+				"主人，更新套件的簽章驗證失敗，取得的內容並非由我們的金鑰簽署，已停止且未安裝任何內容喔。若有設定下載代理站，請移除後再試；仍然失敗就先不要套用。",
+				"主人，無法讀取更新資訊清單，這是發行套件製作時的問題，與主人的設定無關喔，請稍後再試。",
+				"主人，連不上更新伺服器，可以在下方選擇下載代理站，或從發行頁面自行下載喔。",
+				"主人，更新資訊清單比先前取得的版本舊，已拒絕使用喔。可能是代理站快取了舊檔案，請更換代理站或改用直接連線。",
+				"主人，下載套件的總和檢查碼不符，已捨棄，磁碟上沒有留下檔案喔。可能是下載途中遭截斷，請再試一次。",
+				"主人，已取得資訊清單，但套件沒能下載成功。請更換下載代理站，或從發行頁面自行下載喔。",
+				"主人，套件已通過驗證，但寫入資料目錄失敗，請檢查磁碟可用空間及目錄寫入權限喔。",
+				"主人，目前已是可用的最舊版本，沒有更早的版本可以回復囉。",
+			],
+		],
+	] as const)("%s %s localized failure causes", (locale, voice, messages) => {
 		it.each(
 			(
 				[
@@ -135,7 +166,7 @@ describe("UpdateSection —— 报错的归因", () => {
 				] as const
 			).map((code, index) => ({ code, message: messages[index] })),
 		)("$code explains the cause; only signature failures are alerts", async ({ code, message }) => {
-			i18n.set({ locale, voice: "plain" });
+			i18n.set({ locale, voice });
 			serve({ phase: "error", code, checkedAt: "2026-10-27T00:00:00Z" });
 			renderSection();
 			await screen.findByText(message);
@@ -218,6 +249,73 @@ describe("UpdateSection —— 报错的归因", () => {
 });
 
 describe("UpdateSection —— 按钮该在什么时候出现", () => {
+	it.each([
+		{
+			locale: "ja",
+			state: { phase: "disabled", reason: "dev-build" },
+			message:
+				"ご主人様、いま動いているのは開発版の仮バージョンですよ。公開版より小さい番号なので、アプリ内更新の確認も通知もしません。エラーではありませんよ。",
+			check: "更新を確認",
+		},
+		{
+			locale: "ja",
+			state: { phase: "disabled", reason: "no-keys" },
+			message:
+				"ご主人様、このビルドには更新署名の公開鍵が含まれていないので、アプリ内更新は無効ですよ。エラーではありません。自分でビルドした場合は、これまでと同じ方法で更新してくださいね。",
+			check: "更新を確認",
+		},
+		{
+			locale: "ja",
+			state: {
+				phase: "needs-image-pull",
+				target: "0.9.0",
+				releaseUrl: "https://example.invalid/release",
+				checkedAt: "2026-10-27T00:00:00Z",
+			},
+			message:
+				"ご主人様、このバージョンには新しい実行環境も必要ですよ。Nodeやブラウザーはイメージ側にあるため、アプリ内では入れ替えられません。新しいイメージかインストーラーを取得してくださいね。",
+			check: "更新を確認",
+		},
+		{
+			locale: "zh-TW",
+			state: { phase: "disabled", reason: "dev-build" },
+			message:
+				"主人，目前執行的是開發版的預留版本號，比所有已發行版本都小，因此不會檢查或提示應用程式內更新，這不是錯誤喔。",
+			check: "檢查更新",
+		},
+		{
+			locale: "zh-TW",
+			state: { phase: "disabled", reason: "no-keys" },
+			message:
+				"主人，此建置沒有內建更新簽章的公開金鑰，因此已停用應用程式內更新，這不是錯誤喔。自行建置的版本請沿用原本的方式升級。",
+			check: "檢查更新",
+		},
+		{
+			locale: "zh-TW",
+			state: {
+				phase: "needs-image-pull",
+				target: "0.9.0",
+				releaseUrl: "https://example.invalid/release",
+				checkedAt: "2026-10-27T00:00:00Z",
+			},
+			message:
+				"主人，這個版本需要更新的執行環境；Node 與瀏覽器都來自映像檔，無法在應用程式內更換，請重新拉取映像檔或下載新的安裝程式喔。",
+			check: "檢查更新",
+		},
+	] as const)(
+		"$locale $state 女仆禁用和新镜像说明不启动更新",
+		async ({ locale, state, message, check }) => {
+			i18n.set({ locale, voice: "maid" });
+			serve(state);
+			renderSection();
+			expect(await screen.findByText(message)).toBeTruthy();
+			if (state.phase === "disabled")
+				expect(screen.getByRole("button", { name: check })).toHaveProperty("disabled", true);
+			else expect(document.querySelector('a[href="https://example.invalid/release"]')).toBeTruthy();
+			expect(api.post).not.toHaveBeenCalled();
+		},
+	);
+
 	it("没东西可应用时不给「立即重启」按钮 —— 白白重启一次最像功能坏了", async () => {
 		serve({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" });
 		renderSection();
@@ -718,6 +816,7 @@ describe("UpdateSection —— 按下重启之后", () => {
 describe.each([
 	{
 		locale: "en",
+		voice: "plain",
 		pinned:
 			"Version 0.8.0 is pinned after a rollback. Opening the dashboard will not automatically check for updates. Choosing “Check for updates” explicitly opts back in; installing a newer version removes the pin.",
 		warning:
@@ -735,6 +834,7 @@ describe.each([
 	},
 	{
 		locale: "ja",
+		voice: "plain",
 		pinned:
 			"ロールバックによりバージョン0.8.0に固定されています。ダッシュボードを開いても自動で更新を確認しません。「更新を確認」を選ぶと再び更新を探し、新しいバージョンをインストールすると固定が解除されます。",
 		warning:
@@ -752,6 +852,7 @@ describe.each([
 	},
 	{
 		locale: "zh-TW",
+		voice: "plain",
 		pinned:
 			"先前回復版本後，目前固定在 0.8.0。開啟面板不會自動檢查更新。選擇「檢查更新」會重新尋找新版本，安裝新版後便會解除固定。",
 		warning:
@@ -767,10 +868,46 @@ describe.each([
 		check: "檢查更新",
 		apply: "重新啟動並套用",
 	},
-] as const)("$locale restart explanations", (expected) => {
+	{
+		locale: "ja",
+		voice: "maid",
+		pinned:
+			"ご主人様、以前のロールバックで0.8.0に固定されていますよ。ダッシュボードを開いても自動で更新を確認しません。「更新を確認」を選ぶと再び新版を探し、インストールすると固定が解除されます。",
+		warning:
+			"ご主人様、適用するとサービスが再起動しますよ。通知の配信は数秒中断し、ライブ監視は再接続します。コンテナーではrestartポリシーを有効にしてくださいね。無効だと終了後に自動で起動しません。デスクトップ版ではランチャーが起動し直し、画面も自動で再読み込みします。",
+		error: "ご主人様、再起動の指示を送れませんでした：Original apply diagnostic 原文",
+		hint: "ご主人様、サービスが戻ったら、このページは自動で再読み込みしますよ。通知の配信は数秒中断し、ライブ監視は自動で再接続します。",
+		fallback:
+			"ご主人様、再起動は完了しましたが、0.9.0ではなく0.8.0で動いていますよ。対象バージョンを起動できず、ランチャーが自動で元に戻した可能性があります。理由はログの[boot]で始まる行を確認してくださいね。",
+		timeout:
+			"ご主人様、1秒待ってもサービスが戻りませんよ。コンテナーのrestartポリシーを確認してくださいね。無効の場合は手動で起動する必要があります。デスクトップ版ではランチャーのログを確認してください。",
+		waiting: "0.9.0を適用するため再起動中",
+		retry: "もう少し待つ",
+		check: "更新を確認",
+		apply: "再起動して適用",
+	},
+	{
+		locale: "zh-TW",
+		voice: "maid",
+		pinned:
+			"主人，先前回復版本後，目前固定在 0.8.0；開啟面板不會自動檢查更新喔。點選「檢查更新」會重新尋找新版本，安裝新版後便會解除固定。",
+		warning:
+			"主人，套用時會重新啟動服務，推播會中斷幾秒，直播監聽會重新連線喔。容器部署請確認已啟用 restart 策略，否則程序結束後不會自動啟動；桌面版由啟動器重新啟動，面板也會自動重新整理。",
+		error: "主人，沒能送出重新啟動指令：Original apply diagnostic 原文",
+		hint: "主人，服務恢復後，此頁面會自動重新整理喔。推播會中斷幾秒，直播監聽會自動重新連線。",
+		fallback:
+			"主人，重新啟動完成，但目前使用的是 0.8.0，而非 0.9.0。可能是目標版本無法啟動，啟動器已自動回復，請查看日誌中以 [boot] 開頭的那一行了解原因喔。",
+		timeout:
+			"主人，重新啟動後已等待 1 秒，服務仍未恢復。請確認容器的 restart 策略；若未啟用，需要手動啟動。桌面版請查看啟動器日誌喔。",
+		waiting: "正在重新啟動以套用 0.9.0",
+		retry: "再等一下",
+		check: "檢查更新",
+		apply: "重新啟動並套用",
+	},
+] as const)("$locale $voice restart explanations", (expected) => {
 	let reload: ReturnType<typeof vi.spyOn>;
 	beforeEach(() => {
-		i18n.set({ locale: expected.locale, voice: "plain" });
+		i18n.set({ locale: expected.locale, voice: expected.voice });
 		useRestartStore.getState().dismiss();
 		sessionStorage.clear();
 		reload = vi.spyOn(browser, "reload").mockImplementation(() => {});

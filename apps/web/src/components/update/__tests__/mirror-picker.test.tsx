@@ -8,7 +8,7 @@
 
 import { BUILTIN_UPDATE_MIRRORS, type MirrorProbeResult } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
@@ -55,6 +55,29 @@ describe("内置名单", () => {
 });
 
 describe("MirrorPicker", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、GitHubに接続できないときはプロキシを選んでくださいね。選択したものを先に試し、最後は必ず直接接続を試します。更新パッケージには署名があるので、プロキシに内容を改ざんされても適用しませんよ。「バージョン」はそのサイトから取得したマニフェストのもので、他より古ければキャッシュが古いということです。",
+		],
+		[
+			"zh-TW",
+			"主人，連不上 GitHub 時可以選擇代理站，會先試選中的站，最後一定嘗試直接連線喔。更新套件有簽章，代理站無法改動可套用的內容，最多讓這次下載失敗。「版本」是透過該站取得的清單版本，比其他站舊就代表它快取了舊檔案。",
+		],
+	] as const)("%s 女仆代理说明保留草稿且不探测或切换", async (locale, hint) => {
+		const { onSelect } = renderPicker({ active: "https://original.example/" });
+		const input = screen.getByPlaceholderText(/^https:\/\//) as HTMLInputElement;
+		await userEvent.clear(input);
+		await userEvent.type(input, "https://pending.example/");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(screen.getByPlaceholderText(/^https:\/\//)).toBe(input);
+		expect(input.value).toBe("https://pending.example/");
+		expect(onSelect).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		[
 			"en",
