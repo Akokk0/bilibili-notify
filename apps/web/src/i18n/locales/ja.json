@@ -3175,5 +3175,11 @@
 	"panelUi.pages.up.TagEditDialog.8": "確定",
 	"panelUi.pages.up.TagEditDialog.2": "タグ一覧をまだ読み込めていません。読み込み後に作成してください。",
 	"panelUi.pages.up.TagEditDialog.3": "タグはまだありません。下で作成できます。",
-	"panelUi.pages.up.TagEditDialog.7": "保存中…"
+	"panelUi.pages.up.TagEditDialog.7": "保存中…",
+	"panelUi.pages.guide.guide-panel.1": "概要と選び方",
+	"panelUi.pages.guide.guide-panel.2": "配信元にログイン",
+	"panelUi.pages.guide.guide-panel.3": "通知経路",
+	"panelUi.pages.guide.guide-panel.4": "購読を追加",
+	"panelUi.pages.guide.guide-panel.5": "画像描画",
+	"panelUi.pages.guide.guide-panel.6": "AI機能"
 }

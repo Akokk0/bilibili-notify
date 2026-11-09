@@ -3175,5 +3175,11 @@
 	"panelUi.pages.up.TagEditDialog.8": "確定",
 	"panelUi.pages.up.TagEditDialog.2": "標籤清單尚未載入，請稍候再新增。",
 	"panelUi.pages.up.TagEditDialog.3": "尚無標籤，可在下方新增。",
-	"panelUi.pages.up.TagEditDialog.7": "儲存中…"
+	"panelUi.pages.up.TagEditDialog.7": "儲存中…",
+	"panelUi.pages.guide.guide-panel.1": "總覽與選擇",
+	"panelUi.pages.guide.guide-panel.2": "登入來源帳號",
+	"panelUi.pages.guide.guide-panel.3": "推送通道",
+	"panelUi.pages.guide.guide-panel.4": "新增訂閱",
+	"panelUi.pages.guide.guide-panel.5": "圖片渲染",
+	"panelUi.pages.guide.guide-panel.6": "AI 功能"
 }

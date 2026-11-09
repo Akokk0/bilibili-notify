@@ -1,21 +1,16 @@
 import { GlassPanel, Pill, StatusDot, TabBar } from "@bilibili-notify/ui";
 import { useNavigate } from "react-router-dom";
 import { useOnboardingState } from "../../components/onboarding/use-onboarding-view";
-import { useT } from "../../i18n";
-import aiMd from "./content/ai.md?raw";
-import loginMd from "./content/login.md?raw";
-import overviewMd from "./content/overview.md?raw";
-import pushMd from "./content/push.md?raw";
-import renderMd from "./content/render.md?raw";
-import subsMd from "./content/subs.md?raw";
+import { useT, useTextOptions } from "../../i18n";
+import { GUIDE_CONTENT } from "./content";
 import { GuideMarkdown } from "./guide-markdown";
 
 /**
  * 新手指引面板 —— 关于页的一个 section(五轮定稿:独立路由撤销,教程并进
  * 关于;`/about/guide/:chapter?` 深链直达章节,导览尾巴链接靠它)。
  *
- * - 章节正文是 content/*.md(`?raw` 随 bundle,GuideMarkdown 渲染)——
- *   改教程文案只动 md,不碰代码;
+ * - 章节正文是 content/ 下的四语 md(`?raw` 随懒加载 bundle,GuideMarkdown 渲染),
+ *   由 content.ts 按当前语言选择;改教程文案只动对应 md;
  * - 未知章节回退总览:外部链接坏了也不该白屏;
  * - 章节顺序跟导览主步一致(登录 → 推送通道 → 订阅),看完教程照着做不用跳序;
  * - 顶部常驻进度(与左缘导览同一份判据 useOnboardingState)。
@@ -23,36 +18,38 @@ import { GuideMarkdown } from "./guide-markdown";
 
 export function GuidePanel({ chapter }: { chapter?: string | undefined }) {
 	const tx = useT();
+	const { locale } = useTextOptions();
+	const content = GUIDE_CONTENT[locale];
 	const CHAPTERS: { key: string; title: string; source: string }[] = [
 		{
 			key: "overview",
 			title: tx("panelUi.pages.guide.guide-panel.1"),
-			source: overviewMd,
+			source: content.overview,
 		},
 		{
 			key: "login",
 			title: tx("panelUi.pages.guide.guide-panel.2"),
-			source: loginMd,
+			source: content.login,
 		},
 		{
 			key: "push",
 			title: tx("panelUi.pages.guide.guide-panel.3"),
-			source: pushMd,
+			source: content.push,
 		},
 		{
 			key: "subs",
 			title: tx("panelUi.pages.guide.guide-panel.4"),
-			source: subsMd,
+			source: content.subs,
 		},
 		{
 			key: "render",
 			title: tx("panelUi.pages.guide.guide-panel.5"),
-			source: renderMd,
+			source: content.render,
 		},
 		{
 			key: "ai",
 			title: tx("panelUi.pages.guide.guide-panel.6"),
-			source: aiMd,
+			source: content.ai,
 		},
 	];
 

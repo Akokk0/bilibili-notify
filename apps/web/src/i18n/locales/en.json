@@ -3244,5 +3244,11 @@
 	"panelUi.pages.up.TagEditDialog.8": "Confirm",
 	"panelUi.pages.up.TagEditDialog.2": "Tags have not loaded yet. Wait before creating one.",
 	"panelUi.pages.up.TagEditDialog.3": "No tags yet. Create one below.",
-	"panelUi.pages.up.TagEditDialog.7": "Saving…"
+	"panelUi.pages.up.TagEditDialog.7": "Saving…",
+	"panelUi.pages.guide.guide-panel.1": "Overview and options",
+	"panelUi.pages.guide.guide-panel.2": "Source sign-in",
+	"panelUi.pages.guide.guide-panel.3": "Push channels",
+	"panelUi.pages.guide.guide-panel.4": "Add subscriptions",
+	"panelUi.pages.guide.guide-panel.5": "Image rendering",
+	"panelUi.pages.guide.guide-panel.6": "AI features"
 }
