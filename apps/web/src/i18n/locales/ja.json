@@ -3049,5 +3049,17 @@
 	"panelUi.hooks.useUpdateTransitionNotice.1": "更新を表示",
 	"panelUi.hooks.useUpdateTransitionNotice.2": "{value0}の準備ができました",
 	"panelUi.hooks.useUpdateTransitionNotice.3": "{value0}のダウンロードに失敗しました",
-	"panelUi.hooks.useUpdateTransitionNotice.4": "ダウンロードに失敗しました。「システム」で詳細を確認してください。"
+	"panelUi.hooks.useUpdateTransitionNotice.4": "ダウンロードに失敗しました。「システム」で詳細を確認してください。",
+	"panelUi.components.update.mirror-picker.1": "接続できません",
+	"panelUi.components.update.mirror-picker.2": "署名を検証できません",
+	"panelUi.components.update.mirror-picker.3": "マニフェストの形式が不正です",
+	"panelUi.components.update.mirror-picker.4": "古いマニフェストをキャッシュ",
+	"panelUi.components.update.mirror-picker.5": "ダウンロードの高速化",
+	"panelUi.components.update.mirror-picker.6": "テスト中…",
+	"panelUi.components.update.mirror-picker.7": "接続をテスト",
+	"panelUi.components.update.mirror-picker.8": "接続テストに失敗しました：{reason}",
+	"panelUi.components.update.mirror-picker.9": "GitHubに接続できない場合は、プロキシを選んでください。選択したプロキシを先に試し、最後に必ず直接接続を試します。更新パッケージは署名されているため、改変された内容は拒否されますが、プロキシの不調でダウンロードに失敗することはあります。表示されるバージョンは、そのプロキシ経由で取得したマニフェストのものです。他より古い場合は、古い内容がキャッシュされています。",
+	"panelUi.components.update.mirror-picker.10": "直接接続",
+	"panelUi.components.update.mirror-picker.11": "使用中",
+	"panelUi.components.update.mirror-picker.12": "選択"
 }

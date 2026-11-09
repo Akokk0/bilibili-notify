@@ -10,7 +10,8 @@ import { BUILTIN_UPDATE_MIRRORS, type MirrorProbeResult } from "@bilibili-notify
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { MirrorPicker } from "../mirror-picker";
 
 vi.mock("../../../services/api", () => ({
@@ -37,9 +38,11 @@ function row(prefix: string): HTMLElement {
 	return el;
 }
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 afterEach(() => {
 	cleanup();
-	vi.clearAllMocks();
+	vi.resetAllMocks();
 });
 
 describe("内置名单", () => {
@@ -52,6 +55,112 @@ describe("内置名单", () => {
 });
 
 describe("MirrorPicker", () => {
+	it.each([
+		[
+			"en",
+			"Download acceleration",
+			"Test mirrors",
+			"Testing…",
+			"Direct",
+			"In use",
+			"Use",
+			[
+				"Unreachable",
+				"Signature verification failed",
+				"Invalid manifest",
+				"Cached an older manifest",
+			],
+			"Mirror test failed: Original diagnostic 原文",
+		],
+		[
+			"ja",
+			"ダウンロードの高速化",
+			"接続をテスト",
+			"テスト中…",
+			"直接接続",
+			"使用中",
+			"選択",
+			[
+				"接続できません",
+				"署名を検証できません",
+				"マニフェストの形式が不正です",
+				"古いマニフェストをキャッシュ",
+			],
+			"接続テストに失敗しました：Original diagnostic 原文",
+		],
+		[
+			"zh-TW",
+			"下載加速",
+			"測試連線",
+			"測試中…",
+			"直接連線",
+			"使用中",
+			"選用",
+			["無法連線", "簽章驗證失敗", "資訊清單格式錯誤", "快取了舊版資訊清單"],
+			"連線測試失敗：Original diagnostic 原文",
+		],
+	] as const)(
+		"%s localizes probing results and errors while preserving prefixes, versions and custom input",
+		async (locale, heading, test, testing, direct, inUse, use, reasons, failure) => {
+			i18n.set({ locale, voice: "plain" });
+			let finish: (value: { results: MirrorProbeResult[] }) => void = () => {
+				throw new Error("probe not started");
+			};
+			vi.mocked(api.post).mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						finish = resolve;
+					}),
+			);
+			const { onSelect } = renderPicker({ active: "https://original.example/" });
+			expect(screen.getByText(heading)).toBeTruthy();
+			expect(within(row("")).getByText(direct)).toBeTruthy();
+			expect(
+				within(row("https://original.example/")).getByRole("button", { name: inUse }),
+			).toHaveProperty("disabled", true);
+			const input = screen.getByPlaceholderText(/^https:\/\//);
+			expect(input).toHaveProperty("value", "https://original.example/");
+			await userEvent.click(screen.getByRole("button", { name: test }));
+			await screen.findByRole("button", { name: testing });
+			expect(screen.getByRole("button", { name: testing })).toHaveProperty("disabled", true);
+			finish({
+				results: [
+					{ prefix: "", ok: true, ms: 406, version: "0.9.0" },
+					...(["unavailable", "unauthorized", "invalid", "conflict"] as const).map(
+						(code, index) => ({
+							prefix: BUILTIN_UPDATE_MIRRORS[index] as string,
+							ok: false as const,
+							ms: 1000,
+							code,
+							message: "Original low-level diagnostic",
+						}),
+					),
+					{
+						prefix: "https://original.example/",
+						ok: false,
+						ms: 1000,
+						code: "unknown",
+						message: "Original unknown 原文",
+					},
+				],
+			});
+			await screen.findByText("406 ms");
+			for (const [index, reason] of reasons.entries())
+				expect(within(row(BUILTIN_UPDATE_MIRRORS[index] as string)).getByText(reason)).toBeTruthy();
+			expect(screen.getByText("Original unknown 原文")).toBeTruthy();
+			expect(within(row("")).getByText("0.9.0")).toBeTruthy();
+			expect(api.post).toHaveBeenCalledExactlyOnceWith("/api/system/update/mirrors/probe", {
+				prefixes: ["", ...BUILTIN_UPDATE_MIRRORS, "https://original.example/"],
+			});
+			await userEvent.click(within(row("")).getByRole("button", { name: use }));
+			expect(onSelect).toHaveBeenCalledExactlyOnceWith("");
+			vi.mocked(api.post).mockRejectedValueOnce(new Error("Original diagnostic 原文"));
+			await userEvent.click(screen.getByRole("button", { name: test }));
+			await screen.findByText(failure);
+			expect(input).toHaveProperty("value", "https://original.example/");
+		},
+	);
+
 	it("直连打头、内置各一行、末尾自定义;默认直连「使用中」", () => {
 		renderPicker();
 

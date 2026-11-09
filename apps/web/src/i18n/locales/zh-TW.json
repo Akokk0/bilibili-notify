@@ -3049,5 +3049,17 @@
 	"panelUi.hooks.useUpdateTransitionNotice.1": "查看更新",
 	"panelUi.hooks.useUpdateTransitionNotice.2": "{value0} 已就緒",
 	"panelUi.hooks.useUpdateTransitionNotice.3": "{value0} 下載失敗",
-	"panelUi.hooks.useUpdateTransitionNotice.4": "下載失敗，請到「系統」查看詳細原因。"
+	"panelUi.hooks.useUpdateTransitionNotice.4": "下載失敗，請到「系統」查看詳細原因。",
+	"panelUi.components.update.mirror-picker.1": "無法連線",
+	"panelUi.components.update.mirror-picker.2": "簽章驗證失敗",
+	"panelUi.components.update.mirror-picker.3": "資訊清單格式錯誤",
+	"panelUi.components.update.mirror-picker.4": "快取了舊版資訊清單",
+	"panelUi.components.update.mirror-picker.5": "下載加速",
+	"panelUi.components.update.mirror-picker.6": "測試中…",
+	"panelUi.components.update.mirror-picker.7": "測試連線",
+	"panelUi.components.update.mirror-picker.8": "連線測試失敗：{reason}",
+	"panelUi.components.update.mirror-picker.9": "無法連上 GitHub 時可選擇代理站。會先嘗試所選的代理站，最後一定會嘗試直接連線。更新套件有簽章，遭竄改的內容會被拒絕；但代理站異常仍可能導致下載失敗。顯示的版本是經由該站取得的資訊清單版本，比其他站舊就表示快取尚未更新。",
+	"panelUi.components.update.mirror-picker.10": "直接連線",
+	"panelUi.components.update.mirror-picker.11": "使用中",
+	"panelUi.components.update.mirror-picker.12": "選用"
 }

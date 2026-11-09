@@ -73,7 +73,7 @@ export function MirrorPicker({ active, onSelect, disabled = false }: MirrorPicke
 	const prefixes = ["", ...BUILTIN_UPDATE_MIRRORS, ...(customValid ? [customPrefix] : [])];
 
 	return (
-		<div className="flex flex-col gap-1.5">
+		<div className="@container/update-mirrors flex flex-col gap-1.5">
 			<div className="flex flex-wrap items-center gap-2">
 				<span className="text-bn-sm text-bn-text-secondary">
 					{tx("panelUi.components.update.mirror-picker.5")}
@@ -90,15 +90,16 @@ export function MirrorPicker({ active, onSelect, disabled = false }: MirrorPicke
 				</Btn>
 				{probe.isError ? (
 					<span className="text-bn-xs text-bn-danger">
-						{tx("panelUi.components.update.mirror-picker.8")}
-						{String((probe.error as Error).message)}
+						{tx("panelUi.components.update.mirror-picker.8", {
+							reason: String((probe.error as Error).message),
+						})}
 					</span>
 				) : null}
 			</div>
 			<span className="text-bn-xs text-bn-text-tertiary">
 				{tx("panelUi.components.update.mirror-picker.9")}
 			</span>
-			<div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-3 gap-y-1.5">
+			<div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1.5 @min-[480px]/update-mirrors:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
 				<MirrorRow
 					prefix=""
 					result={results[""]}
@@ -167,7 +168,7 @@ function MirrorRow({
 	return (
 		// `contents`:这一层只为给测试与阅读一个「行」的身份,四个格子仍直接落在网格里。
 		<div className="contents" data-mirror={rowId}>
-			{children}
+			<div className="col-span-full min-w-0 @min-[480px]/update-mirrors:col-span-1">{children}</div>
 			{result === undefined ? (
 				<Dash />
 			) : result.ok ? (

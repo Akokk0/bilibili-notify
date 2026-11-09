@@ -3117,5 +3117,17 @@
 	"panelUi.hooks.useUpdateTransitionNotice.1": "View update",
 	"panelUi.hooks.useUpdateTransitionNotice.2": "{value0} is ready",
 	"panelUi.hooks.useUpdateTransitionNotice.3": "Download failed: {value0}",
-	"panelUi.hooks.useUpdateTransitionNotice.4": "The download failed. Check System for details."
+	"panelUi.hooks.useUpdateTransitionNotice.4": "The download failed. Check System for details.",
+	"panelUi.components.update.mirror-picker.1": "Unreachable",
+	"panelUi.components.update.mirror-picker.2": "Signature verification failed",
+	"panelUi.components.update.mirror-picker.3": "Invalid manifest",
+	"panelUi.components.update.mirror-picker.4": "Cached an older manifest",
+	"panelUi.components.update.mirror-picker.5": "Download acceleration",
+	"panelUi.components.update.mirror-picker.6": "Testing…",
+	"panelUi.components.update.mirror-picker.7": "Test mirrors",
+	"panelUi.components.update.mirror-picker.8": "Mirror test failed: {reason}",
+	"panelUi.components.update.mirror-picker.9": "If GitHub is unreachable, choose a proxy. The selected proxy is tried first; a direct connection is always the fallback. Update packages are signed, so altered content will be rejected. A failed proxy can prevent a download. Each version shown is the manifest fetched through that proxy; an older version indicates a stale cache.",
+	"panelUi.components.update.mirror-picker.10": "Direct",
+	"panelUi.components.update.mirror-picker.11": "In use",
+	"panelUi.components.update.mirror-picker.12": "Use"
 }

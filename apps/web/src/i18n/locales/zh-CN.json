@@ -2172,7 +2172,7 @@
 	"panelUi.components.update.mirror-picker.5": "下载加速",
 	"panelUi.components.update.mirror-picker.6": "测速中…",
 	"panelUi.components.update.mirror-picker.7": "测一遍",
-	"panelUi.components.update.mirror-picker.8": "测不了:",
+	"panelUi.components.update.mirror-picker.8": "测速失败：{reason}",
 	"panelUi.components.update.mirror-picker.9": "连不上 GitHub 时选一个代理站:选中的先试,直连永远垫底。更新包有签名,代理站改不了内容 —— 最多只能让这次下载失败。「版本」是通过那个站拿到的清单版本,比别家旧就是它缓存了。",
 	"panelUi.components.update.mirror-picker.10": "直连",
 	"panelUi.components.update.mirror-picker.11": "使用中",
