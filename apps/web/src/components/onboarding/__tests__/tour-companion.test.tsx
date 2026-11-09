@@ -11,7 +11,7 @@
 
 import type { AccountView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { ACCOUNTS_QUERY_KEY } from "../../../hooks/useAccounts";
@@ -1248,3 +1248,228 @@ describe.each([
 		});
 	});
 });
+
+describe.each([
+	{
+		locale: "en",
+		signIn: "Sign in",
+		steps: ["Connection", "Target", "Test", "Subscribe"],
+		expand: "Expand setup guide",
+		tab: "Guide",
+		guide: "Setup guide",
+		hint: "Follow the highlighted tab →",
+		go: "Go there",
+		next: "Next",
+		back: "Back to setup",
+		skip: "Skip guide",
+		collapse: "Collapse",
+		create: "Create a push connection",
+		test: "Test the connection",
+	},
+	{
+		locale: "ja",
+		signIn: "ログイン",
+		steps: ["接続", "送信先", "テスト", "購読"],
+		expand: "設定ガイドを展開",
+		tab: "ガイド",
+		guide: "設定ガイド",
+		hint: "強調表示されたタブを選んで移動 →",
+		go: "移動する",
+		next: "次へ",
+		back: "設定に戻る",
+		skip: "ガイドをスキップ",
+		collapse: "折りたたむ",
+		create: "配信接続を作成",
+		test: "接続をテスト",
+	},
+	{
+		locale: "zh-TW",
+		signIn: "登入",
+		steps: ["連線", "目標", "測試", "訂閱"],
+		expand: "展開設定指引",
+		tab: "指引",
+		guide: "設定指引",
+		hint: "選擇反白顯示的分頁前往 →",
+		go: "前往",
+		next: "下一步",
+		back: "返回設定",
+		skip: "略過指引",
+		collapse: "收合",
+		create: "新增推播連線",
+		test: "測試連線",
+	},
+] as const)("$locale guide controls", (expected) => {
+	it("translates progress and controls while collapse, reopen and skip retain their behavior", async () => {
+		i18n.set({ locale: expected.locale, voice: "plain" });
+		const s: Scenario = {
+			loggedIn: true,
+			route: "/targets",
+			labels: { demo: "Original source 原文" },
+		};
+		apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
+			s.skipped = (body as { core: { onboarding: { skipped: boolean } } }).core.onboarding.skipped;
+			return {};
+		});
+		await mount(s);
+		const guide = await screen.findByRole("complementary", { name: expected.guide });
+		for (const step of expected.steps)
+			expect(within(guide).getByText(step, { exact: true })).toBeTruthy();
+		await waitFor(() => expect(guide.textContent).toContain("Original source 原文"));
+		fireEvent.click(screen.getByRole("button", { name: expected.next }));
+		await screen.findByText(expected.test);
+		fireEvent.click(screen.getByRole("button", { name: expected.collapse }));
+		const tab = screen.getByRole("button", { name: expected.expand });
+		expect(tab.textContent).toBe(`${expected.tab}1/5`);
+		expect(screen.queryByRole("complementary", { name: expected.guide })).toBeNull();
+		fireEvent.click(tab);
+		expect(screen.getByRole("complementary", { name: expected.guide })).toBe(guide);
+		expect(screen.getByText(expected.test)).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: expected.skip }));
+		await waitFor(() =>
+			expect(apiPatch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+				core: { onboarding: { skipped: true } },
+			}),
+		);
+		await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+	});
+	it("translates the reading-zone return action and returns to the current setup step", async () => {
+		i18n.set({ locale: expected.locale, voice: "plain" });
+		await mount({ loggedIn: true, route: "/about/guide" });
+		fireEvent.click(await screen.findByRole("button", { name: expected.back }));
+		await screen.findByText(expected.create);
+		expect(screen.getByRole("button", { name: expected.next })).toBeTruthy();
+	});
+	it("translates the off-route hint without showing a redundant navigation button", async () => {
+		i18n.set({ locale: expected.locale, voice: "plain" });
+		await mount({ loggedIn: true, route: "/system" });
+		await screen.findByText(expected.hint);
+		expect(screen.queryByRole("button", { name: expected.go })).toBeNull();
+	});
+	it("keeps a localized fallback action when the destination tab is hidden", async () => {
+		i18n.set({ locale: expected.locale, voice: "plain" });
+		useNavStore.setState({ hidden: ["/targets"] });
+		await mount({ loggedIn: true, route: "/system" });
+		fireEvent.click(await screen.findByRole("button", { name: expected.go }));
+		await screen.findByText(expected.create);
+	});
+});
+
+it.each([
+	[
+		"en",
+		"Test failed: Original diagnostic 原文\nCheck the cause, update the settings, then choose “Test” again.",
+	],
+	[
+		"ja",
+		"テストに失敗しました：Original diagnostic 原文\n原因を確認して設定を修正し、もう一度「テスト」を選んでください。",
+	],
+	["zh-TW", "測試未通過：Original diagnostic 原文\n請依原因檢查，修改設定後再選擇一次「測試」。"],
+] as const)(
+	"%s renders the original test diagnostic within a complete localized recovery message",
+	async (locale, message) => {
+		i18n.set({ locale, voice: "plain" });
+		await mount({
+			loggedIn: true,
+			connections: [
+				{
+					id: "a1",
+					enabled: true,
+					probeState: { status: "reachable", lastCheckedAt: "connection-at" },
+				},
+			],
+			targets: [
+				{
+					id: "t1",
+					enabled: true,
+					reachability: {
+						status: "unreachable",
+						message: "Original diagnostic 原文",
+						changedAt: "failure-at",
+					},
+				},
+			],
+			route: "/targets",
+		});
+		const alert = await screen.findByRole("alert");
+		expect(alert.textContent).toBe(message);
+		act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+		expect(screen.getByRole("alert").textContent).toContain("Original diagnostic 原文");
+		expect(apiPatch).not.toHaveBeenCalled();
+	},
+);
+
+it.each([
+	{
+		locale: "en",
+		guide: "Setup guide",
+		title: "🎉 Setup complete!",
+		body: "New posts and live starts from your subscriptions will be delivered automatically.",
+		optional: "Optional next steps:",
+		image: "Image rendering (highly recommended)",
+		ai: "AI features",
+		close: "Close",
+	},
+	{
+		locale: "ja",
+		guide: "設定ガイド",
+		title: "🎉 設定が完了しました！",
+		body: "購読したクリエイターの新しい投稿とライブ開始が、自動で配信されます。",
+		optional: "必要に応じて追加設定：",
+		image: "画像レンダリング（強く推奨）",
+		ai: "AI機能",
+		close: "閉じる",
+	},
+	{
+		locale: "zh-TW",
+		guide: "設定指引",
+		title: "🎉 設定完成！",
+		body: "訂閱的新作品與開播通知，之後都會自動傳送。",
+		optional: "還可以設定：",
+		image: "圖片繪製（強烈建議）",
+		ai: "AI 功能",
+		close: "關閉",
+	},
+] as const)(
+	"$locale localized graduation retains optional guide destinations and final dismissal",
+	async (expected) => {
+		i18n.set({ locale: expected.locale, voice: "plain" });
+		const s: Scenario = {
+			loggedIn: true,
+			subs: [{ id: "s1" }],
+			connections: [
+				{
+					id: "a1",
+					enabled: true,
+					probeState: { status: "reachable", lastCheckedAt: "connection-at" },
+				},
+			],
+			targets: [
+				{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "target-at" } },
+			],
+			route: "/system",
+		};
+		apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
+			s.skipped = (body as { core: { onboarding: { skipped: boolean } } }).core.onboarding.skipped;
+			return {};
+		});
+		await mount(s);
+		await screen.findByText(expected.title);
+		expect(screen.getByText(expected.body)).toBeTruthy();
+		expect(screen.getByText(expected.optional)).toBeTruthy();
+		expect(screen.getByRole("link", { name: expected.image }).getAttribute("href")).toBe(
+			"/about/guide/render",
+		);
+		expect(screen.getByRole("link", { name: expected.ai }).getAttribute("href")).toBe(
+			"/about/guide/ai",
+		);
+		await waitFor(() =>
+			expect(apiPatch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+				core: { onboarding: { skipped: true } },
+			}),
+		);
+		fireEvent.click(screen.getByRole("button", { name: expected.close }));
+		await waitFor(() =>
+			expect(screen.queryByRole("complementary", { name: expected.guide })).toBeNull(),
+		);
+	},
+);

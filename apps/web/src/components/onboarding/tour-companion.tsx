@@ -459,11 +459,8 @@ export function TourCompanion() {
 				className="bn-tour-tab bn-glass-strong shadow-bn-elev fixed left-0 top-3/4 z-bn-tour-panel flex flex-col items-center gap-1 rounded-r-bn-card px-1.5 py-2.5 text-bn-text-secondary hover:text-bn-pink"
 			>
 				<Icon.sparkle size={15} />
-				<span className="text-bn-2xs font-medium leading-tight">
+				<span className="text-bn-2xs font-medium leading-tight [writing-mode:vertical-rl]">
 					{tx("panelUi.components.onboarding.tour-companion.15")}
-				</span>
-				<span className="-mt-1 text-bn-2xs font-medium leading-tight">
-					{tx("panelUi.components.onboarding.tour-companion.16")}
 				</span>
 				<span className="text-bn-2xs text-bn-text-tertiary">
 					{view.doneCount}/{view.steps.length}
@@ -477,15 +474,18 @@ export function TourCompanion() {
 				data-shown={expanded ? "true" : "false"}
 				className="bn-tour-card bn-glass-strong shadow-bn-elev fixed bottom-4 left-4 z-bn-tour-panel w-80 rounded-bn-card p-3.5 max-sm:right-4 max-sm:w-auto"
 			>
-				<div className="mb-2 flex items-center gap-1.5">
+				<div className="mb-2 flex flex-wrap items-center gap-1.5">
 					{view.steps.map((s, i) => (
-						<span key={`${s.key}:${s.sourceKey ?? ""}`} className="flex items-center gap-1">
+						<span
+							key={`${s.key}:${s.sourceKey ?? ""}`}
+							className="flex min-w-0 max-w-full items-center gap-1"
+						>
 							<StatusDot kind={s.done ? "ok" : i === stepIndex ? "live" : "pending"} size="sm" />
 							<span
 								className={
 									i === stepIndex
-										? "text-bn-2xs font-medium text-bn-text-primary"
-										: "text-bn-2xs text-bn-text-tertiary"
+										? "min-w-0 break-words text-bn-2xs font-medium text-bn-text-primary"
+										: "min-w-0 break-words text-bn-2xs text-bn-text-tertiary"
 								}
 							>
 								{s.key === "login"
@@ -537,8 +537,9 @@ export function TourCompanion() {
 						{/* failNote 已只认当前步自己的失败(见上方守卫) */}
 						{failNote ? (
 							<ErrorNote size="sm" className="-mt-1 mb-2">
-								{tx("panelUi.components.onboarding.tour-companion.22")}
-								{failNote.text} {tx("panelUi.components.onboarding.tour-companion.23")}
+								{tx("panelUi.components.onboarding.tour-companion.22", {
+									reason: failNote.text,
+								})}
 							</ErrorNote>
 						) : null}
 						{/* 「带我去」退役:不在目标路由时聚光灯指着顶栏页签,用户自己点过去。
