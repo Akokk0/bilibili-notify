@@ -43,6 +43,50 @@ function mountList(props: Partial<Parameters<typeof MessageList>[0]> = {}) {
 	return render(<MessageList messages={[]} pending={null} busy={false} aiSelf="小绫" {...props} />);
 }
 
+it.each([
+	[
+		"ja",
+		"ご主人様からの画像",
+		"ユーザーが送信した画像",
+		"ご主人様、Original name 原文でエラーが発生しました：Original diagnostic 原文 {message}",
+	],
+	[
+		"zh-TW",
+		"主人傳送的圖片",
+		"使用者傳送的圖片",
+		"嗚…Original name 原文發生錯誤：Original diagnostic 原文 {message}",
+	],
+] as const)(
+	"%s maid chat annotations preserve image, author and diagnostic payloads",
+	(locale, maidImage, plainImage, error) => {
+		mountList({
+			messages: [
+				msg({
+					id: "user1",
+					role: "user",
+					content: "Original question 原文",
+					images: ["original-image.png"],
+				}),
+				msg({ id: "reply1", content: "Original reply 原文" }),
+			],
+			aiSelf: "Original name 原文",
+			error: "Original diagnostic 原文 {message}",
+		});
+		const image = screen.getByRole("img", { name: "用户发送的图片" });
+		for (const [voice, name] of [
+			["maid", maidImage],
+			["plain", plainImage],
+		] as const) {
+			act(() => i18n.set({ locale, voice }));
+			expect(screen.getByRole("img", { name })).toBe(image);
+			expect(image.getAttribute("src")).toBe("/api/images/original-image.png");
+			expect(screen.getByText("Original question 原文")).toBeTruthy();
+			expect(screen.getByText("Original reply 原文")).toBeTruthy();
+			if (voice === "maid") expect(screen.getByText(error)).toBeTruthy();
+		}
+	},
+);
+
 it("message annotations translate while expanded sources and original reply content stay intact", () => {
 	i18n.set({ locale: "en", voice: "plain" });
 	mountList({

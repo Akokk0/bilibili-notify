@@ -73,6 +73,63 @@ function mount(g: Globals) {
 	};
 }
 
+it.each([
+	[
+		"ja",
+		"モデル設定",
+		"全体設定",
+		"ご主人様、設定はプロバイダーのインスタンスごとに保存しますよ。左側で切り替えてくださいね。",
+		"。ご主人様、変更は保存後に適用しますので、保存を忘れないでくださいね。",
+		"作品コメントのウェブ検索",
+		"ご主人様、有効にすると、作品コメントごとに検索回数（リクエストごとの課金）と数秒の待ち時間が増える場合がありますよ。",
+	],
+	[
+		"zh-TW",
+		"模型設定",
+		"全域設定",
+		"主人，每個服務商實例各自儲存設定，點選側欄就能切換喔。",
+		"。主人，修改後記得儲存，儲存後才會生效喔。",
+		"作品短評網路搜尋",
+		"主人，啟用後，每次作品短評都可能增加搜尋呼叫（按次計費）與數秒延遲喔。",
+	],
+] as const)(
+	"%s maid model and search guidance preserve both unsaved settings",
+	async (locale, modelTab, globalTab, hint, saveNote, searchLabel, searchHint) => {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		mount(
+			globalsWith((g) => {
+				g.ai.providers.primary = bucket({ label: "Original instance 原文", model: "saved-model" });
+				g.ai.activeProfile = "primary";
+			}),
+		);
+		fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
+		const model = await screen.findByDisplayValue("saved-model");
+		fireEvent.change(model, { target: { value: "Original staged model 原文" } });
+		for (const voice of ["maid", "plain"] as const) {
+			act(() => i18n.set({ locale, voice }));
+			if (voice === "maid") {
+				expect(screen.getByText(hint)).toBeTruthy();
+				expect(screen.getByText(saveNote, { exact: false })).toBeTruthy();
+			}
+			expect(screen.getByDisplayValue("Original staged model 原文")).toBe(model);
+			expect(screen.getByDisplayValue("Original instance 原文")).toBeTruthy();
+			expect(api.patch).not.toHaveBeenCalled();
+			expect(api.post).not.toHaveBeenCalled();
+		}
+		fireEvent.click(screen.getByRole("tab", { name: new RegExp(globalTab) }));
+		const search = screen.getByRole("button", { name: searchLabel });
+		fireEvent.click(search);
+		act(() => i18n.set({ voice: "maid" }));
+		expect(screen.getByText(searchHint)).toBeTruthy();
+		expect(screen.getByRole("button", { name: searchLabel })).toBe(search);
+		expect(search.getAttribute("aria-pressed")).toBe("true");
+		fireEvent.click(screen.getByRole("tab", { name: new RegExp(modelTab) }));
+		expect(screen.getByDisplayValue("Original staged model 原文")).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	},
+);
+
 it("model settings translate without replacing the current provider or its staged model", async () => {
 	i18n.set({ locale: "en", voice: "plain" });
 	mount(

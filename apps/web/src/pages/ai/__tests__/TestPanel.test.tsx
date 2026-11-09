@@ -64,6 +64,64 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
+it.each([
+	[
+		"ja",
+		"ひと言試してみますね",
+		"ご主人様、未保存の変更も含む現在の性格設定で応答を試せますよ。応答は選んだ送信先に実際に送ります。",
+		"考えていますよ…",
+		"お届けしましたよ · 42 ms",
+		"（何もお返事できませんでした）",
+	],
+	[
+		"zh-TW",
+		"試說一句吧",
+		"主人，可以用目前的性格試問女僕一句，尚未儲存的變更也會套用；回覆會實際傳送到選取的目標喔。",
+		"女僕思考中…",
+		"女僕送到了喔 · 42 ms",
+		"（女僕沒有回話）",
+	],
+] as const)(
+	"%s maid test-push status preserves the question and sends only once",
+	async (locale, title, subtitle, thinking, delivered, silent) => {
+		vi.mocked(api.get).mockResolvedValue(TARGETS);
+		let finish = () => {};
+		vi.mocked(api.post).mockImplementation(
+			async () =>
+				new Promise((resolve) => {
+					finish = () => resolve({ ok: true, reply: "", latencyMs: 42 });
+				}),
+		);
+		renderPanel();
+		await waitFor(() => expect(selectOptionsOf(screen.getByRole("combobox"))).toHaveLength(2));
+		chooseSelect(screen.getByRole("combobox"), "订阅群");
+		const target = screen.getByRole("combobox");
+		const message = screen.getByPlaceholderText("今天过得怎么样？");
+		fireEvent.change(message, { target: { value: "Original question 原文 {name}" } });
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(subtitle)).toBeTruthy();
+		expect(screen.getByDisplayValue("Original question 原文 {name}")).toBe(message);
+		fireEvent.click(screen.getByRole("button", { name: title }));
+		await screen.findByRole("button", { name: thinking });
+		await act(async () => finish());
+		await screen.findByText(delivered);
+		expect(screen.getByText(silent)).toBeTruthy();
+		for (const voice of ["plain", "maid"] as const) {
+			act(() => i18n.set({ voice }));
+			expect(screen.getByDisplayValue("Original question 原文 {name}")).toBe(message);
+			expect(screen.getByRole("combobox")).toBe(target);
+			expect(target.textContent).toContain("订阅群");
+			expect(api.post).toHaveBeenCalledExactlyOnceWith(
+				"/api/ai/test",
+				expect.objectContaining({
+					targetId: TARGETS[1]?.id,
+					message: "Original question 原文 {name}",
+				}),
+			);
+		}
+	},
+);
+
 it.each(["", "原始回复 {not-a-key}"])(
 	"test reply labels follow locale while target, message and raw reply remain unchanged: %s",
 	async (reply) => {

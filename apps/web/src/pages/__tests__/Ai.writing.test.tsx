@@ -87,6 +87,52 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it.each([
+	[
+		"ja",
+		"AI による本文",
+		"配信要約",
+		"テンプレート",
+		"ご主人様、AIはいま無効なので、通知にはテンプレートを使いますね。ここでの設定は編集でき、AIを再び有効にすると適用しますよ。",
+		"ご主人様、1件の個別設定は送信先が見つからないため適用しません。設定は残しておきますね。",
+	],
+	[
+		"zh-TW",
+		"女僕撰寫內文",
+		"直播摘要",
+		"範本",
+		"主人，AI 目前停用，推播會使用範本；這裡仍能修改偏好，重新啟用後就會套用喔。",
+		"主人，有 1 筆例外找不到對應目標，目前不會套用，設定會先保留喔。",
+	],
+] as const)(
+	"%s maid writing guidance keeps the staged scene and target exception",
+	async (locale, title, scene, template, off, orphan) => {
+		const config = makeDefaultGlobalSettings();
+		config.ai.writing.liveSummary.byTarget = { [DELETED]: true };
+		mount(config);
+		await screen.findByRole("region", { name: "女仆写正文" });
+		fireEvent.click(card().getByRole("button", { name: "直播总结" }));
+		await open();
+		fireEvent.click(row("读书会").getByRole("button", { name: "模板" }));
+		for (const voice of ["maid", "plain"] as const) {
+			act(() => i18n.set({ locale, voice }));
+			const region = within(screen.getByRole("region", { name: title }));
+			if (voice === "maid") {
+				expect(region.getByText(off)).toBeTruthy();
+				expect(region.getByText(orphan)).toBeTruthy();
+			}
+			expect(region.getByRole("button", { name: scene }).getAttribute("aria-pressed")).toBe("true");
+			expect(
+				within(region.getByRole("group", { name: /^读书会 · / }))
+					.getByRole("button", { name: template })
+					.getAttribute("aria-pressed"),
+			).toBe("true");
+			expect(api.patch).not.toHaveBeenCalled();
+			expect(api.post).not.toHaveBeenCalled();
+		}
+	},
+);
+
 it("localized writing controls keep the selected scene and staged target override", async () => {
 	const config = makeDefaultGlobalSettings();
 	config.ai.writing.liveSummary.byTarget = { [DELETED]: true };
