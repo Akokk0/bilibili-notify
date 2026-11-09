@@ -846,13 +846,7 @@ function KnobSection({
 	return (
 		<Section label={tx("skinUi.SkinInspector.74")}>
 			<div className="flex flex-col gap-2.5 p-2.5">
-				<span className="text-bn-2xs text-bn-text-tertiary">
-					{tx("skinUi.SkinInspector.75")} <code className="font-mono">--bn-knob-&lt;key&gt;</code>
-					{tx("skinUi.SkinInspector.76")}{" "}
-					<code className="font-mono">{tx("skinUi.SkinInspector.77")}</code>{" "}
-					{tx("skinUi.SkinInspector.78")}
-					<strong>{tx("skinUi.SkinInspector.79")}</strong> {tx("skinUi.SkinInspector.80")}
-				</span>
+				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.75")}</span>
 
 				{knobs.length === 0 ? (
 					<EmptyNote size="sm">{tx("skinUi.SkinInspector.81")}</EmptyNote>
@@ -928,7 +922,7 @@ function KnobRow({
 				placeholder={tx("skinUi.SkinInspector.89")}
 			/>
 
-			<div className="flex min-w-0 items-center gap-1.5">
+			<div className="flex min-w-0 flex-wrap items-center gap-1.5">
 				<TSelect
 					value={knob.type}
 					onChange={(t) => onKnobs?.onType(knob.key, t as CardSkinKnob["type"])}
@@ -1033,14 +1027,16 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 					{/* 起手位置就是「选中哪一个候选」—— 走库里那件「一排里选一个」的胶囊,
 					    而不是裸 `<input type="radio">`:原生单选圈没有输入面可挂皮肤挂点,
 					    装了皮肤的真机上它会是这一行里唯一没跟着变的东西。 */}
-					<ToneChip
-						tone="var(--color-bn-pink)"
-						active={knob.default === option.value}
-						disabled={ro}
-						onClick={() => onKnobs?.onDefault(knob.key, option.value)}
-					>
-						{tx("skinUi.SkinInspector.102")}
-					</ToneChip>
+					<span className="shrink-0 whitespace-nowrap">
+						<ToneChip
+							tone="var(--color-bn-pink)"
+							active={knob.default === option.value}
+							disabled={ro}
+							onClick={() => onKnobs?.onDefault(knob.key, option.value)}
+						>
+							{tx("skinUi.SkinInspector.102")}
+						</ToneChip>
+					</span>
 					<TInput
 						value={option.value}
 						onChange={(v) => onKnobs?.onOption(knob.key, i, { value: v })}

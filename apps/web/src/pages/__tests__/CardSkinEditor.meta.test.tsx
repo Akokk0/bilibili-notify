@@ -18,7 +18,7 @@ import { i18n } from "../../i18n";
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -391,6 +391,83 @@ describe("编辑器 · 皮肤这一档的接线", () => {
  * 是这条线最像成功的失败形态。
  */
 describe("编辑器 · 旋钮声明的接线", () => {
+	it.each([
+		{
+			locale: "en",
+			first: "Control 1",
+			second: "Control 2",
+			third: "Control 3",
+			initial: "Initial value",
+			image: "Images have no initial value.",
+			save: "Save",
+			help: "Each declaration adds a control to Skin controls on the card settings page. Changes are injected as --bn-knob-<key>; reference them in this skin’s CSS with var(--bn-knob-<key>, fallback). Initial values are not injected. The CSS fallback is the actual default.",
+		},
+		{
+			locale: "ja",
+			first: "調整項目1",
+			second: "調整項目2",
+			third: "調整項目3",
+			initial: "初期値",
+			image: "画像には初期値がありません。",
+			save: "保存",
+			help: "宣言した項目は、カード設定画面の「スキンの調整」に表示されます。変更値は --bn-knob-<key> として注入され、スキンのCSSから var(--bn-knob-<key>, fallback) で参照できます。初期値は注入されません。実際の既定値はCSSのフォールバックです。",
+		},
+		{
+			locale: "zh-TW",
+			first: "調整項目 1",
+			second: "調整項目 2",
+			third: "調整項目 3",
+			initial: "起始值",
+			image: "圖片沒有起始值。",
+			save: "儲存",
+			help: "宣告的項目會顯示於卡片設定頁的「外觀調整」。修改值會注入為 --bn-knob-<key>，可在此外觀的 CSS 中使用 var(--bn-knob-<key>, fallback) 引用。起始值不會注入，真正的預設值是 CSS 中的後備值。",
+		},
+	] as const)(
+		"$locale explains initial values and preserves color, font and image declaration shapes",
+		async (l) => {
+			const knobs = [
+				{ key: "accent", label: "Original accent", type: "color", default: "#123456" },
+				{ key: "font", label: "Original font", type: "font", default: "Original Font" },
+				{ key: "wallpaper", label: "Original wallpaper", type: "image" },
+			];
+			mockApi({ knobs });
+			renderEditor();
+			await openSkinTab();
+			act(() => i18n.set({ locale: l.locale, voice: "plain" }));
+			expect(screen.getByText(l.help)).toBeTruthy();
+			expect(api.put).not.toHaveBeenCalled();
+			fireEvent.change(
+				within(screen.getByRole("group", { name: l.first })).getByLabelText(l.initial),
+				{ target: { value: "#abcdef" } },
+			);
+			fireEvent.change(
+				within(screen.getByRole("group", { name: l.second })).getByLabelText(l.initial),
+				{ target: { value: "Original Font 原文" } },
+			);
+			const image = within(screen.getByRole("group", { name: l.third }));
+			expect(image.getByText(l.image)).toBeTruthy();
+			expect(image.queryByLabelText(l.initial)).toBeNull();
+			fireEvent.click(screen.getByRole("button", { name: l.save }));
+			await waitFor(() => expect(api.put).toHaveBeenCalled());
+			expect(savedKnobs()).toEqual([
+				{ key: "accent", label: "Original accent", type: "color", default: "#abcdef" },
+				{ key: "font", label: "Original font", type: "font", default: "Original Font 原文" },
+				{ key: "wallpaper", label: "Original wallpaper", type: "image" },
+			]);
+			expect(saved()).toMatchObject({ cards: MANIFEST.cards });
+			cleanup();
+			mockApi({ builtin: true, knobs });
+			renderEditor();
+			await openSkinTab();
+			expect(
+				(
+					within(screen.getByRole("group", { name: l.second })).getByLabelText(
+						l.initial,
+					) as HTMLInputElement
+				).disabled,
+			).toBe(true);
+		},
+	);
 	it("加一枚 → 存出去的清单里真的有 knobs", async () => {
 		mockApi();
 		renderEditor();
@@ -472,6 +549,138 @@ describe("编辑器 · 旋钮声明的接线", () => {
  * 取值域框敲得动,而 `PUT` 里还是 0~100。
  */
 describe("编辑器 · 三档附加字段的接线", () => {
+	it.each([
+		{
+			locale: "en",
+			first: "Control 1",
+			second: "Control 2",
+			third: "Control 3",
+			min: "Minimum",
+			max: "Maximum",
+			step: "Step",
+			unit: "Unit",
+			initial: "Initial value",
+			on: "CSS value when on",
+			off: "CSS value when off",
+			option: "Option CSS value",
+			optionLabel: "Option label",
+			chip: "Initial",
+			save: "Save",
+		},
+		{
+			locale: "ja",
+			first: "調整項目1",
+			second: "調整項目2",
+			third: "調整項目3",
+			min: "最小値",
+			max: "最大値",
+			step: "刻み幅",
+			unit: "単位",
+			initial: "初期値",
+			on: "オン時のCSS値",
+			off: "オフ時のCSS値",
+			option: "選択肢のCSS値",
+			optionLabel: "選択肢の表示名",
+			chip: "初期",
+			save: "保存",
+		},
+		{
+			locale: "zh-TW",
+			first: "調整項目 1",
+			second: "調整項目 2",
+			third: "調整項目 3",
+			min: "最小值",
+			max: "最大值",
+			step: "步進值",
+			unit: "單位",
+			initial: "起始值",
+			on: "開啟時的 CSS 值",
+			off: "關閉時的 CSS 值",
+			option: "選項 CSS 值",
+			optionLabel: "選項名稱",
+			chip: "起始",
+			save: "儲存",
+		},
+	] as const)(
+		"$locale numeric, switch and select controls preserve typed values and CSS literals",
+		async (l) => {
+			mockApi({
+				knobs: [
+					{ key: "blur", label: "Original blur", type: "number", default: 8, min: 0, max: 40 },
+					{
+						key: "badge",
+						label: "Original badge",
+						type: "switch",
+						default: true,
+						on: "block",
+						off: "none",
+					},
+					{
+						key: "corner",
+						label: "Original corner",
+						type: "select",
+						default: "12px",
+						options: [
+							{ value: "12px", label: "Original round" },
+							{ value: "0px", label: "Original square" },
+						],
+					},
+				],
+			});
+			renderEditor();
+			await openSkinTab();
+			act(() => i18n.set({ locale: l.locale, voice: "plain" }));
+			expect(api.put).not.toHaveBeenCalled();
+			const num = within(screen.getByRole("group", { name: l.first }));
+			fireEvent.change(num.getByLabelText(l.min), { target: { value: "2" } });
+			fireEvent.change(num.getByLabelText(l.max), { target: { value: "24" } });
+			fireEvent.change(num.getByLabelText(l.step), { target: { value: "2" } });
+			fireEvent.change(num.getByLabelText(l.initial), { target: { value: "10" } });
+			chooseSelect(num.getByRole("combobox", { name: l.unit }), "px");
+			const toggle = within(screen.getByRole("group", { name: l.second }));
+			fireEvent.change(toggle.getByLabelText(l.on), { target: { value: "flex" } });
+			fireEvent.change(toggle.getByLabelText(l.off), { target: { value: "contents" } });
+			fireEvent.click(toggle.getByRole("button", { name: l.initial }));
+			const choice = within(screen.getByRole("group", { name: l.third }));
+			fireEvent.change(choice.getAllByLabelText(l.option)[1], { target: { value: "4px" } });
+			fireEvent.change(choice.getAllByLabelText(l.optionLabel)[1], {
+				target: { value: "Original slight 原文" },
+			});
+			fireEvent.click(choice.getAllByRole("button", { name: l.chip })[1]);
+			fireEvent.click(screen.getByRole("button", { name: l.save }));
+			await waitFor(() => expect(api.put).toHaveBeenCalled());
+			expect(savedKnobs()).toEqual([
+				{
+					key: "blur",
+					label: "Original blur",
+					type: "number",
+					default: 10,
+					min: 2,
+					max: 24,
+					step: 2,
+					unit: "px",
+				},
+				{
+					key: "badge",
+					label: "Original badge",
+					type: "switch",
+					default: false,
+					on: "flex",
+					off: "contents",
+				},
+				{
+					key: "corner",
+					label: "Original corner",
+					type: "select",
+					default: "4px",
+					options: [
+						{ value: "12px", label: "Original round" },
+						{ value: "4px", label: "Original slight 原文" },
+					],
+				},
+			]);
+		},
+	);
 	const numberKnob = [{ key: "blur", label: "糊化", type: "number", default: 8, min: 0, max: 40 }];
 	const selectKnob = [
 		{

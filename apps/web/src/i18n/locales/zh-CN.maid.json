@@ -358,7 +358,7 @@
 	"skinUi.CardSkinEditor.12": "主人，只摆左边那一场会有的块,别的场独有的块(图廊、视频那几块)切过去才露面;点一个块,在右边的检查器里改它的位置;封面这种单张图拉上下两条边就是改高度,别的块的高度由内容撑",
 	"skinUi.CardSkinKnobs.2": "主人，这里单独拧过的旋钮只对当前订阅生效，没拧过的仍跟随全局哦。",
 	"skinUi.CardSkinKnobs.3": "主人，这套皮肤自己声明的可调项 —— 拧过的才会存,没拧过的用皮肤自带的兜底",
-	"skinUi.SkinInspector.75": "主人，声明几枚,卡片页的「皮肤旋钮」就画几个控件;拧出来的值注成",
+	"skinUi.SkinInspector.75": "主人，声明的项目会显示在卡片页的「皮肤旋钮」里。修改值注入为 --bn-knob-<key>，在皮肤 CSS 中用 var(--bn-knob-<key>, fallback) 引用。起手位置不会注入，真正的默认值是 CSS 里的兜底值。",
 	"skinUi.SkinInspector.116": "主人，图片与字体都放在这套皮肤的包里，导出的 ZIP 也会带上它们。在块的 CSS 或 HTML 中，用 asset:<name> 就能引用哦。",
 	"skinUi.SkinPreviewPane.2": "主人，实时预览的字体等细节可能与推送图片不同，请用「最终效果」核对实际出图哦。",
 	"skinUi.card-skin-ai.3": "主人，还没配好模型 —— 到「智能女仆」页把当前服务商的 API Key 与接口地址填上",
