@@ -12,7 +12,7 @@ import { packageText } from "@bilibili-notify/internal/texts";
 import type OpenAI from "openai";
 import { parseCreator } from "./creator";
 import { mergeExtraParams, parseExtraParams } from "./extra-params";
-import { buildSystemPrompt } from "./persona-presets";
+import { buildSystemPrompt, withOutputLanguage } from "./persona-presets";
 import { type PromptNouns, renderPromptNouns } from "./prompt-nouns";
 import { buildProviderParams } from "./providers";
 import {
@@ -648,7 +648,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 			withPersona?: boolean;
 		} = {},
 	): string {
-		return this.buildSystemPrompt(opts.override, this.nouns(opts.sourceKeys), opts);
+		return withOutputLanguage(
+			this.buildSystemPrompt(opts.override, this.nouns(opts.sourceKeys), opts),
+		);
 	}
 
 	private buildSystemPrompt(
@@ -1164,7 +1166,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 的那一轮。
 	 */
 	/**
-	 * 结构化生成:调用方全权提供 system prompt —— 不叠人格、不叠场景、不挂工具、
+	 * 结构化生成:保留调用方的 system prompt,只追加全局输出语言 —— 不叠人格、不叠场景、不挂工具、
 	 * 不落会话历史。「要一份 JSON,不要女仆口癖」的场景用它(皮肤 AI 编辑等);
 	 * 网关/方言/思考参数与其他调用走同一条 callAPI。
 	 */
@@ -1237,7 +1239,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 					thinkingLevel: this.config.thinkingLevel,
 				}),
 				messages: [
-					{ role: "system", content: TITLE_PROMPT },
+					{ role: "system", content: withOutputLanguage(TITLE_PROMPT) },
 					{
 						role: "user",
 						content: exchange
@@ -1584,7 +1586,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		try {
 			const result = await this.callAPIRounds(
 				rounds,
-				systemPrompt,
+				withOutputLanguage(systemPrompt),
 				messages,
 				toolOptions,
 				imageUrls,

@@ -1,4 +1,16 @@
+import { packageLocale } from "@bilibili-notify/internal/texts";
 import { type PromptNouns, renderPromptNouns } from "./prompt-nouns";
+
+/** 模型规则保持中文；只在一次请求开始时读取当前输出语言，工具轮和重试沿用这一份。 */
+export function withOutputLanguage(prompt: string): string {
+	const languages = {
+		"zh-CN": "简体中文",
+		en: "英文，使用英文标点",
+		ja: "日文，使用日文标点",
+		"zh-TW": "台湾繁体中文，使用台湾惯用词",
+	};
+	return `${prompt}\n\n【输出语言】面向用户的自然语言内容使用${languages[packageLocale()]}。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。`;
+}
 
 /**
  * 「只用纯文本」——**只发给不渲染 Markdown 的那些去处**。

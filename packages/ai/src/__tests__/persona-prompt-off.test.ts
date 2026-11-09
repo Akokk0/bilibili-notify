@@ -125,6 +125,8 @@ describe("chatStatelessStream 的 persona 开关", () => {
 			systemPrompt: "专职提示词",
 			persona: true,
 		});
-		expect(sentSystemPrompt()).toBe("专职提示词");
+		expect(sentSystemPrompt()).toBe(
+			"专职提示词\n\n【输出语言】面向用户的自然语言内容使用简体中文。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。",
+		);
 	});
 });

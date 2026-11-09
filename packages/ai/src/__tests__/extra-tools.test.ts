@@ -273,7 +273,7 @@ describe("chatStatelessStream × 注入工具", () => {
  * 的路。
  */
 describe("chatStatelessStream × 专职模式", () => {
-	it("给了 systemPrompt → system 消息就是它,人格一个字都不掺", async () => {
+	it("给了 systemPrompt → 保留专职提示词并追加输出语言，不掺人格", async () => {
 		oai.create.mockResolvedValueOnce(streamOf([textChunk("好")]));
 		await makeGen().chatStatelessStream(HIST, {
 			onDelta: () => {},
@@ -281,7 +281,9 @@ describe("chatStatelessStream × 专职模式", () => {
 		});
 
 		const sys = createParams(0).messages.find((m) => m.role === "system");
-		expect(sys?.content).toBe("你只做皮肤。");
+		expect(sys?.content).toBe(
+			"你只做皮肤。\n\n【输出语言】面向用户的自然语言内容使用简体中文。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。",
+		);
 	});
 
 	it("builtinTools:false → 工具表只剩注入的那把", async () => {

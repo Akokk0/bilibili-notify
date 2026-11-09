@@ -14,6 +14,12 @@
  */
 
 import { ok } from "@bilibili-notify/internal";
+import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	PACKAGE_DICTS,
+	type PackageTextKey,
+} from "@bilibili-notify/internal/texts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type {
 	CommentaryGenerator,
@@ -115,6 +121,53 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("responses 风味:路由与请求形状", () => {
+	it.each([
+		["zh-CN", "简体中文"],
+		["en", "英文，使用英文标点"],
+		["ja", "日文，使用日文标点"],
+		["zh-TW", "台湾繁体中文，使用台湾惯用词"],
+	] as const)("%s：两种返回方式均传输出语言约束，输入和返回原样保留", async (locale, language) => {
+		const texts = createI18n<PackageTextKey, Locale>({
+			dicts: PACKAGE_DICTS,
+			fallback: "zh-CN",
+			locale: "zh-CN",
+			voice: "maid",
+		});
+		const binding = bindPackageText(texts.t, () => texts.state().locale);
+		try {
+			const gen = makeGen();
+			texts.set({ locale });
+			for (const streaming of [false, true]) {
+				oai.responsesCreate.mockClear();
+				oai.responsesCreate.mockResolvedValueOnce(
+					streaming
+						? streamOf([textDelta("Original、reply。"), completed([msgItem("Original、reply。")])])
+						: { output: [msgItem("Original、reply。")] },
+				);
+				const history = [{ role: "user" as const, content: "Original input {id}" }];
+				const deltas: string[] = [];
+				const result = streaming
+					? await gen.chatStatelessStream(history, {
+							onDelta: (text) => deltas.push(text),
+							systemPrompt: "Custom system",
+						})
+					: await gen.chatStateless(history);
+				expect(result).toBe("Original、reply。");
+				if (streaming) expect(deltas.join("")).toBe("Original、reply。");
+				const input = params(0).input as Array<Record<string, unknown>>;
+				expect(input[0]?.content).toContain(`【输出语言】面向用户的自然语言内容使用${language}。`);
+				expect(input.find((item) => item.role === "user")).toEqual({
+					role: "user",
+					content: "Original input {id}",
+				});
+				expect(oai.responsesCreate).toHaveBeenCalledTimes(1);
+			}
+			expect(oai.chatCreate).not.toHaveBeenCalled();
+		} finally {
+			binding.dispose();
+		}
+	});
+
 	it("走 responses.create 而非 chat.completions;input/扁平工具/tool_choice 齐备", async () => {
 		oai.responsesCreate.mockResolvedValueOnce(
 			streamOf([textDelta("好"), completed([msgItem("好")])]),

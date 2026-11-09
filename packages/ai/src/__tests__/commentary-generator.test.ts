@@ -158,6 +158,161 @@ beforeEach(() => {
 // callAPI 配置守卫
 // ---------------------------------------------------------------------------
 
+describe("CommentaryGenerator — 输出语言", () => {
+	it.each(["chat", "stateless", "customStream", "raw", "liveSummary"] as const)(
+		"%s：共用输出约束覆盖当前语言，正文与结构字段不改写",
+		async (method) => {
+			const texts = createI18n<PackageTextKey, Locale>({
+				dicts: PACKAGE_DICTS,
+				fallback: "zh-CN",
+				locale: "zh-CN",
+				voice: "maid",
+			});
+			const binding = bindPackageText(texts.t, () => texts.state().locale);
+			try {
+				const { gen } = makeGen();
+				for (const [locale, language] of [
+					["en", "英文"],
+					["ja", "日文"],
+					["zh-TW", "台湾繁体中文"],
+					["zh-CN", "简体中文"],
+				] as const) {
+					texts.set({ locale });
+					oai.create.mockClear();
+					const answer = '{"id":"keep_enum","label":"原文、Original。"}';
+					const streaming = method === "raw" || method === "customStream";
+					oai.create.mockResolvedValueOnce(
+						streaming ? streamOf([textChunk(answer)]) : msgResp(answer),
+					);
+					const history = [{ role: "user" as const, content: "Original input" }];
+					const deltas: string[] = [];
+					const result =
+						method === "chat"
+							? await gen.chat("Original input")
+							: method === "stateless"
+								? await gen.chatStateless(history)
+								: method === "customStream"
+									? await gen.chatStatelessStream(history, {
+											systemPrompt: "Custom system",
+											systemSuffix: "Custom suffix",
+											persona: false,
+											onDelta: (text) => deltas.push(text),
+										})
+									: method === "raw"
+										? await gen.generateRaw("Raw system", "Original input", undefined, {
+												onText: (text) => deltas.push(text),
+											})
+										: await gen.comment("Original input", "liveSummary");
+					expect(result).toBe(answer);
+					if (streaming) expect(deltas.join("")).toBe(answer);
+					const params = createParams(0);
+					const system = params.messages[0]?.content as string;
+					expect(system).toContain(`【输出语言】面向用户的自然语言内容使用${language}`);
+					expect(system.split("【输出语言】")).toHaveLength(2);
+					if (method === "customStream")
+						expect(system).toMatch(/^Custom system\n\nCustom suffix\n\n/);
+					if (method === "raw") expect(system).toMatch(/^Raw system\n\n/);
+					expect(params.messages[1]).toEqual({ role: "user", content: "Original input" });
+					expect(oai.create).toHaveBeenCalledTimes(1);
+				}
+			} finally {
+				binding.dispose();
+			}
+		},
+	);
+
+	it("在途工具轮沿用请求开始时的语言，下一次请求才换语言", async () => {
+		const texts = createI18n<PackageTextKey, Locale>({
+			dicts: PACKAGE_DICTS,
+			fallback: "zh-CN",
+			locale: "en",
+			voice: "plain",
+		});
+		const binding = bindPackageText(texts.t, () => texts.state().locale);
+		try {
+			const { gen } = makeGen();
+			oai.create
+				.mockImplementationOnce(async () => {
+					texts.set({ locale: "ja" });
+					return toolCallResp("fake_tool", {});
+				})
+				.mockResolvedValueOnce(msgResp("English reply"));
+			expect(await gen.chat("Original input")).toBe("English reply");
+			for (const index of [0, 1])
+				expect(createParams(index).messages[0]?.content).toContain(
+					"【输出语言】面向用户的自然语言内容使用英文，使用英文标点。",
+				);
+			oai.create.mockResolvedValueOnce(msgResp("日本語"));
+			expect(await gen.comment("Next input")).toBe("日本語");
+			expect(createParams(2).messages[0]?.content).toContain(
+				"【输出语言】面向用户的自然语言内容使用日文，使用日文标点。",
+			);
+			expect(oai.create).toHaveBeenCalledTimes(3);
+		} finally {
+			binding.dispose();
+		}
+	});
+
+	it("提示词预览与当前请求使用同一输出语言，切换不改已取得的预览", () => {
+		const texts = createI18n<PackageTextKey, Locale>({
+			dicts: PACKAGE_DICTS,
+			fallback: "zh-CN",
+			locale: "zh-CN",
+			voice: "maid",
+		});
+		const binding = bindPackageText(texts.t, () => texts.state().locale);
+		try {
+			const { gen } = makeGen();
+			texts.set({ locale: "en" });
+			const before = gen.getSystemPrompt({ scene: "liveSummary" });
+			expect(before).toContain("【输出语言】面向用户的自然语言内容使用英文，使用英文标点。");
+			expect(before).toContain("LIVE_SCENE_PROMPT");
+			texts.set({ locale: "ja" });
+			expect(gen.getSystemPrompt()).toContain(
+				"【输出语言】面向用户的自然语言内容使用日文，使用日文标点。",
+			);
+			expect(before).not.toContain("使用日文");
+		} finally {
+			binding.dispose();
+		}
+	});
+
+	it.each([
+		["zh-CN", "简体中文"],
+		["en", "英文，使用英文标点"],
+		["ja", "日文，使用日文标点"],
+		["zh-TW", "台湾繁体中文，使用台湾惯用词"],
+	] as const)(
+		"%s：常驻生成器发请求时取语言，保留场景提示词和输入原文",
+		async (locale, language) => {
+			const texts = createI18n<PackageTextKey, Locale>({
+				dicts: PACKAGE_DICTS,
+				fallback: "zh-CN",
+				locale: "zh-CN",
+				voice: "maid",
+			});
+			const binding = bindPackageText(texts.t, () => texts.state().locale);
+			try {
+				const { gen } = makeGen({ dynamicPrompt: "用中文点评{postNoun}，保留{custom}。" });
+				texts.set({ locale });
+				oai.create.mockResolvedValueOnce(msgResp("Original reply，句号。"));
+				expect(await gen.comment("Original input {custom}", "post")).toBe("Original reply，句号。");
+				const params = createParams(0);
+				const system = params.messages[0]?.content as string;
+				expect(system).toContain("用中文点评作品，保留{custom}。");
+				expect(system).toContain(`【输出语言】面向用户的自然语言内容使用${language}。`);
+				expect(system).toMatch(
+					/前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。$/,
+				);
+				expect(params.messages[1]).toEqual({ role: "user", content: "Original input {custom}" });
+				expect(oai.create).toHaveBeenCalledTimes(1);
+			} finally {
+				binding.dispose();
+			}
+		},
+	);
+});
+
 describe("CommentaryGenerator — 配置守卫", () => {
 	it("apiKey 缺失 → comment() 抛「AI apiKey 未配置」", async () => {
 		const { gen } = makeGen({ apiKey: "" });
@@ -668,6 +823,38 @@ const toolChunk = (index: number, part: Record<string, unknown>) => ({
 });
 
 describe("CommentaryGenerator.summarizeTitle", () => {
+	it.each([
+		["zh-CN", "简体中文"],
+		["en", "英文，使用英文标点"],
+		["ja", "日文，使用日文标点"],
+		["zh-TW", "台湾繁体中文，使用台湾惯用词"],
+	] as const)("%s：标题专用请求同样现取输出语言，原对话不翻译", async (locale, language) => {
+		const texts = createI18n<PackageTextKey, Locale>({
+			dicts: PACKAGE_DICTS,
+			fallback: "zh-CN",
+			locale: "zh-CN",
+			voice: "plain",
+		});
+		const binding = bindPackageText(texts.t, () => texts.state().locale);
+		try {
+			const { gen } = makeGen();
+			texts.set({ locale });
+			oai.create.mockResolvedValueOnce(msgResp("Title-日本語"));
+			expect(await gen.summarizeTitle([{ role: "user", content: "Original 原文" }])).toBe(
+				"Title-日本語",
+			);
+			const params = createParams(0);
+			expect(params.messages[0]?.content).toContain(
+				`【输出语言】面向用户的自然语言内容使用${language}。`,
+			);
+			expect(params.messages[1]).toEqual({ role: "user", content: "问:Original 原文" });
+			expect(params.tools).toBeUndefined();
+			expect(oai.create).toHaveBeenCalledTimes(1);
+		} finally {
+			binding.dispose();
+		}
+	});
+
 	/**
 	 * 侧栏那一行标题原本取首问的前 24 字。主人每次都以「你好」开场,于是每个会话
 	 * 都叫「你好」,一行看下来全是同一个词,等于没有标题。改成让模型看完首轮问答
@@ -1541,7 +1728,7 @@ describe("CommentaryGenerator — :384 脱敏 (P2)", () => {
 });
 
 describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
-	it("system 原样直达、不叠人格/场景、不挂工具;返回正文", async () => {
+	it("system 保留并仅追加输出语言，不叠人格/场景、不挂工具；返回正文", async () => {
 		const { gen } = makeGen();
 		oai.create.mockResolvedValueOnce(streamOf([textChunk('{"a":1}')]));
 		const out = await gen.generateRaw("RAW_SYSTEM", "RAW_USER");
@@ -1550,7 +1737,11 @@ describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
 			messages: ChatMsg[];
 			tools?: unknown;
 		};
-		expect(params.messages[0]).toEqual({ role: "system", content: "RAW_SYSTEM" });
+		expect(params.messages[0]).toEqual({
+			role: "system",
+			content:
+				"RAW_SYSTEM\n\n【输出语言】面向用户的自然语言内容使用简体中文。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。",
+		});
 		expect(params.messages[1]).toEqual({ role: "user", content: "RAW_USER" });
 		expect(params.tools).toBeUndefined();
 	});

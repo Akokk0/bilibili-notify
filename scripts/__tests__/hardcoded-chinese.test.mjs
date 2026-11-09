@@ -291,7 +291,7 @@ export const NON_DISPLAY_TEXTS = {
 			text: pinnedSource('"问"'),
 			reason: "只进入模型上下文的指令、素材说明或工具结果；ADR-0037 决策11",
 			site: pinnedSource(
-				'res = await client.chat.completions.create({\n\t\t\t\tmodel,\n\t\t\t\t// 不发 temperature,与主调用同一条:推理模型收到它直接 400。\n\t\t\t\t// 别抠。推理模型会先想一段再给结论,预算太小就全花在思考上、正文\n\t\t\t\t// 空手而归 —— 起名永远失败,而主人只看到标题一直是自己那句提问。\n\t\t\t\t// 反正只调这一次,多给点无所谓。\n\t\t\t\tmax_tokens: 256,\n\t\t\t\t// 显式**关**思考,与主人的开关无关:起标题是杂务,不值得烧思考的\n\t\t\t\t// 钱;更要紧的是 DeepSeek v4 这类**默认就开思考**的模型,不发禁用\n\t\t\t\t// 的话思维链会把上面的预算烧光,content 空手而归,起名永远失败。\n\t\t\t\t// 自定义档照旧一个字段不发(方言未知)。\n\t\t\t\t...buildProviderParams({\n\t\t\t\t\tprovider: this.config.provider,\n\t\t\t\t\tenableThinking: false,\n\t\t\t\t\tthinkingLevel: this.config.thinkingLevel,\n\t\t\t\t}),\n\t\t\t\tmessages: [\n\t\t\t\t\t{ role: "system", content: TITLE_PROMPT },\n\t\t\t\t\t{\n\t\t\t\t\t\trole: "user",\n\t\t\t\t\t\tcontent: exchange\n\t\t\t\t\t\t\t.map((m) => `@{m.role === "user" ? "问" : "答"}:@{m.content}`)\n\t\t\t\t\t\t\t.join("\\n"),\n\t\t\t\t\t},\n\t\t\t\t],\n\t\t\t});',
+				'res = await client.chat.completions.create({\n\t\t\t\tmodel,\n\t\t\t\t// 不发 temperature,与主调用同一条:推理模型收到它直接 400。\n\t\t\t\t// 别抠。推理模型会先想一段再给结论,预算太小就全花在思考上、正文\n\t\t\t\t// 空手而归 —— 起名永远失败,而主人只看到标题一直是自己那句提问。\n\t\t\t\t// 反正只调这一次,多给点无所谓。\n\t\t\t\tmax_tokens: 256,\n\t\t\t\t// 显式**关**思考,与主人的开关无关:起标题是杂务,不值得烧思考的\n\t\t\t\t// 钱;更要紧的是 DeepSeek v4 这类**默认就开思考**的模型,不发禁用\n\t\t\t\t// 的话思维链会把上面的预算烧光,content 空手而归,起名永远失败。\n\t\t\t\t// 自定义档照旧一个字段不发(方言未知)。\n\t\t\t\t...buildProviderParams({\n\t\t\t\t\tprovider: this.config.provider,\n\t\t\t\t\tenableThinking: false,\n\t\t\t\t\tthinkingLevel: this.config.thinkingLevel,\n\t\t\t\t}),\n\t\t\t\tmessages: [\n\t\t\t\t\t{ role: "system", content: withOutputLanguage(TITLE_PROMPT) },\n\t\t\t\t\t{\n\t\t\t\t\t\trole: "user",\n\t\t\t\t\t\tcontent: exchange\n\t\t\t\t\t\t\t.map((m) => `@{m.role === "user" ? "问" : "答"}:@{m.content}`)\n\t\t\t\t\t\t\t.join("\\n"),\n\t\t\t\t\t},\n\t\t\t\t],\n\t\t\t});',
 			),
 		},
 		{
@@ -299,7 +299,7 @@ export const NON_DISPLAY_TEXTS = {
 			text: pinnedSource('"答"'),
 			reason: "只进入模型上下文的指令、素材说明或工具结果；ADR-0037 决策11",
 			site: pinnedSource(
-				'res = await client.chat.completions.create({\n\t\t\t\tmodel,\n\t\t\t\t// 不发 temperature,与主调用同一条:推理模型收到它直接 400。\n\t\t\t\t// 别抠。推理模型会先想一段再给结论,预算太小就全花在思考上、正文\n\t\t\t\t// 空手而归 —— 起名永远失败,而主人只看到标题一直是自己那句提问。\n\t\t\t\t// 反正只调这一次,多给点无所谓。\n\t\t\t\tmax_tokens: 256,\n\t\t\t\t// 显式**关**思考,与主人的开关无关:起标题是杂务,不值得烧思考的\n\t\t\t\t// 钱;更要紧的是 DeepSeek v4 这类**默认就开思考**的模型,不发禁用\n\t\t\t\t// 的话思维链会把上面的预算烧光,content 空手而归,起名永远失败。\n\t\t\t\t// 自定义档照旧一个字段不发(方言未知)。\n\t\t\t\t...buildProviderParams({\n\t\t\t\t\tprovider: this.config.provider,\n\t\t\t\t\tenableThinking: false,\n\t\t\t\t\tthinkingLevel: this.config.thinkingLevel,\n\t\t\t\t}),\n\t\t\t\tmessages: [\n\t\t\t\t\t{ role: "system", content: TITLE_PROMPT },\n\t\t\t\t\t{\n\t\t\t\t\t\trole: "user",\n\t\t\t\t\t\tcontent: exchange\n\t\t\t\t\t\t\t.map((m) => `@{m.role === "user" ? "问" : "答"}:@{m.content}`)\n\t\t\t\t\t\t\t.join("\\n"),\n\t\t\t\t\t},\n\t\t\t\t],\n\t\t\t});',
+				'res = await client.chat.completions.create({\n\t\t\t\tmodel,\n\t\t\t\t// 不发 temperature,与主调用同一条:推理模型收到它直接 400。\n\t\t\t\t// 别抠。推理模型会先想一段再给结论,预算太小就全花在思考上、正文\n\t\t\t\t// 空手而归 —— 起名永远失败,而主人只看到标题一直是自己那句提问。\n\t\t\t\t// 反正只调这一次,多给点无所谓。\n\t\t\t\tmax_tokens: 256,\n\t\t\t\t// 显式**关**思考,与主人的开关无关:起标题是杂务,不值得烧思考的\n\t\t\t\t// 钱;更要紧的是 DeepSeek v4 这类**默认就开思考**的模型,不发禁用\n\t\t\t\t// 的话思维链会把上面的预算烧光,content 空手而归,起名永远失败。\n\t\t\t\t// 自定义档照旧一个字段不发(方言未知)。\n\t\t\t\t...buildProviderParams({\n\t\t\t\t\tprovider: this.config.provider,\n\t\t\t\t\tenableThinking: false,\n\t\t\t\t\tthinkingLevel: this.config.thinkingLevel,\n\t\t\t\t}),\n\t\t\t\tmessages: [\n\t\t\t\t\t{ role: "system", content: withOutputLanguage(TITLE_PROMPT) },\n\t\t\t\t\t{\n\t\t\t\t\t\trole: "user",\n\t\t\t\t\t\tcontent: exchange\n\t\t\t\t\t\t\t.map((m) => `@{m.role === "user" ? "问" : "答"}:@{m.content}`)\n\t\t\t\t\t\t\t.join("\\n"),\n\t\t\t\t\t},\n\t\t\t\t],\n\t\t\t});',
 			),
 		},
 		{
@@ -348,6 +348,53 @@ export const NON_DISPLAY_TEXTS = {
 		},
 	],
 	"packages/ai/src/persona-presets.ts": [
+		{
+			owner: "withOutputLanguage/languages",
+			text: pinnedSource('"简体中文"'),
+			reason:
+				"ADR-0037 decision 11: fixed Chinese model instruction specifying the current output language; never displayed as interface text.",
+			site: pinnedSource(
+				'languages = {\n\t\t"zh-CN": "简体中文",\n\t\ten: "英文，使用英文标点",\n\t\tja: "日文，使用日文标点",\n\t\t"zh-TW": "台湾繁体中文，使用台湾惯用词",\n\t}',
+			),
+		},
+		{
+			owner: "withOutputLanguage/languages",
+			text: pinnedSource('"英文，使用英文标点"'),
+			reason:
+				"ADR-0037 decision 11: fixed Chinese model instruction specifying the current output language; never displayed as interface text.",
+			site: pinnedSource(
+				'languages = {\n\t\t"zh-CN": "简体中文",\n\t\ten: "英文，使用英文标点",\n\t\tja: "日文，使用日文标点",\n\t\t"zh-TW": "台湾繁体中文，使用台湾惯用词",\n\t}',
+			),
+		},
+		{
+			owner: "withOutputLanguage/languages",
+			text: pinnedSource('"日文，使用日文标点"'),
+			reason:
+				"ADR-0037 decision 11: fixed Chinese model instruction specifying the current output language; never displayed as interface text.",
+			site: pinnedSource(
+				'languages = {\n\t\t"zh-CN": "简体中文",\n\t\ten: "英文，使用英文标点",\n\t\tja: "日文，使用日文标点",\n\t\t"zh-TW": "台湾繁体中文，使用台湾惯用词",\n\t}',
+			),
+		},
+		{
+			owner: "withOutputLanguage/languages",
+			text: pinnedSource('"台湾繁体中文，使用台湾惯用词"'),
+			reason:
+				"ADR-0037 decision 11: fixed Chinese model instruction specifying the current output language; never displayed as interface text.",
+			site: pinnedSource(
+				'languages = {\n\t\t"zh-CN": "简体中文",\n\t\ten: "英文，使用英文标点",\n\t\tja: "日文，使用日文标点",\n\t\t"zh-TW": "台湾繁体中文，使用台湾惯用词",\n\t}',
+			),
+		},
+		{
+			owner: "withOutputLanguage",
+			text: pinnedSource(
+				"`@{prompt}\\n\\n【输出语言】面向用户的自然语言内容使用@{languages[packageLocale()]}。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。`",
+			),
+			reason:
+				"ADR-0037 decision 11: fixed Chinese model instruction specifying the current output language; never displayed as interface text.",
+			site: pinnedSource(
+				"return `@{prompt}\\n\\n【输出语言】面向用户的自然语言内容使用@{languages[packageLocale()]}。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。`;",
+			),
+		},
 		{
 			owner: "PLAIN_TEXT_ONLY",
 			text: pinnedSource(
