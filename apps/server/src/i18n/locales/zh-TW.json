@@ -1003,5 +1003,21 @@
 	"service.integration-store.store.text.9": "整合功能 {value0} 未執行，無法還原機密資料。",
 	"service.integration-store.files.text.1": "無法寫入 state.json：{value0}",
 	"service.integration-store.files.text.2": "無法取得主金鑰：{value0}",
-	"service.integration-store.files.text.3": "無法寫入 secrets.enc：{value0}"
+	"service.integration-store.files.text.3": "無法寫入 secrets.enc：{value0}",
+	"backup.envelope.invalidFormat": "這不是 bilibili-notify 匯出的備份檔案。",
+	"backup.envelope.invalidKind": "無法辨識備份類型（只支援 full 與 sanitized）。",
+	"backup.envelope.missingVersion": "備份檔案缺少格式版本號（schemaVersion）。",
+	"backup.envelope.newerVersion": "此備份的格式版本為 {version}，比目前支援的最高版本 {current} 更新，請先更新 bilibili-notify 再還原。",
+	"backup.envelope.zeroVersion": "這是 1.0 之前匯出的備份，無法直接在 1.0 還原。請先安裝 0.12 並還原此備份，再更新至 1.0，舊資料會自動移轉。",
+	"backup.envelope.olderVersion": "此備份的格式版本為 {version}，比目前支援的版本 {current} 更舊，此組建無法還原。",
+	"service.backup.assemble.text.1": "備份中的整合功能機密資料格式無效，檔案可能已被修改。",
+	"service.backup.assemble.text.2": "備份中整合功能 {value0} 的機密資料格式無效，檔案可能已被修改。",
+	"service.backup.assemble.text.3": "此完整備份缺少加密的機密資料區段，檔案可能已被修改。",
+	"service.backup.crypto.text.1": "備份 PIN 不正確，或檔案已損毀。",
+	"backup.invalidKind": "kind 只能是 full 或 sanitized。",
+	"backup.invalidMode": "mode 只能是 overwrite 或 merge。",
+	"service.backup.rejected-error.text.1": "完整備份必須設定 PIN。",
+	"backup.configInvalid": "備份中的設定未通過驗證，未還原任何資料：{message}",
+	"backup.duplicateSubscription": "備份中同一識別資料有多個訂閱：{identity}。未還原任何資料。請在原環境刪除重複訂閱後重新匯出。",
+	"backup.integrationNotRunning": "此整合功能目前未執行。"
 }

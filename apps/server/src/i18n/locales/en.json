@@ -1008,5 +1008,21 @@
 	"service.integration-store.store.text.9": "Integration {value0} is not running; its secrets cannot be restored.",
 	"service.integration-store.files.text.1": "Could not write state.json: {value0}",
 	"service.integration-store.files.text.2": "Could not obtain the master key: {value0}",
-	"service.integration-store.files.text.3": "Could not write secrets.enc: {value0}"
+	"service.integration-store.files.text.3": "Could not write secrets.enc: {value0}",
+	"backup.envelope.invalidFormat": "This is not a backup file exported by bilibili-notify.",
+	"backup.envelope.invalidKind": "The backup kind is not recognized (only full and sanitized are supported).",
+	"backup.envelope.missingVersion": "The backup is missing its format version (schemaVersion).",
+	"backup.envelope.newerVersion": "This backup uses format version {version}, newer than the highest supported version ({current}). Upgrade bilibili-notify before restoring it.",
+	"backup.envelope.zeroVersion": "This backup was exported before 1.0 and cannot be restored directly in 1.0. Install 0.12, restore it there, then upgrade to 1.0; the old data will be migrated automatically.",
+	"backup.envelope.olderVersion": "This backup uses format version {version}, older than the supported version ({current}). This build cannot restore it.",
+	"service.backup.assemble.text.1": "The integration secrets in this backup have an invalid format; the file may have been modified.",
+	"service.backup.assemble.text.2": "The secrets for integration {value0} in this backup have an invalid format; the file may have been modified.",
+	"service.backup.assemble.text.3": "This full backup is missing its encrypted secrets section; the file may have been modified.",
+	"service.backup.crypto.text.1": "The backup PIN is incorrect, or the file is corrupted.",
+	"backup.invalidKind": "kind must be full or sanitized.",
+	"backup.invalidMode": "mode must be overwrite or merge.",
+	"service.backup.rejected-error.text.1": "A full backup requires a PIN.",
+	"backup.configInvalid": "The backup configuration failed validation; nothing was restored: {message}",
+	"backup.duplicateSubscription": "The backup contains multiple subscriptions for the same identity: {identity}. Nothing was restored. Remove the duplicate subscriptions on the original machine and export again.",
+	"backup.integrationNotRunning": "This integration is not currently running."
 }

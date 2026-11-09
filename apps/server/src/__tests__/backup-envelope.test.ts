@@ -1,5 +1,5 @@
 import { makeEmptySubscription, type Subscription } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import {
 	BACKUP_FORMAT,
 	BACKUP_SCHEMA_VERSION,
@@ -7,6 +7,9 @@ import {
 	parseBackup,
 } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
+import { i18n } from "../i18n/index.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /** 抛出来的东西(没抛就是 undefined)。 */
 function thrownBy(fn: () => unknown): unknown {
@@ -23,6 +26,75 @@ function makeSub(uid: string): Subscription {
 }
 
 describe("backup envelope", () => {
+	it.each([
+		[
+			"en",
+			{
+				format: "This is not a backup file exported by bilibili-notify.",
+				kind: "The backup kind is not recognized (only full and sanitized are supported).",
+				missing: "The backup is missing its format version (schemaVersion).",
+				newer:
+					"This backup uses format version 24, newer than the highest supported version (23). Upgrade bilibili-notify before restoring it.",
+				legacy:
+					"This backup was exported before 1.0 and cannot be restored directly in 1.0. Install 0.12, restore it there, then upgrade to 1.0; the old data will be migrated automatically.",
+				older:
+					"This backup uses format version 22, older than the supported version (23). This build cannot restore it.",
+			},
+		],
+		[
+			"ja",
+			{
+				format: "これはbilibili-notifyからエクスポートされたバックアップファイルではありません。",
+				kind: "バックアップの種類を認識できません（fullとsanitizedのみ対応しています）。",
+				missing: "バックアップに形式バージョン（schemaVersion）がありません。",
+				newer:
+					"このバックアップの形式バージョン24は、対応する上限の23より新しいため、復元する前にbilibili-notifyを更新してください。",
+				legacy:
+					"これは1.0より前にエクスポートされたバックアップのため、1.0で直接復元できません。まず0.12をインストールして復元し、その後1.0へ更新してください。旧データは自動的に移行されます。",
+				older:
+					"このバックアップの形式バージョン22は、対応するバージョン23より古いため、このビルドでは復元できません。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				format: "這不是 bilibili-notify 匯出的備份檔案。",
+				kind: "無法辨識備份類型（只支援 full 與 sanitized）。",
+				missing: "備份檔案缺少格式版本號（schemaVersion）。",
+				newer:
+					"此備份的格式版本為 24，比目前支援的最高版本 23 更新，請先更新 bilibili-notify 再還原。",
+				legacy:
+					"這是 1.0 之前匯出的備份，無法直接在 1.0 還原。請先安裝 0.12 並還原此備份，再更新至 1.0，舊資料會自動移轉。",
+				older: "此備份的格式版本為 22，比目前支援的版本 23 更舊，此組建無法還原。",
+			},
+		],
+	] as const)(
+		"%s distinguishes backup format refusals and preserves the current envelope",
+		(locale, text) => {
+			const env = buildBackup({
+				kind: "sanitized",
+				createdAt: "2026-11-09T00:00:00.000Z",
+				sections: { subscriptions: [makeSub("Original ID")] },
+			});
+			const original = JSON.stringify(env);
+			i18n.set({ locale, voice: "plain" });
+			for (const [raw, code, message] of [
+				[{ original: "not a backup" }, "invalid", text.format],
+				[{ ...env, kind: "unknown" }, "invalid", text.kind],
+				[{ ...env, schemaVersion: undefined }, "invalid", text.missing],
+				[{ ...env, schemaVersion: 24 }, "unsupported", text.newer],
+				[{ ...env, schemaVersion: 1 }, "unsupported", text.legacy],
+				[{ ...env, schemaVersion: 22 }, "unsupported", text.older],
+			] as const) {
+				const error = thrownBy(() => parseBackup(JSON.stringify(raw)));
+				expect(error).toBeInstanceOf(BackupRejectedError);
+				expect(error).toMatchObject({ code, message });
+			}
+			expect(parseBackup(original)).toEqual(env);
+			expect(JSON.stringify(env)).toBe(original);
+		},
+	);
+
 	it("builds a sanitized envelope and round-trips it through parse", () => {
 		const subs = [makeSub("111"), makeSub("222")];
 		const env = buildBackup({

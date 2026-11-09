@@ -9,19 +9,22 @@ import {
 	type Subscription,
 	type SubscriptionTag,
 } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
-import { openFullBackup } from "../backup/assemble.js";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
 import { BackupPinError } from "../backup/crypto.js";
 import { type BackupSections, buildBackup } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { ImportMode } from "../backup/restore.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
 import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
+import { i18n } from "../i18n/index.js";
 import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { fakeIntegrationSecrets } from "./support/backup-integration-secrets.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /**
  * BackupService 把纯核心接到真实 ConfigStore + 集成密钥存储:导出读四个 scope 与各集成、各拓展的设置(+各集成的密钥整袋),
@@ -633,6 +636,87 @@ describe("BackupService × 订阅一节里的两种来源", () => {
  * (dry run)那一步就拒,不等主人点了确认才说。
  */
 describe("BackupService × 同一身份只能有一条订阅", () => {
+	it.each([
+		[
+			"en",
+			{
+				duplicate:
+					"The backup contains multiple subscriptions for the same identity: alice.source ID “Original-123”. Nothing was restored. Remove the duplicate subscriptions on the original machine and export again.",
+				inactive: "This integration is not currently running.",
+			},
+		],
+		[
+			"ja",
+			{
+				duplicate:
+					"バックアップ内に同じ識別情報の購読が複数あります：alice.sourceのID「Original-123」。何も復元していません。元の環境で重複した購読を削除して、再度エクスポートしてください。",
+				inactive: "この連携機能は現在実行中ではありません。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				duplicate:
+					"備份中同一識別資料有多個訂閱：alice.source 的「Original-123」。未還原任何資料。請在原環境刪除重複訂閱後重新匯出。",
+				inactive: "此整合功能目前未執行。",
+			},
+		],
+	] as const)(
+		"%s localizes duplicate refusal and inactive-secret results without losing local subscriptions",
+		async (locale, text) => {
+			const local = sub("local");
+			const store = makeFakeStore({ subscriptions: [local] });
+			const target = fakeIntegrationSecrets({ open: ["active"], restore: () => ok() });
+			const service = createBackupService({ configStore: store, integrationSecrets: target });
+			const duplicate = buildBackup({
+				kind: "sanitized",
+				createdAt: "t",
+				sections: {
+					subscriptions: ["first", "second"].map((id) =>
+						makeEmptySubscription({
+							id,
+							identity: { sourceKey: "alice.source", externalId: "Original-123" },
+						}),
+					),
+				},
+			});
+			const full = assembleFullBackup(
+				{
+					integrationSecrets: {
+						active: { token: "Original token 原文" },
+						"alice.source": { token: "Original inactive token" },
+					},
+				},
+				"123456",
+				"t",
+			);
+			i18n.set({ locale, voice: "plain" });
+			const rejected = await service
+				.importBackup({ envelope: duplicate, mode: "overwrite" })
+				.catch((err: unknown) => err);
+			expect(rejected).toBeInstanceOf(BackupRejectedError);
+			expect(rejected).toMatchObject({ code: "invalid", message: text.duplicate });
+			expect(store.getSubscriptions()).toEqual([local]);
+			expect(target.restoreSecrets).not.toHaveBeenCalled();
+			for (const dryRun of [true, false]) {
+				const result = await service.importBackup({
+					envelope: full,
+					pin: "123456",
+					mode: "overwrite",
+					dryRun,
+				});
+				expect(result.restoredIntegrations).toEqual(["active"]);
+				expect(result.unrestoredIntegrations).toEqual([
+					{ key: "alice.source", message: text.inactive },
+				]);
+			}
+			expect(target.restoreSecrets).toHaveBeenCalledExactlyOnceWith("active", {
+				token: "Original token 原文",
+			});
+			expect(store.getSubscriptions()).toEqual([local]);
+		},
+	);
+
 	/** `notes` 用来认出内容是哪一边的。 */
 	function person(id: string, uid: string, notes?: string): Subscription {
 		return {

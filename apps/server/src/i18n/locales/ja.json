@@ -1003,5 +1003,21 @@
 	"service.integration-store.store.text.9": "連携機能{value0}は実行中でないため、秘密情報を復元できません。",
 	"service.integration-store.files.text.1": "state.jsonを書き込めませんでした：{value0}",
 	"service.integration-store.files.text.2": "マスターキーを取得できませんでした：{value0}",
-	"service.integration-store.files.text.3": "secrets.encを書き込めませんでした：{value0}"
+	"service.integration-store.files.text.3": "secrets.encを書き込めませんでした：{value0}",
+	"backup.envelope.invalidFormat": "これはbilibili-notifyからエクスポートされたバックアップファイルではありません。",
+	"backup.envelope.invalidKind": "バックアップの種類を認識できません（fullとsanitizedのみ対応しています）。",
+	"backup.envelope.missingVersion": "バックアップに形式バージョン（schemaVersion）がありません。",
+	"backup.envelope.newerVersion": "このバックアップの形式バージョン{version}は、対応する上限の{current}より新しいため、復元する前にbilibili-notifyを更新してください。",
+	"backup.envelope.zeroVersion": "これは1.0より前にエクスポートされたバックアップのため、1.0で直接復元できません。まず0.12をインストールして復元し、その後1.0へ更新してください。旧データは自動的に移行されます。",
+	"backup.envelope.olderVersion": "このバックアップの形式バージョン{version}は、対応するバージョン{current}より古いため、このビルドでは復元できません。",
+	"service.backup.assemble.text.1": "バックアップ内の連携機能の秘密情報の形式が無効です。ファイルが変更された可能性があります。",
+	"service.backup.assemble.text.2": "バックアップ内の連携機能{value0}の秘密情報の形式が無効です。ファイルが変更された可能性があります。",
+	"service.backup.assemble.text.3": "この完全バックアップには暗号化された秘密情報のセクションがありません。ファイルが変更された可能性があります。",
+	"service.backup.crypto.text.1": "バックアップのPINが正しくないか、ファイルが破損しています。",
+	"backup.invalidKind": "kindにはfullまたはsanitizedを指定してください。",
+	"backup.invalidMode": "modeにはoverwriteまたはmergeを指定してください。",
+	"service.backup.rejected-error.text.1": "完全バックアップにはPINが必要です。",
+	"backup.configInvalid": "バックアップ内の設定が検証に失敗したため、何も復元していません：{message}",
+	"backup.duplicateSubscription": "バックアップ内に同じ識別情報の購読が複数あります：{identity}。何も復元していません。元の環境で重複した購読を削除して、再度エクスポートしてください。",
+	"backup.integrationNotRunning": "この連携機能は現在実行中ではありません。"
 }

@@ -1,12 +1,15 @@
 import { Hono } from "hono";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { BackupPinError } from "../backup/crypto.js";
 import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupEnvelope } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { BackupService } from "../backup/service.js";
 import { ConfigValidationError } from "../config/validation-error.js";
+import { i18n } from "../i18n/index.js";
 import { requestErrorHandler, unhandledErrorMessage } from "../routes/respond-failure.js";
 import { createSystemBackupRoute } from "../routes/system-backup.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /**
  * /api/system/backup 路由只负责 HTTP 层:解析/校验请求、把已验的信封交给 service、把拒收翻成标准失败形状
@@ -81,6 +84,69 @@ interface ErrorBody {
 }
 
 describe("backup route", () => {
+	it.each([
+		[
+			"en",
+			{
+				kind: "kind must be full or sanitized.",
+				mode: "mode must be overwrite or merge.",
+				pin: "A full backup requires a PIN.",
+				config:
+					"The backup configuration failed validation; nothing was restored: Original validation 原文",
+			},
+		],
+		[
+			"ja",
+			{
+				kind: "kindにはfullまたはsanitizedを指定してください。",
+				mode: "modeにはoverwriteまたはmergeを指定してください。",
+				pin: "完全バックアップにはPINが必要です。",
+				config:
+					"バックアップ内の設定が検証に失敗したため、何も復元していません：Original validation 原文",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				kind: "kind 只能是 full 或 sanitized。",
+				mode: "mode 只能是 overwrite 或 merge。",
+				pin: "完整備份必須設定 PIN。",
+				config: "備份中的設定未通過驗證，未還原任何資料：Original validation 原文",
+			},
+		],
+	] as const)(
+		"%s localizes request and restore refusals with original issue paths and diagnostics",
+		async (locale, text) => {
+			const issues = [{ path: ["ai", "provider"], message: "Original field diagnostic 原文" }];
+			const service = fakeService({
+				importBackup: vi.fn(async () => {
+					throw ConfigValidationError.invalid("globals", "Original validation 原文", issues);
+				}),
+			});
+			const app = createSystemBackupRoute({ service });
+			i18n.set({ locale, voice: "plain" });
+			for (const [path, body, message] of [
+				["/export", { kind: "unknown" }, text.kind],
+				["/import", { backup: envelope("sanitized"), mode: "unknown" }, text.mode],
+				["/export", { kind: "full" }, text.pin],
+				["/import", { backup: envelope("full"), mode: "overwrite" }, text.pin],
+			] as const) {
+				const response = await post(app, path, body);
+				expect(response.status).toBe(400);
+				expect(await response.json()).toEqual({ code: "invalid", message });
+			}
+			expect(service.importBackup).not.toHaveBeenCalled();
+			expect(service.exportBackup).not.toHaveBeenCalled();
+			const response = await post(app, "/import", {
+				backup: envelope("sanitized"),
+				mode: "overwrite",
+			});
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ code: "invalid", message: text.config, issues });
+			expect(service.importBackup).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	it("POST /export returns the envelope from the service", async () => {
 		const service = fakeService();
 		const app = createSystemBackupRoute({ service });

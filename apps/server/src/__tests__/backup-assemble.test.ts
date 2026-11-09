@@ -1,5 +1,5 @@
 import { type Connection, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import type { ZodType } from "zod";
 import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
 import {
@@ -12,11 +12,14 @@ import {
 import { buildBackup } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
+import { i18n } from "../i18n/index.js";
 import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
 import { QQOfficialConnectionSettingsSchema } from "../platforms/qq-official-settings.js";
 import { WebhookConnectionSettingsSchema } from "../platforms/webhook-settings.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /**
  * 完整档组装:明文段走 redactSecretKeys(连完整档明文都零机密),真机密(apiKey /
@@ -84,6 +87,88 @@ function onebot(id: string, token: string): Connection {
 }
 
 describe("full backup assemble/open", () => {
+	it.each([
+		[
+			"en",
+			{
+				bag: "The integration secrets in this backup have an invalid format; the file may have been modified.",
+				integration:
+					"The secrets for integration alice.bridge in this backup have an invalid format; the file may have been modified.",
+				missing:
+					"This full backup is missing its encrypted secrets section; the file may have been modified.",
+				pin: "The backup PIN is incorrect, or the file is corrupted.",
+			},
+		],
+		[
+			"ja",
+			{
+				bag: "バックアップ内の連携機能の秘密情報の形式が無効です。ファイルが変更された可能性があります。",
+				integration:
+					"バックアップ内の連携機能alice.bridgeの秘密情報の形式が無効です。ファイルが変更された可能性があります。",
+				missing:
+					"この完全バックアップには暗号化された秘密情報のセクションがありません。ファイルが変更された可能性があります。",
+				pin: "バックアップのPINが正しくないか、ファイルが破損しています。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				bag: "備份中的整合功能機密資料格式無效，檔案可能已被修改。",
+				integration: "備份中整合功能 alice.bridge 的機密資料格式無效，檔案可能已被修改。",
+				missing: "此完整備份缺少加密的機密資料區段，檔案可能已被修改。",
+				pin: "備份 PIN 不正確，或檔案已損毀。",
+			},
+		],
+	] as const)(
+		"%s distinguishes invalid secret sections and incorrect PIN without altering the backup",
+		(locale, text) => {
+			const sections = {
+				globals: globalsWithApiKey("Original API key 原文"),
+				integrationSecrets: { "alice.bridge": { token: "Original token 原文" } },
+			};
+			const valid = assembleFullBackup(sections, "123456", "2026-11-09T00:00:00.000Z");
+			const original = JSON.stringify(valid);
+			const badBag = buildBackup({
+				kind: "full",
+				createdAt: "t",
+				sections: {},
+				secrets: sealSecrets("123456", { integrationSecrets: [] } as unknown as BackupSecretBag),
+			});
+			const badIntegration = buildBackup({
+				kind: "full",
+				createdAt: "t",
+				sections: {},
+				secrets: sealSecrets("123456", {
+					integrationSecrets: { "alice.bridge": "not an object" },
+				} as unknown as BackupSecretBag),
+			});
+			const missing = buildBackup({ kind: "full", createdAt: "t", sections: {} });
+			i18n.set({ locale, voice: "plain" });
+			for (const [env, pin, message] of [
+				[badBag, "123456", text.bag],
+				[badIntegration, "123456", text.integration],
+				[missing, "123456", text.missing],
+				[valid, "000000", text.pin],
+			] as const) {
+				let failure: unknown;
+				try {
+					openFullBackup(env, pin);
+				} catch (err) {
+					failure = err;
+				}
+				expect(failure).toBeInstanceOf(BackupRejectedError);
+				expect(failure).toMatchObject({ code: "invalid", message });
+				expect(JSON.stringify(failure)).not.toContain("Original token");
+			}
+			expect(openFullBackup(valid, "123456").integrationSecrets).toEqual(
+				sections.integrationSecrets,
+			);
+			expect(JSON.stringify(valid)).toBe(original);
+			expect(original).not.toContain("Original API key");
+			expect(original).not.toContain("Original token");
+		},
+	);
+
 	it("plaintext sections carry NO secret; secrets ride the encrypted block", () => {
 		const env = assembleFullBackup(
 			{
