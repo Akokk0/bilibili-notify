@@ -1486,5 +1486,8 @@
 	"service.posts.deliver-post.text.2": "作品卡片產生失敗：{value0}，已改用純文字推送，請檢查卡片繪製狀態。",
 	"live.superchatFallback": "在 {name} 的直播中，{viewer} 傳送了一則付費留言：{text}",
 	"live.membershipFallback": "在 {name} 的直播中，{viewer} 成為了 {tier} 會員。",
-	"service.live.live-text.text.1": "尚未取得"
+	"service.live.live-text.text.1": "尚未取得",
+	"service.routes.test-result.text.1": "無法確認送達，對端未提供原因。",
+	"service.routes.test-result.text.2": "此平台不支援連線探測。",
+	"service.routes.test-result.text.3": "連線探測未通過，對端未提供原因。"
 }

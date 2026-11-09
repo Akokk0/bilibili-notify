@@ -1,4 +1,4 @@
-import type { DeliveryResult, ProbeResult, Result } from "@bilibili-notify/internal";
+import type { DeliveryResult, Failure, ProbeResult, Result } from "@bilibili-notify/internal";
 import { fail, ok } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 
@@ -12,6 +12,8 @@ import { t as serverText } from "../i18n/index.js";
 export type TestResult = Result<{ latencyMs: number }>;
 
 /** 一次测试投递的结果 → 线上的形状。 */
+export function testResultOfDelivery(result: Failure): Failure;
+export function testResultOfDelivery(result: DeliveryResult): TestResult;
 export function testResultOfDelivery(result: DeliveryResult): TestResult {
 	if (result.ok) return ok({ latencyMs: result.latencyMs });
 	return result.message

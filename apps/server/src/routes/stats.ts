@@ -35,6 +35,7 @@ import {
 	type OverviewFetcher,
 } from "../stats/roast-generate.js";
 import { pipelineNotReadyMessage, respondFailure } from "./respond-failure.js";
+import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -430,11 +431,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		if (out.sent.length === 0) {
 			// 投递那头的失败原样回(码、原话、平台自己的码);原话是空的补一句能读的。
 			const failure = out.failed[0]?.failure ?? fail("unavailable", "");
-			return c.json<StatsRoastPushResponse>(
-				failure.message
-					? failure
-					: { ...failure, message: serverText("service.routes.stats.text.4") },
-			);
+			return c.json<StatsRoastPushResponse>(testResultOfDelivery(failure));
 		}
 		return c.json<StatsRoastPushResponse>(ok({ mode: out.mode }));
 	});

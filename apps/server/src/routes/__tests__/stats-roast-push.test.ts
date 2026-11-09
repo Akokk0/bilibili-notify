@@ -9,9 +9,10 @@
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
-import { fail, ok } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { type DeliveryResult, fail, ok } from "@bilibili-notify/internal";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { BILI_SOURCE_DESCRIPTOR } from "../../bilibili/source.js";
+import { i18n } from "../../i18n/index.js";
 import { createStatsRoute } from "../stats.js";
 import type { RouteDeps } from "../types.js";
 
@@ -25,6 +26,8 @@ const BOARD = {
 	],
 	pushText: "本周鸽王诞生 🕊️",
 };
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 const SOLO = {
 	subscriptionId: "s200",
@@ -53,10 +56,11 @@ interface StubOpts {
 const ADAPTER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 function makeDeps(opts: StubOpts = {}) {
-	const sendToTarget = vi.fn(async () =>
-		opts.sendFails
-			? fail("rate_limited", "目标不可达", { upstreamCode: 22009 })
-			: ok({ latencyMs: 1 }),
+	const sendToTarget = vi.fn(
+		async (): Promise<DeliveryResult> =>
+			opts.sendFails
+				? fail("rate_limited", "目标不可达", { upstreamCode: 22009 })
+				: ok({ latencyMs: 1 }),
 	);
 	// 变参签名照抄真身:写成零参的话 `mock.calls[0][1]` 在类型上是「长度 0 的元组」,
 	// 断言第二个参数(皮肤 id)根本编译不过。
@@ -138,6 +142,26 @@ const boardBody = (over: Record<string, unknown> = {}) => ({
 	kind: "board",
 	result: BOARD,
 	...over,
+});
+
+it.each([
+	["zh-CN", "未能确认送达，对端未提供原因"],
+	["en", "Delivery could not be confirmed; the other end gave no reason."],
+	["ja", "配信を確認できませんでした。相手側から理由が返されていません。"],
+	["zh-TW", "無法確認送達，對端未提供原因。"],
+] as const)("%s:手动推送无法确认且无原因时如实回报,不追加发送", async (locale, message) => {
+	i18n.set({ locale, voice: "plain" });
+	const { deps, sendToTarget } = makeDeps({ cardsEnabled: false });
+	sendToTarget.mockResolvedValue(fail("indeterminate", "", { upstreamCode: 9 }));
+	const response = await push(createStatsRoute(deps), boardBody());
+	expect(response.status).toBe(200);
+	expect(await response.json()).toEqual({
+		ok: false,
+		code: "indeterminate",
+		message,
+		upstreamCode: 9,
+	});
+	expect(sendToTarget).toHaveBeenCalledTimes(1);
 });
 
 describe("POST /roast/push — 图片优先", () => {

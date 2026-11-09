@@ -1486,5 +1486,8 @@
 	"service.posts.deliver-post.text.2": "作品カードの描画に失敗しました：{value0}。テキストのみで送信しました。カードレンダラーの状態を確認してください。",
 	"live.superchatFallback": "{name}の配信で、{viewer}が有料メッセージを送りました：{text}",
 	"live.membershipFallback": "{name}の配信で、{viewer}が{tier}の会員になりました。",
-	"service.live.live-text.text.1": "未取得"
+	"service.live.live-text.text.1": "未取得",
+	"service.routes.test-result.text.1": "配信を確認できませんでした。相手側から理由が返されていません。",
+	"service.routes.test-result.text.2": "このプラットフォームは接続確認に対応していません。",
+	"service.routes.test-result.text.3": "接続確認に失敗しました。相手側から理由が返されていません。"
 }

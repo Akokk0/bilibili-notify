@@ -4,8 +4,62 @@
  */
 
 import { fail } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { testResultOfDelivery, testResultOfProbe } from "../test-result.js";
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+it.each([
+	["zh-CN", "未能确认送达，对端未提供原因", "该平台不支持连接探测", "连接探测没通过，对端没说原因"],
+	[
+		"en",
+		"Delivery could not be confirmed; the other end gave no reason.",
+		"This platform does not support connection probing.",
+		"The connection probe did not succeed; the other end gave no reason.",
+	],
+	[
+		"ja",
+		"配信を確認できませんでした。相手側から理由が返されていません。",
+		"このプラットフォームは接続確認に対応していません。",
+		"接続確認に失敗しました。相手側から理由が返されていません。",
+	],
+	[
+		"zh-TW",
+		"無法確認送達，對端未提供原因。",
+		"此平台不支援連線探測。",
+		"連線探測未通過，對端未提供原因。",
+	],
+] as const)(
+	"%s:空原因的无法确认不谎称未送达,保留结果码/上游码/逐项原因",
+	(locale, delivery, unsupported, probe) => {
+		i18n.set({ locale, voice: "plain" });
+		const raw = fail("indeterminate", "", {
+			upstreamCode: 9,
+			issues: [{ path: ["remote"], message: "Original diagnostic 原文" }],
+		});
+		expect(testResultOfDelivery(raw)).toEqual({ ...raw, message: delivery });
+		expect(raw.message).toBe("");
+		const explained = fail("indeterminate", "Original upstream reason 原文", { upstreamCode: 10 });
+		expect(testResultOfDelivery(explained)).toBe(explained);
+		expect(testResultOfProbe(explained)).toBe(explained);
+		expect(testResultOfProbe(fail("unsupported", "Original protocol detail"))).toEqual({
+			ok: false,
+			code: "unsupported",
+			message: unsupported,
+		});
+		expect(testResultOfProbe(fail("unavailable", "", { upstreamCode: 11 }))).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: probe,
+			upstreamCode: 11,
+		});
+		expect(testResultOfDelivery({ ok: true, latencyMs: 42, isSynthetic: true })).toEqual({
+			ok: true,
+			latencyMs: 42,
+		});
+	},
+);
 
 describe("testResultOfDelivery", () => {
 	it("送达 → { ok: true, latencyMs }", () => {
@@ -35,7 +89,7 @@ describe("testResultOfDelivery", () => {
 		expect(r).toEqual({
 			ok: false,
 			code: "unknown",
-			message: "没有送达，对端没说原因",
+			message: "未能确认送达，对端未提供原因",
 			upstreamCode: 9,
 		});
 	});

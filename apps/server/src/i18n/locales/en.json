@@ -1497,5 +1497,8 @@
 	"service.posts.deliver-post.text.2": "Post card rendering failed: {value0}. Delivery fell back to plain text; check the card renderer status.",
 	"live.superchatFallback": "{viewer} sent a paid message in {name}'s stream: {text}",
 	"live.membershipFallback": "In {name}'s stream, {viewer} joined membership tier {tier}.",
-	"service.live.live-text.text.1": "Not available yet"
+	"service.live.live-text.text.1": "Not available yet",
+	"service.routes.test-result.text.1": "Delivery could not be confirmed; the other end gave no reason.",
+	"service.routes.test-result.text.2": "This platform does not support connection probing.",
+	"service.routes.test-result.text.3": "The connection probe did not succeed; the other end gave no reason."
 }
