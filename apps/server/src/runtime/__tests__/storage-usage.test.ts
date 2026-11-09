@@ -12,6 +12,7 @@ import {
 	makeStorageWorld,
 	type StorageWorld,
 } from "../../__tests__/support/storage-world.js";
+import { i18n } from "../../i18n/index.js";
 import { IMAGE_REFERRERS } from "../../images/image-referrers.js";
 import type { ImageUsage } from "../../images/image-store.js";
 import { DATA_ROOT_LAYOUT } from "../roots.js";
@@ -49,10 +50,12 @@ const text = (...lines: string[]) => `${lines.join("\n")}\n`;
 
 let world: StorageWorld;
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	world = await makeStorageWorld();
 });
 afterEach(async () => {
 	await world.dispose();
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 });
 
 /** 摆好每一类各一点东西,回各自的期望字节数(手写)。 */
@@ -129,6 +132,14 @@ function gen(seq: number, deletable: boolean, reclaimableBytes: number) {
 }
 
 describe("用量表:每一行的数字", () => {
+	it("changing language after image registration preserves every storage category and byte total", async () => {
+		await seed();
+		const before = await world.storage.list();
+		for (const locale of ["en", "ja", "zh-TW", "zh-CN"] as const) {
+			i18n.set({ locale, voice: "plain" });
+			expect(await world.storage.list()).toEqual(before);
+		}
+	});
 	it("每类各放一点东西,逐行对数;次序固定", async () => {
 		const n = await seed();
 		const { rows } = await world.storage.list();

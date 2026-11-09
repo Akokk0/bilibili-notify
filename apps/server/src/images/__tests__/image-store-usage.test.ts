@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { settingsSegment } from "../../bilibili/settings.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
+import { i18n } from "../../i18n/index.js";
 import { createAppRuntime } from "../../runtime/bootstrap.js";
 import { IMAGE_REFERRERS } from "../image-referrers.js";
 import { createImageStore, IMAGE_GRACE_MS, type ImageStore } from "../image-store.js";
@@ -43,6 +44,7 @@ const lists = { history: [] as string[], chat: [] as string[], profiles: [] as s
 let calls: Record<string, number>;
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	dir = await mkdtemp(join(tmpdir(), "bn-images-usage-"));
 	store = createImageStore({ dir });
 	calls = {};
@@ -82,6 +84,41 @@ async function age(ref: string, ms: number) {
 }
 
 describe("usage", () => {
+	it("uses stable identities for built-in holders across language changes and rejects duplicate registration", async () => {
+		const names = [
+			IMAGE_REFERRERS.history,
+			IMAGE_REFERRERS.repush,
+			IMAGE_REFERRERS.profiles,
+			IMAGE_REFERRERS.chat,
+			IMAGE_REFERRERS.posts,
+			IMAGE_REFERRERS.inTransit,
+			IMAGE_REFERRERS.live,
+			IMAGE_REFERRERS.sourceDeclared,
+			IMAGE_REFERRERS.accounts,
+		];
+		const refs: string[] = [];
+		const writers = names.map((name) => store.register({ name, listRefs: async () => refs }));
+		const first = writers[0];
+		if (!first) throw new Error("no writer");
+		refs.push(await put(first, A));
+		for (const locale of ["en", "ja", "zh-TW", "zh-CN"] as const) {
+			i18n.set({ locale, voice: "plain" });
+			expect((await store.usage())[0]?.holders).toEqual([
+				"history",
+				"repush",
+				"profiles",
+				"chat",
+				"posts",
+				"in-transit",
+				"live",
+				"source-declared",
+				"accounts",
+			]);
+			expect(() =>
+				store.register({ name: IMAGE_REFERRERS.history, listRefs: async () => [] }),
+			).toThrow("history");
+		}
+	});
 	it("每张图回大小、修改时间与引用它的引用方(只一家 / 两家 / 没人 / 宽限期内的新图)", async () => {
 		const writer = registerThree();
 		const a = await put(writer, A);
