@@ -99,7 +99,7 @@ describe("createAppRuntime 里的账号头像", () => {
 		await registerSource(authWith(() => ({ name: "主人", avatar: ref })));
 		const usage = await runtime.imageStore.usage();
 		const row = usage.find((u) => u.ref === ref);
-		expect(row?.holders).toEqual(["账号头像"]);
+		expect(row?.holders).toEqual(["accounts"]);
 		expect(classifyImage(row?.holders ?? [])).toBe("otherImages");
 	});
 });

@@ -1265,12 +1265,14 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			await vi.waitFor(async () => expect(await storedTemplates()).not.toHaveProperty("post"));
 			expect(await pushedText("p46c")).toContain(factoryText);
 
-			// ④ 换语言不写盘:英文今天没有出厂文字、拿简体打底,盘上仍没有 post,推出去仍是出厂那句。
+			// ④ 换语言只换出厂文字,盘上仍没有 post,不把译文固化进设置。
 			await patchCore({ locale: "en" });
 			// 等语言落了盘再看:语言与模板在同一份文件里一次写完,换语言时若顺手写了 post,此刻它也在。
 			await vi.waitFor(async () => expect((await storedCore()).locale).toBe("en"));
 			expect(await storedTemplates()).not.toHaveProperty("post");
-			expect(await pushedText("p46d")).toContain(factoryText);
+			expect(await pushedText("p46d")).toBe(
+				"小爱 published a new post\nhttps://acme.invalid/post/p46d",
+			);
 		} finally {
 			await patchCore({ locale: null, defaults: { templates: { post: null } } });
 		}

@@ -162,20 +162,6 @@ vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 	webSearchExecutorFromSettings: () => null,
 }));
 
-// 英文字典现在是空的:给 en 的内置人格名字戴个前缀,才看得出常驻生成器拿到的是「新语言」的那一份。
-vi.mock("@bilibili-notify/internal/texts/builtin", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@bilibili-notify/internal/texts/builtin")>();
-	return {
-		...actual,
-		builtinPresetsFor: (...args: Parameters<typeof actual.builtinPresetsFor>) => {
-			const list = actual.builtinPresetsFor(...args);
-			return args[0] === "en"
-				? list.map((p) => ({ ...p, persona: { ...p.persona, name: `EN-${p.persona.name}` } }))
-				: list;
-		},
-	};
-});
-
 vi.mock("@bilibili-notify/image", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@bilibili-notify/image")>();
 	return {
@@ -2311,7 +2297,7 @@ describe("createPipelineRuntime — AI 热重载三态", () => {
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.ai[0].updateConfig).toHaveBeenCalledTimes(1);
-		expect(H.ai[0].updateConfig.mock.calls[0]?.[0].persona.name).toBe("EN-小绫");
+		expect(H.ai[0].updateConfig.mock.calls[0]?.[0].persona.name).toBe("Ling");
 	});
 
 	it("仍启用但改配置:增量 updateConfig,不重建实例", () => {
