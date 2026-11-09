@@ -1474,5 +1474,13 @@
 	"service.routes.masked-cells.text.1": "これはレスポンスで秘密値を隠すためのマスクで、新しい値ではありません。変更しない場合はこの項目を送信しないでください。置き換える場合は新しい平文、消去する場合は空文字列（任意項目はnull）を指定してください。",
 	"service.routes.masked-cells.text.2": "秘密値のマスクは新しい値ではないため、書き戻せません。",
 	"service.routes.command-alias-guard.text.1": "「{value0}」の別名「{value1}」が、自身のコマンド名または別の別名と重複しています。",
-	"service.routes.command-alias-guard.text.2": "別名「{value0}」を「{value1}」と「{value2}」の両方が使用しています。1つのトリガーを複数のコマンドに割り当てることはできません。"
+	"service.routes.command-alias-guard.text.2": "別名「{value0}」を「{value1}」と「{value2}」の両方が使用しています。1つのトリガーを複数のコマンドに割り当てることはできません。",
+	"service.runtime.command-dispatcher.text.1": "コマンド「{value0}」のトリガー「{value1}」が「{value2}」と重複しています。1つのトリガーを複数のコマンドに割り当てることはできません。",
+	"service.runtime.command-dispatcher.text.2": "そのコマンドはありません。{value0}{value1}を入力しようとしましたか？",
+	"service.runtime.command-dispatcher.text.3": "そのコマンドはありません。",
+	"service.runtime.login-command.text.1": "配信元",
+	"service.runtime.login-command.text.2": "QRコードで再ログインします（配信元が複数ある場合は名前かキーを指定してください）。",
+	"service.runtime.login-command.text.3": "QRコードはこのプライベートチャットにのみ送信され、{value0}秒間有効です。期限が切れたら、コマンドを再実行してください。",
+	"service.index.text.1": "コマンド名",
+	"service.index.text.2": "利用可能なコマンドを表示"
 }

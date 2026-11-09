@@ -1485,5 +1485,13 @@
 	"service.routes.masked-cells.text.1": "This is a secret mask from a response, not a new value. Omit this field if unchanged; provide new plaintext to replace it, an empty string to clear it, or null for an optional field.",
 	"service.routes.masked-cells.text.2": "A secret mask is not a new value and cannot be written back.",
 	"service.routes.command-alias-guard.text.1": "Alias \"{value1}\" for \"{value0}\" duplicates its own command or another alias.",
-	"service.routes.command-alias-guard.text.2": "Alias \"{value0}\" is used by both \"{value1}\" and \"{value2}\". Each trigger can belong to only one command."
+	"service.routes.command-alias-guard.text.2": "Alias \"{value0}\" is used by both \"{value1}\" and \"{value2}\". Each trigger can belong to only one command.",
+	"service.runtime.command-dispatcher.text.1": "Trigger \"{value1}\" for command \"{value0}\" conflicts with \"{value2}\". Each trigger can belong to only one command.",
+	"service.runtime.command-dispatcher.text.2": "Unknown command. Did you mean {value0}{value1}?",
+	"service.runtime.command-dispatcher.text.3": "Unknown command.",
+	"service.runtime.login-command.text.1": "Source",
+	"service.runtime.login-command.text.2": "Scan a QR code to sign in again (if several sources are available, add the source name or key).",
+	"service.runtime.login-command.text.3": "The QR code is sent only to this private chat and is valid for {value0} seconds. Run the command again if it expires.",
+	"service.index.text.1": "Command name",
+	"service.index.text.2": "Show available commands"
 }

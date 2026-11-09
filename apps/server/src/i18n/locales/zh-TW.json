@@ -1474,5 +1474,13 @@
 	"service.routes.masked-cells.text.1": "這是回應中遮蔽秘密值的遮罩，不是新值。未修改時請勿傳入此欄位；若要替換，請提供新的明文；若要清空，請傳入空字串（選填欄位傳入 null）。",
 	"service.routes.masked-cells.text.2": "秘密值的遮罩不是新值，無法寫回。",
 	"service.routes.command-alias-guard.text.1": "「{value0}」的別名「{value1}」與自身指令名稱或其他別名重複。",
-	"service.routes.command-alias-guard.text.2": "別名「{value0}」同時被「{value1}」和「{value2}」使用，一個觸發詞只能屬於一條指令。"
+	"service.routes.command-alias-guard.text.2": "別名「{value0}」同時被「{value1}」和「{value2}」使用，一個觸發詞只能屬於一條指令。",
+	"service.runtime.command-dispatcher.text.1": "指令「{value0}」的觸發詞「{value1}」與「{value2}」衝突，一個觸發詞只能屬於一條指令。",
+	"service.runtime.command-dispatcher.text.2": "沒有這條指令，是否要輸入 {value0}{value1}？",
+	"service.runtime.command-dispatcher.text.3": "沒有這條指令。",
+	"service.runtime.login-command.text.1": "來源",
+	"service.runtime.login-command.text.2": "重新掃描 QR Code 登入（有多個來源時，請加上來源名稱或鍵）。",
+	"service.runtime.login-command.text.3": "QR Code 只會傳送到這個私人對話，有效時間為 {value0} 秒；過期後請重新執行指令。",
+	"service.index.text.1": "指令名稱",
+	"service.index.text.2": "查看可用指令"
 }

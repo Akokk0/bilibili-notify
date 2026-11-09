@@ -10,7 +10,8 @@
  */
 
 import { fail, type NotificationPayload, ok, type Result } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { extractPrivateMessage } from "../../platforms/onebot-inbound.js";
 import { createCommandDispatcher } from "../command-dispatcher.js";
 
@@ -25,6 +26,8 @@ const STRANGER = "20002";
 const PLATFORM = "onebot";
 /** 入站帧的来源。鉴权比的是三坐标,平台这一格得跟主人那条私聊对得上。 */
 const META = { connectionId: "a1", platform: PLATFORM };
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /** `null` = 主人私聊 user_id 没配上(不能用 undefined:默认参数会把它换成 MASTER)。 */
 function makeDispatcher(
@@ -67,6 +70,46 @@ function makeDispatcher(
 	});
 	return { dispatcher, reply, sendToAddress, config };
 }
+
+it.each([
+	[
+		"en",
+		'Trigger "Quiet" for command "report" conflicts with "mute". Each trigger can belong to only one command.',
+		"Unknown command. Did you mean bn mute?",
+		"Unknown command.",
+	],
+	[
+		"ja",
+		"コマンド「report」のトリガー「Quiet」が「mute」と重複しています。1つのトリガーを複数のコマンドに割り当てることはできません。",
+		"そのコマンドはありません。bn muteを入力しようとしましたか？",
+		"そのコマンドはありません。",
+	],
+	[
+		"zh-TW",
+		"指令「report」的觸發詞「Quiet」與「mute」衝突，一個觸發詞只能屬於一條指令。",
+		"沒有這條指令，是否要輸入 bn mute？",
+		"沒有這條指令。",
+	],
+] as const)(
+	"%s:分发提示本地化,鉴权静默与当前前缀/触发词原文不变",
+	async (locale, conflict, suggested, unknown) => {
+		i18n.set({ locale, voice: "plain" });
+		const run = vi.fn(async () => {});
+		expect(() =>
+			makeDispatcher([
+				{ name: "mute", aliases: ["quiet"], run },
+				{ name: "report", aliases: ["Quiet"], run },
+			]),
+		).toThrow(conflict);
+		const { dispatcher, reply } = makeDispatcher([{ name: "mute", run }], MASTER, "bn ");
+		await dispatcher.handleMessage({ address: STRANGER, text: "bn mut" }, META);
+		expect(reply).not.toHaveBeenCalled();
+		await dispatcher.handleMessage({ address: MASTER, text: "bn mut" }, META);
+		await dispatcher.handleMessage({ address: MASTER, text: "bn zzzzzzzzz" }, META);
+		expect(reply.mock.calls).toEqual([[suggested], [unknown]]);
+		expect(run).not.toHaveBeenCalled();
+	},
+);
 
 describe("鉴权门", () => {
 	it("不是主人:handler 不跑,而且一个字都不回", async () => {

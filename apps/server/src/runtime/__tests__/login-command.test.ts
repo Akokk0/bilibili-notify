@@ -24,6 +24,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n/index.js";
 import type { SourceLoginView } from "../../subscriptions/registry.js";
+import { renderHelp } from "../command-help.js";
 import { createLoginCommand } from "../login-command.js";
 
 /** 一个 1×1 PNG 的 data URL,用来验「发出去的是字节不是那串文本」。 */
@@ -85,6 +86,46 @@ function setup(sources: SourceLoginView[], opts: { sendOk?: boolean } = {}) {
 		fire: (word?: string) => spec.run(word === undefined ? {} : { source: word }, ctx),
 	};
 }
+
+it.each([
+	[
+		"en",
+		"Source",
+		"Scan a QR code to sign in again (if several sources are available, add the source name or key).",
+		"The QR code is sent only to this private chat and is valid for 180 seconds. Run the command again if it expires.",
+	],
+	[
+		"ja",
+		"配信元",
+		"QRコードで再ログインします（配信元が複数ある場合は名前かキーを指定してください）。",
+		"QRコードはこのプライベートチャットにのみ送信され、180秒間有効です。期限が切れたら、コマンドを再実行してください。",
+	],
+	[
+		"zh-TW",
+		"來源",
+		"重新掃描 QR Code 登入（有多個來源時，請加上來源名稱或鍵）。",
+		"QR Code 只會傳送到這個私人對話，有效時間為 180 秒；過期後請重新執行指令。",
+	],
+] as const)(
+	"%s:已登记的登录帮助随语言更新,输入语法和私聊发送保持原样",
+	(locale, source, description, details) => {
+		const loginSourceStub = loginSource("alpha", "Original source 原文");
+		const { spec, sent, replies } = setup([loginSourceStub]);
+		i18n.set({ locale, voice: "plain" });
+		expect(spec.name).toBe("login");
+		expect(spec.signature).toBe("[source:text]");
+		expect(spec.parameterLabels).toEqual({ source });
+		expect(spec.description).toBe(description);
+		expect(spec.details).toBe(details);
+		const help = renderHelp([spec], "bn ", "login");
+		expect(help).toContain(`bn login [${source}]`);
+		expect(help).toContain(description);
+		expect(help).toContain(details);
+		expect(loginSourceStub.beginLogin).not.toHaveBeenCalled();
+		expect(sent).toEqual([]);
+		expect(replies).toEqual([]);
+	},
+);
 
 describe("login 指令", () => {
 	it.each([
