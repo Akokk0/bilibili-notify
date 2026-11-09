@@ -266,12 +266,15 @@ export function brokenInstanceIdTakenMessage(id: string): string {
 /**
  * 把当前的坏格表对到问题表:有条目就报(同一条,只换文案),空了就清且不补「已恢复」。
  * 每次有条目时记一行 warn(逐格路径与原因,不带原文)。
+ * 原因由宿主生成时交读取函数,换语言重取安全原因;外来原话仍可直接交数组。
  */
 export function syncSettingsProblem(
 	problems: ProblemTable,
-	entries: readonly InvalidSettingEntry[],
+	currentEntries: readonly InvalidSettingEntry[] | (() => readonly InvalidSettingEntry[]),
 	logger: Logger,
 ): void {
+	const readEntries = typeof currentEntries === "function" ? currentEntries : () => currentEntries;
+	const entries = readEntries();
 	if (entries.length === 0) {
 		problems.resolve(KEY, { notify: false });
 		return;
@@ -298,5 +301,5 @@ export function syncSettingsProblem(
 		logger.warn(logText("log.config.instancePlaintextNote"), {
 			event: "config.provider_plaintext_quarantined",
 		});
-	problems.report({ ...KEY, message: () => settingsInvalidMessage(entries) });
+	problems.report({ ...KEY, message: () => settingsInvalidMessage(readEntries()) });
 }

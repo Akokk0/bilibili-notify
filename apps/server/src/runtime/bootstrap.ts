@@ -364,8 +364,12 @@ export function createAppRuntime(
 			adapterRegistry.list().find((a) => a.adapterKey === adapterKey)?.settingsSchema,
 		// 隔离订阅只交数量,核心坏格只交安全原因:各合成一条问题,不私聊。
 		onInvalidSubscriptionsChanged: (count) => syncSubscriptionsProblem(problems, count),
-		onInvalidSettingsChanged: (entries) =>
-			syncSettingsProblem(problems, entries, serviceCtx.logger),
+		onInvalidSettingsChanged: () =>
+			syncSettingsProblem(
+				problems,
+				() => configStore.getInvalidSettings().map(({ path, issues }) => ({ path, issues })),
+				serviceCtx.logger,
+			),
 	});
 	// 连接没了,关于它的问题跟着清(不补「已恢复」)。路由删除与恢复备份整表换都发 `config-changed { connections }`,
 	// 事件不带改动内容,所以拿此刻的连接 id 集合比一遍;先看表里有没有连接支,没有就不拷整张连接表。
