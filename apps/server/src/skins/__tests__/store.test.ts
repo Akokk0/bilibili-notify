@@ -9,7 +9,8 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SkinManifest } from "@bilibili-notify/contract";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { MAX_SKIN_ASSETS, SkinStore, SkinStoreError } from "../store.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -33,6 +34,73 @@ beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "bn-skins-"));
 	store = new SkinStore({ skinsDir: dir });
 	await store.init();
+});
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+it.each([
+	[
+		"en",
+		{
+			missing: "Skin does not exist or has been deleted.",
+			type: "Unsupported file type: svg (images: PNG / JPEG / WebP only; fonts: woff2 / woff / ttf / otf only).",
+			imageSize: "The image is too large (limit: 5MB).",
+			fontSize:
+				"The font is too large (limit: 20MB). Converting the same font to woff2 usually reduces it to about one third of the size.",
+			mode: "This skin has no dark mode.",
+			last: "This is the last mode. Removing it would delete the entire skin; use Delete instead.",
+		},
+	],
+	[
+		"ja",
+		{
+			missing: "スキンが存在しないか、削除されています。",
+			type: "非対応のファイル形式です：svg（画像はPNG / JPEG / WebP、フォントはwoff2 / woff / ttf / otfのみ）。",
+			imageSize: "画像が大きすぎます（上限：5MB）。",
+			fontSize:
+				"フォントが大きすぎます（上限：20MB）。同じフォントをwoff2に変換すると、通常は約3分の1のサイズになります。",
+			mode: "このスキンにはダークモードがありません。",
+			last: "これは最後のモードです。削除するとスキン全体の削除になるため、「削除」を使用してください。",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			missing: "佈景主題不存在或已刪除。",
+			type: "不支援的檔案格式：svg（圖片僅限 PNG / JPEG / WebP，字型僅限 woff2 / woff / ttf / otf）。",
+			imageSize: "圖片過大（上限 5MB）。",
+			fontSize: "字型過大（上限 20MB）。將同一套字型轉成 woff2，大小通常可縮減至約三分之一。",
+			mode: "這套佈景主題沒有深色模式。",
+			last: "這是最後一個模式，移除後等同刪除整套佈景主題，請改用「刪除」。",
+		},
+	],
+] as const)("%s:模式及素材拒绝提示用当前语言,原皮肤和启用槽保持不变", async (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	const manifest = makeManifest({ name: "Original skin 原文" });
+	const { id } = await store.save({ manifest, assets: new Map([["assets/bg.png", PNG]]) });
+	await store.setActiveSlot("light", id);
+	for (const [run, code, message] of [
+		[() => store.addAsset("missing", PNG, "png"), "not_found", text.missing],
+		[() => store.addAsset(id, PNG, "svg"), "invalid", text.type],
+		[
+			() => store.addAsset(id, new Uint8Array(5 * 1024 * 1024 + 1), "png"),
+			"invalid",
+			text.imageSize,
+		],
+		[
+			() => store.addAsset(id, new Uint8Array(20 * 1024 * 1024 + 1), "woff2"),
+			"invalid",
+			text.fontSize,
+		],
+		[() => store.removeMode(id, "dark"), "invalid", text.mode],
+		[() => store.removeMode(id, "light"), "conflict", text.last],
+	] as const) {
+		await expect(run()).rejects.toMatchObject({ code, message });
+	}
+	expect(await store.get(id)).toEqual(manifest);
+	expect(await store.getDefault(id)).toEqual(manifest);
+	expect(await store.listAssets(id)).toEqual(["assets/bg.png"]);
+	expect(store.getActive()).toEqual({ light: id, dark: null });
 });
 
 describe("SkinStore", () => {

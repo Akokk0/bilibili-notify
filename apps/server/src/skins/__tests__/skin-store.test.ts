@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isLeftoverName } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	createSkinStore,
 	flushSkinWrites,
@@ -55,6 +56,7 @@ beforeEach(async () => {
 	skipped = [];
 });
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	await rm(root, { recursive: true, force: true });
 });
 
@@ -88,6 +90,64 @@ async function readyWithSkin(): Promise<{ store: SkinPackageStore<TestManifest>;
 	const id = await store.create({ name: "首套" });
 	return { store, id };
 }
+
+it.each([
+	[
+		"en",
+		{
+			unreadable: "skin.json could not be read or is not valid JSON; skipped.",
+			parse: "Manifest parsing failed (Original diagnostic 原文); skipped.",
+			missing: "Skin not found: missing",
+			outside:
+				"createSkinStore: Additional file names must stay inside the skin directory (../outside).",
+		},
+	],
+	[
+		"ja",
+		{
+			unreadable: "skin.jsonを読み取れないか、有効なJSONではないため、スキップしました。",
+			parse: "マニフェストの解析に失敗しました（Original diagnostic 原文）。スキップしました。",
+			missing: "スキンが見つかりません：missing",
+			outside:
+				"createSkinStore：追加ファイルの名前はスキンディレクトリ内に収まる必要があります（../outside）。",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			unreadable: "skin.json 無法讀取或不是有效的 JSON，已略過。",
+			parse: "資訊清單解析失敗（Original diagnostic 原文），已略過。",
+			missing: "找不到佈景主題：missing",
+			outside: "createSkinStore：附加檔案的名稱必須位於佈景主題目錄內（../outside）。",
+		},
+	],
+] as const)("%s:扫描说明本地化但诊断原文保留,坏文件与正常索引不被改写", async (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	await seedSkin("good", { name: "Original skin 原文" });
+	await seedSkin("throws");
+	await mkdir(join(dir, "bad"));
+	await writeFile(join(dir, "bad", "skin.json"), "{ Original bad JSON");
+	const store = makeStore({
+		parse: (raw, id) => {
+			if (id === "throws") throw new Error("Original diagnostic 原文");
+			return parse(raw);
+		},
+	});
+	await store.ensureReady();
+	expect(store.ids()).toEqual(["good"]);
+	expect(store.get("good")).toEqual({ name: "Original skin 原文" });
+	expect([...skipped].sort((a, b) => a.entry.localeCompare(b.entry))).toEqual([
+		{ entry: "bad", message: text.unreadable },
+		{ entry: "throws", message: text.parse },
+	]);
+	expect(() => store.pathOf("missing")).toThrow(text.missing);
+	await expect(
+		store.create({ name: "rejected" }, new Map([["../outside", "do not write"]])),
+	).rejects.toThrow(text.outside);
+	expect(store.ids()).toEqual(["good"]);
+	expect(await readFile(join(dir, "bad", "skin.json"), "utf8")).toBe("{ Original bad JSON");
+	expect((await readdir(dir)).sort()).toEqual(["bad", "good", "throws"]);
+});
 
 describe("就绪", () => {
 	it("ensureReady 之前索引是空的;之后读得到盘上原有的皮肤与它的 mtime", async () => {
