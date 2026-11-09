@@ -18,9 +18,9 @@ describe("服务端字典 store", () => {
 		);
 	});
 
-	it("切到英文后,英文没有的句子拿简体中文打底", () => {
+	it("切到英文后使用已译的宿主回复", () => {
 		i18n.set({ locale: "en" });
-		expect(t("command.report.busy")).toBe("还在跑呢，稍等一下下～");
+		expect(t("command.report.busy")).toBe("A report is already running. Please wait.");
 		expect(i18n.state().locale).toBe("en");
 	});
 

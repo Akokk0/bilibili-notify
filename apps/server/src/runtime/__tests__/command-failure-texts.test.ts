@@ -13,7 +13,8 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import type { SourceLoginView } from "../../subscriptions/registry.js";
 import { createCommandDispatcher } from "../command-dispatcher.js";
 import { createLoginCommand } from "../login-command.js";
@@ -25,6 +26,7 @@ import { createStatusCommand } from "../status-command.js";
 const MASTER = "10001";
 const META = { connectionId: "a1", platform: "onebot" };
 const quietLogger = { debug() {}, info() {}, warn() {}, error() {} };
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /** 用真指令搭一个真分发器;返回喂私聊的函数,结果是会话里收到的每一句文字。 */
 function harness(commands: Parameters<typeof createCommandDispatcher>[0]["commands"]) {
@@ -48,6 +50,42 @@ function harness(commands: Parameters<typeof createCommandDispatcher>[0]["comman
 		},
 	};
 }
+
+it.each([
+	[
+		"en",
+		'Command "原指令" failed: Original reason 原文',
+		"An error occurred. See the logs for details.",
+	],
+	[
+		"ja",
+		"「原指令」を実行できませんでした：Original reason 原文",
+		"エラーが発生しました。詳細はログを確認してください。",
+	],
+	["zh-TW", "「原指令」執行失敗：Original reason 原文", "發生錯誤，請查看日誌。"],
+] as const)(
+	"%s translates dispatcher replies at invocation while retaining the typed alias and raw failure",
+	async (locale, failure, crashed) => {
+		const { send } = harness([
+			{
+				name: "probe",
+				aliases: ["原指令"],
+				run: async () => fail("unavailable", "Original reason 原文"),
+			},
+			{
+				name: "crash",
+				run: async () => {
+					throw new Error("Original private diagnostic");
+				},
+			},
+		]);
+		i18n.set({ locale, voice: "plain" });
+		expect(await send("/原指令")).toEqual([failure]);
+		expect(await send("/crash")).toEqual([crashed]);
+		i18n.set({ locale: "zh-CN", voice: "maid" });
+		expect(await send("/原指令")).toEqual(["『原指令』没办成：Original reason 原文"]);
+	},
+);
 
 const QR_DATA_URL = "data:image/png;base64,iVBORw0KGgo=";
 

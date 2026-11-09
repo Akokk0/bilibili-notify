@@ -13,9 +13,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type AuthState, ok } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { recordingCtx } from "../../__tests__/support/command-ctx.js";
 import { noCandidates, noProfile } from "../../__tests__/support/no-candidates.js";
+import { i18n } from "../../i18n/index.js";
 import type { SourceLoginView, SourceView } from "../../subscriptions/registry.js";
 import {
 	createStatusCommand,
@@ -26,6 +27,7 @@ import {
 
 const NOW = 1_786_500_000_000;
 const MIN = 60_000;
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 const HEALTHY: StatusReport = {
 	logins: [
@@ -47,6 +49,27 @@ function setup(report: Partial<StatusReport> = {}) {
 }
 
 describe("status 指令", () => {
+	it.each([
+		["en", "Original source 原文 sign-in"],
+		["ja", "Original source 原文のログイン"],
+		["zh-TW", "Original source 原文登入"],
+	] as const)(
+		"%s translates the login label at invocation while retaining source-provided status",
+		async (locale, heading) => {
+			const { run, replies } = setup({
+				logins: [
+					{
+						label: "Original source 原文",
+						state: { status: "error", message: "Original auth diagnostic 原文" },
+					},
+				],
+			});
+			i18n.set({ locale, voice: "plain" });
+			await run();
+			expect(replies[0]?.split("\n")[0]).toBe(`${heading}：Original auth diagnostic 原文`);
+		},
+	);
+
 	it("主名英文,中文走别名", () => {
 		const { spec } = setup();
 		expect(spec.name).toBe("status");

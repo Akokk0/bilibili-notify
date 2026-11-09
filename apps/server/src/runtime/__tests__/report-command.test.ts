@@ -11,8 +11,9 @@
  * 再要一份周报,而他根本不会想到是这个原因。
  */
 
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { recordingCtx } from "../../__tests__/support/command-ctx.js";
+import { i18n } from "../../i18n/index.js";
 import { createReportCommand, type ReportResult } from "../report-command.js";
 
 /** 手动控制的一轮运行:`finish` 之前一直挂着。 */
@@ -27,6 +28,7 @@ function deferred<T>() {
 }
 
 const SENT: ReportResult = { kind: "sent", mode: "image", sent: 2, failed: [] };
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function setup(outcome: ReportResult = SENT) {
 	const replies: string[] = [];
@@ -44,6 +46,62 @@ function setup(outcome: ReportResult = SENT) {
 }
 
 describe("report 指令", () => {
+	it.each([
+		[
+			"en",
+			"Days must be between 1 and 90.",
+			"A report is already running. Please wait.",
+			"No push targets are configured for the report.",
+		],
+		[
+			"ja",
+			"日数は1〜90の範囲で指定してください。",
+			"レポートを実行中です。しばらくお待ちください。",
+			"レポートの送信先が設定されていません。",
+		],
+		[
+			"zh-TW",
+			"天數須介於 1 到 90 之間。",
+			"報表仍在執行，請稍候。",
+			"尚未設定推送目標，無法傳送週報。",
+		],
+	] as const)(
+		"%s translates range, unavailable-target and busy replies while preserving the generation gate",
+		async (locale, range, busy, noTargets) => {
+			i18n.set({ locale, voice: "plain" });
+			const empty = setup({ kind: "no-targets" });
+			expect(await empty.fire(0)).toMatchObject({ ok: false, code: "invalid", message: range });
+			expect(empty.run).not.toHaveBeenCalled();
+			expect(await empty.fire()).toMatchObject({
+				ok: false,
+				code: "not_configured",
+				message: noTargets,
+			});
+			const gate = deferred<ReportResult>();
+			const run = vi.fn(() => gate.promise);
+			const spec = createReportCommand({
+				run,
+				logger: { debug() {}, info() {}, warn() {}, error() {} },
+			});
+			const ctx = recordingCtx([]);
+			i18n.set({ locale: "zh-CN", voice: "maid" });
+			const inflight = spec.run({}, ctx);
+			try {
+				await Promise.resolve();
+				i18n.set({ locale, voice: "plain" });
+				expect(await spec.run({}, ctx)).toMatchObject({
+					ok: false,
+					code: "conflict",
+					message: busy,
+				});
+				expect(run).toHaveBeenCalledTimes(1);
+			} finally {
+				gate.resolve(SENT);
+				await inflight;
+			}
+		},
+	);
+
 	it("主名英文,中文走别名", () => {
 		const { spec } = setup();
 		expect(spec.name).toBe("report");

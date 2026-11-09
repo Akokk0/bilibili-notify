@@ -777,5 +777,18 @@
 	"service.card-skins.store.text.28": "マニフェスト内に参照が残っています",
 	"service.card-skins.store.text.21": "このIDは内蔵スキン用に予約されているため、このディレクトリは読み込みません。",
 	"service.card-skins.store.text.22": "原因不明",
-	"service.card-skins.store.text.23": "マニフェストが不正です（{value0}）。読み込みをスキップしました。"
+	"service.card-skins.store.text.23": "マニフェストが不正です（{value0}）。読み込みをスキップしました。",
+	"command.framework.failed": "「{word}」を実行できませんでした：{message}",
+	"command.framework.crashed": "エラーが発生しました。詳細はログを確認してください。",
+	"command.login.noSources": "現在、ログインに対応する配信元はありません。",
+	"command.login.unknownSource": "「{word}」という配信元はありません。ログイン可能な配信元：{options}",
+	"command.login.ambiguousSource": "「{word}」という配信元が複数あります。キーで指定してください：{options}",
+	"command.login.pickOne": "ログイン可能な配信元が複数あります：\n{lines}\nloginの後に配信元の名前かキーを指定してください。例：login {exampleKey}",
+	"command.login.noQr": "QRコードを取得できませんでした。時間をおいて再試行してください。",
+	"command.login.qrNotSent": "QRコードを送信できませんでした。管理画面で読み取ってください。",
+	"command.login.scanned": "{ttlSeconds}秒以内にこのコードを読み取り、「{label}」にログインしてください。期限が切れたら、コマンドを再実行してください。",
+	"command.report.daysOutOfRange": "日数は{min}〜{max}の範囲で指定してください。",
+	"command.report.busy": "レポートを実行中です。しばらくお待ちください。",
+	"command.report.noTargets": "レポートの送信先が設定されていません。",
+	"command.status.loginLabel": "{label}のログイン"
 }

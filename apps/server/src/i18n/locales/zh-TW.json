@@ -777,5 +777,18 @@
 	"service.card-skins.store.text.28": "清單中仍有其他位置引用此素材",
 	"service.card-skins.store.text.21": "此 ID 保留給內建外觀，此目錄不會載入。",
 	"service.card-skins.store.text.22": "原因不明",
-	"service.card-skins.store.text.23": "清單格式無效（{value0}），已略過。"
+	"service.card-skins.store.text.23": "清單格式無效（{value0}），已略過。",
+	"command.framework.failed": "「{word}」執行失敗：{message}",
+	"command.framework.crashed": "發生錯誤，請查看日誌。",
+	"command.login.noSources": "目前沒有可登入的來源。",
+	"command.login.unknownSource": "找不到名為「{word}」的來源。可登入的來源：{options}",
+	"command.login.ambiguousSource": "有多個來源名為「{word}」，請改用來源鍵：{options}",
+	"command.login.pickOne": "有多個來源可登入：\n{lines}\n請在 login 後加上來源名稱或鍵，例如：login {exampleKey}",
+	"command.login.noQr": "未取得 QR Code，請稍後再試。",
+	"command.login.qrNotSent": "無法傳送 QR Code，請改到控制台掃碼。",
+	"command.login.scanned": "請在 {ttlSeconds} 秒內掃描此碼登入「{label}」，過期後請重新執行指令。",
+	"command.report.daysOutOfRange": "天數須介於 {min} 到 {max} 之間。",
+	"command.report.busy": "報表仍在執行，請稍候。",
+	"command.report.noTargets": "尚未設定推送目標，無法傳送週報。",
+	"command.status.loginLabel": "{label}登入"
 }

@@ -782,5 +782,18 @@
 	"service.card-skins.store.text.28": "The manifest still contains references",
 	"service.card-skins.store.text.21": "This ID is reserved for the built-in skin; the directory will not be loaded.",
 	"service.card-skins.store.text.22": "Unknown reason",
-	"service.card-skins.store.text.23": "Invalid manifest ({value0}); skipped."
+	"service.card-skins.store.text.23": "Invalid manifest ({value0}); skipped.",
+	"command.framework.failed": "Command \"{word}\" failed: {message}",
+	"command.framework.crashed": "An error occurred. See the logs for details.",
+	"command.login.noSources": "No source currently supports sign-in.",
+	"command.login.unknownSource": "No source named \"{word}\". Available sources: {options}",
+	"command.login.ambiguousSource": "Several sources are named \"{word}\". Use a source key: {options}",
+	"command.login.pickOne": "Multiple sources support sign-in:\n{lines}\nEnter login followed by the source name or key, for example: login {exampleKey}",
+	"command.login.noQr": "No QR code was received. Try again later.",
+	"command.login.qrNotSent": "The QR code could not be sent. Scan it in the console instead.",
+	"command.login.scanned": "Scan this code to sign in to \"{label}\" within {ttlSeconds} seconds. Run the command again if it expires.",
+	"command.report.daysOutOfRange": "Days must be between {min} and {max}.",
+	"command.report.busy": "A report is already running. Please wait.",
+	"command.report.noTargets": "No push targets are configured for the report.",
+	"command.status.loginLabel": "{label} sign-in"
 }

@@ -21,7 +21,8 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import type { SourceLoginView } from "../../subscriptions/registry.js";
 import { createLoginCommand } from "../login-command.js";
 
@@ -57,6 +58,7 @@ function loginSource(
 
 const BILI = () => loginSource("bilibili", "B 站");
 const ACME = () => loginSource("acme.inprocess", "对拍源");
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function setup(sources: SourceLoginView[], opts: { sendOk?: boolean } = {}) {
 	const replies: string[] = [];
@@ -85,6 +87,102 @@ function setup(sources: SourceLoginView[], opts: { sendOk?: boolean } = {}) {
 }
 
 describe("login 指令", () => {
+	it.each([
+		[
+			"en",
+			"No QR code was received. Try again later.",
+			"The QR code could not be sent. Scan it in the console instead.",
+			'Scan this code to sign in to "Original 原文" within 180 seconds. Run the command again if it expires.',
+		],
+		[
+			"ja",
+			"QRコードを取得できませんでした。時間をおいて再試行してください。",
+			"QRコードを送信できませんでした。管理画面で読み取ってください。",
+			"180秒以内にこのコードを読み取り、「Original 原文」にログインしてください。期限が切れたら、コマンドを再実行してください。",
+		],
+		[
+			"zh-TW",
+			"未取得 QR Code，請稍後再試。",
+			"無法傳送 QR Code，請改到控制台掃碼。",
+			"請在 180 秒內掃描此碼登入「Original 原文」，過期後請重新執行指令。",
+		],
+	] as const)(
+		"%s localizes QR outcomes while retaining decoded bytes, source names and original diagnostics",
+		async (locale, noQr, notSent, scanned) => {
+			i18n.set({ locale, voice: "plain" });
+			const success = setup([loginSource("alpha", "Original 原文")]);
+			expect(await success.fire()).toEqual(ok());
+			expect(success.sent).toEqual([PNG_BYTES]);
+			expect(success.replies).toEqual([scanned]);
+			expect(
+				await setup([loginSource("alpha", "Original 原文")], { sendOk: false }).fire(),
+			).toEqual(fail("unavailable", notSent));
+			expect(
+				await setup([loginSource("alpha", "Original 原文", { status: "logged-out" })]).fire(),
+			).toEqual(fail("unavailable", noQr));
+			expect(
+				await setup([
+					loginSource("alpha", "Original 原文", {
+						status: "error",
+						message: "Original auth diagnostic 原文",
+					}),
+				]).fire(),
+			).toEqual(fail("unavailable", "Original auth diagnostic 原文"));
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			{
+				empty: "No source currently supports sign-in.",
+				unknown: 'No source named "missing". Available sources: Original 原文（alpha）',
+				ambiguous:
+					'Several sources are named "Original 原文". Use a source key: Original 原文（alpha）、Original 原文（beta）',
+				pick: "Multiple sources support sign-in:\n- Original 原文（alpha）\n- Original 原文（beta）\nEnter login followed by the source name or key, for example: login alpha",
+			},
+		],
+		[
+			"ja",
+			{
+				empty: "現在、ログインに対応する配信元はありません。",
+				unknown:
+					"「missing」という配信元はありません。ログイン可能な配信元：Original 原文（alpha）",
+				ambiguous:
+					"「Original 原文」という配信元が複数あります。キーで指定してください：Original 原文（alpha）、Original 原文（beta）",
+				pick: "ログイン可能な配信元が複数あります：\n- Original 原文（alpha）\n- Original 原文（beta）\nloginの後に配信元の名前かキーを指定してください。例：login alpha",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				empty: "目前沒有可登入的來源。",
+				unknown: "找不到名為「missing」的來源。可登入的來源：Original 原文（alpha）",
+				ambiguous:
+					"有多個來源名為「Original 原文」，請改用來源鍵：Original 原文（alpha）、Original 原文（beta）",
+				pick: "有多個來源可登入：\n- Original 原文（alpha）\n- Original 原文（beta）\n請在 login 後加上來源名稱或鍵，例如：login alpha",
+			},
+		],
+	] as const)(
+		"%s translates source selection without changing keys, names or starting an ambiguous login",
+		async (locale, text) => {
+			const first = loginSource("alpha", "Original 原文");
+			const second = loginSource("beta", "Original 原文");
+			const none = setup([]);
+			const single = setup([first]);
+			const multiple = setup([first, second]);
+			i18n.set({ locale, voice: "plain" });
+			expect(await none.fire()).toEqual(fail("not_found", text.empty));
+			expect(await single.fire("missing")).toEqual(fail("not_found", text.unknown));
+			expect(await multiple.fire("Original 原文")).toEqual(fail("invalid", text.ambiguous));
+			expect(await multiple.fire()).toEqual(ok());
+			expect(multiple.replies).toEqual([text.pick]);
+			expect(first.beginLogin).not.toHaveBeenCalled();
+			expect(second.beginLogin).not.toHaveBeenCalled();
+			expect(multiple.sent).toEqual([]);
+		},
+	);
+
 	it("主名英文,中文走别名,来源是一个可选参数", () => {
 		const { spec } = setup([BILI()]);
 		expect(spec.name).toBe("login");
