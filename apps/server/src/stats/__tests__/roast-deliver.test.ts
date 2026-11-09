@@ -11,7 +11,8 @@
 
 import type { Connection, DeliveryResult, PushTarget } from "@bilibili-notify/internal";
 import { fail, identityColor, makeDefaultGlobalSettings, ok } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	type BoardLike,
 	buildRoastPayload,
@@ -25,6 +26,8 @@ const ADAPTER_OFF = "22222222-2222-4222-8222-222222222222";
 const T_ON = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const T_OFF = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const T_ON_ADAPTER_OFF = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 const BOARD: BoardLike = {
 	pushText: "本周榜单",
@@ -72,6 +75,87 @@ function makeDeps() {
 	} as unknown as RoastDeliverDeps;
 	return { deps, sendToTarget };
 }
+
+describe("锐评文字回落与服务未就绪提示随当前语言取字", () => {
+	it.each([
+		{
+			locale: "en" as const,
+			board:
+				"📊 creator weekly report (last 7 days)\n🕊️ This period’s slacker: Unknown creator — 原因 {name}\n🏆 Diligent creator: Unknown creator — 勤奋原话",
+			solo: "📊 Unknown creator (last 7 days): 总评 {days}",
+			unavailable: "The service is not ready.",
+		},
+		{
+			locale: "ja" as const,
+			board:
+				"📊 クリエイター週間レポート（過去7日間）\n🕊️ 今期のサボり王：不明なクリエイター — 原因 {name}\n🏆 勤勉なクリエイター：不明なクリエイター — 勤奋原话",
+			solo: "📊 不明なクリエイター（過去7日間）：总评 {days}",
+			unavailable: "サービスの準備ができていません。",
+		},
+		{
+			locale: "zh-TW" as const,
+			board:
+				"📊 創作者週報（近 7 天）\n🕊️ 本期鴿王：未知創作者 —— 原因 {name}\n🏆 勤奮創作者：未知創作者 —— 勤奋原话",
+			solo: "📊 未知創作者（近 7 天）：总评 {days}",
+			unavailable: "服務尚未就緒。",
+		},
+	])(
+		"$locale：只翻回落外壳，保留模型内容与发送边界",
+		async ({ locale, board, solo, unavailable }) => {
+			const { deps, sendToTarget } = makeDeps();
+			const result = {
+				...BOARD,
+				pushText: "",
+				pigeon: { subscriptionId: "s1", reason: "原因 {name}" },
+				diligent: { subscriptionId: "s2", reason: "勤奋原话" },
+			};
+			i18n.set({ locale, voice: "plain" });
+			expect(await buildRoastPayload(deps, { kind: "board", result, days: 7 })).toEqual({
+				mode: "text",
+				text: board,
+				payload: { kind: "text", text: board },
+			});
+			expect(
+				await buildRoastPayload(deps, {
+					kind: "solo",
+					days: 7,
+					result: {
+						subscriptionId: "s1",
+						pushText: "",
+						verdict: "总评 {days}",
+						score: 60,
+						highlights: [],
+					},
+				}),
+			).toEqual({ mode: "text", text: solo, payload: { kind: "text", text: solo } });
+			const originalText = "  作者的推送原文 {name}\n  ";
+			expect(
+				(
+					await buildRoastPayload(deps, {
+						kind: "board",
+						result: { ...result, pushText: originalText },
+						days: 7,
+					})
+				).text,
+			).toBe(originalText);
+			(deps.runtime as { pipeline: unknown }).pipeline = null;
+			const out = await deliverRoast(deps, { kind: "board", result, days: 7, targetIds: [T_ON] });
+			expect(out.failed).toEqual([
+				{
+					targetId: T_ON,
+					failure: {
+						ok: false,
+						code: "unavailable",
+						message: unavailable,
+					},
+				},
+			]);
+			expect(out.sent).toEqual([]);
+			expect(sendToTarget).not.toHaveBeenCalled();
+			expect(result.pigeon.reason).toBe("原因 {name}");
+		},
+	);
+});
 
 describe("deliverRoast — 没送到的带着投递那头的失败", () => {
 	const opts = { kind: "board" as const, result: BOARD, days: 7, targetIds: [T_ON] };

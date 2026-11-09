@@ -16,7 +16,8 @@ import {
 	FAILURE_CODES,
 	makeDefaultGlobalSettings,
 } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import type { RoastGenDeps } from "../roast-generate";
 import { generateBoardRoast, generateSoloRoast } from "../roast-generate";
 
@@ -148,6 +149,115 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 const overviewOf = (uids: string[]) => async () =>
 	({ rows: uids.map(row) }) as unknown as StatsOverviewResponse;
 const overviewFails = async () => null;
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+describe("锐评生成失败在发生时取当前语言，模型输入与上游原话保留", () => {
+	it.each([
+		{
+			locale: "en" as const,
+			messages: [
+				"The service is not ready. Try again later.",
+				"The AI assistant is not enabled.",
+				"Statistics are disabled. Enable them to generate a review.",
+				"Could not read statistics. Try again later.",
+				"Subscribe to at least 2 creators to rank the slacker.",
+				"This creator is not in your subscriptions.",
+				"No statistics are available for this creator yet.",
+				"Could not parse the model’s reply. Try again.",
+				"The model did not provide a reason.",
+			],
+		},
+		{
+			locale: "ja" as const,
+			messages: [
+				"サービスの準備ができていません。しばらくしてから再試行してください。",
+				"AIアシスタントが有効になっていません。",
+				"統計が無効です。レビューを生成するには有効にしてください。",
+				"統計データを読み込めませんでした。しばらくしてから再試行してください。",
+				"サボり王を選ぶには、2人以上のクリエイターを購読してください。",
+				"このクリエイターは購読リストにありません。",
+				"このクリエイターの統計データはまだありません。",
+				"モデルの応答を解析できませんでした。再試行してください。",
+				"モデルから理由が示されませんでした。",
+			],
+		},
+		{
+			locale: "zh-TW" as const,
+			messages: [
+				"服務尚未就緒，請稍後再試。",
+				"智慧女僕尚未啟用。",
+				"資料統計已關閉，啟用後才能產生銳評。",
+				"統計資料讀取失敗，請稍後再試。",
+				"至少要訂閱 2 位創作者才能評選鴿王。",
+				"這位創作者不在訂閱清單中。",
+				"這位創作者尚無統計資料。",
+				"模型回覆解析失敗，請再試一次。",
+				"模型未提供原因。",
+			],
+		},
+	])("$locale：九类失败不串语言，不额外生成", async ({ locale, messages }) => {
+		const deps = makeDeps(["1", "2"]);
+		const globals = deps.store.getGlobals();
+		const fetchOverview = vi.fn(overviewOf(["1", "2"]));
+		const args = { days: 7, tz: 0, fetchOverview };
+		const pipeline = deps.runtime.pipeline;
+		const failures = [];
+		comment.mockClear();
+		i18n.set({ locale, voice: "plain" });
+		(deps.runtime as { pipeline: unknown }).pipeline = null;
+		failures.push(await generateBoardRoast(deps, args));
+		(deps.runtime as { pipeline: unknown }).pipeline = pipeline;
+		globals.ai.enabled = false;
+		failures.push(await generateBoardRoast(deps, args));
+		globals.ai.enabled = true;
+		globals.stats.enabled = false;
+		failures.push(await generateBoardRoast(deps, args));
+		globals.stats.enabled = true;
+		expect(fetchOverview).not.toHaveBeenCalled();
+		failures.push(await generateBoardRoast(deps, { ...args, fetchOverview: overviewFails }));
+		failures.push(await generateBoardRoast(deps, { ...args, fetchOverview: overviewOf(["1"]) }));
+		failures.push(await generateSoloRoast(deps, { ...args, subscriptionId: "missing" }));
+		failures.push(
+			await generateSoloRoast(deps, {
+				...args,
+				subscriptionId: biliId("1"),
+				fetchOverview: overviewOf([]),
+			}),
+		);
+		expect(comment).not.toHaveBeenCalled();
+		comment.mockResolvedValueOnce("not JSON");
+		failures.push(await generateBoardRoast(deps, args));
+		comment.mockRejectedValueOnce(new Error("   "));
+		failures.push(await generateSoloRoast(deps, { ...args, subscriptionId: biliId("1") }));
+		expect(failures).toEqual(
+			messages.map((message, i) => ({
+				ok: false,
+				code: [
+					"unavailable",
+					"not_configured",
+					"not_configured",
+					"unavailable",
+					"not_configured",
+					"not_found",
+					"not_found",
+					"unavailable",
+					"unavailable",
+				][i],
+				message,
+			})),
+		);
+		expect(String(comment.mock.calls.at(-1)?.[0])).toContain("名称");
+		expect(String(comment.mock.calls.at(-1)?.[0])).toContain("投稿");
+		comment.mockRejectedValueOnce(new Error("429 provider raw {reason}"));
+		expect(await generateBoardRoast(deps, args)).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "429 provider raw {reason}",
+		});
+		expect(comment).toHaveBeenCalledTimes(3);
+	});
+});
 
 describe("generateBoardRoast — 失败得说得清是哪一种(码 + 话)", () => {
 	it("推送链路没起来 → unavailable(等一会儿就好)", async () => {
