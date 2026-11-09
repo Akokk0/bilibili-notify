@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { UPDATE_QUERY_KEY } from "../../components/update/status";
+import { i18n } from "../../i18n";
 import { useToastStore } from "../../store/notifications";
 import { transitionNotice, useUpdateTransitionNotice } from "../useUpdateTransitionNotice";
 
@@ -40,6 +41,8 @@ const failed = dto({
 	helpUrl: "https://x",
 	checkedAt: "2026-10-27T00:00:00.000Z",
 });
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 describe("transitionNotice", () => {
 	it("正在下载 → 已就绪:同 id、标题「X 已就绪」、正文概述 + 状态句", () => {
@@ -124,6 +127,57 @@ describe("useUpdateTransitionNotice", () => {
 		cleanup();
 		vi.clearAllMocks();
 	});
+	it.each([
+		[
+			"en",
+			"0.9.0 is ready",
+			"The download is ready. Restart from System to apply it.",
+			"Download failed: 0.9.0",
+			"The download failed. Check System for details.",
+			"View update",
+		],
+		[
+			"ja",
+			"0.9.0の準備ができました",
+			"ダウンロードが完了しました。「システム」から再起動すると適用されます。",
+			"0.9.0のダウンロードに失敗しました",
+			"ダウンロードに失敗しました。「システム」で詳細を確認してください。",
+			"更新を表示",
+		],
+		[
+			"zh-TW",
+			"0.9.0 已就緒",
+			"下載已完成，到「系統」重新啟動即可套用。",
+			"0.9.0 下載失敗",
+			"下載失敗，請到「系統」查看詳細原因。",
+			"查看更新",
+		],
+	] as const)(
+		"%s replaces a background-download notice in place and preserves raw notes and target",
+		async (locale, readyTitle, readyLine, failedTitle, failedLine, label) => {
+			i18n.set({ locale, voice: "plain" });
+			const qc = mount(downloading);
+			await waitFor(() => expect(qc.getQueryData(UPDATE_QUERY_KEY)).toEqual(downloading));
+			useToastStore.getState().notify({ id: "update:0.9.0", title: "Original downloading title" });
+			qc.setQueryData(UPDATE_QUERY_KEY, ready);
+			await waitFor(() =>
+				expect(useToastStore.getState().items[0]).toMatchObject({
+					id: "update:0.9.0",
+					title: readyTitle,
+					body: `${NOTES}\n${readyLine}`,
+					action: { label, to: "/system#update" },
+				}),
+			);
+			expect(useToastStore.getState().items).toHaveLength(1);
+			expect(transitionNotice(downloading, failed)).toEqual({
+				id: "update:0.9.0",
+				title: failedTitle,
+				body: `${NOTES}\n${failedLine}`,
+				action: { label, to: "/system#update" },
+			});
+			expect(transitionNotice(ready, ready)).toBeNull();
+		},
+	);
 
 	it("缓存从「正在下载」变成「已就绪」→ 出卡;挂载时那一拍本身不出声", async () => {
 		const qc = mount(downloading);

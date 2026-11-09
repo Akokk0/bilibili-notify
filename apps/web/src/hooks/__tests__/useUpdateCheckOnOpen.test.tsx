@@ -14,6 +14,7 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { leaveRestartMark } from "../../components/update/restart";
 import { UPDATE_QUERY_KEY } from "../../components/update/status";
+import { i18n } from "../../i18n";
 import { useToastStore } from "../../store/notifications";
 import { useUpdateCheckOnOpen } from "../useUpdateCheckOnOpen";
 
@@ -55,6 +56,7 @@ function mount(before: UpdateStatusView, after: UpdateStatusView) {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	useToastStore.getState().clear();
 });
 
@@ -64,6 +66,43 @@ afterEach(() => {
 });
 
 describe("useUpdateCheckOnOpen", () => {
+	it.each([
+		[
+			"en",
+			"0.9.0 is ready",
+			"The download is ready. Restart from System to apply it.",
+			"View update",
+		],
+		[
+			"ja",
+			"0.9.0の準備ができました",
+			"ダウンロードが完了しました。「システム」から再起動すると適用されます。",
+			"更新を表示",
+		],
+		["zh-TW", "0.9.0 已就緒", "下載已完成，到「系統」重新啟動即可套用。", "查看更新"],
+	] as const)(
+		"%s creates one localized notice with the original notes and System destination",
+		async (locale, title, line, label) => {
+			i18n.set({ locale, voice: "plain" });
+			const after = dto({
+				phase: "ready",
+				target: "0.9.0",
+				releaseUrl: "https://example.invalid/release",
+				notes: "Original release notes 原文",
+			});
+			const qc = mount(dto({ phase: "idle" }), after);
+			await waitFor(() => expect(useToastStore.getState().items).toHaveLength(1));
+			expect(useToastStore.getState().items[0]).toMatchObject({
+				id: "update:0.9.0",
+				title,
+				body: `Original release notes 原文\n${line}`,
+				action: { label, to: "/system#update" },
+			});
+			expect(qc.getQueryData(UPDATE_QUERY_KEY)).toEqual(after);
+			expect(api.post).toHaveBeenCalledExactlyOnceWith("/api/system/update/check", {});
+		},
+	);
+
 	it("有新版 → 查一次,结果写进缓存,右下角出一张带「去更新」的通知卡", async () => {
 		const after = dto({
 			phase: "available",

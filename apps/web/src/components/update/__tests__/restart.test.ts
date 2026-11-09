@@ -6,7 +6,8 @@
  * 起来了但版本不对要如实说是回落了;等到截止时间就放弃 —— 按时间算,不按次数。
  */
 
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import {
 	awaitRestartedServer,
 	leaveRestartMark,
@@ -82,7 +83,50 @@ describe("awaitRestartedServer", () => {
 	});
 });
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+
 describe("重启记号", () => {
+	it.each([
+		[
+			"en",
+			["Restarted", "Rolled back to 0.9.0", "Updated to 0.9.0"],
+			[
+				"BN is back, still running version 0.9.0.",
+				"Restart complete. This version is now running. To update again, choose “Check for updates” in System.",
+				"Restart complete. This version is now running.",
+			],
+		],
+		[
+			"ja",
+			["再起動しました", "0.9.0にロールバックしました", "0.9.0に更新しました"],
+			[
+				"BNが再起動しました。引き続きバージョン0.9.0で動作しています。",
+				"再起動が完了し、このバージョンで動作しています。再び更新するには、「システム」で「更新を確認」を選んでください。",
+				"再起動が完了し、このバージョンで動作しています。",
+			],
+		],
+		[
+			"zh-TW",
+			["已重新啟動", "已回復至 0.9.0", "已更新至 0.9.0"],
+			[
+				"BN 已重新啟動，仍使用 0.9.0 版。",
+				"重新啟動完成，目前使用這個版本。若要再次更新，請到「系統」選擇「檢查更新」。",
+				"重新啟動完成，目前使用這個版本。",
+			],
+		],
+	] as const)(
+		"%s distinguishes restart, rollback and update without changing notice identities",
+		(locale, titles, bodies) => {
+			i18n.set({ locale, voice: "plain" });
+			for (const [index, mode] of (["restart", "rollback", "update"] as const).entries()) {
+				expect(restartNotice({ target: "0.9.0", mode })).toEqual({
+					id: "restarted:0.9.0",
+					title: titles[index],
+					body: bodies[index],
+				});
+			}
+		},
+	);
 	afterEach(() => {
 		sessionStorage.clear();
 	});

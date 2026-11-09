@@ -14,6 +14,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { browser, useRestartStore } from "../restart";
 import { UpdateSection, type UpdateSectionProps } from "../update-section";
 import { healthScript, NEW, OLD } from "./health-script";
@@ -67,6 +68,7 @@ function renderSection(at = "/system", props: UpdateSectionProps = {}) {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.mocked(api.post).mockResolvedValue({});
 	vi.mocked(api.patch).mockResolvedValue({});
 	health = healthScript("offline");
