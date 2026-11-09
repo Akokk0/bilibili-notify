@@ -513,5 +513,17 @@
 	"panelUi.pages.extensions.declarative.extension-page.4": "ご主人様、保存済みの設定が拡張機能の要件を満たさないため、いまは動いていませんよ。下で修正すると、自動で起動します。",
 	"panelUi.pages.extensions.declarative.extension-page.5": "ご主人様、新しいバージョンはインストール済みですが、まだ読み込まれていませんよ。下には設定だけを表示しています。読み込み方法は上のカードで選んでくださいね。",
 	"panelUi.pages.extensions.declarative.extension-page.6": "ご主人様、この拡張機能はいま動いていないので、下には設定だけを表示していますよ。起動できなかった理由はログを確認してくださいね。",
-	"panelUi.pages.ExtensionDetail.10": "ご主人様、アンインストールすると、ディスク上の本体と専用の設定も削除しますよ。拡張機能自体は、あとでまたインストールできます。"
+	"panelUi.pages.ExtensionDetail.10": "ご主人様、アンインストールすると、ディスク上の本体と専用の設定も削除しますよ。拡張機能自体は、あとでまたインストールできます。",
+	"panelUi.pages.extensions.declarative.settings-form.11": "ご主人様、変更は保存してから反映されますよ。拡張機能が無効のままでも、先に設定しておけます。",
+	"panelUi.pages.extensions.declarative.settings-form.16": "ご主人様、保存すると以前の値は無効になりますよ。使っているすべての場所で、新しい値に置き換えてくださいね。",
+	"panelUi.pages.extensions.declarative.settings-form.21": "ご主人様、新しい値を生成しましたが、まだ保存していませんよ。保存後は先頭と末尾しか表示できないので、必要ならいま全文をコピーしてくださいね。",
+	"panelUi.pages.extensions.declarative.settings-form.18": "ご主人様、{field}がまだありませんよ。機密情報を除いたバックアップから復元すると、この状態になります。新しい値を生成してくださいね。",
+	"panelUi.pages.extensions.declarative.list-section.10": "ご主人様、「{value0}」とその設定を一緒に削除しますよ。",
+	"panelUi.pages.extensions.declarative.list-section.15": "ご主人様、「{value0}」の以前の{value1}はすぐに無効になりますよ。使っている接続先はその場で切断されるので、新しい値をコピーして設定し直してくださいね。",
+	"panelUi.pages.extensions.declarative.list-section.34": "ご主人様、新しく生成した値の全文を見られるのはいまだけですよ。このページを離れると先頭と末尾しか表示できないので、必要ならいまコピーしてくださいね。",
+	"panelUi.pages.extensions.declarative.list-section.30": "ご主人様、この{item}にはまだ{field}がありませんよ。機密情報を除いたバックアップから復元すると、この状態になります。新しい値を生成してくださいね。",
+	"panelUi.pages.extensions.marketplace-sources-dialog.4": "ご主人様、配布元ごとにmarketplace.jsonがあり、そこにインストールできる拡張機能が並んでいますよ。公式配布元は組み込みですが、自分で追加した配布元の内容は、そのアドレスの管理者が決めます。",
+	"panelUi.pages.extensions.marketplace-sources-dialog.8": "ご主人様、BNはサードパーティの配布元にある内容を審査しませんよ。インストールすると、その作者のコードがBNのプロセス内で動きます。信頼できる配布元だけを追加してくださいね。",
+	"panelUi.pages.extensions.marketplace-section.3": "ご主人様、これはBN公式ではなく「{value0}」からの拡張機能ですよ。BNは、その配布元が指定したパッケージをそのまま保存することだけを保証し、動作内容は審査しません。インストールするとBNのプロセス内でコードが動きます。",
+	"panelUi.pages.extensions.marketplace-section.20": "ご主人様、このビルドには信頼する公開鍵が組み込まれていないので、公式配布元がありませんよ。フォークして自分でビルドした場合も同じです。「配布元」でサードパーティの配布元を追加できます。"
 }

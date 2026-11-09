@@ -64,6 +64,10 @@ describe("面板译文文件都接进了 DICTS", () => {
 			"panelUi.pages.extensions.install-outcome.",
 			"panelUi.pages.extensions.declarative.extension-page.",
 			"panelUi.pages.ExtensionDetail.",
+			"panelUi.pages.extensions.declarative.settings-form.",
+			"panelUi.pages.extensions.declarative.list-section.",
+			"panelUi.pages.extensions.marketplace-section.",
+			"panelUi.pages.extensions.marketplace-sources-dialog.",
 		];
 		const expected = Object.keys(DICTS["zh-CN"].maid)
 			.filter((key) => prefixes.some((prefix) => key.startsWith(prefix)))

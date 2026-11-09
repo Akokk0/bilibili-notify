@@ -513,5 +513,17 @@
 	"panelUi.pages.extensions.declarative.extension-page.4": "主人，已儲存的設定不符合拓展的規則，因此尚未執行喔；在下方修正後，它會自動啟動。",
 	"panelUi.pages.extensions.declarative.extension-page.5": "主人，新版已安裝但尚未載入，下方只有設定、沒有狀態喔；請在上方卡片選擇載入方式。",
 	"panelUi.pages.extensions.declarative.extension-page.6": "主人，這個拓展目前沒有開始執行，下方只有設定、沒有狀態喔；請到日誌查看未能啟動的原因。",
-	"panelUi.pages.ExtensionDetail.10": "主人，解除安裝會刪除磁碟上的拓展本體及其設定喔；之後仍可重新安裝拓展。"
+	"panelUi.pages.ExtensionDetail.10": "主人，解除安裝會刪除磁碟上的拓展本體及其設定喔；之後仍可重新安裝拓展。",
+	"panelUi.pages.extensions.declarative.settings-form.11": "主人，修改後要儲存才會生效喔；拓展停用時也可以先填好。",
+	"panelUi.pages.extensions.declarative.settings-form.16": "主人，儲存後舊值就會失效喔，所有使用舊值的地方都必須換成新值。",
+	"panelUi.pages.extensions.declarative.settings-form.21": "主人，剛產生的新值尚未儲存喔；儲存後只會顯示頭尾，需要全文請現在複製。",
+	"panelUi.pages.extensions.declarative.settings-form.18": "主人，目前還沒有 {field}，還原已去除機密資料的備份後會出現這種情況，請產生新值喔。",
+	"panelUi.pages.extensions.declarative.list-section.10": "主人，會將「{value0}」連同它的設定一起刪除喔。",
+	"panelUi.pages.extensions.declarative.list-section.15": "主人，「{value0}」的舊 {value1} 會立即失效喔。正在使用它的那一端會當場斷線，請將新值複製過去重新設定。",
+	"panelUi.pages.extensions.declarative.list-section.34": "主人，剛產生的新值只有現在看得到全文喔；離開此頁後只會顯示頭尾，需要時請現在複製。",
+	"panelUi.pages.extensions.declarative.list-section.30": "主人，這項{item}目前還沒有 {field}，還原已去除機密資料的備份後會出現這種情況，請產生新值喔。",
+	"panelUi.pages.extensions.marketplace-sources-dialog.4": "主人，每個來源都有一份 marketplace.json，列出可安裝的拓展喔。官方來源是內建的，自行新增來源的內容則由該網址的管理者決定。",
+	"panelUi.pages.extensions.marketplace-sources-dialog.8": "主人，BN 不審查第三方來源的內容喔；安裝其中的拓展，就等於讓來源作者在 BN 程序內執行程式碼，請只新增可信任的來源。",
+	"panelUi.pages.extensions.marketplace-section.3": "主人，這個拓展來自「{value0}」，並非 BN 發行喔。BN 只保證安裝到磁碟的是該來源指定的套件，不審查它的行為；安裝後，它會在 BN 程序內執行程式碼。",
+	"panelUi.pages.extensions.marketplace-section.20": "主人，此建置沒有內建信任的公開金鑰，因此沒有官方來源喔；自行 fork 後建置也會如此。可以到「來源」新增第三方來源。"
 }

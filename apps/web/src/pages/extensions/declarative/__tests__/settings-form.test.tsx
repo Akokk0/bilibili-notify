@@ -706,6 +706,73 @@ describe("校验", () => {
 });
 
 describe("localized settings interactions", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、tokenがまだありませんよ。機密情報を除いたバックアップから復元すると、この状態になります。新しい値を生成してくださいね。",
+			"tokenを再生成",
+		],
+		[
+			"zh-TW",
+			"主人，目前還沒有 token，還原已去除機密資料的備份後會出現這種情況，請產生新值喔。",
+			"重新產生 token",
+		],
+	] as const)("%s 女仆缺失密钥提示只恢复本地草稿", async (locale, warning, regenerate) => {
+		stored = { ...stored, token: "" };
+		renderForm();
+		await screen.findByText("检查间隔");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		const token = within(field("token"));
+		expect(token.getByText(warning)).toBeTruthy();
+		fireEvent.click(token.getByRole("button", { name: regenerate }));
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(token.getByText(/^[0-9a-f]{32}$/)).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(stored.token).toBe("");
+	});
+
+	it.each([
+		[
+			"ja",
+			"ご主人様、変更は保存してから反映されますよ。拡張機能が無効のままでも、先に設定しておけます。",
+			"ご主人様、保存すると以前の値は無効になりますよ。使っているすべての場所で、新しい値に置き換えてくださいね。",
+			"ご主人様、新しい値を生成しましたが、まだ保存していませんよ。保存後は先頭と末尾しか表示できないので、必要ならいま全文をコピーしてくださいね。",
+			"再生成",
+			"保存",
+		],
+		[
+			"zh-TW",
+			"主人，修改後要儲存才會生效喔；拓展停用時也可以先填好。",
+			"主人，儲存後舊值就會失效喔，所有使用舊值的地方都必須換成新值。",
+			"主人，剛產生的新值尚未儲存喔；儲存後只會顯示頭尾，需要全文請現在複製。",
+			"重新產生",
+			"儲存",
+		],
+	] as const)(
+		"%s 女仆密钥说明区分草稿生成与保存生效",
+		async (locale, intro, warning, hint, regenerate, save) => {
+			renderForm();
+			await screen.findByText("检查间隔");
+			fireEvent.click(within(field("token")).getByRole("button", { name: "重新生成 token" }));
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(intro)).toBeTruthy();
+			expect(within(screen.getByRole("dialog")).getByText(warning)).toBeTruthy();
+			expect(document.body.innerHTML).not.toContain(TOKEN);
+			expect(api.patch).not.toHaveBeenCalled();
+			fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: regenerate }));
+			const token = within(field("token"));
+			const fresh = token.getByText(/^[0-9a-f]{32}$/).textContent as string;
+			expect(fresh).not.toBe(TOKEN);
+			expect(token.getByText(hint)).toBeTruthy();
+			expect(api.patch).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: save }));
+			await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+			expect(sentSettings()).toEqual({ token: fresh });
+			await within(field("token")).findByText(maskOf(fresh));
+			expect(document.body.innerHTML).not.toContain(fresh);
+		},
+	);
+
 	it("client validation and form actions translate while invalid edits remain unsent", async () => {
 		stored = {
 			range: 20,

@@ -344,6 +344,74 @@ async function regenerateHome() {
 }
 
 describe("字段行", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、この接入にはまだtokenがありませんよ。機密情報を除いたバックアップから復元すると、この状態になります。新しい値を生成してくださいね。",
+		],
+		[
+			"zh-TW",
+			"主人，這項接入目前還沒有 token，還原已去除機密資料的備份後會出現這種情況，請產生新值喔。",
+		],
+	] as const)("%s 女仆列表缺失密钥提示保留立即写入入口", async (locale, warning) => {
+		renderList({ items: [{ ...HOME, token: "" }] });
+		await findCard("c1");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(warning)).toBeTruthy();
+		act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+		fireEvent.click(screen.getByRole("button", { name: "重新生成 家里那台 的 token" }));
+		expect(screen.queryByRole("dialog")).toBeNull();
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		const fresh = updatedValues().token as string;
+		await within(await findCard("c1")).findByText(fresh);
+	});
+
+	it.each([
+		[
+			"ja",
+			"ご主人様、「家里那台」とその設定を一緒に削除しますよ。",
+			"ご主人様、「家里那台」の以前のtokenはすぐに無効になりますよ。使っている接続先はその場で切断されるので、新しい値をコピーして設定し直してくださいね。",
+			"ご主人様、新しく生成した値の全文を見られるのはいまだけですよ。このページを離れると先頭と末尾しか表示できないので、必要ならいまコピーしてくださいね。",
+			"キャンセル",
+			"再生成",
+		],
+		[
+			"zh-TW",
+			"主人，會將「家里那台」連同它的設定一起刪除喔。",
+			"主人，「家里那台」的舊 token 會立即失效喔。正在使用它的那一端會當場斷線，請將新值複製過去重新設定。",
+			"主人，剛產生的新值只有現在看得到全文喔；離開此頁後只會顯示頭尾，需要時請現在複製。",
+			"取消",
+			"重新產生",
+		],
+	] as const)(
+		"%s 女仆列表提示保留取消删除和立即换钥匙边界",
+		async (locale, removeHint, regenerateHint, freshHint, cancel, confirm) => {
+			const { removeWarning: _, ...fieldWithoutWarning } = LINKS_FIELD;
+			renderList({
+				ext: { ...BRIDGE, settings: { fields: [fieldWithoutWarning] } },
+				items: [HOME],
+			});
+			fireEvent.click(await screen.findByRole("button", { name: "删除 家里那台" }));
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByRole("dialog").textContent).toContain(removeHint);
+			fireEvent.click(screen.getByRole("button", { name: cancel }));
+			expect(api.patch).not.toHaveBeenCalled();
+			act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+			fireEvent.click(screen.getByRole("button", { name: "重新生成 家里那台 的 token" }));
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByRole("dialog").textContent).toContain(regenerateHint);
+			expect(api.patch).not.toHaveBeenCalled();
+			fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: confirm }));
+			await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+			const fresh = updatedValues().token as string;
+			expect(fresh).not.toBe(TOKEN);
+			const card = await findCard("c1");
+			await within(card).findByText(fresh);
+			expect(within(card).getByText(freshHint)).toBeTruthy();
+			expect(api.post).not.toHaveBeenCalled();
+		},
+	);
+
 	afterEach(() => {
 		vi.unstubAllGlobals();
 		Reflect.deleteProperty(document, "execCommand");

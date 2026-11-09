@@ -223,6 +223,95 @@ afterEach(() => {
 });
 
 describe("拓展市场", () => {
+	it.each([
+		[
+			"ja",
+			"third-party",
+			"ご主人様、これはBN公式ではなく「alice」からの拡張機能ですよ。BNは、その配布元が指定したパッケージをそのまま保存することだけを保証し、動作内容は審査しません。インストールするとBNのプロセス内でコードが動きます。",
+			"インストール",
+			"キャンセル",
+		],
+		[
+			"ja",
+			"no-official",
+			"ご主人様、このビルドには信頼する公開鍵が組み込まれていないので、公式配布元がありませんよ。フォークして自分でビルドした場合も同じです。「配布元」でサードパーティの配布元を追加できます。",
+			"インストール",
+			"キャンセル",
+		],
+		[
+			"zh-TW",
+			"third-party",
+			"主人，這個拓展來自「alice」，並非 BN 發行喔。BN 只保證安裝到磁碟的是該來源指定的套件，不審查它的行為；安裝後，它會在 BN 程序內執行程式碼。",
+			"安裝",
+			"取消",
+		],
+		[
+			"zh-TW",
+			"no-official",
+			"主人，此建置沒有內建信任的公開金鑰，因此沒有官方來源喔；自行 fork 後建置也會如此。可以到「來源」新增第三方來源。",
+			"安裝",
+			"取消",
+		],
+	] as const)(
+		"%s %s 女仆说明不隐藏来源事实或自动安装",
+		async (locale, kind, hint, install, cancel) => {
+			renderSection(
+				kind === "no-official"
+					? { ...MARKET, available: false, sources: [], extensions: [] }
+					: MARKET,
+			);
+			if (kind === "third-party") await cardOf("抖音订阅");
+			act(() => i18n.set({ locale, voice: "maid" }));
+			if (kind === "third-party") {
+				await userEvent.click(
+					within(await cardOf("抖音订阅")).getByRole("button", { name: install }),
+				);
+				expect(await within(screen.getByRole("dialog")).findByText(hint)).toBeTruthy();
+				expect(screen.getByRole("dialog").textContent).toContain("抖音订阅");
+				await userEvent.click(screen.getByRole("button", { name: cancel }));
+				expect(screen.queryByRole("dialog")).toBeNull();
+			} else expect(await screen.findByText(hint)).toBeTruthy();
+			expect(apiPostMock).not.toHaveBeenCalled();
+			expect(apiPatchMock).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		[
+			"ja",
+			"ご主人様、配布元ごとにmarketplace.jsonがあり、そこにインストールできる拡張機能が並んでいますよ。公式配布元は組み込みですが、自分で追加した配布元の内容は、そのアドレスの管理者が決めます。",
+			"ご主人様、BNはサードパーティの配布元にある内容を審査しませんよ。インストールすると、その作者のコードがBNのプロセス内で動きます。信頼できる配布元だけを追加してくださいね。",
+			"インデックスのURL",
+			"閉じる",
+		],
+		[
+			"zh-TW",
+			"主人，每個來源都有一份 marketplace.json，列出可安裝的拓展喔。官方來源是內建的，自行新增來源的內容則由該網址的管理者決定。",
+			"主人，BN 不審查第三方來源的內容喔；安裝其中的拓展，就等於讓來源作者在 BN 程序內執行程式碼，請只新增可信任的來源。",
+			"索引網址",
+			"關閉",
+		],
+	] as const)(
+		"%s 女仆来源说明保留信任边界和未提交地址",
+		async (locale, intro, risk, label, close) => {
+			renderSection();
+			await userEvent.click(await screen.findByRole("button", { name: "市场源 · 1" }));
+			await screen.findByRole("button", { name: "删掉 alice" });
+			const input = screen.getByRole("textbox", { name: "索引地址" }) as HTMLInputElement;
+			await userEvent.type(input, " https://pending.example/marketplace.json ");
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(intro)).toBeTruthy();
+			expect(screen.getByText(risk)).toBeTruthy();
+			expect(screen.getByRole("textbox", { name: label })).toBe(input);
+			expect(input.value).toBe(" https://pending.example/marketplace.json ");
+			expect(apiPostMock).not.toHaveBeenCalled();
+			expect(apiPatchMock).not.toHaveBeenCalled();
+			await userEvent.click(screen.getByRole("button", { name: close }));
+			expect(screen.queryByRole("dialog")).toBeNull();
+			expect(apiPatchMock).not.toHaveBeenCalled();
+		},
+	);
+
 	it("source save failures translate without retrying a write and removal submits only the remaining list", async () => {
 		let reject!: (error: Error) => void;
 		apiPatchMock.mockReturnValueOnce(
