@@ -36,6 +36,55 @@ function makeSub(uid: string, name: string): Subscription {
 
 const SUB = makeSub("111", "UP甲");
 
+it.each([
+	[
+		"ja",
+		"ご主人様、すべての購読を追加済みですよ。",
+		"ご主人様、ここではすべての購読の既定値を設定しますよ。",
+		"。個別に有効にしていない項目は、全体設定を引き継ぎますよ。",
+	],
+	[
+		"zh-TW",
+		"主人，所有訂閱都已新增，沒有遺漏囉。",
+		"主人，這裡設定的是全部訂閱的預設值喔。",
+		"；未啟用個別設定的項目，仍會沿用全域設定喔。",
+	],
+] as const)(
+	"%s maid scope guidance preserves subscription tabs and does not edit the scope",
+	(locale, empty, global, inherited) => {
+		const onChange = vi.fn(),
+			onAdd = vi.fn(),
+			onRemove = vi.fn();
+		const tabs = (scope: string) => (
+			<ScopeTabs
+				scope={scope}
+				onChange={onChange}
+				tabSubs={[SUB]}
+				availableSubs={[]}
+				onAddSub={onAdd}
+				onRemoveSub={onRemove}
+				overridesCountFor={() => 2}
+				platformOf={(identity) => subscriptionPlatformOf(identity, undefined)}
+			/>
+		);
+		const view = render(tabs(SUB.id));
+		const selected = perUpTab();
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(inherited, { exact: false })).toBeTruthy();
+		expect(perUpTab()).toBe(selected);
+		expect(selected.getAttribute("data-bn")).toBe("tab tab-active");
+		view.rerender(tabs("__global"));
+		expect(screen.getByText(global)).toBeTruthy();
+		act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+		fireEvent.click(screen.getByTitle("从订阅列表添加个性化配置"));
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(empty)).toBeTruthy();
+		expect(onChange).not.toHaveBeenCalled();
+		expect(onAdd).not.toHaveBeenCalled();
+		expect(onRemove).not.toHaveBeenCalled();
+	},
+);
+
 function renderTabs(scope: string) {
 	return render(
 		<ScopeTabs

@@ -123,6 +123,37 @@ function globalsWithThresholds(): GlobalDefaults {
 	return defaults;
 }
 
+it.each([
+	[
+		"ja",
+		"ご主人様、この購読は全体の配信通知条件とスケジュールを引き継いでいますよ。",
+		"ご主人様、有効にするとSC、会員と通知間隔を個別に設定できますよ。無効にすると、全体の配信通知条件を引き継ぎます。",
+	],
+	[
+		"zh-TW",
+		"主人，這筆訂閱正沿用全域直播門檻與排程喔。",
+		"主人，啟用後就能個別設定 SC、會員與推播頻率，關閉後則沿用全域直播門檻喔。",
+	],
+] as const)(
+	"%s maid override guidance preserves an edited threshold without saving",
+	async (locale, inherited, subtitle) => {
+		const view = renderEditor(subOf(), "live", globalsWithThresholds());
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(view.getByText(inherited, { exact: false })).toBeTruthy();
+		fireEvent.click(view.headerToggle());
+		const amount = view.field("superchat.minAmount")?.querySelector("input") as HTMLInputElement;
+		fireEvent.change(amount, { target: { value: "77" } });
+		for (const voice of ["plain", "maid"] as const) {
+			act(() => i18n.set({ voice }));
+			if (voice === "maid") expect(view.getByText(subtitle)).toBeTruthy();
+			expect(view.field("superchat.minAmount")?.querySelector("input")).toBe(amount);
+			expect(amount.value).toBe("77");
+			expect(view.getByText("Sample membership")).toBeTruthy();
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+	},
+);
+
 describe("公共会员门槛", () => {
 	it("来源和语言刷新不重置未保存门槛，隐藏体系仍保留且不自动保存", async () => {
 		const sub = subOf({ superchat: { minAmount: 10 }, membership: { minRank: { retired: 8 } } });

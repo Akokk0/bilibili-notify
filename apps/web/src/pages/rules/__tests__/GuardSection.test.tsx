@@ -6,7 +6,7 @@ import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
  * 清空一格是显式 `null`(JSON Merge Patch 语义),一档两格都清空就把这一档整个 `null` 掉。
  */
 
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 
@@ -70,6 +70,69 @@ function renderSection(guard: Bundle | null = BUNDLE) {
 const guardPatch = (delta: object) => ({
 	defaults: { templates: { membership: { guard: delta } } },
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、有効にすると会員通知の本文と画像をカスタマイズできますよ。無効にすると、取得元の既定内容を使いますね。",
+		"ご主人様、いまは取得元が用意した会員通知の既定内容を使っていますよ。",
+		"ご主人様、個別設定のないランクは制度の既定内容を使いますよ。画像が空欄なら、取得元が用意したそのランクのバッジ画像を使いますね。",
+		"ご主人様、ランクはクリエイターが決めますよ。ここでは制度全体の既定テキストと画像だけを設定しますね。",
+	],
+	[
+		"zh-TW",
+		"主人，啟用後會使用自訂會員文案與圖片，關閉後則使用來源預設內容喔。",
+		"主人，目前使用來源提供的預設會員內容喔。",
+		"主人，未個別設定的等級會使用會員體系預設內容；圖片留空時，女僕會使用來源提供的該等級徽章喔。",
+		"主人，等級由創作者自訂喔，女僕在這裡只設定會員體系的預設文案與圖片。",
+	],
+] as const)(
+	"%s maid membership guidance preserves custom tiers, templates and source defaults",
+	(locale, subtitle, inherited, fixed, custom) => {
+		const defaults = makeDefaults();
+		const bundle = {
+			...BUNDLE,
+			default: {
+				template: "Original template 原文 {viewer}",
+				imageUrl: "https://original.example/image.png",
+			},
+		};
+		const onPatch = vi.fn();
+		const view = render(
+			<GuardSection
+				programs={[
+					{ id: "custom", name: "Original custom program 原文", tiers: "custom" },
+					{
+						id: "fixed",
+						name: "Original fixed program 原文",
+						tiers: [{ key: "gold", name: "Original tier 原文", rank: 4 }],
+					},
+					{ id: "inherited", name: "Original inherited program 原文", tiers: [] },
+				]}
+				templates={{
+					...defaults.templates,
+					membership: { custom: bundle, fixed: bundle, inherited: { ...bundle, enabled: false } },
+				}}
+				factory={templateDefaultsFor("zh-CN")}
+				onPatch={onPatch}
+			/>,
+		);
+		const inputs = view.getAllByDisplayValue("Original template 原文 {viewer}");
+		for (const voice of ["maid", "plain"] as const) {
+			act(() => i18n.set({ locale, voice }));
+			if (voice === "maid") {
+				expect(view.getAllByText(subtitle)).toHaveLength(3);
+				expect(view.getByText(inherited, { exact: false })).toBeTruthy();
+				expect(view.getByText(fixed)).toBeTruthy();
+				expect(view.getByText(custom)).toBeTruthy();
+			}
+			expect(view.getAllByDisplayValue("Original template 原文 {viewer}")).toEqual(inputs);
+			expect(view.container.textContent).toContain("Original tier 原文");
+			expect(view.container.textContent).toContain("Original custom program 原文");
+			expect(onPatch).not.toHaveBeenCalled();
+		}
+	},
+);
 
 describe("GuardSection · 开关", () => {
 	it("custom 与空档只提供体系默认，自定义档说明由创作者决定", () => {
