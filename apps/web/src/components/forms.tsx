@@ -74,7 +74,8 @@ export function Field({
 	children,
 }: FieldProps) {
 	const tx = useT();
-	const entry: FieldLabel | null = fromDescriptor ? null : getFieldLabel(code);
+	const entry: FieldLabel | null =
+		fromDescriptor || (label != null && hint != null) ? null : getFieldLabel(code);
 	const effectiveLabel: ReactNode = label ?? entry?.label ?? code;
 	const effectiveHint: ReactNode = hint ?? entry?.hint;
 	const update = useFieldUpdate(code);

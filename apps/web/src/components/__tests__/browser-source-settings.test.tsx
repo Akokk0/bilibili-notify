@@ -26,6 +26,38 @@ function mockGet({ status, detectPath = null }: { status: unknown; detectPath?: 
 }
 
 describe("BrowserSourceSettings", () => {
+	it.each(["zh-CN", "en", "ja", "zh-TW"] as const)(
+		"%s 显式字段说明不误报缺失，切换口吻保留端点草稿",
+		async (locale) => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			try {
+				mockGet({
+					status: {
+						enabled: true,
+						source: { chromeEndpoint: "ws://original-browser:3000" },
+						persistable: true,
+					},
+				});
+				render(<BrowserSourceSettings />);
+				const current = await screen.findByTestId("browser-source-current");
+				await waitFor(() => expect(current.textContent).toContain("ws://original-browser:3000"));
+				const input = screen.getByPlaceholderText(/ws:\/\//) as HTMLInputElement;
+				fireEvent.change(input, { target: { value: "ws://edited-browser:3000" } });
+				for (const voice of ["plain", "maid"] as const) {
+					act(() => i18n.set({ locale, voice }));
+					expect(screen.getByPlaceholderText(/ws:\/\//)).toBe(input);
+					expect(input.value).toBe("ws://edited-browser:3000");
+					expect(current.textContent).toContain("ws://original-browser:3000");
+					expect(warn).not.toHaveBeenCalled();
+					expect(postMock).not.toHaveBeenCalled();
+				}
+			} finally {
+				cleanup();
+				warn.mockRestore();
+			}
+		},
+	);
+
 	beforeEach(() => {
 		i18n.set({ locale: "zh-CN", voice: "plain" });
 		getMock.mockReset();
