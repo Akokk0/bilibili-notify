@@ -1054,5 +1054,11 @@
 	"service.runtime.report-command.text.3": "天數",
 	"service.runtime.report-command.text.4": "立即產生週報",
 	"service.runtime.report-command.text.5": "產生過程可能需要數十秒，執行期間重複輸入不會再次產生，也不會重複付費。",
-	"service.runtime.report-command.text.6": "正在產生週報，請稍候。"
+	"service.runtime.report-command.text.6": "正在產生週報，請稍候。",
+	"commands.mute.untilDate": "{month} 月 {day} 日 {time}",
+	"commands.mute.description": "暫停訂閱推播，到期後自動恢復",
+	"commands.mute.details": "只暫停訂閱推播。定時週報、評論與錯誤通知仍會傳送。",
+	"commands.mute.resumed": "已恢復訂閱推播。",
+	"commands.mute.confirmed": "{until} 前暫停訂閱推播，錯誤通知仍會傳送。",
+	"service.runtime.mute-command.text.1": "時間長度"
 }

@@ -1063,5 +1063,11 @@
 	"service.runtime.report-command.text.3": "Days",
 	"service.runtime.report-command.text.4": "Generate a weekly report now",
 	"service.runtime.report-command.text.5": "This can take tens of seconds. Repeating the command while it runs will not start another report or incur another charge.",
-	"service.runtime.report-command.text.6": "Generating the report. Please wait."
+	"service.runtime.report-command.text.6": "Generating the report. Please wait.",
+	"commands.mute.untilDate": "{month}/{day} {time}",
+	"commands.mute.description": "Pause subscription pushes until the mute period ends",
+	"commands.mute.details": "Only subscription pushes are paused. Scheduled reports, commentary, and error notifications are still sent.",
+	"commands.mute.resumed": "Subscription pushes have resumed.",
+	"commands.mute.confirmed": "Subscription pushes are paused until {until}; error notifications will still be sent.",
+	"service.runtime.mute-command.text.1": "Duration"
 }

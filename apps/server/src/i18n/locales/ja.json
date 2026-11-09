@@ -1054,5 +1054,11 @@
 	"service.runtime.report-command.text.3": "日数",
 	"service.runtime.report-command.text.4": "今すぐ週次レポートを生成",
 	"service.runtime.report-command.text.5": "生成に数十秒かかることがあります。実行中に再度入力しても、重複生成や追加の課金は発生しません。",
-	"service.runtime.report-command.text.6": "レポートを生成しています。しばらくお待ちください。"
+	"service.runtime.report-command.text.6": "レポートを生成しています。しばらくお待ちください。",
+	"commands.mute.untilDate": "{month}月{day}日 {time}",
+	"commands.mute.description": "購読のプッシュ通知を一時停止し、期限後に自動再開",
+	"commands.mute.details": "停止するのは購読のプッシュ通知のみです。定期レポート、コメント生成、エラー通知は引き続き送信されます。",
+	"commands.mute.resumed": "購読のプッシュ通知を再開しました。",
+	"commands.mute.confirmed": "{until}まで購読のプッシュ通知を停止します。エラー通知は引き続き送信されます。",
+	"service.runtime.mute-command.text.1": "時間"
 }

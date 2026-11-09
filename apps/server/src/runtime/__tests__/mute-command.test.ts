@@ -10,7 +10,7 @@
 
 process.env.TZ = "UTC";
 
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { recordingCtx } from "../../__tests__/support/command-ctx.js";
 import { i18n } from "../../i18n/index.js";
 import { createMuteCommand } from "../mute-command.js";
@@ -19,6 +19,8 @@ import { createMuteState } from "../mute-state.js";
 /** 2026-08-11T18:00:00Z。+3h 还在同一天,+10h 跨到次日。 */
 const T0 = Date.UTC(2026, 7, 11, 18, 0, 0);
 const HOUR = 3600_000;
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function setup() {
 	let stored = 0;
@@ -51,6 +53,73 @@ function setup() {
 }
 
 describe("mute 指令", () => {
+	it.each([
+		[
+			"en",
+			{
+				duration: "Duration",
+				description: "Pause subscription pushes until the mute period ends",
+				details:
+					"Only subscription pushes are paused. Scheduled reports, commentary, and error notifications are still sent.",
+				same: "Subscription pushes are paused until 21:00; error notifications will still be sent.",
+				next: "Subscription pushes are paused until 8/12 04:00; error notifications will still be sent.",
+				zone: "Subscription pushes are paused until 8/12 02:00; error notifications will still be sent.",
+				resumed: "Subscription pushes have resumed.",
+			},
+		],
+		[
+			"ja",
+			{
+				duration: "時間",
+				description: "購読のプッシュ通知を一時停止し、期限後に自動再開",
+				details:
+					"停止するのは購読のプッシュ通知のみです。定期レポート、コメント生成、エラー通知は引き続き送信されます。",
+				same: "21:00まで購読のプッシュ通知を停止します。エラー通知は引き続き送信されます。",
+				next: "8月12日 04:00まで購読のプッシュ通知を停止します。エラー通知は引き続き送信されます。",
+				zone: "8月12日 02:00まで購読のプッシュ通知を停止します。エラー通知は引き続き送信されます。",
+				resumed: "購読のプッシュ通知を再開しました。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				duration: "時間長度",
+				description: "暫停訂閱推播，到期後自動恢復",
+				details: "只暫停訂閱推播。定時週報、評論與錯誤通知仍會傳送。",
+				same: "21:00 前暫停訂閱推播，錯誤通知仍會傳送。",
+				next: "8 月 12 日 04:00 前暫停訂閱推播，錯誤通知仍會傳送。",
+				zone: "8 月 12 日 02:00 前暫停訂閱推播，錯誤通知仍會傳送。",
+				resumed: "已恢復訂閱推播。",
+			},
+		],
+	] as const)(
+		"%s localizes mute replies with current timezone and preserves duration names, aliases and expiry",
+		async (locale, text) => {
+			const h = setup();
+			i18n.set({ locale, voice: "plain" });
+			expect(h.spec.parameterLabels).toEqual({ duration: text.duration });
+			expect(h.spec.description).toBe(text.description);
+			expect(h.spec.details).toBe(text.details);
+			expect(h.spec.signature).toBe("<duration:duration>");
+			expect(h.spec.aliases).toEqual(
+				expect.arrayContaining(["静音", "免打扰", "靜音", "勿擾", "ミュート"]),
+			);
+			expect(await h.mute(3 * HOUR)).toEqual({ ok: true });
+			expect(h.state.isMuted()).toBe(true);
+			expect(h.replies.at(-1)).toBe(text.same);
+			await h.mute(10 * HOUR);
+			expect(h.replies.at(-1)).toBe(text.next);
+			h.travelTo(Date.parse("2026-08-11T15:00:00Z"));
+			h.setTimezone("Asia/Shanghai");
+			await h.mute(3 * HOUR);
+			expect(h.replies.at(-1)).toBe(text.zone);
+			h.travelTo(Date.parse("2026-08-11T18:00:00Z"));
+			expect(h.state.isMuted()).toBe(false);
+			expect(await h.mute(0)).toEqual({ ok: true });
+			expect(h.replies.at(-1)).toBe(text.resumed);
+		},
+	);
+
 	it("主名是英文,中文走别名", () => {
 		const { spec } = setup();
 		expect(spec.name).toBe("mute");
