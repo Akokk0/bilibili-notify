@@ -359,7 +359,7 @@
 	"skinUi.CardSkinKnobs.2": "主人，这里单独拧过的旋钮只对当前订阅生效，没拧过的仍跟随全局哦。",
 	"skinUi.CardSkinKnobs.3": "主人，这套皮肤自己声明的可调项 —— 拧过的才会存,没拧过的用皮肤自带的兜底",
 	"skinUi.SkinInspector.75": "主人，声明几枚,卡片页的「皮肤旋钮」就画几个控件;拧出来的值注成",
-	"skinUi.SkinInspector.116": "主人，图与字体文件住在这套皮肤自己的包里,导出的 zip 会带着它们。在块的 CSS / HTML 里用",
+	"skinUi.SkinInspector.116": "主人，图片与字体都放在这套皮肤的包里，导出的 ZIP 也会带上它们。在块的 CSS 或 HTML 中，用 asset:<name> 就能引用哦。",
 	"skinUi.SkinPreviewPane.2": "主人，实时预览的字体等细节可能与推送图片不同，请用「最终效果」核对实际出图哦。",
 	"skinUi.card-skin-ai.3": "主人，还没配好模型 —— 到「智能女仆」页把当前服务商的 API Key 与接口地址填上",
 	"skinUi.SkinEditor.8": "主人，用一句话让女仆改,如「整体换成赛博朋克风,卡片加霓虹流光」",

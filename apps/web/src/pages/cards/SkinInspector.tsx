@@ -1174,9 +1174,7 @@ function AssetSection({
 			<Section label={tx("skinUi.SkinInspector.115")}>
 				<div className="flex flex-col gap-2 p-2.5">
 					<span className="text-bn-2xs text-bn-text-tertiary">
-						{tx("skinUi.SkinInspector.116")}{" "}
-						<code className="font-mono">{tx("skinUi.SkinInspector.117")}</code>{" "}
-						{tx("skinUi.SkinInspector.118")}
+						{tx("skinUi.SkinInspector.116")}
 					</span>
 
 					{assetsPending ? (
@@ -1221,9 +1219,6 @@ function AssetSection({
 				<div className="flex flex-col gap-2 p-2.5">
 					<span className="text-bn-2xs text-bn-text-tertiary">
 						{tx("skinUi.SkinInspector.124")}
-						<code className="font-mono">@font-face</code>
-						{tx("skinUi.SkinInspector.125")}{" "}
-						<code className="font-mono">{tx("skinUi.SkinInspector.126")}</code>。
 					</span>
 
 					{fonts.map((font, i) => (

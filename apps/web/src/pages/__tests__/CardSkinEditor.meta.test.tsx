@@ -140,6 +140,41 @@ afterEach(() => cleanup());
 
 describe("编辑器 · 皮肤这一档的接线", () => {
 	it.each([
+		["en", "Skin name", "Author", "Description", "Save"],
+		["ja", "スキン名", "作者", "説明", "保存"],
+		["zh-TW", "外觀名稱", "作者", "說明", "儲存"],
+	] as const)(
+		"%s metadata labels translate while original text remains editable and built-ins remain read-only",
+		async (locale, name, author, description, saveLabel) => {
+			mockApi();
+			renderEditor();
+			await openSkinTab();
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(api.put).not.toHaveBeenCalled();
+			expect((screen.getByLabelText(name) as HTMLInputElement).value).toBe("霓虹");
+			expect((screen.getByLabelText(author) as HTMLInputElement).value).toBe("阿绫");
+			fireEvent.change(screen.getByLabelText(name), { target: { value: "Original name 原文" } });
+			fireEvent.change(screen.getByLabelText(author), { target: { value: "" } });
+			fireEvent.change(screen.getByLabelText(description), {
+				target: { value: "Original description 原文" },
+			});
+			fireEvent.click(screen.getByRole("button", { name: saveLabel }));
+			await waitFor(() => expect(api.put).toHaveBeenCalled());
+			expect(saved()).toMatchObject({
+				name: "Original name 原文",
+				description: "Original description 原文",
+				cards: MANIFEST.cards,
+			});
+			expect(saved()).not.toHaveProperty("author");
+			cleanup();
+			mockApi({ builtin: true });
+			renderEditor();
+			await openSkinTab();
+			for (const label of [name, author, description])
+				expect((screen.getByLabelText(label) as HTMLInputElement).disabled).toBe(true);
+		},
+	);
+	it.each([
 		[
 			"en",
 			"The built-in default skin is read-only. To edit it, return to the library and duplicate it first.",
@@ -201,9 +236,13 @@ describe("编辑器 · 皮肤这一档的接线", () => {
 				rejectSave?.(new Error("Original failure 原文"));
 			});
 			expect(await screen.findByText(failed)).toBeTruthy();
-			expect((screen.getByLabelText("皮肤名") as HTMLInputElement).value).toBe(
-				"Original draft 原文",
-			);
+			expect(
+				(
+					screen.getByLabelText(
+						{ en: "Skin name", ja: "スキン名", "zh-TW": "外觀名稱" }[locale],
+					) as HTMLInputElement
+				).value,
+			).toBe("Original draft 原文");
 			expect((screen.getByRole("button", { name: saveLabel }) as HTMLButtonElement).disabled).toBe(
 				false,
 			);
@@ -275,7 +314,9 @@ describe("编辑器 · 皮肤这一档的接线", () => {
 			expect(screen.getByText(canvas)).toBeTruthy();
 			expect(screen.getByText(inspector)).toBeTruthy();
 			expect(screen.getByText(inUse)).toBeTruthy();
-			expect((screen.getByLabelText("作者") as HTMLInputElement).value).toBe("阿绫");
+			expect(
+				(screen.getByLabelText(locale === "en" ? "Author" : "作者") as HTMLInputElement).value,
+			).toBe("阿绫");
 			expect(api.put).not.toHaveBeenCalled();
 			fireEvent.click(screen.getByRole("button", { name: saveLabel }));
 			await waitFor(() =>
@@ -579,6 +620,75 @@ describe("编辑器 · 皮肤资产与自带字体", () => {
 
 	const pick = (file: File) =>
 		fireEvent.change(screen.getByLabelText("传一份资产"), { target: { files: [file] } });
+
+	it.each([
+		[
+			"en",
+			"Upload asset",
+			"Add font",
+			"Font family",
+			"Font asset",
+			"Save",
+			"This skin has no bundled files.",
+			"Images and fonts are stored in this skin’s package and included in its exported ZIP. Reference them as asset:<name> in block CSS or HTML.",
+			"Each row creates an @font-face rule. Use font-family:<family> in block CSS to apply it.",
+		],
+		[
+			"ja",
+			"アセットをアップロード",
+			"フォントを追加",
+			"フォント名",
+			"フォントのアセット",
+			"保存",
+			"このスキンに同梱ファイルはありません。",
+			"画像とフォントはこのスキンのパッケージ内に保存され、書き出すZIPにも含まれます。ブロックのCSSやHTMLでは asset:<name> で参照できます。",
+			"各行で @font-face ルールを1つ定義します。ブロックのCSSで font-family:<family> を指定すると適用できます。",
+		],
+		[
+			"zh-TW",
+			"上傳素材",
+			"新增字型",
+			"字型名稱",
+			"字型素材",
+			"儲存",
+			"此外觀尚未附帶任何檔案。",
+			"圖片與字型儲存於此外觀的套件內，匯出的 ZIP 也會包含這些檔案。在區塊 CSS 或 HTML 中，使用 asset:<name> 引用。",
+			"每列會建立一條 @font-face 規則。在區塊 CSS 中使用 font-family:<family> 即可套用。",
+		],
+	] as const)(
+		"%s bundled assets and fonts use localized controls and preserve package references",
+		async (locale, upload, add, family, asset, saveLabel, empty, assetHelp, fontHelp) => {
+			mockWithAssets();
+			renderEditor();
+			await openSkinTab();
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(empty)).toBeTruthy();
+			expect(screen.getByText(assetHelp)).toBeTruthy();
+			expect(screen.getByText(fontHelp)).toBeTruthy();
+			expect(api.upload).not.toHaveBeenCalled();
+			await act(async () => {
+				fireEvent.change(screen.getByLabelText(upload), {
+					target: { files: [new File([new Uint8Array([1])], "song.ttf")] },
+				});
+			});
+			expect(vi.mocked(api.upload).mock.calls.at(-1)?.[0]).toBe("/api/cards/skins/neon/assets");
+			await screen.findByText("assets/song.ttf");
+			fireEvent.click(screen.getByRole("button", { name: add }));
+			fireEvent.change(screen.getByLabelText(family), { target: { value: "Original Font 原文" } });
+			chooseSelect(screen.getByRole("combobox", { name: asset }), "assets/song.ttf");
+			fireEvent.click(screen.getByRole("button", { name: saveLabel }));
+			await waitFor(() => expect(api.put).toHaveBeenCalled());
+			expect((saved() as unknown as { fonts: unknown }).fonts).toEqual([
+				{ family: "Original Font 原文", asset: "asset:assets/song.ttf" },
+			]);
+			cleanup();
+			mockWithAssets(true);
+			renderEditor();
+			await openSkinTab();
+			expect(screen.queryByLabelText(upload)).toBeNull();
+			expect(screen.queryByRole("button", { name: add })).toBeNull();
+		},
+	);
 
 	it("传一份字体 → 走皮肤目录那条路由,传完候选表里当场有它", async () => {
 		mockWithAssets();
