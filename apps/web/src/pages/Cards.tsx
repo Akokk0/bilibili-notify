@@ -333,16 +333,16 @@ function TestPushCard({
 	}, [targets, targetId]);
 
 	const push = useMutation({
-		mutationFn: async () => {
+		mutationFn: async (submitted: {
+			targetId: string;
+			kind: PreviewKind;
+			style: PreviewStyle;
+			content: Record<string, unknown>;
+			cardSkin?: string;
+			cardSkinKnobs?: CardSkinKnobsBySkin;
+		}) => {
 			// 同 PreviewImage 的过渡注释:版式已归皮肤,这一轮一个字也不传 layout。
-			const res = await api.post<TestPushResponse>("/api/cards/test", {
-				targetId,
-				kind,
-				style,
-				content: pushContent,
-				cardSkin,
-				cardSkinKnobs,
-			});
+			const res = await api.post<TestPushResponse>("/api/cards/test", submitted);
 			// 没送达是 200 + 失败那一支,`message` 就是对端的原话。
 			if (!res.ok) throw new ApiError(200, res, res.message);
 			return res;
@@ -385,7 +385,9 @@ function TestPushCard({
 					variant="primary"
 					size="sm"
 					full
-					onClick={() => push.mutate()}
+					onClick={() =>
+						push.mutate({ targetId, kind, style, content: pushContent, cardSkin, cardSkinKnobs })
+					}
 					disabled={push.isPending || !targetId || (kind === "membership" && !membershipAvailable)}
 				>
 					{push.isPending ? t("cards.testPush.pushing") : t("cards.testPush.button")}
