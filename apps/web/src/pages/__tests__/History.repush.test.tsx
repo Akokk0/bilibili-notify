@@ -596,6 +596,62 @@ beforeEach(() => {
 });
 
 it.each([
+	[
+		"ja",
+		"ご主人様、届かなかったメッセージを再送できますよ。",
+		"ご主人様、どのメッセージを再送しましょうか？",
+		"あとから一度、再送しましたよ。",
+		"メイドからの再送",
+	],
+	[
+		"zh-TW",
+		"主人，讓女僕補送沒送達的訊息吧。",
+		"主人，要女僕補送哪些訊息呢？",
+		"女僕後來已經補送過一次囉。",
+		"女僕補送的",
+	],
+] as const)(
+	"%s maid resend annotations preserve recorded content and require an explicit send",
+	async (locale, title, question, superseded, resent) => {
+		mockApi([
+			row({
+				messages: [
+					{ text: "Original recorded 原文", kind: "text", role: "main", ok: true },
+					{
+						text: "Original failed 原文",
+						kind: "text",
+						role: "extra",
+						ok: false,
+						code: "unknown",
+						message: "Original diagnostic 原文",
+					},
+					{ text: "Original pending 原文", kind: "text", role: "extra" },
+					{ text: "Original resent 原文", kind: "text", role: "extra", ok: true, repushOf: 1 },
+				],
+				repush: { can: true, total: 3, missing: 1 },
+			}),
+		]);
+		renderHistory();
+		const original = await screen.findByText("Original recorded 原文");
+		await userEvent.click(screen.getByRole("button", { name: /3 条/ }));
+		const resend = repushButton();
+		await userEvent.click(resend);
+		for (const voice of ["maid", "plain"] as const) {
+			act(() => i18n.set({ locale, voice }));
+			if (voice === "maid") {
+				expect(resend.getAttribute("title")).toBe(title);
+				expect(screen.getByText(question)).toBeTruthy();
+				expect(screen.getByText(superseded)).toBeTruthy();
+				expect(screen.getByText(resent)).toBeTruthy();
+			}
+			expect(original.isConnected).toBe(true);
+			expect(screen.getByText("Original resent 原文")).toBeTruthy();
+			expect(api.post).not.toHaveBeenCalled();
+		}
+	},
+);
+
+it.each([
 	["ja", "ご主人様、2件を再送しています。終わるとこの行を自動で更新しますよ。"],
 	["zh-TW", "主人，女僕正在補發（2 則），完成後這一列會自動更新喔。"],
 ] as const)(

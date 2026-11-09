@@ -69,6 +69,45 @@ describe("Field 字典 conformance", () => {
 	});
 });
 
+it.each([
+	[
+		"ja",
+		"ご主人様、ふだん使うプロバイダーのインスタンスを選んでくださいね。切り替えても、それぞれのキーとモデル設定は残しておきますよ。",
+		"ご主人様、この時間帯は通知を送らず、あとで手動で再送できるよう履歴に残しますね。開始時刻を含み、終了時刻は含みません。",
+		"送信前にご主人様へ確認",
+		"ご主人様、まず個別メッセージでプレビューを送りますね。yと返信があればグループへ送り、48時間お返事がなければ失効します。",
+	],
+	[
+		"zh-TW",
+		"主人，這裡選擇女僕平時使用的服務商實例；切換時，各份金鑰與模型都會保留喔。",
+		"主人，勿擾時段內女僕會暫停推播並記入紀錄，之後仍能補送喔；開始的整點算在內，結束的整點不算。",
+		"傳送前先讓主人確認",
+		"主人，女僕會先用私訊傳送預覽，收到 y 的回覆才發到群組；48 小時未回覆就會失效喔。",
+	],
+] as const)(
+	"%s maid field guidance keeps field identities and approval semantics",
+	(locale, profileHint, quietHint, approvalLabel, approvalHint) => {
+		const previous = i18n.state();
+		const profile = getFieldLabel("ai.activeProfile");
+		const quiet = getFieldLabel("schedule.quietHours");
+		const approval = getFieldLabel("roastSchedule.approval");
+		try {
+			i18n.set({ locale, voice: "maid" });
+			expect(profile?.hint).toBe(profileHint);
+			expect(quiet?.hint).toBe(quietHint);
+			expect(approval?.label).toBe(approvalLabel);
+			expect(approval?.hint).toBe(approvalHint);
+			i18n.set({ voice: "plain" });
+			expect(getFieldLabel("ai.activeProfile")).toBe(profile);
+			expect(getFieldLabel("schedule.quietHours")).toBe(quiet);
+			expect(getFieldLabel("roastSchedule.approval")).toBe(approval);
+			expect(approval?.section).toBe("schedule");
+		} finally {
+			i18n.set(previous);
+		}
+	},
+);
+
 it("AI body draft fields name scenes and display AI/template instead of generic on/off", () => {
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 	const value = getFieldLabel("ai.writing.post.isOnByDefault");

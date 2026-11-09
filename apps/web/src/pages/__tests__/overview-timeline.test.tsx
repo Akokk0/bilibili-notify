@@ -7,7 +7,7 @@
  */
 
 import type { ExtensionEntryView, SourceEntry } from "@bilibili-notify/contract";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { i18n } from "../../i18n";
@@ -22,6 +22,21 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+it.each([
+	["ja", "ご主人様、「送信先」で接続を設定して購読を追加すると、ここに通知の履歴を表示しますよ。"],
+	["zh-TW", "主人，先到「推播目標」設定好通道，再新增訂閱，女僕就會把推播活動記在這裡喔。"],
+] as const)("%s maid timeline empty guidance preserves its navigation links", (locale, hint) => {
+	const view = renderPanel([]);
+	const links = Array.from(view.container.querySelectorAll("a"), (link) =>
+		link.getAttribute("href"),
+	);
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(hint)).toBeTruthy();
+	expect(
+		Array.from(view.container.querySelectorAll("a"), (link) => link.getAttribute("href")),
+	).toEqual(links);
+});
 
 function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 	return {

@@ -38,6 +38,10 @@ describe("面板译文文件都接进了 DICTS", () => {
 			"sourceUi.components.scope.",
 			"sourceUi.pages.rules.",
 			"sources.",
+			"sourceUi.config.field.labels.",
+			"sourceUi.pages.Dashboard.",
+			"sourceUi.pages.Stats.",
+			"sourceUi.pages.History.",
 		];
 		const expected = Object.keys(DICTS["zh-CN"].maid)
 			.filter((key) => prefixes.some((prefix) => key.startsWith(prefix)))

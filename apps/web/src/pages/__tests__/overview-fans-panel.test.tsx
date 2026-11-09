@@ -113,6 +113,22 @@ function renderPanel(
 	return { ...view, qc };
 }
 
+it.each([
+	["ja", "ご主人様、最初のプロフィール更新が終わったら、ここにデータを表示しますね。"],
+	["zh-TW", "主人，第一輪資料更新完成後，女僕就會把資料填在這裡喔。"],
+] as const)(
+	"%s maid follower empty state stays empty without requesting a refresh",
+	async (locale, hint) => {
+		renderPanel([], []);
+		await screen.findByText("第一轮资料刷新完成后会填充");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(hint)).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	},
+);
+
 describe("粉丝数变化 · 拓展订阅", () => {
 	it("两支都列:拓展行名字照订阅资料、平台徽章照清单、头像是那条订阅的;三格照画", async () => {
 		const { container } = renderPanel(

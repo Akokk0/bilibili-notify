@@ -185,6 +185,26 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
+it.each([
+	["ja", "ご主人様のために、2件の購読のフォロワー増減・投稿・配信頻度を追跡していますよ。"],
+	["zh-TW", "女僕正在替主人追蹤 2 筆訂閱的粉絲增減、投稿與直播頻率喔。"],
+] as const)(
+	"%s maid tracking summary preserves the table, counts and original creators",
+	async (locale, tracking) => {
+		const view = renderStats();
+		const table = await screen.findByRole("table");
+		for (const voice of ["maid", "plain"] as const) {
+			act(() => i18n.set({ locale, voice }));
+			if (voice === "maid") expect(view.container.textContent).toContain(tracking);
+			expect(screen.getByRole("table")).toBe(table);
+			expect(within(table).getByText("抖音乙")).toBeTruthy();
+			expect(within(table).getByText("B 站甲")).toBeTruthy();
+			expect(api.patch).not.toHaveBeenCalled();
+			expect(api.post).not.toHaveBeenCalled();
+		}
+	},
+);
+
 describe("统计页 · 拓展订阅的行", () => {
 	it("对比表 / 热力图两支都列:名字照订阅、拓展行带平台徽章与在播,颜色与订阅卡同一个;汇总两支一起算", async () => {
 		renderStats();
