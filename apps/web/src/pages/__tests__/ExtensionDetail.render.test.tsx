@@ -182,6 +182,62 @@ describe("拓展详情页", () => {
 		vi.restoreAllMocks();
 	});
 
+	it.each([
+		[
+			"ja",
+			"ご主人様、ログレベルを読み込んでいますよ…",
+			"ご主人様、ログレベルを読み込めず、いまはどの段階か分かりません。もう一度試してくださいね。",
+			"ログレベルを再読み込み",
+			"ご主人様、ここではこの拡張機能のログレベルだけを変えますよ。選ぶとすぐに保存し、個別に設定しない場合は全体設定に従います。",
+			"ご主人様、ログレベルを保存できませんでした：Original diagnostic 原文",
+		],
+		[
+			"zh-TW",
+			"主人，女僕正在讀取日誌等級喔…",
+			"主人，沒能讀取日誌等級，目前還不知道是哪一級，可以重試喔。",
+			"重試讀取日誌等級",
+			"主人，這裡只修改此拓展的日誌等級，選好就儲存；未個別設定時會跟隨全域喔。",
+			"主人，日誌等級沒能儲存成功：Original diagnostic 原文",
+		],
+	] as const)(
+		"%s maid extension-log feedback preserves unknown and saved levels without repeating writes",
+		async (locale, loading, readFailed, retry, hint, saveFailed) => {
+			let reject!: (error: Error) => void;
+			const pending = new Promise<void>((_, fail) => {
+				reject = fail;
+			});
+			renderDetail("bridge", pending);
+			const read = apiGetMock.getMockImplementation();
+			let recovered = false;
+			apiGetMock.mockImplementation(async (path: string) =>
+				path === "/api/settings" && recovered ? { core: GLOBALS } : read?.(path),
+			);
+			await screen.findByText("正在读取日志等级…");
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(loading)).toBeTruthy();
+			await act(async () => reject(new Error("Original read diagnostic")));
+			await screen.findByText(readFailed);
+			expect(apiPatchMock).not.toHaveBeenCalled();
+			recovered = true;
+			fireEvent.click(screen.getByRole("button", { name: retry }));
+			await screen.findByText(hint);
+			const row = screen.getByText(hint).previousElementSibling as HTMLElement;
+			apiPatchMock.mockRejectedValueOnce(new Error("Original diagnostic 原文"));
+			fireEvent.click(within(row).getByRole("button", { name: /^L1/ }));
+			await screen.findByText(saveFailed);
+			for (const voice of ["plain", "maid"] as const) {
+				act(() => i18n.set({ voice }));
+				if (voice === "maid") expect(screen.getByText(saveFailed)).toBeTruthy();
+				expect(within(row).getByRole("button", { name: /^L4/ }).getAttribute("aria-pressed")).toBe(
+					"true",
+				);
+				expect(apiPatchMock).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+					core: { logging: { levels: { bridge: "error" } } },
+				});
+			}
+		},
+	);
+
 	it("extension log read and save feedback translates without inventing a level or rewriting another owner", async () => {
 		let reject!: (error: Error) => void;
 		const pending = new Promise<void>((_, fail) => {

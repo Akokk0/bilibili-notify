@@ -180,6 +180,57 @@ afterEach(() => {
 });
 
 describe("系统页的按模块日志等级", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、ログの出力元を読み込んでいますよ…",
+			"ご主人様、ログの出力元をすべて読み込めませんでした。取得済みの項目と既存の上書き設定は残してあるので、もう一度試してくださいね。",
+			"ご主人様、この出力元はまだ識別できませんが、既存の上書き設定は残しますね。",
+			"ご主人様、個別に設定しない出力元は全体のログレベルに従いますよ。保存後すぐに反映されるので、再起動は不要です。",
+		],
+		[
+			"zh-TW",
+			"主人，女僕正在讀取日誌歸屬喔…",
+			"主人，日誌歸屬還沒讀取完整；女僕保留了已知項目與既有覆寫，可以重試喔。",
+			"主人，暫時無法辨識這個歸屬，女僕會保留既有覆寫喔。",
+			"主人，未個別設定的項目會跟隨全域等級；儲存後立即生效，不必重新啟動喔。",
+		],
+	] as const)(
+		"%s maid log-owner failures retain existing overrides without refetching owners or writing settings",
+		async (locale, loading, failure, unknown, hint) => {
+			mockApi({ "missing.source": "warn" });
+			const read = vi.mocked(api.get).getMockImplementation();
+			let reject!: (error: Error) => void;
+			const pending = new Promise((_, fail) => {
+				reject = fail;
+			});
+			vi.mocked(api.get).mockImplementation(async (path) =>
+				path === "/api/sources" ? pending : read?.(path),
+			);
+			await renderRuntimeSection();
+			const raw = screen.getByText("missing.source");
+			const ownerReads = () =>
+				vi
+					.mocked(api.get)
+					.mock.calls.filter(([path]) =>
+						["/api/sources", "/api/adapters", "/api/ext"].includes(path),
+					).length;
+			const calls = ownerReads();
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(loading)).toBeTruthy();
+			expect(screen.getByText(unknown)).toBeTruthy();
+			expect(screen.getByText(hint)).toBeTruthy();
+			expect(screen.getByText("missing.source")).toBe(raw);
+			expect(ownerReads()).toBe(calls);
+			await act(async () => reject(new Error("Original source list failure")));
+			await screen.findByText(failure);
+			expect(screen.getByText("missing.source")).toBe(raw);
+			expect(screen.getByText("双口拓展")).toBeTruthy();
+			expect(api.patch).not.toHaveBeenCalled();
+			expect(api.post).not.toHaveBeenCalled();
+		},
+	);
+
 	it("log owner loading and partial failures translate while known rows and existing overrides stay available", async () => {
 		mockApi({ "missing.source": "warn" });
 		const read = vi.mocked(api.get).getMockImplementation();

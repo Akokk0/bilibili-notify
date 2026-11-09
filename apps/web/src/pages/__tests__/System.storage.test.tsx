@@ -374,6 +374,51 @@ it.each([
 	},
 );
 
+it.each([
+	[
+		"ja",
+		"ご主人様、昨日までの履歴画像と再送用の元データを削除しますよ。今日の画像は残しますね。",
+		"ご主人様、いま使っている世代は削除できませんよ。",
+		"ご主人様、削除が完了しました。実際に空いた容量は512 Bですよ。",
+		"削除する",
+	],
+	[
+		"zh-TW",
+		"主人，這會清理截至昨天的歷史圖片與重送原始資料，今天的圖片會保留喔。",
+		"主人，目前正在使用的這一代不能刪除喔。",
+		"主人，已清空，實際釋出了 512 B。",
+		"確認清空",
+	],
+] as const)(
+	"%s maid storage confirmation keeps protection and does not repeat an explicit clear",
+	async (locale, scope, protectedHint, done, confirm) => {
+		GENERATIONS.push(generation(3, { current: true, deletable: false, lockReason: "current" }));
+		vi.mocked(api.delete).mockResolvedValue({ freedBytes: 512 });
+		renderSystem();
+		const list = await openStorage();
+		const protectedButton = await screen.findByRole("button", { name: "删除第 3 代" });
+		fireEvent.click(screen.getByRole("button", { name: "清空推送历史图片" }));
+		const dialog = screen.getByRole("dialog");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(dialog.textContent).toContain(scope);
+		expect(dialog.textContent).toContain("4 KiB");
+		expect(screen.getByText(protectedHint)).toBeTruthy();
+		expect((protectedButton as HTMLButtonElement).disabled).toBe(true);
+		expect(list.querySelectorAll("li")).toHaveLength(7);
+		expect(api.delete).not.toHaveBeenCalled();
+		fireEvent.click(within(dialog).getByRole("button", { name: confirm }));
+		await screen.findByText(done);
+		for (const voice of ["plain", "maid"] as const) {
+			act(() => i18n.set({ voice }));
+			if (voice === "maid") expect(screen.getByText(done)).toBeTruthy();
+			expect(api.delete).toHaveBeenCalledExactlyOnceWith("/api/system/storage/historyImages");
+			expect(api.post).not.toHaveBeenCalled();
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+	},
+);
+
 it("storage confirmation translates in place while keeping category, protection and actual freed bytes", async () => {
 	GENERATIONS.push(generation(3, { current: true, deletable: false, lockReason: "current" }));
 	vi.mocked(api.delete).mockResolvedValue({ freedBytes: 512 });
