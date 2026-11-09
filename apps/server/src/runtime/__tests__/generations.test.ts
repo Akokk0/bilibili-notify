@@ -17,6 +17,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	createGeneration,
 	GENERATION_FILE,
@@ -31,6 +32,7 @@ let hostRoot: string;
 let generations: string;
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	hostRoot = await mkdtemp(join(tmpdir(), "bn-generations-"));
 	generations = join(hostRoot, "generations");
 });
@@ -62,6 +64,55 @@ const select = (zeroGenerationExists: boolean) =>
 	selectGeneration({ hostRoot, formatVersion: 1, migrationRevision: 7, zeroGenerationExists });
 
 describe("selectGeneration", () => {
+	it.each([
+		[
+			"en",
+			"Generation 1 uses data format version 1, which is older than this version’s 2. Migration between generations is not implemented.",
+			"Generation 1 already exists and cannot be created again: ",
+		],
+		[
+			"ja",
+			"第1世代のデータ形式バージョンは1で、このバージョンの2より古くなっています。世代間の移行は未実装です。",
+			"第1世代はすでに存在するため、再作成できません：",
+		],
+		[
+			"zh-TW",
+			"第 1 代的資料格式版本為 1，比目前版本的 2 舊，尚未實作資料代之間的遷移。",
+			"第 1 代已存在，無法再次建立：",
+		],
+	] as const)(
+		"%s explains unsupported format upgrades and occupied destinations without modifying the generation",
+		async (locale, oldFormat, occupied) => {
+			const selection = await select(false);
+			if (selection.kind !== "create") throw new Error("expected create");
+			const existing = await placeGeneration(1);
+			const before = await readFile(join(existing, GENERATION_FILE), "utf8");
+			i18n.set({ locale, voice: "plain" });
+			await expect(
+				selectGeneration({
+					hostRoot,
+					formatVersion: 2,
+					migrationRevision: 7,
+					zeroGenerationExists: false,
+				}),
+			).rejects.toThrow(oldFormat);
+			let filled = false;
+			await expect(
+				createGeneration(selection, {
+					formatVersion: 1,
+					migrationRevision: 7,
+					createdBy: "Original version",
+					fill: async () => {
+						filled = true;
+					},
+				}),
+			).rejects.toThrow(`${occupied}${existing}`);
+			expect(filled).toBe(false);
+			expect(await readFile(join(existing, GENERATION_FILE), "utf8")).toBe(before);
+			expect(await readdir(generations)).toEqual(["1"]);
+			expect(await select(false)).toEqual({ kind: "use", seq: 1, dir: existing });
+		},
+	);
 	it("一代都没有、也没有 0.x 的数据 → 开第 1 代,空的", async () => {
 		expect(await select(false)).toEqual({
 			kind: "create",
