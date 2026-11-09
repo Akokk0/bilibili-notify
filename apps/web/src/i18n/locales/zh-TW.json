@@ -2629,5 +2629,20 @@
 	"skinUi.CardSkinKnobs.15": "沿用全域",
 	"skinUi.CardSkinKnobs.4": "無",
 	"skinUi.CardSkinKnobs.9": "此外觀沒有提供可調項目。可調項目由外觀本身定義；舊版匯出的套件可能不含此資訊。請選擇其他外觀，或請作者重新匯出。",
-	"skinUi.CardSkinKnobs.16": "未選擇（使用外觀預設值）"
+	"skinUi.CardSkinKnobs.16": "未選擇（使用外觀預設值）",
+	"skinUi.CardSkinEditor.1": "返回資源庫",
+	"skinUi.CardSkinEditor.2": "載入中…",
+	"skinUi.CardSkinEditor.3": "使用中",
+	"skinUi.CardSkinEditor.4": "有未儲存的變更",
+	"skinUi.CardSkinEditor.5": "此外觀未定義此類型的卡片，繪製時使用內建預設外觀。",
+	"skinUi.CardSkinEditor.6": "場景",
+	"skinUi.CardSkinEditor.7": "儲存中…",
+	"skinUi.CardSkinEditor.8": "儲存",
+	"skinUi.CardSkinEditor.9": "正在讀取外觀清單…",
+	"skinUi.CardSkinEditor.11": "網格畫布 · {value0}卡片",
+	"skinUi.CardSkinEditor.12": "畫布只顯示所選場景使用的區塊；圖庫、影片封面等專屬區塊會在切換至對應場景後顯示。選取區塊可在檢查器調整位置；封面等單張圖片可拖曳上下邊緣調整高度，其他區塊則隨內容撐高。",
+	"skinUi.CardSkinEditor.13": "檢查器",
+	"skinUi.CardSkinEditor.10": "無法讀取此外觀：{reason}",
+	"skinUi.CardSkinEditor.15": "儲存失敗：{reason}",
+	"skinUi.CardSkinEditor.14": "內建預設外觀為唯讀；若要編輯，請先返回資源庫複製一份。"
 }

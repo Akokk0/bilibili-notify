@@ -2686,5 +2686,20 @@
 	"skinUi.CardSkinKnobs.5#one": "{count} custom adjustment",
 	"skinUi.CardSkinKnobs.4": "None",
 	"skinUi.CardSkinKnobs.9": "This skin has no adjustable options. Each skin defines its own controls; older exported packages may not include them. Choose another skin or ask its author to export it again.",
-	"skinUi.CardSkinKnobs.16": "Not selected (use the skin’s default)"
+	"skinUi.CardSkinKnobs.16": "Not selected (use the skin’s default)",
+	"skinUi.CardSkinEditor.1": "Back to library",
+	"skinUi.CardSkinEditor.2": "Loading…",
+	"skinUi.CardSkinEditor.3": "In use",
+	"skinUi.CardSkinEditor.4": "Unsaved changes",
+	"skinUi.CardSkinEditor.5": "This skin does not define this card type; rendering uses the built-in default.",
+	"skinUi.CardSkinEditor.6": "Scene",
+	"skinUi.CardSkinEditor.7": "Saving…",
+	"skinUi.CardSkinEditor.8": "Save",
+	"skinUi.CardSkinEditor.9": "Loading skin manifest…",
+	"skinUi.CardSkinEditor.11": "Grid canvas · {value0} card",
+	"skinUi.CardSkinEditor.12": "The canvas shows only blocks used in the selected scene. Switch scenes to see scene-specific blocks, such as galleries and video covers. Select a block to edit its position in the inspector. Drag the top or bottom edge of a single image, such as a cover, to resize its height; other blocks grow with their content.",
+	"skinUi.CardSkinEditor.13": "Inspector",
+	"skinUi.CardSkinEditor.10": "Unable to load this skin: {reason}",
+	"skinUi.CardSkinEditor.15": "Save failed: {reason}",
+	"skinUi.CardSkinEditor.14": "The built-in default skin is read-only. To edit it, return to the library and duplicate it first."
 }

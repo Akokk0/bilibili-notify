@@ -2629,5 +2629,20 @@
 	"skinUi.CardSkinKnobs.15": "全体設定に従う",
 	"skinUi.CardSkinKnobs.4": "なし",
 	"skinUi.CardSkinKnobs.9": "このスキンには調整項目がありません。調整項目はスキンごとに定義され、古いバージョンで書き出したパッケージには含まれていない場合があります。別のスキンを選ぶか、作者に再エクスポートを依頼してください。",
-	"skinUi.CardSkinKnobs.16": "未選択（スキンの既定値を使用）"
+	"skinUi.CardSkinKnobs.16": "未選択（スキンの既定値を使用）",
+	"skinUi.CardSkinEditor.1": "ライブラリーに戻る",
+	"skinUi.CardSkinEditor.2": "読み込み中…",
+	"skinUi.CardSkinEditor.3": "使用中",
+	"skinUi.CardSkinEditor.4": "未保存の変更あり",
+	"skinUi.CardSkinEditor.5": "このスキンにはこの種類のカードがなく、描画時は内蔵の既定スキンを使います。",
+	"skinUi.CardSkinEditor.6": "シーン",
+	"skinUi.CardSkinEditor.7": "保存中…",
+	"skinUi.CardSkinEditor.8": "保存",
+	"skinUi.CardSkinEditor.9": "スキンの定義を読み込み中…",
+	"skinUi.CardSkinEditor.11": "グリッドキャンバス · {value0}カード",
+	"skinUi.CardSkinEditor.12": "選んだシーンで使うブロックだけを表示します。画像一覧や動画カバーなど、特定のシーン専用のブロックはシーンを切り替えると表示されます。ブロックを選ぶとインスペクターで位置を変更できます。カバーなどの単独画像は上下の端をドラッグして高さを変更でき、ほかのブロックの高さは内容に合わせて変わります。",
+	"skinUi.CardSkinEditor.13": "インスペクター",
+	"skinUi.CardSkinEditor.10": "スキンを読み込めません：{reason}",
+	"skinUi.CardSkinEditor.15": "保存に失敗しました：{reason}",
+	"skinUi.CardSkinEditor.14": "内蔵の既定スキンは読み取り専用です。編集するには、ライブラリーに戻って先に複製してください。"
 }

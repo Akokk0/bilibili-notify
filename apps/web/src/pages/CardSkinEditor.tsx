@@ -236,12 +236,12 @@ export default function CardSkinEditor() {
 		>
 			<header
 				data-bn="glass-strong"
-				className="bn-glass-strong flex h-14 shrink-0 items-center gap-3 px-7"
+				className="bn-glass-strong flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 xl:h-14 xl:flex-nowrap xl:px-7 xl:py-0"
 			>
-				{/* 左右两栏都 `flex-1`:剩下的宽度两边**平分**,中间那条卡种 tab 才真的落在页面
+				{/* 宽屏下左右两栏都 `flex-1`:剩下的宽度两边**平分**,中间那条卡种 tab 才真的落在页面
 				    正中。只给中间 `flex-1` 的话,它的中心跟着两侧内容宽度漂 —— 直播卡有场景选择器
 				    时看着是正的,切到没有场景的卡种就整条往右偏。 */}
-				<div className="flex min-w-0 flex-1 items-center gap-3">
+				<div className="flex w-full min-w-0 items-center gap-3 xl:w-auto xl:flex-1">
 					<Btn size="sm" variant="ghost" onClick={() => navigate("/library?category=card-skins")}>
 						<Icon.arrowLeft size={14} /> {tx("skinUi.CardSkinEditor.1")}
 					</Btn>
@@ -276,8 +276,9 @@ export default function CardSkinEditor() {
 					</div>
 				</div>
 
-				<div className="shrink-0">
-					<div className="flex flex-wrap gap-1 rounded-md bg-bn-surface-muted p-1">
+				{/* 窄屏将入口、卡种和操作区分行；卡种只在自己的区域横向滚动，不能把保存挤出视口。 */}
+				<div className="bn-no-scrollbar w-full min-w-0 overflow-x-auto xl:w-auto xl:shrink-0">
+					<div className="flex w-max gap-1 rounded-md bg-bn-surface-muted p-1">
 						{CARD_KINDS.map((k) => {
 							const IconComp = Icon[KIND_ICONS[k]];
 							const active = k === kind;
@@ -305,17 +306,19 @@ export default function CardSkinEditor() {
 					</div>
 				</div>
 
-				<div className="flex flex-1 items-center justify-end gap-2">
+				<div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 xl:w-auto xl:flex-1 xl:flex-nowrap">
 					{scenes.length > 1 ? (
 						<>
 							<span className="text-bn-text-tertiary text-bn-xs">
 								{tx("skinUi.CardSkinEditor.6")}
 							</span>
-							<Picker
-								value={scene}
-								onChange={switchScene}
-								options={scenes.map((sc) => ({ value: sc.id, label: sc.label }))}
-							/>
+							<div className="bn-no-scrollbar min-w-0 max-w-full overflow-x-auto">
+								<Picker
+									value={scene}
+									onChange={switchScene}
+									options={scenes.map((sc) => ({ value: sc.id, label: sc.label }))}
+								/>
+							</div>
 						</>
 					) : null}
 					<Btn
@@ -334,8 +337,9 @@ export default function CardSkinEditor() {
 					<LoadingBlock label={tx("skinUi.CardSkinEditor.9")} />
 				) : manifestQuery.isError ? (
 					<ErrorNote>
-						{tx("skinUi.CardSkinEditor.10")}
-						{String((manifestQuery.error as Error).message)}
+						{tx("skinUi.CardSkinEditor.10", {
+							reason: String((manifestQuery.error as Error).message),
+						})}
 					</ErrorNote>
 				) : (
 					// **按占比分,不按内容分**(2026-09-14 主人拍板):预览 1/3,画布与检查器合占
@@ -483,8 +487,7 @@ export default function CardSkinEditor() {
 				{readOnly ? <ErrorNote className="mt-3">{tx("skinUi.CardSkinEditor.14")}</ErrorNote> : null}
 				{save.isError ? (
 					<ErrorNote className="mt-3">
-						{tx("skinUi.CardSkinEditor.15")}
-						{errorTextOf(save.error)}
+						{tx("skinUi.CardSkinEditor.15", { reason: errorTextOf(save.error) })}
 					</ErrorNote>
 				) : null}
 			</div>

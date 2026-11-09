@@ -139,6 +139,157 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("编辑器 · 皮肤这一档的接线", () => {
+	it.each([
+		[
+			"en",
+			"The built-in default skin is read-only. To edit it, return to the library and duplicate it first.",
+			"Save",
+			"Back to library",
+		],
+		[
+			"ja",
+			"内蔵の既定スキンは読み取り専用です。編集するには、ライブラリーに戻って先に複製してください。",
+			"保存",
+			"ライブラリーに戻る",
+		],
+		["zh-TW", "內建預設外觀為唯讀；若要編輯，請先返回資源庫複製一份。", "儲存", "返回資源庫"],
+	] as const)(
+		"%s built-in warning stays read-only and returns to the card skin library",
+		async (locale, warning, saveLabel, back) => {
+			mockApi({ builtin: true });
+			renderEditor();
+			await screen.findByText("封面图");
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(warning)).toBeTruthy();
+			expect((screen.getByRole("button", { name: saveLabel }) as HTMLButtonElement).disabled).toBe(
+				true,
+			);
+			fireEvent.click(screen.getByRole("button", { name: back }));
+			expect((await screen.findByLabelText("返回位置")).textContent).toBe(
+				"/library?category=card-skins",
+			);
+			expect(api.put).not.toHaveBeenCalled();
+		},
+	);
+	it.each([
+		["en", "Save", "Saving…", "Save failed: Original failure 原文"],
+		["ja", "保存", "保存中…", "保存に失敗しました：Original failure 原文"],
+		["zh-TW", "儲存", "儲存中…", "儲存失敗：Original failure 原文"],
+	] as const)(
+		"%s saving state and failure translate without discarding the edited manifest",
+		async (locale, saveLabel, saving, failed) => {
+			mockApi();
+			let rejectSave: ((error: Error) => void) | undefined;
+			vi.mocked(api.put).mockReturnValue(
+				new Promise<never>((_resolve, reject) => {
+					rejectSave = reject;
+				}),
+			);
+			renderEditor();
+			await screen.findByText("封面图");
+			await openSkinTab();
+			fireEvent.change(screen.getByLabelText("皮肤名"), {
+				target: { value: "Original draft 原文" },
+			});
+			act(() => i18n.set({ locale, voice: "plain" }));
+			fireEvent.click(screen.getByRole("button", { name: saveLabel }));
+			expect(
+				((await screen.findByRole("button", { name: saving })) as HTMLButtonElement).disabled,
+			).toBe(true);
+			if (!rejectSave) throw new Error("save was not started");
+			await act(async () => {
+				rejectSave?.(new Error("Original failure 原文"));
+			});
+			expect(await screen.findByText(failed)).toBeTruthy();
+			expect((screen.getByLabelText("皮肤名") as HTMLInputElement).value).toBe(
+				"Original draft 原文",
+			);
+			expect((screen.getByRole("button", { name: saveLabel }) as HTMLButtonElement).disabled).toBe(
+				false,
+			);
+			expect(api.put).toHaveBeenCalledTimes(1);
+			expect(saved()).toMatchObject({
+				name: "Original draft 原文",
+				author: "阿绫",
+				cards: MANIFEST.cards,
+			});
+		},
+	);
+	it.each([
+		["en", "Unable to load this skin: Original diagnostic 原文", "Save"],
+		["ja", "スキンを読み込めません：Original diagnostic 原文", "保存"],
+		["zh-TW", "無法讀取此外觀：Original diagnostic 原文", "儲存"],
+	] as const)(
+		"%s load failure localizes the complete message and keeps raw diagnostics",
+		async (locale, message, saveLabel) => {
+			mockApi();
+			const baseGet = vi.mocked(api.get).getMockImplementation();
+			if (!baseGet) throw new Error("base API fixture is not configured");
+			vi.mocked(api.get).mockImplementation((url: string) =>
+				url === "/api/cards/skins/neon"
+					? Promise.reject(new Error("Original diagnostic 原文"))
+					: baseGet(url),
+			);
+			i18n.set({ locale, voice: "plain" });
+			renderEditor();
+			expect(await screen.findByText(message)).toBeTruthy();
+			expect((screen.getByRole("button", { name: saveLabel }) as HTMLButtonElement).disabled).toBe(
+				true,
+			);
+			expect(api.put).not.toHaveBeenCalled();
+		},
+	);
+	it.each([
+		[
+			"en",
+			"Back to library",
+			"Save",
+			"Unsaved changes",
+			"Grid canvas · Live card",
+			"Inspector",
+			"In use",
+		],
+		[
+			"ja",
+			"ライブラリーに戻る",
+			"保存",
+			"未保存の変更あり",
+			"グリッドキャンバス · 配信カード",
+			"インスペクター",
+			"使用中",
+		],
+		["zh-TW", "返回資源庫", "儲存", "有未儲存的變更", "網格畫布 · 直播卡片", "檢查器", "使用中"],
+	] as const)(
+		"%s editor actions translate while preserving the current card and unsaved skin metadata",
+		async (locale, back, saveLabel, dirty, canvas, inspector, inUse) => {
+			mockApi();
+			renderEditor();
+			await screen.findByText("封面图");
+			await openSkinTab();
+			fireEvent.change(screen.getByLabelText("皮肤名"), {
+				target: { value: "Original name 原名" },
+			});
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByRole("button", { name: back })).toBeTruthy();
+			expect(screen.getByText(dirty)).toBeTruthy();
+			expect(screen.getByText(canvas)).toBeTruthy();
+			expect(screen.getByText(inspector)).toBeTruthy();
+			expect(screen.getByText(inUse)).toBeTruthy();
+			expect((screen.getByLabelText("作者") as HTMLInputElement).value).toBe("阿绫");
+			expect(api.put).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: saveLabel }));
+			await waitFor(() =>
+				expect(api.put).toHaveBeenCalledWith(
+					"/api/cards/skins/neon",
+					expect.objectContaining({
+						name: "Original name 原名",
+						author: "阿绫",
+						cards: MANIFEST.cards,
+					}),
+				),
+			);
+		},
+	);
 	it("点头部皮肤名 → 检查器换成皮肤那一档;改名存出去真的是新名", async () => {
 		mockApi();
 		renderEditor();
