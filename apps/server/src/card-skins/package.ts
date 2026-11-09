@@ -242,7 +242,9 @@ export function checkCardSkinPackage(
 					value0: kind,
 					value1: id,
 					value2: users.length,
-					value3: [...new Set(users)].map((u) => `「${u}」`).join("、"),
+					value3: [...new Set(users)]
+						.map((id) => serverText("cardSkin.svgIdUser", { id }))
+						.join(serverText("cardSkin.svgIdUserSeparator")),
 					value4: id,
 				}),
 			);

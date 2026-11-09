@@ -10,7 +10,8 @@
 
 import { CARD_SKIN_LIMITS, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { openZipEntries } from "../../zip-junk.js";
 import {
 	CARD_SKIN_MANIFEST_FILE,
@@ -22,6 +23,8 @@ import {
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 /** woff2 的魔数 `wOF2`;内容不解析,只要求后缀过白名单。 */
 const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function manifest(extra?: Record<string, unknown>): Record<string, unknown> {
 	return {
@@ -54,6 +57,98 @@ function open(zip: Uint8Array) {
 	if (!opened.ok) return opened;
 	return checkCardSkinPackage(opened.manifestRaw, new Set(opened.assets.keys()));
 }
+
+it.each([
+	[
+		"en",
+		{
+			missing: "The package is missing card-skin.json.",
+			json: "card-skin.json is not valid JSON.",
+			file: "evil.sh: The package may contain only card-skin.json and images (png / jpg / webp / gif) or fonts (woff2 / woff / ttf / otf) under assets/. Names may contain only lowercase letters, digits, . _ -.",
+			font: 'fonts[0] "Original Font": references "assets/missing.woff2", which is missing from the package.',
+			duplicate:
+				'cards.live: SVG id "g" is used 2 times ("a", "b"). IDs share one namespace across the card; url(#g) resolves to the first one in the document. Add a distinct prefix to each ID.',
+			knob: "CSS uses var(--bn-knob-accent), but knobs does not declare it; the dashboard has no corresponding control.",
+		},
+	],
+	[
+		"ja",
+		{
+			missing: "パッケージにcard-skin.jsonがありません。",
+			json: "card-skin.jsonは有効なJSONではありません。",
+			file: "evil.sh：パッケージに含められるのはcard-skin.jsonとassets/内の画像（png / jpg / webp / gif）またはフォント（woff2 / woff / ttf / otf）のみです。名前には小文字の英字、数字、. _ -のみ使用できます。",
+			font: "fonts[0]「Original Font」：参照先の「assets/missing.woff2」がパッケージにありません。",
+			duplicate:
+				"cards.live：SVG id「g」が2回使われています（「a」、「b」）。カード全体で1つのID名前空間を共有するため、url(#g)は文書内の最初のIDを参照します。それぞれ異なる接頭辞を付けてください。",
+			knob: "CSSでvar(--bn-knob-accent)を使用していますが、knobsで宣言されていないため、ダッシュボードに対応する操作項目がありません。",
+		},
+	],
+	[
+		"zh-TW",
+		{
+			missing: "套件中缺少 card-skin.json。",
+			json: "card-skin.json 不是有效的 JSON。",
+			file: "evil.sh：套件中只允許 card-skin.json，以及 assets/ 下的圖片（png / jpg / webp / gif）或字型（woff2 / woff / ttf / otf）；名稱只能包含小寫英文字母、數字、. _ -。",
+			font: "fonts[0]「Original Font」：參照的「assets/missing.woff2」不在套件中。",
+			duplicate:
+				"cards.live：SVG id「g」被使用 2 次（「a」、「b」）。整張卡片共用一個 ID 命名空間，url(#g) 只會參照文件中第一個 ID。請分別加上不同的前綴。",
+			knob: "CSS 使用了 var(--bn-knob-accent)，但 knobs 未宣告此項目，面板上沒有對應的控制項。",
+		},
+	],
+] as const)("%s:皮肤包文件错误拒收,SVG重名与未声明控件只告警,保留原始资料", (locale, text) => {
+	i18n.set({ locale, voice: "plain" });
+	for (const [zip, message] of [
+		[pack({ "assets/bg.png": PNG }), text.missing],
+		[pack({ [CARD_SKIN_MANIFEST_FILE]: strToU8("{") }), text.json],
+		[pack({ [CARD_SKIN_MANIFEST_FILE]: manifest(), "evil.sh": strToU8("no") }), text.file],
+	] as const) {
+		expect(parseCardSkinPackage(zip)).toEqual({
+			ok: false,
+			code: "invalid",
+			message,
+			issues: [{ message }],
+		});
+	}
+	const badFont = manifest({
+		fonts: [{ family: "Original Font", asset: "asset:assets/missing.woff2" }],
+	});
+	expect(checkCardSkinPackage(badFont, new Set())).toEqual({
+		ok: false,
+		code: "invalid",
+		message: text.font,
+		issues: [{ message: text.font }],
+	});
+	const raw = manifest({
+		name: "Original skin 原文",
+		cards: {
+			live: {
+				width: 600,
+				css: '[data-bn="frame"]{color:var(--bn-knob-accent,#fb7299)}',
+				blocks: ["a", "b"].map((id, i) => ({
+					id,
+					kind: "custom",
+					grid: { row: i + 1, column: 1, span: 12 },
+					html: '<svg><linearGradient id="g"></linearGradient></svg>',
+				})),
+			},
+		},
+	});
+	const original = structuredClone(raw);
+	const checked = checkCardSkinPackage(raw, new Set());
+	expect(checked.ok).toBe(true);
+	if (!checked.ok) throw new Error(checked.message);
+	expect(checked.warnings).toEqual([text.duplicate, text.knob]);
+	expect(checked.manifest.name).toBe("Original skin 原文");
+	expect(
+		checked.manifest.cards.live?.blocks.map((block) =>
+			block.kind === "custom" ? block.html : undefined,
+		),
+	).toEqual([
+		'<svg><linearGradient id="g"></linearGradient></svg>',
+		'<svg><linearGradient id="g"></linearGradient></svg>',
+	]);
+	expect(raw).toEqual(original);
+});
 
 describe("parseCardSkinPackage:文件层", () => {
 	it("card-skin.json + 资产 → ok,清单与资产都取出", () => {

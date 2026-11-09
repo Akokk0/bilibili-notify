@@ -1586,5 +1586,7 @@
 	"qqOfficial.connection.adapterMismatch": "QQ 官方机器人适配器不匹配：{adapterKey}",
 	"settings.problem.reason": "{field}：{message}",
 	"settings.problem.entry": "{label}（{reason}）",
-	"settings.problem.listSeparator": "；"
+	"settings.problem.listSeparator": "；",
+	"cardSkin.svgIdUser": "「{id}」",
+	"cardSkin.svgIdUserSeparator": "、"
 }

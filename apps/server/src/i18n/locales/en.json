@@ -1361,5 +1361,20 @@
 	"service.card-skins.html-sanitizer.text.19": "Custom HTML exceeds the {value0}KB limit.",
 	"service.card-skins.html-sanitizer.text.20": "Placeholder \"{{value0}}\" is not in the field list for {value1} cards.",
 	"service.card-skins.html-sanitizer.text.21": "Nothing remains in this block after sanitization.",
-	"service.card-skins.html-sanitizer.text.22": "Sanitized HTML exceeds the {value0}KB limit."
+	"service.card-skins.html-sanitizer.text.22": "Sanitized HTML exceeds the {value0}KB limit.",
+	"service.card-skins.package.text.1": "{value0} is too large (limit: {value1}MB).",
+	"service.card-skins.package.text.2": "{value0}: The asset is too large (limit: {value1}MB).",
+	"service.card-skins.package.text.3": "{value0}: The package may contain only {value1} and images (png / jpg / webp / gif)",
+	"service.card-skins.package.text.4": " or fonts (woff2 / woff / ttf / otf) under assets/. Names may contain only lowercase letters, digits, . _ -.",
+	"service.card-skins.package.text.5": "The package has too many assets ({value0}; limit: {value1}). Remove unused assets and upload it again.",
+	"service.card-skins.package.text.6": "The package is missing {value0}.",
+	"service.card-skins.package.text.7": "{value0} is not valid JSON.",
+	"service.card-skins.package.text.8": "cards.{value0}: SVG id \"{value1}\" is used {value2} times ({value3}). IDs share one namespace across the card; url(#{value4}) resolves to the first one in the document. Add a distinct prefix to each ID.",
+	"service.card-skins.package.text.9": "fonts[{value0}] \"{value1}\": references \"{value2}\", which is missing from the package.",
+	"service.card-skins.package.text.10": "fonts[{value0}] \"{value1}\": \"{value2}\" is not a font.",
+	"service.card-skins.package.text.11": "CSS uses var(--bn-knob-{value0}), but knobs does not declare it; the dashboard has no corresponding control.",
+	"service.card-skins.package.text.12": "knobs declares \"{value0}\", but no CSS uses var(--bn-knob-{value1}); adjusting it will have no effect.",
+	"service.card-skins.package.text.13": "{value0}.{value1}: references \"{value2}\", which is missing from the package.",
+	"cardSkin.svgIdUser": "\"{id}\"",
+	"cardSkin.svgIdUserSeparator": ", "
 }

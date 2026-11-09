@@ -1350,5 +1350,20 @@
 	"service.card-skins.html-sanitizer.text.19": "自訂 HTML 超過 {value0}KB 上限。",
 	"service.card-skins.html-sanitizer.text.20": "預留位置「{{value0}}」不在 {value1} 卡片的欄位清單中。",
 	"service.card-skins.html-sanitizer.text.21": "清理後，這個區塊沒有剩餘內容。",
-	"service.card-skins.html-sanitizer.text.22": "清理後的 HTML 超過 {value0}KB 上限。"
+	"service.card-skins.html-sanitizer.text.22": "清理後的 HTML 超過 {value0}KB 上限。",
+	"service.card-skins.package.text.1": "{value0} 過大（上限 {value1}MB）。",
+	"service.card-skins.package.text.2": "{value0}：素材過大（上限 {value1}MB）。",
+	"service.card-skins.package.text.3": "{value0}：套件中只允許 {value1}，以及 assets/ 下的圖片（png / jpg / webp / gif）",
+	"service.card-skins.package.text.4": "或字型（woff2 / woff / ttf / otf）；名稱只能包含小寫英文字母、數字、. _ -。",
+	"service.card-skins.package.text.5": "套件中的素材過多（{value0} 份，上限 {value1} 份），請移除用不到的素材後重新上傳。",
+	"service.card-skins.package.text.6": "套件中缺少 {value0}。",
+	"service.card-skins.package.text.7": "{value0} 不是有效的 JSON。",
+	"service.card-skins.package.text.8": "cards.{value0}：SVG id「{value1}」被使用 {value2} 次（{value3}）。整張卡片共用一個 ID 命名空間，url(#{value4}) 只會參照文件中第一個 ID。請分別加上不同的前綴。",
+	"service.card-skins.package.text.9": "fonts[{value0}]「{value1}」：參照的「{value2}」不在套件中。",
+	"service.card-skins.package.text.10": "fonts[{value0}]「{value1}」：「{value2}」不是字型。",
+	"service.card-skins.package.text.11": "CSS 使用了 var(--bn-knob-{value0})，但 knobs 未宣告此項目，面板上沒有對應的控制項。",
+	"service.card-skins.package.text.12": "knobs 宣告了「{value0}」，但沒有任何 CSS 使用 var(--bn-knob-{value1})，調整後不會有作用。",
+	"service.card-skins.package.text.13": "{value0}.{value1}：參照的「{value2}」不在套件中。",
+	"cardSkin.svgIdUser": "「{id}」",
+	"cardSkin.svgIdUserSeparator": "、"
 }

@@ -1350,5 +1350,20 @@
 	"service.card-skins.html-sanitizer.text.19": "カスタムHTMLが上限の{value0}KBを超えています。",
 	"service.card-skins.html-sanitizer.text.20": "プレースホルダー「{{value0}}」は{value1}カードのフィールド一覧にありません。",
 	"service.card-skins.html-sanitizer.text.21": "サニタイズ後、このブロックに内容が残りません。",
-	"service.card-skins.html-sanitizer.text.22": "サニタイズ後のHTMLが上限の{value0}KBを超えています。"
+	"service.card-skins.html-sanitizer.text.22": "サニタイズ後のHTMLが上限の{value0}KBを超えています。",
+	"service.card-skins.package.text.1": "{value0}が大きすぎます（上限：{value1}MB）。",
+	"service.card-skins.package.text.2": "{value0}：アセットが大きすぎます（上限：{value1}MB）。",
+	"service.card-skins.package.text.3": "{value0}：パッケージに含められるのは{value1}とassets/内の画像（png / jpg / webp / gif）",
+	"service.card-skins.package.text.4": "またはフォント（woff2 / woff / ttf / otf）のみです。名前には小文字の英字、数字、. _ -のみ使用できます。",
+	"service.card-skins.package.text.5": "パッケージ内のアセットが多すぎます（{value0}個、上限：{value1}個）。不要なアセットを削除して再度アップロードしてください。",
+	"service.card-skins.package.text.6": "パッケージに{value0}がありません。",
+	"service.card-skins.package.text.7": "{value0}は有効なJSONではありません。",
+	"service.card-skins.package.text.8": "cards.{value0}：SVG id「{value1}」が{value2}回使われています（{value3}）。カード全体で1つのID名前空間を共有するため、url(#{value4})は文書内の最初のIDを参照します。それぞれ異なる接頭辞を付けてください。",
+	"service.card-skins.package.text.9": "fonts[{value0}]「{value1}」：参照先の「{value2}」がパッケージにありません。",
+	"service.card-skins.package.text.10": "fonts[{value0}]「{value1}」：「{value2}」はフォントではありません。",
+	"service.card-skins.package.text.11": "CSSでvar(--bn-knob-{value0})を使用していますが、knobsで宣言されていないため、ダッシュボードに対応する操作項目がありません。",
+	"service.card-skins.package.text.12": "knobsで「{value0}」を宣言していますが、var(--bn-knob-{value1})を使用するCSSがないため、調整しても反映されません。",
+	"service.card-skins.package.text.13": "{value0}.{value1}：参照先の「{value2}」がパッケージにありません。",
+	"cardSkin.svgIdUser": "「{id}」",
+	"cardSkin.svgIdUserSeparator": "、"
 }
