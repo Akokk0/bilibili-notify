@@ -46,3 +46,10 @@ jobs:
 
       - name: Test
         run: vpr test
+
+      # 与四种面板语言均不同的默认数字/日期格式，防止遗漏 locale 又静默通过。
+      - name: Test panel formatting with Arabic host locale
+        env:
+          LANG: ar_EG.UTF-8
+          LC_ALL: ar_EG.UTF-8
+        run: vp run test apps/web/src/pages/__tests__/overview-health-details.test.tsx apps/web/src/pages/__tests__/ExtensionDetail.report-discrepancies.test.tsx -t '核心计数悬停值|上报时间悬停值' --reporter=dot

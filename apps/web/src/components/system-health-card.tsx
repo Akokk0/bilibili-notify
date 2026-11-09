@@ -34,7 +34,7 @@ import { HEALTH_DETAILS_QUERY_OPTIONS } from "../hooks/useHealthDetails";
 import { useProblems } from "../hooks/useProblems";
 import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
-import { useT } from "../i18n";
+import { useT, useTextOptions } from "../i18n";
 import { EXTENSION_STATE_META } from "../pages/extensions/state-meta";
 import { AccountFace, accountPath } from "./accounts/account-face";
 import { DescriptorIcon } from "./platform-meta";
@@ -69,6 +69,7 @@ export function SystemHealthCard({
 	onDefaultHeightChange?: (height: number) => void;
 }) {
 	const t = useT();
+	const { locale } = useTextOptions();
 	const content = useCardContentHeight(onDefaultHeightChange, "[data-health-expansion]");
 	const qc = useQueryClient();
 	const countId = useId();
@@ -292,7 +293,7 @@ export function SystemHealthCard({
 											</span>
 											<span
 												id={`${countId}-${item.key}`}
-												title={item.count?.toLocaleString()}
+												title={item.count?.toLocaleString(locale)}
 												className="max-w-full truncate text-bn-2xs text-bn-text-secondary"
 											>
 												{item.count === undefined

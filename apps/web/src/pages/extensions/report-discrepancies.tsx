@@ -5,7 +5,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { GlassBox, Icon, Pill } from "@bilibili-notify/ui";
 import { useSources } from "../../hooks/useSources";
-import { i18n, useT } from "../../i18n";
+import { i18n, useT, useTextOptions } from "../../i18n";
 import type { Subscription } from "../../types/domain";
 import { displayName } from "../../utils/creator-display";
 import { RelativeTime } from "../subscriptions/relative-time";
@@ -72,6 +72,7 @@ function DiscrepancyRow({
 	kind: string;
 }) {
 	const rejected = discrepancy.outcome === "rejected";
+	const { locale } = useTextOptions();
 	return (
 		<li className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
 			<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -86,7 +87,7 @@ function DiscrepancyRow({
 				<span className="text-bn-xs text-bn-text-secondary">{kind}</span>
 				<span
 					className="ml-auto text-bn-2xs tabular-nums text-bn-text-tertiary"
-					title={new Date(discrepancy.at).toLocaleString()}
+					title={new Date(discrepancy.at).toLocaleString(locale)}
 				>
 					<RelativeTime at={discrepancy.at} />
 				</span>

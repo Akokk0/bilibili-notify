@@ -135,6 +135,37 @@ afterEach(() => {
 });
 
 describe("首页各模块的状态读详情口", () => {
+	it("核心计数悬停值跟随面板语言，不借浏览器默认数字写法", async () => {
+		// gate 另以 ar_EG 启动原生 Intl，确保默认语言与四种面板语言都不同。
+		if (process.env.LC_ALL === "ar_EG.UTF-8") {
+			expect((12345).toLocaleString()).toBe("١٢٬٣٤٥");
+		}
+		const details = runningHealth();
+		const item = details.core.items.find((one) => one.key === "subscription");
+		if (!item) throw new Error("fixture missing subscription count");
+		item.count = 12345;
+		mockApi({ loggedIn: false, details: async () => details });
+		renderDashboard();
+		await screen.findByRole("button", { name: "订阅 · 运行中，查看详情" });
+		let previous: HTMLElement | null = null;
+		for (const [locale, label] of [
+			["zh-CN", "订阅 · 运行中，查看详情"],
+			["en", "Subscriptions · Running, view details"],
+			["ja", "購読 · 稼働中、詳細を表示"],
+			["zh-TW", "訂閱 · 執行中，檢視詳細資料"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const button = screen.getByRole("button", { name: label });
+			const count = document.getElementById(button.getAttribute("aria-describedby") ?? "");
+			expect(count?.title).toBe("12,345");
+			expect(count?.textContent).toContain("12345");
+			if (previous) expect(count).toBe(previous);
+			previous = count;
+		}
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		[
 			"ja",

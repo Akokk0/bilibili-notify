@@ -106,6 +106,48 @@ describe("拓展详情页:上报出入", () => {
 		disk.subs = [];
 		disk.discrepancies = undefined;
 	});
+	it.each([
+		["zh-CN", "2026/11/2 17:04:05"],
+		["en", "11/2/2026, 5:04:05 PM"],
+		["ja", "2026/11/2 17:04:05"],
+		["zh-TW", "2026/11/2 下午5:04:05"],
+	] as const)("%s 上报时间悬停值跟随面板语言，原报告和条目不变", async (locale, expected) => {
+		const at = new Date(2026, 10, 2, 17, 4, 5).getTime();
+		disk.discrepancies = [
+			{
+				at,
+				kind: "profile",
+				externalId: "Original ID",
+				subscriptionIds: [],
+				outcome: "rejected",
+				reasons: ["Original reason 原文 {at}"],
+			},
+		];
+		renderDetail();
+		const original = await screen.findByText("Original reason 原文 {at}");
+		const row = original.closest("li");
+		const time = row?.querySelector<HTMLElement>("[title]");
+		for (const voice of ["plain", "maid"] as const) {
+			act(() => i18n.set({ locale, voice }));
+			expect(screen.getByText("Original reason 原文 {at}")).toBe(original);
+			expect(original.closest("li")).toBe(row);
+			expect(row?.querySelector("[title]")).toBe(time);
+			expect(time?.title.replace(/\s+/g, " ")).toBe(expected);
+			expect(screen.getByText("Original ID")).toBeTruthy();
+		}
+		expect(disk.discrepancies).toEqual([
+			{
+				at,
+				kind: "profile",
+				externalId: "Original ID",
+				subscriptionIds: [],
+				outcome: "rejected",
+				reasons: ["Original reason 原文 {at}"],
+			},
+		]);
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	});
 
 	it("有问题:出一个框,每行说清哪条订阅、报的哪一种、丢了还是拒了、为什么", async () => {
 		disk.subs = [extSub("s1", "sec-1", "某位 UP")];
