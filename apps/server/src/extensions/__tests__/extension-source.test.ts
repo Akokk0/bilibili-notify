@@ -23,7 +23,8 @@ import type {
 	ExtensionSourceContext,
 	SourceDef,
 } from "@bilibili-notify/internal/extension";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { readSourceHealth } from "../../runtime/status-command.js";
 import { subscriptionIdentityLabelOf } from "../../subscriptions/platform-label.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
@@ -36,6 +37,7 @@ const T_OFFSET = "2026-09-23T20:00:00+08:00";
 /** 下播没交 `endedAt` 时取的「到达那一刻」。 */
 const ARRIVED = Date.UTC(2026, 8, 23, 14);
 const ARRIVED_ISO = "2026-09-23T14:00:00.000Z";
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function manifestOf(
 	supportedFeatures: string[] = ["post", "liveStart", "liveEnd"],
@@ -377,6 +379,183 @@ describe("createExtensionSource:健康状态按外来数据收", () => {
 });
 
 describe("createExtensionSource:作品上报", () => {
+	it.each([
+		[
+			"en",
+			"The manifest's contributes.subscription.supportedFeatures does not declare post; BN does not accept this report type.",
+			"Live status is accepted only when contributes.subscription.supportedFeatures declares liveStart or liveEnd.",
+			"The extension returned invalid candidates:",
+		],
+		[
+			"ja",
+			"マニフェストのcontributes.subscription.supportedFeaturesにpostがないため、この種別の報告は受け付けません。",
+			"配信状態は、マニフェストのcontributes.subscription.supportedFeaturesにliveStartまたはliveEndが宣言されている場合のみ受け付けます。",
+			"拡張機能が無効な候補を返しました：",
+		],
+		[
+			"zh-TW",
+			"資訊清單的 contributes.subscription.supportedFeatures 未宣告 post，BN 不接受此類上報。",
+			"僅在資訊清單的 contributes.subscription.supportedFeatures 宣告 liveStart 或 liveEnd 時接受直播狀態。",
+			"擴充功能回傳的候選資料無效：",
+		],
+	] as const)(
+		"%s localizes manifest gates and candidate validation while preserving feature keys and valid names",
+		async (locale, postReason, liveReason, candidatePrefix) => {
+			const noPost = await make({}, { supportedFeatures: ["liveStart"] });
+			let badCandidate = true;
+			const noLive = await make(
+				{
+					searchCreators: async () => ({
+						ok: true,
+						candidates: [
+							{
+								externalId: "original-id",
+								name: "Original creator 原文",
+								...(badCandidate ? { originalField: "bad" } : {}),
+							},
+						],
+					}),
+				},
+				{ supportedFeatures: ["post"] },
+			);
+			i18n.set({ locale, voice: "plain" });
+			try {
+				noPost.ext().reportPost("original-id", {
+					postId: "original-post",
+					url: "https://example.invalid/original",
+					post: { publishedAt: T_ISO, text: "Original text 原文" },
+				});
+				noLive.ext().reportLive("original-id", { kind: "status", isLive: false, details: {} });
+				await Promise.all([noPost.idle(), noLive.idle()]);
+				expect(noPost.core.posts).toEqual([]);
+				expect(noLive.core.lives).toEqual([]);
+				expect(noPost.discrepancies[0]).toMatchObject({
+					outcome: "rejected",
+					externalId: "original-id",
+					reasons: [postReason],
+				});
+				expect(noLive.discrepancies[0]).toMatchObject({
+					outcome: "rejected",
+					externalId: "original-id",
+					reasons: [liveReason],
+				});
+				const signal = new AbortController().signal;
+				const invalid = await noLive.source.searchCreators("Original query 原文", signal);
+				expect(invalid).toMatchObject({
+					ok: false,
+					code: "invalid",
+					message: expect.stringContaining(candidatePrefix),
+				});
+				if (!invalid.ok) expect(invalid.message).toContain("originalField");
+				badCandidate = false;
+				expect(await noLive.source.searchCreators("Original query 原文", signal)).toEqual({
+					ok: true,
+					candidates: [{ externalId: "original-id", name: "Original creator 原文" }],
+				});
+				expect(noLive.discrepancies).toHaveLength(1);
+			} finally {
+				await noPost.source.stop();
+				await noLive.source.stop();
+			}
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			[
+				"postId is required.",
+				"externalId has the wrong type.",
+				"Minimum character count for externalId: 1.",
+				"Character limit for externalId: 256.",
+				"post.originalField is not recognized by BN; the entire report was rejected.",
+				"post.stats.likes must not be negative.",
+				"post.stats.comments must be an integer.",
+				"Item limit for post.images[30]: 30. Extra items were dropped.",
+			],
+		],
+		[
+			"ja",
+			[
+				"postIdは必須です。",
+				"externalIdの型が正しくありません。",
+				"externalIdに必要な最小文字数：1。",
+				"externalIdの最大文字数：256。",
+				"post.originalFieldはBNが認識しないフィールドのため、報告全体を拒否しました。",
+				"post.stats.likesに負の値は指定できません。",
+				"post.stats.commentsには整数が必要です。",
+				"post.images[30]の最大項目数：30。超過分は破棄しました。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"postId 為必填欄位。",
+				"externalId 的型別不正確。",
+				"externalId 的最少字元數為 1。",
+				"externalId 的字元上限為 256。",
+				"BN 不認得欄位 post.originalField，已拒收整筆上報。",
+				"post.stats.likes 不可為負數。",
+				"post.stats.comments 必須是整數。",
+				"post.images[30] 的項目上限為 30，已捨棄超出部分。",
+			],
+		],
+	] as const)(
+		"%s localizes rejection and dropped-field reasons without changing accepted content",
+		async (locale, reasons) => {
+			const made = await make();
+			i18n.set({ locale, voice: "plain" });
+			const report: ExtensionPostReport = {
+				postId: "original-post",
+				url: "https://example.invalid/original",
+				post: { publishedAt: T_ISO, text: "Original content 原文" },
+			};
+			try {
+				const { postId: _postId, ...missingId } = report;
+				made.ext().reportPost("original-id", missingId as ExtensionPostReport);
+				made.ext().reportPost(42 as unknown as string, report);
+				made.ext().reportPost("", report);
+				made.ext().reportPost("x".repeat(257), report);
+				made.ext().reportPost("original-id", {
+					...report,
+					post: { ...report.post, originalField: "raw" },
+				} as ExtensionPostReport);
+				made.ext().reportPost("original-id", {
+					...report,
+					post: { ...report.post, stats: { likes: -1, comments: 1.5, shares: 4 } },
+				});
+				made.ext().reportPost("original-id", {
+					...report,
+					post: { ...report.post, images: Array.from({ length: 31 }, () => REF) },
+				});
+				await made.idle();
+				expect(made.discrepancies.flatMap((one) => one.reasons)).toEqual(reasons);
+				expect(made.discrepancies.map((one) => one.outcome)).toEqual([
+					"rejected",
+					"rejected",
+					"rejected",
+					"rejected",
+					"rejected",
+					"dropped",
+					"dropped",
+				]);
+				expect(made.core.posts).toHaveLength(2);
+				expect(made.core.posts[0]?.[1].post.stats).toEqual({ shares: 4 });
+				expect(made.core.posts[1]?.[1].post.images).toHaveLength(30);
+				expect(
+					made.core.posts.every(
+						([id, value]) =>
+							id === "original-id" &&
+							value.post.text === "Original content 原文" &&
+							value.postId === "original-post",
+					),
+				).toBe(true);
+			} finally {
+				await made.source.stop();
+			}
+		},
+	);
+
 	it("带时区的 ISO 统一成 UTC Z,图库引用换成 PostImage,话题与视频与互动数照搬,缺名补链", async () => {
 		const made = await make();
 		made.ext().reportPost("u1", {
@@ -890,6 +1069,68 @@ describe("createExtensionSource:stop 之后", () => {
 });
 
 describe("createExtensionSource:搜人", () => {
+	it.each([
+		[
+			"en",
+			"The extension returned an invalid result: Entire report has an invalid value.",
+			"The extension gave no reason.",
+			"This extension does not implement profile lookup by ID. Profiles must be reported by the extension.",
+		],
+		[
+			"ja",
+			"拡張機能の応答形式が無効です：報告全体の値が無効です。",
+			"拡張機能から理由が返されませんでした。",
+			"この拡張機能はIDによるプロフィール取得に対応していません。拡張機能からの報告を待つ必要があります。",
+		],
+		[
+			"zh-TW",
+			"擴充功能回傳的結果無效：整筆上報的值無效。",
+			"擴充功能未提供原因。",
+			"此擴充功能未實作依 ID 取得資料，需等待擴充功能自行上報。",
+		],
+	] as const)(
+		"%s translates malformed, missing-profile and empty-error results without rewriting original failures",
+		async (locale, malformed, noReason, noProfile) => {
+			let mode: "malformed" | "empty" | "raw" = "malformed";
+			const made = await make({
+				searchCreators: (async () => {
+					if (mode === "malformed") return "original malformed reply";
+					if (mode === "empty") throw new Error("");
+					return { ok: false, code: "rate_limited", message: "Original rejection 原文" };
+				}) as unknown as SourceDef["searchCreators"],
+			});
+			i18n.set({ locale, voice: "plain" });
+			const signal = new AbortController().signal;
+			try {
+				expect(await made.source.searchCreators("Original query 原文", signal)).toMatchObject({
+					ok: false,
+					code: "invalid",
+					message: malformed,
+				});
+				mode = "empty";
+				expect(await made.source.searchCreators("Original query 原文", signal)).toEqual({
+					ok: false,
+					code: "unavailable",
+					message: noReason,
+				});
+				mode = "raw";
+				expect(await made.source.searchCreators("Original query 原文", signal)).toEqual({
+					ok: false,
+					code: "rate_limited",
+					message: "Original rejection 原文",
+				});
+				expect(
+					await made.source.fetchProfile(
+						{ sourceKey: "douyin", externalId: "original-id" },
+						signal,
+					),
+				).toEqual({ ok: false, code: "unsupported", message: noProfile });
+			} finally {
+				await made.source.stop();
+			}
+		},
+	);
+
 	it("候选合规矩:原样交回", async () => {
 		const made = await make({
 			searchCreators: async () => ({
