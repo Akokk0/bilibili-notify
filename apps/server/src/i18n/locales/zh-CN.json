@@ -1,4 +1,5 @@
 {
+	"roastScheduler.deliveryFailure": "{targetId}：{message}",
 	"roast.command.listItem": "{id}（{kind}）",
 	"roast.command.listSeparator": "、",
 	"roast.approvalReason": "（{reason}）",

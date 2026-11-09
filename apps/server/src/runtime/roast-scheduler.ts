@@ -257,7 +257,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		// 跳过的(停用)只进日志,不进通知:停用是主人自己按的,不是「没发出去」。
 		const skipped = out.skipped.length;
 		if (out.failed.length > 0) {
-			const detail = out.failed.map((f) => `${f.targetId}：${f.failure.message}`).join("\n");
+			const detail = out.failed
+				.map((f) =>
+					t("roastScheduler.deliveryFailure", { targetId: f.targetId, message: f.failure.message }),
+				)
+				.join("\n");
 			logger.warn(logText("log.roast.deliveryFailed"), {
 				kind,
 				subscriptionId,

@@ -20,6 +20,7 @@ import {
 	stillPending,
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
+import { i18n } from "../../i18n/index.js";
 
 /** 测试替身的统一收口 —— 只填被测路径真正读到的字段,其余不为测试再造一遍类型。 */
 // biome-ignore lint/suspicious/noExplicitAny: 见上
@@ -191,8 +192,129 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	storageWriteGate.reset();
 	rmSync(dataDir, { recursive: true, force: true });
+});
+
+describe("调度器私聊在执行时取当前语言，不改原始结果与目标快照", () => {
+	it.each([
+		{
+			locale: "en" as const,
+			noTargets: "Weekly report was not sent: no push targets are configured.",
+			paused: "Weekly report was not sent: all configured push targets are disabled.",
+			failed: "Weekly report was not sent: 原始失败 {label}",
+			guide: (id: string) =>
+				`Weekly report is ready and awaiting approval.\nReply “y ${id}” to send or “n ${id}” to discard.\nIt expires after 48 hours without a reply.`,
+			delivered:
+				"This review: delivery finished. Successful targets: 1; failed targets: 1.\nt2: 发送原话 {sent}",
+			solo: "Review of 作者 {name} was not sent: no push targets are configured.",
+			missing: "This subscription is no longer in the subscription list.",
+			stopped: "The scheduler has stopped.",
+		},
+		{
+			locale: "ja" as const,
+			noTargets: "週報は送信されませんでした：送信先が設定されていません。",
+			paused: "週報は送信されませんでした：設定された送信先がすべて無効です。",
+			failed: "週報は送信されませんでした：原始失败 {label}",
+			guide: (id: string) =>
+				`週報を生成しました。承認を待っています。\n送信するには「y ${id}」、破棄するには「n ${id}」と返信してください。\n48時間返信がなければ期限切れになります。`,
+			delivered: "このレビューの送信処理が完了しました：成功1件、失敗1件。\nt2：发送原话 {sent}",
+			solo: "作者 {name}のレビューは送信されませんでした：送信先が設定されていません。",
+			missing: "この購読は購読リストにありません。",
+			stopped: "スケジューラーは停止しています。",
+		},
+		{
+			locale: "zh-TW" as const,
+			noTargets: "榜單週報未發送：尚未設定推播目標。",
+			paused: "榜單週報未發送：設定的推播目標皆已停用。",
+			failed: "榜單週報未發送：原始失败 {label}",
+			guide: (id: string) =>
+				`榜單週報已產生，等待核准。\n回覆「y ${id}」發送，「n ${id}」捨棄。\n48 小時未回覆將自動作廢。`,
+			delivered: "這份銳評發送完畢：1 個目標成功，1 個失敗。\nt2：发送原话 {sent}",
+			solo: "作者 {name} 的銳評未發送：尚未設定推播目標。",
+			missing: "這筆訂閱已不在訂閱清單中。",
+			stopped: "排程器已停止。",
+		},
+	])("$locale：生成与发送各失败阶段如实通知，不额外发送", async (words) => {
+		globals.roastSchedule = {
+			...globals.roastSchedule,
+			targets: [],
+			approval: false,
+			notifyOnError: true,
+		};
+		const sub = {
+			id: "e1",
+			identity: { sourceKey: "other", externalId: "raw" },
+			overrides: {},
+			roastSchedule: { ...globals.roastSchedule, targets: [] },
+		};
+		const { sched, drafts } = makeScheduler({
+			subs: [sub],
+			profiles: { e1: { name: "作者 {name}" } },
+		});
+		i18n.set({ locale: words.locale, voice: "plain" });
+		expect(await sched.runBoardOnce()).toEqual({ kind: "no-targets" });
+		expect(tellMaster).toHaveBeenLastCalledWith(words.noTargets);
+		globals.roastSchedule.targets = ["t1"];
+		targetsTable = targetsTable.map((target) => ({ ...target, enabled: false }));
+		expect(await sched.runBoardOnce()).toEqual({ kind: "no-targets" });
+		expect(tellMaster).toHaveBeenLastCalledWith(words.paused);
+		expect(generateBoardRoast).not.toHaveBeenCalled();
+		targetsTable = targetsTable.map((target) => ({ ...target, enabled: true }));
+		generateBoardRoast.mockResolvedValueOnce(fail("unavailable", "原始失败 {label}"));
+		expect(await sched.runBoardOnce()).toEqual({
+			kind: "gen-failed",
+			code: "unavailable",
+			message: "原始失败 {label}",
+		});
+		expect(tellMaster).toHaveBeenLastCalledWith(words.failed);
+		expect(deliverRoast).not.toHaveBeenCalled();
+		globals.roastSchedule.approval = true;
+		const pending = await sched.runBoardOnce();
+		const draft = drafts.list()[0];
+		if (!draft) throw new Error("待审草稿未写入");
+		expect(pending).toEqual({ kind: "pending-approval", draftId: draft?.id });
+		expect(draft).toMatchObject({ targets: ["t1"], result: BOARD_RESULT });
+		expect(tellMasterPayload).toHaveBeenLastCalledWith({
+			kind: "text",
+			text: `本周榜单正文\n\n${words.guide(draft.id)}`,
+		});
+		expect(deliverRoast).not.toHaveBeenCalled();
+		deliverRoast.mockResolvedValueOnce({
+			mode: "text",
+			sent: ["t1"],
+			skipped: [],
+			failed: [{ targetId: "t2", failure: fail("unavailable", "发送原话 {sent}") }],
+			text: "模型原文",
+		});
+		await sched.deliverApproved({
+			kind: "solo",
+			subscriptionId: "gone",
+			days: 7,
+			targets: ["t1", "t2"],
+			result: BOARD_RESULT,
+		});
+		expect(tellMaster).toHaveBeenLastCalledWith(words.delivered);
+		expect(deliverRoast).toHaveBeenCalledTimes(1);
+		expect(deliverRoast.mock.calls[0]?.[1]).toMatchObject({
+			targetIds: ["t1", "t2"],
+			result: BOARD_RESULT,
+		});
+		await sched.runSoloOnce("e1");
+		expect(tellMaster).toHaveBeenLastCalledWith(words.solo);
+		expect(await sched.runSoloOnce("missing")).toEqual({
+			kind: "gen-failed",
+			code: "not_found",
+			message: words.missing,
+		});
+		sched.stop();
+		expect(await sched.runBoardOnce()).toEqual({
+			kind: "gen-failed",
+			code: "unavailable",
+			message: words.stopped,
+		});
+	});
 });
 
 describe("调度器 — 排程", () => {
