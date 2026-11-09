@@ -212,36 +212,38 @@ function HistoryTable({
 }) {
 	const tx = useT();
 	return (
-		<div className="bn-glass overflow-hidden rounded-bn-sm shadow-bn-card">
-			<div
-				className="grid items-center gap-2.5 border-b border-bn-border-subtle bg-bn-surface-muted/70 px-4 py-2.5 text-bn-xs font-bold tracking-wide text-bn-text-tertiary"
-				style={{ gridTemplateColumns: HISTORY_GRID }}
-			>
-				<span>{tx("sourceUi.pages.History.HistoryTable.7")}</span>
-				<span></span>
-				<span>{tx("sourceUi.pages.History.HistoryTable.8")}</span>
-				<span>{tx("sourceUi.pages.History.HistoryTable.9")}</span>
-				<span>{tx("stats.push.target")}</span>
-				<span>{tx("sourceUi.pages.History.HistoryTable.10")}</span>
-			</div>
-
-			{entries.length === 0 ? (
-				<div className="px-4 py-10 text-center text-bn-sm text-bn-text-tertiary">
-					{tx("sourceUi.pages.History.HistoryTable.11")}
+		<div className="bn-glass overflow-x-auto rounded-bn-sm shadow-bn-card">
+			<div className="min-w-[800px]">
+				<div
+					className="grid items-center gap-2.5 border-b border-bn-border-subtle bg-bn-surface-muted/70 px-4 py-2.5 text-bn-xs font-bold tracking-wide text-bn-text-tertiary"
+					style={{ gridTemplateColumns: HISTORY_GRID }}
+				>
+					<span>{tx("sourceUi.pages.History.HistoryTable.7")}</span>
+					<span></span>
+					<span>{tx("sourceUi.pages.History.HistoryTable.8")}</span>
+					<span>{tx("sourceUi.pages.History.HistoryTable.9")}</span>
+					<span>{tx("stats.push.target")}</span>
+					<span>{tx("sourceUi.pages.History.HistoryTable.10")}</span>
 				</div>
-			) : (
-				entries.map((e, i) => (
-					<HistoryRow
-						key={e.id}
-						entry={e}
-						sub={subs.forRow(e)}
-						target={e.targetId ? targetById.get(e.targetId) : undefined}
-						sources={sources}
-						extensions={extensions}
-						isLast={i === entries.length - 1}
-					/>
-				))
-			)}
+
+				{entries.length === 0 ? (
+					<div className="px-4 py-10 text-center text-bn-sm text-bn-text-tertiary">
+						{tx("sourceUi.pages.History.HistoryTable.11")}
+					</div>
+				) : (
+					entries.map((e, i) => (
+						<HistoryRow
+							key={e.id}
+							entry={e}
+							sub={subs.forRow(e)}
+							target={e.targetId ? targetById.get(e.targetId) : undefined}
+							sources={sources}
+							extensions={extensions}
+							isLast={i === entries.length - 1}
+						/>
+					))
+				)}
+			</div>
 		</div>
 	);
 }
