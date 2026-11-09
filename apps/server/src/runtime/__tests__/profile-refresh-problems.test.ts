@@ -1,5 +1,6 @@
 import { type CreatorProfileReport, fail, ok, type Subscription } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { startProfileRefreshHarness } from "./profile-refresh-support.js";
 
@@ -11,9 +12,60 @@ let close: (() => void) | undefined;
 afterEach(() => {
 	close?.();
 	close = undefined;
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 });
 
 describe("资料刷新的问题表", () => {
+	it.each([
+		[
+			"en",
+			"No account was found with external ID creator-1. It may have been deleted or its ID may have changed: Original upstream 原文",
+		],
+		[
+			"ja",
+			"外部ID creator-1のアカウントが見つかりません。削除されたか、IDが変更された可能性があります：Original upstream 原文",
+		],
+		["zh-TW", "找不到外部 ID 為 creator-1 的帳號，可能已刪除或變更 ID：Original upstream 原文"],
+	] as const)(
+		"%s localizes an open missing creator problem without new polling or notification",
+		async (locale, message) => {
+			const problems = createProblemTable({
+				logger: loggerOf(),
+				texts: {
+					locale: () => i18n.state().locale,
+					onChange: (fn) => ({ dispose: i18n.subscribe(fn) }),
+				},
+			});
+			const changes: ProblemChange[] = [];
+			problems.subscribe((change) => changes.push(change));
+			const source = vi.fn(async () => fail("not_found", "Original upstream 原文"));
+			const p = await startProfileRefreshHarness({
+				subscriptions: [sub("sub-1", "alpha", "creator-1")],
+				sources: { alpha: source },
+				problems,
+			});
+			close = () => {
+				p.handle.dispose();
+				p.cache.dispose();
+				problems.dispose();
+			};
+			await p.handle.pollNow();
+			i18n.set({ locale, voice: "plain" });
+			expect(problems.list()).toEqual([
+				expect.objectContaining({
+					reporter: "alpha",
+					code: "creator_not_found",
+					about: { subscriptionId: "sub-1" },
+					message,
+				}),
+			]);
+			expect(source).toHaveBeenCalledTimes(1);
+			expect(changes.map((c) => [c.kind, c.notify])).toEqual([
+				["opened", false],
+				["updated", false],
+			]);
+		},
+	);
 	it("来源回 not_found 时记在来源名下、关于这条订阅,并且不私聊", async () => {
 		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const problems = createProblemTable({ logger: logger as never });

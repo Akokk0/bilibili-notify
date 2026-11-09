@@ -1069,5 +1069,18 @@
 	"problem.report.issue.blank": "「{cell}」は空白のみにできません。",
 	"extension.report.problemRejected": "問題「{code}」を拒否しました：{reason}",
 	"extension.report.problemRejectedStopped": "停止後に問題「{code}」が報告されました。",
-	"problem.report.connectionNotOwned": "接続{connectionId}はアダプター{adapterKey}に属していません。"
+	"problem.report.connectionNotOwned": "接続{connectionId}はアダプター{adapterKey}に属していません。",
+	"problem.login.missing": "{name}にログインしていません。このソースの購読内容を受信できません。ダッシュボードのアカウントページでログインするか、プライベートメッセージで「login {sourceKey}」を送信してください。",
+	"problem.login.expired": "{name}のログインが失効しました。このソースの購読内容を受信できません。ダッシュボードのアカウントページで再ログインするか、プライベートメッセージで「login {sourceKey}」を送信してください。",
+	"problem.login.recovered": "{name}のログインが復旧しました。",
+	"problem.connection.recovered": "接続「{name}」が復旧しました。",
+	"problem.connection.settingsInvalid": "接続「{name}」：{reason}",
+	"problem.connection.unreachable": "接続「{name}」に接続できません：{reason}",
+	"service.push.connection-settings.text.1": "設定が無効です",
+	"service.push.connection-settings.text.2": "設定が無効です：{value0}{value1}",
+	"problem.relay.reported": "{name}からの報告：{message}",
+	"problem.relay.recovered": "{name}からの報告：{message}",
+	"problem.relay.recoveredGeneric": "{name}から報告された問題が解消しました：{message}",
+	"problem.recoveredGeneric": "以前の問題が解消しました：{message}",
+	"problem.creatorNotFound": "外部ID {externalId}のアカウントが見つかりません。削除されたか、IDが変更された可能性があります：{reason}"
 }

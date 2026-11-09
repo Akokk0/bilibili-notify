@@ -142,6 +142,64 @@ describe("问题通知诊断", () => {
 });
 
 describe("问题私聊:发不发、发几条", () => {
+	it.each([
+		[
+			"en",
+			"Original integration 原名 reports: Original problem 原文",
+			"Original integration 原名 reports: Original recovery 原文",
+			"The issue previously reported by Original integration 原名 has been resolved: Original problem 原文",
+			"The previous issue has been resolved: Original problem 原文",
+		],
+		[
+			"ja",
+			"Original integration 原名からの報告：Original problem 原文",
+			"Original integration 原名からの報告：Original recovery 原文",
+			"Original integration 原名から報告された問題が解消しました：Original problem 原文",
+			"以前の問題が解消しました：Original problem 原文",
+		],
+		[
+			"zh-TW",
+			"Original integration 原名 回報：Original problem 原文",
+			"Original integration 原名 回報：Original recovery 原文",
+			"Original integration 原名 先前回報的問題已恢復：Original problem 原文",
+			"先前的問題已恢復：Original problem 原文",
+		],
+	] as const)(
+		"%s localizes relay and recovery wrappers while preserving third-party text",
+		async (locale, reported, recovered, relayGeneric, generic) => {
+			const { table, notify, notifier } = setup();
+			i18n.set({ locale, voice: "plain" });
+			open(table, {
+				code: "explicit",
+				writtenBy: "Original integration 原名",
+				message: "Original problem 原文",
+				recoveryMessage: "Original recovery 原文",
+			});
+			await flush();
+			expect(notify).toHaveBeenLastCalledWith(reported);
+			table.resolve({ reporter: "src", code: "explicit" });
+			await flush();
+			expect(notify).toHaveBeenLastCalledWith(recovered);
+			open(table, {
+				code: "relay",
+				writtenBy: "Original integration 原名",
+				message: "Original problem 原文",
+			});
+			await flush();
+			table.resolve({ reporter: "src", code: "relay" });
+			await flush();
+			expect(notify).toHaveBeenLastCalledWith(relayGeneric);
+			open(table, { code: "host", message: "Original problem 原文" });
+			await flush();
+			expect(notify).toHaveBeenLastCalledWith("Original problem 原文");
+			table.resolve({ reporter: "src", code: "host" });
+			await flush();
+			expect(notify).toHaveBeenLastCalledWith(generic);
+			expect(notify).toHaveBeenCalledTimes(6);
+			notifier.dispose();
+			table.dispose();
+		},
+	);
 	it("notify 缺省(假)的问题不私聊", async () => {
 		const { table, notify } = setup();
 		table.report({ reporter: "src", code: "c", message: "只进表" });

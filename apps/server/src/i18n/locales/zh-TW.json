@@ -1069,5 +1069,18 @@
 	"problem.report.issue.blank": "「{cell}」不可只有空白。",
 	"extension.report.problemRejected": "已拒絕問題「{code}」：{reason}",
 	"extension.report.problemRejectedStopped": "停止後仍收到問題「{code}」的上報。",
-	"problem.report.connectionNotOwned": "連線 {connectionId} 不屬於適配器 {adapterKey}。"
+	"problem.report.connectionNotOwned": "連線 {connectionId} 不屬於適配器 {adapterKey}。",
+	"problem.login.missing": "尚未登入 {name}，暫時無法接收此來源的訂閱內容。請到面板的帳號頁登入，或以私訊傳送「login {sourceKey}」。",
+	"problem.login.expired": "{name} 的登入已失效，暫時無法接收此來源的訂閱內容。請到面板的帳號頁重新登入，或以私訊傳送「login {sourceKey}」。",
+	"problem.login.recovered": "{name} 的登入已恢復。",
+	"problem.connection.recovered": "連線「{name}」已恢復。",
+	"problem.connection.settingsInvalid": "連線「{name}」：{reason}",
+	"problem.connection.unreachable": "無法連上連線「{name}」：{reason}",
+	"service.push.connection-settings.text.1": "設定無效",
+	"service.push.connection-settings.text.2": "設定無效：{value0}{value1}",
+	"problem.relay.reported": "{name} 回報：{message}",
+	"problem.relay.recovered": "{name} 回報：{message}",
+	"problem.relay.recoveredGeneric": "{name} 先前回報的問題已恢復：{message}",
+	"problem.recoveredGeneric": "先前的問題已恢復：{message}",
+	"problem.creatorNotFound": "找不到外部 ID 為 {externalId} 的帳號，可能已刪除或變更 ID：{reason}"
 }

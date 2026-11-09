@@ -10,19 +10,6 @@ import { createProblemTable, type ProblemTable } from "../../problems/problem-ta
 import { watchLoginProblems } from "../login-problems.js";
 import { makeLogger } from "./fixtures.js";
 
-// 今天只有简中有译文:把服务端的 `t` 换成"非简中时带语言前缀"的,好看出换语言后表里的字真的变了。
-vi.mock("../../i18n/index.js", async (importOriginal) => {
-	const real = await importOriginal<typeof import("../../i18n/index.js")>();
-	return {
-		...real,
-		t: (key: never, vars?: never) => {
-			const locale = real.i18n.state().locale;
-			const text = real.t(key, vars);
-			return locale === "zh-CN" ? text : `${locale}|${text}`;
-		},
-	};
-});
-
 afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 /** 交进表的 `message` / `recoveryMessage` 是取字函数:断言时现取一次。 */
@@ -98,6 +85,70 @@ function setup(initial: AuthState) {
 }
 
 describe("watchLoginProblems", () => {
+	it.each([
+		[
+			"en",
+			{
+				missing:
+					'You are not logged in to B 站. Content from its subscriptions cannot be received. Sign in on the dashboard Accounts page or send "login bilibili" in a private message.',
+				expired:
+					'Your B 站 login has expired. Content from its subscriptions cannot be received. Sign in again on the dashboard Accounts page or send "login bilibili" in a private message.',
+				recovered: "Your B 站 login has been restored.",
+			},
+		],
+		[
+			"ja",
+			{
+				missing:
+					"B 站にログインしていません。このソースの購読内容を受信できません。ダッシュボードのアカウントページでログインするか、プライベートメッセージで「login bilibili」を送信してください。",
+				expired:
+					"B 站のログインが失効しました。このソースの購読内容を受信できません。ダッシュボードのアカウントページで再ログインするか、プライベートメッセージで「login bilibili」を送信してください。",
+				recovered: "B 站のログインが復旧しました。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				missing:
+					"尚未登入 B 站，暫時無法接收此來源的訂閱內容。請到面板的帳號頁登入，或以私訊傳送「login bilibili」。",
+				expired:
+					"B 站 的登入已失效，暫時無法接收此來源的訂閱內容。請到面板的帳號頁重新登入，或以私訊傳送「login bilibili」。",
+				recovered: "B 站 的登入已恢復。",
+			},
+		],
+		[
+			"zh-CN",
+			{
+				missing:
+					"尚未登录B 站的账号，暂时无法接收此来源的订阅内容。请到面板的账号页登录，或私聊发送「login bilibili」。",
+				expired:
+					"B 站的登录已失效，暂时无法接收此来源的订阅内容。请到面板的账号页重新登录，或私聊发送「login bilibili」。",
+				recovered: "B 站的登录已恢复。",
+			},
+		],
+	] as const)(
+		"%s reads current login wording without changing notification policy or the login command",
+		(locale, text) => {
+			const { problems, set, handle } = setup(OUT);
+			i18n.set({ locale, voice: "plain" });
+			expect(shown(problems.report.mock.calls[0]?.[0] as never)).toMatchObject({
+				message: text.missing,
+				notify: false,
+			});
+			set(EXPIRED);
+			expect(shown(problems.report.mock.calls[1]?.[0] as never)).toMatchObject({
+				message: text.expired,
+				recoveryMessage: text.recovered,
+				notify: true,
+			});
+			set(IN);
+			expect(problems.resolve).toHaveBeenCalledExactlyOnceWith({
+				reporter: "bilibili",
+				code: "auth_lost",
+			});
+			handle.dispose();
+		},
+	);
 	it("开机 expired:报一条 auth_lost,记在来源键名下、带私聊、宿主那句、不盖写者", () => {
 		const { problems } = setup(EXPIRED);
 		expect(problems.report).toHaveBeenCalledTimes(1);
@@ -135,7 +186,9 @@ describe("watchLoginProblems", () => {
 
 		i18n.set({ locale: "en" });
 
-		expect(table.list()[0]?.message).toBe(`en|${EXPIRED_TEXT}`);
+		expect(table.list()[0]?.message).toBe(
+			'Your B 站 login has expired. Content from its subscriptions cannot be received. Sign in again on the dashboard Accounts page or send "login bilibili" in a private message.',
+		);
 		expect(table.list()).toHaveLength(1);
 		// 同一条换文案(带"换说法"记号),没有第二次 opened,所以通知器不会再私聊一遍。
 		expect(changes.map((c) => c.kind)).toEqual(["opened", "updated"]);

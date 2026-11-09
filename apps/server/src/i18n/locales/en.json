@@ -1078,5 +1078,18 @@
 	"problem.report.issue.blank": "\"{cell}\" must not be blank.",
 	"extension.report.problemRejected": "Problem \"{code}\" rejected: {reason}",
 	"extension.report.problemRejectedStopped": "Problem \"{code}\" reported after shutdown.",
-	"problem.report.connectionNotOwned": "Connection {connectionId} does not belong to adapter {adapterKey}."
+	"problem.report.connectionNotOwned": "Connection {connectionId} does not belong to adapter {adapterKey}.",
+	"problem.login.missing": "You are not logged in to {name}. Content from its subscriptions cannot be received. Sign in on the dashboard Accounts page or send \"login {sourceKey}\" in a private message.",
+	"problem.login.expired": "Your {name} login has expired. Content from its subscriptions cannot be received. Sign in again on the dashboard Accounts page or send \"login {sourceKey}\" in a private message.",
+	"problem.login.recovered": "Your {name} login has been restored.",
+	"problem.connection.recovered": "Connection \"{name}\" has been restored.",
+	"problem.connection.settingsInvalid": "Connection \"{name}\": {reason}",
+	"problem.connection.unreachable": "Connection \"{name}\" is unreachable: {reason}",
+	"service.push.connection-settings.text.1": "Invalid settings",
+	"service.push.connection-settings.text.2": "Invalid settings: {value0}{value1}",
+	"problem.relay.reported": "{name} reports: {message}",
+	"problem.relay.recovered": "{name} reports: {message}",
+	"problem.relay.recoveredGeneric": "The issue previously reported by {name} has been resolved: {message}",
+	"problem.recoveredGeneric": "The previous issue has been resolved: {message}",
+	"problem.creatorNotFound": "No account was found with external ID {externalId}. It may have been deleted or its ID may have changed: {reason}"
 }

@@ -157,5 +157,9 @@
 	"service.skins.ai-create.text.1": "设计师没把主人指定的壁纸写进 {value0},已按默认参数补上(overlay {value1} / blur {value2})",
 	"settings.identity.unavailable": "主人，这个集成的存储还没打开，暂时没法更换身份哦。",
 	"settings.identity.notFound": "主人，女仆没找到这个集成的设置。",
-	"settings.identity.unsupported": "主人，这个集成不支持更换浏览器身份哦。"
+	"settings.identity.unsupported": "主人，这个集成不支持更换浏览器身份哦。",
+	"problem.login.missing": "主人还没有登录{name}的账号，那边订阅的内容暂时收不到。到面板的账号页扫码登录就好，私聊发「login {sourceKey}」也行。",
+	"problem.login.expired": "主人，{name}的登录失效了，那边订阅的内容先收不到了。到面板的账号页重新扫码登录就好，私聊发「login {sourceKey}」也行。",
+	"problem.login.recovered": "主人，好消息：{name}的登录已经恢复啦。",
+	"problem.connection.recovered": "连接「{name}」又连上啦～"
 }

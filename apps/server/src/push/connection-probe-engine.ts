@@ -329,9 +329,11 @@ export function createConnectionProbeEngine(
 				clearInvalid(connection.id);
 				continue;
 			}
-			const reason = settingsIssueMessage(resolved.issues ?? []);
 			const wording = () =>
-				t("problem.connection.settingsInvalid", { name: connection.name, reason });
+				t("problem.connection.settingsInvalid", {
+					name: connection.name,
+					reason: settingsIssueMessage(resolved.issues ?? []),
+				});
 			const message = wording();
 			if (invalid.get(connection.id)?.message === message) continue;
 			invalid.set(connection.id, { reporter: connection.adapterKey, message });
