@@ -9,7 +9,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import { useOnboardingReopen } from "../../../store/onboarding";
@@ -93,3 +93,30 @@ it.each([
 		await waitFor(() => expect(useOnboardingReopen.getState().seq).toBe(before + 1));
 	},
 );
+
+it.each([
+	[
+		"ja",
+		"ご主人様、再開すると左下にガイドが現れ、今の設定状況から続きをご案内しますよ。いつでもまたスキップできます。",
+		"ガイドを再開",
+	],
+	[
+		"zh-TW",
+		"主人，重新開啟後，左下角會出現指引卡片，照目前的設定進度繼續帶您操作喔；隨時可以再次略過。",
+		"重新開啟指引",
+	],
+] as const)("%s 女仆重开说明切语不写入，明确重开才发一次信号", async (locale, hint, button) => {
+	await mount();
+	const before = useOnboardingReopen.getState().seq;
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(hint)).toBeTruthy();
+	expect(apiPatch).not.toHaveBeenCalled();
+	expect(useOnboardingReopen.getState().seq).toBe(before);
+	fireEvent.click(screen.getByRole("button", { name: button }));
+	await waitFor(() =>
+		expect(apiPatch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+			core: { onboarding: { skipped: false } },
+		}),
+	);
+	await waitFor(() => expect(useOnboardingReopen.getState().seq).toBe(before + 1));
+});

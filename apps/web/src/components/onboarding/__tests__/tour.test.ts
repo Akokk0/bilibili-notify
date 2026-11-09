@@ -304,3 +304,62 @@ it.each([
 		expect(refs[2].title).toBe("新建推送连接");
 	},
 );
+
+it.each([
+	[
+		"ja",
+		[
+			"ご主人様、強調表示されたQRログインを選び、ソースのアプリで読み取って確認してくださいね。ログインできたら、メイドが次のステップをご案内します。",
+			"ご主人様、BNの接続にはQQ公式ボット、NapCatなどのOneBotクライアント、Feishu・DingTalk・WeComのグループボット、それから汎用HTTPエンドポイントがありますよ。できることや導入の手間が違うので、接続ガイドを読んでからお選びくださいね。",
+			"ご主人様、強調表示された「+ 新規」からプラットフォームを選んでくださいね。QQ公式ボットはappIdとappSecretを入力するか、フォームのQR接続機能で取得できます。OneBotは接続方式を選びます。おすすめはリバースWebSocketで、待ち受けポートを指定してください。入力できたら「保存」ですよ。",
+			"ご主人様、作成した接続の「テスト」を選んでくださいね。成功すれば状態が緑色になり、自動で次へ進みます。失敗したらエラーの説明をご確認ください。OneBotなら、まずNapCatが接続されているか見てみましょう。",
+			"ご主人様、強調表示された「+ 送信先を追加」から、接続と配信先を指定してくださいね。OneBotはグループ番号かQQ番号を入力します。QQ公式ボットは先にQQでボットへメッセージを送り、フォームでその会話を選んでください。保存したら次へ進みますよ。",
+			"ご主人様、送信先の「テスト」を選んでくださいね。テストメッセージが届けば、配信経路はつながっていますよ。最後に購読を追加しましょう。",
+			"ご主人様、強調表示された「購読を追加」から、名前やIDでクリエイターを探し、結果から購読してくださいね。作成した送信先にもチェックを入れましょう。購読できたら、新しい投稿とライブ開始を自動でお届けしますよ。",
+			"ご主人様、ログインできましたよ！",
+		],
+	],
+	[
+		"zh-TW",
+		[
+			"主人，請選擇反白顯示的 QR Code 登入，用來源應用程式掃描並確認喔。登入成功後，女僕會帶您繼續下一步。",
+			"主人，BN 的連線有 QQ 官方機器人、NapCat 等 OneBot 用戶端、Feishu／釘釘／企業微信的群組機器人，還有未指定的 HTTP 端點喔。功能和部署成本各不相同，先看看連線選型指引，再決定用哪一種吧。",
+			"主人，請從反白顯示的「+ 新增」選擇平台喔。QQ 官方機器人要填 appId／appSecret，也可以用表單的掃碼連線功能自動填入。OneBot 請選擇連線方式，建議用反向 WebSocket 並填入監聽連接埠。填好後選「儲存」就可以了。",
+			"主人，請在剛建立的連線上選「測試」喔。成功後狀態指示會變綠，並自動進入下一步。失敗的話就照錯誤提示檢查；OneBot 請先確認 NapCat 已經連線。",
+			"主人，請從反白顯示的「+ 新增推播目標」選取連線，指定訊息要送去哪裡喔。OneBot 可直接填群組號碼或 QQ 號碼；QQ 官方機器人要先在 QQ 傳一則訊息給機器人，再到表單選那個會話。儲存後就會進入下一步。",
+			"主人，請在目標上選「測試」喔。收到測試訊息，就代表推播路徑通了。只差最後一步：新增訂閱。",
+			"主人，請從反白顯示的「新增訂閱」，用名稱或 ID 搜尋創作者，從結果新增訂閱，再勾選剛建立的推播目標喔。訂閱成功後，新作品和開播通知就會自動送達。",
+			"主人，登入完成啦！",
+		],
+	],
+] as const)("%s 女仆步骤说明与完成反馈随语言读取，不改变路由或手动位置", (locale, text) => {
+	const refs = [
+		TOUR_SCRIPT.login[0],
+		...TOUR_SCRIPT.connection,
+		TOUR_SCRIPT.target[0],
+		TOUR_SCRIPT.test[0],
+		TOUR_SCRIPT.subs[0],
+	];
+	const anchors = refs.map((step) => step.anchor);
+	const pos = { stepKey: "connection", subIndex: 1 } as const;
+	i18n.set({ locale, voice: "maid" });
+	expect(refs.map((step) => step.body)).toEqual(text.slice(0, 7));
+	expect(STEP_DONE_MESSAGES.login).toBe(text[7]);
+	expect(refs.map((step) => step.route)).toEqual([
+		"/system",
+		"/targets",
+		"/targets",
+		"/targets",
+		"/targets",
+		"/targets",
+		"/subs",
+	]);
+	expect(refs.map((step) => step.anchor)).toEqual(anchors);
+	expect(TOUR_SCRIPT.connection.slice(0, 2).map((step) => step.link?.to)).toEqual([
+		"/about/guide",
+		"/about/guide",
+	]);
+	expect(reconcileTourPos(pos, "connection")).toEqual(pos);
+	i18n.set({ locale: "zh-CN", voice: "plain" });
+	expect(reconcileTourPos(pos, "connection")).toEqual(pos);
+});

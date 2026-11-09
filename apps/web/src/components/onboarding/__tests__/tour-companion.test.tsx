@@ -1473,3 +1473,75 @@ it.each([
 		);
 	},
 );
+
+it.each([
+	[
+		"ja",
+		"ご主人様、承知しました。ガイドは控えておきますね。必要になったら「システム」→「メンテナンス」の「はじめに」から、いつでも再開できますよ。",
+	],
+	[
+		"zh-TW",
+		"主人，好的，先不打擾您喔。之後需要指引時，到「系統」→「維護」的「新手指引」重新開啟就可以了。",
+	],
+] as const)("%s 女仆跳过说明随语言更新，不重复写入选择", async (locale, note) => {
+	const s: Scenario = { route: "/system", skipped: null };
+	apiPatch.mockImplementation(async (_p, body) => {
+		s.skipped = (body as { core: { onboarding: { skipped: boolean } } }).core.onboarding.skipped;
+		return {};
+	});
+	await mount(s);
+	fireEvent.click(await screen.findByRole("button", { name: /我是老用户/ }));
+	await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(1));
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(note)).toBeTruthy();
+	expect(apiPatch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+		core: { onboarding: { skipped: true } },
+	});
+	fireEvent.click(screen.getByRole("button", { name: "了解" }));
+	await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	expect(screen.queryByRole("complementary")).toBeNull();
+	expect(apiPatch).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+	[
+		"ja",
+		"ご主人様、設定が整いました。購読したクリエイターの新しい投稿とライブ開始を、自動でお届けしますね。",
+		"閉じる",
+	],
+	["zh-TW", "主人，推播流程已經通了，訂閱的新作品和開播通知之後會自動送達喔。", "關閉"],
+] as const)("%s 女仆完成提示保留后续指引链接，不因切语重复毕业", async (locale, body, close) => {
+	const s: Scenario = {
+		loggedIn: true,
+		subs: [{ id: "s1" }],
+		connections: [
+			{
+				id: "a1",
+				enabled: true,
+				probeState: { status: "reachable", lastCheckedAt: "connection-at" },
+			},
+		],
+		targets: [
+			{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "target-at" } },
+		],
+		route: "/system",
+	};
+	apiPatch.mockImplementation(async (_p, value) => {
+		s.skipped = (value as { core: { onboarding: { skipped: boolean } } }).core.onboarding.skipped;
+		return {};
+	});
+	await mount(s);
+	await screen.findByText(/🎉/);
+	await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(1));
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(body)).toBeTruthy();
+	expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(
+		expect.arrayContaining(["/about/guide/render", "/about/guide/ai"]),
+	);
+	expect(apiPatch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+		core: { onboarding: { skipped: true } },
+	});
+	fireEvent.click(screen.getByRole("button", { name: close }));
+	await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+	expect(apiPatch).toHaveBeenCalledTimes(1);
+});

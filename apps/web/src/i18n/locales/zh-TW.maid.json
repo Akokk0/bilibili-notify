@@ -541,5 +541,16 @@
 	"panelUi.components.ai-chat.thinking-level-setting.6": "主人，目前實例使用自訂服務商，女僕不會擅自傳送專屬思考參數喔。需要的話，請填進該實例的「額外請求參數」。",
 	"panelUi.components.ai-chat.card-skin-preview.4": "主人，這套卡片皮膚已經不在資源庫裡，沒辦法預覽了喔。",
 	"panelUi.components.ai-chat.index.11": "主人，說說想把推播卡片換成什麼樣子吧。氛圍、主色、先改哪些卡片都可以聊喔；女僕會一張張做好，在回覆下方讓您看預覽。",
-	"panelUi.components.skin-preview-bar.1": "正在試穿「{name}」喔"
+	"panelUi.components.skin-preview-bar.1": "正在試穿「{name}」喔",
+	"panelUi.components.onboarding.reopen-section.3": "主人，重新開啟後，左下角會出現指引卡片，照目前的設定進度繼續帶您操作喔；隨時可以再次略過。",
+	"panelUi.components.onboarding.tour-companion.12": "主人，好的，先不打擾您喔。之後需要指引時，到「系統」→「維護」的「新手指引」重新開啟就可以了。",
+	"panelUi.components.onboarding.tour-companion.19": "主人，推播流程已經通了，訂閱的新作品和開播通知之後會自動送達喔。",
+	"panelUi.components.onboarding.tour-script.2": "主人，請選擇反白顯示的 QR Code 登入，用來源應用程式掃描並確認喔。登入成功後，女僕會帶您繼續下一步。",
+	"panelUi.components.onboarding.tour-script.4": "主人，BN 的連線有 QQ 官方機器人、NapCat 等 OneBot 用戶端、Feishu／釘釘／企業微信的群組機器人，還有未指定的 HTTP 端點喔。功能和部署成本各不相同，先看看連線選型指引，再決定用哪一種吧。",
+	"panelUi.components.onboarding.tour-script.7": "主人，請從反白顯示的「+ 新增」選擇平台喔。QQ 官方機器人要填 appId／appSecret，也可以用表單的掃碼連線功能自動填入。OneBot 請選擇連線方式，建議用反向 WebSocket 並填入監聽連接埠。填好後選「儲存」就可以了。",
+	"panelUi.components.onboarding.tour-script.10": "主人，請在剛建立的連線上選「測試」喔。成功後狀態指示會變綠，並自動進入下一步。失敗的話就照錯誤提示檢查；OneBot 請先確認 NapCat 已經連線。",
+	"panelUi.components.onboarding.tour-script.12": "主人，請從反白顯示的「+ 新增推播目標」選取連線，指定訊息要送去哪裡喔。OneBot 可直接填群組號碼或 QQ 號碼；QQ 官方機器人要先在 QQ 傳一則訊息給機器人，再到表單選那個會話。儲存後就會進入下一步。",
+	"panelUi.components.onboarding.tour-script.14": "主人，請在目標上選「測試」喔。收到測試訊息，就代表推播路徑通了。只差最後一步：新增訂閱。",
+	"panelUi.components.onboarding.tour-script.16": "主人，請從反白顯示的「新增訂閱」，用名稱或 ID 搜尋創作者，從結果新增訂閱，再勾選剛建立的推播目標喔。訂閱成功後，新作品和開播通知就會自動送達。",
+	"panelUi.components.onboarding.tour-script.17": "主人，登入完成啦！"
 }

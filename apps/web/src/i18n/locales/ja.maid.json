@@ -541,5 +541,16 @@
 	"panelUi.components.ai-chat.thinking-level-setting.6": "ご主人様、現在のインスタンスはカスタムプロバイダーなので、メイドが勝手に専用の思考パラメーターを送ることはありません。必要なら、そのインスタンスの「追加リクエストパラメーター」に入力してくださいね。",
 	"panelUi.components.ai-chat.card-skin-preview.4": "ご主人様、このスキンはもうライブラリーにないので、プレビューできませんよ。",
 	"panelUi.components.ai-chat.index.11": "ご主人様、通知カードをどんな見た目にしたいか教えてくださいね。雰囲気や基調色、先に変えたいカードなど、何でもご相談ください。1枚ずつお作りして、お返事の下にプレビューをお見せしますよ。",
-	"panelUi.components.skin-preview-bar.1": "「{name}」をお試し中ですよ"
+	"panelUi.components.skin-preview-bar.1": "「{name}」をお試し中ですよ",
+	"panelUi.components.onboarding.reopen-section.3": "ご主人様、再開すると左下にガイドが現れ、今の設定状況から続きをご案内しますよ。いつでもまたスキップできます。",
+	"panelUi.components.onboarding.tour-companion.12": "ご主人様、承知しました。ガイドは控えておきますね。必要になったら「システム」→「メンテナンス」の「はじめに」から、いつでも再開できますよ。",
+	"panelUi.components.onboarding.tour-companion.19": "ご主人様、設定が整いました。購読したクリエイターの新しい投稿とライブ開始を、自動でお届けしますね。",
+	"panelUi.components.onboarding.tour-script.2": "ご主人様、強調表示されたQRログインを選び、ソースのアプリで読み取って確認してくださいね。ログインできたら、メイドが次のステップをご案内します。",
+	"panelUi.components.onboarding.tour-script.4": "ご主人様、BNの接続にはQQ公式ボット、NapCatなどのOneBotクライアント、Feishu・DingTalk・WeComのグループボット、それから汎用HTTPエンドポイントがありますよ。できることや導入の手間が違うので、接続ガイドを読んでからお選びくださいね。",
+	"panelUi.components.onboarding.tour-script.7": "ご主人様、強調表示された「+ 新規」からプラットフォームを選んでくださいね。QQ公式ボットはappIdとappSecretを入力するか、フォームのQR接続機能で取得できます。OneBotは接続方式を選びます。おすすめはリバースWebSocketで、待ち受けポートを指定してください。入力できたら「保存」ですよ。",
+	"panelUi.components.onboarding.tour-script.10": "ご主人様、作成した接続の「テスト」を選んでくださいね。成功すれば状態が緑色になり、自動で次へ進みます。失敗したらエラーの説明をご確認ください。OneBotなら、まずNapCatが接続されているか見てみましょう。",
+	"panelUi.components.onboarding.tour-script.12": "ご主人様、強調表示された「+ 送信先を追加」から、接続と配信先を指定してくださいね。OneBotはグループ番号かQQ番号を入力します。QQ公式ボットは先にQQでボットへメッセージを送り、フォームでその会話を選んでください。保存したら次へ進みますよ。",
+	"panelUi.components.onboarding.tour-script.14": "ご主人様、送信先の「テスト」を選んでくださいね。テストメッセージが届けば、配信経路はつながっていますよ。最後に購読を追加しましょう。",
+	"panelUi.components.onboarding.tour-script.16": "ご主人様、強調表示された「購読を追加」から、名前やIDでクリエイターを探し、結果から購読してくださいね。作成した送信先にもチェックを入れましょう。購読できたら、新しい投稿とライブ開始を自動でお届けしますよ。",
+	"panelUi.components.onboarding.tour-script.17": "ご主人様、ログインできましたよ！"
 }
