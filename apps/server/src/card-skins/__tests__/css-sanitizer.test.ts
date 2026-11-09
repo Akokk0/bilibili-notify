@@ -12,8 +12,11 @@
 import { CARD_SKIN_LIMITS, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import type { CssNode } from "css-tree";
 import { parse } from "css-tree/dist/csstree.esm";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { sanitizeCardBlockCss, sanitizeCardFrameCss } from "../css-sanitizer.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function ok(css: string, builtin?: string, kind: "post" | "superchat" = "post") {
 	const res = sanitizeCardBlockCss(css, { kind, builtin });
@@ -414,6 +417,51 @@ describe("根块(外框)只认两个挂点", () => {
 });
 
 describe("体积闸", () => {
+	it.each([
+		[
+			"en",
+			"CSS must not contain `</` because it can close the <style> tag early.",
+			"Sanitized CSS exceeds the 16KB limit.",
+			"property behavior is blocked because it can affect execution",
+		],
+		[
+			"ja",
+			"CSSに`</`を含めることはできません。<style>タグを途中で閉じる可能性があります。",
+			"サニタイズ後のCSSが16KBの上限を超えています。",
+			"プロパティbehaviorは実行につながるため禁止されています",
+		],
+		[
+			"zh-TW",
+			"CSS 不可包含 `</`，它可能提前關閉 <style> 標籤。",
+			"清理後的 CSS 超過 16KB 上限。",
+			"屬性 behavior 涉及執行行為，已禁止",
+		],
+	] as const)(
+		"%s preserves card-specific limits, style-tag rejection and transparent static decoration",
+		(locale, closing, size, blocked) => {
+			i18n.set({ locale, voice: "plain" });
+			expect(sanitizeCardFrameCss('.a::before{content:"</style>"}')).toEqual({
+				ok: false,
+				code: "invalid",
+				message: closing,
+			});
+			expect(sanitizeCardFrameCss(".a{color:red}".repeat(1000))).toEqual({
+				ok: false,
+				code: "invalid",
+				message: size,
+			});
+			const r = sanitizeCardFrameCss(
+				'.a{opacity:0;behavior:url(https://original.test)}.a::before{content:"Original user text"}',
+			);
+			expect(r.ok).toBe(true);
+			if (!r.ok) throw new Error(r.message);
+			expect(r.css).toContain("opacity:0");
+			expect(r.css).toContain("Original user text");
+			expect(r.css).not.toContain("behavior");
+			expect(r.warnings).toHaveLength(1);
+			expect(r.warnings[0]).toContain(blocked);
+		},
+	);
 	it("CSS 硬拒绝统一为 invalid/message，空 CSS 仍成功", () => {
 		expect([
 			sanitizeCardFrameCss("x".repeat(16385)),

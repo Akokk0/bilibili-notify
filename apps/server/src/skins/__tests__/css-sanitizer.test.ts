@@ -17,8 +17,11 @@ import {
 	SKIN_CSS_PROP_NOTES,
 	SKIN_CSS_PROP_PREFIXES,
 } from "@bilibili-notify/contract";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { MAX_SKIN_CSS_BYTES, sanitizeSkinCss, stripDecorationResidue } from "../css-sanitizer.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function ok(css: string): { css: string; warnings: string[] } {
 	const res = sanitizeSkinCss(css);
@@ -28,6 +31,73 @@ function ok(css: string): { css: string; warnings: string[] } {
 }
 
 describe("选择器白名单", () => {
+	it.each([
+		[
+			"en",
+			{
+				large: "Custom CSS exceeds the 64KB limit.",
+				selector: 'Selector "div" is not an allowed hook selector; rule discarded.',
+				prop: "property original-prop is not allowed",
+				important: "removed !important from property border-width",
+				remote: "value of property background contains url()",
+				opacity:
+					"Host opacity must be a literal value of at least 0.15; invisible but clickable UI is not allowed.",
+				at: "@import is not allowed; block discarded.",
+			},
+		],
+		[
+			"ja",
+			{
+				large: "カスタムCSSが64KBの上限を超えています。",
+				selector: "セレクター「div」は許可されたフックの一覧にないため、ルール全体を破棄しました。",
+				prop: "プロパティoriginal-propは許可されていません",
+				important: "プロパティborder-widthの!importantを削除しました",
+				remote: "プロパティbackgroundの値にurl()が含まれています",
+				opacity:
+					"ホストのopacityは0.15以上のリテラル値のみ指定できます（見えないのにクリックできるUIを防ぐため）",
+				at: "@importは許可されていないため、ブロック全体を破棄しました。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				large: "自訂 CSS 超過 64KB 上限。",
+				selector: "選擇器「div」不在允許的掛點清單中，已捨棄整條規則。",
+				prop: "屬性 original-prop 不在允許清單中",
+				important: "屬性 border-width 的 !important 已移除",
+				remote: "屬性 background 的值含有 url()",
+				opacity: "宿主 opacity 只允許不低於 0.15 的字面值（避免看不見卻能點擊的介面欺騙）",
+				at: "@import 不在允許清單中，已捨棄整個區塊。",
+			},
+		],
+	] as const)(
+		"%s localizes rejection and declaration warnings without changing retained CSS",
+		(locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			expect(sanitizeSkinCss("x".repeat(MAX_SKIN_CSS_BYTES + 1))).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.large,
+			});
+			const res = sanitizeSkinCss(
+				'div{color:red}[data-bn="glass"]{border-width:2px!important;original-prop:1;background:url(https://original.test/image?token=private);opacity:0}@import "Original.css";',
+			);
+			expect(res.ok).toBe(true);
+			if (!res.ok) throw new Error(res.message);
+			expect(res.css).toBe('[data-bn="glass"]{border-width:2px}');
+			expect(res.warnings).toHaveLength(6);
+			for (const message of [
+				text.selector,
+				text.prop,
+				text.important,
+				text.remote,
+				text.opacity,
+				text.at,
+			])
+				expect(res.warnings.some((w) => w.includes(message))).toBe(true);
+			expect(res.warnings.join()).not.toContain("token=private");
+		},
+	);
 	it("hook 属性选择器 + 伪类/伪元素/组合器放行,产物保留 hook 形式", () => {
 		const { css, warnings } = ok(
 			`[data-bn="glass"]:hover { box-shadow: 0 0 24px rgba(251,114,153,0.5); }
