@@ -116,3 +116,38 @@ describe("服务端拒收的逐条原因", () => {
 		expect(errorTextOf(err)).toBe(`概括：${serverErrors(err).join("；")}`);
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、接続が途切れました。",
+		"ご主人様、描画用ブラウザーがまだ設定されていませんよ。",
+		"ご主人様、今回の描画は失敗しました。",
+		"ご主人様、カードの描画には時間がかかることがあります。リバースプロキシー経由なら、読み取りタイムアウトを120秒より長くしてくださいね。メモリー不足などでサーバーが再起動した可能性もあります。",
+	],
+	[
+		"zh-TW",
+		"主人，連線中斷了。",
+		"主人，還沒設定繪製用瀏覽器喔。",
+		"主人，這次繪製失敗了。",
+		"主人，卡片繪製可能比較久喔。若透過反向代理存取，請把讀取逾時設為超過 120 秒；也可能是伺服器剛重新啟動，例如記憶體不足時被系統停止。",
+	],
+] as const)(
+	"%s 女仆预览错误按码分类，只在断线时给网络排查提示",
+	(locale, offline, unconfigured, failed, hint) => {
+		i18n.set({ locale, voice: "maid" });
+		expect(previewErrorTitle({ status: OFFLINE_STATUS })).toBe(offline);
+		expect(previewErrorTitle({ status: 409, code: "not_configured" })).toBe(unconfigured);
+		expect(previewErrorTitle({ status: 503, code: "unavailable" })).toBe(failed);
+		expect(previewErrorTitle(undefined)).toBe(failed);
+		expect(previewErrorHint(OFFLINE_STATUS)).toBe(hint);
+		expect(previewErrorHint(503)).toBeNull();
+		expect(
+			serverErrors(
+				Object.assign(new Error("Original diagnostic 原文"), {
+					issues: [{ message: "Original issue 原文" }],
+				}),
+			),
+		).toEqual(["Original issue 原文"]);
+	},
+);

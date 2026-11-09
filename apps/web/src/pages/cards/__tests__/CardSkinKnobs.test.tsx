@@ -73,11 +73,15 @@ function listWith(knobs?: CardSkinKnob[]) {
 	};
 }
 
-function renderKnobs(value: CardSkinKnobsBySkin, onChange = vi.fn()) {
+function renderKnobs(
+	value: CardSkinKnobsBySkin,
+	onChange = vi.fn(),
+	perUp?: Parameters<typeof CardSkinKnobsSection>[0]["perUp"],
+) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const view = render(
 		<QueryClientProvider client={qc}>
-			<CardSkinKnobsSection value={value} onChange={onChange} />
+			<CardSkinKnobsSection value={value} onChange={onChange} perUp={perUp} />
 		</QueryClientProvider>,
 	);
 	return { ...view, onChange, qc };
@@ -277,4 +281,65 @@ describe("CardSkinKnobsSection", () => {
 			default: { corner: "0px" },
 		});
 	});
+});
+
+for (const perUp of [false, true]) {
+	it.each([
+		[
+			"ja",
+			"ご主人様、このスキンが用意した調整項目ですよ。変更した項目だけを保存し、触っていない項目はスキンの既定値を使います。",
+			"ご主人様、調整内容はスキンごとに残るので、切り替えて戻してもそのままですよ。「リセット」は既定値を書き込むのではなく、そのキーを削除します。",
+			"ご主人様、ここで変えた調整項目は、この購読だけに適用しますよ。変えていない項目は全体設定に従います。",
+			"ご主人様、この購読の調整内容はスキンごとに残りますよ。「リセット」すると、その項目は全体設定に従う状態に戻り、以後の全体設定の変更も反映されます。",
+			"リセット",
+		],
+		[
+			"zh-TW",
+			"主人，這些是這套外觀自己提供的可調項目喔。調過的才會儲存，沒調過的就用外觀自帶的預設值。",
+			"主人，調整會依外觀分開保留，換走再換回來也還在喔。「還原」會刪除這個鍵，不是把預設值寫回去。",
+			"主人，這裡單獨調過的項目只對目前訂閱生效，沒調過的仍跟隨全域設定喔。",
+			"主人，單獨調整的內容會依外觀分開保留喔。「還原」會讓這個項目恢復跟隨全域設定，之後全域怎麼改，它就跟著變。",
+			"還原",
+		],
+	] as const)(
+		`%s 女仆旋钮说明保留作用域和原值，重置只删除本皮肤覆盖（逐订阅=${perUp}）`,
+		async (locale, globalIntro, globalHint, ownIntro, ownHint, reset) => {
+			const value = { default: { "glass-opacity": 0.4 }, neon: { accent: "#ff0000" } };
+			const onChange = vi.fn();
+			const { container } = renderKnobs(
+				value,
+				onChange,
+				perUp ? { skinId: "default", inherit: { default: { "glass-opacity": 0.8 } } } : undefined,
+			);
+			await screen.findByText("玻璃白纱");
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(perUp ? ownIntro : globalIntro)).toBeTruthy();
+			expect(screen.getByText(perUp ? ownHint : globalHint)).toBeTruthy();
+			const row = rowOf(container, "glass-opacity");
+			expect(within(row).getByText("玻璃白纱")).toBeTruthy();
+			expect((row.querySelector('input[type="range"]') as HTMLInputElement).value).toBe("0.4");
+			expect(onChange).not.toHaveBeenCalled();
+			fireEvent.click(within(row).getByRole("button", { name: reset }));
+			expect(onChange).toHaveBeenCalledExactlyOnceWith({ neon: { accent: "#ff0000" } });
+		},
+	);
+}
+
+it.each([
+	[
+		"ja",
+		"ご主人様、このスキンには調整項目がありませんよ。調整項目はスキンの作者が用意するもので、旧版のパッケージには入っていないことがあります。別のスキンを選ぶか、作者に再エクスポートをお願いしてみてくださいね。",
+	],
+	[
+		"zh-TW",
+		"主人，這套外觀沒有提供可調項目喔。可調項目是由外觀自己宣告的，舊版匯出的套件可能沒有這一段。可以換一套外觀，或請作者重新匯出，再回來看看。",
+	],
+] as const)("%s 女仆空态不创建默认覆盖或假旋钮", async (locale, hint) => {
+	vi.mocked(api.get).mockResolvedValue(listWith(undefined));
+	const { container, onChange } = renderKnobs({});
+	await screen.findByText(/这套皮肤没有提供可调项/);
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(hint)).toBeTruthy();
+	expect(container.querySelector("[data-knob]")).toBeNull();
+	expect(onChange).not.toHaveBeenCalled();
 });

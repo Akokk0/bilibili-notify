@@ -12,7 +12,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CardSkinSection } from "../CardSkinSection";
@@ -532,3 +532,90 @@ describe("卡片皮肤库", () => {
 		await screen.findByText("直播卡「封面」块的 filter 声明已丢弃");
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、ここで通知カードのスキンをインポート・管理し、カード設定で選んで使ってくださいね。内蔵スキンは読み取り専用なので、編集するなら先に複製しましょう。",
+		"ご主人様、スキンライブラリーは空です。スキンパッケージをアップロードしてみてくださいね。",
+	],
+	[
+		"zh-TW",
+		"主人，在這裡匯入和管理卡片外觀，再到卡片設定選用喔。內建外觀是唯讀的，想修改請先複製一份。",
+		"主人，外觀資源庫是空的，試著上傳一個外觀套件吧。",
+	],
+] as const)("%s 女仆资源库说明不自动导入或选用", async (locale, intro, empty) => {
+	vi.mocked(api.get).mockResolvedValue({ skins: [], active: "default", fallbacks: [] });
+	renderSection();
+	await screen.findByText(/皮肤库是空的/);
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(intro)).toBeTruthy();
+	expect(screen.getByText(empty)).toBeTruthy();
+	for (const write of [api.put, api.post, api.upload, api.delete])
+		expect(write).not.toHaveBeenCalled();
+});
+
+it.each([
+	["ja", "ご主人様、「极光」を削除しますか？削除後は元に戻せませんよ。", "キャンセル"],
+	["zh-TW", "主人，確定刪除「极光」嗎？刪除後就無法復原了。", "取消"],
+] as const)("%s 女仆删除确认保留原皮肤名，切语和取消不删除", async (locale, message, cancel) => {
+	renderSection();
+	fireEvent.click(within(await rowOf("极光")).getByRole("button", { name: "删除" }));
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(within(screen.getByRole("dialog")).getByText(message)).toBeTruthy();
+	expect(api.delete).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: cancel }));
+	await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	expect(await rowOf("极光")).toBeTruthy();
+	expect(api.delete).not.toHaveBeenCalled();
+});
+
+it.each([
+	[
+		"ja",
+		"ご主人様、极光の配信カードは既定スキンに切り替わりました：Original timeout 原因",
+		"ご主人様、スキン orphan-skinの配信カードは既定スキンに切り替わりました：Original timeout 原因",
+		"確認",
+	],
+	[
+		"zh-TW",
+		"主人，极光的直播卡片已回退：Original timeout 原因",
+		"主人，外觀 orphan-skin的直播卡片已回退：Original timeout 原因",
+		"了解",
+	],
+] as const)(
+	"%s 女仆回落提示保留原名、未知ID和原因，明确了解才清账一次",
+	async (locale, known, unknown, ack) => {
+		vi.mocked(api.get).mockResolvedValue({
+			...LIST,
+			fallbacks: [
+				{
+					skinId: "aurora",
+					kind: "live",
+					reason: "Original timeout 原因",
+					at: 1757000000000,
+					count: 1,
+				},
+				{
+					skinId: "orphan-skin",
+					kind: "live",
+					reason: "Original timeout 原因",
+					at: 1757000000000,
+					count: 3,
+				},
+			],
+		});
+		renderSection("select");
+		await screen.findByText(
+			(text) => text.startsWith("极光") && text.includes("Original timeout 原因"),
+		);
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText((text) => text.startsWith(known))).toBeTruthy();
+		expect(screen.getByText((text) => text.startsWith(unknown))).toBeTruthy();
+		expect(api.delete).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: ack }));
+		await waitFor(() =>
+			expect(api.delete).toHaveBeenCalledExactlyOnceWith("/api/cards/skins/fallbacks"),
+		);
+	},
+);

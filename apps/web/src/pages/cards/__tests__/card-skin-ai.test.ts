@@ -116,3 +116,38 @@ describe("cardSkinAiReadiness", () => {
 		expect(r.ready === false && r.reason).toMatch(/复制一份/);
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、内蔵の既定スキンは変更できませんよ。先にライブラリーで複製してから、メイドに編集をご依頼くださいね。",
+		"ご主人様、モデル設定を読み込んでいます。少しお待ちくださいね。",
+		"ご主人様、モデルの準備がまだできていません。「AI メイド」で現在のプロバイダーのAPIキーと接続先URLを設定してくださいね。",
+	],
+	[
+		"zh-TW",
+		"主人，內建預設皮膚不能修改喔。請先回資源庫複製一份，再請女僕編輯。",
+		"主人，正在讀取模型設定，請稍等一下喔。",
+		"主人，模型還沒設定好喔。請到「智慧女僕」填妥目前服務商的 API 金鑰和端點網址。",
+	],
+] as const)("%s 女仆模型提示保持只读和凭据就绪的判定", (locale, readOnly, pending, missing) => {
+	i18n.set({ locale, voice: "maid" });
+	expect(cardSkinAiReadiness({ globals: undefined, readOnly: true })).toEqual({
+		ready: false,
+		reason: readOnly,
+	});
+	expect(cardSkinAiReadiness({ globals: undefined, readOnly: false })).toEqual({
+		ready: false,
+		reason: pending,
+	});
+	expect(cardSkinAiReadiness({ globals: globals({}), readOnly: false })).toEqual({
+		ready: false,
+		reason: missing,
+	});
+	expect(
+		cardSkinAiReadiness({
+			globals: globals({ apiKey: { masked: "••••" }, baseUrl: "https://api.test/v1" }, false),
+			readOnly: false,
+		}),
+	).toEqual({ ready: true });
+});

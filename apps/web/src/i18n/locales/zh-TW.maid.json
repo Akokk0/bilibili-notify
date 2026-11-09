@@ -558,5 +558,21 @@
 	"panelUi.pages.stats.RoastScheduleFields.3": "這個目標不是私訊，女僕沒辦法悄悄告訴主人喔，請換成私訊目標。",
 	"panelUi.pages.stats.RoastScheduleFields.12": "主人，可以選好幾個群組喔；一個群組傳送失敗，不影響其他群組。已停用的目標就算勾著也不會傳送，重新啟用後會自動生效。",
 	"panelUi.pages.stats.RoastScheduleFields.17": "主人，產生失敗、沒有設定目標，或群組傳送失敗時，都會私訊告訴您原因喔。",
-	"panelUi.pages.stats.RoastRunNowBox.11": "喔。這是真的傳送；想先看過內容的話，請先開啟上面的「發送前先給我確認」。"
+	"panelUi.pages.stats.RoastRunNowBox.11": "喔。這是真的傳送；想先看過內容的話，請先開啟上面的「發送前先給我確認」。",
+	"skinUi.card-skin-ai.1": "主人，內建預設皮膚不能修改喔。請先回資源庫複製一份，再請女僕編輯。",
+	"skinUi.card-skin-ai.2": "主人，正在讀取模型設定，請稍等一下喔。",
+	"skinUi.card-skin-ai.3": "主人，模型還沒設定好喔。請到「智慧女僕」填妥目前服務商的 API 金鑰和端點網址。",
+	"skinUi.preview-error.1": "主人，連線中斷了。",
+	"skinUi.preview-error.2": "主人，還沒設定繪製用瀏覽器喔。",
+	"skinUi.preview-error.3": "主人，這次繪製失敗了。",
+	"skinUi.preview-error.4": "主人，卡片繪製可能比較久喔。若透過反向代理存取，請把讀取逾時設為超過 120 秒；也可能是伺服器剛重新啟動，例如記憶體不足時被系統停止。",
+	"skinUi.CardSkinKnobs.3": "主人，這些是這套外觀自己提供的可調項目喔。調過的才會儲存，沒調過的就用外觀自帶的預設值。",
+	"skinUi.CardSkinKnobs.11": "主人，調整會依外觀分開保留，換走再換回來也還在喔。「還原」會刪除這個鍵，不是把預設值寫回去。",
+	"skinUi.CardSkinKnobs.2": "主人，這裡單獨調過的項目只對目前訂閱生效，沒調過的仍跟隨全域設定喔。",
+	"skinUi.CardSkinKnobs.10": "主人，單獨調整的內容會依外觀分開保留喔。「還原」會讓這個項目恢復跟隨全域設定，之後全域怎麼改，它就跟著變。",
+	"skinUi.CardSkinKnobs.9": "主人，這套外觀沒有提供可調項目喔。可調項目是由外觀自己宣告的，舊版匯出的套件可能沒有這一段。可以換一套外觀，或請作者重新匯出，再回來看看。",
+	"skinUi.CardSkinSection.3": "主人，在這裡匯入和管理卡片外觀，再到卡片設定選用喔。內建外觀是唯讀的，想修改請先複製一份。",
+	"skinUi.CardSkinSection.16": "主人，外觀資源庫是空的，試著上傳一個外觀套件吧。",
+	"skinUi.CardSkinSection.19": "主人，確定刪除「{value0}」嗎？刪除後就無法復原了。",
+	"skinUi.CardSkinSection.fallback": "主人，{skin}的{kind}卡片已回退：{reason}"
 }
