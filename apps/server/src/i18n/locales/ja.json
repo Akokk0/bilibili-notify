@@ -1,4 +1,6 @@
 {
+	"log.integration.cookiesNotArray": "Cookieデータが配列ではありません。",
+	"service.integrations.http.text.2": "統合機能が停止しているため、Cookieを保存できません。",
 	"startup.starting": "BNを起動中です。しばらくお待ちください。",
 	"startup.migrating": "BNはデータを移行中です。しばらくお待ちください。",
 	"startup.migratingStep": "BNはデータを移行中です（{done}/{total}）：{label}",

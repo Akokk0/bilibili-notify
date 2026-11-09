@@ -164,7 +164,7 @@ export async function createIntegrationHttp(
 			// 解不开、不是数组、数组里有坏元素(`jar.load` 会抛)都是同一种结局:记 error、按空罐起,不挡开机。
 			try {
 				const parsed: unknown = typeof raw === "string" ? JSON.parse(raw) : raw;
-				if (!Array.isArray(parsed)) throw new Error(serverText("service.integrations.http.text.1"));
+				if (!Array.isArray(parsed)) throw new Error(logText("log.integration.cookiesNotArray"));
 				jar.load(parsed as Cookie[]);
 			} catch (err) {
 				logger.error(logText("log.integration.cookiesLoadFailed"), { error: err });

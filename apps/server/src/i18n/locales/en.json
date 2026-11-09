@@ -1,4 +1,6 @@
 {
+	"log.integration.cookiesNotArray": "Cookie data is not an array.",
+	"service.integrations.http.text.2": "The integration has stopped; cookies cannot be saved.",
 	"startup.starting": "BN is starting. Please wait.",
 	"startup.migrating": "BN is migrating data. Please wait.",
 	"startup.migratingStep": "BN is migrating data ({done}/{total}): {label}",

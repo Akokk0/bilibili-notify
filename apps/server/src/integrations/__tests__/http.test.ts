@@ -17,6 +17,7 @@ import type { Disposable, Json, Logger } from "@bilibili-notify/internal";
 import { createKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { memoryKeyValueStores } from "../../__tests__/support/memory-key-value-store.js";
+import { i18n } from "../../i18n/index.js";
 import { readIntegrationSecretsFile } from "../../integration-store/files.js";
 import { HTTP_COOKIES_KEY, HTTP_IDENTITY_KEY } from "../../integration-store/host-keys.js";
 import {
@@ -168,6 +169,34 @@ async function build(w: ReturnType<typeof world>, extra: { saveDelayMs?: number 
 }
 
 const PAIR0: Record<string, Json> = { [HTTP_COOKIES_KEY]: C0, refreshToken: "T0" };
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+describe("Cookie 读取诊断与停止后的写入结果按语言出字", () => {
+	it.each([
+		["en", "Cookie data is not an array.", "The integration has stopped; cookies cannot be saved."],
+		[
+			"ja",
+			"Cookieデータが配列ではありません。",
+			"統合機能が停止しているため、Cookieを保存できません。",
+		],
+		["zh-TW", "Cookie 資料不是陣列。", "整合已停止，無法儲存 Cookie。"],
+	] as const)("%s：坏罐按空容器起且不回写，停下后拒绝写入", async (locale, notArray, stopped) => {
+		i18n.set({ locale, voice: "maid" });
+		const w = world({ secrets: { [HTTP_COOKIES_KEY]: "{}", refreshToken: "old-token" } });
+		const { http, errors } = await build(w);
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toContain(notArray);
+		expect(http.cookies.jar.serialize()).toEqual([]);
+		expect(w.secrets.persists).toHaveLength(0);
+		await http.dispose();
+		expect(
+			await http.cookies.commit([{ kind: "set", key: "refreshToken", value: "new-token" }]),
+		).toEqual({ ok: false, code: "unavailable", message: stopped });
+		expect(w.secrets.persists).toHaveLength(0);
+		expect(w.secretsDisk().get("refreshToken")).toBe("old-token");
+	});
+});
 
 describe("1. 开机装罐不触发存盘", () => {
 	it("存着的那段 serialize() 不会原样吐回来(expires 不是 ISO、域名带前导点):装罐不回写", async () => {

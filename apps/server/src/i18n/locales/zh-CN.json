@@ -779,7 +779,7 @@
 	"service.integration-store.store.text.7": "集成 {value0} 的存储还开着,先让它停下再删",
 	"service.integration-store.store.text.8": "清不掉集成 {value0} 存的状态与密钥:{value1}",
 	"service.integration-store.store.text.9": "集成 {value0} 现在没在运行,密钥带不回来",
-	"service.integrations.http.text.1": "不是数组",
+	"log.integration.cookiesNotArray": "不是数组",
 	"service.integrations.http.text.2": "集成已停下,cookie 不再存盘",
 	"service.integrations.settings-reader.text.1": "设置读不懂",
 	"service.live.live-text.text.1": "暂未获取到",

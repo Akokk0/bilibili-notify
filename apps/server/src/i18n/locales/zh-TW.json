@@ -1,4 +1,6 @@
 {
+	"log.integration.cookiesNotArray": "Cookie 資料不是陣列。",
+	"service.integrations.http.text.2": "整合已停止，無法儲存 Cookie。",
 	"startup.starting": "BN 正在啟動，請稍候。",
 	"startup.migrating": "BN 正在移轉資料，請稍候。",
 	"startup.migratingStep": "BN 正在移轉資料（{done}/{total}）：{label}",
