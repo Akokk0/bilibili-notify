@@ -12,7 +12,8 @@
  */
 
 import type { ConnectionCapabilities } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { checkApprovalReachable } from "../roast-approval-guard.js";
 import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
@@ -36,6 +37,97 @@ const NO_RETURN_PATH = inboundOf({
 });
 const NOT_KNOWN = inboundOf({ state: "unknown", reason: "桥没报这一项" });
 const NOT_KNOWN_NO_REASON = inboundOf({ state: "unknown" });
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+describe("审批闸的当前语言与原始能力原因", () => {
+	it.each([
+		{
+			locale: "en" as const,
+			missing:
+				"Set an owner’s private-message target before enabling approval. Drafts are sent there for review; approval cannot work without it.",
+			targetGone:
+				"Cannot enable approval: the configured owner’s private-message target no longer exists. Select it again.",
+			connectionGone:
+				"Cannot enable approval: the connection used by the owner’s private-message target no longer exists. Select it again.",
+			unsupported:
+				"Cannot enable approval: 原始原因 {value1}. Choose a connection that can receive replies for the owner’s private-message target, or disable approval.",
+			unknown:
+				"Cannot enable approval: it is not yet known whether this connection can receive private-message replies (原始原因 {value1}). Choose a connection that can receive replies for the owner’s private-message target, or disable approval.",
+			unknownBare:
+				"Cannot enable approval: it is not yet known whether this connection can receive private-message replies. Choose a connection that can receive replies for the owner’s private-message target, or disable approval.",
+		},
+		{
+			locale: "ja" as const,
+			missing:
+				"承認を有効にする前に、管理者の個別チャット送信先を設定してください。下書きは確認のためにそこへ送られるので、送信先がないと承認できません。",
+			targetGone:
+				"承認を有効にできません。設定された管理者の個別チャット送信先が存在しません。指定し直してください。",
+			connectionGone:
+				"承認を有効にできません。管理者の個別チャット送信先が使う接続が存在しません。指定し直してください。",
+			unsupported:
+				"承認を有効にできません：原始原因 {value1}。管理者の個別チャット送信先を返信を受信できる接続に変更するか、承認を無効にしてください。",
+			unknown:
+				"承認を有効にできません。この接続で個別チャットの返信を受信できるか、まだ不明です（原始原因 {value1}）。管理者の個別チャット送信先を返信を受信できる接続に変更するか、承認を無効にしてください。",
+			unknownBare:
+				"承認を有効にできません。この接続で個別チャットの返信を受信できるか、まだ不明です。管理者の個別チャット送信先を返信を受信できる接続に変更するか、承認を無効にしてください。",
+		},
+		{
+			locale: "zh-TW" as const,
+			missing:
+				"啟用核准前，請先設定「主人私訊目標」：草稿會傳送到該目標供確認，沒有目標就無法核准。",
+			targetGone: "無法啟用核准：設定的主人私訊目標已不存在，請重新指定。",
+			connectionGone: "無法啟用核准：主人私訊目標使用的連線已不存在，請重新指定。",
+			unsupported:
+				"無法啟用核准：原始原因 {value1}。請將主人私訊目標改用能收到回覆的連線，或關閉核准。",
+			unknown:
+				"無法啟用核准：尚不確定這條連線能否接收私訊回覆（原始原因 {value1}）。請將主人私訊目標改用能收到回覆的連線，或關閉核准。",
+			unknownBare:
+				"無法啟用核准：尚不確定這條連線能否接收私訊回覆。請將主人私訊目標改用能收到回覆的連線，或關閉核准。",
+		},
+	])("$locale：拒绝原因明确、没有原因不加括号、HTTP 不落盘", async (words) => {
+		const args = {
+			approvalOn: true,
+			masterTargetId: "m1",
+			targets: TARGETS,
+			connections: CONNECTIONS,
+			capabilitiesOf: RECEIVES,
+		};
+		i18n.set({ locale: words.locale, voice: "plain" });
+		const reason = "原始原因 {value1}";
+		const results = [
+			checkApprovalReachable({ ...args, masterTargetId: undefined }),
+			checkApprovalReachable({ ...args, targets: [] }),
+			checkApprovalReachable({ ...args, connections: [] }),
+			checkApprovalReachable({
+				...args,
+				capabilitiesOf: inboundOf({
+					state: "unsupported",
+					reason,
+					checkedAt: "2026-10-26T00:00:00.000Z",
+				}),
+			}),
+			checkApprovalReachable({ ...args, capabilitiesOf: inboundOf({ state: "unknown", reason }) }),
+			checkApprovalReachable({ ...args, capabilitiesOf: NOT_KNOWN_NO_REASON }),
+		];
+		expect(results).toEqual(
+			[
+				words.missing,
+				words.targetGone,
+				words.connectionGone,
+				words.unsupported,
+				words.unknown,
+				words.unknownBare,
+			].map((message) => ({ ok: false, code: "not_configured", message })),
+		);
+		expect(checkApprovalReachable(args)).toEqual({ ok: true });
+		const { app, patchSubscription } = routeWith({ state: "unknown", reason });
+		const response = await app.request("/s1", patchRoast({ roastSchedule: { approval: true } }));
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({ code: "not_configured", message: words.unknown });
+		expect(patchSubscription).not.toHaveBeenCalled();
+	});
+});
 
 describe("checkApprovalReachable", () => {
 	it("审批没开 → 不插手(别拿一道无关的闸拦住别的保存)", () => {

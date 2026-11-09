@@ -1,4 +1,5 @@
 {
+	"roast.approvalReason": "（{reason}）",
 	"personas.settingsMoved": "性格内容已移到素材库，请刷新此页后重试；默认选择仍在原页保存。",
 	"personas.usage.default": "全局默认",
 	"personas.usage.subscription": "订阅 {id}",

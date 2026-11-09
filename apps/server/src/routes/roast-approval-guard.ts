@@ -65,7 +65,10 @@ export function checkApprovalReachable(args: {
 		);
 	}
 	// 还不知道:不是这条连接的毛病,说成「收不到」主人会去查自己的配置 —— 如实说还不知道,有原因就带上。
-	const why = inbound?.state === "unknown" && inbound.reason ? `（${inbound.reason}）` : "";
+	const why =
+		inbound?.state === "unknown" && inbound.reason
+			? serverText("roast.approvalReason", { reason: inbound.reason })
+			: "";
 	return fail(
 		"not_configured",
 		serverText("service.routes.roast-approval-guard.text.6", { value0: why, value1: advice }),

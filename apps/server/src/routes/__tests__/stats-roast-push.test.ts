@@ -325,6 +325,48 @@ describe("POST /roast/push — 名称与配色由服务端 join", () => {
 });
 
 describe("POST /roast/push — 诚实失败", () => {
+	it.each([
+		{
+			locale: "en" as const,
+			invalid: "Invalid review delivery request.",
+			missing: "The push target does not exist.",
+			paused: "The push target is disabled.",
+		},
+		{
+			locale: "ja" as const,
+			invalid: "レビュー送信リクエストの形式が無効です。",
+			missing: "送信先が存在しません。",
+			paused: "送信先が無効になっています。",
+		},
+		{
+			locale: "zh-TW" as const,
+			invalid: "銳評推播請求格式不正確。",
+			missing: "推播目標不存在。",
+			paused: "推播目標已停用。",
+		},
+	])("$locale：拒绝不发送，格式与缺目标不出图", async ({ locale, invalid, missing, paused }) => {
+		i18n.set({ locale, voice: "plain" });
+		const absent = makeDeps({ targets: [] });
+		const app = createStatsRoute(absent.deps);
+		const bad = await push(app, { targetId: TARGET, kind: "board" });
+		expect(bad.status).toBe(400);
+		expect(await bad.json()).toMatchObject({
+			code: "invalid",
+			message: invalid,
+			issues: expect.any(Array),
+		});
+		const gone = await push(app, boardBody());
+		expect(gone.status).toBe(404);
+		expect(await gone.json()).toEqual({ code: "not_found", message: missing });
+		const off = makeDeps({ targets: [{ id: TARGET, enabled: false }], renderer: false });
+		const stopped = await push(createStatsRoute(off.deps), boardBody());
+		expect(stopped.status).toBe(409);
+		expect(await stopped.json()).toEqual({ code: "not_configured", message: paused });
+		expect(absent.sendToTarget).not.toHaveBeenCalled();
+		expect(absent.generateRoastBoardCard).not.toHaveBeenCalled();
+		expect(off.sendToTarget).not.toHaveBeenCalled();
+	});
+
 	it("推送链路还没挂上 → 503 unavailable,不碰推送管线", async () => {
 		const { deps } = makeDeps({ noPipeline: true });
 		const res = await push(createStatsRoute(deps), boardBody());
