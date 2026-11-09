@@ -1,4 +1,12 @@
 {
+	"service.runtime.roast-command.text.1": "ID {value0} の承認待ちレビューが見つかりません。処理済みか、期限切れの可能性があります。",
+	"service.runtime.roast-command.text.2": "週報",
+	"service.runtime.roast-command.text.3": "単独",
+	"service.runtime.roast-command.text.4": "承認待ちが{value0}件あります：{value1}。「y {value2}」のようにIDを指定してください。",
+	"service.runtime.roast-command.text.5": "ID {value0} のレビューは、たった今処理されたか期限切れになりました。",
+	"service.runtime.roast-command.text.6": "{value0}を破棄しました。",
+	"roast.command.listItem": "{id}（{kind}）",
+	"roast.command.listSeparator": "、",
 	"service.routes.stats.text.1": "レビュー送信リクエストの形式が無効です。",
 	"service.routes.stats.text.2": "送信先が存在しません。",
 	"service.routes.stats.text.3": "送信先が無効になっています。",

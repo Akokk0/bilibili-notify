@@ -1,4 +1,12 @@
 {
+	"service.runtime.roast-command.text.1": "找不到編號 {value0} 的待核准銳評，可能已處理或逾時。",
+	"service.runtime.roast-command.text.2": "週報",
+	"service.runtime.roast-command.text.3": "單人",
+	"service.runtime.roast-command.text.4": "目前有 {value0} 份待核准：{value1}。請附上編號，例如「y {value2}」。",
+	"service.runtime.roast-command.text.5": "編號 {value0} 剛剛已處理或逾時。",
+	"service.runtime.roast-command.text.6": "已捨棄 {value0}。",
+	"roast.command.listItem": "{id}（{kind}）",
+	"roast.command.listSeparator": "、",
 	"service.routes.stats.text.1": "銳評推播請求格式不正確。",
 	"service.routes.stats.text.2": "推播目標不存在。",
 	"service.routes.stats.text.3": "推播目標已停用。",

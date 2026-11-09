@@ -1,4 +1,12 @@
 {
+	"service.runtime.roast-command.text.1": "No pending review with ID {value0} was found. It may already have been processed or expired.",
+	"service.runtime.roast-command.text.2": "weekly report",
+	"service.runtime.roast-command.text.3": "solo",
+	"service.runtime.roast-command.text.4": "There are {value0} reviews awaiting approval: {value1}. Include an ID, for example “y {value2}”.",
+	"service.runtime.roast-command.text.5": "Review {value0} has just been processed or expired.",
+	"service.runtime.roast-command.text.6": "Discarded {value0}.",
+	"roast.command.listItem": "{id} ({kind})",
+	"roast.command.listSeparator": ", ",
 	"service.routes.stats.text.1": "Invalid review delivery request.",
 	"service.routes.stats.text.2": "The push target does not exist.",
 	"service.routes.stats.text.3": "The push target is disabled.",

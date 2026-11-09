@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { createRoastCommandHandler, parseRoastCommand } from "../roast-command.js";
 import { createRoastDraftStore, type RoastDraftStore } from "../roast-draft-store.js";
 
@@ -61,7 +62,63 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	rmSync(dir, { recursive: true, force: true });
+});
+
+describe("审批确认窗在回复时取语言，重复审批只发送一次", () => {
+	it.each([
+		{
+			locale: "en" as const,
+			missing:
+				"No pending review with ID zzzzzzzz was found. It may already have been processed or expired.",
+			list: (a: string, b: string) =>
+				`There are 2 reviews awaiting approval: ${a} (weekly report), ${b} (solo). Include an ID, for example “y ${a}”.`,
+			discarded: (id: string) => `Discarded ${id}.`,
+			processed: (id: string) => `Review ${id} has just been processed or expired.`,
+		},
+		{
+			locale: "ja" as const,
+			missing:
+				"ID zzzzzzzz の承認待ちレビューが見つかりません。処理済みか、期限切れの可能性があります。",
+			list: (a: string, b: string) =>
+				`承認待ちが2件あります：${a}（週報）、${b}（単独）。「y ${a}」のようにIDを指定してください。`,
+			discarded: (id: string) => `${id}を破棄しました。`,
+			processed: (id: string) =>
+				`ID ${id} のレビューは、たった今処理されたか期限切れになりました。`,
+		},
+		{
+			locale: "zh-TW" as const,
+			missing: "找不到編號 zzzzzzzz 的待核准銳評，可能已處理或逾時。",
+			list: (a: string, b: string) =>
+				`目前有 2 份待核准：${a}（週報）、${b}（單人）。請附上編號，例如「y ${a}」。`,
+			discarded: (id: string) => `已捨棄 ${id}。`,
+			processed: (id: string) => `編號 ${id} 剛剛已處理或逾時。`,
+		},
+	])("$locale：同一确认窗换语言，编号与 y/n 语法保持", async (words) => {
+		const board = await seedDraft();
+		const solo = await seedDraft("solo");
+		const handler = makeHandler();
+		i18n.set({ locale: words.locale, voice: "plain" });
+		await feed(handler, "y zzzzzzzz");
+		expect(reply).toHaveBeenLastCalledWith(words.missing);
+		await feed(handler, "y");
+		expect(reply).toHaveBeenLastCalledWith(words.list(board.id, solo.id));
+		expect(deliver).not.toHaveBeenCalled();
+		expect(drafts.list()).toHaveLength(2);
+		await feed(handler, `n ${board.id}`);
+		expect(reply).toHaveBeenLastCalledWith(words.discarded(board.id));
+		expect(drafts.list().map((draft) => draft.id)).toEqual([solo.id]);
+		await Promise.all([feed(handler, `y ${solo.id}`), feed(handler, `y ${solo.id}`)]);
+		expect(reply).toHaveBeenLastCalledWith(words.processed(solo.id));
+		expect(deliver).toHaveBeenCalledTimes(1);
+		expect(deliver.mock.calls[0]?.[0]).toMatchObject({
+			id: solo.id,
+			kind: "solo",
+			result: { pushText: "x" },
+		});
+		expect(drafts.list()).toHaveLength(0);
+	});
 });
 
 describe("parseRoastCommand", () => {

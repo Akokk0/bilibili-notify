@@ -94,11 +94,16 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 			target = pending[0];
 		} else {
 			const list = pending
-				.map(
-					(d) =>
-						`${d.id}（${d.kind === "board" ? serverText("service.runtime.roast-command.text.2") : serverText("service.runtime.roast-command.text.3")}）`,
+				.map((d) =>
+					serverText("roast.command.listItem", {
+						id: d.id,
+						kind:
+							d.kind === "board"
+								? serverText("service.runtime.roast-command.text.2")
+								: serverText("service.runtime.roast-command.text.3"),
+					}),
 				)
-				.join("、");
+				.join(serverText("roast.command.listSeparator"));
 			await reply(
 				serverText("service.runtime.roast-command.text.4", {
 					value0: pending.length,
