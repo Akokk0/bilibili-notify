@@ -27,6 +27,7 @@ vi.mock("../../services/api", () => ({
 	},
 }));
 
+import { i18n } from "../../i18n";
 import { ApiError, api } from "../../services/api";
 import { useToastStore } from "../../store/notifications";
 import { DevDock } from "../dock";
@@ -73,6 +74,7 @@ function renderDock() {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.mocked(api.get).mockReset();
 	vi.mocked(api.post).mockReset();
 	window.localStorage.clear();
