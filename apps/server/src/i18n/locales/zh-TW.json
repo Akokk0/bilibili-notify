@@ -1468,5 +1468,11 @@
 	"service.card-skins.preview-html.text.2": "外觀預覽 · {value0}",
 	"service.skins.ai-edit.text.1": "輸出不是有效的 JSON。",
 	"service.skins.ai-edit.text.2": "{value0}：manifest 參照了此檔案，但套件中沒有這個檔案。",
-	"service.skins.ai-create.text.1": "產生的外觀未在 {value0} 使用指定桌布，已依預設參數補上（overlay {value1} / blur {value2}）。"
+	"service.skins.ai-create.text.1": "產生的外觀未在 {value0} 使用指定桌布，已依預設參數補上（overlay {value1} / blur {value2}）。",
+	"service.routes.request-body.text.1": "請求本文不是有效的 JSON。",
+	"service.routes.request-body.text.2": "請求本文必須是 JSON 物件，不能是陣列或單一值。",
+	"service.routes.masked-cells.text.1": "這是回應中遮蔽秘密值的遮罩，不是新值。未修改時請勿傳入此欄位；若要替換，請提供新的明文；若要清空，請傳入空字串（選填欄位傳入 null）。",
+	"service.routes.masked-cells.text.2": "秘密值的遮罩不是新值，無法寫回。",
+	"service.routes.command-alias-guard.text.1": "「{value0}」的別名「{value1}」與自身指令名稱或其他別名重複。",
+	"service.routes.command-alias-guard.text.2": "別名「{value0}」同時被「{value1}」和「{value2}」使用，一個觸發詞只能屬於一條指令。"
 }

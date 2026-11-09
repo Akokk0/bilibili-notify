@@ -3,8 +3,11 @@
  */
 
 import { Hono } from "hono";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { readJsonBody, readJsonObject } from "../request-body.js";
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function appOf(reader: typeof readJsonBody | typeof readJsonObject): Hono {
 	const app = new Hono();
@@ -20,6 +23,42 @@ async function post(app: Hono, body: string): Promise<unknown> {
 	});
 	return res.json();
 }
+
+it.each([
+	[
+		"en",
+		"The request body is not valid JSON.",
+		"The request body must be a JSON object, not an array or a scalar value.",
+	],
+	[
+		"ja",
+		"リクエスト本文は有効なJSONではありません。",
+		"リクエスト本文にはJSONオブジェクトを指定してください。配列や単一の値は指定できません。",
+	],
+	["zh-TW", "請求本文不是有效的 JSON。", "請求本文必須是 JSON 物件，不能是陣列或單一值。"],
+] as const)("%s:格式原因区分JSON语法与对象形状,合法内容保持原样", async (locale, json, object) => {
+	i18n.set({ locale, voice: "plain" });
+	for (const reader of [readJsonBody, readJsonObject])
+		expect(await post(appOf(reader), "{ Original invalid")).toEqual({
+			ok: false,
+			code: "invalid",
+			message: json,
+		});
+	for (const body of ["[]", "42", "null"])
+		expect(await post(appOf(readJsonObject), body)).toEqual({
+			ok: false,
+			code: "invalid",
+			message: object,
+		});
+	expect(await post(appOf(readJsonObject), '{"name":"Original 原文","nested":[1,null]}')).toEqual({
+		ok: true,
+		body: { name: "Original 原文", nested: [1, null] },
+	});
+	expect(await post(appOf(readJsonBody), '["Original 原文",42]')).toEqual({
+		ok: true,
+		body: ["Original 原文", 42],
+	});
+});
 
 describe("readJsonBody", () => {
 	it("合法的 JSON 原样交出去(数组、标量也算合法 JSON)", async () => {

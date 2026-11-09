@@ -6,7 +6,8 @@
  */
 
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { checkCommandAliases } from "../command-alias-guard.js";
 
 const COMMANDS = [
@@ -15,11 +16,46 @@ const COMMANDS = [
 	{ name: "report", aliases: ["周报"] },
 ];
 
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
 function check(patch: Record<string, unknown>, currentAliases: Record<string, string[]> = {}) {
 	const current = makeDefaultGlobalSettings();
 	current.commands.aliases = currentAliases;
 	return checkCommandAliases({ current, patch, commands: COMMANDS });
 }
+
+it.each([
+	[
+		"en",
+		'Alias "MuTe" for "mute" duplicates its own command or another alias.',
+		'Alias "quiet" is used by both "mute" and "status". Each trigger can belong to only one command.',
+	],
+	[
+		"ja",
+		"「mute」の別名「MuTe」が、自身のコマンド名または別の別名と重複しています。",
+		"別名「quiet」を「mute」と「status」の両方が使用しています。1つのトリガーを複数のコマンドに割り当てることはできません。",
+	],
+	[
+		"zh-TW",
+		"「mute」的別名「MuTe」與自身指令名稱或其他別名重複。",
+		"別名「quiet」同時被「mute」和「status」使用，一個觸發詞只能屬於一條指令。",
+	],
+] as const)("%s:别名冲突解释本地化,保留触发词原始大小写与恢复默认行为", (locale, self, other) => {
+	i18n.set({ locale, voice: "plain" });
+	expect(check({ commands: { aliases: { mute: ["MuTe"] } } })).toEqual({
+		ok: false,
+		code: "conflict",
+		message: self,
+	});
+	const patch = { commands: { aliases: { status: ["Quiet"], mute: ["quiet"] } } };
+	const original = structuredClone(patch);
+	expect(check(patch)).toEqual({ ok: false, code: "conflict", message: other });
+	expect(patch).toEqual(original);
+	expect(check({ commands: { aliases: null } }, { mute: ["Quiet"] })).toEqual({ ok: true });
+	expect(check({ logging: { level: "debug" } }, { mute: ["Quiet"], report: ["quiet"] })).toEqual({
+		ok: true,
+	});
+});
 
 describe("checkCommandAliases", () => {
 	// per-scope 门:存别的 tab 不该被一份早就躺在盘上的配置拦住。

@@ -1479,5 +1479,11 @@
 	"service.card-skins.preview-html.text.2": "Skin preview · {value0}",
 	"service.skins.ai-edit.text.1": "The output is not valid JSON.",
 	"service.skins.ai-edit.text.2": "{value0}: manifest references this file, but it is missing from the package.",
-	"service.skins.ai-create.text.1": "The generated skin did not use the requested wallpaper in {value0}. It was added with default settings (overlay {value1} / blur {value2})."
+	"service.skins.ai-create.text.1": "The generated skin did not use the requested wallpaper in {value0}. It was added with default settings (overlay {value1} / blur {value2}).",
+	"service.routes.request-body.text.1": "The request body is not valid JSON.",
+	"service.routes.request-body.text.2": "The request body must be a JSON object, not an array or a scalar value.",
+	"service.routes.masked-cells.text.1": "This is a secret mask from a response, not a new value. Omit this field if unchanged; provide new plaintext to replace it, an empty string to clear it, or null for an optional field.",
+	"service.routes.masked-cells.text.2": "A secret mask is not a new value and cannot be written back.",
+	"service.routes.command-alias-guard.text.1": "Alias \"{value1}\" for \"{value0}\" duplicates its own command or another alias.",
+	"service.routes.command-alias-guard.text.2": "Alias \"{value0}\" is used by both \"{value1}\" and \"{value2}\". Each trigger can belong to only one command."
 }
