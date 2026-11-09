@@ -30,6 +30,7 @@ import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { i18n } from "../../i18n/index.js";
 import type { LocaleReader } from "../../i18n/locale-reader.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -98,6 +99,7 @@ const ROTTEN = { id: "rotten-1", name: "坏掉的那台", token: "t", enabled: t
 let root: string;
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	root = await mkdtemp(join(tmpdir(), "bn-ext-settings-invalid-"));
 });
 
@@ -238,6 +240,141 @@ async function boot(
 }
 
 describe("开机时存着的设置就过不了它自己的 zod", () => {
+	it.each([
+		[
+			"en",
+			{
+				problem: "Extension 抖音订阅 did not start: its stored settings do not satisfy its rules:",
+				first: [
+					"all settings:Original diagnostic 原文",
+					"「nested」 in 「间隔」:Original diagnostic 原文",
+					"item 「家里那台」 in 「接入」:Original diagnostic 原文",
+				],
+				second: [
+					"「名字」 of item with ID raw-id in 「接入」:Original diagnostic 原文",
+					"「token」 of item 3 in 「接入」:Original diagnostic 原文",
+					"item 3 in 「接入」:Original diagnostic 原文",
+				],
+				more: "; additional issues: 1",
+				file: "Extension 抖音订阅 did not start: its settings file is not valid JSON: Original JSON diagnostic 原文",
+			},
+		],
+		[
+			"ja",
+			{
+				problem:
+					"拡張機能「抖音订阅」は起動しませんでした。保存済みの設定が拡張機能のルールを満たしていません：",
+				first: [
+					"設定全体:Original diagnostic 原文",
+					"「间隔」の「nested」:Original diagnostic 原文",
+					"「接入」内の「家里那台」の項目:Original diagnostic 原文",
+				],
+				second: [
+					"「接入」内のIDがraw-idの項目の「名字」:Original diagnostic 原文",
+					"「接入」内の3番目の項目の「token」:Original diagnostic 原文",
+					"「接入」内の3番目の項目:Original diagnostic 原文",
+				],
+				more: "；ほか1件",
+				file: "拡張機能「抖音订阅」は起動しませんでした。設定ファイルが有効なJSONではありません：Original JSON diagnostic 原文",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				problem: "擴充功能「抖音订阅」未啟動：已儲存的設定不符合此擴充功能的規則：",
+				first: [
+					"整份設定:Original diagnostic 原文",
+					"「间隔」的「nested」:Original diagnostic 原文",
+					"「接入」中的「家里那台」項目:Original diagnostic 原文",
+				],
+				second: [
+					"「接入」中 ID 為 raw-id 的項目的「名字」:Original diagnostic 原文",
+					"「接入」中 第 3 個項目的「token」:Original diagnostic 原文",
+					"「接入」中的第 3 個項目:Original diagnostic 原文",
+				],
+				more: "；另有 1 個問題",
+				file: "擴充功能「抖音订阅」未啟動：設定檔不是有效的 JSON：Original JSON diagnostic 原文",
+			},
+		],
+	] as const)(
+		"%s names invalid settings by original field label, title, ID or position and preserves diagnostics",
+		async (locale, text) => {
+			let paths: (string | number)[][] = [[], ["interval", "nested"], ["links", 0]];
+			const schema = SCHEMA.extend({
+				links: z
+					.array(
+						z.object({
+							id: z.string(),
+							name: z.string(),
+							token: z.string().default(""),
+							enabled: z.boolean().default(true),
+						}),
+					)
+					.default([]),
+			}).superRefine((_, ctx) => {
+				for (const path of paths)
+					ctx.addIssue({ code: "custom", path, message: "Original diagnostic 原文" });
+			});
+			const stored = {
+				interval: 60,
+				links: [GOOD, { ...GOOD, id: "raw-id", name: "" }, { ...GOOD, id: "", name: "" }],
+			};
+			const table = createProblemTable({ logger: silentLogger });
+			i18n.set({ locale, voice: "plain" });
+			const h = await boot({
+				settings: stored,
+				problems: table,
+				activate: (ctx) => {
+					ctx.settings(schema);
+				},
+			});
+			try {
+				const mine = () => table.list().filter((problem) => problem.reporter === "douyin");
+				expect(h.entry()?.state).toBe("settings-invalid");
+				expect(mine()).toHaveLength(1);
+				expect(mine()[0]?.message).toBe(
+					`${text.problem}${locale === "en" ? " " : ""}${text.first.join(";")}`,
+				);
+				const since = mine()[0]?.since;
+				paths = [
+					["links", 1, "name"],
+					["links", 2, "token"],
+					["links", 2],
+				];
+				h.write({ ...stored, interval: 61 });
+				await h.loaded.sync();
+				expect(mine()[0]?.message).toBe(
+					`${text.problem}${locale === "en" ? " " : ""}${text.second.join(";")}`,
+				);
+				paths = [[], ["links", 1, "name"], ["links", 2, "token"], ["links", 2]];
+				h.write({ ...stored, interval: 62 });
+				await h.loaded.sync();
+				expect(mine()[0]?.message).toBe(
+					`${text.problem}${locale === "en" ? " " : ""}${[text.first[0], text.second[0], text.second[1]].join(";")}${text.more}`,
+				);
+				expect(mine()[0]).toMatchObject({ reporter: "douyin", code: "settings_invalid", since });
+				expect(h.pending()).toBe(0);
+				expect(h.seen.activations).toBe(1);
+			} finally {
+				await h.loaded.dispose();
+				table.dispose();
+			}
+			const brokenTable = createProblemTable({ logger: silentLogger });
+			const broken = await boot({
+				issues: { douyin: { message: "Original JSON diagnostic 原文" } },
+				problems: brokenTable,
+			});
+			try {
+				expect(brokenTable.list().find((p) => p.reporter === "douyin")?.message).toBe(text.file);
+				expect(broken.entry()?.state).toBe("settings-invalid");
+				expect(broken.seen.activations).toBe(0);
+			} finally {
+				await broken.loaded.dispose();
+				brokenTable.dispose();
+			}
+		},
+	);
+
 	it("不起;那一行是「设置读不了」,点名到那一项的哪一格、为什么", async () => {
 		const h = await boot({ settings: { links: [GOOD, ROTTEN] } });
 		expect(h.entry()?.state).toBe("settings-invalid");
@@ -303,6 +440,73 @@ describe("开机时存着的设置就过不了它自己的 zod", () => {
 });
 
 describe("清单声明了设置项,activate 里就得交 zod(决策 35)", () => {
+	it.each([
+		[
+			"en",
+			{
+				missing:
+					"The manifest declares settings fields, but activate did not provide a Zod schema. Call ctx.settings(schema) so the extension also validates values saved through the dashboard.",
+				invalid: "Stored settings do not satisfy this extension's rules:",
+				repair:
+					". Correct them in its settings; the extension will start automatically once they are valid.",
+				file: "This extension's settings file is not valid JSON, so it has been paused. Re-enter and save its settings. If no settings page is available, fix the file and restart. Original parser diagnostic 原文",
+			},
+		],
+		[
+			"ja",
+			{
+				missing:
+					"マニフェストに設定項目がありますが、activateで検証用のZodスキーマが渡されていません。ctx.settings(schema)を呼び、ダッシュボードから保存した値も拡張機能側で検証してください。",
+				invalid: "保存済みの設定がこの拡張機能のルールを満たしていません：",
+				repair: "。設定画面で修正すると、拡張機能は自動的に起動します。",
+				file: "この拡張機能の設定ファイルが有効なJSONではないため、実行を停止しています。設定画面で入力し直して保存してください。設定画面がない場合は、ファイルを修正して再起動してください。Original parser diagnostic 原文",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				missing:
+					"資訊清單宣告了設定欄位，但 activate 未提供驗證用的 Zod 規則。請呼叫 ctx.settings(schema)，讓面板儲存的值也通過擴充功能自己的驗證。",
+				invalid: "已儲存的設定不符合此擴充功能的規則：",
+				repair: "。請在設定頁修正，正確後擴充功能會自動啟動。",
+				file: "此擴充功能的設定檔不是有效的 JSON，已暫停執行。請在設定頁重新填寫並儲存；若沒有設定頁，請修正檔案後重新啟動。Original parser diagnostic 原文",
+			},
+		],
+	] as const)(
+		"%s provides localized repair guidance without changing activation or failure accounting",
+		async (locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			const missing = await boot({ activate: () => {} });
+			try {
+				expect(missing.entry()).toMatchObject({ state: "failed", detail: text.missing });
+			} finally {
+				await missing.loaded.dispose();
+			}
+			const invalid = await boot({ settings: { links: [ROTTEN] } });
+			try {
+				expect(invalid.entry()).toMatchObject({
+					state: "settings-invalid",
+					detail: expect.stringContaining(text.invalid),
+				});
+				expect(invalid.entry()?.detail).toContain(text.repair);
+				expect(invalid.entry()?.detail).toContain("名字里不许有「坏」字");
+				expect(invalid.pending()).toBe(0);
+			} finally {
+				await invalid.loaded.dispose();
+			}
+			const broken = await boot({
+				issues: { douyin: { message: "Original parser diagnostic 原文" } },
+			});
+			try {
+				expect(broken.entry()).toMatchObject({ state: "settings-invalid", detail: text.file });
+				expect(broken.seen.activations).toBe(0);
+			} finally {
+				await broken.loaded.dispose();
+			}
+			expect(readLoadLedger(root).blocked).toEqual([]);
+		},
+	);
+
 	it("清单有设置项但一份都没交 → 按加载失败算,说清要调 ctx.settings(schema)", async () => {
 		const h = await boot({ activate: (ctx) => void ctx.setInterval(() => {}, 1000) });
 		expect(h.entry()?.state).toBe("failed");

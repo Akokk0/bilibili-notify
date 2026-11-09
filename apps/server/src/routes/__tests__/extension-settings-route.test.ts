@@ -39,6 +39,7 @@ import { extensionSettingsFile } from "../../config/store.js";
 import { type LoadedExtensions, loadExtensions } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
+import { i18n } from "../../i18n/index.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { type AppRuntime, createAppRuntime } from "../../runtime/bootstrap.js";
 import { attachChannelWiring } from "../../ws/channels.js";
@@ -153,6 +154,7 @@ let runtime: AppRuntime | undefined;
 let loaded: LoadedExtensions | undefined;
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	dataDir = await mkdtemp(join(tmpdir(), "bn-ext-settings-route-"));
 });
 
@@ -559,6 +561,71 @@ describe("GET /api/ext/:id/settings/invalid", () => {
 });
 
 describe("GET /api/ext/:id/settings", () => {
+	it.each([
+		[
+			"en",
+			{
+				invalid: "Invalid extension ID.",
+				missing: "Extension nope is not installed.",
+				manifest:
+					"Extension legacy has an unreadable or incompatible manifest; its settings fields are unavailable.",
+				bare: "Extension bare declares no settings fields in its manifest.",
+				conflict: "These settings have changed since you opened them. Reload before editing.",
+			},
+		],
+		[
+			"ja",
+			{
+				invalid: "拡張機能IDが無効です。",
+				missing: "拡張機能nopeはインストールされていません。",
+				manifest:
+					"拡張機能legacyのマニフェストを読み取れないか、互換性がないため、設定項目を利用できません。",
+				bare: "拡張機能bareのマニフェストには設定項目が宣言されていません。",
+				conflict: "設定を開いた後に内容が変更されています。再読み込みしてから編集してください。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				invalid: "擴充功能 ID 無效。",
+				missing: "尚未安裝擴充功能 nope。",
+				manifest: "擴充功能 legacy 的資訊清單無法讀取或版本不相容，沒有可用的設定欄位。",
+				bare: "擴充功能 bare 的資訊清單未宣告設定欄位。",
+				conflict: "設定在開啟後已被修改，請重新讀取後再編輯。",
+			},
+		],
+	] as const)(
+		"%s localizes resolution and revision failures without changing settings",
+		async (locale, text) => {
+			const h = await boot({ running: false, settings: { interval: 90 } });
+			i18n.set({ locale, voice: "plain" });
+			for (const [id, status, code, message] of [
+				["Bad_ID", 400, "invalid", text.invalid],
+				["nope", 404, "not_found", text.missing],
+				["legacy", 404, "not_found", text.manifest],
+				["bare", 404, "not_found", text.bare],
+			] as const) {
+				const read = await h.get(id);
+				expect(read.status).toBe(status);
+				expect(await failureOf(read)).toEqual({ code, message });
+				const write = await h.patch(
+					{ revision: "stale", ops: [{ op: "set", key: "interval", value: 120 }] },
+					id,
+				);
+				expect(write.status).toBe(status);
+				expect(await failureOf(write)).toEqual({ code, message });
+			}
+			const stale = await h.patch({
+				revision: "stale",
+				ops: [{ op: "set", key: "interval", value: 120 }],
+			});
+			expect(stale.status).toBe(409);
+			expect(await failureOf(stale)).toEqual({ code: "conflict", message: text.conflict });
+			expect(h.stored()).toEqual({ interval: 90 });
+			expect(h.settingsFrames()).toEqual([]);
+		},
+	);
+
 	it("密钥不下发原文:不到 24 位整段打点,24 位及以上只露头尾各四位;空串照旧是空串", async () => {
 		const h = await boot({
 			running: false,
@@ -784,6 +851,119 @@ describe("PATCH /api/ext/:id/settings —— 按项写", () => {
 describe("PATCH /api/ext/:id/settings —— 400 点名到那一格,一个字都不写", () => {
 	it.each([
 		[
+			"en",
+			{
+				many: "Extension settings failed validation. Issues found: 8.",
+				one: "Extension settings failed validation. Issues found: 1.",
+				request: "Invalid request body:",
+				issues: [
+					"This is a masked secret, not a new value. Omit the field to keep it, or submit new plaintext to replace it (for example, regenerate it).",
+					"This field is not declared in the manifest.",
+					"This field is not a list. Use set for a single-value field.",
+					"BN generates item IDs; they cannot be supplied or changed.",
+					"This item field is not declared in the manifest.",
+					"This list has no item with ID ghost (it may have been deleted).",
+					"This field is not declared in the manifest.",
+					"Modify lists one item at a time with add / update / remove; set cannot replace the whole list.",
+				],
+			},
+		],
+		[
+			"ja",
+			{
+				many: "拡張機能の設定に8件の検証エラーがあります。",
+				one: "拡張機能の設定に1件の検証エラーがあります。",
+				request: "リクエスト本文が無効です：",
+				issues: [
+					"これは伏せられた秘密情報で、新しい値ではありません。変更しない場合はこの項目を送らず、置き換える場合は新しい平文を送ってください（再生成など）。",
+					"この項目はマニフェストに宣言されていません。",
+					"この項目はリストではありません。単一の値にはsetを使ってください。",
+					"項目のIDはBNが生成するため、指定や変更はできません。",
+					"このリスト項目のフィールドはマニフェストに宣言されていません。",
+					"このリストにIDがghostの項目はありません（削除済みの可能性があります）。",
+					"この項目はマニフェストに宣言されていません。",
+					"リストはadd / update / removeで1項目ずつ変更してください。setでリスト全体を置き換えることはできません。",
+				],
+			},
+		],
+		[
+			"zh-TW",
+			{
+				many: "擴充功能設定未通過檢查（共 8 個問題）。",
+				one: "擴充功能設定未通過檢查（共 1 個問題）。",
+				request: "請求內容無效：",
+				issues: [
+					"這是遮蔽後的機密資料，不是新值。不變更時請省略此欄位；要替換時請提交新的明文（例如重新產生）。",
+					"資訊清單未宣告此欄位。",
+					"此欄位不是清單，單一值請使用 set 修改。",
+					"項目 ID 由 BN 產生，不可自行提交或變更。",
+					"資訊清單未宣告此項目的欄位。",
+					"此清單沒有 ID 為 ghost 的項目（可能已被刪除）。",
+					"資訊清單未宣告此欄位。",
+					"清單只能使用 add / update / remove 逐項新增、修改或刪除，不可使用 set 整份取代。",
+				],
+			},
+		],
+	] as const)(
+		"%s localizes write validation while retaining issue paths and rejecting the whole batch",
+		async (locale, text) => {
+			const h = await boot({
+				running: false,
+				settings: { cookie: TOKEN, interval: 90, links: [GOOD_LINK] },
+			});
+			const before = structuredClone(h.stored());
+			const revision = await h.revision();
+			i18n.set({ locale, voice: "plain" });
+			const masked = { op: "set", key: "cookie", value: { masked: "••••••••" } };
+			const response = await h.patch({
+				revision,
+				ops: [
+					masked,
+					{ op: "add", list: "nope", item: {} },
+					{ op: "add", list: "interval", item: {} },
+					{ op: "update", list: "links", id: "good-1", values: { id: "hijack" } },
+					{ op: "update", list: "links", id: "good-1", values: { extra: "raw" } },
+					{ op: "remove", list: "links", id: "ghost" },
+					{ op: "set", key: "nope", value: 1 },
+					{ op: "set", key: "links", value: [] },
+				],
+			});
+			expect(response.status).toBe(400);
+			const body = await failureOf(response);
+			expect(body).toMatchObject({ code: "invalid", message: text.many });
+			expect(issuesOf(body)).toEqual(
+				[
+					["cookie"],
+					["nope"],
+					["interval"],
+					["links", "good-1", "id"],
+					["links", "good-1", "extra"],
+					["links", "ghost"],
+					["nope"],
+					["links"],
+				].map((path, op) => ({ op, path, message: text.issues[op] })),
+			);
+			const single = await h.patch({ revision, ops: [masked] });
+			expect((await failureOf(single)).message).toBe(text.one);
+			const missing = await h.patch({ revision, ops: [{ op: "set", key: "cookie" }] });
+			expect(missing.status).toBe(400);
+			const required = await failureOf(missing);
+			expect(required.message).toContain(text.request);
+			expect(issuesOf(required)).toEqual([
+				{
+					path: ["ops", 0, "value"],
+					message: "Invalid input: expected nonoptional, received undefined",
+				},
+			]);
+			expect(h.stored()).toEqual(before);
+			expect(await h.revision()).toBe(revision);
+			expect(h.settingsFrames()).toEqual([]);
+			expect(JSON.stringify(body)).not.toContain(TOKEN);
+		},
+	);
+
+	it.each([
+		[
 			"照清单写坏了(越界)",
 			{ op: "set", key: "interval", value: 10 },
 			{ op: 0, path: ["interval"] },
@@ -926,6 +1106,36 @@ describe("PATCH /api/ext/:id/settings —— 拓展在跑时再过它自己的 z
 		expect(issue?.message).toMatch(/坏/);
 		expect(h.stored()).toEqual({ links: [GOOD_LINK] });
 	});
+
+	it.each([
+		["en", "Extension douyin's settings validator failed: Original validator 原文"],
+		["ja", "拡張機能douyinの設定検証処理でエラーが発生しました：Original validator 原文"],
+		["zh-TW", "擴充功能 douyin 的設定驗證程式發生錯誤：Original validator 原文"],
+	] as const)(
+		"%s reports a failing validator without writing settings or emitting changes",
+		async (locale, message) => {
+			let broken = false;
+			const h = await boot({
+				running: true,
+				settings: { interval: 90 },
+				zod: DOUYIN_ZOD.refine(() => {
+					if (broken) throw new Error("Original validator 原文");
+					return true;
+				}),
+			});
+			const revision = await h.revision();
+			i18n.set({ locale, voice: "plain" });
+			broken = true;
+			const response = await h.patch({
+				revision,
+				ops: [{ op: "set", key: "interval", value: 120 }],
+			});
+			expect(response.status).toBe(503);
+			expect(await failureOf(response)).toEqual({ code: "unavailable", message });
+			expect(h.stored()).toEqual({ interval: 90 });
+			expect(h.settingsFrames()).toEqual([]);
+		},
+	);
 
 	// 拓展的校验代码自己抛了(不是 zod 的报错):对端的错,原话给主人 —— unavailable,不是 500。
 	it("拓展自己的校验抛了 —— 503 unavailable,话里点名是哪个拓展、带它的原话;一个字不写", async () => {

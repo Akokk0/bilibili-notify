@@ -1615,6 +1615,87 @@ describe("读自己的设置", () => {
 		},
 	} as unknown as ExtensionManifest;
 	const boot = (opts: { settings: unknown }) => harness({ manifest: MANIFEST, ...opts });
+	it.each([
+		[
+			"en",
+			{
+				unset:
+					"No settings have been saved, and empty settings do not satisfy this extension's rules:",
+				pending:
+					"Settings validation is still running because this schema uses asynchronous checks. Try reading again shortly.",
+				invalid:
+					"Extension bridge: stored settings failed its Zod schema (「links」:Original diagnostic 原文). BN will not start it; the dashboard shows settings as unreadable.",
+				thrown:
+					"The extension's settings validator threw an error (an extension code error, not an invalid field): Original validation 原文",
+			},
+		],
+		[
+			"ja",
+			{
+				unset: "設定はまだ保存されておらず、空の設定はこの拡張機能のルールを満たしません：",
+				pending:
+					"このスキーマには非同期の検証があるため、設定の検証がまだ完了していません。少し待ってから読み直してください。",
+				invalid:
+					"拡張機能bridge：保存済みの設定が指定されたZodスキーマを満たしません（「links」:Original diagnostic 原文）。BNはこの拡張機能を起動せず、ダッシュボードに設定を読み取れない状態として表示します。",
+				thrown:
+					"拡張機能の設定検証処理でエラーが発生しました（入力項目ではなく、拡張機能のコードの問題です）：Original validation 原文",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				unset: "尚未儲存設定，且空白設定不符合此擴充功能的規則：",
+				pending: "此規則包含非同步驗證，設定尚未驗證完成，請稍後再讀取。",
+				invalid:
+					"擴充功能 bridge：已儲存的設定未通過提供的 Zod 規則（「links」:Original diagnostic 原文）。BN 不會啟動此擴充功能，面板會顯示設定無法讀取。",
+				thrown:
+					"擴充功能的設定驗證程式發生錯誤（是擴充功能程式的問題，不是欄位填寫錯誤）：Original validation 原文",
+			},
+		],
+	] as const)(
+		"%s distinguishes unset, pending, invalid settings and validator faults with original diagnostics",
+		async (locale, text) => {
+			const unset = boot({ settings: undefined });
+			const pending = boot({ settings: { links: [] } });
+			const invalid = boot({ settings: { links: [] } });
+			const broken = boot({ settings: { links: [] } });
+			i18n.set({ locale, voice: "plain" });
+			try {
+				const notConfigured = unset.ctx.settings(LINKS).get();
+				expect(notConfigured).toMatchObject({
+					ok: false,
+					code: "not_configured",
+					message: expect.stringContaining(text.unset),
+				});
+				expect(notConfigured).toMatchObject({ message: expect.stringContaining("「links」") });
+				expect(unset.runtime.settingsProblem()).toBeUndefined();
+				const reader = pending.ctx.settings(LINKS.refine(async () => true));
+				expect(reader.get()).toEqual({ ok: false, code: "unavailable", message: text.pending });
+				await pending.runtime.verifySettings();
+				expect(reader.get()).toEqual({ ok: true, settings: { links: [] } });
+				expect(() =>
+					invalid.ctx.settings(
+						LINKS.refine(() => false, { path: ["links"], message: "Original diagnostic 原文" }),
+					),
+				).toThrow(text.invalid);
+				expect(invalid.runtime.settingsProblem()).toBe("「links」:Original diagnostic 原文");
+				const failed = broken.ctx.settings(
+					LINKS.refine(() => {
+						throw new Error("Original validation 原文");
+					}),
+				);
+				await broken.runtime.verifySettings();
+				expect(failed.get()).toEqual({
+					ok: false,
+					code: "unavailable",
+					message: text.thrown,
+					issues: [{ message: text.thrown }],
+				});
+			} finally {
+				await Promise.all([unset, pending, invalid, broken].map((h) => h.runtime.dispose()));
+			}
+		},
+	);
 
 	it("已经过自己那份 zod → 成功,设置铺在 ok 旁边", () => {
 		const h = boot({ settings: { links: [{ id: "a", token: "t" }] } });
