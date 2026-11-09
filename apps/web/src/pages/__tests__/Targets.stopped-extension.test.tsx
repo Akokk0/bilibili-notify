@@ -284,6 +284,44 @@ it("内置适配器连接不显示其他已安装拓展的入口", async () => {
 	expect(screen.queryAllByRole("button", { name: /设置$/ })).toHaveLength(0);
 });
 
+it.each([
+	[
+		"zh-CN",
+		"机器人框架桥接没在跑 —— 主人，这条连接现在发不出去，先去拓展页把它开起来哦。",
+		"主人，机器人框架桥接 还没跑起来，暂时读不到连接候选哦。",
+	],
+	[
+		"ja",
+		"机器人框架桥接は停止中です。ご主人様、この接続では送信できません。先に拡張機能ページで有効にしてくださいね。",
+		"ご主人様、机器人框架桥接はまだ動いていないので、接続候補を読み込めませんよ。",
+	],
+	[
+		"zh-TW",
+		"机器人框架桥接未執行。主人，這條連線目前無法傳送，請先到拓展頁啟用它喔。",
+		"主人，机器人框架桥接還沒啟動，暫時無法讀取連線候選喔。",
+	],
+] as const)(
+	"%s maid stopped-connection guidance preserves ownership and does not fetch unavailable candidates",
+	async (locale, explanation, candidates) => {
+		renderPage();
+		const card = await screen.findByRole("region", { name: "小电视" });
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(within(card).getByText(explanation)).toBeTruthy();
+		act(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+		fireEvent.click(within(card).getByRole("button", { name: "配置" }));
+		const dialog = await screen.findByRole("dialog");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(within(dialog).getByText(candidates)).toBeTruthy();
+		expect(within(dialog).getByDisplayValue("小电视")).toBeTruthy();
+		expect(vi.mocked(api.get).mock.calls.some(([url]) => String(url).includes("/candidates"))).toBe(
+			false,
+		);
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.put).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	},
+);
+
 it("stopped-extension status and its settings action follow the language without changing ownership", async () => {
 	i18n.set({ locale: "en", voice: "plain" });
 	renderPage();

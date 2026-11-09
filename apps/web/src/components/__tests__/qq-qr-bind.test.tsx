@@ -484,6 +484,59 @@ describe("ConnectionAuthButton", () => {
 
 	it.each([
 		[
+			"ja",
+			"incomplete",
+			"ご主人様、QRコードの読み取りは完了しましたが、返された認証情報が不完全でした。手動で入力してくださいね。",
+		],
+		[
+			"ja",
+			"missing",
+			"ご主人様、認証結果が見つかりません。取得済みか、期限切れの可能性があるので、もう一度スキャンしてくださいね。",
+		],
+		["zh-TW", "incomplete", "主人，掃碼成功了，但傳回的憑證不完整，請手動填寫喔。"],
+		["zh-TW", "missing", "主人，授權結果已經不在了，可能已被取走或逾時，請重新掃碼喔。"],
+	] as const)(
+		"%s maid %s auth failure does not start or claim again on language change",
+		async (locale, kind, hint) => {
+			vi.useFakeTimers();
+			try {
+				postRoutes({
+					[DRAFT]: () => {
+						if (kind === "missing")
+							throw new ApiError(404, { code: "not_found" }, "Original diagnostic 原文");
+						return { settings: {} };
+					},
+				});
+				getMock.mockResolvedValue(loggedIn());
+				const got = vi.fn();
+				render(<ConnectionAuthButton adapterKey="qq-official" onCredentials={got} />);
+				await act(async () => {
+					openDialog();
+				});
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(1000);
+				});
+				for (const voice of ["maid", "plain", "maid"] as const) {
+					act(() => i18n.set({ locale, voice }));
+					if (voice === "maid") expect(screen.getByText(hint)).toBeTruthy();
+					else expect(screen.queryByText(hint)).toBeNull();
+				}
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(3000);
+				});
+				expect(callsOf(postMock, BEGIN)).toBe(1);
+				expect(callsOf(postMock, DRAFT)).toBe(1);
+				expect(getMock).toHaveBeenCalledExactlyOnceWith(STATE);
+				expect(got).not.toHaveBeenCalled();
+			} finally {
+				cleanup();
+				vi.useRealTimers();
+			}
+		},
+	);
+
+	it.each([
+		[
 			"begin",
 			"Could not create authorization task: 原诊断",
 			"認証タスクを作成できませんでした: 原诊断",

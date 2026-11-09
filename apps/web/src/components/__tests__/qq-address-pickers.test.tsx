@@ -100,6 +100,51 @@ describe("ChannelAddressPicker", () => {
 	});
 });
 
+it.each([
+	[
+		"ja",
+		"failed",
+		"ご主人様、アドレスを読み込めません。接続が保存済みで、正常に動いているか確認してくださいね。",
+	],
+	[
+		"ja",
+		"empty",
+		"ご主人様、アドレス候補はまだありませんよ。接続の状態を確認して更新するか、アドレスを手動で入力してくださいね。",
+	],
+	[
+		"ja",
+		"channel",
+		"ご主人様、チャンネルを読み込めません。接続が保存済みで、認証情報が正しいか確認してくださいね。",
+	],
+	["zh-TW", "failed", "主人，無法讀取位址，請確認連線已儲存且正常執行喔。"],
+	["zh-TW", "empty", "主人，目前沒有位址候選，請檢查連線狀態後重新整理，也可以手動填寫位址喔。"],
+	["zh-TW", "channel", "主人，無法讀取頻道，請確認連線已儲存且憑證正確喔。"],
+] as const)(
+	"%s maid %s guidance does not retry or select an address on language change",
+	async (locale, state, hint) => {
+		if (state === "empty") getMock.mockResolvedValue({ candidates: [] });
+		else getMock.mockRejectedValue(new Error("Original diagnostic 原文"));
+		const onPick = vi.fn();
+		if (state === "channel") {
+			wrap(<ChannelAddressPicker connectionId="original-connection" onPick={onPick} />);
+			expect(getMock).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: "拉取频道" }));
+		} else
+			wrap(
+				<SessionAddressPicker connectionId="original-connection" scope="group" onPick={onPick} />,
+			);
+		await screen.findByText(state === "empty" ? /暂时没有地址候选/ : /读取失败/);
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(hint)).toBeTruthy();
+		act(() => i18n.set({ voice: "plain" }));
+		expect(screen.queryByText(hint)).toBeNull();
+		expect(getMock).toHaveBeenCalledExactlyOnceWith(
+			`/api/connections/original-connection/addresses?scope=${state === "channel" ? "channel" : "group"}`,
+		);
+		expect(onPick).not.toHaveBeenCalled();
+	},
+);
+
 it.each(["group", "private"] as const)(
 	"%s address candidates translate without refetching or changing raw addresses",
 	async (scope) => {

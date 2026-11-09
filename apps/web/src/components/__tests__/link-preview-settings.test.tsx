@@ -481,6 +481,46 @@ it("keeps explicit same-default preferences and an empty exception out of the co
 	expect(screen.queryByRole("group", { name: /^群 A · / })).toBeNull();
 });
 
+it.each([
+	[
+		"ja",
+		"ご主人様、接続はまだありませんよ。確認できたら、ここに対応状況を表示しますね。",
+		"ご主人様、ミニアプリカードに対応しない接続では画像カードで送りますね。対応状況は接続後に自動で確認しますよ。",
+		"2 グループ · 例外 1 件",
+		"一時停止中",
+	],
+	[
+		"zh-TW",
+		"主人，目前還沒有連線，偵測後就會在這裡顯示支援狀況喔。",
+		"主人，不支援小程式卡的連線會改用圖片卡；連線後，女僕會自動偵測支援狀況喔。",
+		"2 個群組 · 1 個例外",
+		"已停用",
+	],
+] as const)(
+	"%s maid link-preview guidance preserves exceptions, disabled targets and diagnostics",
+	(locale, empty, fallback, summary, paused) => {
+		const onPatch = renderCard(draftWith(), vi.fn(), [], { connections: [], capabilities: {} });
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(empty)).toBeTruthy();
+		expect(onPatch).not.toHaveBeenCalled();
+		cleanup();
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		const patch = renderCard(draftWith({ byTarget: { [T_A]: { isOn: false } } }), vi.fn(), [
+			target(T_A, "Original group 原文", { enabled: false }),
+			target(T_B, "Original second 原文", { connectionId: A_QQ }),
+		]);
+		openGroups();
+		const original = screen.getByRole("group", { name: /^Original group 原文/ });
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(fallback)).toBeTruthy();
+		expect(screen.getByText(summary)).toBeTruthy();
+		expect(within(original).getByText(paused)).toBeTruthy();
+		expect(screen.getByRole("group", { name: /^Original group 原文/ })).toBe(original);
+		expect(screen.getByText("这个实现没有 get_mini_app_ark")).toBeTruthy();
+		expect(patch).not.toHaveBeenCalled();
+	},
+);
+
 it("link preview labels translate without changing open target exceptions or inheritance patches", () => {
 	const onPatch = renderCard(
 		draftWith({ byTarget: { [T_A]: { isOn: false, replyForm: "nativeShare" }, [T_B]: {} } }),
