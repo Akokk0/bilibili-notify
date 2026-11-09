@@ -3189,5 +3189,15 @@
 	"panelUi.components.onboarding.tour-script.19": "Push target created!",
 	"panelUi.components.onboarding.tour-script.20": "Test message delivered. The delivery path is working!",
 	"panelUi.components.onboarding.tour-script.21": "Subscribed. Setup is complete!",
-	"panelUi.components.onboarding.derive.1": "Test failed"
+	"panelUi.components.onboarding.derive.1": "Test failed",
+	"panelUi.components.onboarding.tour-companion.8": "Need a setup guide?",
+	"panelUi.components.onboarding.tour-companion.9": "Set up source sign-in and delivery step by step.",
+	"panelUi.components.onboarding.tour-companion.10": "New user: start guide",
+	"panelUi.components.onboarding.tour-companion.11": "Existing user: skip",
+	"panelUi.components.onboarding.tour-companion.12": "Guidance is turned off. You can reopen it anytime from “Getting started” under System → Maintenance.",
+	"panelUi.components.onboarding.tour-companion.13": "Got it",
+	"panelUi.components.onboarding.reopen-section.1": "Getting started · onboarding",
+	"panelUi.components.onboarding.reopen-section.2": "Sign in, connect, choose a target, test delivery, then subscribe. Reopen the guide here after skipping or finishing.",
+	"panelUi.components.onboarding.reopen-section.3": "When reopened, the guide appears at the lower left and continues from your current setup. You can skip it again at any time.",
+	"panelUi.components.onboarding.reopen-section.4": "Reopen guide"
 }

@@ -3120,5 +3120,15 @@
 	"panelUi.components.onboarding.tour-script.19": "推播目標已建立！",
 	"panelUi.components.onboarding.tour-script.20": "測試訊息已送達，推播路徑已通！",
 	"panelUi.components.onboarding.tour-script.21": "訂閱成功，設定完成！",
-	"panelUi.components.onboarding.derive.1": "測試未通過"
+	"panelUi.components.onboarding.derive.1": "測試未通過",
+	"panelUi.components.onboarding.tour-companion.8": "需要新手指引嗎？",
+	"panelUi.components.onboarding.tour-companion.9": "逐步設定來源登入與推播路徑。",
+	"panelUi.components.onboarding.tour-companion.10": "新使用者：開始指引",
+	"panelUi.components.onboarding.tour-companion.11": "已使用過：略過",
+	"panelUi.components.onboarding.tour-companion.12": "已關閉指引。之後可隨時到「系統」→「維護」中的「新手指引」重新開啟。",
+	"panelUi.components.onboarding.tour-companion.13": "了解",
+	"panelUi.components.onboarding.reopen-section.1": "新手指引 · onboarding",
+	"panelUi.components.onboarding.reopen-section.2": "依序設定登入、連線、目標、測試與訂閱。略過或完成後可從這裡重新開啟。",
+	"panelUi.components.onboarding.reopen-section.3": "重新開啟後，左下角會出現指引卡片，依目前的設定進度繼續引導，隨時可再次略過。",
+	"panelUi.components.onboarding.reopen-section.4": "重新開啟指引"
 }

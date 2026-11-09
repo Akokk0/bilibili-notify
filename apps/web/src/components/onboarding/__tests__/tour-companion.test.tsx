@@ -1176,3 +1176,75 @@ it("逐来源登录：完成书库后引导到电台，不把两个登录步合�
 	expect(await screen.findByText("登录电台")).toBeTruthy();
 	expect(screen.queryByText("建立推送连接")).toBeNull();
 });
+
+describe.each([
+	{
+		locale: "en",
+		title: "Need a setup guide?",
+		description: "Set up source sign-in and delivery step by step.",
+		start: "New user: start guide",
+		skip: "Existing user: skip",
+		note: "Guidance is turned off. You can reopen it anytime from “Getting started” under System → Maintenance.",
+		ack: "Got it",
+	},
+	{
+		locale: "ja",
+		title: "初期設定ガイドを使いますか？",
+		description: "ソースへのログインと配信経路を、順番に設定します。",
+		start: "初めて使う：ガイドを開始",
+		skip: "使用経験がある：スキップ",
+		note: "ガイドを非表示にしました。必要になったら「システム」→「メンテナンス」の「はじめに」から再開できます。",
+		ack: "了解",
+	},
+	{
+		locale: "zh-TW",
+		title: "需要新手指引嗎？",
+		description: "逐步設定來源登入與推播路徑。",
+		start: "新使用者：開始指引",
+		skip: "已使用過：略過",
+		note: "已關閉指引。之後可隨時到「系統」→「維護」中的「新手指引」重新開啟。",
+		ack: "了解",
+	},
+] as const)("$locale onboarding choice", (expected) => {
+	function bindChoice(s: Scenario) {
+		apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
+			s.skipped = (body as { core: { onboarding: { skipped: boolean } } }).core.onboarding.skipped;
+			return {};
+		});
+	}
+	it("localizes the initial question and skip explanation without changing persisted choice", async () => {
+		i18n.set({ locale: expected.locale, voice: "plain" });
+		const s: Scenario = { route: "/system", skipped: null };
+		bindChoice(s);
+		await mount(s);
+		const dialog = await screen.findByRole("dialog");
+		expect(dialog.textContent).toContain(expected.title);
+		expect(screen.getByText(expected.description)).toBeTruthy();
+		expect(screen.getByRole("button", { name: expected.start })).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: expected.skip }));
+		await screen.findByText(expected.note);
+		expect(apiPatch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+			core: { onboarding: { skipped: true } },
+		});
+		fireEvent.click(screen.getByRole("button", { name: expected.ack }));
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		expect(screen.queryByRole("complementary")).toBeNull();
+	});
+	it("starts the guide with the original source label and only persists skipped=false", async () => {
+		i18n.set({ locale: expected.locale, voice: "plain" });
+		const s: Scenario = {
+			route: "/system",
+			skipped: null,
+			labels: { demo: "Original source 原文" },
+		};
+		bindChoice(s);
+		await mount(s);
+		fireEvent.click(await screen.findByRole("button", { name: expected.start }));
+		const guide = await screen.findByRole("complementary");
+		expect(guide.textContent).toContain("Original source 原文");
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(apiPatch).toHaveBeenCalledExactlyOnceWith("/api/settings", {
+			core: { onboarding: { skipped: false } },
+		});
+	});
+});

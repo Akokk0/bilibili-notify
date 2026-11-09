@@ -3120,5 +3120,15 @@
 	"panelUi.components.onboarding.tour-script.19": "送信先を作成しました！",
 	"panelUi.components.onboarding.tour-script.20": "テストメッセージが届き、配信経路を確認できました！",
 	"panelUi.components.onboarding.tour-script.21": "購読を追加しました。設定完了です！",
-	"panelUi.components.onboarding.derive.1": "テストに失敗しました"
+	"panelUi.components.onboarding.derive.1": "テストに失敗しました",
+	"panelUi.components.onboarding.tour-companion.8": "初期設定ガイドを使いますか？",
+	"panelUi.components.onboarding.tour-companion.9": "ソースへのログインと配信経路を、順番に設定します。",
+	"panelUi.components.onboarding.tour-companion.10": "初めて使う：ガイドを開始",
+	"panelUi.components.onboarding.tour-companion.11": "使用経験がある：スキップ",
+	"panelUi.components.onboarding.tour-companion.12": "ガイドを非表示にしました。必要になったら「システム」→「メンテナンス」の「はじめに」から再開できます。",
+	"panelUi.components.onboarding.tour-companion.13": "了解",
+	"panelUi.components.onboarding.reopen-section.1": "はじめに · onboarding",
+	"panelUi.components.onboarding.reopen-section.2": "ログイン、接続、送信先、配信テスト、購読の順に設定します。スキップや完了後はここから再開できます。",
+	"panelUi.components.onboarding.reopen-section.3": "再開すると左下にガイドが表示され、現在の設定状況に合わせて続きから案内します。いつでも再びスキップできます。",
+	"panelUi.components.onboarding.reopen-section.4": "ガイドを再開"
 }
