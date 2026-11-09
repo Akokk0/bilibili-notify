@@ -10,7 +10,8 @@
  */
 
 import type { SettingsField } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { checkExtensionView, faultedExtensionView, type ViewCheckOptions } from "../view-check.js";
 
 const PNG =
@@ -56,6 +57,7 @@ const SETTINGS = {
 const ACTIONS = ["poll.now", "login.start"];
 
 const INPUT: ViewCheckOptions = { fields: FIELDS, actions: ACTIONS, settings: SETTINGS };
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 const check = (raw: unknown, over: Partial<ViewCheckOptions> = {}) =>
 	checkExtensionView(raw, { ...INPUT, ...over });
@@ -71,6 +73,89 @@ const table = (rows: unknown[][]) => ({
 });
 
 describe("页上按块", () => {
+	it.each([
+		[
+			"en",
+			{
+				labels: ["Key-value", "Table", "Notice", "Copyable value", "QR code", "Button"],
+				whole: "Entire view",
+				item: "This item",
+				object: "Expected an object; received array.",
+				page: "Page blocks",
+				array: "page must be an array of blocks.",
+				first: "Page block 1 ",
+				extra:
+					"Unknown view fields: originalField. A view only supports summary / page / items / images.",
+				capWhere: "From page block 33 onward",
+				cap: "Page limit: 32. Omitted blocks: 3.",
+			},
+		],
+		[
+			"ja",
+			{
+				labels: ["キーと値", "表", "通知", "コピー可能な値", "QRコード", "ボタン"],
+				whole: "ビュー全体",
+				item: "この項目",
+				object: "オブジェクトが必要ですが、配列が渡されました。",
+				page: "ページのブロック",
+				array: "pageにはブロックの配列が必要です。",
+				first: "ページの1番目のブロック",
+				extra:
+					"未対応のビューフィールド：originalField。指定できるのはsummary / page / items / imagesのみです。",
+				capWhere: "ページの33番目のブロック以降",
+				cap: "ページには最大32ブロックまで表示できます。残りの3ブロックは省略しました。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				labels: ["鍵值", "表格", "提示列", "可複製的值", "QR Code", "按鈕"],
+				whole: "整個檢視",
+				item: "此項目",
+				object: "應提供物件，但收到的是陣列。",
+				page: "頁面區塊",
+				array: "page 應為區塊陣列。",
+				first: "頁面第 1 個區塊",
+				extra: "含有不支援的檢視欄位：originalField。檢視只接受 summary / page / items / images。",
+				capWhere: "從頁面第 33 個區塊起",
+				cap: "頁面最多顯示 32 個區塊，已省略後方 3 個。",
+			},
+		],
+	] as const)(
+		"%s localizes structural view faults without dropping valid blocks or existing item identities",
+		(locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			const whole = check([]);
+			expect(whole.view.page).toEqual([{ fault: { where: text.whole, reason: text.object } }]);
+			expect(whole.view.items?.links?.a).toEqual({
+				fault: { where: text.item, reason: text.object },
+			});
+			const invalidPage = check({ page: "original" });
+			expect(invalidPage.view.page).toEqual([{ fault: { where: text.page, reason: text.array } }]);
+			for (const [index, type] of [
+				"keyValue",
+				"table",
+				"notice",
+				"copy",
+				"qr",
+				"button",
+			].entries()) {
+				expect(check({ page: [{ type }, NOTICE] }).view.page?.[0]).toMatchObject({
+					fault: { where: `${text.first}(${text.labels[index]})` },
+				});
+				expect(check({ page: [{ type }, NOTICE] }).view.page?.[1]).toEqual({ block: NOTICE });
+			}
+			expect(check({ originalField: true }).view.page).toEqual([
+				{ fault: { where: text.whole, reason: text.extra } },
+			]);
+			const capped = check({ page: Array.from({ length: 35 }, () => NOTICE) });
+			expect(capped.view.page?.slice(0, 32)).toEqual(
+				Array.from({ length: 32 }, () => ({ block: NOTICE })),
+			);
+			expect(capped.view.page?.[32]).toEqual({ fault: { where: text.capWhere, reason: text.cap } });
+		},
+	);
+
 	it("好的块照原样交出去,次序不变", () => {
 		const { view, problems } = check({ page: [NOTICE, COPY] });
 		expect(view.page).toEqual([{ block: NOTICE }, { block: COPY }]);
@@ -175,6 +260,124 @@ describe("页上按块", () => {
 });
 
 describe("列表按项", () => {
+	it.each([
+		[
+			"en",
+			{
+				images: "images must map image keys to images; all images in this view were omitted.",
+				items: "items must map list keys to item IDs and their views.",
+				byId: "items.links must map item IDs to their views.",
+				undeclared:
+					'items entry "originalList" is not a list setting declared in the manifest; it was omitted.',
+				missing: 'Item "original-id" does not exist in list items.links; it was omitted.',
+				action:
+					'button.action: Action "original.action" is not declared in the manifest\'s actions. Declare it first.',
+				fields: [
+					"id is assigned by BN",
+					'Field "originalField" is not declared in this list.',
+					'Field "token" is secret or generated',
+					'Field "retries" expects number, but received string.',
+					'"originalOption" is not an option for field "bridgeKind".',
+				],
+			},
+		],
+		[
+			"ja",
+			{
+				images:
+					"imagesには画像キーと画像の対応表が必要です。このビューの画像はすべて省略しました。",
+				items: "itemsにはリストのキー、項目ID、ビューの対応表が必要です。",
+				byId: "items.linksには項目IDとビューの対応表が必要です。",
+				undeclared:
+					"itemsの「originalList」はマニフェストに宣言されたリスト設定ではないため、省略しました。",
+				missing: "items.linksに項目「original-id」は存在しないため、省略しました。",
+				action:
+					"button.action：アクション「original.action」がマニフェストのactionsにありません。先に宣言してください。",
+				fields: [
+					"idはBNが割り当てるため",
+					"「originalField」はこのリストで宣言されていません。",
+					"「token」はシークレットまたは生成値",
+					"「retries」はnumberですが、stringが渡されました。",
+					'「bridgeKind」の選択肢に"originalOption"はありません。',
+				],
+			},
+		],
+		[
+			"zh-TW",
+			{
+				images: "images 應為圖片鍵與圖片的對照表，已省略此檢視的所有圖片。",
+				items: "items 應為清單鍵、項目 ID 與檢視的對照表。",
+				byId: "items.links 應為項目 ID 與檢視的對照表。",
+				undeclared: "items 中的「originalList」不是資訊清單宣告的清單設定，已省略。",
+				missing: "items.links 中不存在項目「original-id」，已省略。",
+				action: "button.action：資訊清單的 actions 未宣告「original.action」，請先宣告。",
+				fields: [
+					"id 由 BN 指派",
+					"此清單未宣告欄位「originalField」。",
+					"欄位「token」是密鑰或產生的值",
+					"欄位「retries」應為 number，但收到的是 string。",
+					'欄位「bridgeKind」沒有選項 "originalOption"。',
+				],
+			},
+		],
+	] as const)(
+		"%s explains list and action validation while preserving valid items and protected settings",
+		(locale, text) => {
+			i18n.set({ locale, voice: "plain" });
+			expect(check({ images: [] }).problems).toEqual([text.images]);
+			expect(check({ items: [] }).view.items?.links?.a).toMatchObject({
+				fault: { reason: text.items },
+			});
+			expect(check({ items: { links: [] } }).view.items?.links?.a).toMatchObject({
+				fault: { reason: text.byId },
+			});
+			expect(check({ items: { originalList: {}, links: { "original-id": {} } } }).problems).toEqual(
+				[text.undeclared, text.missing],
+			);
+			const action = check({
+				page: [
+					{
+						type: "button",
+						button: { kind: "action", label: "Original label 原文", action: "original.action" },
+					},
+					NOTICE,
+				],
+			});
+			expect(action.view.page?.[0]).toMatchObject({ fault: { reason: text.action } });
+			expect(action.view.page?.[1]).toEqual({ block: NOTICE });
+			const protectedItem = check({
+				items: {
+					links: {
+						a: {
+							buttons: [
+								{
+									kind: "set",
+									label: "Original label 原文",
+									set: {
+										id: "new-id",
+										originalField: "raw",
+										token: "original-secret",
+										retries: "bad",
+										bridgeKind: "originalOption",
+									},
+								},
+							],
+						},
+						b: { status: { tone: "ok", text: "Original status 原文" } },
+					},
+				},
+			});
+			const slot = protectedItem.view.items?.links?.a;
+			if (!slot || !("fault" in slot))
+				throw new Error("Expected a fault for a protected-setting mutation");
+			for (const reason of text.fields) expect(slot.fault.reason).toContain(reason);
+			expect(slot.fault.reason).not.toContain("original-secret");
+			expect(protectedItem.view.items?.links?.b).toEqual({
+				view: { status: { tone: "ok", text: "Original status 原文" } },
+			});
+		},
+	);
+
 	it("好的项照原样交出去", () => {
 		const item = { status: { tone: "ok", text: "已连接" }, blocks: [NOTICE] };
 		expect(check({ items: { links: { a: item } } }).view.items).toEqual({
@@ -394,6 +597,71 @@ describe("字节上限", () => {
 			{ kind: "icon", fallback: "qq" },
 			{ kind: "text", text: `bot ${i} ${"长".repeat(60)}` },
 		]);
+	it.each([
+		[
+			"en",
+			"Page block 2 (Table)",
+			"Serialized view size:",
+			"Cannot render the summary; the list-page summary was omitted:",
+			"This item",
+			'Item "a" in items.links',
+		],
+		[
+			"ja",
+			"ページの2番目のブロック(表)",
+			"ビュー全体は",
+			"概要を表示できないため、一覧ページでは省略しました：",
+			"この項目",
+			"items.linksの項目「a」",
+		],
+		[
+			"zh-TW",
+			"頁面第 2 個區塊(表格)",
+			"檢視序列化後為",
+			"無法顯示摘要，已省略清單頁的摘要：",
+			"此項目",
+			"items.links 中的項目「a」",
+		],
+	] as const)(
+		"%s localizes size downgrades without dropping small blocks or the other list item",
+		(locale, where, size, summary, itemWhere, itemLog) => {
+			i18n.set({ locale, voice: "plain" });
+			const large = check(
+				{ summary: { text: "Original summary 原文" }, page: [NOTICE, table(longRows(40)), COPY] },
+				{ maxBytes: LIMIT },
+			);
+			expect(large.view.page?.[0]).toEqual({ block: NOTICE });
+			expect(large.view.page?.[2]).toEqual({ block: COPY });
+			expect(large.view.summary).toEqual({ text: "Original summary 原文" });
+			expect(large.view.page?.[1]).toMatchObject({
+				fault: { where, reason: expect.stringContaining(size) },
+			});
+			expect(JSON.stringify(large.view.page?.[1])).toContain("4 KB");
+			expect(bytes(large.view)).toBeLessThanOrEqual(LIMIT);
+			const summaryOnly = check({ summary: { text: "x".repeat(900) } }, { maxBytes: 256 });
+			expect(summaryOnly.view.summary).toBeUndefined();
+			expect(summaryOnly.problems[0]).toContain(summary);
+			const items = check(
+				{
+					items: {
+						links: {
+							a: { blocks: [table(longRows(40))] },
+							b: { status: { tone: "ok", text: "Original status 原文" } },
+						},
+					},
+				},
+				{ maxBytes: LIMIT },
+			);
+			expect(items.view.items?.links?.a).toMatchObject({
+				fault: { where: itemWhere, reason: expect.stringContaining(size) },
+			});
+			expect(items.problems[0]).toContain(itemLog);
+			expect(items.view.items?.links?.b).toEqual({
+				view: { status: { tone: "ok", text: "Original status 原文" } },
+			});
+			expect(bytes(items.view)).toBeLessThanOrEqual(LIMIT);
+		},
+	);
 
 	it("一张大表把整份撑过上限:只换掉它(说清整份多大、上限多大、它多大),别的照画", () => {
 		const { view, problems } = check(

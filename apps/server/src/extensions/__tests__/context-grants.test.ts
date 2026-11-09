@@ -601,6 +601,50 @@ describe("交给面板的视图", () => {
 
 	/** 回调交回 Promise —— 类型上 `publishView` 不收,真拓展(没过类型检查的、JS 写的)照样交得出来。 */
 	const asView = (fn: () => unknown) => fn as () => ExtensionView;
+	it.each([
+		[
+			"en",
+			"Entire view",
+			"This item",
+			"publishView callback threw: Original callback diagnostic 原文",
+			"publishView must return a view synchronously, but returned a Promise. BN neither waits for it nor treats it as an empty view. Compute asynchronous data beforehand, store it, then call statusChanged() when it changes.",
+		],
+		[
+			"ja",
+			"ビュー全体",
+			"この項目",
+			"publishViewのコールバックでエラーが発生しました：Original callback diagnostic 原文",
+			"publishViewのコールバックは同期的にビューを返す必要がありますが、Promiseが返されました。BNは待機せず、空のビューとしても扱いません。非同期データは先に取得して保存し、変化したらstatusChanged()を呼んでください。",
+		],
+		[
+			"zh-TW",
+			"整個檢視",
+			"此項目",
+			"publishView 回呼函式發生錯誤：Original callback diagnostic 原文",
+			"publishView 必須同步回傳檢視，但收到 Promise。BN 不會等待，也不會當成空檢視；請先取得並保存非同步資料，變更時呼叫 statusChanged()。",
+		],
+	] as const)(
+		"%s localizes callback failures at view-read time while retaining the raw exception and existing item",
+		async (locale, whole, item, thrown, asyncReason) => {
+			const h = harness({ manifest: V2, settings: SETTINGS });
+			h.ctx.publishView(() => {
+				throw new Error("Original callback diagnostic 原文");
+			});
+			i18n.set({ locale, voice: "plain" });
+			try {
+				const first = h.runtime.status() as ExtensionPanelView;
+				expect(first.page).toEqual([{ fault: { where: whole, reason: thrown } }]);
+				expect(first.items?.links?.a).toEqual({ fault: { where: item, reason: thrown } });
+				h.ctx.publishView(asView(async () => ({ page: [] })));
+				const second = h.runtime.status() as ExtensionPanelView;
+				expect(second.page).toEqual([{ fault: { where: whole, reason: asyncReason } }]);
+				expect(second.items?.links?.a).toEqual({ fault: { where: item, reason: asyncReason } });
+				await Promise.resolve();
+			} finally {
+				await h.runtime.dispose();
+			}
+		},
+	);
 
 	const viewWarnings = (lines: string[]) =>
 		lines.filter((line) => line.startsWith("warn") && line.includes("画不出来"));
