@@ -1,0 +1,4 @@
+{
+	"bilibili.settings.dynamicDescription": "主人，女僕會依這份 Cron 表達式檢查新作品，儲存後就調整檢查時間喔。",
+	"bilibili.settings.loginDescription": "主人，女僕會定期檢查登入狀態，儲存後就生效喔。"
+}

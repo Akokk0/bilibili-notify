@@ -1,0 +1,3 @@
+{
+	"migration.zero.biliLoginFailed": "ご主人様、Bilibiliのログイン情報を移行できませんでした（{reason}）。QRコードをもう一度読み取ってくださいね。"
+}

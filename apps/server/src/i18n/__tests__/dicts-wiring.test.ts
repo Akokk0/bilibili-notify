@@ -25,6 +25,17 @@ const names = groups.flatMap(([dir, dicts]) =>
 );
 
 describe("服务端译文文件都接进了 DICTS", () => {
+	it.each([
+		["bilibili", BILI_DICTS],
+		["migration", MIGRATION_DICTS],
+	] as const)("%s：日文和台湾繁体女仆覆盖与简中逐键一致", (_name, dicts) => {
+		for (const locale of ["ja", "zh-TW"] as const) {
+			expect(Object.keys(dicts[locale].maid).sort()).toEqual(
+				Object.keys(dicts["zh-CN"].maid).sort(),
+			);
+		}
+	});
+
 	it("目录里至少有文件(扫空了比没有还糟)", () => {
 		expect(names.length).toBeGreaterThan(0);
 	});

@@ -149,6 +149,32 @@ describe("0.x 的 B 站登录转成集成的密钥文件", () => {
 	});
 
 	it.each([
+		[
+			"ja",
+			/^ご主人様、Bilibiliのログイン情報を移行できませんでした（.+）。QRコードをもう一度読み取ってくださいね。$/,
+		],
+		["zh-TW", /^主人，B 站登入資訊沒移轉過來（.+），需要重新掃描 QR Code 喔。$/],
+	] as const)("%s：女仆口吻写入新迁移报告，不改原文件或旧报告", async (locale, pattern) => {
+		const previous = i18n.state();
+		try {
+			await placeKeyMaterial();
+			await sandbox.placeZero(COOKIES_FILE, {});
+			const original = await readFile(join(sandbox.zero, COOKIES_FILE), "utf8");
+			i18n.set({ locale, voice: "maid" });
+			const report = await sandbox.migrate();
+			const saved = structuredClone(report);
+			expect(cookiesSkips(report)[0]?.reason).toMatch(pattern);
+			expect(existsSync(join(sandbox.target, ...NEW_FILE))).toBe(false);
+			expect(report.transfers.filter((transfer) => transfer.from === COOKIES_FILE)).toEqual([]);
+			i18n.set({ locale: "en", voice: "plain" });
+			expect(report).toEqual(saved);
+			expect(await readFile(join(sandbox.zero, COOKIES_FILE), "utf8")).toBe(original);
+		} finally {
+			i18n.set({ locale: previous.locale, voice: previous.voice });
+		}
+	});
+
+	it.each([
 		{
 			locale: "en" as const,
 			pattern: /^Bilibili login was not migrated \(.+\); scan the QR code again\.$/,

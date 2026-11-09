@@ -13,14 +13,16 @@ import {
 import { i18n as hostI18n, t as hostText } from "../i18n/index.js";
 import en from "./locales/en.json" with { type: "json" };
 import ja from "./locales/ja.json" with { type: "json" };
+import jaMaid from "./locales/ja.maid.json" with { type: "json" };
 import zhCN from "./locales/zh-CN.json" with { type: "json" };
 import zhCNMaid from "./locales/zh-CN.maid.json" with { type: "json" };
 import zhTW from "./locales/zh-TW.json" with { type: "json" };
+import zhTWMaid from "./locales/zh-TW.maid.json" with { type: "json" };
 export const DICTS = {
 	"zh-CN": { plain: zhCN, maid: zhCNMaid },
-	"zh-TW": { plain: zhTW },
+	"zh-TW": { plain: zhTW, maid: zhTWMaid },
 	en: { plain: en },
-	ja: { plain: ja },
+	ja: { plain: ja, maid: jaMaid },
 } satisfies Record<Locale, LocaleDicts>;
 type LocalKey = DictKey<typeof zhCN>;
 type HostKey = Parameters<typeof hostText>[0];

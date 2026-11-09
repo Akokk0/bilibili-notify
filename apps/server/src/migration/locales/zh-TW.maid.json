@@ -1,0 +1,3 @@
+{
+	"migration.zero.biliLoginFailed": "主人，B 站登入資訊沒移轉過來（{reason}），需要重新掃描 QR Code 喔。"
+}

@@ -52,6 +52,55 @@ describe("PATCH /api/settings × bilibili.userAgent(已删的一格)", () => {
 		return { runtime, send, app };
 	}
 
+	it.each([
+		[
+			"ja",
+			[
+				"ご主人様、このCron式に従って新しい投稿を確認します。保存すると確認時刻を調整しますね。",
+				"ご主人様、ログイン状態を定期的に確認します。保存すると反映されますよ。",
+			],
+			[
+				"Cron式に従って新しい投稿を確認します。保存すると確認スケジュールを自動で調整します。",
+				"ログイン状態を定期的に確認します。保存すると変更が反映されます。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"主人，女僕會依這份 Cron 表達式檢查新作品，儲存後就調整檢查時間喔。",
+				"主人，女僕會定期檢查登入狀態，儲存後就生效喔。",
+			],
+			["依 Cron 表達式檢查新作品，儲存後會自動調整檢查時間。", "定期檢查登入狀態，儲存後生效。"],
+		],
+	] as const)("%s：已有设置描述按当前口吻下发，字段规则与设置不变", async (locale, maid, plain) => {
+		const { runtime, app } = await boot();
+		const previous = i18n.state();
+		const saved = structuredClone(runtime.configStore.getAllIntegrationSettings());
+		try {
+			i18n.set({ locale, voice: "maid" });
+			const firstResponse = await app.request("/api/settings/integrations");
+			expect(firstResponse.status).toBe(200);
+			const first = (await firstResponse.json()) as IntegrationSettingsDescriptorsResponse;
+			expect(first.integrations[0]?.fields.map((field) => field.description)).toEqual(maid);
+			i18n.set({ voice: "plain" });
+			const secondResponse = await app.request("/api/settings/integrations");
+			expect(secondResponse.status).toBe(200);
+			const second = (await secondResponse.json()) as IntegrationSettingsDescriptorsResponse;
+			expect(second.integrations[0]?.fields.map((field) => field.description)).toEqual(plain);
+			const withoutDescriptions = (
+				fields: IntegrationSettingsDescriptorsResponse["integrations"][number]["fields"],
+			) => fields.map(({ description: _, ...field }) => field);
+			expect(withoutDescriptions(first.integrations[0]?.fields ?? [])).toEqual(
+				withoutDescriptions(second.integrations[0]?.fields ?? []),
+			);
+			expect(first.integrations[0]?.fields.map((field) => field.description)).toEqual(maid);
+			expect(runtime.configStore.getAllIntegrationSettings()).toEqual(saved);
+		} finally {
+			i18n.set({ locale: previous.locale, voice: previous.voice });
+			await runtime.dispose();
+		}
+	});
+
 	it("经设置读口下发规则导出的两格，登录心跳上下限与写入规则一致", async () => {
 		const { runtime, app } = await boot();
 		try {
