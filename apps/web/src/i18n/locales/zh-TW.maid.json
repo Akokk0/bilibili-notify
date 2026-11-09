@@ -456,5 +456,17 @@
 	"subscriptionTags.deleteHint": "主人，這裡只先標記刪除，還能復原；點選「儲存變更」後才會生效喔。",
 	"subscriptionTags.addFirst": "主人，請先點選「新增」將新標籤放入草稿，再一起儲存喔。",
 	"subscriptionTags.existingName": "主人，這個標籤已經存在，換個名稱吧。",
-	"subscriptionTags.changed": "主人，標籤清單已在其他位置更新；重新載入會放棄這次尚未儲存的修改喔。"
+	"subscriptionTags.changed": "主人，標籤清單已在其他位置更新；重新載入會放棄這次尚未儲存的修改喔。",
+	"cards.content.superchatHint": "主人，金額不會決定配色等級或顯示時間喔；設為 0 秒可隱藏時間。這裡只調整範例，實際留言仍依來源提供的資料製作卡片。",
+	"cards.content.superchatAmountHint": "主人，這裡只改顯示金額，不會一起變更等級或時間喔。",
+	"cards.content.membershipHint": "主人，左側的漸層設定不會套用到會員卡喔，背景色和徽章圖片會依會員等級自動決定。",
+	"cards.skin.byCardHint": "主人，卡片版面與觀感由外觀控制喔。請到「全域」分區挑選，想複製或編輯外觀時，再前往資源庫吧。",
+	"cards.page.loading": "主人，女僕正在讀取卡片樣式喔",
+	"cards.preview.rendering": "主人，女僕正在繪製卡片喔",
+	"cards.preview.sampleBecause": "主人，這張先用範例呈現喔：{reason}",
+	"cards.preview.membershipUnavailable": "主人，這個來源尚無可選的會員等級，或尚未執行，目前無法繪製會員預覽喔。",
+	"cards.testPush.delivered": "送達囉 · {ms}ms",
+	"cards.testPush.failed": "主人，沒能推播出去：{reason}",
+	"cards.testPush.sampleBecause": "主人，推播的是範例卡片喔：{reason}",
+	"cards.remove.message": "主人，要清除 {name} 的卡片樣式與外觀個別設定嗎？清除後會套用全域設定，無法復原喔。"
 }

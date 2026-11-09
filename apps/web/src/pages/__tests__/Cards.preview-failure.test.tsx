@@ -110,6 +110,61 @@ afterEach(() => {
 });
 
 describe("预览失败:挂件与标题按码挑", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、カードのスタイルを読み込んでいますよ…",
+			"ご主人様、カードを描画していますよ…",
+			"ご主人様、このカードはサンプルでお見せしていますよ：Original sample 原因",
+			"ご主人様、この取得元には選べる会員ランクがないか、まだ稼働していないので、いまはメンバーシップのプレビューを描けませんよ。",
+		],
+		[
+			"zh-TW",
+			"主人，女僕正在讀取卡片樣式喔…",
+			"主人，女僕正在繪製卡片喔…",
+			"主人，這張先用範例呈現喔：Original sample 原因",
+			"主人，這個來源尚無可選的會員等級，或尚未執行，目前無法繪製會員預覽喔。",
+		],
+	] as const)(
+		"%s 女仆等待与示例说明随语言切换且保留服务端原原因",
+		async (locale, loading, rendering, sample, membershipUnavailable) => {
+			let finishSettings: ((value: unknown) => void) | undefined;
+			const settings = new Promise((resolve) => {
+				finishSettings = resolve;
+			});
+			let finishPreview: ((value: unknown) => void) | undefined;
+			const preview = new Promise((resolve) => {
+				finishPreview = resolve;
+			});
+			vi.mocked(api.get).mockImplementation(async (url: string) => {
+				if (url === "/api/settings") return settings;
+				if (url === "/api/sources") return { sources: [] };
+				return [];
+			});
+			vi.mocked(api.post).mockImplementation(async () => preview);
+			renderCards();
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(loading)).toBeTruthy();
+			await act(async () => {
+				finishSettings?.({ core: GLOBALS });
+			});
+			expect((await screen.findAllByText(rendering)).length).toBeGreaterThan(0);
+			expect(screen.getByText(membershipUnavailable)).toBeTruthy();
+			await act(async () => {
+				finishPreview?.({
+					ok: true,
+					dataUrl: "data:image/png;base64,xx",
+					sampleReason: "Original sample 原因",
+				});
+			});
+			await waitFor(() => expect(screen.getAllByText(sample).length).toBeGreaterThan(0));
+			expect(
+				vi.mocked(api.post).mock.calls.filter(([url]) => url === "/api/cards/test"),
+			).toHaveLength(0);
+			expect(api.patch).not.toHaveBeenCalled();
+		},
+	);
+
 	it("没配浏览器(not_configured,409)→ 摆出「一键检测并启用 Chrome」,标题说未配置", async () => {
 		failPreviewWith(async () => {
 			throw new ApiError(409, { code: "not_configured", message: NO_CHROME }, NO_CHROME);
@@ -177,6 +232,7 @@ describe("测试推送的结果", () => {
 	it.each([
 		[
 			"en",
+			"plain",
 			"Sending…",
 			"Test push",
 			"Delivered · 12ms",
@@ -185,6 +241,7 @@ describe("测试推送的结果", () => {
 		],
 		[
 			"ja",
+			"plain",
 			"送信中…",
 			"テスト送信",
 			"送信完了 · 12ms",
@@ -193,21 +250,40 @@ describe("测试推送的结果", () => {
 		],
 		[
 			"zh-TW",
+			"plain",
 			"推播中…",
 			"測試推播",
 			"已送達 · 12ms",
 			"已推播範例卡片：Original reason 原因",
 			"推播失敗：Original diagnostic 原文",
 		],
+		[
+			"ja",
+			"maid",
+			"送信中…",
+			"テスト送信",
+			"ご主人様、届きましたよ · 12ms",
+			"ご主人様、送ったのはサンプルカードですよ：Original reason 原因",
+			"ご主人様、送信できませんでした：Original diagnostic 原文",
+		],
+		[
+			"zh-TW",
+			"maid",
+			"推播中…",
+			"測試推播",
+			"送達囉 · 12ms",
+			"主人，推播的是範例卡片喔：Original reason 原因",
+			"主人，沒能推播出去：Original diagnostic 原文",
+		],
 	] as const)(
-		"%s test push localizes pending and result text while preserving diagnostics and sending once per click",
-		async (locale, pending, button, delivered, sample, failed) => {
+		"%s %s test push localizes pending and result text while preserving diagnostics and sending once per click",
+		async (locale, voice, pending, button, delivered, sample, failed) => {
 			let finish: ((response: unknown) => void) | undefined;
 			const response = new Promise((resolve) => {
 				finish = resolve;
 			});
 			await clickTestPush(() => response);
-			act(() => i18n.set({ locale, voice: "plain" }));
+			act(() => i18n.set({ locale, voice }));
 			const sending = screen.getByRole("button", { name: pending }) as HTMLButtonElement;
 			expect(sending.disabled).toBe(true);
 			if (!finish) throw new Error("test push was not started");

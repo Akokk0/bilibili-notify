@@ -113,6 +113,36 @@ afterEach(() => {
 describe("Cards per-UP 作用域接线", () => {
 	it.each([
 		[
+			"ja",
+			"ご主人様、UID 123456のカードスタイルとスキンの個別設定を削除しますか？削除すると全体設定に従います。元には戻せませんよ。",
+			"キャンセル",
+		],
+		[
+			"zh-TW",
+			"主人，要清除 UID 123456 的卡片樣式與外觀個別設定嗎？清除後會套用全域設定，無法復原喔。",
+			"取消",
+		],
+	] as const)("%s 女仆清除说明保留来源名称且取消保留原草稿", async (locale, message, cancel) => {
+		const { container } = renderCards();
+		await screen.findByText("UID 123456");
+		fireEvent.click(screen.getByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+		const picker = container.querySelector(
+			'[data-code="cardSkin"] [role="combobox"]',
+		) as HTMLButtonElement;
+		chooseSelect(picker, "极光");
+		fireEvent.click(screen.getByRole("button", { name: "移除 UID 123456 的个性化配置" }));
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByRole("dialog").textContent).toContain(message);
+		expect(screen.getAllByText("UID 123456", { selector: "b" }).length).toBeGreaterThan(0);
+		fireEvent.click(screen.getByRole("button", { name: cancel }));
+		expect(picker.textContent).toBe("极光");
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		[
 			"en",
 			"Card rendering",
 			"Global",

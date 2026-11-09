@@ -53,6 +53,7 @@ describe("面板译文文件都接进了 DICTS", () => {
 			"storageUsage.",
 			"logging.",
 			"subscriptionTags.",
+			"cards.",
 		];
 		const expected = Object.keys(DICTS["zh-CN"].maid)
 			.filter((key) => prefixes.some((prefix) => key.startsWith(prefix)))

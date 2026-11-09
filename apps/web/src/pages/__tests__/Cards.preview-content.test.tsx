@@ -108,6 +108,67 @@ afterEach(() => {
 describe("预览请求体里的 SC 金额与上舰档", () => {
 	it.each([
 		[
+			"ja",
+			"ご主人様、金額を変えても配色ランクや表示時間は変わりませんよ。0秒にすると時間を隠せます。ここで変わるのはサンプルだけで、実際のメッセージには取得元のデータを使いますね。",
+			"ご主人様、この欄で変わるのは表示金額だけですよ。ランクや表示時間は変わりません。",
+			"ご主人様、カードのレイアウトと見た目はスキンで決まりますよ。「全体設定」でスキンを選んでくださいね。複製や編集はライブラリーでできます。",
+			"メンバーシップ通知",
+			"ご主人様、左側のグラデーション設定はメンバーシップカードには適用しませんよ。背景色とバッジ画像は会員ランクに合わせて自動で決めますね。",
+		],
+		[
+			"zh-TW",
+			"主人，金額不會決定配色等級或顯示時間喔；設為 0 秒可隱藏時間。這裡只調整範例，實際留言仍依來源提供的資料製作卡片。",
+			"主人，這裡只改顯示金額，不會一起變更等級或時間喔。",
+			"主人，卡片版面與觀感由外觀控制喔。請到「全域」分區挑選，想複製或編輯外觀時，再前往資源庫吧。",
+			"會員提醒",
+			"主人，左側的漸層設定不會套用到會員卡喔，背景色和徽章圖片會依會員等級自動決定。",
+		],
+	] as const)(
+		"%s 女仆预览说明切换保留原始内容和来源会员档位",
+		async (locale, hint, amountHint, skinHint, membershipTab, membershipHint) => {
+			renderCards();
+			fireEvent.click((await screen.findAllByRole("button", { name: "SC 提醒" }))[0]);
+			const duration = await screen.findByRole("spinbutton", { name: "展示时长（秒）" });
+			fireEvent.change(duration, { target: { value: "17" } });
+			fireEvent.click(screen.getByRole("button", { name: "6" }));
+			const message = screen.getByPlaceholderText("留空就用示例留言");
+			fireEvent.change(message, { target: { value: "Original message 原文" } });
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(hint)).toBeTruthy();
+			expect(screen.getByText(amountHint)).toBeTruthy();
+			expect(screen.getByText(skinHint)).toBeTruthy();
+			expect((duration as HTMLInputElement).value).toBe("17");
+			expect((message as HTMLTextAreaElement).value).toBe("Original message 原文");
+			await waitFor(
+				() =>
+					expect(previewBodies("superchat").at(-1)?.content).toMatchObject({
+						amount: 30,
+						rank: 6,
+						durationSec: 17,
+						text: "Original message 原文",
+					}),
+				{ timeout: 5000 },
+			);
+			fireEvent.click(screen.getAllByRole("button", { name: membershipTab })[0]);
+			expect(await screen.findByText(membershipHint)).toBeTruthy();
+			chooseSelect(tierPicker(), "Gold");
+			await waitFor(
+				() =>
+					expect(previewBodies("membership").at(-1)?.content).toMatchObject({
+						program: "readers",
+						tierKey: "gold",
+					}),
+				{ timeout: 5000 },
+			);
+			expect(api.patch).not.toHaveBeenCalled();
+			expect(
+				vi.mocked(api.post).mock.calls.filter(([url]) => url === "/api/cards/test"),
+			).toHaveLength(0);
+		},
+	);
+
+	it.each([
+		[
 			"zh-CN",
 			"plain",
 			"卡片排版与观感由皮肤控制。到「全局」分区选用皮肤；复制和编辑皮肤请前往资源库。",

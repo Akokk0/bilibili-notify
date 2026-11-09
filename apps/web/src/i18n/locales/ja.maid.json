@@ -456,5 +456,17 @@
 	"subscriptionTags.deleteHint": "ご主人様、ここでは削除予定にするだけなので、取り消せますよ。「変更を保存」を押して初めて反映されます。",
 	"subscriptionTags.addFirst": "ご主人様、先に「追加」で新しいタグを下書きに入れてから、一緒に保存してくださいね。",
 	"subscriptionTags.existingName": "ご主人様、そのタグはもうありますよ。別の名前にしてくださいね。",
-	"subscriptionTags.changed": "ご主人様、タグ一覧が別の場所で更新されました。読み込み直すと、今回の未保存の変更は破棄されますよ。"
+	"subscriptionTags.changed": "ご主人様、タグ一覧が別の場所で更新されました。読み込み直すと、今回の未保存の変更は破棄されますよ。",
+	"cards.content.superchatHint": "ご主人様、金額を変えても配色ランクや表示時間は変わりませんよ。0秒にすると時間を隠せます。ここで変わるのはサンプルだけで、実際のメッセージには取得元のデータを使いますね。",
+	"cards.content.superchatAmountHint": "ご主人様、この欄で変わるのは表示金額だけですよ。ランクや表示時間は変わりません。",
+	"cards.content.membershipHint": "ご主人様、左側のグラデーション設定はメンバーシップカードには適用しませんよ。背景色とバッジ画像は会員ランクに合わせて自動で決めますね。",
+	"cards.skin.byCardHint": "ご主人様、カードのレイアウトと見た目はスキンで決まりますよ。「全体設定」でスキンを選んでくださいね。複製や編集はライブラリーでできます。",
+	"cards.page.loading": "ご主人様、カードのスタイルを読み込んでいますよ",
+	"cards.preview.rendering": "ご主人様、カードを描画していますよ",
+	"cards.preview.sampleBecause": "ご主人様、このカードはサンプルでお見せしていますよ：{reason}",
+	"cards.preview.membershipUnavailable": "ご主人様、この取得元には選べる会員ランクがないか、まだ稼働していないので、いまはメンバーシップのプレビューを描けませんよ。",
+	"cards.testPush.delivered": "ご主人様、届きましたよ · {ms}ms",
+	"cards.testPush.failed": "ご主人様、送信できませんでした：{reason}",
+	"cards.testPush.sampleBecause": "ご主人様、送ったのはサンプルカードですよ：{reason}",
+	"cards.remove.message": "ご主人様、{name}のカードスタイルとスキンの個別設定を削除しますか？削除すると全体設定に従います。元には戻せませんよ。"
 }
