@@ -50,6 +50,130 @@ function setup(report: Partial<StatusReport> = {}) {
 
 describe("status 指令", () => {
 	it.each([
+		[
+			"en",
+			{
+				login: [
+					"Status unavailable",
+					"Signed in",
+					"Signed out",
+					"Waiting for QR scan",
+					"Confirming",
+				],
+				none: "Push channels: No connections configured",
+				one: "Push channels: 1 connection is connected.",
+				two: "Push channels: 2 connections are connected.",
+				downOne: "Push channels: Original offline disconnected (connection count: 1).",
+				downTwo: "Push channels: Original offline disconnected (connection count: 2).",
+				queue: "Render queue: 3",
+				muted: "(Currently muted)",
+				description: "Check the current status",
+			},
+		],
+		[
+			"ja",
+			{
+				login: [
+					"状態を取得できません",
+					"ログイン済み",
+					"未ログイン",
+					"QRコードのスキャン待ち",
+					"確認中",
+				],
+				none: "プッシュ経路：接続が設定されていません",
+				one: "プッシュ経路：全1件が接続中です",
+				two: "プッシュ経路：全2件が接続中です",
+				downOne: "プッシュ経路：Original offlineが切断されています（全1件）",
+				downTwo: "プッシュ経路：Original offlineが切断されています（全2件）",
+				queue: "描画待ち：3",
+				muted: "（ミュート中）",
+				description: "現在の状態を確認",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				login: ["無法讀取狀態", "已登入", "未登入", "等待掃描 QR 碼", "確認中"],
+				none: "推播通道：尚未設定連線",
+				one: "推播通道：共 1 個連線皆已連接",
+				two: "推播通道：共 2 個連線皆已連接",
+				downOne: "推播通道：Original offline 已中斷（共 1 個連線）",
+				downTwo: "推播通道：Original offline 已中斷（共 2 個連線）",
+				queue: "等待渲染：3",
+				muted: "（目前靜音中）",
+				description: "查看目前狀態",
+			},
+		],
+	] as const)(
+		"%s reads current status text while preserving source messages and connection names",
+		async (locale, text) => {
+			const states: Array<AuthState | undefined> = [
+				undefined,
+				{ status: "logged-in", loggedInAt: "t" },
+				{ status: "logged-out" },
+				{ status: "awaiting-scan", qr: { dataUrl: "data:image/png;base64,AA", expiresAt: "t" } },
+				{ status: "confirming" },
+			];
+			const report: Partial<StatusReport> = {
+				logins: states.map((state, n) => ({ label: `Original${n}`, state })),
+				sources: [{ label: "Original source", summary: "Original source status 原文" }],
+				renderQueue: 3,
+				connections: [],
+				mutedUntil: NOW + MIN,
+			};
+			const h = setup(report);
+			i18n.set({ locale, voice: "plain" });
+			expect(h.spec.description).toBe(text.description);
+			expect(await h.run()).toEqual({ ok: true });
+			const lines = h.replies[0]?.split("\n") ?? [];
+			for (const [n, stateText] of text.login.entries()) {
+				expect(lines[n]).toContain(`Original${n}`);
+				expect(lines[n]?.endsWith(`：${stateText}`)).toBe(true);
+			}
+			expect(lines.slice(5)).toEqual([
+				"Original source：Original source status 原文",
+				text.none,
+				text.queue,
+				text.muted,
+			]);
+			report.logins = [
+				{
+					label: "Original auth",
+					state: { status: "confirming", message: "Original confirmation 原文" },
+				},
+			];
+			report.sources = [];
+			for (const [connections, message] of [
+				[[{ name: "Original online", ok: true }], text.one],
+				[
+					[
+						{ name: "Original online", ok: true },
+						{ name: "Original second", ok: true },
+					],
+					text.two,
+				],
+				[[{ name: "Original offline", ok: false }], text.downOne],
+				[
+					[
+						{ name: "Original offline", ok: false },
+						{ name: "Original online", ok: true },
+					],
+					text.downTwo,
+				],
+			] as const) {
+				report.connections = [...connections];
+				await h.run();
+				const current = h.replies.at(-1)?.split("\n") ?? [];
+				expect(current[0]).toContain("：Original confirmation 原文");
+				expect(current.slice(1)).toEqual([message, text.queue, text.muted]);
+			}
+			report.mutedUntil = NOW;
+			await h.run();
+			expect(h.replies.at(-1)).not.toContain(text.muted);
+		},
+	);
+
+	it.each([
 		["en", "Original source 原文 sign-in"],
 		["ja", "Original source 原文のログイン"],
 		["zh-TW", "Original source 原文登入"],
