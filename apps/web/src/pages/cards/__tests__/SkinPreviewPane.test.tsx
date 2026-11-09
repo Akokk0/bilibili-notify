@@ -39,6 +39,7 @@ vi.mock("../../../services/api", () => ({
 	api: { post: vi.fn(), get: vi.fn(), put: vi.fn() },
 }));
 
+import { i18n } from "../../../i18n";
 import { api } from "../../../services/api";
 import { SkinPreviewPane } from "../SkinPreviewPane";
 
@@ -85,6 +86,7 @@ const frame = (): HTMLIFrameElement | null =>
 	document.querySelector("iframe") as HTMLIFrameElement | null;
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "plain" });
 	vi.useFakeTimers();
 	vi.mocked(api.post).mockResolvedValue(OK);
 });
@@ -95,6 +97,38 @@ afterEach(() => {
 });
 
 describe("皮肤预览栏", () => {
+	it.each([
+		["en", "Hidden", "On hover", "Always"],
+		["ja", "非表示", "ホバー時のみ", "常に表示"],
+		["zh-TW", "隱藏", "游標移入時", "全部顯示"],
+	] as const)(
+		"%s grid controls translate and change only the local overlay",
+		async (locale, off, hover, all) => {
+			renderPane();
+			await tick();
+			const original = frame()?.getAttribute("srcdoc");
+			act(() => i18n.set({ locale, voice: "plain" }));
+			await act(async () => {
+				screen.getByRole("button", { name: hover }).click();
+			});
+			const hovered = frame()?.getAttribute("srcdoc");
+			expect(hovered).not.toBe(original);
+			await act(async () => {
+				screen.getByRole("button", { name: all }).click();
+			});
+			expect(frame()?.getAttribute("srcdoc")).not.toBe(hovered);
+			await act(async () => {
+				screen.getByRole("button", { name: off }).click();
+			});
+			expect(frame()?.getAttribute("srcdoc")).toBe(original);
+			expect(api.post).toHaveBeenCalledTimes(1);
+			expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({
+				kind: "live",
+				scene: "streaming",
+				manifest: { v: 1 },
+			});
+		},
+	);
 	it("iframe 的 sandbox 只给同源 —— 不给脚本", async () => {
 		renderPane();
 		await tick();
@@ -233,6 +267,191 @@ describe("皮肤预览栏 · 最终效果", () => {
 	}
 
 	const shotBtn = () => screen.getByRole("button", { name: /最终效果/ }) as HTMLButtonElement;
+
+	it.each([
+		["en", "Final result", "The rendering browser is not configured."],
+		["ja", "最終イメージ", "描画用ブラウザーが設定されていません。"],
+		["zh-TW", "最終效果", "尚未設定卡片繪製用瀏覽器。"],
+	] as const)(
+		"%s missing-renderer guidance keeps live preview usable and does not send a screenshot request",
+		async (locale, final, hint) => {
+			mockBoth();
+			vi.mocked(api.get).mockResolvedValue({ enabled: false });
+			renderPane();
+			await tick();
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(hint, { exact: false })).toBeTruthy();
+			expect(screen.getByText(/BN_CHROME_PATH \/ BN_CHROME_ENDPOINT/)).toBeTruthy();
+			const button = screen.getByRole("button", { name: final }) as HTMLButtonElement;
+			expect(button.disabled).toBe(true);
+			await act(async () => {
+				button.click();
+			});
+			expect(vi.mocked(api.post).mock.calls.some(([url]) => url.endsWith("/screenshot"))).toBe(
+				false,
+			);
+			expect(frame()?.getAttribute("srcdoc")).toContain("画好了");
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			"Final result",
+			"Back to live preview",
+			"Check these warnings before saving:",
+			"Preview could not be updated:",
+			"Could not capture final result: Original shot 原文",
+			"Card height 9999px exceeds the limit. Push rendering will fall back to the default skin; reduce the height first.",
+		],
+		[
+			"ja",
+			"最終イメージ",
+			"リアルタイムプレビューに戻る",
+			"保存前に次の警告を確認してください：",
+			"プレビューを更新できません：",
+			"最終イメージを作成できません：Original shot 原文",
+			"カードの高さ9999pxは上限を超えています。通知用の描画では既定スキンに戻るため、先に高さを調整してください。",
+		],
+		[
+			"zh-TW",
+			"最終效果",
+			"返回即時預覽",
+			"儲存前請留意以下警告：",
+			"無法更新預覽：",
+			"最終效果截圖失敗：Original shot 原文",
+			"這張卡片高 9999px，超過高度上限；推播繪製時會改用預設外觀，請先調整高度。",
+		],
+	] as const)(
+		"%s preview feedback preserves raw warnings, issues and the last successful HTML",
+		async (locale, final, back, warnings, rejected, failed, tooTall) => {
+			let failPreview = false;
+			let failShot = false;
+			vi.mocked(api.get).mockResolvedValue({ enabled: true });
+			vi.mocked(api.post).mockImplementation(async (url: string) => {
+				if (url.endsWith("/screenshot"))
+					return failShot
+						? { ok: false, code: "unavailable", message: "Original shot 原文" }
+						: { ...SHOT, height: 9999, overHeight: true };
+				if (failPreview)
+					throw new FakeApiError(
+						400,
+						{
+							code: "invalid",
+							issues: [{ message: "Original issue A 原文" }, { message: "Original issue B 原文" }],
+						},
+						"Original summary",
+					);
+				return { ...OK, warnings: ["Original warning 原文"] };
+			});
+			const view = renderPane({ v: 1 });
+			await tick();
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(warnings)).toBeTruthy();
+			expect(screen.getByText("Original warning 原文")).toBeTruthy();
+			await act(async () => {
+				screen.getByRole("button", { name: final }).click();
+			});
+			await tick();
+			expect(screen.getByText(tooTall)).toBeTruthy();
+			await act(async () => {
+				screen.getByRole("button", { name: back }).click();
+			});
+			failPreview = true;
+			view.rerender(
+				<QueryClientProvider client={new QueryClient()}>
+					<SkinPreviewPane
+						skinId="neon"
+						kind="live"
+						scene="streaming"
+						manifest={{ v: 2 }}
+						boxWidth={600}
+					/>
+				</QueryClientProvider>,
+			);
+			await tick();
+			await tick(0);
+			expect(screen.getByText(rejected)).toBeTruthy();
+			for (const issue of ["Original issue A 原文", "Original issue B 原文"])
+				expect(screen.getByText(issue)).toBeTruthy();
+			expect(frame()?.getAttribute("srcdoc")).toContain("画好了");
+			failShot = true;
+			await act(async () => {
+				screen.getByRole("button", { name: final }).click();
+			});
+			await tick();
+			expect(screen.getByText(failed)).toBeTruthy();
+			expect(frame()).not.toBeNull();
+		},
+	);
+
+	it.each([
+		[
+			"en",
+			"Live preview",
+			"Final result",
+			"Back to live preview",
+			"Skin preview",
+			"Card width 600; displayed at 50% to fit this column.",
+			"This draft has changed since the screenshot. It shows the previous version; select Final result again.",
+		],
+		[
+			"ja",
+			"リアルタイムプレビュー",
+			"最終イメージ",
+			"リアルタイムプレビューに戻る",
+			"スキンのプレビュー",
+			"カード幅 600。この欄に収まるよう50%に縮小して表示しています。",
+			"撮影後に下書きが変更されました。この画像は前の版です。「最終イメージ」をもう一度選んでください。",
+		],
+		[
+			"zh-TW",
+			"即時預覽",
+			"最終效果",
+			"返回即時預覽",
+			"外觀預覽",
+			"卡片寬度 600；以 50% 縮放顯示，以符合此欄寬度。",
+			"截圖後草稿已變更，目前圖片為上一版；請再次點選「最終效果」。",
+		],
+	] as const)(
+		"%s preview modes translate without redrawing source HTML on a language-only change",
+		async (locale, title, final, back, frameTitle, scaled, stale) => {
+			mockBoth();
+			vi.mocked(api.get).mockResolvedValue({ enabled: true });
+			const view = renderPane({ v: 1 }, 300);
+			await tick();
+			const original = frame();
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(original?.title).toBe(frameTitle);
+			expect(original?.getAttribute("srcdoc")).toContain("画好了");
+			expect(screen.getByText(scaled)).toBeTruthy();
+			expect(api.post).toHaveBeenCalledTimes(1);
+			await act(async () => {
+				screen.getByRole("button", { name: final }).click();
+			});
+			await tick();
+			expect(screen.getByRole("img", { name: final }).getAttribute("src")).toBe(SHOT.dataUrl);
+			expect(frame()).toBeNull();
+			view.rerender(
+				<QueryClientProvider client={new QueryClient()}>
+					<SkinPreviewPane
+						skinId="neon"
+						kind="live"
+						scene="streaming"
+						manifest={{ v: 2 }}
+						boxWidth={300}
+					/>
+				</QueryClientProvider>,
+			);
+			expect(screen.getByText(stale)).toBeTruthy();
+			await act(async () => {
+				screen.getByRole("button", { name: back }).click();
+			});
+			expect(frame()).not.toBeNull();
+			expect(document.querySelector("img")).toBeNull();
+		},
+	);
 
 	it("没配 Chrome → 钮禁着,并且说出该去配什么", async () => {
 		mockBoth();

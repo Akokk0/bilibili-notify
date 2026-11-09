@@ -157,11 +157,11 @@ export function SkinPreviewPane({
 				icon={<Icon.eye size={14} />}
 			>
 				<div className="flex flex-col gap-2">
-					<div className="flex w-full items-center justify-between gap-2">
+					<div className="flex w-full flex-wrap items-center justify-between gap-2">
 						<span className="text-bn-2xs text-bn-text-tertiary">
 							{snap === null ? tx("skinUi.SkinPreviewPane.3") : tx("skinUi.SkinPreviewPane.4")}
 						</span>
-						<div className="flex items-center gap-1.5">
+						<div className="flex max-w-full flex-wrap items-center gap-1.5">
 							{snap === null ? null : (
 								<Btn size="sm" variant="ghost" onClick={() => setSnap(null)}>
 									{tx("skinUi.SkinPreviewPane.5")}
@@ -207,8 +207,7 @@ export function SkinPreviewPane({
 
 					{shotFailure !== null ? (
 						<ErrorNote className="w-full" size="sm">
-							{tx("skinUi.SkinPreviewPane.10")}
-							{shotFailure}
+							{tx("skinUi.SkinPreviewPane.10", { reason: shotFailure })}
 						</ErrorNote>
 					) : null}
 
