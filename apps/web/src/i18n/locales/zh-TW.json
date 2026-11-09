@@ -2613,5 +2613,21 @@
 	"cards.testPush.pushing": "推播中…",
 	"cards.testPush.sampleBecause": "已推播範例卡片：{reason}",
 	"cards.testPush.subtitle": "編輯此類型的預覽內容，並將目前預覽卡片（含草稿樣式）推播至所選目標。",
-	"cards.testPush.title": "預覽內容 · 測試推播"
+	"cards.testPush.title": "預覽內容 · 測試推播",
+	"skinUi.CardSkinKnobs.1": "外觀調整",
+	"skinUi.CardSkinKnobs.3": "此外觀提供的可調項目；只儲存修改過的設定，未修改的項目使用外觀預設值。",
+	"skinUi.CardSkinKnobs.7#other": "已調整 {count} 項",
+	"skinUi.CardSkinKnobs.8": "外觀預設值",
+	"skinUi.CardSkinKnobs.11": "調整內容依外觀分別儲存，切換後再回來仍會保留；「還原」會移除個別設定，而非寫入預設值。",
+	"skinUi.CardSkinKnobs.13": "移除此個別設定，恢復外觀預設值",
+	"skinUi.CardSkinKnobs.14": "還原",
+	"skinUi.CardSkinKnobs.2": "此訂閱使用的外觀調整項目；個別修改只套用於此訂閱，未修改的項目沿用全域設定。",
+	"skinUi.CardSkinKnobs.5#other": "個別調整 {count} 項",
+	"skinUi.CardSkinKnobs.6": "沿用全域",
+	"skinUi.CardSkinKnobs.10": "個別調整依外觀分別儲存，切換後再回來仍會保留；「還原」會恢復沿用全域，之後全域設定的變更也會跟著套用。",
+	"skinUi.CardSkinKnobs.12": "移除此訂閱的個別設定，恢復沿用全域",
+	"skinUi.CardSkinKnobs.15": "沿用全域",
+	"skinUi.CardSkinKnobs.4": "無",
+	"skinUi.CardSkinKnobs.9": "此外觀沒有提供可調項目。可調項目由外觀本身定義；舊版匯出的套件可能不含此資訊。請選擇其他外觀，或請作者重新匯出。",
+	"skinUi.CardSkinKnobs.16": "未選擇（使用外觀預設值）"
 }

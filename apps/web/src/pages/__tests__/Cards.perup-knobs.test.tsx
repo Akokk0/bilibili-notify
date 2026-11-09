@@ -10,7 +10,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
@@ -142,6 +142,52 @@ afterEach(() => {
 });
 
 describe("per-UP 那侧的旋钮面板", () => {
+	it.each([
+		[
+			"en",
+			"2 custom adjustments",
+			"Reset",
+			"Follow global",
+			"Remove this subscription’s override and follow global settings",
+		],
+		[
+			"ja",
+			"2項目を個別に調整",
+			"リセット",
+			"全体設定に従う",
+			"この購読の個別設定を削除して全体設定に従う",
+		],
+		["zh-TW", "個別調整 2 項", "還原", "沿用全域", "移除此訂閱的個別設定，恢復沿用全域"],
+	] as const)(
+		"%s subscription reset translates and restores the current global value with explicit null",
+		async (locale, badge, reset, inherited, resetHint) => {
+			const sub: Subscription = {
+				...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
+				overrides: {
+					cardSkinKnobs: { default: { "glass-opacity": 0.3, "gradient-start": "#123456" } },
+				},
+			};
+			mockApi(sub);
+			renderCards();
+			await openPerUp("123456");
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(badge)).toBeTruthy();
+			const row = await knobRow("glass-opacity");
+			const control = row.querySelector('input[type="range"]') as HTMLInputElement;
+			expect(control.value).toBe("0.3");
+			const button = within(row).getByRole("button", { name: reset });
+			expect(button.title).toBe(resetHint);
+			fireEvent.click(button);
+			expect(within(row).getByText(inherited)).toBeTruthy();
+			expect(control.value).toBe("0.5");
+			expect(within(row).getByText("玻璃白纱")).toBeTruthy();
+			expect(api.patch).not.toHaveBeenCalled();
+			const overrides = await saveAndReadOverrides(sub.id);
+			expect(overrides.cardSkinKnobs).toEqual({
+				default: { "glass-opacity": null, "gradient-start": "#123456" },
+			});
+		},
+	);
 	/**
 	 * 这位 UP 没单独指皮肤 → 面板是全局在用那套的旋钮;没拧过的标「跟随全局」,起始位置是
 	 * **全局那份**的值。验红:把 per-UP 面板的起始值换回只看 per-UP 那层(`knobValue(knob,

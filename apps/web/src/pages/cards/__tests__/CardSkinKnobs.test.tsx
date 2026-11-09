@@ -13,7 +13,7 @@ import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-control
 
 import type { CardSkinKnob } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import { CardSkinKnobsSection } from "../CardSkinKnobs";
@@ -80,7 +80,7 @@ function renderKnobs(value: CardSkinKnobsBySkin, onChange = vi.fn()) {
 			<CardSkinKnobsSection value={value} onChange={onChange} />
 		</QueryClientProvider>,
 	);
-	return { ...view, onChange };
+	return { ...view, onChange, qc };
 }
 
 /** 某一枚旋钮那一行(控件都从行里面找,免得撞上别行的同名控件)。 */
@@ -97,6 +97,72 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("CardSkinKnobsSection", () => {
+	it.each([
+		[
+			"en",
+			"None",
+			"This skin has no adjustable options.",
+			"Not selected (use the skin’s default)",
+			"Skin defaults",
+		],
+		[
+			"ja",
+			"なし",
+			"このスキンには調整項目がありません。",
+			"未選択（スキンの既定値を使用）",
+			"スキンの既定値",
+		],
+		["zh-TW", "無", "此外觀沒有提供可調項目。", "未選擇（使用外觀預設值）", "外觀預設值"],
+	] as const)(
+		"%s empty and image fallback hints follow refreshed skin metadata without creating overrides",
+		async (locale, none, empty, imageEmpty, defaults) => {
+			vi.mocked(api.get).mockImplementation(async (url: string) =>
+				url.startsWith("/api/library/") ? { fonts: [], ids: [] } : listWith(undefined),
+			);
+			const { container, onChange, qc } = renderKnobs({});
+			await screen.findByText(/这套皮肤没有提供可调项/);
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(none)).toBeTruthy();
+			expect(screen.getByText(empty, { exact: false })).toBeTruthy();
+			expect(container.querySelector("[data-knob]")).toBeNull();
+			act(() => qc.setQueryData(["cards", "skins"], listWith(ASSET_KNOBS)));
+			expect(await screen.findByText(imageEmpty)).toBeTruthy();
+			expect(screen.getByText(defaults)).toBeTruthy();
+			expect(within(rowOf(container, "wallpaper")).getByText("壁纸")).toBeTruthy();
+			expect(onChange).not.toHaveBeenCalled();
+		},
+	);
+	it.each([
+		[
+			"en",
+			"Skin controls",
+			"1 adjustment",
+			"Reset",
+			"Remove this override and use the skin’s default",
+		],
+		["ja", "スキンの調整", "1項目を調整", "リセット", "この個別設定を削除してスキンの既定値に戻す"],
+		["zh-TW", "外觀調整", "已調整 1 項", "還原", "移除此個別設定，恢復外觀預設值"],
+	] as const)(
+		"%s global controls localize without translating skin author labels or writing defaults on reset",
+		async (locale, title, badge, reset, resetHint) => {
+			const { container, onChange } = renderKnobs({
+				default: { "glass-opacity": 0.4 },
+				neon: { accent: "#ff0000" },
+			});
+			await screen.findByText("皮肤旋钮");
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByText(badge)).toBeTruthy();
+			const row = rowOf(container, "glass-opacity");
+			expect(within(row).getByText("玻璃白纱")).toBeTruthy();
+			expect((row.querySelector('input[type="range"]') as HTMLInputElement).value).toBe("0.4");
+			expect(onChange).not.toHaveBeenCalled();
+			const button = within(row).getByRole("button", { name: reset });
+			expect(button.title).toBe(resetHint);
+			fireEvent.click(button);
+			expect(onChange).toHaveBeenCalledWith({ neon: { accent: "#ff0000" } });
+		},
+	);
 	it("字体 / 图两档沿用字段选择器，上传与图廊从共用弹窗打开", async () => {
 		vi.mocked(api.get).mockImplementation((url: string) => {
 			// 图廊 / 字体库那两口(`/api/library/images`、`/api/library/fonts`);别写成 `/api/cards/` 前缀 ——

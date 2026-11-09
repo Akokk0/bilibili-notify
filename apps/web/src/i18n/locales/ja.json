@@ -2613,5 +2613,21 @@
 	"cards.testPush.pushing": "送信中…",
 	"cards.testPush.sampleBecause": "サンプルカードを送信しました：{reason}",
 	"cards.testPush.subtitle": "この種類のプレビュー内容を編集し、下書きのスタイルを含む現在のプレビューを選択した通知先に送信します。",
-	"cards.testPush.title": "プレビュー内容 · テスト送信"
+	"cards.testPush.title": "プレビュー内容 · テスト送信",
+	"skinUi.CardSkinKnobs.1": "スキンの調整",
+	"skinUi.CardSkinKnobs.3": "このスキンが用意した調整項目です。変更した項目だけを保存し、未変更の項目はスキンの既定値を使います。",
+	"skinUi.CardSkinKnobs.7#other": "{count}項目を調整",
+	"skinUi.CardSkinKnobs.8": "スキンの既定値",
+	"skinUi.CardSkinKnobs.11": "調整内容はスキンごとに保存され、切り替えて戻っても残ります。「リセット」は既定値を保存する操作ではなく、個別設定を削除する操作です。",
+	"skinUi.CardSkinKnobs.13": "この個別設定を削除してスキンの既定値に戻す",
+	"skinUi.CardSkinKnobs.14": "リセット",
+	"skinUi.CardSkinKnobs.2": "この購読に使うスキンの調整項目です。変更はこの購読だけに適用し、未変更の項目は全体設定に従います。",
+	"skinUi.CardSkinKnobs.5#other": "{count}項目を個別に調整",
+	"skinUi.CardSkinKnobs.6": "全体設定に従う",
+	"skinUi.CardSkinKnobs.10": "個別の調整はスキンごとに保存され、切り替えて戻っても残ります。「リセット」で全体設定を使う状態に戻り、その後の全体設定の変更も反映されます。",
+	"skinUi.CardSkinKnobs.12": "この購読の個別設定を削除して全体設定に従う",
+	"skinUi.CardSkinKnobs.15": "全体設定に従う",
+	"skinUi.CardSkinKnobs.4": "なし",
+	"skinUi.CardSkinKnobs.9": "このスキンには調整項目がありません。調整項目はスキンごとに定義され、古いバージョンで書き出したパッケージには含まれていない場合があります。別のスキンを選ぶか、作者に再エクスポートを依頼してください。",
+	"skinUi.CardSkinKnobs.16": "未選択（スキンの既定値を使用）"
 }
