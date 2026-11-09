@@ -1,4 +1,10 @@
 {
+	"service.migration.bili-login.text.1": "Could not read: {value0}",
+	"service.migration.bili-login.text.2": "The master key is missing.",
+	"service.migration.bili-login.text.3": "The content could not be parsed.",
+	"service.migration.bili-login.text.4": "The content could not be parsed.",
+	"service.migration.bili-login.text.5": "Could not decrypt the content.",
+	"service.migration.bili-login.text.6": "The content could not be parsed.",
 	"service.ws.server.text.1": "The control message is not valid JSON.",
 	"service.ws.server.text.2": "The control message has an invalid format.",
 	"service.runtime.subscription-avatar.text.1": "The avatar declares image/{value0}, but its content is not in that format.",

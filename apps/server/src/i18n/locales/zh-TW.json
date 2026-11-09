@@ -1,4 +1,10 @@
 {
+	"service.migration.bili-login.text.1": "無法讀取：{value0}",
+	"service.migration.bili-login.text.2": "缺少主金鑰。",
+	"service.migration.bili-login.text.3": "無法解析內容。",
+	"service.migration.bili-login.text.4": "無法解析內容。",
+	"service.migration.bili-login.text.5": "無法解密內容。",
+	"service.migration.bili-login.text.6": "無法解析內容。",
 	"service.ws.server.text.1": "控制訊息不是有效的 JSON。",
 	"service.ws.server.text.2": "控制訊息格式不符規範。",
 	"service.runtime.subscription-avatar.text.1": "頭像宣告為 image/{value0}，但內容不是該格式。",

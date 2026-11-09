@@ -1,4 +1,10 @@
 {
+	"service.migration.bili-login.text.1": "読み取れませんでした：{value0}",
+	"service.migration.bili-login.text.2": "マスターキーがありません。",
+	"service.migration.bili-login.text.3": "内容を解析できませんでした。",
+	"service.migration.bili-login.text.4": "内容を解析できませんでした。",
+	"service.migration.bili-login.text.5": "内容を復号できませんでした。",
+	"service.migration.bili-login.text.6": "内容を解析できませんでした。",
 	"service.ws.server.text.1": "制御メッセージが有効なJSONではありません。",
 	"service.ws.server.text.2": "制御メッセージの形式が無効です。",
 	"service.runtime.subscription-avatar.text.1": "アバターはimage/{value0}として宣言されていますが、内容がその形式ではありません。",

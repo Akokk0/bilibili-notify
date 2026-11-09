@@ -8,10 +8,10 @@
  */
 
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { gcmDecrypt, gcmEncrypt } from "@bilibili-notify/storage";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n/index.js";
 import {
 	migrateZeroGeneration,
@@ -32,6 +32,8 @@ const COOKIES_JSON = JSON.stringify([
 	{ name: "bili_jct", value: "jct", domain: "bilibili.com" },
 ]);
 const REFRESH_TOKEN = "refresh-token-0";
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 describe("0.x 的 B 站登录转成集成的密钥文件", () => {
 	const sandbox = useZeroSandbox("bn-zero-bili-login-");
@@ -78,6 +80,73 @@ describe("0.x 的 B 站登录转成集成的密钥文件", () => {
 		expect(skips).toHaveLength(1);
 		expect(skips[0]?.reason).toContain("重新扫码");
 	}
+
+	it.each([
+		{
+			locale: "en" as const,
+			unreadable: "Could not read: ",
+			missing: "The master key is missing.",
+			malformed: "The content could not be parsed.",
+			decrypt: "Could not decrypt the content.",
+		},
+		{
+			locale: "ja" as const,
+			unreadable: "読み取れませんでした：",
+			missing: "マスターキーがありません。",
+			malformed: "内容を解析できませんでした。",
+			decrypt: "内容を復号できませんでした。",
+		},
+		{
+			locale: "zh-TW" as const,
+			unreadable: "無法讀取：",
+			missing: "缺少主金鑰。",
+			malformed: "無法解析內容。",
+			decrypt: "無法解密內容。",
+		},
+	])("$locale：报告内层六处原因按生成语言出字，不搬坏登录、不改旧文件", async (words) => {
+		await placeKeyMaterial();
+		const cookiePath = join(sandbox.zero, COOKIES_FILE);
+		const corrupted = gcmEncrypt(Buffer.from("ff".repeat(32), "hex"), COOKIES_JSON);
+		const cases = [
+			{ raw: "not JSON", expected: words.malformed },
+			{ raw: "{}", expected: words.malformed },
+			{ raw: JSON.stringify({ cookiesJson: corrupted }), expected: words.decrypt },
+			{
+				raw: JSON.stringify({ cookiesJson: gcmEncrypt(masterKey, "{}") }),
+				expected: words.malformed,
+			},
+		];
+		for (const [index, sample] of cases.entries()) {
+			await sandbox.placeZeroText(COOKIES_FILE, sample.raw);
+			i18n.set({ locale: words.locale, voice: "plain" });
+			const targetDir = join(dirname(sandbox.target), `detail-${index}`);
+			const report = await migrateZeroGeneration({ zeroRoot: sandbox.zero, targetDir });
+			const reason = cookiesSkips(report)[0]?.reason;
+			expect(reason).toContain(sample.expected);
+			expect(existsSync(join(targetDir, ...NEW_FILE))).toBe(false);
+			expect(await readFile(cookiePath, "utf8")).toBe(sample.raw);
+			i18n.set({ locale: "zh-CN", voice: "maid" });
+			expect(cookiesSkips(report)[0]?.reason).toBe(reason);
+		}
+		await rm(cookiePath);
+		await mkdir(cookiePath);
+		i18n.set({ locale: words.locale, voice: "plain" });
+		const unreadable = await migrateZeroGeneration({
+			zeroRoot: sandbox.zero,
+			targetDir: join(dirname(sandbox.target), "unreadable"),
+		});
+		expect(cookiesSkips(unreadable)[0]?.reason).toContain(words.unreadable);
+		expect(cookiesSkips(unreadable)[0]?.reason).toContain("EISDIR");
+		await rm(cookiePath, { recursive: true });
+		await placeLogin(masterKey, COOKIES_JSON, REFRESH_TOKEN);
+		await rm(join(sandbox.zero, "secrets/master.key"));
+		const missing = await migrateZeroGeneration({
+			zeroRoot: sandbox.zero,
+			targetDir: join(dirname(sandbox.target), "missing-key"),
+		});
+		expect(cookiesSkips(missing)[0]?.reason).toContain(words.missing);
+		expect(JSON.stringify(missing)).not.toContain(REFRESH_TOKEN);
+	});
 
 	it.each([
 		{
