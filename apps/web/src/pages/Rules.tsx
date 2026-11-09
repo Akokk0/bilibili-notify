@@ -552,7 +552,7 @@ export default function Rules() {
 				platformOf={(identity) => subscriptionPlatformOf(identity, sources)}
 			/>
 
-			<div className="grid gap-4 xl:grid-bn-rail">
+			<div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-bn-rail">
 				<SectionList
 					sections={sections}
 					current={shownSection}
@@ -570,7 +570,7 @@ export default function Rules() {
 				{/* 「默认文案有更新」的提示只对**全局**模板成立:per-UP 的模板是主人显式
 				    覆盖出来的,缺字段就跟随全局,没有「他没见过这版默认」这回事。 */}
 				<FieldUpdatesProvider value={isGlobal ? fieldUpdates : null}>
-					<div className="space-y-4">
+					<div className="min-w-0 space-y-4">
 						{!isGlobal && focusedSub ? (
 							<SubscriptionRulesEditor
 								sub={focusedSub}
