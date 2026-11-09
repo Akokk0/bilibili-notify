@@ -186,10 +186,7 @@ export function CssAiSlot({
 							</ErrorNote>
 						) : null}
 						{error ? (
-							<ErrorNote size="sm">
-								{tx("skinUi.CssAiSlot.9")}
-								{error}
-							</ErrorNote>
+							<ErrorNote size="sm">{tx("skinUi.CssAiSlot.9", { reason: error })}</ErrorNote>
 						) : null}
 						<div className="flex items-center justify-end gap-2">
 							{running ? (
@@ -237,10 +234,7 @@ export function CssAiSlot({
 					{undo.warnings.length > 0 ? (
 						<WarnNote size="sm">
 							{undo.warnings.map((w) => (
-								<div key={w}>
-									{tx("skinUi.CssAiSlot.16")}
-									{w}
-								</div>
+								<div key={w}>{tx("skinUi.CssAiSlot.16", { reason: w })}</div>
 							))}
 						</WarnNote>
 					) : null}

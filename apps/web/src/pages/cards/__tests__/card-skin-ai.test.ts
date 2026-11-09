@@ -6,8 +6,11 @@
  */
 
 import type { GlobalSettingsView } from "@bilibili-notify/contract";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { cardSkinAiReadiness } from "../card-skin-ai";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 function globals(
 	profile: { apiKey?: unknown; baseUrl?: string },
@@ -25,6 +28,49 @@ function globals(
 }
 
 describe("cardSkinAiReadiness", () => {
+	it.each([
+		[
+			"en",
+			"The built-in default skin is read-only. Copy it in the library before asking the maid to edit it.",
+			"Loading model settings…",
+			"Configure the current provider’s API key and endpoint in AI maid first.",
+		],
+		[
+			"ja",
+			"内蔵の既定スキンは読み取り専用です。ライブラリーで複製してから、メイドに編集を依頼してください。",
+			"モデル設定を読み込み中…",
+			"先に「AIメイド」で、使用中のプロバイダーのAPIキーと接続先URLを設定してください。",
+		],
+		[
+			"zh-TW",
+			"內建預設外觀為唯讀。請先在資源庫複製一份，再請女僕編輯。",
+			"正在讀取模型設定…",
+			"請先到「智慧女僕」設定目前供應商的 API 金鑰與端點網址。",
+		],
+	] as const)(
+		"%s explains unavailable actions without changing readiness rules",
+		(locale, readOnly, pending, missing) => {
+			i18n.set({ locale, voice: "plain" });
+			expect(cardSkinAiReadiness({ globals: undefined, readOnly: true })).toEqual({
+				ready: false,
+				reason: readOnly,
+			});
+			expect(cardSkinAiReadiness({ globals: undefined, readOnly: false })).toEqual({
+				ready: false,
+				reason: pending,
+			});
+			expect(cardSkinAiReadiness({ globals: globals({}), readOnly: false })).toEqual({
+				ready: false,
+				reason: missing,
+			});
+			expect(
+				cardSkinAiReadiness({
+					globals: globals({ apiKey: { masked: "••••" }, baseUrl: "https://api.test/v1" }, false),
+					readOnly: false,
+				}),
+			).toEqual({ ready: true });
+		},
+	);
 	it("key 与地址都填了 → 按得动(总开关关着也一样)", () => {
 		const full = { apiKey: { masked: "••••••••" }, baseUrl: "https://api.test/v1" };
 		expect(cardSkinAiReadiness({ globals: globals(full), readOnly: false })).toEqual({
