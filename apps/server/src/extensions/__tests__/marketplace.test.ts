@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { EXTENSION_API_RANGE, type ExtensionApiRange } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { createMarketplace, MARKETPLACE_PROVENANCE_FILE } from "../marketplace.js";
 
 const OFFICIAL_URL =
@@ -186,6 +187,7 @@ function harness(opts: HarnessOptions = {}) {
 }
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	root = await mkdtemp(join(tmpdir(), "bn-marketplace-"));
 });
 
@@ -195,6 +197,99 @@ afterEach(async () => {
 });
 
 describe("list():官方源", () => {
+	it.each([
+		[
+			"en",
+			{
+				name: "Official source",
+				unreachable:
+					"Could not fetch the official index through either the mirrors or the direct connection.",
+				untrusted:
+					"The official index signature could not be verified. The content may have been modified or signed by someone else.",
+				malformed: "The official index could not be read because its format is invalid.",
+				stale:
+					"The official index is older than the last one seen and was rejected. A mirror may be replaying an old index.",
+				invalid: "Invalid official index:",
+			},
+		],
+		[
+			"ja",
+			{
+				name: "公式ソース",
+				unreachable: "ミラーと直接接続のどちらからも公式インデックスを取得できませんでした。",
+				untrusted:
+					"公式インデックスの署名を検証できませんでした。内容が変更されたか、別の署名者による可能性があります。",
+				malformed: "公式インデックスの形式が無効なため、読み取れませんでした。",
+				stale:
+					"公式インデックスが前回より古いため、受け入れませんでした。ミラーが古いインデックスを返している可能性があります。",
+				invalid: "公式インデックスが無効です：",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				name: "官方來源",
+				unreachable: "加速鏡像與直接連線皆無法取得官方索引。",
+				untrusted: "官方索引的簽章驗證失敗，內容可能已被修改，或並非由我們簽署。",
+				malformed: "官方索引格式無效，無法讀取。",
+				stale: "官方索引比上次取得的版本更舊，已拒收；加速站可能正在重送舊索引。",
+				invalid: "官方索引無效：",
+			},
+		],
+	] as const)(
+		"%s distinguishes official index failures and retains signed source text and freshness",
+		async (locale, text) => {
+			const h = harness();
+			i18n.set({ locale, voice: "plain" });
+			for (const [payload, message] of [
+				[undefined, text.unreachable],
+				[envelope(makeKey().privateKey, official()), text.untrusted],
+				[envelope(key.privateKey, { original: "not an index" }), text.malformed],
+			] as const) {
+				serve(payload === undefined ? {} : { [OFFICIAL_URL]: payload });
+				const view = await h.marketplace.list({ refresh: true });
+				expect(view.sources[0]).toMatchObject({
+					id: "official",
+					official: true,
+					ok: false,
+					name: text.name,
+					message,
+				});
+				expect(view.extensions).toEqual([]);
+			}
+			serve({ [OFFICIAL_URL]: envelope(key.privateKey, official({ issuedAt: 200 })) });
+			const valid = await h.marketplace.list({ refresh: true });
+			expect(valid.sources[0]).toMatchObject({ ok: true, name: "BN 官方拓展" });
+			expect(valid.extensions[0]).toMatchObject({
+				id: "bridge",
+				name: "拓展 bridge",
+				description: "一句话",
+			});
+			serve({ [OFFICIAL_URL]: envelope(key.privateKey, official({ issuedAt: 100 })) });
+			const stale = await h.marketplace.list({ refresh: true });
+			expect(stale.sources[0]).toMatchObject({ ok: false, message: text.stale });
+			expect(stale.extensions).toEqual([]);
+			serve({
+				[OFFICIAL_URL]: envelope(
+					key.privateKey,
+					official({ issuedAt: 300, extensions: [entry("alice.douyin", "1.0.0", douyinZip)] }),
+				),
+			});
+			const bad = await h.marketplace.list({ refresh: true });
+			expect(bad.sources[0]).toMatchObject({
+				ok: false,
+				message: expect.stringContaining(text.invalid),
+			});
+			expect(bad.sources[0]).toMatchObject({ message: expect.stringContaining("alice.douyin") });
+			expect(bad.extensions).toEqual([]);
+			expect(
+				JSON.parse(await readFile(join(root, MARKETPLACE_PROVENANCE_FILE), "utf8"))
+					.officialIssuedAt,
+			).toBe(200);
+			expect(h.rescan).not.toHaveBeenCalled();
+		},
+	);
+
 	it("签名索引验得过 → 源 ok,条目可装、标官方", async () => {
 		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official()) });
 		const view = await harness().marketplace.list();
@@ -404,6 +499,110 @@ describe("list():官方源", () => {
 });
 
 describe("list():第三方源", () => {
+	it.each([
+		[
+			"en",
+			{
+				json: "This address did not return valid JSON.",
+				shape: "This index does not have the required marketplace.json structure.",
+				fetch: "Could not fetch this source's index.",
+				unavailable: "Source Original source is currently unavailable:",
+				missing: "No such source: nobody",
+				absent: "Source alice 的拓展 does not contain ghost.",
+				revoked: "拓展 alice.douyin 1.0.0 has been revoked by this source.",
+				conflict: "Namespace alice is already used by source alice 的拓展.",
+			},
+		],
+		[
+			"ja",
+			{
+				json: "このアドレスから有効なJSONが返されませんでした。",
+				shape: "このインデックスはmarketplace.jsonに必要な構造を満たしていません。",
+				fetch: "このソースのインデックスを取得できませんでした。",
+				unavailable: "ソース「Original source」は現在利用できません：",
+				missing: "このソースは存在しません：nobody",
+				absent: "ソース「alice 的拓展」にghostはありません。",
+				revoked: "拓展 alice.douyin 1.0.0はこのソースで公開が取り下げられています。",
+				conflict: "名前空間「alice」はすでにソース「alice 的拓展」が使用しています。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				json: "此網址未傳回有效的 JSON。",
+				shape: "此索引不符合 marketplace.json 的必要結構。",
+				fetch: "無法取得此來源的索引。",
+				unavailable: "來源「Original source」目前無法使用：",
+				missing: "沒有此來源：nobody",
+				absent: "來源「alice 的拓展」沒有 ghost。",
+				revoked: "拓展 alice.douyin 1.0.0 已由此來源撤回。",
+				conflict: "命名空間「alice」已由來源「alice 的拓展」使用。",
+			},
+		],
+	] as const)(
+		"%s preserves third-party names and namespace ownership while localizing source failures",
+		async (locale, text) => {
+			const sources = [{ id: "s1", name: "Original source", url: THIRD_URL }];
+			const h = harness({ noOfficial: true, sources });
+			i18n.set({ locale, voice: "plain" });
+			serve({});
+			expect(await h.marketplace.install("nobody", "alice.douyin")).toEqual({
+				ok: false,
+				code: "not_found",
+				message: text.missing,
+			});
+			for (const [payload, code, message] of [
+				["{broken", "invalid", text.json],
+				[JSON.stringify({ original: "not an index" }), "invalid", text.shape],
+				[undefined, "unavailable", text.fetch],
+			] as const) {
+				serve(payload === undefined ? {} : { [THIRD_URL]: payload });
+				const view = await h.marketplace.list({ refresh: true });
+				expect(view.sources[0]).toMatchObject({
+					id: "s1",
+					name: "Original source",
+					ok: false,
+					code,
+					message,
+				});
+				expect(view.extensions).toEqual([]);
+				expect(await h.marketplace.install("s1", "alice.douyin")).toEqual({
+					ok: false,
+					code: "unavailable",
+					message: `${text.unavailable}${locale === "en" ? " " : ""}${message}`,
+				});
+			}
+			serve({ [THIRD_URL]: JSON.stringify(third()) });
+			await h.marketplace.list({ refresh: true });
+			expect(await h.marketplace.install("s1", "ghost")).toEqual({
+				ok: false,
+				code: "not_found",
+				message: text.absent,
+			});
+			serve({ [THIRD_URL]: JSON.stringify(third({ revoked: ["alice.douyin@1.0.0"] })) });
+			await h.marketplace.list({ refresh: true });
+			expect(await h.marketplace.install("s1", "alice.douyin")).toEqual({
+				ok: false,
+				code: "not_found",
+				message: text.revoked,
+			});
+			sources.push({ id: "s2", name: "Original second", url: "https://bob.example/m.json" });
+			serve({
+				[THIRD_URL]: JSON.stringify(third()),
+				"https://bob.example/m.json": JSON.stringify(third({ name: "Original second index" })),
+			});
+			const collided = await h.marketplace.list({ refresh: true });
+			expect(collided.sources[1]).toMatchObject({
+				id: "s2",
+				ok: false,
+				code: "conflict",
+				message: text.conflict,
+			});
+			expect(collided.extensions.map((e) => [e.source, e.id])).toEqual([["s1", "alice.douyin"]]);
+			expect(h.rescan).not.toHaveBeenCalled();
+		},
+	);
+
 	it("裸 JSON,不走镜像;源名取索引自己报的;命名空间不对整个源拒", async () => {
 		const fetchMock = serve({ [THIRD_URL]: JSON.stringify(third()) });
 		const view = await harness({
@@ -790,6 +989,91 @@ describe("list():已装的怎么标", () => {
 });
 
 describe("install()", () => {
+	it.each([
+		[
+			"en",
+			{
+				limit: "The index lists 拓展 bridge as 20.0 MB, exceeding this machine's 10.0 MB limit.",
+				checksum:
+					"The downloaded package checksum does not match the index. The package may have been replaced in transit or published incorrectly by the source.",
+				download: `Could not download the package for 拓展 bridge (${ZIP_URL}).`,
+				unpack: "Could not unpack the package:",
+				mismatch:
+					"The package manifest says bridge@0.0.1, but the index says bridge@0.0.2. The source supplied the wrong package.",
+			},
+		],
+		[
+			"ja",
+			{
+				limit: "インデックス上の拓展 bridgeは20.0 MBで、この環境の上限10.0 MBを超えています。",
+				checksum:
+					"ダウンロードしたパッケージのチェックサムがインデックスと一致しません。転送中に置き換えられたか、ソースが誤ったパッケージを公開した可能性があります。",
+				download: `拓展 bridgeのパッケージをダウンロードできませんでした（${ZIP_URL}）。`,
+				unpack: "パッケージを展開できません：",
+				mismatch:
+					"パッケージのマニフェストはbridge@0.0.1ですが、インデックスはbridge@0.0.2です。ソースが誤ったパッケージを提供しています。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				limit: "索引標示拓展 bridge 的套件為 20.0 MB，超過本機上限 10.0 MB。",
+				checksum: "下載套件的檢查碼與索引不符，套件可能在傳輸途中被替換，或來源發布了錯誤的套件。",
+				download: `無法下載拓展 bridge 的套件（${ZIP_URL}）。`,
+				unpack: "無法解開套件：",
+				mismatch: "套件資訊清單為 bridge@0.0.1，但索引標示 bridge@0.0.2，來源提供了錯誤的套件。",
+			},
+		],
+	] as const)(
+		"%s distinguishes download, checksum, package and manifest failures without installing",
+		async (locale, text) => {
+			const changed = Uint8Array.from(bridgeZip);
+			changed[0] = (changed[0] ?? 0) ^ 1;
+			const emptyZip = zipSync({});
+			const wrongVersion = pack("bridge", "0.0.1");
+			const cases = [
+				[
+					entry("bridge", "0.0.2", bridgeZip, {
+						package: { url: ZIP_URL, sha256: sha256(bridgeZip), size: 20 * 1024 * 1024 },
+					}),
+					bridgeZip,
+					"invalid",
+					text.limit,
+				],
+				[entry("bridge", "0.0.2", bridgeZip), changed, "invalid", text.checksum],
+				[entry("bridge", "0.0.2", bridgeZip), undefined, "unavailable", text.download],
+				[
+					entry("bridge", "0.0.2", emptyZip),
+					emptyZip,
+					"invalid",
+					expect.stringContaining(text.unpack),
+				],
+				[entry("bridge", "0.0.2", wrongVersion), wrongVersion, "invalid", text.mismatch],
+			] as const;
+			for (const [listed, bytes, code, message] of cases) {
+				const h = harness();
+				const network = serve({
+					[OFFICIAL_URL]: envelope(key.privateKey, official({ extensions: [listed] })),
+					...(bytes === undefined ? {} : { [ZIP_URL]: bytes }),
+				});
+				i18n.set({ locale, voice: "plain" });
+				expect(await h.marketplace.install("official", "bridge")).toMatchObject({
+					ok: false,
+					code,
+					message,
+				});
+				expect(h.rescan).not.toHaveBeenCalled();
+				await expect(readFile(join(root, "bridge", "extension.json"))).rejects.toThrow();
+				const provenance = JSON.parse(
+					await readFile(join(root, MARKETPLACE_PROVENANCE_FILE), "utf8"),
+				);
+				expect(provenance.installed).toEqual({});
+				if (message === text.limit)
+					expect(network.mock.calls.map((call) => String(call[0]))).not.toContain(ZIP_URL);
+			}
+		},
+	);
+
 	/**
 	 * 🔴 从市场装完那句话后面要不要挂「看看说明」,凭的就是这一格。只断「没有文档 → 两格
 	 * 都是 false」的话,把这段推导写死成 false 也照样绿 —— 而那正是「装了个带 README 的
