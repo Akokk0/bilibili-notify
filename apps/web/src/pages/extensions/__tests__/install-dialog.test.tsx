@@ -57,6 +57,43 @@ afterEach(() => {
 });
 
 describe("装一个拓展", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、拡張機能を使うと、KoishiやAstrBotのボットを送信先にするなど、BNに外部の機能を追加できますよ。本体とは別に、必要なものを選んでインストールしてくださいね。",
+			"ご主人様、開発ビルドでは、左下のdevtoolsの「拓展」で、リポジトリーでビルドした dist をシンボリックリンクでインストールできますよ。インストール後すぐに一覧へ表示されます。コード変更後は「重载」を選べば、サーバー全体を再起動せずに読み込み直せますよ。",
+		],
+		[
+			"zh-TW",
+			"主人，拓展能替 BN 接上外部功能，例如借用 Koishi 或 AstrBot 中設定好的機器人作為推播目標。本體不附帶拓展，要不要安裝、安裝哪個，都由主人決定喔。",
+			"主人，開發版可以使用左下角 devtools 的「拓展」分組，將儲存庫中已建置的 dist 透過符號連結安裝喔，安裝後立即出現在清單中；修改程式碼後還可以選擇「重载」，不必重新啟動整個伺服器喔。",
+		],
+	] as const)(
+		"%s maid install instructions retain reported paths and actual devtool names without installing",
+		async (locale, description, dev) => {
+			vi.stubEnv("DEV", true);
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			renderDialog();
+			const path = await screen.findByText(ROOT);
+			for (const voice of ["maid", "plain", "maid"] as const) {
+				act(() => i18n.set({ locale, voice }));
+				if (voice === "maid") {
+					expect(screen.getByText(description)).toBeTruthy();
+					expect(
+						screen.getByText("dist").closest("[data-bn]")?.textContent?.replace(/\s+/g, " ").trim(),
+					).toBe(dev);
+				}
+				expect(screen.getByText(ROOT)).toBe(path);
+				expect(screen.getByText("extension.json")).toBeTruthy();
+				expect(screen.getByText("index.mjs")).toBeTruthy();
+				expect(screen.getByText("「拓展」").tagName).toBe("STRONG");
+				expect(screen.getByText("「重载」").tagName).toBe("STRONG");
+				expect(api.post).not.toHaveBeenCalled();
+				expect(api.upload).not.toHaveBeenCalled();
+			}
+		},
+	);
+
 	it("development guidance translates its explanation while retaining the actual untranslated devtools control names", () => {
 		vi.stubEnv("DEV", true);
 		i18n.set({ locale: "zh-CN", voice: "plain" });

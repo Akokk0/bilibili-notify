@@ -203,6 +203,36 @@ describe("拓展页", () => {
 		vi.restoreAllMocks();
 	});
 
+	it.each([
+		[
+			"ja",
+			"ご主人様、拡張機能はまだインストールされていませんよ。マーケットで選ぶか、信頼できるパッケージをアップロードしてくださいね。",
+			"ご主人様、拡張機能はBNに外部の機能を追加しますよ。本体には同梱していないので、インストールして有効にしてくださいね。",
+		],
+		[
+			"zh-TW",
+			"主人，還沒有安裝拓展呢。可以到拓展市場挑選，或上傳信任的套件喔。",
+			"主人，拓展能替 BN 接上外部功能；本體不附帶拓展，安裝並啟用後才會生效喔。",
+		],
+	] as const)(
+		"%s maid extension guidance changes without installing or refetching",
+		async (locale, empty, description) => {
+			apiPostMock.mockReset();
+			apiUploadMock.mockReset();
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			renderPage({ extensions: [] });
+			await screen.findByText("还没有安装拓展。可从拓展市场安装，或上传拓展包。");
+			const calls = apiGetMock.mock.calls.length;
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(empty)).toBeTruthy();
+			expect(screen.getByText(description)).toBeTruthy();
+			expect(apiGetMock.mock.calls.length).toBe(calls);
+			expect(apiPostMock).not.toHaveBeenCalled();
+			expect(apiPatchMock).not.toHaveBeenCalled();
+			expect(apiUploadMock).not.toHaveBeenCalled();
+		},
+	);
+
 	it.each(["install", "update"] as const)(
 		"%s feedback translates according to the submitted action without another installation",
 		async (action) => {

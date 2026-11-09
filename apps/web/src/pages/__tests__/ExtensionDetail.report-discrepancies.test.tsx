@@ -107,6 +107,45 @@ describe("拓展详情页:上报出入", () => {
 		disk.discrepancies = undefined;
 	});
 	it.each([
+		[
+			"ja",
+			"ご主人様、拡張機能の報告を受理できなかったり、内容を調整したりした履歴ですよ。直近20件だけを残し、BNを再起動すると消去しますね。",
+		],
+		[
+			"zh-TW",
+			"主人，這裡記錄拓展上報後被拒收或調整的內容，只保留最近 20 筆；重新啟動 BN 後就會清除喔。",
+		],
+	] as const)(
+		"%s maid report-retention guidance preserves the report and does not clear it",
+		async (locale, hint) => {
+			disk.discrepancies = [
+				{
+					at: Date.now(),
+					kind: "profile",
+					externalId: "Original ID",
+					subscriptionIds: [],
+					outcome: "rejected",
+					reasons: ["Original reason 原文 {at}"],
+				},
+			];
+			renderDetail();
+			const original = await screen.findByText("Original reason 原文 {at}");
+			const row = original.closest("li");
+			const reads = vi.mocked(api.get).mock.calls.length;
+			for (const voice of ["maid", "plain"] as const) {
+				act(() => i18n.set({ locale, voice }));
+				if (voice === "maid") expect(screen.getByText(hint)).toBeTruthy();
+				expect(screen.getByText("Original reason 原文 {at}")).toBe(original);
+				expect(original.closest("li")).toBe(row);
+				expect(screen.getByText("Original ID")).toBeTruthy();
+				expect(vi.mocked(api.get).mock.calls.length).toBe(reads);
+				expect(api.patch).not.toHaveBeenCalled();
+				expect(api.delete).not.toHaveBeenCalled();
+			}
+		},
+	);
+
+	it.each([
 		["zh-CN", "2026/11/2 17:04:05"],
 		["en", "11/2/2026, 5:04:05 PM"],
 		["ja", "2026/11/2 17:04:05"],
