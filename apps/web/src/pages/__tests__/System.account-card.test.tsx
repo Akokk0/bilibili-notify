@@ -122,6 +122,30 @@ afterEach(() => {
 });
 
 describe("系统页账号卡 · 六种登录状态", () => {
+	it.each([
+		["en", "Raw sign-in snapshot"],
+		["ja", "ログイン状態の元データ"],
+		["zh-TW", "原始登入快照"],
+	] as const)(
+		"%s translates snapshot heading while retaining the exact source response",
+		async (locale, title) => {
+			H.auth = {
+				state: { status: "error", message: "Original auth diagnostic 原文" },
+				account: { name: "Original account 原文" },
+			};
+			renderSystem();
+			await screen.findByText("Original auth diagnostic 原文");
+			const disclosure = screen.getByText("原始登录快照").closest("details");
+			const raw = disclosure?.querySelector("pre")?.textContent;
+			expect(JSON.parse(raw ?? "")).toEqual({ accounts: [{ sourceKey: "library", ...H.auth }] });
+			await act(async () => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByText(title).closest("details")).toBe(disclosure);
+			expect(disclosure?.querySelector("pre")?.textContent).toBe(raw);
+			expect(H.posted).toEqual([]);
+			expect(H.deleted).toEqual([]);
+		},
+	);
+
 	it("状态还没取到：等待账号列表，不能对未知来源发起操作", async () => {
 		H.auth = new Promise(() => {}) as never;
 		renderSystem();

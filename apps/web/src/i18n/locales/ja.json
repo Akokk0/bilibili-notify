@@ -3166,6 +3166,8 @@
 	"panelUi.components.skin-preview-bar.3": "適用中…",
 	"panelUi.components.skin-preview-bar.4": "適用",
 	"panelUi.components.skin-preview-bar.5": "キャンセル",
+	"targetDisplay.paused": "無効",
+	"panelUi.pages.system.account-section.21": "ログイン状態の元データ",
 	"panelUi.pages.up.TagEditDialog.1": "タグを編集",
 	"panelUi.pages.up.TagEditDialog.4": "新しいタグ名",
 	"panelUi.pages.up.TagEditDialog.5": "追加",

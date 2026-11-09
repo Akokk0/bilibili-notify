@@ -7,8 +7,9 @@
  * 连接停用的目标也标。不测样式。
  */
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import type { Connection, PushTarget } from "../../types/domain";
 import { TargetChipPicker } from "../target-chip-picker";
 
@@ -31,8 +32,36 @@ const ADAPTER = "11111111-1111-4111-8111-111111111111";
 const connections = [{ id: ADAPTER, enabled: true }] as Connection[];
 
 afterEach(cleanup);
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
 
 describe("TargetChipPicker", () => {
+	it.each([
+		["en", "Disabled"],
+		["ja", "無効"],
+		["zh-TW", "已停用"],
+	] as const)(
+		"%s relabels paused targets without hiding them or changing their identity",
+		(locale, paused) => {
+			const onToggle = vi.fn();
+			render(
+				<TargetChipPicker
+					targets={[target(T_A, "Original target 原文")]}
+					connections={[{ id: ADAPTER, enabled: false }] as Connection[]}
+					selected={[T_A]}
+					onToggle={onToggle}
+					tone="var(--color-bn-pink)"
+				/>,
+			);
+			const chip = screen.getByRole("button", { name: /Original target 原文/ });
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(screen.getByRole("button", { name: /Original target 原文/ })).toBe(chip);
+			expect(within(chip).getByText(paused)).toBeTruthy();
+			expect(chip.getAttribute("data-bn")).toContain("chip-active");
+			fireEvent.click(chip);
+			expect(onToggle).toHaveBeenCalledExactlyOnceWith(T_A);
+		},
+	);
+
 	it("每个目标一颗胶囊,点一下回调它的 id", () => {
 		const onToggle = vi.fn();
 		render(

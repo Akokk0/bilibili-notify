@@ -3235,6 +3235,8 @@
 	"panelUi.components.skin-preview-bar.3": "Applying…",
 	"panelUi.components.skin-preview-bar.4": "Apply",
 	"panelUi.components.skin-preview-bar.5": "Cancel",
+	"targetDisplay.paused": "Disabled",
+	"panelUi.pages.system.account-section.21": "Raw sign-in snapshot",
 	"panelUi.pages.up.TagEditDialog.1": "Edit tags",
 	"panelUi.pages.up.TagEditDialog.4": "New tag name",
 	"panelUi.pages.up.TagEditDialog.5": "Add",
