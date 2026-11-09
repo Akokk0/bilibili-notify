@@ -14,7 +14,8 @@ import {
 	SKIN_CSS_HOOK_NOTES,
 	type SkinCssHook,
 } from "@bilibili-notify/contract";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { runSkinAiCreate } from "../ai-create.js";
 import { WALLPAPER_IMAGE_RE } from "../schema.js";
 
@@ -24,10 +25,50 @@ const SKIN = {
 	modes: { dark: { colors: { accent: "#00e5ff" } } },
 };
 
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
 function gen(...answers: string[]) {
 	let i = 0;
 	return vi.fn(async (_system: string, _user: string) => answers[i++] ?? answers.at(-1) ?? "");
 }
+
+it.each([
+	[
+		"en",
+		"The generated skin did not use the requested wallpaper in light / dark. It was added with default settings (overlay 0.35 / blur 12).",
+	],
+	[
+		"ja",
+		"生成されたスキンのlight / darkに指定の壁紙が使われていなかったため、既定の設定で追加しました（overlay 0.35 / blur 12）。",
+	],
+	[
+		"zh-TW",
+		"產生的外觀未在 light / dark 使用指定桌布，已依預設參數補上（overlay 0.35 / blur 12）。",
+	],
+] as const)("%s:自动补壁纸的告警本地化,作者名称及既定兜底参数不变", async (locale, warning) => {
+	i18n.set({ locale, voice: "plain" });
+	const raw = { ...SKIN, name: "Original skin 原文", modes: { light: {}, dark: {} } };
+	const generateRaw = gen(JSON.stringify(raw));
+	const result = await runSkinAiCreate({
+		generateRaw,
+		brief: "Original request",
+		assets: ["assets/original.jpg"],
+		wallpaper: "assets/original.jpg",
+	});
+	expect(result.ok).toBe(true);
+	if (!result.ok) throw new Error(result.message);
+	expect(result.warnings).toEqual([warning]);
+	expect(result.manifest.name).toBe("Original skin 原文");
+	for (const mode of ["light", "dark"] as const)
+		expect(result.manifest.modes[mode]?.wallpaper).toEqual({
+			image: "assets/original.jpg",
+			fit: "cover",
+			overlay: 0.35,
+			blur: 12,
+		});
+	expect(generateRaw).toHaveBeenCalledTimes(1);
+	expect(raw.modes).toEqual({ light: {}, dark: {} });
+});
 
 describe("runSkinAiCreate", () => {
 	it("一次给出合法 JSON(哪怕带围栏)→ ok,产物是清洗后的 manifest", async () => {

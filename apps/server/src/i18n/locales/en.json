@@ -1476,5 +1476,8 @@
 	"service.card-skins.ai-css.text.3": "The output is empty.",
 	"service.card-skins.css-sanitizer.text.1": "The {value0} card has no built-in block named \"{value1}\"; this CSS is sanitized using only self.",
 	"service.card-skins.preview-html.text.1": "No running source declares membership tiers, so a membership card example cannot be rendered.",
-	"service.card-skins.preview-html.text.2": "Skin preview · {value0}"
+	"service.card-skins.preview-html.text.2": "Skin preview · {value0}",
+	"service.skins.ai-edit.text.1": "The output is not valid JSON.",
+	"service.skins.ai-edit.text.2": "{value0}: manifest references this file, but it is missing from the package.",
+	"service.skins.ai-create.text.1": "The generated skin did not use the requested wallpaper in {value0}. It was added with default settings (overlay {value1} / blur {value2})."
 }

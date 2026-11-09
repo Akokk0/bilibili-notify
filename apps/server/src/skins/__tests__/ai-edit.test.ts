@@ -16,16 +16,56 @@ import {
 	type PackageTextKey,
 	withPackageDicts,
 } from "@bilibili-notify/internal/texts";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { buildSkinAiSystemPrompt, runSkinAiEdit } from "../ai-edit.js";
 
 const ASSETS = ["assets/bg.png", "assets/deco.webp"];
 
 const DRAFT = { schemaVersion: 1, name: "樱花夜", modes: { light: {} } };
 
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
 function validJson(extra?: object): string {
 	return JSON.stringify({ ...DRAFT, name: "樱花夜·AI", ...extra });
 }
+
+it.each([
+	[
+		"en",
+		"The output is not valid JSON.",
+		"assets/missing.png: manifest references this file, but it is missing from the package.",
+	],
+	[
+		"ja",
+		"出力は有効なJSONではありません。",
+		"assets/missing.png：manifestが参照していますが、このファイルはパッケージにありません。",
+	],
+	[
+		"zh-TW",
+		"輸出不是有效的 JSON。",
+		"assets/missing.png：manifest 參照了此檔案，但套件中沒有這個檔案。",
+	],
+] as const)(
+	"%s:模型格式与引用错误本地化,只重试一次且不改输入草稿",
+	async (locale, jsonError, assetError) => {
+		i18n.set({ locale, voice: "plain" });
+		const draft = structuredClone(DRAFT);
+		for (const [reply, message] of [
+			["Original invalid JSON", jsonError],
+			[validJson({ modes: { light: { wallpaper: { image: "assets/missing.png" } } } }), assetError],
+		] as const) {
+			const generateRaw = vi.fn(async (_system: string, _user: string) => reply);
+			expect(
+				await runSkinAiEdit({ generateRaw, draft, instruction: "Original request", assets: [] }),
+			).toEqual({ ok: false, code: "invalid", message, issues: [{ message }] });
+			expect(generateRaw).toHaveBeenCalledTimes(2);
+			expect(generateRaw.mock.calls[1]?.[1]).toContain(message);
+			expect(generateRaw.mock.calls[1]?.[1]).toContain(reply);
+		}
+		expect(draft).toEqual(DRAFT);
+	},
+);
 
 describe("buildSkinAiSystemPrompt", () => {
 	/**

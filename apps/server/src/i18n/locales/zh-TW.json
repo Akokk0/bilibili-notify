@@ -1465,5 +1465,8 @@
 	"service.card-skins.ai-css.text.3": "輸出為空。",
 	"service.card-skins.css-sanitizer.text.1": "{value0} 卡片沒有名為「{value1}」的內建區塊，這段 CSS 只會依 self 清理。",
 	"service.card-skins.preview-html.text.1": "沒有執行中的來源宣告會員等級，無法產生會員卡片範例。",
-	"service.card-skins.preview-html.text.2": "外觀預覽 · {value0}"
+	"service.card-skins.preview-html.text.2": "外觀預覽 · {value0}",
+	"service.skins.ai-edit.text.1": "輸出不是有效的 JSON。",
+	"service.skins.ai-edit.text.2": "{value0}：manifest 參照了此檔案，但套件中沒有這個檔案。",
+	"service.skins.ai-create.text.1": "產生的外觀未在 {value0} 使用指定桌布，已依預設參數補上（overlay {value1} / blur {value2}）。"
 }
