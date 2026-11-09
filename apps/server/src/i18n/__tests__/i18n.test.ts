@@ -9,6 +9,17 @@ afterEach(() => {
 
 describe("服务端字典 store", () => {
 	it.each([
+		["ja", "ご主人様、選んでくださいね。", "選択してください"],
+		["zh-TW", "請選擇喔，主人", "請選擇"],
+	] as const)("%s：真实服务端字典合并包女仆层，平实模式仍读底稿", (locale, maid, plain) => {
+		i18n.set({ locale, voice: "maid" });
+		expect(i18n.state().voice).toBe("maid");
+		expect(t("ui.select.placeholder")).toBe(maid);
+		i18n.set({ voice: "plain" });
+		expect(t("ui.select.placeholder")).toBe(plain);
+	});
+
+	it.each([
 		["en", "Unable to read settings"],
 		["ja", "設定を読み取れません"],
 		["zh-TW", "無法讀取設定"],

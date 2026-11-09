@@ -2,7 +2,7 @@
  * 包字典(ADR-0037 决策 6 下 10-28 的 🔗,4-56):各包与 contract 给人看的话都住这一份,两端共用。
  *
  * 零依赖子路径 `@bilibili-notify/internal/texts`:译文住 `locales/` 的几份 JSON(打包时内联),
- * 形状同两端那套(每种语言一份平实版,中文另有女仆层)。键的第一段是包名(`internal.*`、`ai.*` …),
+ * 形状同两端那套(四语平实版,简中/台湾繁体/日文另有女仆层)。键的第一段是包名(`internal.*`、`ai.*` …),
  * 两端字典的键不许用这些名字开头(`scripts/__tests__/i18n-dicts.test.mjs` 钉着)。
  *
  * - 包里出字:`packageText(键, 值)`,**出字那一刻**调(决策 1)。zod 的报错写成
@@ -30,9 +30,11 @@ import {
 import type { Disposable } from "../platform";
 import en from "./locales/en.json";
 import ja from "./locales/ja.json";
+import jaMaid from "./locales/ja.maid.json";
 import zhCN from "./locales/zh-CN.json";
 import zhCNMaid from "./locales/zh-CN.maid.json";
 import zhTW from "./locales/zh-TW.json";
+import zhTWMaid from "./locales/zh-TW.maid.json";
 
 /**
  * 包字典的键:从简体中文那份推,写错编译时报。经 `PACKAGE_DICTS` 取而不直接写 `typeof zhCN`:
@@ -44,9 +46,9 @@ export type PackageTextKey = DictKey<(typeof PACKAGE_DICTS)["zh-CN"]["plain"]>;
 /** 四种语言的包字典。繁体、英文、日文在第 5 期逐片补齐,缺的句子拿简体中文打底。 */
 export const PACKAGE_DICTS = {
 	"zh-CN": { plain: zhCN, maid: zhCNMaid },
-	"zh-TW": { plain: zhTW },
+	"zh-TW": { plain: zhTW, maid: zhTWMaid },
 	en: { plain: en },
-	ja: { plain: ja },
+	ja: { plain: ja, maid: jaMaid },
 } satisfies Record<Locale, LocaleDicts>;
 
 /**

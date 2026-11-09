@@ -11,6 +11,17 @@ afterEach(() => {
 });
 
 describe("面板字典垫着包字典", () => {
+	it.each([
+		["ja", "ご主人様、選んでくださいね。", "選択してください"],
+		["zh-TW", "請選擇喔，主人", "請選擇"],
+	] as const)("%s：真实面板字典读到包女仆层，平实模式仍读底稿", (locale, maid, plain) => {
+		i18n.set({ locale, voice: "maid" });
+		expect(i18n.state().voice).toBe("maid");
+		expect(i18n.t("ui.select.placeholder")).toBe(maid);
+		i18n.set({ voice: "plain" });
+		expect(i18n.t("ui.select.placeholder")).toBe(plain);
+	});
+
 	it("包里的句子经面板的 t 取得到,换语言时拿简体打底", () => {
 		i18n.set({ locale: "zh-CN", voice: "maid" });
 		expect(i18n.t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");

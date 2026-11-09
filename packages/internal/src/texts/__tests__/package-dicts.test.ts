@@ -13,6 +13,46 @@ const END = {
 };
 
 describe("withPackageDicts", () => {
+	it.each([
+		[
+			"ja",
+			"ご主人様、選んでくださいね。",
+			"ご主人様、リクエストがタイムアウトして中止されました：Original 診断",
+			"選択してください",
+		],
+		["zh-TW", "請選擇喔，主人", "主人，請求逾時已中止：Original 診断", "請選擇"],
+	] as const)(
+		"%s：包女仆层真实合并、切换口吻，诊断参数不翻译",
+		(locale, select, error, plainSelect) => {
+			const i18n = createI18n<string, Locale>({
+				dicts: withPackageDicts(END),
+				fallback: "zh-CN",
+				locale,
+				voice: "maid",
+			});
+			expect(i18n.state().voice).toBe("maid");
+			expect(i18n.t("ui.select.placeholder")).toBe(select);
+			expect(i18n.t("http.http-client.2", { value0: "Original 診断" })).toBe(error);
+			i18n.set({ voice: "plain" });
+			expect(i18n.t("ui.select.placeholder")).toBe(plainSelect);
+			i18n.set({ voice: "maid" });
+			i18n.set({ locale: "en" });
+			expect(i18n.state().voice).toBe("plain");
+			i18n.set({ locale });
+			expect(i18n.t("ui.select.placeholder")).toBe(select);
+		},
+	);
+
+	it.each(["ja", "zh-TW"] as const)(
+		"%s：包女仆层覆盖与简中完全对齐，不遗漏或增加数据标签",
+		(locale) => {
+			const layers: LocaleDicts = PACKAGE_DICTS[locale];
+			expect(Object.keys(layers.maid ?? {}).sort()).toEqual(
+				Object.keys(PACKAGE_DICTS["zh-CN"].maid).sort(),
+			);
+		},
+	);
+
 	it("两端的字典过它之后,本端的句子与包里的句子在每种语言下都取得到", () => {
 		const i18n = createI18n<string, Locale>({
 			dicts: withPackageDicts(END),
@@ -53,8 +93,7 @@ describe("withPackageDicts", () => {
 		expect(i18n.state().voice).toBe("maid");
 	});
 
-	it("本端与包都没有女仆层的语言照旧没有女仆层(口吻那一项在这种语言下不出现)", () => {
-		expect(withPackageDicts(END)["zh-TW"]).toEqual({ plain: PACKAGE_DICTS["zh-TW"].plain });
+	it("英文第一版只有平实层，不提供女仆层", () => {
 		expect("maid" in withPackageDicts(END).en).toBe(false);
 	});
 });

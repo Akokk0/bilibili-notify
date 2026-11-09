@@ -64,7 +64,7 @@ describe("useTextSettings", () => {
 	});
 
 	it("缺口吻 → 规则默认女仆", async () => {
-		// 日文今天没有女仆层,实际口吻看不出来;换到简中才能看到「要的是女仆」
+		// 以明确提供完整女仆层的简中验证默认值，不依赖当前语言的翻译进度。
 		i18n.set({ locale: "en", voice: "plain" });
 		get.mockResolvedValue({ core: { locale: "zh-CN" } } as never);
 		mount();

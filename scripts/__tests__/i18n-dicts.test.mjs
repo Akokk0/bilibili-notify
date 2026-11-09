@@ -118,8 +118,8 @@ const COMPLETE_LOCALES_BY_DIR = {
 	"apps/server/src/migration/locales": ["zh-CN", "en", "ja", "zh-TW"],
 };
 
-/** 有女仆层的语言(ADR-0037 决策 4):今天 zh-CN,ja 第 5 期。其余语言出现女仆层文件就是错。 */
-export const MAID_LOCALES = ["zh-CN"];
+/** ADR-0037决策4：简中、台湾繁体与日文有女仆层，英文第一版仅平实层。 */
+export const MAID_LOCALES = ["zh-CN", "zh-TW", "ja"];
 
 const isPlainObject = (value) =>
 	typeof value === "object" && value !== null && !Array.isArray(value);

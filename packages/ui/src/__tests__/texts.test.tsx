@@ -2,13 +2,52 @@
 import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
 import { type PackageTextKey, withPackageDicts } from "@bilibili-notify/internal/texts";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "vite-plus/test";
+import { afterEach, expect, it, vi } from "vite-plus/test";
 import { ConfirmDialog } from "../dialog";
-import { TColor } from "../form-controls";
+import { TColor, TSelect } from "../form-controls";
 import { UiTextProvider } from "../texts";
 import { TriStateChip } from "../tri-state";
 
 afterEach(cleanup);
+it("Japanese and Taiwanese maid text updates an existing select without changing its value", () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "ja",
+		voice: "maid",
+	});
+	const onChange = vi.fn();
+	const tree = () => (
+		<UiTextProvider t={texts.state().t}>
+			<TSelect
+				value=""
+				options={[{ value: "a", label: "Option" }]}
+				ariaLabel="Choice"
+				onChange={onChange}
+			/>
+		</UiTextProvider>
+	);
+	const { rerender } = render(tree());
+	const select = screen.getByRole("combobox", { name: "Choice" });
+	for (const [locale, voice, message] of [
+		["ja", "maid", "ご主人様、選んでくださいね。"],
+		["ja", "plain", "選択してください"],
+		["zh-TW", "maid", "請選擇喔，主人"],
+		["zh-TW", "plain", "請選擇"],
+	] as const) {
+		texts.set({ locale, voice });
+		rerender(tree());
+		expect(screen.getByRole("combobox", { name: "Choice" })).toBe(select);
+		expect(select.textContent).toBe(message);
+	}
+	expect(onChange).not.toHaveBeenCalled();
+});
+
 it("updates mounted form controls when the supplied translator changes", () => {
 	const { rerender } = render(
 		<UiTextProvider t={() => "Picker"}>
