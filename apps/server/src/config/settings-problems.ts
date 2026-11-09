@@ -75,7 +75,10 @@ function reasonOf(entry: InvalidSettingEntry): string {
 	const first = entry.issues[0];
 	if (!first) return serverText("service.config.settings-problems.text.1");
 	if (isInstance(entry) && first.path && first.path.length > 0) {
-		return `${first.path.join(".")}：${first.message}`;
+		return serverText("settings.problem.reason", {
+			field: first.path.join("."),
+			message: first.message,
+		});
 	}
 	return first.message;
 }
@@ -83,8 +86,13 @@ function reasonOf(entry: InvalidSettingEntry): string {
 /** 一格在列表里的写法。`withPrefix`:单家的前面加「AI 服务商」(列表里还有别的格时才需要)。 */
 function labelOf(entry: InvalidSettingEntry, withPrefix: boolean): string {
 	const id = instanceLabelOf(entry);
-	if (id === undefined) return `${cellName(entry)}（${reasonOf(entry)}）`;
-	return `${withPrefix ? serverText("service.config.settings-problems.text.2") : ""}${id}（${reasonOf(entry)}）`;
+	return serverText("settings.problem.entry", {
+		label:
+			id === undefined
+				? cellName(entry)
+				: `${withPrefix ? serverText("service.config.settings-problems.text.2") : ""}${id}`,
+		reason: reasonOf(entry),
+	});
 }
 
 /** 摊开前三格,多的写「等 N <单位>」。 */
@@ -101,7 +109,7 @@ function listed(
 				value1: unit,
 			}),
 		);
-	return shown.join("；");
+	return shown.join(serverText("settings.problem.listSeparator"));
 }
 
 /** 问题条目里的那句话(女仆口吻)。不带原文:原文可能是主人手写进去的明文 key。 */

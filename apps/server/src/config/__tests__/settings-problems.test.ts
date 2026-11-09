@@ -4,7 +4,7 @@
  */
 
 import type { Logger } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { logMessage } from "../../__tests__/support/log-message.js";
 import { i18n } from "../../i18n/index.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
@@ -15,6 +15,8 @@ import {
 	shortenInstanceId,
 	syncSettingsProblem,
 } from "../settings-problems.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function entry(path: string[], reason: string, raw: unknown = "原文"): InvalidSettingEntry {
 	return {
@@ -38,6 +40,123 @@ function mkTable() {
 }
 
 describe("settingsInvalidMessage", () => {
+	it.each([
+		[
+			"en",
+			{
+				head: "Configuration could not be read (fields: 1); defaults are in use: history (Original diagnostic). ",
+				edit: "Edit this field in the dashboard and save your changes.",
+				provider:
+					"Unreadable AI providers: 1. Details: Original provider (model: Original diagnostic). ",
+				providers: "Unreadable AI providers: 2.",
+				ignored: "Currently, this provider will be skipped.",
+				handsOff: "Do not edit this field under ai in the dashboard:",
+				keys: "and its saved keys",
+				manual: "including any manually entered keys not yet in encrypted storage",
+				more: "unlisted fields: 1",
+				invalid: "empty (Invalid format)",
+				taken:
+					"This ID (Original provider) is already used by an unreadable AI provider in the settings file. Changes were not saved.",
+			},
+		],
+		[
+			"ja",
+			{
+				head: "設定ファイル内の1項目を読み取れないため、既定値で動作しています：history（Original diagnostic）。",
+				edit: "ダッシュボードでこの項目を編集して保存してください。",
+				provider:
+					"設定ファイル内のAIプロバイダー（1件）を読み取れません：Original provider（model：Original diagnostic）。",
+				providers: "設定ファイル内のAIプロバイダー（2件）を読み取れません：",
+				ignored: "このプロバイダーは一時的に存在しないものとして扱います。",
+				handsOff: "aiで始まるこの項目はダッシュボードで編集しないでください。",
+				keys: "保存済みのキーとともに置き換えます",
+				manual: "手動入力されて暗号化ストレージにまだ保存されていないキーも失われます",
+				more: "ほか1項目",
+				invalid: "empty（形式が無効です）",
+				taken:
+					"このID（Original provider）は設定ファイル内の読み取れないAIプロバイダーで使用されています。保存しませんでした。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				head: "設定檔中有一個欄位無法讀取，暫時使用預設值：history（Original diagnostic）。",
+				edit: "請到面板將這個欄位改成需要的內容並儲存；",
+				provider:
+					"設定檔中有一家 AI 服務供應商無法讀取：Original provider（model：Original diagnostic）。",
+				providers: "設定檔中有 2 家 AI 服務供應商無法讀取：",
+				ignored: "這一家暫時視為不存在，",
+				handsOff: "ai 開頭的這個欄位請勿在面板修改：",
+				keys: "連同已存的金鑰一起取代",
+				manual: "手動輸入且尚未存入加密儲存區的 key 也會一併遺失",
+				more: "等 1 個欄位",
+				invalid: "empty（格式無效）",
+				taken: "此 ID（Original provider）已被設定檔中無法讀取的 AI 服務供應商使用，本次未儲存。",
+			},
+		],
+	] as const)(
+		"%s preserves repair boundaries and raw diagnostics, and rewords open problems without a new notification",
+		(locale, text) => {
+			const logger = mkLogger();
+			const table = createProblemTable({
+				logger,
+				texts: {
+					locale: () => i18n.state().locale,
+					onChange: (fn) => ({ dispose: i18n.subscribe(fn) }),
+				},
+			});
+			const changes: ProblemChange[] = [];
+			table.subscribe((change) => changes.push(change));
+			try {
+				syncSettingsProblem(
+					table,
+					[entry(["history"], "Original diagnostic", "sk-SECRET-RAW")],
+					logger,
+				);
+				const since = table.list()[0]?.since;
+				i18n.set({ locale, voice: "plain" });
+				const plain = table.list()[0]?.message ?? "";
+				expect(plain.startsWith(text.head)).toBe(true);
+				expect(plain).toContain(text.edit);
+				expect(table.list()[0]?.since).toBe(since);
+				expect(changes.map((c) => [c.kind, c.notify])).toEqual([
+					["opened", false],
+					["updated", false],
+				]);
+				const provider = settingsInvalidMessage([
+					inst("Original provider", "model", "Original diagnostic"),
+				]);
+				expect(provider.startsWith(text.provider)).toBe(true);
+				expect(provider).toContain(text.ignored);
+				expect(provider).toContain("config/settings/core.json");
+				expect(
+					settingsInvalidMessage([inst("a", "model", "A"), inst("b", "model", "B")]),
+				).toContain(text.providers);
+				const handsOff = settingsInvalidMessage([
+					entry(["ai", "providers"], "Original diagnostic"),
+				]);
+				expect(handsOff).toContain(text.handsOff);
+				expect(handsOff).toContain(text.keys);
+				expect(handsOff).not.toContain(text.edit);
+				const search = settingsInvalidMessage([entry(["ai", "search"], "Original diagnostic")]);
+				expect(search).toContain(text.manual);
+				expect(search).not.toContain(text.keys);
+				const many = settingsInvalidMessage(
+					["a", "b", "c", "d"].map((k) => entry([k], "Original diagnostic")),
+				);
+				expect(many).toContain(text.more);
+				const empty = { ...entry(["empty"], ""), issues: [] };
+				expect(settingsInvalidMessage([empty])).toContain(text.invalid);
+				expect(brokenInstanceIdTakenMessage("Original provider")).toContain(text.taken);
+				for (const message of [plain, provider, handsOff, search, many]) {
+					expect(message).not.toContain("sk-SECRET-RAW");
+					expect(message).not.toContain("第二条不该出现");
+				}
+			} finally {
+				table.dispose();
+			}
+		},
+	);
 	it("只有一格:写「有一格」「把这一格」,原因取第一条 issue 的话", () => {
 		const text = settingsInvalidMessage([entry(["history"], "Invalid input")]);
 		expect(text).toContain("有一格女仆读不懂");
