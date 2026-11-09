@@ -11,7 +11,7 @@
  */
 
 import { CARD_SKIN_LIMITS, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import { SkinInspector } from "../SkinInspector";
@@ -121,4 +121,41 @@ describe("面板计数器按 UTF-8 字节报", () => {
 		mount(withCustomBlock(cjk), { kind: "block", id: CUSTOM_ID });
 		expect(screen.getAllByText(/超过上限/).length).toBeGreaterThan(0);
 	});
+});
+
+it.each([
+	[
+		"ja",
+		"ご主人様、空のカスタムブロックは保存できませんよ。取り込み時には、安全性チェック後に内容が残っているかを確かめます。",
+		"ご主人様、このHTMLは9000バイトで、上限の8192バイトを超えています。少し減らしてから保存してくださいね。",
+		"ご主人様、このCSSは20000バイトで、上限の16384バイトを超えています。少し減らしてから保存してくださいね。",
+	],
+	[
+		"zh-TW",
+		"主人，空白的自訂區塊無法儲存喔；匯入時會檢查安全性清理後是否還有內容。",
+		"主人，這段 HTML 有 9000 位元組，超過上限 8192，請刪減一些再儲存喔。",
+		"主人，這段 CSS 有 20000 位元組，超過上限 16384，請刪減一些再儲存喔。",
+	],
+] as const)("%s 女仆空块与UTF-8上限提示不改写原HTML或CSS", (locale, empty, htmlError, cssError) => {
+	mount(withCustomBlock(""), { kind: "block", id: CUSTOM_ID });
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(empty)).toBeTruthy();
+	expect((screen.getByRole("textbox", { name: /HTML/ }) as HTMLTextAreaElement).value).toBe("");
+	cleanup();
+	mount(
+		(m) => {
+			withCustomBlock("字".repeat(3000))(m);
+			const blocks = m.cards.live.blocks as Array<Record<string, unknown>>;
+			blocks[blocks.length - 1].css = "x".repeat(20000);
+		},
+		{ kind: "block", id: CUSTOM_ID },
+	);
+	expect(screen.getByText(htmlError)).toBeTruthy();
+	expect(screen.getByText(cssError)).toBeTruthy();
+	expect((screen.getByRole("textbox", { name: /HTML/ }) as HTMLTextAreaElement).value).toBe(
+		"字".repeat(3000),
+	);
+	expect((screen.getByRole("textbox", { name: /CSS/ }) as HTMLTextAreaElement).value).toBe(
+		"x".repeat(20000),
+	);
 });

@@ -84,6 +84,7 @@ describe("面板译文文件都接进了 DICTS", () => {
 			"skinUi.CssEditor.",
 			"skinUi.CssAiSlot.",
 			"skinUi.SkinPreviewPane.",
+			"skinUi.SkinInspector.",
 			"skinUi.card-skin-ai.",
 			"skinUi.preview-error.",
 		];
