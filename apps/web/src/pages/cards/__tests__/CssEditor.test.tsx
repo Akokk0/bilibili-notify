@@ -381,3 +381,27 @@ describe("源码视图", () => {
 		expect(last(onChange)).toBe('[data-bn="self"]{padding:4px}');
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、このCSSは今は解析できません。括弧の対応などをソースで直せば、構造ビューに戻れますよ。",
+		"ご主人様、ルールはまだありません。下のフックを選んで、1つ作ってみましょう。",
+	],
+	[
+		"zh-TW",
+		"主人，這段 CSS 目前無法剖析，可能是括號沒配好喔。先到原始碼修正，結構檢視就會回來了。",
+		"主人，還沒有規則喔，選下面一個掛點來建立一條吧。",
+	],
+] as const)("%s 女仆解析与空态提示不改写原CSS", (locale, invalid, empty) => {
+	const original = '/* Original 原文 */[data-bn="self"]{color:red}}';
+	const broken = mount(original);
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(invalid)).toBeTruthy();
+	expect((screen.getByLabelText("这个块的 CSS") as HTMLTextAreaElement).value).toBe(original);
+	expect(broken.onChange).not.toHaveBeenCalled();
+	cleanup();
+	const blank = mount("");
+	expect(screen.getByText(empty)).toBeTruthy();
+	expect(blank.onChange).not.toHaveBeenCalled();
+});

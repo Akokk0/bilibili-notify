@@ -575,5 +575,17 @@
 	"skinUi.CardSkinSection.16": "ご主人様、スキンライブラリーは空です。スキンパッケージをアップロードしてみてくださいね。",
 	"skinUi.CardSkinSection.19": "ご主人様、「{value0}」を削除しますか？削除後は元に戻せませんよ。",
 	"skinUi.CardSkinSection.fallback": "ご主人様、{skin}の{kind}カードは既定スキンに切り替わりました：{reason}",
-	"cards.skin.globalSelectHint": "ご主人様、個別のスキンを指定していない購読で使う既定のスキンを選べますよ。選択すると自動で保存しますね。"
+	"cards.skin.globalSelectHint": "ご主人様、個別のスキンを指定していない購読で使う既定のスキンを選べますよ。選択すると自動で保存しますね。",
+	"skinUi.CssEditor.3": "ご主人様、このCSSは今は解析できません。括弧の対応などをソースで直せば、構造ビューに戻れますよ。",
+	"skinUi.CssEditor.4": "ご主人様、ルールはまだありません。下のフックを選んで、1つ作ってみましょう。",
+	"skinUi.SkinPreviewPane.2": "ご主人様、リアルタイムプレビューは、送信画像とフォントなどの細部が違うことがあります。「最終イメージ」で実際の仕上がりをご確認くださいね。",
+	"skinUi.SkinPreviewPane.9": "ご主人様、描画用ブラウザーが未設定なので、まだ撮影できませんよ。システム設定でブラウザーを指定するか、環境変数 BN_CHROME_PATH / BN_CHROME_ENDPOINT を設定してくださいね。下のリアルタイムプレビューはそのまま使えます。",
+	"skinUi.SkinPreviewPane.13": "ご主人様、選んだブロックの枠はプレビューには出しませんよ。位置を確かめるときは、中央のキャンバスの行と列をご覧くださいね。",
+	"skinUi.SkinPreviewPane.scaled": "ご主人様、この欄には幅{width}pxのカードが収まらないので、{percent}%に縮小してお見せしていますよ。",
+	"skinUi.SkinPreviewPane.heightLimit": "ご主人様、このカードは高さ{height}pxで上限を超えています。実際の描画は失敗して既定スキンに戻るので、先に高さを調整してくださいね。",
+	"skinUi.SkinPreviewPane.17": "ご主人様、撮影後に下書きが変わりました。この画像は前の版ですよ。「最終イメージ」をもう一度選んでくださいね。",
+	"skinUi.CssAiSlot.instructionLimit#other": "ご主人様、ご要望は{count}文字以内にまとめてくださいね。",
+	"skinUi.CssAiSlot.13": "お願いね",
+	"skinUi.CssAiSlot.10#other": "ご主人様、ルールを{count}件書けました…",
+	"skinUi.CssAiSlot.1": "ご主人様、最初の案は安全性チェックを通りませんでした。メイドが書き直していますので、少しお待ちくださいね。"
 }

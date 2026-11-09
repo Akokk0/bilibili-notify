@@ -379,3 +379,100 @@ describe("CSS 旁边的「请女仆帮忙写」", () => {
 		expect(box().value).toBe(ORIGINAL);
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、ご要望は2000文字以内にまとめてくださいね。",
+		"お願いね",
+		"中止",
+		"ブロックのCSS",
+		"このCSSをどう変えますか",
+	],
+	[
+		"zh-TW",
+		"主人，請把需求控制在 2000 個字元以內喔。",
+		"拜託啦",
+		"取消",
+		"區塊 CSS",
+		"希望這段 CSS 呈現什麼樣式",
+	],
+] as const)(
+	"%s 女仆生成入口保留字数限制、原CSS与明确请求边界",
+	async (locale, limit, generate, stop, cssLabel, prompt) => {
+		const { ai, state, run } = fakeAi();
+		render(<Harness ai={ai} selection={COVER} />);
+		box();
+		fireEvent.click(slot());
+		const dialog = screen.getByRole("dialog");
+		fireEvent.change(within(dialog).getByLabelText("想让这段 CSS 变成什么样"), {
+			target: { value: "x".repeat(2001) },
+		});
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(within(dialog).getByText(limit)).toBeTruthy();
+		expect(
+			(within(dialog).getByRole("button", { name: generate }) as HTMLButtonElement).disabled,
+		).toBe(true);
+		expect(run).not.toHaveBeenCalled();
+		fireEvent.change(within(dialog).getByLabelText(prompt), {
+			target: { value: "  Original instruction 原文  " },
+		});
+		await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: generate })));
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(run.mock.calls[0]?.slice(0, 2)).toEqual([
+			{ blockId: "cover" },
+			"Original instruction 原文",
+		]);
+		await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: stop })));
+		expect(state.signal?.aborted).toBe(true);
+		expect((screen.getByLabelText(cssLabel) as HTMLTextAreaElement).value).toBe(ORIGINAL);
+	},
+);
+
+it.each([
+	[
+		"ja",
+		"ご主人様、ルールを1件書けました…",
+		"ご主人様、ルールを2件書けました…",
+		"ご主人様、最初の案は安全性チェックを通りませんでした。メイドが書き直していますので、少しお待ちくださいね。",
+		"ブロックのCSS",
+		"元に戻す",
+	],
+	[
+		"zh-TW",
+		"主人，女僕已經寫好 1 條規則了…",
+		"主人，女僕已經寫好 2 條規則了…",
+		"主人，第一版沒通過安全性檢查，女僕正在重寫，請稍等一下喔。",
+		"區塊 CSS",
+		"還原",
+	],
+] as const)(
+	"%s 女仆流式进度实时更新CSS，重写及还原恢复原文且切语不重发",
+	async (locale, one, two, retry, cssLabel, undo) => {
+		const { ai, state, run } = fakeAi();
+		render(<Harness ai={ai} selection={COVER} />);
+		box();
+		const dialog = await ask("Original instruction 原文");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		const css = () => (screen.getByLabelText(cssLabel) as HTMLTextAreaElement).value;
+		act(() => state.handlers?.onRule(".first{color:red}"));
+		expect(within(dialog).getByText(one)).toBeTruthy();
+		act(() => state.handlers?.onRule("\n.second{color:blue}"));
+		expect(within(dialog).getByText(two)).toBeTruthy();
+		expect(css()).toBe(".first{color:red}\n.second{color:blue}");
+		act(() => state.handlers?.onRetry(["Original retry 原文"]));
+		expect(within(dialog).getByText(retry)).toBeTruthy();
+		expect(css()).toBe(ORIGINAL);
+		await act(async () =>
+			state.resolve?.({
+				css: ".a{color:red}\n.b{color:blue}",
+				warnings: ["Original warning 原文"],
+			}),
+		);
+		expect(css()).toBe(".a{color:red}\n.b{color:blue}");
+		expect(screen.getByText(/Original warning 原文/)).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: undo }));
+		expect(css()).toBe(ORIGINAL);
+		expect(run).toHaveBeenCalledTimes(1);
+	},
+);

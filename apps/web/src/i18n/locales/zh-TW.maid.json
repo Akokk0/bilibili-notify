@@ -575,5 +575,17 @@
 	"skinUi.CardSkinSection.16": "主人，外觀資源庫是空的，試著上傳一個外觀套件吧。",
 	"skinUi.CardSkinSection.19": "主人，確定刪除「{value0}」嗎？刪除後就無法復原了。",
 	"skinUi.CardSkinSection.fallback": "主人，{skin}的{kind}卡片已回退：{reason}",
-	"cards.skin.globalSelectHint": "主人，這裡選的是沒有個別指定外觀的訂閱所用的預設卡片外觀喔，選好就會自動儲存。"
+	"cards.skin.globalSelectHint": "主人，這裡選的是沒有個別指定外觀的訂閱所用的預設卡片外觀喔，選好就會自動儲存。",
+	"skinUi.CssEditor.3": "主人，這段 CSS 目前無法剖析，可能是括號沒配好喔。先到原始碼修正，結構檢視就會回來了。",
+	"skinUi.CssEditor.4": "主人，還沒有規則喔，選下面一個掛點來建立一條吧。",
+	"skinUi.SkinPreviewPane.2": "主人，即時預覽的字型等細節可能和推播圖片不同喔，請用「最終效果」核對實際出圖。",
+	"skinUi.SkinPreviewPane.9": "主人，還沒設定繪製用瀏覽器，所以目前不能截圖喔。請到系統設定指定瀏覽器，或設定環境變數 BN_CHROME_PATH / BN_CHROME_ENDPOINT；下面的即時預覽仍可使用。",
+	"skinUi.SkinPreviewPane.13": "主人，預覽不會替選中的區塊畫選取框喔；要核對位置，請看中央畫布的列與欄。",
+	"skinUi.SkinPreviewPane.scaled": "主人，這欄放不下寬 {width}px 的卡片，先縮到 {percent}% 給您看喔。",
+	"skinUi.SkinPreviewPane.heightLimit": "主人，這張卡高 {height} px，超過上限了，實際出圖會失敗並回退至預設外觀，請先調整高度喔。",
+	"skinUi.SkinPreviewPane.17": "主人，截圖後草稿又改過了，這張是上一版喔，請再按一次「最終效果」。",
+	"skinUi.CssAiSlot.instructionLimit#other": "主人，請把需求控制在 {count} 個字元以內喔。",
+	"skinUi.CssAiSlot.13": "拜託啦",
+	"skinUi.CssAiSlot.10#other": "主人，女僕已經寫好 {count} 條規則了…",
+	"skinUi.CssAiSlot.1": "主人，第一版沒通過安全性檢查，女僕正在重寫，請稍等一下喔。"
 }

@@ -654,3 +654,106 @@ describe("皮肤预览栏 · 把量到的列线交出去", () => {
 		expect(got.length).toBeGreaterThan(first);
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、リアルタイムプレビューは、送信画像とフォントなどの細部が違うことがあります。「最終イメージ」で実際の仕上がりをご確認くださいね。",
+		"ご主人様、描画用ブラウザーが未設定なので、まだ撮影できませんよ。システム設定でブラウザーを指定するか、環境変数 BN_CHROME_PATH / BN_CHROME_ENDPOINT を設定してくださいね。下のリアルタイムプレビューはそのまま使えます。",
+		"ご主人様、選んだブロックの枠はプレビューには出しませんよ。位置を確かめるときは、中央のキャンバスの行と列をご覧くださいね。",
+		"最終イメージ",
+	],
+	[
+		"zh-TW",
+		"主人，即時預覽的字型等細節可能和推播圖片不同喔，請用「最終效果」核對實際出圖。",
+		"主人，還沒設定繪製用瀏覽器，所以目前不能截圖喔。請到系統設定指定瀏覽器，或設定環境變數 BN_CHROME_PATH / BN_CHROME_ENDPOINT；下面的即時預覽仍可使用。",
+		"主人，預覽不會替選中的區塊畫選取框喔；要核對位置，請看中央畫布的列與欄。",
+		"最終效果",
+	],
+] as const)(
+	"%s 女仆预览说明保留实时画面，未配置浏览器不能截图",
+	async (locale, subtitle, noChrome, selection, final) => {
+		vi.mocked(api.get).mockResolvedValue({ enabled: false });
+		renderPane();
+		await tick();
+		act(() => i18n.set({ locale, voice: "maid" }));
+		for (const hint of [subtitle, noChrome, selection]) expect(screen.getByText(hint)).toBeTruthy();
+		expect(frame()?.getAttribute("srcdoc")).toContain("画好了");
+		const button = screen.getByRole("button", { name: final }) as HTMLButtonElement;
+		expect(button.disabled).toBe(true);
+		await act(async () => button.click());
+		expect(api.post).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(api.post).mock.calls.some(([url]) => url.endsWith("/screenshot"))).toBe(false);
+	},
+);
+
+it.each([
+	[
+		"ja",
+		"ご主人様、この欄には幅600pxのカードが収まらないので、50%に縮小してお見せしていますよ。",
+		"ご主人様、このカードは高さ9999pxで上限を超えています。実際の描画は失敗して既定スキンに戻るので、先に高さを調整してくださいね。",
+		"ご主人様、撮影後に下書きが変わりました。この画像は前の版ですよ。「最終イメージ」をもう一度選んでくださいね。",
+		"最終イメージ",
+	],
+	[
+		"zh-TW",
+		"主人，這欄放不下寬 600px 的卡片，先縮到 50% 給您看喔。",
+		"主人，這張卡高 9999 px，超過上限了，實際出圖會失敗並回退至預設外觀，請先調整高度喔。",
+		"主人，截圖後草稿又改過了，這張是上一版喔，請再按一次「最終效果」。",
+		"最終效果",
+	],
+] as const)(
+	"%s 女仆缩放、超高与过期提示保留上一张截图，不自动重截",
+	async (locale, scaled, tooTall, stale, final) => {
+		const shot = {
+			ok: true,
+			dataUrl: "data:image/jpeg;base64,ZmFrZQ==",
+			width: 600,
+			height: 9999,
+			overHeight: true,
+			warnings: [],
+			scene: "streaming",
+		};
+		vi.mocked(api.post).mockImplementation(async (url) =>
+			url.endsWith("/screenshot") ? shot : OK,
+		);
+		vi.mocked(api.get).mockResolvedValue({ enabled: true });
+		const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+		const view = render(
+			<QueryClientProvider client={qc}>
+				<SkinPreviewPane
+					skinId="neon"
+					kind="live"
+					scene="streaming"
+					manifest={{ v: 1 }}
+					boxWidth={300}
+				/>
+			</QueryClientProvider>,
+		);
+		await tick();
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(scaled)).toBeTruthy();
+		expect(api.post).toHaveBeenCalledTimes(1);
+		await act(async () => screen.getByRole("button", { name: final }).click());
+		await tick();
+		expect(screen.getByText(tooTall)).toBeTruthy();
+		expect(screen.getByRole("img", { name: final }).getAttribute("src")).toBe(shot.dataUrl);
+		view.rerender(
+			<QueryClientProvider client={qc}>
+				<SkinPreviewPane
+					skinId="neon"
+					kind="live"
+					scene="streaming"
+					manifest={{ v: 2 }}
+					boxWidth={300}
+				/>
+			</QueryClientProvider>,
+		);
+		expect(screen.getByText(stale)).toBeTruthy();
+		await tick();
+		expect(screen.getByRole("img", { name: final }).getAttribute("src")).toBe(shot.dataUrl);
+		expect(
+			vi.mocked(api.post).mock.calls.filter(([url]) => url.endsWith("/screenshot")),
+		).toHaveLength(1);
+	},
+);
