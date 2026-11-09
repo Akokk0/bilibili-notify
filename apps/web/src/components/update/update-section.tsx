@@ -219,9 +219,9 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 
 					{status.pinnedVersion !== null && state.phase !== "rolled-back" ? (
 						<HintNote tone="neutral">
-							{tx("panelUi.components.update.update-section.18")}
-							<strong>{status.pinnedVersion}</strong>
-							{tx("panelUi.components.update.update-section.19")}
+							{tx("panelUi.components.update.update-section.18", {
+								version: status.pinnedVersion,
+							})}
 						</HintNote>
 					) : null}
 
@@ -237,10 +237,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 
 					{canApply && !restarting ? (
 						<HintNote tone="neutral">
-							{tx("panelUi.components.update.update-section.21")}
-							<strong>{tx("panelUi.components.update.update-section.22")}</strong>
-							{tx("panelUi.components.update.update-section.23")} <code>restart</code>{" "}
-							{tx("panelUi.components.update.update-section.24")}
+							{tx("panelUi.components.update.update-section.21", { policy: "restart" })}
 						</HintNote>
 					) : null}
 
@@ -256,21 +253,21 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 
 					{restart?.kind === "fell-back" ? (
 						<HintNote tone="neutral">
-							{tx("panelUi.components.update.update-section.27")}
-							<strong>{restart.version}</strong>
-							{tx("panelUi.components.update.update-section.28")}
-							{restart.intent.target} {tx("panelUi.components.update.update-section.29")}
-							<code>[boot]</code> {tx("panelUi.components.update.update-section.30")}
+							{tx("panelUi.components.update.update-section.27", {
+								running: restart.version,
+								target: restart.intent.target,
+								prefix: "[boot]",
+							})}
 						</HintNote>
 					) : null}
 
 					{restart?.kind === "timed-out" ? (
 						<HintNote tone="neutral" className="flex flex-wrap items-center gap-2">
 							<span>
-								{tx("panelUi.components.update.update-section.31")}
-								{Math.round(restartWait.timeoutMs / 1000)}{" "}
-								{tx("panelUi.components.update.update-section.32")} <code>restart</code>{" "}
-								{tx("panelUi.components.update.update-section.33")}
+								{tx("panelUi.components.update.update-section.31", {
+									count: Math.round(restartWait.timeoutMs / 1000),
+									policy: "restart",
+								})}
 							</span>
 							<Btn variant="outline" size="sm" onClick={retryRestart}>
 								{tx("panelUi.components.update.update-section.34")}
@@ -280,8 +277,9 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 
 					{apply.isError ? (
 						<HintNote tone="neutral">
-							{tx("panelUi.components.update.update-section.35")}
-							{apply.error.message}
+							{tx("panelUi.components.update.update-section.35", {
+								reason: apply.error.message,
+							})}
 						</HintNote>
 					) : null}
 

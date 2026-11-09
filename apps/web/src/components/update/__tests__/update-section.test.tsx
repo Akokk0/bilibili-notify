@@ -80,6 +80,71 @@ afterEach(() => {
 });
 
 describe("UpdateSection —— 报错的归因", () => {
+	describe.each([
+		[
+			"en",
+			[
+				"The update signature could not be verified. The downloaded content is not signed by our keys. Nothing was installed. Remove any download proxy and try again; if verification still fails, do not apply this update.",
+				"The update manifest could not be read. This is a release packaging problem, not a local settings issue. Try again later.",
+				"The update server is unreachable. Choose a download proxy below, or use the release link to download it yourself.",
+				"The update manifest is older than one seen previously and was rejected. A proxy may have cached an old copy. Try another proxy or connect directly.",
+				"The downloaded package failed its checksum check and was discarded; nothing was left on disk. The download may have been cut short. Try again.",
+				"The manifest was retrieved, but the package could not be downloaded. Try another download proxy, or use the release link to download it yourself.",
+				"The package passed verification, but could not be written to the data directory. Check available disk space and directory permissions.",
+				"This is already the earliest available version. There is no earlier version to roll back to.",
+			],
+		],
+		[
+			"ja",
+			[
+				"更新の署名を検証できませんでした。取得した内容は、こちらの鍵で署名されたものではありません。インストールは行っていません。ダウンロード用プロキシを外して再試行し、それでも検証できない場合は適用しないでください。",
+				"更新マニフェストを読み取れません。リリースのパッケージ作成側の問題で、ローカル設定の問題ではありません。しばらくしてから再試行してください。",
+				"更新サーバーに接続できません。下でダウンロード用プロキシを選ぶか、リリースページから手動でダウンロードしてください。",
+				"以前取得したものより古い更新マニフェストのため、受け付けませんでした。プロキシが古い内容をキャッシュしている可能性があります。別のプロキシまたは直接接続を試してください。",
+				"ダウンロードしたパッケージのチェックサムが一致しないため破棄しました。ディスクには何も残していません。途中でダウンロードが切れた可能性があります。再試行してください。",
+				"マニフェストは取得できましたが、パッケージをダウンロードできませんでした。別のプロキシを試すか、リリースページから手動でダウンロードしてください。",
+				"パッケージの検証には成功しましたが、データディレクトリーへの書き込みに失敗しました。ディスクの空き容量とディレクトリーの書き込み権限を確認してください。",
+				"すでに利用可能な最も古いバージョンです。ロールバックできる前のバージョンはありません。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"更新套件的簽章驗證失敗，取得的內容並非由我們的金鑰簽署。已停止，沒有安裝任何內容。若有設定下載代理站，請移除後再試；仍然失敗就先不要套用。",
+				"無法讀取更新資訊清單。這是發行套件製作時的問題，與本機設定無關，請稍後再試。",
+				"無法連上更新伺服器。可在下方選擇下載代理站，或從發行頁面自行下載。",
+				"更新資訊清單比先前取得的版本舊，已拒絕使用。可能是代理站快取了舊檔案，請更換代理站或改用直接連線。",
+				"下載套件的總和檢查碼不符，已捨棄，磁碟上沒有留下檔案。可能是下載途中遭截斷，請再試一次。",
+				"已取得資訊清單，但無法下載套件。請更換下載代理站，或從發行頁面自行下載。",
+				"套件已通過驗證，但寫入資料目錄失敗。請檢查磁碟可用空間及目錄寫入權限。",
+				"目前已是可用的最舊版本，沒有更早的版本可回復。",
+			],
+		],
+	] as const)("%s localized failure causes", (locale, messages) => {
+		it.each(
+			(
+				[
+					"untrusted",
+					"malformed",
+					"unreachable",
+					"stale_manifest",
+					"checksum_mismatch",
+					"download_failed",
+					"install_failed",
+					"nothing_to_roll_back",
+				] as const
+			).map((code, index) => ({ code, message: messages[index] })),
+		)("$code explains the cause; only signature failures are alerts", async ({ code, message }) => {
+			i18n.set({ locale, voice: "plain" });
+			serve({ phase: "error", code, checkedAt: "2026-10-27T00:00:00Z" });
+			renderSection();
+			await screen.findByText(message);
+			if (code === "untrusted") expect(screen.getByRole("alert").textContent).toBe(message);
+			else expect(screen.queryByRole("alert")).toBeNull();
+			expect(api.post).not.toHaveBeenCalled();
+		});
+	});
+
 	it("清单带了更新说明 → 显示出来(发版侧写的那句话不该一路带到服务端就没了)", async () => {
 		serve({
 			phase: "available",
@@ -97,7 +162,7 @@ describe("UpdateSection —— 报错的归因", () => {
 		serve({ phase: "idle" }, { pinnedVersion: "0.8.0" });
 		renderSection();
 
-		// 版本号包在 <strong> 里,是两个文本节点 —— 对整段文本断言。
+		// 对整句断言，版本号由占位符原样填入。
 		await waitFor(() => expect(document.body.textContent).toMatch(/钉在 0\.8\.0/));
 	});
 
@@ -237,6 +302,124 @@ describe("UpdateSection —— 按钮该在什么时候出现", () => {
 });
 
 describe("UpdateSection —— 设置", () => {
+	it.each([
+		[
+			"en",
+			"In-app updates · update",
+			"Loading update status…",
+			"Apply updates here without pulling a new image or downloading an installer.",
+			"Open release page",
+			"Check for updates",
+			"Download this version",
+			"Restart and apply",
+			"No earlier version",
+			"Stable",
+			"Prerelease",
+			"Update channel",
+			"Auto-download",
+			"Auto-download new versions",
+			"Downloads only.",
+			"You decide when to restart and apply the update.",
+		],
+		[
+			"ja",
+			"アプリ内更新 · update",
+			"更新状況を読み込み中…",
+			"新しいイメージやインストーラーを使わずに、ここから更新できます。",
+			"リリースページを開く",
+			"更新を確認",
+			"このバージョンをダウンロード",
+			"再起動して適用",
+			"戻せるバージョンがありません",
+			"安定版",
+			"プレリリース版",
+			"更新チャンネル",
+			"自動ダウンロード",
+			"新しいバージョンを自動ダウンロード",
+			"ダウンロードのみ行います。",
+			"再起動して適用するタイミングは自分で選べます。",
+		],
+		[
+			"zh-TW",
+			"應用程式內更新 · update",
+			"正在讀取更新狀態…",
+			"直接在這裡更新，不必重新拉取映像檔或下載安裝程式。",
+			"開啟發行頁面",
+			"檢查更新",
+			"下載這個版本",
+			"重新啟動並套用",
+			"沒有可回復的版本",
+			"正式版",
+			"預先發行版",
+			"更新管道",
+			"自動下載",
+			"自動下載新版本",
+			"僅下載更新套件。",
+			"重新啟動並套用的時機由你決定。",
+		],
+	] as const)(
+		"%s translates loading, controls and download choices without changing actions",
+		async (locale, heading, loading, subtitle, release, check, download, apply, noRollback, stable, prerelease, channel, auto, autoLabel, onlyDownload, manualApply) => {
+			i18n.set({ locale, voice: "plain" });
+			const initial = serve({
+				phase: "available",
+				target: "0.9.0",
+				releaseUrl: "https://example.invalid/v0.9.0",
+				checkedAt: "2026-10-27T00:00:00Z",
+				notes: "Original release notes 原文",
+			});
+			let finish: (value: UpdateStatusView) => void = () => {
+				throw new Error("status query not started");
+			};
+			vi.mocked(api.get).mockImplementation(async (path: string) =>
+				path === "/api/system/update"
+					? new Promise((resolve) => {
+							finish = resolve;
+						})
+					: { core: { update: SETTINGS } },
+			);
+			renderSection();
+			expect(await screen.findByText(loading)).toBeTruthy();
+			expect(screen.getByText(heading)).toBeTruthy();
+			finish(initial);
+			await screen.findByRole("button", { name: download });
+			expect(screen.getByText(subtitle)).toBeTruthy();
+			expect(screen.getByText("Original release notes 原文")).toBeTruthy();
+			expect(screen.getByRole("link", { name: release }).getAttribute("href")).toBe(
+				"https://example.invalid/v0.9.0",
+			);
+			expect(screen.getByRole("button", { name: noRollback })).toHaveProperty("disabled", true);
+			expect(screen.queryByRole("button", { name: apply })).toBeNull();
+			expect(screen.getByText(channel)).toBeTruthy();
+			expect(screen.getByText(auto)).toBeTruthy();
+			expect(document.body.textContent).toContain(onlyDownload);
+			expect(document.body.textContent).toContain(manualApply);
+			expect(screen.getByRole("button", { name: stable }).getAttribute("aria-pressed")).toBe(
+				"true",
+			);
+			await userEvent.click(screen.getByRole("button", { name: prerelease }));
+			await waitFor(() =>
+				expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+					core: { update: { channel: "prerelease" } },
+				}),
+			);
+			await userEvent.click(screen.getByRole("button", { name: autoLabel }));
+			await waitFor(() =>
+				expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+					core: { update: { autoDownload: false } },
+				}),
+			);
+			vi.mocked(api.post).mockResolvedValueOnce({
+				...initial,
+				state: { phase: "ready", target: "0.9.0", releaseUrl: "https://example.invalid/v0.9.0" },
+			});
+			await userEvent.click(screen.getByRole("button", { name: download }));
+			await screen.findByRole("button", { name: apply });
+			expect(api.post).toHaveBeenCalledWith("/api/system/update/download", {});
+			expect(screen.getByRole("button", { name: check })).toBeTruthy();
+		},
+	);
+
 	it("改设置立刻落盘,不等页面那颗保存按钮", async () => {
 		// 服务端检查更新时读的是**已落盘**的设置。跟着页面草稿走的话,用户改完
 		// 加速前缀直接点「检查更新」仍会失败 —— 而他刚刚明明改过。
@@ -529,5 +712,113 @@ describe("UpdateSection —— 按下重启之后", () => {
 		expect(note.textContent).toContain("连接中断");
 		expect(screen.queryByText(/正在重启/)).toBeNull();
 		expect(reload).not.toHaveBeenCalled();
+	});
+});
+
+describe.each([
+	{
+		locale: "en",
+		pinned:
+			"Version 0.8.0 is pinned after a rollback. Opening the dashboard will not automatically check for updates. Choosing “Check for updates” explicitly opts back in; installing a newer version removes the pin.",
+		warning:
+			"Applying this update restarts the service. Push delivery will pause briefly and live monitoring will reconnect. For containers, enable the restart policy so the process starts again after exiting. On desktop, the launcher restarts the service and the dashboard refreshes automatically.",
+		error: "Could not request a restart: Original apply diagnostic 原文",
+		waiting: "Restarting to apply 0.9.0",
+		hint: "This page will refresh when the service returns. Push delivery pauses briefly and live monitoring reconnects automatically.",
+		fallback:
+			"Restart complete, but version 0.8.0 is running instead of 0.9.0. The target version probably failed to start and the launcher fell back automatically. Look for the [boot] line in the logs for the reason.",
+		timeout:
+			"The service has not returned after 1 second. For containers, check the restart policy; without it, the process must be started manually. On desktop, check the launcher log.",
+		retry: "Wait again",
+		check: "Check for updates",
+		apply: "Restart and apply",
+	},
+	{
+		locale: "ja",
+		pinned:
+			"ロールバックによりバージョン0.8.0に固定されています。ダッシュボードを開いても自動で更新を確認しません。「更新を確認」を選ぶと再び更新を探し、新しいバージョンをインストールすると固定が解除されます。",
+		warning:
+			"適用するとサービスが再起動します。通知の配信が数秒中断し、ライブ監視は再接続します。コンテナーでは、終了後に再び起動するようrestartポリシーを有効にしてください。デスクトップ版ではランチャーがサービスを起動し直し、ダッシュボードも自動で再読み込みします。",
+		error: "再起動を要求できませんでした：Original apply diagnostic 原文",
+		waiting: "0.9.0を適用するため再起動中",
+		hint: "サービスが戻ると、このページは自動で再読み込みされます。通知の配信は数秒中断し、ライブ監視は自動で再接続します。",
+		fallback:
+			"再起動は完了しましたが、0.9.0ではなく0.8.0で動作しています。対象バージョンを起動できず、ランチャーが自動で元に戻した可能性があります。理由はログの[boot]行を確認してください。",
+		timeout:
+			"1秒待ってもサービスが戻りません。コンテナーのrestartポリシーを確認してください。無効の場合は手動で起動する必要があります。デスクトップ版ではランチャーのログを確認してください。",
+		retry: "もう少し待つ",
+		check: "更新を確認",
+		apply: "再起動して適用",
+	},
+	{
+		locale: "zh-TW",
+		pinned:
+			"先前回復版本後，目前固定在 0.8.0。開啟面板不會自動檢查更新。選擇「檢查更新」會重新尋找新版本，安裝新版後便會解除固定。",
+		warning:
+			"套用更新會重新啟動服務，推送會中斷幾秒，直播監聽會重新連線。容器部署請啟用 restart 策略，讓程序結束後能再次啟動；桌面版會由啟動器重新啟動服務，面板也會自動重新整理。",
+		error: "無法送出重新啟動要求：Original apply diagnostic 原文",
+		waiting: "正在重新啟動以套用 0.9.0",
+		hint: "服務恢復後，此頁面會自動重新整理。推送會中斷幾秒，直播監聽會自動重新連線。",
+		fallback:
+			"重新啟動完成，但目前使用的是 0.8.0，而非 0.9.0。可能是目標版本無法啟動，啟動器已自動回復。請查看日誌中以 [boot] 開頭的那一行了解原因。",
+		timeout:
+			"已等待 1 秒，服務仍未恢復。請確認容器的 restart 策略；若未啟用，必須手動啟動。桌面版請查看啟動器日誌。",
+		retry: "再等一下",
+		check: "檢查更新",
+		apply: "重新啟動並套用",
+	},
+] as const)("$locale restart explanations", (expected) => {
+	let reload: ReturnType<typeof vi.spyOn>;
+	beforeEach(() => {
+		i18n.set({ locale: expected.locale, voice: "plain" });
+		useRestartStore.getState().dismiss();
+		sessionStorage.clear();
+		reload = vi.spyOn(browser, "reload").mockImplementation(() => {});
+	});
+	afterEach(() => {
+		reload.mockRestore();
+		useRestartStore.getState().dismiss();
+	});
+	const READY = {
+		phase: "ready",
+		target: "0.9.0",
+		releaseUrl: "https://example.invalid/release",
+	} as const;
+	it("explains the pinned version, restart impact and raw apply failure as complete messages", async () => {
+		const status = serve(READY, { pinnedVersion: "0.8.0" });
+		renderSection();
+		await screen.findByText(expected.pinned);
+		expect(screen.getByText(expected.warning)).toBeTruthy();
+		vi.mocked(api.post).mockRejectedValueOnce(new Error("Original apply diagnostic 原文"));
+		await userEvent.click(screen.getByRole("button", { name: expected.apply }));
+		await screen.findByText(expected.error);
+		expect(reload).not.toHaveBeenCalled();
+		expect(screen.queryByRole("status")).toBeNull();
+		expect(api.post).toHaveBeenCalledExactlyOnceWith("/api/system/update/apply", {});
+		expect(status.pinnedVersion).toBe("0.8.0");
+	});
+	it("shows waiting then fallback with the actual and requested versions and original log prefix", async () => {
+		serve(READY);
+		health.set("offline");
+		renderSection("/system", { restartWait: { intervalMs: 10, timeoutMs: 1000 } });
+		await userEvent.click(await screen.findByRole("button", { name: expected.apply }));
+		await screen.findByText(`${expected.waiting}…`);
+		expect(screen.getByText(expected.hint)).toBeTruthy();
+		expect(screen.getByRole("button", { name: expected.check })).toHaveProperty("disabled", true);
+		health.set({ version: "0.8.0", startedAt: NEW.startedAt });
+		await screen.findByText(expected.fallback);
+		expect(reload).not.toHaveBeenCalled();
+		expect(sessionStorage.getItem("bn.update.restarted")).toBeNull();
+	});
+	it("reports a one-second timeout and retries through the existing restart flow", async () => {
+		serve(READY);
+		health.set("offline");
+		renderSection("/system", { restartWait: { intervalMs: 10, timeoutMs: 1000 } });
+		await userEvent.click(await screen.findByRole("button", { name: expected.apply }));
+		await screen.findByText(expected.timeout, {}, { timeout: 3000 });
+		expect(reload).not.toHaveBeenCalled();
+		health.set(NEW);
+		await userEvent.click(screen.getByRole("button", { name: expected.retry }));
+		await waitFor(() => expect(reload).toHaveBeenCalledExactlyOnceWith());
 	});
 });

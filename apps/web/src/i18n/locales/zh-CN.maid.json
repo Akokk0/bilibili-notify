@@ -418,12 +418,8 @@
 	"panelUi.components.update.update-section.10": "主人，已经是最早的那一版了,没有可退的上一版。",
 	"panelUi.components.update.update-section.16": "主人，正在跑的是开发版(源码里的占位版本号),它比任何发布过的版本都小,所以应用内更新不检查也不提示 —— 不是出错。",
 	"panelUi.components.update.update-section.17": "主人，这个构建里没有内置更新签名的公钥,所以应用内更新是关着的 —— 不是出错。自己构建的版本会落在这一档,按原来的方式升级即可。",
-	"panelUi.components.update.update-section.19": "主人，(之前按过回退),打开面板不会再自动查更新。 按「检查更新」就是明确要往前走 —— 装上新版会拔掉这颗钉子。",
 	"panelUi.components.update.update-section.20": "主人，这一版要求更新的运行环境(Node / 浏览器都来自镜像),没法在线换 —— 请重新 拉取镜像或下载新安装包。",
-	"panelUi.components.update.update-section.23": "主人，:那一刻推送会断几秒、直播监听会重连。容器部署请确认",
-	"panelUi.components.update.update-section.24": "主人， 策略是开着的 —— 没有它的话,进程退出后不会有人把它拉起来;桌面版由外壳自动拉起,界面会跟着刷新。",
 	"panelUi.components.update.update-section.26": "主人，服务回来后这一页会自动刷新。推送这几秒会断,直播监听会自己重连。",
-	"panelUi.components.update.update-section.33": "主人， 策略的话,进程退出后没人把它拉起来,得手动启动一次; 桌面版看启动器日志。",
 	"panelUi.pages.About.13": "主人，Bilibili Notify 是 MIT 开源、永久免费的项目。服务器、测试设备与持续开发都需要成本, 如果它帮到了你,欢迎在爱发电请女仆喝杯奶茶 —— 每一份心意,都会化作新功能与更少的 bug。",
 	"panelUi.pages.About.24": "主人，Bilibili Notify —— 监听不同来源的作品与直播,渲染成卡片图片并推送到目标。自带 Web 控制台,支持 Docker 镜像与桌面应用部署。MIT 开源。",
 	"panelUi.pages.ExtensionDetail.10": "主人，卸掉它:盘上那份与它自己的设置都会没,随时能再装回来。",
@@ -635,5 +631,10 @@
 	"history.repush.pending#other": "主人，女仆正在补发（{count} 条），好了这一行会自动更新哦。",
 	"library.images.rotation#other": "主人，{count} 张图会在每次推送时顺序轮换。",
 	"maidSkills.problems#other": "主人，有 {count} 份技能读不进来：",
-	"sourceUi.pages.Stats.Stats.25#other": " 条订阅的粉丝增减、投稿与直播频率哦。"
+	"sourceUi.pages.Stats.Stats.25#other": " 条订阅的粉丝增减、投稿与直播频率哦。",
+	"panelUi.components.update.update-section.18": "主人，当前钉在 {version}（此前已选择回退），打开面板不会再自动检查更新。按「检查更新」会重新寻找新版，安装新版后便会解除固定。",
+	"panelUi.components.update.update-section.21": "主人，应用会重启服务：那一刻推送会断几秒、直播监听会重连。容器部署请确认 {policy} 策略已开启；否则进程退出后不会自动拉起。桌面版由外壳自动拉起，界面会自动刷新。",
+	"panelUi.components.update.update-section.27": "主人，重启完成，但跑起来的是 {running}，不是 {target}。可能是目标版本无法启动，启动器已自动回落。请查看日志中以 {prefix} 开头的那一行了解原因。",
+	"panelUi.components.update.update-section.35": "主人，没能发出重启指令：{reason}",
+	"panelUi.components.update.update-section.31#other": "主人，重启后等了 {count} 秒，还没等到服务回来。请确认容器的 {policy} 策略；未开启时需要手动启动。桌面版请查看启动器日志。"
 }
