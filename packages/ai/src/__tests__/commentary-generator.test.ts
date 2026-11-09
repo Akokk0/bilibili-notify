@@ -823,6 +823,43 @@ const toolChunk = (index: number, part: Record<string, unknown>) => ({
 });
 
 describe("CommentaryGenerator.summarizeTitle", () => {
+	it("多语言标题截断按字符计算，不把emoji截成半个代理对", async () => {
+		const { gen } = makeGen();
+		oai.create.mockResolvedValueOnce(msgResp("aaaaaaaaaaaaaaa😀"));
+		expect(await gen.summarizeTitle([{ role: "user", content: "First" }])).toBe(
+			"aaaaaaaaaaaaaaa😀",
+		);
+		oai.create.mockResolvedValueOnce(msgResp("aaaaaaaaaaaaaaa😀x"));
+		expect(await gen.summarizeTitle([{ role: "user", content: "Second" }])).toBe(
+			"aaaaaaaaaaaaaaa😀…",
+		);
+	});
+
+	it.each([
+		["en", "Title: “Server status”.", "Server status"],
+		["ja", "タイトル：『配信のまとめ。』。", "配信のまとめ"],
+		["zh-TW", "標題：「本週回顧」", "本週回顧"],
+		["zh-CN", "标题：“本周回顾。”。", "本周回顾"],
+		["en", 'Title: "Current status', '"Current status'],
+		["en", 'Title: "A: B, C"', "A: B, C"],
+	] as const)("%s：清理模型标题装饰 %s，保留内部标点和不成对引号", async (locale, raw, title) => {
+		const texts = createI18n<PackageTextKey, Locale>({
+			dicts: PACKAGE_DICTS,
+			fallback: "zh-CN",
+			locale,
+			voice: "plain",
+		});
+		const binding = bindPackageText(texts.t, () => texts.state().locale);
+		try {
+			const { gen } = makeGen();
+			oai.create.mockResolvedValueOnce(msgResp(raw));
+			expect(await gen.summarizeTitle([{ role: "user", content: "Original input" }])).toBe(title);
+			expect(oai.create).toHaveBeenCalledTimes(1);
+		} finally {
+			binding.dispose();
+		}
+	});
+
 	it.each([
 		["zh-CN", "简体中文"],
 		["en", "英文，使用英文标点"],

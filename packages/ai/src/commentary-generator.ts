@@ -2372,12 +2372,15 @@ function stripTitleDecoration(raw: string): string {
 		.map((l) => l.trim())
 		.filter(Boolean);
 	let s = (lines[lines.length - 1] ?? "").replace(/\s+/g, " ");
-	s = s.replace(/^(?:标题|title)\s*[:：]\s*/i, "");
+	s = s.replace(/^(?:标题|標題|タイトル|title)\s*[:：]\s*/i, "");
+	// 句末装饰可能在包裹引号外面；先去外层句末，再剥成对引号和里面的句末。
+	s = s.replace(/[。｡.!！?？]+$/, "").trim();
 	// 成对的引号才剥,只有一边的多半是内容的一部分。
 	const pairs: Array<[string, string]> = [
 		['"', '"'],
 		["'", "'"],
 		["「", "」"],
+		["『", "』"],
 		["《", "》"],
 		["“", "”"],
 		["‘", "’"],
@@ -2388,10 +2391,11 @@ function stripTitleDecoration(raw: string): string {
 			break;
 		}
 	}
-	return s.replace(/[。.!！?？]+$/, "").trim();
+	return s.replace(/[。｡.!！?？]+$/, "").trim();
 }
 
 /** 超长就截断加省略号 —— 侧栏一行放不下。 */
 function clipTitle(text: string): string {
-	return text.length <= TITLE_MAX_CHARS ? text : `${text.slice(0, TITLE_MAX_CHARS)}…`;
+	const chars = [...text];
+	return chars.length <= TITLE_MAX_CHARS ? text : `${chars.slice(0, TITLE_MAX_CHARS).join("")}…`;
 }
