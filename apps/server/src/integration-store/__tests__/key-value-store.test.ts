@@ -4,9 +4,17 @@
  */
 
 import type { Json, KeyValueOp } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { memoryKeyValueStores } from "../../__tests__/support/memory-key-value-store.js";
-import { SECRETS_LIMITS, STATE_LIMITS, serializeEntries } from "../key-value-store.js";
+import { i18n } from "../../i18n/index.js";
+import {
+	createKeyValueStores,
+	SECRETS_LIMITS,
+	STATE_LIMITS,
+	serializeEntries,
+} from "../key-value-store.js";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function invalid(result: { ok: boolean; code?: string }) {
 	expect(result).toMatchObject({ ok: false, code: "invalid" });
@@ -103,6 +111,100 @@ describe("保留前缀:`http.` 开头的键归宿主", () => {
 });
 
 describe("限额(对应用完之后的整袋算,差一个字节的两边)", () => {
+	it.each([
+		[
+			"en",
+			{
+				key: 'The value of "Original key" exceeds the per-key limit of 4 bytes.',
+				total: "The store is 42 bytes, exceeding the limit of 40 bytes.",
+				persist: "Could not persist the store: Original persist diagnostic 原文",
+				lane: "The write queue is closed: Original queue diagnostic 原文",
+				host: "Could not obtain the host changes: Original host diagnostic 原文",
+			},
+		],
+		[
+			"ja",
+			{
+				key: "「Original key」の値がキーごとの上限4バイトを超えています。",
+				total: "ストア全体が42バイトで、上限40バイトを超えています。",
+				persist: "ストアを保存できませんでした：Original persist diagnostic 原文",
+				lane: "書き込みキューは終了しています：Original queue diagnostic 原文",
+				host: "ホスト側の変更を取得できませんでした：Original host diagnostic 原文",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				key: "「Original key」的值超過單鍵上限 4 位元組。",
+				total: "整份儲存資料為 42 位元組，超過上限 40 位元組。",
+				persist: "無法寫入儲存資料：Original persist diagnostic 原文",
+				lane: "寫入佇列已關閉：Original queue diagnostic 原文",
+				host: "無法取得宿主的變更：Original host diagnostic 原文",
+			},
+		],
+	] as const)(
+		"%s localizes limits and write failures while retaining atomic state and recovery",
+		async (locale, text) => {
+			const writes: Map<string, Json>[] = [];
+			let broken = true;
+			const stores = createKeyValueStores({
+				initial: new Map([["original", 1]]),
+				limits: { maxTotalBytes: 1000, maxKeyBytes: 4 },
+				persist: async (entries) => {
+					if (broken) throw new Error("Original persist diagnostic 原文");
+					writes.push(new Map(entries));
+					return { ok: true };
+				},
+			});
+			const total = createKeyValueStores({
+				limits: { maxTotalBytes: 40 },
+				persist: async () => ({ ok: true }),
+			});
+			const queued = createKeyValueStores({
+				initial: new Map([["original", 1]]),
+				limits: { maxTotalBytes: 1000 },
+				persist: async () => ({ ok: true }),
+				lane: async () => {
+					throw new Error("Original queue diagnostic 原文");
+				},
+			});
+			i18n.set({ locale, voice: "plain" });
+			expect(await stores.integration.set("Original key", "abc")).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.key,
+			});
+			expect(await total.integration.set("k", "1234567890")).toEqual({
+				ok: false,
+				code: "invalid",
+				message: text.total,
+			});
+			expect(await stores.integration.set("new", 2)).toEqual({
+				ok: false,
+				code: "unavailable",
+				message: text.persist,
+			});
+			expect(await queued.integration.set("new", 2)).toEqual({
+				ok: false,
+				code: "unavailable",
+				message: text.lane,
+			});
+			expect(
+				await stores.commit(() => {
+					throw new Error("Original host diagnostic 原文");
+				}, [{ kind: "set", key: "new", value: 2 }]),
+			).toEqual({ ok: false, code: "unavailable", message: text.host });
+			expect(stores.snapshot()).toEqual(new Map([["original", 1]]));
+			expect(queued.snapshot()).toEqual(new Map([["original", 1]]));
+			expect(total.snapshot().size).toBe(0);
+			expect(writes).toEqual([]);
+			broken = false;
+			expect(await stores.integration.set("new", 2)).toEqual({ ok: true });
+			expect(stores.integration.get("new")).toBe(2);
+			expect(writes).toHaveLength(1);
+		},
+	);
+
 	/** 往 `initial` 里再放一个键 `z`,让整份恰好等于 `limit`(`pad` 个字符)与多一个字节。 */
 	function padFor(initial: Record<string, Json>, limit: number): number {
 		const base = new Map(Object.entries({ ...initial, z: "" }));
@@ -165,6 +267,107 @@ describe("限额(对应用完之后的整袋算,差一个字节的两边)", () =
 });
 
 describe("值不是 JSON", () => {
+	it.each([
+		[
+			"en",
+			{
+				step: "Step 1",
+				second: "Step 2",
+				depth: "Nesting exceeds 64 levels.",
+				finite: "Numbers must be finite (NaN and Infinity are not accepted).",
+				plain: "Only plain objects are accepted.",
+				type: "undefined is not a JSON value.",
+				key: "The key must be a nonempty string.",
+				long: "The key exceeds 256 bytes.",
+				reserved:
+					'Keys starting with "http." are reserved for the host; integrations cannot write them.',
+				host: 'The host may only write keys starting with "http.".',
+				kind: "kind must be set or delete.",
+			},
+		],
+		[
+			"ja",
+			{
+				step: "操作1",
+				second: "操作2",
+				depth: "入れ子が64階層を超えています。",
+				finite: "数値は有限値のみ指定できます（NaNとInfinityは指定できません）。",
+				plain: "通常のオブジェクトのみ指定できます。",
+				type: "undefinedはJSONの値ではありません。",
+				key: "キーには空でない文字列を指定してください。",
+				long: "キーが256バイトを超えています。",
+				reserved: "http.で始まるキーはホスト用のため、連携機能からは書き込めません。",
+				host: "ホストはhttp.で始まるキーにのみ書き込めます。",
+				kind: "kindにはsetまたはdeleteを指定してください。",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				step: "第 1 個操作",
+				second: "第 2 個操作",
+				depth: "巢狀結構超過 64 層。",
+				finite: "數字必須為有限值（不接受 NaN 或 Infinity）。",
+				plain: "只接受一般物件。",
+				type: "undefined 不是 JSON 值。",
+				key: "鍵必須是非空字串。",
+				long: "鍵超過 256 位元組。",
+				reserved: "以 http. 開頭的鍵由宿主保留，整合功能不可寫入。",
+				host: "宿主只能寫入以 http. 開頭的鍵。",
+				kind: "kind 只能是 set 或 delete。",
+			},
+		],
+	] as const)(
+		"%s localizes JSON and key refusals without changing state or persisting a partial batch",
+		async (locale, text) => {
+			const h = memoryKeyValueStores("state", { original: "Original value 原文" });
+			let deep: unknown = null;
+			for (let i = 0; i < 66; i++) deep = [deep];
+			i18n.set({ locale, voice: "plain" });
+			for (const [value, reason] of [
+				[deep, text.depth],
+				[Number.NaN, text.finite],
+				[Number.POSITIVE_INFINITY, text.finite],
+				[new Date(0), text.plain],
+				[undefined, text.type],
+			] as const) {
+				expect(await h.store.set("Original key 原文", value as Json)).toEqual({
+					ok: false,
+					code: "invalid",
+					message: `${text.step}(Original key 原文):${reason}`,
+				});
+			}
+			expect(await h.store.set("", 1)).toEqual({
+				ok: false,
+				code: "invalid",
+				message: `${text.step}:${text.key}`,
+			});
+			expect(await h.store.set("k".repeat(257), 1)).toEqual({
+				ok: false,
+				code: "invalid",
+				message: `${text.step}:${text.long}`,
+			});
+			expect(await h.store.set("http.cookies", "secret")).toEqual({
+				ok: false,
+				code: "invalid",
+				message: `${text.step}:${text.reserved}`,
+			});
+			expect(await h.stores.host.set("original", "new")).toEqual({
+				ok: false,
+				code: "invalid",
+				message: `${text.step}:${text.host}`,
+			});
+			expect(
+				await h.store.batch([
+					{ kind: "set", key: "original", value: "new" },
+					{ kind: "unknown", key: "bad" } as unknown as KeyValueOp,
+				]),
+			).toEqual({ ok: false, code: "invalid", message: `${text.second}:${text.kind}` });
+			expect(h.stores.snapshot()).toEqual(new Map([["original", "Original value 原文"]]));
+			expect(h.persists).toEqual([]);
+		},
+	);
+
 	const bad: Array<[string, unknown]> = [
 		["undefined", undefined],
 		["函数", () => 1],

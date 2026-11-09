@@ -21,6 +21,8 @@ import type { Json, Logger } from "@bilibili-notify/internal";
 import { createKeyProvider, gcmDecrypt } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { logMessage } from "../../__tests__/support/log-message.js";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { i18n } from "../../i18n/index.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
 import { dataPath } from "../../runtime/roots.js";
 import { integrationSecretsFile, integrationStateFile } from "../files.js";
@@ -73,6 +75,7 @@ async function snapshot(dir = dataRoot, prefix = ""): Promise<Record<string, str
 }
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	dataRoot = await mkdtemp(join(tmpdir(), "bn-integration-store-"));
 });
 
@@ -118,6 +121,141 @@ describe("文件落在哪", () => {
 });
 
 describe("开与关", () => {
+	it.each([
+		[
+			"en",
+			{
+				invalidOpen: "Invalid integration key; cannot open storage: ../escape",
+				duplicate:
+					"Storage for integration original is already open; an integration cannot have two open handles.",
+				closed: "Integration original has stopped; its storage no longer accepts writes.",
+				builtin: "onebot is a built-in integration and cannot be uninstalled.",
+				invalidRemove: "Invalid integration key: ../escape",
+				inUse:
+					"Storage for integration original is still open. Stop the integration before deleting it.",
+				missing: "Integration absent is not running; its secrets cannot be restored.",
+				unreadable: "Cannot read state.json for broken (",
+				cleanup: "Could not clear stored state and secrets for integration doomed:",
+			},
+		],
+		[
+			"ja",
+			{
+				invalidOpen: "連携機能キーが無効なため、ストレージを開けません：../escape",
+				duplicate:
+					"連携機能originalのストレージはすでに開いています。同じ連携機能で同時に2つ開くことはできません。",
+				closed: "連携機能originalは停止済みのため、ストレージへの書き込みは受け付けません。",
+				builtin: "onebotは組み込みの連携機能のため、アンインストールできません。",
+				invalidRemove: "連携機能キーが無効です：../escape",
+				inUse:
+					"連携機能originalのストレージがまだ開いています。削除する前に連携機能を停止してください。",
+				missing: "連携機能absentは実行中でないため、秘密情報を復元できません。",
+				unreadable: "brokenのstate.jsonを読み取れません（",
+				cleanup: "連携機能doomedの保存済み状態と秘密情報を消去できませんでした：",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				invalidOpen: "整合功能鍵無效，無法開啟儲存空間：../escape",
+				duplicate: "整合功能 original 的儲存空間已開啟，同一整合功能不可同時開啟兩份。",
+				closed: "整合功能 original 已停止，儲存空間不再接受寫入。",
+				builtin: "onebot 是內建整合功能，無法解除安裝。",
+				invalidRemove: "整合功能鍵無效：../escape",
+				inUse: "整合功能 original 的儲存空間仍開啟，請先停止整合功能再刪除。",
+				missing: "整合功能 absent 未執行，無法還原機密資料。",
+				unreadable: "無法讀取 broken 的 state.json（",
+				cleanup: "無法清除整合功能 doomed 已儲存的狀態與機密資料：",
+			},
+		],
+	] as const)(
+		"%s localizes storage lifecycle refusals and retains unreadable data and filesystem diagnostics",
+		async (locale, text) => {
+			const { store, keyProvider } = setup();
+			const handle = await store.open("original");
+			await handle.state.set("original", "Original value 原文");
+			i18n.set({ locale, voice: "plain" });
+			try {
+				await expect(store.open("../escape")).rejects.toThrow(text.invalidOpen);
+				await expect(store.open("original")).rejects.toThrow(text.duplicate);
+				expect(await store.remove("onebot")).toEqual({
+					ok: false,
+					code: "invalid",
+					message: text.builtin,
+				});
+				expect(await store.remove("../escape")).toEqual({
+					ok: false,
+					code: "invalid",
+					message: text.invalidRemove,
+				});
+				expect(await store.remove("original")).toEqual({
+					ok: false,
+					code: "conflict",
+					message: text.inUse,
+				});
+				expect(handle.state.get("original")).toBe("Original value 原文");
+				handle.close();
+				expect(await handle.state.set("new", 1)).toEqual({
+					ok: false,
+					code: "unavailable",
+					message: text.closed,
+				});
+				expect(handle.state.get("new")).toBeUndefined();
+				expect(await store.restoreSecrets("absent", {})).toEqual({
+					ok: false,
+					code: "unavailable",
+					message: text.missing,
+				});
+				const unreadablePath = dataPath(
+					dataRoot,
+					...integrationStateFile("broken", BUILTIN_INTEGRATION_KEYS),
+				);
+				await mkdir(unreadablePath, { recursive: true });
+				const unreadable = await store.open("broken");
+				try {
+					expect(await unreadable.state.set("new", 1)).toMatchObject({
+						ok: false,
+						code: "unavailable",
+						message: expect.stringContaining(text.unreadable),
+					});
+					expect(await unreadable.state.set("new", 1)).toMatchObject({
+						message: expect.stringContaining("EISDIR"),
+					});
+					expect((await stat(unreadablePath)).isDirectory()).toBe(true);
+				} finally {
+					unreadable.close();
+				}
+				const blockedRoot = join(dataRoot, "Original blocked root");
+				await writeFile(blockedRoot, "Original file 原文");
+				const denied = createIntegrationStore({
+					dataRoot: blockedRoot,
+					reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+					keyProvider,
+					logger: silentLogger,
+					redactor: createValueRedactor(),
+				});
+				try {
+					const removed = await denied.remove("doomed");
+					expect(removed).toMatchObject({
+						ok: false,
+						code: "unavailable",
+						message: expect.stringContaining(text.cleanup),
+					});
+					expect(removed).toMatchObject({ message: expect.stringContaining("ENOTDIR") });
+					expect(removed).toMatchObject({
+						message: expect.stringContaining("Original blocked root"),
+					});
+					expect(await readFile(blockedRoot, "utf8")).toBe("Original file 原文");
+				} finally {
+					await denied.close();
+				}
+			} finally {
+				handle.close();
+				await store.close();
+			}
+		},
+	);
+
 	it("同一个键开着再开 → 抛(装配的 bug);并发开同一个也抛", async () => {
 		const { store } = setup();
 		const first = store.open("onebot");

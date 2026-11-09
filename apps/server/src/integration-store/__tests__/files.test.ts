@@ -11,6 +11,7 @@ import type { Json, Logger } from "@bilibili-notify/internal";
 import { createKeyProvider, gcmDecrypt, gcmEncrypt } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { logMessage } from "../../__tests__/support/log-message.js";
+import { i18n } from "../../i18n/index.js";
 import { dataPath } from "../../runtime/roots.js";
 import {
 	integrationSecretsFile,
@@ -43,6 +44,7 @@ function providerAt(root: string) {
 }
 
 beforeEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	dataRoot = await mkdtemp(join(tmpdir(), "bn-integration-files-"));
 });
 
@@ -164,6 +166,99 @@ describe("secrets.enc", () => {
 			keyProvider: providerAt(root),
 		});
 	}
+	it.each([
+		[
+			"en",
+			{
+				state: "Could not write state.json:",
+				key: "Could not obtain the master key: Original master key diagnostic 原文",
+				secrets: "Could not write secrets.enc: Original master key diagnostic 原文",
+			},
+		],
+		[
+			"ja",
+			{
+				state: "state.jsonを書き込めませんでした：",
+				key: "マスターキーを取得できませんでした：Original master key diagnostic 原文",
+				secrets: "secrets.encを書き込めませんでした：Original master key diagnostic 原文",
+			},
+		],
+		[
+			"zh-TW",
+			{
+				state: "無法寫入 state.json：",
+				key: "無法取得主金鑰：Original master key diagnostic 原文",
+				secrets: "無法寫入 secrets.enc：Original master key diagnostic 原文",
+			},
+		],
+	] as const)(
+		"%s preserves state and encrypted bytes when writes or master-key access fail",
+		async (locale, text) => {
+			const keyProvider = providerAt(dataRoot);
+			await writeIntegrationSecretsFile(
+				{
+					dataRoot,
+					key: "bilibili",
+					keyProvider,
+					reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				},
+				entries,
+			);
+			const original = await readFile(path());
+			const broken = {
+				...keyProvider,
+				getKey: async () => {
+					throw new Error("Original master key diagnostic 原文");
+				},
+			};
+			const statePath = dataPath(
+				dataRoot,
+				...integrationStateFile("onebot", BUILTIN_INTEGRATION_KEYS),
+			);
+			await mkdir(statePath, { recursive: true });
+			await writeFile(join(statePath, "original.txt"), "Original sentinel 原文");
+			i18n.set({ locale, voice: "plain" });
+			const state = await writeIntegrationStateFile(
+				dataRoot,
+				"onebot",
+				new Map([["original", "Private value"]]),
+				BUILTIN_INTEGRATION_KEYS,
+			);
+			expect(state).toMatchObject({
+				ok: false,
+				code: "unavailable",
+				message: expect.stringContaining(text.state),
+			});
+			expect(state).toMatchObject({ message: expect.stringContaining(statePath) });
+			expect(JSON.stringify(state)).not.toContain("Private value");
+			expect(await readFile(join(statePath, "original.txt"), "utf8")).toBe(
+				"Original sentinel 原文",
+			);
+			expect(await readdir(join(statePath, ".."))).toEqual(["state.json"]);
+			expect(
+				await readIntegrationSecretsFile({
+					dataRoot,
+					key: "bilibili",
+					keyProvider: broken,
+					reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+					logger: recordingLogger().logger,
+				}),
+			).toEqual({ kind: "unreadable", message: text.key });
+			expect(
+				await writeIntegrationSecretsFile(
+					{
+						dataRoot,
+						key: "bilibili",
+						keyProvider: broken,
+						reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+					},
+					entries,
+				),
+			).toEqual({ ok: false, code: "unavailable", message: text.secrets });
+			expect(await readFile(path())).toEqual(original);
+			expect(await readFile(path(), "utf8")).not.toContain("tok-abc");
+		},
+	);
 
 	it("文件不在 → 空袋", async () => {
 		expect(await readWith(dataRoot, recordingLogger().logger)).toEqual({
