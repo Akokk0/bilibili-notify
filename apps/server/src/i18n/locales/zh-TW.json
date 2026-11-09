@@ -1107,5 +1107,19 @@
 	"service.history.store.text.6": "[小程式卡片] {value0}",
 	"service.history.store.text.7": "@全體",
 	"service.history.repush-store.text.1": "無法將圖片存入圖片庫：{value0}",
-	"service.history.repush-store.text.2": "圖片庫中找不到此圖片：{value0}"
+	"service.history.repush-store.text.2": "圖片庫中找不到此圖片：{value0}",
+	"service.routes.respond-failure.text.1": "伺服器發生錯誤，詳情請查看日誌。",
+	"service.routes.respond-failure.text.3": "此介面不存在。",
+	"service.routes.respond-failure.text.4": "尚未登入，或登入階段已失效。",
+	"service.routes.respond-failure.text.5": "找不到要求的項目。",
+	"service.routes.respond-failure.text.6": "請求與目前狀態衝突。",
+	"service.routes.respond-failure.text.7": "請求過於頻繁，請稍後再試。",
+	"service.routes.respond-failure.text.8": "請求無效。",
+	"service.routes.respond-failure.text.2": "服務尚未準備就緒，請稍後再試。",
+	"service.routes.system-logs.text.1": "limit 必須是數字：{value0}",
+	"service.routes.system-logs.text.2": "day 必須是 YYYY-MM-DD 格式的日期：{value0}",
+	"service.routes.system-logs.text.3": "day 必須是 YYYY-MM-DD 格式的日期：{value0}",
+	"service.routes.system-logs.text.4": "必須提供 day 參數（YYYY-MM-DD）。",
+	"service.routes.system-logs.text.5": "找不到這一天的日誌檔案。",
+	"service.routes.system-logs.text.6": "找不到這一天的日誌檔案。"
 }

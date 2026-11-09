@@ -3,26 +3,97 @@
  * 「非法 query 显式 400 而非静默坏行为」契约)。
  */
 
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { createSystemLogsRoute } from "../system-logs.js";
 import type { RouteDeps } from "../types.js";
 
 let query: ReturnType<typeof vi.fn>;
 
-function makeApp() {
+function makeApp(root = tmpdir()) {
 	query = vi.fn(async () => []);
 	const deps = {
 		runtime: {
-			logStore: { query, dayFilePath: (d: string) => join(tmpdir(), `bn-logs-test-${d}.jsonl`) },
+			logStore: { query, dayFilePath: (d: string) => join(root, `bn-logs-test-${d}.jsonl`) },
 		},
 	} as unknown as RouteDeps;
 	return createSystemLogsRoute(deps);
 }
 
 describe("logs route — limit/day 校验", () => {
-	beforeEach(() => vi.restoreAllMocks());
+	beforeEach(() => {
+		vi.restoreAllMocks();
+		i18n.set({ locale: "zh-CN", voice: "maid" });
+	});
+	it.each([
+		[
+			"en",
+			[
+				"limit must be a number: raw",
+				"day must be a date in YYYY-MM-DD format: raw",
+				"The day parameter (YYYY-MM-DD) is required.",
+				"No log file was found for this day.",
+			],
+		],
+		[
+			"ja",
+			[
+				"limitは数値で指定してください：raw",
+				"dayはYYYY-MM-DD形式の日付で指定してください：raw",
+				"dayパラメーター（YYYY-MM-DD）が必要です。",
+				"この日のログファイルが見つかりません。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"limit 必須是數字：raw",
+				"day 必須是 YYYY-MM-DD 格式的日期：raw",
+				"必須提供 day 參數（YYYY-MM-DD）。",
+				"找不到這一天的日誌檔案。",
+			],
+		],
+	] as const)(
+		"%s localizes log query and download failures while keeping the raw file intact",
+		async (locale, text) => {
+			const root = await mkdtemp(join(tmpdir(), "bn-logs-locale-"));
+			try {
+				const app = makeApp(root);
+				i18n.set({ locale, voice: "plain" });
+				for (const [url, message] of [
+					["/?limit=raw", text[0]],
+					["/?day=raw", text[1]],
+					["/raw?day=raw", text[1]],
+					["/raw", text[2]],
+				] as const) {
+					const res = await app.request(url);
+					expect(res.status).toBe(400);
+					expect(await res.json()).toEqual({ code: "invalid", message });
+				}
+				expect(query).not.toHaveBeenCalled();
+				await mkdir(join(root, "bn-logs-test-1999-01-02.jsonl"));
+				for (const day of ["1999-01-01", "1999-01-02"]) {
+					const res = await app.request(`/raw?day=${day}`);
+					expect(res.status).toBe(404);
+					expect(await res.json()).toEqual({ code: "not_found", message: text[3] });
+				}
+				const raw = '{"message":"Original log 原文","event":"original.event"}\n';
+				await writeFile(join(root, "bn-logs-test-1999-01-03.jsonl"), raw);
+				const res = await app.request("/raw?day=1999-01-03");
+				expect(res.status).toBe(200);
+				expect(res.headers.get("content-type")).toContain("application/x-ndjson");
+				expect(res.headers.get("content-disposition")).toBe(
+					'attachment; filename="bilibili-notify-1999-01-03.jsonl"',
+				);
+				expect(await res.text()).toBe(raw);
+			} finally {
+				await rm(root, { recursive: true, force: true });
+			}
+		},
+	);
 
 	it("limit 非数字 → 400,不调用 query", async () => {
 		const res = await makeApp().request("/?limit=abc");

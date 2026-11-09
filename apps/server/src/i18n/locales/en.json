@@ -1117,5 +1117,19 @@
 	"service.history.store.text.6": "[Mini app card] {value0}",
 	"service.history.store.text.7": "@everyone",
 	"service.history.repush-store.text.1": "Could not save the image to the library: {value0}",
-	"service.history.repush-store.text.2": "Image not found in the library: {value0}"
+	"service.history.repush-store.text.2": "Image not found in the library: {value0}",
+	"service.routes.respond-failure.text.1": "A server error occurred. See the logs for details.",
+	"service.routes.respond-failure.text.3": "This endpoint does not exist.",
+	"service.routes.respond-failure.text.4": "You are not signed in, or your session has expired.",
+	"service.routes.respond-failure.text.5": "The requested item was not found.",
+	"service.routes.respond-failure.text.6": "The request conflicts with the current state.",
+	"service.routes.respond-failure.text.7": "Too many requests. Try again later.",
+	"service.routes.respond-failure.text.8": "Invalid request.",
+	"service.routes.respond-failure.text.2": "The service is not ready. Try again later.",
+	"service.routes.system-logs.text.1": "limit must be a number: {value0}",
+	"service.routes.system-logs.text.2": "day must be a date in YYYY-MM-DD format: {value0}",
+	"service.routes.system-logs.text.3": "day must be a date in YYYY-MM-DD format: {value0}",
+	"service.routes.system-logs.text.4": "The day parameter (YYYY-MM-DD) is required.",
+	"service.routes.system-logs.text.5": "No log file was found for this day.",
+	"service.routes.system-logs.text.6": "No log file was found for this day."
 }

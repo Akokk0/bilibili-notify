@@ -6,12 +6,13 @@
  */
 
 import { fail } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n/index.js";
 import { createTargetsRoute } from "../targets.js";
 import type { RouteDeps } from "../types.js";
 
 const TARGET_ID = "33333333-3333-4333-8333-333333333333";
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 function makeApp(opts: { pipeline?: boolean; targets?: unknown[]; sendToTarget?: unknown } = {}) {
 	const sendToTarget = vi.fn(async () => opts.sendToTarget ?? { ok: true, latencyMs: 7 });
@@ -45,6 +46,21 @@ function post(
 }
 
 describe("POST /api/targets/:id/test 请求级失败(非 2xx 的错误体)", () => {
+	it.each([
+		["en", "The service is not ready. Try again later."],
+		["ja", "サービスの準備ができていません。しばらくしてから再試行してください。"],
+		["zh-TW", "服務尚未準備就緒，請稍後再試。"],
+	] as const)(
+		"%s reports an unready pipeline without attempting delivery",
+		async (locale, message) => {
+			const { app, sendToTarget } = makeApp({ pipeline: false });
+			i18n.set({ locale, voice: "plain" });
+			const res = await post(app);
+			expect(res.status).toBe(503);
+			expect(await res.json()).toEqual({ code: "unavailable", message });
+			expect(sendToTarget).not.toHaveBeenCalled();
+		},
+	);
 	it("体不对 → 400 invalid,逐格原因进 issues,不会去发", async () => {
 		const { app, sendToTarget } = makeApp();
 		const res = await post(app, { kind: "nope" });

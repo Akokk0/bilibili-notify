@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { createApp, createCardSkinStore } from "../app.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
+import { i18n } from "../i18n/index.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
 // ---------------------------------------------------------------------------
@@ -23,6 +24,7 @@ describe("全局出错处理与 notFound", () => {
 	let staticDir: string;
 
 	beforeEach(async () => {
+		i18n.set({ locale: "zh-CN", voice: "maid" });
 		dataDir = await mkdtemp(join(tmpdir(), "bn-app-failure-"));
 		staticDir = join(dataDir, "web-dist");
 		await mkdir(staticDir, { recursive: true });
@@ -30,6 +32,7 @@ describe("全局出错处理与 notFound", () => {
 	});
 	afterEach(async () => {
 		await rm(dataDir, { recursive: true, force: true });
+		i18n.set({ locale: "zh-CN", voice: "maid" });
 	});
 
 	async function makeApp(options: { staticDir?: string } = {}) {
@@ -55,6 +58,82 @@ describe("全局出错处理与 notFound", () => {
 			throw thrown;
 		});
 	}
+	it.each([
+		[
+			"en",
+			[
+				"A server error occurred. See the logs for details.",
+				"This endpoint does not exist.",
+				"You are not signed in, or your session has expired.",
+				"The requested item was not found.",
+				"The request conflicts with the current state.",
+				"Too many requests. Try again later.",
+				"Invalid request.",
+			],
+		],
+		[
+			"ja",
+			[
+				"サーバーエラーが発生しました。詳細はログを確認してください。",
+				"このエンドポイントは存在しません。",
+				"ログインしていないか、セッションが失効しています。",
+				"要求された項目が見つかりません。",
+				"リクエストが現在の状態と競合しています。",
+				"リクエストが多すぎます。しばらくしてから再試行してください。",
+				"リクエストが無効です。",
+			],
+		],
+		[
+			"zh-TW",
+			[
+				"伺服器發生錯誤，詳情請查看日誌。",
+				"此介面不存在。",
+				"尚未登入，或登入階段已失效。",
+				"找不到要求的項目。",
+				"請求與目前狀態衝突。",
+				"請求過於頻繁，請稍後再試。",
+				"請求無效。",
+			],
+		],
+	] as const)(
+		"%s returns localized HTTP defaults and keeps original diagnostics out of responses",
+		async (locale, text) => {
+			const { app, runtime } = await makeApp();
+			try {
+				i18n.set({ locale, voice: "plain" });
+				const missing = await app.request("/api/definitely-not-a-route");
+				expect(missing.status).toBe(404);
+				expect(await missing.json()).toEqual({ code: "not_found", message: text[1] });
+				for (const [status, code, message] of [
+					[401, "unauthorized", text[2]],
+					[404, "not_found", text[3]],
+					[409, "conflict", text[4]],
+					[429, "rate_limited", text[5]],
+					[413, "invalid", text[6]],
+					[502, "unavailable", text[0]],
+				] as const) {
+					makeGlobalsThrow(runtime, new HTTPException(status));
+					const res = await app.request("/api/settings");
+					expect(res.status).toBe(status);
+					expect(await res.json()).toEqual({ code, message });
+				}
+				const original = new Error("Original secret diagnostic");
+				const log = vi.spyOn(runtime.serviceCtx.logger, "error");
+				makeGlobalsThrow(runtime, original);
+				const res = await app.request("/api/settings");
+				expect(res.status).toBe(503);
+				expect(await res.json()).toEqual({ code: "unavailable", message: text[0] });
+				expect(log).toHaveBeenLastCalledWith(expect.any(String), original);
+				makeGlobalsThrow(runtime, new HTTPException(409, { message: "Original response 原文" }));
+				expect(await (await app.request("/api/settings")).json()).toEqual({
+					code: "conflict",
+					message: "Original response 原文",
+				});
+			} finally {
+				await runtime.dispose();
+			}
+		},
+	);
 
 	it("路由抛了普通错误:回 unavailable + 固定的一句话,原话不外泄", async () => {
 		const { app, runtime } = await makeApp();

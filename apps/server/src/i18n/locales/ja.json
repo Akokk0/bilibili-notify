@@ -1107,5 +1107,19 @@
 	"service.history.store.text.6": "[ミニアプリカード] {value0}",
 	"service.history.store.text.7": "@全員",
 	"service.history.repush-store.text.1": "画像ライブラリに保存できません：{value0}",
-	"service.history.repush-store.text.2": "画像ライブラリに画像がありません：{value0}"
+	"service.history.repush-store.text.2": "画像ライブラリに画像がありません：{value0}",
+	"service.routes.respond-failure.text.1": "サーバーエラーが発生しました。詳細はログを確認してください。",
+	"service.routes.respond-failure.text.3": "このエンドポイントは存在しません。",
+	"service.routes.respond-failure.text.4": "ログインしていないか、セッションが失効しています。",
+	"service.routes.respond-failure.text.5": "要求された項目が見つかりません。",
+	"service.routes.respond-failure.text.6": "リクエストが現在の状態と競合しています。",
+	"service.routes.respond-failure.text.7": "リクエストが多すぎます。しばらくしてから再試行してください。",
+	"service.routes.respond-failure.text.8": "リクエストが無効です。",
+	"service.routes.respond-failure.text.2": "サービスの準備ができていません。しばらくしてから再試行してください。",
+	"service.routes.system-logs.text.1": "limitは数値で指定してください：{value0}",
+	"service.routes.system-logs.text.2": "dayはYYYY-MM-DD形式の日付で指定してください：{value0}",
+	"service.routes.system-logs.text.3": "dayはYYYY-MM-DD形式の日付で指定してください：{value0}",
+	"service.routes.system-logs.text.4": "dayパラメーター（YYYY-MM-DD）が必要です。",
+	"service.routes.system-logs.text.5": "この日のログファイルが見つかりません。",
+	"service.routes.system-logs.text.6": "この日のログファイルが見つかりません。"
 }
