@@ -1449,5 +1449,15 @@
 	"service.routes.ai.text.16": "AI 請求失敗：{value0}",
 	"service.routes.ai.text.17": "圖片過大（上限 5MB）。",
 	"service.routes.ai.text.18": "不支援的圖片格式：GIF（僅限 PNG / JPEG / WebP）。",
-	"conversation.placeholderTitle": "新對話"
+	"conversation.placeholderTitle": "新對話",
+	"service.ai.tool-label-texts.text.1": "使用技能",
+	"service.ai.tool-label-texts.text.2": "建立佈景主題",
+	"service.ai.tool-label-texts.text.3": "檢視卡片外觀庫",
+	"service.ai.tool-label-texts.text.4": "讀取卡片",
+	"service.ai.tool-label-texts.text.5": "讀取卡片區塊",
+	"service.ai.tool-label-texts.text.6": "預覽卡片",
+	"service.ai.tool-label-texts.text.7": "編寫卡片",
+	"service.ai.tool-label-texts.text.8": "修改卡片區塊",
+	"service.ai.tool-label-texts.text.9": "刪除卡片區塊",
+	"service.ai.tool-label-texts.text.10": "重新命名卡片外觀"
 }

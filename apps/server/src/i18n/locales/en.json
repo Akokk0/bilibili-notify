@@ -1460,5 +1460,15 @@
 	"service.routes.ai.text.16": "AI request failed: {value0}",
 	"service.routes.ai.text.17": "The image is too large (limit: 5MB).",
 	"service.routes.ai.text.18": "Unsupported image type: GIF (PNG / JPEG / WebP only).",
-	"conversation.placeholderTitle": "New conversation"
+	"conversation.placeholderTitle": "New conversation",
+	"service.ai.tool-label-texts.text.1": "Use skill",
+	"service.ai.tool-label-texts.text.2": "Create skin",
+	"service.ai.tool-label-texts.text.3": "List card skins",
+	"service.ai.tool-label-texts.text.4": "Read card",
+	"service.ai.tool-label-texts.text.5": "Read block",
+	"service.ai.tool-label-texts.text.6": "Preview card",
+	"service.ai.tool-label-texts.text.7": "Write card",
+	"service.ai.tool-label-texts.text.8": "Edit block",
+	"service.ai.tool-label-texts.text.9": "Remove block",
+	"service.ai.tool-label-texts.text.10": "Rename card skin"
 }

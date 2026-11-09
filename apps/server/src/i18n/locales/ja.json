@@ -1449,5 +1449,15 @@
 	"service.routes.ai.text.16": "AIリクエストに失敗しました：{value0}",
 	"service.routes.ai.text.17": "画像が大きすぎます（上限：5MB）。",
 	"service.routes.ai.text.18": "非対応の画像形式です：GIF（PNG / JPEG / WebPのみ）。",
-	"conversation.placeholderTitle": "新しい会話"
+	"conversation.placeholderTitle": "新しい会話",
+	"service.ai.tool-label-texts.text.1": "スキルを使用",
+	"service.ai.tool-label-texts.text.2": "スキンを作成",
+	"service.ai.tool-label-texts.text.3": "カードスキン一覧を表示",
+	"service.ai.tool-label-texts.text.4": "カードを読み取る",
+	"service.ai.tool-label-texts.text.5": "ブロックを読み取る",
+	"service.ai.tool-label-texts.text.6": "カードをプレビュー",
+	"service.ai.tool-label-texts.text.7": "カードを作成",
+	"service.ai.tool-label-texts.text.8": "ブロックを編集",
+	"service.ai.tool-label-texts.text.9": "ブロックを削除",
+	"service.ai.tool-label-texts.text.10": "カードスキンの名前を変更"
 }

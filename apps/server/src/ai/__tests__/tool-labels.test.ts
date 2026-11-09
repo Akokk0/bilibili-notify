@@ -13,9 +13,10 @@ import {
 	TOOL_DEFINITIONS,
 	WEB_SEARCH_TOOL_NAME,
 } from "@bilibili-notify/ai";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { createBiliAiToolProvider } from "../../bilibili/ai-tools.js";
 import { createCardWorkshopTools } from "../../card-skins/chat-tools.js";
+import { i18n } from "../../i18n/index.js";
 import { createSkillChatTool } from "../../maid-skills/chat-tool.js";
 import { createSkinChatTools } from "../../skins/chat-tool.js";
 
@@ -45,6 +46,8 @@ const EXPECTED_LABELS: Record<string, string> = {
 	set_skin_meta: "给卡片皮肤起名",
 };
 
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
 /** 注入的三家各造一套(只为拿定义与标签,不执行,所以依赖给空壳)。 */
 function injectedTools() {
 	const skill = createSkillChatTool([
@@ -65,6 +68,83 @@ function injectedTools() {
 	}).tools;
 	return [...(skill ? [skill] : []), ...skins, ...cards];
 }
+
+it.each([
+	[
+		"en",
+		[
+			"Use skill",
+			"Create skin",
+			"List card skins",
+			"Read card",
+			"Read block",
+			"Preview card",
+			"Write card",
+			"Edit block",
+			"Remove block",
+			"Rename card skin",
+		],
+	],
+	[
+		"ja",
+		[
+			"スキルを使用",
+			"スキンを作成",
+			"カードスキン一覧を表示",
+			"カードを読み取る",
+			"ブロックを読み取る",
+			"カードをプレビュー",
+			"カードを作成",
+			"ブロックを編集",
+			"ブロックを削除",
+			"カードスキンの名前を変更",
+		],
+	],
+	[
+		"zh-TW",
+		[
+			"使用技能",
+			"建立佈景主題",
+			"檢視卡片外觀庫",
+			"讀取卡片",
+			"讀取卡片區塊",
+			"預覽卡片",
+			"編寫卡片",
+			"修改卡片區塊",
+			"刪除卡片區塊",
+			"重新命名卡片外觀",
+		],
+	],
+] as const)("%s:工具痕迹标签本地化,技能和作者给的参数不翻译", (locale, labels) => {
+	i18n.set({ locale, voice: "plain" });
+	const tools = injectedTools();
+	const names = [
+		"load_skill",
+		"create_skin",
+		"list_skins",
+		"read_card",
+		"read_block",
+		"look_card",
+		"write_card",
+		"set_block",
+		"remove_block",
+		"set_skin_meta",
+	];
+	const byName = new Map(tools.map((tool) => [tool.definition.function.name, tool]));
+	expect(names.map((name) => describeToolCall(byName.get(name), {}).label)).toEqual(labels);
+	expect(describeToolCall(byName.get("load_skill"), { name: "weekly-report 原文" }).argText).toBe(
+		"weekly-report 原文",
+	);
+	expect(
+		describeToolCall(byName.get("set_skin_meta"), { name: "Original skin 原文" }).argText,
+	).toBe("Original skin 原文");
+	expect(describeToolCall(byName.get("read_block"), { block: "Original block 原文" }).argText).toBe(
+		"Original block 原文",
+	);
+	expect(describeToolCall(byName.get("look_card"), { kind: "unrecognized-kind" }).argText).toBe(
+		"unrecognized-kind",
+	);
+});
 
 describe("聊天里挂得出的全部工具都有标签", () => {
 	it("核心的(含联网搜索、看图):标签表查得到,文字逐字对得上", () => {
