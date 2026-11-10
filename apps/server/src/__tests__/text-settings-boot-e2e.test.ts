@@ -11,6 +11,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type {
+	PersonaCatalogResponse,
+	PersonaWriteResult,
+	ProblemsResponse,
+	SettingsResponse,
+} from "@bilibili-notify/contract";
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
@@ -103,13 +109,109 @@ describe("语言与口吻两项设置接在开机路径上", () => {
 		expect(i18n.state().voice).toBe("maid");
 	});
 
-	// 验红:同上,开机那一下没推,这条红。
-	it("core.json 里写着 locale: ja → 开机即是 ja", async () => {
+	it("真实设置接口四语切换同步内置性格与持续问题，保留用户副本和模板", async () => {
 		const generationDir = await openTestGeneration(dataDir);
 		const file = join(generationDir, ...CORE_SETTINGS_FILE);
 		await mkdir(dirname(file), { recursive: true });
-		await writeFile(file, JSON.stringify({ ...makeDefaultGlobalSettings(), locale: "ja" }), "utf8");
-		await boot();
-		expect(i18n.state().locale).toBe("ja");
+		await writeFile(
+			file,
+			JSON.stringify({ ...makeDefaultGlobalSettings(), history: "Original invalid history" }),
+			"utf8",
+		);
+		const port = await boot();
+		const read = async <T>(path: string): Promise<T> => {
+			const response = await fetch(`http://127.0.0.1:${port}${path}`);
+			expect(response.status).toBe(200);
+			return response.json() as Promise<T>;
+		};
+		const before = await read<PersonaCatalogResponse>("/api/ai/personas");
+		const builtin = before.entries.find((entry) => entry.id === "gentle-maid");
+		if (!builtin) throw new Error("Built-in persona missing");
+		const content = {
+			label: "Original copy 原文",
+			persona: {
+				...builtin.persona,
+				name: "Original persona 原文",
+				traits: "Original traits 原文",
+			},
+			dynamicPrompt: "Original commentary rule 原文",
+			liveSummaryPrompt: "Original summary rule 原文",
+		};
+		const created = await fetch(`http://127.0.0.1:${port}/api/ai/personas`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ op: "create", revision: before.revision, content }),
+		});
+		expect(created.status).toBe(200);
+		const result = (await created.json()) as PersonaWriteResult;
+		if (!result.ok) throw new Error(result.message);
+		await patch(port, { defaults: { templates: { liveStart: "Original global template 原文" } } });
+		const original = (await read<ProblemsResponse>("/api/problems")).problems.find(
+			(p) => p.reporter === "core" && p.code === "settings_invalid",
+		);
+		if (!original) throw new Error("Invalid-settings problem missing");
+		const ids = (await read<PersonaCatalogResponse>("/api/ai/personas")).entries.map(
+			(entry) => entry.id,
+		);
+		for (const [locale, voice, label, name, reason] of [
+			["en", "plain", "Gentle Maid", "Ling", "The value has an incorrect type for this setting."],
+			[
+				"ja",
+				"maid",
+				"優しいメイド",
+				"アヤ",
+				"ご主人様、この値の型は設定ルールに合いません。該当する欄を確認してくださいね。",
+			],
+			["zh-TW", "maid", "溫柔女僕", "小綾", "主人，這個值的型別不符合設定規則，請檢查這一欄喔。"],
+			["zh-CN", "plain", "温柔女仆", "小绫", "值的类型不符合设置规则"],
+			["zh-CN", "maid", "温柔女仆", "小绫", "主人，值的类型不符合设置规则，请检查这一格。"],
+		] as const) {
+			await patch(port, { locale, voice });
+			expect(i18n.state()).toMatchObject({ locale, voice });
+			const catalog = await read<PersonaCatalogResponse>("/api/ai/personas");
+			expect(catalog.entries.map((entry) => entry.id)).toEqual(ids);
+			expect(catalog.entries.find((entry) => entry.id === "gentle-maid")).toMatchObject({
+				label,
+				persona: { name },
+			});
+			expect(catalog.entries.find((entry) => entry.id === result.id)).toMatchObject(content);
+			const settings = await read<SettingsResponse>("/api/settings");
+			expect(settings.core.defaults.templates.liveStart).toBe("Original global template 原文");
+			expect(settings.core.ai.presets.find((p) => p.id === result.id)).toMatchObject(content);
+			const current = (await read<ProblemsResponse>("/api/problems")).problems.filter(
+				(p) => p.reporter === "core" && p.code === "settings_invalid",
+			);
+			expect(current).toHaveLength(1);
+			expect(current[0]?.since).toBe(original.since);
+			expect(current[0]?.message).toContain(reason);
+			expect(current[0]?.message).not.toContain("Original invalid history");
+		}
+	});
+
+	// 验红:同上,开机那一下没推,这条红。
+	it.each([
+		["zh-CN", "maid"],
+		["en", "plain"],
+		["ja", "maid"],
+		["zh-TW", "plain"],
+	] as const)("core.json 保存 %s / %s → 开机即按保存值生效", async (locale, voice) => {
+		const generationDir = await openTestGeneration(dataDir);
+		const file = join(generationDir, ...CORE_SETTINGS_FILE);
+		await mkdir(dirname(file), { recursive: true });
+		await writeFile(
+			file,
+			JSON.stringify({ ...makeDefaultGlobalSettings(), locale, voice }),
+			"utf8",
+		);
+		i18n.set({
+			locale: locale === "en" ? "ja" : "en",
+			voice: voice === "plain" ? "maid" : "plain",
+		});
+		const port = await boot();
+		expect(i18n.state()).toMatchObject({ locale, voice });
+		const response = await fetch(`http://127.0.0.1:${port}/api/settings`);
+		expect(response.status).toBe(200);
+		const settings = (await response.json()) as SettingsResponse;
+		expect(settings.core).toMatchObject({ locale, voice });
 	});
 });
