@@ -130,7 +130,8 @@ describe("Cards per-UP 作用域接线", () => {
 		const picker = container.querySelector(
 			'[data-code="cardSkin"] [role="combobox"]',
 		) as HTMLButtonElement;
-		chooseSelect(picker, "极光");
+		fireEvent.click(picker);
+		fireEvent.click(await screen.findByRole("option", { name: "极光" }));
 		fireEvent.click(screen.getByRole("button", { name: "移除 UID 123456 的个性化配置" }));
 		act(() => i18n.set({ locale, voice: "maid" }));
 		expect(screen.getByRole("dialog").textContent).toContain(message);
