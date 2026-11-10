@@ -50,6 +50,8 @@ const runningDetails: HealthDetailsResponse = {
 		targets: { exists: false, lastUpdatedAt: null, count: 0 },
 	},
 };
+type TestSocket = EventTarget & { readyState: number; sent: string[] };
+
 function mountApp(
 	options: {
 		details?: () => HealthDetailsResponse | Promise<HealthDetailsResponse>;
@@ -58,6 +60,7 @@ function mountApp(
 		notices?: () => SystemNotice[] | Promise<SystemNotice[]>;
 		request?: (path: string, init?: RequestInit) => Promise<Response | undefined>;
 		session?: { authRequired: boolean; authed: boolean };
+		socketCreated?: (socket: TestSocket) => void;
 	} = {},
 ) {
 	const core = { ...makeDefaultGlobalSettings(), locale: "zh-CN", voice: "plain" };
@@ -68,7 +71,14 @@ function mountApp(
 			static OPEN = 1;
 			static CLOSED = 3;
 			readyState = 0;
-			send() {}
+			sent: string[] = [];
+			constructor() {
+				super();
+				options.socketCreated?.(this);
+			}
+			send(message: string) {
+				this.sent.push(message);
+			}
 			close() {
 				this.readyState = 3;
 			}
@@ -148,6 +158,102 @@ it("the authenticated App propagates voice changes to a mounted library form", a
 	act(() => i18n.set({ voice: "maid" }));
 	expect(control.isConnected).toBe(true);
 	expect(control.textContent).toContain("主人");
+});
+
+it("WS globals 更新与 hydrate 四语重取时整页重画，默认模板跟随语言而未保存的模板保持原文", async () => {
+	let core = { ...makeDefaultGlobalSettings(), locale: "zh-CN", voice: "plain" };
+	let socket: TestSocket | undefined;
+	mountApp({
+		socketCreated: (created) => {
+			socket = created;
+		},
+		request: async (path) => (path === "/api/settings" ? jsonResponse({ core }) : undefined),
+	});
+	fireEvent.click((await screen.findAllByText("直播消息版式"))[0]);
+	const input = (key: string) =>
+		document.querySelector(`[data-code="templates.${key}"] textarea`) as HTMLTextAreaElement;
+	await waitFor(() =>
+		expect(input("liveStart")?.value).toBe("{name} 开播啦，当前粉丝数：{follower}"),
+	);
+	let edited = input("liveStart");
+	fireEvent.change(edited, { target: { value: "Original unsaved template 原文: {name}" } });
+	await waitFor(() => expect(socket).toBeDefined());
+	act(() => {
+		if (!socket) throw new Error("Test socket missing");
+		socket.readyState = 1;
+		socket.dispatchEvent(new Event("open"));
+	});
+	expect(socket?.sent.some((frame) => JSON.parse(frame).channels?.includes("state"))).toBe(true);
+	for (const [locale, voice, event, endTab, startTab, endTemplate] of [
+		[
+			"en",
+			"plain",
+			"config-changed",
+			"Stream ended",
+			"Live starts",
+			"{name} ended the stream. Duration: {time}. Follower change: {follower_change}",
+		],
+		[
+			"ja",
+			"maid",
+			"config-changed",
+			"配信終了",
+			"配信開始",
+			"{name}の配信が終了しました。配信時間：{time}、フォロワー増減：{follower_change}",
+		],
+		[
+			"zh-TW",
+			"plain",
+			"hydrate",
+			"下播",
+			"開播",
+			"{name} 已結束直播，本次直播時長 {time}，粉絲增減 {follower_change}",
+		],
+		[
+			"zh-CN",
+			"maid",
+			"config-changed",
+			"下播",
+			"开播",
+			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
+		],
+	] as const) {
+		const previousReads = vi
+			.mocked(fetch)
+			.mock.calls.filter(([path]) => String(path) === "/api/settings").length;
+		core = { ...core, locale, voice };
+		act(() =>
+			socket?.dispatchEvent(
+				new MessageEvent("message", {
+					data: JSON.stringify({
+						type: "state",
+						event,
+						data: event === "hydrate" ? {} : { scope: "globals" },
+					}),
+				}),
+			),
+		);
+		await waitFor(() => expect(document.documentElement.lang).toBe(locale));
+		expect(input("liveStart")).toBe(edited);
+		expect(edited.value).toBe("Original unsaved template 原文: {name}");
+		expect(
+			vi.mocked(fetch).mock.calls.filter(([path]) => String(path) === "/api/settings").length,
+		).toBeGreaterThan(previousReads);
+		expect(localStorage.getItem("bn.locale")).toBe(locale);
+		expect(localStorage.getItem("bn.voice")).toBe(voice);
+		fireEvent.click(screen.getByRole("button", { name: endTab }));
+		await waitFor(() => expect(input("liveEnd").value).toBe(endTemplate));
+		fireEvent.click(screen.getByRole("button", { name: startTab }));
+		edited = input("liveStart");
+		expect(edited.value).toBe("Original unsaved template 原文: {name}");
+	}
+	expect(
+		vi
+			.mocked(fetch)
+			.mock.calls.filter(
+				([path, init]) => String(path) === "/api/settings" && init?.method === "PATCH",
+			),
+	).toHaveLength(0);
 });
 
 it("推送链路错误分类、关闭及清空不删除持续问题，未知来源保留原source", async () => {

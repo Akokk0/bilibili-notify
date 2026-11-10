@@ -19,10 +19,11 @@ import {
 	SectionNav,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
+import { useSettingsDraft } from "../hooks/useSettingsDraft";
 import { useSources } from "../hooks/useSources";
 import { useT } from "../i18n";
 import { api } from "../services/api";
@@ -248,15 +249,11 @@ export default function Rules() {
 
 	const [scope, setScope] = useState<Scope>("__global");
 	const [section, setSection] = useState<SectionId>("filter");
-	const [draft, setDraft] = useState<GlobalSettingsView | null>(null);
+	const [draft, setDraft] = useSettingsDraft(globalsQuery.data);
 	// 用户主动通过「添加 UP」加进来,但还没设任何 override 的 sub.id;客户端内存,刷新即清空。
 	const [addedSubIds, setAddedSubIds] = useState<Set<string>>(new Set());
 	// 待确认移除的 per-UP(有实际覆盖项,点 tab 的 x 后先弹确认 dialog 再清空)。
 	const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null);
-
-	useEffect(() => {
-		if (globalsQuery.data) setDraft(globalsQuery.data);
-	}, [globalsQuery.data]);
 
 	const save = useMutation({
 		mutationFn: async (next: GlobalSettingsView) => {
@@ -336,21 +333,24 @@ export default function Rules() {
 	// 账本(`templatesSeen`)在编辑这一层跟着「存没存」走:一条文字从没存变成存了,记下此刻简体出厂原文的指纹;
 	// 变回没存(恢复默认、用新默认、编辑到与默认一字不差)就拿掉。账本因此始终是草稿的纯函数,
 	// 改了又改回、丢弃草稿都不会留脏条目 —— 放在保存那一层就得再拿基线比一遍,保存条的 diff 也看不见这笔。
-	const patchDraft = useCallback((delta: GlobalSettingsPatch): void => {
-		setDraft((d) => {
-			if (!d) return d;
-			const next = deepMerge(d, delta);
-			// 基线里没有账本这一格(老形态)时别凭空补一个 `{}`,否则草稿与基线对不上、保存条白亮。
-			const before = next.templatesSeen ?? NO_SEEN;
-			const seen = syncTemplatesSeen(
-				d.defaults.templates,
-				next.defaults.templates,
-				before,
-				FACTORY_TEMPLATES,
-			);
-			return seen === before ? next : { ...next, templatesSeen: seen };
-		});
-	}, []);
+	const patchDraft = useCallback(
+		(delta: GlobalSettingsPatch): void => {
+			setDraft((d) => {
+				if (!d) return d;
+				const next = deepMerge(d, delta);
+				// 基线里没有账本这一格(老形态)时别凭空补一个 `{}`,否则草稿与基线对不上、保存条白亮。
+				const before = next.templatesSeen ?? NO_SEEN;
+				const seen = syncTemplatesSeen(
+					d.defaults.templates,
+					next.defaults.templates,
+					before,
+					FACTORY_TEMPLATES,
+				);
+				return seen === before ? next : { ...next, templatesSeen: seen };
+			});
+		},
+		[setDraft],
+	);
 
 	// 文字模板设置里只存主人改过的:没存的格显示「当前语言的默认」(ADR-0037 决策 10)。
 	const locale = textSettingsOf(draft ?? globalsQuery.data ?? {}).locale;
