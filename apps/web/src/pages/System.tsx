@@ -5,9 +5,10 @@ import type {
 } from "@bilibili-notify/contract";
 import { ErrorNote, Icon, LoadingBlock, SectionNav } from "@bilibili-notify/ui";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { InvalidSettingsPanel } from "../components/invalid-settings-note";
+import { useResourceState } from "../components/library/resource-drafts";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { integrationKeyFromHash } from "../config/system-paths";
 import { ACCOUNTS_QUERY_KEY } from "../hooks/useAccounts";
@@ -152,7 +153,8 @@ export default function System() {
 	const qc = useQueryClient();
 
 	const location = useLocation();
-	const [section, setSection] = useState<SystemSectionId>(
+	const [section, setSection] = useResourceState<SystemSectionId>(
+		"system.section",
 		() => HASH_SECTION[location.hash] ?? "account",
 	);
 
@@ -196,7 +198,7 @@ export default function System() {
 	});
 
 	// 草稿是整份设置(核心那份在 `core` 下、B 站的挂在 `bilibili` 下),字段码也按这个形状写(`core.logging.level`)。
-	const [draft, setDraft] = useSettingsDraft(globalsQuery.data);
+	const [draft, setDraft] = useSettingsDraft(globalsQuery.data, "system.settings");
 
 	function patchDraft(delta: SettingsPatch): void {
 		setDraft((d) => (d ? deepMerge(d, delta) : d));

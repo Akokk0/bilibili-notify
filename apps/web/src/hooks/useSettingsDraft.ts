@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect } from "react";
+import { useResourceState } from "../components/library/resource-drafts";
 
 const record = (value: unknown): value is Record<string, unknown> =>
 	value !== null && typeof value === "object" && !Array.isArray(value);
@@ -16,16 +17,33 @@ function rebase(previous: unknown, draft: unknown, next: unknown): unknown {
 	return merged;
 }
 
-export function useSettingsDraft<T>(baseline: T | undefined) {
-	const previous = useRef<T | undefined>(undefined);
-	const [draft, setDraft] = useState<T | null>(null);
+export function useSettingsDraft<T>(baseline: T | undefined, resourceKey?: string) {
+	const [state, setState] = useResourceState<{
+		key: string | undefined;
+		previous: T | undefined;
+		draft: T | null;
+	}>(resourceKey, { key: resourceKey, previous: undefined, draft: null });
 	useEffect(() => {
 		if (baseline === undefined) return;
-		const old = previous.current;
-		setDraft((current) =>
-			current === null || old === undefined ? baseline : (rebase(old, current, baseline) as T),
-		);
-		previous.current = baseline;
-	}, [baseline]);
-	return [draft, setDraft] as const;
+		setState(({ key, previous, draft }) => ({
+			key: resourceKey,
+			previous: baseline,
+			draft:
+				key !== resourceKey || draft === null || previous === undefined
+					? baseline
+					: (rebase(previous, draft, baseline) as T),
+		}));
+	}, [baseline, setState, resourceKey]);
+	const setDraft = useCallback(
+		(next: T | null | ((current: T | null) => T | null)) =>
+			setState((state) => ({
+				...state,
+				draft:
+					typeof next === "function"
+						? (next as (current: T | null) => T | null)(state.draft)
+						: next,
+			})),
+		[setState],
+	);
+	return [state.draft, setDraft] as const;
 }

@@ -40,12 +40,14 @@ import { ChromeAutoDetect } from "../components/chrome-autodetect";
 import { Field, Picker, TArea, TInput, TNum, TSelect } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { InheritNote } from "../components/inherit-note";
+import { useResourceState } from "../components/library/resource-drafts";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { type MembershipProgram, membershipTiersOf } from "../config/membership-programs";
 import { PUSH_TONE } from "../config/push-features";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
+import { useSettingsDraft } from "../hooks/useSettingsDraft";
 import { useSources } from "../hooks/useSources";
 import { useT, useTextOptions } from "../i18n";
 import { ApiError, api } from "../services/api";
@@ -704,23 +706,24 @@ export default function Cards() {
 		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 	});
 
-	const [scope, setScope] = useState<Scope>("__global");
+	const [scope, setScope] = useResourceState<Scope>("cards.scope", "__global");
 	// 客户端临时添加(还没设覆盖)的 sub.id;刷新即清空。
-	const [addedSubIds, setAddedSubIds] = useState<Set<string>>(new Set());
+	const [addedSubIds, setAddedSubIds] = useResourceState<Set<string>>(
+		"cards.added",
+		() => new Set(),
+	);
 	const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null);
 
 	// 全局草稿:出图总开关 + 直播封面
-	const [gCards, setGCards] = useState<CardsSettings | null>(null);
+	const [gCards, setGCards] = useSettingsDraft(globalsQuery.data?.defaults.cards, "cards.settings");
 	// 皮肤旋钮的覆盖,按皮肤 id 分层(ADR-0014 决策 16 的 🔗)。全局那一份,不分卡种;
 	// 每位 UP 自己那层见下面的 `puKnobs`。
-	const [gSkinKnobs, setGSkinKnobs] = useState<CardSkinKnobsBySkin>({});
-
-	// per-UP 直播封面覆盖草稿(undefined = 继承全局;空数组 = 这位 UP 不用自定义封面)。
-	const [puCover, setPuCover] = useState<string[] | undefined>(undefined);
-	// 该 UP 单独指定的卡片皮肤;undefined = 跟随全局(保存时把这个键整个清掉)。
-	const [puSkin, setPuSkin] = useState<string | undefined>(undefined);
-	// 该 UP 单独拧过的皮肤旋钮,按皮肤 id 分层(ADR-0014 决策 17 的 🔗)。空 = 全跟全局。
-	const [puKnobs, setPuKnobs] = useState<CardSkinKnobsBySkin>({});
+	const globalKnobsBaseline = useMemo(
+		() => (globalsQuery.data ? (globalsQuery.data.defaults.cardSkinKnobs ?? {}) : undefined),
+		[globalsQuery.data],
+	);
+	const [globalKnobsDraft, setGSkinKnobs] = useSettingsDraft(globalKnobsBaseline, "cards.knobs");
+	const gSkinKnobs = globalKnobsDraft ?? {};
 
 	// 删盘后清扫页面上所有仍引用该 id 的封面草稿(全局 / per-UP)。picker 自身的 onChange 只清
 	// 它绑定的那一个;另一份草稿若攥着这个 id 不放,下次保存就落盘成悬空引用(封面是幽灵占轮换位)。
@@ -729,14 +732,29 @@ export default function Cards() {
 		setGCards((c) =>
 			c ? { ...c, liveCoverImageIds: removeFromGallery(c.liveCoverImageIds, id) } : c,
 		);
-		setPuCover((ids) => (ids ? removeFromGallery(ids, id) : ids));
+		setPerSubDraft((d) =>
+			d
+				? {
+						...d,
+						liveCoverImageIds: d.liveCoverImageIds
+							? removeFromGallery(d.liveCoverImageIds, id)
+							: d.liveCoverImageIds,
+					}
+				: d,
+		);
 	};
 
 	// 左侧导航:「全局」(基准通用样式)或某卡片类型。与作用域无关。
 	const t = useT();
 	const sourceEntries = useSources().data?.sources;
-	const [activeTab, setActiveTab] = useState<"__global" | PreviewKind>("__global");
-	const [content, setContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
+	const [activeTab, setActiveTab] = useResourceState<"__global" | PreviewKind>(
+		"cards.tab",
+		"__global",
+	);
+	const [content, setContent] = useResourceState<PreviewContent>(
+		"cards.preview",
+		DEFAULT_PREVIEW_CONTENT,
+	);
 
 	const isGlobalTab = activeTab === "__global";
 	// 类型 tab 锁定为该类型;全局 tab 右侧铺四张卡(无单一类型),kind 仅占位。
@@ -747,13 +765,6 @@ export default function Cards() {
 	const isGlobalScope = scope === "__global";
 	const focusedSub = isGlobalScope ? undefined : allSubs.find((s) => s.id === scope);
 
-	useEffect(() => {
-		if (globalsQuery.data) {
-			setGCards(globalsQuery.data.defaults.cards);
-			setGSkinKnobs(globalsQuery.data.defaults.cardSkinKnobs ?? {});
-		}
-	}, [globalsQuery.data]);
-
 	// 选中 UP 的存储覆盖 → 编辑草稿。
 	const seededPuCover = focusedSub?.overrides.cards?.liveCoverImageIds;
 	const seededPuSkin = focusedSub?.overrides.cardSkin;
@@ -762,19 +773,35 @@ export default function Cards() {
 		[focusedSub?.overrides.cardSkinKnobs],
 	);
 
-	// 切换到不同 UP(或其服务端数据变化)→ 重新 seed 覆盖草稿。
-	useEffect(() => {
-		setPuCover(seededPuCover);
-		setPuSkin(seededPuSkin);
-		setPuKnobs(seededPuKnobs);
-	}, [seededPuCover, seededPuSkin, seededPuKnobs]);
+	const perSubBaseline = useMemo(
+		() => ({
+			liveCoverImageIds: seededPuCover,
+			cardSkin: seededPuSkin,
+			cardSkinKnobs: seededPuKnobs,
+		}),
+		[seededPuCover, seededPuSkin, seededPuKnobs],
+	);
+	// 每条订阅单独识别基线；管理返回时合并新快照，显式切作用域仍从该订阅重新开始。
+	const [perSubDraft, setPerSubDraft] = useSettingsDraft(
+		perSubBaseline,
+		`cards.subscription.${scope}`,
+	);
+	const puCover = perSubDraft?.liveCoverImageIds;
+	const puSkin = perSubDraft?.cardSkin;
+	const puKnobs = perSubDraft?.cardSkinKnobs ?? {};
+	const setPuCover = (liveCoverImageIds: string[] | undefined) =>
+		setPerSubDraft((d) => (d ? { ...d, liveCoverImageIds } : d));
+	const setPuSkin = (cardSkin: string | undefined) =>
+		setPerSubDraft((d) => (d ? { ...d, cardSkin } : d));
+	const setPuKnobs = (cardSkinKnobs: CardSkinKnobsBySkin) =>
+		setPerSubDraft((d) => (d ? { ...d, cardSkinKnobs } : d));
 
 	// 选中的 UP 从订阅列表消失 → 回退全局。
 	useEffect(() => {
 		if (!isGlobalScope && subsQuery.data && !allSubs.some((s) => s.id === scope)) {
 			setScope("__global");
 		}
-	}, [isGlobalScope, scope, subsQuery.data, allSubs]);
+	}, [isGlobalScope, scope, subsQuery.data, allSubs, setScope]);
 
 	const saveGlobal = useMutation({
 		mutationFn: async (payload: { cards: CardsSettings; cardSkinKnobs: CardSkinKnobsBySkin }) => {
@@ -1001,9 +1028,7 @@ export default function Cards() {
 				setGCards(globalsQuery.data.defaults.cards);
 				setGSkinKnobs(globalsQuery.data.defaults.cardSkinKnobs ?? {});
 			} else {
-				setPuCover(seededPuCover);
-				setPuSkin(seededPuSkin);
-				setPuKnobs(seededPuKnobs);
+				setPerSubDraft(perSubBaseline);
 			}
 		},
 	});

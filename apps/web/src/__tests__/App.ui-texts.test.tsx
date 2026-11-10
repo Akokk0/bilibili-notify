@@ -8,7 +8,7 @@ import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import App from "../App";
 import { browser, useRestartStore } from "../components/update/restart";
@@ -22,6 +22,7 @@ import {
 import { setWsEnabled } from "../services/wsSingleton";
 import { useAlertStore } from "../store/alerts";
 import { useSessionStore } from "../store/session";
+import { makeEmptySubscription } from "../types/domain";
 
 const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 afterEach(() => {
@@ -149,14 +150,264 @@ function mountApp(
 			});
 		}),
 	);
+	const router = createMemoryRouter([{ path: "*", element: <App /> }], {
+		initialEntries: [options.path ?? "/rules"],
+	});
 	render(
 		<QueryClientProvider client={qc}>
-			<MemoryRouter initialEntries={[options.path ?? "/rules"]}>
-				<App />
-			</MemoryRouter>
+			<RouterProvider router={router} />
 		</QueryClientProvider>,
 	);
+	return router;
 }
+
+it("系统页经管理资源往返保留外观草稿，返回后仍可放弃", async () => {
+	const core = {
+		...makeDefaultGlobalSettings(),
+		locale: "zh-CN",
+		voice: "plain",
+		timezone: "Asia/Shanghai",
+	};
+	const writes: string[] = [];
+	const router = mountApp({
+		path: "/system",
+		request: async (path, init) => {
+			if (init?.method && init.method !== "GET") writes.push(path);
+			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/dashboard/skins")
+				return Response.json({ list: [], active: { light: null, dark: null } });
+		},
+	});
+	await screen.findByText("主人账号");
+	fireEvent.click(screen.getAllByRole("button", { name: "外观" })[0]);
+	fireEvent.change(await screen.findByRole("textbox", { name: "时区" }), {
+		target: { value: "Europe/Paris" },
+	});
+	fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
+	await waitFor(() =>
+		expect(router.state.location.pathname + router.state.location.search).toBe(
+			"/library?category=dashboard-skins",
+		),
+	);
+	expect(screen.queryByRole("textbox", { name: "时区" })).toBeNull();
+	await act(() => router.navigate(-1));
+	fireEvent.click((await screen.findAllByRole("button", { name: "外观" }))[0]);
+	expect(await screen.findByRole("textbox", { name: "时区" })).toHaveProperty(
+		"value",
+		"Europe/Paris",
+	);
+	expect(writes.filter((path) => path === "/api/settings")).toEqual([]);
+	fireEvent.click(await screen.findByLabelText("1 项未保存"));
+	fireEvent.click(await screen.findByRole("button", { name: "丢弃全部更改" }));
+	expect(screen.getByRole("textbox", { name: "时区" })).toHaveProperty("value", "Asia/Shanghai");
+});
+
+it("管理期间重取新设置只更新未编辑字段，保存或普通切页后不复活旧草稿", async () => {
+	const core = {
+		...makeDefaultGlobalSettings(),
+		locale: "zh-CN",
+		voice: "plain",
+		timezone: "Asia/Shanghai",
+		onboarding: { skipped: true },
+	};
+	const patches: unknown[] = [];
+	const router = mountApp({
+		path: "/system",
+		request: async (path, init) => {
+			if (path === "/api/settings") {
+				if (init?.method === "PATCH") {
+					const patch = JSON.parse(String(init.body));
+					patches.push(patch);
+					Object.assign(core, patch.core);
+				}
+				return Response.json({ core });
+			}
+			if (path === "/api/dashboard/skins")
+				return Response.json({ list: [], active: { light: null, dark: null } });
+			if (path === "/api/library/fonts") return Response.json({ ok: true, fonts: [] });
+		},
+	});
+	await screen.findByText("主人账号");
+	fireEvent.click(screen.getAllByRole("button", { name: "外观" })[0]);
+	fireEvent.change(await screen.findByRole("textbox", { name: "时区" }), {
+		target: { value: "Europe/Paris" },
+	});
+	fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
+	await waitFor(() => expect(router.state.location.pathname).toBe("/library"));
+	core.logging.level = "debug";
+	await act(() => qc.invalidateQueries({ queryKey: ["settings"] }));
+	await act(() => router.navigate(-1));
+	expect(await screen.findByRole("textbox", { name: "时区" })).toHaveProperty(
+		"value",
+		"Europe/Paris",
+	);
+	fireEvent.click(await screen.findByRole("button", { name: "保存" }));
+	await waitFor(() => expect(patches).toEqual([{ core: { timezone: "Europe/Paris" } }]));
+	expect(core.logging.level).toBe("debug");
+	fireEvent.change(screen.getByRole("textbox", { name: "时区" }), { target: { value: "UTC" } });
+	// 再走一趟并切换资源分类；普通切到另一业务页后不应恢复这一趟的旧草稿。
+	fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
+	await waitFor(() => expect(router.state.location.pathname).toBe("/library"));
+	fireEvent.click(screen.getAllByRole("button", { name: /^字体/ })[0]);
+	await act(() => router.navigate(-1));
+	await act(() => router.navigate(-1));
+	expect(await screen.findByRole("textbox", { name: "时区" })).toHaveProperty("value", "UTC");
+	await act(() => router.navigate("/ai"));
+	await act(() => router.navigate("/system"));
+	fireEvent.click((await screen.findAllByRole("button", { name: "外观" }))[0]);
+	expect(await screen.findByRole("textbox", { name: "时区" })).toHaveProperty(
+		"value",
+		"Europe/Paris",
+	);
+});
+
+it("卡片页管理皮肤往返保留开关和旋钮草稿，保存只提交原来的修改", async () => {
+	const core = { ...makeDefaultGlobalSettings(), locale: "zh-CN", voice: "plain" };
+	core.defaults.cards.enabled = true;
+	const patches: unknown[] = [];
+	const router = mountApp({
+		path: "/cards",
+		request: async (path, init) => {
+			if (path === "/api/settings") {
+				if (init?.method === "PATCH") patches.push(JSON.parse(String(init.body)));
+				return Response.json({ core });
+			}
+			if (path === "/api/cards/skins")
+				return Response.json({
+					skins: [
+						{
+							id: "default",
+							name: "默认",
+							builtin: true,
+							updatedAt: 0,
+							knobs: [
+								{
+									key: "glass-opacity",
+									label: "玻璃白纱",
+									type: "number",
+									default: 0.82,
+									min: 0,
+									max: 1,
+									step: 0.01,
+								},
+							],
+						},
+					],
+					active: "default",
+					fallbacks: [],
+				});
+			if (path === "/api/cards/preview")
+				return Response.json({ ok: true, dataUrl: "data:image/png;base64,xx" });
+		},
+	});
+	fireEvent.change(await screen.findByRole("slider", { name: "玻璃白纱" }), {
+		target: { value: "0.4" },
+	});
+	fireEvent.click(screen.getByRole("button", { name: "停用" }));
+	fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
+	await waitFor(() => expect(router.state.location.search).toBe("?category=card-skins"));
+	expect(patches).toEqual([]);
+	await act(() => router.navigate(-1));
+	expect(await screen.findByRole("slider", { name: "玻璃白纱" })).toHaveProperty("value", "0.4");
+	expect(screen.getByRole("button", { name: "停用" }).getAttribute("aria-pressed")).toBe("true");
+	fireEvent.click(await screen.findByRole("button", { name: "保存" }));
+	await waitFor(() =>
+		expect(patches).toEqual([
+			{
+				core: {
+					defaults: {
+						cards: { enabled: false, liveCoverImageIds: [] },
+						cardSkinKnobs: { default: { "glass-opacity": 0.4 } },
+					},
+				},
+			},
+		]),
+	);
+});
+
+it("订阅卡片经图片管理返回仍在原作用域和类型，覆盖草稿不会被全局或服务端种子替换", async () => {
+	const core = {
+		...makeDefaultGlobalSettings(),
+		locale: "zh-CN",
+		voice: "plain",
+		onboarding: { skipped: true },
+	};
+	const sub = {
+		...makeEmptySubscription({ sourceKey: "test-source", externalId: "creator" }),
+		cachedProfile: { name: "测试订阅" },
+		overrides: { cardSkin: "default" },
+	};
+	const patches: unknown[] = [];
+	const router = mountApp({
+		path: "/cards",
+		request: async (path, init) => {
+			if (path === "/api/settings") return Response.json({ core });
+			if (path === "/api/subscriptions") return Response.json([sub]);
+			if (path === `/api/subscriptions/${sub.id}` && init?.method === "PATCH") {
+				patches.push(JSON.parse(String(init.body)));
+				return Response.json(sub);
+			}
+			if (path === "/api/library/images") return Response.json({ ok: true, ids: [] });
+			if (path === "/api/cards/skins")
+				return Response.json({
+					skins: [
+						{
+							id: "default",
+							name: "默认",
+							builtin: true,
+							updatedAt: 0,
+							knobs: [
+								{
+									key: "glass-opacity",
+									label: "玻璃白纱",
+									type: "number",
+									default: 0.82,
+									min: 0,
+									max: 1,
+									step: 0.01,
+								},
+							],
+						},
+					],
+					active: "default",
+					fallbacks: [],
+				});
+			if (path === "/api/cards/preview")
+				return Response.json({ ok: true, dataUrl: "data:image/png;base64,xx" });
+		},
+	});
+	fireEvent.click(await screen.findByText("测试订阅"));
+	fireEvent.change(await screen.findByRole("slider", { name: "玻璃白纱" }), {
+		target: { value: "0.3" },
+	});
+	fireEvent.click(screen.getAllByRole("button", { name: "直播开播" })[0]);
+	fireEvent.click(
+		screen.getByText("直播封面").closest(".bn-glass")?.querySelector("button") as HTMLButtonElement,
+	);
+	fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
+	fireEvent.click(
+		within(await screen.findByRole("dialog")).getByRole("button", { name: "管理资源" }),
+	);
+	await waitFor(() => expect(router.state.location.search).toBe("?category=images"));
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(patches).toEqual([]);
+	await act(() => router.navigate(-1));
+	expect(await screen.findByRole("button", { name: "选择图片" })).toBeTruthy();
+	fireEvent.click(screen.getAllByRole("button", { name: "全局" })[0]);
+	expect(await screen.findByRole("slider", { name: "玻璃白纱" })).toHaveProperty("value", "0.3");
+	fireEvent.click(await screen.findByRole("button", { name: "保存" }));
+	await waitFor(() =>
+		expect(patches).toEqual([
+			{
+				overrides: {
+					cards: { liveCoverImageIds: [] },
+					cardSkin: "default",
+					cardSkinKnobs: { default: { "glass-opacity": 0.3 } },
+				},
+			},
+		]),
+	);
+});
 it("the authenticated App propagates voice changes to a mounted library form", async () => {
 	mountApp();
 	const buttons = await screen.findAllByRole("button", { name: /添加一行/ });
