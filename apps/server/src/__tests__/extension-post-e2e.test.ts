@@ -25,6 +25,7 @@ import type {
 	CreatorsResponse,
 	ExtensionsResponse,
 	HistoryResponse,
+	SettingsResponse,
 	StatsOverviewResponse,
 	SubscriptionView,
 } from "@bilibili-notify/contract";
@@ -423,4 +424,162 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 			{ timeout: 10_000 },
 		);
 	}, 15_000);
+
+	it("真实设置切换四语后，新图文和视频按当前模板发送，旧历史与来源原文保留", async () => {
+		// 原六项先验证屏蔽词；这里清空乙的屏蔽词，使两条订阅都能核对两类模板。
+		await ok(
+			await api(`/api/subscriptions/${SUBS.b.id}`, {
+				method: "PATCH",
+				...json({ overrides: { filters: { blockKeywords: [] } } }),
+			}),
+		);
+		const readHistory = async () => {
+			const response = await api("/api/history?limit=50");
+			await ok(response);
+			return ((await response.json()) as HistoryResponse).entries;
+		};
+		const textOf = (hook: Hook | undefined) =>
+			hook?.payload.segments?.find((seg) => seg.type === "text")?.text;
+		let protectedRows = await readHistory();
+		expect(protectedRows).toHaveLength(4);
+		let postNumber = 3;
+		for (const [locale, postText, videoText, topic] of [
+			["en", " published a new mock", " published a new video", "Topic"],
+			["ja", "が新しい假帖を公開しました", "が新しい動画を公開しました", "トピック"],
+			["zh-TW", "發布了新的假帖", "發布了新影片", "話題"],
+			["zh-CN", "发布了一条假帖", "发布了新视频", "话题"],
+		] as const) {
+			await ok(
+				await api("/api/settings", {
+					method: "PATCH",
+					...json({ core: { locale, voice: locale === "en" ? "plain" : "maid" } }),
+				}),
+			);
+			const settings = (await (await api("/api/settings")).json()) as SettingsResponse;
+			expect(settings.core.defaults.templates).not.toHaveProperty("post");
+			expect(settings.core.defaults.templates).not.toHaveProperty("postVideo");
+			const seen = { a: hooksFor("a").length, b: hooksFor("b").length };
+			const seenHtml = renderedHtml.length;
+			await ok(await api(`/api/ext/${FAKE}/actions/report.post`, { method: "POST" }));
+			await ok(await api(`/api/ext/${FAKE}/actions/report.post`, { method: "POST" }));
+			await vi.waitFor(
+				() => {
+					for (const key of ["a", "b"] as const) expect(hooksFor(key)).toHaveLength(seen[key] + 2);
+				},
+				{ timeout: 10_000 },
+			);
+			for (const key of ["a", "b"] as const) {
+				for (const [i, suffix] of [postText, videoText].entries()) {
+					expect(textOf(hooksFor(key)[seen[key] + i])).toMatch(
+						new RegExp(
+							`^${escapeRe(who[key].name + suffix)}\\nhttps://fake-source\\.invalid/[0-9a-f]{12}/post/${postNumber + i}$`,
+						),
+					);
+				}
+				const cards = renderedHtml
+					.slice(seenHtml)
+					.filter((html) => html.includes(`>${who[key].name}<`));
+				expect(cards).toHaveLength(2);
+				for (const card of cards) expect(card).toContain(`aria-label="${topic}"`);
+				expect(cards.some((card) => card.includes("假话题"))).toBe(true);
+				expect(cards.some((card) => card.includes(`城市散步 vlog · 第 ${postNumber + 1} 期`))).toBe(
+					true,
+				);
+			}
+			expect(hooksFor("c")).toHaveLength(0);
+			await vi.waitFor(
+				async () => {
+					const rows = await readHistory();
+					expect(rows).toHaveLength(protectedRows.length + 4);
+					for (const original of protectedRows)
+						expect(rows.find((row) => row.id === original.id)).toEqual(original);
+					for (const key of ["a", "b"] as const) {
+						const latest = rows.filter((row) => row.subscriptionId === SUBS[key].id).slice(0, 2);
+						for (const row of latest)
+							expect(row).toMatchObject({
+								feature: "post",
+								status: "delivered",
+								nameSnapshot: who[key].name,
+							});
+						expect(
+							latest
+								.map((row) => row.messages.find((message) => message.role === "main")?.text)
+								.sort(),
+						).toEqual(hooksFor(key).slice(-2).map(textOf).sort());
+					}
+				},
+				{ timeout: 10_000 },
+			);
+			protectedRows = await readHistory();
+			postNumber += 2;
+		}
+	}, 30_000);
+
+	it("全局手写作品模板与订阅覆盖跨语言保留，图文优先订阅覆盖而视频继续用全局文字", async () => {
+		await ok(
+			await api("/api/settings", {
+				method: "PATCH",
+				...json({
+					core: {
+						defaults: {
+							templates: {
+								post: "Global original post 原文: {name}",
+								postVideo: "Global original video 原文: {name}",
+							},
+						},
+					},
+				}),
+			}),
+		);
+		await ok(
+			await api(`/api/subscriptions/${SUBS.a.id}`, {
+				method: "PATCH",
+				...json({ overrides: { templates: { post: "Subscription original 原文: {name}" } } }),
+			}),
+		);
+		for (const locale of ["en", "ja"] as const) {
+			await ok(await api("/api/settings", { method: "PATCH", ...json({ core: { locale } }) }));
+			const seen = { a: hooksFor("a").length, b: hooksFor("b").length };
+			await ok(await api(`/api/ext/${FAKE}/actions/report.post`, { method: "POST" }));
+			await ok(await api(`/api/ext/${FAKE}/actions/report.post`, { method: "POST" }));
+			await vi.waitFor(
+				() => {
+					for (const key of ["a", "b"] as const) expect(hooksFor(key)).toHaveLength(seen[key] + 2);
+				},
+				{ timeout: 10_000 },
+			);
+			for (const key of ["a", "b"] as const) {
+				const post = key === "a" ? "Subscription original 原文: " : "Global original post 原文: ";
+				for (const [i, prefix] of [post, "Global original video 原文: "].entries()) {
+					const text = hooksFor(key)[seen[key] + i]?.payload.segments?.find(
+						(seg) => seg.type === "text",
+					)?.text;
+					expect(text).toMatch(
+						new RegExp(
+							`^${escapeRe(prefix + who[key].name)}\\nhttps://fake-source\\.invalid/[0-9a-f]{12}/post/\\d+$`,
+						),
+					);
+				}
+			}
+			const settings = (await (await api("/api/settings")).json()) as SettingsResponse;
+			expect(settings.core.defaults.templates).toMatchObject({
+				post: "Global original post 原文: {name}",
+				postVideo: "Global original video 原文: {name}",
+			});
+			const subscriptions = (await (await api("/api/subscriptions")).json()) as SubscriptionView[];
+			expect(subscriptions.find((sub) => sub.id === SUBS.a.id)?.overrides.templates?.post).toBe(
+				"Subscription original 原文: {name}",
+			);
+			expect(
+				subscriptions.find((sub) => sub.id === SUBS.a.id)?.overrides.templates?.postVideo,
+			).toBeUndefined();
+			expect(
+				subscriptions.find((sub) => sub.id === SUBS.b.id)?.overrides.templates?.post,
+			).toBeUndefined();
+		}
+	}, 15_000);
 });
+
+function escapeRe(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

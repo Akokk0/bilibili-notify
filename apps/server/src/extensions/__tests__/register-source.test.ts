@@ -23,6 +23,7 @@ import type {
 import type { ExtensionSourceContext, SourceDef } from "@bilibili-notify/internal/extension";
 import { describe, expect, it } from "vite-plus/test";
 import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";
+import { switchableLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
@@ -85,6 +86,7 @@ type RegisterEntry = Parameters<PipelineRuntime["registerSource"]>[0];
 function harness(
 	opts: {
 		manifest?: ExtensionManifest;
+		text?: Pick<CreateExtensionContextOptions, "locales" | "localeReader">;
 		/** 登记表那头:不给 = 立刻成功(调 `source.start` 之后交回把手)。 */
 		host?: (entry: RegisterEntry, record: HostRecord) => Promise<Disposable>;
 		withoutHost?: boolean;
@@ -119,7 +121,7 @@ function harness(
 			};
 	const runtime = createExtensionContext({
 		...integrationIo(),
-		...noExtensionI18n(),
+		...(opts.text ?? noExtensionI18n()),
 		id: "douyin",
 		manifest: opts.manifest ?? SOURCE_MANIFEST,
 		host,
@@ -273,6 +275,62 @@ describe("ctx.registerSource:登记", () => {
 		expect(entry?.integration.signal).toBe(h.ctx.signal);
 		expect(entry?.logger).toBe(h.ctx.logger);
 		expect(entry?.source.descriptor.label).toBe("抖音");
+	});
+
+	it("登记表持有的同一描述符在切语言后现取全部展示词，切回时不残留可选译文", async () => {
+		const reader = switchableLocale("zh-CN");
+		const h = harness({
+			text: {
+				localeReader: reader,
+				locales: {
+					files: {
+						ja: {
+							dict: {},
+							issues: [],
+							manifest: {
+								contributes: {
+									subscription: {
+										label: "Example source",
+										shortLabel: "Example",
+										postNoun: "clip",
+										creatorNoun: "creator",
+										externalIdNoun: "Account ID",
+										featureHints: { post: "New clips" },
+									},
+								},
+							},
+						},
+					},
+					issues: [],
+				},
+			},
+		});
+		try {
+			h.ctx.registerSource(def());
+			await h.runtime.registrationsSettled();
+			const descriptor = h.record.entries[0]?.source.descriptor;
+			expect(descriptor?.label).toBe("抖音");
+			reader.set("ja");
+			expect(descriptor).toMatchObject({
+				label: "Example source",
+				shortLabel: "Example",
+				postNoun: "clip",
+				creatorNoun: "creator",
+				externalIdNoun: "Account ID",
+				featureHints: { post: "New clips" },
+				color: "#fe2c55",
+				supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
+			});
+			expect(h.record.entries).toHaveLength(1);
+			reader.set("zh-CN");
+			expect(descriptor?.label).toBe("抖音");
+			expect(descriptor?.shortLabel).toBe("抖");
+			for (const key of ["postNoun", "creatorNoun", "externalIdNoun", "featureHints"] as const) {
+				expect(descriptor?.[key]).toBeUndefined();
+			}
+		} finally {
+			await h.runtime.dispose();
+		}
 	});
 
 	it("登记项带清单名当写者名(报问题那一刻现取,与集成上下文同一个函数)", () => {

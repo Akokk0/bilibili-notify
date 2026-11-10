@@ -166,7 +166,7 @@ async function make(
 	} as unknown as SourceDef;
 	const source = createExtensionSource({
 		id: "douyin",
-		manifest: manifestOf(opts.supportedFeatures, opts.externalIdNoun, opts.creatorNoun),
+		manifest: () => manifestOf(opts.supportedFeatures, opts.externalIdNoun, opts.creatorNoun),
 		def: full,
 		logger,
 		images: { read: async (ref) => opts.images?.(ref) },
@@ -248,7 +248,7 @@ describe("createExtensionSource:成员与描述符", () => {
 		const { logger } = recordingLogger();
 		const source = createExtensionSource({
 			id: "douyin",
-			manifest: manifestOf(),
+			manifest: () => manifestOf(),
 			def: impl as unknown as SourceDef,
 			logger,
 			images: { read: async () => undefined },
@@ -294,7 +294,7 @@ describe("createExtensionSource:成员与描述符", () => {
 		const { logger } = recordingLogger();
 		const source = createExtensionSource({
 			id: "douyin",
-			manifest: manifestOf(),
+			manifest: () => manifestOf(),
 			def: {
 				start() {
 					throw new Error("连不上平台");

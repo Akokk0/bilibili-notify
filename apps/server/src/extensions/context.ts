@@ -300,17 +300,19 @@ export interface CreateExtensionContextOptions {
  */
 export function createExtensionContext(opts: CreateExtensionContextOptions): ExtensionRuntime {
 	const { id, host, mounts, adapters } = opts;
-	/** 每种语言的清单名只合一次(出字那一刻读当前语言,与装载器列表那条路同一套回落链)。 */
-	const manifestNames = new Map<string, string>();
-	function manifestName(): string {
+	/** 每种语言的清单只合一次；运行中的描述符与写者名都在读取时选当前语言。 */
+	const manifests = new Map<string, ExtensionManifest>();
+	function currentManifest(): ExtensionManifest {
 		const locale = opts.localeReader.current();
-		let name = manifestNames.get(locale);
-		if (name === undefined) {
-			name = localizeManifest(opts.manifest, opts.locales, locale).name;
-			manifestNames.set(locale, name);
+		let manifest = manifests.get(locale);
+		if (manifest === undefined) {
+			manifest = localizeManifest(opts.manifest, opts.locales, locale);
+			manifests.set(locale, manifest);
 		}
-		return name;
+		return manifest;
 	}
+	const manifestName = (): string => currentManifest().name;
+
 	const integration = createIntegrationContext({
 		timezoneReader: opts.timezoneReader,
 		logger: opts.loggerOf(id),
@@ -915,10 +917,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				...pickAdapterMembers(def, ["listAddressCandidates", "connectionAuth"]),
 				adapterKey: id,
 				settingsSchema: def.settingsSchema,
-				descriptor: () =>
-					manifestPushView(
-						localizeManifest(opts.manifest, opts.locales, opts.localeReader.current()),
-					) ?? view,
+				descriptor: () => manifestPushView(currentManifest()) ?? view,
 			} satisfies PlatformAdapter;
 			// 能力结果里那一格时刻由拓展给:宿主不信自述,出门前先验再统一成 UTC(见 `normalizeCapabilities`)。
 			// 取的是 bind 回拓展实例之后的那两个方法,覆盖时它们在返回值上。
@@ -976,10 +975,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			if (sourceRegistered) throw new Error(`extension ${id} already registered a source`);
 			assertSourceDef(def);
 			sourceRegistered = true;
-			// 外观取清单(按当前语言盖好),代码里不再交一份 —— 两份会打架。
+			// 外观经清单读口按当前语言现取；代码里不再交一份，也不冻结登记时的文字。
 			const source = createExtensionSource({
 				id,
-				manifest: localizeManifest(opts.manifest, opts.locales, opts.localeReader.current()),
+				manifest: currentManifest,
 				def,
 				logger,
 				images: opts.images ?? { read: async () => undefined },

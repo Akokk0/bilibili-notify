@@ -102,8 +102,8 @@ export function manifestSourceDescriptor(
 export interface CreateExtensionSourceOptions {
 	/** 拓展的 id,也是它的来源键。 */
 	id: string;
-	/** 清单(给人看的字已按当前语言盖好):描述符取自 `contributes.subscription`。 */
-	manifest: ExtensionManifest;
+	/** 当前语言清单的读口：描述符的展示词使用时取，能力声明只在构造时认一次。 */
+	manifest: () => ExtensionManifest;
 	/** 拓展交上来的那份(第三方 JS,不受类型约束,所以逐个成员按表取)。 */
 	def: SourceDef;
 	logger: Logger;
@@ -261,13 +261,41 @@ function normalizeNewlines(texts: readonly string[]): string[] {
 }
 
 export function createExtensionSource(opts: CreateExtensionSourceOptions): Source {
-	const { id, manifest, logger } = opts;
+	const { id, logger } = opts;
 	const now = opts.now ?? Date.now;
-	const descriptor = manifestSourceDescriptor(manifest);
-	if (!descriptor) {
+	const initial = manifestSourceDescriptor(opts.manifest());
+	if (!initial) {
 		throw new Error(`extension ${id}: manifest has no contributes.subscription`);
 	}
-	const declared: ReadonlySet<string> = new Set(descriptor.supportedFeatures);
+	const display = () => {
+		const subscription = opts.manifest().contributes.subscription;
+		if (!subscription) throw new Error(`extension ${id}: manifest has no contributes.subscription`);
+		return subscription;
+	};
+	// 登记表和来源上下文持有同一描述符；用 getter 避免它们缓存登记时的语言。
+	// 只现取清单允许翻译的六格，格式、图标、颜色和能力仍取原声明。
+	const descriptor: SourceDescriptor = {
+		...initial,
+		get label() {
+			return display().label;
+		},
+		get shortLabel() {
+			return display().shortLabel;
+		},
+		get postNoun() {
+			return display().postNoun;
+		},
+		get creatorNoun() {
+			return display().creatorNoun;
+		},
+		get externalIdNoun() {
+			return display().externalIdNoun;
+		},
+		get featureHints() {
+			return display().featureHints;
+		},
+	};
+	const declared: ReadonlySet<string> = new Set(initial.supportedFeatures);
 	// 成员按表取、方法 bind 回拓展交上来的那个实例(class 写的方法在原型上、吃 `this`)。
 	const def = pickBoundMembers(opts.def, OPEN_MEMBER_NAMES) as unknown as OpenMembers;
 
