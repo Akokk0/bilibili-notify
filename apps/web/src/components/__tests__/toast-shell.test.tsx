@@ -68,6 +68,32 @@ afterEach(() => {
 });
 
 describe("ToastShell —— 通知卡", () => {
+	it("推送时间随四语切换并保持分钟精度，原始时间与正文不改", () => {
+		const prior = i18n.state();
+		const view = pushView("locale-time", {
+			createdAt: new Date(2026, 8, 2, 18, 5, 7).toISOString(),
+			messages: [{ text: "Original push 原文 {name}", kind: "text", role: "main", ok: true }],
+		});
+		renderShell();
+		act(() => useToastStore.getState().push(view));
+		const original = screen.getByText("Original push 原文 {name}");
+		try {
+			for (const [locale, expected] of [
+				["zh-CN", "18:05"],
+				["en", "06:05 PM"],
+				["ja", "18:05"],
+				["zh-TW", "下午06:05"],
+			] as const) {
+				act(() => i18n.set({ locale, voice: "plain" }));
+				expect(screen.getByText(expected)).toBeTruthy();
+				expect(screen.getByText("Original push 原文 {name}")).toBe(original);
+				expect(useToastStore.getState().items[0]).toMatchObject({ view });
+			}
+		} finally {
+			act(() => i18n.set(prior));
+		}
+	});
+
 	it("带按钮的通知:点了就跳到它指的地方,卡随即收起", async () => {
 		renderShell();
 		act(() => useToastStore.getState().notify(NOTICE));

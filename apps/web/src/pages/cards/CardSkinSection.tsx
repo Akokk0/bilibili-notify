@@ -50,9 +50,11 @@ function formatAt(at: number): string {
 	const d = new Date(at);
 	const now = new Date();
 	const sameDay = d.toDateString() === now.toDateString();
-	const hh = String(d.getHours()).padStart(2, "0");
-	const mm = String(d.getMinutes()).padStart(2, "0");
-	return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
+	return d.toLocaleString(i18n.state().locale, {
+		...(sameDay ? {} : { month: "numeric", day: "numeric" }),
+		hour: "2-digit",
+		minute: "2-digit",
+	});
 }
 
 /** 装包响应(POST /api/cards/skins)。 */

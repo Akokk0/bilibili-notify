@@ -38,6 +38,34 @@ beforeEach(() => {
 afterEach(() => {
 	cleanup();
 	useAlertStore.getState().clear();
+	vi.useRealTimers();
+});
+
+it("错误时间随四语切换并保持秒精度，原诊断和接收时刻不改", () => {
+	vi.useFakeTimers({ toFake: ["Date"] });
+	const at = new Date(2026, 8, 2, 18, 5, 7).getTime();
+	vi.setSystemTime(at);
+	useAlertStore.getState().push({ source: "image", message: "Original diagnostic 原文 {name}" });
+	render(
+		<MemoryRouter>
+			<AlertShell />
+		</MemoryRouter>,
+	);
+	const original = screen.getByText("Original diagnostic 原文 {name}");
+	for (const [locale, expected] of [
+		["zh-CN", "18:05:07"],
+		["en", "06:05:07 PM"],
+		["ja", "18:05:07"],
+		["zh-TW", "下午06:05:07"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByText(expected)).toBeTruthy();
+		expect(screen.getByText("Original diagnostic 原文 {name}")).toBe(original);
+		expect(useAlertStore.getState().items[0]).toMatchObject({
+			receivedAt: at,
+			message: "Original diagnostic 原文 {name}",
+		});
+	}
 });
 
 it("error categories follow locale while received text stays intact and dismissing errors preserves ongoing problems", async () => {

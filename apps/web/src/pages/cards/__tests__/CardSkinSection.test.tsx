@@ -119,6 +119,7 @@ beforeEach(() => {
 afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
+	vi.useRealTimers();
 });
 
 /**
@@ -127,6 +128,44 @@ afterEach(() => {
  * 以及**「知道了」真的打到服务端**(只在前端藏起来的话,刷一下页面它又回来了)。
  */
 describe("卡片皮肤库 · 回落告警", () => {
+	it("回落时间随四语展示，同日只到分、跨日带月日，原始原因不改", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date(2026, 8, 3, 20, 0));
+		const oldAt = new Date(2026, 8, 2, 18, 5, 7).getTime();
+		const todayAt = new Date(2026, 8, 3, 18, 5, 7).getTime();
+		vi.mocked(api.get).mockResolvedValue({
+			...LIST,
+			fallbacks: [
+				{ skinId: "aurora", kind: "live", reason: "Original old reason 原文", at: oldAt, count: 1 },
+				{
+					skinId: "aurora",
+					kind: "post",
+					reason: "Original today reason 原文",
+					at: todayAt,
+					count: 2,
+				},
+			],
+		});
+		renderSection("select");
+		await screen.findByText(/Original old reason 原文/);
+		for (const [locale, old, today] of [
+			["zh-CN", "9/2 18:05", "18:05"],
+			["en", "9/2, 06:05 PM", "06:05 PM"],
+			["ja", "9/2 18:05", "18:05"],
+			["zh-TW", "9/2 下午06:05", "下午06:05"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			expect(
+				screen.getByText(/Original old reason 原文/).textContent?.replace(/\s+/g, " "),
+			).toContain(old);
+			expect(
+				screen.getByText(/Original today reason 原文/).textContent?.replace(/\s+/g, " "),
+			).toContain(today);
+			expect(api.put).not.toHaveBeenCalled();
+			expect(api.delete).not.toHaveBeenCalled();
+		}
+	});
+
 	it("localized fallback notices keep original reasons and unknown skin IDs while acknowledging the existing ledger", async () => {
 		vi.mocked(api.get).mockResolvedValue({
 			...LIST,

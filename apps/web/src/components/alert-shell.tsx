@@ -1,6 +1,6 @@
 import { Icon, NoticeCard, NoticeStack } from "@bilibili-notify/ui";
 import { Link } from "react-router-dom";
-import { useT } from "../i18n";
+import { i18n, useT } from "../i18n";
 import { type AlertItem, useAlertStore } from "../store/alerts";
 
 /**
@@ -78,8 +78,9 @@ function AlertCard({ item }: { item: AlertItem }) {
 function formatHms(ms: number): string {
 	const d = new Date(ms);
 	if (Number.isNaN(d.getTime())) return "";
-	const h = String(d.getHours()).padStart(2, "0");
-	const m = String(d.getMinutes()).padStart(2, "0");
-	const s = String(d.getSeconds()).padStart(2, "0");
-	return `${h}:${m}:${s}`;
+	return d.toLocaleTimeString(i18n.state().locale, {
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+	});
 }

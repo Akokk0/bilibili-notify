@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { FEATURE_DESCRIPTORS, PUSH_STATUS_META } from "../config/push-features";
 import { useSources } from "../hooks/useSources";
-import { useT } from "../i18n";
+import { i18n, useT } from "../i18n";
 import { subscriptionPlatformOf } from "../pages/subscriptions/subscription-source";
 import {
 	AUTO_DISMISS_MS,
@@ -154,7 +154,5 @@ function ExtensionRowWho({ view }: { view: PushEventView }) {
 function formatHm(iso: string): string {
 	const d = new Date(iso);
 	if (Number.isNaN(d.getTime())) return "";
-	const h = String(d.getHours()).padStart(2, "0");
-	const m = String(d.getMinutes()).padStart(2, "0");
-	return `${h}:${m}`;
+	return d.toLocaleTimeString(i18n.state().locale, { hour: "2-digit", minute: "2-digit" });
 }
