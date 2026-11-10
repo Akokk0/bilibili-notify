@@ -13,6 +13,12 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import App from "../App";
 import { browser, useRestartStore } from "../components/update/restart";
 import { i18n } from "../i18n";
+import {
+	readLocalePreference,
+	readVoicePreference,
+	writeLocalePreference,
+	writeVoicePreference,
+} from "../i18n/preference";
 import { setWsEnabled } from "../services/wsSingleton";
 import { useAlertStore } from "../store/alerts";
 import { useSessionStore } from "../store/session";
@@ -56,6 +62,7 @@ function mountApp(
 	options: {
 		details?: () => HealthDetailsResponse | Promise<HealthDetailsResponse>;
 		path?: string;
+		text?: Parameters<typeof i18n.set>[0];
 		health?: () => HealthResponse | Promise<HealthResponse>;
 		notices?: () => SystemNotice[] | Promise<SystemNotice[]>;
 		request?: (path: string, init?: RequestInit) => Promise<Response | undefined>;
@@ -64,7 +71,7 @@ function mountApp(
 	} = {},
 ) {
 	const core = { ...makeDefaultGlobalSettings(), locale: "zh-CN", voice: "plain" };
-	i18n.set({ locale: "zh-CN", voice: "plain" });
+	i18n.set(options.text ?? { locale: "zh-CN", voice: "plain" });
 	vi.stubGlobal(
 		"WebSocket",
 		class extends EventTarget {
@@ -1507,6 +1514,63 @@ it("the document language follows the current locale before login without replac
 	}
 	expect(vi.mocked(fetch).mock.calls.map(([path]) => String(path))).toEqual(["/api/session"]);
 });
+
+it.each([
+	["zh-CN", "en", "Username", "Password", "Sign in"],
+	["en", "ja", "ユーザー名", "パスワード", "ログイン"],
+	["ja", "zh-TW", "使用者名稱", "密碼", "登入"],
+	["zh-TW", "zh-CN", "用户名", "密码", "登录"],
+] as const)(
+	"login adopts server %s after using the remembered %s preference, without changing server settings",
+	async (locale, remembered, username, password, login) => {
+		const storedLocale = localStorage.getItem("bn.locale");
+		const storedVoice = localStorage.getItem("bn.voice");
+		try {
+			writeLocalePreference(remembered);
+			writeVoicePreference("plain");
+			mountApp({
+				session: { authRequired: true, authed: false },
+				text: { locale: readLocalePreference(), voice: readVoicePreference() },
+				request: async (path) => {
+					if (path === "/api/session/login") return jsonResponse({ ok: true });
+					if (path === "/api/settings")
+						return jsonResponse({
+							core: { ...makeDefaultGlobalSettings(), locale, voice: "plain" },
+						});
+					return undefined;
+				},
+			});
+			await screen.findByRole("button", { name: login });
+			expect(document.documentElement.lang).toBe(remembered);
+			expect(vi.mocked(fetch).mock.calls.map(([path]) => String(path))).toEqual(["/api/session"]);
+			fireEvent.change(screen.getByPlaceholderText(username), {
+				target: { value: "qa-only-owner" },
+			});
+			fireEvent.change(screen.getByPlaceholderText(password), {
+				target: { value: "qa-only-password" },
+			});
+			await userEvent.click(screen.getByRole("button", { name: login }));
+			await waitFor(() => expect(document.documentElement.lang).toBe(locale));
+			expect(localStorage.getItem("bn.locale")).toBe(locale);
+			expect(localStorage.getItem("bn.voice")).toBe("plain");
+			expect(screen.queryByPlaceholderText(password)).toBeNull();
+			const requests = vi.mocked(fetch).mock.calls;
+			expect(requests.filter(([path]) => String(path) === "/api/session/login")).toHaveLength(1);
+			expect(
+				requests.some(
+					([path, init]) => String(path) === "/api/settings" && init?.method === "PATCH",
+				),
+			).toBe(false);
+		} finally {
+			for (const [key, value] of [
+				["bn.locale", storedLocale],
+				["bn.voice", storedVoice],
+			] as const)
+				if (value === null) localStorage.removeItem(key);
+				else localStorage.setItem(key, value);
+		}
+	},
+);
 
 it("startup translations retain the last migration progress and keep business pages closed until readiness", async () => {
 	let failed = false;
