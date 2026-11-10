@@ -733,6 +733,7 @@ it("extension notice reads translate while retries preserve raw diagnostics and 
 	});
 	let reads = 0;
 	let marketReads = 0;
+	let marketRecovered = false;
 	mountApp({
 		notices: () => [migratedNotice],
 		request: async (path) => {
@@ -761,7 +762,7 @@ it("extension notice reads translate while retries preserve raw diagnostics and 
 			}
 			if (path === "/api/ext/marketplace") {
 				marketReads++;
-				return marketReads === 1
+				return !marketRecovered
 					? jsonResponse({ code: "unavailable", message: "索引签名不匹配（原文）" }, 503)
 					: jsonResponse({
 							available: true,
@@ -816,21 +817,24 @@ it("extension notice reads translate while retries preserve raw diagnostics and 
 			"前往消息桥 / 原名拓展管理",
 		],
 	] as const) {
+		const before = marketReads;
 		act(() => i18n.set({ locale }));
+		await waitFor(() => expect(marketReads).toBe(before + 1));
 		expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
-		expect(screen.getByText(hint)).toBeTruthy();
+		expect(await screen.findByText(hint)).toBeTruthy();
 		expect(screen.getByRole("button", { name: manage })).toBeTruthy();
 		expect(screen.getByText("需要契约 v3（原文）")).toBeTruthy();
 		expect(screen.getByText("索引签名不匹配（原文）")).toBeTruthy();
 		expect(reads).toBe(2);
-		expect(marketReads).toBe(1);
 	}
+	const beforeRetry = marketReads;
+	marketRecovered = true;
 	await userEvent.click(screen.getByRole("button", { name: "重試" }));
 	await waitFor(() => expect(screen.queryByText("索引签名不匹配（原文）")).toBeNull());
 	expect(screen.getByText("消息桥 / 原名")).toBeTruthy();
 	expect(screen.getByText("源 · Original")).toBeTruthy();
 	expect(screen.queryByRole("button", { name: "更新" })).toBeNull();
-	expect(marketReads).toBe(2);
+	expect(marketReads).toBe(beforeRetry + 1);
 	expect(
 		vi
 			.mocked(fetch)

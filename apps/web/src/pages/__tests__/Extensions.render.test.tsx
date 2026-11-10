@@ -215,18 +215,23 @@ describe("拓展页", () => {
 			"主人，拓展能替 BN 接上外部功能；本體不附帶拓展，安裝並啟用後才會生效喔。",
 		],
 	] as const)(
-		"%s maid extension guidance changes without installing or refetching",
+		"%s maid extension guidance rereads only marketplace explanations without installing",
 		async (locale, empty, description) => {
 			apiPostMock.mockReset();
 			apiUploadMock.mockReset();
 			i18n.set({ locale: "zh-CN", voice: "plain" });
 			renderPage({ extensions: [] });
 			await screen.findByText("还没有安装拓展。可从拓展市场安装，或上传拓展包。");
-			const calls = apiGetMock.mock.calls.length;
+			const previousReads = apiGetMock.mock.calls.map(([url]) => url);
 			act(() => i18n.set({ locale, voice: "maid" }));
 			expect(screen.getByText(empty)).toBeTruthy();
 			expect(screen.getByText(description)).toBeTruthy();
-			expect(apiGetMock.mock.calls.length).toBe(calls);
+			await waitFor(() =>
+				expect(apiGetMock.mock.calls.map(([url]) => url)).toEqual([
+					...previousReads,
+					"/api/ext/marketplace",
+				]),
+			);
 			expect(apiPostMock).not.toHaveBeenCalled();
 			expect(apiPatchMock).not.toHaveBeenCalled();
 			expect(apiUploadMock).not.toHaveBeenCalled();
