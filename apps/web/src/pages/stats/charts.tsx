@@ -190,7 +190,7 @@ export function TrendChart({
 	const ih = height - pad.t - pad.b;
 	const all = series.flatMap((s) => [...s.data]);
 	const ext = extent(all);
-	if (!ext) return <ChartEmpty hint={tx("panelUi.pages.stats.charts.2")} />;
+	if (!ext) return <ChartEmpty hint={tx("sourceUi.pages.Stats.hint.11")} />;
 
 	// 累计值(粉丝总量)不强制含 0,否则几百万的曲线会被压成贴顶的一条直线。
 	const {
@@ -340,7 +340,7 @@ export function NetBars({
 	const iw = width - pad.l - pad.r;
 	const ih = height - pad.t - pad.b;
 	const ext = extent(data.map((p) => p.value));
-	if (!ext) return <ChartEmpty hint={tx("panelUi.pages.stats.charts.4")} />;
+	if (!ext) return <ChartEmpty hint={tx("sourceUi.pages.Stats.hint.11")} />;
 
 	const { min, max, ticks: tickVals } = niceTicks(ext.min, ext.max, { integer: true });
 
@@ -552,7 +552,7 @@ export function Heatmap({
 }) {
 	const tx = useT();
 
-	if (!rows.length) return <ChartEmpty hint={tx("panelUi.pages.stats.charts.9")} />;
+	if (!rows.length) return <ChartEmpty hint={tx("sourceUi.pages.Stats.hint.6")} />;
 	return (
 		// 行用 flex-1 吃满面板高度(见 GlassPanel 的 flex-col 注释),避免下方留一大片空白;
 		// 上下限之间靠 justify-center 把富余空间均摊到两头。

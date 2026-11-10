@@ -229,3 +229,60 @@ it("chart descriptions and heat dates translate without replacing original names
 	}
 	expect(screen.getAllByText("1 day ago")).toHaveLength(2);
 });
+
+it("empty activity heatmap follows the selected locale and maid voice", () => {
+	render(<Heatmap rows={[]} days={[]} />);
+	const empty = screen.getByText("还没有添加任何订阅");
+	for (const [locale, plain, maid] of [
+		["zh-CN", "还没有添加任何订阅", "主人，还没有添加订阅哦。"],
+		["ja", "購読がまだありません", "ご主人様、購読はまだ追加されていませんよ。"],
+		["zh-TW", "尚未新增任何訂閱", "主人，還沒有新增訂閱喔。"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(maid)).toBe(empty);
+		act(() => i18n.set({ voice: "plain" }));
+		expect(screen.getByText(plain)).toBe(empty);
+	}
+});
+
+it.each(["trend", "net"] as const)(
+	"%s chart no-sample hint follows maid voice while real zero samples still draw a chart",
+	(kind) => {
+		i18n.set({ locale: "en", voice: "plain" });
+		const chart = (value: number | null) =>
+			kind === "trend" ? (
+				<TrendChart
+					series={[{ name: "Original author 原文 {name}", color: "red", data: [value, value] }]}
+					width={320}
+				/>
+			) : (
+				<NetBars
+					data={[
+						{ value, estimated: false },
+						{ value, estimated: false },
+					]}
+					days={["2026-11-09", "2026-11-10"]}
+					width={320}
+				/>
+			);
+		const view = render(chart(null));
+		const empty = screen.getByText("No data collected in this period");
+		for (const [locale, plain, maid] of [
+			["zh-CN", "这段时间我们还没有采集到数据", "主人，这段时间女仆还没有采集到数据哦。"],
+			[
+				"ja",
+				"この期間の収集データはありません",
+				"ご主人様、この期間のデータは、まだ集まっていませんよ。",
+			],
+			["zh-TW", "這段期間尚無已收集的資料", "主人，這段期間女僕還沒收集到資料喔。"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "maid" }));
+			expect(screen.getByText(maid)).toBe(empty);
+			act(() => i18n.set({ voice: "plain" }));
+			expect(screen.getByText(plain)).toBe(empty);
+		}
+		view.rerender(chart(0));
+		expect(view.container.contains(empty)).toBe(false);
+		expect(view.container.querySelector("svg")).not.toBeNull();
+	},
+);
