@@ -24,6 +24,12 @@ const versions = {
 };
 await mkdir(new URL("lib/", pkgRoot), { recursive: true });
 await cp(new URL("templates/", pkgRoot), new URL("lib/templates/", pkgRoot), { recursive: true });
+// SDK维护唯一的开发skill正文，创建器发行物将它带进新工程的发现目录。
+await cp(
+	new URL("packages/extension/skills/", root),
+	new URL("lib/templates/project/.agents/skills/", pkgRoot),
+	{ recursive: true },
+);
 await writeFile(new URL("lib/versions.json", pkgRoot), `${JSON.stringify(versions, null, 2)}\n`);
 const {
 	private: _private,

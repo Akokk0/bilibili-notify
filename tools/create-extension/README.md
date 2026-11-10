@@ -2,6 +2,8 @@
 
 Create a standalone bilibili-notify extension with Vite+, TypeScript, tests, Git hooks and GitHub Actions.
 
+Generated projects also include `AGENTS.md`, a `CLAUDE.md` entry, and a `bn-extension-development` skill discoverable through `.agents/skills/` and `.claude/skills/`. The workflow body is shared with the SDK package; its `AGENT_GUIDE.md` and public declarations remain the contract references.
+
 ```sh
 vp dlx @bilibili-notify/create-extension@alpha ./my-extension --id example.demo --repository owner/repository --name "Example"
 cd my-extension

@@ -93,6 +93,31 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			"https://github.com/owner/tools.git",
 		);
 		run("vp", ["run", "verify"], project);
+		const skill = await readFile(
+			join(project, ".agents/skills/bn-extension-development/SKILL.md"),
+			"utf8",
+		);
+		expect(skill).toBe(
+			await readFile(
+				join(
+					project,
+					"node_modules/@bilibili-notify/extension/skills/bn-extension-development/SKILL.md",
+				),
+				"utf8",
+			),
+		);
+		for (const name of [
+			"AGENTS.md",
+			"CLAUDE.md",
+			".claude/skills/bn-extension-development/SKILL.md",
+		]) {
+			const file = join(project, name);
+			const instructions = await readFile(file, "utf8");
+			expect(instructions.trim()).not.toBe("");
+			for (const [, target] of instructions.matchAll(/\]\(([^)]+)\)/g)) {
+				await readFile(resolve(dirname(file), target.split("#")[0]));
+			}
+		}
 		const opened = openExtensionPackage(
 			new Uint8Array(await readFile(join(project, "artifacts/example.demo-0.1.0.zip"))),
 			BUILTIN_INTEGRATION_KEYS,

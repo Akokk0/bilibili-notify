@@ -14,6 +14,7 @@ const SDK_ROOT = join(REPO_ROOT, "packages/extension");
 const SDK_NAME = "@bilibili-notify/extension";
 const { packageManager } = JSON.parse(await readFile(join(REPO_ROOT, "package.json"), "utf8"));
 const require = createRequire(import.meta.url);
+const { parse: parseYaml } = createRequire(join(REPO_ROOT, "apps/server/package.json"))("yaml");
 
 async function installedVersion(name) {
 	return JSON.parse(await readFile(require.resolve(`${name}/package.json`), "utf8")).version;
@@ -36,12 +37,10 @@ export const source: SourceDef = {
   stop() {},
   async searchCreators() { return ok({ candidates: [] }); },
 };
-export default {
-  activate(ctx: ExtensionContext) {
-    ctx.settings(settingsSchema);
-    ctx.registerSource(source);
-  },
-};
+export function activate(ctx: ExtensionContext) {
+  ctx.settings(settingsSchema);
+  ctx.registerSource(source);
+}
 void schemas;
 `;
 
@@ -132,9 +131,24 @@ describe("SDK的真实npm包可在仓外使用", () => {
 			success: { ok: true, value: 7 },
 			failure: { ok: false, code: "invalid", message: "Bad configuration" },
 		});
+		const installed = join(cwd, "node_modules", SDK_NAME);
+		const guide = await readFile(join(installed, "AGENT_GUIDE.md"), "utf8");
+		expect(guide.trim()).not.toBe("");
+		for (const [, target] of guide.matchAll(/\]\(([^)]+)\)/g)) {
+			await readFile(resolve(installed, target.split("#")[0]));
+		}
+		const skill = await readFile(
+			join(installed, "skills/bn-extension-development/SKILL.md"),
+			"utf8",
+		);
+		const metadata = parseYaml(/^---\r?\n([\s\S]+?)\r?\n---/.exec(skill)?.[1] ?? "");
+		expect(metadata).toMatchObject({
+			name: "bn-extension-development",
+			description: expect.any(String),
+		});
 	}, 40_000);
 
-	it("仓外编译公开类型并构建宿主能接收的最小来源包", async () => {
+	it("仓外编译公开类型、构建最小来源并导入随包示例", async () => {
 		const { version: zodVersion } = JSON.parse(
 			await readFile(join(SDK_ROOT, "node_modules/zod/package.json"), "utf8"),
 		);
@@ -186,6 +200,17 @@ describe("SDK的真实npm包可在仓外使用", () => {
 		);
 		run("vp", ["run", "typecheck"], cwd);
 		run("vp", ["run", "build"], cwd);
+		expect(
+			run(
+				process.execPath,
+				[
+					"--input-type=module",
+					"-e",
+					"const entry = await import('./dist/index.mjs'); console.log(typeof entry.activate);",
+				],
+				cwd,
+			).trim(),
+		).toBe("function");
 		const files = Object.fromEntries(
 			await Promise.all(
 				["index.mjs", "extension.json"].map(async (name) => [
@@ -208,5 +233,23 @@ describe("SDK的真实npm包可在仓外使用", () => {
 		);
 		expect(published.private).not.toBe(true);
 		expect(published.dependencies).not.toHaveProperty("@bilibili-notify/internal");
+		const readme = await readFile(join(cwd, "node_modules", SDK_NAME, "README.md"), "utf8");
+		const example = /```ts\r?\n([\s\S]+?)\r?\n```/.exec(readme)?.[1];
+		if (!example)
+			throw new Error("The published README must contain a runnable TypeScript example.");
+		await writeFile(join(cwd, "src/index.ts"), example);
+		run("vp", ["run", "typecheck"], cwd);
+		run("vp", ["run", "build"], cwd);
+		expect(
+			run(
+				process.execPath,
+				[
+					"--input-type=module",
+					"-e",
+					"const entry = await import('./dist/index.mjs'); console.log(typeof entry.activate);",
+				],
+				cwd,
+			).trim(),
+		).toBe("function");
 	}, 90_000);
 });

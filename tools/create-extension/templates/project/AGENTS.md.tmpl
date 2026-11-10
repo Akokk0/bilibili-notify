@@ -1,0 +1,17 @@
+# BN 拓展工程
+
+本仓是独立的 BN 拓展。修改来源、推送适配器、ctx 接线、设置、打包或发行流程前，阅读[拓展开发 skill](.agents/skills/bn-extension-development/SKILL.md)。契约说明在已安装 SDK 的 [AGENT_GUIDE.md](node_modules/@bilibili-notify/extension/AGENT_GUIDE.md)。
+
+## 工程入口
+
+- 根 `extension.json` 声明能力与宿主兼容要求，`.bn/marketplace.json` 保存作者和市场配置。
+- `src/` 是运行代码；根 `vite.config.ts` 使用 SDK 的构建入口生成 `dist/`。
+- [README.md](README.md) 说明开发命令、首次安装、Git hooks、Actions 和发布恢复流程。
+
+## 工具与交付
+
+- JS/TS 安装、执行与检查统一经 vp；项目脚本使用 `vp run <脚本名>`，以 `package.json` 为准。
+- 测试从 `vite-plus/test` 导入，沿公开接口验证行为；新功能和修复先复现或补测试，再改实现。
+- 修改后定向验证，交付前运行 `vp run verify`；说明实际执行的命令、结果和未验证范围。
+- Git hooks 与 CI 共用工程配置。提交按逻辑拆分，使用 Conventional Commits；保留锁文件和检查流程。
+- 真实发行遵循用户已经授予的目标、版本和权限；开发验证使用 README 中的 dry-run 流程。

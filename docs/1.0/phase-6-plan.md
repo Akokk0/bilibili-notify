@@ -39,6 +39,7 @@
 - PR/分支CI用冻结锁文件安装，复验lint/format/type/test/build和提交信息；与本地共用工具配置。
 - 版本tag须与根清单匹配；门禁绿后自动生成拓展ZIP及sha256/大小，先上传版本Release的包，再更新固定Release索引。失败和dry-run均不进入真实发布步骤。
 - 在独立第三方仓库可运行：Actions引用的工具/脚本都随工程提供或来自已分发开发工具。README给出首次安装、开发、检查、tag、dry-run和GitHub权限配置。
+- 2026-11-11补充agent资料：SDK随包AGENT_GUIDE.md和bn-extension-development skill；工程生成AGENTS.md、CLAUDE.md及Codex/Claude入口，正文共用SDK版本，指引和skill引用可在仓外读取。沿既有SDK/CLI入口验证，无新增测试入口。
 - 2026-11-10主人已批准下述创建器及发布测试入口；本地生成与流程验证、真实GitHub运行/发布分开记录。
 
 ## 6-03交付与后续测试入口（2026-11-10）

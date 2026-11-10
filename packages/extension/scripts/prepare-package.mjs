@@ -1,4 +1,4 @@
-import { copyFile, readFile, writeFile } from "node:fs/promises";
+import { copyFile, cp, readFile, writeFile } from "node:fs/promises";
 
 // workspace保留源码实际使用的私有依赖；npm发行目录只声明公开的消费依赖。
 // 版本、公开入口和依赖范围均从同一份源清单生成，不维护第二份清单。
@@ -20,7 +20,15 @@ await writeFile(
 		{
 			...manifest,
 			private: false,
-			files: ["**/*.mjs", "**/*.d.mts", "README.md", "DEVELOPMENT.md", "LICENSE"],
+			files: [
+				"**/*.mjs",
+				"**/*.d.mts",
+				"README.md",
+				"DEVELOPMENT.md",
+				"AGENT_GUIDE.md",
+				"skills",
+				"LICENSE",
+			],
 			types: target(source.types),
 			exports: Object.fromEntries(
 				Object.entries(source.exports).map(([key, value]) => [key, target(value)]),
@@ -40,6 +48,13 @@ await copyFile(
 	new URL("../DEVELOPMENT.md", import.meta.url),
 	new URL("../lib/DEVELOPMENT.md", import.meta.url),
 );
+await copyFile(
+	new URL("../AGENT_GUIDE.md", import.meta.url),
+	new URL("../lib/AGENT_GUIDE.md", import.meta.url),
+);
+await cp(new URL("../skills/", import.meta.url), new URL("../lib/skills/", import.meta.url), {
+	recursive: true,
+});
 await copyFile(
 	new URL("../../../LICENSE", import.meta.url),
 	new URL("../lib/LICENSE", import.meta.url),

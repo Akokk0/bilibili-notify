@@ -21,14 +21,16 @@ const source: SourceDef = {
   },
 };
 
-export default {
-  activate(ctx: ExtensionContext) {
-    ctx.registerSource(source);
-  },
-};
+export function activate(ctx: ExtensionContext) {
+  ctx.registerSource(source);
+}
 ```
 
 完整拓展还需根目录的`extension.json`声明来源外观与能力。`settingsSchema`和`connectionSettingsSchema`可由构建辅助生成清单设置字段。创建工程、当前1/0契约、生命周期、上报、设置、译文和发布见[作者指南](./DEVELOPMENT.md)，此文件也包含在npm包里，可在安装目录直接读取。
+
+## Agent 开发入口
+
+[Agent 契约指引](./AGENT_GUIDE.md)和[开发 skill](./skills/bn-extension-development/SKILL.md)随包提供。创建器会在新工程生成 `AGENTS.md`、`CLAUDE.md`，并为 Codex 与 Claude 准备共享正文的 skill 入口。手工搭建工程时，可把包里的 `skills/bn-extension-development` 复制到项目的 `.agents/skills/`，再将本包的 agent 指引接入已有项目说明。
 
 ## 源码与发行目录
 
