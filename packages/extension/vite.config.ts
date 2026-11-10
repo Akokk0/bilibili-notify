@@ -9,5 +9,10 @@ export default defineConfig({
 		clean: true,
 		outDir: "lib",
 		exports: true,
+		// 源码仍从唯一契约定义转出；npm消费者不能安装私有internal。
+		// 此规则同时作用于JavaScript和声明文件，不生成另一套手写类型。
+		deps: {
+			alwaysBundle: [/^@bilibili-notify\/internal(?:\/|$)/],
+		},
 	},
 });

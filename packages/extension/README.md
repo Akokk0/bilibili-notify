@@ -1,0 +1,44 @@
+# bilibili-notify extension SDK
+
+BN拓展的公开契约与构建辅助。仅支持ESM和Node.js 24及以上；宿主兼容性按拓展清单的`apiVersion` / `apiRevision`判断，与SDK的npm版本号分开。
+
+## 入口
+
+- `@bilibili-notify/extension`：拓展运行代码使用的类型、`ok()` / `fail()`及中性平台描述辅助。
+- `@bilibili-notify/extension/build`：只给构建配置使用的清单导出与文件复制插件。
+
+拓展从SDK这一处获取BN契约，第三方依赖由拓展自己声明。SDK不提供宿主内部模块、MessageBus或订阅配置的写路径；副作用和收尾经宿主交给拓展的ctx执行。
+
+```ts
+import type { ExtensionContext, SourceDef } from "@bilibili-notify/extension";
+import { ok } from "@bilibili-notify/extension";
+
+const source: SourceDef = {
+  start() {},
+  stop() {},
+  async searchCreators() {
+    return ok({ candidates: [] });
+  },
+};
+
+export default {
+  activate(ctx: ExtensionContext) {
+    ctx.registerSource(source);
+  },
+};
+```
+
+完整拓展还需根目录的`extension.json`声明来源外观与能力。`settingsSchema`和`connectionSettingsSchema`可由构建辅助生成清单设置字段；清单结构、上报格式和ctx边界见[拓展契约](https://github.com/Akokk0/bilibili-notify/blob/dev/docs/1.0/extension-contract.md)。
+
+## 源码与发行目录
+
+仓内SDK仍是私有workspace包，源码从internal转出唯一契约定义。构建会内联所需实现和类型，并在`lib/`生成独立的公开npm清单、说明和许可证；仓外消费者不需要internal。
+
+在主仓根执行：
+
+```sh
+vp run -F @bilibili-notify/extension build
+vp -C packages/extension pm pack --out sdk.tgz
+```
+
+`publishConfig.directory`使归档使用`lib/`中的公开清单。实际发行从生成目录进行；版本与发布动作按发行流程另行确认。本地源码里的`0.0.0-dev`不是已经上架的版本。

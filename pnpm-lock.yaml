@@ -558,6 +558,10 @@ importers:
       '@bilibili-notify/internal':
         specifier: workspace:*
         version: link:../internal
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    publishDirectory: lib
 
   packages/http:
     dependencies:
