@@ -70,13 +70,14 @@ export function AiTestPanel({ draft }: { draft: AiSettingsDraft }) {
 
 	return (
 		<GlassBox
+			className="@container"
 			title={tx("aiPage.test.title")}
 			subtitle={tx("aiPage.test.subtitle")}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.sparkle size={14} />}
 			badge="test"
 		>
-			<Field code="ai.test.target">
+			<Field code="ai.test.target" responsive>
 				<TSelect
 					value={targetId}
 					onChange={setTargetId}

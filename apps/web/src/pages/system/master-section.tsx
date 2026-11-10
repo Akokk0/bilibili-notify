@@ -35,13 +35,14 @@ export function MasterSection({
 
 	return (
 		<GlassBox
+			className="@container"
 			title={tx("system.master.title")}
 			subtitle={tx("system.master.subtitle")}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.user size={14} />}
 			badge="master"
 		>
-			<Field code="core.master.targetId">
+			<Field code="core.master.targetId" responsive>
 				<TSelect
 					value={master.targetId ?? ""}
 					onChange={(v) => onPatch({ master: { targetId: v || undefined } })}
