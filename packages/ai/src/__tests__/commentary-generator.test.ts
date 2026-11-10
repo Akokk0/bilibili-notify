@@ -884,6 +884,10 @@ describe("CommentaryGenerator.summarizeTitle", () => {
 			expect(params.messages[0]?.content).toContain(
 				`【输出语言】面向用户的自然语言内容使用${language}。`,
 			);
+			expect(params.messages[0]?.content).toContain("按输出语言要求起一个概括主题的短标题");
+			expect(params.messages[0]?.content).not.toContain("用中文");
+			expect(params.messages[0]?.content).toContain("标题也必须重新概括成指定的输出语言");
+			expect(params.messages[0]?.content).not.toContain("4 到 12 个字");
 			expect(params.messages[1]).toEqual({ role: "user", content: "问:Original 原文" });
 			expect(params.tools).toBeUndefined();
 			expect(oai.create).toHaveBeenCalledTimes(1);
