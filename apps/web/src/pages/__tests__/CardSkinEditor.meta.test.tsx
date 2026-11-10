@@ -17,6 +17,7 @@ import { i18n } from "../../i18n";
  * 不了,自制皮肤的旋钮区于是永远是空的。
  */
 
+import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -78,13 +79,13 @@ function mockApi({ builtin = false, knobs }: { builtin?: boolean; knobs?: unknow
 	vi.mocked(api.put).mockResolvedValue({ ok: true, warnings: [] });
 }
 
-function renderEditor() {
+function renderEditor(id = "neon") {
 	const qc = new QueryClient({
 		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
 	});
 	return render(
 		<QueryClientProvider client={qc}>
-			<MemoryRouter initialEntries={["/cards/skins/neon"]}>
+			<MemoryRouter initialEntries={[`/cards/skins/${id}`]}>
 				<Routes>
 					<Route path="/cards/skins/:id" element={<CardSkinEditor />} />
 					<Route path="/library" element={<LibraryLocation />} />
@@ -103,6 +104,75 @@ function LibraryLocation() {
 		</output>
 	);
 }
+
+it("内置只读清单切语更新名称和旋钮标签，不保存清单", async () => {
+	mockApi();
+	const baseGet = vi.mocked(api.get).getMockImplementation();
+	if (!baseGet) throw new Error("base API fixture is not configured");
+	vi.mocked(api.get).mockImplementation((url: string) =>
+		url === "/api/cards/skins/default"
+			? Promise.resolve({
+					manifest: {
+						...MANIFEST,
+						name: DEFAULT_CARD_SKIN.name,
+						description: DEFAULT_CARD_SKIN.description,
+						knobs: structuredClone(DEFAULT_CARD_SKIN.knobs),
+					},
+				})
+			: baseGet(url),
+	);
+	renderEditor("default");
+	await openSkinTab("默认");
+	expect(await screen.findByDisplayValue("默认")).toBeTruthy();
+	for (const [locale, name, label, saveLabel] of [
+		["en", "Default", "Glass white overlay", "Save"],
+		["ja", "標準", "ガラスの白いオーバーレイ", "保存"],
+		["zh-TW", "預設", "玻璃白色遮罩", "儲存"],
+		["zh-CN", "默认", "玻璃白纱", "保存"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(((await screen.findByDisplayValue(name)) as HTMLInputElement).disabled).toBe(true);
+		expect(((await screen.findByDisplayValue(label)) as HTMLInputElement).disabled).toBe(true);
+		expect((screen.getByRole("button", { name: saveLabel }) as HTMLButtonElement).disabled).toBe(
+			true,
+		);
+		expect(api.put).not.toHaveBeenCalled();
+	}
+});
+
+it("先编辑自制清单再切四语，原始草稿保持且明确保存才提交", async () => {
+	mockApi();
+	renderEditor();
+	await openSkinTab();
+	fireEvent.change(screen.getByLabelText("皮肤名"), { target: { value: "Original draft 原文" } });
+	fireEvent.change(screen.getByLabelText("作者"), { target: { value: "Original author {name}" } });
+	fireEvent.change(screen.getByLabelText("说明"), {
+		target: { value: "Original description 原文" },
+	});
+	for (const [locale, saveLabel] of [
+		["en", "Save"],
+		["ja", "保存"],
+		["zh-TW", "儲存"],
+		["zh-CN", "保存"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		expect(screen.getByDisplayValue("Original draft 原文")).toBeTruthy();
+		expect(screen.getByDisplayValue("Original author {name}")).toBeTruthy();
+		expect(screen.getByDisplayValue("Original description 原文")).toBeTruthy();
+		expect((screen.getByRole("button", { name: saveLabel }) as HTMLButtonElement).disabled).toBe(
+			false,
+		);
+		expect(api.put).not.toHaveBeenCalled();
+	}
+	fireEvent.click(screen.getByRole("button", { name: "保存" }));
+	await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+	expect(saved()).toMatchObject({
+		name: "Original draft 原文",
+		author: "Original author {name}",
+		description: "Original description 原文",
+		cards: MANIFEST.cards,
+	});
+});
 
 it("编辑完成后返回资源库的卡片皮肤分类", async () => {
 	mockApi();

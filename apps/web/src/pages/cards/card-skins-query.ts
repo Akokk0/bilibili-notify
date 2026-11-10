@@ -9,17 +9,20 @@
  */
 
 import type { CardSkinListResponse } from "@bilibili-notify/contract";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SETTINGS_KEY } from "../../hooks/useSettings";
+import { useTextOptions } from "../../i18n";
 import { api } from "../../services/api";
 
 /** 皮肤库列表的 react-query 键。 */
 export const CARD_SKINS_KEY = ["cards", "skins"] as const;
 
 export function useCardSkinList() {
+	const { locale } = useTextOptions();
 	return useQuery({
-		queryKey: CARD_SKINS_KEY,
+		queryKey: [...CARD_SKINS_KEY, locale],
 		queryFn: () => api.get<CardSkinListResponse>("/api/cards/skins"),
+		placeholderData: keepPreviousData,
 	});
 }
 

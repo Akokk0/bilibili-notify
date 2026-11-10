@@ -129,7 +129,8 @@ describe("CardSkinKnobsSection", () => {
 			expect(screen.getByText(none)).toBeTruthy();
 			expect(screen.getByText(empty, { exact: false })).toBeTruthy();
 			expect(container.querySelector("[data-knob]")).toBeNull();
-			act(() => qc.setQueryData(["cards", "skins"], listWith(ASSET_KNOBS)));
+			await waitFor(() => expect(qc.isFetching({ queryKey: ["cards", "skins"] })).toBe(0));
+			act(() => qc.setQueriesData({ queryKey: ["cards", "skins"] }, listWith(ASSET_KNOBS)));
 			expect(await screen.findByText(imageEmpty)).toBeTruthy();
 			expect(screen.getByText(defaults)).toBeTruthy();
 			expect(within(rowOf(container, "wallpaper")).getByText("壁纸")).toBeTruthy();

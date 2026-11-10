@@ -225,6 +225,88 @@ it.each([
 });
 
 describe("GET / —— 皮肤库列表", () => {
+	it("内置元信息四语现取，自制与已复制的清单保持原文", async () => {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		const id = await install(
+			manifest({
+				name: "Original skin 原文",
+				description: "Original description {name}",
+				knobs: [
+					{
+						key: "glass-blur",
+						label: "Original knob 原文",
+						type: "number",
+						default: 10,
+						min: 0,
+						max: 40,
+					},
+				],
+			}),
+		);
+		const original = await (await app.request(`/${id}`)).json();
+		const duplicate = await app.request(`/${DEFAULT_CARD_SKIN_ID}/duplicate`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: "Original copy 原文" }),
+		});
+		expect(duplicate.status).toBe(201);
+		const copyId = ((await duplicate.json()) as any).id;
+		const copied = await (await app.request(`/${copyId}`)).json();
+		for (const [locale, name, labels] of [
+			[
+				"zh-CN",
+				"默认",
+				["背景渐变起色", "背景渐变止色", "玻璃白纱", "玻璃模糊", "字体", "卡片背景图"],
+			],
+			[
+				"en",
+				"Default",
+				[
+					"Gradient start color",
+					"Gradient end color",
+					"Glass white overlay",
+					"Glass blur",
+					"Font",
+					"Card background image",
+				],
+			],
+			[
+				"ja",
+				"標準",
+				[
+					"背景グラデーションの開始色",
+					"背景グラデーションの終了色",
+					"ガラスの白いオーバーレイ",
+					"ガラスのぼかし",
+					"フォント",
+					"カードの背景画像",
+				],
+			],
+			[
+				"zh-TW",
+				"預設",
+				["背景漸層起始色", "背景漸層結束色", "玻璃白色遮罩", "玻璃模糊", "字型", "卡片背景圖片"],
+			],
+		] as const) {
+			i18n.set({ locale, voice: "plain" });
+			const listed = (await (await app.request("/")).json()) as any;
+			const builtin = listed.skins.find((skin: any) => skin.builtin);
+			expect(builtin.name).toBe(name);
+			expect(builtin.knobs.map((knob: any) => knob.label)).toEqual(labels);
+			const read = (await (await app.request(`/${DEFAULT_CARD_SKIN_ID}`)).json()) as any;
+			expect(read.manifest.name).toBe(name);
+			expect(read.manifest.knobs.map((knob: any) => knob.label)).toEqual(labels);
+			expect(listed.skins.find((skin: any) => skin.id === id)).toMatchObject({
+				name: "Original skin 原文",
+				description: "Original description {name}",
+				knobs: [{ key: "glass-blur", label: "Original knob 原文" }],
+			});
+			expect(await (await app.request(`/${id}`)).json()).toEqual(original);
+			expect(await (await app.request(`/${copyId}`)).json()).toEqual(copied);
+		}
+		expect(patchGlobals).not.toHaveBeenCalled();
+	});
+
 	it("ZIP 预览不写入，使用与安装相同的检查，同名安装仍保留原件", async () => {
 		const form = () => {
 			const data = new FormData();

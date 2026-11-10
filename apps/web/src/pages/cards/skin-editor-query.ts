@@ -15,8 +15,9 @@ import type {
 } from "@bilibili-notify/contract";
 import type { CardKind } from "@bilibili-notify/internal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTextOptions } from "../../i18n";
 import { api } from "../../services/api";
-import { CARD_SKINS_KEY } from "./card-skins-query";
+import { CARD_SKINS_KEY, useCardSkinList } from "./card-skins-query";
 
 /** 某一套皮肤完整清单的 react-query 键。 */
 const cardSkinManifestKey = (id: string) => ["card-skin-manifest", id] as const;
@@ -26,9 +27,14 @@ const cardSkinManifestKey = (id: string) => ["card-skin-manifest", id] as const;
  * 时候用不上 —— 每开一次编辑器都白打一趟不值当。
  */
 export function useCardSkinManifest(id: string, enabled = true) {
+	const { locale } = useTextOptions();
+	const list = useCardSkinList();
+	const builtin = list.data?.skins.find((skin) => skin.id === id)?.builtin === true;
 	return useQuery({
-		queryKey: cardSkinManifestKey(id),
+		// 只有内置只读清单含宿主译文；作者清单是编辑基线，切语不能重取并覆盖草稿。
+		queryKey: builtin ? [...cardSkinManifestKey(id), locale] : cardSkinManifestKey(id),
 		queryFn: () => api.get<CardSkinManifestResponse>(`/api/cards/skins/${id}`),
+		placeholderData: (previous, query) => (query?.queryKey[1] === id ? previous : undefined),
 		enabled,
 		// 清单是编辑器的**正本**:窗口切回来时重拉会把主人正在编的草稿基线换掉,
 		// 「有没有未保存的改动」当场算错。只在进页面时拉一次。

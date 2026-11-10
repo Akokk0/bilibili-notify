@@ -10,6 +10,7 @@ import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
  * (封面覆盖的关闭与空列表见 Cards.cover-override.test.tsx。)
  */
 
+import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -111,6 +112,51 @@ afterEach(() => {
 });
 
 describe("Cards per-UP 作用域接线", () => {
+	it("内置名称和旋钮标签切语更新，逐订阅未保存旋钮与作者原名保持", async () => {
+		const baseGet = vi.mocked(api.get).getMockImplementation();
+		if (!baseGet) throw new Error("base API fixture is not configured");
+		vi.mocked(api.get).mockImplementation((url: string) =>
+			url === "/api/library/fonts"
+				? Promise.resolve({ fonts: [] })
+				: url === "/api/cards/skins"
+					? Promise.resolve({
+							...SKINS,
+							skins: [
+								{
+									id: "default",
+									builtin: true,
+									name: DEFAULT_CARD_SKIN.name,
+									knobs: structuredClone(DEFAULT_CARD_SKIN.knobs),
+								},
+								SKINS.skins[1],
+							],
+						})
+					: baseGet(url),
+		);
+		const { container } = renderCards();
+		fireEvent.click(await screen.findByText("UID 123456"));
+		const slider = await screen.findByRole("slider", { name: "玻璃白纱" });
+		fireEvent.change(slider, { target: { value: "0.41" } });
+		for (const [locale, name, label] of [
+			["en", "Default", "Glass white overlay"],
+			["ja", "標準", "ガラスの白いオーバーレイ"],
+			["zh-TW", "預設", "玻璃白色遮罩"],
+			["zh-CN", "默认", "玻璃白纱"],
+		] as const) {
+			act(() => i18n.set({ locale, voice: "plain" }));
+			const current = await screen.findByRole("slider", { name: label });
+			expect((current as HTMLInputElement).value).toBe("0.41");
+			const picker = container.querySelector(
+				'[data-code="cardSkin"] [role="combobox"]',
+			) as HTMLButtonElement;
+			expect(picker.textContent).toContain(name);
+			expect(selectOptionsOf(picker).map((option) => option.textContent)).toContain("极光");
+			fireEvent.keyDown(picker, { key: "Escape" });
+			expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup");
+			expect(api.patch).not.toHaveBeenCalled();
+		}
+	});
+
 	it("切语后四张预览使用当前语言的新图，不保存设置或发送测试推送", async () => {
 		let renderedLocale = "zh-CN";
 		vi.mocked(api.post).mockImplementation(async (_url, body) => ({
@@ -319,12 +365,13 @@ describe("Cards per-UP 作用域接线", () => {
 			expect(options).toContain(builtin);
 			expect(select.textContent).toBe("极光");
 			fireEvent.keyDown(select, { key: "Escape" });
-			act(() => qc.setQueryData(["cards", "skins"], { ...SKINS, active: "" }));
+			await waitFor(() => expect(qc.isFetching({ queryKey: ["cards", "skins"] })).toBe(0));
+			act(() => qc.setQueriesData({ queryKey: ["cards", "skins"] }, { ...SKINS, active: "" }));
 			await waitFor(() =>
 				expect(selectOptionsOf(select).map((x) => x.textContent)).toContain(noName),
 			);
 			fireEvent.keyDown(select, { key: "Escape" });
-			act(() => qc.setQueryData(["cards", "skins"], SKINS));
+			act(() => qc.setQueriesData({ queryKey: ["cards", "skins"] }, SKINS));
 			await waitFor(() =>
 				expect(selectOptionsOf(select).map((x) => x.textContent)).toContain(inherit),
 			);
