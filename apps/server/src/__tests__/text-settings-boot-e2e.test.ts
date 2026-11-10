@@ -19,6 +19,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { WebSocket } from "ws";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { i18n } from "../i18n/index.js";
 import { type ServerHandle, startServer } from "../index.js";
@@ -107,6 +108,63 @@ describe("语言与口吻两项设置接在开机路径上", () => {
 		await patch(port, { locale: null, voice: null });
 		expect(i18n.state().locale).toBe("zh-CN");
 		expect(i18n.state().voice).toBe("maid");
+	});
+
+	it("真实HTTP改四语触发globals帧，断线期间改语言后重连hydrate能重取当前设置", async () => {
+		const port = await boot();
+		const sockets: WebSocket[] = [];
+		const connect = async () => {
+			const frames: Array<{ type: string; event?: string; data?: unknown }> = [];
+			const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+			sockets.push(socket);
+			socket.on("message", (data) => frames.push(JSON.parse(data.toString())));
+			await new Promise<void>((resolve, reject) => {
+				socket.once("open", resolve);
+				socket.once("error", reject);
+			});
+			socket.send(JSON.stringify({ type: "subscribe", channels: ["state"] }));
+			await vi.waitFor(() =>
+				expect(
+					frames.find((frame) => frame.type === "state" && frame.event === "hydrate")?.data,
+				).toBeNull(),
+			);
+			return { socket, frames };
+		};
+		const readSettings = async () => {
+			const response = await fetch(`http://127.0.0.1:${port}/api/settings`);
+			expect(response.status).toBe(200);
+			return ((await response.json()) as SettingsResponse).core;
+		};
+		try {
+			const first = await connect();
+			const changes = () =>
+				first.frames.filter((frame) => frame.type === "state" && frame.event === "config-changed");
+			for (const [locale, voice] of [
+				["en", "plain"],
+				["ja", "maid"],
+				["zh-TW", "plain"],
+				["zh-CN", "maid"],
+			] as const) {
+				const seen = changes().length;
+				await patch(port, { locale, voice });
+				await vi.waitFor(() => expect(changes().length).toBeGreaterThan(seen));
+				expect(changes().at(-1)?.data).toEqual({ scope: "globals" });
+				expect(await readSettings()).toMatchObject({ locale, voice });
+			}
+			first.socket.close();
+			await vi.waitFor(() => expect(first.socket.readyState).toBe(WebSocket.CLOSED));
+			const beforeMissed = first.frames.length;
+			await patch(port, { locale: "ja", voice: "plain" });
+			const reconnected = await connect();
+			expect(first.frames).toHaveLength(beforeMissed);
+			expect(
+				reconnected.frames.find((frame) => frame.type === "state" && frame.event === "hydrate")
+					?.data,
+			).toBeNull();
+			expect(await readSettings()).toMatchObject({ locale: "ja", voice: "plain" });
+		} finally {
+			for (const socket of sockets) socket.terminate();
+		}
 	});
 
 	it("真实设置接口四语切换同步内置性格与持续问题，保留用户副本和模板", async () => {
