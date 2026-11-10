@@ -39,8 +39,8 @@ CHANGELOG 是写给用户的,不是提交历史的镜像。判据只看下一行
 - 写完就本地验一次,红了当场改,别等 CI:
 
 ```bash
-node scripts/changelog-section.mjs --version <VERSION>            # 打印概述;找不到 / 为空 / 超长退 1
-node scripts/changelog-section.mjs --version <VERSION> --part section   # 发布页正文会贴的整段
+vp exec node scripts/changelog-section.mjs --version <VERSION>            # 打印概述;找不到 / 为空 / 超长退 1
+vp exec node scripts/changelog-section.mjs --version <VERSION> --part section   # 发布页正文会贴的整段
 ```
 
 ## 写法
