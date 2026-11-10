@@ -1783,3 +1783,196 @@ describe("SkinEditor / 把这一套套到另一套", () => {
 		});
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、右上のテーマ切替で、ページに表示するライト版とダーク版を選べますよ。1種類しかないスキンは、そのモードに固定されます。",
+		"ご主人様、スキンの適用中はチャット画面全体も着替えて、既定の4色プリセットは隠れますよ。アクセント色はメインの色に、ガラスは上の「ガラスパネル」の設定に従います。ここではチャット背景だけを設定してくださいね。",
+		"ご主人様、同梱フォントをフォントスタックより先に使い、ファイルを読み込めなければ後ろのフォント名に切り替えますよ。完全な中国語フォントは8～9MBほどありますが、WOFF2にすると約3分の1に小さくなることもあり、ご主人様も訪問者も通信量を減らせます。",
+		"ご主人様、メイドに変えてほしいことを一言でどうぞ。例：「全体をサイバーパンク風にして、カードにネオンのきらめきを追加」",
+		"ご主人様、LXGW WenKai, sans-serif のように、カンマで区切ってくださいね。",
+		"ご主人様、セレクターには、こうしたフックだけを使ってくださいね：",
+		"同梱フォントは使いませんよ",
+		"壁紙は使いませんよ",
+		"本文フォント",
+		"同梱フォント",
+		"壁紙画像",
+		"チャット背景",
+		"共通CSS",
+	],
+	[
+		"zh-TW",
+		"主人，右上角的主題切換決定頁面顯示淺色或深色版本喔；只有一個版本的外觀會固定使用該模式。",
+		"主人，套用外觀時，聊天頁面也會整體換裝，並隱藏預設的四色主題喔。強調色跟隨主強調色，玻璃元件使用上方「玻璃面板」的設定；這裡只設定聊天頁面的背景。",
+		"主人，會先使用套件內的字型，檔案載入失敗時才改用後方清單裡的字型名稱喔。完整中文字型約有 8～9 MB，轉成 WOFF2 常能縮到約三分之一，主人和訪客都能省下傳輸量。",
+		"主人，用一句話告訴女僕想怎麼改吧，例如「整體改成賽博龐克風格，卡片加上霓虹流光」。",
+		"主人，請用逗號分隔喔，例如 LXGW WenKai, sans-serif。",
+		"主人，選擇器只能使用這類掛點喔：",
+		"不使用套件內的字型囉",
+		"不使用桌布囉",
+		"內文字型清單",
+		"內附字型",
+		"桌布圖片",
+		"聊天頁面背景",
+		"共用 CSS",
+	],
+] as const)(
+	"%s 女仆编辑指导与无字体桌布选项保留原请求和样式草稿",
+	async (locale, theme, chat, font, requestHint, familyHint, cssPrefix, noFont, noWallpaper, familyLabel, fontLabel, wallpaperLabel, chatLabel, cssLabel) => {
+		renderEditor();
+		const request = screen.getByPlaceholderText(
+			"用一句话让女仆改,如「整体换成赛博朋克风,卡片加霓虹流光」",
+		);
+		fireEvent.change(request, { target: { value: "Original request 原文" } });
+		openFontFold();
+		fireEvent.change(screen.getByLabelText("正文字体栈"), {
+			target: { value: "Original Family, monospace" },
+		});
+		fireEvent.click(screen.getByText("AI 聊天"));
+		fireEvent.change(screen.getByLabelText("聊天页背景"), {
+			target: { value: "linear-gradient(#123456, #654321)" },
+		});
+		fireEvent.click(screen.getByText("自定义 CSS"));
+		const css = '[data-bn="glass"]{border-color:#112233}';
+		fireEvent.change(screen.getByLabelText("共用 CSS"), { target: { value: css } });
+		act(() => i18n.set({ locale, voice: "maid" }));
+		for (const text of [theme, chat, font]) expect(screen.getByText(text)).toBeTruthy();
+		expect(screen.getByPlaceholderText(requestHint)).toBe(request);
+		expect((request as HTMLTextAreaElement).value).toBe("Original request 原文");
+		expect((screen.getByPlaceholderText(familyHint) as HTMLInputElement).value).toBe(
+			"Original Family, monospace",
+		);
+		expect((screen.getByLabelText(familyLabel) as HTMLInputElement).value).toBe(
+			"Original Family, monospace",
+		);
+		expect(document.body.textContent).toContain(cssPrefix);
+		expect(screen.getByText('[data-bn="glass"]', { exact: true })).toBeTruthy();
+		expect((screen.getByLabelText(cssLabel) as HTMLTextAreaElement).value).toBe(css);
+		expect((screen.getByLabelText(chatLabel) as HTMLTextAreaElement).value).toBe(
+			"linear-gradient(#123456, #654321)",
+		);
+		const fontPicker = screen.getByRole("combobox", { name: fontLabel });
+		expect(selectOptionsOf(fontPicker).map((el) => el.textContent)).toContain(noFont);
+		chooseSelect(fontPicker, noFont);
+		const wallpaper = screen.getByRole("combobox", { name: wallpaperLabel });
+		expect(selectOptionsOf(wallpaper).map((el) => el.textContent)).toContain(noWallpaper);
+		chooseSelect(wallpaper, "assets/bg.png");
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.body).toEqual([
+				"Original Family",
+				"monospace",
+			]),
+		);
+		expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper?.image).toBe(
+			"assets/bg.png",
+		);
+		expect(H.putCalls).toEqual([]);
+		expect(H.postCalls).toEqual([]);
+	},
+);
+
+it.each([
+	[
+		"ja",
+		"ご主人様、保存済みのスキンを、このパッケージの既定に設定しましたよ。",
+		"ご主人様、既定値をプレビューしていますよ。この状態を使うには、忘れずに保存してくださいね。",
+		"ご主人様、このスキンには既定のスナップショットがまだありません。先に「既定に設定」を選んでくださいね。",
+		"既定に設定",
+		"既定に戻す",
+	],
+	[
+		"zh-TW",
+		"主人，已將儲存的外觀設為這個套件的預設值囉。",
+		"主人，已恢復預設值供您預覽囉，滿意後記得儲存喔。",
+		"主人，這套外觀還沒有預設快照喔，請先按「設為預設值」。",
+		"設為預設值",
+		"恢復預設值",
+	],
+] as const)(
+	"%s 女仆默认快照说明区分已持久设置与待保存预览",
+	async (locale, pinned, restored, missing, pinLabel, restoreLabel) => {
+		H.defaultManifest = {
+			schemaVersion: 1,
+			name: "Original snapshot 原文",
+			modes: { light: { glass: { blur: 9 } } },
+		};
+		renderEditor();
+		act(() => i18n.set({ locale, voice: "maid" }));
+		const pin = screen.getByRole("button", { name: pinLabel }) as HTMLButtonElement;
+		fireEvent.click(pin);
+		await screen.findByText(pinned);
+		expect(H.putCalls).toEqual([{ path: "/api/dashboard/skins/s1/default", body: undefined }]);
+		const restore = screen.getByRole("button", { name: restoreLabel }) as HTMLButtonElement;
+		await waitFor(() => expect(restore.disabled).toBe(false));
+		fireEvent.click(restore);
+		await screen.findByText(restored);
+		await waitFor(() =>
+			expect(useSkinStore.getState().preview?.manifest.name).toBe("Original snapshot 原文"),
+		);
+		expect(useSkinStore.getState().preview?.manifest.modes.light?.glass?.blur).toBe(9);
+		expect(pin.disabled).toBe(true);
+		expect(H.putCalls).toHaveLength(1);
+		cleanup();
+		H.defaultManifest = null;
+		renderEditor();
+		const unavailable = screen.getByRole("button", { name: restoreLabel }) as HTMLButtonElement;
+		await waitFor(() => expect(unavailable.title).toBe(missing));
+		expect(unavailable.disabled).toBe(true);
+		fireEvent.click(unavailable);
+		expect(H.putCalls).toHaveLength(1);
+	},
+);
+
+it.each([
+	[
+		"ja",
+		"ご主人様、ダークの既存設定を上書きしますよ。保存するまではプレビューだけなので、気に入らなければ「キャンセル」で元に戻せます。",
+		"ご主人様、壁紙・角丸・フォント・ガラスのぼかしをコピーしますよ。配色・ガラスの背景色・影は、そのまま残します。",
+		"ご主人様、配色も一緒にコピーするので、ダークがライトと同じ見た目になりますよ。",
+		"ご主人様、現在の調整をダークのプレビューに適用しましたよ。この状態を使うには、忘れずに保存してくださいね。",
+		"同期先：ダーク",
+		"レイアウトのみコピー（色は維持）",
+		"すべてコピー",
+		"キャンセル",
+	],
+	[
+		"zh-TW",
+		"主人，深色原有的設定會被覆寫喔。儲存前只是預覽，不滿意時按「取消」就能還原。",
+		"主人，會複製桌布、圓角、字型和玻璃模糊喔；配色、玻璃底色和陰影會留在原處。",
+		"主人，這樣會連同配色一起複製，讓深色變成淺色的樣子喔。",
+		"主人，已將目前調整套用至深色預覽囉，滿意後記得儲存喔。",
+		"同步至深色",
+		"只複製版面（保留配色）",
+		"複製全部設定",
+		"取消",
+	],
+] as const)(
+	"%s 女仆深浅复制说明区分预览与保存，取消不覆盖且只复制版面保留配色",
+	async (locale, warning, layoutDetail, allDetail, feedback, sync, layout, all, cancel) => {
+		const manifest = makeManifest();
+		manifest.modes.light = { ...manifest.modes.light, colors: { accent: "#112233" } };
+		manifest.modes.dark = { colors: { accent: "#445566" } };
+		renderEditor({ manifest });
+		act(() => i18n.set({ locale, voice: "maid" }));
+		fireEvent.click(screen.getByRole("button", { name: sync }));
+		let dialog = screen.getByRole("dialog", { name: "" });
+		for (const text of [warning, layoutDetail, allDetail])
+			expect(within(dialog).getByText(text)).toBeTruthy();
+		expect(within(dialog).getByRole("button", { name: all })).toBeTruthy();
+		fireEvent.click(within(dialog).getByRole("button", { name: cancel }));
+		expect(useSkinStore.getState().preview?.manifest.modes.dark).toEqual({
+			colors: { accent: "#445566" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: sync }));
+		dialog = screen.getByRole("dialog", { name: "" });
+		fireEvent.click(within(dialog).getByRole("button", { name: layout }));
+		await screen.findByText(feedback);
+		expect(useSkinStore.getState().preview?.manifest.modes.dark?.wallpaper?.image).toBe(
+			"assets/bg.png",
+		);
+		expect(useSkinStore.getState().preview?.manifest.modes.dark?.colors?.accent).toBe("#445566");
+		expect(H.putCalls).toEqual([]);
+		expect(H.postCalls).toEqual([]);
+	},
+);

@@ -584,3 +584,51 @@ describe("删除 —— 双色皮肤可以只删一色", () => {
 		expect(screen.queryByRole("button", { name: /只删/ })).toBeNull();
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、スキンパッケージをアップロードしてダッシュボードを着替えましょう。メイドとのチャットのサイドバーで「新しいスキン工房」を開いて、作ってもらうこともできますよ。",
+		"ご主人様、スキンで画面が読みにくくなったら、アドレスに ",
+		"ご主人様、「樱花夜」にはライトとダークの2種類があります。どの部分を削除しますか？削除すると元に戻せませんよ。",
+		"ご主人様、「樱花夜」を削除しますか？削除すると元に戻せませんよ。",
+		"削除",
+		"キャンセル",
+	],
+	[
+		"zh-TW",
+		"主人，上傳外觀套件就能替面板換裝喔，也可以到女僕聊天側欄開啟「新增外觀工坊」，請她製作一套。",
+		"主人，如果外觀讓畫面難以辨識，請在網址列加上 ",
+		"主人，「樱花夜」有淺色和深色兩個版本，要刪除哪個部分呢？刪除後就無法還原了喔。",
+		"主人，確定刪除「樱花夜」嗎？刪除後就無法還原了喔。",
+		"刪除",
+		"取消",
+	],
+] as const)(
+	"%s 女仆资源说明与双色/整包删除警告保留原名，取消不删除",
+	async (locale, intro, recovery, dualWarning, singleWarning, remove, cancel) => {
+		const dual = renderSection();
+		await screen.findByText("樱花夜");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(intro)).toBeTruthy();
+		expect(dual.container.textContent).toContain(recovery);
+		expect(screen.getByText("?skin=off").tagName).toBe("CODE");
+		fireEvent.click(screen.getByRole("button", { name: remove }));
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByText(dualWarning)).toBeTruthy();
+		fireEvent.click(within(dialog).getByRole("button", { name: cancel }));
+		expect(api.delete).not.toHaveBeenCalled();
+		dual.unmount();
+		H.list.list[0].modes = ["dark"];
+		const single = renderSection();
+		await screen.findByText("樱花夜");
+		fireEvent.click(screen.getByRole("button", { name: remove }));
+		const confirm = await screen.findByRole("dialog");
+		expect(within(confirm).getByText(singleWarning)).toBeTruthy();
+		fireEvent.click(within(confirm).getByRole("button", { name: cancel }));
+		expect(api.delete).not.toHaveBeenCalled();
+		expect(H.putCalls).toEqual([]);
+		expect(H.list.list[0].name).toBe("樱花夜");
+		single.unmount();
+	},
+);
