@@ -1,4 +1,5 @@
 import type { AiCardSkinTouchView } from "@bilibili-notify/contract";
+import { formatCount } from "@bilibili-notify/internal/format";
 import { ErrorNote, Icon } from "@bilibili-notify/ui";
 import {
 	Fragment,
@@ -668,8 +669,8 @@ function ToolChips({
  * 进度那个数字要**读得下去**。
  *
  * 精确到个位时它每来一片就跳一次,眼睛只看得到一个乱转的计数器,反而读不出快慢;
- * 上千之后收成一位小数,跳动频率降一个数量级,「在动」和「多快」就都还在。
+ * 上千之后按百字取整,「在动」和「多快」就都还在;单位交给共用计数排版随当前语言取。
  */
 function formatChars(n: number): string {
-	return n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`;
+	return formatCount(n < 1000 ? n : Math.round(n / 100) * 100);
 }

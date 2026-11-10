@@ -43,6 +43,42 @@ function mountList(props: Partial<Parameters<typeof MessageList>[0]> = {}) {
 	return render(<MessageList messages={[]} pending={null} busy={false} aiSelf="小绫" {...props} />);
 }
 
+it("tool progress follows four-language count units without changing the original message or count", () => {
+	const pending = {
+		ask: "Original question 原文 {name}",
+		draft: "",
+		think: "",
+		tools: [{ name: "write_card", label: "Original tool 原文", args: {}, progress: 123456 }],
+	};
+	const view = mountList({ pending });
+	const question = screen.getByText(pending.ask);
+	const tool = screen.getByText("Original tool 原文");
+	for (const [locale, running, done] of [
+		["zh-CN", "已写 12.3万 字", "写了 12.3万 字"],
+		["en", "Writing · 123.5K characters", "Wrote 123.5K characters"],
+		["ja", "執筆中 · 12.3万 文字", "執筆済み · 12.3万 文字"],
+		["zh-TW", "已寫 12.3萬 字", "寫了 12.3萬 字"],
+	] as const) {
+		act(() => i18n.set({ locale, voice: "plain" }));
+		view.rerender(
+			<MessageList messages={[]} pending={pending} busy={false} aiSelf="Original assistant 原文" />,
+		);
+		expect(screen.getByText(running)).toBeTruthy();
+		view.rerender(
+			<MessageList
+				messages={[]}
+				pending={{ ...pending, tools: pending.tools.map((trace) => ({ ...trace, ok: true })) }}
+				busy={false}
+				aiSelf="Original assistant 原文"
+			/>,
+		);
+		expect(screen.getByText(done)).toBeTruthy();
+		expect(screen.getByText(pending.ask)).toBe(question);
+		expect(screen.getByText("Original tool 原文")).toBe(tool);
+		expect(pending.tools[0]?.progress).toBe(123456);
+	}
+});
+
 it.each([
 	[
 		"ja",
@@ -120,7 +156,7 @@ it("message annotations translate while expanded sources and original reply cont
 it.each([
 	[1, "Writing · 1 character", "Wrote 1 character", "1"],
 	[2, "Writing · 2 characters", "Wrote 2 characters", "2"],
-	[3247, "Writing · 3.2k characters", "Wrote 3.2k characters", "3.2k"],
+	[3247, "Writing · 3.2K characters", "Wrote 3.2K characters", "3200"],
 ] as const)(
 	"tool progress uses the numeric count for English plurals: %s",
 	(progress, running, done, value) => {
@@ -155,6 +191,32 @@ it.each([
 			/>,
 		);
 		expect(screen.getByText(done)).toBeTruthy();
+	},
+);
+
+it.each([
+	[999, "999", "999"],
+	[1000, "1000", "1.0K"],
+	[1249, "1200", "1.2K"],
+	[1250, "1300", "1.3K"],
+	[9999, "1.0万", "10.0K"],
+	[10000, "1.0万", "10.0K"],
+	[100000000, "1.0亿", "100.0M"],
+	[1000000000, "10.0亿", "1.0B"],
+] as const)(
+	"tool progress keeps hundred-character rounding at %s",
+	(progress, chinese, english) => {
+		mountList({
+			pending: {
+				ask: "Original question",
+				draft: "",
+				think: "",
+				tools: [{ name: "write_card", args: {}, progress }],
+			},
+		});
+		expect(screen.getByText(`已写 ${chinese} 字`)).toBeTruthy();
+		act(() => i18n.set({ locale: "en", voice: "plain" }));
+		expect(screen.getByText(`Writing · ${english} characters`)).toBeTruthy();
 	},
 );
 

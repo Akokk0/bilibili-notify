@@ -805,12 +805,12 @@ describe("AiChatDock — 工具调用小条", () => {
 		expect(chips()[0]?.textContent).toContain("860");
 	});
 
-	it("上千之后收成 k —— 精确到个位只会看见一个乱跳的计数器", async () => {
+	it("上千之后按百字取整 —— 单位遵循当前语言的计数规则", async () => {
 		H.toolEvents = [start("0-0", "list_subscriptions"), progress("0-0", 3247)];
 		await typeAndSend("我订了谁");
 		await release();
 		await release();
-		await waitFor(() => expect(chips()[0]?.textContent).toContain("3.2k"));
+		await waitFor(() => expect(chips()[0]?.textContent).toContain("3200"));
 		expect(chips()[0]?.textContent).not.toContain("3247");
 	});
 
