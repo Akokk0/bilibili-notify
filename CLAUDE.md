@@ -6,7 +6,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像与 macOS / Windows 桌面应用,支持应用内自主升级。
 
-核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上没有任何包,也不用 changesets。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。平台描述与连接设置规则已归内置适配器,改动它们或候选接口之前先读 `.claude/rules/connection-platforms.md`。推送链路各层(`apps/server/src/live/`、`apps/server/src/bilibili/dynamic/`、`apps/server/src/bilibili/live/session/`,与 `packages/push` / `packages/image`)只认独立端这一个宿主,不留可选钩子。
+业务核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费,不用 changesets。SDK与拓展创建器作为对外开发工具走npm;开发或准备发行前先读[ADR-0040](docs/adr/0040-extension-sdk-npm.md),施工见[第6期计划](docs/1.0/phase-6-plan.md)。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。平台描述与连接设置规则已归内置适配器,改动它们或候选接口之前先读 `.claude/rules/connection-platforms.md`。推送链路各层(`apps/server/src/live/`、`apps/server/src/bilibili/dynamic/`、`apps/server/src/bilibili/live/session/`,与 `packages/push` / `packages/image`)只认独立端这一个宿主,不留可选钩子。
 
 ## 工具链与命令
 
