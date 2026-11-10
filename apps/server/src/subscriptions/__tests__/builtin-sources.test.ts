@@ -14,6 +14,7 @@ import {
 	type AiToolProviderRegistry,
 	createAiToolProviderRegistry,
 } from "../../ai/tool-provider-registry.js";
+import { i18n } from "../../i18n/index.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { registerBuiltinSource } from "../builtin-sources.js";
 import { createSourceRegistry } from "../registry.js";
@@ -378,6 +379,40 @@ describe("registerBuiltinSource · 登录口(Source.auth)", () => {
 	});
 
 	// 验红:`builtin-sources.ts` 里不建 `watchLoginProblems`,这条红。
+	it.each(["expired", "logged-out"] as const)(
+		"%s 登录问题在出字时读取当前来源名，不冻结登记时的名称",
+		async (status) => {
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			let label = "原始来源";
+			const authed = makeAuthedSource();
+			authed.setState(status === "expired" ? { status, message: "失效" } : { status });
+			Object.defineProperty(authed.source.descriptor, "label", { get: () => label });
+			const { options, problems } = setup(authed.source);
+			const handle = await registerBuiltinSource(options);
+			try {
+				const call = problems.report.mock.calls[0]?.[0];
+				expect(typeof call?.message === "function" && call.message()).toContain("原始来源");
+				label = "Current source";
+				i18n.set({ locale: "en", voice: "plain" });
+				expect(typeof call?.message === "function" && call.message()).toBe(
+					status === "expired"
+						? 'Your Current source login has expired. Content from its subscriptions cannot be received. Sign in again on the dashboard Accounts page or send "login bilibili" in a private message.'
+						: 'You are not logged in to Current source. Content from its subscriptions cannot be received. Sign in on the dashboard Accounts page or send "login bilibili" in a private message.',
+				);
+				if (status === "expired") {
+					expect(typeof call?.recoveryMessage === "function" && call.recoveryMessage()).toBe(
+						"Your Current source login has been restored.",
+					);
+				} else expect(call?.recoveryMessage).toBeUndefined();
+				expect(call?.notify).toBe(status === "expired");
+				expect(problems.report).toHaveBeenCalledTimes(1);
+			} finally {
+				await handle.dispose();
+				i18n.set({ locale: "zh-CN", voice: "maid" });
+			}
+		},
+	);
+
 	it("有登录口的来源登记后:宿主看登录状态,expired 就在来源键名下报 auth_lost(宿主那句、带私聊、不盖写者)", async () => {
 		const authed = makeAuthedSource();
 		authed.setState({ status: "expired", message: "失效" });

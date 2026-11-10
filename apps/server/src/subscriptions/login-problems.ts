@@ -10,8 +10,8 @@ export interface WatchLoginProblemsOptions {
 	auth: Pick<SourceAuth, "state" | "onChange">;
 	/** 来源键:问题记在它名下,指路的话里也用它(登录指令按键挑来源)。 */
 	sourceKey: string;
-	/** 给人看的来源名(取自来源描述符)。 */
-	label: string;
+	/** 给人看的当前来源名；取字时读描述符，不冻结登记时的语言。 */
+	label: () => string;
 	problems: Pick<ProblemTable, "report" | "resolve">;
 	logger: Logger;
 }
@@ -44,14 +44,14 @@ export function watchLoginProblems(options: WatchLoginProblemsOptions): Disposab
 						? {
 								reporter: sourceKey,
 								code: LOGIN_CODE,
-								message: () => t("problem.login.expired", { name: label, sourceKey }),
+								message: () => t("problem.login.expired", { name: label(), sourceKey }),
 								notify: true,
-								recoveryMessage: () => t("problem.login.recovered", { name: label }),
+								recoveryMessage: () => t("problem.login.recovered", { name: label() }),
 							}
 						: {
 								reporter: sourceKey,
 								code: LOGIN_CODE,
-								message: () => t("problem.login.missing", { name: label, sourceKey }),
+								message: () => t("problem.login.missing", { name: label(), sourceKey }),
 								notify: false,
 							},
 				);

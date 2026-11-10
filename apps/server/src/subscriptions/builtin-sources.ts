@@ -51,7 +51,7 @@ export async function registerBuiltinSource(
 		? watchLoginProblems({
 				auth,
 				sourceKey: opts.sourceKey,
-				label: source.descriptor.label,
+				label: () => source.descriptor.label,
 				problems: opts.problems,
 				logger: opts.logger,
 			})

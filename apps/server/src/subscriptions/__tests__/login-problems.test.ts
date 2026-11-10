@@ -77,7 +77,7 @@ function setup(initial: AuthState) {
 	const handle = watchLoginProblems({
 		auth: fake.auth,
 		sourceKey: "bilibili",
-		label: "B 站",
+		label: () => "B 站",
 		problems,
 		logger,
 	});
@@ -172,27 +172,45 @@ describe("watchLoginProblems", () => {
 				onChange: (fn) => ({ dispose: i18n.subscribe(fn) }),
 			},
 		});
-		const changes: Array<{ kind: string; notify: boolean; reworded?: true }> = [];
+		const changes: Array<{
+			kind: string;
+			notify: boolean;
+			reworded?: true;
+			recoveryMessage?: string;
+		}> = [];
 		table.subscribe((c) => changes.push(c));
 		const fake = makeAuth(EXPIRED);
-		watchLoginProblems({
+		let label = "B 站";
+		const handle = watchLoginProblems({
 			auth: fake.auth,
 			sourceKey: "bilibili",
-			label: "B 站",
+			label: () => label,
 			problems: table,
 			logger: makeLogger(),
 		});
-		expect(table.list()[0]?.message).toBe(EXPIRED_TEXT);
-
-		i18n.set({ locale: "en" });
-
-		expect(table.list()[0]?.message).toBe(
-			'Your B 站 login has expired. Content from its subscriptions cannot be received. Sign in again on the dashboard Accounts page or send "login bilibili" in a private message.',
-		);
-		expect(table.list()).toHaveLength(1);
-		// 同一条换文案(带"换说法"记号),没有第二次 opened,所以通知器不会再私聊一遍。
-		expect(changes.map((c) => c.kind)).toEqual(["opened", "updated"]);
-		expect(changes.at(-1)?.reworded).toBe(true);
+		try {
+			expect(table.list()[0]?.message).toBe(EXPIRED_TEXT);
+			const since = table.list()[0]?.since;
+			label = "Current source";
+			i18n.set({ locale: "en" });
+			expect(table.list()[0]?.message).toBe(
+				'Your Current source login has expired. Content from its subscriptions cannot be received. Sign in again on the dashboard Accounts page or send "login bilibili" in a private message.',
+			);
+			expect(table.list()).toHaveLength(1);
+			expect(table.list()[0]?.since).toBe(since);
+			// 同一条换说法，不再次 opened；通知器沿既有 reworded 规则处理。
+			expect(changes.map((c) => c.kind)).toEqual(["opened", "updated"]);
+			expect(changes.at(-1)?.reworded).toBe(true);
+			fake.set(IN);
+			expect(table.list()).toHaveLength(0);
+			expect(changes.at(-1)).toMatchObject({
+				kind: "closed",
+				recoveryMessage: "Your Current source login has been restored.",
+			});
+		} finally {
+			handle.dispose();
+			table.dispose();
+		}
 	});
 
 	it("开机 logged-out:报一条 auth_lost,不带私聊,话是「还没有登录」", () => {

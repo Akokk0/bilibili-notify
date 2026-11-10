@@ -57,7 +57,7 @@ export function makeProblemHarness(
 	watchLoginProblems({
 		auth,
 		sourceKey: HARNESS_REPORTER,
-		label: HARNESS_LABEL,
+		label: () => HARNESS_LABEL,
 		problems: table,
 		logger,
 	});
