@@ -2008,7 +2008,7 @@
 	"panelUi.pages.extensions.marketplace-section.2": "Install third-party extension “{value0}”?",
 	"panelUi.pages.extensions.marketplace-section.5": "Install anyway",
 	"panelUi.pages.extensions.marketplace-section.9": "Installing…",
-	"panelUi.pages.extensions.marketplace-sources-dialog.1": "The index URL must start with https://",
+	"panelUi.pages.extensions.marketplace-sources-dialog.1": "Enter a GitHub owner/repository or a complete HTTPS index URL.",
 	"panelUi.pages.extensions.marketplace-sources-dialog.2": "This URL has already been added",
 	"panelUi.pages.extensions.marketplace-sources-dialog.3": "Extension marketplace sources",
 	"panelUi.pages.extensions.marketplace-sources-dialog.4": "Each source is a marketplace.json listing the extensions it provides. The official source is built in; a custom source is controlled by the owner of its address.",

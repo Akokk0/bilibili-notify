@@ -1,7 +1,7 @@
 {
 	"internal.settings.loggingPrototype": "ご主人様、ログのモジュール名にconstructor / toString / valueOfなどのJSオブジェクトのプロトタイプ名は使えません。組み込み関数を参照してしまいます。",
 	"internal.settings.mirrorPrefix": "ご主人様、高速化プレフィックスにはhttps://で始まるアドレスを入力してくださいね。",
-	"internal.settings.sourceUrl": "ご主人様、ソースのアドレスはhttps://で始まるものにしてくださいね。",
+	"internal.settings.sourceUrl": "ご主人様、GitHubの所有者/リポジトリか、https://で始まる完全なインデックスURLを入力してくださいね。",
 	"internal.settings.timezone": "ご主人様、Asia/Shanghaiなど、有効なIANAタイムゾーン名を入力してくださいね。",
 	"internal.settings.quietHoursDistinct": "ご主人様、開始時刻と終了時刻は別にしてくださいね。終日にする場合は0～24時を指定してください。",
 	"push.router.routeRemoved": "ご主人様、{subscription}のfeature={feature}のルーティングからtarget={targetId}が削除されたため、通知の再試行を中止しました。",

@@ -350,7 +350,7 @@
 	"internal.commands.prefixLeadingSpace": "The prefix cannot start with whitespace.",
 	"internal.settings.loggingPrototype": "Log module keys cannot use JavaScript object prototype names (such as constructor / toString / valueOf): looking up a missing key could return a built-in function.",
 	"internal.settings.mirrorPrefix": "The mirror prefix must be an https:// URL.",
-	"internal.settings.sourceUrl": "The source URL must start with https://.",
+	"internal.settings.sourceUrl": "Enter a GitHub owner/repository or a complete HTTPS index URL.",
 	"internal.settings.timezone": "Unknown time zone. Use an IANA name, such as Asia/Shanghai.",
 	"internal.settings.quietHoursDistinct": "Start and end times must differ. Use 0–24 for the whole day.",
 	"internal.settings.aiActiveProfile": "Active AI profile reference ",

@@ -17,6 +17,7 @@ export * from "./key-value-store";
 export * from "./link-preview";
 export * from "./live";
 export * from "./live-monitor";
+export * from "./marketplace";
 export * from "./membership";
 export * from "./platform";
 export * from "./platform-descriptor";

@@ -76,6 +76,43 @@ describe("globals.extensions.<id> 不带设置", () => {
  * 不能删),这里只有主人自己加的第三方源。
  */
 describe("globals.marketplace", () => {
+	it("保留自定义 HTTPS 索引，拒绝残缺仓库、非 HTTPS 及带空白的地址", () => {
+		const g = makeDefaultGlobalSettings();
+		const url = "https://index.example/list.json?channel=alpha";
+		g.marketplace = { sources: [{ id: "index", url }] };
+		expect(GlobalSettingsSchema.parse(g).marketplace.sources[0]?.url).toBe(url);
+		for (const invalid of [
+			"alice",
+			"alice/../tools",
+			"alice/..",
+			"-alice/tools",
+			"http://github.com/alice/tools",
+			"https:example.com",
+			"https://index.example/list with spaces.json",
+		]) {
+			g.marketplace.sources[0] = { id: "index", url: invalid };
+			expect(GlobalSettingsSchema.safeParse(g).success, invalid).toBe(false);
+		}
+	});
+
+	it("GitHub 仓库简写和仓库网址保存为同一个固定 Release 索引", () => {
+		for (const url of [
+			"Alice/Tools",
+			"https://github.com/Alice/Tools",
+			"https://github.com/Alice/Tools.git/",
+			"https://github.com/Alice/Tools/releases/download/bn-marketplace/marketplace.json",
+		]) {
+			const g = makeDefaultGlobalSettings();
+			g.marketplace = { sources: [{ id: "repo", url }] };
+			expect(GlobalSettingsSchema.parse(g).marketplace.sources).toEqual([
+				{
+					id: "repo",
+					url: "https://github.com/alice/tools/releases/download/bn-marketplace/marketplace.json",
+				},
+			]);
+		}
+	});
+
 	it("老 globals.json 没有这一段 → 解析得过,源列表补成空", () => {
 		const g = makeDefaultGlobalSettings() as unknown as Record<string, unknown>;
 		delete g.marketplace;

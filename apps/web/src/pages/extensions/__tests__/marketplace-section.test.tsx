@@ -179,11 +179,11 @@ function Host() {
 /** `strict`:照 `main.tsx` 那样套一层 StrictMode(effect 先拆一次再装回来)。 */
 function renderSection(
 	market: MarketplaceResponse | Promise<MarketplaceResponse> = MARKET,
-	{ strict = false } = {},
+	{ strict = false, globals = GLOBALS } = {},
 ) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url.startsWith("/api/ext/marketplace")) return market;
-		if (url === "/api/settings") return { core: GLOBALS };
+		if (url === "/api/settings") return { core: globals };
 		if (url === "/api/system/restart") return { version: "0.10.1", startedAt: "OLD" };
 		throw new Error(`没有这一口:${url}`);
 	});
@@ -440,7 +440,7 @@ describe("拓展市场", () => {
 				"BN does not review third-party extensions. Installing them lets their authors run code inside the BN process. Only add sources you trust.",
 				"Index URL",
 				"Add",
-				"The index URL must start with https://",
+				"Enter a GitHub owner/repository or a complete HTTPS index URL.",
 				"Close",
 			],
 			[
@@ -453,7 +453,7 @@ describe("拓展市场", () => {
 				"BNはサードパーティの拡張機能を審査していません。インストールすると、作者のコードがBNのプロセス内で実行されます。信頼できる配布元だけを追加してください。",
 				"インデックスのURL",
 				"追加",
-				"インデックスのURLはhttps://で始まる必要があります",
+				"GitHubの所有者/リポジトリ、またはhttps://で始まる完全なインデックスURLを入力してください。",
 				"閉じる",
 			],
 			[
@@ -466,7 +466,7 @@ describe("拓展市场", () => {
 				"BN 不審查第三方拓展；安裝後，作者的程式碼會在 BN 程序內執行。請只加入信任的來源。",
 				"索引網址",
 				"加入",
-				"索引網址必須以 https:// 開頭",
+				"請填入 GitHub 作者/儲存庫，或以 https:// 開頭的完整索引網址。",
 				"關閉",
 			],
 		] as const) {
@@ -1022,6 +1022,54 @@ describe("拓展市场", () => {
 });
 
 describe("源", () => {
+	it("已有固定索引时，仓库简写仍按同一来源拒绝重复添加", async () => {
+		renderSection(MARKET, {
+			globals: {
+				marketplace: {
+					sources: [
+						{
+							id: "repo",
+							name: "alice",
+							url: "https://github.com/alice/tools/releases/download/bn-marketplace/marketplace.json",
+						},
+					],
+				},
+			},
+		});
+		await userEvent.click(await screen.findByRole("button", { name: /市场源/ }));
+		const dialog = within(await screen.findByRole("dialog"));
+		await userEvent.type(dialog.getByRole("textbox", { name: "索引地址" }), "Alice/Tools");
+		await userEvent.click(dialog.getByRole("button", { name: "加进来" }));
+		expect((await dialog.findByRole("alert")).textContent).toContain("这个地址已经加过了");
+		expect(apiPatchMock).not.toHaveBeenCalled();
+	});
+
+	it.each(["Bob/Tools", "https://github.com/Bob/Tools.git"])(
+		"添加仓库 %s 时保存固定索引地址",
+		async (repository) => {
+			renderSection();
+			await userEvent.click(await screen.findByRole("button", { name: /市场源/ }));
+			const dialog = within(await screen.findByRole("dialog"));
+			await userEvent.type(dialog.getByRole("textbox", { name: "索引地址" }), repository);
+			await userEvent.click(dialog.getByRole("button", { name: "加进来" }));
+			await waitFor(() =>
+				expect(apiPatchMock).toHaveBeenCalledWith("/api/settings", {
+					core: {
+						marketplace: {
+							sources: [
+								GLOBALS.marketplace.sources[0],
+								{
+									id: expect.any(String),
+									url: "https://github.com/bob/tools/releases/download/bn-marketplace/marketplace.json",
+								},
+							],
+						},
+					},
+				}),
+			);
+		},
+	);
+
 	it("弹窗列官方(不可删)与第三方(可删,名字是索引报的);加源只填地址、先看见风险提示,存的是整份名单", async () => {
 		const { invalidate } = renderSection();
 		await userEvent.click(await screen.findByRole("button", { name: /市场源/ }));

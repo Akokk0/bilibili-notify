@@ -343,7 +343,7 @@
 	"internal.commands.prefixLeadingSpace": "前綴不可由空白開頭。",
 	"internal.settings.loggingPrototype": "日誌模組的鍵不可使用 JavaScript 物件原型上的名稱（例如 constructor / toString / valueOf），否則查找不存在的鍵也可能取得內建函式。",
 	"internal.settings.mirrorPrefix": "加速前綴必須是 https:// 開頭的網址。",
-	"internal.settings.sourceUrl": "來源網址必須以 https:// 開頭。",
+	"internal.settings.sourceUrl": "請填入 GitHub 作者/儲存庫，或以 https:// 開頭的完整索引網址。",
 	"internal.settings.timezone": "無法辨識時區，請填寫 IANA 名稱，例如 Asia/Shanghai。",
 	"internal.settings.quietHoursDistinct": "開始與結束時間不可相同；全天請使用 0–24 點。",
 	"internal.settings.aiActiveProfile": "目前 AI 設定檔的參照 ",

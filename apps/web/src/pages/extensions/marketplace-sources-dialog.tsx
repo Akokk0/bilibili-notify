@@ -8,7 +8,10 @@ import { useT } from "../../i18n";
  * 还会再确认一次,那是给手滑的人看的,这里是给不知道自己在干什么的人看的。
  */
 
-import type { MarketplaceSourceView } from "@bilibili-notify/contract";
+import {
+	type MarketplaceSourceView,
+	normalizeMarketplaceSourceUrl,
+} from "@bilibili-notify/contract";
 import type { GlobalSettings } from "@bilibili-notify/internal";
 import {
 	Btn,
@@ -76,18 +79,18 @@ export function MarketplaceSourcesDialog({
 		statusOf(source.id)?.name ?? source.name ?? hostOf(source.url);
 
 	const add = () => {
-		const trimmed = url.trim();
-		if (!/^https:\/\/[^\s/]+/.test(trimmed)) {
+		const normalized = normalizeMarketplaceSourceUrl(url);
+		if (!normalized.ok) {
 			setProblem("invalid-url");
 			return;
 		}
-		if (sources.some((s) => s.url === trimmed)) {
+		if (sources.some((s) => s.url === normalized.url)) {
 			setProblem("duplicate");
 			return;
 		}
 		setProblem(null);
 		// 名字不用起:索引自己带,拿到之后市场那一口报的就是它。
-		save.mutate([...sources, { id: newId(), url: trimmed }]);
+		save.mutate([...sources, { id: newId(), url: normalized.url }]);
 		setUrl("");
 	};
 
@@ -164,7 +167,7 @@ export function MarketplaceSourcesDialog({
 							ariaLabel={tx("panelUi.pages.extensions.marketplace-sources-dialog.9")}
 							value={url}
 							onChange={setUrl}
-							placeholder="https://…/marketplace.json"
+							placeholder="owner/repo · https://…/marketplace.json"
 							mono
 						/>
 						<Btn variant="primary" size="sm" disabled={save.isPending} onClick={add}>

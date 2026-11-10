@@ -30,6 +30,7 @@
 		"./identity": "./lib/identity.mjs",
 		"./link-preview": "./lib/link-preview.mjs",
 		"./live-monitor": "./lib/live-monitor.mjs",
+		"./marketplace": "./lib/marketplace.mjs",
 		"./patch": "./lib/patch.mjs",
 		"./platform-descriptor": "./lib/platform-descriptor.mjs",
 		"./push-target": "./lib/push-target.mjs",

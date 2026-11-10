@@ -2526,7 +2526,7 @@
 	"panelUi.pages.extensions.marketplace-section.21": "源「{name}」:{reason}",
 	"panelUi.pages.extensions.marketplace-section.22": "市场里的拓展都装上了",
 	"panelUi.pages.extensions.marketplace-section.23": "市场里现在没有能装的拓展",
-	"panelUi.pages.extensions.marketplace-sources-dialog.1": "索引地址必须是 https:// 开头",
+	"panelUi.pages.extensions.marketplace-sources-dialog.1": "请填 GitHub 作者/仓库，或完整索引地址（必须是 https:// 开头）。",
 	"panelUi.pages.extensions.marketplace-sources-dialog.2": "这个地址已经加过了",
 	"panelUi.pages.extensions.marketplace-sources-dialog.3": "拓展市场的源",
 	"panelUi.pages.extensions.marketplace-sources-dialog.4": "每个源是一份 marketplace.json,列它能装的拓展。官方源是内置的;自己加的源由那个地址的主人说了算。",

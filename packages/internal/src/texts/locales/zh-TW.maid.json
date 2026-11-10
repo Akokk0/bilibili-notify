@@ -1,7 +1,7 @@
 {
 	"internal.settings.loggingPrototype": "主人，日誌模組的鍵不能使用 constructor / toString / valueOf 這類 JS 物件原型名稱，會誤查到內建函式喔。",
 	"internal.settings.mirrorPrefix": "主人，加速前綴請填入 https:// 開頭的位址喔。",
-	"internal.settings.sourceUrl": "主人，來源網址請填入 https:// 開頭的位址喔。",
+	"internal.settings.sourceUrl": "主人，請填入 GitHub 作者/儲存庫，或以 https:// 開頭的完整索引網址喔。",
 	"internal.settings.timezone": "主人，請填入有效的 IANA 時區名稱，例如 Asia/Shanghai 喔。",
 	"internal.settings.quietHoursDistinct": "主人，開始與結束時間不能相同；全天請填 0–24 點喔。",
 	"push.router.routeRemoved": "target={targetId} 已從 {subscription} feature={feature} 的路由中移除，已取消推播重試囉，主人。",

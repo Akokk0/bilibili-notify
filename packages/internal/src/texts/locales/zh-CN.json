@@ -4,7 +4,7 @@
 	"internal.commands.prefixLeadingSpace": "前缀不能以空白开头",
 	"internal.settings.loggingPrototype": "日志模块的键不能用 JS 对象原型上的名字(constructor / toString / valueOf 这类):它会被当成键去查表,查一个没有的名字也会摸到内置函数",
 	"internal.settings.mirrorPrefix": "加速前缀必须是 https:// 开头的地址",
-	"internal.settings.sourceUrl": "源地址必须是 https:// 开头",
+	"internal.settings.sourceUrl": "请填 GitHub 作者/仓库，或完整索引地址（必须是 https:// 开头）。",
 	"internal.settings.timezone": "不是认得的时区名，要写 IANA 名，比如 Asia/Shanghai",
 	"internal.settings.quietHoursDistinct": "开始与结束时间不能相同；全天请使用0–24点。",
 	"internal.settings.aiActiveProfile": "AI 当前实例的指针 ",

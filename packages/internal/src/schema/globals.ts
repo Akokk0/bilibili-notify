@@ -3,6 +3,7 @@ import { DEFAULT_ROAST_SCHEDULE } from "../ai";
 import { DEFAULT_FEATURE_FLAGS } from "../features";
 import { DEFAULT_HISTORY_RETENTION_DAYS, HISTORY_RETENTION_DAY_OPTIONS } from "../history";
 import { LOCALES, VOICES } from "../i18n";
+import { normalizeMarketplaceSourceUrl } from "../marketplace";
 import { packageText } from "../texts";
 import { DEFAULT_TIMEZONE, isTimezone } from "../timezone";
 import { MIRROR_PREFIX_RE } from "../update";
@@ -256,10 +257,12 @@ export const MarketplaceSourceSchema = z.object({
 	 */
 	name: z.string().min(1).max(40).optional(),
 	url: markBackupOnly(
-		z
-			.string()
-			.url()
-			.regex(MIRROR_PREFIX_RE, { error: () => packageText("internal.settings.sourceUrl") }),
+		z.string().transform((value, ctx) => {
+			const result = normalizeMarketplaceSourceUrl(value);
+			if (result.ok) return result.url;
+			ctx.addIssue({ code: "custom", message: result.message });
+			return z.NEVER;
+		}),
 		{
 			url: true,
 		},

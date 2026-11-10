@@ -343,7 +343,7 @@
 	"internal.commands.prefixLeadingSpace": "プレフィックスの先頭に空白は使えません。",
 	"internal.settings.loggingPrototype": "ログモジュールのキーにJavaScriptのオブジェクトプロトタイプ名（constructor / toString / valueOfなど）は使えません。存在しないキーの検索で組み込み関数が返る可能性があります。",
 	"internal.settings.mirrorPrefix": "ミラープレフィックスはhttps://で始まるURLにしてください。",
-	"internal.settings.sourceUrl": "ソースURLはhttps://で始まる必要があります。",
+	"internal.settings.sourceUrl": "GitHubの所有者/リポジトリ、またはhttps://で始まる完全なインデックスURLを入力してください。",
 	"internal.settings.timezone": "不明なタイムゾーンです。Asia/ShanghaiなどのIANA名を指定してください。",
 	"internal.settings.quietHoursDistinct": "開始と終了は異なる時刻にしてください。終日は0–24で指定します。",
 	"internal.settings.aiActiveProfile": "現在のAIプロファイルへの参照 ",

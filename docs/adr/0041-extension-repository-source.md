@@ -25,6 +25,10 @@
 
 作者需保留固定索引Release及附件，发布模板负责更新。客户端将仓库输入归一到现有来源地址，沿用市场处理；输入弹窗只做局部调整。
 
-## 仍未决
+## 实现约定（6-03）
 
-固定Release标签、`.bn/`配置格式及私有仓库边界在实现片明确。新增钉版本的使用方式不在本次批准范围中。
+固定标签为`bn-marketplace`，附件名为`marketplace.json`。`owner/repo`和GitHub仓库首页网址（含`.git`、末尾斜杠）归一到`https://github.com/owner/repo/releases/download/bn-marketplace/marketplace.json`；仓库大小写不构成不同来源。普通HTTPS索引地址仍原样使用。
+
+作者配置放在`.bn/marketplace.json`，版本1，包含`schemaVersion`、`repository`（GitHub的`owner/repo`）、`name`、`namespace`与`owner`（`name`和可选`url`）；创建器和发布器负责校验。`namespace`独立填写，必须与根清单id的前段一致，不由GitHub账号推断；固定标签和附件名不做逐仓配置。
+
+本轮只支持无需认证即可访问索引和ZIP的公开仓库；不新增私有仓库令牌、权限或登录入口。完整HTTPS输入仍按既有流程处理，不能访问时如实报取源失败。新增钉版本的使用方式不在本次批准范围中。

@@ -36,6 +36,11 @@ const CONSTANTS_FILE = `${PACKAGE_ROOT}/src/constants.ts`;
  */
 const SUBPATHS = [
 	{
+		subpath: "./marketplace",
+		source: "src/marketplace.ts",
+		why: "设置校验与面板共用仓库源地址归一规则",
+	},
+	{
 		subpath: "./ai",
 		source: "src/ai.ts",
 		why: "面板与 contract 取 AI 服务商、人格和锐评配置",

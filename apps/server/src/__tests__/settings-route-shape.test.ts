@@ -100,6 +100,46 @@ describe("/api/settings 的形状", () => {
 
 	const coreFile = () => join(dataDir, ...CORE_SETTINGS_FILE);
 
+	it("仓库来源经设置写口保存后，读取的是可直接获取的固定 HTTPS 索引", async () => {
+		const { runtime, app, patch } = await boot();
+		try {
+			const response = await patch({
+				core: { marketplace: { sources: [{ id: "repo", url: "Alice/Tools" }] } },
+			});
+			expect(response.status).toBe(200);
+			expect(await (await app.request("/api/settings")).json()).toMatchObject({
+				core: {
+					marketplace: {
+						sources: [
+							{
+								id: "repo",
+								url: "https://github.com/alice/tools/releases/download/bn-marketplace/marketplace.json",
+							},
+						],
+					},
+				},
+			});
+			const rejected = await patch({
+				core: { marketplace: { sources: [{ id: "repo", url: "Alice/.." }] } },
+			});
+			expect(rejected.status).toBe(400);
+			expect(await (await app.request("/api/settings")).json()).toMatchObject({
+				core: {
+					marketplace: {
+						sources: [
+							{
+								id: "repo",
+								url: "https://github.com/alice/tools/releases/download/bn-marketplace/marketplace.json",
+							},
+						],
+					},
+				},
+			});
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
 	it("GET invalid exposes prefixed public raw cells with no-store", async () => {
 		await mkdir(join(coreFile(), ".."), { recursive: true });
 		await writeFile(coreFile(), JSON.stringify({ history: { retentionDays: 45 } }));

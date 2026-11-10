@@ -1959,7 +1959,7 @@
 	"panelUi.pages.extensions.marketplace-section.2": "サードパーティの拡張機能「{value0}」をインストールしますか？",
 	"panelUi.pages.extensions.marketplace-section.5": "インストールを続行",
 	"panelUi.pages.extensions.marketplace-section.9": "インストール中…",
-	"panelUi.pages.extensions.marketplace-sources-dialog.1": "インデックスのURLはhttps://で始まる必要があります",
+	"panelUi.pages.extensions.marketplace-sources-dialog.1": "GitHubの所有者/リポジトリ、またはhttps://で始まる完全なインデックスURLを入力してください。",
 	"panelUi.pages.extensions.marketplace-sources-dialog.2": "このURLはすでに追加されています",
 	"panelUi.pages.extensions.marketplace-sources-dialog.3": "拡張機能マーケットの配布元",
 	"panelUi.pages.extensions.marketplace-sources-dialog.4": "各配布元のmarketplace.jsonに、提供する拡張機能が記載されています。公式の配布元は組み込みです。自分で追加する配布元の内容は、そのアドレスの所有者が管理します。",

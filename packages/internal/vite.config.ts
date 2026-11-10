@@ -16,6 +16,7 @@ export default defineConfig({
 			"src/identity.ts",
 			"src/link-preview.ts",
 			"src/live-monitor.ts",
+			"src/marketplace.ts",
 			"src/patch.ts",
 			"src/platform-descriptor.ts",
 			"src/push-target.ts",
