@@ -271,25 +271,30 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		const base = { id: MARKETPLACE_OFFICIAL_SOURCE_ID, official: true };
 		if (!fetched.ok) {
 			return {
-				view: {
-					...base,
-					get name() {
-						return serverText("service.extensions.marketplace.text.5");
-					},
-					...fail(fetched.code, OFFICIAL_FAILURE_TEXT[signedFailureKind(fetched)]),
+				get view() {
+					return {
+						...base,
+						name: serverText("service.extensions.marketplace.text.5"),
+						...fail(fetched.code, OFFICIAL_FAILURE_TEXT[signedFailureKind(fetched)]),
+					};
 				},
 			};
 		}
 		const checked = checkMarketplaceIndex(fetched.value, { official: true });
 		if (!checked.ok) {
 			return {
-				view: {
-					...base,
-					name: fetched.value.name,
-					...fail(
-						"invalid",
-						serverText("service.extensions.marketplace.text.6", { value0: checked.message }),
-					),
+				get view() {
+					const current = checkMarketplaceIndex(fetched.value, { official: true });
+					return {
+						...base,
+						name: fetched.value.name,
+						...fail(
+							"invalid",
+							serverText("service.extensions.marketplace.text.6", {
+								value0: current.ok ? checked.message : current.message,
+							}),
+						),
+					};
 				},
 			};
 		}
@@ -329,6 +334,9 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	type ThirdPartyFetchResult = Result<{ index: MarketplaceIndex }>;
 
 	async function fetchThirdParty(source: MarketplaceSource): Promise<ThirdPartyFetchResult> {
+		// Cache the failure classification, not its localized explanation. There is only one
+		// direct URL for third-party indexes, so this describes the rejected response.
+		let invalidMessage: (() => string) | undefined;
 		const fetched = await fetchThroughMirrors<MarketplaceIndex>({
 			url: source.url,
 			mirrors: [""],
@@ -339,23 +347,35 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				try {
 					parsed = JSON.parse(Buffer.from(bytes).toString("utf8"));
 				} catch {
-					return fail("invalid", serverText("service.extensions.marketplace.text.7"));
+					invalidMessage = () => serverText("service.extensions.marketplace.text.7");
+					return fail("invalid", invalidMessage());
 				}
 				const shaped = indexSchema.safeParse(parsed);
-				if (!shaped.success)
-					return fail("invalid", serverText("service.extensions.marketplace.text.8"));
+				if (!shaped.success) {
+					invalidMessage = () => serverText("service.extensions.marketplace.text.8");
+					return fail("invalid", invalidMessage());
+				}
 				const checked = checkMarketplaceIndex(shaped.data, { official: false });
-				if (!checked.ok) return checked;
+				if (!checked.ok) {
+					invalidMessage = () => {
+						const current = checkMarketplaceIndex(shaped.data, { official: false });
+						return current.ok ? checked.message : current.message;
+					};
+					return checked;
+				}
 				return ok({ value: shaped.data });
 			},
 		});
-		if (!fetched.ok)
-			return fail(
-				fetched.code,
-				fetched.code === "invalid"
-					? fetched.message
-					: serverText("service.extensions.marketplace.text.9"),
-			);
+		if (!fetched.ok) {
+			return {
+				...fetched,
+				get message() {
+					return fetched.code === "invalid"
+						? (invalidMessage?.() ?? fetched.message)
+						: serverText("service.extensions.marketplace.text.9");
+				},
+			};
+		}
 		return ok({ index: fetched.value });
 	}
 
@@ -370,23 +390,31 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 	): LoadedSource {
 		const base = { id: source.id, name: placeholderName(source), official: false, url: source.url };
 		// 拉不到 / 不合规矩时索引里那个名字还没有,拿域名顶着 —— 别让错误行上写一个 uuid。
-		if (!fetched.ok) return { view: { ...base, ...fetched } };
+		if (!fetched.ok) {
+			return {
+				get view() {
+					return { ...base, ...fetched };
+				},
+			};
+		}
 		// 名字以索引自己报的为准 —— 用户加源时只填了地址。
 		const named = { ...base, name: fetched.index.name };
 		const ns = fetched.index.namespace as string;
 		const holder = taken.get(ns);
 		if (holder !== undefined && holder.sourceId !== source.id) {
 			return {
-				view: {
-					...named,
-					namespace: ns,
-					...fail(
-						"conflict",
-						serverText("service.extensions.marketplace.text.10", {
-							value0: ns,
-							value1: holder.name,
-						}),
-					),
+				get view() {
+					return {
+						...named,
+						namespace: ns,
+						...fail(
+							"conflict",
+							serverText("service.extensions.marketplace.text.10", {
+								value0: ns,
+								value1: holder.name,
+							}),
+						),
+					};
 				},
 			};
 		}

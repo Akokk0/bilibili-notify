@@ -197,6 +197,37 @@ afterEach(async () => {
 });
 
 describe("list():官方源", () => {
+	it("cached official failure follows current locale without refetching or changing an earlier response", async () => {
+		const fetchMock = serve({});
+		const h = harness();
+		i18n.set({ locale: "en", voice: "plain" });
+		const original = await h.marketplace.list();
+		const snapshot = JSON.stringify(original);
+		const requests = fetchMock.mock.calls.length;
+		for (const [locale, name, message] of [
+			[
+				"ja",
+				"公式ソース",
+				"ミラーと直接接続のどちらからも公式インデックスを取得できませんでした。",
+			],
+			["zh-TW", "官方來源", "加速鏡像與直接連線皆無法取得官方索引。"],
+			["zh-CN", "官方源", "拿不到官方索引:加速镜像与直连都没拿到"],
+			[
+				"en",
+				"Official source",
+				"Could not fetch the official index through either the mirrors or the direct connection.",
+			],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			const current = await h.marketplace.list();
+			expect(current.sources[0]).toMatchObject({ ok: false, name, message });
+			expect(current.fetchedAt).toBe(original.fetchedAt);
+			expect(fetchMock).toHaveBeenCalledTimes(requests);
+			expect(JSON.stringify(original)).toBe(snapshot);
+		}
+		expect(h.rescan).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		[
 			"en",
@@ -499,6 +530,91 @@ describe("list():官方源", () => {
 });
 
 describe("list():第三方源", () => {
+	it.each(["official-invalid", "third-invalid", "namespace-conflict"] as const)(
+		"cached index rejection keeps source data and uses current-language explanation: %s",
+		async (kind) => {
+			const secondUrl = "https://bob.example/m.json";
+			const fetchMock = serve({
+				[OFFICIAL_URL]: envelope(
+					key.privateKey,
+					official({ extensions: [entry("alice.douyin", "1.0.0", douyinZip)] }),
+				),
+				[THIRD_URL]: JSON.stringify(
+					kind === "third-invalid" ? third({ namespace: undefined }) : third(),
+				),
+				[secondUrl]: JSON.stringify(third({ name: "Original index 原文" })),
+			});
+			const h = harness({
+				noOfficial: kind !== "official-invalid",
+				sources:
+					kind === "official-invalid"
+						? []
+						: [
+								{ id: "s1", name: "Original source 原文", url: THIRD_URL },
+								...(kind === "namespace-conflict" ? [{ id: "s2", url: secondUrl }] : []),
+							],
+			});
+			i18n.set({ locale: "en", voice: "plain" });
+			const original = await h.marketplace.list();
+			const snapshot = JSON.stringify(original);
+			const requests = fetchMock.mock.calls.length;
+			i18n.set({ locale: "ja", voice: "maid" });
+			const current = await h.marketplace.list();
+			const expected =
+				kind === "official-invalid"
+					? "公式インデックスが無効です：公式インデックスのalice.douyinに名前空間が付いています。"
+					: kind === "third-invalid"
+						? "サードパーティーのソースにはnamespaceの宣言が必要です。"
+						: "名前空間「alice」はすでにソース「alice 的拓展」が使用しています。";
+			expect(current.sources.at(-1)).toMatchObject({ ok: false, message: expected });
+			expect(current.extensions).toEqual(original.extensions);
+			expect(current.fetchedAt).toBe(original.fetchedAt);
+			expect(fetchMock).toHaveBeenCalledTimes(requests);
+			expect(JSON.stringify(original)).toBe(snapshot);
+			expect(h.rescan).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		[undefined, "unavailable", "このソースのインデックスを取得できませんでした。"],
+		["{broken", "invalid", "このアドレスから有効なJSONが返されませんでした。"],
+		[
+			JSON.stringify({ original: "not an index" }),
+			"invalid",
+			"このインデックスはmarketplace.jsonに必要な構造を満たしていません。",
+		],
+	] as const)(
+		"cached third-party failure uses current locale without refetching: %s",
+		async (payload, code, message) => {
+			const fetchMock = serve(payload === undefined ? {} : { [THIRD_URL]: payload });
+			const h = harness({
+				noOfficial: true,
+				sources: [{ id: "s1", name: "Original source 原文", url: THIRD_URL }],
+			});
+			i18n.set({ locale: "en", voice: "plain" });
+			const original = await h.marketplace.list();
+			const snapshot = JSON.stringify(original);
+			const requests = fetchMock.mock.calls.length;
+			i18n.set({ locale: "ja", voice: "maid" });
+			const current = await h.marketplace.list();
+			expect(current.sources[0]).toMatchObject({
+				ok: false,
+				code,
+				name: "Original source 原文",
+				message,
+			});
+			expect(current.fetchedAt).toBe(original.fetchedAt);
+			expect(await h.marketplace.install("s1", "ghost")).toEqual({
+				ok: false,
+				code: "unavailable",
+				message: `ソース「Original source 原文」は現在利用できません：${message}`,
+			});
+			expect(fetchMock).toHaveBeenCalledTimes(requests);
+			expect(JSON.stringify(original)).toBe(snapshot);
+			expect(h.rescan).not.toHaveBeenCalled();
+		},
+	);
+
 	it.each([
 		[
 			"en",

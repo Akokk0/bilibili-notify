@@ -198,6 +198,40 @@ function renderSection(
 	return { ...view, invalidate };
 }
 
+it("language changes reread host explanations and refresh updates the visible language cache", async () => {
+	i18n.set({ locale: "en", voice: "plain" });
+	const response = (message: string): MarketplaceResponse => ({
+		...MARKET,
+		sources: [
+			{
+				id: "official",
+				name: "Original source 原文",
+				official: true,
+				ok: false,
+				code: "unavailable",
+				message,
+			},
+		],
+		extensions: [],
+	});
+	renderSection(response("Original English explanation"));
+	await screen.findByText(/Original English explanation/);
+	const previous = apiGetMock.getMockImplementation();
+	apiGetMock.mockImplementation(async (url: string) => {
+		if (url === "/api/ext/marketplace?refresh=1") return response("更新した説明");
+		if (url === "/api/ext/marketplace") return response("現在の日本語の説明");
+		return previous?.(url);
+	});
+	act(() => i18n.set({ locale: "ja", voice: "plain" }));
+	await screen.findByText("配布元「Original source 原文」：現在の日本語の説明");
+	expect(screen.queryByText(/Original English explanation/)).toBeNull();
+	await userEvent.click(screen.getByRole("button", { name: "インデックスを再取得" }));
+	await screen.findByText("配布元「Original source 原文」：更新した説明");
+	expect(apiGetMock).toHaveBeenCalledWith("/api/ext/marketplace?refresh=1");
+	expect(apiPostMock).not.toHaveBeenCalled();
+	expect(apiPatchMock).not.toHaveBeenCalled();
+});
+
 async function cardOf(name: string): Promise<HTMLElement> {
 	const card = (await screen.findByText(name)).closest(".bn-glass");
 	if (!card) throw new Error(`「${name}」不在一张卡上`);

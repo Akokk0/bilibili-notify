@@ -26,21 +26,33 @@ import {
 	Pill,
 	Spinner,
 } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { invalidateExtensionTables, MARKETPLACE_QUERY_KEY } from "../../hooks/useExtensions";
-import { useT } from "../../i18n";
+import { useT, useTextOptions } from "../../i18n";
 import { api } from "../../services/api";
 import { EXT_UPDATE_BUTTON, useCardMotionStore } from "./card-motion";
 import { errorsOf } from "./install-errors";
 import { MarketplaceSourcesDialog } from "./marketplace-sources-dialog";
 
 export function useMarketplace() {
-	return useQuery({
-		queryKey: MARKETPLACE_QUERY_KEY,
+	const { locale, voice } = useTextOptions();
+	const qc = useQueryClient();
+	const queryKey = [...MARKETPLACE_QUERY_KEY, locale, voice];
+	const query = useQuery({
+		queryKey,
 		queryFn: () => api.get<MarketplaceResponse>("/api/ext/marketplace"),
+		placeholderData: keepPreviousData,
 		retry: false,
 	});
+	return {
+		...query,
+		refreshIndex: () =>
+			qc.fetchQuery({
+				queryKey,
+				queryFn: () => api.get<MarketplaceResponse>("/api/ext/marketplace?refresh=1"),
+			}),
+	};
 }
 
 /** 装 / 更新的这一发。请求本身只要 `source` + `id`;`kind` / `from` 是演动画与说失败那句话要的。 */
@@ -395,7 +407,6 @@ export function MarketplaceSection({
 }) {
 	const tx = useT();
 
-	const qc = useQueryClient();
 	const market = useMarketplace();
 	const { install, start } = installer;
 	const [managingSources, setManagingSources] = useState(false);
@@ -418,10 +429,7 @@ export function MarketplaceSection({
 						label={tx("panelUi.pages.extensions.marketplace-section.16")}
 						size="sm"
 						onClick={() => {
-							void qc.fetchQuery({
-								queryKey: MARKETPLACE_QUERY_KEY,
-								queryFn: () => api.get<MarketplaceResponse>("/api/ext/marketplace?refresh=1"),
-							});
+							void market.refreshIndex();
 						}}
 					/>
 					<Btn
