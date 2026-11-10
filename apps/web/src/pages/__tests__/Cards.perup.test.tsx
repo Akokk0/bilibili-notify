@@ -111,6 +111,77 @@ afterEach(() => {
 });
 
 describe("Cards per-UP 作用域接线", () => {
+	it("切语后四张预览使用当前语言的新图，不保存设置或发送测试推送", async () => {
+		let renderedLocale = "zh-CN";
+		vi.mocked(api.post).mockImplementation(async (_url, body) => ({
+			ok: true,
+			dataUrl: `/previews/${renderedLocale}/${(body as { kind: string }).kind}.png`,
+		}));
+		renderCards();
+		for (const [locale, alt] of [
+			["zh-CN", "卡片实时预览"],
+			["en", "Live card preview"],
+			["ja", "カードのリアルタイムプレビュー"],
+			["zh-TW", "卡片即時預覽"],
+			["zh-CN", "卡片实时预览"],
+		] as const) {
+			renderedLocale = locale;
+			act(() => i18n.set({ locale, voice: "plain" }));
+			await waitFor(() => {
+				const images = screen.getAllByRole("img", { name: alt });
+				expect(images.map((image) => image.getAttribute("src"))).toEqual([
+					`/previews/${locale}/live.png`,
+					`/previews/${locale}/post.png`,
+					`/previews/${locale}/superchat.png`,
+					`/previews/${locale}/membership.png`,
+				]);
+			});
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(vi.mocked(api.post).mock.calls.every(([url]) => url === "/api/cards/preview")).toBe(
+			true,
+		);
+	});
+
+	it("只切口吻也更新服务端预览说明，保留醒目留言原文和金额", async () => {
+		let sampleReason = "预览诊断原文 plain";
+		vi.mocked(api.post).mockImplementation(async () => ({
+			ok: true,
+			dataUrl: "/previews/superchat.png",
+			sampleReason,
+		}));
+		const { container } = renderCards();
+		await waitFor(() =>
+			expect(screen.getAllByRole("img", { name: "卡片实时预览" })).toHaveLength(4),
+		);
+		fireEvent.click(screen.getAllByRole("button", { name: "SC 提醒" })[0]);
+		const text = container.querySelector('[data-code="text"] textarea') as HTMLTextAreaElement;
+		const amount = container.querySelector('[data-code="amount"] input') as HTMLInputElement;
+		fireEvent.change(text, { target: { value: "Original {name} 原文" } });
+		fireEvent.change(amount, { target: { value: "777" } });
+		await waitFor(() => {
+			expect(api.post).toHaveBeenCalledWith(
+				"/api/cards/preview",
+				expect.objectContaining({
+					kind: "superchat",
+					content: { text: "Original {name} 原文", amount: 777, rank: 1, durationSec: 60 },
+				}),
+				expect.anything(),
+			);
+		});
+		expect(screen.getByText(/预览诊断原文 plain/)).toBeTruthy();
+		sampleReason = "预览诊断原文 maid";
+		act(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+		expect(await screen.findByText(/预览诊断原文 maid/)).toBeTruthy();
+		expect(screen.queryByText(/预览诊断原文 plain/)).toBeNull();
+		expect(text.value).toBe("Original {name} 原文");
+		expect(amount.value).toBe("777");
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(vi.mocked(api.post).mock.calls.every(([url]) => url === "/api/cards/preview")).toBe(
+			true,
+		);
+	});
+
 	it.each([
 		[
 			"ja",

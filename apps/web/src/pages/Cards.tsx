@@ -47,7 +47,7 @@ import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
-import { useT } from "../i18n";
+import { useT, useTextOptions } from "../i18n";
 import { ApiError, api } from "../services/api";
 import {
 	type Connection,
@@ -176,6 +176,7 @@ function PreviewImage({
 	frame?: boolean;
 }) {
 	const t = useT();
+	const { locale, voice } = useTextOptions();
 	// 把整份请求(kind/style/content/cardSkin)合成一个 spec 做**单一**防抖。
 	// 关键:kind 不能直接进 queryKey 而其余走独立防抖 —— 否则切类型时
 	// kind 立刻变、content 防抖没追上,会先用「上一个类型残留的内容」白发一次请求
@@ -192,7 +193,7 @@ function PreviewImage({
 	}, [spec]);
 
 	const query = useQuery({
-		queryKey: ["card-preview", debouncedSpec],
+		queryKey: ["card-preview", debouncedSpec, locale, voice],
 		// 经串行队列 —— 全家福一屏四张卡,四个请求一起打出去的话,后三个只是挂在服务端
 		// 渲染闸门口空等(服务端本来就串行,见 runtime/serial-gate.ts)。等在浏览器这边
 		// 总耗时一样,但每条连接的存活时间只剩自己那张卡的渲染时间,不会被反代的读超时
