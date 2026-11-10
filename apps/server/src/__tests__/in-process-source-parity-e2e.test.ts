@@ -2929,9 +2929,10 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P35");
 	}, 60_000);
 
-	it("四语周期直播、会员与互动实际送达本地webhook，历史保存当时正文、换语言不改旧行", async () => {
+	it("四语周期直播、回顾与会员互动实际送达本地webhook，历史保存当时正文、换语言不改旧行", async () => {
 		const probe = currentProbe();
 		const originalLiveStatus = probe.liveStatusOutcome;
+		const aiBefore = aiAsked.length;
 		const original = ((await (await okRes(await api("/api/settings"))).json()) as SettingsResponse)
 			.core;
 		const originalSub = (
@@ -2990,6 +2991,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 								superchat: [targetId],
 								membership: [targetId],
 								liveStreaming: [targetId],
+								liveEnd: [targetId],
 							},
 						},
 						"PATCH",
@@ -2998,6 +3000,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			);
 			await patchCore({
 				master: { targetId: null },
+				ai: { enabled: false },
 				defaults: {
 					features: {
 						liveStart: false,
@@ -3011,6 +3014,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 					cards: { enabled: false },
 					templates: {
 						liveStreaming: null,
+						liveSummary: null,
 						viewerChat: null,
 						viewerEnter: null,
 						membership: {
@@ -3090,7 +3094,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 					locale,
 					voice: "plain",
 					defaults: {
-						features: { liveStreaming: false },
+						features: { liveStreaming: false, liveEnd: false, extras: { liveSummary: false } },
 						templates: { membership: { [IN_PROCESS_CUSTOM_PROGRAM_ID]: { enabled: true } } },
 					},
 				});
@@ -3148,6 +3152,44 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 							/^Creator 原文 正在直播，已播 1小时\S*，累计观看：1\.2万\nhttps:\/\/example.invalid\/live$/,
 					}[locale],
 				);
+				await patchCore({
+					defaults: { features: { liveEnd: true, extras: { liveSummary: true } } },
+				});
+				const names = [
+					"Viewer 1 {un2} 原文",
+					"Viewer 2 原文",
+					"Viewer 3 原文",
+					"Viewer 4 原文",
+					"Viewer 5 原文",
+				];
+				for (const [index, name] of names.entries()) {
+					for (let n = 0; n < 6 - index; n++)
+						probe.reportLiveInteraction(EXT.alice, {
+							kind: "viewerChat",
+							viewer: { id: `recap-${index}`, name },
+							text: "Original chat 原文",
+						});
+				}
+				probe.reportLive(EXT.alice, { kind: "end", endedAt: new Date().toISOString() });
+				await vi.waitFor(() => expect(received).toHaveLength(start + 9), { timeout: 10_000 });
+				const summary = {
+					en: `🔍 Stream chat report\n🧍‍♂️ Viewers online (${ALICE_FAN_CLUB_NAME}): 5\n💬 Chat messages: 20\n📊 The word cloud is ready. Take a look!\n👑 Most active chatters:\n🥇 Viewer 1 {un2} 原文 — messages: 6\n🥈 Viewer 2 原文 — messages: 5\n🥉 Viewer 3 原文 — messages: 4\n🎖️ Special mentions: Viewer 4 原文 & Viewer 5 原文\nYour chat made the stream! 🕵️‍♀️`,
+					ja: `🔍【弾幕レポート】今回の配信データ\n🧍‍♂️ 来場した${ALICE_FAN_CLUB_NAME}：5\n💬 弾幕数：20\n📊 ワードクラウドができました。ぜひご覧ください！\n👑 今回活躍したチャット参加者：\n🥇 Viewer 1 {un2} 原文 — 弾幕数：6\n🥈 Viewer 2 原文 — 弾幕数：5\n🥉 Viewer 3 原文 — 弾幕数：4\n🎖️ 特別賞：Viewer 4 原文 ＆ Viewer 5 原文\nみなさんの弾幕、しっかり届いています！🕵️‍♀️`,
+					"zh-TW": `🔍【彈幕情報站】本場直播資料如下：\n🧍‍♂️ 上線的${ALICE_FAN_CLUB_NAME}：5\n💬 彈幕總數：20\n📊 文字雲已產生，快來看看！\n👑 本場活躍聊天室參與者：\n🥇 Viewer 1 {un2} 原文 — 彈幕數：6\n🥈 Viewer 2 原文 — 彈幕數：5\n🥉 Viewer 3 原文 — 彈幕數：4\n🎖️ 特別嘉獎：Viewer 4 原文 ＆ Viewer 5 原文\n你們的彈幕，我們都有收到！🕵️‍♀️`,
+					"zh-CN": `🔍【弹幕情报站】本场直播数据如下：\n🧍‍♂️ 总共 5 位${ALICE_FAN_CLUB_NAME}上线\n💬 共计 20 条弹幕飞驰而过\n📊 热词云图已生成，快来看看你有没有上榜！\n👑 本场顶级输出选手：\n🥇 Viewer 1 {un2} 原文 - 弹幕输出 6 条\n🥈 Viewer 2 原文 - 弹幕 5 条，萌力惊人\n🥉 Viewer 3 原文 - 4 条精准狙击\n🎖️ 特别嘉奖：Viewer 4 原文 & Viewer 5 原文\n你们的弹幕，我们都记录在案！🕵️‍♀️`,
+				}[locale];
+				expect(textOf(received[start + 8] as (typeof received)[number])).toBe(summary);
+				const ended = textOf(received[start + 7] as (typeof received)[number]);
+				expect(ended).toMatch(
+					{
+						en: /^Creator 原文 ended the stream\. Duration: 1h\S*\. Follower change: 0\nhttps:\/\/example.invalid\/live$/,
+						ja: /^Creator 原文の配信が終了しました。配信時間：1時間\S*、フォロワー増減：0\nhttps:\/\/example.invalid\/live$/,
+						"zh-TW":
+							/^Creator 原文 已結束直播，本次直播時長 1小時\S*，粉絲增減 0\nhttps:\/\/example.invalid\/live$/,
+						"zh-CN":
+							/^Creator 原文 下播啦，本次直播了 1小时\S*，粉丝变化 0\nhttps:\/\/example.invalid\/live$/,
+					}[locale],
+				);
 				const expected = [
 					chat,
 					enter,
@@ -3156,6 +3198,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 					fallback,
 					"Source fallback 原文 {name}",
 					streaming,
+					ended,
+					summary,
 				];
 				expect(received.slice(start).map(textOf).sort()).toEqual([...expected].sort());
 				expect(received.slice(start).every((entry) => entry.targetId === targetId)).toBe(true);
@@ -3164,22 +3208,21 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 						const rows = await history();
 						const originalIds = new Set(protectedRows.map((row) => row.id));
 						const fresh = rows.filter((row) => !originalIds.has(row.id));
-						expect(fresh).toHaveLength(7);
+						expect(fresh).toHaveLength(8);
 						expect(fresh.map((row) => row.feature).sort()).toEqual(
 							[
 								"viewerChat",
 								"viewerEnter",
 								"superchat",
 								"liveStreaming",
+								"liveEnd",
 								"membership",
 								"membership",
 								"superchat",
 							].sort(),
 						);
 						expect(
-							fresh
-								.map((row) => row.messages.find((message) => message.role === "main")?.text)
-								.sort(),
+							fresh.flatMap((row) => row.messages.map((message) => message.text)).sort(),
 						).toEqual([...expected].sort());
 						for (const row of fresh)
 							expect(row).toMatchObject({
@@ -3198,28 +3241,201 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				expect(await storedTemplates()).not.toHaveProperty("viewerChat");
 				expect(await storedTemplates()).not.toHaveProperty("viewerEnter");
 				expect(await storedTemplates()).not.toHaveProperty("liveStreaming");
+				expect(await storedTemplates()).not.toHaveProperty("liveSummary");
+				expect(aiAsked).toHaveLength(aiBefore);
+				// 新一轮互动仍有同一位创作者；该场只用于下一轮，周期/下播暂不开。
+				await patchCore({
+					defaults: {
+						features: { liveEnd: false, liveStreaming: false, extras: { liveSummary: false } },
+					},
+				});
+				probe.reportLive(EXT.alice, {
+					kind: "start",
+					startedAt: new Date().toISOString(),
+					details: { creator: { name: "Creator 原文" }, title: "Original stream 原文" },
+				});
+			}
+			await patchCore({
+				defaults: {
+					templates: {
+						viewerChat: "Global chat 原文 {viewer}|{msg}",
+						viewerEnter: "Global enter 原文 {viewer}",
+						liveStreaming: "Global streaming 原文 {name}|{watched}",
+						liveEnd: "Global end 原文 {name}|{follower_change}",
+						liveSummary: "Global recap 原文 {dmc}|{un1}",
+						membership: {
+							[IN_PROCESS_CUSTOM_PROGRAM_ID]: {
+								enabled: true,
+								default: { template: "Global member 原文 {tier}", imageUrl: "" },
+								tiers: {},
+							},
+						},
+					},
+				},
+			});
+			for (const locale of ["ja", "en", "zh-TW"] as const) {
+				const personal = locale !== "ja";
+				if (locale === "en")
+					await okRes(
+						await api(
+							`/api/subscriptions/${SUB.alice}`,
+							json(
+								{
+									overrides: {
+										templates: {
+											viewerChat: "Subscription chat 原文 {viewer}|{msg}",
+											viewerEnter: "Subscription enter 原文 {viewer}",
+											liveStreaming: "Subscription streaming 原文 {name}|{watched}",
+											liveEnd: "Subscription end 原文 {name}|{follower_change}",
+											liveSummary: "Subscription recap 原文 {dmc}|{un1}",
+											membership: {
+												[IN_PROCESS_CUSTOM_PROGRAM_ID]: {
+													enabled: true,
+													default: { template: "Subscription member 原文 {tier}", imageUrl: "" },
+													tiers: {},
+												},
+											},
+										},
+									},
+								},
+								"PATCH",
+							),
+						),
+					);
+				// 手写模板已先保存；切语这一笔不重新提交模板，防止测试掩盖换语时的改写。
+				await patchCore({
+					locale,
+					voice: "plain",
+					defaults: {
+						features: { liveStreaming: false, liveEnd: false, extras: { liveSummary: false } },
+					},
+				});
+				probe.reportLive(EXT.alice, {
+					kind: "start",
+					startedAt: new Date().toISOString(),
+					details: { creator: { name: "Creator 原文" } },
+				});
+				const start = received.length;
+				probe.reportLiveInteraction(EXT.alice, { kind: "viewerChat", viewer, text: paid.text });
+				probe.reportLiveInteraction(EXT.alice, { kind: "viewerEnter", viewer });
+				probe.reportLiveInteraction(EXT.alice, member);
+				await vi.waitFor(() => expect(received).toHaveLength(start + 3), { timeout: 10_000 });
+				const prefix = personal ? "Subscription" : "Global";
+				const expected = [
+					`${prefix} chat 原文 Viewer {name} 原文|Message {viewer} 原文`,
+					`${prefix} enter 原文 Viewer {name} 原文`,
+					personal
+						? "Subscription member 原文 Tier {text} 原文"
+						: "Global member 原文 Tier {text} 原文",
+					personal
+						? "Subscription recap 原文 5|Recap 0 {un2} 原文"
+						: "Global recap 原文 5|Recap 0 {un2} 原文",
+					`${prefix} streaming 原文 Creator 原文|314\nhttps://example.invalid/live`,
+					`${prefix} end 原文 Creator 原文|0\nhttps://example.invalid/live`,
+				];
+				await patchCore({ defaults: { features: { liveStreaming: true } } });
+				probe.liveStatusOutcome = {
+					ok: true,
+					kind: "live",
+					details: {
+						creator: { name: "Creator 原文" },
+						totalViewers: 314,
+						url: "https://example.invalid/live",
+					},
+				};
+				probe.reportLive(EXT.alice, {
+					kind: "start",
+					startedAt: new Date(Date.now() - HOUR_MS + 1_000).toISOString(),
+					details: { creator: { name: "Creator 原文" } },
+				});
+				await vi.waitFor(() => expect(received).toHaveLength(start + 4), { timeout: 10_000 });
+				await patchCore({
+					defaults: { features: { liveEnd: true, extras: { liveSummary: true } } },
+				});
+				for (let index = 0; index < 5; index++) {
+					for (let n = 0; n < 6 - index; n++)
+						probe.reportLiveInteraction(EXT.alice, {
+							kind: "viewerChat",
+							viewer: { id: `custom-recap-${index}`, name: `Recap ${index} {un2} 原文` },
+							text: "Original recap 原文",
+						});
+				}
+				probe.reportLive(EXT.alice, { kind: "end", endedAt: new Date().toISOString() });
+				await vi.waitFor(() => expect(received).toHaveLength(start + 6), { timeout: 10_000 });
+				const texts = received.slice(start).map(textOf);
+				expect([...texts].sort()).toEqual([...expected].sort());
+				await vi.waitFor(
+					async () => {
+						const rows = await history();
+						const originalIds = new Set(protectedRows.map((row) => row.id));
+						const fresh = rows.filter((row) => !originalIds.has(row.id));
+						expect(fresh).toHaveLength(5);
+						expect(fresh.map((row) => row.feature).sort()).toEqual(
+							["viewerChat", "viewerEnter", "membership", "liveStreaming", "liveEnd"].sort(),
+						);
+						expect(
+							fresh.flatMap((row) => row.messages.map((message) => message.text)).sort(),
+						).toEqual([...texts].sort());
+						for (const row of fresh)
+							expect(row).toMatchObject({
+								targetId,
+								status: "delivered",
+								subscriptionId: SUB.alice,
+							});
+						for (const row of protectedRows)
+							expect(rows.find((current) => current.id === row.id)).toEqual(row);
+					},
+					{ timeout: 10_000 },
+				);
+				protectedRows = await history();
+				await vi.waitFor(async () => expect((await storedCore()).locale).toBe(locale));
+				expect(await storedTemplates()).toMatchObject({
+					viewerChat: "Global chat 原文 {viewer}|{msg}",
+					viewerEnter: "Global enter 原文 {viewer}",
+					liveStreaming: "Global streaming 原文 {name}|{watched}",
+					liveEnd: "Global end 原文 {name}|{follower_change}",
+					liveSummary: "Global recap 原文 {dmc}|{un1}",
+				});
+				const saved = (
+					(await (await okRes(await api("/api/subscriptions"))).json()) as SubscriptionView[]
+				).find((sub) => sub.id === SUB.alice);
+				expect(saved?.overrides.templates?.viewerEnter).toBe(
+					personal ? "Subscription enter 原文 {viewer}" : undefined,
+				);
+				expect(saved?.overrides.templates?.viewerChat).toBe(
+					personal ? "Subscription chat 原文 {viewer}|{msg}" : undefined,
+				);
+				expect(saved?.overrides.templates?.liveStreaming).toBe(
+					personal ? "Subscription streaming 原文 {name}|{watched}" : undefined,
+				);
+				expect(saved?.overrides.templates?.liveEnd).toBe(
+					personal ? "Subscription end 原文 {name}|{follower_change}" : undefined,
+				);
+				expect(saved?.overrides.templates?.liveSummary).toBe(
+					personal ? "Subscription recap 原文 {dmc}|{un1}" : undefined,
+				);
+				expect(aiAsked).toHaveLength(aiBefore);
 			}
 		} finally {
 			try {
 				await okRes(await api("/api/dev/run/core.push.capture", json({ params: {} })));
 				probe.liveStatusOutcome = originalLiveStatus;
 				probe.reportLive(EXT.alice, { kind: "end", endedAt: new Date().toISOString() });
-				await okRes(
-					await api(
-						`/api/subscriptions/${SUB.alice}`,
-						json({ routing: originalSub?.routing }, "PATCH"),
-					),
-				);
+				// 整份 POST 是已有的替换入口，恢复原路由及可选覆盖，不向尚不存在的嵌套字段发送 null。
+				await okRes(await api("/api/subscriptions", json(originalSub)));
 				await patchCore({
 					locale: original.locale ?? null,
 					voice: original.voice ?? null,
 					master: original.master,
+					ai: { enabled: original.ai.enabled },
 					defaults: {
 						features: original.defaults.features,
 						cards: { enabled: original.defaults.cards.enabled },
 						liveStreaming: original.defaults.liveStreaming,
 						templates: {
 							liveStreaming: original.defaults.templates.liveStreaming ?? null,
+							liveSummary: original.defaults.templates.liveSummary ?? null,
+							liveEnd: original.defaults.templates.liveEnd ?? null,
 							viewerChat: original.defaults.templates.viewerChat ?? null,
 							viewerEnter: original.defaults.templates.viewerEnter ?? null,
 							membership: {
