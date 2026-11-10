@@ -60,11 +60,11 @@ function makeRenderer(
 // ---------------------------------------------------------------------------
 
 describe("ImageRenderer 纯映射辅助", () => {
-	it("unixTimestampToString 按全局时区排、零填充", () => {
+	it("unixTimestampToString 按当前语言与全局时区排，保留秒", () => {
 		const r = makeRenderer();
 		// 2026-01-02T03:04:05Z → 上海 11:04:05。
 		const s = r.unixTimestampToString(Date.UTC(2026, 0, 2, 3, 4, 5) / 1000);
-		expect(s).toBe("2026年01月02日 11:04:05");
+		expect(s).toBe("2026/1/2 11:04:05");
 	});
 });
 

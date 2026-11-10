@@ -134,7 +134,7 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 	it("开播:「直播中」角标、开播时间(北京时间)、人气 + 当前粉丝数", async () => {
 		const d = await drawn(input({ status: "start" }));
 		expect(d.status).toBe("直播中");
-		expect(d.time).toBe("开播时间：2026-09-13 20:00:00");
+		expect(d.time).toBe("开播时间：2026/9/13 20:00:00");
 		expect(d.currentViewers).toBe("人气：1.2万");
 		expect(d.followers).toBe("当前粉丝数：8.9万");
 		expect(d.cover).toBe(COVER_FROM_REF);
@@ -155,10 +155,10 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 		let timezone = "Asia/Shanghai";
 		const { renderer, captured } = makeRenderer({ timezone: () => timezone });
 		await renderer.generateLiveCard(input({ status: "start" }));
-		expect(captured[0] ?? "").toContain("开播时间：2026-09-13 20:00:00");
+		expect(captured[0] ?? "").toContain("开播时间：2026/9/13 20:00:00");
 		timezone = "America/New_York";
 		await renderer.generateLiveCard(input({ status: "start" }));
-		expect(captured[1] ?? "").toContain("开播时间：2026-09-13 08:00:00");
+		expect(captured[1] ?? "").toContain("开播时间：2026/9/13 08:00:00");
 	});
 
 	/**
@@ -168,7 +168,7 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 	it("下播:「已下播」角标、点赞 + 累计观看人数;粉丝数变化不画", async () => {
 		const d = await drawn(input({ status: "end" }));
 		expect(d.status).toBe("已下播");
-		expect(d.time).toBe("开播时间：2026-09-13 20:00:00");
+		expect(d.time).toBe("开播时间：2026/9/13 20:00:00");
 		expect(d.likes).toBe("点赞：2.0万");
 		expect(d.totalViewers).toBe("累计观看人数：3.1万");
 		expect(d.currentViewers).toBeUndefined();
@@ -507,7 +507,7 @@ describe("generateLiveCard — 头像", () => {
 		expect(out).not.toContain('alt="主播头像"');
 		const d = await drawn({ ...noAvatar, status: "end" });
 		expect(d.creatorName).toBe("示例主播");
-		expect(d.time).toBe("开播时间：2026-09-13 20:00:00");
+		expect(d.time).toBe("开播时间：2026/9/13 20:00:00");
 		expect(d.title).toBe("一场直播");
 		expect(d.creatorAvatar).toBeUndefined();
 	});
@@ -557,9 +557,15 @@ it("renders live labels in the current language without translating creator cont
 	const { renderer, captured } = makeRenderer();
 	try {
 		for (const [locale, status, time, likes, totalViewers] of [
-			["en", "Ended", "Started at: 2026-09-13 20:00:00", "Likes: 123", "Total viewers: 31.2K"],
-			["ja", "配信終了", "開始時刻：2026-09-13 20:00:00", "いいね：123", "累計視聴者数：3.1万"],
-			["zh-TW", "已結束直播", "開播時間：2026-09-13 20:00:00", "按讚：123", "累計觀看人數：3.1萬"],
+			["en", "Ended", "Started at: 9/13/2026, 8:00:00 PM", "Likes: 123", "Total viewers: 31.2K"],
+			["ja", "配信終了", "開始時刻：2026/9/13 20:00:00", "いいね：123", "累計視聴者数：3.1万"],
+			[
+				"zh-TW",
+				"已結束直播",
+				"開播時間：2026/9/13 下午8:00:00",
+				"按讚：123",
+				"累計觀看人數：3.1萬",
+			],
 		] as const) {
 			texts.set({ locale });
 			await renderer.generateLiveCard(input({ status: "end", likes: 123 }));
@@ -568,7 +574,7 @@ it("renders live labels in the current language without translating creator cont
 				const block = (name: string) =>
 					doc.window.document.querySelector(`[data-block="${name}"]`)?.textContent?.trim();
 				expect(block("status")).toBe(status);
-				expect(block("time")).toBe(time);
+				expect(block("time")?.replace(/\s+/gu, " ")).toBe(time);
 				expect(block("likes")).toBe(likes);
 				expect(block("totalViewers")).toBe(totalViewers);
 				expect(block("creatorName")).toBe("示例主播");

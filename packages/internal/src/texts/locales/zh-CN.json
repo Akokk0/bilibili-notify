@@ -76,7 +76,6 @@
 	"image.blocks.superchat.1": "观众头像",
 	"image.blocks.wordcloud.1": "头像",
 	"image.blocks.wordcloud.2": "本场直播弹幕词云",
-	"image.format.1": "{value0}年{value1}月{value2}日 {value3}:{value4}:{value5}",
 	"image.image-renderer.1": "直播通知",
 	"image.image-renderer.2": "生成直播卡片失败！错误: {value0}",
 	"image.image-renderer.3": "会员通知",

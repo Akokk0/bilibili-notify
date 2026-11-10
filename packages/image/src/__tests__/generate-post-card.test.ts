@@ -235,7 +235,7 @@ describe("generatePostCard — 作品卡的入口(吃中立的 Post)", () => {
 		const html = await htmlOf(POST);
 		expect(html).toContain("示例作者");
 		expect(html).toContain("你好世界");
-		expect(html).toContain("2023年11月15日 06:13:20 · 投稿了视频");
+		expect(html).toContain("2023/11/15 06:13:20 · 投稿了视频");
 		// 数字统一经 formatCount / formatClock。
 		expect(html).toContain("16:07");
 		expect(html).toMatch(/aria-label="播放量"[\s\S]*?1\.2万/);
@@ -248,11 +248,11 @@ describe("generatePostCard — 作品卡的入口(吃中立的 Post)", () => {
 		let timezone = "Asia/Shanghai";
 		const { renderer, captured } = makeRenderer({ timezone: () => timezone });
 		await renderer.generatePostCard(POST);
-		expect(captured[0] ?? "").toContain("2023年11月15日 06:13:20 · 投稿了视频");
+		expect(captured[0] ?? "").toContain("2023/11/15 06:13:20 · 投稿了视频");
 		timezone = "America/New_York";
 		await renderer.generatePostCard(POST);
-		expect(captured[1] ?? "").toContain("2023年11月14日 17:13:20 · 投稿了视频");
-		expect(captured[1] ?? "").not.toContain("2023年11月15日 06:13:20");
+		expect(captured[1] ?? "").toContain("2023/11/14 17:13:20 · 投稿了视频");
+		expect(captured[1] ?? "").not.toContain("2023/11/15 06:13:20");
 	});
 
 	it("配色 / 皮肤选项一路递到出卡(换皮肤 id 用的是同一条路)", async () => {

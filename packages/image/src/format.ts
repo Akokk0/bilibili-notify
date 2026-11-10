@@ -1,4 +1,4 @@
-import { packageText } from "@bilibili-notify/internal/texts";
+import { packageLocale } from "@bilibili-notify/internal/texts";
 /**
  * 卡片上的时刻写法。卡片上的计数(万 / 亿)与时长不在这里:全仓只有一份,
  * 住在 `@bilibili-notify/internal` 的 `format`(`formatCount` / `formatDuration`)。
@@ -7,18 +7,10 @@ import { packageText } from "@bilibili-notify/internal/texts";
 import { DateTime } from "luxon";
 
 /**
- * 卡片上的时刻写法(按给的时区,全局时区设置):`2026年09月24日 12:00:05`。动态卡的发布时间用它 ——
- * B 站的动态与拓展的作品(ADR-0019 决策 69)排成同一个样子,别处各抄一份的话迟早分道扬镳。收 Unix **秒**。
+ * 卡片的绝对时刻:按当前语言与给定时区排，精确到秒。作品发布时间与直播开播时刻共用，
+ * 来源原始时间不改。收 Unix **秒**。
  */
 export function formatCardTime(unixSeconds: number, timezone: string): string {
 	const at = DateTime.fromSeconds(unixSeconds, { zone: timezone });
-	const pad = (n: number) => `0${n}`.slice(-2);
-	return packageText("image.format.1", {
-		value0: at.year,
-		value1: pad(at.month),
-		value2: pad(at.day),
-		value3: pad(at.hour),
-		value4: pad(at.minute),
-		value5: pad(at.second),
-	});
+	return at.setLocale(packageLocale()).toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS);
 }

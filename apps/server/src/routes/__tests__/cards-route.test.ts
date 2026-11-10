@@ -891,8 +891,8 @@ describe("cards route — /preview 挑了订阅:真数据问来源", () => {
 			content: { subscriptionId: SUB_ID },
 		});
 		expect(res.status).toBe(200);
-		expect(capturedHtml.at(-1) ?? "").toContain("2023年11月14日 17:13:20");
-		expect(capturedHtml.at(-1) ?? "").not.toContain("2023年11月15日 06:13:20");
+		expect(capturedHtml.at(-1) ?? "").toContain("2023/11/14 17:13:20");
+		expect(capturedHtml.at(-1) ?? "").not.toContain("2023/11/15 06:13:20");
 	});
 
 	// 验红:把 cards.ts 里「来源回了失败就记下 sampleReason」那一句删掉,这条红。

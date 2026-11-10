@@ -196,7 +196,6 @@
 	"image.blocks.superchat.1": "視聴者のアバター",
 	"image.blocks.wordcloud.1": "アバター",
 	"image.blocks.wordcloud.2": "今回の配信の弾幕ワードクラウド",
-	"image.format.1": "{value0}年{value1}月{value2}日 {value3}:{value4}:{value5}",
 	"image.image-renderer.1": "配信通知",
 	"image.image-renderer.2": "配信カードの生成に失敗しました。エラー：{value0}",
 	"image.image-renderer.3": "メンバーシップ通知",

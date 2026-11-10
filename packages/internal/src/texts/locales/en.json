@@ -196,7 +196,6 @@
 	"image.blocks.superchat.1": "Viewer avatar",
 	"image.blocks.wordcloud.1": "Avatar",
 	"image.blocks.wordcloud.2": "Word cloud from this stream",
-	"image.format.1": "{value0}-{value1}-{value2} {value3}:{value4}:{value5}",
 	"image.image-renderer.1": "Live notification",
 	"image.image-renderer.2": "Failed to generate live card. Error: {value0}",
 	"image.image-renderer.3": "Membership notification",

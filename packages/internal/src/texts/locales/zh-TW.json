@@ -196,7 +196,6 @@
 	"image.blocks.superchat.1": "觀眾頭像",
 	"image.blocks.wordcloud.1": "頭像",
 	"image.blocks.wordcloud.2": "本場直播彈幕文字雲",
-	"image.format.1": "{value0}年{value1}月{value2}日 {value3}:{value4}:{value5}",
 	"image.image-renderer.1": "直播通知",
 	"image.image-renderer.2": "產生直播卡片失敗！錯誤：{value0}",
 	"image.image-renderer.3": "會員通知",

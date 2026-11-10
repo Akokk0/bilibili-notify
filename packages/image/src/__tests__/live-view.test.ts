@@ -14,7 +14,8 @@
  * - 头像、封面是引用:经 `imageUrl` 解析,解析不到的收起 / 画占位。
  */
 
-import { bindPackageText } from "@bilibili-notify/internal/texts";
+import { type Locale, translate } from "@bilibili-notify/internal/i18n";
+import { bindPackageText, PACKAGE_DICTS } from "@bilibili-notify/internal/texts";
 import { Settings } from "luxon";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { buildLiveCardView, liveCoverPlaceholder } from "../live-view";
@@ -151,6 +152,63 @@ describe("buildLiveCardView — 主播头像(creator.avatar 是引用)", () => {
 });
 
 describe("buildLiveCardView — 卡上那句时间", () => {
+	it.each([
+		["zh-CN", "开播时间：2026/9/14 00:30:05", "开播时间：2026/9/13 12:30:05"],
+		["en", "Started at: 9/14/2026, 12:30:05 AM", "Started at: 9/13/2026, 12:30:05 PM"],
+		["ja", "開始時刻：2026/9/14 0:30:05", "開始時刻：2026/9/13 12:30:05"],
+		["zh-TW", "開播時間：2026/9/14 上午12:30:05", "開播時間：2026/9/13 下午12:30:05"],
+	] as const)("%s 日期跨日与上午/下午按配置时区排，不改ISO", (locale, shanghai, newYork) => {
+		const binding = bindPackageText(
+			(key, values) => translate(PACKAGE_DICTS[locale].plain, locale, key, values),
+			() => locale,
+		);
+		Settings.defaultZone = "Pacific/Honolulu";
+		const original = input({ status: "end", startedAt: "2026-09-13T16:30:05Z" });
+		try {
+			expect(
+				buildLiveCardView(original, { timezone: "Asia/Shanghai" }).time.replace(/\s+/gu, " "),
+			).toBe(shanghai);
+			expect(
+				buildLiveCardView(original, { timezone: "America/New_York" }).time.replace(/\s+/gu, " "),
+			).toBe(newYork);
+			expect(original.startedAt).toBe("2026-09-13T16:30:05Z");
+		} finally {
+			binding.dispose();
+		}
+	});
+
+	it("开播与下播的绝对时刻随当前四语排版，保留配置时区和原始ISO", () => {
+		let locale: Locale = "zh-CN";
+		const binding = bindPackageText(
+			(key, values) => translate(PACKAGE_DICTS[locale].plain, locale, key, values),
+			() => locale,
+		);
+		Settings.defaultZone = "America/Los_Angeles";
+		const original = input({
+			creator: { name: "Original creator 原文" },
+			title: "Original title {name}",
+		});
+		try {
+			for (const [next, time] of [
+				["zh-CN", "开播时间：2026/9/13 20:00:00"],
+				["en", "Started at: 9/13/2026, 8:00:00 PM"],
+				["ja", "開始時刻：2026/9/13 20:00:00"],
+				["zh-TW", "開播時間：2026/9/13 下午8:00:00"],
+			] as const) {
+				locale = next;
+				for (const status of ["start", "end"] as const) {
+					const view = buildLiveCardView({ ...original, status }, { timezone: "Asia/Shanghai" });
+					expect(view.time.replace(/\s+/gu, " ")).toBe(time);
+					expect(view.creatorName).toBe("Original creator 原文");
+					expect(view.title).toBe("Original title {name}");
+				}
+				expect(original.startedAt).toBe(STARTED_AT);
+			}
+		} finally {
+			binding.dispose();
+		}
+	});
+
 	/**
 	 * 开播 / 下播:开播时刻按**给的时区**(全局时区设置)写,与进程所在时区无关。
 	 * 这里把默认时区拧到别处再断言。验红:把 `startedAtOf` 里的 `{ zone }` 去掉,这条红。
@@ -159,7 +217,7 @@ describe("buildLiveCardView — 卡上那句时间", () => {
 		Settings.defaultZone = "America/Los_Angeles";
 		for (const status of ["start", "end"] as const) {
 			expect(buildLiveCardView(input({ status }), { timezone: "Asia/Shanghai" }).time).toBe(
-				"开播时间：2026-09-13 20:00:00",
+				"开播时间：2026/9/13 20:00:00",
 			);
 		}
 	});
@@ -168,7 +226,7 @@ describe("buildLiveCardView — 卡上那句时间", () => {
 		const startedAt = "2026-09-13T16:30:05Z";
 		expect(
 			buildLiveCardView(input({ status: "start", startedAt }), { timezone: "Asia/Shanghai" }).time,
-		).toBe("开播时间：2026-09-14 00:30:05");
+		).toBe("开播时间：2026/9/14 00:30:05");
 	});
 
 	/** ISO 带别的偏移也照样换算成北京时间;不带偏移的当北京时间读。 */
@@ -177,12 +235,12 @@ describe("buildLiveCardView — 卡上那句时间", () => {
 			buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T15:00:00-04:00" }), {
 				timezone: "Asia/Shanghai",
 			}).time,
-		).toBe("开播时间：2026-09-14 03:00:00");
+		).toBe("开播时间：2026/9/14 03:00:00");
 		expect(
 			buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T20:00:00" }), {
 				timezone: "Asia/Shanghai",
 			}).time,
-		).toBe("开播时间：2026-09-13 20:00:00");
+		).toBe("开播时间：2026/9/13 20:00:00");
 	});
 
 	/** 全局时区换成纽约:带偏移的换算到纽约,不带偏移的当纽约读(仍是原样印出)。 */
@@ -191,11 +249,11 @@ describe("buildLiveCardView — 卡上那句时间", () => {
 		expect(
 			buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T16:30:05Z" }), { timezone })
 				.time,
-		).toBe("开播时间：2026-09-13 12:30:05");
+		).toBe("开播时间：2026/9/13 12:30:05");
 		expect(
 			buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T20:00:00" }), { timezone })
 				.time,
-		).toBe("开播时间：2026-09-13 20:00:00");
+		).toBe("开播时间：2026/9/13 20:00:00");
 	});
 
 	it("streaming:「直播时长：…」由开播时刻与此刻的钟算", () => {

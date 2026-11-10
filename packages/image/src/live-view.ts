@@ -15,12 +15,10 @@ import {
 	type PostImage,
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { formatCardTime } from "./format";
 import { escapeHtml } from "./html-escape";
 import type { ImageUrlOf } from "./rich-text";
 import type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
-
-/** 卡上「开播时间：…」那句的写法,与 B 站 `live_time` 同形。 */
-const LIVE_TIME_FORMAT = "yyyy-MM-dd HH:mm:ss";
 
 /** ISO 开播时刻 → 时刻;不给、读不懂都是 `undefined`(没有开播时刻)。不带时区的 ISO 当给的时区读。 */
 function startedAtOf(startedAt: string | undefined, timezone: string): DateTime | undefined {
@@ -43,7 +41,9 @@ function liveTimeText(
 	if (start === undefined) return "";
 	if (status === "streaming")
 		return packageText("image.live-view.2", { value0: formatDuration(start.toMillis()) });
-	return packageText("image.live-view.3", { value0: start.toFormat(LIVE_TIME_FORMAT) });
+	return packageText("image.live-view.3", {
+		value0: formatCardTime(start.toSeconds(), timezone),
+	});
 }
 
 /**
