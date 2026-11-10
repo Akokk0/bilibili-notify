@@ -26,6 +26,7 @@ import type {
 	HistoryResponse,
 	LiveListeningEntry,
 	ProblemsResponse,
+	SettingsResponse,
 	SourceAuthResponse,
 	SourcesResponse,
 	StatsOverviewResponse,
@@ -2926,6 +2927,314 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			});
 		}
 		drove("P35");
+	}, 60_000);
+
+	it("四语周期直播、会员与互动实际送达本地webhook，历史保存当时正文、换语言不改旧行", async () => {
+		const probe = currentProbe();
+		const originalLiveStatus = probe.liveStatusOutcome;
+		const original = ((await (await okRes(await api("/api/settings"))).json()) as SettingsResponse)
+			.core;
+		const originalSub = (
+			(await (await okRes(await api("/api/subscriptions"))).json()) as SubscriptionView[]
+		).find((sub) => sub.id === SUB.alice);
+		expect(originalSub).toBeDefined();
+		const connectionId = "a3260000-0000-4000-8000-00000000c001";
+		const received: Array<{
+			targetId: string;
+			payload: { kind: string; text?: string; segments?: Array<{ type: string; text?: string }> };
+		}> = [];
+		const hook = createHttpServer((req, res) => {
+			let body = "";
+			req.on("data", (chunk) => {
+				body += chunk;
+			});
+			req.on("end", () => {
+				received.push(JSON.parse(body));
+				res.writeHead(200, { "content-type": "application/json" }).end("{}");
+			});
+		});
+		await new Promise<void>((resolve) => hook.listen(0, "127.0.0.1", resolve));
+		const address = hook.address();
+		if (!address || typeof address === "string") throw new Error("local webhook did not start");
+		let connectionCreated = false;
+		try {
+			await okRes(
+				await api(
+					"/api/connections",
+					json({
+						id: connectionId,
+						name: "Local locale audit",
+						enabled: true,
+						adapterKey: "webhook",
+						platform: "generic",
+						settings: { url: `http://127.0.0.1:${address.port}/locale`, headers: {} },
+					}),
+				),
+			);
+			connectionCreated = true;
+			const targets = (await (await okRes(await api("/api/targets"))).json()) as Array<{
+				id: string;
+				connectionId: string;
+			}>;
+			const targetId = targets.find((target) => target.connectionId === connectionId)?.id;
+			expect(targetId).toBeDefined();
+			await okRes(
+				await api(
+					`/api/subscriptions/${SUB.alice}`,
+					json(
+						{
+							routing: {
+								...originalSub?.routing,
+								viewerChat: [targetId],
+								viewerEnter: [targetId],
+								superchat: [targetId],
+								membership: [targetId],
+								liveStreaming: [targetId],
+							},
+						},
+						"PATCH",
+					),
+				),
+			);
+			await patchCore({
+				master: { targetId: null },
+				defaults: {
+					features: {
+						liveStart: false,
+						liveStreaming: false,
+						liveEnd: false,
+						viewerChat: true,
+						viewerEnter: true,
+						superchat: true,
+						membership: true,
+					},
+					cards: { enabled: false },
+					templates: {
+						liveStreaming: null,
+						viewerChat: null,
+						viewerEnter: null,
+						membership: {
+							[IN_PROCESS_CUSTOM_PROGRAM_ID]: {
+								enabled: true,
+								default: { imageUrl: "" },
+								tiers: {},
+							},
+						},
+					},
+				},
+			});
+			// 这条用例真的调适配器发送；其余对拍仍用原截流。
+			await okRes(await api("/api/dev/reset/core.push.capture", { method: "POST" }));
+			probe.reportLive(EXT.alice, {
+				kind: "start",
+				startedAt: new Date().toISOString(),
+				details: { creator: { name: "Creator 原文" }, title: "Original stream 原文" },
+			});
+			const viewer = { id: SPECIAL_VIEWER, name: "Viewer {name} 原文" };
+			const paid = {
+				kind: "superchat",
+				viewer,
+				text: "Message {viewer} 原文",
+				amount: 30,
+				currency: "CNY",
+			} as const;
+			const member = {
+				kind: "membership",
+				viewer,
+				program: IN_PROCESS_CUSTOM_PROGRAM_ID,
+				tier: { key: "vip", name: "Tier {text} 原文", rank: 3 },
+			} as const;
+			const textOf = (entry: (typeof received)[number]) =>
+				entry.payload.kind === "text"
+					? entry.payload.text
+					: entry.payload.segments
+							?.filter((segment) => segment.type === "text")
+							.map((segment) => segment.text)
+							.join("\n");
+			let protectedRows = await history();
+			for (const [locale, chat, enter, membership, superchat, fallback] of [
+				[
+					"en",
+					"Selected viewer Viewer {name} 原文 sent a chat message in Creator 原文’s room: Message {viewer} 原文",
+					"Viewer {name} 原文 entered Creator 原文’s live room",
+					"Viewer {name} 原文 joined Creator 原文 at the Tier {text} 原文 tier!",
+					"Viewer {name} 原文 sent a paid message in Creator 原文's stream: Message {viewer} 原文",
+					"In Creator 原文's stream, Viewer {name} 原文 joined membership tier Tier {text} 原文.",
+				],
+				[
+					"ja",
+					"注目ユーザーViewer {name} 原文がCreator 原文の配信に弾幕を送信：Message {viewer} 原文",
+					"Viewer {name} 原文がCreator 原文の配信ルームに入室しました",
+					"Viewer {name} 原文がCreator 原文のTier {text} 原文メンバーになりました！",
+					"Creator 原文の配信で、Viewer {name} 原文が有料メッセージを送りました：Message {viewer} 原文",
+					"Creator 原文の配信で、Viewer {name} 原文がTier {text} 原文の会員になりました。",
+				],
+				[
+					"zh-TW",
+					"關注的使用者 Viewer {name} 原文 在 Creator 原文 的直播間傳送彈幕：Message {viewer} 原文",
+					"Viewer {name} 原文 進入了 Creator 原文 的直播間",
+					"Viewer {name} 原文 成為了 Creator 原文 的Tier {text} 原文！",
+					"在 Creator 原文 的直播中，Viewer {name} 原文 傳送了一則付費留言：Message {viewer} 原文",
+					"在 Creator 原文 的直播中，Viewer {name} 原文 成為了 Tier {text} 原文 會員。",
+				],
+				[
+					"zh-CN",
+					"Creator 原文 的关注用户 Viewer {name} 原文 发送弹幕：Message {viewer} 原文",
+					"Viewer {name} 原文 进入了 Creator 原文 的直播间",
+					"Viewer {name} 原文 成为了 Creator 原文 的Tier {text} 原文！",
+					"Creator 原文的直播间里，Viewer {name} 原文 发了一条醒目留言：Message {viewer} 原文",
+					"Creator 原文的直播间里，Viewer {name} 原文 成为了Tier {text} 原文",
+				],
+			] as const) {
+				await patchCore({
+					locale,
+					voice: "plain",
+					defaults: {
+						features: { liveStreaming: false },
+						templates: { membership: { [IN_PROCESS_CUSTOM_PROGRAM_ID]: { enabled: true } } },
+					},
+				});
+				const start = received.length;
+				for (const report of [
+					{ kind: "viewerChat", viewer, text: paid.text },
+					{ kind: "viewerEnter", viewer },
+					paid,
+					member,
+				] as const)
+					probe.reportLiveInteraction(EXT.alice, report);
+				await vi.waitFor(() => expect(received).toHaveLength(start + 4), { timeout: 10_000 });
+				await patchCore({
+					defaults: {
+						templates: { membership: { [IN_PROCESS_CUSTOM_PROGRAM_ID]: { enabled: false } } },
+					},
+				});
+				probe.reportLiveInteraction(EXT.alice, member);
+				probe.reportLiveInteraction(EXT.alice, {
+					...paid,
+					fallbackText: "Source fallback 原文 {name}",
+				});
+				await vi.waitFor(() => expect(received).toHaveLength(start + 6), { timeout: 10_000 });
+				// 真场次时钟到点，经来源拉取、周期装配和适配器发送；不改全局时钟。
+				await patchCore({
+					defaults: {
+						features: { liveStreaming: true },
+						liveStreaming: { streamingIntervalHours: 1 },
+					},
+				});
+				probe.liveStatusOutcome = {
+					ok: true,
+					kind: "live",
+					details: {
+						creator: { name: "Creator 原文" },
+						title: "Original stream 原文",
+						totalViewers: 12_345,
+						url: "https://example.invalid/live",
+					},
+				};
+				probe.reportLive(EXT.alice, {
+					kind: "start",
+					startedAt: new Date(Date.now() - HOUR_MS + 1_000).toISOString(),
+					details: { creator: { name: "Creator 原文" }, title: "Original stream 原文" },
+				});
+				await vi.waitFor(() => expect(received).toHaveLength(start + 7), { timeout: 10_000 });
+				const streaming = textOf(received[start + 6] as (typeof received)[number]);
+				expect(streaming).toMatch(
+					{
+						en: /^Creator 原文 is live\. Duration: 1h\S*\. Total viewers: 12\.3K\nhttps:\/\/example.invalid\/live$/,
+						ja: /^Creator 原文が配信中です。配信時間：1時間\S*、累計視聴者数：1\.2万\nhttps:\/\/example.invalid\/live$/,
+						"zh-TW":
+							/^Creator 原文 正在直播，已播 1小時\S*，累計觀看：1\.2萬\nhttps:\/\/example.invalid\/live$/,
+						"zh-CN":
+							/^Creator 原文 正在直播，已播 1小时\S*，累计观看：1\.2万\nhttps:\/\/example.invalid\/live$/,
+					}[locale],
+				);
+				const expected = [
+					chat,
+					enter,
+					membership,
+					superchat,
+					fallback,
+					"Source fallback 原文 {name}",
+					streaming,
+				];
+				expect(received.slice(start).map(textOf).sort()).toEqual([...expected].sort());
+				expect(received.slice(start).every((entry) => entry.targetId === targetId)).toBe(true);
+				await vi.waitFor(
+					async () => {
+						const rows = await history();
+						const originalIds = new Set(protectedRows.map((row) => row.id));
+						const fresh = rows.filter((row) => !originalIds.has(row.id));
+						expect(fresh).toHaveLength(7);
+						expect(fresh.map((row) => row.feature).sort()).toEqual(
+							[
+								"viewerChat",
+								"viewerEnter",
+								"superchat",
+								"liveStreaming",
+								"membership",
+								"membership",
+								"superchat",
+							].sort(),
+						);
+						expect(
+							fresh
+								.map((row) => row.messages.find((message) => message.role === "main")?.text)
+								.sort(),
+						).toEqual([...expected].sort());
+						for (const row of fresh)
+							expect(row).toMatchObject({
+								status: "delivered",
+								targetId,
+								subscriptionId: SUB.alice,
+								identity: { sourceKey: IN_PROCESS_KEY, externalId: EXT.alice },
+							});
+						for (const row of protectedRows)
+							expect(rows.find((current) => current.id === row.id)).toEqual(row);
+					},
+					{ timeout: 10_000 },
+				);
+				protectedRows = await history();
+				await vi.waitFor(async () => expect((await storedCore()).locale).toBe(locale));
+				expect(await storedTemplates()).not.toHaveProperty("viewerChat");
+				expect(await storedTemplates()).not.toHaveProperty("viewerEnter");
+				expect(await storedTemplates()).not.toHaveProperty("liveStreaming");
+			}
+		} finally {
+			try {
+				await okRes(await api("/api/dev/run/core.push.capture", json({ params: {} })));
+				probe.liveStatusOutcome = originalLiveStatus;
+				probe.reportLive(EXT.alice, { kind: "end", endedAt: new Date().toISOString() });
+				await okRes(
+					await api(
+						`/api/subscriptions/${SUB.alice}`,
+						json({ routing: originalSub?.routing }, "PATCH"),
+					),
+				);
+				await patchCore({
+					locale: original.locale ?? null,
+					voice: original.voice ?? null,
+					master: original.master,
+					defaults: {
+						features: original.defaults.features,
+						cards: { enabled: original.defaults.cards.enabled },
+						liveStreaming: original.defaults.liveStreaming,
+						templates: {
+							liveStreaming: original.defaults.templates.liveStreaming ?? null,
+							viewerChat: original.defaults.templates.viewerChat ?? null,
+							viewerEnter: original.defaults.templates.viewerEnter ?? null,
+							membership: {
+								[IN_PROCESS_CUSTOM_PROGRAM_ID]:
+									original.defaults.templates.membership[IN_PROCESS_CUSTOM_PROGRAM_ID] ?? null,
+							},
+						},
+					},
+				});
+				if (connectionCreated)
+					await okRes(await api(`/api/connections/${connectionId}`, { method: "DELETE" }));
+			} finally {
+				await new Promise<void>((resolve) => hook.close(() => resolve()));
+			}
+		}
 	}, 60_000);
 
 	// 验红:`ws/channels.ts` 转 `live-session-changed` 时给帧多带一格 `uid`,WS 那段红;`routes/live.ts` 的行漏掉 `identity`
