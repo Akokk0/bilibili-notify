@@ -9,7 +9,7 @@ export function withOutputLanguage(prompt: string): string {
 		ja: "日文，使用日文标点",
 		"zh-TW": "台湾繁体中文，使用台湾惯用词",
 	};
-	return `${prompt}\n\n【输出语言】面向用户的自然语言内容使用${languages[packageLocale()]}。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。`;
+	return `${prompt}\n\n【输出语言】面向用户的自然语言内容使用${languages[packageLocale()]}。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；用户明确要求逐字保留的片段，不论使用哪种语言，都必须完整原样输出，不得翻译、拆分或省略；结构化输出仍严格遵守原格式。`;
 }
 
 /**

@@ -179,16 +179,16 @@ describe("CommentaryGenerator — 输出语言", () => {
 				] as const) {
 					texts.set({ locale });
 					oai.create.mockClear();
-					const answer = '{"id":"keep_enum","label":"原文、Original。"}';
+					const answer = '{"id":"keep_enum","label":"原文、Original。{name}"}';
 					const streaming = method === "raw" || method === "customStream";
 					oai.create.mockResolvedValueOnce(
 						streaming ? streamOf([textChunk(answer)]) : msgResp(answer),
 					);
-					const history = [{ role: "user" as const, content: "Original input" }];
+					const history = [{ role: "user" as const, content: "Original creator 原文 {name}" }];
 					const deltas: string[] = [];
 					const result =
 						method === "chat"
-							? await gen.chat("Original input")
+							? await gen.chat("Original creator 原文 {name}")
 							: method === "stateless"
 								? await gen.chatStateless(history)
 								: method === "customStream"
@@ -199,20 +199,31 @@ describe("CommentaryGenerator — 输出语言", () => {
 											onDelta: (text) => deltas.push(text),
 										})
 									: method === "raw"
-										? await gen.generateRaw("Raw system", "Original input", undefined, {
-												onText: (text) => deltas.push(text),
-											})
-										: await gen.comment("Original input", "liveSummary");
+										? await gen.generateRaw(
+												"Raw system",
+												"Original creator 原文 {name}",
+												undefined,
+												{
+													onText: (text) => deltas.push(text),
+												},
+											)
+										: await gen.comment("Original creator 原文 {name}", "liveSummary");
 					expect(result).toBe(answer);
 					if (streaming) expect(deltas.join("")).toBe(answer);
 					const params = createParams(0);
 					const system = params.messages[0]?.content as string;
 					expect(system).toContain(`【输出语言】面向用户的自然语言内容使用${language}`);
 					expect(system.split("【输出语言】")).toHaveLength(2);
+					expect(system).toContain(
+						"用户明确要求逐字保留的片段，不论使用哪种语言，都必须完整原样输出，不得翻译、拆分或省略",
+					);
 					if (method === "customStream")
 						expect(system).toMatch(/^Custom system\n\nCustom suffix\n\n/);
 					if (method === "raw") expect(system).toMatch(/^Raw system\n\n/);
-					expect(params.messages[1]).toEqual({ role: "user", content: "Original input" });
+					expect(params.messages[1]).toEqual({
+						role: "user",
+						content: "Original creator 原文 {name}",
+					});
 					expect(oai.create).toHaveBeenCalledTimes(1);
 				}
 			} finally {
@@ -302,7 +313,7 @@ describe("CommentaryGenerator — 输出语言", () => {
 				expect(system).toContain("用中文点评作品，保留{custom}。");
 				expect(system).toContain(`【输出语言】面向用户的自然语言内容使用${language}。`);
 				expect(system).toMatch(
-					/前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。$/,
+					/前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；用户明确要求逐字保留的片段，不论使用哪种语言，都必须完整原样输出，不得翻译、拆分或省略；结构化输出仍严格遵守原格式。$/,
 				);
 				expect(params.messages[1]).toEqual({ role: "user", content: "Original input {custom}" });
 				expect(oai.create).toHaveBeenCalledTimes(1);
@@ -1781,7 +1792,7 @@ describe("CommentaryGenerator.generateRaw(无人格结构化生成)", () => {
 		expect(params.messages[0]).toEqual({
 			role: "system",
 			content:
-				"RAW_SYSTEM\n\n【输出语言】面向用户的自然语言内容使用简体中文。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。",
+				"RAW_SYSTEM\n\n【输出语言】面向用户的自然语言内容使用简体中文。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；用户明确要求逐字保留的片段，不论使用哪种语言，都必须完整原样输出，不得翻译、拆分或省略；结构化输出仍严格遵守原格式。",
 		});
 		expect(params.messages[1]).toEqual({ role: "user", content: "RAW_USER" });
 		expect(params.tools).toBeUndefined();

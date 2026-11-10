@@ -389,12 +389,12 @@ export const NON_DISPLAY_TEXTS = {
 		{
 			owner: "withOutputLanguage",
 			text: pinnedSource(
-				"`@{prompt}\\n\\n【输出语言】面向用户的自然语言内容使用@{languages[packageLocale()]}。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。`",
+				"`@{prompt}\\n\\n【输出语言】面向用户的自然语言内容使用@{languages[packageLocale()]}。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；用户明确要求逐字保留的片段，不论使用哪种语言，都必须完整原样输出，不得翻译、拆分或省略；结构化输出仍严格遵守原格式。`",
 			),
 			reason:
 				"ADR-0037 decision 11: fixed Chinese model instruction specifying the current output language; never displayed as interface text.",
 			site: pinnedSource(
-				"return `@{prompt}\\n\\n【输出语言】面向用户的自然语言内容使用@{languages[packageLocale()]}。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；结构化输出仍严格遵守原格式。`;",
+				"return `@{prompt}\\n\\n【输出语言】面向用户的自然语言内容使用@{languages[packageLocale()]}。前文出现其他语言要求时，以本条为准。保留代码、字段名、枚举值、占位符和引用原文；用户明确要求逐字保留的片段，不论使用哪种语言，都必须完整原样输出，不得翻译、拆分或省略；结构化输出仍严格遵守原格式。`;",
 			),
 		},
 		{
