@@ -20,6 +20,8 @@ import type {
 	CreatorsResponse,
 	ExtensionsResponse,
 	HistoryResponse,
+	SettingsResponse,
+	SubscriptionView,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
@@ -340,6 +342,164 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 			},
 			{ timeout: 10_000 },
 		);
+	}, 15_000);
+
+	it("同一服务切换四语后，下一场直播用当前默认模板和卡片标签，已送达历史保持原文", async () => {
+		const readHistory = async () => {
+			const response = await api("/api/history?limit=50");
+			await ok(response);
+			return ((await response.json()) as HistoryResponse).entries;
+		};
+		let protectedRows = await readHistory();
+		expect(protectedRows).toHaveLength(4);
+
+		for (const [locale, start, end, durationTail, liveLabel, endLabel] of [
+			[
+				"en",
+				" is live. Current followers: ",
+				" ended the stream. Duration: ",
+				". Follower change: ",
+				"Live",
+				"Ended",
+			],
+			[
+				"ja",
+				"が配信を開始しました。現在のフォロワー数：",
+				"の配信が終了しました。配信時間：",
+				"、フォロワー増減：",
+				"配信中",
+				"配信終了",
+			],
+			[
+				"zh-TW",
+				" 開播了，目前粉絲數：",
+				" 已結束直播，本次直播時長 ",
+				"，粉絲增減 ",
+				"直播中",
+				"已結束直播",
+			],
+			["zh-CN", " 开播啦，当前粉丝数：", " 下播啦，本次直播了 ", "，粉丝变化 ", "直播中", "已下播"],
+		] as const) {
+			await ok(
+				await api("/api/settings", {
+					method: "PATCH",
+					...json({ core: { locale, voice: locale === "en" ? "plain" : "maid" } }),
+				}),
+			);
+			const settings = (await (await api("/api/settings")).json()) as SettingsResponse;
+			expect(settings.core.defaults.templates).not.toHaveProperty("liveStart");
+			expect(settings.core.defaults.templates).not.toHaveProperty("liveEnd");
+			const seenCards = Object.fromEntries(KEYS.map((key) => [key, cardsFor(key).length]));
+			let seenHtml = renderedHtml.length;
+			await ok(await api(`/api/ext/${FAKE}/actions/report.liveStart`, { method: "POST" }));
+			await vi.waitFor(
+				() => {
+					for (const key of KEYS) expect(cardsFor(key)).toHaveLength((seenCards[key] ?? 0) + 1);
+				},
+				{ timeout: 10_000 },
+			);
+			for (const key of KEYS) {
+				const text = textOf(cardsFor(key).at(-1));
+				expect(text).toMatch(
+					new RegExp(
+						`^${escapeRe(who[key].name + start)}${key === "a" ? "\\S+" : ""}\\nhttps://live\\.fake-source\\.invalid/[0-9a-f]{12}$`,
+					),
+				);
+				const html = renderedHtml.slice(seenHtml).find((card) => card.includes(who[key].name));
+				expect(html).toContain(`>${liveLabel}<`);
+				expect(html).toContain("假直播 · 第 ");
+			}
+			seenHtml = renderedHtml.length;
+			await ok(await api(`/api/ext/${FAKE}/actions/report.liveEnd`, { method: "POST" }));
+			await vi.waitFor(
+				() => {
+					for (const key of KEYS) expect(cardsFor(key)).toHaveLength((seenCards[key] ?? 0) + 2);
+				},
+				{ timeout: 10_000 },
+			);
+			for (const key of KEYS) {
+				const text = textOf(cardsFor(key).at(-1));
+				expect(text).toMatch(
+					new RegExp(
+						`^${escapeRe(who[key].name + end)}.+${escapeRe(durationTail)}${key === "a" ? "0" : ""}\\nhttps://live\\.fake-source\\.invalid/[0-9a-f]{12}$`,
+					),
+				);
+				const html = renderedHtml.slice(seenHtml).find((card) => card.includes(who[key].name));
+				expect(html).toContain(`>${endLabel}<`);
+			}
+			await vi.waitFor(
+				async () => {
+					const rows = await readHistory();
+					expect(rows).toHaveLength(KEYS.reduce((count, key) => count + cardsFor(key).length, 0));
+					for (const original of protectedRows)
+						expect(rows.find((row) => row.id === original.id)).toEqual(original);
+					for (const key of KEYS) {
+						const latest = rows.filter((row) => row.subscriptionId === SUBS[key].id).slice(0, 2);
+						expect(latest.map((row) => row.feature).sort()).toEqual(["liveEnd", "liveStart"]);
+						for (const row of latest) {
+							expect(row).toMatchObject({ status: "delivered", nameSnapshot: who[key].name });
+							expect(row.messages.find((message) => message.role === "main")?.text).toBe(
+								textOf(cardsFor(key).at(row.feature === "liveStart" ? -2 : -1)),
+							);
+						}
+					}
+				},
+				{ timeout: 10_000 },
+			);
+			protectedRows = await readHistory();
+		}
+	}, 30_000);
+
+	it("切换语言不改全局手写模板或订阅覆盖，发送时仍先用订阅的文字", async () => {
+		await ok(
+			await api("/api/settings", {
+				method: "PATCH",
+				...json({
+					core: { defaults: { templates: { liveStart: "Global original 原文: {name}" } } },
+				}),
+			}),
+		);
+		await ok(
+			await api(`/api/subscriptions/${SUBS.a.id}`, {
+				method: "PATCH",
+				...json({ overrides: { templates: { liveStart: "Subscription original 原文: {name}" } } }),
+			}),
+		);
+		for (const locale of ["ja", "en"] as const) {
+			await ok(await api("/api/settings", { method: "PATCH", ...json({ core: { locale } }) }));
+			const seen = Object.fromEntries(KEYS.map((key) => [key, cardsFor(key).length]));
+			await ok(await api(`/api/ext/${FAKE}/actions/report.liveStart`, { method: "POST" }));
+			await vi.waitFor(
+				() => {
+					for (const key of KEYS) expect(cardsFor(key)).toHaveLength((seen[key] ?? 0) + 1);
+				},
+				{ timeout: 10_000 },
+			);
+			for (const key of KEYS) {
+				const prefix = key === "a" ? "Subscription original 原文: " : "Global original 原文: ";
+				expect(textOf(cardsFor(key).at(-1))).toMatch(
+					new RegExp(
+						`^${escapeRe(prefix + who[key].name)}\\nhttps://live\\.fake-source\\.invalid/[0-9a-f]{12}$`,
+					),
+				);
+			}
+			const settings = (await (await api("/api/settings")).json()) as SettingsResponse;
+			expect(settings.core.defaults.templates.liveStart).toBe("Global original 原文: {name}");
+			const subscriptions = (await (await api("/api/subscriptions")).json()) as SubscriptionView[];
+			expect(
+				subscriptions.find((sub) => sub.id === SUBS.a.id)?.overrides.templates?.liveStart,
+			).toBe("Subscription original 原文: {name}");
+			expect(
+				subscriptions.find((sub) => sub.id === SUBS.b.id)?.overrides.templates?.liveStart,
+			).toBeUndefined();
+			await ok(await api(`/api/ext/${FAKE}/actions/report.liveEnd`, { method: "POST" }));
+			await vi.waitFor(
+				() => {
+					for (const key of KEYS) expect(cardsFor(key)).toHaveLength((seen[key] ?? 0) + 2);
+				},
+				{ timeout: 10_000 },
+			);
+		}
 	}, 15_000);
 });
 
