@@ -523,7 +523,7 @@ importers:
     dependencies:
       '@bilibili-notify/extension':
         specifier: workspace:*
-        version: link:../../packages/extension
+        version: link:../../packages/extension/lib
       ws:
         specifier: 'catalog:'
         version: 8.22.0
@@ -539,7 +539,7 @@ importers:
     dependencies:
       '@bilibili-notify/extension':
         specifier: workspace:*
-        version: link:../../packages/extension
+        version: link:../../packages/extension/lib
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -670,6 +670,19 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
+
+  tools/create-extension:
+    dependencies:
+      '@bilibili-notify/internal':
+        specifier: workspace:*
+        version: link:../../packages/internal
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    publishDirectory: lib
 
 packages:
 

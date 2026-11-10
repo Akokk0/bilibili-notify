@@ -33,6 +33,7 @@ vp run build:update-payload   # server 自包含 bundle + 装配 + web dist(Dock
 packages/     平台中立业务核心(@bilibili-notify/*)
 apps/         Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约(apps/contract)
 extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第一个是机器人框架桥接)
+tools/        独立开发工具(拓展创建器/发布器),不被宿主加载
 ```
 
 单 workspace、单 lockfile,pnpm 默认 isolated 布局;`apps/server` 经 pnpm `workspace:*` 消费业务核心。包清单与模块图见 `docs/agents/architecture.md`。

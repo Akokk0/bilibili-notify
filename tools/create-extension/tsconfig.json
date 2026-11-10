@@ -1,0 +1,13 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"rootDir": "../..",
+		"allowJs": true,
+		"checkJs": false,
+		"composite": false,
+		"incremental": false,
+		"declaration": false,
+		"emitDeclarationOnly": false
+	},
+	"include": ["src", "vite.config.ts"]
+}

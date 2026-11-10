@@ -1,5 +1,7 @@
 # 1.0 拓展契约 v3
 
+🔗当前作者入口（6-05）：全新1.0实现使用`apiVersion: 1`、`apiRevision: 0`；本页标题及下文“v3”保留历史设计语境。仓外开发请先读[随SDK分发的作者指南](../../packages/extension/DEVELOPMENT.md)，完整字段取SDK公开声明。当前起号与旧同号包的处理见本页4-55现状记录。
+
 > 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 ～ 0031。
 
 写拓展的人读这份：清单里能声明什么、ctx 里能用什么、上报长什么样、有哪些规矩、从 v2 怎么过渡。中立接口全集见 [subscription-sources.md](./subscription-sources.md)；上报的数据形状对应 [data-model.md](./data-model.md) 的 `Post` / `LiveDetails`；拓展的平台适配器怎么进推送链见 [push.md](./push.md)。

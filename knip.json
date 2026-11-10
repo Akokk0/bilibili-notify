@@ -33,6 +33,10 @@
 			"entry": [],
 			"project": ["src/**/*.ts"]
 		},
+		"tools/create-extension": {
+			"entry": ["src/create.ts", "src/cli.ts"],
+			"project": ["src/**/*.ts"]
+		},
 		"packages/image": {
 			"entry": ["src/**/*.test.ts"],
 			"project": ["src/**/*.{ts,tsx,vue}"]

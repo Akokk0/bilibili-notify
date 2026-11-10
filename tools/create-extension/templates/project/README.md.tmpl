@@ -1,0 +1,87 @@
+# BN extension
+
+This is a standalone subscription-source example. It does not contact a platform yet. Edit the root `extension.json`, `src/` and `.bn/marketplace.json` to build your own integration.
+
+## First install
+
+Install the global [Vite+ CLI](https://viteplus.dev/guide/), Node matching `.node-version`, and Git 2.32+. The creator has already initialized Git, installed dependencies, generated `pnpm-lock.yaml` and enabled hooks. For another checkout:
+
+```sh
+vp install --frozen-lockfile
+vp hooks status
+vp run verify
+```
+
+The creator configures the local `origin` URL from `--repository`; it does not create a GitHub repository or push anything. If this was created with `--no-git`, run `git init`, set your own `origin`, then run `vp hooks enable`. Commit the lockfile and the project-owned `.vite-hooks/pre-commit` / `commit-msg` files; the generated dispatcher directory is ignored.
+
+## Develop and check
+
+```sh
+vp run dev
+vp run lint
+vp run format
+vp run format:check
+vp run typecheck
+vp run test
+vp run build
+vp run pack:extension
+```
+
+`vp run verify` runs all checks, then builds and packages the extension. ZIPs and SHA256 files go into `artifacts/`. Install the ZIP through BN's extension page. The `dist/` directory is also suitable for a development link.
+
+Pre-commit runs `vp staged` using the same Vite+ lint/format configuration as CI. Commit messages use Conventional Commits, for example `feat: add creator search`. Run `vp run format` and stage the result if formatting fails. [Vite+ hook documentation](https://viteplus.dev/guide/commit-hooks) explains the dispatcher and local preferences.
+
+Use only `@bilibili-notify/extension` for host APIs and its `/build` entry in build configuration. Export the Zod settings schema once; do not maintain a second settings-fields list in the manifest. Keep side effects inside `activate` or source lifecycle methods, use the host context for requests/state/secrets, and release resources when its signal aborts.
+
+The GitHub repository and extension namespace are different identities. `.bn/marketplace.json` explicitly names both; its namespace must match `extension.json`'s `namespace.extension` id. The market accepts public HTTPS assets; it does not log into private repositories.
+
+## Marketplace configuration
+
+`.bn/marketplace.json` is author configuration, not the generated market index:
+
+```json
+{
+  "schemaVersion": 1,
+  "repository": "owner/repository",
+  "name": "My extension market",
+  "namespace": "example",
+  "owner": { "name": "Author", "url": "https://example.com" }
+}
+```
+
+Keep `extension.json` at the repository root. The namespace must match the manifest id; the GitHub owner does not choose it implicitly. The tool uses the fixed rolling Release `bn-marketplace` and its `marketplace.json` asset.
+
+## Release and dry-run
+
+Update the version in `extension.json`, format it and commit the change using Conventional Commits. A local preview requires no GitHub token or existing tag:
+
+```sh
+vp run format
+git add .
+git commit -m "chore: prepare release"
+vp run release --tag v0.1.0 --dry-run
+```
+
+Dry-run actually checks commit messages, lint, formatting, types and tests, then builds and packages. It writes the ZIP, SHA256 and `marketplace-entry.json` into `artifacts/` without making GitHub requests. The preview entry is local; a real publication merges it with the existing remote index.
+
+Create an empty public GitHub repository at the configured owner/name, push the committed source, then push a matching version tag:
+
+```sh
+git tag v0.1.0
+git push origin main
+git push origin v0.1.0
+```
+
+`.github/workflows/check.yml` verifies branch/PR changes and their commit messages. The release workflow is triggered by `v*` tags, or manually with dry-run enabled by default. Its verification job has read permission; a dependent publication job alone gets `contents: write`. Both use the pinned Node/toolchain and frozen lockfile. The repository must allow that workflow permission. Prefer tags on the default branch; GitHub can require additional workflow permissions when a tag changes workflow files relative to that branch.
+
+For an authorized local publication, set `GITHUB_TOKEN` (or `GH_TOKEN`) with contents write access and run `vp run release --tag v0.1.0`. The working tree must be clean, and both the local and GitHub tag must point to the checked-out commit. The publisher repeats the checks; child build/check commands receive no GitHub publication token.
+
+Version assets are uploaded to a draft first, then published, before the rolling market index changes. An existing ZIP or checksum is reused only when its bytes match; a mismatch requires a new version. The index keeps other extensions, API versions, prereleases and revocations, and an old tag cannot downgrade its slot. Users add `owner/repository` or the GitHub repository URL in BN to discover this public index.
+
+## Resume a failed publication
+
+Rerun the same Actions job or local release command for the same tagged commit. The tool resumes a draft, reuses matching version assets and finishes the index update. During index replacement it uploads a candidate first, retains the previous asset while changing names, and attempts to restore it if promotion fails. A failed run reports failure even when its version Release was already published.
+
+The rolling index Release must remain mutable. The tool refuses to modify an immutable rolling Release and never changes repository security settings. GitHub asset names cannot be exchanged atomically: a process interruption between name changes can briefly leave the canonical index unavailable until the retry restores or finishes it. Actions publications are serialized; do not run local publications for the same repository concurrently.
+
+The SDK's npm package includes `DEVELOPMENT.md` for the current host API, source/adapter lifecycle, reports, settings and translations. SDK/create-tool npm versions are separate from this extension's version and its host `apiVersion` / `apiRevision`.

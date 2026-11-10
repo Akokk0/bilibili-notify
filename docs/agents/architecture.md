@@ -8,9 +8,10 @@
 packages/     平台中立业务核心(@bilibili-notify/*)
 apps/         Hono 服务端 + React Dashboard + Tauri 桌面壳 + wire 契约
 extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
+tools/        独立开发工具(不在宿主运行图里)
 ```
 
-`pnpm-workspace.yaml` glob:`["packages/*", "apps/*", "extensions/*"]`。单 workspace、单 lockfile,pnpm 默认 isolated 布局;`apps/server` 经 pnpm `workspace:*` 协议消费业务核心。Koishi 插件与 AstrBot 插件不在 dev 上(维护线 `koishi-astrbot-maintenance`,见 build-release.md)。
+`pnpm-workspace.yaml`包含`packages/*`、`apps/*`、`extensions/*`及独立开发工具`tools/*`。单workspace、单lockfile，pnpm默认isolated布局；`apps/server`经`workspace:*`消费业务核心，创建器/发布器不进入宿主运行图。Koishi与AstrBot插件不在dev上（维护线见build-release.md）。
 
 ## 源码守卫工具
 
@@ -36,8 +37,14 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 | `apps/server/src/bilibili/live/protocol`(`client.ts` / `codec.ts` / `events.ts` / `parser.ts`,原 blive 包) | 不是包(3a-24 平铺并进 `live/`) | 自实现的 B 站直播信息流 WSS 客户端(协议编解码 + 命令解析 + 哑管道 `connectLiveRoom`,连接参数全注入、无内部 HTTP/重连;建连口 `createSocket` 必填、只收地址,握手头由 `packages/http` 的 `websocket()` 出,blive 不依赖 `ws`;替代 blive-message-listener / tiny-bilibili-ws)。scripts/ 下有真机录帧 / 冒烟 / 登录态探针三个工具(**只读铁律:loadCookies 绝不传 refreshToken**) |
 | `packages/image` | `@bilibili-notify/image` | `ImageRenderer` —— Vue/UnoCSS SSR + 经 `PuppeteerLike` 接口包 puppeteer。作品卡的出卡入口是 `generatePostCard(post)`(吃中立的 `Post`,B 站动态由 `bilibili/dynamic` 的 `postFromDynamic` 先翻成 `Post`;拓展作品由服务端 `extensions/extension-source.ts` 的 `createExtensionSource` 翻成 `Post`、图先由拓展存进图库,出图器按引用取图(注入的 `resolveImageRef`));直播卡的出卡入口是 `generateLiveCard(input)`(吃中立的 `LiveCardInput`,图是图库引用、开播时刻是 ISO、人数只收精确数;B 站与拓展的 `LiveDetails` 都由 `live/live-card-input.ts` 的 `liveCardInputFromDetails` 翻,出图器不再认 B 站原始数据) |
 | `packages/ai` | `@bilibili-notify/ai` | `CommentaryGenerator` —— OpenAI 兼容的 chat / summary / commentary |
-| `packages/extension` | `@bilibili-notify/extension` | 拓展拿 BN 东西的**唯一一扇门**,只逐个转出。ctx / 挂载点 / upgrade 的本体住 `@bilibili-notify/internal/extension`,面板要画的 wire 形状住 `@bilibili-notify/internal/extension/wire`;其余域类型从 `internal` 根入口转出。只放类型不放实现(拓展会被打成自包含 bundle)。列出来的就是契约的全部 —— 加一格是一次明确的加宽决定 |
 | `packages/ui` | `@bilibili-notify/ui` | 纯展示 React 基础件 + design tokens(theme.css)。**源码直出**(exports 指 src,无构建步),仅 vite 系消费者(web / desktop 启动页)。组件清单在包内 README。TSelect/HourSelect 用 portal listbox;UiTextProvider 注入真实 useT,内部 useUiText 在渲染取 ui.* 包字典,仅依赖 internal/texts 运行时入口,不拥有 store |
+
+### 拓展开发工具（npm分发，业务核心仍私有）
+
+| 包 | npm名 | 角色 |
+| --- | --- | --- |
+| `packages/extension` | `@bilibili-notify/extension` | 拓展唯一契约入口，源码逐个转出internal的定义，发行物内联私有实现和声明；`/build`仅给构建配置使用。见ADR-0040 |
+| `tools/create-extension` | `@bilibili-notify/create-extension` | 独立开发CLI，创建完整仓外vp工程，带源码示例、锁文件、Git hooks和Actions；`bn-extension`复用ZIP/选版实现并执行提交校验与先包后索引发布。源码模板以`.tmpl`存放；归档不依赖私有包或主仓脚本路径。只在作者工程中执行，不属于服务进程的出网点 |
 
 ### 宿主适配
 

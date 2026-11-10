@@ -20,7 +20,7 @@ await writeFile(
 		{
 			...manifest,
 			private: false,
-			files: ["**/*.mjs", "**/*.d.mts", "README.md", "LICENSE"],
+			files: ["**/*.mjs", "**/*.d.mts", "README.md", "DEVELOPMENT.md", "LICENSE"],
 			types: target(source.types),
 			exports: Object.fromEntries(
 				Object.entries(source.exports).map(([key, value]) => [key, target(value)]),
@@ -35,6 +35,10 @@ await writeFile(
 await copyFile(
 	new URL("../README.md", import.meta.url),
 	new URL("../lib/README.md", import.meta.url),
+);
+await copyFile(
+	new URL("../DEVELOPMENT.md", import.meta.url),
+	new URL("../lib/DEVELOPMENT.md", import.meta.url),
 );
 await copyFile(
 	new URL("../../../LICENSE", import.meta.url),

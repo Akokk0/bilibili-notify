@@ -1,0 +1,24 @@
+import { extensionPackageFiles } from "@bilibili-notify/extension/build";
+import { defineConfig } from "vite-plus";
+
+export default defineConfig({
+  lint: {
+    ignorePatterns: ["dist/**", "artifacts/**"],
+    rules: { "no-unused-vars": "error" },
+  },
+  fmt: { ignorePatterns: ["dist/**", "artifacts/**", "pnpm-lock.yaml"] },
+  staged: { "*": "vp check" },
+  test: { include: ["src/**/*.test.ts"] },
+  pack: {
+    entry: ["src/index.ts"],
+    platform: "node",
+    target: "node24",
+    format: ["esm"],
+    outDir: "dist",
+    clean: true,
+    dts: false,
+    sourcemap: false,
+    deps: { alwaysBundle: [/.*/], onlyBundle: false },
+    plugins: [extensionPackageFiles(process.cwd())],
+  },
+});

@@ -1,0 +1,36 @@
+{
+	"name": "@bilibili-notify/create-extension",
+	"version": "0.0.0-dev",
+	"private": true,
+	"type": "module",
+	"description": "Create, check, package and publish a bilibili-notify extension",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Akokk0/bilibili-notify",
+		"directory": "tools/create-extension"
+	},
+	"bin": {
+		"create-extension": "lib/create.mjs",
+		"bn-extension": "lib/cli.mjs"
+	},
+	"files": [
+		"lib"
+	],
+	"scripts": {
+		"build": "vp pack && node scripts/prepare-package.mjs",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@bilibili-notify/internal": "workspace:*",
+		"fflate": "catalog:",
+		"zod": "catalog:"
+	},
+	"engines": {
+		"node": ">=24.15.0"
+	},
+	"publishConfig": {
+		"directory": "lib",
+		"access": "public"
+	}
+}

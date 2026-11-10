@@ -1,0 +1,8 @@
+import { describe, expect, it } from "vite-plus/test";
+import { greet } from "./greeting";
+
+describe("creator greeting", () => {
+  it("trims the creator's name and uses the configured greeting", () => {
+    expect(greet("  Alex  ", "Welcome")).toBe("Welcome, Alex!");
+  });
+});

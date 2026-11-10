@@ -1,0 +1,56 @@
+name: Release extension
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag matching extension.json, for example v0.1.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Check and package without publishing"
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: bn-marketplace-${{ github.repository }}
+  cancel-in-progress: false
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run && inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          cache: true
+      - name: Verify release without publishing
+        run: vp run release --tag "$TAG" --dry-run
+  publish:
+    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          cache: true
+      - name: Publish version assets then marketplace
+        run: vp run release --tag "$TAG"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

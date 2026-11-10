@@ -1,0 +1,24 @@
+import type { ExtensionContext, SourceDef } from "@bilibili-notify/extension";
+import { ok } from "@bilibili-notify/extension";
+import { z } from "zod";
+import { greet } from "./greeting";
+
+// The build plugin derives extension.json's settings from this one schema.
+export const settingsSchema = z.object({
+  greeting: z.string().default("Hello").meta({ label: "Greeting" }),
+});
+
+export function activate(ctx: ExtensionContext): void {
+  const settings = ctx.settings(settingsSchema);
+  const source: SourceDef = {
+    start() {},
+    stop() {},
+    async searchCreators(query) {
+      const read = settings.get();
+      if (!read.ok) return read;
+      const name = query.trim();
+      return ok({ candidates: name ? [{ externalId: name, name, bio: greet(name, read.settings.greeting) }] : [] });
+    },
+  };
+  ctx.registerSource(source);
+}

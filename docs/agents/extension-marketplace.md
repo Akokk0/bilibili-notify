@@ -67,6 +67,8 @@
 
 ## 第三方怎么开一个源
 
+SDK与创建器的仓外入口见[作者指南](../../packages/extension/DEVELOPMENT.md)；SDK的npm包自带这份指南。创建器默认附完整vp工程、提交hooks、检查与发布Actions，生成README说明`.bn/`配置、dry-run、版本tag和中断恢复。发行工具与第三方索引不需要私有internal包。
+
 作者要做的只有两件事,任何 https 静态托管都行(GitHub Release / Pages / 对象存储):
 
 1. 把拓展包(`vp pack` 出来的 `dist/`,打成 zip:必须含 `extension.json` + `index.mjs`,**建议带上 `README.md` 与 `CHANGELOG.md`**,各 ≤ 512KB —— BN 会把它们画在拓展详情页上,不带就是一页没有说明;带译文时包里也要有 `locales/<语言码>.json`)放到一个 https 地址,算出 sha256 与字节数。清单里的 `id` 必须是 `<你的命名空间>.<名字>`。除这些之外的文件装载那头一律拒收;开发入口 `devtools.mjs` 不进包,装包会拒。

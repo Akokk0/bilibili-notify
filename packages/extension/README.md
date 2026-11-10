@@ -28,7 +28,7 @@ export default {
 };
 ```
 
-完整拓展还需根目录的`extension.json`声明来源外观与能力。`settingsSchema`和`connectionSettingsSchema`可由构建辅助生成清单设置字段；清单结构、上报格式和ctx边界见[拓展契约](https://github.com/Akokk0/bilibili-notify/blob/dev/docs/1.0/extension-contract.md)。
+完整拓展还需根目录的`extension.json`声明来源外观与能力。`settingsSchema`和`connectionSettingsSchema`可由构建辅助生成清单设置字段。创建工程、当前1/0契约、生命周期、上报、设置、译文和发布见[作者指南](./DEVELOPMENT.md)，此文件也包含在npm包里，可在安装目录直接读取。
 
 ## 源码与发行目录
 
@@ -41,4 +41,4 @@ vp run -F @bilibili-notify/extension build
 vp -C packages/extension pm pack --out sdk.tgz
 ```
 
-`publishConfig.directory`使归档使用`lib/`中的公开清单。实际发行从生成目录进行；版本与发布动作按发行流程另行确认。本地源码里的`0.0.0-dev`不是已经上架的版本。
+`publishConfig.directory`使归档使用`lib/`中的公开清单。SDK与创建器各自的版本保存在对应`package.json`，与主程序的开发占位版本、宿主API档位分开。发行前先完成仓外工程验证，再发布已验过的归档。
