@@ -3178,9 +3178,9 @@
 	"panelUi.pages.up.TagEditDialog.7": "儲存中…",
 	"panelUi.pages.guide.guide-panel.1": "總覽與選擇",
 	"panelUi.pages.guide.guide-panel.2": "登入來源帳號",
-	"panelUi.pages.guide.guide-panel.3": "推送通道",
+	"panelUi.pages.guide.guide-panel.3": "推播通道",
 	"panelUi.pages.guide.guide-panel.4": "新增訂閱",
-	"panelUi.pages.guide.guide-panel.5": "圖片渲染",
+	"panelUi.pages.guide.guide-panel.5": "圖片繪製",
 	"panelUi.pages.guide.guide-panel.6": "AI 功能",
 	"cards.skin.globalSelectHint": "為未個別指定外觀的訂閱選擇預設卡片外觀，選取後會自動儲存。"
 }

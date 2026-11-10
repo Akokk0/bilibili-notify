@@ -81,6 +81,21 @@ afterEach(() => {
 
 describe("关于页 · 新手指引 section", () => {
 	it.each([
+		["push", "推播目標", "/targets"],
+		["render", "卡片繪製 · 樣式", "/cards"],
+		["ai", "智慧女僕", "/ai"],
+	] as const)(
+		"Taiwanese guide %s names the destination as it appears in navigation",
+		async (chapter, name, href) => {
+			i18n.set({ locale: "zh-TW", voice: "plain" });
+			await mount(`/about/guide/${chapter}`);
+			const links = await screen.findAllByRole("link", { name });
+			expect(links.every((link) => link.getAttribute("href") === href)).toBe(true);
+			expect(apiPatch).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
 		["zh-CN", "导览中适用的步骤全绿"],
 		["en", "all applicable guide steps are complete"],
 		["ja", "該当するガイドのステップが完了します"],
@@ -98,7 +113,7 @@ describe("关于页 · 新手指引 section", () => {
 	it.each([
 		["en", "AI is an optional addition to BN:", "AI"],
 		["ja", "AIはBNの任意機能です。", "AI"],
-		["zh-TW", "AI 是 BN 的選用功能，", "AI"],
+		["zh-TW", "AI 是 BN 的選用功能，", "智慧女僕"],
 	] as const)(
 		"%s translates optional AI guidance without changing the setup link",
 		async (locale, opening, link) => {
@@ -116,7 +131,7 @@ describe("关于页 · 新手指引 section", () => {
 	it.each([
 		["en", "Enable rendering for your deployment", "Cards"],
 		["ja", "デプロイ方法に合わせて有効にする", "カード"],
-		["zh-TW", "依部署方式啟用", "卡片"],
+		["zh-TW", "依部署方式啟用", "卡片繪製 · 樣式"],
 	] as const)(
 		"%s translates rendering guidance while preserving browser configuration names",
 		async (locale, heading, link) => {
@@ -232,9 +247,9 @@ describe("关于页 · 新手指引 section", () => {
 		],
 		[
 			"zh-TW",
-			["總覽與選擇", "登入來源帳號", "推送通道", "新增訂閱", "圖片渲染", "AI 功能"],
+			["總覽與選擇", "登入來源帳號", "推播通道", "新增訂閱", "圖片繪製", "AI 功能"],
 			"QQ 連線方式：如何選擇",
-			"群組推送",
+			"群組推播",
 		],
 	] as const)(
 		"%s translates chapter navigation and overview without changing routes or progress",
