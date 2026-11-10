@@ -1298,3 +1298,82 @@ describe("stackingOf", () => {
 		expect(stackingOf(card([at("a", 1, 1, 4)]), "没这个块")).toEqual({ above: [], below: [] });
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、まずこのスキンに名前を付けてくださいね。",
+		"ご主人様、まだ名前のないフォントの行がありますよ。",
+		"ご主人様、スキン名は40文字以内にしてくださいね。現在は41文字あります。",
+		"ご主人様、作者は40文字以内にしてくださいね。現在は41文字あります。",
+		"ご主人様、説明は200文字以内にしてくださいね。現在は201文字あります。",
+	],
+	[
+		"zh-TW",
+		"主人，先替這套外觀取個名字吧。",
+		"主人，有一列字型還沒取名字喔。",
+		"主人，外觀名稱最多 40 個字元，目前有 41 個，請縮短一些喔。",
+		"主人，作者最多 40 個字元，目前有 41 個，請縮短一些喔。",
+		"主人，說明最多 200 個字元，目前有 201 個，請縮短一些喔。",
+	],
+] as const)(
+	"%s 女仆元信息与字体校验保留原文且随当前语言取字",
+	(locale, empty, font, name, author, description) => {
+		const before = manifest();
+		const blank = setSkinMeta(before, { name: " " });
+		i18n.set({ locale, voice: "maid" });
+		expect(skinMetaError(blank)).toBe(empty);
+		for (const [key, value, expected] of [
+			["name", "字".repeat(41), name],
+			["author", "字".repeat(41), author],
+			["description", "字".repeat(201), description],
+		] as const) {
+			const draft = setSkinMeta(before, { [key]: value });
+			expect(skinMetaError(draft)).toBe(expected);
+			expect(draft[key]).toBe(value);
+		}
+		const fonts = { ...before, fonts: [{ family: " ", asset: "asset:assets/original.woff2" }] };
+		expect(fontsError(fonts, ["assets/original.woff2"])).toBe(font);
+		expect(fonts.fonts[0]).toEqual({ family: " ", asset: "asset:assets/original.woff2" });
+		expect(before.name).toBe("测试皮肤");
+	},
+);
+
+it.each([
+	[
+		"ja",
+		"ご主人様、調整項目のキー「Bad_Key」は使えませんよ。accent や glass-opacity のように、小文字の英字で始まるkebab-caseにしてくださいね。",
+		"ご主人様、調整項目「accent」に表示名を付けてくださいね。",
+		"ご主人様、調整項目「accent」の表示名は24文字以内にしてくださいね。",
+		"ご主人様、調整項目「Original blur 原文」に問題があります：最小値40が最大値0を超えています。",
+	],
+	[
+		"zh-TW",
+		"主人，調整項目鍵名「Bad_Key」不能使用喔，請用小寫英文字母開頭的 kebab-case，例如 accent 或 glass-opacity。",
+		"主人，請替調整項目「accent」取個名稱喔。",
+		"主人，調整項目「accent」的名稱最多 24 個字元喔。",
+		"主人，調整項目「Original blur 原文」有個問題喔：最小值 40 大於最大值 0。",
+	],
+] as const)("%s 女仆旋钮校验保留键名、显示名和越界数值", (locale, invalid, empty, long, range) => {
+	const knob = { key: "accent", label: "Original accent 原文", type: "color", default: "#123456" };
+	const withOne = (k: unknown) => ({ ...manifest(), knobs: [k] }) as CardSkinManifest;
+	const unsafe = withOne({ ...knob, key: "Bad_Key" });
+	i18n.set({ locale, voice: "maid" });
+	expect(knobsError(unsafe)).toBe(invalid);
+	expect(unsafe.knobs?.[0].key).toBe("Bad_Key");
+	expect(knobsError(withOne({ ...knob, label: " " }))).toBe(empty);
+	const oversized = withOne({ ...knob, label: "字".repeat(25) });
+	expect(knobsError(oversized)).toBe(long);
+	expect(oversized.knobs?.[0].label).toBe("字".repeat(25));
+	const numeric = withOne({
+		key: "blur",
+		label: "Original blur 原文",
+		type: "number",
+		default: 8,
+		min: 40,
+		max: 0,
+	});
+	expect(knobsError(numeric)).toBe(range);
+	expect(numeric.knobs?.[0]).toMatchObject({ default: 8, min: 40, max: 0 });
+	expect(knobsError(withOne(knob))).toBeNull();
+});

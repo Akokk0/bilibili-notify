@@ -953,3 +953,39 @@ describe("编辑器 · 皮肤资产与自带字体", () => {
 		expect(screen.queryByRole("button", { name: /添加字体/ })).toBeNull();
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、左で選んだシーンに出るブロックだけを並べていますよ。画像一覧や動画など、そのシーンだけのブロックは切り替えると現れます。ブロックを選ぶと右のインスペクターで位置を変えられます。カバー画像などの1枚画像は上下の端を引くと高さが変わり、それ以外は内容に合わせて高くなります。",
+		"ご主人様、内蔵の既定スキンは編集できませんよ。スキンライブラリーに戻り、「コピーして編集」してから編集してくださいね。",
+		"保存",
+		"ライブラリーに戻る",
+	],
+	[
+		"zh-TW",
+		"主人，這裡只排列左側所選場景會出現的區塊喔；圖庫、影片等特定場景的區塊，切換後才會顯示。選一個區塊，就能在右側檢查器改位置；封面這類單張圖片可拖曳上下邊緣調高度，其他區塊則由內容撐高。",
+		"主人，內建預設外觀不能編輯喔；請先回外觀資源庫「複製並編輯」，再來修改吧。",
+		"儲存",
+		"返回資源庫",
+	],
+] as const)(
+	"%s 女仆场景指导与内置只读提示切语不保存，并返回资源库分类",
+	async (locale, scene, readonly, saveLabel, back) => {
+		mockApi({ builtin: true });
+		renderEditor();
+		await screen.findByText("封面图");
+		act(() => i18n.set({ locale, voice: "maid" }));
+		expect(screen.getByText(scene)).toBeTruthy();
+		expect(screen.getByText(readonly)).toBeTruthy();
+		expect((screen.getByRole("button", { name: saveLabel }) as HTMLButtonElement).disabled).toBe(
+			true,
+		);
+		expect(api.put).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: back }));
+		expect((await screen.findByLabelText("返回位置")).textContent).toBe(
+			"/library?category=card-skins",
+		);
+		expect(api.put).not.toHaveBeenCalled();
+	},
+);

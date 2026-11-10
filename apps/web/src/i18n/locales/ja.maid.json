@@ -606,5 +606,16 @@
 	"skinUi.SkinInspector.116": "ご主人様、画像とフォントはこのスキンのパッケージに保存し、書き出すZIPにも含めますよ。ブロックのCSSやHTMLから asset:<name> で参照できます。",
 	"skinUi.SkinInspector.131": "ご主人様、先に上でフォントファイル（woff2 / woff / ttf / otf）をアップロードすると、ここで選べるようになりますよ。",
 	"skinUi.SkinInspector.knobLimit#other": "ご主人様、調整項目はすでに{count}個あります。これ以上は追加できませんよ。",
-	"skinUi.SkinInspector.fontLimit#other": "ご主人様、フォントはすでに{count}個あります。これ以上は追加できませんよ。"
+	"skinUi.SkinInspector.fontLimit#other": "ご主人様、フォントはすでに{count}個あります。これ以上は追加できませんよ。",
+	"skinUi.skin-draft-ops.2": "ご主人様、まずこのスキンに名前を付けてくださいね。",
+	"skinUi.skin-draft-ops.6#other": "ご主人様、{value0}は{count}文字以内にしてくださいね。現在は{value2}文字あります。",
+	"skinUi.skin-draft-ops.28": "ご主人様、まだ名前のないフォントの行がありますよ。",
+	"skinUi.skin-draft-ops.9": "ご主人様、調整項目のキー「{value0}」は使えませんよ。accent や glass-opacity のように、小文字の英字で始まるkebab-caseにしてくださいね。",
+	"skinUi.skin-draft-ops.11": "ご主人様、調整項目「{value0}」に表示名を付けてくださいね。",
+	"skinUi.skin-draft-ops.12#other": "ご主人様、調整項目「{value0}」の表示名は{count}文字以内にしてくださいね。",
+	"skinUi.skin-draft-ops.13": "ご主人様、調整項目「{value0}」に問題があります：{value1}",
+	"skinUi.SkinCanvas.1": "ご主人様、このスキンにはこの種類のカードがありません。描画には内蔵の既定スキンを使いますよ。",
+	"skinUi.SkinCanvas.9#other": "ご主人様、このカードにはすでに{count}個のブロックがあります。これ以上は追加できませんよ。",
+	"skinUi.CardSkinEditor.12": "ご主人様、左で選んだシーンに出るブロックだけを並べていますよ。画像一覧や動画など、そのシーンだけのブロックは切り替えると現れます。ブロックを選ぶと右のインスペクターで位置を変えられます。カバー画像などの1枚画像は上下の端を引くと高さが変わり、それ以外は内容に合わせて高くなります。",
+	"skinUi.CardSkinEditor.14": "ご主人様、内蔵の既定スキンは編集できませんよ。スキンライブラリーに戻り、「コピーして編集」してから編集してくださいね。"
 }

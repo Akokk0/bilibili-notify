@@ -1388,3 +1388,61 @@ describe("网格画布 · 指到哪个块就报出来", () => {
 		expect(got.at(-1)).toBe("notice");
 	});
 });
+
+it.each([
+	[
+		"ja",
+		"ご主人様、このスキンにはこの種類のカードがありません。描画には内蔵の既定スキンを使いますよ。",
+		"ご主人様、このカードにはすでに40個のブロックがあります。これ以上は追加できませんよ。",
+		"ブロックを追加",
+	],
+	[
+		"zh-TW",
+		"主人，這套外觀沒有定義此類型的卡片，出圖時會使用內建預設外觀喔。",
+		"主人，這張卡已經有 40 個區塊，不能再新增了喔。",
+		"新增區塊",
+	],
+] as const)("%s 女仆画布回落与块上限说明不自动接管或增加块", (locale, missing, full, add) => {
+	const onSelect = vi.fn();
+	const onAdopt = vi.fn();
+	const onAdd = vi.fn();
+	const view = render(
+		<SkinCanvas
+			kind="live"
+			scene="streaming"
+			card={undefined}
+			selection={null}
+			onSelect={onSelect}
+			onAdopt={onAdopt}
+		/>,
+	);
+	act(() => i18n.set({ locale, voice: "maid" }));
+	expect(screen.getByText(missing)).toBeTruthy();
+	expect(onAdopt).not.toHaveBeenCalled();
+	expect(onSelect).not.toHaveBeenCalled();
+	const base = cardOf(manifest(), "live");
+	if (!base) throw new Error("Missing fixture card");
+	const card = {
+		...base,
+		blocks: Array.from({ length: 40 }, (_, i) => ({
+			id: `original-${i}`,
+			kind: "builtin" as const,
+			builtin: "creatorName",
+			grid: { row: i + 1, column: 1, span: 12 },
+		})),
+	};
+	view.rerender(
+		<SkinCanvas
+			kind="live"
+			scene="streaming"
+			card={card}
+			selection={null}
+			onSelect={onSelect}
+			onAdd={onAdd}
+		/>,
+	);
+	expect(screen.getByText(full)).toBeTruthy();
+	expect(screen.queryByRole("button", { name: add })).toBeNull();
+	expect(onAdd).not.toHaveBeenCalled();
+	expect(onSelect).not.toHaveBeenCalled();
+});

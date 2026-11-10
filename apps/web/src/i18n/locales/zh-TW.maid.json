@@ -606,5 +606,16 @@
 	"skinUi.SkinInspector.116": "主人，圖片和字型都放在這套外觀的套件裡，匯出的 ZIP 也會帶上它們喔。在區塊的 CSS 或 HTML 中，用 asset:<name> 就能引用。",
 	"skinUi.SkinInspector.131": "主人，先在上方上傳一份字型檔（woff2 / woff / ttf / otf），這裡才選得到喔。",
 	"skinUi.SkinInspector.knobLimit#other": "主人，已經有 {count} 個調整項目，不能再新增了喔。",
-	"skinUi.SkinInspector.fontLimit#other": "主人，已經有 {count} 款字型，不能再新增了喔。"
+	"skinUi.SkinInspector.fontLimit#other": "主人，已經有 {count} 款字型，不能再新增了喔。",
+	"skinUi.skin-draft-ops.2": "主人，先替這套外觀取個名字吧。",
+	"skinUi.skin-draft-ops.6#other": "主人，{value0}最多 {count} 個字元，目前有 {value2} 個，請縮短一些喔。",
+	"skinUi.skin-draft-ops.28": "主人，有一列字型還沒取名字喔。",
+	"skinUi.skin-draft-ops.9": "主人，調整項目鍵名「{value0}」不能使用喔，請用小寫英文字母開頭的 kebab-case，例如 accent 或 glass-opacity。",
+	"skinUi.skin-draft-ops.11": "主人，請替調整項目「{value0}」取個名稱喔。",
+	"skinUi.skin-draft-ops.12#other": "主人，調整項目「{value0}」的名稱最多 {count} 個字元喔。",
+	"skinUi.skin-draft-ops.13": "主人，調整項目「{value0}」有個問題喔：{value1}",
+	"skinUi.SkinCanvas.1": "主人，這套外觀沒有定義此類型的卡片，出圖時會使用內建預設外觀喔。",
+	"skinUi.SkinCanvas.9#other": "主人，這張卡已經有 {count} 個區塊，不能再新增了喔。",
+	"skinUi.CardSkinEditor.12": "主人，這裡只排列左側所選場景會出現的區塊喔；圖庫、影片等特定場景的區塊，切換後才會顯示。選一個區塊，就能在右側檢查器改位置；封面這類單張圖片可拖曳上下邊緣調高度，其他區塊則由內容撐高。",
+	"skinUi.CardSkinEditor.14": "主人，內建預設外觀不能編輯喔；請先回外觀資源庫「複製並編輯」，再來修改吧。"
 }
