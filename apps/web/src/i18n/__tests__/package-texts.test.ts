@@ -10,6 +10,33 @@ afterEach(() => {
 	i18n.set({ locale: "zh-CN", voice: "maid" });
 });
 
+it.each([
+	[
+		"ja",
+		"ご主人様、Bilibili Notifyサーバーに接続できません。",
+		"ご主人様、サーバーが起動していないか、プロキシーに遮断されている可能性があります。サービスが稼働しているか確認してくださいね。",
+		"Bilibili Notifyサーバーに接続できません",
+		"サーバーが起動していないか、プロキシーに遮断されている可能性があります。サービスが稼働しているか確認してください。",
+	],
+	[
+		"zh-TW",
+		"主人，無法連線至 Bilibili Notify 後端。",
+		"主人，後端可能尚未啟動，或遭代理伺服器阻擋。請確認服務是否正在執行喔。",
+		"無法連線至 Bilibili Notify 後端",
+		"後端可能尚未啟動，或遭代理伺服器阻擋。請確認服務是否正在執行。",
+	],
+] as const)(
+	"%s 既有取字入口区分连接错误的女仆与平实说明",
+	(locale, maidTitle, maidHint, plainTitle, plainHint) => {
+		i18n.set({ locale, voice: "maid" });
+		expect(i18n.t("panelUi.components.shell-states.3")).toBe(maidTitle);
+		expect(i18n.t("panelUi.components.shell-states.5")).toBe(maidHint);
+		i18n.set({ voice: "plain" });
+		expect(i18n.t("panelUi.components.shell-states.3")).toBe(plainTitle);
+		expect(i18n.t("panelUi.components.shell-states.5")).toBe(plainHint);
+	},
+);
+
 describe("面板字典垫着包字典", () => {
 	it.each([
 		["ja", "ご主人様、選んでくださいね。", "選択してください"],

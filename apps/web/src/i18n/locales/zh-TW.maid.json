@@ -636,5 +636,7 @@
 	"skinUi.SkinSection.2": "主人，上傳外觀套件就能替面板換裝喔，也可以到女僕聊天側欄開啟「新增外觀工坊」，請她製作一套。",
 	"skinUi.SkinSection.13": "主人，如果外觀讓畫面難以辨識，請在網址列加上 ",
 	"skinUi.SkinSection.16": "主人，確定刪除「{value0}」嗎？刪除後就無法還原了喔。",
-	"skinUi.SkinSection.19": "主人，「{value0}」有淺色和深色兩個版本，要刪除哪個部分呢？刪除後就無法還原了喔。"
+	"skinUi.SkinSection.19": "主人，「{value0}」有淺色和深色兩個版本，要刪除哪個部分呢？刪除後就無法還原了喔。",
+	"panelUi.components.shell-states.3": "主人，無法連線至 Bilibili Notify 後端。",
+	"panelUi.components.shell-states.5": "主人，後端可能尚未啟動，或遭代理伺服器阻擋。請確認服務是否正在執行喔。"
 }

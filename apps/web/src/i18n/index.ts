@@ -29,7 +29,7 @@ import { readLocalePreference, readVoicePreference } from "./preference";
 /** 键的集合从简体中文那份取。 */
 export type WebTextKey = DictKey<typeof zhCN>;
 
-// 平实四语齐全；日文与台湾繁体女仆层逐模块补齐，未覆盖的句子沿用本语言平实层。
+// 平实四语及简中、日文、台湾繁体女仆层齐全；英文仅提供平实版。
 export const DICTS = {
 	"zh-CN": { plain: zhCN, maid: zhCNMaid },
 	"zh-TW": { plain: zhTW, maid: zhTWMaid },
