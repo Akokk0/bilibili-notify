@@ -712,7 +712,7 @@ export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) 
 				</div>
 			))}
 			<AddRowButton onClick={() => onChange([...value, ""])}>
-				{t("ui.form.addRow", { hint: placeholder ? `（${placeholder}）` : "" })}
+				{placeholder ? t("ui.form.addRowWithHint", { hint: placeholder }) : t("ui.form.addRow")}
 			</AddRowButton>
 		</div>
 	);

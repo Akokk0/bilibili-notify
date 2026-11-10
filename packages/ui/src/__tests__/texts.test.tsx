@@ -1,14 +1,69 @@
 // @vitest-environment jsdom
 import { createI18n, type Locale } from "@bilibili-notify/internal/i18n";
 import { type PackageTextKey, withPackageDicts } from "@bilibili-notify/internal/texts";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { ConfirmDialog } from "../dialog";
-import { TColor, TSelect } from "../form-controls";
+import { ArrayEditor, TColor, TSelect } from "../form-controls";
 import { UiTextProvider } from "../texts";
 import { TriStateChip } from "../tri-state";
 
 afterEach(cleanup);
+
+it("array editor hint punctuation follows locale while input and literal placeholders stay intact", () => {
+	const texts = createI18n<PackageTextKey, Locale>({
+		dicts: withPackageDicts({
+			"zh-CN": { plain: {} },
+			en: { plain: {} },
+			ja: { plain: {} },
+			"zh-TW": { plain: {} },
+		}),
+		fallback: "zh-CN",
+		locale: "en",
+		voice: "plain",
+	});
+	const onChange = vi.fn();
+	const tree = () => (
+		<UiTextProvider t={texts.state().t}>
+			<ArrayEditor
+				value={["Original entry {name}"]}
+				placeholder="Original hint {name}"
+				onChange={onChange}
+			/>
+		</UiTextProvider>
+	);
+	const { rerender } = render(tree());
+	const input = screen.getByDisplayValue("Original entry {name}");
+	for (const [locale, voice, label] of [
+		["en", "plain", "+ Add a row (Original hint {name})"],
+		["zh-CN", "plain", "+ 添加一行（Original hint {name}）"],
+		["zh-CN", "maid", "+ 添加一行（Original hint {name}）吧，主人"],
+		["ja", "plain", "+ 行を追加（Original hint {name}）"],
+		["ja", "maid", "+ 行を追加（Original hint {name}）、ご主人様"],
+		["zh-TW", "plain", "+ 新增一列（Original hint {name}）"],
+		["zh-TW", "maid", "+ 新增一列（Original hint {name}）吧，主人"],
+	] as const) {
+		texts.set({ locale, voice });
+		rerender(tree());
+		expect(screen.getByRole("button", { name: label })).toBeTruthy();
+		expect(screen.getByDisplayValue("Original entry {name}")).toBe(input);
+	}
+	expect(onChange).not.toHaveBeenCalled();
+	fireEvent.click(
+		screen.getByRole("button", { name: "+ 新增一列（Original hint {name}）吧，主人" }),
+	);
+	expect(onChange).toHaveBeenCalledExactlyOnceWith(["Original entry {name}", ""]);
+	texts.set({ locale: "en", voice: "plain" });
+	rerender(
+		<UiTextProvider t={texts.state().t}>
+			<ArrayEditor value={["Original entry {name}"]} onChange={onChange} />
+		</UiTextProvider>,
+	);
+	expect(screen.getByRole("button", { name: "+ Add a row" })).toBeTruthy();
+	expect(screen.getByDisplayValue("Original entry {name}")).toBe(input);
+	expect(onChange).toHaveBeenCalledTimes(1);
+});
+
 it("Japanese and Taiwanese maid text updates an existing select without changing its value", () => {
 	const texts = createI18n<PackageTextKey, Locale>({
 		dicts: withPackageDicts({
