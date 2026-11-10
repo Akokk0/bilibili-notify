@@ -23,6 +23,7 @@ import { WebSocket } from "ws";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { i18n } from "../i18n/index.js";
 import { type ServerHandle, startServer } from "../index.js";
+import { makeZeroGlobals } from "../migration/__tests__/zero-fixtures.js";
 import { openTestGeneration } from "./support/generation.js";
 
 vi.mock("../bilibili/source.js", async (importOriginal) => {
@@ -108,6 +109,53 @@ describe("语言与口吻两项设置接在开机路径上", () => {
 		await patch(port, { locale: null, voice: null });
 		expect(i18n.state().locale).toBe("zh-CN");
 		expect(i18n.state().voice).toBe("maid");
+	});
+
+	it.each(["zh-CN", "en", "ja", "zh-TW"] as const)(
+		"新装首启不指定语言，面板首次选定%s后重新开机仍保留该语言",
+		async (locale) => {
+			const firstPort = await boot();
+			const firstResponse = await fetch(`http://127.0.0.1:${firstPort}/api/settings`);
+			expect(firstResponse.status).toBe(200);
+			const first = (await firstResponse.json()) as SettingsResponse;
+			expect(first.core.locale).toBeUndefined();
+			expect(first.core.voice).toBeUndefined();
+
+			await patch(firstPort, { locale });
+			await handle?.close("locale persistence restart");
+			handle = undefined;
+			i18n.set({ locale: locale === "en" ? "ja" : "en", voice: "plain" });
+			const secondPort = await boot();
+			const secondResponse = await fetch(`http://127.0.0.1:${secondPort}/api/settings`);
+			expect(secondResponse.status).toBe(200);
+			const second = (await secondResponse.json()) as SettingsResponse;
+			expect(second.core.locale).toBe(locale);
+			expect(second.core.voice).toBeUndefined();
+			expect(i18n.state()).toMatchObject({ locale, voice: locale === "en" ? "plain" : "maid" });
+		},
+	);
+
+	it("0.x升级固定简中，切语言与重启保留旧版手写模板", async () => {
+		const legacy = makeZeroGlobals();
+		legacy.defaults.templates.liveStart = "Original legacy template 原文";
+		await mkdir(join(dataDir, "state"), { recursive: true });
+		await writeFile(join(dataDir, "state", "globals.json"), JSON.stringify(legacy));
+		i18n.set({ locale: "ja", voice: "plain" });
+		const firstPort = await boot();
+		const response = await fetch(`http://127.0.0.1:${firstPort}/api/settings`);
+		expect(response.status).toBe(200);
+		const migrated = (await response.json()) as SettingsResponse;
+		expect(migrated.core.locale).toBe("zh-CN");
+		expect(migrated.core.defaults.templates.liveStart).toBe("Original legacy template 原文");
+		await patch(firstPort, { locale: "zh-TW" });
+		await handle?.close("upgraded locale persistence restart");
+		handle = undefined;
+		const secondPort = await boot();
+		const next = await fetch(`http://127.0.0.1:${secondPort}/api/settings`);
+		expect(next.status).toBe(200);
+		const restarted = (await next.json()) as SettingsResponse;
+		expect(restarted.core.locale).toBe("zh-TW");
+		expect(restarted.core.defaults.templates.liveStart).toBe("Original legacy template 原文");
 	});
 
 	it("真实HTTP改四语触发globals帧，断线期间改语言后重连hydrate能重取当前设置", async () => {
