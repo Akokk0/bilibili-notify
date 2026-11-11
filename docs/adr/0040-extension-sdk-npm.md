@@ -27,4 +27,6 @@
 
 ## 实施与发行待定
 
-6-02至6-05已完成本地交付，包名为`@bilibili-notify/extension`与`@bilibili-notify/create-extension`。SDK和创建器的初始发行版本、账号权限和实际发布仍按决策4确认；本机候选归档不算已经上架。其他契约能力是否加宽仍按真实使用者另定。
+6-02至6-05已完成本地交付，包名为`@bilibili-notify/extension`与`create-bn-ext`。SDK和创建器的初始发行版本、账号权限和实际发布仍按决策4确认；本机候选归档不算已经上架。其他契约能力是否加宽仍按真实使用者另定。
+
+2026-11-11主人要求像`npm create vue`/`pnpm create vue`一样使用，提出`bn`和`bn-ext`短名；创建器候选改为`create-bn-ext`，对应`npm create bn-ext`/`pnpm create bn-ext`，公开可执行名与包名匹配。原候选未执行发行；公开版本查询404只说明未查到，名称与权限仍在实际发行时核对。

@@ -1,5 +1,5 @@
 {
-	"name": "@bilibili-notify/create-extension",
+	"name": "create-bn-ext",
 	"version": "0.0.0-dev",
 	"private": true,
 	"type": "module",
@@ -11,7 +11,7 @@
 		"directory": "tools/create-extension"
 	},
 	"bin": {
-		"create-extension": "lib/create.mjs",
+		"create-bn-ext": "lib/create.mjs",
 		"bn-extension": "lib/cli.mjs"
 	},
 	"files": [

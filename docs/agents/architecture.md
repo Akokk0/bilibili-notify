@@ -44,7 +44,7 @@ tools/        独立开发工具(不在宿主运行图里)
 | 包 | npm名 | 角色 |
 | --- | --- | --- |
 | `packages/extension` | `@bilibili-notify/extension` | 拓展唯一契约入口，源码逐个转出internal的定义，发行物内联私有实现和声明；`/build`仅给构建配置使用。见ADR-0040 |
-| `tools/create-extension` | `@bilibili-notify/create-extension` | 独立开发CLI，创建完整仓外vp工程，带源码示例、锁文件、Git hooks和Actions；`bn-extension`复用ZIP/选版实现并执行提交校验与先包后索引发布。源码模板以`.tmpl`存放；归档不依赖私有包或主仓脚本路径。只在作者工程中执行，不属于服务进程的出网点 |
+| `tools/create-extension` | `create-bn-ext` | 独立开发CLI，创建完整仓外vp工程，带源码示例、锁文件、Git hooks和Actions；`bn-extension`复用ZIP/选版实现并执行提交校验与先包后索引发布。源码模板以`.tmpl`存放；归档不依赖私有包或主仓脚本路径。只在作者工程中执行，不属于服务进程的出网点 |
 
 ### 宿主适配
 

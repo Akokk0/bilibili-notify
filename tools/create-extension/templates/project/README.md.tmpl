@@ -6,6 +6,8 @@ This is a standalone subscription-source example. It does not contact a platform
 
 Start with [AGENTS.md](AGENTS.md). It points to the installed SDK's agent contract guide and the [bn-extension-development skill](.agents/skills/bn-extension-development/SKILL.md). Codex and Claude have their own discovery entries with one shared workflow body. The SDK also ships the skill for projects created without this scaffold.
 
+pnpm may separately offer to link the SDK dependency's skills after you review them. The project-owned entries above are already generated; the creator does not grant dependency-skill permissions or change your global agent configuration. See [pnpm's skill approval documentation](https://pnpm.io/agent-skills).
+
 ## First install
 
 Install the global [Vite+ CLI](https://viteplus.dev/guide/), Node matching `.node-version`, and Git 2.32+. The creator has already initialized Git, installed dependencies, generated `pnpm-lock.yaml` and enabled hooks. For another checkout:
@@ -32,6 +34,8 @@ vp run pack:extension
 ```
 
 `vp run verify` runs all checks, then builds and packages the extension. ZIPs and SHA256 files go into `artifacts/`. Install the ZIP through BN's extension page. The `dist/` directory is also suitable for a development link.
+
+`pnpm-workspace.yaml` keeps the project isolated and permits Vite+'s core version only for the two bundled Vitest consumers of the Vite alias. Other peer checks remain active. Recheck these entries when upgrading the Vite+ major or adding plugins.
 
 Pre-commit runs `vp staged` using the same Vite+ lint/format configuration as CI. Commit messages use Conventional Commits, for example `feat: add creator search`. Run `vp run format` and stage the result if formatting fails. [Vite+ hook documentation](https://viteplus.dev/guide/commit-hooks) explains the dispatcher and local preferences.
 

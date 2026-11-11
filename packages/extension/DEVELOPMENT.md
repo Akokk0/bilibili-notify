@@ -9,7 +9,8 @@
 创建器默认生成独立Git工程、示例来源、完整vp命令、锁文件、提交hooks与GitHub Actions：
 
 ```sh
-vp dlx @bilibili-notify/create-extension@alpha my-extension --id example.demo --repository owner/repository --name "Example"
+pnpm create bn-ext@alpha
+# 也可用 npm create bn-ext@alpha
 cd my-extension
 vp run verify
 git add .
@@ -17,6 +18,8 @@ git commit -m "feat: create extension"
 ```
 
 创建器使用`.node-version`固定Node，`packageManager`固定包管理器，开发依赖也固定版本。后续克隆用`vp install --frozen-lockfile`。若使用`--no-git`，先在工程根初始化自己的Git仓库，再运行`vp hooks enable`；安装过程会避开外层仓库。
+
+终端向导依次询问工程目录、拓展ID、GitHub仓库和显示名；回车可用目录和显示名的默认值，输错会在当前项重问。脚本仍可用`vp dlx create-bn-ext@alpha my-extension --id example.demo --repository owner/repository --name "Example"`完整传参；非终端缺参数时直接退出。发布到`latest`后可省略`@alpha`，生成工程的开发命令仍统一用vp。
 
 `example.demo`里的`example`是市场命名空间，与GitHub的`owner`无关。第三方清单id必须包含这个命名空间；无点的id留给官方源。作者可选择自己的命名空间，但同一BN实例不允许两个不同来源占用同一命名空间。
 

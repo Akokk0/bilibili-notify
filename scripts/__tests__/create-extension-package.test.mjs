@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -11,13 +11,17 @@ import { openExtensionPackage } from "../../apps/server/src/extensions/install.j
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const { parse: parseYaml } = createRequire(join(REPO, "apps/server/package.json"))("yaml");
 const { packageManager } = JSON.parse(await readFile(join(REPO, "package.json"), "utf8"));
+const { name: toolsName } = JSON.parse(
+	await readFile(join(REPO, "tools/create-extension/package.json"), "utf8"),
+);
 
-function run(command, args, cwd, env = {}) {
+function run(command, args, cwd, env = {}, input) {
 	try {
 		return execFileSync(command, args, {
 			cwd,
 			encoding: "utf8",
 			stdio: "pipe",
+			input,
 			timeout: 90_000,
 			maxBuffer: 8 * 1024 * 1024,
 			env: {
@@ -56,7 +60,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			JSON.stringify({
 				private: true,
 				packageManager,
-				devDependencies: { "@bilibili-notify/create-extension": `file:${tools}` },
+				devDependencies: { [toolsName]: `file:${tools}` },
 			}),
 		);
 		run("vp", ["install", "--offline", "--ignore-scripts", "--no-frozen-lockfile"], host);
@@ -66,13 +70,128 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 		if (root) await rm(root, { recursive: true, force: true });
 	}, 60_000);
 
+	it("npm create bn-ext能找到创建器并生成使用同一发布工具的工程", async () => {
+		const manifest = JSON.parse(
+			await readFile(join(host, "node_modules", toolsName, "package.json"), "utf8"),
+		);
+		expect(manifest.name).toBe("create-bn-ext");
+		const project = join(root, "short-entry");
+		run(
+			"vp",
+			[
+				"exec",
+				"npm",
+				"--offline",
+				"create",
+				`bn-ext@${manifest.version}`,
+				"--",
+				project,
+				"--id",
+				"example.short",
+				"--repository",
+				"owner/short",
+				"--sdk",
+				`file:${sdk}`,
+				"--tools",
+				`file:${tools}`,
+				"--offline",
+			],
+			host,
+		);
+		const generated = JSON.parse(await readFile(join(project, "package.json"), "utf8"));
+		expect(generated.devDependencies["create-bn-ext"]).toBe(`file:${tools}`);
+		run("vp", ["run", "verify"], project);
+	}, 120_000);
+
+	it("交互向导收集目录和信息，生成的工程通过全部门禁", async () => {
+		const project = join(root, "wizard");
+		run(
+			"vp",
+			[
+				"exec",
+				"create-bn-ext",
+				"--interactive",
+				"--sdk",
+				`file:${sdk}`,
+				"--tools",
+				`file:${tools}`,
+				"--offline",
+			],
+			host,
+			{},
+			`${project}\nexample.wizard\nOwner/Wizard\nWizard extension\n`,
+		);
+		expect(JSON.parse(await readFile(join(project, "extension.json"), "utf8"))).toMatchObject({
+			id: "example.wizard",
+			name: "Wizard extension",
+		});
+		expect(JSON.parse(await readFile(join(project, ".bn/marketplace.json"), "utf8"))).toMatchObject(
+			{
+				repository: "owner/wizard",
+				namespace: "example",
+			},
+		);
+		run("vp", ["run", "verify"], project);
+	}, 120_000);
+
+	it("向导在当前字段纠正无效ID和仓库，空显示名使用ID默认值", async () => {
+		const project = join(host, "my-extension");
+		run(
+			"vp",
+			[
+				"exec",
+				"create-bn-ext",
+				"--interactive",
+				"--sdk",
+				`file:${sdk}`,
+				"--tools",
+				`file:${tools}`,
+				"--offline",
+			],
+			host,
+			{},
+			"\nbad id\nexample.corrected\nnot-a-repository\nOwner/Corrected.git\n\n",
+		);
+		expect(JSON.parse(await readFile(join(project, "extension.json"), "utf8"))).toMatchObject({
+			id: "example.corrected",
+			name: "example.corrected",
+		});
+		expect(JSON.parse(await readFile(join(project, ".bn/marketplace.json"), "utf8"))).toMatchObject(
+			{
+				repository: "owner/corrected",
+			},
+		);
+	}, 120_000);
+
+	it("参数可与向导混用，输入中断不会写入半个工程", async () => {
+		const project = join(root, "wizard-cancelled");
+		expect(() =>
+			run(
+				"vp",
+				["exec", "create-bn-ext", project, "--id", "example.cancelled", "--interactive"],
+				host,
+				{},
+				"owner/cancelled\n",
+			),
+		).toThrow(/Setup cancelled/);
+		await expect(access(project)).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
+	it("非终端缺少参数时退出而不等待交互输入", async () => {
+		const project = join(root, "missing-input");
+		expect(() => run("vp", ["exec", "create-bn-ext", project], host)).toThrow(
+			/namespace.extension/,
+		);
+		await expect(access(project)).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
 	it("生成后以冻结锁安装，vp检查、类型、测试、构建和打包全部通过，ZIP可由宿主接收", async () => {
 		const project = join(root, "example");
 		run(
 			"vp",
 			[
 				"exec",
-				"create-extension",
+				"create-bn-ext",
 				project,
 				"--id",
 				"example.demo",
@@ -92,6 +211,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 		expect(run("git", ["remote", "get-url", "origin"], project).trim()).toBe(
 			"https://github.com/owner/tools.git",
 		);
+		run("vp", ["exec", "pnpm", "peers", "check"], project);
 		run("vp", ["run", "verify"], project);
 		const skill = await readFile(
 			join(project, ".agents/skills/bn-extension-development/SKILL.md"),
@@ -143,7 +263,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 				"vp",
 				[
 					"exec",
-					"create-extension",
+					"create-bn-ext",
 					join(outer, "nested"),
 					"--id",
 					"example.nested",
@@ -172,7 +292,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			"vp",
 			[
 				"exec",
-				"create-extension",
+				"create-bn-ext",
 				project,
 				"--id",
 				"example.hooks",
@@ -215,7 +335,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			"vp",
 			[
 				"exec",
-				"create-extension",
+				"create-bn-ext",
 				project,
 				"--id",
 				"example.ci",

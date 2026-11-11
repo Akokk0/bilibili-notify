@@ -84,7 +84,7 @@ describe("生成工程的公开发布命令", () => {
 			JSON.stringify({
 				private: true,
 				packageManager,
-				devDependencies: { "@bilibili-notify/create-extension": `file:${tools}` },
+				devDependencies: { "create-bn-ext": `file:${tools}` },
 			}),
 		);
 		run("vp", ["install", "--offline", "--ignore-scripts", "--no-frozen-lockfile"], host);
@@ -105,7 +105,7 @@ describe("生成工程的公开发布命令", () => {
 			"vp",
 			[
 				"exec",
-				"create-extension",
+				"create-bn-ext",
 				cwd,
 				"--id",
 				"example.demo",
