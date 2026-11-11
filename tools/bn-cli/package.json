@@ -1,0 +1,34 @@
+{
+	"name": "@bilibili-notify/bn",
+	"version": "0.0.0-dev",
+	"private": true,
+	"type": "module",
+	"description": "Run the bilibili-notify web host and extension development host",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Akokk0/bilibili-notify",
+		"directory": "tools/bn-cli"
+	},
+	"bin": {
+		"bn": "lib/cli.mjs"
+	},
+	"files": [
+		"lib"
+	],
+	"scripts": {
+		"build": "vp pack && node scripts/prepare-package.mjs",
+		"typecheck": "tsc --noEmit"
+	},
+	"engines": {
+		"node": ">=24.15.0"
+	},
+	"publishConfig": {
+		"directory": "lib",
+		"access": "public"
+	},
+	"dependencies": {
+		"@voidzero-dev/vite-plus-core": "1.5.1",
+		"fflate": "catalog:"
+	}
+}

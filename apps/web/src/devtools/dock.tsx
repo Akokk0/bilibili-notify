@@ -2,7 +2,7 @@ import { fail, ok, type Result } from "@bilibili-notify/internal/result";
 /**
  * DevDock —— devtools 在面板里的整套:左下角药丸 + 底边面板。
  *
- * **只在开发期存在。** 挂载点在 App.tsx,包在 `import.meta.env.DEV` 里,生产 bundle 连这个
+ * **只在开发期存在。** 挂载点在 App.tsx,由源码开发或显式开发宿主编译常量控制,生产 bundle 连这个
  * 模块都不含;服务端那半靠 `GET /api/dev` 探(404 = 那台不是开发版 → 整个不出现)。
  *
  * 面板不认识任何具体场景:场景是服务端 + 前端两张表并成的一张(`registry.ts`),参数照

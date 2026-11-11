@@ -47,9 +47,8 @@ import { injectableUpdateService } from "./update-injection.js";
 /**
  * devtools 的组装点 + 那道门。
  *
- * **门 = 载荷版本号是不是开发版**(`0.0.0-dev` / `dev`),不是环境变量:环境变量能在生产
- * 镜像里被设上,版本号不能;alpha 也不给 —— 那是发出去给人用的构建。`index.ts` 拿到 null
- * 就什么都不挂,`/api/dev` 404,面板那半(`import.meta.env.DEV` 挡着)也就当它不存在。
+ * 源码开发沿版本与.ts入口判定；显式开发宿主由构建常量开放。
+ * 正式构建把本模块换成空桩，运行环境变量无法开启它（ADR-0045）。
  *
  * 注入的高度:**既有边界上套装饰器,来源与服务本体一行不动**。这里把真服务 / 真 adapter
  * 各包一层交回去,`index.ts` 把包好的那份往下传 —— 面板看到的、出网的都从装饰器过,本体照常跑。
@@ -63,6 +62,8 @@ export interface CreateDevtoolsOptions {
 	 * 这一条没有任何环境变量、任何过期的 package.json 能翻过来。
 	 */
 	sourceRun: boolean;
+	/** 由显式开发宿主的构建常量提供，普通构建会把整个模块换成空桩。 */
+	developmentBuild?: boolean;
 	updateService: UpdateService;
 	/** 推送出口的注册表。交回去的是包过能力注入的那份**派生表**。 */
 	adapters: PlatformAdapterRegistry;
@@ -147,11 +148,9 @@ export interface Devtools {
 }
 
 export function createDevtools(input: CreateDevtoolsOptions): Devtools | null {
-	// 两道门都得成立。版本号那道是**失败即敞开**的:`0.0.0-dev` 是仓库常驻值,读不出版本号时
-	// 兜底也是 `"dev"` —— 任何没走发版流程的构建(公开推的 `:test` 镜像就是一例)都会自认
-	// 开发版。所以再要一道构建产物身上不可能成立的:跑在源码上。
-	// (更新服务共用 `isDevBuild`,但那边的后果是「关掉更新」,敞开反而是安全的一侧。)
-	if (!isDevBuild(input.payloadVersion) || !input.sourceRun) return null;
+	// 源码沿原版本与.ts入口门；开发成品只认固定编译标记，正式构建已替换为空桩。
+	if (!input.developmentBuild && (!isDevBuild(input.payloadVersion) || !input.sourceRun))
+		return null;
 	const developmentExtensions = createDevelopmentExtensions({
 		root: input.extensions.installRoot,
 		initialDirectory: dirname(input.extensions.repoDir),

@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findDevtoolsLeaks, MARKERS } from "./check-no-devtools.mjs";
 import { readArg } from "./cli-args.mjs";
 import { digestOf, PAYLOAD_ZIP_EPOCH, reproducibleZip } from "./reproducible-zip.mjs";
 import { missingServerBundleFilesIn } from "./server-bundle-assets.mjs";
@@ -40,10 +41,10 @@ async function collectFiles(dir) {
 }
 
 /**
- * @param {{ serverDist: string, webDist: string, outFile: string }} input
+ * @param {{ serverDist: string, webDist: string, outFile: string, runtimeProfile?: "web" | "dev" }} input
  * @returns {Promise<{ sha256: string, size: number, entries: string[], outFile: string }>}
  */
-export async function buildUpdatePayload({ serverDist, webDist, outFile }) {
+export async function buildUpdatePayload({ serverDist, webDist, outFile, runtimeProfile }) {
 	// 这两条是「装上去起不起得来」的分界线,宁可在发版机上当场炸,也不要打出一个
 	// 签好名、传上去、用户装完才发现是空壳的包 —— 那时候只能再发一版。server 侧按
 	// scripts/server-bundle-assets.mjs 的清单整份把关:少的不只是入口,词云 static /
@@ -63,6 +64,31 @@ export async function buildUpdatePayload({ serverDist, webDist, outFile }) {
 	}
 	for (const abs of await collectFiles(webDist)) {
 		files[toZipPath(webDist, abs, "web-dist")] = new Uint8Array(await readFile(abs));
+	}
+
+	if (runtimeProfile) {
+		if (runtimeProfile !== "web" && runtimeProfile !== "dev")
+			throw new Error("Unknown runtime profile.");
+		for (const side of ["server", "web"]) {
+			const scanned = Object.entries(files)
+				.filter(
+					([name]) =>
+						/\.(?:js|mjs|cjs)$/.test(name) && name.startsWith("web-dist/") === (side === "web"),
+				)
+				.map(([path, bytes]) => ({ path, content: Buffer.from(bytes).toString("utf8") }));
+			const leaks = findDevtoolsLeaks(scanned, MARKERS[side]);
+			if (
+				(runtimeProfile === "web" && leaks.length > 0) ||
+				(runtimeProfile === "dev" && leaks.length === 0)
+			)
+				throw new Error(
+					`${side} devtools content does not match the ${runtimeProfile} runtime profile.`,
+				);
+		}
+		const { version } = JSON.parse(await readFile(join(serverDist, "package.json"), "utf8"));
+		files["bn-runtime.json"] = Buffer.from(
+			JSON.stringify({ schemaVersion: 1, profile: runtimeProfile, version }),
+		);
 	}
 
 	// mtime 固定:同样的输入要打出同样的包。否则每次构建 sha256 都变,「这两个包

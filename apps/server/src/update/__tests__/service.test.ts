@@ -169,6 +169,7 @@ function makeService(
 	overrides: {
 		root?: string;
 		currentVersion?: string;
+		developmentBuild?: boolean;
 		preinstalledVersion?: string;
 		trustedKeys?: readonly string[];
 		settings?: Partial<UpdateSettings>;
@@ -184,6 +185,7 @@ function makeService(
 		ctx,
 		service: createUpdateService({
 			currentVersion: overrides.currentVersion ?? "0.8.0",
+			developmentBuild: overrides.developmentBuild,
 			preinstalledVersion: overrides.preinstalledVersion ?? "0.8.0",
 			versionsRoot,
 			nodeMajor: overrides.nodeMajor ?? 24,
@@ -225,6 +227,19 @@ describe("createUpdateService —— 开发版", () => {
 
 		expect(service.getStatus().state).toEqual({ phase: "disabled", reason: "dev-build" });
 		await service.check();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("显式开发宿主即使带alpha版本号也不下载正式载荷", async () => {
+		const key = makeKey();
+		const fetchMock = stubNetwork({});
+		const { service } = makeService({
+			trustedKeys: [key.spkiBase64],
+			currentVersion: "1.0.0-alpha.1",
+			developmentBuild: true,
+		});
+		expect((await service.check()).state).toEqual({ phase: "disabled", reason: "dev-build" });
+		await service.download();
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 

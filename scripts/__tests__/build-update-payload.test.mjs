@@ -89,6 +89,41 @@ describe("buildUpdatePayload", () => {
 		expect(await readFile(at("web-dist", "assets", "app.js"), "utf8")).toContain("export");
 	});
 
+	it("启动器载荷带固定用途和版本，普通更新载荷保持原格式", async () => {
+		const dists = await seedDists();
+		const outFile = join(root, "runtime.zip");
+		const built = await buildUpdatePayload({ ...dists, outFile, runtimeProfile: "web" });
+		const installed = await installPayload({
+			zip: await readFile(outFile),
+			expectedSha256: built.sha256,
+			version: "0.9.0",
+			versionsRoot: join(root, "versions"),
+		});
+		if (!installed.ok) throw new Error(`install failed: ${installed.reason}`);
+		expect(JSON.parse(await readFile(join(installed.path, "bn-runtime.json"), "utf8"))).toEqual({
+			schemaVersion: 1,
+			profile: "web",
+			version: "0.9.0",
+		});
+		const standard = await buildUpdatePayload({ ...dists, outFile: join(root, "ordinary.zip") });
+		expect(standard.entries).not.toContain("bn-runtime.json");
+	});
+
+	it("正式与开发用途不能混打，缺开发能力的目录也不能伪装成开发成品", async () => {
+		const dists = await seedDists();
+		const outFile = join(root, "runtime.zip");
+		await expect(buildUpdatePayload({ ...dists, outFile, runtimeProfile: "dev" })).rejects.toThrow(
+			/devtools/,
+		);
+		await writeFile(join(dists.serverDist, "index.mjs"), 'const scenario = "update.state";');
+		await writeFile(join(dists.webDist, "assets", "app.js"), 'fetch("/api/dev");');
+		await expect(buildUpdatePayload({ ...dists, outFile, runtimeProfile: "web" })).rejects.toThrow(
+			/devtools/,
+		);
+		const dev = await buildUpdatePayload({ ...dists, outFile, runtimeProfile: "dev" });
+		expect(dev.entries).toContain("bn-runtime.json");
+	});
+
 	it("报出来的 sha256 / size 就是文件本身的 —— 清单直接拿去用", async () => {
 		const { serverDist, webDist } = await seedDists();
 		const outFile = join(root, "payload.zip");

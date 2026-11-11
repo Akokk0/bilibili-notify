@@ -47,6 +47,8 @@ export type UpdateStatus = UpdateStatusView;
 export interface CreateUpdateServiceOptions {
 	/** 当前正在跑的那份载荷的版本。 */
 	currentVersion: string;
+	/** 显式开发宿主不沿正式渠道换包，由启动器选择开发产物。 */
+	developmentBuild?: boolean;
 	/** 镜像 / 安装包自带的版本 —— 回退的地板。 */
 	preinstalledVersion: string;
 	versionsRoot: string;
@@ -99,7 +101,11 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 	// 两种情况整个功能关着、连网络都不碰:没内置公钥(拿回清单也验不了),以及正在跑开发版
 	// (`0.0.0-dev` 比谁都小,查了只会永远「有新版」,开着自动下载还真会装上去)。
 	const disabledReason: "no-keys" | "dev-build" | null =
-		trustedKeys.length === 0 ? "no-keys" : isDevBuild(currentVersion) ? "dev-build" : null;
+		trustedKeys.length === 0
+			? "no-keys"
+			: input.developmentBuild || isDevBuild(currentVersion)
+				? "dev-build"
+				: null;
 	const enabled = disabledReason === null;
 	let state: UpdateState = enabled
 		? { phase: "idle" }

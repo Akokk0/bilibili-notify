@@ -40,7 +40,7 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 - **`main`** —— GitHub 默认分支,发布快照。不再触发任何发版。
 - **`koishi-astrbot-maintenance`** —— Koishi 插件(`koishi/`)与 AstrBot 插件(`astrbot/`)的维护线。两端已暂停更新,dev 不再含这两个目录;它们各自的发版 workflow(`publish.yml` 发 npm、`astrbot-release.yml` squash-push 到独立仓)只存在于这条分支、也只认这条分支。要发维护版就在这条分支上改版本号再 push。
 
-独立端从不发 npm —— 发布版本由 git tag `v<VERSION>` 驱动,再由 tag 分别触发 Docker 镜像、Desktop 产物与应用内更新载荷。
+业务核心workspace包保持private；`@bilibili-notify/bn`作为自带正式/开发宿主的npm发行包，按[ADR-0046](../adr/0046-bundled-npm-distribution.md)与主程序同版本发行。发布版本由git tag `v<VERSION>`驱动；现有Docker、Desktop、应用内更新流水线独立运行，npm接线与实际发行状态见[第6期计划](../1.0/phase-6-plan.md)。
 
 ## 独立端版本与 tag
 
@@ -166,3 +166,9 @@ docker build -f apps/Dockerfile -t bilibili-notify:dev .
 ```
 
 `apps/docker-compose.example.yaml` 是部署模板。
+
+## npm成品包
+
+`vp run build:bn-package`生成完整tgz，包含正式/开发两种宿主和面板，首次运行直接解包，不访问GitHub。源码构建壳不能代替此包；发布前应核对包版本、两种用途、字节数和SHA256。持久数据位于npm缓存之外；web沿既有应用内更新，dev通过更新npm包升级。使用方式见[启动器README](../../tools/bn-cli/README.md)。
+
+npm发版接线尚在第6期6-05e施工，实际npm账号设置、版本及发布动作仍需按发行流程确认。

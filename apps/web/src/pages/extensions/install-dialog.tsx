@@ -100,7 +100,7 @@ export function ExtensionInstallDialog({
 				 * 只在开发构建里渲染:正式版没有 devtools,这段话对用户是指向不存在的东西的谜语。
 				 * `import.meta.env.DEV` 是编译期常量,生产构建里这一枝整个折掉。
 				 */}
-				{import.meta.env.DEV ? (
+				{import.meta.env.DEV || import.meta.env.BN_DEVELOPMENT_RUNTIME ? (
 					<HintNote className="leading-[1.7]">
 						{t("extensions.dialog.devStart")}
 						<strong className="text-bn-text-secondary">{t("extensions.dialog.devGroup")}</strong>

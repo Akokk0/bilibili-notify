@@ -25,7 +25,9 @@
 		"prepare": "lefthook install",
 		"test": "vp test",
 		"test:migration-timing": "cross-env BN_MIGRATION_TIMING=1 vp test apps/server/src/migration/__tests__/migration-timing.test.ts --reporter=default",
-		"knip": "knip --files"
+		"knip": "knip --files",
+		"build:bn-runtimes": "node scripts/build-bn-runtimes.mjs",
+		"build:bn-package": "node scripts/build-bn-package.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.10",

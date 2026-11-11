@@ -37,6 +37,10 @@
 			"entry": ["src/create.ts", "src/cli.ts"],
 			"project": ["src/**/*.ts"]
 		},
+		"tools/bn-cli": {
+			"entry": ["src/cli.ts"],
+			"project": ["src/**/*.ts"]
+		},
 		"packages/image": {
 			"entry": ["src/**/*.test.ts"],
 			"project": ["src/**/*.{ts,tsx,vue}"]

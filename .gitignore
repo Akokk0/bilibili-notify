@@ -49,3 +49,6 @@ apps/desktop/.tauri/
 
 # Claude Code 的本机私有设置(权限放行等),不入库
 .claude/settings.local.json
+
+# 显式开发宿主的打包产物
+**/dist-dev/

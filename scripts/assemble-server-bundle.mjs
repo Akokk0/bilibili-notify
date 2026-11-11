@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertChangelogHasVersion, releaseNotesOf } from "./changelog-section.mjs";
+import { readArg } from "./cli-args.mjs";
 import {
 	missingServerBundleFilesIn,
 	RELEASE_NOTES_FILE,
@@ -37,7 +38,7 @@ import {
 // 分块)记进 bundle-manifest.json —— 下游搬丢一块,靠它红。
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const distDir = resolve(repoRoot, "apps/server/dist");
+const distDir = resolve(repoRoot, readArg("server-dist", "apps/server/dist"));
 // 从**声明了这些依赖的包**出发解析,而不是从仓库根:pnpm 默认(isolated)布局下根
 // node_modules 只有根自己声明的东西,jieba-wasm 不在,从根解析就是幻影依赖。
 const requireFromServer = createRequire(resolve(repoRoot, "apps/server/package.json"));

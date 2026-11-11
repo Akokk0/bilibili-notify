@@ -23,15 +23,23 @@ git commit -m "feat: create extension"
 
 `example.demo`里的`example`是市场命名空间，与GitHub的`owner`无关。第三方清单id必须包含这个命名空间；无点的id留给官方源。作者可选择自己的命名空间，但同一BN实例不允许两个不同来源占用同一命名空间。
 
-## 源码宿主联调
+## 源码拓展联调
 
-先按BN主仓指引用`vp run dev:apps`启动源码开发版；`create-bn-ext`生成独立拓展。
+`create-bn-ext`生成独立拓展；`@bilibili-notify/bn`直接取得并运行宿主成品。工具发布后：
+
+```sh
+vp dlx @bilibili-notify/bn@alpha dev
+```
+
+无需检出BN主仓或在隐藏目录构建宿主。正式运行使用`npx @bilibili-notify/bn@alpha web`；alpha发行期间入口带`@alpha`，本地审阅归档不代表已经发布。开发BN本体仍克隆主仓、按主仓指引使用vp。
+
+启动器按版本与用途校验、缓存官方宿主。默认数据分别在`~/.bilibili-notify/dev-data`与`~/.bilibili-notify/data`，配置与凭据保存在该数据目录的`bn.config.yaml`。可用`--data-dir <绝对目录>`明确指定；缓存删除不影响持久数据，其他实例的数据需要通过`--data-dir`显式指定。端口可用`--port`调整，离线运行使用`--offline`及已经校验的缓存。
 
 拓展工程由创建器安装好依赖；已有工程先运行`vp install --frozen-lockfile`。只需启动BN，打开拓展页，点击“挂载开发拓展”，输入源码工程在BN机器上的绝对路径，再沿原开关启用。BN直接加载`src/index.ts`，负责运行、监听源码与子依赖、局部重载和收尾。工程不需要`dist/`，也没有独立的dev/start命令；`build`与打包用于生产。多个工程可同时挂载，保存一个只重载对应项。
 
 源码及其导入依赖、设置规则与清单预检通过后，BN沿原生命周期停止旧实例、启动新版；预检失败会在卡片显示错误，旧实例继续运行，修正后恢复更新。停用项不会因保存而自动启用。需要开发场景时，在清单声明`contributes.devtools: {}`，具名导出`src/devtools/index.ts`中的`devtools()`。解除或关闭BN时停止实例与监听，保留源工程；本次挂载不持久化，下次启动后重新指定。
 
-手动挂载只存在于源码开发版。Docker、桌面发行包及生产构建没有此入口。两个宿主使用相同默认端口时需先停止其中一个；多个拓展应挂到同一台开发BN。
+手动挂载存在于源码开发版和`bn dev`专用成品。`bn web`、Docker、桌面及普通生产构建没有此入口；运行期环境变量不能打开它。两个宿主使用相同默认端口时需先停止其中一个；多个拓展应挂到同一台开发BN。
 
 ## 包与入口
 

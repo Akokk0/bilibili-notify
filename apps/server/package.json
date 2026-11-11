@@ -10,7 +10,8 @@
 		"build:bundle": "cross-env BN_SERVER_BUNDLE=1 vp pack && node ../../scripts/check-no-devtools.mjs server dist",
 		"typecheck": "tsc --noEmit",
 		"start": "node lib/index.mjs",
-		"test": "vp test"
+		"test": "vp test",
+		"build:dev-runtime": "cross-env BN_SERVER_BUNDLE=1 BN_RUNTIME_PROFILE=dev vp pack"
 	},
 	"dependencies": {
 		"@bilibili-notify/ai": "workspace:*",

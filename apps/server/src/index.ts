@@ -1,3 +1,5 @@
+declare const __BN_DEVELOPMENT_RUNTIME__: boolean;
+
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
@@ -314,6 +316,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	// 构建产物的入口恒为 `.mjs`;只有 tsx 直跑源码时才是 `.ts`。devtools 那道门与
 	// 「能不能重启」是同一个事实,算一次两处用。
 	const sourceRun = import.meta.url.endsWith(".ts");
+	const developmentBuild =
+		typeof __BN_DEVELOPMENT_RUNTIME__ !== "undefined" && __BN_DEVELOPMENT_RUNTIME__;
 	// 按下重启还回不回得来 —— 判的是外面有没有人拉,与「是不是开发版」不是一回事。每次现问:
 	// 拉不起来时那句话按此刻的语言取(容器标记只看一次)。
 	const inContainer = runningInContainer();
@@ -748,6 +752,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		});
 		const updateService = createUpdateService({
 			currentVersion: payloadVersion,
+			developmentBuild,
 			// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
 			// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
 			// 「没得退」,而不是瞎猜一个版本号。
@@ -844,14 +849,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				).map((view) => view.externalId),
 			payloadVersion,
 			sourceRun,
+			developmentBuild,
 			updateService,
 			// 「拓展有更新」装饰的是它:列表与装都从包好的那份过,市场本体一行不动。
 			marketplace,
 			adapters: adapterRegistry,
 			// 开发版装拓展那条路(见 devtools/scenarios/extensions.ts)。仓里那个目录只在
-			// 源码运行时够得着,而 devtools 本来就只在那种构建里存在 —— 两道门是同一道。
+			// 源码运行时够得着；成品开发宿主从启动目录浏览。
 			extensions: {
-				repoDir: resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "extensions"),
+				repoDir: sourceRun
+					? resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "extensions")
+					: resolve(process.cwd(), "extensions"),
 				installRoot: extensionsRoot,
 				loaded: () => loadedExtensions,
 			},

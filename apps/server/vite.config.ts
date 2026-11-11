@@ -13,9 +13,9 @@ const DEVTOOLS_DIRS = [
 ];
 
 /**
- * devtools 只活在源码里。**任何**构建(lib 与 bundle 都算)把从 devtools 目录外指进去的
+ * 正式构建(lib 与 bundle)把从 devtools 目录外指进去的
  * import 解析到那个目录自己的空桩,整棵树随之从产物里消失 —— 不是「挂着但门关着」,是根本
- * 没有这段代码。运行期那道门(`devtools/index.ts`)还在,那是给 tsx 直跑源码时用的。
+ * 没有这段代码。只有显式开发宿主构建保留它，入口传入固定编译标记；源码直跑沿原门。
  *
  * 两项目录:核心的 `src/devtools/` 与 B 站的 `src/bilibili/devtools/`,各有各的桩(签名不同)。
  * 「importer 在 devtools 内」要**两个目录都算**:`bilibili/devtools/*` 引用核心
@@ -42,6 +42,9 @@ const stubDevtools = {
 // 运行时按路径读取的资产(jieba wasm / image static)不进 bundle,
 // 由 scripts/assemble-server-bundle.mjs 搬到 dist/ 旁边。
 const bundle = process.env.BN_SERVER_BUNDLE === "1";
+const developmentRuntime = process.env.BN_RUNTIME_PROFILE === "dev";
+if (developmentRuntime && !bundle)
+	throw new Error("Development runtimes require the bundle profile.");
 
 export default defineConfig({
 	pack: {
@@ -52,12 +55,13 @@ export default defineConfig({
 		format: ["esm"],
 		dts: false,
 		clean: true,
-		outDir: bundle ? "dist" : "lib",
+		outDir: developmentRuntime ? "dist-dev" : bundle ? "dist" : "lib",
 		platform: "node",
 		target: bundle ? "node24" : "node20",
 		// bundle 模式关 sourcemap:内联全依赖后 map 体积数十 MB,镜像不值得背。
 		sourcemap: !bundle,
-		plugins: [stubDevtools],
+		plugins: developmentRuntime ? [] : [stubDevtools],
+		define: { __BN_DEVELOPMENT_RUNTIME__: JSON.stringify(developmentRuntime) },
 		...(bundle
 			? {
 					shims: true,

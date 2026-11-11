@@ -20,8 +20,12 @@ export default defineConfig({
 	// __WEB_VERSION__ 编译期替换为字面量;声明见 src/vite-env.d.ts。
 	define: {
 		__WEB_VERSION__: JSON.stringify(webVersion),
+		"import.meta.env.BN_DEVELOPMENT_RUNTIME": JSON.stringify(
+			process.env.BN_RUNTIME_PROFILE === "dev",
+		),
 	},
 	plugins: [react(), tailwind()],
+	build: { outDir: process.env.BN_RUNTIME_PROFILE === "dev" ? "dist-dev" : "dist" },
 	// dev:apps 不预构建核心包；面板直接消费工作区源码，避免旧 lib 缺导出导致白屏。
 	// 子路径先匹配，保留 texts/builtin 等目录入口的正常解析。
 	resolve: {

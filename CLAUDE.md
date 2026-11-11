@@ -1,12 +1,12 @@
 # CLAUDE.md
 
-Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考」。拓展联调采用[ADR-0044](docs/adr/0044-extension-source-development.md)：create-bn-ext生成独立拓展；只启动BN，从开发版拓展页挂载源码工程，由宿主监听和重载，生产才打包。
+Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考」。拓展联调采用[ADR-0045](docs/adr/0045-bn-runtime-cli.md)、[ADR-0046](docs/adr/0046-bundled-npm-distribution.md)：`@bilibili-notify/bn`自带正式/开发宿主成品，create-bn-ext生成拓展源码，由BN手动挂载、监听和重载，生产才打包。实施与发行状态见第6期计划。
 
 ## 项目
 
 单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像与 macOS / Windows 桌面应用,支持应用内自主升级。
 
-业务核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费,不用 changesets。SDK与拓展创建器作为对外开发工具走npm;开发或准备发行前先读[ADR-0040](docs/adr/0040-extension-sdk-npm.md),施工见[第6期计划](docs/1.0/phase-6-plan.md)。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。平台描述与连接设置规则已归内置适配器,改动它们或候选接口之前先读 `.claude/rules/connection-platforms.md`。推送链路各层(`apps/server/src/live/`、`apps/server/src/bilibili/dynamic/`、`apps/server/src/bilibili/live/session/`,与 `packages/push` / `packages/image`)只认独立端这一个宿主,不留可选钩子。
+业务核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费,不用 changesets。启动器、SDK与拓展创建器作为对外工具走npm;开发或准备发行前先读[ADR-0040](docs/adr/0040-extension-sdk-npm.md),施工见[第6期计划](docs/1.0/phase-6-plan.md)。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。平台描述与连接设置规则已归内置适配器,改动它们或候选接口之前先读 `.claude/rules/connection-platforms.md`。推送链路各层(`apps/server/src/live/`、`apps/server/src/bilibili/dynamic/`、`apps/server/src/bilibili/live/session/`,与 `packages/push` / `packages/image`)只认独立端这一个宿主,不留可选钩子。
 
 ## 工具链与命令
 
@@ -42,7 +42,7 @@ tools/        独立开发工具(拓展创建器/发布器),不被宿主加载
 
 - **动手前先对仓库规范**:`docs/agents/conventions/`(索引是里面的 `README.md`)—— 命名(后缀表与词表)、失败形状与标准码、中立性、叫法、集成副作用只经 ctx、设置校验、统计收集、没有实现者的接口不造,每条一篇。都是活规范,加条、改条要主人拍板。
 
-- **只管部分目录的硬约束在 `.claude/rules/`**,读到对应目录的文件时自动加载:写 UI 先查组件清单(`ui-components.md`)、拓展只从一扇门拿东西(`extension-door.md`)、server 自包含 bundle 与三种发行形态(`server-bundle.md`)、连接与平台闭集(`connection-platforms.md`)。
+- **只管部分目录的硬约束在 `.claude/rules/`**,读到对应目录的文件时自动加载:写 UI 先查组件清单(`ui-components.md`)、拓展只从一扇门拿东西(`extension-door.md`)、server 自包含 bundle 与四种发行形态(`server-bundle.md`)、连接与平台闭集(`connection-platforms.md`)。
 
 - **依赖卫生**:`src/` 里解析到运行时值(常量 / 类 / 函数)的 import,必须声明进该包 `package.json` 的 `dependencies`;`import type` 不用。类型增强(`declare module "x"`)也算 —— 解析不到就静默变成孤立声明。pnpm 是 isolated 布局,幻影依赖直接解析不到,不会像 hoisted 年代那样碰巧能跑。给 `packages/*` 加运行时第三方依赖(`vp add` 不会读到规则文件)之前,先读 `.claude/rules/server-bundle.md`:有的依赖内联进 bundle 后构建全绿、运行期才炸。
 - **MessageBus**:`apps/server/src/runtime/message-bus.ts` 是唯一事件通道,绝不写 bus 与任何别的事件通道之间的转发器 —— 会自喂死循环爆栈。详见 `docs/agents/events.md`。

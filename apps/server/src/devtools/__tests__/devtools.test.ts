@@ -106,6 +106,25 @@ describe("createDevtools", () => {
 		).toBeNull();
 	});
 
+	it("显式构建的开发宿主提供拓展挂载读口，版本号可为预发布版", async () => {
+		const dev = createDevtools({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			...BARE,
+			payloadVersion: "1.0.0-alpha.1",
+			sourceRun: false,
+			developmentBuild: true,
+		});
+		expect(dev).not.toBeNull();
+		if (!dev) throw new Error("development runtime must provide its mount interface");
+		try {
+			const response = await dev.route.request("/extensions");
+			expect(response.status).toBe(200);
+			expect(await response.json()).toEqual({ mounts: [] });
+		} finally {
+			await dev.dispose();
+		}
+	});
+
 	it("给的那份:更新服务换成了可注入的装饰器,注册表里有 update.state", async () => {
 		const dev = createDevtools({
 			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,

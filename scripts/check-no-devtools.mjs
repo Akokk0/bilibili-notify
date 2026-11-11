@@ -1,7 +1,7 @@
 /**
- * 构建后自检:devtools 不许进构建产物。
+ * 构建后自检:devtools 不许进正式构建产物。
  *
- * devtools(server 的 `src/devtools/`、web 的 `src/devtools/`)只在开发版**源码**上跑。
+ * devtools(server 的 `src/devtools/`、web 的 `src/devtools/`)仅在源码开发或显式开发宿主中运行（ADR-0045）。
  * 两边各有一层结构性的隔离(server:vite.config 把入口换成空桩;web:`import.meta.env.DEV`
  * 死枝 + 隔离守卫测试)—— 这个脚本是那层之外的兜底:直接 grep 产物,找几串只在 devtools
  * 源码里出现的字面量。隔离哪天被谁绕过了,构建当场红,而不是等镜像发出去。
@@ -40,7 +40,7 @@ export function findDevtoolsLeaks(files, markers) {
 export function formatReport(leaks) {
 	const lines = leaks.map((l) => `  ${l.path}: 含 ${l.marker}`);
 	return [
-		"构建产物里发现 devtools 的痕迹 —— devtools 只许在开发版源码上跑,不许进任何构建产物:",
+		"正式构建产物里发现 devtools 的痕迹 —— 只有显式开发宿主允许保留:",
 		...lines,
 		"server 侧看 apps/server/vite.config.ts 的 stubDevtools;web 侧看 App.tsx 的 DEV 三元与 devtools-isolation 测试。",
 	].join("\n");

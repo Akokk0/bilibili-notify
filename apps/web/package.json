@@ -8,7 +8,8 @@
 		"build": "tsc -b && vp build && node ../../scripts/check-no-devtools.mjs web dist",
 		"build:bundle": "pnpm run build",
 		"preview": "vp preview",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"build:dev-runtime": "cross-env BN_RUNTIME_PROFILE=dev vp build --mode development-runtime"
 	},
 	"dependencies": {
 		"@bilibili-notify/contract": "workspace:*",

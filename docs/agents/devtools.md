@@ -5,40 +5,22 @@
 
 ## 仓外拓展联调
 
-沿[ADR-0044](../adr/0044-extension-source-development.md)，先按主仓指引用`vp run dev:apps`启动源码开发版BN。`create-bn-ext`生成独立拓展，只需安装依赖，由BN加载源码，生产才构建。
+沿[ADR-0045](../adr/0045-bn-runtime-cli.md)，`@bilibili-notify/bn dev`运行专用开发成品，不再创建源码宿主工作区；默认数据在`~/.bilibili-notify/dev-data`，也可显式指定。`create-bn-ext`生成独立拓展，只需安装依赖，由BN加载源码，生产才构建。
 
-开发版拓展页的“挂载开发拓展”接`/api/dev/extensions`：GET列当前挂载，POST指定BN机器上的源码工程绝对目录与监听选项，DELETE解除指定ID。接口沿宿主鉴权，只在源码开发门内装配。解析根清单、核对ID和兼容性，预读src/index.ts及设置规则后，通过现有装载队列在唯一数据代装载根建立工程链接；已有安装或挂载占位时拒绝覆盖。
+开发版拓展页的“挂载开发拓展”接`/api/dev/extensions`：GET列当前挂载，POST指定BN机器上的源码工程绝对目录与监听选项，DELETE解除指定ID。接口沿宿主鉴权，只在源码开发或显式开发构建内装配。解析根清单、核对ID和兼容性，预读src/index.ts及设置规则后，通过现有装载队列在唯一数据代装载根建立工程链接；已有安装或挂载占位时拒绝覆盖。
 
-目录可手填，也可点“浏览目录”：`GET /api/dev/directories?path=<绝对目录>`只列宿主的文件夹及当前目录是否含extension.json，无path时从BN源码工作区起步。支持上级导航与返回工作区，目录软链进入后显示真实路径；选择仅回填，取消保留路径和监听草稿。读取失败返回标准错误体，不执行挂载或读取文件正文；沿同一鉴权与生产剔除边界。
+目录可手填，也可点“浏览目录”：`GET /api/dev/directories?path=<绝对目录>`只列宿主的文件夹及当前目录是否含extension.json，无path时源码开发从仓库起步，开发成品从启动目录起步。支持上级导航与返回工作区，目录软链进入后显示真实路径；选择仅回填，取消保留路径和监听草稿。读取失败返回标准错误体，不执行挂载或读取文件正文；沿同一鉴权与生产剔除边界。
 
 每个工程独立使用Vite+模块环境加载与监听源码和导入依赖，不输出dist、不加载作者打包配置、不另开HTTP服务。预检失败保留旧实例，修正后继续更新；自动重载不启用停用项，界面跟随完成次数刷新拓展表和视图。主进程的tsx不接收这些源码导入，局部更新不重启BN。源码devtools入口为src/devtools/index.ts，继续要求清单声明。解除和退出清理拥有的链接、运行上下文、监听和模块环境，不删源工程。
 
-前端仍只有App的DEV入口引用devtools，通过组件插槽把挂载UI放到原拓展页；生产构建的页面与接口均不存在。面板与390px弹窗验收记录在`.bn-design/s6-manual-dev-evidence/`。
+前端仍只有App的编译期开发入口引用devtools，通过组件插槽把挂载UI放到原拓展页；生产构建的页面与接口均不存在。面板与390px弹窗验收记录在`.bn-design/s6-manual-dev-evidence/`。
 
 ## 门
 
-- **服务端 —— 结构上就不在构建产物里**:`apps/server/vite.config.ts` 的 `stubDevtools` 插件
-  在**任何**构建(lib 与 bundle 都算)里把从 `src/devtools/` 目录外指进去的 import 解析到
-  `devtools/stub.ts`(`createDevtools` 恒回 null),整棵树随之从产物里消失。前提是整套
-  devtools 各有一个引用点:核心的(`src/devtools/`)只有 `src/index.ts` 引(`/api/dev` 路由也住在 `devtools/route.ts`,
-  app.ts 只收一个建好的 Hono),B 站的(`src/bilibili/devtools/`)只有 `src/compose.ts` 引(3a-28 起,原先也是入口),
-  `apps/server/src/__tests__/devtools-isolation.test.ts` 两条各钉一处。
-  构建后 `scripts/check-no-devtools.mjs` 再对着产物 grep 一遍只有 devtools 才用的字符串
-  (server 的 `build` / `build:bundle` 与 web 的 `build` 都接了),隔离哪天被绕过构建当场红。
-  所以 devtools **只在 tsx 直跑源码时存在**;alpha、正式版、`:test` 镜像、lib 裸跑都没有。
-- **运行期的门(源码上跑时才走到)**:`devtools/index.ts` 的 `createDevtools` 两道都成立才组装(各集成的场景也是过了这两道门
-  才建:入口交一个 `provide` 回调,门里才调;回调里调的是 `compose.ts` 的 `provideDevtools`,把 B 站那组场景按来源键认领进去):
-  ① 载荷版本号是开发版(`0.0.0-dev` / `dev`,`update/version-order.ts` 的 `isDevBuild`);
-  ② 跑的是 TypeScript 源码(`import.meta.url` 以 `.ts` 收尾)。第一道**失败即敞开**(`0.0.0-dev`
-  是仓库常驻值,版本号读不出来时兜底也是 `"dev"`),历史上公开推的 `:test` 镜像就是这么把
-  `/api/dev` 带出去的 —— 现在构建层已经连代码都不带了,这两道只是源码上跑时的兜底。更新服务
-  共用 `isDevBuild`,但那边敞开的后果是「关掉更新」,是安全的一侧 —— 同一个判据,两种后果,别合并。
-- **面板**:`App.tsx` 里 `import.meta.env.DEV ? lazy(() => import("./devtools/dock")) : null`,
-  生产 bundle 连这个 chunk 都没有;`apps/web/src/__tests__/devtools-isolation.test.ts` 钉着
-  「`src/devtools/` 只有 App.tsx 那一处提」——认的是模块说明符,`import "…"`(纯副作用)与
-  裸 `import("…")`(不在 DEV 死枝里、会真产出 chunk)都拦得住,只钉 `from` 是拦不住的。面板探 `GET /api/dev`,404 就整个不出现(面板跑 dev、
-  后端连着正式镜像时就是这样)。
-- **不用环境变量**:环境变量能在生产镜像里被设上。
+- **正式构建**：`apps/server/vite.config.ts`的stubDevtools把核心与B站devtools入口换为空桩。普通lib、Docker、桌面和`bn web`都不携带开发代码；原build/build:bundle继续运行check-no-devtools。仅`BN_RUNTIME_PROFILE=dev`的显式开发构建保留模块，并给入口固定编译常量。
+- **源码直跑**：仍同时检查`0.0.0-dev`/`dev`版本与.ts入口。显式开发成品由编译常量开放，alpha版本也可用于拓展联调。正式成品无法由运行期环境变量打开开发接口。
+- **面板**：App.tsx是devtools的唯一引用点，`import.meta.env.DEV || import.meta.env.BN_DEVELOPMENT_RUNTIME`在编译期折叠；普通生产构建不含dock分块。现有源码隔离守卫和产物检查保持。开发面板连接普通后端时仍因`GET /api/dev`返回404而不出现。
+- **更新**：显式开发宿主不下载普通更新载荷，升级开发宿主由启动器选择对应成品；版本占位与没有公钥的既有禁用行为保持。
 
 ## 形态
 
