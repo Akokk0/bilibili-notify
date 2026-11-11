@@ -45,6 +45,10 @@ export function createDevRoute({
 }: CreateDevRouteOptions): Hono {
 	const app = new Hono();
 	if (developmentExtensions) {
+		app.get("/directories", async (c) => {
+			const result = await developmentExtensions.directories(c.req.query("path"));
+			return result.ok ? c.json(result.listing) : respondFailure(c, result);
+		});
 		app.get("/extensions", (c) => c.json({ mounts: developmentExtensions.list() }));
 		app.post("/extensions", async (c) => {
 			const parsed = z

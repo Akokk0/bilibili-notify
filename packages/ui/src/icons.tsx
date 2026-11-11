@@ -72,6 +72,9 @@ export const Icon = {
 		</>,
 	),
 	plus: stroke(<path d="M12 5v14M5 12h14" />, 2.4),
+	folder: stroke(
+		<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
+	),
 	close: stroke(<path d="M6 6l12 12M18 6 6 18" />),
 	// 相框 + 太阳 + 远山 —— 聊天输入框的「加图片」用它。
 	image: stroke(

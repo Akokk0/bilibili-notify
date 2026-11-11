@@ -43,6 +43,14 @@ export interface DevelopmentExtensionsResponse {
 	mounts: DevelopmentExtensionMountView[];
 }
 
+/** 只读浏览BN宿主目录，不读取源码或执行挂载。 */
+export interface DevelopmentDirectoriesResponse {
+	directory: string;
+	parent: string | null;
+	hasManifest: boolean;
+	entries: { name: string; path: string }[];
+}
+
 export interface DevStatusView {
 	scenarios: DevScenarioDescriptor[];
 	active: DevInjection[];

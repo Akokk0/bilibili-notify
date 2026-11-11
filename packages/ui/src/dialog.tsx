@@ -64,14 +64,15 @@ export function ModalShell({
 	if (typeof document === "undefined") return null;
 	return createPortal(
 		<div
-			className="bn-anim-fade-in fixed inset-0 z-bn-modal flex items-center justify-center bg-bn-overlay px-4 pb-4 pt-22 backdrop-blur-xs"
+			className="fixed inset-0 z-bn-modal flex items-center justify-center px-4 pb-4 pt-22"
 			role="presentation"
 		>
 			<button
 				type="button"
 				aria-label={tx("ui.dialog.1")}
 				onClick={onCancel}
-				className="absolute inset-0 cursor-default border-0 bg-transparent"
+				// 独立背景层不包裹卡片，目录内容的尺寸变化不牵动磨砂层。
+				className="absolute inset-0 cursor-default border-0 bg-bn-overlay backdrop-blur-xs"
 			/>
 			<div
 				role="dialog"
@@ -81,7 +82,8 @@ export function ModalShell({
 				// inline style,唯一的调用方(SubscriptionDialog)传的还全是编译期常量 —— 而
 				// inline 压过一切 author 样式,等于皮肤给弹窗写的 max-height / overflow
 				// 永远失效。改成让调用方走 bodyClassName,这里只留必需的 width(运行时值)。
-				className={`relative max-h-full overflow-y-auto rounded-bn-card bg-bn-surface-strong text-bn-text-primary shadow-bn-elev ${bodyClassName}`}
+				// 磨砂遮罩保持静止；只移动卡片，避免透明度动画使背景采样层反复切换。
+				className={`bn-anim-page-in relative max-h-full overflow-y-auto rounded-bn-card bg-bn-surface-strong text-bn-text-primary shadow-bn-elev ${bodyClassName}`}
 				style={{ width }}
 			>
 				{title || description ? (

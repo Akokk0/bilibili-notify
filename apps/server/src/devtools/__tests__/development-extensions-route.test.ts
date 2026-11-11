@@ -6,11 +6,16 @@ import {
 	readlink,
 	realpath,
 	rm,
+	symlink,
 	writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { DevelopmentExtensionsResponse, ErrorResponse } from "@bilibili-notify/contract";
+import { dirname, join, parse } from "node:path";
+import type {
+	DevelopmentDirectoriesResponse,
+	DevelopmentExtensionsResponse,
+	ErrorResponse,
+} from "@bilibili-notify/contract";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
@@ -91,6 +96,67 @@ describe("开发拓展挂载请求", () => {
 		await development?.dispose();
 		await loaded?.dispose();
 		await rm(root, { recursive: true, force: true });
+	});
+
+	it("浏览宿主目录只列文件夹，默认从工作区起步且不挂载", async () => {
+		await mkdir(join(root, "a-project"));
+		await mkdir(join(root, "z-project"));
+		await writeFile(join(root, "notes.txt"), "not a directory");
+		await writeFile(join(root, "extension.json"), "{}");
+		const response = await app.request("/directories");
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			directory: root,
+			parent: join(root, ".."),
+			hasManifest: true,
+			entries: [
+				{ name: "a-project", path: join(root, "a-project") },
+				{ name: "z-project", path: join(root, "z-project") },
+			],
+		});
+		expect(await (await app.request("/extensions")).json()).toEqual({ mounts: [] });
+	});
+
+	it("目录软链可选择，进入后回真实路径，并可返回上一级", async () => {
+		const target = join(root, "source");
+		const alias = join(root, "source-link");
+		await mkdir(target);
+		await symlink(target, alias, process.platform === "win32" ? "junction" : "dir");
+		await symlink(join(root, "missing"), join(root, "broken-link"));
+		const listing = (await (
+			await app.request("/directories")
+		).json()) as DevelopmentDirectoriesResponse;
+		expect(listing.entries).toContainEqual({ name: "source-link", path: alias });
+		expect(listing.entries).not.toContainEqual(expect.objectContaining({ name: "broken-link" }));
+		const opened = await app.request(`/directories?path=${encodeURIComponent(alias)}`);
+		expect(opened.status).toBe(200);
+		expect(await opened.json()).toEqual({
+			directory: target,
+			parent: root,
+			hasManifest: false,
+			entries: [],
+		});
+		const up = await app.request(`/directories?path=${encodeURIComponent(dirname(target))}`);
+		expect(await up.json()).toMatchObject({ directory: root });
+		const driveRoot = parse(root).root;
+		const top = await app.request(`/directories?path=${encodeURIComponent(driveRoot)}`);
+		expect(await top.json()).toMatchObject({ parent: null });
+	});
+
+	it.each([
+		["relative", 400, "invalid"],
+		["missing", 404, "not_found"],
+		["file", 400, "invalid"],
+	] as const)("浏览失败如实返回标准错误：%s", async (kind, status, code) => {
+		await writeFile(join(root, "plain-file"), "not a folder");
+		const path =
+			kind === "relative"
+				? "relative/source"
+				: join(root, kind === "file" ? "plain-file" : "missing");
+		const response = await app.request(`/directories?path=${encodeURIComponent(path)}`);
+		expect(response.status).toBe(status);
+		expect(await response.json()).toEqual({ code, message: expect.any(String) });
+		expect(await (await app.request("/extensions")).json()).toEqual({ mounts: [] });
 	});
 
 	async function project(id: string): Promise<string> {

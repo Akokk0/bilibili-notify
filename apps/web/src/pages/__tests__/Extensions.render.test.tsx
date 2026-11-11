@@ -185,6 +185,153 @@ function renderPage(
 }
 
 describe("拓展页开发挂载", () => {
+	it("浏览、导航、取消和回填持续复用当前弹窗，不重新创建背景遮罩", async () => {
+		renderPage(LISTED, CONNECTIONS, STATUS, MARKET, "/extensions", undefined, { mounts: [] });
+		const get = apiGetMock.getMockImplementation();
+		apiGetMock.mockImplementation((url: string) =>
+			url === "/api/dev/directories"
+				? Promise.resolve({
+						directory: "/work",
+						parent: "/",
+						hasManifest: false,
+						entries: [{ name: "source", path: "/work/source" }],
+					})
+				: url === "/api/dev/directories?path=%2Fwork%2Fsource"
+					? Promise.resolve({
+							directory: "/work/source",
+							parent: "/work",
+							hasManifest: true,
+							entries: [],
+						})
+					: get?.(url),
+		);
+		fireEvent.click(await screen.findByRole("button", { name: "挂载开发拓展" }));
+		const dialog = screen.getByRole("dialog");
+		const backdrop = screen.getByRole("button", { name: "关闭弹窗" });
+		fireEvent.click(screen.getByRole("button", { name: "浏览目录" }));
+		await screen.findByText("/work");
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(screen.getByRole("button", { name: "关闭弹窗" })).toBe(backdrop);
+		fireEvent.click(screen.getByRole("button", { name: "source" }));
+		await screen.findByText("/work/source");
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		fireEvent.click(screen.getByRole("button", { name: "浏览目录" }));
+		fireEvent.click(await screen.findByRole("button", { name: "source" }));
+		await screen.findByText("/work/source");
+		fireEvent.click(screen.getByRole("button", { name: "选择此目录" }));
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(screen.getByRole("button", { name: "关闭弹窗" })).toBe(backdrop);
+		expect((screen.getByRole("textbox", { name: "拓展工程目录" }) as HTMLInputElement).value).toBe(
+			"/work/source",
+		);
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+	it("目录选择支持上级导航和回工作区，读取中不能确认旧目录", async () => {
+		renderPage(LISTED, CONNECTIONS, STATUS, MARKET, "/extensions", undefined, { mounts: [] });
+		const get = apiGetMock.getMockImplementation();
+		let finish!: (value: unknown) => void;
+		const parent = new Promise((resolve) => {
+			finish = resolve;
+		});
+		apiGetMock.mockImplementation((url: string) =>
+			url === "/api/dev/directories"
+				? Promise.resolve({ directory: "/work", parent: "/", hasManifest: false, entries: [] })
+				: url === "/api/dev/directories?path=%2F"
+					? parent
+					: get?.(url),
+		);
+		fireEvent.click(await screen.findByRole("button", { name: "挂载开发拓展" }));
+		fireEvent.click(screen.getByRole("button", { name: "浏览目录" }));
+		await screen.findByText("/work");
+		fireEvent.click(screen.getByRole("button", { name: "上一级" }));
+		expect((screen.getByRole("button", { name: "选择此目录" }) as HTMLButtonElement).disabled).toBe(
+			true,
+		);
+		await act(async () => {
+			finish({ directory: "/", parent: null, hasManifest: false, entries: [] });
+		});
+		await screen.findByText("/");
+		expect((screen.getByRole("button", { name: "上一级" }) as HTMLButtonElement).disabled).toBe(
+			true,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "BN 工作区" }));
+		await screen.findByText("/work");
+		expect(apiPostMock).not.toHaveBeenCalled();
+	});
+	it("读取目录失败可重试，取消选择保留手填路径与监听草稿", async () => {
+		renderPage(LISTED, CONNECTIONS, STATUS, MARKET, "/extensions", undefined, { mounts: [] });
+		const get = apiGetMock.getMockImplementation();
+		let reads = 0;
+		apiGetMock.mockImplementation((url: string) => {
+			if (url !== "/api/dev/directories?path=%2Fmissing") return get?.(url);
+			reads++;
+			return reads === 1
+				? Promise.reject(new Error("EACCES: folder unavailable"))
+				: Promise.resolve({ directory: "/missing", parent: "/", hasManifest: false, entries: [] });
+		});
+		fireEvent.click(await screen.findByRole("button", { name: "挂载开发拓展" }));
+		fireEvent.change(screen.getByRole("textbox", { name: "拓展工程目录" }), {
+			target: { value: "/missing" },
+		});
+		fireEvent.click(screen.getByRole("checkbox", { name: "源码变化时自动重载" }));
+		fireEvent.click(screen.getByRole("button", { name: "浏览目录" }));
+		await screen.findByText("EACCES: folder unavailable");
+		expect((screen.getByRole("button", { name: "选择此目录" }) as HTMLButtonElement).disabled).toBe(
+			true,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "重试" }));
+		await screen.findByText("这个目录下没有文件夹。");
+		expect(reads).toBe(2);
+		fireEvent.click(screen.getByRole("button", { name: "取消" }));
+		expect((screen.getByRole("textbox", { name: "拓展工程目录" }) as HTMLInputElement).value).toBe(
+			"/missing",
+		);
+		expect(
+			(screen.getByRole("checkbox", { name: "源码变化时自动重载" }) as HTMLInputElement).checked,
+		).toBe(false);
+		expect(apiPostMock).not.toHaveBeenCalled();
+	});
+	it("浏览文件夹回填选中目录，选择不会自动挂载", async () => {
+		renderPage(LISTED, CONNECTIONS, STATUS, MARKET, "/extensions", undefined, { mounts: [] });
+		const get = apiGetMock.getMockImplementation();
+		apiGetMock.mockImplementation((url: string) =>
+			url === "/api/dev/directories"
+				? Promise.resolve({
+						directory: "/work",
+						parent: "/",
+						hasManifest: false,
+						entries: [{ name: "source #1", path: "/work/source #1" }],
+					})
+				: url === "/api/dev/directories?path=%2Fwork%2Fsource%20%231"
+					? Promise.resolve({
+							directory: "/work/source #1",
+							parent: "/work",
+							hasManifest: true,
+							entries: [],
+						})
+					: get?.(url),
+		);
+		fireEvent.click(await screen.findByRole("button", { name: "挂载开发拓展" }));
+		fireEvent.click(screen.getByRole("button", { name: "浏览目录" }));
+		fireEvent.click(await screen.findByRole("button", { name: "source #1" }));
+		expect(await screen.findByText("当前目录包含 extension.json")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "选择此目录" }));
+		expect((screen.getByRole("textbox", { name: "拓展工程目录" }) as HTMLInputElement).value).toBe(
+			"/work/source #1",
+		);
+		expect(apiPostMock).not.toHaveBeenCalled();
+		apiPostMock.mockResolvedValueOnce({ mounts: [] });
+		fireEvent.click(screen.getByRole("button", { name: "挂载" }));
+		await waitFor(() =>
+			expect(apiPostMock).toHaveBeenCalledWith("/api/dev/extensions", {
+				directory: "/work/source #1",
+				watch: true,
+			}),
+		);
+	});
 	beforeEach(() => {
 		apiPostMock.mockReset();
 		apiDeleteMock.mockReset();

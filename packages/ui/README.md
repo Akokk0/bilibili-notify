@@ -86,7 +86,7 @@
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
 | `PopoverShell` | 贴着触发器弹出的**浮层面板** —— 装 `MenuItem` 的那个壳。圆角/阴影/挂点由壳子定死;开口每样都对应真实的调用方分歧:`align`(贴左/贴右/`stretch` 两边都贴,输入框上方那种同宽浮层)、`side`(`bottom` 默认 / `top` 朝上开 —— 聊天输入区那两个就是,收编第一轮正是因为这个被漏掉)、`variant`(`inset` 默认给 MenuItem 留呼吸位 / `flush` 内容贴边 / `panel` 自定义面板)、`layer`(走分层表,该不该统一没查清)、`surface`(`solid` 菜单实底 / `solid-strong` 压在消息流之上那档 / `glass` 强玻璃 —— 顶栏那个标签面板挑强档是有实测理由的,见组件注释)、`role` + `ariaLabel`(**不是外观档**:菜单是 `menu`、候选列表是 `listbox`,读屏器靠它判断里面装的是什么)。默认 absolute 模式仍由调用方给 relative 包裹。给 `anchorRef` 时可用 `preferredWidth` / `maxPanelHeight` 指定阅读面板宽高上限（默认跟触发器宽、最高288px），仍受视口边界限制；body portal + fixed 测量定位、自动上下避让、限宽限高,监听滚动/resize/锚点可见性;`onAnchorHidden` 通知收起、`id` 接 aria-controls,可用既有 `modal` 层;`ref` 收着,「点外面关掉」几乎人人要。收编前六处各写各的:四种圆角、三种底、三种边、两种阴影、两种挂点写法,连里面装的全是 `MenuItem` 的两处都一个有内边距一个没有 |
-| `ModalShell` | 弹窗骨架:portal 到 body、遮罩 + 居中卡、ESC/点遮罩关闭;body padding 可覆盖。**标题走 `title`(+可选 `description`),别自己写标题行** —— 字号与间距由壳子出、不留口子,此前 11 个弹窗各写各的,漂成 14/15/16px 三种字号与四种下边距。自绘表头(封面渐变那种)才两个都不传 |
+| `ModalShell` | 弹窗骨架:portal 到 body、遮罩 + 居中卡、ESC/点遮罩关闭;body padding 可覆盖。磨砂遮罩保持静止，入场只移动卡片；多步骤切换持续复用同一个Shell。**标题走 `title`(+可选 `description`),别自己写标题行** —— 字号与间距由壳子出、不留口子,此前 11 个弹窗各写各的,漂成 14/15/16px 三种字号与四种下边距。自绘表头(封面渐变那种)才两个都不传 |
 | `ConfirmDialog` | ModalShell 之上的「确认/取消」轻对话框,`danger` 换红确认钮 |
 | `DrawerShell` | 右侧滑出的**非模态**玻璃抽屉:portal 到 body、全高内滚、ESC 关闭、无遮罩(页面保持可见可交互,实时调参工作台用) |
 | `DockPill` / `DockPanel` | 底边工作台(Vue DevTools 7 / Nuxt 那种 dock,devtools 用)。`DockPill` 是左下角常驻的玻璃药丸:主钮开合(`aria-expanded`,挂 `chip`/`chip-active`,同 DisclosurePill)+ 右侧图标快捷位(`actions`,`busy` 禁用)+ `active` 时的呼吸点(`activeTitle` 念给读屏器);与右下 AI 胶囊同基线(`bottom-5` / `h-12`),底部居中让给灵动岛;面板升起时传 `offsetBottom`(面板高 + 间隔)让它骑在面板顶边上。`DockPanel` 是底边升起的整宽玻璃面板(portal、`role=dialog`):顶边拖柄改高(**受控** `height`/`onHeightChange`,夹在 `minHeight` 与视口九成之间;方向键也能调;记不记住归调用方)、ESC 收、左栏分组(`rail`,挂 `nav`/`nav-item`,吃 `RAIL_ITEM_LANGUAGE`;`count` 走 `Pill subtle`)、顶部 `header` 插槽(「当前生效」+ 收摊)。两件都走 `z-bn-dock`(45)。贴边拖到任意边 / 左右停靠**刻意没做** |
@@ -106,7 +106,7 @@
 | 导出 | 干什么 |
 | --- | --- |
 | `useTriStateTexts` / `TRISTATE_TEXT` | 三态默认文字；组件与图例用 hook 跟随 `UiTextProvider`，非组件消费者读惰性的 `TRISTATE_TEXT` |
-| `Icon` / `IconName` | 内联 SVG 图标注册表(currentColor 染色),几十枚；`library` 为三本书带搁板的素材库图标，与 `image` 图片图标区分；加新图标进这里，别散落内联 |
+| `Icon` / `IconName` | 内联 SVG 图标注册表(currentColor 染色),几十枚；`folder` 是通用文件夹轮廓图标；`library` 为三本书带搁板的素材库图标，与 `image` 图片图标区分；加新图标进这里，别散落内联 |
 | `FieldUpdatesProvider` / `useFieldUpdate` / `useFieldReset` | 「字段默认值有更新/可还原」的广播 context;无 Provider 时恒 null |
 | `useDismiss` | 「点外面关掉」的唯一写法(住 popover.tsx)。`enabled` 只在浮层开着时挂监听、`escape` 连 Esc 一起关、`event` 选 mousedown/pointerdown,`insideRefs` 把 portal 菜单等 DOM 也算内部 —— 收编前五份手写行为各漂各的,差异现在是调用点上显式的选项 |
 

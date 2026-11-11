@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { getHeapStatistics } from "node:v8";
 import type {
 	ChatIdentity,
@@ -153,6 +154,7 @@ export function createDevtools(input: CreateDevtoolsOptions): Devtools | null {
 	if (!isDevBuild(input.payloadVersion) || !input.sourceRun) return null;
 	const developmentExtensions = createDevelopmentExtensions({
 		root: input.extensions.installRoot,
+		initialDirectory: dirname(input.extensions.repoDir),
 		reservedIntegrationKeys: input.reservedIntegrationKeys,
 		extensions: input.extensions.loaded,
 	});

@@ -1,15 +1,17 @@
 import { lstat, mkdir, readFile, readlink, realpath, rm, symlink } from "node:fs/promises";
 import { platform } from "node:os";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { DevelopmentExtensionMountView } from "@bilibili-notify/contract";
 import { EXTENSION_API_RANGE, fail, ok, type Result } from "@bilibili-notify/internal";
 import type { DevelopmentExtensionEntry } from "../extensions/discover.js";
 import { parseHostExtensionManifest } from "../extensions/identity.js";
 import type { LoadedExtensions } from "../extensions/loader.js";
+import { browseDevelopmentDirectories } from "./development-directories.js";
 import { openDevelopmentSource } from "./development-source.js";
 
 export interface DevelopmentExtensionsOptions {
 	root: string;
+	initialDirectory?: string;
 	reservedIntegrationKeys: readonly string[];
 	extensions: () => Pick<LoadedExtensions, "changeDisk" | "reload" | "rescan" | "list"> | undefined;
 }
@@ -173,6 +175,8 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 		return ok({ mounts: list() });
 	}
 	return {
+		directories: (directory = options.initialDirectory ?? dirname(options.root)) =>
+			browseDevelopmentDirectories(directory),
 		list,
 		mount,
 		unmount,

@@ -11,6 +11,7 @@ import {
 import { useT } from "../i18n";
 import { reasonOf } from "../pages/extensions/shared";
 import { api } from "../services/api";
+import { DevelopmentDirectoryPicker } from "./directory-picker";
 
 const KEY = ["development-extension-mounts"] as const;
 const PATH = "/api/dev/extensions";
@@ -68,6 +69,7 @@ function MountDialog({ onClose }: { onClose: () => void }) {
 	const qc = useQueryClient();
 	const [directory, setDirectory] = useState("");
 	const [watch, setWatch] = useState(true);
+	const [browsing, setBrowsing] = useState(false);
 	const mount = useMutation({
 		mutationFn: () =>
 			api.post<DevelopmentExtensionsResponse>(PATH, { directory: directory.trim(), watch }),
@@ -79,48 +81,75 @@ function MountDialog({ onClose }: { onClose: () => void }) {
 	});
 	return (
 		<ModalShell
-			width={540}
-			title={t("developmentExtensions.mount")}
-			description={t("developmentExtensions.hint")}
-			onCancel={onClose}
+			width={browsing ? 640 : 540}
+			title={
+				browsing ? t("developmentExtensions.chooseDirectory") : t("developmentExtensions.mount")
+			}
+			description={
+				browsing ? t("developmentExtensions.browseHint") : t("developmentExtensions.hint")
+			}
+			onCancel={browsing ? () => setBrowsing(false) : onClose}
 		>
-			<form
-				className="flex flex-col gap-4"
-				onSubmit={(event) => {
-					event.preventDefault();
-					if (directory.trim() && !mount.isPending) mount.mutate();
-				}}
-			>
-				<label
-					htmlFor="development-extension-directory"
-					className="text-bn-base font-semibold text-bn-text-secondary"
-				>
-					{t("developmentExtensions.directory")}
-				</label>
-				<TInput
-					id="development-extension-directory"
-					ariaLabel={t("developmentExtensions.directory")}
-					mono
-					value={directory}
-					onChange={setDirectory}
-					disabled={mount.isPending}
+			{browsing ? (
+				<DevelopmentDirectoryPicker
+					initialDirectory={directory.trim() || undefined}
+					onCancel={() => setBrowsing(false)}
+					onSelect={(selected) => {
+						setDirectory(selected);
+						setBrowsing(false);
+					}}
 				/>
-				<CheckRow checked={watch} onChange={setWatch}>
-					{t("developmentExtensions.watch")}
-				</CheckRow>
-				<HintNote>{t("developmentExtensions.lifecycle")}</HintNote>
-				{mount.isError ? <ErrorNote>{reasonOf(mount.error)}</ErrorNote> : null}
-				<div className="flex justify-end gap-2">
-					<Btn variant="outline" onClick={onClose} disabled={mount.isPending}>
-						{t("developmentExtensions.cancel")}
-					</Btn>
-					<Btn type="submit" variant="primary" disabled={!directory.trim() || mount.isPending}>
-						{mount.isPending
-							? t("developmentExtensions.mounting")
-							: t("developmentExtensions.confirm")}
-					</Btn>
-				</div>
-			</form>
+			) : (
+				<form
+					className="flex flex-col gap-4"
+					onSubmit={(event) => {
+						event.preventDefault();
+						if (directory.trim() && !mount.isPending) mount.mutate();
+					}}
+				>
+					<label
+						htmlFor="development-extension-directory"
+						className="text-bn-base font-semibold text-bn-text-secondary"
+					>
+						{t("developmentExtensions.directory")}
+					</label>
+					<div className="flex flex-wrap items-center gap-2">
+						<div className="min-w-0 flex-1">
+							<TInput
+								id="development-extension-directory"
+								ariaLabel={t("developmentExtensions.directory")}
+								mono
+								value={directory}
+								onChange={setDirectory}
+								disabled={mount.isPending}
+							/>
+						</div>
+						<Btn
+							variant="outline"
+							icon={<Icon.folder size={15} />}
+							disabled={mount.isPending}
+							onClick={() => setBrowsing(true)}
+						>
+							{t("developmentExtensions.browse")}
+						</Btn>
+					</div>
+					<CheckRow checked={watch} onChange={setWatch}>
+						{t("developmentExtensions.watch")}
+					</CheckRow>
+					<HintNote>{t("developmentExtensions.lifecycle")}</HintNote>
+					{mount.isError ? <ErrorNote>{reasonOf(mount.error)}</ErrorNote> : null}
+					<div className="flex justify-end gap-2">
+						<Btn variant="outline" onClick={onClose} disabled={mount.isPending}>
+							{t("developmentExtensions.cancel")}
+						</Btn>
+						<Btn type="submit" variant="primary" disabled={!directory.trim() || mount.isPending}>
+							{mount.isPending
+								? t("developmentExtensions.mounting")
+								: t("developmentExtensions.confirm")}
+						</Btn>
+					</div>
+				</form>
+			)}
 		</ModalShell>
 	);
 }

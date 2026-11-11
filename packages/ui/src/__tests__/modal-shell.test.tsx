@@ -25,6 +25,16 @@ const shell = (props: Partial<Parameters<typeof ModalShell>[0]> = {}) =>
 const header = () => screen.getByTestId("body").previousElementSibling;
 
 describe("ModalShell 的标题槽", () => {
+	it("背景磨砂层保持静止，入场动画只作用于弹窗本体", () => {
+		shell({ title: "选择目录" });
+		const dialog = screen.getByRole("dialog");
+		const backdrop = screen.getByRole("button", { name: "关闭弹窗" });
+		const backdropClasses = dialog.parentElement?.className.split(/\s+/) ?? [];
+		expect(backdropClasses.filter((name) => name.startsWith("bn-anim-"))).toEqual([]);
+		expect(backdrop.className.split(/\s+/)).toContain("backdrop-blur-xs");
+		expect(backdrop.parentElement).toBe(dialog.parentElement);
+		expect(dialog.className.split(/\s+/)).toContain("bn-anim-page-in");
+	});
 	it("只有标题:15px 粗体正文色,块下 mb-3", () => {
 		shell({ title: "新建连接" });
 		const t = screen.getByText("新建连接");

@@ -44,6 +44,7 @@ describe("devtools 挂载", () => {
 		});
 		expect((await app.request("/api/dev")).status).toBe(404);
 		expect((await app.request("/api/dev/extensions")).status).toBe(404);
+		expect((await app.request("/api/dev/directories")).status).toBe(404);
 		expect((await app.request("/api/dev/extensions", { method: "POST" })).status).toBe(404);
 		await runtime.dispose();
 	});
@@ -73,6 +74,14 @@ describe("devtools 挂载", () => {
 		});
 		try {
 			expect((await app.request("/api/dev/extensions")).status).toBe(401);
+			expect((await app.request("/api/dev/directories")).status).toBe(401);
+			expect(
+				(
+					await app.request("/api/dev/directories", {
+						headers: { cookie: `bn_session=${codec.sign()}` },
+					})
+				).status,
+			).toBe(200);
 			expect(
 				(
 					await app.request("/api/dev/extensions", {
