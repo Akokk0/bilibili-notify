@@ -1,11 +1,11 @@
 name: Gate
 
 # **发版门禁**的唯一定义:Biome → build → typecheck → test。
-# ci.yml / image-release.yml / desktop-release.yml 全部复用它。
+# CI、Docker、Desktop、npm与应用内更新全部复用它。
 #
-# 抽出来是因为门禁是「这份代码能不能发出去」的判据 —— 三份各自维护的副本迟早会飘,
+# 抽出来是因为门禁是「这份代码能不能发出去」的判据 —— 各自维护的副本迟早会飘,
 # 而飘的方式一定是某条发布路径悄悄少了一项检查,且没人发现(发布 workflow 全绿)。
-# 加一条新检查时只改这里一处,三条路径同时生效。
+# 加一条新检查时只改这里一处,所有路径同时生效。
 #
 on:
   workflow_call:

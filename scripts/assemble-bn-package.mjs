@@ -6,6 +6,33 @@ import { unzipSync } from "fflate";
 import { verifyRelease } from "../tools/bn-cli/scripts/verify-release.mjs";
 import { readArg } from "./cli-args.mjs";
 
+/** 装配和发行复用同一套载荷版本、用途与完整性校验。 */
+export async function verifyBnRuntimes(directory, options) {
+	await verifyRelease(pathToFileURL(`${directory}/`), options);
+	const catalog = JSON.parse(await readFile(join(directory, "runtime.json"), "utf8"));
+	for (const profile of ["web", "dev"]) {
+		const files = unzipSync(await readFile(join(directory, catalog.runtimes[profile].file)));
+		for (const file of [
+			"index.mjs",
+			"boot.mjs",
+			"package.json",
+			"bn-runtime.json",
+			"web-dist/index.html",
+		])
+			if (!files[file])
+				throw new Error(`Bundled ${profile} runtime is incomplete: missing ${file}.`);
+		const marker = JSON.parse(Buffer.from(files["bn-runtime.json"] ?? []).toString("utf8"));
+		const pkg = JSON.parse(Buffer.from(files["package.json"] ?? []).toString("utf8"));
+		if (
+			marker.schemaVersion !== 1 ||
+			marker.profile !== profile ||
+			marker.version !== catalog.runtimes[profile].version ||
+			pkg.version !== marker.version
+		)
+			throw new Error(`Bundled ${profile} runtime profile or version mismatch.`);
+	}
+}
+
 /** 编译壳与同版本双宿主装成独立npm目录；发布钩子另行拒绝开发版本。 */
 export async function assembleBnPackage({ cliDir, runtimesDir, outDir }) {
 	const catalog = JSON.parse(await readFile(join(runtimesDir, "runtime.json"), "utf8"));
@@ -24,19 +51,7 @@ export async function assembleBnPackage({ cliDir, runtimesDir, outDir }) {
 			await cp(join(runtimesDir, descriptor.file), join(staging, descriptor.file));
 		}
 		await writeFile(join(staging, "runtime.json"), `${JSON.stringify(catalog, null, 2)}\n`);
-		await verifyRelease(pathToFileURL(`${staging}/`), { allowDevelopment: true });
-		for (const profile of ["web", "dev"]) {
-			const files = unzipSync(await readFile(join(staging, catalog.runtimes[profile].file)));
-			const marker = JSON.parse(Buffer.from(files["bn-runtime.json"] ?? []).toString("utf8"));
-			const pkg = JSON.parse(Buffer.from(files["package.json"] ?? []).toString("utf8"));
-			if (
-				marker.schemaVersion !== 1 ||
-				marker.profile !== profile ||
-				marker.version !== catalog.runtimes[profile].version ||
-				pkg.version !== marker.version
-			)
-				throw new Error(`Bundled ${profile} runtime profile or version mismatch.`);
-		}
+		await verifyBnRuntimes(staging, { allowDevelopment: true });
 		await rename(staging, outDir);
 	} finally {
 		await rm(staging, { recursive: true, force: true });

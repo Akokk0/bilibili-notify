@@ -1,0 +1,136 @@
+name: bilibili-notify — npm
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify only; never publish on manual dispatch"
+        type: boolean
+        default: true
+      version:
+        description: "App version for dry-run builds"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_DIRECTORY: dist/bn-npm
+  NPM_REGISTRY: https://registry.npmjs.org/
+
+jobs:
+  gate:
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    uses: ./.github/workflows/gate.yml
+
+  build:
+    needs: [gate]
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert app tag format
+        if: github.event_name == 'push'
+        run: bash .github/scripts/shared/assert-ref-matches-app-version.sh
+
+      - name: Assert release commit is on dev
+        if: github.event_name == 'push'
+        run: bash .github/scripts/shared/assert-release-ref-on-dev.sh
+
+      - name: Setup Vite+ (vp) + Node
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Read app version
+        id: version
+        env:
+          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: bash .github/scripts/shared/read-app-version.sh
+
+      - name: Read release summary from CHANGELOG
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: bash .github/scripts/shared/read-release-summary.sh
+
+      - name: Sync app version metadata
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: bash .github/scripts/shared/sync-app-version.sh
+
+      - name: Fetch afdian sponsors
+        env:
+          AFDIAN_USER_ID: ${{ secrets.AFDIAN_USER_ID }}
+          AFDIAN_TOKEN: ${{ secrets.AFDIAN_TOKEN }}
+        run: node scripts/fetch-sponsors.mjs
+
+      - name: Build complete npm package
+        id: build
+        env:
+          BN_APP_VERSION: ${{ steps.version.outputs.value }}
+        run: vp run build:bn-package
+
+      - name: Verify complete npm package without publishing
+        id: verify
+        env:
+          TAG: v${{ steps.version.outputs.value }}
+        run: vp run release:bn-package --directory "$PACKAGE_DIRECTORY" --tag "$TAG" --registry "$NPM_REGISTRY" --dry-run
+
+      - name: Upload reviewable npm package
+        uses: actions/upload-artifact@v7
+        with:
+          name: bn-npm-package
+          path: |
+            dist/bn-npm/*.tgz
+            dist/bn-npm/package.json
+          retention-days: 14
+          if-no-files-found: error
+
+  publish:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write
+    # 不带ref：所有版本的渠道晋升串行，已发生的上传不中途取消。
+    concurrency:
+      group: bn-npm-publish
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert release commit is on dev
+        run: bash .github/scripts/shared/assert-release-ref-on-dev.sh
+
+      - name: Setup Vite+ (vp) + Node
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Download verified npm package
+        uses: actions/download-artifact@v8
+        with:
+          name: bn-npm-package
+          path: dist/bn-npm
+
+      - name: Publish immutable version then advance channel
+        id: publish
+        env:
+          TAG: ${{ github.ref_name }}
+        run: vp run release:bn-package --directory "$PACKAGE_DIRECTORY" --tag "$TAG" --registry "$NPM_REGISTRY" --publish

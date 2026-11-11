@@ -8,11 +8,11 @@
 - **Biome** —— linter + formatter(tab 缩进,100 列)
 - **Lefthook** —— `vp install` 时经 prepare 钩子自动装。pre-commit 对暂存的 `*.ts/.js/.mjs/.json` 跑 `biome check --staged --write`;commit-msg 跑 commitlint(强制 conventional-commits)
 - **Vitest** —— 单测(`vp test`)
-- **发版** —— 无版本编排工具(changesets 已弃用),registry 上没有任何包;独立端由 git tag `v<VERSION>` 驱动(见下)
+- **发版** —— 无版本编排工具(changesets 已弃用),宿主成品与开发工具分别按发行定案走npm;独立端由 git tag `v<VERSION>` 驱动(见下)
 
-## 门禁(`gate.yml`)—— 唯一定义,三条路径共用
+## 门禁(`gate.yml`)—— 唯一定义,四条发行路径共用
 
-`.github/workflows/gate.yml`(`on: workflow_call`)是**发版门禁**的唯一定义:Biome → build → typecheck → test。三条发布 workflow 与 CI 全部 `uses: ./.github/workflows/gate.yml`:
+`.github/workflows/gate.yml`(`on: workflow_call`)是**发版门禁**的唯一定义:Biome → build → typecheck → test。四条发布 workflow 与 CI 全部 `uses: ./.github/workflows/gate.yml`:
 
 | workflow | 结构 |
 | --- | --- |
@@ -20,9 +20,10 @@
 | `image-release.yml`(Docker) | `gate` → `build`(matrix) → `merge` |
 | `desktop-release.yml`(Desktop) | `gate` → `build`(matrix) → `release` |
 | `update-payload.yml`(应用内更新) | `gate` → `publish` |
+| `npm-release.yml`(自带宿主的npm包) | `gate` → `build` → `publish` |
 | `revoke-update.yml`(撤回坏版本) | **不过门禁** —— 它一行代码都不发,只把渠道清单指回一个**已经发布过**的载荷(那次发版已经过过门禁)。给一件几十秒的急事加十几分钟没有意义,而且门禁红了也不说明这次撤回有问题。 |
 
-**每条发布路径都过门禁,门禁不绿就不发。** 抽成 reusable workflow 是因为门禁是「这份代码能不能发出去」的判据 —— 三份各自维护的副本迟早会飘,而飘的方式一定是某条发布路径悄悄少了一项检查,且发布 workflow 还是全绿的。加新检查只改 `gate.yml` 一处。
+**每条发布路径都过门禁,门禁不绿就不发。** 抽成 reusable workflow 是因为门禁是「这份代码能不能发出去」的判据 —— 各自维护的副本迟早会飘,而飘的方式一定是某条发布路径悄悄少了一项检查,且发布 workflow 还是全绿的。加新检查只改 `gate.yml` 一处。
 
 一个**别踩**的点:
 
@@ -40,7 +41,7 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 - **`main`** —— GitHub 默认分支,发布快照。不再触发任何发版。
 - **`koishi-astrbot-maintenance`** —— Koishi 插件(`koishi/`)与 AstrBot 插件(`astrbot/`)的维护线。两端已暂停更新,dev 不再含这两个目录;它们各自的发版 workflow(`publish.yml` 发 npm、`astrbot-release.yml` squash-push 到独立仓)只存在于这条分支、也只认这条分支。要发维护版就在这条分支上改版本号再 push。
 
-业务核心workspace包保持private；`@bilibili-notify/bn`作为自带正式/开发宿主的npm发行包，按[ADR-0046](../adr/0046-bundled-npm-distribution.md)与主程序同版本发行。发布版本由git tag `v<VERSION>`驱动；现有Docker、Desktop、应用内更新流水线独立运行，npm接线与实际发行状态见[第6期计划](../1.0/phase-6-plan.md)。
+业务核心workspace包保持private；`@bilibili-notify/bn`作为自带正式/开发宿主的npm发行包，按[ADR-0046](../adr/0046-bundled-npm-distribution.md)与主程序同版本发行。发布版本由git tag `v<VERSION>`驱动；Docker、Desktop、npm、应用内更新四条流水线独立运行，实际发行状态见[第6期计划](../1.0/phase-6-plan.md)。
 
 ## 独立端版本与 tag
 
@@ -50,6 +51,7 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 
 - `apps/server/package.json#version` —— 后端运行时 `/api/health.version` 与 Docker 镜像内版本。
 - `apps/web/package.json#version` —— 前端概览页展示。
+- `tools/bn-cli/package.json#version` —— 完整宿主npm包，与两种载荷同版本；SDK与拓展创建器不在这组同步里。
 - `apps/desktop/package.json#version`、`apps/desktop/src-tauri/tauri.conf.json#version`、`apps/desktop/src-tauri/Cargo.toml` / `Cargo.lock` —— Desktop/Tauri bundle 与安装器元数据。
 
 这些改动只发生在 CI checkout / Docker build context 里,不需要回写仓库。`apps/server`、`apps/web`、`apps/desktop` 都是 `private`、永不发 npm。
@@ -66,17 +68,18 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 
 不再通过 bump `apps/server/package.json#version` 触发发版;该文件只是开发占位,发布时由 CI 从 tag 临时同步。
 
-### Docker 镜像与 Desktop 触发
+### 四种发行产物的触发
 
-推送 `v<VERSION>` tag 后,两个 release workflow 独立触发:
+推送 `v<VERSION>` tag 后,四条 release workflow 独立触发:
 
 - `.github/workflows/image-release.yml` —— Docker Hub `docker.io/akokk0/bilibili-notify` 与 GHCR `ghcr.io/akokk0/bilibili-notify`。
 - `.github/workflows/desktop-release.yml` —— macOS / Windows Desktop 产物与 GitHub Release assets。
+- `.github/workflows/npm-release.yml` —— 构建并校验自带双宿主的`@bilibili-notify/bn`，上传可审阅tgz，随后通过可信发布写入npm并推进渠道。
 - `.github/workflows/update-payload.yml` —— 应用内更新的载荷 zip 与签名清单,挂到同一个 release,并覆盖滚动 tag `update-channel` 上的渠道清单。清单的 `notes` 是从 `apps/CHANGELOG.md` 该版本段抽的概述(`scripts/changelog-section.mjs`,构建前就抽,找不到 / 为空 / 超 120 字直接红)。**没配 `BN_UPDATE_SIGNING_KEY` 时整条跳过并打 warning**,不让发版红着。详见 [self-update.md](./self-update.md)。
 
 GitHub Release 的正文由 `create-app-github-release.sh` 拼(desktop-release 与 update-payload 共用,谁先到谁建):开头是同一个脚本抽出的 CHANGELOG **整段**,后面才是产物清单与 compare 链接;CHANGELOG 里没有这一版就红。所以 **tag 必须指向已含 CHANGELOG 段的 commit**。
 
-两个 workflow 都先校验 tag commit 可从 `origin/dev` 到达,再从 tag 读取版本并运行 `sync-app-version.sh`;Docker 与 Desktop 依赖同一个版本 tag,但彼此不再互相等待。某个 workflow 失败时只重跑对应 workflow。
+四条 workflow 都先校验 tag commit 可从 `origin/dev` 到达,再从 tag 读取版本并运行 `sync-app-version.sh`;它们依赖同一个版本 tag,彼此不等待。某个 workflow 失败时只重跑对应 workflow。
 
 拓展与本体分开发布(ADR-0013):
 
@@ -88,10 +91,11 @@ GitHub Release 的正文由 `create-app-github-release.sh` 拼(desktop-release �
 
 ### 发布前验证
 
-默认不跑 dry-run、直接打 tag;用户点名,或本版动过 `build:desktop` / `build:update-payload` / `prepare-resources` 时,打 tag 前先手动 dry-run:
+默认不跑 dry-run、直接打 tag;用户点名,或本版动过 `build:desktop` / `build:update-payload` / `build:bn-package` / npm发行流程 / `prepare-resources` 时,打 tag 前先手动 dry-run:
 
 - `version-tag`: `version=<VERSION>`, `dry_run=true` —— 校验 tag 格式与现有 tag 兼容性。
 - `image-release`: `version=<VERSION>`, `dry_run=true` —— 构建但不 push Docker digest / manifest。构建里的装配会核对 CHANGELOG,所以 `version` 也必须是 CHANGELOG 里**有段**的版本(非开发版缺段装配直接抛)。
+- `npm-release`: 只在`dev`手动运行，`version=<VERSION>`、`dry_run=true`，生成并上传Actions审阅产物，不写npm registry；在tag上手动dispatch也不会发布。
 - `desktop-release`: `version=<VERSION>`, `dry_run=true` —— 构建并校验 Desktop artifacts,不创建 GitHub Release。
 - `update-payload`: `version=<VERSION>`, `dry_run=true` —— 打载荷并签名,不上传任何资产。`version` 必须是 CHANGELOG 里**有段且概述不超 120 字**的版本(新写的那段,或旧的如 0.8.0),否则第一步抽概述就红 —— 这正是它要验的事。
 
@@ -101,7 +105,7 @@ GitHub Release 的正文由 `create-app-github-release.sh` 拼(desktop-release �
 (`build:bundle` + `scripts/assemble-server-bundle.mjs`),摆在 `app/apps/server/lib/` 下,
 dashboard 是它的同级 `web-dist/`。资源目录里**没有 node_modules**:以前生产端沿 node_modules
 逐个搬运行时依赖再裁掉测试与文档,三百行只为拼出一棵能跑的依赖树,而应用内更新一装上,
-桌面壳跑的就已经是 bundle 载荷了 —— 安装包自带那份没理由不同源。三种发行形态吃同一份产物,
+桌面壳跑的就已经是 bundle 载荷了 —— 安装包自带那份没理由不同源。四种发行形态吃同一份正式产物,
 `vp run build:desktop` 也就等于 `build:update-payload` + `tauri:build`。`build:update-payload` 里 web 与 server bundle 互不依赖,由一条 `pnpm --filter web --filter server run build:bundle` 并发跑 —— pnpm 一条命令只认一个 script 名,所以 web 有一条 `build:bundle` 别名指向自己的 `build`。server 的 `build:bundle` 经 `cross-env` 设 `BN_SERVER_BUNDLE=1`:桌面装同一份载荷之后这条脚本第一次在 Windows runner 上跑,pnpm 在那里用 cmd.exe 执行 script,`VAR=1 cmd` 这种 POSIX 前缀会被当成命令名而炸(0.9.1 的 dry-run 抓到的;0.9.0 之前桌面走的是普通 `build`,没碰过它)。
 
 bundle 必须带齐的文件(入口、选版器、词云 static、jieba wasm、
@@ -109,7 +113,7 @@ bundle 必须带齐的文件(入口、选版器、词云 static、jieba wasm、
 升级载荷把关、桌面资源准备三处都读它 —— 这些文件全是运行时按路径读盘的,少一个不会在构建期
 报错,只会在用户点到那个功能时炸。
 
-`release-notes.json` 由装配脚本从 `apps/CHANGELOG.md` 抽 1.0 起各版的概述与 ⚠️ 段写出,所以 **CHANGELOG 现在喂三处**:清单 `notes`(概述,纯文字)、发布页正文(整段)、载荷里的发行说明(概述与 ⚠️ 段,markdown 原文)。装配时非开发版而 CHANGELOG 里没有当前版本就抛 —— 三条发版链路(Docker、桌面、应用内更新)都经过装配,缺段在构建那一步就红。数据怎么用见 [self-update.md](./self-update.md)「升级之后的『本次更新』」。
+`release-notes.json` 由装配脚本从 `apps/CHANGELOG.md` 抽 1.0 起各版的概述与 ⚠️ 段写出,所以 **CHANGELOG 现在喂三处**:清单 `notes`(概述,纯文字)、发布页正文(整段)、载荷里的发行说明(概述与 ⚠️ 段,markdown 原文)。装配时非开发版而 CHANGELOG 里没有当前版本就抛 —— 四条发版链路(Docker、桌面、npm、应用内更新)都经过装配,缺段在构建那一步就红。数据怎么用见 [self-update.md](./self-update.md)「升级之后的『本次更新』」。
 
 发版 workflow 里**版本同步在构建之前**:装配时写进 `dist/package.json` 的版本就是外壳起来后
 `/api/health` 报的那个,顺序反了安装包会永远自报 `0.0.0-dev`。
@@ -171,4 +175,16 @@ docker build -f apps/Dockerfile -t bilibili-notify:dev .
 
 `vp run build:bn-package`生成完整tgz，包含正式/开发两种宿主和面板，首次运行直接解包，不访问GitHub。源码构建壳不能代替此包；发布前应核对包版本、两种用途、字节数和SHA256。持久数据位于npm缓存之外；web沿既有应用内更新，dev通过更新npm包升级。使用方式见[启动器README](../../tools/bn-cli/README.md)。
 
-npm发版接线尚在第6期6-05e施工，实际npm账号设置、版本及发布动作仍需按发行流程确认。
+`npm-release.yml`从主程序tag读版本，沿共享门禁、分支守卫和版本同步构建；构建作业只读，只有tag的push发布作业获得`id-token: write`。手动dispatch仅允许dev上的dry-run，不能发布。版本包先用`bn-release-<VERSION>`标签上传，复验registry摘要后才推进预发布`alpha`或正式`latest`；发布作业跨tag串行，晋升前重读渠道。较旧tag可补齐自己的包，不倒退渠道。
+
+发行命令默认dry-run：`vp run release:bn-package --directory <候选目录> --tag v<VERSION> --dry-run`，会检查实际tgz、宿主用途/版本/入口和校验清单，不写registry。只有明确`--publish`才上传。同版本重跑先比SHA512，一致就复用，冲突拒绝覆盖；请求失败不自动重传。只重跑失败的publish作业可复用原Actions候选；重新构建若字节改变，同号将被拒绝，应使用新版本。
+
+### npm首次发行与可信发布配置
+
+根目录的`npm-registry-client`别名固定npm 11.21.0，仅作为发行客户端，经`vp exec npm`执行；包管理仍由vp调用pnpm。该版本覆盖可信发布的dist-tag支持，需分别允许直接发布和管理标签，见[npm官方说明](https://docs.npmjs.com/trusted-publishers/#managing-dist-tags-with-trusted-publishing)。
+
+实际发行前由主人确认版本、组织权限和账号授权。本机registry夹具不证明真实npm权限。首次包尚未建立时，应在获批的首发中先建立实际包，再配置可信发布；npm的trust管理要求包已存在，见[官方前置条件](https://github.com/npm/cli/blob/latest/docs/lib/content/commands/npm-trust.md#prerequisites)。无需发布占位包，不能把0.0.0-dev构建壳发布出去。
+
+可信发布绑定`@bilibili-notify/bn`、GitHub仓库`Akokk0/bilibili-notify`和工作流文件名`npm-release.yml`，允许`npm publish`及`npm dist-tag`两项动作。仓库不保存长期npm发布令牌。配置应靠近实际发行时完成，真实OIDC与npm安装、宿主启动仍在获批发布后验收。
+
+npm同名同版本发布后不能复用，即使unpublish也一样；发错后改发新版本，不能照其他渠道的删tag重打方式复用该号，见[npm发布规则](https://docs.npmjs.com/cli/v11/commands/npm-publish/)。

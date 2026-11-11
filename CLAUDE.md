@@ -4,7 +4,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 ## 项目
 
-单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像与 macOS / Windows 桌面应用,支持应用内自主升级。
+单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像、macOS / Windows 桌面应用与自带宿主的 npm 包,支持应用内自主升级。
 
 业务核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费,不用 changesets。启动器、SDK与拓展创建器作为对外工具走npm;开发或准备发行前先读[ADR-0040](docs/adr/0040-extension-sdk-npm.md),施工见[第6期计划](docs/1.0/phase-6-plan.md)。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。平台描述与连接设置规则已归内置适配器,改动它们或候选接口之前先读 `.claude/rules/connection-platforms.md`。推送链路各层(`apps/server/src/live/`、`apps/server/src/bilibili/dynamic/`、`apps/server/src/bilibili/live/session/`,与 `packages/push` / `packages/image`)只认独立端这一个宿主,不留可选钩子。
 
@@ -53,7 +53,7 @@ tools/        独立开发工具(拓展创建器/发布器),不被宿主加载
 - `main` —— GitHub 默认分支,发布快照。不触发任何发版。
 - `koishi-astrbot-maintenance` —— Koishi 插件(`koishi/`)与 AstrBot 插件(`astrbot/`)的维护线;两端各自的发版 workflow 只认这条分支,dev 不含这两个目录。
 
-独立端 Docker 镜像与 Desktop Release 由 `v<VERSION>` git tag 驱动;源码内独立端包版本保持 `0.0.0-dev`,发布 workflow 构建前按 tag 临时同步版本元数据。prerelease tag(如 `v0.1.0-alpha.7`)→Docker `:alpha`,纯 semver tag→`:latest`。`version-tag` workflow 是手动 tag helper,默认 dry-run;正式 tag 会分别触发 Docker、Desktop 与应用内更新载荷,三者互不阻塞。详见 `docs/agents/build-release.md`。
+独立端 Docker、Desktop、npm 成品与应用内更新载荷由 `v<VERSION>` git tag 驱动;源码内独立端包版本保持 `0.0.0-dev`,发布 workflow 构建前按 tag 临时同步版本元数据。prerelease tag(如 `v0.1.0-alpha.7`)→Docker `:alpha` / npm `alpha`,纯 semver tag→`latest`。`version-tag` workflow 是手动 tag helper,默认 dry-run;正式 tag 分别触发 Docker、Desktop、npm 与应用内更新载荷,四者互不阻塞。详见 `docs/agents/build-release.md`。
 
 ## 深入参考(`docs/agents/`)
 

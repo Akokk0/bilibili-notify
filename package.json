@@ -27,7 +27,8 @@
 		"test:migration-timing": "cross-env BN_MIGRATION_TIMING=1 vp test apps/server/src/migration/__tests__/migration-timing.test.ts --reporter=default",
 		"knip": "knip --files",
 		"build:bn-runtimes": "node scripts/build-bn-runtimes.mjs",
-		"build:bn-package": "node scripts/build-bn-package.mjs"
+		"build:bn-package": "node scripts/build-bn-package.mjs",
+		"release:bn-package": "node scripts/release-bn-package.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.10",
@@ -39,6 +40,7 @@
 		"fflate": "catalog:",
 		"knip": "^6.32.3",
 		"lefthook": "^2.1.10",
+		"npm-registry-client": "npm:npm@11.21.0",
 		"typescript": "^5.8.3",
 		"vite-plus": "1.5.1"
 	}

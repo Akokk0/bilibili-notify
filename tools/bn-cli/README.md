@@ -28,6 +28,7 @@ npm包不含Node或浏览器；公开依赖随npm正常安装，浏览器使用�
 
 - `vp run build:bn-package`构建CLI、两种宿主并生成`dist/bn-npm/bilibili-notify-bn-<版本>.tgz`和校验清单。两种宿主沿原装配与载荷格式，保持用途隔离。完整tgz可直接在仓外安装，不需要额外载荷参数。
 - 普通workspace build只生成CLI编译壳，避免每次开发构建重复打宿主；它不能当成完整发行包。发布守卫拒绝占位版本、载荷缺失、版本不一致及大小/摘要错误。
-- 主程序tag由发行流程确认后同步四种渠道；npm预发布走`alpha`、正式版走`latest`。源文件保持`0.0.0-dev`，CI临时同步版本。实际上传和npm组织的可信发布配置见主仓发行指引。
+- 主程序tag由发行流程确认后同步四种渠道；npm预发布走`alpha`、正式版走`latest`。源文件保持`0.0.0-dev`，CI临时同步版本。`npm-release.yml`复用门禁，只给tag发布作业可信发布权限；dev上的手动dry-run只生成候选。
+- `vp run release:bn-package --directory <候选目录> --tag v<VERSION> --dry-run`核对完整tgz且不写registry；同版本重跑先核对内容，旧tag不回退渠道。实际上传、首发及npm组织的可信发布配置见主仓`docs/agents/build-release.md`。
 
 业务核心仍为私有workspace包，不成为启动器的npm依赖。源码加载器作为公开依赖安装，保留自己的原生组件与运行资源；正式宿主仍自包含。具体定案见主仓ADR-0045、ADR-0046。

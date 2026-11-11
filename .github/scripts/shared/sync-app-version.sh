@@ -64,6 +64,7 @@ function replaceOnce(path, pattern, replacement, label) {
 replaceJsonVersion('apps/server/package.json')
 replaceJsonVersion('apps/web/package.json')
 replaceJsonVersion('apps/desktop/package.json')
+replaceJsonVersion('tools/bn-cli/package.json')
 replaceJsonVersion('apps/desktop/src-tauri/tauri.conf.json')
 
 replaceOnce(
