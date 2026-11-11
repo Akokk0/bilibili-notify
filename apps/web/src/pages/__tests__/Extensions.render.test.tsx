@@ -472,8 +472,8 @@ describe("拓展页", () => {
 				apiVersion: undefined,
 			})),
 		});
-		await screen.findByRole("button", { name: "全部 8" });
-		fireEvent.click(screen.getByRole("button", { name: "订阅 1" }));
+		await screen.findByRole("tab", { name: "全部 8" });
+		fireEvent.click(screen.getByRole("tab", { name: "订阅 1" }));
 		for (const [
 			locale,
 			title,
@@ -563,14 +563,14 @@ describe("拓展页", () => {
 			],
 		] as const) {
 			act(() => i18n.set({ locale }));
-			expect(screen.getByRole("button", { name: sub }).getAttribute("aria-pressed")).toBe("true");
+			expect(screen.getByRole("tab", { name: sub }).getAttribute("aria-selected")).toBe("true");
 			expect(screen.getByText(title)).toBeTruthy();
 			expect(screen.getByText(subtitle)).toBeTruthy();
 			expect(screen.getByText(unknownHint)).toBeTruthy();
 			expect(screen.queryByLabelText("Original / failed")).toBeNull();
-			expect(screen.getByRole("button", { name: push })).toBeTruthy();
+			expect(screen.getByRole("tab", { name: push })).toBeTruthy();
 			expect(screen.getByRole("button", { name: install })).toBeTruthy();
-			fireEvent.click(screen.getByRole("button", { name: all }));
+			fireEvent.click(screen.getByRole("tab", { name: all }));
 			for (const [index, state] of states.entries()) {
 				const card = await cardOf(`Original / ${state}`);
 				const label = labels[index];
@@ -588,7 +588,7 @@ describe("拓展页", () => {
 			expect(within(await cardOf("Original / unreadable")).getByText(unknown)).toBeTruthy();
 			expect(within(await cardOf("Original / disabled")).getByText(empty)).toBeTruthy();
 			expect(within(await cardOf("Original / running")).getByText(count)).toBeTruthy();
-			fireEvent.click(screen.getByRole("button", { name: sub }));
+			fireEvent.click(screen.getByRole("tab", { name: sub }));
 		}
 		expect(apiPatchMock).not.toHaveBeenCalled();
 	});
@@ -630,7 +630,7 @@ describe("拓展页", () => {
 				else finish();
 			});
 			if (result === "filtered")
-				fireEvent.click(await screen.findByRole("button", { name: "推播 0" }));
+				fireEvent.click(await screen.findByRole("tab", { name: "推播 0" }));
 			for (const [locale, unreadable, empty, filtered] of [
 				[
 					"en",
@@ -771,18 +771,16 @@ describe("拓展页", () => {
 				{ ...BRIDGE, id: "broken", name: "失败推送", state: "failed" },
 			],
 		});
-		const all = await screen.findByRole("button", { name: "全部 3" });
-		expect(all.getAttribute("aria-pressed")).toBe("true");
-		fireEvent.click(screen.getByRole("button", { name: "订阅 2" }));
+		const all = await screen.findByRole("tab", { name: "全部 3" });
+		expect(all.getAttribute("aria-selected")).toBe("true");
+		fireEvent.click(screen.getByRole("tab", { name: "订阅 2" }));
 		expect(screen.queryByLabelText("失败推送")).toBeNull();
 		expect(screen.getAllByLabelText(BRIDGE.name)).toHaveLength(1);
 		expect(screen.getByLabelText(THIRD_PARTY.name)).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "推送 2" }));
+		fireEvent.click(screen.getByRole("tab", { name: "推送 2" }));
 		expect(screen.queryByLabelText(THIRD_PARTY.name)).toBeNull();
 		expect(screen.getByLabelText("失败推送")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "订阅 2" }).getAttribute("aria-pressed")).toBe(
-			"false",
-		);
+		expect(screen.getByRole("tab", { name: "订阅 2" }).getAttribute("aria-selected")).toBe("false");
 		fireEvent.click(all);
 		expect(screen.getByLabelText(THIRD_PARTY.name)).toBeTruthy();
 	});
@@ -800,11 +798,11 @@ describe("拓展页", () => {
 		const empty = await cardOf("只有开发能力");
 		expect(within(empty).getByText("未声明业务口")).toBeTruthy();
 		expect(empty.textContent).not.toContain("条连接");
-		fireEvent.click(screen.getByRole("button", { name: "推送 0" }));
+		fireEvent.click(screen.getByRole("tab", { name: "推送 0" }));
 		expect(screen.getByText(/没有声明此能力的拓展/)).toBeTruthy();
 		expect(screen.getByText(/还有 1 个拓展的能力暂时认不出来/)).toBeTruthy();
 		expect(screen.queryByLabelText("清单坏了")).toBeNull();
-		fireEvent.click(screen.getByRole("button", { name: "全部 2" }));
+		fireEvent.click(screen.getByRole("tab", { name: "全部 2" }));
 		expect(screen.getByLabelText("清单坏了")).toBeTruthy();
 	});
 
@@ -992,7 +990,7 @@ describe("拓展页", () => {
 	it("一个拓展都没装时显示统一空态,页头安装入口仍把两条来路说完", async () => {
 		const { container } = renderPage({ extensions: [] });
 		expect(await screen.findByText(/还没有装拓展呢/)).toBeTruthy();
-		expect(screen.getByRole("button", { name: "全部 0" })).toBeTruthy();
+		expect(screen.getByRole("tab", { name: "全部 0" })).toBeTruthy();
 
 		fireEvent.click(screen.getByRole("button", { name: /装拓展/ }));
 		const dialog = await screen.findByRole("dialog");
@@ -1112,11 +1110,11 @@ describe("拓展安装后的唯一落点", () => {
 				state: "installable",
 			}),
 		);
-		fireEvent.click(await screen.findByRole("button", { name: "订阅 0" }));
+		fireEvent.click(await screen.findByRole("tab", { name: "订阅 0" }));
 		const marketCard = await cardOf(fresh.name);
 		fireEvent.click(within(marketCard).getByRole("button", { name: "安装" }));
 		await waitFor(() =>
-			expect(screen.getByRole("button", { name: "全部 2" }).getAttribute("aria-pressed")).toBe(
+			expect(screen.getByRole("tab", { name: "全部 2" }).getAttribute("aria-selected")).toBe(
 				"true",
 			),
 		);
@@ -1143,19 +1141,17 @@ describe("拓展安装后的唯一落点", () => {
 				state: "installable",
 			}),
 		);
-		fireEvent.click(await screen.findByRole("button", { name: "订阅 0" }));
+		fireEvent.click(await screen.findByRole("tab", { name: "订阅 0" }));
 		fireEvent.click(within(await cardOf(THIRD_PARTY.name)).getByRole("button", { name: "安装" }));
 		await screen.findByText(/测试下载失败/);
-		expect(screen.getByRole("button", { name: "订阅 0" }).getAttribute("aria-pressed")).toBe(
-			"true",
-		);
+		expect(screen.getByRole("tab", { name: "订阅 0" }).getAttribute("aria-selected")).toBe("true");
 		expect(scroll).not.toHaveBeenCalled();
 	});
 
 	it("上传失败关闭弹窗后仍保留当前筛选,不留下定位动作", async () => {
 		apiUploadMock.mockRejectedValue(new Error("测试包坏了"));
 		renderPage({ extensions: [BRIDGE] }, [], null);
-		fireEvent.click(await screen.findByRole("button", { name: "订阅 0" }));
+		fireEvent.click(await screen.findByRole("tab", { name: "订阅 0" }));
 		fireEvent.click(screen.getByRole("button", { name: "装拓展" }));
 		const dialog = await screen.findByRole("dialog");
 		const input = dialog.querySelector('input[type="file"]');
@@ -1163,9 +1159,7 @@ describe("拓展安装后的唯一落点", () => {
 		fireEvent.change(input, { target: { files: [new File(["bad"], "source.zip")] } });
 		await within(dialog).findByText(/测试包坏了/);
 		fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
-		expect(screen.getByRole("button", { name: "订阅 0" }).getAttribute("aria-pressed")).toBe(
-			"true",
-		);
+		expect(screen.getByRole("tab", { name: "订阅 0" }).getAttribute("aria-selected")).toBe("true");
 		expect(scroll).not.toHaveBeenCalled();
 	});
 
@@ -1183,7 +1177,7 @@ describe("拓展安装后的唯一落点", () => {
 			};
 		});
 		renderPage(listed, [], null);
-		fireEvent.click(await screen.findByRole("button", { name: "推送 1" }));
+		fireEvent.click(await screen.findByRole("tab", { name: "推送 1" }));
 		fireEvent.click(screen.getByRole("button", { name: "装拓展" }));
 		const dialog = await screen.findByRole("dialog");
 		const input = dialog.querySelector('input[type="file"]');
@@ -1193,7 +1187,7 @@ describe("拓展安装后的唯一落点", () => {
 		expect(screen.getByRole("dialog")).toBe(dialog);
 		await waitFor(() =>
 			expect(
-				screen.getByRole("button", { name: "全部 2", hidden: true }).getAttribute("aria-pressed"),
+				screen.getByRole("tab", { name: "全部 2", hidden: true }).getAttribute("aria-selected"),
 			).toBe("true"),
 		);
 		expect(scroll).not.toHaveBeenCalled();

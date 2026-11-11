@@ -7,8 +7,8 @@ import {
 	GlassBox,
 	Icon,
 	LoadingBlock,
-	Picker,
 	Pill,
+	TabBar,
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
@@ -18,6 +18,7 @@ import {
 	DevelopmentMountButtonSlot,
 	DevelopmentMountNoteSlot,
 } from "../components/development-extension-ui";
+import { HeroStrip } from "../components/hero-strip";
 import { useExtensions } from "../hooks/useExtensions";
 import { useScrollToHash } from "../hooks/useScrollToHash";
 import { useT } from "../i18n";
@@ -317,28 +318,24 @@ export default function Extensions() {
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-5">
-			<div className="flex items-start justify-between gap-4">
-				<div>
-					<div className="text-bn-xl font-bold tracking-tight text-bn-text-primary">
-						{t("extensions.title")}
+			<HeroStrip
+				icon={<Icon.extension size={26} />}
+				title={t("extensions.title")}
+				subtitle={t("extensions.subtitle")}
+				right={
+					<div className="flex flex-wrap gap-2">
+						<DevelopmentMountButtonSlot />
+						<Btn
+							variant="primary"
+							size="sm"
+							icon={<Icon.plus size={13} />}
+							onClick={() => setInstalling(true)}
+						>
+							{t("extensions.install")}
+						</Btn>
 					</div>
-					<div className="mt-[3px] text-bn-xs text-bn-text-secondary">
-						{t("extensions.subtitle")}
-					</div>
-				</div>
-				{/* 本体一个拓展都不带,「怎么装」得有个门;它不属于任何一口,所以在页头。 */}
-				<div className="flex flex-wrap justify-end gap-2">
-					<DevelopmentMountButtonSlot />
-					<Btn
-						variant="primary"
-						size="sm"
-						icon={<Icon.plus size={13} />}
-						onClick={() => setInstalling(true)}
-					>
-						{t("extensions.install")}
-					</Btn>
-				</div>
-			</div>
+				}
+			/>
 
 			<ExtensionToggleError toggle={toggle} />
 			{/*
@@ -356,13 +353,18 @@ export default function Extensions() {
 			) : null}
 			<ExtensionInstallOutcome done={installer.done} />
 
-			<Picker
+			<TabBar
 				value={filter}
 				onChange={setFilter}
-				options={[
-					{ value: "all", label: t("extensions.filter.all", { count: extensions.length }) },
+				items={[
+					{
+						id: "all",
+						label: t("extensions.filter.all", { count: extensions.length }),
+						icon: <Icon.list size={15} />,
+					},
 					...Object.entries(labels).map(([code, label]) => ({
-						value: code as Provides,
+						id: code as Provides,
+						icon: code === "push" ? <Icon.link size={15} /> : <Icon.user size={15} />,
 						label: t("extensions.filter.count", {
 							label,
 							count: extensions.filter((ext) => ext.provides?.includes(code as Provides)).length,
