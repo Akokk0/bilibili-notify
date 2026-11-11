@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考」。
+Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考」。拓展联调采用[ADR-0044](docs/adr/0044-extension-source-development.md)：create-bn-ext生成独立拓展；只启动BN，从开发版拓展页挂载源码工程，由宿主监听和重载，生产才打包。
 
 ## 项目
 
@@ -18,7 +18,7 @@ vp run build           # 全 workspace 拓扑序构建
 vp run typecheck       # 全 workspace tsc --noEmit
 vp test                # vitest,全包;定向跑用 vp test <路径> --reporter=dot(只出点和汇总)。别用 vpx vitest:根不声明 vitest,会 dlx 一份野的 runner
 vp run check           # Biome lint + format 检查(check:fix 自动修)
-vp run dev:apps        # apps/server + apps/web 并行 dev,顺带 watch 打包仓里的拓展
+vp run dev:apps        # apps/server + apps/web；拓展源码由BN挂载与监听
 vp run -F <pkg> build  # 构建单个包
 vp run build:update-payload   # server 自包含 bundle + 装配 + web dist(Docker / 桌面 / 应用内更新共用的载荷)
 ```

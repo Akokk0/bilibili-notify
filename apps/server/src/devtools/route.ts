@@ -16,6 +16,7 @@ import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { respondFailure } from "../routes/respond-failure.js";
+import type { DevelopmentExtensions } from "./development-extensions.js";
 import type { DevRegistry } from "./registry.js";
 
 /** 请求体:`params` 是 key → 字符串或数;没 body 就全按默认值。 */
@@ -34,10 +35,32 @@ export interface CreateDevRouteOptions {
 	registry: DevRegistry;
 	/** 不给就不挂 `/captures`,404。 */
 	captures?: DevCapturesApi;
+	developmentExtensions?: DevelopmentExtensions;
 }
 
-export function createDevRoute({ registry, captures }: CreateDevRouteOptions): Hono {
+export function createDevRoute({
+	registry,
+	captures,
+	developmentExtensions,
+}: CreateDevRouteOptions): Hono {
 	const app = new Hono();
+	if (developmentExtensions) {
+		app.get("/extensions", (c) => c.json({ mounts: developmentExtensions.list() }));
+		app.post("/extensions", async (c) => {
+			const parsed = z
+				.object({ directory: z.string().trim().min(1), watch: z.boolean().default(true) })
+				.safeParse(await c.req.json().catch(() => undefined));
+			if (!parsed.success) return respondFailure(c, fail("invalid", "需要工程目录与监听选项"));
+			const result = await developmentExtensions.mount(parsed.data.directory, parsed.data.watch);
+			return result.ok
+				? c.json({ id: result.id, mounts: result.mounts })
+				: respondFailure(c, result);
+		});
+		app.delete("/extensions/:id", async (c) => {
+			const result = await developmentExtensions.unmount(c.req.param("id"));
+			return result.ok ? c.json({ mounts: result.mounts }) : respondFailure(c, result);
+		});
+	}
 
 	app.get("/", (c) => {
 		const body: DevStatusView = { scenarios: registry.list(), active: registry.active() };

@@ -1,6 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { argv, env, platform } from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -19,12 +18,7 @@ export function createDevProcessSpecs(root = repoRoot) {
 		{
 			name: "apps/server dev",
 			command: "vp",
-			// 🔴 两个开关都是「三路输出共用一个终端」逼出来的:
-			// - `--clear-screen=false`:tsx 默认每次重跑先清整个终端,Vite+ 的地址、拓展打包
-			//   的状态会一起被擦掉。
-			// - `--ignore ../../extensions/**`:装载器 import 过的拓展产物 tsx 也盯着,打包器
-			//   起步那一下重写 dist 就让 server 整个重启一次(断直播间、重连一遍)。拓展改了
-			//   由 devtools 自己热重载,不归 tsx 管。
+			// 两路输出共用终端，server重启时保留面板地址；拓展由宿主源码环境热替换。
 			args: [
 				"exec",
 				"tsx",
@@ -32,6 +26,11 @@ export function createDevProcessSpecs(root = repoRoot) {
 				"--clear-screen=false",
 				"--ignore",
 				"../../extensions/**",
+				// tsx把相对排除项接到cwd，覆盖不到仓外。用绝对根模式；Windows包含各盘符。
+				...(platform === "win32"
+					? Array.from({ length: 26 }, (_, index) => `${String.fromCharCode(65 + index)}:/`)
+					: ["/"]
+				).flatMap((root) => ["--exclude", `${root}**/dist/**`]),
 				"--tsconfig",
 				"tsconfig.dev.json",
 				"src/index.ts",
@@ -44,33 +43,7 @@ export function createDevProcessSpecs(root = repoRoot) {
 			args: ["dev"],
 			cwd: resolve(root, "apps/web"),
 		},
-		// 仓里的拓展顺带 watch 打包:改一行 30ms 重建,配 devtools 的「改完自动重载」
-		// 就是保存即生效。装载器只认构建产物,所以没有这一条就得手动 build 一次。
-		...repoExtensionIds(root).map((id) => ({
-			name: `extensions/${id} pack -w`,
-			command: "vp",
-			// 🔴 `--no-clean`:清一次 dist 会让装载器**在开机那一眼**看见一个空目录,而软链
-			// 正指着它 —— 症状是拓展页上那条突然变成「装不起来」,而代码一个字都没错。
-			args: ["pack", "-w", "--no-clean"],
-			cwd: resolve(root, "extensions", id),
-		})),
 	];
-}
-
-/** 仓里哪些目录是拓展 —— **有清单才算**(`node_modules`、临时目录都会落在那底下)。 */
-function repoExtensionIds(root) {
-	const extensionsDir = resolve(root, "extensions");
-	try {
-		return readdirSync(extensionsDir, { withFileTypes: true })
-			.filter(
-				(entry) =>
-					entry.isDirectory() && existsSync(join(extensionsDir, entry.name, "extension.json")),
-			)
-			.map((entry) => entry.name)
-			.sort();
-	} catch {
-		return [];
-	}
 }
 
 export function statusToExitCode(status) {

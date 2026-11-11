@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type {
+	DevelopmentExtensionsResponse,
 	ExtensionsResponse,
 	ExtensionView,
 	MarketplaceResponse,
@@ -9,17 +10,24 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { DevelopmentExtensionUiContext } from "../../components/development-extension-ui";
+import {
+	DevelopmentExtensionSync,
+	DevelopmentMountButton,
+	DevelopmentMountNote,
+} from "../../devtools/extension-mounts";
 import { i18n } from "../../i18n";
 import Extensions from "../Extensions";
 import { type CardMotion, EXT_UPDATE_BUTTON, useCardMotionStore } from "../extensions/card-motion";
 
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
-const { apiGetMock, apiPatchMock, apiPostMock, apiUploadMock } = vi.hoisted(() => ({
+const { apiGetMock, apiPatchMock, apiPostMock, apiUploadMock, apiDeleteMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),
 	apiPatchMock: vi.fn(),
 	apiPostMock: vi.fn(),
 	apiUploadMock: vi.fn(),
+	apiDeleteMock: vi.fn(),
 }));
 
 vi.mock("../../services/api", () => ({
@@ -28,6 +36,7 @@ vi.mock("../../services/api", () => ({
 		patch: apiPatchMock as unknown as (url: string, body?: unknown) => Promise<unknown>,
 		post: apiPostMock as unknown as (url: string, body?: unknown) => Promise<unknown>,
 		upload: apiUploadMock,
+		delete: apiDeleteMock,
 	},
 	ApiError: class ApiError extends Error {},
 }));
@@ -140,8 +149,13 @@ function renderPage(
 	entry = "/extensions",
 	/** 给了就等它放行才回拓展表 —— 造「市场索引先到、拓展表后到」。 */
 	listedGate?: Promise<unknown>,
+	development?: DevelopmentExtensionsResponse,
 ) {
 	apiGetMock.mockImplementation(async (url: string) => {
+		if (url === "/api/dev/extensions") {
+			if (!development) throw new Error("Development extensions unavailable");
+			return structuredClone(development);
+		}
 		if (url === "/api/connections") return connections;
 		if (url.startsWith("/api/ext/marketplace")) return market;
 		if (url.startsWith("/api/ext/")) {
@@ -155,13 +169,131 @@ function renderPage(
 	const invalidate = vi.spyOn(qc, "invalidateQueries");
 	const view = render(
 		<QueryClientProvider client={qc}>
+			{development ? <DevelopmentExtensionSync /> : null}
 			<MemoryRouter initialEntries={[entry]}>
-				<Extensions />
+				<DevelopmentExtensionUiContext.Provider
+					value={
+						development ? { Button: DevelopmentMountButton, Note: DevelopmentMountNote } : null
+					}
+				>
+					<Extensions />
+				</DevelopmentExtensionUiContext.Provider>
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);
 	return { ...view, invalidate };
 }
+
+describe("拓展页开发挂载", () => {
+	beforeEach(() => {
+		apiPostMock.mockReset();
+		apiDeleteMock.mockReset();
+	});
+	afterEach(() => {
+		cleanup();
+		vi.restoreAllMocks();
+	});
+	it("自动重载完成后，卡片更新摘要而不是继续显示旧实例", async () => {
+		const mounted = {
+			id: "bridge",
+			directory: "/work/bridge",
+			entry: "/work/bridge/src/index.ts",
+			watching: true,
+			reloads: 0,
+		};
+		const development = { mounts: [mounted] };
+		renderPage(
+			LISTED,
+			CONNECTIONS,
+			{ summary: { text: "重载前摘要" } },
+			MARKET,
+			"/extensions",
+			undefined,
+			development,
+		);
+		await screen.findByText("重载前摘要");
+		const get = apiGetMock.getMockImplementation();
+		apiGetMock.mockImplementation((url: string) =>
+			url === "/api/ext/bridge/status"
+				? Promise.resolve({ summary: { text: "重载后摘要" } })
+				: get?.(url),
+		);
+		development.mounts = [{ ...mounted, reloads: 1 }];
+		await waitFor(() => expect(screen.getByText("重载后摘要")).toBeTruthy(), { timeout: 3500 });
+		expect(screen.queryByText("重载前摘要")).toBeNull();
+	});
+	it("开发版手动挂载保留失败输入，成功后刷新列表", async () => {
+		const mounted = {
+			id: "bridge",
+			directory: "/work/bridge",
+			entry: "/work/bridge/src/index.ts",
+			watching: true,
+			reloads: 0,
+		};
+		const development: DevelopmentExtensionsResponse = { mounts: [] };
+		apiPostMock.mockRejectedValueOnce(new Error("目录读不了"));
+		apiPostMock.mockImplementationOnce(async () => {
+			development.mounts = [mounted];
+			return { id: "bridge", mounts: development.mounts };
+		});
+		const { invalidate } = renderPage(
+			LISTED,
+			CONNECTIONS,
+			STATUS,
+			MARKET,
+			"/extensions",
+			undefined,
+			development,
+		);
+		fireEvent.click(await screen.findByRole("button", { name: "挂载开发拓展" }));
+		const input = screen.getByRole("textbox", { name: "拓展工程目录" });
+		fireEvent.change(input, { target: { value: "/work/bridge" } });
+		fireEvent.click(screen.getByRole("button", { name: "挂载" }));
+		expect(await screen.findByText("目录读不了")).toBeTruthy();
+		expect((input as HTMLInputElement).value).toBe("/work/bridge");
+		fireEvent.click(screen.getByRole("button", { name: "挂载" }));
+		await waitFor(() => expect(screen.queryByRole("textbox", { name: "拓展工程目录" })).toBeNull());
+		expect(apiPostMock).toHaveBeenLastCalledWith("/api/dev/extensions", {
+			directory: "/work/bridge",
+			watch: true,
+		});
+		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extensions"] });
+		expect(await screen.findByText("/work/bridge")).toBeTruthy();
+	});
+
+	it("解除开发挂载仅影响选中的工程，另一份挂载仍可见", async () => {
+		const development: DevelopmentExtensionsResponse = {
+			mounts: [
+				{
+					id: "bridge",
+					directory: "/work/bridge",
+					entry: "/work/bridge/src/index.ts",
+					watching: true,
+					reloads: 2,
+				},
+				{
+					id: "douyin",
+					directory: "/work/douyin",
+					entry: "/work/douyin/src/index.ts",
+					watching: true,
+					reloads: 0,
+				},
+			],
+		};
+		apiDeleteMock.mockImplementation(async () => {
+			development.mounts = development.mounts.filter((mount) => mount.id !== "bridge");
+			return development;
+		});
+		renderPage(LISTED, CONNECTIONS, STATUS, MARKET, "/extensions", undefined, development);
+		const path = await screen.findByText("/work/bridge");
+		const card = path.closest(".bn-glass");
+		if (!card) throw new Error("开发挂载应在原拓展卡片内");
+		fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "解除挂载" }));
+		await waitFor(() => expect(screen.queryByText("/work/bridge")).toBeNull());
+		expect(screen.getByText("/work/douyin")).toBeTruthy();
+		expect(apiDeleteMock).toHaveBeenCalledWith("/api/dev/extensions/bridge");
+	});
+});
 
 /** 那张卡 —— 从名字往上找到玻璃卡的边。 */
 async function cardOf(name: string): Promise<HTMLElement> {

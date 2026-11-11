@@ -14,6 +14,10 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+	DevelopmentMountButtonSlot,
+	DevelopmentMountNoteSlot,
+} from "../components/development-extension-ui";
 import { useExtensions } from "../hooks/useExtensions";
 import { useScrollToHash } from "../hooks/useScrollToHash";
 import { useT } from "../i18n";
@@ -159,6 +163,7 @@ function ExtensionCard({
 					)}
 				</div>
 				<ExtensionStateDetail ext={ext} />
+				<DevelopmentMountNoteSlot id={ext.id} />
 				{/*
 				 * 盘上有新版等着换上(ADR-0012 决策 47),而徽章说的是别的 —— 跑着旧的是「已启用」
 				 * (它确实在跑),关着的是「已停用」—— 所以另说一句。出路(重启 BN / 只重载)只在
@@ -322,14 +327,17 @@ export default function Extensions() {
 					</div>
 				</div>
 				{/* 本体一个拓展都不带,「怎么装」得有个门;它不属于任何一口,所以在页头。 */}
-				<Btn
-					variant="primary"
-					size="sm"
-					icon={<Icon.plus size={13} />}
-					onClick={() => setInstalling(true)}
-				>
-					{t("extensions.install")}
-				</Btn>
+				<div className="flex flex-wrap justify-end gap-2">
+					<DevelopmentMountButtonSlot />
+					<Btn
+						variant="primary"
+						size="sm"
+						icon={<Icon.plus size={13} />}
+						onClick={() => setInstalling(true)}
+					>
+						{t("extensions.install")}
+					</Btn>
+				</div>
 			</div>
 
 			<ExtensionToggleError toggle={toggle} />

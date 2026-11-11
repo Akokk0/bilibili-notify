@@ -415,7 +415,12 @@ describe("createDevtools · 市场接线", () => {
 			marketplace: { ...REAL_MARKET, install },
 			extensions: {
 				...BARE.extensions,
-				loaded: () => ({ reload: async () => {}, rescan: async () => {}, list: () => [bridge] }),
+				loaded: () => ({
+					reload: async () => {},
+					rescan: async () => {},
+					list: () => [bridge],
+					changeDisk: async <T>(write: () => Promise<T>) => write(),
+				}),
 			},
 		});
 		if (dev === null) throw new Error("unreachable");

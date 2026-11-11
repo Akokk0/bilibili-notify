@@ -29,6 +29,20 @@ export interface DevRunRequest {
 	params?: DevParamValues;
 }
 
+/** 源码开发版拓展页的手动挂载；普通构建不提供对应路由。 */
+export interface DevelopmentExtensionMountView {
+	id: string;
+	directory: string;
+	entry: string;
+	watching: boolean;
+	reloads: number;
+	error?: string;
+}
+
+export interface DevelopmentExtensionsResponse {
+	mounts: DevelopmentExtensionMountView[];
+}
+
 export interface DevStatusView {
 	scenarios: DevScenarioDescriptor[];
 	active: DevInjection[];

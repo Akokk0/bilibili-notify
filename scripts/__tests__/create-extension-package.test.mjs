@@ -100,6 +100,8 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 		);
 		const generated = JSON.parse(await readFile(join(project, "package.json"), "utf8"));
 		expect(generated.devDependencies["create-bn-ext"]).toBe(`file:${tools}`);
+		expect(generated.scripts).not.toHaveProperty("dev");
+		expect(generated.scripts).not.toHaveProperty("start");
 		run("vp", ["run", "verify"], project);
 	}, 120_000);
 

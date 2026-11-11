@@ -22,6 +22,7 @@
 		"@bilibili-notify/storage": "workspace:*",
 		"@bilibili-notify/subscription": "workspace:*",
 		"@hono/node-server": "^2.1.1",
+		"@voidzero-dev/vite-plus-core": "1.5.1",
 		"cron": "catalog:",
 		"css-tree": "^3.2.1",
 		"fflate": "catalog:",

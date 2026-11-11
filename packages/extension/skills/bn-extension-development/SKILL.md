@@ -20,6 +20,8 @@ description: Develop and fix standalone bilibili-notify extensions using the pub
 3. 运行实际构建入口，核对具名 `activate`、从 schema 导出的清单字段和自包含产物。接口类型通过不代表上报载荷、收尾或重试行为正确，按改动验证这些行为。
 4. JS/TS 操作经 vp；执行项目脚本用 `vp run`。定向验证改动后运行 `vp run verify`，让 lint、格式、类型、测试、构建和 ZIP 校验共同通过。测试从 `vite-plus/test` 导入运行入口。
 
+需要宿主联调时，读SDK作者指南的“源码宿主联调”。安装拓展依赖后，只启动BN源码开发版，从拓展页挂载源码工程绝对路径；BN负责加载src/index.ts、监听和重载，工程无需先构建或单独启动。多个工程挂到同一宿主。检查源码预检失败仍保留旧实例、修改只重载对应项、解除不删除源码及停用语义。记录所用宿主提交，结束时收掉自己的挂载和服务。
+
 ## 打包与发布
 
 仅做开发或打包时，以本地产物和验证结果交付。用户要求发行时，先读项目 README 的发布与恢复流程，核对 `.bn/marketplace.json`、清单版本和目标仓库，再运行 `vp run release --tag v<清单版本> --dry-run`。

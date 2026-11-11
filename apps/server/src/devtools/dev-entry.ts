@@ -20,6 +20,7 @@ export interface DevEntryAttacherOptions {
 	logger?: Logger;
 	/** 只给测试换掉动态 import。 */
 	importModule?: (specifier: string) => Promise<unknown>;
+	sourceEntry?: (directory: string) => { file: string; load: () => Promise<unknown> } | undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -56,13 +57,15 @@ export function createDevEntryAttacher(options: DevEntryAttacherOptions) {
 	return async (started: { id: string; dir: string; ctx: ExtensionContext }): Promise<void> => {
 		if (started.ctx.signal.aborted) return;
 		const logger = options.logger ?? started.ctx.logger;
-		const file = join(started.dir, EXTENSION_DEVTOOLS_ENTRY_FILE);
+		const development = options.sourceEntry?.(started.dir);
+		const file = development?.file ?? join(started.dir, EXTENSION_DEVTOOLS_ENTRY_FILE);
+		const entryName = development ? "src/devtools/index.ts" : EXTENSION_DEVTOOLS_ENTRY_FILE;
 		let source: Buffer;
 		try {
 			source = await readFile(file);
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-				logger.info(`没有 ${EXTENSION_DEVTOOLS_ENTRY_FILE};发行包不带开发入口,不挂开发场景`);
+				logger.info(`没有 ${entryName};不挂开发场景`);
 				return;
 			}
 			logger.warn(`开发入口读不了:${errorMessageOf(err)}`);
@@ -72,9 +75,11 @@ export function createDevEntryAttacher(options: DevEntryAttacherOptions) {
 		try {
 			const print = createHash("sha256").update(source).digest("hex");
 			const url = `${pathToFileURL(file).href}?v=${print.slice(0, 16)}`;
-			const mod = (await importModule(url)) as { devtools?: unknown };
+			const mod = (await (development ? development.load() : importModule(url))) as {
+				devtools?: unknown;
+			};
 			if (typeof mod.devtools !== "function") {
-				logger.warn(`${EXTENSION_DEVTOOLS_ENTRY_FILE} 没有导出 devtools()`);
+				logger.warn(`${entryName} 没有导出 devtools()`);
 				return;
 			}
 			if (started.ctx.signal.aborted) return;

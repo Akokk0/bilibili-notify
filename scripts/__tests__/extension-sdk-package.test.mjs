@@ -200,6 +200,14 @@ describe("SDK的真实npm包可在仓外使用", () => {
 		);
 		run("vp", ["run", "typecheck"], cwd);
 		run("vp", ["run", "build"], cwd);
+		const sourceManifest = await readFile(join(cwd, "extension.json"), "utf8");
+		await writeFile(
+			join(cwd, "extension.json"),
+			JSON.stringify({ ...JSON.parse(sourceManifest), settings: { fields: [] } }),
+		);
+		expect(() => run("vp", ["run", "build", "--no-clean"], cwd)).toThrow(/settings\.fields/);
+		await writeFile(join(cwd, "extension.json"), sourceManifest);
+		run("vp", ["run", "build", "--no-clean"], cwd);
 		expect(
 			run(
 				process.execPath,

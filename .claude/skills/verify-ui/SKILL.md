@@ -20,10 +20,10 @@ description: 改了 apps/web(面板)或 apps/desktop(桌面启动页)的界面�
 共享辅助脚本是仓库根下的 `.claude/skills/verify-ui/scripts/dev.sh`。它提供 `status`、`wait [web|desktop]` 和 `stop`；先用 `status` 核对占用端口的进程及探针。
 
 1. 本仓已有服务可复用时，记录其归属并直接复用，收尾保留它。端口由其他程序占用时先说明冲突。
-2. 服务命令见 `.claude/launch.json`：`dev-apps` 启动后端、面板和拓展 watch；`web` 仅启动面板；`desktop-launcher` 启动桌面前端。命令中的包管理操作均经 `vp`。
+2. 服务命令见 `.claude/launch.json`：`dev-apps` 启动后端和面板；拓展由BN挂载源码并监听；`web` 仅启动面板；`desktop-launcher` 启动桌面前端。命令中的包管理操作均经 `vp`。
 3. Claude Code 提供 `preview_start` 等工具时，按当前工具说明使用已有配置。Codex 等没有这些工具的宿主，用终端执行工具后台运行对应命令，保留 session/PID 和日志，再运行 `dev.sh wait`。
 4. 读取等待结果中的 session 状态。需要鉴权且没有可复用会话时告知主人；凭据不从 `apps/server/bn.config.yaml` 或环境变量中提取。
-5. `dev:apps` 服务端通过开发 tsconfig 读取工作区源码，面板直接读取 internal、contract 和 UI 源码；拓展由 watcher 生成产物。需要运行依赖 `lib/` 的测试或生产入口时，先构建相关包。
+5. `dev:apps` 服务端通过开发 tsconfig 读取工作区源码，面板直接读取 internal、contract 和 UI 源码；开发拓展由BN直接加载src/index.ts，无需打包监听。需要运行依赖 `lib/` 的测试或生产入口时，先构建相关包。
 
 后端探针使用 `http://127.0.0.1:8787/api/health`；面板与桌面前端使用 `localhost:5173`、`localhost:1421`，兼容 Vite 只监听 IPv6 本机地址的情况。
 

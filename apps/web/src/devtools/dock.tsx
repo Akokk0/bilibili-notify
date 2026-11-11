@@ -33,7 +33,13 @@ import {
 	TSelect,
 } from "@bilibili-notify/ui";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import type { DevelopmentExtensionUi } from "../components/development-extension-ui";
 import { CaptureView } from "./capture-view";
+import {
+	DevelopmentExtensionSync,
+	DevelopmentMountButton,
+	DevelopmentMountNote,
+} from "./extension-mounts";
 import { PickSelect } from "./pick-select";
 import {
 	type DevEntry,
@@ -112,13 +118,25 @@ function readHeight(): number {
 	return Math.round(window.innerHeight * DEFAULT_VIEWPORT_SHARE);
 }
 
+const EXTENSION_UI: DevelopmentExtensionUi = {
+	Button: DevelopmentMountButton,
+	Note: DevelopmentMountNote,
+};
+
 export function DevDock({
 	webScenarios = WEB_SCENARIOS,
+	onExtensionUi,
 }: {
 	/** 前端半边的注册表;测试里换一份假的。 */
 	webScenarios?: readonly WebDevScenario[];
+	onExtensionUi?: (ui: DevelopmentExtensionUi | null) => void;
 }) {
 	const status = useDevStatus();
+	const ui = status.status === "ready" ? EXTENSION_UI : null;
+	useEffect(() => {
+		onExtensionUi?.(ui);
+		return () => onExtensionUi?.(null);
+	}, [onExtensionUi, ui]);
 	if (status.status !== "ready") return null;
 	return <Ready data={status.data} webScenarios={webScenarios} />;
 }
@@ -133,7 +151,10 @@ function Ready({
 }) {
 	const serverActive = useDevActive(data.active);
 	return (
-		<Dock scenarios={data.scenarios} serverActive={serverActive} webScenarios={webScenarios} />
+		<>
+			<DevelopmentExtensionSync />
+			<Dock scenarios={data.scenarios} serverActive={serverActive} webScenarios={webScenarios} />
+		</>
 	);
 }
 

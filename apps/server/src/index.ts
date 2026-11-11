@@ -1310,6 +1310,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const extensionUpgrades = createExtensionUpgrades();
 		loadedExtensions = await loadExtensions({
 			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			developmentEntry: devtools?.developmentEntry,
 			timezoneReader,
 			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
@@ -1378,6 +1379,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 拓展登记得晚,同一段里就先收:它注册的定时器 / 端点都挂在自己那面 ctx 上,收在核心之前
 		// 才不会在核心已经拆了之后还被回调进去。
 		runtime.serviceCtx.onDispose(() => loadedExtensions?.dispose(), "stop");
+		runtime.serviceCtx.onDispose(() => devtools?.dispose(), "stop");
 		// 清单到手了:拓展设置从「整份遮」收窄到只遮清单里标了机密的格。
 		settingsRedaction.sync();
 		// 起来的那些装载器自己记过了(版本、代码指纹、软链落点,热装与换代码同一句);这里只把

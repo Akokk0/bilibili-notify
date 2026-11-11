@@ -112,7 +112,20 @@ export type ExtensionDirState =
 			locales: ExtensionLocales;
 			/** `dir` 是条软链时,它指到哪去 —— 面板要印出「跑的其实是仓里那份」。 */
 			linkedTo?: string;
+			/** 只由源码宿主注入；普通发行装载没有这一项。 */
+			development?: DevelopmentExtensionEntry;
 	  };
+
+/** 宿主内部的源码加载结果，不进入拓展SDK或清单格式。 */
+export interface DevelopmentExtensionEntry {
+	entry: string;
+	manifest: ExtensionManifest;
+	revision: string;
+	load: () => Promise<unknown>;
+}
+export type DevelopmentEntryResolver = (
+	directory: string,
+) => Promise<DevelopmentExtensionEntry | undefined>;
 
 /** 这个目录要是条软链,它指向哪。不是软链(或读不了)就是 `undefined`。 */
 async function linkTarget(dir: string): Promise<string | undefined> {
@@ -136,6 +149,7 @@ export interface ReadExtensionDirOptions {
 	reservedIntegrationKeys: readonly string[];
 	/** 宿主认的档位区间。只有测试会换。 */
 	hostApiRange?: ExtensionApiRange;
+	developmentEntry?: DevelopmentEntryResolver;
 }
 
 /**
@@ -238,9 +252,10 @@ export async function readExtensionDir(
 			range,
 		};
 	}
-	const manifest = safeManifestIcons(read.manifest);
+	const development = await options.developmentEntry?.(dir);
+	const manifest = safeManifestIcons(development?.manifest ?? read.manifest);
 
-	const entry = join(dir, EXTENSION_ENTRY_FILE);
+	const entry = development?.entry ?? join(dir, EXTENSION_ENTRY_FILE);
 	if (!(await exists(entry))) {
 		return {
 			state: "unreadable",
@@ -254,15 +269,19 @@ export async function readExtensionDir(
 	// 只有这一句答得了。不是软链就没有这一格(`readlink` 会抛 EINVAL)。
 	const linkedTo = await linkTarget(dir);
 	const locales = await readExtensionLocales(dir, manifest);
-	return linkedTo === undefined
-		? { state: "ready", id, dir, manifest, entry, locales }
-		: { state: "ready", id, dir, manifest, entry, locales, linkedTo };
+	return {
+		state: "ready",
+		id,
+		dir,
+		manifest,
+		entry,
+		locales,
+		...(linkedTo === undefined ? {} : { linkedTo }),
+		...(development ? { development } : {}),
+	};
 }
 
-export interface DiscoverExtensionsOptions {
-	reservedIntegrationKeys: readonly string[];
-	hostApiRange?: ExtensionApiRange;
-}
+export type DiscoverExtensionsOptions = ReadExtensionDirOptions;
 
 /**
  * 扫一遍装载目录,把每个子目录读成一条记录。

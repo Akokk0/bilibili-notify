@@ -8,7 +8,7 @@ import { packageText } from "../texts";
  * - `settingsSchema`:拓展自己的设置(交给 `ctx.settings(schema)` 的那份)→ 清单的 `settings.fields`;
  * - `connectionSettingsSchema`:推送那口的连接设置(适配器的 `settingsSchema`)→ `contributes.push.settingsFields`。
  *
- * 在**构建**时导出,不在打 zip 时:开发版装拓展链的是 `dist/`,只在打包时导出的话开发时面板画不出表单。
+ * 在**构建**时导出,不在打 zip 时；源码开发由宿主复用同一个导出函数，生产清单无需手写第二份。
  * 线上清单的形状不变(契约修订号不抬),变的只是谁来写它;手写清单的拓展照旧,加载时照旧对表。
  */
 

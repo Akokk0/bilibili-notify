@@ -23,7 +23,6 @@ The creator configures the local `origin` URL from `--repository`; it does not c
 ## Develop and check
 
 ```sh
-vp run dev
 vp run lint
 vp run format
 vp run format:check
@@ -33,7 +32,11 @@ vp run build
 vp run pack:extension
 ```
 
-`vp run verify` runs all checks, then builds and packages the extension. ZIPs and SHA256 files go into `artifacts/`. Install the ZIP through BN's extension page. The `dist/` directory is also suitable for a development link.
+`vp run verify` runs all checks, then builds and packages the extension. ZIPs and SHA256 files go into `artifacts/`. Install the ZIP through BN's extension page.
+
+For live development, start the BN source checkout with `vp run dev:apps`. Start only BN. Once this project's dependencies are installed, open BN's Extensions page, choose the development mount button and enter this source project's absolute path on the BN machine. Enable it with the existing switch. BN loads `src/index.ts` directly and watches its dependencies; no `dist/`, extension dev command or separate process is needed. Multiple projects can be mounted in the same BN; each reloads independently.
+
+BN checks source imports, settings schemas and the manifest before replacing the running instance. Failed checks keep the old instance until the source is fixed; saving does not enable a disabled extension. Unmounting or stopping BN closes the runtime and watcher without deleting this project. Mounts last for the current BN session. Production still requires the build and self-contained ZIP; ordinary release bundles have no source mounting. See the installed SDK's `DEVELOPMENT.md` for the full workflow and workspace data isolation.
 
 `pnpm-workspace.yaml` keeps the project isolated and permits Vite+'s core version only for the two bundled Vitest consumers of the Vite alias. Other peer checks remain active. Recheck these entries when upgrading the Vite+ major or adding plugins.
 

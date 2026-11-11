@@ -58,6 +58,7 @@
 | [0040](0040-extension-sdk-npm.md) | 拓展SDK与创建器通过npm分发 | 2026-11-10 | 主人批准渠道；业务核心保持私有，发行版本另定 |
 | [0041](0041-extension-repository-source.md) | 仓库源映射到固定Release索引 | 2026-11-10 | 主人批准根清单保留、`.bn/`作者配置与固定Release附件 |
 | [0042](0042-extension-scaffold-infrastructure.md) | 拓展脚手架自带vp工程基建与Actions | 2026-11-10 | 主人要求vp检查、提交lint、Git hooks及GitHub自动打包发版默认配齐 |
+| [0044](0044-extension-source-development.md) | 由BN管理拓展源码开发 | 2026-11-11 | 主人要求只启动BN，宿主直接加载与监听源码，生产才打包；修订0043的dist流程及0012开发入口限制 |
 
 标着**「追认」**的是事后据定案记录与实现整理的,不是当时拷问的原文:「决定了什么」与「为什么」可信,「当时的现场」不可考。
 

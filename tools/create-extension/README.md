@@ -23,4 +23,6 @@ Requires Node 24.15.0+, Git 2.32+ and the global Vite+ CLI. The generated projec
 
 The SDK is the only entry to host APIs. Build settings from the exported Zod schema through `@bilibili-notify/extension/build`; keep runtime side effects in `activate` and the host context. The SDK ships a standalone `DEVELOPMENT.md` author guide for the current `apiVersion: 1` / `apiRevision: 0` contract. The generated README describes the full development and publishing workflow.
 
+For development, start BN from its source checkout using `vp run dev:apps` and mount this project's source directory from the Extensions page. BN loads `src/index.ts`, watches imported dependencies and owns the runtime. Extension projects have no standalone dev/start command; build and ZIP commands prepare production releases.
+
 The `bn-extension` binary packages ZIPs, checks commit ranges and publishes releases. `vp run release --tag v0.1.0 --dry-run` runs real checks and creates local preview artifacts without contacting GitHub. A real publication requires a clean tagged commit, matching GitHub tag, and a token with repository contents write permission. The tool publishes version ZIP/checksum assets before updating the rolling `bn-marketplace` index, never overwrites version assets, and resumes interrupted drafts on rerun.

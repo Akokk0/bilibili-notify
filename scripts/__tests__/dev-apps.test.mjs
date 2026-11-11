@@ -60,6 +60,8 @@ describe("dev-apps supervisor", () => {
 					"--clear-screen=false",
 					"--ignore",
 					"../../extensions/**",
+					"--exclude",
+					"/**/dist/**",
 					"--tsconfig",
 					"tsconfig.dev.json",
 					"src/index.ts",
@@ -76,7 +78,7 @@ describe("dev-apps supervisor", () => {
 		expect(specs.flatMap((spec) => [spec.command, ...spec.args])).not.toContain("pnpm");
 	});
 
-	it("仓里的拓展顺带 watch 打包 —— 改完 30ms 重建,配 devtools 的自动重载就是保存即生效", async () => {
+	it("只启动BN服务端和面板，仓内拓展源码由宿主挂载而不另起打包进程", () => {
 		const root = mkdtempSync(join(tmpdir(), "bn-dev-specs-"));
 		try {
 			mkdirSync(join(root, "extensions", "bridge"), { recursive: true });
@@ -85,15 +87,7 @@ describe("dev-apps supervisor", () => {
 			mkdirSync(join(root, "extensions", "node_modules"), { recursive: true });
 
 			const specs = createDevProcessSpecs(root);
-			const packs = specs.filter((spec) => spec.args[0] === "pack");
-			expect(packs).toEqual([
-				expect.objectContaining({
-					// 🔴 `--no-clean`:清一次 dist 会让装载器**在开机那一眼**看见一个空目录,
-					// 而软链正指着它 —— 症状是拓展页上那条突然变成「装不起来」。
-					args: ["pack", "-w", "--no-clean"],
-					cwd: join(root, "extensions", "bridge"),
-				}),
-			]);
+			expect(specs.map((spec) => spec.name)).toEqual(["apps/server dev", "apps/web dev"]);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

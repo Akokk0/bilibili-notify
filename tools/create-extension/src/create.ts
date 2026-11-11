@@ -127,7 +127,6 @@ async function create(): Promise<void> {
 		engines: { node: `>=${versions.node}` },
 		scripts: {
 			prepare: "vp exec bn-extension hooks",
-			dev: "vp pack --watch",
 			lint: "vp lint --deny-warnings",
 			format: "vp fmt",
 			"format:check": "vp fmt --check",

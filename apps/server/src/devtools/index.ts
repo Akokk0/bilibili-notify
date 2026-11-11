@@ -9,6 +9,7 @@ import type {
 } from "@bilibili-notify/internal";
 import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import type { Hono } from "hono";
+import type { DevelopmentEntryResolver } from "../extensions/discover.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
@@ -25,6 +26,7 @@ import { createCapabilityInjector } from "./capability-injection.js";
 import { createCaptureGate } from "./capture.js";
 import { createDevClock } from "./clock.js";
 import { createDevEntryAttacher } from "./dev-entry.js";
+import { createDevelopmentExtensions } from "./development-extensions.js";
 import { heapInjector, injectedMemoryUsage } from "./heap-injection.js";
 import { injectableMarketplace } from "./marketplace-injection.js";
 import { createDevtoolsProviderRegistry, type DevtoolsProviderRegistry } from "./providers.js";
@@ -77,7 +79,7 @@ export interface CreateDevtoolsOptions {
 		/** `<数据根>/extensions/`。 */
 		installRoot: string;
 		/** 「拓展有更新」还要它的名单:装着哪一版,假新版就比它高一格。 */
-		loaded: () => Pick<LoadedExtensions, "reload" | "rescan" | "list"> | undefined;
+		loaded: () => Pick<LoadedExtensions, "reload" | "rescan" | "list" | "changeDisk"> | undefined;
 	};
 	/** 拓展市场。交回去的是装饰过的那份(「拓展有更新」:列表里那一条改成 updatable、装的那下假装成功)。 */
 	marketplace: Marketplace;
@@ -139,6 +141,8 @@ export interface Devtools {
 	quietHoursNow: () => Date;
 	/** 装载器在拓展跑起来之后调:只给开了 `contributes.devtools` 的那几家挂开发场景。 */
 	attachExtension: (started: { id: string; dir: string; ctx: ExtensionContext }) => Promise<void>;
+	developmentEntry: DevelopmentEntryResolver;
+	dispose(): Promise<void>;
 }
 
 export function createDevtools(input: CreateDevtoolsOptions): Devtools | null {
@@ -147,6 +151,11 @@ export function createDevtools(input: CreateDevtoolsOptions): Devtools | null {
 	// 开发版。所以再要一道构建产物身上不可能成立的:跑在源码上。
 	// (更新服务共用 `isDevBuild`,但那边的后果是「关掉更新」,敞开反而是安全的一侧。)
 	if (!isDevBuild(input.payloadVersion) || !input.sourceRun) return null;
+	const developmentExtensions = createDevelopmentExtensions({
+		root: input.extensions.installRoot,
+		reservedIntegrationKeys: input.reservedIntegrationKeys,
+		extensions: input.extensions.loaded,
+	});
 	const update = injectableUpdateService(input.updateService);
 	// 装着哪一版**现取**(装载器比 devtools 后起来,名单也会变),读法与市场自己那份同一把尺子。
 	const market = injectableMarketplace(
@@ -206,8 +215,7 @@ export function createDevtools(input: CreateDevtoolsOptions): Devtools | null {
 		}),
 		...extensionScenarios({
 			repoDir: input.extensions.repoDir,
-			installRoot: input.extensions.installRoot,
-			extensions: input.extensions.loaded,
+			development: developmentExtensions,
 		}),
 		// 不跟上面那几条一起:仓里一个拓展都没有时它们整组不出现,而这一条认的是**装着的**。
 		marketplaceUpdateScenario(market),
@@ -225,10 +233,15 @@ export function createDevtools(input: CreateDevtoolsOptions): Devtools | null {
 	const providers = createDevtoolsProviderRegistry(coreDefs);
 	input.provide(providers);
 	const registry = createDevRegistry(providers, { creators: input.creators });
-	const attachExtension = createDevEntryAttacher({ providers, address: input.address });
+	const attachExtension = createDevEntryAttacher({
+		providers,
+		address: input.address,
+		sourceEntry: developmentExtensions.devtoolsEntry,
+	});
 	return {
+		developmentEntry: developmentExtensions.resolveEntry,
 		registry,
-		route: createDevRoute({ registry, captures }),
+		route: createDevRoute({ registry, captures, developmentExtensions }),
 		updateService: update.service,
 		marketplace: market.marketplace,
 		// 能力和截流一样接在派发器上,不包适配器:推送链路拿的就是真登记表(拓展后注册照样看得见,
@@ -243,5 +256,6 @@ export function createDevtools(input: CreateDevtoolsOptions): Devtools | null {
 		),
 		captures,
 		attachExtension,
+		dispose: () => developmentExtensions.dispose(),
 	};
 }

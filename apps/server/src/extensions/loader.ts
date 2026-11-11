@@ -33,6 +33,7 @@ import {
 } from "./context.js";
 import {
 	apiVersionMismatch,
+	type DevelopmentEntryResolver,
 	discoverExtensions,
 	EXTENSION_ENTRY_FILE,
 	type ExtensionDirState,
@@ -203,6 +204,8 @@ const ACTIVATE_TIMEOUT_MS = 30_000;
 
 export interface LoadExtensionsOptions {
 	reservedIntegrationKeys: readonly string[];
+	/** 仅源码开发宿主提供；生产继续固定index.mjs。 */
+	developmentEntry?: DevelopmentEntryResolver;
 	timezoneReader: CreateExtensionContextOptions["timezoneReader"];
 	/** 装载目录 —— **只有一个**(`<数据根>/extensions/`,见 `discover.ts` 文件头)。 */
 	root: string;
@@ -445,7 +448,10 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	const activateTimeoutMs = opts.activateTimeoutMs ?? ACTIVATE_TIMEOUT_MS;
 	const found = await discoverExtensions(root, {
 		reservedIntegrationKeys: opts.reservedIntegrationKeys,
+		developmentEntry: opts.developmentEntry,
 	});
+	const fingerprint = async (dir: ReadyDir) =>
+		dir.development?.revision ?? fingerprintOf(dir.entry);
 
 	/** 每个拓展一格。按 id 排(`discoverExtensions` 已排好,重扫之后 `resort()` 再归位)。 */
 	const slots = new Map<string, Slot>();
@@ -536,6 +542,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	function stagedOf(slot: Slot): { version: string } | undefined {
 		const { disk, running } = slot;
 		if (disk.state !== "ready") return undefined;
+		if (disk.development) return undefined;
 		const stuck = running
 			? recordOf(slot.print, disk) !== recordOf(running.print, running.dir)
 			: urlFor(disk.id, disk.entry, slot.print, false) === undefined;
@@ -653,9 +660,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		}
 
 		// 起之前再认一次盘上那份:扫盘之后被手换过的话,记下的得是真 import 的那一份。
-		const print = await fingerprintOf(dir.entry);
+		const print = await fingerprint(dir);
 		slot.print = print;
-		const url = urlFor(id, dir.entry, print, fresh);
+		const url = urlFor(id, dir.entry, print, fresh || dir.development !== undefined);
 		if (url === undefined) {
 			// 一行代码都不跑、也不记账:这不是它的错,是这个进程换不上。那一行由 `stagedOf` 推出来。
 			host.logger.warn(logText("log.extension.restartRequired"), {
@@ -774,10 +781,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		const at = { step: `import ${EXTENSION_ENTRY_FILE}` };
 		/** 回的是「存着的设置读不了」的原因;起得来就是 `undefined`。真失败一律抛。 */
 		const loading = (async (): Promise<string | undefined> => {
-			// 入口固定 `index.mjs`,**宿主自己判**、清单说了不算 —— 见 `EXTENSION_ENTRY_FILE`。
-			// ⚠️ 第二次启用时这里拿到的是**模块缓存里那份**:ESM 换不掉已加载的代码
-			// (决策 10),重新跑的只有 `activate`。所以拓展的模块顶层不许存状态。
-			const mod = (await importModule(url)) as Partial<ExtensionModule>;
+			// 生产入口固定index.mjs，开关复用ESM缓存；源码入口由宿主开发环境准备(ADR-0044)。
+			// 两种模式都只在activate里启动副作用，模块顶层只定义规则和函数。
+			const mod = (await (dir.development
+				? dir.development.load()
+				: importModule(url))) as Partial<ExtensionModule>;
 			if (typeof mod.activate !== "function") {
 				throw new Error(
 					serverText("service.extensions.loader.text.6", { value0: EXTENSION_ENTRY_FILE }),
@@ -968,7 +976,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		resolveSettingsInvalid(dir.id);
 		noteLocaleIssues(dir);
 		if (dir.state !== "ready") return;
-		slot.print = await fingerprintOf(dir.entry);
+		slot.print = await fingerprint(dir);
 		slot.applied = isEnabled(dir.id);
 		if (slot.applied) await start(slot);
 	}
@@ -981,7 +989,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 * (开关不动就不重试,见 `sync()`);换过了就换成新记录再收一遍,换不换得上由 `start()` 判。
 	 */
 	async function revisit(slot: Slot, dir: DiskState): Promise<void> {
-		const print = dir.state === "ready" ? await fingerprintOf(dir.entry) : undefined;
+		const print = dir.state === "ready" ? await fingerprint(dir) : undefined;
 		noteLocaleIssues(dir);
 		if (slot.running) {
 			const before = stagedOf(slot);
@@ -1020,6 +1028,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		const id = slot.disk.id;
 		const dir = await readExtensionDir(join(root, id), {
 			reservedIntegrationKeys: opts.reservedIntegrationKeys,
+			developmentEntry: opts.developmentEntry,
 		});
 		if (dir.state !== "ready") {
 			throw new Error(serverText("service.extensions.loader.text.9", { value0: id }));
@@ -1027,7 +1036,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		await stop(slot);
 		slot.disk = dir;
 		noteLocaleIssues(dir);
-		slot.print = await fingerprintOf(dir.entry);
+		slot.print = await fingerprint(dir);
 		// 这一下等于把开关落实成「开」—— 不记下的话,下一次 sync() 又装一遍。
 		slot.applied = true;
 		await start(slot, true);
@@ -1047,6 +1056,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	async function rescanNow(): Promise<void> {
 		const now = await discoverExtensions(root, {
 			reservedIntegrationKeys: opts.reservedIntegrationKeys,
+			developmentEntry: opts.developmentEntry,
 		});
 		const onDisk = new Set(now.map((dir) => dir.id));
 

@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
  * 正式代码里了)。
  */
 export const MARKERS = {
-	server: ['"update.state"', '"push.capture"', '"live.danmaku"', "假观众"],
+	server: ['"update.state"', '"push.capture"', '"live.danmaku"', "假观众", "开发拓展源码加载失败"],
 	web: ["全部收摊", '"/api/dev"', "浏览器里跑"],
 };
 

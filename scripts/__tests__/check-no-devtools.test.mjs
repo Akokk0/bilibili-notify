@@ -33,6 +33,16 @@ describe("findDevtoolsLeaks", () => {
 		]);
 	});
 
+	it("只漏进源码加载器也拒绝生产产物", () => {
+		const marker = "开发拓展源码加载失败";
+		expect(
+			findDevtoolsLeaks(
+				[file("dist/source.mjs", `throw Error("${marker}：" + error);`)],
+				MARKERS.server,
+			),
+		).toEqual([{ path: "dist/source.mjs", marker }]);
+	});
+
 	it("报告写明是哪份、含什么", () => {
 		const text = formatReport([{ path: "dist/index.mjs", marker: "假观众" }]);
 		expect(text).toContain("dist/index.mjs");
