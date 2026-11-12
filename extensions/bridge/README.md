@@ -46,6 +46,10 @@ token 只在新建那一刻给全文，之后只显示头尾；忘了就重新�
 
 线上协议写在 [`PROTOCOL.md`](https://github.com/Akokk0/bilibili-notify/blob/main/extensions/bridge/PROTOCOL.md)：帧、握手、close code、能力表，以及一份最小实现清单。BN 只认识「桥」这一档，桥后面挂着什么，是握手时你告诉它的。
 
+## 在主仓联调桥拓展
+
+在准备好的主仓运行 `vp run dev:apps`。打开拓展页，点「挂载开发拓展」，选择 `extensions/bridge` 源码目录，保留「源码变化时自动重载」并挂载，再启用桥接。BN 直接运行源码，开发面板中会出现「假装一条桥连上来」和「桥驮一条消息上来」两个场景。联调结束后，在桥接卡片上点「解除挂载」。
+
 ---
 
 bilibili-notify 主仓：<https://github.com/Akokk0/bilibili-notify>

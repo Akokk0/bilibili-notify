@@ -4,14 +4,14 @@
 
 它走的是正式的注册口(`ctx.registerSource`:`start` / `stop` / `searchCreators` / `fetchProfile` / `fetchLiveStatus` / `health`),并通过 `ctx.registerPlatformAdapter` 登记假平台,与以后真的订阅源拓展是同一条路:解析门,加上拓展页上十二颗造上报 / 入站的按钮(见下面「上报按钮」和「假平台（推送口）」)。
 
-## 在开发版里装上
+## 在开发版里试用
 
-1. `vp run dev:apps` —— 它会顺带 watch 打包仓里每个拓展,`dist/` 自己就有了。只想构建一次的话:`vp run -F @bilibili-notify/extension-fake-source build`。
-2. 面板左下角的 devtools →「装一个仓里的拓展」→ 选 `fake-source` → 执行。它把 `dist/` 软链进 `<dataDir>/extensions/`,当场生效。
-3. 拓展页 →「假源(开发用)」→ 拨开开关。
-4. 订阅页 →「添加 UP 主」→ 平台选「假源」→ 在输入框里随便输点什么。
+1. 在已完成[开发准备](../../README.md#开发)的主仓根目录运行 `vp run dev:apps`，启动 BN 服务端和面板。
+2. 在拓展页点「挂载开发拓展」→「浏览目录」，选择 BN 所在机器上的 `extensions/fake-source` 源码目录。保留「源码变化时自动重载」的勾选，点「挂载」。
+3. 在「假源(开发用)」卡片上拨开启用开关。BN 直接运行 `src/index.ts`，保存源码后会自动重载这个拓展。
+4. 打开订阅页，点「添加订阅」，平台选「假源」，输入任意名字即可看到候选。
 
-改了代码:按 devtools 的「重载(换掉代码)」,或者开着「改完自动重载」。不用了:「卸掉一个装好的拓展」。
+联调结束后在假源卡片上点「解除挂载」。BN 会停止运行和监听，保留源码目录。
 
 ## 输入什么会怎样
 

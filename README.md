@@ -130,7 +130,7 @@ vp install
 vp run typecheck
 vp run build
 vp test
-vp run dev:apps     # apps/server + apps/web 并行,顺带 watch 打包仓里的拓展
+vp run dev:apps     # 启动服务端与面板，在拓展页挂载要联调的源码目录
 vp run check        # Biome lint + format(:fix 自动修)
 ```
 

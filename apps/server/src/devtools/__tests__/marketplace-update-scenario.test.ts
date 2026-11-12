@@ -286,6 +286,7 @@ describe("ext.updatable · 收摊与挡板", () => {
 		await expect(reg.run("core.ext.updatable", { ext: "ghost" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
+			message: expect.stringContaining("挂载开发拓展"),
 		});
 		await expect(reg.run("core.ext.updatable", { ext: " " })).resolves.toMatchObject({
 			ok: false,

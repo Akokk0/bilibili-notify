@@ -37,7 +37,7 @@ export function marketplaceUpdateScenario(injectable: InjectableMarketplace): De
 			if (!injectable.installed(id)) {
 				return fail(
 					"invalid",
-					`${id} 没装 —— 「有新版」长在已装卡片上,先装上它(拓展组「装一个仓里的拓展」或从市场装)`,
+					`${id} 还没安装。请在拓展页点「挂载开发拓展」选择源码目录，或从市场安装后再试。`,
 				);
 			}
 			const seconds = typeof params.download === "number" ? params.download : 2;
