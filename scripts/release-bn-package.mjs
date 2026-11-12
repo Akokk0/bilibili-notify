@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { verifyBnRuntimes } from "./assemble-bn-package.mjs";
-import { compareEntryVersions } from "./extension-version-order.mjs";
+import { publishNpmCandidate } from "./npm-publish.mjs";
 
 const exec = promisify(execFile);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -20,54 +20,6 @@ async function command(bin, args, options = {}) {
 		maxBuffer: 512 * 1024 * 1024,
 		...options,
 	});
-}
-
-async function registryPackage(registry) {
-	const response = await fetch(new URL(encodeURIComponent(NAME), registry), {
-		signal: AbortSignal.timeout(30_000),
-		cache: "no-store",
-	});
-	if (response.status === 404) return { versions: {}, "dist-tags": {} };
-	if (!response.ok) throw new Error(`Registry metadata failed: HTTP ${response.status}.`);
-	return response.json();
-}
-
-async function publish(candidate, channel, registry) {
-	const common = ["--registry", registry, "--fetch-retries=0", "--fetch-timeout=30000"];
-	const before = await registryPackage(registry);
-	const existing = before.versions?.[candidate.version];
-	if (existing && existing.dist?.integrity !== candidate.integrity)
-		throw new Error("Published version differs; use a new version.");
-	if (!existing) {
-		await command("vp", [
-			"exec",
-			"npm",
-			"publish",
-			candidate.archive,
-			"--tag",
-			`bn-release-${candidate.version}`,
-			"--access",
-			"public",
-			"--ignore-scripts",
-			...common,
-		]);
-	}
-	const current = await registryPackage(registry);
-	if (current.versions?.[candidate.version]?.dist?.integrity !== candidate.integrity)
-		throw new Error(
-			"Published version integrity could not be verified; rerun after checking the registry.",
-		);
-	const channelVersion = current["dist-tags"]?.[channel];
-	if (channelVersion && compareEntryVersions(candidate.version, channelVersion) <= 0) return;
-	await command("vp", [
-		"exec",
-		"npm",
-		"dist-tag",
-		"add",
-		`${NAME}@${candidate.version}`,
-		channel,
-		...common,
-	]);
 }
 
 /** 校验实际待发布tgz；tar只输出指定文件，不解包到磁盘或执行包内脚本。 */
@@ -173,7 +125,7 @@ async function main() {
 	const version = tag.slice(1);
 	const candidate = await candidateOf(resolve(values.directory), version, registry.href);
 	const channel = version.includes("-") ? "alpha" : "latest";
-	if (values.publish) await publish(candidate, channel, registry.href);
+	if (values.publish) await publishNpmCandidate(candidate, channel, registry.href);
 	console.log(
 		JSON.stringify({
 			dryRun: !values.publish,
