@@ -7,8 +7,8 @@
 - 第5期已正式出期，本期从`38dc17687`开始。
 - 迁移修订号53、备份版本23；当前宿主契约`apiVersion: 1`、`apiRevision: 0`。历史“v3”不是当前发行号。
 - 大改UI限制保留；市场输入在现有弹窗上局部调整。
-- 实际npm发布、本体与桥的推送/tag按发行片确认。
-- 2026-11-12主人批准先发布`@bilibili-notify/extension`与`create-bn-ext`，两包均为`0.1.0-alpha.0`；本体npm随本体版本走Actions，留后续本体发行，不在本次发布。当前工具发行状态见文末。
+- 2026-11-12，SDK 与创建器已在 npm 上发布首个 `alpha`，版本均为 `0.1.0-alpha.0`。[SDK](https://www.npmjs.com/package/@bilibili-notify/extension/v/0.1.0-alpha.0) · [创建器](https://www.npmjs.com/package/create-bn-ext/v/0.1.0-alpha.0)
+- 本体 npm 随主程序 tag 发行，本体与桥的版本和推送留到发行片确认。
 - 2026-11-11最新定案见[ADR-0046](../adr/0046-bundled-npm-distribution.md)：npm包自带两种宿主、随主程序tag发行；`@bilibili-notify/bn web/dev`运行宿主成品；拓展继续由BN手动挂载源码。
 
 ## 切片
@@ -27,7 +27,7 @@
 | 6-05c | 拓展页复用Hero与横条Tab；开发挂载可浏览宿主目录，选择回填且保留草稿；目录读口沿原鉴权和生产隔离 | ✅ 片级232项、内置浏览器与全量20399项通过；未实际发布 |
 | 6-05d | npm启动器运行正式/开发成品；核对与缓存产物、独立数据、离线与退出；开发产物支持源码挂载，正式隔离不变；同步作者资料 | ✅ 本地实现、实际npm包与真实宿主、内置浏览器及全量20407项通过；发行版本待定，未发布 |
 | 6-05e | npm作为正式渠道：完整tgz自带双宿主、首次不访问GitHub，与主程序tag同版本；独立门禁、dry-run、可信发布、重跑与渠道保护 | ✅ 包内载荷、发行命令、Actions与本机完整包已验；实际npm发布另行确认 |
-| 6-05f | SDK与创建器独立手动Actions发行，默认预检、首发凭据与可信发布、精确归档/依赖顺序/重跑与渠道保护 | 远端预检、全量门禁和双包构建已通过。SDK 首次上传和更新凭据后的重跑均收到 npm 404，两个版本均待上架。[发布记录](https://github.com/Akokk0/bilibili-notify/actions/runs/43173415973) |
+| 6-05f | SDK与创建器独立手动Actions发行，默认预检、首发凭据与可信发布、精确归档/依赖顺序/重跑与渠道保护 | ✅ 两包经 Actions 暂存、npm 网页批准后均已上架。两个 `alpha` 均指向 `0.1.0-alpha.0`，公开下载与构建归档逐字节一致。[发布记录](https://github.com/Akokk0/bilibili-notify/actions/runs/43183955815) |
 | 6-06 | 重查抖音身份、链接、作品、直播、凭据及请求限制；按需求重议Q76，确定初版和测试入口 | 待做 |
 | 6-07 | Q76获批时实现契约/宿主/SDK接线；无需加宽则核销；指令没有实现者就不造 | 待定 |
 | 6-08 | 抖音资料/作品经ctx进入中立链路，处理开机基线、置顶、重复与凭据失效 | 待做，依赖6-06 |
@@ -35,7 +35,7 @@
 | 6-10 | 第二来源的资料、卡片、推送、历史、统计贯通验收；区分夹具和真实上游证据 | 待做 |
 | 6-11 | 定alpha盘上格式演进、失败自愈和回退规则，按决定实现后冻结迁移基线 | 待定 |
 | 6-12 | 首个带译文拓展上架的市场索引可选译文，打包/发布/面板与回落验收 | 待做；总计划既定触发项 |
-| 6-13 | 桥预发布版本及SDK/创建器初始版本拍板、兼容核对与发行准备 | 部分完成：SDK/创建器首发均定为0.1.0-alpha.0；本体与桥版本待定 |
+| 6-13 | 桥预发布版本及SDK/创建器初始版本拍板、兼容核对与发行准备 | 部分完成。SDK 与创建器已发布 `0.1.0-alpha.0`，本体与桥版本待定。 |
 | 6-14 | 全量门禁、自包含载荷、拓展包、迁移与流水线dry-run、CHANGELOG；版本/产物就绪后执行获批发行 | 待做 |
 
 ## 6-04/6-05工程基建验收
@@ -160,6 +160,10 @@ dev-apps不启动拓展pack watcher；生产构建与Actions保留。作者、ag
 
 2026-11-12，开发历史已同步到公开 `dev`，`main` 已登记两份 npm 工作流。修复 CI 的时区用例、冷缓存和边界扫描超时后，`f394d41ef` 通过完整远端预检。本地同提交全量测试 20,458 项通过，3 项跳过。两份 Actions 发布归档与预检和本地候选逐字节相同。[远端预检](https://github.com/Akokk0/bilibili-notify/actions/runs/43171151478)
 
-正式发布与更新首发凭据后的重跑都在创建 SDK 时收到 npm 的 HTTP 404。创建器上传尚未执行。复查公共 registry，两个 `0.1.0-alpha.0` 版本均未上架，仓外安装验收待上架后进行。[发布作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43173415973/job/131042334122)
+首次直接上传与更新首发凭据后的重跑均在创建 SDK 时收到 npm 的 HTTP 404。随后按主人决定改用 Actions 暂存，两份归档均通过 npm 检查。[直接上传记录](https://github.com/Akokk0/bilibili-notify/actions/runs/43173415973/job/131042334122)
 
-本体`@bilibili-notify/bn`与Docker、Desktop随主程序版本发行，npm接线在`.github/workflows/npm-release.yml`；现有应用内更新流水线保留。首次本体npm发行前仍需建立实际包并绑定可信发布。此轮未推送本体tag、未触发四条本体发行流水线，也未将本地接线或协议夹具记作真实Actions发行成功。
+主人在 npm 网页批准两包后，重跑同一发布作业，核对 SHA512 并设置各自的 `alpha` 标签。公开下载的两个 `0.1.0-alpha.0` 包与获批归档逐字节一致。[渠道更新作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43183955815/job/131075720578)
+
+仓外空目录使用 `vp dlx create-bn-ext@alpha` 创建拓展，生成工程从公共 npm 装入两个首发版本。`vp install --frozen-lockfile` 和 `vp run verify` 全部通过，产出拓展 ZIP，清单与 SHA256 校验通过。
+
+本体 `@bilibili-notify/bn`、Docker 和 Desktop 随主程序版本发行。本体的 npm 工作流见 [npm-release.yml](../../.github/workflows/npm-release.yml)，首次本体 npm 发行仍需建立实际包并绑定可信发布。

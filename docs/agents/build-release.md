@@ -198,7 +198,7 @@ npm同名同版本发布后不能复用，即使unpublish也一样；发错后�
 
 共享全量gate通过后，构建并通过`build:extension-tooling`装配两份tgz与`packages.json`。发布作业下载该次构建的精确归档，核对版本、公开入口、依赖、大小、SHA256/SHA512；所有选中包的已知同号冲突在首笔上传前检查。两包都选时先SDK再创建器，单发创建器要求其默认SDK版本已经存在。发行与本体共用不可变上传/重跑/渠道保护；`alpha`和`latest`由各包版本分别决定。
 
-首次建包选择 `bootstrap-token`。发布步骤从 `NPM_TOKEN` 读取 npm 凭据，将核验过的归档送入 npm 暂存区。npm 会为新包公开 `0.0.0-stage` 占位版。维护者在 npm 网站的 **Packages → Staged Packages** 中先确认 SDK，再确认创建器。核对包名、版本及本次 Actions 归档后，用网页上的 **Approve** 批准。[npm 暂存说明](https://docs.npmjs.com/staged-publishing/)
+首次建包选择 `bootstrap-token`。发布步骤从 `NPM_TOKEN` 读取 npm 凭据，将核验过的归档送入 npm 暂存区。npm 会为新包公开 `0.0.0-stage` 占位版。维护者登录 npm，从右上角账户菜单打开 **Staged Packages**。核对包名、版本及本次 Actions 归档后，先对 SDK 点 **Approve**，再批准创建器。[npm 暂存说明](https://docs.npmjs.com/staged-publishing/)
 
 日志中的 `awaitingApproval: true` 表示仍有版本待批准。批准后重跑同一次 Actions 的 `publish` 作业，复用原归档。作业核对公开版本的 SHA512，所有选中版本均匹配后才推进各自的 `alpha` 或 `latest`。已暂存的同号归档会先下载并核对完整性，内容冲突时停止。
 
