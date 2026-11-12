@@ -135,6 +135,60 @@ describe("SDK与创建器的手动npm发行入口", () => {
 			"/-/package/create-bn-ext/dist-tags/alpha",
 		]);
 	}, 60_000);
+	it("首发先把两份原始归档依次送审，等待网页批准期间不公开候选或推进渠道", async () => {
+		const { stdout } = await release(["--stage"]);
+		expect(JSON.parse(stdout.trim().split("\n").at(-1)).awaitingApproval).toBe(true);
+		expect(
+			registry.state.requests.filter((entry) => entry.method !== "GET").map((entry) => entry.path),
+		).toEqual(["/-/stage/package/@bilibili-notify/extension", "/-/stage/package/create-bn-ext"]);
+		const catalog = JSON.parse(await readFile(join(directory, "packages.json"), "utf8"));
+		for (const { name, version, file } of catalog.packages) {
+			const pending = registry.state.staged.find((entry) => entry.packageName === name);
+			expect(pending).toMatchObject({ version, tag: `bn-release-${version}`, access: "public" });
+			expect(pending.tarball).toEqual(await readFile(join(directory, file)));
+			expect(registry.package(name).versions[version]).toBeUndefined();
+			expect(registry.package(name).tags.alpha).toBeUndefined();
+		}
+	}, 60_000);
+	it("第二份送审失败后重跑，复用第一份已经暂存的相同归档", async () => {
+		registry.state.failure = (request) =>
+			request.method === "POST" && request.path.endsWith("/create-bn-ext");
+		await expect(release(["--stage"])).rejects.toThrow();
+		expect(registry.state.staged.map((entry) => entry.packageName)).toEqual([
+			"@bilibili-notify/extension",
+		]);
+		await release(["--stage"]);
+		expect(registry.state.staged.map((entry) => entry.packageName)).toEqual([
+			"@bilibili-notify/extension",
+			"create-bn-ext",
+		]);
+	}, 60_000);
+	it("等待两份网页批准后再推进渠道，期间不会自行批准或直接发布", async () => {
+		await release(["--stage"]);
+		registry.approveStage("create-bn-ext");
+		await release(["--stage"]);
+		expect(registry.package("create-bn-ext").tags.alpha).toBeUndefined();
+		registry.approveStage("@bilibili-notify/extension");
+		const { stdout } = await release(["--stage"]);
+		expect(JSON.parse(stdout.trim().split("\n").at(-1)).awaitingApproval).toBe(false);
+		for (const name of ["@bilibili-notify/extension", "create-bn-ext"])
+			expect(registry.package(name).tags.alpha).toBe("0.1.0-alpha.0");
+		expect(
+			registry.state.requests.filter((entry) => entry.method === "PUT").map((entry) => entry.path),
+		).toEqual([
+			"/-/package/@bilibili-notify/extension/dist-tags/alpha",
+			"/-/package/create-bn-ext/dist-tags/alpha",
+		]);
+	}, 60_000);
+	it("队列里已有同号不同内容时，在暂存另一个包之前报告冲突", async () => {
+		await release(["--stage"]);
+		const [sdk, creator] = registry.state.staged;
+		creator.tarball = sdk.tarball;
+		registry.state.staged = [creator];
+		registry.state.requests.length = 0;
+		await expect(release(["--stage"])).rejects.toThrow(/Staged archive differs.*create-bn-ext/);
+		expect(registry.state.requests.filter((entry) => entry.method !== "GET")).toEqual([]);
+	}, 60_000);
 	it.each(["size", "sha256"])(
 		"任一归档的%s与清单不符时，在上传任何包之前拒绝",
 		async (field) => {
@@ -349,6 +403,18 @@ describe("SDK与创建器的手动npm发行入口", () => {
 		});
 		expect(stdout + stderr).not.toContain("local-fixture-token");
 		expect(await readdir(temporary)).toEqual([]);
+		expect(registry.state.staged.map(({ packageName }) => packageName)).toEqual([
+			"@bilibili-notify/extension",
+			"create-bn-ext",
+		]);
+		expect(registry.package("create-bn-ext").tags.alpha).toBeUndefined();
+		registry.reset();
+		await exec("bash", ["-e", "-o", "pipefail", "-c", publish.run], {
+			cwd: REPO,
+			env: { ...workflowEnv, RELEASE_AUTH: "trusted", NODE_AUTH_TOKEN: "" },
+			timeout: 60_000,
+		});
+		expect(registry.state.staged).toEqual([]);
 		for (const name of ["@bilibili-notify/extension", "create-bn-ext"])
 			expect(registry.package(name).tags.alpha).toBe("0.1.0-alpha.0");
 	}, 60_000);

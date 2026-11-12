@@ -198,6 +198,10 @@ npm同名同版本发布后不能复用，即使unpublish也一样；发错后�
 
 共享全量gate通过后，构建并通过`build:extension-tooling`装配两份tgz与`packages.json`。发布作业下载该次构建的精确归档，核对版本、公开入口、依赖、大小、SHA256/SHA512；所有选中包的已知同号冲突在首笔上传前检查。两包都选时先SDK再创建器，单发创建器要求其默认SDK版本已经存在。发行与本体共用不可变上传/重跑/渠道保护；`alpha`和`latest`由各包版本分别决定。
 
-只有发布作业拥有OIDC权限。`trusted`模式使用各包绑定的GitHub可信发布；首次包尚不存在时，选择`bootstrap-token`，仅在发布步骤映射已有`NPM_TOKEN` Secret，并在临时配置中通过环境变量引用，退出清理。Secret存在不代表有效或能创建两包，需由真实作业确认。首次上架后，分别给SDK与创建器绑定`Akokk0/bilibili-notify`的`tooling-release.yml`，允许publish与dist-tag，后续选择trusted；本体的`npm-release.yml`绑定独立配置。
+首次建包选择 `bootstrap-token`。发布步骤从 `NPM_TOKEN` 读取 npm 凭据，将核验过的归档送入 npm 暂存区。npm 会为新包公开 `0.0.0-stage` 占位版。维护者在 npm 网站的 **Packages → Staged Packages** 中先确认 SDK，再确认创建器。核对包名、版本及本次 Actions 归档后，用网页上的 **Approve** 批准。[npm 暂存说明](https://docs.npmjs.com/staged-publishing/)
+
+日志中的 `awaitingApproval: true` 表示仍有版本待批准。批准后重跑同一次 Actions 的 `publish` 作业，复用原归档。作业核对公开版本的 SHA512，所有选中版本均匹配后才推进各自的 `alpha` 或 `latest`。已暂存的同号归档会先下载并核对完整性，内容冲突时停止。
+
+后续给两个包分别绑定 `Akokk0/bilibili-notify` 的 `tooling-release.yml`，允许 publish 与 dist-tag，再选择 `trusted` 直接发行。只有发布作业拥有 OIDC 权限。本体使用独立的 `npm-release.yml` 绑定。
 
 本地审阅先`vp run build`，再`vp run build:extension-tooling`和`vp run release:extension-tooling --dry-run`；获批真实发行走Actions。完整操作与完成标准见[工具发行流程](../../.claude/skills/release/release-tooling.md)。GitHub手动按钮要求工作流存在默认分支，参见[官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)；远端源码或默认分支入口未同步时，不能记作已具备远端发行条件。

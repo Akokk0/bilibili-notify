@@ -5,12 +5,81 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
-import { npmRegistryPackage, publishNpmCandidate } from "./npm-publish.mjs";
+import {
+	advanceNpmChannel,
+	npmRegistryPackage,
+	publishNpmCandidate,
+	registryCommand,
+} from "./npm-publish.mjs";
 
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL("../", import.meta.url));
 const SDK = "@bilibili-notify/extension";
 const CREATOR = "create-bn-ext";
+
+async function pendingStage(candidate, registry) {
+	const list = await registryCommand(registry, "stage", "list", candidate.name, "--json");
+	const matches = JSON.parse(list.stdout).filter(
+		(entry) => entry.packageName === candidate.name && entry.version === candidate.version,
+	);
+	if (!matches.length) return;
+	const [entry] = matches;
+	if (
+		matches.length !== 1 ||
+		entry.access !== "public" ||
+		entry.tag !== `bn-release-${candidate.version}`
+	)
+		throw new Error(`Conflicting staged release for ${candidate.name}@${candidate.version}.`);
+	const url = new URL(`-/stage/${encodeURIComponent(entry.id)}/tarball`, registry);
+	const packed = await registryCommand(
+		registry,
+		"pack",
+		url.href,
+		"--dry-run",
+		"--ignore-scripts",
+		"--prefer-online",
+		"--json",
+	);
+	if (JSON.parse(packed.stdout)[0]?.integrity !== candidate.integrity)
+		throw new Error(`Staged archive differs for ${candidate.name}@${candidate.version}.`);
+	return entry.id;
+}
+
+async function releaseCandidates(packages, registry, stage) {
+	const awaiting = new Map();
+	for (const candidate of packages) {
+		const current = await npmRegistryPackage(registry, candidate.name);
+		const existing = current.versions?.[candidate.version];
+		if (existing && existing.dist?.integrity !== candidate.integrity)
+			throw new Error(`Published ${candidate.name} version differs; use a new version.`);
+		if (stage && !existing) awaiting.set(candidate, await pendingStage(candidate, registry));
+	}
+	if (awaiting.size) {
+		for (const [candidate, id] of awaiting) {
+			if (id) {
+				console.log(`${candidate.name}@${candidate.version} is awaiting npm approval (${id}).`);
+				continue;
+			}
+			const { stdout } = await registryCommand(
+				registry,
+				"stage",
+				"publish",
+				candidate.archive,
+				"--tag",
+				`bn-release-${candidate.version}`,
+				"--access",
+				"public",
+				"--ignore-scripts",
+			);
+			console.log(stdout.trim());
+		}
+		return true;
+	}
+	const finish = stage ? advanceNpmChannel : publishNpmCandidate;
+	for (const candidate of packages) await finish(candidate, candidate.channel, registry);
+	return false;
+}
+
 async function main() {
 	const { values } = parseArgs({
 		options: {
@@ -18,6 +87,7 @@ async function main() {
 			registry: { type: "string", default: "https://registry.npmjs.org/" },
 			"dry-run": { type: "boolean" },
 			publish: { type: "boolean" },
+			stage: { type: "boolean" },
 			package: { type: "string", default: "both" },
 		},
 	});
@@ -37,7 +107,9 @@ async function main() {
 	if (!registry.pathname.endsWith("/")) registry.pathname += "/";
 	values.registry = registry.href;
 	const directory = resolve(values.directory);
-	if (values.publish && values["dry-run"]) throw new Error("Choose --dry-run or --publish.");
+	if ([values.publish, values.stage, values["dry-run"]].filter(Boolean).length > 1)
+		throw new Error("Choose one of --dry-run, --publish or --stage.");
+	const dryRun = !values.publish && !values.stage;
 	const metadata = JSON.parse(await readFile(join(directory, "packages.json"), "utf8"));
 	if (
 		metadata.schemaVersion !== 1 ||
@@ -141,25 +213,18 @@ async function main() {
 			versions.sdk !== metadata.packages.find((entry) => entry.name === SDK)?.version
 		)
 			throw new Error("Creator defaults do not match package versions.");
-		if (values.publish && !packages.some((entry) => entry.name === SDK)) {
+		if (!dryRun && !packages.some((entry) => entry.name === SDK)) {
 			const sdk = await npmRegistryPackage(values.registry, SDK);
 			if (!sdk.versions?.[versions.sdk])
 				throw new Error(`Default SDK ${versions.sdk} is not published.`);
 		}
 	}
-	if (values.publish) {
-		for (const candidate of packages) {
-			const current = await npmRegistryPackage(values.registry, candidate.name);
-			const existing = current.versions?.[candidate.version];
-			if (existing && existing.dist?.integrity !== candidate.integrity)
-				throw new Error(`Published ${candidate.name} version differs; use a new version.`);
-		}
-		for (const candidate of packages)
-			await publishNpmCandidate(candidate, candidate.channel, values.registry);
-	}
+	const awaitingApproval =
+		!dryRun && (await releaseCandidates(packages, values.registry, values.stage));
 	console.log(
 		JSON.stringify({
-			dryRun: !values.publish,
+			dryRun,
+			awaitingApproval,
 			packages: packages.map(({ name, version, channel }) => ({ name, version, channel })),
 		}),
 	);

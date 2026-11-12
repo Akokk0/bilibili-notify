@@ -14,7 +14,7 @@ on:
         type: boolean
         default: true
       auth:
-        description: "Use bootstrap-token only for first publication, then configure trusted publishing"
+        description: "bootstrap-token stages the first release for npm approval; trusted publishes directly"
         type: choice
         options: [trusted, bootstrap-token]
         default: trusted
@@ -98,7 +98,7 @@ jobs:
           name: extension-tooling-npm-packages
           path: dist/extension-tooling
 
-      - name: Publish exact candidates then advance channels
+      - name: Stage first releases or publish verified candidates
         id: publish
         env:
           RELEASE_PACKAGE: ${{ inputs.package }}
