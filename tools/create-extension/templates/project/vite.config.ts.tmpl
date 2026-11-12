@@ -18,6 +18,8 @@ export default defineConfig({
     clean: true,
     dts: false,
     sourcemap: false,
+    // The extension ZIP ships index.mjs as its only JavaScript file.
+    outputOptions: { codeSplitting: false },
     deps: { alwaysBundle: [/.*/], onlyBundle: false },
     plugins: [extensionPackageFiles(process.cwd())],
   },

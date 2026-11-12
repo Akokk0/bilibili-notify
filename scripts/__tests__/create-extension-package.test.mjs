@@ -1,12 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { BUILTIN_INTEGRATION_KEYS } from "../../apps/server/src/compose.js";
-import { openExtensionPackage } from "../../apps/server/src/extensions/install.js";
+import {
+	installExtensionPackage,
+	openExtensionPackage,
+} from "../../apps/server/src/extensions/install.js";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const { parse: parseYaml } = createRequire(join(REPO, "apps/server/package.json"))("yaml");
@@ -186,7 +189,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 		await expect(access(project)).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
-	it("生成后以冻结锁安装，vp检查、类型、测试、构建和打包全部通过，ZIP可由宿主接收", async () => {
+	it("生成后以冻结锁安装，vp门禁通过，宿主安装ZIP后可以调用动态导入的查询", async () => {
 		const project = join(root, "example");
 		run(
 			"vp",
@@ -218,6 +221,31 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 		expect(market.owner.name).toBe("owner");
 		expect(market).not.toHaveProperty("repository");
 		run("vp", ["exec", "pnpm", "peers", "check"], project);
+		const src = join(project, "src");
+		await rename(join(src, "index.ts"), join(src, "example.ts"));
+		await writeFile(
+			join(src, "index.ts"),
+			`import type { ExtensionContext } from "@bilibili-notify/extension";
+export { settingsSchema } from "./example";
+export function activate(ctx: ExtensionContext) {
+  ctx.registerSource({
+    start() {},
+    stop() {},
+    async searchCreators(name) {
+      const { candidate } = await import("./lookup");
+      return { ok: true, candidates: [candidate(name)] };
+    },
+  });
+}
+`,
+		);
+		await writeFile(
+			join(src, "lookup.ts"),
+			`export function candidate(name: string) {
+  return { externalId: "42", name };
+}
+`,
+		);
 		run("vp", ["run", "verify"], project);
 		const skill = await readFile(
 			join(project, ".agents/skills/bn-extension-development/SKILL.md"),
@@ -255,6 +283,24 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			version: "0.1.0",
 			apiVersion: 1,
 			settings: { fields: [expect.objectContaining({ key: "greeting" })] },
+		});
+		const installed = join(root, "installed");
+		await installExtensionPackage({ root: installed, pkg: opened.pkg });
+		const lookup = run(
+			process.execPath,
+			[
+				"--input-type=module",
+				"-e",
+				`import { activate } from "./index.mjs";
+let source;
+activate({ registerSource(def) { source = def; } });
+console.log(JSON.stringify(await source.searchCreators("Alex", new AbortController().signal)));`,
+			],
+			join(installed, "example.demo"),
+		);
+		expect(JSON.parse(lookup)).toEqual({
+			ok: true,
+			candidates: [{ externalId: "42", name: "Alex" }],
 		});
 	}, 120_000);
 
