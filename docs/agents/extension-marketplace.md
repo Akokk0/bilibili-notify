@@ -67,14 +67,14 @@
 
 ## 第三方怎么开一个源
 
-SDK与创建器的仓外入口见[作者指南](../../packages/extension/DEVELOPMENT.md)；SDK的npm包自带这份指南。创建器默认附完整vp工程、提交hooks、检查与发布Actions，生成README说明`.bn/`配置、dry-run、版本tag和中断恢复。发行工具与第三方索引不需要私有internal包。
+创建器生成完整的 vp 工程、提交 hooks、检查与发布 Actions。发行工具与第三方索引不需要私有 internal 包。生成工程的 README 说明 `bn-extension/marketplace.json`、dry-run、版本 tag 和中断恢复。旧工程升级发布工具的步骤见 SDK 随包分发的[作者指南](../../packages/extension/DEVELOPMENT.md)。
 
 作者要做的只有两件事,任何 https 静态托管都行(GitHub Release / Pages / 对象存储):
 
 1. 把拓展包(`vp pack` 出来的 `dist/`,打成 zip:必须含 `extension.json` + `index.mjs`,**建议带上 `README.md` 与 `CHANGELOG.md`**,各 ≤ 512KB —— BN 会把它们画在拓展详情页上,不带就是一页没有说明;带译文时包里也要有 `locales/<语言码>.json`)放到一个 https 地址,算出 sha256 与字节数。清单里的 `id` 必须是 `<你的命名空间>.<名字>`。除这些之外的文件装载那头一律拒收;开发入口 `devtools.mjs` 不进包,装包会拒。
 2. 放一份 `marketplace.json`(上面那个形状,`namespace` 写你的命名空间),`package.url` 指向那个 zip。
 
-用户在 BN 拓展页 →「源」→ 填完整HTTPS索引地址，或GitHub的`owner/repo` / 仓库首页网址（名字不用起，索引自己带）。仓库输入映射到固定Release `bn-marketplace`的`marketplace.json`附件；只支持公开可读的索引及ZIP，不附加GitHub认证。BN不审核源里的东西，装之前会再提醒一次。同一个命名空间在一台BN上只能由一个源占；想冒充官方（列一个不带点的id）整个源会被拒。作者配置与发布约定见[ADR-0041](../adr/0041-extension-repository-source.md)。
+用户在 BN 拓展页 →「源」→ 填完整HTTPS索引地址，或GitHub的`owner/repo` / 仓库首页网址（名字不用起，索引自己带）。仓库输入映射到固定Release `bn-marketplace`的`marketplace.json`附件；只支持公开可读的索引及ZIP，不附加GitHub认证。BN不审核源里的东西，装之前会再提醒一次。同一个命名空间在一台BN上只能由一个源占；想冒充官方（列一个不带点的id）整个源会被拒。仓库源约定见 [ADR-0041](../adr/0041-extension-repository-source.md)，作者配置见 [ADR-0048](../adr/0048-extension-marketplace-config.md)。
 
 ## 装了之后
 

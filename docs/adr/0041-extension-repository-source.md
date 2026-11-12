@@ -1,6 +1,7 @@
 # ADR-0041：仓库源映射到固定Release索引
 
 - **状态**：2026-11-10主人批准固定Release附件方案；进度见[第6期计划](../1.0/phase-6-plan.md)。
+- **部分取代**：作者配置路径和仓库字段已由 [ADR-0048](0048-extension-marketplace-config.md) 修订。
 - **影响面**：第三方市场添加入口、`.bn/`作者配置、创建器和发布模板。
 - **延伸**：[ADR-0013](0013-extension-marketplace.md)；需求见[Issue #56](https://github.com/Akokk0/bilibili-notify/issues/56)。
 

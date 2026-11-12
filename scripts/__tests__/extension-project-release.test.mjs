@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -126,7 +126,7 @@ describe("生成工程的公开发布命令", () => {
 		return cwd;
 	}
 
-	async function release(cwd, args = []) {
+	async function release(cwd, args = [], env = {}) {
 		return exec(
 			"vp",
 			["exec", "bn-extension", "release", "--tag", "v0.1.0", "--api-base", endpoint, ...args],
@@ -139,6 +139,7 @@ describe("生成工程的公开发布命令", () => {
 					...process.env,
 					GITHUB_TOKEN: "local-fixture-token",
 					GITHUB_REPOSITORY: "owner/tools",
+					...env,
 				},
 			},
 		);
@@ -158,7 +159,7 @@ describe("生成工程的公开发布命令", () => {
 
 	it("dry-run实际跑全部vp门禁并生成可复查条目，不请求GitHub或创建发行", async () => {
 		const cwd = await project("dry-run");
-		const { stdout } = await release(cwd, ["--dry-run"]);
+		const { stdout } = await release(cwd, ["--dry-run"], { GITHUB_REPOSITORY: "Fork/Tools" });
 		expect(JSON.parse(stdout.trim().split("\n").at(-1))).toMatchObject({
 			dryRun: true,
 			tag: "v0.1.0",
@@ -169,11 +170,82 @@ describe("生成工程的公开发布命令", () => {
 			id: "example.demo",
 			version: "0.1.0",
 			package: {
-				url: "https://github.com/owner/tools/releases/download/v0.1.0/example.demo-0.1.0.zip",
+				url: "https://github.com/fork/tools/releases/download/v0.1.0/example.demo-0.1.0.zip",
 				sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
 				size: expect.any(Number),
 			},
 		});
+		expect(github.state.requests).toEqual([]);
+	}, 120_000);
+
+	it.each([
+		["HTTPS", "https://fixture-token@github.com/New-Owner/Renamed.git"],
+		["SSH", "ssh://git@github.com/New-Owner/Renamed.git"],
+		["SCP", "git@github.com:New-Owner/Renamed.git"],
+	])(
+		"本地预演跟随工程的%s origin生成链接",
+		async (kind, origin) => {
+			const cwd = await project(`local-${kind}`);
+			run("git", ["remote", "set-url", "origin", origin], cwd);
+			const { stdout } = await release(cwd, ["--dry-run"], { GITHUB_REPOSITORY: undefined });
+			const { entry } = JSON.parse(stdout.trim().split("\n").at(-1));
+			expect(entry.releaseUrl).toBe("https://github.com/new-owner/renamed/releases/tag/v0.1.0");
+			expect(entry.package.url).toBe(
+				"https://github.com/new-owner/renamed/releases/download/v0.1.0/example.demo-0.1.0.zip",
+			);
+			expect(github.state.requests).toEqual([]);
+		},
+		120_000,
+	);
+
+	it("本地发布无法确定GitHub仓库时终止，并保密origin凭据", async () => {
+		const cwd = await project("invalid-origin");
+		run(
+			"git",
+			["remote", "set-url", "origin", "https://fixture-secret@git.example/owner/tools"],
+			cwd,
+		);
+		const local = { GITHUB_REPOSITORY: undefined };
+		const rejected = release(cwd, [], local);
+		await expect(rejected).rejects.toThrow(/origin.*GitHub/);
+		await expect(rejected).rejects.not.toThrow(/fixture-secret/);
+		run("git", ["remote", "remove", "origin"], cwd);
+		await expect(release(cwd, ["--dry-run"], local)).rejects.toThrow(/origin.*GitHub/);
+		expect(github.state.requests).toEqual([]);
+	}, 120_000);
+
+	it("只有旧市场配置时提示迁移，不从 .bn 发布", async () => {
+		const cwd = await project("old-config");
+		const oldConfig = {
+			schemaVersion: 1,
+			repository: "owner/tools",
+			name: "example.demo",
+			namespace: "example",
+			owner: { name: "owner" },
+		};
+		await mkdir(join(cwd, ".bn"), { recursive: true });
+		await writeFile(join(cwd, ".bn/marketplace.json"), JSON.stringify(oldConfig));
+		await rm(join(cwd, "bn-extension/marketplace.json"), { force: true });
+		run("vp", ["run", "format"], cwd);
+		await expect(release(cwd, ["--dry-run"])).rejects.toThrow("bn-extension/marketplace.json");
+		await mkdir(join(cwd, "bn-extension"), { recursive: true });
+		await rename(join(cwd, ".bn/marketplace.json"), join(cwd, "bn-extension/marketplace.json"));
+		await expect(release(cwd, ["--dry-run"])).rejects.toThrow("repository");
+		expect(github.state.requests).toEqual([]);
+	}, 120_000);
+
+	it("子目录工程不自动沿用外层远端，Actions 仍可从工作流仓库预演", async () => {
+		const outer = join(root, "outer");
+		await mkdir(outer);
+		const cwd = await project("outer/extension");
+		await rename(join(cwd, ".git"), join(outer, ".git"));
+		await expect(release(cwd, [], { GITHUB_REPOSITORY: undefined })).rejects.toThrow(
+			/own Git repository/,
+		);
+		const { stdout } = await release(cwd, ["--dry-run"]);
+		expect(JSON.parse(stdout.trim().split("\n").at(-1)).entry.releaseUrl).toBe(
+			"https://github.com/owner/tools/releases/tag/v0.1.0",
+		);
 		expect(github.state.requests).toEqual([]);
 	}, 120_000);
 
@@ -351,6 +423,7 @@ describe("生成工程的公开发布命令", () => {
 
 	it("生成的发布Actions以只读门禁执行真实dry-run，发布作业须依赖门禁且单独取得写权限", async () => {
 		const cwd = await project("actions");
+		run("git", ["remote", "set-url", "origin", "https://github.com/upstream/project.git"], cwd);
 		const workflow = parseYaml(await readFile(join(cwd, ".github/workflows/release.yml"), "utf8"));
 		expect(workflow.on.push.tags).toEqual(["v*"]);
 		expect(workflow.on.workflow_dispatch.inputs.dry_run.default).toBe(true);

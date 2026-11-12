@@ -1,6 +1,6 @@
 # BN extension
 
-This is a standalone subscription-source example. It does not contact a platform yet. Edit the root `extension.json`, `src/` and `.bn/marketplace.json` to build your own integration.
+This is a standalone subscription-source example. It does not contact a platform yet. Edit the root `extension.json` and `src/` to build your integration. Set the market name, namespace and author in `bn-extension/marketplace.json`.
 
 ## Agent assistance
 
@@ -18,7 +18,7 @@ vp hooks status
 vp run verify
 ```
 
-The creator configures the local `origin` URL from `--repository`; it does not create a GitHub repository or push anything. If this was created with `--no-git`, run `git init`, set your own `origin`, then run `vp hooks enable`. Commit the lockfile and the project-owned `.vite-hooks/pre-commit` / `commit-msg` files; the generated dispatcher directory is ignored.
+If you created the project with `--no-git`, run `git init` and `vp hooks enable` to enable the hooks. Commit the lockfile and the project-owned `.vite-hooks/pre-commit` / `commit-msg` files. Git ignores the generated dispatcher directory. You can develop and test locally before creating a GitHub repository.
 
 ## Develop and check
 
@@ -44,27 +44,34 @@ Pre-commit runs `vp staged` using the same Vite+ lint/format configuration as CI
 
 Use only `@bilibili-notify/extension` for host APIs and its `/build` entry in build configuration. Export the Zod settings schema once; do not maintain a second settings-fields list in the manifest. Keep side effects inside `activate` or source lifecycle methods, use the host context for requests/state/secrets, and release resources when its signal aborts.
 
-The GitHub repository and extension namespace are different identities. `.bn/marketplace.json` explicitly names both; its namespace must match `extension.json`'s `namespace.extension` id. The market accepts public HTTPS assets; it does not log into private repositories.
-
 ## Marketplace configuration
 
-`.bn/marketplace.json` is author configuration, not the generated market index:
+The publisher reads the following fields from `bn-extension/marketplace.json` in your project.
 
 ```json
 {
   "schemaVersion": 1,
-  "repository": "owner/repository",
   "name": "My extension market",
   "namespace": "example",
   "owner": { "name": "Author", "url": "https://example.com" }
 }
 ```
 
-Keep `extension.json` at the repository root. The namespace must match the manifest id; the GitHub owner does not choose it implicitly. The tool uses the fixed rolling Release `bn-marketplace` and its `marketplace.json` asset.
+Use the namespace prefix from the id in the root `extension.json`. For example, the id `example.demo` uses the namespace `example`. The creator sets `owner.name` to that namespace by default, or to the GitHub owner if you supplied `--repository owner/repo`. You can edit it to show the author's preferred name.
+
+The publisher gets the target repository from `GITHUB_REPOSITORY` in GitHub Actions and from the GitHub `origin` remote locally. It writes the public index to the `marketplace.json` asset of the rolling `bn-marketplace` Release. BN needs public HTTPS access to the index and ZIP.
 
 ## Release and dry-run
 
-Update the version in `extension.json`, format it and commit the change using Conventional Commits. A local preview requires no GitHub token or existing tag:
+For your first release, choose a public GitHub repository. If your project has no `origin` yet, add the repository's URL (replace `OWNER/REPO` with your own).
+
+```sh
+git remote add origin https://github.com/OWNER/REPO.git
+```
+
+If the creator initialized Git with `--repository`, it has already set this remote. Check the destination with `git remote get-url --push origin` before a local preview or release.
+
+Update the version in `extension.json`, format it and commit the change using Conventional Commits. You can preview the release locally before creating the tag or setting a GitHub token.
 
 ```sh
 vp run format
@@ -75,7 +82,7 @@ vp run release --tag v0.1.0 --dry-run
 
 Dry-run actually checks commit messages, lint, formatting, types and tests, then builds and packages. It writes the ZIP, SHA256 and `marketplace-entry.json` into `artifacts/` without making GitHub requests. The preview entry is local; a real publication merges it with the existing remote index.
 
-Create an empty public GitHub repository at the configured owner/name, push the committed source, then push a matching version tag:
+Once the repository exists on GitHub, push your committed source and a matching version tag.
 
 ```sh
 git tag v0.1.0

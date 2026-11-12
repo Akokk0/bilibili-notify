@@ -1,14 +1,12 @@
 #!/usr/bin/env node
 import { cp, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
-import {
-	ExtensionIdSchema,
-	extensionNamespaceOf,
-	normalizeMarketplaceSourceUrl,
-} from "@bilibili-notify/internal";
+import { ExtensionIdSchema, extensionNamespaceOf } from "@bilibili-notify/internal";
+import { MARKETPLACE_CONFIG_PATH } from "./marketplace";
 import { run } from "./process";
+import { githubRepository } from "./repository";
 
 function extensionId(input: string | undefined) {
 	const parsed = ExtensionIdSchema.safeParse(input);
@@ -18,16 +16,6 @@ function extensionId(input: string | undefined) {
 			"Use a third-party extension id: namespace.extension (namespace <= 32 characters).",
 		);
 	return { id: parsed.data, namespace };
-}
-
-function githubRepository(input: string | undefined): string {
-	const repository = input
-		?.trim()
-		.replace(/\.git$/i, "")
-		.toLowerCase();
-	if (!repository || repository.includes(":") || !normalizeMarketplaceSourceUrl(repository).ok)
-		throw new Error("Provide a GitHub repository as owner/repo.");
-	return repository;
 }
 
 function displayName(name: string): string {
@@ -52,12 +40,12 @@ async function create(): Promise<void> {
 	});
 	if (values.help) {
 		console.log(
-			"create-bn-ext [directory] [--id namespace.extension --repository owner/repo] [--name Name] [--interactive] [--offline] [--no-git]\nMissing values are prompted for in a terminal. Use --interactive to enable prompts explicitly.\nUse --sdk / --tools to test local npm archives before publishing.",
+			"create-bn-ext [directory] [--id namespace.extension] [--name Name] [--repository owner/repo] [--interactive] [--offline] [--no-git]\nThe wizard prompts for a directory, extension ID and display name. Use --interactive to enable prompts explicitly.\nOptionally set --repository to initialize a GitHub origin. Use --sdk / --tools to test local npm archives before publishing.",
 		);
 		return;
 	}
 	if (positionals.length > 1) throw new Error("Provide one new project directory.");
-	const missing = !positionals[0] || !values.id || !values.repository;
+	const missing = !positionals[0] || !values.id;
 	if (values.interactive || (missing && process.stdin.isTTY && !process.env.CI)) {
 		const prompt = createInterface({
 			input: process.stdin,
@@ -88,8 +76,6 @@ async function create(): Promise<void> {
 		try {
 			if (!positionals[0]) positionals.push(await ask("Project directory", "my-extension"));
 			if (!values.id) values.id = await ask("Extension ID (namespace.extension)", "", extensionId);
-			if (!values.repository)
-				values.repository = await ask("GitHub repository (owner/repo)", "", githubRepository);
 			if (values.name === undefined)
 				values.name = await ask("Display name", values.id, displayName);
 		} finally {
@@ -98,7 +84,8 @@ async function create(): Promise<void> {
 	}
 	if (positionals.length !== 1) throw new Error("Provide one new project directory.");
 	const { id, namespace } = extensionId(values.id);
-	const repository = githubRepository(values.repository);
+	const repository =
+		values.repository === undefined ? undefined : githubRepository(values.repository);
 	const name = displayName(values.name ?? id);
 	const versions = JSON.parse(await readFile(new URL("./versions.json", import.meta.url), "utf8"));
 	const target = resolve(positionals[0] as string);
@@ -112,7 +99,6 @@ async function create(): Promise<void> {
 		}
 	}
 	await unwrapTemplates(target);
-	await mkdir(join(target, ".bn"), { recursive: true });
 	const json = (path: string, value: unknown) =>
 		writeFile(join(target, path), `${JSON.stringify(value, null, 2)}\n`);
 	const packageName = basename(target)
@@ -171,17 +157,18 @@ peerDependencyRules:
 			subscription: { label: name, searchAccepts: ["id", "name"], supportedFeatures: ["post"] },
 		},
 	});
-	await json(".bn/marketplace.json", {
+	await mkdir(dirname(join(target, MARKETPLACE_CONFIG_PATH)), { recursive: true });
+	await json(MARKETPLACE_CONFIG_PATH, {
 		schemaVersion: 1,
-		repository,
 		name,
 		namespace,
-		owner: { name: repository.split("/")[0] },
+		owner: { name: repository?.split("/")[0] ?? namespace },
 	});
 	await writeFile(join(target, ".node-version"), `${versions.node}\n`);
 	if (!values["no-git"]) {
 		run("git", ["init", "--initial-branch=main"], target);
-		run("git", ["remote", "add", "origin", `https://github.com/${repository}.git`], target);
+		if (repository)
+			run("git", ["remote", "add", "origin", `https://github.com/${repository}.git`], target);
 	}
 	run("vp", ["install", "--no-frozen-lockfile", ...(values.offline ? ["--offline"] : [])], target);
 	run("vp", ["run", "format"], target);

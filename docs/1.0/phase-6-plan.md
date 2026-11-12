@@ -8,6 +8,7 @@
 - 迁移修订号53、备份版本23；当前宿主契约`apiVersion: 1`、`apiRevision: 0`。历史“v3”不是当前发行号。
 - 大改UI限制保留；市场输入在现有弹窗上局部调整。
 - 2026-11-12，SDK 与创建器已在 npm 上发布首个 `alpha`，版本均为 `0.1.0-alpha.0`。[SDK](https://www.npmjs.com/package/@bilibili-notify/extension/v/0.1.0-alpha.0) · [创建器](https://www.npmjs.com/package/create-bn-ext/v/0.1.0-alpha.0)
+- 首发后的创建器源码支持先在本地创建拓展，向导只问目录、ID 和显示名。市场资料放在 `bn-extension/marketplace.json`，发布仓库取自 Actions 或本地 Git 远端。本次调整尚未发行。下文 6-03 至 6-05 的交付记录保留首发时的格式。[ADR-0048](../adr/0048-extension-marketplace-config.md)
 - 2026-11-12，抖音首版确认与 B 站对齐常用订阅操作、群聊贴作品出卡和系统账号页扫码登录。群聊入口与登录分片落实。[首版定案](../adr/0047-douyin-source-parity.md)
 - 本体 npm 随主程序 tag 发行，本体与桥的版本和推送留到发行片确认。
 - 2026-11-11最新定案见[ADR-0046](../adr/0046-bundled-npm-distribution.md)：npm包自带两种宿主、随主程序tag发行；`@bilibili-notify/bn web/dev`运行宿主成品；拓展继续由BN手动挂载源码。
@@ -20,8 +21,8 @@
 | --- | --- | --- |
 | 6-01 | 两项获批ADR、仓库指引与片表、测试入口记录 | ✅ 定案已落 |
 | 6-02 | 仓外SDK：本地npm包无私有internal依赖，根入口与`/build`可运行，公开类型可编译，最小拓展可构建并通过现有装包校验；能力不加宽 | ✅ 已落；26文件441项相关测试通过 |
-| 6-03 | 仓库简写/URL归一到固定Release索引，保留HTTPS输入与信任边界；确定固定标签和`.bn/`格式 | ✅ 已落；片级201项、四包类型及内置浏览器通过 |
-| 6-04 | npm创建器：生成完整vp工程，配齐锁文件、lint/format/type/test/build/pack入口、pre-commit及commitlint、`.bn/`和Actions；按下方工程基建清单验收 | ✅ 本地创建器/工程基建与检查Actions已落；自动发布接6-05 |
+| 6-03 | 仓库简写/URL归一到固定Release索引，保留HTTPS输入与信任边界；确定固定标签和作者配置格式 | ✅ 已落；片级201项、四包类型及内置浏览器通过 |
+| 6-04 | npm创建器：生成完整vp工程，配齐锁文件、lint/format/type/test/build/pack入口、pre-commit及commitlint、市场配置和Actions；按下方工程基建清单验收 | ✅ 本地创建器/工程基建与检查Actions已落；自动发布接6-05 |
 | 6-05 | 第三方Actions：PR/分支门禁、提交信息复验、tag版本核对、自动构建/ZIP/校验值/Release/固定索引更新及dry-run；复用原格式与校验，检查失败时不发布 | ✅ 本机协议夹具及生成命令已验；真实远端发布未执行 |
 | 6-05a | 开发版拓展页手动挂载多个仓外源码工程、独立监听/重载/解除，普通构建不含入口；沿ADR-0044验收 | ✅ 手动挂载、生命周期及仓外工程联调已验；未实际发布 |
 | 6-05b | BN直接加载src/index.ts和依赖，拓展仅在生产打包；开发场景共用源码挂载服务 | ✅ 源码装载、预检失败保留与局部重载已验；未实际发布 |

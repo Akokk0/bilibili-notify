@@ -13,6 +13,24 @@ import { GithubApi } from "./github";
 import { nextMarketplace, readMarketplace, readProject } from "./marketplace";
 import { packProject } from "./pack";
 import { run } from "./process";
+import { githubRepository } from "./repository";
+
+function releaseRepository(git: (...args: string[]) => string): string {
+	if (process.env.GITHUB_REPOSITORY) return githubRepository(process.env.GITHUB_REPOSITORY);
+	if (git("rev-parse", "--show-prefix"))
+		throw new Error("Initialize the extension project as its own Git repository before releasing.");
+	let origin: URL | undefined;
+	try {
+		const remote = git("remote", "get-url", "--push", "origin");
+		const url = remote.replace(/^git@github\.com:/i, "ssh://git@github.com/");
+		if (/^(https|ssh):\/\//i.test(url)) origin = new URL(url);
+	} catch {
+		// 远端地址可能包含凭据，报错时只提示如何配置。
+	}
+	if (origin?.hostname.toLowerCase() !== "github.com" || origin.search || origin.hash)
+		throw new Error("Configure origin with a GitHub HTTPS or SSH repository URL before releasing.");
+	return githubRepository(origin.pathname.slice(1).replace(/\/$/, ""));
+}
 
 export async function releaseProject(args: string[], root = process.cwd()) {
 	const { values } = parseArgs({
@@ -31,11 +49,13 @@ export async function releaseProject(args: string[], root = process.cwd()) {
 		tag !== `v${manifest.version}`
 	)
 		throw new Error("The v<version> tag must match extension.json's version.");
-	if (
-		process.env.GITHUB_REPOSITORY &&
-		process.env.GITHUB_REPOSITORY.toLowerCase() !== config.repository
-	)
-		throw new Error("GITHUB_REPOSITORY does not match .bn/marketplace.json.");
+	const git = (...args: string[]) =>
+		execFileSync("git", args, {
+			cwd: root,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		}).trim();
+	const repository = releaseRepository(git);
 	checkProjectCommits([], root);
 	const verificationEnv = { ...process.env };
 	delete verificationEnv.GITHUB_TOKEN;
@@ -53,11 +73,11 @@ export async function releaseProject(args: string[], root = process.cwd()) {
 		...(manifest.apiRevision === undefined ? {} : { apiRevision: manifest.apiRevision }),
 		prerelease: manifest.version.includes("-"),
 		package: {
-			url: `https://github.com/${config.repository}/releases/download/${tag}/${basename(artifact.path)}`,
+			url: `https://github.com/${repository}/releases/download/${tag}/${basename(artifact.path)}`,
 			sha256: artifact.sha256,
 			size: artifact.size,
 		},
-		releaseUrl: `https://github.com/${config.repository}/releases/tag/${tag}`,
+		releaseUrl: `https://github.com/${repository}/releases/tag/${tag}`,
 	});
 	await writeFile(
 		join(root, "artifacts/marketplace-entry.json"),
@@ -71,13 +91,11 @@ export async function releaseProject(args: string[], root = process.cwd()) {
 	if (values["dry-run"]) return { dryRun: true, ...preview };
 	const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 	if (!token) throw new Error("Set GITHUB_TOKEN (contents: write) to publish, or use --dry-run.");
-	const git = (...args: string[]) =>
-		execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 	if (git("status", "--porcelain")) throw new Error("Commit project changes before publishing.");
 	const head = git("rev-parse", "HEAD");
 	if (git("rev-parse", "--verify", `refs/tags/${tag}^{commit}`) !== head)
 		throw new Error("The local tag must point to the checked-out commit.");
-	const api = new GithubApi(config.repository, token, values["api-base"]);
+	const api = new GithubApi(repository, token, values["api-base"]);
 	await api.assertTag(tag, head);
 	let rolling = await api.findRelease(MARKETPLACE_RELEASE_TAG);
 	if (rolling?.immutable) throw new Error("The rolling marketplace release must remain mutable.");
@@ -114,6 +132,6 @@ export async function releaseProject(args: string[], root = process.cwd()) {
 	return {
 		dryRun: false,
 		...preview,
-		marketplace: `https://github.com/${config.repository}/releases/download/${MARKETPLACE_RELEASE_TAG}/${MARKETPLACE_INDEX_ASSET}`,
+		marketplace: `https://github.com/${repository}/releases/download/${MARKETPLACE_RELEASE_TAG}/${MARKETPLACE_INDEX_ASSET}`,
 	};
 }

@@ -6,27 +6,16 @@ import {
 	type MarketplaceEntry,
 	type MarketplaceIndex,
 	MarketplaceIndexSchema,
-	normalizeMarketplaceSourceUrl,
 	parseExtensionManifest,
 } from "@bilibili-notify/internal";
 import { z } from "zod";
 import { compareEntryVersions } from "../../../scripts/extension-version-order.mjs";
 
+export const MARKETPLACE_CONFIG_PATH = "bn-extension/marketplace.json";
+
 const ConfigSchema = MarketplaceIndexSchema.pick({ name: true, namespace: true, owner: true })
 	.required({ namespace: true, owner: true })
-	.extend({
-		schemaVersion: z.literal(1),
-		repository: z
-			.string()
-			.transform((value) => value.toLowerCase())
-			.refine(
-				(value) =>
-					!value.includes(":") &&
-					value.split("/").length === 2 &&
-					normalizeMarketplaceSourceUrl(value).ok,
-				"repository must be a GitHub owner/repo",
-			),
-	})
+	.extend({ schemaVersion: z.literal(1) })
 	.strict();
 
 export type MarketplaceConfig = z.infer<typeof ConfigSchema>;
@@ -89,14 +78,20 @@ export function nextMarketplace(
 }
 
 export async function readProject(root: string) {
-	const config = ConfigSchema.parse(
-		JSON.parse(await readFile(join(root, ".bn/marketplace.json"), "utf8")),
+	const configText = await readFile(join(root, MARKETPLACE_CONFIG_PATH), "utf8").catch(
+		(error: NodeJS.ErrnoException) => {
+			if (error.code !== "ENOENT") throw error;
+			throw new Error(
+				`Missing ${MARKETPLACE_CONFIG_PATH}. To upgrade an older project, move .bn/marketplace.json there and remove its repository field.`,
+			);
+		},
 	);
+	const config = ConfigSchema.parse(JSON.parse(configText));
 	const parsed = parseExtensionManifest(
 		JSON.parse(await readFile(join(root, "extension.json"), "utf8")),
 	);
 	if (!parsed.ok) throw new Error(parsed.message);
 	if (extensionNamespaceOf(parsed.manifest.id) !== config.namespace)
-		throw new Error("The manifest id must use .bn/marketplace.json's namespace.");
+		throw new Error(`The manifest id must use the namespace in ${MARKETPLACE_CONFIG_PATH}.`);
 	return { config, manifest: parsed.manifest };
 }

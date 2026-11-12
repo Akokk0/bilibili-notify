@@ -88,8 +88,6 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 				project,
 				"--id",
 				"example.short",
-				"--repository",
-				"owner/short",
 				"--sdk",
 				`file:${sdk}`,
 				"--tools",
@@ -105,7 +103,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 		run("vp", ["run", "verify"], project);
 	}, 120_000);
 
-	it("交互向导收集目录和信息，生成的工程通过全部门禁", async () => {
+	it("交互向导只收集目录、ID 和显示名，无远端也能通过工程门禁", async () => {
 		const project = join(root, "wizard");
 		run(
 			"vp",
@@ -121,22 +119,28 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			],
 			host,
 			{},
-			`${project}\nexample.wizard\nOwner/Wizard\nWizard extension\n`,
+			`${project}\nexample.wizard\nWizard extension\n`,
 		);
 		expect(JSON.parse(await readFile(join(project, "extension.json"), "utf8"))).toMatchObject({
 			id: "example.wizard",
 			name: "Wizard extension",
 		});
-		expect(JSON.parse(await readFile(join(project, ".bn/marketplace.json"), "utf8"))).toMatchObject(
-			{
-				repository: "owner/wizard",
-				namespace: "example",
-			},
-		);
+		expect(
+			JSON.parse(await readFile(join(project, "bn-extension/marketplace.json"), "utf8")),
+		).toEqual({
+			schemaVersion: 1,
+			name: "Wizard extension",
+			namespace: "example",
+			owner: { name: "example" },
+		});
+		expect(run("git", ["remote"], project).trim()).toBe("");
+		await expect(access(join(project, ".bn/marketplace.json"))).rejects.toMatchObject({
+			code: "ENOENT",
+		});
 		run("vp", ["run", "verify"], project);
 	}, 120_000);
 
-	it("向导在当前字段纠正无效ID和仓库，空显示名使用ID默认值", async () => {
+	it("向导在当前字段纠正无效ID，空显示名使用ID默认值", async () => {
 		const project = join(host, "my-extension");
 		run(
 			"vp",
@@ -152,17 +156,12 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			],
 			host,
 			{},
-			"\nbad id\nexample.corrected\nnot-a-repository\nOwner/Corrected.git\n\n",
+			"\nbad id\nexample.corrected\n\n",
 		);
 		expect(JSON.parse(await readFile(join(project, "extension.json"), "utf8"))).toMatchObject({
 			id: "example.corrected",
 			name: "example.corrected",
 		});
-		expect(JSON.parse(await readFile(join(project, ".bn/marketplace.json"), "utf8"))).toMatchObject(
-			{
-				repository: "owner/corrected",
-			},
-		);
 	}, 120_000);
 
 	it("参数可与向导混用，输入中断不会写入半个工程", async () => {
@@ -173,7 +172,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 				["exec", "create-bn-ext", project, "--id", "example.cancelled", "--interactive"],
 				host,
 				{},
-				"owner/cancelled\n",
+				"",
 			),
 		).toThrow(/Setup cancelled/);
 		await expect(access(project)).rejects.toMatchObject({ code: "ENOENT" });
@@ -213,6 +212,11 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 		expect(run("git", ["remote", "get-url", "origin"], project).trim()).toBe(
 			"https://github.com/owner/tools.git",
 		);
+		const market = JSON.parse(
+			await readFile(join(project, "bn-extension/marketplace.json"), "utf8"),
+		);
+		expect(market.owner.name).toBe("owner");
+		expect(market).not.toHaveProperty("repository");
 		run("vp", ["exec", "pnpm", "peers", "check"], project);
 		run("vp", ["run", "verify"], project);
 		const skill = await readFile(

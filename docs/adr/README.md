@@ -56,12 +56,13 @@
 | [0038](0038-resource-library.md) | 资源库作为可复用内容的统一管理入口 | 2026-11-06 | 主人认可范围；保留各类存储与引用边界 |
 | [0039](0039-localized-logs.md) | 日志纳入多语言 | 2026-11-07 | 主人修订原日志排除范围；沿现有日志入口按模块整理 |
 | [0040](0040-extension-sdk-npm.md) | 拓展SDK与创建器通过npm分发 | 2026-11-10 | 主人批准渠道；业务核心保持私有，发行版本另定 |
-| [0041](0041-extension-repository-source.md) | 仓库源映射到固定Release索引 | 2026-11-10 | 主人批准根清单保留、`.bn/`作者配置与固定Release附件 |
+| [0041](0041-extension-repository-source.md) | 仓库源映射到固定Release索引 | 2026-11-10 | 主人批准根清单与固定 Release 附件，作者配置路径及仓库字段由 0048 修订 |
 | [0042](0042-extension-scaffold-infrastructure.md) | 拓展脚手架自带vp工程基建与Actions | 2026-11-10 | 主人要求vp检查、提交lint、Git hooks及GitHub自动打包发版默认配齐 |
 | [0044](0044-extension-source-development.md) | 由BN管理拓展源码开发 | 2026-11-11 | 主人要求只启动BN，宿主直接加载与监听源码，生产才打包；修订0043的dist流程及0012开发入口限制 |
 | [0045](0045-bn-runtime-cli.md) | 通过BN启动器运行宿主成品 | 2026-11-11 | 主人指定@bilibili-notify/bn；正式/开发宿主分别打包，拓展仍运行源码 |
 | [0046](0046-bundled-npm-distribution.md) | npm作为自带宿主的正式发行渠道 | 2026-11-11 | 主人要求包内载荷、随主程序tag发行，首次启动不依赖GitHub |
 | [0047](0047-douyin-source-parity.md) | 抖音首版接入订阅、群聊作品解析和系统扫码登录 | 2026-11-12 | 主人确认常用操作和扫码登录与 B 站对齐，链接解析与账号接入分片实施 |
+| [0048](0048-extension-marketplace-config.md) | 拓展市场配置放在 bn-extension 目录，发布仓库从环境取得 | 2026-11-12 | 修订 0041 的作者配置，发布时使用 Actions 仓库或本地 GitHub 远端 |
 
 标着**「追认」**的是事后据定案记录与实现整理的,不是当时拷问的原文:「决定了什么」与「为什么」可信,「当时的现场」不可考。
 
