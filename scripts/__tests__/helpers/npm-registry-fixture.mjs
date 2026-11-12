@@ -3,7 +3,12 @@ import { createServer } from "node:http";
 
 /** 只在loopback提供npm registry协议，不模拟仓库自己的发行模块。 */
 export async function npmRegistryFixture() {
-	const state = { requests: [], versions: {}, tags: {} };
+	const state = { requests: [], versions: {}, tags: {}, packages: {} };
+	const packageState = (name) => {
+		if (name === "@bilibili-notify/bn") return state;
+		state.packages[name] ??= { versions: {}, tags: {} };
+		return state.packages[name];
+	};
 	const server = createServer(async (request, response) => {
 		const chunks = [];
 		for await (const chunk of request) chunks.push(chunk);
@@ -18,41 +23,35 @@ export async function npmRegistryFixture() {
 				.end(JSON.stringify({ error: "Injected registry failure" }));
 			return;
 		}
-		if (request.method === "GET" && path === "/@bilibili-notify/bn") {
-			response
-				.writeHead(Object.keys(state.versions).length ? 200 : 404, {
-					"content-type": "application/json",
-				})
-				.end(
-					JSON.stringify({
-						name: "@bilibili-notify/bn",
-						versions: state.versions,
-						"dist-tags": state.tags,
-					}),
-				);
-			return;
-		}
-		const tagPrefix = "/-/package/@bilibili-notify/bn/dist-tags";
 		const send = (status, json) =>
 			response.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(json));
-		if (request.method === "GET" && path === tagPrefix) return send(200, state.tags);
+		const tag = /^\/-\/package\/(.+)\/dist-tags(?:\/([^/]+))?$/.exec(path);
+		const name = tag?.[1] ?? path.slice(1);
+		const pkg = packageState(name);
+		if (request.method === "GET" && !tag)
+			return send(Object.keys(pkg.versions).length ? 200 : 404, {
+				name,
+				versions: pkg.versions,
+				"dist-tags": pkg.tags,
+			});
+		if (request.method === "GET" && tag) return send(200, pkg.tags);
 		if (request.headers.authorization !== "Bearer local-fixture-token")
 			return send(401, { error: "Missing fixture token" });
-		if (request.method === "PUT" && path === "/@bilibili-notify/bn") {
+		if (request.method === "PUT" && !tag) {
 			const json = JSON.parse(body);
 			for (const version of Object.keys(json.versions)) {
-				if (state.versions[version]) return send(409, { error: "Version already exists" });
+				if (pkg.versions[version]) return send(409, { error: "Version already exists" });
 			}
-			Object.assign(state.versions, json.versions);
-			Object.assign(state.tags, json["dist-tags"]);
+			Object.assign(pkg.versions, json.versions);
+			Object.assign(pkg.tags, json["dist-tags"]);
 			if (state.failAfterPublish) {
 				state.failAfterPublish = false;
 				return send(503, { error: "Response lost after publishing" });
 			}
 			return send(201, { ok: true });
 		}
-		if (request.method === "PUT" && path.startsWith(`${tagPrefix}/`)) {
-			state.tags[path.slice(tagPrefix.length + 1)] = JSON.parse(body);
+		if (request.method === "PUT" && tag?.[2]) {
+			pkg.tags[tag[2]] = JSON.parse(body);
 			return send(201, { ok: true });
 		}
 		response
@@ -64,10 +63,12 @@ export async function npmRegistryFixture() {
 	return {
 		endpoint: `http://127.0.0.1:${server.address().port}/`,
 		state,
+		package: packageState,
 		reset() {
 			state.requests.length = 0;
 			state.versions = {};
 			state.tags = {};
+			state.packages = {};
 			state.failure = undefined;
 			state.failAfterPublish = false;
 		},

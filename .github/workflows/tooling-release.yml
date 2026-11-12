@@ -1,0 +1,107 @@
+name: bilibili-notify — extension tools (npm)
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Packages to publish; versions come from the committed manifests"
+        type: choice
+        options: [both, sdk, creator]
+        default: both
+        required: true
+      dry_run:
+        description: "Build and verify only"
+        type: boolean
+        default: true
+      auth:
+        description: "Use bootstrap-token only for first publication, then configure trusted publishing"
+        type: choice
+        options: [trusted, bootstrap-token]
+        default: trusted
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_DIRECTORY: dist/extension-tooling
+  NPM_REGISTRY: https://registry.npmjs.org/
+
+jobs:
+  gate:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev'
+    uses: ./.github/workflows/gate.yml
+
+  build:
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Vite+ (vp) + Node
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Build public package contents
+        run: vp run build
+
+      - name: Assemble complete tooling packages
+        id: build
+        run: vp run build:extension-tooling --out "$PACKAGE_DIRECTORY"
+
+      - name: Verify without publishing
+        id: verify
+        env:
+          RELEASE_PACKAGE: ${{ inputs.package }}
+        run: vp run release:extension-tooling --directory "$PACKAGE_DIRECTORY" --package "$RELEASE_PACKAGE" --registry "$NPM_REGISTRY" --dry-run
+
+      - name: Upload exact release candidates
+        uses: actions/upload-artifact@v7
+        with:
+          name: extension-tooling-npm-packages
+          path: |
+            dist/extension-tooling/*.tgz
+            dist/extension-tooling/packages.json
+          retention-days: 14
+          if-no-files-found: error
+
+  publish:
+    needs: [build]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: bn-tooling-npm-publish
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Vite+ (vp) + Node
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Download verified candidates
+        uses: actions/download-artifact@v8
+        with:
+          name: extension-tooling-npm-packages
+          path: dist/extension-tooling
+
+      - name: Publish exact candidates then advance channels
+        id: publish
+        env:
+          RELEASE_PACKAGE: ${{ inputs.package }}
+          RELEASE_AUTH: ${{ inputs.auth }}
+          NODE_AUTH_TOKEN: ${{ inputs.auth == 'bootstrap-token' && secrets.NPM_TOKEN || '' }}
+        run: bash .github/scripts/tooling-release/publish.sh

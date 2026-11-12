@@ -185,6 +185,16 @@ docker build -f apps/Dockerfile -t bilibili-notify:dev .
 
 实际发行前由主人确认版本、组织权限和账号授权。本机registry夹具不证明真实npm权限。首次包尚未建立时，应在获批的首发中先建立实际包，再配置可信发布；npm的trust管理要求包已存在，见[官方前置条件](https://github.com/npm/cli/blob/latest/docs/lib/content/commands/npm-trust.md#prerequisites)。无需发布占位包，不能把0.0.0-dev构建壳发布出去。
 
-可信发布绑定`@bilibili-notify/bn`、GitHub仓库`Akokk0/bilibili-notify`和工作流文件名`npm-release.yml`，允许`npm publish`及`npm dist-tag`两项动作。仓库不保存长期npm发布令牌。配置应靠近实际发行时完成，真实OIDC与npm安装、宿主启动仍在获批发布后验收。
+可信发布绑定`@bilibili-notify/bn`、GitHub仓库`Akokk0/bilibili-notify`和工作流文件名`npm-release.yml`，允许`npm publish`及`npm dist-tag`两项动作。本体流水线使用OIDC，不读取长期npm发布令牌。配置应靠近实际发行时完成，真实OIDC与npm安装、宿主启动仍在获批发布后验收。
 
 npm同名同版本发布后不能复用，即使unpublish也一样；发错后改发新版本，不能照其他渠道的删tag重打方式复用该号，见[npm发布规则](https://docs.npmjs.com/cli/v11/commands/npm-publish/)。
+
+## SDK与创建器npm工具
+
+`tooling-release.yml`是SDK与`create-bn-ext`的独立手动入口，参考base镜像的触发方式；在`dev`运行，默认只预检。包版本分别来自提交里的源码清单，创建器默认SDK版本来自同次构建；本体版本同步脚本不修改它们。
+
+共享全量gate通过后，构建并通过`build:extension-tooling`装配两份tgz与`packages.json`。发布作业下载该次构建的精确归档，核对版本、公开入口、依赖、大小、SHA256/SHA512；所有选中包的已知同号冲突在首笔上传前检查。两包都选时先SDK再创建器，单发创建器要求其默认SDK版本已经存在。发行与本体共用不可变上传/重跑/渠道保护；`alpha`和`latest`由各包版本分别决定。
+
+只有发布作业拥有OIDC权限。`trusted`模式使用各包绑定的GitHub可信发布；首次包尚不存在时，选择`bootstrap-token`，仅在发布步骤映射已有`NPM_TOKEN` Secret，并在临时配置中通过环境变量引用，退出清理。Secret存在不代表有效或能创建两包，需由真实作业确认。首次上架后，分别给SDK与创建器绑定`Akokk0/bilibili-notify`的`tooling-release.yml`，允许publish与dist-tag，后续选择trusted；本体的`npm-release.yml`绑定独立配置。
+
+本地审阅先`vp run build`，再`vp run build:extension-tooling`和`vp run release:extension-tooling --dry-run`；获批真实发行走Actions。完整操作与完成标准见[工具发行流程](../../.claude/skills/release/release-tooling.md)。GitHub手动按钮要求工作流存在默认分支，参见[官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)；远端源码或默认分支入口未同步时，不能记作已具备远端发行条件。

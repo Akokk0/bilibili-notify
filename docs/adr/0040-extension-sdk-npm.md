@@ -30,3 +30,5 @@
 6-02至6-05已完成本地交付，包名为`@bilibili-notify/extension`与`create-bn-ext`。SDK和创建器的初始发行版本、账号权限和实际发布仍按决策4确认；本机候选归档不算已经上架。其他契约能力是否加宽仍按真实使用者另定。
 
 2026-11-11主人要求像`npm create vue`/`pnpm create vue`一样使用，提出`bn`和`bn-ext`短名；创建器候选改为`create-bn-ext`，对应`npm create bn-ext`/`pnpm create bn-ext`，公开可执行名与包名匹配。原候选未执行发行；公开版本查询404只说明未查到，名称与权限仍在实际发行时核对。
+
+2026-11-12主人确定SDK与创建器首发均为`0.1.0-alpha.0`，并要求改为GitHub Actions手动发布，本机只作构建与预检；本体npm留到本体发版，版本随主程序。工具通过独立`tooling-release.yml`发行，两包保留独立版本；首发凭据与后续可信发布的准备见[发行指引](../agents/build-release.md#sdk与创建器npm工具)。实际上架与消费验收仍以第6期进度为准。

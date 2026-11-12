@@ -28,7 +28,9 @@
 		"knip": "knip --files",
 		"build:bn-runtimes": "node scripts/build-bn-runtimes.mjs",
 		"build:bn-package": "node scripts/build-bn-package.mjs",
-		"release:bn-package": "node scripts/release-bn-package.mjs"
+		"release:bn-package": "node scripts/release-bn-package.mjs",
+		"build:extension-tooling": "node scripts/build-extension-tooling.mjs",
+		"release:extension-tooling": "node scripts/release-extension-tooling.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.10",
