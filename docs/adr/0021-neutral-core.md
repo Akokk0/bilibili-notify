@@ -255,6 +255,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
       🔗 **2026-09-29**：`searchPlaceholder` 又换成声明式的 `searchAccepts`，见决策 10 下的 🔗。
 
     `linkResolver`、`commands`、`aiTools` 暂不对拓展开放：核心的接口与登记表照做，B 站照用，等写抖音拓展时再定。以后加进来，只是清单里多几个可选键，不用抬大版本。
+    - 🔗 2026-11-12 抖音群聊作品链接成为 `linkResolver` 的首个拓展使用者；专属指令和 AI 工具仍待使用者。系统扫码登录另走来源账号入口。见 [ADR-0047](0047-douyin-source-parity.md)。
     🔗 **2026-09-28**：ctx 改成 `IntegrationContext` 加各自特有的一层，新增 `http`、`settings`；上报类改成 `void`，被拒记进 `reportRejections`（ADR-0025 决策 1、6、10）。
     🔗 **2026-10-09**：上一条里的 `reportRejections` 改叫 `reportDiscrepancies`（ADR-0025 决策 10 下的 🔗）。
     🔗 **2026-09-28**：`commands` 那张登记表 1.0 不造（ADR-0031 决策 1）；`linkResolver`、`aiTools` 照原句。
@@ -483,7 +484,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 
 ## 以后再说
 
-- **`linkResolver`、`commands`、`aiTools` 对拓展开不开放**：等写 alpha 配套的抖音拓展时再定。
+- **以后何时需要拓展专属指令或 AI 工具**：抖音首版只需通用 AI 工具。群聊链接解析已由 [ADR-0047](0047-douyin-source-parity.md) 定案。
 - **拓展沙箱**：用 SES 的 `lockdown` 加每个拓展一个 `Compartment`，把「不读写文件」和「拿不到密钥」变成真正的强制。先做兼容性 spike。
 - **施工时再定**（不影响架构，对着代码更好定）：`engine-error` 的中立模块名；~~直播互动走能力回调还是走总线~~（2026-10-14 主会话照规矩定：走回调、不走总线，见决策 27 下的 🔗）；现有 22 个总线事件的全量去向表。
 - **进程托管协议文档**：1.0 的施工项；插件本身住各自的独立仓，真开始做时再定。
