@@ -44,6 +44,9 @@ jobs:
       - name: Typecheck
         run: vpr typecheck
 
+      - name: Prepare registry cache for offline package tests
+        run: bash .github/scripts/shared/prepare-package-test-cache.sh
+
       - name: Test
         run: vpr test
 

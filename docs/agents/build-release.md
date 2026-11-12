@@ -10,9 +10,9 @@
 - **Vitest** —— 单测(`vp test`)
 - **发版** —— 无版本编排工具(changesets 已弃用),宿主成品与开发工具分别按发行定案走npm;独立端由 git tag `v<VERSION>` 驱动(见下)
 
-## 门禁(`gate.yml`)—— 唯一定义,四条发行路径共用
+## 共享发行门禁（`gate.yml`）
 
-`.github/workflows/gate.yml`(`on: workflow_call`)是**发版门禁**的唯一定义:Biome → build → typecheck → test。四条发布 workflow 与 CI 全部 `uses: ./.github/workflows/gate.yml`:
+`.github/workflows/gate.yml`（`on: workflow_call`）统一执行 Biome、构建、类型检查和测试。CI、本体发行和开发工具发行均通过 `uses: ./.github/workflows/gate.yml` 调用。
 
 | workflow | 结构 |
 | --- | --- |
@@ -21,9 +21,12 @@
 | `desktop-release.yml`(Desktop) | `gate` → `build`(matrix) → `release` |
 | `update-payload.yml`(应用内更新) | `gate` → `publish` |
 | `npm-release.yml`(自带宿主的npm包) | `gate` → `build` → `publish` |
+| `tooling-release.yml`(SDK 与创建器) | 手动触发，`gate` → `build` → 按需 `publish` |
 | `revoke-update.yml`(撤回坏版本) | **不过门禁** —— 它一行代码都不发,只把渠道清单指回一个**已经发布过**的载荷(那次发版已经过过门禁)。给一件几十秒的急事加十几分钟没有意义,而且门禁红了也不说明这次撤回有问题。 |
 
 **每条发布路径都过门禁,门禁不绿就不发。** 抽成 reusable workflow 是因为门禁是「这份代码能不能发出去」的判据 —— 各自维护的副本迟早会飘,而飘的方式一定是某条发布路径悄悄少了一项检查,且发布 workflow 还是全绿的。加新检查只改 `gate.yml` 一处。
+
+仓外装包测试从空工程执行离线安装。新机器按主仓锁文件安装后，还需要为这些工程解析公共依赖所用的元数据。CI 在构建后运行 `bash .github/scripts/shared/prepare-package-test-cache.sh`，用本地打出的 SDK 和创建器安装一次临时拓展工程。本地冷缓存可复用这条命令。后续测试仍执行 `--offline`。
 
 一个**别踩**的点:
 
