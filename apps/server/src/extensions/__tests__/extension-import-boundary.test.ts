@@ -19,7 +19,13 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, posix, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { importsOf, listSources, parseSource, ts } from "../../../../../scripts/source-scan.mjs";
+import {
+	importsOf,
+	listSources,
+	parseSource,
+	srcRootsUnder,
+	ts,
+} from "../../../../../scripts/source-scan.mjs";
 
 /** 拓展拿契约的那一扇门。本体与 wire 形状都住 `@bilibili-notify/internal`。 */
 const EXTENSION_PACKAGE = "@bilibili-notify/extension";
@@ -260,42 +266,42 @@ describe("核心越界判据", () => {
 /** 仓根 —— 从本文件往上五级(`apps/server/src/extensions/__tests__`)。 */
 const REPO_ROOT = join(fileURLToPath(dirname(import.meta.url)), "..", "..", "..", "..", "..");
 
-/** 核心那一侧要扫的源码根:每个 app / package 自己的 `src`(`extensions/*` 不在其中),仓库相对路径。 */
-function coreSourceRoots(): string[] {
-	const roots: string[] = [];
-	for (const group of ["apps", "packages"]) {
-		for (const entry of readdirSync(join(REPO_ROOT, group), { withFileTypes: true })) {
-			const root = `${group}/${entry.name}/src`;
-			if (root === EXTENSION_SOURCE_ROOT) continue;
-			// 没有 src/ 的(桌面壳那种)跳过。
-			if (entry.isDirectory() && existsSync(join(REPO_ROOT, root))) {
-				roots.push(root);
-			}
-		}
-	}
-	return roots;
+function coreImportViolations(source: ReturnType<typeof parseSource>): string[] {
+	// 从核心进入仓根 extensions/ 或契约包，说明符中必然有 extension。
+	// 字面量可以用转义拼出这个词，所以有反斜杠的源码也交给原有 AST 判据。
+	if (!source.text.includes("extension") && !source.text.includes("\\")) return [];
+	const fromDir = dirname(join(REPO_ROOT, source.path));
+	const extensionsRoot = join(REPO_ROOT, "extensions");
+	return importsOf(source)
+		.filter((ref) => crossesExtensionBoundary(ref.specifier, fromDir, extensionsRoot))
+		.map((ref) => `${source.path}:${ref.line}: ${ref.specifier}`);
 }
 
 describe("核心不碰拓展与契约门", () => {
-	it("apps/**/src 与 packages/**/src 里没有一条 import 够到拓展或门", () => {
-		const extensionsRoot = join(REPO_ROOT, "extensions");
-		const roots = coreSourceRoots();
-		// 一个源码根都没扫到 = 这条守卫在空转,那比没有还糟。
-		expect(roots.length).toBeGreaterThan(0);
+	const roots = srcRootsUnder(["apps", "packages"], { except: [EXTENSION_SOURCE_ROOT] });
+	const sources = roots.map((root) => ({ root, files: listSources([root], { tests: true }) }));
+
+	it("扫描范围包含核心源码，并排除契约门自身", () => {
+		expect(sources.some(({ files }) => files.length > 0)).toBe(true);
 		expect(roots).not.toContain(EXTENSION_SOURCE_ROOT);
+	});
 
-		// 连测试文件一起扫,范围同迁移之前。
-		const files = listSources(roots, { tests: true });
-		expect(files.length).toBeGreaterThan(0);
+	it("契约包和相对路径里的转义照样报出实际引用行", () => {
+		const file = "apps/server/src/example.ts";
+		const source = parseSource(
+			file,
+			String.raw`// import("@bilibili-notify/ext\u0065nsion");
+import "@bilibili-notify/ext\u0065nsion/build";
+export * from "../../../ext\x65nsions/bridge/src/protocol.js";`,
+		);
+		expect(coreImportViolations(source)).toEqual([
+			`${file}:2: @bilibili-notify/extension/build`,
+			`${file}:3: ../../../extensions/bridge/src/protocol.js`,
+		]);
+	});
 
-		const violations: string[] = [];
-		for (const file of files) {
-			const fromDir = dirname(join(REPO_ROOT, file));
-			for (const ref of importsOf(parseSource(file))) {
-				if (!crossesExtensionBoundary(ref.specifier, fromDir, extensionsRoot)) continue;
-				violations.push(`${file}:${ref.line}: ${ref.specifier}`);
-			}
-		}
+	it.each(sources)("$root 里没有一条 import 够到拓展或门", ({ files }) => {
+		const violations = files.flatMap((file) => coreImportViolations(parseSource(file)));
 		expect(violations).toEqual([]);
 	});
 });
