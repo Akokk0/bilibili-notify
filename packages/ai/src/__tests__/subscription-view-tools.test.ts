@@ -72,17 +72,12 @@ describe("get_live_status", () => {
 			items({ state: "live", title: "晚饭直播", startedAt: STARTED, totalViewers: 23_456 }),
 		);
 		expect(out.ok).toBe(true);
-		expect(sayOf(out)).toContain("晨风：直播中「晚间杂谈」");
-		expect(sayOf(out)).toContain(
-			`开播于 ${new Date(STARTED).toLocaleString("zh-CN", { hour12: false })}`,
-		);
+		expect(sayOf(out)).toContain("晨风：直播中「晚间杂谈」，开播于 2026/9/24 12:00:00");
 		const line = sayOf(out)
 			.split("\n")
 			.find((l) => l.startsWith("抖音甲"));
 		expect(line).toMatch(/^抖音甲：直播中「晚饭直播」/);
-		expect(line).toContain(
-			`开播于 ${new Date(STARTED).toLocaleString("zh-CN", { hour12: false })}`,
-		);
+		expect(line).toContain("开播于 2026/9/24 12:00:00");
 		expect(line).toContain("累计观看 23456");
 	});
 

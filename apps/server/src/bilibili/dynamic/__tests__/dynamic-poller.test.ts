@@ -1058,7 +1058,7 @@ describe("DynamicPoller.detectDynamics — 把作品交给核心入口", () => {
 		await detect(b.engine);
 		const translated = vi.mocked(postFromDynamic).mock.results[0]?.value as Post;
 		expect(translated.publishedAt).toBe("1970-01-01T00:00:00.000Z");
-		const expected = new Date(2026, 4, 30, 12, 12, 0);
+		const expected = new Date("2026-05-30T12:12:00+08:00");
 		expect(reported(b)[1].post.publishedAt).toBe(expected.toISOString());
 		expect(priv(b.engine).postAnchors.get("1")).toBe(Math.floor(expected.getTime() / 1000));
 	});

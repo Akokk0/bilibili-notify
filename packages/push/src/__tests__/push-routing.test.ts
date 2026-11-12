@@ -193,7 +193,7 @@ describe("PushRouter.push — routing decision", () => {
 		const defaults = loopbackDefaults();
 		defaults.schedule.quietHours = [{ start: 2, end: 4 }]; // 凌晨 2-4 点免扰
 		const { dispatcher, calls } = makeDispatcher();
-		let pretend = new Date(2026, 8, 6, 3, 0, 0); // 03:00,落在免扰里
+		let pretend = new Date("2026-09-06T03:00:00+08:00"); // 上海 03:00，落在免扰里
 		const push = new PushRouter({
 			...pushBase(),
 			dispatcher,
@@ -206,7 +206,7 @@ describe("PushRouter.push — routing decision", () => {
 		await pushMain(push, "s1", "liveStart", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
 
-		pretend = new Date(2026, 8, 6, 15, 0, 0); // 15:00,不在
+		pretend = new Date("2026-09-06T15:00:00+08:00"); // 上海 15:00，放行
 		await pushMain(push, "s1", "liveStart", { kind: "text", text: "y" });
 		// live 默认带 @全体,所以是两条;这里只关心「放行了」。
 		expect(calls.length).toBeGreaterThan(0);
