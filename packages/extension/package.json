@@ -2,7 +2,7 @@
 	"name": "@bilibili-notify/extension",
 	"description": "Public contract and build helpers for bilibili-notify extensions",
 	"private": true,
-	"version": "0.0.0-dev",
+	"version": "0.1.0-alpha.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Akokk0/bilibili-notify"
