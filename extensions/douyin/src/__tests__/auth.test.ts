@@ -8,7 +8,7 @@ function fixture(saved?: string) {
 		timers: Array<() => void | Promise<void>> = [];
 	const secrets = new Map<string, string>();
 	if (saved) secrets.set("login.cookies", saved);
-	let attempts = 0;
+	let validationReply: object = { data: { error_code: 0 } };
 	const smsRequests: { trace: string | null; code: string | null }[] = [];
 	let source!: SourceDef;
 	let poll = "new",
@@ -33,7 +33,12 @@ function fixture(saved?: string) {
 		onDispose: vi.fn(),
 		setTimeout: (fn: () => void) => {
 			timers.push(fn);
-			return { dispose() {} };
+			return {
+				dispose() {
+					const i = timers.indexOf(fn);
+					if (i >= 0) timers.splice(i, 1);
+				},
+			};
 		},
 		registerSource: (s: SourceDef) => {
 			source = s;
@@ -70,11 +75,9 @@ function fixture(saved?: string) {
 					const form = new URLSearchParams(o.body);
 					expect(form.get("std_verify_way")).toBe("assist_mobile_sms_verify");
 					smsRequests.push({ trace: url.searchParams.get("biz_trace_id"), code: form.get("code") });
-					body = {
-						data: {
-							error_code: url.pathname.endsWith("validate_code/") && attempts++ === 0 ? 1202 : 0,
-						},
-					};
+					body = url.pathname.endsWith("validate_code/")
+						? validationReply
+						: { data: { error_code: 0 } };
 				}
 				if (url.pathname === "/sso/callback")
 					h.append("Set-Cookie", "sessionid=sample; Domain=.douyin.com; Path=/; Secure");
@@ -114,6 +117,10 @@ function fixture(saved?: string) {
 			await next();
 		},
 		secrets,
+		redact: ctx.redact,
+		setValidationReply: (reply: object) => {
+			validationReply = reply;
+		},
 		setPoll: (s: string) => {
 			poll = s;
 		},
@@ -176,14 +183,57 @@ it("binds SMS answers to the QR attempt and never persists a code or verificatio
 		ok: false,
 		code: "conflict",
 	});
+	f.setValidationReply({ data: { error_code: 1202 } });
 	expect(await f.auth.submitVerification(attemptId, "000000")).toMatchObject({
 		ok: false,
 		code: "invalid",
 	});
+	f.setValidationReply({ data: { error_code: 0 } });
 	expect((await f.auth.submitVerification(attemptId, "123456")).ok).toBe(true);
 	expect(f.smsRequests).toHaveLength(3);
 	expect(new Set(f.smsRequests.map((r) => r.trace)).size).toBe(1);
 	expect(f.smsRequests[2].code).toBe("343736313033");
 	expect(f.secrets.size).toBe(0);
 	expect(f.auth.state().status).toBe("confirming");
+});
+
+it("resumes QR confirmation on an SMS ticket and saves only the verified account cookies", async () => {
+	const f = fixture();
+	await f.auth.beginLogin();
+	f.setPoll("sms");
+	await f.pollNext();
+	const state = f.auth.state();
+	if (state.status !== "confirming" || state.verification?.kind !== "sms")
+		throw new Error("Expected SMS challenge");
+	const { attemptId } = state.verification;
+	const ticket = "synthetic-validation-ticket";
+	for (const reply of [
+		{},
+		{ data: { ticket: " " } },
+		{ message: "error", data: { ticket } },
+		{ message: "error", data: { error_code: 0, ticket } },
+		{ error_code: 1202, data: { ticket } },
+		{ error_code: 1202, data: { error_code: 0, ticket } },
+		{ message: "success", data: { error_code: 1202, ticket } },
+	]) {
+		f.setValidationReply(reply);
+		expect(await f.auth.submitVerification(attemptId, "123456")).toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		expect(f.auth.state()).toMatchObject({ verification: { attemptId } });
+	}
+	f.setValidationReply({ data: { ticket } });
+	expect(await f.auth.submitVerification(attemptId, "123456")).toEqual({ ok: true });
+	expect(f.redact).toHaveBeenCalledWith(ticket);
+	expect(f.auth.state()).toMatchObject({ status: "confirming" });
+	expect(JSON.stringify(f.auth.state())).not.toContain(ticket);
+	expect(f.auth.account()).toBeNull();
+	expect(f.secrets.size).toBe(0);
+	f.setPoll("confirmed");
+	await f.pollNext();
+	expect(f.auth.state().status).toBe("logged-in");
+	expect(f.auth.account()?.name).toBe("Douyin tester");
+	expect(f.secrets.get("login.cookies")).toContain("sample");
+	expect(f.secrets.get("login.cookies")).not.toContain(ticket);
 });

@@ -189,9 +189,11 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		end();
 		publish({ status: "logged-in", loggedInAt: new Date().toISOString() });
 	}
-	function accepted(obj: Record<string, unknown>) {
-		const code = dict(obj.data).error_code ?? obj.error_code;
-		return code === undefined ? obj.message === "success" : Number(code) === 0;
+	function accepted(obj: Record<string, unknown>, hasValidationTicket = false) {
+		if (obj.message === "error") return false;
+		const codes = [obj.error_code, dict(obj.data).error_code].filter((code) => code != null);
+		if (codes.length) return codes.every((code) => code === 0 || code === "0");
+		return obj.message === "success" || (obj.message === undefined && hasValidationTicket);
 	}
 	async function beginLogin() {
 		replace();
@@ -266,7 +268,9 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 			);
 			if (!valid(a) || a.challenge !== c) return fail("conflict", t("expired"));
 			if (!r.ok) return r;
-			if (!accepted(r.body)) return fail("invalid", t("wrongCode"));
+			const ticket = str(dict(r.body.data).ticket).trim();
+			if (ticket) ctx.redact(ticket);
+			if (!accepted(r.body, Boolean(ticket))) return fail("invalid", t("wrongCode"));
 			a.challenge = undefined;
 			publish({ status: "confirming", message: t("scanned") });
 			later(a, 1000);
