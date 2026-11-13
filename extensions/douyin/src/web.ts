@@ -15,10 +15,10 @@ export function trusted(url: URL, hosts: readonly string[]) {
 		hosts.includes(url.hostname)
 	);
 }
-export function sign(url: URL, pageId = DEFAULT_ENV.pageId) {
+export function sign(url: URL, pageId = DEFAULT_ENV.pageId, body = "") {
 	url.searchParams.set(
 		"a_bogus",
-		abogus(url.searchParams.toString(), "", { env: { userAgent, pageId } }),
+		abogus(url.searchParams.toString(), body, { env: { userAgent, pageId } }),
 	);
 	return url;
 }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ExtensionContext, FetchOptions, SourceDef } from "@bilibili-notify/extension";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { activate } from "../index";
@@ -7,7 +8,7 @@ function fixture(
 	saved?: string,
 	accountData: object = { is_visitor_account: false, user_id_str: "12345", name: "Douyin tester" },
 ) {
-	const requests: { url: URL; headers: Headers }[] = [];
+	const requests: { url: URL; headers: Headers; method?: string; body?: unknown }[] = [];
 	const ops: string[] = [],
 		timers: Array<() => void | Promise<void>> = [];
 	const secrets = new Map<string, string>();
@@ -55,7 +56,7 @@ function fixture(
 			fetch: async (u: URL | string, o: FetchOptions) => {
 				const url = new URL(u);
 				ops.push(url.hostname + url.pathname);
-				requests.push({ url, headers: new Headers(o.headers) });
+				requests.push({ url, headers: new Headers(o.headers), method: o.method, body: o.body });
 				expect(o.bare).toBe(true);
 				expect(o.maxRedirects).toBe(0);
 				const h = new Headers();
@@ -370,7 +371,7 @@ it("initializes a fresh login session on Douyin before requesting a QR and respe
 	const request = f.requests.find(({ url }) => url.pathname.endsWith("/get_qrcode/"));
 	if (!request) throw new Error("Missing QR request");
 	expect(request.headers.get("cookie")).toContain("passport_csrf_token=synthetic-csrf");
-	expect(request.headers.get("cookie")).not.toContain("synthetic-nonce");
+	expect(request.headers.get("cookie")).toContain("synthetic-nonce");
 	expect(request.headers.get("x-tt-passport-csrf-token")).toBe("synthetic-csrf");
 	expect(f.secrets.size).toBe(0);
 });
@@ -438,11 +439,44 @@ it("signs QR creation and polling for the Passport page", async () => {
 	const f = fixture();
 	await f.auth.beginLogin();
 	await f.pollNext();
-	const requests = f.requests.filter(({ url }) => url.hostname === "login.douyin.com");
+	const requests = f.requests.filter(({ url }) =>
+		/\/passport\/web\/(get_qrcode|check_qrconnect)\//.test(url.pathname),
+	);
 	expect(requests).toHaveLength(2);
 	for (const { url } of requests) {
 		const signature = url.searchParams.get("a_bogus");
 		if (!signature) throw new Error("Missing request signature");
 		expect(signedPage(signature)).toBe(7571);
 	}
+});
+
+it("polls the QR through the current website POST form without placing the token in its URL", async () => {
+	const f = fixture();
+	await f.auth.beginLogin();
+	await f.pollNext();
+	const request = f.requests.find(({ url }) => url.pathname.endsWith("/check_qrconnect/"));
+	if (!request) throw new Error("Missing QR poll");
+	expect(request.url.origin).toBe("https://www.douyin.com");
+	expect(request.method).toBe("POST");
+	expect(request.url.searchParams.has("token")).toBe(false);
+	expect(request.url.searchParams.has("next")).toBe(false);
+	expect(typeof request.body).toBe("string");
+	const form = new URLSearchParams(request.body as string);
+	expect(form.get("token")).toBe("example-scan-token");
+	expect(form.get("next")).toBe("https://www.douyin.com/");
+	expect(form.get("is_frontier")).toBe("true");
+	expect(form.get("is_new_login")).toBe("1");
+	const query =
+		"account_app_language=zh-CN&account_sdk_source=web&aid=6383&biz_trace_id=" +
+		request.url.searchParams.get("biz_trace_id") +
+		"&device_platform=web_app&is_from_iesaccountsaas=1&is_from_ttaccountsdk=1&language=zh&p_bd=1.0.1.19-fix.01&p_ca=4.0.17";
+	const signedBody =
+		"is_frontier=true&is_new_login=1&need_logo=false&need_short_url=true&next=https://www.douyin.com/&token=example-scan-token";
+	// The website SDK signs the sorted, unescaped field values before form encoding.
+	const expected = createHash("sha256")
+		.update(`${query}&${signedBody}&app_key=163e7ce78d58971a41f5b969996d85c2`)
+		.digest("hex");
+	expect(request.url.searchParams.get("sign")).toBe(expected);
+	expect(request.headers.get("origin")).toBe("https://www.douyin.com");
+	expect(f.secrets.size).toBe(0);
 });

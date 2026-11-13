@@ -117,6 +117,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 		trace = randomBytes(4).toString("hex"),
 	) {
 		const sms = action === "send_code" || action === "validate_code",
+			post = sms || action === "check_qrconnect",
 			path = `/passport/web/${action}/`;
 		const ts = String(Math.floor(new Date().setUTCHours(12, 0, 0, 0) / 1000));
 		const hash = (k: string | Buffer, m: string | Buffer) =>
@@ -125,7 +126,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			hash(hash(ts, key), Buffer.from([1])),
 			`aid=6383&path=${path}&ts=${ts}`,
 		).toString("hex");
-		const url = new URL(path, sms ? WEB : LOGIN);
+		const url = new URL(path, WEB);
 		const q = url.searchParams;
 		const base = {
 			aid: "6383",
@@ -152,7 +153,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 				entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 			const join = (entries: [string, string][]) => entries.map(([k, v]) => `${k}=${v}`).join("&");
 			const extra = {
-				...fields,
+				...(post ? {} : fields),
 				...finger,
 				p_no: sha(join(sorted(Object.entries(finger)))),
 				ts,
@@ -168,13 +169,15 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			};
 			for (const [k, v] of Object.entries(extra)) q.set(k, v);
 			const first = sorted([...q.entries()]).slice(0, 10);
-			q.set("sign", sha(`${join(first)}&&app_key=${key}`));
+			const form = post ? join(sorted(Object.entries(fields))) : "";
+			q.set("sign", sha(`${join(first)}&${form}&app_key=${key}`));
 			q.set("qs", xor(first.map(([k]) => k).join(",")));
 			const ms = cookieValue(jar.header(url.href), "msToken");
 			if (ms) q.set("msToken", ms);
-			sign(url, 7571);
+			sign(url, 7571, post ? new URLSearchParams(fields).toString() : "");
 		}
 		const headers = {
+			...(post ? { origin: WEB } : {}),
 			"content-type": "application/x-www-form-urlencoded",
 			"x-tt-passport-aid-sign": aidSign,
 			"x-tt-passport-trace-id": trace,
@@ -183,8 +186,8 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 		};
 		return json(url, signal, {
 			headers,
-			method: sms ? "POST" : "GET",
-			...(sms ? { body: new URLSearchParams(fields).toString() } : {}),
+			method: post ? "POST" : "GET",
+			...(post ? { body: new URLSearchParams(fields).toString() } : {}),
 		});
 	}
 	return { prepare, account, exchange, sso, jar };

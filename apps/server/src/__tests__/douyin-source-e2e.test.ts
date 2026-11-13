@@ -179,7 +179,7 @@ beforeAll(async () => {
 			res.writeHead(200, { "content-type": "text/html" }).end("<!doctype html>");
 			return;
 		}
-		if (url.pathname === "/login.douyin.com/passport/web/get_qrcode/") {
+		if (url.pathname === "/www.douyin.com/passport/web/get_qrcode/") {
 			reply({
 				data: {
 					token: "synthetic-token",
@@ -189,7 +189,16 @@ beforeAll(async () => {
 			});
 			return;
 		}
-		if (url.pathname === "/login.douyin.com/passport/web/check_qrconnect/") {
+		if (url.pathname === "/www.douyin.com/passport/web/check_qrconnect/") {
+			const chunks: Buffer[] = [];
+			for await (const chunk of req) chunks.push(Buffer.from(chunk));
+			const form = new URLSearchParams(Buffer.concat(chunks).toString());
+			if (
+				req.method !== "POST" ||
+				form.get("token") !== "synthetic-token" ||
+				url.searchParams.has("token")
+			)
+				invalidRequests.push("QR polling did not use the website POST form");
 			reply({
 				data: { status: "confirmed", redirect_url: "https://www.douyin.com/sso/synthetic" },
 			});
