@@ -1856,6 +1856,7 @@ describe("读自己的设置", () => {
 });
 
 const EXTENSION_CONTEXT_MEMBERS = {
+	createCookieSession: "function",
 	timezone: "function",
 	onTimezoneChanged: "function",
 	logger: "object",

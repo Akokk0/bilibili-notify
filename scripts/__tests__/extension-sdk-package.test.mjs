@@ -54,6 +54,9 @@ export const source: SourceDef = {
   async searchCreators() { return ok({ candidates: [] }); },
 };
 export function activate(ctx: ExtensionContext) {
+  const session = ctx.createCookieSession();
+  session.ingest("https://login.example.com/", "id=fixture; Path=/");
+  ctx.createCookieSession(session.snapshot()).header("https://login.example.com/");
   ctx.settings(settingsSchema);
   ctx.registerSource(source);
 }

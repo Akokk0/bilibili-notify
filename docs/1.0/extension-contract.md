@@ -125,7 +125,7 @@ type KeyValueOp =                  // batch 的一步；判别键叫 kind，取�
 - **跨源重定向剥凭据头**：重定向那一跳的协议、主机、端口任一与起点不同，调用方给的 `authorization`、`proxy-authorization`、`cookie`（含客户端默认头里的）这一跳起不再带，绕回起点也不补回来，与 fetch 规范一致；别的头照发。罐子按目标现取的 `Cookie` 不受影响。
 - **单次请求可选「不带浏览器身份、不碰 cookie 罐」那一档**：`fetch` 与 `websocket` 的选项里写 `bare: true`。这一档不补身份那四样、不带客户端的默认头、不带 `Cookie`、不收 `Set-Cookie`（重定向的每一跳也一样），调用方这一次自己写的头照发。内置三个适配器全用这一档，拓展的适配器调官方接口也用它。
 - **包之间不成环**：请求客户端对外的接口类型住核心包，实现留在 `packages/http`。
-- **cookie 罐那组口第 3 版不对拓展开**：B 站照旧由宿主单独递它那份把手；以后有真实现者（比如要扫码登录的拓展）再加宽。罐子按公共后缀表（引 `tldts`，`packages/http` 加运行时依赖，加完走装配自检）拒 `Domain=com`、`com.cn`、`co.uk` 这类。
+- **拓展 API 1 修订 1 的扫码会话**：每次在顶层调用 `ctx.createCookieSession()`，宿主都会创建独立内存罐。`ingest(url, line)` 收取该跳的一行 Set-Cookie，`header(url)` 只返回匹配该 URL 的 Cookie。宿主执行公共后缀、域、路径、Secure 和过期规则，并登记凭据脱敏。需要跨启动恢复时，拓展把 `snapshot()` 返回的 JSON 字符串显式存入自己的 `ctx.secrets`，再交给 `ctx.createCookieSession(saved)`。无效快照会抛出 TypeError。停用后会话把手随上下文失效。
 - **不加别的协议**：要 SSE 时给请求加「原样交出响应流」的选项；出站代理以后挂在这里。
 - **不拦内网**（局域网里的 RSSHub 要连得上）；拦内网只在 `fetchImage` 上。
 - **重试、退避、限流归拓展**，BN 不替它做。

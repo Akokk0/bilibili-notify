@@ -62,7 +62,7 @@ function stripDot(domain: string): string {
  * 表里没有的单段名(`localhost`、内网主机名)按 `tldts` 的默认规则也算后缀 —— 它们只能当 host-only 收,
  * 与浏览器一致。IP 字面量不是后缀。
  */
-function isPublicSuffix(domain: string): boolean {
+export function isCookiePublicSuffix(domain: string): boolean {
 	if (isIpHost(domain)) return false;
 	const parsed = parseHost(domain, { allowPrivateDomains: true });
 	return parsed.domain === null && parsed.publicSuffix === domain;
@@ -248,7 +248,7 @@ export class CookieJar {
 		const host = url.hostname.toLowerCase();
 		// RFC 6265 §5.3 第 5 步:Domain 是公共后缀时,等于请求主机就当 host-only 收,否则整条丢
 		// (不然 `Domain=com` 能给整个 .com 种 cookie)。
-		if (domain && isPublicSuffix(domain)) {
+		if (domain && isCookiePublicSuffix(domain)) {
 			if (domain !== host) return;
 			domain = undefined;
 		}

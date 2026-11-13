@@ -136,6 +136,9 @@ export function hostFor(
 	});
 
 	const ctx: ExtensionContext = {
+		createCookieSession() {
+			throw new Error("bridge does not use login sessions");
+		},
 		timezone: () => "Asia/Shanghai",
 		onTimezoneChanged: () => ({ dispose() {} }),
 		id: EXTENSION_ID,

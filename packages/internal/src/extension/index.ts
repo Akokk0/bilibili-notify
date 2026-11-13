@@ -314,6 +314,12 @@ export interface ExtensionI18n {
  * 更难 debug(面板写着「已停用」,定时器还在跑)。
  */
 export interface ExtensionContext extends IntegrationContext {
+	/** 独立的内存登录会话。快照包含凭据，只经 secrets 显式保存；坏快照抛 TypeError。 */
+	createCookieSession(snapshot?: string): {
+		header(url: string): string;
+		ingest(url: string, line: string): void;
+		snapshot(): string;
+	};
 	/** 它自己的 id —— 同时是挂载点、装载目录与记账键那一段。 */
 	readonly id: string;
 	/** 宿主**当前**的契约档位(它认的区间的上沿)。拓展自己也可能要按它分叉。 */

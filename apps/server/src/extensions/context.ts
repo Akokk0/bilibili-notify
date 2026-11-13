@@ -45,6 +45,7 @@ import type { PipelineRuntime } from "../runtime/pipeline.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { catchThenableRejection, isThenable } from "../util/is-thenable.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
+import { createCookieSession } from "./cookie-session.js";
 import { createExtensionSource } from "./extension-source.js";
 import { type ExtensionLocales, localizeManifest, runtimeDictOf } from "./locales.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
@@ -832,6 +833,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	};
 
 	const ctx: ExtensionContext = {
+		createCookieSession(snapshot) {
+			integration.ctx.signal.throwIfAborted();
+			return createCookieSession(snapshot, integration.ctx.redact, integration.ctx.signal);
+		},
 		timezone: integration.ctx.timezone,
 		onTimezoneChanged: integration.ctx.onTimezoneChanged,
 		id,

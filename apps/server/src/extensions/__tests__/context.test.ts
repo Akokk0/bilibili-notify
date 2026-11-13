@@ -102,7 +102,7 @@ function coreStubs() {
 	};
 }
 
-function makeRuntime(id = "bridge") {
+function makeRuntime(id = "bridge", redactor = createValueRedactor()) {
 	const host = fakeHost();
 	const mounts = createExtensionMounts({ logger: silentLogger });
 	const app = new Hono();
@@ -117,11 +117,51 @@ function makeRuntime(id = "bridge") {
 		loggerOf: host.loggerOf,
 		mounts,
 		...stubs,
+		stores: { ...stubs.stores, redact: (kind, values) => redactor.replace(id, kind, values) },
 	});
 	return { host, mounts, app, runtime, io, ctx: runtime.ctx, problems: stubs.problems };
 }
 
 describe("拓展 ctx", () => {
+	it("隔离扫码会话的 cookie，按域与路径读取；恢复后，凭据仍脱敏且 host-only 不扩大", async () => {
+		const before = createValueRedactor(),
+			after = createValueRedactor();
+		const { ctx, runtime } = makeRuntime("bridge", before);
+		const login = ctx.createCookieSession();
+		const uri = "https://login.example.com/account";
+		login.ingest(uri, "sid=FAKE-LOGIN-SECRET; Path=/account; Secure");
+		login.ingest(uri, "shared=FAKE-DOMAIN-SECRET; Domain=example.com; Path=/");
+		login.ingest(uri, "gone=FAKE-EXPIRED; Max-Age=0");
+		expect(before.scrub("FAKE-LOGIN-SECRET FAKE-DOMAIN-SECRET")).toBe("*** ***");
+		expect(ctx.createCookieSession().header(uri)).toBe("");
+		const snapshot = login.snapshot();
+		await runtime.dispose();
+		const restarted = makeRuntime("bridge", after);
+		const restored = restarted.ctx.createCookieSession(snapshot);
+		expect(restored.header(uri)).toBe("sid=FAKE-LOGIN-SECRET; shared=FAKE-DOMAIN-SECRET");
+		expect(restored.header("https://sub.login.example.com/account")).toBe(
+			"shared=FAKE-DOMAIN-SECRET",
+		);
+		expect(restored.header("http://login.example.com/account")).toBe("shared=FAKE-DOMAIN-SECRET");
+		expect(restored.header("https://login.example.com/other")).toBe("shared=FAKE-DOMAIN-SECRET");
+		expect(after.scrub("FAKE-LOGIN-SECRET FAKE-DOMAIN-SECRET")).toBe("*** ***");
+		expect(() => restarted.ctx.createCookieSession("not valid JSON")).toThrow();
+		expect(() => restarted.ctx.createCookieSession('{"cookies":[{"key":"bad"}]}')).toThrow();
+		const forged = {
+			key: "sid",
+			value: "private-token",
+			expires: "Infinity",
+			domain: "com",
+			path: "/",
+			secure: true,
+			httpOnly: true,
+		};
+		expect(() =>
+			restarted.ctx.createCookieSession(JSON.stringify({ cookies: [forged] })),
+		).toThrow();
+		await restarted.runtime.dispose();
+	});
+
 	// 验红:`context.ts` 的 `ExtensionContext` 字面量里剪掉 `http` / `fetchImage` / `storeImage` 任一格,这条红(类型检查也过不去)。
 	it("ctx.http / fetchImage / storeImage 是这个拓展自己集成的那三个:存的图进它的在途写口,抓图拦内网", async () => {
 		const { ctx, io } = makeRuntime();

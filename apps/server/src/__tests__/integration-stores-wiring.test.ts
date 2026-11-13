@@ -318,7 +318,15 @@ describe("拓展", () => {
 			maxFailures: 3,
 			importModule: async () => ({ activate }),
 		});
-		return { loaded, seen, startWrites };
+		return {
+			loaded,
+			seen,
+			startWrites,
+			context: () => {
+				if (!activateCtx) throw new Error("not activated");
+				return activateCtx;
+			},
+		};
 	}
 
 	it("activate(ctx) 与适配器 start(ctx) 里写的,盘上真有,而且两处是同一对对象", async () => {
@@ -330,6 +338,29 @@ describe("拓展", () => {
 
 		expect(await stateOnDisk("extensions", EXT_ID)).toEqual({ fromActivate: 1, fromStart: true });
 		expect(await secretsOnDisk("extensions", EXT_ID)).toEqual({ tokenA: "a1", tokenB: "b" });
+		await loaded.dispose();
+	});
+
+	it("拓展的扫码快照须显式存入 secrets，重新激活后按原域发送", async () => {
+		let on = true;
+		const { loaded, context, startWrites } = await boot(() => on);
+		await Promise.all(startWrites);
+		const url = "https://login.example.com/sign-in";
+		const login = context().createCookieSession();
+		login.ingest(url, "sid=FIXTURE-SESSION-TOKEN; Path=/");
+		expect(await secretsOnDisk("extensions", EXT_ID)).not.toHaveProperty("login");
+		expect(await context().secrets.set("login", login.snapshot())).toEqual({ ok: true });
+		expect(
+			await readFile(join(dataRoot, "secrets", "extensions", EXT_ID, "secrets.enc"), "utf8"),
+		).not.toContain("FIXTURE-SESSION-TOKEN");
+		on = false;
+		await loaded.sync();
+		expect(() => login.header(url)).toThrow();
+		on = true;
+		await loaded.sync();
+		const restored = context().createCookieSession(context().secrets.get<string>("login"));
+		expect(restored.header(url)).toBe("sid=FIXTURE-SESSION-TOKEN");
+		expect(restored.header("https://child.login.example.com/sign-in")).toBe("");
 		await loaded.dispose();
 	});
 

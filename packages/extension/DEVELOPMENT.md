@@ -138,6 +138,7 @@ export function activate(ctx: ExtensionContext): void {
 | 能力 | 使用方式 |
 | --- | --- |
 | 网络 | `ctx.http.fetch` / `websocket`，接上传入的中止信号；明确不需要浏览器身份及cookie时才选`bare` |
+| 隔离登录会话（API 1 修订 1） | 顶层 `ctx.createCookieSession(saved?)` 创建独立内存罐。每跳用 `ingest(url, line)` 接收 Set-Cookie，`header(url)` 取该 URL 的 Cookie。宿主登记凭据脱敏。需恢复时将 `snapshot()` 字符串显式存入 `ctx.secrets`，坏快照抛出 TypeError。 |
 | 状态 | `ctx.state`存公开业务状态，`ctx.secrets`存凭据；`http.`前缀由宿主保留 |
 | 图片 | 通过`fetchImage`或`storeImage`得到图库引用，再交给上报载荷；不要把任意远端图地址冒充引用 |
 | 定时与收尾 | `ctx.setTimeout` / `setInterval`、`signal`、`onDispose`；保存自己需要等待的任务并收尾 |
