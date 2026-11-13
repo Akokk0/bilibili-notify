@@ -16,6 +16,12 @@ type Session = {
 	invalidate(signal: AbortSignal, url: URL, sentCookies: string): Promise<void>;
 };
 const shareHosts = ["v.douyin.com", "www.douyin.com", "www.iesdouyin.com"];
+const browserFetchHeaders = {
+	"accept-language": "zh-CN,zh;q=0.9",
+	"sec-fetch-dest": "empty",
+	"sec-fetch-mode": "cors",
+	"sec-fetch-site": "same-origin",
+};
 const browserVersion = userAgent.match(/Chrome\/([^ ]+)/)?.[1] ?? "";
 // Match the browser identity used by this integration, rather than the machine
 // running BN. Search requires its capability envelope even without A-Bogus.
@@ -175,12 +181,7 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 							}
 						: { ...defaultQ, ...args };
 				for (const [k, v] of Object.entries(query)) u.searchParams.set(k, v);
-				if (endpoint === "search") {
-					headers["accept-language"] = "zh-CN,zh;q=0.9";
-					headers["sec-fetch-dest"] = "empty";
-					headers["sec-fetch-mode"] = "cors";
-					headers["sec-fetch-site"] = "same-origin";
-				}
+				if (endpoint === "search") Object.assign(headers, browserFetchHeaders);
 				for (const key of ["msToken", "uifid"]) {
 					const value = fields.get(key);
 					if (value) u.searchParams.set(key, value);
@@ -196,7 +197,13 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 					headers.uifid = protectedVisitor;
 					u.searchParams.set("uifid", protectedVisitor);
 				}
-				if (endpoint !== "search") sign(u);
+				if (endpoint === "detail" && protectedVisitor) {
+					// Detail uses only business parameters plus the SDK signature.
+					// The general API environment and A-Bogus trigger verification here.
+					u.search = new URLSearchParams(args).toString();
+					u.searchParams.set("uifid", protectedVisitor);
+					Object.assign(headers, browserFetchHeaders);
+				} else if (endpoint !== "search") sign(u);
 				if (protectedVisitor) u = new URL(signWebUrl(u.href, { uifid: protectedVisitor }));
 			} else for (const [k, v] of Object.entries(args)) u.searchParams.set(k, v);
 			const r = await ctx.http.fetch(u, {

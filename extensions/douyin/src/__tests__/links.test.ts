@@ -253,7 +253,7 @@ it("searches from the user results page with the browser capability envelope", a
 	expect(requestHeaders[0]?.get("sec-fetch-site")).toBe("same-origin");
 });
 it.each(["UIFID", "uifid_temp"])(
-	"binds %s before signing a protected detail request",
+	"binds %s before the protected detail signature without adding unrelated parameters",
 	async (name) => {
 		const { source, calls, requestHeaders } = setup(
 			() => ({ body: { status_code: 0, aweme_detail: detail } }),
@@ -267,11 +267,29 @@ it.each(["UIFID", "uifid_temp"])(
 		expect(url.searchParams.get("uifid")).toBe("synthetic-visitor");
 		expect(requestHeaders[0]?.get("uifid")).toBe("synthetic-visitor");
 		const keys = [...url.searchParams.keys()];
-		expect(keys.indexOf("uifid")).toBeLessThan(keys.indexOf("a_bogus"));
-		expect(keys.indexOf("a_bogus")).toBeLessThan(keys.indexOf("timestamp"));
+		expect(keys).toEqual(["aweme_id", "uifid", "timestamp", "x-secsdk-web-signature"]);
+		expect(keys.indexOf("uifid")).toBeLessThan(keys.indexOf("timestamp"));
 		expect(keys.indexOf("timestamp")).toBeLessThan(keys.indexOf("x-secsdk-web-signature"));
 	},
 );
+it("resolves a protected video using its business fields and SDK signature", async () => {
+	// Real HTTP A/B: the same account can read a detail with this endpoint policy;
+	// attaching the general API environment/A-Bogus prompts verification instead.
+	const allowed = new Set(["aweme_id", "uifid", "timestamp", "x-secsdk-web-signature"]);
+	const { source, requestHeaders } = setup(
+		(url) =>
+			[...url.searchParams.keys()].some((key) => !allowed.has(key))
+				? { headers: { "bdturing-verify": JSON.stringify({ subtype: "slide" }) } }
+				: { body: { status_code: 0, aweme_detail: detail } },
+		"UIFID=synthetic-visitor; Domain=douyin.com; Path=/; Secure",
+	);
+	expect(await source.resolveLink(direct, new AbortController().signal)).toMatchObject({
+		ok: true,
+		postId: detail.aweme_id,
+		post: { creator: { name: "Alice" } },
+	});
+	expect(requestHeaders[0]?.get("sec-fetch-site")).toBe("same-origin");
+});
 
 it("resolves an unsubscribed video through an anonymous share redirect and signed detail request", async () => {
 	const { source, calls } = setup((u) =>

@@ -171,11 +171,23 @@ beforeAll(async () => {
 			url.pathname === "/www.douyin.com/aweme/v1/web/aweme/detail/" &&
 			url.searchParams.get("aweme_id") === sharedPost.aweme_id
 		) {
+			if (
+				JSON.stringify([...url.searchParams.keys()]) !==
+					JSON.stringify(["aweme_id", "uifid", "timestamp", "x-secsdk-web-signature"]) ||
+				url.searchParams.get("uifid") !== "synthetic-visitor" ||
+				req.headers.uifid !== "synthetic-visitor"
+			)
+				invalidRequests.push("detail did not use its protected endpoint policy");
 			reply({ status_code: 0, aweme_detail: sharedPost });
 			return;
 		}
 		if (url.pathname === "/www.douyin.com/") {
-			res.setHeader("set-cookie", "__ac_nonce=synthetic-nonce; Path=/; Secure");
+			res.setHeader("set-cookie", [
+				"__ac_nonce=synthetic-nonce; Path=/; Secure",
+				...(req.headers.cookie?.includes("__ac_signature=")
+					? ["UIFID_TEMP=synthetic-visitor; Domain=.douyin.com; Path=/; Secure"]
+					: []),
+			]);
 			res.writeHead(200, { "content-type": "text/html" }).end("<!doctype html>");
 			return;
 		}
