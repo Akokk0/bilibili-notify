@@ -1,9 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify, stripVTControlCharacters } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { BUILTIN_INTEGRATION_KEYS } from "../../apps/server/src/compose.js";
 import {
@@ -42,6 +43,22 @@ function run(command, args, cwd, env = {}, input) {
 			{ cause: error },
 		);
 	}
+}
+
+async function startTerminalWizard(host) {
+	const pkg = join(host, "node_modules", toolsName);
+	const { bin } = JSON.parse(await readFile(join(pkg, "package.json"), "utf8"));
+	// 让管道传入原始按键，并启用与终端相同的 readline 行编辑。
+	const terminal = "data:text/javascript,process.stdin.isTTY=true;process.stdout.isTTY=true";
+	const command = promisify(execFile)(
+		process.execPath,
+		["--import", terminal, join(pkg, bin[toolsName])],
+		{ cwd: host, env: { ...process.env, CI: "", TERM: "xterm-256color" }, timeout: 5_000 },
+	);
+	const { stdin, stdout, stderr } = command.child;
+	// 先收到取消提示再结束管道，避免把 EOF 当作 Ctrl-C 成功取消。
+	stderr.once("data", () => stdin.end());
+	return { stdin, stdout, result: command.catch((error) => error) };
 }
 
 describe("创建器的实际npm包在仓外生成可开发的拓展工程", () => {
@@ -178,6 +195,35 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			),
 		).toThrow(/Setup cancelled/);
 		await expect(access(project)).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
+	it("终端里退格后仍显示当前字段和默认值，Ctrl-C 可以取消", async () => {
+		const wizard = await startTerminalWizard(host);
+		wizard.stdin.write("test\x7f\x03");
+		const result = await wizard.result;
+		expect(stripVTControlCharacters(result.stdout).trimEnd()).toMatch(
+			/Project directory \[my-extension\]: tes$/,
+		);
+		expect(result).toMatchObject({ code: 1, stderr: expect.stringContaining("Setup cancelled") });
+	});
+
+	it("粘贴跨过回车后，可以从下一字段已输入的位置继续编辑", async () => {
+		const wizard = await startTerminalWizard(host);
+		let output = "";
+		const onOutput = (chunk) => {
+			output += chunk;
+			if (output.includes("Display name [")) {
+				wizard.stdout.off("data", onOutput);
+				wizard.stdin.write("\x03");
+			} else if (output.includes("Extension ID (namespace.extension): example.dem")) {
+				output = "";
+				wizard.stdin.write("o\r");
+			}
+		};
+		wizard.stdout.on("data", onOutput);
+		wizard.stdin.write("wizard\rexample.dem");
+		const result = await wizard.result;
+		expect(stripVTControlCharacters(result.stdout)).toContain("Display name [example.demo]: ");
 	});
 
 	it("非终端缺少参数时退出而不等待交互输入", async () => {

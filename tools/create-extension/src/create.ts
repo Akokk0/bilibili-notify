@@ -60,7 +60,8 @@ async function create(): Promise<void> {
 			validate?: (value: string) => unknown,
 		): Promise<string> => {
 			while (true) {
-				process.stdout.write(`${label}${initial ? ` [${initial}]` : ""}: `);
+				prompt.setPrompt(`${label}${initial ? ` [${initial}]` : ""}: `);
+				prompt.prompt(true); // 粘贴跨过回车时，下一字段可能已经有输入。
 				const answer = await answers.next();
 				if (answer.done)
 					throw new Error("Setup cancelled: input ended before all values were provided.");
