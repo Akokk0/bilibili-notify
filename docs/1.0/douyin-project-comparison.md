@@ -13,7 +13,7 @@
 | [Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/tree/3c045e11aecd58ab076562f1246931b9dd5d909b) | 支持导入会话，自动建立抖音访客会话仍使用浏览器 RPC | 默认原生签名、`wreq` HTTP 传输；浏览器用于初始化及签名回落 | 分清取数与会话初始化。该项目仍有常驻浏览器 RPC 设计，不能把“默认原生签名”说成完全不用浏览器。[原生签名](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/blob/3c045e11aecd58ab076562f1246931b9dd5d909b/src/dtk/signing/native/signer.py#L1-L32) · [浏览器用途](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/blob/3c045e11aecd58ab076562f1246931b9dd5d909b/src/dtk/identity/minting/client.py#L1-L15) · [传输实现](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/blob/3c045e11aecd58ab076562f1246931b9dd5d909b/src/dtk/transport/wreq_transport.py#L114-L137) |
 | [Amagi 7.0.0-beta.10](https://github.com/ikenxuan/amagi/tree/f33c1a8c10113c27a625afb0c08ee9e344e1ecfe) | Passport HTTP 扫码、设备票据和 SSO；另有通过首页 HTTP 请求初始化访客会话的实现 | Axios 请求，TypeScript 本地签名，按端点声明所需签名步骤 | 与 BN 技术栈最接近。扫码仍使用 `login.douyin.com` 的 GET 轮询，与本机观测的当前官网主站 POST 有差异，不能原样采信为已解决 2156。[扫码客户端](https://github.com/ikenxuan/amagi/blob/f33c1a8c10113c27a625afb0c08ee9e344e1ecfe/packages/core/src/platforms/douyin/passport/client.ts#L143-L176) · [访客初始化](https://github.com/ikenxuan/amagi/blob/f33c1a8c10113c27a625afb0c08ee9e344e1ecfe/packages/core/src/platforms/douyin/mint.ts#L123-L182) |
 
-## 与 BN 当前实现的具体差距
+## 调研时与 BN 实现的具体差距
 
 1. **访客初始化没有接全。** BN 目前读取已有 Cookie 中的 `UIFID` 等标识；登录准备只请求一次首页并续传令牌。Amagi 则另有首页会话初始化、访客标识补齐与缓存。它也记录了服务端可能不给访客标识、补齐后作品详情仍被策略过滤的情况，不能把补齐当作风控必过。[初始化与失败边界](https://github.com/ikenxuan/amagi/blob/f33c1a8c10113c27a625afb0c08ee9e344e1ecfe/packages/core/src/platforms/douyin/mint.ts#L123-L213)
 2. **不能给所有数据接口统一加同一套签名。** BN 的搜索也进入通用 A-Bogus 分支；Amagi 的搜索端点仅声明 `msToken(184)`，作品等端点另选 A-Bogus／WebSign。结合本机“只含业务参数的官网请求成功、旧参数对照失败”，应先分接口验证参数策略，尚不能认定某一个参数就是失败原因。[搜索声明](https://github.com/ikenxuan/amagi/blob/f33c1a8c10113c27a625afb0c08ee9e344e1ecfe/packages/core/src/platforms/douyin/endpoints/search.ts#L97-L117) · [各步骤的适用范围](https://github.com/ikenxuan/amagi/blob/f33c1a8c10113c27a625afb0c08ee9e344e1ecfe/packages/core/src/platforms/douyin/sign/steps.ts#L30-L74)
@@ -22,7 +22,7 @@
 
 此前固定的 Amagi `094238d5d5f8c20abba5c3e5c7d03741190e2ab1` 已含访客初始化代码，并非 beta.10 才新增。前期调研没有把这条链路追到 BN 实现里，本次纠正这一遗漏。
 
-后续实现已先修正搜索签名策略，并补登录前的首页 nonce 协商。匿名真网实测协商后可取得访客标识、创建二维码并进入待扫状态；普通数据请求的首次初始化与本轮真人扫码仍待验证，不能将上述差距视为全部补齐。[验收进展](douyin-source-acceptance.md)
+后续实现已先修正搜索签名策略，并补登录前的首页 nonce 协商。匿名真网实测协商后可取得访客标识、创建二维码并进入待扫状态；此后纯 HTTP 真人扫码及加密凭据恢复通过。搜索补齐业务和环境字段后返回 10 位真实候选，资料读取成功；普通匿名请求的首次初始化、作品详情和在播房间仍待解决，不能将上述差距视为全部补齐。[验收进展](douyin-source-acceptance.md)
 
 ## 接下来的验证顺序
 

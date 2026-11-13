@@ -15,6 +15,36 @@ type Session = {
 	invalidate(signal: AbortSignal): Promise<void>;
 };
 const shareHosts = ["v.douyin.com", "www.douyin.com", "www.iesdouyin.com"];
+const browserVersion = userAgent.match(/Chrome\/([^ ]+)/)?.[1] ?? "";
+// Match the browser identity used by this integration, rather than the machine
+// running BN. Search requires its capability envelope even without A-Bogus.
+const searchEnvironment = {
+	update_version_code: "170400",
+	pc_client_type: "1",
+	pc_libra_divert: "Mac",
+	support_h265: "0",
+	support_dash: "1",
+	cpu_core_num: "10",
+	version_code: "170400",
+	version_name: "17.4.0",
+	cookie_enabled: "true",
+	screen_width: String(DEFAULT_ENV.screen.width),
+	screen_height: String(DEFAULT_ENV.screen.height),
+	browser_language: "zh-CN",
+	browser_platform: DEFAULT_ENV.platform,
+	browser_name: "Chrome",
+	browser_version: browserVersion,
+	browser_online: "true",
+	engine_name: "Blink",
+	engine_version: browserVersion,
+	os_name: "Mac OS",
+	os_version: "10.15.7",
+	device_memory: "8",
+	platform: "PC",
+	downlink: "10",
+	effective_type: "4g",
+	round_trip_time: "50",
+};
 function retryAfter(header: string | null) {
 	if (!header) return 60000;
 	const n = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
@@ -128,13 +158,28 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 					cookie_enabled: "true",
 					browser_platform: DEFAULT_ENV.platform,
 					browser_name: "Chrome",
-					browser_version: userAgent.match(/Chrome\/([^ ]+)/)?.[1] ?? "",
+					browser_version: browserVersion,
 					screen_width: String(DEFAULT_ENV.screen.width),
 					screen_height: String(DEFAULT_ENV.screen.height),
 					browser_language: "zh-CN",
 				};
-				for (const [k, v] of Object.entries(defaultQ)) u.searchParams.set(k, v);
-				for (const [k, v] of Object.entries(args)) u.searchParams.set(k, v);
+				const query =
+					endpoint === "search"
+						? {
+								device_platform: "webapp",
+								aid: "6383",
+								channel: "channel_pc_web",
+								...args,
+								...searchEnvironment,
+							}
+						: { ...defaultQ, ...args };
+				for (const [k, v] of Object.entries(query)) u.searchParams.set(k, v);
+				if (endpoint === "search") {
+					headers["accept-language"] = "zh-CN,zh;q=0.9";
+					headers["sec-fetch-dest"] = "empty";
+					headers["sec-fetch-mode"] = "cors";
+					headers["sec-fetch-site"] = "same-origin";
+				}
 				for (const key of ["msToken", "uifid"]) {
 					const value = fields.get(key);
 					if (value) u.searchParams.set(key, value);
@@ -289,8 +334,15 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 					count: "10",
 					offset: "0",
 					list_type: "single",
+					disable_rs: "0",
+					from_group_id: "",
+					is_filter_search: "0",
+					need_filter_settings: "1",
+					query_correct_type: "1",
 				},
 				s,
+				WEB,
+				`${WEB}/search/${encodeURIComponent(keyword)}?type=user`,
 			),
 		room: (web_rid: string, room_id_str: string, s: AbortSignal) =>
 			call(

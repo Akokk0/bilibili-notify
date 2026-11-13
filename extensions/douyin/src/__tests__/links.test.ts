@@ -90,6 +90,43 @@ it("uses the search endpoint's token-only policy for nickname candidates", async
 	for (const key of ["a_bogus", "X-Bogus", "x-secsdk-web-signature"])
 		expect(request.searchParams.has(key)).toBe(false);
 });
+it("searches from the user results page with the browser capability envelope", async () => {
+	const { source, calls, requestHeaders } = setup(() => ({
+		body: {
+			status_code: 0,
+			user_list: [{ user_info: { sec_uid: "MS4wLjABAAAAfish", nickname: "小鱼" } }],
+		},
+	}));
+	expect(await source.searchCreators("小鱼", new AbortController().signal)).toMatchObject({
+		ok: true,
+		candidates: [{ externalId: "MS4wLjABAAAAfish" }],
+	});
+	const request = calls[0];
+	if (!request) throw new Error("Missing search request");
+	// Protocol envelope cross-checked against the HTTP search acceptance, not
+	// inferred from a successful fixture response or the implementation's map.
+	expect(Object.fromEntries(request.searchParams)).toMatchObject({
+		aid: "6383",
+		device_platform: "webapp",
+		channel: "channel_pc_web",
+		keyword: "小鱼",
+		disable_rs: "0",
+		is_filter_search: "0",
+		need_filter_settings: "1",
+		query_correct_type: "1",
+		version_code: "170400",
+		version_name: "17.4.0",
+		support_h265: "0",
+		support_dash: "1",
+		browser_online: "true",
+		engine_name: "Blink",
+		platform: "PC",
+	});
+	expect(requestHeaders[0]?.get("referer")).toBe(
+		"https://www.douyin.com/search/%E5%B0%8F%E9%B1%BC?type=user",
+	);
+	expect(requestHeaders[0]?.get("sec-fetch-site")).toBe("same-origin");
+});
 it.each(["UIFID", "uifid_temp"])(
 	"binds %s before signing a protected detail request",
 	async (name) => {
