@@ -345,6 +345,28 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 					: { status: "error", message: t("saveFailed") },
 			);
 	}
+	async function receiveCookies(url: URL, headers: Headers, from: AbortSignal): Promise<Result> {
+		const current = () => identity.signal === from && !from.aborted && !ctx.signal.aborted;
+		if (!current()) return fail("unavailable", t("expired"));
+		for (const line of headers.getSetCookie()) {
+			const equals = line.indexOf("=");
+			const value = equals > 0 ? line.slice(equals + 1).split(";")[0] : undefined;
+			if (value) ctx.redact(value);
+			cookies.ingest(url.href, line);
+		}
+		const token = headers.get("x-ms-token");
+		if (token && /^[A-Za-z0-9_~+/%=-]{1,4096}$/.test(token)) {
+			ctx.redact(token);
+			cookies.ingest(url.href, `msToken=${token}; Domain=douyin.com; Path=/; Secure`);
+		}
+		if (state.status !== "logged-in" || cookies.snapshot() === ctx.secrets.get(cookieKey))
+			return ok();
+		return enqueue(async () => {
+			if (!current()) return fail("unavailable", t("expired"));
+			const saved = await ctx.secrets.set(cookieKey, cookies.snapshot());
+			return saved.ok ? ok() : fail("unavailable", t("saveFailed"));
+		});
+	}
 	const saved = ctx.secrets.get<string>(cookieKey);
 	if (saved) {
 		try {
@@ -377,7 +399,12 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 	return {
 		...auth,
 		credentials: (url: URL) => cookies.header(url.href),
+		receiveCookies,
 		sessionSignal: () => identity.signal,
-		invalidate,
+		async invalidate(from: AbortSignal, url: URL, sentCookies: string) {
+			// A late 401 for a previous cookie must not discard a session renewed by
+			// another response from the same account in the meantime.
+			if (cookies.header(url.href) === sentCookies) await invalidate(from);
+		},
 	};
 }

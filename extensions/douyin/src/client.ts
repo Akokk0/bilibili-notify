@@ -11,8 +11,9 @@ import { dict, sign, str, trusted, userAgent, WEB } from "./web";
 
 type Session = {
 	credentials(url: URL): string;
+	receiveCookies(url: URL, headers: Headers, from: AbortSignal): Promise<Result>;
 	sessionSignal(): AbortSignal;
-	invalidate(signal: AbortSignal): Promise<void>;
+	invalidate(signal: AbortSignal, url: URL, sentCookies: string): Promise<void>;
 };
 const shareHosts = ["v.douyin.com", "www.douyin.com", "www.iesdouyin.com"];
 const browserVersion = userAgent.match(/Chrome\/([^ ]+)/)?.[1] ?? "";
@@ -230,7 +231,7 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 				fault = fail("unavailable", message("verify"), { upstreamCode: "douyin.verify" });
 				delay = 300000;
 			} else if (r.status === 401 || d.status_msg === "用户未登录" || d.status_msg === "请先登录") {
-				if (!guest && headers.cookie) await auth.invalidate(session);
+				if (!guest && headers.cookie) await auth.invalidate(session, u, headers.cookie);
 				return fail("unauthorized", message("login"));
 			} else if (dict(d.filter_detail).filter_reason === "私密账号") {
 				return fail("not_found", message("private"), { upstreamCode: "douyin.private" });
@@ -249,6 +250,11 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 					message("unexpected"),
 					typeof d.status_code === "number" ? { upstreamCode: d.status_code } : {},
 				);
+			}
+			if (!guest) {
+				const saved = await auth.receiveCookies(u, r.headers, session);
+				if (!saved.ok) return saved;
+				if (combined.aborted) return fail("unavailable", message("cancelled"));
 			}
 			if (fault) {
 				if (fault.code === "rate_limited") {

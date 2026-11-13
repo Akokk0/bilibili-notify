@@ -4,10 +4,16 @@ import { activate } from "../index";
 import { testCookieSession } from "./support/cookie-session";
 
 type Reply = { body?: unknown; status?: number; headers?: Record<string, string> };
-function setup(respond: (u: URL) => Reply | Promise<Reply>, visitorCookie?: string) {
+function setup(
+	respond: (u: URL) => Reply | Promise<Reply>,
+	visitorCookie?: string,
+	savedCookies?: string,
+) {
 	let source!: SourceDef;
 	const calls: URL[] = [];
 	const requestHeaders: Headers[] = [];
+	const secrets = new Map<string, string>();
+	if (savedCookies) secrets.set("login.cookies", savedCookies);
 	const ctx = {
 		createCookieSession(snapshot?: string) {
 			const jar = testCookieSession(snapshot);
@@ -16,7 +22,17 @@ function setup(respond: (u: URL) => Reply | Promise<Reply>, visitorCookie?: stri
 		},
 		i18n: { t: (k: string) => k },
 		signal: new AbortController().signal,
-		secrets: { get: () => undefined, delete: async () => ({ ok: true }) },
+		secrets: {
+			get: (key: string) => secrets.get(key),
+			async set(key: string, value: string) {
+				secrets.set(key, value);
+				return { ok: true };
+			},
+			async delete(key: string) {
+				secrets.delete(key);
+				return { ok: true };
+			},
+		},
 		onDispose: vi.fn(),
 		settings: () => ({ get: () => ({ ok: true, settings: {} }) }),
 		registerSource: (s: SourceDef) => {
@@ -70,6 +86,115 @@ const detail = {
 	author: { sec_uid: "MS4wLjABAAAAabc", nickname: "Alice" },
 	video: { duration: 2000 },
 };
+it("continues a rotated data session after the source is reloaded", async () => {
+	const saved = testCookieSession();
+	saved.ingest("https://www.douyin.com/", "sessionid=synthetic-session; Path=/; Secure");
+	const respond = (url: URL): Reply =>
+		url.pathname === "/passport/account/info/v2/"
+			? {
+					body: {
+						message: "success",
+						data: { is_visitor_account: false, name: "Tester", user_id_str: "42" },
+					},
+				}
+			: {
+					body: { status_code: 0, user_list: [] },
+					headers: {
+						"set-cookie": "UIFID=synthetic-renewed; Domain=douyin.com; Path=/; Secure",
+						"x-ms-token": "synthetic-rotated",
+					},
+				};
+	const first = setup(respond, undefined, saved.snapshot());
+	await vi.waitFor(() => expect(first.source.auth.state().status).toBe("logged-in"));
+	expect(await first.source.searchCreators("小鱼", new AbortController().signal)).toMatchObject({
+		ok: true,
+	});
+	const next = setup(respond, undefined, first.ctx.secrets.get("login.cookies"));
+	await vi.waitFor(() => expect(next.source.auth.state().status).toBe("logged-in"));
+	expect(await next.source.searchCreators("小鱼", new AbortController().signal)).toMatchObject({
+		ok: true,
+	});
+	const index = next.calls.findIndex((url) => url.pathname.includes("discover/search"));
+	expect(next.calls[index]?.searchParams.get("msToken")).toBe("synthetic-rotated");
+	expect(next.requestHeaders[index]?.get("cookie")).toContain("UIFID=synthetic-renewed");
+});
+it("reports a cookie save failure and retries it on the next data response", async () => {
+	const saved = testCookieSession();
+	saved.ingest("https://www.douyin.com/", "sessionid=synthetic-session; Path=/; Secure");
+	let dataRequests = 0;
+	const respond = (url: URL): Reply => {
+		if (url.pathname === "/passport/account/info/v2/")
+			return {
+				body: {
+					message: "success",
+					data: { is_visitor_account: false, name: "Tester", user_id_str: "42" },
+				},
+			};
+		return {
+			body: { status_code: 0, user_list: [] },
+			...(++dataRequests === 1 && { headers: { "x-ms-token": "synthetic-pending" } }),
+		};
+	};
+	const f = setup(respond, undefined, saved.snapshot());
+	await vi.waitFor(() => expect(f.source.auth.state().status).toBe("logged-in"));
+	const persist = f.ctx.secrets.set;
+	f.ctx.secrets.set = async () => ({
+		ok: false,
+		code: "unavailable",
+		message: "Synthetic disk error",
+	});
+	expect(await f.source.searchCreators("小鱼", new AbortController().signal)).toMatchObject({
+		ok: false,
+		code: "unavailable",
+		message: "auth.saveFailed",
+	});
+	f.ctx.secrets.set = persist;
+	expect(await f.source.searchCreators("小鱼", new AbortController().signal)).toMatchObject({
+		ok: true,
+	});
+	const reloaded = setup(respond, undefined, f.ctx.secrets.get("login.cookies"));
+	await vi.waitFor(() => expect(reloaded.source.auth.state().status).toBe("logged-in"));
+	await reloaded.source.searchCreators("小鱼", new AbortController().signal);
+	expect(reloaded.calls.at(-1)?.searchParams.get("msToken")).toBe("synthetic-pending");
+});
+it("keeps renewed credentials when an older data request reports logout", async () => {
+	const saved = testCookieSession();
+	saved.ingest(
+		"https://www.douyin.com/",
+		"sessionid=synthetic-session; Domain=douyin.com; Path=/; Secure",
+	);
+	const oldSearch = deferred<Reply>();
+	const f = setup(
+		(url) => {
+			if (url.pathname === "/passport/account/info/v2/")
+				return {
+					body: {
+						message: "success",
+						data: { is_visitor_account: false, name: "Tester", user_id_str: "42" },
+					},
+				};
+			if (url.pathname.includes("discover/search")) return oldSearch.promise;
+			return {
+				body: { status_code: 0, user: detail.author },
+				headers: { "set-cookie": "sessionid=synthetic-renewed; Domain=douyin.com; Path=/; Secure" },
+			};
+		},
+		undefined,
+		saved.snapshot(),
+	);
+	await vi.waitFor(() => expect(f.source.auth.state().status).toBe("logged-in"));
+	const pending = f.source.searchCreators("小鱼", new AbortController().signal);
+	expect(
+		await f.source.fetchProfile(
+			{ sourceKey: "douyin", externalId: detail.author.sec_uid },
+			new AbortController().signal,
+		),
+	).toMatchObject({ ok: true });
+	oldSearch.resolve({ status: 401, body: { status_msg: "用户未登录" } });
+	expect(await pending).toMatchObject({ ok: false, code: "unauthorized" });
+	expect(f.source.auth.state().status).toBe("logged-in");
+	expect(f.ctx.secrets.get("login.cookies")).toBeDefined();
+});
 it("uses the search endpoint's token-only policy for nickname candidates", async () => {
 	// Amagi f33c1a8, endpoints/search.ts:115 declares only msToken for this endpoint.
 	const { source, calls } = setup(() => ({
