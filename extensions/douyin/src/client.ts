@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import {
 	type ExtensionContext,
 	type ExtensionSourceContext,
@@ -183,7 +184,12 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 				for (const [k, v] of Object.entries(query)) u.searchParams.set(k, v);
 				if (endpoint === "search") Object.assign(headers, browserFetchHeaders);
 				for (const key of ["msToken", "uifid"]) {
-					const value = fields.get(key);
+					// Search uses a per-request nonce; the response's server token is
+					// retained in the cookie jar independently for the shared session.
+					const value =
+						endpoint === "search" && key === "msToken"
+							? `${randomBytes(138).toString("base64url")}==`
+							: fields.get(key);
 					if (value) u.searchParams.set(key, value);
 				}
 				const id = fields.get("s_v_web_id") || fp;

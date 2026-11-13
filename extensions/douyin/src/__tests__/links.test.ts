@@ -115,7 +115,7 @@ it("continues a rotated data session after the source is reloaded", async () => 
 		ok: true,
 	});
 	const index = next.calls.findIndex((url) => url.pathname.includes("discover/search"));
-	expect(next.calls[index]?.searchParams.get("msToken")).toBe("synthetic-rotated");
+	expect(next.requestHeaders[index]?.get("cookie")).toContain("msToken=synthetic-rotated");
 	expect(next.requestHeaders[index]?.get("cookie")).toContain("UIFID=synthetic-renewed");
 });
 it("reports a cookie save failure and retries it on the next data response", async () => {
@@ -155,7 +155,7 @@ it("reports a cookie save failure and retries it on the next data response", asy
 	const reloaded = setup(respond, undefined, f.ctx.secrets.get("login.cookies"));
 	await vi.waitFor(() => expect(reloaded.source.auth.state().status).toBe("logged-in"));
 	await reloaded.source.searchCreators("小鱼", new AbortController().signal);
-	expect(reloaded.calls.at(-1)?.searchParams.get("msToken")).toBe("synthetic-pending");
+	expect(reloaded.requestHeaders.at(-1)?.get("cookie")).toContain("msToken=synthetic-pending");
 });
 it("keeps renewed credentials when an older data request reports logout", async () => {
 	const saved = testCookieSession();
@@ -214,6 +214,28 @@ it("uses the search endpoint's token-only policy for nickname candidates", async
 	expect(request.searchParams.get("keyword")).toBe("小鱼");
 	for (const key of ["a_bogus", "X-Bogus", "x-secsdk-web-signature"])
 		expect(request.searchParams.has(key)).toBe(false);
+});
+it("uses a fresh search request token while keeping the server cookie", async () => {
+	let previous = "";
+	const { source, requestHeaders } = setup((url) => {
+		const token = url.searchParams.get("msToken") ?? "";
+		if (!/^[A-Za-z0-9_-]{184}==$/.test(token) || token === previous)
+			return { headers: { "bdturing-verify": JSON.stringify({ subtype: "semantic_reasoning" }) } };
+		previous = token;
+		return {
+			body: {
+				status_code: 0,
+				user_list: [{ user_info: { sec_uid: "MS4wLjABAAAAfish", nickname: "小鱼" } }],
+			},
+		};
+	}, "msToken=synthetic-cookie-token; Domain=douyin.com; Path=/; Secure");
+	for (let index = 0; index < 2; index++) {
+		expect(await source.searchCreators("小鱼", new AbortController().signal)).toMatchObject({
+			ok: true,
+			candidates: [{ externalId: "MS4wLjABAAAAfish" }],
+		});
+		expect(requestHeaders[index]?.get("cookie")).toContain("msToken=synthetic-cookie-token");
+	}
 });
 it("searches from the user results page with the browser capability envelope", async () => {
 	const { source, calls, requestHeaders } = setup(() => ({
