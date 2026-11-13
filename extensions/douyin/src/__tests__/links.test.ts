@@ -422,6 +422,12 @@ it.each([
 	["verification", { headers: { "bdturing-verify": "captcha" } }, "unavailable", 300000],
 	["signature", { status: 403, body: "ArgusSecurityPlugin sign error" }, "unsupported", 600000],
 	["temporary", { status: 502 }, "unavailable", 30000],
+	[
+		"filtered",
+		{ body: { status_code: 0, filter_detail: { filter_reason: "images_base" } } },
+		"unavailable",
+		30000,
+	],
 ] as const)(
 	"isolates a %s failure to the affected request and allows one recovery probe there",
 	async (_label, fault, code, delay) => {

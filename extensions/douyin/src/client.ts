@@ -248,13 +248,16 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 				return fail("unauthorized", message("login"));
 			} else if (dict(d.filter_detail).filter_reason === "私密账号") {
 				return fail("not_found", message("private"), { upstreamCode: "douyin.private" });
-			} else if (
-				r.status === 404 ||
-				(guest && d.status_code === 5) ||
-				str(dict(d.filter_detail).filter_reason)
-			)
+			} else if (r.status === 404 || (guest && d.status_code === 5))
 				return fail("not_found", message("notFound"));
-			else if (!r.isSuccess || !j.ok || !Object.keys(d).length) {
+			else if (
+				!r.isSuccess ||
+				!j.ok ||
+				!Object.keys(d).length ||
+				str(dict(d.filter_detail).filter_reason)
+			) {
+				// A filter can reject data dependencies (e.g. images_base), not just
+				// missing content. Preserve uncertainty and allow endpoint recovery.
 				fault = fail("unavailable", message("temporary"));
 				delay = 30000;
 			} else if (d.status_code !== 0) {
