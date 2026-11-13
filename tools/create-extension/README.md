@@ -23,7 +23,7 @@ The market author name defaults to the extension namespace. If you already know 
 
 Requires Node 24.15.0+, Git 2.32+ and the global Vite+ CLI. The generated project pins its package manager and tooling, and carries its own lockfile. Use `--sdk file:/path/sdk.tgz --tools file:/path/tools.tgz --offline` to check unpublished local packages; these overrides are for local acceptance and must be removed before sharing the project.
 
-The SDK is the only entry to host APIs. Build settings from the exported Zod schema through `@bilibili-notify/extension/build`; keep runtime side effects in `activate` and the host context. The SDK ships a standalone `DEVELOPMENT.md` author guide for the current `apiVersion: 1` / `apiRevision: 0` contract. The generated README describes the full development and publishing workflow.
+The SDK is the only entry to host APIs. Build settings from the exported Zod schema through `@bilibili-notify/extension/build`; keep runtime side effects in `activate` and the host context. The SDK ships a standalone `DEVELOPMENT.md` author guide covering the host contract supported by that SDK version. The generated README describes the full development and publishing workflow.
 
 For development, run the packaged development host with `vp dlx @bilibili-notify/bn@alpha dev` after publication and mount this project's source directory from the Extensions page. BN loads `src/index.ts`, watches imported dependencies and owns the runtime. Extension projects have no standalone dev/start command; build and ZIP commands prepare production releases.
 

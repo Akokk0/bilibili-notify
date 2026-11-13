@@ -138,6 +138,17 @@ export type ExtensionPostReport = Simplify<
 	}
 >;
 
+/** 群聊作品无须先有订阅，作者名随作品返回。postId 是长短链接共用的规范作品 ID。 */
+export type ExtensionLinkPreview = Simplify<
+	Omit<ExtensionPostReport, "post"> & {
+		post: Simplify<
+			Omit<ExtensionPostReport["post"], "creator"> & {
+				creator: Simplify<SubscriptionCreator & Required<Pick<SubscriptionCreator, "name">>>;
+			}
+		>;
+	}
+>;
+
 /**
  * 从核心 `LiveDetails` 推导直播详情:只挑拓展开放的格,并把作者换成可缺的 {@link SubscriptionCreator}、
  * 封面换成图库引用。
@@ -227,6 +238,8 @@ export interface SourceHandle {
  * 订阅源代码那一半。清单负责外观与能力声明;这里的成员按表拿,未开放的成员即使给了也不认。
  */
 export interface SourceDef {
+	/** 清单声明 contributes.linkResolver 时必交。只接收命中的单条网址，来源停用时取消。 */
+	resolveLink?(url: string, signal: AbortSignal): Promise<Result<ExtensionLinkPreview>>;
 	/**
 	 * 启动来源。拿到名单与三种上报口;这里可以同步返回,也可以回 Promise。
 	 * `stop()` 之后不许再上报。

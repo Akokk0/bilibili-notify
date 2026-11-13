@@ -26,7 +26,7 @@ export function activate(ctx: ExtensionContext) {
 }
 ```
 
-完整拓展还需根目录的`extension.json`声明来源外观与能力。`settingsSchema`和`connectionSettingsSchema`可由构建辅助生成清单设置字段。创建工程、当前1/0契约、生命周期、上报、设置、译文和发布见[作者指南](./DEVELOPMENT.md)，此文件也包含在npm包里，可在安装目录直接读取。
+完整拓展还需根目录的`extension.json`声明来源外观与能力。`settingsSchema`和`connectionSettingsSchema`可由构建辅助生成清单设置字段。创建工程、契约小号与群聊作品解析、生命周期、上报、设置、译文和发布见[作者指南](./DEVELOPMENT.md)，此文件也包含在npm包里，可在安装目录直接读取。
 
 ## Agent 开发入口
 

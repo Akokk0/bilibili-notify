@@ -274,6 +274,8 @@ interface ConfirmationWindow {
 
 **门与解析器分两半**(3b-27 / 3b-28)。门是平台中立的 `link-preview/link-previewer.ts`(`createLinkPreviewer`):用 `link-preview/extract-urls.ts` 的通用网址正则(`extractUrls`)从正文与分享卡链接里挑候选,按登记先后问每个解析器的 `matches` 认不认(两个都认的,先登记的答),取前三个被认领的,再走下面的闸门;认哪些网址、怎么查、怎么翻成作品都在解析器里。解析器类型 `LinkResolver` / `LinkPreview` 住 `packages/internal/src/link-preview.ts`;登记表是 `link-preview/registry.ts` 的 `LinkResolverRegistry`(一个来源键一个主人),来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记,来源停下时随上下文自动撤,门每条消息现读登记表。B 站的解析器是 `bilibili/link-resolver.ts` 的 `createBiliLinkResolver`:视频链接怎么认(含 `b23.tv` 短链)在 `bilibili/video-links.ts`,视频信息翻成作品在 `bilibili/video-card.ts`,封面在解析器里抓进图库,规范 id 取 BV 号。
 
+拓展订阅源在小号 1 的清单中通过 `contributes.linkResolver.patterns` 声明域名与路径。宿主随来源登记、撤销解析器，只传命中的单条网址；`SourceDef.resolveLink` 返回的 `postId` 作为规范 ID，未订阅作者也可回卡。图片渲染期间停用来源时，迟到的图片不再发送。
+
 与指令分发器各接 adapter 的一路出口(私聊 → 指令分发,群 → 链接解析;`index.ts` 里 `onInboundPrivate` / `onInboundGroup`),但它没有前缀、
 不认主人、群里谁贴都算 —— 正因为谁都能触发,它自己带一套闸门,和指令那三条约束是同一个道理:
 

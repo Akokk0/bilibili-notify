@@ -146,6 +146,15 @@ export const ExtensionPostReportSchema = z.strictObject({
 	post: PostSchema,
 });
 
+/** 群聊作品可来自未订阅的作者，必须提供可显示的名字。 */
+export const ExtensionLinkPreviewSchema = ExtensionPostReportSchema.extend({
+	post: PostSchema.extend({
+		creator: SubscriptionCreatorSchema.extend({
+			name: NameSchema.refine((name) => name.trim() !== ""),
+		}),
+	}),
+});
+
 const LiveDetailsSchema = z.strictObject({
 	creator: SubscriptionCreatorSchema.optional(),
 	title: NarrativeTextSchema.optional(),

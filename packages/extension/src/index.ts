@@ -113,6 +113,7 @@ export type {
 	ExtensionDevtoolsContext,
 	ExtensionFetchHandler,
 	ExtensionI18n,
+	ExtensionLinkPreview,
 	ExtensionLiveDetails,
 	ExtensionLiveSignalReport,
 	ExtensionLiveStatusResult,

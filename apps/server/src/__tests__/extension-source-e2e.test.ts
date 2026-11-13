@@ -20,14 +20,18 @@ import type {
 	LiveListeningEntry,
 	SubscriptionView,
 } from "@bilibili-notify/contract";
+import { ImageRenderer } from "@bilibili-notify/image";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { Api } from "../bilibili/api/index.js";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
+import { deferred } from "./support/track-context.js";
 
 const PROBE = "source-probe";
 const BROKEN = "source-broken";
+const LINKS = "link-probe";
 const EXTERNAL = "probe-user-1";
 /** 只靠拉取式(`fetchLiveStatus`)认出来的那位:探针对它回在播,从不 `reportLive`。 */
 const PULLED = "probe-pulled-1";
@@ -88,6 +92,29 @@ export function activate(ctx) {
 		stop() {},
 		searchCreators: async () => ({ ok: true, candidates: [] }),
 	});
+}
+`;
+
+const LINK_CODE = `
+export function activate(ctx) {
+  const seen = [];
+  ctx.mount(() => Response.json(seen));
+  ctx.registerSource({
+    start() {}, stop() {}, searchCreators: async () => ({ ok: true, candidates: [] }),
+    async resolveLink(url, signal) {
+      if (!(signal instanceof AbortSignal)) throw Error("missing cancellation");
+      seen.push(url);
+      const path = new URL(url).pathname;
+      if (path === "/limited") return {ok: false, code: "rate_limited", message: "稍后重试"};
+      if (path === "/outside") return {ok: true, postId: "outside", url: "https://elsewhere.invalid/note/1",
+        post: {creator: {name: "越界作者"}, publishedAt: "2026-10-01T08:00:00Z", text: "越界"}};
+      const postId = path === "/s17" ? "17" : path.split("/").pop();
+      const canonical = "https://works.invalid/" + (path.startsWith("/note/") ? "note/" : "video/") + postId;
+      return { ok: true, postId, url: canonical, post: { creator: { name: "未订阅作者" },
+        publishedAt: "2026-10-01T08:00:00Z", text: url,
+        ...(path.startsWith("/note/") ? { images: ["a".repeat(64) + ".png"] } : { video: { title: "视频作品" } }) } };
+    },
+  });
 }
 `;
 
@@ -155,8 +182,29 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 		return ((await res.json()) as { entries: DevCapturedDelivery[] }).entries;
 	}
 
+	async function patchCore(core: object) {
+		await okRes(await api("/api/settings", json({ core }, "PATCH")));
+	}
+	async function say(text: string, address?: string) {
+		await okRes(await api("/api/dev/run/core.inbound.link", json({ params: { text, address } })));
+	}
+	async function seen(): Promise<string[]> {
+		return (await (await okRes(await api(`/ext/${LINKS}`))).json()) as string[];
+	}
+	async function captureLinks(replyForm: string) {
+		if (replyForm !== "text") {
+			await okRes(await api("/api/cards/renderer", json({ chromePath: "/fake/chrome" })));
+		}
+		await patchCore({
+			linkPreview: { enabled: true, cooldownSec: 60, isOnByDefault: true, replyForm },
+		});
+		await okRes(await api("/api/dev/run/core.push.capture", json({ params: {} })));
+		await okRes(await api("/api/dev/captures/clear", { method: "POST" }));
+	}
+
 	/** 同 `extension-live-e2e`:先空启动一趟拿到完整的 globals,再摆拓展、开开关,重起。 */
 	beforeAll(async () => {
+		vi.spyOn(ImageRenderer.prototype, "generatePostCard").mockResolvedValue(Buffer.from("card"));
 		dataDir = await mkdtemp(join(tmpdir(), "bn-ext-source-e2e-"));
 		const seed = await boot(await findFreePort());
 		await seed.close("seed");
@@ -164,7 +212,11 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 
 		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as Record<string, unknown>;
-		globals.extensions = { [PROBE]: { enabled: true }, [BROKEN]: { enabled: true } };
+		globals.extensions = {
+			[PROBE]: { enabled: true },
+			[BROKEN]: { enabled: true },
+			[LINKS]: { enabled: true },
+		};
 		await writeFile(globalsPath, JSON.stringify(globals));
 
 		for (const [id, name, code, actions, supportedFeatures] of [
@@ -176,6 +228,7 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 				["post", "liveStart", "liveStreaming", "liveEnd"],
 			],
 			[BROKEN, "起不来的来源", BROKEN_CODE, undefined, ["post"]],
+			[LINKS, "群聊作品", LINK_CODE, undefined, ["post"]],
 		] as const) {
 			const extDir = join(gen, "extensions", id);
 			await mkdir(extDir, { recursive: true });
@@ -187,8 +240,20 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 					description: "测试用",
 					version: "0.1.0",
 					apiVersion: 1,
+					...(id === LINKS ? { apiRevision: 1 } : {}),
 					...(actions ? { actions } : {}),
 					contributes: {
+						...(id === LINKS
+							? {
+									linkResolver: {
+										patterns: [
+											{ host: "works.invalid", pathPrefix: "/video/" },
+											{ host: "works.invalid", pathPrefix: "/note/" },
+											{ host: "short.invalid", pathPrefix: "/" },
+										],
+									},
+								}
+							: {}),
 						subscription: {
 							label: "探针",
 							shortLabel: "探",
@@ -253,6 +318,7 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 
 	afterAll(async () => {
 		await handle?.close("test cleanup").catch(() => {});
+		vi.restoreAllMocks();
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
@@ -367,5 +433,112 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 		};
 		expect(sources.sources.some((source) => source.key === BROKEN)).toBe(false);
 		expect(details.integrations.some((integration) => integration.key === BROKEN)).toBe(false);
+	});
+
+	it("群里贴作品：已装载的拓展只接到命中的单链接，未订阅作者照样回文字", async () => {
+		expect((await extensions()).find((entry) => entry.id === LINKS)?.state).toBe("running");
+		await captureLinks("text");
+		await say(
+			"ftp://short.invalid/hidden https://short.invalid@evil.invalid/private https://short.invalid:bogus/off",
+		);
+		await say(
+			"群里其他内容 https://works.invalid/users/private https://works.invalid.evil.invalid/video/8 works.invalid/video/17",
+		);
+		await vi.waitFor(async () =>
+			expect(await captures()).toMatchObject([
+				{
+					kind: "text",
+					text: expect.stringContaining("未订阅作者\nhttps://works.invalid/video/17"),
+				},
+			]),
+		);
+		await say("重复作品 https://short.invalid/s17");
+		await vi.waitFor(async () =>
+			expect(await seen()).toEqual(["https://works.invalid/video/17", "https://short.invalid/s17"]),
+		);
+		expect(await captures()).toHaveLength(1);
+	});
+
+	it("群聊图文和 B 站视频各自认领链接，原生分享回落图片，关闭的群与撤销的来源不接链接", async () => {
+		const render = vi.mocked(ImageRenderer.prototype.generatePostCard);
+		const video = vi.spyOn(Api.prototype, "fetchVideoInfo").mockResolvedValue({
+			bvid: "BV1zMtU6uEEb",
+			aid: 17,
+			title: "B 站视频",
+			pic: "",
+			desc: "测试",
+			duration: 5,
+			pubdate: 1756800000,
+			tname: "日常",
+			owner: { mid: 1, name: "B 站作者", face: "" },
+			stat: { view: 1, danmaku: 0, reply: 0, favorite: 0, coin: 0, share: 0, like: 0 },
+		});
+		await captureLinks("nativeShare");
+		await okRes(
+			await api(
+				"/api/dev/run/core.connection.capability",
+				json({
+					params: { connection: CONNECTION_ID, state: "supported" },
+				}),
+			),
+		);
+		const before = await seen();
+		await patchCore({ linkPreview: { byTarget: { [TARGET_ID]: { isOn: false } } } });
+		await say("https://works.invalid/note/off");
+		await patchCore({ linkPreview: { byTarget: { [TARGET_ID]: null } } });
+		await say("https://short.invalid/limited https://short.invalid/outside");
+		await vi.waitFor(async () => expect(await seen()).toContain("https://short.invalid/outside"));
+		await say("https://works.invalid/note/18 https://www.bilibili.com/video/BV1zMtU6uEEb");
+		await vi.waitFor(async () =>
+			expect((await captures()).map((c) => c.kind).sort()).toEqual(["image", "native-share"]),
+		);
+		expect(await seen()).toEqual([
+			...before,
+			"https://short.invalid/limited",
+			"https://short.invalid/outside",
+			"https://works.invalid/note/18",
+		]);
+		expect(render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				creator: { name: "未订阅作者" },
+				images: [{ ref: `${"a".repeat(64)}.png` }],
+			}),
+			expect.anything(),
+			{ priority: "low" },
+		);
+		expect(video).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
+		await patchCore({ extensions: { [LINKS]: { enabled: false } } });
+		await vi.waitFor(async () =>
+			expect((await extensions()).find((e) => e.id === LINKS)?.state).toBe("disabled"),
+		);
+		await say("https://works.invalid/note/19 https://www.bilibili.com/video/av88", "10002");
+		await vi.waitFor(() => expect(video).toHaveBeenCalledWith({ aid: "88" }));
+		await vi.waitFor(async () => expect(await captures()).toHaveLength(3));
+		expect(render.mock.calls.some(([post]) => post.text.endsWith("/note/19"))).toBe(false);
+	});
+
+	it("群聊作品还在出图时停用拓展，迟到的图片不会发回群", async () => {
+		await patchCore({ extensions: { [LINKS]: { enabled: true } } });
+		await vi.waitFor(async () =>
+			expect((await extensions()).find((e) => e.id === LINKS)?.state).toBe("running"),
+		);
+		await captureLinks("image");
+		const rendering = deferred<Buffer>();
+		const render = vi.mocked(ImageRenderer.prototype.generatePostCard);
+		render.mockClear().mockReturnValueOnce(rendering.promise);
+		await say("https://works.invalid/note/rendering", "10003");
+		await vi.waitFor(() => expect(render).toHaveBeenCalledTimes(1));
+		await patchCore({ extensions: { [LINKS]: { enabled: false } } });
+		await vi.waitFor(async () =>
+			expect((await extensions()).find((e) => e.id === LINKS)?.state).toBe("disabled"),
+		);
+		rendering.resolve(Buffer.from("late card"));
+		await patchCore({ extensions: { [LINKS]: { enabled: true } } });
+		await vi.waitFor(async () =>
+			expect((await extensions()).find((e) => e.id === LINKS)?.state).toBe("running"),
+		);
+		await patchCore({ linkPreview: { replyForm: "text" } });
+		await say("https://works.invalid/video/after", "10003");
+		await vi.waitFor(async () => expect((await captures()).map((c) => c.kind)).toEqual(["text"]));
 	});
 });

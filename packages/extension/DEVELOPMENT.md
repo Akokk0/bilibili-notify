@@ -4,7 +4,7 @@
 
 ## 版本与工程
 
-当前宿主契约是`apiVersion: 1`、`apiRevision: 0`。SDK的npm版本、拓展自己的`version`与这两个契约数字各自独立。历史设计中的“v3”不是当前可安装的清单版本。
+宿主契约为 `apiVersion: 1`，群聊作品与来源扫码登录要求 `apiRevision: 1`。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。已发布的 SDK `0.1.0-alpha.0` 提供契约 1/0。
 
 创建器默认生成独立Git工程、示例来源、完整vp命令、锁文件、提交hooks与GitHub Actions：
 
@@ -90,6 +90,31 @@ export function activate(ctx: ExtensionContext): void {
 `start(sourceCtx)`得到运行中的来源上下文：从`subscriptions()`读取自己平台的创作者名单，监听`onSubscriptionsChanged`，以`externalId`上报。`reportProfile`更新资料，`reportPost`交作品，`reportLive`交开播、状态或下播信号；具体载荷使用SDK的`ExtensionPostReport`、`ExtensionLiveSignalReport`等公开类型。直播`status`只更新状态，不触发推送。
 
 拓展不持有BN内部订阅id，也不自己发送通知。宿主处理订阅开关、去重、规则、卡片、推送目标和历史。上报返回`void`，不把它当作发送回执；不合规的上报会留在宿主的上报问题记录里。
+
+## 群聊作品链接
+
+在根清单给订阅源声明可解析的网址。旧宿主看到小号 1 会提示升级。
+
+```json
+{
+  "apiVersion": 1,
+  "apiRevision": 1,
+  "contributes": {
+    "subscription": { "label": "作品来源", "supportedFeatures": ["post"] },
+    "linkResolver": {
+      "patterns": [
+        { "host": "www.example.com", "pathPrefix": "/video/" },
+        { "host": "www.example.com", "pathPrefix": "/note/" },
+        { "host": "share.example.com", "pathPrefix": "/" }
+      ]
+    }
+  }
+}
+```
+
+`host` 填小写完整域名，每个子域分别列出。路径按段匹配，`/video` 匹配该路径和它的子路径，`/video/` 从该目录开始匹配。宿主只分派标准端口的 HTTP(S) 链接，裸域名补 HTTPS。来源在 `SourceDef.resolveLink(url, signal)` 收到命中的单条完整网址。把 `signal` 接到所有请求；短链展开用 `ctx.http.fetch` 的 `beforeHop` 在请求每一跳前检查协议、域名和端口，匿名展开时使用 `bare`。
+
+成功返回 `ok({ postId, url, post })`，即 `Result<ExtensionLinkPreview>`。同一作品的各种链接都返回相同的 `postId`，`url` 填声明范围内的规范网址。即使没有该作者的订阅，`post.creator.name` 也必须有值；作品时刻、正文和图库引用沿用 `ExtensionPostReport`。获取失败返回 `fail(code, message)`。宿主执行逐群开关、额度与冷却，按配置回图片或文字，选原生分享时这类作品回落图片。停用来源会撤销解析并中止在途请求。
 
 ## 设置与副作用
 

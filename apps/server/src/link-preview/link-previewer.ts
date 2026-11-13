@@ -105,7 +105,7 @@ export interface LinkPreviewerOptions {
 	 * 在册的链接解析器(各集成在自己的 `start(ctx)` 里登的)。**每条消息现读**:集成可以来去。
 	 * 认哪些网址、怎么查、怎么翻成作品都归解析器,这里只问「认不认」。两个解析器都认同一条链接时,先登记的答。
 	 */
-	linkResolvers: Pick<LinkResolverRegistry, "entries">;
+	linkResolvers: Pick<LinkResolverRegistry, "entries" | "get">;
 	/** 交给 `resolve` 的取消信号:进程关停的那个,不另加超时。 */
 	signal: AbortSignal;
 	/**
@@ -208,7 +208,12 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 	 * 发的就是解析器交的那份中立描述(`appId` 一并带着),怎么签归适配器。
 	 * 缓存翻不翻由适配器自己定(只有再收到 1404 才翻),这里不猜。
 	 */
-	async function reply(dest: LinkReplyDestination, preview: LinkPreview, route: ReplyRoute) {
+	async function reply(
+		dest: LinkReplyDestination,
+		preview: LinkPreview,
+		route: ReplyRoute,
+		registered: () => boolean,
+	) {
 		if (route === "text") {
 			await replyWithText(dest, preview);
 			return;
@@ -231,7 +236,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 				message: result.message,
 			});
 		}
-		await replyWithImageCard(dest, preview);
+		await replyWithImageCard(dest, preview, registered);
 	}
 
 	/** 回文字:最轻的一档,发失败只记一行 warn,不回落(文字都发不出去,图更发不出去)。 */
@@ -253,7 +258,11 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 		});
 	}
 
-	async function replyWithImageCard(dest: LinkReplyDestination, preview: LinkPreview) {
+	async function replyWithImageCard(
+		dest: LinkReplyDestination,
+		preview: LinkPreview,
+		registered: () => boolean,
+	) {
 		const renderer = opts.renderer();
 		if (!renderer) return;
 		// 低优先级:谁都能触发的卡,不能排在开播 / 动态卡前面。让路由渲染队列按车道做
@@ -261,6 +270,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 		const { cardSkin } = opts.presentation();
 		// 作品里的图(封面等)已由解析器抓进图库,这里直接出卡。
 		const buffer = await renderer.generatePostCard(preview.post, { cardSkin }, { priority: "low" });
+		if (!registered()) return;
 		const result = await opts.send(dest, { kind: "image", image: { buffer, mime: "image/jpeg" } });
 		if (!result.ok) {
 			opts.logger.warn(logText("log.link.imageFailed"), {
@@ -329,6 +339,8 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			const repliedHere = new Set<string>();
 			for (const { url, key: resolverKey, resolver } of claimed) {
 				try {
+					const registered = () => opts.linkResolvers.get(resolverKey) === resolver;
+					if (!registered()) continue;
 					// 三道闸先看不动手,都过了才一起记账:在冷却里的链接不该吃群额度,因为忙而放弃的
 					// 链接也不该被记成「处理过」—— 那样它再贴一次就要等整个冷却。
 					const rawKey = rawCooldownKey(scope, resolverKey, url);
@@ -355,6 +367,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 					inflight++;
 					try {
 						const resolved = await resolver.resolve(url, opts.signal);
+						if (!registered()) continue;
 						if (!resolved.ok) {
 							opts.logger.warn(logText("log.link.resolveFailed"), {
 								destination: dest,
@@ -370,7 +383,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 						const canonicalKey = canonicalCooldownKey(scope, resolverKey, resolved.canonicalId);
 						if (coolingDown(canonicalKey, cooldownMs)) continue;
 						markCooldown(canonicalKey, cooldownMs);
-						await reply(dest, resolved, route);
+						await reply(dest, resolved, route, registered);
 					} finally {
 						inflight--;
 					}

@@ -27,7 +27,7 @@ import { checkUserRegex } from "../util/regex-safety";
  *   要过高小号的拓展就会被新 BN 错拒。
  * - **不兼容**的改动 = 抬 `min` 并删掉对应的退路。
  *
- * 现在:全新1.0契约从1/0起号;1.0开发期新增能力统一保持revision 0,发版后才沿上述递增规则。
+ * 1.0 契约从 1/0 起号。公开 SDK 首版后，群聊作品与来源账号使用小号 1。
  * 只保留当前strict清单。历史v1/v2不兼容,不转换;
  * 同号旧开发包不能单凭数字区分,历史provides及旧嵌套形状由严格清单拒收。
  */
@@ -39,7 +39,7 @@ export interface ExtensionApiRange {
 export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({
 	min: 1,
 	current: 1,
-	revision: 0,
+	revision: 1,
 });
 
 /**
@@ -575,6 +575,26 @@ const PackagePathSchema = z
 
 const ContributesSchema = z
 	.strictObject({
+		/** 宿主按完整域名和路径范围挑出候选，拓展没有观察群消息的入口。 */
+		linkResolver: z
+			.strictObject({
+				patterns: z
+					.array(
+						z.strictObject({
+							host: z
+								.string()
+								.max(253)
+								.regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/),
+							pathPrefix: z
+								.string()
+								.max(256)
+								.regex(/^\/(?:[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\/?)?$/),
+						}),
+					)
+					.min(1)
+					.max(32),
+			})
+			.optional(),
 		push: z
 			.strictObject({
 				...displayShape,
@@ -636,6 +656,10 @@ const ContributesSchema = z
 		 */
 		devtools: z.strictObject({}).optional(),
 	})
+	.refine((contributes) => !contributes.linkResolver || contributes.subscription, {
+		path: ["linkResolver"],
+		message: "linkResolver requires contributes.subscription",
+	})
 	.refine((contributes) => EXTENSION_PROVIDES.some((key) => contributes[key] !== undefined), {
 		error: () => packageText("internal.schema.extension-manifest.23"),
 	});
@@ -665,40 +689,45 @@ export const ActionNameSchema = z
  * 导出只为给契约形状的守卫登记(`extension-contract-shape.test.ts`);读清单一律走
  * {@link parseExtensionManifest}。
  */
-export const ExtensionManifestSchema = z.strictObject({
-	/** 编辑器补全用,宿主不读。 */
-	$schema: z.string().optional(),
-	...identityShape,
-	apiVersion: z.literal(1),
-	/** 要的契约小号(ADR-0019 决策 59)。不写 = 0。 */
-	apiRevision: ApiRevisionSchema.optional(),
-	/** 这个拓展自己的设置项(桥的接入名单、抖音的 cookie)。 */
-	settings: SettingsSchema.optional(),
-	/**
-	 * 面板上能按的「调拓展」按钮 —— **只有动作名**,代码那边 `ctx.onAction` 注册(ADR-0019 决策 22 / 42)。
-	 * 按钮上的字只认视图里那一份:从前每项还带 `label` / `description`,从没被读过,两份字改了一份
-	 * 另一份静默作废。
-	 */
-	actions: z
-		.array(ActionNameSchema)
-		.superRefine((names, ctx) => {
-			// 重名:第二个是笔误还是本意宿主猜不了,点名它让作者自己看。
-			const seen = new Set<string>();
-			names.forEach((name, i) => {
-				if (seen.has(name)) {
-					ctx.addIssue({
-						code: "custom",
-						path: [i],
-						message: packageText("internal.schema.extension-manifest.26", { value0: name }),
-					});
-				}
-				seen.add(name);
-			});
-		})
-		.optional(),
-	/** 开哪几口、每口的声明 —— `provides` 由它的键推出来。 */
-	contributes: ContributesSchema,
-});
+export const ExtensionManifestSchema = z
+	.strictObject({
+		/** 编辑器补全用,宿主不读。 */
+		$schema: z.string().optional(),
+		...identityShape,
+		apiVersion: z.literal(1),
+		/** 要的契约小号(ADR-0019 决策 59)。不写 = 0。 */
+		apiRevision: ApiRevisionSchema.optional(),
+		/** 这个拓展自己的设置项(桥的接入名单、抖音的 cookie)。 */
+		settings: SettingsSchema.optional(),
+		/**
+		 * 面板上能按的「调拓展」按钮 —— **只有动作名**,代码那边 `ctx.onAction` 注册(ADR-0019 决策 22 / 42)。
+		 * 按钮上的字只认视图里那一份:从前每项还带 `label` / `description`,从没被读过,两份字改了一份
+		 * 另一份静默作废。
+		 */
+		actions: z
+			.array(ActionNameSchema)
+			.superRefine((names, ctx) => {
+				// 重名:第二个是笔误还是本意宿主猜不了,点名它让作者自己看。
+				const seen = new Set<string>();
+				names.forEach((name, i) => {
+					if (seen.has(name)) {
+						ctx.addIssue({
+							code: "custom",
+							path: [i],
+							message: packageText("internal.schema.extension-manifest.26", { value0: name }),
+						});
+					}
+					seen.add(name);
+				});
+			})
+			.optional(),
+		/** 开哪几口、每口的声明 —— `provides` 由它的键推出来。 */
+		contributes: ContributesSchema,
+	})
+	.refine((manifest) => !manifest.contributes.linkResolver || (manifest.apiRevision ?? 0) >= 1, {
+		path: ["apiRevision"],
+		message: "contributes.linkResolver requires apiRevision 1",
+	});
 export type ExtensionManifest = z.infer<typeof ExtensionManifestSchema>;
 
 /** 每一档的格式。区间里有、这里没有的档位按「不认识」算。 */

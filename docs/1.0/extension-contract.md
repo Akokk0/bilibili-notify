@@ -1,6 +1,6 @@
 # 1.0 拓展契约 v3
 
-🔗当前作者入口（6-05）：全新1.0实现使用`apiVersion: 1`、`apiRevision: 0`；本页标题及下文“v3”保留历史设计语境。仓外开发请先读[随SDK分发的作者指南](../../packages/extension/DEVELOPMENT.md)，完整字段取SDK公开声明。当前起号与旧同号包的处理见本页4-55现状记录。
+🔗当前作者入口（6-05）：当前宿主使用 `apiVersion: 1`、`apiRevision: 1`，仍接受 1/0 的拓展；本页标题及下文“v3”保留历史设计语境。仓外开发请先读[随SDK分发的作者指南](../../packages/extension/DEVELOPMENT.md)，完整字段取SDK公开声明。当前起号与旧同号包的处理见本页4-55现状记录。
 
 > 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 ～ 0031。
 
@@ -30,17 +30,17 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 | `subscription` | `subscriptionSources`（键就是拓展 id，不加前缀） | 开 |
 | `push` | 平台适配器登记表 `PlatformAdapterRegistry`（键就是拓展 id，也就是连接上的 `adapterKey`） | 开。与内置的 OneBot、QQ 官方机器人、webhook 同一个接口、同一张表 |
 | `devtools` | `devtoolsProviders` | 开。独立入口文件，宿主只在开发版 `import()` 它。🔗 现状（3b-45，10-25）：清单只写 `"devtools": {}` 开口，文件名固定为 `devtools.mjs`，不能指定路径；入口不进发行包，打包与装包两道白名单都拒收 |
-| `linkResolver` | `linkResolvers` | 暂不开，写抖音拓展时再定 |
+| `linkResolver` | `linkResolvers` | 契约 1/1 起对订阅源开放；清单声明域名与路径，`SourceDef.resolveLink` 返回作品。 |
 | `commands` | —— | 暂不开。1.0 不造 `CommandProvider` 登记表：`login` 改成核心的通用指令后没有实现者；等第一个要自带指令的拓展，连同重名规矩一起定 |
 | `aiTools` | `aiToolProviders` | 暂不开，写抖音拓展时再定 |
 
-2026-11-12 已确定抖音首版使用群聊作品链接解析和来源扫码登录。SDK `0.1.0-alpha.0` 尚未提供这两个入口，后续分别由 6-07、6-07a 落实。专属指令和 AI 工具维持现有范围。[ADR-0047](../adr/0047-douyin-source-parity.md)
+2026-11-12 已确定抖音首版使用群聊作品链接解析和来源扫码登录。SDK `0.1.0-alpha.0` 尚未提供这两个入口，主仓按 6-07、6-07a 在契约 1/1 接入。专属指令和 AI 工具维持现有范围。[ADR-0047](../adr/0047-douyin-source-parity.md)
 
 - 宿主启用拓展时以拓展 id 登进对应的表（`bilibili`、三个内置平台适配器的键 `onebot`、`qq-official`、`webhook` 与 `core` 是保留 id，拓展不许用），撤销把手交给生命周期；停用、卸载即撤，不用重启。登记表的键类型叫 `IntegrationKey`，来源的 `SourceKey` 是它的一部分。
 - 注册的口必须是清单开了的口；清单是面板能按哪些钮、能画哪些口的全集。
 - 清单只装静态的描述（脸、叫法、设置字段）。推送侧能挑哪些平台不住清单，由运行期的连接候选给，所以新建连接要拓展在跑。
-- 以后开 `linkResolver` 时：清单声明网址模式，拓展只拿到匹配上的那一个链接。
-- 核心里 `linkResolvers`、`aiToolProviders` 两张表照做、B 站照用，只是先不对拓展开。
+- `contributes.linkResolver.patterns` 按完整域名和路径段匹配；启用的来源只接收命中的单条网址和取消信号。长短链共用返回的规范 `postId`，作品自带作者名，未订阅也可回图或文字。宿主在停用时撤回登记。[作者指南](../../packages/extension/DEVELOPMENT.md#群聊作品链接)
+- B 站使用宿主的链接解析器和 AI 工具登记表。拓展的群聊作品共用链接解析器登记表。
 
 ## ctx 能用的全部
 

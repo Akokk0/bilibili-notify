@@ -21,7 +21,7 @@ async function installedVersion(name) {
 }
 
 const CONSUMER_SOURCE = `
-import type { ExtensionContext, SourceDef } from "@bilibili-notify/extension";
+import type { ExtensionContext, ExtensionLinkPreview, SourceDef } from "@bilibili-notify/extension";
 import { ok } from "@bilibili-notify/extension";
 import type { ExtensionEntrySchemas } from "@bilibili-notify/extension/build";
 import { z } from "zod";
@@ -33,6 +33,13 @@ export const settingsSchema = z.object({
 });
 const schemas: ExtensionEntrySchemas = { settingsSchema };
 export const source: SourceDef = {
+  async resolveLink(url, signal) {
+    signal.throwIfAborted();
+    const preview: ExtensionLinkPreview = {postId: "123", url, post: {
+      creator: {name: "Author"}, text: "Post", publishedAt: "2026-11-13T00:00:00Z",
+    }};
+    return ok(preview);
+  },
   start() {},
   stop() {},
   async searchCreators() { return ok({ candidates: [] }); },

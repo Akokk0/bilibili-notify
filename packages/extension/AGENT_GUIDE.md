@@ -16,6 +16,7 @@
 | 任务                           | 从公开类型开始                                                   |
 | ------------------------------ | ---------------------------------------------------------------- |
 | 搜索创作者、获取资料、轮询订阅 | `SourceDef`、`ExtensionSourceContext`                            |
+| 群聊作品链接与长短链冷却 | `contributes.linkResolver`、`SourceDef.resolveLink`、`ExtensionLinkPreview` |
 | 作品和直播上报                 | `ExtensionPostReport`、`ExtensionLiveSignalReport`               |
 | 推送出口、探测和发送           | `PlatformAdapterDef`、`PlatformAdapterContext`、`DeliveryResult` |
 | 设置及设置页动作               | `SettingsReader`、`ExtensionContext`、`ExtensionView`            |

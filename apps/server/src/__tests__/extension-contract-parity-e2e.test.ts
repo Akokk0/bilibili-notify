@@ -1631,7 +1631,8 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 				.map(([member]) => member)
 				.sort();
 			const hostOpens = Object.entries(SOURCE_DEF_MEMBERS)
-				.filter(([, open]) => open)
+				// resolveLink 由宿主转成独立的群聊解析器登记，其他成员与核心 Source 同名。
+				.filter(([member, open]) => open && member !== "resolveLink")
 				.map(([member]) => member)
 				.sort();
 			expect(opened).toEqual(hostOpens);

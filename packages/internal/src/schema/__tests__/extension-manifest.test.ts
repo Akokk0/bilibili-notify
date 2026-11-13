@@ -119,8 +119,36 @@ describe("parseExtensionManifest —— 档位区间", () => {
 			identity: { id: "demo-ext" },
 		});
 	});
-	it("宿主这一版只认 currentManifest(第 2 版的退路已删),契约小号是 0", () => {
-		expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 0 });
+	it("链接解析清单要求契约 1/1：新宿主接受，旧宿主在解析能力之前报告升级", () => {
+		const contributes = {
+			subscription: { label: "作品", supportedFeatures: ["post"] },
+			linkResolver: { patterns: [{ host: "work.invalid", pathPrefix: "/video/" }] },
+		};
+		const raw = currentManifest({ apiRevision: 1, contributes });
+		expect(ok(raw).contributes.linkResolver).toEqual(contributes.linkResolver);
+		expect(incompatible(raw, { min: 1, current: 1, revision: 0 }).requires).toEqual({
+			apiVersion: 1,
+			apiRevision: 1,
+		});
+		expect(unreadable(currentManifest({ contributes })).join(" ")).toContain("apiRevision");
+		for (const host of [
+			"*.work.invalid",
+			"work.invalid:443",
+			"https://work.invalid",
+			"a@work.invalid",
+		]) {
+			expect(
+				unreadable(
+					currentManifest({
+						apiRevision: 1,
+						contributes: {
+							...contributes,
+							linkResolver: { patterns: [{ host, pathPrefix: "/" }] },
+						},
+					}),
+				).join(" "),
+			).toContain("host");
+		}
 	});
 
 	it("区间两头都算数 —— 读清单与市场判「装得了吗」共用这把尺子", () => {
@@ -1255,10 +1283,10 @@ describe("拓展 id 的命名空间", () => {
 	});
 });
 
-it("全新1.0契约用1/0,只接受当前严格清单,拒历史v1及伪装旧v2嵌套", () => {
+it("全新1.0契约仍接受1/0的严格清单,拒历史v1及伪装旧v2嵌套", () => {
 	const current = currentManifest({ apiVersion: 1 });
 	expect(parseExtensionManifest(current).ok).toBe(true);
-	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 0 });
+	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 1 });
 	expect(parseExtensionManifest(historicalV1()).ok).toBe(false);
 	expect(parseExtensionManifest({ ...current, provides: ["push"] }).ok).toBe(false);
 	const oldV2 = {

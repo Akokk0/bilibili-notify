@@ -15,6 +15,7 @@ import type { PlatformAdapterDescriptor } from "../push-source";
 import type {
 	ExtensionCreatorCandidatesSchema,
 	ExtensionCreatorProfileReportSchema,
+	ExtensionLinkPreviewSchema,
 	ExtensionLiveSignalReportSchema,
 	ExtensionLiveStatusResultSchema,
 	ExtensionManifest,
@@ -30,6 +31,7 @@ import type {
 	SourceHealth,
 } from "../source";
 import type {
+	ExtensionLinkPreview,
 	ExtensionLiveDetails,
 	ExtensionLiveSignalReport,
 	ExtensionLiveStatusResult,
@@ -94,6 +96,9 @@ export type ManifestSettingsFieldsPinned = Pinned<
 
 export type ExtensionPostReportPinned = Pinned<
 	Equals<z.infer<typeof ExtensionPostReportSchema>, ExtensionPostReport>
+>;
+export type ExtensionLinkPreviewPinned = Pinned<
+	Equals<z.infer<typeof ExtensionLinkPreviewSchema>, ExtensionLinkPreview>
 >;
 export type ExtensionLiveSignalReportPinned = Pinned<
 	Equals<z.infer<typeof ExtensionLiveSignalReportSchema>, ExtensionLiveSignalReport>

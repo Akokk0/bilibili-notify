@@ -8,6 +8,7 @@ import {
 	createSerialQueue,
 	EXTERNAL_ID_MAX,
 	ExtensionCreatorCandidatesSchema,
+	ExtensionLinkPreviewSchema,
 	type ExtensionManifest,
 	type ExtensionReportIssue,
 	type ExtensionReportKind,
@@ -18,6 +19,7 @@ import {
 	fail,
 	formatZodIssues,
 	type Identity,
+	type LinkResolver,
 	type LiveDetails,
 	type LiveSignalReport,
 	type LiveStatusResult,
@@ -122,6 +124,7 @@ export interface CreateExtensionSourceOptions {
  * 表态」变成编译错。
  */
 export const SOURCE_DEF_MEMBERS = {
+	resolveLink: true,
 	start: true,
 	stop: true,
 	searchCreators: true,
@@ -135,7 +138,7 @@ const OPEN_MEMBER_NAMES = (Object.keys(SOURCE_DEF_MEMBERS) as (keyof SourceDef)[
 );
 
 type OpenMembers = Pick<SourceDef, "start" | "stop" | "searchCreators"> &
-	Partial<Pick<SourceDef, "fetchProfile" | "fetchLiveStatus" | "health">>;
+	Partial<Pick<SourceDef, "fetchProfile" | "fetchLiveStatus" | "health" | "resolveLink">>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -446,14 +449,14 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	}
 
 	async function postReportFromExtension(
-		externalId: string,
+		creator: Creator,
 		value: ExtensionReportValue<"post">,
 	): Promise<PostReport> {
 		const reported = value.post;
 		// 换行统一成 `\n`,正文与片段的 `text` 一起做;只有空白的正文是空串,卡上正文块收起。
 		const [text = reported.text] = normalizeNewlines([reported.text]);
 		const post: Post = {
-			creator: creatorFromExtension(externalId, reported.creator),
+			creator,
 			publishedAt: utcIsoOf(reported.publishedAt),
 			text: text.trim() === "" ? "" : text,
 		};
@@ -562,6 +565,59 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		});
 	}
 
+	const rules = opts.manifest().contributes.linkResolver;
+	const linkLifetime = new AbortController();
+	function matchedLink(input: string): URL | undefined {
+		const url = URL.parse(/^https?:\/\//i.test(input) ? input : `https://${input}`);
+		if (
+			!url ||
+			!["https:", "http:"].includes(url.protocol) ||
+			url.port ||
+			url.username ||
+			url.password
+		)
+			return undefined;
+		return rules?.patterns.some(
+			({ host, pathPrefix }) =>
+				url.hostname === host &&
+				(url.pathname === pathPrefix ||
+					url.pathname.startsWith(pathPrefix.endsWith("/") ? pathPrefix : `${pathPrefix}/`)),
+		)
+			? url
+			: undefined;
+	}
+	function linkResolver(resolveLink: NonNullable<SourceDef["resolveLink"]>): LinkResolver {
+		return {
+			get label() {
+				return descriptor.label;
+			},
+			matches: (input) => !stopped && matchedLink(input) !== undefined,
+			async resolve(input, shutdown) {
+				const url = matchedLink(input);
+				const signal = AbortSignal.any([linkLifetime.signal, shutdown]);
+				if (!url) return invalidResult([describeIssue({ path: ["url"], code: "invalid" })]);
+				let raw: unknown;
+				try {
+					signal.throwIfAborted();
+					raw = await resolveLink(url.href, signal);
+					signal.throwIfAborted();
+				} catch (error) {
+					return fail("unavailable", reasonOf(error));
+				}
+				const result = readResult(raw);
+				if (result.kind === "failure") return result.failure;
+				if (result.kind === "malformed") return invalidResult(result.reasons);
+				const parsed = ExtensionLinkPreviewSchema.safeParse(result.body);
+				if (!parsed.success) return invalidResult(formatZodIssues(parsed.error));
+				if (!matchedLink(parsed.data.url))
+					return invalidResult([describeIssue({ path: ["url"], code: "invalid" })]);
+				const report = await postReportFromExtension(parsed.data.post.creator, parsed.data);
+				if (signal.aborted) return fail("unavailable", reasonOf(signal.reason));
+				return ok({ post: report.post, canonicalId: report.postId });
+			},
+		};
+	}
+
 	return {
 		descriptor,
 		...(def.health ? { health: readHealth } : {}),
@@ -589,7 +645,11 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 					enqueue("post", async () => {
 						const admitted = admit("post", externalId, report);
 						if (admitted) {
-							const translated = await postReportFromExtension(admitted.externalId, admitted.value);
+							const creator = creatorFromExtension(
+								admitted.externalId,
+								admitted.value.post.creator,
+							);
+							const translated = await postReportFromExtension(creator, admitted.value);
 							if (stillOpen("post")) ctx.reportPost(admitted.externalId, translated);
 						}
 					});
@@ -616,10 +676,13 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 				},
 			};
 			await def.start(extensionCtx);
+			if (!stopped && rules && def.resolveLink)
+				ctx.registerLinkResolver(linkResolver(def.resolveLink));
 		},
 		async stop() {
 			// 先置停(拒新的上报,队里还没交出去的也不再交),再叫拓展的 `stop`;登记表不等 `stop()` 返回。
 			stopped = true;
+			linkLifetime.abort();
 			await def.stop();
 		},
 		async searchCreators(query, signal) {

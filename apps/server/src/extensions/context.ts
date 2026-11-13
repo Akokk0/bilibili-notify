@@ -592,6 +592,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			}
 		}
 		const declared = opts.manifest.contributes.subscription.supportedFeatures;
+		if (opts.manifest.contributes.linkResolver && typeof def.resolveLink !== "function") {
+			throw new Error(`extension ${id}: contributes.linkResolver requires resolveLink()`);
+		}
 		if (declared.includes("liveStreaming") && typeof def.fetchLiveStatus !== "function") {
 			throw new Error(
 				`extension ${id}: contributes.subscription.supportedFeatures includes liveStreaming, so the source needs fetchLiveStatus()`,
