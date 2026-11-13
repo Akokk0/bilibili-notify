@@ -289,7 +289,7 @@ it.each(["UIFID", "uifid_temp"])(
 		expect(url.searchParams.get("uifid")).toBe("synthetic-visitor");
 		expect(requestHeaders[0]?.get("uifid")).toBe("synthetic-visitor");
 		const keys = [...url.searchParams.keys()];
-		expect(keys).toEqual(["aweme_id", "uifid", "timestamp", "x-secsdk-web-signature"]);
+		expect(keys).toEqual(["aid", "aweme_id", "uifid", "timestamp", "x-secsdk-web-signature"]);
 		expect(keys.indexOf("uifid")).toBeLessThan(keys.indexOf("timestamp"));
 		expect(keys.indexOf("timestamp")).toBeLessThan(keys.indexOf("x-secsdk-web-signature"));
 	},
@@ -297,7 +297,7 @@ it.each(["UIFID", "uifid_temp"])(
 it("resolves a protected video using its business fields and SDK signature", async () => {
 	// Real HTTP A/B: the same account can read a detail with this endpoint policy;
 	// attaching the general API environment/A-Bogus prompts verification instead.
-	const allowed = new Set(["aweme_id", "uifid", "timestamp", "x-secsdk-web-signature"]);
+	const allowed = new Set(["aid", "aweme_id", "uifid", "timestamp", "x-secsdk-web-signature"]);
 	const { source, requestHeaders } = setup(
 		(url) =>
 			[...url.searchParams.keys()].some((key) => !allowed.has(key))
@@ -311,6 +311,29 @@ it("resolves a protected video using its business fields and SDK signature", asy
 		post: { creator: { name: "Alice" } },
 	});
 	expect(requestHeaders[0]?.get("sec-fetch-site")).toBe("same-origin");
+});
+it("keeps the application identity when resolving a photo post", async () => {
+	const photo = { ...detail, images: [{ url_list: ["https://images.example/photo.jpg"] }] };
+	const { source } = setup(
+		(url) =>
+			url.searchParams.get("aid") === "6383"
+				? { body: { status_code: 0, aweme_detail: photo } }
+				: {
+						body: {
+							status_code: 0,
+							aweme_detail: null,
+							filter_detail: { filter_reason: "images_base" },
+						},
+					},
+		"UIFID=synthetic-visitor; Domain=douyin.com; Path=/; Secure",
+	);
+	expect(
+		await source.resolveLink(direct.replace("/video/", "/note/"), new AbortController().signal),
+	).toMatchObject({
+		ok: true,
+		postId: photo.aweme_id,
+		post: { images: ["image:ref"] },
+	});
 });
 
 it("resolves an unsubscribed video through an anonymous share redirect and signed detail request", async () => {

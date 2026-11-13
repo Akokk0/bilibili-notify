@@ -173,7 +173,8 @@ beforeAll(async () => {
 		) {
 			if (
 				JSON.stringify([...url.searchParams.keys()]) !==
-					JSON.stringify(["aweme_id", "uifid", "timestamp", "x-secsdk-web-signature"]) ||
+					JSON.stringify(["aid", "aweme_id", "uifid", "timestamp", "x-secsdk-web-signature"]) ||
+				url.searchParams.get("aid") !== "6383" ||
 				url.searchParams.get("uifid") !== "synthetic-visitor" ||
 				req.headers.uifid !== "synthetic-visitor"
 			)

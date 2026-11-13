@@ -206,7 +206,7 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 				if (endpoint === "detail" && protectedVisitor) {
 					// Detail uses only business parameters plus the SDK signature.
 					// The general API environment and A-Bogus trigger verification here.
-					u.search = new URLSearchParams(args).toString();
+					u.search = new URLSearchParams({ aid: "6383", ...args }).toString();
 					u.searchParams.set("uifid", protectedVisitor);
 					Object.assign(headers, browserFetchHeaders);
 				} else if (endpoint !== "search") sign(u);
