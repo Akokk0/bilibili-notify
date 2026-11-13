@@ -101,7 +101,7 @@ InboundPrivateMessage {address, text}
 
 ### 状态
 
-**就四类**(登录 / 来源 / 推送通道 / 渲染排队;登录与来源两类都按在册来源各占一行,今天只有 B 站一个,所以是四行),挑的都是「不正常时才有救的东西」:登录掉了 / 不抓了 / 推不出去 / 卡住了。别再往里加订阅数、今日推送数之类 —— 这条消息是在手机上看的,长了就没人读。静音只在真静音时多占一行(它是「怎么没动静」的第一嫌疑)。
+**就四类**(登录 / 来源 / 推送通道 / 渲染排队;登录与来源两类都按在册来源各占一行,没有其他来源时只有 B 站;启用带账号的拓展后会增加相应行),挑的都是「不正常时才有救的东西」:登录掉了 / 不抓了 / 推不出去 / 卡住了。别再往里加订阅数、今日推送数之类 —— 这条消息是在手机上看的,长了就没人读。静音只在真静音时多占一行(它是「怎么没动静」的第一嫌疑)。
 
 取数与渲染分开(`StatusReport` 是纯数据,`renderStatus` 是纯函数),否则要验一句文案就得先起半个服务端。「上次抓取」只记**成功**不记尝试 —— 连着失败三小时的系统若报「1 分钟前抓过」,这一项就从「还在跑吗」的答案变成了骗局。
 
@@ -270,7 +270,7 @@ interface ConfirmationWindow {
 
 ## 链接解析(不是指令)
 
-群里有人贴了在册的链接解析器认得的链接,机器人回一张卡片;今天登记解析器的只有 B 站来源,认视频链接(`bilibili.com/video/BV…` / `/video/av…` / `b23.tv` 短链),回视频卡片。
+群里有人贴了在册的链接解析器认得的链接,机器人回一张卡片;B 站内置来源认视频链接（`bilibili.com/video/BV…`、`/video/av…` 和 `b23.tv` 短链）。启用抖音拓展后，同一入口也认清单声明的视频、图文及分享短链。
 
 **门与解析器分两半**(3b-27 / 3b-28)。门是平台中立的 `link-preview/link-previewer.ts`(`createLinkPreviewer`):用 `link-preview/extract-urls.ts` 的通用网址正则(`extractUrls`)从正文与分享卡链接里挑候选,按登记先后问每个解析器的 `matches` 认不认(两个都认的,先登记的答),取前三个被认领的,再走下面的闸门;认哪些网址、怎么查、怎么翻成作品都在解析器里。解析器类型 `LinkResolver` / `LinkPreview` 住 `packages/internal/src/link-preview.ts`;登记表是 `link-preview/registry.ts` 的 `LinkResolverRegistry`(一个来源键一个主人),来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记,来源停下时随上下文自动撤,门每条消息现读登记表。B 站的解析器是 `bilibili/link-resolver.ts` 的 `createBiliLinkResolver`:视频链接怎么认(含 `b23.tv` 短链)在 `bilibili/video-links.ts`,视频信息翻成作品在 `bilibili/video-card.ts`,封面在解析器里抓进图库,规范 id 取 BV 号。
 
