@@ -23,6 +23,37 @@ export function sign(url: URL, pageId = DEFAULT_ENV.pageId, body = "") {
 	return url;
 }
 
+// Homepage nonce protocol. No page script is evaluated in the extension.
+export function homepageSignature(nonce: string, atMs = Date.now()) {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.";
+	const mix = (input: string, seed = 0) => {
+		let hash = seed;
+		for (let i = 0; i < input.length; i++)
+			hash = Math.imul(hash ^ input.charCodeAt(i), 65599) >>> 0;
+		return hash;
+	};
+	const word = (value: number) =>
+		[24, 18, 12, 6, 0].map((shift) => alphabet[(value >>> shift) & 63]).join("");
+	const seconds = (atMs / 1000) >>> 0;
+	const clock = mix(`${seconds}www.douyin.com/`) % 65521;
+	const digest = (Math.imul(clock, 65521) ^ seconds) >>> 0;
+	const seed = mix(String(8240 * 2 ** 32 + digest));
+	const identity = ((mix(userAgent, seed) % 65521) << 16) | (mix(nonce, seed) % 65521);
+	const packed =
+		word(digest >>> 2) +
+		word(((digest & 15) << 28) | (8240 >>> 4)) +
+		word((8240 << 26) | (~digest >>> 6)) +
+		alphabet[~digest & 63] +
+		word(identity >>> 2) +
+		word(((identity & 15) << 28) | ((digest ^ 0x88120) >>> 4)) +
+		word(clock);
+	const signed = `_02B4Z6wo00f01${packed}`;
+	let checksum = 0;
+	for (let i = 0; i < signed.length; i++)
+		checksum = (Math.imul(checksum, 65599) + signed.charCodeAt(i)) >>> 0;
+	return signed + (checksum & 255).toString(16).padStart(2, "0");
+}
+
 // Read one name from the Cookie header already scoped by BN to this exact URL.
 export function cookieValue(header: string, key: string): string | undefined {
 	const prefix = `${key}=`;

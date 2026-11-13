@@ -6,7 +6,17 @@ import type {
 	Result,
 } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
-import { cookieValue, dict, LOGIN, sign, str, trusted, userAgent, WEB } from "./web";
+import {
+	cookieValue,
+	dict,
+	homepageSignature,
+	LOGIN,
+	sign,
+	str,
+	trusted,
+	userAgent,
+	WEB,
+} from "./web";
 
 const key = "163e7ce78d58971a41f5b969996d85c2";
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -37,7 +47,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			bare: true,
 			maxRedirects: 0,
 			timeoutMs: 12000,
-			maxBodyBytes: 1024 * 1024,
+			maxBodyBytes: options.maxBodyBytes ?? 1024 * 1024,
 		});
 		if (!res.ok || signal.aborted) return fail("unavailable", ctx.i18n.t("auth.network"));
 		for (const c of res.headers.getSetCookie()) jar.ingest(url.href, c);
@@ -49,12 +59,23 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 		return res;
 	}
 	async function prepare(signal: AbortSignal): Promise<Result> {
-		const response = await request(new URL("/", WEB), signal, {
+		const options = {
 			headers: { accept: "text/html,application/xhtml+xml" },
-		});
-		return response.ok && response.isSuccess
-			? ok()
-			: fail("unavailable", ctx.i18n.t("auth.prepareFailed"));
+			maxBodyBytes: 4 * 1024 * 1024,
+		};
+		const response = await request(new URL("/", WEB), signal, options);
+		if (!response.ok || !response.isSuccess)
+			return fail("unavailable", ctx.i18n.t("auth.prepareFailed"));
+		const nonce = cookieValue(jar.header(WEB), "__ac_nonce");
+		if (nonce) {
+			const signature = homepageSignature(nonce);
+			ctx.redact(signature);
+			jar.ingest(WEB, `__ac_signature=${signature}; Path=/; Secure`);
+			const negotiated = await request(new URL("/", WEB), signal, options);
+			if (!negotiated.ok || !negotiated.isSuccess)
+				return fail("unavailable", ctx.i18n.t("auth.prepareFailed"));
+		}
+		return ok();
 	}
 	async function sso(raw: string, signal: AbortSignal) {
 		let url: URL;

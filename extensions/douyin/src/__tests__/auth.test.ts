@@ -16,6 +16,7 @@ function fixture(
 	let pollReply: object | undefined;
 	let unreadableAccountReplies = 0;
 	let homeStatus = 200;
+	let homeRetryStatus: number | undefined;
 	let validationReply: object = { data: { error_code: 0 } };
 	const smsRequests: { trace: string | null; code: string | null }[] = [];
 	let source!: SourceDef;
@@ -67,6 +68,11 @@ function fixture(
 						"Set-Cookie",
 						"passport_csrf_token=synthetic-csrf; Domain=douyin.com; Path=/; Secure",
 					);
+					if (new Headers(o.headers).get("cookie")?.includes("__ac_signature="))
+						h.append(
+							"Set-Cookie",
+							"UIFID_TEMP=synthetic-visitor; Domain=douyin.com; Path=/; Secure",
+						);
 				}
 				if (url.pathname.endsWith("get_qrcode/"))
 					body = {
@@ -102,10 +108,16 @@ function fixture(
 					expect(new Headers(o.headers).get("cookie")).toContain("sessionid=sample");
 					body = { message: "success", data: accountData };
 				}
+				const status =
+					url.href === "https://www.douyin.com/"
+						? new Headers(o.headers).get("cookie")?.includes("__ac_signature=")
+							? (homeRetryStatus ?? homeStatus)
+							: homeStatus
+						: 200;
 				return {
 					ok: true,
-					status: url.href === "https://www.douyin.com/" ? homeStatus : 200,
-					isSuccess: url.href !== "https://www.douyin.com/" || homeStatus < 400,
+					status,
+					isSuccess: status >= 200 && status < 300,
 					headers: h,
 					url: url.href,
 					text: () => JSON.stringify(body),
@@ -133,6 +145,9 @@ function fixture(
 		requests,
 		setHomeStatus: (status: number) => {
 			homeStatus = status;
+		},
+		setHomeRetryStatus: (status: number) => {
+			homeRetryStatus = status;
 		},
 		ops,
 		pollNext: async () => {
@@ -374,6 +389,36 @@ it("initializes a fresh login session on Douyin before requesting a QR and respe
 	expect(request.headers.get("cookie")).toContain("synthetic-nonce");
 	expect(request.headers.get("x-tt-passport-csrf-token")).toBe("synthetic-csrf");
 	expect(f.secrets.size).toBe(0);
+});
+
+it("negotiates the homepage nonce before QR creation using the same session", async () => {
+	const clock = vi.spyOn(Date, "now").mockReturnValue(1700000000000);
+	try {
+		const f = fixture();
+		expect(await f.auth.beginLogin()).toEqual({ ok: true });
+		const home = f.requests.filter(({ url }) => url.href === "https://www.douyin.com/");
+		expect(home).toHaveLength(2);
+		const expected = "_02B4Z6wo00f01HR4CBQAAIDDi4f36wqaOvx0WgyAAHhV16";
+		// Frozen official challenge script, synthetic nonce, Chrome 150/macOS, 1700000000000ms.
+		expect(home[1]?.headers.get("cookie")).toContain(`__ac_signature=${expected}`);
+		expect(home[1]?.headers.get("cookie")).toContain("__ac_nonce=synthetic-nonce");
+		const qr = f.requests.find(({ url }) => url.pathname.endsWith("/get_qrcode/"));
+		expect(qr?.headers.get("cookie")).toContain("UIFID_TEMP=synthetic-visitor");
+		expect(f.secrets.size).toBe(0);
+	} finally {
+		clock.mockRestore();
+	}
+});
+
+it("stops QR creation when the homepage negotiation is rejected and permits a fresh attempt", async () => {
+	const f = fixture();
+	f.setHomeRetryStatus(503);
+	expect(await f.auth.beginLogin()).toMatchObject({ ok: false, message: "auth.prepareFailed" });
+	expect(f.requests.every(({ url }) => url.pathname === "/")).toBe(true);
+	expect(f.secrets.size).toBe(0);
+	f.setHomeRetryStatus(200);
+	expect(await f.auth.beginLogin()).toEqual({ ok: true });
+	expect(f.auth.state().status).toBe("awaiting-scan");
 });
 
 it("carries the refreshed login token into QR polling without saving an unverified login", async () => {
