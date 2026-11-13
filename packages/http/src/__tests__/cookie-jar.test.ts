@@ -44,6 +44,16 @@ describe("CookieJar — tough-cookie 序列化格式双向兼容", () => {
 		expect(header).toContain("bili_jct=jct_v");
 	});
 
+	it("round-trip 后 host-only 仍不发给子域，显式 Domain 仍可共享", () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("host=secret; Path=/", "https://example.com/");
+		jar.setFromSetCookie("domain=shared; Domain=example.com; Path=/", "https://example.com/");
+		const restored = new CookieJar();
+		restored.load(JSON.parse(JSON.stringify(jar.serialize())));
+		expect(restored.cookieHeaderFor("https://example.com/")).toBe("host=secret; domain=shared");
+		expect(restored.cookieHeaderFor("https://child.example.com/")).toBe("domain=shared");
+	});
+
 	it("serialize 输出 Cookie 形状:expires 为 ISO 或 Infinity,round-trip 稳定", () => {
 		const jar = new CookieJar();
 		const input = [

@@ -27,6 +27,7 @@ import { parse as parseHost } from "tldts";
  * "Infinity"、domain 无前导点。字段全部可选(旧数据缺哪格都读得进来),读入时容忍多余字段。
  */
 export interface Cookie {
+	hostOnly?: boolean;
 	key: string;
 	value: string;
 	expires?: string;
@@ -178,7 +179,7 @@ export class CookieJar {
 				secure: c.secure ?? false,
 				httpOnly: c.httpOnly ?? false,
 				sameSite: c.sameSite,
-				hostOnly: false,
+				hostOnly: c.hostOnly === true,
 			});
 		}
 		this.replaceAll(next);
@@ -203,6 +204,7 @@ export class CookieJar {
 				secure: c.secure,
 				httpOnly: c.httpOnly,
 				sameSite: c.sameSite,
+				...(c.hostOnly && { hostOnly: true }),
 			}));
 	}
 
