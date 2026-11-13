@@ -143,6 +143,8 @@ export interface SourceAccount {
 export interface SourceAuth {
 	/** 发起一次扫码登录。成功后二维码在 `state()` 里;已有一次在进行时重新开始、换一张新码。 */
 	beginLogin(): Promise<Result>;
+	/** Answer only the current SMS challenge. A replaced attempt must never accept its old answer. */
+	submitVerification?(attemptId: string, code: string): Promise<Result>;
 	/** 忘掉登录。没登录时也能调。不碰主密钥。 */
 	logout(): Promise<Result>;
 	/** 此刻的状态,同步、不出网。 */

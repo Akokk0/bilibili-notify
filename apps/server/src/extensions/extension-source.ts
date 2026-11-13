@@ -48,6 +48,7 @@ import { pickBoundMembers } from "../util/bound-members.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { catchThenableRejection } from "../util/is-thenable.js";
 import { textPreview } from "../util/text-preview.js";
+import { extensionSourceAuth } from "./extension-source-auth.js";
 
 /**
  * **拓展的订阅源 → 核心的 `Source`**(3b-42):把清单里订阅源那一口的外观(平台名、作品叫法、外部 id 格式)与
@@ -64,7 +65,7 @@ import { textPreview } from "../util/text-preview.js";
  * - **读口**(搜人、取资料、拉取式直播状态):抛了回失败(原话进 `message`),形状按上报同一套规矩核 ——
  *   多一格 / 必填坏了回 `invalid`、点名哪一格,选填坏了丢那一格,拒与丢格都记进出入表,不抛。
  *
- * 开放给拓展的成员由 {@link SOURCE_DEF_MEMBERS} 这张表定:表外的(`auth`、`liveInteractions`、`descriptor`)
+ * 开放给拓展的成员由 {@link SOURCE_DEF_MEMBERS} 这张表定:表外的(`liveInteractions`、`descriptor`)
  * 带了也不认 —— 契约的宽度是不可逆的,没开放的口子先被人用上就改不动了。
  */
 
@@ -131,6 +132,7 @@ export const SOURCE_DEF_MEMBERS = {
 	fetchProfile: true,
 	fetchLiveStatus: true,
 	health: true,
+	auth: true,
 } satisfies Record<keyof SourceDef, boolean>;
 
 const OPEN_MEMBER_NAMES = (Object.keys(SOURCE_DEF_MEMBERS) as (keyof SourceDef)[]).filter(
@@ -304,6 +306,10 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 
 	/** 拓展的 `stop` 叫过了:之后的上报一概丢(契约:`stop()` 之后不许再上报)。 */
 	let stopped = false;
+	const auth =
+		(opts.manifest().apiRevision ?? 0) >= 1 && opts.def.auth
+			? extensionSourceAuth(opts.def.auth, () => stopped)
+			: undefined;
 	/** 这个来源自己的一条串行队:三种上报按到达顺序一条条处理。 */
 	const queue = createSerialQueue();
 	/** 上一次 `health()` 的毛病;同一句连读只记一遍,好了再坏会重新记。 */
@@ -620,6 +626,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 
 	return {
 		descriptor,
+		...(auth ? { auth } : {}),
 		...(def.health ? { health: readHealth } : {}),
 		async start(ctx: SourceContext) {
 			// 🔴 逐格列出开放的成员,不展开核心那一份:`registerLinkResolver` / `registerAiToolProvider` /

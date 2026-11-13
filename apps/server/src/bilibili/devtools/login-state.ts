@@ -1,6 +1,7 @@
-import { type AuthState, type Disposable, ok, type SourceAuth } from "@bilibili-notify/internal";
+import { type AuthState, type Disposable, ok } from "@bilibili-notify/internal";
 import { type OverridableApi, overridableApi } from "../../devtools/api-overrides.js";
 import type { DevScenarioDef } from "../../devtools/registry.js";
+import type { BilibiliSourceAuth } from "../auth/index.js";
 import { fakeQrDataUrl } from "./fake-qr.js";
 import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
 
@@ -22,14 +23,14 @@ export interface LoginStateDeps {
 /** 登录口的开发壳:`state` / `account` 能盖能摘;经它订的变更通知都记着,盖完能替登录口喊一声。 */
 export interface AuthShell {
 	/** 交给 B 站来源当 `Source.auth` 的那一份;宿主经它订变更。 */
-	api: Required<SourceAuth>;
-	override: OverridableApi<Required<SourceAuth>>["override"];
+	api: BilibiliSourceAuth;
+	override: OverridableApi<BilibiliSourceAuth>["override"];
 	clear(method: "state" | "account"): void;
 	/** 经壳订了变更的回调挨个叫一遍 —— 宿主那头(总线上的登录事件、登录问题表)跟真的变了一样。 */
 	notifyChanged(): void;
 }
 
-export function createAuthShell(real: Required<SourceAuth>): AuthShell {
+export function createAuthShell(real: BilibiliSourceAuth): AuthShell {
 	const shell = overridableApi(real);
 	const listeners = new Set<() => void>();
 	// 订阅照样订到真登录口上(真的变了照常通知),另在这里记一份;撤的时候两边一起撤。

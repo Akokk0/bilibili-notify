@@ -31,13 +31,15 @@ import { LoginFlow } from "./login-flow.js";
  * subscription. 最后一次存盘与关存储把手不在这里:那是收 B 站上下文的事(`compose.ts` 在关停的 `stop` 段登记,
  * 晚于推送链路跑,所以这一步总排在存盘之前)。
  */
+export type BilibiliSourceAuth = SourceAuth & Required<Pick<SourceAuth, "account">>;
+
 export interface AuthSystem {
 	readonly api: Api;
 	/**
 	 * 登录口(`Source.auth`):发起扫码、退出登录(状态总会进未登录;存着的登录状态清不掉时回失败,
 	 * 话里写着原因与「重启后可能还是登录着」)、读状态与账号、订阅变化。
 	 */
-	readonly auth: Required<SourceAuth>;
+	readonly auth: BilibiliSourceAuth;
 	/** 起 Api 与扫码流程,恢复存着的登录(落定时状态已经是已登录 / 未登录,或开机探活连不上时停在确认中)。只调一次;抛了就是没起来(已起的已停)。 */
 	start(): Promise<void>;
 	/** 停扫码流程与 Api(作废在途的续期)、摘掉恢复备份的订阅。同步、幂等;没起过也能调。 */
@@ -141,7 +143,7 @@ export function createAuthSystem(opts: CreateAuthSystemOptions): AuthSystem {
 			: fail("unavailable", serverText("bilibili.auth.index.text.1", { value0: saved.message }));
 	};
 
-	const auth: Required<SourceAuth> = {
+	const auth: BilibiliSourceAuth = {
 		beginLogin,
 		logout,
 		state: () => flowFinal.authState(),

@@ -25,6 +25,7 @@ import type {
 	SourceContext as CoreSourceContext,
 	CreatorCandidate,
 	CreatorProfileReport,
+	SourceAuth,
 	SourceHealth,
 } from "../source";
 import type { ExtensionView } from "./wire";
@@ -240,6 +241,8 @@ export interface SourceHandle {
 export interface SourceDef {
 	/** 清单声明 contributes.linkResolver 时必交。只接收命中的单条网址，来源停用时取消。 */
 	resolveLink?(url: string, signal: AbortSignal): Promise<Result<ExtensionLinkPreview>>;
+	/** System account login. Requires manifest apiRevision >= 1. */
+	readonly auth?: SourceAuth;
 	/**
 	 * 启动来源。拿到名单与三种上报口;这里可以同步返回,也可以回 Promise。
 	 * `stop()` 之后不许再上报。

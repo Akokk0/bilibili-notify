@@ -1,3 +1,4 @@
+import type { BilibiliSourceAuth } from "../auth/index.js";
 import { GUARD_PROGRAM } from "../guard-program.js";
 import { DICTS as BILI_DICTS } from "../i18n.js";
 /**
@@ -1703,7 +1704,7 @@ describe("createBiliSource — 关注同步", () => {
 });
 
 describe("createBiliSource — 登录那一套归来源:造一次、start 第一步起、stop 最后一步停", () => {
-	const REAL_AUTH_MARK = { ...FAKE_AUTH } as Required<SourceAuth>;
+	const REAL_AUTH_MARK = { ...FAKE_AUTH } as BilibiliSourceAuth;
 
 	it("构造时 Source.auth 就在(登记表在 start 之前就抄它),就是登录系统交出的登录口", () => {
 		const { deps, login } = makeDeps({ auth: REAL_AUTH_MARK });
@@ -1774,11 +1775,11 @@ describe("createBiliSource — 登录那一套归来源:造一次、start 第一
 
 	it("动态轮询与直播监听读登录系统交出的原始登录口,Source.auth 读套过壳的;Api 一律是壳(开发壳钩子)", async () => {
 		const { deps, login } = makeDeps({ auth: REAL_AUTH_MARK });
-		const shellAuth = { ...REAL_AUTH_MARK } as Required<SourceAuth>;
+		const shellAuth = { ...REAL_AUTH_MARK } as BilibiliSourceAuth;
 		const shellApi = { fetchAllDynamic: async () => EMPTY_FEED } as unknown as Api;
 		const devShells = {
 			api: vi.fn((_real: Api) => shellApi),
-			auth: vi.fn((_real: Required<SourceAuth>) => shellAuth),
+			auth: vi.fn((_real: BilibiliSourceAuth) => shellAuth),
 		};
 		const source = createBiliSource({ ...deps, devShells });
 		expect(devShells.api).toHaveBeenCalledWith(login.api);

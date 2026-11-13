@@ -91,6 +91,17 @@ export function useSourceAuth(sourceKey: string, { enabled = true }: { enabled?:
 		isLoading: query.isLoading,
 		isError: query.isError,
 		error: query.error,
+		// Codes belong to the open form. Keep them out of the mutation/query cache.
+		async submitVerification(attemptId: string, code: string) {
+			await api.post<SourceAuthResponse>(`${sourceAuthPath(sourceKey)}/verification`, {
+				attemptId,
+				code,
+			});
+			await Promise.all([
+				qc.invalidateQueries({ queryKey: key }),
+				qc.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY }),
+			]);
+		},
 		startLogin,
 		logout,
 	};

@@ -14,7 +14,6 @@ import {
 	type Result,
 	type ServiceContext,
 	type Source,
-	type SourceAuth,
 	type SourceContext,
 	type SourceDescriptor,
 	type SourceHealth,
@@ -24,7 +23,7 @@ import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { createBiliAiToolProvider } from "./ai-tools.js";
 import type { Api } from "./api/index.js";
-import { createAuthSystem } from "./auth/index.js";
+import { type BilibiliSourceAuth, createAuthSystem } from "./auth/index.js";
 import type { BiliContext } from "./context.js";
 import { DynamicPoller } from "./dynamic/index.js";
 import { BILI_EXTERNAL_ID_REGEX } from "./external-id.js";
@@ -63,7 +62,7 @@ export interface BiliSourceDeps {
 	 */
 	devShells?: {
 		api(real: Api): Api;
-		auth(real: Required<SourceAuth>): Required<SourceAuth>;
+		auth(real: BilibiliSourceAuth): BilibiliSourceAuth;
 	};
 	/** 可回收的定时器(退避重启用);公共上下文里没有定时器。 */
 	setTimeout: ServiceContext["setTimeout"];

@@ -238,8 +238,7 @@ const SOURCE_ROWS = {
 		"这一版不开直播互动类特性:1.0 的拓展声明不了会员与直播互动(ADR-0021 决策 38 下 09-28 的 🔗),契约「订阅源」表里 `liveInteractions` 一行写「不开」。核心没有读口能看见拓展塞进来的这一格,证据只有单测(假源在运行时故意塞了它)。",
 		{
 			file: EXTENSION_SOURCE_TEST,
-			title:
-				"不开的成员带了也不认:auth、liveInteractions、descriptor、fetchPreview;health 按表收下",
+			title: "旧小号仍不开放 auth；其余成员照既有白名单",
 		},
 		{
 			file: EXTENSION_SOURCE_TEST,
@@ -251,21 +250,16 @@ const SOURCE_ROWS = {
 		"这一版不对拓展开(4-14 主人定:没有真使用者,第一个要真实预览的拓展再开;契约「订阅源」表里 `fetchLiveStatus、fetchPreview、health、auth` 一行的 🔗):SourceDef 里没有这一格、运行时带了也不认,拓展订阅的卡片预览一律用示例。",
 		{
 			file: EXTENSION_SOURCE_TEST,
-			title:
-				"不开的成员带了也不认:auth、liveInteractions、descriptor、fetchPreview;health 按表收下",
+			title: "旧小号仍不开放 auth；其余成员照既有白名单",
 		},
 	),
 	start: driven(TITLE.lifecycle),
 	stop: driven(TITLE.lifecycle),
-	auth: closed(
-		"这一版不对拓展开(主人 10-24 定,契约「订阅源」表里 `fetchLiveStatus、fetchPreview、health、auth` 一行的 🔗):类型里排除、运行时带了也不认,等第一个要登录的拓展。",
-		THIS(TITLE.closedPorts),
-		{
-			file: EXTENSION_SOURCE_TEST,
-			title:
-				"不开的成员带了也不认:auth、liveInteractions、descriptor、fetchPreview;health 按表收下",
-		},
-	),
+	auth: {
+		state: "elsewhere",
+		file: EXTENSION_SOURCE_TEST,
+		it: "订阅源可提供扫码账号，只公开当前验证操作，停用后不能继续验码",
+	},
 } satisfies Record<keyof Source, Row>;
 
 type SubscriptionCell = keyof NonNullable<ExtensionManifest["contributes"]["subscription"]>;
@@ -1014,7 +1008,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			status: 400,
 			body: { code: "unsupported" },
 		});
-		drove("Source", "auth");
+		// This revision-zero fixture verifies compatibility with the earlier source API.
 		drove("PlatformAdapter", "listAddressCandidates", "connectionAuth");
 	});
 
@@ -1601,10 +1595,10 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			expect(size("IntegrationContext")).toBe(14);
 			expect(entries).toHaveLength(64);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 本文件驱动 39 行，另有 16 行由所引用测试管着（含 featureHints 的公共来源路由）；不开 8 行，宿主填 1 行。
+			// 本文件驱动 39 行，另有 17 行由所引用测试管着（含 auth、featureHints）；不开 7 行，宿主填 1 行。
 			expect(of("driven")).toHaveLength(39);
-			expect(of("elsewhere")).toHaveLength(16);
-			expect(of("closed")).toHaveLength(8);
+			expect(of("elsewhere")).toHaveLength(17);
+			expect(of("closed")).toHaveLength(7);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(
 				of("closed")
@@ -1615,7 +1609,6 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 					"PlatformAdapter.connectionAuth",
 					"PlatformAdapter.descriptor",
 					"PlatformAdapter.listAddressCandidates",
-					"Source.auth",
 					"Source.descriptor",
 					"Source.fetchPreview",
 					"Source.liveInteractions",
@@ -1627,7 +1620,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		it("开放的行与宿主那张成员表对得上:来源 = SOURCE_DEF_MEMBERS 里为 true 的,适配器的「不开 / 宿主填」= PlatformAdapterDef 摘掉的四个", () => {
 			expect(ADAPTER_DEF_OMITTED_IS_COMPLETE).toBe(true);
 			const opened = Object.entries(SOURCE_ROWS)
-				.filter(([, row]) => (row as Row).state === "driven")
+				.filter(([, row]) => ["driven", "elsewhere"].includes((row as Row).state))
 				.map(([member]) => member)
 				.sort();
 			const hostOpens = Object.entries(SOURCE_DEF_MEMBERS)

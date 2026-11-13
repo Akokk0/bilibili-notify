@@ -21,7 +21,7 @@ async function installedVersion(name) {
 }
 
 const CONSUMER_SOURCE = `
-import type { ExtensionContext, ExtensionLinkPreview, SourceDef } from "@bilibili-notify/extension";
+import type { AuthState, ExtensionContext, ExtensionLinkPreview, SourceAccount, SourceAuth, SourceDef } from "@bilibili-notify/extension";
 import { ok } from "@bilibili-notify/extension";
 import type { ExtensionEntrySchemas } from "@bilibili-notify/extension/build";
 import { z } from "zod";
@@ -32,7 +32,16 @@ export const settingsSchema = z.object({
   message: z.string().default("Hello").meta({ label: "Message" }),
 });
 const schemas: ExtensionEntrySchemas = { settingsSchema };
+const auth: SourceAuth = {
+  state: (): AuthState => ({ status: "confirming", verification: { kind: "sms", attemptId: "fixture" } }),
+  account: (): SourceAccount | null => null,
+  onChange: () => ({ dispose() {} }),
+  async beginLogin() { return ok(); },
+  async logout() { return ok(); },
+  async submitVerification(_attemptId, _code) { return ok(); },
+};
 export const source: SourceDef = {
+  auth,
   async resolveLink(url, signal) {
     signal.throwIfAborted();
     const preview: ExtensionLinkPreview = {postId: "123", url, post: {

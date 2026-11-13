@@ -2,7 +2,7 @@ import type { ServiceContext, SourceAuth } from "@bilibili-notify/internal";
 import { type Mock, vi } from "vite-plus/test";
 import type { ImageWriter } from "../../../images/image-store.js";
 import type { Api } from "../../api/index.js";
-import type { AuthSystem } from "../../auth/index.js";
+import type { AuthSystem, BilibiliSourceAuth } from "../../auth/index.js";
 import type { BiliContext } from "../../context.js";
 
 /**
@@ -15,7 +15,7 @@ import type { BiliContext } from "../../context.js";
  */
 export interface FakeLoginSystem extends AuthSystem {
 	api: Api;
-	auth: Required<SourceAuth>;
+	auth: BilibiliSourceAuth;
 	start: Mock<() => Promise<void>>;
 	stop: Mock<() => void>;
 	healthCheckNow: Mock<() => Promise<boolean>>;
@@ -31,7 +31,7 @@ export function fakeLoginSystem(parts: {
 }): FakeLoginSystem {
 	return {
 		api: parts.api,
-		auth: parts.auth as Required<SourceAuth>,
+		auth: parts.auth as BilibiliSourceAuth,
 		start: vi.fn(async () => {}),
 		stop: vi.fn(),
 		healthCheckNow: vi.fn(async () => true),

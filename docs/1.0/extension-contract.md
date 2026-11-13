@@ -199,6 +199,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 - `searchCreators` 3b 造、B 站实现、只给 AI 的搜人工具用；`GET /api/sources/:sourceKey/creators` 与面板仍第 4 期。🔗 现状（4-15，10-28）：路由与面板落了。
 - `featureHints?`：唯一允许写自由文字的一格，覆盖特性开关下的小字。其余格只填词；描述符不装界面句子，句子由核心拼。
 - 清单**不收** `membershipPrograms` 与 `supportedExtras`：1.0 拓展声明不了会员与直播互动类特性（见下，ADR-0021 决策 38），这两格填了也用不上。会员档位（含 `color?` / `announcement?`）这一格等开放会员类特性时再加。
+- 6-07a 开放来源登录。清单需要 `apiRevision: 1`，`SourceDef.auth` 实现 `SourceAuth`。扫码、退出、状态与账号沿来源登录接口；短信挑战通过 `submitVerification(attemptId, code)` 回答，图形验证由账号持有人打开平台的 HTTPS 页面完成。宿主把当前挑战置于原扫码弹窗。凭据使用来源隔离的 `ctx.secrets`，旧契约的来源仍按原白名单装载。[订阅来源的账号和扫码](../../packages/extension/DEVELOPMENT.md#订阅来源的账号和扫码)
 - 拓展实现了哪些可选能力（`auth`、`fetchLiveStatus`、`fetchPreview`）由宿主推算、随 `/api/sources` 下发，不在清单里自报。
 - 拓展卸载后遗留的订阅：平台名显示来源键、叫法用中性词、不露特性开关，卡上标「来源没装」。
 

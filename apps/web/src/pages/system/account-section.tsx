@@ -95,8 +95,12 @@ export function AccountSection({
 			["awaiting-scan", "confirming"].includes(a.state.status),
 	)?.sourceKey;
 	const newKey = !openKey
-		? rows.find((a) => a.state.status === "awaiting-scan" && !sessions[a.sourceKey]?.scanning)
-				?.sourceKey
+		? rows.find(
+				(a) =>
+					(a.state.status === "awaiting-scan" ||
+						(a.state.status === "confirming" && a.state.verification)) &&
+					!sessions[a.sourceKey]?.scanning,
+			)?.sourceKey
 		: undefined;
 	const next: Record<string, ScanSession> =
 		query.isError || query.isPending
@@ -106,7 +110,8 @@ export function AccountSection({
 						const prev = sessions[account.sourceKey];
 						const scanning =
 							account.state.status === "awaiting-scan" ||
-							(account.state.status === "confirming" && prev?.scanning === true);
+							(account.state.status === "confirming" &&
+								(Boolean(account.state.verification) || prev?.scanning === true));
 						return [
 							account.sourceKey,
 							{

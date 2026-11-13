@@ -212,6 +212,49 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 		}
 	});
 
+	// Separate attempts can overlap after a rescan. An older request never unlocks a newer one.
+	const submitting = new WeakMap<SourceAuth, string>();
+	const answerSchema = z.strictObject({
+		attemptId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+		code: z.string().regex(/^\d{4,8}$/),
+	});
+	app.post("/:sourceKey/auth/verification", async (c) => {
+		c.header("Cache-Control", "no-store");
+		const input = answerSchema.safeParse(await c.req.json().catch(() => undefined));
+		if (!input.success) return respondFailure(c, fail("invalid", t("sources.auth.invalidCode")));
+		const sourceKey = c.req.param("sourceKey");
+		const found = authOf(sourceKey);
+		if ("failure" in found) return respondFailure(c, found.failure);
+		const { auth } = found;
+		const { attemptId, code } = input.data;
+		if (!auth.submitVerification)
+			return respondFailure(c, fail("unsupported", t("sources.auth.unsupported")));
+		try {
+			const current = auth.state();
+			if (
+				current.status !== "confirming" ||
+				current.verification?.kind !== "sms" ||
+				current.verification.attemptId !== attemptId ||
+				submitting.get(auth) === attemptId
+			)
+				return respondFailure(c, fail("conflict", t("sources.auth.challengeChanged")));
+			submitting.set(auth, attemptId);
+			try {
+				const result = await auth.submitVerification(attemptId, code);
+				if (registry.get(sourceKey)?.auth !== auth)
+					return respondFailure(c, fail("conflict", t("sources.auth.challengeChanged")));
+				if (!result.ok)
+					return respondFailure(c, fail(result.code, t("sources.auth.verificationFailed")));
+				return c.json(responseOf(auth));
+			} finally {
+				if (submitting.get(auth) === attemptId) submitting.delete(auth);
+			}
+		} catch {
+			// Upstream failures may echo the code or a verification ticket.
+			return respondFailure(c, fail("unavailable", t("sources.auth.verificationFailed")));
+		}
+	});
+
 	app.delete("/:sourceKey/auth", async (c) => {
 		const found = authOf(c.req.param("sourceKey"));
 		if ("failure" in found) return respondFailure(c, found.failure);

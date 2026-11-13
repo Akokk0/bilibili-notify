@@ -41,6 +41,19 @@ vp dlx @bilibili-notify/bn@alpha dev
 
 手动挂载存在于源码开发版和`bn dev`专用成品。`bn web`、Docker、桌面及普通生产构建没有此入口；运行期环境变量不能打开它。两个宿主使用相同默认端口时需先停止其中一个；多个拓展应挂到同一台开发BN。
 
+## 订阅来源的账号和扫码
+
+需要登录的来源在清单写 `apiVersion: 1`、`apiRevision: 1`，并在 `ctx.registerSource` 的 `auth` 提供 `SourceAuth`。宿主在「系统 → 账号」列出来源，并通过 `onChange` 重读同步的 `state()`、`account()`。独立来源分别登录和退出。仍在使用契约 1/0 的宿主会要求升级。
+
+`beginLogin()` 生成新二维码。以 `awaiting-scan` 返回 `qr.dataUrl`（PNG data URL）和 ISO 格式的 `qr.expiresAt`。等待手机确认用 `confirming`。已有会话失效用 `expired`，二维码过期或无可用验证途径用 `error` 并给出可公开的原因。仅在上游确认凭据有效后进入 `logged-in`。
+
+需要二次验证时，在 `confirming.verification` 提供以下一种操作。
+
+- 短信验证码使用 `{ kind: "sms", attemptId }`。同一次发码与验码共享内存中的上游会话。每个挑战新建一个 1–128 位的随机公开标识（字母、数字、下划线或连字符），再用 `submitVerification(attemptId, code)` 接收 4–8 位数字。拓展在发请求和采用其结果前都须核对会话。新扫码、退出、停用时取消旧轮询和验码请求，忽略迟到的响应。
+- 图形验证使用 `{ kind: "external", url }`。仅接受平台提供的官方 HTTPS 地址，拓展校验来源和跳转，等待用户在官方页面完成后继续向上游确认。
+
+登录凭据按拓展隔离保存在 `ctx.secrets`。启动时读取并重新确认，退出时清除。验证码、上游票据与待扫会话只留内存；只把可公开的字段放进状态、账号、错误和日志。账号切换时中止旧账号的业务请求，使先发出的响应无法覆盖新状态。
+
 ## 包与入口
 
 根目录保留`extension.json`。新模板将市场名称、命名空间和作者资料放在 `.bn-extension/marketplace.json`。发行ZIP包含构建后的`extension.json`、单文件`index.mjs`，可选`README.md`、`CHANGELOG.md`及`locales/<语言码>.json`；开发入口`devtools.mjs`不进入发行ZIP。

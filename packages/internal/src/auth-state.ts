@@ -20,7 +20,12 @@
 export type AuthState =
 	| { status: "logged-out" }
 	| { status: "awaiting-scan"; qr: { dataUrl: string; expiresAt: string } }
-	| { status: "confirming"; message?: string }
+	| {
+			status: "confirming";
+			message?: string;
+			/** Public challenge only. The upstream ticket and submitted code stay in the source's session. */
+			verification?: { kind: "sms"; attemptId: string } | { kind: "external"; url: string };
+	  }
 	| { status: "logged-in"; loggedInAt: string }
 	| { status: "expired" | "error"; message: string };
 

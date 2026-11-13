@@ -19,6 +19,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { applySourceAuthChanged } from "../../hooks/use-source-auth";
 import { i18n } from "../../i18n";
+import { api } from "../../services/api";
 import System from "../System";
 
 // This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
@@ -240,6 +241,34 @@ describe("系统页账号卡 · 六种登录状态", () => {
 		expect(screen.getAllByText("已扫码，请在手机上确认")).toHaveLength(1);
 	});
 
+	it("二次验证：刷新后可继续当前挑战；换码清空输入并只提交新会话", async () => {
+		const challenge = (attemptId: string) => ({
+			status: "confirming" as const,
+			verification: { kind: "sms" as const, attemptId },
+		});
+		H.auth = { state: challenge("original") };
+		renderSystem();
+		const code = await screen.findByLabelText("短信验证码");
+		fireEvent.change(code, { target: { value: "123456" } });
+		pushState(challenge("replaced"));
+		await waitFor(() =>
+			expect((screen.getByLabelText("短信验证码") as HTMLInputElement).value).toBe(""),
+		);
+		fireEvent.change(screen.getByLabelText("短信验证码"), { target: { value: "654321" } });
+		H.postResult = {
+			state: { status: "logged-in", loggedInAt: NOW },
+			account: { name: "书库账号" },
+		};
+		fireEvent.click(screen.getByRole("button", { name: "验证" }));
+		await waitFor(() =>
+			expect(api.post).toHaveBeenCalledWith("/api/sources/library/auth/verification", {
+				attemptId: "replaced",
+				code: "654321",
+			}),
+		);
+		expect(await screen.findByText("书库账号")).toBeTruthy();
+		expect(screen.queryByLabelText("短信验证码")).toBeNull();
+	});
 	it("confirming · 弹窗没开（开机没确认、没见过 awaiting-scan）：话在卡片上，没有弹窗，发起可点", async () => {
 		// 与上一条同一句话——区别只有本地见没见过 awaiting-scan，面板不靠比对文字分。
 		H.auth = { state: { status: "confirming", message: "已扫码，请在手机上确认" } };

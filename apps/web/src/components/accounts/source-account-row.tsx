@@ -8,10 +8,11 @@ import {
 	Pill,
 	QrPanel,
 	StatusDot,
+	TInput,
 } from "@bilibili-notify/ui";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { AUTH_STATUS_ACCENT, AUTH_STATUS_LABELS, authMessageOf } from "../../config/auth-status";
 import { useSourceAuth } from "../../hooks/use-source-auth";
 import { useT } from "../../i18n";
@@ -24,6 +25,49 @@ export interface ScanSession {
 	scanning: boolean;
 	dismissed: boolean;
 }
+function SmsVerification({ submit }: { submit: (code: string) => Promise<void> }) {
+	const tx = useT();
+	const inputId = useId();
+	const [code, setCode] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string>();
+	return (
+		<form
+			className="grid gap-3"
+			onSubmit={async (event) => {
+				event.preventDefault();
+				if (busy || !/^\d{4,8}$/.test(code)) return;
+				setError(undefined);
+				setBusy(true);
+				setCode("");
+				try {
+					await submit(code);
+				} catch (err) {
+					setError(errorTextOf(err));
+				} finally {
+					setBusy(false);
+				}
+			}}
+		>
+			<label htmlFor={inputId} className="grid gap-1 text-bn-sm">
+				{tx("accounts.smsCode")}
+				<TInput
+					id={inputId}
+					secret
+					autoComplete="one-time-code"
+					value={code}
+					onChange={setCode}
+					disabled={busy}
+				/>
+			</label>
+			{error && <ErrorNote size="sm">{error}</ErrorNote>}
+			<Btn type="submit" size="sm" disabled={busy || !/^\d{4,8}$/.test(code)}>
+				{tx("accounts.verify")}
+			</Btn>
+		</form>
+	);
+}
+
 export function SourceAccountRow({
 	account,
 	source,
@@ -59,6 +103,7 @@ export function SourceAccountRow({
 	} = useSortable({ id: account.sourceKey, disabled: total < 2 || busy });
 	const open = session.scanning && !session.dismissed;
 	const message = authMessageOf(state);
+	const verification = state.status === "confirming" ? state.verification : undefined;
 	return (
 		<div
 			ref={setNodeRef}
@@ -128,9 +173,11 @@ export function SourceAccountRow({
 					variant={loggedIn ? "outline" : "primary"}
 					disabled={busy || loggedIn}
 					aria-label={
-						state.status === "awaiting-scan"
-							? tx("accounts.continueLabel", { source: label })
-							: tx("accounts.loginLabel", { source: label })
+						verification
+							? tx("accounts.continueVerification")
+							: state.status === "awaiting-scan"
+								? tx("accounts.continueLabel", { source: label })
+								: tx("accounts.loginLabel", { source: label })
 					}
 					data-tour={tour ? "source-login" : undefined}
 					onClick={() => {
@@ -141,9 +188,11 @@ export function SourceAccountRow({
 				>
 					{auth.startLogin.isPending
 						? tx("accounts.working")
-						: state.status === "awaiting-scan"
-							? tx("accounts.continueScan")
-							: tx("accounts.scanLogin")}
+						: verification
+							? tx("accounts.continueVerification")
+							: state.status === "awaiting-scan"
+								? tx("accounts.continueScan")
+								: tx("accounts.scanLogin")}
 				</Btn>
 				<IconButton
 					size="lg"
@@ -173,6 +222,37 @@ export function SourceAccountRow({
 									{tx("accounts.scanHint", { source: label })}
 								</p>
 							</QrPanel>
+						) : verification ? (
+							<div className="grid gap-3">
+								{message && <p className="text-bn-sm text-bn-text-secondary">{message}</p>}
+								{verification.kind === "sms" ? (
+									<SmsVerification
+										key={verification.attemptId}
+										submit={(code) => auth.submitVerification(verification.attemptId, code)}
+									/>
+								) : (
+									<a
+										className="text-bn-sm text-bn-blue underline"
+										href={verification.url}
+										target="_blank"
+										rel="noopener noreferrer"
+										referrerPolicy="no-referrer"
+									>
+										{tx("accounts.openVerification")}
+									</a>
+								)}
+								<Btn
+									size="sm"
+									variant="outline"
+									disabled={busy}
+									onClick={() => {
+										setError(null);
+										auth.startLogin.mutate(undefined, { onError: (e) => setError(errorTextOf(e)) });
+									}}
+								>
+									{tx("accounts.rescan")}
+								</Btn>
+							</div>
 						) : (
 							<p className="py-4 text-center text-bn-sm text-bn-text-secondary">
 								{message || tx("accounts.confirmPhone")}

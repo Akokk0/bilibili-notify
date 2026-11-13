@@ -465,6 +465,7 @@ const SOURCE_DESCRIPTOR_MEMBERS = {
 	featureHints: ["P50"],
 } as const satisfies Record<keyof SourceDescriptor, readonly RowId[]>;
 const SOURCE_AUTH_MEMBERS = {
+	submitVerification: ["P16"],
 	beginLogin: ["P16"],
 	logout: ["P16"],
 	state: ["P16"],
@@ -1861,6 +1862,12 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				account: { name: "账号甲" },
 			});
 
+			// A source without an SMS challenge cannot accept codes.
+			const verification = await api(
+				`${authUrl}/verification`,
+				json({ attemptId: "old", code: "123456" }),
+			);
+			expect(await verification.json()).toMatchObject({ code: "unsupported" });
 			// 发起扫码:进 awaiting-scan;已在等扫码时再发起,回 conflict。
 			const begun = await okRes(await api(authUrl, { method: "POST" }));
 			expect(((await begun.json()) as SourceAuthResponse).state.status).toBe("awaiting-scan");

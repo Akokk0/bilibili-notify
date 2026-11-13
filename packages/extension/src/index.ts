@@ -38,6 +38,7 @@
  * 拓展碰不着配置的写路径,那条路在这仓里只有一条。
  */
 export type {
+	AuthState,
 	CapabilitySupport,
 	Connection,
 	ConnectionCandidate,
@@ -102,6 +103,8 @@ export type {
 	 */
 	SettingsReader,
 	SettingsScalarField,
+	SourceAccount,
+	SourceAuth,
 	SourceHealth,
 	SourceSubscriptionView,
 	WebSocketLike,

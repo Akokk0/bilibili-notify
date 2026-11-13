@@ -206,3 +206,38 @@ describe("三个口", () => {
 		});
 	});
 });
+
+describe("面板短信验证", () => {
+	const challenge: AuthState = {
+		status: "confirming",
+		verification: { kind: "sms", attemptId: "new-attempt" },
+	};
+	const post = (app: Awaited<ReturnType<typeof appOf>>["app"], attemptId: string, code: string) =>
+		app.request("/library/auth/verification", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ attemptId, code }),
+		});
+	it("只向当前短信会话提交，并发提交只受理一次；错误与日志不包含验证码", async () => {
+		const { auth } = fakeAuth(challenge);
+		let finish!: (result: Result) => void;
+		const submitVerification = vi.fn(
+			() =>
+				new Promise<Result>((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const { app, log } = await appOf({ library: { auth: { ...auth, submitVerification } } });
+		expect((await post(app, "stale", "123456")).status).toBe(409);
+		expect((await post(app, "new-attempt", "letters")).status).toBe(400);
+		expect(submitVerification).not.toHaveBeenCalled();
+		const first = post(app, "new-attempt", "123456");
+		await vi.waitFor(() => expect(submitVerification).toHaveBeenCalledTimes(1));
+		expect((await post(app, "new-attempt", "123456")).status).toBe(409);
+		finish(fail("invalid", "upstream rejected 123456 private-ticket"));
+		const response = await first;
+		expect(response.status).toBe(400);
+		expect(await response.text()).not.toMatch(/123456|private-ticket/);
+		expect(JSON.stringify(log.error.mock.calls)).not.toMatch(/123456|private-ticket/);
+	});
+});

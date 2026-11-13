@@ -147,6 +147,7 @@ async function make(
 	def: Partial<SourceDef> & Record<string, unknown> = {},
 	opts: {
 		supportedFeatures?: string[];
+		apiRevision?: number;
 		images?: (ref: string) => Promise<Stored> | Stored;
 		start?: boolean;
 		externalIdNoun?: string;
@@ -166,7 +167,10 @@ async function make(
 	} as unknown as SourceDef;
 	const source = createExtensionSource({
 		id: "douyin",
-		manifest: () => manifestOf(opts.supportedFeatures, opts.externalIdNoun, opts.creatorNoun),
+		manifest: () => ({
+			...manifestOf(opts.supportedFeatures, opts.externalIdNoun, opts.creatorNoun),
+			apiRevision: opts.apiRevision,
+		}),
 		def: full,
 		logger,
 		images: { read: async (ref) => opts.images?.(ref) },
@@ -261,9 +265,40 @@ describe("createExtensionSource:成员与描述符", () => {
 		expect(impl.calls).toEqual(["start", "search:猫", "stop"]);
 	});
 
-	it("不开的成员带了也不认:auth、liveInteractions、descriptor、fetchPreview;health 按表收下", async () => {
+	it("订阅源可提供扫码账号，只公开当前验证操作，停用后不能继续验码", async () => {
+		const submitVerification = vi.fn(async () => ({ ok: true as const }));
+		const made = await make(
+			{
+				auth: {
+					beginLogin: async () => ({ ok: true as const }),
+					logout: async () => ({ ok: true as const }),
+					state: () => ({
+						status: "confirming",
+						verification: { kind: "sms", attemptId: "current", ticket: "private" },
+						cookie: "private",
+					}),
+					onChange: () => ({ dispose() {} }),
+					submitVerification,
+				},
+			},
+			{ apiRevision: 1 },
+		);
+		const auth = made.source.auth;
+		expect(auth?.state()).toEqual({
+			status: "confirming",
+			verification: { kind: "sms", attemptId: "current" },
+		});
+		await expect(auth?.submitVerification?.("current", "123456")).resolves.toEqual({ ok: true });
+		await made.source.stop();
+		await expect(auth?.submitVerification?.("current", "123456")).resolves.toMatchObject({
+			ok: false,
+		});
+		expect(submitVerification).toHaveBeenCalledTimes(1);
+	});
+
+	it("旧小号仍不开放 auth；其余成员照既有白名单", async () => {
 		const made = await make({
-			auth: { state: () => ({ status: "logged-in" }) },
+			auth: { state: () => ({ status: "logged-in" }) } as never,
 			liveInteractions: { fetchViewerAvatar: async () => ({ ok: false }) },
 			descriptor: { label: "冒充" },
 			fetchPreview: async () => ({ ok: false, code: "unavailable", message: "冒充" }),
