@@ -7,12 +7,14 @@ function fixture(
 	saved?: string,
 	accountData: object = { is_visitor_account: false, user_id_str: "12345", name: "Douyin tester" },
 ) {
+	const requests: { url: URL; headers: Headers }[] = [];
 	const ops: string[] = [],
 		timers: Array<() => void | Promise<void>> = [];
 	const secrets = new Map<string, string>();
 	if (saved) secrets.set("login.cookies", saved);
 	let pollReply: object | undefined;
 	let unreadableAccountReplies = 0;
+	let homeStatus = 200;
 	let validationReply: object = { data: { error_code: 0 } };
 	const smsRequests: { trace: string | null; code: string | null }[] = [];
 	let source!: SourceDef;
@@ -53,10 +55,18 @@ function fixture(
 			fetch: async (u: URL | string, o: FetchOptions) => {
 				const url = new URL(u);
 				ops.push(url.hostname + url.pathname);
+				requests.push({ url, headers: new Headers(o.headers) });
 				expect(o.bare).toBe(true);
 				expect(o.maxRedirects).toBe(0);
 				const h = new Headers();
 				let body: object = {};
+				if (url.href === "https://www.douyin.com/") {
+					h.append("Set-Cookie", "__ac_nonce=synthetic-nonce; Path=/; Secure");
+					h.append(
+						"Set-Cookie",
+						"passport_csrf_token=synthetic-csrf; Domain=douyin.com; Path=/; Secure",
+					);
+				}
 				if (url.pathname.endsWith("get_qrcode/"))
 					body = {
 						data: {
@@ -84,6 +94,7 @@ function fixture(
 						? validationReply
 						: { data: { error_code: 0 } };
 				}
+				if (url.pathname.endsWith("/get_qrcode/")) h.set("x-ms-token", "synthetic-ms-token");
 				if (url.pathname === "/sso/callback")
 					h.append("Set-Cookie", "sessionid=sample; Domain=.douyin.com; Path=/; Secure");
 				if (url.pathname.endsWith("/info/v2/")) {
@@ -92,8 +103,8 @@ function fixture(
 				}
 				return {
 					ok: true,
-					status: 200,
-					isSuccess: true,
+					status: url.href === "https://www.douyin.com/" ? homeStatus : 200,
+					isSuccess: url.href !== "https://www.douyin.com/" || homeStatus < 400,
 					headers: h,
 					url: url.href,
 					text: () => JSON.stringify(body),
@@ -118,6 +129,10 @@ function fixture(
 			account: source.auth.account,
 		},
 		smsRequests,
+		requests,
+		setHomeStatus: (status: number) => {
+			homeStatus = status;
+		},
 		ops,
 		pollNext: async () => {
 			const next = timers.shift();
@@ -346,4 +361,41 @@ it("cancels the pending account check when signing out", async () => {
 	expect(f.auth.state().status).toBe("logged-out");
 	expect(f.ops.filter((path) => path.endsWith("/info/v2/"))).toHaveLength(1);
 	expect(f.secrets.size).toBe(0);
+});
+
+it("initializes a fresh login session on Douyin before requesting a QR and respects cookie scope", async () => {
+	const f = fixture();
+	expect(await f.auth.beginLogin()).toEqual({ ok: true });
+	expect(f.requests[0].url.href).toBe("https://www.douyin.com/");
+	const request = f.requests.find(({ url }) => url.pathname.endsWith("/get_qrcode/"));
+	if (!request) throw new Error("Missing QR request");
+	expect(request.headers.get("cookie")).toContain("passport_csrf_token=synthetic-csrf");
+	expect(request.headers.get("cookie")).not.toContain("synthetic-nonce");
+	expect(request.headers.get("x-tt-passport-csrf-token")).toBe("synthetic-csrf");
+	expect(f.secrets.size).toBe(0);
+});
+
+it("carries the refreshed login token into QR polling without saving an unverified login", async () => {
+	const f = fixture();
+	await f.auth.beginLogin();
+	await f.pollNext();
+	const request = f.requests.find(({ url }) => url.pathname.endsWith("/check_qrconnect/"));
+	if (!request) throw new Error("Missing QR poll");
+	expect(request.headers.get("cookie")).toContain("msToken=synthetic-ms-token");
+	expect(request.url.searchParams.get("msToken")).toBe("synthetic-ms-token");
+	expect(f.redact).toHaveBeenCalledWith("synthetic-ms-token");
+	expect(f.auth.state().status).toBe("awaiting-scan");
+	expect(f.secrets.size).toBe(0);
+});
+
+it("stops before creating a QR when login initialization fails and allows a fresh attempt", async () => {
+	const f = fixture();
+	f.setHomeStatus(403);
+	expect(await f.auth.beginLogin()).toMatchObject({ ok: false, message: "auth.prepareFailed" });
+	expect(f.auth.state()).toEqual({ status: "error", message: "auth.prepareFailed" });
+	expect(f.requests.map(({ url }) => url.pathname)).toEqual(["/"]);
+	expect(f.secrets.size).toBe(0);
+	f.setHomeStatus(200);
+	expect(await f.auth.beginLogin()).toEqual({ ok: true });
+	expect(f.auth.state().status).toBe("awaiting-scan");
 });

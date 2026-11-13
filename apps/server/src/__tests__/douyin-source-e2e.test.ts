@@ -174,6 +174,11 @@ beforeAll(async () => {
 			reply({ status_code: 0, aweme_detail: sharedPost });
 			return;
 		}
+		if (url.pathname === "/www.douyin.com/") {
+			res.setHeader("set-cookie", "__ac_nonce=synthetic-nonce; Path=/; Secure");
+			res.writeHead(200, { "content-type": "text/html" }).end("<!doctype html>");
+			return;
+		}
 		if (url.pathname === "/login.douyin.com/passport/web/get_qrcode/") {
 			reply({
 				data: {

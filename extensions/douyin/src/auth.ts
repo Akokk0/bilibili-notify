@@ -238,6 +238,9 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		};
 		active = a;
 		publish({ status: "confirming", message: t("requesting") });
+		const prepared = await a.session.prepare(signal(a));
+		if (!valid(a)) return fail("conflict", t("expired"));
+		if (!prepared.ok) return failure(a, prepared.message);
 		const r = await a.session.exchange("get_qrcode", signal(a), {
 			next: `${WEB}/`,
 			need_short_url: "true",

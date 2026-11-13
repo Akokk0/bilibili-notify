@@ -1,6 +1,6 @@
 {
 	"auth.redirect": "Login stopped because the redirect address was not trusted.",
-	"auth.risk": "Douyin blocked this sign-in during a security check (code {code}). Check the Douyin app for a security notice, then scan a new code later.",
+	"auth.risk": "Douyin rejected this sign-in during a security check (code {code}). Please try again later.",
 	"auth.pollCode": "Douyin could not confirm the scan (code {code}). Check for a message on your phone, then scan a new code.",
 	"auth.pollUnknown": "Douyin returned an unrecognized scan status. Please scan a new code.",
 	"auth.network": "Douyin's response could not be verified.",
@@ -47,5 +47,6 @@
 			}
 		}
 	},
-	"api.private": "This creator’s Douyin account is private."
+	"api.private": "This creator’s Douyin account is private.",
+	"auth.prepareFailed": "Could not initialize the Douyin sign-in session. Please try again later."
 }

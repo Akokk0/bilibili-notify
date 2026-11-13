@@ -27,7 +27,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 		const headers = new Headers(options.headers);
 		headers.set("user-agent", userAgent);
 		headers.set("referer", `${WEB}/`);
-		headers.set("accept", "application/json, */*");
+		if (!headers.has("accept")) headers.set("accept", "application/json, */*");
 		const cookie = jar.header(url.href);
 		if (cookie) headers.set("cookie", cookie);
 		const res = await ctx.http.fetch(url, {
@@ -41,7 +41,20 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 		});
 		if (!res.ok || signal.aborted) return fail("unavailable", ctx.i18n.t("auth.network"));
 		for (const c of res.headers.getSetCookie()) jar.ingest(url.href, c);
+		const token = res.headers.get("x-ms-token");
+		if (token && /^[A-Za-z0-9_~+/%=-]{1,4096}$/.test(token)) {
+			ctx.redact(token);
+			jar.ingest(url.href, `msToken=${token}; Domain=douyin.com; Path=/; Secure`);
+		}
 		return res;
+	}
+	async function prepare(signal: AbortSignal): Promise<Result> {
+		const response = await request(new URL("/", WEB), signal, {
+			headers: { accept: "text/html,application/xhtml+xml" },
+		});
+		return response.ok && response.isSuccess
+			? ok()
+			: fail("unavailable", ctx.i18n.t("auth.prepareFailed"));
 	}
 	async function sso(raw: string, signal: AbortSignal) {
 		let url: URL;
@@ -174,7 +187,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			...(sms ? { body: new URLSearchParams(fields).toString() } : {}),
 		});
 	}
-	return { account, exchange, sso, jar };
+	return { prepare, account, exchange, sso, jar };
 }
 export function smsFields(
 	d: Record<string, unknown>,
