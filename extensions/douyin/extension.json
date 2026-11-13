@@ -11,7 +11,9 @@
 			"supportedFeatures": ["post", "liveStart", "liveStreaming", "liveEnd"],
 			"postNoun": "作品",
 			"creatorNoun": "博主",
-			"externalIdNoun": "作者 ID"
+			"externalIdNoun": "作者 ID",
+			"icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZTM0ZDc3IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEwIDE3VjZsMTAtMnYxMU0xMCA5bDEwLTIiLz48ZWxsaXBzZSBjeD0iNyIgY3k9IjE3LjUiIHJ4PSIzIiByeT0iMi41Ii8+PGVsbGlwc2UgY3g9IjE3IiBjeT0iMTUuNSIgcng9IjMiIHJ5PSIyLjUiLz48L3N2Zz4=",
+			"color": "#e34d77"
 		},
 		"linkResolver": {
 			"patterns": [
@@ -46,5 +48,6 @@
 			]
 		}
 	},
-	"apiRevision": 1
+	"apiRevision": 1,
+	"icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 17V6l10-2v11M10 9l10-2\"/><ellipse cx=\"7\" cy=\"17.5\" rx=\"3\" ry=\"2.5\"/><ellipse cx=\"17\" cy=\"15.5\" rx=\"3\" ry=\"2.5\"/></svg>"
 }
