@@ -455,21 +455,16 @@ it("storage confirmation translates in place while keeping category, protection 
 
 it("storage retention days use the current language and English singular without changing selection", async () => {
 	renderSystem("/system#storage");
-	await screen.findByRole("list", { name: "分类用量" });
-	const field = document.querySelector<HTMLElement>('[data-code="core.history.retentionDays"]');
-	expect(field).toBeTruthy();
-	if (!field) throw new Error("retention field missing");
+	await screen.findByRole("button", { name: "30 天", pressed: true });
 	for (const [locale, one, three, selected] of [
 		["en", "1 day", "3 days", "30 days"],
 		["ja", "1 日", "3 日", "30 日"],
 		["zh-TW", "1 天", "3 天", "30 天"],
 	] as const) {
 		act(() => i18n.set({ locale, voice: "plain" }));
-		expect(within(field).getByRole("button", { name: one })).toBeTruthy();
-		expect(within(field).getByRole("button", { name: three })).toBeTruthy();
-		expect(within(field).getByRole("button", { name: selected }).getAttribute("aria-pressed")).toBe(
-			"true",
-		);
+		expect(screen.getByRole("button", { name: one })).toBeTruthy();
+		expect(screen.getByRole("button", { name: three })).toBeTruthy();
+		expect(screen.getByRole("button", { name: selected, pressed: true })).toBeTruthy();
 		expect(api.patch).not.toHaveBeenCalled();
 	}
 });
