@@ -1,6 +1,7 @@
 # ADR-0048：拓展市场配置放在 bn-extension 目录，发布仓库从环境取得
 
 - **状态**：2026-11-12 定案。
+- **部分取代**：可见配置目录随 `create-bn-ext@0.1.0-alpha.1` 发行，后续模板的目录由 [ADR-0049](0049-hidden-extension-marketplace-config.md) 修订。
 - **取代范围**：[ADR-0041](0041-extension-repository-source.md) 决策 2 和实施约定中的作者配置路径、仓库字段。
 
 ## 背景

@@ -214,23 +214,14 @@ describe("生成工程的公开发布命令", () => {
 		expect(github.state.requests).toEqual([]);
 	}, 120_000);
 
-	it("只有旧市场配置时提示迁移，不从 .bn 发布", async () => {
-		const cwd = await project("old-config");
-		const oldConfig = {
-			schemaVersion: 1,
-			repository: "owner/tools",
-			name: "example.demo",
-			namespace: "example",
-			owner: { name: "owner" },
-		};
-		await mkdir(join(cwd, ".bn"), { recursive: true });
-		await writeFile(join(cwd, ".bn/marketplace.json"), JSON.stringify(oldConfig));
-		await rm(join(cwd, "bn-extension/marketplace.json"), { force: true });
-		run("vp", ["run", "format"], cwd);
-		await expect(release(cwd, ["--dry-run"])).rejects.toThrow("bn-extension/marketplace.json");
-		await mkdir(join(cwd, "bn-extension"), { recursive: true });
-		await rename(join(cwd, ".bn/marketplace.json"), join(cwd, "bn-extension/marketplace.json"));
-		await expect(release(cwd, ["--dry-run"])).rejects.toThrow("repository");
+	it("市场配置未放在 .bn-extension 时提示缺少文件，不请求 GitHub", async () => {
+		const cwd = await project("missing-config");
+		await mkdir(join(cwd, "bn-extension"));
+		await rename(
+			join(cwd, ".bn-extension/marketplace.json"),
+			join(cwd, "bn-extension/marketplace.json"),
+		);
+		await expect(release(cwd)).rejects.toThrow("Missing .bn-extension/marketplace.json.");
 		expect(github.state.requests).toEqual([]);
 	}, 120_000);
 

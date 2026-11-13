@@ -19,7 +19,7 @@ git commit -m "feat: create extension"
 
 创建器使用`.node-version`固定Node，`packageManager`固定包管理器，开发依赖也固定版本。后续克隆用`vp install --frozen-lockfile`。若使用`--no-git`，先在工程根初始化自己的Git仓库，再运行`vp hooks enable`；安装过程会避开外层仓库。
 
-终端向导询问工程目录、拓展 ID 和显示名，目录和显示名可按回车使用默认值。尚未创建 GitHub 仓库也可以开发和打包。脚本可用 `vp dlx create-bn-ext@alpha my-extension --id example.demo --name "Example"` 跳过向导。首发版 `0.1.0-alpha.0` 的向导另会询问仓库。
+终端向导询问工程目录、拓展 ID 和显示名，目录和显示名可按回车使用默认值。尚未创建 GitHub 仓库也可以开发和打包。脚本可用 `vp dlx create-bn-ext@alpha my-extension --id example.demo --name "Example"` 跳过向导。
 
 `example.demo`里的`example`是市场命名空间，与GitHub的`owner`无关。第三方清单id必须包含这个命名空间；无点的id留给官方源。作者可选择自己的命名空间，但同一BN实例不允许两个不同来源占用同一命名空间。
 
@@ -43,7 +43,7 @@ vp dlx @bilibili-notify/bn@alpha dev
 
 ## 包与入口
 
-根目录保留`extension.json`。`bn-extension/marketplace.json` 保存市场名称、命名空间和作者资料。发行ZIP包含构建后的`extension.json`、单文件`index.mjs`，可选`README.md`、`CHANGELOG.md`及`locales/<语言码>.json`；开发入口`devtools.mjs`不进入发行ZIP。
+根目录保留`extension.json`。新模板将市场名称、命名空间和作者资料放在 `.bn-extension/marketplace.json`。发行ZIP包含构建后的`extension.json`、单文件`index.mjs`，可选`README.md`、`CHANGELOG.md`及`locales/<语言码>.json`；开发入口`devtools.mjs`不进入发行ZIP。
 
 生产拓展运行时没有自己的`node_modules`。生成配置把SDK与第三方依赖内联到入口；增加依赖后仍需保持单入口、自包含构建。源码开发使用工程已安装的依赖，不能据此假定生产也能读取它们；发布前仍需实际构建与装包校验。原生插件和运行时额外读文件的依赖需要另行设计，不能只凭构建成功判断可运行。
 
@@ -132,11 +132,9 @@ vp run release --tag v0.1.0 --dry-run
 
 `verify`串起代码门禁、构建和打包；发布命令还复验Conventional Commits。ZIP与SHA256在`artifacts/`，可在BN拓展页上传安装。SDK版本变化不替你更改清单的宿主契约要求。
 
-市场作者名默认为拓展命名空间，可在 `bn-extension/marketplace.json` 修改。创建时若已确定仓库，可选传 `--repository owner/repo`，以 GitHub 所有者作为作者名初值，并在初始化 Git 时设置 `origin`。
+市场作者名默认为拓展命名空间，可在市场配置的 `owner.name` 修改。创建时若已确定仓库，可选传 `--repository owner/repo`，以 GitHub 所有者作为作者名初值，并在初始化 Git 时设置 `origin`。
 
 准备发布时，GitHub Actions 从 `GITHUB_REPOSITORY` 取得目标仓库。本地预演和发布使用 `origin` 的推送地址。尚未设置时，先用 `git remote add origin <GitHub 仓库地址>` 添加，再用 `git remote get-url --push origin` 核对。
-
-旧工程升级到使用新路径的发布工具时，先把 `.bn/marketplace.json` 移至 `bn-extension/marketplace.json`，再从文件中删除 `repository` 字段。保留 `schemaVersion: 1` 和原来的作者与市场资料。继续使用 `create-bn-ext@0.1.0-alpha.0` 的工程沿用旧格式。
 
 发布前更新根清单版本，提交修改，再打匹配的 `v<版本>` 标签并推送到自己的 GitHub 仓库。生成的 Release 工作流先以读取权限跑 dry-run，成功后发布作业才取得 `contents: write`。手动触发默认只验证。完整流程和中断重跑方法见生成工程的 README。
 

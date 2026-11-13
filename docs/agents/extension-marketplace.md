@@ -56,6 +56,8 @@
 
 ## 官方的怎么发
 
+仓内官方拓展使用主仓发布工作流，无需创建 `.bn-extension/`。
+
 1. 改 `extensions/<id>/extension.json` 的 `version`,在 `extensions/<id>/CHANGELOG.md` 加 `## [x.y.z] — 日期` 一段,标题下第一段是概述(≤ 120 字,会进索引的 `notes`)。
 2. 提交、push 到 dev。
 3. 打 tag `extension/<id>@x.y.z` 并 push。`extension-release.yml` 会:门禁 → 核对 tag 与清单版本 → `vp run -F @bilibili-notify/extension-<id> build` → `scripts/pack-extension.mjs` 打包(必装 `extension.json` + `index.mjs`,另收可选的 `README.md` / `CHANGELOG.md` 与 `locales/<语言码>.json`,固定时间戳,sha256 可复现)→ 建同名 release、挂 zip → 拉当前索引(`.github/scripts/extension-release/fetch-marketplace-index.sh`)、并进这一条(`scripts/marketplace-index.mjs`)→ 用 `BN_UPDATE_SIGNING_KEY` 签 → 覆盖到 `extensions` release 的 `marketplace.json`。
@@ -67,14 +69,14 @@
 
 ## 第三方怎么开一个源
 
-创建器生成完整的 vp 工程、提交 hooks、检查与发布 Actions。发行工具与第三方索引不需要私有 internal 包。生成工程的 README 说明 `bn-extension/marketplace.json`、dry-run、版本 tag 和中断恢复。旧工程升级发布工具的步骤见 SDK 随包分发的[作者指南](../../packages/extension/DEVELOPMENT.md)。
+创建器生成完整的 vp 工程、提交 hooks、检查与发布 Actions。发行工具与第三方索引不需要私有 internal 包。新模板的 README 说明 `.bn-extension/marketplace.json`、dry-run、版本 tag 和中断恢复。仓外开发入口见[拓展作者指南](../../packages/extension/DEVELOPMENT.md)。
 
 作者要做的只有两件事,任何 https 静态托管都行(GitHub Release / Pages / 对象存储):
 
 1. 把拓展包(`vp pack` 出来的 `dist/`,打成 zip:必须含 `extension.json` + `index.mjs`,**建议带上 `README.md` 与 `CHANGELOG.md`**,各 ≤ 512KB —— BN 会把它们画在拓展详情页上,不带就是一页没有说明;带译文时包里也要有 `locales/<语言码>.json`)放到一个 https 地址,算出 sha256 与字节数。清单里的 `id` 必须是 `<你的命名空间>.<名字>`。除这些之外的文件装载那头一律拒收;开发入口 `devtools.mjs` 不进包,装包会拒。
 2. 放一份 `marketplace.json`(上面那个形状,`namespace` 写你的命名空间),`package.url` 指向那个 zip。
 
-用户在 BN 拓展页 →「源」→ 填完整HTTPS索引地址，或GitHub的`owner/repo` / 仓库首页网址（名字不用起，索引自己带）。仓库输入映射到固定Release `bn-marketplace`的`marketplace.json`附件；只支持公开可读的索引及ZIP，不附加GitHub认证。BN不审核源里的东西，装之前会再提醒一次。同一个命名空间在一台BN上只能由一个源占；想冒充官方（列一个不带点的id）整个源会被拒。仓库源约定见 [ADR-0041](../adr/0041-extension-repository-source.md)，作者配置见 [ADR-0048](../adr/0048-extension-marketplace-config.md)。
+用户在 BN 拓展页 →「源」→ 填完整HTTPS索引地址，或GitHub的`owner/repo` / 仓库首页网址（名字不用起，索引自己带）。仓库输入映射到固定Release `bn-marketplace`的`marketplace.json`附件；只支持公开可读的索引及ZIP，不附加GitHub认证。BN不审核源里的东西，装之前会再提醒一次。同一个命名空间在一台BN上只能由一个源占；想冒充官方（列一个不带点的id）整个源会被拒。仓库源约定见 [ADR-0041](../adr/0041-extension-repository-source.md)，作者配置目录见 [ADR-0049](../adr/0049-hidden-extension-marketplace-config.md)。
 
 ## 装了之后
 

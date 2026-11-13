@@ -24,7 +24,7 @@ description: Develop and fix standalone bilibili-notify extensions using the pub
 
 ## 打包与发布
 
-仅做开发或打包时，以本地产物和验证结果交付。用户要求发行时，先按项目 README 核对市场配置和清单版本。使用 `bn-extension/marketplace.json` 的工程在 GitHub Actions 核对 `GITHUB_REPOSITORY`，在本地核对 `git remote get-url --push origin`，然后运行 `vp run release --tag v<清单版本> --dry-run`。
+仅做开发或打包时，以本地产物和验证结果交付。用户要求发行时，先按项目 README 核对市场配置和清单版本。使用 `.bn-extension/marketplace.json` 的工程在 GitHub Actions 核对 `GITHUB_REPOSITORY`，在本地核对 `git remote get-url --push origin`，然后运行 `vp run release --tag v<清单版本> --dry-run`。
 
 dry-run 通过只证明本地校验与预览完成。真实发布按用户已授权的目标和版本执行；不要把“运行 dry-run”扩成发布授权。发布器负责版本 ZIP、校验值与固定索引的顺序；已有版本字节冲突时使用新版本，按文档接续中断任务。
 

@@ -129,7 +129,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			name: "Wizard extension",
 		});
 		expect(
-			JSON.parse(await readFile(join(project, "bn-extension/marketplace.json"), "utf8")),
+			JSON.parse(await readFile(join(project, ".bn-extension/marketplace.json"), "utf8")),
 		).toEqual({
 			schemaVersion: 1,
 			name: "Wizard extension",
@@ -137,9 +137,8 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			owner: { name: "example" },
 		});
 		expect(run("git", ["remote"], project).trim()).toBe("");
-		await expect(access(join(project, ".bn/marketplace.json"))).rejects.toMatchObject({
-			code: "ENOENT",
-		});
+		for (const oldPath of [".bn/marketplace.json", "bn-extension/marketplace.json"])
+			await expect(access(join(project, oldPath))).rejects.toMatchObject({ code: "ENOENT" });
 		run("vp", ["run", "verify"], project);
 	}, 120_000);
 
@@ -216,7 +215,7 @@ describe("创建器的实际npm包在仓外生成可开发的拓展工程", () =
 			"https://github.com/owner/tools.git",
 		);
 		const market = JSON.parse(
-			await readFile(join(project, "bn-extension/marketplace.json"), "utf8"),
+			await readFile(join(project, ".bn-extension/marketplace.json"), "utf8"),
 		);
 		expect(market.owner.name).toBe("owner");
 		expect(market).not.toHaveProperty("repository");

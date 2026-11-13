@@ -11,7 +11,7 @@ import {
 import { z } from "zod";
 import { compareEntryVersions } from "../../../scripts/extension-version-order.mjs";
 
-export const MARKETPLACE_CONFIG_PATH = "bn-extension/marketplace.json";
+export const MARKETPLACE_CONFIG_PATH = ".bn-extension/marketplace.json";
 
 const ConfigSchema = MarketplaceIndexSchema.pick({ name: true, namespace: true, owner: true })
 	.required({ namespace: true, owner: true })
@@ -81,9 +81,7 @@ export async function readProject(root: string) {
 	const configText = await readFile(join(root, MARKETPLACE_CONFIG_PATH), "utf8").catch(
 		(error: NodeJS.ErrnoException) => {
 			if (error.code !== "ENOENT") throw error;
-			throw new Error(
-				`Missing ${MARKETPLACE_CONFIG_PATH}. To upgrade an older project, move .bn/marketplace.json there and remove its repository field.`,
-			);
+			throw new Error(`Missing ${MARKETPLACE_CONFIG_PATH}.`);
 		},
 	);
 	const config = ConfigSchema.parse(JSON.parse(configText));

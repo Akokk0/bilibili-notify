@@ -17,7 +17,7 @@ In a terminal, the wizard asks for the project directory, extension ID and displ
 vp dlx create-bn-ext@alpha ./my-extension --id example.demo --name "Example"
 ```
 
-The market author name defaults to the extension namespace. If you already know the repository, add `--repository owner/repo` to use the GitHub owner as the initial author name and set `origin` when the creator initializes Git. You can edit the author name in `bn-extension/marketplace.json`. The earlier `0.1.0-alpha.0` wizard also asks for the repository during setup.
+The market author name defaults to the extension namespace. If you already know the repository, add `--repository owner/repo` to use the GitHub owner as the initial author name and set `origin` when the creator initializes Git. Edit `owner.name` in `.bn-extension/marketplace.json` to change the name.
 
 `--interactive` explicitly enables prompts when standard input is redirected. Without a terminal, missing required arguments fail immediately. npm/pnpm are launcher alternatives; generated projects use the same Vite+ toolchain. The package name `create-bn-ext` follows the `create-*` initializer convention. Alpha releases need `@alpha`; unqualified `pnpm create bn-ext` becomes available when a version is published to `latest`.
 
@@ -29,4 +29,4 @@ For development, run the packaged development host with `vp dlx @bilibili-notify
 
 The `bn-extension` binary packages ZIPs, checks commit ranges and publishes releases. `vp run release --tag v0.1.0 --dry-run` runs real checks and creates local preview artifacts without contacting GitHub. A real publication requires a clean tagged commit, matching GitHub tag, and a token with repository contents write permission. The tool publishes version ZIP/checksum assets before updating the rolling `bn-marketplace` index, never overwrites version assets, and resumes interrupted drafts on rerun.
 
-When upgrading a project created with `0.1.0-alpha.0` to the new configuration layout, move `.bn/marketplace.json` to `bn-extension/marketplace.json` and remove its `repository` field. The publisher takes the repository from `GITHUB_REPOSITORY` in GitHub Actions and from your GitHub `origin` remote locally.
+The publisher gets the repository from `GITHUB_REPOSITORY` in GitHub Actions and from the push URL of the GitHub `origin` remote locally.

@@ -62,7 +62,8 @@
 | [0045](0045-bn-runtime-cli.md) | 通过BN启动器运行宿主成品 | 2026-11-11 | 主人指定@bilibili-notify/bn；正式/开发宿主分别打包，拓展仍运行源码 |
 | [0046](0046-bundled-npm-distribution.md) | npm作为自带宿主的正式发行渠道 | 2026-11-11 | 主人要求包内载荷、随主程序tag发行，首次启动不依赖GitHub |
 | [0047](0047-douyin-source-parity.md) | 抖音首版接入订阅、群聊作品解析和系统扫码登录 | 2026-11-12 | 主人确认常用操作和扫码登录与 B 站对齐，链接解析与账号接入分片实施 |
-| [0048](0048-extension-marketplace-config.md) | 拓展市场配置放在 bn-extension 目录，发布仓库从环境取得 | 2026-11-12 | 修订 0041 的作者配置，发布时使用 Actions 仓库或本地 GitHub 远端 |
+| [0048](0048-extension-marketplace-config.md) | 拓展市场配置放在 bn-extension 目录，发布仓库从环境取得 | 2026-11-12 | 修订 0041 的作者配置，发布时使用 Actions 仓库或本地 GitHub 远端。配置目录由 0049 修订 |
+| [0049](0049-hidden-extension-marketplace-config.md) | 第三方拓展的作者配置使用隐藏目录 | 2026-11-13 | 新模板和发布工具使用 `.bn-extension/marketplace.json` |
 
 标着**「追认」**的是事后据定案记录与实现整理的,不是当时拷问的原文:「决定了什么」与「为什么」可信,「当时的现场」不可考。
 
