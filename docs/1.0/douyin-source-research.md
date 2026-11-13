@@ -2,6 +2,8 @@
 
 2026-11-12 核对 kkk 2.45.3 及该提交固定的 Amagi 7.0.0-beta.9 源码。kkk 负责订阅、推送和与人的交互，抖音网页请求与响应判定在 Amagi。主人已确认抖音首版的常用操作与系统扫码登录对齐 B 站。[kkk 源码快照](https://github.com/ikenxuan/karin-plugin-kkk/tree/e97c1c8b6da19d6e8159f2314ab2c87e888c265e) · [Amagi 源码快照](https://github.com/ikenxuan/amagi/tree/094238d5d5f8c20abba5c3e5c7d03741190e2ab1) · [首版定案](../adr/0047-douyin-source-parity.md)
 
+2026-11-13，主人要求先比较其他 GitHub 项目，常驻浏览器与远程网页操作的正式接线暂不实施。已补 [四个项目的当前实现对照](douyin-project-comparison.md)，接下来优先核对 HTTP 访客会话初始化与分接口签名策略，扫码仍单独验收。
+
 ## 可用的接口线索
 
 抖音开放平台的作品列表需要创作者授权。BN 的使用者希望订阅自己关注的公开作者，一份观看账号的授权不能代替各创作者授权。kkk 使用的是抖音网页和分享页接口，签名与返回字段需要随网页变化复验。[抖音开放平台作品列表](https://open.douyin.com/platform/resource/docs/openapi/video-management/douyin/search-video/account-video-list) · [抖音登录与授权](https://developer.open-douyin.com/docs/resource/zh-CN/dop/ability/user-authorization/solution)
