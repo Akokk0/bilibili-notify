@@ -4,11 +4,16 @@ import { activate } from "../index";
 import { testCookieSession } from "./support/cookie-session";
 
 type Reply = { body?: unknown; status?: number; headers?: Record<string, string> };
-function setup(respond: (u: URL) => Reply | Promise<Reply>) {
+function setup(respond: (u: URL) => Reply | Promise<Reply>, visitorCookie?: string) {
 	let source!: SourceDef;
 	const calls: URL[] = [];
+	const requestHeaders: Headers[] = [];
 	const ctx = {
-		createCookieSession: testCookieSession,
+		createCookieSession(snapshot?: string) {
+			const jar = testCookieSession(snapshot);
+			if (visitorCookie) jar.ingest("https://www.douyin.com/", visitorCookie);
+			return jar;
+		},
 		i18n: { t: (k: string) => k },
 		signal: new AbortController().signal,
 		secrets: { get: () => undefined, delete: async () => ({ ok: true }) },
@@ -23,6 +28,7 @@ function setup(respond: (u: URL) => Reply | Promise<Reply>) {
 			fetch: async (input: URL | string, options: FetchOptions) => {
 				const u = new URL(input);
 				calls.push(u);
+				requestHeaders.push(new Headers(options.headers));
 				expect(options.bare).toBe(true);
 				expect(options.maxRedirects).toBe(0);
 				if (u.hostname === "v.douyin.com")
@@ -52,6 +58,7 @@ function setup(respond: (u: URL) => Reply | Promise<Reply>) {
 			fetchProfile: source.fetchProfile,
 		},
 		calls,
+		requestHeaders,
 		ctx,
 	};
 }
@@ -83,6 +90,27 @@ it("uses the search endpoint's token-only policy for nickname candidates", async
 	for (const key of ["a_bogus", "X-Bogus", "x-secsdk-web-signature"])
 		expect(request.searchParams.has(key)).toBe(false);
 });
+it.each(["UIFID", "uifid_temp"])(
+	"binds %s before signing a protected detail request",
+	async (name) => {
+		const { source, calls, requestHeaders } = setup(
+			() => ({ body: { status_code: 0, aweme_detail: detail } }),
+			`${name}=synthetic-visitor; Path=/; Secure`,
+		);
+		expect(await source.resolveLink(direct, new AbortController().signal)).toMatchObject({
+			ok: true,
+		});
+		const url = calls[0];
+		if (!url) throw new Error("Missing detail request");
+		expect(url.searchParams.get("uifid")).toBe("synthetic-visitor");
+		expect(requestHeaders[0]?.get("uifid")).toBe("synthetic-visitor");
+		const keys = [...url.searchParams.keys()];
+		expect(keys.indexOf("uifid")).toBeLessThan(keys.indexOf("a_bogus"));
+		expect(keys.indexOf("a_bogus")).toBeLessThan(keys.indexOf("timestamp"));
+		expect(keys.indexOf("timestamp")).toBeLessThan(keys.indexOf("x-secsdk-web-signature"));
+	},
+);
+
 it("resolves an unsubscribed video through an anonymous share redirect and signed detail request", async () => {
 	const { source, calls } = setup((u) =>
 		u.hostname === "v.douyin.com"

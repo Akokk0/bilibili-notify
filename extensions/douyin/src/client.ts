@@ -142,14 +142,16 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 				const id = fields.get("s_v_web_id") || fp;
 				u.searchParams.set("verifyFp", id);
 				u.searchParams.set("fp", id);
-				if (endpoint !== "search") sign(u);
 				const uifid = ["UIFID", "uifid", "UIFID_TEMP", "uifid_temp", "UIFIDTEMP", "uifidtemp"]
 					.map((key) => fields.get(key))
 					.find(Boolean);
-				if (uifid && (endpoint === "posts" || endpoint === "detail")) {
-					headers.uifid = uifid;
-					u = new URL(signWebUrl(u.href, { uifid }));
+				const protectedVisitor = endpoint === "posts" || endpoint === "detail" ? uifid : undefined;
+				if (protectedVisitor) {
+					headers.uifid = protectedVisitor;
+					u.searchParams.set("uifid", protectedVisitor);
 				}
+				if (endpoint !== "search") sign(u);
+				if (protectedVisitor) u = new URL(signWebUrl(u.href, { uifid: protectedVisitor }));
 			} else for (const [k, v] of Object.entries(args)) u.searchParams.set(k, v);
 			const r = await ctx.http.fetch(u, {
 				bare: true,
