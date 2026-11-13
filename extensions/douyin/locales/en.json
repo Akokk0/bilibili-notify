@@ -1,5 +1,8 @@
 {
 	"auth.redirect": "Login stopped because the redirect address was not trusted.",
+	"auth.risk": "Douyin blocked this sign-in during a security check (code {code}). Check the Douyin app for a security notice, then scan a new code later.",
+	"auth.pollCode": "Douyin could not confirm the scan (code {code}). Check for a message on your phone, then scan a new code.",
+	"auth.pollUnknown": "Douyin returned an unrecognized scan status. Please scan a new code.",
 	"auth.network": "Douyin's response could not be verified.",
 	"auth.credentials": "Your Douyin session has expired. Scan a new code.",
 	"auth.expired": "This sign-in attempt has ended. Scan a new code.",
@@ -12,6 +15,9 @@
 	"auth.requesting": "Requesting a sign-in code from Douyin.",
 	"auth.qrFailed": "Douyin did not return a usable QR code. Try again later.",
 	"auth.wrongCode": "Invalid verification code. Check it and try again.",
+	"auth.accountChecking": "Sign-in confirmed on your phone. Checking your Douyin account details again.",
+	"auth.accountFailed": "Sign-in was confirmed on your phone, but your Douyin account could not be verified. Please scan a new code later.",
+	"auth.ssoFailed": "Sign-in was confirmed on your phone, but the Douyin sign-in redirect failed. Please scan a new code.",
 	"auth.checking": "Checking the saved Douyin session.",
 	"api.cancelled": "Request cancelled.",
 	"api.temporary": "Could not read Douyin data. Try again later.",

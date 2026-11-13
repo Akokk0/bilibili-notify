@@ -143,17 +143,33 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 				return;
 			}
 		}
+		if (err === 2156 || err === 4031) {
+			failure(a, ctx.i18n.t("auth.risk", { code: err }));
+			return;
+		}
+		if (d.status === "expired") {
+			failure(a, t("expired"));
+			return;
+		}
+		if (err && Number.isSafeInteger(err) && err > 0 && err < 100000) {
+			failure(a, ctx.i18n.t("auth.pollCode", { code: err }));
+			return;
+		}
+		if (err !== 0 || r.body.message === "error") {
+			failure(a, t("pollUnknown"));
+			return;
+		}
 		if (d.status === "new") {
 			later(a, interval);
 			return;
 		}
-		if (d.status === "scanned") {
+		if (d.status === "scanned" || d.status === "confirming") {
 			publish({ status: "confirming", message: t("scanned") });
 			later(a, interval);
 			return;
 		}
-		if (d.status !== "confirmed" || err) {
-			failure(a, t(d.status === "expired" ? "expired" : "network"));
+		if (d.status !== "confirmed") {
+			failure(a, t("pollUnknown"));
 			return;
 		}
 		const raw =
@@ -162,14 +178,23 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 			const jumped = await a.session.sso(raw, signal(a));
 			if (!valid(a)) return;
 			if (!jumped.ok) {
-				failure(a, jumped.message);
+				failure(a, jumped.code === "invalid" ? jumped.message : t("ssoFailed"));
 				return;
 			}
 		}
+		await confirmAccount(a, 0);
+	}
+	async function confirmAccount(a: Attempt, retries: number) {
+		if (!valid(a)) return;
 		const verified = await a.session.account(signal(a));
 		if (!valid(a)) return;
 		if (!verified.ok) {
-			failure(a, verified.message);
+			if (verified.code === "unavailable" && retries < 2) {
+				publish({ status: "confirming", message: t("accountChecking") });
+				a.timer = ctx.setTimeout(() => confirmAccount(a, retries + 1), 3000 * (retries + 1));
+				return;
+			}
+			failure(a, verified.code === "unauthorized" ? verified.message : t("accountFailed"));
 			return;
 		}
 		const stored = await enqueue(async () =>
@@ -220,7 +245,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 			is_new_login: "1",
 		});
 		if (!valid(a)) return fail("conflict", t("expired"));
-		if (!r.ok) return failure(a, r.message);
+		if (!r.ok) return failure(a, t("qrFailed"));
 		const d = dict(r.body.data);
 		a.token = str(d.token);
 		if (!a.token) return failure(a, t("qrFailed"));

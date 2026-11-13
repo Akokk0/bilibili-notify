@@ -85,12 +85,17 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			(r.body.message === "error" && Number(d.error_code) === 13)
 		)
 			return fail("unauthorized", ctx.i18n.t("auth.credentials"));
-		const id =
-			str(d.user_id_str) ||
-			(typeof d.user_id === "number" && Number.isSafeInteger(d.user_id) ? String(d.user_id) : "");
-		return r.body.message === "success" && d.is_visitor_account === false && id
-			? ok({ name: str(d.screen_name) || str(d.nickname) || str(d.name) || id })
-			: fail("unavailable", ctx.i18n.t("auth.network"));
+		const textId = [d.user_id_str, d.user_id].find(
+			(id): id is string => typeof id === "string" && /^[1-9]\d*$/.test(id),
+		);
+		const numericId = d.user_id;
+		const hasNumericId =
+			typeof numericId === "number" && Number.isInteger(numericId) && numericId > 0;
+		if (r.body.message !== "success" || d.is_visitor_account !== false || !(textId || hasNumericId))
+			return fail("unavailable", ctx.i18n.t("auth.network"));
+		// An unsafe numeric ID confirms presence but its rounded value must never become a display name.
+		const displayId = textId || (Number.isSafeInteger(numericId) ? String(numericId) : "");
+		return ok({ name: str(d.screen_name) || str(d.nickname) || str(d.name) || displayId });
 	}
 	async function exchange(
 		action: "get_qrcode" | "check_qrconnect" | "send_code" | "validate_code",

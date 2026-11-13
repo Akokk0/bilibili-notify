@@ -1,5 +1,8 @@
 {
 	"auth.redirect": "登录跳转地址不受信任，已停止。",
+	"auth.risk": "抖音安全检查拦截了这次扫码（错误码 {code}）。请在抖音 App 查看安全提示，稍后重新扫码。",
+	"auth.pollCode": "抖音未能确认这次扫码（错误码 {code}）。请查看手机上的提示后重新扫码。",
+	"auth.pollUnknown": "未能识别抖音返回的扫码状态，请重新扫码。",
 	"auth.network": "暂时无法确认抖音的响应。",
 	"auth.credentials": "抖音登录已失效，请重新扫码。",
 	"auth.expired": "这次扫码已结束，请重新扫码。",
@@ -12,6 +15,9 @@
 	"auth.requesting": "正在向抖音获取二维码。",
 	"auth.qrFailed": "抖音没有返回可用的二维码，请稍后重试。",
 	"auth.wrongCode": "验证码无效，请核对后重试。",
+	"auth.accountChecking": "手机已确认，正在重新获取抖音账号信息。",
+	"auth.accountFailed": "手机已确认，但未能核实抖音账号。请稍后重新扫码。",
+	"auth.ssoFailed": "手机已确认，但未能完成抖音的登录跳转。请重新扫码。",
 	"auth.checking": "正在核对已保存的抖音账号。",
 	"api.cancelled": "请求已取消。",
 	"api.temporary": "暂时读不到抖音数据，稍后再试。",

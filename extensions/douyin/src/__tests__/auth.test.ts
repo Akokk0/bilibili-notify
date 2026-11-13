@@ -3,11 +3,16 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { activate } from "../index";
 import { testCookieSession } from "./support/cookie-session";
 
-function fixture(saved?: string) {
+function fixture(
+	saved?: string,
+	accountData: object = { is_visitor_account: false, user_id_str: "12345", name: "Douyin tester" },
+) {
 	const ops: string[] = [],
 		timers: Array<() => void | Promise<void>> = [];
 	const secrets = new Map<string, string>();
 	if (saved) secrets.set("login.cookies", saved);
+	let pollReply: object | undefined;
+	let unreadableAccountReplies = 0;
 	let validationReply: object = { data: { error_code: 0 } };
 	const smsRequests: { trace: string | null; code: string | null }[] = [];
 	let source!: SourceDef;
@@ -61,7 +66,7 @@ function fixture(saved?: string) {
 						},
 					};
 				if (url.pathname.endsWith("check_qrconnect/"))
-					body = { data: { status: poll, redirect_url: redirect } };
+					body = pollReply ?? { data: { status: poll, redirect_url: redirect } };
 				if (url.pathname.endsWith("check_qrconnect/") && poll === "sms")
 					body = {
 						data: {
@@ -83,10 +88,7 @@ function fixture(saved?: string) {
 					h.append("Set-Cookie", "sessionid=sample; Domain=.douyin.com; Path=/; Secure");
 				if (url.pathname.endsWith("/info/v2/")) {
 					expect(new Headers(o.headers).get("cookie")).toContain("sessionid=sample");
-					body = {
-						message: "success",
-						data: { is_visitor_account: false, user_id_str: "12345", name: "Douyin tester" },
-					};
+					body = { message: "success", data: accountData };
 				}
 				return {
 					ok: true,
@@ -95,7 +97,13 @@ function fixture(saved?: string) {
 					headers: h,
 					url: url.href,
 					text: () => JSON.stringify(body),
-					json: () => ({ ok: true, value: body }),
+					json: () => {
+						if (url.pathname.endsWith("/info/v2/") && unreadableAccountReplies > 0) {
+							unreadableAccountReplies--;
+							return { ok: false };
+						}
+						return { ok: true, value: body };
+					},
 				};
 			},
 		},
@@ -121,6 +129,12 @@ function fixture(saved?: string) {
 		setValidationReply: (reply: object) => {
 			validationReply = reply;
 		},
+		failAccountReads: (count: number) => {
+			unreadableAccountReplies = count;
+		},
+		setPollReply: (reply: object) => {
+			pollReply = reply;
+		},
 		setPoll: (s: string) => {
 			poll = s;
 		},
@@ -130,6 +144,37 @@ function fixture(saved?: string) {
 	};
 }
 describe("source account", () => {
+	it.each([
+		{ id: "9876543210123456789", name: undefined, displayed: "9876543210123456789" },
+		{ id: 42, name: undefined, displayed: "42" },
+		{ id: 2 ** 60, name: "Douyin tester", displayed: "Douyin tester" },
+		{ id: 2 ** 60, name: undefined, displayed: undefined },
+	])(
+		"confirms non-guest user_id $id without displaying a rounded ID",
+		async ({ id, name, displayed }) => {
+			const f = fixture(undefined, { is_visitor_account: false, user_id: id, name });
+			await f.auth.beginLogin();
+			f.setPoll("confirmed");
+			await f.pollNext();
+			expect(f.auth.state().status).toBe("logged-in");
+			expect(f.auth.account()?.name).toBe(displayed);
+			expect(f.secrets.size).toBe(1);
+		},
+	);
+	it.each([
+		{ is_visitor_account: true, user_id: "98765" },
+		{ user_id: "98765" },
+		{ is_visitor_account: false, user_id: " " },
+		{ is_visitor_account: false, user_id: "0" },
+		{ is_visitor_account: false, user_id: 0 },
+	])("keeps unconfirmed account data out of storage: %o", async (data) => {
+		const f = fixture(undefined, data);
+		await f.auth.beginLogin();
+		f.setPoll("confirmed");
+		await f.pollNext();
+		expect(f.auth.state().status).not.toBe("logged-in");
+		expect(f.secrets.size).toBe(0);
+	});
 	it("presents the upstream QR, confirms the account before persistence and forgets it on logout", async () => {
 		const f = fixture();
 		expect((await f.auth.beginLogin()).ok).toBe(true);
@@ -236,4 +281,69 @@ it("resumes QR confirmation on an SMS ticket and saves only the verified account
 	expect(f.auth.account()?.name).toBe("Douyin tester");
 	expect(f.secrets.get("login.cookies")).toContain("sample");
 	expect(f.secrets.get("login.cookies")).not.toContain(ticket);
+});
+
+it.each([2156, 4031])(
+	"explains an upstream scan security rejection (%i) without exposing its payload",
+	async (code) => {
+		const f = fixture();
+		await f.auth.beginLogin();
+		f.setPollReply({
+			data: { status: "confirming", error_code: code, description: "sensitive details" },
+		});
+		await f.pollNext();
+		expect(f.auth.state()).toEqual({ status: "error", message: "auth.risk" });
+		expect(f.auth.account()).toBeNull();
+		expect(f.secrets.size).toBe(0);
+	},
+);
+
+it("keeps waiting for phone confirmation and distinguishes unknown upstream scan failures", async () => {
+	const f = fixture();
+	await f.auth.beginLogin();
+	f.setPollReply({ data: { status: "confirming", error_code: 0 } });
+	await f.pollNext();
+	expect(f.auth.state()).toEqual({ status: "confirming", message: "auth.scanned" });
+	f.setPollReply({ data: { status: "new", error_code: 3201 } });
+	await f.pollNext();
+	expect(f.auth.state()).toEqual({ status: "error", message: "auth.pollCode" });
+	expect(f.secrets.size).toBe(0);
+});
+
+it("rechecks the same confirmed session when account details are briefly unreadable", async () => {
+	const f = fixture();
+	await f.auth.beginLogin();
+	f.setPoll("confirmed");
+	f.failAccountReads(1);
+	await f.pollNext();
+	expect(f.auth.state()).toEqual({ status: "confirming", message: "auth.accountChecking" });
+	expect(f.secrets.size).toBe(0);
+	await f.pollNext();
+	expect(f.auth.state().status).toBe("logged-in");
+	expect(f.ops.filter((path) => path.endsWith("/info/v2/"))).toHaveLength(2);
+	expect(f.ops.filter((path) => path.endsWith("/sso/callback"))).toHaveLength(1);
+	expect(f.ops.filter((path) => path.endsWith("/check_qrconnect/"))).toHaveLength(1);
+});
+
+it("ends an inconclusive account check after bounded retries without persisting the session", async () => {
+	const f = fixture();
+	await f.auth.beginLogin();
+	f.setPoll("confirmed");
+	f.failAccountReads(5);
+	for (let i = 0; i < 3; i++) await f.pollNext();
+	expect(f.auth.state()).toEqual({ status: "error", message: "auth.accountFailed" });
+	expect(f.secrets.size).toBe(0);
+});
+
+it("cancels the pending account check when signing out", async () => {
+	const f = fixture();
+	await f.auth.beginLogin();
+	f.setPoll("confirmed");
+	f.failAccountReads(1);
+	await f.pollNext();
+	expect(f.auth.state().status).toBe("confirming");
+	await f.auth.logout();
+	expect(f.auth.state().status).toBe("logged-out");
+	expect(f.ops.filter((path) => path.endsWith("/info/v2/"))).toHaveLength(1);
+	expect(f.secrets.size).toBe(0);
 });

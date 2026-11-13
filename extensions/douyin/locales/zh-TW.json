@@ -1,5 +1,8 @@
 {
 	"auth.redirect": "登入重新導向的網址不受信任，已停止。",
+	"auth.risk": "抖音的安全檢查擋下了這次掃碼登入（錯誤碼 {code}）。請查看抖音 App 的安全提示，稍後重新掃碼。",
+	"auth.pollCode": "抖音無法確認這次掃碼（錯誤碼 {code}）。請查看手機上的提示後重新掃碼。",
+	"auth.pollUnknown": "無法辨識抖音傳回的掃碼狀態，請重新掃碼。",
 	"auth.network": "暫時無法確認抖音的回應。",
 	"auth.credentials": "抖音登入已失效，請重新掃碼。",
 	"auth.expired": "這次掃碼已結束，請重新掃碼。",
@@ -12,6 +15,9 @@
 	"auth.requesting": "正在向抖音取得 QR Code。",
 	"auth.qrFailed": "抖音未傳回可用的 QR Code，請稍後再試。",
 	"auth.wrongCode": "驗證碼無效，請確認後再試一次。",
+	"auth.accountChecking": "手機已確認，正在重新取得抖音帳號資訊。",
+	"auth.accountFailed": "手機已確認，但無法核實抖音帳號。請稍後重新掃碼。",
+	"auth.ssoFailed": "手機已確認，但無法完成抖音的登入重新導向。請重新掃碼。",
 	"auth.checking": "正在確認已儲存的抖音帳號。",
 	"api.cancelled": "已取消請求。",
 	"api.temporary": "暫時無法讀取抖音資料，請稍後再試。",
