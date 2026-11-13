@@ -1,6 +1,6 @@
 {
 	"name": "create-bn-ext",
-	"version": "0.1.0-alpha.1",
+	"version": "0.1.0-alpha.2",
 	"private": true,
 	"type": "module",
 	"description": "Create, check, package and publish a bilibili-notify extension",

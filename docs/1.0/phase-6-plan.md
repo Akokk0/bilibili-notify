@@ -9,6 +9,7 @@
 - 大改UI限制保留；市场输入在现有弹窗上局部调整。
 - 2026-11-12，SDK 与创建器已在 npm 上发布首个 `alpha`，版本均为 `0.1.0-alpha.0`。[SDK](https://www.npmjs.com/package/@bilibili-notify/extension/v/0.1.0-alpha.0) · [创建器](https://www.npmjs.com/package/create-bn-ext/v/0.1.0-alpha.0)
 - 2026-11-13，创建器 `0.1.0-alpha.1` 经 npm 可信发布上架。向导只问目录、ID 和显示名。市场资料放在 `bn-extension/marketplace.json`，发布时从 Actions 或 Git 远端读取仓库地址。模板把动态导入打进 ZIP 入口。[ADR-0048](../adr/0048-extension-marketplace-config.md) · [创建器发行作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43350549879/job/131651210554)
+- 2026-11-13，计划发布 `create-bn-ext@0.1.0-alpha.2`，创建器与发布工具统一使用隐藏的 `.bn-extension/marketplace.json`。发布后用公共 npm 版本重建抖音拓展工程。[ADR-0049](../adr/0049-hidden-extension-marketplace-config.md)
 - 2026-11-12，抖音首版确认与 B 站对齐常用订阅操作、群聊贴作品出卡和系统账号页扫码登录。群聊入口与登录分片落实。[首版定案](../adr/0047-douyin-source-parity.md)
 - 本体 npm 随主程序 tag 发行，本体与桥的版本和推送留到发行片确认。
 - 2026-11-11最新定案见[ADR-0046](../adr/0046-bundled-npm-distribution.md)：npm包自带两种宿主、随主程序tag发行；`@bilibili-notify/bn web/dev`运行宿主成品；拓展继续由BN手动挂载源码。
