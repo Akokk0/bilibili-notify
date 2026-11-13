@@ -99,6 +99,7 @@ export function keyRootProblems({ packageKeys, endKeys }) {
  */
 export const EXTENSION_LOCALE_DIRS = [
 	"extensions/bridge/locales",
+	"extensions/douyin/locales",
 	"extensions/fake-source/locales",
 ];
 

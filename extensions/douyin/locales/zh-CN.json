@@ -1,0 +1,45 @@
+{
+	"auth.redirect": "登录跳转地址不受信任，已停止。",
+	"auth.network": "暂时无法确认抖音的响应。",
+	"auth.credentials": "抖音登录已失效，请重新扫码。",
+	"auth.expired": "这次扫码已结束，请重新扫码。",
+	"auth.sendFailed": "抖音未能发送验证码，请稍后重新扫码。",
+	"auth.sms": "请输入抖音发到手机上的六位验证码。",
+	"auth.official": "请在抖音官方页面完成验证。",
+	"auth.noVerify": "抖音需要额外验证，但未提供可用的验证方式。请在抖音完成验证后重新扫码。",
+	"auth.scanned": "请在手机上确认，正在等待抖音。",
+	"auth.saveFailed": "无法保存账号更改，请检查本机存储。",
+	"auth.requesting": "正在向抖音获取二维码。",
+	"auth.qrFailed": "抖音没有返回可用的二维码，请稍后重试。",
+	"auth.wrongCode": "验证码无效，请核对后重试。",
+	"auth.checking": "正在核对已保存的抖音账号。",
+	"api.cancelled": "请求已取消。",
+	"api.temporary": "暂时读不到抖音数据，稍后再试。",
+	"api.cooldown": "抖音限制了请求频率，将在冷却结束后重试。",
+	"api.signature": "抖音拒绝了请求签名，请检查拓展是否需要更新。",
+	"api.verify": "抖音要求安全验证，请在抖音官方页面完成验证。",
+	"api.login": "请在系统账号页登录抖音。",
+	"api.notFound": "作者或作品不存在，或已设为不可见。",
+	"api.unexpected": "抖音没有返回预期的数据。",
+	"api.invalidLink": "这不是支持的抖音分享链接。",
+	"error.profile": "无法确认抖音博主资料，请稍后再试。",
+	"error.homepage": "请粘贴抖音作者主页或主页分享短链。",
+	"error.stopped": "请求已取消。",
+	"error.posts": "作品列表不完整，将在下一轮从最新一页重查。",
+	"error.live": "暂时无法确认直播间状态。",
+	"error.poll": "本轮检查未完成，将在下次轮询时重试。",
+	"search.account": "抖音号 {account}",
+	"$manifest": {
+		"name": "抖音",
+		"description": "订阅抖音博主的视频、图文和直播，解析群聊中的作品链接。",
+		"contributes": {
+			"subscription": {
+				"label": "抖音",
+				"postNoun": "作品",
+				"creatorNoun": "博主",
+				"externalIdNoun": "作者 ID"
+			}
+		}
+	},
+	"api.private": "这位博主的抖音账号是私密账号。"
+}

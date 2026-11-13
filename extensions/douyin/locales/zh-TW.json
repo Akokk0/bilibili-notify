@@ -1,0 +1,45 @@
+{
+	"auth.redirect": "登入重新導向的網址不受信任，已停止。",
+	"auth.network": "暫時無法確認抖音的回應。",
+	"auth.credentials": "抖音登入已失效，請重新掃碼。",
+	"auth.expired": "這次掃碼已結束，請重新掃碼。",
+	"auth.sendFailed": "抖音無法傳送驗證碼，請稍後重新掃碼。",
+	"auth.sms": "請輸入抖音傳到手機的六位數驗證碼。",
+	"auth.official": "請在抖音官方頁面完成驗證。",
+	"auth.noVerify": "抖音需要額外驗證，但未提供可用的驗證方式。請在抖音完成驗證後重新掃碼。",
+	"auth.scanned": "請在手機上確認，正在等候抖音回應。",
+	"auth.saveFailed": "無法儲存帳號變更，請檢查本機儲存空間。",
+	"auth.requesting": "正在向抖音取得 QR Code。",
+	"auth.qrFailed": "抖音未傳回可用的 QR Code，請稍後再試。",
+	"auth.wrongCode": "驗證碼無效，請確認後再試一次。",
+	"auth.checking": "正在確認已儲存的抖音帳號。",
+	"api.cancelled": "已取消請求。",
+	"api.temporary": "暫時無法讀取抖音資料，請稍後再試。",
+	"api.cooldown": "抖音限制了請求頻率，稍後會再試。",
+	"api.signature": "抖音拒絕了請求簽章，請確認拓展是否需要更新。",
+	"api.verify": "抖音要求安全驗證，請在抖音官方頁面完成。",
+	"api.login": "請在系統帳號頁登入抖音。",
+	"api.notFound": "找不到作者或作品，或內容已設為不公開。",
+	"api.unexpected": "抖音未傳回預期的資料。",
+	"api.invalidLink": "這不是支援的抖音分享連結。",
+	"error.profile": "無法確認抖音創作者資料，請稍後再試。",
+	"error.homepage": "請貼上抖音創作者首頁或首頁分享短網址。",
+	"error.stopped": "請求已取消。",
+	"error.posts": "作品清單不完整，下次將從最新一頁重新檢查。",
+	"error.live": "暫時無法確認直播間狀態。",
+	"error.poll": "這次檢查未完成，將在下次輪詢時重試。",
+	"search.account": "抖音號 {account}",
+	"$manifest": {
+		"name": "抖音",
+		"description": "訂閱抖音創作者的影片、圖文與直播，解析群組聊天中的作品連結。",
+		"contributes": {
+			"subscription": {
+				"label": "抖音",
+				"postNoun": "作品",
+				"creatorNoun": "創作者",
+				"externalIdNoun": "作者 ID"
+			}
+		}
+	},
+	"api.private": "這位創作者的抖音帳號是私人帳號。"
+}

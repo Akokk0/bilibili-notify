@@ -1,0 +1,313 @@
+import {
+	type ExtensionContext,
+	type ExtensionSourceContext,
+	type Failure,
+	fail,
+	ok,
+	type Result,
+} from "@bilibili-notify/extension";
+import { DEFAULT_ENV, getVerifyFp, signWebUrl } from "abogus";
+import { dict, sign, str, trusted, userAgent, WEB } from "./web";
+
+type Session = {
+	credentials(url: URL): string;
+	sessionSignal(): AbortSignal;
+	invalidate(signal: AbortSignal): Promise<void>;
+};
+const shareHosts = ["v.douyin.com", "www.douyin.com", "www.iesdouyin.com"];
+function retryAfter(header: string | null) {
+	if (!header) return 60000;
+	const n = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
+	return Number.isFinite(n) ? Math.max(1000, n) : 60000;
+}
+function challenge(h: Headers, d: Record<string, unknown>, body: string) {
+	const raw = h.get("bdturing-verify") ?? h.get("x-vc-bdturing-parameters");
+	if (raw?.trim()) {
+		let subtype: unknown;
+		try {
+			const text = raw.trim().startsWith("{") ? raw : Buffer.from(raw, "base64").toString();
+			subtype = dict(JSON.parse(text)).subtype;
+		} catch {}
+		if (subtype !== "nocaptcha_collect") return true;
+	}
+	return (
+		[d, dict(d.data)].some((envelope) => {
+			const directive = envelope.verify_center_decision_conf;
+			return (
+				(typeof directive === "string" && directive.trim().length > 0) ||
+				Object.keys(dict(directive)).length > 0
+			);
+		}) ||
+		(typeof d.verify_data === "string" && !!d.verify_data) ||
+		dict(d.verify_data).fp !== undefined ||
+		(/^\s*</.test(body) && /验证码|captcha|安全验证|verifycenter/i.test(body.slice(0, 16000)))
+	);
+}
+export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
+	let observer: ExtensionSourceContext | undefined;
+	const message = (k: string) => ctx.i18n.t(`api.${k}`);
+	const fp = getVerifyFp();
+	let stamp = auth.sessionSignal();
+	type Gate = { until: number; err: Failure; probe: boolean; key?: string };
+	type Scope = { revision: number; gate?: Gate };
+	const sessionScope: Scope = { revision: 0 };
+	const endpoints = new Map<string, Scope>();
+
+	function put(scope: Scope, err: Failure, delay: number) {
+		const prev = scope.gate?.key;
+		const key =
+			typeof err.upstreamCode === "string" ? err.upstreamCode.replaceAll(".", "_") : undefined;
+		scope.revision++;
+		scope.gate = { until: Date.now() + delay, err, probe: false, key };
+		if (prev && prev !== key) resolve(prev);
+		if (key) observer?.reportProblem({ code: key, message: err.message });
+	}
+	function resolve(key: string, notify?: boolean) {
+		if (sessionScope.gate?.key === key) return;
+		for (const scope of endpoints.values()) if (scope.gate?.key === key) return;
+		observer?.resolveProblem({ code: key, ...(notify === false && { notify: false }) });
+	}
+	function clear(scope: Scope) {
+		const key = scope.gate?.key;
+		scope.gate = undefined;
+		if (key) resolve(key);
+	}
+	function sameSession() {
+		const next = auth.sessionSignal();
+		if (stamp === next) return;
+		stamp = next;
+		const keys = new Set([sessionScope, ...endpoints.values()].map((scope) => scope.gate?.key));
+		sessionScope.revision++;
+		sessionScope.gate = undefined;
+		endpoints.clear();
+		for (const key of keys) if (key) resolve(key, false);
+	}
+	async function call(
+		endpoint: string,
+		path: string,
+		args: Record<string, string>,
+		signal: AbortSignal,
+		base = WEB,
+		referer = `${WEB}/`,
+	): Promise<Result<{ data: unknown }>> {
+		sameSession();
+		const session = stamp;
+		if (signal.aborted || ctx.signal.aborted) return fail("unavailable", message("cancelled"));
+		const local = endpoints.get(endpoint) ?? { revision: 0 };
+		endpoints.set(endpoint, local);
+		const globalRev = sessionScope.revision,
+			localRev = local.revision;
+		const globalGate = sessionScope.gate,
+			localGate = local.gate;
+		const gates = [globalGate, localGate].filter((gate): gate is Gate => !!gate);
+		const blocked = gates.find((gate) => Date.now() < gate.until || gate.probe);
+		if (blocked) return blocked.err;
+		for (const gate of gates) gate.probe = true;
+		const combined = AbortSignal.any([ctx.signal, signal, session]);
+		try {
+			let u = new URL(path, base);
+			const guest = endpoint === "account";
+			const headers: Record<string, string> = {
+				accept: "application/json",
+				"user-agent": userAgent,
+			};
+			if (!guest) {
+				const cookie = auth.credentials(u);
+				if (cookie) headers.cookie = cookie;
+				headers.referer = referer;
+				const fields = new Map(
+					cookie.split(/;\s*/).map((pair) => {
+						const split = pair.indexOf("=");
+						return [pair.slice(0, split), pair.slice(split + 1)];
+					}),
+				);
+				const defaultQ = {
+					device_platform: endpoint === "room" ? "web" : "webapp",
+					aid: "6383",
+					channel: "channel_pc_web",
+					cookie_enabled: "true",
+					browser_platform: DEFAULT_ENV.platform,
+					browser_name: "Chrome",
+					browser_version: userAgent.match(/Chrome\/([^ ]+)/)?.[1] ?? "",
+					screen_width: String(DEFAULT_ENV.screen.width),
+					screen_height: String(DEFAULT_ENV.screen.height),
+					browser_language: "zh-CN",
+				};
+				for (const [k, v] of Object.entries(defaultQ)) u.searchParams.set(k, v);
+				for (const [k, v] of Object.entries(args)) u.searchParams.set(k, v);
+				for (const key of ["msToken", "uifid"]) {
+					const value = fields.get(key);
+					if (value) u.searchParams.set(key, value);
+				}
+				const id = fields.get("s_v_web_id") || fp;
+				u.searchParams.set("verifyFp", id);
+				u.searchParams.set("fp", id);
+				sign(u);
+				const uifid = ["UIFID", "uifid", "UIFID_TEMP", "uifid_temp", "UIFIDTEMP", "uifidtemp"]
+					.map((key) => fields.get(key))
+					.find(Boolean);
+				if (uifid && (endpoint === "posts" || endpoint === "detail")) {
+					headers.uifid = uifid;
+					u = new URL(signWebUrl(u.href, { uifid }));
+				}
+			} else for (const [k, v] of Object.entries(args)) u.searchParams.set(k, v);
+			const r = await ctx.http.fetch(u, {
+				bare: true,
+				maxRedirects: 0,
+				signal: combined,
+				timeoutMs: 12000,
+				maxBodyBytes: 4 * 1024 * 1024,
+				headers,
+			});
+			if (combined.aborted) return fail("unavailable", message("cancelled"));
+			if (!r.ok) {
+				const e = fail(r.code === "timeout" ? "timeout" : "unavailable", message("temporary"));
+				if (local.revision === localRev) put(local, e, 15000);
+				return e;
+			}
+			const body = r.text(),
+				j = r.json(),
+				d = dict(j.ok ? j.value : null);
+			let fault: Failure | undefined;
+			let delay = 0;
+			if (r.status === 429) {
+				fault = fail("rate_limited", message("cooldown"), { upstreamCode: "douyin.cooldown" });
+				delay = retryAfter(r.headers.get("retry-after"));
+			} else if (
+				r.status === 403 &&
+				/ArgusSecurityPlugin.*(sign|uifid)/i.test(body.slice(0, 500))
+			) {
+				fault = fail("unsupported", message("signature"), { upstreamCode: "douyin.signature" });
+				delay = 600000;
+			} else if (challenge(r.headers, d, body)) {
+				fault = fail("unavailable", message("verify"), { upstreamCode: "douyin.verify" });
+				delay = 300000;
+			} else if (r.status === 401 || d.status_msg === "用户未登录" || d.status_msg === "请先登录") {
+				if (!guest && headers.cookie) await auth.invalidate(session);
+				return fail("unauthorized", message("login"));
+			} else if (dict(d.filter_detail).filter_reason === "私密账号") {
+				return fail("not_found", message("private"), { upstreamCode: "douyin.private" });
+			} else if (
+				r.status === 404 ||
+				(guest && d.status_code === 5) ||
+				str(dict(d.filter_detail).filter_reason)
+			)
+				return fail("not_found", message("notFound"));
+			else if (!r.isSuccess || !j.ok || !Object.keys(d).length) {
+				fault = fail("unavailable", message("temporary"));
+				delay = 30000;
+			} else if (d.status_code !== 0) {
+				return fail(
+					"unavailable",
+					message("unexpected"),
+					typeof d.status_code === "number" ? { upstreamCode: d.status_code } : {},
+				);
+			}
+			if (fault) {
+				if (fault.code === "rate_limited") {
+					// Concurrent 429s can extend an existing Retry-After, never shorten
+					// it or revive a gate that already completed its recovery probe.
+					const current = sessionScope.gate;
+					if (
+						sessionScope.revision === globalRev ||
+						(current && Date.now() + delay > current.until)
+					) {
+						put(sessionScope, fault, delay);
+					}
+				} else if (local.revision === localRev) put(local, fault, delay);
+				return fault;
+			}
+			if (globalGate && sessionScope.gate === globalGate) clear(sessionScope);
+			if (localGate && local.gate === localGate) clear(local);
+			return ok({ data: d });
+		} finally {
+			for (const gate of gates) gate.probe = false;
+		}
+	}
+	async function expand(input: URL, signal: AbortSignal): Promise<Result<{ url: URL }>> {
+		let u = input;
+		const seen = new Set<string>();
+		for (let hop = 0; hop < 6; hop++) {
+			if (!trusted(u, shareHosts) || signal.aborted || ctx.signal.aborted || seen.has(u.href))
+				break;
+			if (u.hostname !== "v.douyin.com") return ok({ url: u });
+			seen.add(u.href);
+			const r = await ctx.http.fetch(u, {
+				bare: true,
+				maxRedirects: 0,
+				signal: AbortSignal.any([ctx.signal, signal]),
+				timeoutMs: 7000,
+				maxBodyBytes: 65536,
+			});
+			if (!r.ok) return fail("unavailable", message("temporary"));
+			const to = r.headers.get("location");
+			if (!to || ![301, 302, 303, 307, 308].includes(r.status)) break;
+			try {
+				u = new URL(to, u);
+			} catch {
+				break;
+			}
+		}
+		return fail("invalid", message("invalidLink"));
+	}
+	return {
+		sessionSignal: auth.sessionSignal,
+		observe: (s: ExtensionSourceContext | undefined) => {
+			observer = s;
+		},
+		expand,
+		account: (id: string, s: AbortSignal) =>
+			call("account", "/web/api/v2/user/info/", { unique_id: id }, s, "https://www.iesdouyin.com"),
+		profile: (id: string, s: AbortSignal) =>
+			call(
+				"profile",
+				"/aweme/v1/web/user/profile/other/",
+				{ sec_user_id: id },
+				s,
+				WEB,
+				`${WEB}/user/${encodeURIComponent(id)}`,
+			),
+		posts: (id: string, cursor: string, s: AbortSignal) =>
+			call(
+				"posts",
+				"/aweme/v1/web/aweme/post/",
+				{ sec_user_id: id, max_cursor: cursor, count: "20" },
+				s,
+				WEB,
+				`${WEB}/user/${encodeURIComponent(id)}`,
+			),
+		search: (keyword: string, s: AbortSignal) =>
+			call(
+				"search",
+				"/aweme/v1/web/discover/search/",
+				{
+					keyword,
+					search_channel: "aweme_user_web",
+					search_source: "switch_tab",
+					count: "10",
+					offset: "0",
+					list_type: "single",
+				},
+				s,
+			),
+		room: (web_rid: string, room_id_str: string, s: AbortSignal) =>
+			call(
+				"room",
+				"/webcast/room/web/enter/",
+				{
+					web_rid,
+					room_id_str,
+					app_name: "douyin_web",
+					live_id: "1",
+					language: "zh-CN",
+					enter_from: "web_share_link",
+				},
+				s,
+				"https://live.douyin.com",
+				`https://live.douyin.com/${encodeURIComponent(web_rid)}`,
+			),
+		detail: (id: string, s: AbortSignal) =>
+			call("detail", "/aweme/v1/web/aweme/detail/", { aweme_id: id }, s, WEB, `${WEB}/video/${id}`),
+	};
+}
+export type DouyinClient = ReturnType<typeof createDouyinClient>;

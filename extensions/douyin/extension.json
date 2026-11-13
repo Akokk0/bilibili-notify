@@ -1,0 +1,50 @@
+{
+	"id": "douyin",
+	"name": "抖音",
+	"description": "订阅抖音博主的视频、图文和直播，解析群聊中的作品链接。",
+	"version": "0.1.0",
+	"apiVersion": 1,
+	"contributes": {
+		"subscription": {
+			"label": "抖音",
+			"searchAccepts": ["id", "link", "name"],
+			"supportedFeatures": ["post", "liveStart", "liveStreaming", "liveEnd"],
+			"postNoun": "作品",
+			"creatorNoun": "博主",
+			"externalIdNoun": "作者 ID"
+		},
+		"linkResolver": {
+			"patterns": [
+				{
+					"host": "www.douyin.com",
+					"pathPrefix": "/video/"
+				},
+				{
+					"host": "www.douyin.com",
+					"pathPrefix": "/note/"
+				},
+				{
+					"host": "www.douyin.com",
+					"pathPrefix": "/slides/"
+				},
+				{
+					"host": "www.iesdouyin.com",
+					"pathPrefix": "/share/video/"
+				},
+				{
+					"host": "www.iesdouyin.com",
+					"pathPrefix": "/share/note/"
+				},
+				{
+					"host": "www.iesdouyin.com",
+					"pathPrefix": "/share/slides/"
+				},
+				{
+					"host": "v.douyin.com",
+					"pathPrefix": "/"
+				}
+			]
+		}
+	},
+	"apiRevision": 1
+}

@@ -1,0 +1,45 @@
+{
+	"auth.redirect": "Login stopped because the redirect address was not trusted.",
+	"auth.network": "Douyin's response could not be verified.",
+	"auth.credentials": "Your Douyin session has expired. Scan a new code.",
+	"auth.expired": "This sign-in attempt has ended. Scan a new code.",
+	"auth.sendFailed": "Douyin could not send a verification code. Try signing in again later.",
+	"auth.sms": "Enter the six-digit code Douyin sent to your phone.",
+	"auth.official": "Complete verification on Douyin’s official page.",
+	"auth.noVerify": "Douyin requires an additional check but did not offer a supported method. Complete it in Douyin, then scan again.",
+	"auth.scanned": "Confirm on your phone. Waiting for Douyin.",
+	"auth.saveFailed": "The account change could not be saved. Check local storage.",
+	"auth.requesting": "Requesting a sign-in code from Douyin.",
+	"auth.qrFailed": "Douyin did not return a usable QR code. Try again later.",
+	"auth.wrongCode": "Invalid verification code. Check it and try again.",
+	"auth.checking": "Checking the saved Douyin session.",
+	"api.cancelled": "Request cancelled.",
+	"api.temporary": "Could not read Douyin data. Try again later.",
+	"api.cooldown": "Douyin is limiting requests. Requests will resume after the cooldown.",
+	"api.signature": "Douyin rejected the request signature. Check for an extension update.",
+	"api.verify": "Douyin requires verification. Complete it on the official Douyin site.",
+	"api.login": "Sign in to Douyin on the system accounts page.",
+	"api.notFound": "The creator or post is unavailable or private.",
+	"api.unexpected": "Douyin did not return the expected data.",
+	"api.invalidLink": "This Douyin share link is not supported.",
+	"error.profile": "Could not verify this creator’s profile. Try again later.",
+	"error.homepage": "Paste a Douyin creator’s profile URL or a short link to their profile.",
+	"error.stopped": "The request was cancelled.",
+	"error.posts": "The post list was incomplete. The next check will start from the latest page.",
+	"error.live": "Could not confirm the live room’s status.",
+	"error.poll": "The check did not finish. It will run again at the next scheduled interval.",
+	"search.account": "Douyin ID {account}",
+	"$manifest": {
+		"name": "Douyin",
+		"description": "Follow Douyin creators’ videos, photo posts and live streams, and preview works shared in group chats.",
+		"contributes": {
+			"subscription": {
+				"label": "Douyin",
+				"postNoun": "post",
+				"creatorNoun": "creator",
+				"externalIdNoun": "ID"
+			}
+		}
+	},
+	"api.private": "This creator’s Douyin account is private."
+}
