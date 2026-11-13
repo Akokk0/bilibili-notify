@@ -142,7 +142,7 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 				const id = fields.get("s_v_web_id") || fp;
 				u.searchParams.set("verifyFp", id);
 				u.searchParams.set("fp", id);
-				sign(u);
+				if (endpoint !== "search") sign(u);
 				const uifid = ["UIFID", "uifid", "UIFID_TEMP", "uifid_temp", "UIFIDTEMP", "uifidtemp"]
 					.map((key) => fields.get(key))
 					.find(Boolean);

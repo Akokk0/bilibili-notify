@@ -63,6 +63,26 @@ const detail = {
 	author: { sec_uid: "MS4wLjABAAAAabc", nickname: "Alice" },
 	video: { duration: 2000 },
 };
+it("uses the search endpoint's token-only policy for nickname candidates", async () => {
+	// Amagi f33c1a8, endpoints/search.ts:115 declares only msToken for this endpoint.
+	const { source, calls } = setup(() => ({
+		body: {
+			status_code: 0,
+			user_list: [{ user_info: { sec_uid: "MS4wLjABAAAAfish", nickname: "小鱼" } }],
+		},
+	}));
+	expect(await source.searchCreators("小鱼", new AbortController().signal)).toMatchObject({
+		ok: true,
+		candidates: [{ externalId: "MS4wLjABAAAAfish", name: "小鱼" }],
+	});
+	expect(calls).toHaveLength(1);
+	const request = calls[0];
+	if (!request) throw new Error("Missing source request");
+	expect(request.pathname).toBe("/aweme/v1/web/discover/search/");
+	expect(request.searchParams.get("keyword")).toBe("小鱼");
+	for (const key of ["a_bogus", "X-Bogus", "x-secsdk-web-signature"])
+		expect(request.searchParams.has(key)).toBe(false);
+});
 it("resolves an unsubscribed video through an anonymous share redirect and signed detail request", async () => {
 	const { source, calls } = setup((u) =>
 		u.hostname === "v.douyin.com"
