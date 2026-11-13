@@ -61,12 +61,14 @@ export async function npmRegistryFixture() {
 		const tag = /^\/-\/package\/(.+)\/dist-tags(?:\/([^/]+))?$/.exec(path);
 		const name = tag?.[1] ?? path.slice(1);
 		const pkg = packageState(name);
-		if (request.method === "GET" && !tag)
-			return send(Object.keys(pkg.versions).length ? 200 : 404, {
+		if (request.method === "GET" && !tag) {
+			const versions = state.visibleVersions?.(pkg.versions) ?? pkg.versions;
+			return send(Object.keys(versions).length ? 200 : 404, {
 				name,
-				versions: pkg.versions,
+				versions,
 				"dist-tags": pkg.tags,
 			});
+		}
 		if (request.method === "GET" && tag) return send(200, pkg.tags);
 		if (request.headers.authorization !== "Bearer local-fixture-token")
 			return send(401, { error: "Missing fixture token" });
@@ -115,6 +117,7 @@ export async function npmRegistryFixture() {
 			state.staged = [];
 			state.failure = undefined;
 			state.failAfterPublish = false;
+			state.visibleVersions = undefined;
 		},
 		async close() {
 			server.closeAllConnections();

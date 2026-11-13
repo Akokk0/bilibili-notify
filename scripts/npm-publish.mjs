@@ -4,6 +4,8 @@ import { promisify } from "node:util";
 import { compareEntryVersions } from "./extension-version-order.mjs";
 
 const exec = promisify(execFile);
+const SCAN_TIMEOUT_MS = 20 * 60_000;
+const SCAN_POLL_MS = 30_000;
 export async function registryCommand(registry, ...args) {
 	return exec(
 		"vp",
@@ -43,11 +45,26 @@ export async function publishNpmCandidate(candidate, channel, registry) {
 			"--ignore-scripts",
 		);
 	}
-	await advanceNpmChannel(candidate, channel, registry);
+	await advanceNpmChannel(candidate, channel, registry, { waitForScan: !existing });
 }
 
-export async function advanceNpmChannel(candidate, channel, registry) {
-	const current = await npmRegistryPackage(registry, candidate.name);
+export async function advanceNpmChannel(
+	candidate,
+	channel,
+	registry,
+	{ waitForScan = false } = {},
+) {
+	const deadline = Date.now() + SCAN_TIMEOUT_MS;
+	let current = await npmRegistryPackage(registry, candidate.name);
+	while (waitForScan && !Object.hasOwn(current.versions ?? {}, candidate.version)) {
+		const remaining = deadline - Date.now();
+		if (remaining <= 0)
+			throw new Error(
+				`npm accepted ${candidate.name}@${candidate.version}, but the version is still not visible. Check the registry before rerunning.`,
+			);
+		await new Promise((resolve) => setTimeout(resolve, Math.min(SCAN_POLL_MS, remaining)));
+		current = await npmRegistryPackage(registry, candidate.name);
+	}
 	if (current.versions?.[candidate.version]?.dist?.integrity !== candidate.integrity)
 		throw new Error(
 			"Published version integrity could not be verified; rerun after checking the registry.",

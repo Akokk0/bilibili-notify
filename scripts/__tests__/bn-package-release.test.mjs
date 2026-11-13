@@ -19,9 +19,24 @@ const sha = (bytes, algorithm = "sha256", encoding = "hex") =>
 describe("BN npm发行命令", () => {
 	let root;
 	let registry;
+	let scanClock;
 	beforeAll(async () => {
 		root = await mkdtemp(join(tmpdir(), "bn-npm-release-"));
 		registry = await npmRegistryFixture();
+		// 只加速发行进程的等待。npm 子进程与本机 registry 照常收发请求。
+		scanClock = join(root, "scan-clock.mjs");
+		await writeFile(
+			scanClock,
+			`
+const realTimeout = globalThis.setTimeout;
+let now = Date.now();
+Date.now = () => now;
+globalThis.setTimeout = (callback, delay, ...args) => {
+  now += delay;
+  return realTimeout(callback, 0, ...args);
+};
+`,
+		);
 		await writeFile(
 			join(root, "npmrc"),
 			`//${new URL(registry.endpoint).host}/:_authToken=local-fixture-token\n`,
@@ -98,10 +113,11 @@ describe("BN npm发行命令", () => {
 		await writeFile(join(directory, "package.json"), JSON.stringify(meta));
 		return { directory, meta, bytes };
 	}
-	async function release(fixture, options = []) {
+	async function release(fixture, options = [], nodeArgs = []) {
 		return exec(
 			process.execPath,
 			[
+				...nodeArgs,
 				join(REPO, "scripts/release-bn-package.mjs"),
 				"--directory",
 				fixture.directory,
@@ -292,6 +308,47 @@ describe("BN npm发行命令", () => {
 				(item) => item.method === "PUT" && item.path === "/@bilibili-notify/bn",
 			),
 		).toHaveLength(uploads);
+	}, 30_000);
+	it("npm接收上传后等待扫描结果，只上传一次并在摘要可见后更新渠道", async () => {
+		const fixture = await candidate("scan");
+		const { version } = fixture.meta;
+		let readsAfterUpload = 0;
+		registry.state.visibleVersions = (versions) => {
+			if (versions[version] && ++readsAfterUpload <= 2) return {};
+			return versions;
+		};
+		await release(fixture, ["--publish"], ["--import", scanClock]);
+		expect(registry.state.tags.alpha).toBe(version);
+		expect(
+			registry.state.requests.filter((item) => item.method === "PUT").map((item) => item.path),
+		).toEqual(["/@bilibili-notify/bn", "/-/package/@bilibili-notify/bn/dist-tags/alpha"]);
+	}, 30_000);
+	it("超过扫描等待时限仍未公开，保留原渠道且不重传", async () => {
+		const fixture = await candidate("scan-failure");
+		registry.state.visibleVersions = () => ({});
+		await expect(release(fixture, ["--publish"], ["--import", scanClock])).rejects.toThrow(
+			/still not visible/,
+		);
+		expect(
+			registry.state.requests.filter(({ method }) => method === "PUT").map(({ path }) => path),
+		).toEqual(["/@bilibili-notify/bn"]);
+	}, 30_000);
+	it("首次公开的摘要与候选不同，立即停止且不晋升", async () => {
+		const fixture = await candidate("scan-mismatch");
+		const { version } = fixture.meta;
+		let publicReads = 0;
+		registry.state.visibleVersions = (versions) => {
+			if (!versions[version]) return versions;
+			publicReads++;
+			return { [version]: { dist: { integrity: "different-content" } } };
+		};
+		await expect(release(fixture, ["--publish"], ["--import", scanClock])).rejects.toThrow(
+			/integrity could not be verified/,
+		);
+		expect(publicReads).toBe(1);
+		expect(
+			registry.state.requests.filter(({ method }) => method === "PUT").map(({ path }) => path),
+		).toEqual(["/@bilibili-notify/bn"]);
 	}, 30_000);
 	it("registry已经保存包但响应失败时不自动重传，重跑复验后继续晋升", async () => {
 		const fixture = await candidate("lost-response");
