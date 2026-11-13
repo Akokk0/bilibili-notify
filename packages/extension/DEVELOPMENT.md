@@ -33,7 +33,7 @@ vp dlx @bilibili-notify/bn@alpha dev
 
 无需检出BN主仓或在隐藏目录构建宿主。正式运行使用`npx @bilibili-notify/bn@alpha web`；alpha发行期间入口带`@alpha`，本地审阅归档不代表已经发布。开发BN本体仍克隆主仓、按主仓指引使用vp。
 
-启动器按版本与用途校验、缓存官方宿主。默认数据分别在`~/.bilibili-notify/dev-data`与`~/.bilibili-notify/data`，配置与凭据保存在该数据目录的`bn.config.yaml`。可用`--data-dir <绝对目录>`明确指定；缓存删除不影响持久数据，其他实例的数据需要通过`--data-dir`显式指定。端口可用`--port`调整，离线运行使用`--offline`及已经校验的缓存。
+启动器从npm包内解包宿主，并按版本与用途核对缓存。默认数据分别在`~/.bilibili-notify/dev-data`与`~/.bilibili-notify/data`；配置、凭据和其他持久数据位于该数据目录，启动配置文件为`bn.config.yaml`。可用`--data-dir <绝对目录>`明确指定；缓存删除不影响持久数据，其他实例的数据需要通过`--data-dir`显式指定。端口可用`--port`调整。npm包与依赖装好后，启动宿主不再下载载荷，也不需要额外的离线参数；删除缓存后仍可从包内重建。
 
 拓展工程由创建器安装好依赖；已有工程先运行`vp install --frozen-lockfile`。只需启动BN，打开拓展页，点击“挂载开发拓展”，输入源码工程在BN机器上的绝对路径，再沿原开关启用。BN直接加载`src/index.ts`，负责运行、监听源码与子依赖、局部重载和收尾。工程不需要`dist/`，也没有独立的dev/start命令；`build`与打包用于生产。多个工程可同时挂载，保存一个只重载对应项。
 
