@@ -378,6 +378,17 @@ console.log(JSON.stringify(await source.searchCreators("Alex", new AbortControll
 		run("git", ["add", "src/greeting.ts"], project);
 		run("git", ["commit", "-m", "chore: format source"], project);
 		expect(run("git", ["log", "-1", "--format=%s"], project).trim()).toBe("chore: format source");
+
+		const config = ".bn-extension/marketplace.json";
+		const market = JSON.parse(await readFile(join(project, config), "utf8"));
+		await writeFile(join(project, config), JSON.stringify({ ...market, name: "Updated market" }));
+		run("git", ["add", config], project);
+		expect(() => run("git", ["commit", "-m", "chore: update market"], project)).toThrow(
+			/formatting issues/i,
+		);
+		run("vp", ["run", "format"], project);
+		run("git", ["add", config], project);
+		run("git", ["commit", "-m", "chore: update market"], project);
 	}, 120_000);
 
 	it("生成的分支CI复验整段提交，不能只检查最后一个合法消息", async () => {

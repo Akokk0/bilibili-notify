@@ -7,7 +7,7 @@ export default defineConfig({
     rules: { "no-unused-vars": "error" },
   },
   fmt: { ignorePatterns: ["dist/**", "artifacts/**", "pnpm-lock.yaml"] },
-  staged: { "*": "vp check" },
+  staged: { "*": "vp check --no-error-on-unmatched-pattern" },
   test: { include: ["src/**/*.test.ts"] },
   pack: {
     entry: ["src/index.ts"],
