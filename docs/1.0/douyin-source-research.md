@@ -2,7 +2,7 @@
 
 2026-11-12 核对 kkk 2.45.3 及该提交固定的 Amagi 7.0.0-beta.9 源码。kkk 负责订阅、推送和与人的交互，抖音网页请求与响应判定在 Amagi。主人已确认抖音首版的常用操作与系统扫码登录对齐 B 站。[kkk 源码快照](https://github.com/ikenxuan/karin-plugin-kkk/tree/e97c1c8b6da19d6e8159f2314ab2c87e888c265e) · [Amagi 源码快照](https://github.com/ikenxuan/amagi/tree/094238d5d5f8c20abba5c3e5c7d03741190e2ab1) · [首版定案](../adr/0047-douyin-source-parity.md)
 
-2026-11-13，主人要求先比较其他 GitHub 项目，常驻浏览器与远程网页操作的正式接线暂不实施。已补 [四个项目的当前实现对照](douyin-project-comparison.md)，接下来优先核对 HTTP 访客会话初始化与分接口签名策略，扫码仍单独验收。
+2026-11-13，主人要求先比较其他 GitHub 项目，常驻浏览器与远程网页操作的正式接线暂不实施。已补 [四个项目的当前实现对照](douyin-project-comparison.md)。截至 2026-11-14，纯 HTTP 扫码与加密凭据恢复、搜人、资料、作品、图文、在播／离线、真实配图和群聊回卡均已取得实际证据；自然新增及真实开／下播变化仍单列观察。下文保留调研与实验过程，当前状态以[验收记录](douyin-source-acceptance.md)为准。
 
 ## 可用的接口线索
 
@@ -51,6 +51,10 @@ Amagi 的完整客户端自行创建 HTTP 客户端，包声明 GPL-3.0-only。�
 | 卡片编辑器预览、直播互动 | B 站还提供真实作者素材预览和弹幕等直播互动。抖音首版的卡片编辑器沿用拓展示例，礼物、粉丝团等互动留到以后。[现有拓展边界](extension-contract.md) · [订阅源定案](../adr/0019-subscription-source-opening.md) |
 
 ## 扫码与二次验证
+
+当前流程已通过持有人在系统账号页的纯 HTTP 扫码及多次换包恢复。早期 2156 与浏览器实验保留在下列历史记录中；正式方案不使用浏览器登录。短信和网页二次验证由既有来源入口的合成测试覆盖，真实正常登录没有触发这些分支。
+
+### 2026-11-13 协议核对与历史实验
 
 2026-11-13，持有人确认同机官网可扫码，BN 仍收到 2156。重新核对官网实际加载的代码，当前 `getQrcodeRequest` 使用 GET，`checkQrconnectRequest` 使用 POST；官网调用配置的 `accountApiConfig.host` 为 `window.location.origin`，即 `https://www.douyin.com`。轮询业务字段进入表单，SDK 的 `sign` 同时覆盖排序后的查询参数和未编码的正文参数。以下冻结参考描述的 `login.douyin.com`、GET 轮询与当前官网存在差异。拓展已对齐当前官网的域名、方法和正文签名，真实扫码结果仍待复验。[官网登录入口](https://lf-douyin-pc-web.douyinstatic.com/obj/douyin-pc-web/ies/douyin_web/client-entry~5.1266d11a.js) · [官网扫码组件](https://lf-douyin-pc-web.douyinstatic.com/obj/douyin-pc-web/ies/douyin_web/async/98404.482c6452.js) · [官网请求签名组件](https://lf-douyin-pc-web.douyinstatic.com/obj/douyin-pc-web/ies/douyin_web/async/2972.ccc78683.js)
 
