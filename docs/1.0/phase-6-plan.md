@@ -10,6 +10,7 @@
 - 2026-11-12，SDK 与创建器已在 npm 上发布首个 `alpha`，版本均为 `0.1.0-alpha.0`。[SDK](https://www.npmjs.com/package/@bilibili-notify/extension/v/0.1.0-alpha.0) · [创建器](https://www.npmjs.com/package/create-bn-ext/v/0.1.0-alpha.0)
 - 2026-11-13，创建器 `0.1.0-alpha.1` 经 npm 可信发布上架。向导只问目录、ID 和显示名。市场资料放在 `bn-extension/marketplace.json`，发布时从 Actions 或 Git 远端读取仓库地址。模板把动态导入打进 ZIP 入口。[ADR-0048](../adr/0048-extension-marketplace-config.md) · [创建器发行作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43350549879/job/131651210554)
 - 2026-11-13，`create-bn-ext@0.1.0-alpha.2` 已通过 npm 可信发布上架。创建器与发布工具统一使用 `.bn-extension/marketplace.json`，纯配置提交也会检查文件格式。抖音拓展工程已用该公共版本从零生成，默认 SDK 为 `0.1.0-alpha.0`，冻结安装、构建打包及发布预演通过。[ADR-0049](../adr/0049-hidden-extension-marketplace-config.md) · [创建器发行作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43376339379/job/131728317126)
+- 2026-11-13，`create-bn-ext@0.1.0-alpha.3` 已上架；交互向导退格时保留字段提示，跨字段粘贴后在原光标位置继续输入。公共 `alpha` 入口已用真实终端验证。[发行作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43386044891)
 - 2026-11-12，抖音首版确认与 B 站对齐常用订阅操作、群聊贴作品出卡和系统账号页扫码登录。群聊入口与登录分片落实。[首版定案](../adr/0047-douyin-source-parity.md)
 - 本体 npm 随主程序 tag 发行，本体与桥的版本和推送留到发行片确认。
 - 2026-11-11最新定案见[ADR-0046](../adr/0046-bundled-npm-distribution.md)：npm包自带两种宿主、随主程序tag发行；`@bilibili-notify/bn web/dev`运行宿主成品；拓展继续由BN手动挂载源码。
@@ -30,7 +31,7 @@
 | 6-05c | 拓展页复用Hero与横条Tab；开发挂载可浏览宿主目录，选择回填且保留草稿；目录读口沿原鉴权和生产隔离 | ✅ 片级232项、内置浏览器与全量20399项通过；未实际发布 |
 | 6-05d | npm启动器运行正式/开发成品；核对与缓存产物、独立数据、离线与退出；开发产物支持源码挂载，正式隔离不变；同步作者资料 | ✅ 本地实现、实际npm包与真实宿主、内置浏览器及全量20407项通过；发行版本待定，未发布 |
 | 6-05e | npm作为正式渠道：完整tgz自带双宿主、首次不访问GitHub，与主程序tag同版本；独立门禁、dry-run、可信发布、重跑与渠道保护 | ✅ 包内载荷、发行命令、Actions与本机完整包已验；实际npm发布另行确认 |
-| 6-05f | SDK与创建器独立手动Actions发行，默认预检、首发凭据与可信发布、精确归档/依赖顺序/重跑与渠道保护 | ✅ 两包经 Actions 暂存、npm 网页批准后均已上架。首发为 `0.1.0-alpha.0`，创建器随后通过可信发布将 `alpha` 更新到 `0.1.0-alpha.2`，公开下载与构建归档逐字节一致。[首发记录](https://github.com/Akokk0/bilibili-notify/actions/runs/43183955815) · [创建器发布记录](https://github.com/Akokk0/bilibili-notify/actions/runs/43376339379) |
+| 6-05f | SDK与创建器独立手动Actions发行，默认预检、首发凭据与可信发布、精确归档/依赖顺序/重跑与渠道保护 | ✅ 两包经 Actions 暂存、npm 网页批准后均已上架。首发为 `0.1.0-alpha.0`，创建器随后通过可信发布将 `alpha` 更新到 `0.1.0-alpha.3`，公开下载与构建归档逐字节一致。[首发记录](https://github.com/Akokk0/bilibili-notify/actions/runs/43183955815) · [创建器发布记录](https://github.com/Akokk0/bilibili-notify/actions/runs/43386044891) |
 | 6-06 | 重查抖音身份、链接、作品、直播、凭据及请求限制；按需求重议Q76，确定初版和测试入口 | ✅ 调研及范围定案完成。已核对 kkk、Amagi、一次匿名真实响应及宿主现有入口。[调研与验收](douyin-source-research.md) |
 | 6-07 | 给拓展开放群聊作品链接解析，接 SDK、宿主与声明范围，沿原逐群规则、回复和冷却；验证与 B 站共存 | 已定，下一片。Q76 只开放链接解析 |
 | 6-07a | 给订阅源拓展开放系统账号入口，接抖音扫码与二次验证；验证会话隔离、重扫、退出、恢复与失效 | 已定，独立施工。复用原账号页及扫码弹窗 |
