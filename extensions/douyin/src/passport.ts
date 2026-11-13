@@ -172,7 +172,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			q.set("qs", xor(first.map(([k]) => k).join(",")));
 			const ms = cookieValue(jar.header(url.href), "msToken");
 			if (ms) q.set("msToken", ms);
-			sign(url);
+			sign(url, 7571);
 		}
 		const headers = {
 			"content-type": "application/x-www-form-urlencoded",

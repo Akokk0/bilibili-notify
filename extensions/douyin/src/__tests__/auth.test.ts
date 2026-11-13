@@ -399,3 +399,50 @@ it("stops before creating a QR when login initialization fails and allows a fres
 	expect(await f.auth.beginLogin()).toEqual({ ok: true });
 	expect(f.auth.state().status).toBe("awaiting-scan");
 });
+
+// Decode the page field on the HTTP boundary independently of the signing library.
+// Passport uses page 7571, while the main site's data requests use page 6241.
+// Protocol layout reference: docs/1.0/douyin-source-research.md (Amagi Passport).
+function signedPage(value: string) {
+	const alphabet = "Dkdpgh2ZmsQB80/MfvV36XI1R45-WUAlEixNLwoqYTOPuzKFjJnry79HbGcaStCe";
+	const standard = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	const encoded = [...value].map((c) => (c === "=" ? c : standard[alphabet.indexOf(c)])).join("");
+	const encrypted = Buffer.from(encoded, "base64").subarray(4);
+	const box = Array.from({ length: 256 }, (_, i) => 255 - i);
+	let j = 0;
+	for (let i = 0; i < 256; i++) {
+		j = (j * box[i] + j + 211) % 256;
+		[box[i], box[j]] = [box[j], box[i]];
+	}
+	let i = 0;
+	j = 0;
+	const plain = [...encrypted]
+		.map((byte) => {
+			i = (i + 1) % 256;
+			j = (j + box[i]) % 256;
+			[box[i], box[j]] = [box[j], box[i]];
+			return byte ^ box[(box[i] + box[j]) % 256];
+		})
+		.slice(8);
+	const fields: number[] = [];
+	for (let k = 0; k + 3 < plain.length; k += 4) {
+		fields.push(
+			(plain[k] & 110) | (plain[k + 3] & 145),
+			(plain[k + 1] & 189) | (plain[k + 3] & 66),
+			(plain[k + 2] & 211) | (plain[k + 3] & 44),
+		);
+	}
+	return fields[37] + fields[13] * 256 + fields[23] * 65536 + fields[6] * 16777216;
+}
+it("signs QR creation and polling for the Passport page", async () => {
+	const f = fixture();
+	await f.auth.beginLogin();
+	await f.pollNext();
+	const requests = f.requests.filter(({ url }) => url.hostname === "login.douyin.com");
+	expect(requests).toHaveLength(2);
+	for (const { url } of requests) {
+		const signature = url.searchParams.get("a_bogus");
+		if (!signature) throw new Error("Missing request signature");
+		expect(signedPage(signature)).toBe(7571);
+	}
+});
