@@ -4,7 +4,7 @@
 
 ## 工程与宿主契约
 
-- 官方拓展 ID 为 `douyin`，清单和包版本均为 `0.1.0`；要求 `apiVersion: 1`、`apiRevision: 2`。修订 2 提供抖音号等展示账号字段，稳定订阅身份仍为 `{ sourceKey, externalId }`，其中 `externalId` 是平台的 `sec_uid`。
+- 官方拓展 ID 为 `douyin`，清单和包版本均为 `0.1.0-alpha.0`；要求 `apiVersion: 1`、`apiRevision: 2`。修订 2 提供抖音号等展示账号字段，稳定订阅身份仍为 `{ sourceKey, externalId }`，其中 `externalId` 是平台的 `sec_uid`。
 - 本工程使用 workspace SDK；所有 BN 运行时能力只从 `@bilibili-notify/extension` 获取，构建配置使用其 `/build` 入口。源码不直接依赖宿主或 `internal`，请求、图片、凭据、计时器和问题报告均通过 `ctx`。
 - `activate()` 注册一个带账号和链接解析能力的订阅源。没有拓展专用设置、指令或 AI 工具；没有实现 `fetchPreview`。作品和直播事件交给宿主，由宿主处理目标选择、发送、历史和统计。
 - 官方拓展走主仓打包和市场流程，不需要 `.bn-extension/marketplace.json`。早期 `akokko.douyin` 是独立身份，代码收归不等于凭据或订阅迁移。
