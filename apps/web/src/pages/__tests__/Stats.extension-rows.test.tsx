@@ -112,6 +112,7 @@ const DOUYIN_SOURCE: SourceEntry = {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
+		icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
 		supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 	},
 };
@@ -211,7 +212,11 @@ describe("统计页 · 拓展订阅的行", () => {
 		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
 
 		const ext = tableRow("抖音乙");
-		expect(within(ext).getByText("抖")).toBeTruthy();
+		const platformIcon = within(ext).getByRole("img", { name: "抖音" });
+		expect(platformIcon.querySelector("img")?.getAttribute("src")).toBe(
+			DOUYIN_SOURCE.descriptor.icon,
+		);
+		expect(within(ext).queryByText("抖")).toBeNull();
 		expect(ext.querySelector(`img[src="/api/images/${"d".repeat(64)}.png"]`)).not.toBeNull();
 		expect(within(ext).getByText(/直播中/)).toBeTruthy();
 		const bili = tableRow("B 站甲");

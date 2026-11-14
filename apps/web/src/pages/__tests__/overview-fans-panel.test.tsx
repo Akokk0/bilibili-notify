@@ -52,6 +52,7 @@ const DOUYIN_SOURCE: SourceEntry = {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
+		icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
 		supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 	},
 };
@@ -147,7 +148,11 @@ describe("粉丝数变化 · 拓展订阅", () => {
 		);
 		await waitFor(() => expect(screen.getByText("抖音乙")).toBeTruthy());
 		expect(screen.getByText("B 站甲")).toBeTruthy();
-		expect(screen.getByText("抖")).toBeTruthy();
+		const platformIcon = screen.getByRole("img", { name: "抖音" });
+		expect(platformIcon.querySelector("img")?.getAttribute("src")).toBe(
+			DOUYIN_SOURCE.descriptor.icon,
+		);
+		expect(screen.queryByText("抖")).toBeNull();
 		expect(screen.getByText("● 2 位订阅")).toBeTruthy();
 		expect(screen.getByText("2.2万 粉丝")).toBeTruthy();
 		expect(screen.getByText("+3333")).toBeTruthy();

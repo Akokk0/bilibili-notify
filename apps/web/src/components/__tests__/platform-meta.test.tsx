@@ -90,6 +90,19 @@ describe("描述与快照提供平台外观", () => {
 });
 
 describe("描述符图标的纯图标兜底", () => {
+	it("平台名称用于图标的读屏与悬停提示，不印短名文字", () => {
+		const { container } = render(
+			<DescriptorIcon
+				descriptor={{ shortLabel: "桥", color: "#123456", icon: IMAGE }}
+				label="桥接平台"
+				fallbackIcon="globe"
+			/>,
+		);
+		const icon = screen.getByRole("img", { name: "桥接平台" });
+		expect(icon.getAttribute("title")).toBe("桥接平台");
+		expect(container.querySelector("img")?.getAttribute("src")).toBe(IMAGE);
+		expect(container.textContent).toBe("");
+	});
 	it("有安全图片时优先用描述符图片，不被兜底图标替换", () => {
 		const { container } = render(
 			<DescriptorIcon

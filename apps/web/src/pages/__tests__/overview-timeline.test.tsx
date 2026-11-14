@@ -76,6 +76,7 @@ const DOUYIN_SOURCE: SourceEntry = {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
+		icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
 		supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 	},
 };
@@ -192,31 +193,39 @@ describe("最近推送活动 · 平台徽章", () => {
 				/>
 			</MemoryRouter>,
 		);
-		expect(badgeTexts(container)).toEqual(
-			badge === null ? ["作品", "已送达"] : ["作品", badge, "已送达"],
-		);
+		expect(badgeTexts(container)).toEqual(["作品", "已送达"]);
+		if (badge === null) expect(screen.queryByRole("img", { name: key })).toBeNull();
+		else expect(screen.getByRole("img", { name: badge })).toBeTruthy();
 	});
 
-	it("拓展行带平台徽章(短名照清单),名字取自快照也带", () => {
+	it("快照名字旁展示来源图标，完整平台名用于读屏与提示", () => {
 		const { container } = renderPanel([extRow({ nameSnapshot: "某抖音号" })], [], [DOUYIN]);
-		expect(badgeTexts(container)).toContain("抖");
+		const platformIcon = screen.getByRole("img", { name: "抖音" });
+		expect(platformIcon.getAttribute("title")).toBe("抖音");
+		expect(platformIcon.querySelector("img")?.getAttribute("src")).toBe(
+			DOUYIN_SOURCE.descriptor.icon,
+		);
+		expect(badgeTexts(container)).not.toContain("抖");
 		expect(screen.getByText("某抖音号")).toBeTruthy();
 	});
 
 	it("名字是身份兜底的拓展行也带徽章", () => {
 		const { container } = renderPanel([extRow()], [], [DOUYIN]);
-		expect(badgeTexts(container)).toContain("抖");
+		expect(screen.getByRole("img", { name: "抖音" })).toBeTruthy();
+		expect(badgeTexts(container)).not.toContain("抖");
 		expect(screen.getByText("抖音 · sec-1")).toBeTruthy();
 	});
 
-	it("拓展卸载了(清单里没有它)→ 徽章写拓展 id", () => {
+	it("拓展卸载后使用图形兜底，完整平台键仍可读屏", () => {
 		const { container } = renderPanel([extRow({ nameSnapshot: "某抖音号" })], [], []);
-		expect(badgeTexts(container)).toContain("douyin");
+		expect(screen.getByRole("img", { name: "douyin" }).querySelector("svg")).not.toBeNull();
+		expect(badgeTexts(container)).not.toContain("douyin");
 	});
 
 	it("多来源时 B 站行也按描述符画徽章", () => {
 		const { container } = renderPanel([row({ nameSnapshot: "某UP" })], [], [DOUYIN]);
-		expect(badgeTexts(container)).toEqual(["作品", "B 站", "已送达"]);
+		expect(screen.getByRole("img", { name: "B 站" })).toBeTruthy();
+		expect(badgeTexts(container)).toEqual(["作品", "已送达"]);
 	});
 });
 

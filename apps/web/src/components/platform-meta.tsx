@@ -36,18 +36,28 @@ export function DescriptorIcon({
 	descriptor,
 	size = 16,
 	fallbackIcon,
+	label,
 }: {
 	descriptor: Pick<PlatformSnapshot, "color" | "shortLabel" | "icon">;
 	size?: number;
 	/** 只接受图形的摆放处指定兜底，缺省仍沿用平台短名。 */
 	fallbackIcon?: IconName;
+	/** 作为独立平台标识时提供完整名称，用于读屏和悬停提示。 */
+	label?: string;
 }) {
 	const meta = appearanceOf(descriptor);
 	if (!meta.image && !meta.icon && fallbackIcon) meta.icon = fallbackIcon;
-	return (
+	const icon = (
 		<PlatformMetaProvider value={() => meta}>
 			<PlatformIcon platform={descriptor.shortLabel} size={size} />
 		</PlatformMetaProvider>
+	);
+	return label ? (
+		<span role="img" aria-label={label} title={label} className="inline-flex shrink-0 items-center">
+			{icon}
+		</span>
+	) : (
+		icon
 	);
 }
 

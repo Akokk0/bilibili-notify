@@ -114,6 +114,7 @@ const DOUYIN_SOURCE: SourceEntry = {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
+		icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
 		supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 	},
 };
@@ -155,7 +156,12 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 			[DOUYIN],
 		);
 		expect(screen.getByText("抖音乙")).toBeTruthy();
-		expect(screen.getByText("抖")).toBeTruthy();
+		const platformIcon = screen.getByRole("img", { name: "抖音" });
+		expect(platformIcon.getAttribute("title")).toBe("抖音");
+		expect(platformIcon.querySelector("img")?.getAttribute("src")).toBe(
+			DOUYIN_SOURCE.descriptor.icon,
+		);
+		expect(screen.queryByText("抖")).toBeNull();
 		expect(screen.getByText("抖音这一场")).toBeTruthy();
 		expect(screen.getByText("聊天")).toBeTruthy();
 		// 那一列与 B 站行同一个口径:本场累计观看(决策 75)。
@@ -166,10 +172,10 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		expect(container.querySelector(`img[src="/api/images/${"d".repeat(64)}.png"]`)).not.toBeNull();
 	});
 
-	it("订阅列表与拓展列表都还没回来:名字写拓展 id 加外部 id、徽章退拓展 id,不写「UID undefined」", () => {
+	it("来源资料未回来时保留原身份并提供带来源名的图形兜底", () => {
 		renderPanel([douyinLive("s-dy")], []);
 		expect(screen.getByText("douyin · sec-1")).toBeTruthy();
-		expect(screen.getByText("douyin")).toBeTruthy();
+		expect(screen.getByRole("img", { name: "douyin" }).querySelector("svg")).not.toBeNull();
 		expect(screen.queryByText(/UID/)).toBeNull();
 		expect(screen.queryByText(/undefined/)).toBeNull();
 		expect(screen.getByText("（未读取到房间标题）")).toBeTruthy();

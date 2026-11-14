@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type CSSProperties, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { HeroStrip } from "../components/hero-strip";
+import { DescriptorIcon } from "../components/platform-meta";
 import { SystemHealthCard } from "../components/system-health-card";
 import { SystemResourceCard } from "../components/system-resource-card";
 import { useUpdateStatus } from "../components/update/status";
@@ -64,7 +65,10 @@ import {
 	createSubscriptionLookup,
 	type SubscriptionLookup,
 } from "./subscriptions/subscription-lookup";
-import { subscriptionPlatformOf } from "./subscriptions/subscription-source";
+import {
+	type SubscriptionPlatform,
+	subscriptionPlatformOf,
+} from "./subscriptions/subscription-source";
 
 /** 「正在直播」那一列的人数:精确数排成「1.2万」(`formatCount`),没有数是「—」。0 是真数,写「0」。 */
 function formatViewers(n: number | undefined): string {
@@ -89,7 +93,7 @@ function liveRowFace(
 	color: string;
 	avatar?: string;
 	viewers: string;
-	platform?: { label: string; color?: string };
+	platform?: SubscriptionPlatform;
 } {
 	const sub = lookup.byId(r.subscriptionId);
 	const avatar = profileAvatarUrl(sub?.cachedProfile);
@@ -102,9 +106,7 @@ function liveRowFace(
 	return {
 		...base,
 		name: sub ? displayName(sub, platform) : historyRowIdentity(r, platform),
-		platform: platform.showBadge
-			? { label: platform.shortLabel ?? platform.label, color: platform.color }
-			: undefined,
+		platform: platform.showBadge ? platform : undefined,
 	};
 }
 
@@ -246,11 +248,17 @@ export function LiveNowPanel({
 								<div className="min-w-0 flex-1">
 									<div className="mb-0.5 flex items-center gap-2">
 										<span className="text-bn-base font-bold text-bn-text-primary">{name}</span>
-										{/* 拓展订阅的在播标一枚平台徽章(同订阅卡),B 站房间不标。 */}
 										{platform ? (
-											<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
-												{platform.label}
-											</Pill>
+											<DescriptorIcon
+												descriptor={{
+													...platform,
+													shortLabel: platform.shortLabel ?? platform.label,
+													color: platform.color ?? "var(--color-bn-inactive)",
+												}}
+												label={platform.label}
+												fallbackIcon="globe"
+												size={14}
+											/>
 										) : null}
 										{r.category ? (
 											<Pill color="var(--color-bn-pink)" subtle size="sm">
@@ -465,9 +473,16 @@ export function TimelinePanel({
 										{FEATURE_DESCRIPTORS[h.feature].label}
 									</Pill>
 									{platform.showBadge ? (
-										<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
-											{platform.shortLabel ?? platform.label}
-										</Pill>
+										<DescriptorIcon
+											descriptor={{
+												...platform,
+												shortLabel: platform.shortLabel ?? platform.label,
+												color: platform.color ?? "var(--color-bn-inactive)",
+											}}
+											label={platform.label}
+											fallbackIcon="globe"
+											size={14}
+										/>
 									) : null}
 									<div className="min-w-0 flex-1 truncate text-bn-text-tertiary">
 										<span className="font-bold text-bn-text-primary">{name}</span>
@@ -506,7 +521,7 @@ function fansRowFace(
 	lookup: SubscriptionLookup,
 	sources: readonly SourceEntry[] | undefined,
 	_extensions: readonly ExtensionEntryView[] | undefined,
-): { name: string; color: string; avatar?: string; platform?: { label: string; color?: string } } {
+): { name: string; color: string; avatar?: string; platform?: SubscriptionPlatform } {
 	const sub = lookup.byId(e.subscriptionId);
 	const base = {
 		color: identityColor(e.identity, subscriptionPlatformOf(e.identity, sources)),
@@ -516,9 +531,7 @@ function fansRowFace(
 	return {
 		...base,
 		name: sub ? displayName(sub, platform) : historyRowIdentity(e, platform),
-		platform: platform.showBadge
-			? { label: platform.shortLabel ?? platform.label, color: platform.color }
-			: undefined,
+		platform: platform.showBadge ? platform : undefined,
 	};
 }
 
@@ -610,9 +623,16 @@ export function FansPanel({
 									<div className="flex min-w-0 items-center gap-1.5">
 										<span className="truncate font-bold text-bn-text-primary">{name}</span>
 										{platform ? (
-											<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
-												{platform.label}
-											</Pill>
+											<DescriptorIcon
+												descriptor={{
+													...platform,
+													shortLabel: platform.shortLabel ?? platform.label,
+													color: platform.color ?? "var(--color-bn-inactive)",
+												}}
+												label={platform.label}
+												fallbackIcon="globe"
+												size={14}
+											/>
 										) : null}
 									</div>
 									<div className="tabular-nums text-bn-xs text-bn-text-tertiary">

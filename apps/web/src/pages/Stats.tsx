@@ -23,6 +23,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Picker } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
+import { DescriptorIcon } from "../components/platform-meta";
 import { useExtensions } from "../hooks/useExtensions";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
@@ -69,7 +70,10 @@ import { SoloRoastCard } from "./stats/SoloRoastCard";
 import { SoloRoastScheduleBox } from "./stats/SoloRoastScheduleBox";
 import { displayName, profileAvatarUrl } from "./subscriptions/helpers";
 import { createSubscriptionLookup } from "./subscriptions/subscription-lookup";
-import { subscriptionPlatformOf } from "./subscriptions/subscription-source";
+import {
+	type SubscriptionPlatform,
+	subscriptionPlatformOf,
+} from "./subscriptions/subscription-source";
 
 /**
  * 面板 / KPI 卡的主题色 —— 走 token,跟皮肤换装。
@@ -125,8 +129,8 @@ interface UpMeta {
 	 * 外部 id(ADR-0020 决策 3,同历史页的 ADR-0019 决策 73)。
 	 */
 	identity: { label: string; id: string };
-	/** 拓展行的平台(徽章与 CSV 的「平台」那一列);B 站行没有。平台名取不到(拓展卸载了)写拓展 id。 */
-	platform?: { label: string; shortLabel?: string; color?: string };
+	/** 来源图形与完整名称；未知来源由图形兜底，保留来源键用于提示。 */
+	platform?: SubscriptionPlatform;
 }
 
 /** 订阅列表还没回来(或对不上)时,也画得出一个认得出的人:B 站写 UID,拓展写外部 id。 */
@@ -148,19 +152,24 @@ function upMetaOf(
 		nouns: platform,
 		name: sub ? displayName(sub, platform) : historyRowIdentity(r, platform),
 		identity: { label: platform.externalIdNoun?.trim() || platform.label, id: externalId },
-		platform: platform.showBadge
-			? { label: platform.label, shortLabel: platform.shortLabel, color: platform.color }
-			: undefined,
+		platform: platform.showBadge ? platform : undefined,
 	};
 }
 
-/** 拓展行名字旁边那枚平台徽章(同历史页、首页「正在直播」);B 站行不画。 */
-function PlatformPill({ meta }: { meta: UpMeta }) {
+/** 名字旁的平台图形，与概览和历史沿用相同的描述符图标。 */
+function PlatformMark({ meta }: { meta: UpMeta }) {
 	if (!meta.platform) return null;
 	return (
-		<Pill size="sm" subtle color={meta.platform.color ?? "var(--color-bn-inactive)"}>
-			{meta.platform.shortLabel ?? meta.platform.label}
-		</Pill>
+		<DescriptorIcon
+			descriptor={{
+				...meta.platform,
+				shortLabel: meta.platform.shortLabel ?? meta.platform.label,
+				color: meta.platform.color ?? "var(--color-bn-inactive)",
+			}}
+			label={meta.platform.label}
+			fallbackIcon="globe"
+			size={14}
+		/>
 	);
 }
 
@@ -271,7 +280,7 @@ function UpPicker({
 										<span className="truncate text-bn-sm font-bold text-bn-text-primary">
 											{m.name}
 										</span>
-										<PlatformPill meta={m} />
+										<PlatformMark meta={m} />
 									</span>
 									<span className="block text-bn-2xs text-bn-text-secondary">
 										{num(r.followers)} ·{" "}
@@ -370,7 +379,7 @@ function CompareTable({
 												<span className="truncate text-bn-sm font-bold text-bn-text-primary">
 													{m.name}
 												</span>
-												<PlatformPill meta={m} />
+												<PlatformMark meta={m} />
 											</div>
 											<div className="text-bn-2xs text-bn-text-secondary">
 												{(r.lastActivityAt ? formatAgo(r.lastActivityAt) : undefined) ??
