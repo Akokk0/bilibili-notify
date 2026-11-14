@@ -211,9 +211,14 @@ describe("SubscriptionDialog × 拓展订阅", () => {
 		expect(screen.getByText("下播卡片 / 弹幕词云")).toBeTruthy();
 	});
 
-	it("头部写平台,不写 UID", () => {
-		renderDialog(extSub(), platform());
-		expect(screen.getByText("抖音")).toBeTruthy();
+	it("头部以图标标识平台，完整长 ID 可查看，粉丝数保持完整", () => {
+		const id = `MS4wLjABAAAA${"long-creator-id".repeat(5)}`;
+		const sub = extSub({ identity: { sourceKey: "douyin", externalId: id } });
+		sub.cachedProfile = { name: "抖音那位", followers: 10477000, refreshedAt: "t" };
+		renderDialog(sub, platform({ externalIdNoun: "作者 ID" }));
+		expect(screen.getByRole("img", { name: "抖音" })).toBeTruthy();
+		expect(screen.getByTitle(`作者 ID ${id}`).textContent).toBe(`作者 ID ${id}`);
+		expect(screen.getByText("1047.7万 粉丝", { exact: true })).toBeTruthy();
 		expect(screen.queryByText(/UID/)).toBeNull();
 	});
 

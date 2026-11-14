@@ -20,6 +20,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TInput } from "../../components/forms";
+import { DescriptorIcon } from "../../components/platform-meta";
 import { TargetLabel } from "../../components/target-display";
 import { i18n, useT } from "../../i18n";
 import {
@@ -615,7 +616,7 @@ export function SubscriptionDialog({
 					surface="scrim"
 					className="absolute right-3.5 top-3.5"
 				/>
-				<div className="absolute -bottom-7 left-5 flex items-end gap-3">
+				<div className="absolute inset-x-5 -bottom-7 flex min-w-0 items-end gap-3">
 					<Avatar
 						name={previewName}
 						color={color}
@@ -624,25 +625,39 @@ export function SubscriptionDialog({
 						ring
 					/>
 					<div
-						className="pb-2 text-bn-on-solid"
+						className="min-w-0 flex-1 pb-2 text-bn-on-solid"
 						style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}
 					>
-						<div className="text-bn-md font-bold">{previewName}</div>
+						<div className="truncate text-bn-md font-bold" title={previewName}>
+							{previewName}
+						</div>
 						<div
-							className="mt-0.5 text-bn-xs font-semibold"
-							style={{ color, textShadow: "0 1px 4px rgba(255,255,255,0.4)" }}
+							className="mt-0.5 flex min-w-0 items-center gap-1.5 text-bn-xs font-semibold text-bn-text-secondary"
+							style={{ textShadow: "none" }}
 						>
-							{/* 拓展订阅没有 uid(ADR-0019 决策 9),那一格写它是哪个平台的。 */}
 							{ext.showBadge ? (
-								<Pill size="sm" color={ext.color ?? "var(--color-bn-inactive)"}>
-									{ext.label}
-								</Pill>
+								<span role="img" aria-label={ext.label} title={ext.label} className="shrink-0">
+									<DescriptorIcon
+										descriptor={{
+											icon: ext.icon,
+											color: ext.color ?? "var(--color-bn-inactive)",
+											shortLabel: ext.shortLabel ?? ext.label,
+										}}
+										size={14}
+										fallbackIcon="globe"
+									/>
+								</span>
 							) : null}
-							<span className="tabular-nums">{subscriptionIdentityLabel(identity, ext)}</span>
+							<span
+								className="min-w-0 flex-1 truncate tabular-nums"
+								title={subscriptionIdentityLabel(identity, ext)}
+							>
+								{subscriptionIdentityLabel(identity, ext)}
+							</span>
 							{(createProfile?.followers ?? draft.cachedProfile?.followers) != null ? (
 								<>
-									<span className="mx-1 opacity-70">·</span>
-									<span>
+									<span className="shrink-0 opacity-70">·</span>
+									<span className="shrink-0 whitespace-nowrap tabular-nums">
 										{tx("sourceUi.pages.up.UpDialog.UpDialog.15", {
 											count: formatCount(
 												createProfile?.followers ?? draft.cachedProfile?.followers ?? 0,
