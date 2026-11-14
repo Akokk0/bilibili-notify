@@ -1,6 +1,6 @@
 ---
 name: release-announcement
-description: 写 bilibili-notify 发布公告,按增删改组织、压到 600 字内。Use when 用户要写或更新 release notes / 更新公告 / 发版公告,或发版后整理对外更新说明。
+description: 为 BN 本体写发布公告，按指定版本的增删改组织，压到 600 字内。用户要求本体更新公告或发行后的对外说明时使用。
 ---
 
 # 写发布公告
@@ -9,12 +9,16 @@ bilibili-notify 每版**一份**公告,正文按 CHANGELOG 的**增删改**组�
 
 ## 步骤
 
-读 `apps/CHANGELOG.md` 最新段,按下方骨架写 `release-notes/<版本>.txt`,`wc -m` ≤ 600;超了砍括号补充 / 命令 / 警告细节,不砍条目。
+先确定本次本体版本：优先使用用户指定或当前发行流程已确认的版本；未指定时才从最新 `v*` tag 取版本。用 `vp exec node scripts/changelog-section.mjs --version <VERSION> --part section` 读取对应段。本流程只处理本体公告，SDK、创建器和拓展使用各自的发行资料。
+
+确认材料对应所选版本后，按下方骨架写 `release-notes/<版本>.txt`。内容、标题和文件名使用同一版本；未打 tag 的候选也用已确定的候选版号。
+
+`wc -m` ≤ 600；超了砍括号补充、命令和警告细节，不砍条目。
 
 ## 文件
 
 - 路径 `release-notes/<版本>.txt`(该目录 gitignored,公告不入库)。
-- `<版本>` = 最新 tag 去掉 `v`:`git tag -l 'v*' --sort=-creatordate | head -1` → 如 `0.9.0`。
+- `<版本>` = 上一步选定的版本；默认 tag 的查法是 `git tag -l 'v*' --sort=-creatordate | head -1`，去掉前缀 `v` 后使用。
 
 ## 骨架
 

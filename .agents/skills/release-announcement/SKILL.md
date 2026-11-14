@@ -1,6 +1,6 @@
 ---
 name: release-announcement
-description: 写 bilibili-notify 发布公告,按增删改组织、压到 600 字内。Use when 用户要写或更新 release notes / 更新公告 / 发版公告,或发版后整理对外更新说明。
+description: 为 BN 本体写发布公告，按指定版本的增删改组织，压到 600 字内。用户要求本体更新公告或发行后的对外说明时使用。
 ---
 
 # 发布公告

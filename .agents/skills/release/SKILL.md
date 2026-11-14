@@ -1,6 +1,6 @@
 ---
 name: release
-description: 走独立端发版流程(git tag 触发 Docker + Desktop + 应用内更新载荷)。Use when 用户要发版、发布新版本、打 tag 发布。
+description: 发布 BN 本体、SDK、创建器、官方拓展或 Docker 基座镜像。用户要求发版、发布 npm 工具或推送发行 tag 时使用。
 ---
 
 # 发版
