@@ -12,6 +12,7 @@
 - 2026-11-13，`create-bn-ext@0.1.0-alpha.2` 已通过 npm 可信发布上架。创建器与发布工具统一使用 `.bn-extension/marketplace.json`，纯配置提交也会检查文件格式。抖音拓展工程已用该公共版本从零生成，默认 SDK 为 `0.1.0-alpha.0`，冻结安装、构建打包及发布预演通过。[ADR-0049](../adr/0049-hidden-extension-marketplace-config.md) · [创建器发行作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43376339379/job/131728317126)
 - 2026-11-13，`create-bn-ext@0.1.0-alpha.3` 已上架；交互向导退格时保留字段提示，跨字段粘贴后在原光标位置继续输入。公共 `alpha` 入口已用真实终端验证。[发行作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43386044891)
 - 2026-11-12，抖音首版确认与 B 站对齐常用订阅操作、群聊贴作品出卡和系统账号页扫码登录。群聊入口与登录分片落实。[首版定案](../adr/0047-douyin-source-parity.md)
+- 2026-11-14，抖音最终版收归 `extensions/douyin/` 作为官方维护入口，ID 为 `douyin`；仓外 `akokko.douyin` 工程保留为脚手架验证样本。官方源码、四语文案、workspace SDK、构建与主仓拓展发布流程已接齐，使用说明见[拓展 README](../../extensions/douyin/README.md)。本次收归代码不调整既有来源身份与本机数据，市场上架另走发行流程。
 - 本体 npm 随主程序 tag 发行，本体与桥的版本和推送留到发行片确认。
 - 2026-11-11最新定案见[ADR-0046](../adr/0046-bundled-npm-distribution.md)：npm包自带两种宿主、随主程序tag发行；`@bilibili-notify/bn web/dev`运行宿主成品；拓展继续由BN手动挂载源码。
 

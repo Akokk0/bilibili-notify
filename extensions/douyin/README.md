@@ -6,6 +6,23 @@
 
 本拓展需要支持拓展 API 1、修订号 1 的 BN 宿主。
 
+## 主仓开发与安装
+
+官方版本在本仓的 `extensions/douyin/` 维护，拓展 ID 为 `douyin`，经 workspace 使用 SDK。扫码登录、会话恢复、作者搜索、作品和直播订阅、群聊链接解析及四语文案均在此目录。
+
+开发时在仓库根运行 `vp install` 和 `vp run dev:apps`，再到拓展页点击「挂载开发拓展」，选择本仓的 `extensions/douyin` 目录并启用。BN 直接加载源码，保存后自动重载。
+
+安装包在仓库根构建：
+
+```sh
+vp run -F @bilibili-notify/extension-douyin build
+vp exec node scripts/pack-extension.mjs --id douyin
+```
+
+当前产物为 `dist/douyin-0.1.0.zip`，可在拓展页通过「装拓展」上传并启用。正式市场上架沿主仓拓展发布流程，见[拓展市场说明](../../docs/agents/extension-marketplace.md)。
+
+早期仓外验证工程使用 ID `akokko.douyin`。订阅、凭据、历史和统计按来源身份隔离；安装官方版本不会自动把这些数据改为 `douyin`。
+
 ## 第三方图形
 
 抖音标识采用字节跳动 [IconPark 的 Tiktok（抖音）字形](https://github.com/bytedance/IconPark/blob/master/packages/react/src/icons/Tiktok.tsx)，以单色适配本面板的平台图标。原始路径保持不变，仅调整 SVG 容器与颜色。

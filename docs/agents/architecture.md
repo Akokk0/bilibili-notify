@@ -215,8 +215,7 @@ src/
 ## 拓展(`extensions/`)
 
 一个拓展 = 一个目录 + 一份 `extension.json` 清单 + 一个导出 `activate(ctx)` 的入口。定案见
-`docs/adr/0012-extensions.md`;第一个(也是眼下唯一一个)是**机器人框架桥接**
-`extensions/bridge/`,它对外的线上协议在 `extensions/bridge/PROTOCOL.md`。
+`docs/adr/0012-extensions.md`。主仓维护机器人框架桥接(`extensions/bridge/`)、开发假源(`extensions/fake-source/`)和抖音订阅源(`extensions/douyin/`)；桥接的线上协议在 `extensions/bridge/PROTOCOL.md`，抖音的开发与安装说明在 `extensions/douyin/README.md`。
 
 - **一切副作用都从 `ctx` 过** —— 定时器、HTTP 挂载点、WS upgrade、推送源、入站、面板数据。
   裸 `setInterval`、裸挂端点是禁止的:那是「停用得干净」的唯一承重条件。
