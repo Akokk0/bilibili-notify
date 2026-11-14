@@ -1,6 +1,8 @@
 # Bilibili-Notify Dashboard
 
-独立端形态:Hono HTTP / WS 服务端 + React 控制台,自带可视化面板(扫码登录、订阅、推送目标、历史、日志)。两种部署方式:**Docker**(下方)或 **macOS / Windows 桌面应用**(见「部署(桌面应用)」)。
+独立端形态:Hono HTTP / WS 服务端 + React 控制台，自带来源账号、订阅、推送目标、历史、统计、资源库与日志面板。可用 **Docker** 或 **macOS / Windows 桌面应用**部署；npm 成品渠道处于发行准备阶段。
+
+本文对应 `dev` 分支的 1.0 开发版。已发行版本请查看对应 tag 的文档；拓展需要与宿主契约兼容，具体安装包以市场或发行页提供的版本为准。
 
 ## 部署(Docker)
 
@@ -21,7 +23,7 @@ docker compose up -d
 └── docker-compose.yaml
 ```
 
-打开 `http://<host>:8787`,登录后扫码绑定 B 站账号。
+打开 `http://<host>:8787` 登录面板，在「系统 → 账号」管理各来源的登录；B 站内置，拓展来源需先安装并启用。
 
 最小 `docker run`:
 
@@ -73,6 +75,19 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 
 - **卡片渲染用你本机的浏览器**,按平台自动探测 Chrome / Edge / Chromium 的默认安装位置;都没有则降级为纯文字推送,也可在系统页手填路径或指向远程浏览器。
 - **字体来自你的操作系统**,不是镜像里那套 —— 所以卡片设置里「手填字体名」在桌面版填苹方 / 微软雅黑这类系统自带字体就作数(容器里则只有思源黑 / 思源宋)。
+
+## npm 成品入口（发行准备中）
+
+`@bilibili-notify/bn` 的完整包自带服务端、面板与两种宿主，首次运行从包内解包，不再从 GitHub 下载 BN。需要 Node 24.15.0 或更高版本，本机或远程 Chromium 用于卡片渲染。
+
+本体 npm 包尚未发布，发布后的启动命令及本仓试用方式见 [BN 启动器说明](../tools/bn-cli/README.md)。默认持久数据目录分别为：
+
+| 模式 | 数据目录 | 用途 |
+| --- | --- | --- |
+| `web` | `~/.bilibili-notify/data` | 日常使用，正式宿主与应用内更新 |
+| `dev` | `~/.bilibili-notify/dev-data` | 拓展源码挂载与热重载，随 npm 包升级 |
+
+数据目录与运行缓存分开；清理缓存不会删除订阅或凭据。开发 BN 本体仍使用主仓源码的 `vp run dev:apps`。
 
 ## 配置
 
@@ -136,27 +151,29 @@ environment:
   NODE_OPTIONS: --max-old-space-size=1024
 ```
 
-但抬上限只是止痛 —— 堆要是**慢慢涨**上去的,抬完只是把崩溃推迟。想分清是哪一种,
-翻日志里的 `[mem]` 行(开着的话 10 分钟一条,一并报出弹幕收集器占的规模):
+但抬上限只是止痛 —— 堆要是**慢慢涨**上去的,抬完只是把崩溃推迟。想分清是哪一种，
+查看内存采样日志中的诊断参数（开启后每 10 分钟一条，业务规模另列在 `probes`）：
 
-```
-[mem] heap 210/512MB (41%, 已提交 250MB) rss 340MB external 12MB | 弹幕 3 房/12000 词/8000 人
+```json
+{"heapUsedMB":210,"heapLimitMB":512,"heapRatioPercent":41,"heapCommittedMB":250,"rssMB":340,"externalMB":12}
 ```
 
-`heap 已用/上限`是唯一会导致 FATAL 的那个数;`已提交`是 V8 为此实际占下的量,
-用量平而它一路涨说明是碎片化。**`external` 不受堆上限管**(jieba 词典等都在里面),
+`heapUsedMB` / `heapLimitMB` 是已用堆与上限，`heapCommittedMB` 是 V8 已提交的堆空间，
+`rssMB` 是进程驻留内存。已用堆平稳、提交量上涨可能与堆空间管理有关，仅凭这一项不能判定泄漏。**`externalMB` 不受堆上限管**(jieba 词典等都在里面),
 所以别照堆上限去设 `mem_limit`,否则会从撞 V8 上限变成被系统 OOM 杀。
 
-一开机就接近上限 → 是容量不够,抬上限就对了;几个小时一路爬上去 → 是泄漏,
-请带上这几行开 issue。
+启动后即接近上限时，先核对容量和配置；相近负载下长时间持续上涨时，
+请带上连续采样与使用情况开 issue，便于判断状态积累或内存泄漏。
 
-这行日志**默认不写**,要它请到控制台「系统 → Core · 应用 → 内存自检打印」拨开;
+这行日志**默认不写**，需要时在系统页开启「内存自检打印」；
 概览页的「系统资源」卡不靠它,随时都能看实时值。堆用量超过上限 85% 时无论开关如何
 都会有一条 `warn` 并附上处理办法。
 
+面板与运行日志支持简体中文、台湾繁体中文、英文、日文。日志说明跟随全局语言，诊断字段、上游错误码和用户内容保留原值；排查时结合事件标识、参数和时间，不依赖某一句英文日志。
+
 ### 故障排查
 
-- `curl localhost:8787` 返回 404:控制台静态资源默认取服务端入口旁边那份(`/app/web-dist`),正常启动日志会出现 `serving dashboard static assets from /app/web-dist`。日志里出现 `dashboard static assets disabled` = 镜像里那份资源没了,重拉镜像;出现 `webDistDir is pinned to …` = 你自己在 yaml 或 `BN_WEB_DIST` 里指了别处,删掉即可恢复默认。
+- `curl localhost:8787` 返回 404：控制台静态资源默认取当前载荷入口旁的 `web-dist`，初始镜像中为 `/app/web-dist`。检查日志事件 `host.web_serving` 的 `dir`；`host.web_missing` 表示没有找到托管资源，需检查镜像或载荷是否完整；`host.web_pinned` 表示配置固定了静态目录，移除 YAML 中的 `webDistDir` 或首次启动时设置的 `BN_WEB_DIST` 可恢复跟随载荷。说明文字会随日志语言变化。
 - 卡片预览显示「**连接中断**」:请求没拿到响应,不是渲染失败。多半是上面那两条 —— 反代读超时太短,或服务端被 OOM 杀掉重启了。先按上面两条命令查。
 - 手写过 `bn.config.yaml`:建议备份后删除该文件,让容器重新生成;不要删除 `./data`。
 
@@ -168,9 +185,16 @@ environment:
 /data
 ├── generations/<序号>/   数据代,一代一个目录(升级时迁出新的一代,旧代原样留着可回退)
 │   ├── config/          设置 settings/、订阅、连接、目标
-│   ├── secrets/         加密的 B 站 cookie / AI apiKey
+│   ├── secrets/         各来源与拓展凭据、AI 密钥
 │   ├── history/         推送历史(按日 jsonl)
-│   └── stats/           作品、直播、粉丝时序
+│   ├── stats/           作品、直播、粉丝时序
+│   ├── images/          图库与已缓存图片
+│   ├── library/         图片、字体等资源索引与文件
+│   ├── ai/             AI 对话数据
+│   ├── maid-skills/     女仆技能
+│   ├── skins/           界面与卡片皮肤
+│   └── extensions/      已安装拓展
+├── versions/            应用内更新载荷
 └── logs/                日志归档(按日 jsonl,跨代连续)
 ```
 
@@ -184,10 +208,20 @@ environment:
 
 ## secrets 静态加密
 
-B 站 cookie 与 AI apiKey 存在 `<dataDir>/secrets/`,AES-256-GCM 加密。密钥来自 `cookieEncryptionKey`(环境变量回退 `BN_COOKIE_KEY`):
+各来源 Cookie、拓展凭据和 AI 密钥保存在当前数据代的 `secrets/`，即 `<dataDir>/generations/<序号>/secrets/`，使用 AES-256-GCM 加密。密钥来自 `cookieEncryptionKey`（首启动可由 `BN_COOKIE_KEY` 提供）：
 
 - **设置**:密钥由口令经 scrypt 派生、不落盘。生成:`openssl rand -base64 32`。
 - **不设**:回退到与密文同目录的随机密钥文件 —— 仅混淆,启动打告警。
+
+## 来源账号与订阅
+
+先配置推送连接和目标，再点击「添加订阅」选择来源，按输入框提示搜索创作者。来源有登录能力时，先在「系统 → 账号」完成登录。账号互相独立；顶栏使用账号列表的第一位，可在系统页调整顺序。
+
+可用功能由来源决定。B 站支持作品、直播及相关互动；[抖音拓展](../extensions/douyin/README.md)支持扫码登录、视频／图文和开播／直播中／下播通知，需单独安装启用。首次检查是否补推旧作品、轮询间隔等以各来源说明为准。
+
+## 资源库
+
+「资源库」统一管理图片、字体、女仆技能、女仆性格、界面皮肤和卡片皮肤，支持导入导出。资源的选用或启用仍在对应的卡片、AI 和系统设置中完成；导入资源不会自动替换当前配置。
 
 ## 接入 OneBot(NapCat)
 
@@ -210,15 +244,19 @@ B 站 cookie 与 AI apiKey 存在 `<dataDir>/secrets/`,AES-256-GCM 加密。密�
 - **拓展市场** —— 这一页最底下那一节。官方源的条目点「装」就行,装完当场生效。
 - **传一个包上来** —— 把 `.zip` 拖进「装拓展」弹窗。**只装信得过的**:拓展在 BN 进程里跑,装的时候不验签。
 
-还有第三条不走面板的路:把解开的目录放进**拓展目录**,目录名就是拓展 id(里面只能有 `extension.json` 与 `index.mjs`)。**这条要重启一次**才认得到。拓展目录在数据目录里在用的那一代底下,即 `<数据目录>/generations/<序号>/extensions/`;「装拓展」弹窗里印着这台机器上的完整路径,点一下就能复制。
+还有第三条不走面板的路：把解开的目录放进**拓展目录**，目录名就是拓展 ID。安装包必需 `extension.json` 和自包含入口 `index.mjs`，另可带 `README.md`、`CHANGELOG.md` 与支持语言的 `locales/<语言码>.json`。**这条要重启一次**才认得到。拓展目录位于当前数据代的 `<数据目录>/generations/<序号>/extensions/`；「装拓展」弹窗显示完整路径。
 
 | 形态 | 数据目录 |
 | --- | --- |
 | Docker | `/data`,在 volume 里 |
 | 桌面 macOS | `~/Library/Application Support/bilibili-notify/data` |
 | 桌面 Windows | `%LOCALAPPDATA%\bilibili-notify\data` |
+| npm `web`（待发布） | `~/.bilibili-notify/data` |
+| npm `dev`（待发布） | `~/.bilibili-notify/dev-data` |
 
 **盖掉一份已经装着的也要重启一次** —— 旧代码已经被这个进程认下了,在进程里换不掉。面板会就地给那颗重启按钮;这台机器上按了回不来的话(开发版 / 自己在终端里裸跑),它不给按钮,但会写清楚为什么。
+
+开发版另有「挂载开发拓展」：选择含 `extension.json` 的**源码工程根目录**，启用后由 BN 运行，保存时自动重载。可同时挂载多个不同 ID 的工程；同 ID 已安装时会拒绝覆盖。日常生产包不开放此入口，源码开发不需要先构建 `dist`。作者用法见[拓展开发指南](../packages/extension/DEVELOPMENT.md)。
 
 ### 接上 koishi(机器人框架桥接)
 

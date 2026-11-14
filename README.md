@@ -6,7 +6,7 @@
 </h1>
 
 <p align="center">
-  监听 B 站 UP 主<b>动态 / 直播</b>,渲染成卡片图片,推送到 QQ 群等渠道。
+  订阅创作者的<b>作品 / 直播</b>,渲染成卡片图片,推送到 QQ 群等渠道。
   <br>
   自带 Web 控制台:<b>Docker 镜像</b>,或 <b>macOS / Windows 桌面应用</b>。
 </p>
@@ -14,7 +14,7 @@
 <p align="center">
   <a href="https://github.com/Akokk0/bilibili-notify/releases/latest"><img src="https://img.shields.io/github/v/release/Akokk0/bilibili-notify?label=standalone" alt="独立端最新版本" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license" /></a>
-  <img src="https://img.shields.io/badge/node-%E2%89%A524-339933?logo=nodedotjs&logoColor=white" alt="node" />
+  <img src="https://img.shields.io/badge/node-%E2%89%A524.15.0-339933?logo=nodedotjs&logoColor=white" alt="node" />
 </p>
 
 <p align="center">
@@ -23,17 +23,21 @@
 
 ---
 
+本页对应 `dev` 分支的 1.0 开发版；使用已发行版本时，请查看对应 tag 的文档。
+
 ## 功能
 
-- **动态推送**:转发 / 文章 / 关键词黑白名单 / 正则过滤、@全体成员(仅开播触发)、免扰时段、定时复推
-- **直播**:开播 / 下播、Superchat、上舰、弹幕词云、AI 直播总结、特别关注用户进房 / 弹幕
-- **AI**:OpenAI 兼容接口,动态锐评 + 直播总结,人格库可 per-UP 指定;主模型不支持看图也能配一个视觉子模型代读。另带聊天界面(连续对话、贴图、Markdown 排版)
-- **数据统计**:涨粉 / 投稿 / 动态 / 直播活动留档,对比表、热力图、雷达图、单 UP 钻取;可让 AI 据此写周报或单人锐评并推成卡片
+- **来源与作品**:内置 B 站，抖音等来源通过拓展安装；支持作品通知、关键词黑白名单、正则过滤、免扰时段和定时复推。来源支持的内容与功能各有不同
+- **直播**:开播 / 直播中 / 下播通知；B 站还支持 Superchat、上舰、弹幕词云、AI 直播总结、特别关注用户进房 / 弹幕
+- **AI**:OpenAI 兼容接口,作品点评 + 直播总结,可为订阅指定女仆性格;主模型不支持看图也能配视觉子模型代读。另带聊天界面(连续对话、贴图、Markdown 排版)
+- **数据统计**:粉丝 / 作品 / 直播活动留档,对比表、热力图、雷达图、单人分析;可让 AI 据此写周报或单人锐评并推成卡片
 - **卡片渲染**:Vue + UnoCSS + Puppeteer SSR 出图,配色 / 背景图 / 字体可自定义(还能直接上传字体文件),实时预览
-- **多推送目标**:OneBot v11(NapCat 等,支持 HTTP / 正向 WS / 反向 WS)/ Webhook / Web 通知中心;装上桥接拓展还能直接借用 koishi 里已经配好的 bot
-- **拓展**:装进来才有的外挂模块,面板内置市场一键装,开关一拨当场生效。第一个拓展是**机器人框架桥接** —— 把你 koishi 里那些 bot 借过来发推送,于是 Telegram / Discord / KOOK 这些平台不必由 BN 各写一份适配(koishi 侧插件:[koishi-plugin-bilibili-notify-bridge](https://www.npmjs.com/package/koishi-plugin-bilibili-notify-bridge))
-- **per-UP 定制**:特性开关 / 路由 / 过滤 / 模板 / AI / 卡片样式全部 inherit-or-override
-- **其它**:推送历史(按日 jsonl)、扫码登录、Cookie 自动续期、应用内自主升级
+- **多推送目标**:QQ 官方机器人、OneBot v11(NapCat 等,支持 HTTP / 正向 WS / 反向 WS)、飞书 / 钉钉 / 企业微信群机器人、自定义 HTTP 端点和 Web 通知中心
+- **拓展**:通过市场或 ZIP 安装，开发版支持挂载源码并自动重载。机器人框架桥接可借用 koishi / AstrBot 的 bot，将通知发到 Telegram / Discord / KOOK 等平台；抖音拓展支持扫码登录、视频 / 图文和直播通知
+- **按订阅定制**:特性开关 / 路由 / 过滤 / 模板 / AI / 卡片样式可继承全局设置或单独覆盖
+- **资源库**:统一管理图片、字体、女仆技能、女仆性格、界面皮肤和卡片皮肤，支持导入导出
+- **多语言**:面板、使用指引和运行日志支持简体中文、台湾繁体中文、英文、日文
+- **其它**:推送历史、来源账号管理、扫码登录、应用内自主升级
 
 ## 界面预览
 
@@ -45,13 +49,13 @@
     </td>
     <td width="50%">
       <img src="https://github.com/Akokk0/bilibili-notify/releases/download/assets/dashboard-2.png" alt="数据统计" /><br />
-      <sub><b>数据统计</b> —— 多 UP 横向对比、活跃热力图、粉丝净增趋势与内容构成,可让 AI 据此写周报锐评</sub>
+      <sub><b>数据统计</b> —— 多创作者横向对比、活跃热力图、粉丝净增趋势与内容构成,可让 AI 据此写周报锐评</sub>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="https://github.com/Akokk0/bilibili-notify/releases/download/assets/dashboard-3.png" alt="订阅 UP 主" /><br />
-      <sub><b>订阅 UP 主</b> —— 每个 UP 单独开关动态 / 开播 / 词云 / 直播总结等,还能按推送目标再覆盖一层</sub>
+      <img src="https://github.com/Akokk0/bilibili-notify/releases/download/assets/dashboard-3.png" alt="订阅" /><br />
+      <sub><b>订阅</b> —— 按来源提供的能力配置作品和直播通知，并为每条订阅选择推送目标</sub>
     </td>
     <td width="50%">
       <img src="https://github.com/Akokk0/bilibili-notify/releases/download/assets/dashboard-4.png" alt="卡片渲染 · 样式" /><br />
@@ -89,7 +93,7 @@ services:
 docker compose up -d
 ```
 
-浏览器打开 `http://<host>:8787` 登录面板。屏幕左缘的**「指引」导览**会带你走完剩下的配置(登录 B 站 → 接上 QQ / webhook 推送 → 订阅 UP),每步做完自动进入下一步;手把手图文教程(含 QQ 机器人两条接入路线的选型与踩坑)在面板内 **关于 · 新手指引**。**不要手动创建 `config/bn.config.yaml`** —— 容器首次启动会自己生成完整配置。
+浏览器打开 `http://<host>:8787` 登录面板。屏幕左缘的**「指引」导览**会带你完成来源账号、推送连接、推送目标和订阅的配置；需要拓展来源时先安装并启用拓展。手把手图文教程(含 QQ 机器人接入选型)在面板内 **关于 · 新手指引**。**不要手动创建 `config/bn.config.yaml`** —— 容器首次启动会自己生成完整配置。
 
 更新镜像用 `docker compose pull && docker compose up -d`(`restart` 不换镜像)。带 browserless / NapCat 边车的完整模板见 [`apps/docker-compose.example.yaml`](./apps/docker-compose.example.yaml),完整部署 / 配置见 **[apps/README.md](./apps/README.md)**。
 
@@ -111,19 +115,24 @@ full 镜像内置 chromium,出图峰值不低,建议宿主可用内存 ≥ 1GB;�
 
 不想碰 Docker 的话,[Releases](https://github.com/Akokk0/bilibili-notify/releases) 里有打包好的桌面应用:macOS(Apple Silicon,`.dmg`)与 Windows x64(`.exe` 安装包 / 免安装 zip)。装完直接开,面板与功能同 Docker 版;卡片渲染用你本机装的 Chrome / Edge。
 
+### npm 成品入口（发行准备中）
+
+`@bilibili-notify/bn` 的包内宿主、`web` / `dev` 入口及发行流程已实现，本体 npm 包尚未发布。发布后的用法、数据目录和本仓构建方式见 [BN 启动器说明](./tools/bn-cli/README.md)。
+
 ## 仓库结构
 
 ```
 packages/     平台中立业务核心(@bilibili-notify/*)
-apps/         Hono 服务端 + React Dashboard + Tauri 桌面壳(Docker / 桌面应用)
+apps/         Hono 服务端 + React Dashboard + Tauri 桌面壳
 extensions/   拓展 —— 装进来才有,不编在主程序里
+tools/        BN npm 启动器与拓展创建器
 ```
 
 单 pnpm workspace、单 lockfile;`apps/server` 通过 `workspace:*` 消费业务核心。老的 Koishi 插件与 AstrBot 插件已暂停更新,源码与维护版留在 `koishi-astrbot-maintenance` 分支。桥接现在由**拓展**接手:独立端开一扇 WS 门,koishi 那侧装一个薄插件把 bot 借过来 —— 见上面「功能」里的拓展一档,用法在[部署与配置文档](./apps/README.md)。
 
 ## 开发
 
-工具链统一走 **vp (vite-plus)**(包裹 pnpm,不暴露 `pnpm` 命令)。
+工具链统一走 **vp (vite-plus)**，由仓库配置锁定 Node 与包管理器版本。
 
 ```bash
 vp install
@@ -134,9 +143,9 @@ vp run dev:apps     # 启动服务端与面板，在拓展页挂载要联调的�
 vp run check        # Biome lint + format(:fix 自动修)
 ```
 
-分支:`dev` 为活跃开发主干,PR 提到这里;`main` 是发布快照,不触发任何发版;`koishi-astrbot-maintenance` 是两个插件宿主的维护线。
+分支:`dev` 为活跃开发主干;`main` 是发布快照,不触发任何发版;`koishi-astrbot-maintenance` 是两个插件宿主的维护线。
 
-发版由 `v<VERSION>` git tag 触发,同时产出 Docker 镜像(Docker Hub `akokk0/bilibili-notify` 与 GHCR)、macOS / Windows 桌面安装包与应用内更新载荷。机制详见 [`docs/agents/build-release.md`](./docs/agents/build-release.md)。
+发版由 `v<VERSION>` git tag 触发，分别构建 Docker 镜像、macOS / Windows 桌面应用、npm 成品包和应用内更新载荷。SDK 与拓展创建器独立编号、独立发行。机制详见 [`docs/agents/build-release.md`](./docs/agents/build-release.md)。
 
 ## 问题反馈
 

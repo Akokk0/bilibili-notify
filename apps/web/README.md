@@ -1,16 +1,16 @@
 # Bilibili-Notify Dashboard
 
-React 18 + Vite + Tailwind 4 + TanStack Query + Zustand + React Router 7. A workspace member of the root pnpm workspace, alongside `apps/server` and the business-core `packages/*`. Talks to the Hono backend through `/api/*` (REST) and `/ws` (WebSocket subscriptions).
+React 18 + Vite+ + Tailwind 4 + TanStack Query + Zustand + React Router 7. A workspace member alongside `apps/server` and the business-core `packages/*`. Use the repository's vp toolchain. The dashboard talks to Hono through `/api/*` (REST) and `/ws` (WebSocket subscriptions).
 
 ## Quick start
 
 ```bash
 # from the repo root
-pnpm install
-pnpm dev:server    # backend on :8787 (tsx watch)
-pnpm dev:web       # frontend on :5173 (vite)
-# or both in one terminal:
-pnpm dev:apps
+vp install
+vp run dev:apps    # backend on :8787, then frontend on :5173
+# Or run the processes separately:
+vp run dev:server
+vp run dev:web
 ```
 
 Vite dev server proxies `/api` and `/ws` to `127.0.0.1:8787`, so you load `http://localhost:5173` and the network panel still shows clean same-origin requests. Backend stays a separate process — restart it independently.
@@ -20,11 +20,19 @@ Vite dev server proxies `/api` and `/ws` to `127.0.0.1:8787`, so you load `http:
 ```
 src/
   main.tsx          ← React + Router + QueryClient bootstrap
-  App.tsx           ← top-level layout + route table (placeholder pages for now)
-  styles.css        ← @import "tailwindcss";
+  App.tsx           ← authenticated shell, providers, and route table
+  styles.css        ← shared UI theme and Tailwind entry
+  pages/            ← dashboard, subscriptions, targets, history, statistics,
+                       rules, cards, resource library, AI, extensions, system,
+                       logs, and About
+    guide/content/  ← embedded getting-started guides in four languages
+  components/       ← components that depend on application data and services
+  i18n/             ← locale and voice subscriptions
   services/
     api.ts          ← fetch wrapper for REST
     ws.ts           ← WebSocket subscription client
 ```
 
-Pages will land under `src/pages/*` as stage 3 progresses (Auth / Subscriptions / Targets / Rules / Cards / AI / Dashboard / History).
+Reusable presentation components and design tokens live in `packages/ui`; application components consume them through `@bilibili-notify/ui`. Subscription pages use source descriptors for search hints, display accounts, labels, and supported features. Getting-started content follows the panel locale; historical release notes retain their original text.
+
+Production builds use `vp run -F @bilibili-notify/web build`; `vp run -F @bilibili-notify/web typecheck` checks types. See [deployment and configuration](../README.md) for running BN and [the repository guide](../../CLAUDE.md) for development conventions.
