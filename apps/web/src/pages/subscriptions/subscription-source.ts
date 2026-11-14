@@ -17,6 +17,7 @@ export interface SubscriptionPlatform {
 	postNoun?: string;
 	creatorNoun?: string;
 	externalIdNoun?: string;
+	displayIdNoun?: string;
 	features: readonly FeatureKey[];
 	featureHints?: Partial<Record<FeatureKey, string>>;
 	supportedExtras: readonly ExtraKey[];
@@ -41,6 +42,7 @@ export function subscriptionPlatformOf(
 		postNoun: descriptor?.postNoun,
 		creatorNoun: descriptor?.creatorNoun,
 		externalIdNoun: descriptor?.externalIdNoun,
+		displayIdNoun: descriptor?.displayIdNoun,
 		features: FEATURE_KEYS.filter((key) => descriptor?.supportedFeatures.includes(key)),
 		featureHints: descriptor?.featureHints,
 		supportedExtras: descriptor?.supportedExtras ?? [],

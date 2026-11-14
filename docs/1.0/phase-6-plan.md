@@ -5,7 +5,7 @@
 ## 状态
 
 - 第5期已正式出期，本期从`38dc17687`开始。
-- 迁移修订号53、备份版本23；当前开发宿主契约`apiVersion: 1`、`apiRevision: 1`（公开 SDK 0.1.0-alpha.0 仍为 1/0）。历史“v3”不是当前发行号。
+- 迁移修订号53、备份版本23；当前开发宿主契约`apiVersion: 1`、`apiRevision: 2`（公开 SDK 0.1.0-alpha.0 仍为 1/0）。历史“v3”不是当前发行号。展示账号与稳定身份分离见[ADR-0050](../adr/0050-creator-display-id.md)，SDK公开更新另按发行流程。
 - 大改UI限制保留；市场输入在现有弹窗上局部调整。
 - 2026-11-12，SDK 与创建器已在 npm 上发布首个 `alpha`，版本均为 `0.1.0-alpha.0`。[SDK](https://www.npmjs.com/package/@bilibili-notify/extension/v/0.1.0-alpha.0) · [创建器](https://www.npmjs.com/package/create-bn-ext/v/0.1.0-alpha.0)
 - 2026-11-13，创建器 `0.1.0-alpha.1` 经 npm 可信发布上架。向导只问目录、ID 和显示名。市场资料放在 `bn-extension/marketplace.json`，发布时从 Actions 或 Git 远端读取仓库地址。模板把动态导入打进 ZIP 入口。[ADR-0048](../adr/0048-extension-marketplace-config.md) · [创建器发行作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43350549879/job/131651210554)

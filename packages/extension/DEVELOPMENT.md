@@ -4,7 +4,7 @@
 
 ## 版本与工程
 
-宿主契约为 `apiVersion: 1`，群聊作品与来源扫码登录要求 `apiRevision: 1`。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。已发布的 SDK `0.1.0-alpha.0` 提供契约 1/0。
+宿主契约为 `apiVersion: 1`，群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。已发布的 SDK `0.1.0-alpha.0` 提供契约 1/0；新增能力需使用包含对应字段的SDK，公开发行另行确认。
 
 创建器默认生成独立Git工程、示例来源、完整vp命令、锁文件、提交hooks与GitHub Actions：
 
@@ -101,6 +101,12 @@ export function activate(ctx: ExtensionContext): void {
 `searchCreators`最多返回10个候选；查不到是成功的空数组。可选`fetchProfile(identity, signal)`拉取资料，`fetchLiveStatus(identity, signal)`提供在播状态；声明周期直播时必须实现后者。按每次调用的`signal`尽快中止请求。
 
 `start(sourceCtx)`得到运行中的来源上下文：从`subscriptions()`读取自己平台的创作者名单，监听`onSubscriptionsChanged`，以`externalId`上报。`reportProfile`更新资料，`reportPost`交作品，`reportLive`交开播、状态或下播信号；具体载荷使用SDK的`ExtensionPostReport`、`ExtensionLiveSignalReport`等公开类型。直播`status`只更新状态，不触发推送。
+
+### 展示账号（API 1 修订 2）
+
+`externalId`是稳定身份，始终用于候选选择、请求和上报。用户可读但可能改变的公开账号放在`CreatorProfileReport.displayId`，搜索候选和`fetchProfile`也用同一字段。省略时保留旧资料，空串清除，最长256字。界面优先展示该账号，缺失时显示原身份；不会按展示账号合并或迁移订阅。
+
+清单的`contributes.subscription.displayIdNoun`声明该账号的叫法，`$manifest.contributes.subscription.displayIdNoun`提供译文；它只装短名词。使用展示账号时将清单`apiRevision`设为2，旧宿主会在加载前说明契约不兼容。简介`bio`仅保存创作者原文，展示账号独立提供。
 
 拓展不持有BN内部订阅id，也不自己发送通知。宿主处理订阅开关、去重、规则、卡片、推送目标和历史。上报返回`void`，不把它当作发送回执；不合规的上报会留在宿主的上报问题记录里。
 

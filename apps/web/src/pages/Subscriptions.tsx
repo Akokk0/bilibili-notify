@@ -3,10 +3,10 @@ import {
 	type CreatorCandidateView,
 	type CreatorSearchHintWords,
 	type CreatorsResponse,
+	creatorAccountLabel,
 	creatorSearchHint,
 	type SourceEntry,
 	type SubscriptionCreateRequest,
-	subscriptionIdentityLabel,
 } from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
 import { colorFromSeed } from "@bilibili-notify/internal/identity";
@@ -397,8 +397,8 @@ function CandidateList({
 									name: c.name,
 									...(c.avatarUrl === undefined ? {} : { avatar: c.avatarUrl }),
 								}}
-								{...(descriptor.externalIdNoun?.trim()
-									? { idLabel: subscriptionIdentityLabel(c, descriptor) }
+								{...(c.displayId?.trim() || descriptor.externalIdNoun?.trim()
+									? { idLabel: creatorAccountLabel(c, descriptor, c.displayId) }
 									: {})}
 								subscribed={subscribed}
 							>
@@ -437,6 +437,7 @@ function candidateProfile(
 ): NonNullable<SubscriptionCreateRequest["cachedProfile"]> {
 	return {
 		name: candidate.name,
+		...(candidate.displayId === undefined ? {} : { displayId: candidate.displayId }),
 		...(candidate.avatarUrl ? { avatarUrl: candidate.avatarUrl } : {}),
 		...(candidate.followers !== undefined ? { followers: candidate.followers } : {}),
 	};

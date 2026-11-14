@@ -151,6 +151,7 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 			candidate.avatar === undefined ? undefined : await resolveAvatar?.(candidate.avatar);
 		return {
 			externalId: candidate.externalId,
+			...(candidate.displayId === undefined ? {} : { displayId: candidate.displayId }),
 			name: candidate.name,
 			...(avatarUrl === undefined ? {} : { avatarUrl }),
 			...(candidate.bio === undefined ? {} : { bio: candidate.bio }),

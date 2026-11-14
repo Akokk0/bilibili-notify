@@ -397,6 +397,22 @@ describe("live reports", () => {
 });
 
 describe("profile report", () => {
+	it("retains a separate display ID without changing the identity and accepts clearing it", () => {
+		expect(checkExtensionReport("profile", { name: "creator", displayId: "public_42" })).toEqual({
+			ok: true,
+			value: { name: "creator", displayId: "public_42" },
+			dropped: [],
+		});
+		expect(checkExtensionReport("profile", { name: "creator", displayId: "" })).toMatchObject({
+			ok: true,
+			value: { name: "creator", displayId: "" },
+		});
+		expect(
+			ExtensionCreatorCandidatesSchema.parse([
+				{ externalId: "opaque-stable-key", name: "creator", displayId: "public_42" },
+			]),
+		).toEqual([{ externalId: "opaque-stable-key", name: "creator", displayId: "public_42" }]);
+	});
 	it("accepts profile fields from the core shape", () => {
 		const report = {
 			name: "creator",

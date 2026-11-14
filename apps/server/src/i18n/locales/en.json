@@ -853,6 +853,8 @@
 	"subscriptions.profile.followersType": "The follower count must be a number.",
 	"subscriptions.profile.nameBlank": "The name must not be empty.",
 	"subscriptions.profile.nameTooLong": "The name must not exceed {max} characters.",
+	"subscriptions.profile.displayIdType": "The display account ID must be a string.",
+	"subscriptions.profile.displayIdTooLong": "The display account ID must not exceed {max} characters.",
 	"subscriptions.profile.nameType": "The name must be a string.",
 	"service.routes.targets.text.1": "[Test push · Live started] Example creator is live! Title: Test stream",
 	"service.routes.targets.text.2": "[Test push · Post] Example creator published a test post",

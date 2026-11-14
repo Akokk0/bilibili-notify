@@ -103,6 +103,7 @@ const ManifestTranslationSchema = z.strictObject({
 					postNoun: ShortLabelSchema.optional(),
 					creatorNoun: ShortLabelSchema.optional(),
 					externalIdNoun: ShortLabelSchema.optional(),
+					displayIdNoun: ShortLabelSchema.optional(),
 					featureHints: z
 						.partialRecord(
 							z.enum(FEATURE_KEYS),
@@ -157,6 +158,7 @@ interface DisplayTranslation {
 	postNoun?: string;
 	creatorNoun?: string;
 	externalIdNoun?: string;
+	displayIdNoun?: string;
 	featureHints?: Partial<Record<FeatureKey, string>>;
 }
 
@@ -407,6 +409,7 @@ const SUBSCRIPTION_TEXT_KEYS: ReadonlySet<string> = new Set([
 	"postNoun",
 	"creatorNoun",
 	"externalIdNoun",
+	"displayIdNoun",
 ]);
 
 /** 外观里一格给人看的字:长度上限照清单那一侧,叫法那三格纯空白也拒(同一把尺子)。 */
@@ -420,7 +423,7 @@ function putDisplayText(
 	const max = key === "label" ? EXTENSION_DISPLAY_LABEL_MAX_CHARS : EXTENSION_SHORT_LABEL_MAX_CHARS;
 	const text = textOf(source, key, path, issues, {
 		max,
-		nonBlank: key === "postNoun" || key === "creatorNoun" || key === "externalIdNoun",
+		nonBlank: ["postNoun", "creatorNoun", "externalIdNoun", "displayIdNoun"].includes(key),
 	});
 	if (text !== undefined) put(out, key, text);
 }

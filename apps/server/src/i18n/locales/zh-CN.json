@@ -262,6 +262,8 @@
 	"subscriptions.profile.followersType": "粉丝数要是数字",
 	"subscriptions.profile.nameBlank": "名字不能是空串",
 	"subscriptions.profile.nameTooLong": "名字不能超过 {max} 字",
+	"subscriptions.profile.displayIdType": "展示账号必须是字符串。",
+	"subscriptions.profile.displayIdTooLong": "展示账号不能超过 {max} 个字符。",
 	"subscriptions.profile.nameType": "名字要是字符串",
 	"webhook.adapter.label": "Webhook",
 	"webhook.adapter.shortLabel": "Webhook",

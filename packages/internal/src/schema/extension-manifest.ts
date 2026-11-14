@@ -39,7 +39,7 @@ export interface ExtensionApiRange {
 export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({
 	min: 1,
 	current: 1,
-	revision: 1,
+	revision: 2,
 });
 
 /**
@@ -613,6 +613,7 @@ const ContributesSchema = z
 				creatorNoun: ShortNounSchema.optional(),
 				/** 这个平台管外部 id 叫什么(如「账号」)。身份标签用它,不给就写平台名。 */
 				externalIdNoun: ShortNounSchema.optional(),
+				displayIdNoun: ShortNounSchema.optional(),
 				/**
 				 * 搜人输入框收哪几种输入(id / 链接 / 名字);提示句由核心按这份声明拼,来源不自己写句子。拼句的
 				 * 叫法函数随第 4 期,在那之前面板对拓展一律用通用说法。
@@ -727,7 +728,15 @@ export const ExtensionManifestSchema = z
 	.refine((manifest) => !manifest.contributes.linkResolver || (manifest.apiRevision ?? 0) >= 1, {
 		path: ["apiRevision"],
 		message: "contributes.linkResolver requires apiRevision 1",
-	});
+	})
+	.refine(
+		(manifest) =>
+			!manifest.contributes.subscription?.displayIdNoun || (manifest.apiRevision ?? 0) >= 2,
+		{
+			path: ["apiRevision"],
+			message: "contributes.subscription.displayIdNoun requires apiRevision 2",
+		},
+	);
 export type ExtensionManifest = z.infer<typeof ExtensionManifestSchema>;
 
 /** 每一档的格式。区间里有、这里没有的档位按「不认识」算。 */

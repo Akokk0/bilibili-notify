@@ -34,7 +34,6 @@
 	"error.posts": "投稿一覧を最後まで確認できませんでした。次回は最新のページから再確認します。",
 	"error.live": "ライブ配信の状態を確認できませんでした。",
 	"error.poll": "今回の確認は完了しませんでした。次の定期確認で再試行します。",
-	"search.account": "抖音ID {account}",
 	"$manifest": {
 		"name": "抖音",
 		"description": "抖音のクリエイターの動画・画像投稿・ライブを購読し、グループに共有された作品をプレビューします。",
@@ -43,7 +42,8 @@
 				"label": "抖音",
 				"postNoun": "投稿",
 				"creatorNoun": "投稿者",
-				"externalIdNoun": "作者ID"
+				"externalIdNoun": "作者ID",
+				"displayIdNoun": "抖音ID"
 			}
 		}
 	},

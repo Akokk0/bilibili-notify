@@ -26,6 +26,7 @@
 - `settings.get()` 返回 `Result<{ settings }>`；先处理失败，再读 `result.settings`。
 - 请求、WebSocket、图片、定时器、状态、凭据与日志经 ctx；状态写入也返回 Result，检查写入结果。凭据存 `ctx.secrets`，临时凭据先交 `ctx.redact`。
 - 来源只持有 `externalId`，用上报接口交给宿主；订阅 UUID、规则、路由、发送和历史由宿主负责。上报返回 `void`，不是发送回执；直播 `status` 不触发推送。
+- 可读账号用 `displayId`，稳定身份仍用 `externalId`；字段语义、叫法与最低宿主修订号见作者指南“展示账号”。
 - `stop()` 先停止新工作与上报；宿主随后中止上下文信号并收尾。不要在 `stop()` 里无限等待只能靠后续中止信号结束的任务。
 - 成功用 `ok`，预期失败用 `fail` 和标准失败码。发送结果不明用 `indeterminate`，不能当作未发送而自动重试。
 - 展示文字由 `ctx.i18n.t` 现取；用户输入、创作者原文及上游诊断不改写成翻译键。

@@ -195,6 +195,7 @@ export const ExtensionLiveSignalReportSchema = z.discriminatedUnion("kind", [
 
 export const ExtensionCreatorProfileReportSchema = z.strictObject({
 	name: NameSchema,
+	displayId: z.string().max(EXTERNAL_ID_MAX).optional(),
 	avatar: ImageRefSchema.optional(),
 	bio: z.string().max(BIO_MAX).optional(),
 	followers: CountSchema.optional(),
@@ -204,6 +205,7 @@ export const ExtensionCreatorProfileReportSchema = z.strictObject({
 const ExtensionCreatorCandidateSchema = z.strictObject({
 	externalId: ExternalIdSchema,
 	name: NameSchema,
+	displayId: z.string().max(EXTERNAL_ID_MAX).optional(),
 	avatar: ImageRefSchema.optional(),
 	bio: z.string().max(BIO_MAX).optional(),
 	followers: CountSchema.optional(),

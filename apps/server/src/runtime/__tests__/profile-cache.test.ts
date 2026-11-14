@@ -62,6 +62,22 @@ afterEach(async () => {
 });
 
 describe("profile-cache", () => {
+	it("展示账号独立保存和更新，省略保留、空串清除且变化会通知界面", async () => {
+		expect(await writer.write(A, { name: "名字", displayId: "public_42" })).toBe(true);
+		expect(subscriptionState.get(A)?.cachedProfile?.displayId).toBe("public_42");
+		expect(await writer.write(A, { displayId: "public_43" })).toBe(true);
+		expect(subscriptionState.get(A)?.cachedProfile?.displayId).toBe("public_43");
+		expect(await writer.write(A, { bio: "更新简介" })).toBe(false);
+		expect(subscriptionState.get(A)?.cachedProfile?.displayId).toBe("public_43");
+		expect(await writer.write(A, { displayId: "" })).toBe(true);
+		expect(subscriptionState.get(A)?.cachedProfile?.displayId).toBeUndefined();
+		expect(await writer.write(A, { displayId: "public_44" })).toBe(true);
+		await subscriptionState.close();
+		const reopened = createSubscriptionStateStore({ dataRoot: dataDir, logger: makeLogger() });
+		await reopened.load();
+		expect(reopened.get(A)?.cachedProfile?.displayId).toBe("public_44");
+		await reopened.close();
+	});
 	it("给了哪格换哪格;没给的名字、头像、简介、粉丝和粉丝团名都沿用", async () => {
 		await subscriptionState.patch(A, {
 			cachedProfile: {

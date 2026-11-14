@@ -55,6 +55,21 @@ export function subscriptionIdentityLabel(
 	return noun ? `${noun} ${identity.externalId}` : `${platform.label} · ${identity.externalId}`;
 }
 
+/** 界面可读账号优先；未提供时沿用原始身份标签。不能用于复制或写入身份。 */
+export function creatorAccountLabel(
+	identity: Pick<Identity, "externalId">,
+	platform: { label: string; externalIdNoun?: string; displayIdNoun?: string },
+	displayId?: string,
+): string {
+	const display = filled(displayId);
+	return display === undefined
+		? subscriptionIdentityLabel(identity, platform)
+		: subscriptionIdentityLabel(
+				{ externalId: display },
+				{ label: platform.label, externalIdNoun: platform.displayIdNoun },
+			);
+}
+
 /** 搜人提示句里调用方按当前语言给的几样(叫法函数不住字典,同 {@link sourceNounsOf} 的中性词)。 */
 export interface CreatorSearchHintWords {
 	/** 「id」那一种的中性叫法:来源没给 `externalIdNoun` 时用。 */
@@ -78,6 +93,7 @@ export function creatorSearchHint(
 	descriptor: {
 		searchAccepts?: readonly CreatorSearchKind[];
 		externalIdNoun?: string;
+		displayIdNoun?: string;
 		creatorNoun?: string;
 	},
 	words: CreatorSearchHintWords,
@@ -88,7 +104,9 @@ export function creatorSearchHint(
 	}
 	return words.list(
 		accepts.map((input) =>
-			input === "id" ? (filled(descriptor.externalIdNoun) ?? words.id) : words[input],
+			input === "id"
+				? (filled(descriptor.displayIdNoun) ?? filled(descriptor.externalIdNoun) ?? words.id)
+				: words[input],
 		),
 	);
 }

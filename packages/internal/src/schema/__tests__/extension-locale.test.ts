@@ -315,6 +315,23 @@ describe("清单那层（$manifest）", () => {
 		});
 	});
 
+	it("展示账号叫法独立翻译，坏译文不覆盖原叫法", () => {
+		const parsed = parse({
+			$manifest: { contributes: { subscription: { displayIdNoun: "Handle" } } },
+		});
+		expect(parsed.issues).toEqual([]);
+		expect(parsed.manifest).toEqual({
+			contributes: { subscription: { displayIdNoun: "Handle" } },
+		});
+		const invalid = parse({
+			$manifest: { contributes: { subscription: { displayIdNoun: "  " } } },
+		});
+		expect(invalid.issues).toContainEqual({
+			path: ["$manifest", "contributes", "subscription", "displayIdNoun"],
+			code: "invalid-text",
+		});
+	});
+
 	it("featureHints 逐特性收译文，坏提示不丢同层好提示", () => {
 		const parsed = parse({
 			$manifest: {

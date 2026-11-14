@@ -1,4 +1,4 @@
-import { subscriptionIdentityLabel } from "@bilibili-notify/contract";
+import { creatorAccountLabel } from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
 import { Avatar, ErrorNote, Icon, Pill, Toggle, WarnNote } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
@@ -89,6 +89,7 @@ export function SubscriptionCard({
 	const features = subscribedFeatures(sub, globalFeatures).filter((k) => visible.includes(k));
 	const paused = ext.absent === true || (ext.status !== "running" && ext.status !== "unknown");
 	const fans = sub.cachedProfile?.followers;
+	const accountLabel = creatorAccountLabel(identity, ext, sub.cachedProfile?.displayId);
 	const fansLabel =
 		fans == null
 			? tx("sourceUi.pages.up.UpCard.UpCard.1")
@@ -204,8 +205,8 @@ export function SubscriptionCard({
 					/>
 				</div>
 				<div className="mb-2.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
-					<span className="min-w-0 flex-1 truncate tabular-nums">
-						{subscriptionIdentityLabel(identity, ext)}
+					<span className="min-w-0 flex-1 truncate tabular-nums" title={accountLabel}>
+						{accountLabel}
 					</span>
 					<span className="shrink-0">·</span>
 					<span className="shrink-0 whitespace-nowrap tabular-nums">{fansLabel}</span>

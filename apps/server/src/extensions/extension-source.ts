@@ -296,6 +296,9 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		get externalIdNoun() {
 			return display().externalIdNoun;
 		},
+		get displayIdNoun() {
+			return display().displayIdNoun;
+		},
 		get featureHints() {
 			return display().featureHints;
 		},

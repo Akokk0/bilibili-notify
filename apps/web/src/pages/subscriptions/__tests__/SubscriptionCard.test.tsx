@@ -91,6 +91,36 @@ it.each([
 );
 
 describe("SubscriptionCard 描述符身份", () => {
+	it("显示独立账号及完整提示，资料没有账号时回落到原身份", () => {
+		const identity = { sourceKey: "example", externalId: "opaque-stable-id" };
+		const sub = {
+			...makeEmptySubscription(identity),
+			cachedProfile: { name: "测试作者", displayId: "public_42", refreshedAt: "t" },
+		};
+		const platform = subscriptionPlatformOf(identity, [
+			{
+				key: "example",
+				status: "running",
+				descriptor: {
+					label: "来源",
+					externalIdNoun: "作者 ID",
+					displayIdNoun: "账号",
+					supportedFeatures: [],
+				},
+			},
+		]);
+		const base = props({ sub, platform });
+		const view = render(<SubscriptionCard {...base} />);
+		expect(view.getByTitle("账号 public_42").textContent).toBe("账号 public_42");
+		expect(view.getByText("测试作者")).toBeTruthy();
+		view.rerender(
+			<SubscriptionCard
+				{...base}
+				sub={{ ...sub, cachedProfile: { ...sub.cachedProfile, displayId: undefined } }}
+			/>,
+		);
+		expect(view.getByText("作者 ID opaque-stable-id")).toBeTruthy();
+	});
 	it("feature labels follow the locale while source-provided post nouns keep their original wording", () => {
 		const sub = makeEmptySubscription({ sourceKey: "original", externalId: "0012" });
 		sub.overrides.features = {

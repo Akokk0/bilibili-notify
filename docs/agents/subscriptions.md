@@ -13,6 +13,7 @@
 schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，B 站与拓展的订阅都是它（ADR-0021 决策 14、15）。
 
 - **身份** `identity: { sourceKey, externalId }`：`sourceKey` 是 `bilibili` 或拓展 id（不加前缀），`externalId` 是来源那头的 id（B 站就是 uid；BN 不解读，1–256 字）。订的是谁、分派、查找、取色都只看它，一律经 `subscriptionIdentityOf(sub)` 读。通用 ID 校验保留 `core`、`image`、`ai`；宿主再按装配根收齐的 `BUILTIN_INTEGRATION_KEYS` 拒绝占用内置集成的键，手放的拓展也必须通过这道校验，避免身份冲突。
+- **展示账号** `cachedProfile.displayId?`：来源交来的可读账号，与身份分开；上报或刷新省略时沿用、空串清除。候选、新建资料种子、刷新与上报共用一格。面板经contract的`creatorAccountLabel`优先显示它及`displayIdNoun`叫法，缺失时用原身份标签；原始ID复制与所有关联仍读`externalId`。拓展使用该能力需要契约1/2，见[ADR-0050](../adr/0050-creator-display-id.md)。
 - **其余各格** `id` / `enabled` / `tagIds`（挂的标签，指向 `config/subscriptions.json` 里的标签表，ADR-0034） / `notes` / `routing` / `extraTargets`（附加项的逐目标三态表） / `overrides` / `roastSchedule` / `specialViewers`：两种来源一样。特别关注是公共形状（ADR-0021 决策 17），来源不支持的（今天是拓展）一直是空的；条目是 `{ id, note?, features }`，`features` 只许 `viewerChat` / `viewerEnter` 两把、至少一把，`id` 中立（非空、限长），格式由写名单的路由按这条订阅所属来源的 `externalIdRegex` 核（只核新加的条目，盘上已有的不回头核）。
 - 中立的 schema 不认得哪个来源的 id 长什么样：格式由来源在描述符里声明（`externalIdRegex`，整串匹配；B 站声明纯数字，拓展直接写在清单订阅源那段里），新建订阅时 `routes/subscriptions.ts` 在分岔之前调 `subscriptions/external-id.ts` 的 `externalIdRefusal` 照它核；没声明的来源不替它做主。身份建好以后改不动，已有的订阅不回头核。
 - 判「是不是 B 站的」写 `subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY`：这是过渡写法，第 3a 期 B 站搬进 `bilibili/`、核心只问登记表以后就没有了，「B 站替身」棘轮盯着。
@@ -104,7 +105,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 schema 在 `packages/internal/src/schema/extension-manifest.ts`，接受 1.0 契约的严格清单，使用群聊作品或来源账号的拓展须声明小号 1。样板是 `extensions/fake-source/`（开发用假源：解析门现编候选，页上的动作按钮经 `reportPost` / `reportLive` / `reportProfile` 造五种上报，外加坏图、多一格两种反例；3b-46 起还有五种正文片段的作品、四层问题上报、`fetchProfile` / `health`，并兼一个假平台适配器，按钮与行为见它的 README）。
 
-- 订阅段直接摊平：`label`（全名，平台选择那一排）、`shortLabel?`（≤8 字，卡上的方章）、`color?`（只收 hex）、`icon?`（图片 data URL，判据与设置项选项图标相同，不可译）、`postNoun?`（作品叫法，缺省使用当前界面语言的中性词）、`creatorNoun?`（创作者叫法）、`externalIdNoun?`（外部 id 叫法）、`externalIdRegex?`（外部 id 的正则源码）、`searchAccepts?`（`id` / `link` / `name`，非空且不重复；搜人提示由 contract 的公共函数拼）。公共描述符可带会员与附加项，当前拓展清单仍不接受 `membershipPrograms` / `supportedExtras`。
+- 订阅段直接摊平：`label`（全名，平台选择那一排）、`shortLabel?`（≤8 字，卡上的方章）、`color?`（只收 hex）、`icon?`（图片 data URL，判据与设置项选项图标相同，不可译）、`postNoun?`（作品叫法，缺省使用当前界面语言的中性词）、`creatorNoun?`（创作者叫法）、`externalIdNoun?`（外部 id 叫法）、`displayIdNoun?`（展示账号叫法，契约1/2起）、`externalIdRegex?`（外部 id 的正则源码）、`searchAccepts?`（`id` / `link` / `name`，非空且不重复；搜人提示由 contract 的公共函数拼）。公共描述符可带会员与附加项，当前拓展清单仍不接受 `membershipPrograms` / `supportedExtras`。
 - `supportedFeatures`：`post` / `liveStart` / `liveStreaming` / `liveEnd` 的非空、不重复子集 —— **这就是能力声明**。声明 `liveStreaming` 必须同时声明 `liveStart` 与 `liveEnd`，且来源要实现 `fetchLiveStatus`；没声明 `liveStreaming` 的不自动获得周期直播。面板与服务端直接读这一格。
 - `featureHints?`（4-27）：`Partial<Record<FeatureKey, string>>`，键可用全部 8 个领域特性，但不扩大上述四项能力。清单拒空串、纯空白、未知键与非字符串；非空原文保留首尾空格。`$manifest.contributes.subscription.featureHints` 按键取当前语言 → 简中 → 英文 → 清单原字，坏译文逐条丢弃。公共来源表透传提示，订阅详情总开关与目标自定义矩阵只用它覆盖小字，不生成特性、路由或运行态；未校验来源的空白提示按缺省。缺省时作品 / 醒目留言使用中性提醒，会员串实际 rank 排序的档名，下播串「下播卡片」与已声明附加项；开播与周期直播沿既有说明。B 站两项提示在访问描述符时取当前翻译。两处共用提示行自然换行、无空格长词可断行（`c185aa777` 修复首轮390宽截断）；统筹独审与整轮11组Chrome通过。UpDialog能力 / 运行态为实际真页操作，规则页只作全局页冒烟；按来源规则节显隐由 Rules.extension-subs / section-scope 自动测试负责。HTTP fixture不证明落盘或真实拓展装载，验收边界见 phase-4-plan 的4-27完成记录。
 - `cardSkin?`：自带皮肤目录（决策 13 / 14，⑤ 施工）。
@@ -112,7 +113,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，接受 1.0 契
 
 ### 契约档位与契约小号（决策 18 / 59）
 
-- `EXTENSION_API_RANGE = { min: 1, current: 1, revision: 1 }`。这是全新1.0契约，保留当前完整接口，不恢复历史v1。历史provides/旧嵌套/混合格式由strict清单拒收且不import；旧1同号格式不合记unreadable，旧2/3记incompatible。apiRevision缺省0；安装、发现、loader和市场共同判版本，包内清单仍独立严格校验。
+- `EXTENSION_API_RANGE = { min: 1, current: 1, revision: 2 }`。这是全新1.0契约，保留当前完整接口，不恢复历史v1。历史provides/旧嵌套/混合格式由strict清单拒收且不import；旧1同号格式不合记unreadable，旧2/3记incompatible。apiRevision缺省0；安装、发现、loader和市场共同判版本，包内清单仍独立严格校验。
 - 公开 SDK 首版的开发契约为 1/0；同为1/0的开发包无法按数字区分，不保留旧格式兼容。以后正式发布后的契约演进仍须回ADR-0019决策59审议，不能用本片起号规则替未来变更默认豁免。
 - 守卫 `packages/internal/src/schema/__tests__/extension-contract-shape.test.ts`：当前清单、译文、视图、当前的三种上报、搜人候选、直播拉取结果与来源健康这几份 zod 转成 JSON Schema 算摘要，与 `PINNED_REVISION` **成对**钉住，形状一动就红，报错里写着该怎么改（发过版 → 抬小号 + 更新摘要与 `PINNED_REVISION`；没发版 → 只更新摘要；新摘要照 Received 填）。以后加一份拓展交给 BN 的 schema，就往它的 `CONTRACT` 表里加一行。
 - ⚠️ 守卫**看不见的**：`refine` / `superRefine` 里的规矩、`checkExtensionReport` 的逐格丢弃/截断、ctx 多一个方法（纯 TS）。放宽这些同样要抬小号，自己想。

@@ -35,6 +35,8 @@ export interface SourceDescriptor {
 	creatorNoun?: string;
 	/** 这个平台管外部 id 叫什么(「UID」)。身份标签由 contract 的函数拼,描述符里只放词。 */
 	externalIdNoun?: string;
+	/** 用户可读账号的叫法；只用于displayId，不改变稳定身份的叫法。 */
+	displayIdNoun?: string;
 	/** 这个平台管作品叫什么(进 `PostEvent.postNoun`)。 */
 	postNoun?: string;
 	/**
@@ -181,6 +183,8 @@ export type PreviewReport =
 export interface CreatorProfileReport {
 	/** 创作者的名字。 */
 	name: string;
+	/** 用户可读账号，与稳定身份externalId分开。省略沿用，空串清除；最多256字。 */
+	displayId?: string;
 	/** 图库引用;来源先把平台头像抓进图库,再交引用。 */
 	avatar?: ImageRef;
 	/** 简介或签名。 */

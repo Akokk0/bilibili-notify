@@ -133,6 +133,17 @@ describe("creatorSearchHint", () => {
 		);
 	});
 
+	it("展示账号叫法只影响搜索提示，原始身份标签仍使用外部ID叫法", () => {
+		const descriptor = {
+			label: "来源",
+			searchAccepts: ["id", "link"] as const,
+			externalIdNoun: "内部 ID",
+			displayIdNoun: "账号",
+		};
+		expect(creatorSearchHint(descriptor, words)).toBe("账号|W-link");
+		expect(subscriptionIdentityLabel({ externalId: "opaque" }, descriptor)).toBe("内部 ID opaque");
+	});
+
 	it("没声明(或空表)→「搜索{creatorNoun}」:来源有叫法用它的,没有落中性词", () => {
 		expect(creatorSearchHint({ creatorNoun: "主播" }, words)).toBe("search 主播");
 		expect(creatorSearchHint({ searchAccepts: [], creatorNoun: " " }, words)).toBe(

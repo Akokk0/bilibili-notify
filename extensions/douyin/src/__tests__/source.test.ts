@@ -133,9 +133,10 @@ it("checks short-link destinations and limits distinct, distinguishable nickname
 	const found = await source.searchCreators("小鱼", signal);
 	expect(found.ok && found.candidates).toHaveLength(10);
 	expect(found.ok && found.candidates.slice(0, 2)).toMatchObject([
-		{ externalId: secUid, bio: expect.stringContaining("alice_42") },
-		{ externalId: "second", bio: expect.stringContaining("fish_b") },
+		{ externalId: secUid, displayId: "alice_42" },
+		{ externalId: "second", displayId: "fish_b" },
 	]);
+	expect(found.ok && found.candidates[0]?.bio).toBeUndefined();
 	expect(client.account).not.toHaveBeenCalled();
 });
 
@@ -143,7 +144,12 @@ it("reports only the verified profile, preserving a missing follower count", asy
 	const { source, client, result } = fixture();
 	const identity = { sourceKey: "douyin", externalId: secUid };
 	const profile = await source.fetchProfile(identity, signal);
-	expect(profile).toEqual({ ok: true, name: "小鱼", avatar: "image:avatar" });
+	expect(profile).toEqual({
+		ok: true,
+		name: "小鱼",
+		displayId: "alice_42",
+		avatar: "image:avatar",
+	});
 	client.profile.mockImplementation(() => result({ user: { ...user, sec_uid: "unexpected" } }));
 	expect(await source.fetchProfile(identity, signal)).toMatchObject({ ok: false });
 });

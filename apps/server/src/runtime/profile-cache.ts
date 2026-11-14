@@ -27,6 +27,8 @@ import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
 export interface ProfileCacheUpdate {
 	name?: string;
+	/** 可读账号；省略保留，空串清除，不参与订阅身份。 */
+	displayId?: string;
 	/** 已经存进图库的引用;没给 = 沿用旧的那张(先 keep 续期,图不在了就缺这一格)。 */
 	avatar?: ImageRef;
 	bio?: string;
@@ -60,7 +62,10 @@ const CHANGED_KEY = "profiles-changed";
 /** 面板看得见的那几格变没变。 */
 function visiblyChanged(prev: CreatorProfile | undefined, next: CreatorProfile): boolean {
 	return (
-		prev?.name !== next.name || prev?.avatar !== next.avatar || prev?.followers !== next.followers
+		prev?.name !== next.name ||
+		prev?.displayId !== next.displayId ||
+		prev?.avatar !== next.avatar ||
+		prev?.followers !== next.followers
 	);
 }
 
@@ -124,8 +129,15 @@ export function createProfileCacheWriter(opts: {
 		const bio = update.bio === "" ? undefined : (update.bio ?? prev?.bio);
 		const followers = update.followers ?? prev?.followers;
 		const fanClubName = update.fanClubName ?? prev?.fanClubName;
+		const displayId =
+			update.displayId === undefined
+				? prev?.displayId
+				: update.displayId.trim()
+					? update.displayId
+					: undefined;
 		const next: CreatorProfile = {
 			name: update.name ?? prev?.name ?? "",
+			...(displayId === undefined ? {} : { displayId }),
 			// 没有头像就是这一格缺,不写空串。
 			...(avatar === undefined ? {} : { avatar }),
 			...(bio === undefined ? {} : { bio }),

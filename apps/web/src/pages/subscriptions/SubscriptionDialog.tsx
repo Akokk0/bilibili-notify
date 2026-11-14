@@ -3,7 +3,7 @@ import type {
 	ConnectionCapabilitiesMap,
 	SubscriptionCreateRequest,
 } from "@bilibili-notify/contract";
-import { subscriptionIdentityLabel } from "@bilibili-notify/contract";
+import { creatorAccountLabel } from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
 import {
 	AddButton,
@@ -361,6 +361,11 @@ export function SubscriptionDialog({
 	const identity = subscriptionIdentityOf(draft);
 	const ext = platform;
 	const previewName = createProfile?.name.trim() ? createProfile.name : displayName(draft, ext);
+	const accountLabel = creatorAccountLabel(
+		identity,
+		ext,
+		createProfile?.displayId ?? draft.cachedProfile?.displayId,
+	);
 	const visibleFeatures = visibleFeaturesOf(draft, ext);
 	const labelOf: FeatureLabelOf = (k) => featureLabelOf(k, ext);
 	const tagNames = resolveTagNames(draft.tagIds, tags ?? []);
@@ -650,11 +655,8 @@ export function SubscriptionDialog({
 							className="mt-0.5 flex min-w-0 items-center gap-1.5 text-bn-xs font-semibold text-bn-text-secondary"
 							style={{ textShadow: "none" }}
 						>
-							<span
-								className="min-w-0 flex-1 truncate tabular-nums"
-								title={subscriptionIdentityLabel(identity, ext)}
-							>
-								{subscriptionIdentityLabel(identity, ext)}
+							<span className="min-w-0 flex-1 truncate tabular-nums" title={accountLabel}>
+								{accountLabel}
 							</span>
 							{(createProfile?.followers ?? draft.cachedProfile?.followers) != null ? (
 								<>

@@ -272,6 +272,11 @@ const SUBSCRIPTION_CELL_ROWS = {
 	postNoun: driven(TITLE.nouns),
 	creatorNoun: { state: "elsewhere", file: ROAST_E2E, it: ROAST_TITLE },
 	externalIdNoun: driven(TITLE.nouns),
+	displayIdNoun: {
+		state: "elsewhere",
+		file: "apps/server/src/routes/__tests__/sources-list-route.test.ts",
+		it: "拓展清单写了的格原样下发(图标、搜人收的输入都在),自带皮肤的包内路径不下发",
+	},
 	searchAccepts: driven(TITLE.subscriptionCells),
 	externalIdRegex: driven(TITLE.externalIdRegex),
 	supportedFeatures: driven(TITLE.subscriptionCells),
@@ -1587,17 +1592,17 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		it("七张行表的行数,与走通 / 不开 / 宿主填各有几行(提交 9 抄进 architecture)", () => {
 			const size = (table: keyof Tables) => Object.keys(TABLES[table]).length;
 			expect(size("Source")).toBe(10);
-			expect(size("SubscriptionCell")).toBe(12);
+			expect(size("SubscriptionCell")).toBe(13);
 			expect(size("SourceContext")).toBe(7);
 			expect(size("PlatformAdapter")).toBe(13);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
 			expect(size("IntegrationContext")).toBe(14);
-			expect(entries).toHaveLength(64);
+			expect(entries).toHaveLength(65);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 本文件驱动 39 行，另有 17 行由所引用测试管着（含 auth、featureHints）；不开 7 行，宿主填 1 行。
+			// 本文件驱动39行，另有18行由引用测试管着（含auth、featureHints、displayIdNoun）；不开7行，宿主填1行。
 			expect(of("driven")).toHaveLength(39);
-			expect(of("elsewhere")).toHaveLength(17);
+			expect(of("elsewhere")).toHaveLength(18);
 			expect(of("closed")).toHaveLength(7);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(

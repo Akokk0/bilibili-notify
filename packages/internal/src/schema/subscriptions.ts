@@ -23,6 +23,12 @@ import { MessageLayoutSchema } from "./message-layout";
 import { RoastScheduleSchema } from "./roast-schedule";
 
 /**
+ * 来源账号标识的长度上限(字数)，稳定身份、候选与展示账号共用。
+ * BN不解读身份，封顶只为挡住巨大的字符串进入配置与资料缓存。
+ */
+export const EXTERNAL_ID_MAX = 256;
+
+/**
  * 路由：每个特性 → PushTarget.id[]。空数组 = 该特性不推。
  * 用 record + 显式 keys 而不是 partial，便于 UI 始终展示所有特性的开关。
  */
@@ -56,6 +62,7 @@ export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transfo
  */
 export const CreatorProfileSchema = z.object({
 	name: z.string(),
+	displayId: z.string().min(1).max(EXTERNAL_ID_MAX).optional(),
 	avatar: z.string().regex(IMAGE_REF_PATTERN).optional(),
 	bio: z.string().optional(),
 	followers: z.number().int().min(0).optional(),
@@ -181,12 +188,6 @@ export const SourceKeySchema = z
 	.refine((key) => !isPrototypeName(key), {
 		error: () => prototypeNameMessage(packageText("internal.schema.subscriptions.2")),
 	});
-
-/**
- * 外部 id 的长度上限(字数)。BN 不解读它,封顶只为挡住一坨巨大的字符串进配置;抖音的 `sec_uid` 七十多个字。
- * 解析门交回的候选 `id` 就是将来的外部 id,用的是同一把尺子。
- */
-export const EXTERNAL_ID_MAX = 256;
 
 /**
  * 特别关注名单里一个条目能带的特性键(`viewerChat` / `viewerEnter`)。用 `satisfies` 钉在 {@link FEATURE_KEYS} 上:

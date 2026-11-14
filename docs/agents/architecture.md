@@ -315,6 +315,8 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 
 🔗现状（4-27，2026-11-01，代码交接待验）：订阅清单新增 featureHints，SubscriptionCell 为12成员；七表共64行（driven39、elsewhere16、closed8、hostFilled1）。新增行指向 sources-list-route 的完整描述符 HTTP 断言；进程内 P50 另核假源 hint 字面量。N09 面板部分由 UpDialog.extension、Rules.extension-subs 与 section-scope 组件测试覆盖，不记作进程内对拍，进程内仍54走通 / 2不开。契约仍全新1/0。
 
+🔗2026-11-14 SDK改进：来源资料增加独立displayId、描述符增加displayIdNoun，契约为1/2，见ADR-0050。SubscriptionCell现13成员，七表共65行（driven39、elsewhere18、closed7、hostFilled1）；新增叫法行由sources-list-route的完整描述符断言覆盖，进程内P50也验证透传。既有身份、复制与关联保持externalId。
+
 🔗现状（4-27，2026-11-01）：待验记录保留为历史。统筹独审及Chrome整轮11组通过，长hint首轮390截断由 `c185aa777` 修复后重跑；来源提示两处覆盖、刷新、默认和能力 / 运行态为真页操作。规则浏览器仅全局页冒烟，按来源节显隐仍由组件自动测试负责；N09不转成进程内渲染，成员表仍64行、进程内54走通 / 2不开。最终仅片级门禁，整期结束另跑全量，HTTP fixture不证明落盘或真实拓展装载；证据与清理见 phase-4-plan 的4-27完成记录。
 
 ## 自家下拉与 UI 文案（4-25，2026-11-01）

@@ -187,6 +187,7 @@ describe("新建拓展订阅", () => {
 			...extSub(),
 			cachedProfile: {
 				name: "抖音某人",
+				displayId: "public_42",
 				avatarUrl: avatarDataUrl("png", PNG_BYTES),
 				followers: 42,
 				// 客户端给的这两格不收:签名没人报过,刷新时间是服务端的事。
@@ -199,7 +200,7 @@ describe("新建拓展订阅", () => {
 		const row = (await listed()).find((s) => s.id === SUB_ID);
 		expect(row).toMatchObject({ identity: { sourceKey: "douyin", externalId: "sec-1" } });
 		const profile = row?.cachedProfile;
-		expect(profile).toMatchObject({ name: "抖音某人", followers: 42 });
+		expect(profile).toMatchObject({ name: "抖音某人", displayId: "public_42", followers: 42 });
 		// 请求里的 data URL 是网址、落进图库;回来的资料里只有引用,没有那个 data URL。
 		expect(profile?.avatar && isValidImageRef(profile.avatar)).toBe(true);
 		expect(profile?.avatar).toMatch(/\.png$/);

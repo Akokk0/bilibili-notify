@@ -18,7 +18,7 @@ describe("资料刷新写资料缓存", () => {
 	it("名字或头像变了只发一次 subscription-profiles-changed;没变不再发", async () => {
 		const avatar = "new-avatar" as ImageRef;
 		const fetchProfile = vi.fn(async () =>
-			ok({ name: "新名字", avatar, bio: "新签名", followers: 120 }),
+			ok({ name: "新名字", displayId: "public_42", avatar, bio: "新签名", followers: 120 }),
 		);
 		const p = await startProfileRefreshHarness({
 			subscriptions: [SUB],
@@ -44,6 +44,7 @@ describe("资料刷新写资料缓存", () => {
 		expect(p.logger.warn).not.toHaveBeenCalled();
 		expect(p.runtime.get("sub-1")?.cachedProfile).toMatchObject({
 			name: "新名字",
+			displayId: "public_42",
 			avatar,
 			bio: "新签名",
 			followers: 120,

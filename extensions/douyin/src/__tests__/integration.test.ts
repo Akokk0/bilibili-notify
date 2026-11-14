@@ -70,7 +70,7 @@ it("registers Douyin and reads a creator, explicit live status and new works thr
 	} as unknown as ExtensionContext);
 	expect(await source.searchCreators("account_12", signal)).toEqual({
 		ok: true,
-		candidates: [{ externalId: author.sec_uid, name: "阿青" }],
+		candidates: [{ externalId: author.sec_uid, displayId: "account_12", name: "阿青" }],
 	});
 	const host = {
 		signal,
@@ -87,7 +87,10 @@ it("registers Douyin and reads a creator, explicit live status and new works thr
 	};
 	await source.start(host as unknown as ExtensionSourceContext);
 	await tick();
-	expect(host.reportProfile).toHaveBeenCalledWith(author.sec_uid, { name: "阿青" });
+	expect(host.reportProfile).toHaveBeenCalledWith(author.sec_uid, {
+		name: "阿青",
+		displayId: "account_12",
+	});
 	expect(host.reportLive).toHaveBeenCalledWith(author.sec_uid, {
 		kind: "status",
 		isLive: false,

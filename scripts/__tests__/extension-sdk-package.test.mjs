@@ -21,7 +21,7 @@ async function installedVersion(name) {
 }
 
 const CONSUMER_SOURCE = `
-import type { AuthState, ExtensionContext, ExtensionLinkPreview, SourceAccount, SourceAuth, SourceDef } from "@bilibili-notify/extension";
+import type { AuthState, CreatorProfileReport, ExtensionContext, ExtensionLinkPreview, SourceAccount, SourceAuth, SourceDef } from "@bilibili-notify/extension";
 import { ok } from "@bilibili-notify/extension";
 import type { ExtensionEntrySchemas } from "@bilibili-notify/extension/build";
 import { z } from "zod";
@@ -49,9 +49,12 @@ export const source: SourceDef = {
     }};
     return ok(preview);
   },
-  start() {},
+  start(ctx) { ctx.reportProfile("stable-key", { name: "Author", displayId: "public_42" }); },
   stop() {},
-  async searchCreators() { return ok({ candidates: [] }); },
+  async searchCreators() {
+    const profile: CreatorProfileReport = { name: "Author", displayId: "public_42" };
+    return ok({ candidates: [{ externalId: "stable-key", ...profile }] });
+  },
 };
 export function activate(ctx: ExtensionContext) {
   const session = ctx.createCookieSession();
@@ -204,12 +207,14 @@ describe("SDK的真实npm包可在仓外使用", () => {
 				description: "SDK consumer fixture",
 				version: "0.1.0",
 				apiVersion: 1,
+				apiRevision: 2,
 				contributes: {
 					subscription: {
 						label: "Example",
 						shortLabel: "E",
 						color: "#123456",
 						creatorNoun: "Creator",
+						displayIdNoun: "Handle",
 						postNoun: "Post",
 						searchAccepts: ["id"],
 						supportedFeatures: ["post"],

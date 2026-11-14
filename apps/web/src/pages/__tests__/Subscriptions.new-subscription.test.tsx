@@ -550,6 +550,36 @@ describe("搜人", () => {
 });
 
 describe("挑中候选 → 配置弹层 → 创建", () => {
+	it("候选和配置显示可读账号，创建仍使用稳定身份并保存独立展示资料", async () => {
+		const stableId = "opaque-stable-creator-key";
+		sources = [
+			BILI_SOURCE,
+			{
+				...DOUYIN_SOURCE,
+				descriptor: {
+					...DOUYIN_SOURCE.descriptor,
+					externalIdNoun: "作者 ID",
+					displayIdNoun: "账号",
+				},
+			},
+		];
+		creators.douyin = async () => ({
+			candidates: [{ externalId: stableId, displayId: "public_42", name: "测试作者" }],
+		});
+		const dialog = await openNewDialog();
+		fireEvent.click(await dialog.findByRole("button", { name: "抖音" }));
+		await search(dialog, "主页链接", "测试作者");
+		const candidate = await dialog.findByRole("button", { name: /测试作者/ });
+		expect(within(candidate).getByTitle("账号 public_42").textContent).toBe("账号 public_42");
+		fireEvent.click(candidate);
+		expect(await screen.findByTitle("账号 public_42")).toBeTruthy();
+		fireEvent.click(await screen.findByRole("button", { name: "创建订阅" }));
+		await waitFor(() => expect(api.post).toHaveBeenCalled());
+		expect(vi.mocked(api.post).mock.calls[0]?.[1]).toMatchObject({
+			identity: { sourceKey: "douyin", externalId: stableId },
+			cachedProfile: { name: "测试作者", displayId: "public_42" },
+		});
+	});
 	// 验红:B 站候选改回不带 cachedProfile(从前服务端会剥掉、再刷一次),这条红。
 	it("B 站候选也一样:创建时发整条订阅 + 候选预填的资料(头像是候选的 data URL)", async () => {
 		const dialog = await openNewDialog();

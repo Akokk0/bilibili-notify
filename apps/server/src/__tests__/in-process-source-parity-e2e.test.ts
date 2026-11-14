@@ -455,6 +455,7 @@ const SOURCE_DESCRIPTOR_MEMBERS = {
 	externalIdRegex: ["P23"],
 	membershipPrograms: ["P19"],
 	externalIdNoun: ["P38"],
+	displayIdNoun: ["P50"],
 	shortLabel: ["P50"],
 	color: ["P50"],
 	colorByExternalId: ["P50"],
@@ -1008,10 +1009,14 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 
 	// 验红:`routes/sources.ts` 的 `hasOf` 把 `liveStatus` 写死成 false,这条红;列登记表那一段整个跳过,这条也红。
 	it("P50 来源表:假来源的完整描述符经 /api/sources 下发,has 按它实现的可选成员推;B 站并排在表里", async () => {
+		currentProbe().descriptor.displayIdNoun = "公开账号";
 		const res = await api("/api/sources");
 		expect(res.status).toBe(200);
 		const { sources } = (await res.json()) as SourcesResponse;
 		const declared = currentProbe().descriptor;
+		expect(sources.find((one) => one.key === IN_PROCESS_KEY)?.descriptor.displayIdNoun).toBe(
+			"公开账号",
+		);
 		expect(sources.find((one) => one.key === IN_PROCESS_KEY)?.descriptor.featureHints).toEqual({
 			post: "Probe post hint",
 			liveEnd: "Probe end hint",

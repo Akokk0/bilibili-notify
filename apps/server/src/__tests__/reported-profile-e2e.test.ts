@@ -83,7 +83,7 @@ export function activate(ctx) {
 		return stored.ref;
 	}
 	ctx.onAction("profile.full", async () =>
-		source.reportProfile(PERSON, { name: "报来的名字", followers: 4321, avatar: await avatarOf(png(1, 2, 3, 4)) }),
+		source.reportProfile(PERSON, { name: "报来的名字", displayId: "public_42", followers: 4321, avatar: await avatarOf(png(1, 2, 3, 4)) }),
 	);
 	ctx.onAction("profile.sameAvatar", async () =>
 		source.reportProfile(PERSON, { name: "报来的名字", avatar: await avatarOf(png(1, 2, 3, 4)) }),
@@ -174,6 +174,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 				description: "按一下动作钮报一次资料",
 				version: "0.1.0",
 				apiVersion: 1,
+				apiRevision: 2,
 				actions: ["profile.full", "profile.sameAvatar", "profile.nameOnly", "profile.nextAvatar"],
 				contributes: {
 					subscription: {
@@ -233,6 +234,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		const after = await refreshedAfter(before);
 
 		expect(after?.name).toBe("报来的名字");
+		expect(after?.displayId).toBe("public_42");
 		expect(after?.followers).toBe(4321);
 		expect(after?.avatar && isValidImageRef(after.avatar)).toBe(true);
 		expect(after?.avatar).not.toBe(before?.avatar);

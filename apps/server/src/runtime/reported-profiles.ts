@@ -111,6 +111,7 @@ export function createProfileReportHandler(
 			ids,
 			() => ({
 				name: report.name,
+				...(report.displayId === undefined ? {} : { displayId: report.displayId }),
 				...(report.avatar === undefined ? {} : { avatar: report.avatar }),
 				...(report.bio === undefined ? {} : { bio: report.bio }),
 				...(followers === undefined ? {} : { followers }),

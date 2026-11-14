@@ -288,6 +288,7 @@ describe("GET /api/sources", () => {
 			postNoun: "作品",
 			creatorNoun: "博主",
 			externalIdNoun: "抖音号",
+			displayIdNoun: "公开账号",
 			externalIdRegex: "[a-z0-9_]+",
 			searchAccepts: ["link", "name"],
 			supportedFeatures: ["post"],

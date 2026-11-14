@@ -1,5 +1,6 @@
 import type { SubscriptionCreateRequest, SubscriptionView } from "@bilibili-notify/contract";
 import {
+	EXTERNAL_ID_MAX,
 	type Failure,
 	fail,
 	formatZodIssues,
@@ -42,7 +43,7 @@ export interface SubsRouteOptions {
 /**
  * 新建拓展订阅时随订阅一起交的资料 —— 面板挑中的那个解析门候选(决策 11 / 52)。
  *
- * 只收 `name` / `avatarUrl` / `followers`:签名没人报过,刷新时间是服务端说了算,别的键一律丢。
+ * 只收 `name` / `displayId` / `avatarUrl` / `followers`:签名没人报过,刷新时间是服务端说了算,别的键一律丢。
  * `avatarUrl` 要么不给(没有头像),要么是位图 data URL(它是个网址,所以叫 `avatarUrl`),魔数另核(见
  * `decodeSubscriptionAvatar`)。服务端把它存进图库,资料里换成图库引用 `avatar`。话在出字那一刻取(zod 的
  * `error` 回调),换了语言不用重建。
@@ -53,6 +54,12 @@ const CreateProfileSchema: z.ZodType<NonNullable<SubscriptionCreateRequest["cach
 			.string({ error: () => t("subscriptions.profile.nameType") })
 			.min(1, { error: () => t("subscriptions.profile.nameBlank") })
 			.max(128, { error: () => t("subscriptions.profile.nameTooLong", { max: 128 }) }),
+		displayId: z
+			.string({ error: () => t("subscriptions.profile.displayIdType") })
+			.max(EXTERNAL_ID_MAX, {
+				error: () => t("subscriptions.profile.displayIdTooLong", { max: EXTERNAL_ID_MAX }),
+			})
+			.optional(),
 		avatarUrl: z.string({ error: () => t("subscriptions.profile.avatarType") }).optional(),
 		followers: z
 			.number({ error: () => t("subscriptions.profile.followersType") })
@@ -240,6 +247,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				const avatar = await storeAvatar();
 				return {
 					name: seed.name,
+					...(seed.displayId === undefined ? {} : { displayId: seed.displayId }),
 					// 没有头像就是这一格缺,不写空串;不知道粉丝数就不写 —— 写 0 是在面板上印一句假话。
 					...(avatar === undefined ? {} : { avatar }),
 					...(seed.followers === undefined ? {} : { followers: seed.followers }),

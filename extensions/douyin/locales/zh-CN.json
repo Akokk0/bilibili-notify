@@ -34,7 +34,6 @@
 	"error.posts": "作品列表不完整，将在下一轮从最新一页重查。",
 	"error.live": "暂时无法确认直播间状态。",
 	"error.poll": "本轮检查未完成，将在下次轮询时重试。",
-	"search.account": "抖音号 {account}",
 	"$manifest": {
 		"name": "抖音",
 		"description": "订阅抖音博主的视频、图文和直播，解析群聊中的作品链接。",
@@ -43,7 +42,8 @@
 				"label": "抖音",
 				"postNoun": "作品",
 				"creatorNoun": "博主",
-				"externalIdNoun": "作者 ID"
+				"externalIdNoun": "作者 ID",
+				"displayIdNoun": "抖音号"
 			}
 		}
 	},

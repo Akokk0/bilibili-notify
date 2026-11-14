@@ -228,6 +228,8 @@ export interface ReportDiscrepancyView {
 export interface CreatorCandidateView {
 	/** 这个人在来源里的外部 id —— 选中后新建订阅用的就是它。 */
 	externalId: string;
+	/** 可读账号，只显示，不作为新建订阅的身份。 */
+	displayId?: string;
 	name: string;
 	/** 头像的 data URL(位图)。 */
 	avatarUrl?: string;
@@ -631,6 +633,7 @@ interface SubscriptionRuntimeView {
 export type SubscriptionCreateRequest = Subscription & {
 	cachedProfile?: {
 		name: string;
+		displayId?: string;
 		avatarUrl?: string;
 		followers?: number;
 	};

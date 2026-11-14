@@ -86,7 +86,7 @@ describe("GET /api/sources/:sourceKey/creators", () => {
 	}
 
 	it("localizes source query rejection on a held route and preserves candidate data", async () => {
-		const candidate = { externalId: "raw-77", name: "原名 / Mixed" };
+		const candidate = { externalId: "raw-77", displayId: "public_77", name: "原名 / Mixed" };
 		const search = vi.fn(async () => ok({ candidates: [candidate] }));
 		const { app, runtime } = await boot(search);
 		const previous = i18n.state();

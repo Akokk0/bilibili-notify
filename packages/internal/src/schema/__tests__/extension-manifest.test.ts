@@ -619,6 +619,34 @@ describe("全新1.0契约1 的订阅与推送外观", () => {
 		unreadable(currentManifest({ contributes: { push: { ...DISPLAY, externalIdNoun: "账号" } } }));
 	});
 
+	it("展示账号叫法只在修订号2开放，旧宿主给出不兼容而不是格式错误", () => {
+		const raw = {
+			...sub({ displayIdNoun: "账号" }),
+			apiRevision: 2,
+		};
+		expect(parseExtensionManifest(raw, { min: 1, current: 1, revision: 2 })).toMatchObject({
+			ok: true,
+			manifest: { contributes: { subscription: { displayIdNoun: "账号" } } },
+		});
+		expect(parseExtensionManifest(raw, { min: 1, current: 1, revision: 1 })).toMatchObject({
+			ok: false,
+			code: "unsupported",
+			requires: { apiVersion: 1, apiRevision: 2 },
+		});
+		expect(parseExtensionManifest({ ...raw, apiRevision: 1 })).toMatchObject({
+			ok: false,
+			code: "invalid",
+			issues: [expect.objectContaining({ message: expect.stringContaining("apiRevision") })],
+		});
+		for (const displayIdNoun of [" ", "字".repeat(9)])
+			expect(
+				parseExtensionManifest({
+					...raw,
+					contributes: { subscription: { ...DISPLAY, supportedFeatures: ["post"], displayIdNoun } },
+				}),
+			).toMatchObject({ ok: false, code: "invalid" });
+	});
+
 	/**
 	 * 新建订阅的输入框只声明收哪几种输入(ADR-0021 决策 10 的 🔗),提示句由核心按这份声明拼。
 	 * 自由文字若还混在清单里,新旧两份建议迟早说成两种样子。
@@ -1286,7 +1314,7 @@ describe("拓展 id 的命名空间", () => {
 it("全新1.0契约仍接受1/0的严格清单,拒历史v1及伪装旧v2嵌套", () => {
 	const current = currentManifest({ apiVersion: 1 });
 	expect(parseExtensionManifest(current).ok).toBe(true);
-	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 1 });
+	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 2 });
 	expect(parseExtensionManifest(historicalV1()).ok).toBe(false);
 	expect(parseExtensionManifest({ ...current, provides: ["push"] }).ok).toBe(false);
 	const oldV2 = {

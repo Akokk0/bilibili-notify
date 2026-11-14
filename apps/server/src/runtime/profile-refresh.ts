@@ -238,6 +238,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		try {
 			changed = await opts.profileCache.write(sub.id, {
 				name: profile.name,
+				...(profile.displayId === undefined ? {} : { displayId: profile.displayId }),
 				...(profile.avatar === undefined ? {} : { avatar: profile.avatar }),
 				...(profile.bio === undefined ? {} : { bio: profile.bio }),
 				...(profile.followers === undefined ? {} : { followers: profile.followers }),

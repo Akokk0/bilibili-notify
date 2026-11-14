@@ -33,6 +33,7 @@ export function createCreatorDirectory(ctx: ExtensionContext, client: DouyinSour
 		const bio = text(user.signature);
 		return ok({
 			name,
+			displayId: text(user.unique_id) ?? text(user.short_id) ?? "",
 			...(avatar && { avatar }),
 			...(followers !== undefined && { followers }),
 			...(bio && { bio }),
@@ -106,11 +107,9 @@ export function createCreatorDirectory(ctx: ExtensionContext, client: DouyinSour
 			const info = await profile(user, signal);
 			if (!info.ok) return info;
 			const { ok: _, ...fields } = info;
-			const account = text(user.unique_id) ?? text(user.short_id) ?? id;
 			candidates.push({
 				...fields,
 				externalId: id,
-				bio: [ctx.i18n.t("search.account", { account }), fields.bio].filter(Boolean).join(" · "),
 			});
 			seen.add(id);
 			if (candidates.length === 10) break;

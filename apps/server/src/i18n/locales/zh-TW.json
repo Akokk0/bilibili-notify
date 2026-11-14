@@ -847,6 +847,8 @@
 	"subscriptions.profile.followersType": "粉絲數必須是數字。",
 	"subscriptions.profile.nameBlank": "名稱不能為空字串。",
 	"subscriptions.profile.nameTooLong": "名稱不能超過 {max} 個字元。",
+	"subscriptions.profile.displayIdType": "顯示帳號必須是字串。",
+	"subscriptions.profile.displayIdTooLong": "顯示帳號不可超過 {max} 個字元。",
 	"subscriptions.profile.nameType": "名稱必須是字串。",
 	"service.routes.targets.text.1": "[測試推播 · 開始直播] 範例創作者開始直播了！標題：測試直播",
 	"service.routes.targets.text.2": "[測試推播 · 作品] 範例創作者發布了一則測試作品",
