@@ -231,7 +231,7 @@ function ThemeSwitcher() {
 	}
 
 	return (
-		<div className="relative" ref={containerRef}>
+		<div className="relative flex items-center" ref={containerRef}>
 			<Btn
 				variant="outline"
 				size="sm"
@@ -373,7 +373,7 @@ function ReachBadge({
 	return (
 		<span
 			data-bn="badge"
-			className={`bn-header-reach inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold ${box}`}
+			className={`bn-header-reach inline-flex h-6.5 items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold ${box}`}
 			title={title ?? (typeof children === "string" ? children : undefined)}
 		>
 			{/* 那颗点用库里的 —— 尺寸阶梯与档位色都归 StatusDot 管,手画一颗就等着
