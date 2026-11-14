@@ -247,7 +247,6 @@ export function LiveNowPanel({
 								<Avatar name={name} color={color} size={44} status="living" url={avatar} />
 								<div className="min-w-0 flex-1">
 									<div className="mb-0.5 flex items-center gap-2">
-										<span className="text-bn-base font-bold text-bn-text-primary">{name}</span>
 										{platform ? (
 											<DescriptorIcon
 												descriptor={{
@@ -260,6 +259,7 @@ export function LiveNowPanel({
 												size={14}
 											/>
 										) : null}
+										<span className="text-bn-base font-bold text-bn-text-primary">{name}</span>
 										{r.category ? (
 											<Pill color="var(--color-bn-pink)" subtle size="sm">
 												{r.category}
@@ -621,7 +621,6 @@ export function FansPanel({
 								<Avatar name={name} color={color} size={32} url={avatar} />
 								<div className="min-w-0 flex-1">
 									<div className="flex min-w-0 items-center gap-1.5">
-										<span className="truncate font-bold text-bn-text-primary">{name}</span>
 										{platform ? (
 											<DescriptorIcon
 												descriptor={{
@@ -634,6 +633,7 @@ export function FansPanel({
 												size={14}
 											/>
 										) : null}
+										<span className="truncate font-bold text-bn-text-primary">{name}</span>
 									</div>
 									<div className="tabular-nums text-bn-xs text-bn-text-tertiary">
 										{tx("dashboard.fans.total", {

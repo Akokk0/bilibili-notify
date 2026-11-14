@@ -512,10 +512,14 @@ describe("SubscriptionCard × 订阅源的平台", () => {
 	it("平台徽章 + 只列这个源报得出的特性,「动态」叫「作品」", () => {
 		// 连 B 站独有的 SC 也显式开着 —— 照样不许露面,那是一个永远不会响的开关。
 		const sub = makeExtSub({ overrides: { features: { superchat: true } } });
+		sub.cachedProfile = { name: "抖音创作者", refreshedAt: "t" };
 		const { getByText, getByRole, queryByText } = render(
 			<SubscriptionCard {...props({ sub, platform: DOUYIN })} />,
 		);
-		expect(getByRole("img", { name: "抖音" })).toBeTruthy();
+		expect(
+			getByRole("img", { name: "抖音" }).compareDocumentPosition(getByText("抖音创作者")) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).not.toBe(0);
 		expect(getByText("作品")).toBeTruthy();
 		expect(getByText("开播")).toBeTruthy();
 		expect(queryByText("动态")).toBeNull();

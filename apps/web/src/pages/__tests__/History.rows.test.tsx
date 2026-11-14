@@ -463,7 +463,7 @@ const DOUYIN_SOURCE: SourceEntry = {
 };
 
 /**
- * 平台用描述符图标，放在作者头像之前；缺失时用通用图标，名称只供悬停和读屏。
+ * 作者信息按头像、平台图标、名称排列；缺失时用通用图标，平台名称只供悬停和读屏。
  * 已知单来源仍隐藏，多来源或缺项仍显示。
  */
 describe("推送历史 · 平台徽章", () => {
@@ -483,7 +483,7 @@ describe("推送历史 · 平台徽章", () => {
 			...over,
 		});
 
-	it("拓展行的平台图标在作者头像之前，名字取自快照也不显示平台字", async () => {
+	it("拓展行依次显示头像、平台图标和快照名称，不显示平台字", async () => {
 		mockApi([extRow()], [], [DOUYIN]);
 		const { container } = renderHistory();
 		const platform = await screen.findByRole("img", { name: "抖音" });
@@ -493,7 +493,11 @@ describe("推送历史 · 平台徽章", () => {
 		const avatar = container.querySelector('[data-bn="avatar"]');
 		expect(avatar).not.toBeNull();
 		expect(
-			platform.compareDocumentPosition(avatar as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+			(avatar as Node).compareDocumentPosition(platform) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).not.toBe(0);
+		expect(
+			platform.compareDocumentPosition(screen.getByText("某抖音号")) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
 		).not.toBe(0);
 		expect(screen.queryByText("抖", { selector: '[data-bn="badge"]' })).toBeNull();
 		expect(screen.getByText("某抖音号")).toBeTruthy();

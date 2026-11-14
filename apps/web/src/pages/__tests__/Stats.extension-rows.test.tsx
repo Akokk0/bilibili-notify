@@ -213,6 +213,10 @@ describe("统计页 · 拓展订阅的行", () => {
 
 		const ext = tableRow("抖音乙");
 		const platformIcon = within(ext).getByRole("img", { name: "抖音" });
+		expect(
+			platformIcon.compareDocumentPosition(within(ext).getByText("抖音乙")) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).not.toBe(0);
 		expect(platformIcon.querySelector("img")?.getAttribute("src")).toBe(
 			DOUYIN_SOURCE.descriptor.icon,
 		);
@@ -229,7 +233,7 @@ describe("统计页 · 拓展订阅的行", () => {
 		const heatDot = (name: string) => {
 			const label = screen
 				.getAllByText(name)
-				.find((el) => el.previousElementSibling?.tagName === "SPAN");
+				.find((el) => (el.previousElementSibling as HTMLElement | null)?.style.background);
 			return (label?.previousElementSibling as HTMLElement | undefined)?.style.background;
 		};
 		expect(heatDot("抖音乙")).toBe(cssColor(subscriptionColor(EXT_SUB, undefined)));
@@ -284,6 +288,12 @@ describe("统计页 · 拓展订阅的行", () => {
 		await userEvent.click(screen.getByRole("button", { name: /全部订阅/ }));
 		const items = screen.getAllByRole("button").filter((b) => b.textContent?.includes("抖音乙"));
 		expect(items.length).toBeGreaterThan(0);
+		const item = items.at(-1) as HTMLElement;
+		const platformIcon = within(item).getByRole("img", { name: "抖音" });
+		expect(
+			platformIcon.compareDocumentPosition(within(item).getByText("抖音乙")) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).not.toBe(0);
 		expect(screen.getAllByRole("button").some((b) => b.textContent?.includes("B 站甲"))).toBe(true);
 		await userEvent.click(items.at(-1) as HTMLElement);
 		const title = await screen.findByText(/粉丝增减、投稿与直播情况/);

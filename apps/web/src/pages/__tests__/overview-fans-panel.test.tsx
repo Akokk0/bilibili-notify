@@ -149,6 +149,10 @@ describe("粉丝数变化 · 拓展订阅", () => {
 		await waitFor(() => expect(screen.getByText("抖音乙")).toBeTruthy());
 		expect(screen.getByText("B 站甲")).toBeTruthy();
 		const platformIcon = screen.getByRole("img", { name: "抖音" });
+		const name = screen.getByText("抖音乙");
+		expect(platformIcon.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+			0,
+		);
 		expect(platformIcon.querySelector("img")?.getAttribute("src")).toBe(
 			DOUYIN_SOURCE.descriptor.icon,
 		);

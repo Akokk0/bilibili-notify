@@ -216,7 +216,11 @@ describe("SubscriptionDialog × 拓展订阅", () => {
 		const sub = extSub({ identity: { sourceKey: "douyin", externalId: id } });
 		sub.cachedProfile = { name: "抖音那位", followers: 10477000, refreshedAt: "t" };
 		renderDialog(sub, platform({ externalIdNoun: "作者 ID" }));
-		expect(screen.getByRole("img", { name: "抖音" })).toBeTruthy();
+		expect(
+			screen
+				.getByRole("img", { name: "抖音" })
+				.compareDocumentPosition(screen.getByText("抖音那位")) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).not.toBe(0);
 		expect(screen.getByTitle(`作者 ID ${id}`).textContent).toBe(`作者 ID ${id}`);
 		expect(screen.getByText("1047.7万 粉丝", { exact: true })).toBeTruthy();
 		expect(screen.queryByText(/UID/)).toBeNull();

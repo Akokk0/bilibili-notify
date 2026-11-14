@@ -167,12 +167,35 @@ export function SubscriptionCard({
 					/>
 				</div>
 				<div className="mb-1 flex items-center justify-between">
-					<span
-						className="max-w-40 truncate text-bn-base font-bold text-bn-text-primary"
-						title={displayName(sub, ext)}
-					>
-						{displayName(sub, ext)}
-					</span>
+					<div className="flex min-w-0 items-center gap-1.5">
+						{ext.showBadge ? (
+							<span
+								role="img"
+								aria-label={ext.label}
+								title={ext.label}
+								className="inline-flex shrink-0 items-center"
+							>
+								{ext.icon ? (
+									<DescriptorIcon
+										descriptor={{
+											icon: ext.icon,
+											color: ext.color ?? "var(--color-bn-inactive)",
+											shortLabel: ext.shortLabel ?? ext.label,
+										}}
+										size={16}
+									/>
+								) : (
+									<Icon.globe size={16} />
+								)}
+							</span>
+						) : null}
+						<span
+							className="max-w-40 truncate text-bn-base font-bold text-bn-text-primary"
+							title={displayName(sub, ext)}
+						>
+							{displayName(sub, ext)}
+						</span>
+					</div>
 					<Toggle
 						value={sub.enabled}
 						onChange={onToggleEnabled}
@@ -181,27 +204,6 @@ export function SubscriptionCard({
 					/>
 				</div>
 				<div className="mb-2.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
-					{ext.showBadge ? (
-						<span
-							role="img"
-							aria-label={ext.label}
-							title={ext.label}
-							className="inline-flex shrink-0 items-center"
-						>
-							{ext.icon ? (
-								<DescriptorIcon
-									descriptor={{
-										icon: ext.icon,
-										color: ext.color ?? "var(--color-bn-inactive)",
-										shortLabel: ext.shortLabel ?? ext.label,
-									}}
-									size={16}
-								/>
-							) : (
-								<Icon.globe size={16} />
-							)}
-						</span>
-					) : null}
 					<span className="min-w-0 flex-1 truncate tabular-nums">
 						{subscriptionIdentityLabel(identity, ext)}
 					</span>

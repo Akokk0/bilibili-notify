@@ -628,13 +628,7 @@ export function SubscriptionDialog({
 						className="min-w-0 flex-1 pb-2 text-bn-on-solid"
 						style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}
 					>
-						<div className="truncate text-bn-md font-bold" title={previewName}>
-							{previewName}
-						</div>
-						<div
-							className="mt-0.5 flex min-w-0 items-center gap-1.5 text-bn-xs font-semibold text-bn-text-secondary"
-							style={{ textShadow: "none" }}
-						>
+						<div className="flex min-w-0 items-center gap-1.5">
 							{ext.showBadge ? (
 								<span role="img" aria-label={ext.label} title={ext.label} className="shrink-0">
 									<DescriptorIcon
@@ -648,6 +642,14 @@ export function SubscriptionDialog({
 									/>
 								</span>
 							) : null}
+							<div className="truncate text-bn-md font-bold" title={previewName}>
+								{previewName}
+							</div>
+						</div>
+						<div
+							className="mt-0.5 flex min-w-0 items-center gap-1.5 text-bn-xs font-semibold text-bn-text-secondary"
+							style={{ textShadow: "none" }}
+						>
 							<span
 								className="min-w-0 flex-1 truncate tabular-nums"
 								title={subscriptionIdentityLabel(identity, ext)}

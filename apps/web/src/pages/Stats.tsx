@@ -277,10 +277,10 @@ function UpPicker({
 								/>
 								<span className="min-w-0 flex-1">
 									<span className="flex min-w-0 items-center gap-1.5">
+										<PlatformMark meta={m} />
 										<span className="truncate text-bn-sm font-bold text-bn-text-primary">
 											{m.name}
 										</span>
-										<PlatformMark meta={m} />
 									</span>
 									<span className="block text-bn-2xs text-bn-text-secondary">
 										{num(r.followers)} ·{" "}
@@ -376,10 +376,10 @@ function CompareTable({
 										/>
 										<div className="min-w-0">
 											<div className="flex min-w-0 items-center gap-1.5">
+												<PlatformMark meta={m} />
 												<span className="truncate text-bn-sm font-bold text-bn-text-primary">
 													{m.name}
 												</span>
-												<PlatformMark meta={m} />
 											</div>
 											<div className="text-bn-2xs text-bn-text-secondary">
 												{(r.lastActivityAt ? formatAgo(r.lastActivityAt) : undefined) ??

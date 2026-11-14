@@ -299,7 +299,7 @@ function HistoryRow({
 	const upAvatar = historyRowAvatarUrl(entry, sub?.cachedProfile);
 	// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 	const creatorColor = historyRowColor(entry, subscriptionPlatformOf(entry.identity, sources));
-	// 平台显隐由来源投影决定，图标放在作者头像前，名称供悬停与读屏。
+	// 平台显隐由来源投影决定，作者信息按头像、平台图标、名称排列。
 	const platform = subscriptionPlatformOf(entry.identity, sources);
 	const headline = headlineOf(entry);
 	const count = messageCountOf(entry);
@@ -322,33 +322,23 @@ function HistoryRow({
 				<span className="tabular-nums text-bn-xs text-bn-text-tertiary">
 					<RelativeTime at={entry.createdAt} />
 				</span>
-				<div className="flex items-center gap-2">
-					<span className="inline-flex size-4 shrink-0 items-center">
-						{platform.showBadge ? (
-							<span
-								role="img"
-								aria-label={platform.label}
-								title={platform.label}
-								className="inline-flex"
-							>
-								<DescriptorIcon
-									descriptor={{
-										icon: platform.icon,
-										color: platform.color ?? "var(--color-bn-inactive)",
-										shortLabel: platform.shortLabel ?? platform.label,
-									}}
-									fallbackIcon="globe"
-									size={16}
-								/>
-							</span>
-						) : null}
-					</span>
-					<Avatar name={upName} color={creatorColor} size={24} url={upAvatar} />
-				</div>
+				<Avatar name={upName} color={creatorColor} size={24} url={upAvatar} />
 				<Pill color={tone} subtle size="sm">
 					{FEATURE_DESCRIPTORS[entry.feature].label}
 				</Pill>
 				<div className="flex min-w-0 items-center gap-2">
+					{platform.showBadge ? (
+						<DescriptorIcon
+							descriptor={{
+								...platform,
+								shortLabel: platform.shortLabel ?? platform.label,
+								color: platform.color ?? "var(--color-bn-inactive)",
+							}}
+							label={platform.label}
+							fallbackIcon="globe"
+							size={16}
+						/>
+					) : null}
 					<div className="min-w-0 flex-1 truncate" title={headline}>
 						<span className="font-bold text-bn-text-primary">{upName}</span>
 						{headline ? (

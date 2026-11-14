@@ -157,6 +157,10 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		);
 		expect(screen.getByText("抖音乙")).toBeTruthy();
 		const platformIcon = screen.getByRole("img", { name: "抖音" });
+		expect(
+			platformIcon.compareDocumentPosition(screen.getByText("抖音乙")) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).not.toBe(0);
 		expect(platformIcon.getAttribute("title")).toBe("抖音");
 		expect(platformIcon.querySelector("img")?.getAttribute("src")).toBe(
 			DOUYIN_SOURCE.descriptor.icon,
