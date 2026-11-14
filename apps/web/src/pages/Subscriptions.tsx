@@ -284,7 +284,7 @@ function NewSubDialog({
 }
 
 /**
- * 候选的「头像 + 名字 / 身份标签 / 已订阅」身份行。第二行(粉丝、简介)由调用方给,走 children。
+ * 候选的头像、姓名与身份。姓名独占主行，身份标签次行省略；粉丝与简介由 children 提供。
  */
 function UpProfileSummary({
 	profile,
@@ -294,7 +294,7 @@ function UpProfileSummary({
 }: {
 	/** 头像可以没有(候选不一定带),那时退首字头像。 */
 	profile: { name: string; avatar?: string };
-	/** 名字旁边那一小串身份标签;来源没声明外部 id 的叫法就不写(那串 id 是给机器认的)。 */
+	/** 来源没声明外部 id 的叫法就不写；完整身份标签保留在提示里。 */
 	idLabel?: string;
 	subscribed: boolean;
 	children: React.ReactNode;
@@ -314,17 +314,29 @@ function UpProfileSummary({
 				<Avatar name={profile.name} color={colorFromSeed(profile.name)} size={40} />
 			)}
 			<div className="min-w-0 flex-1">
-				<div className="flex items-center gap-2">
-					<span className="truncate text-bn-sm font-bold text-bn-text-primary">{profile.name}</span>
-					{idLabel ? (
-						<span className="text-bn-2xs tabular-nums text-bn-text-tertiary">{idLabel}</span>
-					) : null}
+				<div className="flex min-w-0 items-center gap-2">
+					<span
+						className="min-w-0 flex-1 truncate text-bn-sm font-bold text-bn-text-primary"
+						title={profile.name}
+					>
+						{profile.name}
+					</span>
 					{subscribed ? (
-						<Pill size="sm" subtle color="var(--color-bn-text-tertiary)">
-							{t("subs.candidate.subscribed")}
-						</Pill>
+						<span className="shrink-0">
+							<Pill size="sm" subtle color="var(--color-bn-text-tertiary)">
+								{t("subs.candidate.subscribed")}
+							</Pill>
+						</span>
 					) : null}
 				</div>
+				{idLabel ? (
+					<div
+						className="mt-0.5 truncate text-bn-2xs tabular-nums text-bn-text-tertiary"
+						title={idLabel}
+					>
+						{idLabel}
+					</div>
+				) : null}
 				{children}
 			</div>
 		</>
@@ -391,13 +403,16 @@ function CandidateList({
 								subscribed={subscribed}
 							>
 								{c.followers !== undefined || c.bio ? (
-									<div className="mt-0.5 text-bn-2xs text-bn-text-secondary">
-										{c.followers !== undefined
-											? t("subs.candidate.followers", { count: formatCount(c.followers) })
-											: null}
+									<div className="mt-0.5 flex min-w-0 items-center gap-2 text-bn-2xs text-bn-text-secondary">
+										{c.followers !== undefined ? (
+											<span className="shrink-0 whitespace-nowrap">
+												{t("subs.candidate.followers", { count: formatCount(c.followers) })}
+											</span>
+										) : null}
 										{c.bio ? (
-											<span className="ml-2 text-bn-text-tertiary" title={c.bio}>
-												· {truncate(c.bio, 30)}
+											<span className="min-w-0 truncate text-bn-text-tertiary" title={c.bio}>
+												{c.followers !== undefined ? "· " : ""}
+												{c.bio}
 											</span>
 										) : null}
 									</div>
@@ -430,10 +445,6 @@ function candidateProfile(
 interface SubscriptionCreateDraft {
 	subscription: Subscription;
 	cachedProfile: NonNullable<SubscriptionCreateRequest["cachedProfile"]>;
-}
-
-function truncate(s: string, max: number): string {
-	return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
 /**

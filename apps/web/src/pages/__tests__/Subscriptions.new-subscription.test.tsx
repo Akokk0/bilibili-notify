@@ -497,6 +497,26 @@ describe("搜人", () => {
 		// 抖音没声明外部 id 的叫法:不写身份标签(那串 id 是给机器认的)。
 		expect(within(sameNumber).queryByText(/111/)).toBeNull();
 	});
+	it("长作者 ID 的候选保留完整名字和身份提示，挑选时仍传原始 ID", async () => {
+		const name = "天霸电子竞技俱乐部（合成测试）";
+		const id = `MS4wLjABAAAA${"creator-identity".repeat(6)}`;
+		sources = [
+			BILI_SOURCE,
+			{ ...DOUYIN_SOURCE, descriptor: { ...DOUYIN_SOURCE.descriptor, externalIdNoun: "作者 ID" } },
+		];
+		creators.douyin = async () => ({ candidates: [{ externalId: id, name, followers: 0 }] });
+		const dialog = await openNewDialog();
+		fireEvent.click(await dialog.findByRole("button", { name: "抖音" }));
+		await search(dialog, "主页链接", "天霸");
+		const candidate = await dialog.findByRole("button", { name: /天霸电子竞技俱乐部/ });
+		expect(within(candidate).getByTitle(name).textContent).toBe(name);
+		expect(within(candidate).getByTitle(`作者 ID ${id}`).textContent).toBe(`作者 ID ${id}`);
+		expect(within(candidate).getByText("0 粉丝")).toBeTruthy();
+		fireEvent.click(candidate);
+		await waitFor(() => expect(screen.queryByRole("button", { name: "搜索" })).toBeNull());
+		expect(screen.getByTitle(`作者 ID ${id}`).textContent).toBe(`作者 ID ${id}`);
+		expect(api.post).not.toHaveBeenCalled();
+	});
 
 	it.each([
 		["ApiError(状态码与话对不上号)", new FakeApiError("B 站现在很忙，请过一会儿再查", 404)],
