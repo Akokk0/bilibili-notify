@@ -14,6 +14,7 @@ import {
 	HintNote,
 	Icon,
 	IconButton,
+	MenuItem,
 	ModalShell,
 	Pill,
 	Toggle,
@@ -21,7 +22,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TInput } from "../../components/forms";
 import { DescriptorIcon } from "../../components/platform-meta";
-import { TargetLabel } from "../../components/target-display";
+import { TargetLabel, targetDisplay } from "../../components/target-display";
 import { i18n, useT } from "../../i18n";
 import {
 	type Connection,
@@ -803,7 +804,7 @@ export function SubscriptionDialog({
 							{unattachedTargets.length > 0 ? (
 								showPicker ? (
 									<div className="rounded-lg border border-bn-border bg-bn-surface p-3">
-										<div className="mb-1.5 flex items-center justify-between">
+										<div className="mb-2.5 flex items-center justify-between">
 											<span className="text-bn-xs font-semibold text-bn-text-primary">
 												{tx("sourceUi.pages.up.UpDialog.UpDialog.24")}
 											</span>
@@ -815,17 +816,40 @@ export function SubscriptionDialog({
 												{tx("subs.new.cancel")}
 											</button>
 										</div>
-										<div className="flex flex-wrap gap-1.5">
-											{unattachedTargets.map((t) => (
-												<AddButton
-													key={t.id}
-													className="bg-bn-surface"
-													onClick={() => attachTarget(t.id)}
-												>
-													<Icon.plus size={11} />
-													<TargetLabel target={t} connections={connections ?? []} />
-												</AddButton>
-											))}
+										<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+											{unattachedTargets.map((t) => {
+												const display = targetDisplay(t, connections ?? []);
+												return (
+													<div
+														key={t.id}
+														title={`${display.label} · ${display.description}`}
+														className="min-w-0 overflow-hidden rounded-lg border border-bn-border bg-bn-surface transition-colors hover:border-bn-pink/40 focus-within:border-bn-pink"
+													>
+														<MenuItem
+															ariaLabel={`${display.label} · ${display.description}`}
+															onClick={() => attachTarget(t.id)}
+														>
+															<span aria-hidden="true" className="shrink-0">
+																{display.icon}
+															</span>
+															<span className="min-w-0 flex-1">
+																<span className="block truncate font-semibold">
+																	{display.label}
+																</span>
+																<span className="block truncate text-bn-xs text-bn-text-tertiary">
+																	{display.description}
+																</span>
+															</span>
+															<span
+																aria-hidden="true"
+																className="grid size-6 shrink-0 place-items-center rounded-full bg-bn-pink/10 text-bn-pink"
+															>
+																<Icon.plus size={12} />
+															</span>
+														</MenuItem>
+													</div>
+												);
+											})}
 										</div>
 									</div>
 								) : (
