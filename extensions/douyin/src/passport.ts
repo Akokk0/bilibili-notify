@@ -22,6 +22,10 @@ const key = "163e7ce78d58971a41f5b969996d85c2";
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const xor = (s: string) => Buffer.from(Buffer.from(s).map((b) => b ^ 5)).toString("hex");
 const loginHosts = ["www.douyin.com", "login.douyin.com", "sso.douyin.com"];
+const pageOptions = {
+	headers: { accept: "text/html,application/xhtml+xml" },
+	maxBodyBytes: 4 * 1024 * 1024,
+};
 export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession()) {
 	const portrait = `${randomUUID()}.login`,
 		csrf = randomBytes(16).toString("hex");
@@ -59,11 +63,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 		return res;
 	}
 	async function prepare(signal: AbortSignal): Promise<Result> {
-		const options = {
-			headers: { accept: "text/html,application/xhtml+xml" },
-			maxBodyBytes: 4 * 1024 * 1024,
-		};
-		const response = await request(new URL("/", WEB), signal, options);
+		const response = await request(new URL("/", WEB), signal, pageOptions);
 		if (!response.ok || !response.isSuccess)
 			return fail("unavailable", ctx.i18n.t("auth.prepareFailed"));
 		const nonce = cookieValue(jar.header(WEB), "__ac_nonce");
@@ -71,7 +71,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			const signature = homepageSignature(nonce);
 			ctx.redact(signature);
 			jar.ingest(WEB, `__ac_signature=${signature}; Path=/; Secure`);
-			const negotiated = await request(new URL("/", WEB), signal, options);
+			const negotiated = await request(new URL("/", WEB), signal, pageOptions);
 			if (!negotiated.ok || !negotiated.isSuccess)
 				return fail("unavailable", ctx.i18n.t("auth.prepareFailed"));
 		}
@@ -85,7 +85,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			return fail("invalid", ctx.i18n.t("auth.redirect"));
 		}
 		for (let i = 0; i < 6; i++) {
-			const r = await request(url, signal);
+			const r = await request(url, signal, pageOptions);
 			if (!r.ok) return r;
 			if (r.isSuccess) return ok();
 			const loc = r.headers.get("location");

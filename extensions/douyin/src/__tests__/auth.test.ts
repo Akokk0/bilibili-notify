@@ -17,6 +17,7 @@ function fixture(
 	let unreadableAccountReplies = 0;
 	let homeStatus = 200;
 	let homeRetryStatus: number | undefined;
+	let landingPageBytes = 0;
 	let validationReply: object = { data: { error_code: 0 } };
 	const smsRequests: { trace: string | null; code: string | null }[] = [];
 	let source!: SourceDef;
@@ -102,8 +103,10 @@ function fixture(
 						: { data: { error_code: 0 } };
 				}
 				if (url.pathname.endsWith("/get_qrcode/")) h.set("x-ms-token", "synthetic-ms-token");
-				if (url.pathname === "/sso/callback")
+				if (url.pathname === "/sso/callback") {
 					h.append("Set-Cookie", "sessionid=sample; Domain=.douyin.com; Path=/; Secure");
+					if (landingPageBytes) h.set("location", "https://www.douyin.com/");
+				}
 				if (url.pathname.endsWith("/info/v2/")) {
 					expect(new Headers(o.headers).get("cookie")).toContain("sessionid=sample");
 					body = { message: "success", data: accountData };
@@ -113,14 +116,23 @@ function fixture(
 						? new Headers(o.headers).get("cookie")?.includes("__ac_signature=")
 							? (homeRetryStatus ?? homeStatus)
 							: homeStatus
-						: 200;
+						: url.pathname === "/sso/callback" && landingPageBytes
+							? 302
+							: 200;
+				const text =
+					url.href === "https://www.douyin.com/" &&
+					new Headers(o.headers).get("cookie")?.includes("sessionid=")
+						? "<html>".padEnd(landingPageBytes, " ")
+						: JSON.stringify(body);
+				if (o.maxBodyBytes !== undefined && Buffer.byteLength(text) > o.maxBodyBytes)
+					return { ok: false, code: "invalid", message: "Synthetic response exceeds body limit" };
 				return {
 					ok: true,
 					status,
 					isSuccess: status >= 200 && status < 300,
 					headers: h,
 					url: url.href,
-					text: () => JSON.stringify(body),
+					text: () => text,
 					json: () => {
 						if (url.pathname.endsWith("/info/v2/") && unreadableAccountReplies > 0) {
 							unreadableAccountReplies--;
@@ -148,6 +160,9 @@ function fixture(
 		},
 		setHomeRetryStatus: (status: number) => {
 			homeRetryStatus = status;
+		},
+		setLandingPageBytes: (bytes: number) => {
+			landingPageBytes = bytes;
 		},
 		ops,
 		pollNext: async () => {
@@ -226,6 +241,26 @@ describe("source account", () => {
 		await vi.waitFor(() => expect(restored.auth.account()?.name).toBe("Douyin tester"));
 		await f.auth.logout();
 		expect(f.auth.state().status).toBe("logged-out");
+		expect(f.secrets.size).toBe(0);
+	});
+	it("completes phone-confirmed login when SSO lands on a full HTML homepage", async () => {
+		const f = fixture();
+		await f.auth.beginLogin();
+		f.setLandingPageBytes(2 * 1024 * 1024);
+		f.setPoll("confirmed");
+		await f.pollNext();
+		expect(f.auth.state().status).toBe("logged-in");
+		expect(f.auth.account()?.name).toBe("Douyin tester");
+		expect(f.secrets.size).toBe(1);
+	});
+	it("keeps oversized SSO pages from completing login or persisting credentials", async () => {
+		const f = fixture();
+		await f.auth.beginLogin();
+		f.setLandingPageBytes(4 * 1024 * 1024 + 1);
+		f.setPoll("confirmed");
+		await f.pollNext();
+		expect(f.auth.state().status).toBe("error");
+		expect(f.auth.account()).toBeNull();
 		expect(f.secrets.size).toBe(0);
 	});
 	it("refuses a foreign SSO redirect before making a request or storing a cookie", async () => {
