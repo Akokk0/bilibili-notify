@@ -145,7 +145,7 @@ export const sourceRegistryOf = (...descriptors: Partial<SourceDescriptor>[]): S
 
 /**
  * 登着 B 站那份描述符(大航海三档)的来源登记表;可用测试引用或懒取口替换档图。卡片预览的用例可以再给它
- * 一个 `fetchPreview` 与登录着的账号名(`auth.account()` 只答名字)。
+ * 一个 `fetchPreview` 与登录着的账号资料。
  */
 export const bilibiliLikeSources = (
 	options: {
@@ -153,6 +153,7 @@ export const bilibiliLikeSources = (
 		fetchTierIcon?: LiveInteractionReader["fetchTierIcon"];
 		fetchPreview?: Source["fetchPreview"];
 		accountName?: string;
+		accountAvatar?: ImageRef;
 	} = {},
 ): SourceRegistry => {
 	const registry = createSourceRegistry();
@@ -178,7 +179,12 @@ export const bilibiliLikeSources = (
 			...(options.fetchPreview ? { fetchPreview: options.fetchPreview } : {}),
 			...(options.accountName === undefined
 				? {}
-				: { auth: { account: () => ({ name: options.accountName }) } as unknown as SourceAuth }),
+				: {
+						auth: {
+							state: () => ({ status: "logged-in", loggedInAt: "2026-11-14T00:00:00Z" }),
+							account: () => ({ name: options.accountName, avatar: options.accountAvatar }),
+						} as unknown as SourceAuth,
+					}),
 			start: async () => {},
 			stop: async () => {},
 		},

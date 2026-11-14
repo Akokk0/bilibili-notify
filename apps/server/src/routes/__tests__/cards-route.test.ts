@@ -14,6 +14,7 @@ import {
 	ok,
 	type Post,
 	type Source,
+	type SourceContext,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { CardSkinStore } from "../../card-skins/store.js";
@@ -468,6 +469,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 		return {
 			runtime: {
 				dataRoot: join(tmpdir(), "bn-test-hotswap-no-such-dir"),
+				sourceRegistry: bilibiliLikeSources(),
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},
@@ -1035,9 +1037,14 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 			.mockResolvedValue(Buffer.from("x"));
 		try {
 			const app = createCardsRoute({
-				deps: makeDeps(bilibiliLikeSources({ iconRef: GUARD_ICON_REF, accountName: "登录名" }), {
-					subscribed: true,
-				}),
+				deps: makeDeps(
+					bilibiliLikeSources({
+						iconRef: GUARD_ICON_REF,
+						accountName: "登录名",
+						accountAvatar: SUBSCRIBED_AVATAR,
+					}),
+					{ subscribed: true },
+				),
 				puppeteer: makeFakePuppeteer(),
 			});
 			const res = await postPreview(app, {
@@ -1048,6 +1055,7 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 			expect(res.status).toBe(200);
 			const arg = spy.mock.calls[0]?.[0];
 			expect(arg?.viewer.name).toBe("登录名");
+			expect(arg?.viewer.avatar).toBe(SUBSCRIBED_AVATAR);
 			expect(arg?.creator.name).toBe("真实UP");
 		} finally {
 			spy.mockRestore();
@@ -1371,9 +1379,14 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 			.mockResolvedValue(Buffer.from("x"));
 		try {
 			const app = createCardsRoute({
-				deps: makeDeps(bilibiliLikeSources({ iconRef: GUARD_ICON_REF, accountName: "登录名" }), {
-					subscribed: true,
-				}),
+				deps: makeDeps(
+					bilibiliLikeSources({
+						iconRef: GUARD_ICON_REF,
+						accountName: "登录名",
+						accountAvatar: SUBSCRIBED_AVATAR,
+					}),
+					{ subscribed: true },
+				),
 				puppeteer: makeFakePuppeteer(),
 			});
 			const res = await postPreview(app, {
@@ -1384,14 +1397,14 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 			expect(res.status).toBe(200);
 			const arg = spy.mock.calls[0]?.[0];
 			expect(arg?.viewer.name).toBe("登录名");
+			expect(arg?.viewer.avatar).toBe(SUBSCRIBED_AVATAR);
 			expect(arg?.creator.name).toBe("真实UP");
 		} finally {
 			spy.mockRestore();
 		}
 	});
 
-	// 不再借任何平台的登录账号:没挑订阅就不知道问哪个来源,付款人与收的人都是示例名。
-	it("sc / guard:没挑订阅 → 付款人、新会员与收的人都是示例名", async () => {
+	it("sc / guard:没挑订阅 → 付款人与新会员沿用当前登录账号的名字和头像", async () => {
 		const sc = vi
 			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
@@ -1400,24 +1413,121 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 			.mockResolvedValue(Buffer.from("x"));
 		try {
 			const app = createCardsRoute({
-				deps: makeDeps(bilibiliLikeSources({ iconRef: GUARD_ICON_REF, accountName: "登录名" })),
+				deps: makeDeps(
+					bilibiliLikeSources({
+						iconRef: GUARD_ICON_REF,
+						accountName: "登录名",
+						accountAvatar: SUBSCRIBED_AVATAR,
+					}),
+				),
 				puppeteer: makeFakePuppeteer(),
 			});
 			await postPreview(app, { kind: "superchat", style: STYLE, content: { amount: 30 } });
 			await postPreview(app, { kind: "membership", style: STYLE, content: {} });
 			expect(sc.mock.calls[0]?.[0]).toMatchObject({
-				viewer: { name: "示例粉丝" },
+				viewer: { name: "登录名", avatar: SUBSCRIBED_AVATAR },
 				creator: { name: "示例创作者" },
 			});
 			expect(guard.mock.calls[0]?.[0]).toMatchObject({
-				viewer: { name: "示例新会员" },
+				viewer: { name: "登录名", avatar: SUBSCRIBED_AVATAR },
 				creator: { name: "示例创作者" },
+			});
+			await postPreview(app, {
+				kind: "membership",
+				style: STYLE,
+				content: { text: "手填会员名" },
+			});
+			expect(guard.mock.calls[1]?.[0].viewer).toEqual({
+				name: "手填会员名",
+				avatar: SUBSCRIBED_AVATAR,
 			});
 		} finally {
 			sc.mockRestore();
 			guard.mockRestore();
 		}
 	});
+
+	it("账号顺序与顶栏一致，指定订阅不借其他来源，已退出的缓存资料不作占位", async () => {
+		const registry = bilibiliLikeSources({
+			accountName: "来源账号",
+			accountAvatar: SUBSCRIBED_AVATAR,
+		});
+		const source = registry.get(BILIBILI_SOURCE_KEY);
+		if (!source?.auth) throw new Error("Missing fixture account");
+		const currentAuth = {
+			...source.auth,
+			account: () => ({ name: "当前账号", avatar: GUARD_ICON_REF }),
+		};
+		await registry.register(
+			"test.account",
+			{
+				...source,
+				descriptor: { ...source.descriptor, membershipPrograms: [] },
+				auth: currentAuth,
+				start: async () => {},
+				stop: async () => {},
+			},
+			{} as SourceContext,
+		);
+		const deps = makeDeps(registry, { subscribed: true });
+		deps.store.getGlobals = () =>
+			({
+				...EMPTY_GLOBALS,
+				accounts: { order: ["test.account", BILIBILI_SOURCE_KEY] },
+			}) as ReturnType<typeof deps.store.getGlobals>;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
+			.mockResolvedValue(Buffer.from("x"));
+		try {
+			const app = createCardsRoute({ deps, puppeteer: makeFakePuppeteer() });
+			const request = async (subscriptionId?: string) => {
+				const res = await postPreview(app, {
+					kind: "superchat",
+					style: STYLE,
+					content: { subscriptionId },
+				});
+				expect(res.status).toBe(200);
+				return spy.mock.calls.at(-1)?.[0].viewer;
+			};
+			expect(await request()).toEqual({ name: "当前账号", avatar: GUARD_ICON_REF });
+			expect(await request("11111111-1111-1111-1111-111111111111")).toEqual({
+				name: "来源账号",
+				avatar: SUBSCRIBED_AVATAR,
+			});
+			const state = vi.spyOn(currentAuth, "state").mockReturnValue({ status: "logged-out" });
+			expect(await request()).toEqual({ name: "示例粉丝" });
+			state.mockRestore();
+			vi.spyOn(source.auth, "state").mockReturnValue({ status: "logged-out" });
+			expect(await request("11111111-1111-1111-1111-111111111111")).toEqual({ name: "示例粉丝" });
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it.each(["superchat", "membership"] as const)(
+		"%s 预览将缓存账号头像解析进真正的卡片 HTML",
+		async (kind) => {
+			const deps = makeDeps(
+				bilibiliLikeSources({
+					iconRef: GUARD_ICON_REF,
+					accountName: "登录账号",
+					accountAvatar: SUBSCRIBED_AVATAR,
+				}),
+			);
+			Object.assign(deps.runtime, {
+				imageStore: {
+					read: async (ref: string) =>
+						ref === SUBSCRIBED_AVATAR ? { mime: "image/png", bytes: PNG } : undefined,
+				},
+			});
+			capturedHtml.length = 0;
+			const app = createCardsRoute({ deps, puppeteer: makeFakePuppeteer() });
+			const res = await postPreview(app, { kind, style: STYLE, content: {} });
+			expect(res.status).toBe(200);
+			expect(capturedHtml.join("")).toContain("登录账号");
+			expect(capturedHtml.join("")).toContain("data:image/png;base64,iVBORw0KGgo=");
+		},
+	);
 });
 
 // ── 预览也走皮肤(ADR-0014 决策 15 / 22) ──────────────────────────────────────
@@ -1967,6 +2077,7 @@ describe("cards route — per-UP 预览带草稿旋钮", () => {
 		return {
 			runtime: {
 				dataRoot: dataDir,
+				sourceRegistry: bilibiliLikeSources(),
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},

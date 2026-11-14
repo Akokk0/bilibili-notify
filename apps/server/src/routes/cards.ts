@@ -12,7 +12,7 @@ import { logUrl } from "../logs/url.js";
  *                                    没实现就用示例。来源回了失败也用示例,回应的 `sampleReason` 带原话;
  *   作品 / 直播,没挑订阅            → 示例数据(调样式不必登录任何平台);
  *   醒目留言 / 上舰                   → 示例消息;挑了订阅就把收的人写成那条订阅的名字,付款人 / 新会员取
- *                                    那个来源登录着的账号名,没有就是示例名。
+ *                                    那个来源登录着的账号资料;没挑订阅时沿用顶栏当前账号,未登录就用示例。
  *
  * 路由不认识任何平台:真数据只经来源登记表问来源(4-14,ADR-0021 决策 59)。
  *
@@ -57,6 +57,7 @@ import {
 	effectiveCardSkinKnobs,
 	fail,
 	type ImageRef,
+	isLoggedIn,
 	issuesFromZod,
 	type NotificationPayload,
 	ok,
@@ -64,11 +65,13 @@ import {
 	type PreviewOptions,
 	type PreviewReport,
 	type Result,
+	type SourceAccount,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import { accountViews } from "../accounts/accounts.js";
 import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
 import { membershipTierUnavailable, renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";
@@ -291,11 +294,16 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		return opts.deps.runtime.subscriptionStateStore.get(sub.id)?.cachedProfile?.avatar;
 	}
 
-	/** 付醒目留言的人 / 新会员:挑中那条订阅的来源登录着的账号名;没挑、来源不用登录或没登录是 `undefined`。 */
-	function accountNameOf(sub: Subscription | undefined): string | undefined {
-		if (!sub) return undefined;
-		const source = opts.deps.runtime.sourceRegistry.get(subscriptionIdentityOf(sub).sourceKey);
-		return source?.auth?.account?.()?.name;
+	/** 与顶栏共用账号顺序;挑了订阅时只认该来源,不借其他来源的账号。 */
+	function previewAccountOf(sub: Subscription | undefined): SourceAccount | undefined {
+		const accounts = accountViews(
+			opts.deps.runtime.sourceRegistry.list(),
+			opts.deps.store.getGlobals().accounts?.order,
+		);
+		const current = sub
+			? accounts.find((account) => account.sourceKey === subscriptionIdentityOf(sub).sourceKey)
+			: accounts[0];
+		return current && isLoggedIn(current.state) ? current.account : undefined;
 	}
 
 	/** 醒目留言 / 上舰卡上收的那个人:挑中那条订阅的名字,没挑是示例名。 */
@@ -602,13 +610,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const renderer = await getImageRenderer();
 			if (!renderer) throw new Error(t("cards.renderer.notReady"));
 			// 付款人 = 挑中那条订阅的来源登录着的账号(「我在别人直播间发条 SC 会长啥样」);收的人 = 那条订阅。
-			const payer = accountNameOf(sub);
+			const payer = previewAccountOf(sub);
 			const receiver = receiverNameOf(sub);
-			// 示例数据没有头像:这张预览不传(`viewer.avatar` / `creator.avatar` 只收图库引用,示例里没有可给的;
-			// 真推送里观众头像取自帧里的地址、主播头像读订阅资料)。
 			const buffer = await renderer.generateSuperchatCard(
 				{
-					viewer: { name: payer ?? t("cards.sample.viewerName") },
+					viewer: {
+						name: payer?.name ?? t("cards.sample.viewerName"),
+						...(payer?.avatar ? { avatar: payer.avatar } : {}),
+					},
 					creator: { name: receiver },
 					text: content?.text?.trim() || t("cards.sample.superchatText"),
 					amount: content?.amount ?? 30,
@@ -630,7 +639,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const renderer = await getImageRenderer();
 			if (!renderer) throw new Error(t("cards.renderer.notReady"));
 			// 新会员 = 挑中那条订阅的来源登录着的账号;显式 text 覆写仍优先。收的人 = 那条订阅。
-			const uname = content?.text?.trim() || accountNameOf(sub) || t("cards.sample.memberName");
+			const member = previewAccountOf(sub);
+			const uname = content?.text?.trim() || member?.name || t("cards.sample.memberName");
 			const receiver = receiverNameOf(sub);
 			// 请求里的 `program` + `tierKey` 是（体系 id, 档 key),服务端按这一对找档(没带 tierKey = 那个体系最低一档);
 			// 档的徽章、档色、宣告语都取自那份声明,与真推送同一份。认不出的 key 在请求校验那一步就是 400,走不到这里。
@@ -668,7 +678,10 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 示例数据没有头像:预览不传(同上)。
 			const buffer = await renderer.generateMembershipCard(
 				{
-					viewer: { name: uname },
+					viewer: {
+						name: uname,
+						...(member?.avatar ? { avatar: member.avatar } : {}),
+					},
 					creator: { name: receiver },
 					tier: {
 						name: tier.name,
