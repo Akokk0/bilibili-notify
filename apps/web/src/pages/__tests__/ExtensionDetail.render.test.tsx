@@ -13,7 +13,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { DevelopmentExtensionUiContext } from "../../components/development-extension-ui";
+import { DevelopmentMountButton, DevelopmentMountNote } from "../../devtools/extension-mounts";
 import { i18n } from "../../i18n";
+import { api } from "../../services/api";
 import ExtensionDetail from "../ExtensionDetail";
 // 迁到 v2 的桥长什么样只有一份 —— 清单那一格列表各处抄一份的话,迟早各漂各的。
 import { BRIDGE, shown } from "../extensions/declarative/__tests__/list-harness";
@@ -124,8 +127,10 @@ function renderDetail(
 	id = "bridge",
 	settingsError?: Error | Promise<void>,
 	listed: ExtensionsResponse | Promise<ExtensionsResponse> = LISTED,
+	development = false,
 ) {
 	apiGetMock.mockImplementation(async (url: string) => {
+		if (url === "/api/dev/extensions") return { mounts: [] };
 		if (url === "/api/ext") return listed;
 		if (url === "/api/settings") {
 			if (settingsError instanceof Error) throw settingsError;
@@ -143,9 +148,16 @@ function renderDetail(
 	return render(
 		<QueryClientProvider client={qc}>
 			<MemoryRouter initialEntries={[`/extensions/${id}`]}>
-				<Routes>
-					<Route path="/extensions/:id" element={<ExtensionDetail />} />
-				</Routes>
+				<DevelopmentExtensionUiContext.Provider
+					value={
+						development ? { Button: DevelopmentMountButton, Note: DevelopmentMountNote } : null
+					}
+				>
+					<Routes>
+						<Route path="/extensions/:id" element={<ExtensionDetail />} />
+						<Route path="/extensions" element={<div>拓展列表</div>} />
+					</Routes>
+				</DevelopmentExtensionUiContext.Provider>
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);
@@ -168,6 +180,24 @@ async function linkCard(id: string): Promise<HTMLElement> {
 }
 
 describe("拓展详情页", () => {
+	it("旧开发链接可从管理页解除，完成后回列表而不调用普通卸载", async () => {
+		const listed = structuredClone(LISTED);
+		const ext = listed.extensions[0];
+		if (!ext) throw new Error("Missing extension fixture");
+		ext.linkedTo = "/work/bridge/dist";
+		vi.mocked(api.delete).mockImplementationOnce(async () => {
+			listed.extensions = [];
+			return { mounts: [] };
+		});
+		renderDetail("bridge", undefined, listed, true);
+		const unmount = await screen.findByRole("button", { name: "解除挂载" });
+		expect(screen.getByText("/work/bridge/dist")).toBeTruthy();
+		fireEvent.click(unmount);
+		expect(await screen.findByText("拓展列表")).toBeTruthy();
+		expect(api.delete).toHaveBeenCalledWith("/api/dev/extensions/bridge");
+		expect(api.delete).not.toHaveBeenCalledWith("/api/ext/bridge");
+	});
+
 	// ⚠️ **花括号不能省**:`mockReset()` 回的是那个 mock 本身,而 mock 是个函数 ——
 	// 箭头函数直接返回它,vitest 会把它当成这一条的清理钩子,在收摊时**当函数调一次**。
 	// 症状是每条用例末尾多一发 `api.get(undefined)`,栈里看不出是自己写的。

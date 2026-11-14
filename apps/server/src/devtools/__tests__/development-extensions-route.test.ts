@@ -1,5 +1,6 @@
 import {
 	access,
+	lstat,
 	mkdir,
 	mkdtemp,
 	readFile,
@@ -285,6 +286,54 @@ describe("开发拓展挂载请求", () => {
 		expect(removed.status).toBe(200);
 		expect(loaded.list().map((entry) => entry.id)).toEqual(["example.two"]);
 		expect(await realpath(join(first, "src"))).toBe(join(first, "src"));
+	});
+
+	it("旧版dist链接不在当前挂载表，也能解除且保留工程和构建文件", async () => {
+		enabled = false;
+		const directory = await project("example.legacy");
+		const dist = join(directory, "dist");
+		await mkdir(dist);
+		await writeFile(
+			join(dist, "extension.json"),
+			await readFile(join(directory, "extension.json")),
+		);
+		await writeFile(join(dist, "index.mjs"), "export function activate() {}\n");
+		await mkdir(join(root, "installed"), { recursive: true });
+		const link = join(root, "installed/example.legacy");
+		await symlink(dist, link, process.platform === "win32" ? "junction" : "dir");
+		await loaded.rescan();
+		expect(loaded.list()).toMatchObject([{ id: "example.legacy", state: "disabled" }]);
+		expect(await (await app.request("/extensions")).json()).toEqual({ mounts: [] });
+
+		const removed = await app.request("/extensions/example.legacy", { method: "DELETE" });
+		expect(removed.status).toBe(200);
+		expect(await removed.json()).toEqual({ mounts: [] });
+		await expect(lstat(link)).rejects.toMatchObject({ code: "ENOENT" });
+		expect(await readFile(join(dist, "index.mjs"), "utf8")).toBe("export function activate() {}\n");
+		expect(await readFile(join(directory, "src/index.ts"), "utf8")).toBe(code("one"));
+		expect(loaded.list()).toEqual([]);
+	});
+
+	it("遗留链接清理拒绝真实目录、保留ID和越界路径", async () => {
+		const target = await project("example.safe");
+		await mkdir(join(root, "installed/real-directory"), { recursive: true });
+		await writeFile(join(root, "installed/real-directory/keep.txt"), "keep installation");
+		const outside = join(root, "outside-link");
+		const reserved = join(root, "installed/core");
+		await symlink(target, outside, process.platform === "win32" ? "junction" : "dir");
+		await symlink(target, reserved, process.platform === "win32" ? "junction" : "dir");
+		expect((await app.request("/extensions/real-directory", { method: "DELETE" })).status).toBe(
+			404,
+		);
+		expect((await app.request("/extensions/core", { method: "DELETE" })).status).toBe(400);
+		expect((await app.request("/extensions/..%2Foutside-link", { method: "DELETE" })).status).toBe(
+			400,
+		);
+		expect(await readFile(join(root, "installed/real-directory/keep.txt"), "utf8")).toBe(
+			"keep installation",
+		);
+		expect((await lstat(outside)).isSymbolicLink()).toBe(true);
+		expect((await lstat(reserved)).isSymbolicLink()).toBe(true);
 	});
 
 	it("同ID和已有安装均拒绝覆盖，解除也不能删除被替换的真实目录", async () => {

@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { DevelopmentExtensionMountView } from "@bilibili-notify/contract";
 import { EXTENSION_API_RANGE, fail, ok, type Result } from "@bilibili-notify/internal";
 import type { DevelopmentExtensionEntry } from "../extensions/discover.js";
-import { parseHostExtensionManifest } from "../extensions/identity.js";
+import { extensionIdSchema, parseHostExtensionManifest } from "../extensions/identity.js";
 import type { LoadedExtensions } from "../extensions/loader.js";
 import { browseDevelopmentDirectories } from "./development-directories.js";
 import { openDevelopmentSource } from "./development-source.js";
@@ -154,7 +154,24 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 	}
 	async function unmount(id: string) {
 		const mounted = mounts.get(id);
-		if (!mounted) return fail("not_found", "没有这项开发挂载");
+		if (!mounted) {
+			// 旧版dist链接、或重启后遗留的源码链接没有当前进程的监听句柄。
+			// 仍只移除装载根中的链接，保留指向的工程以及配置、状态和密钥。
+			if (!extensionIdSchema(options.reservedIntegrationKeys).safeParse(id).success)
+				return fail("invalid", "拓展ID无效");
+			const loaded = options.extensions();
+			if (!loaded) return fail("unavailable", "拓展装载器尚未就绪");
+			const target = await readlink(at(id)).catch(() => undefined);
+			if (target === undefined) return fail("not_found", "没有这项开发挂载");
+			const result = await loaded.changeDisk(async () => {
+				if ((await readlink(at(id)).catch(() => undefined)) !== target)
+					return fail("conflict", "挂载目录已被更改，不能移除其他文件");
+				// 非递归：即使路径被换成真实目录，也不会沿目录清理。
+				await rm(at(id));
+				return ok();
+			});
+			return result.ok ? ok({ mounts: list() }) : result;
+		}
 		const loaded = options.extensions();
 		if (!loaded) return fail("unavailable", "拓展装载器尚未就绪");
 		if (!(await owned(mounted))) return fail("conflict", "挂载目录已被更改，不能移除其他文件");

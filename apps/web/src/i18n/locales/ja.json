@@ -19,6 +19,7 @@
 	"developmentExtensions.mounting": "マウント中…",
 	"developmentExtensions.confirm": "マウント",
 	"developmentExtensions.label": "開発用マウント",
+	"developmentExtensions.legacy": "旧形式の開発リンクです。マウントを解除してもプロジェクトと既存データは保持されます。",
 	"developmentExtensions.watching": "自動再読み込みは有効",
 	"developmentExtensions.unwatched": "自動再読み込みは無効",
 	"developmentExtensions.reloads": "再読み込み回数：{count}",

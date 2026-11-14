@@ -2,6 +2,7 @@ import type { DevelopmentExtensionsResponse } from "@bilibili-notify/contract";
 import { Btn, CheckRow, ErrorNote, HintNote, Icon, ModalShell, TInput } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import type { DevelopmentMountNoteProps } from "../components/development-extension-ui";
 import {
 	extensionBotsKey,
 	extensionSettingsKey,
@@ -154,34 +155,42 @@ function MountDialog({ onClose }: { onClose: () => void }) {
 	);
 }
 
-export function DevelopmentMountNote({ id }: { id: string }) {
+export function DevelopmentMountNote({ id, linkedTo, onUnmount }: DevelopmentMountNoteProps) {
 	const t = useT();
 	const qc = useQueryClient();
 	const mounts = useMounts();
 	const mounted = mounts.data?.mounts?.find((candidate) => candidate.id === id);
+	const legacy = !mounted && linkedTo && !mounts.isError && Array.isArray(mounts.data?.mounts);
 	const remove = useMutation({
 		mutationFn: () =>
 			api.delete<DevelopmentExtensionsResponse>(`${PATH}/${encodeURIComponent(id)}`),
 		onSuccess: async (response) => {
 			qc.setQueryData(KEY, response);
 			await invalidateExtensionTables(qc);
+			onUnmount?.();
 		},
 	});
-	if (!mounted) return null;
+	if (!mounted && !legacy) return null;
 	return (
 		<div className="flex flex-col gap-2 border-t border-bn-border-subtle pt-3">
 			<div className="text-bn-xs font-semibold text-bn-text-secondary">
 				{t("developmentExtensions.label")}
 			</div>
 			<div className="break-all font-mono text-bn-xs text-bn-text-tertiary">
-				{mounted.directory}
+				{mounted?.directory ?? linkedTo}
 			</div>
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				<span className="text-bn-2xs text-bn-text-tertiary">
-					{mounted.watching
-						? t("developmentExtensions.watching")
-						: t("developmentExtensions.unwatched")}{" "}
-					· {t("developmentExtensions.reloads", { count: mounted.reloads })}
+					{mounted ? (
+						<>
+							{mounted.watching
+								? t("developmentExtensions.watching")
+								: t("developmentExtensions.unwatched")}{" "}
+							· {t("developmentExtensions.reloads", { count: mounted.reloads })}
+						</>
+					) : (
+						t("developmentExtensions.legacy")
+					)}
 				</span>
 				<Btn
 					variant="outline"
@@ -192,7 +201,7 @@ export function DevelopmentMountNote({ id }: { id: string }) {
 					{t("developmentExtensions.unmount")}
 				</Btn>
 			</div>
-			{mounted.error ? <ErrorNote size="sm">{mounted.error}</ErrorNote> : null}
+			{mounted?.error ? <ErrorNote size="sm">{mounted.error}</ErrorNote> : null}
 			{remove.isError ? <ErrorNote size="sm">{reasonOf(remove.error)}</ErrorNote> : null}
 		</div>
 	);

@@ -19,6 +19,7 @@
 	"developmentExtensions.mounting": "Mounting…",
 	"developmentExtensions.confirm": "Mount",
 	"developmentExtensions.label": "Development mount",
+	"developmentExtensions.legacy": "Legacy development link. Unmounting keeps the project and existing data.",
 	"developmentExtensions.watching": "Automatic reload enabled",
 	"developmentExtensions.unwatched": "Automatic reload disabled",
 	"developmentExtensions.reloads": "Reloaded {count} times",

@@ -440,6 +440,29 @@ describe("拓展页开发挂载", () => {
 		expect(screen.getByText("/work/douyin")).toBeTruthy();
 		expect(apiDeleteMock).toHaveBeenCalledWith("/api/dev/extensions/bridge");
 	});
+
+	it("旧开发链接没有当前挂载记录，也显示解除入口并保留其他拓展", async () => {
+		const listed = {
+			...LISTED,
+			extensions: [
+				{ ...BRIDGE, linkedTo: "/work/bridge/dist" },
+				...LISTED.extensions.filter((entry) => entry.id !== "bridge"),
+			],
+		};
+		apiDeleteMock.mockImplementation(async () => {
+			listed.extensions = listed.extensions.filter((entry) => entry.id !== "bridge");
+			return { mounts: [] };
+		});
+		renderPage(listed, [], STATUS, MARKET, "/extensions", undefined, { mounts: [] });
+		const card = await cardOf("机器人框架桥接");
+		const unmount = await within(card).findByRole("button", { name: "解除挂载" });
+		expect(within(card).getByText("/work/bridge/dist")).toBeTruthy();
+		fireEvent.click(unmount);
+		await waitFor(() => expect(screen.queryByText("机器人框架桥接")).toBeNull());
+		expect(screen.getByText("抖音订阅源")).toBeTruthy();
+		expect(apiDeleteMock).toHaveBeenCalledExactlyOnceWith("/api/dev/extensions/bridge");
+		expect(apiPatchMock).not.toHaveBeenCalled();
+	});
 });
 
 /** 那张卡 —— 从名字往上找到玻璃卡的边。 */

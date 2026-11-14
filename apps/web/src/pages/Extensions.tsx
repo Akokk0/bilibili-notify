@@ -164,7 +164,7 @@ function ExtensionCard({
 					)}
 				</div>
 				<ExtensionStateDetail ext={ext} />
-				<DevelopmentMountNoteSlot id={ext.id} />
+				<DevelopmentMountNoteSlot id={ext.id} linkedTo={ext.linkedTo} />
 				{/*
 				 * 盘上有新版等着换上(ADR-0012 决策 47),而徽章说的是别的 —— 跑着旧的是「已启用」
 				 * (它确实在跑),关着的是「已停用」—— 所以另说一句。出路(重启 BN / 只重载)只在

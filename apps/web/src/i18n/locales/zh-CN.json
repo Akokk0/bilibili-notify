@@ -19,6 +19,7 @@
 	"developmentExtensions.mounting": "正在挂载…",
 	"developmentExtensions.confirm": "挂载",
 	"developmentExtensions.label": "开发挂载",
+	"developmentExtensions.legacy": "旧版开发链接；解除挂载会保留工程和已有数据。",
 	"developmentExtensions.watching": "自动重载已开启",
 	"developmentExtensions.unwatched": "自动重载未开启",
 	"developmentExtensions.reloads": "已重载{count}次",

@@ -19,6 +19,7 @@
 	"developmentExtensions.mounting": "正在掛載…",
 	"developmentExtensions.confirm": "掛載",
 	"developmentExtensions.label": "開發掛載",
+	"developmentExtensions.legacy": "舊版開發連結；解除掛載會保留專案與既有資料。",
 	"developmentExtensions.watching": "已開啟自動重新載入",
 	"developmentExtensions.unwatched": "未開啟自動重新載入",
 	"developmentExtensions.reloads": "已重新載入{count}次",
