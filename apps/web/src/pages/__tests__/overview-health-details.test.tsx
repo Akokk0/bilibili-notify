@@ -135,6 +135,40 @@ afterEach(() => {
 });
 
 describe("首页各模块的状态读详情口", () => {
+	it("集成使用宿主校验过的清单图形，缺图时用通用图形，不画首字方章", async () => {
+		mockApi({
+			loggedIn: false,
+			details: async () =>
+				runningHealth({
+					integrations: [
+						integrationHealth({
+							descriptor: {
+								label: "带图形的集成",
+								shortLabel: "图",
+								color: "#123456",
+								icon: '<svg viewBox="0 0 24 24"><path d="M3 5h18v14H3z"/></svg>',
+							},
+						}),
+						integrationHealth({
+							key: "acme.no-icon",
+							descriptor: { label: "没有图形的集成", shortLabel: "无" },
+						}),
+					],
+				}),
+		});
+		renderDashboard();
+		const known = await screen.findByRole("button", { name: "带图形的集成 · 运行中，查看详情" });
+		expect(known.querySelector("path")?.getAttribute("d")).toBe("M3 5h18v14H3z");
+		expect(within(known).getByRole("img", { name: "带图形的集成" })).toBeTruthy();
+		const unknown = screen.getByRole("button", { name: "没有图形的集成 · 运行中，查看详情" });
+		expect(
+			within(unknown).getByRole("img", { name: "没有图形的集成" }).querySelector("svg"),
+		).not.toBeNull();
+		expect(within(unknown).queryByText("无", { exact: true })).toBeNull();
+		await userEvent.click(known);
+		expect(within(screen.getByRole("dialog")).getByText("带图形的集成")).toBeTruthy();
+	});
+
 	it("核心计数悬停值跟随面板语言，不借浏览器默认数字写法", async () => {
 		// gate 另以 ar_EG 启动原生 Intl，确保默认语言与四种面板语言都不同。
 		if (process.env.LC_ALL === "ar_EG.UTF-8") {

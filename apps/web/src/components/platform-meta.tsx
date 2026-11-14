@@ -37,6 +37,7 @@ export function DescriptorIcon({
 	size = 16,
 	fallbackIcon,
 	label,
+	manifestSvg,
 }: {
 	descriptor: Pick<PlatformSnapshot, "color" | "shortLabel" | "icon">;
 	size?: number;
@@ -44,9 +45,12 @@ export function DescriptorIcon({
 	fallbackIcon?: IconName;
 	/** 作为独立平台标识时提供完整名称，用于读屏和悬停提示。 */
 	label?: string;
+	/** 仅供宿主已用清单白名单核过的内联图形；不从普通描述符猜测 SVG。 */
+	manifestSvg?: string;
 }) {
 	const meta = appearanceOf(descriptor);
-	if (!meta.image && !meta.icon && fallbackIcon) meta.icon = fallbackIcon;
+	if (manifestSvg) meta.svg = manifestSvg;
+	if (!meta.image && !meta.icon && !meta.svg && fallbackIcon) meta.icon = fallbackIcon;
 	const icon = (
 		<PlatformMetaProvider value={() => meta}>
 			<PlatformIcon platform={descriptor.shortLabel} size={size} />

@@ -90,6 +90,22 @@ describe("描述与快照提供平台外观", () => {
 });
 
 describe("描述符图标的纯图标兜底", () => {
+	it("已通过清单白名单的 SVG 使用原图形和标识色，不被通用图标替代", () => {
+		const svg = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 5h18v14H3z"/></svg>';
+		const { container } = render(
+			<DescriptorIcon
+				descriptor={{ shortLabel: "桥", color: "#123456", icon: svg }}
+				manifestSvg={svg}
+				label="桥接平台"
+				fallbackIcon="extension"
+			/>,
+		);
+		expect(
+			screen.getByRole("img", { name: "桥接平台" }).querySelector("path")?.getAttribute("d"),
+		).toBe("M3 5h18v14H3z");
+		expect(container.querySelector("svg")?.parentElement?.style.color).toBe("rgb(18, 52, 86)");
+		expect(container.textContent).toBe("");
+	});
 	it("平台名称用于图标的读屏与悬停提示，不印短名文字", () => {
 		const { container } = render(
 			<DescriptorIcon
@@ -115,18 +131,20 @@ describe("描述符图标的纯图标兜底", () => {
 		expect(container.textContent).toBe("");
 	});
 
-	it.each([undefined, "not-an-icon", "https://tracker.test/icon"])(
-		"图标不可用(%s)时用调用方指定的图形，不画短名首字也不请求外图",
-		(icon) => {
-			const { container } = render(
-				<DescriptorIcon
-					descriptor={{ shortLabel: "桥", color: "#123456", icon }}
-					fallbackIcon="globe"
-				/>,
-			);
-			expect(container.querySelector("svg")).not.toBeNull();
-			expect(container.querySelector("img")).toBeNull();
-			expect(container.textContent).toBe("");
-		},
-	);
+	it.each([
+		undefined,
+		"not-an-icon",
+		"https://tracker.test/icon",
+		'<svg onload="alert(1)"><path d="M0 0"/></svg>',
+	])("图标不可用(%s)时用调用方指定的图形，不画短名首字也不请求外图", (icon) => {
+		const { container } = render(
+			<DescriptorIcon
+				descriptor={{ shortLabel: "桥", color: "#123456", icon }}
+				fallbackIcon="globe"
+			/>,
+		);
+		expect(container.querySelector("svg")).not.toBeNull();
+		expect(container.querySelector("img")).toBeNull();
+		expect(container.textContent).toBe("");
+	});
 });

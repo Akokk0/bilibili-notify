@@ -1442,6 +1442,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				label: t("onebot.adapter.label"),
 				shortLabel: t("onebot.adapter.shortLabel"),
 				color: "#3b82f6",
+				icon: "qq",
 				settingsFields: settingsFieldsFromSchema(OnebotConnectionSettingsSchema, {
 					connection: true,
 				}),

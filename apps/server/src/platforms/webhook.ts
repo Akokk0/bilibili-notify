@@ -92,6 +92,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 				label: t("webhook.adapter.label"),
 				shortLabel: t("webhook.adapter.shortLabel"),
 				color: "#94a3b8",
+				icon: "link",
 				settingsFields: settingsFieldsFromSchema(WebhookConnectionSettingsSchema, {
 					connection: true,
 				}),

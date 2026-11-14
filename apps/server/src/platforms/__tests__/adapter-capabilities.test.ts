@@ -67,6 +67,7 @@ function expectUtcIso(value: unknown): void {
 describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", () => {
 	it("onebot:atAll 支持、inbound 支持", () => {
 		const adapter = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		expect(adapter.descriptor().icon).toBe("qq");
 		const caps = capsOf(adapter, "onebot");
 		expect(caps.atAll.state).toBe("supported");
 		expect(caps.inbound.state).toBe("supported");
@@ -82,6 +83,7 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 			registry: createQQSessionRegistry(),
 			locale: fixedLocale(),
 		});
+		expect(adapter.descriptor().icon).toBe("qq");
 		const caps = capsOf(adapter, "qq-official");
 		expect(caps.atAll).toMatchObject({
 			state: "unsupported",
@@ -95,6 +97,7 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 
 	it("webhook:atAll 支持、inbound 不支持(原因是没有回程)、nativeShare 不支持", () => {
 		const adapter = createWebhookAdapter({ logger: makeLogger() });
+		expect(adapter.descriptor().icon).toBe("link");
 		// 四个 webhook 平台共用这一个适配器 —— 回答不看平台,四档都得一样。
 		for (const platform of ["feishu", "dingtalk", "wecom", "generic"]) {
 			const caps = capsOf(adapter, platform);

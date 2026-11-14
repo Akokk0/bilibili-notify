@@ -197,6 +197,13 @@ export function SystemHealthCard({
 								shortLabel: item.descriptor.shortLabel ?? item.descriptor.label,
 								color: item.descriptor.color ?? "var(--color-bn-blue)",
 							}}
+							manifestSvg={
+								item.kind === "extension" && item.descriptor.icon?.startsWith("<svg")
+									? item.descriptor.icon
+									: undefined
+							}
+							label={item.descriptor.label}
+							fallbackIcon="extension"
 							size={19}
 						/>
 						<span className="min-w-0 flex-1 truncate text-bn-xs font-semibold">

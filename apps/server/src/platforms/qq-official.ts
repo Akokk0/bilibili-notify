@@ -1437,6 +1437,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				label: t("qqOfficial.adapter.label"),
 				shortLabel: t("qqOfficial.adapter.shortLabel"),
 				color: "#14b8a6",
+				icon: "qq",
 				auth: {
 					description: t("qqOfficial.auth.description"),
 					warning: t("qqOfficial.auth.warning"),
