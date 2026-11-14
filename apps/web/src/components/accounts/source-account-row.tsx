@@ -136,16 +136,18 @@ export function SourceAccountRow({
 						</span>
 					) : null}
 				</div>
-				<div className="mt-0.5 flex flex-wrap items-center gap-1 text-bn-xs text-bn-text-secondary">
-					{source ? <AccountSourceIcon source={source} size={12} /> : null}
-					{label}
-				</div>
-				<div
-					className="mt-0.5 flex items-center gap-1 text-bn-xs"
-					style={{ color: AUTH_STATUS_ACCENT[state.status] }}
-				>
-					<StatusDot color={AUTH_STATUS_ACCENT[state.status]} size="sm" />
-					{AUTH_STATUS_LABELS[state.status]}
+				<div className="mt-0.5 flex min-w-0 items-center gap-2 text-bn-xs text-bn-text-secondary">
+					<span className="inline-flex min-w-0 items-center gap-1">
+						{source ? <AccountSourceIcon source={source} size={12} /> : null}
+						<span className="truncate">{label}</span>
+					</span>
+					<span
+						className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap"
+						style={{ color: AUTH_STATUS_ACCENT[state.status] }}
+					>
+						<StatusDot color={AUTH_STATUS_ACCENT[state.status]} size="sm" />
+						{AUTH_STATUS_LABELS[state.status]}
+					</span>
 				</div>
 				{state.status === "logged-out" ? (
 					<p className="mt-1 text-bn-xs text-bn-text-secondary">
