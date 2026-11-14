@@ -1113,7 +1113,7 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 			const arg = spy.mock.calls[0]?.[0];
 			expect(arg).toMatchObject({ amount, currency: "CNY", tier: { rank: 1, durationSec: 60 } });
 			expect(Object.keys(arg?.viewer ?? {})).toEqual(["name"]);
-			expect(Object.keys(arg?.creator ?? {})).toEqual(["name"]);
+			expect(Object.keys(arg?.creator ?? {})).toEqual(["name", "avatar"]);
 		} finally {
 			spy.mockRestore();
 		}
@@ -1147,7 +1147,7 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 		["commander", "提督", 2, "#d8a0e6"],
 		["governor", "总督", 3, "#f2a053"],
 	] as const)(
-		"guard:tierKey %s → 档位表里的「%s」(rank %s、档色 %s、带徽章与宣告语),不带头像",
+		"guard:tierKey %s → 档位表里的「%s」(rank %s、档色 %s、带徽章与宣告语),创作者有头像占位",
 		async (tierKey, name, rank, color) => {
 			const spy = vi
 				.spyOn(ImageRenderer.prototype, "generateMembershipCard")
@@ -1167,7 +1167,7 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 			expect(arg?.tier.icon).toEqual({ ref: GUARD_ICON_REF });
 			expect(arg?.tier.announcement).toContain("{viewer}");
 			expect(Object.keys(arg?.viewer ?? {})).toEqual(["name"]);
-			expect(Object.keys(arg?.creator ?? {})).toEqual(["name"]);
+			expect(Object.keys(arg?.creator ?? {})).toEqual(["name", "avatar"]);
 			spy.mockRestore();
 		},
 	);
@@ -1526,6 +1526,44 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 			expect(res.status).toBe(200);
 			expect(capturedHtml.join("")).toContain("登录账号");
 			expect(capturedHtml.join("")).toContain("data:image/png;base64,iVBORw0KGgo=");
+		},
+	);
+
+	it.each(["superchat", "membership"] as const)(
+		"%s 全局预览的示例创作者保留 UP 头像占位",
+		async (kind) => {
+			capturedHtml.length = 0;
+			const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer() });
+			const res = await postPreview(app, { kind, style: STYLE, content: {} });
+			expect(res.status).toBe(200);
+			const html = capturedHtml.join("");
+			expect(html.includes('data-bn="creatorAvatar"')).toBe(true);
+			expect(html.includes("%3EUP%3C")).toBe(true);
+		},
+	);
+
+	it.each(["superchat", "membership"] as const)(
+		"%s 指定订阅时优先显示创作者缓存头像",
+		async (kind) => {
+			const deps = makeDeps(undefined, { subscribed: true });
+			Object.assign(deps.runtime, {
+				imageStore: {
+					read: async (ref: string) =>
+						ref === SUBSCRIBED_AVATAR ? { mime: "image/png", bytes: PNG } : undefined,
+				},
+			});
+			capturedHtml.length = 0;
+			const app = createCardsRoute({ deps, puppeteer: makeFakePuppeteer() });
+			const res = await postPreview(app, {
+				kind,
+				style: STYLE,
+				content: { subscriptionId: "11111111-1111-1111-1111-111111111111" },
+			});
+			expect(res.status).toBe(200);
+			const html = capturedHtml.join("");
+			expect(html.includes('data-bn="creatorAvatar"')).toBe(true);
+			expect(html.includes("data:image/png;base64,iVBORw0KGgo=")).toBe(true);
+			expect(html.includes("%3EUP%3C")).toBe(false);
 		},
 	);
 });

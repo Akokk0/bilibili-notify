@@ -53,6 +53,7 @@ import {
 	type CardSkinKnobOverrides,
 	CardSkinKnobOverridesSchema,
 	type CardSkinManifest,
+	type Creator,
 	DEFAULT_CARD_SKIN,
 	effectiveCardSkinKnobs,
 	fail,
@@ -306,9 +307,12 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		return current && isLoggedIn(current.state) ? current.account : undefined;
 	}
 
-	/** 醒目留言 / 上舰卡上收的那个人:挑中那条订阅的名字,没挑是示例名。 */
-	function receiverNameOf(sub: Subscription | undefined): string {
-		return creatorNameOf(sub) ?? t("cards.sample.creatorName");
+	/** 收取消息的创作者:缓存头像优先,缺图或没挑订阅时保留内置占位。 */
+	function previewCreatorOf(sub: Subscription | undefined): Creator {
+		return {
+			name: creatorNameOf(sub) ?? t("cards.sample.creatorName"),
+			avatar: (sub && profileAvatarOf(sub)) || PREVIEW_CREATOR_AVATAR_REF,
+		};
 	}
 
 	/**
@@ -535,7 +539,10 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				timezone: () => opts.deps.store.getGlobals().timezone,
 				// 图库引用 → data URL:与推送出图(runtime/pipeline.ts)同一个解析口,预览里带引用的图才不会
 				// 画成占位、与真推送分家。
-				resolveImageRef: imageRefDataUrl(opts.deps.runtime.imageStore),
+				resolveImageRef: (ref) =>
+					ref === PREVIEW_CREATOR_AVATAR_REF
+						? Promise.resolve(SVG_AVATAR_BLUE)
+						: imageRefDataUrl(opts.deps.runtime.imageStore)(ref),
 				// 皮肤:与推送出图问的是同一家店(app.ts 传进来的那一个实例)。
 				resolveCardSkin: (id) => opts.cardSkins?.get(id) ?? undefined,
 				resolveCardSkinAsset: async (skinId, name) =>
@@ -611,14 +618,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			if (!renderer) throw new Error(t("cards.renderer.notReady"));
 			// 付款人 = 挑中那条订阅的来源登录着的账号(「我在别人直播间发条 SC 会长啥样」);收的人 = 那条订阅。
 			const payer = previewAccountOf(sub);
-			const receiver = receiverNameOf(sub);
+			const receiver = previewCreatorOf(sub);
 			const buffer = await renderer.generateSuperchatCard(
 				{
 					viewer: {
 						name: payer?.name ?? t("cards.sample.viewerName"),
 						...(payer?.avatar ? { avatar: payer.avatar } : {}),
 					},
-					creator: { name: receiver },
+					creator: receiver,
 					text: content?.text?.trim() || t("cards.sample.superchatText"),
 					amount: content?.amount ?? 30,
 					currency: "CNY",
@@ -641,7 +648,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 新会员 = 挑中那条订阅的来源登录着的账号;显式 text 覆写仍优先。收的人 = 那条订阅。
 			const member = previewAccountOf(sub);
 			const uname = content?.text?.trim() || member?.name || t("cards.sample.memberName");
-			const receiver = receiverNameOf(sub);
+			const receiver = previewCreatorOf(sub);
 			// 请求里的 `program` + `tierKey` 是（体系 id, 档 key),服务端按这一对找档(没带 tierKey = 那个体系最低一档);
 			// 档的徽章、档色、宣告语都取自那份声明,与真推送同一份。认不出的 key 在请求校验那一步就是 400,走不到这里。
 			const tier =
@@ -675,14 +682,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					if (fetched.ok) icon = { ref: fetched.ref };
 				}
 			}
-			// 示例数据没有头像:预览不传(同上)。
 			const buffer = await renderer.generateMembershipCard(
 				{
 					viewer: {
 						name: uname,
 						...(member?.avatar ? { avatar: member.avatar } : {}),
 					},
-					creator: { name: receiver },
+					creator: receiver,
 					tier: {
 						name: tier.name,
 						rank: tier.rank,
@@ -997,6 +1003,9 @@ const SVG_COVER =
 
 const SVG_AVATAR_PINK =
 	"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23FB7299'/%3E%3Ctext x='50%25' y='52%25' fill='white' font-size='28' text-anchor='middle' dominant-baseline='middle'%3EUP%3C/text%3E%3C/svg%3E";
+
+/** 只在本路由的预览出卡器中解析,不写入图库或订阅。 */
+const PREVIEW_CREATOR_AVATAR_REF = `${"0".repeat(63)}1.png`;
 
 const SVG_AVATAR_BLUE =
 	"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%2300AEEC'/%3E%3Ctext x='50%25' y='52%25' fill='white' font-size='30' text-anchor='middle' dominant-baseline='middle'%3EUP%3C/text%3E%3C/svg%3E";
