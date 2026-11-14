@@ -189,6 +189,33 @@ describe("packExtension", () => {
 	});
 });
 
+it("抖音发行入口随包保留许可证与第三方声明,不依赖 README 展示", async () => {
+	const dist = resolve(REPO_ROOT, "extensions/douyin/dist");
+	const files = {
+		"extension.json": new Uint8Array(await readFile(resolve(dist, "extension.json"))),
+		"index.mjs": new Uint8Array(await readFile(resolve(dist, "index.mjs"))),
+		"README.md": strToU8("# 抖音订阅源"),
+	};
+	const opened = openExtensionPackage(packExtension(files).zip, BUILTIN_INTEGRATION_KEYS);
+	expect(opened.ok).toBe(true);
+	if (!opened.ok) return;
+	const entry = strFromU8(opened.pkg.entry);
+	for (const notice of [
+		"MIT License",
+		"Copyright (c) 2026 Akokko",
+		"Version 2.0, January 2004",
+		"Copyright 2019-present Bytedance Inc.",
+		"Copyright (c) 2012 Ryan Day",
+		"Wyatt Baldwin <self@wyattbaldwin.com>",
+		"Copyright (c) 2015 Luke Page & Original Contributors",
+		"Copyright (c) 2024 sobird",
+		"Copyright (c) 2014 Jameson Little",
+		"Copyright (c) 2024-present VoidZero Inc. & Contributors",
+		"Copyright (c) 2020 Evan Wallace",
+	])
+		expect(entry.includes(notice), notice).toBe(true);
+});
+
 describe("桥的发行包边界", () => {
 	const bridgeDist = resolve(REPO_ROOT, "extensions/bridge/dist");
 	const buildCommand = "vp run -F @bilibili-notify/extension-bridge build";
