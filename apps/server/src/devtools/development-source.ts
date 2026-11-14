@@ -1,11 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { EXTENSION_API_RANGE, fail, ok } from "@bilibili-notify/internal";
+import {
+	EXTENSION_API_RANGE,
+	type ExtensionManifestResult,
+	fail,
+	ok,
+} from "@bilibili-notify/internal";
 import { manifestWithSettingsFields } from "@bilibili-notify/internal/extension/build";
 import { createServer } from "@voidzero-dev/vite-plus-core";
-import type { DevelopmentExtensionEntry } from "../extensions/discover.js";
+import { apiVersionMismatch, type DevelopmentExtensionEntry } from "../extensions/discover.js";
 import { parseHostExtensionManifest } from "../extensions/identity.js";
+
+/** 挂载与源码重读沿用宿主已有诊断，保留清单字段问题与契约版本的区别。 */
+export function developmentManifestFailure(result: Exclude<ExtensionManifestResult, { ok: true }>) {
+	return result.code === "unsupported"
+		? fail("unsupported", apiVersionMismatch(result.requires, EXTENSION_API_RANGE))
+		: result;
+}
 
 /** 每工程一个源码模块环境；不加载作者的打包配置、不监听HTTP、不输出dist。 */
 export async function openDevelopmentSource(
@@ -45,7 +57,7 @@ export async function openDevelopmentSource(
 			try {
 				const raw: unknown = JSON.parse(await readFile(join(directory, "extension.json"), "utf8"));
 				const basic = parseHostExtensionManifest(raw, EXTENSION_API_RANGE, reservedKeys);
-				if (!basic.ok) return fail("invalid", "工程清单无效或与宿主契约不兼容");
+				if (!basic.ok) return developmentManifestFailure(basic);
 				server.moduleGraph.invalidateAll();
 				const mod = await server.ssrLoadModule("/src/index.ts");
 				if (typeof mod.activate !== "function")
@@ -55,7 +67,7 @@ export async function openDevelopmentSource(
 					EXTENSION_API_RANGE,
 					reservedKeys,
 				);
-				if (!checked.ok) return fail("invalid", "源码导出的设置与清单无效");
+				if (!checked.ok) return developmentManifestFailure(checked);
 				const entry: DevelopmentExtensionEntry = {
 					entry: join(directory, "src/index.ts"),
 					manifest: checked.manifest,

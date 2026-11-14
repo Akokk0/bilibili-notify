@@ -7,7 +7,7 @@ import type { DevelopmentExtensionEntry } from "../extensions/discover.js";
 import { extensionIdSchema, parseHostExtensionManifest } from "../extensions/identity.js";
 import type { LoadedExtensions } from "../extensions/loader.js";
 import { browseDevelopmentDirectories } from "./development-directories.js";
-import { openDevelopmentSource } from "./development-source.js";
+import { developmentManifestFailure, openDevelopmentSource } from "./development-source.js";
 
 export interface DevelopmentExtensionsOptions {
 	root: string;
@@ -102,7 +102,7 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 				EXTENSION_API_RANGE,
 				options.reservedIntegrationKeys,
 			);
-			if (!checked.ok) return fail("invalid", "工程清单无效或与宿主契约不兼容");
+			if (!checked.ok) return developmentManifestFailure(checked);
 			id = checked.manifest.id;
 		} catch {
 			return fail("invalid", "工程目录或extension.json读不了");

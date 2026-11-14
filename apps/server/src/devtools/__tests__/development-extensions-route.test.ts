@@ -17,7 +17,7 @@ import type {
 	DevelopmentExtensionsResponse,
 	ErrorResponse,
 } from "@bilibili-notify/contract";
-import type { ServiceContext } from "@bilibili-notify/internal";
+import { EXTENSION_API_RANGE, type ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
@@ -367,6 +367,40 @@ describe("开发拓展挂载请求", () => {
 		await expect(access(join(root, "installed/example.one"))).rejects.toMatchObject({
 			code: "ENOENT",
 		});
+	});
+
+	it("开发挂载区分契约版本不支持，提示所需版本与当前宿主范围", async () => {
+		const directory = await project("example.future");
+		const path = join(directory, "extension.json");
+		const manifest = JSON.parse(await readFile(path, "utf8"));
+		await writeFile(path, JSON.stringify({ ...manifest, apiVersion: 999 }));
+		const response = await mount(directory);
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({
+			code: "unsupported",
+			message: expect.stringMatching(/v999.*v1/),
+		});
+		expect(loaded.list()).toEqual([]);
+	});
+
+	it("清单格式错误指出字段，契约小号不够指出所需与当前小号", async () => {
+		const directory = await project("example.future");
+		const path = join(directory, "extension.json");
+		const manifest = JSON.parse(await readFile(path, "utf8"));
+		await writeFile(path, JSON.stringify({ ...manifest, version: 42 }));
+		const invalid = await mount(directory);
+		expect(await invalid.json()).toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("version"),
+			issues: [expect.objectContaining({ message: expect.stringContaining("version") })],
+		});
+		await writeFile(path, JSON.stringify({ ...manifest, apiRevision: 99 }));
+		const unsupported = await mount(directory);
+		const failure = (await unsupported.json()) as ErrorResponse;
+		expect(failure.code).toBe("unsupported");
+		expect(failure.message).toContain("99");
+		expect(failure.message).toContain(String(EXTENSION_API_RANGE.revision));
+		expect(loaded.list()).toEqual([]);
 	});
 
 	it("停用拓展时保存源码不自动启用，解除未管理的ID也不能删除文件", async () => {
