@@ -258,7 +258,7 @@ describe("数据展示不吃 --font-mono", () => {
 /** Identity display slots use skin typography and tabular numerals. */
 const identitySlots = (source: string) => [
 	...blankComments(source).matchAll(
-		/<(?:span|div|b)\b([^<>]*)>\s*\{(?:subscriptionIdentityLabel\(|focusedIdLabel\})/g,
+		/<(?:span|div|b)\b([^<>]*)>\s*\{(?:subscriptionIdentityLabel\(|(?:focusedIdLabel|accountLabel)\})/g,
 	),
 ];
 
@@ -280,13 +280,18 @@ describe("identity display uses tabular-nums", () => {
 		expect(seen).toBeGreaterThanOrEqual(5);
 	});
 
-	it("recognizes multiline contract calls and the scope identity value", () => {
+	it("recognizes multiline contract calls, scope identities and display accounts", () => {
 		expect(
 			identitySlots(
 				'<span className="tabular-nums">\n{subscriptionIdentityLabel(identity, source)}</span>',
 			),
 		).toHaveLength(1);
 		expect(identitySlots('<b className="tabular-nums">{focusedIdLabel}</b>')).toHaveLength(1);
+		expect(
+			identitySlots(
+				'<span className="truncate tabular-nums" title={accountLabel}>\n{accountLabel}</span>',
+			),
+		).toHaveLength(1);
 		expect(
 			identitySlots("// <span>{subscriptionIdentityLabel(identity, source)}</span>"),
 		).toHaveLength(0);
