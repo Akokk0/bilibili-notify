@@ -2,7 +2,9 @@
 
 [首版范围](../adr/0047-douyin-source-parity.md) · [第六期片表](phase-6-plan.md)
 
-独立工程由公开的 `create-bn-ext@0.1.0-alpha.3` 从零生成，ID 为 `akokko.douyin`；官方工程在 [extensions/douyin](../../extensions/douyin)，ID 为 `douyin`。两者按 ID 隔离身份与凭据，使用相同的 API 1 / revision 1 契约。官方版按普通拓展安装，尚未上架市场。
+当前使用与维护说明见[抖音 README](../../extensions/douyin/README.md)和[维护指南](../../extensions/douyin/DEVELOPMENT.md)。2026-11-14 的展示账号改进后，官方源码清单要求 **API 1 / revision 2**；下文 revision 1、测试数量和发行状态均是对应验收时点的记录，保留原值，不作为当前构建或公开发行的证明。
+
+独立工程由公开的 `create-bn-ext@0.1.0-alpha.3` 从零生成，ID 为 `akokko.douyin`；官方工程在 [extensions/douyin](../../extensions/douyin)，ID 为 `douyin`。本次首版验收时两者按 ID 隔离身份与凭据，使用相同的 API 1 / revision 1 契约。官方版按普通拓展安装，验收时尚未上架市场。
 
 2026-11-14，最终版本以官方目录作为后续维护入口。已对照仓外 `d5fd836` 核对全部生产模块、70 项来源测试、四语文案及清单；保留主仓的强类型测试、目录规范和安全迭代写法。官方工程使用 workspace SDK，通过既有主仓流程构建、打包和安装；仓外创建器配置与本地 SDK 预览包留在验证工程。此次代码收归没有更改现有 `akokko.douyin` 订阅或凭据。
 
