@@ -823,7 +823,7 @@ export function SubscriptionDialog({
 													<div
 														key={t.id}
 														title={`${display.label} · ${display.description}`}
-														className="min-w-0 overflow-hidden rounded-lg border border-bn-border bg-bn-surface transition-colors hover:border-bn-pink/40 focus-within:border-bn-pink"
+														className="min-w-0 overflow-hidden rounded-lg border border-dashed border-bn-inactive/50 bg-bn-surface transition-colors hover:border-bn-pink/40 focus-within:border-bn-pink"
 													>
 														<MenuItem
 															ariaLabel={`${display.label} · ${display.description}`}
