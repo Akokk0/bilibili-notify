@@ -7,6 +7,10 @@ import { testCookieSession } from "./support/cookie-session";
 function fixture(
 	saved?: string,
 	accountData: object = { is_visitor_account: false, user_id_str: "12345", name: "Douyin tester" },
+	fetchImage: ExtensionContext["fetchImage"] = async () => ({
+		ok: true,
+		ref: `${"a".repeat(64)}.png`,
+	}),
 ) {
 	const requests: { url: URL; headers: Headers; method?: string; body?: unknown }[] = [];
 	const ops: string[] = [],
@@ -25,6 +29,7 @@ function fixture(
 		redirect = "https://www.douyin.com/sso/callback";
 	const ctx = {
 		createCookieSession: testCookieSession,
+		fetchImage,
 		signal: new AbortController().signal,
 		i18n: { t: (k: string) => k },
 		settings: () => ({ get: () => ({ ok: true, settings: {} }) }),
@@ -190,6 +195,66 @@ function fixture(
 	};
 }
 describe("source account", () => {
+	it("downloads the signed-in avatar into the host image library on login and restoration", async () => {
+		const account = {
+			is_visitor_account: false,
+			user_id_str: "12345",
+			name: "Douyin tester",
+			avatar_url: "https://p3.douyinpic.com/avatar/synthetic.png",
+		};
+		const f = fixture(undefined, account);
+		await f.auth.beginLogin();
+		f.setPoll("confirmed");
+		await f.pollNext();
+		expect(f.auth.state().status).toBe("logged-in");
+		expect(f.auth.account()).toEqual({ name: "Douyin tester", avatar: `${"a".repeat(64)}.png` });
+		const restored = fixture(f.secrets.get("login.cookies"), account);
+		await vi.waitFor(() => expect(restored.auth.account()).toEqual(f.auth.account()));
+	});
+	it("keeps the verified account signed in when its avatar cannot be downloaded", async () => {
+		const f = fixture(
+			undefined,
+			{
+				is_visitor_account: false,
+				user_id_str: "12345",
+				name: "Douyin tester",
+				avatar_url: "https://p3.douyinpic.com/avatar/unavailable.png",
+			},
+			async () => ({ ok: false, code: "unavailable", message: "Synthetic image outage" }),
+		);
+		await f.auth.beginLogin();
+		f.setPoll("confirmed");
+		await f.pollNext();
+		expect(f.auth.state().status).toBe("logged-in");
+		expect(f.auth.account()).toEqual({ name: "Douyin tester" });
+		expect(f.secrets.size).toBe(1);
+	});
+	it("does not restore an avatar or account after logout while the image is downloading", async () => {
+		let release!: (result: Awaited<ReturnType<ExtensionContext["fetchImage"]>>) => void;
+		const f = fixture(
+			undefined,
+			{
+				is_visitor_account: false,
+				user_id_str: "12345",
+				name: "Douyin tester",
+				avatar_url: "https://p3.douyinpic.com/avatar/delayed.png",
+			},
+			() =>
+				new Promise((resolve) => {
+					release = resolve;
+				}),
+		);
+		await f.auth.beginLogin();
+		f.setPoll("confirmed");
+		const login = f.pollNext();
+		await vi.waitFor(() => expect(f.auth.state().status).toBe("logged-in"));
+		await f.auth.logout();
+		release({ ok: true, ref: `${"a".repeat(64)}.png` });
+		await login;
+		expect(f.auth.state().status).toBe("logged-out");
+		expect(f.auth.account()).toBeNull();
+		expect(f.secrets.size).toBe(0);
+	});
 	it.each([
 		{ id: "9876543210123456789", name: undefined, displayed: "9876543210123456789" },
 		{ id: 42, name: undefined, displayed: "42" },

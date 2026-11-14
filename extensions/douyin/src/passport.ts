@@ -129,7 +129,10 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			return fail("unavailable", ctx.i18n.t("auth.network"));
 		// An unsafe numeric ID confirms presence but its rounded value must never become a display name.
 		const displayId = textId || (Number.isSafeInteger(numericId) ? String(numericId) : "");
-		return ok({ name: str(d.screen_name) || str(d.nickname) || str(d.name) || displayId });
+		return ok({
+			name: str(d.screen_name) || str(d.nickname) || str(d.name) || displayId,
+			avatarUrl: str(d.avatar_url),
+		});
 	}
 	async function exchange(
 		action: "get_qrcode" | "check_qrconnect" | "send_code" | "validate_code",

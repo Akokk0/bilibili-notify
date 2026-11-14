@@ -228,7 +228,12 @@ beforeAll(async () => {
 		) {
 			reply({
 				message: "success",
-				data: { is_visitor_account: false, user_id_str: "4001", nickname: "合成账号" },
+				data: {
+					is_visitor_account: false,
+					user_id_str: "4001",
+					nickname: "合成账号",
+					avatar_url: "https://media.example/account.png",
+				},
 			});
 			return;
 		}
@@ -371,11 +376,13 @@ it("官方抖音包解析博主、同步资料，再把图文、视频和开下�
 		async () => {
 			expect(await api<SourceAuthResponse>(authPath)).toMatchObject({
 				state: { status: "logged-in" },
-				account: { name: "合成账号" },
+				account: { name: "合成账号", avatar: expect.any(String) },
 			});
 		},
 		{ timeout: 10_000 },
 	);
+	const loggedIn = await api<SourceAuthResponse>(authPath);
+	expect((await fetch(`${host?.url}/api/images/${loggedIn.account?.avatar}`)).status).toBe(200);
 	const { candidates } = await api<CreatorsResponse>(
 		`/api/sources/douyin/creators?q=${creator.unique_id}`,
 	);
@@ -479,6 +486,7 @@ it("官方抖音包解析博主、同步资料，再把图文、视频和开下�
 		);
 	}
 	expect([...imageReads].sort()).toEqual([
+		"/media.example/account.png",
 		"/media.example/avatar.png",
 		"/media.example/live.png",
 		"/media.example/note.png",

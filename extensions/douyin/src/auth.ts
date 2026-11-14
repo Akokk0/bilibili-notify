@@ -4,11 +4,13 @@ import {
 	type Disposable,
 	type ExtensionContext,
 	fail,
+	type ImageRef,
 	ok,
 	type Result,
 	type SourceAuth,
 } from "@bilibili-notify/extension";
 import QRCode from "qrcode";
+import { image } from "./media";
 import { passport, smsFields } from "./passport";
 import { cookieValue, dict, str, trusted, WEB } from "./web";
 
@@ -26,6 +28,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 	const listeners = new Set<() => void>();
 	let state: AuthState = { status: "logged-out" },
 		accountName: string | null = null,
+		accountAvatar: ImageRef | undefined,
 		active: Attempt | undefined;
 	let cookies = ctx.createCookieSession(),
 		identity = new AbortController(),
@@ -43,9 +46,20 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 	}
 	function replace() {
 		epoch++;
+		accountAvatar = undefined;
 		identity.abort();
 		identity = new AbortController();
 		end();
+	}
+	async function loadAvatar(url: string) {
+		if (!url) return;
+		const token = epoch;
+		const signal = AbortSignal.any([identity.signal, ctx.signal]);
+		const ref = await image(ctx, { url_list: [url] }, signal);
+		if (ref && !signal.aborted && token === epoch && state.status === "logged-in") {
+			accountAvatar = ref;
+			publish(state);
+		}
 	}
 	const signal = (a: Attempt) => AbortSignal.any([ctx.signal, a.controller.signal]);
 	const valid = (a: Attempt) => active === a && !signal(a).aborted;
@@ -213,6 +227,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		identity = new AbortController();
 		end();
 		publish({ status: "logged-in", loggedInAt: new Date().toISOString() });
+		await loadAvatar(verified.avatarUrl);
 	}
 	function accepted(obj: Record<string, unknown>, hasValidationTicket = false) {
 		if (obj.message === "error") return false;
@@ -314,6 +329,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		if (r.ok) {
 			accountName = r.name;
 			publish({ status: "logged-in", loggedInAt: new Date().toISOString() });
+			await loadAvatar(r.avatarUrl);
 		} else if (r.code === "unauthorized") {
 			await invalidate(identity.signal, true);
 		} else {
@@ -386,7 +402,10 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		logout,
 		submitVerification,
 		state: () => state,
-		account: () => (accountName ? { name: accountName } : null),
+		account: () =>
+			accountName
+				? { name: accountName, ...(accountAvatar ? { avatar: accountAvatar } : {}) }
+				: null,
 		onChange(cb) {
 			listeners.add(cb);
 			return {
