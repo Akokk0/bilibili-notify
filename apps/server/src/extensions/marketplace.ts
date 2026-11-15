@@ -21,7 +21,7 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
-import { logText, t as serverText } from "../i18n/index.js";
+import { i18n, logText, t as serverText } from "../i18n/index.js";
 import { readBestEffortJson, writeBestEffortJson } from "../update/durable-json.js";
 import { fetchSignedJson, signedFailureKind } from "../update/fetch-signed-manifest.js";
 import { fetchThroughMirrors, mirrorChain } from "../update/fetch-through-mirrors.js";
@@ -34,6 +34,7 @@ import {
 	MAX_EXTENSION_PACKAGE_BYTES,
 	openExtensionPackage,
 } from "./install.js";
+import { extensionLocaleChain } from "./locales.js";
 
 /**
  * 拓展市场(ADR-0013)。
@@ -521,6 +522,14 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		for (const source of loaded) {
 			if (!source.index) continue;
 			for (const entry of pickPerId(source.index.extensions, prerelease, fitsHost).values()) {
+				// 缓存保留索引原文；每次出视图才逐字段回落，避免切语言污染旧响应和安装元数据。
+				const layers = extensionLocaleChain(i18n.state().locale).flatMap((locale) => {
+					const text =
+						entry.locales && Object.hasOwn(entry.locales, locale)
+							? entry.locales[locale]
+							: undefined;
+					return text ? [text] : [];
+				});
 				const { state, installed } = stateOf(
 					entry,
 					source.view.id,
@@ -532,13 +541,14 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 					source: source.view.id,
 					official: source.view.official,
 					id: entry.id,
-					name: entry.name,
-					description: entry.description,
+					name: layers.find((text) => text.name !== undefined)?.name ?? entry.name,
+					description:
+						layers.find((text) => text.description !== undefined)?.description ?? entry.description,
 					version: entry.version,
 					apiVersion: entry.apiVersion,
 					apiRevision: entry.apiRevision,
 					prerelease: isPrereleaseEntry(entry),
-					notes: entry.notes,
+					notes: layers.find((text) => text.notes !== undefined)?.notes ?? entry.notes,
 					releaseUrl: entry.releaseUrl,
 					size: entry.package.size,
 					installed,

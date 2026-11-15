@@ -57,7 +57,7 @@ export interface ExtensionLocales {
  * 回落链,**从高到低**:本语言 → 简中 → 英文(R1 乙,固定、不按语言分)。清单字段最后再落清单原字,
  * 运行时取字走到链尾仍没有就由 `translate` 回键本身。
  */
-function chainOf(locale: string): readonly string[] {
+export function extensionLocaleChain(locale: string): readonly string[] {
 	return [...new Set([locale, "zh-CN", "en"])];
 }
 
@@ -114,7 +114,7 @@ export async function readExtensionLocales(
  * 所以本语言缺哪一句,只那一句落到简中 / 英文。
  */
 export function runtimeDictOf(locales: ExtensionLocales, locale: string): Dict {
-	const low = [...chainOf(locale)].reverse();
+	const low = [...extensionLocaleChain(locale)].reverse();
 	return mergeDict(...low.map((name) => fileOf(locales, name)?.dict));
 }
 
@@ -256,7 +256,7 @@ export function localizeManifest(
 	locales: ExtensionLocales,
 	locale: string,
 ): ExtensionManifest {
-	const layers = chainOf(locale).flatMap((name) => {
+	const layers = extensionLocaleChain(locale).flatMap((name) => {
 		const translation = fileOf(locales, name)?.manifest;
 		return translation === undefined ? [] : [translation];
 	});

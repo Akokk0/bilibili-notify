@@ -197,6 +197,63 @@ afterEach(async () => {
 });
 
 describe("list():官方源", () => {
+	it("官方与第三方条目从缓存按当前语言逐字段回落，切换语言不修改旧响应", async () => {
+		const locales = {
+			en: { name: "English name", description: "English description", notes: "English notes" },
+			"zh-CN": { description: "简中描述" },
+			"zh-TW": { name: "繁體名稱" },
+			ja: { name: "日本語名", notes: "更新内容" },
+		};
+		const fetchMock = serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({
+					extensions: [entry("bridge", "0.0.2", bridgeZip, { locales })],
+				}),
+			),
+			[THIRD_URL]: JSON.stringify(
+				third({
+					extensions: [entry("alice.douyin", "1.0.0", douyinZip, { locales }, THIRD_ZIP)],
+				}),
+			),
+		});
+		const h = harness({ sources: [{ id: "alice", url: THIRD_URL }] });
+		i18n.set({ locale: "en", voice: "plain" });
+		const original = await h.marketplace.list();
+		const snapshot = JSON.stringify(original);
+		const requests = fetchMock.mock.calls.length;
+		for (const [locale, name, description, notes] of [
+			["en", "English name", "English description", "English notes"],
+			["ja", "日本語名", "简中描述", "更新内容"],
+			["zh-TW", "繁體名稱", "简中描述", "English notes"],
+			["zh-CN", "English name", "简中描述", "English notes"],
+		] as const) {
+			i18n.set({ locale, voice: "maid" });
+			const current = await h.marketplace.list();
+			expect(current.extensions).toEqual([
+				expect.objectContaining({
+					id: "bridge",
+					name,
+					description,
+					notes,
+					version: "0.0.2",
+					state: "installable",
+				}),
+				expect.objectContaining({
+					id: "alice.douyin",
+					name,
+					description,
+					notes,
+					version: "1.0.0",
+					state: "installable",
+				}),
+			]);
+			expect(current.fetchedAt).toBe(original.fetchedAt);
+			expect(fetchMock).toHaveBeenCalledTimes(requests);
+			expect(JSON.stringify(original)).toBe(snapshot);
+		}
+	});
+
 	it("cached official failure follows current locale without refetching or changing an earlier response", async () => {
 		const fetchMock = serve({});
 		const h = harness();
