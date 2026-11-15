@@ -255,8 +255,7 @@ describe("/bridge 端点", () => {
 		server = createBridgeServer({
 			i18n: CHINESE,
 			logger: SILENT,
-			// 宿主那面的 `setInterval`:真定时器 + 一个摘得掉的把手,这一层要的就这么多。
-			// 心跳与看门狗的用例量的是真实时间,所以不能换成攒回调的假的。
+			// 仍走宿主定时器口；心跳用例只虚拟时钟，WebSocket 与 HTTP 都是真连接。
 			ctx: HOST_TIMERS,
 			serverVersion: "9.9.9",
 			resolveToken: (token) => (token === TOKEN ? CONNECTION_ID : null),
@@ -308,6 +307,7 @@ describe("/bridge 端点", () => {
 		server.dispose();
 		for (const socket of sockets) socket.destroy();
 		await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+		vi.useRealTimers();
 	});
 
 	it("连接日志按当前语言输出，标识结构化保留且不记录 token", async () => {
@@ -630,14 +630,20 @@ describe("/bridge 端点", () => {
 	// ---- 心跳 --------------------------------------------------------------
 
 	it("心跳:回 pong 就一直活着", async () => {
+		vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
 		await boot({ heartbeatIntervalMs: 30, heartbeatTimeoutMs: 200 });
 		const p = await handshaken();
 		p.socket.on("message", (raw) => {
 			const frame = JSON.parse(raw.toString("utf8")) as { type?: string };
 			if (frame.type === "ping") p.send({ type: "pong" });
 		});
-		await new Promise((r) => setTimeout(r, 150));
+		// 超过完整超时窗口，逐轮确认 ping 确实经过真实连接；不回 pong 就会被看门狗踢掉。
+		for (let round = 0; round < 10; round++) {
+			await vi.advanceTimersByTimeAsync(30);
+			expect(await p.next()).toMatchObject({ type: "ping" });
+		}
 		expect(p.socket.readyState).toBe(WebSocket.OPEN);
+		expect(server.sessionCount).toBe(1);
 	});
 
 	// ---- 定时器都走 ctx.setTimeout,而且收得干净 ---------------------------------
@@ -762,10 +768,12 @@ describe("/bridge 端点", () => {
 	});
 
 	it("心跳:不回 pong → 踢掉,会话清干净", async () => {
+		vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
 		await boot({ heartbeatIntervalMs: 30, heartbeatTimeoutMs: 60 });
 		const p = await handshaken();
-		await new Promise((r) => setTimeout(r, 250));
-		expect(p.socket.readyState).not.toBe(WebSocket.OPEN);
+		await vi.advanceTimersByTimeAsync(90);
+		await p.waitClose();
+		expect(p.socket.readyState).toBe(WebSocket.CLOSED);
 		expect(server.sessionCount).toBe(0);
 	});
 
