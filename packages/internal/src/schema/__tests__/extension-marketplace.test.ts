@@ -85,6 +85,60 @@ describe("MarketplaceIndexSchema", () => {
 		const parsed = MarketplaceIndexSchema.parse(index({ future: 1 }));
 		expect("future" in parsed).toBe(false);
 	});
+
+	it("保留按语言的展示文字，译文不能改条目身份或包地址", () => {
+		const parsed = MarketplaceIndexSchema.parse(
+			index({
+				extensions: [
+					entry({
+						locales: {
+							en: {
+								name: "Framework bridge",
+								description: "Connect an existing bot",
+								notes: "First release",
+								id: "other",
+							},
+						},
+					}),
+				],
+			}),
+		);
+		expect(parsed.extensions[0]).toMatchObject({
+			id: "bridge",
+			name: "机器人框架桥接",
+			locales: {
+				en: {
+					name: "Framework bridge",
+					description: "Connect an existing bot",
+					notes: "First release",
+				},
+			},
+		});
+		expect(parsed.extensions[0]?.locales?.en).not.toHaveProperty("id");
+	});
+
+	it("坏译文按字段降级，不拖垮整份索引或同语言的好字段", () => {
+		const parsed = MarketplaceIndexSchema.parse(
+			index({
+				extensions: [
+					entry({
+						locales: {
+							en: { name: 7, description: "Usable description", notes: "   " },
+							ja: null,
+						},
+					}),
+				],
+			}),
+		);
+		expect(parsed.extensions[0]?.locales?.en).toMatchObject({ description: "Usable description" });
+		expect(parsed.extensions[0]?.locales?.en?.name).toBeUndefined();
+		expect(parsed.extensions[0]?.locales?.en?.notes).toBeUndefined();
+		expect(parsed.extensions[0]?.locales?.ja).toBeUndefined();
+		expect(
+			MarketplaceIndexSchema.parse(index({ extensions: [entry({ locales: false })] })).extensions[0]
+				?.locales,
+		).toBeUndefined();
+	});
 });
 
 describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩", () => {

@@ -31,6 +31,18 @@ const HttpsUrl = z.string().url().startsWith("https://");
 /** 源的命名空间:就是 id 的那一段({@link IdSegmentSchema}),只是另加一条长度上限。 */
 export const MarketplaceNamespaceSchema = IdSegmentSchema.min(1).max(32);
 
+/** 索引译文只装展示文字，身份、版本与包元数据始终取默认条目。 */
+const OptionalMarketplaceTextSchema = z
+	.string()
+	.refine((text) => text.trim().length > 0)
+	.optional()
+	.catch(undefined);
+const MarketplaceTextSchema = z.object({
+	name: OptionalMarketplaceTextSchema,
+	description: OptionalMarketplaceTextSchema,
+	notes: OptionalMarketplaceTextSchema,
+});
+
 export const MarketplaceEntrySchema = z.object({
 	id: ExtensionIdSchema,
 	name: z.string().min(1),
@@ -55,6 +67,11 @@ export const MarketplaceEntrySchema = z.object({
 	releaseUrl: HttpsUrl.optional(),
 	/** 给用户看的一句话说明。 */
 	notes: z.string().optional(),
+	/** 缺少译文不影响老索引；未知语言可保留，宿主仅按当前语言的回落链取字。 */
+	locales: z
+		.record(z.string(), MarketplaceTextSchema.optional().catch(undefined))
+		.optional()
+		.catch(undefined),
 });
 export type MarketplaceEntry = z.infer<typeof MarketplaceEntrySchema>;
 
