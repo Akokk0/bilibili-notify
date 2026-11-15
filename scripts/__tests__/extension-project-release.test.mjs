@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -68,6 +68,7 @@ describe("生成工程的公开发布命令", () => {
 	let sdk;
 	let tools;
 	let host;
+	let seed;
 	let github;
 	let endpoint;
 
@@ -88,6 +89,25 @@ describe("生成工程的公开发布命令", () => {
 			}),
 		);
 		run("vp", ["install", "--offline", "--ignore-scripts", "--no-frozen-lockfile"], host);
+		seed = join(root, "seed");
+		run(
+			"vp",
+			[
+				"exec",
+				"create-bn-ext",
+				seed,
+				"--id",
+				"example.demo",
+				"--repository",
+				"Owner/Tools",
+				"--sdk",
+				`file:${sdk}`,
+				"--tools",
+				`file:${tools}`,
+				"--offline",
+			],
+			host,
+		);
 		github = await githubReleaseFixture();
 		endpoint = github.endpoint;
 	}, 120_000);
@@ -101,24 +121,9 @@ describe("生成工程的公开发布命令", () => {
 
 	async function project(name) {
 		const cwd = join(root, name);
-		run(
-			"vp",
-			[
-				"exec",
-				"create-bn-ext",
-				cwd,
-				"--id",
-				"example.demo",
-				"--repository",
-				"Owner/Tools",
-				"--sdk",
-				`file:${sdk}`,
-				"--tools",
-				`file:${tools}`,
-				"--offline",
-			],
-			host,
-		);
+		// 工程内容、Git 与产物各自独立；串行用例只共用相同的工具依赖，真实 verify 仍逐次执行。
+		await cp(seed, cwd, { recursive: true, filter: (path) => path !== join(seed, "node_modules") });
+		await symlink(join(seed, "node_modules"), join(cwd, "node_modules"), "dir");
 		run("git", ["add", "."], cwd);
 		run("git", ["commit", "-m", "feat: initial extension"], cwd, { VP_GIT_HOOKS: "0" });
 		run("git", ["tag", "v0.1.0"], cwd);
