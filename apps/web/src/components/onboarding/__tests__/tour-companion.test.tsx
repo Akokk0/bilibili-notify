@@ -392,23 +392,50 @@ describe("TourCompanion 常驻小卡", () => {
 	 * 巡查是那种情况唯一的兜底。
 	 */
 	it("降频之后洞照样跟着目标走 —— 没有任何事件也要跟上", async () => {
+		const frames = new Map<number, FrameRequestCallback>();
+		let nextFrame = 0;
+		vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+			const id = ++nextFrame;
+			frames.set(id, callback);
+			return id;
+		});
+		vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((id) => {
+			frames.delete(id);
+		});
 		const anchorEl = document.createElement("div");
 		anchorEl.setAttribute("data-tour", "source-login");
-		anchorEl.getBoundingClientRect = () => new DOMRect(10, 10, 40, 20);
+		let rect = new DOMRect(10, 10, 40, 20);
+		const measure = vi.fn(() => rect);
+		anchorEl.getBoundingClientRect = measure;
 		document.body.appendChild(anchorEl);
 		await mount({ route: "/system" });
 		await screen.findByText("登录demo");
-		await waitFor(() =>
-			expect(screen.getByTestId("tour-spot-frame").getAttribute("x")).toBe(String(10 - 6)),
-		);
-		// 静止够久 → 进低频(要熬过 STABLE_FRAMES_TO_IDLE 帧,别缩这个等待:等不够
-		// 就还在逐帧路径上,这条测试会变成空跑的假绿)
-		await new Promise((r) => setTimeout(r, 800));
-		anchorEl.getBoundingClientRect = () => new DOMRect(200, 120, 40, 20);
-		await waitFor(
-			() => expect(screen.getByTestId("tour-spot-frame").getAttribute("x")).toBe(String(200 - 6)),
-			{ timeout: 3000 },
-		);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			expect(frames.size).toBeGreaterThan(0);
+			// 手动送帧，确认真的停止逐帧测量；墙钟等多久不能证明已进入低频路径。
+			for (let frame = 0; frame < 60 && frames.size > 0; frame++) {
+				act(() => {
+					const callbacks = [...frames.values()];
+					frames.clear();
+					for (const callback of callbacks) callback(frame * (1000 / 60));
+				});
+			}
+			expect(frames.size).toBe(0);
+			expect(screen.getByTestId("tour-spot-frame").getAttribute("x")).toBe(String(10 - 6));
+			measure.mockClear();
+			await act(async () => vi.advanceTimersByTimeAsync(99));
+			expect(measure).not.toHaveBeenCalled();
+			// 没有滚动、resize 或其它事件，只有低频巡查能发现位移。
+			rect = new DOMRect(200, 120, 40, 20);
+			await act(async () => vi.advanceTimersByTimeAsync(1));
+			expect(measure).toHaveBeenCalledOnce();
+			expect(screen.getByTestId("tour-spot-frame").getAttribute("x")).toBe(String(200 - 6));
+			expect(frames.size).toBeGreaterThan(0);
+		} finally {
+			cleanup();
+			vi.useRealTimers();
+		}
 	});
 
 	/**
