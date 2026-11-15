@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
 import { ApiError } from "../../services/api";
@@ -27,10 +27,7 @@ const BEGIN = "/api/adapters/qq-official/auth";
 const STATE = "/api/adapters/qq-official/auth/T1";
 const DRAFT = "/api/adapters/qq-official/auth/T1/draft";
 
-/**
- * server 当前恒回 2 秒。测试里用最小合法值 1 秒(0 会被护栏抬回下限,见
- * pollDelayMs),所以下面等结果的 waitFor 一律要给足于一轮的时间。
- */
+/** 使用合法的一秒轮询间隔，通过虚拟时钟逐轮推进，不跳过等待边界。 */
 const BEGIN_OK = {
 	taskId: "T1",
 	state: {
@@ -40,8 +37,6 @@ const BEGIN_OK = {
 	pollIntervalSeconds: 1,
 };
 const DRAFT_OK = { settings: { appId: "102000001", appSecret: "S3cret" } };
-/** 一轮轮询是 1 秒,默认 1000ms 的 waitFor 卡在边界上,统一放宽。 */
-const POLLED = { timeout: 4000 };
 
 /** 发起、取草稿各按完整路径给值(不用一个兜底值糊所有 POST,否则取草稿与发起分不开)。 */
 function postRoutes(overrides: Partial<Record<string, () => unknown>> = {}) {
@@ -55,17 +50,28 @@ function postRoutes(overrides: Partial<Record<string, () => unknown>> = {}) {
 const loggedIn = () => ({ state: { status: "logged-in", loggedInAt: "2026-10-11T00:01:00.000Z" } });
 const callsOf = (mock: typeof postMock, path: string) =>
 	mock.mock.calls.filter(([p]) => p === path).length;
-const openDialog = () => fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
+const openDialog = () =>
+	act(async () => {
+		fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
+	});
+const advance = (ms = pollDelayMs(BEGIN_OK.pollIntervalSeconds)) =>
+	act(async () => {
+		await vi.advanceTimersByTimeAsync(ms);
+	});
 
 describe("ConnectionAuthButton", () => {
 	// 花括号不能省:箭头函数直接返回 mockReset() 的结果,vitest 会把返回的函数当清理钩子,
 	// 收摊时多调一发 postMock(undefined)。
 	beforeEach(() => {
+		vi.useFakeTimers();
 		i18n.set({ locale: "zh-CN", voice: "plain" });
 		postMock.mockReset();
 		getMock.mockReset();
 	});
-	afterEach(() => cleanup());
+	afterEach(() => {
+		cleanup();
+		vi.useRealTimers();
+	});
 
 	it("初始只有入口按钮 + 实验性徽章,不见弹窗", () => {
 		render(
@@ -92,11 +98,9 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={() => {}}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => {
-			const img = screen.getByAltText("连接授权二维码") as HTMLImageElement;
-			expect(img.src).toBe(BEGIN_OK.state.qr.dataUrl);
-		});
+		await openDialog();
+		const img = screen.getByAltText("连接授权二维码") as HTMLImageElement;
+		expect(img.src).toBe(BEGIN_OK.state.qr.dataUrl);
 		// OpenClaw/通道失效那段说明已砍(话太多),只留能力注意
 		expect(screen.queryByText(/OpenClaw/)).toBeNull();
 		// lite bot 的使用面预告:别让用户建完 bot 去配群 target 撞静默失败。
@@ -115,8 +119,8 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={() => {}}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(postMock).toHaveBeenCalledWith("/api/adapters/a%2Fb/auth", {}));
+		await openDialog();
+		expect(postMock).toHaveBeenCalledWith("/api/adapters/a%2Fb/auth", {});
 	});
 
 	it("问到 logged-in → 另发 POST 取草稿 → 回调两格凭据一次并收起弹层", async () => {
@@ -131,12 +135,12 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={got}
 			/>,
 		);
-		openDialog();
-		await waitFor(
-			() => expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" }),
-			POLLED,
-		);
-		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		await openDialog();
+		await advance(999);
+		expect(getMock).not.toHaveBeenCalled();
+		await advance(1);
+		expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" });
+		expect(screen.queryByRole("dialog")).toBeNull();
 		expect(got).toHaveBeenCalledTimes(1);
 		expect(getMock).toHaveBeenCalledWith(STATE);
 		expect(callsOf(postMock, DRAFT)).toBe(1);
@@ -147,6 +151,9 @@ describe("ConnectionAuthButton", () => {
 		const got = vi.fn();
 		// 取走即清:和真服务端一样,第二次取是「找不到」—— 不然 effect 被清掉后重跑、再取一次也能蒙混过关。
 		let drafts = 0;
+		let resolveDraft: (value: typeof DRAFT_OK) => void = () => {
+			throw new Error("No pending credential draft");
+		};
 		postRoutes({
 			[DRAFT]: () => {
 				drafts += 1;
@@ -157,7 +164,9 @@ describe("ConnectionAuthButton", () => {
 						"绑定任务不存在或已过期",
 					);
 				}
-				return new Promise((resolve) => setTimeout(() => resolve(DRAFT_OK), 150));
+				return new Promise((resolve) => {
+					resolveDraft = resolve;
+				});
 			},
 		});
 		getMock.mockResolvedValue(loggedIn());
@@ -169,9 +178,12 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={got}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(screen.getByText(/正在取回凭据/)).toBeTruthy(), POLLED);
-		await waitFor(() => expect(got).toHaveBeenCalledTimes(1), POLLED);
+		await openDialog();
+		await advance();
+		expect(screen.getByText(/正在取回凭据/)).toBeTruthy();
+		expect(got).not.toHaveBeenCalled();
+		await act(async () => resolveDraft(DRAFT_OK));
+		expect(got).toHaveBeenCalledTimes(1);
 		expect(drafts).toBe(1);
 	});
 
@@ -189,8 +201,12 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={got}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(got).toHaveBeenCalledTimes(1), { timeout: 6000 });
+		await openDialog();
+		await advance();
+		expect(getMock).toHaveBeenCalledTimes(1);
+		expect(got).not.toHaveBeenCalled();
+		await advance();
+		expect(got).toHaveBeenCalledTimes(1);
 		expect(getMock.mock.calls.length).toBe(2);
 		cleanup();
 
@@ -205,8 +221,9 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={() => {}}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy(), POLLED);
+		await openDialog();
+		await advance();
+		expect(screen.getByText(/二维码已过期/)).toBeTruthy();
 	});
 
 	it("码过期(服务端报 error)→ 红色提示盒里是服务端的话,并给「重新生成」;点击再走一遍发起", async () => {
@@ -222,13 +239,14 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={() => {}}
 			/>,
 		);
-		openDialog();
+		await openDialog();
+		await advance();
 		// 断言服务端那句话真的显示出来(把话改空它不能绿)。
-		await waitFor(() => expect(screen.getByText("二维码已过期，请重新生成")).toBeTruthy(), POLLED);
+		expect(screen.getByText("二维码已过期，请重新生成")).toBeTruthy();
 
 		postMock.mockClear();
-		fireEvent.click(screen.getByRole("button", { name: /重新生成/ }));
-		await waitFor(() => expect(postMock).toHaveBeenCalledWith(BEGIN, expect.anything()));
+		await act(async () => fireEvent.click(screen.getByRole("button", { name: /重新生成/ })));
+		expect(postMock).toHaveBeenCalledWith(BEGIN, expect.anything());
 	});
 
 	it("问到业务 error → 展示服务端的话与手填提示,停止问询", async () => {
@@ -244,15 +262,13 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={() => {}}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(screen.getByText(/未返回完整机器人凭据/)).toBeTruthy(), POLLED);
+		await openDialog();
+		await advance();
+		expect(screen.getByText(/未返回完整机器人凭据/)).toBeTruthy();
 		expect(screen.getAllByText(/手动填写/).length).toBeGreaterThan(0);
 		const polls = getMock.mock.calls.length;
-		// 等**足一整轮**再数。这里曾写死 20ms:`interval` 从 0 改成 1 的那次,
-		// 一轮变成 1000ms,于是就算 error 分支忘了 return,20ms 内也不可能有下一发 ——
-		// 断言从此永远成立(2026-08-31 审查)。间隔从 pollDelayMs 现算,以后再怎么
-		// 调间隔都不会重新变成空跑。
-		await new Promise((r) => setTimeout(r, pollDelayMs(BEGIN_OK.pollIntervalSeconds) + 300));
+		// 跨过完整轮询周期，确保停止请求；不把短于间隔的空等当作证据。
+		await advance(pollDelayMs(BEGIN_OK.pollIntervalSeconds) * 2);
 		expect(getMock.mock.calls.length).toBe(polls);
 	});
 
@@ -277,8 +293,9 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={() => {}}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy(), POLLED);
+		await openDialog();
+		await advance();
+		expect(screen.getByText(/二维码已过期/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
 	});
 
@@ -299,11 +316,11 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={got}
 			/>,
 		);
-		openDialog();
-		await waitFor(
-			() => expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" }),
-			{ timeout: 6000 },
-		);
+		await openDialog();
+		await advance();
+		expect(got).not.toHaveBeenCalled();
+		await advance();
+		expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" });
 		expect(screen.queryByText(/二维码已过期/)).toBeNull();
 	});
 
@@ -328,8 +345,11 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={got}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(got).toHaveBeenCalledTimes(1), { timeout: 6000 });
+		await openDialog();
+		await advance();
+		expect(got).not.toHaveBeenCalled();
+		await advance();
+		expect(got).toHaveBeenCalledTimes(1);
 		expect(drafts).toBe(2);
 		expect(callsOf(postMock, BEGIN)).toBe(1);
 		expect(getMock.mock.calls.length).toBe(1);
@@ -355,8 +375,9 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={got}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(screen.getByText(/绑定结果已经不在了/)).toBeTruthy(), POLLED);
+		await openDialog();
+		await advance();
+		expect(screen.getByText(/绑定结果已经不在了/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
 		expect(got).not.toHaveBeenCalled();
 	});
@@ -380,8 +401,9 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={() => {}}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(screen.getByText(/这次扫码没有成功/)).toBeTruthy(), POLLED);
+		await openDialog();
+		await advance();
+		expect(screen.getByText(/这次扫码没有成功/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
 	});
 
@@ -397,8 +419,9 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={got}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(screen.getByText(/凭据不完整/)).toBeTruthy(), POLLED);
+		await openDialog();
+		await advance();
+		expect(screen.getByText(/凭据不完整/)).toBeTruthy();
 		expect(got).not.toHaveBeenCalled();
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
 	});
@@ -413,73 +436,67 @@ describe("ConnectionAuthButton", () => {
 				onCredentials={() => {}}
 			/>,
 		);
-		openDialog();
-		await waitFor(() => expect(screen.getByText(/创建绑定任务失败/)).toBeTruthy());
+		await openDialog();
+		expect(screen.getByText(/创建绑定任务失败/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
 	});
 	it("authorization language changes preserve the QR task and claim the original credential draft once", async () => {
-		vi.useFakeTimers();
-		try {
-			i18n.set({ locale: "en", voice: "plain" });
-			let resolveBegin: (value: typeof BEGIN_OK) => void = () => {
-				throw new Error("No pending authorization");
-			};
-			postRoutes({
-				[BEGIN]: () =>
-					new Promise((resolve) => {
-						resolveBegin = resolve;
-					}),
-				[DRAFT]: () => DRAFT_OK,
-			});
-			getMock.mockResolvedValue(loggedIn());
-			const got = vi.fn();
-			render(
-				<ConnectionAuthButton
-					adapterKey="qq-official"
-					experimental
-					description="原说明"
-					warning="原警告"
-					onCredentials={got}
-				/>,
-			);
-			fireEvent.click(screen.getByRole("button", { name: "Scan to connect / create" }));
-			for (const [locale, title, loading, badge] of [
-				["en", "Scan to connect / create a bot", "Creating authorization task", "Experimental"],
-				["ja", "QRコードでボットに接続・作成", "認証タスクを作成中", "試験的"],
-				["zh-TW", "掃碼連線／建立機器人", "正在建立授權工作", "實驗性"],
-			] as const) {
-				act(() => i18n.set({ locale }));
-				expect(screen.getByText(title)).toBeTruthy();
-				expect(screen.getByRole("status").textContent).toBe(`${loading}…`);
-				expect(screen.getByText(badge)).toBeTruthy();
-				expect(callsOf(postMock, BEGIN)).toBe(1);
-			}
-			await act(async () => resolveBegin(BEGIN_OK));
-			for (const [locale, alt] of [
-				["en", "Connection authorization QR code"],
-				["ja", "接続認証用QRコード"],
-				["zh-TW", "連線授權 QR 碼"],
-			] as const) {
-				act(() => i18n.set({ locale }));
-				expect((screen.getByAltText(alt) as HTMLImageElement).src).toBe(BEGIN_OK.state.qr.dataUrl);
-				expect(screen.getByText("原警告")).toBeTruthy();
-				expect(getMock).not.toHaveBeenCalled();
-				expect(got).not.toHaveBeenCalled();
-			}
-			await act(async () => {
-				await vi.advanceTimersByTimeAsync(1000);
-			});
-			expect(got).toHaveBeenCalledOnce();
-			expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" });
+		i18n.set({ locale: "en", voice: "plain" });
+		let resolveBegin: (value: typeof BEGIN_OK) => void = () => {
+			throw new Error("No pending authorization");
+		};
+		postRoutes({
+			[BEGIN]: () =>
+				new Promise((resolve) => {
+					resolveBegin = resolve;
+				}),
+			[DRAFT]: () => DRAFT_OK,
+		});
+		getMock.mockResolvedValue(loggedIn());
+		const got = vi.fn();
+		render(
+			<ConnectionAuthButton
+				adapterKey="qq-official"
+				experimental
+				description="原说明"
+				warning="原警告"
+				onCredentials={got}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Scan to connect / create" }));
+		for (const [locale, title, loading, badge] of [
+			["en", "Scan to connect / create a bot", "Creating authorization task", "Experimental"],
+			["ja", "QRコードでボットに接続・作成", "認証タスクを作成中", "試験的"],
+			["zh-TW", "掃碼連線／建立機器人", "正在建立授權工作", "實驗性"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect(screen.getByText(title)).toBeTruthy();
+			expect(screen.getByRole("status").textContent).toBe(`${loading}…`);
+			expect(screen.getByText(badge)).toBeTruthy();
 			expect(callsOf(postMock, BEGIN)).toBe(1);
-			expect(callsOf(postMock, DRAFT)).toBe(1);
-			expect(getMock).toHaveBeenCalledOnce();
-			expect(getMock).toHaveBeenCalledWith(STATE);
-			expect(screen.queryByRole("dialog")).toBeNull();
-		} finally {
-			cleanup();
-			vi.useRealTimers();
 		}
+		await act(async () => resolveBegin(BEGIN_OK));
+		for (const [locale, alt] of [
+			["en", "Connection authorization QR code"],
+			["ja", "接続認証用QRコード"],
+			["zh-TW", "連線授權 QR 碼"],
+		] as const) {
+			act(() => i18n.set({ locale }));
+			expect((screen.getByAltText(alt) as HTMLImageElement).src).toBe(BEGIN_OK.state.qr.dataUrl);
+			expect(screen.getByText("原警告")).toBeTruthy();
+			expect(getMock).not.toHaveBeenCalled();
+			expect(got).not.toHaveBeenCalled();
+		}
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1000);
+		});
+		expect(got).toHaveBeenCalledOnce();
+		expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" });
+		expect(callsOf(postMock, BEGIN)).toBe(1);
+		expect(callsOf(postMock, DRAFT)).toBe(1);
+		expect(getMock).toHaveBeenCalledOnce();
+		expect(getMock).toHaveBeenCalledWith(STATE);
+		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 
 	it.each([
@@ -498,40 +515,32 @@ describe("ConnectionAuthButton", () => {
 	] as const)(
 		"%s maid %s auth failure does not start or claim again on language change",
 		async (locale, kind, hint) => {
-			vi.useFakeTimers();
-			try {
-				postRoutes({
-					[DRAFT]: () => {
-						if (kind === "missing")
-							throw new ApiError(404, { code: "not_found" }, "Original diagnostic 原文");
-						return { settings: {} };
-					},
-				});
-				getMock.mockResolvedValue(loggedIn());
-				const got = vi.fn();
-				render(<ConnectionAuthButton adapterKey="qq-official" onCredentials={got} />);
-				await act(async () => {
-					openDialog();
-				});
-				await act(async () => {
-					await vi.advanceTimersByTimeAsync(1000);
-				});
-				for (const voice of ["maid", "plain", "maid"] as const) {
-					act(() => i18n.set({ locale, voice }));
-					if (voice === "maid") expect(screen.getByText(hint)).toBeTruthy();
-					else expect(screen.queryByText(hint)).toBeNull();
-				}
-				await act(async () => {
-					await vi.advanceTimersByTimeAsync(3000);
-				});
-				expect(callsOf(postMock, BEGIN)).toBe(1);
-				expect(callsOf(postMock, DRAFT)).toBe(1);
-				expect(getMock).toHaveBeenCalledExactlyOnceWith(STATE);
-				expect(got).not.toHaveBeenCalled();
-			} finally {
-				cleanup();
-				vi.useRealTimers();
+			postRoutes({
+				[DRAFT]: () => {
+					if (kind === "missing")
+						throw new ApiError(404, { code: "not_found" }, "Original diagnostic 原文");
+					return { settings: {} };
+				},
+			});
+			getMock.mockResolvedValue(loggedIn());
+			const got = vi.fn();
+			render(<ConnectionAuthButton adapterKey="qq-official" onCredentials={got} />);
+			await openDialog();
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(1000);
+			});
+			for (const voice of ["maid", "plain", "maid"] as const) {
+				act(() => i18n.set({ locale, voice }));
+				if (voice === "maid") expect(screen.getByText(hint)).toBeTruthy();
+				else expect(screen.queryByText(hint)).toBeNull();
 			}
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(3000);
+			});
+			expect(callsOf(postMock, BEGIN)).toBe(1);
+			expect(callsOf(postMock, DRAFT)).toBe(1);
+			expect(getMock).toHaveBeenCalledExactlyOnceWith(STATE);
+			expect(got).not.toHaveBeenCalled();
 		},
 	);
 
@@ -564,55 +573,49 @@ describe("ConnectionAuthButton", () => {
 	] as const)(
 		"%s authorization failure follows the current language without restarting or re-claiming",
 		async (kind, en, ja, tw) => {
-			vi.useFakeTimers();
-			try {
-				i18n.set({ locale: "en", voice: "plain" });
-				postRoutes({
-					[BEGIN]: () => {
-						if (kind === "begin") throw new Error("原诊断");
-						return BEGIN_OK;
-					},
-					[DRAFT]: () => {
-						if (kind === "missing") throw new ApiError(404, { code: "not_found" }, "原诊断");
-						return { settings: {} };
-					},
-				});
-				getMock.mockResolvedValue(
-					kind === "unknown"
-						? { state: { status: "unexpected", diagnostic: "原诊断" } }
-						: kind === "raw"
-							? { state: { status: "error", message: "原服务端诊断" } }
-							: loggedIn(),
-				);
-				const got = vi.fn();
-				render(<ConnectionAuthButton adapterKey="qq-official" onCredentials={got} />);
+			i18n.set({ locale: "en", voice: "plain" });
+			postRoutes({
+				[BEGIN]: () => {
+					if (kind === "begin") throw new Error("原诊断");
+					return BEGIN_OK;
+				},
+				[DRAFT]: () => {
+					if (kind === "missing") throw new ApiError(404, { code: "not_found" }, "原诊断");
+					return { settings: {} };
+				},
+			});
+			getMock.mockResolvedValue(
+				kind === "unknown"
+					? { state: { status: "unexpected", diagnostic: "原诊断" } }
+					: kind === "raw"
+						? { state: { status: "error", message: "原服务端诊断" } }
+						: loggedIn(),
+			);
+			const got = vi.fn();
+			render(<ConnectionAuthButton adapterKey="qq-official" onCredentials={got} />);
+			await act(async () => {
+				fireEvent.click(screen.getByRole("button", { name: "Scan to connect / create" }));
+			});
+			if (kind !== "begin")
 				await act(async () => {
-					fireEvent.click(screen.getByRole("button", { name: "Scan to connect / create" }));
+					await vi.advanceTimersByTimeAsync(1000);
 				});
-				if (kind !== "begin")
-					await act(async () => {
-						await vi.advanceTimersByTimeAsync(1000);
-					});
-				for (const [locale, message, retry] of [
-					["en", en, "Generate again"],
-					["ja", ja, "再生成"],
-					["zh-TW", tw, "重新產生"],
-				] as const) {
-					act(() => i18n.set({ locale }));
-					expect(screen.getByText(message)).toBeTruthy();
-					expect(screen.getByRole("button", { name: retry })).toBeTruthy();
-					expect(got).not.toHaveBeenCalled();
-				}
-				await act(async () => {
-					await vi.advanceTimersByTimeAsync(3000);
-				});
-				expect(callsOf(postMock, BEGIN)).toBe(1);
-				expect(callsOf(postMock, DRAFT)).toBe(kind === "incomplete" || kind === "missing" ? 1 : 0);
-				expect(getMock).toHaveBeenCalledTimes(kind === "begin" ? 0 : 1);
-			} finally {
-				cleanup();
-				vi.useRealTimers();
+			for (const [locale, message, retry] of [
+				["en", en, "Generate again"],
+				["ja", ja, "再生成"],
+				["zh-TW", tw, "重新產生"],
+			] as const) {
+				act(() => i18n.set({ locale }));
+				expect(screen.getByText(message)).toBeTruthy();
+				expect(screen.getByRole("button", { name: retry })).toBeTruthy();
+				expect(got).not.toHaveBeenCalled();
 			}
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(3000);
+			});
+			expect(callsOf(postMock, BEGIN)).toBe(1);
+			expect(callsOf(postMock, DRAFT)).toBe(kind === "incomplete" || kind === "missing" ? 1 : 0);
+			expect(getMock).toHaveBeenCalledTimes(kind === "begin" ? 0 : 1);
 		},
 	);
 });
