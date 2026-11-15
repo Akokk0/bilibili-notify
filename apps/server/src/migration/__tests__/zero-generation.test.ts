@@ -5,8 +5,8 @@
  * (没有一个和第 0 代共用),软链重建同样的一条;老形状的几族改写成最新的形状(各族的细节在各自的
  * `zero-generation-*.test.ts`);残留、卡片皮肤、宿主的东西不带过来;第 0 代一个字节都没动。
  *
- * 最后一条是修订号的闸:迁移的产出(搬了什么、搬到哪、怎么搬、丢下了什么)变了,就必须抬
- * `MIGRATION_REVISION` —— 否则开发期迁出来的那一代不会重迁,新代码读着旧产出。
+ * 最后一条冻结 0.x → 格式 1 的迁移修订号与产出（ADR-0051）。后续格式变化另写真实转换，
+ * 不能靠更新修订号和摘要让 alpha 期间的数据被自动重置。
  */
 
 import { createHash } from "node:crypto";
@@ -924,7 +924,7 @@ describe("migrateZeroGeneration", () => {
 		);
 	});
 
-	it("产出变了就得抬 MIGRATION_REVISION", async () => {
+	it("0.x 到格式 1 的迁移基线冻结为修订 53", async () => {
 		const hash = createHash("sha256");
 		for (const t of [...report.transfers].sort((a, b) => a.from.localeCompare(b.from))) {
 			hash.update(`${t.from} -> ${t.to} (${t.method})\n`);
@@ -935,12 +935,12 @@ describe("migrateZeroGeneration", () => {
 		for (const path of [...report.rewritten].sort()) {
 			hash.update(`rewrite ${path}\n`).update(await readFile(join(target, path)));
 		}
-		// 迁移新写的历史水位线不算改写、不在 `rewritten` 里,单独算进来:清扫怎么定水位线变了,也得抬修订号。
+		// 迁移新写的历史水位线不在 `rewritten` 里，单独纳入冻结基线。
 		hash
 			.update("history/retention.json\n")
 			.update(await readFile(join(target, "history", "retention.json")));
 		// B 站登录转成的密钥文件也不在 `rewritten` 里(密文带随机 IV,逐次不同):把解开后的明文算进来,
-		// 转换怎么变(键名、值、格式版本)也得抬修订号。
+		// 转换后的键名、值和格式版本都属于冻结基线。
 		hash
 			.update("secrets/bilibili/secrets.enc\n")
 			.update(
@@ -950,8 +950,7 @@ describe("migrateZeroGeneration", () => {
 				),
 			);
 
-		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
-		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
+		// 这两个值是首次 alpha 的基线；格式演进不能通过更新它们绕过上一格式迁移。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
 			revision: 53,
 			output: "e943241fbf8385a4aec97bd88e9a2dfc9c40221223a9bb314f52990f9d23b2e7",

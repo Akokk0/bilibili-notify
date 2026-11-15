@@ -8,8 +8,8 @@ import { t as serverText } from "../i18n/index.js";
  *
  * 两个号别混:
  * - **格式版本**:只在发出去的版本改了盘上格式时加 1。选代只选「格式版本 ≤ 我」的,回退旧版就不用还原。
- * - **迁移修订号**:开发期每改一次迁移的产出就加 1,只比一样不一样。当前代的修订号对不上,就照它当初的
- *   来源重开一代(第 0 代迁来的从第 0 代重迁)—— 开发期迁出来的代会跟着代码变旧。alpha.1 起冻住。
+ * - **迁移修订号**:首次 alpha 前每改一次迁移的产出就加 1,只比一样不一样。当前代的修订号对不上,就照它当初的
+ *   来源重开一代(第 0 代迁来的从第 0 代重迁)。首次 alpha 冻结为 53，后续格式演进见 ADR-0051。
  *
  * 主人要求开新代(全新开始 / 从旧代重新迁移,ADR-0022 决策 3 下 10-01 的 🔗)走同一条路:面板写下一次性的标记
  * `generations/pending.json`({@link writePendingGeneration})再重启,开机取出({@link takePendingGeneration})
@@ -25,7 +25,7 @@ import { atomicWriteJson, copyFileAtomic, replaceDirectory } from "@bilibili-not
 import { z } from "zod";
 import { dataPath, hostPath } from "./roots.js";
 
-/** 1.0 的数据格式版本。只在发出去的版本改了盘上格式时加 1;1.0 整个开发期都是 1。 */
+/** 首次 1.0 alpha 的数据格式版本；后续不兼容变化须升版并提供真实迁移（ADR-0051）。 */
 export const FORMAT_VERSION = 1;
 
 /** 每一代根上的那份说明。 */
@@ -104,6 +104,7 @@ export async function selectGeneration(
 	const names = await listGenerationNames(opts.hostRoot);
 	let highestSeq = 0;
 	let current: { seq: number; file: GenerationFile } | undefined;
+	let previous: { seq: number; file: GenerationFile } | undefined;
 	for (const name of names) {
 		const partial = PARTIAL_NAME.exec(name);
 		const complete = COMPLETE_NAME.exec(name);
@@ -114,14 +115,16 @@ export async function selectGeneration(
 		if (partial) continue;
 		const file = await readGenerationFile(hostPath(opts.hostRoot, "generations", name));
 		if (!file || file.formatVersion > opts.formatVersion) continue;
-		if (!current || seq > current.seq) current = { seq, file };
+		if (file.formatVersion === opts.formatVersion) {
+			if (!current || seq > current.seq) current = { seq, file };
+		} else if (!previous || seq > previous.seq) previous = { seq, file };
 	}
 
-	if (current && current.file.formatVersion < opts.formatVersion) {
+	if (!current && previous) {
 		throw new Error(
 			serverText("service.runtime.generations.text.1", {
-				value0: current.seq,
-				value1: current.file.formatVersion,
+				value0: previous.seq,
+				value1: previous.file.formatVersion,
 				value2: opts.formatVersion,
 			}),
 		);

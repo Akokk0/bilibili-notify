@@ -65,6 +65,7 @@
 | [0048](0048-extension-marketplace-config.md) | 拓展市场配置放在 bn-extension 目录，发布仓库从环境取得 | 2026-11-12 | 修订 0041 的作者配置，发布时使用 Actions 仓库或本地 GitHub 远端。配置目录由 0049 修订 |
 | [0049](0049-hidden-extension-marketplace-config.md) | 第三方拓展的作者配置使用隐藏目录 | 2026-11-13 | 新模板和发布工具使用 `.bn-extension/marketplace.json` |
 | [0050](0050-creator-display-id.md) | 创作者展示账号与来源身份分开 | 2026-11-14 | 主人同意改进SDK展示字段与兼容提示，原身份保持不变 |
+| [0051](0051-alpha-data-evolution.md) | alpha 期间保留数据并按格式迁移 | 2026-11-15 | 冻结 0.x 迁移基线，格式变化迁入新代，回退各用各代 |
 
 标着**「追认」**的是事后据定案记录与实现整理的,不是当时拷问的原文:「决定了什么」与「为什么」可信,「当时的现场」不可考。
 

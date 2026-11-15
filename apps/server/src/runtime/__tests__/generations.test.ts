@@ -141,6 +141,23 @@ describe("selectGeneration", () => {
 		expect(await select(true)).toEqual({ kind: "use", seq: 1, dir: join(generations, "1") });
 	});
 
+	it("回退期间产生较高序号的旧格式代，再升级仍使用本格式最新完整代", async () => {
+		await placeGeneration(1);
+		await placeGeneration(2, { formatVersion: 2 });
+		await placeGeneration(3, { formatVersion: 2 });
+		await placeGeneration(4);
+		await mkdir(join(generations, "5.partial"));
+		expect(
+			await selectGeneration({
+				hostRoot,
+				formatVersion: 2,
+				migrationRevision: 7,
+				zeroGenerationExists: true,
+			}),
+		).toEqual({ kind: "use", seq: 3, dir: join(generations, "3") });
+		expect(await select(true)).toEqual({ kind: "use", seq: 4, dir: join(generations, "4") });
+	});
+
 	it("只有格式比我新的代 → 开新的一代,号接着往后排", async () => {
 		await placeGeneration(1, { formatVersion: 2 });
 

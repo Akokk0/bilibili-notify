@@ -103,6 +103,7 @@ import { migrateUptime } from "./uptime.js";
  * 52 = 0.x 里仍是出厂默认的文字模板不再迁进新代,内置人格只记删了哪几份、顶层人格副本删掉,
  * 核心设置写 `locale: "zh-CN"`(摘要变)。
  * 53 = AI搜索开关 `ai.search.engines.dynamic` → `ai.search.scenes.post`（live/roast同袋），新代核心设置摘要变。
+ * 首次 alpha 冻结此基线（ADR-0051）；后续格式演进另写真实转换，不再增加修订号触发重迁。
  */
 export const MIGRATION_REVISION = 53;
 
