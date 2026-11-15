@@ -54,4 +54,4 @@ token 只在新建那一刻给全文，之后只显示头尾；忘了就重新�
 
 bilibili-notify 主仓：<https://github.com/Akokk0/bilibili-notify>
 
-🔗现状（4-55，2026-10-31）：本仓当前使用全新1.0拓展契约apiVersion1/apiRevision0；这是保留当前完整接口的新基线，不是恢复历史v1。拓展包自身version和桥WS协议号独立，不随本次契约重编号重置。
+桥使用 BN 1.0 的 `apiVersion: 1` 契约，小号省略时按 0 处理；这是全新 1.0 基线，不是历史 v1，0.12 无法装载。拓展包版本、SDK 版本与桥的 WebSocket 协议号分别独立。
