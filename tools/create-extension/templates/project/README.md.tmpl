@@ -103,3 +103,5 @@ Rerun the same Actions job or local release command for the same tagged commit. 
 The rolling index Release must remain mutable. The tool refuses to modify an immutable rolling Release and never changes repository security settings. GitHub asset names cannot be exchanged atomically: a process interruption between name changes can briefly leave the canonical index unavailable until the retry restores or finishes it. Actions publications are serialized; do not run local publications for the same repository concurrently.
 
 The SDK's npm package includes `DEVELOPMENT.md` for the current host API, source/adapter lifecycle, reports, settings and translations. SDK/create-tool npm versions are separate from this extension's version and its host `apiVersion` / `apiRevision`.
+
+Marketplace names and descriptions come from `$manifest` in the bundled `locales/<locale>.json`. Add the optional `marketplace.notes` translation key for the current release summary. The release command includes these texts in the index; missing fields use BN's locale fallback chain.

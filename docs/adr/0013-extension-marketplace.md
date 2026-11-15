@@ -24,6 +24,8 @@
    🔗 **2026-10-14(3b-04,主人定)**:**这一期只换官方索引,不改 BN 与索引之间的别的约定。** 新版 BN 改读新的滚动 release `extensions` 上的 `marketplace.json`(地址 `…/releases/download/extensions/marketplace.json`),用 1.0 的新规矩(每个契约版本各留一条、只挑装得了的,见 ADR-0021 决策 37);旧 release `extension-marketplace` 上那份留给 0.12、从此不动,它的说明里写「0.12 专用,已冻结」。修订本条里「单开 `extension-marketplace`」的 release 名,仅对新版 BN 而言。格式不顺手改(主会话照规矩定):`issuedAt` 仍是秒(进门换 ISO 照 data-model 那条)、`apiVersion` / `apiRevision` 不改名。
 4. **每个拓展版本一个不可变 release**,tag `extension/<id>@<version>`,zip 挂上面;索引条目写 URL + sha256 + size,客户端不拼地址(沿用 ADR-0005 那条铁律)。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红 —— 拓展是独立发布物,清单里的版本就该是真的,不像本体那样按 tag 临时改元数据。
    🔗 **2026-10-14(3b-43,主人定)**:**市场索引里给人看的字这一期不分语言**:索引只放清单里的默认文字,装上之后才按语言显示(ADR-0037 决策 14)。第一个带译文的拓展上架时,给条目加一格可选的按语言文字(索引规则不严格,加一格是加宽)。
+
+   🔗 **2026-11-15（6-12）**：抖音与桥的四语已触发上条约定。索引新增可选 `locales` 展示文字，发布复用入包译文，宿主按现有语言链逐字段回落；默认条目、选版、签名与安装规则不变。格式及作者用法见[拓展市场](../agents/extension-marketplace.md)。
 5. **一份索引,不分渠道**:条目带 `prerelease: true` 标记,BN 自己的更新渠道是预发布时才显示。拆两份文件只多一次 `--clobber` 失同步的机会。
     🔗 **2026-09-27 ADR-0021 决策 37 修订**：索引每个契约版本各留最新一条，宿主取装得了的里面最高的；1.0 alpha 期 v3 桥只进预发布档。
 6. **每个 id 只列最新那一版**:「有没有新版」就是一次版本比较,索引永远很小;老版本靠发布页手动下。

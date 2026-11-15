@@ -162,6 +162,8 @@ export function activate(ctx: ExtensionContext): void {
 
 给人看的拓展文字放在`locales/zh-CN.json`、`zh-TW.json`、`en.json`、`ja.json`，使用`ctx.i18n.t(key, values)`现取，不缓存翻译结果。未提供译文的语言按宿主回落规则处理。作者、创作者、输入和上游诊断原文不作为翻译键。
 
+市场卡片复用这些文件里的`$manifest.name`和`$manifest.description`。当前版本的市场说明可写为普通译文键`marketplace.notes`；发布命令从实际构建的`dist/locales/`提取到索引的可选`locales`字段，不另建市场译文文件。缺项按“当前语言 → 简中 → 英文 → 默认文字”逐字段回落，历史CHANGELOG保留原文。
+
 ## 检查、安装与发布
 
 ```sh
