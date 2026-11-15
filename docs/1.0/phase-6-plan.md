@@ -13,7 +13,7 @@
 - 2026-11-13，`create-bn-ext@0.1.0-alpha.3` 已上架；交互向导退格时保留字段提示，跨字段粘贴后在原光标位置继续输入。公共 `alpha` 入口已用真实终端验证。[发行作业](https://github.com/Akokk0/bilibili-notify/actions/runs/43386044891)
 - 2026-11-12，抖音首版确认与 B 站对齐常用订阅操作、群聊贴作品出卡和系统账号页扫码登录。群聊入口与登录分片落实。[首版定案](../adr/0047-douyin-source-parity.md)
 - 2026-11-14，抖音最终版收归 `extensions/douyin/` 作为官方维护入口，ID 为 `douyin`；仓外 `akokko.douyin` 工程保留为脚手架验证样本。官方源码、四语文案、workspace SDK、构建与主仓拓展发布流程已接齐，使用说明见[拓展 README](../../extensions/douyin/README.md)。本次收归代码不调整既有来源身份与本机数据，市场上架另走发行流程。
-- 本体 npm 随主程序 tag 发行。2026-11-15 主人确认本轮候选：本体／BN `1.0.0-alpha.1`、桥与 SDK `0.1.0-alpha.1`、创建器 `0.1.0-alpha.4`，抖音沿用 `0.1.0-alpha.0`，全部走 alpha；本轮公开同步与实际发行尚未执行。
+- 本体 npm 随主程序 tag 发行。2026-11-15 主人确认本轮候选：本体／BN `1.0.0-alpha.1`、桥与 SDK `0.1.0-alpha.1`、创建器 `0.1.0-alpha.4`，抖音沿用 `0.1.0-alpha.0`，全部走 alpha；已按主人批准同步公开 dev 并完成远端预检，实际发行尚未执行。
 - 2026-11-11最新定案见[ADR-0046](../adr/0046-bundled-npm-distribution.md)：npm包自带两种宿主、随主程序tag发行；`@bilibili-notify/bn web/dev`运行宿主成品；拓展继续由BN手动挂载源码。
 
 ## 切片
@@ -42,7 +42,7 @@
 | 6-11 | 定alpha盘上格式演进、失败自愈和回退规则，按决定实现后冻结迁移基线 | ✅ 主人确认保留 alpha 数据，规则见 [ADR-0051](../adr/0051-alpha-data-evolution.md)。修复回退后再升级误选旧格式代；选代、失败恢复、通知和冻结迁移基线 6 文件 114 项通过。格式 1／修订 53／备份 23 不变，下一次实际格式变化随变更交付真实迁移。 |
 | 6-12 | 首个带译文拓展上架的市场索引可选译文，打包/发布/面板与回落验收 | ✅ 本地交付完成。可选 locales 只含展示文字，官方签名与第三方发布均从入包译文提取；宿主出视图时逐字段回落。真实抖音 ZIP 的四语元数据已核对；隔离页面完成四语、缺译文回落与 390px 验收，console 无新增错误或警告，页面、数据和服务已收尾。实际市场上架留 6-14。 |
 | 6-13 | 桥预发布版本及SDK/创建器版本拍板、兼容核对与发行准备 | ✅ 本轮版号已确认；实际 SDK、创建器与双宿主 npm 包、桥和抖音 ZIP 已生成。SDK／创建器仓外消费、BN 正式／开发宿主启动退出与本地发行预演通过；当前契约 1/2。正式更新说明已定稿，公开发行接 6-14。 |
-| 6-14 | 全量门禁、自包含载荷、拓展包、迁移与流水线dry-run、CHANGELOG；版本/产物就绪后执行获批发行 | 进行中。本地全量门禁 20,617 项通过、原有 3 项跳过；真实双宿主与拓展归档已验。待批准同步公开 dev 后运行远端发行预检；BN npm 首包与可信发布配置、实际上传及各渠道验收尚未完成。 |
+| 6-14 | 全量门禁、自包含载荷、拓展包、迁移与流水线dry-run、CHANGELOG；版本/产物就绪后执行获批发行 | 进行中。本地全量门禁 20,617 项通过、原有 3 项跳过；公开 dev 的最终 CI／两端 Rust 检查和 8 项发行预检均通过，实际 Actions 归档已核对。BN npm 首包与可信发布配置、正式发行授权、实际上传及各渠道验收尚未完成，见下方远端记录。 |
 
 ## 6-04/6-05工程基建验收
 
@@ -184,4 +184,27 @@ dev-apps不启动拓展pack watcher；生产构建与Actions保留。作者、ag
 
 版本和更新说明定稿后的全量命令：`vp install --offline --frozen-lockfile`、`vp exec biome ci .`、`vp run build`、`vp run typecheck`、包测试缓存准备、`vp run test` 及 CI 阿拉伯语格式测试，全部通过。默认并发 1,268 文件、20,617 项通过、原有 3 项跳过，用时 187.82 秒；阿拉伯语定向 5 项通过。既有 Biome 3 条警告、4 条提示和 Web 大 chunk 提示保留。实际 BN 与开发工具归档的本地发行 dry-run 通过。
 
-本地门禁、精确归档、校验值及发行清单位于 `.bn-design/s6-release-candidate-2026-11-15/`，市场与页面证据位于 `.bn-design/s6-alpha-marketplace-evidence/`。本轮尚未公开同步、创建 tag 或上传；远端 Actions 预检、BN npm 首包／可信发布准备、正式渠道与官方市场验收留在 6-14，第6期尚未整体完成。
+本地门禁、精确归档、校验值及发行清单位于 `.bn-design/s6-release-candidate-2026-11-15/`，市场与页面证据位于 `.bn-design/s6-alpha-marketplace-evidence/`。随后已按主人批准完成下述公开同步与远端预检；BN npm 首包／可信发布准备、正式发行和渠道验收仍在 6-14，第6期尚未整体完成。
+
+## 6-14远端预检与修复（2026-11-15）
+
+主人批准同步公开 dev 的 77 个提交、206 个文件改动，并运行发行 dry-run。预检发现的问题另拆成 6 个原子提交修复；最终代码提交为 `94160eaee`。全绿记录如下，已通过且内容未受后续修复影响的作业保留原结果：
+
+| 预检 | 结果 |
+| --- | --- |
+| 本体版号 `1.0.0-alpha.1` | [通过，仅检查 tag](https://github.com/Akokk0/bilibili-notify/actions/runs/43690526860) |
+| Docker amd64／arm64、完整／slim | [最终构建通过](https://github.com/Akokk0/bilibili-notify/actions/runs/43694240367) |
+| macOS ARM64／Windows x64 安装包 | [最终构建通过](https://github.com/Akokk0/bilibili-notify/actions/runs/43694243187) |
+| 本体完整 npm 包 | [通过](https://github.com/Akokk0/bilibili-notify/actions/runs/43690534643) |
+| 应用内更新载荷 | [构建、打包和签名通过](https://github.com/Akokk0/bilibili-notify/actions/runs/43690537439) |
+| SDK／创建器 | [两包构建与实际归档校验通过](https://github.com/Akokk0/bilibili-notify/actions/runs/43690540174) |
+| 桥拓展 `0.1.0-alpha.1` | [构建、打包和索引签名通过](https://github.com/Akokk0/bilibili-notify/actions/runs/43692384521) |
+| 抖音拓展 `0.1.0-alpha.0` | [构建、打包和四语索引签名通过](https://github.com/Akokk0/bilibili-notify/actions/runs/43692386739) |
+
+最终代码的[全量 CI](https://github.com/Akokk0/bilibili-notify/actions/runs/43694134599)与[两端 Rust 检查](https://github.com/Akokk0/bilibili-notify/actions/runs/43694134693)均通过。CI 保留全部测试与独立迁移性能检查；四分片的测试耗时为 134／260／193／219 秒，最慢分片含安装和构建的任务耗时 311 秒。
+
+修复均沿既有真实构建或测试入口复现并验证：Docker 上下文保留 SDK 必需说明和 skill、递归保留多语言指引；官方拓展从零构建时包含 workspace 依赖；桌面发行及 Rust 检查使用仍受支持的 macOS 15；Dock 重开日志只在 macOS 编译；进程内对拍把资料 cron 安排到运行窗口外，保留 P37 的原断言和完整驱动计数。本机 Rust 格式／clippy／20 项测试／编译检查，以及对拍 71 项、服务端类型检查通过。
+
+Actions 的 SDK／创建器归档与本地候选逐字节相同。完整 BN npm 包为 15,555,738 字节，已在仓外离线安装并以空缓存、禁用网络请求启动 web／dev，开发接口分别 404／200，退出 0 且端口释放。它与本地包的两种程序载荷完全一致，仅构建时获取的赞助名单不同。下载的 macOS 与 Windows 便携包均核对宿主 `1.0.0-alpha.1`、布局与禁止目录；原生启动器分别为 ARM64 Mach-O 和 x64 PE，安装包大小与 SHA256 已记录。
+
+全部远端作业均为 `dry_run=true`：正式上传、市场及更新渠道写入已跳过，本轮三个发行 tag 均未创建。临时数据、构建副本和验收服务已收尾，精确结果与归档位于上述本地发行目录。BN npm 尚未建立首包，SDK 的独立可信发布绑定尚待核对；正式发行前落实账号配置并取得发行授权，不能把预检通过记作已经发布。
