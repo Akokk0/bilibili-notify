@@ -62,12 +62,13 @@ export function creatorAccountLabel(
 	displayId?: string,
 ): string {
 	const display = filled(displayId);
-	return display === undefined
-		? subscriptionIdentityLabel(identity, platform)
-		: subscriptionIdentityLabel(
-				{ externalId: display },
-				{ label: platform.label, externalIdNoun: platform.displayIdNoun },
-			);
+	return subscriptionIdentityLabel(
+		{ externalId: display ?? identity.externalId },
+		{
+			label: platform.label,
+			externalIdNoun: display === undefined ? platform.externalIdNoun : platform.displayIdNoun,
+		},
+	);
 }
 
 /** 搜人提示句里调用方按当前语言给的几样(叫法函数不住字典,同 {@link sourceNounsOf} 的中性词)。 */

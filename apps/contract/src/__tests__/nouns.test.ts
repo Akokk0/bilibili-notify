@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+	creatorAccountLabel,
 	creatorSearchHint,
 	displayNameOf,
 	sourceNounsOf,
@@ -94,6 +95,33 @@ describe("subscriptionIdentityLabel", () => {
 		expect(
 			subscriptionIdentityLabel({ externalId: "abc" }, { label: "抖音", externalIdNoun }),
 		).toBe("抖音 · abc");
+	});
+});
+
+describe("creatorAccountLabel", () => {
+	const identity = { externalId: "opaque-id" };
+	const descriptor = { label: "来源", externalIdNoun: "作者 ID", displayIdNoun: "账号" };
+
+	it("有展示账号时采用它自己的叫法，保留稳定身份", () => {
+		expect(creatorAccountLabel(identity, descriptor, " visible-id ")).toBe("账号  visible-id ");
+		expect(identity.externalId).toBe("opaque-id");
+	});
+
+	it.each([undefined, "", "   "])("没有可用展示账号(%j)时回落稳定身份标签", (displayId) => {
+		expect(creatorAccountLabel(identity, descriptor, displayId)).toBe("作者 ID opaque-id");
+	});
+
+	it("展示账号没有叫法时使用来源名，不借用内部 ID 的叫法", () => {
+		expect(
+			creatorAccountLabel(identity, { label: "来源", externalIdNoun: "作者 ID" }, "visible-id"),
+		).toBe("来源 · visible-id");
+	});
+
+	it("展示与原始 ID 都没有叫法时，分别用来源名组合各自的值", () => {
+		expect(creatorAccountLabel(identity, { label: "来源" }, "visible-id")).toBe(
+			"来源 · visible-id",
+		);
+		expect(creatorAccountLabel(identity, { label: "来源" })).toBe("来源 · opaque-id");
 	});
 });
 
