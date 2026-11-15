@@ -67,7 +67,13 @@ exec "$BN_UI_TEST_CURL" --noproxy '*' "\${args[@]}"
 	const bashEnv = join(dir, "bash-env");
 	const signals = join(dir, "signals");
 	await writeFile(signals, "");
-	await writeFile(bashEnv, 'kill() { printf "%s\\n" "$*" >> "$BN_UI_TEST_SIGNALS"; }\n');
+	// 超时与重试仍走脚本自己的 SECONDS 判据，只在 sleep 边界推进时钟；curl 保留真实超时。
+	await writeFile(
+		bashEnv,
+		`kill() { printf "%s\\n" "$*" >> "$BN_UI_TEST_SIGNALS"; }
+sleep() { SECONDS=$((SECONDS + $1)); }
+`,
+	);
 	return async (...args) => {
 		const options = {
 			cwd: dir,
