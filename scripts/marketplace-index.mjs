@@ -19,6 +19,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readArg, readListArg, requireArg } from "./cli-args.mjs";
+import { cleanMarketplaceLocales } from "./extension-marketplace-locales.mjs";
 import { compareEntryVersions } from "./extension-version-order.mjs";
 import { signManifest } from "./sign-update-manifest.mjs";
 
@@ -141,6 +142,8 @@ function cleanEntry(e) {
 	if (e.prerelease === true) entry.prerelease = true;
 	if (e.releaseUrl !== undefined) entry.releaseUrl = e.releaseUrl;
 	if (e.notes !== undefined && e.notes !== "") entry.notes = e.notes;
+	const locales = cleanMarketplaceLocales(e.locales);
+	if (locales) entry.locales = locales;
 	return entry;
 }
 

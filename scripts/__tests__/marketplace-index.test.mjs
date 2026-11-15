@@ -328,7 +328,11 @@ describe("issuedAt 与版本只许往前走", () => {
 describe("签出来的索引,客户端验得过、读得出、过得了官方源的规矩", () => {
 	it("round-trip", () => {
 		const key = makeKey();
-		const index = mergeMarketplaceEntry(undefined, entry(), { issuedAt: 1_760_000_000 });
+		const locales = {
+			en: { name: "Bot bridge", description: "Connect a bot", notes: "First release" },
+			ja: { name: "ボット連携" },
+		};
+		const index = mergeMarketplaceEntry(undefined, entry({ locales }), { issuedAt: 1_760_000_000 });
 		const { envelopeJson } = signManifest(index, key.privateKeyPem);
 		const envelope = JSON.parse(envelopeJson);
 		const loaded = loadSignedJson(
@@ -344,6 +348,7 @@ describe("签出来的索引,客户端验得过、读得出、过得了官方源
 			id: "bridge",
 			version: "0.0.2",
 			notes: "第一版。",
+			locales,
 		});
 	});
 
