@@ -28,6 +28,8 @@
 
 仓外装包测试从空工程执行离线安装。新机器按主仓锁文件安装后，还需要为这些工程解析公共依赖所用的元数据。CI 在构建后运行 `bash .github/scripts/shared/prepare-package-test-cache.sh`，用本地打出的 SDK 和创建器安装一次临时拓展工程。本地冷缓存可复用这条命令。后续测试仍执行 `--offline`。
 
+CI 测试按 Vitest 文件分片并行，各组独立构建、预热离线依赖缓存，保留文件隔离与测试守卫。Biome、类型检查及 Arabic locale 回归在第一组执行，所有组成功才通过统一的 `gate`。本地仍可用 `vp run test` 跑全集；复现某组用 `vp run test --shard=1/4`，分片总数以 `gate.yml` 的矩阵为准。独立迁移计时作业照常执行。
+
 一个**别踩**的点:
 
 - **`assert-release-ref-on-dev.sh` 不是门禁。** 它只断言 tag 指向的 commit 在 `origin/dev` 上 —— 防的是「拿旁支 commit 发版」,不保证那个 commit 是绿的。dev 上一个测试红的 commit 照样能打 tag。堵这个口子的是 `gate`。

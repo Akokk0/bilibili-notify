@@ -11,8 +11,12 @@ on:
   workflow_call:
 
 jobs:
-  gate:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - uses: actions/checkout@v6
@@ -32,6 +36,7 @@ jobs:
           cache: true
 
       - name: Lint (Biome)
+        if: matrix.shard == 1
         run: vp exec biome ci .
 
       # `vpr <script>` 是 vp 的 shim 简写,等价 `vp run <script>`,从 root
@@ -42,17 +47,32 @@ jobs:
         run: vpr build
 
       - name: Typecheck
+        if: matrix.shard == 1
         run: vpr typecheck
 
       - name: Prepare registry cache for offline package tests
         run: bash .github/scripts/shared/prepare-package-test-cache.sh
 
       - name: Test
-        run: vpr test
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: vp run test --shard="$SHARD/4"
 
       # 与四种面板语言均不同的默认数字/日期格式，防止遗漏 locale 又静默通过。
       - name: Test panel formatting with Arabic host locale
+        if: matrix.shard == 1
         env:
           LANG: ar_EG.UTF-8
           LC_ALL: ar_EG.UTF-8
         run: vp run test apps/web/src/pages/__tests__/overview-health-details.test.tsx apps/web/src/pages/__tests__/ExtensionDetail.report-discrepancies.test.tsx -t '核心计数悬停值|上报时间悬停值' --reporter=dot
+
+  # 保留统一的 gate 结果，任何分片失败、取消或跳过都不能放行发行。
+  gate:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every test shard
+        env:
+          RESULT: ${{ needs.test.result }}
+        run: test "$RESULT" = success
