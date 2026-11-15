@@ -53,20 +53,26 @@ export function descriptorFlow(sources, rootPath) {
 			node = node.expression;
 		return node;
 	};
+	const symbols = new WeakMap();
 	const symbolOf = (node) => {
+		if (symbols.has(node)) return symbols.get(node);
 		let symbol = checker.getSymbolAtLocation(node);
 		const seen = new Set();
 		while (symbol && symbol.flags & ts.SymbolFlags.Alias && !seen.has(symbol)) {
 			seen.add(symbol);
 			symbol = checker.getAliasedSymbol(symbol);
 		}
+		symbols.set(node, symbol);
 		return symbol;
 	};
+	const callables = new WeakMap();
 	const callable = (node) => {
 		const target = unwrapped(node);
-		if (ts.isArrowFunction(target) || ts.isFunctionExpression(target)) return target;
+		if (callables.has(target)) return callables.get(target);
+		let fn;
+		if (ts.isArrowFunction(target) || ts.isFunctionExpression(target)) fn = target;
 		const declaration = symbolOf(target)?.valueDeclaration;
-		if (declaration && ts.isFunctionDeclaration(declaration)) return declaration;
+		if (declaration && ts.isFunctionDeclaration(declaration)) fn = declaration;
 		if (
 			declaration &&
 			ts.isVariableDeclaration(declaration) &&
@@ -74,9 +80,10 @@ export function descriptorFlow(sources, rootPath) {
 			declaration.parent.flags & ts.NodeFlags.Const
 		) {
 			const init = unwrapped(declaration.initializer);
-			if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) return init;
+			if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) fn = init;
 		}
-		return undefined;
+		callables.set(target, fn);
+		return fn;
 	};
 	const calls = new Map();
 	const props = new Map();
@@ -141,6 +148,27 @@ export function descriptorFlow(sources, rootPath) {
 	const trustedParameters = new Set();
 	const trustedCallbacks = new Set();
 	const trustedFunctions = new Set();
+	const dependents = new Map();
+	const pending = [];
+	const queued = new Set();
+	let currentFunction;
+	const enqueue = (fn) => {
+		if (queued.has(fn)) return;
+		queued.add(fn);
+		pending.push(fn);
+	};
+	const hasFact = (facts, key) => {
+		if (key && currentFunction) {
+			if (!dependents.has(key)) dependents.set(key, new Set());
+			dependents.get(key).add(currentFunction);
+		}
+		return facts.has(key);
+	};
+	const prove = (facts, key) => {
+		if (!key || facts.has(key)) return;
+		facts.add(key);
+		for (const fn of dependents.get(key) ?? []) enqueue(fn);
+	};
 	const isAbsent = (node) =>
 		node &&
 		(node.kind === ts.SyntaxKind.NullKeyword ||
@@ -160,8 +188,8 @@ export function descriptorFlow(sources, rootPath) {
 			const fn = callable(target.expression);
 			return (
 				isRoot(fn) ||
-				trustedFunctions.has(fn) ||
-				trustedCallbacks.has(symbolOf(unwrapped(target.expression)))
+				hasFact(trustedFunctions, fn) ||
+				hasFact(trustedCallbacks, symbolOf(unwrapped(target.expression)))
 			);
 		}
 		if (ts.isConditionalExpression(target)) {
@@ -185,7 +213,7 @@ export function descriptorFlow(sources, rootPath) {
 		if (!ts.isIdentifier(target)) return false;
 		const symbol = symbolOf(target);
 		if (!symbol || writes.has(symbol)) return false;
-		if (trustedParameters.has(symbol)) return true;
+		if (hasFact(trustedParameters, symbol)) return true;
 		const declaration = symbol.valueDeclaration;
 		return (
 			declaration &&
@@ -210,76 +238,77 @@ export function descriptorFlow(sources, rootPath) {
 		walk(fn.body);
 		return expressions;
 	};
-	// Positive fixed point: an unproved/cyclic input never seeds trust.
-	let changed = true;
-	while (changed) {
-		changed = false;
-		for (const fn of functions) {
-			const returns = returnedExpressions(fn);
-			if (
-				!trustedFunctions.has(fn) &&
-				returns.length &&
-				returns.every((value) => isDescriptor(value))
-			) {
-				trustedFunctions.add(fn);
-				changed = true;
-			}
-			fn.parameters.forEach((parameter, index) => {
-				const incoming = calls.get(fn) ?? [];
-				if (
-					ts.isIdentifier(parameter.name) &&
-					incoming.length &&
-					incoming.every((call) => call.arguments[index] && isDescriptor(call.arguments[index]))
-				) {
-					const symbol = symbolOf(parameter.name);
-					if (symbol && !trustedParameters.has(symbol)) {
-						trustedParameters.add(symbol);
-						changed = true;
-					}
-				}
-				if (index !== 0 || !ts.isObjectBindingPattern(parameter.name)) return;
-				for (const binding of parameter.name.elements) {
-					if (!ts.isIdentifier(binding.name)) continue;
-					const key = binding.propertyName?.text ?? binding.name.text;
-					const components = props.get(fn) ?? [];
-					if (
-						!components.length ||
-						incoming.length ||
-						components.some((attributes) => attributes.properties.some(ts.isJsxSpreadAttribute))
-					)
-						continue;
-					const values = components
-						.map(
-							(attributes) =>
-								attributes.properties.find(
-									(attribute) => ts.isJsxAttribute(attribute) && attribute.name.text === key,
-								)?.initializer,
-						)
-						.map((init) => (init && ts.isJsxExpression(init) ? init.expression : undefined));
-					const symbol = symbolOf(binding.name);
-					if (
-						symbol &&
-						!trustedParameters.has(symbol) &&
-						values.every((value) => value && isDescriptor(value))
-					) {
-						trustedParameters.add(symbol);
-						changed = true;
-					}
-					if (
-						symbol &&
-						!trustedCallbacks.has(symbol) &&
-						values.every((value) => {
-							if (!value) return false;
-							const callback = callable(value);
-							return callback && trustedFunctions.has(callback);
-						})
-					) {
-						trustedCallbacks.add(symbol);
-						changed = true;
-					}
-				}
-			});
+	const returnsByFunction = new Map(functions.map((fn) => [fn, returnedExpressions(fn)]));
+	// Same positive fixed point, but new evidence only revisits dependent functions.
+	// An unproved/cyclic input never seeds trust; writes were settled before this queue.
+	for (const fn of functions) enqueue(fn);
+	for (let cursor = 0; cursor < pending.length; cursor++) {
+		const fn = pending[cursor];
+		queued.delete(fn);
+		currentFunction = fn;
+		const returns = returnsByFunction.get(fn);
+		if (
+			!trustedFunctions.has(fn) &&
+			returns.length &&
+			returns.every((value) => isDescriptor(value))
+		) {
+			prove(trustedFunctions, fn);
 		}
+		fn.parameters.forEach((parameter, index) => {
+			const incoming = calls.get(fn) ?? [];
+			if (
+				ts.isIdentifier(parameter.name) &&
+				incoming.length &&
+				incoming.every((call) => call.arguments[index] && isDescriptor(call.arguments[index]))
+			) {
+				const symbol = symbolOf(parameter.name);
+				if (symbol && !trustedParameters.has(symbol)) {
+					prove(trustedParameters, symbol);
+				}
+			}
+			if (index !== 0 || !ts.isObjectBindingPattern(parameter.name)) return;
+			for (const binding of parameter.name.elements) {
+				if (!ts.isIdentifier(binding.name)) continue;
+				const key = binding.propertyName?.text ?? binding.name.text;
+				const components = props.get(fn) ?? [];
+				if (
+					!components.length ||
+					incoming.length ||
+					components.some((attributes) => attributes.properties.some(ts.isJsxSpreadAttribute))
+				)
+					continue;
+				const values = components
+					.map(
+						(attributes) =>
+							attributes.properties.find(
+								(attribute) => ts.isJsxAttribute(attribute) && attribute.name.text === key,
+							)?.initializer,
+					)
+					.map((init) => (init && ts.isJsxExpression(init) ? init.expression : undefined));
+				const symbol = symbolOf(binding.name);
+				if (
+					symbol &&
+					!trustedParameters.has(symbol) &&
+					values.every((value) => value && isDescriptor(value))
+				) {
+					prove(trustedParameters, symbol);
+				}
+				if (
+					symbol &&
+					!trustedCallbacks.has(symbol) &&
+					values.every((value) => {
+						if (!value) return false;
+						const callback = callable(value);
+						return callback && hasFact(trustedFunctions, callback);
+					})
+				) {
+					prove(trustedCallbacks, symbol);
+				}
+			}
+		});
 	}
+	currentFunction = undefined;
+	dependents.clear();
+	pending.length = 0;
 	return { isDescriptor };
 }

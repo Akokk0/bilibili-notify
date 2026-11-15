@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { auditRatchet } from "../ratchet-audit.mjs";
@@ -371,17 +372,17 @@ function loneTemplateExpression(node) {
 /** 这个表达式是不是平台值(规则 1~4,宿主名字先于 2、3;`` `${平台值}` `` 还是平台值)。 */
 export function isPlatformValue(node, names) {
 	const target = unwrap(node);
-	if (names.descriptors?.isDescriptor(target)) return false;
 	if (ts.isIdentifier(target)) {
 		if (names.hosts.has(target.text)) return false;
-		return names.aliases.has(target.text) || endsWithPlatform(target.text);
+		if (!names.aliases.has(target.text) && !endsWithPlatform(target.text)) return false;
+		return !names.descriptors?.isDescriptor(target);
 	}
 	const inner = loneTemplateExpression(target);
 	if (inner !== undefined) return isPlatformValue(inner, names);
 	if (isFallbackChain(target)) {
 		return someFallbackOperand(target, (operand) => isPlatformValue(operand, names));
 	}
-	return isPlatformBase(target);
+	return isPlatformBase(target) && !names.descriptors?.isDescriptor(target);
 }
 
 /**
@@ -514,6 +515,37 @@ const descriptorImport =
 	'import { subscriptionPlatformOf as project } from "./subscription-source";';
 
 describe("verified source descriptor values", () => {
+	it("propagates descriptor evidence through a large helper chain within the existing 5s budget", () => {
+		const helpers = Array.from(
+			{ length: 2500 },
+			(_, index) =>
+				`function layer${index}() { return ${index === 2499 ? "project(id, sources)" : `layer${index + 1}()`}; }`,
+		).join("\n");
+		const started = performance.now();
+		expect(
+			descriptorSample(
+				`${descriptorImport}\n${helpers}\nconst platform = layer0(); renderLabel(platform);`,
+			),
+		).toEqual([]);
+		expect(performance.now() - started).toBeLessThan(5000);
+	});
+
+	it("keeps mutually recursive helpers without a verified origin untrusted", () => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} function first() { return second(); } function second() { return first(); } const platform = first(); renderLabel(platform);`,
+			),
+		).toHaveLength(1);
+	});
+
+	it("keeps mixed helper inputs untrusted after another helper becomes a verified descriptor", () => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} function forward(value) { return value; } function projected() { return project(id, sources); } function show(platform) { renderLabel(platform); } const platform = forward(projected()); show(platform); show(conn.platform);`,
+			),
+		).toHaveLength(2);
+	});
+
 	it("recognizes a real import and immutable aliases, including a verified parameter", () => {
 		expect(
 			descriptorSample(
