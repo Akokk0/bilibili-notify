@@ -42,7 +42,7 @@ jobs:
       matrix:
         include:
           - id: mac-arm64
-            runner: macos-14
+            runner: macos-15
           - id: win-x64
             runner: windows-latest
 

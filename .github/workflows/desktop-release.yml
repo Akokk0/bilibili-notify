@@ -50,7 +50,7 @@ jobs:
       matrix:
         include:
           - id: mac-arm64
-            runner: macos-14
+            runner: macos-15
             bundles: dmg,app
           - id: win-x64
             runner: windows-latest
