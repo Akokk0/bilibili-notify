@@ -13,3 +13,33 @@ export function cleanMarketplaceLocales(raw) {
 	}
 	return locales.length > 0 ? Object.fromEntries(locales) : undefined;
 }
+
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+	EXTENSION_LOCALE_FILE_MAX_BYTES,
+	EXTENSION_PACKAGE_LOCALES,
+} from "./extension-package-files.mjs";
+
+/** 从实际入包的语言文件取字；marketplace.notes 是普通译文键，不扩展 $manifest。 */
+export async function readMarketplaceLocales(dist) {
+	const locales = {};
+	for (const locale of EXTENSION_PACKAGE_LOCALES) {
+		let bytes;
+		try {
+			bytes = await readFile(join(dist, "locales", `${locale}.json`));
+		} catch (error) {
+			if (error.code === "ENOENT") continue;
+			throw error;
+		}
+		if (bytes.length > EXTENSION_LOCALE_FILE_MAX_BYTES)
+			throw new Error(`locales/${locale}.json exceeds the locale file limit.`);
+		const file = JSON.parse(bytes.toString("utf8"));
+		locales[locale] = {
+			name: file?.$manifest?.name,
+			description: file?.$manifest?.description,
+			notes: file?.["marketplace.notes"],
+		};
+	}
+	return cleanMarketplaceLocales(locales);
+}

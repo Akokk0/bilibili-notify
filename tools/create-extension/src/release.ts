@@ -8,6 +8,7 @@ import {
 	MARKETPLACE_RELEASE_TAG,
 	MarketplaceEntrySchema,
 } from "@bilibili-notify/internal";
+import { readMarketplaceLocales } from "../../../scripts/extension-marketplace-locales.mjs";
 import { checkProjectCommits } from "./commits";
 import { GithubApi } from "./github";
 import { nextMarketplace, readMarketplace, readProject } from "./marketplace";
@@ -78,6 +79,7 @@ export async function releaseProject(args: string[], root = process.cwd()) {
 			size: artifact.size,
 		},
 		releaseUrl: `https://github.com/${repository}/releases/tag/${tag}`,
+		locales: await readMarketplaceLocales(join(root, "dist")),
 	});
 	await writeFile(
 		join(root, "artifacts/marketplace-entry.json"),

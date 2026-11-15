@@ -59,6 +59,18 @@ describe("marketplaceEntryOf", () => {
 		expect(marketplaceEntryOf(bare, release).description).toBe("");
 	});
 
+	it("构建产物译文进入待发布条目，不覆盖清单原文或携带身份字段", () => {
+		const entry = marketplaceEntryOf(manifest, release, {
+			en: { name: "Bot bridge", description: "Connect a bot", notes: "First release", id: "wrong" },
+			ja: { name: 7, description: "ボット連携", notes: "" },
+		});
+		expect(entry.name).toBe("机器人框架桥接");
+		expect(entry.locales).toEqual({
+			en: { name: "Bot bridge", description: "Connect a bot", notes: "First release" },
+			ja: { description: "ボット連携" },
+		});
+	});
+
 	it("版本取的是这一趟发布的那个,不是清单里那个", () => {
 		// 两者由 assert-extension-tag.sh 保证一致;这一条只是钉住「谁说了算」。
 		expect(marketplaceEntryOf(manifest, { ...release, version: "0.1.0" })).toMatchObject({

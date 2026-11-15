@@ -14,6 +14,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readArg } from "./cli-args.mjs";
+import {
+	cleanMarketplaceLocales,
+	readMarketplaceLocales,
+} from "./extension-marketplace-locales.mjs";
 import { extensionPackageUrl, extensionReleaseUrl } from "./release-urls.mjs";
 
 /**
@@ -22,9 +26,11 @@ import { extensionPackageUrl, extensionReleaseUrl } from "./release-urls.mjs";
  * @param {{ version: string, prerelease: boolean, repo: string, sha256: string, size: number, notes?: string }} release
  *   这一趟发布的那几个数。`version` 与清单里那个由 `assert-extension-tag.sh` 保证一致,
  *   所以这里不再判一遍。
+ * @param {Record<string, unknown>} [locales] 实际入包的各语言展示文字。
  */
-export function marketplaceEntryOf(manifest, release) {
+export function marketplaceEntryOf(manifest, release, locales) {
 	const { id } = manifest;
+	const translated = cleanMarketplaceLocales(locales);
 	return {
 		id,
 		name: manifest.name,
@@ -43,6 +49,7 @@ export function marketplaceEntryOf(manifest, release) {
 		},
 		releaseUrl: extensionReleaseUrl(release.repo, id, release.version),
 		notes: release.notes,
+		...(translated ? { locales: translated } : {}),
 	};
 }
 
@@ -74,7 +81,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 	// 指不着同一个东西了。
 	if (manifest.id !== id)
 		throw new Error(`${manifestPath} 里的 id 是 ${manifest.id},要发的是 ${id}`);
-	const entry = marketplaceEntryOf(manifest, releaseFromEnv(process.env));
+	const entry = marketplaceEntryOf(
+		manifest,
+		releaseFromEnv(process.env),
+		await readMarketplaceLocales(join(dirname(manifestPath), "dist")),
+	);
 	const out = resolve(readArg("out", "dist/entry.json"));
 	await mkdir(dirname(out), { recursive: true });
 	await writeFile(out, `${JSON.stringify(entry, null, 2)}\n`, "utf8");

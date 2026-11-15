@@ -164,6 +164,19 @@ describe("生成工程的公开发布命令", () => {
 
 	it("dry-run实际跑全部vp门禁并生成可复查条目，不请求GitHub或创建发行", async () => {
 		const cwd = await project("dry-run");
+		await mkdir(join(cwd, "locales"));
+		await writeFile(
+			join(cwd, "locales/en.json"),
+			`${JSON.stringify(
+				{
+					$manifest: { name: "Demo source", description: "A localized subscription source" },
+					"marketplace.notes": "First localized release",
+				},
+				null,
+				2,
+			)}\n`,
+		);
+		run("vp", ["run", "format"], cwd);
 		const { stdout } = await release(cwd, ["--dry-run"], { GITHUB_REPOSITORY: "Fork/Tools" });
 		expect(JSON.parse(stdout.trim().split("\n").at(-1))).toMatchObject({
 			dryRun: true,
@@ -174,6 +187,13 @@ describe("生成工程的公开发布命令", () => {
 		).toMatchObject({
 			id: "example.demo",
 			version: "0.1.0",
+			locales: {
+				en: {
+					name: "Demo source",
+					description: "A localized subscription source",
+					notes: "First localized release",
+				},
+			},
 			package: {
 				url: "https://github.com/fork/tools/releases/download/v0.1.0/example.demo-0.1.0.zip",
 				sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
