@@ -25,6 +25,11 @@
 **/*.md
 !apps/CHANGELOG.md
 !apps/web/src/pages/guide/content/*.md
+# SDK 的 build 会装配公开包，说明与 skill 也是必需输入。
+!packages/extension/README.md
+!packages/extension/DEVELOPMENT.md
+!packages/extension/AGENT_GUIDE.md
+!packages/extension/skills/**/*.md
 .bn-design
 
 # Local-only state and secrets from previous runs.
