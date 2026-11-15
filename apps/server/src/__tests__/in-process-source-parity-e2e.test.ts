@@ -875,6 +875,20 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				),
 			);
 		}
+		// P39/P40 显式驱动资料刷新；墙上整十分钟不能穿插进 P37 的工具调用断言。
+		const defaults = makeDefaultGlobalSettings();
+		const tomorrow = Object.fromEntries(
+			new Intl.DateTimeFormat("en-US", {
+				timeZone: defaults.timezone,
+				hourCycle: "h23",
+				minute: "numeric",
+				hour: "numeric",
+				day: "numeric",
+				month: "numeric",
+			})
+				.formatToParts(new Date(Date.now() + 24 * 60 * 60 * 1_000))
+				.map(({ type, value }) => [type, value]),
+		);
 		await okRes(
 			await seedApi(
 				"/api/settings",
@@ -882,7 +896,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 					{
 						core: {
 							master: { targetId: ID.master },
-							ai: { ...aiSettings(makeDefaultGlobalSettings().ai), enabled: false },
+							profileRefreshCron: `${tomorrow.minute} ${tomorrow.hour} ${tomorrow.day} ${tomorrow.month} *`,
+							ai: { ...aiSettings(defaults.ai), enabled: false },
 						},
 					},
 					"PATCH",
