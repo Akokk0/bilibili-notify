@@ -85,7 +85,7 @@ jobs:
       - name: Build the extension
         env:
           ID: ${{ steps.ext.outputs.id }}
-        run: vp run -F "@bilibili-notify/extension-${ID}" build
+        run: vp run -F "@bilibili-notify/extension-${ID}..." build
 
       # 产出的 path / sha256 / size 供后面上传 release 与并进索引用;资产名怎么定见脚本头。
       - name: Pack the extension package
