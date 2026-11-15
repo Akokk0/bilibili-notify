@@ -1522,6 +1522,7 @@ mod tests {
         let directory = LogDirectory::new();
         let error = "OS error 13: 权限不足\ncause=EACCES";
         let cases = [
+            #[cfg(target_os = "macos")]
             (LauncherLogEvent::DockReopen, "从 Dock 重新打开窗口。", None),
             (
                 LauncherLogEvent::TrayFailed { error },

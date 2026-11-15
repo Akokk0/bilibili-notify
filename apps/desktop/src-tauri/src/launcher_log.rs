@@ -8,6 +8,7 @@ use std::{
 };
 
 pub(super) enum LauncherLogEvent<'a> {
+    #[cfg(target_os = "macos")]
     DockReopen,
     Setup,
     TrayReady,
@@ -74,6 +75,7 @@ fn redact_desktop_token(value: &str) -> String {
 impl LauncherLogEvent<'_> {
     fn text(&self) -> String {
         let key = match self {
+            #[cfg(target_os = "macos")]
             Self::DockReopen => "log.desktop.dockReopen",
             Self::Setup => "log.desktop.setup",
             Self::TrayReady => "log.desktop.trayReady",
