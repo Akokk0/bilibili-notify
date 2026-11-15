@@ -188,9 +188,13 @@ docker build -f apps/Dockerfile -t bilibili-notify:dev .
 
 根目录的`npm-registry-client`别名固定npm 11.21.0，仅作为发行客户端，经`vp exec npm`执行；包管理仍由vp调用pnpm。该版本覆盖可信发布的dist-tag支持，需分别允许直接发布和管理标签，见[npm官方说明](https://docs.npmjs.com/trusted-publishers/#managing-dist-tags-with-trusted-publishing)。
 
-实际发行前由主人确认版本、组织权限和账号授权。本机registry夹具不证明真实npm权限。首次包尚未建立时，应在获批的首发中先建立实际包，再配置可信发布；npm的trust管理要求包已存在，见[官方前置条件](https://github.com/npm/cli/blob/latest/docs/lib/content/commands/npm-trust.md#prerequisites)。无需发布占位包，不能把0.0.0-dev构建壳发布出去。
+实际发行前由主人确认版本、组织权限和账号授权。本机registry夹具不证明真实npm权限。首次包尚未建立时，应在获批的首发中先建立实际包，再配置可信发布；npm的trust管理要求包已存在，见[官方前置条件](https://github.com/npm/cli/blob/latest/docs/lib/content/commands/npm-trust.md#prerequisites)。不能把0.0.0-dev构建壳发布出去。
 
-可信发布绑定`@bilibili-notify/bn`、GitHub仓库`Akokk0/bilibili-notify`和工作流文件名`npm-release.yml`，允许`npm publish`及`npm dist-tag`两项动作。本体流水线使用OIDC，不读取长期npm发布令牌。配置应靠近实际发行时完成，真实OIDC与npm安装、宿主启动仍在获批发布后验收。
+首发可按主人批准的暂存方式执行：发行前将仓库 Actions 变量 `BN_NPM_BOOTSTRAP_TAG` 精确设为本次 `v<VERSION>`，并核对 `NPM_TOKEN` 具备该包的暂存权限。只有匹配 tag 的发布步骤读取该凭据，沿同一实际 tgz 校验后暂存；其他 tag 仍使用可信发布，手动 dispatch 仍只能预检。npm 会额外生成公开的 `0.0.0-stage` 占位版，这项额外公开内容须在首发决定中确认。
+
+作业输出 `awaitingApproval: true` 时，下载暂存归档与原 Actions 候选核对，再请主人在 npm 的 **Staged Packages** 批准。重跑原发布作业复用同一归档；待批准时不重复提交，公开摘要匹配后才推进渠道。同号的公开或暂存内容冲突均拒绝覆盖。
+
+可信发布绑定`@bilibili-notify/bn`、GitHub仓库`Akokk0/bilibili-notify`和工作流文件名`npm-release.yml`，允许`npm publish`及`npm dist-tag`两项动作。首发完成后删除 `BN_NPM_BOOTSTRAP_TAG`；常规本体发行使用 OIDC，不读取长期 npm 发布令牌。配置应靠近实际发行时完成，真实OIDC与npm安装、宿主启动仍在获批发布后验收。
 
 npm同名同版本发布后不能复用，即使unpublish也一样；发错后改发新版本，不能照其他渠道的删tag重打方式复用该号，见[npm发布规则](https://docs.npmjs.com/cli/v11/commands/npm-publish/)。
 

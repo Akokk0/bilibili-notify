@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -159,6 +159,35 @@ globalThis.setTimeout = (callback, delay, ...args) => {
 			channel: "alpha",
 		});
 		expect(registry.state.requests.filter((item) => item.method !== "GET")).toEqual([]);
+	}, 30_000);
+	it("首发暂存精确归档，待批准时不重复提交，批准后才晋升alpha", async () => {
+		const fixture = await candidate("first-stage");
+		const result = await release(fixture, ["--stage"]);
+		expect(JSON.parse(result.stdout.trim().split("\n").at(-1))).toMatchObject({
+			dryRun: false,
+			awaitingApproval: true,
+		});
+		expect(registry.state.staged).toHaveLength(1);
+		expect(registry.state.staged[0]).toMatchObject({
+			packageName: "@bilibili-notify/bn",
+			version: fixture.meta.version,
+			tag: `bn-release-${fixture.meta.version}`,
+			access: "public",
+		});
+		expect(registry.state.staged[0].tarball).toEqual(fixture.bytes);
+		expect(registry.state.tags.alpha).toBeUndefined();
+		await release(fixture, ["--stage"]);
+		expect(registry.state.staged).toHaveLength(1);
+		expect(registry.state.requests.filter(({ method }) => method === "POST")).toHaveLength(1);
+		registry.approveStage("@bilibili-notify/bn");
+		const approved = await release(fixture, ["--stage"]);
+		expect(JSON.parse(approved.stdout.trim().split("\n").at(-1))).toMatchObject({
+			awaitingApproval: false,
+		});
+		expect(registry.state.tags.alpha).toBe(fixture.meta.version);
+		expect(registry.state.versions[fixture.meta.version].dist.integrity).toBe(
+			fixture.meta.integrity,
+		);
 	}, 30_000);
 	it("tag不一致或tgz被改动时，在任何registry请求之前拒绝", async () => {
 		const fixture = await candidate("invalid-local");
@@ -423,5 +452,46 @@ globalThis.setTimeout = (callback, delay, ...args) => {
 		});
 		expect(registry.state.tags.latest).toBe("1.0.0");
 		expect(registry.state.tags.alpha).toBeUndefined();
+	}, 30_000);
+	it("Actions只在明确指定的首发tag暂存，凭据用后清理，其他tag保持直接发布", async () => {
+		const workflow = parseYaml(
+			await readFile(join(REPO, ".github/workflows/npm-release.yml"), "utf8"),
+		);
+		const publish = workflow.jobs.publish.steps.find((step) => step.id === "publish");
+		expect(publish.env.BOOTSTRAP_TAG).toMatch(/^\$\{\{ vars\.BN_NPM_BOOTSTRAP_TAG \}\}$/);
+		expect(publish.env.NODE_AUTH_TOKEN).toContain("vars.BN_NPM_BOOTSTRAP_TAG == github.ref_name");
+		expect(publish.env.NODE_AUTH_TOKEN).toContain("secrets.NPM_TOKEN");
+		expect(workflow.jobs.build.steps.some((step) => step.env?.NODE_AUTH_TOKEN)).toBe(false);
+		const fixture = await candidate("workflow-first-stage");
+		const temporary = await mkdtemp(join(root, "runner-"));
+		const env = {
+			...process.env,
+			TAG: `v${fixture.meta.version}`,
+			BOOTSTRAP_TAG: `v${fixture.meta.version}`,
+			PACKAGE_DIRECTORY: fixture.directory,
+			NPM_REGISTRY: registry.endpoint,
+			NPM_CONFIG_USERCONFIG: join(root, "npmrc"),
+			RUNNER_TEMP: temporary,
+			NODE_AUTH_TOKEN: "local-fixture-token",
+		};
+		const run = (extra = {}) =>
+			exec("bash", ["-e", "-o", "pipefail", "-c", publish.run], {
+				cwd: REPO,
+				env: { ...env, ...extra },
+				timeout: 30_000,
+			});
+		await expect(run({ NODE_AUTH_TOKEN: "" })).rejects.toThrow(/NPM_TOKEN/);
+		expect(registry.state.requests).toEqual([]);
+		const { stdout, stderr } = await run();
+		expect(stdout + stderr).not.toContain("local-fixture-token");
+		expect(await readdir(temporary)).toEqual([]);
+		expect(registry.state.staged.map(({ packageName }) => packageName)).toEqual([
+			"@bilibili-notify/bn",
+		]);
+		expect(registry.state.tags.alpha).toBeUndefined();
+		registry.reset();
+		await run({ BOOTSTRAP_TAG: "v0.9.0", NODE_AUTH_TOKEN: "" });
+		expect(registry.state.staged).toEqual([]);
+		expect(registry.state.tags.alpha).toBe(fixture.meta.version);
 	}, 30_000);
 });

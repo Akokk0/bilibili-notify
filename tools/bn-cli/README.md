@@ -1,6 +1,6 @@
 # @bilibili-notify/bn
 
-BN正式发行渠道，包内自带正式和开发宿主及面板；首次启动无需访问GitHub。包尚未发布；下面是发行后的入口，alpha期间使用`@alpha`，发布到latest后可省略。需要Node 24.15.0或更高版本，不需要克隆或构建BN。
+BN正式发行渠道，包内自带正式和开发宿主及面板；首次启动无需访问GitHub。alpha期间使用`@alpha`，发布到latest后可省略。需要Node 24.15.0或更高版本，不需要克隆或构建BN。
 
 ```sh
 npx @bilibili-notify/bn@alpha web
@@ -30,5 +30,6 @@ npm包不含Node或浏览器；公开依赖随npm正常安装，浏览器使用�
 - 普通workspace build只生成CLI编译壳，避免每次开发构建重复打宿主；它不能当成完整发行包。发布守卫拒绝占位版本、载荷缺失、版本不一致及大小/摘要错误。
 - 主程序tag由发行流程确认后同步四种渠道；npm预发布走`alpha`、正式版走`latest`。源文件保持`0.0.0-dev`，CI临时同步版本。`npm-release.yml`复用门禁，只给tag发布作业可信发布权限；dev上的手动dry-run只生成候选。
 - `vp run release:bn-package --directory <候选目录> --tag v<VERSION> --dry-run`核对完整tgz且不写registry；同版本重跑先核对内容，旧tag不回退渠道。实际上传、首发及npm组织的可信发布配置见主仓`docs/agents/build-release.md`。
+- 首次建包经主人确认后，Actions 可对精确指定的 tag 使用暂存；npm 网页批准后重跑原作业，核对同一归档再推进渠道。常规版本仍使用可信发布，首发凭据不用于其他 tag。
 
 业务核心仍为私有workspace包，不成为启动器的npm依赖。源码加载器作为公开依赖安装，保留自己的原生组件与运行资源；正式宿主仍自包含。具体定案见主仓ADR-0045、ADR-0046。

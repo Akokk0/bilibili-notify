@@ -133,4 +133,7 @@ jobs:
         id: publish
         env:
           TAG: ${{ github.ref_name }}
-        run: vp run release:bn-package --directory "$PACKAGE_DIRECTORY" --tag "$TAG" --registry "$NPM_REGISTRY" --publish
+          # 首包暂存须由仓库变量精确指定 tag，其他版本始终使用可信发布。
+          BOOTSTRAP_TAG: ${{ vars.BN_NPM_BOOTSTRAP_TAG }}
+          NODE_AUTH_TOKEN: ${{ vars.BN_NPM_BOOTSTRAP_TAG == github.ref_name && secrets.NPM_TOKEN || '' }}
+        run: bash .github/scripts/npm-release/publish.sh

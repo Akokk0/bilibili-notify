@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { verifyBnRuntimes } from "./assemble-bn-package.mjs";
-import { publishNpmCandidate } from "./npm-publish.mjs";
+import { releaseNpmCandidates } from "./npm-publish.mjs";
 
 const exec = promisify(execFile);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -101,9 +101,11 @@ async function main() {
 			registry: { type: "string", default: "https://registry.npmjs.org/" },
 			"dry-run": { type: "boolean" },
 			publish: { type: "boolean" },
+			stage: { type: "boolean" },
 		},
 	});
-	if (values.publish && values["dry-run"]) throw new Error("Choose --dry-run or --publish.");
+	if ([values.publish, values.stage, values["dry-run"]].filter(Boolean).length > 1)
+		throw new Error("Choose one of --dry-run, --publish or --stage.");
 	const tag = values.tag ?? process.env.GITHUB_REF_NAME;
 	await command("bash", [".github/scripts/shared/assert-ref-matches-app-version.sh"], {
 		env: { ...process.env, GITHUB_REF_NAME: tag ?? "" },
@@ -125,10 +127,14 @@ async function main() {
 	const version = tag.slice(1);
 	const candidate = await candidateOf(resolve(values.directory), version, registry.href);
 	const channel = version.includes("-") ? "alpha" : "latest";
-	if (values.publish) await publishNpmCandidate(candidate, channel, registry.href);
+	const dryRun = !values.publish && !values.stage;
+	const awaitingApproval =
+		!dryRun &&
+		(await releaseNpmCandidates([{ ...candidate, channel }], registry.href, values.stage));
 	console.log(
 		JSON.stringify({
-			dryRun: !values.publish,
+			dryRun,
+			awaitingApproval,
 			name: NAME,
 			version,
 			channel,
