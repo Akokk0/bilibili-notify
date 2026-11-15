@@ -92,7 +92,7 @@ describe("GET /api/adapters", () => {
 		return { read, dispose: () => runtime.dispose() };
 	}
 
-	it("内置三个各带自己的脸(全名、短名、颜色),不带图标,连接字段由校验规则导出", async () => {
+	it("内置三个各带自己的脸(全名、短名、颜色和图标),连接字段由校验规则导出", async () => {
 		const { read, dispose } = await boot({ adapters: builtinAdapterStubs() });
 		const { status, body } = await read();
 		await dispose();
@@ -105,6 +105,7 @@ describe("GET /api/adapters", () => {
 					label: "OneBot v11",
 					shortLabel: "OneBot",
 					color: "#3b82f6",
+					icon: "qq",
 					settingsFields: expect.arrayContaining([
 						{
 							key: "transport",
@@ -129,6 +130,7 @@ describe("GET /api/adapters", () => {
 					label: "QQ 官方机器人",
 					shortLabel: "QQ官方",
 					color: "#14b8a6",
+					icon: "qq",
 					settingsFields: expect.arrayContaining([
 						expect.objectContaining({
 							key: "appSecret",
@@ -146,6 +148,7 @@ describe("GET /api/adapters", () => {
 					label: "Webhook",
 					shortLabel: "Webhook",
 					color: "#94a3b8",
+					icon: "link",
 					settingsFields: expect.arrayContaining([
 						expect.objectContaining({ key: "headers", type: "record", default: {} }),
 					]),
