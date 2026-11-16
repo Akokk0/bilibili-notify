@@ -1596,5 +1596,6 @@
 	"settings.problem.listSeparator": "；",
 	"cardSkin.svgIdUser": "「{id}」",
 	"cardSkin.svgIdUserSeparator": "、",
-	"cardSkin.usedBySeparator": "，"
+	"cardSkin.usedBySeparator": "，",
+	"stats.invalidFollowersGrain": "粉丝曲线粒度必须是小时或日。"
 }

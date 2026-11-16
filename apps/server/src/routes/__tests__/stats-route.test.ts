@@ -8,8 +8,12 @@
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { createFollowersStore } from "../../followers/store.js";
 import { requestErrorHandler } from "../respond-failure.js";
 import { createStatsRoute, roastOverviewFetcher } from "../stats.js";
 import type { RouteDeps } from "../types.js";
@@ -83,6 +87,153 @@ function makeDeps(opts: StubOpts = {}) {
 }
 
 describe("GET /overview — 缓存键覆盖所有会变的输入", () => {
+	it("跨整点与零点立即更新小时轴，不复用仍在 TTL 内的旧轴", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			const { deps } = makeDeps();
+			const app = createStatsRoute(deps);
+			vi.setSystemTime(new Date("2026-05-16T23:59:59.990Z"));
+			const before = (await (
+				await app.request("/overview?days=1&followersGrain=hour")
+			).json()) as any;
+			vi.setSystemTime(new Date("2026-05-17T00:00:00.010Z"));
+			const after = (await (
+				await app.request("/overview?days=1&followersGrain=hour")
+			).json()) as any;
+			expect(before.followersTrend.timestamps).toHaveLength(24);
+			expect(after.followersTrend.timestamps).toEqual(["2026-05-17T00:00:00.000Z"]);
+			expect(after.followersTrend.rows[0].values).toEqual([null]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("30／90 日复用已压缩的小时记录，按订阅 ID 关联拓展且窗口上限仍为 90 日", async () => {
+		const dataRoot = await mkdtemp(join(tmpdir(), "bn-stats-hourly-"));
+		const { deps } = makeDeps();
+		const fans = createFollowersStore({ dataRoot, logger: deps.runtime.serviceCtx.logger });
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-06-30T12:00:00Z"));
+		try {
+			deps.runtime.fansStore = fans;
+			vi.spyOn(deps.store, "getSubscriptions").mockReturnValue([
+				{
+					id: "s1",
+					identity: { sourceKey: "douyin", externalId: "long-id" },
+					enabled: false,
+				} as never,
+			]);
+			for (const [sampledAt, followers] of [
+				["2026-06-10T00:10:00Z", 90],
+				["2026-06-10T00:50:00Z", 100],
+				["2026-06-10T01:20:00Z", 100],
+				["2026-06-10T02:05:00Z", 100],
+				["2026-06-10T03:00:00Z", 105],
+			] as const)
+				await fans.append("s1", { sampledAt, followers });
+			await fans.compact("s1", new Date());
+			const app = createStatsRoute(deps);
+			for (const days of [30, 90, 999]) {
+				const body = (await (
+					await app.request(`/overview?days=${days}&tz=0&followersGrain=hour`)
+				).json()) as any;
+				expect(body.days).toBe(Math.min(days, 90));
+				const trend = body.followersTrend;
+				expect(trend.timestamps.length).toBeLessThanOrEqual(2160);
+				const index = trend.timestamps.indexOf("2026-06-10T00:00:00.000Z");
+				expect(index).toBeGreaterThanOrEqual(0);
+				expect(trend.rows[0].subscriptionId).toBe("s1");
+				expect(trend.rows[0].values.slice(index, index + 5)).toEqual([100, 100, 100, 105, null]);
+				expect(body.rows[0].identity.sourceKey).toBe("douyin");
+			}
+		} finally {
+			vi.useRealTimers();
+			await fans.close();
+			await rm(dataRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("拒绝不支持的粉丝粒度，不读仓或默默回退到日线", async () => {
+		const { deps } = makeDeps();
+		const samples = vi.spyOn(deps.runtime.fansStore, "listSamplesSince");
+		const response = await createStatsRoute(deps).request("/overview?followersGrain=minute");
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({
+			code: "invalid",
+			message: "粉丝曲线粒度必须是小时或日。",
+		});
+		expect(samples).not.toHaveBeenCalled();
+	});
+
+	it("小时和日曲线缓存隔离，统计关闭后仍能读取留存样本", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-05-16T10:10:00Z"));
+		try {
+			const { deps } = makeDeps({ statsEnabled: false });
+			const samples = vi.spyOn(deps.runtime.fansStore, "listSamplesSince").mockResolvedValue([
+				{ sampledAt: "2026-05-15T23:00:00Z", followers: 80 },
+				{ sampledAt: "2026-05-16T09:00:00Z", followers: 90 },
+				{ sampledAt: "2026-05-16T10:00:00Z", followers: 100 },
+			]);
+			const app = createStatsRoute(deps);
+			const hourly = (await (
+				await app.request("/overview?days=7&tz=0&followersGrain=hour")
+			).json()) as any;
+			const daily = (await (
+				await app.request("/overview?days=7&tz=0&followersGrain=day")
+			).json()) as any;
+			expect(daily.followersTrend).toEqual({
+				grain: "day",
+				timestamps: [10, 11, 12, 13, 14, 15, 16].map((day) => `2026-05-${day}T00:00:00.000Z`),
+				rows: [{ subscriptionId: "s1", values: [null, null, null, null, null, 80, 100] }],
+			});
+			expect(hourly.followersTrend.timestamps).toHaveLength(155);
+			expect(hourly.followersTrend.rows[0].values.slice(-3)).toEqual([null, 90, 100]);
+			await app.request("/overview?days=7&tz=0&followersGrain=hour");
+			expect(samples).toHaveBeenCalledTimes(2);
+			expect(daily.rows).toEqual(hourly.rows);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("小时粉丝曲线使用独立时间轴，按本地整点取最后有效采样并保留缺测", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-05-16T00:50:00Z"));
+		try {
+			const { deps } = makeDeps();
+			vi.spyOn(deps.runtime.fansStore, "listSamplesSince").mockResolvedValue([
+				{ sampledAt: "2026-05-15T18:55:00Z", followers: 120 },
+				{ sampledAt: "2026-05-15T18:20:00Z", followers: 110 },
+				{ sampledAt: "2026-05-15T20:16:00Z", followers: 0 },
+				{ sampledAt: "2026-05-16T00:40:00Z", followers: 150 },
+				{ sampledAt: "2026-05-16T00:55:00Z", followers: 999 },
+				{ sampledAt: "invalid", followers: 300 },
+			]);
+			const app = createStatsRoute(deps);
+			const daily = (await (await app.request("/overview?days=1&tz=-345")).json()) as any;
+			const hourly = (await (
+				await app.request("/overview?days=1&tz=-345&followersGrain=hour")
+			).json()) as any;
+			expect(hourly.followersTrend).toEqual({
+				grain: "hour",
+				timestamps: [
+					"2026-05-15T18:15:00.000Z",
+					"2026-05-15T19:15:00.000Z",
+					"2026-05-15T20:15:00.000Z",
+					"2026-05-15T21:15:00.000Z",
+					"2026-05-15T22:15:00.000Z",
+					"2026-05-15T23:15:00.000Z",
+					"2026-05-16T00:15:00.000Z",
+				],
+				rows: [{ subscriptionId: "s1", values: [120, null, 0, null, null, null, 150] }],
+			});
+			expect(hourly.rows).toEqual(daily.rows);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("在播状态翻转后立刻反映,不吃 30s 缓存", async () => {
 		// 缓存键原本只有 days:tz:订阅集合,而响应体里还嵌着引擎的在播状态。于是 UP
 		// 一开播,统计页最长 30 秒仍报 live:false —— 同一个页面的「正在直播」面板走

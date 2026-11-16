@@ -1596,5 +1596,6 @@
 	"service.routes.test-result.text.2": "此平台不支援連線探測。",
 	"service.routes.test-result.text.3": "連線探測未通過，對端未提供原因。",
 	"service.push.dispatch.text.1": "連線{value0}",
-	"service.push.target-dispatcher.text.1": "此連線不提供目標位址候選項目。"
+	"service.push.target-dispatcher.text.1": "此連線不提供目標位址候選項目。",
+	"stats.invalidFollowersGrain": "粉絲曲線的彙整單位必須是小時或日。"
 }

@@ -1014,10 +1014,22 @@ export interface StatsRoastRunNowResponse {
 	outcome: StatsRoastRunResult;
 }
 
+export type FollowersGrain = "hour" | "day";
+
+/** 粉丝总量曲线的独立时间轴;不改变其他图表使用的每日序列。 */
+export interface FollowersTrend {
+	grain: FollowersGrain;
+	/** 客户端本地时间桶的起点,以 UTC ISO 时刻返回。 */
+	timestamps: string[];
+	rows: Array<{ subscriptionId: string; values: Array<number | null> }>;
+}
+
 export interface StatsOverviewResponse {
 	/** 实际使用的窗口天数(服务端会 clamp)。 */
 	days: number;
 	rows: UpStatsRow[];
+	/** 只在请求 followersGrain 时附带;省略参数的既有调用保持原来的响应。 */
+	followersTrend?: FollowersTrend;
 }
 
 // ---- /api/stats/followers -------------------------------------------------------------

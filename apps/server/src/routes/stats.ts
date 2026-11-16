@@ -1,4 +1,5 @@
 import type {
+	FollowersGrain,
 	StatsOverviewResponse,
 	StatsRoastPushResponse,
 	StatsRoastResponse,
@@ -23,6 +24,7 @@ import {
 	countPosts,
 	dailyActivityCounts,
 	dailyFansSeries,
+	followersTrend,
 	recordingDays,
 	summarizeLiveSessions,
 	windowSinceIso,
@@ -39,7 +41,7 @@ import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 
 /**
- * `GET /api/stats/overview?days=30&tz=-480` —— 数据统计 Tab 的唯一数据源。
+ * `GET /api/stats/overview?days=30&tz=-480&followersGrain=hour` —— 数据统计 Tab 的唯一数据源。
  *
  * 一次性返回每位订阅 UP 的完整行(含每日净增序列),前端的对比表、KPI、
  * 热力图、雷达、单 UP 钻取全部由它派生 —— 不做 per-UP 的第二个端点,免得
@@ -54,8 +56,8 @@ import type { RouteDeps } from "./types.js";
 const MIN_DAYS = ROAST_MIN_DAYS;
 const MAX_DAYS = ROAST_MAX_DAYS;
 /**
- * overview 结果的短 TTL 缓存。fans 采样每 ~2min 才动一次,而单次 overview 要
- * 逐 UP 流式扫 N 天的 jsonl(30 天 × 2min × 10 个 UP ≈ 20 万行),不缓存的话
+ * overview 结果的短 TTL 缓存。fans 采样随资料刷新更新(默认每 10 分钟),单次 overview 要
+ * 逐订阅流式扫 N 天的 jsonl,不缓存的话
  * 用户在页面上切一下时间范围就会把磁盘扫穿。TTL 取 30s:比采样周期短,所以
  * 用户永远看不到「明明刷新了却还是旧数」。
  */
@@ -63,7 +65,7 @@ const CACHE_TTL_MS = 30_000;
 /**
  * 缓存条目数上限。
  *
- * 键是 `days:tz`,而 days ∈ 1..90、tz ∈ ±840,组合空间约 15 万种,每份都装着
+ * 键包含窗口、时区、曲线粒度与当前时间桶。参数组合很多,每份都装着
  * 全部 UP 的整段序列。只靠 TTL 不设上限的话,换着参数刷就能在 30s 内把它们
  * 全塞进来 —— 独立端 Docker 镜像的堆上限只有 512MB,顶得爆。
  *
@@ -116,6 +118,7 @@ function sumTail(series: Array<number | null>, n: number): number | null {
 export type StatsOverviewReader = (
 	days: number,
 	tzOffsetMin: number,
+	followersGrain?: FollowersGrain,
 ) => Promise<StatsOverviewResponse>;
 
 /**
@@ -140,8 +143,9 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 	/** 作废一次加一。算的时候记下起点的代数,写缓存前对不上就不写。 */
 	let epoch = 0;
 
-	const read: StatsOverviewReader = async (days, tzOffsetMin) => {
+	const read: StatsOverviewReader = async (days, tzOffsetMin, followersGrain) => {
 		const startedEpoch = epoch;
+		const now = new Date();
 		// 两支订阅都列(ADR-0020):停用的照样列 —— 统计页看的是「他这段时间做了什么」;拓展没在跑的
 		// 也照样列,它仍是一条订阅。行的顺序跟着订阅列表走。
 		const subs = deps.store.getSubscriptions();
@@ -176,7 +180,10 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 			.sort()
 			.join(",");
 		const fansKey = fansNow.map((v) => v ?? "").join(",");
-		const key = `${days}:${tzOffsetMin}:${subs.map((s) => s.id).join(",")}|${liveKey}|${fansKey}`;
+		const timeBucket = Math.floor(
+			(now.getTime() - tzOffsetMin * 60_000) / (followersGrain === "hour" ? 3_600_000 : 86_400_000),
+		);
+		const key = `${days}:${tzOffsetMin}:${followersGrain ?? ""}:${timeBucket}:${subs.map((s) => s.id).join(",")}|${liveKey}|${fansKey}`;
 
 		const hit = cache.get(key);
 		if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
@@ -186,7 +193,7 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 		// 窗口起点对齐**本地日边界**,与页面上按本地日分桶的每一条序列同一把尺子
 		// (详见 windowSinceIso)。用滚动的 N×24 小时会让合计数多吃进日轴从未画过的
 		// 那小半天,KPI 与紧挨着它的热力图对不上。
-		const since = windowSinceIso(days, tzOffsetMin);
+		const since = windowSinceIso(days, tzOffsetMin, now);
 		const sinceMs = Date.parse(since);
 
 		// 每位订阅的原始序列与「在记」账。「那天有没有记录」只看账(ADR-0027 决策 13),不再拿粉丝样本并集、
@@ -224,18 +231,19 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 			const daily = dailyFansSeries(baseline ? [baseline, ...samples] : samples, {
 				days,
 				tzOffsetMin,
+				now,
 			});
 			const series = daily.map((p) => p.net);
 			// 三项各自在窗口里每天在不在记。
 			const recording = {
-				posts: recordingDays(ledger, "posts", { days, tzOffsetMin }),
-				live: recordingDays(ledger, "live", { days, tzOffsetMin }),
-				followers: recordingDays(ledger, "followers", { days, tzOffsetMin }),
+				posts: recordingDays(ledger, "posts", { days, tzOffsetMin, now }),
+				live: recordingDays(ledger, "live", { days, tzOffsetMin, now }),
+				followers: recordingDays(ledger, "followers", { days, tzOffsetMin, now }),
 			};
 			const postsRecorded = recording.posts.some(Boolean);
 			const liveRecorded = recording.live.some(Boolean);
 			// 计数、场次、峰值两支同一套聚合。每天的活动 = 那天在记的那几项的计数之和;两项都没在记就是「无记录」。
-			const dayCounts = dailyActivityCounts(events, sessions, { days, tzOffsetMin });
+			const dayCounts = dailyActivityCounts(events, sessions, { days, tzOffsetMin, now });
 			const activity = dayCounts.posts.map((postCount, i) => {
 				const postsOn = recording.posts[i] === true;
 				const liveOn = recording.live[i] === true;
@@ -295,6 +303,12 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 		});
 
 		const payload: StatsOverviewResponse = { days, rows };
+		if (followersGrain) {
+			payload.followersTrend = followersTrend(
+				perSub.map(({ sub, samples }) => ({ subscriptionId: sub.id, samples })),
+				{ grain: followersGrain, sinceMs, nowMs: now.getTime() },
+			);
+		}
 		const at = Date.now();
 		// 先清过期条目(稳态下这就够了),再按插入序挤掉最旧的顶住上限 ——
 		// Map 的迭代序就是插入序,`keys().next()` 拿到的即最早那条。
@@ -358,11 +372,17 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	const overview = options.overview ?? createStatsOverview(deps);
 	const roastOverview = roastOverviewFetcher(overview, deps);
 
-	app.get("/overview", async (c) =>
-		c.json<StatsOverviewResponse>(
-			await overview(clampDays(c.req.query("days")), parseTz(c.req.query("tz"))),
-		),
-	);
+	app.get("/overview", async (c) => {
+		const days = clampDays(c.req.query("days"));
+		const tz = parseTz(c.req.query("tz"));
+		const grain = c.req.query("followersGrain");
+		if (grain !== undefined && grain !== "hour" && grain !== "day") {
+			return respondFailure(c, fail("invalid", serverText("stats.invalidFollowersGrain")));
+		}
+		return c.json<StatsOverviewResponse>(
+			await (grain ? overview(days, tz, grain) : overview(days, tz)),
+		);
+	});
 
 	/**
 	 * `POST /api/stats/roast` —— 把统计数据喂给智能女仆,评鸽王 / 勤奋榜。

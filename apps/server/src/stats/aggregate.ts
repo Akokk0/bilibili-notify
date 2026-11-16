@@ -1,3 +1,4 @@
+import type { FollowersGrain, FollowersTrend } from "@bilibili-notify/contract";
 import type { FollowersAt } from "../followers/lookup.js";
 import type { LiveSessionEntry, PostEntry, RecordingEntry, RecordingKind } from "./store.js";
 
@@ -42,6 +43,43 @@ export function windowSinceIso(days: number, tzOffsetMin: number, now = new Date
 	// 旧的滚动口径,总比抛出去让整个 overview 挂掉强。
 	if (!firstDay) return new Date(now.getTime() - days * 86_400_000).toISOString();
 	return new Date(Date.parse(`${firstDay}T00:00:00.000Z`) + tzOffsetMin * 60_000).toISOString();
+}
+
+/** 从同一个读数时刻构建轴和末值。缺测不延用前值,当前桶也不接受未来采样。 */
+export function followersTrend(
+	rows: ReadonlyArray<{ subscriptionId: string; samples: readonly FollowersAt[] }>,
+	opts: { grain: FollowersGrain; sinceMs: number; nowMs: number },
+): FollowersTrend {
+	const interval = opts.grain === "hour" ? 3_600_000 : 86_400_000;
+	const count = Math.floor((opts.nowMs - opts.sinceMs) / interval) + 1;
+	return {
+		grain: opts.grain,
+		timestamps: Array.from({ length: count }, (_, i) =>
+			new Date(opts.sinceMs + i * interval).toISOString(),
+		),
+		rows: rows.map(({ subscriptionId, samples }) => {
+			const values = Array<number | null>(count).fill(null);
+			const lastAt = Array<number>(count).fill(Number.NEGATIVE_INFINITY);
+			for (const sample of samples) {
+				const at = Date.parse(sample.sampledAt);
+				if (
+					!Number.isFinite(at) ||
+					at < opts.sinceMs ||
+					at > opts.nowMs ||
+					!Number.isFinite(sample.followers) ||
+					sample.followers < 0
+				) {
+					continue;
+				}
+				const bucket = Math.floor((at - opts.sinceMs) / interval);
+				if (at >= (lastAt[bucket] ?? Number.NEGATIVE_INFINITY)) {
+					lastAt[bucket] = at;
+					values[bucket] = sample.followers;
+				}
+			}
+			return { subscriptionId, values };
+		}),
+	};
 }
 
 export interface PostCounts {
