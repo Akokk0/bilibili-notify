@@ -4525,11 +4525,11 @@ describe("进程内对拍:清单自己", () => {
 	});
 
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:54行全由进程内驱动，id不重且标题非空", () => {
-		expect(PARITY_ROWS).toHaveLength(54);
-		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(54);
+	it("PARITY_ROWS:55行全由进程内驱动，id不重且标题非空", () => {
+		expect(PARITY_ROWS).toHaveLength(55);
+		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(55);
 		expect(PARITY_ROWS.map((row) => row.id)).toEqual(
-			Array.from({ length: 54 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 55 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		for (const row of PARITY_ROWS) expect(row.title.trim().length, row.id).toBeGreaterThan(0);
 		// N01→P52、N05→P51、N15→P53；N09的服务端描述符已由P50驱动，面板半与N14见PANEL_COVERAGE。

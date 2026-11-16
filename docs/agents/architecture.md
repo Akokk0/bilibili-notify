@@ -317,6 +317,8 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 
 🔗2026-11-14 SDK改进：来源资料增加独立displayId、描述符增加displayIdNoun，契约为1/2，见ADR-0050。SubscriptionCell现13成员，七表共65行（driven39、elsewhere18、closed7、hostFilled1）；新增叫法行由sources-list-route的完整描述符断言覆盖，进程内P50也验证透传。既有身份、复制与关联保持externalId。
 
+🔗2026-11-16 播放量趋势（ADR-0052）：核心Source新增可选fetchVideoViews，现11成员；SDK暂不开放该能力，七表共66行（driven39、elsewhere18、closed8、hostFilled1）。进程内新增P55，经订阅设置开启、来源读数、统计曲线与清理接口验证，P01–P55共55行全部实际驱动。
+
 🔗现状（4-27，2026-11-01）：待验记录保留为历史。统筹独审及Chrome整轮11组通过，长hint首轮390截断由 `c185aa777` 修复后重跑；来源提示两处覆盖、刷新、默认和能力 / 运行态为真页操作。规则浏览器仅全局页冒烟，按来源节显隐仍由组件自动测试负责；N09不转成进程内渲染，成员表仍64行、进程内54走通 / 2不开。最终仅片级门禁，整期结束另跑全量，HTTP fixture不证明落盘或真实拓展装载；证据与清理见 phase-4-plan 的4-27完成记录。
 
 ## 自家下拉与 UI 文案（4-25，2026-11-01）

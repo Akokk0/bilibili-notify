@@ -34,7 +34,10 @@ describe("stats.enabled", () => {
 		expect(StatsSettingsSchema.safeParse({ enabled: "no" }).success).toBe(false);
 	});
 
-	it("它是顶层一节,不挂在 `defaults` 下(订阅覆盖不了它)", () => {
-		expect(makeDefaultGlobalSettings().defaults).not.toHaveProperty("stats");
+	it("总开关仍在顶层；订阅默认只包含可单独开启的播放量采集", () => {
+		const settings = makeDefaultGlobalSettings();
+		expect(settings.stats).toEqual({ enabled: true });
+		expect(settings.defaults.stats).toEqual({ videoViews: false });
+		expect(settings.defaults.stats).not.toHaveProperty("enabled");
 	});
 });

@@ -1595,19 +1595,19 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 
 		it("七张行表的行数,与走通 / 不开 / 宿主填各有几行(提交 9 抄进 architecture)", () => {
 			const size = (table: keyof Tables) => Object.keys(TABLES[table]).length;
-			expect(size("Source")).toBe(10);
+			expect(size("Source")).toBe(11);
 			expect(size("SubscriptionCell")).toBe(13);
 			expect(size("SourceContext")).toBe(7);
 			expect(size("PlatformAdapter")).toBe(13);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
 			expect(size("IntegrationContext")).toBe(14);
-			expect(entries).toHaveLength(65);
+			expect(entries).toHaveLength(66);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 本文件驱动39行，另有18行由引用测试管着（含auth、featureHints、displayIdNoun）；不开7行，宿主填1行。
+			// 本文件驱动39行，另有18行由引用测试管着（含auth、featureHints、displayIdNoun）；不开8行，宿主填1行。
 			expect(of("driven")).toHaveLength(39);
 			expect(of("elsewhere")).toHaveLength(18);
-			expect(of("closed")).toHaveLength(7);
+			expect(of("closed")).toHaveLength(8);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(
 				of("closed")
@@ -1620,6 +1620,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 					"PlatformAdapter.listAddressCandidates",
 					"Source.descriptor",
 					"Source.fetchPreview",
+					"Source.fetchVideoViews",
 					"Source.liveInteractions",
 					"SubscriptionCell.cardSkin",
 				].sort(),
