@@ -171,13 +171,11 @@ export function CreatorTrendPanel({
 				<div className="flex min-h-[250px] flex-col items-center justify-center gap-4 px-4 text-center">
 					<Icon.chart size={28} className="text-bn-text-tertiary" />
 					<p className="text-bn-base font-semibold text-bn-text-primary">
-						{tx(
-							supported === false
-								? "stats.videoViews.unsupported"
-								: supported
-									? "stats.videoViews.disabled"
-									: "stats.videoViews.sourceUnavailable",
-						)}
+						{supported === false
+							? tx("stats.videoViews.unsupported")
+							: supported
+								? tx("stats.videoViews.disabled")
+								: tx("stats.videoViews.sourceUnavailable")}
 					</p>
 					{supported ? (
 						<>
@@ -194,7 +192,9 @@ export function CreatorTrendPanel({
 						<div className="flex min-h-[250px] items-center justify-center px-4 text-center text-bn-sm text-bn-text-secondary">
 							{video?.failure
 								? video.failure.message
-								: tx(video?.active ? "stats.videoViews.waiting" : "stats.videoViews.paused")}
+								: video?.active
+									? tx("stats.videoViews.waiting")
+									: tx("stats.videoViews.paused")}
 						</div>
 					) : (
 						<ResponsiveChart
