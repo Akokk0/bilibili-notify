@@ -42,6 +42,7 @@ export interface ApiClientOptions {
 
 interface RequestOptions {
 	headers?: Record<string, string>;
+	signal?: AbortSignal;
 }
 
 const MAX_REDIRECTS = 5;
@@ -134,6 +135,7 @@ export class ApiClient {
 			headers,
 			body,
 			maxRedirects: MAX_REDIRECTS,
+			signal: opts?.signal,
 		});
 		if (!result.ok) throw new Error(result.message);
 

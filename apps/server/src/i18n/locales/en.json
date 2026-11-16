@@ -1609,5 +1609,8 @@
 	"service.routes.test-result.text.3": "The connection probe did not succeed; the other end gave no reason.",
 	"service.push.dispatch.text.1": "Connection: {value0}",
 	"service.push.target-dispatcher.text.1": "This connection does not provide address candidates.",
-	"stats.invalidFollowersGrain": "Follower trend granularity must be hour or day."
+	"stats.invalidFollowersGrain": "Follower trend granularity must be hour or day.",
+	"stats.videoViews.invalidValue": "The total video view count is not a valid non-negative integer. No sample was recorded.",
+	"stats.videoViews.sampleFailed": "The video view sample could not be recorded. Check again later.",
+	"log.videoViews.refreshFailed": "Total video view collection failed"
 }

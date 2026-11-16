@@ -277,5 +277,8 @@
 	"log.bilibili.live.reconnectedStateFailed": "重连后初始房态获取失败，回到长尾退避",
 	"log.bilibili.live.stoppedReportFailed": "放弃监听时下播上报异常",
 	"log.bilibili.live.monitorStopped": "该直播间监测已停止",
-	"log.bilibili.live.protocolDegraded": "已知直播命令解析降级，请检查是否需要更新"
+	"log.bilibili.live.protocolDegraded": "已知直播命令解析降级，请检查是否需要更新",
+	"bilibili.videoViews.notRunning": "来源尚未运行，无法读取累计播放量。",
+	"bilibili.videoViews.loginRequired": "请先登录，再采集累计播放量。",
+	"bilibili.videoViews.noValue": "来源没有返回有效的累计播放量，本次未记录。"
 }

@@ -1017,11 +1017,25 @@ export interface StatsRoastRunNowResponse {
 export type FollowersGrain = "hour" | "day";
 
 /** 粉丝总量曲线的独立时间轴;不改变其他图表使用的每日序列。 */
-export interface FollowersTrend {
+export interface StatsTrend {
 	grain: FollowersGrain;
 	/** 客户端本地时间桶的起点,以 UTC ISO 时刻返回。 */
 	timestamps: string[];
 	rows: Array<{ subscriptionId: string; values: Array<number | null> }>;
+}
+export type FollowersTrend = StatsTrend;
+
+export interface VideoViewsTrend extends StatsTrend {
+	rows: Array<
+		StatsTrend["rows"][number] & {
+			/** 是否实现此能力；来源尚未运行时未知。 */
+			supported: boolean | null;
+			/** 用户设置的生效值，独立于订阅和统计总开关。 */
+			enabled: boolean;
+			active: boolean;
+			failure?: Failure;
+		}
+	>;
 }
 
 export interface StatsOverviewResponse {
@@ -1030,6 +1044,8 @@ export interface StatsOverviewResponse {
 	rows: UpStatsRow[];
 	/** 只在请求 followersGrain 时附带;省略参数的既有调用保持原来的响应。 */
 	followersTrend?: FollowersTrend;
+	/** 与 followersTrend 同轴；仅显式请求曲线时读取，不触发上游采集。 */
+	videoViewsTrend?: VideoViewsTrend;
 }
 
 // ---- /api/stats/followers -------------------------------------------------------------

@@ -180,6 +180,13 @@ export function resolveSubscriptionPersona(
 }
 
 /** 把 (Subscription, GlobalDefaults) 折叠为业务可直接消费的 EffectiveSubscription。 */
+export function resolveCreatorStats(
+	sub: Pick<Subscription, "overrides">,
+	defaults: Pick<GlobalDefaults, "stats">,
+): CreatorStatsSettings {
+	return merge(defaults.stats, sub.overrides.stats);
+}
+
 export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveSubscription {
 	// P2:merge() 在 override 缺失时直接返回 base 引用,且 {...base} 仅浅拷贝 ——
 	// routing/extraTargets/specialViewers 又是 sub 的直接引用,filters.blockKeywords
@@ -203,7 +210,7 @@ function resolveCommon(
 		specialViewers: sub.specialViewers,
 
 		features: mergeFeatures(defaults.features, ov.features),
-		stats: merge(defaults.stats, ov.stats),
+		stats: resolveCreatorStats(sub, defaults),
 		filters: merge(defaults.filters, ov.filters),
 		schedule: merge(defaults.schedule, ov.schedule),
 		liveStart: merge(defaults.liveStart, ov.liveStart),

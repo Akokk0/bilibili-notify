@@ -214,3 +214,25 @@ export function fetchSourceProfile(
 		signal,
 	);
 }
+
+/** 显式开启的累计视频播放量读取，与资料、搜人和直播核对共用来源闸。 */
+export function fetchSourceVideoViews(
+	deps: FetchSourceProfileDeps,
+	identity: Identity,
+	signal?: AbortSignal,
+): Promise<Result<{ views: number }>> {
+	const fetchVideoViews = deps.sources.get(identity.sourceKey)?.fetchVideoViews;
+	return fetchSourceMember(
+		deps,
+		identity,
+		"fetchVideoViews",
+		fetchVideoViews && ((sourceSignal) => fetchVideoViews(identity, sourceSignal)),
+		{
+			missing: () => fail("unsupported", "the source does not implement fetchVideoViews"),
+			timeout: () => fail("timeout", "the source did not answer in time"),
+			thrown: () => fail("unavailable", "the source threw"),
+			aborted: () => fail("unavailable", "the call was cancelled by the host"),
+		},
+		signal,
+	);
+}

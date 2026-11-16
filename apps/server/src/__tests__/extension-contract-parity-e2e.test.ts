@@ -246,6 +246,10 @@ const SOURCE_ROWS = {
 		},
 	),
 	health: driven(TITLE.health),
+	fetchVideoViews: closed("首版仅内置来源实现；SDK没有真实拓展实现者，不扩大契约。", {
+		file: EXTENSION_SOURCE_TEST,
+		title: "累计播放量暂不对拓展开放，运行时多带成员不生效",
+	}),
 	fetchPreview: closed(
 		"这一版不对拓展开(4-14 主人定:没有真使用者,第一个要真实预览的拓展再开;契约「订阅源」表里 `fetchLiveStatus、fetchPreview、health、auth` 一行的 🔗):SourceDef 里没有这一格、运行时带了也不认,拓展订阅的卡片预览一律用示例。",
 		{

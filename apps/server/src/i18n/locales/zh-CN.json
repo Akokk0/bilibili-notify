@@ -1597,5 +1597,8 @@
 	"cardSkin.svgIdUser": "「{id}」",
 	"cardSkin.svgIdUserSeparator": "、",
 	"cardSkin.usedBySeparator": "，",
-	"stats.invalidFollowersGrain": "粉丝曲线粒度必须是小时或日。"
+	"stats.invalidFollowersGrain": "粉丝曲线粒度必须是小时或日。",
+	"stats.videoViews.invalidValue": "累计播放量不是有效的非负整数，本次未记录。",
+	"stats.videoViews.sampleFailed": "本次播放量样本未能记录，请稍后查看。",
+	"log.videoViews.refreshFailed": "累计视频播放量采集失败"
 }

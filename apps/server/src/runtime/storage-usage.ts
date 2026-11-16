@@ -149,6 +149,8 @@ export interface StorageClearOptions extends StorageUsageOptions {
 	statsRecorder: Pick<StatsRecorderHandle, "clear">;
 	/** 资料刷新(开机之后才有,所以是现取);清完让它手里的快照不再用旧数。 */
 	profileRefresh: () => Pick<ProfileRefreshHandle, "reset"> | null;
+	/** 按需累计播放量独立采集，先取消在途再清文件。 */
+	clearVideoViews?: () => Promise<void>;
 	/** 作废统计总览的缓存。 */
 	invalidateStatsOverview: () => void;
 	historyStore: Pick<HistoryStore, "clear">;
@@ -255,6 +257,7 @@ export function createStorageUsage(opts: StorageClearOptions): StorageUsage {
 				const before = await statsBytes();
 				// 删文件经记录器各键的写队;最后通知两处缓存。
 				await opts.statsRecorder.clear();
+				await opts.clearVideoViews?.();
 				await opts.profileRefresh()?.reset();
 				opts.invalidateStatsOverview();
 				return Math.max(0, before - (await statsBytes()));

@@ -11,6 +11,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeDefaultGlobalSettings, makeEmptySubscription } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createFollowersStore } from "../../followers/store.js";
@@ -31,6 +32,11 @@ interface StubOpts {
 }
 
 function makeDeps(opts: StubOpts = {}) {
+	const globals = makeDefaultGlobalSettings();
+	const sub = makeEmptySubscription({
+		id: "s1",
+		identity: { sourceKey: "bilibili", externalId: "1" },
+	});
 	const state = {
 		liveSubscriptionIds: opts.liveSubscriptionIds ?? [],
 		fans: 100,
@@ -41,17 +47,28 @@ function makeDeps(opts: StubOpts = {}) {
 		store: {
 			getSubscriptions: () => [
 				{
+					...sub,
 					id: "s1",
 					identity: { sourceKey: "bilibili", externalId: "1" },
 					enabled: state.enabled,
 				},
 			],
 			getGlobals: () => ({
+				...globals,
 				ai: { enabled: opts.aiEnabled ?? true },
 				stats: { enabled: opts.statsEnabled ?? true },
 			}),
 		},
 		runtime: {
+			sourceRegistry: {
+				get: () => ({
+					fetchVideoViews() {
+						throw new Error("overview must not fetch upstream");
+					},
+				}),
+			},
+			videoViewsStore: { listSamplesSince: async () => [] },
+			videoViewsRefresh: null,
 			pipeline: {
 				liveSession: (id: string) =>
 					state.liveSubscriptionIds.includes(id) ? { subscriptionId: id } : undefined,
@@ -87,6 +104,44 @@ function makeDeps(opts: StubOpts = {}) {
 }
 
 describe("GET /overview — 缓存键覆盖所有会变的输入", () => {
+	it("播放总量按小时或日取末次样本，缺测保留空值，开启状态变化不复用旧缓存", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-11-16T02:30:00.000Z"));
+		const dataRoot = await mkdtemp(join(tmpdir(), "bn-video-trend-"));
+		const { createVideoViewsStore } = await import("../../stats/video-views-store.js");
+		const views = createVideoViewsStore({ dataRoot });
+		try {
+			const { deps } = makeDeps();
+			deps.runtime.videoViewsStore = views;
+			const globals = makeDefaultGlobalSettings();
+			globals.defaults.stats.videoViews = true;
+			deps.store.getGlobals = () => globals;
+			await views.append("s1", { sampledAt: "2026-11-16T00:15:00.000Z", views: 1000 });
+			await views.append("s1", { sampledAt: "2026-11-16T00:45:00.000Z", views: 1100 });
+			await views.append("s1", { sampledAt: "2026-11-16T02:10:00.000Z", views: 1200 });
+			const app = createStatsRoute(deps);
+			const hour = (await (
+				await app.request("/overview?days=1&followersGrain=hour")
+			).json()) as any;
+			expect(hour.videoViewsTrend.rows[0]).toMatchObject({
+				subscriptionId: "s1",
+				values: [1100, null, 1200],
+				enabled: true,
+				supported: true,
+				active: true,
+			});
+			const day = (await (await app.request("/overview?days=1&followersGrain=day")).json()) as any;
+			expect(day.videoViewsTrend.rows[0].values).toEqual([1200]);
+			globals.defaults.stats.videoViews = false;
+			const off = (await (await app.request("/overview?days=1&followersGrain=hour")).json()) as any;
+			expect(off.videoViewsTrend.rows[0].enabled).toBe(false);
+			expect(off.videoViewsTrend.rows[0].values).toEqual([1100, null, 1200]);
+		} finally {
+			await views.close();
+			await rm(dataRoot, { recursive: true, force: true });
+			vi.useRealTimers();
+		}
+	});
 	it("跨整点与零点立即更新小时轴，不复用仍在 TTL 内的旧轴", async () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		try {
@@ -118,6 +173,7 @@ describe("GET /overview — 缓存键覆盖所有会变的输入", () => {
 			deps.runtime.fansStore = fans;
 			vi.spyOn(deps.store, "getSubscriptions").mockReturnValue([
 				{
+					overrides: {},
 					id: "s1",
 					identity: { sourceKey: "douyin", externalId: "long-id" },
 					enabled: false,

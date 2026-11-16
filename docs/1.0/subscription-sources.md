@@ -38,6 +38,7 @@ interface SourceHealth { summary: string }
 | `start` / `stop` | 是 | 开机、关停、拓展启停 | `start` 拿到 ctx；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾。`start` 期间读设置失败可以抛错中止启动（生命周期闸，唯一的例外），宿主接住记成 `settings-invalid`，见「设置」。🔗 3a-39：内置来源这一支没造（读设置回结果、不抛，哪样读不懂停哪样），拓展照旧 |
 | `searchCreators` | 是 | 新建订阅弹窗打字时 | 「解析门」：输入框里是链接、id 还是名字都原样交进来，来源自己认；最多回 10 个 `CreatorCandidate`。失败回结果形状、不再靠抛：风控 `rate_limited`、没登录 `unauthorized`，文案由来源给、原话到面板；面板按 `code` + `message` 读一处（今天风控和没登录都报成 404） |
 | `fetchProfile` | 是 | 核心按资料刷新 cron 定时调；按 id 取人也是它 | 头像先 `ctx.fetchImage` 再交引用。失败：`not_found` 记成关于这条订阅的 `creator_not_found` 问题；其余当暂时失败，下一轮再来；整轮要不要刹车（撞了风控，本轮剩下的不再打）由来源自己决定。`creator_not_found` 记在谁名下、什么时候清，施工时定。原先设计的 `lookupCreator` 与它重复，删掉。🔗 10-23（3b-24）：已落成必备成员，核心经 `fetchSourceProfile` 统一处理超时、抛错、来源消失与中止；B 站已实现 |
+| `fetchVideoViews` | 否 | 用户显式开启累计视频播放量统计后，开启时及此后每小时调用 | 回 `Result<{ views: number }>`；缺失或失败不记零。首版只有 B 站实现，SDK 不开放此成员；宿主串行、超时与取消见 [ADR-0052](../adr/0052-opt-in-video-views-trend.md) |
 | `auth` | 否 | 系统 → 账号、`login` 指令 | 见「登录与账号」 |
 | `fetchLiveStatus` | 否 | 核心按场次定时调 | 已落（3b-22）：返回结果形状，成功分 `live` / `offline`，失败时核心只跳过这一轮，见「直播」 |
 | `liveInteractions` | 否 | 出卡时 | 已落（3b-22）：类型是 `LiveInteractionReader`；只有 `fetchViewerAvatar` / `fetchTierIcon` 两个懒取口，直播互动本身经 `reportLiveInteraction` 上报 |

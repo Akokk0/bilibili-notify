@@ -277,5 +277,8 @@
 	"bilibili.settings.text.2": "無効なcron式です",
 	"bilibili.video-card.text.1": "動画を投稿しました",
 	"bilibili.settings.dynamicDescription": "Cron式に従って新しい投稿を確認します。保存すると確認スケジュールを自動で調整します。",
-	"bilibili.settings.loginDescription": "ログイン状態を定期的に確認します。保存すると変更が反映されます。"
+	"bilibili.settings.loginDescription": "ログイン状態を定期的に確認します。保存すると変更が反映されます。",
+	"bilibili.videoViews.notRunning": "ソースが起動していないため、動画の累計再生数を取得できません。",
+	"bilibili.videoViews.loginRequired": "動画の累計再生数を記録するには、先にログインしてください。",
+	"bilibili.videoViews.noValue": "有効な動画の累計再生数が返されなかったため、今回は記録していません。"
 }

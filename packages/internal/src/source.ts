@@ -252,6 +252,8 @@ export interface Source {
 	 * 核心对同一来源串行调用。
 	 */
 	fetchProfile(identity: Identity, signal: AbortSignal): Promise<Result<CreatorProfileReport>>;
+	/** 创作者全部视频的累计播放量。仅显式开启统计后调用；缺失或失败不能返回零。 */
+	fetchVideoViews?(identity: Identity, signal: AbortSignal): Promise<Result<{ views: number }>>;
 	/**
 	 * 此刻这个人在不在播(拉取式)。实现了它,核心就按每一场的开播时刻各自起算、定时问它:确认还在播、
 	 * 发现已下播(当漏收的下播处理)、重启后认出已经在播的一场、断流等待到期时再核一次。失败回结果形状、

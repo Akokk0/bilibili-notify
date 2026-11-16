@@ -36,7 +36,7 @@
    │                    （内置平台适配器要存时同样是 <键>/state.json）
    ├─ history/          <日>.jsonl  repush/<日>/
    ├─ images/           <sha256>.<ext>  统一图库（含聊天附件）
-   ├─ stats/            posts/  live/  followers/  recording/
+   ├─ stats/            posts/  live/  followers/  video-views/  recording/
    ├─ uptime/           hours.jsonl  运行记录（不算统计）
    ├─ ai/               conversations/
    ├─ skins/            card/<id>/  dashboard/<id>/  dashboard/active.json
@@ -70,7 +70,7 @@
 | `runtime/bilibili/state.json` · `extensions/<id>/state.json` | 集成的 `ctx.state`（`packages/http` 生成的浏览器身份在 `http.identity` 键里，`http.` 开头的键归宿主）；文件是明文的 `{ version: 1, entries }`；单键 64KB、每个集成 1MB | 否 | 卸载清 | 清 | B 站那份由 sub-runtime 的 `roomId` / `followed` / `followError` 拆出。🔗 **现状（3b-25，10-23，主人定）**：这是目标迁移，本片不动盘；实际由 3b-62 把 0.x 的 `roomId` 拆进 `room:<uid>`，`followed` / `followError` 丢弃，本片不抬迁移修订号与备份版本。🔗 **现状（3b-62，10-24）**：迁移已落，B 站订阅的 `roomId` 写进 `runtime/bilibili/state.json` 的 `room:<uid>`，值为正整数字符串；拓展订阅与对不上订阅的 `roomId` 丢弃，`followed` / `followError` 不写进任何状态。 |
 | `history/` | 推送历史行（`HistoryEntry`）、重推原件（`RepushSnapshot`） | 否 | 文字不设上限；图按图片保留天数清（默认 30，见下面 10-02 的 🔗） | 清 | 行变换，图换成图库引用；头像快照（0.x 存的是远端地址）丢掉，只留名字 |
 | `images/` | 作品图、直播封面、头像、历史快照、聊天附件 | 否 | 按引用清扫 | 清 | 原 `history/img/`、重推原件的自存图：保留期内的行与重推原件引用着的逐张复制进来、按 sha256 改名（⑳d 已落；过了保留期的行拿掉图格、不读文件）；`avatars/` 里被资料缓存引用的逐张复制进来（⑳c 已落），孤儿不搬 |
-| `stats/` | 作品（`PostEntry`）、直播场次（`LiveSessionEntry`）、粉丝时序（`FollowersSample`：最近 8 天原样，更早的每小时留末值、连着的同值小时合成一段）、「在记」的账（`RecordingEntry`，满 8 天的首尾相接合成一段） | 否 | 无（删订阅才删）；粉丝时序与账开机一次、每 6 小时压一遍 | 清 | 变换；追加写的文件一律复制 |
+| `stats/` | 作品（`PostEntry`）、直播场次（`LiveSessionEntry`）、按需累计播放量时序（`VideoViewsSample`：每小时一条）、粉丝时序（`FollowersSample`：最近 8 天原样，更早的每小时留末值、连着的同值小时合成一段）、「在记」的账（`RecordingEntry`，满 8 天的首尾相接合成一段） | 否 | 无（删订阅才删）；粉丝时序与账开机一次、每 6 小时压一遍 | 清 | 变换；追加写的文件一律复制 |
 | `uptime/` | 运行记录 `hours.jsonl`（`UptimeEntry`：每个 UTC 整点小时里 BN 跑了多少分钟）；不算数据统计、不受统计总开关管 | 否 | 无 | 清 | 新建：从 0.x 的粉丝样本回填（往少了估，ADR-0033 决策 3） |
 | `ai/` | 女仆对话（附件在图库） | 否 | 对话上限与空会话回收 | 清 | **不迁**：0.x 的对话留在第 0 代，新代从空开始 |
 | `skins/card/` | 卡片皮肤 | 否 | 无 | 清 | **不迁**，指针回默认 |
@@ -223,7 +223,7 @@
 
 | 类别 | 算什么 | 清什么 |
 | --- | --- | --- |
-| `stats` 数据统计 | `stats/` 下四个目录 | 全删，连订阅运行态里 B 站订阅的涨粉起点；「订阅以来涨了多少」从下一次采样重新算。不碰 `uptime/` |
+| `stats` 数据统计 | `stats/` 下的作品、直播、粉丝、累计播放量与在记目录 | 全删，连订阅运行态里 B 站订阅的涨粉起点；「订阅以来涨了多少」从下一次采样重新算。不碰 `uptime/` |
 | `historyText` 推送历史的文字 | `history/<日>.jsonl` | 全部日文件，连重推原件一起（行没了原件没有入口）；图的保留水位线不动 |
 | `historyImages` 推送历史的图 | 图库里引用方只有推送历史与重推原件的图，加重推原件文件 | 清到昨天为止（把图的保留水位线推到昨天） |
 | `ai` 女仆 AI | 对话文件，加图库里引用方只有女仆对话的图 | 全部对话 |

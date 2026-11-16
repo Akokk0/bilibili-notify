@@ -1597,5 +1597,8 @@
 	"service.routes.test-result.text.3": "連線探測未通過，對端未提供原因。",
 	"service.push.dispatch.text.1": "連線{value0}",
 	"service.push.target-dispatcher.text.1": "此連線不提供目標位址候選項目。",
-	"stats.invalidFollowersGrain": "粉絲曲線的彙整單位必須是小時或日。"
+	"stats.invalidFollowersGrain": "粉絲曲線的彙整單位必須是小時或日。",
+	"stats.videoViews.invalidValue": "累計播放次數不是有效的非負整數，本次未記錄。",
+	"stats.videoViews.sampleFailed": "本次播放次數樣本無法記錄，請稍後查看。",
+	"log.videoViews.refreshFailed": "累計影片播放次數收集失敗"
 }

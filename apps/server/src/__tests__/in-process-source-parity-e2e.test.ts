@@ -175,7 +175,7 @@ vi.mock("../runtime/bootstrap.js", async (importOriginal) => {
 
 type ParityRow = { id: string; title: string; checked: true };
 
-/** P01–P54 都由本文件实际驱动；面板范围另登记证据，不留“等第4期”的伪待办。 */
+/** P01–P55 都由本文件实际驱动；面板范围另登记证据，不留“等第4期”的伪待办。 */
 const PARITY_ROWS: readonly ParityRow[] = [
 	{ id: "P01", title: "登记即启动", checked: true },
 	{ id: "P02", title: "名单", checked: true },
@@ -356,6 +356,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{ id: "P54", title: "共同timezone现读、独立去重与撤订", checked: true },
+	{ id: "P55", title: "显式开启累计播放量，经来源采集并显示曲线", checked: true },
 	// N08(默认文案)在 3b-12 落成了,转进对拍的 P46(「默认文案有更新」是面板算的、与来源无关,由面板测试钉,不在对拍里);
 	// N16(统计「在记」)在 3b-26 落成了,转进对拍的 P45;
 	// N12(作品带图)在 3b-39 落成了,转进对拍的 P27;
@@ -420,6 +421,7 @@ const SOURCE_MEMBERS = {
 	auth: ["P16"],
 	searchCreators: ["P26", "P52"],
 	fetchProfile: ["P37", "P39"],
+	fetchVideoViews: ["P55"],
 	fetchLiveStatus: ["P30", "P36"],
 	liveInteractions: ["P32", "P33"],
 	fetchPreview: ["P51"],
@@ -1110,6 +1112,46 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			await patchCore({ timezone: before });
 		}
 		drove("P54");
+	});
+
+	it("P55 显式开启累计播放量，经来源采集并显示曲线", async () => {
+		const probe = currentProbe();
+		probe.videoViewsAsked.length = 0;
+		try {
+			await patchCore({ stats: { enabled: true } });
+			await okRes(
+				await api(
+					`/api/subscriptions/${SUB.alice}`,
+					json({ overrides: { stats: { videoViews: true } } }, "PATCH"),
+				),
+			);
+			await vi.waitFor(async () => {
+				const body = (await (
+					await okRes(await api("/api/stats/overview?days=7&followersGrain=hour"))
+				).json()) as StatsOverviewResponse;
+				const row = body.videoViewsTrend?.rows.find((row) => row.subscriptionId === SUB.alice);
+				expect(row).toMatchObject({ supported: true, enabled: true, active: true });
+				expect(row?.values.filter((value) => value !== null).at(-1)).toBe(5550);
+			});
+			expect(probe.videoViewsAsked).toContainEqual({
+				sourceKey: IN_PROCESS_KEY,
+				externalId: EXT.alice,
+			});
+			await okRes(await api("/api/system/storage/stats", { method: "DELETE" }));
+			const cleared = (await (
+				await okRes(await api("/api/stats/overview?days=7&followersGrain=hour"))
+			).json()) as StatsOverviewResponse;
+			expect(
+				cleared.videoViewsTrend?.rows
+					.find((row) => row.subscriptionId === SUB.alice)
+					?.values.every((value) => value === null),
+			).toBe(true);
+		} finally {
+			await okRes(
+				await api(`/api/subscriptions/${SUB.alice}`, json({ overrides: { stats: null } }, "PATCH")),
+			);
+		}
+		drove("P55");
 	});
 
 	// 验红:`routes/cards.ts` 不问来源(或不把 nth 交过去),第一段红;来源回失败时不记原因,第三段红。

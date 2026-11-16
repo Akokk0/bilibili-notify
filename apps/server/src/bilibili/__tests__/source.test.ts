@@ -611,6 +611,61 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
+	it("累计播放量按来源间隔请求，风控后整轮刹车", async () => {
+		vi.useFakeTimers();
+		const auth = makeAuth({ status: "logged-in", loggedInAt: "2026-11-16T00:00:00.000Z" });
+		const { deps, login } = makeDeps({
+			auth: auth.auth,
+			setTimeout: (fn, ms) => {
+				const timer = setTimeout(fn, ms);
+				return { dispose: () => clearTimeout(timer) };
+			},
+		});
+		const fetchUserUpstat = vi.fn(async () => ok({ data: { archive: { view: 100 } } }));
+		login.api = { ...login.api, fetchUserUpstat } as unknown as Api;
+		const source = createBiliSource(deps);
+		await source.start(makeCtx().ctx);
+		const signal = new AbortController().signal;
+		await source.fetchVideoViews?.({ sourceKey: "bilibili", externalId: "1" }, signal);
+		fetchUserUpstat.mockResolvedValueOnce(fail("rate_limited", "risk") as never);
+		const second = source.fetchVideoViews?.({ sourceKey: "bilibili", externalId: "2" }, signal);
+		await vi.advanceTimersByTimeAsync(199);
+		expect(fetchUserUpstat).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(await second).toMatchObject({ ok: false, code: "rate_limited" });
+		expect(
+			await source.fetchVideoViews?.({ sourceKey: "bilibili", externalId: "3" }, signal),
+		).toMatchObject({ ok: false, code: "rate_limited" });
+		expect(fetchUserUpstat).toHaveBeenCalledTimes(2);
+		await source.stop();
+	});
+
+	it("累计视频播放量要求登录，成功只交真实累计值，空响应不当成零", async () => {
+		const auth = makeAuth({ status: "logged-out" });
+		let now = Date.now();
+		const { deps, login } = makeDeps({ auth: auth.auth, now: () => now });
+		const fetchUserUpstat = vi.fn(async () => ok({ data: { archive: { view: 123456 } } }));
+		login.api = { ...login.api, fetchUserUpstat } as unknown as Api;
+		const source = createBiliSource(deps);
+		await source.start(makeCtx().ctx);
+		const identity = { sourceKey: "bilibili", externalId: "42" };
+		const signal = new AbortController().signal;
+		expect(await source.fetchVideoViews?.(identity, signal)).toMatchObject({
+			ok: false,
+			code: "unauthorized",
+		});
+		expect(fetchUserUpstat).not.toHaveBeenCalled();
+		auth.set({ status: "logged-in", loggedInAt: "2026-11-16T00:00:00.000Z" });
+		expect(await source.fetchVideoViews?.(identity, signal)).toEqual(ok({ views: 123456 }));
+		fetchUserUpstat.mockResolvedValueOnce(ok({ data: {} }) as never);
+		now += 200;
+		expect(await source.fetchVideoViews?.(identity, signal)).toMatchObject({
+			ok: false,
+			code: "unavailable",
+		});
+		await source.stop();
+	});
+
 	it("start 之后 fetchPreview 接上:作品取同一个 API 的 space 列表,直播交给直播房间;start 前回 unavailable", async () => {
 		const { deps, login } = makeDeps();
 		const fetchUserSpaceDynamic = vi.fn(async () => ({ code: 0, data: { items: [] } }));

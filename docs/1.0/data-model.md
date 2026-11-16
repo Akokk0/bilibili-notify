@@ -463,6 +463,8 @@ type PostPushPart = "post" | "post-images";
 
 ## 统计
 
+累计视频播放量另存 `stats/video-views/<订阅 id>.jsonl`，行是 `VideoViewsSample { sampledAt, views }`；与作品发布时间无关。按小时采集，小时／日桶取末次有效采样；缺测不写零，不补造历史。采集继承 `defaults.stats.videoViews`／`overrides.stats.videoViews`，出厂关闭；全部默认适用于以后新增的支持来源，单个覆盖可清除。停用保留历史，删除订阅及整类清空统计才删除样本。定案见 [ADR-0052](../adr/0052-opt-in-video-views-trend.md)。
+
 统计仓按订阅记作品、直播场次与粉丝时序（文件布局见 [data-and-migration.md](./data-and-migration.md)）。
 
 - **开了开关才监听、才记**（ADR-0027 决策 1）：单个订阅开了作品或直播类开关，就监听、统计就记；关了就不查也不记。「开着」只看开关、不看有没有目标；面板的「不会被监听」与直播就绪判断用同一个内部判定。直播这一侧的判定：五把直播类开关任一开着，或（`viewerChat` 开着且名单上有人带 `viewerChat`），或（`viewerEnter` 开着且名单上有人带 `viewerEnter`）；五把直播开关全关、名单上有人、特别关注开关也关着的订阅，升级后不再监听（0.x 那时是「名单有人就监听」，迁移记账本留一份冻住的旧读法）。核心里直播一侧的 `danmaku` 换成 `viewerChat` 一族（`ViewerChatCollector`、`recordViewerChat`、`viewerChatCount`）；视频上的弹幕数 `video.danmaku` 不动。（3b-14 已落：全仓唯一的判定是 internal 的 `needsLiveMonitor`，服务端与面板共用。）

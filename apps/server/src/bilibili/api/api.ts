@@ -1034,9 +1034,10 @@ export class Api {
 
 	async fetchUserUpstat(
 		uid: string,
+		signal?: AbortSignal,
 	): Promise<Result<{ data: { archive?: { view?: number }; likes?: number } }>> {
 		return this.retryResult<{ archive?: { view?: number }; likes?: number }>(
-			() => this.client.get(`${EP.USER_UPSTAT_URL}?mid=${encodeURIComponent(uid)}`),
+			() => this.client.get(`${EP.USER_UPSTAT_URL}?mid=${encodeURIComponent(uid)}`, { signal }),
 			"fetchUserUpstat",
 		);
 	}

@@ -1,6 +1,7 @@
 import type { FollowersGrain, FollowersTrend } from "@bilibili-notify/contract";
 import type { FollowersAt } from "../followers/lookup.js";
 import type { LiveSessionEntry, PostEntry, RecordingEntry, RecordingKind } from "./store.js";
+import type { VideoViewsSample } from "./video-views-store.js";
 
 /**
  * stats 聚合层 —— 纯函数,不碰 IO。路由只负责把 store 读出来的原始序列喂进来。
@@ -50,6 +51,21 @@ export function followersTrend(
 	rows: ReadonlyArray<{ subscriptionId: string; samples: readonly FollowersAt[] }>,
 	opts: { grain: FollowersGrain; sinceMs: number; nowMs: number },
 ): FollowersTrend {
+	return sampleTrend(rows, opts, (sample) => sample.followers);
+}
+
+export function videoViewsTrend(
+	rows: ReadonlyArray<{ subscriptionId: string; samples: readonly VideoViewsSample[] }>,
+	opts: { grain: FollowersGrain; sinceMs: number; nowMs: number },
+): FollowersTrend {
+	return sampleTrend(rows, opts, (sample) => sample.views);
+}
+
+function sampleTrend<T extends { sampledAt: string }>(
+	rows: ReadonlyArray<{ subscriptionId: string; samples: readonly T[] }>,
+	opts: { grain: FollowersGrain; sinceMs: number; nowMs: number },
+	sampleValue: (sample: T) => number,
+): FollowersTrend {
 	const interval = opts.grain === "hour" ? 3_600_000 : 86_400_000;
 	const count = Math.floor((opts.nowMs - opts.sinceMs) / interval) + 1;
 	return {
@@ -62,19 +78,20 @@ export function followersTrend(
 			const lastAt = Array<number>(count).fill(Number.NEGATIVE_INFINITY);
 			for (const sample of samples) {
 				const at = Date.parse(sample.sampledAt);
+				const value = sampleValue(sample);
 				if (
 					!Number.isFinite(at) ||
 					at < opts.sinceMs ||
 					at > opts.nowMs ||
-					!Number.isFinite(sample.followers) ||
-					sample.followers < 0
+					!Number.isFinite(value) ||
+					value < 0
 				) {
 					continue;
 				}
 				const bucket = Math.floor((at - opts.sinceMs) / interval);
 				if (at >= (lastAt[bucket] ?? Number.NEGATIVE_INFINITY)) {
 					lastAt[bucket] = at;
-					values[bucket] = sample.followers;
+					values[bucket] = value;
 				}
 			}
 			return { subscriptionId, values };

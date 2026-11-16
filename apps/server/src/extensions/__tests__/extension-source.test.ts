@@ -13,6 +13,7 @@ import {
 	type ExtensionManifest,
 	type LiveSignalReport,
 	type Logger,
+	ok,
 	type PostReport,
 	parseExtensionManifest,
 	type SourceContext,
@@ -1252,6 +1253,12 @@ describe("createExtensionSource:搜人", () => {
 });
 
 describe("createExtensionSource:取资料", () => {
+	it("累计播放量暂不对拓展开放，运行时多带成员不生效", async () => {
+		const fetchVideoViews = vi.fn(async () => ok({ views: 123 }));
+		const made = await make({ fetchVideoViews } as never);
+		expect(made.source.fetchVideoViews).toBeUndefined();
+		expect(fetchVideoViews).not.toHaveBeenCalled();
+	});
 	it("拓展没实现 fetchProfile:宿主补一个回 unsupported 的", async () => {
 		const made = await make();
 		const result = await made.source.fetchProfile(

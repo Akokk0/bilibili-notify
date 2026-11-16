@@ -1,6 +1,11 @@
 import { ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { callSource, createSourceGates, fetchSourceProfile } from "../call-source.js";
+import {
+	callSource,
+	createSourceGates,
+	fetchSourceProfile,
+	fetchSourceVideoViews,
+} from "../call-source.js";
 
 /**
  * 宿主调来源的公共外壳(搜人、查直播状态与查资料共用):超时叫停来源手里的 signal、来源抛了收成约定的失败并记 error,
@@ -8,6 +13,36 @@ import { callSource, createSourceGates, fetchSourceProfile } from "../call-sourc
  */
 
 const logger = { error: vi.fn() };
+
+it("播放量读取经过来源外壳，缺少能力时不调用，取消会中止来源", async () => {
+	const identity = { sourceKey: "acme", externalId: "42" };
+	const controller = new AbortController();
+	let seen: AbortSignal | undefined;
+	const deps = { logger, gates: createSourceGates(), sources: { get: () => undefined } as never };
+	expect(await fetchSourceVideoViews(deps, identity)).toMatchObject({
+		ok: false,
+		code: "unsupported",
+	});
+	const pending = fetchSourceVideoViews(
+		{
+			...deps,
+			sources: {
+				get: () => ({
+					fetchVideoViews: async (_: unknown, signal: AbortSignal) => {
+						seen = signal;
+						return new Promise(() => {});
+					},
+				}),
+			} as never,
+		},
+		identity,
+		controller.signal,
+	);
+	await vi.advanceTimersByTimeAsync(0);
+	controller.abort();
+	expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
+	expect(seen?.aborted).toBe(true);
+});
 
 beforeEach(() => {
 	vi.useFakeTimers();

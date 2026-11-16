@@ -43,6 +43,7 @@ import { createStatsEnabled } from "../stats/enabled.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
 import { recordingSwitches } from "../stats/recording-switches.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
+import { createVideoViewsStore, type VideoViewsStore } from "../stats/video-views-store.js";
 import { createSourceRegistry, type SourceRegistry } from "../subscriptions/registry.js";
 import { createUptimeRecorder, type UptimeRecorder } from "../uptime/recorder.js";
 import { createUptimeStore, type UptimeStore } from "../uptime/store.js";
@@ -60,6 +61,7 @@ import {
 	type SubscriptionStateStore,
 } from "./subscription-state-store.js";
 import { createTargetScope } from "./target-scope.js";
+import type { VideoViewsRefreshHandle } from "./video-views-refresh.js";
 
 export interface AppRuntime {
 	bootstrap: BootstrapConfig;
@@ -127,6 +129,9 @@ export interface AppRuntime {
 	 * StatsRecorder(订阅总线,随 runtime 一起起停),读侧是 `/api/stats`。
 	 */
 	statsStore: StatsStore;
+	videoViewsStore: VideoViewsStore;
+	videoViewsRefresh: VideoViewsRefreshHandle | null;
+	attachVideoViewsRefresh(refresh: VideoViewsRefreshHandle): void;
 	/** 统计采集。构造时只挂上总线;「在记」由登记表适配按在册来源记,开机时登记表还空、不碰盘,来源登记之后最多 1 分钟记上。 */
 	statsRecorder: Pick<
 		StatsRecorderHandle,
@@ -452,6 +457,8 @@ export function createAppRuntime(
 		dataRoot,
 		logger: serviceCtx.logger,
 	});
+	const videoViewsStore = createVideoViewsStore({ dataRoot });
+	serviceCtx.onDispose(() => videoViewsStore.close(), "flush");
 	// Recorder 只订阅总线、不碰推送链路,所以在这里就能起 —— 不必等 attachPipeline。
 	// 早起一点反而更稳:来源一开始 emit 就有人接着,不会漏掉启动瞬间的事件。
 	//
@@ -606,6 +613,7 @@ export function createAppRuntime(
 
 	let pipeline: PipelineRuntime | null = null;
 	let profileRefresh: ProfileRefreshHandle | null = null;
+	let videoViewsRefresh: VideoViewsRefreshHandle | null = null;
 
 	/**
 	 * 路由 + 目标启停的快照。列表端点要为**每一行**失败的历史问一次闸,而 ConfigStore 的
@@ -658,6 +666,13 @@ export function createAppRuntime(
 		repushRunner,
 		fansStore,
 		statsStore,
+		videoViewsStore,
+		get videoViewsRefresh() {
+			return videoViewsRefresh;
+		},
+		attachVideoViewsRefresh(next) {
+			videoViewsRefresh = next;
+		},
 		statsRecorder,
 		isStatsEnabled: statsEnabled.isEnabled,
 		uptimeStore,

@@ -13,6 +13,7 @@ import {
 	ok,
 	ROAST_MAX_DAYS,
 	ROAST_MIN_DAYS,
+	resolveCreatorStats,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -27,6 +28,7 @@ import {
 	followersTrend,
 	recordingDays,
 	summarizeLiveSessions,
+	videoViewsTrend,
 	windowSinceIso,
 } from "../stats/aggregate.js";
 import { statsFileKey } from "../stats/file-key.js";
@@ -163,6 +165,22 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 				: undefined;
 		const liveNow = subs.map(isLive);
 		const fansNow = subs.map(currentFans);
+		const globals = deps.store.getGlobals();
+		const viewSettings = followersGrain
+			? subs.map((sub) => {
+					const source = deps.runtime.sourceRegistry.get(sub.identity.sourceKey);
+					const supported = source ? Boolean(source.fetchVideoViews) : null;
+					const enabled = resolveCreatorStats(sub, globals.defaults).videoViews;
+					return {
+						supported,
+						enabled,
+						active: enabled && sub.enabled && globals.stats.enabled && supported === true,
+						...(deps.runtime.videoViewsRefresh?.getFailure(sub.id)
+							? { failure: deps.runtime.videoViewsRefresh.getFailure(sub.id) }
+							: {}),
+					};
+				})
+			: [];
 		// key 必须覆盖**响应里所有会变的输入**,否则缓存就在替页面撒谎。
 		//
 		// 订阅集合:退订后 recorder 已经 `drop` 物理删掉了那位 UP 的 jsonl,前端
@@ -183,7 +201,7 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 		const timeBucket = Math.floor(
 			(now.getTime() - tzOffsetMin * 60_000) / (followersGrain === "hour" ? 3_600_000 : 86_400_000),
 		);
-		const key = `${days}:${tzOffsetMin}:${followersGrain ?? ""}:${timeBucket}:${subs.map((s) => s.id).join(",")}|${liveKey}|${fansKey}`;
+		const key = `${days}:${tzOffsetMin}:${followersGrain ?? ""}:${timeBucket}:${subs.map((s) => s.id).join(",")}|${liveKey}|${fansKey}|${JSON.stringify(viewSettings)}:${deps.runtime.videoViewsRefresh?.getRevision() ?? 0}`;
 
 		const hit = cache.get(key);
 		if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
@@ -308,6 +326,25 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 				perSub.map(({ sub, samples }) => ({ subscriptionId: sub.id, samples })),
 				{ grain: followersGrain, sinceMs, nowMs: now.getTime() },
 			);
+			const samples = await Promise.all(
+				subs.map(async (sub) => ({
+					subscriptionId: sub.id,
+					samples: await deps.runtime.videoViewsStore.listSamplesSince(sub.id, since),
+				})),
+			);
+			const trend = videoViewsTrend(samples, {
+				grain: followersGrain,
+				sinceMs,
+				nowMs: now.getTime(),
+			});
+			payload.videoViewsTrend = {
+				...trend,
+				rows: trend.rows.map((row, i) => {
+					const settings = viewSettings[i];
+					if (!settings) throw new Error("video view settings and subscriptions are out of sync");
+					return { ...row, ...settings };
+				}),
+			};
 		}
 		const at = Date.now();
 		// 先清过期条目(稳态下这就够了),再按插入序挤掉最旧的顶住上限 ——

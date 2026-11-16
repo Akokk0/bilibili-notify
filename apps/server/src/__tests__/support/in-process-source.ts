@@ -203,6 +203,7 @@ export interface InProcessProbe {
 	searchOutcome: Result<{ candidates: CreatorCandidate[] }> | undefined;
 	/** `fetchProfile` 被问到的身份,按先后。 */
 	profileAsked: Identity[];
+	videoViewsAsked: Identity[];
 	/** 下一次 `fetchProfile` 回什么;不摆 = 回一份固定资料并把小头像存进图库。 */
 	profileOutcome: Result<CreatorProfileReport> | undefined;
 	readonly auth: InProcessAuth;
@@ -330,6 +331,7 @@ function createInProcessSource(options: InProcessOptions = {}): {
 		searches: [],
 		searchOutcome: undefined,
 		profileAsked: [],
+		videoViewsAsked: [],
 		profileOutcome: undefined,
 		auth: createAuth(),
 	};
@@ -380,6 +382,10 @@ function createInProcessSource(options: InProcessOptions = {}): {
 				bio: "现查的来源资料",
 				...(stored.ok ? { avatar: stored.ref } : {}),
 			});
+		},
+		async fetchVideoViews(identity) {
+			probe.videoViewsAsked.push(identity);
+			return ok({ views: 5550 });
 		},
 		// 卡片页预览:不报问题、不上报,只记被问了什么(预览没有副作用)。
 		async fetchPreview(identity, options) {

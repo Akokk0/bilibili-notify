@@ -135,6 +135,13 @@ describe("ApiClient — 响应语义", () => {
 });
 
 describe("ApiClient — 失败一律抛(进外层 retry)", () => {
+	it("调用者取消时终止请求，不继续等待响应", async () => {
+		const controller = new AbortController();
+		controller.abort();
+		await expect(
+			makeClient().get(`${baseURL}/echo`, { signal: controller.signal }),
+		).rejects.toThrow();
+	});
 	it("非 2xx 抛错(等价 axios validateStatus,412 风控页进 retry 路径)", async () => {
 		await expect(makeClient().get(`${baseURL}/status-412`)).rejects.toThrow(
 			/^Request failed with status code 412: GET /,

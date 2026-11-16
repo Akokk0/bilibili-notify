@@ -71,7 +71,11 @@ import {
 	type RegisterBuiltinSourceOptions,
 	registerBuiltinSource,
 } from "../subscriptions/builtin-sources.js";
-import { createSourceGates, fetchSourceProfile } from "../subscriptions/call-source.js";
+import {
+	createSourceGates,
+	fetchSourceProfile,
+	fetchSourceVideoViews,
+} from "../subscriptions/call-source.js";
 import { subscriptionIdentityLabelOf } from "../subscriptions/platform-label.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
@@ -131,6 +135,7 @@ export interface PipelineRuntime extends Disposable {
 	readonly muteState: MuteState;
 	/** 经同一来源串行闸取资料:资料刷新与女仆回落共用这一口。 */
 	fetchProfile(identity: Identity, signal?: AbortSignal): Promise<Result<CreatorProfileReport>>;
+	fetchVideoViews(identity: Identity, signal?: AbortSignal): Promise<Result<{ views: number }>>;
 	/**
 	 * 在某个来源里搜人(宿主外壳 `searchSourceCreators`):与 `fetchProfile`、查直播状态共用同一道来源串行闸,
 	 * 同一个来源一次只有一个调用在途。女仆的搜人工具与面板的搜人口都走这一个,别各自再绑一份。
@@ -327,6 +332,12 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	const coreLiveCtx = opts.serviceCtx.forSubsystem("live", "core");
 	/** 宿主调来源的串行闸:搜人与查直播状态共用,同一个来源一次只有一个调用在途。 */
 	const sourceGates = createSourceGates();
+	const fetchVideoViews = (identity: Identity, signal?: AbortSignal) =>
+		fetchSourceVideoViews(
+			{ sources: opts.sources, logger: log, gates: sourceGates },
+			identity,
+			signal,
+		);
 	const fetchProfile = (identity: Identity, signal?: AbortSignal) =>
 		fetchSourceProfile(
 			{ sources: opts.sources, logger: log, gates: sourceGates },
@@ -928,6 +939,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 		push,
 		muteState,
 		fetchProfile,
+		fetchVideoViews,
 		searchCreators,
 		// getter,理由同下面的 `imageRenderer` —— 这也是个会被热重载重新赋值的 let。
 		// 写成普通属性的话它就是**启动那一刻的值拷贝**:没配 AI 起的服务永远是 null,

@@ -135,6 +135,7 @@ import { createStorageUsage } from "./runtime/storage-usage.js";
 import { pruneOrphanSubscriptionState } from "./runtime/subscription-state-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createSystemNoticeStore } from "./runtime/system-notices.js";
+import { startVideoViewsRefresh } from "./runtime/video-views-refresh.js";
 import { startStatsCompaction } from "./stats/compaction.js";
 import { listLoginSources } from "./subscriptions/registry.js";
 import { sourceSubscriptionViews } from "./subscriptions/source-subscriptions.js";
@@ -1089,6 +1090,18 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		});
 		runtime.attachProfileRefresh(profileRefresh);
 		runtime.serviceCtx.onDispose(() => profileRefresh.dispose(), "stop");
+		const videoViewsSubscriptions = subBinding.store;
+		const videoViewsRefresh = startVideoViewsRefresh({
+			bus: runtime.bus,
+			serviceCtx: runtime.serviceCtx,
+			store: runtime.videoViewsStore,
+			sources: runtime.sourceRegistry,
+			getGlobals: () => runtime.configStore.getGlobals(),
+			subscriptions: () => videoViewsSubscriptions.list(),
+			fetchVideoViews: pipeline.fetchVideoViews,
+		});
+		runtime.attachVideoViewsRefresh(videoViewsRefresh);
+		runtime.serviceCtx.onDispose(() => videoViewsRefresh.dispose(), "stop");
 
 		// ── 定时锐评 ──────────────────────────────────────────────────────────
 		// 草稿库 → 调度器 → 审批指令,按依赖顺序建;取数与主人私聊两个口子是回填的
@@ -1514,6 +1527,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					listGenerations: () => listGenerationUsage(generationUsage),
 					statsRecorder: runtime.statsRecorder,
 					profileRefresh: () => runtime.profileRefresh,
+					clearVideoViews: () => videoViewsRefresh.clear(),
 					invalidateStatsOverview: () => statsOverview.invalidate(),
 					historyStore: runtime.historyStore,
 					conversationStore: runtime.conversationStore,

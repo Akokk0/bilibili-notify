@@ -277,5 +277,8 @@
 	"bilibili.settings.text.2": "Invalid cron expression",
 	"bilibili.video-card.text.1": "Published a video",
 	"bilibili.settings.dynamicDescription": "Check for new posts on a cron schedule. Saving adjusts the schedule automatically.",
-	"bilibili.settings.loginDescription": "Check login status periodically. Changes take effect when saved."
+	"bilibili.settings.loginDescription": "Check login status periodically. Changes take effect when saved.",
+	"bilibili.videoViews.notRunning": "The source is not running; total video views are unavailable.",
+	"bilibili.videoViews.loginRequired": "Sign in before collecting total video views.",
+	"bilibili.videoViews.noValue": "The source returned no valid total video view count. No sample was recorded."
 }

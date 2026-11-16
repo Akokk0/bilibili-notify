@@ -1597,5 +1597,8 @@
 	"service.routes.test-result.text.3": "接続確認に失敗しました。相手側から理由が返されていません。",
 	"service.push.dispatch.text.1": "接続の{value0}",
 	"service.push.target-dispatcher.text.1": "この接続では送信先アドレスの候補を取得できません。",
-	"stats.invalidFollowersGrain": "フォロワー推移の集計単位は時間または日を指定してください。"
+	"stats.invalidFollowersGrain": "フォロワー推移の集計単位は時間または日を指定してください。",
+	"stats.videoViews.invalidValue": "動画の累計再生数が有効な非負の整数ではないため、今回は記録していません。",
+	"stats.videoViews.sampleFailed": "再生数のサンプルを記録できませんでした。しばらくしてから確認してください。",
+	"log.videoViews.refreshFailed": "動画の累計再生数の取得に失敗しました"
 }

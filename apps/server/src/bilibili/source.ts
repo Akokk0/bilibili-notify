@@ -220,6 +220,9 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let rooms: BiliLiveRooms | undefined;
 	let roomIds: RoomIds | undefined;
 	let profileFetcher: ReturnType<typeof createProfileFetcher> | undefined;
+	let videoViewsRisk: Failure | undefined;
+	let videoViewsRetryAt = 0;
+	let videoViewsLastAt: number | undefined;
 	const superchatAvatarUrls = new Map<string, string>();
 
 	const guardTiers = (): MembershipTier[] => {
@@ -310,6 +313,49 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			return profileFetcher
 				? profileFetcher.fetchProfile(identity, signal)
 				: Promise.resolve(fail("unavailable", "bilibili source is not running"));
+		},
+		async fetchVideoViews(identity, signal) {
+			if (!sourceCtx || signal.aborted)
+				return fail("unavailable", t("bilibili.videoViews.notRunning"));
+			if (shellAuth.state().status !== "logged-in") {
+				return fail("unauthorized", t("bilibili.videoViews.loginRequired"));
+			}
+			if (videoViewsRisk && now() < videoViewsRetryAt) return videoViewsRisk;
+			// 一次打开全部时也逐个缓发，避免把首轮采集变成一阵密集请求。
+			const waitMs = Math.max(
+				0,
+				200 - (videoViewsLastAt === undefined ? 200 : now() - videoViewsLastAt),
+			);
+			if (waitMs > 0)
+				await new Promise<void>((resolve) => {
+					let timer: Disposable | undefined;
+					const done = () => {
+						timer?.dispose();
+						signal.removeEventListener("abort", done);
+						resolve();
+					};
+					signal.addEventListener("abort", done, { once: true });
+					timer = deps.setTimeout(done, waitMs);
+				});
+			if (!sourceCtx || signal.aborted)
+				return fail("unavailable", t("bilibili.videoViews.notRunning"));
+			videoViewsLastAt = now();
+			const result = await biliApi.fetchUserUpstat(identity.externalId, signal);
+			if (!result.ok) {
+				if (result.code === "rate_limited") {
+					videoViewsRisk = result;
+					videoViewsRetryAt = now() + 5 * 60_000;
+					problems?.reportRisk("videoViews", { notify: false });
+				}
+				return result;
+			}
+			const views = result.data.archive?.view;
+			if (typeof views !== "number" || !Number.isSafeInteger(views) || views < 0) {
+				return fail("unavailable", t("bilibili.videoViews.noValue"));
+			}
+			videoViewsRisk = undefined;
+			problems?.resolveRisk("videoViews");
+			return ok({ views });
 		},
 		liveInteractions: {
 			async fetchViewerAvatar(
