@@ -6,11 +6,17 @@ import { i18n } from "../i18n";
  * 「怎么派生」,好让它能被单测钉住;组件只负责摆版式。
  */
 
-import type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contract";
+import type {
+	FollowersGrain,
+	FollowersTrend,
+	StatsOverviewResponse,
+	UpStatsRow,
+} from "@bilibili-notify/contract";
 
 export type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contract";
 
-export const statsQueryKey = (days: number) => ["stats", { days }] as const;
+export const statsQueryKey = (days: number, followersGrain: FollowersGrain, tz: number) =>
+	["stats", { days, followersGrain, tz }] as const;
 
 /** 本地时区偏移,与服务端 `tz` 参数口径一致(`getTimezoneOffset()`)。 */
 export const localTzOffset = (): number => new Date().getTimezoneOffset();
@@ -39,6 +45,26 @@ export function sparseLabels(days: string[], every = 6): string[] {
 		if ((days.length - 1 - i) % every !== 0) return "";
 		return i18n.t("panelUi.services.stats.2", { count: days.length - 1 - i });
 	});
+}
+
+/** 小时轴随可用宽度稀疏排字,日期和时刻都取自响应,不按浏览器当前日期重建。 */
+export function followersTrendLabels(trend: FollowersTrend, width: number): string[] {
+	if (trend.grain === "day") return sparseLabels(trend.timestamps);
+	const count = trend.timestamps.length;
+	const maxLabels = Math.max(2, Math.min(6, Math.floor((width - 60) / 115)));
+	const indexes = new Set(
+		Array.from({ length: Math.min(maxLabels, count) }, (_, i) =>
+			Math.round((i * (count - 1)) / (Math.min(maxLabels, count) - 1 || 1)),
+		),
+	);
+	const format = new Intl.DateTimeFormat(i18n.state().locale, {
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		hourCycle: "h23",
+	});
+	return trend.timestamps.map((at, i) => (indexes.has(i) ? format.format(new Date(at)) : ""));
 }
 
 /** 汇总所有 UP 的一行「全站」数据,供全局视图的 KPI 使用。 */

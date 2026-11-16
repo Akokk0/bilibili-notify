@@ -239,7 +239,14 @@ export function TrendChart({
 			))}
 			{xLabels.map((l, i) =>
 				l ? (
-					<text key={l} x={X(i)} y={height - 6} textAnchor="middle" fontSize="9.5" fill={AXIS_TEXT}>
+					<text
+						key={l}
+						x={X(i)}
+						y={height - 6}
+						textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"}
+						fontSize="9.5"
+						fill={AXIS_TEXT}
+					>
 						{l}
 					</text>
 				) : null,

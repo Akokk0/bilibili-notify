@@ -126,7 +126,20 @@ function mockApi(
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path === "/api/settings")
 			return Promise.resolve({ core: { ...makeDefaultGlobalSettings(), stats: { enabled } } });
-		if (path.startsWith("/api/stats/overview")) return Promise.resolve({ days: DAYS, rows });
+		if (path.startsWith("/api/stats/overview")) {
+			const days = Number(new URL(path, "http://bn.test").searchParams.get("days") ?? DAYS);
+			const window = (values: Array<number | null>) =>
+				Array.from({ length: days }, (_, i) => values[i + values.length - days] ?? null);
+			return Promise.resolve({
+				days,
+				rows: rows.map((row) => ({
+					...row,
+					series: window(row.series),
+					cumulative: window(row.cumulative),
+					activity: window(row.activity),
+				})),
+			});
+		}
 		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
 		// 来源表照装着的拓展列。
@@ -207,6 +220,78 @@ it.each([
 );
 
 describe("统计页 · 拓展订阅的行", () => {
+	it("粉丝总量默认日线，小时线使用响应时间轴，范围和创作者切换不发逐人请求", async () => {
+		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(640);
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("Expected the stats API fixture");
+		const timestamps = [0, 1, 2, 3].map((hour) => new Date(2020, 0, 1, hour).toISOString());
+		vi.mocked(api.get).mockImplementation((path) => {
+			if (!path.startsWith("/api/stats/overview")) return get(path);
+			const query = new URL(path, "http://bn.test").searchParams;
+			const days = Number(query.get("days"));
+			return Promise.resolve({
+				days,
+				rows: [BILI_ROW, EXT_ROW].map((row) => ({
+					...row,
+					series: Array(days).fill(1),
+					cumulative: Array(days).fill(row.followers),
+					activity: Array(days).fill(1),
+				})),
+				...(query.get("followersGrain") === "hour"
+					? {
+							followersTrend: {
+								grain: "hour",
+								timestamps,
+								rows: [
+									{ subscriptionId: "s-dy", values: [5010, null, 5030, 5040] },
+									{ subscriptionId: "s-bili", values: [1010, null, 1030, 1040] },
+								],
+							},
+						}
+					: {}),
+			}) as never;
+		});
+		try {
+			const { container } = renderStats();
+			await screen.findByRole("table");
+			await userEvent.click(tableRow("抖音乙"));
+			expect(screen.getByRole("button", { name: "日", pressed: true })).toBeTruthy();
+			await userEvent.click(screen.getByRole("button", { name: "小时" }));
+			await screen.findByRole("button", { name: "小时", pressed: true });
+			expect(container.textContent).toContain("01/01");
+			expect(container.textContent).toContain("03:00");
+			const calls = () =>
+				vi.mocked(api.get).mock.calls.filter(([path]) => path.startsWith("/api/stats"));
+			expect(calls()).toHaveLength(2);
+			for (const days of [7, 90]) {
+				await userEvent.click(screen.getAllByRole("button", { name: `近${days}日` })[0]);
+				await screen.findByRole("button", { name: "小时", pressed: true });
+				expect(calls().at(-1)?.[0]).toContain(`days=${days}&tz=`);
+				expect(calls().at(-1)?.[0]).toContain("followersGrain=hour");
+			}
+			await userEvent.click(screen.getByRole("button", { name: /抖音乙.*▾/ }));
+			await userEvent.click(screen.getByRole("button", { name: /B 站甲/ }));
+			expect(screen.getByRole("button", { name: "小时", pressed: true })).toBeTruthy();
+			expect(calls()).toHaveLength(4);
+			const trend = screen.getByText("B 站甲 · 粉丝总量走势").closest(".bn-glass");
+			expect(trend?.textContent).toContain("1040");
+			expect(trend?.textContent).not.toContain("5040");
+			for (const [locale, hour, day] of [
+				["en", "Hourly", "Daily"],
+				["ja", "時間", "日"],
+				["zh-TW", "小時", "日"],
+			] as const) {
+				act(() => i18n.set({ locale, voice: "plain" }));
+				expect(screen.getByRole("button", { name: hour, pressed: true })).toBeTruthy();
+				expect(screen.getByRole("button", { name: day, pressed: false })).toBeTruthy();
+			}
+			expect(api.post).not.toHaveBeenCalled();
+			expect(api.patch).not.toHaveBeenCalled();
+		} finally {
+			width.mockRestore();
+		}
+	});
+
 	it("对比表 / 热力图两支都列:名字照订阅、拓展行带平台徽章与在播,颜色与订阅卡同一个;汇总两支一起算", async () => {
 		renderStats();
 		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());

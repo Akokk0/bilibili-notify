@@ -1,5 +1,6 @@
 import {
 	type ExtensionEntryView,
+	type FollowersGrain,
 	type SourceEntry,
 	type SubscriptionView,
 	sourceNounsOf,
@@ -38,6 +39,7 @@ import {
 	cumulativeFans,
 	dayAxis,
 	fansKnownCount,
+	followersTrendLabels,
 	localTzOffset,
 	plainPostCount,
 	type StatsOverviewResponse,
@@ -600,11 +602,15 @@ function StatsContent() {
 	const tx = useT();
 	const [days, setDays] = useState<number>(30);
 	const [picked, setPicked] = useState<string | null>(null);
+	const [followersGrain, setFollowersGrain] = useState<FollowersGrain>("day");
+	const tz = localTzOffset();
 
 	const statsQuery = useQuery({
-		queryKey: statsQueryKey(days),
+		queryKey: statsQueryKey(days, followersGrain, tz),
 		queryFn: () =>
-			api.get<StatsOverviewResponse>(`/api/stats/overview?days=${days}&tz=${localTzOffset()}`),
+			api.get<StatsOverviewResponse>(
+				`/api/stats/overview?days=${days}&tz=${tz}&followersGrain=${followersGrain}`,
+			),
 	});
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
@@ -636,6 +642,8 @@ function StatsContent() {
 	const focused = picked ? (rows.find((r) => r.subscriptionId === picked) ?? null) : null;
 	const focusedMeta = focused ? metaOf(focused) : undefined;
 	const focusColor = focusedMeta?.color ?? PINK;
+	const followersTrend =
+		res?.followersTrend?.grain === followersGrain ? res.followersTrend : undefined;
 
 	// 画像跟随顶部的时间范围。六根轴里只有「粉丝规模(当前)」不随窗口变 ——
 	// 粉丝数是「此刻共有多少」,没有「近30日的粉丝规模」这回事;轴上并排标着
@@ -848,6 +856,18 @@ function StatsContent() {
 						subtitle={tx("sourceUi.pages.Stats.subtitle.36", { value1: days })}
 						accent={focusColor}
 						icon={<Icon.heart width={15} height={15} />}
+						right={
+							<fieldset className="min-w-0" aria-label={tx("stats.followers.grain")}>
+								<Picker
+									value={followersGrain}
+									onChange={setFollowersGrain}
+									options={[
+										{ value: "hour", label: tx("stats.followers.hour") },
+										{ value: "day", label: tx("stats.followers.day") },
+									]}
+								/>
+							</fieldset>
+						}
 					>
 						<ResponsiveChart
 							height={250}
@@ -857,18 +877,28 @@ function StatsContent() {
 										{
 											name: focused.subscriptionId,
 											color: focusColor,
-											data: cumulativeFans(focused),
+											data:
+												followersGrain === "day"
+													? cumulativeFans(focused)
+													: (followersTrend?.rows.find(
+															(row) => row.subscriptionId === focused.subscriptionId,
+														)?.values ?? []),
 										},
 									]}
 									width={w}
 									height={250}
-									xLabels={xLabels}
+									xLabels={followersTrend ? followersTrendLabels(followersTrend, w) : xLabels}
 									area
 									absolute
-									bridge
+									bridge={followersGrain === "day"}
 								/>
 							)}
 						/>
+						{followersGrain === "hour" ? (
+							<p className="mt-2 text-bn-xs text-bn-text-secondary">
+								{tx("stats.followers.hourHint")}
+							</p>
+						) : null}
 					</GlassPanel>
 				) : (
 					<GlassPanel
