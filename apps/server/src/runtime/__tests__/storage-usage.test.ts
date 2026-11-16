@@ -15,10 +15,12 @@ import {
 import { i18n } from "../../i18n/index.js";
 import { IMAGE_REFERRERS } from "../../images/image-referrers.js";
 import type { ImageUsage } from "../../images/image-store.js";
+import { createVideoViewsStore } from "../../stats/video-views-store.js";
 import { DATA_ROOT_LAYOUT } from "../roots.js";
 import {
 	CLEARABLE_STORAGE_CATEGORIES,
 	classifyImage,
+	createStorageUsage,
 	DATA_ROOT_STORAGE_COVERAGE,
 	sumImageBytes,
 } from "../storage-usage.js";
@@ -132,6 +134,22 @@ function gen(seq: number, deletable: boolean, reclaimableBytes: number) {
 }
 
 describe("用量表:每一行的数字", () => {
+	it("累计播放量文件计入统计及合计，清空返回实际释放的字节", async () => {
+		const store = createVideoViewsStore({ dataRoot: world.options.dataRoot });
+		const storage = createStorageUsage({ ...world.options, clearVideoViews: () => store.clear() });
+		try {
+			await world.file("data", "stats/video-views/a.jsonl", 80);
+			const before = await storage.list();
+			expect(before.rows.find((row) => row.category === "stats")?.sizeBytes).toBe(80);
+			expect(before.rows.reduce((total, row) => total + row.sizeBytes, 0)).toBe(80);
+			expect((await storage.clear("stats")).freedBytes).toBe(80);
+			expect((await storage.list()).rows.find((row) => row.category === "stats")?.sizeBytes).toBe(
+				0,
+			);
+		} finally {
+			await store.close();
+		}
+	});
 	it("changing language after image registration preserves every storage category and byte total", async () => {
 		await seed();
 		const before = await world.storage.list();

@@ -22,13 +22,11 @@ import type {
 } from "@bilibili-notify/contract";
 import type { Logger } from "@bilibili-notify/internal";
 import { CONVERSATIONS_DIR, type ConversationStore } from "../ai/conversation-store.js";
-import { FOLLOWERS_DIR } from "../followers/store.js";
 import { sweepHistoryRetention } from "../history/retention.js";
 import { type HistoryStore, listDayFiles } from "../history/store.js";
 import { IMAGE_REFERRERS } from "../images/image-referrers.js";
 import type { ImageStore, ImageUsage } from "../images/image-store.js";
 import type { StatsRecorderHandle } from "../stats/recorder.js";
-import { STATS_LIVE_DIR, STATS_POSTS_DIR, STATS_RECORDING_DIR } from "../stats/store.js";
 import { measureTree } from "./generation-usage.js";
 import type { ProfileRefreshHandle } from "./profile-refresh.js";
 import { type DataRootKey, dataPath, hostPath } from "./roots.js";
@@ -165,13 +163,7 @@ export function createStorageUsage(opts: StorageClearOptions): StorageUsage {
 	const sizeOf = async (path: string): Promise<number> => (await measureTree(path)).size;
 
 	async function statsBytes(): Promise<number> {
-		const dirs = [
-			dataPath(opts.dataRoot, ...STATS_POSTS_DIR),
-			dataPath(opts.dataRoot, ...STATS_LIVE_DIR),
-			dataPath(opts.dataRoot, ...STATS_RECORDING_DIR),
-			dataPath(opts.dataRoot, ...FOLLOWERS_DIR),
-		];
-		return sum(await Promise.all(dirs.map(sizeOf)));
+		return sizeOf(dataPath(opts.dataRoot, "stats"));
 	}
 	/** 历史日文件(`history/<日>.jsonl`)的字节数;水位线与 `repush/` 不算。 */
 	async function historyTextBytes(): Promise<number> {
