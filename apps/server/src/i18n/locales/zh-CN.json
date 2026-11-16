@@ -1600,5 +1600,9 @@
 	"stats.invalidFollowersGrain": "粉丝曲线粒度必须是小时或日。",
 	"stats.videoViews.invalidValue": "累计播放量不是有效的非负整数，本次未记录。",
 	"stats.videoViews.sampleFailed": "本次播放量样本未能记录，请稍后查看。",
-	"log.videoViews.refreshFailed": "累计视频播放量采集失败"
+	"log.videoViews.refreshFailed": "累计视频播放量采集失败",
+	"stats.videoViews.timeout": "累计视频播放量读取超时，请稍后重试。",
+	"stats.videoViews.sourceUnsupported": "此来源不支持累计视频播放量采集。",
+	"stats.videoViews.sourceFailed": "来源未能返回累计视频播放量，请稍后重试。",
+	"stats.videoViews.cancelled": "累计视频播放量读取已取消。"
 }

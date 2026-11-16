@@ -8,7 +8,7 @@ import {
 	type Result,
 	type SerialGate,
 } from "@bilibili-notify/internal";
-import { logText } from "../i18n/index.js";
+import { logText, t } from "../i18n/index.js";
 import { LOOKUP_TIMEOUT_MS } from "../integrations/lookup-timeout.js";
 import type { SourceRegistry } from "./registry.js";
 
@@ -228,10 +228,10 @@ export function fetchSourceVideoViews(
 		"fetchVideoViews",
 		fetchVideoViews && ((sourceSignal) => fetchVideoViews(identity, sourceSignal)),
 		{
-			missing: () => fail("unsupported", "the source does not implement fetchVideoViews"),
-			timeout: () => fail("timeout", "the source did not answer in time"),
-			thrown: () => fail("unavailable", "the source threw"),
-			aborted: () => fail("unavailable", "the call was cancelled by the host"),
+			missing: () => fail("unsupported", t("stats.videoViews.sourceUnsupported")),
+			timeout: () => fail("timeout", t("stats.videoViews.timeout")),
+			thrown: () => fail("unavailable", t("stats.videoViews.sourceFailed")),
+			aborted: () => fail("unavailable", t("stats.videoViews.cancelled")),
 		},
 		signal,
 	);

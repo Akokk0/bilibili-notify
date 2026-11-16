@@ -1612,5 +1612,9 @@
 	"stats.invalidFollowersGrain": "Follower trend granularity must be hour or day.",
 	"stats.videoViews.invalidValue": "The total video view count is not a valid non-negative integer. No sample was recorded.",
 	"stats.videoViews.sampleFailed": "The video view sample could not be recorded. Check again later.",
-	"log.videoViews.refreshFailed": "Total video view collection failed"
+	"log.videoViews.refreshFailed": "Total video view collection failed",
+	"stats.videoViews.timeout": "Reading the total video view count timed out. Try again later.",
+	"stats.videoViews.sourceUnsupported": "This source does not support total video view collection.",
+	"stats.videoViews.sourceFailed": "The source could not return the total video view count. Try again later.",
+	"stats.videoViews.cancelled": "Reading the total video view count was cancelled."
 }

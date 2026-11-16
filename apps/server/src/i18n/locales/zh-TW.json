@@ -1600,5 +1600,9 @@
 	"stats.invalidFollowersGrain": "粉絲曲線的彙整單位必須是小時或日。",
 	"stats.videoViews.invalidValue": "累計播放次數不是有效的非負整數，本次未記錄。",
 	"stats.videoViews.sampleFailed": "本次播放次數樣本無法記錄，請稍後查看。",
-	"log.videoViews.refreshFailed": "累計影片播放次數收集失敗"
+	"log.videoViews.refreshFailed": "累計影片播放次數收集失敗",
+	"stats.videoViews.timeout": "累計影片播放次數讀取逾時，請稍後再試。",
+	"stats.videoViews.sourceUnsupported": "此來源不支援累計影片播放次數的收集。",
+	"stats.videoViews.sourceFailed": "來源無法傳回累計影片播放次數，請稍後再試。",
+	"stats.videoViews.cancelled": "已取消讀取累計影片播放次數。"
 }

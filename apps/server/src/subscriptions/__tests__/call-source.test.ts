@@ -1,5 +1,6 @@
 import { ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import {
 	callSource,
 	createSourceGates,
@@ -51,6 +52,99 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 });
+
+it.each([
+	["zh-CN", "累计视频播放量读取超时，请稍后重试。"],
+	["zh-TW", "累計影片播放次數讀取逾時，請稍後再試。"],
+	["en", "Reading the total video view count timed out. Try again later."],
+	["ja", "動画の累計再生数の取得がタイムアウトしました。しばらくしてから再試行してください。"],
+] as const)("播放量超时在出字时读取当前语言：%s", async (locale, message) => {
+	const previous = i18n.state();
+	try {
+		i18n.set({ locale: "en", voice: "plain" });
+		const pending = fetchSourceVideoViews(
+			{
+				logger,
+				gates: createSourceGates(),
+				timeoutMs: 1000,
+				sources: {
+					get: () => ({ fetchVideoViews: () => new Promise<never>(() => {}) }),
+				} as never,
+			},
+			{ sourceKey: "acme", externalId: "42" },
+		);
+		await vi.advanceTimersByTimeAsync(0);
+		i18n.set({ locale, voice: "plain" });
+		await vi.advanceTimersByTimeAsync(1001);
+		expect(await pending).toEqual({ ok: false, code: "timeout", message });
+	} finally {
+		i18n.set(previous);
+	}
+});
+
+it.each([
+	[
+		"zh-CN",
+		"此来源不支持累计视频播放量采集。",
+		"来源未能返回累计视频播放量，请稍后重试。",
+		"累计视频播放量读取已取消。",
+	],
+	[
+		"zh-TW",
+		"此來源不支援累計影片播放次數的收集。",
+		"來源無法傳回累計影片播放次數，請稍後再試。",
+		"已取消讀取累計影片播放次數。",
+	],
+	[
+		"en",
+		"This source does not support total video view collection.",
+		"The source could not return the total video view count. Try again later.",
+		"Reading the total video view count was cancelled.",
+	],
+	[
+		"ja",
+		"このソースは動画の累計再生数の収集に対応していません。",
+		"ソースから動画の累計再生数を取得できませんでした。しばらくしてから再試行してください。",
+		"動画の累計再生数の取得をキャンセルしました。",
+	],
+] as const)(
+	"播放量宿主失败使用当前语言，原始异常不进入结果：%s",
+	async (locale, missing, thrown, aborted) => {
+		const previous = i18n.state();
+		const identity = { sourceKey: "acme", externalId: "42" };
+		const deps = {
+			logger,
+			gates: createSourceGates(),
+			sources: {
+				get: () => ({
+					fetchVideoViews: async () => {
+						throw new Error("upstream-diagnostic-only");
+					},
+				}),
+			} as never,
+		};
+		try {
+			i18n.set({ locale, voice: "plain" });
+			expect(
+				await fetchSourceVideoViews({ ...deps, sources: { get: () => undefined } }, identity),
+			).toEqual({ ok: false, code: "unsupported", message: missing });
+			expect(await fetchSourceVideoViews(deps, identity)).toEqual({
+				ok: false,
+				code: "unavailable",
+				message: thrown,
+			});
+			const controller = new AbortController();
+			controller.abort();
+			expect(await fetchSourceVideoViews(deps, identity, controller.signal)).toEqual({
+				ok: false,
+				code: "unavailable",
+				message: aborted,
+			});
+		} finally {
+			i18n.set(previous);
+		}
+	},
+);
 
 describe("callSource", () => {
 	it("超过期限:叫停来源手里的 signal,回超时的那份失败", async () => {

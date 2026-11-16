@@ -1600,5 +1600,9 @@
 	"stats.invalidFollowersGrain": "フォロワー推移の集計単位は時間または日を指定してください。",
 	"stats.videoViews.invalidValue": "動画の累計再生数が有効な非負の整数ではないため、今回は記録していません。",
 	"stats.videoViews.sampleFailed": "再生数のサンプルを記録できませんでした。しばらくしてから確認してください。",
-	"log.videoViews.refreshFailed": "動画の累計再生数の取得に失敗しました"
+	"log.videoViews.refreshFailed": "動画の累計再生数の取得に失敗しました",
+	"stats.videoViews.timeout": "動画の累計再生数の取得がタイムアウトしました。しばらくしてから再試行してください。",
+	"stats.videoViews.sourceUnsupported": "このソースは動画の累計再生数の収集に対応していません。",
+	"stats.videoViews.sourceFailed": "ソースから動画の累計再生数を取得できませんでした。しばらくしてから再試行してください。",
+	"stats.videoViews.cancelled": "動画の累計再生数の取得をキャンセルしました。"
 }
