@@ -21,6 +21,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { ImageWriter } from "../images/image-store.js";
+import { errorMessageOf } from "../util/error-message.js";
 import { createBiliAiToolProvider } from "./ai-tools.js";
 import type { Api } from "./api/index.js";
 import { type BilibiliSourceAuth, createAuthSystem } from "./auth/index.js";
@@ -340,7 +341,20 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			if (!sourceCtx || signal.aborted)
 				return fail("unavailable", t("bilibili.videoViews.notRunning"));
 			videoViewsLastAt = now();
-			const result = await biliApi.fetchUserUpstat(identity.externalId, signal);
+			let result: Awaited<ReturnType<Api["fetchUserUpstat"]>>;
+			try {
+				result = await biliApi.fetchUserUpstat(identity.externalId, signal);
+			} catch (error) {
+				if (!signal.aborted)
+					sourceCtx?.logger.warn(logText("log.bilibili.videoViews.fetchFailed"), {
+						externalId: identity.externalId,
+						error,
+					});
+				return fail(
+					"unavailable",
+					t("bilibili.videoViews.fetchFailed", { reason: errorMessageOf(error) }),
+				);
+			}
 			if (!result.ok) {
 				if (result.code === "rate_limited") {
 					videoViewsRisk = result;

@@ -280,5 +280,7 @@
 	"bilibili.settings.loginDescription": "定期檢查登入狀態，儲存後生效。",
 	"bilibili.videoViews.notRunning": "來源尚未執行，無法讀取累計播放次數。",
 	"bilibili.videoViews.loginRequired": "請先登入，再收集累計播放次數。",
-	"bilibili.videoViews.noValue": "來源未傳回有效的累計播放次數，本次未記錄。"
+	"bilibili.videoViews.noValue": "來源未傳回有效的累計播放次數，本次未記錄。",
+	"bilibili.videoViews.fetchFailed": "本次累計播放次數取得失敗：{reason}",
+	"log.bilibili.videoViews.fetchFailed": "累計影片播放次數請求發生錯誤"
 }

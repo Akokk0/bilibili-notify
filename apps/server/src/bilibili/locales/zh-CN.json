@@ -280,5 +280,7 @@
 	"log.bilibili.live.protocolDegraded": "已知直播命令解析降级，请检查是否需要更新",
 	"bilibili.videoViews.notRunning": "来源尚未运行，无法读取累计播放量。",
 	"bilibili.videoViews.loginRequired": "请先登录，再采集累计播放量。",
-	"bilibili.videoViews.noValue": "来源没有返回有效的累计播放量，本次未记录。"
+	"bilibili.videoViews.noValue": "来源没有返回有效的累计播放量，本次未记录。",
+	"bilibili.videoViews.fetchFailed": "本次累计播放量获取失败：{reason}",
+	"log.bilibili.videoViews.fetchFailed": "累计视频播放量请求异常"
 }

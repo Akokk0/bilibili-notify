@@ -280,5 +280,7 @@
 	"bilibili.settings.loginDescription": "Check login status periodically. Changes take effect when saved.",
 	"bilibili.videoViews.notRunning": "The source is not running; total video views are unavailable.",
 	"bilibili.videoViews.loginRequired": "Sign in before collecting total video views.",
-	"bilibili.videoViews.noValue": "The source returned no valid total video view count. No sample was recorded."
+	"bilibili.videoViews.noValue": "The source returned no valid total video view count. No sample was recorded.",
+	"bilibili.videoViews.fetchFailed": "Could not fetch total video views: {reason}",
+	"log.bilibili.videoViews.fetchFailed": "Total video view request failed"
 }

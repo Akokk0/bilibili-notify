@@ -280,5 +280,7 @@
 	"bilibili.settings.loginDescription": "ログイン状態を定期的に確認します。保存すると変更が反映されます。",
 	"bilibili.videoViews.notRunning": "ソースが起動していないため、動画の累計再生数を取得できません。",
 	"bilibili.videoViews.loginRequired": "動画の累計再生数を記録するには、先にログインしてください。",
-	"bilibili.videoViews.noValue": "有効な動画の累計再生数が返されなかったため、今回は記録していません。"
+	"bilibili.videoViews.noValue": "有効な動画の累計再生数が返されなかったため、今回は記録していません。",
+	"bilibili.videoViews.fetchFailed": "動画の累計再生数を取得できませんでした：{reason}",
+	"log.bilibili.videoViews.fetchFailed": "動画の累計再生数のリクエストに失敗しました"
 }

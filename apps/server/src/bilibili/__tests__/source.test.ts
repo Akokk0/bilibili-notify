@@ -666,6 +666,24 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
+	it("累计播放量的常见网络故障返回失败结果，不向宿主抛出", async () => {
+		const auth = makeAuth({ status: "logged-in", loggedInAt: "2026-11-16T00:00:00.000Z" });
+		const { deps, login } = makeDeps({ auth: auth.auth });
+		const fetchUserUpstat = vi.fn(async () => {
+			throw new Error("Request failed with status code 503");
+		});
+		login.api = { ...login.api, fetchUserUpstat } as unknown as Api;
+		const source = createBiliSource(deps);
+		await source.start(makeCtx().ctx);
+		await expect(
+			source.fetchVideoViews?.(
+				{ sourceKey: "bilibili", externalId: "42" },
+				new AbortController().signal,
+			),
+		).resolves.toMatchObject({ ok: false, code: "unavailable" });
+		await source.stop();
+	});
+
 	it("start 之后 fetchPreview 接上:作品取同一个 API 的 space 列表,直播交给直播房间;start 前回 unavailable", async () => {
 		const { deps, login } = makeDeps();
 		const fetchUserSpaceDynamic = vi.fn(async () => ({ code: 0, data: { items: [] } }));
