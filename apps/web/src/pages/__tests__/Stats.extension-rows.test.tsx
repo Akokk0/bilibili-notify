@@ -11,7 +11,12 @@
  *   走;榜单的结果按订阅 id 回指,名字 / 颜色照统计行那一份。
  */
 
-import type { ExtensionEntryView, SourceEntry, UpStatsRow } from "@bilibili-notify/contract";
+import type {
+	ExtensionEntryView,
+	SourceEntry,
+	StatsOverviewResponse,
+	UpStatsRow,
+} from "@bilibili-notify/contract";
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
@@ -220,6 +225,205 @@ it.each([
 );
 
 describe("统计页 · 拓展订阅的行", () => {
+	it("窄屏播放量日线减少英文日期标签，同时保留起止时间", async () => {
+		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(280);
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("Expected the stats API fixture");
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			const response = await get(path);
+			if (path === "/api/subscriptions")
+				return [{ ...BILI_SUB, overrides: { stats: { videoViews: true } } }, EXT_SUB] as never;
+			if (!path.startsWith("/api/stats/overview")) return response;
+			return {
+				...(response as StatsOverviewResponse),
+				videoViewsTrend: {
+					grain: "day",
+					timestamps: Array.from({ length: 30 }, (_, i) =>
+						new Date(Date.UTC(2026, 10, 1 + i)).toISOString(),
+					),
+					rows: [
+						{
+							subscriptionId: "s-bili",
+							supported: true,
+							enabled: true,
+							active: true,
+							values: Array.from({ length: 30 }, (_, i) => 1000 + i),
+						},
+					],
+				},
+			} as never;
+		});
+		try {
+			renderStats();
+			await screen.findByRole("table");
+			await userEvent.click(tableRow("B 站甲"));
+			act(() => i18n.set({ locale: "en", voice: "plain" }));
+			await userEvent.click(screen.getByRole("button", { name: "Total video views" }));
+			const panel = screen.getByText("B 站甲 · Total video views").closest(".bn-glass");
+			expect(panel?.textContent).toContain("29 days ago");
+			expect(panel?.textContent).toContain("Today");
+			expect(panel?.textContent).not.toContain("6 days ago");
+		} finally {
+			width.mockRestore();
+		}
+	});
+	it("全部采集写全局默认并保留当前例外，跟随全部会删除单独覆盖", async () => {
+		const globals = makeDefaultGlobalSettings();
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("Expected the stats API fixture");
+		let sub = { ...BILI_SUB, overrides: { stats: { videoViews: false } } } as Subscription;
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path === "/api/settings") return { core: globals } as never;
+			if (path === "/api/subscriptions") return [sub, EXT_SUB] as never;
+			const response = (await get(path)) as StatsOverviewResponse;
+			if (!path.startsWith("/api/stats/overview")) return response;
+			const enabled = sub.overrides.stats?.videoViews ?? globals.defaults.stats.videoViews;
+			return {
+				...response,
+				videoViewsTrend: {
+					grain: "day",
+					timestamps: ["2026-11-16T00:00:00.000Z"],
+					rows: [
+						{
+							subscriptionId: "s-bili",
+							values: [enabled ? 54321 : null],
+							supported: true,
+							enabled,
+							active: enabled,
+						},
+					],
+				},
+			};
+		});
+		vi.mocked(api.patch).mockImplementation(async (path) => {
+			if (path === "/api/settings") {
+				globals.defaults.stats.videoViews = true;
+				return { core: globals } as never;
+			}
+			sub = { ...sub, overrides: {} };
+			return sub as never;
+		});
+		renderStats();
+		await screen.findByRole("table");
+		await userEvent.click(tableRow("B 站甲"));
+		await userEvent.click(screen.getByRole("button", { name: "播放总量" }));
+		await userEvent.click(screen.getByRole("button", { name: "全部及以后新增" }));
+		await userEvent.click(screen.getByRole("button", { name: "采集播放量" }));
+		await screen.findByRole("button", { name: "采集播放量", pressed: true });
+		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+			core: { defaults: { stats: { videoViews: true } } },
+		});
+		expect(vi.mocked(api.patch).mock.calls.every(([path]) => path === "/api/settings")).toBe(true);
+		await userEvent.click(screen.getByRole("button", { name: "仅当前" }));
+		expect(screen.getByRole("button", { name: "采集播放量", pressed: false })).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "跟随全部" }));
+		await screen.findByRole("button", { name: "采集播放量", pressed: true });
+		expect(api.patch).toHaveBeenCalledWith("/api/subscriptions/s-bili", {
+			overrides: { stats: { videoViews: null } },
+		});
+	});
+	it("仅当前采集保存成功后才打开，失败保持关闭并显示原因", async () => {
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("Expected the stats API fixture");
+		let enabled = false;
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path === "/api/subscriptions")
+				return [
+					{ ...BILI_SUB, overrides: enabled ? { stats: { videoViews: true } } : {} },
+					EXT_SUB,
+				] as never;
+			const response = (await get(path)) as StatsOverviewResponse;
+			if (!path.startsWith("/api/stats/overview")) return response;
+			return {
+				...response,
+				videoViewsTrend: {
+					grain: "day",
+					timestamps: ["2026-11-16T00:00:00.000Z"],
+					rows: [
+						{
+							subscriptionId: "s-bili",
+							values: [enabled ? 123456 : null],
+							supported: true,
+							enabled,
+							active: enabled,
+						},
+					],
+				},
+			};
+		});
+		let finish: (value: unknown) => void = () => {};
+		vi.mocked(api.patch).mockImplementationOnce(
+			() =>
+				new Promise((done) => {
+					finish = done;
+				}),
+		);
+		renderStats();
+		await screen.findByRole("table");
+		await userEvent.click(tableRow("B 站甲"));
+		await userEvent.click(screen.getByRole("button", { name: "播放总量" }));
+		await userEvent.click(screen.getByRole("button", { name: "采集播放量" }));
+		expect(api.patch).toHaveBeenCalledWith("/api/subscriptions/s-bili", {
+			overrides: { stats: { videoViews: true } },
+		});
+		expect(
+			screen.getByRole("button", { name: "采集播放量", pressed: false }).hasAttribute("disabled"),
+		).toBe(true);
+		enabled = true;
+		finish({ ...BILI_SUB, overrides: { stats: { videoViews: true } } });
+		await screen.findByRole("button", { name: "采集播放量", pressed: true });
+		vi.mocked(api.patch).mockRejectedValueOnce(new Error("保存失败测试"));
+		await userEvent.click(screen.getByRole("button", { name: "小时" }));
+		await screen.findByRole("button", { name: "小时", pressed: true });
+		expect(screen.getByRole("button", { name: "播放总量", pressed: true })).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "采集播放量" }));
+		await screen.findByText(/保存失败测试/);
+		expect(screen.getByRole("button", { name: "采集播放量", pressed: true })).toBeTruthy();
+	});
+	it("播放总量 Picker 显示默认关闭说明、范围与开关；不支持的来源不显示开关", async () => {
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("Expected the stats API fixture");
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			const response = (await get(path)) as StatsOverviewResponse;
+			if (!path.startsWith("/api/stats/overview")) return response;
+			return {
+				...response,
+				videoViewsTrend: {
+					grain: "day",
+					timestamps: ["2026-11-16T00:00:00.000Z"],
+					rows: [
+						{
+							subscriptionId: "s-bili",
+							values: [null],
+							supported: true,
+							enabled: false,
+							active: false,
+						},
+						{
+							subscriptionId: "s-dy",
+							values: [null],
+							supported: false,
+							enabled: false,
+							active: false,
+						},
+					],
+				},
+			};
+		});
+		renderStats();
+		await screen.findByRole("table");
+		await userEvent.click(tableRow("B 站甲"));
+		await userEvent.click(screen.getByRole("button", { name: "播放总量" }));
+		expect(screen.getByText("播放量统计默认关闭")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "仅当前" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "全部及以后新增" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "采集播放量", pressed: false })).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+		await userEvent.click(screen.getByRole("button", { name: /B 站甲.*▾/ }));
+		await userEvent.click(screen.getByRole("button", { name: /抖音乙/ }));
+		expect(screen.getByText("此来源暂不支持累计播放量")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "采集播放量" })).toBeNull();
+	});
 	it("粉丝总量默认日线，小时线使用响应时间轴，范围和创作者切换不发逐人请求", async () => {
 		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(640);
 		const get = vi.mocked(api.get).getMockImplementation();

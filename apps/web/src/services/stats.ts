@@ -47,11 +47,12 @@ export function sparseLabels(days: string[], every = 6): string[] {
 	});
 }
 
-/** 小时轴随可用宽度稀疏排字,日期和时刻都取自响应,不按浏览器当前日期重建。 */
+/** 日期与小时轴均按可用宽度稀疏排字，窄屏也给较长的译文留出空间。 */
 export function followersTrendLabels(trend: FollowersTrend, width: number): string[] {
-	if (trend.grain === "day") return sparseLabels(trend.timestamps);
 	const count = trend.timestamps.length;
 	const maxLabels = Math.max(2, Math.min(6, Math.floor((width - 60) / 115)));
+	if (trend.grain === "day")
+		return sparseLabels(trend.timestamps, Math.max(1, Math.ceil((count - 1) / (maxLabels - 1))));
 	const indexes = new Set(
 		Array.from({ length: Math.min(maxLabels, count) }, (_, i) =>
 			Math.round((i * (count - 1)) / (Math.min(maxLabels, count) - 1 || 1)),

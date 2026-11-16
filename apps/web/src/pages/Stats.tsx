@@ -36,10 +36,8 @@ import {
 	computeTotals,
 	coveredActivityTotal,
 	coveredDayCount,
-	cumulativeFans,
 	dayAxis,
 	fansKnownCount,
-	followersTrendLabels,
 	localTzOffset,
 	plainPostCount,
 	type StatsOverviewResponse,
@@ -49,6 +47,11 @@ import {
 } from "../services/stats";
 import { identityColor, type Subscription } from "../types/domain";
 import { historyRowIdentity } from "../utils/creator-display";
+import {
+	type CreatorTrendMetric,
+	CreatorTrendPanel,
+	type VideoViewsScope,
+} from "./stats/CreatorTrendPanel";
 import type { SignTone } from "./stats/chart-utils";
 import { dash, signTone } from "./stats/chart-utils";
 import {
@@ -59,7 +62,6 @@ import {
 	RadarChart,
 	ResponsiveChart,
 	Sparkline,
-	TrendChart,
 } from "./stats/charts";
 import { buildStatColumns, type StatColumnId, viewersHint } from "./stats/columns";
 import { buildCsv } from "./stats/csv";
@@ -603,6 +605,8 @@ function StatsContent() {
 	const [days, setDays] = useState<number>(30);
 	const [picked, setPicked] = useState<string | null>(null);
 	const [followersGrain, setFollowersGrain] = useState<FollowersGrain>("day");
+	const [creatorMetric, setCreatorMetric] = useState<CreatorTrendMetric>("followers");
+	const [videoViewsScope, setVideoViewsScope] = useState<VideoViewsScope>("current");
 	const tz = localTzOffset();
 
 	const statsQuery = useQuery({
@@ -611,6 +615,13 @@ function StatsContent() {
 			api.get<StatsOverviewResponse>(
 				`/api/stats/overview?days=${days}&tz=${tz}&followersGrain=${followersGrain}`,
 			),
+		refetchInterval: (query) => {
+			const active = query.state.data?.videoViewsTrend?.rows.filter((row) => row.active) ?? [];
+			if (active.length === 0) return false;
+			return active.some((row) => !row.failure && row.values.every((value) => value === null))
+				? 3_000
+				: 60_000;
+		},
 	});
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
@@ -851,55 +862,21 @@ function StatsContent() {
 			{/* 主面板 + 侧图 */}
 			<div className="grid gap-3.5 xl:grid-cols-[1.9fr_1fr]">
 				{focused ? (
-					<GlassPanel
-						title={tx("sourceUi.pages.Stats.title.35", { value1: focusedMeta?.name ?? "" })}
-						subtitle={tx("sourceUi.pages.Stats.subtitle.36", { value1: days })}
-						accent={focusColor}
-						icon={<Icon.heart width={15} height={15} />}
-						right={
-							<fieldset className="min-w-0" aria-label={tx("stats.followers.grain")}>
-								<Picker
-									value={followersGrain}
-									onChange={setFollowersGrain}
-									options={[
-										{ value: "hour", label: tx("stats.followers.hour") },
-										{ value: "day", label: tx("stats.followers.day") },
-									]}
-								/>
-							</fieldset>
-						}
-					>
-						<ResponsiveChart
-							height={250}
-							render={(w) => (
-								<TrendChart
-									series={[
-										{
-											name: focused.subscriptionId,
-											color: focusColor,
-											data:
-												followersGrain === "day"
-													? cumulativeFans(focused)
-													: (followersTrend?.rows.find(
-															(row) => row.subscriptionId === focused.subscriptionId,
-														)?.values ?? []),
-										},
-									]}
-									width={w}
-									height={250}
-									xLabels={followersTrend ? followersTrendLabels(followersTrend, w) : xLabels}
-									area
-									absolute
-									bridge
-								/>
-							)}
-						/>
-						{followersGrain === "hour" ? (
-							<p className="mt-2 text-bn-xs text-bn-text-secondary">
-								{tx("stats.followers.hourHint")}
-							</p>
-						) : null}
-					</GlassPanel>
+					<CreatorTrendPanel
+						metric={creatorMetric}
+						onMetricChange={setCreatorMetric}
+						scope={videoViewsScope}
+						onScopeChange={setVideoViewsScope}
+						row={focused}
+						name={focusedMeta?.name ?? ""}
+						color={focusColor}
+						days={days}
+						grain={followersGrain}
+						onGrainChange={setFollowersGrain}
+						followersTrend={followersTrend}
+						videoViewsTrend={res?.videoViewsTrend}
+						subscription={subsQuery.data?.find((sub) => sub.id === focused.subscriptionId)}
+					/>
 				) : (
 					<GlassPanel
 						title={tx("sourceUi.pages.Stats.title.37")}

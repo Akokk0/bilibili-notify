@@ -187,7 +187,7 @@ environment:
 │   ├── config/          设置 settings/、订阅、连接、目标
 │   ├── secrets/         各来源与拓展凭据、AI 密钥
 │   ├── history/         推送历史(按日 jsonl)
-│   ├── stats/           作品、直播、粉丝时序
+│   ├── stats/           作品、直播、粉丝与按需播放量时序
 │   ├── images/          图库与已缓存图片
 │   ├── library/         图片、字体等资源索引与文件
 │   ├── ai/             AI 对话数据
