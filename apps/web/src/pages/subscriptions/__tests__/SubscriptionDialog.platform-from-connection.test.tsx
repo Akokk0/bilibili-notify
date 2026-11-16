@@ -21,8 +21,8 @@ import { makeSource } from "../../rules/__tests__/fixtures";
 import { SubscriptionDialog } from "../SubscriptionDialog";
 import { subscriptionPlatformOf } from "../subscription-source";
 
-const QQ_REASON = "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段";
-const UNSUPPORTED_NOTE = `${QQ_REASON}，发送时会自动跳过`;
+const UNSUPPORTED_REASON = "测试连接不支持 @全体";
+const UNSUPPORTED_NOTE = `${UNSUPPORTED_REASON}，发送时会自动跳过`;
 const MISSING_NOTE = "连接不在了,没法判断能不能 @全体";
 const CONN = "11111111-1111-4111-8111-111111111111";
 
@@ -59,12 +59,12 @@ const UNKNOWN = { state: "unknown" } as const;
 function capsWith(atAll: ConnectionCapabilitiesMap[string]["atAll"]): ConnectionCapabilitiesMap {
 	return { [CONN]: { atAll, inbound: UNKNOWN, nativeShare: UNKNOWN } };
 }
-const QQ_CAPS = capsWith({
+const UNSUPPORTED_CAPS = capsWith({
 	state: "unsupported",
-	reason: QQ_REASON,
+	reason: UNSUPPORTED_REASON,
 	checkedAt: "2026-10-26T00:00:00.000Z",
 });
-const OB_CAPS = capsWith({ state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" });
+const SUPPORTED_CAPS = capsWith({ state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" });
 
 function renderDialog(
 	t: PushTarget,
@@ -140,21 +140,21 @@ describe("SubscriptionDialog · 平台取自连接", () => {
 		},
 	);
 
-	it("连接的 atAll 能力是不支持(QQ 官方)→ @全体置灰", () => {
-		renderDialog(target(), [connection("qq-official")], QQ_CAPS);
+	it("连接的 atAll 能力是不支持 → @全体置灰", () => {
+		renderDialog(target(), [connection("qq-official")], UNSUPPORTED_CAPS);
 		expect(screen.getByText(UNSUPPORTED_NOTE)).toBeTruthy();
 		const toggle = atAllToggle();
 		expect(toggle.disabled).toBe(true);
 	});
 
 	it("连接的 atAll 能力是支持(OneBot)→ 可点", () => {
-		renderDialog(target(), [connection("onebot")], OB_CAPS);
+		renderDialog(target(), [connection("onebot")], SUPPORTED_CAPS);
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
 		expect(atAllToggle().disabled).toBe(false);
 	});
 
 	it("连接不在 → @全体置灰,提示说连接不在了,不冤枉 QQ 官方", () => {
-		renderDialog(target(), [], QQ_CAPS);
+		renderDialog(target(), [], UNSUPPORTED_CAPS);
 		expect(atAllToggle().disabled).toBe(true);
 		expect(screen.getByText(MISSING_NOTE)).toBeTruthy();
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
@@ -170,7 +170,7 @@ describe("SubscriptionDialog · 平台取自连接", () => {
 	});
 
 	it("能力不支持 → 提示是能力里的原因 + 「,发送时会自动跳过」", () => {
-		renderDialog(target(), [connection("qq-official")], QQ_CAPS);
+		renderDialog(target(), [connection("qq-official")], UNSUPPORTED_CAPS);
 		expect(screen.getByText(UNSUPPORTED_NOTE)).toBeTruthy();
 		expect(screen.queryByText(MISSING_NOTE)).toBeNull();
 	});

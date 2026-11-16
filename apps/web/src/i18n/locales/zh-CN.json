@@ -1,4 +1,5 @@
 {
+	"subs.atAllPrivateUnsupported": "私聊不支持 @全体。",
 	"developmentExtensions.retry": "重试",
 	"developmentExtensions.browse": "浏览目录",
 	"developmentExtensions.chooseDirectory": "选择拓展目录",

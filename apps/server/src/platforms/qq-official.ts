@@ -828,24 +828,31 @@ function tokenFailure(e: unknown): Failure {
  * `code 304023` + `audit_id` —— 算「已提交·审核中」(ok,后台听 MESSAGE_AUDIT 才知拒绝);
  * 200 + id = 已发;2xx 但带非零业务 code(无 id/audit)= 失败;非 2xx = 失败。
  *
- * 失败的码(ADR-0026):非 2xx 按 HTTP 状态翻;2xx 包着的业务错误这里没有对照,记 `unknown`。
+ * 失败的码(ADR-0026):已知配额／权限码翻为 rate_limited／unauthorized；其余非 2xx 按 HTTP 状态翻，
+ * 2xx 包着的未识别业务错误记 unknown。新接口 err_code 与旧接口 code 都收。
  * QQ 自己的错误码一律只进 `upstreamCode`。
  */
 export function interpretQQSend(status: number, body: unknown): QQSendResult {
 	const b = (body ?? {}) as {
 		id?: unknown;
 		code?: unknown;
+		err_code?: unknown;
 		message?: unknown;
 		msg?: unknown;
 		data?: { message_audit?: { audit_id?: unknown } };
 		message_audit?: { audit_id?: unknown };
 	};
 	const auditId = b.data?.message_audit?.audit_id ?? b.message_audit?.audit_id;
-	const code = typeof b.code === "number" ? b.code : undefined;
+	const code =
+		typeof b.err_code === "number" ? b.err_code : typeof b.code === "number" ? b.code : undefined;
 	const message =
 		(typeof b.message === "string" && b.message) ||
 		(typeof b.msg === "string" && b.msg) ||
 		`HTTP ${status}`;
+	if (code === 304019)
+		return fail("rate_limited", `code ${code}: ${message}`, { upstreamCode: code });
+	if (code === 11282 || code === 11253)
+		return fail("unauthorized", `code ${code}: ${message}`, { upstreamCode: code });
 	if (status >= 200 && status < 300) {
 		// audit 判定收进 2xx 门内:主动推送的审核回执是 HTTP 202;非 2xx 错误体即便
 		// 回带 audit_id 也是失败,不能误判成「已提交·审核中」而吞掉一条发不出去的推送。
@@ -952,11 +959,12 @@ export function buildQQV2MarkdownMessage(content: string): {
  */
 export type QQSendPart =
 	| { kind: "text"; text: string }
+	| { kind: "at-all" }
 	| { kind: "image-buffer"; buffer: Buffer; caption?: string }
 	| { kind: "image-url"; url: string; width?: number; height?: number; caption?: string };
 
 function withCaption(part: QQSendPart, caption: string): QQSendPart {
-	if (part.kind === "text") return part;
+	if (part.kind !== "image-buffer" && part.kind !== "image-url") return part;
 	const prev = part.caption?.trim();
 	const next = caption.trim();
 	if (!next) return part;
@@ -1009,8 +1017,7 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 				else if (seg.kind === "image") parts.push({ kind: "image-buffer", buffer: seg.buffer });
 				else if (seg.kind === "link")
 					parts.push({ kind: "text", text: seg.title ? `${seg.title} ${seg.href}` : seg.href });
-				// at-all:QQ 群 @全体需特殊权限,一律丢弃。推送层据本适配器的 atAll 能力(不支持)不给本平台
-				// 单发 @全体,这里只是兜底 —— 混在别的段里时不让它阻断那条消息。
+				else if (seg.kind === "at-all") parts.push({ kind: "at-all" });
 			}
 			return attachFollowingTextToImages(parts);
 		}
@@ -1355,6 +1362,16 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		address: string,
 		part: QQSendPart,
 	): Promise<Result<{ body: string | FormData }>> {
+		if (part.kind === "at-all") {
+			// 官方 2026-10-26 开放群聊文本 @全体；不能并进 msg_type=7 的图片说明。
+			return ok({
+				body: JSON.stringify(
+					scope === "channel"
+						? { content: "@everyone" }
+						: buildQQV2Message({ content: "<qqbot-at-everyone />" }),
+				),
+			});
+		}
 		if (scope === "channel") {
 			if (part.kind === "text") return ok({ body: JSON.stringify({ content: part.text }) });
 			if (part.kind === "image-url") {
@@ -1505,11 +1522,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 		capabilities(_connection: Connection): ConnectionCapabilities {
 			return {
-				atAll: {
-					state: "unsupported",
-					reason: t("qqOfficial.capability.atAllUnsupported"),
-					checkedAt: adapterStartedAt,
-				},
+				atAll: { state: "supported", checkedAt: adapterStartedAt },
 				inbound: { state: "supported", checkedAt: adapterStartedAt },
 				// 没实现原生分享(小程序卡)的发送 = 不支持。
 				nativeShare: {
@@ -1657,7 +1670,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				}
 			}
 
-			const parts = qqPayloadToParts(payload);
+			const parts = qqPayloadToParts(payload).filter(
+				(part) => part.kind !== "at-all" || scope !== "private",
+			);
 			if (parts.length === 0) return fail("invalid", t("adapters.payload.empty"));
 
 			// QQ 一条 media 只能带一张图,多片段逐条发;任一条失败即整体失败(已发的无法回滚)。

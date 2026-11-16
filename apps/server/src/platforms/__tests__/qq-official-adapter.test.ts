@@ -354,6 +354,63 @@ describe("createQQOfficialAdapter — start 之前", () => {
 });
 
 describe("createQQOfficialAdapter — send 文本", () => {
+	it("群聊单发 @全体:以官方标签发送文本消息", async () => {
+		const ad = startedQQ();
+		const result = await ad.send(qqConnection(), qqTarget("group", "G1"), {
+			kind: "composite",
+			segments: [{ kind: "at-all" }],
+		});
+		expect(result.ok).toBe(true);
+		expect(callsTo("/v2/groups/G1/messages").map((call) => bodyOf(call))).toEqual([
+			{ content: "<qqbot-at-everyone />", msg_type: 0 },
+		]);
+	});
+
+	it("群聊 @全体额度耗尽:保留官方 err_code 并报告限流", async () => {
+		route((url) =>
+			url.includes("getAppAccessToken")
+				? res(200, { access_token: "TKN", expires_in: 7200 })
+				: res(200, { err_code: 304019, message: "AT_EVERYONE_TIMES" }),
+		);
+		const ad = startedQQ();
+		expect(
+			await ad.send(qqConnection(), qqTarget("group", "G1"), {
+				kind: "composite",
+				segments: [{ kind: "at-all" }],
+			}),
+		).toMatchObject({ ok: false, code: "rate_limited", upstreamCode: 304019 });
+	});
+
+	it("群聊 @全体缺少管理员授权:保留权限失败", async () => {
+		route((url) =>
+			url.includes("getAppAccessToken")
+				? res(200, { access_token: "TKN", expires_in: 7200 })
+				: res(200, { err_code: 11282, message: "ErrorCheckAdminNotPass" }),
+		);
+		const ad = startedQQ();
+		expect(
+			await ad.send(qqConnection(), qqTarget("group", "G1"), {
+				kind: "composite",
+				segments: [{ kind: "at-all" }],
+			}),
+		).toMatchObject({ ok: false, code: "unauthorized", upstreamCode: 11282 });
+	});
+
+	it("频道单发 @全体:使用频道的 @everyone 格式", async () => {
+		const ad = startedQQ();
+		expect(
+			(
+				await ad.send(qqConnection(), qqTarget("channel", "C1"), {
+					kind: "composite",
+					segments: [{ kind: "at-all" }],
+				})
+			).ok,
+		).toBe(true);
+		expect(callsTo("/channels/C1/messages").map((call) => bodyOf(call))).toEqual([
+			{ content: "@everyone" },
+		]);
+	});
+
 	it("group:取 token → POST /v2/groups/{openid}/messages,QQBot 头 + msg_type 0", async () => {
 		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
@@ -421,6 +478,21 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		const r = await ad.send(qqConnection(), qqTarget("private", "U1"), TEXT);
 		expect(r.ok).toBe(true);
 		expect(callsTo("/v2/users/U1/messages")).toHaveLength(1);
+	});
+
+	it("私聊混合载荷忽略 @全体,只发送正文", async () => {
+		const ad = startedQQ();
+		expect(
+			(
+				await ad.send(qqConnection(), qqTarget("private", "U1"), {
+					kind: "composite",
+					segments: [{ kind: "at-all" }, { kind: "text", text: "私聊正文" }],
+				})
+			).ok,
+		).toBe(true);
+		expect(callsTo("/v2/users/U1/messages").map((call) => bodyOf(call))).toEqual([
+			{ content: "私聊正文", msg_type: 0 },
+		]);
 	});
 
 	it("channel:POST /channels/{channelId}/messages,JSON content", async () => {

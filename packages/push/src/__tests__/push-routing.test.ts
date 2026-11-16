@@ -268,9 +268,9 @@ describe("PushRouter.push — routing decision", () => {
 		expect(calls[2].payload).toEqual({ kind: "text", text: "开播" }); // t2 第 2 条原 payload
 	});
 
-	it("目标平台不支持 @全体(QQ 官方机器人)→ 订阅默认开着也不单发 @全体,只发原 payload", async () => {
-		// 真机撞上的:唯一目标是官机、订阅默认「开播 @全体」开着、三态表里没这个目标。
-		// 以前照样进 @全体 分支,单发一条只含 at-all 段的消息 —— 官机适配器把那一段丢掉,
+	it("目标连接不支持 @全体 → 订阅默认开着也不单发 @全体,只发原 payload", async () => {
+		// 真机撞上的:唯一目标的能力明确不支持 @全体、订阅默认「开播 @全体」开着、三态表里没这个目标。
+		// 以前照样进 @全体 分支,单发一条只含 at-all 段的消息 —— 适配器把那一段丢掉,
 		// 剩下空消息,每次开播都记一条「empty payload」失败;抽屉里这种目标的 @全体开关
 		// 却一直显示为关、还写着「发送时会自动跳过」。
 		const sub = makeEmptySubscription({

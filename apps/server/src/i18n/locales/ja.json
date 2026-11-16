@@ -575,7 +575,6 @@
 	"onebot.ws.notConnected": "順方向WSが接続されていません。",
 	"qqOfficial.adapter.label": "QQ公式ボット",
 	"qqOfficial.adapter.shortLabel": "QQ公式",
-	"qqOfficial.capability.atAllUnsupported": "QQグループで全員をメンションするには特別な権限が必要です。このアダプターは全員メンションのセグメントを除去します。",
 	"qqOfficial.capability.nativeShareUnsupported": "QQ公式ボットのアダプターにはミニアプリカードが実装されていません。",
 	"qqOfficial.channels.guildsHttpFailed": "サーバー一覧の取得でHTTP {status}が返されました",
 	"qqOfficial.channels.listFailed": "チャンネル一覧の取得に失敗しました：{reason}",

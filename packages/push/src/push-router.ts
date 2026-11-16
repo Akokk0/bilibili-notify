@@ -536,7 +536,7 @@ export class PushRouter {
 	 * - 全局 + per-UP 合并后的 `eff.features.extras.atAll<Scope>` 决定 inherit-state 的 target 是否 @
 	 * - per-target tristate Map `sub.extraTargets.atAll<Scope>[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
 	 * - Map 里没有该 key → 走上面那个默认
-	 * - 目标不能 @全体(问派发器的 `supportsAtAll`,今天只有 QQ 官方机器人那条连接上的)→ 一律不 @,
+	 * - 目标不能 @全体(问派发器的 `supportsAtAll`)→ 一律不 @,
 	 *   默认与覆写都不看 —— 单发的那条只含 at-all 段,到适配器就成了空消息
 	 *
 	 * `feature === "liveStart"` 的 @全体 只该跟着真开播。重启补报也走 `liveStart` 这把键(目标与

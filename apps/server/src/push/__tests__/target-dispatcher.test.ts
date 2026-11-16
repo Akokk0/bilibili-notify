@@ -1031,6 +1031,15 @@ describe("createTargetDispatcher — supportsAtAll(问适配器)", () => {
 		expect(dispatcherOf(c, t, [pa]).supportsAtAll("t1")).toBe(true);
 	});
 
+	it("私聊没有全体成员:即使连接支持也不生成 @全体附加消息", () => {
+		const c = makeConnection({ id: "a1", platform: "qq-official" });
+		const t = makeTarget({ id: "t1", connectionId: "a1", kind: "session", scope: "private" });
+		const pa = makePlatformAdapter("qq-official", {
+			capabilities: () => capsWithAtAll(supported),
+		});
+		expect(dispatcherOf([c], [t], [pa]).supportsAtAll("t1")).toBe(false);
+	});
+
 	it("适配器答还不知道 → true(试试看)", () => {
 		const [c, t] = oneTarget("onebot");
 		const pa = makePlatformAdapter("onebot", { capabilities: () => capsWithAtAll(unknown) });

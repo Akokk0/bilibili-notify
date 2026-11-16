@@ -605,7 +605,7 @@ describe("SubscriptionDialog · 某个推送目标自己的附加项", () => {
 		expect(onSave).not.toHaveBeenCalled();
 	});
 
-	it("QQ 官方机器人只卡 @全体,词云 / AI 总结照样调得动", async () => {
+	it("QQ 官方机器人的词云 / AI 总结可独立调整", async () => {
 		const t = { ...customTarget(), platform: "qq-official" as const };
 		const { onSave } = renderWithTarget(liveEndOnlySub(t.id), t);
 		const wc = extraToggle("弹幕词云 · 群 A");

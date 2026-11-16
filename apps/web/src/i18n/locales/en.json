@@ -1,4 +1,5 @@
 {
+	"subs.atAllPrivateUnsupported": "Private chats do not support mentioning everyone.",
 	"developmentExtensions.retry": "Retry",
 	"developmentExtensions.browse": "Browse folders",
 	"developmentExtensions.chooseDirectory": "Choose extension folder",

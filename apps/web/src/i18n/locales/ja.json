@@ -1,4 +1,5 @@
 {
+	"subs.atAllPrivateUnsupported": "個別チャットでは全員をメンションできません。",
 	"developmentExtensions.retry": "再試行",
 	"developmentExtensions.browse": "フォルダーを参照",
 	"developmentExtensions.chooseDirectory": "拡張機能のフォルダーを選択",

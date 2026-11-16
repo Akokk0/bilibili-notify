@@ -1,10 +1,7 @@
 /**
  * @全体 的接线:真派发器(`createTargetDispatcher`)+ 真推送路由(`PushRouter`)接在一起。
  *
- * `packages/push` 的假派发器 `supportsAtAll` 一律回 `true`,「QQ 官方机器人不单发 @全体」
- * 因而是两段各测各的 —— 路由那头问派发器、派发器那头按连接的平台答,中间这根线没人钉过。
- * 这里一条订阅同时路由到 OneBot 连接上的目标与 QQ 官方连接上的目标,@全体 默认开:
- * OneBot 那个收到单发的 @全体 再收本体,QQ 官方那个只收到本体。
+ * 一条订阅同时路由到 OneBot 与 QQ 官方连接上的群；@全体 默认开时，两个群都先收独立提醒再收本体。
  *
  * 「能不能 @全体」问的是这条连接的适配器:这里的适配器是**真的 OneBot / QQ 官方适配器**(构造期不碰 I/O),
  * 只把 `send` / `isAvailable` / `probe` 换成记录用的替身 —— `capabilities` 用的是真适配器自己的回答。
@@ -131,7 +128,7 @@ function openDefaults(): GlobalDefaults {
 }
 
 describe("@全体:真派发器 + 真推送路由", () => {
-	it("同一条订阅路由到 OneBot 与 QQ 官方两个目标:OneBot 先收单发 @全体再收本体,QQ 官方只收本体", async () => {
+	it("同一条订阅路由到 OneBot 与 QQ 官方两个群:都先收单发 @全体再收本体", async () => {
 		const onebot = recordingAdapter(
 			createOnebotAdapter({ logger: LOGGER, serviceCtx: SERVICE_CTX }),
 		);
@@ -198,7 +195,6 @@ describe("@全体:真派发器 + 真推送路由", () => {
 		expect(isAtAll(onebot.payloads[0] as NotificationPayload)).toBe(true);
 		expect(onebot.payloads[1]).toEqual(BODY);
 
-		expect(qq.payloads).toEqual([BODY]);
-		expect(qq.payloads.some(isAtAll)).toBe(false);
+		expect(qq.payloads).toEqual([{ kind: "composite", segments: [{ kind: "at-all" }] }, BODY]);
 	});
 });

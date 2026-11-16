@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * SubscriptionDialog 渲染回归:QQ 官方机器人不支持 @全体(后端 best-effort 跳过 at-all),
- * 故其 per-target「+ @全体」开关须禁用并显示不支持说明(能力表里 atAll 是「不支持」);onebot / webhook 不受影响。
+ * SubscriptionDialog 渲染回归:QQ 官方群聊 / 频道支持 @全体；私聊没有全体成员，不能启用。
  */
 
 import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
@@ -38,7 +37,7 @@ function targetFor(platform: string): PushTarget {
 /**
  * routing 仅含 dynamic → 该 target「routing 不完整」= 自定义模式,矩阵直接展开(无需
  * 点击),dynamic 行下方挂出 per-target「+ @全体」开关。per-UP 的 atAllPost=true 让
- * 「若平台支持则默认会 @全体」,以验证 QQ 官方仍被强制禁用。
+ * 「若平台支持则默认会 @全体」。
  */
 function customSubFor(targetId: string): Subscription {
 	const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
@@ -47,24 +46,19 @@ function customSubFor(targetId: string): Subscription {
 	return sub;
 }
 
-/** 照真适配器的回答:官机 @全体 不支持,别的支持。 */
-function capabilitiesFor(platform: string): ConnectionCapabilitiesMap {
+/** 照真适配器的回答:QQ 官方、OneBot 和 webhook 均支持 @全体。 */
+function capabilitiesFor(_platform: string): ConnectionCapabilitiesMap {
 	const unknown = { state: "unknown" } as const;
-	const atAll =
-		platform === "qq-official"
-			? ({
-					state: "unsupported",
-					reason: "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段",
-					checkedAt: "2026-10-26T00:00:00.000Z",
-				} as const)
-			: ({ state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" } as const);
+	const atAll = { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" } as const;
 	return { "a-1": { atAll, inbound: unknown, nativeShare: unknown } };
 }
 
-function renderDialog(platform: string) {
+function renderDialog(platform: string, scope?: "group" | "private") {
 	// 平台只在连接上:目标自己不带,按 platform 造目标,再造一条同平台的连接挂着它。
-	const target = targetFor(platform);
-	return render(
+	const original = targetFor(platform);
+	const target = original.kind === "session" && scope ? { ...original, scope } : original;
+	const onSave = vi.fn();
+	render(
 		<SubscriptionDialog
 			platform={subscriptionPlatformOf({ sourceKey: "bilibili" }, [makeSource()])}
 			sub={customSubFor(target.id)}
@@ -79,11 +73,12 @@ function renderDialog(platform: string) {
 			]}
 			capabilities={capabilitiesFor(platform)}
 			onClose={noop}
-			onSave={noop}
+			onSave={onSave}
 			onDelete={noop}
 			saving={false}
 		/>,
 	);
+	return { onSave };
 }
 
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
@@ -212,17 +207,30 @@ it("target selection and stale-reference guidance translate without changing nam
 });
 
 describe("SubscriptionDialog · QQ 官方 @全体 提示", () => {
-	it("QQ 官方 target 的 @全体 开关被禁用并显示不支持说明", () => {
-		renderDialog("qq-official");
+	it("私聊 @全体开关禁用并说明原因", () => {
+		renderDialog("onebot", "private");
+		const note = screen.getByText("私聊不支持 @全体。");
+		const toggle = within(note.parentElement as HTMLElement).getAllByRole("button")[0];
+		expect((toggle as HTMLButtonElement).disabled).toBe(true);
+	});
 
-		const note = screen.getByText(UNSUPPORTED_NOTE);
-		expect(note).toBeTruthy();
-
-		// note 与开关同处一个 wrapper;wrapper 内唯一的 button 即被禁用的 @全体 Toggle
-		// (不支持时不渲染 reset 按钮)。
-		const wrapper = note.parentElement as HTMLElement;
-		const toggle = within(wrapper).getAllByRole("button")[0] as HTMLButtonElement;
-		expect(toggle.disabled).toBe(true);
+	it("QQ 官方群聊的 @全体 开关可操作并保存覆写", async () => {
+		const { onSave } = renderDialog("qq-official");
+		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
+		const enabled = screen
+			.getAllByRole("button", { name: "@全体 · qq-official 目标" })
+			.filter((button) => !(button as HTMLButtonElement).disabled);
+		expect(enabled).toHaveLength(1);
+		const toggle = enabled[0] as HTMLButtonElement;
+		expect(toggle.getAttribute("aria-pressed")).toBe("true");
+		fireEvent.click(toggle);
+		expect(toggle.getAttribute("aria-pressed")).toBe("false");
+		await act(async () => fireEvent.click(screen.getByRole("button", { name: "保存配置" })));
+		expect(onSave).toHaveBeenCalledWith(
+			expect.objectContaining({
+				extraTargets: expect.objectContaining({ atAllPost: { "qq-official-1": false } }),
+			}),
+		);
 	});
 
 	it("onebot target 不显示不支持说明", () => {

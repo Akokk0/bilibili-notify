@@ -575,7 +575,6 @@
 	"onebot.ws.notConnected": "正向 WS 尚未連線。",
 	"qqOfficial.adapter.label": "QQ 官方機器人",
 	"qqOfficial.adapter.shortLabel": "QQ官方",
-	"qqOfficial.capability.atAllUnsupported": "QQ 官方機器人在群組中 @全體 需要特殊權限，配接器會移除 @全體 片段。",
 	"qqOfficial.capability.nativeShareUnsupported": "QQ 官方機器人配接器尚未實作小程式卡片。",
 	"qqOfficial.channels.guildsHttpFailed": "列出頻道伺服器時收到 HTTP {status}",
 	"qqOfficial.channels.listFailed": "無法列出頻道：{reason}",

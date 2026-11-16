@@ -168,6 +168,7 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 			],
 		};
 		expect(qqPayloadToParts(payload)).toEqual([
+			{ kind: "at-all" },
 			{ kind: "image-buffer", buffer: buf, caption: "标题\n动态 https://t.bilibili.com/1" },
 		]);
 	});

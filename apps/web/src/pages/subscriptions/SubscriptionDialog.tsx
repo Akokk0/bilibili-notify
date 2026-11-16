@@ -5,6 +5,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { creatorAccountLabel } from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
+import { isPrivateTarget } from "@bilibili-notify/internal/push-target";
 import {
 	AddButton,
 	Avatar,
@@ -1125,7 +1126,7 @@ function ExtraInlineToggles({
  *   本来就不收,能点才是骗人
  * - unsupported 时强制禁用、显示为关、不出 reset,并在主特性已开时补一行说明。数据
  *   (extraTargets.X Map)不动 —— 仅 UI 拦截,后端本就 best-effort 跳过。这一档只可能来自
- *   **平台能力**(今天只有 QQ 官机不支持 @全体),与配置面的三态是两回事。
+ *   平台能力或私聊会话限制，与配置面的三态是两回事。
  *
  * aria-label 带上目标名:一次能展开好几个目标,光一句「弹幕词云」读屏和测试都分不清
  * 是哪个群的。
@@ -1210,7 +1211,11 @@ function ExtraPerTargetToggle({
  * 这条连接不能 @全体 时那一句 —— tooltip 与行下说明共用,别各写一份。判断是服务端同一份
  * (`shouldSendAtAll`):只有适配器明确答「不支持」才拦,原因取能力里带的那句;「还不知道」不拦、没有提示。
  */
-function atAllBlockedNote(support: CapabilitySupport | undefined): string | undefined {
+function atAllBlockedNote(
+	support: CapabilitySupport | undefined,
+	target: PushTarget,
+): string | undefined {
+	if (isPrivateTarget(target)) return i18n.t("subs.atAllPrivateUnsupported");
 	if (shouldSendAtAll(support)) return undefined;
 	return support?.state === "unsupported"
 		? i18n.t("sourceUi.pages.up.UpDialog.atAllBlockedNote.42", { value1: support.reason })
@@ -1335,7 +1340,7 @@ function TargetRoutingCard({
 														PUSH_EXTRAS[ek].capability !== "atAll"
 															? undefined
 															: platform !== undefined
-																? atAllBlockedNote(atAll)
+																? atAllBlockedNote(atAll, target)
 																: connectionsLoaded
 																	? missingConnectionAtAllNoteOf()
 																	: undefined

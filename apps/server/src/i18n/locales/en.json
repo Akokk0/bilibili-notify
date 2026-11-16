@@ -576,7 +576,6 @@
 	"onebot.ws.notConnected": "Forward WS is not connected.",
 	"qqOfficial.adapter.label": "QQ official bot",
 	"qqOfficial.adapter.shortLabel": "QQ",
-	"qqOfficial.capability.atAllUnsupported": "Mentioning everyone in a QQ group requires special permission. This adapter drops the @everyone segment.",
 	"qqOfficial.capability.nativeShareUnsupported": "The QQ official bot adapter does not implement mini-app cards.",
 	"qqOfficial.channels.guildsHttpFailed": "Listing guilds returned HTTP {status}",
 	"qqOfficial.channels.listFailed": "Failed to list channels: {reason}",

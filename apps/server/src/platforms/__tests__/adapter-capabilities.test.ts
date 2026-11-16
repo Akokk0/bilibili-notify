@@ -2,9 +2,7 @@ import { platformDescriptor } from "../platform-descriptors.js";
 /**
  * 三个内置适配器对「@全体 / 收不收得到回复 / 小程序卡」的回答。
  *
- * 这几格从前是 `PLATFORM_REGISTRY` 里写死的两列(`atAll` / `inbound`)。改成问适配器之后,
- * 回答必须**逐格等于旧表**:onebot `inbound:true, atAll:true`;qq-official `inbound:true,
- * atAll:false`;四个 webhook 平台 `inbound:false, atAll:true`。对不上就是行为变了。
+ * 能力由适配器回答；QQ 官方已接入群聊 / 频道 @全体，不能再沿用旧平台表的不支持结论。
  */
 
 import type { Connection, PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
@@ -64,7 +62,7 @@ function expectUtcIso(value: unknown): void {
 	expect(new Date(value).toISOString()).toBe(value);
 }
 
-describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", () => {
+describe("内置适配器的 atAll / inbound 回答", () => {
 	it("onebot:atAll 支持、inbound 支持", () => {
 		const adapter = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		expect(adapter.descriptor().icon).toBe("qq");
@@ -76,7 +74,7 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 		expect(caps.nativeShare.state).toBe("unknown");
 	});
 
-	it("qq-official:atAll 不支持(带原因)、inbound 支持、nativeShare 不支持(带原因)", () => {
+	it("qq-official:atAll 与 inbound 支持、nativeShare 不支持(带原因)", () => {
 		const adapter = createQQOfficialAdapter({
 			logger: makeLogger(),
 			serviceCtx: makeServiceCtx(),
@@ -85,10 +83,8 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 		});
 		expect(adapter.descriptor().icon).toBe("qq");
 		const caps = capsOf(adapter, "qq-official");
-		expect(caps.atAll).toMatchObject({
-			state: "unsupported",
-			reason: "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段",
-		});
+		expect(caps.atAll.state).toBe("supported");
+		if (caps.atAll.state === "supported") expectUtcIso(caps.atAll.checkedAt);
 		expect(caps.inbound.state).toBe("supported");
 		if (caps.inbound.state === "supported") expectUtcIso(caps.inbound.checkedAt);
 		expect(caps.nativeShare.state).toBe("unsupported");

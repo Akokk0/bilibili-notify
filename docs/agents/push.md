@@ -201,3 +201,9 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 | 加一个订阅平台 | 写一个订阅源拓展，这条链一个字不动（见 [subscriptions.md](./subscriptions.md)） |
 
 🔗现状（4-55，2026-10-31）：PushRouter必填timezone回调，免扰判断按当前核心timezone的当地时分，跨午夜等原规则不变。改时区立即影响下一次判断，不移动已有到期epoch；roast/profile/dynamic墙钟cron收旧timer后按新时区未来格排，不补跑；统计60秒、首轮3秒、退避等纯间隔不重排。
+
+### QQ 官方机器人的 @全体
+
+QQ 官方适配器现已声明支持 `atAll`，复用订阅的作品／开播附加项与按目标覆写。群聊用独立文本消息 `<qqbot-at-everyone />`，需机器人为群管理员，每群每天最多一次；频道用 `@everyone`，权限由 QQ 判定。私聊不生成该附加消息，面板开关禁用，混合载荷里的 @全体 段也会被适配器忽略。
+
+提醒仍在正文前发起但不等待，权限或额度失败只记附加项结果，不阻断正文；`err_code` 与旧 `code` 均保留为 `upstreamCode`，次数超限 `304019` 归为 `rate_limited`，管理员／应用权限不足 `11282`／`11253` 归为 `unauthorized`。真实群消息未用于自动验收。官方依据：[2026-10-26 变更记录](https://bot.q.qq.com/wiki/develop/api-v2/changelog.html)、[频道内嵌格式](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/channel/message/format.html)、[错误码](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/api-call-guide.html)。

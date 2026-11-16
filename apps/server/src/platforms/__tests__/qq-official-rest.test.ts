@@ -54,6 +54,25 @@ describe("interpretQQSend — A+ 投递语义(提交即成功)", () => {
 		});
 	});
 
+	it.each(["code", "err_code"])("%s 的 @全体配额与授权失败不受 HTTP 包装影响", (field) => {
+		for (const status of [200, 400, 403]) {
+			expect(interpretQQSend(status, { [field]: 304019, message: "daily limit" })).toMatchObject({
+				ok: false,
+				code: "rate_limited",
+				upstreamCode: 304019,
+			});
+			for (const code of [11282, 11253]) {
+				expect(
+					interpretQQSend(status, { [field]: code, message: "permission denied" }),
+				).toMatchObject({
+					ok: false,
+					code: "unauthorized",
+					upstreamCode: code,
+				});
+			}
+		}
+	});
+
 	it("4xx → 标准码按 HTTP 状态取,QQ 的码放 upstreamCode", () => {
 		expect(interpretQQSend(400, { code: 11293, message: "bad request" })).toEqual({
 			ok: false,
