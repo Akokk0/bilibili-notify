@@ -716,6 +716,8 @@ export interface ToneChipProps {
 	disabled?: boolean;
 	/** 内容按大写渲染(日志等级那排要,类型筛选不要)。 */
 	uppercase?: boolean;
+	/** 默认胶囊；两行目标选项用圆角矩形，跟随卡片圆角轴。 */
+	shape?: "pill" | "rect";
 }
 
 /**
@@ -745,6 +747,7 @@ export function ToneChip({
 	onClick,
 	disabled,
 	uppercase,
+	shape = "pill",
 }: ToneChipProps) {
 	// 底与边**刻意留在 inline**,不像候选行那样拆成 `--bn-tint` + @utility(那条路
 	// 是 7e8a00e 给服务商卡与连接行走的)。原因是这排胶囊**能同时亮好几颗**:
@@ -776,13 +779,14 @@ export function ToneChip({
 	const toneCls = active
 		? "text-bn-text-primary"
 		: "bg-transparent text-bn-text-tertiary border-bn-border hover:text-bn-text-primary";
+	const radius = shape === "rect" ? "rounded-bn-sm" : "rounded-bn-pill";
 	return (
 		<button
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
 			data-bn={active ? "chip chip-active" : "chip"}
-			className={`inline-flex items-center gap-1 rounded-bn-pill border px-3 py-1 text-bn-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${toneCls} ${uppercase ? "uppercase" : ""}`}
+			className={`inline-flex items-center gap-1 ${radius} border px-3 py-1 text-bn-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${toneCls} ${uppercase ? "uppercase" : ""}`}
 			style={style}
 		>
 			{children}

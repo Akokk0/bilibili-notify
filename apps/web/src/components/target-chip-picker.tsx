@@ -1,11 +1,8 @@
 /**
- * 「从推送目标里勾几个」的胶囊选择器 —— 今天只有周报的「发送到」用它。
- *
- * (抽出来时链接解析的白名单也用这一份,后来白名单换成了「默认行 + 逐群例外」的表,
- * 那个调用点就没了;留着是因为「勾几个目标」这件事迟早还会有第二处。)
+ * 「从推送目标里勾几个」的圆角矩形选择器 —— 周报与单人定时短评的「发送到」共用。
  *
  * 同一件事只该有一种长相:ToneChip 平铺、平台图标 + 目标名,点一下切换。**停用的目标
- * 照列照勾**,只在胶囊里标一句「已停用」—— 停用是暂停不是消失(主人定的:选择器里
+ * 照列照勾**,只在选项里标一句「已停用」—— 停用是暂停不是消失(主人定的:选择器里
  * 一律照列);藏掉的话用户看不出它还被选着,恢复启用那天它就悄悄生效了。「停用」与
  * 服务端跳过它时是同一条判定(internal 的 `isTargetPaused`),所以要收连接表 ——
  * 只看目标自己的开关的话,连接停用的目标在这儿显示为启用,发的时候却被跳过。
@@ -51,7 +48,13 @@ export function TargetChipPicker({
 	return (
 		<div className="flex flex-wrap gap-2">
 			{targets.map((t) => (
-				<ToneChip key={t.id} tone={tone} active={chosen.has(t.id)} onClick={() => onToggle(t.id)}>
+				<ToneChip
+					key={t.id}
+					shape="rect"
+					tone={tone}
+					active={chosen.has(t.id)}
+					onClick={() => onToggle(t.id)}
+				>
 					<TargetLabel target={t} connections={connections} />
 					{isTargetPaused(t, connections) ? (
 						<Pill size="sm" subtle color="var(--color-bn-inactive)">
