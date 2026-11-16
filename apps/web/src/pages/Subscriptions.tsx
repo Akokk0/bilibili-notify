@@ -784,6 +784,39 @@ export default function Subscriptions() {
 					})}
 				</div>
 				<div className="flex-1" />
+				<Btn
+					size="sm"
+					variant="outline"
+					disabled={filtered.length === 0}
+					onClick={() => setSelection((sel) => new Set([...sel, ...filtered.map((s) => s.id)]))}
+				>
+					{t("subs.selection.selectAll")}
+				</Btn>
+				<Btn
+					size="sm"
+					variant="outline"
+					disabled={filtered.length === 0}
+					onClick={() =>
+						setSelection((sel) => {
+							const next = new Set(sel);
+							for (const s of filtered) {
+								if (next.has(s.id)) next.delete(s.id);
+								else next.add(s.id);
+							}
+							return next;
+						})
+					}
+				>
+					{t("subs.selection.invert")}
+				</Btn>
+				<Btn
+					size="sm"
+					variant="ghost"
+					disabled={selection.size === 0}
+					onClick={() => setSelection(new Set())}
+				>
+					{t("subs.selection.clear")}
+				</Btn>
 				{selection.size > 0 ? (
 					// 状态条不是「选中的某一项」,不吃整句选中语汇 —— 只吃那块不透明粉底
 					// (旧 bg-bn-pink/12 的纱在壁纸皮肤下会隐形,同标签胶囊踩过的雷)。

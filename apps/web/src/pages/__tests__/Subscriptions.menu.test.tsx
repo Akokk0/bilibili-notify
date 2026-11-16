@@ -587,4 +587,70 @@ describe("Subscriptions 快捷菜单", () => {
 
 		await waitFor(() => expect(screen.queryByText(/已选/)).toBeNull());
 	});
+
+	it("全选只选择当前搜索结果，选择本身不写入，批量禁用沿用所选订阅", async () => {
+		vi.mocked(api.post).mockResolvedValue([]);
+		renderSubs();
+		await screen.findByText("UP甲");
+		fireEvent.change(screen.getByPlaceholderText("搜索订阅的名字或 id…"), {
+			target: { value: "UP甲" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: "全选当前结果" }));
+		expect(screen.getByText("已选 1 项")).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "批量禁用" }));
+		await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+		expect(api.post).toHaveBeenCalledWith("/api/subscriptions", { ...SUB_A, enabled: false });
+	});
+
+	it("反选遵守标签与启停筛选并保留隐藏选择，空结果不可选，清空取消全部勾选", async () => {
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("Expected the subscription API fixture");
+		const untagged = makeSub("333", "UP丙");
+		vi.mocked(api.get).mockImplementation((path) =>
+			path === "/api/subscriptions"
+				? (Promise.resolve([
+						{ ...SUB_A, tagIds: [GAME.id] },
+						{ ...SUB_B, enabled: false, tagIds: [GAME.id] },
+						untagged,
+					]) as never)
+				: get(path),
+		);
+		renderSubs();
+		await screen.findByText("UP丙");
+		const search = screen.getByPlaceholderText("搜索订阅的名字或 id…");
+		fireEvent.change(search, { target: { value: "UP丙" } });
+		fireEvent.click(screen.getByRole("button", { name: "选择" }));
+		fireEvent.change(search, { target: { value: "" } });
+		fireEvent.click(screen.getByRole("button", { name: "游戏2" }));
+		fireEvent.click(screen.getByRole("button", { name: "已启用2" }));
+		fireEvent.click(screen.getByRole("button", { name: "反选当前结果" }));
+		expect(screen.getByText("已选 2 项")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "反选当前结果" }));
+		expect(screen.getByText("已选 1 项")).toBeTruthy();
+		fireEvent.change(search, { target: { value: "UP乙" } });
+		expect(screen.getByRole("button", { name: "全选当前结果" }).hasAttribute("disabled")).toBe(
+			true,
+		);
+		expect(screen.getByRole("button", { name: "反选当前结果" }).hasAttribute("disabled")).toBe(
+			true,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "已禁用1" }));
+		fireEvent.click(screen.getByRole("button", { name: "全选当前结果" }));
+		expect(screen.getByText("已选 2 项")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "清空选择" }));
+		expect(screen.queryByText(/已选/)).toBeNull();
+		expect(screen.getByRole("button", { name: "清空选择" }).hasAttribute("disabled")).toBe(true);
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "全选当前结果" }));
+		fireEvent.click(screen.getByRole("button", { name: "批量删除" }));
+		expect(api.delete).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledTimes(1));
+		expect(api.delete).toHaveBeenCalledWith(`/api/subscriptions/${SUB_B.id}`);
+	});
 });
