@@ -538,3 +538,7 @@ export const DEFAULT_IMAGE_GROUP: ImageGroupSettings = {
 	enabled: true,
 	mergeForward: false,
 };
+
+/** 需要额外采集的创作者统计，出厂关闭，可由单个订阅覆盖。 */
+export const CreatorStatsSettingsSchema = z.object({ videoViews: z.boolean() });
+export type CreatorStatsSettings = z.infer<typeof CreatorStatsSettingsSchema>;

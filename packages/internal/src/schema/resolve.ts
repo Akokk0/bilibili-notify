@@ -16,6 +16,7 @@ import type {
 	AiSettings,
 	CardsSettings,
 	ContentFilters,
+	CreatorStatsSettings,
 	FeatureFlags,
 	FeatureFlagsPartial,
 	ImageGroupSettings,
@@ -40,6 +41,7 @@ import type {
  * 只接受 EffectiveSubscription，不再各自处理 inherit / fallback 分支。订的是谁读 `identity`。
  */
 export interface EffectiveSubscription {
+	stats: CreatorStatsSettings;
 	id: string;
 	/** 订的是谁(ADR-0021 决策 14)。 */
 	identity: Identity;
@@ -201,6 +203,7 @@ function resolveCommon(
 		specialViewers: sub.specialViewers,
 
 		features: mergeFeatures(defaults.features, ov.features),
+		stats: merge(defaults.stats, ov.stats),
 		filters: merge(defaults.filters, ov.filters),
 		schedule: merge(defaults.schedule, ov.schedule),
 		liveStart: merge(defaults.liveStart, ov.liveStart),

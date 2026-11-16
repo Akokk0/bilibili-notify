@@ -16,6 +16,26 @@ const SUB_BASE: Subscription = makeEmptySubscription({
 });
 
 describe("resolve()", () => {
+	it("播放量统计默认关闭，全局开启由新订阅继承，单个创作者可以明确关闭", () => {
+		const globals = makeDefaultGlobalSettings();
+		expect(resolve(SUB_BASE, globals.defaults).stats.videoViews).toBe(false);
+		globals.defaults.stats.videoViews = true;
+		const added = makeEmptySubscription({
+			id: "22222222-2222-4222-8222-222222222222",
+			identity: { sourceKey: "test", externalId: "new" },
+		});
+		expect(resolve(added, globals.defaults).stats.videoViews).toBe(true);
+		expect(
+			resolve({ ...SUB_BASE, overrides: { stats: { videoViews: false } } }, globals.defaults).stats
+				.videoViews,
+		).toBe(false);
+		globals.defaults.stats.videoViews = false;
+		expect(
+			resolve({ ...SUB_BASE, overrides: { stats: { videoViews: true } } }, globals.defaults).stats
+				.videoViews,
+		).toBe(true);
+	});
+
 	it("inherits all defaults when overrides are empty", () => {
 		const globals = makeDefaultGlobalSettings();
 		const eff = resolve(SUB_BASE, globals.defaults);

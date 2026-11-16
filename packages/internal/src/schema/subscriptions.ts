@@ -9,6 +9,7 @@ import { CardSkinIdSchema, CardSkinKnobOverridesSchema } from "./card-skin";
 import {
 	CardsOverridesSchema,
 	ContentFiltersPartialSchema,
+	CreatorStatsSettingsSchema,
 	FeatureFlagsPartialSchema,
 	ImageGroupSettingsPartialSchema,
 	LiveStartSettingsPartialSchema,
@@ -123,6 +124,7 @@ function emptyExtraTargets(): SubscriptionExtraTargets {
  * 单 UP 的覆盖配置；任意字段为 undefined 表示继承 GlobalSettings.defaults。
  */
 export const SubscriptionOverridesSchema = z.object({
+	stats: CreatorStatsSettingsSchema.partial().optional(),
 	features: FeatureFlagsPartialSchema.optional(),
 	filters: ContentFiltersPartialSchema.optional(),
 	schedule: ScheduleSettingsPartialSchema.optional(),

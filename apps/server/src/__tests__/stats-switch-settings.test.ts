@@ -98,4 +98,15 @@ describe("stats.enabled × 配置仓", () => {
 		await reopened.load();
 		expect(reopened.getGlobals().stats.enabled).toBe(false);
 	});
+
+	it("播放量全局默认经 patchGlobals 保存，缺失时保持关闭", async () => {
+		const store = open();
+		await store.load();
+		expect(store.getGlobals().defaults.stats.videoViews).toBe(false);
+		await store.patchGlobals({ defaults: { stats: { videoViews: true } } });
+		const reopened = open();
+		await reopened.load();
+		expect(reopened.getGlobals().defaults.stats.videoViews).toBe(true);
+		expect(reopened.getGlobals().stats.enabled).toBe(true);
+	});
 });

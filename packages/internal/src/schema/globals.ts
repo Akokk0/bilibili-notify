@@ -15,6 +15,7 @@ import {
 	type CardsSettings,
 	CardsSettingsSchema,
 	ContentFiltersSchema,
+	CreatorStatsSettingsSchema,
 	DEFAULT_CONTENT_FILTERS,
 	DEFAULT_IMAGE_GROUP,
 	DEFAULT_LIVE_START,
@@ -145,6 +146,7 @@ export type MasterSettings = z.infer<typeof MasterSettingsSchema>;
  * AI 设置已上提到顶层 `ai`(3a-38 提交 ④);人格预设 `defaults.ai.presetId` 这一格随 AI 子键改名那一片造。
  */
 export const GlobalDefaultsSchema = z.object({
+	stats: CreatorStatsSettingsSchema.default(() => ({ videoViews: false })),
 	features: FeatureFlagsSchema,
 	filters: ContentFiltersSchema,
 	schedule: ScheduleSettingsSchema,
