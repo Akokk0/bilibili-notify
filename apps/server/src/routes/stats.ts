@@ -135,6 +135,22 @@ export interface StatsOverview extends StatsOverviewReader {
 /** 取数只读这两样,不牵整份 RouteDeps(定时锐评的调度器手里就只有它们)。 */
 export type StatsOverviewDeps = Pick<RouteDeps, "runtime" | "store">;
 
+function readVideoViewsSettings(deps: StatsOverviewDeps, subs: Subscription[]) {
+	const globals = deps.store.getGlobals();
+	return subs.map((sub) => {
+		const source = deps.runtime.sourceRegistry.get(sub.identity.sourceKey);
+		const supported = source ? Boolean(source.fetchVideoViews) : null;
+		const enabled = resolveCreatorStats(sub, globals.defaults).videoViews;
+		const failure = deps.runtime.videoViewsRefresh?.getFailure(sub.id);
+		return {
+			supported,
+			enabled,
+			active: enabled && sub.enabled && globals.stats.enabled && supported === true,
+			...(failure ? { failure } : {}),
+		};
+	});
+}
+
 /**
  * 建一个取数函数,**路由与两处锐评(手动、定时)共用它**。短 TTL 缓存挂在返回函数的闭包里,所以走它的人
  * (面板、手动锐评、定时锐评)吃的是同一份缓存;要共用就得是同一个实例 —— `index.ts` 建一个、同时交给调度器与
@@ -165,22 +181,7 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 				: undefined;
 		const liveNow = subs.map(isLive);
 		const fansNow = subs.map(currentFans);
-		const globals = deps.store.getGlobals();
-		const viewSettings = followersGrain
-			? subs.map((sub) => {
-					const source = deps.runtime.sourceRegistry.get(sub.identity.sourceKey);
-					const supported = source ? Boolean(source.fetchVideoViews) : null;
-					const enabled = resolveCreatorStats(sub, globals.defaults).videoViews;
-					return {
-						supported,
-						enabled,
-						active: enabled && sub.enabled && globals.stats.enabled && supported === true,
-						...(deps.runtime.videoViewsRefresh?.getFailure(sub.id)
-							? { failure: deps.runtime.videoViewsRefresh.getFailure(sub.id) }
-							: {}),
-					};
-				})
-			: [];
+		const viewSettings = followersGrain ? readVideoViewsSettings(deps, subs) : [];
 		// key 必须覆盖**响应里所有会变的输入**,否则缓存就在替页面撒谎。
 		//
 		// 订阅集合:退订后 recorder 已经 `drop` 物理删掉了那位 UP 的 jsonl,前端
