@@ -890,7 +890,7 @@ function StatsContent() {
 									xLabels={followersTrend ? followersTrendLabels(followersTrend, w) : xLabels}
 									area
 									absolute
-									bridge={followersGrain === "day"}
+									bridge
 								/>
 							)}
 						/>

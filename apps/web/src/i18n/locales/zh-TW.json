@@ -2265,7 +2265,7 @@
 	"stats.followers.grain": "粉絲曲線彙整單位",
 	"stats.followers.hour": "小時",
 	"stats.followers.day": "日",
-	"stats.followers.hourHint": "每小時取最後一次取樣；空缺表示未蒐集到資料。",
+	"stats.followers.hourHint": "每小時取最後一次取樣；灰色線段表示缺測區間的估算趨勢。",
 	"subs.selection.selectAll": "全選目前結果",
 	"subs.selection.invert": "反選目前結果",
 	"subs.selection.clear": "清除選取",

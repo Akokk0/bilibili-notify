@@ -2265,7 +2265,7 @@
 	"stats.followers.grain": "フォロワー推移の集計単位",
 	"stats.followers.hour": "時間",
 	"stats.followers.day": "日",
-	"stats.followers.hourHint": "各時間帯の最後のサンプルを表示します。空白は未取得です。",
+	"stats.followers.hourHint": "各時間帯の最後のサンプルを表示します。灰色の線は欠測区間の推定推移です。",
 	"subs.selection.selectAll": "表示中の結果をすべて選択",
 	"subs.selection.invert": "表示中の結果の選択を反転",
 	"subs.selection.clear": "選択をすべて解除",

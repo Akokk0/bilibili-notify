@@ -260,6 +260,10 @@ describe("统计页 · 拓展订阅的行", () => {
 			await screen.findByRole("button", { name: "小时", pressed: true });
 			expect(container.textContent).toContain("01/01");
 			expect(container.textContent).toContain("03:00");
+			const hourlyTrend = screen.getByText("抖音乙 · 粉丝总量走势").closest(".bn-glass");
+			expect(
+				hourlyTrend?.querySelectorAll('line[stroke="var(--color-bn-text-tertiary)"]'),
+			).toHaveLength(1);
 			const calls = () =>
 				vi.mocked(api.get).mock.calls.filter(([path]) => path.startsWith("/api/stats"));
 			expect(calls()).toHaveLength(2);

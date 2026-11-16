@@ -238,7 +238,7 @@
 	"stats.followers.grain": "粉丝曲线粒度",
 	"stats.followers.hour": "小时",
 	"stats.followers.day": "日",
-	"stats.followers.hourHint": "每小时取最后一次采样；空缺表示未采集到数据。",
+	"stats.followers.hourHint": "每小时取最后一次采样；灰色线段表示缺测区间的估算趋势。",
 	"subs.selection.selectAll": "全选当前结果",
 	"subs.selection.invert": "反选当前结果",
 	"subs.selection.clear": "清空选择",

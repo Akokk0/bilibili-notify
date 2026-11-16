@@ -2318,7 +2318,7 @@
 	"stats.followers.grain": "Follower trend granularity",
 	"stats.followers.hour": "Hourly",
 	"stats.followers.day": "Daily",
-	"stats.followers.hourHint": "Last sample in each hour; gaps indicate missing data.",
+	"stats.followers.hourHint": "Last sample per hour; gray segments estimate the trend across gaps.",
 	"subs.selection.selectAll": "Select all results",
 	"subs.selection.invert": "Invert results selection",
 	"subs.selection.clear": "Clear selection",
