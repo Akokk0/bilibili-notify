@@ -354,7 +354,35 @@ describe("createQQOfficialAdapter — start 之前", () => {
 });
 
 describe("createQQOfficialAdapter — send 文本", () => {
-	it("群聊单发 @全体:以官方标签发送文本消息", async () => {
+	it("群内身份确认是普通成员:不提交 @全体,正文仍可发送", async () => {
+		route((url) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "TKN", expires_in: 7200 });
+			if (url.endsWith("/bot_state")) return res(200, { member_role: "member" });
+			return res(200, { id: "MSG1" });
+		});
+		const ad = startedQQ();
+		const result = await ad.send(qqConnection(), qqTarget("group", "G1"), {
+			kind: "composite",
+			segments: [{ kind: "at-all" }],
+		});
+		expect(result).toMatchObject({ ok: false, code: "unauthorized" });
+		expect(callsTo("/messages")).toHaveLength(0);
+		expect((await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT)).ok).toBe(true);
+		expect(callsTo("/v2/groups/G1/bot_state")).toHaveLength(1);
+		expect(callsTo("/messages").map((call) => bodyOf(call))).toEqual([
+			{ content: "阿绫发布了动态", msg_type: 0 },
+		]);
+		ad.stop();
+	});
+
+	it.each(["admin", "owner"])("群内身份为 %s:以官方标签单发 @全体", async (role) => {
+		route((url) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "TKN", expires_in: 7200 });
+			if (url.endsWith("/bot_state")) return res(200, { member_role: role });
+			return res(200, { id: "MSG1" });
+		});
 		const ad = startedQQ();
 		const result = await ad.send(qqConnection(), qqTarget("group", "G1"), {
 			kind: "composite",
@@ -364,6 +392,84 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		expect(callsTo("/v2/groups/G1/messages").map((call) => bodyOf(call))).toEqual([
 			{ content: "<qqbot-at-everyone />", msg_type: 0 },
 		]);
+		const query = callsTo("/v2/groups/G1/bot_state")[0];
+		expect(query).toBeDefined();
+		const headers = new Headers((query?.[1] as RequestInit | undefined)?.headers);
+		expect(headers.get("authorization")).toBe("QQBot TKN");
+		expect(headers.get("x-union-appid")).toBe("APPID");
+		expect(headers.has("cookie")).toBe(false);
+		ad.stop();
+	});
+
+	it.each([
+		["未开通白名单", 403, { err_code: 11253, message: "not allowed", member_role: "member" }],
+		["业务错误", 200, { code: 11253, message: "not allowed", member_role: "member" }],
+		["限流", 429, { message: "too many requests" }],
+		["缺少身份", 200, {}],
+		["未知身份", 200, { member_role: "future-role" }],
+	] as const)("群内身份查询%s:保留未知,仍由发送接口判断权限", async (_case, status, state) => {
+		route((url) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "TKN", expires_in: 7200 });
+			if (url.endsWith("/bot_state")) return res(status, state);
+			return res(200, { id: "MSG1" });
+		});
+		const ad = startedQQ();
+		expect(
+			(
+				await ad.send(qqConnection(), qqTarget("group", "G1"), {
+					kind: "composite",
+					segments: [{ kind: "at-all" }],
+				})
+			).ok,
+		).toBe(true);
+		expect(callsTo("/v2/groups/G1/bot_state")).toHaveLength(1);
+		expect(callsTo("/messages").map((call) => bodyOf(call))).toEqual([
+			{ content: "<qqbot-at-everyone />", msg_type: 0 },
+		]);
+		ad.stop();
+	});
+
+	it("群内身份查询三秒未响应:中止查询,仍尝试发送 @全体", async () => {
+		vi.useFakeTimers();
+		route((url, init) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "TKN", expires_in: 7200 });
+			if (url.endsWith("/bot_state")) return hangUntilAborted(url, init);
+			return res(200, { id: "MSG1" });
+		});
+		const ad = startedQQ();
+		const sent = ad.send(qqConnection(), qqTarget("group", "G1"), {
+			kind: "composite",
+			segments: [{ kind: "at-all" }],
+		});
+		await vi.advanceTimersByTimeAsync(3_001);
+		expect((await sent).ok).toBe(true);
+		expect(callsTo("/v2/groups/G1/bot_state")).toHaveLength(1);
+		expect(callsTo("/messages")).toHaveLength(1);
+		ad.stop();
+	});
+
+	it("群内身份按群查询,更改权限后下次发送重新确认", async () => {
+		let role = "member";
+		route((url) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "TKN", expires_in: 7200 });
+			if (url.endsWith("/G1/bot_state")) return res(200, { member_role: role });
+			if (url.endsWith("/G2/bot_state")) return res(200, { member_role: "admin" });
+			return res(200, { id: "MSG1" });
+		});
+		const ad = startedQQ();
+		const payload: NotificationPayload = { kind: "composite", segments: [{ kind: "at-all" }] };
+		expect((await ad.send(qqConnection(), qqTarget("group", "G1"), payload)).ok).toBe(false);
+		expect((await ad.send(qqConnection(), qqTarget("group", "G2"), payload)).ok).toBe(true);
+		role = "admin";
+		expect((await ad.send(qqConnection(), qqTarget("group", "G1"), payload)).ok).toBe(true);
+		expect(callsTo("/messages").map((call) => new URL(String(call[0])).pathname)).toEqual([
+			"/v2/groups/G2/messages",
+			"/v2/groups/G1/messages",
+		]);
+		ad.stop();
 	});
 
 	it("群聊 @全体额度耗尽:保留官方 err_code 并报告限流", async () => {
@@ -409,6 +515,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		expect(callsTo("/channels/C1/messages").map((call) => bodyOf(call))).toEqual([
 			{ content: "@everyone" },
 		]);
+		expect(callsTo("/bot_state")).toHaveLength(0);
 	});
 
 	it("group:取 token → POST /v2/groups/{openid}/messages,QQBot 头 + msg_type 0", async () => {
@@ -493,6 +600,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		expect(callsTo("/v2/users/U1/messages").map((call) => bodyOf(call))).toEqual([
 			{ content: "私聊正文", msg_type: 0 },
 		]);
+		expect(callsTo("/bot_state")).toHaveLength(0);
 	});
 
 	it("channel:POST /channels/{channelId}/messages,JSON content", async () => {

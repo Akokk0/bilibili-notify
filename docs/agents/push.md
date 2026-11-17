@@ -206,4 +206,6 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 
 QQ 官方适配器现已声明支持 `atAll`，复用订阅的作品／开播附加项与按目标覆写。群聊用独立文本消息 `<qqbot-at-everyone />`，需机器人为群管理员，每群每天最多一次；频道用 `@everyone`，权限由 QQ 判定。私聊不生成该附加消息，面板开关禁用，混合载荷里的 @全体 段也会被适配器忽略。
 
+群聊发送 @全体 前，适配器调用 `GET /v2/groups/{group_openid}/bot_state` 查询本群身份：`admin`／`owner` 放行，`member` 返回 `unauthorized`，不提交提醒。查询仅白名单机器人可用；无接口权限、限流、超时或无有效身份均保留未知，继续由发送接口判定，不把未知记成普通成员。查询最多等待 3 秒，每次提醒重新查询，不跨群或跨连接复用身份；普通正文、频道和私聊不查询，连接级 `atAll` 能力不因某个群的身份改变。[官方群内状态接口](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_bot_state.get.html)
+
 提醒仍在正文前发起但不等待，权限或额度失败只记附加项结果，不阻断正文；`err_code` 与旧 `code` 均保留为 `upstreamCode`，次数超限 `304019` 归为 `rate_limited`，管理员／应用权限不足 `11282`／`11253` 归为 `unauthorized`。真实群消息未用于自动验收。官方依据：[2026-10-26 变更记录](https://bot.q.qq.com/wiki/develop/api-v2/changelog.html)、[频道内嵌格式](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/channel/message/format.html)、[错误码](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/api-call-guide.html)。

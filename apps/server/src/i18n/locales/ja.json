@@ -576,6 +576,8 @@
 	"qqOfficial.adapter.label": "QQ公式ボット",
 	"qqOfficial.adapter.shortLabel": "QQ公式",
 	"qqOfficial.capability.nativeShareUnsupported": "QQ公式ボットのアダプターにはミニアプリカードが実装されていません。",
+	"qqOfficial.group.atAllRequiresAdmin": "ボットはこのグループの管理者ではないため、全員をメンションできません。QQで管理者権限を付与してください。",
+	"qqOfficial.group.missingRole": "QQのグループ状態の応答に有効なボットの役割が含まれていません。",
 	"qqOfficial.channels.guildsHttpFailed": "サーバー一覧の取得でHTTP {status}が返されました",
 	"qqOfficial.channels.listFailed": "チャンネル一覧の取得に失敗しました：{reason}",
 	"qqOfficial.gateway.noUrl": "getGatewayの応答にurlがありません。",

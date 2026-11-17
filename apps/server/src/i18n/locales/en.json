@@ -577,6 +577,8 @@
 	"qqOfficial.adapter.label": "QQ official bot",
 	"qqOfficial.adapter.shortLabel": "QQ",
 	"qqOfficial.capability.nativeShareUnsupported": "The QQ official bot adapter does not implement mini-app cards.",
+	"qqOfficial.group.atAllRequiresAdmin": "The bot is not an administrator of this group and cannot mention everyone. Grant it administrator permissions in QQ first.",
+	"qqOfficial.group.missingRole": "The QQ group state response did not contain a valid bot role.",
 	"qqOfficial.channels.guildsHttpFailed": "Listing guilds returned HTTP {status}",
 	"qqOfficial.channels.listFailed": "Failed to list channels: {reason}",
 	"qqOfficial.gateway.noUrl": "The getGateway response has no url.",

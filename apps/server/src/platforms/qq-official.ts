@@ -867,6 +867,32 @@ export function interpretQQSend(status: number, body: unknown): QQSendResult {
 	return httpFailure(status, code !== undefined ? `code ${code}: ${message}` : message, code);
 }
 
+/** 群内身份只用于群聊 @全体预检；查询失败不代表机器人不是管理员。 */
+async function fetchQQGroupBotRole(
+	http: HttpClient,
+	base: string,
+	headers: Record<string, string>,
+	groupOpenid: string,
+): Promise<Result<{ role: "member" | "admin" | "owner" }>> {
+	try {
+		const response = await qqFetch(
+			http,
+			`${base}/v2/groups/${encodeURIComponent(groupOpenid)}/bot_state`,
+			{ headers, timeoutMs: 3_000 },
+		);
+		if (!response.ok) return response;
+		const parsed = response.json();
+		if (!parsed.ok) return parsed;
+		const verdict = interpretQQSend(response.status, parsed.value);
+		if (!verdict.ok) return verdict;
+		const role = (parsed.value as { member_role?: unknown } | null)?.member_role;
+		if (role === "member" || role === "admin" || role === "owner") return ok({ role } as const);
+		return fail("invalid", t("qqOfficial.group.missingRole"));
+	} catch (error) {
+		return fail("unavailable", upstreamMessage(error));
+	}
+}
+
 /** QQ 官方富媒体类型:1=图片 2=视频 3=语音(本插件只发图)。 */
 const QQ_FILE_TYPE_IMAGE = 1;
 
@@ -1674,6 +1700,12 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				(part) => part.kind !== "at-all" || scope !== "private",
 			);
 			if (parts.length === 0) return fail("invalid", t("adapters.payload.empty"));
+			if (scope === "group" && parts.some((part) => part.kind === "at-all")) {
+				const identity = await fetchQQGroupBotRole(http, base, headers, address);
+				// 仅白名单机器人能查；无接口权限、超时或坏响应均保留未知，让发送接口作最终判断。
+				if (identity.ok && identity.role === "member")
+					return fail("unauthorized", t("qqOfficial.group.atAllRequiresAdmin"));
+			}
 
 			// QQ 一条 media 只能带一张图,多片段逐条发;任一条失败即整体失败(已发的无法回滚)。
 			let failure: Failure | null = null;

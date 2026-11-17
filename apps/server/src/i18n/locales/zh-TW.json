@@ -576,6 +576,8 @@
 	"qqOfficial.adapter.label": "QQ 官方機器人",
 	"qqOfficial.adapter.shortLabel": "QQ官方",
 	"qqOfficial.capability.nativeShareUnsupported": "QQ 官方機器人配接器尚未實作小程式卡片。",
+	"qqOfficial.group.atAllRequiresAdmin": "機器人不是此群組的管理員，無法 @全體；請先在 QQ 群組中授予管理員權限。",
+	"qqOfficial.group.missingRole": "QQ 群組狀態回應未包含有效的機器人角色。",
 	"qqOfficial.channels.guildsHttpFailed": "列出頻道伺服器時收到 HTTP {status}",
 	"qqOfficial.channels.listFailed": "無法列出頻道：{reason}",
 	"qqOfficial.gateway.noUrl": "getGateway 回應缺少 url。",
