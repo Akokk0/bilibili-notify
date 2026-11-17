@@ -87,6 +87,152 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
+it("目标测试可选择语音并保留平台回应，不再把所有能力发送成文本", async () => {
+	const target = {
+		id: MANAGED_TARGET.id,
+		name: "测试群",
+		connectionId: ONEBOT_ID,
+		kind: "session",
+		scope: "group",
+		address: "123",
+		enabled: true,
+	} as PushTarget;
+	renderPage([ONEBOT_CONNECTION], [target]);
+	const card = await screen.findByRole("article", { name: "测试群" });
+	fireEvent.click(within(card).getByRole("button", { name: "测试" }));
+	const dialog = await screen.findByRole("dialog");
+	fireEvent.click(within(dialog).getByRole("button", { name: /语音/ }));
+	expect(within(dialog).getByText("1 秒提示音 · SILK")).toBeTruthy();
+	vi.mocked(api.post).mockResolvedValueOnce({ ok: true, latencyMs: 9 });
+	fireEvent.click(within(dialog).getByRole("button", { name: "发送测试" }));
+	expect(await within(dialog).findByText("平台已接收 · 9ms")).toBeTruthy();
+	expect(api.post).toHaveBeenCalledWith(`/api/targets/${target.id}/test`, { capability: "audio" });
+	expect(screen.getByRole("dialog")).toBe(dialog);
+});
+
+it("艾特全体必须先确认通知与额度，结果不明时提示先检查会话", async () => {
+	const target = {
+		id: MANAGED_TARGET.id,
+		name: "测试群",
+		connectionId: ONEBOT_ID,
+		kind: "session",
+		scope: "group",
+		address: "123",
+		enabled: true,
+	} as PushTarget;
+	renderPage([ONEBOT_CONNECTION], [target]);
+	fireEvent.click(
+		within(await screen.findByRole("article", { name: "测试群" })).getByRole("button", {
+			name: "测试",
+		}),
+	);
+	const dialog = await screen.findByRole("dialog");
+	fireEvent.click(within(dialog).getByRole("button", { name: /艾特全体/ }));
+	const send = within(dialog).getByRole("button", { name: "发送测试" });
+	expect(send.hasAttribute("disabled")).toBe(true);
+	fireEvent.click(within(dialog).getByRole("checkbox", { name: /消耗平台当日额度/ }));
+	expect(send.hasAttribute("disabled")).toBe(false);
+	vi.mocked(api.post).mockResolvedValueOnce({
+		ok: false,
+		code: "indeterminate",
+		message: "平台等待审核",
+	});
+	fireEvent.click(send);
+	expect(await within(dialog).findByText(/发送结果待确认，请先检查会话/)).toBeTruthy();
+	expect(api.post).toHaveBeenCalledOnce();
+	expect(api.post).toHaveBeenCalledWith(`/api/targets/${target.id}/test`, {
+		capability: "atAll",
+		confirmAtAll: true,
+	});
+});
+
+it("发送提示后等待当前会话回传，关闭弹窗撤销测试会话", async () => {
+	vi.mocked(api.delete).mockResolvedValueOnce(undefined);
+	const target = {
+		id: MANAGED_TARGET.id,
+		name: "测试群",
+		connectionId: ONEBOT_ID,
+		kind: "session",
+		scope: "group",
+		address: "123",
+		enabled: true,
+	} as PushTarget;
+	const reception = {
+		id: "55555555-5555-4555-8555-555555555555",
+		state: "pending",
+		reply: "BN-abcd1234",
+		expiresAt: "2026-11-17T00:00:00.000Z",
+	};
+	renderPage([ONEBOT_CONNECTION], [target]);
+	const get = vi.mocked(api.get).getMockImplementation();
+	vi.mocked(api.get).mockImplementation(async (url) =>
+		url === `/api/targets/${target.id}/test/${reception.id}`
+			? { ...reception, state: "received" }
+			: get?.(url),
+	);
+	fireEvent.click(
+		within(await screen.findByRole("article", { name: "测试群" })).getByRole("button", {
+			name: "测试",
+		}),
+	);
+	const dialog = await screen.findByRole("dialog");
+	fireEvent.click(within(dialog).getByRole("button", { name: /接收消息/ }));
+	vi.mocked(api.post).mockResolvedValueOnce({ ok: true, latencyMs: 9, reception });
+	fireEvent.click(within(dialog).getByRole("button", { name: "开始接收测试" }));
+	expect(await within(dialog).findByText("提示已发送，等待您回复")).toBeTruthy();
+	expect(within(dialog).queryByText("已收到当前会话的回传")).toBeNull();
+	expect(
+		await within(dialog).findByText("已收到当前会话的回传", {}, { timeout: 2000 }),
+	).toBeTruthy();
+	fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+	expect(api.delete).toHaveBeenCalledWith(`/api/targets/${target.id}/test/${reception.id}`);
+});
+
+it("关闭时仍在发送的接收测试，稍后返回也会被取消", async () => {
+	const target = {
+		id: MANAGED_TARGET.id,
+		name: "测试群",
+		connectionId: ONEBOT_ID,
+		kind: "session",
+		scope: "group",
+		address: "123",
+		enabled: true,
+	} as PushTarget;
+	renderPage([ONEBOT_CONNECTION], [target]);
+	fireEvent.click(
+		within(await screen.findByRole("article", { name: "测试群" })).getByRole("button", {
+			name: "测试",
+		}),
+	);
+	const dialog = await screen.findByRole("dialog");
+	fireEvent.click(within(dialog).getByRole("button", { name: /接收消息/ }));
+	let finish!: (value: unknown) => void;
+	vi.mocked(api.post).mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+	);
+	vi.mocked(api.delete).mockResolvedValueOnce(undefined);
+	fireEvent.click(within(dialog).getByRole("button", { name: "开始接收测试" }));
+	await within(dialog).findByText("发送中…", { selector: "div" });
+	fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+	await act(async () =>
+		finish({
+			ok: true,
+			latencyMs: 9,
+			reception: {
+				id: "late-session",
+				state: "pending",
+				reply: "BN-test",
+				expiresAt: "2026-11-17T00:00:00.000Z",
+			},
+		}),
+	);
+	expect(api.delete).toHaveBeenCalledWith(`/api/targets/${target.id}/test/late-session`);
+	expect(screen.queryByRole("dialog")).toBeNull();
+});
+
 describe("测试连通(连接自己的探测)", () => {
 	async function clickTest(): Promise<void> {
 		fireEvent.click(await screen.findByRole("button", { name: "测试" }));
@@ -453,9 +599,9 @@ it("translated test confirmation keeps raw recipients and sends only after expli
 	fireEvent.click(await screen.findByTitle("Send a real test message to this target"));
 	const dialog = await screen.findByRole("dialog");
 	for (const [locale, title, sample, send] of [
-		["en", "Send a test push?", "[bilibili-notify] Test push delivered ✓", "Send"],
-		["ja", "テスト通知を送信しますか？", "[bilibili-notify] テスト通知が届きました ✓", "送信"],
-		["zh-TW", "傳送測試推播？", "[bilibili-notify] 測試推播已送達 ✓", "傳送"],
+		["en", "Test delivery", "[bilibili-notify] Test push delivered ✓", "Send test"],
+		["ja", "配信テスト", "[bilibili-notify] テスト通知が届きました ✓", "テスト送信"],
+		["zh-TW", "測試推送", "[bilibili-notify] 測試推播已送達 ✓", "傳送測試"],
 	] as const) {
 		act(() => i18n.set({ locale }));
 		expect(within(dialog).getByText(title)).toBeTruthy();
@@ -465,10 +611,10 @@ it("translated test confirmation keeps raw recipients and sends only after expli
 		expect(within(dialog).getByRole("button", { name: send })).toBeTruthy();
 		expect(api.post).not.toHaveBeenCalled();
 	}
-	fireEvent.click(within(dialog).getByRole("button", { name: "傳送" }));
-	await screen.findByText("已送達 · 7ms");
+	fireEvent.click(within(dialog).getByRole("button", { name: "傳送測試" }));
+	await screen.findByText("平台已接收 · 7ms");
 	expect(api.post).toHaveBeenCalledOnce();
-	expect(api.post).toHaveBeenCalledWith(`/api/targets/${target.id}/test`, { kind: "text" });
+	expect(api.post).toHaveBeenCalledWith(`/api/targets/${target.id}/test`, { capability: "text" });
 });
 
 it("a connection without session types translates the refusal and never creates a target", async () => {

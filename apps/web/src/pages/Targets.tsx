@@ -37,6 +37,7 @@ import { ExtensionSettingsButton } from "../components/extension-settings-button
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { DescriptorIcon, useConnectionFace } from "../components/platform-meta";
 import { TargetLabel } from "../components/target-display";
+import { TargetTestModal } from "../components/target-test-modal";
 import { useAdapters } from "../hooks/useAdapters";
 import {
 	EXTENSION_BOTS_QUERY_PREFIX,
@@ -1386,51 +1387,6 @@ function DeleteModal({
 
 // ── Test confirm modal ─────────────────────────────────────────────────────
 
-function TestConfirmModal({
-	target,
-	connection,
-	onCancel,
-	onConfirm,
-}: {
-	target: PushTarget;
-	connection: Connection | undefined;
-	onCancel: () => void;
-	onConfirm: () => void;
-}) {
-	const tx = useT();
-	return (
-		<ModalShell
-			onCancel={onCancel}
-			width={420}
-			title={tx("targets.testConfirmModal.text1")}
-			description={
-				<>
-					{tx("targets.testConfirmModal.text2")}
-					<b className="text-bn-text-primary">
-						{connection?.name ?? tx("targets.testConfirmModal.text3")}
-					</b>
-					{tx("targets.testConfirmModal.text4")}{" "}
-					<b className="text-bn-text-primary">{target.name}</b>
-					{tx("targets.testConfirmModal.text5")}
-					<br />
-					<span className="font-mono text-bn-xs text-bn-text-tertiary">
-						{tx("targets.testConfirmModal.text6")}
-					</span>
-				</>
-			}
-		>
-			<div className="flex justify-end gap-2">
-				<Btn variant="outline" onClick={onCancel}>
-					{tx("targets.connectionEditorModal.text16")}
-				</Btn>
-				<Btn variant="primary" onClick={onConfirm}>
-					{tx("targets.testConfirmModal.text7")}
-				</Btn>
-			</div>
-		</ModalShell>
-	);
-}
-
 // ── Adapter rail (left sidebar) ─────────────────────────────────────────────
 
 function ConnectionRail({
@@ -1788,34 +1744,6 @@ export default function Targets() {
 			setTesting((p) => {
 				const next = { ...p };
 				delete next[a.id];
-				return next;
-			});
-		}, 2000);
-	}
-
-	async function runTargetTest(t: PushTarget): Promise<void> {
-		setTargetTesting((p) => ({ ...p, [t.id]: "pending" }));
-		try {
-			const res = await api.post<TestResponse>(`/api/targets/${t.id}/test`, {
-				kind: "text",
-			});
-			setTargetTesting((p) => ({ ...p, [t.id]: res.ok ? "ok" : "fail" }));
-			showToast(
-				res.ok
-					? { kind: "delivered", latencyMs: res.latencyMs }
-					: { kind: "failed", message: res.message },
-				res.ok,
-			);
-			qc.invalidateQueries({ queryKey: ["targets"] });
-		} catch (err) {
-			setTargetTesting((p) => ({ ...p, [t.id]: "fail" }));
-			const msg = err instanceof ApiError ? err.message : String(err);
-			showToast({ kind: "test-failed", message: msg }, false);
-		}
-		window.setTimeout(() => {
-			setTargetTesting((p) => {
-				const next = { ...p };
-				delete next[t.id];
 				return next;
 			});
 		}, 2000);
@@ -2289,14 +2217,12 @@ export default function Targets() {
 			) : null}
 
 			{confirmTest ? (
-				<TestConfirmModal
+				<TargetTestModal
 					target={confirmTest}
 					connection={connectionsById.get(confirmTest.connectionId)}
 					onCancel={() => setConfirmTest(null)}
-					onConfirm={() => {
-						const t = confirmTest;
-						setConfirmTest(null);
-						void runTargetTest(t);
+					onResult={() => {
+						void qc.invalidateQueries({ queryKey: ["targets"] });
 					}}
 				/>
 			) : null}
