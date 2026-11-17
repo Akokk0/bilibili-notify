@@ -526,6 +526,19 @@ describe("桥 adapter", () => {
 	 * 一条连接就是一个 bot,所以能力**按 bot 答得准** —— 这两个方法从前刻意不实现(那时
 	 * 连接是一条接入,底下同时挂着 QQ 与 telegram,合并出来的答案对谁都不对)。
 	 */
+	it("展示已报告的转发和 Markdown,未报告的图片保持未知,语音未接入", () => {
+		expect(
+			harness(
+				session({}, { forward: "supported", markdown: "unsupported" }),
+			).adapter.capabilities?.(connection()),
+		).toMatchObject({
+			forward: { state: "supported" },
+			markdown: { state: "unsupported" },
+			image: { state: "unknown" },
+			imageGroup: { state: "unknown" },
+			audio: { state: "unsupported" },
+		});
+	});
 	it("capabilities:桥报的三态原样对应;没连着就是「还不知道」并带原因", async () => {
 		expect(
 			harness(session({}, { miniAppCard: "supported" })).adapter.capabilities?.(connection()),

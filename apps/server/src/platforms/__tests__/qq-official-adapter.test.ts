@@ -134,6 +134,210 @@ function bodyOf(call: unknown[]): Record<string, unknown> {
 	return JSON.parse((call[1] as { body: string }).body);
 }
 
+it("只读群状态返回管理员与 BN 今日使用记录,查询合流且不发送消息", async () => {
+	route((url) =>
+		url.includes("getAppAccessToken")
+			? res(200, { access_token: "TKN", expires_in: 7200 })
+			: res(200, { member_role: "admin" }),
+	);
+	const ad = startedQQ();
+	const destination = { kind: "session" as const, scope: "group" as const, address: "GROUP1" };
+	const signal = new AbortController().signal;
+	const results = await Promise.all([
+		ad.fetchDestinationStatus?.(qqConnection(), destination, signal),
+		ad.fetchDestinationStatus?.(qqConnection(), destination, signal),
+	]);
+	for (const result of results)
+		expect(result).toMatchObject({
+			ok: true,
+			status: {
+				role: { state: "known", value: "admin" },
+				atAllUsage: { state: "not-recorded", timezone: "Asia/Shanghai", source: "bn" },
+			},
+		});
+	expect(callsTo("/bot_state")).toHaveLength(1);
+	expect(callsTo("/messages")).toHaveLength(0);
+});
+
+it("群 @全体成功即更新今日记录,重建适配器仍保留,其他群和应用不共用", async () => {
+	route((url) =>
+		url.includes("getAppAccessToken")
+			? res(200, { access_token: "TKN", expires_in: 7200 })
+			: url.endsWith("/bot_state")
+				? res(200, { member_role: "admin" })
+				: res(200, { id: "MSG1" }),
+	);
+	const context = fakeAdapterContext();
+	const ad = createQQOfficialAdapter(adapterOpts());
+	ad.start(context.ctx);
+	const destination = { kind: "session" as const, scope: "group" as const, address: "GROUP1" };
+	expect(
+		await ad.send(qqConnection(), destination, {
+			kind: "composite",
+			segments: [{ kind: "at-all" }],
+		}),
+	).toMatchObject({ ok: true });
+	const next = createQQOfficialAdapter(adapterOpts());
+	next.start({ ...fakeAdapterContext().ctx, state: context.ctx.state });
+	const signal = new AbortController().signal;
+	expect(await next.fetchDestinationStatus?.(qqConnection(), destination, signal)).toMatchObject({
+		ok: true,
+		status: { atAllUsage: { state: "used" } },
+	});
+	expect(
+		await next.fetchDestinationStatus?.(
+			qqConnection(),
+			{ ...destination, address: "GROUP2" },
+			signal,
+		),
+	).toMatchObject({ status: { atAllUsage: { state: "not-recorded" } } });
+	expect(
+		await next.fetchDestinationStatus?.(qqConnection({ appId: "OTHER" }), destination, signal),
+	).toMatchObject({ status: { atAllUsage: { state: "not-recorded" } } });
+});
+
+it.each([
+	["quota", "exhausted"],
+	["permission", "not-recorded"],
+	["transport", "indeterminate"],
+	["audit", "indeterminate"],
+] as const)("@全体 %s 的记录保持真实结果", async (mode, expected) => {
+	route((url) => {
+		if (url.includes("getAppAccessToken"))
+			return res(200, { access_token: "TKN", expires_in: 7200 });
+		if (url.endsWith("/bot_state")) return res(200, { member_role: "admin" });
+		if (mode === "transport") throw new Error("network disconnected");
+		if (mode === "audit") return res(202, { message_audit: { audit_id: "pending" } });
+		return res(200, { err_code: mode === "quota" ? 304019 : 11282, message: mode });
+	});
+	const ad = startedQQ();
+	const target = { kind: "session" as const, scope: "group" as const, address: "GROUP1" };
+	await ad.send(qqConnection(), target, { kind: "composite", segments: [{ kind: "at-all" }] });
+	expect(
+		await ad.fetchDestinationStatus?.(qqConnection(), target, new AbortController().signal),
+	).toMatchObject({ status: { atAllUsage: { state: expected } } });
+});
+
+it("今日记录按北京时间跨日,不跟宿主日期或核心时区改变", async () => {
+	vi.useFakeTimers({ toFake: ["Date"] });
+	vi.setSystemTime(new Date("2026-11-17T15:59:59Z"));
+	route((url) =>
+		url.includes("getAppAccessToken")
+			? res(200, { access_token: "TKN", expires_in: 7200 })
+			: url.endsWith("/bot_state")
+				? res(200, { member_role: "admin" })
+				: res(200, { id: "MSG1" }),
+	);
+	const ad = startedQQ();
+	const target = { kind: "session" as const, scope: "group" as const, address: "GROUP1" };
+	await ad.send(qqConnection(), target, { kind: "composite", segments: [{ kind: "at-all" }] });
+	const signal = new AbortController().signal;
+	expect(await ad.fetchDestinationStatus?.(qqConnection(), target, signal)).toMatchObject({
+		status: { atAllUsage: { date: "2026-11-17", state: "used" } },
+	});
+	vi.setSystemTime(new Date("2026-11-17T16:00:00Z"));
+	expect(await ad.fetchDestinationStatus?.(qqConnection(), target, signal)).toMatchObject({
+		status: { atAllUsage: { date: "2026-11-18", state: "not-recorded" } },
+	});
+});
+
+it("QQ 无群内查询权限仍返回未知身份和用量,不冒充普通成员", async () => {
+	route((url) =>
+		url.includes("getAppAccessToken")
+			? res(200, { access_token: "TKN", expires_in: 7200 })
+			: res(403, { err_code: 11253, message: "no permission" }),
+	);
+	const ad = startedQQ();
+	expect(
+		await ad.fetchDestinationStatus?.(
+			qqConnection(),
+			{ kind: "session", scope: "group", address: "GROUP1" },
+			new AbortController().signal,
+		),
+	).toMatchObject({
+		ok: true,
+		status: {
+			role: { state: "unknown", reason: expect.any(String) },
+			atAllUsage: { state: "not-recorded" },
+		},
+	});
+	expect(callsTo("/messages")).toHaveLength(0);
+});
+
+it("群身份有短缓存,显式刷新和凭据变化会重新查询,停用后不返回旧身份", async () => {
+	let role = "admin";
+	route((url) =>
+		url.includes("getAppAccessToken")
+			? res(200, { access_token: "TKN", expires_in: 7200 })
+			: res(200, { member_role: role }),
+	);
+	const ad = startedQQ();
+	const target = { kind: "session" as const, scope: "group" as const, address: "GROUP1" };
+	const signal = new AbortController().signal;
+	await ad.fetchDestinationStatus?.(qqConnection(), target, signal);
+	role = "member";
+	expect(await ad.fetchDestinationStatus?.(qqConnection(), target, signal)).toMatchObject({
+		status: { role: { value: "admin" } },
+	});
+	expect(callsTo("/bot_state")).toHaveLength(1);
+	expect(
+		await ad.fetchDestinationStatus?.(qqConnection(), target, signal, { refresh: true }),
+	).toMatchObject({ status: { role: { value: "member" } } });
+	role = "owner";
+	expect(
+		await ad.fetchDestinationStatus?.(qqConnection({ appSecret: "NEW" }), target, signal),
+	).toMatchObject({ status: { role: { value: "owner" } } });
+	expect(callsTo("/bot_state")).toHaveLength(3);
+	ad.stop();
+	expect(await ad.fetchDestinationStatus?.(qqConnection(), target, signal)).toMatchObject({
+		ok: false,
+		code: "unavailable",
+	});
+});
+
+it("同一 QQ 应用的群身份查询每分钟最多 30 次,限流显示未知且不影响整体能力", async () => {
+	vi.useFakeTimers({ toFake: ["Date"] });
+	vi.setSystemTime(new Date("2026-11-17T08:00:00Z"));
+	route((url) =>
+		url.includes("getAppAccessToken")
+			? res(200, { access_token: "TKN", expires_in: 7200 })
+			: url.endsWith("/messages")
+				? res(200, { id: "sent" })
+				: res(200, { member_role: "admin" }),
+	);
+	const ad = startedQQ();
+	const signal = new AbortController().signal;
+	const results = await Promise.all(
+		Array.from({ length: 31 }, (_, index) =>
+			ad.fetchDestinationStatus?.(
+				qqConnection(),
+				{ kind: "session", scope: "group", address: `GROUP${index}` },
+				signal,
+			),
+		),
+	);
+	expect(callsTo("/bot_state")).toHaveLength(30);
+	expect(results[30]).toMatchObject({ status: { role: { state: "unknown" } } });
+	expect(ad.capabilities?.(qqConnection()).atAll.state).toBe("supported");
+	expect(
+		await ad.send(
+			qqConnection(),
+			{ kind: "session", scope: "group", address: "GROUP30" },
+			{ kind: "composite", segments: [{ kind: "at-all" }] },
+		),
+	).toMatchObject({ ok: true });
+	expect(callsTo("/bot_state")).toHaveLength(30);
+	expect(callsTo("/messages")).toHaveLength(1);
+	vi.setSystemTime(new Date("2026-11-17T08:01:01Z"));
+	expect(
+		await ad.fetchDestinationStatus?.(
+			qqConnection(),
+			{ kind: "session", scope: "group", address: "GROUP30" },
+			signal,
+		),
+	).toMatchObject({ status: { role: { value: "admin" } } });
+});
+
 /**
  * 网关连不上经 `ctx.reportProblem({ connectionId })` 只进问题表(推送走 REST,不受网关影响,不私聊):
  * 连续 60 秒不在线才报,连接停用 / 删掉时清。接线的守卫 —— 网关连接那一层的时序在 qq-official-conn.test.ts。

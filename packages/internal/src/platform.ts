@@ -463,19 +463,39 @@ export function isReachabilityEvidence(result: DeliveryResult): boolean {
  * 后者是结论;读它的地方各自决定「还不知道」时怎么办(见 `ConnectionCapabilities` 各格的注释),
  * 面板上两者也要分开显示。
  *
- * - `supported`:确认支持,`checkedAt` 是确认的时刻。
+ * - `supported`:确认支持,`checkedAt` 是确认的时刻，可用 `reason` 说明适用范围。
  * - `unsupported`:确认不支持,`reason` 给人看的一句话,`checkedAt` 是确认的时刻。
  * - `unknown`:还没探出来(没探过、连不上、对面没报),`reason` 可选。
  *
  * `checkedAt` 是**带时区的 ISO**;宿主交出来的一律是 `Z` 结尾的 UTC(`toISOString()` 的写法)。
  */
 export type CapabilitySupport =
-	| { state: "supported"; checkedAt: string }
+	| { state: "supported"; checkedAt: string; reason?: string }
 	| { state: "unsupported"; reason: string; checkedAt: string }
 	| { state: "unknown"; reason?: string };
 
+/** 机器人在某个会话里的状态，独立于整条连接的能力。 */
+export interface DestinationStatus {
+	role:
+		| { state: "known"; value: "member" | "admin" | "owner"; checkedAt: string }
+		| { state: "unknown"; reason?: string };
+	/** BN 的当日发送记录，不是平台返回的剩余额度。 */
+	atAllUsage?: {
+		state: "not-recorded" | "used" | "exhausted" | "indeterminate";
+		date: string;
+		timezone: string;
+		source: "bn";
+	};
+}
+
 /** 一条连接的能力快照,由这条连接的适配器回答。 */
 export interface ConnectionCapabilities {
+	/** 额外展示能力；旧适配器未报告时按未知，不用于推断群内权限。 */
+	image?: CapabilitySupport;
+	imageGroup?: CapabilitySupport;
+	forward?: CapabilitySupport;
+	audio?: CapabilitySupport;
+	markdown?: CapabilitySupport;
 	/**
 	 * 能不能单发 @全体。派发器的 `supportsAtAll` 与订阅抽屉里的 @全体 开关读它;
 	 * 「还不知道」时**照发**(发错只是多一条消息)。

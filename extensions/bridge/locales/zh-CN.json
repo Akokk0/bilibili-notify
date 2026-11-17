@@ -110,5 +110,8 @@
 	},
 	"error.frameObject": "帧不是一个对象",
 	"error.frameType": "帧没有 type",
-	"error.unknownFrame": "不认识的帧类型: {type}"
+	"error.unknownFrame": "不认识的帧类型: {type}",
+	"capability.noForward": "桥报的:这个 bot 不支持合并转发",
+	"capability.noMarkdown": "桥报的:这个 bot 不支持 Markdown",
+	"capability.noAudio": "BN 尚未接入语音发送"
 }

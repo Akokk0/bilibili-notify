@@ -73,6 +73,16 @@ describe("内置适配器的 atAll / inbound 回答", () => {
 		// 小程序卡仍是「没探过 = 还不知道」,这一片不动它。
 		expect(caps.nativeShare.state).toBe("unknown");
 	});
+	it("OneBot 按 BN 已接入的发送形式回答图片、多图、转发、语音与 Markdown", () => {
+		const adapter = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		expect(capsOf(adapter, "onebot")).toMatchObject({
+			image: { state: "supported" },
+			imageGroup: { state: "supported" },
+			forward: { state: "supported" },
+			audio: { state: "unsupported" },
+			markdown: { state: "unsupported" },
+		});
+	});
 
 	it("qq-official:atAll 与 inbound 支持、nativeShare 不支持(带原因)", () => {
 		const adapter = createQQOfficialAdapter({
@@ -89,6 +99,39 @@ describe("内置适配器的 atAll / inbound 回答", () => {
 		if (caps.inbound.state === "supported") expectUtcIso(caps.inbound.checkedAt);
 		expect(caps.nativeShare.state).toBe("unsupported");
 		expect(caps.nativeShare.state === "unsupported" && caps.nativeShare.reason).toBeTruthy();
+	});
+	it.each(["public", "private"])("QQ %s 机器人报告实际图片与 Markdown 能力", (botType) => {
+		const adapter = createQQOfficialAdapter({
+			logger: makeLogger(),
+			serviceCtx: makeServiceCtx(),
+			registry: createQQSessionRegistry(),
+			locale: fixedLocale(),
+		});
+		const connection = { ...direct("qq-official"), settings: { botType } } as Connection;
+		expect(adapter.capabilities?.(connection)).toMatchObject({
+			image: { state: "supported" },
+			imageGroup: { state: "supported" },
+			forward: { state: "unsupported" },
+			audio: { state: "unsupported" },
+			markdown: { state: botType === "private" ? "supported" : "unsupported" },
+		});
+	});
+	it("只发纯文本的 webhook 不把图片降级冒充图片支持,通用接收端保持未知", () => {
+		const adapter = createWebhookAdapter({ logger: makeLogger() });
+		for (const platform of ["feishu", "dingtalk", "wecom"]) {
+			expect(capsOf(adapter, platform)).toMatchObject({
+				image: { state: "unsupported" },
+				imageGroup: { state: "unsupported" },
+				forward: { state: "unsupported" },
+				audio: { state: "unsupported" },
+				markdown: { state: "unsupported" },
+			});
+		}
+		expect(capsOf(adapter, "generic")).toMatchObject({
+			image: { state: "unknown" },
+			markdown: { state: "unknown" },
+			audio: { state: "unsupported" },
+		});
 	});
 
 	it("webhook:atAll 支持、inbound 不支持(原因是没有回程)、nativeShare 不支持", () => {

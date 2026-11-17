@@ -110,5 +110,8 @@
 	},
 	"error.frameObject": "訊框不是物件",
 	"error.frameType": "訊框沒有 type",
-	"error.unknownFrame": "未知訊框類型：{type}"
+	"error.unknownFrame": "未知訊框類型：{type}",
+	"capability.noForward": "橋接回報：這個 bot 不支援合併轉傳",
+	"capability.noMarkdown": "橋接回報：這個 bot 不支援 Markdown",
+	"capability.noAudio": "BN 尚未接入語音傳送"
 }

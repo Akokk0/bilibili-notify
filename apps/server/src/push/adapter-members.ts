@@ -16,6 +16,7 @@ const ADAPTER_MEMBERS = {
 	send: true,
 	capabilities: true,
 	probeCapabilities: true,
+	fetchDestinationStatus: true,
 	settingsSchema: true,
 	listConnectionCandidates: true,
 	listAddressCandidates: true,

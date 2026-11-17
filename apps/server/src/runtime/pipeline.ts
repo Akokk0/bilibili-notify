@@ -66,7 +66,11 @@ import type { ProblemTable } from "../problems/problem-table.js";
 import { boundLivePush, boundPostPush } from "../push/bound-push.js";
 import { createConnectionProbeEngine } from "../push/connection-probe-engine.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
-import { createTargetDispatcher, type SendInterceptHandler } from "../push/target-dispatcher.js";
+import {
+	createTargetDispatcher,
+	type HostTargetDispatcher,
+	type SendInterceptHandler,
+} from "../push/target-dispatcher.js";
 import {
 	type RegisterBuiltinSourceOptions,
 	registerBuiltinSource,
@@ -195,6 +199,7 @@ export interface PipelineRuntime extends Disposable {
 	probeConnection(connectionId: string): Promise<ProbeResult>;
 	/** 这条连接所在平台的能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
 	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
+	fetchTargetStatus: HostTargetDispatcher["fetchTargetStatus"];
 	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 dispatcher 的连接寻址。 */
 	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
 	/** 列这条连接上可挑的地址(只查 `scope` 那一种),转给派发器的 `listAddressCandidates`。 */
@@ -970,6 +975,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 			connectionProbe.probe(connectionId, { manual: true }),
 		connectionCapabilities: (connectionId: string) =>
 			dispatcher.connectionCapabilities(connectionId),
+		fetchTargetStatus: dispatcher.fetchTargetStatus,
 		probeConnectionCapabilities: (connectionId: string) =>
 			dispatcher.probeConnectionCapabilities(connectionId),
 		listAddressCandidates: (connectionId, scope, signal) =>

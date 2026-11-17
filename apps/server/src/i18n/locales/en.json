@@ -1617,5 +1617,20 @@
 	"stats.videoViews.timeout": "Reading the total video view count timed out. Try again later.",
 	"stats.videoViews.sourceUnsupported": "This source does not support total video view collection.",
 	"stats.videoViews.sourceFailed": "The source could not return the total video view count. Try again later.",
-	"stats.videoViews.cancelled": "Reading the total video view count was cancelled."
+	"stats.videoViews.cancelled": "Reading the total video view count was cancelled.",
+	"adapters.capability.audioUnsupported": "BN has not implemented audio delivery",
+	"onebot.capability.markdownUnsupported": "BN sends plain text through OneBot",
+	"qqOfficial.capability.forwardUnsupported": "The QQ official adapter does not implement merged forwards",
+	"qqOfficial.capability.markdownUnsupported": "BN uses native Markdown galleries only for private QQ bots",
+	"webhook.capability.receiverUnknown": "The receiver has not reported how it handles these messages",
+	"webhook.capability.textOnly": "BN sends plain text to this webhook; images become text descriptions",
+	"targets.status.unsupported": "This connection does not provide group status queries",
+	"targets.status.cancelled": "The group status query was cancelled",
+	"targets.status.changed": "The target or connection changed; refresh its status",
+	"targets.status.rateLimited": "Too many status queries; refresh again shortly",
+	"targets.status.readFailed": "Group status is temporarily unavailable",
+	"qqOfficial.group.statusPermission": "QQ has not granted this bot access to group status queries",
+	"log.qq.atAllUsageWriteFailed": "Could not save the everyone-mention record; it may be unavailable after restart",
+	"targets.status.invalidGroup": "The group address must be a valid group number",
+	"qqOfficial.capability.markdownGalleryOnly": "Native Markdown is used only for private-bot image galleries, not ordinary text messages"
 }

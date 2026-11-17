@@ -104,6 +104,13 @@ export interface PlatformAdapter {
 	 * `shouldSendAtAll` / `canReceiveReply` / `listsForLinkPreview`。
 	 */
 	capabilities?(connection: Connection): ConnectionCapabilities;
+	/** 宿主只读查询会话内身份与使用记录；暂不向拓展开放。 */
+	fetchDestinationStatus?(
+		connection: Connection,
+		destination: DestinationRef,
+		signal: AbortSignal,
+		options?: { refresh?: boolean },
+	): Promise<Result<{ status: import("./platform").DestinationStatus }>>;
 	/** 主动探一次能力,结果进缓存。连上时、健康探测时、用之前都可以叫;零副作用。 */
 	probeCapabilities?(connection: Connection): Promise<ConnectionCapabilities>;
 	/**

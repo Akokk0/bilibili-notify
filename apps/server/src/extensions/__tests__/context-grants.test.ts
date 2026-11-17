@@ -299,6 +299,7 @@ describe("按清单注册平台适配器", () => {
 			...fakeAdapter(),
 			probe,
 			listAddressCandidates: vi.fn(),
+			fetchDestinationStatus: vi.fn(),
 			connectionAuth: { begin: vi.fn(), state: vi.fn(), takeDraft: vi.fn() },
 		} as unknown as PlatformAdapter;
 		h.ctx.registerPlatformAdapter(smuggled);
@@ -309,6 +310,7 @@ describe("按清单注册平台适配器", () => {
 		expect(probe).toHaveBeenCalledTimes(1);
 		expect(registered && "listAddressCandidates" in registered).toBe(false);
 		expect(registered && "connectionAuth" in registered).toBe(false);
+		expect(registered && "fetchDestinationStatus" in registered).toBe(false);
 	});
 
 	/**
@@ -326,6 +328,21 @@ describe("按清单注册平台适配器", () => {
 			} as unknown as PlatformAdapterDef);
 			return h;
 		}
+		it("额外展示能力同样保留并校验上报时间,缺项不补成支持", () => {
+			const h = registerWithCaps({
+				atAll: { state: "unknown" },
+				inbound: { state: "unknown" },
+				nativeShare: { state: "unknown" },
+				image: { state: "supported", checkedAt: "2026-11-17T08:00:00+08:00" },
+				markdown: { state: "supported", checkedAt: "坏时间" },
+			});
+			const caps = h.adapters.list()[0]?.capabilities?.(connection());
+			expect(caps).toMatchObject({
+				image: { state: "supported", checkedAt: "2026-11-17T00:00:00.000Z" },
+				markdown: { state: "unknown" },
+			});
+			expect(caps).not.toHaveProperty("audio");
+		});
 
 		it("带时区的 ISO 收下,统一成 Z 结尾的 UTC(capabilities 与 probeCapabilities 都过这道)", async () => {
 			const h = registerWithCaps({

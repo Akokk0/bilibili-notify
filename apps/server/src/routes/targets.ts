@@ -1,4 +1,4 @@
-import type { TestResponse } from "@bilibili-notify/contract";
+import type { DestinationStatusResponse, TestResponse } from "@bilibili-notify/contract";
 import { fail, issuesFromZod, type NotificationPayload } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
@@ -73,6 +73,19 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 	const log = deps.runtime.serviceCtx.logger;
 
 	app.get("/", (c) => c.json(deps.store.getTargets()));
+	app.get("/:id/status", async (c) => {
+		const id = TargetIdSchema.safeParse(c.req.param("id"));
+		if (!id.success)
+			return respondFailure(c, fail("invalid", serverText("service.routes.targets.text.6")));
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
+		const result =
+			c.req.query("refresh") === "1"
+				? await pipeline.fetchTargetStatus(id.data, c.req.raw.signal, { refresh: true })
+				: await pipeline.fetchTargetStatus(id.data, c.req.raw.signal);
+		if (!result.ok) return respondFailure(c, result);
+		return c.json<DestinationStatusResponse>({ status: result.status });
+	});
 
 	app.post("/", async (c) => {
 		const read = await readJsonBody(c);

@@ -1605,5 +1605,20 @@
 	"stats.videoViews.timeout": "累計影片播放次數讀取逾時，請稍後再試。",
 	"stats.videoViews.sourceUnsupported": "此來源不支援累計影片播放次數的收集。",
 	"stats.videoViews.sourceFailed": "來源無法傳回累計影片播放次數，請稍後再試。",
-	"stats.videoViews.cancelled": "已取消讀取累計影片播放次數。"
+	"stats.videoViews.cancelled": "已取消讀取累計影片播放次數。",
+	"adapters.capability.audioUnsupported": "BN 尚未接入語音傳送",
+	"onebot.capability.markdownUnsupported": "BN 的 OneBot 傳送流程使用純文字",
+	"qqOfficial.capability.forwardUnsupported": "QQ 官方適配器尚未接入合併轉傳",
+	"qqOfficial.capability.markdownUnsupported": "BN 僅為私域 QQ 機器人的多圖使用原生 Markdown",
+	"webhook.capability.receiverUnknown": "接收端未回報如何處理這些訊息",
+	"webhook.capability.textOnly": "BN 向此 webhook 傳送純文字，圖片會降級為文字說明",
+	"targets.status.unsupported": "此連線尚未提供群內狀態查詢",
+	"targets.status.cancelled": "群內狀態查詢已取消",
+	"targets.status.changed": "目標或連線已變更，請重新查詢",
+	"targets.status.rateLimited": "查詢較多，請稍後重新整理",
+	"targets.status.readFailed": "暫時無法讀取群內狀態",
+	"qqOfficial.group.statusPermission": "QQ 尚未為此機器人開放群內狀態查詢權限",
+	"log.qq.atAllUsageWriteFailed": "提及全體的使用紀錄寫入失敗，重新啟動後可能無法還原本次紀錄",
+	"targets.status.invalidGroup": "群組地址必須是有效的群號",
+	"qqOfficial.capability.markdownGalleryOnly": "僅私域機器人的多圖使用原生 Markdown；一般文字訊息不使用 Markdown"
 }

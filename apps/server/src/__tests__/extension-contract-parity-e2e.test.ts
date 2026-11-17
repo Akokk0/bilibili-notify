@@ -350,6 +350,14 @@ const ADAPTER_ROWS = {
 			title: "这一版不对拓展开放的成员(列地址候选、连接认证)带了也不认,别的成员照收",
 		},
 	),
+	fetchDestinationStatus: closed(
+		"群内身份查询暂只供内置适配器实现；拓展尚无此协议，类型与运行时同时摘掉（ADR-0054）。",
+		THIS(TITLE.closedPorts),
+		{
+			file: CONTEXT_GRANTS_TEST,
+			title: "这一版不对拓展开放的成员(列地址候选、连接认证)带了也不认,别的成员照收",
+		},
+	),
 	connectionAuth: closed(
 		"这一版不对拓展开放(ADR-0024 决策 11;契约「推送」表 `connectionAuth` 一行 10-11):类型里排除、宿主登记拓展适配器时摘掉,带了也不认。",
 		THIS(TITLE.closedPorts),
@@ -360,12 +368,13 @@ const ADAPTER_ROWS = {
 	),
 } satisfies Record<keyof PlatformAdapter, Row>;
 
-/** `PlatformAdapterDef` 从 `PlatformAdapter` 上摘掉的四个成员(类型里排除)。 */
+/** `PlatformAdapterDef` 从 `PlatformAdapter` 上摘掉的成员(类型里排除)。 */
 const ADAPTER_DEF_OMITTED = [
 	"adapterKey",
 	"descriptor",
 	"listAddressCandidates",
 	"connectionAuth",
+	"fetchDestinationStatus",
 ] as const satisfies readonly Exclude<keyof PlatformAdapter, keyof PlatformAdapterDef>[];
 /** 反过来也要全:`PlatformAdapterDef` 再多摘一个成员,这一行就类型检查不过。 */
 const ADAPTER_DEF_OMITTED_IS_COMPLETE: Exclude<
@@ -1017,8 +1026,12 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			status: 400,
 			body: { code: "unsupported" },
 		});
+		expect(await failed(await api(`/api/targets/${ID.groupA}/status`))).toMatchObject({
+			status: 400,
+			body: { code: "unsupported" },
+		});
 		// This revision-zero fixture verifies compatibility with the earlier source API.
-		drove("PlatformAdapter", "listAddressCandidates", "connectionAuth");
+		drove("PlatformAdapter", "listAddressCandidates", "connectionAuth", "fetchDestinationStatus");
 	});
 
 	// 验红:`routes/connections.ts` 的能力快照对拓展连接不问适配器(跳过),这一条红。
@@ -1598,16 +1611,16 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			expect(size("Source")).toBe(11);
 			expect(size("SubscriptionCell")).toBe(13);
 			expect(size("SourceContext")).toBe(7);
-			expect(size("PlatformAdapter")).toBe(13);
+			expect(size("PlatformAdapter")).toBe(14);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
 			expect(size("IntegrationContext")).toBe(14);
-			expect(entries).toHaveLength(66);
+			expect(entries).toHaveLength(67);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 本文件驱动39行，另有18行由引用测试管着（含auth、featureHints、displayIdNoun）；不开8行，宿主填1行。
+			// 本文件驱动39行，另有18行由引用测试管着（含auth、featureHints、displayIdNoun）；不开9行，宿主填1行。
 			expect(of("driven")).toHaveLength(39);
 			expect(of("elsewhere")).toHaveLength(18);
-			expect(of("closed")).toHaveLength(8);
+			expect(of("closed")).toHaveLength(9);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(
 				of("closed")
@@ -1617,6 +1630,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 				[
 					"PlatformAdapter.connectionAuth",
 					"PlatformAdapter.descriptor",
+					"PlatformAdapter.fetchDestinationStatus",
 					"PlatformAdapter.listAddressCandidates",
 					"Source.descriptor",
 					"Source.fetchPreview",
@@ -1627,7 +1641,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			);
 		});
 
-		it("开放的行与宿主那张成员表对得上:来源 = SOURCE_DEF_MEMBERS 里为 true 的,适配器的「不开 / 宿主填」= PlatformAdapterDef 摘掉的四个", () => {
+		it("开放的行与宿主那张成员表对得上:来源 = SOURCE_DEF_MEMBERS 里为 true 的,适配器的「不开 / 宿主填」= PlatformAdapterDef 摘掉的成员", () => {
 			expect(ADAPTER_DEF_OMITTED_IS_COMPLETE).toBe(true);
 			const opened = Object.entries(SOURCE_ROWS)
 				.filter(([, row]) => ["driven", "elsewhere"].includes((row as Row).state))

@@ -97,7 +97,8 @@ describe("dashboard cookie auth", () => {
 		"/api/settings/invalid",
 		"/api/ext/not-installed/settings/invalid",
 		"/api/system/backup/preview",
-	])("invalid settings readers share cookie and desktop auth: %s", async (path) => {
+		"/api/targets/33333333-3333-4333-8333-333333333333/status",
+	])("read-only resource readers share cookie and desktop auth: %s", async (path) => {
 		const runtime = createAppRuntime(
 			makeBootstrap(dataDir),
 			{ dataRoot: dataDir },

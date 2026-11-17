@@ -111,5 +111,8 @@
 	},
 	"error.frameObject": "Frame is not an object",
 	"error.frameType": "Frame has no type",
-	"error.unknownFrame": "Unknown frame type: {type}"
+	"error.unknownFrame": "Unknown frame type: {type}",
+	"capability.noForward": "The bridge reports that this bot cannot send merged forwards",
+	"capability.noMarkdown": "The bridge reports that this bot does not support Markdown",
+	"capability.noAudio": "BN has not implemented audio delivery"
 }

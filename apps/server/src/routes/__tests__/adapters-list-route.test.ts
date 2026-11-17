@@ -100,7 +100,7 @@ describe("GET /api/adapters", () => {
 		expect(body.adapters).toEqual([
 			{
 				key: "onebot",
-				has: { connectionAuth: false, listAddressCandidates: false },
+				has: { connectionAuth: false, listAddressCandidates: false, fetchDestinationStatus: true },
 				descriptor: {
 					label: "OneBot v11",
 					shortLabel: "OneBot",
@@ -120,7 +120,7 @@ describe("GET /api/adapters", () => {
 			},
 			{
 				key: "qq-official",
-				has: { connectionAuth: true, listAddressCandidates: true },
+				has: { connectionAuth: true, listAddressCandidates: true, fetchDestinationStatus: true },
 				descriptor: {
 					auth: {
 						description: expect.any(String),

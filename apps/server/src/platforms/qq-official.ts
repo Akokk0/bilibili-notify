@@ -5,6 +5,7 @@ import type {
 	ConnectionCapabilities,
 	DeliveryResult,
 	DestinationRef,
+	DestinationStatus,
 	Disposable,
 	Failure,
 	FetchOptions,
@@ -30,7 +31,9 @@ import { logText, t } from "../i18n/index.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
+import { createGroupRoleCache } from "./group-role-cache.js";
 import { imageGroupUrls } from "./image-group.js";
+import { createQQAtAllUsage } from "./qq-at-all-usage.js";
 import { createQQConnectionAuth } from "./qq-bind.js";
 import type { QQOfficialConnectionSettings } from "./qq-official-settings.js";
 import { QQOfficialConnectionSettingsSchema } from "./qq-official-settings.js";
@@ -873,12 +876,13 @@ async function fetchQQGroupBotRole(
 	base: string,
 	headers: Record<string, string>,
 	groupOpenid: string,
+	signal?: AbortSignal,
 ): Promise<Result<{ role: "member" | "admin" | "owner" }>> {
 	try {
 		const response = await qqFetch(
 			http,
 			`${base}/v2/groups/${encodeURIComponent(groupOpenid)}/bot_state`,
-			{ headers, timeoutMs: 3_000 },
+			{ headers, timeoutMs: 3_000, signal },
 		);
 		if (!response.ok) return response;
 		const parsed = response.json();
@@ -1266,7 +1270,53 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	const gatewayDown = new Map<string, string | null>();
 	/** `start(ctx)` 接住的上报口与语言订阅;`stop()` 摘掉。 */
 	let reporter: Pick<PlatformAdapterContext, "reportProblem"> | undefined;
+	let statusContext: Pick<PlatformAdapterContext, "state" | "signal"> | undefined;
+	const groupRoles = createGroupRoleCache(() => t("targets.status.rateLimited"), 30);
+	const atAllUsage = createQQAtAllUsage((message) =>
+		logger.warn(logText("log.qq.atAllUsageWriteFailed"), { message }),
+	);
 	let localeSub: Disposable | undefined;
+
+	/** 页面读缓存，发送强制取新结果；两者共用应用级查询预算。 */
+	function readGroupRole(
+		connection: Connection & { settings: QQOfficialConnectionSettings },
+		address: string,
+		refresh = false,
+	): Promise<DestinationStatus["role"]> {
+		const context = statusContext;
+		const client = http;
+		if (!context || !client || context.signal.aborted)
+			return Promise.resolve({ state: "unknown", reason: t("connection.adapterNotStarted") });
+		const settings = connection.settings;
+		return groupRoles.read(
+			JSON.stringify([connection.id, settings, address]),
+			JSON.stringify([settings.appId, settings.sandbox]),
+			async () => {
+				try {
+					const token = await tokenRefresherFor(connection, client).getToken();
+					const result = await fetchQQGroupBotRole(
+						client,
+						qqApiBase(settings.sandbox),
+						qqRestHeaders(token, settings.appId),
+						address,
+						context.signal,
+					);
+					return result.ok
+						? { state: "known", value: result.role, checkedAt: new Date().toISOString() }
+						: {
+								state: "unknown",
+								reason:
+									result.upstreamCode === 11253
+										? t("qqOfficial.group.statusPermission")
+										: result.message,
+							};
+				} catch {
+					return { state: "unknown", reason: t("targets.status.readFailed") };
+				}
+			},
+			refresh,
+		);
+	}
 
 	/** 报(或重报)「网关连不上」:字在这一刻现出,原因记下来供换语言时再报。 */
 	function reportGatewayOffline(
@@ -1546,8 +1596,47 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			}
 		},
 
-		capabilities(_connection: Connection): ConnectionCapabilities {
+		async fetchDestinationStatus(connection, destination, _signal, options) {
+			if (!isMine(connection) || destination.kind !== "session" || destination.scope !== "group")
+				return fail("unsupported", t("targets.status.unsupported"));
+			const context = statusContext;
+			const client = http;
+			if (!context || !client || context.signal.aborted)
+				return fail("unavailable", t("connection.adapterNotStarted"));
+			const settings = connection.settings;
+			const role = await readGroupRole(connection, destination.address, options?.refresh);
+			if (context !== statusContext || context.signal.aborted)
+				return fail("unavailable", t("targets.status.cancelled"));
+			return ok({
+				status: { role, atAllUsage: atAllUsage.read(context.state, settings, destination.address) },
+			});
+		},
+		capabilities(connection: Connection): ConnectionCapabilities {
 			return {
+				image: { state: "supported", checkedAt: adapterStartedAt },
+				imageGroup: { state: "supported", checkedAt: adapterStartedAt },
+				forward: {
+					state: "unsupported",
+					reason: t("qqOfficial.capability.forwardUnsupported"),
+					checkedAt: adapterStartedAt,
+				},
+				audio: {
+					state: "unsupported",
+					reason: t("adapters.capability.audioUnsupported"),
+					checkedAt: adapterStartedAt,
+				},
+				markdown:
+					(connection.settings as QQOfficialConnectionSettings).botType === "private"
+						? {
+								state: "supported",
+								checkedAt: adapterStartedAt,
+								reason: t("qqOfficial.capability.markdownGalleryOnly"),
+							}
+						: {
+								state: "unsupported",
+								reason: t("qqOfficial.capability.markdownUnsupported"),
+								checkedAt: adapterStartedAt,
+							},
 				atAll: { state: "supported", checkedAt: adapterStartedAt },
 				inbound: { state: "supported", checkedAt: adapterStartedAt },
 				// 没实现原生分享(小程序卡)的发送 = 不支持。
@@ -1568,6 +1657,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		start(ctx: PlatformAdapterContext): void {
 			http = ctx.http;
 			reporter = ctx;
+			statusContext = ctx;
 			// 语言变了:此刻还连不上的连接,问题句照原因再说一遍(已恢复、已清掉的不在表里)。
 			localeSub = opts.locale.onChange(() => {
 				for (const [connectionId, reason] of [...gatewayDown]) {
@@ -1580,6 +1670,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		},
 
 		stop(): void {
+			statusContext = undefined;
+			groupRoles.clear();
 			http = undefined;
 			reporter = undefined;
 			localeSub?.dispose();
@@ -1701,9 +1793,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			);
 			if (parts.length === 0) return fail("invalid", t("adapters.payload.empty"));
 			if (scope === "group" && parts.some((part) => part.kind === "at-all")) {
-				const identity = await fetchQQGroupBotRole(http, base, headers, address);
+				const identity = await readGroupRole(connection, address, true);
 				// 仅白名单机器人能查；无接口权限、超时或坏响应均保留未知，让发送接口作最终判断。
-				if (identity.ok && identity.role === "member")
+				if (identity.state === "known" && identity.value === "member")
 					return fail("unauthorized", t("qqOfficial.group.atAllRequiresAdmin"));
 			}
 
@@ -1724,6 +1816,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					failure = prepared;
 					break;
 				}
+				const submittedAt = Date.now();
 				try {
 					const response = qqPostOutcome(
 						await qqFetch(http, `${base}${endpoint.path}`, {
@@ -1738,6 +1831,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					const verdict = response.ok
 						? interpretQQSend(response.status, response.body)
 						: fail("indeterminate", response.message);
+					if (scope === "group" && part.kind === "at-all" && statusContext)
+						await atAllUsage.record(statusContext.state, cfg, address, verdict, submittedAt);
 					if (!verdict.ok) {
 						failure = verdict;
 						break;
@@ -1746,6 +1841,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				} catch (e) {
 					failureError = e;
 					failure = fail("indeterminate", e instanceof Error ? e.message : String(e));
+					if (scope === "group" && part.kind === "at-all" && statusContext)
+						await atAllUsage.record(statusContext.state, cfg, address, failure, submittedAt);
 					break;
 				}
 			}

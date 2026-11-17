@@ -15,6 +15,7 @@ import type {
 	ConnectionCandidate,
 	ConnectionCapabilities,
 	CreatorProfile,
+	DestinationStatus,
 	ExtensionProvides,
 	ExtensionRunState,
 	Failure,
@@ -86,6 +87,11 @@ export type ErrorResponse = Omit<Failure, "ok">;
  */
 export type ConnectionCapabilitiesMap = Record<string, ConnectionCapabilities>;
 
+/** GET /api/targets/:id/status；只读，不向目标发送消息。 */
+export interface DestinationStatusResponse {
+	status: DestinationStatus;
+}
+
 /**
  * `GET /api/connections/:id/addresses?scope=group|private|channel` 响应 —— 这条连接上可挑的地址,
  * 只含 `scope` 那一种。一排平的项;分组靠 `parentAddress` / `parentName`(QQ 频道:频道服务器)。
@@ -110,7 +116,11 @@ export interface AdapterEntry {
 	/** 适配器键:连接的 `adapterKey` 就是它(拓展的适配器键是拓展 id)。 */
 	key: string;
 	descriptor: PlatformAdapterDescriptor;
-	has: { connectionAuth: boolean; listAddressCandidates: boolean };
+	has: {
+		connectionAuth: boolean;
+		listAddressCandidates: boolean;
+		fetchDestinationStatus?: boolean;
+	};
 }
 
 /** `GET /api/adapters` 响应:内置的按登记先后在前,拓展的按装载器的次序在后。 */

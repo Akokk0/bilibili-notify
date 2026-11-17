@@ -1605,5 +1605,20 @@
 	"stats.videoViews.timeout": "累计视频播放量读取超时，请稍后重试。",
 	"stats.videoViews.sourceUnsupported": "此来源不支持累计视频播放量采集。",
 	"stats.videoViews.sourceFailed": "来源未能返回累计视频播放量，请稍后重试。",
-	"stats.videoViews.cancelled": "累计视频播放量读取已取消。"
+	"stats.videoViews.cancelled": "累计视频播放量读取已取消。",
+	"adapters.capability.audioUnsupported": "BN 尚未接入语音发送",
+	"onebot.capability.markdownUnsupported": "BN 的 OneBot 发送链路使用普通文本",
+	"qqOfficial.capability.forwardUnsupported": "QQ 官方适配器没有接入合并转发",
+	"qqOfficial.capability.markdownUnsupported": "BN 仅为私域 QQ 机器人的图集使用原生 Markdown",
+	"webhook.capability.receiverUnknown": "接收端未报告如何处理这些消息",
+	"webhook.capability.textOnly": "BN 向此 webhook 发送普通文本，图片会降级为文字说明",
+	"targets.status.unsupported": "此连接暂未提供群内状态查询",
+	"targets.status.cancelled": "群内状态查询已取消",
+	"targets.status.changed": "目标或连接已变化，请重新查询",
+	"targets.status.rateLimited": "查询较多，请稍后刷新",
+	"targets.status.readFailed": "暂时无法读取群内状态",
+	"qqOfficial.group.statusPermission": "QQ 尚未为此机器人开放群内状态查询权限",
+	"log.qq.atAllUsageWriteFailed": "艾特全体使用记录写入失败，重启后可能无法恢复本次记录",
+	"targets.status.invalidGroup": "群地址必须是有效的群号",
+	"qqOfficial.capability.markdownGalleryOnly": "仅私域机器人图集使用原生 Markdown；普通文字消息不走 Markdown"
 }

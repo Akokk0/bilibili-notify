@@ -26,6 +26,7 @@ import type { IntegrationSettingsSegment } from "../config/store.js";
 import { logText, t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
+import { createGroupRoleCache } from "./group-role-cache.js";
 import { imageGroupUrls } from "./image-group.js";
 import { ONEBOT_FORWARD_MIN_TIMEOUT_MS, ONEBOT_IMAGE_MIN_TIMEOUT_MS } from "./onebot-constants.js";
 import { routeInboundFrame } from "./onebot-inbound.js";
@@ -908,6 +909,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	const log = opts.logger;
 	const serviceCtx = opts.serviceCtx;
 	const fallbackTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	const groupRoles = createGroupRoleCache(() => t("targets.status.rateLimited"));
 	// 「adapter 配置里没写」时才用得上的兜底;真正生效的值见 minTimeoutLimits()。
 	const minTimeoutFallbacks = {
 		forward: opts.mergeForwardMinTimeoutMs ?? DEFAULT_FORWARD_MIN_TIMEOUT_MS,
@@ -945,6 +947,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		botIdentityCache.clear();
 		nativeShareSupport.clear();
 		capabilityFingerprints.clear();
+		groupRoles.clear();
 	}
 	// 兜底:即便 pipeline.dispose 没显式调到,serviceCtx 结束时也关干净。
 	serviceCtx.onDispose(disposeAll, "stop");
@@ -1559,8 +1562,67 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			return dispatch(connection, destination, built, t0);
 		},
 
+		async fetchDestinationStatus(connection, destination, _signal, options) {
+			if (!isMine(connection) || destination.kind !== "session" || destination.scope !== "group")
+				return fail("unsupported", t("targets.status.unsupported"));
+			if (disposed || !http) return fail("unavailable", t("connection.adapterNotStarted"));
+			const groupId = Number(destination.address);
+			if (!Number.isSafeInteger(groupId) || groupId <= 0)
+				return fail("invalid", t("targets.status.invalidGroup"));
+			const role = await groupRoles.read(
+				JSON.stringify([connection.id, connection.settings, destination.address]),
+				connection.id,
+				async () => {
+					try {
+						const login = await callOnce(connection, "get_login_info", {});
+						const loginResult = interpretResponse(login);
+						const rawId = (login.data as { user_id?: unknown } | undefined)?.user_id;
+						const userId =
+							typeof rawId === "number"
+								? rawId
+								: typeof rawId === "string" && /^\d+$/.test(rawId)
+									? Number(rawId)
+									: Number.NaN;
+						if (!loginResult.ok || !Number.isSafeInteger(userId) || userId <= 0)
+							return {
+								state: "unknown",
+								reason: loginResult.ok ? t("targets.status.readFailed") : loginResult.message,
+							};
+						const member = await callOnce(connection, "get_group_member_info", {
+							group_id: groupId,
+							user_id: userId,
+							no_cache: true,
+						});
+						const verdict = interpretResponse(member);
+						if (!verdict.ok) return { state: "unknown", reason: verdict.message };
+						const value = (member.data as { role?: unknown } | undefined)?.role;
+						return value === "owner" || value === "admin" || value === "member"
+							? { state: "known", value, checkedAt: new Date().toISOString() }
+							: { state: "unknown", reason: t("targets.status.readFailed") };
+					} catch {
+						return { state: "unknown", reason: t("targets.status.readFailed") };
+					}
+				},
+				options?.refresh,
+			);
+			if (disposed) return fail("unavailable", t("targets.status.cancelled"));
+			return ok({ status: { role } });
+		},
 		capabilities(connection: Connection): ConnectionCapabilities {
 			return {
+				image: { state: "supported", checkedAt: adapterStartedAt },
+				imageGroup: { state: "supported", checkedAt: adapterStartedAt },
+				forward: { state: "supported", checkedAt: adapterStartedAt },
+				audio: {
+					state: "unsupported",
+					reason: t("adapters.capability.audioUnsupported"),
+					checkedAt: adapterStartedAt,
+				},
+				markdown: {
+					state: "unsupported",
+					reason: t("onebot.capability.markdownUnsupported"),
+					checkedAt: adapterStartedAt,
+				},
 				// 静态事实:OneBot 能在群里 @全体,私聊 / 群消息的入站也已经接了。
 				atAll: { state: "supported", checkedAt: adapterStartedAt },
 				inbound: { state: "supported", checkedAt: adapterStartedAt },
@@ -1573,6 +1635,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// 只返回能力)。矩阵按分发键派活,派到这儿的必是 onebot 直连 —— 那句保证在这里
 			// 记一次,底下的 helper 就都收窄类型、不用一路 `as` 下去。
 			return {
+				...this.capabilities?.(connection),
 				atAll: { state: "supported", checkedAt: adapterStartedAt },
 				inbound: { state: "supported", checkedAt: adapterStartedAt },
 				nativeShare: await probeNativeShare(connection as OnebotConnection),

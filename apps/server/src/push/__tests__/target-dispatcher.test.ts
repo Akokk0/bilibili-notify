@@ -109,6 +109,110 @@ function makePlatformAdapter(
 }
 
 describe("createTargetDispatcher — adapter 注册表", () => {
+	it.each(["target", "connection", "private"] as const)(
+		"群状态的 %s 闸在请求上游前生效",
+		async (kind) => {
+			const fetchDestinationStatus = vi.fn(async () => ({
+				ok: true as const,
+				status: { role: { state: "unknown" as const } },
+			}));
+			const adapter = makePlatformAdapter("onebot", { fetchDestinationStatus });
+			const dispatcher = createTargetDispatcher({
+				store: makeStore(
+					[makeConnection({ id: "a1", platform: "onebot", enabled: kind !== "connection" })],
+					[
+						makeTarget({
+							id: "t1",
+							connectionId: "a1",
+							kind: "session",
+							scope: kind === "private" ? "private" : "group",
+							address: "123",
+							enabled: kind !== "target",
+						}),
+					],
+				),
+				adapters: registryOf([adapter]),
+				logger: makeLogger(),
+			});
+			expect(await dispatcher.fetchTargetStatus("t1", new AbortController().signal)).toMatchObject({
+				ok: false,
+				code: kind === "private" ? "unsupported" : "not_configured",
+			});
+			expect(fetchDestinationStatus).not.toHaveBeenCalled();
+		},
+	);
+	it.each(["address", "credentials", "abort"] as const)(
+		"状态请求中 %s 变化后拒绝迟到身份",
+		async (kind) => {
+			let finish!: (result: { ok: true; status: { role: { state: "unknown" } } }) => void;
+			const adapter = makePlatformAdapter("onebot", {
+				fetchDestinationStatus: () =>
+					new Promise((resolve) => {
+						finish = resolve;
+					}),
+			});
+			const connection = makeConnection({ id: "a1", platform: "onebot" });
+			const target = makeTarget({ id: "t1", connectionId: "a1", kind: "session", address: "123" });
+			const controller = new AbortController();
+			const dispatcher = createTargetDispatcher({
+				store: makeStore([connection], [target]),
+				adapters: registryOf([adapter]),
+				logger: makeLogger(),
+			});
+			const pending = dispatcher.fetchTargetStatus("t1", controller.signal);
+			if (kind === "address" && target.kind === "session") target.address = "456";
+			if (kind === "credentials") connection.settings = { token: "new" };
+			if (kind === "abort") controller.abort();
+			finish({ ok: true, status: { role: { state: "unknown" } } });
+			expect(await pending).toMatchObject({
+				ok: false,
+				code: kind === "abort" ? "unavailable" : "conflict",
+			});
+		},
+	);
+	it("状态寻址使用解过的设置,未改变目标时不误报配置冲突", async () => {
+		const adapter = makePlatformAdapter("onebot", {
+			settingsSchema: z.object({ token: z.string().default("") }),
+			fetchDestinationStatus: async () => ({ ok: true, status: { role: { state: "unknown" } } }),
+		});
+		const dispatcher = createTargetDispatcher({
+			store: makeStore(
+				[makeConnection({ id: "a1", platform: "onebot", settings: {} })],
+				[makeTarget({ id: "t1", connectionId: "a1", kind: "session", address: "123" })],
+			),
+			adapters: registryOf([adapter]),
+			logger: makeLogger(),
+		});
+		expect(await dispatcher.fetchTargetStatus("t1", new AbortController().signal)).toMatchObject({
+			ok: true,
+		});
+	});
+	it("群内状态经所属适配器只读查询,不调用发送或投递回调", async () => {
+		const status = {
+			role: { state: "known", value: "admin", checkedAt: "2026-11-17T00:00:00.000Z" },
+		} as const;
+		const fetchDestinationStatus = vi.fn(async () => ({ ok: true as const, status }));
+		const adapter = makePlatformAdapter("onebot", { fetchDestinationStatus });
+		const onDelivery = vi.fn();
+		const dispatcher = createTargetDispatcher({
+			store: makeStore(
+				[makeConnection({ id: "a1", platform: "onebot" })],
+				[makeTarget({ id: "t1", connectionId: "a1", kind: "session", address: "123" })],
+			),
+			adapters: registryOf([adapter]),
+			logger: makeLogger(),
+			onDelivery,
+		});
+		const signal = new AbortController().signal;
+		expect(await dispatcher.fetchTargetStatus("t1", signal)).toEqual({ ok: true, status });
+		expect(fetchDestinationStatus).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "a1" }),
+			expect.objectContaining({ kind: "session", scope: "group", address: "123" }),
+			signal,
+		);
+		expect(adapter.send).not.toHaveBeenCalled();
+		expect(onDelivery).not.toHaveBeenCalled();
+	});
 	it("adapter 声明的键进表,连接按 adapterKey 找到它", () => {
 		const pa = makePlatformAdapter("onebot");
 		const dispatcher = createTargetDispatcher({

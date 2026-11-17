@@ -256,6 +256,11 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		const { capabilities } = located.bot;
 		const checkedAt = new Date(located.session.connectedAt).toISOString();
 		return {
+			image: { state: "unknown", reason: t("capability.unreported") },
+			imageGroup: { state: "unknown", reason: t("capability.unreported") },
+			forward: supportOf(capabilities.forward, checkedAt, "capability.noForward"),
+			markdown: supportOf(capabilities.markdown, checkedAt, "capability.noMarkdown"),
+			audio: { state: "unsupported", reason: t("capability.noAudio"), checkedAt },
 			atAll: supportOf(capabilities.atAll, checkedAt, "capability.noAtAll"),
 			inbound: supportOf(capabilities.inbound, checkedAt, "capability.noInbound"),
 			// 内部这一格叫 nativeShare;桥帧的线上名照旧是 `capabilities.miniAppCard`,进 alpha 后两步改。

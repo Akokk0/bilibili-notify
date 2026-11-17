@@ -537,7 +537,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		connection: Connection,
 		capabilities: ConnectionCapabilities,
 	): ConnectionCapabilities {
-		return {
+		const normalized: ConnectionCapabilities = {
 			atAll: normalizeCapabilityCheckedAt(connection.id, "atAll", capabilities.atAll),
 			inbound: normalizeCapabilityCheckedAt(connection.id, "inbound", capabilities.inbound),
 			nativeShare: normalizeCapabilityCheckedAt(
@@ -546,6 +546,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				capabilities.nativeShare,
 			),
 		};
+		for (const slot of ["image", "imageGroup", "forward", "audio", "markdown"] as const) {
+			const support = capabilities[slot];
+			if (support) normalized[slot] = normalizeCapabilityCheckedAt(connection.id, slot, support);
+		}
+		return normalized;
 	}
 
 	/**
@@ -924,7 +929,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 展开会把原型上的方法整个丢掉。
 			// 描述也由宿主填:照清单那一口、每次读时按此刻的语言盖好译文(拓展自己交的上面已经拒了)。
 			const adapter = {
-				...pickAdapterMembers(def, ["listAddressCandidates", "connectionAuth"]),
+				...pickAdapterMembers(def, [
+					"listAddressCandidates",
+					"connectionAuth",
+					"fetchDestinationStatus",
+				]),
 				adapterKey: id,
 				settingsSchema: def.settingsSchema,
 				descriptor: () => manifestPushView(currentManifest()) ?? view,

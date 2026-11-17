@@ -45,6 +45,25 @@ function post(
 	);
 }
 
+it("群内状态只读接口返回适配器状态,不走测试推送", async () => {
+	const status = {
+		role: { state: "known", value: "admin", checkedAt: "2026-11-17T00:00:00.000Z" },
+	};
+	const fetchTargetStatus = vi.fn(async () => ({ ok: true, status }));
+	const sendToTarget = vi.fn();
+	const app = createTargetsRoute({
+		runtime: {
+			pipeline: { fetchTargetStatus, push: { sendToTarget } },
+			serviceCtx: { logger: { info() {}, warn() {}, error() {} } },
+		},
+	} as unknown as RouteDeps);
+	const response = await app.request(`/${TARGET_ID}/status`);
+	expect(response.status).toBe(200);
+	expect(await response.json()).toEqual({ status });
+	expect(fetchTargetStatus).toHaveBeenCalledWith(TARGET_ID, expect.any(AbortSignal));
+	expect(sendToTarget).not.toHaveBeenCalled();
+});
+
 describe("POST /api/targets/:id/test 请求级失败(非 2xx 的错误体)", () => {
 	it.each([
 		[

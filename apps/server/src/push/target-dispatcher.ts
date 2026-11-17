@@ -5,6 +5,7 @@ import type {
 	ConnectionCapabilities,
 	DeliveryResult,
 	DestinationRef,
+	DestinationStatus,
 	Failure,
 	Logger,
 	NotificationPayload,
@@ -62,7 +63,15 @@ export interface TargetDispatcherOptions {
 	onDelivery?: (target: PushTarget, payload: NotificationPayload, result: DeliveryResult) => void;
 }
 
-export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDispatcher {
+export interface HostTargetDispatcher extends TargetDispatcher {
+	fetchTargetStatus(
+		targetId: string,
+		signal: AbortSignal,
+		options?: { refresh?: boolean },
+	): Promise<Result<{ status: DestinationStatus }>>;
+}
+
+export function createTargetDispatcher(opts: TargetDispatcherOptions): HostTargetDispatcher {
 	const log = opts.logger;
 	function findTarget(targetId: string): PushTarget | undefined {
 		return opts.store.getTargets().find((t) => t.id === targetId);
@@ -177,6 +186,46 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 	}
 
 	return {
+		async fetchTargetStatus(targetId, signal, options) {
+			const target = findTarget(targetId);
+			if (!target) return fail("not_found", serverText("service.routes.targets.text.8"));
+			const route = routeOf(target.connectionId, undefined, (c) => refusal(target, c));
+			if (!route.ok) return route;
+			if (
+				target.kind !== "session" ||
+				target.scope !== "group" ||
+				!route.adapter.fetchDestinationStatus
+			)
+				return fail("unsupported", serverText("targets.status.unsupported"));
+			if (signal.aborted) return fail("unavailable", serverText("targets.status.cancelled"));
+			const fingerprint = statusFingerprint(target, findConnection(target.connectionId));
+			try {
+				const result = options
+					? await route.adapter.fetchDestinationStatus(
+							route.connection,
+							destinationOf(target),
+							signal,
+							options,
+						)
+					: await route.adapter.fetchDestinationStatus(
+							route.connection,
+							destinationOf(target),
+							signal,
+						);
+				const current = findTarget(targetId);
+				const connection = findConnection(target.connectionId);
+				if (signal.aborted) return fail("unavailable", serverText("targets.status.cancelled"));
+				if (statusFingerprint(current, connection) !== fingerprint)
+					return fail("conflict", serverText("targets.status.changed"));
+				return result;
+			} catch (error) {
+				return thrown(error, {
+					operation: "fetchDestinationStatus",
+					connectionId: route.connection.id,
+					targetId,
+				});
+			}
+		},
 		resolve(targetId: string): PushTarget | undefined {
 			return findTarget(targetId);
 		},
@@ -298,6 +347,23 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		},
 	};
 
+	function statusFingerprint(
+		target: PushTarget | undefined,
+		connection: Connection | undefined,
+	): string {
+		return JSON.stringify([
+			target?.connectionId,
+			target?.enabled,
+			target?.kind === "session"
+				? [target.scope, target.address, target.parentAddress]
+				: target?.kind,
+			connection?.adapterKey,
+			connection?.platform,
+			connection?.enabled,
+			connection?.settings,
+		]);
+	}
+
 	/**
 	 * 适配器不许抛(ADR-0026 决策 1):真抛了算 bug,在这道边界接住并留 error 日志。探测、列地址这类没有副作用的
 	 * 按「暂时不可用」记;`send` 抛了传 `"indeterminate"` —— 抛之前帧可能已经出去了,回「暂时不可用」会让
@@ -306,7 +372,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 	function thrown(
 		e: unknown,
 		details: {
-			operation: "send" | "probe" | "listAddressCandidates";
+			operation: "send" | "probe" | "listAddressCandidates" | "fetchDestinationStatus";
 			connectionId: string;
 			targetId?: string;
 		},

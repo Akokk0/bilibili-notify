@@ -56,6 +56,7 @@ export function createAdaptersRoute(deps: RouteDeps, opts: AdaptersRouteOptions)
 				has: {
 					connectionAuth: view.connectionAuth !== undefined,
 					listAddressCandidates: view.listAddressCandidates !== undefined,
+					...(view.fetchDestinationStatus ? { fetchDestinationStatus: true } : {}),
 				},
 			});
 		}

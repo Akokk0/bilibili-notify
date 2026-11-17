@@ -68,6 +68,38 @@ function startedOnebot(opts: Parameters<typeof createOnebotAdapter>[0]) {
 	return ad;
 }
 
+it("OneBot 群内身份读取机器人自己的成员角色,不发送消息", async () => {
+	fetchMock.mockImplementation(async (url: URL) =>
+		res({
+			ok: true,
+			json: {
+				status: "ok",
+				retcode: 0,
+				data: String(url).endsWith("get_login_info")
+					? { user_id: 12345, nickname: "" }
+					: { role: "admin" },
+			},
+		}),
+	);
+	const ad = startedOnebot(obOpts());
+	const result = await ad.fetchDestinationStatus?.(
+		obConnection(),
+		{ kind: "session", scope: "group", address: "67890" },
+		new AbortController().signal,
+	);
+	expect(result).toMatchObject({ ok: true, status: { role: { state: "known", value: "admin" } } });
+	const member = fetchMock.mock.calls.find((call) =>
+		String(call[0]).endsWith("get_group_member_info"),
+	);
+	expect(member && JSON.parse(member[1].body)).toMatchObject({
+		group_id: 67890,
+		user_id: 12345,
+		no_cache: true,
+	});
+	expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("send_"))).toBe(false);
+	ad.stop();
+});
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** 失败那一支的原话。成功的回空串 —— 拿它断言「含某句话」的用例会自己红。 */

@@ -1605,5 +1605,20 @@
 	"stats.videoViews.timeout": "動画の累計再生数の取得がタイムアウトしました。しばらくしてから再試行してください。",
 	"stats.videoViews.sourceUnsupported": "このソースは動画の累計再生数の収集に対応していません。",
 	"stats.videoViews.sourceFailed": "ソースから動画の累計再生数を取得できませんでした。しばらくしてから再試行してください。",
-	"stats.videoViews.cancelled": "動画の累計再生数の取得をキャンセルしました。"
+	"stats.videoViews.cancelled": "動画の累計再生数の取得をキャンセルしました。",
+	"adapters.capability.audioUnsupported": "BN は音声送信にまだ対応していません",
+	"onebot.capability.markdownUnsupported": "BN の OneBot 送信はプレーンテキストです",
+	"qqOfficial.capability.forwardUnsupported": "QQ 公式アダプターはまとめて転送に対応していません",
+	"qqOfficial.capability.markdownUnsupported": "BN はプライベート QQ ボットの複数画像にのみネイティブ Markdown を使用します",
+	"webhook.capability.receiverUnknown": "受信側のメッセージ処理方法が報告されていません",
+	"webhook.capability.textOnly": "この webhook にはプレーンテキストを送信し、画像は説明文に変換します",
+	"targets.status.unsupported": "この接続はグループ内の状態照会に対応していません",
+	"targets.status.cancelled": "グループ内の状態照会をキャンセルしました",
+	"targets.status.changed": "送信先または接続が変更されました。状態を再取得してください",
+	"targets.status.rateLimited": "照会回数が多いため、しばらくしてから更新してください",
+	"targets.status.readFailed": "グループ内の状態を一時的に取得できません",
+	"qqOfficial.group.statusPermission": "このボットには QQ のグループ内状態照会の権限がありません",
+	"log.qq.atAllUsageWriteFailed": "全員メンションの使用記録を保存できませんでした。再起動後に今回の記録を復元できない可能性があります",
+	"targets.status.invalidGroup": "グループの宛先には有効なグループ番号を指定してください",
+	"qqOfficial.capability.markdownGalleryOnly": "プライベートボットの複数画像にのみネイティブ Markdown を使用します。通常のテキストメッセージには使用しません"
 }

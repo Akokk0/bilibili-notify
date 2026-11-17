@@ -103,8 +103,25 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			return builtinCandidatesFor("webhook");
 		},
 		// 四个 webhook 平台共用这一个适配器,回答不看平台。
-		capabilities(_connection: Connection): ConnectionCapabilities {
+		capabilities(connection: Connection): ConnectionCapabilities {
+			const delivery =
+				connection.platform === "generic"
+					? { state: "unknown" as const, reason: t("webhook.capability.receiverUnknown") }
+					: {
+							state: "unsupported" as const,
+							reason: t("webhook.capability.textOnly"),
+							checkedAt: adapterStartedAt,
+						};
 			return {
+				image: delivery,
+				imageGroup: delivery,
+				forward: delivery,
+				markdown: delivery,
+				audio: {
+					state: "unsupported",
+					reason: t("adapters.capability.audioUnsupported"),
+					checkedAt: adapterStartedAt,
+				},
 				atAll: { state: "supported", checkedAt: adapterStartedAt },
 				inbound: {
 					state: "unsupported",

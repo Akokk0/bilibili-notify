@@ -204,6 +204,8 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 
 ### QQ 官方机器人的 @全体
 
+推送目标页按 [ADR-0054](../adr/0054-connection-capabilities-and-destination-status.md) 分层：连接卡列机器人能力三态，群目标经 `GET /api/targets/:id/status` 只读查询身份；QQ 官方另交 BN 的当日 @全体记录。状态查询不发送消息，短缓存与发送前的实时身份检查分开。今日记录按应用、沙箱、群和北京时间日期隔离；成功记已使用、额度错误记用尽、传输结果不明或待审核记待确认，重启从集成状态恢复。未记录不代表剩余一次，本地记录不拦截发送。OneBot 通过自身资料与群成员资料查询身份；桥未提供此入口时保持未知。
+
 QQ 官方适配器现已声明支持 `atAll`，复用订阅的作品／开播附加项与按目标覆写。群聊用独立文本消息 `<qqbot-at-everyone />`，需机器人为群管理员，每群每天最多一次；频道用 `@everyone`，权限由 QQ 判定。私聊不生成该附加消息，面板开关禁用，混合载荷里的 @全体 段也会被适配器忽略。
 
 群聊发送 @全体 前，适配器调用 `GET /v2/groups/{group_openid}/bot_state` 查询本群身份：`admin`／`owner` 放行，`member` 返回 `unauthorized`，不提交提醒。查询仅白名单机器人可用；无接口权限、限流、超时或无有效身份均保留未知，继续由发送接口判定，不把未知记成普通成员。查询最多等待 3 秒，每次提醒重新查询，不跨群或跨连接复用身份；普通正文、频道和私聊不查询，连接级 `atAll` 能力不因某个群的身份改变。[官方群内状态接口](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_bot_state.get.html)
