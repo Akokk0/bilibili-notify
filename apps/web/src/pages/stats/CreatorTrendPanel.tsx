@@ -5,7 +5,7 @@ import type {
 	UpStatsRow,
 	VideoViewsTrend,
 } from "@bilibili-notify/contract";
-import { Btn, ErrorNote, GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
+import { Btn, ErrorNote, GlassPanel, Icon, LoadingBlock, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Picker } from "../../components/forms";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
@@ -29,6 +29,7 @@ interface CreatorTrendPanelProps {
 	days: number;
 	grain: FollowersGrain;
 	onGrainChange(grain: FollowersGrain): void;
+	loading: boolean;
 	followersTrend?: FollowersTrend;
 	videoViewsTrend?: VideoViewsTrend;
 	subscription?: SubscriptionView;
@@ -41,6 +42,7 @@ export function CreatorTrendPanel({
 	days,
 	grain,
 	onGrainChange,
+	loading,
 	followersTrend,
 	videoViewsTrend,
 	subscription,
@@ -188,7 +190,13 @@ export function CreatorTrendPanel({
 				</div>
 			) : (
 				<>
-					{isVideo && !hasVideoSamples ? (
+					{loading ? (
+						<LoadingBlock
+							variant="inset"
+							className="h-[250px]"
+							label={tx("sourceUi.pages.Stats.label.19")}
+						/>
+					) : isVideo && !hasVideoSamples ? (
 						<div className="flex min-h-[250px] items-center justify-center px-4 text-center text-bn-sm text-bn-text-secondary">
 							{video?.failure
 								? video.failure.message

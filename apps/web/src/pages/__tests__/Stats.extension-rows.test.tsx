@@ -446,6 +446,54 @@ describe("统计页 · 拓展订阅的行", () => {
 		expect(screen.getByText("此来源暂不支持累计播放量")).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "采集播放量" })).toBeNull();
 	});
+	it("首次切到小时等待响应时保留统计页面和选中创作者，只在图表内显示读取状态", async () => {
+		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(640);
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("Expected the stats API fixture");
+		let finish: (value: StatsOverviewResponse) => void = () => {};
+		const hourly = new Promise<StatsOverviewResponse>((resolve) => {
+			finish = resolve;
+		});
+		vi.mocked(api.get).mockImplementation((path) =>
+			path.includes("followersGrain=hour") ? (hourly as never) : get(path),
+		);
+		try {
+			renderStats();
+			await screen.findByRole("table");
+			await userEvent.click(tableRow("抖音乙"));
+			const title = screen.getByText("抖音乙 · 粉丝总量走势");
+			const contentMix = screen.getByText("内容构成");
+			const panel = title.closest(".bn-glass");
+			if (!(panel instanceof HTMLElement)) throw new Error("创作者趋势卡缺失");
+			expect(screen.getByRole("button", { name: "日", pressed: true })).toBeTruthy();
+			await userEvent.click(screen.getByRole("button", { name: "小时" }));
+			expect(screen.getByText("抖音乙 · 粉丝总量走势")).toBe(title);
+			expect(screen.getByText("内容构成")).toBe(contentMix);
+			expect(screen.getByRole("button", { name: "小时", pressed: true })).toBeTruthy();
+			expect(within(panel).getByRole("status").textContent).toContain("正在读取统计数据");
+			await act(async () => {
+				finish({
+					days: DAYS,
+					rows: [BILI_ROW, EXT_ROW],
+					followersTrend: {
+						grain: "hour",
+						timestamps: ["2020-01-01T01:00:00.000Z", "2020-01-01T02:00:00.000Z"],
+						rows: [
+							{ subscriptionId: "s-bili", values: [1030, 1040] },
+							{ subscriptionId: "s-dy", values: [5030, 5040] },
+						],
+					},
+				});
+			});
+			await waitFor(() => expect(within(panel).queryByRole("status")).toBeNull());
+			expect(screen.getByText("抖音乙 · 粉丝总量走势")).toBe(title);
+			expect(panel.textContent).toContain("5040");
+			expect(panel.textContent).not.toContain("1040");
+		} finally {
+			width.mockRestore();
+		}
+	});
+
 	it("粉丝总量默认日线，小时线使用响应时间轴，范围和创作者切换不发逐人请求", async () => {
 		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(640);
 		const get = vi.mocked(api.get).getMockImplementation();

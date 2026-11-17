@@ -614,6 +614,11 @@ function StatsContent() {
 			api.get<StatsOverviewResponse>(
 				`/api/stats/overview?days=${days}&tz=${tz}&followersGrain=${followersGrain}`,
 			),
+		// 粒度切换保留同一时间范围的页面，避免冷缓存时整页卸载再入场。
+		placeholderData: (previous, query) => {
+			const scope = query?.queryKey[1];
+			return scope?.days === days && scope.tz === tz ? previous : undefined;
+		},
 		refetchInterval: (query) => {
 			const active = query.state.data?.videoViewsTrend?.rows.filter((row) => row.active) ?? [];
 			if (active.length === 0) return false;
@@ -872,6 +877,7 @@ function StatsContent() {
 						days={days}
 						grain={followersGrain}
 						onGrainChange={setFollowersGrain}
+						loading={statsQuery.isPlaceholderData}
 						followersTrend={followersTrend}
 						videoViewsTrend={res?.videoViewsTrend}
 						subscription={subsQuery.data?.find((sub) => sub.id === focused.subscriptionId)}
