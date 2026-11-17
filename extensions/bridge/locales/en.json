@@ -1,4 +1,5 @@
 {
+	"marketplace.notes": "Shows bot capabilities and adds delivery tests, with explicit limits for voice and Markdown.",
 	"view.connected": "Connected",
 	"view.mismatched": "Connected, but bridge type differs",
 	"view.configuredKind": "Configured: {kind}",

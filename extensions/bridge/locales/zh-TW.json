@@ -1,4 +1,5 @@
 {
+	"marketplace.notes": "橋接機器人顯示更多能力，支援逐項測試傳送；明確提示語音與未確認的 Markdown 無法使用。",
 	"view.connected": "已連線",
 	"view.mismatched": "已連線，但類型不符",
 	"view.configuredKind": "設定：{kind}",

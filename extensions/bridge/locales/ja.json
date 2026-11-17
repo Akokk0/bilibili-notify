@@ -1,4 +1,5 @@
 {
+	"marketplace.notes": "ボットの対応機能表示と送信テストを追加。未対応の音声や未確認の Markdown は明示的に拒否します。",
 	"view.connected": "接続済み",
 	"view.mismatched": "接続済み（種類が不一致）",
 	"view.configuredKind": "設定: {kind}",

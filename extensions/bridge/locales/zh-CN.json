@@ -1,4 +1,5 @@
 {
+	"marketplace.notes": "桥接机器人展示更多能力，支持逐项测试发送；明确提示语音与未经确认的 Markdown 不可用。",
 	"view.connected": "已连接",
 	"view.mismatched": "连上了,但对不上",
 	"view.configuredKind": "配置:{kind}",
