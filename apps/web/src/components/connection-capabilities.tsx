@@ -44,7 +44,7 @@ export function ConnectionCapabilitiesPanel({ connection }: { connection: Connec
 			<ul
 				aria-label={t("targets.capabilities.title")}
 				aria-busy={query.isFetching}
-				className="m-0 grid list-none grid-cols-1 gap-2 p-0 @min-[18rem]/connection-header:grid-cols-2 @min-[35rem]/connection-header:grid-cols-4 @min-[70rem]/connection-header:grid-cols-8"
+				className="m-0 grid w-fit max-w-full list-none grid-cols-1 gap-2 p-0 @min-[18rem]/connection-header:grid-cols-2 @min-[35rem]/connection-header:grid-cols-4 @min-[70rem]/connection-header:grid-cols-8"
 			>
 				{items.map(([key, label]) => {
 					const support: CapabilitySupport | undefined = caps?.[key];
