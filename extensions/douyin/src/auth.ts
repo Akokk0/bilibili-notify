@@ -34,6 +34,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		identity = new AbortController(),
 		epoch = 0,
 		pending: Promise<unknown> = Promise.resolve();
+	let avatarRetry: Disposable | undefined;
 	const t = (key: string) => ctx.i18n.t(`auth.${key}`);
 	const publish = (s: AuthState) => {
 		state = s;
@@ -46,19 +47,30 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 	}
 	function replace() {
 		epoch++;
+		avatarRetry?.dispose();
+		avatarRetry = undefined;
 		accountAvatar = undefined;
 		identity.abort();
 		identity = new AbortController();
 		end();
 	}
-	async function loadAvatar(url: string) {
+	async function loadAvatar(url: string, retryMs = 60_000) {
 		if (!url) return;
 		const token = epoch;
 		const signal = AbortSignal.any([identity.signal, ctx.signal]);
 		const ref = await image(ctx, { url_list: [url] }, signal);
-		if (ref && !signal.aborted && token === epoch && state.status === "logged-in") {
+		if (signal.aborted || token !== epoch || state.status !== "logged-in") return;
+		if (ref) {
 			accountAvatar = ref;
 			publish(state);
+		} else {
+			// Image failures do not invalidate a verified login. Retry independently,
+			// with a capped backoff so temporary network trouble can heal without a QR scan.
+			avatarRetry = ctx.setTimeout(() => {
+				if (signal.aborted || token !== epoch || state.status !== "logged-in") return;
+				avatarRetry = undefined;
+				return loadAvatar(url, Math.min(retryMs * 2, 15 * 60_000));
+			}, retryMs);
 		}
 	}
 	const signal = (a: Attempt) => AbortSignal.any([ctx.signal, a.controller.signal]);

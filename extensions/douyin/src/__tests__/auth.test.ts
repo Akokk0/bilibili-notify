@@ -177,6 +177,9 @@ function fixture(
 		},
 		secrets,
 		redact: ctx.redact,
+		dispose: () => {
+			for (const [callback] of ctx.onDispose.mock.calls) callback();
+		},
 		setValidationReply: (reply: object) => {
 			validationReply = reply;
 		},
@@ -228,6 +231,71 @@ describe("source account", () => {
 		expect(f.auth.state().status).toBe("logged-in");
 		expect(f.auth.account()).toEqual({ name: "Douyin tester" });
 		expect(f.secrets.size).toBe(1);
+	});
+	it.each(["login", "restoration"])(
+		"recovers a missing account avatar after %s without signing in again",
+		async (mode) => {
+			let saved: string | undefined;
+			if (mode === "restoration") {
+				const initial = fixture();
+				await initial.auth.beginLogin();
+				initial.setPoll("confirmed");
+				await initial.pollNext();
+				saved = initial.secrets.get("login.cookies");
+				initial.dispose();
+			}
+			const fetchImage = vi
+				.fn<ExtensionContext["fetchImage"]>()
+				.mockResolvedValueOnce({ ok: false, code: "unavailable", message: "Synthetic outage" })
+				.mockResolvedValue({ ok: true, ref: `${"a".repeat(64)}.png` });
+			const f = fixture(
+				saved,
+				{
+					is_visitor_account: false,
+					user_id_str: "12345",
+					name: "Douyin tester",
+					avatar_url: "https://p3.douyinpic.com/avatar/synthetic.png",
+				},
+				fetchImage,
+			);
+			if (mode === "login") {
+				await f.auth.beginLogin();
+				f.setPoll("confirmed");
+				await f.pollNext();
+			} else {
+				await vi.waitFor(() => expect(fetchImage).toHaveBeenCalledTimes(1));
+			}
+			expect(f.auth.account()).toEqual({ name: "Douyin tester" });
+			const signedIn = f.auth.state();
+			await f.pollNext();
+			expect(f.auth.account()).toEqual({ name: "Douyin tester", avatar: `${"a".repeat(64)}.png` });
+			expect(f.auth.state()).toEqual(signedIn);
+			f.dispose();
+		},
+	);
+	it.each(["logout", "disposal"])("cancels a pending avatar retry on %s", async (action) => {
+		const fetchImage = vi.fn<ExtensionContext["fetchImage"]>().mockResolvedValue({
+			ok: false,
+			code: "unavailable",
+			message: "Synthetic outage",
+		});
+		const f = fixture(
+			undefined,
+			{
+				is_visitor_account: false,
+				user_id_str: "12345",
+				name: "Douyin tester",
+				avatar_url: "https://p3.douyinpic.com/avatar/synthetic.png",
+			},
+			fetchImage,
+		);
+		await f.auth.beginLogin();
+		f.setPoll("confirmed");
+		await f.pollNext();
+		if (action === "logout") await f.auth.logout();
+		else f.dispose();
+		await expect(f.pollNext()).rejects.toThrow("Missing scheduled poll");
+		expect(fetchImage).toHaveBeenCalledTimes(1);
 	});
 	it("does not restore an avatar or account after logout while the image is downloading", async () => {
 		let release!: (result: Awaited<ReturnType<ExtensionContext["fetchImage"]>>) => void;
