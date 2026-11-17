@@ -472,8 +472,15 @@ export function GlassHeader() {
 		const nav = navRef.current;
 		if (!nav) return;
 		let active = true;
+		let frame: number | undefined;
+		// Measuring briefly expands the nav. Keep that layout change out of resize delivery,
+		// where it would invalidate the header height already gathered by another observer.
 		const measure = () => {
-			if (active) measureNav();
+			if (!active || frame !== undefined) return;
+			frame = requestAnimationFrame(() => {
+				frame = undefined;
+				if (active) measureNav();
+			});
 		};
 		const observer =
 			typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(measure);
@@ -484,6 +491,7 @@ export function GlassHeader() {
 		void fonts?.ready.then(measure);
 		return () => {
 			active = false;
+			if (frame !== undefined) cancelAnimationFrame(frame);
 			observer?.disconnect();
 			window.removeEventListener("resize", measure);
 			fonts?.removeEventListener("loadingdone", measure);

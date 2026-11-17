@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TabBarShell } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n";
@@ -183,11 +183,11 @@ it("keeps translated navigation accessible while hiding labels only when they do
 			resize.get(nav)?.();
 		};
 		act(notify);
-		expect(label.hidden).toBe(true);
+		await waitFor(() => expect(label.hidden).toBe(true));
 		expect(screen.getByRole("link", { name: "Overview" })).toBe(link);
 		available = 1920;
 		act(notify);
-		expect(label.hidden).toBe(false);
+		await waitFor(() => expect(label.hidden).toBe(false));
 		available = 1440;
 		natural = 1200;
 		await act(async () => {
@@ -199,5 +199,69 @@ it("keeps translated navigation accessible while hiding labels only when they do
 		await act(async () => {
 			i18n.set(previous);
 		});
+	}
+});
+
+it("keeps navigation layout stable during resize delivery and adapts before the next paint", async () => {
+	const resize = new Map<Element, () => void>();
+	const frames = new Map<number, FrameRequestCallback>();
+	let nextFrame = 0;
+	vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+		const id = ++nextFrame;
+		frames.set(id, callback);
+		return id;
+	});
+	vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+	vi.stubGlobal(
+		"ResizeObserver",
+		class {
+			constructor(private callback: () => void) {}
+			observe(element: Element) {
+				resize.set(element, this.callback);
+			}
+			disconnect() {}
+		},
+	);
+	const { GlassHeader } = await import("../header");
+	const { container, unmount } = render(
+		<QueryClientProvider
+			client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+		>
+			<MemoryRouter>
+				<GlassHeader />
+			</MemoryRouter>
+		</QueryClientProvider>,
+	);
+	const nav = container.querySelector('nav[data-bn="nav"]') as HTMLElement;
+	const label = nav.querySelector(".bn-header-nav-label") as HTMLElement;
+	let available = 390;
+	Object.defineProperty(nav, "clientWidth", { configurable: true, get: () => available });
+	Object.defineProperty(nav, "scrollWidth", { configurable: true, get: () => 1676 });
+	const changes = new MutationObserver(() => {});
+	changes.observe(nav, { attributes: true, subtree: true });
+	const deliver = () => resize.get(nav)?.();
+	const paint = () => {
+		const pending = [...frames.values()];
+		frames.clear();
+		for (const callback of pending) callback(16);
+	};
+	try {
+		act(deliver);
+		// Real browsers report undelivered notifications when a callback changes observed layout.
+		expect(changes.takeRecords()).toEqual([]);
+		act(paint);
+		expect(label.hidden).toBe(true);
+		available = 1920;
+		act(() => {
+			deliver();
+			deliver();
+		});
+		act(paint);
+		expect(label.hidden).toBe(false);
+		act(deliver);
+		unmount();
+		expect(frames.size).toBe(0);
+	} finally {
+		changes.disconnect();
 	}
 });
