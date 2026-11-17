@@ -1,4 +1,5 @@
 {
+	"internal.settings.imageAllowedCidrs": "請填寫有效的 IPv4 或 IPv6 CIDR 網段，例如 198.18.0.0/16。",
 	"storage.log.masterReadFailed": "主金鑰讀取失敗（非缺失），保留原檔案並停止載入",
 	"storage.log.masterLoaded": "主金鑰已載入",
 	"storage.log.masterInvalid": "主金鑰檔案格式無效（應為 64 位十六進位），將重新產生；原有憑證將無法解密，需重新登入或設定",

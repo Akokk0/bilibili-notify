@@ -1,4 +1,5 @@
 {
+	"internal.settings.imageAllowedCidrs": "Enter a valid IPv4 or IPv6 CIDR range, such as 198.18.0.0/16.",
 	"storage.log.masterReadFailed": "Cannot read the existing master key; preserving the file and stopping the load",
 	"storage.log.masterLoaded": "Master key loaded",
 	"storage.log.masterInvalid": "Invalid master key file (expected 64 hexadecimal characters); regenerating it will make existing credentials unreadable and require login or configuration again",

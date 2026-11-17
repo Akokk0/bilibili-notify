@@ -1,4 +1,9 @@
 {
+	"network.images.title": "圖片下載網路",
+	"network.images.subtitle": "為信任的代理伺服器或內網圖床設定位址例外",
+	"network.images.label": "圖片下載允許的網段",
+	"network.images.hint": "預設留空，僅允許公網位址。每行填寫一個 IPv4／IPv6 CIDR；儲存後，新的圖片請求可存取這些範圍。頭像、訂閱圖片與擴充功能共用此設定，請只加入您信任的代理或內網範圍。",
+	"network.images.preset": "填入常用 FakeIP 網段",
 	"subs.atAllPrivateUnsupported": "私訊不支援 @全體。",
 	"developmentExtensions.retry": "重試",
 	"developmentExtensions.browse": "瀏覽資料夾",

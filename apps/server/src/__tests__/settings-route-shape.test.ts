@@ -54,6 +54,23 @@ describe("/api/settings 的形状", () => {
 		return { runtime, app, patch };
 	}
 
+	it("图片地址范围可保存回读,非法 CIDR 被拒且不覆盖已保存值", async () => {
+		const { runtime, app, patch } = await boot();
+		try {
+			const network = { imageAllowedCidrs: ["198.18.0.0/16", "fd00::/8"] };
+			expect((await patch({ core: { network } })).status).toBe(200);
+			const saved = (await (await app.request("/api/settings")).json()) as SettingsBody;
+			expect(saved.core.network).toEqual(network);
+			const rejected = await patch({ core: { network: { imageAllowedCidrs: ["127.0.0.1/99"] } } });
+			expect(rejected.status).toBe(400);
+			const body = (await rejected.json()) as { issues: { path: unknown[] }[] };
+			expect(body.issues[0]?.path).toEqual(["core", "network", "imageAllowedCidrs", 0]);
+			expect(runtime.configStore.getGlobals().network).toEqual(network);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
 	it.each([
 		[
 			"en",
@@ -99,6 +116,20 @@ describe("/api/settings 的形状", () => {
 	);
 
 	const coreFile = () => join(dataDir, ...CORE_SETTINGS_FILE);
+
+	it("存盘的图片地址范围损坏时隔离坏条目,不扩大放行", async () => {
+		const { runtime, app } = await boot();
+		try {
+			const core = JSON.parse(await readFile(coreFile(), "utf8"));
+			core.network = { imageAllowedCidrs: ["0.0.0.0/999"] };
+			await writeFile(coreFile(), JSON.stringify(core));
+			await runtime.configStore.load();
+			const saved = (await (await app.request("/api/settings")).json()) as SettingsBody;
+			expect(saved.core.network).toEqual({ imageAllowedCidrs: [] });
+		} finally {
+			await runtime.dispose();
+		}
+	});
 
 	it("仓库来源经设置写口保存后，读取的是可直接获取的固定 HTTPS 索引", async () => {
 		const { runtime, app, patch } = await boot();

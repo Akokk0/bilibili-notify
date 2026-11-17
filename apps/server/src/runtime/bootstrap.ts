@@ -193,6 +193,8 @@ export interface AppRuntime {
 	 * (空罐子、不带 cookie),不借任何集成的;图存进「集成在途」那一家({@link AppRuntime.transitImages})。
 	 */
 	imageFetcher: Pick<ImageFetcher, "fetchImage">;
+	/** 统一注入宿主图片地址策略；保留各调用方自己的身份和图库写口。 */
+	createImageFetcher: typeof createImageFetcher;
 	/**
 	 * 集成往图库存图的口(ADR-0025 决策 8):每个集成上下文的 `ctx.fetchImage` / `ctx.storeImage` 都经它,宿主自己的
 	 * 抓图口({@link AppRuntime.imageFetcher})也是。集成抓到的图是
@@ -586,7 +588,12 @@ export function createAppRuntime(
 	// cookie。罐子是空的,抓图又只外发不摄入,所以永远不带 cookie;图存进在途那一家。客户端攒着连接池,关停时收。
 	const hostHttp = new HttpClient({ jar: new CookieJar(), identity: generateBrowserIdentity() });
 	serviceCtx.onDispose(() => hostHttp.dispose(), "stop");
-	const imageFetcher = createImageFetcher({
+	const imageFetcherFor: typeof createImageFetcher = (options) =>
+		createImageFetcher({
+			...options,
+			allowedCidrs: () => configStore.getGlobals().network.imageAllowedCidrs,
+		});
+	const imageFetcher = imageFetcherFor({
 		http: hostHttp,
 		images: transitImages,
 		...(deps.imageAddressCheck ? { addressCheck: deps.imageAddressCheck } : {}),
@@ -686,6 +693,7 @@ export function createAppRuntime(
 		accountImages,
 		postImages,
 		imageFetcher,
+		createImageFetcher: imageFetcherFor,
 		transitImages,
 		historyImages,
 		conversationStore,

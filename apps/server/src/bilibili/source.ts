@@ -20,6 +20,7 @@ import {
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import type { LocaleReader } from "../i18n/locale-reader.js";
+import type { createImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { createBiliAiToolProvider } from "./ai-tools.js";
@@ -51,6 +52,7 @@ import {
 import { BILI_SOURCE_ICON } from "./source-icon.js";
 
 export interface BiliSourceDeps {
+	createImageFetcher?: typeof createImageFetcher;
 	/** B 站的上下文(存储已开、罐子与请求客户端已建好):登录系统建在它之上。它的收尾归造它的一方(`compose.ts`)。 */
 	context: BiliContext;
 	/** B 站那一格的宿主上下文(日志器与等级跟 B 站):登录系统与分层上报器的日志器、定时器都从它来。 */
@@ -198,6 +200,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	// 登录这一套(Api、LoginFlow、登录口)造在这里、不出网:`Source.auth` 登记那一刻就要在,登记表在 `start` 之前就抄它。
 	// 起(`start` 的第一步)与停(`stop` 的最后一步)也归来源。
 	const login = createAuthSystem({
+		createImageFetcher: deps.createImageFetcher,
 		serviceCtx: deps.serviceCtx,
 		context: deps.context,
 		accountImages: deps.accountImages,

@@ -193,6 +193,7 @@ export interface ExtensionRuntime {
 }
 
 export interface CreateExtensionContextOptions {
+	createImageFetcher?: CreateIntegrationContextOptions["createImageFetcher"];
 	timezoneReader: CreateIntegrationContextOptions["timezoneReader"];
 	id: string;
 	/**
@@ -315,6 +316,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	const manifestName = (): string => currentManifest().name;
 
 	const integration = createIntegrationContext({
+		createImageFetcher: opts.createImageFetcher,
 		timezoneReader: opts.timezoneReader,
 		logger: opts.loggerOf(id),
 		// 停下时现取原因，长期运行的上下文不会冻结创建时的语言。

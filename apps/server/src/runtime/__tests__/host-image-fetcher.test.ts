@@ -66,6 +66,18 @@ afterEach(async () => {
 });
 
 describe("宿主自己的抓图口", () => {
+	it("读取已保存的图片地址范围,保存和撤销后立即用于新请求", async () => {
+		const rt = makeRuntime();
+		await rt.configStore.load();
+		await rt.configStore.patchGlobals({ network: { imageAllowedCidrs: ["127.0.0.1/32"] } });
+		expect((await rt.imageFetcher.fetchImage(`http://127.0.0.1:${port}/range.png`)).ok).toBe(true);
+		await rt.configStore.patchGlobals({ network: { imageAllowedCidrs: [] } });
+		expect(await rt.imageFetcher.fetchImage(`http://127.0.0.1:${port}/range.png`)).toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		expect(seen).toHaveLength(1);
+	});
 	it("没有任何集成也抓得到;图进图库,读得回原样的字节", async () => {
 		const rt = makeRuntime(loopbackAllowed);
 

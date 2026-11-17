@@ -114,6 +114,35 @@ async function stored(ref: string): Promise<Uint8Array> {
 }
 
 describe("fetchImage — 抓到了", () => {
+	it("允许起点范围仍会拒绝重定向到未允许的地址", async () => {
+		routes["/redirect-range"] = {
+			status: 302,
+			headers: { location: `http://127.0.0.2:${port}/secret` },
+		};
+		const configured = createImageFetcher({
+			http,
+			images: writer,
+			allowedCidrs: () => ["127.0.0.1/32"],
+		});
+		expect(await configured.fetchImage(url("img.test", "/redirect-range"))).toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		expect(seen).toHaveLength(1);
+	});
+	it("明确允许的地址范围可抓图,撤销后同一客户端的新请求重新拒绝", async () => {
+		routes["/allowed"] = { body: PNG };
+		let allowed = ["127.0.0.0/8"];
+		const configured = createImageFetcher({ http, images: writer, allowedCidrs: () => allowed });
+		expect((await configured.fetchImage(url("img.test", "/allowed"))).ok).toBe(true);
+		allowed = [];
+		expect(await configured.fetchImage(url("img.test", "/allowed"))).toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		expect(seen).toHaveLength(1);
+	});
+
 	it.each([
 		[
 			"en",

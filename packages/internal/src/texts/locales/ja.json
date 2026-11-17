@@ -1,4 +1,5 @@
 {
+	"internal.settings.imageAllowedCidrs": "198.18.0.0/16 など、有効な IPv4 または IPv6 の CIDR 範囲を入力してください。",
 	"storage.log.masterReadFailed": "既存のマスターキーを読み取れません。ファイルを保持して読み込みを中止します",
 	"storage.log.masterLoaded": "マスターキーを読み込みました",
 	"storage.log.masterInvalid": "マスターキーファイルの形式が無効です（64 桁の16進数が必要）。再生成により既存の認証情報を復号できなくなるため、再ログインまたは再設定が必要です",

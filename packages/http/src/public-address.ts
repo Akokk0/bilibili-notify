@@ -1,6 +1,30 @@
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 import { fail, ok, type Result } from "@bilibili-notify/internal/result";
 import { packageText } from "@bilibili-notify/internal/texts";
+
+/** 每份配置编译成独立检查函数；非法范围整份退回公网规则，不扩大放行。 */
+export function createAddressCheck(allowedCidrs: readonly string[]): typeof requirePublicAddress {
+	if (allowedCidrs.length === 0) return requirePublicAddress;
+	const allowed = new BlockList();
+	try {
+		for (const cidr of allowedCidrs) {
+			const [address = "", prefix = "", ...extra] = cidr.split("/");
+			const family = isIP(address);
+			if (!family || extra.length || !/^(0|[1-9]\d*)$/.test(prefix)) return requirePublicAddress;
+			allowed.addSubnet(address, Number(prefix), family === 4 ? "ipv4" : "ipv6");
+		}
+	} catch {
+		return requirePublicAddress;
+	}
+	return (address) => {
+		const literal =
+			address.startsWith("[") && address.endsWith("]") ? address.slice(1, -1) : address;
+		const family = isIP(literal);
+		return family && allowed.check(literal, family === 4 ? "ipv4" : "ipv6")
+			? ok()
+			: requirePublicAddress(address);
+	};
+}
 
 /**
  * 这个地址是不是公网地址 —— 抓图那一层拦内网(防 SSRF)用的判定,`FetchOptions.addressCheck` 的生产默认实现。

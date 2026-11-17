@@ -33,6 +33,7 @@ import { t as serverText } from "../i18n/index.js";
  */
 
 import {
+	createAddressCheck,
 	type FetchOptions,
 	type HttpClient,
 	isRedirectStatus,
@@ -55,6 +56,8 @@ const IMAGE_FETCH_TIMEOUT_MS = 15_000;
 const IMAGE_FETCH_MAX_REDIRECTS = 5;
 
 export interface ImageFetcherDeps {
+	/** 宿主当前允许的图片地址范围；集成不能从 fetchImage 参数覆盖它。 */
+	allowedCidrs?: () => readonly string[];
 	/** 调用方的请求客户端:抓图用它的 cookie、身份与默认头。 */
 	http: Pick<HttpClient, "fetch">;
 	/** 存图的口(调用方登记成图库引用方拿到的那个);抓图服务自己不登记。 */
@@ -96,11 +99,20 @@ function statusFailure(status: number, where: string): Failure {
 }
 
 export function createImageFetcher(deps: ImageFetcherDeps): ImageFetcher {
-	const addressCheck = deps.addressCheck ?? requirePublicAddress;
+	let policyKey = "[]";
+	let policyCheck = requirePublicAddress;
 	const timeoutMs = deps.timeoutMs ?? IMAGE_FETCH_TIMEOUT_MS;
 
 	return {
 		async fetchImage(url, opts = {}) {
+			const allowed = deps.allowedCidrs?.() ?? [];
+			const key = JSON.stringify(allowed);
+			if (key !== policyKey) {
+				policyKey = key;
+				policyCheck = createAddressCheck(allowed);
+			}
+			// 新策略用新检查函数，客户端不会把旧策略的连接池用于新的请求。
+			const addressCheck = deps.addressCheck ?? policyCheck;
 			let target: URL;
 			try {
 				target = new URL(url);

@@ -6,6 +6,7 @@ import { IntegrationLogLevels } from "../../components/integration-log-levels";
 import { LogLevelControl } from "../../components/log-level-setting";
 import { useT } from "../../i18n";
 import type { LoggingSettings, SettingsPatch } from "../../types/globals";
+import { ImageNetworkSettings } from "./image-network-settings";
 
 function SystemSettingsSection({
 	draft,
@@ -78,6 +79,12 @@ export function RuntimeSection({
 	return (
 		<>
 			{draft ? <SystemSettingsSection draft={draft} onPatch={onPatch} /> : null}
+			{draft ? (
+				<ImageNetworkSettings
+					ranges={draft.core.network?.imageAllowedCidrs ?? []}
+					onChange={(imageAllowedCidrs) => onPatch({ core: { network: { imageAllowedCidrs } } })}
+				/>
+			) : null}
 			<BrowserSourceSettings />
 		</>
 	);

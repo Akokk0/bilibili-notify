@@ -221,6 +221,7 @@ export interface LoadExtensionsOptions {
 	integrationStore: Pick<IntegrationStore, "open">;
 	/** 图库「集成在途」那一家的写口(`AppRuntime.transitImages`):递给每个拓展的 ctx,`ctx.fetchImage` / `ctx.storeImage` 经它。 */
 	transitImages: CreateExtensionContextOptions["transitImages"];
+	createImageFetcher?: CreateExtensionContextOptions["createImageFetcher"];
 	/** 问题表的写口(`AppRuntime.problems`):递给每个拓展的 ctx,报的人是拓展 id。 */
 	problems: CreateExtensionContextOptions["problems"];
 	mounts: ExtensionMounts;
@@ -729,6 +730,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			setTimeout: (fn, ms) => host.setTimeout(fn, ms),
 		});
 		const created = createExtensionContext({
+			createImageFetcher: opts.createImageFetcher,
 			timezoneReader: opts.timezoneReader,
 			id,
 			manifest,

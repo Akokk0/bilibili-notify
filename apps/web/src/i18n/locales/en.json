@@ -1,4 +1,9 @@
 {
+	"network.images.title": "Image download network",
+	"network.images.subtitle": "Address exceptions for trusted proxies or private image hosts",
+	"network.images.label": "Allowed image address ranges",
+	"network.images.hint": "Leave empty to allow public addresses only. Enter one IPv4 or IPv6 CIDR per line. After saving, new image requests may access these ranges. This applies to avatars, subscription images and extensions. Add only proxy or private network ranges you trust.",
+	"network.images.preset": "Add common FakeIP range",
 	"subs.atAllPrivateUnsupported": "Private chats do not support mentioning everyone.",
 	"developmentExtensions.retry": "Retry",
 	"developmentExtensions.browse": "Browse folders",

@@ -9,11 +9,16 @@
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fail, type Logger, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { inertTransitImages } from "../../../__tests__/support/integration-io.js";
+import { png } from "../../../__tests__/support/report-images.js";
+import { createImageFetcher } from "../../../images/image-fetcher.js";
+import { createImageStore } from "../../../images/image-store.js";
 import { makeServiceContext } from "../../api/__tests__/support/make-api.js";
 import { Api } from "../../api/index.js";
 import { failureFromBili } from "../../error-codes.js";
@@ -35,6 +40,39 @@ afterEach(async () => {
 });
 
 const world = (logger?: Logger) => authWorld(dataDir, logger);
+
+it("B 站账号头像使用宿主允许的地址范围", async () => {
+	vi.mocked(LoginFlow.prototype.reportAccountInfo).mockRestore();
+	const imageServer = createServer((_req, res) => res.end(Buffer.from(png(10, 10, 1))));
+	await new Promise<void>((resolve) => imageServer.listen(0, "127.0.0.1", resolve));
+	const port = (imageServer.address() as AddressInfo).port;
+	vi.spyOn(Api.prototype, "fetchMyselfInfo").mockResolvedValue({
+		code: 0,
+		data: { mid: 42 },
+	} as never);
+	vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue(
+		ok({ data: { card: { name: "Tester", face: `http://127.0.0.1:${port}/avatar` } } }) as never,
+	);
+	const w = world();
+	const images = createImageStore({ dir: join(dataDir, "avatar-images") });
+	const auth = await openAuthSystem({
+		serviceCtx: w.host.serviceCtx,
+		integrationStore: w.store,
+		accountImages: images.register({ name: "account", listRefs: async () => [] }),
+		createImageFetcher: (options) =>
+			createImageFetcher({ ...options, allowedCidrs: () => ["127.0.0.1/32"] }),
+	});
+	try {
+		await auth.reportAccountInfo();
+		await vi.waitFor(() => expect(auth.auth.account()?.avatar).toBeDefined());
+		expect(auth.auth.account()?.name).toBe("Tester");
+	} finally {
+		await auth.dispose();
+		await w.store.close();
+		imageServer.closeAllConnections();
+		await new Promise<void>((resolve) => imageServer.close(() => resolve()));
+	}
+});
 
 describe("停与存储把手", () => {
 	it("stop 幂等、没起过也能调;收上下文之后存储把手已关(登录系统自己不关它)", async () => {

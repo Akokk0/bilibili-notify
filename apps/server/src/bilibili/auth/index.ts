@@ -58,6 +58,7 @@ export interface AuthSystem {
 }
 
 export interface CreateAuthSystemOptions {
+	createImageFetcher?: typeof createImageFetcher;
 	/** B 站那一格的宿主上下文(日志器与等级跟 B 站;与开 `context` 用的是同一个)。 */
 	serviceCtx: ServiceContext;
 	/** B 站的上下文(存储已开、罐子与请求客户端已建好);登录的 cookie 与令牌住在它的存储里。它的收尾归调用方。 */
@@ -93,7 +94,10 @@ export function createAuthSystem(opts: CreateAuthSystemOptions): AuthSystem {
 
 	// 2. LoginFlow.
 	// 账号头像走 B 站的请求客户端抓进图库(同一套缩放档与请求头,不新增出站原语)。
-	const avatarImages = createImageFetcher({ http: api.http, images: opts.accountImages });
+	const avatarImages = (opts.createImageFetcher ?? createImageFetcher)({
+		http: api.http,
+		images: opts.accountImages,
+	});
 	const flowFinal = new LoginFlow({
 		serviceCtx,
 		api,

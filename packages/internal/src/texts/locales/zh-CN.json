@@ -1,4 +1,5 @@
 {
+	"internal.settings.imageAllowedCidrs": "请填写有效的 IPv4 或 IPv6 CIDR 地址段，例如 198.18.0.0/16。",
 	"internal.commands.aliasBlank": "别名不能为空或带首尾空格",
 	"internal.commands.prefixBlank": "前缀不能是纯空白",
 	"internal.commands.prefixLeadingSpace": "前缀不能以空白开头",

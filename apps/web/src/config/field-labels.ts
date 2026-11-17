@@ -73,6 +73,15 @@ export interface FieldLabel {
  * 档的名字取会员体系里档的名字,体系加一档这里自动跟着有,不再逐档抄。
  */
 export const FIELD_LABELS = {
+	"core.network.imageAllowedCidrs": {
+		get label() {
+			return i18n.t("network.images.label");
+		},
+		get hint() {
+			return i18n.t("network.images.hint");
+		},
+		section: "general",
+	},
 	"core.accounts.order": {
 		get label() {
 			return i18n.t("accounts.orderLabel");

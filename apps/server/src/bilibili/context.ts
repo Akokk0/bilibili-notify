@@ -38,6 +38,7 @@ export interface BiliContextHandle {
 }
 
 export interface CreateBiliContextOptions {
+	createImageFetcher?: CreateIntegrationContextOptions["createImageFetcher"];
 	timezoneReader: CreateIntegrationContextOptions["timezoneReader"];
 	stores: Pick<IntegrationStore, "open">;
 	/** 宿主的那一面:日志、可回收定时器、按段登记的关停钩子。 */
@@ -64,6 +65,7 @@ export async function createBiliContext(
 	let opened: OpenedIntegration;
 	try {
 		opened = await openIntegration({
+			createImageFetcher: opts.createImageFetcher,
 			timezoneReader: opts.timezoneReader,
 			stores: store,
 			logger: serviceCtx.logger,

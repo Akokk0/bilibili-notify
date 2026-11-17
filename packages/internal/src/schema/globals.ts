@@ -297,7 +297,24 @@ export const AccountsSettingsSchema = z.object({
 });
 export type AccountsSettings = z.infer<typeof AccountsSettingsSchema>;
 
+/** 仅由宿主设置控制的抓图地址例外，缺省仍只允许公网。 */
+export const NetworkSettingsSchema = z.object({
+	imageAllowedCidrs: z
+		.array(
+			z
+				.string()
+				.trim()
+				.refine(
+					(value) => z.cidrv4().safeParse(value).success || z.cidrv6().safeParse(value).success,
+					{ error: () => packageText("internal.settings.imageAllowedCidrs") },
+				),
+		)
+		.max(64)
+		.default([]),
+});
+
 export const GlobalSettingsSchema = z.object({
+	network: NetworkSettingsSchema.default(() => ({ imageAllowedCidrs: [] })),
 	accounts: AccountsSettingsSchema.optional(),
 	logging: LoggingSettingsSchema,
 	/**

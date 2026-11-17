@@ -6,7 +6,7 @@ import { fixedTimezone, inertTransitImages } from "../../../../__tests__/support
 import type { ImageWriter } from "../../../../images/image-store.js";
 import type { IntegrationStore } from "../../../../integration-store/store.js";
 import { type BiliContextHandle, createBiliContext } from "../../../context.js";
-import { type AuthSystem, createAuthSystem } from "../../index.js";
+import { type AuthSystem, type CreateAuthSystemOptions, createAuthSystem } from "../../index.js";
 
 /**
  * 账号头像写口的测试替身:什么都存不进,这些测试不走抓头像那条线。
@@ -17,6 +17,8 @@ export const inertAccountImages = {
 } as unknown as ImageWriter;
 
 export interface AuthSystemWorld {
+	createImageFetcher?: CreateAuthSystemOptions["createImageFetcher"];
+	accountImages?: ImageWriter;
 	/** 集成存储宿主:登录的 cookie 与令牌住在 `bilibili` 这个键下。 */
 	integrationStore: Pick<IntegrationStore, "open">;
 	/** 登录系统与上下文共用的宿主上下文(生产里是 B 站那一格,日志器与定时器都从它来)。 */
@@ -36,6 +38,7 @@ export interface OpenedAuthSystem extends AuthSystem {
  */
 export async function openAuthSystem(world: AuthSystemWorld): Promise<OpenedAuthSystem> {
 	const context = await createBiliContext({
+		createImageFetcher: world.createImageFetcher,
 		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		stores: world.integrationStore,
 		serviceCtx: world.serviceCtx,
@@ -44,9 +47,10 @@ export async function openAuthSystem(world: AuthSystemWorld): Promise<OpenedAuth
 		settingsOf: inertSettingsOf,
 	});
 	const system = createAuthSystem({
+		createImageFetcher: world.createImageFetcher,
 		serviceCtx: world.serviceCtx,
 		context: context.ctx,
-		accountImages: inertAccountImages,
+		accountImages: world.accountImages ?? inertAccountImages,
 	});
 	return {
 		...system,

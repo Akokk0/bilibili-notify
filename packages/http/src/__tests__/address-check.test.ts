@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { BrowserIdentity } from "../browser-identity";
 import { CookieJar } from "../cookie-jar";
 import { HttpClient } from "../http-client";
-import { requirePublicAddress } from "../public-address";
+import { createAddressCheck, requirePublicAddress } from "../public-address";
 
 const IDENTITY: BrowserIdentity = {
 	userAgent: "identity-ua/1.0",
@@ -215,8 +215,9 @@ describe("addressCheck — 重定向的每一跳都判", () => {
 
 describe("addressCheck — DNS 重绑定", () => {
 	it("同一个名字第一次解析到放行的地址、之后解析到内网:每条连接只解析一次,新连接被拒", async () => {
+		const configured = createAddressCheck(["127.0.0.1/32"]);
 		const first = makeClient();
-		const before = await first.fetch(url("rebind.test"), { addressCheck: loopbackAllowed });
+		const before = await first.fetch(url("rebind.test"), { addressCheck: configured });
 		if (!before.ok) throw new Error(before.message);
 		expect(before.status).toBe(200);
 		// 检查与连接是同一次解析:这条连接上名字只查过一次。
@@ -224,7 +225,7 @@ describe("addressCheck — DNS 重绑定", () => {
 		await first.dispose();
 
 		// 新的连接(新客户端,池是空的):解析已经变成内网,这一次被拒,没连过去。
-		const after = await makeClient().fetch(url("rebind.test"), { addressCheck: loopbackAllowed });
+		const after = await makeClient().fetch(url("rebind.test"), { addressCheck: configured });
 		expect(after).toMatchObject({ ok: false, code: "invalid" });
 		expect(hits).toHaveLength(1);
 	});

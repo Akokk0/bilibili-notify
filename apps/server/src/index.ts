@@ -815,6 +815,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// B 站那组场景的认领在 `compose.ts`。
 
 		const builtins = composeBuiltinIntegrations({
+			createImageFetcher: runtime.createImageFetcher,
 			timezoneReader,
 			locale: localeReader,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
@@ -1330,6 +1331,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const extensionMounts = createExtensionMounts({ logger: log });
 		const extensionUpgrades = createExtensionUpgrades();
 		loadedExtensions = await loadExtensions({
+			createImageFetcher: runtime.createImageFetcher,
 			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			developmentEntry: devtools?.developmentEntry,
 			timezoneReader,

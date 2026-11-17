@@ -180,6 +180,38 @@ afterEach(() => {
 });
 
 describe("系统页的按模块日志等级", () => {
+	it("图片地址段可逐行编辑,快捷填入保留已有范围且不重复添加", async () => {
+		mockApi({});
+		await renderRuntimeSection();
+		const area = screen.getByRole("textbox", {
+			name: "图片下载允许的地址段",
+		}) as HTMLTextAreaElement;
+		fireEvent.change(area, { target: { value: "fd00::/8\n" } });
+		expect(area.value).toBe("fd00::/8\n");
+		fireEvent.click(screen.getByRole("button", { name: "填入常用 FakeIP 网段" }));
+		fireEvent.click(screen.getByRole("button", { name: "填入常用 FakeIP 网段" }));
+		expect(area.value).toBe("fd00::/8\n198.18.0.0/16");
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave();
+		});
+		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+			core: { network: { imageAllowedCidrs: ["fd00::/8", "198.18.0.0/16"] } },
+		});
+	});
+	it("图片网络范围:快捷填入 FakeIP 后,保存只发送对应设置块", async () => {
+		mockApi({});
+		await renderRuntimeSection();
+		fireEvent.click(screen.getByRole("button", { name: "填入常用 FakeIP 网段" }));
+		expect(
+			(screen.getByRole("textbox", { name: "图片下载允许的地址段" }) as HTMLTextAreaElement).value,
+		).toBe("198.18.0.0/16");
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave?.();
+		});
+		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+			core: { network: { imageAllowedCidrs: ["198.18.0.0/16"] } },
+		});
+	});
 	it.each([
 		[
 			"ja",

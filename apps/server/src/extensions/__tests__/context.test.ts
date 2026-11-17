@@ -1,4 +1,5 @@
 import { logMessage } from "../../__tests__/support/log-message.js";
+
 /**
  * 交给拓展的那面 ctx —— **第一版刻意很窄**(ADR-0012 决策 13:窄面加宽容易,反过来不行)。
  *
@@ -7,6 +8,8 @@ import { logMessage } from "../../__tests__/support/log-message.js";
  * 定时器还在跑、端点还挂着,而面板上写着「已停用」。
  */
 
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import type { ExtensionManifest, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
@@ -16,11 +19,12 @@ import { memoryStores } from "../../__tests__/support/memory-key-value-store.js"
 import { png } from "../../__tests__/support/report-images.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { i18n } from "../../i18n/index.js";
+import { createImageFetcher } from "../../images/image-fetcher.js";
 import { imageRefOf } from "../../images/image-store.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
 import { createProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
-import { createExtensionContext } from "../context.js";
+import { type CreateExtensionContextOptions, createExtensionContext } from "../context.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
 
@@ -102,7 +106,11 @@ function coreStubs() {
 	};
 }
 
-function makeRuntime(id = "bridge", redactor = createValueRedactor()) {
+function makeRuntime(
+	id = "bridge",
+	redactor = createValueRedactor(),
+	imageFactory?: CreateExtensionContextOptions["createImageFetcher"],
+) {
 	const host = fakeHost();
 	const mounts = createExtensionMounts({ logger: silentLogger });
 	const app = new Hono();
@@ -110,6 +118,7 @@ function makeRuntime(id = "bridge", redactor = createValueRedactor()) {
 	const stubs = coreStubs();
 	const io = integrationIo();
 	const runtime = createExtensionContext({
+		createImageFetcher: imageFactory,
 		...io,
 		...noExtensionI18n(),
 		id,
@@ -123,6 +132,23 @@ function makeRuntime(id = "bridge", redactor = createValueRedactor()) {
 }
 
 describe("拓展 ctx", () => {
+	it("拓展抓图使用宿主允许的地址范围", async () => {
+		const server = createServer((_req, res) => res.end(Buffer.from(png(10, 10, 1))));
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const port = (server.address() as AddressInfo).port;
+		const { runtime, ctx, io } = makeRuntime("bridge", undefined, (options) =>
+			createImageFetcher({ ...options, allowedCidrs: () => ["127.0.0.1/32"] }),
+		);
+		try {
+			expect((await ctx.fetchImage(`http://127.0.0.1:${port}/avatar`)).ok).toBe(true);
+			expect(io.stored).toHaveLength(1);
+		} finally {
+			await runtime.dispose();
+			await io.http.dispose();
+			server.closeAllConnections();
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	});
 	it("隔离扫码会话的 cookie，按域与路径读取；恢复后，凭据仍脱敏且 host-only 不扩大", async () => {
 		const before = createValueRedactor(),
 			after = createValueRedactor();

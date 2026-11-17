@@ -1,4 +1,9 @@
 {
+	"network.images.title": "图片下载网络",
+	"network.images.subtitle": "为受信任的代理或内网图床设置地址例外",
+	"network.images.label": "图片下载允许的地址段",
+	"network.images.hint": "默认留空，仅允许公网地址。每行填写一个 IPv4／IPv6 CIDR；保存后，新图片请求可访问这些范围。头像、订阅图片与拓展共用此设置，仅添加您信任的代理或内网范围。",
+	"network.images.preset": "填入常用 FakeIP 网段",
 	"subs.atAllPrivateUnsupported": "私聊不支持 @全体。",
 	"developmentExtensions.retry": "重试",
 	"developmentExtensions.browse": "浏览目录",

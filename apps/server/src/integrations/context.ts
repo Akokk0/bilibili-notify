@@ -42,6 +42,7 @@ export interface IntegrationContextHandle {
 }
 
 export interface CreateIntegrationContextOptions {
+	createImageFetcher?: typeof createImageFetcher;
 	timezoneReader: Pick<IntegrationContext, "timezone" | "onTimezoneChanged">;
 	/** 集成自己的那个 logger:按它的集成键要来的,行的标签与等级都跟这个键(拓展传 `loggerOf(id)` 要来的)。 */
 	logger: Logger;
@@ -183,7 +184,10 @@ export function createIntegrationContext(
 	}
 
 	// 抓图 / 存图服务:走这个集成自己的客户端,写进「在途」那一家。拦内网只在这里,`ctx.http` 整体不拦。
-	const images = createImageFetcher({ http: opts.http, images: opts.transitImages });
+	const images = (opts.createImageFetcher ?? createImageFetcher)({
+		http: opts.http,
+		images: opts.transitImages,
+	});
 	// `ctx.http` 是客户端的窄面:`fetch` 与选项原样转(一个选项都不抄、不丢);`websocket` 多一道 ——
 	// 集成停下时自动关,所以把调用方的 `signal` 与 `ctx.signal` 合成一个。`fetch` 不自动挂 `ctx.signal`:
 	// 关停的 `stop` 段里在途的抓图还得跑完。

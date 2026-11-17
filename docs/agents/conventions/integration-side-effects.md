@@ -25,6 +25,8 @@
 
 4. **请求走 `ctx.http`，图走 `fetchImage` / `storeImage`。** 不自己 `fetch` 一个带自己身份的客户端来替代它。拦内网、8MB、格式嗅探、超时只在 `fetchImage` 上，`ctx.http` 本身不拦内网（ADR-0025 决策 8）。上报里只交 `ImageRef`，不交字节。重试、退避、限流归集成自己（ADR-0025 决策 6）。
 
+   🔗 **2026-11-17 主人确认的例外**：[ADR-0053](../../adr/0053-image-address-ranges.md)允许使用者为抓图添加受信任 CIDR 范围，默认仍拦内网。所有宿主与集成共用此策略，来源或拓展不能自行扩大范围；操作说明见[图片网络](../image-network.md)。
+
 5. **不裸开定时器、不裸挂端点、不裸开长连接。** 拓展用 ctx 给的可回收定时器（`ctx.setTimeout`、`ctx.setInterval`，返回 `Disposable`）、`ctx.mount`（路由走 `/ext/:id/*`，挂载前缀由宿主分配）、`ctx.onUpgrade`；websocket 用 `ctx.http.websocket`，集成停下时自动关。一次性的超时也不例外：拓展里的 `setTimeout` 一律走 `ctx.setTimeout`，结算或资源关闭时 `dispose`。手里有必须自己管的资源（例如 `onUpgrade` 里拓展自带 `ws` 建的 socket），在 `ctx.onDispose` 里关掉。
 
    - 对：`ctx.setInterval(poll, 60_000)`。

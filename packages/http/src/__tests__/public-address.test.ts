@@ -6,7 +6,25 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { requirePublicAddress } from "../public-address";
+import { createAddressCheck, requirePublicAddress } from "../public-address";
+
+describe("明确允许的地址范围", () => {
+	it.each([
+		["198.18.0.0/16", "198.18.5.142", true],
+		["198.18.0.0/16", "198.19.5.142", false],
+		["fd00::/8", "fd12::1", true],
+		["fd00::/8", "fe80::1", false],
+		["198.18.0.0/16", "::ffff:198.18.5.142", true],
+		["198.18.0.0/16", "::ffff:192.168.1.1", false],
+	] as const)("%s 对 %s 的判断为 %s", (cidr, address, expected) => {
+		expect(createAddressCheck([cidr])(address).ok).toBe(expected);
+	});
+	it("坏配置不扩大范围,公网规则保持可用", () => {
+		const check = createAddressCheck(["198.18.0.0/16", "0.0.0.0/999"]);
+		expect(check("198.18.5.142").ok).toBe(false);
+		expect(check("1.1.1.1").ok).toBe(true);
+	});
+});
 
 const refused = (address: string) =>
 	expect(requirePublicAddress(address), address).toMatchObject({ ok: false, code: "invalid" });

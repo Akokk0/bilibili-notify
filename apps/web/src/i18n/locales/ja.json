@@ -1,4 +1,9 @@
 {
+	"network.images.title": "画像ダウンロードのネットワーク",
+	"network.images.subtitle": "信頼できるプロキシや内部の画像サーバーのアドレス例外",
+	"network.images.label": "画像ダウンロードを許可するアドレス範囲",
+	"network.images.hint": "空欄の場合は公開アドレスのみ許可します。IPv4／IPv6のCIDRを1行に1つ入力してください。保存後、新しい画像リクエストから適用されます。アバター、購読画像、拡張機能で共通です。信頼できるプロキシや内部ネットワークの範囲だけを追加してください。",
+	"network.images.preset": "一般的なFakeIP範囲を追加",
 	"subs.atAllPrivateUnsupported": "個別チャットでは全員をメンションできません。",
 	"developmentExtensions.retry": "再試行",
 	"developmentExtensions.browse": "フォルダーを参照",
