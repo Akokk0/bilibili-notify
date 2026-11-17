@@ -168,7 +168,7 @@ export function CreatorTrendPanel({
 				/>
 			</fieldset>
 			{isVideo && (!supported || !enabled) ? (
-				<div className="flex min-h-[250px] flex-col items-center justify-center gap-4 px-4 text-center">
+				<div className="flex min-h-[250px] flex-col items-center justify-start gap-4 px-4 pb-4 text-center sm:pt-6">
 					<Icon.chart size={28} className="text-bn-text-tertiary" />
 					<p className="text-bn-base font-semibold text-bn-text-primary">
 						{supported === false
