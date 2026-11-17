@@ -9,29 +9,25 @@ import { lazy, Suspense } from "react";
 import { useExtensions } from "../hooks/useExtensions";
 import { useT } from "../i18n";
 import { errorTextOf } from "../services/error-text";
-import { openExternal } from "../utils/externalLink";
-import { safeHref } from "../utils/safe-href";
 import { NoticeExtensionList } from "./system-notice-extensions";
 import { UNTRUSTED_MARKDOWN_COMPONENTS } from "./untrusted-markdown";
 
 const ReactMarkdown = lazy(() => import("react-markdown"));
-function releaseHref(value: string) {
-	try {
-		new URL(value);
-		return safeHref(value);
-	} catch {
-		return undefined;
-	}
-}
-
-function ReleaseNotes({ releases }: { releases: ReleaseNoteEntry[] }) {
+function ReleaseNotes({
+	releases,
+	onNavigate,
+	disabled,
+}: {
+	releases: ReleaseNoteEntry[];
+	onNavigate: (to: string) => void;
+	disabled: boolean;
+}) {
 	const tx = useT();
 	return releases.length === 0 ? (
 		<HintNote className="mt-4">{tx("lifecycle.noReleaseNotes")}</HintNote>
 	) : (
 		<div className="mt-4 space-y-4">
 			{releases.map((release) => {
-				const href = releaseHref(release.releaseUrl);
 				return (
 					<section key={release.version} className="border-t border-bn-border-subtle pt-3">
 						<h2 className="text-bn-sm font-bold text-bn-text-primary">
@@ -56,13 +52,16 @@ function ReleaseNotes({ releases }: { releases: ReleaseNoteEntry[] }) {
 								</WarnNote>
 							) : null}
 						</Suspense>
-						{href ? (
-							<div className="mt-3">
-								<Btn size="sm" variant="outline" onClick={() => openExternal(href)}>
-									{tx("lifecycle.fullNotes")}
-								</Btn>
-							</div>
-						) : null}
+						<div className="mt-3">
+							<Btn
+								size="sm"
+								variant="outline"
+								disabled={disabled}
+								onClick={() => onNavigate("/about/changelog")}
+							>
+								{tx("lifecycle.fullNotes")}
+							</Btn>
+						</div>
 					</section>
 				);
 			})}
@@ -90,7 +89,7 @@ export function SystemNoticeContent({
 		return (
 			<>
 				<p>{tx("lifecycle.updatedHint", { version: notice.version })}</p>
-				<ReleaseNotes releases={notice.releases} />
+				<ReleaseNotes releases={notice.releases} onNavigate={onNavigate} disabled={disabled} />
 			</>
 		);
 	if (notice.kind === "generation-failed")
@@ -221,7 +220,7 @@ function MigratedContent({
 				<summary className="cursor-pointer text-bn-sm font-bold text-bn-text-primary">
 					{tx("lifecycle.overview", { version: notice.version })}
 				</summary>
-				<ReleaseNotes releases={notice.releases} />
+				<ReleaseNotes releases={notice.releases} onNavigate={onNavigate} disabled={disabled} />
 			</details>
 			<div className="mt-4 flex flex-wrap items-center justify-between gap-3">
 				<span className="text-bn-xs">{tx("lifecycle.freshQuestion")}</span>

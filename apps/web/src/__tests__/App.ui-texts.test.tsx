@@ -756,7 +756,7 @@ it("renders release notes safely and handles failed-generation and rollback noti
 	expect(await screen.findByText("标签管理", { selector: "strong" })).toBeTruthy();
 	expect(screen.getByText("请更新拓展")).toBeTruthy();
 	expect(document.querySelector("script")).toBeNull();
-	expect(screen.queryByRole("button", { name: "完整更新说明" })).toBeNull();
+	expect(screen.getByRole("button", { name: "完整更新说明" })).toBeTruthy();
 	await userEvent.click(screen.getByRole("button", { name: "了解" }));
 	expect(await screen.findByText("未能创建新数据")).toBeTruthy();
 	expect(screen.getByText("磁盘空间不足（原文）")).toBeTruthy();
@@ -791,6 +791,44 @@ const migratedNotice: SystemNotice = {
 	masterTargetCleared: true,
 	releases: [],
 };
+it.each([
+	["更新完成", updateNotice, "本次更新 · 1.0.1", null],
+	["迁移完成", migratedNotice, "数据已迁移完成", "1.0.0 更新概览"],
+] as const)(
+	"%s的完整更新说明在面板内打开，保留未读且不打开外部页面",
+	async (_kind, notice, title, overview) => {
+		const open = vi.spyOn(window, "open").mockImplementation(() => null);
+		const router = mountApp({
+			notices: () => [
+				{
+					...notice,
+					releases: [
+						{
+							version: notice.version,
+							summary: "这一版的更新概述",
+							releaseUrl: "https://github.com/Akokk0/bilibili-notify/releases/tag/v1.0.1",
+						},
+					],
+				},
+			],
+		});
+		await screen.findByText(title);
+		if (overview) await userEvent.click(screen.getByText(overview));
+		await userEvent.click(screen.getByRole("button", { name: "完整更新说明" }));
+		await waitFor(() => expect(router.state.location.pathname).toBe("/about/changelog"));
+		expect(await screen.findByRole("heading", { name: "Changelog · 独立端" })).toBeTruthy();
+		expect(screen.queryByText(title)).toBeNull();
+		expect(screen.getByText("开机提示 · 1 条未读")).toBeTruthy();
+		expect(open).not.toHaveBeenCalled();
+		expect(
+			vi
+				.mocked(fetch)
+				.mock.calls.filter(
+					([path, init]) => init?.method === "POST" && String(path).endsWith("/acknowledge"),
+				),
+		).toEqual([]);
+	},
+);
 it("shows only the migration follow-ups reported by the current generation", async () => {
 	let left: SystemNotice[] = [
 		migratedNotice,
