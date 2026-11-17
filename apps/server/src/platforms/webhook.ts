@@ -162,6 +162,15 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 		): Promise<DeliveryResult> {
 			const client = http;
 			if (!client) return fail("unavailable", t("connection.adapterNotStarted"));
+			if (payload.kind === "audio" || payload.kind === "markdown")
+				return fail(
+					"unsupported",
+					t(
+						payload.kind === "audio"
+							? "adapters.capability.audioUnsupported"
+							: "webhook.capability.textOnly",
+					),
+				);
 			if (!isMine(connection) || destination.kind !== "endpoint") {
 				return fail(
 					"invalid",
@@ -240,7 +249,7 @@ function buildWebhookRequest(
 	provider: WebhookPlatform,
 	cfg: WebhookConnectionSettings,
 	destination: EndpointDestination,
-	payload: NotificationPayload,
+	payload: WebhookPayload,
 ): WebhookHttpRequest {
 	switch (provider) {
 		case "dingtalk":
@@ -264,7 +273,7 @@ function baseHeaders(cfg: WebhookConnectionSettings): Record<string, string> {
 function buildGenericWebhookRequest(
 	cfg: WebhookConnectionSettings,
 	destination: EndpointDestination,
-	payload: NotificationPayload,
+	payload: WebhookPayload,
 ): WebhookHttpRequest {
 	const headers = baseHeaders(cfg);
 	if (cfg.secret) headers["x-bilibili-notify-secret"] = cfg.secret;
@@ -286,7 +295,7 @@ function buildGenericWebhookRequest(
 
 function buildDingTalkWebhookRequest(
 	cfg: WebhookConnectionSettings,
-	payload: NotificationPayload,
+	payload: WebhookPayload,
 ): WebhookHttpRequest {
 	const url = cfg.secret ? signDingTalkUrl(cfg.url, cfg.secret) : cfg.url;
 	return {
@@ -301,7 +310,7 @@ function buildDingTalkWebhookRequest(
 
 function buildFeishuWebhookRequest(
 	cfg: WebhookConnectionSettings,
-	payload: NotificationPayload,
+	payload: WebhookPayload,
 ): WebhookHttpRequest {
 	const body: Record<string, unknown> = {
 		msg_type: "text",
@@ -317,7 +326,7 @@ function buildFeishuWebhookRequest(
 
 function buildWeComWebhookRequest(
 	cfg: WebhookConnectionSettings,
-	payload: NotificationPayload,
+	payload: WebhookPayload,
 ): WebhookHttpRequest {
 	return {
 		url: cfg.url,
@@ -535,7 +544,9 @@ function maskWebhookUrlForError(rawUrl: string): string {
 	}
 }
 
-function notificationPayloadToRobotText(payload: NotificationPayload): string {
+type WebhookPayload = Exclude<NotificationPayload, { kind: "audio" | "markdown" }>;
+
+function notificationPayloadToRobotText(payload: WebhookPayload): string {
 	switch (payload.kind) {
 		case "text":
 			return payload.text;
@@ -590,7 +601,7 @@ function serializeSegment(segment: PayloadSegment): unknown {
  * 通用 JSON 的 `payload`。字段名是线上的名字:图集叫 `forward-images`、开关叫 `forward`、
  * 原生分享叫 `miniapp-card`(五格 `desc` / `picUrl` / `path` / `jumpUrl`),不随内部改。
  */
-function serializePayload(payload: NotificationPayload): unknown {
+function serializePayload(payload: WebhookPayload): unknown {
 	switch (payload.kind) {
 		case "text":
 			return { kind: "text", text: payload.text };

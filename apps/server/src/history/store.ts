@@ -338,7 +338,10 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		const payload = msg.payload;
 		switch (payload.kind) {
 			case "text":
+			case "markdown":
 				return { kind: "text", text: payload.text };
+			case "audio":
+				return { kind: "text", text: serverText("capabilityTests.audioSample") };
 			case "image": {
 				const image = await putImage(payload.image.buffer, label);
 				// 纯图推送(无 caption)在 History 列表会落成「（无内容）」—— 给个可读摘要。

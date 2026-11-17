@@ -475,8 +475,10 @@ describe("消息投影", () => {
 	 * 协议词表少一档 → 值不在 {@link BridgeMessageKind} 里,也编译不过。
 	 * 不然那个 kind 会在运行时静默发不出去。
 	 */
-	const PAYLOAD_KIND_TO_WIRE: Record<NotificationPayload["kind"], BridgeMessageKind> = {
+	const PAYLOAD_KIND_TO_WIRE: Record<NotificationPayload["kind"], BridgeMessageKind | null> = {
 		text: "text",
+		markdown: "text",
+		audio: null, // 旧桥协议没有语音，适配器明确拒绝。
 		image: "image",
 		composite: "composite",
 		// 内部的图集叫 `image-group`,帧里照旧是 `forward-images`(适配器在映射)。
@@ -486,7 +488,9 @@ describe("消息投影", () => {
 	};
 
 	it("payload kind 与 wire kind **一一对上**,两边都不许有多出来的", () => {
-		const mapped = [...new Set(Object.values(PAYLOAD_KIND_TO_WIRE))].sort();
+		const mapped = [
+			...new Set(Object.values(PAYLOAD_KIND_TO_WIRE).filter((kind) => kind !== null)),
+		].sort();
 		expect(mapped).toEqual([...BRIDGE_MESSAGE_KINDS].sort());
 	});
 });

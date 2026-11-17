@@ -134,6 +134,57 @@ function bodyOf(call: unknown[]): Record<string, unknown> {
 	return JSON.parse((call[1] as { body: string }).body);
 }
 
+it.each(["group", "private"] as const)(
+	"%s 原生语音先上传类型 3，再引用语音媒体发送",
+	async (scope) => {
+		const ad = startedQQ();
+		const buffer = Buffer.from("\u0002#!SILK_V3\nfixture");
+		const result = await ad.send(qqConnection(), qqTarget(scope, "VOICE1"), {
+			kind: "audio",
+			audio: { buffer, mime: "audio/silk" },
+		} as unknown as NotificationPayload);
+		expect(result.ok).toBe(true);
+		const prefix = scope === "group" ? "groups" : "users";
+		expect(bodyOf(callsTo(`/v2/${prefix}/VOICE1/files`)[0] as unknown[])).toEqual({
+			file_type: 3,
+			srv_send_msg: false,
+			file_data: buffer.toString("base64"),
+		});
+		expect(bodyOf(callsTo(`/v2/${prefix}/VOICE1/messages`)[0] as unknown[])).toMatchObject({
+			msg_type: 7,
+			media: { file_info: "FILEINFO" },
+		});
+		ad.stop();
+	},
+);
+
+it("频道拒绝语音，不上传也不发送文字替代品", async () => {
+	const ad = startedQQ();
+	const result = await ad.send(qqConnection(), qqTarget("channel", "C1"), {
+		kind: "audio",
+		audio: { buffer: Buffer.from("#!SILK_V3\nfixture"), mime: "audio/silk" },
+	});
+	expect(result).toMatchObject({ ok: false, code: "unsupported" });
+	expect(callsTo("/files")).toHaveLength(0);
+	expect(callsTo("/messages")).toHaveLength(0);
+	expect(ad.capabilities?.(qqConnection()).audio?.state).toBe("supported");
+	ad.stop();
+});
+
+it("私域 Markdown 测试发送原生正文，而不是普通文本", async () => {
+	const ad = startedQQ();
+	const result = await ad.send(qqConnection({ botType: "private" }), qqTarget("group", "MD1"), {
+		kind: "markdown",
+		text: "# BN\n**test**",
+	} as unknown as NotificationPayload);
+	expect(result.ok).toBe(true);
+	expect(bodyOf(callsTo("/v2/groups/MD1/messages")[0] as unknown[])).toMatchObject({
+		msg_type: 2,
+		markdown: { content: "# BN\n**test**" },
+	});
+	ad.stop();
+});
+
 it("只读群状态返回管理员与 BN 今日使用记录,查询合流且不发送消息", async () => {
 	route((url) =>
 		url.includes("getAppAccessToken")

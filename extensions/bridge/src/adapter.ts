@@ -119,12 +119,13 @@ function toSegment(segment: PayloadSegment, blobUrl: BlobUrl, plain: PlainText):
  * 的图(只带图库引用)帧里装不下,跳过。
  */
 function toBridgeMessage(
-	payload: NotificationPayload,
+	payload: Exclude<NotificationPayload, { kind: "audio" }>,
 	blobUrl: BlobUrl,
 	plain: PlainText,
 ): BridgeMessage {
 	switch (payload.kind) {
 		case "text":
+		case "markdown":
 			return { kind: "text", text: plain(payload.text) };
 		case "image":
 			return {
@@ -362,8 +363,11 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
 			const t0 = Date.now();
+			if (payload.kind === "audio") return fail("unsupported", t("capability.noAudio"));
 			const resolved = resolve(connection, destination);
 			if (!resolved.ok) return resolved;
+			if (payload.kind === "markdown" && resolved.bot.capabilities.markdown !== "supported")
+				return fail("unsupported", t("capability.markdownUnconfirmed"));
 			// 取图 URL 拿**这条桥自己连进来时用的地址**拼 —— BN 猜不出别人从哪儿找得到它。
 			const blobUrl: BlobUrl = (buffer, mime) =>
 				`${resolved.session.origin}${blobPrefix}/${blobs.put(buffer, mime)}`;

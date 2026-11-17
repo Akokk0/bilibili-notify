@@ -113,13 +113,25 @@ const PAYLOADS = {
 		webUrl: "https://www.bilibili.com/video/BV1xx",
 		iconUrl: "https://i0.hdslb.com/icon.png",
 	},
-} satisfies Record<NotificationPayload["kind"], NotificationPayload>;
+} satisfies Record<Exclude<NotificationPayload["kind"], "audio" | "markdown">, NotificationPayload>;
 
 const send = (platform: string, payload: NotificationPayload, secret?: string) => {
 	const ad = createWebhookAdapter({ logger });
 	ad.start(fakeAdapterContext().ctx);
 	return ad.send(connection(platform, secret), target(), payload);
 };
+
+it.each(["audio", "markdown"] as const)("不支持 %s 时不降级成文本或新增线上字段", async (kind) => {
+	const payload: NotificationPayload =
+		kind === "audio"
+			? { kind, audio: { buffer: Buffer.from("voice"), mime: "audio/silk" } }
+			: { kind, text: "# BN" };
+	for (const platform of ["generic", "dingtalk", "feishu", "wecom"]) {
+		const result = await send(platform, payload);
+		expect(result).toMatchObject({ ok: false, code: "unsupported" });
+	}
+	expect(fetchMock).not.toHaveBeenCalled();
+});
 
 describe("webhook 线上格式 — generic 通用 JSON", () => {
 	const envelope = {

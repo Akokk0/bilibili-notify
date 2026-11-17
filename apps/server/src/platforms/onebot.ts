@@ -188,7 +188,7 @@ type OnebotWsSettings = Extract<OnebotConnectionSettings, { transport: "ws" }>;
 type OnebotWsReverseSettings = Extract<OnebotConnectionSettings, { transport: "ws-reverse" }>;
 
 interface OneBotMessageSegment {
-	type: "text" | "image" | "at" | "json";
+	type: "text" | "image" | "at" | "json" | "record";
 	data: Record<string, string>;
 }
 
@@ -246,6 +246,8 @@ function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 	switch (payload.kind) {
 		case "text":
 			return [{ type: "text", data: { text: payload.text } }];
+		case "audio":
+			return [{ type: "record", data: { file: bufferToBase64Uri(payload.audio.buffer) } }];
 		case "image": {
 			const out: OneBotMessageSegment[] = [
 				{ type: "image", data: { file: bufferToBase64Uri(payload.image.buffer) } },
@@ -266,6 +268,7 @@ function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 				data: { file: url },
 			}));
 		case "native-share":
+		case "markdown":
 			// 要先向腾讯签 ark 才有段可发,send() 单独走 sendNativeShare;这里没有现成的段。
 			return [];
 	}
@@ -1538,6 +1541,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				);
 			}
 			if (payload.kind === "native-share") return sendNativeShare(connection, destination, payload);
+			if (payload.kind === "markdown")
+				return fail("unsupported", t("onebot.capability.markdownUnsupported"));
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
 			// session.groupId / userId 缺失等"配错"立即失败返回,不浪费 get_login_info
 			// 往返(可能 15s 超时)在一条注定发不出去的消息上。非 forward 路径直接复用
@@ -1614,8 +1619,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				imageGroup: { state: "supported", checkedAt: adapterStartedAt },
 				forward: { state: "supported", checkedAt: adapterStartedAt },
 				audio: {
-					state: "unsupported",
-					reason: t("adapters.capability.audioUnsupported"),
+					state: "supported",
 					checkedAt: adapterStartedAt,
 				},
 				markdown: {

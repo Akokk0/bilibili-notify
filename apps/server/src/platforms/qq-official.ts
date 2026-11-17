@@ -897,8 +897,9 @@ async function fetchQQGroupBotRole(
 	}
 }
 
-/** QQ 官方富媒体类型:1=图片 2=视频 3=语音(本插件只发图)。 */
+/** QQ 官方富媒体类型:1=图片 2=视频 3=语音。 */
 const QQ_FILE_TYPE_IMAGE = 1;
+const QQ_FILE_TYPE_AUDIO = 3;
 
 /** 富媒体上传请求体。`POST /v2/groups|users/{id}/files` 拿 file_info 后再发 media 消息。 */
 export interface QQFileUploadBody {
@@ -913,9 +914,9 @@ export interface QQFileUploadBody {
  * 把渲染好的图片 Buffer 转成群/C2C 富媒体上传体 —— 走 base64 `file_data`,
  * 这样本地渲染的卡片无需挂到公网 URL 即可发(QQ 官方群/C2C 发图的命门)。
  */
-export function buildQQFileUpload(buffer: Buffer): QQFileUploadBody {
+export function buildQQFileUpload(buffer: Buffer, fileType = QQ_FILE_TYPE_IMAGE): QQFileUploadBody {
 	return {
-		file_type: QQ_FILE_TYPE_IMAGE,
+		file_type: fileType,
 		srv_send_msg: false,
 		file_data: buffer.toString("base64"),
 	};
@@ -991,6 +992,7 @@ export type QQSendPart =
 	| { kind: "text"; text: string }
 	| { kind: "at-all" }
 	| { kind: "image-buffer"; buffer: Buffer; caption?: string }
+	| { kind: "audio-buffer"; buffer: Buffer; caption?: never }
 	| { kind: "image-url"; url: string; width?: number; height?: number; caption?: string };
 
 function withCaption(part: QQSendPart, caption: string): QQSendPart {
@@ -1031,9 +1033,12 @@ function attachFollowingTextToImages(parts: QQSendPart[]): QQSendPart[] {
 export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 	switch (payload.kind) {
 		case "text":
+		case "markdown": // send() 已单独处理；这里只保留穷尽转换。
 			return [{ kind: "text", text: payload.text }];
 		case "image":
 			return [{ kind: "image-buffer", buffer: payload.image.buffer, caption: payload.caption }];
+		case "audio":
+			return [{ kind: "audio-buffer", buffer: payload.audio.buffer }];
 		case "image-group":
 			// QQ 无合并转发 —— mergeForward 标志忽略,每张图展开成独立片段(尺寸透传给 markdown 用)。
 			return imageGroupUrls(payload.images).map((img) => ({
@@ -1449,6 +1454,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			});
 		}
 		if (scope === "channel") {
+			if (part.kind === "audio-buffer")
+				return fail("unsupported", t("qqOfficial.capability.audioScope"));
 			if (part.kind === "text") return ok({ body: JSON.stringify({ content: part.text }) });
 			if (part.kind === "image-url") {
 				return ok({ body: JSON.stringify({ content: part.caption ?? " ", image: part.url }) });
@@ -1459,8 +1466,11 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			return ok({ body: JSON.stringify(buildQQV2Message({ content: part.text })) });
 		}
 		const upload =
-			part.kind === "image-buffer"
-				? buildQQFileUpload(part.buffer)
+			part.kind === "image-buffer" || part.kind === "audio-buffer"
+				? buildQQFileUpload(
+						part.buffer,
+						part.kind === "audio-buffer" ? QQ_FILE_TYPE_AUDIO : QQ_FILE_TYPE_IMAGE,
+					)
 				: { file_type: QQ_FILE_TYPE_IMAGE, srv_send_msg: false, url: part.url };
 		const up = await qqUploadMedia(
 			client,
@@ -1621,8 +1631,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					checkedAt: adapterStartedAt,
 				},
 				audio: {
-					state: "unsupported",
-					reason: t("adapters.capability.audioUnsupported"),
+					state: "supported",
+					reason: t("qqOfficial.capability.audioScope"),
 					checkedAt: adapterStartedAt,
 				},
 				markdown:
@@ -1630,7 +1640,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 						? {
 								state: "supported",
 								checkedAt: adapterStartedAt,
-								reason: t("qqOfficial.capability.markdownGalleryOnly"),
+								reason: t("qqOfficial.capability.markdownScope"),
 							}
 						: {
 								state: "unsupported",
@@ -1731,6 +1741,13 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					t("qqOfficial.destination.missing", { scope: "channel", what: "channelId" }),
 				);
 			const { scope, address } = destination;
+			if (
+				payload.kind === "markdown" &&
+				(connection.settings.botType !== "private" || scope === "channel")
+			)
+				return fail("unsupported", t("qqOfficial.capability.markdownScope"));
+			if (payload.kind === "audio" && scope === "channel")
+				return fail("unsupported", t("qqOfficial.capability.audioScope"));
 			// 先校验地址:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
 			const endpoint = qqMessageEndpoint(scope, address);
 			if (!endpoint.ok) return endpoint;
@@ -1753,7 +1770,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			if (
 				cfg.botType === "private" &&
 				(scope === "group" || scope === "private") &&
-				gallery.length > 0
+				(gallery.length > 0 || payload.kind === "markdown")
 			) {
 				try {
 					const response = await qqPostJson(
@@ -1761,7 +1778,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 						base,
 						headers,
 						endpoint.path,
-						buildQQV2MarkdownMessage(buildQQMarkdownGallery(gallery)),
+						buildQQV2MarkdownMessage(
+							payload.kind === "markdown" ? payload.text : buildQQMarkdownGallery(gallery),
+						),
 					);
 					const verdict = response.ok
 						? interpretQQSend(response.status, response.body)

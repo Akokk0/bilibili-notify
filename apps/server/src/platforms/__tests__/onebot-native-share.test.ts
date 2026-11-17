@@ -106,6 +106,22 @@ const okFrame = (data?: unknown) => res({ ok: true, json: { status: "ok", retcod
 const failFrame = (retcode: number, message = "") =>
 	res({ ok: true, json: { status: "failed", retcode, message } });
 
+it("语音通过 record 段发送，保留 SILK 字节", async () => {
+	fetchMock.mockResolvedValue(okFrame({ message_id: 7 }));
+	const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+	const buffer = Buffer.from("#!SILK_V3\nfixture");
+	const sent = await ad.send(obConnection(), obTarget(), {
+		kind: "audio",
+		audio: { buffer, mime: "audio/silk" },
+	});
+	expect(sent.ok).toBe(true);
+	expect(calledPath(0)).toBe("http://nb:3000/send_group_msg");
+	expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body)).toMatchObject({
+		message: [{ type: "record", data: { file: `base64://${buffer.toString("base64")}` } }],
+	});
+	ad.stop();
+});
+
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
 	fetchMock = vi.fn();

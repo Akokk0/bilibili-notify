@@ -1609,7 +1609,7 @@
 	"adapters.capability.audioUnsupported": "BN 尚未接入语音发送",
 	"onebot.capability.markdownUnsupported": "BN 的 OneBot 发送链路使用普通文本",
 	"qqOfficial.capability.forwardUnsupported": "QQ 官方适配器没有接入合并转发",
-	"qqOfficial.capability.markdownUnsupported": "BN 仅为私域 QQ 机器人的图集使用原生 Markdown",
+	"qqOfficial.capability.markdownUnsupported": "原生 Markdown 需要私域机器人及平台授权",
 	"webhook.capability.receiverUnknown": "接收端未报告如何处理这些消息",
 	"webhook.capability.textOnly": "BN 向此 webhook 发送普通文本，图片会降级为文字说明",
 	"targets.status.unsupported": "此连接暂未提供群内状态查询",
@@ -1620,5 +1620,7 @@
 	"qqOfficial.group.statusPermission": "QQ 尚未为此机器人开放群内状态查询权限",
 	"log.qq.atAllUsageWriteFailed": "艾特全体使用记录写入失败，重启后可能无法恢复本次记录",
 	"targets.status.invalidGroup": "群地址必须是有效的群号",
-	"qqOfficial.capability.markdownGalleryOnly": "仅私域机器人图集使用原生 Markdown；普通文字消息不走 Markdown"
+	"qqOfficial.capability.audioScope": "群聊和私聊支持 SILK 语音；频道暂不支持",
+	"qqOfficial.capability.markdownScope": "私域机器人的群聊和私聊支持原生 Markdown；需要平台授权",
+	"capabilityTests.audioSample": "[语音]"
 }

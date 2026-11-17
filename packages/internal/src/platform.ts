@@ -361,7 +361,11 @@ export interface NativeShare {
  */
 export type NotificationPayload =
 	| { kind: "text"; text: string }
+	/** 明确要求原生 Markdown；不支持的适配器拒绝，不剥成纯文字冒充成功。 */
+	| { kind: "markdown"; text: string }
 	| { kind: "image"; image: { buffer: Buffer; mime: string }; caption?: string }
+	/** 单条语音。当前发送实现接收 SILK；格式转换由调用方完成，适配器不降级成文字。 */
+	| { kind: "audio"; audio: { buffer: Buffer; mime: "audio/silk" } }
 	| { kind: "composite"; segments: PayloadSegment[] }
 	/**
 	 * 图集 payload(典型来源:动态图集 / 多张大图)。适配器照 `images[].url` 发(`ref` 只是带着);

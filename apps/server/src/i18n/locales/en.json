@@ -1621,7 +1621,7 @@
 	"adapters.capability.audioUnsupported": "BN has not implemented audio delivery",
 	"onebot.capability.markdownUnsupported": "BN sends plain text through OneBot",
 	"qqOfficial.capability.forwardUnsupported": "The QQ official adapter does not implement merged forwards",
-	"qqOfficial.capability.markdownUnsupported": "BN uses native Markdown galleries only for private QQ bots",
+	"qqOfficial.capability.markdownUnsupported": "Native Markdown requires a private bot with platform permission",
 	"webhook.capability.receiverUnknown": "The receiver has not reported how it handles these messages",
 	"webhook.capability.textOnly": "BN sends plain text to this webhook; images become text descriptions",
 	"targets.status.unsupported": "This connection does not provide group status queries",
@@ -1632,5 +1632,7 @@
 	"qqOfficial.group.statusPermission": "QQ has not granted this bot access to group status queries",
 	"log.qq.atAllUsageWriteFailed": "Could not save the everyone-mention record; it may be unavailable after restart",
 	"targets.status.invalidGroup": "The group address must be a valid group number",
-	"qqOfficial.capability.markdownGalleryOnly": "Native Markdown is used only for private-bot image galleries, not ordinary text messages"
+	"qqOfficial.capability.audioScope": "SILK audio is supported in groups and direct messages, not channels",
+	"qqOfficial.capability.markdownScope": "Native Markdown supports private-bot groups and direct messages, with platform permission",
+	"capabilityTests.audioSample": "[Audio]"
 }

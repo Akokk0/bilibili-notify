@@ -71,6 +71,11 @@ const StoredPostImageSchema = z.object({
  */
 const StoredPayloadSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("text"), text: z.string() }),
+	z.object({ kind: z.literal("markdown"), text: z.string() }),
+	z.object({
+		kind: z.literal("audio"),
+		audio: z.object({ data: z.string(), mime: z.literal("audio/silk") }),
+	}),
 	z.object({ kind: z.literal("image"), image: StoredImageSchema, caption: z.string().optional() }),
 	z.object({ kind: z.literal("composite"), segments: z.array(StoredSegmentSchema) }),
 	z.object({
@@ -197,7 +202,13 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		const { payload } = item;
 		switch (payload.kind) {
 			case "text":
-				return { kind: "text", text: payload.text };
+			case "markdown":
+				return { kind: payload.kind, text: payload.text };
+			case "audio":
+				return {
+					kind: "audio",
+					audio: { data: payload.audio.buffer.toString("base64"), mime: payload.audio.mime },
+				};
 			case "image":
 				return {
 					kind: "image",
@@ -231,7 +242,13 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 	async function toPayload(stored: StoredPayload): Promise<NotificationPayload> {
 		switch (stored.kind) {
 			case "text":
-				return { kind: "text", text: stored.text };
+			case "markdown":
+				return { kind: stored.kind, text: stored.text };
+			case "audio":
+				return {
+					kind: "audio",
+					audio: { buffer: Buffer.from(stored.audio.data, "base64"), mime: stored.audio.mime },
+				};
 			case "image":
 				return {
 					kind: "image",

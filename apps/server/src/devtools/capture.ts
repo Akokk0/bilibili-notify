@@ -61,7 +61,10 @@ function clip(text: string): string {
 function summarize(payload: NotificationPayload): { text?: string; images: number } {
 	switch (payload.kind) {
 		case "text":
+		case "markdown":
 			return { text: clip(payload.text), images: 0 };
+		case "audio":
+			return { text: "[audio]", images: 0 };
 		case "image":
 			return payload.caption === undefined
 				? { images: 1 }

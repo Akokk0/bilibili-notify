@@ -83,6 +83,8 @@ const ZERO_SNAPSHOTS: Record<ZeroPayloadKind, (id: string) => Record<string, unk
  */
 const CURRENT_PAYLOAD_ORIGINS: Record<NotificationPayload["kind"], ZeroPayloadKind | null> = {
 	text: "text",
+	audio: null,
+	markdown: null,
 	image: "image",
 	composite: "composite",
 	"image-group": "forward-images",

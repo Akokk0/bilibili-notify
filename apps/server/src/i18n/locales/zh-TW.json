@@ -1609,7 +1609,7 @@
 	"adapters.capability.audioUnsupported": "BN 尚未接入語音傳送",
 	"onebot.capability.markdownUnsupported": "BN 的 OneBot 傳送流程使用純文字",
 	"qqOfficial.capability.forwardUnsupported": "QQ 官方適配器尚未接入合併轉傳",
-	"qqOfficial.capability.markdownUnsupported": "BN 僅為私域 QQ 機器人的多圖使用原生 Markdown",
+	"qqOfficial.capability.markdownUnsupported": "原生 Markdown 需要私域機器人及平台授權",
 	"webhook.capability.receiverUnknown": "接收端未回報如何處理這些訊息",
 	"webhook.capability.textOnly": "BN 向此 webhook 傳送純文字，圖片會降級為文字說明",
 	"targets.status.unsupported": "此連線尚未提供群內狀態查詢",
@@ -1620,5 +1620,7 @@
 	"qqOfficial.group.statusPermission": "QQ 尚未為此機器人開放群內狀態查詢權限",
 	"log.qq.atAllUsageWriteFailed": "提及全體的使用紀錄寫入失敗，重新啟動後可能無法還原本次紀錄",
 	"targets.status.invalidGroup": "群組地址必須是有效的群號",
-	"qqOfficial.capability.markdownGalleryOnly": "僅私域機器人的多圖使用原生 Markdown；一般文字訊息不使用 Markdown"
+	"qqOfficial.capability.audioScope": "群組和私訊支援 SILK 語音；頻道暫不支援",
+	"qqOfficial.capability.markdownScope": "私域機器人的群組和私訊支援原生 Markdown；需要平台授權",
+	"capabilityTests.audioSample": "[語音]"
 }

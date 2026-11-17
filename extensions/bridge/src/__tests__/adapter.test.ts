@@ -430,8 +430,12 @@ describe("桥 adapter", () => {
 	 * 这张表是**编译期穷尽守卫**:给 `NotificationPayload` 加一个 kind 而这里忘了给它
 	 * 一条路,键少一个就编译不过。运行时再跑一遍,顺带证明每条路真的发得出去。
 	 */
-	const EVERY_PAYLOAD: Record<NotificationPayload["kind"], NotificationPayload> = {
+	const EVERY_PAYLOAD: Record<
+		Exclude<NotificationPayload["kind"], "audio">,
+		NotificationPayload
+	> = {
 		text: { kind: "text", text: "x" },
+		markdown: { kind: "markdown", text: "**x**" },
 		image: { kind: "image", image: { buffer: Buffer.from([1]), mime: "image/png" } },
 		composite: { kind: "composite", segments: [{ kind: "text", text: "x" }] },
 		"image-group": {
@@ -451,7 +455,7 @@ describe("桥 adapter", () => {
 	};
 
 	it("每个 payload kind 都译得出来,没有一条路是死的", async () => {
-		const h = harness();
+		const h = harness(session({}, { markdown: "supported" }));
 		for (const [kind, payload] of Object.entries(EVERY_PAYLOAD)) {
 			const result = await h.adapter.send(connection(), target(), payload);
 			expect(result.ok, kind).toBe(true);
@@ -460,9 +464,24 @@ describe("桥 adapter", () => {
 			const wireKind: Record<string, string> = {
 				"image-group": "forward-images",
 				"native-share": "miniapp-card",
+				markdown: "text",
 			};
 			expect(h.lastRequest().message.kind, kind).toBe(wireKind[kind] ?? kind);
 		}
+	});
+
+	it("未实现的语音和未确认的 Markdown 不发送替代文本", async () => {
+		const h = harness();
+		expect(
+			await h.adapter.send(connection(), target(), {
+				kind: "audio",
+				audio: { buffer: Buffer.from("voice"), mime: "audio/silk" },
+			}),
+		).toMatchObject({ ok: false, code: "unsupported" });
+		expect(
+			await h.adapter.send(connection(), target(), { kind: "markdown", text: "**test**" }),
+		).toMatchObject({ ok: false, code: "unsupported" });
+		expect(h.send).not.toHaveBeenCalled();
 	});
 
 	// ---- 群还是私聊只看目标自己的 scope -------------------------------------

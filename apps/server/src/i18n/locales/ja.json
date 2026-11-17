@@ -1609,7 +1609,7 @@
 	"adapters.capability.audioUnsupported": "BN は音声送信にまだ対応していません",
 	"onebot.capability.markdownUnsupported": "BN の OneBot 送信はプレーンテキストです",
 	"qqOfficial.capability.forwardUnsupported": "QQ 公式アダプターはまとめて転送に対応していません",
-	"qqOfficial.capability.markdownUnsupported": "BN はプライベート QQ ボットの複数画像にのみネイティブ Markdown を使用します",
+	"qqOfficial.capability.markdownUnsupported": "ネイティブ Markdown にはプライベートボットとプラットフォームの許可が必要です",
 	"webhook.capability.receiverUnknown": "受信側のメッセージ処理方法が報告されていません",
 	"webhook.capability.textOnly": "この webhook にはプレーンテキストを送信し、画像は説明文に変換します",
 	"targets.status.unsupported": "この接続はグループ内の状態照会に対応していません",
@@ -1620,5 +1620,7 @@
 	"qqOfficial.group.statusPermission": "このボットには QQ のグループ内状態照会の権限がありません",
 	"log.qq.atAllUsageWriteFailed": "全員メンションの使用記録を保存できませんでした。再起動後に今回の記録を復元できない可能性があります",
 	"targets.status.invalidGroup": "グループの宛先には有効なグループ番号を指定してください",
-	"qqOfficial.capability.markdownGalleryOnly": "プライベートボットの複数画像にのみネイティブ Markdown を使用します。通常のテキストメッセージには使用しません"
+	"qqOfficial.capability.audioScope": "グループと個別チャットで SILK 音声に対応。チャンネルは対象外です",
+	"qqOfficial.capability.markdownScope": "プライベートボットのグループと個別チャットでネイティブ Markdown に対応。プラットフォームの許可が必要です",
+	"capabilityTests.audioSample": "[音声]"
 }

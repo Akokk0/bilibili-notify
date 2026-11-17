@@ -167,6 +167,21 @@ describe("盘上形状 —— 原件是 `{ version, messages }`(⑱c)", () => {
  * 钉新名字都在、旧名字都不在,再钉读回来一格不少。
  */
 describe("盘上形状 —— 载荷与活的同名(3a-16)", () => {
+	it("语音和 Markdown 原件读回仍保留格式与字节", async () => {
+		const id = randomUUID();
+		const items = [
+			{
+				payload: {
+					kind: "audio",
+					audio: { buffer: Buffer.from("#!SILK_V3\nfixture"), mime: "audio/silk" },
+				},
+				role: "main",
+			},
+			{ payload: { kind: "markdown", text: "# BN\n**test**" }, role: "extra" },
+		] as unknown as Parameters<typeof store.append>[2];
+		await store.append(id, TS, items);
+		expect(await store.load(id, TS, 2)).toEqual({ messages: items });
+	});
 	const readText = (id: string) => readFile(join(dayDir(), `${id}.json`), "utf8");
 	const REF = `${"a".repeat(64)}.jpg`;
 	const group: NotificationPayload = {

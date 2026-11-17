@@ -114,5 +114,6 @@
 	"error.unknownFrame": "Unknown frame type: {type}",
 	"capability.noForward": "The bridge reports that this bot cannot send merged forwards",
 	"capability.noMarkdown": "The bridge reports that this bot does not support Markdown",
-	"capability.noAudio": "BN has not implemented audio delivery"
+	"capability.noAudio": "BN has not implemented audio delivery",
+	"capability.markdownUnconfirmed": "The bridge has not confirmed Markdown support; no plain-text substitute was sent"
 }
