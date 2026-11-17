@@ -204,6 +204,28 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
+it("内容构成由三类活动按占比填满整圈，而非只画动态占比", async () => {
+	mockApi([row({ ...BILI_ROW, posts: 113, videoPosts: 40, liveSessions: 41 })], [BILI_SUB]);
+	renderStats();
+	await screen.findByText("总活动");
+	const svg = screen.getByTitle("占比").closest("svg");
+	if (!svg) throw new Error("内容构成圆环缺失");
+	const segments = [...svg.querySelectorAll("circle")].slice(1);
+	expect(segments).toHaveLength(3);
+	const ratios = segments.map((segment) => {
+		const [length, circumference] = (segment.getAttribute("stroke-dasharray") ?? "")
+			.split(" ")
+			.map(Number);
+		return (length ?? 0) / (circumference ?? 1);
+	});
+	// 73 动态、40 投稿、41 直播，共 154 次，依次约 47.4%、26.0%、26.6%。
+	expect(ratios[0]).toBeCloseTo(0.474025974, 6);
+	expect(ratios[1]).toBeCloseTo(0.25974026, 6);
+	expect(ratios[2]).toBeCloseTo(0.266233766, 6);
+	expect(new Set(segments.map((segment) => segment.getAttribute("stroke"))).size).toBe(3);
+	expect(screen.getByText("154")).toBeTruthy();
+});
+
 it.each([
 	["ja", "ご主人様のために、2件の購読のフォロワー増減・投稿・配信頻度を追跡していますよ。"],
 	["zh-TW", "女僕正在替主人追蹤 2 筆訂閱的粉絲增減、投稿與直播頻率喔。"],

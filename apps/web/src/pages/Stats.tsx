@@ -474,9 +474,8 @@ function ContentMix({
 		<div className="flex h-full flex-col justify-center gap-4">
 			<div className="flex items-center justify-center gap-5">
 				<Donut
-					value={dyn / total}
+					segments={parts.map(([, count, color]) => ({ value: count / total, color }))}
 					size={104}
-					color={PURPLE}
 					label={
 						<div className="text-center">
 							<div className="text-bn-xl font-bold text-bn-text-primary">{total}</div>
