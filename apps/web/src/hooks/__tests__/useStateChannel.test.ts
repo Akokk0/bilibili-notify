@@ -278,12 +278,16 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	 * —— 建 / 改 / 删连接各一处。前端整条没人接,于是别处(另一个标签页、私聊指令、拓展
 	 * 热装卸连带的清理)改了连接,这一页要等 staleTime 过去或切页才知道。
 	 */
-	it("config-changed scope=connections:仅 invalidate [connections]", () => {
+	it("config-changed scope=connections:连接、能力与目标状态一起过期", () => {
 		handleStateEnvelope(
 			env({ type: "state", event: "config-changed", data: { scope: "connections" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["connections"]]);
+		expect(keysOf(sc.invalidate)).toEqual([
+			["connections"],
+			["connection-capabilities"],
+			["target-status"],
+		]);
 	});
 
 	it("config-changed scope=secrets:不 invalidate(前端无对应 query)", () => {

@@ -31,6 +31,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { ChannelAddressPicker, SessionAddressPicker } from "../components/address-candidates";
 import { ConnectionAuthButton } from "../components/connection-auth";
+import { ConnectionCapabilitiesPanel } from "../components/connection-capabilities";
+import { DestinationStatusPanel } from "../components/destination-status";
 import { ExtensionSettingsButton } from "../components/extension-settings-button";
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { DescriptorIcon, useConnectionFace } from "../components/platform-meta";
@@ -182,6 +184,7 @@ interface TargetCardProps {
 	onTest: () => void;
 	testing: TestState | undefined;
 	readOnly?: boolean;
+	canQueryStatus?: boolean;
 }
 
 /** 左竖条色标的一行小状态(「上次推送/测试 OK · 12ms」)。三色查表,别在调用点拼 token 名。 */
@@ -233,6 +236,7 @@ function TargetCard({
 	onTest,
 	testing,
 	readOnly,
+	canQueryStatus = false,
 }: TargetCardProps) {
 	const tx = useT();
 	const connectionMissing = !connection;
@@ -270,6 +274,9 @@ function TargetCard({
 				</EdgeBadge>
 			) : null}
 
+			{target.kind === "session" && target.scope === "group" ? (
+				<DestinationStatusPanel target={target} connection={connection} canQuery={canQueryStatus} />
+			) : null}
 			<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
 				<span className="truncate">
 					{scopeLabel(target.kind === "session" ? target.scope : "channel")}
@@ -1618,6 +1625,8 @@ export default function Targets() {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["connections"] });
 			qc.invalidateQueries({ queryKey: ["targets"] });
+			qc.invalidateQueries({ queryKey: ["connection-capabilities"] });
+			qc.invalidateQueries({ queryKey: ["target-status"] });
 			// 🔴 bot 名单里的 `boundTo` 跟着连接走,而那条查询有 5 秒 staleTime:不作废它的话,
 			// 5 秒内再开一次弹窗读到的还是旧名单 —— 刚绑走的那个仍然「挑得动」,于是同一个
 			// bot 建出两条连接,每条推一遍。整个前缀一起失效:哪个拓展的名单变了这里说不准。
@@ -1759,6 +1768,9 @@ export default function Targets() {
 			setTesting((p) => ({ ...p, [a.id]: "fail" }));
 			const msg = err instanceof ApiError ? err.message : String(err);
 			showToast({ kind: "test-failed", message: msg }, false);
+		} finally {
+			qc.invalidateQueries({ queryKey: ["connection-capabilities"] });
+			qc.invalidateQueries({ queryKey: ["target-status"] });
 		}
 		window.setTimeout(() => {
 			setTesting((p) => {
@@ -2082,6 +2094,7 @@ export default function Targets() {
 										</Btn>
 									</div>
 								</div>
+								<ConnectionCapabilitiesPanel connection={selectedConnection} />
 							</section>
 
 							{/* Targets bound to this adapter。data-tour:导览「发送测试推送」一步聚这整卡 */}
@@ -2149,6 +2162,10 @@ export default function Targets() {
 												key={t.id}
 												target={t}
 												connection={connectionsById.get(t.connectionId)}
+												canQueryStatus={
+													adapters.find((entry) => entry.key === selectedConnection.adapterKey)?.has
+														.fetchDestinationStatus === true && selectedAbsent === undefined
+												}
 												onEdit={() => startEditTarget(t)}
 												onDelete={() => {
 													setDeleteError(null);

@@ -135,7 +135,11 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 	}
 	// 服务端建 / 改 / 删连接都发这一档(config/store.ts 三处);不接的话别处改了连接,
 	// 这一页要等 staleTime 过去或切页才知道。
-	else if (scope === "connections") qc.invalidateQueries({ queryKey: ["connections"] });
+	else if (scope === "connections") {
+		qc.invalidateQueries({ queryKey: ["connections"] });
+		qc.invalidateQueries({ queryKey: ["connection-capabilities"] });
+		qc.invalidateQueries({ queryKey: ["target-status"] });
+	}
 }
 
 /**
