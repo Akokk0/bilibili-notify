@@ -49,5 +49,5 @@
 	},
 	"api.private": "This creator’s Douyin account is private.",
 	"auth.prepareFailed": "Could not initialize the Douyin sign-in session. Please try again later.",
-	"marketplace.notes": "Sign in with a QR code, follow videos, photo posts and live streams, and preview links in group chats."
+	"marketplace.notes": "Failed account avatar downloads now retry automatically, without another QR sign-in."
 }
