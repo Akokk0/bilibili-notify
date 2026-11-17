@@ -1606,7 +1606,7 @@
 	"stats.videoViews.sourceUnsupported": "此来源不支持累计视频播放量采集。",
 	"stats.videoViews.sourceFailed": "来源未能返回累计视频播放量，请稍后重试。",
 	"stats.videoViews.cancelled": "累计视频播放量读取已取消。",
-	"adapters.capability.audioUnsupported": "BN 尚未接入语音发送",
+	"adapters.capability.audioUnsupported": "此适配器尚未接入语音发送",
 	"onebot.capability.markdownUnsupported": "BN 的 OneBot 发送链路使用普通文本",
 	"qqOfficial.capability.forwardUnsupported": "QQ 官方适配器没有接入合并转发",
 	"qqOfficial.capability.markdownUnsupported": "原生 Markdown 需要私域机器人及平台授权",
@@ -1622,5 +1622,15 @@
 	"targets.status.invalidGroup": "群地址必须是有效的群号",
 	"qqOfficial.capability.audioScope": "群聊和私聊支持 SILK 语音；频道暂不支持",
 	"qqOfficial.capability.markdownScope": "私域机器人的群聊和私聊支持原生 Markdown；需要平台授权",
-	"capabilityTests.audioSample": "[语音]"
+	"capabilityTests.audioSample": "[语音]",
+	"capabilityTests.confirmAtAll": "请先确认：本次会通知全体成员，并可能消耗平台当日额度。",
+	"capabilityTests.unsupported": "此连接不支持这项测试。",
+	"capabilityTests.noSample": "此适配器尚未提供这项能力的真实测试样例。",
+	"capabilityTests.groupOnly": "艾特全体仅用于群或频道，不能发送到私聊。",
+	"capabilityTests.inboundScope": "接收测试支持群聊和私聊，暂不支持频道或单向终点。",
+	"capabilityTests.inactive": "目标或连接已停用、离线或配置发生变化。",
+	"capabilityTests.tooMany": "进行中的接收测试过多，请稍后再试。",
+	"capabilityTests.replyPrompt": "[BN 接收测试] 请在当前会话内单独回复下面的测试码（90 秒内有效；群聊中如需艾特机器人，请艾特后回复）：\n{reply}",
+	"capabilityTests.interceptedInbound": "消息被开发截流，无法验证真实的接收链路。请关闭截流后再试。",
+	"capabilityTests.notFound": "此接收测试已取消或不存在。"
 }

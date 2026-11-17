@@ -1067,13 +1067,28 @@ export interface FollowersResponse {
 // ---- 测试推送类端点(/api/targets/:id/test /api/cards /api/ai) ---------------
 
 /**
- * `POST /api/targets/:id/test` 响应(目标 id 在路径里):试了一次、回报结果,**照旧回 200**,
+ * `POST /api/targets/:id/test` 的旧 kind 请求响应；capability 请求见 TargetTestResponse。
+ * 目标 id 在路径里，试了一次、回报结果，**照旧回 200**，
  * 体是 `Result<{ latencyMs }>` —— 送达了是 `{ ok: true, latencyMs }`,没送达是 `{ ok: false, code, message }`,
  * 面板读 `message` 显示。耗时只在成功那一支:没真发出去的失败不带一个假的 `latencyMs: 0`。
  *
  * 请求本身不成(体不对、没这个目标、引擎没起)是非 2xx 的 {@link ErrorResponse},不在这里。
  */
 export type TestResponse = Result<{ latencyMs: number }>;
+
+/** 短时接收测试的公开状态；不含用户消息与发言人。 */
+export interface TargetReceptionTest {
+	id: string;
+	state: "pending" | "received" | "expired" | "cancelled";
+	reply: string;
+	expiresAt: string;
+}
+
+export type TargetTestResponse = Result<{
+	latencyMs: number;
+	isSynthetic?: true;
+	reception?: TargetReceptionTest;
+}>;
 
 /**
  * `POST /api/connections/:id/probe` 响应:探一次连接通不通,形状同 {@link TestResponse}。

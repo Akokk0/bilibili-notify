@@ -71,6 +71,7 @@ import {
 	type HostTargetDispatcher,
 	type SendInterceptHandler,
 } from "../push/target-dispatcher.js";
+import { createTargetTester } from "../push/target-tester.js";
 import {
 	type RegisterBuiltinSourceOptions,
 	registerBuiltinSource,
@@ -200,6 +201,7 @@ export interface PipelineRuntime extends Disposable {
 	/** 这条连接所在平台的能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
 	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
 	fetchTargetStatus: HostTargetDispatcher["fetchTargetStatus"];
+	targetTests: ReturnType<typeof createTargetTester>;
 	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 dispatcher 的连接寻址。 */
 	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
 	/** 列这条连接上可挑的地址(只查 `scope` 那一种),转给派发器的 `listAddressCandidates`。 */
@@ -414,6 +416,10 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 			}
 		},
 	});
+	const targetTests = createTargetTester({ store: opts.configStore, dispatcher });
+	const testAdapterChanges = opts.adapters.onChange(() => targetTests.prune());
+	opts.serviceCtx.onDispose(() => testAdapterChanges.dispose(), "stop");
+	opts.serviceCtx.onDispose(() => targetTests.dispose(), "stop");
 
 	const masterTarget = (): PushTarget | undefined => {
 		const id = globals().master.targetId;
@@ -734,6 +740,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 
 	handles.push(
 		opts.bus.on("config-changed", ({ scope }) => {
+			if (scope === "connections" || scope === "targets") targetTests.prune();
 			if (scope === "connections") {
 				linkPolicies = linkPoliciesOf();
 				// 有状态 adapter(OneBot ws / ws-reverse)自己订了这一档、自己对账(登记即 `start(ctx)`,
@@ -862,6 +869,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	};
 	opts.serviceCtx.onDispose(dispose, "stop");
 	return {
+		targetTests,
 		registerSource: async (entry) => {
 			const registration = await registerBuiltinSource({
 				...entry,

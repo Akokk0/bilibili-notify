@@ -37,6 +37,7 @@ import { createQQAtAllUsage } from "./qq-at-all-usage.js";
 import { createQQConnectionAuth } from "./qq-bind.js";
 import type { QQOfficialConnectionSettings } from "./qq-official-settings.js";
 import { QQOfficialConnectionSettingsSchema } from "./qq-official-settings.js";
+import { commonTestPayload } from "./test-payload.js";
 import { upstreamMessage } from "./upstream-message.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
@@ -351,7 +352,7 @@ export function extractQQPrivateMessage(
 /**
  * 从群事件取正文。认两种:`GROUP_AT_MESSAGE_CREATE`(@ 了机器人)与 `GROUP_MESSAGE_CREATE`
  * (群主把消息范围放到「获取群内全部消息」后,不 @ 的消息走这个)。三档范围是 QQ 那边的
- * 设置,这里收到什么交什么。@ 消息的正文里可能带 `<@!id>` 与前导空格,原样交出。
+ * 设置。@ 机器人事件会附带前导 `<@!id>`，在集成内摘掉这一项；其余正文原样交出。
  *
  * 与 {@link extractQQPrivateMessage} 分开:那条是主人专属的指令入口,这条是谁都能触发的
  * 群消息,合起来写迟早有人把群那条也当私聊认。
@@ -375,7 +376,8 @@ function extractQQGroupMessage(
 	return {
 		address: groupOpenid,
 		senderId: typeof memberOpenid === "string" ? memberOpenid : "",
-		text: content,
+		text:
+			eventType === "GROUP_AT_MESSAGE_CREATE" ? content.replace(/^\s*<@!?\d+>\s*/, "") : content,
 		sharedLinks: [],
 	};
 }
@@ -1532,6 +1534,21 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 	return {
 		adapterKey: ADAPTER_KEY,
+		createTestPayload(connection, destination, kind, samples) {
+			if (!isMine(connection)) return fail("invalid", t("capabilityTests.unsupported"));
+			if (destination.kind !== "session")
+				return fail("unsupported", t("capabilityTests.unsupported"));
+			if (kind === "atAll" && destination.scope === "private")
+				return fail("unsupported", t("capabilityTests.groupOnly"));
+			if (kind === "audio" && destination.scope === "channel")
+				return fail("unsupported", t("qqOfficial.capability.audioScope"));
+			if (
+				kind === "markdown" &&
+				(connection.settings.botType !== "private" || destination.scope === "channel")
+			)
+				return fail("unsupported", t("qqOfficial.capability.markdownScope"));
+			return commonTestPayload(kind, samples);
+		},
 		settingsSchema: QQOfficialConnectionSettingsSchema,
 		connectionAuth: bindAuth.auth,
 		// 脸同平台表 `qq-official` 那一行(这个适配器只连这一个平台);连接配置项随 4-29 和表单一起设计。

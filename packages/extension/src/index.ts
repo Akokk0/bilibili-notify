@@ -90,10 +90,12 @@ export type {
 	PlatformAdapterContext,
 	PlatformAdapterDescriptor,
 	PlatformDescriptor,
+	PlatformTestOptions,
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,
 	Result,
+	SendTestKind,
 	SettingsField,
 	/** 规则上给人看的那几格(`.meta({...})`);官方拓展的构建照它导出清单里的设置项。 */
 	SettingsFieldMeta,

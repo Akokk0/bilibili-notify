@@ -308,6 +308,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
 | `settingsSchema` | 是 | 开 | 连接设置的 zod；与清单的 `settingsFields` 逐格对表（键、类型、默认值），对不上登记当场抛。官方拓展的 `settingsFields` 由构建从入口导出的 `connectionSettingsSchema` 导出（见「设置」） |
 | `start(ctx)` / `stop()` | 是 | 开 | 取代 `reconcile` / `dispose`；登记即 `start`，晚登记的也收得到 🔗 现状（10-27，R3）：`start` 已放宽为 `void \| Promise<void>`（与 `SourceDef.start` 对称），异步初始化可以写 `async start()`；拒了算登记失败，适配器不在册、这次加载失败 |
 | `send` | 是 | 开 | 返回结果形状、带标准码；只有 `TargetDispatcher` 调它 |
+| `createTestPayload(connection, destination, kind, samples)` | 否 | 开 | 构造逐项能力测试的真实载荷，由宿主统一发送；不在此方法发送。不支持时返回 `unsupported`，不能降级成文本冒充成功。宿主提供内置图片、SILK 语音与测试文字，旧适配器仍能测试普通文本（ADR-0055） |
 | `isAvailable` | 是 | 开 | |
 | `probe` | 是 | 开 | 宿主每分钟调一次，连续两次探不通算断；适配器自己不报通断（见「问题上报」） |
 | `listConnectionCandidates(signal)` | 是 | 开 | 原 `listBots`，见「新建连接」 |
@@ -320,7 +321,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
 
 ### 连接名单要不要管
 
-宿主每次调 `send` / `isAvailable` / `probe` / `capabilities` / `probeCapabilities` 时，都把那条连接递到手上；连接的 `settings` 已经按 `settingsSchema` 解好。`start(ctx)` 的上下文另有 `connections()`（此刻归这个适配器的连接，现读、别缓存）与 `onConnectionsChanged(fn)`。
+宿主每次调 `send` / `createTestPayload` / `isAvailable` / `probe` / `capabilities` / `probeCapabilities` 时，都把那条连接递到手上；连接的 `settings` 已经按 `settingsSchema` 解好。`start(ctx)` 的上下文另有 `connections()`（此刻归这个适配器的连接，现读、别缓存）与 `onConnectionsChanged(fn)`。
 
 **只调 HTTP 接口的适配器不用管连接名单**：每次照递进来的连接发即可，`start` 里不用读名单。样板（`adapter-send`）：
 

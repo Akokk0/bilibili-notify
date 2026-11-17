@@ -1264,6 +1264,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 处理一条入站消息是发出去不等的后台活(回指令、出卡片、落草稿都在里面),登记进 track:关停等它
 		// 收尾,各写道才关门。两个入口自己吞了大部分失败,这里再接一道 —— 以前这两条连 catch 都没有。
 		onInboundPrivate = (msg, meta) => {
+			if (readyPipeline.targetTests.receive("private", msg, meta)) return;
 			runtime.serviceCtx.track(
 				commandDispatcher.handleMessage(msg, meta).catch((err) => {
 					log.warn(logText("log.host.privateHandlerFailed"), { error: err });
@@ -1271,6 +1272,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			);
 		};
 		onInboundGroup = (msg, meta) => {
+			if (readyPipeline.targetTests.receive("group", msg, meta)) return;
 			runtime.serviceCtx.track(
 				linkPreviewer
 					.handleMessage({

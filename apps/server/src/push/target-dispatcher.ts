@@ -9,14 +9,22 @@ import type {
 	Failure,
 	Logger,
 	NotificationPayload,
+	PlatformTestOptions,
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,
 	Result,
+	SendTestKind,
 	SessionRef,
 	TargetDispatcher,
 } from "@bilibili-notify/internal";
-import { fail, isPrivateTarget, isTargetPaused, shouldSendAtAll } from "@bilibili-notify/internal";
+import {
+	fail,
+	isPrivateTarget,
+	isTargetPaused,
+	ok,
+	shouldSendAtAll,
+} from "@bilibili-notify/internal";
 import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
 import { logText, t as serverText } from "../i18n/index.js";
 import { findAdapter, resolveConnection } from "./dispatch.js";
@@ -64,6 +72,13 @@ export interface TargetDispatcherOptions {
 }
 
 export interface HostTargetDispatcher extends TargetDispatcher {
+	/** 单次能力测试，不重试；载荷由所属适配器构造，发送仍经过统一出口。 */
+	sendTest(
+		targetId: string,
+		kind: SendTestKind,
+		samples: PlatformTestOptions,
+		options?: { confirmAtAll?: boolean },
+	): Promise<DeliveryResult>;
 	fetchTargetStatus(
 		targetId: string,
 		signal: AbortSignal,
@@ -186,6 +201,51 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): HostTarge
 	}
 
 	return {
+		async sendTest(targetId, kind, samples, options) {
+			const target = findTarget(targetId);
+			if (!target) return fail("not_found", serverText("service.routes.targets.text.8"));
+			const route = routeOf(target.connectionId, undefined, (c) => refusal(target, c));
+			if (!route.ok) return route;
+			if (kind === "atAll" && options?.confirmAtAll !== true)
+				return fail("invalid", serverText("capabilityTests.confirmAtAll"));
+			if (kind !== "text") {
+				const support = capabilitiesOf(target.connectionId)?.[kind];
+				if (support?.state === "unsupported")
+					return fail("unsupported", support.reason ?? serverText("capabilityTests.unsupported"));
+			}
+			try {
+				const made =
+					route.adapter.createTestPayload?.(
+						route.connection,
+						destinationOf(target),
+						kind,
+						samples,
+					) ??
+					(kind === "text"
+						? ok<{ payload: NotificationPayload }>({
+								payload: { kind: "text", text: samples.text },
+							})
+						: fail("unsupported", serverText("capabilityTests.noSample")));
+				if (!made.ok) return made;
+				const result = await deliver(
+					route.connection,
+					route.adapter,
+					destinationOf(target),
+					target,
+					made.payload,
+				);
+				// 无法测试／未获权限不表示整个目标失联。
+				if (result.ok || result.code !== "unsupported")
+					opts.onDelivery?.(target, made.payload, result);
+				return result;
+			} catch (error) {
+				return thrown(error, {
+					operation: "createTestPayload",
+					targetId,
+					connectionId: target.connectionId,
+				});
+			}
+		},
 		async fetchTargetStatus(targetId, signal, options) {
 			const target = findTarget(targetId);
 			if (!target) return fail("not_found", serverText("service.routes.targets.text.8"));
@@ -372,7 +432,12 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): HostTarge
 	function thrown(
 		e: unknown,
 		details: {
-			operation: "send" | "probe" | "listAddressCandidates" | "fetchDestinationStatus";
+			operation:
+				| "send"
+				| "probe"
+				| "listAddressCandidates"
+				| "fetchDestinationStatus"
+				| "createTestPayload";
 			connectionId: string;
 			targetId?: string;
 		},

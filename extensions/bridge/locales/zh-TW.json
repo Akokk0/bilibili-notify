@@ -113,6 +113,6 @@
 	"error.unknownFrame": "未知訊框類型：{type}",
 	"capability.noForward": "橋接回報：這個 bot 不支援合併轉傳",
 	"capability.noMarkdown": "橋接回報：這個 bot 不支援 Markdown",
-	"capability.noAudio": "BN 尚未接入語音傳送",
+	"capability.noAudio": "橋接的語音傳送尚未接入 BN",
 	"capability.markdownUnconfirmed": "橋接未確認支援 Markdown，未傳送純文字替代品"
 }

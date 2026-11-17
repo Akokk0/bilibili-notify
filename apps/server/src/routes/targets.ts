@@ -1,5 +1,6 @@
 import type { DestinationStatusResponse, TestResponse } from "@bilibili-notify/contract";
 import { fail, issuesFromZod, type NotificationPayload } from "@bilibili-notify/internal";
+import { TARGET_TEST_KINDS } from "@bilibili-notify/internal/push-target";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
@@ -10,7 +11,7 @@ import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 
 /**
- * `/api/targets` — CRUD on the PushTarget[] list,外加 `POST /:id/test`(试一次推送)。
+ * `/api/targets` — CRUD、逐项能力发送及短时接收测试的查询／取消。
  *
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码
  * (不合规 `invalid` 400、没这一条 `not_found` 404、托管的不许动 `conflict` 409),路由按码回、不嗅文案。
@@ -25,8 +26,8 @@ import type { RouteDeps } from "./types.js";
  */
 
 /**
- * 测试推送的种类:四种特性键(`liveStart` / `post` / `superchat` / `membership`)各配一句样板,外加 `text`(只验通不通)。
- * 请求体只在这一处定义,面板的「测试」按钮发的都是缺省的 `text`。
+ * 兼容旧请求：四种特性键各配一句文本样板，外加 text。目标页的新弹窗改发 capability；
+ * 真实能力样例由适配器构造，经派发器单次发送，不把平台原生消息降级成文本。
  */
 const TestKindSchema = z.enum(["liveStart", "post", "superchat", "membership", "text"]);
 
@@ -34,6 +35,9 @@ const TestRequestSchema = z.object({
 	kind: TestKindSchema.default("text"),
 	text: z.string().optional(),
 });
+const CapabilityTestRequestSchema = z
+	.object({ capability: z.enum(TARGET_TEST_KINDS), confirmAtAll: z.boolean().optional() })
+	.strict();
 
 const TargetIdSchema = z.uuid();
 
@@ -125,7 +129,11 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 			);
 		}
 		const targetId = idCheck.data;
-		const parsed = TestRequestSchema.safeParse(await readOptionalJson(c));
+		const body = await readOptionalJson(c);
+		const parsed =
+			body && typeof body === "object" && "capability" in body
+				? CapabilityTestRequestSchema.safeParse(body)
+				: TestRequestSchema.safeParse(body);
 		if (!parsed.success) {
 			return respondFailure(
 				c,
@@ -141,13 +149,22 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 			);
 		}
 
-		const { kind, text } = parsed.data;
 		const pipeline = deps.runtime.pipeline;
 		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
 
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
 		if (!target)
 			return respondFailure(c, fail("not_found", serverText("service.routes.targets.text.8")));
+		if ("capability" in parsed.data) {
+			const result = await pipeline.targetTests.run(
+				targetId,
+				parsed.data.capability,
+				{ confirmAtAll: parsed.data.confirmAtAll },
+				c.req.raw.signal,
+			);
+			return c.json(result);
+		}
+		const { kind, text } = parsed.data;
 
 		const payload: NotificationPayload = {
 			kind: "text",
@@ -157,6 +174,29 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 		// pipeline use, so the test exercises real behaviour.
 		const result = await pipeline.push.sendToTarget(target.id, payload);
 		return c.json<TestResponse>(testResultOfDelivery(result));
+	});
+
+	app.get("/:id/test/:sessionId", (c) => {
+		if (
+			!TargetIdSchema.safeParse(c.req.param("id")).success ||
+			!TargetIdSchema.safeParse(c.req.param("sessionId")).success
+		)
+			return respondFailure(c, fail("invalid", serverText("service.routes.targets.text.6")));
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
+		const result = pipeline.targetTests.read(c.req.param("id"), c.req.param("sessionId"));
+		return result.ok ? c.json(result.test) : respondFailure(c, result);
+	});
+	app.delete("/:id/test/:sessionId", (c) => {
+		if (
+			!TargetIdSchema.safeParse(c.req.param("id")).success ||
+			!TargetIdSchema.safeParse(c.req.param("sessionId")).success
+		)
+			return respondFailure(c, fail("invalid", serverText("service.routes.targets.text.6")));
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", pipelineNotReadyMessage()));
+		pipeline.targetTests.cancel(c.req.param("id"), c.req.param("sessionId"));
+		return c.body(null, 204);
 	});
 
 	app.delete("/:id", async (c) => {

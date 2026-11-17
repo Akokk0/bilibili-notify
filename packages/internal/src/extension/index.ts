@@ -76,6 +76,7 @@ export type PlatformAdapterDef = Simplify<
 		| "stop"
 		| "isAvailable"
 		| "send"
+		| "createTestPayload"
 		| "capabilities"
 		| "probeCapabilities"
 		| "settingsSchema"

@@ -24,6 +24,7 @@ import { logText, t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { imageGroupUrls } from "./image-group.js";
 import { isWebhookPlatform, type WebhookPlatform } from "./platform-descriptors.js";
+import { commonTestPayload } from "./test-payload.js";
 import {
 	type WebhookConnectionSettings,
 	WebhookConnectionSettingsSchema,
@@ -84,6 +85,18 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 
 	return {
 		adapterKey: ADAPTER_KEY,
+		createTestPayload(connection, _destination, kind, samples) {
+			if (
+				kind !== "text" &&
+				(connection.platform !== "generic" ||
+					kind === "audio" ||
+					kind === "markdown" ||
+					kind === "nativeShare" ||
+					kind === "forward")
+			)
+				return fail("unsupported", t("webhook.capability.textOnly"));
+			return commonTestPayload(kind, samples);
+		},
 		settingsSchema: WebhookConnectionSettingsSchema,
 		// 一个适配器管飞书 / 钉钉 / 企微 / 通用四个平台,脸是「怎么连」的,不借哪个平台的;色同「通用」那档的板岩灰。
 		// 连接配置项随 4-29 和表单一起设计。
@@ -122,7 +135,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 					reason: t("adapters.capability.audioUnsupported"),
 					checkedAt: adapterStartedAt,
 				},
-				atAll: { state: "supported", checkedAt: adapterStartedAt },
+				atAll: delivery,
 				inbound: {
 					state: "unsupported",
 					reason: t("webhook.capability.inboundUnsupported"),
@@ -165,11 +178,9 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			if (payload.kind === "audio" || payload.kind === "markdown")
 				return fail(
 					"unsupported",
-					t(
-						payload.kind === "audio"
-							? "adapters.capability.audioUnsupported"
-							: "webhook.capability.textOnly",
-					),
+					payload.kind === "audio"
+						? t("adapters.capability.audioUnsupported")
+						: t("webhook.capability.textOnly"),
 				);
 			if (!isMine(connection) || destination.kind !== "endpoint") {
 				return fail(

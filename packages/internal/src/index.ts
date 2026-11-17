@@ -38,6 +38,7 @@ export {
 	type PlatformAdapter,
 	type PlatformAdapterContext,
 	type PlatformAdapterDescriptor,
+	type PlatformTestOptions,
 	type ProbeResult,
 } from "./push-source";
 export * from "./push-target";

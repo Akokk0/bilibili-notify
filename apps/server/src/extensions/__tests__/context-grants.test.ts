@@ -405,6 +405,9 @@ describe("按清单注册平台适配器", () => {
 			async send() {
 				return ok({ latencyMs: this.started });
 			}
+			createTestPayload() {
+				return ok({ payload: { kind: "text" as const, text: `started=${this.started}` } });
+			}
 			start() {
 				this.started += 1;
 			}
@@ -423,6 +426,19 @@ describe("按清单注册平台适配器", () => {
 		expect(inst.started).toBe(1);
 		const [registered] = h.adapters.list();
 		expect(await registered?.probe(connection())).toEqual({ ok: true, latencyMs: 1 });
+		expect(
+			registered?.createTestPayload?.(
+				connection(),
+				{ kind: "session", scope: "group", address: "123" },
+				"text",
+				{
+					text: "test",
+					image: { buffer: Buffer.from("image"), mime: "image/png" },
+					secondImage: { buffer: Buffer.from("image"), mime: "image/png" },
+					audio: { buffer: Buffer.from("audio"), mime: "audio/silk" },
+				},
+			),
+		).toEqual({ ok: true, payload: { kind: "text", text: "started=1" } });
 		await h.runtime.dispose();
 		expect(inst.stopped).toBe(1);
 	});

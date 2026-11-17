@@ -334,8 +334,21 @@ describe("createQQGatewayConn — 群消息正文(链接解析的入口)", () =>
 		expect(onInboundGroup).toHaveBeenCalledTimes(1);
 	});
 
-	// 「全部消息」档下 GROUP_MESSAGE_CREATE 是群里每一句话。它进发现表的话,面板那份
-	// 「最近优先」的列表会随人说话不停重排;入群与被 @ 两条路已经够让一个群露面。
+	it("群里艾特机器人回传测试码，平台的前导 mention 不混进正文", async () => {
+		const gw = await startFakeGateway();
+		const onInboundGroup = vi.fn();
+		const conn = createQQGatewayConn(connOpts(gw, { onInboundGroup }));
+		cleanups.push(() => conn.close());
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		gw.dispatch("GROUP_AT_MESSAGE_CREATE", {
+			group_openid: "G1",
+			author: { member_openid: "U1" },
+			content: "<@!12345> BN-abc123",
+		});
+		await waitFor(() => onInboundGroup.mock.calls.length > 0);
+		expect(onInboundGroup).toHaveBeenCalledWith(expect.objectContaining({ text: "BN-abc123" }));
+	});
+
 	it("GROUP_MESSAGE_CREATE 不进发现表 —— 普通群聊不该搅动面板的会话列表", async () => {
 		const gw = await startFakeGateway();
 		const onDiscovered = vi.fn();

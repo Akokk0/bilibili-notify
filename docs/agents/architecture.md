@@ -339,3 +339,5 @@ UiTextProvider/UiText 从 UI 包根导出,useUiText 仅内部使用,默认 packa
 
 
 🔗4-54出期（2026-11-06）：守卫21b的PARITY_ROWS为P01–P54，54条全部在进程内真实驱动，成员引用只能指向P行。N01/N05/N15分别由P52/P51/P53覆盖；N09服务端描述符在P50，规则显隐/提示与N14四页面在PANEL_COVERAGE逐项登记已启用的面板测试，由面板测试本身验证，不冒称进程内渲染。不存在仍等第4期的未拍项；历史54走通/2不开等数字保留作当时记录。B站替身、守卫11、uid、核心/面板.platform、推送词及import边界余格均0，写死中文放行名单外0，中文叫法70照原计划归第5期。迁移53/备份23不变。
+
+🔗2026-11-17 能力测试（ADR-0055）：PlatformAdapter 新增可选 createTestPayload，现15成员；SDK同步开放，宿主统一发送。七表共68行（driven39、elsewhere19、closed9、hostFilled1），新增成员由 context-grants 的 class 登记用例验证绑定与透传。接收测试会话由宿主管理，复用原入站入口，不建立额外事件通道。

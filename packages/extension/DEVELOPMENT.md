@@ -156,6 +156,8 @@ export function activate(ctx: ExtensionContext): void {
 
 推送适配器通过`ctx.registerPlatformAdapter`登记，并在清单声明`contributes.push`。自己的连接及入站能力由适配器`start`收到的上下文提供；适配器键由宿主填成拓展id。它与订阅来源是两套接口，具体使用`PlatformAdapterDef`及其公开注释。
 
+可选实现`createTestPayload(connection, destination, kind, samples)`，让推送目标页测试真实能力。使用宿主提供的图片、SILK语音和文字构造`NotificationPayload`，不在此方法发送；不支持时返回`unsupported`，不能发送纯文本替代品。省略此方法的旧适配器仍可测试普通文本。接收测试由宿主经既有入站入口核对短时测试码，适配器不用另开接口。明确的`audio`和`markdown`载荷不应降级为普通文本。
+
 ## 失败与译文
 
 可预期失败返回`fail(code, message)`，成功返回`ok(...)`。`code`使用SDK的标准失败码；上游自己的错误码放`upstreamCode`。超时、限流、凭据失效与确实不存在分别处理；不要把所有错误都变成“找不到”。发送结果不明用`indeterminate`，不能自动重发。

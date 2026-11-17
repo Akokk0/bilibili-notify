@@ -311,6 +311,69 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 
 	return {
 		reconcile,
+		createTestPayload(connection, destination, kind, samples) {
+			const resolved = resolve(connection, destination);
+			if (!resolved.ok) return resolved;
+			if (kind === "audio") return fail("unsupported", t("capability.noAudio"));
+			if (kind === "markdown" && resolved.bot.capabilities.markdown !== "supported")
+				return fail("unsupported", t("capability.markdownUnconfirmed"));
+			if (kind === "atAll" && resolved.destination.scope === "private")
+				return fail("unsupported", t("capability.atAllGroupOnly"));
+			switch (kind) {
+				case "text":
+					return ok<{ payload: NotificationPayload }>({
+						payload: { kind: "text", text: samples.text },
+					});
+				case "markdown":
+					return ok<{ payload: NotificationPayload }>({
+						payload: { kind: "markdown", text: `# BN\n\n**${samples.text}**\n\n- BN` },
+					});
+				case "atAll":
+					return ok<{ payload: NotificationPayload }>({
+						payload: {
+							kind: "composite",
+							segments: [{ kind: "at-all" }, { kind: "text", text: samples.text }],
+						},
+					});
+				case "image":
+					return ok<{ payload: NotificationPayload }>({
+						payload: { kind: "image", image: samples.image, caption: samples.text },
+					});
+				case "imageGroup":
+					return ok<{ payload: NotificationPayload }>({
+						payload: {
+							kind: "composite",
+							segments: [
+								{ kind: "image", ...samples.image },
+								{ kind: "image", ...samples.secondImage },
+							],
+						},
+					});
+				case "forward":
+					return ok<{ payload: NotificationPayload }>({
+						payload: {
+							kind: "image-group",
+							mergeForward: true,
+							images: [samples.image, samples.secondImage].map((image) => ({
+								url: `${resolved.session.origin}${blobPrefix}/${blobs.put(image.buffer, image.mime)}`,
+							})),
+						},
+					});
+				case "nativeShare":
+					return ok<{ payload: NotificationPayload }>({
+						payload: {
+							kind: "native-share",
+							appId: "1109937557",
+							title: samples.text,
+							description: "BN",
+							imageUrl:
+								"https://i2.hdslb.com/bfs/archive/1ada8c32a9d168e4b2ee3e010f24789ba3353785.jpg",
+							pagePath: "pages/video/video?bvid=BV17x411w7KC",
+							webUrl: "https://www.bilibili.com/video/BV17x411w7KC",
+						},
+					});
+			}
+		},
 
 		deliverInbound(session, frame) {
 			const ctx = adapterContext;

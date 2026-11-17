@@ -113,6 +113,6 @@
 	"error.unknownFrame": "不明なフレームの種類: {type}",
 	"capability.noForward": "ブリッジの報告では、この bot はまとめて転送に対応していません",
 	"capability.noMarkdown": "ブリッジの報告では、この bot は Markdown に対応していません",
-	"capability.noAudio": "BN は音声送信にまだ対応していません",
+	"capability.noAudio": "BN のブリッジ経由の音声送信は未対応です",
 	"capability.markdownUnconfirmed": "ブリッジで Markdown 対応を確認できないため、代替テキストは送信しません"
 }

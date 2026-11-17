@@ -21,6 +21,21 @@ export type PushTargetScope = (typeof PUSH_TARGET_SCOPES)[number];
 export const PUSH_TARGET_KINDS = ["session", "endpoint"] as const;
 export type PushTargetKind = (typeof PUSH_TARGET_KINDS)[number];
 
+/** 面板逐项测试的词表；`inbound` 需要回传，其他项目各发送一次真实样例。 */
+export const TARGET_TEST_KINDS = [
+	"text",
+	"atAll",
+	"nativeShare",
+	"image",
+	"imageGroup",
+	"forward",
+	"audio",
+	"markdown",
+	"inbound",
+] as const;
+export type TargetTestKind = (typeof TARGET_TEST_KINDS)[number];
+export type SendTestKind = Exclude<TargetTestKind, "inbound">;
+
 /**
  * 这个目标是不是一个私聊会话 —— 「主人目标只许指向私聊」(ADR-0021 决策 57)的唯一判据。
  * 服务端的保存闸、发送时复检、迁移和面板的下拉共用这一处;目标不存在算否。

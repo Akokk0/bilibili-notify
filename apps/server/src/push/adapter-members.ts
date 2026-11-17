@@ -14,6 +14,7 @@ const ADAPTER_MEMBERS = {
 	stop: true,
 	isAvailable: true,
 	send: true,
+	createTestPayload: true,
 	capabilities: true,
 	probeCapabilities: true,
 	fetchDestinationStatus: true,

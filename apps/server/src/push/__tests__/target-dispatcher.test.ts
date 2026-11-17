@@ -109,6 +109,40 @@ function makePlatformAdapter(
 }
 
 describe("createTargetDispatcher — adapter 注册表", () => {
+	it("能力测试使用适配器的真实载荷，并经过统一截流出口", async () => {
+		const adapter = makePlatformAdapter("onebot", {
+			createTestPayload: (_connection, _destination, _kind, sample) => ({
+				ok: true,
+				payload: { kind: "image", image: sample.image },
+			}),
+		});
+		const interceptSend = vi.fn(() => ({
+			ok: true as const,
+			latencyMs: 0,
+			isSynthetic: true as const,
+		}));
+		const dispatcher = createTargetDispatcher({
+			store: makeStore(
+				[makeConnection({ id: "a1", platform: "onebot" })],
+				[makeTarget({ id: "t1", connectionId: "a1", kind: "session", address: "123" })],
+			),
+			adapters: registryOf([adapter]),
+			logger: makeLogger(),
+			interceptSend,
+		});
+		const image = { buffer: Buffer.from("png"), mime: "image/png" };
+		const result = await dispatcher.sendTest("t1", "image", {
+			text: "test",
+			image,
+			secondImage: image,
+			audio: { buffer: Buffer.from("silk"), mime: "audio/silk" },
+		});
+		expect(result).toMatchObject({ ok: true, isSynthetic: true });
+		expect(interceptSend).toHaveBeenCalledWith(
+			expect.objectContaining({ payload: { kind: "image", image } }),
+		);
+		expect(adapter.send).not.toHaveBeenCalled();
+	});
 	it.each(["target", "connection", "private"] as const)(
 		"群状态的 %s 闸在请求上游前生效",
 		async (kind) => {

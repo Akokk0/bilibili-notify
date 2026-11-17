@@ -1618,7 +1618,7 @@
 	"stats.videoViews.sourceUnsupported": "This source does not support total video view collection.",
 	"stats.videoViews.sourceFailed": "The source could not return the total video view count. Try again later.",
 	"stats.videoViews.cancelled": "Reading the total video view count was cancelled.",
-	"adapters.capability.audioUnsupported": "BN has not implemented audio delivery",
+	"adapters.capability.audioUnsupported": "This adapter has not implemented audio delivery",
 	"onebot.capability.markdownUnsupported": "BN sends plain text through OneBot",
 	"qqOfficial.capability.forwardUnsupported": "The QQ official adapter does not implement merged forwards",
 	"qqOfficial.capability.markdownUnsupported": "Native Markdown requires a private bot with platform permission",
@@ -1634,5 +1634,15 @@
 	"targets.status.invalidGroup": "The group address must be a valid group number",
 	"qqOfficial.capability.audioScope": "SILK audio is supported in groups and direct messages, not channels",
 	"qqOfficial.capability.markdownScope": "Native Markdown supports private-bot groups and direct messages, with platform permission",
-	"capabilityTests.audioSample": "[Audio]"
+	"capabilityTests.audioSample": "[Audio]",
+	"capabilityTests.confirmAtAll": "Confirm first: this notifies all members and may use the daily allowance.",
+	"capabilityTests.unsupported": "This connection does not support this test.",
+	"capabilityTests.noSample": "This adapter has not provided a real sample for this capability.",
+	"capabilityTests.groupOnly": "Mention everyone is available in groups or channels, not direct messages.",
+	"capabilityTests.inboundScope": "Reception tests support groups and direct messages, not channels or one-way endpoints.",
+	"capabilityTests.inactive": "The target or connection is disabled, offline, or its configuration has changed.",
+	"capabilityTests.tooMany": "Too many reception tests are active. Try again later.",
+	"capabilityTests.replyPrompt": "[BN reception test] Reply in this conversation with only the code below within 90 seconds. In groups, mention the bot if required:\n{reply}",
+	"capabilityTests.interceptedInbound": "Development capture intercepted this message. Disable capture to test real reception.",
+	"capabilityTests.notFound": "This reception test was cancelled or does not exist."
 }

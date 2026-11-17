@@ -1606,7 +1606,7 @@
 	"stats.videoViews.sourceUnsupported": "此來源不支援累計影片播放次數的收集。",
 	"stats.videoViews.sourceFailed": "來源無法傳回累計影片播放次數，請稍後再試。",
 	"stats.videoViews.cancelled": "已取消讀取累計影片播放次數。",
-	"adapters.capability.audioUnsupported": "BN 尚未接入語音傳送",
+	"adapters.capability.audioUnsupported": "此適配器尚未接入語音傳送",
 	"onebot.capability.markdownUnsupported": "BN 的 OneBot 傳送流程使用純文字",
 	"qqOfficial.capability.forwardUnsupported": "QQ 官方適配器尚未接入合併轉傳",
 	"qqOfficial.capability.markdownUnsupported": "原生 Markdown 需要私域機器人及平台授權",
@@ -1622,5 +1622,15 @@
 	"targets.status.invalidGroup": "群組地址必須是有效的群號",
 	"qqOfficial.capability.audioScope": "群組和私訊支援 SILK 語音；頻道暫不支援",
 	"qqOfficial.capability.markdownScope": "私域機器人的群組和私訊支援原生 Markdown；需要平台授權",
-	"capabilityTests.audioSample": "[語音]"
+	"capabilityTests.audioSample": "[語音]",
+	"capabilityTests.confirmAtAll": "請先確認：本次會通知全體成員，並可能消耗平台當日額度。",
+	"capabilityTests.unsupported": "此連線不支援這項測試。",
+	"capabilityTests.noSample": "此適配器尚未提供這項能力的實際測試範例。",
+	"capabilityTests.groupOnly": "提及全體僅用於群組或頻道，不能傳送到私訊。",
+	"capabilityTests.inboundScope": "接收測試支援群組和私訊，暫不支援頻道或單向端點。",
+	"capabilityTests.inactive": "目標或連線已停用、離線或設定發生變更。",
+	"capabilityTests.tooMany": "進行中的接收測試過多，請稍後再試。",
+	"capabilityTests.replyPrompt": "[BN 接收測試] 請在目前對話內單獨回覆下面的測試碼（90 秒內有效；群組中如需提及機器人，請提及後回覆）：\n{reply}",
+	"capabilityTests.interceptedInbound": "訊息被開發攔截，無法驗證實際接收流程。請關閉攔截後再試。",
+	"capabilityTests.notFound": "此接收測試已取消或不存在。"
 }

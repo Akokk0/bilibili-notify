@@ -1606,7 +1606,7 @@
 	"stats.videoViews.sourceUnsupported": "このソースは動画の累計再生数の収集に対応していません。",
 	"stats.videoViews.sourceFailed": "ソースから動画の累計再生数を取得できませんでした。しばらくしてから再試行してください。",
 	"stats.videoViews.cancelled": "動画の累計再生数の取得をキャンセルしました。",
-	"adapters.capability.audioUnsupported": "BN は音声送信にまだ対応していません",
+	"adapters.capability.audioUnsupported": "このアダプターは音声送信にまだ対応していません",
 	"onebot.capability.markdownUnsupported": "BN の OneBot 送信はプレーンテキストです",
 	"qqOfficial.capability.forwardUnsupported": "QQ 公式アダプターはまとめて転送に対応していません",
 	"qqOfficial.capability.markdownUnsupported": "ネイティブ Markdown にはプライベートボットとプラットフォームの許可が必要です",
@@ -1622,5 +1622,15 @@
 	"targets.status.invalidGroup": "グループの宛先には有効なグループ番号を指定してください",
 	"qqOfficial.capability.audioScope": "グループと個別チャットで SILK 音声に対応。チャンネルは対象外です",
 	"qqOfficial.capability.markdownScope": "プライベートボットのグループと個別チャットでネイティブ Markdown に対応。プラットフォームの許可が必要です",
-	"capabilityTests.audioSample": "[音声]"
+	"capabilityTests.audioSample": "[音声]",
+	"capabilityTests.confirmAtAll": "全員に通知され、当日枠を消費する可能性があります。先に確認してください。",
+	"capabilityTests.unsupported": "この接続ではこのテストに対応していません。",
+	"capabilityTests.noSample": "このアダプターは、この機能のテストサンプルをまだ提供していません。",
+	"capabilityTests.groupOnly": "全員メンションはグループとチャンネル専用です。",
+	"capabilityTests.inboundScope": "受信テストはグループと個別チャットに対応しています。",
+	"capabilityTests.inactive": "送信先または接続が無効、オフライン、または設定変更されています。",
+	"capabilityTests.tooMany": "実行中の受信テストが多すぎます。しばらくしてから再試行してください。",
+	"capabilityTests.replyPrompt": "[BN 受信テスト] 90 秒以内にこの会話で、次のコードだけを返信してください。必要に応じてボットをメンションしてください：\n{reply}",
+	"capabilityTests.interceptedInbound": "開発用キャプチャが止めました。受信テストにはキャプチャを無効にしてください。",
+	"capabilityTests.notFound": "この受信テストは取り消されたか、存在しません。"
 }

@@ -98,6 +98,7 @@ describe("dashboard cookie auth", () => {
 		"/api/ext/not-installed/settings/invalid",
 		"/api/system/backup/preview",
 		"/api/targets/33333333-3333-4333-8333-333333333333/status",
+		"/api/targets/33333333-3333-4333-8333-333333333333/test/44444444-4444-4444-8444-444444444444",
 	])("read-only resource readers share cookie and desktop auth: %s", async (path) => {
 		const runtime = createAppRuntime(
 			makeBootstrap(dataDir),

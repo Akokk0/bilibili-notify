@@ -32,6 +32,7 @@ import { ONEBOT_FORWARD_MIN_TIMEOUT_MS, ONEBOT_IMAGE_MIN_TIMEOUT_MS } from "./on
 import { routeInboundFrame } from "./onebot-inbound.js";
 import type { OnebotConnectionSettings } from "./onebot-settings.js";
 import { OnebotConnectionSettingsSchema } from "./onebot-settings.js";
+import { commonTestPayload } from "./test-payload.js";
 import { upstreamMessage } from "./upstream-message.js";
 
 /**
@@ -1441,6 +1442,34 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 	return {
 		adapterKey: ADAPTER_KEY,
+		createTestPayload(_connection, destination, kind, samples) {
+			if (kind === "atAll" && (destination.kind !== "session" || destination.scope === "private"))
+				return fail("unsupported", t("capabilityTests.groupOnly"));
+			if (kind === "forward")
+				return ok<{ payload: NotificationPayload }>({
+					payload: {
+						kind: "image-group",
+						mergeForward: true,
+						images: [samples.image, samples.secondImage].map((image) => ({
+							url: bufferToBase64Uri(image.buffer),
+						})),
+					},
+				});
+			if (kind === "nativeShare")
+				return ok<{ payload: NotificationPayload }>({
+					payload: {
+						kind: "native-share",
+						appId: "1109937557",
+						title: samples.text,
+						description: "BN",
+						imageUrl:
+							"https://i2.hdslb.com/bfs/archive/1ada8c32a9d168e4b2ee3e010f24789ba3353785.jpg",
+						pagePath: "pages/video/video?bvid=BV17x411w7KC",
+						webUrl: "https://www.bilibili.com/video/BV17x411w7KC",
+					},
+				});
+			return commonTestPayload(kind, samples);
+		},
 		settingsSchema: OnebotConnectionSettingsSchema,
 		// 脸同平台表 `onebot` 那一行(这个适配器只连这一个平台);连接配置项随 4-29 和表单一起设计。
 		descriptor() {

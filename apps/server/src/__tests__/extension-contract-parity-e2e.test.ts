@@ -338,6 +338,11 @@ const ADAPTER_ROWS = {
 	stop: driven(TITLE.lifecycle),
 	isAvailable: driven(TITLE.sendAndAvailable),
 	send: driven(TITLE.sendAndAvailable),
+	createTestPayload: {
+		state: "elsewhere",
+		file: CONTEXT_GRANTS_TEST,
+		it: "class 写的平台适配器:方法与 settingsSchema 都 bind 回实例",
+	},
 	capabilities: driven(TITLE.capabilities),
 	probeCapabilities: driven(TITLE.probe),
 	settingsSchema: driven(TITLE.settingsAndCandidates),
@@ -1611,15 +1616,15 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			expect(size("Source")).toBe(11);
 			expect(size("SubscriptionCell")).toBe(13);
 			expect(size("SourceContext")).toBe(7);
-			expect(size("PlatformAdapter")).toBe(14);
+			expect(size("PlatformAdapter")).toBe(15);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
 			expect(size("IntegrationContext")).toBe(14);
-			expect(entries).toHaveLength(67);
+			expect(entries).toHaveLength(68);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 本文件驱动39行，另有18行由引用测试管着（含auth、featureHints、displayIdNoun）；不开9行，宿主填1行。
+			// 本文件驱动39行，另有19行由引用测试管着（含auth、featureHints、displayIdNoun）；不开9行，宿主填1行。
 			expect(of("driven")).toHaveLength(39);
-			expect(of("elsewhere")).toHaveLength(18);
+			expect(of("elsewhere")).toHaveLength(19);
 			expect(of("closed")).toHaveLength(9);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(

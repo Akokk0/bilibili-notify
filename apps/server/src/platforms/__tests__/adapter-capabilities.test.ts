@@ -79,7 +79,7 @@ describe("内置适配器的 atAll / inbound 回答", () => {
 			image: { state: "supported" },
 			imageGroup: { state: "supported" },
 			forward: { state: "supported" },
-			audio: { state: "unsupported" },
+			audio: { state: "supported" },
 			markdown: { state: "unsupported" },
 		});
 	});
@@ -112,7 +112,7 @@ describe("内置适配器的 atAll / inbound 回答", () => {
 			image: { state: "supported" },
 			imageGroup: { state: "supported" },
 			forward: { state: "unsupported" },
-			audio: { state: "unsupported" },
+			audio: { state: "supported" },
 			markdown: { state: botType === "private" ? "supported" : "unsupported" },
 		});
 	});
@@ -134,14 +134,13 @@ describe("内置适配器的 atAll / inbound 回答", () => {
 		});
 	});
 
-	it("webhook:atAll 支持、inbound 不支持(原因是没有回程)、nativeShare 不支持", () => {
+	it("webhook:纯文本方言不冒充原生艾特全体，通用接收端保持未知", () => {
 		const adapter = createWebhookAdapter({ logger: makeLogger() });
 		expect(adapter.descriptor().icon).toBe("link");
-		// 四个 webhook 平台共用这一个适配器 —— 回答不看平台,四档都得一样。
+		// 通用接收端由接收方决定如何呈现；纯文本方言不能用字面文字冒充艾特。
 		for (const platform of ["feishu", "dingtalk", "wecom", "generic"]) {
 			const caps = capsOf(adapter, platform);
-			expect(caps.atAll.state).toBe("supported");
-			if (caps.atAll.state === "supported") expectUtcIso(caps.atAll.checkedAt);
+			expect(caps.atAll.state).toBe(platform === "generic" ? "unknown" : "unsupported");
 			expect(caps.inbound).toMatchObject({
 				state: "unsupported",
 				reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",

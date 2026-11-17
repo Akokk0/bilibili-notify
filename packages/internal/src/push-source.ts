@@ -33,6 +33,14 @@ import type { ConnectionSettingsField } from "./settings-field";
  */
 export type ProbeResult = Result<{ latencyMs: number }>;
 
+/** 宿主提供的自包含测试素材。适配器只编载荷；真正发送仍由 TargetDispatcher 调 send。 */
+export interface PlatformTestOptions {
+	text: string;
+	image: { buffer: Buffer; mime: string };
+	secondImage: { buffer: Buffer; mime: string };
+	audio: { buffer: Buffer; mime: "audio/silk" };
+}
+
 /**
  * 一个平台实现 —— 认领哪些连接、怎么建连、报文怎么编、地址怎么解、有什么能力。
  * 矩阵({@link TargetDispatcher})拿它按连接的 `adapterKey` 找。
@@ -98,6 +106,13 @@ export interface PlatformAdapter {
 		destination: DestinationRef,
 		payload: NotificationPayload,
 	): Promise<DeliveryResult>;
+	/** 构造对应能力的真实样例；不支持时拒绝，不用文本替代。没有此成员的旧适配器仍可测试普通文本。 */
+	createTestPayload?(
+		connection: Connection,
+		destination: DestinationRef,
+		kind: import("./push-target").SendTestKind,
+		samples: PlatformTestOptions,
+	): Result<{ payload: NotificationPayload }>;
 	/**
 	 * 这条连接的能力(三态;探测结果读缓存,同步读、不打网络)。内置适配器都实现;没实现的
 	 * (老的拓展适配器)各项按「还不知道」算,怎么对待「还不知道」见 internal 的
