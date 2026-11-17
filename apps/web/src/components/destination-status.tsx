@@ -65,52 +65,54 @@ export function DestinationStatusPanel({
 	return (
 		<section
 			aria-label={t("targets.status.region", { name })}
-			className="my-3 rounded-bn-sm bg-bn-code-bg/60 px-3 py-2.5"
+			aria-busy={query.isFetching}
+			className="mt-3 border-t border-bn-border/60 pt-3"
 		>
-			<div className="mb-2 flex items-center justify-between gap-2">
-				<h4 className="text-bn-xs font-semibold text-bn-text-secondary">
-					{t("targets.status.title")}
-				</h4>
+			<h4 className="sr-only">{t("targets.status.title")}</h4>
+			<div className="flex items-start gap-2">
+				<dl className="m-0 grid min-h-11 min-w-0 flex-1 grid-cols-2 gap-x-3 gap-y-2 text-bn-xs">
+					<div className="min-w-0">
+						<dt className="mb-1 text-bn-2xs text-bn-text-tertiary">
+							{query.isError && role?.state === "known"
+								? t("targets.status.lastConfirmed")
+								: t("targets.status.role")}
+						</dt>
+						<dd
+							className="m-0 flex items-center gap-1.5 font-semibold text-bn-text-primary"
+							title={role?.state === "known" ? role.checkedAt : role?.reason}
+						>
+							<StatusDot kind={role?.state === "known" ? "ok" : "pending"} size="sm" />
+							{roleLabel}
+						</dd>
+					</div>
+					{usage ? (
+						<div className="min-w-0">
+							<dt className="mb-1 text-bn-2xs text-bn-text-tertiary">
+								{query.isError
+									? t("targets.status.lastUsage", { date: usage.date })
+									: t("targets.status.atAllUsage")}
+							</dt>
+							<dd className="m-0 font-semibold leading-relaxed text-bn-text-primary">
+								{usageLabel}
+							</dd>
+						</div>
+					) : null}
+				</dl>
 				<Btn
 					size="sm"
 					variant="ghost"
 					icon={<Icon.refresh size={12} />}
 					disabled={!enabled || query.isFetching}
 					aria-label={t("targets.status.refreshFor", { name })}
+					title={query.isFetching ? t("targets.status.refreshing") : t("targets.status.refresh")}
 					onClick={() => {
 						force.current = true;
 						void query.refetch();
 					}}
 				>
-					{query.isFetching ? t("targets.status.refreshing") : t("targets.status.refresh")}
+					{null}
 				</Btn>
 			</div>
-			<dl className="grid min-h-10 grid-cols-2 gap-x-4 gap-y-2 text-bn-xs">
-				<div>
-					<dt className="mb-1 text-bn-text-tertiary">
-						{query.isError && role?.state === "known"
-							? t("targets.status.lastConfirmed")
-							: t("targets.status.role")}
-					</dt>
-					<dd
-						className="m-0 flex items-center gap-1.5 font-semibold text-bn-text-primary"
-						title={role?.state === "known" ? role.checkedAt : role?.reason}
-					>
-						<StatusDot kind={role?.state === "known" ? "ok" : "pending"} size="sm" />
-						{roleLabel}
-					</dd>
-				</div>
-				{usage ? (
-					<div>
-						<dt className="mb-1 text-bn-text-tertiary">
-							{query.isError
-								? t("targets.status.lastUsage", { date: usage.date })
-								: t("targets.status.atAllUsage")}
-						</dt>
-						<dd className="m-0 font-semibold text-bn-text-primary">{usageLabel}</dd>
-					</div>
-				) : null}
-			</dl>
 			{usage ? (
 				<p className="mb-0 mt-2 text-bn-2xs leading-relaxed text-bn-text-tertiary">
 					{t("targets.status.usageHint")}

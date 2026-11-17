@@ -228,6 +228,9 @@ function EdgeBadge({
 	);
 }
 
+const TARGET_CARD_GRID =
+	"grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] items-start gap-3";
+
 function TargetCard({
 	target,
 	connection,
@@ -242,58 +245,67 @@ function TargetCard({
 	const connectionMissing = !connection;
 	const status = targetStatusFor(target);
 	const reachability = targetReachabilityOf(target);
+	const address = targetSessionSummary(target, connection?.platformSnapshot);
 
 	return (
-		<div
-			className="rounded-bn-sm border bg-bn-surface p-3.5 transition-[border-color] duration-200"
-			style={{
-				borderColor: connectionMissing ? "var(--color-bn-danger-border)" : "var(--color-bn-border)",
-			}}
+		<article
+			aria-label={target.name || target.id}
+			className={`flex min-w-0 flex-col overflow-hidden rounded-bn-card border bg-bn-surface ${connectionMissing ? "border-bn-danger-border" : "border-bn-border"}`}
 		>
-			<div className="mb-2.5 flex items-center gap-2.5">
-				<div className="min-w-0 flex-1">
-					<div className="truncate text-bn-base font-bold text-bn-text-primary">
+			<div className="p-4">
+				<div className="flex items-start justify-between gap-3">
+					<div className="min-w-0 text-bn-base text-bn-text-primary">
 						<TargetLabel target={target} connections={connection ? [connection] : []} />
 					</div>
-					<div className="truncate font-mono text-bn-xs text-bn-text-tertiary">
-						{targetSessionSummary(target, connection?.platformSnapshot)}
+					<div className="flex shrink-0 items-center gap-1.5 pt-0.5 text-bn-2xs text-bn-text-tertiary">
+						<StatusDot kind={status} size="sm" />
+						{scopeLabel(target.kind === "session" ? target.scope : "channel")}
 					</div>
 				</div>
-				<StatusDot kind={status} />
+				<div className="mt-3 truncate font-mono text-bn-2xs text-bn-text-tertiary" title={address}>
+					{address}
+				</div>
+				{reachability.status !== "pending" ? (
+					<div
+						className={`mt-2 flex items-center gap-1.5 text-bn-2xs leading-relaxed ${reachability.status === "ok" ? "text-bn-success-text" : "text-bn-danger-text"}`}
+					>
+						<StatusDot kind={reachability.status} size="sm" />
+						<span className="min-w-0 break-words">
+							{reachability.status === "ok"
+								? tx("targets.targetCard.text2", {
+										value0: reachability.latencyMs != null ? ` · ${reachability.latencyMs}ms` : "",
+									})
+								: tx("targets.targetCard.text3", {
+										value0: reachability.message ? ` — ${reachability.message}` : "",
+									})}
+						</span>
+					</div>
+				) : null}
+
+				{target.kind === "session" && target.scope === "group" ? (
+					<DestinationStatusPanel
+						target={target}
+						connection={connection}
+						canQuery={canQueryStatus}
+					/>
+				) : null}
 			</div>
-
-			{reachability.status !== "pending" ? (
-				<EdgeBadge tone={reachability.status === "ok" ? "success" : "danger"} className="mb-2">
-					{reachability.status === "ok"
-						? tx("targets.targetCard.text2", {
-								value0: reachability.latencyMs != null ? ` · ${reachability.latencyMs}ms` : "",
-							})
-						: tx("targets.targetCard.text3", {
-								value0: reachability.message ? ` — ${reachability.message}` : "",
-							})}
-				</EdgeBadge>
-			) : null}
-
-			{target.kind === "session" && target.scope === "group" ? (
-				<DestinationStatusPanel target={target} connection={connection} canQuery={canQueryStatus} />
-			) : null}
-			<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
-				<span className="truncate">
-					{scopeLabel(target.kind === "session" ? target.scope : "channel")}
+			<div className="mt-auto flex min-h-12 items-center justify-between gap-2 border-t border-bn-border/60 px-3 py-2">
+				<span className="min-w-0 text-bn-2xs text-bn-text-tertiary">
 					{connectionMissing && (
-						<span className="ml-1.5 text-bn-danger-text">{tx("targets.targetCard.text4")}</span>
+						<span className="text-bn-danger-text">{tx("targets.targetCard.text4")}</span>
 					)}
 					{target.enabled ? null : (
 						<span className="ml-1.5 text-bn-text-tertiary">{tx("targets.targetCard.text6")}</span>
 					)}
 				</span>
-				<div className="flex shrink-0 gap-1">
+				<div className="flex shrink-0 items-center gap-1">
 					{/* 导览「发送测试推送」的控件级灯位 —— 只挂在**还没测通**的行上,
 					    待测的每一行一起亮(同名实例=等价入口) */}
 					<Btn
 						data-tour={reachability.status === "ok" ? undefined : "target-test"}
 						size="sm"
-						variant="ghost"
+						variant="outline"
 						onClick={onTest}
 						disabled={testing === "pending" || !target.enabled || connectionMissing}
 						title={tx("targets.targetCard.text7")}
@@ -319,7 +331,7 @@ function TargetCard({
 							</Btn>
 							<Btn
 								size="sm"
-								variant="ghost"
+								variant="danger"
 								onClick={onDelete}
 								title={tx("targets.targetCard.text13")}
 								icon={<Icon.trash size={11} />}
@@ -330,7 +342,7 @@ function TargetCard({
 					)}
 				</div>
 			</div>
-		</div>
+		</article>
 	);
 }
 
@@ -2129,7 +2141,7 @@ export default function Targets() {
 											{tx("targets.targets.text31")}
 										</div>
 										{selectedManagedEndpointTarget ? (
-											<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+											<div className={TARGET_CARD_GRID}>
 												<TargetCard
 													target={selectedManagedEndpointTarget}
 													connection={selectedConnection}
@@ -2145,18 +2157,20 @@ export default function Targets() {
 										)}
 									</div>
 								) : selectedTargets.length === 0 ? (
-									<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+									<div className={TARGET_CARD_GRID}>
 										{/* 与右上「+ 新建推送目标」同名挂点 —— 等价入口,聚光灯一起亮 */}
-										<AddCard
-											data-tour="target-add"
-											label={tx("targets.targetEditorModal.text1")}
-											hint={tx("targets.targets.text33")}
-											className="min-h-22"
-											onClick={() => startNewTarget(selectedConnection)}
-										/>
+										<div className="h-36">
+											<AddCard
+												data-tour="target-add"
+												className="w-full"
+												label={tx("targets.targetEditorModal.text1")}
+												hint={tx("targets.targets.text33")}
+												onClick={() => startNewTarget(selectedConnection)}
+											/>
+										</div>
 									</div>
 								) : (
-									<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+									<div className={TARGET_CARD_GRID}>
 										{selectedTargets.map((t) => (
 											<TargetCard
 												key={t.id}
@@ -2176,12 +2190,14 @@ export default function Targets() {
 												readOnly={t.managedBy === "connection"}
 											/>
 										))}
-										<AddCard
-											label={tx("targets.targetEditorModal.text1")}
-											hint={tx("targets.targets.text33")}
-											className="min-h-22"
-											onClick={() => startNewTarget(selectedConnection)}
-										/>
+										<div className="h-36">
+											<AddCard
+												className="w-full"
+												label={tx("targets.targetEditorModal.text1")}
+												hint={tx("targets.targets.text33")}
+												onClick={() => startNewTarget(selectedConnection)}
+											/>
+										</div>
 									</div>
 								)}
 							</div>

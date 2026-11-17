@@ -35,7 +35,7 @@ export function ConnectionCapabilitiesPanel({ connection }: { connection: Connec
 				<h3 className="text-bn-xs font-semibold text-bn-text-secondary">
 					{t("targets.capabilities.title")}
 				</h3>
-				<div className="flex flex-wrap gap-3" aria-hidden="true">
+				<div className="flex flex-wrap items-center gap-3" aria-hidden="true">
 					<TriStateChip label={texts.supported} state="supported" />
 					<TriStateChip label={texts.unsupported} state="unsupported" />
 					<TriStateChip label={texts.unknown} state="unknown" />
@@ -44,7 +44,7 @@ export function ConnectionCapabilitiesPanel({ connection }: { connection: Connec
 			<ul
 				aria-label={t("targets.capabilities.title")}
 				aria-busy={query.isFetching}
-				className="m-0 flex list-none flex-wrap gap-x-5 gap-y-3 p-0"
+				className="m-0 grid list-none grid-cols-1 gap-2 p-0 @min-[18rem]/connection-header:grid-cols-2 @min-[35rem]/connection-header:grid-cols-4 @min-[70rem]/connection-header:grid-cols-8"
 			>
 				{items.map(([key, label]) => {
 					const support: CapabilitySupport | undefined = caps?.[key];
@@ -55,6 +55,7 @@ export function ConnectionCapabilitiesPanel({ connection }: { connection: Connec
 					return (
 						<li
 							key={key}
+							className="flex min-h-9 items-center rounded-bn-xs bg-bn-surface-muted/60 px-2.5 py-2"
 							aria-label={`${label}：${texts[state]}`}
 							aria-description={support && "reason" in support ? support.reason : undefined}
 						>

@@ -62,6 +62,7 @@ beforeEach(() => {
 		const candidates = builtinCandidatesResponse(url);
 		if (candidates) return candidates;
 		if (url === "/api/connections") return [connection];
+		if (url.startsWith(`/api/connections/${CONNECTION_ID}/addresses?`)) return { candidates: [] };
 		if (url === "/api/targets") return [group, personal];
 		if (url === "/api/connections/capabilities") return { [CONNECTION_ID]: capabilities };
 		if (url === `/api/targets/${GROUP_ID}/status`)
@@ -111,6 +112,18 @@ it("机器人能力属于连接,群内身份与用量属于群目标,私聊不�
 		`/api/targets/${PRIVATE_ID}/status`,
 	);
 	expect(api.post).not.toHaveBeenCalled();
+});
+
+it("目标小卡独立命名,状态和配置操作始终归属对应目标", async () => {
+	renderPage();
+	const groupCard = await screen.findByRole("article", { name: "群甲" });
+	const privateCard = screen.getByRole("article", { name: "私聊甲" });
+	expect(await within(groupCard).findByText("管理员")).toBeTruthy();
+	expect(within(privateCard).queryByRole("region")).toBeNull();
+	fireEvent.click(within(privateCard).getByRole("button", { name: "配置" }));
+	expect(await screen.findByDisplayValue("私聊甲")).toBeTruthy();
+	expect(api.post).not.toHaveBeenCalled();
+	expect(api.patch).not.toHaveBeenCalled();
 });
 
 it("群内状态失败显示未知,刷新只读并在成功后显示真实记录", async () => {
