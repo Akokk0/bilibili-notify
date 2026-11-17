@@ -387,26 +387,6 @@ describe("系统页里的保留天数", () => {
 	});
 });
 
-describe("系统运行区的统计开关", () => {
-	it.each([true, false])("读取enabled=%s，改动可放弃，保存只提交统计块", async (enabled) => {
-		await renderRuntimeSection({ ...GLOBALS, core: { ...GLOBALS.core, stats: { enabled } } });
-		const toggle = screen.getByRole("button", { name: "统计记录" });
-		expect(toggle.getAttribute("aria-pressed")).toBe(String(enabled));
-		fireEvent.click(toggle);
-		expect(toggle.getAttribute("aria-pressed")).toBe(String(!enabled));
-		act(() => useDraftStore.getState().current?.onDiscard());
-		expect(toggle.getAttribute("aria-pressed")).toBe(String(enabled));
-		expect(api.patch).not.toHaveBeenCalled();
-		fireEvent.click(toggle);
-		await waitFor(() =>
-			expect(useDraftStore.getState().current?.diff.map((item) => item.code)).toContain(
-				"core.stats.enabled",
-			),
-		);
-		expect(await save()).toEqual({ core: { stats: { enabled: !enabled } } });
-	});
-});
-
 describe("isolated settings on the System page", () => {
 	it("shows original non-secret values and every reason, while secret cells have no value view", async () => {
 		await renderRuntimeSection(GLOBALS, DEFINITIONS, [

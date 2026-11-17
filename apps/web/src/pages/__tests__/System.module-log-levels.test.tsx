@@ -180,6 +180,12 @@ afterEach(() => {
 });
 
 describe("系统页的按模块日志等级", () => {
+	it("运行设置保留内存自检,不再重复提供统计记录开关", async () => {
+		mockApi({});
+		await renderRuntimeSection();
+		expect(screen.getByRole("button", { name: "内存自检打印" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "统计记录" })).toBeNull();
+	});
 	it("图片地址段可逐行编辑,快捷填入保留已有范围且不重复添加", async () => {
 		mockApi({});
 		await renderRuntimeSection();
