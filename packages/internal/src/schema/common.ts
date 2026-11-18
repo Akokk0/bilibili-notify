@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { AI_PROVIDER_IDS, API_FLAVOR_IDS, THINKING_LEVELS, WEB_SEARCH_BACKEND_IDS } from "../ai";
+import {
+	AI_PROVIDER_IDS,
+	API_FLAVOR_IDS,
+	DEEPSEEK_SPEECH_VOICES,
+	SPEECH_PROVIDER_IDS,
+	THINKING_LEVELS,
+	WEB_SEARCH_BACKEND_IDS,
+} from "../ai";
 import { extrasRecord, FEATURE_KEYS, featuresRecord } from "../features";
 import { packageText } from "../texts/index";
 import { checkUserRegex } from "../util/regex-safety";
@@ -322,6 +329,7 @@ export type AiProviderProfile = z.infer<typeof AiProviderProfileSchema>;
 const speechMode = z.enum(["text", "both", "voice"]);
 const speechUrl = z.url({ protocol: /^https?$/ });
 const speechSettings = z.object({
+	provider: z.enum(SPEECH_PROVIDER_IDS).optional(),
 	baseUrl: markBackupOnly(
 		z.string().refine((url) => url === "" || speechUrl.safeParse(url).success),
 		{
@@ -331,6 +339,8 @@ const speechSettings = z.object({
 	apiKey: markSecret(z.string()).default(""),
 	model: z.string().trim().default(""),
 	voice: z.string().trim().default(""),
+	deepseekApiKey: markSecret(z.string()).optional(),
+	deepseekVoice: z.enum(DEEPSEEK_SPEECH_VOICES).optional(),
 	mode: speechMode.default("text"),
 	byTarget: z.record(z.uuid(), speechMode).default({}),
 });

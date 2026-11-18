@@ -19,6 +19,9 @@
  */
 
 import type { GlobalSettings } from "@bilibili-notify/internal";
+import type { ConfigSecrets } from "./secret-store.js";
+
+type SpeechSecrets = Pick<ConfigSecrets, "speechApiKey" | "deepseekSpeechApiKey">;
 
 /** 视觉副模型那把 key 在袋子里的后缀。 */
 const VISION_SUFFIX = ":vision";
@@ -90,7 +93,7 @@ export function stripAiSecrets(g: GlobalSettings): GlobalSettings {
 		g,
 		() => "",
 		() => "",
-		"",
+		{},
 	);
 }
 
@@ -103,13 +106,13 @@ export function stripAiSecrets(g: GlobalSettings): GlobalSettings {
 export function applyAiSecrets(
 	g: GlobalSettings,
 	bag: Record<string, string>,
-	speechApiKey = "",
+	speechSecrets: SpeechSecrets = {},
 ): GlobalSettings {
 	return mapAiSecrets(
 		g,
 		(id, vision) => bag[aiSecretKey(id, vision)] ?? "",
 		(backend) => bag[searchSecretKey(backend)] ?? "",
-		speechApiKey,
+		speechSecrets,
 	);
 }
 
@@ -121,7 +124,7 @@ function mapAiSecrets(
 	g: GlobalSettings,
 	next: (profileId: string, vision: boolean) => string,
 	nextSearch: (backend: string) => string,
-	speechApiKey: string,
+	speechSecrets: SpeechSecrets,
 ): GlobalSettings {
 	// 生产里的调用方只有配置仓(store.ts):`applyAiSecrets` 在 `hydrateSecrets` 里、`stripAiSecrets` 在落盘前,
 	// 递进来的都是读盘 / 内存里已过 schema 的 globals。备份恢复(assemble.ts 的 openFullBackup)并不经过这里,
@@ -137,7 +140,17 @@ function mapAiSecrets(
 		...g,
 		ai: {
 			...ai,
-			...(ai.speech ? { speech: { ...ai.speech, apiKey: speechApiKey } } : {}),
+			...(ai.speech
+				? {
+						speech: {
+							...ai.speech,
+							apiKey: speechSecrets.speechApiKey ?? "",
+							...(ai.speech.deepseekApiKey !== undefined
+								? { deepseekApiKey: speechSecrets.deepseekSpeechApiKey ?? "" }
+								: {}),
+						},
+					}
+				: {}),
 			...(providers
 				? {
 						providers: Object.fromEntries(

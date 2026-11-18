@@ -1,5 +1,5 @@
 {
-	"deepseek.speechEndpoint": "支持 OpenAI 兼容服务。使用 DeepSeek 时填写 https://api.deepseek.com，然后选择声线。",
+	"speech.customEndpoint": "填写 OpenAI 兼容语音合成服务的 API 地址。",
 	"deepseek.speechStella": "stella · 女声",
 	"deepseek.speechTide": "tide · 男声",
 	"deepseek.document": "添加文档",
@@ -33,6 +33,9 @@
 	"speech.preview": "试听",
 	"speech.saveFirst": "保存服务配置后可以试听。",
 	"speech.empty": "添加推送目标后可单独设置发送方式。",
+	"speech.provider": "服务商",
+	"speech.custom": "自定义",
+	"speech.defaultVoice": "默认音色",
 	"network.images.title": "图片下载网络",
 	"network.images.subtitle": "为受信任的代理或内网图床设置地址例外",
 	"network.images.label": "图片下载允许的地址段",
@@ -3356,5 +3359,6 @@
 	"deepseek.chatSearchKey": "请先在模型配置里保存当前 DeepSeek 实例的 API Key。",
 	"deepseek.searchUsesModelKey": "搜索沿用当前官方 DeepSeek 实例的 API Key。",
 	"deepseek.searchScenes": "已开启的场景使用 DeepSeek 原生联网，按模型 token 计费。",
+	"deepseek.speechUsesModel": "语音合成沿用当前官方 DeepSeek 实例的 API Key。",
 	"deepseek.sceneHint": "允许这类推送联网，由 DeepSeek 按模型 token 计费。"
 }

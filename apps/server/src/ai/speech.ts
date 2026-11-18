@@ -9,7 +9,7 @@ import {
 import { encode } from "silk-wasm";
 import { t } from "../i18n/index.js";
 
-type Speech = AiSettings["speech"];
+type Speech = Pick<AiSettings["speech"], "baseUrl" | "model" | "apiKey" | "voice">;
 const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_SECONDS = 60;
 

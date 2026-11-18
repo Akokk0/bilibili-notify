@@ -1,5 +1,5 @@
 {
-	"deepseek.speechEndpoint": "支援 OpenAI 相容服務。使用 DeepSeek 時填寫 https://api.deepseek.com，再選擇聲線。",
+	"speech.customEndpoint": "填寫 OpenAI 相容語音合成服務的 API 位址。",
 	"deepseek.speechStella": "stella · 女聲",
 	"deepseek.speechTide": "tide · 男聲",
 	"deepseek.document": "新增文件",
@@ -33,6 +33,9 @@
 	"speech.preview": "試聽",
 	"speech.saveFirst": "儲存服務設定後即可試聽。",
 	"speech.empty": "新增推播目標後可個別設定傳送方式。",
+	"speech.provider": "服務商",
+	"speech.custom": "自訂",
+	"speech.defaultVoice": "預設音色",
 	"network.images.title": "圖片下載網路",
 	"network.images.subtitle": "為信任的代理伺服器或內網圖床設定位址例外",
 	"network.images.label": "圖片下載允許的網段",
@@ -3356,5 +3359,6 @@
 	"deepseek.chatSearchKey": "請先在模型設定儲存目前 DeepSeek 執行個體的 API Key。",
 	"deepseek.searchUsesModelKey": "搜尋沿用目前官方 DeepSeek 執行個體的 API Key。",
 	"deepseek.searchScenes": "啟用的場景會使用 DeepSeek 原生連網，依模型 token 計費。",
+	"deepseek.speechUsesModel": "語音合成沿用目前官方 DeepSeek 執行個體的 API Key。",
 	"deepseek.sceneHint": "允許這類推播連網，由 DeepSeek 依模型 token 計費。"
 }

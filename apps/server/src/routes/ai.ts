@@ -25,6 +25,7 @@ import {
 	ok,
 	resolveAIProfile,
 	resolveChatThinkingLevel,
+	resolveSpeechService,
 	sniffImageFormat,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
@@ -178,8 +179,9 @@ export function createAiRoute(
 	}
 
 	app.post("/speech/preview", async (c) => {
+		const ai = deps.store.getGlobals().ai;
 		const result = await fetchSpeech(
-			deps.store.getGlobals().ai.speech,
+			resolveSpeechService(ai.speech, resolveAIProfile(ai)),
 			serverText("speech.sample"),
 		);
 		if (!result.ok) return respondFailure(c, result);

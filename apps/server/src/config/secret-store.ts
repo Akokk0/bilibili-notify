@@ -35,6 +35,7 @@ export interface ConfigSecrets {
 	 */
 	aiApiKeys?: Record<string, string>;
 	speechApiKey?: string;
+	deepseekSpeechApiKey?: string;
 }
 
 export interface SecretStore {

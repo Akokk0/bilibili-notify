@@ -1,3 +1,4 @@
+import { EMPTY_AI_PROVIDER_PROFILE, resolveSpeechService } from "@bilibili-notify/internal";
 import { isSilk } from "silk-wasm";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { fetchSpeech, speechPayload } from "../speech.js";
@@ -31,6 +32,34 @@ function wav(seconds = 1, bits = 16, format = 1, rate = 16000) {
 }
 
 describe("OpenAI-compatible speech", () => {
+	it("uses the active official DeepSeek key in preview and delivery, and retains the custom service for gateways", async () => {
+		const profile = {
+			...EMPTY_AI_PROVIDER_PROFILE,
+			provider: "deepseek" as const,
+			baseUrl: "https://api.deepseek.com",
+			apiKey: "model-key",
+		};
+		const request = vi.fn(async () => new Response(wav()));
+		const official = resolveSpeechService(settings, profile);
+		expect((await fetchSpeech(official, "试听", request)).ok).toBe(true);
+		expect((await speechPayload(official, "推送", request)).ok).toBe(true);
+		expect(request).toHaveBeenLastCalledWith(
+			"https://api.deepseek.com/v1/tools/tts",
+			expect.objectContaining({
+				headers: expect.objectContaining({ Authorization: "Bearer model-key" }),
+				body: JSON.stringify({ text: "推送", voice_id: "stella", format: "wav" }),
+			}),
+		);
+		profile.baseUrl = "https://gateway.example/v1";
+		await fetchSpeech(resolveSpeechService(settings, profile), "试听", request);
+		expect(request).toHaveBeenLastCalledWith(
+			"https://tts.example/v1/audio/speech",
+			expect.objectContaining({
+				headers: expect.objectContaining({ Authorization: "Bearer test-key" }),
+			}),
+		);
+	});
+
 	it("uses native DeepSeek TTS for preview and delivery without a model ID", async () => {
 		const speech = {
 			...settings,
@@ -49,6 +78,49 @@ describe("OpenAI-compatible speech", () => {
 		const result = await speechPayload(speech, "推送", request);
 		expect(result.ok && isSilk(result.payload.audio.buffer)).toBe(true);
 	});
+
+	it("uses the selected speech service and voice for both preview and delivery", async () => {
+		const profile = {
+			...EMPTY_AI_PROVIDER_PROFILE,
+			provider: "deepseek" as const,
+			baseUrl: "https://api.deepseek.com/v1",
+			apiKey: "model-key",
+		};
+		const request = vi.fn(async () => new Response(wav()));
+		const speech = { ...settings, deepseekVoice: "tide", deepseekApiKey: "voice-key" } as const;
+		const official = resolveSpeechService({ ...speech, provider: "deepseek" }, profile);
+		expect((await fetchSpeech(official, "试听", request)).ok).toBe(true);
+		expect(request).toHaveBeenLastCalledWith(
+			"https://api.deepseek.com/v1/tools/tts",
+			expect.objectContaining({
+				headers: expect.objectContaining({ Authorization: "Bearer model-key" }),
+				body: JSON.stringify({ text: "试听", voice_id: "tide", format: "wav" }),
+			}),
+		);
+
+		profile.baseUrl = "https://gateway.example/v1";
+		const standalone = resolveSpeechService({ ...speech, provider: "deepseek" }, profile);
+		expect((await speechPayload(standalone, "推送", request)).ok).toBe(true);
+		expect(request).toHaveBeenLastCalledWith(
+			"https://api.deepseek.com/v1/tools/tts",
+			expect.objectContaining({
+				headers: expect.objectContaining({ Authorization: "Bearer voice-key" }),
+				body: JSON.stringify({ text: "推送", voice_id: "tide", format: "wav" }),
+			}),
+		);
+
+		profile.baseUrl = "https://api.deepseek.com/v1";
+		const custom = resolveSpeechService({ ...speech, provider: "custom" }, profile);
+		expect((await speechPayload(custom, "推送", request)).ok).toBe(true);
+		expect(request).toHaveBeenLastCalledWith(
+			"https://tts.example/v1/audio/speech",
+			expect.objectContaining({
+				headers: expect.objectContaining({ Authorization: "Bearer test-key" }),
+				body: JSON.stringify({ model: "m", voice: "v", input: "推送", response_format: "wav" }),
+			}),
+		);
+	});
+
 	it("validates native voice and key before requesting synthesis", async () => {
 		const request = vi.fn();
 		for (const fields of [

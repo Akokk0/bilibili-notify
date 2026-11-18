@@ -1,5 +1,5 @@
 {
-	"deepseek.speechEndpoint": "Use an OpenAI-compatible service, or enter https://api.deepseek.com and select a DeepSeek voice.",
+	"speech.customEndpoint": "Enter the API base URL of your OpenAI-compatible speech service.",
 	"deepseek.speechStella": "stella · female",
 	"deepseek.speechTide": "tide · male",
 	"deepseek.document": "Attach document",
@@ -33,6 +33,9 @@
 	"speech.preview": "Preview voice",
 	"speech.saveFirst": "Save the service settings to preview the voice.",
 	"speech.empty": "Add a target to override its delivery mode.",
+	"speech.provider": "Provider",
+	"speech.custom": "Custom",
+	"speech.defaultVoice": "Default voice",
 	"network.images.title": "Image download network",
 	"network.images.subtitle": "Address exceptions for trusted proxies or private image hosts",
 	"network.images.label": "Allowed image address ranges",
@@ -3425,5 +3428,6 @@
 	"deepseek.chatSearchKey": "Save the API key for the active DeepSeek model in Model configuration.",
 	"deepseek.searchUsesModelKey": "Search uses the active official DeepSeek instance’s API key.",
 	"deepseek.searchScenes": "Enabled scenes use DeepSeek’s native web tools and consume model tokens.",
+	"deepseek.speechUsesModel": "Speech synthesis uses the active official DeepSeek instance’s API key.",
 	"deepseek.sceneHint": "Enable search for this notification. DeepSeek bills the model tokens used."
 }

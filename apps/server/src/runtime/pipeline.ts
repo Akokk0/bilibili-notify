@@ -42,6 +42,8 @@ import {
 	isReachabilityEvidence,
 	needsLiveMonitor,
 	resolve,
+	resolveAIProfile,
+	resolveSpeechService,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
@@ -478,11 +480,13 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 
 	const push = new PushRouter({
 		speech: () => {
-			const settings = globals().ai.speech;
+			const ai = globals().ai;
+			const settings = ai.speech;
+			const service = resolveSpeechService(settings, resolveAIProfile(ai));
 			return {
 				mode: (id) => settings.byTarget[id] ?? settings.mode,
 				support: (id) => dispatcher.audioSupport(id),
-				synthesize: (text) => speechPayload(settings, text),
+				synthesize: (text) => speechPayload(service, text),
 			};
 		},
 		timezone: () => globals().timezone,

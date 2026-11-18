@@ -1,4 +1,9 @@
-import { isDeepSeekSpeechEndpoint } from "@bilibili-notify/internal/ai";
+import {
+	DEEPSEEK_SPEECH_VOICES,
+	isDeepSeekSpeechEndpoint,
+	resolveAIProfile,
+	resolveSpeechService,
+} from "@bilibili-notify/internal/ai";
 import {
 	Btn,
 	DraftSecretInput,
@@ -30,15 +35,22 @@ function originOf(value: string | undefined) {
 
 type Speech = AiSettingsDraft["speech"];
 export function SpeechSettings({
-	speech,
+	ai,
 	saved,
 	onChange,
 }: {
-	speech: Speech;
-	saved?: Speech;
+	ai: AiSettingsDraft;
+	saved?: AiSettingsDraft;
 	onChange: (speech: Speech) => void;
 }) {
 	const tx = useT();
+	const { speech } = ai;
+	const savedSpeech = saved?.speech;
+	const profile = resolveAIProfile(ai);
+	const savedProfile = saved ? resolveAIProfile(saved) : undefined;
+	const service = resolveSpeechService(speech, profile);
+	const savedService =
+		savedSpeech && savedProfile && resolveSpeechService(savedSpeech, savedProfile);
 	const targets = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
@@ -47,7 +59,13 @@ export function SpeechSettings({
 		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/connections"),
 	});
-	const serviceId = JSON.stringify([saved?.baseUrl, saved?.model, saved?.voice]);
+	const serviceId = JSON.stringify([
+		service.provider,
+		service.usesModelKey ? ai.activeProfile : null,
+		service.baseUrl,
+		service.model,
+		service.voice,
+	]);
 	const preview = useMutation({
 		mutationFn: (_id: string) => api.blob("/api/ai/speech/preview", "POST"),
 	});
@@ -64,102 +82,162 @@ export function SpeechSettings({
 		label: labels[value],
 		color: AI_PURPLE,
 	}));
+	const voices = [
+		{ value: "stella" as const, label: tx("deepseek.speechStella"), color: AI_PURPLE },
+		{ value: "tide" as const, label: tx("deepseek.speechTide"), color: AI_PURPLE },
+	];
 	const native = isDeepSeekSpeechEndpoint(speech.baseUrl);
 	const ready =
+		savedService &&
+		service.provider === savedService.provider &&
+		service.usesModelKey === savedService.usesModelKey &&
+		(!service.usesModelKey || ai.activeProfile === saved?.activeProfile) &&
 		Boolean(
-			saved?.baseUrl &&
-				(native || saved.model) &&
-				(native ? saved.apiKey && ["stella", "tide"].includes(saved.voice) : saved.voice),
+			savedService.baseUrl &&
+				savedService.voice &&
+				(isDeepSeekSpeechEndpoint(savedService.baseUrl)
+					? savedService.apiKey &&
+						DEEPSEEK_SPEECH_VOICES.some((voice) => voice === savedService.voice)
+					: savedService.model),
 		) &&
-		(["baseUrl", "apiKey", "model", "voice"] as const).every((key) => speech[key] === saved?.[key]);
+		(service.apiKey === savedService.apiKey ||
+			(typeof service.apiKey === "object" && typeof savedService.apiKey === "object")) &&
+		(["baseUrl", "model", "voice"] as const).every((key) => service[key] === savedService[key]);
+	const previewControl = (
+		<div className="flex flex-wrap items-center gap-3">
+			<Btn
+				size="sm"
+				variant="outline"
+				disabled={!ready || preview.isPending}
+				onClick={() => preview.mutate(serviceId)}
+			>
+				{tx("speech.preview")}
+			</Btn>
+			{!ready ? (
+				<span className="text-bn-xs text-bn-text-secondary">{tx("speech.saveFirst")}</span>
+			) : null}
+			{audio &&
+			ready &&
+			preview.variables === serviceId &&
+			!preview.isPending &&
+			!preview.isError ? (
+				<audio controls src={audio} aria-label={tx("speech.preview")}>
+					<track
+						kind="captions"
+						label={tx("speech.preview")}
+						src={`data:text/vtt;charset=utf-8,${encodeURIComponent(`WEBVTT\n\n00:00:00.000 --> 00:01:00.000\n${tx("speech.sample")}`)}`}
+					/>
+				</audio>
+			) : null}
+			{preview.error && ready && preview.variables === serviceId ? (
+				<ErrorNote>{preview.error.message}</ErrorNote>
+			) : null}
+		</div>
+	);
 	return (
 		<div className="flex flex-col gap-4">
-			<GlassBox title={tx("speech.service")} accent={AI_PURPLE} icon={<Icon.link size={14} />}>
-				<Field code="ai.speech.baseUrl" hint={tx("deepseek.speechEndpoint")} full>
-					<TInput
-						value={speech.baseUrl}
-						onChange={(baseUrl) => {
-							const nextOrigin = originOf(baseUrl);
-							const previousOrigin = originOf(speech.baseUrl) ?? originOf(saved?.baseUrl);
-							const changedService = previousOrigin && nextOrigin && previousOrigin !== nextOrigin;
-							onChange({
-								...speech,
-								baseUrl,
-								...(changedService ? { apiKey: "" } : {}),
-								...(isDeepSeekSpeechEndpoint(baseUrl) && !["stella", "tide"].includes(speech.voice)
-									? { voice: "stella" }
-									: {}),
-							});
-						}}
-						placeholder="https://api.openai.com/v1"
-					/>
-				</Field>
-				<Field code="ai.speech.apiKey" full>
-					<DraftSecretInput
-						value={speech.apiKey}
-						saved={
-							originOf(saved?.baseUrl) === originOf(speech.baseUrl) ? saved?.apiKey : undefined
-						}
-						onChange={(apiKey) => onChange({ ...speech, apiKey })}
-					/>
-				</Field>
-				{!native && (
-					<Field code="ai.speech.model">
-						<TInput
-							value={speech.model}
-							onChange={(model) => onChange({ ...speech, model })}
-							placeholder="gpt-4o-mini-tts"
+			<section aria-label={tx("speech.service")}>
+				<GlassBox title={tx("speech.service")} accent={AI_PURPLE} icon={<Icon.link size={14} />}>
+					<Field code="ai.speech.provider" full>
+						<Picker
+							value={service.provider}
+							options={[
+								{ value: "deepseek", label: "DeepSeek", color: AI_PURPLE },
+								{ value: "custom", label: tx("speech.custom"), color: AI_PURPLE },
+							]}
+							onChange={(provider) => onChange({ ...speech, provider })}
 						/>
 					</Field>
-				)}
-				<Field code="ai.speech.voice">
-					{native ? (
-						<Picker
-							value={speech.voice}
-							options={[
-								{ value: "stella", label: tx("deepseek.speechStella"), color: AI_PURPLE },
-								{ value: "tide", label: tx("deepseek.speechTide"), color: AI_PURPLE },
-							]}
-							onChange={(voice) => onChange({ ...speech, voice })}
-						/>
+					{service.provider === "deepseek" ? (
+						<>
+							{service.usesModelKey ? (
+								<p className="py-2 text-bn-xs text-bn-text-secondary">
+									{tx("deepseek.speechUsesModel")}
+								</p>
+							) : (
+								<Field code="ai.speech.deepseekApiKey" full>
+									<DraftSecretInput
+										value={speech.deepseekApiKey ?? ""}
+										saved={savedSpeech?.deepseekApiKey}
+										onChange={(deepseekApiKey) => onChange({ ...speech, deepseekApiKey })}
+									/>
+								</Field>
+							)}
+							<Field code="ai.speech.deepseekVoice">
+								<Picker
+									value={service.voice}
+									options={voices}
+									onChange={(deepseekVoice) =>
+										onChange({ ...speech, provider: "deepseek", deepseekVoice })
+									}
+								/>
+							</Field>
+						</>
 					) : (
-						<TInput
-							value={speech.voice}
-							onChange={(voice) => onChange({ ...speech, voice })}
-							placeholder="alloy"
-						/>
+						<>
+							<Field code="ai.speech.baseUrl" hint={tx("speech.customEndpoint")} full>
+								<TInput
+									value={speech.baseUrl}
+									onChange={(baseUrl) => {
+										const nextOrigin = originOf(baseUrl);
+										const previousOrigin =
+											originOf(speech.baseUrl) ?? originOf(savedSpeech?.baseUrl);
+										const changedService =
+											previousOrigin && nextOrigin && previousOrigin !== nextOrigin;
+										onChange({
+											...speech,
+											provider: "custom",
+											baseUrl,
+											...(changedService ? { apiKey: "" } : {}),
+											...(isDeepSeekSpeechEndpoint(baseUrl) &&
+											!DEEPSEEK_SPEECH_VOICES.some((voice) => voice === speech.voice)
+												? { voice: "stella" }
+												: {}),
+										});
+									}}
+									placeholder="https://api.openai.com/v1"
+								/>
+							</Field>
+							<Field code="ai.speech.apiKey" full>
+								<DraftSecretInput
+									value={speech.apiKey}
+									saved={
+										originOf(savedSpeech?.baseUrl) === originOf(speech.baseUrl)
+											? savedSpeech?.apiKey
+											: undefined
+									}
+									onChange={(apiKey) => onChange({ ...speech, provider: "custom", apiKey })}
+								/>
+							</Field>
+							{!native && (
+								<Field code="ai.speech.model">
+									<TInput
+										value={speech.model}
+										onChange={(model) => onChange({ ...speech, provider: "custom", model })}
+										placeholder="gpt-4o-mini-tts"
+									/>
+								</Field>
+							)}
+							<Field code="ai.speech.voice">
+								{native ? (
+									<Picker
+										value={speech.voice}
+										options={voices}
+										onChange={(voice) => onChange({ ...speech, provider: "custom", voice })}
+									/>
+								) : (
+									<TInput
+										value={speech.voice}
+										onChange={(voice) => onChange({ ...speech, provider: "custom", voice })}
+										placeholder="alloy"
+									/>
+								)}
+							</Field>
+						</>
 					)}
-				</Field>
-				<div className="flex flex-wrap items-center gap-3">
-					<Btn
-						size="sm"
-						variant="outline"
-						disabled={!ready || preview.isPending}
-						onClick={() => preview.mutate(serviceId)}
-					>
-						{tx("speech.preview")}
-					</Btn>
-					{!ready ? (
-						<span className="text-bn-xs text-bn-text-secondary">{tx("speech.saveFirst")}</span>
-					) : null}
-					{audio &&
-					ready &&
-					preview.variables === serviceId &&
-					!preview.isPending &&
-					!preview.isError ? (
-						<audio controls src={audio} aria-label={tx("speech.preview")}>
-							<track
-								kind="captions"
-								label={tx("speech.preview")}
-								src={`data:text/vtt;charset=utf-8,${encodeURIComponent(`WEBVTT\n\n00:00:00.000 --> 00:01:00.000\n${tx("speech.sample")}`)}`}
-							/>
-						</audio>
-					) : null}
-					{preview.error && ready && preview.variables === serviceId ? (
-						<ErrorNote>{preview.error.message}</ErrorNote>
-					) : null}
-				</div>
-			</GlassBox>
+					{previewControl}
+				</GlassBox>
+			</section>
 			<GlassBox
 				title={tx("speech.delivery")}
 				subtitle={tx("speech.detail")}

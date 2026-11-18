@@ -481,8 +481,8 @@ export default function Ai() {
 				</div>
 			) : tab === "speech" ? (
 				<SpeechSettings
-					speech={draft.speech}
-					saved={globalsQuery.data?.ai.speech}
+					ai={draft}
+					saved={globalsQuery.data?.ai}
 					onChange={(speech) => setDraft((d) => (d ? { ...d, speech } : d))}
 				/>
 			) : tab === "search" ? (

@@ -1,5 +1,5 @@
 {
-	"deepseek.speechEndpoint": "OpenAI 互換サービスに対応します。DeepSeek は https://api.deepseek.com を入力して声を選んでください。",
+	"speech.customEndpoint": "OpenAI 互換の音声合成サービスの API ベース URL を入力してください。",
 	"deepseek.speechStella": "stella · 女性の声",
 	"deepseek.speechTide": "tide · 男性の声",
 	"deepseek.document": "文書を添付",
@@ -33,6 +33,9 @@
 	"speech.preview": "試聴",
 	"speech.saveFirst": "サービス設定を保存すると試聴できます。",
 	"speech.empty": "送信先を追加すると個別に設定できます。",
+	"speech.provider": "提供元",
+	"speech.custom": "カスタム",
+	"speech.defaultVoice": "既定の音声",
 	"network.images.title": "画像ダウンロードのネットワーク",
 	"network.images.subtitle": "信頼できるプロキシや内部の画像サーバーのアドレス例外",
 	"network.images.label": "画像ダウンロードを許可するアドレス範囲",
@@ -3356,5 +3359,6 @@
 	"deepseek.chatSearchKey": "モデル設定で現在の DeepSeek プロファイルに API キーを保存してください。",
 	"deepseek.searchUsesModelKey": "検索には現在の公式 DeepSeek インスタンスの API キーを使用します。",
 	"deepseek.searchScenes": "有効にした場面では DeepSeek のネイティブ検索を使用し、モデルのトークン料金がかかります。",
+	"deepseek.speechUsesModel": "音声合成には現在の公式 DeepSeek インスタンスの API キーを使用します。",
 	"deepseek.sceneHint": "この通知で検索を許可します。DeepSeek のモデルのトークン料金がかかります。"
 }

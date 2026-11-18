@@ -221,6 +221,40 @@ export function canSendModelImages(
 	);
 }
 
+export const DEEPSEEK_SPEECH_VOICES = ["stella", "tide"] as const;
+export const SPEECH_PROVIDER_IDS = ["deepseek", "custom"] as const;
+
+export function resolveSpeechService<S>(
+	speech: {
+		provider?: (typeof SPEECH_PROVIDER_IDS)[number];
+		baseUrl: string;
+		model: string;
+		apiKey: S;
+		voice: string;
+		deepseekApiKey?: S;
+		deepseekVoice?: (typeof DEEPSEEK_SPEECH_VOICES)[number];
+	},
+	profile: Pick<AiProviderProfileShape<S>, "provider" | "baseUrl" | "apiKey">,
+) {
+	const official = isOfficialDeepSeekProfile(profile);
+	// 老配置没有语音服务商选项，沿用升级前实际使用的服务。
+	const provider = speech.provider ?? (official ? "deepseek" : "custom");
+	if (provider === "custom") {
+		const { baseUrl, model, apiKey, voice } = speech;
+		return { provider, usesModelKey: false, baseUrl, model, apiKey, voice } as const;
+	}
+	return {
+		provider,
+		usesModelKey: official,
+		baseUrl: "https://api.deepseek.com",
+		model: "",
+		apiKey: official ? profile.apiKey : (speech.deepseekApiKey ?? ""),
+		voice:
+			speech.deepseekVoice ??
+			(isDeepSeekSpeechEndpoint(speech.baseUrl) && speech.voice === "tide" ? "tide" : "stella"),
+	} as const;
+}
+
 export function resolveWebSearchMode(
 	profile: Pick<AiProviderProfileShape<unknown>, "provider" | "baseUrl" | "model" | "nativeWeb">,
 	backend: WebSearchBackendId,
