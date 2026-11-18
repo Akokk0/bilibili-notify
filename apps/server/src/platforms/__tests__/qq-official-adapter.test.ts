@@ -158,6 +158,22 @@ it.each(["group", "private"] as const)(
 	},
 );
 
+it("语音待审核时回待确认，并且没有重发", async () => {
+	const ad = startedQQ();
+	route(async (url) => {
+		if (url.includes("getAppAccessToken"))
+			return res(200, { access_token: "TKN", expires_in: 7200 });
+		if (url.endsWith("/files")) return res(200, { file_uuid: "id", file_info: "info", ttl: 3600 });
+		return res(202, { code: 304023, data: { message_audit: { audit_id: "pending" } } });
+	});
+	const result = await ad.send(qqConnection(), qqTarget("group", "G"), {
+		kind: "audio",
+		audio: { buffer: Buffer.from("silk"), mime: "audio/silk" },
+	});
+	expect(result).toMatchObject({ ok: false, code: "indeterminate" });
+	expect(callsTo("/messages")).toHaveLength(1);
+	ad.stop();
+});
 it("频道拒绝语音，不上传也不发送文字替代品", async () => {
 	const ad = startedQQ();
 	const result = await ad.send(qqConnection(), qqTarget("channel", "C1"), {
@@ -168,6 +184,9 @@ it("频道拒绝语音，不上传也不发送文字替代品", async () => {
 	expect(callsTo("/files")).toHaveLength(0);
 	expect(callsTo("/messages")).toHaveLength(0);
 	expect(ad.capabilities?.(qqConnection()).audio?.state).toBe("supported");
+	expect(ad.capabilities?.(qqConnection(), qqTarget("channel", "C1")).audio?.state).toBe(
+		"unsupported",
+	);
 	ad.stop();
 });
 

@@ -1532,6 +1532,11 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		tokenOnly.clear();
 	}
 
+	function audioRestriction(destination: DestinationRef) {
+		return destination.kind !== "session" || destination.scope === "channel"
+			? fail("unsupported", t("qqOfficial.capability.audioScope"))
+			: undefined;
+	}
 	return {
 		adapterKey: ADAPTER_KEY,
 		createTestPayload(connection, destination, kind, samples) {
@@ -1540,8 +1545,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				return fail("unsupported", t("capabilityTests.unsupported"));
 			if (kind === "atAll" && destination.scope === "private")
 				return fail("unsupported", t("capabilityTests.groupOnly"));
-			if (kind === "audio" && destination.scope === "channel")
-				return fail("unsupported", t("qqOfficial.capability.audioScope"));
+			if (kind === "audio") {
+				const restricted = audioRestriction(destination);
+				if (restricted) return restricted;
+			}
 			if (
 				kind === "markdown" &&
 				(connection.settings.botType !== "private" || destination.scope === "channel")
@@ -1638,7 +1645,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				status: { role, atAllUsage: atAllUsage.read(context.state, settings, destination.address) },
 			});
 		},
-		capabilities(connection: Connection): ConnectionCapabilities {
+		capabilities(connection: Connection, destination?: DestinationRef): ConnectionCapabilities {
 			return {
 				image: { state: "supported", checkedAt: adapterStartedAt },
 				imageGroup: { state: "supported", checkedAt: adapterStartedAt },
@@ -1648,7 +1655,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					checkedAt: adapterStartedAt,
 				},
 				audio: {
-					state: "supported",
+					state: destination && audioRestriction(destination) ? "unsupported" : "supported",
 					reason: t("qqOfficial.capability.audioScope"),
 					checkedAt: adapterStartedAt,
 				},
@@ -1763,8 +1770,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				(connection.settings.botType !== "private" || scope === "channel")
 			)
 				return fail("unsupported", t("qqOfficial.capability.markdownScope"));
-			if (payload.kind === "audio" && scope === "channel")
-				return fail("unsupported", t("qqOfficial.capability.audioScope"));
+			if (payload.kind === "audio") {
+				const restricted = audioRestriction(destination);
+				if (restricted) return restricted;
+			}
 			// 先校验地址:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
 			const endpoint = qqMessageEndpoint(scope, address);
 			if (!endpoint.ok) return endpoint;
@@ -1871,6 +1880,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 						await atAllUsage.record(statusContext.state, cfg, address, verdict, submittedAt);
 					if (!verdict.ok) {
 						failure = verdict;
+						break;
+					}
+					if (part.kind === "audio-buffer" && verdict.pendingAudit) {
+						failure = fail("indeterminate", t("speech.pendingAudit"));
 						break;
 					}
 					submittedParts++;

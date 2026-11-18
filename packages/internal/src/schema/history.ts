@@ -64,6 +64,7 @@ export const HistoryMessageResultSchema = z.discriminatedUnion("ok", [
 export type HistoryMessageResult = z.infer<typeof HistoryMessageResultSchema>;
 
 export const HistoryMessageSchema = z.object({
+	speechNote: z.string().optional(),
 	payload: HistoryPayloadSchema,
 	role: PushMessageRoleSchema,
 	result: HistoryMessageResultSchema.optional(),

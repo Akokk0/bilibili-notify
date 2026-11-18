@@ -118,7 +118,7 @@ export interface PlatformAdapter {
 	 * (老的拓展适配器)各项按「还不知道」算,怎么对待「还不知道」见 internal 的
 	 * `shouldSendAtAll` / `canReceiveReply` / `listsForLinkPreview`。
 	 */
-	capabilities?(connection: Connection): ConnectionCapabilities;
+	capabilities?(connection: Connection, destination?: DestinationRef): ConnectionCapabilities;
 	/** 宿主只读查询会话内身份与使用记录；暂不向拓展开放。 */
 	fetchDestinationStatus?(
 		connection: Connection,

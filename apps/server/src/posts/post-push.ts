@@ -53,6 +53,7 @@ export type PushSegment = PushImagePart | PushTextPart | PushImageGroup;
  * 不会在主卡和图集各 @ 一次。
  */
 export interface PostPushAnchor {
+	narration?: { text: string; withoutText: PushSegment[][] };
 	/** 本体(`main`)还是附加项(`extra`)。 */
 	role: PushMessageRole;
 	/** 附加项的键:给了按那张三态表筛目标;不给(图集)发给路由里所有启用的目标。只对 `extra` 有意义。 */

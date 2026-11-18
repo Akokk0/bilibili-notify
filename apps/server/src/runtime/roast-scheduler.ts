@@ -248,6 +248,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		subscriptionId?: string,
 	): Promise<RoastRunResult> {
 		const out = await deliverRoast(deps, {
+			scheduled: true,
 			kind,
 			result,
 			days: cfg.days,

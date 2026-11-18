@@ -584,6 +584,9 @@ function MessageItem({
 						{tx("sourceUi.pages.History.HistoryRow.19")}
 					</span>
 				)}
+				{message.speechNote ? (
+					<span className="ml-1.5 text-bn-text-tertiary">{message.speechNote}</span>
+				) : null}
 				{message.ok === false && message.message ? (
 					<span className="ml-1.5 text-bn-danger">{message.message}</span>
 				) : null}
@@ -600,7 +603,9 @@ function MessageItem({
 				</Pill>
 			) : null}
 			<Pill color={result.tone} subtle size="sm">
-				{result.label}
+				{message.ok === false && message.code === "indeterminate"
+					? tx("targets.status.indeterminate")
+					: result.label}
 			</Pill>
 		</li>
 	);

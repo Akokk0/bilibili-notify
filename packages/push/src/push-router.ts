@@ -26,6 +26,13 @@ import {
 import { packageText } from "@bilibili-notify/internal/texts";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
+import {
+	createSpeechDelivery,
+	type Narration,
+	type SpeechPolicy,
+	sendPayloads,
+} from "./speech-delivery";
+
 /**
  * 「@全体单独一条消息」的 payload。atAllTargets 上的发送序列:先发这条独立
  * @全体,再发原 payload(卡片 + 文字)—— 接收端看到的是两条独立消息,@ 提醒
@@ -72,6 +79,8 @@ export interface PushMessage {
 }
 
 export interface PushMessageResult extends PushMessage {
+	speechNote?: string;
+	speechText?: string;
 	/**
 	 * 缺省 = **这条从来没出过网**:同一目标的前一条失败、整段序列就此中止,后面这些
 	 * 连 dispatcher 都没进(ADR-0017 决策 17)。它们照样回调,好让历史记全「本来要发几条」——
@@ -137,6 +146,7 @@ export interface SendMeta {
  * 发送就按这个先后。
  */
 export interface PushAnchor {
+	narration?: Narration;
 	/** 本体(`main`)还是附加项(`extra`)。 */
 	role: PushMessageRole;
 	/**
@@ -178,7 +188,12 @@ export interface Push {
 }
 
 /** 一个锚点怎么发:哪把附加项键、许不许 @全体;整次推送被静音 / 免扰挡下时只记不发。 */
+interface SequenceMeta extends SendMeta {
+	speech?: { original: NotificationPayload[]; deliver: ReturnType<typeof createSpeechDelivery> };
+}
+
 interface AnchorRound {
+	narration?: Narration;
 	extra?: ExtraKey;
 	allowAtAll: boolean;
 	isSilenced: boolean;
@@ -188,6 +203,7 @@ interface AnchorRound {
 
 /** Options for constructing a PushRouter instance. */
 export interface PushRouterOptions {
+	speech?: () => SpeechPolicy;
 	/** Platform-neutral push dispatcher — translates targetId → platform delivery. */
 	dispatcher: Pick<
 		TargetDispatcher,
@@ -259,6 +275,7 @@ export class PushRouter {
 	private readonly muted: () => boolean;
 	private readonly quietHoursNow: () => Date;
 	private readonly timezone: () => string;
+	private readonly speech: PushRouterOptions["speech"];
 	private readonly aiWriting: () => AiWritingSettings;
 	private readonly onSend?: (info: PushSendResult) => void;
 	private readonly serviceCtx: ServiceContext;
@@ -286,8 +303,13 @@ export class PushRouter {
 		this.muted = opts.muted;
 		this.quietHoursNow = opts.quietHoursNow ?? (() => new Date());
 		this.aiWriting = opts.aiWriting;
+		this.speech = opts.speech;
 		this.onSend = opts.onSend;
 		this.serviceCtx = opts.serviceCtx;
+	}
+
+	createNarration(part: Narration) {
+		return this.speech ? createSpeechDelivery(part, this.speech()) : undefined;
 	}
 
 	/**
@@ -442,9 +464,13 @@ export class PushRouter {
 			return this.sendAnchor(
 				{ subscriptionId, feature, pushId, role: anchor.role },
 				content.payloads,
-				isMain
-					? { allowAtAll: push.allowAtAll !== false, isSilenced, aiPayloads }
-					: { extra: anchor.extra, allowAtAll: false, isSilenced, aiPayloads },
+				{
+					extra: isMain ? undefined : anchor.extra,
+					allowAtAll: isMain && push.allowAtAll !== false,
+					isSilenced,
+					aiPayloads,
+					narration: anchor.narration,
+				},
 			);
 		};
 
@@ -632,6 +658,22 @@ export class PushRouter {
 			return [];
 		}
 
+		const summary =
+			round.extra === "liveSummary" && aiPayloads?.length === 1 ? aiPayloads[0] : undefined;
+		const narration =
+			round.narration ??
+			(summary?.kind === "text" ? { text: summary.text, withoutText: [] } : undefined);
+		const deliver = narration && this.createNarration(narration);
+		const meta: SequenceMeta =
+			deliver && aiPayloads
+				? {
+						...ctx,
+						speech: {
+							original: aiPayloads,
+							deliver,
+						},
+					}
+				: ctx;
 		const atAllKey: ExtraKey | null = !round.allowAtAll
 			? null
 			: feature === "post"
@@ -648,7 +690,7 @@ export class PushRouter {
 			targetCount: targetIds.length,
 		});
 		if (!atAllKey) {
-			return this.sendBatch(targetIds, payloadsFor, ctx);
+			return this.sendBatch(targetIds, payloadsFor, meta);
 		}
 
 		// 默认取**折叠后**那一份(全局 + per-UP 覆盖已合并);per-target 三态表挂在订阅上。
@@ -664,7 +706,7 @@ export class PushRouter {
 			(shouldAtAll ? atAllTargets : plainTargets).push(id);
 		}
 		if (atAllTargets.length === 0) {
-			return this.sendBatch(plainTargets, payloadsFor, ctx);
+			return this.sendBatch(plainTargets, payloadsFor, meta);
 		}
 
 		// 「@全体单独一条 → 原 payload」两条独立消息:@ 提醒在前、卡片正文在后。
@@ -674,9 +716,9 @@ export class PushRouter {
 		// 标失败)。现在卡片不再被 @全体 的重试拖住,@全体 失败也只异步落历史。
 		const results: DeliveryResult[] = [];
 		if (plainTargets.length > 0) {
-			results.push(...(await this.sendBatch(plainTargets, payloadsFor, ctx)));
+			results.push(...(await this.sendBatch(plainTargets, payloadsFor, meta)));
 		}
-		results.push(...(await this.sendAtAllThenCard(atAllTargets, payloadsFor, ctx)));
+		results.push(...(await this.sendAtAllThenCard(atAllTargets, payloadsFor, meta)));
 		return results;
 	}
 
@@ -698,7 +740,7 @@ export class PushRouter {
 	private async sendAtAllThenCard(
 		atAllTargets: string[],
 		payloadsFor: (targetId: string) => NotificationPayload[],
-		ctx: SendMeta,
+		ctx: SequenceMeta,
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
 		const myGen = this.generation;
@@ -740,7 +782,7 @@ export class PushRouter {
 			| NotificationPayload
 			| NotificationPayload[]
 			| ((targetId: string) => NotificationPayload | NotificationPayload[]),
-		ctx: SendMeta,
+		ctx: SequenceMeta,
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
 		const myGen = this.generation;
@@ -768,24 +810,20 @@ export class PushRouter {
 	private async sendSequence(
 		targetId: string,
 		payloads: NotificationPayload[],
-		ctx: SendMeta,
+		ctx: SequenceMeta,
 		myGen: number,
 	): Promise<PushMessageResult[] | null> {
 		const routing = { subscriptionId: ctx.subscriptionId, feature: ctx.feature };
-		const outcomes: PushMessageResult[] = [];
-		for (const [i, payload] of payloads.entries()) {
-			const result = await this.sendToTarget(targetId, payload, { routing });
-			if (this.disposed || this.generation !== myGen) return null;
-			outcomes.push({ payload, role: ctx.role, result });
-			if (!result.ok) {
-				// 中止。剩下的原样记上,没有结果 —— 人工重推要按这个数把它们补齐。
-				for (const rest of payloads.slice(i + 1)) {
-					outcomes.push({ payload: rest, role: ctx.role });
-				}
-				break;
-			}
-		}
-		return outcomes;
+		const send = (payload: NotificationPayload) =>
+			this.disposed || this.generation !== myGen
+				? Promise.resolve(fail("unavailable", "superseded"))
+				: this.sendToTarget(targetId, payload, { routing });
+		const outcomes =
+			ctx.speech && ctx.speech.original === payloads
+				? await ctx.speech.deliver(targetId, payloads, send)
+				: await sendPayloads(payloads, send);
+		if (this.disposed || this.generation !== myGen) return null;
+		return outcomes.map((outcome) => ({ ...outcome, role: ctx.role }));
 	}
 
 	/** 把一个目标这一段的结果交给 onSend。target 由 dispatcher 反解 id 得到,反解不到就静默跳过。 */

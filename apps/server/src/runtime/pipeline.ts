@@ -1,3 +1,4 @@
+import { speechPayload } from "../ai/speech.js";
 /**
  * Server-side push-pipeline wiring: target dispatch, push routing, post delivery,
  * live runtime, connection probing and their lifecycle, from source registration
@@ -476,6 +477,14 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	};
 
 	const push = new PushRouter({
+		speech: () => {
+			const settings = globals().ai.speech;
+			return {
+				mode: (id) => settings.byTarget[id] ?? settings.mode,
+				support: (id) => dispatcher.audioSupport(id),
+				synthesize: (text) => speechPayload(settings, text),
+			};
+		},
 		timezone: () => globals().timezone,
 		dispatcher,
 		store: opts.subscriptionStore,

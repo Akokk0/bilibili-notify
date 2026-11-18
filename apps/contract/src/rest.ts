@@ -677,6 +677,7 @@ export type HistoryMessageView = HistoryMessageBase &
 	);
 
 interface HistoryMessageBase {
+	speechNote?: string;
 	text?: string;
 	/**
 	 * 这条消息本来是哪一类(纯文字 / 一张图 / 图文混合)。过了保留期的老行,迁移时图格被拿掉了(`image` 缺着),
