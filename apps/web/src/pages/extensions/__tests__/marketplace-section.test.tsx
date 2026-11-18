@@ -12,6 +12,7 @@ import { ErrorNote } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const { apiGetMock, apiPostMock, apiPatchMock } = vi.hoisted(() => ({
@@ -191,7 +192,9 @@ function renderSection(
 	const invalidate = vi.spyOn(qc, "invalidateQueries");
 	const view = render(
 		<QueryClientProvider client={qc}>
-			<Host />
+			<MemoryRouter>
+				<Host />
+			</MemoryRouter>
 		</QueryClientProvider>,
 		{ reactStrictMode: strict },
 	);

@@ -14,6 +14,7 @@ import type { ExtensionInstallResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 // `ApiError` 用**真的**那个类:失败的话怎么念(`message` + 逐条 `issues`)是它构造时从响应体里读的。
@@ -42,7 +43,9 @@ function renderSlot() {
 	const invalidate = vi.spyOn(qc, "invalidateQueries");
 	const view = render(
 		<QueryClientProvider client={qc}>
-			<ExtensionInstallSlot />
+			<MemoryRouter>
+				<ExtensionInstallSlot />
+			</MemoryRouter>
 		</QueryClientProvider>,
 	);
 	return { ...view, invalidate };
