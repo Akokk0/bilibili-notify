@@ -77,7 +77,7 @@ it.each([
 	[
 		"ja",
 		"モデル設定",
-		"全体設定",
+		"検索",
 		"ご主人様、設定はプロバイダーのインスタンスごとに保存しますよ。左側で切り替えてくださいね。",
 		"。ご主人様、変更は保存後に適用しますので、保存を忘れないでくださいね。",
 		"作品コメントのウェブ検索",
@@ -86,7 +86,7 @@ it.each([
 	[
 		"zh-TW",
 		"模型設定",
-		"全域設定",
+		"搜尋",
 		"主人，每個服務商實例各自儲存設定，點選側欄就能切換喔。",
 		"。主人，修改後記得儲存，儲存後才會生效喔。",
 		"作品短評網路搜尋",
@@ -94,7 +94,7 @@ it.each([
 	],
 ] as const)(
 	"%s maid model and search guidance preserve both unsaved settings",
-	async (locale, modelTab, globalTab, hint, saveNote, searchLabel, searchHint) => {
+	async (locale, modelTab, searchTab, hint, saveNote, searchLabel, searchHint) => {
 		i18n.set({ locale: "zh-CN", voice: "plain" });
 		mount(
 			globalsWith((g) => {
@@ -116,7 +116,7 @@ it.each([
 			expect(api.patch).not.toHaveBeenCalled();
 			expect(api.post).not.toHaveBeenCalled();
 		}
-		fireEvent.click(screen.getByRole("tab", { name: new RegExp(globalTab) }));
+		fireEvent.click(screen.getByRole("tab", { name: new RegExp(searchTab) }));
 		const search = screen.getByRole("button", { name: searchLabel });
 		fireEvent.click(search);
 		act(() => i18n.set({ voice: "maid" }));

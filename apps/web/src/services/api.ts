@@ -272,9 +272,10 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
  * 带自定义 header,桌面壳 token-header 鉴权下直接 401;故由此 fetch 拿 Blob,调用方再
  * `URL.createObjectURL` 喂给 `<img>`。token 留在 header、不进 URL。
  */
-async function requestBlob(path: string): Promise<Blob> {
-	const res = await withOffline(`GET ${path}`, () =>
+async function requestBlob(path: string, method: "GET" | "POST" = "GET"): Promise<Blob> {
+	const res = await withOffline(`${method} ${path}`, () =>
 		fetch(path, {
+			method,
 			headers: withDesktopTokenHeader(),
 			credentials: "include",
 		}),
@@ -282,7 +283,7 @@ async function requestBlob(path: string): Promise<Blob> {
 	if (!res.ok) {
 		if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized?.();
 		const { payload } = await readJsonPayload(res);
-		throw apiErrorOf(res.status, payload, `GET ${path} → ${res.status}`);
+		throw apiErrorOf(res.status, payload, `${method} ${path} → ${res.status}`);
 	}
 	return res.blob();
 }
@@ -326,5 +327,5 @@ export const api = {
 		request<T>("PATCH", path, body === undefined ? undefined : nullifyUndefined(body)),
 	delete: <T>(path: string) => request<T>("DELETE", path),
 	upload: <T>(path: string, form: FormData) => upload<T>(path, form),
-	blob: (path: string) => requestBlob(path),
+	blob: requestBlob,
 };

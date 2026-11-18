@@ -387,6 +387,43 @@ export const FIELD_LABELS = {
 	// 在聊天侧栏的「设置」弹层,点档位直接 PATCH,不经过灵动岛的 diff,也没有
 	// `Field code` —— 表里挂一条永远显示不出来的死条目只会误导。
 	// 联网搜索(ai.search)—— web_search 工具的执行后端,与选哪家 AI 服务商正交。
+	"ai.speech.baseUrl": {
+		get label() {
+			return i18n.t("speech.baseUrl");
+		},
+		section: "ai",
+	},
+	"ai.speech.apiKey": {
+		get label() {
+			return i18n.t("speech.key");
+		},
+		section: "ai",
+		secret: true,
+	},
+	"ai.speech.model": {
+		get label() {
+			return i18n.t("speech.model");
+		},
+		section: "ai",
+	},
+	"ai.speech.voice": {
+		get label() {
+			return i18n.t("speech.voiceName");
+		},
+		section: "ai",
+	},
+	"ai.speech.mode": {
+		get label() {
+			return i18n.t("speech.default");
+		},
+		section: "ai",
+	},
+	"ai.speech.byTarget": {
+		get label() {
+			return i18n.t("speech.delivery");
+		},
+		section: "ai",
+	},
 	"ai.search.backend": {
 		get label() {
 			return i18n.t("sourceUi.config.field.labels.label.42");

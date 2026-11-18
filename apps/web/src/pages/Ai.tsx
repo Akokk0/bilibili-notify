@@ -74,10 +74,11 @@ import {
 	setActiveProfile,
 	setGlobalPersona,
 } from "./ai/model-ops";
+import { SpeechSettings } from "./ai/SpeechSettings";
 import { AiTestPanel } from "./ai/TestPanel";
 import { WritingSettings } from "./ai/WritingSettings";
 
-type TopTab = "global" | "model";
+type TopTab = "global" | "model" | "search" | "speech";
 
 /** 顶部配置tab。技能管理另走资源库，配置条仍共用`TabBar`原语。 */
 
@@ -121,6 +122,7 @@ function packIsland(ai: AiSettingsDraft, providerKeys: readonly string[]) {
 			// 正文偏好和联网搜索。两侧都经 schema 补齐,恒为完整对象,
 			// 不会踩「一侧 undefined 整块当叶子」那个明文 key 外泄的坑。
 			writing,
+			speech: ai.speech,
 			search: {
 				backend: search.backend,
 				keys: search.keys,
@@ -160,9 +162,13 @@ export default function Ai() {
 	const TOP_TABS = [
 		{ id: "global" as const, label: tx("aiSettings.page.tabs.global"), code: "global" },
 		{ id: "model" as const, label: tx("aiSettings.page.tabs.model"), code: "provider" },
+		{ id: "search" as const, label: tx("speech.searchTab"), code: "search" },
+		{ id: "speech" as const, label: tx("speech.tab"), code: "speech" },
 	];
 
 	const TAB_HINTS: Record<TopTab, string> = {
+		search: tx("aiSettings.page.search.subtitle"),
+		speech: tx("speech.tabHint"),
 		global: tx("aiSettings.page.tabs.globalHint"),
 		model: tx("aiSettings.page.tabs.modelHint"),
 	};
@@ -426,67 +432,6 @@ export default function Ai() {
 						onChange={(writing) => setDraft((d) => (d ? { ...d, writing } : d))}
 					/>
 
-					{/* 聊天页的思考设置不在这里:开关是输入框旁那颗 ✦ 胶囊(会话级不落盘),
-					    **等级**(ai.chat.thinkingLevel)搬进了聊天侧栏的「设置」弹层 ——
-					    深度只有聊天在用,编辑口跟着聊天走。 */}
-
-					{/* 联网搜索 —— 与选哪家 AI 服务商**正交**:web_search 工具由这里选定的
-					    后端真正执行,任何支持 function calling 的服务商都能用上。所以它不挂
-					    在实例桶下,自己一块。聊天页那颗「联网搜索」胶囊是会话级的不落盘,
-					    这里落盘的只有后端 / key / 引擎开关。 */}
-					<GlassBox
-						title={tx("aiSettings.page.search.title")}
-						subtitle={tx("aiSettings.page.search.subtitle")}
-						accent={SECTION_ACCENT.capability}
-						icon={<Icon.search size={14} />}
-						badge="search"
-					>
-						<Field code="ai.search.backend" full>
-							<Picker<AiSettingsDraft["search"]["backend"]>
-								value={draft.search.backend}
-								onChange={(v) => setSearch({ backend: v })}
-								options={WEB_SEARCH_BACKENDS.map((b) => ({ value: b.id, label: b.label }))}
-							/>
-						</Field>
-						<Field
-							code={`ai.search.keys.${draft.search.backend}`}
-							full
-							hint={tx("aiSettings.page.search.keyHint", {
-								url: webSearchBackendMeta(draft.search.backend).keyUrl,
-							})}
-						>
-							<DraftSecretInput
-								value={draft.search.keys[draft.search.backend]}
-								saved={globalsQuery.data?.ai.search.keys[draft.search.backend]}
-								onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
-							/>
-						</Field>
-						{/* 三个引擎开关按表生成 —— 手抄三块只差 key/ariaLabel 的 JSX,
-						    抄错一处在评审里根本看不出来;加第四个引擎也只改这张表。 */}
-						{(
-							[
-								["post", tx("aiSettings.page.search.postAria")],
-								["live", tx("aiSettings.page.search.liveAria")],
-								["roast", tx("aiSettings.page.search.roastAria")],
-							] as const
-						).map(([k, aria]) => (
-							<Field key={k} code={`ai.search.scenes.${k}`}>
-								<div className="flex h-7.5 items-center">
-									<Toggle
-										value={draft.search.scenes[k]}
-										onChange={(v) => setSearch({ scenes: { [k]: v } })}
-										ariaLabel={aria}
-									/>
-								</div>
-							</Field>
-						))}
-						<FieldNote>
-							{tx("aiSettings.page.search.feePrefix")}
-							<strong>{tx("aiSettings.page.search.feeEmphasis")}</strong>
-							{tx("aiSettings.page.search.feeSuffix")}
-						</FieldNote>
-					</GlassBox>
-
 					{/* 全局人格选择 —— 它是个**指针**(ai.activePreset),不改写任何一份的内容;
 					    想改内容去「女仆性格」那个 Tab。 */}
 					<GlassBox
@@ -517,6 +462,65 @@ export default function Ai() {
 					{/* 试一句 —— 调完模型与人格,当场就能问她一句看看效果。 */}
 					<AiTestPanel draft={draft} />
 				</div>
+			) : tab === "speech" ? (
+				<SpeechSettings
+					speech={draft.speech}
+					saved={globalsQuery.data?.ai.speech}
+					onChange={(speech) => setDraft((d) => (d ? { ...d, speech } : d))}
+				/>
+			) : tab === "search" ? (
+				<GlassBox
+					title={tx("aiSettings.page.search.title")}
+					subtitle={tx("aiSettings.page.search.subtitle")}
+					accent={SECTION_ACCENT.capability}
+					icon={<Icon.search size={14} />}
+					badge="search"
+				>
+					<Field code="ai.search.backend" full>
+						<Picker<AiSettingsDraft["search"]["backend"]>
+							value={draft.search.backend}
+							onChange={(v) => setSearch({ backend: v })}
+							options={WEB_SEARCH_BACKENDS.map((b) => ({ value: b.id, label: b.label }))}
+						/>
+					</Field>
+					<Field
+						code={`ai.search.keys.${draft.search.backend}`}
+						full
+						hint={tx("aiSettings.page.search.keyHint", {
+							url: webSearchBackendMeta(draft.search.backend).keyUrl,
+						})}
+					>
+						<DraftSecretInput
+							value={draft.search.keys[draft.search.backend]}
+							saved={globalsQuery.data?.ai.search.keys[draft.search.backend]}
+							onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
+						/>
+					</Field>
+					{/* 三个引擎开关按表生成 —— 手抄三块只差 key/ariaLabel 的 JSX,
+						    抄错一处在评审里根本看不出来;加第四个引擎也只改这张表。 */}
+					{(
+						[
+							["post", tx("aiSettings.page.search.postAria")],
+							["live", tx("aiSettings.page.search.liveAria")],
+							["roast", tx("aiSettings.page.search.roastAria")],
+						] as const
+					).map(([k, aria]) => (
+						<Field key={k} code={`ai.search.scenes.${k}`}>
+							<div className="flex h-7.5 items-center">
+								<Toggle
+									value={draft.search.scenes[k]}
+									onChange={(v) => setSearch({ scenes: { [k]: v } })}
+									ariaLabel={aria}
+								/>
+							</div>
+						</Field>
+					))}
+					<FieldNote>
+						{tx("aiSettings.page.search.feePrefix")}
+						<strong>{tx("aiSettings.page.search.feeEmphasis")}</strong>
+						{tx("aiSettings.page.search.feeSuffix")}
+					</FieldNote>
+				</GlassBox>
 			) : (
 				<div className="grid gap-4 xl:grid-bn-rail">
 					<SectionNav

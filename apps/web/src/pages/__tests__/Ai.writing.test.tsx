@@ -317,3 +317,22 @@ it("has an editable default without targets; changing voice preserves draft and 
 		"true",
 	);
 });
+
+it("voice delivery defaults to text and saves an independent target exception", async () => {
+	mount(makeDefaultGlobalSettings());
+	fireEvent.click(await screen.findByRole("tab", { name: /语音/ }));
+	const global = within(screen.getByRole("group", { name: "默认发送方式" }));
+	expect(global.getByRole("button", { name: "仅文本" }).getAttribute("aria-pressed")).toBe("true");
+	fireEvent.click(global.getByRole("button", { name: "语音＋文本" }));
+	fireEvent.click(await screen.findByRole("button", { name: "展开例外" }));
+	const group = within(screen.getByRole("group", { name: /^读书会 ·/ }));
+	fireEvent.click(group.getByRole("button", { name: "仅语音" }));
+	await save();
+	expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+		core: {
+			ai: expect.objectContaining({
+				speech: expect.objectContaining({ mode: "both", byTarget: { [GROUP]: "voice" } }),
+			}),
+		},
+	});
+});

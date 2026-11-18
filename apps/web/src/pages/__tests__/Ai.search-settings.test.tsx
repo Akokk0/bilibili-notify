@@ -4,7 +4,7 @@
  * AI 页「联网搜索」设置块 —— `ai.search`。
  *
  * 这块与选哪家 AI 服务商**正交**:搜索由博查 / Tavily 真正执行,所以它住在
- * 「全局配置」Tab 自己的 GlassBox 里,不挂在任何实例桶下。守四件事:
+ * 独立的「搜索」Tab 里,不挂在任何实例桶下。守四件事:
  *
  * 1. 后端 Picker + key 输入框恒在场,key 是密文输入;
  * 2. key **按后端各存一格**:切到 Tavily,输入框换成 tavily 那格,博查的不丢;
@@ -62,6 +62,7 @@ afterEach(cleanup);
 it("global AI labels follow locale while a staged search scene stays unchanged until save", async () => {
 	i18n.set({ locale: "en", voice: "plain" });
 	mount();
+	fireEvent.click(await screen.findByRole("tab", { name: /^Search/ }));
 	await screen.findByText("Web search");
 	expect(screen.getByRole("tab", { name: /Global settings/ })).toBeTruthy();
 	expect(screen.getByText("no providers have been added")).toBeTruthy();
@@ -74,7 +75,7 @@ it("global AI labels follow locale while a staged search scene stays unchanged u
 	] as const) {
 		act(() => i18n.set({ locale }));
 		expect(screen.getByText(title)).toBeTruthy();
-		expect(screen.getByText(persona)).toBeTruthy();
+		expect(screen.queryByText(persona)).toBeNull();
 		expect(screen.getByRole("button", { name: label })).toBe(post);
 		expect(post.getAttribute("aria-pressed")).toBe("true");
 		expect(api.patch).not.toHaveBeenCalled();
@@ -99,6 +100,7 @@ it("global AI labels follow locale while a staged search scene stays unchanged u
 it("visible search scene labels and fee hints translate without replacing the draft key", async () => {
 	i18n.set({ locale: "en", voice: "plain" });
 	mount();
+	fireEvent.click(await screen.findByRole("tab", { name: /^Search/ }));
 	await screen.findByText("Web search");
 	expect(screen.getByText("Web search for post commentary")).toBeTruthy();
 	const key = inputAt("ai.search.keys.bocha");
@@ -133,6 +135,7 @@ it("visible search scene labels and fee hints translate without replacing the dr
 describe("Ai 页 · 联网搜索设置块", () => {
 	it("后端 Picker 与博查的 key 输入框在场,key 是密文", async () => {
 		mount();
+		fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));
 		await screen.findByText("联网搜索");
 		// 注册表两家都摆着(Picker 选项)。
 		expect(screen.getByRole("button", { name: "博查" })).toBeTruthy();
@@ -145,6 +148,7 @@ describe("Ai 页 · 联网搜索设置块", () => {
 
 	it("切到 Tavily → key 输入框换成 tavily 那格(各存一格,换后端不丢)", async () => {
 		mount();
+		fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));
 		await screen.findByText("联网搜索");
 		const bocha = inputAt("ai.search.keys.bocha");
 		expect(bocha).toBeTruthy();
@@ -161,6 +165,7 @@ describe("Ai 页 · 联网搜索设置块", () => {
 
 	it("三个引擎开关在场且默认全关", async () => {
 		mount();
+		fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));
 		await screen.findByText("联网搜索");
 		for (const name of ["作品点评联网搜索", "直播总结联网搜索", "锐评联网搜索"]) {
 			const toggle = screen.getByRole("button", { name });
@@ -170,6 +175,7 @@ describe("Ai 页 · 联网搜索设置块", () => {
 
 	it("拨一个引擎开关 → 灵动岛变 dirty(改动喂进了 packIsland)", async () => {
 		mount();
+		fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));
 		await screen.findByText("联网搜索");
 		fireEvent.click(screen.getByRole("button", { name: "作品点评联网搜索" }));
 		await waitFor(() => {
@@ -186,6 +192,7 @@ it.each([
 	"saves %s while keeping scene field codes and diff anchors",
 	async (name, scene, expected) => {
 		mount();
+		fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));
 		await screen.findByText("联网搜索");
 		fireEvent.click(screen.getByRole("button", { name }));
 		await waitFor(() => expect(useDraftStore.getState().current?.diff.length).toBeGreaterThan(0));
@@ -208,6 +215,7 @@ it.each([
 
 it("updates search field hints on voice changes while keeping labels and scene codes", async () => {
 	mount();
+	fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));
 	await screen.findByText("联网搜索");
 	expect(
 		screen.getByText("主人，开了之后每条作品点评都可能多几次搜索调用(按次计费)和几秒延迟喔。"),
@@ -223,6 +231,7 @@ it("updates search field hints on voice changes while keeping labels and scene c
 
 it("联网搜索设置不再显示旧引擎叫法", async () => {
 	mount();
+	fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));
 	await screen.findByText("联网搜索");
 	expect(screen.queryByText(/引擎开关/)).toBeNull();
 	act(() => i18n.set({ voice: "plain" }));
