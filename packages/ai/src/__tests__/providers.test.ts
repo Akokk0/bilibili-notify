@@ -53,18 +53,14 @@ describe("OpenRouter — reasoning 统一对象", () => {
 });
 
 describe("DeepSeek — thinking 开关 + reasoning_effort 等级", () => {
-	it("开思考", () => {
+	it.each([
+		["low", "low"],
+		["medium", "high"],
+		["high", "max"],
+	] as const)("思考档位 %s 发送原生强度 %s", (thinkingLevel, effort) => {
 		expect(
-			buildProviderParams({ provider: "deepseek", enableThinking: true, thinkingLevel: "high" }),
-		).toEqual({ thinking: { type: "enabled" }, reasoning_effort: "max" });
-	});
-
-	it("低/中都压到 high —— 这家只认 high 与 max 两档,官方自己也是这么映射的", () => {
-		for (const thinkingLevel of ["low", "medium"] as const) {
-			expect(
-				buildProviderParams({ provider: "deepseek", enableThinking: true, thinkingLevel }),
-			).toEqual({ thinking: { type: "enabled" }, reasoning_effort: "high" });
-		}
+			buildProviderParams({ provider: "deepseek", enableThinking: true, thinkingLevel }),
+		).toEqual({ thinking: { type: "enabled" }, reasoning_effort: effort });
 	});
 
 	it("关思考必须显式发 disabled —— 这家默认就开着,不发等于关不掉", () => {

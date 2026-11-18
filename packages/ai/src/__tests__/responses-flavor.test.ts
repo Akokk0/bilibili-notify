@@ -245,7 +245,7 @@ describe("responses 风味:流式分流与思考参数", () => {
 			onDelta: () => {},
 			thinking: { enableThinking: true, thinkingLevel: "high" },
 		});
-		expect(params(0).reasoning).toEqual({ effort: "high" });
+		expect(params(0).reasoning).toEqual({ effort: "max" });
 
 		oai.responsesCreate.mockResolvedValueOnce(streamOf([completed([msgItem("b")])]));
 		await gen.chatStatelessStream([{ role: "user", content: "2" }], { onDelta: () => {} });

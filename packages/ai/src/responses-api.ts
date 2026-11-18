@@ -13,7 +13,7 @@
 
 import { providerMeta } from "@bilibili-notify/internal";
 import type OpenAI from "openai";
-import type { BuildProviderParamsOptions } from "./providers";
+import { type BuildProviderParamsOptions, DEEPSEEK_EFFORT } from "./providers";
 
 /**
  * 思考 → 标准 `reasoning.effort`。返回请求体**顶层**字段,与
@@ -35,7 +35,9 @@ export function buildResponsesReasoning(
 	if (!input.enableThinking) {
 		return providerMeta(input.provider).thinkingDefaultsOn ? { reasoning: { effort: "none" } } : {};
 	}
-	return { reasoning: { effort: input.thinkingLevel } };
+	const effort =
+		input.provider === "deepseek" ? DEEPSEEK_EFFORT[input.thinkingLevel] : input.thinkingLevel;
+	return { reasoning: { effort } };
 }
 
 /** responses 的 input item(宽形状 —— SDK 类型对新事件/字段跟不上线上协议)。 */
