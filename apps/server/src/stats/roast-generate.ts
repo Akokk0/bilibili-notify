@@ -12,7 +12,7 @@ import { t } from "../i18n/index.js";
  * `null` 的形状),直接调用,不再绕一圈进程内 HTTP。
  */
 
-import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
+import { CommentaryGenerator } from "@bilibili-notify/ai";
 import type {
 	StatsOverviewResponse,
 	StatsRoastResult,
@@ -22,7 +22,12 @@ import type {
 import { type Failure, fail, ok, type Result, type Subscription } from "@bilibili-notify/internal";
 import { promptNounsOf } from "../ai/prompt-nouns.js";
 import type { RouteDeps } from "../routes/types.js";
-import { builtinPersonasOf, resolveAiOverride, toGeneratorConfig } from "../runtime/ai-config.js";
+import {
+	builtinPersonasOf,
+	resolveAiOverride,
+	toGeneratorConfig,
+	webSearchExecutorForAi,
+} from "../runtime/ai-config.js";
 import {
 	buildRoastPrompt,
 	buildSoloRoastPrompt,
@@ -114,7 +119,7 @@ function makeRoastGenerator(
 		config: toGeneratorConfig(aiSettings, builtins),
 		nouns: promptNounsOf(deps),
 	});
-	generator.setWebSearchSource(() => webSearchExecutorFromSettings(aiSettings.search));
+	generator.setWebSearchSource(() => webSearchExecutorForAi(aiSettings));
 	return generator;
 }
 

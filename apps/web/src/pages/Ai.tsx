@@ -25,10 +25,12 @@ import {
 	EMPTY_AI_PROVIDER_PROFILE,
 	hasOfficialDeepSeekVision,
 	isDeepSeekFlash,
+	isOfficialDeepSeekProfile,
 	modelSupportsVision,
 	providerMeta,
 	resolveActivePersona,
 	resolveAIProfile,
+	resolveWebSearchMode,
 	type ThinkingLevel,
 	WEB_SEARCH_BACKENDS,
 	webSearchBackendMeta,
@@ -286,8 +288,10 @@ export default function Ai() {
 	const editingLabel = rail.find((i) => i.id === editing)?.label ?? meta.label;
 	// 头图那颗药丸报的是**女仆真正在用的那份**的模型,与左栏在看哪一份无关。
 	const globalProfile = resolveAIProfile(draft);
-	const hostedSearch =
-		globalProfile.nativeWeb && isDeepSeekFlash(globalProfile.provider, globalProfile.model);
+	const { hosted: hostedSearch, useModelKey: sharesSearchKey } = resolveWebSearchMode(
+		globalProfile,
+		draft.search.backend,
+	);
 	// 头图那行名字同理:报的是**女仆真正在用的那份人格**(`activePreset` 指的那份),
 	// 与左栏在编辑哪一份无关;内置那份的内容取当前语言。
 	const globalPersona = resolveActivePersona(draft, builtins).persona;
@@ -496,21 +500,27 @@ export default function Ai() {
 							options={WEB_SEARCH_BACKENDS.map((b) => ({ value: b.id, label: b.label }))}
 						/>
 					</Field>
-					<Field
-						code={`ai.search.keys.${draft.search.backend}`}
-						full
-						hint={tx("aiSettings.page.search.keyHint", {
-							url: webSearchBackendMeta(draft.search.backend).keyUrl,
-						})}
-					>
-						<DraftSecretInput
-							value={draft.search.keys[draft.search.backend] ?? ""}
-							saved={globalsQuery.data?.ai.search.keys[draft.search.backend]}
-							onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
-						/>
-					</Field>
-					{/* 三个引擎开关按表生成 —— 手抄三块只差 key/ariaLabel 的 JSX,
-						    抄错一处在评审里根本看不出来;加第四个引擎也只改这张表。 */}
+					{sharesSearchKey ? (
+						<FieldNote>
+							{globalProfile.apiKey
+								? tx("deepseek.searchUsesModelKey")
+								: tx("deepseek.chatSearchKey")}
+						</FieldNote>
+					) : (
+						<Field
+							code={`ai.search.keys.${draft.search.backend}`}
+							full
+							hint={tx("aiSettings.page.search.keyHint", {
+								url: webSearchBackendMeta(draft.search.backend).keyUrl,
+							})}
+						>
+							<DraftSecretInput
+								value={draft.search.keys[draft.search.backend] ?? ""}
+								saved={globalsQuery.data?.ai.search.keys[draft.search.backend]}
+								onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
+							/>
+						</Field>
+					)}
 					{(
 						[
 							["post", tx("aiSettings.page.search.postAria")],
@@ -715,15 +725,17 @@ export default function Ai() {
 												["nativeWeb", tx("deepseek.nativeWeb")],
 												["safetyCheck", tx("deepseek.safetyCheck")],
 											] as const
-										).map(([key, label]) => (
-											<Field key={key} code={`ai.providers.${editing}.${key}`} label={label}>
-												<Toggle
-													value={Boolean(profile[key])}
-													onChange={(value) => setProfile(key, value)}
-													ariaLabel={label}
-												/>
-											</Field>
-										))}
+										)
+											.filter(([key]) => key !== "nativeWeb" || !isOfficialDeepSeekProfile(profile))
+											.map(([key, label]) => (
+												<Field key={key} code={`ai.providers.${editing}.${key}`} label={label}>
+													<Toggle
+														value={Boolean(profile[key])}
+														onChange={(value) => setProfile(key, value)}
+														ariaLabel={label}
+													/>
+												</Field>
+											))}
 									{/* 接口风味 —— 只对确认支持 /responses 的家摆出来(supportsResponses),
 									    硅基/火山未确认前不给选:选得到却必然 404 的组合比没有选项更糟。 */}
 									{meta.supportsResponses ? (

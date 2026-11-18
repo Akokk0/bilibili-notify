@@ -3354,6 +3354,7 @@
 	"aiSettings.page.vision.unsupported": "{model} は画像入力に対応していません。deepseek-flash に切り替えるか、下に視覚モデルを指定してください。",
 	"deepseek.chatSearchHint": "この会話で DeepSeek のネイティブ検索とリンクの読み取りを許可します。モデルのトークン料金がかかります。",
 	"deepseek.chatSearchKey": "モデル設定で現在の DeepSeek プロファイルに API キーを保存してください。",
-	"deepseek.searchScenes": "有効にした場面では DeepSeek のネイティブ検索を使用し、モデルのトークン料金がかかります。ネイティブ検索が無効なモデルでは、上で選んだ検索サービスを使用します。",
+	"deepseek.searchUsesModelKey": "検索には現在の公式 DeepSeek インスタンスの API キーを使用します。",
+	"deepseek.searchScenes": "有効にした場面では DeepSeek のネイティブ検索を使用し、モデルのトークン料金がかかります。",
 	"deepseek.sceneHint": "この通知で検索を許可します。DeepSeek のモデルのトークン料金がかかります。"
 }

@@ -221,6 +221,20 @@ export function canSendModelImages(
 	);
 }
 
+export function resolveWebSearchMode(
+	profile: Pick<AiProviderProfileShape<unknown>, "provider" | "baseUrl" | "model" | "nativeWeb">,
+	backend: WebSearchBackendId,
+) {
+	const official = isOfficialDeepSeekProfile(profile);
+	const useModelKey = official && backend === "deepseek";
+	return {
+		useModelKey,
+		hosted:
+			isDeepSeekFlash(profile.provider, profile.model) &&
+			(official ? useModelKey : Boolean(profile.nativeWeb)),
+	};
+}
+
 /** 查不到就落到兜底档,永远返回一个可用的 meta。 */
 export function providerMeta(id: AIProviderId): AIProviderMeta {
 	return AI_PROVIDERS.find((p) => p.id === id) ?? AI_PROVIDERS[AI_PROVIDERS.length - 1];

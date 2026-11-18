@@ -7,10 +7,11 @@
 
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
-import { describe, expect, it } from "vite-plus/test";
-import { toGeneratorConfig } from "../ai-config";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { toGeneratorConfig, webSearchExecutorForAi } from "../ai-config";
 
 const BUILTINS = builtinPresetsFor("zh-CN");
+afterEach(() => vi.unstubAllGlobals());
 
 function aiWith(flavor?: "chat" | "responses") {
 	const g = makeDefaultGlobalSettings();
@@ -41,6 +42,44 @@ describe("toGeneratorConfig:接口风味", () => {
 	it("默认桶(chat)→ 引擎照旧走 chat completions", () => {
 		expect(toGeneratorConfig(aiWith(), BUILTINS).apiFlavor).toBe("chat");
 	});
+});
+
+it("官方 Flash 只在选中 DeepSeek 搜索时启用原生工具", () => {
+	const ai = aiWith();
+	const profile = ai.providers.p1;
+	if (!profile) throw new Error("Missing test profile");
+	profile.model = "deepseek-flash";
+	ai.search.backend = "deepseek";
+	expect(toGeneratorConfig(ai, BUILTINS).nativeWeb).toBe(true);
+	ai.search.backend = "tavily";
+	profile.nativeWeb = true;
+	expect(toGeneratorConfig(ai, BUILTINS).nativeWeb).toBe(false);
+});
+
+it("官方 Pro 搜索沿用主模型密钥，第三方网关使用单独配置的密钥", async () => {
+	const ai = aiWith();
+	ai.search.backend = "deepseek";
+	ai.search.keys.deepseek = "standalone-key";
+	const fetch = vi.fn(async () => Response.json({ results: [] }));
+	vi.stubGlobal("fetch", fetch);
+
+	expect(toGeneratorConfig(ai, BUILTINS).nativeWeb).toBe(false);
+	await webSearchExecutorForAi(ai)?.search("test query");
+	expect(fetch).toHaveBeenLastCalledWith(
+		"https://api.deepseek.com/v1/tools/search",
+		expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer sk-x" }) }),
+	);
+
+	const profile = ai.providers.p1;
+	if (!profile) throw new Error("Missing test profile");
+	profile.baseUrl = "https://gateway.example/v1";
+	await webSearchExecutorForAi(ai)?.search("test query");
+	expect(fetch).toHaveBeenLastCalledWith(
+		"https://api.deepseek.com/v1/tools/search",
+		expect.objectContaining({
+			headers: expect.objectContaining({ Authorization: "Bearer standalone-key" }),
+		}),
+	);
 });
 
 describe("toGeneratorConfig:temperature 已退役", () => {

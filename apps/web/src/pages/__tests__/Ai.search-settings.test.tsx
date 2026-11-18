@@ -13,7 +13,7 @@
  * 4. 这些改动会让灵动岛变 dirty —— 不喂给 packIsland 的话保存条不亮,主人一走就丢。
  */
 
-import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
+import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -34,8 +34,7 @@ function globals() {
 	return JSON.parse(JSON.stringify(g));
 }
 
-function mount() {
-	const g = globals();
+function mount(g = globals()) {
 	vi.mocked(api.get).mockImplementation(async (path: string) =>
 		path === "/api/targets" ? [] : { core: JSON.parse(JSON.stringify(g)) },
 	);
@@ -133,6 +132,35 @@ it("visible search scene labels and fee hints translate without replacing the dr
 });
 
 describe("Ai 页 · 联网搜索设置块", () => {
+	it("选 DeepSeek 搜索时复用当前官方模型，界面只需选场景", async () => {
+		const g = globals();
+		g.ai.activeProfile = "official";
+		g.ai.providers.official = {
+			...EMPTY_AI_PROVIDER_PROFILE,
+			provider: "deepseek",
+			baseUrl: "https://api.deepseek.com",
+			model: "deepseek-flash",
+			apiKey: { masked: "••••" },
+		};
+		mount(g);
+		fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));
+		fireEvent.click(screen.getByRole("button", { name: "DeepSeek" }));
+		expect(inputAt("ai.search.keys.deepseek")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "作品点评联网搜索" }));
+		await act(async () => useDraftStore.getState().current?.onSave());
+		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+			core: {
+				ai: expect.objectContaining({
+					search: {
+						backend: "deepseek",
+						keys: { bocha: "", tavily: "" },
+						scenes: { post: true, live: false, roast: false },
+					},
+				}),
+			},
+		});
+	});
+
 	it("后端 Picker 与博查的 key 输入框在场,key 是密文", async () => {
 		mount();
 		fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));

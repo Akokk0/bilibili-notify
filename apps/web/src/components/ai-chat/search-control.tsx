@@ -1,6 +1,6 @@
 import {
-	isDeepSeekFlash,
 	resolveAIProfile,
+	resolveWebSearchMode,
 	webSearchBackendMeta,
 } from "@bilibili-notify/internal/ai";
 import { Icon } from "@bilibili-notify/ui";
@@ -29,8 +29,8 @@ export function SearchControl({ on, onToggle }: { on: boolean; onToggle: (v: boo
 	if (!search) return null;
 
 	const profile = resolveAIProfile(ai);
-	const hosted = profile.nativeWeb && isDeepSeekFlash(profile.provider, profile.model);
-	const configured = hosted ? Boolean(profile.apiKey) : Boolean(search.keys[search.backend]);
+	const { hosted, useModelKey } = resolveWebSearchMode(profile, search.backend);
+	const configured = Boolean(hosted || useModelKey ? profile.apiKey : search.keys[search.backend]);
 
 	const label = hosted ? "DeepSeek" : webSearchBackendMeta(search.backend).label;
 	const title = configured
@@ -39,7 +39,7 @@ export function SearchControl({ on, onToggle }: { on: boolean; onToggle: (v: boo
 			: hosted
 				? tx("deepseek.chatSearchHint")
 				: tx("panelUi.components.ai-chat.search-control.3")
-		: hosted
+		: hosted || useModelKey
 			? tx("deepseek.chatSearchKey")
 			: tx("panelUi.components.ai-chat.search-control.4", { value0: label });
 	return (

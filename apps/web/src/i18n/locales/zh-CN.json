@@ -3354,6 +3354,7 @@
 	"aiSettings.page.vision.unsupported": "{model} 不支持直接看图。可改用 deepseek-flash，或在下方填写视觉模型。",
 	"deepseek.chatSearchHint": "允许本次会话使用 DeepSeek 原生搜索和链接阅读，按模型 token 计费。",
 	"deepseek.chatSearchKey": "请先在模型配置里保存当前 DeepSeek 实例的 API Key。",
-	"deepseek.searchScenes": "已开启的场景会使用 DeepSeek 原生联网，按模型 token 计费。关闭原生联网的模型使用上方配置的搜索服务。",
+	"deepseek.searchUsesModelKey": "搜索沿用当前官方 DeepSeek 实例的 API Key。",
+	"deepseek.searchScenes": "已开启的场景使用 DeepSeek 原生联网，按模型 token 计费。",
 	"deepseek.sceneHint": "允许这类推送联网，由 DeepSeek 按模型 token 计费。"
 }

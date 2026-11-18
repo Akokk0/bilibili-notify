@@ -18,7 +18,7 @@
  * 在这里做一次性翻译,推送链路不感知差异。
  */
 
-import type { CommentaryCallOverride } from "@bilibili-notify/ai";
+import { type CommentaryCallOverride, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
 import {
 	type ActivePersonaShape,
 	type AIBuiltinPresetShape,
@@ -26,6 +26,7 @@ import {
 	resolveActivePersona,
 	resolveAIProfile,
 	resolveSubscriptionPersona,
+	resolveWebSearchMode,
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
@@ -62,7 +63,7 @@ export function toGeneratorConfig(ai: AiSettings, builtins: readonly AIBuiltinPr
 		enableThinking: p.enableThinking,
 		thinkingLevel: p.thinkingLevel,
 		extraParams: p.extraParams,
-		nativeWeb: p.nativeWeb,
+		nativeWeb: resolveWebSearchMode(p, ai.search?.backend ?? "bocha").hosted,
 		safetyCheck: p.safetyCheck,
 		// 主模型自己支持视觉时开它,图直接下挂,省一次往返也不掉保真度。
 		// 配了视觉副模型则副模型优先(见 CommentaryGenerator#resolveImages)。
@@ -73,6 +74,15 @@ export function toGeneratorConfig(ai: AiSettings, builtins: readonly AIBuiltinPr
 			model: p.vision.model,
 		},
 	};
+}
+
+export function webSearchExecutorForAi(ai: AiSettings) {
+	const profile = resolveAIProfile(ai);
+	const search = ai.search;
+	if (resolveWebSearchMode(profile, search.backend).useModelKey) {
+		return webSearchExecutorFromSettings({ ...search, keys: { deepseek: profile.apiKey } });
+	}
+	return webSearchExecutorFromSettings(search);
 }
 
 /**

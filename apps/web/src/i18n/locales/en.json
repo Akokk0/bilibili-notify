@@ -3423,6 +3423,7 @@
 	"aiSettings.page.vision.unsupported": "{model} cannot read images directly. Choose deepseek-flash or configure a vision model below.",
 	"deepseek.chatSearchHint": "Use DeepSeek native search and link reading for this conversation. Model tokens are billed.",
 	"deepseek.chatSearchKey": "Save the API key for the active DeepSeek model in Model configuration.",
-	"deepseek.searchScenes": "Enabled scenes use native DeepSeek tools and consume model tokens. The external search key is used by profiles with native search off.",
+	"deepseek.searchUsesModelKey": "Search uses the active official DeepSeek instance’s API key.",
+	"deepseek.searchScenes": "Enabled scenes use DeepSeek’s native web tools and consume model tokens.",
 	"deepseek.sceneHint": "Enable search for this notification. DeepSeek bills the model tokens used."
 }
