@@ -1,5 +1,12 @@
 {
+	"deepseek.network": "Could not reach the configured DeepSeek endpoint.",
+	"log.http.deepseekFileCleanup": "Temporary document deletion failed. The upload will expire within one hour.",
 	"speech.nativeConfig": "Enter a DeepSeek API key and choose the stella or tide voice.",
+	"deepseek.upstream": "DeepSeek returned HTTP {status}.",
+	"deepseek.incomplete": "DeepSeek returned an incomplete recognition result.",
+	"deepseek.profile": "Check the endpoint, key and model of the active DeepSeek profile.",
+	"deepseek.file": "Choose a file within the size limit.",
+	"deepseek.document": "Document",
 	"speech.pendingAudit": "Voice message submitted for review. Delivery is unconfirmed.",
 	"speech.config": "Save a speech endpoint, model and voice first.",
 	"speech.length": "A voice message requires 1 to 4096 characters.",

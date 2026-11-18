@@ -7,9 +7,10 @@
  * 差不多的圆按钮,新主人分不清哪个是哪个。
  */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
+import { api } from "../../../services/api";
 import { Composer } from "../composer";
 
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
@@ -103,4 +104,56 @@ describe("Composer — + 二级菜单", () => {
 		fireEvent.mouseDown(document.body);
 		await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
 	});
+});
+
+it("transcribes a recording into the draft without submitting", async () => {
+	const append = vi.fn();
+	const request = vi.spyOn(api, "upload").mockResolvedValue({ text: "录音文字" });
+	try {
+		const { onSubmit } = renderComposer({
+			deepSeek: { scope: "fixture", files: true, append, onDocument: vi.fn() },
+		});
+		openMenu();
+		expect(screen.getByRole("menuitem", { name: "转写录音文件" })).toBeTruthy();
+		fireEvent.change(screen.getByLabelText("转写录音文件", { selector: "input" }), {
+			target: { files: [new File(["test"], "a.wav")] },
+		});
+		await waitFor(() => expect(append).toHaveBeenCalledWith("录音文字"));
+		expect(onSubmit).not.toHaveBeenCalled();
+	} finally {
+		request.mockRestore();
+	}
+});
+
+it("cancels pending recognition when the user changes the conversation or model", async () => {
+	let complete!: (result: { text: string }) => void;
+	const request = vi.spyOn(api, "upload").mockImplementation(
+		() =>
+			new Promise((resolve) => {
+				complete = resolve;
+			}),
+	);
+	const append = vi.fn();
+	const props = {
+		value: "draft",
+		onChange: vi.fn(),
+		onSubmit: vi.fn(),
+		busy: false,
+		aiName: "小绫",
+	};
+	const deepSeek = { scope: "first", files: true, append, onDocument: vi.fn() };
+	try {
+		const view = render(<Composer {...props} deepSeek={deepSeek} />);
+		fireEvent.change(screen.getByLabelText("提取文字（OCR）", { selector: "input" }), {
+			target: { files: [new File(["sample"], "sample.pdf")] },
+		});
+		const signal = request.mock.calls[0]?.[2];
+		view.rerender(<Composer {...props} deepSeek={{ ...deepSeek, scope: "second" }} />);
+		expect(signal?.aborted).toBe(true);
+		await act(async () => complete({ text: "旧会话的文字" }));
+		expect(append).not.toHaveBeenCalled();
+		expect(screen.getByDisplayValue("draft")).toBeTruthy();
+	} finally {
+		request.mockRestore();
+	}
 });

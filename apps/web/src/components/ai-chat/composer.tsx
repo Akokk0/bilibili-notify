@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useT } from "../../i18n";
 import { useSkinText } from "../../store/skin";
+import { type DeepSeekInputs, useDeepSeekInputs } from "./deepseek-inputs";
 import { matchSkills } from "./skills";
 
 /**
@@ -45,6 +46,8 @@ export interface ComposerAttachment {
 export const MAX_ATTACHMENTS = 4;
 
 export interface ComposerProps {
+	deepSeek?: DeepSeekInputs;
+	documentControl?: ReactNode;
 	value: string;
 	onChange: (next: string) => void;
 	/** 提交。调用方负责把 value 清空(成功时)或留着(失败时让主人重试)。 */
@@ -84,6 +87,8 @@ function fitTextarea(el: HTMLTextAreaElement | null) {
 }
 
 export function Composer({
+	deepSeek,
+	documentControl,
 	value,
 	onChange,
 	onSubmit,
@@ -110,6 +115,7 @@ export function Composer({
 	const [closed, setClosed] = useState(false);
 	/** 「+」二级菜单的开合 —— 与上面 `/` 那层技能搜索菜单各管各的状态。 */
 	const [actionsOpen, setActionsOpen] = useState(false);
+	const native = useDeepSeekInputs(deepSeek, () => setActionsOpen(false));
 	const actionsRef = useRef<HTMLDivElement>(null);
 	const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -139,7 +145,10 @@ export function Composer({
 	const showMenu = matches.length > 0 && !closed;
 	// 只有图、一个字没打也算数 —— 拖一张图进来直接回车是最自然的用法,那时
 	// 「这是什么」纯属多余,图本身就是问题。
-	const canSend = !busy && (value.trim().length > 0 || attachments.length > 0);
+	const canSend =
+		!busy &&
+		!native.pending &&
+		(value.trim().length > 0 || attachments.length > 0 || !!documentControl);
 
 	// 匹配项变少时高亮可能指到列表外(打 `/锐` 只剩一条,而高亮停在第 3 条),
 	// 那时 Enter 会选中 undefined。收敛回合法范围。
@@ -272,6 +281,8 @@ export function Composer({
 				    这类开关 / 发送键)。曾经这些按钮跟输入框挤在同一行,内容一多输入区
 				    反而被越挤越窄;分行之后输入区永远占满宽度,工具栏也有地方把开关
 				    做成带文字的胶囊,不必缩成一个谁都认不出的图标。 */}
+				{documentControl}
+				{native.inputs}
 				<textarea
 					ref={taRef}
 					rows={1}
@@ -353,6 +364,7 @@ export function Composer({
 									>
 										{tx("panelUi.components.ai-chat.composer.15")}
 									</MenuItem>
+									{native.menu}
 									<MenuItem
 										role="menuitem"
 										icon={<Icon.sparkle size={16} />}

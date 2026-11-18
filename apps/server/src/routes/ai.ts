@@ -15,8 +15,10 @@ import {
 	AiSettingsSchema,
 	aiProfileAt,
 	type CardKind,
+	type Failure,
 	fail,
 	type ImageRef,
+	isDeepSeekFlash,
 	issuesFromZod,
 	modelSupportsVision,
 	type NotificationPayload,
@@ -29,6 +31,13 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
+import {
+	AUDIO_LIMIT,
+	DOCUMENT_LIMIT,
+	recognizeFile,
+	removeDocument,
+	uploadDocument,
+} from "../ai/deepseek-files.js";
 import { promptNounsOf } from "../ai/prompt-nouns.js";
 import { fetchSpeech } from "../ai/speech.js";
 import { LOAD_SKILL_LABEL } from "../ai/tool-label-texts.js";
@@ -99,6 +108,17 @@ const conversationGoneMessage = () => serverText("service.routes.ai.text.3");
  * 它是在叫主人去配置,所以是 `not_configured`,不是 `unsupported`。
  */
 const visionNotSetMessage = () => serverText("service.routes.ai.text.4");
+function stillUsesProfile(ai: AiSettings, expected: ReturnType<typeof resolveAIProfile<string>>) {
+	const current = resolveAIProfile(ai);
+	return (
+		ai.enabled &&
+		current.provider === expected.provider &&
+		current.baseUrl === expected.baseUrl &&
+		current.model === expected.model &&
+		current.apiKey === expected.apiKey
+	);
+}
+
 /** 聊天一条消息的字数上限。 */
 const CHAT_MESSAGE_MAX_CHARS = 4000;
 /** 单张聊天附件上限 5MB —— 与卡片背景图同口径。图库自己的线是 8MB,这是上传这一层更紧的规矩。 */
@@ -134,6 +154,28 @@ export function createAiRoute(
 	},
 ): Hono {
 	const app = new Hono();
+
+	for (const kind of ["asr", "ocr"] as const) {
+		const limit = kind === "asr" ? AUDIO_LIMIT : DOCUMENT_LIMIT;
+		app.post(
+			`/tools/${kind}`,
+			uploadBodyLimit(limit, () => kind.toUpperCase()),
+			async (c) => {
+				const ai = deps.store.getGlobals().ai;
+				const profile = resolveAIProfile(ai);
+				if (!ai.enabled || profile.provider !== "deepseek" || !profile.apiKey || !profile.baseUrl)
+					return respondFailure(c, fail("not_configured", serverText("deepseek.profile")));
+				const form = await c.req.parseBody().catch(() => null);
+				if (!stillUsesProfile(deps.store.getGlobals().ai, profile))
+					return respondFailure(c, fail("not_configured", serverText("deepseek.profile")));
+				const file = form?.file;
+				if (!(file instanceof File) || !file.size || file.size > limit)
+					return respondFailure(c, fail("invalid", serverText("deepseek.file")));
+				const result = await recognizeFile(profile, kind, file, c.req.raw.signal);
+				return result.ok ? c.json(result) : respondFailure(c, result);
+			},
+		);
+	}
 
 	app.post("/speech/preview", async (c) => {
 		const result = await fetchSpeech(
@@ -335,8 +377,27 @@ export function createAiRoute(
 	 * 失败分两处处理。所以 SSE 只在真的要开始生成时才开。两处的失败都是
 	 * `{ code, message, issues? }`,一头经 `respondFailure`、一头经 `errorBodyOf`。
 	 */
+	app.post(
+		"/conversations/:id/chat",
+		uploadBodyLimit(DOCUMENT_LIMIT, () => serverText("deepseek.document")),
+	);
 	app.post("/conversations/:id/chat", async (c) => {
-		const raw = (await c.req.json().catch(() => null)) as { message?: unknown } | null;
+		const multipart = c.req.header("content-type")?.startsWith("multipart/form-data");
+		const documentProfile = multipart ? resolveAIProfile(deps.store.getGlobals().ai) : null;
+		const form = multipart ? await c.req.parseBody().catch(() => null) : null;
+		const document = form?.document;
+		if (
+			multipart &&
+			(!(document instanceof File) || !document.size || document.size > DOCUMENT_LIMIT)
+		)
+			return respondFailure(c, fail("invalid", serverText("deepseek.file")));
+		let raw: { message?: unknown } | null = null;
+		try {
+			raw = multipart ? JSON.parse(String(form?.request)) : await c.req.json();
+		} catch {
+			/* Normal validation handles a malformed request. */
+		}
+
 		// 空话单独说:这是最常见的一种"不对",zod 的英文默认话("Too small…")不该出现在主人眼前。
 		if (typeof raw?.message !== "string" || raw.message.trim() === "") {
 			return respondFailure(c, fail("invalid", serverText("service.routes.ai.text.11")));
@@ -365,6 +426,13 @@ export function createAiRoute(
 		const commentary = pipeline.commentary;
 		if (!commentary) return respondFailure(c, fail("not_configured", aiKeyMissingMessage()));
 
+		if (
+			documentProfile &&
+			(!isDeepSeekFlash(documentProfile.provider, documentProfile.model) ||
+				!documentProfile.apiKey ||
+				!documentProfile.baseUrl)
+		)
+			return respondFailure(c, fail("not_configured", serverText("deepseek.profile")));
 		const conv = await store().get(c.req.param("id"));
 		if (!conv) return respondFailure(c, fail("not_found", conversationGoneMessage()));
 
@@ -547,6 +615,9 @@ export function createAiRoute(
 		// 分钟,侧栏里却没有「我正在聊的那条」。
 		const doneBusy = store().markBusy(conv.id);
 		return streamSSE(c, async (sse) => {
+			const sendFailure = (failure: Failure) =>
+				sse.writeSSE({ event: "error", data: JSON.stringify(errorBodyOf(failure)) });
+			let uploadedId: string | undefined;
 			try {
 				/**
 				 * 这一轮调过的工具,按**开始**的先后排 —— 那是主人眼看着它们冒出来的
@@ -603,7 +674,30 @@ export function createAiRoute(
 				try {
 					// 聊天的思考设置与 AI 生成器(点评/总结)分了家。开关是会话级的,按消息走
 					// 请求体,不带 = 关(配置里已经没有它的位置);等级始终从配置读。
+					if (document instanceof File && documentProfile) {
+						if (sse.aborted || c.req.raw.signal.aborted) return;
+						if (!stillUsesProfile(deps.store.getGlobals().ai, documentProfile)) {
+							await sendFailure(fail("not_configured", serverText("deepseek.profile")));
+							return;
+						}
+						const uploaded = await uploadDocument(
+							documentProfile,
+							document,
+							form?.layout === "rich",
+						);
+						if (!uploaded.ok) {
+							await sendFailure(uploaded);
+							return;
+						}
+						uploadedId = uploaded.id;
+						if (sse.aborted || c.req.raw.signal.aborted) return;
+						if (!stillUsesProfile(deps.store.getGlobals().ai, documentProfile)) {
+							await sendFailure(fail("not_configured", serverText("deepseek.profile")));
+							return;
+						}
+					}
 					reply = await commentary.chatStatelessStream(history, {
+						...(uploadedId ? { documentId: uploadedId } : {}),
 						imageUrls: visible.length > 0 ? visible.map((v) => v.url) : undefined,
 						thinking: {
 							enableThinking: parsed.data.thinking ?? false,
@@ -678,14 +772,9 @@ export function createAiRoute(
 					// 模型那头的错(密钥不对、余额不足、网络、中途断流)—— 对端给的原因就是主人要看的,
 					// 原话进 `message`。帧体与非 2xx 的错误体同形。
 					const reason = err instanceof Error ? err.message : String(err);
-					await sse.writeSSE({
-						event: "error",
-						data: JSON.stringify(
-							errorBodyOf(
-								fail("unavailable", serverText("service.routes.ai.text.16", { value0: reason })),
-							),
-						),
-					});
+					await sendFailure(
+						fail("unavailable", serverText("service.routes.ai.text.16", { value0: reason })),
+					);
 					return;
 				}
 
@@ -707,10 +796,7 @@ export function createAiRoute(
 				]);
 				if (!updated) {
 					// 聊天期间这个会话被删了(另一个标签页 / 超出会话数上限被修剪)。
-					await sse.writeSSE({
-						event: "error",
-						data: JSON.stringify(errorBodyOf(fail("not_found", conversationGoneMessage()))),
-					});
+					await sendFailure(fail("not_found", conversationGoneMessage()));
 					return;
 				}
 
@@ -727,6 +813,14 @@ export function createAiRoute(
 			} finally {
 				// 早退(报错 / 会话被删)与正常收尾都要销账,漏一次这场就永久钉在侧栏上。
 				doneBusy();
+				if (uploadedId && documentProfile) {
+					const cleanup = await removeDocument(documentProfile, uploadedId);
+					if (!cleanup.ok)
+						deps.runtime.serviceCtx.logger.warn(logText("log.http.deepseekFileCleanup"), {
+							code: cleanup.code,
+							upstreamCode: cleanup.upstreamCode,
+						});
+				}
 			}
 		});
 	});

@@ -252,11 +252,11 @@ async function request<T>(
  * Multipart upload(背景图等)。不设 content-type —— 让浏览器自动带上 multipart
  * boundary;其余(desktop token / 凭据 / 错误处理)与 `request` 一致。
  */
-async function upload<T>(path: string, form: FormData): Promise<T> {
+async function upload<T>(path: string, form: FormData, signal?: AbortSignal): Promise<T> {
 	const what = `POST ${path}`;
 	const headers = withDesktopTokenHeader();
 	const res = await withOffline(what, () =>
-		fetch(path, { method: "POST", headers, body: form, credentials: "include" }),
+		fetch(path, { method: "POST", headers, body: form, credentials: "include", signal }),
 	);
 	const { payload, failed } = await readJsonPayload(res);
 	if (!res.ok) {
@@ -326,6 +326,6 @@ export const api = {
 	patch: <T>(path: string, body?: unknown) =>
 		request<T>("PATCH", path, body === undefined ? undefined : nullifyUndefined(body)),
 	delete: <T>(path: string) => request<T>("DELETE", path),
-	upload: <T>(path: string, form: FormData) => upload<T>(path, form),
+	upload,
 	blob: requestBlob,
 };

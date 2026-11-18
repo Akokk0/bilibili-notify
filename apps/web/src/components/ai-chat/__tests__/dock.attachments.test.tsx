@@ -15,6 +15,7 @@
  * 回头去读组件状态。
  */
 
+import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -90,8 +91,10 @@ import { ChatPage } from "../index";
 const ASSET_ID = `${"ab".repeat(32)}.png`;
 
 /** ChatPage 用 useNavigate / useLocation,得裹在 Router 里;这份测试不关心来路。 */
-function wrap(node: ReactNode) {
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function wrap(
+	node: ReactNode,
+	qc = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
 	return (
 		<QueryClientProvider client={qc}>
 			<MemoryRouter>{node}</MemoryRouter>
@@ -209,4 +212,51 @@ describe("AiChatDock — 发图", () => {
 		await waitFor(() => expect(vi.mocked(sendChatMessage)).toHaveBeenCalledTimes(2));
 		expect(sentImageIds() ?? []).toHaveLength(0);
 	});
+});
+
+it("only sends a selected document to the profile it was picked for and can summarize it without typing", async () => {
+	const qc = new QueryClient({
+		defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+	});
+	const g = makeDefaultGlobalSettings();
+	g.ai.enabled = true;
+	g.ai.activeProfile = "ds";
+	const profile = {
+		...g.ai.providers.ds,
+		provider: "deepseek",
+		model: "deepseek-flash",
+		baseUrl: "https://api.deepseek.com",
+		apiKey: "fixture",
+	};
+	const configure = (id: string) =>
+		qc.setQueryData(["settings"], {
+			core: {
+				...g,
+				ai: {
+					...g.ai,
+					activeProfile: id,
+					providers: { ds: profile, other: { ...profile, baseUrl: "https://example.test" } },
+				},
+			},
+		});
+	configure("ds");
+	render(wrap(<ChatPage />, qc));
+	const file = new File(["hi"], "notes.txt");
+	const attach = () =>
+		fireEvent.change(screen.getByLabelText("添加文档", { selector: "input" }), {
+			target: { files: [file] },
+		});
+	attach();
+	expect(screen.getByText("notes.txt")).toBeTruthy();
+	await act(async () => {
+		configure("other");
+	});
+	await waitFor(() => expect(screen.queryByText("notes.txt")).toBeNull());
+	expect(screen.getByLabelText("发送").hasAttribute("disabled")).toBe(true);
+	attach();
+	fireEvent.click(screen.getByLabelText("发送"));
+	await waitFor(() => expect(sendChatMessage).toHaveBeenCalledTimes(1));
+	const request = vi.mocked(sendChatMessage).mock.calls[0];
+	expect(request?.[1]).toContain("文档");
+	expect(request?.[4]).toMatchObject({ document: file, richLayout: false });
 });

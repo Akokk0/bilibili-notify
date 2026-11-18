@@ -1,5 +1,12 @@
 {
+	"deepseek.network": "無法連線至設定的 DeepSeek 端點。",
+	"log.http.deepseekFileCleanup": "臨時文件清理失敗，檔案將在上傳一小時後到期。",
 	"speech.nativeConfig": "請填寫 DeepSeek 語音金鑰，並選擇 stella 或 tide 聲線。",
+	"deepseek.upstream": "DeepSeek 服務回傳 HTTP {status}。",
+	"deepseek.incomplete": "DeepSeek 未傳回完整的辨識結果。",
+	"deepseek.profile": "請檢查目前 DeepSeek 執行個體的位址、金鑰與模型。",
+	"deepseek.file": "請選取大小符合限制的檔案。",
+	"deepseek.document": "文件",
 	"speech.pendingAudit": "語音已提交平台審核，送達結果待確認。",
 	"speech.config": "請先儲存語音服務位址、模型和音色。",
 	"speech.length": "單則語音需要 1 至 4096 個字元。",

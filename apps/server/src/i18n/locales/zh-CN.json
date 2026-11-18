@@ -1,5 +1,12 @@
 {
+	"deepseek.network": "无法连接配置的 DeepSeek 接口。",
+	"log.http.deepseekFileCleanup": "临时文档清理失败，文件将在上传一小时后到期。",
 	"speech.nativeConfig": "请填写 DeepSeek 语音密钥，并选择 stella 或 tide 声线。",
+	"deepseek.upstream": "DeepSeek 服务返回 HTTP {status}。",
+	"deepseek.incomplete": "DeepSeek 未返回完整的识别结果。",
+	"deepseek.profile": "请检查当前 DeepSeek 实例的地址、密钥和模型。",
+	"deepseek.file": "请选择大小符合限制的文件。",
+	"deepseek.document": "文档",
 	"speech.pendingAudit": "语音已提交平台审核，送达结果待确认。",
 	"speech.config": "请先保存语音服务地址、模型和音色。",
 	"speech.length": "单条语音需要 1 至 4096 个字符。",

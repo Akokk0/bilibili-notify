@@ -107,6 +107,27 @@ describe("sendChatMessage — 事件分派", () => {
 			conversation: { id: "c1", title: "t", createdAt: "t", updatedAt: "t", messageCount: 2 },
 		})}\n\n`;
 
+	it("sends one document and preserves the chat options in the multipart request", async () => {
+		stubStream(doneFrame());
+		const document = new File(["report"], "report.pdf");
+		await sendChatMessage("c1", "读一下", { onDelta: () => {} }, ["photo.jpg"], {
+			document,
+			richLayout: true,
+			search: true,
+			thinking: true,
+		});
+		const init = vi.mocked(fetch).mock.calls[0]?.[1];
+		expect(new Headers(init?.headers).has("content-type")).toBe(false);
+		const form = init?.body as FormData;
+		expect((form.get("document") as File).name).toBe("report.pdf");
+		expect(form.get("layout")).toBe("rich");
+		expect(JSON.parse(String(form.get("request")))).toEqual({
+			message: "读一下",
+			images: ["photo.jpg"],
+			search: true,
+			thinking: true,
+		});
+	});
 	it("tool 帧派给 onTool,两拍都到", async () => {
 		stubStream(
 			`event: tool\ndata: {"phase":"start","id":"0-0","name":"list_subscriptions","args":{}}\n\n`,

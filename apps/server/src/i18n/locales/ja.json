@@ -1,5 +1,12 @@
 {
+	"deepseek.network": "設定した DeepSeek エンドポイントに接続できませんでした。",
+	"log.http.deepseekFileCleanup": "一時ドキュメントの削除に失敗しました。ファイルはアップロードから 1 時間で期限切れになります。",
 	"speech.nativeConfig": "DeepSeek の API キーを入力し、stella または tide を選んでください。",
+	"deepseek.upstream": "DeepSeek が HTTP {status} を返しました。",
+	"deepseek.incomplete": "DeepSeek の認識結果が不完全です。",
+	"deepseek.profile": "現在の DeepSeek 設定の URL、キー、モデルを確認してください。",
+	"deepseek.file": "サイズ制限内のファイルを選択してください。",
+	"deepseek.document": "文書",
 	"speech.pendingAudit": "音声は審査中です。配信結果は未確定です。",
 	"speech.config": "音声サービスの URL、モデル、声を保存してください。",
 	"speech.length": "音声の文字数は 1～4096 文字です。",

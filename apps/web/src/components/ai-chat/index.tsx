@@ -5,10 +5,14 @@ import {
 	type AiConversationView,
 	type AiSkinTarget,
 } from "@bilibili-notify/contract";
-import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/ai";
+import {
+	isDeepSeekFlash,
+	resolveActivePersona,
+	resolveAIProfile,
+} from "@bilibili-notify/internal/ai";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
-import { ErrorNote, Icon, TabBar } from "@bilibili-notify/ui";
+import { CheckRow, ErrorNote, Icon, IconButton, TabBar } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -134,6 +138,8 @@ export function AiChatDock() {
  */
 type PendingTool = ToolChipView & { id: string };
 
+type ChatDocument = { file: File; richLayout: boolean; scope: string };
+
 /**
  * 一次发送的全部输入 —— 正文**与附件**。
  *
@@ -143,13 +149,18 @@ type PendingTool = ToolChipView & { id: string };
  * 能预览、也照常挂在自己那条消息上,唯独服务端一张都收不到。
  */
 type SendVars = {
+	document?: ChatDocument;
 	text: string;
 	attachments: readonly ComposerAttachment[];
 	/**
 	 * 会话级胶囊在**点发送那一刻**的状态。走 variables 而不是让 mutationFn 从
 	 * 组件闭包里读 —— 见 react-query onMutate 的时序坑:要发的东西必须随载荷走。
 	 */
-	flags: { thinking: boolean; search: boolean; skill?: string };
+	flags: {
+		thinking: boolean;
+		search: boolean;
+		skill?: string;
+	};
 	/**
 	 * 这一问发去哪场对话。`null` = 现开一场(空态首发)。同样走 variables:
 	 * mutationFn 从闭包里读 activeId 会读到旧值。
@@ -314,7 +325,8 @@ export function ChatPage() {
 	const globalsQuery = useCoreSettings();
 	// 模型名在当前生效的那个服务商桶里(各家一套配置)。
 	const ai = globalsQuery.data?.ai;
-	const modelName = ai ? resolveAIProfile(ai).model : undefined;
+	const profile = ai ? resolveAIProfile(ai) : undefined;
+	const modelName = profile?.model;
 	// 名字 / 自称 / 对主人的称呼一律跟**当前选中的那份人格**走(`activePreset` 指的
 	// 那份),界面上不写死。内置人格的内容按当前语言取(设置里不存),与引擎同一个读法。
 	const locale = textSettingsOf(globalsQuery.data ?? {}).locale;
@@ -353,7 +365,10 @@ export function ChatPage() {
 	// 会话被别处删掉(另一个标签页 / 超出上限被修剪)时,activeId 会指向一个
 	// 取不回来的会话。回落到空态,而不是卡在一个永远转圈的详情上。
 	useEffect(() => {
-		if (activeId && activeQuery.isError) setActiveId(null);
+		if (activeId && activeQuery.isError) {
+			setDraftGeneration((n) => n + 1);
+			setActiveId(null);
+		}
 	}, [activeId, activeQuery.isError, setActiveId]);
 
 	// 页面一挂载再取一次 —— 兜底。正常路径上首屏空闲那次早就取完了(见 AiChatDock),
@@ -387,6 +402,8 @@ export function ChatPage() {
 	 * 传在**挑图那一刻**而不是发送那一刻:格式不对 / 超过 5MB 能当场报出来,
 	 * 而不是主人打完一整段话点了发送才发现图根本没进去。
 	 */
+	const [pickedDocument, setDocument] = useState<ChatDocument>();
+	const [draftGeneration, setDraftGeneration] = useState(0);
 	const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
 
 	/**
@@ -434,6 +451,19 @@ export function ChatPage() {
 			}
 		: pendingFace;
 	const skinMode = activeFace.mode === "skin";
+	const draftScope = JSON.stringify([
+		draftGeneration,
+		ai?.enabled,
+		ai?.activeProfile,
+		profile?.baseUrl,
+		modelName,
+		skinMode,
+	]);
+	const doc = pickedDocument?.scope === draftScope ? pickedDocument : undefined;
+	useEffect(() => {
+		setDocument((current) => (current?.scope === draftScope ? current : undefined));
+	}, [draftScope]);
+
 	const cardWorkshop = skinMode && activeFace.skinTarget === "card";
 	// 空态与会话态两个 Composer 用同一份 —— 各写一遍的话,加第三颗胶囊只改到
 	// 一处,问候屏和聊天里的工具栏就长得不一样了(正是本文件头警告过的分裂态)。
@@ -463,6 +493,7 @@ export function ChatPage() {
 			text,
 			attachments: outgoingFiles,
 			flags,
+			document,
 			conversationId,
 			face,
 		}: SendVars) => {
@@ -554,13 +585,14 @@ export function ChatPage() {
 					},
 				},
 				imageIds,
-				flags,
+				{ ...flags, ...(document && { document: document.file, richLayout: document.richLayout }) },
 			);
 		},
 		onMutate: ({ text, attachments: outgoingFiles }: SendVars) => {
 			// 立刻上屏 + 立刻清空输入框。这两件事一起做才自然:消息「离开」了
 			// 输入框,出现在对话里。图也一样跟着走。
 			setInput("");
+			setDocument(undefined);
 			setError(null);
 			setPending({
 				ask: text,
@@ -609,12 +641,13 @@ export function ChatPage() {
 			// 一次最多是一次空跑。
 			if (!res.conversation.autoTitled) void retitle.mutate(id);
 		},
-		onError: (err: Error, { text, attachments: outgoingFiles }: SendVars) => {
+		onError: (err: Error, { text, attachments: outgoingFiles, document }: SendVars) => {
 			// 服务端那一轮什么都没落盘,所以这里也把在途副本整个撤掉 —— 留着的话
 			// 屏幕上会挂着一轮「看起来存在、刷新就消失」的问答。
 			// 原文退回输入框:主人按个回车就能重试,不用把刚才那段话重打一遍。
 			setPending(null);
 			setInput((cur) => (cur.trim() ? cur : text));
+			if (document?.scope === draftScope) setDocument((current) => current ?? document);
 			// 图跟着退回来。这一轮什么都没落盘、图还好端端在磁盘上,而发图最常见的
 			// 失败(那家没配看图能力,服务端当场 400)恰恰是去设置页点一下就能好的
 			// —— 让主人回来重挑一遍图,纯属白丢。
@@ -628,7 +661,10 @@ export function ChatPage() {
 	const removeConv = useMutation({
 		mutationFn: deleteConversation,
 		onSuccess: (_r, id) => {
-			if (id === activeId) setActiveId(null);
+			if (id === activeId) {
+				setDraftGeneration((n) => n + 1);
+				setActiveId(null);
+			}
 			qc.invalidateQueries({ queryKey: conversationsQueryKey });
 		},
 	});
@@ -646,6 +682,7 @@ export function ChatPage() {
 	 */
 	const startNew = (mode: AiChatMode = "chat") => {
 		setActiveId(null);
+		setDraftGeneration((n) => n + 1);
 		setInput("");
 		setError(null);
 		setPending(null);
@@ -704,7 +741,7 @@ export function ChatPage() {
 		// 浏览器 —— 服务端拿名字去库里取,落盘的用户消息就是他真打的那几个字。
 		const outgoing = resolveOutgoing(raw, skills);
 		// 只有图、一个字没打也算数 —— 图本身就是问题。
-		if ((!outgoing.text && attachments.length === 0) || busy) return;
+		if ((!outgoing.text && attachments.length === 0 && !doc) || busy) return;
 		// 刚发出的这句和它的回复,主人一定要看 —— 翻到哪儿都先回到底部。
 		stickRef.current = true;
 		// 技能不再点名面孔(它声明不了模式,见 ADR-0001 决策 11),所以这一问永远
@@ -720,7 +757,8 @@ export function ChatPage() {
 		// `attachments` 只能读到空数组,于是服务端一张图也收不到。
 		// 两颗胶囊同理随载荷走。
 		send.mutate({
-			text: outgoing.text,
+			text: outgoing.text || (doc ? tx("deepseek.summarize") : ""),
+			document: doc,
 			attachments,
 			flags: {
 				thinking: thinkingOn,
@@ -749,6 +787,39 @@ export function ChatPage() {
 		}
 	};
 
+	const nativeInputs =
+		ai?.enabled && profile?.provider === "deepseek" && profile.apiKey && !skinMode && !busy
+			? {
+					scope: JSON.stringify([activeId, draftScope]),
+					files: isDeepSeekFlash(profile.provider, profile.model),
+					append: (text: string) =>
+						setInput((current) => [current, text].filter(Boolean).join("\n")),
+					onDocument: (file: File) => {
+						setDocument({ file, richLayout: false, scope: draftScope });
+					},
+				}
+			: undefined;
+	const documentControl = doc && (
+		<div className="flex flex-wrap items-center gap-2 text-bn-xs">
+			<Icon.folder size={14} />
+			<span className="break-all">{doc.file.name}</span>
+			{!/\.(xlsx?|csv|md|txt|json|epub|mobi)$/i.test(doc.file.name) && (
+				<CheckRow
+					checked={doc.richLayout}
+					onChange={(richLayout) => setDocument({ ...doc, richLayout })}
+				>
+					{tx("deepseek.rich")}
+				</CheckRow>
+			)}
+			<IconButton
+				size="sm"
+				label={tx("deepseek.remove")}
+				onClick={() => setDocument(undefined)}
+				icon={<Icon.close size={14} />}
+			/>
+		</div>
+	);
+
 	return (
 		<section
 			// 四色预设已砍,不再有 data-chat-theme:默认主题样式定义在 styles.css 的
@@ -770,6 +841,7 @@ export function ChatPage() {
 						conversations={conversations}
 						activeId={activeId}
 						onSelect={(id) => {
+							if (id !== activeId) setDraftGeneration((n) => n + 1);
 							setActiveId(id);
 							setError(null);
 						}}
@@ -832,6 +904,8 @@ export function ChatPage() {
 							</div>
 							{facePicker}
 							<Composer
+								deepSeek={nativeInputs}
+								documentControl={documentControl}
 								value={input}
 								onChange={setInput}
 								onSubmit={() => submit()}
@@ -886,6 +960,8 @@ export function ChatPage() {
 						</div>
 						<div className="px-6 pb-5 pt-2.5">
 							<Composer
+								deepSeek={nativeInputs}
+								documentControl={documentControl}
 								value={input}
 								onChange={setInput}
 								onSubmit={() => submit()}
