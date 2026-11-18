@@ -199,6 +199,28 @@ export function isDeepSeekSpeechEndpoint(baseUrl: string): boolean {
 	return /^https:\/\/api\.deepseek\.com(?:\/v1)?\/*$/i.test(baseUrl.trim());
 }
 
+export function isOfficialDeepSeekProfile(profile: {
+	provider: AIProviderId;
+	baseUrl: string;
+}): boolean {
+	return profile.provider === "deepseek" && isDeepSeekSpeechEndpoint(profile.baseUrl ?? "");
+}
+
+export function hasOfficialDeepSeekVision(
+	profile: Pick<AiProviderProfileShape<unknown>, "provider" | "baseUrl" | "model">,
+): boolean {
+	return isOfficialDeepSeekProfile(profile) && isDeepSeekFlash(profile.provider, profile.model);
+}
+
+export function canSendModelImages(
+	profile: Pick<AiProviderProfileShape<unknown>, "provider" | "baseUrl" | "model" | "enableVision">,
+): boolean {
+	return (
+		hasOfficialDeepSeekVision(profile) ||
+		(profile.enableVision && modelSupportsVision(profile.provider, profile.model))
+	);
+}
+
 /** 查不到就落到兜底档,永远返回一个可用的 meta。 */
 export function providerMeta(id: AIProviderId): AIProviderMeta {
 	return AI_PROVIDERS.find((p) => p.id === id) ?? AI_PROVIDERS[AI_PROVIDERS.length - 1];

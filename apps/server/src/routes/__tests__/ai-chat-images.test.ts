@@ -57,6 +57,7 @@ async function makeDeps(
 		enableVision?: boolean;
 		provider?: string;
 		model?: string;
+		baseUrl?: string;
 		maxConversations?: number;
 		maxMessages?: number;
 	} = {},
@@ -83,7 +84,7 @@ async function makeDeps(
 							provider: opts.provider ?? "custom",
 							label: "",
 							apiKey: "sk-x",
-							baseUrl: "https://api.example.com/v1",
+							baseUrl: opts.baseUrl ?? "https://api.example.com/v1",
 							model: opts.model ?? "m",
 							enableThinking: false,
 							thinkingLevel: "medium",
@@ -147,6 +148,17 @@ beforeEach(() => {
 });
 
 describe("发图 — 主模型自己就支持多模态", () => {
+	it("官方 Flash 无需图片理解开关即可收图", async () => {
+		const { app, deps } = await makeDeps({
+			provider: "deepseek",
+			model: "deepseek-flash",
+			baseUrl: "https://api.deepseek.com",
+		});
+		const id = await newConv(app);
+		const img = await saveImage(deps);
+		expect((await chat(app, id, { message: "这是什么", images: [img] })).status).toBe(200);
+		expect(H.lastImageUrls?.[0]).toMatch(/^data:image\/png;base64,/);
+	});
 	it("开了「主模型支持看图」→ 放行,不再要求先配副模型", async () => {
 		// gpt-4o 这类主模型本来就看得见图。逼着主人再去「看图专用模型」那格
 		// 抄一遍自己的模型名,既多余又违反那格字段的字面意思(它写着「主模型

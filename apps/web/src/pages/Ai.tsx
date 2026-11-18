@@ -23,6 +23,7 @@ import {
 	type APIFlavorId,
 	canProfileThink,
 	EMPTY_AI_PROVIDER_PROFILE,
+	hasOfficialDeepSeekVision,
 	isDeepSeekFlash,
 	modelSupportsVision,
 	providerMeta,
@@ -293,6 +294,7 @@ export default function Ai() {
 	// 配了视觉副模型 = 副模型无条件接管,enableVision 与它的地址/密钥两格的
 	// 可交互性都跟着这一个判断走(与 CommentaryGenerator#resolveImages 同源)。
 	const visionSubModelOn = profile.vision.model.trim().length > 0;
+	const nativeVision = hasOfficialDeepSeekVision(profile);
 
 	// 一份都没添加 → 右侧直接就是添加面板,那本身就是空态引导。
 	const showAddPanel = addingProvider || rail.length === 0;
@@ -753,77 +755,81 @@ export default function Ai() {
 
 								{/* 图片理解。它同样是在描述「接哪个模型」,只不过整块可以不填:
 								    两条路都不开时,发图会被明确拒绝而不是静默丢掉。 */}
-								<GlassBox
-									title={tx("aiSettings.page.vision.title")}
-									subtitle={tx("aiSettings.page.vision.subtitle", {
-										fields: "{enableVision,vision}",
-									})}
-									accent={SECTION_ACCENT.capability}
-									icon={<Icon.image size={14} />}
-									badge="vision"
-								>
-									{modelSupportsVision(profile.provider, profile.model) ? (
-										<>
-											{/* 配了视觉模型之后这个开关**完全不生效**(副模型无条件优先)。与其
+								{(!nativeVision || visionSubModelOn) && (
+									<GlassBox
+										title={tx("aiSettings.page.vision.title")}
+										subtitle={tx("aiSettings.page.vision.subtitle", {
+											fields: "{enableVision,vision}",
+										})}
+										accent={SECTION_ACCENT.capability}
+										icon={<Icon.image size={14} />}
+										badge="vision"
+									>
+										{modelSupportsVision(profile.provider, profile.model) ? (
+											<>
+												{/* 配了视觉模型之后这个开关**完全不生效**(副模型无条件优先)。与其
 											    只写在说明里,不如让它在那一刻就点不动 —— 否则一个能勾上、勾了
 											    却什么也不改变的开关,比没有还糟。 */}
-											<Field code={`ai.providers.${editing}.enableVision`}>
-												<div className="flex h-7.5 items-center">
-													<Toggle
-														value={profile.enableVision}
-														onChange={(v) => setProfile("enableVision", v)}
-														disabled={visionSubModelOn}
-														ariaLabel={tx("aiSettings.page.vision.directAria")}
-													/>
-												</div>
-											</Field>
-											{visionSubModelOn ? (
-												<FieldNote>
-													{tx("aiSettings.page.vision.submodelPrefix")}
-													<strong>{tx("aiSettings.page.vision.submodelEmphasis")}</strong>
-													{tx("aiSettings.page.vision.submodelSuffix")}
-												</FieldNote>
-											) : null}
-										</>
-									) : (
-										<FieldNote>
-											{tx("aiSettings.page.vision.unsupported", {
-												model: profile.model || meta.label,
-											})}
-										</FieldNote>
-									)}
-									{/* 密钥 → 地址 → 模型,与上面「模型连接」**同序**:两块摆的是同一件事
+												{!nativeVision && (
+													<Field code={`ai.providers.${editing}.enableVision`}>
+														<div className="flex h-7.5 items-center">
+															<Toggle
+																value={profile.enableVision}
+																onChange={(v) => setProfile("enableVision", v)}
+																disabled={visionSubModelOn}
+																ariaLabel={tx("aiSettings.page.vision.directAria")}
+															/>
+														</div>
+													</Field>
+												)}
+												{visionSubModelOn ? (
+													<FieldNote>
+														{tx("aiSettings.page.vision.submodelPrefix")}
+														<strong>{tx("aiSettings.page.vision.submodelEmphasis")}</strong>
+														{tx("aiSettings.page.vision.submodelSuffix")}
+													</FieldNote>
+												) : null}
+											</>
+										) : (
+											<FieldNote>
+												{tx("aiSettings.page.vision.unsupported", {
+													model: profile.model || meta.label,
+												})}
+											</FieldNote>
+										)}
+										{/* 密钥 → 地址 → 模型,与上面「模型连接」**同序**:两块摆的是同一件事
 									    (接哪个模型),顺序各走各的只会让人以为这是另一种东西。
 
 									    地址与密钥**恒在场**,不等填了模型 ID 才现身。这块存在的前提就是主模型
 									    那家没有视觉模型,副模型多半在另一家 —— 藏起来的话主人打开只看见一个
 									    模型 ID 框,结论是「没法给它单配地址和密钥」,而副标题偏偏还写着有。
 									    三格全是选填(留空即跟随主模型 / 不启用),摆着不会被当成漏填。 */}
-									<Field code={`ai.providers.${editing}.vision.apiKey`} full>
-										<DraftSecretInput
-											value={profile.vision.apiKey}
-											saved={savedProfile?.vision.apiKey}
-											onChange={(v) => setVision("apiKey", v)}
-											placeholder={tx("aiSettings.page.vision.keyPlaceholder")}
-										/>
-									</Field>
-									<Field code={`ai.providers.${editing}.vision.baseUrl`} full>
-										<TInput
-											value={profile.vision.baseUrl}
-											onChange={(v) => setVision("baseUrl", v)}
-											mono
-											placeholder={tx("aiSettings.page.vision.urlPlaceholder")}
-										/>
-									</Field>
-									<Field code={`ai.providers.${editing}.vision.model`} full>
-										<TInput
-											value={profile.vision.model}
-											onChange={(v) => setVision("model", v)}
-											mono
-											placeholder={tx("aiSettings.page.vision.modelPlaceholder")}
-										/>
-									</Field>
-								</GlassBox>
+										<Field code={`ai.providers.${editing}.vision.apiKey`} full>
+											<DraftSecretInput
+												value={profile.vision.apiKey}
+												saved={savedProfile?.vision.apiKey}
+												onChange={(v) => setVision("apiKey", v)}
+												placeholder={tx("aiSettings.page.vision.keyPlaceholder")}
+											/>
+										</Field>
+										<Field code={`ai.providers.${editing}.vision.baseUrl`} full>
+											<TInput
+												value={profile.vision.baseUrl}
+												onChange={(v) => setVision("baseUrl", v)}
+												mono
+												placeholder={tx("aiSettings.page.vision.urlPlaceholder")}
+											/>
+										</Field>
+										<Field code={`ai.providers.${editing}.vision.model`} full>
+											<TInput
+												value={profile.vision.model}
+												onChange={(v) => setVision("model", v)}
+												mono
+												placeholder={tx("aiSettings.page.vision.modelPlaceholder")}
+											/>
+										</Field>
+									</GlassBox>
+								)}
 
 								{/* 生成参数 —— 深度思考与额外请求参数同属「这一次请求怎么生成」,合成一块。
 								    思考那半边的可见形态取决于这一家:各家写法不同,兜底档索性不发。
@@ -886,7 +892,11 @@ export default function Ai() {
 											onChange={(v) => setProfile("extraParams", v)}
 											rows={4}
 											mono
-											placeholder={'{"enable_search": true}'}
+											placeholder={
+												profile.apiFlavor === "responses"
+													? '{"max_output_tokens": 4096}'
+													: '{"max_tokens": 4096}'
+											}
 										/>
 									</Field>
 									{profile.apiFlavor === "responses" ? (

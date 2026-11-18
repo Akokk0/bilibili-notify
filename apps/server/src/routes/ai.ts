@@ -15,12 +15,12 @@ import {
 	AiSettingsSchema,
 	aiProfileAt,
 	type CardKind,
+	canSendModelImages,
 	type Failure,
 	fail,
 	type ImageRef,
 	isDeepSeekFlash,
 	issuesFromZod,
-	modelSupportsVision,
 	type NotificationPayload,
 	ok,
 	resolveAIProfile,
@@ -443,8 +443,7 @@ export function createAiRoute(
 		if (attached.length > 0) {
 			const aiCfg = deps.store.getGlobals().ai;
 			const aiProfile = resolveAIProfile(aiCfg);
-			const mainModelCanSee =
-				aiProfile.enableVision && modelSupportsVision(aiProfile.provider, aiProfile.model);
+			const mainModelCanSee = canSendModelImages(aiProfile);
 			if (!mainModelCanSee && !aiProfile.vision.model.trim()) {
 				return respondFailure(c, fail("not_configured", visionNotSetMessage()));
 			}

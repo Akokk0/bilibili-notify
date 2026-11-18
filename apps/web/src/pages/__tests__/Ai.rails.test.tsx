@@ -360,12 +360,16 @@ describe("模型配置 · 服务商左栏", () => {
 		expect(screen.queryByDisplayValue("ds-model")).toBeNull();
 	});
 
-	it("按模型显示看图开关", async () => {
+	it("官方 Flash 直接看图，Pro 和其他服务商仍可设置图片理解", async () => {
 		mount(
 			globalsWith((g) => {
 				g.ai.activeProfile = "deepseek";
 				g.ai.providers = {
-					deepseek: bucket({ provider: "deepseek", model: "deepseek-v4-pro" }),
+					deepseek: bucket({
+						provider: "deepseek",
+						model: "deepseek-v4-pro",
+						baseUrl: "https://api.deepseek.com",
+					}),
 					openrouter: bucket({ provider: "openrouter" }),
 				};
 			}),
@@ -377,7 +381,8 @@ describe("模型配置 · 服务商左栏", () => {
 		fireEvent.change(screen.getByDisplayValue("deepseek-v4-pro"), {
 			target: { value: "deepseek-flash" },
 		});
-		expect(screen.getByLabelText("主模型支持看图")).toBeTruthy();
+		expect(screen.queryByText("图片理解")).toBeNull();
+		expect(screen.getByText("生成参数")).toBeTruthy();
 
 		fireEvent.click(screen.getAllByText("OpenRouter")[0] as HTMLElement);
 		await waitFor(() => expect(screen.getByLabelText("主模型支持看图")).toBeTruthy());

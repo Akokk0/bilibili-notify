@@ -1,9 +1,9 @@
 import {
 	type AIProviderId,
 	type APIFlavorId,
+	canSendModelImages,
 	isDeepSeekFlash,
 	type Logger,
-	modelSupportsVision,
 	ok,
 	providerMeta,
 	type Result,
@@ -805,7 +805,12 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	private mainModelCanSeeImages(model = this.config.model): boolean {
-		return this.config.enableVision && modelSupportsVision(this.config.provider, model);
+		return canSendModelImages({
+			provider: this.config.provider,
+			baseUrl: this.config.baseURL,
+			model,
+			enableVision: this.config.enableVision,
+		});
 	}
 
 	/**
