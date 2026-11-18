@@ -11,9 +11,9 @@ const settings = {
 	byTarget: {},
 };
 
-function wav(seconds = 1, bits = 16, format = 1) {
+function wav(seconds = 1, bits = 16, format = 1, rate = 16000) {
 	const frameBytes = bits / 8;
-	const length = seconds * 16000 * frameBytes;
+	const length = seconds * rate * frameBytes;
 	const data = Buffer.alloc(44 + length);
 	data.write("RIFF");
 	data.writeUInt32LE(data.length - 8, 4);
@@ -21,8 +21,8 @@ function wav(seconds = 1, bits = 16, format = 1) {
 	data.writeUInt32LE(16, 16);
 	data.writeUInt16LE(format, 20);
 	data.writeUInt16LE(1, 22);
-	data.writeUInt32LE(16000, 24);
-	data.writeUInt32LE(16000 * frameBytes, 28);
+	data.writeUInt32LE(rate, 24);
+	data.writeUInt32LE(rate * frameBytes, 28);
 	data.writeUInt16LE(frameBytes, 32);
 	data.writeUInt16LE(bits, 34);
 	data.write("data", 36);
@@ -31,6 +31,33 @@ function wav(seconds = 1, bits = 16, format = 1) {
 }
 
 describe("OpenAI-compatible speech", () => {
+	it("previews and encodes a WAV with the streaming lengths returned by SiliconFlow", async () => {
+		const mono = wav(3.44, 16, 1, 24000);
+		const info = Buffer.alloc(130);
+		info.write("LIST");
+		info.writeUInt32LE(122, 4);
+		info.write("INFOISFT", 8);
+		info.writeUInt32LE(110, 16);
+		const streamed = Buffer.concat([mono.subarray(0, 36), info, mono.subarray(36)]);
+		streamed.writeUInt32LE(0xffffffa6, 4);
+		streamed.writeUInt32LE(0xffffff00, 170);
+		const request = async () => new Response(streamed);
+		const preview = await fetchSpeech(settings, "试听", request);
+		expect(preview.ok && preview.wav.readUInt32LE(4)).toBe(165286);
+		expect(preview.ok && preview.wav.readUInt32LE(170)).toBe(165120);
+		const sent = await speechPayload(settings, "推送", request);
+		expect(sent.ok && isSilk(sent.payload.audio.buffer)).toBe(true);
+	});
+	it("rejects truncated frames and declared lengths that do not match a streaming header", async () => {
+		const complete = wav();
+		for (const buffer of [complete.subarray(0, -1), complete.subarray(0, 44)]) {
+			const result = await fetchSpeech(settings, "试听", async () => new Response(buffer));
+			expect(result.ok).toBe(false);
+		}
+		complete.writeUInt32LE(0xffffff00, 40);
+		const result = await fetchSpeech(settings, "试听", async () => new Response(complete));
+		expect(result.ok).toBe(false);
+	});
 	it("uses the received PCM frames when a streamed WAV starts with an empty WAV header", async () => {
 		const complete = wav();
 		complete.writeInt16LE(-1234, 44);

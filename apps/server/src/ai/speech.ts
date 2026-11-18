@@ -28,7 +28,10 @@ function readSpeechWav(wav: Buffer, contentType: string | null): Result<{ wav: B
 			const riffSize = wav.readUInt32LE(4);
 			const emptyHeader =
 				size === 0 && (riffSize === start - 8 || riffSize === 0 || riffSize === 0xffffffff);
-			const length = size === 0xffffffff || emptyHeader ? wav.length - start : size;
+			// Some encoders reserve 0xffffff00 bytes for data and include that placeholder in RIFF size.
+			const reservedLength = size === 0xffffff00 && riffSize === (size + start - 8) >>> 0;
+			const length =
+				size === 0xffffffff || emptyHeader || reservedLength ? wav.length - start : size;
 			if (!frameBytes || !length || length % frameBytes !== 0 || length > wav.length - start) break;
 			if (length > bytesPerSecond * MAX_SECONDS) return fail("invalid", t("speech.duration"));
 			const audio = wav.subarray(0, start + length + (length % 2));
