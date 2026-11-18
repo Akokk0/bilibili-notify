@@ -315,6 +315,6 @@ export async function fakeFetchedProfile(
 	return {
 		name: `假名字 · 拉取版(${tagOf(externalId).slice(0, 4)})`,
 		followers: 0,
-		avatar: await store(PROFILE_PICTURES[0] as Uint8Array),
+		avatar: await store(pictureAt(0)),
 	};
 }
