@@ -320,7 +320,7 @@ it("has an editable default without targets; changing voice preserves draft and 
 
 it("voice delivery defaults to text and saves an independent target exception", async () => {
 	mount(makeDefaultGlobalSettings());
-	fireEvent.click(await screen.findByRole("tab", { name: /语音/ }));
+	fireEvent.click(await screen.findByRole("tab", { name: /女仆声线/ }));
 	const global = within(screen.getByRole("group", { name: "默认发送方式" }));
 	expect(global.getByRole("button", { name: "仅文本" }).getAttribute("aria-pressed")).toBe("true");
 	fireEvent.click(global.getByRole("button", { name: "语音＋文本" }));

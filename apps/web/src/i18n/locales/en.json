@@ -1,6 +1,6 @@
 {
 	"speech.sample": "Hello, this is the synthesized voice for maid notifications.",
-	"speech.tab": "Voice",
+	"speech.tab": "Maid voice",
 	"speech.searchTab": "Search",
 	"speech.tabHint": "Configure speech synthesis and voice delivery",
 	"speech.service": "Speech synthesis service",

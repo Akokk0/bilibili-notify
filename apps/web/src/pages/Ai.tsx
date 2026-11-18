@@ -159,12 +159,27 @@ function FieldNote({ children }: { children: React.ReactNode }) {
 
 export default function Ai() {
 	const tx = useT();
-	const TOP_TABS = [
-		{ id: "global" as const, label: tx("aiSettings.page.tabs.global"), code: "global" },
-		{ id: "model" as const, label: tx("aiSettings.page.tabs.model"), code: "provider" },
-		{ id: "search" as const, label: tx("speech.searchTab"), code: "search" },
-		{ id: "speech" as const, label: tx("speech.tab"), code: "speech" },
-	];
+	const tabs = [
+		{
+			id: "global",
+			label: tx("aiSettings.page.tabs.global"),
+			code: "global",
+			icon: <Icon.gear size={14} />,
+		},
+		{
+			id: "model",
+			label: tx("aiSettings.page.tabs.model"),
+			code: "provider",
+			icon: <Icon.neuralNetwork size={14} />,
+		},
+		{
+			id: "search",
+			label: tx("speech.searchTab"),
+			code: "search",
+			icon: <Icon.search size={14} />,
+		},
+		{ id: "speech", label: tx("speech.tab"), code: "speech", icon: <Icon.waveform size={14} /> },
+	] as const;
 
 	const TAB_HINTS: Record<TopTab, string> = {
 		search: tx("aiSettings.page.search.subtitle"),
@@ -381,15 +396,7 @@ export default function Ai() {
 
 			<div className="flex min-w-0 flex-wrap items-start gap-3">
 				<div className="min-w-0 flex-1">
-					<TabBar<TopTab>
-						items={TOP_TABS.map((t) => ({
-							...t,
-							icon: t.id === "model" ? <Icon.link size={14} /> : <Icon.gear size={14} />,
-						}))}
-						value={tab}
-						onChange={setTab}
-						hint={TAB_HINTS[tab]}
-					/>
+					<TabBar<TopTab> items={tabs} value={tab} onChange={setTab} hint={TAB_HINTS[tab]} />
 				</div>
 			</div>
 

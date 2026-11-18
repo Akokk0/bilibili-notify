@@ -1,6 +1,6 @@
 {
 	"speech.sample": "こんにちは。これはメイドの通知に使用する合成音声です。",
-	"speech.tab": "音声",
+	"speech.tab": "メイドの声",
 	"speech.searchTab": "検索",
 	"speech.tabHint": "音声合成と通知の設定",
 	"speech.service": "音声合成サービス",
