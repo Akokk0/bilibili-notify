@@ -467,7 +467,7 @@ function reportWebCitations(
 		args: {},
 		label: packageText("ai.tools.webSearch"),
 	});
-	emit({ phase: "end", id, ok: true, sources: [...sources.values()] });
+	emit({ phase: "end", id, ...ok(), sources: [...sources.values()] });
 }
 
 export interface CommentaryProvider {
