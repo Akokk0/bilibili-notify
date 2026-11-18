@@ -1,4 +1,11 @@
 {
+	"speech.config": "Save a speech endpoint, model and voice first.",
+	"speech.length": "A voice message requires 1 to 4096 characters.",
+	"speech.audio": "Speech must be PCM WAV audio of up to 60 seconds.",
+	"speech.http": "Speech service returned HTTP {status}.",
+	"speech.network": "Speech service connection failed or timed out.",
+	"speech.sample": "Hello, this is the synthesized voice for maid notifications.",
+	"speech.unsupported": "Voice support is unconfirmed for this target. Text was selected.",
 	"service.posts.post-text.text.1": "Title: {value0}",
 	"service.posts.post-text.text.2": "Video title: {value0}",
 	"service.posts.post-text.text.3": "Unknown",

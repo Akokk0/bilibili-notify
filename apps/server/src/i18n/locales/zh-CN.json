@@ -1,4 +1,11 @@
 {
+	"speech.config": "请先保存语音服务地址、模型和音色。",
+	"speech.length": "单条语音需要 1 至 4096 个字符。",
+	"speech.audio": "语音需要为 60 秒以内的 PCM WAV 音频。",
+	"speech.http": "语音服务返回 HTTP {status}。",
+	"speech.network": "语音服务连接失败或超时。",
+	"speech.sample": "你好，这是女仆推送使用的合成语音。",
+	"speech.unsupported": "此目标未确认支持语音，已选择文字。",
 	"roastScheduler.deliveryFailure": "{targetId}：{message}",
 	"roast.command.listItem": "{id}（{kind}）",
 	"roast.command.listSeparator": "、",

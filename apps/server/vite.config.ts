@@ -72,6 +72,7 @@ export default defineConfig({
 							/^hono(\/|$)/,
 							// B 站那几样(3a-24 起是服务端的直接依赖,不写进来就会被外置,载荷里没有 node_modules)。
 							// jieba-wasm 的 .wasm 由装配脚本随载荷拷(scripts/server-bundle-assets.mjs)。
+							/^silk-wasm(\/|$)/,
 							/^jieba-wasm(\/|$)/,
 							/^luxon(\/|$)/,
 							/^md5(\/|$)/,

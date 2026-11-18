@@ -30,6 +30,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
 import { promptNounsOf } from "../ai/prompt-nouns.js";
+import { fetchSpeech } from "../ai/speech.js";
 import { LOAD_SKILL_LABEL } from "../ai/tool-label-texts.js";
 import {
 	buildCardWorkshopSystem,
@@ -133,6 +134,18 @@ export function createAiRoute(
 	},
 ): Hono {
 	const app = new Hono();
+
+	app.post("/speech/preview", async (c) => {
+		const result = await fetchSpeech(
+			deps.store.getGlobals().ai.speech,
+			serverText("speech.sample"),
+		);
+		if (!result.ok) return respondFailure(c, result);
+		return c.body(new Uint8Array(result.wav), 200, {
+			"Content-Type": "audio/wav",
+			"Cache-Control": "no-store",
+		});
+	});
 
 	app.post("/test", async (c) => {
 		const body = (await c.req.json().catch(() => null)) as unknown;

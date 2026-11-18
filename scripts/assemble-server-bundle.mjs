@@ -49,6 +49,10 @@ const jiebaWasm = resolve(
 const imageStaticDir = resolve(repoRoot, "packages/image/src/static");
 
 await cp(imageStaticDir, resolve(distDir, "static"), { recursive: true });
+await copyFile(
+	resolve(dirname(requireFromServer.resolve("silk-wasm")), "silk.wasm"),
+	resolve(distDir, "silk.wasm"),
+);
 await copyFile(jiebaWasm, resolve(distDir, "jieba_rs_wasm_bg.wasm"));
 await copyFile(
 	resolve(repoRoot, "apps/server/bn.config.example.yaml"),

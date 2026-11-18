@@ -37,6 +37,7 @@
 		"protobufjs": "^8.8.0",
 		"puppeteer-core": "catalog:",
 		"qrcode": "catalog:",
+		"silk-wasm": "3.7.1",
 		"ws": "catalog:",
 		"yaml": "^2.9.0",
 		"zod": "catalog:"

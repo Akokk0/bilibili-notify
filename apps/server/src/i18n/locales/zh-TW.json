@@ -1,4 +1,11 @@
 {
+	"speech.config": "請先儲存語音服務位址、模型和音色。",
+	"speech.length": "單則語音需要 1 至 4096 個字元。",
+	"speech.audio": "語音需為 60 秒以內的 PCM WAV 音訊。",
+	"speech.http": "語音服務回傳 HTTP {status}。",
+	"speech.network": "語音服務連線失敗或逾時。",
+	"speech.sample": "你好，這是女僕推播使用的合成語音。",
+	"speech.unsupported": "此目標尚未確認支援語音，已選用文字。",
 	"service.posts.post-text.text.1": "標題：{value0}",
 	"service.posts.post-text.text.2": "影片標題：{value0}",
 	"service.posts.post-text.text.3": "未知",

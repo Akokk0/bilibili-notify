@@ -1,4 +1,11 @@
 {
+	"speech.config": "音声サービスの URL、モデル、声を保存してください。",
+	"speech.length": "音声の文字数は 1～4096 文字です。",
+	"speech.audio": "60 秒以内の PCM WAV 音声が必要です。",
+	"speech.http": "音声サービスが HTTP {status} を返しました。",
+	"speech.network": "音声サービスへの接続が失敗またはタイムアウトしました。",
+	"speech.sample": "こんにちは。これはメイドの通知に使用する合成音声です。",
+	"speech.unsupported": "この送信先の音声対応を確認できないため、テキストを選択しました。",
 	"service.posts.post-text.text.1": "タイトル：{value0}",
 	"service.posts.post-text.text.2": "動画タイトル：{value0}",
 	"service.posts.post-text.text.3": "不明",
