@@ -91,6 +91,7 @@ export function stripAiSecrets(g: GlobalSettings): GlobalSettings {
 		g,
 		() => "",
 		() => "",
+		"",
 	);
 }
 
@@ -100,11 +101,16 @@ export function stripAiSecrets(g: GlobalSettings): GlobalSettings {
  * 袋里有而 `providers` 里没有的键**一律忽略**:主人删掉一家、袋里却还留着它的
  * key 时会走到这儿,凭空造出桶来会让设置页左栏多一块本该没有的。
  */
-export function applyAiSecrets(g: GlobalSettings, bag: Record<string, string>): GlobalSettings {
+export function applyAiSecrets(
+	g: GlobalSettings,
+	bag: Record<string, string>,
+	speechApiKey = "",
+): GlobalSettings {
 	return mapAiSecrets(
 		g,
 		(id, vision) => bag[aiSecretKey(id, vision)] ?? "",
 		(backend) => bag[searchSecretKey(backend)] ?? "",
+		speechApiKey,
 	);
 }
 
@@ -116,6 +122,7 @@ function mapAiSecrets(
 	g: GlobalSettings,
 	next: (profileId: string, vision: boolean) => string,
 	nextSearch: (backend: string) => string,
+	speechApiKey: string,
 ): GlobalSettings {
 	// 生产里的调用方只有配置仓(store.ts):`applyAiSecrets` 在 `hydrateSecrets` 里、`stripAiSecrets` 在落盘前,
 	// 递进来的都是读盘 / 内存里已过 schema 的 globals。备份恢复(assemble.ts 的 openFullBackup)并不经过这里,
@@ -131,6 +138,7 @@ function mapAiSecrets(
 		...g,
 		ai: {
 			...ai,
+			...(ai.speech ? { speech: { ...ai.speech, apiKey: speechApiKey } } : {}),
 			...(providers
 				? {
 						providers: Object.fromEntries(

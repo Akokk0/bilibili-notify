@@ -56,6 +56,39 @@ describe("ai.writing 经设置路由读写", () => {
 		return { runtime, patch, get };
 	}
 
+	it("语音默认仅文本，目标可以覆盖、恢复继承，密钥重启后保留并脱敏", async () => {
+		const { runtime, patch, get } = await boot();
+		expect((await get()).ai.speech).toMatchObject({ mode: "text", byTarget: {} });
+		const res = await patch({
+			ai: {
+				speech: {
+					baseUrl: "https://speech.example/v1",
+					model: "model",
+					voice: "maid",
+					apiKey: "speech-test-key",
+					mode: "both",
+					byTarget: { [A]: "voice" },
+				},
+			},
+		});
+		expect(res.status).toBe(200);
+		expect(JSON.stringify(await res.json())).not.toContain("speech-test-key");
+		expect((await get()).ai.speech).toMatchObject({ mode: "both", byTarget: { [A]: "voice" } });
+		await patch({ ai: { speech: { byTarget: { [A]: null } } } });
+		await runtime.dispose();
+		const reboot = await boot();
+		try {
+			expect(reboot.runtime.configStore.getGlobals().ai.speech).toMatchObject({
+				mode: "both",
+				byTarget: {},
+				apiKey: "speech-test-key",
+			});
+			expect(JSON.stringify(await reboot.get())).not.toContain("speech-test-key");
+		} finally {
+			await reboot.runtime.dispose();
+		}
+	});
+
 	it("出厂就是两份默认开、没有例外", async () => {
 		const { runtime, get } = await boot();
 		expect((await get()).ai.writing).toEqual({

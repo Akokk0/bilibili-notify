@@ -1204,7 +1204,7 @@ class NodeConfigStore implements ConfigStore {
 		if (
 			!this.secretStore &&
 			!this.plaintextApiKeyWarned &&
-			Object.keys(collectAiSecrets(g)).length > 0
+			(Object.keys(collectAiSecrets(g)).length > 0 || !!g.ai.speech.apiKey)
 		) {
 			this.plaintextApiKeyWarned = true;
 			this.serviceCtx.logger.warn(logText("log.config.plaintextKeys"), {
@@ -1227,13 +1227,15 @@ class NodeConfigStore implements ConfigStore {
 		// **盘上不留明文**(一直成立的规矩,不是 0.x 兼容):settings/core.json 落盘时 apiKey 一律抠成空串,所以
 		// 盘上出现非空的 key 就是明文 —— 主人手改写进去的,或 0.x 加密上线前留下的。开机抬进加密袋、抹掉盘上那份。
 		const plaintext = collectAiSecrets(this.globals);
-		const hadPlaintext = Object.keys(plaintext).length > 0;
+		const speechKey = this.globals.ai.speech.apiKey;
+		const hadPlaintext = Object.keys(plaintext).length > 0 || !!speechKey;
 		if (hadPlaintext) {
 			// 明文优先:每次抬完盘上都会抹掉,所以盘上的明文只可能是之后写进去的,袋里那把才是旧的(主人手改换
 			// key 就是这样)。抬到一半崩了(袋已存、盘上还没抹)时两边是同一把,谁优先都一样。
 			this.secretBag = {
 				...this.secretBag,
 				aiApiKeys: { ...(this.secretBag.aiApiKeys ?? {}), ...plaintext },
+				...(speechKey ? { speechApiKey: speechKey } : {}),
 			};
 			await this.secretStore.save(this.secretBag);
 			this.serviceCtx.logger.info(logText("log.config.keysMigrated"), {
@@ -1251,7 +1253,7 @@ class NodeConfigStore implements ConfigStore {
 		// 键序偏了,重启后第一次改**任何** globals 字段(哪怕只是 profileRefreshCron),`ai`
 		// 都会被误判成「变了」,白白热重载一次 AI 实例并刷两条日志。
 		this.globals = GlobalSettingsSchema.parse(
-			applyAiSecrets(this.globals, this.secretBag.aiApiKeys ?? {}),
+			applyAiSecrets(this.globals, this.secretBag.aiApiKeys ?? {}, this.secretBag.speechApiKey),
 		);
 		// Scrub disk if it ever held the plaintext.
 		if (hadPlaintext) await this.persistGlobals(this.globals);
@@ -1683,6 +1685,11 @@ class NodeConfigStore implements ConfigStore {
 			const nextBag = {
 				...this.secretBag,
 				aiApiKey: undefined,
+				speechApiKey: retained.some(
+					(e) => e.path[0] === "ai" && (e.path.length === 1 || e.path[1] === "speech"),
+				)
+					? prevBag.speechApiKey
+					: g.ai.speech.apiKey || undefined,
 				aiApiKeys: {
 					...isolatedSecrets(this.secretBag.aiApiKeys ?? {}, retained),
 					...collectAiSecrets(g),

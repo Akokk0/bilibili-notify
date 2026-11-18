@@ -328,6 +328,18 @@ export const AiProviderProfileSchema = z.object({
 export type AiProviderProfile = z.infer<typeof AiProviderProfileSchema>;
 
 /** AI 总配置（在 GlobalSettings.ai 出现）。 */
+const speechMode = z.enum(["text", "both", "voice"]);
+const speechSettings = z.object({
+	baseUrl: markBackupOnly(z.union([z.literal(""), z.url({ protocol: /^https?$/ })]), {
+		url: true,
+	}).default(""),
+	apiKey: markSecret(z.string()).default(""),
+	model: z.string().trim().default(""),
+	voice: z.string().trim().default(""),
+	mode: speechMode.default("text"),
+	byTarget: z.record(z.uuid(), speechMode).default({}),
+});
+
 const AiSettingsObjectSchema = z.object({
 	enabled: z.boolean(),
 	/**
@@ -417,6 +429,7 @@ const AiSettingsObjectSchema = z.object({
 	 * 正文用 AI 写还是用模板写,按推送目标选(ADR-0032):动态与直播总结各一份「默认 + 按目标例外」。
 	 * 默认两份都开、无例外 = 与今天一样;老设置与老备份里没有这一格,由默认值补。
 	 */
+	speech: speechSettings.default(() => speechSettings.parse({})),
 	writing: AiWritingSettingsSchema.default(() => ({
 		post: { isOnByDefault: true, byTarget: {} },
 		liveSummary: { isOnByDefault: true, byTarget: {} },

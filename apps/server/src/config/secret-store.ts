@@ -34,6 +34,7 @@ export interface ConfigSecrets {
 	 * 最多 5 家 × 2 把。
 	 */
 	aiApiKeys?: Record<string, string>;
+	speechApiKey?: string;
 }
 
 export interface SecretStore {

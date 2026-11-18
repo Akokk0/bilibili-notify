@@ -320,7 +320,11 @@ export type AiProviderProfileView<S = SecretCellView> = Omit<
 > & { vision: CellsAs<AiProviderProfile["vision"], "apiKey", S> };
 
 /** AI 设置下发时的样子:各实例的 key 与联网搜索的 key。 */
-export type AiSettingsView<S = SecretCellView> = Omit<AiSettings, "providers" | "search"> & {
+export type AiSettingsView<S = SecretCellView> = Omit<
+	AiSettings,
+	"providers" | "search" | "speech"
+> & {
+	speech: CellsAs<AiSettings["speech"], "apiKey", S>;
 	providers: Record<string, AiProviderProfileView<S>>;
 	search: Omit<AiSettings["search"], "keys"> & {
 		keys: { [Backend in keyof AiSettings["search"]["keys"]]: S };
