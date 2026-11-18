@@ -1,4 +1,5 @@
 {
+	"speech.nativeConfig": "Enter a DeepSeek API key and choose the stella or tide voice.",
 	"speech.pendingAudit": "Voice message submitted for review. Delivery is unconfirmed.",
 	"speech.config": "Save a speech endpoint, model and voice first.",
 	"speech.length": "A voice message requires 1 to 4096 characters.",

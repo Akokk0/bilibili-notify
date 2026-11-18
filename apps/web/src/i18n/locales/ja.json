@@ -1,4 +1,7 @@
 {
+	"deepseek.speechEndpoint": "OpenAI 互換サービスに対応します。DeepSeek は https://api.deepseek.com を入力して声を選んでください。",
+	"deepseek.speechStella": "stella · 女性の声",
+	"deepseek.speechTide": "tide · 男性の声",
 	"speech.sample": "こんにちは。これはメイドの通知に使用する合成音声です。",
 	"speech.tab": "メイドの声",
 	"speech.searchTab": "検索",

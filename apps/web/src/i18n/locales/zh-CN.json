@@ -1,4 +1,7 @@
 {
+	"deepseek.speechEndpoint": "支持 OpenAI 兼容服务。使用 DeepSeek 时填写 https://api.deepseek.com，然后选择声线。",
+	"deepseek.speechStella": "stella · 女声",
+	"deepseek.speechTide": "tide · 男声",
 	"speech.sample": "你好，这是女仆推送使用的合成语音。",
 	"speech.tab": "女仆声线",
 	"speech.searchTab": "搜索",

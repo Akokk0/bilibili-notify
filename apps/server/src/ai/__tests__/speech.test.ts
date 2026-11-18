@@ -31,6 +31,39 @@ function wav(seconds = 1, bits = 16, format = 1, rate = 16000) {
 }
 
 describe("OpenAI-compatible speech", () => {
+	it("uses native DeepSeek TTS for preview and delivery without a model ID", async () => {
+		const speech = {
+			...settings,
+			baseUrl: "https://api.deepseek.com/v1/",
+			model: "",
+			voice: "stella",
+		};
+		const request = vi.fn(async () => new Response(wav(1, 16, 1, 24000)));
+		expect((await fetchSpeech(speech, "试听", request)).ok).toBe(true);
+		expect(request).toHaveBeenCalledWith(
+			"https://api.deepseek.com/v1/tools/tts",
+			expect.objectContaining({
+				body: JSON.stringify({ text: "试听", voice_id: "stella", format: "wav" }),
+			}),
+		);
+		const result = await speechPayload(speech, "推送", request);
+		expect(result.ok && isSilk(result.payload.audio.buffer)).toBe(true);
+	});
+	it("validates native voice and key before requesting synthesis", async () => {
+		const request = vi.fn();
+		for (const fields of [
+			{ apiKey: "", voice: "tide" },
+			{ apiKey: "fake", voice: "alloy" },
+		]) {
+			const res = await fetchSpeech(
+				{ ...settings, baseUrl: "https://api.deepseek.com", ...fields },
+				"试听",
+				request,
+			);
+			expect(res).toMatchObject({ ok: false, code: "not_configured" });
+		}
+		expect(request).not.toHaveBeenCalled();
+	});
 	it("previews and encodes a WAV with the streaming lengths returned by SiliconFlow", async () => {
 		const mono = wav(3.44, 16, 1, 24000);
 		const info = Buffer.alloc(130);

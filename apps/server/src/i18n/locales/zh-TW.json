@@ -1,4 +1,5 @@
 {
+	"speech.nativeConfig": "請填寫 DeepSeek 語音金鑰，並選擇 stella 或 tide 聲線。",
 	"speech.pendingAudit": "語音已提交平台審核，送達結果待確認。",
 	"speech.config": "請先儲存語音服務位址、模型和音色。",
 	"speech.length": "單則語音需要 1 至 4096 個字元。",

@@ -1,4 +1,7 @@
 {
+	"deepseek.speechEndpoint": "Use an OpenAI-compatible service, or enter https://api.deepseek.com and select a DeepSeek voice.",
+	"deepseek.speechStella": "stella · female",
+	"deepseek.speechTide": "tide · male",
 	"speech.sample": "Hello, this is the synthesized voice for maid notifications.",
 	"speech.tab": "Maid voice",
 	"speech.searchTab": "Search",

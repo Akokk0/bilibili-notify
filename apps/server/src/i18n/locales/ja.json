@@ -1,4 +1,5 @@
 {
+	"speech.nativeConfig": "DeepSeek の API キーを入力し、stella または tide を選んでください。",
 	"speech.pendingAudit": "音声は審査中です。配信結果は未確定です。",
 	"speech.config": "音声サービスの URL、モデル、声を保存してください。",
 	"speech.length": "音声の文字数は 1～4096 文字です。",

@@ -1,3 +1,4 @@
+import { isDeepSeekSpeechEndpoint } from "@bilibili-notify/internal/ai";
 import {
 	Btn,
 	DraftSecretInput,
@@ -18,6 +19,14 @@ import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import type { Connection, PushTarget } from "../../types/domain";
 import type { AiSettingsDraft } from "../../types/globals";
+
+function originOf(value: string | undefined) {
+	try {
+		return new URL(value ?? "").origin;
+	} catch {
+		return undefined;
+	}
+}
 
 type Speech = AiSettingsDraft["speech"];
 export function SpeechSettings({
@@ -55,39 +64,71 @@ export function SpeechSettings({
 		label: labels[value],
 		color: AI_PURPLE,
 	}));
+	const native = isDeepSeekSpeechEndpoint(speech.baseUrl);
 	const ready =
-		Boolean(saved?.baseUrl && saved.model && saved.voice) &&
+		Boolean(
+			saved?.baseUrl &&
+				(native || saved.model) &&
+				(native ? saved.apiKey && ["stella", "tide"].includes(saved.voice) : saved.voice),
+		) &&
 		(["baseUrl", "apiKey", "model", "voice"] as const).every((key) => speech[key] === saved?.[key]);
 	return (
 		<div className="flex flex-col gap-4">
 			<GlassBox title={tx("speech.service")} accent={AI_PURPLE} icon={<Icon.link size={14} />}>
-				<Field code="ai.speech.baseUrl" full>
+				<Field code="ai.speech.baseUrl" hint={tx("deepseek.speechEndpoint")} full>
 					<TInput
 						value={speech.baseUrl}
-						onChange={(baseUrl) => onChange({ ...speech, baseUrl })}
+						onChange={(baseUrl) => {
+							const nextOrigin = originOf(baseUrl);
+							const previousOrigin = originOf(speech.baseUrl) ?? originOf(saved?.baseUrl);
+							const changedService = previousOrigin && nextOrigin && previousOrigin !== nextOrigin;
+							onChange({
+								...speech,
+								baseUrl,
+								...(changedService ? { apiKey: "" } : {}),
+								...(isDeepSeekSpeechEndpoint(baseUrl) && !["stella", "tide"].includes(speech.voice)
+									? { voice: "stella" }
+									: {}),
+							});
+						}}
 						placeholder="https://api.openai.com/v1"
 					/>
 				</Field>
 				<Field code="ai.speech.apiKey" full>
 					<DraftSecretInput
 						value={speech.apiKey}
-						saved={saved?.apiKey}
+						saved={
+							originOf(saved?.baseUrl) === originOf(speech.baseUrl) ? saved?.apiKey : undefined
+						}
 						onChange={(apiKey) => onChange({ ...speech, apiKey })}
 					/>
 				</Field>
-				<Field code="ai.speech.model">
-					<TInput
-						value={speech.model}
-						onChange={(model) => onChange({ ...speech, model })}
-						placeholder="gpt-4o-mini-tts"
-					/>
-				</Field>
+				{!native && (
+					<Field code="ai.speech.model">
+						<TInput
+							value={speech.model}
+							onChange={(model) => onChange({ ...speech, model })}
+							placeholder="gpt-4o-mini-tts"
+						/>
+					</Field>
+				)}
 				<Field code="ai.speech.voice">
-					<TInput
-						value={speech.voice}
-						onChange={(voice) => onChange({ ...speech, voice })}
-						placeholder="alloy"
-					/>
+					{native ? (
+						<Picker
+							value={speech.voice}
+							options={[
+								{ value: "stella", label: tx("deepseek.speechStella"), color: AI_PURPLE },
+								{ value: "tide", label: tx("deepseek.speechTide"), color: AI_PURPLE },
+							]}
+							onChange={(voice) => onChange({ ...speech, voice })}
+						/>
+					) : (
+						<TInput
+							value={speech.voice}
+							onChange={(voice) => onChange({ ...speech, voice })}
+							placeholder="alloy"
+						/>
+					)}
 				</Field>
 				<div className="flex flex-wrap items-center gap-3">
 					<Btn

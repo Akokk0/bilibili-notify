@@ -1,6 +1,7 @@
 import {
 	type AiSettings,
 	fail,
+	isDeepSeekSpeechEndpoint,
 	type NotificationPayload,
 	ok,
 	type Result,
@@ -68,17 +69,27 @@ export async function fetchSpeech(
 	request = fetch,
 ): Promise<Result<{ wav: Buffer }>> {
 	const { baseUrl, model, voice, apiKey } = settings;
-	if (!baseUrl || !model || !voice) return fail("not_configured", t("speech.config"));
+	const native = isDeepSeekSpeechEndpoint(baseUrl);
+	if (native && (!apiKey.trim() || !["stella", "tide"].includes(voice)))
+		return fail("not_configured", t("speech.nativeConfig"));
+	if (!baseUrl || (!native && !model) || !voice) return fail("not_configured", t("speech.config"));
 	if (!input.trim() || [...input].length > 4096) return fail("invalid", t("speech.length"));
 	const signal = AbortSignal.timeout(30_000);
 	try {
-		const response = await request(`${baseUrl.replace(/\/+$/, "")}/audio/speech`, {
+		const endpoint = native
+			? "https://api.deepseek.com/v1/tools/tts"
+			: `${baseUrl.replace(/\/+$/, "")}/audio/speech`;
+		const response = await request(endpoint, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 				...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
 			},
-			body: JSON.stringify({ model, voice, input, response_format: "wav" }),
+			body: JSON.stringify(
+				native
+					? { text: input, voice_id: voice, format: "wav" }
+					: { model, voice, input, response_format: "wav" },
+			),
 			redirect: "error",
 			signal,
 		});

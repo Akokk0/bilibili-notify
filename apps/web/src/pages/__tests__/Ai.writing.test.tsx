@@ -336,3 +336,36 @@ it("voice delivery defaults to text and saves an independent target exception", 
 		},
 	});
 });
+
+it("切换到 DeepSeek 语音后单独配置密钥与声线", async () => {
+	const config = makeDefaultGlobalSettings();
+	config.ai.speech = {
+		...config.ai.speech,
+		baseUrl: "https://tts.example/v1",
+		model: "old",
+		voice: "alloy",
+		apiKey: { masked: "••••" } as unknown as string,
+	};
+	mount(config);
+	fireEvent.click(await screen.findByRole("tab", { name: /女仆声线/ }));
+	fireEvent.change(screen.getByPlaceholderText("https://api.openai.com/v1"), {
+		target: { value: "https://api.deepseek.com" },
+	});
+	expect(screen.queryByPlaceholderText("gpt-4o-mini-tts")).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: /tide/i }));
+	await save();
+	expect(api.patch).toHaveBeenCalledWith(
+		"/api/settings",
+		expect.objectContaining({
+			core: expect.objectContaining({
+				ai: expect.objectContaining({
+					speech: expect.objectContaining({
+						baseUrl: "https://api.deepseek.com",
+						voice: "tide",
+						apiKey: "",
+					}),
+				}),
+			}),
+		}),
+	);
+});
