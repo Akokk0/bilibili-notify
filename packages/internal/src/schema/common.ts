@@ -301,24 +301,13 @@ export const AiProviderProfileSchema = z.object({
 	 * `@bilibili-notify/ai#parseExtraParams`,写错只影响这一次请求。
 	 */
 	extraParams: z.string().default(""),
-	/**
-	 * 把图**直接下挂给主模型**。它声明的是「这家的主模型自己看不看得见图」,
-	 * 不是「把图发给谁」 —— 所以按家存:gpt-4o 是,DeepSeek 永远否。
-	 *
-	 * 与下面的 {@link vision} 是两条独立的路:配了副模型就走副模型(它优先),
-	 * 两条都没开时发图会被明确拒绝,而不是静默丢掉。
-	 */
+	/** Flash 对话使用服务端联网工具。具体场景另有搜索开关。 */
 	nativeWeb: z.boolean().optional(),
+	/** 请求 DeepSeek 审核输入和输出，并等候审核结果后显示回答。 */
 	safetyCheck: z.boolean().optional(),
+	/** 向支持视觉的主模型直接发送图片。配置了视觉副模型时优先走副模型。 */
 	enableVision: z.boolean().default(false),
-	/**
-	 * 专门看图的副模型。填了 `model` 即启用:此后动态里的图先经它转成文字,
-	 * 主模型全程只吃纯文本。
-	 *
-	 * 为的是 DeepSeek 这类**根本没有视觉模型**的主力(官方 API 里一个都没有),
-	 * 所以副模型必然可能在另一家 —— baseUrl / apiKey 才要单独开口。两者留空
-	 * 则继承同桶主模型的。默认全空 = 不启用。
-	 */
+	/** 视觉副模型先将图片转成文字。空模型名表示停用，地址和密钥留空时沿用主模型。 */
 	vision: z
 		.object({
 			baseUrl: markBackupOnly(z.string(), { url: true }).default(""),

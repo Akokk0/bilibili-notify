@@ -4,9 +4,7 @@ import { packageText } from "@bilibili-notify/internal/texts";
 /**
  * 「额外请求参数」—— 主人手写的一段 JSON,原样摊进请求体顶层。
  *
- * 这是方言适配的兜底口。我们只适配了四家,而 OpenAI 兼容生态里还有几十家;
- * 联网搜索更是分裂到没法统一(OpenRouter 用 `plugins`、硅基用 `enable_search`、
- * DeepSeek 官方压根没有),与其做一个到处失效的开关,不如把口子交出去。
+ * 供实例设置没有覆盖的服务商参数使用，例如 OpenRouter 的 plugins。
  */
 
 /**

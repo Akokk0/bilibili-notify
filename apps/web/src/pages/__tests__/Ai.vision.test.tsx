@@ -28,7 +28,7 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-/** 主模型落在 DeepSeek —— 正是「主模型没有视觉能力」那一档,副模型必然在别家。 */
+/** 文本模型可以独立配置读图服务的地址和密钥。 */
 function globals() {
 	const g = makeDefaultGlobalSettings();
 	g.ai.enabled = true;

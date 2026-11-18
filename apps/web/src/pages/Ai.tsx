@@ -148,7 +148,7 @@ function packIsland(ai: AiSettingsDraft, providerKeys: readonly string[]) {
 
 /**
  * 说明条。本页几乎每条都在解释**为什么某个选项看起来不做事、或者干脆不见了**
- * —— 兜底档不发方言参数、默认开思考的家关位反而要发东西、DeepSeek 没有视觉模型。
+ * —— 兜底档不发方言参数、默认开思考的家关位反而要发东西、主模型只接受文本。
  * 不写清楚,主人只会觉得开关坏了或者设置没存上。
  */
 function FieldNote({ children }: { children: React.ReactNode }) {

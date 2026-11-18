@@ -2,8 +2,7 @@
  * AI 密钥与核心设置文件(`config/settings/core.json`)之间的唯一通道。
  *
  * 「按实例分桶」之后密钥不再是一把,而是**每个实例桶两把** —— 主模型的
- * `apiKey` 与看图副模型的 `vision.apiKey`(副模型常在另一家,DeepSeek 没有视觉
- * 模型,跨厂商是常态)。
+ * `apiKey` 与看图副模型的 `vision.apiKey`。两者可以使用不同的服务商。
  *
  * 三个函数配成一套:
  *
