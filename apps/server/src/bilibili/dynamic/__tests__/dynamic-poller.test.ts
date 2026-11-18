@@ -1169,6 +1169,26 @@ describe("DynamicPoller.detectDynamics — 交出之前先把图抓好(决策 3)
 		expect(emoji).toHaveProperty("image");
 	});
 
+	it.each([
+		{ type: "DYNAMIC_TYPE_WORD", notice: undefined },
+		{ type: "DYNAMIC_TYPE_FORWARD", notice: "UP转发了一条动态，但原动态已不可见" },
+	])("$type 的 orig 为 null 时，照常交出正文和表情图片", async ({ type, notice }) => {
+		const b = makeEngine();
+		const item = { ...emojiItem(), type, orig: null };
+		b.fetchAllDynamic.mockResolvedValue(resp([item]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		const { post } = reported(b)[1];
+		expect(post.text).toBe("看[doge]");
+		expect(post.notice).toBe(notice);
+		expect(post.richText?.find((segment) => segment.kind === "emoji")).toMatchObject({
+			text: "[doge]",
+			image: expect.anything(),
+		});
+	});
+
 	it("不管出不出卡、被不被过滤:这些都是核心的事,动态轮询一律照抓(决策 3,出网变多的代价主人知情)", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(

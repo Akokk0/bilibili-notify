@@ -17,7 +17,7 @@ export type Dynamic = {
 	basic: Object;
 	id_str: string;
 	type: string;
-	orig?: Dynamic;
+	orig?: Dynamic | null;
 	modules: {
 		module_author: {
 			face: string;
