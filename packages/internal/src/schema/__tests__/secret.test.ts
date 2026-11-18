@@ -166,7 +166,7 @@ describe("通用设置规则上的标记", () => {
 		});
 		return out;
 	};
-	it("AI 的两把 key 与搜索 key 是 secret,两处 baseUrl 与市场源 url 是仅备份", () => {
+	it("模型、搜索、语音密钥受保护，各服务与市场地址在脱敏备份中移除", () => {
 		const g = makeDefaultGlobalSettings();
 		g.ai.providers.ds = AiProviderProfileSchema.parse({
 			provider: "deepseek",
@@ -174,11 +174,15 @@ describe("通用设置规则上的标记", () => {
 			baseUrl: "https://api.example/v1",
 			vision: { apiKey: "k-vision", baseUrl: "https://v.example/v1" },
 		});
+		g.ai.speech.apiKey = "k-speech";
+		g.ai.speech.baseUrl = "https://speech.example/v1";
 		g.ai.search.keys = { bocha: "k-bocha", tavily: "k-tavily" };
 		g.marketplace = { sources: [{ id: "s1", url: "https://m.example/index.json" }] };
 		const got = marked(GlobalSettingsSchema, g);
 		expect(got).toEqual(
 			expect.arrayContaining([
+				{ mark: "secret", value: "k-speech" },
+				{ mark: "backupOnly", value: "https://speech.example/v1" },
 				{ mark: "secret", value: "k-main" },
 				{ mark: "backupOnly", value: "https://api.example/v1" },
 				{ mark: "secret", value: "k-vision" },
@@ -188,6 +192,6 @@ describe("通用设置规则上的标记", () => {
 				{ mark: "backupOnly", value: "https://m.example/index.json" },
 			]),
 		);
-		expect(got).toHaveLength(7);
+		expect(got).toHaveLength(9);
 	});
 });

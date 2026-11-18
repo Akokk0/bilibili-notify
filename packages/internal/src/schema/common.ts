@@ -329,10 +329,14 @@ export type AiProviderProfile = z.infer<typeof AiProviderProfileSchema>;
 
 /** AI 总配置（在 GlobalSettings.ai 出现）。 */
 const speechMode = z.enum(["text", "both", "voice"]);
+const speechUrl = z.url({ protocol: /^https?$/ });
 const speechSettings = z.object({
-	baseUrl: markBackupOnly(z.union([z.literal(""), z.url({ protocol: /^https?$/ })]), {
-		url: true,
-	}).default(""),
+	baseUrl: markBackupOnly(
+		z.string().refine((url) => url === "" || speechUrl.safeParse(url).success),
+		{
+			url: true,
+		},
+	).default(""),
 	apiKey: markSecret(z.string()).default(""),
 	model: z.string().trim().default(""),
 	voice: z.string().trim().default(""),
