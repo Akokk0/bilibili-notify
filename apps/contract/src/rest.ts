@@ -327,7 +327,7 @@ export type AiSettingsView<S = SecretCellView> = Omit<
 	speech: CellsAs<AiSettings["speech"], "apiKey", S>;
 	providers: Record<string, AiProviderProfileView<S>>;
 	search: Omit<AiSettings["search"], "keys"> & {
-		keys: { [Backend in keyof AiSettings["search"]["keys"]]: S };
+		keys: CellsAs<AiSettings["search"]["keys"], keyof AiSettings["search"]["keys"], S>;
 	};
 };
 

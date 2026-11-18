@@ -1,4 +1,5 @@
 {
+	"ai.modelSafety.refused": "The model safety check declined this request.",
 	"internal.settings.imageAllowedCidrs": "Enter a valid IPv4 or IPv6 CIDR range, such as 198.18.0.0/16.",
 	"storage.log.masterReadFailed": "Cannot read the existing master key; preserving the file and stopping the load",
 	"storage.log.masterLoaded": "Master key loaded",

@@ -73,6 +73,8 @@ export function toResponsesInput(
 		for (const part of msg.content) {
 			if (part.type === "text") {
 				parts.push({ type: isOutput ? "output_text" : "input_text", text: part.text });
+			} else if (part.type === "file" && "file_id" in part && !isOutput) {
+				parts.push({ type: "input_file", file_id: part.file_id });
 			} else if (part.type === "image_url" && !isOutput) {
 				parts.push({ type: "input_image", image_url: part.image_url.url, detail: "auto" });
 			}
@@ -108,17 +110,22 @@ export function toResponsesTools(
  * 逐段拼接。items 全程宽形状 —— SDK 4.104 的类型联合跟不上线上协议(reasoning
  * 事件一族整个缺席),与其对着过时的类型硬拗,不如统一按结构探测。
  */
-export function responsesOutputText(items: readonly unknown[]): string {
-	let text = "";
+export function responsesOutputParts(items: readonly unknown[]) {
+	const parts: { text: string; annotations?: unknown[] }[] = [];
 	for (const it of items) {
 		const item = it as { type?: unknown; content?: unknown };
 		if (item?.type !== "message" || !Array.isArray(item.content)) continue;
 		for (const part of item.content) {
-			const p = part as { type?: unknown; text?: unknown };
-			if (p?.type === "output_text" && typeof p.text === "string") text += p.text;
+			if (part?.type === "output_text" && typeof part.text === "string") parts.push(part);
 		}
 	}
-	return text;
+	return parts;
+}
+
+export function responsesOutputText(items: readonly unknown[]): string {
+	return responsesOutputParts(items)
+		.map((part) => part.text)
+		.join("");
 }
 
 /** 一轮响应里的工具调用。`call_id` 是回填 function_call_output 的配对钥匙。 */

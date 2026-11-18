@@ -1,4 +1,5 @@
 {
+	"ai.modelSafety.refused": "モデルの安全確認でリクエストが拒否されました。",
 	"internal.settings.imageAllowedCidrs": "198.18.0.0/16 など、有効な IPv4 または IPv6 の CIDR 範囲を入力してください。",
 	"storage.log.masterReadFailed": "既存のマスターキーを読み取れません。ファイルを保持して読み込みを中止します",
 	"storage.log.masterLoaded": "マスターキーを読み込みました",

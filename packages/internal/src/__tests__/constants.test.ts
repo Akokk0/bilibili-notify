@@ -11,6 +11,7 @@ import {
 	AI_PROVIDERS,
 	aiProfileAt,
 	EMPTY_AI_PROVIDER_PROFILE,
+	modelSupportsVision,
 	providerMeta,
 	resolveAIProfile,
 } from "../ai";
@@ -19,10 +20,12 @@ import { DEFAULT_LOCALE } from "../i18n";
 import { builtinPresetsFor } from "../texts/builtin";
 
 describe("能力门控 —— 决定设置页上哪些项该露面", () => {
-	it("DeepSeek 不声称支持看图 —— 官方接口里一个视觉模型都没有", () => {
-		// 这不只是少显示一个开关:发图守卫也据此判断。只看 enableVision 就放行的话,
-		// DeepSeek 用户开着那个开关发图会一路走到模型那儿才被拒,白烧一次请求。
-		expect(providerMeta("deepseek").supportsVision).toBe(false);
+	it("offers direct image input for Flash and its aliases, while Pro requires a vision model", () => {
+		for (const model of ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]) {
+			expect(modelSupportsVision("deepseek", model)).toBe(true);
+		}
+		expect(modelSupportsVision("deepseek", "deepseek-v4-pro")).toBe(false);
+		expect(modelSupportsVision("deepseek", "unknown")).toBe(false);
 	});
 
 	it("聚合网关与多模型平台都有视觉模型", () => {

@@ -99,10 +99,12 @@ describe("globalConfigView — 每个桶的两把 key 都要打码", () => {
 
 	it("联网搜索的 key:非空换遮挡,空的保持空串", () => {
 		const g = makeDefaultGlobalSettings();
-		g.ai.search.keys = { bocha: "sk-bocha", tavily: "" };
+		g.ai.search.keys = { bocha: "sk-bocha", tavily: "", deepseek: "sensitive-search-key" };
 		const out = globalConfigView(g);
 		expect(out.ai.search.keys.bocha).toEqual({ masked: DOTS });
 		expect(out.ai.search.keys.tavily).toBe("");
+		expect(out.ai.search.keys.deepseek).toEqual({ masked: DOTS });
+		expect(JSON.stringify(out)).not.toContain("sensitive-search-key");
 		expect(JSON.stringify(out)).not.toContain("sk-bocha");
 	});
 

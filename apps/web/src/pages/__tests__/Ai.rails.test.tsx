@@ -360,12 +360,12 @@ describe("模型配置 · 服务商左栏", () => {
 		expect(screen.queryByDisplayValue("ds-model")).toBeNull();
 	});
 
-	it("按能力门控:DeepSeek 不摆「主模型支持看图」,OpenRouter 摆", async () => {
+	it("按模型显示看图开关", async () => {
 		mount(
 			globalsWith((g) => {
 				g.ai.activeProfile = "deepseek";
 				g.ai.providers = {
-					deepseek: bucket({ provider: "deepseek" }),
+					deepseek: bucket({ provider: "deepseek", model: "deepseek-v4-pro" }),
 					openrouter: bucket({ provider: "openrouter" }),
 				};
 			}),
@@ -373,7 +373,11 @@ describe("模型配置 · 服务商左栏", () => {
 		await gotoModel();
 		await screen.findByText("模型连接");
 		expect(screen.queryByLabelText("主模型支持看图")).toBeNull();
-		expect(screen.getByText(/没有能看图的模型/)).toBeTruthy();
+		expect(screen.getByText(/不支持直接看图/)).toBeTruthy();
+		fireEvent.change(screen.getByDisplayValue("deepseek-v4-pro"), {
+			target: { value: "deepseek-flash" },
+		});
+		expect(screen.getByLabelText("主模型支持看图")).toBeTruthy();
 
 		fireEvent.click(screen.getAllByText("OpenRouter")[0] as HTMLElement);
 		await waitFor(() => expect(screen.getByLabelText("主模型支持看图")).toBeTruthy());

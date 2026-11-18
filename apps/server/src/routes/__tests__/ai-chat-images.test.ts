@@ -56,6 +56,7 @@ async function makeDeps(
 		visionModel?: string;
 		enableVision?: boolean;
 		provider?: string;
+		model?: string;
 		maxConversations?: number;
 		maxMessages?: number;
 	} = {},
@@ -83,7 +84,7 @@ async function makeDeps(
 							label: "",
 							apiKey: "sk-x",
 							baseUrl: "https://api.example.com/v1",
-							model: "m",
+							model: opts.model ?? "m",
 							enableThinking: false,
 							thinkingLevel: "medium",
 							extraParams: "",
@@ -161,12 +162,11 @@ describe("发图 — 主模型自己就支持多模态", () => {
 		expect(H.lastImageUrls?.[0]?.startsWith("data:image/png;base64,")).toBe(true);
 	});
 
-	it("服务商压根没有视觉模型时,开着这个开关也不放行", async () => {
-		// DeepSeek 官方接口一个视觉模型都没有。只看 enableVision 就放行的话,
-		// 图会一路带到模型那儿才被拒 —— 白烧一次请求,报错还来自上游、看不懂。
-		// 这个开关对 DeepSeek 本来就该是不可选的,守卫这里是最后一道。
+	it("DeepSeek Pro 没有视觉能力时，打开看图开关也不放行", async () => {
+		// 同一服务商的 Flash 与 Pro 有不同的输入能力，不能只看用户开关。
 		const { app, deps } = await makeDeps({
 			provider: "deepseek",
+			model: "deepseek-pro",
 			enableVision: true,
 			visionModel: "",
 		});
@@ -181,7 +181,7 @@ describe("发图 — 主模型自己就支持多模态", () => {
 		expect(chatStatelessStream).not.toHaveBeenCalled();
 	});
 
-	it("但配了视觉副模型就照常放行 —— 副模型正是给 DeepSeek 这种主力准备的", async () => {
+	it("文本主模型配了视觉副模型就照常放行", async () => {
 		const { app, deps } = await makeDeps({ provider: "deepseek", visionModel: "qwen-vl" });
 		const id = await newConv(app);
 		const img = await saveImage(deps);

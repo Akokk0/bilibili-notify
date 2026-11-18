@@ -226,10 +226,14 @@ describe("enableVision 必须过服务商能力位这一关", () => {
 		oai.create.mockResolvedValue(msgResp("点评"));
 	});
 
-	it("这家没有视觉模型(DeepSeek)时,enableVision 开着也不把图交给主模型", async () => {
-		// 界面上 DeepSeek 已经不摆这个开关了,但**老配置里残留的 true 仍然读得到**
-		// —— 而藏起开关的同时,主人连关掉它的入口都没有了。所以把关的地方必须在这儿,
-		// 不能只在界面上。往 DeepSeek 发 image_url 的下场是整条点评 400。
+	it("uses the model selected for this notification when deciding whether to attach images", async () => {
+		const gen = makeGen({ provider: "deepseek", model: "deepseek-flash", enableVision: true });
+		await gen.comment("看图", "post", ["http://img/1.jpg"], { model: "deepseek-v4-pro" });
+		const request = oai.create.mock.calls[0][0] as Params;
+		expect(request.messages.find((message) => message.role === "user")?.content).toBe("看图");
+	});
+
+	it("DeepSeek 文本模型即使保留旧配置的看图开关，也只收文本", async () => {
 		const gen = makeGen({ provider: "deepseek", enableVision: true });
 		await gen.comment("看图", "post", ["http://img/1.jpg"]);
 

@@ -196,8 +196,10 @@ describe("联网搜索的 key 也走袋子", () => {
 
 	it("apply(strip(g), collect(g)) 恒等往返 —— 破了就是「重启掉配置」", () => {
 		const g = withSearchKeys();
-		const restored = applyAiSecrets(stripAiSecrets(g), collectAiSecrets(g));
-		expect(restored.ai.search.keys).toEqual({ bocha: "sk-bocha", tavily: "tvly-x" });
+		g.ai.search.keys.deepseek = "deepseek-search-test";
+		const stripped = stripAiSecrets(g);
+		expect(stripped.ai.search.keys.deepseek).toBe("");
+		expect(applyAiSecrets(stripped, collectAiSecrets(g)).ai.search.keys).toEqual(g.ai.search.keys);
 	});
 });
 

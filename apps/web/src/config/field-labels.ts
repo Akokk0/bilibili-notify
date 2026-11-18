@@ -443,6 +443,7 @@ export const FIELD_LABELS = {
 		section: "ai",
 		secret: true,
 	},
+	"ai.search.keys.deepseek": { label: "DeepSeek API Key", section: "ai", secret: true },
 	"ai.search.keys.tavily": {
 		label: "Tavily API Key",
 		get hint() {
@@ -508,6 +509,24 @@ export const FIELD_LABELS = {
 		},
 		get hint() {
 			return i18n.t("sourceUi.config.field.labels.hint.53");
+		},
+		section: "ai",
+	},
+	"ai.nativeWeb": {
+		get label() {
+			return i18n.t("deepseek.nativeWeb");
+		},
+		get hint() {
+			return i18n.t("deepseek.nativeWebHint");
+		},
+		section: "ai",
+	},
+	"ai.safetyCheck": {
+		get label() {
+			return i18n.t("deepseek.safetyCheck");
+		},
+		get hint() {
+			return i18n.t("deepseek.safetyCheckHint");
 		},
 		section: "ai",
 	},

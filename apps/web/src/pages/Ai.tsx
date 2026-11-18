@@ -23,6 +23,8 @@ import {
 	type APIFlavorId,
 	canProfileThink,
 	EMPTY_AI_PROVIDER_PROFILE,
+	isDeepSeekFlash,
+	modelSupportsVision,
 	providerMeta,
 	resolveActivePersona,
 	resolveAIProfile,
@@ -283,6 +285,8 @@ export default function Ai() {
 	const editingLabel = rail.find((i) => i.id === editing)?.label ?? meta.label;
 	// 头图那颗药丸报的是**女仆真正在用的那份**的模型,与左栏在看哪一份无关。
 	const globalProfile = resolveAIProfile(draft);
+	const hostedSearch =
+		globalProfile.nativeWeb && isDeepSeekFlash(globalProfile.provider, globalProfile.model);
 	// 头图那行名字同理:报的是**女仆真正在用的那份人格**(`activePreset` 指的那份),
 	// 与左栏在编辑哪一份无关;内置那份的内容取当前语言。
 	const globalPersona = resolveActivePersona(draft, builtins).persona;
@@ -498,7 +502,7 @@ export default function Ai() {
 						})}
 					>
 						<DraftSecretInput
-							value={draft.search.keys[draft.search.backend]}
+							value={draft.search.keys[draft.search.backend] ?? ""}
 							saved={globalsQuery.data?.ai.search.keys[draft.search.backend]}
 							onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
 						/>
@@ -512,7 +516,11 @@ export default function Ai() {
 							["roast", tx("aiSettings.page.search.roastAria")],
 						] as const
 					).map(([k, aria]) => (
-						<Field key={k} code={`ai.search.scenes.${k}`}>
+						<Field
+							key={k}
+							code={`ai.search.scenes.${k}`}
+							hint={hostedSearch ? tx("deepseek.sceneHint") : undefined}
+						>
 							<div className="flex h-7.5 items-center">
 								<Toggle
 									value={draft.search.scenes[k]}
@@ -523,9 +531,15 @@ export default function Ai() {
 						</Field>
 					))}
 					<FieldNote>
-						{tx("aiSettings.page.search.feePrefix")}
-						<strong>{tx("aiSettings.page.search.feeEmphasis")}</strong>
-						{tx("aiSettings.page.search.feeSuffix")}
+						{hostedSearch ? (
+							tx("deepseek.searchScenes")
+						) : (
+							<>
+								{tx("aiSettings.page.search.feePrefix")}
+								<strong>{tx("aiSettings.page.search.feeEmphasis")}</strong>
+								{tx("aiSettings.page.search.feeSuffix")}
+							</>
+						)}
 					</FieldNote>
 				</GlassBox>
 			) : (
@@ -693,6 +707,21 @@ export default function Ai() {
 											full={false}
 										/>
 									</Field>
+									{isDeepSeekFlash(profile.provider, profile.model) &&
+										(
+											[
+												["nativeWeb", tx("deepseek.nativeWeb")],
+												["safetyCheck", tx("deepseek.safetyCheck")],
+											] as const
+										).map(([key, label]) => (
+											<Field key={key} code={`ai.providers.${editing}.${key}`} label={label}>
+												<Toggle
+													value={Boolean(profile[key])}
+													onChange={(value) => setProfile(key, value)}
+													ariaLabel={label}
+												/>
+											</Field>
+										))}
 									{/* 接口风味 —— 只对确认支持 /responses 的家摆出来(supportsResponses),
 									    硅基/火山未确认前不给选:选得到却必然 404 的组合比没有选项更糟。 */}
 									{meta.supportsResponses ? (
@@ -733,10 +762,7 @@ export default function Ai() {
 									icon={<Icon.image size={14} />}
 									badge="vision"
 								>
-									{/* 这家根本没有视觉模型(DeepSeek 官方接口一个都没有)的话,「主模型
-									    支持看图」是个永远为否的问题,整格不摆出来 —— 摆出来只会让人勾了
-									    发现没用。服务端的发图守卫也按同一条能力判断,两边同源。 */}
-									{meta.supportsVision ? (
+									{modelSupportsVision(profile.provider, profile.model) ? (
 										<>
 											{/* 配了视觉模型之后这个开关**完全不生效**(副模型无条件优先)。与其
 											    只写在说明里,不如让它在那一刻就点不动 —— 否则一个能勾上、勾了
@@ -761,9 +787,9 @@ export default function Ai() {
 										</>
 									) : (
 										<FieldNote>
-											{meta.label} {tx("aiSettings.page.vision.unsupportedPrefix")}
-											<strong>{tx("aiSettings.page.vision.unsupportedEmphasis")}</strong>
-											{tx("aiSettings.page.vision.unsupportedSuffix")}
+											{tx("aiSettings.page.vision.unsupported", {
+												model: profile.model || meta.label,
+											})}
 										</FieldNote>
 									)}
 									{/* 密钥 → 地址 → 模型,与上面「模型连接」**同序**:两块摆的是同一件事

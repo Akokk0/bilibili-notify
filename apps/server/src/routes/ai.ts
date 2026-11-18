@@ -18,9 +18,9 @@ import {
 	fail,
 	type ImageRef,
 	issuesFromZod,
+	modelSupportsVision,
 	type NotificationPayload,
 	ok,
-	providerMeta,
 	resolveAIProfile,
 	resolveChatThinkingLevel,
 	sniffImageFormat,
@@ -375,11 +375,8 @@ export function createAiRoute(
 		if (attached.length > 0) {
 			const aiCfg = deps.store.getGlobals().ai;
 			const aiProfile = resolveAIProfile(aiCfg);
-			// 「主模型直接看图」这条路还要那家**真有**视觉模型才算数:DeepSeek 官方
-			// 接口一个都没有,勾着开关也只会把图带到模型那儿才被拒 —— 白烧一次请求,
-			// 报错还来自上游、主人看不懂。这里当场拦下并指路。
 			const mainModelCanSee =
-				aiProfile.enableVision && providerMeta(aiProfile.provider).supportsVision;
+				aiProfile.enableVision && modelSupportsVision(aiProfile.provider, aiProfile.model);
 			if (!mainModelCanSee && !aiProfile.vision.model.trim()) {
 				return respondFailure(c, fail("not_configured", visionNotSetMessage()));
 			}

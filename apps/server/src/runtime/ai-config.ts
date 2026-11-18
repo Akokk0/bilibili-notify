@@ -62,6 +62,8 @@ export function toGeneratorConfig(ai: AiSettings, builtins: readonly AIBuiltinPr
 		enableThinking: p.enableThinking,
 		thinkingLevel: p.thinkingLevel,
 		extraParams: p.extraParams,
+		nativeWeb: p.nativeWeb,
+		safetyCheck: p.safetyCheck,
 		// 主模型自己支持视觉时开它,图直接下挂,省一次往返也不掉保真度。
 		// 配了视觉副模型则副模型优先(见 CommentaryGenerator#resolveImages)。
 		enableVision: p.enableVision,

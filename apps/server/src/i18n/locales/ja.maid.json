@@ -130,7 +130,7 @@
 	"service.config.settings-problems.text.11": "ご主人様、設定ファイルの{value0}を読み取れないため、今は既定値で動いています：{value1}。",
 	"service.config.settings-problems.text.16": "ご主人様、設定ファイルの{value0} AIプロバイダーを読み取れません：{value1}。",
 	"service.config.settings-problems.text.44": "ご主人様、このID（{value0}）は、設定ファイルから読み取れないAIプロバイダーが使っているため、保存していません。",
-	"service.routes.ai.text.4": "ご主人様、私はまだ画像を見られません。「AIメイド」ページの「画像理解」で設定してくださいね。メインモデルが画像に対応していれば「メインモデルで画像を読み取る」を有効にし、非対応なら（DeepSeekなど）「画像認識モデル ID」を入力してください。",
+	"service.routes.ai.text.4": "ご主人様、私はまだ画像を見られません。「AIメイド」ページの「画像理解」で設定してくださいね。メインモデルが画像に対応していれば「メインモデルで画像を読み取る」を有効にし、非対応なら「画像認識モデル ID」を入力してください。",
 	"service.routes.ai.text.8": "ご主人様、お返事を用意できませんでした：{value0}",
 	"service.routes.ai.text.16": "ご主人様、お返事を用意できませんでした：{value0}",
 	"service.routes.cards-skins.text.20": "ご主人様、書き上げられませんでした：{value0}",

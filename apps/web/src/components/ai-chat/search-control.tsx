@@ -1,4 +1,8 @@
-import { webSearchBackendMeta } from "@bilibili-notify/internal/ai";
+import {
+	isDeepSeekFlash,
+	resolveAIProfile,
+	webSearchBackendMeta,
+} from "@bilibili-notify/internal/ai";
 import { Icon } from "@bilibili-notify/ui";
 import { useCoreSettings } from "../../hooks/useSettings";
 import { useT } from "../../i18n";
@@ -24,22 +28,27 @@ export function SearchControl({ on, onToggle }: { on: boolean; onToggle: (v: boo
 	const search = ai?.search;
 	if (!search) return null;
 
-	const backend = webSearchBackendMeta(search.backend);
-	const configured = Boolean(search.keys[search.backend]);
+	const profile = resolveAIProfile(ai);
+	const hosted = profile.nativeWeb && isDeepSeekFlash(profile.provider, profile.model);
+	const configured = hosted ? Boolean(profile.apiKey) : Boolean(search.keys[search.backend]);
 
+	const label = hosted ? "DeepSeek" : webSearchBackendMeta(search.backend).label;
+	const title = configured
+		? on
+			? tx("panelUi.components.ai-chat.search-control.2", { value0: label })
+			: hosted
+				? tx("deepseek.chatSearchHint")
+				: tx("panelUi.components.ai-chat.search-control.3")
+		: hosted
+			? tx("deepseek.chatSearchKey")
+			: tx("panelUi.components.ai-chat.search-control.4", { value0: label });
 	return (
 		<ComposerPill
 			label={tx("panelUi.components.ai-chat.search-control.1")}
 			icon={<Icon.search size={14} />}
 			on={on}
 			disabled={!configured}
-			title={
-				configured
-					? configured && on
-						? tx("panelUi.components.ai-chat.search-control.2", { value0: backend.label })
-						: tx("panelUi.components.ai-chat.search-control.3")
-					: tx("panelUi.components.ai-chat.search-control.4", { value0: backend.label })
-			}
+			title={title}
 			onToggle={onToggle}
 		/>
 	);

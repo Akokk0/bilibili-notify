@@ -308,6 +308,8 @@ export const AiProviderProfileSchema = z.object({
 	 * 与下面的 {@link vision} 是两条独立的路:配了副模型就走副模型(它优先),
 	 * 两条都没开时发图会被明确拒绝,而不是静默丢掉。
 	 */
+	nativeWeb: z.boolean().optional(),
+	safetyCheck: z.boolean().optional(),
 	enableVision: z.boolean().default(false),
 	/**
 	 * 专门看图的副模型。填了 `model` 即启用:此后动态里的图先经它转成文字,
@@ -414,6 +416,7 @@ const AiSettingsObjectSchema = z.object({
 				.object({
 					bocha: markSecret(z.string()).default(""),
 					tavily: markSecret(z.string()).default(""),
+					deepseek: markSecret(z.string()).optional(),
 				})
 				.default({ bocha: "", tavily: "" }),
 			scenes: z

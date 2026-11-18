@@ -163,6 +163,34 @@ describe("Ai 页 · 联网搜索设置块", () => {
 		expect(inputAt("ai.search.keys.bocha")?.value).toBe("sk-bocha");
 	});
 
+	it("从旧配置启用 DeepSeek 时，各搜索服务仍分别保存密钥", async () => {
+		mount();
+		fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));
+		fireEvent.click(await screen.findByRole("button", { name: "DeepSeek" }));
+		const field = inputAt("ai.search.keys.deepseek");
+		if (!field) throw new Error("Missing DeepSeek search key field");
+		fireEvent.change(field, { target: { value: "test-search-key" } });
+		await waitFor(() =>
+			expect(
+				useDraftStore
+					.getState()
+					.current?.diff.some((item) => item.code === "ai.search.keys.deepseek"),
+			).toBe(true),
+		);
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave();
+		});
+		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+			core: {
+				ai: expect.objectContaining({
+					search: expect.objectContaining({
+						backend: "deepseek",
+						keys: { bocha: "", tavily: "", deepseek: "test-search-key" },
+					}),
+				}),
+			},
+		});
+	});
 	it("三个引擎开关在场且默认全关", async () => {
 		mount();
 		fireEvent.click(await screen.findByRole("tab", { name: /^搜索/ }));

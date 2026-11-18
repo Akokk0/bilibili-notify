@@ -207,3 +207,29 @@ describe("formatWebSearchResults — 回灌模型的文本", () => {
 		expect(msg).toMatch(/换.*关键词/);
 	});
 });
+
+it("uses DeepSeek's standalone search and fetch with the search service key", async () => {
+	const ex = createWebSearchExecutor({ backend: "deepseek", apiKey: "fixture" });
+	fetchMock.mockResolvedValueOnce(
+		jsonRes({ results: [{ title: "Report", url: "https://example.org", summary: "Summary" }] }),
+	);
+	expect(await ex.search("news")).toEqual([
+		{ title: "Report", url: "https://example.org", snippet: "Summary" },
+	]);
+	fetchMock.mockResolvedValueOnce(jsonRes({ title: "Report", content: "Article" }));
+	expect(await ex.readUrl?.("https://example.org")).toEqual([
+		{ title: "Report", url: "https://example.org", snippet: "Article" },
+	]);
+	expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+		"https://api.deepseek.com/v1/tools/search",
+		"https://api.deepseek.com/v1/tools/fetch",
+	]);
+});
+
+it("does not submit links with embedded credentials to the standalone fetch service", async () => {
+	const ex = createWebSearchExecutor({ backend: "deepseek", apiKey: "fixture" });
+	for (const url of ["not a url", "https://user:pass@example.org/page", "file:///example"]) {
+		await expect(ex.readUrl?.(url)).rejects.toBeInstanceOf(WebSearchError);
+	}
+	expect(fetchMock).not.toHaveBeenCalled();
+});
