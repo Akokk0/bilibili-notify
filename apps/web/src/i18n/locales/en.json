@@ -2696,7 +2696,6 @@
 	"cards.preview.messageNote": "SC / membership cards: this subscription is the recipient. The sender uses the source’s signed-in account name, or a sample name if unavailable.",
 	"cards.preview.noSubscription": "Use sample data",
 	"cards.preview.source": "Preview source",
-	"cards.preview.allSources": "All sources",
 	"cards.preview.filteredHint": "Preview cards supported by this source with the current skin.",
 	"cards.preview.realDataNote": "Render with this subscription’s real data. If unavailable, use sample data and show the reason below the preview.",
 	"cards.preview.realDataNoteOf": "Render with real data from {name}. If unavailable, use sample data and show the reason below the preview.",

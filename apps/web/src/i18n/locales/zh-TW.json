@@ -2642,7 +2642,6 @@
 	"cards.preview.messageNote": "醒目留言／會員卡的接收者為此訂閱，付款者使用該來源已登入的帳號名稱，無法取得時改用範例名稱。",
 	"cards.preview.noSubscription": "使用範例資料",
 	"cards.preview.source": "預覽來源",
-	"cards.preview.allSources": "全部來源",
 	"cards.preview.filteredHint": "只顯示此來源支援的卡片，並使用目前的外觀。",
 	"cards.preview.realDataNote": "使用此訂閱的真實資料繪製；無法取得時改用範例，並在預覽下方顯示原因。",
 	"cards.preview.realDataNoteOf": "使用 {name} 的真實資料繪製；無法取得時改用範例，並在預覽下方顯示原因。",

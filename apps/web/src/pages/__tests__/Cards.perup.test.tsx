@@ -210,7 +210,13 @@ describe("Cards per-UP 作用域接线", () => {
 				"/api/cards/preview",
 				expect.objectContaining({
 					kind: "superchat",
-					content: { text: "Original {name} 原文", amount: 777, rank: 1, durationSec: 60 },
+					content: {
+						sourceKey: "bilibili",
+						text: "Original {name} 原文",
+						amount: 777,
+						rank: 1,
+						durationSec: 60,
+					},
 				}),
 				expect.anything(),
 			);

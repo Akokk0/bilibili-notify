@@ -18,7 +18,11 @@ import { targetDisplay } from "../components/target-display";
  * 面板里现在搜不到它,那个键只剩服务端一次性迁移时读一遍。
  */
 
-import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
+import {
+	BILIBILI_SOURCE_KEY,
+	type PreviewResponse,
+	type TestPushResponse,
+} from "@bilibili-notify/contract";
 import { CARD_KIND_EVENT_NAMES } from "@bilibili-notify/internal/card-skin";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
@@ -762,19 +766,20 @@ export default function Cards() {
 	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
 	const isGlobalScope = scope === "__global";
 	const focusedSub = isGlobalScope ? undefined : allSubs.find((s) => s.id === scope);
-	const [sourceKey, setSourceKey] = useResourceState("cards.preview.source", "");
+	const [sourceKey, setSourceKey] = useResourceState("cards.preview.source", BILIBILI_SOURCE_KEY);
 	const previewSources =
 		sourceEntries?.filter(
 			(source) =>
-				source.status === "running" &&
+				(source.status === "running" || source.key === BILIBILI_SOURCE_KEY) &&
 				PREVIEW_KINDS.some((kind) =>
 					source.descriptor.supportedFeatures.includes(kind === "live" ? "liveStart" : kind),
 				),
 		) ?? [];
 	const selectedSource = isGlobalScope
-		? previewSources.find((source) => source.key === sourceKey)
+		? (previewSources.find((source) => source.key === sourceKey) ??
+			previewSources.find((source) => source.key === BILIBILI_SOURCE_KEY))
 		: undefined;
-	const previewSourceKey = selectedSource?.key;
+	const previewSourceKey = isGlobalScope ? (selectedSource?.key ?? BILIBILI_SOURCE_KEY) : undefined;
 	const previewKinds = selectedSource
 		? PREVIEW_KINDS.filter((k) =>
 				selectedSource.descriptor.supportedFeatures.includes(k === "live" ? "liveStart" : k),
@@ -977,12 +982,10 @@ export default function Cards() {
 	// 预览内容:全局 = 挑的那条订阅(可不挑)+ 可编辑的示例消息;per-UP = 正在改的这条订阅。真数据由服务端问那条订阅的
 	// 来源要,取不到就画示例并说原因。useMemo 稳定引用 —— 否则每次 render 新建对象会不断重置 PreviewImage 的防抖定时器。
 	const previewSubscriptionId = isGlobalScope
-		? !selectedSource || previewSubscriptions.some((sub) => sub.id === content.subscriptionId)
-			? content.subscriptionId || undefined
-			: undefined
+		? previewSubscriptions.find((sub) => sub.id === content.subscriptionId)?.id
 		: focusedSub?.id;
 	const previewSub = allSubs.find((sub) => sub.id === previewSubscriptionId);
-	const membershipSourceKey = previewSub?.identity.sourceKey ?? previewSourceKey;
+	const membershipSourceKey = previewSub?.identity.sourceKey ?? selectedSource?.key;
 	const membershipSources = membershipSourceKey
 		? sourceEntries?.filter((source) => source.key === membershipSourceKey)
 		: sourceEntries;
@@ -1284,24 +1287,19 @@ export default function Cards() {
 
 				{/* PREVIEW: 全局 tab = 四卡全家福;类型 tab = 单卡 */}
 				<div className="@container/card-previews flex flex-col gap-2.5">
-					{isGlobalScope && previewSources.length > 1 ? (
-						<div className="flex flex-wrap items-center justify-between gap-2 text-bn-sm text-bn-text-secondary">
-							<span>{t("cards.preview.source")}</span>
-							<div className="min-w-40">
-								<TSelect
-									ariaLabel={t("cards.preview.source")}
-									value={previewSourceKey ?? ""}
-									onChange={setSourceKey}
-									options={[
-										{ value: "", label: t("cards.preview.allSources") },
-										...previewSources.map((source) => ({
-											value: source.key,
-											label: source.descriptor.label,
-										})),
-									]}
-								/>
-							</div>
-						</div>
+					{selectedSource ? (
+						<fieldset className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-bn-sm text-bn-text-secondary">
+							<legend className="sr-only">{t("cards.preview.source")}</legend>
+							<span aria-hidden="true">{t("cards.preview.source")}</span>
+							<Picker
+								value={selectedSource.key}
+								onChange={setSourceKey}
+								options={previewSources.map((source) => ({
+									value: source.key,
+									label: source.descriptor.label,
+								}))}
+							/>
+						</fieldset>
 					) : null}
 					{isGlobalTab ? (
 						<>
