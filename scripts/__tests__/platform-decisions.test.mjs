@@ -1066,7 +1066,8 @@ describe("核心与面板里不再按平台名做决定", () => {
 		).toEqual([]);
 	});
 
-	it("面板:同上,面板另记一张表", () => {
+	// 扫完整个面板还要交给 TypeScript 绑定符号。共享 runner 的 CPU 争用曾使这项超过默认 5 秒。
+	it("面板:同上,面板另记一张表", { timeout: 15_000 }, () => {
 		expect(
 			auditRatchet(scanPanel(), {
 				allowlist: ALLOWLIST,

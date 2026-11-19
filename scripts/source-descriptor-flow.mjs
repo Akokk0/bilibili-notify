@@ -57,10 +57,12 @@ export function descriptorFlow(sources, rootPath) {
 	const symbolOf = (node) => {
 		if (symbols.has(node)) return symbols.get(node);
 		let symbol = checker.getSymbolAtLocation(node);
-		const seen = new Set();
-		while (symbol && symbol.flags & ts.SymbolFlags.Alias && !seen.has(symbol)) {
-			seen.add(symbol);
-			symbol = checker.getAliasedSymbol(symbol);
+		if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+			const seen = new Set();
+			while (symbol && symbol.flags & ts.SymbolFlags.Alias && !seen.has(symbol)) {
+				seen.add(symbol);
+				symbol = checker.getAliasedSymbol(symbol);
+			}
 		}
 		symbols.set(node, symbol);
 		return symbol;
@@ -116,11 +118,19 @@ export function descriptorFlow(sources, rootPath) {
 			functions.push(node);
 		if (ts.isCallExpression(node)) {
 			const fn = callable(node.expression);
-			if (fn) calls.set(fn, [...(calls.get(fn) ?? []), node]);
+			if (fn) {
+				const sites = calls.get(fn) ?? [];
+				sites.push(node);
+				calls.set(fn, sites);
+			}
 		}
 		if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
 			const fn = callable(node.tagName);
-			if (fn) props.set(fn, [...(props.get(fn) ?? []), node.attributes]);
+			if (fn) {
+				const sites = props.get(fn) ?? [];
+				sites.push(node.attributes);
+				props.set(fn, sites);
+			}
 		}
 		if (
 			ts.isBinaryExpression(node) &&
