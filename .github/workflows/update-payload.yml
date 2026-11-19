@@ -3,11 +3,8 @@ name: bilibili-notify — update payload
 # 应用内更新的发版侧:打一个自包含载荷 zip、签一份清单,挂到 v<VERSION> release,
 # 再把清单覆盖到滚动的 `update-channel` release 上当作渠道入口。
 #
-# 与 Docker / Desktop 两条路**互不阻塞**(同 build-release.md 里那条约定):三者由
-# 同一个 v* tag 触发,各跑各的。桌面构建挂了不该连带用户升不了级 —— 所以 v<VERSION>
-# release 这里**自己建**(与 desktop-release 共用同一个幂等脚本,谁先到谁建),不等
-# 别人。以前这里干等 desktop 建 release,桌面矩阵一慢或一挂,载荷和渠道清单就一起
-# 发不出去,而 Docker / Desktop 都绿着,没人会发现。
+# 共用门禁通过后各产物并行。本作业与 desktop-release 共用幂等脚本，
+# 谁先构建完谁建 v<VERSION> release。
 #
 # 需要的 repo secret:
 #   BN_UPDATE_SIGNING_KEY  Ed25519 私钥(PKCS#8 PEM,或它的 base64)。**没配就跳过签名**
@@ -16,19 +13,22 @@ name: bilibili-notify — update payload
 #   RELEASE_PAT            创建 / 更新 release 用
 
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+  workflow_call:
     inputs:
       dry_run:
-        description: "Build + sign only, skip uploading to the release"
         type: boolean
-        default: true
-      version:
-        description: "App version for dry-run builds, e.g. 0.9.0"
-        type: string
         required: true
+      version:
+        type: string
+    secrets:
+      AFDIAN_USER_ID:
+        required: false
+      AFDIAN_TOKEN:
+        required: false
+      RELEASE_PAT:
+        required: false
+      BN_UPDATE_SIGNING_KEY:
+        required: false
 
 # 串行化:两次 push 同时跑会让 update-channel 上的清单和 release 资产失同步。
 # group **不带 ref** —— 每个 tag 的 ref 都不一样,带上就等于每次都是新组,两个 tag
@@ -42,20 +42,15 @@ permissions:
   contents: read
 
 env:
-  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+  DRY_RUN: ${{ inputs.dry_run }}
 
 jobs:
-  # 门禁定义在 gate.yml(唯一一份,四条路径共用)。它先绿,才谈得上把一个载荷
-  # 签名发出去 —— 签名只保证「这是我们发的」,不保证「这是好的」。
-  gate:
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
-    uses: ./.github/workflows/gate.yml
-
   publish:
     name: Build + sign update payload
-    needs: [gate]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
 
     steps:
       - name: Checkout
@@ -81,12 +76,11 @@ jobs:
       - name: Install deps
         run: vp install
 
-      # dry-run 没有 tag,版本从 dispatch 输入来(同 desktop-release);tag 触发时输入为空,
-      # 脚本改读 GITHUB_REF_NAME。以前这里没传,dry-run 在这一步就红 —— 第一次跑 dry-run 才发现。
+      # 预检使用调用者传入的版本，正式发行由脚本读取 tag。
       - name: Read app version
         id: ver
         env:
-          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+          VERSION: ${{ inputs.version }}
         run: bash .github/scripts/shared/read-app-version.sh
 
       # 通知卡上念的那句概述,从 apps/CHANGELOG.md 该版本段的第一段抽(规矩见

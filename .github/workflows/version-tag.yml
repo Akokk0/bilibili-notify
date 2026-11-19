@@ -58,7 +58,7 @@ jobs:
         if: inputs.dry_run
         run: |
           echo "dry-run: would create or verify v${{ steps.ver.outputs.value }} at $GITHUB_SHA"
-          echo "push that tag to trigger Docker and Desktop release workflows"
+          echo "pushing that tag starts the app release workflow"
 
       - name: Validate release token
         if: inputs.dry_run == false

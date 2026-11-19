@@ -91,7 +91,7 @@ base64 < ~/secrets/bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
 
 ## 发版流程
 
-`v<VERSION>` tag 触发 `update-payload.yml`,与 Docker / Desktop 两条路**互不阻塞**。
+`v<VERSION>` tag 触发本体发行。`npm-release.yml` 的门禁通过后调用 `update-payload.yml`，与 Docker、桌面和 npm 并行。
 它做五件事:
 
 1. `node scripts/changelog-section.mjs --version <V> --part summary` —— 从 `apps/CHANGELOG.md`

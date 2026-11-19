@@ -404,6 +404,26 @@ globalThis.setTimeout = (callback, delay, ...args) => {
 		});
 		expect(workflow.permissions).toEqual({ contents: "read" });
 		expect(workflow.jobs.gate.uses).toBe("./.github/workflows/gate.yml");
+		for (const [jobId, filename] of [
+			["docker", "image-release.yml"],
+			["desktop", "desktop-release.yml"],
+			["update", "update-payload.yml"],
+		]) {
+			const path = `.github/workflows/${filename}`;
+			expect(workflow.jobs[jobId]).toMatchObject({
+				uses: `./${path}`,
+				needs: ["gate"],
+				with: {
+					dry_run: `\${{ github.event_name == 'workflow_dispatch' }}`,
+					version: `\${{ inputs.version || '' }}`,
+				},
+			});
+			const product = parseYaml(await readFile(join(REPO, path), "utf8"));
+			expect(Object.keys(product.on)).toEqual(["workflow_call"]);
+			expect(Object.values(product.jobs).some((job) => job.uses?.endsWith("/gate.yml"))).toBe(
+				false,
+			);
+		}
 		expect(workflow.jobs.build.needs).toEqual(["gate"]);
 		expect(workflow.jobs.publish.needs).toEqual(["build"]);
 		expect(workflow.jobs.publish.if).toBe(
