@@ -248,6 +248,30 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 				}),
 			);
 		}
+		// 用首次拉取后的昵称做夹具，避免启动轮询在不同推送之间换掉候选昵称。
+		const [nameA, nameB] = await vi.waitFor(
+			async () => {
+				await ok(
+					await api("/api/dev/run/core.profiles.refresh-now", {
+						method: "POST",
+						...json({ params: {} }),
+					}),
+				);
+				const subscriptions = (await (
+					await api("/api/subscriptions")
+				).json()) as SubscriptionView[];
+				const nameOf = (key: Key) =>
+					subscriptions.find((sub) => sub.id === SUBS[key].id)?.cachedProfile?.name ?? "";
+				const a = nameOf("a");
+				const b = nameOf("b");
+				for (const name of [a, b]) expect(name).toMatch(/^假名字 · 拉取版\([0-9a-f]{4}\)$/);
+				expect(a).not.toBe(b);
+				return [a, b] as const;
+			},
+			{ timeout: 5_000 },
+		);
+		who.a.name = nameA;
+		who.b.name = nameB;
 	});
 
 	afterAll(async () => {
@@ -285,7 +309,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 			expect(text?.type).toBe("text");
 			expect(text?.text).toMatch(
 				new RegExp(
-					`^${who.a.name}${template}\\nhttps://fake-source\\.invalid/[0-9a-f]{12}/post/${n}$`,
+					`^${escapeRe(who.a.name + template)}\\nhttps://fake-source\\.invalid/[0-9a-f]{12}/post/${n}$`,
 				),
 			);
 		}
