@@ -811,6 +811,7 @@
 	"log.integration.cookiesNotArray": "不是数组",
 	"service.integrations.http.text.2": "集成已停下,cookie 不再存盘",
 	"service.integrations.settings-reader.text.1": "设置读不懂",
+	"service.live.live-text.streamingWithoutDuration": "{name} 正在直播，累计观看：{watched}",
 	"service.live.live-text.text.1": "暂未获取到",
 	"service.maid-skills.parse.text.1": "缺少 frontmatter:文件要以 `---` 单独一行开头",
 	"service.maid-skills.parse.text.2": "frontmatter 没有收尾:缺少第二行 `---`",
