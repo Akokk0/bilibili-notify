@@ -758,14 +758,22 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 取「第一张盘上存在的图」,跳过悬空引用。卡片背景图不在这条路上了 —— 它归皮肤的
 		// `image` 旋钮,由下面的 `resolveKnobAssets` 解析。
 		const dataRoot = opts.deps.runtime.dataRoot;
-		// 直播封面与自带字体互不依赖(各自独立的资产解析),并发发起省一次串行 I/O。
-		const coverDataUrl =
+		const account = previewAccountOf(sourceKey ?? BILIBILI_SOURCE_KEY);
+		const [coverDataUrl, avatarUrl] = await Promise.all([
 			kind === "live"
-				? await firstExistingCardBg(dataRoot, style.liveCoverImageIds).then((id) =>
+				? firstExistingCardBg(dataRoot, style.liveCoverImageIds).then((id) =>
 						readCardBgDataUrl(dataRoot, id),
 					)
-				: "";
-		const spec = await buildPreviewSpec(kind, coverDataUrl, sourceKey, descriptor?.label);
+				: undefined,
+			account?.avatar && imageRefDataUrl(opts.deps.runtime.imageStore)(account.avatar),
+		]);
+		const spec = await buildPreviewSpec(kind, {
+			coverDataUrl,
+			sourceKey,
+			sourceLabel: descriptor?.label,
+			accountName: account?.name,
+			avatarUrl,
+		});
 		// 皮肤那条路与推送出图**同一个函数**(`renderCardWithSkin`)—— 各拼一份的话必然出现
 		// 「预览是这套皮肤、推出去是另一副样子」,而两边都说不出哪儿错了。
 		const manifest = await previewManifest(skinId);
@@ -993,18 +1001,31 @@ type PreviewSpec =
 
 async function buildPreviewSpec(
 	kind: "live" | "post",
-	/** 已解析的直播封面 data URL(mock SSR 路径不经 generate*,需在此注入;仅 live 卡消费)。 */
-	coverDataUrl?: string,
-	sourceKey?: string,
-	sourceLabel?: string,
+	{
+		coverDataUrl,
+		sourceKey,
+		sourceLabel,
+		accountName,
+		avatarUrl,
+	}: {
+		coverDataUrl?: string;
+		sourceKey?: string;
+		sourceLabel?: string;
+		accountName?: string;
+		avatarUrl?: string;
+	},
 ): Promise<PreviewSpec> {
-	const creatorName = sourceLabel
+	const sampleName = sourceLabel
 		? t("cards.sample.sourceCreator", { source: sourceLabel })
 		: t("cards.sample.creatorName");
+	const creator = {
+		creatorName: accountName || sampleName,
+		...(avatarUrl && { creatorAvatarUrl: avatarUrl }),
+	};
 	if (kind === "live") {
 		return {
 			kind: "live",
-			props: { ...buildLivePreviewProps(coverDataUrl), creatorName },
+			props: { ...buildLivePreviewProps(coverDataUrl), ...creator },
 			title: t("cards.sample.titleLive"),
 		};
 	}
@@ -1016,7 +1037,7 @@ async function buildPreviewSpec(
 			props: {
 				node: {
 					...node,
-					creatorName,
+					...creator,
 					creatorIsPremium: false,
 					stats:
 						node.stats && sourceKey === "douyin" ? { ...node.stats, saves: "201" } : node.stats,
@@ -1028,7 +1049,7 @@ async function buildPreviewSpec(
 	const props = buildDynamicPreviewProps();
 	return {
 		kind,
-		props: { node: { ...props.node, creatorName } },
+		props: { node: { ...props.node, ...creator } },
 		title: t("cards.sample.titlePost"),
 	};
 }
