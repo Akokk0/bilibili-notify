@@ -127,6 +127,7 @@ const PostStatsSchema = z.strictObject({
 	likes: CountSchema.optional(),
 	comments: CountSchema.optional(),
 	shares: CountSchema.optional(),
+	saves: CountSchema.optional(),
 });
 
 const PostSchema = z.strictObject({

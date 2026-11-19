@@ -70,7 +70,7 @@ function videoOf(
 	};
 }
 
-/** 互动数:某一项空串 = 没有这一项(那一格连图标一起不画);三项都没有就整个没有。 */
+/** 缺少的互动数收起对应块，全部缺失时不生成统计。 */
 function statsOf(stats: Post["stats"]): PostNode["stats"] {
 	if (!stats) return undefined;
 	const cell = (n: number | undefined) => (n === undefined ? "" : formatCount(n));
@@ -78,8 +78,9 @@ function statsOf(stats: Post["stats"]): PostNode["stats"] {
 		shares: cell(stats.shares),
 		comments: cell(stats.comments),
 		likes: cell(stats.likes),
+		...(stats.saves !== undefined && { saves: cell(stats.saves) }),
 	};
-	return out.shares || out.comments || out.likes ? out : undefined;
+	return out.shares || out.comments || out.likes || out.saves ? out : undefined;
 }
 
 /**

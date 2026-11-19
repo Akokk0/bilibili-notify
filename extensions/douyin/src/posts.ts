@@ -65,11 +65,14 @@ function postStats(value: unknown): ExtensionPostReport["post"]["stats"] {
 	const likes = count(statistics.digg_count);
 	const comments = count(statistics.comment_count);
 	const shares = count(statistics.share_count);
-	if (likes === undefined && comments === undefined && shares === undefined) return;
+	const saves = count(statistics.collect_count);
+	if (likes === undefined && comments === undefined && shares === undefined && saves === undefined)
+		return;
 	return {
 		...(likes !== undefined && { likes }),
 		...(comments !== undefined && { comments }),
 		...(shares !== undefined && { shares }),
+		...(saves !== undefined && { saves }),
 	};
 }
 

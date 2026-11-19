@@ -603,7 +603,7 @@ describe("createExtensionSource:作品上报", () => {
 				images: [REF, REF_B],
 				topic: "旅行",
 				video: { cover: REF, title: "海边", durationSec: 61, views: 9 },
-				stats: { likes: 3, comments: 2, shares: 1 },
+				stats: { likes: 3, comments: 2, shares: 1, saves: 0 },
 			},
 		});
 		await made.idle();
@@ -628,7 +628,7 @@ describe("createExtensionSource:作品上报", () => {
 							durationSec: 61,
 							views: 9,
 						},
-						stats: { likes: 3, comments: 2, shares: 1 },
+						stats: { likes: 3, comments: 2, shares: 1, saves: 0 },
 					},
 				},
 			],

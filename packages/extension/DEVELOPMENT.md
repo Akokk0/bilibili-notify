@@ -4,7 +4,7 @@
 
 ## 版本与工程
 
-宿主契约为 `apiVersion: 1`，群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。SDK `0.1.0-alpha.1` 包含这里描述的 1/2 契约，`0.1.0-alpha.0` 仅提供 1/0；使用新增能力时应声明对应小号并核对宿主兼容性。
+宿主契约为 `apiVersion: 1`。群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`，作品收藏数要求 `apiRevision: 3`。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。使用新增能力时应声明对应小号并核对宿主兼容性。
 
 创建器默认生成独立Git工程、示例来源、完整vp命令、锁文件、提交hooks与GitHub Actions：
 
@@ -101,6 +101,8 @@ export function activate(ctx: ExtensionContext): void {
 `searchCreators`最多返回10个候选；查不到是成功的空数组。可选`fetchProfile(identity, signal)`拉取资料，`fetchLiveStatus(identity, signal)`提供在播状态；声明周期直播时必须实现后者。按每次调用的`signal`尽快中止请求。
 
 `start(sourceCtx)`得到运行中的来源上下文：从`subscriptions()`读取自己平台的创作者名单，监听`onSubscriptionsChanged`，以`externalId`上报。`reportProfile`更新资料，`reportPost`交作品，`reportLive`交开播、状态或下播信号；具体载荷使用SDK的`ExtensionPostReport`、`ExtensionLiveSignalReport`等公开类型。直播`status`只更新状态，不触发推送。
+
+作品上报和群聊链接预览可用 `post.stats.saves` 传收藏数。平台未给出数值时省略，明确为零时传 `0`。使用此字段的拓展要求 `apiRevision: 3`。
 
 ### 展示账号（API 1 修订 2）
 

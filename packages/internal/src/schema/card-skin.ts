@@ -1167,6 +1167,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				at("shareCount", { row: 18, column: 1, span: 4 }, CENTER, STAT_TEXT, "share-count"),
 				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, STAT_TEXT, "comment-count"),
 				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, STAT_TEXT, "like-count"),
+				at("saveCount", full(19), `${CENTER};padding-top:8px`, STAT_TEXT, "save-count"),
 			],
 		},
 		superchat: {

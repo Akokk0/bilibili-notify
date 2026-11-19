@@ -320,7 +320,7 @@ it("keeps the application identity and public content when resolving a photo pos
 			{ type: 1, start: 5, end: 8, hashtag_name: "回顾" },
 			{ type: 1, start: 0, end: 4, hashtag_name: "坏范围" },
 		],
-		statistics: { digg_count: 0, comment_count: -1 },
+		statistics: { digg_count: 0, comment_count: -1, collect_count: 201 },
 		images: [{ url_list: ["https://images.example/photo.jpg"] }],
 	};
 	const { source } = setup(
@@ -347,7 +347,7 @@ it("keeps the application identity and public content when resolving a photo pos
 				{ kind: "text", text: "一段图文\n" },
 				{ kind: "topic", text: "#回顾", name: "回顾" },
 			],
-			stats: { likes: 0 },
+			stats: { likes: 0, saves: 201 },
 			images: ["image:ref"],
 		},
 	});

@@ -176,7 +176,7 @@ it("baselines silently, skips old pinned posts and reports complete pages oldest
 			{ type: 1, start: 12, end: 18, hashtag_name: "洲同学报到" },
 			{ type: 1, start: 19, end: 25, hashtag_name: "三角洲行动" },
 		],
-		statistics: { digg_count: 1507, comment_count: 974, share_count: 69 },
+		statistics: { digg_count: 1507, comment_count: 974, share_count: 69, collect_count: 201 },
 		images: Array.from({ length: 17 }, () => ({ url_list: ["https://images.example/album"] })),
 	});
 	const latest = work("202", 200);
@@ -202,7 +202,7 @@ it("baselines silently, skips old pinned posts and reports complete pages oldest
 				{ kind: "text", text: " " },
 				{ kind: "topic", text: "#三角洲行动", name: "三角洲行动" },
 			],
-			stats: { likes: 1507, comments: 974, shares: 69 },
+			stats: { likes: 1507, comments: 974, shares: 69, saves: 201 },
 			images: Array.from({ length: 17 }, () => "image:avatar"),
 		},
 	});

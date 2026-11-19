@@ -90,6 +90,7 @@ const note = {
 	create_time: now - 2,
 	author: creator,
 	desc: "合成图文",
+	statistics: { digg_count: 1507, comment_count: 974, share_count: 69, collect_count: 201 },
 	images: [{ url_list: ["https://media.example/note.png"] }],
 };
 const video = {
@@ -422,7 +423,15 @@ it("官方抖音包解析博主、同步资料，再把图文、视频和开下�
 			expect(await api<LiveListeningEntry[]>("/api/live/listening")).toMatchObject([
 				{ subscriptionId: base.id, identity, isLive: true, title: room.title },
 			]);
-			expect(cards.some((c) => c.includes(note.desc))).toBe(true);
+			const photoCard = cards.find((c) => c.includes(note.desc));
+			for (const [block, count] of [
+				["likeCount", "1507"],
+				["commentCount", "974"],
+				["shareCount", "69"],
+				["saveCount", "201"],
+			]) {
+				expect(photoCard).toMatch(new RegExp(`data-block="${block}"[^]*?<span>${count}</span>`));
+			}
 			expect(cards.some((c) => c.includes(video.desc))).toBe(true);
 		},
 		{ timeout: 10_000 },

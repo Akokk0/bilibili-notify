@@ -14,6 +14,7 @@ import { type CardKind, type CardSkinManifest, DEFAULT_CARD_SKIN } from "@bilibi
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
 import { sampleCard } from "../../preview/sample-cards";
+import { nodeFromPost } from "../../templates/post-node";
 import { renderCardWithSkin } from "../render-skin";
 
 async function render(kind: CardKind, scene: string, skin: CardSkinManifest): Promise<string> {
@@ -40,4 +41,21 @@ describe("新默认皮肤 — 转发框里的内层卡也是原子块", () => {
 		expect(inner).not.toContain("header");
 		expect(inner).not.toContain("content");
 	});
+});
+
+it("出厂作品卡画出来源提供的收藏数，包括零", async () => {
+	const node = nodeFromPost(
+		{
+			creator: { name: "创作者" },
+			publishedAt: "2026-11-18T11:00:40Z",
+			text: "图文正文",
+			stats: { likes: 1507, comments: 974, shares: 69, saves: 0 },
+		},
+		{ time: () => "19:00" },
+	);
+	const html = await renderCardWithSkin("post", { node }, DEFAULT_CARD_SKIN);
+	const { document } = new JSDOM(html).window;
+	const saves = document.querySelector('[data-block="saveCount"]');
+	expect(saves?.querySelector('[aria-label="收藏"]')).not.toBeNull();
+	expect(saves?.textContent).toBe("0");
 });

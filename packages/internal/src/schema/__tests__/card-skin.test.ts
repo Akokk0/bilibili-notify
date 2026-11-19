@@ -1357,6 +1357,7 @@ const FIELDS: Record<string, string[]> = {
 		"stats.shares:text",
 		"stats.comments:text",
 		"stats.likes:text",
+		"stats.saves:text",
 	],
 	superchat: [
 		"viewer.name:text",
@@ -1418,6 +1419,7 @@ const BLOCKS: Record<string, Record<string, string[]>> = {
 		shareCount: ["text", "icon"],
 		commentCount: ["text", "icon"],
 		likeCount: ["text", "icon"],
+		saveCount: ["text", "icon"],
 	},
 	superchat: {
 		message: ["bubble", "text"],

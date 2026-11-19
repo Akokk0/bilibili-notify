@@ -151,13 +151,14 @@ const SIDE_PROBES: Partial<Record<CardKind, { name: string; props: unknown }[]>>
 	],
 	post: [
 		{
-			name: "(旁路探针)拓展作品形状的 node,带头像",
+			name: "(旁路探针)拓展作品形状的 node,带头像和收藏数",
 			props: {
 				node: {
 					creatorAvatarUrl: "data:image/png;base64,FACE",
 					creatorName: "某人",
 					creatorIsPremium: false,
 					time: "刚刚",
+					stats: { shares: "", comments: "", likes: "", saves: "201" },
 				},
 				renderForward: (): [] => [],
 			},
