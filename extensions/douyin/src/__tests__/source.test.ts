@@ -354,9 +354,31 @@ it.each([
 		startedAt: undefined,
 	},
 	{
-		room: { create_time: 1700000000, user_count: 27, stats: { total_user_str: "5万+" } },
+		room: {
+			user_count_str: "45w+",
+			room_view_stats: { display_type: 1, display_value: 456_677, is_hidden: false },
+			stats: { total_user_str: "10万+", user_count_str: "10万+" },
+		},
 		subPartition: undefined,
-		details: { category: "游戏", currentViewers: 27 },
+		details: { category: "游戏", currentViewers: 456_677 },
+		startedAt: undefined,
+	},
+	{
+		room: {
+			room_view_stats: { display_type: 1, display_value: 456_677, is_hidden: true },
+			stats: { total_user_str: "10万+" },
+		},
+		subPartition: undefined,
+		details: { category: "游戏" },
+		startedAt: undefined,
+	},
+	{
+		room: {
+			room_view_stats: { display_type: 2, display_value: 8124, is_hidden: false },
+			stats: { total_user: 0, total_user_str: "8124" },
+		},
+		subPartition: undefined,
+		details: { category: "游戏", totalViewers: 8124 },
 		startedAt: undefined,
 	},
 ])(

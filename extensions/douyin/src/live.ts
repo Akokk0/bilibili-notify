@@ -60,11 +60,19 @@ export async function observeLive(
 		text(object(object(partitions.sub_partition).partition).title) ??
 		text(object(partitions.partition).title);
 	const stats = object(room.stats);
+	const viewStats = object(room.room_view_stats);
+	const visibleOnlineCount =
+		viewStats.display_type === 1 && viewStats.is_hidden === false
+			? exactCount(viewStats.display_value)
+			: undefined;
 	const currentViewers =
 		exactCount(room.user_count) ??
 		exactCount(stats.user_count_str) ??
-		exactCount(room.user_count_str);
-	const totalViewers = exactCount(stats.total_user) ?? exactCount(stats.total_user_str);
+		exactCount(room.user_count_str) ??
+		visibleOnlineCount;
+	// 抖音可同时返回数字 0 和非零的纯数字展示值。
+	const rawTotalViewers = exactCount(stats.total_user);
+	const totalViewers = rawTotalViewers || (exactCount(stats.total_user_str) ?? rawTotalViewers);
 	const title = text(room.title);
 	const details: ExtensionLiveDetails = {
 		url: `https://live.douyin.com/${webRid}`,
