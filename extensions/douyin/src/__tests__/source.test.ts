@@ -169,7 +169,16 @@ it("baselines silently, skips old pinned posts and reports complete pages oldest
 	await start();
 	expect(context.reportPost).not.toHaveBeenCalled();
 	const pinned = work("50", 50, { is_top: 1 });
-	const note = work("201", 200, { images: [{ url_list: ["https://images.example/album"] }] });
+	const noteText = "📸 百校联赛\n赛点回顾\n#洲同学报到 #三角洲行动";
+	const note = work("201", 200, {
+		desc: noteText,
+		text_extra: [
+			{ type: 1, start: 12, end: 18, hashtag_name: "洲同学报到" },
+			{ type: 1, start: 19, end: 25, hashtag_name: "三角洲行动" },
+		],
+		statistics: { digg_count: 1507, comment_count: 974, share_count: 69 },
+		images: Array.from({ length: 17 }, () => ({ url_list: ["https://images.example/album"] })),
+	});
 	const latest = work("202", 200);
 	const page = { aweme_list: [pinned, latest], has_more: 1, max_cursor: 42 };
 	client.posts
@@ -184,7 +193,18 @@ it("baselines silently, skips old pinned posts and reports complete pages oldest
 	expect(context.reportPost.mock.calls.map((call) => call[1].postId)).toEqual(["201", "202"]);
 	expect(context.reportPost.mock.calls[0][1]).toMatchObject({
 		url: "https://www.douyin.com/note/201",
-		post: { publishedAt: "1970-01-01T00:03:20.000Z", images: ["image:avatar"] },
+		post: {
+			publishedAt: "1970-01-01T00:03:20.000Z",
+			text: noteText,
+			richText: [
+				{ kind: "text", text: "📸 百校联赛\n赛点回顾\n" },
+				{ kind: "topic", text: "#洲同学报到", name: "洲同学报到" },
+				{ kind: "text", text: " " },
+				{ kind: "topic", text: "#三角洲行动", name: "三角洲行动" },
+			],
+			stats: { likes: 1507, comments: 974, shares: 69 },
+			images: Array.from({ length: 17 }, () => "image:avatar"),
+		},
 	});
 	expect(context.reportPost.mock.calls[1][1]).toMatchObject({
 		url: "https://www.douyin.com/video/202",

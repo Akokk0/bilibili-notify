@@ -312,8 +312,17 @@ it("resolves a protected video using its business fields and SDK signature", asy
 	});
 	expect(requestHeaders[0]?.get("sec-fetch-site")).toBe("same-origin");
 });
-it("keeps the application identity when resolving a photo post", async () => {
-	const photo = { ...detail, images: [{ url_list: ["https://images.example/photo.jpg"] }] };
+it("keeps the application identity and public content when resolving a photo post", async () => {
+	const photo = {
+		...detail,
+		desc: "一段图文\n#回顾",
+		text_extra: [
+			{ type: 1, start: 5, end: 8, hashtag_name: "回顾" },
+			{ type: 1, start: 0, end: 4, hashtag_name: "坏范围" },
+		],
+		statistics: { digg_count: 0, comment_count: -1 },
+		images: [{ url_list: ["https://images.example/photo.jpg"] }],
+	};
 	const { source } = setup(
 		(url) =>
 			url.searchParams.get("aid") === "6383"
@@ -332,7 +341,15 @@ it("keeps the application identity when resolving a photo post", async () => {
 	).toMatchObject({
 		ok: true,
 		postId: photo.aweme_id,
-		post: { images: ["image:ref"] },
+		post: {
+			text: photo.desc,
+			richText: [
+				{ kind: "text", text: "一段图文\n" },
+				{ kind: "topic", text: "#回顾", name: "回顾" },
+			],
+			stats: { likes: 0 },
+			images: ["image:ref"],
+		},
 	});
 });
 
