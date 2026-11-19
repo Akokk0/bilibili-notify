@@ -336,6 +336,64 @@ it("observes a live session once, retains it through uncertainty and distinguish
 	expect(client.posts).not.toHaveBeenCalled();
 });
 
+it.each([
+	{
+		room: { start_time: "1700000000", user_count: 27, stats: { total_user: 1250 } },
+		subPartition: { partition: { title: "三角洲行动" } },
+		details: { category: "三角洲行动", currentViewers: 27, totalViewers: 1250 },
+		startedAt: "2023-11-14T22:13:20.000Z",
+	},
+	{
+		room: {
+			start_time: 0,
+			create_time: 1700000000,
+			stats: { user_count_str: "27", total_user_str: "0" },
+		},
+		subPartition: undefined,
+		details: { category: "游戏", currentViewers: 27, totalViewers: 0 },
+		startedAt: undefined,
+	},
+	{
+		room: { create_time: 1700000000, user_count: 27, stats: { total_user_str: "5万+" } },
+		subPartition: undefined,
+		details: { category: "游戏", currentViewers: 27 },
+		startedAt: undefined,
+	},
+])(
+	"reports the room category, explicit start time and exact viewer counts %#",
+	async ({ room, subPartition, details, startedAt }) => {
+		const { source, client, result } = fixture();
+		const roomId = "7490000000000000001";
+		const webRid = "4387654";
+		client.profile.mockImplementation(() =>
+			result({
+				user: {
+					...user,
+					live_status: 1,
+					room_id_str: roomId,
+					room_data: { owner: { web_rid: webRid } },
+				},
+			}),
+		);
+		client.room.mockImplementation(() =>
+			result({
+				data: {
+					data: [{ id_str: roomId, status: 2, ...room }],
+					partition_road_map: { partition: { title: "游戏" }, sub_partition: subPartition },
+				},
+			}),
+		);
+		expect(
+			await source.fetchLiveStatus({ sourceKey: "douyin", externalId: secUid }, signal),
+		).toStrictEqual({
+			ok: true,
+			kind: "live",
+			...(startedAt && { startedAt }),
+			details: { url: `https://live.douyin.com/${webRid}`, ...details },
+		});
+	},
+);
+
 it("stops requests before they can report, and does not infer a room's identity from a different session", async () => {
 	const { source, start, tick, client, setSubs, context, result } = fixture();
 	setSubs([{ externalId: secUid, features: new Set(["liveStart"]), monitorsLive: true }]);
