@@ -98,7 +98,11 @@ it.each([
 		i18n.set({ locale: "zh-CN", voice: "plain" });
 		mount(
 			globalsWith((g) => {
-				g.ai.providers.primary = bucket({ label: "Original instance 原文", model: "saved-model" });
+				g.ai.providers.primary = bucket({
+					provider: "custom",
+					label: "Original instance 原文",
+					model: "saved-model",
+				});
 				g.ai.activeProfile = "primary";
 			}),
 		);
@@ -134,7 +138,11 @@ it("model settings translate without replacing the current provider or its stage
 	i18n.set({ locale: "en", voice: "plain" });
 	mount(
 		globalsWith((g) => {
-			g.ai.providers.primary = bucket({ label: "原实例", model: "saved-model" });
+			g.ai.providers.primary = bucket({
+				provider: "custom",
+				label: "原实例",
+				model: "saved-model",
+			});
 			g.ai.activeProfile = "primary";
 		}),
 	);
@@ -175,7 +183,7 @@ it("active model guidance says changes require saving and editing alone sends no
 	i18n.set({ locale: "zh-CN", voice: "plain" });
 	mount(
 		globalsWith((g) => {
-			g.ai.providers.primary = bucket({ model: "saved-model" });
+			g.ai.providers.primary = bucket({ provider: "custom", model: "saved-model" });
 			g.ai.activeProfile = "primary";
 		}),
 	);
@@ -202,13 +210,12 @@ it("active model guidance says changes require saving and editing alone sends no
 
 it("素材库改变后保留模型草稿，保存不回写性格内容", async () => {
 	const g = globalsWith((value) => {
-		value.ai.providers.deepseek = bucket();
+		value.ai.providers.deepseek = bucket({ model: "deepseek-flash" });
 		value.ai.activeProfile = "deepseek";
 	});
 	const { qc } = mount(g);
 	fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
-	const model = await screen.findByDisplayValue("m-1");
-	fireEvent.change(model, { target: { value: "unsaved-model" } });
+	fireEvent.click(await screen.findByRole("button", { name: "deepseek-v4-pro" }));
 	g.ai.presets.push({ id: "new-persona", label: "新性格", persona: BASE_PERSONA });
 	await act(async () => {
 		await qc.invalidateQueries({ queryKey: ["settings"] });
@@ -216,12 +223,13 @@ it("素材库改变后保留模型草稿，保存不回写性格内容", async (
 	fireEvent.click(screen.getByRole("tab", { name: /全局配置/ }));
 	await screen.findByRole("button", { name: "新性格" });
 	fireEvent.click(screen.getByRole("tab", { name: /模型配置/ }));
-	expect(screen.getByDisplayValue("unsaved-model")).toBeTruthy();
+	expect(screen.getByRole("button", { name: "deepseek-v4-pro", pressed: true })).toBeTruthy();
 	await act(async () => {
 		await useDraftStore.getState().current?.onSave();
 	});
 	await waitFor(() => expect(api.patch).toHaveBeenCalled());
 	const body = vi.mocked(api.patch).mock.calls.at(-1)?.[1] as { core: { ai: object } };
+	expect(body.core.ai).toMatchObject({ providers: { deepseek: { model: "deepseek-v4-pro" } } });
 	expect(body.core.ai).not.toHaveProperty("presets");
 	expect(body.core.ai).not.toHaveProperty("removedBuiltinPresets");
 });
@@ -329,8 +337,12 @@ describe("模型配置 · 服务商左栏", () => {
 			globalsWith((g) => {
 				g.ai.activeProfile = "deepseek";
 				g.ai.providers = {
-					deepseek: bucket({ provider: "deepseek", model: "m-a" }),
-					"deepseek-2": bucket({ provider: "deepseek", label: "DeepSeek 2", model: "m-b" }),
+					deepseek: bucket({ provider: "deepseek", model: "deepseek-flash" }),
+					"deepseek-2": bucket({
+						provider: "deepseek",
+						label: "DeepSeek 2",
+						model: "deepseek-v4-pro",
+					}),
 				};
 			}),
 		);
@@ -342,7 +354,9 @@ describe("模型配置 · 服务商左栏", () => {
 		const row = screen.getAllByText("DeepSeek 2")[0];
 		if (!row) throw new Error("左栏没有 DeepSeek 2 那一行");
 		fireEvent.click(row);
-		await waitFor(() => expect(screen.getByDisplayValue("m-b")).toBeTruthy());
+		expect(
+			await screen.findByRole("button", { name: "deepseek-v4-pro", pressed: true }),
+		).toBeTruthy();
 	});
 
 	it("左栏只列已添加的那几家,没添加的一家都不露", async () => {
@@ -369,20 +383,22 @@ describe("模型配置 · 服务商左栏", () => {
 			globalsWith((g) => {
 				g.ai.activeProfile = "deepseek";
 				g.ai.providers = {
-					deepseek: bucket({ provider: "deepseek", model: "ds-model" }),
+					deepseek: bucket({ provider: "deepseek", model: "deepseek-flash" }),
 					openrouter: bucket({ provider: "openrouter", model: "or-model" }),
 				};
 			}),
 		);
 		await gotoModel();
-		expect(await screen.findByDisplayValue("ds-model")).toBeTruthy();
+		expect(
+			await screen.findByRole("button", { name: "deepseek-flash", pressed: true }),
+		).toBeTruthy();
 		// 左栏的 OpenRouter 有竖栏与窄视口两处渲染,点第一个即可。
 		fireEvent.click(screen.getAllByText("OpenRouter")[0] as HTMLElement);
 		await waitFor(() => expect(screen.getByDisplayValue("or-model")).toBeTruthy());
-		expect(screen.queryByDisplayValue("ds-model")).toBeNull();
+		expect(screen.queryByRole("button", { name: "deepseek-flash" })).toBeNull();
 	});
 
-	it("官方 Flash 直接看图，Pro 和其他服务商仍可设置图片理解", async () => {
+	it("官方 DeepSeek 只从 Flash 和 Pro 中选择，图片理解随模型切换", async () => {
 		mount(
 			globalsWith((g) => {
 				g.ai.activeProfile = "deepseek";
@@ -398,11 +414,14 @@ describe("模型配置 · 服务商左栏", () => {
 		);
 		await gotoModel();
 		await screen.findByText("模型连接");
+		const flash = screen.getByRole("button", { name: "deepseek-flash" });
+		const pro = screen.getByRole("button", { name: "deepseek-v4-pro" });
+		expect(pro.getAttribute("aria-pressed")).toBe("true");
+		expect(screen.queryByDisplayValue("deepseek-v4-pro")).toBeNull();
 		expect(screen.queryByLabelText("主模型支持看图")).toBeNull();
 		expect(screen.getByText(/不支持直接看图/)).toBeTruthy();
-		fireEvent.change(screen.getByDisplayValue("deepseek-v4-pro"), {
-			target: { value: "deepseek-flash" },
-		});
+		fireEvent.click(flash);
+		expect(flash.getAttribute("aria-pressed")).toBe("true");
 		expect(screen.queryByText("图片理解")).toBeNull();
 		expect(screen.getByText("生成参数")).toBeTruthy();
 
@@ -438,13 +457,15 @@ describe("模型配置 · 服务商左栏", () => {
 			globalsWith((g) => {
 				g.ai.activeProfile = "deepseek";
 				g.ai.providers = {
-					deepseek: bucket({ provider: "deepseek", model: "ds-model" }),
+					deepseek: bucket({ provider: "deepseek", model: "deepseek-flash" }),
 					openrouter: bucket({ provider: "openrouter", model: "or-model" }),
 				};
 			}),
 		);
 		await gotoModel();
-		expect(await screen.findByDisplayValue("ds-model")).toBeTruthy();
+		expect(
+			await screen.findByRole("button", { name: "deepseek-flash", pressed: true }),
+		).toBeTruthy();
 		fireEvent.click(screen.getByText(/删除 DeepSeek/));
 		await waitFor(() => expect(screen.getByDisplayValue("or-model")).toBeTruthy());
 		// 被删那家从左栏消失。

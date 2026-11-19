@@ -120,6 +120,22 @@ describe("桶内字段的默认值与拒收", () => {
 		expect(ai.providers.gateway).toMatchObject({ ...gateway, provider: "custom" });
 	});
 
+	it.each(["deepseek-v4-flash", "deepseek-v4-flash-vision-exp"])(
+		"把官方模型旧名 %s 读成 Flash，保留自定义实例的模型 ID",
+		(model) => {
+			const ai = AiSettingsSchema.parse(
+				modern({
+					providers: {
+						official: { provider: "deepseek", model, baseUrl: "https://api.deepseek.com" },
+						custom: { provider: "custom", model },
+					},
+				}),
+			);
+			expect(ai.providers.official?.model).toBe("deepseek-flash");
+			expect(ai.providers.custom?.model).toBe(model);
+		},
+	);
+
 	it("provider 写了个不认识的名字 → 直接拒", () => {
 		expect(
 			AiSettingsSchema.safeParse(modern({ providers: { x: { provider: "openai", apiKey: "sk" } } }))

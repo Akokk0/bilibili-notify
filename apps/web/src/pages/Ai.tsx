@@ -23,6 +23,7 @@ import {
 	type APIFlavorId,
 	canProfileThink,
 	DEEPSEEK_BASE_URL,
+	DEEPSEEK_MODELS,
 	EMPTY_AI_PROVIDER_PROFILE,
 	hasOfficialDeepSeekVision,
 	isDeepSeekFlash,
@@ -162,6 +163,11 @@ function FieldNote({ children }: { children: React.ReactNode }) {
 	);
 }
 
+const deepSeekModelOptions = Object.values(DEEPSEEK_MODELS).map((id) => ({
+	value: id,
+	label: id,
+}));
+
 export default function Ai() {
 	const tx = useT();
 	const tabs = [
@@ -281,6 +287,7 @@ export default function Ai() {
 	// **设置页上显示什么由它说了算**:摆出一个那家根本不支持的选项,主人调了
 	// 没反应,只会以为是保存坏了。
 	const meta = providerMeta(profile.provider);
+	const officialDeepSeek = profile.provider === "deepseek";
 	// 基线(服务端下发的)里同一份实例 —— 密钥格是遮挡才算「已存着」(`DraftSecretInput` 据此画胶囊)。
 	const savedProfile = editing === null ? undefined : globalsQuery.data?.ai.providers[editing];
 	// 左栏 / 删除按钮上的显示名。
@@ -642,6 +649,7 @@ export default function Ai() {
 									accent={AI_PURPLE}
 									icon={<Icon.link size={14} />}
 									badge="connection"
+									className="@container"
 									right={
 										<div className="flex items-center gap-1.5">
 											{/* 「在看这份」不等于「在用这份」。要换用得明确点一下 —— 与人格
@@ -703,12 +711,12 @@ export default function Ai() {
 										code={`ai.providers.${editing}.baseUrl`}
 										full
 										hint={
-											profile.provider === "deepseek"
+											officialDeepSeek
 												? tx("aiSettings.page.models.deepSeekBaseUrlHint")
 												: `${meta.label}：${meta.baseUrlHint}`
 										}
 									>
-										{profile.provider === "deepseek" ? (
+										{officialDeepSeek ? (
 											<code className="font-mono text-bn-sm text-bn-text-primary">
 												{DEEPSEEK_BASE_URL}
 											</code>
@@ -721,13 +729,32 @@ export default function Ai() {
 											/>
 										)}
 									</Field>
-									<Field code={`ai.providers.${editing}.model`}>
-										<TInput
-											value={profile.model}
-											onChange={(v) => setProfile("model", v)}
-											mono
-											full={false}
-										/>
+									<Field
+										code={`ai.providers.${editing}.model`}
+										responsive={officialDeepSeek}
+										hint={
+											officialDeepSeek &&
+											!deepSeekModelOptions.some((option) => option.value === profile.model)
+												? tx("aiSettings.page.models.deepSeekModelHint")
+												: undefined
+										}
+									>
+										{officialDeepSeek ? (
+											<div className="self-start">
+												<Picker<string>
+													value={profile.model}
+													onChange={(v) => setProfile("model", v)}
+													options={deepSeekModelOptions}
+												/>
+											</div>
+										) : (
+											<TInput
+												value={profile.model}
+												onChange={(v) => setProfile("model", v)}
+												mono
+												full={false}
+											/>
+										)}
 									</Field>
 									{isDeepSeekFlash(profile.provider, profile.model) && (
 										<Field

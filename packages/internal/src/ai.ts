@@ -107,6 +107,10 @@ export interface AIProviderMeta {
 }
 
 export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+export const DEEPSEEK_MODELS = {
+	flash: "deepseek-flash",
+	pro: "deepseek-v4-pro",
+} as const;
 
 export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 	{
@@ -187,7 +191,9 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 export function isDeepSeekFlash(provider: AIProviderId, model: string): boolean {
 	return (
 		provider === "deepseek" &&
-		["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(model.trim())
+		[DEEPSEEK_MODELS.flash, "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(
+			model.trim(),
+		)
 	);
 }
 
@@ -201,15 +207,20 @@ export function isDeepSeekSpeechEndpoint(baseUrl: string): boolean {
 	return /^https:\/\/api\.deepseek\.com(?:\/v1)?\/*$/i.test(baseUrl.trim());
 }
 
-/** 旧网关保留地址和密钥，避免把第三方密钥发给官方。 */
+/** 旧网关保留连接配置，官方实例统一地址和 Flash 别名。 */
 export function normalizeDeepSeekProfile<S>(
 	profile: AiProviderProfileShape<S>,
 ): AiProviderProfileShape<S> {
-	if (profile.provider !== "deepseek" || profile.baseUrl === DEEPSEEK_BASE_URL) return profile;
-	if (!profile.baseUrl.trim() || isDeepSeekSpeechEndpoint(profile.baseUrl)) {
-		return { ...profile, baseUrl: DEEPSEEK_BASE_URL };
+	if (profile.provider !== "deepseek") return profile;
+	if (profile.baseUrl.trim() && !isDeepSeekSpeechEndpoint(profile.baseUrl)) {
+		return { ...profile, provider: "custom" };
 	}
-	return { ...profile, provider: "custom" };
+	const model = isDeepSeekFlash(profile.provider, profile.model ?? "")
+		? DEEPSEEK_MODELS.flash
+		: profile.model;
+	return profile.baseUrl === DEEPSEEK_BASE_URL && profile.model === model
+		? profile
+		: { ...profile, baseUrl: DEEPSEEK_BASE_URL, model };
 }
 
 export function isOfficialDeepSeekProfile(profile: {

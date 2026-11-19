@@ -1207,6 +1207,7 @@
 	"aiSettings.page.models.multipleSuffix": "を追加できます（DeepSeek アカウントを 2 つ使う場合など）。キーとモデルはそれぞれ別に保存します。",
 	"aiSettings.page.models.connectionTitle": "モデル接続",
 	"aiSettings.page.models.deepSeekBaseUrlHint": "サードパーティのゲートウェイにはカスタムプロバイダーを使います。",
+	"aiSettings.page.models.deepSeekModelHint": "使用する公式モデルを選んでください。",
 	"aiSettings.page.models.connectionSubtitle": "OpenAI 互換 API · ai.providers.<インスタンス>.{fields}",
 	"aiSettings.page.models.currentPrefix": "このインスタンスを既定として使用中",
 	"aiSettings.page.models.inactivePrefix": "このインスタンスは",
