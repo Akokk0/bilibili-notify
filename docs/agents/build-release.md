@@ -83,6 +83,8 @@ GitHub Release 的正文由 `create-app-github-release.sh` 拼(desktop-release �
 
 各产物都校验 tag commit 可从 `origin/dev` 到达，再从 tag 读取版本并运行 `sync-app-version.sh`。发行作业失败时，只重跑失败作业及其依赖方，复用已通过的门禁和其他产物。
 
+`retry-app-release.yml` 在默认分支生效。首次本体发行或预检结束后，若唯一失败是 GitHub 未分配 macOS 构建机，它会重跑该作业一次。它以 GitHub 的分配失败注解为准。构建步骤报错、其他作业也失败或第二次仍失败时，保留原发行运行的失败结果。
+
 拓展与本体分开发布(ADR-0013):
 
 - `.github/workflows/extension-release.yml` —— tag `extension/<id>@<version>` 触发:构建那个拓展、打成拓展包(`scripts/pack-extension.mjs`,必装 `extension.json` + `index.mjs`,另收可选的 `README.md` / `CHANGELOG.md`,打包可复现)、挂到同名的不可变 release 上,再把这一条并进官方索引(`scripts/marketplace-index.mjs`,同一把 `BN_UPDATE_SIGNING_KEY`)、覆盖到滚动 tag `extensions` 上的 `marketplace.json`(旧的 `extension-marketplace` 是 0.12 读的,已冻结)。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红;条目的 `notes` 从 `extensions/<id>/CHANGELOG.md` 抽。详见 [extension-marketplace.md](./extension-marketplace.md)。
