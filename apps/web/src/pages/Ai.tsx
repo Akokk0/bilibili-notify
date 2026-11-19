@@ -580,8 +580,6 @@ export default function Ai() {
 											active={item.id === editing}
 										/>
 									) : undefined,
-								// 同 Targets 左栏:选中那格的品牌色会跟皮肤的实心块撞,喂
-								// currentColor 跟随。服务商名就在标签上,认得出是哪家。
 								icon: (
 									<ProviderLogo
 										id={item.provider}
