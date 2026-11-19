@@ -43,7 +43,7 @@ describe("新默认皮肤 — 转发框里的内层卡也是原子块", () => {
 	});
 });
 
-it("出厂作品卡画出来源提供的收藏数，包括零", async () => {
+it("出厂作品卡将四项互动数排在一行，收藏为零时也显示", async () => {
 	const node = nodeFromPost(
 		{
 			creator: { name: "创作者" },
@@ -58,4 +58,14 @@ it("出厂作品卡画出来源提供的收藏数，包括零", async () => {
 	const saves = document.querySelector('[data-block="saveCount"]');
 	expect(saves?.querySelector('[aria-label="收藏"]')).not.toBeNull();
 	expect(saves?.textContent).toBe("0");
+	const cells = ["share-count", "comment-count", "like-count", "save-count"].map((id) =>
+		document.querySelector<HTMLElement>(`[data-cell="${id}"]`),
+	);
+	expect(new Set(cells.map((cell) => cell?.style.gridRow)).size).toBe(1);
+	expect(cells.map((cell) => cell?.style.gridColumn)).toEqual([
+		"1 / span 3",
+		"4 / span 3",
+		"7 / span 3",
+		"10 / span 3",
+	]);
 });

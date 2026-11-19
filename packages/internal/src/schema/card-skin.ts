@@ -834,7 +834,7 @@ const SC_LINE = part(
 /** 直播卡数据区三件(人气 / 分区 / 粉丝)共用的文字样子。 */
 const DATA_TEXT = part("text", "padding:0 16px;font-size:13px;color:#666");
 
-/** 动态卡互动数三件(转发 / 评论 / 点赞)共用的文字样子 —— 图标跟着 `color` 走。 */
+/** 作品卡互动数共用的文字样子，图标跟着 `color` 走。 */
 const STAT_TEXT = part("text", "gap:6px;font-size:13px;color:#999");
 
 /** 通栏一行。 */
@@ -1164,10 +1164,10 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 两边 16px —— 那 16px 从前写在块里的一层壳上。
 				at("attachment", full(16), "padding:12px 16px 0"),
 				at(DIVIDER_TYPE, full(17), "padding:12px 0", DIVIDER_LINE, "divider-2"),
-				at("shareCount", { row: 18, column: 1, span: 4 }, CENTER, STAT_TEXT, "share-count"),
-				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, STAT_TEXT, "comment-count"),
-				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, STAT_TEXT, "like-count"),
-				at("saveCount", full(19), `${CENTER};padding-top:8px`, STAT_TEXT, "save-count"),
+				at("shareCount", { row: 18, column: 1, span: 3 }, CENTER, STAT_TEXT, "share-count"),
+				at("commentCount", { row: 18, column: 4, span: 3 }, CENTER, STAT_TEXT, "comment-count"),
+				at("likeCount", { row: 18, column: 7, span: 3 }, CENTER, STAT_TEXT, "like-count"),
+				at("saveCount", { row: 18, column: 10, span: 3 }, CENTER, STAT_TEXT, "save-count"),
 			],
 		},
 		superchat: {

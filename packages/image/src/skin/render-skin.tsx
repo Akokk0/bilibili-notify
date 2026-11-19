@@ -415,6 +415,8 @@ interface SkinAssemblyState {
 	rank?: number;
 }
 
+const POST_STAT_BLOCKS = new Set(["shareCount", "commentCount", "likeCount", "saveCount"]);
+
 /**
  * 按皮肤把一张卡的块铺成网格的孩子(**不含外框**)。外层由 `renderSkinnedCard` 套外框,
  * 内层由转发框里那一层 div 套。
@@ -485,6 +487,14 @@ function placeBlocks(ctx: SkinAssemblyState, props: unknown): VNode[] {
 	// 决定叠放的缺省档,而那一档的约定就是「跟数组先后走」(见 schema 里 `z` 那段);验收门
 	// A 也照这个序跟模板逐块比。
 	const placed = kept.filter((item) => !dropped.has(item));
+	// 出厂作品卡按有数值的互动项平分一行。自定义皮肤照清单里的坐标渲染。
+	const stats =
+		card === DEFAULT_CARD_SKIN.cards.post
+			? placed.filter(
+					({ block }) => block.kind === "builtin" && POST_STAT_BLOCKS.has(block.builtin),
+				)
+			: [];
+	const statSpan = CARD_SKIN_LIMITS.columns / (stats.length || 1);
 
 	// ④ 压行:把剩下的块占到的行重编成 1..n,免得被收起的块留下吃 gap 的空行。算法住
 	// `@bilibili-notify/internal`,画布与这里共用同一份(见 `rowMapOf` 的注释)。
@@ -501,7 +511,19 @@ function placeBlocks(ctx: SkinAssemblyState, props: unknown): VNode[] {
 		// 资产变量是给**皮肤 CSS** 用的,而皮肤写在内层 —— 跟 class 待在同一个元素上。
 		const vars = assetVarsStyle(item.block.assets, ctx.resolveAsset);
 		const inner = `min-width:0${sizedHeight(kind, item.block)}${vars ? `;${vars}` : ""}`;
-		const cell = cellStyle(item.block, rowMap.get(item.block.grid.row) ?? 1);
+		const statIndex = stats.indexOf(item);
+		const block =
+			statIndex < 0
+				? item.block
+				: {
+						...item.block,
+						grid: {
+							...item.block.grid,
+							column: statIndex * statSpan + 1,
+							span: statSpan,
+						},
+					};
+		const cell = cellStyle(block, rowMap.get(block.grid.row) ?? 1);
 		return wrapCell(id, cell, wrapBlock(item, cls, inner, ctx.rank));
 	});
 }
