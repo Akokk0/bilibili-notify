@@ -279,7 +279,7 @@ describe("AI 迁移 · 桶内字段的默认值与拒收", () => {
 		const ai = parseAi(modern({ providers: { deepseek: { apiKey: "sk-ds" } } }));
 		expect(ai.providers.deepseek).toMatchObject({
 			label: "",
-			baseUrl: "",
+			baseUrl: "https://api.deepseek.com",
 			model: "",
 			enableThinking: false,
 			thinkingLevel: "medium",

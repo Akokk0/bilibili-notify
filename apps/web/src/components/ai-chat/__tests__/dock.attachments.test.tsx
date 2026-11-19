@@ -235,7 +235,7 @@ it("only sends a selected document to the profile it was picked for and can summ
 				ai: {
 					...g.ai,
 					activeProfile: id,
-					providers: { ds: profile, other: { ...profile, baseUrl: "https://example.test" } },
+					providers: { ds: profile, other: { ...profile, apiKey: "other-fixture" } },
 				},
 			},
 		});

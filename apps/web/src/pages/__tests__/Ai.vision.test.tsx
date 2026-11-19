@@ -38,7 +38,7 @@ function globals() {
 			provider: "deepseek",
 			label: "",
 			apiKey: "sk-main",
-			baseUrl: "https://api.deepseek.com/v1",
+			baseUrl: "https://api.deepseek.com",
 			model: "deepseek-chat",
 			apiFlavor: "chat",
 			enableThinking: false,
@@ -170,7 +170,7 @@ describe("AI 页 · 图片理解", () => {
 		expect(bucket?.vision?.baseUrl).toBe("https://api.siliconflow.cn/v1");
 		expect(bucket?.vision?.apiKey).toBe("sk-vision");
 		// 写串桶的话主模型会拿副模型的地址/密钥去发主请求 —— 一律 401,而且查不出所以然。
-		expect(bucket?.baseUrl ?? "https://api.deepseek.com/v1").toBe("https://api.deepseek.com/v1");
+		expect(bucket?.baseUrl ?? "https://api.deepseek.com").toBe("https://api.deepseek.com");
 		expect(bucket?.apiKey ?? "sk-main").toBe("sk-main");
 	});
 });

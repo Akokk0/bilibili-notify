@@ -106,6 +106,8 @@ export interface AIProviderMeta {
 	baseUrlHint: string;
 }
 
+export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+
 export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 	{
 		id: "openrouter",
@@ -164,7 +166,7 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		supportsVision: true,
 		supportsResponses: true,
 		streamUsageNeedsOptIn: false,
-		baseUrlHint: "https://api.deepseek.com",
+		baseUrlHint: DEEPSEEK_BASE_URL,
 	},
 	{
 		id: "custom",
@@ -197,6 +199,17 @@ export function modelSupportsVision(provider: AIProviderId, model: string): bool
 
 export function isDeepSeekSpeechEndpoint(baseUrl: string): boolean {
 	return /^https:\/\/api\.deepseek\.com(?:\/v1)?\/*$/i.test(baseUrl.trim());
+}
+
+/** 旧网关保留地址和密钥，避免把第三方密钥发给官方。 */
+export function normalizeDeepSeekProfile<S>(
+	profile: AiProviderProfileShape<S>,
+): AiProviderProfileShape<S> {
+	if (profile.provider !== "deepseek" || profile.baseUrl === DEEPSEEK_BASE_URL) return profile;
+	if (!profile.baseUrl.trim() || isDeepSeekSpeechEndpoint(profile.baseUrl)) {
+		return { ...profile, baseUrl: DEEPSEEK_BASE_URL };
+	}
+	return { ...profile, provider: "custom" };
 }
 
 export function isOfficialDeepSeekProfile(profile: {
@@ -246,7 +259,7 @@ export function resolveSpeechService<S>(
 	return {
 		provider,
 		usesModelKey: official,
-		baseUrl: "https://api.deepseek.com",
+		baseUrl: DEEPSEEK_BASE_URL,
 		model: "",
 		apiKey: official ? profile.apiKey : (speech.deepseekApiKey ?? ""),
 		voice:
@@ -256,16 +269,13 @@ export function resolveSpeechService<S>(
 }
 
 export function resolveWebSearchMode(
-	profile: Pick<AiProviderProfileShape<unknown>, "provider" | "baseUrl" | "model" | "nativeWeb">,
+	profile: Pick<AiProviderProfileShape<unknown>, "provider" | "baseUrl" | "model">,
 	backend: WebSearchBackendId,
 ) {
-	const official = isOfficialDeepSeekProfile(profile);
-	const useModelKey = official && backend === "deepseek";
+	const useModelKey = isOfficialDeepSeekProfile(profile) && backend === "deepseek";
 	return {
 		useModelKey,
-		hosted:
-			isDeepSeekFlash(profile.provider, profile.model) &&
-			(official ? useModelKey : Boolean(profile.nativeWeb)),
+		hosted: useModelKey && isDeepSeekFlash(profile.provider, profile.model),
 	};
 }
 
@@ -348,7 +358,8 @@ export function resolveAIProfile<S = string>(ai: {
 	activeProfile?: string;
 	providers?: Record<string, AiProviderProfileShape<S> | undefined>;
 }): AiProviderProfileShape<S | string> {
-	return aiProfileAt(ai.providers, ai.activeProfile ?? "") ?? EMPTY_AI_PROVIDER_PROFILE;
+	const profile = aiProfileAt(ai.providers, ai.activeProfile ?? "");
+	return profile ? normalizeDeepSeekProfile(profile) : EMPTY_AI_PROVIDER_PROFILE;
 }
 
 /**

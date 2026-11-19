@@ -73,6 +73,11 @@ it("官方 Pro 搜索沿用主模型密钥，第三方网关使用单独配置�
 	const profile = ai.providers.p1;
 	if (!profile) throw new Error("Missing test profile");
 	profile.baseUrl = "https://gateway.example/v1";
+	expect(toGeneratorConfig(ai, BUILTINS)).toMatchObject({
+		provider: "custom",
+		baseURL: profile.baseUrl,
+		apiKey: profile.apiKey,
+	});
 	await webSearchExecutorForAi(ai)?.search("test query");
 	expect(fetch).toHaveBeenLastCalledWith(
 		"https://api.deepseek.com/v1/tools/search",

@@ -1224,6 +1224,7 @@
 	"aiSettings.page.models.multipleEmphasis": "multiple instances",
 	"aiSettings.page.models.multipleSuffix": " of the same provider (for example, two DeepSeek accounts), each with its own key and model.",
 	"aiSettings.page.models.connectionTitle": "Model connection",
+	"aiSettings.page.models.deepSeekBaseUrlHint": "Use a Custom provider for third-party gateways.",
 	"aiSettings.page.models.connectionSubtitle": "OpenAI-compatible API · ai.providers.<instance>.{fields}",
 	"aiSettings.page.models.currentPrefix": "This is the default provider instance",
 	"aiSettings.page.models.inactivePrefix": "This instance is ",

@@ -22,10 +22,10 @@ import type { SecretCellDraft } from "@bilibili-notify/contract";
 import {
 	type APIFlavorId,
 	canProfileThink,
+	DEEPSEEK_BASE_URL,
 	EMPTY_AI_PROVIDER_PROFILE,
 	hasOfficialDeepSeekVision,
 	isDeepSeekFlash,
-	isOfficialDeepSeekProfile,
 	modelSupportsVision,
 	providerMeta,
 	resolveActivePersona,
@@ -702,14 +702,24 @@ export default function Ai() {
 									<Field
 										code={`ai.providers.${editing}.baseUrl`}
 										full
-										hint={`${meta.label}：${meta.baseUrlHint}`}
+										hint={
+											profile.provider === "deepseek"
+												? tx("aiSettings.page.models.deepSeekBaseUrlHint")
+												: `${meta.label}：${meta.baseUrlHint}`
+										}
 									>
-										<TInput
-											value={profile.baseUrl}
-											onChange={(v) => setProfile("baseUrl", v)}
-											mono
-											placeholder={meta.baseUrlHint}
-										/>
+										{profile.provider === "deepseek" ? (
+											<code className="font-mono text-bn-sm text-bn-text-primary">
+												{DEEPSEEK_BASE_URL}
+											</code>
+										) : (
+											<TInput
+												value={profile.baseUrl}
+												onChange={(v) => setProfile("baseUrl", v)}
+												mono
+												placeholder={meta.baseUrlHint}
+											/>
+										)}
 									</Field>
 									<Field code={`ai.providers.${editing}.model`}>
 										<TInput
@@ -719,23 +729,18 @@ export default function Ai() {
 											full={false}
 										/>
 									</Field>
-									{isDeepSeekFlash(profile.provider, profile.model) &&
-										(
-											[
-												["nativeWeb", tx("deepseek.nativeWeb")],
-												["safetyCheck", tx("deepseek.safetyCheck")],
-											] as const
-										)
-											.filter(([key]) => key !== "nativeWeb" || !isOfficialDeepSeekProfile(profile))
-											.map(([key, label]) => (
-												<Field key={key} code={`ai.providers.${editing}.${key}`} label={label}>
-													<Toggle
-														value={Boolean(profile[key])}
-														onChange={(value) => setProfile(key, value)}
-														ariaLabel={label}
-													/>
-												</Field>
-											))}
+									{isDeepSeekFlash(profile.provider, profile.model) && (
+										<Field
+											code={`ai.providers.${editing}.safetyCheck`}
+											label={tx("deepseek.safetyCheck")}
+										>
+											<Toggle
+												value={Boolean(profile.safetyCheck)}
+												onChange={(value) => setProfile("safetyCheck", value)}
+												ariaLabel={tx("deepseek.safetyCheck")}
+											/>
+										</Field>
+									)}
 									{/* 接口风味 —— 只对确认支持 /responses 的家摆出来(supportsResponses),
 									    硅基/火山未确认前不给选:选得到却必然 404 的组合比没有选项更糟。 */}
 									{meta.supportsResponses ? (

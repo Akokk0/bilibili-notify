@@ -84,7 +84,11 @@ async function makeDeps(
 							provider: opts.provider ?? "custom",
 							label: "",
 							apiKey: "sk-x",
-							baseUrl: opts.baseUrl ?? "https://api.example.com/v1",
+							baseUrl:
+								opts.baseUrl ??
+								(opts.provider === "deepseek"
+									? "https://api.deepseek.com"
+									: "https://api.example.com/v1"),
 							model: opts.model ?? "m",
 							enableThinking: false,
 							thinkingLevel: "medium",
@@ -505,7 +509,7 @@ describe("DeepSeek attachments", () => {
 			const response = await app.request(`/tools/${kind}`, { method: "POST", body: form });
 			expect(response.status).toBe(200);
 			expect(await response.json()).toMatchObject({ text: "transcript" });
-			expect(request.mock.calls[0]?.[0]).toBe(`https://api.example.com/v1/tools/${kind}`);
+			expect(request.mock.calls[0]?.[0]).toBe(`https://api.deepseek.com/v1/tools/${kind}`);
 			expect(chatStatelessStream).not.toHaveBeenCalled();
 		} finally {
 			request.mockRestore();
@@ -642,7 +646,7 @@ describe("DeepSeek attachments", () => {
 				});
 				expect(request).toHaveBeenCalledTimes(2);
 				expect(request.mock.calls[1]).toEqual([
-					"https://api.example.com/v1/files/file-api-example",
+					"https://api.deepseek.com/files/file-api-example",
 					expect.objectContaining({ method: "DELETE" }),
 				]);
 			} finally {

@@ -9,8 +9,8 @@
  *
  * ① **providers 是稀疏的 —— 没添加过的实例就是不存在,不是「存在但空着」。**
  *    设置页左栏据此只列已添加的那几块。
- * ② **方言归属只认桶里写明的 `provider`,绝不按 baseUrl 猜。** 猜错就是替主人
- *    往别家发方言参数,几乎必然 400。
+ * ② **方言归属由桶里写明的 `provider` 决定。** 旧 DeepSeek 网关归到自定义，
+ *    保留原连接和实例 id。
  * ③ **两代老配置由迁移器改写,且键名一律原样保留**(`apps/server/src/migration/ai.ts`,
  *    用例在服务端的 `migration/__tests__/settings.test.ts`):更早的扁平连接字段整份落进
  *    `custom` 桶;上一代「一家一桶」的配置,桶键就是服务商名 —— 按键名盖
@@ -85,7 +85,7 @@ describe("桶内字段的默认值与拒收", () => {
 		);
 		expect(ai.providers.deepseek).toMatchObject({
 			label: "",
-			baseUrl: "",
+			baseUrl: "https://api.deepseek.com",
 			model: "",
 			enableThinking: false,
 			thinkingLevel: "medium",
@@ -93,6 +93,31 @@ describe("桶内字段的默认值与拒收", () => {
 			enableVision: false,
 			vision: { baseUrl: "", apiKey: "", model: "" },
 		});
+	});
+
+	it("统一官方入口，已有网关改归自定义并保留实例和连接配置", () => {
+		const gateway = {
+			provider: "deepseek",
+			label: "兼容网关",
+			baseUrl: "https://gateway.example/v1",
+			apiKey: "gateway-key",
+			model: "deepseek-flash",
+		};
+		const ai = AiSettingsSchema.parse(
+			modern({
+				activeProfile: "gateway",
+				providers: {
+					official: { provider: "deepseek", baseUrl: "https://api.deepseek.com/v1/" },
+					gateway,
+				},
+			}),
+		);
+		expect(ai.providers.official).toMatchObject({
+			provider: "deepseek",
+			baseUrl: "https://api.deepseek.com",
+		});
+		expect(ai.activeProfile).toBe("gateway");
+		expect(ai.providers.gateway).toMatchObject({ ...gateway, provider: "custom" });
 	});
 
 	it("provider 写了个不认识的名字 → 直接拒", () => {

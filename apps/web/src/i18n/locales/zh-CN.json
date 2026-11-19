@@ -382,6 +382,7 @@
 	"aiSettings.page.models.multipleEmphasis": "多份",
 	"aiSettings.page.models.multipleSuffix": "（比如两个 DeepSeek 号），每份各有各的密钥与模型",
 	"aiSettings.page.models.connectionTitle": "模型连接",
+	"aiSettings.page.models.deepSeekBaseUrlHint": "第三方网关请选择「自定义」服务商。",
 	"aiSettings.page.models.connectionSubtitle": "OpenAI 兼容 API · ai.providers.<实例>.{fields}",
 	"aiSettings.page.actions.setDefault": "设为默认",
 	"aiSettings.page.actions.deletePrefix": "删除 ",

@@ -277,6 +277,28 @@ describe("模型配置 · 服务商左栏", () => {
 		fireEvent.click(await screen.findByRole("tab", { name: /模型配置/ }));
 	}
 
+	it("DeepSeek 地址只读，自定义实例仍可编辑地址", async () => {
+		const official = "https://api.deepseek.com";
+		const gateway = "https://gateway.example/v1";
+		mount(
+			globalsWith((g) => {
+				g.ai.activeProfile = "deepseek";
+				g.ai.providers = {
+					deepseek: bucket({ baseUrl: official, model: "deepseek-flash" }),
+					custom: bucket({ provider: "custom", label: "兼容网关", baseUrl: gateway }),
+				};
+			}),
+		);
+		await gotoModel();
+		expect(await screen.findByText(official, { exact: true })).toBeTruthy();
+		expect(screen.queryByDisplayValue(official)).toBeNull();
+
+		fireEvent.click(screen.getByRole("button", { name: /^兼容网关\s*m-1$/ }));
+		const input = await screen.findByDisplayValue(gateway);
+		fireEvent.change(input, { target: { value: "https://other.example/v1" } });
+		expect(screen.getByDisplayValue("https://other.example/v1")).toBeTruthy();
+	});
+
 	it("一家都没添加 → 出空态引导与添加面板,而不是一堆空输入框", async () => {
 		mount(
 			globalsWith((g) => {
