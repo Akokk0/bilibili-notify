@@ -97,6 +97,37 @@ afterEach(() => {
 });
 
 describe("卡片预览挑订阅", () => {
+	it("切换预览来源后只列该来源的订阅，并带上来源生成示例", async () => {
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("API fixture missing");
+		vi.mocked(api.get).mockImplementation((url: string) =>
+			url === "/api/sources"
+				? Promise.resolve({
+						sources: [
+							makeSource(),
+							{
+								key: "douyin",
+								status: "running",
+								descriptor: { label: "抖音", supportedFeatures: ["post", "liveStart"] },
+							},
+						],
+					})
+				: get(url),
+		);
+		const { container } = renderCards();
+		await openPostCard();
+		chooseSelect(subscriptionSelect(container), "UID 123456");
+		const source = screen.getByRole("combobox", { name: "预览来源" });
+		chooseSelect(source, "抖音");
+		expect(selectOptionsOf(subscriptionSelect(container)).map((o) => o.textContent)).toEqual([
+			"不挑，用示例",
+			"抖音 · sec-1",
+		]);
+		await waitFor(() =>
+			expect(previewBodies("post").at(-1)?.content).toEqual({ sourceKey: "douyin" }),
+		);
+		expect(screen.queryByRole("button", { name: /SC 提醒/ })).toBeNull();
+	});
 	it("全局作用域:订阅下拉列出全部订阅(拓展的也在),默认不挑;作品卡不挑时不带订阅与第几条", async () => {
 		const { container } = renderCards();
 		await openPostCard();

@@ -803,6 +803,7 @@
 	"cards.sample.superchatText": "實況主加油！好想聽這首歌！範例創作者唱得太好了！",
 	"cards.sample.titleLive": "卡片預覽 · 直播",
 	"cards.sample.titlePost": "卡片預覽 · 作品",
+	"cards.sample.sourceCreator": "{source} · 範例創作者",
 	"cards.sample.viewerName": "範例粉絲",
 	"cards.skin.notFound": "皮膚不存在：{skinId}",
 	"cards.skinShot.badId": "皮膚 ID 只能包含小寫英文字母、數字與連字號。",

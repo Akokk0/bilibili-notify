@@ -569,6 +569,31 @@ describe("cards route — /preview 示例数据", () => {
 		});
 	}
 
+	it("选抖音时渲染图文和收藏数，切回 B 站示例没有收藏数", async () => {
+		const sources = bilibiliLikeSources();
+		await sources.register(
+			"douyin",
+			{
+				descriptor: { label: "抖音", supportedFeatures: ["post", "liveStart"] },
+				searchCreators: async () => ok({ candidates: [] }),
+				fetchProfile: async () => fail("unsupported", "preview fixture"),
+				start: async () => {},
+				stop: async () => {},
+			},
+			{} as SourceContext,
+		);
+		const app = createCardsRoute({ deps: makeDeps(sources), puppeteer: makeFakePuppeteer() });
+		const preview = (sourceKey: string) =>
+			postPreview(app, { kind: "post", style: STYLE, content: { sourceKey } });
+
+		expect(await (await preview("douyin")).json()).toMatchObject({ ok: true });
+		expect(capturedHtml.at(-1)).toContain('data-block="images"');
+		expect(capturedHtml.at(-1)).toContain('data-block="saveCount"');
+		expect(capturedHtml.at(-1)).toContain("抖音 · 示例创作者");
+		expect(await (await preview(BILIBILI_SOURCE_KEY)).json()).toMatchObject({ ok: true });
+		expect(capturedHtml.at(-1)).not.toContain('data-block="saveCount"');
+	});
+
 	it("localizes sample cards on each request through the same preview route", async () => {
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer() });
 		const previous = i18n.state();

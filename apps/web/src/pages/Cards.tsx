@@ -71,6 +71,7 @@ import { subscriptionPlatformOf } from "./subscriptions/subscription-source";
 
 /** 本页能预览的四种卡(卡种键与全仓同一套,没有页面自己的缩写)。 */
 type PreviewKind = "live" | "post" | "superchat" | "membership";
+const PREVIEW_KINDS = ["live", "post", "superchat", "membership"] as const;
 
 /** 预览与测试推送请求里的样式:只有直播封面(字体与玻璃归皮肤的旋钮)。 */
 interface PreviewStyle {
@@ -109,10 +110,11 @@ function previewContentOf(
 	kind: PreviewKind,
 	content: PreviewContent,
 	subscriptionId: string | undefined,
+	sourceKey?: string,
 ): Record<string, unknown> {
-	const picked = subscriptionId ? { subscriptionId } : {};
+	const picked = subscriptionId ? { subscriptionId } : sourceKey ? { sourceKey } : {};
 	if (kind === "live") return picked;
-	if (kind === "post") return subscriptionId ? { subscriptionId, nth: content.post.nth } : {};
+	if (kind === "post") return subscriptionId ? { ...picked, nth: content.post.nth } : picked;
 	return { ...content[kind], ...picked };
 }
 
@@ -756,14 +758,35 @@ export default function Cards() {
 		DEFAULT_PREVIEW_CONTENT,
 	);
 
-	const isGlobalTab = activeTab === "__global";
-	// 类型 tab 锁定为该类型;全局 tab 右侧铺四张卡(无单一类型),kind 仅占位。
-	const kind: PreviewKind = isGlobalTab ? "live" : activeTab;
-
 	// 按订阅覆盖卡片皮肤与旋钮对所有订阅开放(ADR-0021 决策 12):真数据由各自的来源出,来源没有真实预览就画示例。
 	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
 	const isGlobalScope = scope === "__global";
 	const focusedSub = isGlobalScope ? undefined : allSubs.find((s) => s.id === scope);
+	const [sourceKey, setSourceKey] = useResourceState("cards.preview.source", "");
+	const previewSources =
+		sourceEntries?.filter(
+			(source) =>
+				source.status === "running" &&
+				PREVIEW_KINDS.some((kind) =>
+					source.descriptor.supportedFeatures.includes(kind === "live" ? "liveStart" : kind),
+				),
+		) ?? [];
+	const selectedSource = isGlobalScope
+		? previewSources.find((source) => source.key === sourceKey)
+		: undefined;
+	const previewSourceKey = selectedSource?.key;
+	const previewKinds = selectedSource
+		? PREVIEW_KINDS.filter((k) =>
+				selectedSource.descriptor.supportedFeatures.includes(k === "live" ? "liveStart" : k),
+			)
+		: PREVIEW_KINDS;
+	const selectedTab =
+		activeTab !== "__global" && previewKinds.includes(activeTab) ? activeTab : "__global";
+	const isGlobalTab = selectedTab === "__global";
+	const kind: PreviewKind = isGlobalTab ? "live" : selectedTab;
+	const previewSubscriptions = previewSourceKey
+		? allSubs.filter((sub) => sub.identity.sourceKey === previewSourceKey)
+		: allSubs;
 
 	// 选中 UP 的存储覆盖 → 编辑草稿。
 	const seededPuCover = focusedSub?.overrides.cards?.liveCoverImageIds;
@@ -954,11 +977,14 @@ export default function Cards() {
 	// 预览内容:全局 = 挑的那条订阅(可不挑)+ 可编辑的示例消息;per-UP = 正在改的这条订阅。真数据由服务端问那条订阅的
 	// 来源要,取不到就画示例并说原因。useMemo 稳定引用 —— 否则每次 render 新建对象会不断重置 PreviewImage 的防抖定时器。
 	const previewSubscriptionId = isGlobalScope
-		? content.subscriptionId || undefined
+		? !selectedSource || previewSubscriptions.some((sub) => sub.id === content.subscriptionId)
+			? content.subscriptionId || undefined
+			: undefined
 		: focusedSub?.id;
 	const previewSub = allSubs.find((sub) => sub.id === previewSubscriptionId);
-	const membershipSources = previewSub
-		? sourceEntries?.filter((source) => source.key === previewSub.identity.sourceKey)
+	const membershipSourceKey = previewSub?.identity.sourceKey ?? previewSourceKey;
+	const membershipSources = membershipSourceKey
+		? sourceEntries?.filter((source) => source.key === membershipSourceKey)
 		: sourceEntries;
 	const membershipPrograms =
 		membershipSources?.flatMap((source) => source.descriptor.membershipPrograms ?? []) ?? [];
@@ -989,17 +1015,18 @@ export default function Cards() {
 	const resolvedContent = useMemo(
 		() => ({
 			...content,
+			subscriptionId: isGlobalScope ? (previewSubscriptionId ?? "") : content.subscriptionId,
 			membership: {
 				...content.membership,
 				program: selectedProgram?.id ?? "",
 				tierKey: selectedTier?.key ?? "",
 			},
 		}),
-		[content, selectedProgram?.id, selectedTier?.key],
+		[content, isGlobalScope, previewSubscriptionId, selectedProgram?.id, selectedTier?.key],
 	);
 	const previewContent = useMemo(
-		() => previewContentOf(kind, resolvedContent, previewSubscriptionId),
-		[kind, resolvedContent, previewSubscriptionId],
+		() => previewContentOf(kind, resolvedContent, previewSubscriptionId, previewSourceKey),
+		[kind, resolvedContent, previewSubscriptionId, previewSourceKey],
 	);
 
 	useDirtyDraft({
@@ -1045,12 +1072,12 @@ export default function Cards() {
 			: (puCover ?? gCards.liveCoverImageIds),
 	};
 	// 全局 tab:右侧四张卡「全家福」,逐类型用同一份生效样式 + 各自内容渲染。
-	const familyPreviews = (["live", "post", "superchat", "membership"] as const)
+	const familyPreviews = previewKinds
 		.filter((fk) => fk !== "membership" || membershipAvailable)
 		.map((fk) => ({
 			fk,
 			style: effStyle,
-			content: previewContentOf(fk, resolvedContent, previewSubscriptionId),
+			content: previewContentOf(fk, resolvedContent, previewSubscriptionId, previewSourceKey),
 		}));
 
 	/**
@@ -1139,7 +1166,7 @@ export default function Cards() {
 							desc: t("cards.nav.globalDesc"),
 							icon: <Icon.edit size={15} />,
 						},
-						...(["live", "post", "superchat", "membership"] as const).map((k) => {
+						...previewKinds.map((k) => {
 							const Ic = Icon[KIND_META[k].icon];
 							return {
 								id: k,
@@ -1149,7 +1176,7 @@ export default function Cards() {
 							};
 						}),
 					]}
-					activeId={activeTab}
+					activeId={selectedTab}
 					onPick={(id) => setActiveTab(id === "__global" ? "__global" : (id as PreviewKind))}
 				/>
 
@@ -1250,24 +1277,51 @@ export default function Cards() {
 										})
 									: undefined
 							}
-							subscriptions={allSubs}
+							subscriptions={previewSubscriptions}
 						/>
 					)}
 				</div>
 
 				{/* PREVIEW: 全局 tab = 四卡全家福;类型 tab = 单卡 */}
 				<div className="@container/card-previews flex flex-col gap-2.5">
+					{isGlobalScope && previewSources.length > 1 ? (
+						<div className="flex flex-wrap items-center justify-between gap-2 text-bn-sm text-bn-text-secondary">
+							<span>{t("cards.preview.source")}</span>
+							<div className="min-w-40">
+								<TSelect
+									ariaLabel={t("cards.preview.source")}
+									value={previewSourceKey ?? ""}
+									onChange={setSourceKey}
+									options={[
+										{ value: "", label: t("cards.preview.allSources") },
+										...previewSources.map((source) => ({
+											value: source.key,
+											label: source.descriptor.label,
+										})),
+									]}
+								/>
+							</div>
+						</div>
+					) : null}
 					{isGlobalTab ? (
 						<>
 							<PreviewHead
 								title={t("cards.preview.familyTitle", { scope: scopeName })}
-								note={t("cards.preview.familyNote")}
+								note={selectedSource?.descriptor.label ?? t("cards.preview.familyNote")}
 							/>
 							{/* 预览列够宽时保留固定高度的2×2布局；窄列改为单列自然增高，
 							    避免错误说明和浏览器设置表单被挤进半张卡或裁掉。 */}
-							<div className="flex h-auto flex-col rounded-bn-card border border-bn-border p-4 @min-[480px]/card-previews:h-180">
-								<div className="grid min-h-0 flex-1 grid-cols-1 gap-3 @min-[480px]/card-previews:grid-cols-2 @min-[480px]/card-previews:grid-rows-2">
-									{!membershipAvailable ? (
+							<div
+								className={`flex flex-col rounded-bn-card border border-bn-border p-4 ${
+									familyPreviews.length > 2 ? "@min-[480px]/card-previews:h-180" : ""
+								}`}
+							>
+								<div
+									className={`grid min-h-0 flex-1 grid-cols-1 gap-3 @min-[480px]/card-previews:grid-cols-2 ${
+										familyPreviews.length > 2 ? "@min-[480px]/card-previews:grid-rows-2" : ""
+									}`}
+								>
+									{!selectedSource && !membershipAvailable ? (
 										<EmptyNote size="sm">{t("cards.preview.membershipUnavailable")}</EmptyNote>
 									) : null}
 									{familyPreviews.map(({ fk, style, content: fcontent }) => {
@@ -1294,16 +1348,18 @@ export default function Cards() {
 								</div>
 							</div>
 							<div className="rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 text-bn-xs italic text-bn-text-secondary">
-								{isGlobalScope
-									? t("cards.preview.familyGlobalHint")
-									: focusedSub
-										? t("cards.preview.familySubHint", {
-												name: displayName(
-													focusedSub,
-													subscriptionPlatformOf(focusedSub.identity, sourceEntries),
-												),
-											})
-										: ""}
+								{selectedSource
+									? t("cards.preview.filteredHint")
+									: isGlobalScope
+										? t("cards.preview.familyGlobalHint")
+										: focusedSub
+											? t("cards.preview.familySubHint", {
+													name: displayName(
+														focusedSub,
+														subscriptionPlatformOf(focusedSub.identity, sourceEntries),
+													),
+												})
+											: ""}
 							</div>
 						</>
 					) : (

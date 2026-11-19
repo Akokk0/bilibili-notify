@@ -803,6 +803,7 @@
 	"cards.sample.superchatText": "配信者さん、頑張って！この曲が聴きたい！サンプルクリエイターの歌、最高！",
 	"cards.sample.titleLive": "カードプレビュー · 配信",
 	"cards.sample.titlePost": "カードプレビュー · 投稿",
+	"cards.sample.sourceCreator": "{source} · サンプル投稿者",
 	"cards.sample.viewerName": "サンプル視聴者",
 	"cards.skin.notFound": "スキンが見つかりません：{skinId}",
 	"cards.skinShot.badId": "スキンIDには小文字の英字、数字、ハイフンのみ使用できます。",

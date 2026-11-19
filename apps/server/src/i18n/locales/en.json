@@ -806,6 +806,7 @@
 	"cards.sample.superchatText": "You’ve got this! I want to hear this song! The sample creator sings so well!",
 	"cards.sample.titleLive": "Card preview · Live",
 	"cards.sample.titlePost": "Card preview · Post",
+	"cards.sample.sourceCreator": "{source} · Sample creator",
 	"cards.sample.viewerName": "Sample viewer",
 	"cards.skin.notFound": "Skin not found: {skinId}",
 	"cards.skinShot.badId": "Skin IDs may contain only lowercase letters, digits, and hyphens.",

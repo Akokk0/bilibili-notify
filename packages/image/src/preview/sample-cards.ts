@@ -462,14 +462,12 @@ function createSamples() {
  * 喂 `renderCardWithSkin(kind, props, manifest)`。契约里视频 / 图廊那两组字段、动态类型都
  * 跟着 `node` 走(ADR-0019 决策 68),不再另交原始动态。
  */
-export async function sampleCard(
-	kind: CardKind,
+export async function sampleCard<K extends CardKind>(
+	kind: K,
 	scene?: string,
 	options: SampleCardOptions = {},
-): Promise<{ props: unknown }> {
+): Promise<{ props: SampleProps<K> }> {
 	const picked = resolvePreviewScene(kind, scene);
-	const props = await (
-		createSamples()[kind] as (s: string, o: SampleCardOptions) => unknown | Promise<unknown>
-	)(picked.id, options);
+	const props = await createSamples()[kind](picked.id, options);
 	return { props };
 }

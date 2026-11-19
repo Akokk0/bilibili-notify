@@ -77,6 +77,7 @@
 	"cards.sample.superchatText": "主播加油！这首要听到！示例创作者唱得太好了！",
 	"cards.sample.titleLive": "卡片预览 · 直播",
 	"cards.sample.titlePost": "卡片预览 · 作品",
+	"cards.sample.sourceCreator": "{source} · 示例创作者",
 	"cards.sample.viewerName": "示例粉丝",
 	"cards.skin.notFound": "皮肤不存在: {skinId}",
 	"cards.skinShot.badId": "皮肤 id 只准小写字母、数字、连字符",
