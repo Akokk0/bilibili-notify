@@ -49,7 +49,10 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		epoch++;
 		avatarRetry?.dispose();
 		avatarRetry = undefined;
+		accountName = null;
 		accountAvatar = undefined;
+		state = { status: "logged-out" };
+		if (!ctx.signal.aborted) cookies = ctx.createCookieSession();
 		identity.abort();
 		identity = new AbortController();
 		end();
@@ -251,11 +254,14 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		replace();
 		const token = epoch;
 		// A previous user's credentials must not travel with the new QR or later appear after a restart.
-		const removed = await enqueue(() => ctx.secrets.delete(cookieKey));
+		const removal = enqueue(() => ctx.secrets.delete(cookieKey));
+		publish({ status: "confirming", message: t("requesting") });
+		const removed = await removal;
 		if (epoch !== token || ctx.signal.aborted) return fail("conflict", t("expired"));
-		if (!removed.ok) return removed;
-		accountName = null;
-		cookies = ctx.createCookieSession();
+		if (!removed.ok) {
+			publish({ status: "error", message: t("saveFailed") });
+			return removed;
+		}
 		const a: Attempt = {
 			controller: new AbortController(),
 			session: passport(ctx),
@@ -264,7 +270,6 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 			token: "",
 		};
 		active = a;
-		publish({ status: "confirming", message: t("requesting") });
 		const prepared = await a.session.prepare(signal(a));
 		if (!valid(a)) return fail("conflict", t("expired"));
 		if (!prepared.ok) return failure(a, prepared.message);
@@ -298,12 +303,9 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		replace();
 		const token = epoch;
 		const r = await enqueue(() => ctx.secrets.delete(cookieKey));
+		if (epoch === token && !ctx.signal.aborted)
+			publish(r.ok ? state : { status: "error", message: t("saveFailed") });
 		if (!r.ok) return r;
-		if (epoch === token) {
-			accountName = null;
-			cookies = ctx.createCookieSession();
-			publish({ status: "logged-out" });
-		}
 		return ok();
 	}
 	async function submitVerification(id: string, code: string): Promise<Result> {
@@ -336,20 +338,28 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 	}
 	// A transport error on startup isn't evidence of logout. Recheck with backoff.
 	async function restore(token: number) {
-		const r = await passport(ctx, cookies).account(AbortSignal.any([identity.signal, ctx.signal]));
-		if (ctx.signal.aborted || token !== epoch) return;
+		const from = identity.signal;
+		const r = await passport(ctx, cookies).account(AbortSignal.any([from, ctx.signal]));
+		if (!currentSession(from)) return;
+		let retryMessage = t("checking");
 		if (r.ok) {
-			accountName = r.name;
-			publish({ status: "logged-in", loggedInAt: new Date().toISOString() });
-			await loadAvatar(r.avatarUrl);
+			const saved = await persistCookies(from);
+			if (!currentSession(from)) return;
+			if (saved.ok) {
+				accountName = r.name;
+				publish({ status: "logged-in", loggedInAt: new Date().toISOString() });
+				await loadAvatar(r.avatarUrl);
+				return;
+			}
+			retryMessage = saved.message;
 		} else if (r.code === "unauthorized") {
-			await invalidate(identity.signal, true);
-		} else {
-			publish({ status: "confirming", message: t("checking") });
-			ctx.setTimeout(() => {
-				if (token === epoch && !ctx.signal.aborted) return restore(token);
-			}, 60000);
+			await invalidate(from, true);
+			return;
 		}
+		publish({ status: "confirming", message: retryMessage });
+		ctx.setTimeout(() => {
+			if (token === epoch && !ctx.signal.aborted) return restore(token);
+		}, 60000);
 	}
 	async function invalidate(old: AbortSignal, fromStoredCheck = false) {
 		if (
@@ -363,19 +373,30 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 			return;
 		replace();
 		const token = epoch;
-		cookies = ctx.createCookieSession();
-		accountName = null;
 		const saved = await enqueue(() => ctx.secrets.delete(cookieKey));
-		if (token === epoch)
+		if (token === epoch && !ctx.signal.aborted)
 			publish(
 				saved.ok
 					? { status: "expired", message: t("credentials") }
 					: { status: "error", message: t("saveFailed") },
 			);
 	}
+	function currentSession(from: AbortSignal) {
+		return identity.signal === from && !from.aborted && !ctx.signal.aborted;
+	}
+	async function persistCookies(from: AbortSignal): Promise<Result> {
+		if (!currentSession(from)) return fail("unavailable", t("expired"));
+		if (cookies.snapshot() === ctx.secrets.get(cookieKey)) return ok();
+		return enqueue(async () => {
+			if (!currentSession(from)) return fail("unavailable", t("expired"));
+			const snapshot = cookies.snapshot();
+			if (snapshot === ctx.secrets.get(cookieKey)) return ok();
+			const saved = await ctx.secrets.set(cookieKey, snapshot);
+			return saved.ok ? ok() : fail("unavailable", t("saveFailed"));
+		});
+	}
 	async function receiveCookies(url: URL, headers: Headers, from: AbortSignal): Promise<Result> {
-		const current = () => identity.signal === from && !from.aborted && !ctx.signal.aborted;
-		if (!current()) return fail("unavailable", t("expired"));
+		if (!currentSession(from)) return fail("unavailable", t("expired"));
 		for (const line of headers.getSetCookie()) {
 			const equals = line.indexOf("=");
 			const value = equals > 0 ? line.slice(equals + 1).split(";")[0] : undefined;
@@ -387,13 +408,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 			ctx.redact(token);
 			cookies.ingest(url.href, `msToken=${token}; Domain=douyin.com; Path=/; Secure`);
 		}
-		if (state.status !== "logged-in" || cookies.snapshot() === ctx.secrets.get(cookieKey))
-			return ok();
-		return enqueue(async () => {
-			if (!current()) return fail("unavailable", t("expired"));
-			const saved = await ctx.secrets.set(cookieKey, cookies.snapshot());
-			return saved.ok ? ok() : fail("unavailable", t("saveFailed"));
-		});
+		return state.status === "logged-in" ? persistCookies(from) : ok();
 	}
 	const saved = ctx.secrets.get<string>(cookieKey);
 	if (saved) {

@@ -11,6 +11,7 @@ function fixture(
 		ok: true,
 		ref: `${"a".repeat(64)}.png`,
 	}),
+	accountResponse: { status?: number; setCookie?: string } = {},
 ) {
 	const requests: { url: URL; headers: Headers; method?: string; body?: unknown }[] = [];
 	const ops: string[] = [],
@@ -19,6 +20,7 @@ function fixture(
 	if (saved) secrets.set("login.cookies", saved);
 	let pollReply: object | undefined;
 	let unreadableAccountReplies = 0;
+	let deletion: Promise<void> | undefined;
 	let homeStatus = 200;
 	let homeRetryStatus: number | undefined;
 	let landingPageBytes = 0;
@@ -40,6 +42,7 @@ function fixture(
 				return { ok: true };
 			},
 			delete: async (k: string) => {
+				await deletion;
 				secrets.delete(k);
 				return { ok: true };
 			},
@@ -114,6 +117,7 @@ function fixture(
 				}
 				if (url.pathname.endsWith("/info/v2/")) {
 					expect(new Headers(o.headers).get("cookie")).toContain("sessionid=sample");
+					if (accountResponse.setCookie) h.append("Set-Cookie", accountResponse.setCookie);
 					body = { message: "success", data: accountData };
 				}
 				const status =
@@ -123,7 +127,9 @@ function fixture(
 							: homeStatus
 						: url.pathname === "/sso/callback" && landingPageBytes
 							? 302
-							: 200;
+							: url.pathname.endsWith("/info/v2/")
+								? (accountResponse.status ?? 200)
+								: 200;
 				const text =
 					url.href === "https://www.douyin.com/" &&
 					new Headers(o.headers).get("cookie")?.includes("sessionid=")
@@ -160,6 +166,14 @@ function fixture(
 		},
 		smsRequests,
 		requests,
+		searchCreators: source.searchCreators,
+		pauseDeletion() {
+			let release!: () => void;
+			deletion = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			return release;
+		},
 		setHomeStatus: (status: number) => {
 			homeStatus = status;
 		},
@@ -197,7 +211,51 @@ function fixture(
 		},
 	};
 }
+
+function storedSession() {
+	const jar = testCookieSession();
+	jar.ingest("https://www.douyin.com", "sessionid=sample; Domain=douyin.com; Path=/; Secure");
+	return jar.snapshot();
+}
+
 describe("source account", () => {
+	it.each(["logout", "beginLogin"] as const)(
+		"stops using account credentials as soon as %s starts",
+		async (action) => {
+			const f = fixture(storedSession());
+			await vi.waitFor(() => expect(f.auth.state().status).toBe("logged-in"));
+			const release = f.pauseDeletion();
+			const transition = f.auth[action]();
+			const before = f.requests.length;
+			const search = f.searchCreators?.("MS4w-synthetic", new AbortController().signal);
+			try {
+				await vi.waitFor(() => expect(f.requests.length).toBeGreaterThan(before));
+				expect(f.requests[before]?.headers.get("cookie") ?? "").not.toContain("sessionid=sample");
+				await search;
+				expect(f.auth.account()).toBeNull();
+			} finally {
+				release();
+				await Promise.all([transition, search]);
+			}
+			expect(f.secrets.has("login.cookies")).toBe(false);
+		},
+	);
+
+	it("expires restored credentials rejected by Passport with HTTP 401", async () => {
+		const f = fixture(storedSession(), undefined, undefined, { status: 401 });
+		await vi.waitFor(() => expect(f.auth.state().status).toBe("expired"));
+		expect(f.secrets.has("login.cookies")).toBe(false);
+	});
+
+	it("persists renewed credentials before publishing the restored account", async () => {
+		const f = fixture(storedSession(), undefined, undefined, {
+			setCookie: "sessionid=renewed; Domain=douyin.com; Path=/; Secure",
+		});
+		await vi.waitFor(() => expect(f.auth.state().status).toBe("logged-in"));
+		const jar = testCookieSession(f.secrets.get("login.cookies"));
+		expect(jar.header("https://www.douyin.com")).toContain("sessionid=renewed");
+	});
+
 	it("downloads the signed-in avatar into the host image library on login and restoration", async () => {
 		const account = {
 			is_visitor_account: false,

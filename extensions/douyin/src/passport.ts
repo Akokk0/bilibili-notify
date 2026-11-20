@@ -98,8 +98,7 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 		}
 		return fail("invalid", ctx.i18n.t("auth.redirect"));
 	}
-	async function json(url: URL, signal: AbortSignal, options: FetchOptions = {}) {
-		const r = await request(url, signal, options);
+	function json(r: Result<HttpResponse>) {
 		if (!r.ok) return r;
 		if (!r.isSuccess)
 			return fail(r.status === 429 ? "rate_limited" : "unavailable", ctx.i18n.t("auth.network"));
@@ -111,7 +110,10 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 	async function account(signal: AbortSignal) {
 		if (!cookieValue(jar.header(WEB), "sessionid") && !cookieValue(jar.header(WEB), "sessionid_ss"))
 			return fail("unauthorized", ctx.i18n.t("auth.credentials"));
-		const r = await json(new URL("/passport/account/info/v2/", WEB), signal);
+		const response = await request(new URL("/passport/account/info/v2/", WEB), signal);
+		if (response.ok && response.status === 401)
+			return fail("unauthorized", ctx.i18n.t("auth.credentials"));
+		const r = json(response);
 		if (!r.ok) return r;
 		const d = dict(r.body.data);
 		if (
@@ -208,11 +210,13 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			"x-tt-passport-verify-portrait": portrait,
 			"x-tt-passport-csrf-token": cookieValue(jar.header(url.href), "passport_csrf_token") ?? csrf,
 		};
-		return json(url, signal, {
-			headers,
-			method: post ? "POST" : "GET",
-			...(post ? { body: new URLSearchParams(fields).toString() } : {}),
-		});
+		return json(
+			await request(url, signal, {
+				headers,
+				method: post ? "POST" : "GET",
+				...(post ? { body: new URLSearchParams(fields).toString() } : {}),
+			}),
+		);
 	}
 	return { prepare, account, exchange, sso, jar };
 }
