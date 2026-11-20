@@ -895,6 +895,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						pipeline?.tickLiveSessionNow(subscriptionId) ?? Promise.resolve(false),
 				},
 		});
+		runtime.serviceCtx.onDispose(() => devtools?.dispose(), "stop");
 		if (devtools)
 			log.info(logText("log.host.devtoolsEnabled"), {
 				event: "host.devtools_enabled",
@@ -1404,7 +1405,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 拓展登记得晚,同一段里就先收:它注册的定时器 / 端点都挂在自己那面 ctx 上,收在核心之前
 		// 才不会在核心已经拆了之后还被回调进去。
 		runtime.serviceCtx.onDispose(() => loadedExtensions?.dispose(), "stop");
-		runtime.serviceCtx.onDispose(() => devtools?.dispose(), "stop");
 		// 清单到手了:拓展设置从「整份遮」收窄到只遮清单里标了机密的格。
 		settingsRedaction.sync();
 		// 起来的那些装载器自己记过了(版本、代码指纹、软链落点,热装与换代码同一句);这里只把
