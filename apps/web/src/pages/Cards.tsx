@@ -18,11 +18,7 @@ import { targetDisplay } from "../components/target-display";
  * 面板里现在搜不到它,那个键只剩服务端一次性迁移时读一遍。
  */
 
-import {
-	BILIBILI_SOURCE_KEY,
-	type PreviewResponse,
-	type TestPushResponse,
-} from "@bilibili-notify/contract";
+import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
 import { CARD_KIND_EVENT_NAMES } from "@bilibili-notify/internal/card-skin";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
@@ -766,20 +762,25 @@ export default function Cards() {
 	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
 	const isGlobalScope = scope === "__global";
 	const focusedSub = isGlobalScope ? undefined : allSubs.find((s) => s.id === scope);
-	const [sourceKey, setSourceKey] = useResourceState("cards.preview.source", BILIBILI_SOURCE_KEY);
+	// 来源接口把内置来源排在拓展前面。
+	const defaultSourceKey = sourceEntries?.[0]?.key;
+	const [sourceKey, setSourceKey] = useResourceState<string | undefined>(
+		"cards.preview.source",
+		undefined,
+	);
 	const previewSources =
 		sourceEntries?.filter(
 			(source) =>
-				(source.status === "running" || source.key === BILIBILI_SOURCE_KEY) &&
+				(source.status === "running" || source.key === defaultSourceKey) &&
 				PREVIEW_KINDS.some((kind) =>
 					source.descriptor.supportedFeatures.includes(kind === "live" ? "liveStart" : kind),
 				),
 		) ?? [];
 	const selectedSource = isGlobalScope
 		? (previewSources.find((source) => source.key === sourceKey) ??
-			previewSources.find((source) => source.key === BILIBILI_SOURCE_KEY))
+			previewSources.find((source) => source.key === defaultSourceKey))
 		: undefined;
-	const previewSourceKey = isGlobalScope ? (selectedSource?.key ?? BILIBILI_SOURCE_KEY) : undefined;
+	const previewSourceKey = isGlobalScope ? (selectedSource?.key ?? defaultSourceKey) : undefined;
 	const previewKinds = selectedSource
 		? PREVIEW_KINDS.filter((k) =>
 				selectedSource.descriptor.supportedFeatures.includes(k === "live" ? "liveStart" : k),

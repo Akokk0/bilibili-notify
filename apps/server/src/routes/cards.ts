@@ -29,7 +29,6 @@ import { logUrl } from "../logs/url.js";
  */
 
 import {
-	BILIBILI_SOURCE_KEY,
 	type CardSkinShotResponse,
 	displayNameOf,
 	type PreviewResponse,
@@ -758,7 +757,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 取「第一张盘上存在的图」,跳过悬空引用。卡片背景图不在这条路上了 —— 它归皮肤的
 		// `image` 旋钮,由下面的 `resolveKnobAssets` 解析。
 		const dataRoot = opts.deps.runtime.dataRoot;
-		const account = previewAccountOf(sourceKey ?? BILIBILI_SOURCE_KEY);
+		// 内置来源先于拓展登记，与面板来源列表的默认项一致。
+		const defaultSourceKey = opts.deps.runtime.sourceRegistry.listRunViews()[0]?.sourceKey;
+		const account = previewAccountOf(sourceKey ?? defaultSourceKey);
 		const [coverDataUrl, avatarUrl] = await Promise.all([
 			kind === "live"
 				? firstExistingCardBg(dataRoot, style.liveCoverImageIds).then((id) =>
@@ -769,7 +770,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		]);
 		const spec = await buildPreviewSpec(kind, {
 			coverDataUrl,
-			sourceKey,
+			sourceKey: sourceKey === defaultSourceKey ? undefined : sourceKey,
 			sourceLabel: descriptor?.label,
 			accountName: account?.name,
 			avatarUrl,
@@ -1029,7 +1030,7 @@ async function buildPreviewSpec(
 			title: t("cards.sample.titleLive"),
 		};
 	}
-	if (sourceKey && sourceKey !== BILIBILI_SOURCE_KEY) {
+	if (sourceKey) {
 		const { props } = await sampleCard("post", "pics");
 		const { node } = props;
 		return {
