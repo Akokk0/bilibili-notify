@@ -37,6 +37,7 @@
 	"error.linkDisabled": "接続「{name}」は無効です",
 	"error.linkDisconnected": "接続「{name}」は未接続です",
 	"error.botMissing": "連携に bot {botId} がありません",
+	"error.botPlatformChanged": "この bot のプラットフォームが変わりました。接続を設定し直してください。",
 	"error.sessionOnly": "連携はセッション宛てにのみ送信できます",
 	"error.disconnected": "連携は未接続です",
 	"error.connectionLost": "連携の接続が切断されました",

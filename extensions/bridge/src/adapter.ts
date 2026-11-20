@@ -224,6 +224,8 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		const session = server.getSession(link.id);
 		if (!session) return fail("unavailable", t("error.linkDisconnected", { name: link.name }));
 		const bot = session.bots.find((candidate) => candidate.botId === settings.botId);
+		if (bot.platform !== mine.platform)
+			return fail("not_configured", t("error.botPlatformChanged"));
 		if (!bot) return fail("unavailable", t("error.botMissing", { botId: settings.botId }));
 		return ok({ connection: mine, link, session, bot });
 	}
@@ -378,14 +380,20 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		deliverInbound(session, frame) {
 			const ctx = adapterContext;
 			if (!ctx) return;
-			// 停用的也算绑过 —— 「绑没绑过」与「收不收它的消息」是两问,后者下面按 `enabled` 再判一次。
-			const bound = connections().find((candidate) => {
+			const bot = session.bots.find((candidate) => candidate.botId === frame.botId);
+			const bindings = connections().filter((candidate) => {
 				const settings = settingsOf(candidate);
 				return settings?.link === session.linkId && settings.botId === frame.botId;
 			});
 			// 只有绑成了连接的 bot 收到的消息才归 BN:没绑的 bot 在 BN 眼里不存在,它收到
 			// 的指令也没有一条连接能拿来回。记 debug 不记 warn —— 桥驮上来的每条都会经这儿。
-			if (!bound) {
+			// 名单可能晚于第一条消息。没有名单佐证时，只能使用唯一的绑定。
+			const bound = bot
+				? bindings.find((candidate) => candidate.platform === bot.platform)
+				: bindings.length === 1
+					? bindings[0]
+					: undefined;
+			if (!bound || bound.platform !== frame.platform) {
 				ctx.logger.debug(t("log.unboundInbound"), {
 					event: "inbound.unbound",
 					linkId: session.linkId,
@@ -486,13 +494,17 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		 * `{ link, botId }`,`boundConnectionId` 让面板标出「已加过」。
 		 */
 		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
-			// 查表建**一次**。`connections()` 是现读的深拷贝,逐个 bot 去查等于把整张连接表
-			// 拷一遍又一遍。键里那个 `\0` 是分隔符 —— `botId` 是开放字符串(平台自己定的),
-			// 拿冒号拼会和 `telegram:12345` 这种撞上。
+			// 按接入、bot 和平台查已有绑定。平台变更时，面板可以建一条匹配新平台的连接。
+			const bindingKey = (link: string, botId: string, platform: string) =>
+				JSON.stringify([link, botId, platform]);
 			const boundTo = new Map<string, string>();
 			for (const connection of connections()) {
 				const settings = settingsOf(connection);
-				if (settings) boundTo.set(`${settings.link}\0${settings.botId}`, connection.id);
+				if (settings)
+					boundTo.set(
+						bindingKey(settings.link, settings.botId, connection.platform),
+						connection.id,
+					);
 			}
 			return opts.links().flatMap((link) => {
 				const session = server.getSession(link.id);
@@ -506,7 +518,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 						settings: { link: link.id, botId: bot.botId },
 						selfId: bot.selfId,
 						via: link.name,
-						boundConnectionId: boundTo.get(`${link.id}\0${bot.botId}`),
+						boundConnectionId: boundTo.get(bindingKey(link.id, bot.botId, bot.platform)),
 					};
 				});
 			});

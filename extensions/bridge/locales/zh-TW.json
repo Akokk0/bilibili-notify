@@ -37,6 +37,7 @@
 	"error.linkDisabled": "接入「{name}」已停用",
 	"error.linkDisconnected": "接入「{name}」未連線",
 	"error.botMissing": "橋接目前沒有這個 bot（{botId}）",
+	"error.botPlatformChanged": "這個 bot 的平台已變更，請重新綁定連線",
 	"error.sessionOnly": "橋接僅可傳送至會話目標",
 	"error.disconnected": "橋接未連線",
 	"error.connectionLost": "橋接已斷線",

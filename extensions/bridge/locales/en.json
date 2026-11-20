@@ -38,6 +38,7 @@
 	"error.linkDisabled": "Link “{name}” is disabled",
 	"error.linkDisconnected": "Link “{name}” is disconnected",
 	"error.botMissing": "The bridge does not currently have bot {botId}",
+	"error.botPlatformChanged": "This bot changed platforms. Bind it to a new connection.",
 	"error.sessionOnly": "The bridge only sends to session targets",
 	"error.disconnected": "The bridge is disconnected",
 	"error.connectionLost": "The bridge disconnected",

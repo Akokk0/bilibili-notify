@@ -37,6 +37,7 @@
 	"error.linkDisabled": "接入「{name}」已停用",
 	"error.linkDisconnected": "接入「{name}」没连着",
 	"error.botMissing": "桥上现在没有这个 bot({botId})",
+	"error.botPlatformChanged": "这个 bot 的平台已变更，请重新绑定连接",
 	"error.sessionOnly": "桥只发会话目标",
 	"error.disconnected": "桥没连着",
 	"error.connectionLost": "桥断开了",
