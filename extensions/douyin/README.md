@@ -2,7 +2,7 @@
 
 订阅抖音博主的视频、图文和直播，并在群聊中将作品链接转成卡片。登录和取数使用 HTTP 请求，无需常驻抖音网页，也不需要手动复制 Cookie。
 
-这是 BN 主仓维护的官方拓展，ID 为 `douyin`。当前源码清单版本为 `0.1.0-alpha.0`，需要 **API 1、修订号至少为 2** 的兼容 BN 宿主。本文说明源码和本地构建的用法，不表示该版本已经上架市场。
+这是 BN 主仓维护的官方拓展，ID 为 `douyin`。当前源码清单版本为 `0.1.0-alpha.1`，需要 **API 1、修订号至少为 3** 的兼容 BN 宿主。本文说明源码和本地构建的用法，不表示该版本已经上架市场。
 
 ## 开始使用
 
@@ -58,7 +58,7 @@
 
 | 现象 | 处理方式 |
 | --- | --- |
-| 工程清单无效或契约不兼容 | 核对宿主支持的 API 版本／修订号及清单；本版需要 API 1、修订号 2。先更新兼容的 BN，不要通过调低清单修订号绕过检查。开发挂载应选择含 `extension.json` 的工程根目录。 |
+| 工程清单无效或契约不兼容 | 核对宿主支持的 API 版本／修订号及清单；本版需要 API 1、修订号 3。先更新兼容的 BN，不要通过调低清单修订号绕过检查。开发挂载应选择含 `extension.json` 的工程根目录。 |
 | 系统账号页没有抖音 | 检查拓展是否已安装、启用且运行成功，再检查宿主是否支持来源账号。 |
 | 扫码返回 2156 或 4031 | 这是平台安全检查拒绝。稍后重新扫码；如官网也无法登录，先处理平台侧限制。App 不一定有额外通知，这些错误不能单独证明账号被封禁。 |
 | 手机已确认，但跳转或账号确认失败 | 确认使用当前兼容版本，稍后重新扫码；持续失败时记录提示、错误码和时间。BN 不会仅凭手机确认状态保存一个未核实的账号。 |
@@ -90,7 +90,7 @@ vp run -F @bilibili-notify/extension-douyin build
 vp exec node scripts/pack-extension.mjs --id douyin
 ```
 
-当前清单对应 `dist/douyin-0.1.0-alpha.0.zip`，在拓展页通过「装拓展」上传并启用。构建和打包不会自动安装，也不会发布到市场。模块、接口、回归与发布细节见[维护指南](https://github.com/Akokk0/bilibili-notify/blob/dev/extensions/douyin/DEVELOPMENT.md)；官方发行沿[拓展市场流程](https://github.com/Akokk0/bilibili-notify/blob/dev/docs/agents/extension-marketplace.md)。
+当前清单对应 `dist/douyin-0.1.0-alpha.1.zip`，在拓展页通过「装拓展」上传并启用。构建和打包不会自动安装，也不会发布到市场。模块、接口、回归与发布细节见[维护指南](https://github.com/Akokk0/bilibili-notify/blob/dev/extensions/douyin/DEVELOPMENT.md)；官方发行沿[拓展市场流程](https://github.com/Akokk0/bilibili-notify/blob/dev/docs/agents/extension-marketplace.md)。
 
 早期仓外验证工程使用 ID `akokko.douyin`。订阅、凭据、历史和统计按来源身份隔离；安装官方版不会自动迁移或覆盖这些数据。已有仓外工程的使用者应先决定保留原来源还是另建官方来源，不能把两个 ID 当作同一个来源直接替换。
 
