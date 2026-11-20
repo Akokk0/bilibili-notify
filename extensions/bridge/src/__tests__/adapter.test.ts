@@ -414,6 +414,39 @@ describe("桥 adapter", () => {
 		});
 	});
 
+	it("反代改写 Host 时，图片推送和测试转发用接入设置的取图地址", async () => {
+		const h = harness(session({ origin: "http://bn-internal:8787" }));
+		const image = { buffer: Buffer.from([1]), mime: "image/png" } as const;
+		h.setLinks([link({ publicOrigin: "https://bn.example.com/" })]);
+
+		await h.adapter.send(connection(), target(), { kind: "image", image });
+		expect(h.lastRequest().message).toMatchObject({
+			url: "https://bn.example.com/ext/bridge/blob/blob1",
+		});
+		expect(
+			await h.adapter.createTestPayload?.(connection(), target(), "forward", {
+				text: "BN",
+				image,
+				secondImage: image,
+				audio: { buffer: Buffer.alloc(0), mime: "audio/silk" },
+			}),
+		).toMatchObject({
+			ok: true,
+			payload: {
+				images: [
+					{ url: "https://bn.example.com/ext/bridge/blob/blob2" },
+					{ url: "https://bn.example.com/ext/bridge/blob/blob3" },
+				],
+			},
+		});
+
+		h.setLinks([link({ publicOrigin: "" })]);
+		await h.adapter.send(connection(), target(), { kind: "image", image });
+		expect(h.lastRequest().message).toMatchObject({
+			url: "http://bn-internal:8787/ext/bridge/blob/blob4",
+		});
+	});
+
 	it("composite:四种段都过得去,图那一段也换 URL", async () => {
 		const h = harness();
 		await h.adapter.send(connection(), target(), {

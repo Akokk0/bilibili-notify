@@ -98,6 +98,10 @@
 							"label": "名前",
 							"placeholder": "例: 自宅の koishi"
 						},
+						"publicOrigin": {
+							"label": "画像の取得アドレス",
+							"description": "リバースプロキシが Host を書き換える場合は、プラグインからアクセスできる BN のアドレスを入力してください。空欄の場合はハンドシェイク時のアドレスを使います。"
+						},
 						"enabled": {
 							"label": "有効"
 						},

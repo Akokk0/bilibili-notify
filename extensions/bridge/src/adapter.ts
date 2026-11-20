@@ -55,9 +55,7 @@ export interface BridgeAdapterOptions {
 	/**
 	 * 图片仓库 —— 只用得着「存进去」那一半(取图是路由的事)。
 	 *
-	 * ⚠️ 拼出来的 URL **只保证桥自己可达**:桥要把图交给平台去拉必须先自己下载(协议
-	 * 文档 §9 那条大写的警告)。BN 常在 NAS 上,外网进不来,而平台拉不到是**静默失败**。
-	 * 所以 URL 拿的是**那条桥自己连进来时用的地址**({@link BridgeSession.origin})。
+	 * 桥用这条接入配置的取图地址，或从握手请求推断的地址下载图片（协议 §9）。
 	 */
 	blobs: Pick<BridgeBlobStore, "put">;
 }
@@ -84,6 +82,7 @@ type Resolved = Result<{
 	bot: BridgeBot;
 	destination: SessionDestination;
 	session: BridgeSession;
+	blobUrl: BlobUrl;
 }>;
 
 /** 段的判别键内部叫 `kind`,帧里叫 `type`(线上的名字不随内部改),逐种写出来。 */
@@ -224,9 +223,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		const session = server.getSession(link.id);
 		if (!session) return fail("unavailable", t("error.linkDisconnected", { name: link.name }));
 		const bot = session.bots.find((candidate) => candidate.botId === settings.botId);
+		if (!bot) return fail("unavailable", t("error.botMissing", { botId: settings.botId }));
 		if (bot.platform !== mine.platform)
 			return fail("not_configured", t("error.botPlatformChanged"));
-		if (!bot) return fail("unavailable", t("error.botMissing", { botId: settings.botId }));
 		return ok({ connection: mine, link, session, bot });
 	}
 
@@ -235,7 +234,10 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		const located = locate(connection);
 		if (!located.ok) return located;
 		if (destination.kind !== "session") return fail("invalid", t("error.sessionOnly"));
-		return ok({ bot: located.bot, destination, session: located.session });
+		const { bot, link, session } = located;
+		const origin = link.publicOrigin ? new URL(link.publicOrigin).origin : session.origin;
+		const blobUrl: BlobUrl = (buffer, mime) => `${origin}${blobPrefix}/${blobs.put(buffer, mime)}`;
+		return ok({ bot, destination, session, blobUrl });
 	}
 
 	/**
@@ -357,7 +359,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 							kind: "image-group",
 							mergeForward: true,
 							images: [samples.image, samples.secondImage].map((image) => ({
-								url: `${resolved.session.origin}${blobPrefix}/${blobs.put(image.buffer, image.mime)}`,
+								url: resolved.blobUrl(image.buffer, image.mime),
 							})),
 						},
 					});
@@ -385,14 +387,14 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 				const settings = settingsOf(candidate);
 				return settings?.link === session.linkId && settings.botId === frame.botId;
 			});
-			// 只有绑成了连接的 bot 收到的消息才归 BN:没绑的 bot 在 BN 眼里不存在,它收到
-			// 的指令也没有一条连接能拿来回。记 debug 不记 warn —— 桥驮上来的每条都会经这儿。
 			// 名单可能晚于第一条消息。没有名单佐证时，只能使用唯一的绑定。
 			const bound = bot
 				? bindings.find((candidate) => candidate.platform === bot.platform)
 				: bindings.length === 1
 					? bindings[0]
 					: undefined;
+			// 只有绑成了连接的 bot 收到的消息才归 BN:没绑的 bot 在 BN 眼里不存在,它收到
+			// 的指令也没有一条连接能拿来回。记 debug 不记 warn —— 桥驮上来的每条都会经这儿。
 			if (!bound || bound.platform !== frame.platform) {
 				ctx.logger.debug(t("log.unboundInbound"), {
 					event: "inbound.unbound",
@@ -439,9 +441,6 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 			if (!resolved.ok) return resolved;
 			if (payload.kind === "markdown" && resolved.bot.capabilities.markdown !== "supported")
 				return fail("unsupported", t("capability.markdownUnconfirmed"));
-			// 取图 URL 拿**这条桥自己连进来时用的地址**拼 —— BN 猜不出别人从哪儿找得到它。
-			const blobUrl: BlobUrl = (buffer, mime) =>
-				`${resolved.session.origin}${blobPrefix}/${blobs.put(buffer, mime)}`;
 			// 拿不准就别发星号:只有明确报了 `supported` 才原样发(决策 32)。
 			const plain: PlainText =
 				resolved.bot.capabilities.markdown === "supported" ? (text) => text : stripMarkdown;
@@ -453,7 +452,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 					address: resolved.destination.address,
 					parentAddress: resolved.destination.parentAddress,
 				},
-				message: toBridgeMessage(payload, blobUrl, plain),
+				message: toBridgeMessage(payload, resolved.blobUrl, plain),
 			};
 			const outcome = await server.send(resolved.session.linkId, request);
 			return outcome.ok ? ok({ latencyMs: Date.now() - t0 }) : outcome;

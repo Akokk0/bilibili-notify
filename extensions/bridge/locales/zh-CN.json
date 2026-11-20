@@ -98,6 +98,10 @@
 							"label": "名字",
 							"placeholder": "比如「家里那台 koishi」"
 						},
+						"publicOrigin": {
+							"label": "取图地址",
+							"description": "反向代理改写 Host 时，填桥接插件能访问的 BN 地址。留空则沿用握手请求的地址。"
+						},
 						"enabled": {
 							"label": "启用"
 						},

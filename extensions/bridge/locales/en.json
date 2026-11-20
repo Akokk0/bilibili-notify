@@ -99,6 +99,10 @@
 							"label": "Name",
 							"placeholder": "For example: Home koishi"
 						},
+						"publicOrigin": {
+							"label": "Image download address",
+							"description": "If the reverse proxy rewrites Host, enter the BN address the bridge plugin can reach. Leave blank to use the address from the handshake."
+						},
 						"enabled": {
 							"label": "Enabled"
 						},

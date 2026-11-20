@@ -130,11 +130,8 @@ export interface BridgeSession {
 	readonly bots: readonly BridgeBot[];
 	readonly connectedAt: number;
 	/**
-	 * **这条桥自己连进来时用的地址**,形如 `http://192.168.1.5:8787`。
-	 *
-	 * 取图 URL 拿它拼。协议里那句「这条 URL 只保证桥自己可达」于是不再靠谁记得配对:
-	 * 地址就是桥刚刚成功连到的那个,可达是结构上成立的。BN 自己**不知道**别人从哪个
-	 * 地址找得到它(NAS / 反代 / 桌面壳各不相同),猜一个只会猜错。
+	 * 由握手请求推断的 BN 地址，形如 `http://192.168.1.5:8787`。
+	 * 未单独配置取图地址时使用它。
 	 */
 	readonly origin: string;
 	/**
@@ -288,14 +285,10 @@ function readBearerToken(req: IncomingMessage): string | null {
 }
 
 /**
- * 这条桥**是从哪个地址连到我们的** —— 取图 URL 就拿它拼。
+ * 从握手推断这条桥的默认取图地址。
  *
- * BN 自己不知道别人从哪儿找得到它:NAS、反代、桌面壳、Docker 端口映射各不相同,猜一个
- * 只会猜错,而猜错的症状是「群里那条消息没有图」且**一声不吭**(平台去拉图失败是静默的)。
- * `Host` 头是桥刚刚成功连上时用的那个地址,所以它是唯一一个**已被证实可达**的答案。
- *
- * 协议(RFC 6455 / HTTP/1.1)要求握手带 `Host`;真缺了就退到这条 socket 自己的本地地址,
- * 总比给一条拼不出来的 URL 强。反代后面看 `X-Forwarded-Proto` 决定 http 还是 https。
+ * 优先用 `Host`，缺省时取 socket 本地地址。反代可通过 `X-Forwarded-Proto` 提供原协议。
+ * 反代改写 `Host` 的部署可在接入设置中指定插件实际能访问的取图地址。
  */
 export function bridgeOrigin(req: IncomingMessage): string {
 	const forwarded = req.headers["x-forwarded-proto"];

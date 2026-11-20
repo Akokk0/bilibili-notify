@@ -32,19 +32,38 @@ describe("设置项从规则导出", () => {
 		expect(entry.connectionSettingsSchema).toBe(BridgeConnectionSettingsSchema);
 	});
 
-	it("包里的清单带着接入名单那张表:四栏按规则的键排,BN 生成的 id 不出栏", async () => {
+	it("包里的清单带着接入名单，取图地址可选，BN 生成的 id 不出栏", async () => {
 		const [links] = (await builtManifest()).settings?.fields ?? [];
 		expect(links).toMatchObject({ key: "links", type: "list" });
 		expect(links?.fields?.map((f) => [f.key, f.type, f.required ?? f.default])).toEqual([
 			["bridgeKind", "enum", true],
 			["name", "string", true],
 			["token", "string", ""],
+			["publicOrigin", "string", undefined],
 			["enabled", "boolean", true],
 		]);
 		expect(links?.fields?.[0]?.options?.map((o) => [o.value, o.label])).toEqual([
 			["koishi", "koishi"],
 			["astrbot", "AstrBot"],
 		]);
+	});
+
+	it("取图地址可留空，只接受 HTTP(S) 源地址", () => {
+		const link = { id: "home", name: "Home", bridgeKind: "koishi" };
+		for (const publicOrigin of [undefined, "", "https://bn.example.com/", "http://[::1]:8787"])
+			expect(BridgeSettingsSchema.safeParse({ links: [{ ...link, publicOrigin }] }).success).toBe(
+				true,
+			);
+		for (const publicOrigin of [
+			"ws://bn.example.com",
+			"https://user:pass@bn.example.com",
+			"https://bn.example.com/ext/bridge",
+			"https://bn.example.com?x=1",
+			"https://bn.example.com/#token",
+		])
+			expect(BridgeSettingsSchema.safeParse({ links: [{ ...link, publicOrigin }] }).success).toBe(
+				false,
+			);
 	});
 
 	it("连接没有一栏是人填的(从 bot 里挑),包里的清单也就不写连接配置项", async () => {

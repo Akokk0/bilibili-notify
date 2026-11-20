@@ -98,6 +98,10 @@
 							"label": "名稱",
 							"placeholder": "例如「家中的 koishi」"
 						},
+						"publicOrigin": {
+							"label": "取圖位址",
+							"description": "反向代理改寫 Host 時，請填橋接外掛能存取的 BN 位址。留空則沿用握手請求的位址。"
+						},
 						"enabled": {
 							"label": "啟用"
 						},
