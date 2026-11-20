@@ -7,7 +7,7 @@
 
 import type { SourcesResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
@@ -42,7 +42,7 @@ const SOURCES: SourcesResponse = {
 			status: "running",
 			descriptor: {
 				label: "Library",
-				supportedFeatures: ["membership"],
+				supportedFeatures: ["post", "liveStart", "superchat", "membership"],
 				membershipPrograms: [
 					{
 						id: "readers",
@@ -402,7 +402,7 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 		},
 	);
 
-	it("默认选择首个在运行且可枚举的体系，跳过前面的 custom 与停用来源", async () => {
+	it("切换预览来源后使用该来源的可枚举体系，停用来源不参与选择", async () => {
 		vi.mocked(api.get).mockImplementation(async (url) => {
 			if (url === "/api/sources")
 				return {
@@ -422,6 +422,7 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 							status: "disabled",
 							descriptor: {
 								...SOURCES.sources[0].descriptor,
+								label: "Stopped",
 								membershipPrograms: [
 									{
 										id: "stopped",
@@ -438,6 +439,11 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 			return { core: GLOBALS };
 		});
 		renderCards();
+		const picker = within(await screen.findByRole("group", { name: "预览来源" }));
+		expect(picker.getByRole("button", { name: "Custom", pressed: true })).toBeTruthy();
+		expect(picker.queryByRole("button", { name: /Stopped/i })).toBeNull();
+		expect(previewBodies("membership")).toEqual([]);
+		fireEvent.click(picker.getByRole("button", { name: "Library" }));
 		await waitFor(() =>
 			expect(previewBodies("membership").at(-1)?.content).toMatchObject({
 				program: "readers",
