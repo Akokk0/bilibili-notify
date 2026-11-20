@@ -15,6 +15,7 @@ import type {
 	HistoryResponse,
 	LiveListeningEntry,
 	SourceAuthResponse,
+	SourcesResponse,
 	StatsOverviewResponse,
 	SubscriptionView,
 } from "@bilibili-notify/contract";
@@ -371,6 +372,10 @@ afterAll(async () => {
 });
 
 it("官方抖音包解析博主、同步资料，再把图文、视频和开下播送到所选目标并计入历史统计", async () => {
+	const { sources } = await api<SourcesResponse>("/api/sources");
+	expect(sources.find((source) => source.key === "douyin")?.descriptor).toMatchObject({
+		supportedExtras: ["atAllPost", "atAllLiveStart"],
+	});
 	const authPath = "/api/sources/douyin/auth";
 	expect((await api<SourceAuthResponse>(authPath, "POST")).state.status).toBe("awaiting-scan");
 	await vi.waitFor(

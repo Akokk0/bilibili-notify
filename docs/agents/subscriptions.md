@@ -96,7 +96,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 - `subscriptionColor`：**颜色跟着人走**，经公共身份取色函数生成；删了再加颜色不变。历史行 `historyRowColor` 同一条规矩。
 - 历史与时间轴：非空事件快照 → 非空资料名 → 公共身份标签；合法名字保留原有空格。
 - 平台名与徽章：`apps/web/src/pages/subscriptions/subscription-source.ts` 的 `subscriptionPlatformOf` 统一投影 `GET /api/sources` 的当前描述符与状态。来源表只有一项且包含此来源时不画徽章；多项、表未知或条目缺失时画。缺条目明确显示来源未安装；表尚未知时不猜成未安装。能力只取 `supportedFeatures` / `supportedExtras` 的声明，缺省为空；`has` 缺省不猜可用。
-- `GET /api/sources` 的 `SourceEntry.descriptor` 下发完整 `SourceDescriptor`，包括会员体系 `membershipPrograms`（体系 id、档位 key 与实际 rank、图片引用或 URL）和可选附加项 `supportedExtras`。这是公共读口；拓展清单当前仍拒绝这两项，不因读口变宽而放宽清单契约。
+- `GET /api/sources` 的 `SourceEntry.descriptor` 下发完整 `SourceDescriptor`，包括会员体系 `membershipPrograms`（体系 id、档位 key 与实际 rank、图片引用或 URL）和可选附加项 `supportedExtras`。拓展清单仍不接受这两项。宿主按拓展声明的作品和开播能力提供对应的 @全体 开关，投递时读取这条订阅及目标的设置和机器人的发送能力。
 - 规则、卡片与订阅弹层按当前描述符露能力。会员以 `program.id` 与 `tier.key` 两层索引，固定档位按实际 rank 排序，最低档无需从 1 开始；`custom` 与空档位只编辑体系默认文案及图片，不造档位门槛。卡片会员预览要求来源运行中且有可枚举档位，全家福跳过不可用的会员卡后继续其他卡种。
 - 来源或语言刷新只更新显示与能力，不清未保存草稿；隐藏的未知体系、档位、附加项与路由原样保留。显式删除使用 JSON Merge Patch 的 `null`，省略表示不改。CSV 按实际导出行涉及的来源选叫法：单来源取描述符，混合来源用中性列名。
 

@@ -204,6 +204,7 @@ describe("createExtensionSource:成员与描述符", () => {
 			postNoun: "作品",
 			externalIdRegex: "[a-z0-9-]+",
 			supportedFeatures: ["post", "liveStart", "liveEnd"],
+			supportedExtras: ["atAllPost", "atAllLiveStart"],
 		});
 	});
 
