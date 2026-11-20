@@ -115,9 +115,15 @@ full 镜像内置 chromium,出图峰值不低,建议宿主可用内存 ≥ 1GB;�
 
 不想碰 Docker 的话,[Releases](https://github.com/Akokk0/bilibili-notify/releases) 里有打包好的桌面应用:macOS(Apple Silicon,`.dmg`)与 Windows x64(`.exe` 安装包 / 免安装 zip)。装完直接开,面板与功能同 Docker 版;卡片渲染用你本机装的 Chrome / Edge。
 
-### npm 成品入口（发行准备中）
+### npm 成品入口（1.0 预览版）
 
-`@bilibili-notify/bn` 的包内宿主、`web` / `dev` 入口及发行流程已实现，本体 npm 包尚未发布。发布后的用法、数据目录和本仓构建方式见 [BN 启动器说明](./tools/bn-cli/README.md)。
+`@bilibili-notify/bn` 的 1.0 预览版已发布到 npm 的 `alpha` 渠道。需要 Node.js 24.15.0 或更高版本。运行以下命令启动 Web 面板：
+
+```bash
+npx @bilibili-notify/bn@alpha web
+```
+
+npm 包自带宿主，首次启动无需从 GitHub 下载 BN 本体。拓展开发、数据目录和本仓构建方式见 [BN 启动器说明](./tools/bn-cli/README.md)。
 
 ## 仓库结构
 
