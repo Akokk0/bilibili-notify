@@ -149,7 +149,7 @@ function remapTagIds(
 ): Subscription[] {
 	return subs.map((sub) => ({
 		...sub,
-		tagIds: [...new Set(sub.tagIds.map((id) => idMap.get(id) ?? id))],
+		tagIds: [...new Set((sub.tagIds ?? []).map((id) => idMap.get(id) ?? id))],
 	}));
 }
 

@@ -1134,6 +1134,7 @@
 	"service.integration-store.files.text.1": "state.jsonを書き込めませんでした：{value0}",
 	"service.integration-store.files.text.2": "マスターキーを取得できませんでした：{value0}",
 	"service.integration-store.files.text.3": "secrets.encを書き込めませんでした：{value0}",
+	"backup.envelope.invalidContent": "バックアップのフィールド {field} の形式が正しくありません。",
 	"backup.envelope.invalidFormat": "これはbilibili-notifyからエクスポートされたバックアップファイルではありません。",
 	"backup.envelope.invalidKind": "バックアップの種類を認識できません（fullとsanitizedのみ対応しています）。",
 	"backup.envelope.missingVersion": "バックアップに形式バージョン（schemaVersion）がありません。",

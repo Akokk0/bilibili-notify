@@ -1140,6 +1140,7 @@
 	"service.integration-store.files.text.1": "Could not write state.json: {value0}",
 	"service.integration-store.files.text.2": "Could not obtain the master key: {value0}",
 	"service.integration-store.files.text.3": "Could not write secrets.enc: {value0}",
+	"backup.envelope.invalidContent": "Invalid backup field {field}.",
 	"backup.envelope.invalidFormat": "This is not a backup file exported by bilibili-notify.",
 	"backup.envelope.invalidKind": "The backup kind is not recognized (only full and sanitized are supported).",
 	"backup.envelope.missingVersion": "The backup is missing its format version (schemaVersion).",

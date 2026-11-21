@@ -5,6 +5,9 @@ import type {
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
+import { IdentitySchema } from "@bilibili-notify/internal";
+import { isGcmBlob } from "@bilibili-notify/storage";
+import { z } from "zod";
 import { t } from "../i18n/index.js";
 import type { EncryptedSecrets } from "./crypto.js";
 import { BackupRejectedError } from "./rejected-error.js";
@@ -139,6 +142,28 @@ export function buildBackup(input: BuildBackupOptions): BackupEnvelope {
 	return env;
 }
 
+// The planner reads these fields before ConfigStore validates the merged configuration.
+const objectSection = z.record(z.string(), z.unknown());
+const row = z.object({ id: z.string().min(1) });
+const content = z.object({
+	createdAt: z.string().min(1),
+	sections: z.object({
+		globals: objectSection.optional(),
+		integrations: objectSection.optional(),
+		extensionSettings: objectSection.optional(),
+		subscriptions: z
+			.array(row.extend({ identity: IdentitySchema, tagIds: z.array(z.string()).optional() }))
+			.optional(),
+		subscriptionTags: z.array(row.extend({ name: z.string() })).optional(),
+		connections: z.array(row).optional(),
+		targets: z.array(row).optional(),
+	}),
+});
+const encrypted = z.object({
+	kdf: z.object({ algo: z.literal("scrypt"), salt: z.string() }),
+	cipher: z.custom(isGcmBlob),
+});
+
 /**
  * Validate an already-parsed backup object — the import trust boundary. Throws
  * a {@link BackupRejectedError} (自带码、message 是给人看的中文)on anything that is
@@ -185,6 +210,17 @@ export function validateBackup(raw: unknown): BackupEnvelope {
 				version: o.schemaVersion,
 				current: BACKUP_SCHEMA_VERSION,
 			}),
+		);
+	}
+	const checked = content.safeParse(o);
+	if (!checked.success) {
+		const field = checked.error.issues[0]?.path.join(".") || "sections";
+		throw new BackupRejectedError("invalid", t("backup.envelope.invalidContent", { field }));
+	}
+	if (o.kind === "full" ? !encrypted.safeParse(o.secrets).success : o.secrets !== undefined) {
+		throw new BackupRejectedError(
+			"invalid",
+			t("backup.envelope.invalidContent", { field: "secrets" }),
 		);
 	}
 	return o as BackupEnvelope;

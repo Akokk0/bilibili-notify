@@ -198,6 +198,32 @@ describe("backup route", () => {
 		expect(service.importBackup).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }));
 	});
 
+	it.each([
+		{ sections: undefined },
+		{ sections: [] },
+		{ sections: { subscriptions: {} } },
+		{ sections: { subscriptions: [null] } },
+		{ sections: { subscriptions: [{ id: "s", identity: {}, tagIds: "tag" }] } },
+		{ sections: { subscriptionTags: [null] } },
+		{ sections: { targets: "all" } },
+		{ sections: { globals: [] } },
+		{ kind: "full", secrets: { kdf: "invalid" } },
+	])("rejects malformed current backup contents before import %#", async (fields) => {
+		const service = fakeService();
+		const app = createSystemBackupRoute({ service });
+		for (const dryRun of [true, false]) {
+			const res = await post(app, "/import", {
+				backup: { ...envelope("sanitized"), ...fields },
+				pin: "1234",
+				mode: "overwrite",
+				dryRun,
+			});
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({ code: "invalid" });
+		}
+		expect(service.importBackup).not.toHaveBeenCalled();
+	});
+
 	it("POST /import rejects a non-backup document with 400 (never reaches the service)", async () => {
 		const service = fakeService();
 		const app = createSystemBackupRoute({ service });

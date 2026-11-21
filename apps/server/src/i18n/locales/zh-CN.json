@@ -386,6 +386,7 @@
 	"roast.generate.noData": "该创作者暂无统计数据",
 	"roast.generate.parseFailed": "模型的回复解析失败,请重试",
 	"roast.generate.aiErrorNoReason": "模型没有说明原因",
+	"backup.envelope.invalidContent": "备份字段 {field} 的格式有误。",
 	"backup.envelope.invalidFormat": "这不是 bilibili-notify 导出的备份文件",
 	"backup.envelope.invalidKind": "备份文件里的类型不认识（只有 full 与 sanitized 两种）",
 	"backup.envelope.missingVersion": "备份文件缺少格式版本号（schemaVersion）",

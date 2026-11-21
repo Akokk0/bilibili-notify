@@ -1134,6 +1134,7 @@
 	"service.integration-store.files.text.1": "無法寫入 state.json：{value0}",
 	"service.integration-store.files.text.2": "無法取得主金鑰：{value0}",
 	"service.integration-store.files.text.3": "無法寫入 secrets.enc：{value0}",
+	"backup.envelope.invalidContent": "備份欄位 {field} 的格式有誤。",
 	"backup.envelope.invalidFormat": "這不是 bilibili-notify 匯出的備份檔案。",
 	"backup.envelope.invalidKind": "無法辨識備份類型（只支援 full 與 sanitized）。",
 	"backup.envelope.missingVersion": "備份檔案缺少格式版本號（schemaVersion）。",
