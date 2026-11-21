@@ -148,14 +148,27 @@ jobs:
 
       # 载荷先于渠道清单上传(下面两步):清单一旦发布就有客户端来拉,它指的包必须已经在。
       - name: Upload payload + manifest to the version release
+        id: published
         if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           VERSION: ${{ steps.ver.outputs.value }}
-        run: |
-          set -euo pipefail
-          gh release upload "v${VERSION}" \
-            "${{ steps.payload.outputs.path }}" dist/manifest.sig.json --clobber
+          PAYLOAD: ${{ steps.payload.outputs.path }}
+          MANIFEST: dist/manifest.sig.json
+        run: bash .github/scripts/update-payload/publish-version-payload.sh
+
+      # Re-sign the archived bytes for the rolling channel. A recall may have been
+      # issued after the version was archived but before its channel upload succeeded.
+      - name: Sign channel manifest
+        if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
+        env:
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          VERSION: ${{ steps.ver.outputs.value }}
+          REPO: ${{ github.repository }}
+          SHA256: ${{ steps.published.outputs.sha256 }}
+          SIZE: ${{ steps.published.outputs.size }}
+          NOTES: ${{ steps.notes.outputs.value }}
+        run: bash .github/scripts/update-payload/sign-payload-manifest.sh
 
       # 正式版同时刷 stable 与 alpha —— 预发布渠道的用户也该拿到更新的正式版,
       # 否则他们会被卡在某个旧 alpha 上再也升不动。预发布只刷 alpha。
