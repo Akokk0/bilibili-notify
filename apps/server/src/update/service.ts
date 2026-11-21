@@ -144,6 +144,22 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 	 */
 	let downloadJob: Promise<UpdateStatus> | null = null;
 
+	// When both ordinary boot choices are unusable, a retained version above the repair
+	// would win the normal highest-version selection.
+	function needsRepairPreference(view: BootView, target: string): boolean {
+		return (
+			view.preinstalledRevoked &&
+			view.unbootable.includes(currentVersion) &&
+			view.installed.some(
+				(version) => !view.unbootable.includes(version) && compareVersions(version, target) > 0,
+			)
+		);
+	}
+
+	function minimumPayloadVersion(preinstalledRevoked: boolean): string | undefined {
+		return input.canBootBelowRevokedBase && preinstalledRevoked ? undefined : preinstalledVersion;
+	}
+
 	/**
 	 * 退一步会退到哪:装着的版本里比当前旧的那个最高的;都没有就退回镜像自带那版。
 	 * 已经在镜像那版上就是没得退 —— 与其给一个按了没反应的按钮,不如让它是灰的。
@@ -152,15 +168,12 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 	 * 都不能当目标,否则面板说「已回退,重启生效」,重启后选版把钉子当没钉过,版本纹丝不动。
 	 * 所以判死名单与已装列表都取自**选版那边给出的同一幅快照**(`readBootView`)。
 	 */
-	function rollbackTarget({ unbootable, installed }: BootView): string | null {
+	function rollbackTarget({ unbootable, installed, preinstalledRevoked }: BootView): string | null {
+		const floor = minimumPayloadVersion(preinstalledRevoked);
 		let best: string | null = null;
 		for (const candidate of installed) {
 			if (compareVersions(candidate, currentVersion) >= 0) continue;
-			if (
-				(!input.canBootBelowRevokedBase || !unbootable.includes(preinstalledVersion)) &&
-				compareVersions(candidate, preinstalledVersion) < 0
-			)
-				continue;
+			if (floor && compareVersions(candidate, floor) < 0) continue;
 			if (unbootable.includes(candidate)) continue;
 			if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 		}
@@ -286,15 +299,17 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 		// 装上新版本 = 用户明确要往前走,之前那次回退的钉子必须拔掉。留着的话他点了
 		// 「立即更新」、重启、版本号纹丝不动,而界面上一切正常 —— 最难查的一类症状。
 		const beforeRestart = readBootView({ versionsRoot, preinstalledVersion });
-		clearPinnedVersion({ versionsRoot });
+		clearPinnedVersion({
+			versionsRoot,
+			repairTarget: needsRepairPreference(beforeRestart, manifest.version)
+				? manifest.version
+				: undefined,
+		});
 
 		// 平常留正在跑的版本和刚装的版本。两条退路都失效时，保留其他候选，
 		// 直到修复版真能启动；仅凭版本号无法判断剩余哪一份起得来。
 		const keep = [currentVersion, manifest.version];
-		if (
-			beforeRestart.unbootable.includes(currentVersion) &&
-			beforeRestart.unbootable.includes(preinstalledVersion)
-		) {
+		if (beforeRestart.unbootable.includes(currentVersion) && beforeRestart.preinstalledRevoked) {
 			keep.push(
 				...beforeRestart.installed.filter((version) => !beforeRestart.unbootable.includes(version)),
 			);
@@ -453,7 +468,7 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 			knownRevoked: view.revoked,
 			runtime: {
 				nodeMajor,
-				minimumPayloadVersion: input.canBootBelowRevokedBase ? undefined : preinstalledVersion,
+				minimumPayloadVersion: minimumPayloadVersion(view.preinstalledRevoked),
 			},
 			allowPrerelease: settings.channel === "prerelease",
 		});
@@ -463,7 +478,10 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 			state = { phase: "up-to-date", checkedAt: new Date().toISOString() };
 			return status();
 		}
-		if (decision.kind === "needs-image-pull") {
+		if (
+			decision.kind === "needs-image-pull" ||
+			(!input.canBootBelowRevokedBase && needsRepairPreference(view, manifest.version))
+		) {
 			// 载荷能比镜像新,但 Node / chromium / 字体全来自镜像。下下来也跑不起来,
 			// 所以连下都不下,直接告诉用户这一版得重拉镜像。
 			pending = null;
