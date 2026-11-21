@@ -23,16 +23,19 @@ jobs:
       actions: read
     outputs:
       passed: ${{ steps.proof.outputs.passed }}
+      types_passed: ${{ steps.proof.outputs.types_passed }}
     steps:
       - uses: actions/checkout@v6
         if: github.event_name != 'pull_request'
         with:
           persist-credentials: false
+          fetch-depth: 2
       - name: Look up a verified gate for this commit
         id: proof
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          GATE_DEV_BASE: ${{ github.ref == 'refs/heads/dev' && github.event.before || '' }}
         run: node scripts/find-passed-gate.mjs "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
 
   build:
@@ -88,7 +91,7 @@ jobs:
         run: tar -xf "$RUNNER_TEMP/workspace-build.tar"
 
       - name: Typecheck
-        if: matrix.shard == 1
+        if: matrix.shard == 1 && needs.lookup.outputs.types_passed != 'true'
         run: vpr typecheck:after-build
 
       - name: Test

@@ -27,6 +27,8 @@ CI、本体、开发工具和官方拓展发行都调用 `.github/workflows/gate
 
 CI 测试按 Vitest 文件分片并行，一次 Biome 检查和全仓构建后，四个分片从同一运行的归档还原库、面板、拓展和工具，仅分到仓外离线安装测试的分片预热依赖缓存。面板在构建时已由 `tsc -b` 检查，第一组运行 `typecheck:after-build` 检查其余包，并运行 Arabic locale 回归，所有组成功才通过统一的 `gate`。本地用 `vp run test` 跑全集，复现某组用 `vp run test --shard=1/4`，分片总数以 `gate.yml` 的矩阵为准。
 
+dev 推送只修改根 `README.md`，且直接父提交已有成功门禁时，类型检查复用父提交的结果。文档守卫、构建、四个测试分片和 Arabic locale 回归仍运行。
+
 本地全量门禁和 CI 都跳过 365 天合成数据的迁移耗时测试。需要重新计时时手动运行 `vp run test:migration-timing`。迁移正确性测试照常随全量门禁运行。
 
 一个**别踩**的点:
