@@ -1,9 +1,9 @@
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, unlink } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { createSerialQueue } from "@bilibili-notify/internal";
-import { appendJsonl, isLeftoverName } from "@bilibili-notify/storage";
+import { appendJsonl, listJsonlKeys } from "@bilibili-notify/storage";
 import { dataPath } from "../runtime/roots.js";
 
 export interface VideoViewsSample {
@@ -70,16 +70,7 @@ export function createVideoViewsStore(opts: { dataRoot: string }): VideoViewsSto
 		drop: (key) => writes.run("samples", () => remove(key)),
 		clear: () =>
 			writes.run("samples", async () => {
-				let names: string[];
-				try {
-					names = await readdir(root);
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-					throw error;
-				}
-				for (const name of names) {
-					if (name.endsWith(".jsonl") && !isLeftoverName(name)) await remove(name.slice(0, -6));
-				}
+				for (const key of await listJsonlKeys(root)) await remove(key);
 			}),
 		close: () => writes.close(),
 	};

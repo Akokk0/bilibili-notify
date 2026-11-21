@@ -139,9 +139,11 @@ describe("compact", () => {
 describe("keys", () => {
 	it("列出盘上的 `.jsonl` 文件的键,别的文件不算", async () => {
 		await writeFile(fileOf("b"), "");
-		await writeFile(fileOf("a"), "");
+		await writeFile(fileOf("a.1"), "");
+		await writeFile(fileOf("a.bn-tmp.1.ab"), "");
+		await writeFile(fileOf("a.bn-old.1.ab"), "");
 		await writeFile(join(dataDir, ...FOLLOWERS_DIR, "readme.txt"), "");
-		expect((await store.keys()).sort()).toEqual(["a", "b"]);
+		expect((await store.keys()).sort()).toEqual(["a.1", "b"]);
 	});
 
 	it("目录还没建:空数组", async () => {

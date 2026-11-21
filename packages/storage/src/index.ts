@@ -8,6 +8,7 @@ export {
 	syncDirectory,
 } from "./atomic-file";
 export { copyFileAtomic } from "./copy-file";
+export { listJsonlKeys } from "./jsonl-keys";
 export {
 	createKeyProvider,
 	FileKeyProvider,
