@@ -589,7 +589,7 @@ describe("SkinEditor", () => {
 			["zh-TW", "操作失敗：", "修改需求"],
 		] as const) {
 			act(() => i18n.set({ locale, voice: "plain" }));
-			expect(screen.getByText(failure + "Original diagnostic 原因")).toBeTruthy();
+			expect(screen.getByText(`${failure}Original diagnostic 原因`)).toBeTruthy();
 			expect((screen.getByLabelText(request) as HTMLTextAreaElement).value).toBe(
 				"Original request 原文",
 			);
