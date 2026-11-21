@@ -184,6 +184,8 @@ export interface ReadBootViewOptions {
 
 /** 下次开机时选版看到的那幅图景。 */
 export interface BootView {
+	/** Vendor recalls remain in force across update channels. */
+	revoked: readonly string[];
 	/**
 	 * 盘上现在钉着谁 —— 按**选版那一套**判定(被判死 / 目录没了 / 镜像更新了都算没钉),
 	 * 这样面板看到的和下次开机真会发生的是同一件事。
@@ -222,6 +224,7 @@ export function readBootView({ versionsRoot, preinstalledVersion }: ReadBootView
 	const state = readState(versionsRoot);
 	const installed = installedVersions(versionsRoot);
 	return {
+		revoked: state.revoked,
 		pinned: usablePin(state, installed, preinstalledVersion),
 		unbootable: unbootable(state),
 		installed,

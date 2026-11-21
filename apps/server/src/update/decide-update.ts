@@ -5,6 +5,7 @@ export interface DecideUpdateOptions {
 	/** 当前**实际生效**的版本 —— 注意不是镜像里那份,是启动选版真正加载的那份。 */
 	currentVersion: string;
 	manifest: Manifest;
+	knownRevoked?: readonly string[];
 	/** 当前**镜像/安装包**提供的运行时。载荷换得动,这个换不动。 */
 	runtime: RuntimeCapabilities;
 	/** 预发布通道。**提供,但默认关着** —— 不写就是关。 */
@@ -25,10 +26,11 @@ export type UpdateDecision =
 export function decideUpdate({
 	currentVersion,
 	manifest,
+	knownRevoked = [],
 	runtime,
 	allowPrerelease = false,
 }: DecideUpdateOptions): UpdateDecision {
-	const revoked = manifest.revoked ?? [];
+	const revoked = [...knownRevoked, ...(manifest.revoked ?? [])];
 	const isNewer = compareVersions(manifest.version, currentVersion) > 0;
 	// 正在跑的版本被撤回时,清单那版**哪怕更旧**也是目标:发出去的坏版本收不回来,已经
 	// 装上、还能正常启动的那批用户只有这一条路能被带走,而修复版未必比坏版本号大

@@ -383,8 +383,8 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 		if (revoked.length === 0) return;
 		const installed = installedVersions(versionsRoot);
 		for (const version of revoked) {
-			if (version === preinstalledVersion || version === currentVersion)
-				markVersionRevoked({ versionsRoot, version });
+			// Removing bytes is best effort. Boot eligibility must survive a busy directory.
+			markVersionRevoked({ versionsRoot, version });
 			if (version === currentVersion) continue;
 			if (!installed.includes(version)) continue;
 			removeVersionDir(versionsRoot, version);
@@ -433,10 +433,24 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 
 		const manifest = fetched.manifest;
 		rememberIssuedAt(versionsRoot, channel, manifest.issuedAt);
-		quarantineRevoked(manifest.revoked ?? []);
+		const recalls = manifest.revoked ?? [];
+		quarantineRevoked(recalls);
+		const view = readBootView({ versionsRoot, preinstalledVersion });
+		const couldStillBoot = recalls.some(
+			(version) =>
+				!view.revoked.includes(version) &&
+				(version === currentVersion ||
+					version === preinstalledVersion ||
+					view.installed.includes(version)),
+		);
+		if (couldStillBoot) {
+			pending = null;
+			return recordFailure("install_failed", manifest.releaseUrl);
+		}
 		const decision = decideUpdate({
 			currentVersion,
 			manifest,
+			knownRevoked: view.revoked,
 			runtime: {
 				nodeMajor,
 				minimumPayloadVersion: input.canBootBelowRevokedBase ? undefined : preinstalledVersion,

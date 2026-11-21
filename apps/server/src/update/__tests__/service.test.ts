@@ -1,5 +1,5 @@
 import { createHash, sign as cryptoSign, generateKeyPairSync, type KeyObject } from "node:crypto";
-import {
+import fs, {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -8,13 +8,14 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UpdateSettings } from "@bilibili-notify/internal";
 import { zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeTrackingContext, stillPending } from "../../__tests__/support/track-context.js";
-import { pinVersion } from "../select-version-for-boot.js";
+import { pinVersion, selectVersionForBoot } from "../select-version-for-boot.js";
 import { createUpdateService, type UpdateService, type UpdateStatus } from "../service.js";
 
 /**
@@ -1011,6 +1012,84 @@ describe("createUpdateService —— 清单新鲜度", () => {
 });
 
 describe("createUpdateService —— 撤回", () => {
+	it("另一个渠道仍指向盘上已撤回的版本时不会重新下载", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("1.3.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("1.2.0", zip, { revoked: ["1.3.0"] })),
+		});
+		const options = {
+			currentVersion: "1.2.0",
+			preinstalledVersion: "1.2.0",
+			trustedKeys: [key.spkiBase64],
+		};
+		const stable = makeService(options);
+		await stable.service.check();
+		const fetch = stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("1.3.0", zip)),
+			payload: zip,
+		});
+		const alpha = makeService({
+			...options,
+			root: join(stable.versionsRoot, ".."),
+			settings: { channel: "prerelease" },
+		});
+		expect((await alpha.service.check()).state.phase).toBe("up-to-date");
+		expect(payloadFetches(fetch)).toBe(0);
+	});
+
+	it("撤回登记无法写入且预装版不能删除时报告安装错误", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("1.3.0");
+		stubNetwork({
+			manifestBody: envelope(key.privateKey, manifestFor("1.3.0", zip, { revoked: ["1.2.0"] })),
+			payload: zip,
+		});
+		const { service, versionsRoot } = makeService({
+			currentVersion: "1.2.0",
+			preinstalledVersion: "1.2.0",
+			trustedKeys: [key.spkiBase64],
+		});
+		mkdirSync(join(versionsRoot, "boot-state.json"));
+		expect((await service.check()).state).toMatchObject({ phase: "error", code: "install_failed" });
+	});
+
+	it("待重启版本的目录被占用时，撤回后也不会再启动它", async () => {
+		const key = makeKey();
+		const { service, versionsRoot } = makeService({ trustedKeys: [key.spkiBase64] });
+		const zip = makePayloadZip("1.3.0");
+		stubNetwork({
+			payload: zip,
+			manifestBody: envelope(key.privateKey, manifestFor("1.3.0", zip)),
+		});
+		await service.check();
+		expect((await settled(service)).state.phase).toBe("ready");
+		const dir = join(versionsRoot, "1.3.0");
+		const remove = fs.rmSync;
+		const busy = vi.spyOn(fs, "rmSync").mockImplementation((path, options) => {
+			if (path === dir) throw Object.assign(new Error("file in use"), { code: "EBUSY" });
+			remove(path, options);
+		});
+		syncBuiltinESMExports();
+		try {
+			stubNetwork({
+				manifestBody: envelope(key.privateKey, manifestFor("0.8.0", zip, { revoked: ["1.3.0"] })),
+			});
+			expect((await service.check()).state.phase).toBe("up-to-date");
+			expect(existsSync(dir)).toBe(true);
+			expect(
+				selectVersionForBoot({
+					versionsRoot,
+					preinstalledVersion: "0.8.0",
+					preinstalledPath: "/app",
+					maxBootFailures: 3,
+				}).version,
+			).toBe("0.8.0");
+		} finally {
+			busy.mockRestore();
+			syncBuiltinESMExports();
+		}
+	});
 	it("安装替代版会保留撤回预装版以外的可用载荷", async () => {
 		const key = makeKey();
 		const zip = makePayloadZip("1.3.0");
