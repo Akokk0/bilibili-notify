@@ -15,22 +15,8 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=.github/scripts/shared/app-version-lib.sh
 source "$script_dir/app-version-lib.sh"
 
-raw="${VERSION:-}"
-if [ -z "$raw" ] && [[ "${GITHUB_REF_NAME:-}" == v* ]]; then
-	raw="${GITHUB_REF_NAME#v}"
-fi
-raw="${raw#v}"
-
-if [ -z "$raw" ]; then
-	echo "::error::app version is required: set VERSION or run on a v<VERSION> tag"
-	exit 1
-fi
-if ! is_valid_app_version "$raw"; then
-	print_invalid_app_version_error "$raw"
-	exit 1
-fi
-
-VERSION="$raw" node <<'NODE'
+resolve_app_version
+VERSION="$app_version" node <<'NODE'
 const fs = require('node:fs')
 
 const version = process.env.VERSION

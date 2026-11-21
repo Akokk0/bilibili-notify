@@ -22,42 +22,13 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=.github/scripts/shared/app-version-lib.sh
 source "$script_dir/app-version-lib.sh"
 
-raw="${VERSION:-}"
-source="VERSION"
-if [ -z "$raw" ]; then
-	ref="${GITHUB_REF_NAME:-}"
-	if [[ "$ref" == v* ]]; then
-		raw="${ref#v}"
-		source="GITHUB_REF_NAME"
-	fi
-fi
-
-# Accept either VERSION=1.2.3 or VERSION=v1.2.3 for manual convenience.
-raw="${raw#v}"
-
-if [ -z "$raw" ]; then
-	echo "::error::app version is required: set VERSION or run on a v<VERSION> tag"
-	exit 1
-fi
-
-if ! is_valid_app_version "$raw"; then
-	print_invalid_app_version_error "$raw"
-	exit 1
-fi
-
+resolve_app_version
 prerelease=false
-if [[ "$raw" == *-* ]]; then
+if [[ "$app_version" == *-* ]]; then
 	prerelease=true
 fi
 
-if [ -n "${GITHUB_OUTPUT:-}" ]; then
-	{
-		echo "value=$raw"
-		echo "prerelease=$prerelease"
-		echo "source=$source"
-	} >>"$GITHUB_OUTPUT"
-else
-	echo "value=$raw"
-	echo "prerelease=$prerelease"
-	echo "source=$source"
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+	exec >>"$GITHUB_OUTPUT"
 fi
+printf 'value=%s\nprerelease=%s\nsource=%s\n' "$app_version" "$prerelease" "$app_version_source"
