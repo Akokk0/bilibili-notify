@@ -5,6 +5,7 @@
 // 历史:hoisted 布局年代顶层 vite 槽被 koishi 控制台的 vite 5 占着,root 直接声明 vitest
 // 是让 pnpm 给它嵌套一份 vite 6 的锚点。koishi 与 hoisted 都已不在,锚点随之撤掉。
 import { configDefaults, defineConfig } from "vite-plus";
+import { PackageTestSequencer } from "./scripts/package-test-sequencer.mjs";
 import { redirectTestTmpDir } from "./scripts/test-tmpdir.mjs";
 
 // 跑测试时把这次运行的临时目录指到专属目录(跑完整个删、被打断的下次清),见 scripts/test-tmpdir.mjs。
@@ -20,5 +21,6 @@ export default defineConfig({
 		exclude: [...configDefaults.exclude, "**/.claude/**", ".bn-design/**"],
 		// 测试拦外网:连非本机地址直接报错,见 scripts/network-guard.mjs。
 		setupFiles: ["./scripts/vitest-setup.mjs"],
+		sequence: process.env.BN_PACKAGE_TEST_CACHE_SCRIPT ? { sequencer: PackageTestSequencer } : {},
 	},
 });

@@ -91,12 +91,10 @@ jobs:
         if: matrix.shard == 1
         run: vpr typecheck
 
-      - name: Prepare registry cache for offline package tests
-        run: bash .github/scripts/shared/prepare-package-test-cache.sh
-
       - name: Test
         env:
           SHARD: ${{ matrix.shard }}
+          BN_PACKAGE_TEST_CACHE_SCRIPT: .github/scripts/shared/prepare-package-test-cache.sh
         run: vp run test --shard="$SHARD/4"
 
       # 与四种面板语言均不同的默认数字/日期格式，防止遗漏 locale 又静默通过。
