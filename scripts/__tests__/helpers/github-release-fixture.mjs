@@ -39,7 +39,7 @@ export async function githubReleaseFixture() {
 				state.failure = undefined;
 				return send(503, { message: "Injected failure" });
 			}
-			const path = url.pathname.replace(/^\/repos\/owner\/tools/, "");
+			const path = url.pathname.replace(/^\/repos\/owner\/tools/i, "");
 			if (req.method === "GET" && path.startsWith("/git/ref/tags/"))
 				return send(200, { object: { type: "commit", sha: state.head } });
 			if (req.method === "GET" && path.startsWith("/releases/tags/")) {
@@ -63,7 +63,7 @@ export async function githubReleaseFixture() {
 					draft: json.draft ?? false,
 					immutable: false,
 					assets: [],
-					upload_url: `${endpoint}/repos/owner/tools/releases/${id}/assets{?name,label}`,
+					upload_url: `${endpoint}/repos/Owner/Tools/releases/${id}/assets{?name,label}`,
 				};
 				state.releases.set(id, release);
 				return send(201, release);
