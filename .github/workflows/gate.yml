@@ -35,8 +35,37 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/find-passed-gate.mjs "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
 
-  test:
+  build:
     needs: lookup
+    if: needs.lookup.outputs.passed != 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Lint (Biome)
+        run: vp exec biome ci .
+      - name: Build
+        run: vpr build
+
+      # tar 保留 npm 工具的执行位和创建器模板里的点文件。
+      - name: Archive workspace build
+        run: tar -cf "$RUNNER_TEMP/workspace-build.tar" apps/*/lib apps/web/dist packages/*/lib tools/*/lib extensions/*/dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: workspace-build-${{ github.run_id }}
+          path: ${{ runner.temp }}/workspace-build.tar
+          compression-level: 1
+          if-no-files-found: error
+          overwrite: true
+
+  test:
+    needs: [lookup, build]
     if: needs.lookup.outputs.passed != 'true'
     permissions:
       contents: read
@@ -45,34 +74,18 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
-
     steps:
       - uses: actions/checkout@v6
-
-      # Installs Vite+ (vp) globally at the version the root `vite-plus`
-      # devDependency names (setup-vp reads it by itself), the repo-pinned Node
-      # from .node-version, and runs `vp install`. On GitHub Actions CI=true →
-      # the underlying pnpm install is frozen-lockfile automatically (= old
-      # `pnpm install --frozen-lockfile`). `cache: true` keys off pnpm-lock.yaml.
-      # Every workflow pins setup-vp to an exact tag: its floating `v1` tag
-      # stopped at 1.15.0, before the install script was pinned to the requested
-      # vp version (1.18) and Windows cache links were restored correctly (1.21).
-      - name: Setup Vite+ (vp) + Node + deps
-        uses: voidzero-dev/setup-vp@v1.21.1
+      - uses: voidzero-dev/setup-vp@v1.21.1
         with:
           node-version-file: .node-version
           cache: true
-
-      - name: Lint (Biome)
-        if: matrix.shard == 1
-        run: vp exec biome ci .
-
-      # `vpr <script>` 是 vp 的 shim 简写,等价 `vp run <script>`,从 root
-      # package.json scripts 入口走。build 内部是 `pnpm -r run build`;vp 把内嵌
-      # pnpm 注入子进程 PATH 让 legacy script body 继续 work(packages/* vp pack +
-      # apps/server vp pack + apps/web Vite)。typecheck 与 test 同模式。
-      - name: Build
-        run: vpr build
+      - uses: actions/download-artifact@v8
+        with:
+          name: workspace-build-${{ github.run_id }}
+          path: ${{ runner.temp }}
+      - name: Restore workspace build
+        run: tar -xf "$RUNNER_TEMP/workspace-build.tar"
 
       - name: Typecheck
         if: matrix.shard == 1
