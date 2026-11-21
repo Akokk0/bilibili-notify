@@ -694,6 +694,32 @@ describe("DynamicPoller — 故障恢复", () => {
 		expect(b.logs.some((l) => l.msg.includes("恢复正常"))).toBe(false);
 	});
 
+	it("退避重启保留同一账号上次成功读到的关注流边界", async () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		b.engine.start();
+		try {
+			seed(b.engine, "1", 100);
+			const seen = { ...makeItem({ uid: 2, pubTs: 1000 }), id_str: "seen" };
+			const fresh = { ...makeItem({ uid: 1, pubTs: 1010 }), id_str: "fresh" };
+			b.fetchAllDynamic
+				.mockResolvedValueOnce(resp([seen]))
+				.mockResolvedValueOnce(resp([], -352, "risk"))
+				.mockResolvedValueOnce(
+					ok({ data: { items: [fresh, seen], has_more: true, offset: "old" } }),
+				)
+				.mockResolvedValue(resp([], 4101132, "历史页不可用"));
+			await b.engine.detectNow();
+			await b.engine.detectNow();
+			expect(b.timers).toHaveLength(1);
+			b.timers[0]?.();
+			await b.engine.detectNow();
+			expect(b.reportPost).toHaveBeenCalledTimes(1);
+			expect(b.fetchAllDynamic).toHaveBeenCalledTimes(3);
+		} finally {
+			b.engine.stop();
+		}
+	});
+
 	it("首页已跨过时间边界时，旧页不可用也会交出新动态", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 100);

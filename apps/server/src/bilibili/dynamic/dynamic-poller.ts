@@ -249,6 +249,7 @@ export class DynamicPoller {
 	/** 启动钩子。由来源的 `start` 调;名单现读,启动时就能开跑。 */
 	start(): void {
 		this.postAnchors = new Map();
+		this.feedThrough = 0;
 		this.running = true;
 
 		this.logger.info(logText("log.bilibili.poller.started"));
@@ -351,7 +352,7 @@ export class DynamicPoller {
 	private restartDetector(): void {
 		// 旧检测器在途的那一轮就此作废:新检测器会重新拉一遍,旧结果再交就算重复。
 		this.detectorGeneration++;
-		this.feedThrough = 0;
+		// 同一登录会话的退避重试仍从上次成功读取的位置继续。
 		// 一次显式启动取代任何待执行的退避重启,避免双重启动。
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
