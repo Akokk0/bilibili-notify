@@ -9,6 +9,7 @@
 3. **定稿并提交** — 填上版本标题,跑 `vp exec node scripts/changelog-section.mjs --version <VERSION>` 验概述(概述会被签进更新清单、念在通知卡上,找不到 / 为空 / 超 120 字发版时直接红),提交;用户同意后 push 到 dev(tag 要指向含 CHANGELOG 的那个 commit)。
 4. **推送发行 tag** — 在 `dev` HEAD(即含 CHANGELOG 那个 commit)创建并推送 annotated tag `v<VERSION>`。可本地打,或用 `version-tag` workflow dry_run=false。完成:tag 已 push 且可从 `origin/dev` 到达。
 5. **验证产物** — 确认 `npm-release.yml` 的门禁及四种产物均通过。Docker 验渠道、版本、提交 tag 及各自的 `-slim` 可拉取。确认桌面安装包已上传。核对应用内清单的版本、签名、载荷摘要和 CHANGELOG 概述，以及发布页正文开头的 CHANGELOG 整段。核对 npm 版本、渠道和构建摘要，从公开仓库安装后启动 `bn web` 和 `bn dev`。
+6. 按共享流程[合并发布快照](SKILL.md#合并发布快照)，完成本次发版。
 
 **顺序要紧**:CHANGELOG 先写、先 push,再打 tag:发布页正文和更新清单的 notes 都从 tag 所指 commit 的 CHANGELOG 抽,缺了会红。
 

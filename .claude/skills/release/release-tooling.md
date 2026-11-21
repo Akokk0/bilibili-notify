@@ -7,5 +7,6 @@ SDK与`create-bn-ext`通过`tooling-release.yml`在GitHub Actions手动发行，
 3. 在Actions选择`bilibili-notify — extension tools (npm)`、分支`dev`，选包并保持`dry_run=true`。完成条件：共享全量gate、构建、实际tgz校验和审阅产物上传全部成功。
 4. 按[账号准备](../../../docs/agents/build-release.md#sdk与创建器npm工具)选择模式，以 `dry_run=false` 手动触发。已绑定可信发布的包使用 `auth=trusted` 直发；首次建包按已确认方案使用 `bootstrap-token` 暂存。暂存时下载归档与本次 Actions 原始候选核对，再请主人在 npm 的 **Staged Packages** 批准所选包；两包同发时先 SDK、后创建器。批准后重跑原 `publish` 作业，直到 `awaitingApproval` 为 false，公共 registry 的渠道与归档摘要均匹配。
 5. 从真实registry运行创建器，验证默认SDK/工具版本、工程安装和`vp run verify`。完成条件：公开入口可用，工程无需本地归档覆盖即可通过；本机夹具与dry-run不能代替上架结论。
+6. 本次所选工具都通过公开发行验收后，按共享流程[合并发布快照](SKILL.md#合并发布快照)。
 
 部分成功时优先重跑失败的publish作业，复用原Actions归档。同号同内容会复用；内容冲突需新版本。包上传后才推进`alpha`或`latest`，较旧候选不倒退渠道。更新进度时分别写清SDK、创建器和本体状态。
