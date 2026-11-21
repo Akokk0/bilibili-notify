@@ -100,7 +100,9 @@ function makeFakeStore(
 		// 恢复是**一次整体替换**,不是一串编辑 —— 所以这个替身也只认终态,断言跟着看
 		// 「最后剩下什么」而不是「按什么顺序调了哪些方法」。老替身把 upsertTarget 打成
 		// 空函数,恰好把 webhook 目标根本恢复不了那个 bug 整个盖住了。
-		replaceSections: vi.fn(async (next, options) => {
+		replaceSections: vi.fn(async (replacement, options) => {
+			const next = typeof replacement === "function" ? replacement() : replacement;
+			options?.validate?.();
 			if (options?.dryRun) return [];
 			if (next.globals) globals = next.globals;
 			// 各集成的设置按键整份换(和真 store 一样:备份里没带的键不动)。
@@ -423,7 +425,7 @@ describe("BackupService", () => {
 
 			await svc.importBackup({ envelope: env, pin: "123456", mode: "overwrite" });
 
-			expect(order).toEqual(["validate", "replaceSections", "restoreSecrets"]);
+			expect(order).toEqual(["replaceSections", "restoreSecrets"]);
 		});
 
 		it("脱敏档没有密钥袋:两个数组都是空,不碰存储", async () => {
@@ -497,7 +499,6 @@ describe("BackupService", () => {
 		expect(planned.unrestoredIntegrations).toEqual([
 			{ key: "onebot", message: "主人，这个集成现在没在运行。" },
 		]);
-		expect(store.replaceSections).toHaveBeenCalledWith(expect.any(Object), { dryRun: true });
 		expect(store.getSubscriptions()).toEqual([sub("1"), sub("2")]);
 		expect(target.restoreSecrets).not.toHaveBeenCalled();
 	});
@@ -760,7 +761,7 @@ describe("BackupService × 同一身份只能有一条订阅", () => {
 			const { code, message } = (err as BackupRejectedError).toFailure();
 			expect(code).toBe("invalid");
 			for (const word of ["bilibili", "12345"]) expect(message).toContain(word);
-			expect(store.replaceSections).toHaveBeenCalledWith(expect.any(Object), { dryRun: true });
+			expect(store.getSubscriptions()).toEqual([sub("9")]);
 		},
 	);
 
@@ -855,10 +856,6 @@ describe("BackupService × 各集成的设置", () => {
 
 		await service(store).importBackup({ envelope: env, pin: PIN, mode: "overwrite" });
 
-		expect(store.replaceSections).toHaveBeenCalledTimes(2);
-		expect(store.replaceSections).toHaveBeenCalledWith(
-			expect.objectContaining({ integrations: SETTINGS }),
-		);
 		expect(store.getAllIntegrationSettings()).toEqual(SETTINGS);
 	});
 
@@ -870,8 +867,6 @@ describe("BackupService × 各集成的设置", () => {
 
 		await service(store).importBackup({ envelope: env, mode: "merge" });
 
-		const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
-		expect(folded?.integrations).toBeUndefined();
 		expect(store.getAllIntegrationSettings()).toEqual(LOCAL);
 	});
 
@@ -886,8 +881,6 @@ describe("BackupService × 各集成的设置", () => {
 
 			await service(store).importBackup({ envelope: env, mode });
 
-			const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
-			expect(folded?.integrations).toBeUndefined();
 			expect(store.getAllIntegrationSettings()).toEqual(LOCAL);
 		},
 	);
@@ -1007,10 +1000,6 @@ describe("BackupService × 各拓展的设置", () => {
 
 		await service(store).importBackup({ envelope: env, pin: PIN, mode: "overwrite" });
 
-		expect(store.replaceSections).toHaveBeenCalledTimes(2);
-		expect(store.replaceSections).toHaveBeenCalledWith(
-			expect.objectContaining({ extensionSettings: SETTINGS }),
-		);
 		expect(store.getAllExtensionSettings()).toEqual({ ...LOCAL, ...SETTINGS });
 	});
 
@@ -1022,8 +1011,6 @@ describe("BackupService × 各拓展的设置", () => {
 
 		await service(store).importBackup({ envelope: env, mode: "merge" });
 
-		const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
-		expect(folded?.extensionSettings).toBeUndefined();
 		expect(store.getAllExtensionSettings()).toEqual(LOCAL);
 	});
 
@@ -1038,8 +1025,6 @@ describe("BackupService × 各拓展的设置", () => {
 
 			await service(store).importBackup({ envelope: env, mode });
 
-			const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
-			expect(folded?.extensionSettings).toBeUndefined();
 			expect(store.getAllExtensionSettings()).toEqual(LOCAL);
 		},
 	);
@@ -1055,8 +1040,6 @@ describe("BackupService × 各拓展的设置", () => {
 
 		await service(store).importBackup({ envelope: env, mode: "overwrite" });
 
-		const [folded] = vi.mocked(store.replaceSections).mock.calls[0] ?? [];
-		expect(folded?.extensionSettings).toBeUndefined();
 		expect(store.getAllExtensionSettings()).toEqual(LOCAL);
 	});
 

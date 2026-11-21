@@ -105,6 +105,33 @@ it("restore preview and commit reserve bad identities, with no preview side effe
 	expect((await disk()).subscriptions).toEqual([next, bad]);
 });
 
+it("并发合并两份备份时两条订阅都保留在磁盘上", async () => {
+	const { createBackupService } = await import("../../backup/service.js");
+	const { buildBackup } = await import("../../backup/envelope.js");
+	const { fakeIntegrationSecrets } = await import(
+		"../../__tests__/support/backup-integration-secrets.js"
+	);
+	const store = await open();
+	const service = createBackupService({
+		configStore: store,
+		integrationSecrets: fakeIntegrationSecrets(),
+	});
+	const rows = [sub("first"), sub("second")];
+	await Promise.all(
+		rows.map((row) =>
+			service.importBackup({
+				mode: "merge",
+				envelope: buildBackup({
+					kind: "sanitized",
+					createdAt: "t",
+					sections: { subscriptions: [row] },
+				}),
+			}),
+		),
+	);
+	expect((await open()).getSubscriptions()).toEqual(expect.arrayContaining(rows));
+});
+
 it("backup dry-run rejects a reserved identity before confirmation", async () => {
 	const { createBackupService } = await import("../../backup/service.js");
 	const { buildBackup } = await import("../../backup/envelope.js");

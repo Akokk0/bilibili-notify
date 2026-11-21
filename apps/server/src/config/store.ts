@@ -107,6 +107,8 @@ type DeepPartial<T> =
 /** Validate the full replacement without writing files, state or events. */
 interface ReplaceSectionsOptions {
 	dryRun?: boolean;
+	/** Caller invariants checked after reserved identities and before persistence. */
+	validate?: () => void;
 }
 
 /**
@@ -295,7 +297,10 @@ export interface ConfigStore {
 	 * 整体替换若干分区(恢复备份 / 一次性迁移)。先全量校验再落盘,失败不留半新半旧。
 	 * 详见实现处的注释。
 	 */
-	replaceSections(next: ConfigSections, options?: ReplaceSectionsOptions): Promise<ConfigScope[]>;
+	replaceSections(
+		next: ConfigSections | (() => ConfigSections),
+		options?: ReplaceSectionsOptions,
+	): Promise<ConfigScope[]>;
 
 	/**
 	 * 关停:先等在途与已排队的写全部落盘,再关门 —— 此后的写一律以 `SerialQueueClosedError` 拒绝、不碰盘。
@@ -2367,10 +2372,11 @@ class NodeConfigStore implements ConfigStore {
 	 * 缺席的分区保持不动。返回真正改过的 scope。
 	 */
 	async replaceSections(
-		next: ConfigSections,
+		replacement: ConfigSections | (() => ConfigSections),
 		options: ReplaceSectionsOptions = {},
 	): Promise<ConfigScope[]> {
 		const changed = await this.runAllScopes(async () => {
+			const next = typeof replacement === "function" ? replacement() : replacement;
 			// ---- 1) 校验:任一分区不过就整个中止,不写任何东西 ----------------
 			let globals: GlobalSettings | undefined;
 			if (next.globals !== undefined) {
@@ -2420,6 +2426,7 @@ class NodeConfigStore implements ConfigStore {
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
 			this.assertSubscriptionsWritable(replaced.next);
 			assertKnownTags(replaced.next, effTags);
+			options.validate?.();
 
 			if (options.dryRun) return [];
 

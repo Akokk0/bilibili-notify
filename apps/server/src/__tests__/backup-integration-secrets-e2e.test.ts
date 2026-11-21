@@ -62,7 +62,11 @@ function emptyConfigStore(): BackupStore {
 		getSubscriptionTags: () => [],
 		getConnections: () => [],
 		getTargets: () => [],
-		replaceSections: async () => [],
+		replaceSections: async (replacement, options) => {
+			if (typeof replacement === "function") replacement();
+			options?.validate?.();
+			return [];
+		},
 	};
 }
 
