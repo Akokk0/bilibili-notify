@@ -23,6 +23,7 @@ import type { SecretCellsReader } from "../push/connection-settings.js";
 import { fakeIntegrationSecrets } from "./support/backup-integration-secrets.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { deferred } from "./support/track-context.js";
 
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
@@ -401,6 +402,42 @@ describe("BackupService", () => {
 			expect(target.restoreSecrets).toHaveBeenCalledTimes(3);
 			// 配置各节已经落地。
 			expect(store.getSubscriptions().map((s) => s.id)).toEqual(["9"]);
+		});
+
+		it("并发导入完整档时，配置和每组凭据来自同一份备份", async () => {
+			const archive = (id: string) => fullBackupWith({ first: { id }, second: { id } }, [sub(id)]);
+			const [a, b] = await Promise.all([archive("A"), archive("B")]);
+			const entered = deferred();
+			const resume = deferred();
+			const values = new Map<string, Json>();
+			const store = makeFakeStore();
+			const svc = createBackupService({
+				configStore: store,
+				integrationSecrets: fakeIntegrationSecrets({
+					open: ["first", "second"],
+					async restore(key, bag) {
+						values.set(key, bag.id ?? null);
+						if (key === "first" && bag.id === "A") {
+							entered.resolve();
+							await resume.promise;
+						}
+						return ok();
+					},
+				}),
+			});
+			const restore = (envelope: typeof a) =>
+				svc.importBackup({ envelope, pin: "123456", mode: "overwrite" });
+			const first = restore(a);
+			await entered.promise;
+			const second = restore(b);
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			resume.resolve();
+			await Promise.all([first, second]);
+			expect([store.getSubscriptions()[0]?.id, values.get("first"), values.get("second")]).toEqual([
+				"B",
+				"B",
+				"B",
+			]);
 		});
 
 		it("配置各节落地之后才恢复密钥", async () => {

@@ -7,6 +7,7 @@ import type {
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
+import { createSerialQueue } from "@bilibili-notify/internal";
 import { findNewIdentityDuplicates } from "@bilibili-notify/subscription";
 import { type ConfigStore, describeDuplicate } from "../config/store.js";
 import { t } from "../i18n/index.js";
@@ -145,6 +146,7 @@ function assertNoDuplicateInBackup(
 }
 
 export function createBackupService(deps: BackupServiceDeps): BackupService {
+	const restores = createSerialQueue();
 	const now = deps.now ?? (() => new Date().toISOString());
 
 	async function exportBackup(opts: ExportOptions): Promise<BackupEnvelope> {
@@ -278,7 +280,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 
 	return {
 		exportBackup,
-		importBackup,
+		importBackup: (opts) => restores.run("restore", () => importBackup(opts)),
 		previewExport: () => ({
 			defaultedSettings: structuredClone(deps.configStore.getInvalidSettingsPaths()),
 		}),
