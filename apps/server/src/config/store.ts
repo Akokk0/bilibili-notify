@@ -1167,7 +1167,7 @@ class NodeConfigStore implements ConfigStore {
 		this.subscriptionTags = [...tags];
 	}
 
-	private assertSubscriptionsWritable(next: readonly Subscription[]): void {
+	private assertSubscriptionsWritable(next: readonly Subscription[], validate?: () => void): void {
 		const seen = new Set<string>();
 		for (const sub of next) {
 			if (seen.has(sub.id))
@@ -1189,6 +1189,8 @@ class NodeConfigStore implements ConfigStore {
 				}
 			}
 		}
+		// 保留行的诊断先行；恢复可为新引入的重复身份提供备份专用的错误。
+		validate?.();
 		assertNoNewIdentityDuplicate(this.subscriptions, next);
 	}
 
@@ -2424,9 +2426,8 @@ class NodeConfigStore implements ConfigStore {
 			assertMasterTarget((globals ?? this.globals).master, effTargets, "globals");
 			const synced = syncManagedEndpointTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
-			this.assertSubscriptionsWritable(replaced.next);
+			this.assertSubscriptionsWritable(replaced.next, options.validate);
 			assertKnownTags(replaced.next, effTags);
-			options.validate?.();
 
 			if (options.dryRun) return [];
 

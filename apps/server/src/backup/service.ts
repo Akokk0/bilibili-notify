@@ -204,6 +204,20 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			sections = opts.envelope.sections;
 		}
 
+		// 按 UUID 并入计划之前先验原始两行，避免后面的设置覆盖前一条。
+		const ids = new Set<string>();
+		for (const [index, row] of (sections.subscriptions ?? []).entries()) {
+			if (ids.has(row.id)) {
+				throw new BackupRejectedError(
+					"invalid",
+					t("backup.envelope.invalidContent", {
+						field: `sections.subscriptions[${index}].id`,
+					}),
+				);
+			}
+			ids.add(row.id);
+		}
+
 		let plan!: ReturnType<typeof planImport>;
 		let validateIdentities!: () => void;
 		await deps.configStore.replaceSections(
