@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { loadSignedJson } from "../../apps/server/src/update/signed-manifest.js";
-import { compareVersions } from "../../apps/server/src/update/version-order.js";
 import { ExtensionVersionSchema } from "../../packages/internal/src/schema/extension-manifest.ts";
 import {
 	checkMarketplaceIndex,
@@ -305,23 +304,17 @@ describe("issuedAt 与版本只许往前走", () => {
 		expect(() => merged(entry({ version: "0.1.0", prerelease: true }))).toThrow(/对不上/);
 	});
 
-	it("并索引用的那把版本尺子与客户端的是同一把(手抄了一份,别让它漂)", () => {
-		const pairs = [
-			["0.9.0", "0.10.0"],
-			["0.0.2", "0.0.2"],
-			["1.0.0", "1.0.0-alpha.1"],
-			["1.0.0-alpha.9", "1.0.0-alpha.10"],
-			["1.0.0-alpha", "1.0.0-alpha.1"],
-			["1.0.0-beta", "1.0.0-alpha"],
-			["2.0.0", "10.0.0"],
-		];
-		for (const [a, b] of pairs) {
-			expect([a, b, Math.sign(compareEntryVersions(a, b))]).toEqual([
-				a,
-				b,
-				Math.sign(compareVersions(a, b)),
-			]);
-		}
+	it.each([
+		["0.9.0", "0.10.0", -1],
+		["0.0.2", "0.0.2", 0],
+		["1.0.0", "1.0.0-alpha.1", 1],
+		["1.0.0-alpha.9", "1.0.0-alpha.10", -1],
+		["1.0.0-alpha", "1.0.0-alpha.1", -1],
+		["1.0.0-beta", "1.0.0-alpha", 1],
+		["1.0.0-1", "1.0.0-alpha", -1],
+		["2.0.0", "10.0.0", -1],
+	])("索引里的版本顺序 %s 与 %s", (a, b, order) => {
+		expect(Math.sign(compareEntryVersions(a, b))).toBe(order);
 	});
 });
 
