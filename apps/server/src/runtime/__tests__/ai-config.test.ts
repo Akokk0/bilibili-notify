@@ -110,7 +110,17 @@ describe("toGeneratorConfig:人格", () => {
 			persona: { ...p.persona, name: `X-${p.persona.name}` },
 		}));
 		const cfg = toGeneratorConfig(ai, swapped);
-		expect(cfg.persona.name).toBe("X-凛子");
+		const persona = swapped.find((preset) => preset.id === ai.activePreset)?.persona;
+		expect(persona).toBeDefined();
+		expect(cfg.persona).toEqual({
+			name: "X-凛子",
+			addressUser: persona?.addressUser,
+			addressSelf: persona?.addressSelf,
+			traits: persona?.traits,
+			catchphrase: persona?.catchphrase,
+			customBase: persona?.baseRole,
+			extraPrompt: persona?.extraSystemPrompt,
+		});
 		expect(cfg.dynamicPrompt).toBe(swapped[1]?.dynamicPrompt);
 	});
 

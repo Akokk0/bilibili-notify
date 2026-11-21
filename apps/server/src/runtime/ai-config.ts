@@ -44,17 +44,7 @@ export function toGeneratorConfig(ai: AiSettings, builtins: readonly AIBuiltinPr
 		apiKey: p.apiKey,
 		baseURL: p.baseUrl,
 		model: p.model,
-		persona: {
-			name: active.persona.name,
-			addressUser: active.persona.addressUser,
-			addressSelf: active.persona.addressSelf,
-			traits: active.persona.traits,
-			catchphrase: active.persona.catchphrase,
-			customBase: active.persona.baseRole,
-			extraPrompt: active.persona.extraSystemPrompt,
-		},
-		dynamicPrompt: active.dynamicPrompt,
-		liveSummaryPrompt: active.liveSummaryPrompt,
+		...generatorPersona(active),
 		maxHistory: 6,
 		// 方言归属写在桶里 —— activeProfile 只是实例指针,同一家可以有多份实例。
 		provider: p.provider,
@@ -95,11 +85,11 @@ export function resolveAiOverride(
 	builtins: readonly AIBuiltinPresetShape[],
 ): CommentaryCallOverride | undefined {
 	return sub.overrides.ai
-		? buildAiOverride(resolveSubscriptionPersona(ai, sub.overrides.ai, builtins))
+		? generatorPersona(resolveSubscriptionPersona(ai, sub.overrides.ai, builtins))
 		: undefined;
 }
 
-function buildAiOverride(active: ActivePersonaShape): CommentaryCallOverride {
+function generatorPersona(active: ActivePersonaShape) {
 	return {
 		persona: {
 			name: active.persona.name,
