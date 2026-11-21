@@ -1502,6 +1502,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				startedAt: STARTED_AT,
 				// 应用 = 优雅停机 + 退 0,由进程管理器把新版本拉起来。**退出码必须是 0**:
 				// 非 0 会被编排系统当成崩溃,退避重启甚至进 CrashLoopBackOff。
+				restartAbility,
 				applyUpdate: () => stopAndExit("update apply"),
 			},
 			// 「重启一下」走的是同一条路 —— 差别只在**为什么**关,不在怎么关。

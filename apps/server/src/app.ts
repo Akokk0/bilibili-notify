@@ -59,7 +59,10 @@ import { createSubscriptionsRoute } from "./routes/subscriptions.js";
 import { type CreateSystemRouteOptions, createSystemRoute } from "./routes/system.js";
 import { createSystemBackupRoute } from "./routes/system-backup.js";
 import { createSystemLogsRoute } from "./routes/system-logs.js";
-import { createSystemUpdateRoute } from "./routes/system-update.js";
+import {
+	type CreateSystemUpdateRouteOptions,
+	createSystemUpdateRoute,
+} from "./routes/system-update.js";
 import { createTargetsRoute } from "./routes/targets.js";
 import type { RouteDeps } from "./routes/types.js";
 import { createWsRoute } from "./routes/ws.js";
@@ -69,7 +72,6 @@ import type { RoastRunResult } from "./runtime/roast-scheduler.js";
 import { dataPath } from "./runtime/roots.js";
 import { DASHBOARD_SKINS_DIR, SkinStore } from "./skins/store.js";
 import { createMembershipTierReader } from "./subscriptions/membership-tiers.js";
-import type { UpdateService } from "./update/service.js";
 
 interface BasicAuthCredentials {
 	username: string;
@@ -239,12 +241,7 @@ export interface CreateAppOptions {
 	 * 自主升级。由 index.ts 构建(它才知道版本目录在哪、怎么优雅地关掉自己)并注入,
 	 * 省略 → 整条 `/api/system/update` 不挂载,面板拿到 404 就当功能不存在。
 	 */
-	update?: {
-		service: UpdateService;
-		/** 优雅停机 + 退出,让进程管理器把新版本拉起来。 */
-		startedAt: string;
-		applyUpdate: () => Promise<void>;
-	};
+	update?: CreateSystemUpdateRouteOptions;
 	/**
 	 * 系统级动作(现在只有「重启一下」)。同样由 index.ts 构建 —— 只有它知道怎么优雅地
 	 * 关掉自己,以及这台机器上退了之后有没有人拉。省略 → `/api/system` 不挂载。

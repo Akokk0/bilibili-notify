@@ -324,6 +324,16 @@ describe("UpdateSection —— 按钮该在什么时候出现", () => {
 		expect(screen.queryByRole("button", { name: /立即重启/ })).toBeNull();
 	});
 
+	it("已下载且需要手动重启时，显示操作说明并收起自动重启按钮", async () => {
+		serve(
+			{ phase: "ready", target: "0.9.0", releaseUrl: "https://x/t" },
+			{ restart: { can: false, code: "unsupervised", message: "请在终端重新启动" } },
+		);
+		renderSection();
+		expect(await screen.findByText("请在终端重新启动")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /立即重启/ })).toBeNull();
+	});
+
 	it("装好了才给「立即重启」,并且**先把重启的代价说清楚**", async () => {
 		serve({ phase: "ready", target: "0.9.0", releaseUrl: "https://x/t" });
 		renderSection();

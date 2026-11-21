@@ -11,7 +11,9 @@ import { t as serverText } from "../i18n/index.js";
 import {
 	canApplyUpdate,
 	isMirrorPrefix,
+	type RestartAbility,
 	type UpdateApplyResponse,
+	type UpdateStatusView,
 } from "@bilibili-notify/contract";
 import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
@@ -30,6 +32,7 @@ const ProbeBody = z.object({
 
 export interface CreateSystemUpdateRouteOptions {
 	service: UpdateService;
+	restartAbility: () => RestartAbility;
 	/** 这个进程的启动时刻(ISO),与 `/api/health` 报的同一个值 —— 面板靠它变了认新进程。 */
 	startedAt: string;
 	/**
@@ -43,13 +46,15 @@ export function createSystemUpdateRoute({
 	service,
 	startedAt,
 	applyUpdate,
+	restartAbility,
 }: CreateSystemUpdateRouteOptions): Hono {
 	const app = new Hono();
+	const withRestart = (status: UpdateStatusView) => ({ ...status, restart: restartAbility() });
 
-	app.get("/", (c) => c.json(service.getStatus()));
-	app.post("/check", async (c) => c.json(await service.check()));
-	app.post("/download", async (c) => c.json(await service.download()));
-	app.post("/rollback", async (c) => c.json(await service.rollback()));
+	app.get("/", (c) => c.json(withRestart(service.getStatus())));
+	app.post("/check", async (c) => c.json(withRestart(await service.check())));
+	app.post("/download", async (c) => c.json(withRestart(await service.download())));
+	app.post("/rollback", async (c) => c.json(withRestart(await service.rollback())));
 
 	app.post("/mirrors/probe", async (c) => {
 		const parsed = ProbeBody.safeParse(await c.req.json().catch(() => null));
@@ -65,6 +70,8 @@ export function createSystemUpdateRoute({
 		if (!canApplyUpdate(state)) {
 			return respondFailure(c, fail("conflict", serverText("service.routes.system-update.text.2")));
 		}
+		const ability = restartAbility();
+		if (!ability.can) return respondFailure(c, fail("unsupported", ability.message));
 		// 回话里带上要换掉的是哪个进程、换到哪:这些都在这一头,面板不必先探一次再猜。
 		const body: UpdateApplyResponse = {
 			restarting: true,

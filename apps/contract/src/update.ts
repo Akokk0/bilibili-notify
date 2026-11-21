@@ -1,4 +1,5 @@
 import type { Result } from "@bilibili-notify/internal/result";
+import type { RestartAbility } from "./system";
 /**
  * 自主升级的 wire 契约 —— `GET /api/system/update` 的响应,以及它的几个动作。
  *
@@ -97,6 +98,8 @@ export interface UpdateApplyResponse {
 }
 
 export interface UpdateStatusView {
+	/** Older hosts omit restart information. */
+	restart?: RestartAbility;
 	/** 当前正在跑的那份载荷的版本。 */
 	currentVersion: string;
 	/** 退一步会退到哪。`null` = 已经在最底下那版,回退按钮该是灰的。 */
