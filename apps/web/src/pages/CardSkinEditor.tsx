@@ -431,17 +431,17 @@ export default function CardSkinEditor() {
 											? undefined
 											: {
 													onAdd: () => edit((d) => addKnob(d)?.manifest ?? d),
-													onRemove: (key) => edit((d) => removeKnob(d, key)),
-													onDecl: (key, patch) => edit((d) => setKnobDecl(d, key, patch)),
-													onType: (key, type) => edit((d) => setKnobType(d, key, type)),
-													onDefault: (key, value) => edit((d) => setKnobDefault(d, key, value)),
-													onNumber: (key, patch) => edit((d) => setKnobNumber(d, key, patch)),
-													onSwitch: (key, patch) => edit((d) => setKnobSwitch(d, key, patch)),
-													onOptionAdd: (key) => edit((d) => addKnobOption(d, key)),
-													onOption: (key, index, patch) =>
-														edit((d) => setKnobOption(d, key, index, patch)),
-													onOptionRemove: (key, index) =>
-														edit((d) => removeKnobOption(d, key, index)),
+													onRemove: (rowId) => edit((d) => removeKnob(d, rowId)),
+													onDecl: (rowId, patch) => edit((d) => setKnobDecl(d, rowId, patch)),
+													onType: (rowId, type) => edit((d) => setKnobType(d, rowId, type)),
+													onDefault: (rowId, value) => edit((d) => setKnobDefault(d, rowId, value)),
+													onNumber: (rowId, patch) => edit((d) => setKnobNumber(d, rowId, patch)),
+													onSwitch: (rowId, patch) => edit((d) => setKnobSwitch(d, rowId, patch)),
+													onOptionAdd: (rowId) => edit((d) => addKnobOption(d, rowId)),
+													onOption: (rowId, index, patch) =>
+														edit((d) => setKnobOption(d, rowId, index, patch)),
+													onOptionRemove: (rowId, index) =>
+														edit((d) => removeKnobOption(d, rowId, index)),
 												}
 									}
 									assets={{

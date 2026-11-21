@@ -588,20 +588,60 @@ describe("编辑器 · 旋钮声明的接线", () => {
 		expect("knobs" in (saved() as object)).toBe(false);
 	});
 
-	it("key 撞了 → 保存钮变灰,并且说出是哪个 key", async () => {
-		mockApi();
+	it("旋钮重名时提示并禁用保存，改回第二行后可以单独保存这行的修改", async () => {
+		mockApi({
+			knobs: [
+				{ key: "accent", label: "主色", type: "color", default: "#ffffff" },
+				{ key: "paper", label: "底色", type: "color", default: "#eeeeee" },
+			],
+		});
 		renderEditor();
-		await screen.findByText("封面图");
 		await openSkinTab();
-		fireEvent.click(screen.getByRole("button", { name: /添加旋钮/ }));
-		fireEvent.click(screen.getByRole("button", { name: /添加旋钮/ }));
+		const secondKey = screen.getByDisplayValue("paper");
+		secondKey.focus();
+		const errors = vi.spyOn(console, "error");
+		try {
+			fireEvent.change(secondKey, { target: { value: "accent" } });
+			expect(screen.getByText(/accent.*重复了/)).toBeTruthy();
+			expect((saveBtn() as HTMLButtonElement).disabled).toBe(true);
+			expect(errors.mock.calls.flat()).not.toContainEqual(expect.stringContaining("same key"));
+			expect(document.activeElement).toBe(secondKey);
+			fireEvent.change(secondKey, { target: { value: "background" } });
+		} finally {
+			errors.mockRestore();
+		}
 
-		// 读 DOM 属性不保险(受控件的 `value` 属性未必跟着走),取的是元素的属性值。
-		const keys = screen.getAllByLabelText("旋钮 key") as HTMLInputElement[];
-		fireEvent.change(keys[1], { target: { value: keys[0].value } });
+		expect(screen.queryByText(/重复了/)).toBeNull();
+		expect((saveBtn() as HTMLButtonElement).disabled).toBe(false);
+		save();
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		expect(savedKnobs()).toMatchObject([
+			{ key: "accent", label: "主色" },
+			{ key: "background", label: "底色" },
+		]);
+	});
 
-		expect((saveBtn() as HTMLButtonElement).disabled).toBe(true);
-		expect(screen.getByText(/重复了/)).toBeTruthy();
+	it("旋钮重名时删除第一行，第二行的输入框和配置都保留", async () => {
+		mockApi({
+			knobs: [
+				{ key: "accent", label: "主色", type: "color", default: "#ffffff" },
+				{ key: "paper", label: "底色", type: "color", default: "#eeeeee" },
+			],
+		});
+		renderEditor();
+		await openSkinTab();
+		const secondKey = screen.getByDisplayValue("paper");
+		fireEvent.change(secondKey, { target: { value: "accent" } });
+		const firstRow = screen.getByRole("group", { name: "第 1 枚旋钮" });
+		fireEvent.click(within(firstRow).getByRole("button", { name: /删掉这枚旋钮/ }));
+
+		expect(screen.getByLabelText("旋钮 key")).toBe(secondKey);
+		expect(screen.queryByText(/重复了/)).toBeNull();
+		save();
+		await waitFor(() => expect(api.put).toHaveBeenCalled());
+		expect(savedKnobs()).toEqual([
+			{ key: "accent", label: "底色", type: "color", default: "#eeeeee" },
+		]);
 	});
 
 	it("内置皮肤是只读的 —— 加不了也删不掉", async () => {

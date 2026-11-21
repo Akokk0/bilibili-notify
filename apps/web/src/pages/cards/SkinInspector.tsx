@@ -52,6 +52,7 @@ import {
 	columnsOf,
 	fontsError,
 	gridLimits,
+	knobRowId,
 	knobsError,
 	overlappingBlocks,
 	type SkinMetaPatch,
@@ -795,21 +796,21 @@ function SkinMetaInspector({
 /** 旋钮那一节要的四个口。**整份不给 = 这套皮肤只读**(同 `onRemove` 的判据)。 */
 export type KnobHandlers = {
 	onAdd: () => void;
-	onRemove: (key: string) => void;
-	onDecl: (key: string, patch: { key?: string; label?: string }) => void;
-	onType: (key: string, type: CardSkinKnob["type"]) => void;
-	onDefault: (key: string, value: string | number | boolean) => void;
+	onRemove: (rowId: number) => void;
+	onDecl: (rowId: number, patch: { key?: string; label?: string }) => void;
+	onType: (rowId: number, type: CardSkinKnob["type"]) => void;
+	onDefault: (rowId: number, value: string | number | boolean) => void;
 	/** 数值那一档自己的取值域与单位。 */
 	onNumber: (
-		key: string,
+		rowId: number,
 		patch: { min?: number; max?: number; step?: number; unit?: string },
 	) => void;
 	/** 开关两端注进 CSS 的字面量。 */
-	onSwitch: (key: string, patch: { on?: string; off?: string }) => void;
+	onSwitch: (rowId: number, patch: { on?: string; off?: string }) => void;
 	/** 下拉候选表的增 / 改 / 删。 */
-	onOptionAdd: (key: string) => void;
-	onOption: (key: string, index: number, patch: { value?: string; label?: string }) => void;
-	onOptionRemove: (key: string, index: number) => void;
+	onOptionAdd: (rowId: number) => void;
+	onOption: (rowId: number, index: number, patch: { value?: string; label?: string }) => void;
+	onOptionRemove: (rowId: number, index: number) => void;
 };
 
 /** 六档在下拉里的人话名。顺序照的是「多数皮肤先要哪一档」。 */
@@ -852,7 +853,7 @@ function KnobSection({
 					<EmptyNote size="sm">{tx("skinUi.SkinInspector.81")}</EmptyNote>
 				) : (
 					knobs.map((knob, i) => (
-						<KnobRow key={knob.key || `#${i}`} index={i} knob={knob} onKnobs={onKnobs} />
+						<KnobRow key={knobRowId(knob)} index={i} knob={knob} onKnobs={onKnobs} />
 					))
 				)}
 
@@ -886,6 +887,7 @@ function KnobRow({
 	onKnobs?: KnobHandlers;
 }) {
 	const tx = useT();
+	const rowId = knobRowId(knob);
 
 	const ro = onKnobs === undefined;
 	return (
@@ -899,7 +901,7 @@ function KnobRow({
 			<div className="flex min-w-0 items-center gap-1.5">
 				<TInput
 					value={knob.key}
-					onChange={(v) => onKnobs?.onDecl(knob.key, { key: v })}
+					onChange={(v) => onKnobs?.onDecl(rowId, { key: v })}
 					disabled={ro}
 					mono
 					ariaLabel={tx("skinUi.SkinInspector.86")}
@@ -910,13 +912,13 @@ function KnobRow({
 						size="sm"
 						label={tx("skinUi.SkinInspector.87")}
 						icon={<Icon.trash size={12} />}
-						onClick={() => onKnobs.onRemove(knob.key)}
+						onClick={() => onKnobs.onRemove(rowId)}
 					/>
 				)}
 			</div>
 			<TInput
 				value={knob.label}
-				onChange={(v) => onKnobs?.onDecl(knob.key, { label: v })}
+				onChange={(v) => onKnobs?.onDecl(rowId, { label: v })}
 				disabled={ro}
 				ariaLabel={tx("skinUi.SkinInspector.88")}
 				placeholder={tx("skinUi.SkinInspector.89")}
@@ -925,7 +927,7 @@ function KnobRow({
 			<div className="flex min-w-0 flex-wrap items-center gap-1.5">
 				<TSelect
 					value={knob.type}
-					onChange={(t) => onKnobs?.onType(knob.key, t as CardSkinKnob["type"])}
+					onChange={(t) => onKnobs?.onType(rowId, t as CardSkinKnob["type"])}
 					options={knobTypeLabels().map(([value, label]) => ({ value, label }))}
 					disabled={ro}
 					ariaLabel={tx("skinUi.SkinInspector.90")}
@@ -945,6 +947,7 @@ function KnobRow({
  */
 function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandlers }) {
 	const tx = useT();
+	const rowId = knobRowId(knob);
 
 	const ro = onKnobs === undefined;
 	if (knob.type === "number") {
@@ -953,7 +956,7 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.91")}</span>
 				<TNum
 					value={knob.min}
-					onChange={(v) => onKnobs?.onNumber(knob.key, { min: v })}
+					onChange={(v) => onKnobs?.onNumber(rowId, { min: v })}
 					disabled={ro}
 					ariaLabel={tx("skinUi.SkinInspector.92")}
 					width={68}
@@ -962,7 +965,7 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 				<span className="text-bn-2xs text-bn-text-tertiary">~</span>
 				<TNum
 					value={knob.max}
-					onChange={(v) => onKnobs?.onNumber(knob.key, { max: v })}
+					onChange={(v) => onKnobs?.onNumber(rowId, { max: v })}
 					disabled={ro}
 					ariaLabel={tx("skinUi.SkinInspector.93")}
 					width={68}
@@ -971,7 +974,7 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.94")}</span>
 				<TNum
 					value={knob.step ?? 0}
-					onChange={(v) => onKnobs?.onNumber(knob.key, { step: v })}
+					onChange={(v) => onKnobs?.onNumber(rowId, { step: v })}
 					disabled={ro}
 					ariaLabel={tx("skinUi.SkinInspector.95")}
 					width={68}
@@ -980,7 +983,7 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 				/>
 				<TSelect
 					value={knob.unit ?? ""}
-					onChange={(u) => onKnobs?.onNumber(knob.key, { unit: u })}
+					onChange={(u) => onKnobs?.onNumber(rowId, { unit: u })}
 					options={[
 						{ value: "", label: tx("skinUi.SkinInspector.96") },
 						...CARD_SKIN_KNOB_UNITS.map((u) => ({ value: u, label: u })),
@@ -998,7 +1001,7 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.98")}</span>
 				<TInput
 					value={knob.on}
-					onChange={(v) => onKnobs?.onSwitch(knob.key, { on: v })}
+					onChange={(v) => onKnobs?.onSwitch(rowId, { on: v })}
 					disabled={ro}
 					mono
 					ariaLabel={tx("skinUi.SkinInspector.99")}
@@ -1007,7 +1010,7 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 				<span className="text-bn-2xs text-bn-text-tertiary">{tx("skinUi.SkinInspector.100")}</span>
 				<TInput
 					value={knob.off}
-					onChange={(v) => onKnobs?.onSwitch(knob.key, { off: v })}
+					onChange={(v) => onKnobs?.onSwitch(rowId, { off: v })}
 					disabled={ro}
 					mono
 					ariaLabel={tx("skinUi.SkinInspector.101")}
@@ -1032,14 +1035,14 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 							tone="var(--color-bn-pink)"
 							active={knob.default === option.value}
 							disabled={ro}
-							onClick={() => onKnobs?.onDefault(knob.key, option.value)}
+							onClick={() => onKnobs?.onDefault(rowId, option.value)}
 						>
 							{tx("skinUi.SkinInspector.102")}
 						</ToneChip>
 					</span>
 					<TInput
 						value={option.value}
-						onChange={(v) => onKnobs?.onOption(knob.key, i, { value: v })}
+						onChange={(v) => onKnobs?.onOption(rowId, i, { value: v })}
 						disabled={ro}
 						mono
 						ariaLabel={tx("skinUi.SkinInspector.103")}
@@ -1047,7 +1050,7 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 					/>
 					<TInput
 						value={option.label}
-						onChange={(v) => onKnobs?.onOption(knob.key, i, { label: v })}
+						onChange={(v) => onKnobs?.onOption(rowId, i, { label: v })}
 						disabled={ro}
 						ariaLabel={tx("skinUi.SkinInspector.104")}
 						placeholder={tx("skinUi.SkinInspector.105")}
@@ -1057,13 +1060,13 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
 							size="sm"
 							label={tx("skinUi.SkinInspector.106")}
 							icon={<Icon.trash size={12} />}
-							onClick={() => onKnobs.onOptionRemove(knob.key, i)}
+							onClick={() => onKnobs.onOptionRemove(rowId, i)}
 						/>
 					)}
 				</div>
 			))}
 			{ro || knob.options.length >= CARD_SKIN_KNOB_LIMITS.maxOptions ? null : (
-				<Btn size="sm" variant="ghost" onClick={() => onKnobs.onOptionAdd(knob.key)}>
+				<Btn size="sm" variant="ghost" onClick={() => onKnobs.onOptionAdd(rowId)}>
 					<Icon.plus size={12} /> {tx("skinUi.SkinInspector.107")}
 				</Btn>
 			)}
@@ -1077,9 +1080,10 @@ function KnobExtras({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandl
  */
 function KnobDefault({ knob, onKnobs }: { knob: CardSkinKnob; onKnobs?: KnobHandlers }) {
 	const tx = useT();
+	const rowId = knobRowId(knob);
 
 	const ro = onKnobs === undefined;
-	const set = (v: string | number | boolean) => onKnobs?.onDefault(knob.key, v);
+	const set = (v: string | number | boolean) => onKnobs?.onDefault(rowId, v);
 	switch (knob.type) {
 		case "color":
 			return (
