@@ -395,6 +395,25 @@ it("shares short-link Retry-After with other links until recovery", async () => 
 		vi.useRealTimers();
 	}
 });
+it("returns a retryable timeout for HTTP 408 from the short-link endpoint", async () => {
+	let timedOut = true;
+	const { source } = setup(
+		(u): Reply =>
+			timedOut
+				? { status: 408 }
+				: u.hostname === "v.douyin.com"
+					? { status: 302, headers: { Location: direct } }
+					: { body: { status_code: 0, aweme_detail: detail } },
+	);
+	const url = "https://v.douyin.com/abc/";
+	const signal = new AbortController().signal;
+	expect(await source.resolveLink(url, signal)).toMatchObject({ ok: false, code: "timeout" });
+	timedOut = false;
+	expect(await source.resolveLink(url, signal)).toMatchObject({
+		ok: true,
+		postId: detail.aweme_id,
+	});
+});
 it("classifies a temporary short-link failure as unavailable", async () => {
 	const { source } = setup(() => ({ status: 503 }));
 	expect(

@@ -327,6 +327,7 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 					rememberRateLimit(revision, fault, retryAfter(r.headers.get("retry-after")));
 					return fault;
 				}
+				if (r.status === 408) return fail("timeout", message("temporary"));
 				if (r.status >= 500) return fail("unavailable", message("temporary"));
 				const to = r.headers.get("location");
 				if (!to || ![301, 302, 303, 307, 308].includes(r.status)) break;
