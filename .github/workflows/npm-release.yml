@@ -26,6 +26,9 @@ jobs:
   # npm 的可信发布绑定调用入口 npm-release.yml。所有本体产物共用同一轮 gate。
   gate:
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/gate.yml
 
   docker:

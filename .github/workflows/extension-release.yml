@@ -27,7 +27,7 @@ on:
 
 concurrency:
   group: extensions-index
-  cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read
@@ -38,6 +38,9 @@ env:
 jobs:
   gate:
     if: startsWith(github.ref, 'refs/tags/extension/') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/gate.yml
 
   publish:

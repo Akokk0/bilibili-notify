@@ -30,6 +30,9 @@ env:
 jobs:
   gate:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev'
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/gate.yml
 
   build:

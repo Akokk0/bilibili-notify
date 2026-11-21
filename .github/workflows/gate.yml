@@ -10,8 +10,36 @@ name: Gate
 on:
   workflow_call:
 
+# 等待发生在 GitHub 的并发队列里，不占 runner。PR 始终验证自己的合并结果。
+concurrency:
+  group: shared-gate-${{ github.event_name == 'pull_request' && github.run_id || github.sha }}
+  queue: max
+
 jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      passed: ${{ steps.proof.outputs.passed }}
+    steps:
+      - uses: actions/checkout@v6
+        if: github.event_name != 'pull_request'
+        with:
+          persist-credentials: false
+      - name: Look up a verified gate for this commit
+        id: proof
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/find-passed-gate.mjs "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: lookup
+    if: needs.lookup.outputs.passed != 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -68,11 +96,16 @@ jobs:
 
   # 保留统一的 gate 结果，任何分片失败、取消或跳过都不能放行发行。
   gate:
-    needs: test
+    needs: [lookup, test]
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Require gate lookup
+        env:
+          RESULT: ${{ needs.lookup.result }}
+        run: test "$RESULT" = success
       - name: Require every test shard
+        if: needs.lookup.outputs.passed != 'true'
         env:
           RESULT: ${{ needs.test.result }}
         run: test "$RESULT" = success

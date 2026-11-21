@@ -10,4 +10,7 @@ jobs:
   # 门禁本体(Biome + build + typecheck + test)在 gate.yml —— 各发布路径共用同一份
   # 定义,见那里的注释。
   gate:
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/gate.yml

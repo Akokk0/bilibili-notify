@@ -12,7 +12,7 @@
 
 ## 共享发行门禁（`gate.yml`）
 
-`.github/workflows/gate.yml`（`on: workflow_call`）统一执行 Biome、构建、类型检查和测试。CI、本体发行和开发工具发行均通过 `uses: ./.github/workflows/gate.yml` 调用。
+CI、本体、开发工具和官方拓展发行都调用 `.github/workflows/gate.yml`。同一 SHA 的调用在 GitHub 排队。第一个调用运行 Biome、构建、类型检查和测试，后续调用从 Actions 核实同仓同提交的真实分片汇总。失败、取消、跳过或查不到记录时重新执行门禁。PR 独立验证合并结果。
 
 | workflow | 结构 |
 | --- | --- |
