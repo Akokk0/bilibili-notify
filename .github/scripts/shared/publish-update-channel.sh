@@ -28,4 +28,28 @@ export NOTES="Manifests for in-app updates. Maintained automatically."
 export ASSET="${CHANNEL}.json"
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-exec bash "$script_dir/publish-rolling-asset.sh"
+case "${CHANNEL_ACTION:-release}" in
+release)
+	tmp=$(mktemp -d)
+	trap 'rm -rf -- "$tmp"' EXIT
+	if asset_id=$(gh api "repos/$REPO/releases/tags/$TAG" --jq ".assets[] | select(.name == \"$ASSET\") | .id" 2>"$tmp/error"); then
+		if [ -n "$asset_id" ]; then
+			gh api -H 'Accept: application/octet-stream' "repos/$REPO/releases/assets/$asset_id" >"$tmp/current"
+			decision=$(node "$script_dir/../../../scripts/compare-update-channel.mjs" "$tmp/current" "$FILE")
+			if [ "$decision" = skip ]; then
+				echo "Kept the current $CHANNEL channel manifest."
+				exit 0
+			fi
+		fi
+	elif ! grep -q '(HTTP 404)' "$tmp/error"; then
+		cat "$tmp/error" >&2
+		exit 1
+	fi
+	;;
+revoke) ;;
+*)
+	echo "::error::Unknown channel action" >&2
+	exit 1
+	;;
+esac
+bash "$script_dir/publish-rolling-asset.sh"
