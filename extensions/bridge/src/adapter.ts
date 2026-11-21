@@ -256,8 +256,13 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		return { state: "unknown", reason: t("capability.unreported") };
 	}
 
-	/** 桥报的能力翻成宿主那份:宿主问的三项(@全体、收不收得到回复、小程序卡)都在这儿。 */
-	function capabilitiesOf(located: Extract<Located, { ok: true }>): ConnectionCapabilities {
+	/** 连接和探测都读这条 bot 在最近一次握手里报的能力。 */
+	function connectionCapabilities(connection: Connection): ConnectionCapabilities {
+		const located = locate(connection);
+		if (!located.ok) {
+			const unknown = { state: "unknown", reason: located.message } as const;
+			return { atAll: unknown, inbound: unknown, nativeShare: unknown };
+		}
 		const { capabilities } = located.bot;
 		const checkedAt = new Date(located.session.connectedAt).toISOString();
 		return {
@@ -271,12 +276,6 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 			// 内部这一格叫 nativeShare;桥帧的线上名照旧是 `capabilities.miniAppCard`,进 alpha 后两步改。
 			nativeShare: supportOf(capabilities.miniAppCard, checkedAt, "capability.noNativeShare"),
 		};
-	}
-
-	/** 没连着 / 没这个 bot:三项都是「还不知道」,带上原因。 */
-	function unreachableCapabilities(reason: string): ConnectionCapabilities {
-		const unknown = { state: "unknown", reason } as const;
-		return { atAll: unknown, inbound: unknown, nativeShare: unknown };
 	}
 
 	/**
@@ -470,23 +469,8 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 
 		stop(): void {},
 
-		/**
-		 * 能力按 bot 答 —— 一条连接就是一个 bot(决策 45),所以答得准。这两个方法曾经刻意
-		 * 不实现:那时连接是「一条接入」,底下同时挂着 QQ 与 telegram,跨 bot 合并出来的答案
-		 * 对谁都不对。没连着 / 没这个 bot 时答「还不知道」,带上原因。
-		 */
-		capabilities(connection: Connection): ConnectionCapabilities {
-			const located = locate(connection);
-			if (!located.ok) return unreachableCapabilities(located.message);
-			return capabilitiesOf(located);
-		},
-
-		async probeCapabilities(connection: Connection): Promise<ConnectionCapabilities> {
-			// 不打网络:能力是桥握手时报的,再问一次也是同一份。
-			const located = locate(connection);
-			if (!located.ok) return unreachableCapabilities(located.message);
-			return capabilitiesOf(located);
-		},
+		capabilities: connectionCapabilities,
+		probeCapabilities: async (connection) => connectionCapabilities(connection),
 
 		/**
 		 * 新建连接时供挑的候选:每条**连着**的接入驮着的每个 bot(没连上的接入在会话表里根本没有,

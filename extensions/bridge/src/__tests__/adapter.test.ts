@@ -635,9 +635,10 @@ describe("桥 adapter", () => {
 		});
 	});
 	it("capabilities:桥报的三态原样对应;没连着就是「还不知道」并带原因", async () => {
-		expect(
-			harness(session({}, { miniAppCard: "supported" })).adapter.capabilities?.(connection()),
-		).toMatchObject({ nativeShare: { state: "supported" } });
+		const online = harness(session({}, { miniAppCard: "supported" })).adapter;
+		const reported = online.capabilities?.(connection());
+		expect(reported).toMatchObject({ nativeShare: { state: "supported" } });
+		expect(await online.probeCapabilities?.(connection())).toEqual(reported);
 		expect(
 			harness(session({}, { miniAppCard: "unsupported" })).adapter.capabilities?.(connection()),
 		).toMatchObject({ nativeShare: { state: "unsupported" } });
