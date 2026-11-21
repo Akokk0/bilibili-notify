@@ -358,8 +358,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 						payload: {
 							kind: "image-group",
 							mergeForward: true,
-							images: [samples.image, samples.secondImage].map((image) => ({
-								url: resolved.blobUrl(image.buffer, image.mime),
+							// Platforms may fetch forwarded images directly and more than once.
+							images: ["captain-Bjw5Byb5.png", "governor-DpDXKEdA.png"].map((name) => ({
+								url: `https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/${name}`,
 							})),
 						},
 					});

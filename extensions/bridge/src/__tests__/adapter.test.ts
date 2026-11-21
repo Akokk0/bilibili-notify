@@ -414,7 +414,7 @@ describe("桥 adapter", () => {
 		});
 	});
 
-	it("反代改写 Host 时，图片推送和测试转发用接入设置的取图地址", async () => {
+	it("反代改写 Host 时，单图使用接入地址，测试转发使用可重复读取的公网图片", async () => {
 		const h = harness(session({ origin: "http://bn-internal:8787" }));
 		const image = { buffer: Buffer.from([1]), mime: "image/png" } as const;
 		h.setLinks([link({ publicOrigin: "https://bn.example.com/" })]);
@@ -423,27 +423,31 @@ describe("桥 adapter", () => {
 		expect(h.lastRequest().message).toMatchObject({
 			url: "https://bn.example.com/ext/bridge/blob/blob1",
 		});
-		expect(
-			await h.adapter.createTestPayload?.(connection(), target(), "forward", {
-				text: "BN",
-				image,
-				secondImage: image,
-				audio: { buffer: Buffer.alloc(0), mime: "audio/silk" },
-			}),
-		).toMatchObject({
-			ok: true,
-			payload: {
-				images: [
-					{ url: "https://bn.example.com/ext/bridge/blob/blob2" },
-					{ url: "https://bn.example.com/ext/bridge/blob/blob3" },
-				],
-			},
+		const sample = h.adapter.createTestPayload?.(connection(), target(), "forward", {
+			text: "BN",
+			image,
+			secondImage: image,
+			audio: { buffer: Buffer.alloc(0), mime: "audio/silk" },
 		});
+		if (!sample?.ok || sample.payload.kind !== "image-group")
+			throw new Error("missing forward sample");
+		const urls = sample.payload.images.map((item) => item.url);
+		expect(new Set(urls).size).toBe(2);
+		expect(
+			urls.every((url) => url?.startsWith("https://") && !url.includes("/ext/bridge/blob/")),
+		).toBe(true);
+		await h.adapter.send(connection(), target(), sample.payload);
+		expect(h.lastRequest().message).toMatchObject({
+			kind: "forward-images",
+			images: urls.map((url) => ({ url })),
+			forward: true,
+		});
+		expect(h.published).toHaveLength(1);
 
 		h.setLinks([link({ publicOrigin: "" })]);
 		await h.adapter.send(connection(), target(), { kind: "image", image });
 		expect(h.lastRequest().message).toMatchObject({
-			url: "http://bn-internal:8787/ext/bridge/blob/blob4",
+			url: "http://bn-internal:8787/ext/bridge/blob/blob2",
 		});
 	});
 
