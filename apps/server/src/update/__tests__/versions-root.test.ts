@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { loadBootstrapConfig } from "../../config/loader.js";
 import { DEFAULT_DATA_DIR, resolveDataDir, resolveVersionsRoot } from "../versions-root.js";
 
@@ -19,6 +19,7 @@ import { DEFAULT_DATA_DIR, resolveDataDir, resolveVersionsRoot } from "../versio
 const created: string[] = [];
 
 afterEach(() => {
+	vi.unstubAllEnvs();
 	for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -40,6 +41,34 @@ function expectAgreement(input: { argv: string[]; env: NodeJS.ProcessEnv; cwd: s
 }
 
 describe("resolveDataDir 与 loadBootstrapConfig 必须算出同一个 dataDir", () => {
+	it.each(["bn.config.yaml", "bn.config.json"])("已选文件 %s 展开 dataDir 中的环境变量", (name) => {
+		const cwd = tempCwd();
+		const path = join(cwd, name);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: the config loader expands this value
+		writeFileSync(path, JSON.stringify({ dataDir: "${BN_TEST_DATA_HOME}/versions-host" }));
+		vi.stubEnv("BN_TEST_DATA_HOME", cwd);
+		const env = { BN_CONFIG: path };
+		expect(expectAgreement({ argv: [], env, cwd })).toBe(join(cwd, "versions-host"));
+	});
+
+	it("旧式默认配置文件在环境变量之前加载", () => {
+		const cwd = tempCwd();
+		writeFileSync(join(cwd, "bn.config.yml"), "dataDir: from-file\n");
+		expect(expectAgreement({ argv: [], env: {}, cwd })).toBe(join(cwd, "from-file"));
+		expect(expectAgreement({ argv: [], env: { BN_DATA_DIR: "from-env" }, cwd })).toBe(
+			join(cwd, "from-env"),
+		);
+	});
+
+	it("显式文件存在时，缺少的字段取 schema 默认值", () => {
+		const cwd = tempCwd();
+		const path = join(cwd, "bn.config.yaml");
+		writeFileSync(path, "logLevel: silent\n");
+		expect(expectAgreement({ argv: [], env: { BN_CONFIG: path, BN_DATA_DIR: "env" }, cwd })).toBe(
+			join(cwd, "data"),
+		);
+	});
+
 	it("CLI 给了 --data-dir", () => {
 		const cwd = tempCwd();
 		expectAgreement({
