@@ -7,8 +7,9 @@ shopt -s nullglob
 cd "$(git rev-parse --show-toplevel)"
 
 vp run check
-vp run build
+BN_RUNTIME_PROFILE=production NODE_ENV=production vp run build
 vp run typecheck:after-build
+export BN_GATE_WEB_DIST="$PWD/apps/web/dist"
 
 [ -n "${GATE_SLICE_TESTS-}" ] || exec vp run test
 

@@ -94,6 +94,7 @@ jobs:
       - name: Test
         env:
           SHARD: ${{ matrix.shard }}
+          BN_GATE_WEB_DIST: ${{ github.workspace }}/apps/web/dist
           BN_PACKAGE_TEST_CACHE_SCRIPT: .github/scripts/shared/prepare-package-test-cache.sh
         run: vp run test --shard="$SHARD/4"
 
