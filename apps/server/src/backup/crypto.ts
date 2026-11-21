@@ -52,11 +52,11 @@ export class BackupPinError extends BackupRejectedError {
 	}
 }
 
-const SALT_BYTES = 16;
+export const BACKUP_SALT_BYTES = 16;
 
 /** Encrypt a secret bag under `pin` with a fresh random salt. */
 export function sealSecrets(pin: string, bag: BackupSecretBag): EncryptedSecrets {
-	const salt = randomBytes(SALT_BYTES);
+	const salt = randomBytes(BACKUP_SALT_BYTES);
 	const key = deriveKeyFromPassphrase(pin, salt);
 	const cipher = gcmEncrypt(key, JSON.stringify(bag));
 	return { kdf: { algo: "scrypt", salt: salt.toString("base64") }, cipher };

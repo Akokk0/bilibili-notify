@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { BackupPinError } from "../backup/crypto.js";
+import { openFullBackup } from "../backup/assemble.js";
+import { BackupPinError, sealSecrets } from "../backup/crypto.js";
 import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupEnvelope } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { BackupService } from "../backup/service.js";
@@ -26,7 +27,7 @@ function envelope(kind: "full" | "sanitized"): BackupEnvelope {
 		...(kind === "full"
 			? {
 					secrets: {
-						kdf: { algo: "scrypt", salt: "x" },
+						kdf: { algo: "scrypt", salt: Buffer.alloc(16).toString("base64") },
 						cipher: { v: 2, iv: "", tag: "", data: "" },
 					},
 				}
@@ -223,6 +224,31 @@ describe("backup route", () => {
 		}
 		expect(service.importBackup).not.toHaveBeenCalled();
 	});
+
+	it.each([true, false])(
+		"a truncated scrypt salt returns invalid on import (dryRun %s)",
+		async (dryRun) => {
+			const base = fakeService();
+			const { app } = mounted(
+				fakeService({
+					async importBackup(options) {
+						openFullBackup(options.envelope, options.pin ?? "");
+						return base.importBackup(options);
+					},
+				}),
+			);
+			const encrypted = sealSecrets("1234", {});
+			encrypted.kdf.salt = "";
+			const res = await post(app, "/api/system/backup/import", {
+				backup: { ...envelope("full"), secrets: encrypted },
+				mode: "merge",
+				pin: "1234",
+				dryRun,
+			});
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({ code: "invalid" });
+		},
+	);
 
 	it("POST /import rejects a non-backup document with 400 (never reaches the service)", async () => {
 		const service = fakeService();

@@ -9,7 +9,7 @@ import { IdentitySchema } from "@bilibili-notify/internal";
 import { isGcmBlob } from "@bilibili-notify/storage";
 import { z } from "zod";
 import { t } from "../i18n/index.js";
-import type { EncryptedSecrets } from "./crypto.js";
+import { BACKUP_SALT_BYTES, type EncryptedSecrets } from "./crypto.js";
 import { BackupRejectedError } from "./rejected-error.js";
 
 /**
@@ -160,7 +160,10 @@ const content = z.object({
 	}),
 });
 const encrypted = z.object({
-	kdf: z.object({ algo: z.literal("scrypt"), salt: z.string() }),
+	kdf: z.object({
+		algo: z.literal("scrypt"),
+		salt: z.base64().refine((value) => Buffer.from(value, "base64").length >= BACKUP_SALT_BYTES),
+	}),
 	cipher: z.custom(isGcmBlob),
 });
 
