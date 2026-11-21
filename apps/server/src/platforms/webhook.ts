@@ -22,6 +22,7 @@ import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
 import { logText, t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
+import { httpFailure } from "./http-failure.js";
 import { imageGroupUrls } from "./image-group.js";
 import { isWebhookPlatform, type WebhookPlatform } from "./platform-descriptors.js";
 import { commonTestPayload } from "./test-payload.js";
@@ -372,16 +373,6 @@ function signFeishu(
 		timestamp,
 		sign: createHmac("sha256", stringToSign).update("").digest("base64"),
 	};
-}
-
-/** 对端回了非 2xx:状态码 → 标准码;状态码本身留在 `upstreamCode`(写成 `http:<status>`)。 */
-function httpFailure(status: number, message: string): Failure {
-	const upstreamCode = `http:${status}`;
-	if (status === 401 || status === 403) return fail("unauthorized", message, { upstreamCode });
-	if (status === 404 || status === 410) return fail("not_found", message, { upstreamCode });
-	if (status === 429) return fail("rate_limited", message, { upstreamCode });
-	if (status >= 400 && status < 500) return fail("invalid", message, { upstreamCode });
-	return fail("unavailable", message, { upstreamCode });
 }
 
 /** 失败的原话过一遍脱敏(地址里的密钥、签名);码与 `upstreamCode` 不动。 */

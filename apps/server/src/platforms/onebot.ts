@@ -27,6 +27,7 @@ import { logText, t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { createGroupRoleCache } from "./group-role-cache.js";
+import { httpFailure } from "./http-failure.js";
 import { imageGroupUrls } from "./image-group.js";
 import { ONEBOT_FORWARD_MIN_TIMEOUT_MS, ONEBOT_IMAGE_MIN_TIMEOUT_MS } from "./onebot-constants.js";
 import { routeInboundFrame } from "./onebot-inbound.js";
@@ -415,16 +416,6 @@ function interpretResponse(r: OneBotResponse): Result {
 		return fail("unsupported", message, { upstreamCode: r.retcode });
 	}
 	return fail("unknown", message, r.retcode === undefined ? {} : { upstreamCode: r.retcode });
-}
-
-/** 对端回了非 2xx:状态码 → 标准码;状态码本身留在 `upstreamCode`,带 `http:` 前缀好与 retcode 分开。 */
-function httpFailure(status: number, message: string): Failure {
-	const upstreamCode = `http:${status}`;
-	if (status === 401 || status === 403) return fail("unauthorized", message, { upstreamCode });
-	if (status === 404 || status === 410) return fail("not_found", message, { upstreamCode });
-	if (status === 429) return fail("rate_limited", message, { upstreamCode });
-	if (status >= 400 && status < 500) return fail("invalid", message, { upstreamCode });
-	return fail("unavailable", message, { upstreamCode });
 }
 
 /**

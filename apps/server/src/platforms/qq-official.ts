@@ -32,6 +32,7 @@ import type { LocaleReader } from "../i18n/locale-reader.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { createGroupRoleCache } from "./group-role-cache.js";
+import { httpFailure } from "./http-failure.js";
 import { imageGroupUrls } from "./image-group.js";
 import { createQQAtAllUsage } from "./qq-at-all-usage.js";
 import { createQQConnectionAuth } from "./qq-bind.js";
@@ -802,19 +803,6 @@ export function qqFilesPath(scope: "group" | "private", openid: string): string 
 }
 
 export type QQSendResult = Result<{ id?: string; pendingAudit?: true; auditId?: string }>;
-
-/**
- * 对端回了非 2xx:状态码 → 标准码。`upstreamCode` 放 QQ 自己的错误码;错误体里没有码时
- * 放 HTTP 状态,写成 `http:<status>`(与 QQ 的数字码分得开)。
- */
-function httpFailure(status: number, message: string, qqCode?: number): Failure {
-	const upstreamCode = qqCode ?? `http:${status}`;
-	if (status === 401 || status === 403) return fail("unauthorized", message, { upstreamCode });
-	if (status === 404 || status === 410) return fail("not_found", message, { upstreamCode });
-	if (status === 429) return fail("rate_limited", message, { upstreamCode });
-	if (status >= 400 && status < 500) return fail("invalid", message, { upstreamCode });
-	return fail("unavailable", message, { upstreamCode });
-}
 
 /** 换 token 没成 → 失败。它发生在任何一条消息发出去之前。 */
 function tokenFailure(e: unknown): Failure {
