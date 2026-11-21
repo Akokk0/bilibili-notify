@@ -1,5 +1,10 @@
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vite-plus/test";
-import { parseDesktopLayout } from "../desktop-layout.mjs";
+import { parseDesktopLayout, repoRoot } from "../desktop-layout.mjs";
 import {
 	auditDesktopGates,
 	auditRepoDesktopGates,
@@ -225,5 +230,41 @@ foreach ($arg in @($ServerEntry, "--web-dist", $WebDist)) {
 describe("真实仓库", () => {
 	it("外壳、两个发版闸、与那份布局声明说的是同一套", () => {
 		expect(auditRepoDesktopGates()).toEqual([]);
+	});
+
+	it("Windows 安装包与便携版从干净的 NSIS 构建输出和本次准备的资源收集", async ({
+		skip,
+		onTestFinished,
+	}) => {
+		const root = await mkdtemp(join(tmpdir(), "bn-windows-release-"));
+		onTestFinished(() => rm(root, { recursive: true, force: true }));
+		const tauri = join(root, "apps/desktop/src-tauri");
+		const release = join(tauri, "target/release");
+		const nsis = join(release, "bundle/nsis");
+		const resources = join(tauri, "resources");
+		await mkdir(nsis, { recursive: true });
+		await mkdir(join(resources, "node/bin"), { recursive: true });
+		await writeFile(join(nsis, "BN setup.exe"), "installer");
+		await writeFile(join(release, "bilibili-notify-desktop.exe"), "launcher");
+		await writeFile(join(resources, "node/bin/node.exe"), "runtime");
+
+		const script = join(
+			repoRoot,
+			".github/scripts/desktop-release/collect-windows-desktop-artifacts.ps1",
+		);
+		const result = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-File", script], {
+			cwd: root,
+			env: { ...process.env, RUNNER_TEMP: root },
+			encoding: "utf8",
+		});
+		if (result.error?.code === "ENOENT") skip("本机未安装 PowerShell");
+		expect(result.status, result.error?.message ?? result.stderr).toBe(0);
+		const artifacts = join(root, "desktop-artifacts");
+		expect(await readFile(join(artifacts, "bilibili-notify-windows-x64-setup.exe"), "utf8")).toBe(
+			"installer",
+		);
+		const zip = unzipSync(await readFile(join(artifacts, "bilibili-notify-windows-x64.zip")));
+		expect(strFromU8(zip["bilibili-notify-desktop.exe"])).toBe("launcher");
+		expect(strFromU8(zip["resources/node/bin/node.exe"])).toBe("runtime");
 	});
 });
