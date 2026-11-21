@@ -49,5 +49,5 @@
 	},
 	"api.private": "This creator’s Douyin account is private.",
 	"auth.prepareFailed": "Could not initialize the Douyin sign-in session. Please try again later.",
-	"marketplace.notes": "Failed account avatar downloads now retry automatically, without another QR sign-in."
+	"marketplace.notes": "Douyin short links respect the platform’s retry delay when rate-limited. Timed-out requests can be retried."
 }
