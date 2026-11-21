@@ -1642,6 +1642,7 @@
 	"stats.videoViews.sourceFailed": "The source could not return the total video view count. Try again later.",
 	"stats.videoViews.cancelled": "Reading the total video view count was cancelled.",
 	"adapters.capability.audioUnsupported": "This adapter has not implemented audio delivery",
+	"onebot.capability.inboundUnsupported": "OneBot needs a WebSocket connection to receive messages",
 	"onebot.capability.markdownUnsupported": "BN sends plain text through OneBot",
 	"qqOfficial.capability.forwardUnsupported": "The QQ official adapter does not implement merged forwards",
 	"qqOfficial.capability.markdownUnsupported": "Native Markdown requires a private bot with platform permission",

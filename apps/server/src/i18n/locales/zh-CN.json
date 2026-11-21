@@ -1630,6 +1630,7 @@
 	"stats.videoViews.sourceFailed": "来源未能返回累计视频播放量，请稍后重试。",
 	"stats.videoViews.cancelled": "累计视频播放量读取已取消。",
 	"adapters.capability.audioUnsupported": "此适配器尚未接入语音发送",
+	"onebot.capability.inboundUnsupported": "OneBot 需要 WebSocket 连接才能接收消息",
 	"onebot.capability.markdownUnsupported": "BN 的 OneBot 发送链路使用普通文本",
 	"qqOfficial.capability.forwardUnsupported": "QQ 官方适配器没有接入合并转发",
 	"qqOfficial.capability.markdownUnsupported": "原生 Markdown 需要私域机器人及平台授权",

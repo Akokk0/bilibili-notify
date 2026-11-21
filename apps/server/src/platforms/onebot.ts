@@ -1440,6 +1440,35 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		}
 	}
 
+	function capabilities(connection: Connection): ConnectionCapabilities {
+		return {
+			image: { state: "supported", checkedAt: adapterStartedAt },
+			imageGroup: { state: "supported", checkedAt: adapterStartedAt },
+			forward: { state: "supported", checkedAt: adapterStartedAt },
+			audio: {
+				state: "supported",
+				checkedAt: adapterStartedAt,
+			},
+			markdown: {
+				state: "unsupported",
+				reason: t("onebot.capability.markdownUnsupported"),
+				checkedAt: adapterStartedAt,
+			},
+			// HTTP 只发送，入站事件由两种 WebSocket 传输交给宿主。
+			atAll: { state: "supported", checkedAt: adapterStartedAt },
+			inbound:
+				isMine(connection) &&
+				(connection.settings.transport === "ws" || connection.settings.transport === "ws-reverse")
+					? { state: "supported", checkedAt: adapterStartedAt }
+					: {
+							state: "unsupported",
+							reason: t("onebot.capability.inboundUnsupported"),
+							checkedAt: adapterStartedAt,
+						},
+			nativeShare: nativeShareSupport.get(connection.id) ?? NOT_PROBED,
+		};
+	}
+
 	return {
 		adapterKey: ADAPTER_KEY,
 		createTestPayload(_connection, destination, kind, samples) {
@@ -1642,35 +1671,14 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			if (disposed) return fail("unavailable", t("targets.status.cancelled"));
 			return ok({ status: { role } });
 		},
-		capabilities(connection: Connection): ConnectionCapabilities {
-			return {
-				image: { state: "supported", checkedAt: adapterStartedAt },
-				imageGroup: { state: "supported", checkedAt: adapterStartedAt },
-				forward: { state: "supported", checkedAt: adapterStartedAt },
-				audio: {
-					state: "supported",
-					checkedAt: adapterStartedAt,
-				},
-				markdown: {
-					state: "unsupported",
-					reason: t("onebot.capability.markdownUnsupported"),
-					checkedAt: adapterStartedAt,
-				},
-				// 静态事实:OneBot 能在群里 @全体,私聊 / 群消息的入站也已经接了。
-				atAll: { state: "supported", checkedAt: adapterStartedAt },
-				inbound: { state: "supported", checkedAt: adapterStartedAt },
-				nativeShare: nativeShareSupport.get(connection.id) ?? NOT_PROBED,
-			};
-		},
+		capabilities,
 
 		async probeCapabilities(connection: Connection): Promise<ConnectionCapabilities> {
 			// 这个方法是唯一**没有**自带那句「不是我的就退回去」的入口(契约上它不返回错,
 			// 只返回能力)。矩阵按分发键派活,派到这儿的必是 onebot 直连 —— 那句保证在这里
 			// 记一次,底下的 helper 就都收窄类型、不用一路 `as` 下去。
 			return {
-				...this.capabilities?.(connection),
-				atAll: { state: "supported", checkedAt: adapterStartedAt },
-				inbound: { state: "supported", checkedAt: adapterStartedAt },
+				...capabilities(connection),
 				nativeShare: await probeNativeShare(connection as OnebotConnection),
 			};
 		},

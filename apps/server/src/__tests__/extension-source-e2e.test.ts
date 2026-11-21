@@ -269,7 +269,7 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 		port = await findFreePort();
 		handle = await boot(port);
 
-		// 推送目标:一条 OneBot(HTTP)连接,指向没人监听的回环端口 —— 截流开着时适配器的 `send` 压根不会被调到。
+		// 推送目标:一条 OneBot(WebSocket)连接,指向没人监听的回环端口 —— 截流开着时适配器的 `send` 压根不会被调到。
 		await okRes(
 			await api(
 				"/api/connections",
@@ -280,8 +280,8 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 					adapterKey: "onebot",
 					platform: "onebot",
 					settings: {
-						transport: "http",
-						baseUrl: `http://127.0.0.1:${await findFreePort()}`,
+						transport: "ws",
+						url: `ws://127.0.0.1:${await findFreePort()}`,
 						maxRetries: 0,
 						retryIntervalMs: 0,
 					},

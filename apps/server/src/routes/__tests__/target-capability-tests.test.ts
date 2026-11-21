@@ -25,7 +25,7 @@ async function harness() {
 		adapterKey: "onebot",
 		platform: "onebot",
 		enabled: true,
-		settings: { transport: "http", baseUrl: "http://127.0.0.1:5700", retryIntervalMs: 0 },
+		settings: { transport: "ws", url: "ws://127.0.0.1:5700", retryIntervalMs: 0 },
 	} as unknown as Connection;
 	const target = {
 		id: ID,

@@ -133,6 +133,13 @@ async function listen(server: Server) {
 	return (server.address() as AddressInfo).port;
 }
 
+async function findFreePort() {
+	const probe = createServer();
+	const port = await listen(probe);
+	await new Promise<void>((resolve) => probe.close(() => resolve()));
+	return port;
+}
+
 async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
 	const res = await fetch(host?.url + path, {
 		method,
@@ -315,9 +322,7 @@ beforeAll(async () => {
 			addressCheck: undefined,
 		});
 	});
-	const probe = createServer();
-	const port = await listen(probe);
-	await new Promise<void>((resolve) => probe.close(() => resolve()));
+	const port = await findFreePort();
 	host = await startServer({
 		argv: [
 			"--host",
@@ -543,7 +548,12 @@ it("群聊分享未订阅博主的短链，官方拓展展开后在对应群组�
 		enabled: true,
 		adapterKey: "onebot",
 		platform: "onebot",
-		settings: { transport: "http", baseUrl: origin, maxRetries: 0, retryIntervalMs: 0 },
+		settings: {
+			transport: "ws",
+			url: `ws://127.0.0.1:${await findFreePort()}`,
+			maxRetries: 0,
+			retryIntervalMs: 0,
+		},
 	});
 	await api("/api/targets", "POST", {
 		id: groupTarget,

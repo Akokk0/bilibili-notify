@@ -1630,6 +1630,7 @@
 	"stats.videoViews.sourceFailed": "ソースから動画の累計再生数を取得できませんでした。しばらくしてから再試行してください。",
 	"stats.videoViews.cancelled": "動画の累計再生数の取得をキャンセルしました。",
 	"adapters.capability.audioUnsupported": "このアダプターは音声送信にまだ対応していません",
+	"onebot.capability.inboundUnsupported": "OneBot でメッセージを受信するには WebSocket 接続が必要です",
 	"onebot.capability.markdownUnsupported": "BN の OneBot 送信はプレーンテキストです",
 	"qqOfficial.capability.forwardUnsupported": "QQ 公式アダプターはまとめて転送に対応していません",
 	"qqOfficial.capability.markdownUnsupported": "ネイティブ Markdown にはプライベートボットとプラットフォームの許可が必要です",
