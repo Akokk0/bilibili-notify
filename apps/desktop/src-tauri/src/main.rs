@@ -42,6 +42,7 @@ struct LauncherState {
 }
 
 struct LauncherInner {
+    generation: u64,
     status: LauncherStatus,
     message: String,
     detail: Option<String>,
@@ -56,6 +57,7 @@ struct LauncherInner {
 impl Default for LauncherInner {
     fn default() -> Self {
         Self {
+            generation: 0,
             status: LauncherStatus::Stopped,
             message: "正在初始化桌面壳。".to_string(),
             detail: None,
@@ -66,6 +68,12 @@ impl Default for LauncherInner {
             dock_hidden: false,
             tray_ready: false,
         }
+    }
+}
+
+impl LauncherInner {
+    fn starting(&self, generation: u64) -> bool {
+        !self.quitting && self.generation == generation && self.status == LauncherStatus::Starting
     }
 }
 
@@ -543,26 +551,28 @@ fn quit_app(app: AppHandle) -> Result<(), String> {
 }
 
 fn start_service_async(app: AppHandle) {
-    {
+    let generation = {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
         if inner.quitting || inner.status == LauncherStatus::Starting {
             return;
         }
+        inner.generation += 1;
         inner.status = LauncherStatus::Starting;
         inner.message = "正在启动本机后端。服务就绪后会自动打开 Dashboard。".to_string();
         inner.detail = None;
         inner.dashboard_url = None;
-    }
+        inner.generation
+    };
     thread::spawn(move || {
-        if let Err(err) = restart_service_blocking(&app) {
-            mark_service_failed(&app, err);
+        if let Err(err) = restart_service_blocking(&app, generation) {
+            mark_service_failed(&app, generation, err);
         }
     });
 }
 
-fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
-    stop_existing_service(app, "restart")?;
+fn restart_service_blocking(app: &AppHandle, generation: u64) -> Result<(), String> {
+    stop_existing_service(app, "restart", generation)?;
     let paths = current_paths(app)?;
     let resources = resolve_resources(app)?;
     let sidecar_data_dir = child_process_path(&paths.data_dir);
@@ -613,11 +623,11 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     apply_sidecar_env(&mut command, &desktop_token, &url, std::process::id());
     configure_sidecar_command(&mut command);
 
-    let pid = {
+    {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
-        if inner.quitting {
-            return Err("应用正在退出。".to_string());
+        if !inner.starting(generation) {
+            return Ok(());
         }
         let child = command
             .spawn()
@@ -638,12 +648,11 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
             paths.launcher_log_dir.display()
         ));
         inner.dashboard_url = Some(dashboard_url.clone());
-        pid
-    };
-    spawn_child_monitor(app.clone(), pid);
+    }
+    spawn_child_monitor(app.clone(), generation);
 
-    if !wait_for_health(port, READY_TIMEOUT) {
-        stop_existing_service(app, "ready timeout")?;
+    if !wait_for_health(app, generation, port, READY_TIMEOUT) {
+        stop_existing_service(app, "ready timeout", generation)?;
         return Err(format!(
             "后端服务在 {} 秒内未就绪。",
             READY_TIMEOUT.as_secs()
@@ -653,7 +662,7 @@ fn restart_service_blocking(app: &AppHandle) -> Result<(), String> {
     {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
-        if inner.quitting {
+        if !inner.starting(generation) {
             return Ok(());
         }
         inner.status = LauncherStatus::Ready;
@@ -724,38 +733,26 @@ fn sidecar_exit_disposition(quitting: bool, exit_code: Option<i32>) -> SidecarEx
     }
 }
 
-fn spawn_child_monitor(app: AppHandle, pid: u32) {
+fn spawn_child_monitor(app: AppHandle, generation: u64) {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(1));
-        let exit_status = {
+        let (paths, restart) = {
             let state = app.state::<LauncherState>();
             let mut inner = state.inner.lock().expect("launcher state poisoned");
+            if inner.generation != generation {
+                return;
+            }
             let Some(service) = inner.service.as_mut() else {
                 return;
             };
-            if service.pid != pid {
-                return;
-            }
-            match service.child.try_wait() {
-                Ok(Some(status)) => Some(Ok((status.code(), status.to_string()))),
-                Ok(None) => None,
-                Err(err) => Some(Err(err.to_string())),
-            }
-        };
-        let Some(status) = exit_status else {
-            continue;
-        };
-        let paths = current_paths(&app).ok();
-        // 持锁只做「改状态」,拿到的是一个二选一的结论 —— 拉起来还是摊开崩溃页。
-        // 曾经这里回的是三态 `SidecarExit`,于是锁外还得再 match 一遍,而 `Quitting`
-        // 那条 arm 在锁里就 return 了、永远到不了:三个分支在两处各写一遍,加一档状态
-        // 得记着改两处。
-        let restart = {
-            let state = app.state::<LauncherState>();
-            let mut inner = state.inner.lock().expect("launcher state poisoned");
+            let status = match service.child.try_wait() {
+                Ok(Some(status)) => Ok((status.code(), status.to_string())),
+                Ok(None) => continue,
+                Err(err) => Err(err.to_string()),
+            };
             inner.service = None;
             let exit_code = status.as_ref().ok().and_then(|(code, _)| *code);
-            match sidecar_exit_disposition(inner.quitting, exit_code) {
+            let restart = match sidecar_exit_disposition(inner.quitting, exit_code) {
                 SidecarExit::Quitting => return,
                 SidecarExit::Restart => {
                     // 不在这里置 Starting:start_service_async 看到 Starting 会当成
@@ -775,7 +772,8 @@ fn spawn_child_monitor(app: AppHandle, pid: u32) {
                     });
                     false
                 }
-            }
+            };
+            (inner.paths.clone(), restart)
         };
         if restart {
             if let Some(paths) = paths {
@@ -792,10 +790,13 @@ fn spawn_child_monitor(app: AppHandle, pid: u32) {
     });
 }
 
-fn stop_existing_service(app: &AppHandle, reason: &str) -> Result<(), String> {
+fn stop_existing_service(app: &AppHandle, reason: &str, generation: u64) -> Result<(), String> {
     let service = {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
+        if inner.generation != generation {
+            return Ok(());
+        }
         inner.service.take()
     };
     let Some(mut service) = service else {
@@ -841,11 +842,11 @@ fn terminate_child(child: &mut Child) {
     let _ = child.kill();
 }
 
-fn mark_service_failed(app: &AppHandle, err: String) {
+fn mark_service_failed(app: &AppHandle, generation: u64, err: String) {
     {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
-        if inner.quitting {
+        if !inner.starting(generation) {
             return;
         }
         inner.status = LauncherStatus::Failed;
@@ -929,9 +930,18 @@ fn allocate_port() -> Result<u16, String> {
     Ok(port)
 }
 
-fn wait_for_health(port: u16, timeout: Duration) -> bool {
+fn wait_for_health(app: &AppHandle, generation: u64, port: u16, timeout: Duration) -> bool {
+    let state = app.state::<LauncherState>();
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
+        if !state
+            .inner
+            .lock()
+            .expect("launcher state poisoned")
+            .starting(generation)
+        {
+            return false;
+        }
         if health_ok(port) {
             return true;
         }
@@ -1271,15 +1281,16 @@ fn request_quit(app: AppHandle) {
 }
 
 fn prepare_for_exit(app: &AppHandle, reason: &str) {
-    {
+    let generation = {
         let state = app.state::<LauncherState>();
         let mut inner = state.inner.lock().expect("launcher state poisoned");
         inner.quitting = true;
         inner.status = LauncherStatus::Stopped;
         inner.message = "正在退出应用。".to_string();
         inner.detail = None;
-    }
-    if let Err(err) = stop_existing_service(app, reason) {
+        inner.generation
+    };
+    if let Err(err) = stop_existing_service(app, reason, generation) {
         if let Ok(paths) = current_paths(app) {
             append_launcher_log(
                 &paths.launcher_log_dir,
