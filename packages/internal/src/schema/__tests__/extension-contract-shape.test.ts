@@ -80,7 +80,7 @@ const CONTRACT: readonly ContractRow[] = [
 ];
 
 /** 上面那些摘要是在哪个契约小号上记的。 */
-const PINNED_REVISION = 3;
+const PINNED_REVISION = 4;
 
 const HOW_TO_FIX = [
 	"契约形状变了(或契约小号变了,而这里记的还是旧的)。",
