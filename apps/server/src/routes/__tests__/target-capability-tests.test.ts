@@ -105,6 +105,8 @@ it("接收测试只认当前连接和会话的准确回传，发送本身不算�
 		};
 		expect(response).toMatchObject({ ok: true, reception: { state: "pending" } });
 		const test = response.reception;
+		// A bridge subscribed to with-links only forwards group replies containing a URL.
+		expect(test.reply).toMatch(/^https?:\/\/\S+$/);
 		const path = `/${ID}/test/${test.id}`;
 		expect(h.sent.at(-1)).toMatchObject({
 			kind: "text",

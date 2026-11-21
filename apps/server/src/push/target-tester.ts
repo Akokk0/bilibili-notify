@@ -82,10 +82,12 @@ export function createTargetTester(opts: { store: ConfigStore; dispatcher: HostT
 					sessions.delete(id);
 			if (sessions.size >= MAX_SESSIONS) return fail("rate_limited", t("capabilityTests.tooMany"));
 			const expires = Date.now() + TTL_MS;
+			const token = `BN-${randomBytes(8).toString("hex")}`;
 			const view: TargetReceptionTest = {
 				id: randomUUID(),
 				state: "pending",
-				reply: `BN-${randomBytes(8).toString("hex")}`,
+				// Bridge clients forward only group messages containing a link. No web request is needed.
+				reply: target.scope === "group" ? `https://bn.invalid/${token}` : token,
 				expiresAt: new Date(expires).toISOString(),
 			};
 			const session: ReceptionSession = {
