@@ -301,9 +301,9 @@ describe("Subscriptions 快捷菜单", () => {
 		"partial bulk failures report translated counts without retrying successful subscriptions (%s)",
 		async (locale, words) => {
 			i18n.set({ locale, voice: "plain" });
-			vi.mocked(api.post).mockImplementation(async (_path, body) => {
-				if ((body as Subscription).id === SUB_B.id) throw new Error("original denied");
-				return [SUB_A, SUB_B] as never;
+			vi.mocked(api.patch).mockImplementation(async (path) => {
+				if (path.endsWith(SUB_B.id)) throw new Error("original denied");
+				return SUB_A as never;
 			});
 			vi.mocked(api.delete).mockImplementation(async (path) => {
 				if (path.endsWith(SUB_B.id)) throw new Error("original denied");
@@ -323,10 +323,10 @@ describe("Subscriptions 快捷菜单", () => {
 					expect(screen.queryByRole("button", { name: words.remove })).toBeNull(),
 				);
 			}
-			expect(api.post).toHaveBeenCalledTimes(4);
+			expect(api.patch).toHaveBeenCalledTimes(4);
 			for (const enabled of [true, false]) {
 				for (const sub of [SUB_A, SUB_B])
-					expect(api.post).toHaveBeenCalledWith("/api/subscriptions", { ...sub, enabled });
+					expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${sub.id}`, { enabled });
 			}
 			fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
 			fireEvent.click(screen.getAllByRole("button", { pressed: false })[0]);
@@ -575,8 +575,18 @@ describe("Subscriptions 快捷菜单", () => {
 		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`));
 	});
 
+	it("卡片切换只写 enabled，保留并发修改的字段", async () => {
+		renderSubs();
+		const card = (await screen.findByText("UP甲")).closest<HTMLElement>('[role="button"]');
+		if (!card) throw new Error("subscription card missing");
+		fireEvent.click(within(card).getByRole("button", { name: "" }));
+		await waitFor(() =>
+			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`, { enabled: false }),
+		);
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
 	it("批量禁用后 → 自动清空勾选(批量栏消失)", async () => {
-		(api.post as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 		renderSubs();
 		await screen.findByText("UP甲");
 		fireEvent.click(screen.getAllByRole("button", { name: "选择" })[0]);
@@ -601,8 +611,10 @@ describe("Subscriptions 快捷菜单", () => {
 		expect(api.patch).not.toHaveBeenCalled();
 		expect(api.delete).not.toHaveBeenCalled();
 		fireEvent.click(screen.getByRole("button", { name: "批量禁用" }));
-		await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-		expect(api.post).toHaveBeenCalledWith("/api/subscriptions", { ...SUB_A, enabled: false });
+		await waitFor(() =>
+			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`, { enabled: false }),
+		);
+		expect(api.post).not.toHaveBeenCalled();
 	});
 
 	it("反选遵守标签与启停筛选并保留隐藏选择，空结果不可选，清空取消全部勾选", async () => {

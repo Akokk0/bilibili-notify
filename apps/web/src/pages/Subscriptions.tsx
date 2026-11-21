@@ -678,22 +678,10 @@ export default function Subscriptions() {
 		});
 	}
 
-	function toggleEnabled(s: Subscription, on: boolean): void {
-		upsert.mutate({ ...s, enabled: on });
-	}
-
 	async function bulkSetEnabled(on: boolean): Promise<void> {
 		const ids = [...selection];
-		// 写前 refetch:从可能陈旧的 subs 快照构造 PUT,会用旧字段 last-writer-wins
-		// 复活并发编辑的改动。先拉最新再据最新构造。
-		await qc.refetchQueries({ queryKey: ["subscriptions"] });
-		const fresh = qc.getQueryData<Subscription[]>(["subscriptions"]) ?? subs;
 		const results = await Promise.allSettled(
-			ids.map((id) => {
-				const s = fresh.find((x) => x.id === id);
-				if (!s) return Promise.resolve();
-				return api.post<Subscription[]>("/api/subscriptions", { ...s, enabled: on });
-			}),
+			ids.map((id) => api.patch<Subscription>(`/api/subscriptions/${id}`, { enabled: on })),
 		);
 		// allSettled 结果此前被丢弃 → 部分失败完全不可见。上报失败计数。
 		const failed = results.filter((r) => r.status === "rejected").length;
@@ -930,10 +918,10 @@ export default function Subscriptions() {
 						key={s.id}
 						sub={s}
 						selected={selection.has(s.id)}
-						togglePending={upsert.isPending && upsert.variables?.id === s.id}
+						togglePending={patchSub.isPending && patchSub.variables?.id === s.id}
 						onClick={() => setDrawerSubId(s.id)}
 						onToggleSelect={() => toggleSelect(s.id)}
-						onToggleEnabled={(on) => toggleEnabled(s, on)}
+						onToggleEnabled={(on) => patchSub.mutate({ id: s.id, patch: { enabled: on } })}
 						onRequestMenu={(pos) => setMenuAt({ subId: s.id, x: pos.x, y: pos.y })}
 						platform={platformOf(s)}
 						extensionSettings={<ExtensionSettingsButton id={subscriptionIdentityOf(s).sourceKey} />}
