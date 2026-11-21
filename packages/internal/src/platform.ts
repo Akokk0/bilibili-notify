@@ -510,7 +510,10 @@ export interface ConnectionCapabilities {
 	 * 「还不知道」时**审批不能开**(开错了整期草稿都会等到超时作废);
 	 * 链接解析设置列不列这个群也读它,「还不知道」时**照列**(今天对拓展连接一律列)。
 	 */
-	inbound: CapabilitySupport;
+	inbound: CapabilitySupport & {
+		/** 群接收测试可用纯文本验证码；缺省沿用含链接的回传，兼容只转发链接的桥。 */
+		groupTestReply?: "token";
+	};
 	/**
 	 * 能不能发原生分享(平台自己的分享卡)。链接预览的门读它:发不了就回落图片;
 	 * 「还不知道」时门先探一次,探完仍未知按不能算。

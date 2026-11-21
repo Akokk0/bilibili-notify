@@ -1672,7 +1672,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 								checkedAt: adapterStartedAt,
 							},
 				atAll: { state: "supported", checkedAt: adapterStartedAt },
-				inbound: { state: "supported", checkedAt: adapterStartedAt },
+				inbound: { state: "supported", checkedAt: adapterStartedAt, groupTestReply: "token" },
 				// 没实现原生分享(小程序卡)的发送 = 不支持。
 				nativeShare: {
 					state: "unsupported",

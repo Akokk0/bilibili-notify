@@ -4,7 +4,7 @@
 
 ## 版本与工程
 
-宿主契约为 `apiVersion: 1`。群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`，作品收藏数要求 `apiRevision: 3`。适配器如果依赖 `send` 第四个参数 `options.singleAttempt` 来关闭手动测试的重试，需要声明 `apiRevision: 4`。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。使用新增能力时应声明对应小号并核对宿主兼容性。
+宿主契约为 `apiVersion: 1`。群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`，作品收藏数要求 `apiRevision: 3`。适配器如果依赖 `send` 第四个参数 `options.singleAttempt` 来关闭手动测试的重试，需要声明 `apiRevision: 4`。同一小号支持适配器在 `capabilities().inbound` 中返回 `groupTestReply: "token"`，让宿主使用纯文本群接收测试码。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。使用新增能力时应声明对应小号并核对宿主兼容性。
 
 创建器默认生成独立Git工程、示例来源、完整vp命令、锁文件、提交hooks与GitHub Actions：
 

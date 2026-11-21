@@ -86,8 +86,11 @@ export function createTargetTester(opts: { store: ConfigStore; dispatcher: HostT
 			const view: TargetReceptionTest = {
 				id: randomUUID(),
 				state: "pending",
-				// Bridge clients forward only group messages containing a link. No web request is needed.
-				reply: target.scope === "group" ? `https://bn.invalid/${token}` : token,
+				// Older bridges forward group replies only when they contain a link.
+				reply:
+					target.scope === "group" && support?.groupTestReply !== "token"
+						? `https://bn.invalid/${token}`
+						: token,
 				expiresAt: new Date(expires).toISOString(),
 			};
 			const session: ReceptionSession = {
