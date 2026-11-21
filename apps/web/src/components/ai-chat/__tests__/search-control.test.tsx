@@ -84,7 +84,7 @@ describe("SearchControl — 会话级受控胶囊", () => {
 		mount("", { on: false, onToggle: () => {} });
 		const btn = (await screen.findByRole("button", { name: "联网搜索" })) as HTMLButtonElement;
 		expect(btn.disabled).toBe(true);
-		expect(btn.title).toContain("联网搜索");
+		expect(btn.title).toContain("智能女仆 → 搜索");
 		expect(btn.title).toContain("API Key");
 	});
 

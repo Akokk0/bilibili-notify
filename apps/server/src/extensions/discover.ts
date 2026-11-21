@@ -125,7 +125,7 @@ export interface DevelopmentExtensionEntry {
 }
 export type DevelopmentEntryResolver = (
 	directory: string,
-) => Promise<DevelopmentExtensionEntry | undefined>;
+) => Promise<DevelopmentExtensionEntry | { error: string } | undefined>;
 
 /** 这个目录要是条软链,它指向哪。不是软链(或读不了)就是 `undefined`。 */
 async function linkTarget(dir: string): Promise<string | undefined> {
@@ -253,6 +253,9 @@ export async function readExtensionDir(
 		};
 	}
 	const development = await options.developmentEntry?.(dir);
+	if (development && "error" in development) {
+		return { state: "unreadable", id, dir, detail: development.error };
+	}
 	const manifest = safeManifestIcons(development?.manifest ?? read.manifest);
 
 	const entry = development?.entry ?? join(dir, EXTENSION_ENTRY_FILE);

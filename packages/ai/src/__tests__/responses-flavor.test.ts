@@ -27,7 +27,7 @@ import type {
 	ToolTraceEvent,
 } from "../commentary-generator";
 import type { WebSearchResult } from "../web-search";
-import { makeGen as baseGen, streamOf, untilAborted } from "./harness";
+import { aiConfig, makeGen as baseGen, streamOf, untilAborted } from "./harness";
 
 // ---------------------------------------------------------------------------
 // mocks
@@ -121,6 +121,172 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("responses 风味:路由与请求形状", () => {
+	it("keeps the originating account's chat protocol and safety settings while a turn starts", async () => {
+		const gen = makeGen({
+			model: "deepseek-flash",
+			apiFlavor: "responses",
+			nativeWeb: true,
+			safetyCheck: true,
+		});
+		oai.responsesCreate.mockResolvedValue({ output: [msgItem("ok")] });
+		oai.chatCreate.mockResolvedValue({
+			choices: [{ message: { role: "assistant", content: "ok" } }],
+		});
+		const answer = gen.chatStateless([{ role: "user", content: "hi" }], { webSearch: true });
+		gen.updateConfig(aiConfig({ provider: "custom", model: "other" }));
+		await answer;
+		expect(oai.chatCreate).not.toHaveBeenCalled();
+		expect(oai.responsesCreate.mock.calls[0]?.[0]).toMatchObject({
+			safety_check: { level: "high" },
+			tools: expect.arrayContaining([{ type: "deepseek_web_search" }]),
+		});
+	});
+	it("applies the profile's safety setting to conversation titles", async () => {
+		const gen = makeGen({ model: "deepseek-flash", safetyCheck: true });
+		oai.chatCreate.mockResolvedValue({
+			choices: [{ finish_reason: "content_filter", message: { content: "hidden title" } }],
+		});
+		await expect(gen.summarizeTitle([{ role: "user", content: "hi" }])).rejects.toThrow(
+			/安全|safety/i,
+		);
+		expect(oai.chatCreate.mock.calls[0][0].safety_check).toEqual({ level: "high" });
+	});
+
+	it.each(["chat", "responses"] as const)(
+		"recognizes a streamed terminal refusal via %s",
+		async (apiFlavor) => {
+			const gen = makeGen({ model: "deepseek-flash", apiFlavor });
+			const create = apiFlavor === "chat" ? oai.chatCreate : oai.responsesCreate;
+			create.mockResolvedValue(
+				streamOf([
+					apiFlavor === "chat"
+						? { choices: [{ finish_reason: "content_filter", delta: {} }] }
+						: {
+								type: "response.incomplete",
+								response: { incomplete_details: { reason: "content_filter" }, output: [] },
+							},
+				]),
+			);
+			const onDelta = vi.fn();
+			await expect(
+				gen.chatStatelessStream([{ role: "user", content: "hi" }], { onDelta }),
+			).rejects.toThrow(/安全|safety/i);
+			expect(create).toHaveBeenCalledOnce();
+			expect(onDelta).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each(["chat", "responses"] as const)(
+		"restricts hosted tools individually in %s",
+		async (apiFlavor) => {
+			const gen = makeGen({ model: "deepseek-flash", apiFlavor, nativeWeb: true });
+			const create = apiFlavor === "chat" ? oai.chatCreate : oai.responsesCreate;
+			const reply =
+				apiFlavor === "chat"
+					? { choices: [{ message: { role: "assistant", content: "ok" } }] }
+					: { output: [msgItem("ok")] };
+			create.mockResolvedValue(reply);
+			for (const tool of ["web_search", "read_url"]) {
+				await gen.chatStatelessStream([{ role: "user", content: "hi" }], {
+					onDelta: vi.fn(),
+					webSearch: true,
+					restrictTools: [tool],
+				});
+				expect(create.mock.lastCall?.[0].tools).toEqual([{ type: `deepseek_${tool}` }]);
+			}
+		},
+	);
+	it.each(["chat", "responses"] as const)(
+		"sends the document and exposes cited sources via %s",
+		async (apiFlavor) => {
+			const gen = makeGen({ model: "deepseek-flash", apiFlavor, nativeWeb: true });
+			const create = apiFlavor === "chat" ? oai.chatCreate : oai.responsesCreate;
+			const source = { url: "https://example.org/reference", title: "Reference" };
+			const annotations = [source, source, { url: "javascript:void(0)", title: "invalid" }].map(
+				(s) =>
+					apiFlavor === "chat"
+						? { type: "url_citation", url_citation: s }
+						: { type: "url_citation", ...s },
+			);
+			create.mockResolvedValue(
+				apiFlavor === "chat"
+					? {
+							choices: [
+								{
+									message: { role: "assistant", content: "ok", annotations },
+									finish_reason: "stop",
+								},
+							],
+						}
+					: {
+							output: [
+								{
+									type: "message",
+									role: "assistant",
+									content: [{ type: "output_text", text: "ok", annotations }],
+								},
+							],
+						},
+			);
+			const onToolEvent = vi.fn();
+			await gen.chatStatelessStream([{ role: "user", content: "read" }], {
+				webSearch: true,
+				documentId: "file_1",
+				onDelta: vi.fn(),
+				onToolEvent,
+			});
+			const body = create.mock.calls[0][0];
+			expect(
+				(body.input ?? body.messages).find((item: { role: string }) => item.role === "user")
+					.content,
+			).toContainEqual({
+				type: apiFlavor === "chat" ? "file" : "input_file",
+				file_id: "file_1",
+			});
+			expect(onToolEvent).toHaveBeenCalledWith(
+				expect.objectContaining({ phase: "end", ok: true, sources: [source] }),
+			);
+		},
+	);
+	it.each(["chat", "responses"] as const)(
+		"gates hosted search and checks moderation via %s",
+		async (apiFlavor) => {
+			const gen = makeGen({
+				model: "deepseek-flash",
+				apiFlavor,
+				nativeWeb: true,
+				safetyCheck: true,
+			});
+			const create = apiFlavor === "chat" ? oai.chatCreate : oai.responsesCreate;
+			const reply =
+				apiFlavor === "chat"
+					? { choices: [{ message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] }
+					: { output: [msgItem("ok")] };
+			const history = [{ role: "user" as const, content: "hi" }];
+			create.mockResolvedValue(reply);
+			await gen.chatStateless(history, { webSearch: true });
+			expect(create.mock.calls[0][0]).toMatchObject({
+				safety_check: { level: "high" },
+				tools: expect.arrayContaining([
+					{ type: "deepseek_web_search" },
+					{ type: "deepseek_read_url" },
+				]),
+			});
+			await gen.chatStateless(history);
+			expect(create.mock.calls[1][0].tools).not.toContainEqual({ type: "deepseek_web_search" });
+			create.mockResolvedValue(
+				apiFlavor === "chat"
+					? { choices: [{ finish_reason: "content_filter", message: { content: "blocked" } }] }
+					: {
+							status: "incomplete",
+							incomplete_details: { reason: "content_filter" },
+							output: [msgItem("blocked")],
+						},
+			);
+			await expect(gen.chatStateless(history)).rejects.toThrow(/安全|safety/i);
+			expect(create).toHaveBeenCalledTimes(3);
+		},
+	);
 	it.each([
 		["zh-CN", "简体中文"],
 		["en", "英文，使用英文标点"],
@@ -245,7 +411,7 @@ describe("responses 风味:流式分流与思考参数", () => {
 			onDelta: () => {},
 			thinking: { enableThinking: true, thinkingLevel: "high" },
 		});
-		expect(params(0).reasoning).toEqual({ effort: "high" });
+		expect(params(0).reasoning).toEqual({ effort: "max" });
 
 		oai.responsesCreate.mockResolvedValueOnce(streamOf([completed([msgItem("b")])]));
 		await gen.chatStatelessStream([{ role: "user", content: "2" }], { onDelta: () => {} });

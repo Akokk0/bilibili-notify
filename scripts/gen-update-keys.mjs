@@ -67,7 +67,7 @@ console.log("];");
 console.log("");
 console.log("② 私钥 A 进 CI(base64 包一层,PEM 换行在 secret 里会丢):");
 console.log("");
-console.log(`   base64 < ${publicKeys[0].path} | gh secret set BN_UPDATE_SIGNING_KEY`);
+console.log(`   base64 < ${publicKeys[0].path} | gh secret set BN_RELEASE_SIGNING_KEY`);
 console.log("");
 console.log("③ 两把 .pem 各离线存一份(密码管理器 / 冷存储)。**B 永远不进 CI** ——");
 console.log("   A 泄露时,用 B 签一版把 A 踢出信任列表是唯一的退路。");

@@ -3,6 +3,17 @@ import { packageText } from "@bilibili-notify/internal/texts";
 
 // ── 动态卡片底部统计 ───────────────────────────────────────────────────────────
 
+export const SVG_SAVE = () => (
+	<svg
+		style="width:15px;height:15px;flex-shrink:0"
+		xmlns="http://www.w3.org/2000/svg"
+		viewBox="0 0 24 24"
+		aria-label={packageText("image.icons.save")}
+	>
+		<path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" fill="currentColor" />
+	</svg>
+);
+
 export const SVG_FORWARD = () => (
 	<svg
 		style="width:15px;height:15px;flex-shrink:0"

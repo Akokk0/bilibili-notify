@@ -128,6 +128,7 @@ function postFields(p: PostCardView): CardFields {
 			shares: str(node.stats?.shares),
 			comments: str(node.stats?.comments),
 			likes: str(node.stats?.likes),
+			saves: str(node.stats?.saves),
 		},
 	};
 }

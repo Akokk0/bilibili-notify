@@ -14,6 +14,11 @@ export type LiveObservation =
 	| { kind: "offline" }
 	| { kind: "live"; roomId: string; startedAt?: string; details: ExtensionLiveDetails };
 
+/** 直播间有些数字只给字符串，像「5万+」的展示值没有精确读数。 */
+function exactCount(value: unknown): number | undefined {
+	return count(typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value);
+}
+
 export async function observeLive(
 	ctx: ExtensionContext,
 	client: DouyinSourceClient,
@@ -36,7 +41,8 @@ export async function observeLive(
 	if (!webRid || !/^\d+$/.test(webRid) || !roomId || !/^\d+$/.test(roomId)) return unknown();
 	const result = await client.room(webRid, roomId, signal);
 	if (!result.ok) return result;
-	const rooms = object(object(result.data).data).data;
+	const payload = object(object(result.data).data);
+	const rooms = payload.data;
 	if (!Array.isArray(rooms)) return unknown();
 	const room = rooms.map(object).find((room) => room.id_str === roomId);
 	if (
@@ -46,16 +52,35 @@ export async function observeLive(
 		return unknown();
 	const cover = await image(ctx, room.cover, signal);
 	if (signal.aborted) return fail("indeterminate", ctx.i18n.t("error.stopped"));
-	const start = count(room.start_time);
+	const start = exactCount(room.start_time);
 	const startedAt =
 		start && start <= 253402300799 ? new Date(start * 1000).toISOString() : undefined;
-	const currentViewers = count(room.user_count);
+	const partitions = object(payload.partition_road_map);
+	const category =
+		text(object(object(partitions.sub_partition).partition).title) ??
+		text(object(partitions.partition).title);
+	const stats = object(room.stats);
+	const viewStats = object(room.room_view_stats);
+	const visibleOnlineCount =
+		viewStats.display_type === 1 && viewStats.is_hidden === false
+			? exactCount(viewStats.display_value)
+			: undefined;
+	const currentViewers =
+		exactCount(room.user_count) ??
+		exactCount(stats.user_count_str) ??
+		exactCount(room.user_count_str) ??
+		visibleOnlineCount;
+	// 抖音可同时返回数字 0 和非零的纯数字展示值。
+	const rawTotalViewers = exactCount(stats.total_user);
+	const totalViewers = rawTotalViewers || (exactCount(stats.total_user_str) ?? rawTotalViewers);
 	const title = text(room.title);
 	const details: ExtensionLiveDetails = {
 		url: `https://live.douyin.com/${webRid}`,
 		...(title && { title }),
 		...(cover && { cover }),
+		...(category && { category }),
 		...(currentViewers !== undefined && { currentViewers }),
+		...(totalViewers !== undefined && { totalViewers }),
 	};
 	return ok({
 		observation: { kind: "live" as const, roomId, details, ...(startedAt && { startedAt }) },

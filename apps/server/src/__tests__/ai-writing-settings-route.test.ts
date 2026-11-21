@@ -3,7 +3,7 @@
  * 发 `null` 删掉那一条,`ai` 别的子格不动。跑真 app + 真 store。
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -55,6 +55,87 @@ describe("ai.writing 经设置路由读写", () => {
 		};
 		return { runtime, patch, get };
 	}
+
+	it("语音默认仅文本，目标可以覆盖、恢复继承，密钥重启后保留并脱敏", async () => {
+		const { runtime, patch, get } = await boot();
+		expect((await get()).ai.speech).toMatchObject({ mode: "text", byTarget: {} });
+		const res = await patch({
+			ai: {
+				speech: {
+					baseUrl: "https://speech.example/v1",
+					model: "model",
+					voice: "maid",
+					apiKey: "speech-test-key",
+					mode: "both",
+					byTarget: { [A]: "voice" },
+				},
+			},
+		});
+		expect(res.status).toBe(200);
+		expect(JSON.stringify(await res.json())).not.toContain("speech-test-key");
+		expect((await get()).ai.speech).toMatchObject({ mode: "both", byTarget: { [A]: "voice" } });
+		await patch({ ai: { speech: { byTarget: { [A]: null } } } });
+		await runtime.dispose();
+		const reboot = await boot();
+		try {
+			expect(reboot.runtime.configStore.getGlobals().ai.speech).toMatchObject({
+				mode: "both",
+				byTarget: {},
+				apiKey: "speech-test-key",
+			});
+			expect(JSON.stringify(await reboot.get())).not.toContain("speech-test-key");
+		} finally {
+			await reboot.runtime.dispose();
+		}
+	});
+
+	it("切换语音服务后，两份密钥独立脱敏和持久化，DeepSeek 音色仍保留", async () => {
+		const { runtime, patch, get } = await boot();
+		try {
+			const res = await patch({
+				ai: {
+					speech: {
+						provider: "deepseek",
+						baseUrl: "https://speech.example/v1",
+						model: "custom-tts",
+						voice: "alloy",
+						apiKey: "custom-test-key",
+						deepseekApiKey: "deepseek-test-key",
+						deepseekVoice: "tide",
+					},
+				},
+			});
+			expect(res.status).toBe(200);
+			const saved = (await get()).ai.speech;
+			expect(saved).toMatchObject({
+				provider: "deepseek",
+				apiKey: { masked: expect.any(String) },
+				deepseekApiKey: { masked: expect.any(String) },
+				deepseekVoice: "tide",
+			});
+			const disk = await readFile(
+				join(runtime.dataRoot, "config", "settings", "core.json"),
+				"utf8",
+			);
+			expect(disk).not.toContain("custom-test-key");
+			expect(disk).not.toContain("deepseek-test-key");
+			expect((await patch({ ai: { speech: { provider: "custom" } } })).status).toBe(200);
+		} finally {
+			await runtime.dispose();
+		}
+		const reboot = await boot();
+		try {
+			expect(reboot.runtime.configStore.getGlobals().ai.speech).toMatchObject({
+				provider: "custom",
+				apiKey: "custom-test-key",
+				deepseekApiKey: "deepseek-test-key",
+				voice: "alloy",
+				deepseekVoice: "tide",
+			});
+		} finally {
+			await reboot.runtime.dispose();
+		}
+	});
 
 	it("出厂就是两份默认开、没有例外", async () => {
 		const { runtime, get } = await boot();

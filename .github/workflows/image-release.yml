@@ -4,21 +4,20 @@ name: bilibili-notify — build + publish
 # GHCR uses the workflow GITHUB_TOKEN (packages: write).
 
 on:
-  # 推 v<VERSION> tag 后触发。Docker 以 tag 为发布版本源,
-  # 构建前由 sync-app-version.sh 临时写入各处版本元数据。
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+  workflow_call:
     inputs:
       dry_run:
-        description: "Build only, skip push / manifest publish"
         type: boolean
-        default: true
-      version:
-        description: "App version for dry-run builds, e.g. 0.1.0-alpha.7"
-        type: string
         required: true
+      version:
+        type: string
+    secrets:
+      AFDIAN_USER_ID:
+        required: false
+      AFDIAN_TOKEN:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
 
 # 串行化 image-release —— 同 ref 上的并发 run 一律排队,避免两个 push 同时跑
 # 让 Docker tag 与 git tag / GitHub Release 失同步。cancel-in-progress: false
@@ -37,22 +36,9 @@ permissions:
 env:
   DOCKERHUB_IMAGE: docker.io/akokk0/bilibili-notify
   GHCR_IMAGE: ghcr.io/akokk0/bilibili-notify
-  # tag push 一律是正式发布;workflow_dispatch 勾 dry_run 时只构建不 push / merge。
-  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+  DRY_RUN: ${{ inputs.dry_run }}
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # 发版门禁。`assert-release-ref-on-dev.sh` 只保证 tag 指向的 commit 在 dev 上 ——
-  # 那防的是「拿旁支 commit 发版」,不是「这份代码是绿的」。dev 上一个测试红的 commit
-  # 照样能打 tag 推出镜像。这一关堵的就是那个口子。
-  #
-  # 门禁定义在 gate.yml(唯一一份,四条路径共用)。它先绿,下面的 matrix 才开始跑 ——
-  # 多架构 Docker 构建是十几分钟的事,让它跑在没过门禁的代码上纯属浪费。
-  # ---------------------------------------------------------------------------
-  gate:
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
-    uses: ./.github/workflows/gate.yml
-
   # ---------------------------------------------------------------------------
   # 拆 amd64 / arm64 到各自原生 runner —— 避免 GHA x86 runner 用 QEMU emulated
   # arm64 跑 vp pack / vite 等 native binary 时慢 10-20 倍(实测 emulated arm64
@@ -66,10 +52,10 @@ jobs:
   # ---------------------------------------------------------------------------
   build:
     name: Build (${{ matrix.platform.arch }})
-    # 门禁不绿就不构建,更不推镜像。
-    needs: [gate]
     # ref guard:正式发布只接受 v* tag;手动 dispatch 只允许 dev dry-run。
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       fail-fast: false
@@ -100,7 +86,7 @@ jobs:
 
       - name: Sync app version metadata
         env:
-          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+          VERSION: ${{ inputs.version }}
         run: bash .github/scripts/shared/sync-app-version.sh
 
       # 就地生成 apps/web/public/sponsors.json,经 Dockerfile `COPY . .` 进 builder →
@@ -113,7 +99,7 @@ jobs:
         run: node scripts/fetch-sponsors.mjs
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: ./.github/actions/setup-release-buildx
 
       - name: Log in to Docker Hub
         if: env.DRY_RUN == 'false'
@@ -209,10 +195,7 @@ jobs:
     name: Merge & publish manifest
     runs-on: ubuntu-latest
     needs: [build]
-    # ref guard 同 build job;DRY_RUN gate 在 job-level 内联展开 —— env.* 不能
-    # 在 job.if 引用(GHA expression context 限制),只 step.if 才能读 env。
-    if: |
-      startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
 
     steps:
       - name: Checkout
@@ -236,7 +219,7 @@ jobs:
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: ./.github/actions/setup-release-buildx
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4

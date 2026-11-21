@@ -19,3 +19,11 @@ description: 发布 BN 本体、SDK、创建器、官方拓展或 Docker 基座�
 本体、npm 工具与官方拓展的共享全量门禁以 `gate.yml` 与[构建与发布参考](../../../docs/agents/build-release.md)为准，基座镜像按自身工作流校验。实际发布后分别核对产物与渠道；本地夹具、dry-run、某一条 Actions 成功不能代替全部获批对象的发行验收。
 
 (Koishi 插件与 AstrBot 插件已暂停更新,维护线在 `koishi-astrbot-maintenance` 分支,各自的发版机制只在那条分支上;用户要发那两端的维护版时先切过去、按该分支的文档来,别在 dev 上找扳机。)
+
+## 合并发布快照
+
+本仓每次实际发布（含预发布），在本次所有发行对象的产物和渠道验收通过后，按以下步骤更新 `main`。只做 dry-run 时，验收预演结果即结束。
+
+1. 在原仓从 `dev` 向 `main` 提交 PR（`gh pr create --base main --head dev`）。已有同向的开放 PR 时复用它。在 PR 说明中列明发行对象、版本和发行提交。
+2. 审阅 PR 的完整差异，确认包含发行提交，核对发行后进入 `dev` 的改动是否属于本次快照。等该 PR 的 CI 门禁通过并满足仓库的检查和审查要求，再合并已检查的 `dev` 头提交。用 `gh pr merge` 时传入 `--match-head-commit` 指定该 SHA。若等待期间 `dev` 有更新，复核新增改动和新一轮检查结果。
+3. 在 GitHub 确认 PR 状态为 `MERGED` 后，附 PR 链接和合并提交 SHA 报告发版完成。合并受阻时，报告「产物已发布，PR 待合并」及原因，恢复后从该 PR 继续。

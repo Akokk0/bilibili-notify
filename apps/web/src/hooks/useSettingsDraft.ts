@@ -4,6 +4,19 @@ import { useResourceState } from "../components/library/resource-drafts";
 const record = (value: unknown): value is Record<string, unknown> =>
 	value !== null && typeof value === "object" && !Array.isArray(value);
 
+/** 草稿的显式 null 删除键，缺席的键沿用旧值，数组整体替换。 */
+export function mergeSettingsDraft<T>(base: T, patch: Record<string, unknown>): T {
+	if (!record(patch)) return patch as T;
+	const merged = { ...(base as Record<string, unknown>) };
+	for (const [key, value] of Object.entries(patch)) {
+		const previous = merged[key];
+		if (value === null) delete merged[key];
+		else if (record(previous) && record(value)) merged[key] = mergeSettingsDraft(previous, value);
+		else merged[key] = value;
+	}
+	return merged as T;
+}
+
 /** 新快照只更新未编辑的格；本地删除和数组替换同样是编辑，不能被后台刷新抹掉。 */
 function rebase(previous: unknown, draft: unknown, next: unknown): unknown {
 	if (JSON.stringify(previous) === JSON.stringify(draft)) return next;

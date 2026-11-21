@@ -12,7 +12,7 @@ import { AI_PURPLE } from "../../config/colors";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
-import type { Connection, PushTarget } from "../../types/domain";
+import { CONNECTIONS_QUERY, TARGETS_QUERY } from "../../services/list-queries";
 
 /**
  * 「可推送周报」那一块 —— 显示女仆写的推送文案,并把它真发出去。
@@ -41,15 +41,9 @@ export function RoastPushBox({
 	payload: PushPayload;
 }) {
 	const t = useT();
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	// 图标的平台取自目标挂着的连接。
-	const connectionsQuery = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-	});
+	const connectionsQuery = useQuery(CONNECTIONS_QUERY);
 	// 停用的目标推不出去,列出来只会让人选中之后收一条「目标不可达」。
 	const targets = (targetsQuery.data ?? []).filter((target) => target.enabled);
 	const [picked, setPicked] = useState("");

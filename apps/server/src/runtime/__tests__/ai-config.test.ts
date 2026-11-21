@@ -7,10 +7,11 @@
 
 import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
-import { describe, expect, it } from "vite-plus/test";
-import { toGeneratorConfig } from "../ai-config";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { toGeneratorConfig, webSearchExecutorForAi } from "../ai-config";
 
 const BUILTINS = builtinPresetsFor("zh-CN");
+afterEach(() => vi.unstubAllGlobals());
 
 function aiWith(flavor?: "chat" | "responses") {
 	const g = makeDefaultGlobalSettings();
@@ -43,6 +44,49 @@ describe("toGeneratorConfig:接口风味", () => {
 	});
 });
 
+it("官方 Flash 只在选中 DeepSeek 搜索时启用原生工具", () => {
+	const ai = aiWith();
+	const profile = ai.providers.p1;
+	if (!profile) throw new Error("Missing test profile");
+	profile.model = "deepseek-flash";
+	ai.search.backend = "deepseek";
+	expect(toGeneratorConfig(ai, BUILTINS).nativeWeb).toBe(true);
+	ai.search.backend = "tavily";
+	profile.nativeWeb = true;
+	expect(toGeneratorConfig(ai, BUILTINS).nativeWeb).toBe(false);
+});
+
+it("官方 Pro 搜索沿用主模型密钥，第三方网关使用单独配置的密钥", async () => {
+	const ai = aiWith();
+	ai.search.backend = "deepseek";
+	ai.search.keys.deepseek = "standalone-key";
+	const fetch = vi.fn(async () => Response.json({ results: [] }));
+	vi.stubGlobal("fetch", fetch);
+
+	expect(toGeneratorConfig(ai, BUILTINS).nativeWeb).toBe(false);
+	await webSearchExecutorForAi(ai)?.search("test query");
+	expect(fetch).toHaveBeenLastCalledWith(
+		"https://api.deepseek.com/v1/tools/search",
+		expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer sk-x" }) }),
+	);
+
+	const profile = ai.providers.p1;
+	if (!profile) throw new Error("Missing test profile");
+	profile.baseUrl = "https://gateway.example/v1";
+	expect(toGeneratorConfig(ai, BUILTINS)).toMatchObject({
+		provider: "custom",
+		baseURL: profile.baseUrl,
+		apiKey: profile.apiKey,
+	});
+	await webSearchExecutorForAi(ai)?.search("test query");
+	expect(fetch).toHaveBeenLastCalledWith(
+		"https://api.deepseek.com/v1/tools/search",
+		expect.objectContaining({
+			headers: expect.objectContaining({ Authorization: "Bearer standalone-key" }),
+		}),
+	);
+});
+
 describe("toGeneratorConfig:temperature 已退役", () => {
 	// 一律不发、走服务商默认(推理模型收到它直接 400)。引擎配置里连这一格都不该有 ——
 	// 想调的主人从额外请求参数写,那一格照常递过去。
@@ -66,7 +110,17 @@ describe("toGeneratorConfig:人格", () => {
 			persona: { ...p.persona, name: `X-${p.persona.name}` },
 		}));
 		const cfg = toGeneratorConfig(ai, swapped);
-		expect(cfg.persona.name).toBe("X-凛子");
+		const persona = swapped.find((preset) => preset.id === ai.activePreset)?.persona;
+		expect(persona).toBeDefined();
+		expect(cfg.persona).toEqual({
+			name: "X-凛子",
+			addressUser: persona?.addressUser,
+			addressSelf: persona?.addressSelf,
+			traits: persona?.traits,
+			catchphrase: persona?.catchphrase,
+			customBase: persona?.baseRole,
+			extraPrompt: persona?.extraSystemPrompt,
+		});
 		expect(cfg.dynamicPrompt).toBe(swapped[1]?.dynamicPrompt);
 	});
 

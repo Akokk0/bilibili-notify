@@ -172,24 +172,37 @@ export async function sendChatMessage(
 	 * 主人打的斜杠命令点名的技能。都不落盘 —— 不带 = 都关 / 不点名。
 	 * **要发的东西必须走参数**,别从组件闭包里读。
 	 */
-	flags?: { thinking?: boolean; search?: boolean; skill?: string },
+	flags?: {
+		thinking?: boolean;
+		search?: boolean;
+		skill?: string;
+		document?: File;
+		richLayout?: boolean;
+	},
 ): Promise<AiChatReplyResponse> {
 	const path = `/api/ai/conversations/${encodeURIComponent(id)}/chat`;
+	const json = JSON.stringify({
+		message,
+		...(images?.length ? { images: [...images] } : {}),
+		...(flags?.thinking ? { thinking: true } : {}),
+		...(flags?.search ? { search: true } : {}),
+		// 技能只传**名字**,正文由服务端从库里取 —— 落盘的用户消息就该是主人
+		// 真打的那几个字,不该被一整段技能正文顶掉。
+		...(flags?.skill ? { skill: flags.skill } : {}),
+		// 这里没有 mode:模式归会话所有(开局锁定),服务端 ChatRequestSchema 早
+		// 就不收这个字段了。别再加回来 —— 让请求体决定模式,等于把开写能力那道
+		// 口子的钥匙交给每一条消息。
+	});
+	const form = flags?.document ? new FormData() : null;
+	if (form && flags?.document) {
+		form.set("request", json);
+		form.set("document", flags.document);
+		if (flags.richLayout) form.set("layout", "rich");
+	}
 	const res = await fetch(path, {
 		method: "POST",
-		headers: withDesktopTokenHeader({ "content-type": "application/json" }),
-		body: JSON.stringify({
-			message,
-			...(images?.length ? { images: [...images] } : {}),
-			...(flags?.thinking ? { thinking: true } : {}),
-			...(flags?.search ? { search: true } : {}),
-			// 技能只传**名字**,正文由服务端从库里取 —— 落盘的用户消息就该是主人
-			// 真打的那几个字,不该被一整段技能正文顶掉。
-			...(flags?.skill ? { skill: flags.skill } : {}),
-			// 这里没有 mode:模式归会话所有(开局锁定),服务端 ChatRequestSchema 早
-			// 就不收这个字段了。别再加回来 —— 让请求体决定模式,等于把开写能力那道
-			// 口子的钥匙交给每一条消息。
-		}),
+		headers: withDesktopTokenHeader(form ? {} : { "content-type": "application/json" }),
+		body: form ?? json,
 		credentials: "include",
 	});
 	if (!res.ok || !res.body) {

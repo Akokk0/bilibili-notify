@@ -53,7 +53,7 @@ tools/        独立开发工具(拓展创建器/发布器),不被宿主加载
 - `main` —— GitHub 默认分支,发布快照。不触发任何发版。
 - `koishi-astrbot-maintenance` —— Koishi 插件(`koishi/`)与 AstrBot 插件(`astrbot/`)的维护线;两端各自的发版 workflow 只认这条分支,dev 不含这两个目录。
 
-独立端 Docker、Desktop、npm 成品与应用内更新载荷由 `v<VERSION>` git tag 驱动;源码内独立端包版本保持 `0.0.0-dev`,发布 workflow 构建前按 tag 临时同步版本元数据。prerelease tag(如 `v0.1.0-alpha.7`)→Docker `:alpha` / npm `alpha`,纯 semver tag→`latest`。`version-tag` workflow 是手动 tag helper,默认 dry-run;正式 tag 分别触发 Docker、Desktop、npm 与应用内更新载荷,四者互不阻塞。详见 `docs/agents/build-release.md`。
+独立端由 `v<VERSION>` tag 触发 `npm-release.yml`。同一次门禁通过后，Docker、Desktop、npm 和应用内更新并行发布。版本同步、预检与产物验收见 [构建与发布参考](docs/agents/build-release.md)。
 
 ## 深入参考(`docs/agents/`)
 

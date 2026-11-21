@@ -71,6 +71,22 @@ export const Icon = {
 			<path d="m20 20-3.5-3.5" />
 		</>,
 	),
+	neuralNetwork: stroke(
+		<>
+			<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3ZM4 7.5l16 9m0-9-16 9" />
+			<g fill="currentColor" stroke="none">
+				<circle cx="12" cy="3" r="2.2" />
+				<circle cx="4" cy="7.5" r="2.2" />
+				<circle cx="20" cy="7.5" r="2.2" />
+				<circle cx="12" cy="12" r="2.2" />
+				<circle cx="4" cy="16.5" r="2.2" />
+				<circle cx="20" cy="16.5" r="2.2" />
+				<circle cx="12" cy="21" r="2.2" />
+			</g>
+		</>,
+		1.6,
+	),
+	waveform: stroke(<path d="M3 10v4m4.5-8v12M12 3v18m4.5-13v8m4.5-6v4" />),
 	plus: stroke(<path d="M12 5v14M5 12h14" />, 2.4),
 	folder: stroke(
 		<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,

@@ -405,6 +405,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const webDist = await resolveEffectiveWebDistDir({
 			configured: bootstrap.webDistDir,
 			envValue: normalizeOptionalEnv(env.BN_WEB_DIST),
+			preinstalledPath: env.BN_PREINSTALLED_PATH ?? env.BN_IMAGE_PATH,
 			bundleUrl: options.bundleUrl ?? import.meta.url,
 		});
 		const effectiveWebDistDir = webDist.dir;
@@ -753,6 +754,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		});
 		const updateService = createUpdateService({
 			currentVersion: payloadVersion,
+			canBootBelowRevokedBase: env.BN_BOOT_REVOKED_BASE === "1",
 			developmentBuild,
 			// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
 			// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,
@@ -895,6 +897,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						pipeline?.tickLiveSessionNow(subscriptionId) ?? Promise.resolve(false),
 				},
 		});
+		runtime.serviceCtx.onDispose(() => devtools?.dispose(), "stop");
 		if (devtools)
 			log.info(logText("log.host.devtoolsEnabled"), {
 				event: "host.devtools_enabled",
@@ -1404,7 +1407,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 拓展登记得晚,同一段里就先收:它注册的定时器 / 端点都挂在自己那面 ctx 上,收在核心之前
 		// 才不会在核心已经拆了之后还被回调进去。
 		runtime.serviceCtx.onDispose(() => loadedExtensions?.dispose(), "stop");
-		runtime.serviceCtx.onDispose(() => devtools?.dispose(), "stop");
 		// 清单到手了:拓展设置从「整份遮」收窄到只遮清单里标了机密的格。
 		settingsRedaction.sync();
 		// 起来的那些装载器自己记过了(版本、代码指纹、软链落点,热装与换代码同一句);这里只把
@@ -1502,6 +1504,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				startedAt: STARTED_AT,
 				// 应用 = 优雅停机 + 退 0,由进程管理器把新版本拉起来。**退出码必须是 0**:
 				// 非 0 会被编排系统当成崩溃,退避重启甚至进 CrashLoopBackOff。
+				restartAbility,
 				applyUpdate: () => stopAndExit("update apply"),
 			},
 			// 「重启一下」走的是同一条路 —— 差别只在**为什么**关,不在怎么关。

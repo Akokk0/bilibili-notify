@@ -18,21 +18,15 @@ import { targetDisplay } from "../../components/target-display";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
-import type { Connection, PushTarget } from "../../types/domain";
+import { CONNECTIONS_QUERY, TARGETS_QUERY } from "../../services/list-queries";
 import type { AiSettingsDraft } from "../../types/globals";
 
 const MAX_MESSAGE = 500;
 
 export function AiTestPanel({ draft }: { draft: AiSettingsDraft }) {
-	const connectionsQuery = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-	});
+	const connectionsQuery = useQuery(CONNECTIONS_QUERY);
 	const tx = useT();
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	const targets = targetsQuery.data ?? [];
 
 	const [targetId, setTargetId] = useState("");

@@ -82,6 +82,7 @@ function liveSegmentsToPayload(segments: readonly MessageLayoutSegment[]): Paylo
  */
 function toPushAnchors<T>(
 	anchors: ReadonlyArray<{
+		narration?: { text: string; withoutText: T[] };
 		role: PushAnchor["role"];
 		extra?: PushAnchor["extra"];
 		messages: T[] | Promise<T[] | undefined>;
@@ -94,10 +95,13 @@ function toPushAnchors<T>(
 		Array.isArray(messages)
 			? messages.map(toPayload)
 			: messages.then((made) => made?.map(toPayload));
-	return anchors.map(({ role, extra, messages, aiMessages }) => ({
+	return anchors.map(({ role, extra, messages, aiMessages, narration }) => ({
 		role,
 		extra,
 		messages: toPayloads(messages),
+		...(narration
+			? { narration: { text: narration.text, withoutText: narration.withoutText.map(toPayload) } }
+			: {}),
 		...(aiMessages ? { aiMessages: toPayloads(aiMessages) } : {}),
 	}));
 }

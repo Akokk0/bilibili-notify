@@ -18,11 +18,13 @@ on:
     branches: [dev]
     paths:
       - "apps/desktop/**"
+      - "scripts/__tests__/desktop-sidecar-lifecycle.test.mjs"
       - ".github/workflows/rust-check.yml"
   pull_request:
     branches: [main]
     paths:
       - "apps/desktop/**"
+      - "scripts/__tests__/desktop-sidecar-lifecycle.test.mjs"
       - ".github/workflows/rust-check.yml"
   workflow_dispatch:
 
@@ -71,3 +73,9 @@ jobs:
 
       - name: Check Desktop Rust
         run: vp run -F @bilibili-notify/desktop check:rust
+
+      - name: Check sidecar replacement in a running macOS launcher
+        if: runner.os == 'macOS'
+        env:
+          BN_DESKTOP_LIFECYCLE: "1"
+        run: vp run test scripts/__tests__/desktop-sidecar-lifecycle.test.mjs

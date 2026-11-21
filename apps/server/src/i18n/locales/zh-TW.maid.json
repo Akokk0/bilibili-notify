@@ -130,7 +130,7 @@
 	"service.config.settings-problems.text.11": "主人，女僕無法讀取設定檔案中的{value0}，目前先使用預設值執行：{value1}。",
 	"service.config.settings-problems.text.16": "主人，女僕無法讀取設定檔案中的{value0} AI 服務商：{value1}。",
 	"service.config.settings-problems.text.44": "主人，這個 id（{value0}）被設定檔案中無法讀取的 AI 服務商占用，女僕這次沒有儲存喔。",
-	"service.routes.ai.text.4": "主人，女僕還看不到圖片。請到「智慧女僕」頁的「圖片理解」設定：主模型能看圖時開啟「主模型支援圖片理解」；不能看圖時（例如 DeepSeek），請填入「視覺模型 ID」喔。",
+	"service.routes.ai.text.4": "主人，女僕還看不到圖片。請到「智慧女僕」頁的「圖片理解」設定：主模型能看圖時開啟「主模型支援圖片理解」；不能看圖時，請填入「視覺模型 ID」喔。",
 	"service.routes.ai.text.8": "主人，女僕沒能回覆：{value0}",
 	"service.routes.ai.text.16": "主人，女僕沒能回覆：{value0}",
 	"service.routes.cards-skins.text.20": "主人，女僕沒能寫好：{value0}",

@@ -82,7 +82,9 @@ vi.mock("../../pages/Chat", () => ({ default: () => null }));
 vi.mock("../../pages/ExtensionDetail", () => ({ default: () => null }));
 vi.mock("../../pages/Extensions", () => ({ default: () => null }));
 vi.mock("../../pages/History", () => ({ default: () => null }));
-vi.mock("../../pages/Logs", () => ({ default: () => null }));
+vi.mock("../../pages/Logs", () => {
+	throw new TypeError("Failed to fetch the page module");
+});
 vi.mock("../../pages/Rules", () => ({ default: () => null }));
 vi.mock("../../pages/Stats", () => ({ default: () => null }));
 vi.mock("../../pages/System", () => ({ default: () => null }));
@@ -90,6 +92,7 @@ vi.mock("../../pages/Targets", () => ({ default: () => null }));
 
 import App from "../../App";
 import { i18n } from "../../i18n";
+import { browser } from "../update/restart";
 
 // This scenario uses Chinese UI; it must not depend on untranslated fallbacks.
 beforeEach(() => {
@@ -162,6 +165,16 @@ describe("一页渲染抛错", () => {
 		fireEvent.click(screen.getByRole("button", { name: "重试" }));
 		expect(await screen.findByText("首页内容")).toBeTruthy();
 		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
+	it("页面脚本加载失败时保留顶栏，点重试后重新获取入口", async () => {
+		const reload = vi.spyOn(browser, "reload").mockImplementation(() => {});
+		renderAt("/logs");
+		await screen.findByRole("alert");
+		expect(screen.getByTestId("shell-header")).toBeTruthy();
+		expect(reload).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "重试" }));
+		expect(reload).toHaveBeenCalledOnce();
 	});
 
 	it("点「回概览」去首页", async () => {

@@ -4,8 +4,7 @@ import { SOURCE_AUTH_QUERY_PREFIX } from "../../hooks/use-source-auth";
 import { ACCOUNTS_QUERY_KEY, useAccounts } from "../../hooks/useAccounts";
 import { HEALTH_DETAILS_QUERY_KEY, useHealthDetails } from "../../hooks/useHealthDetails";
 import { useSources } from "../../hooks/useSources";
-import { api } from "../../services/api";
-import type { Connection, PushTarget, Subscription } from "../../types/domain";
+import { CONNECTIONS_QUERY, SUBSCRIPTIONS_QUERY, TARGETS_QUERY } from "../../services/list-queries";
 import { deriveOnboarding, type OnboardingView } from "./derive";
 import { useOnboardingInputsOverride } from "./inputs-override";
 
@@ -58,21 +57,9 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 	const enabled = opts?.active ?? true;
 	const accountsQ = useAccounts({ enabled });
 	const sourcesQ = useSources({ enabled });
-	const subsQ = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-		enabled,
-	});
-	const connectionsQ = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-		enabled,
-	});
-	const targetsQ = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-		enabled,
-	});
+	const subsQ = useQuery({ ...SUBSCRIPTIONS_QUERY, enabled });
+	const connectionsQ = useQuery({ ...CONNECTIONS_QUERY, enabled });
+	const targetsQ = useQuery({ ...TARGETS_QUERY, enabled });
 	const detailsQ = useHealthDetails({ enabled });
 
 	// 记住结果:react-query 的结构共享让空转 refetch 不换引用,所以这个 memo

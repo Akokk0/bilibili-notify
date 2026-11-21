@@ -111,6 +111,7 @@ interface Harness {
 	send: ReturnType<typeof vi.fn>;
 	ping: ReturnType<typeof vi.fn>;
 	disconnect: ReturnType<typeof vi.fn>;
+	inboundGroup: ReturnType<typeof vi.fn>;
 	published: { mime: string; bytes: number }[];
 	lastRequest(): BridgeSendRequest;
 	/** 宿主交给它的那份连接名单。 */
@@ -130,6 +131,7 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 		async (_id: string, _request: BridgeSendRequest): Promise<BridgeSendResult> => ok(),
 	);
 	const disconnect = vi.fn();
+	const inboundGroup = vi.fn();
 	const ping = vi.fn(async (_id: string): Promise<BridgePingResult> => ok({ latencyMs: 42 }));
 	const published: { mime: string; bytes: number }[] = [];
 	const server = {
@@ -182,7 +184,7 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 			reportProblem: noop,
 			resolveProblem: noop,
 			connections: () => connections,
-			inbound: { private: noop, group: noop },
+			inbound: { private: noop, group: inboundGroup },
 			onConnectionsChanged(fn) {
 				listeners.add(fn);
 				return { dispose: () => listeners.delete(fn) };
@@ -198,6 +200,7 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 		},
 		send,
 		disconnect,
+		inboundGroup,
 		published,
 		lastRequest: () => send.mock.calls.at(-1)?.[1] as BridgeSendRequest,
 		setConnections: (list) => {
@@ -276,6 +279,42 @@ describe("桥 adapter", () => {
 		const h = harness();
 		h.setConnections([connection({ settings: { link: LINK_ID, botId: "没这个" } })]);
 		expect(h.adapter.isAvailable(connection(), target())).toBe(false);
+	});
+
+	it("平台变更后拦住旧连接的收发，并允许绑定到新平台", async () => {
+		const live = session({ bots: session().bots.map((bot) => ({ ...bot, platform: "discord" })) });
+		const h = harness(live);
+		const old = connection();
+		const frame = {
+			type: "inbound",
+			botId: "b1",
+			platform: "discord",
+			message: { scope: "group", userId: "5", groupId: "10", text: "hello" },
+		} as const;
+
+		expect(h.adapter.isAvailable(old, target())).toBe(false);
+		expect(await h.adapter.send(old, target(), { kind: "text", text: "hello" })).toMatchObject({
+			ok: false,
+			code: "not_configured",
+		});
+		expect(h.send).not.toHaveBeenCalled();
+		h.adapter.deliverInbound(live, frame);
+		h.adapter.deliverInbound({ ...live, bots: [] }, frame);
+		expect(h.inboundGroup).not.toHaveBeenCalled();
+
+		const signal = new AbortController().signal;
+		const [candidate] = await h.adapter.listConnectionCandidates(signal);
+		expect(candidate?.boundConnectionId).toBeUndefined();
+		const current = connection({ id: SECOND_CONNECTION_ID, platform: "discord" });
+		h.setConnections([old, current]);
+		const [bound] = await h.adapter.listConnectionCandidates(signal);
+		expect(bound?.boundConnectionId).toBe(current.id);
+		expect(h.adapter.isAvailable(current, target({ connectionId: current.id }))).toBe(true);
+		h.adapter.deliverInbound(live, { ...frame, platform: "telegram" });
+		h.adapter.deliverInbound({ ...live, bots: [] }, frame);
+		expect(h.inboundGroup).not.toHaveBeenCalled();
+		h.adapter.deliverInbound(live, frame);
+		expect(h.inboundGroup).toHaveBeenCalledWith(expect.anything(), { connectionId: current.id });
 	});
 
 	it("连接绑的接入删了 / 停用了 → 不可发,理由说的是接入", async () => {
@@ -372,6 +411,43 @@ describe("桥 adapter", () => {
 		});
 		expect(h.lastRequest().message).toMatchObject({
 			url: "https://bn.example.com/ext/bridge/blob/blob1",
+		});
+	});
+
+	it("反代改写 Host 时，单图使用接入地址，测试转发使用可重复读取的公网图片", async () => {
+		const h = harness(session({ origin: "http://bn-internal:8787" }));
+		const image = { buffer: Buffer.from([1]), mime: "image/png" } as const;
+		h.setLinks([link({ publicOrigin: "https://bn.example.com/" })]);
+
+		await h.adapter.send(connection(), target(), { kind: "image", image });
+		expect(h.lastRequest().message).toMatchObject({
+			url: "https://bn.example.com/ext/bridge/blob/blob1",
+		});
+		const sample = h.adapter.createTestPayload?.(connection(), target(), "forward", {
+			text: "BN",
+			image,
+			secondImage: image,
+			audio: { buffer: Buffer.alloc(0), mime: "audio/silk" },
+		});
+		if (!sample?.ok || sample.payload.kind !== "image-group")
+			throw new Error("missing forward sample");
+		const urls = sample.payload.images.map((item) => item.url);
+		expect(new Set(urls).size).toBe(2);
+		expect(
+			urls.every((url) => url?.startsWith("https://") && !url.includes("/ext/bridge/blob/")),
+		).toBe(true);
+		await h.adapter.send(connection(), target(), sample.payload);
+		expect(h.lastRequest().message).toMatchObject({
+			kind: "forward-images",
+			images: urls.map((url) => ({ url })),
+			forward: true,
+		});
+		expect(h.published).toHaveLength(1);
+
+		h.setLinks([link({ publicOrigin: "" })]);
+		await h.adapter.send(connection(), target(), { kind: "image", image });
+		expect(h.lastRequest().message).toMatchObject({
+			url: "http://bn-internal:8787/ext/bridge/blob/blob2",
 		});
 	});
 
@@ -559,9 +635,10 @@ describe("桥 adapter", () => {
 		});
 	});
 	it("capabilities:桥报的三态原样对应;没连着就是「还不知道」并带原因", async () => {
-		expect(
-			harness(session({}, { miniAppCard: "supported" })).adapter.capabilities?.(connection()),
-		).toMatchObject({ nativeShare: { state: "supported" } });
+		const online = harness(session({}, { miniAppCard: "supported" })).adapter;
+		const reported = online.capabilities?.(connection());
+		expect(reported).toMatchObject({ nativeShare: { state: "supported" } });
+		expect(await online.probeCapabilities?.(connection())).toEqual(reported);
 		expect(
 			harness(session({}, { miniAppCard: "unsupported" })).adapter.capabilities?.(connection()),
 		).toMatchObject({ nativeShare: { state: "unsupported" } });

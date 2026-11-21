@@ -10,7 +10,7 @@
 # pack-update-payload.sh 里是同一个。
 #
 # 必需 env:
-#   BN_UPDATE_SIGNING_KEY  secrets.BN_UPDATE_SIGNING_KEY —— **必须传入,但可以是空串**
+#   BN_UPDATE_SIGNING_KEY  secrets.BN_RELEASE_SIGNING_KEY —— **必须传入,但可以是空串**
 #                          (空 = 没配,走跳过);只判空,绝不打印
 #   VERSION        独立端版本(不带 v)
 #   REPO           github.repository
@@ -32,7 +32,7 @@ set -euo pipefail
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT env 必填(GHA 自带)}"
 
 if [ -z "$BN_UPDATE_SIGNING_KEY" ]; then
-	echo "::warning::未配置 BN_UPDATE_SIGNING_KEY,跳过清单签名 —— 本次发版不会有应用内更新。生成方法见 docs/agents/self-update.md"
+	echo "::warning::未配置 BN_RELEASE_SIGNING_KEY,跳过清单签名 —— 本次发版不会有应用内更新。生成方法见 docs/agents/self-update.md"
 	echo "signed=false" >>"$GITHUB_OUTPUT"
 	exit 0
 fi

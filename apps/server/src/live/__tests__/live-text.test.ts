@@ -3,6 +3,7 @@
  * (从 `bilibili/live/__tests__/template-renderer.test.ts` 跟着源文件搬来。)
  */
 
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { i18n } from "../../i18n/index.js";
 import {
@@ -13,6 +14,23 @@ import {
 } from "../live-text";
 
 afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+it.each([
+	["zh-CN", "甲 正在直播，累计观看：暂未获取到"],
+	["zh-TW", "甲 正在直播，累計觀看：尚未取得"],
+	["en", "甲 is live. Total viewers: Not available yet"],
+	["ja", "甲が配信中です。累計視聴者数：未取得"],
+] as const)(
+	"%s omits unavailable duration from the default streaming message",
+	(locale, expected) => {
+		i18n.set({ locale, voice: "plain" });
+		const input = { name: "甲", time: "" };
+		expect(renderLiveText("liveStreaming", templateDefaultsFor(locale).liveStreaming, input)).toBe(
+			expected,
+		);
+		expect(renderLiveText("liveStreaming", "{name} [{time}]", input)).toBe("甲 []");
+	},
+);
 
 it.each([
 	["en", "Not available yet"],

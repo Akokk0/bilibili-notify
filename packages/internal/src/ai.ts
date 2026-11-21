@@ -39,12 +39,8 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export const API_FLAVOR_IDS = ["chat", "responses"] as const;
 export type APIFlavorId = (typeof API_FLAVOR_IDS)[number];
 
-/**
- * 联网搜索的后端。与 AI 服务商是**两个正交的选择**:搜索不走各家 LLM 的原生
- * 联网方言(分裂且 DeepSeek 官方压根没有),而是我们自己的 `web_search` 工具,
- * 由这里选定的后端真正执行 —— 所以任何支持 function calling 的服务商都能联网。
- */
-export const WEB_SEARCH_BACKEND_IDS = ["bocha", "tavily"] as const;
+/** 供工具调用模型选择的独立搜索服务。DeepSeek Flash 也可在模型配置中开启服务端联网。 */
+export const WEB_SEARCH_BACKEND_IDS = ["bocha", "tavily", "deepseek"] as const;
 export type WebSearchBackendId = (typeof WEB_SEARCH_BACKEND_IDS)[number];
 
 export interface WebSearchBackendMeta {
@@ -64,6 +60,7 @@ export const WEB_SEARCH_BACKENDS: readonly WebSearchBackendMeta[] = [
 		},
 		keyUrl: "https://open.bochaai.com",
 	},
+	{ id: "deepseek", label: "DeepSeek", keyUrl: "https://platform.deepseek.com/api_keys" },
 	{ id: "tavily", label: "Tavily", keyUrl: "https://app.tavily.com" },
 ];
 
@@ -84,15 +81,7 @@ export interface AIProviderMeta {
 	 * 默认关的家发了纯属多余风险,默认开的家不发则等于这个开关根本关不掉。
 	 */
 	thinkingDefaultsOn: boolean;
-	/**
-	 * 这家的接口里有没有**能看图的模型**。
-	 *
-	 * DeepSeek 官方 API 一个都没有 —— 那边「主模型支持看图」是个永远为否的问题,
-	 * 不该摆出来让人勾。这不只是少显示一个开关:发图守卫也据此判断,否则勾着它
-	 * 发图会一路走到模型那儿才被拒,白烧一次请求。
-	 *
-	 * 兜底档一律 `true`:能力未知时不替主人做减法。
-	 */
+	/** 服务商是否提供视觉模型。具体模型由 modelSupportsVision 判断。 */
 	supportsVision: boolean;
 	/**
 	 * 这家有没有 **Responses API**(`/responses`,OpenAI 2025 起的接任协议)。
@@ -116,6 +105,12 @@ export interface AIProviderMeta {
 	/** 配置面上的参考地址,只作提示,不自动填。 */
 	baseUrlHint: string;
 }
+
+export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+export const DEEPSEEK_MODELS = {
+	flash: "deepseek-flash",
+	pro: "deepseek-v4-pro",
+} as const;
 
 export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 	{
@@ -172,10 +167,10 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		label: "DeepSeek",
 		supportsThinking: true,
 		thinkingDefaultsOn: true,
-		supportsVision: false,
+		supportsVision: true,
 		supportsResponses: true,
 		streamUsageNeedsOptIn: false,
-		baseUrlHint: "https://api.deepseek.com",
+		baseUrlHint: DEEPSEEK_BASE_URL,
 	},
 	{
 		id: "custom",
@@ -192,6 +187,108 @@ export const AI_PROVIDERS: readonly AIProviderMeta[] = [
 		},
 	},
 ];
+
+export function isDeepSeekFlash(provider: AIProviderId, model: string): boolean {
+	return (
+		provider === "deepseek" &&
+		[DEEPSEEK_MODELS.flash, "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(
+			model.trim(),
+		)
+	);
+}
+
+export function modelSupportsVision(provider: AIProviderId, model: string): boolean {
+	return provider === "deepseek"
+		? isDeepSeekFlash(provider, model)
+		: providerMeta(provider).supportsVision;
+}
+
+export function isDeepSeekSpeechEndpoint(baseUrl: string): boolean {
+	return /^https:\/\/api\.deepseek\.com(?:\/v1)?\/*$/i.test(baseUrl.trim());
+}
+
+/** 旧网关保留连接配置，官方实例统一地址和 Flash 别名。 */
+export function normalizeDeepSeekProfile<S>(
+	profile: AiProviderProfileShape<S>,
+): AiProviderProfileShape<S> {
+	if (profile.provider !== "deepseek") return profile;
+	if (profile.baseUrl.trim() && !isDeepSeekSpeechEndpoint(profile.baseUrl)) {
+		return { ...profile, provider: "custom" };
+	}
+	const model = isDeepSeekFlash(profile.provider, profile.model ?? "")
+		? DEEPSEEK_MODELS.flash
+		: profile.model;
+	return profile.baseUrl === DEEPSEEK_BASE_URL && profile.model === model
+		? profile
+		: { ...profile, baseUrl: DEEPSEEK_BASE_URL, model };
+}
+
+export function isOfficialDeepSeekProfile(profile: {
+	provider: AIProviderId;
+	baseUrl: string;
+}): boolean {
+	return profile.provider === "deepseek" && isDeepSeekSpeechEndpoint(profile.baseUrl ?? "");
+}
+
+export function hasOfficialDeepSeekVision(
+	profile: Pick<AiProviderProfileShape<unknown>, "provider" | "baseUrl" | "model">,
+): boolean {
+	return isOfficialDeepSeekProfile(profile) && isDeepSeekFlash(profile.provider, profile.model);
+}
+
+export function canSendModelImages(
+	profile: Pick<AiProviderProfileShape<unknown>, "provider" | "baseUrl" | "model" | "enableVision">,
+): boolean {
+	return (
+		hasOfficialDeepSeekVision(profile) ||
+		(profile.enableVision && modelSupportsVision(profile.provider, profile.model))
+	);
+}
+
+export const DEEPSEEK_SPEECH_VOICES = ["stella", "tide"] as const;
+export const SPEECH_PROVIDER_IDS = ["deepseek", "custom"] as const;
+
+export function resolveSpeechService<S>(
+	speech: {
+		provider?: (typeof SPEECH_PROVIDER_IDS)[number];
+		baseUrl: string;
+		model: string;
+		apiKey: S;
+		voice: string;
+		deepseekApiKey?: S;
+		deepseekVoice?: (typeof DEEPSEEK_SPEECH_VOICES)[number];
+	},
+	profile: Pick<AiProviderProfileShape<S>, "provider" | "baseUrl" | "apiKey">,
+) {
+	const official = isOfficialDeepSeekProfile(profile);
+	// 老配置没有语音服务商选项，沿用升级前实际使用的服务。
+	const provider = speech.provider ?? (official ? "deepseek" : "custom");
+	if (provider === "custom") {
+		const { baseUrl, model, apiKey, voice } = speech;
+		return { provider, usesModelKey: false, baseUrl, model, apiKey, voice } as const;
+	}
+	return {
+		provider,
+		usesModelKey: official,
+		baseUrl: DEEPSEEK_BASE_URL,
+		model: "",
+		apiKey: official ? profile.apiKey : (speech.deepseekApiKey ?? ""),
+		voice:
+			speech.deepseekVoice ??
+			(isDeepSeekSpeechEndpoint(speech.baseUrl) && speech.voice === "tide" ? "tide" : "stella"),
+	} as const;
+}
+
+export function resolveWebSearchMode(
+	profile: Pick<AiProviderProfileShape<unknown>, "provider" | "baseUrl" | "model">,
+	backend: WebSearchBackendId,
+) {
+	const useModelKey = isOfficialDeepSeekProfile(profile) && backend === "deepseek";
+	return {
+		useModelKey,
+		hosted: useModelKey && isDeepSeekFlash(profile.provider, profile.model),
+	};
+}
 
 /** 查不到就落到兜底档,永远返回一个可用的 meta。 */
 export function providerMeta(id: AIProviderId): AIProviderMeta {
@@ -233,6 +330,8 @@ export interface AiProviderProfileShape<S = string> {
 	enableThinking: boolean;
 	thinkingLevel: ThinkingLevel;
 	extraParams: string;
+	nativeWeb?: boolean;
+	safetyCheck?: boolean;
 	enableVision: boolean;
 	vision: { baseUrl: string; apiKey: S; model: string };
 }
@@ -270,7 +369,8 @@ export function resolveAIProfile<S = string>(ai: {
 	activeProfile?: string;
 	providers?: Record<string, AiProviderProfileShape<S> | undefined>;
 }): AiProviderProfileShape<S | string> {
-	return aiProfileAt(ai.providers, ai.activeProfile ?? "") ?? EMPTY_AI_PROVIDER_PROFILE;
+	const profile = aiProfileAt(ai.providers, ai.activeProfile ?? "");
+	return profile ? normalizeDeepSeekProfile(profile) : EMPTY_AI_PROVIDER_PROFILE;
 }
 
 /**

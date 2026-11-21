@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { bootstrapCli } from "../config/bootstrap-cli.js";
+import { readLegacyFile, readYamlOrJson } from "../config/bootstrap-file.js";
 import { hostPath } from "../runtime/roots.js";
 
 /**
@@ -31,39 +31,24 @@ export interface ResolveVersionsRootOptions {
 	cwd: string;
 }
 
-function readCliDataDir(argv: readonly string[]): string | undefined {
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i];
-		if (arg === "--data-dir") return argv[i + 1];
-		if (arg?.startsWith("--data-dir=")) return arg.slice("--data-dir=".length);
-	}
-	return undefined;
-}
-
-function readFileDataDir(configPath: string): string | undefined {
-	try {
-		const raw = readFileSync(configPath, "utf8");
-		const parsed = (
-			configPath.toLowerCase().endsWith(".json") ? JSON.parse(raw) : parseYaml(raw)
-		) as { dataDir?: unknown } | null;
-		return typeof parsed?.dataDir === "string" ? parsed.dataDir : undefined;
-	} catch {
-		// 文件不在(首启动)、读不动、写坏了 —— 一律当没写过,交给下一档。
-		return undefined;
-	}
-}
-
 export function resolveDataDir({ argv, env, cwd }: ResolveVersionsRootOptions): string {
-	const fromCli = readCliDataDir(argv);
+	const fromCli = bootstrapCli(argv).get("data-dir");
 	if (fromCli) return resolve(cwd, fromCli);
-
-	// B 模型:文件即真相,env 只在首启动 seed 过一次。所以文件先于 env。
-	if (env.BN_CONFIG && env.BN_CONFIG_DISABLED !== "1") {
-		const fromFile = readFileDataDir(resolve(cwd, env.BN_CONFIG));
-		if (fromFile) return resolve(cwd, fromFile);
+	const seeded = env.BN_DATA_DIR || DEFAULT_DATA_DIR;
+	if (env.BN_CONFIG_DISABLED === "1") return resolve(cwd, seeded);
+	try {
+		if (env.BN_CONFIG) {
+			const { dataDir } = readYamlOrJson(resolve(cwd, env.BN_CONFIG));
+			return resolve(cwd, typeof dataDir === "string" ? dataDir : DEFAULT_DATA_DIR);
+		}
+		if (!env.BN_DATA_DIR) {
+			const { dataDir } = readLegacyFile(cwd);
+			if (typeof dataDir === "string") return resolve(cwd, dataDir);
+		}
+	} catch {
+		// The full loader handles first-boot seeding and reports malformed files.
 	}
-	if (env.BN_DATA_DIR) return resolve(cwd, env.BN_DATA_DIR);
-	return resolve(cwd, DEFAULT_DATA_DIR);
+	return resolve(cwd, seeded);
 }
 
 /**

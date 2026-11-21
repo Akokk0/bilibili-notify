@@ -130,7 +130,7 @@
 	"service.config.settings-problems.text.11": "主人，设置文件里{value0}女仆读不懂，先按默认值在跑了：{value1}。",
 	"service.config.settings-problems.text.16": "主人，设置文件里{value0} AI 服务商女仆读不懂：{value1}。",
 	"service.config.settings-problems.text.44": "主人，这个 id（{value0}）被设置文件里读不懂的那一家 AI 服务商占着，女仆这次没有保存。",
-	"service.routes.ai.text.4": "女仆还看不见图片。请到「智能女仆」页的「图片理解」:主模型自己看得见图就打开「主模型支持看图」;看不见(比如 DeepSeek)就填上「视觉模型 ID」",
+	"service.routes.ai.text.4": "女仆还看不见图片。请到「智能女仆」页的「图片理解」:主模型自己看得见图就打开「主模型支持看图」;看不见就填上「视觉模型 ID」",
 	"service.routes.ai.text.8": "女仆那边没答上来：{value0}",
 	"service.routes.ai.text.16": "女仆那边没答上来：{value0}",
 	"service.routes.cards-skins.text.20": "女仆那边没写成：{value0}",

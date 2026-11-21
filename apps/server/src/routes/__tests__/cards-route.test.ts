@@ -569,6 +569,87 @@ describe("cards route — /preview 示例数据", () => {
 		});
 	}
 
+	it.each(["post", "live"] as const)("%s 示例使用对应来源登录账号的名字和头像", async (kind) => {
+		const sources = bilibiliLikeSources({
+			accountName: "站内样卡账号",
+			accountAvatar: SUBSCRIBED_AVATAR,
+		});
+		const builtIn = sources.get(BILIBILI_SOURCE_KEY);
+		if (!builtIn?.auth) throw new Error("preview fixture missing auth");
+		let loggedIn = true;
+		await sources.register(
+			"douyin",
+			{
+				...builtIn,
+				descriptor: { label: "抖音", supportedFeatures: ["post", "liveStart"] },
+				auth: {
+					...builtIn.auth,
+					state: () =>
+						loggedIn
+							? { status: "logged-in", loggedInAt: "2026-01-01T00:00:00Z" }
+							: { status: "logged-out" },
+					account: () => ({ name: "图文样卡账号", avatar: GUARD_ICON_REF }),
+				},
+				start: async () => {},
+				stop: async () => {},
+			},
+			{} as SourceContext,
+		);
+		const deps = makeDeps(sources);
+		const douyinPhoto = Uint8Array.from([...PNG, 1]);
+		Object.assign(deps.runtime, {
+			imageStore: {
+				read: async (ref: string) => ({
+					mime: "image/png",
+					bytes: ref === GUARD_ICON_REF ? douyinPhoto : PNG,
+				}),
+			},
+		});
+		const app = createCardsRoute({ deps, puppeteer: makeFakePuppeteer() });
+		const preview = async (sourceKey: string) => {
+			const res = await postPreview(app, { kind, style: STYLE, content: { sourceKey } });
+			expect(await res.json()).toMatchObject({ ok: true });
+			return capturedHtml.at(-1);
+		};
+		const bili = await preview(BILIBILI_SOURCE_KEY);
+		expect(bili).toContain("站内样卡账号");
+		expect(bili).toContain("data:image/png;base64,iVBORw0KGgo=");
+		const douyin = await preview("douyin");
+		expect(douyin).toContain("图文样卡账号");
+		expect(douyin).toContain(
+			`data:image/png;base64,${Buffer.from(douyinPhoto).toString("base64")}`,
+		);
+		loggedIn = false;
+		const loggedOut = await preview("douyin");
+		expect(loggedOut).toContain("抖音 · 示例创作者");
+		expect(loggedOut).not.toMatch(/站内样卡账号|图文样卡账号/);
+	});
+
+	it("选抖音时渲染图文和收藏数，切回 B 站示例没有收藏数", async () => {
+		const sources = bilibiliLikeSources();
+		await sources.register(
+			"douyin",
+			{
+				descriptor: { label: "抖音", supportedFeatures: ["post", "liveStart"] },
+				searchCreators: async () => ok({ candidates: [] }),
+				fetchProfile: async () => fail("unsupported", "preview fixture"),
+				start: async () => {},
+				stop: async () => {},
+			},
+			{} as SourceContext,
+		);
+		const app = createCardsRoute({ deps: makeDeps(sources), puppeteer: makeFakePuppeteer() });
+		const preview = (sourceKey: string) =>
+			postPreview(app, { kind: "post", style: STYLE, content: { sourceKey } });
+
+		expect(await (await preview("douyin")).json()).toMatchObject({ ok: true });
+		expect(capturedHtml.at(-1)).toContain('data-block="images"');
+		expect(capturedHtml.at(-1)).toContain('data-block="saveCount"');
+		expect(capturedHtml.at(-1)).toContain("抖音 · 示例创作者");
+		expect(await (await preview(BILIBILI_SOURCE_KEY)).json()).toMatchObject({ ok: true });
+		expect(capturedHtml.at(-1)).not.toContain('data-block="saveCount"');
+	});
+
 	it("localizes sample cards on each request through the same preview route", async () => {
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer() });
 		const previous = i18n.state();
@@ -1961,6 +2042,7 @@ describe("cards route — 预览:背景图 / 字体旋钮要经宿主解析", ()
 		return {
 			runtime: {
 				dataRoot: dataDir,
+				sourceRegistry: bilibiliLikeSources(),
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},

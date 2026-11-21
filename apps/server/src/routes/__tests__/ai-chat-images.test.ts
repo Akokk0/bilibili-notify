@@ -56,6 +56,8 @@ async function makeDeps(
 		visionModel?: string;
 		enableVision?: boolean;
 		provider?: string;
+		model?: string;
+		baseUrl?: string;
 		maxConversations?: number;
 		maxMessages?: number;
 	} = {},
@@ -82,8 +84,12 @@ async function makeDeps(
 							provider: opts.provider ?? "custom",
 							label: "",
 							apiKey: "sk-x",
-							baseUrl: "https://api.example.com/v1",
-							model: "m",
+							baseUrl:
+								opts.baseUrl ??
+								(opts.provider === "deepseek"
+									? "https://api.deepseek.com"
+									: "https://api.example.com/v1"),
+							model: opts.model ?? "m",
 							enableThinking: false,
 							thinkingLevel: "medium",
 							extraParams: "",
@@ -146,6 +152,17 @@ beforeEach(() => {
 });
 
 describe("发图 — 主模型自己就支持多模态", () => {
+	it("官方 Flash 无需图片理解开关即可收图", async () => {
+		const { app, deps } = await makeDeps({
+			provider: "deepseek",
+			model: "deepseek-flash",
+			baseUrl: "https://api.deepseek.com",
+		});
+		const id = await newConv(app);
+		const img = await saveImage(deps);
+		expect((await chat(app, id, { message: "这是什么", images: [img] })).status).toBe(200);
+		expect(H.lastImageUrls?.[0]).toMatch(/^data:image\/png;base64,/);
+	});
 	it("开了「主模型支持看图」→ 放行,不再要求先配副模型", async () => {
 		// gpt-4o 这类主模型本来就看得见图。逼着主人再去「看图专用模型」那格
 		// 抄一遍自己的模型名,既多余又违反那格字段的字面意思(它写着「主模型
@@ -161,12 +178,11 @@ describe("发图 — 主模型自己就支持多模态", () => {
 		expect(H.lastImageUrls?.[0]?.startsWith("data:image/png;base64,")).toBe(true);
 	});
 
-	it("服务商压根没有视觉模型时,开着这个开关也不放行", async () => {
-		// DeepSeek 官方接口一个视觉模型都没有。只看 enableVision 就放行的话,
-		// 图会一路带到模型那儿才被拒 —— 白烧一次请求,报错还来自上游、看不懂。
-		// 这个开关对 DeepSeek 本来就该是不可选的,守卫这里是最后一道。
+	it("DeepSeek Pro 没有视觉能力时，打开看图开关也不放行", async () => {
+		// 同一服务商的 Flash 与 Pro 有不同的输入能力，不能只看用户开关。
 		const { app, deps } = await makeDeps({
 			provider: "deepseek",
+			model: "deepseek-pro",
 			enableVision: true,
 			visionModel: "",
 		});
@@ -181,7 +197,7 @@ describe("发图 — 主模型自己就支持多模态", () => {
 		expect(chatStatelessStream).not.toHaveBeenCalled();
 	});
 
-	it("但配了视觉副模型就照常放行 —— 副模型正是给 DeepSeek 这种主力准备的", async () => {
+	it("文本主模型配了视觉副模型就照常放行", async () => {
 		const { app, deps } = await makeDeps({ provider: "deepseek", visionModel: "qwen-vl" });
 		const id = await newConv(app);
 		const img = await saveImage(deps);
@@ -473,4 +489,169 @@ describe("图的清理 — 交给图库清扫", () => {
 		expect(report.removed).toEqual([onlyOld]);
 		expect(await deps.runtime.imageStore.read(shared)).toBeDefined();
 	});
+});
+
+describe("DeepSeek attachments", () => {
+	it.each(["asr", "ocr"] as const)("returns editable text for %s", async (kind) => {
+		const { app } = await makeDeps({ provider: "deepseek", model: "deepseek-flash" });
+		const form = new FormData();
+		form.set("file", new File(["input"], kind === "asr" ? "note.wav" : "page.pdf"));
+		const request = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(
+				Response.json(
+					kind === "asr"
+						? { text: "transcript" }
+						: { pages: [{ index: 0, text: "transcript", finish_reason: "stop" }] },
+				),
+			);
+		try {
+			const response = await app.request(`/tools/${kind}`, { method: "POST", body: form });
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ text: "transcript" });
+			expect(request.mock.calls[0]?.[0]).toBe(`https://api.deepseek.com/v1/tools/${kind}`);
+			expect(chatStatelessStream).not.toHaveBeenCalled();
+		} finally {
+			request.mockRestore();
+		}
+	});
+	it("does not upload to a stale provider when the profile changes while the conversation is loading", async () => {
+		const profile = { provider: "deepseek", model: "deepseek-flash" };
+		const { app, deps } = await makeDeps(profile);
+		const id = await newConv(app);
+		const conversation = await deps.runtime.conversationStore.get(id);
+		vi.spyOn(deps.runtime.conversationStore, "get").mockImplementationOnce(async () => {
+			profile.model = "deepseek-pro";
+			return conversation;
+		});
+		const form = new FormData();
+		form.set("request", JSON.stringify({ message: "read" }));
+		form.set("document", new File(["test"], "doc.pdf"));
+		const request = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(new Response(null, { status: 400 }));
+		try {
+			const result = await app.request(`/conversations/${id}/chat`, { method: "POST", body: form });
+			expect(await result.text()).toContain("not_configured");
+			expect(request).not.toHaveBeenCalled();
+		} finally {
+			request.mockRestore();
+		}
+	});
+	it("drops a parsed document if the active model changes during upload and cleans up with the original credentials", async () => {
+		const profile = { provider: "deepseek", model: "deepseek-flash" };
+		const { app, deps } = await makeDeps(profile);
+		const id = await newConv(app);
+		const form = new FormData();
+		form.set("request", JSON.stringify({ message: "summarize" }));
+		form.set("document", new File(["notes"], "note.txt"));
+		const request = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementationOnce(async () => {
+				profile.model = "deepseek-pro";
+				return Response.json({ id: "file-original" });
+			})
+			.mockResolvedValueOnce(new Response(null, { status: 404 }));
+		try {
+			const res = await app.request(`/conversations/${id}/chat`, { method: "POST", body: form });
+			expect(await res.text()).toContain("event: error");
+			expect(chatStatelessStream).not.toHaveBeenCalled();
+			expect(request.mock.calls.map(([, init]) => init?.method)).toEqual(["POST", "DELETE"]);
+			expect(request.mock.calls[1]?.[1]?.headers).toEqual({ Authorization: "Bearer sk-x" });
+			expect((await deps.runtime.conversationStore.get(id))?.messages).toEqual([]);
+		} finally {
+			request.mockRestore();
+		}
+	});
+	it("rejects incomplete OCR or an upstream authentication failure without sending a chat turn", async () => {
+		const { app } = await makeDeps({ provider: "deepseek", model: "deepseek-pro" });
+		const form = new FormData();
+		form.set("file", new File(["page"], "page.pdf"));
+		const request = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(
+				Response.json({ page_count: 2, pages: [{ text: "one", finish_reason: "stop" }] }),
+			)
+			.mockResolvedValueOnce(new Response(null, { status: 401 }));
+		try {
+			const incomplete = await app.request("/tools/ocr", { method: "POST", body: form });
+			expect(incomplete.status).toBe(503);
+			expect(await incomplete.json()).toMatchObject({ code: "unavailable" });
+			const denied = await app.request("/tools/ocr", { method: "POST", body: form });
+			expect(denied.status).toBe(403);
+			expect(await denied.json()).toMatchObject({ code: "unauthorized", upstreamCode: 401 });
+			expect(chatStatelessStream).not.toHaveBeenCalled();
+		} finally {
+			request.mockRestore();
+		}
+	});
+	it("keeps a completed answer if deleting the temporary upload fails and sets a provider-side expiry", async () => {
+		const { app, deps } = await makeDeps({ provider: "deepseek", model: "deepseek-flash" });
+		const id = await newConv(app);
+		const form = new FormData();
+		form.set("request", JSON.stringify({ message: "summarize" }));
+		form.set("layout", "rich");
+		form.set("document", new File(["report"], "report.pdf"));
+		const request = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementation(async (_url, init) =>
+				init?.method === "DELETE"
+					? new Response(null, { status: 503 })
+					: Response.json({ id: "file-test" }),
+			);
+		try {
+			const response = await app.request(`/conversations/${id}/chat`, {
+				method: "POST",
+				body: form,
+			});
+			expect(await response.text()).toContain("event: done");
+			const uploaded = request.mock.calls[0]?.[1]?.body as FormData;
+			expect(Array.from(uploaded.keys())).toEqual([
+				"purpose",
+				"expires_after[anchor]",
+				"expires_after[seconds]",
+				"file",
+			]);
+			expect(uploaded.get("purpose")).toBe("rich_layout_recognition");
+			expect(uploaded.get("expires_after[anchor]")).toBe("created_at");
+			expect(uploaded.get("expires_after[seconds]")).toBe("3600");
+			expect(request.mock.calls.map(([, init]) => init?.method)).toEqual([
+				"POST",
+				"DELETE",
+				"DELETE",
+			]);
+			expect((await deps.runtime.conversationStore.get(id))?.messages).toHaveLength(2);
+		} finally {
+			request.mockRestore();
+		}
+	});
+	it.each([true, false])(
+		"deletes the remote file after answering (success=%s)",
+		async (success) => {
+			const { app } = await makeDeps({ provider: "deepseek", model: "deepseek-flash" });
+			const id = await newConv(app);
+			const form = new FormData();
+			form.set("request", JSON.stringify({ message: "summarize" }));
+			form.set("document", new File(["report"], "report.pdf"));
+			if (!success) chatStatelessStream.mockRejectedValueOnce(new Error("fixture failure"));
+			const request = vi
+				.spyOn(globalThis, "fetch")
+				.mockResolvedValueOnce(Response.json({ id: "file-api-example" }))
+				.mockResolvedValueOnce(Response.json({ deleted: true }));
+			try {
+				const res = await app.request(`/conversations/${id}/chat`, { method: "POST", body: form });
+				expect(await res.text()).toContain(success ? "event: done" : "event: error");
+				expect(chatStatelessStream.mock.calls[0]?.[1]).toMatchObject({
+					documentId: "file-api-example",
+				});
+				expect(request).toHaveBeenCalledTimes(2);
+				expect(request.mock.calls[1]).toEqual([
+					"https://api.deepseek.com/files/file-api-example",
+					expect.objectContaining({ method: "DELETE" }),
+				]);
+			} finally {
+				request.mockRestore();
+			}
+		},
+	);
 });

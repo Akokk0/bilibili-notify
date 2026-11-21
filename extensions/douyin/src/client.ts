@@ -120,6 +120,16 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 		endpoints.clear();
 		for (const key of keys) if (key) resolve(key, false);
 	}
+	function rememberRateLimit(revision: number, fault: Failure, delay: number) {
+		// Concurrent replies may extend the cooldown, but cannot revive a recovered gate.
+		const current = sessionScope.gate;
+		if (sessionScope.revision === revision || (current && Date.now() + delay > current.until)) {
+			put(sessionScope, fault, delay);
+		}
+	}
+	function rateLimit() {
+		return fail("rate_limited", message("cooldown"), { upstreamCode: "douyin.cooldown" });
+	}
 	async function call(
 		endpoint: string,
 		path: string,
@@ -232,7 +242,7 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 			let fault: Failure | undefined;
 			let delay = 0;
 			if (r.status === 429) {
-				fault = fail("rate_limited", message("cooldown"), { upstreamCode: "douyin.cooldown" });
+				fault = rateLimit();
 				delay = retryAfter(r.headers.get("retry-after"));
 			} else if (
 				r.status === 403 &&
@@ -273,17 +283,8 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 				if (combined.aborted) return fail("unavailable", message("cancelled"));
 			}
 			if (fault) {
-				if (fault.code === "rate_limited") {
-					// Concurrent 429s can extend an existing Retry-After, never shorten
-					// it or revive a gate that already completed its recovery probe.
-					const current = sessionScope.gate;
-					if (
-						sessionScope.revision === globalRev ||
-						(current && Date.now() + delay > current.until)
-					) {
-						put(sessionScope, fault, delay);
-					}
-				} else if (local.revision === localRev) put(local, fault, delay);
+				if (fault.code === "rate_limited") rememberRateLimit(globalRev, fault, delay);
+				else if (local.revision === localRev) put(local, fault, delay);
 				return fault;
 			}
 			if (globalGate && sessionScope.gate === globalGate) clear(sessionScope);
@@ -294,30 +295,52 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 		}
 	}
 	async function expand(input: URL, signal: AbortSignal): Promise<Result<{ url: URL }>> {
-		let u = input;
-		const seen = new Set<string>();
-		for (let hop = 0; hop < 6; hop++) {
-			if (!trusted(u, shareHosts) || signal.aborted || ctx.signal.aborted || seen.has(u.href))
-				break;
-			if (u.hostname !== "v.douyin.com") return ok({ url: u });
-			seen.add(u.href);
-			const r = await ctx.http.fetch(u, {
-				bare: true,
-				maxRedirects: 0,
-				signal: AbortSignal.any([ctx.signal, signal]),
-				timeoutMs: 7000,
-				maxBodyBytes: 65536,
-			});
-			if (!r.ok) return fail("unavailable", message("temporary"));
-			const to = r.headers.get("location");
-			if (!to || ![301, 302, 303, 307, 308].includes(r.status)) break;
-			try {
-				u = new URL(to, u);
-			} catch {
-				break;
+		sameSession();
+		const combined = AbortSignal.any([ctx.signal, signal, stamp]);
+		if (combined.aborted) return fail("unavailable", message("cancelled"));
+		const revision = sessionScope.revision;
+		const gate = sessionScope.gate;
+		if (gate && (Date.now() < gate.until || gate.probe)) return gate.err;
+		if (gate) gate.probe = true;
+		try {
+			let u = input;
+			const seen = new Set<string>();
+			for (let hop = 0; hop < 6; hop++) {
+				if (!trusted(u, shareHosts) || seen.has(u.href)) break;
+				if (u.hostname !== "v.douyin.com") {
+					if (gate && sessionScope.gate === gate && seen.size > 0) clear(sessionScope);
+					return ok({ url: u });
+				}
+				seen.add(u.href);
+				const r = await ctx.http.fetch(u, {
+					bare: true,
+					maxRedirects: 0,
+					signal: combined,
+					timeoutMs: 7000,
+					maxBodyBytes: 65536,
+				});
+				if (combined.aborted) return fail("unavailable", message("cancelled"));
+				if (!r.ok)
+					return fail(r.code === "timeout" ? "timeout" : "unavailable", message("temporary"));
+				if (r.status === 429) {
+					const fault = rateLimit();
+					rememberRateLimit(revision, fault, retryAfter(r.headers.get("retry-after")));
+					return fault;
+				}
+				if (r.status === 408) return fail("timeout", message("temporary"));
+				if (r.status >= 500) return fail("unavailable", message("temporary"));
+				const to = r.headers.get("location");
+				if (!to || ![301, 302, 303, 307, 308].includes(r.status)) break;
+				try {
+					u = new URL(to, u);
+				} catch {
+					break;
+				}
 			}
+			return fail("invalid", message("invalidLink"));
+		} finally {
+			if (gate) gate.probe = false;
 		}
-		return fail("invalid", message("invalidLink"));
 	}
 	return {
 		sessionSignal: auth.sessionSignal,

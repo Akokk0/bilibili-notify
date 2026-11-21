@@ -170,6 +170,8 @@ describe("onebot — 原生分享能力探测", () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1404, "不支持的api"));
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obConnection());
+		expect(caps?.inbound.state).toBe("unsupported");
+		expect(capsOf(ad).inbound.state).toBe("unsupported");
 		expect(calledPath(0)).toBe("http://nb:3000/get_mini_app_ark");
 		expect(calledBody(0)).toEqual({});
 		expect(caps?.nativeShare).toMatchObject({ state: "unsupported" });

@@ -30,6 +30,10 @@ describe("拉取式资料(fetchProfile)", () => {
 		expect(fetched.name).toMatch(/^假名字 · 拉取版\([0-9a-f]{4}\)$/);
 		expect(fetched.name).not.toContain("第");
 		expect(fetched.avatar).toMatch(IMAGE_REF_PATTERN);
+		await fake.press("report.profile");
+		const first = await fake.fetchProfile(A);
+		if (!first.ok) throw new Error(first.message);
+		expect(first.avatar).not.toBe(fetched.avatar);
 	});
 
 	it("固定记号的人:回 not_found,给宿主记 creator_not_found", async () => {

@@ -411,6 +411,12 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 describe("parseExtensionManifest —— 契约小号", () => {
 	const HOST = { min: 1, current: 1, revision: 0 };
 
+	it("依赖 singleAttempt 的适配器能在当前宿主加载，小号 3 的旧宿主要求升级", () => {
+		const manifest = currentManifest({ apiRevision: 4 });
+		expect(incompatible(manifest, { ...HOST, revision: 3 }).requires.apiRevision).toBe(4);
+		expect(parseExtensionManifest(manifest).ok).toBe(true);
+	});
+
 	it("全新1.0契约1 不写 apiRevision 按 0 算:0 号的 BN 收下;写 0 一样", () => {
 		expect(ok(currentManifest(), HOST).apiVersion).toBe(1);
 		expect(ok(currentManifest({ apiRevision: 0 }), HOST).apiVersion).toBe(1);
@@ -1314,7 +1320,7 @@ describe("拓展 id 的命名空间", () => {
 it("全新1.0契约仍接受1/0的严格清单,拒历史v1及伪装旧v2嵌套", () => {
 	const current = currentManifest({ apiVersion: 1 });
 	expect(parseExtensionManifest(current).ok).toBe(true);
-	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 2 });
+	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 4 });
 	expect(parseExtensionManifest(historicalV1()).ok).toBe(false);
 	expect(parseExtensionManifest({ ...current, provides: ["push"] }).ok).toBe(false);
 	const oldV2 = {

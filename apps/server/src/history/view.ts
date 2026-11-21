@@ -38,6 +38,7 @@ export function toHistoryView(
 			kind: m.payload.kind,
 			image: m.payload.image,
 			role: m.role,
+			...(m.speechNote ? { speechNote: m.speechNote } : {}),
 			...(m.repushOf !== undefined ? { repushOf: m.repushOf } : {}),
 			...(m.result ? resultView(m.result) : m.isSilenced ? { isSilenced: true as const } : {}),
 		})),

@@ -7,8 +7,9 @@ import type {
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
+import { createSerialQueue } from "@bilibili-notify/internal";
 import { findNewIdentityDuplicates } from "@bilibili-notify/subscription";
-import { describeDuplicate } from "../config/store.js";
+import { type ConfigStore, describeDuplicate } from "../config/store.js";
 import { t } from "../i18n/index.js";
 import type { IntegrationStore } from "../integration-store/store.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
@@ -49,18 +50,7 @@ export interface BackupStore {
 	getSubscriptionTags(): SubscriptionTag[];
 	getConnections(): Connection[];
 	getTargets(): PushTarget[];
-	replaceSections(
-		next: {
-			globals?: GlobalSettings;
-			integrations?: Record<string, unknown>;
-			extensionSettings?: Record<string, unknown>;
-			subscriptions?: Subscription[];
-			subscriptionTags?: SubscriptionTag[];
-			connections?: Connection[];
-			targets?: PushTarget[];
-		},
-		options?: { dryRun?: boolean },
-	): Promise<unknown>;
+	replaceSections: ConfigStore["replaceSections"];
 }
 
 /** 集成的密钥存储宿主里备份用得到的三样。 */
@@ -156,6 +146,7 @@ function assertNoDuplicateInBackup(
 }
 
 export function createBackupService(deps: BackupServiceDeps): BackupService {
+	const restores = createSerialQueue();
 	const now = deps.now ?? (() => new Date().toISOString());
 
 	async function exportBackup(opts: ExportOptions): Promise<BackupEnvelope> {
@@ -213,30 +204,45 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			sections = opts.envelope.sections;
 		}
 
-		const current = {
-			globals: deps.configStore.getGlobals(),
-			subscriptions: deps.configStore.getSubscriptions(),
-			subscriptionTags: deps.configStore.getSubscriptionTags(),
-			connections: deps.configStore.getConnections(),
-			targets: deps.configStore.getTargets(),
-		};
-		const plan = planImport(current, sections, opts.mode);
-		const folded = foldPlan(current, plan);
-		// Reserved identities must be rejected before any diagnostic can describe them.
-		await deps.configStore.replaceSections(folded, { dryRun: true });
-		assertNoDuplicateInBackup(current.subscriptions, folded.subscriptions);
+		// 按 UUID 并入计划之前先验原始两行，避免后面的设置覆盖前一条。
+		const ids = new Set<string>();
+		for (const [index, row] of (sections.subscriptions ?? []).entries()) {
+			if (ids.has(row.id)) {
+				throw new BackupRejectedError(
+					"invalid",
+					t("backup.envelope.invalidContent", {
+						field: `sections.subscriptions[${index}].id`,
+					}),
+				);
+			}
+			ids.add(row.id);
+		}
 
+		let plan!: ReturnType<typeof planImport>;
+		let validateIdentities!: () => void;
+		await deps.configStore.replaceSections(
+			() => {
+				const current = {
+					globals: deps.configStore.getGlobals(),
+					subscriptions: deps.configStore.getSubscriptions(),
+					subscriptionTags: deps.configStore.getSubscriptionTags(),
+					connections: deps.configStore.getConnections(),
+					targets: deps.configStore.getTargets(),
+				};
+				plan = planImport(current, sections, opts.mode);
+				const folded = foldPlan(current, plan);
+				validateIdentities = () =>
+					assertNoDuplicateInBackup(current.subscriptions, folded.subscriptions);
+				return folded;
+			},
+			{ dryRun: opts.dryRun, validate: () => validateIdentities() },
+		);
 		const globalsApplied = Boolean(
 			plan.setGlobals || plan.setIntegrations || plan.setExtensionSettings,
 		);
-		let secretsRestore: SecretsRestoreResult;
-		if (!opts.dryRun) {
-			// 一次落地:校验全过才写,任何一处不合法都不会留下半新半旧的配置。
-			await deps.configStore.replaceSections(folded);
-			secretsRestore = await restoreIntegrationSecrets(integrationSecrets);
-		} else {
-			secretsRestore = planIntegrationSecrets(integrationSecrets);
-		}
+		const secretsRestore = opts.dryRun
+			? planIntegrationSecrets(integrationSecrets)
+			: await restoreIntegrationSecrets(integrationSecrets);
 
 		return {
 			subscriptions: {
@@ -288,7 +294,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 
 	return {
 		exportBackup,
-		importBackup,
+		importBackup: (opts) => restores.run("restore", () => importBackup(opts)),
 		previewExport: () => ({
 			defaultedSettings: structuredClone(deps.configStore.getInvalidSettingsPaths()),
 		}),

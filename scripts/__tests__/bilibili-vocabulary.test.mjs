@@ -33,8 +33,8 @@ import {
  * - **自动词表**:取 `bilibili/`(非测试)里接口、类型字面量的属性签名与枚举成员中,名字全小写且带下划线的键
  *   (`GENERATED_KEYS`,排好序,快照在本文件里)。生成函数 `generatedKeysOf` 有自己的样例;另有一条断言钉住「现生成 = 快照」,
  *   不一致就红并点名多了哪几个、少了哪几个。这样 `bilibili/` 加了新的原始字段,红的是「快照该更新了」,不是核心里某个
- *   文件突然多一处;更新快照后核心里若真有同名字段,再由棘轮那一条红。`GENERATED_KEY_EXCLUSIONS`(键 → 理由)是生成出来但不算
- *   B 站专有的通用词,今天空,加一条要主人点头;排除表里的键必须还在生成结果里(不留死条目)。
+ *   文件突然多一处;更新快照后核心里若真有同名字段,再由棘轮那一条红。`GENERATED_KEY_EXCLUSIONS`(键 → 理由)列出
+ *   B 站以外也使用的通用词。新增条目要主人点头，排除表里的键必须还在生成结果里。
  *   定案原写三样(导出名、方法名、类型的键),主人 10-12 定只取 snake_case 的类型键。
  *   **生成函数只认属性签名与枚举成员**:以后 B 站的回应若改用 zod 校验,要让它也认对象字面量的键。
  * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-26 定:3b 收尾能清的清零,
@@ -65,9 +65,7 @@ import {
  *   - 分组与字符类拆开的词:`/bilibili\.(?:com|cn)/`、`/b23[.]tv/`、`/bilibili[.]com/`、`/bili(?:bili)?\.com/`;
  *   - 大小写不敏感的正则(`/BILIBILI\.COM/i`:词表按写出来的样子比)、十六进制转义(`/b23\x2etv/`);
  *   - 风控码只认数字字面量(`/code=-352/` 不认)、`BV` 号的正则(`/BV[0-9A-Za-z]{10}/`,词表里没有对应的词)。
- * - **通用词在正则与字符串里也会红**:`created_at`、`refresh_token` 这类自动词表里的通用词,写在正则或字符串里(`/created_at|updated_at/`、
- *   `/refresh_token=([^&]+)/`)一样算一处。出路是排除表 `GENERATED_KEY_EXCLUSIONS`,要问主人。
- *   `redact.ts` 那一格里的 `refresh_token`×3 就是这一种。
+ * - 自动词表里的词也会在正则与字符串里命中。已确认的通用词从 `GENERATED_KEY_EXCLUSIONS` 统一排除。
  * - 字符串拼出来的词(`"room" + "_id"`、`["bilibili", "com"].join("\\.")`)。
  *
  * 这两道守卫(守卫 11 与 `.platform` 决定)按写法的样子认,认不全;上面列的是已知的,不再为新试出的绕法逐个改判据,
@@ -214,8 +212,10 @@ export const GENERATED_KEYS = [
 	"wss_port",
 ];
 
-/** 生成出来但不算 B 站专有的通用词:键 → 理由。今天空;加一条要主人点头。 */
-export const GENERATED_KEY_EXCLUSIONS = {};
+/** 生成词表中已确认的通用字段及理由。新增条目要主人点头。 */
+export const GENERATED_KEY_EXCLUSIONS = {
+	created_at: "资源创建时间，DeepSeek Files API 也使用这个字段作为过期时间的起点",
+};
 
 /**
  * 棘轮表:文件 → 命中的上限(开张时的现数:13 个文件 62 处;认正则字面量、手补 `live_room` / `roomid` 之后:14 个文件 73 处)。只许往下调。
@@ -566,8 +566,10 @@ describe("守卫 11 的判据:不算", () => {
 		expect(wordsIn('const re = new RegExp("\\\\bbvid=(\\\\w+)");')).toEqual([]);
 	});
 
-	it("通用词出现在正则与字符串里也算(会误伤,出路是排除表,要问主人)", () => {
-		expect(wordsIn("const re = /created_at|updated_at/;")).toEqual(["created_at"]);
+	it("已登记的通用字段可用于属性、字符串和正则，其余生成词照常检查", () => {
+		expect(
+			wordsIn('data.created_at; const anchor = "created_at"; const re = /created_at|live_status/;'),
+		).toEqual(["live_status"]);
 		expect(
 			wordsIn("const re = /refresh_token=([^&]+)/;", wholeWords(["refresh_token"], {})),
 		).toEqual(["refresh_token"]);

@@ -32,6 +32,7 @@ import type { LocaleReader } from "../i18n/locale-reader.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { createGroupRoleCache } from "./group-role-cache.js";
+import { httpFailure } from "./http-failure.js";
 import { imageGroupUrls } from "./image-group.js";
 import { createQQAtAllUsage } from "./qq-at-all-usage.js";
 import { createQQConnectionAuth } from "./qq-bind.js";
@@ -803,19 +804,6 @@ export function qqFilesPath(scope: "group" | "private", openid: string): string 
 
 export type QQSendResult = Result<{ id?: string; pendingAudit?: true; auditId?: string }>;
 
-/**
- * 对端回了非 2xx:状态码 → 标准码。`upstreamCode` 放 QQ 自己的错误码;错误体里没有码时
- * 放 HTTP 状态,写成 `http:<status>`(与 QQ 的数字码分得开)。
- */
-function httpFailure(status: number, message: string, qqCode?: number): Failure {
-	const upstreamCode = qqCode ?? `http:${status}`;
-	if (status === 401 || status === 403) return fail("unauthorized", message, { upstreamCode });
-	if (status === 404 || status === 410) return fail("not_found", message, { upstreamCode });
-	if (status === 429) return fail("rate_limited", message, { upstreamCode });
-	if (status >= 400 && status < 500) return fail("invalid", message, { upstreamCode });
-	return fail("unavailable", message, { upstreamCode });
-}
-
 /** 换 token 没成 → 失败。它发生在任何一条消息发出去之前。 */
 function tokenFailure(e: unknown): Failure {
 	const message = t("qqOfficial.token.fetchFailed", { error: String(e) });
@@ -1532,6 +1520,11 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		tokenOnly.clear();
 	}
 
+	function audioRestriction(destination: DestinationRef) {
+		return destination.kind !== "session" || destination.scope === "channel"
+			? fail("unsupported", t("qqOfficial.capability.audioScope"))
+			: undefined;
+	}
 	return {
 		adapterKey: ADAPTER_KEY,
 		createTestPayload(connection, destination, kind, samples) {
@@ -1540,8 +1533,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				return fail("unsupported", t("capabilityTests.unsupported"));
 			if (kind === "atAll" && destination.scope === "private")
 				return fail("unsupported", t("capabilityTests.groupOnly"));
-			if (kind === "audio" && destination.scope === "channel")
-				return fail("unsupported", t("qqOfficial.capability.audioScope"));
+			if (kind === "audio") {
+				const restricted = audioRestriction(destination);
+				if (restricted) return restricted;
+			}
 			if (
 				kind === "markdown" &&
 				(connection.settings.botType !== "private" || destination.scope === "channel")
@@ -1638,7 +1633,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				status: { role, atAllUsage: atAllUsage.read(context.state, settings, destination.address) },
 			});
 		},
-		capabilities(connection: Connection): ConnectionCapabilities {
+		capabilities(connection: Connection, destination?: DestinationRef): ConnectionCapabilities {
 			return {
 				image: { state: "supported", checkedAt: adapterStartedAt },
 				imageGroup: { state: "supported", checkedAt: adapterStartedAt },
@@ -1648,7 +1643,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					checkedAt: adapterStartedAt,
 				},
 				audio: {
-					state: "supported",
+					state: destination && audioRestriction(destination) ? "unsupported" : "supported",
 					reason: t("qqOfficial.capability.audioScope"),
 					checkedAt: adapterStartedAt,
 				},
@@ -1665,7 +1660,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 								checkedAt: adapterStartedAt,
 							},
 				atAll: { state: "supported", checkedAt: adapterStartedAt },
-				inbound: { state: "supported", checkedAt: adapterStartedAt },
+				inbound: { state: "supported", checkedAt: adapterStartedAt, groupTestReply: "token" },
 				// 没实现原生分享(小程序卡)的发送 = 不支持。
 				nativeShare: {
 					state: "unsupported",
@@ -1763,8 +1758,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				(connection.settings.botType !== "private" || scope === "channel")
 			)
 				return fail("unsupported", t("qqOfficial.capability.markdownScope"));
-			if (payload.kind === "audio" && scope === "channel")
-				return fail("unsupported", t("qqOfficial.capability.audioScope"));
+			if (payload.kind === "audio") {
+				const restricted = audioRestriction(destination);
+				if (restricted) return restricted;
+			}
 			// 先校验地址:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
 			const endpoint = qqMessageEndpoint(scope, address);
 			if (!endpoint.ok) return endpoint;
@@ -1871,6 +1868,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 						await atAllUsage.record(statusContext.state, cfg, address, verdict, submittedAt);
 					if (!verdict.ok) {
 						failure = verdict;
+						break;
+					}
+					if (part.kind === "audio-buffer" && verdict.pendingAudit) {
+						failure = fail("indeterminate", t("speech.pendingAudit"));
 						break;
 					}
 					submittedParts++;

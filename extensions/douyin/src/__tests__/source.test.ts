@@ -169,7 +169,16 @@ it("baselines silently, skips old pinned posts and reports complete pages oldest
 	await start();
 	expect(context.reportPost).not.toHaveBeenCalled();
 	const pinned = work("50", 50, { is_top: 1 });
-	const note = work("201", 200, { images: [{ url_list: ["https://images.example/album"] }] });
+	const noteText = "📸 百校联赛\n赛点回顾\n#洲同学报到 #三角洲行动";
+	const note = work("201", 200, {
+		desc: noteText,
+		text_extra: [
+			{ type: 1, start: 12, end: 18, hashtag_name: "洲同学报到" },
+			{ type: 1, start: 19, end: 25, hashtag_name: "三角洲行动" },
+		],
+		statistics: { digg_count: 1507, comment_count: 974, share_count: 69, collect_count: 201 },
+		images: Array.from({ length: 17 }, () => ({ url_list: ["https://images.example/album"] })),
+	});
 	const latest = work("202", 200);
 	const page = { aweme_list: [pinned, latest], has_more: 1, max_cursor: 42 };
 	client.posts
@@ -184,7 +193,18 @@ it("baselines silently, skips old pinned posts and reports complete pages oldest
 	expect(context.reportPost.mock.calls.map((call) => call[1].postId)).toEqual(["201", "202"]);
 	expect(context.reportPost.mock.calls[0][1]).toMatchObject({
 		url: "https://www.douyin.com/note/201",
-		post: { publishedAt: "1970-01-01T00:03:20.000Z", images: ["image:avatar"] },
+		post: {
+			publishedAt: "1970-01-01T00:03:20.000Z",
+			text: noteText,
+			richText: [
+				{ kind: "text", text: "📸 百校联赛\n赛点回顾\n" },
+				{ kind: "topic", text: "#洲同学报到", name: "洲同学报到" },
+				{ kind: "text", text: " " },
+				{ kind: "topic", text: "#三角洲行动", name: "三角洲行动" },
+			],
+			stats: { likes: 1507, comments: 974, shares: 69, saves: 201 },
+			images: Array.from({ length: 17 }, () => "image:avatar"),
+		},
 	});
 	expect(context.reportPost.mock.calls[1][1]).toMatchObject({
 		url: "https://www.douyin.com/video/202",
@@ -315,6 +335,86 @@ it("observes a live session once, retains it through uncertainty and distinguish
 	]);
 	expect(client.posts).not.toHaveBeenCalled();
 });
+
+it.each([
+	{
+		room: { start_time: "1700000000", user_count: 27, stats: { total_user: 1250 } },
+		subPartition: { partition: { title: "三角洲行动" } },
+		details: { category: "三角洲行动", currentViewers: 27, totalViewers: 1250 },
+		startedAt: "2023-11-14T22:13:20.000Z",
+	},
+	{
+		room: {
+			start_time: 0,
+			create_time: 1700000000,
+			stats: { user_count_str: "27", total_user_str: "0" },
+		},
+		subPartition: undefined,
+		details: { category: "游戏", currentViewers: 27, totalViewers: 0 },
+		startedAt: undefined,
+	},
+	{
+		room: {
+			user_count_str: "45w+",
+			room_view_stats: { display_type: 1, display_value: 456_677, is_hidden: false },
+			stats: { total_user_str: "10万+", user_count_str: "10万+" },
+		},
+		subPartition: undefined,
+		details: { category: "游戏", currentViewers: 456_677 },
+		startedAt: undefined,
+	},
+	{
+		room: {
+			room_view_stats: { display_type: 1, display_value: 456_677, is_hidden: true },
+			stats: { total_user_str: "10万+" },
+		},
+		subPartition: undefined,
+		details: { category: "游戏" },
+		startedAt: undefined,
+	},
+	{
+		room: {
+			room_view_stats: { display_type: 2, display_value: 8124, is_hidden: false },
+			stats: { total_user: 0, total_user_str: "8124" },
+		},
+		subPartition: undefined,
+		details: { category: "游戏", totalViewers: 8124 },
+		startedAt: undefined,
+	},
+])(
+	"reports the room category, explicit start time and exact viewer counts %#",
+	async ({ room, subPartition, details, startedAt }) => {
+		const { source, client, result } = fixture();
+		const roomId = "7490000000000000001";
+		const webRid = "4387654";
+		client.profile.mockImplementation(() =>
+			result({
+				user: {
+					...user,
+					live_status: 1,
+					room_id_str: roomId,
+					room_data: { owner: { web_rid: webRid } },
+				},
+			}),
+		);
+		client.room.mockImplementation(() =>
+			result({
+				data: {
+					data: [{ id_str: roomId, status: 2, ...room }],
+					partition_road_map: { partition: { title: "游戏" }, sub_partition: subPartition },
+				},
+			}),
+		);
+		expect(
+			await source.fetchLiveStatus({ sourceKey: "douyin", externalId: secUid }, signal),
+		).toStrictEqual({
+			ok: true,
+			kind: "live",
+			...(startedAt && { startedAt }),
+			details: { url: `https://live.douyin.com/${webRid}`, ...details },
+		});
+	},
+);
 
 it("stops requests before they can report, and does not infer a room's identity from a different session", async () => {
 	const { source, start, tick, client, setSubs, context, result } = fixture();

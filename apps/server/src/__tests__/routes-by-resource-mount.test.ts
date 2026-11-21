@@ -211,6 +211,7 @@ async function makeApp(extra: Partial<CreateAppOptions> = {}) {
 		wsTicketStore,
 		backupService: {} as BackupService,
 		update: {
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			service: updateService,
 			startedAt: "2026-10-03T00:00:00.000Z",
 			applyUpdate: async () => {},

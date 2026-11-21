@@ -168,7 +168,7 @@ describe("SubscriptionCard 描述符身份", () => {
 					"特別ユーザーの入室",
 				],
 			],
-			["zh-TW", ["作品", "開播", "直播中", "下播", "SC", "會員", "特別彈幕", "特別使用者進房"]],
+			["zh-TW", ["作品", "開播", "直播中", "下播", "SC", "會員", "特別關注彈幕", "進入直播間"]],
 		] as const) {
 			act(() => i18n.set({ locale, voice: "plain" }));
 			view.rerender(<SubscriptionCard {...props({ sub, platform })} />);

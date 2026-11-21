@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { makeDefaultGlobalSettings } from "@bilibili-notify/internal";
+import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalSettings } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -316,4 +316,95 @@ it("has an editable default without targets; changing voice preserves draft and 
 	expect(defaultRow().getByRole("button", { name: "模板" }).getAttribute("aria-pressed")).toBe(
 		"true",
 	);
+});
+
+it("voice delivery defaults to text and saves an independent target exception", async () => {
+	mount(makeDefaultGlobalSettings());
+	fireEvent.click(await screen.findByRole("tab", { name: /女仆声线/ }));
+	const global = within(screen.getByRole("group", { name: "默认发送方式" }));
+	expect(global.getByRole("button", { name: "仅文本" }).getAttribute("aria-pressed")).toBe("true");
+	fireEvent.click(global.getByRole("button", { name: "语音＋文本" }));
+	fireEvent.click(await screen.findByRole("button", { name: "展开例外" }));
+	const group = within(screen.getByRole("group", { name: /^读书会 ·/ }));
+	fireEvent.click(group.getByRole("button", { name: "仅语音" }));
+	await save();
+	expect(api.patch).toHaveBeenCalledWith("/api/settings", {
+		core: {
+			ai: expect.objectContaining({
+				speech: expect.objectContaining({ mode: "both", byTarget: { [GROUP]: "voice" } }),
+			}),
+		},
+	});
+});
+
+it("切换到 DeepSeek 语音后单独配置密钥与声线", async () => {
+	const config = makeDefaultGlobalSettings();
+	config.ai.speech = {
+		...config.ai.speech,
+		baseUrl: "https://tts.example/v1",
+		model: "old",
+		voice: "alloy",
+		apiKey: { masked: "••••" } as unknown as string,
+	};
+	mount(config);
+	fireEvent.click(await screen.findByRole("tab", { name: /女仆声线/ }));
+	fireEvent.change(screen.getByPlaceholderText("https://api.openai.com/v1"), {
+		target: { value: "https://api.deepseek.com" },
+	});
+	expect(screen.queryByPlaceholderText("gpt-4o-mini-tts")).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: /tide/i }));
+	await save();
+	expect(api.patch).toHaveBeenCalledWith(
+		"/api/settings",
+		expect.objectContaining({
+			core: expect.objectContaining({
+				ai: expect.objectContaining({
+					speech: expect.objectContaining({
+						baseUrl: "https://api.deepseek.com",
+						voice: "tide",
+						apiKey: "",
+					}),
+				}),
+			}),
+		}),
+	);
+});
+
+it("当前使用官方 DeepSeek 时，可以改默认音色或切回自定义语音", async () => {
+	const config = makeDefaultGlobalSettings();
+	config.ai.activeProfile = "official";
+	config.ai.providers.official = {
+		...EMPTY_AI_PROVIDER_PROFILE,
+		provider: "deepseek",
+		baseUrl: "https://api.deepseek.com/v1",
+		model: "deepseek-flash",
+		apiKey: "fixture",
+	};
+	config.ai.speech.baseUrl = "https://speech.example/v1";
+	config.ai.speech.model = "custom-tts";
+	config.ai.speech.voice = "alloy";
+	mount(config);
+	fireEvent.click(await screen.findByRole("tab", { name: /女仆声线/ }));
+	const service = within(screen.getByRole("region", { name: "语音合成服务" }));
+	const preview = service.getByRole<HTMLButtonElement>("button", { name: "试听" });
+	expect(service.getByRole("button", { name: "DeepSeek" }).getAttribute("aria-pressed")).toBe(
+		"true",
+	);
+	expect(service.getByRole("button", { name: /stella/i }).getAttribute("aria-pressed")).toBe(
+		"true",
+	);
+	expect(screen.queryByPlaceholderText("https://api.openai.com/v1")).toBeNull();
+	expect(screen.getByRole("group", { name: "默认发送方式" })).toBeTruthy();
+	expect(preview.disabled).toBe(false);
+	fireEvent.click(service.getByRole("button", { name: /tide/i }));
+	expect(preview.disabled).toBe(true);
+	fireEvent.click(service.getByRole("button", { name: "自定义" }));
+	expect(service.getByPlaceholderText<HTMLInputElement>("https://api.openai.com/v1").value).toBe(
+		"https://speech.example/v1",
+	);
+	expect(service.getByPlaceholderText<HTMLInputElement>("alloy").value).toBe("alloy");
+	await save();
+	expect(vi.mocked(api.patch).mock.calls.at(-1)?.[1]).toMatchObject({
+		core: { ai: { speech: { provider: "custom", deepseekVoice: "tide", voice: "alloy" } } },
+	});
 });

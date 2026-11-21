@@ -15,6 +15,7 @@ import type {
 	HistoryResponse,
 	LiveListeningEntry,
 	SourceAuthResponse,
+	SourcesResponse,
 	StatsOverviewResponse,
 	SubscriptionView,
 } from "@bilibili-notify/contract";
@@ -90,6 +91,7 @@ const note = {
 	create_time: now - 2,
 	author: creator,
 	desc: "合成图文",
+	statistics: { digg_count: 1507, comment_count: 974, share_count: 69, collect_count: 201 },
 	images: [{ url_list: ["https://media.example/note.png"] }],
 };
 const video = {
@@ -129,6 +131,13 @@ async function listen(server: Server) {
 	server.listen(0, "127.0.0.1");
 	await once(server, "listening");
 	return (server.address() as AddressInfo).port;
+}
+
+async function findFreePort() {
+	const probe = createServer();
+	const port = await listen(probe);
+	await new Promise<void>((resolve) => probe.close(() => resolve()));
+	return port;
 }
 
 async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
@@ -313,9 +322,7 @@ beforeAll(async () => {
 			addressCheck: undefined,
 		});
 	});
-	const probe = createServer();
-	const port = await listen(probe);
-	await new Promise<void>((resolve) => probe.close(() => resolve()));
+	const port = await findFreePort();
 	host = await startServer({
 		argv: [
 			"--host",
@@ -370,6 +377,10 @@ afterAll(async () => {
 });
 
 it("官方抖音包解析博主、同步资料，再把图文、视频和开下播送到所选目标并计入历史统计", async () => {
+	const { sources } = await api<SourcesResponse>("/api/sources");
+	expect(sources.find((source) => source.key === "douyin")?.descriptor).toMatchObject({
+		supportedExtras: ["atAllPost", "atAllLiveStart"],
+	});
 	const authPath = "/api/sources/douyin/auth";
 	expect((await api<SourceAuthResponse>(authPath, "POST")).state.status).toBe("awaiting-scan");
 	await vi.waitFor(
@@ -422,7 +433,15 @@ it("官方抖音包解析博主、同步资料，再把图文、视频和开下�
 			expect(await api<LiveListeningEntry[]>("/api/live/listening")).toMatchObject([
 				{ subscriptionId: base.id, identity, isLive: true, title: room.title },
 			]);
-			expect(cards.some((c) => c.includes(note.desc))).toBe(true);
+			const photoCard = cards.find((c) => c.includes(note.desc));
+			for (const [block, count] of [
+				["likeCount", "1507"],
+				["commentCount", "974"],
+				["shareCount", "69"],
+				["saveCount", "201"],
+			]) {
+				expect(photoCard).toMatch(new RegExp(`data-block="${block}"[^]*?<span>${count}</span>`));
+			}
 			expect(cards.some((c) => c.includes(video.desc))).toBe(true);
 		},
 		{ timeout: 10_000 },
@@ -529,7 +548,12 @@ it("群聊分享未订阅博主的短链，官方拓展展开后在对应群组�
 		enabled: true,
 		adapterKey: "onebot",
 		platform: "onebot",
-		settings: { transport: "http", baseUrl: origin, maxRetries: 0, retryIntervalMs: 0 },
+		settings: {
+			transport: "ws",
+			url: `ws://127.0.0.1:${await findFreePort()}`,
+			maxRetries: 0,
+			retryIntervalMs: 0,
+		},
 	});
 	await api("/api/targets", "POST", {
 		id: groupTarget,

@@ -105,6 +105,71 @@ it("restore preview and commit reserve bad identities, with no preview side effe
 	expect((await disk()).subscriptions).toEqual([next, bad]);
 });
 
+it("并发合并两份备份时两条订阅都保留在磁盘上", async () => {
+	const { createBackupService } = await import("../../backup/service.js");
+	const { buildBackup } = await import("../../backup/envelope.js");
+	const { fakeIntegrationSecrets } = await import(
+		"../../__tests__/support/backup-integration-secrets.js"
+	);
+	const store = await open();
+	const service = createBackupService({
+		configStore: store,
+		integrationSecrets: fakeIntegrationSecrets(),
+	});
+	const rows = [sub("first"), sub("second")];
+	await Promise.all(
+		rows.map((row) =>
+			service.importBackup({
+				mode: "merge",
+				envelope: buildBackup({
+					kind: "sanitized",
+					createdAt: "t",
+					sections: { subscriptions: [row] },
+				}),
+			}),
+		),
+	);
+	expect((await open()).getSubscriptions()).toEqual(expect.arrayContaining(rows));
+});
+
+it.each(["UUID", "身份"] as const)(
+	"空库预览和恢复均以坏备份拒绝重复的订阅%s",
+	async (duplicate) => {
+		const { createBackupService } = await import("../../backup/service.js");
+		const { buildBackup } = await import("../../backup/envelope.js");
+		const { createSystemBackupRoute } = await import("../../routes/system-backup.js");
+		const { fakeIntegrationSecrets } = await import(
+			"../../__tests__/support/backup-integration-secrets.js"
+		);
+		await put([]);
+		const store = await open();
+		const service = createBackupService({
+			configStore: store,
+			integrationSecrets: fakeIntegrationSecrets(),
+		});
+		const app = createSystemBackupRoute({ service });
+		const a = sub("first");
+		const b = duplicate === "UUID" ? { ...sub("second"), id: a.id } : sub("first");
+		const backup = buildBackup({
+			kind: "sanitized",
+			createdAt: "t",
+			sections: { subscriptions: [a, b] },
+		});
+		for (const mode of ["merge", "overwrite"]) {
+			for (const dryRun of [true, false]) {
+				const response = await app.request("/import", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ backup, mode, dryRun }),
+				});
+				expect(response.status).toBe(400);
+				expect(await response.json()).toMatchObject({ code: "invalid" });
+				expect((await disk()).subscriptions).toHaveLength(0);
+			}
+		}
+	},
+);
+
 it("backup dry-run rejects a reserved identity before confirmation", async () => {
 	const { createBackupService } = await import("../../backup/service.js");
 	const { buildBackup } = await import("../../backup/envelope.js");

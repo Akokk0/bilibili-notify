@@ -6,6 +6,8 @@ import {
 	type SubscriptionTag,
 	sameIdentity,
 } from "@bilibili-notify/internal";
+import type { ConfigSections } from "../config/store.js";
+import type { BackupSections } from "./envelope.js";
 
 /**
  * Restore planning — turns (current state + imported sections + mode) into a
@@ -36,26 +38,10 @@ export interface CurrentState {
 	targets: PushTarget[];
 }
 
-export interface ImportSections {
-	globals?: GlobalSettings;
-	integrations?: Record<string, unknown>;
-	extensionSettings?: Record<string, unknown>;
-	subscriptions?: Subscription[];
-	subscriptionTags?: SubscriptionTag[];
-	connections?: Connection[];
-	targets?: PushTarget[];
-}
+export type ImportSections = BackupSections;
 
 /** 折好的终态 —— ConfigStore.replaceSections 要的形状。 */
-export interface FoldedSections {
-	globals?: GlobalSettings;
-	integrations?: Record<string, unknown>;
-	extensionSettings?: Record<string, unknown>;
-	subscriptions?: Subscription[];
-	subscriptionTags?: SubscriptionTag[];
-	connections?: Connection[];
-	targets?: PushTarget[];
-}
+export type FoldedSections = ConfigSections;
 
 interface ScopePlan<T> {
 	upsert: T[];
@@ -149,7 +135,7 @@ function remapTagIds(
 ): Subscription[] {
 	return subs.map((sub) => ({
 		...sub,
-		tagIds: [...new Set(sub.tagIds.map((id) => idMap.get(id) ?? id))],
+		tagIds: [...new Set((sub.tagIds ?? []).map((id) => idMap.get(id) ?? id))],
 	}));
 }
 

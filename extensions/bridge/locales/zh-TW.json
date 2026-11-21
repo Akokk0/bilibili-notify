@@ -1,5 +1,5 @@
 {
-	"marketplace.notes": "橋接機器人顯示更多能力，支援逐項測試傳送；明確提示語音與未確認的 Markdown 無法使用。",
+	"marketplace.notes": "橋接的合併轉發測試改用可重複下載的圖片，平台再次取圖時仍可顯示測試圖片。",
 	"view.connected": "已連線",
 	"view.mismatched": "已連線，但類型不符",
 	"view.configuredKind": "設定：{kind}",
@@ -37,6 +37,7 @@
 	"error.linkDisabled": "接入「{name}」已停用",
 	"error.linkDisconnected": "接入「{name}」未連線",
 	"error.botMissing": "橋接目前沒有這個 bot（{botId}）",
+	"error.botPlatformChanged": "這個 bot 的平台已變更，請重新綁定連線",
 	"error.sessionOnly": "橋接僅可傳送至會話目標",
 	"error.disconnected": "橋接未連線",
 	"error.connectionLost": "橋接已斷線",
@@ -96,6 +97,10 @@
 						"name": {
 							"label": "名稱",
 							"placeholder": "例如「家中的 koishi」"
+						},
+						"publicOrigin": {
+							"label": "取圖位址",
+							"description": "反向代理改寫 Host 時，請填橋接外掛能存取的 BN 位址。留空則沿用握手請求的位址。"
 						},
 						"enabled": {
 							"label": "啟用"

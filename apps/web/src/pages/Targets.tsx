@@ -2,7 +2,6 @@ import type {
 	AdapterEntry,
 	ConnectionCandidatesResponse,
 	ConnectionTestResponse,
-	ConnectionView,
 	ExtensionEntryView,
 	TestResponse,
 } from "@bilibili-notify/contract";
@@ -48,6 +47,7 @@ import {
 import { i18n, useT } from "../i18n";
 import { ApiError, api } from "../services/api";
 import { issueTextsOf } from "../services/error-text";
+import { CONNECTIONS_QUERY, TARGETS_QUERY } from "../services/list-queries";
 import {
 	clearedCredentials,
 	connectionPatch,
@@ -1485,14 +1485,8 @@ export default function Targets() {
 	const platformLabel = usePlatformLabel();
 	const face = useConnectionFace();
 
-	const connectionsQuery = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<ConnectionView[]>("/api/connections"),
-	});
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const connectionsQuery = useQuery(CONNECTIONS_QUERY);
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	// 开推送源那一口的拓展:在场的是「新建连接」那一排的后几档,停着的 v2 名字与连接配置项照清单
 	// 也在(决策 41)。与拓展页共用同一张表。
 	const extensionsQuery = useExtensions({ retry: false });

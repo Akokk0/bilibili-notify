@@ -1,5 +1,6 @@
 import { formatCount } from "@bilibili-notify/internal";
-import { t as serverText } from "../i18n/index.js";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
+import { i18n, t as serverText } from "../i18n/index.js";
 import { renderTemplate } from "../util/render-template";
 
 /**
@@ -124,6 +125,12 @@ export function renderLiveText(
 			// 缺数时的「暂未获取到」只在这里(文字出口)印,不写回直播数据。
 			vars.watched =
 				values.watched === undefined ? watchedUnknownText() : formatCount(values.watched);
+			if (!values.time && template === templateDefaultsFor(i18n.state().locale).liveStreaming) {
+				return serverText("service.live.live-text.streamingWithoutDuration", {
+					name: values.name,
+					watched: vars.watched,
+				});
+			}
 			break;
 		case "liveEnd":
 			vars.follower_change = textOf(values.followerChange, (n) => formatCount(n, { signed: true }));

@@ -179,8 +179,8 @@ describe("AI 页 — 密钥格的保存闭环", () => {
 		expect(json).not.toContain('"vision":{"baseUrl":"","apiKey"');
 		expect(lastPatchBody().ai.providers.deepseek?.vision).not.toHaveProperty("apiKey");
 
-		// 换搜索 key:全局配置 Tab 里那一格。
-		fireEvent.click(screen.getByRole("tab", { name: /全局配置/ }));
+		// 换搜索页里的独立密钥。
+		fireEvent.click(screen.getByRole("tab", { name: /^搜索/ }));
 		const row = document.querySelector('[data-code="ai.search.keys.bocha"]') as HTMLElement;
 		fireEvent.click(within(row).getByRole("button", { name: "换一份" }));
 		fireEvent.change(row.querySelector("input") as HTMLElement, { target: { value: "bocha-new" } });

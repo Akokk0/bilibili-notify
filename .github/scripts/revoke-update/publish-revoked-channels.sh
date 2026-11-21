@@ -21,6 +21,6 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 # CHANNELS 是空格分隔的多个渠道,靠不加引号的展开切词。
 for channel in $CHANNELS; do
-	CHANNEL="$channel" FILE=dist/manifest.sig.json \
+	CHANNEL_ACTION=revoke CHANNEL="$channel" FILE=dist/manifest.sig.json \
 		bash "$script_dir/../shared/publish-update-channel.sh"
 done

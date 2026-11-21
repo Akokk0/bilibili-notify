@@ -2,8 +2,10 @@ import type { Connection, NotificationPayload, PushTarget } from "@bilibili-noti
 import { ok } from "@bilibili-notify/internal";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createOnebotAdapter } from "../../platforms/onebot.js";
+import { createQQOfficialAdapter } from "../../platforms/qq-official.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createTargetDispatcher } from "../../push/target-dispatcher.js";
 import { createTargetTester } from "../../push/target-tester.js";
@@ -14,18 +16,24 @@ import type { RouteDeps } from "../types.js";
 const ID = "33333333-3333-4333-8333-333333333333";
 afterEach(() => vi.useRealTimers());
 
-async function harness() {
+async function harness(platform: "onebot" | "qq-official" = "onebot") {
 	const serviceCtx = createNodeServiceContext({ name: "capability-test", level: "silent" });
-	const adapter = createOnebotAdapter({ logger: console, serviceCtx });
+	const adapter =
+		platform === "qq-official"
+			? createQQOfficialAdapter({ logger: console, serviceCtx, locale: fixedLocale() })
+			: createOnebotAdapter({ logger: console, serviceCtx });
 	const context = fakeAdapterContext();
 	const registry = createPlatformAdapterRegistry();
 	await registry.register(adapter, context.ctx);
 	const connection = {
 		id: "a",
-		adapterKey: "onebot",
-		platform: "onebot",
+		adapterKey: platform,
+		platform,
 		enabled: true,
-		settings: { transport: "http", baseUrl: "http://127.0.0.1:5700", retryIntervalMs: 0 },
+		settings:
+			platform === "qq-official"
+				? { appId: "app", appSecret: "fixture", botType: "public", sandbox: false }
+				: { transport: "ws", url: "ws://127.0.0.1:5700", retryIntervalMs: 0 },
 	} as unknown as Connection;
 	const target = {
 		id: ID,
@@ -96,6 +104,36 @@ it("能力测试发送真实语音和多图载荷；未确认的艾特全体不�
 	}
 });
 
+it("QQ 官方机器人群接收测试能发送无链接的提示并收到同一验证码", async () => {
+	const h = await harness("qq-official");
+	try {
+		const response = (await (await h.post("inbound")).json()) as {
+			ok: boolean;
+			reception: { id: string; reply: string };
+		};
+		expect(response.ok).toBe(true);
+		const { id, reply } = response.reception;
+		expect(h.sent[0]).toMatchObject({
+			kind: "text",
+			text: expect.not.stringMatching(/https?:\/\/|bn\.invalid/i),
+		});
+		expect(reply).toMatch(/^BN-[a-f0-9]+$/);
+		expect(h.sent[0]).toMatchObject({ text: expect.stringContaining(reply) });
+		expect(
+			h.tests.receive(
+				"group",
+				{ address: "123", text: reply },
+				{ connectionId: "a", platform: "qq-official" },
+			),
+		).toBe(true);
+		expect(await (await h.app.request(`/${ID}/test/${id}`)).json()).toMatchObject({
+			state: "received",
+		});
+	} finally {
+		h.dispose();
+	}
+});
+
 it("接收测试只认当前连接和会话的准确回传，发送本身不算收到", async () => {
 	const h = await harness();
 	try {
@@ -105,6 +143,8 @@ it("接收测试只认当前连接和会话的准确回传，发送本身不算�
 		};
 		expect(response).toMatchObject({ ok: true, reception: { state: "pending" } });
 		const test = response.reception;
+		// A bridge subscribed to with-links only forwards group replies containing a URL.
+		expect(test.reply).toMatch(/^https?:\/\/\S+$/);
 		const path = `/${ID}/test/${test.id}`;
 		expect(h.sent.at(-1)).toMatchObject({
 			kind: "text",

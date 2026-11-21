@@ -4,8 +4,10 @@
 	"private": true,
 	"packageManager": "pnpm@12.18.0",
 	"scripts": {
+		"gate": "bash .claude/gate.sh --full",
 		"build": "pnpm -r run build",
 		"typecheck": "pnpm -r run typecheck",
+		"typecheck:after-build": "pnpm -r --filter \"!@bilibili-notify/web\" run typecheck",
 		"dev": "pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' run build && pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' --filter '@bilibili-notify/server' --filter '@bilibili-notify/web' --parallel --stream run dev",
 		"dev:packages": "pnpm -r --filter './packages/*' --filter '@bilibili-notify/contract' --parallel --stream run dev",
 		"dev:apps": "node scripts/dev-apps.mjs",
@@ -24,6 +26,7 @@
 		"check:fix": "biome check --write .",
 		"prepare": "lefthook install",
 		"test": "vp test",
+		"test:panel-locale": "cross-env LANG=ar_EG.UTF-8 LC_ALL=ar_EG.UTF-8 vp test apps/web/src/pages/__tests__/overview-health-details.test.tsx apps/web/src/pages/__tests__/ExtensionDetail.report-discrepancies.test.tsx -t \"核心计数悬停值|上报时间悬停值\" --reporter=dot",
 		"test:migration-timing": "cross-env BN_MIGRATION_TIMING=1 vp test apps/server/src/migration/__tests__/migration-timing.test.ts --reporter=default",
 		"knip": "knip --files",
 		"build:bn-runtimes": "node scripts/build-bn-runtimes.mjs",

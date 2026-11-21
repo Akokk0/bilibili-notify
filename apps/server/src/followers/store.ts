@@ -1,9 +1,9 @@
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, unlink } from "node:fs/promises";
+import { mkdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { createSerialQueue, type Logger } from "@bilibili-notify/internal";
-import { appendJsonl, atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
+import { appendJsonl, atomicWriteFile, listJsonlKeys } from "@bilibili-notify/storage";
 import { logText } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 import { compressFollowersSamples } from "./compress.js";
@@ -142,18 +142,7 @@ export function createFollowersStore(opts: CreateFollowersStoreOptions): Followe
 		}
 	}
 
-	async function keys(): Promise<string[]> {
-		let names: string[];
-		try {
-			names = await readdir(root);
-		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-			throw err;
-		}
-		return names
-			.filter((name) => name.endsWith(".jsonl") && !isLeftoverName(name))
-			.map((name) => name.slice(0, -".jsonl".length));
-	}
+	const keys = () => listJsonlKeys(root);
 
 	function drop(key: string): Promise<void> {
 		return writes.run(key, async () => {

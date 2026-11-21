@@ -107,13 +107,15 @@ type DeepPartial<T> =
 /** Validate the full replacement without writing files, state or events. */
 interface ReplaceSectionsOptions {
 	dryRun?: boolean;
+	/** Caller invariants checked after reserved identities and before persistence. */
+	validate?: () => void;
 }
 
 /**
  * 一次整体替换要写进去的分区。缺席的分区保持不动 —— 「不给」和「给一个空数组」
  * 是两回事:后者是真的清空。
  */
-interface ConfigSections {
+export interface ConfigSections {
 	globals?: GlobalSettings;
 	/** 各集成的设置,按集成的键;只换给了的那几份。 */
 	integrations?: Record<string, unknown>;
@@ -295,7 +297,10 @@ export interface ConfigStore {
 	 * 整体替换若干分区(恢复备份 / 一次性迁移)。先全量校验再落盘,失败不留半新半旧。
 	 * 详见实现处的注释。
 	 */
-	replaceSections(next: ConfigSections, options?: ReplaceSectionsOptions): Promise<ConfigScope[]>;
+	replaceSections(
+		next: ConfigSections | (() => ConfigSections),
+		options?: ReplaceSectionsOptions,
+	): Promise<ConfigScope[]>;
 
 	/**
 	 * 关停:先等在途与已排队的写全部落盘,再关门 —— 此后的写一律以 `SerialQueueClosedError` 拒绝、不碰盘。
@@ -1162,7 +1167,7 @@ class NodeConfigStore implements ConfigStore {
 		this.subscriptionTags = [...tags];
 	}
 
-	private assertSubscriptionsWritable(next: readonly Subscription[]): void {
+	private assertSubscriptionsWritable(next: readonly Subscription[], validate?: () => void): void {
 		const seen = new Set<string>();
 		for (const sub of next) {
 			if (seen.has(sub.id))
@@ -1184,6 +1189,8 @@ class NodeConfigStore implements ConfigStore {
 				}
 			}
 		}
+		// 保留行的诊断先行；恢复可为新引入的重复身份提供备份专用的错误。
+		validate?.();
 		assertNoNewIdentityDuplicate(this.subscriptions, next);
 	}
 
@@ -1204,7 +1211,9 @@ class NodeConfigStore implements ConfigStore {
 		if (
 			!this.secretStore &&
 			!this.plaintextApiKeyWarned &&
-			Object.keys(collectAiSecrets(g)).length > 0
+			(Object.keys(collectAiSecrets(g)).length > 0 ||
+				!!g.ai.speech.apiKey ||
+				!!g.ai.speech.deepseekApiKey)
 		) {
 			this.plaintextApiKeyWarned = true;
 			this.serviceCtx.logger.warn(logText("log.config.plaintextKeys"), {
@@ -1227,13 +1236,16 @@ class NodeConfigStore implements ConfigStore {
 		// **盘上不留明文**(一直成立的规矩,不是 0.x 兼容):settings/core.json 落盘时 apiKey 一律抠成空串,所以
 		// 盘上出现非空的 key 就是明文 —— 主人手改写进去的,或 0.x 加密上线前留下的。开机抬进加密袋、抹掉盘上那份。
 		const plaintext = collectAiSecrets(this.globals);
-		const hadPlaintext = Object.keys(plaintext).length > 0;
+		const { apiKey: speechKey, deepseekApiKey: deepseekSpeechKey } = this.globals.ai.speech;
+		const hadPlaintext = Object.keys(plaintext).length > 0 || !!speechKey || !!deepseekSpeechKey;
 		if (hadPlaintext) {
 			// 明文优先:每次抬完盘上都会抹掉,所以盘上的明文只可能是之后写进去的,袋里那把才是旧的(主人手改换
 			// key 就是这样)。抬到一半崩了(袋已存、盘上还没抹)时两边是同一把,谁优先都一样。
 			this.secretBag = {
 				...this.secretBag,
 				aiApiKeys: { ...(this.secretBag.aiApiKeys ?? {}), ...plaintext },
+				...(speechKey ? { speechApiKey: speechKey } : {}),
+				...(deepseekSpeechKey ? { deepseekSpeechApiKey: deepseekSpeechKey } : {}),
 			};
 			await this.secretStore.save(this.secretBag);
 			this.serviceCtx.logger.info(logText("log.config.keysMigrated"), {
@@ -1251,7 +1263,7 @@ class NodeConfigStore implements ConfigStore {
 		// 键序偏了,重启后第一次改**任何** globals 字段(哪怕只是 profileRefreshCron),`ai`
 		// 都会被误判成「变了」,白白热重载一次 AI 实例并刷两条日志。
 		this.globals = GlobalSettingsSchema.parse(
-			applyAiSecrets(this.globals, this.secretBag.aiApiKeys ?? {}),
+			applyAiSecrets(this.globals, this.secretBag.aiApiKeys ?? {}, this.secretBag),
 		);
 		// Scrub disk if it ever held the plaintext.
 		if (hadPlaintext) await this.persistGlobals(this.globals);
@@ -1680,9 +1692,16 @@ class NodeConfigStore implements ConfigStore {
 			// 否则删了又加回来会拿到一把他以为已经删掉的旧密钥。唯一的例外是仍被隔离的那一格名下的旧键:
 			// 那一格在内存里是默认值(`ai.providers` 里一家坏了则是那一家不在),收集不到它们,重算会把它们洗空,
 			// 主人把那一格改对时 key 已经没了。留哪些键见 {@link isolatedSecrets} 的三档。
+			const speechIsolated = retained.some(
+				(e) => e.path[0] === "ai" && (e.path.length === 1 || e.path[1] === "speech"),
+			);
 			const nextBag = {
 				...this.secretBag,
 				aiApiKey: undefined,
+				speechApiKey: speechIsolated ? prevBag.speechApiKey : g.ai.speech.apiKey || undefined,
+				deepseekSpeechApiKey: speechIsolated
+					? prevBag.deepseekSpeechApiKey
+					: g.ai.speech.deepseekApiKey || undefined,
 				aiApiKeys: {
 					...isolatedSecrets(this.secretBag.aiApiKeys ?? {}, retained),
 					...collectAiSecrets(g),
@@ -2355,10 +2374,11 @@ class NodeConfigStore implements ConfigStore {
 	 * 缺席的分区保持不动。返回真正改过的 scope。
 	 */
 	async replaceSections(
-		next: ConfigSections,
+		replacement: ConfigSections | (() => ConfigSections),
 		options: ReplaceSectionsOptions = {},
 	): Promise<ConfigScope[]> {
 		const changed = await this.runAllScopes(async () => {
+			const next = typeof replacement === "function" ? replacement() : replacement;
 			// ---- 1) 校验:任一分区不过就整个中止,不写任何东西 ----------------
 			let globals: GlobalSettings | undefined;
 			if (next.globals !== undefined) {
@@ -2406,7 +2426,7 @@ class NodeConfigStore implements ConfigStore {
 			assertMasterTarget((globals ?? this.globals).master, effTargets, "globals");
 			const synced = syncManagedEndpointTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
-			this.assertSubscriptionsWritable(replaced.next);
+			this.assertSubscriptionsWritable(replaced.next, options.validate);
 			assertKnownTags(replaced.next, effTags);
 
 			if (options.dryRun) return [];

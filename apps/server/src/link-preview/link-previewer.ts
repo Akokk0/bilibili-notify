@@ -204,7 +204,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 	}
 
 	/**
-	 * 发什么:原生分享(形式 × 能力由调用方算好)发失败就回落图片卡,群里不会空着。
+	 * 原生分享明确失败时回落图片卡。送达结果待确认时保留原消息，避免重复。
 	 * 发的就是解析器交的那份中立描述(`appId` 一并带着),怎么签归适配器。
 	 * 缓存翻不翻由适配器自己定(只有再收到 1404 才翻),这里不猜。
 	 */
@@ -229,12 +229,17 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 				});
 				return;
 			}
-			opts.logger.warn(logText("log.link.nativeFailed"), {
-				destination: dest,
-				canonicalId: preview.canonicalId,
-				code: result.code,
-				message: result.message,
-			});
+			const uncertain = result.code === "indeterminate";
+			opts.logger.warn(
+				uncertain ? logText("log.link.nativeUnconfirmed") : logText("log.link.nativeFailed"),
+				{
+					destination: dest,
+					canonicalId: preview.canonicalId,
+					code: result.code,
+					message: result.message,
+				},
+			);
+			if (uncertain) return;
 		}
 		await replyWithImageCard(dest, preview, registered);
 	}

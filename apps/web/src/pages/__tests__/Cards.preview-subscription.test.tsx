@@ -9,7 +9,7 @@ import { i18n } from "../../i18n";
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../store/draft";
@@ -97,17 +97,55 @@ afterEach(() => {
 });
 
 describe("卡片预览挑订阅", () => {
-	it("全局作用域:订阅下拉列出全部订阅(拓展的也在),默认不挑;作品卡不挑时不带订阅与第几条", async () => {
+	it("来源 Picker 默认选中 B 站，只提供具体来源并按选择筛选订阅", async () => {
+		const get = vi.mocked(api.get).getMockImplementation();
+		if (!get) throw new Error("API fixture missing");
+		vi.mocked(api.get).mockImplementation((url: string) =>
+			url === "/api/sources"
+				? Promise.resolve({
+						sources: [
+							makeSource(),
+							{
+								key: "douyin",
+								status: "running",
+								descriptor: { label: "抖音", supportedFeatures: ["post", "liveStart"] },
+							},
+						],
+					})
+				: get(url),
+		);
+		const { container } = renderCards();
+		await openPostCard();
+		const source = within(await screen.findByRole("group", { name: "预览来源" }));
+		expect(source.getAllByRole("button").map((item) => item.textContent)).toEqual(["B 站", "抖音"]);
+		expect(source.getByRole("button", { name: "B 站", pressed: true })).toBeTruthy();
+		expect(selectOptionsOf(subscriptionSelect(container)).map((o) => o.textContent)).toEqual([
+			"不挑，用示例",
+			"UID 123456",
+		]);
+		chooseSelect(subscriptionSelect(container), "UID 123456");
+		fireEvent.click(source.getByRole("button", { name: "抖音" }));
+		expect(source.getByRole("button", { name: "抖音", pressed: true })).toBeTruthy();
+		expect(selectOptionsOf(subscriptionSelect(container)).map((o) => o.textContent)).toEqual([
+			"不挑，用示例",
+			"抖音 · sec-1",
+		]);
+		await waitFor(() =>
+			expect(previewBodies("post").at(-1)?.content).toEqual({ sourceKey: "douyin" }),
+		);
+		expect(screen.queryByRole("button", { name: /SC 提醒/ })).toBeNull();
+	});
+	it("全局作用域默认用 B 站示例，作品卡不挑时不带订阅与第几条", async () => {
 		const { container } = renderCards();
 		await openPostCard();
 		const select = await waitFor(() => subscriptionSelect(container));
 		const options = selectOptionsOf(select).map((o) => o.textContent);
-		expect(options).toEqual(["不挑，用示例", "UID 123456", "douyin · sec-1"]);
+		expect(options).toEqual(["不挑，用示例", "UID 123456"]);
 		expect(select.textContent).toBe("不挑，用示例");
-		// 没挑订阅:「第几条作品」不出现,请求里作品卡一格都不带(服务端画示例)。
+		// 没挑订阅时只带预览来源。
 		expect(container.querySelector('[data-code="nth"]')).toBeNull();
 		await waitFor(() => expect(previewBodies("post").length).toBeGreaterThan(0), { timeout: 5000 });
-		expect(previewBodies("post").at(-1)?.content).toEqual({});
+		expect(previewBodies("post").at(-1)?.content).toEqual({ sourceKey: "bilibili" });
 	});
 
 	// 验红:把 Cards.tsx 的 previewContentOf 里作品那一支改回不带订阅 id,这条红。
@@ -115,12 +153,12 @@ describe("卡片预览挑订阅", () => {
 		const { container } = renderCards();
 		await openPostCard();
 		const select = await waitFor(() => subscriptionSelect(container));
-		chooseSelect(select, "douyin · sec-1");
+		chooseSelect(select, "UID 123456");
 		await waitFor(() => expect(container.querySelector('[data-code="nth"] input')).not.toBeNull());
 		await waitFor(
 			() =>
 				expect(previewBodies("post").at(-1)?.content).toEqual({
-					subscriptionId: DOUYIN.id,
+					subscriptionId: BILI.id,
 					nth: 1,
 				}),
 			{ timeout: 5000 },

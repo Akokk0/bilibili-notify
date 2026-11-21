@@ -60,6 +60,19 @@ const BridgeLinkSchema = z.object({
 			monospace: true,
 			description: "只在这一刻看得到全文。存下之后面板只显示头尾 —— 忘了就重新生成一个。",
 		} satisfies SettingsFieldMeta),
+	publicOrigin: z
+		.string()
+		.trim()
+		.refine((value) => {
+			if (!value) return true;
+			return /^https?:\/\/[^/?#@\\\s]+\/?$/i.test(value) && URL.canParse(value);
+		}, "请填写 HTTP 或 HTTPS 的取图地址，格式如 https://bn.example.com")
+		.optional()
+		.meta({
+			label: "取图地址",
+			description: "反向代理改写 Host 时，填桥接插件能访问的 BN 地址。留空则沿用握手请求的地址。",
+			placeholder: "https://bn.example.com",
+		} satisfies SettingsFieldMeta),
 	/** 停用不是吊销:配置全留,桥握手回 503(退避重连)而不是 401。 */
 	enabled: z
 		.boolean()

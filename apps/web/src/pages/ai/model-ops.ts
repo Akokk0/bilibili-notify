@@ -10,6 +10,7 @@ import {
 	type AIProviderId,
 	aiProfileAt,
 	EMPTY_AI_PROVIDER_PROFILE,
+	normalizeDeepSeekProfile,
 	presetsOf,
 	providerMeta,
 } from "@bilibili-notify/internal/ai";
@@ -93,7 +94,7 @@ export function addProfile(
 			activeProfile: isFirstProfile ? id : ai.activeProfile,
 			providers: {
 				...ai.providers,
-				[id]: { ...EMPTY_AI_PROVIDER_PROFILE, provider, label },
+				[id]: normalizeDeepSeekProfile({ ...EMPTY_AI_PROVIDER_PROFILE, provider, label }),
 			},
 		},
 	};

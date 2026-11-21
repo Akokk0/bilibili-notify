@@ -41,9 +41,13 @@ describe("开发拓展挂载请求", () => {
 	let development: ReturnType<typeof createDevelopmentExtensions>;
 	let app: ReturnType<typeof createDevRoute>;
 	let enabled: boolean;
-	beforeEach(async () => {
-		root = await realpath(await mkdtemp(join(tmpdir(), "bn-development-extensions-")));
-		enabled = true;
+	async function boot() {
+		let active: typeof loaded | undefined;
+		development = createDevelopmentExtensions({
+			root: join(root, "installed"),
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			extensions: () => active,
+		});
 		const providers = createDevtoolsProviderRegistry([]);
 		const attachDevtools = createDevEntryAttacher({
 			providers,
@@ -58,7 +62,7 @@ describe("开发拓展挂载请求", () => {
 			signal: new AbortController().signal,
 			track() {},
 		};
-		loaded = await loadExtensions({
+		loaded = active = await loadExtensions({
 			attachDevtools,
 			developmentEntry: (directory) =>
 				development?.resolveEntry(directory) ?? Promise.resolve(undefined),
@@ -82,15 +86,15 @@ describe("开发拓展挂载请求", () => {
 			inbound: {},
 			upgrades: createExtensionUpgrades(),
 		});
-		development = createDevelopmentExtensions({
-			root: join(root, "installed"),
-			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
-			extensions: () => loaded,
-		});
 		app = createDevRoute({
 			registry: createDevRegistry(providers),
 			developmentExtensions: development,
 		});
+	}
+	beforeEach(async () => {
+		root = await realpath(await mkdtemp(join(tmpdir(), "bn-development-extensions-")));
+		enabled = true;
+		await boot();
 	});
 
 	afterEach(async () => {
@@ -252,6 +256,100 @@ describe("开发拓展挂载请求", () => {
 			body: JSON.stringify({ directory, watch }),
 		});
 	}
+	async function stop() {
+		await loaded.dispose();
+		await development.dispose();
+	}
+
+	it.each([true, false])("重启开发宿主恢复同一源码挂载及监听设置 %s", async (watching) => {
+		const id = "example.restart";
+		const directory = await project(id);
+		expect((await mount(directory, watching)).status).toBe(200);
+		await stop();
+
+		enabled = false;
+		await writeFile(join(directory, "src/index.ts"), code("after restart"));
+		await boot();
+		expect(await (await app.request("/extensions")).json()).toMatchObject({
+			mounts: [{ id, directory, watching, reloads: 0 }],
+		});
+		expect(loaded.list()).toMatchObject([{ id, state: "disabled" }]);
+		enabled = true;
+		await loaded.sync();
+		expect(loaded.status(id)).toMatchObject({ summary: { text: ["after restart"] } });
+		if (watching) {
+			await writeFile(join(directory, "src/index.ts"), code("hot updated"));
+			await vi.waitFor(
+				() => expect(loaded.status(id)).toMatchObject({ summary: { text: ["hot updated"] } }),
+				{ timeout: 4000 },
+			);
+		}
+		expect((await app.request(`/extensions/${id}`, { method: "DELETE" })).status).toBe(200);
+		await stop();
+		await boot();
+		expect(await (await app.request("/extensions")).json()).toEqual({ mounts: [] });
+		expect(loaded.list()).toEqual([]);
+	});
+
+	it("重启时报告源码错误，修正后恢复运行", async () => {
+		const id = "example.invalid-on-restart";
+		const directory = await project(id);
+		expect((await mount(directory, true)).status).toBe(200);
+		await stop();
+		await writeFile(join(directory, "src/index.ts"), "export !!! broken");
+		await boot();
+		expect(loaded.list()).toMatchObject([
+			{ id, state: "unreadable", detail: expect.stringContaining("源码加载失败") },
+		]);
+		expect(await (await app.request("/extensions")).json()).toMatchObject({
+			mounts: [{ id, error: expect.stringContaining("源码加载失败") }],
+		});
+		await writeFile(join(directory, "src/index.ts"), code("recovered"));
+		await vi.waitFor(
+			() => expect(loaded.status(id)).toMatchObject({ summary: { text: ["recovered"] } }),
+			{ timeout: 4000 },
+		);
+	});
+
+	it("启动时不会把原挂载的授权转移到同 ID 的其他目录", async () => {
+		const id = "example.moved";
+		const original = await project(id);
+		expect((await mount(original)).status).toBe(200);
+		await stop();
+		const replacement = join(root, "replacement");
+		await mkdir(join(replacement, "src"), { recursive: true });
+		await writeFile(
+			join(replacement, "extension.json"),
+			await readFile(join(original, "extension.json")),
+		);
+		await writeFile(join(replacement, "src/index.ts"), code("different project"));
+		const link = join(root, "installed", id);
+		await rm(link);
+		await symlink(replacement, link, process.platform === "win32" ? "junction" : "dir");
+
+		await boot();
+		expect(loaded.list()).toMatchObject([{ id, state: "unreadable" }]);
+		expect(await (await app.request("/extensions")).json()).toEqual({ mounts: [] });
+		expect((await mount(original)).status).toBe(409);
+	});
+
+	it("旧版遗留的源码链接经主人选择相同工程后可重新挂载", async () => {
+		const id = "example.legacy-source";
+		const directory = await project(id);
+		await mkdir(join(root, "installed"), { recursive: true });
+		await symlink(
+			directory,
+			join(root, "installed", id),
+			process.platform === "win32" ? "junction" : "dir",
+		);
+		await loaded.rescan();
+		expect(loaded.list()).toMatchObject([{ id, state: "unreadable" }]);
+		expect(await (await app.request("/extensions")).json()).toEqual({ mounts: [] });
+
+		const response = await mount(directory);
+		expect(response.status, await response.clone().text()).toBe(200);
+		expect(loaded.status(id)).toMatchObject({ summary: { text: ["one"] } });
+	});
 
 	it("手动指定仓外工程后直接加载源码，挂载列表交出真实目录", async () => {
 		const directory = await project("example.one");

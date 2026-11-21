@@ -27,6 +27,7 @@ import { logText, t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { createGroupRoleCache } from "./group-role-cache.js";
+import { httpFailure } from "./http-failure.js";
 import { imageGroupUrls } from "./image-group.js";
 import { ONEBOT_FORWARD_MIN_TIMEOUT_MS, ONEBOT_IMAGE_MIN_TIMEOUT_MS } from "./onebot-constants.js";
 import { routeInboundFrame } from "./onebot-inbound.js";
@@ -415,16 +416,6 @@ function interpretResponse(r: OneBotResponse): Result {
 		return fail("unsupported", message, { upstreamCode: r.retcode });
 	}
 	return fail("unknown", message, r.retcode === undefined ? {} : { upstreamCode: r.retcode });
-}
-
-/** 对端回了非 2xx:状态码 → 标准码;状态码本身留在 `upstreamCode`,带 `http:` 前缀好与 retcode 分开。 */
-function httpFailure(status: number, message: string): Failure {
-	const upstreamCode = `http:${status}`;
-	if (status === 401 || status === 403) return fail("unauthorized", message, { upstreamCode });
-	if (status === 404 || status === 410) return fail("not_found", message, { upstreamCode });
-	if (status === 429) return fail("rate_limited", message, { upstreamCode });
-	if (status >= 400 && status < 500) return fail("invalid", message, { upstreamCode });
-	return fail("unavailable", message, { upstreamCode });
 }
 
 /**
@@ -1440,6 +1431,35 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		}
 	}
 
+	function capabilities(connection: Connection): ConnectionCapabilities {
+		return {
+			image: { state: "supported", checkedAt: adapterStartedAt },
+			imageGroup: { state: "supported", checkedAt: adapterStartedAt },
+			forward: { state: "supported", checkedAt: adapterStartedAt },
+			audio: {
+				state: "supported",
+				checkedAt: adapterStartedAt,
+			},
+			markdown: {
+				state: "unsupported",
+				reason: t("onebot.capability.markdownUnsupported"),
+				checkedAt: adapterStartedAt,
+			},
+			// HTTP 只发送，入站事件由两种 WebSocket 传输交给宿主。
+			atAll: { state: "supported", checkedAt: adapterStartedAt },
+			inbound:
+				isMine(connection) &&
+				(connection.settings.transport === "ws" || connection.settings.transport === "ws-reverse")
+					? { state: "supported", checkedAt: adapterStartedAt }
+					: {
+							state: "unsupported",
+							reason: t("onebot.capability.inboundUnsupported"),
+							checkedAt: adapterStartedAt,
+						},
+			nativeShare: nativeShareSupport.get(connection.id) ?? NOT_PROBED,
+		};
+	}
+
 	return {
 		adapterKey: ADAPTER_KEY,
 		createTestPayload(_connection, destination, kind, samples) {
@@ -1561,6 +1581,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			connection: Connection,
 			destination: DestinationRef,
 			payload: NotificationPayload,
+			options,
 		): Promise<DeliveryResult> {
 			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			if (!isMine(connection)) {
@@ -1569,7 +1590,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 					t("onebot.connection.adapterMismatch", { adapterKey: connection.adapterKey }),
 				);
 			}
-			if (payload.kind === "native-share") return sendNativeShare(connection, destination, payload);
+			const sending = options?.singleAttempt
+				? { ...connection, settings: { ...connection.settings, maxRetries: 0 } }
+				: connection;
+			if (payload.kind === "native-share") return sendNativeShare(sending, destination, payload);
 			if (payload.kind === "markdown")
 				return fail("unsupported", t("onebot.capability.markdownUnsupported"));
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
@@ -1593,7 +1617,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				built = rebuilt;
 			}
 
-			return dispatch(connection, destination, built, t0);
+			return dispatch(sending, destination, built, t0);
 		},
 
 		async fetchDestinationStatus(connection, destination, _signal, options) {
@@ -1642,35 +1666,14 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			if (disposed) return fail("unavailable", t("targets.status.cancelled"));
 			return ok({ status: { role } });
 		},
-		capabilities(connection: Connection): ConnectionCapabilities {
-			return {
-				image: { state: "supported", checkedAt: adapterStartedAt },
-				imageGroup: { state: "supported", checkedAt: adapterStartedAt },
-				forward: { state: "supported", checkedAt: adapterStartedAt },
-				audio: {
-					state: "supported",
-					checkedAt: adapterStartedAt,
-				},
-				markdown: {
-					state: "unsupported",
-					reason: t("onebot.capability.markdownUnsupported"),
-					checkedAt: adapterStartedAt,
-				},
-				// 静态事实:OneBot 能在群里 @全体,私聊 / 群消息的入站也已经接了。
-				atAll: { state: "supported", checkedAt: adapterStartedAt },
-				inbound: { state: "supported", checkedAt: adapterStartedAt },
-				nativeShare: nativeShareSupport.get(connection.id) ?? NOT_PROBED,
-			};
-		},
+		capabilities,
 
 		async probeCapabilities(connection: Connection): Promise<ConnectionCapabilities> {
 			// 这个方法是唯一**没有**自带那句「不是我的就退回去」的入口(契约上它不返回错,
 			// 只返回能力)。矩阵按分发键派活,派到这儿的必是 onebot 直连 —— 那句保证在这里
 			// 记一次,底下的 helper 就都收窄类型、不用一路 `as` 下去。
 			return {
-				...this.capabilities?.(connection),
-				atAll: { state: "supported", checkedAt: adapterStartedAt },
-				inbound: { state: "supported", checkedAt: adapterStartedAt },
+				...capabilities(connection),
 				nativeShare: await probeNativeShare(connection as OnebotConnection),
 			};
 		},

@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { chooseSelect } from "../../../__tests__/select-controls";
+import type { MembershipProgram } from "../../../config/membership-programs";
 import { i18n } from "../../../i18n";
 import { api } from "../../../services/api";
 import { useDraftStore } from "../../../store/draft";
@@ -43,7 +44,7 @@ const subOf = (overrides: Subscription["overrides"] = {}): Subscription => ({
 	overrides,
 });
 
-const PROGRAMS = [
+const PROGRAMS: MembershipProgram[] = [
 	{
 		id: "guard",
 		name: "Sample membership",
@@ -207,7 +208,9 @@ describe("公共会员门槛", () => {
 	});
 	it("无默认设置时按描述符实际最低rank建立覆盖，并保留未知体系", async () => {
 		const sub = subOf({ membership: { minRank: { retired: 8 } } });
-		const { headerToggle } = renderEditor(sub, "live", makeDefaults(), [
+		const { headerToggle, field } = renderEditor(sub, "live", makeDefaults(), [
+			{ id: "custom", name: "Custom", tiers: "custom" },
+			{ id: "empty", name: "Empty", tiers: [] },
 			{
 				id: "readers",
 				name: "Readers",
@@ -219,6 +222,8 @@ describe("公共会员门槛", () => {
 		]);
 		fireEvent.click(headerToggle());
 		await waitFor(() => expect(diffCodes()).toContain("membership.minRank.readers"));
+		expect(field("membership.minRank.custom")).toBeNull();
+		expect(field("membership.minRank.empty")).toBeNull();
 		const overrides = await saveAndGetOverrides(sub);
 		expect(overrides.membership).toEqual({ minRank: { retired: 8, readers: 4 } });
 	});

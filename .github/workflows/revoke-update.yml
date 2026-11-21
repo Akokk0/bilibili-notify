@@ -14,7 +14,7 @@ name: bilibili-notify — revoke update
 # 跑一遍全量门禁只会给一件本该几十秒完成的急事再加十几分钟,而且它红了也不说明这次
 # 撤回有问题。载荷本身的门禁在它当初发版那次已经跑过了。
 #
-# 需要的 repo secret:BN_UPDATE_SIGNING_KEY(签名私钥 A)、RELEASE_PAT(写 release)。
+# 需要的 repo secret:BN_RELEASE_SIGNING_KEY(签名私钥 A)、RELEASE_PAT(写 release)。
 
 on:
   workflow_dispatch:
@@ -56,6 +56,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check legacy signer retirement
+        env:
+          LEGACY_SIGNER_CONFIGURED: ${{ secrets.BN_UPDATE_SIGNING_KEY != '' }}
+        run: bash .github/scripts/shared/assert-update-signing-cutover.sh
+
       # 不装依赖:这条路上跑的两个脚本(revocation / sign-update-manifest)只用
       # node 内建。急事少一步是一步。
       - name: Setup Vite+ (vp) + Node
@@ -79,7 +84,7 @@ jobs:
 
       - name: Sign the revocation manifest
         env:
-          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_RELEASE_SIGNING_KEY }}
           VERSION: ${{ steps.plan.outputs.version }}
           PAYLOAD_URL: ${{ steps.plan.outputs.payloadUrl }}
           SHA256: ${{ steps.plan.outputs.sha256 }}
@@ -87,6 +92,9 @@ jobs:
           RELEASE_URL: ${{ steps.plan.outputs.releaseUrl }}
           REVOKED: ${{ steps.plan.outputs.revoked }}
         run: bash .github/scripts/revoke-update/sign-revocation-manifest.sh
+
+      - name: Verify release signature
+        run: node scripts/verify-release-signature.mjs dist/manifest.sig.json
 
       - name: Validate release token
         if: inputs.dry_run == false

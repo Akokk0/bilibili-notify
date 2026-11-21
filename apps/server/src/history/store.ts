@@ -57,6 +57,8 @@ interface HistoryRecordMessage {
 	role: PushMessageRole;
 	/** 无目标行没有它;被前一条失败中止、从没出过网的那几条也没有;被挡下的也没有。 */
 	result?: DeliveryResult;
+	speechNote?: string;
+	speechText?: string;
 	/** 这条被全局静音 / 免扰时段挡下了(推送层给的,见 `PushMessageResult.isSilenced`);与 `result` 互斥。 */
 	isSilenced?: true;
 }
@@ -341,7 +343,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			case "markdown":
 				return { kind: "text", text: payload.text };
 			case "audio":
-				return { kind: "text", text: serverText("capabilityTests.audioSample") };
+				return { kind: "text", text: msg.speechText ?? serverText("capabilityTests.audioSample") };
 			case "image": {
 				const image = await putImage(payload.image.buffer, label);
 				// 纯图推送(无 caption)在 History 列表会落成「（无内容）」—— 给个可读摘要。
@@ -408,6 +410,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			out.push({
 				payload,
 				role: msg.role,
+				...(msg.speechNote ? { speechNote: msg.speechNote } : {}),
 				...(msg.result
 					? { result: msg.result }
 					: msg.isSilenced

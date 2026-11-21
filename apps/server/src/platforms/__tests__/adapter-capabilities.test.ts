@@ -43,7 +43,7 @@ function direct(platform: string): Connection {
 		platform,
 		platformSnapshot: snapshotFor(platform),
 		enabled: true,
-		settings: {},
+		settings: platform === "onebot" ? { transport: "ws" } : {},
 	} as unknown as Connection;
 }
 

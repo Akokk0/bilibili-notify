@@ -96,7 +96,9 @@ function statusLine(status: UpdateStatusView): string {
 		case "downloading":
 			return i18n.t("panelUi.components.update.status.11");
 		case "ready":
-			return i18n.t("panelUi.components.update.status.12");
+			return status.restart?.can === false
+				? status.restart.message
+				: i18n.t("panelUi.components.update.status.12");
 		case "needs-image-pull":
 			return i18n.t("panelUi.components.update.status.13");
 		default:

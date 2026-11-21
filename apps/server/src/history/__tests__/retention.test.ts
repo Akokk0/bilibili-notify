@@ -78,6 +78,8 @@ beforeEach(async () => {
 	};
 });
 afterEach(async () => {
+	// start() 立即登记首轮写入，等它收尾再删这条用例的目录。
+	await ctx.settled();
 	vi.restoreAllMocks();
 	i18n.set({ locale: "zh-CN", voice: "maid" });
 	await rm(dataDir, { recursive: true, force: true });
@@ -170,10 +172,13 @@ describe("startHistoryRetention — 登记进 track", () => {
 		};
 		start(30);
 
-		expect(ctx.tracked).toHaveLength(1);
-		expect(await stillPending(ctx.settled())).toBe(true);
-		expect(dropped).toEqual([]);
-		release.resolve();
+		try {
+			expect(ctx.tracked).toHaveLength(1);
+			expect(await stillPending(ctx.settled())).toBe(true);
+			expect(dropped).toEqual([]);
+		} finally {
+			release.resolve();
+		}
 		await ctx.settled();
 		expect(dropped).toEqual(["2000-01-01"]);
 	});
@@ -202,11 +207,13 @@ describe("startHistoryRetention — 登记进 track", () => {
 		const tick = setInterval_.mock.calls[0]?.[0] as () => void;
 		tick();
 
-		expect(ctx.tracked).toHaveLength(2);
-		const [, second] = ctx.tracked as [Promise<unknown>, Promise<unknown>];
-		expect(await stillPending(second)).toBe(true);
-		release.resolve();
-		await second;
+		try {
+			expect(ctx.tracked).toHaveLength(2);
+			expect(await stillPending(ctx.settled())).toBe(true);
+		} finally {
+			release.resolve();
+		}
+		await ctx.settled();
 		expect(dropped).toEqual(["2026-05-16"]);
 	});
 

@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { AI_PROVIDER_IDS, API_FLAVOR_IDS, THINKING_LEVELS, WEB_SEARCH_BACKEND_IDS } from "../ai";
+import {
+	AI_PROVIDER_IDS,
+	API_FLAVOR_IDS,
+	DEEPSEEK_SPEECH_VOICES,
+	normalizeDeepSeekProfile,
+	SPEECH_PROVIDER_IDS,
+	THINKING_LEVELS,
+	WEB_SEARCH_BACKEND_IDS,
+} from "../ai";
 import { extrasRecord, FEATURE_KEYS, featuresRecord } from "../features";
 import { packageText } from "../texts/index";
 import { checkUserRegex } from "../util/regex-safety";
@@ -257,77 +265,89 @@ export type AiPersonaSettings = z.infer<typeof AiPersonaSettingsSchema>;
  * 余下由 schema 补齐。`provider` 刻意**无默认**:桶键只是实例 id,方言归属认不出
  * 又没写明时(手改坏的数据)宁可拒收,也不猜一个、更不悄悄吞掉。
  */
-export const AiProviderProfileSchema = z.object({
-	/**
-	 * 这桶配置属于哪家服务商 —— 决定「开思考」翻译成哪家的方言。上一代配置
-	 * 以服务商名当桶键,开新代时由迁移器按键名盖章(`apps/server/src/migration/ai.ts`)。
-	 */
-	provider: z.enum(AI_PROVIDER_IDS),
-	/** 实例的显示名。空串 = 用注册表里那家的名字(不把家名抄进配置,免得改名过期)。 */
-	label: z.string().default(""),
-	apiKey: markSecret(z.string()).default(""),
-	baseUrl: markBackupOnly(z.string(), { url: true }).default(""),
-	model: z.string().default(""),
-	/**
-	 * 这桶走哪套 wire 协议:`chat`(chat completions,现状)或 `responses`
-	 * (OpenAI 2025 起的接任协议)。默认 `chat`,老配置零迁移;哪些家能选
-	 * `responses` 由 providerMeta 的 `supportsResponses` 把门(设置页不露选项),
-	 * schema 这层不掺和 —— 手改配置选了未确认的家,后果(404)自负且可逆。
-	 */
-	apiFlavor: z.enum(API_FLAVOR_IDS).default("chat"),
-	// 这里曾有一格 `temperature`(默认 0.7),已整个退役:请求里一律不发、走服务商默认
-	// —— 推理模型收到它直接 400。老桶里残留的值被本 schema 剥掉(裸 z.object,未知键
-	// strip,不会整份拒收);想调的主人写进下面的 extraParams。
-	/**
-	 * 开启模型的深度思考。具体发什么字段由**这个桶属于哪家**决定 ——
-	 * 四家四种写法,没有通用解(见 `@bilibili-notify/ai#buildProviderParams`)。
-	 *
-	 * 注意:这个开关在修好 `extra_body` 那个 bug 之前**从未真正生效过**,
-	 * 所以对老配置而言它是「第一次开始花钱」,别顺手改默认值。
-	 */
-	enableThinking: z.boolean().default(false),
-	/**
-	 * 思考深度,统一三档。等级枚举派(OpenRouter / DeepSeek)与 token 预算派
-	 * (火山 / 硅基)各自映射 —— 统一档位是为了让这个设置在换家时不作废。
-	 */
-	thinkingLevel: z.enum(THINKING_LEVELS).default("medium"),
-	/**
-	 * 主人手写的一段 JSON,原样摊进**请求体顶层**。方言适配的兜底口:适配之外的
-	 * 服务商、以及联网搜索这种分裂到没法统一的能力(OpenRouter 填 `plugins`、
-	 * 硅基填 `enable_search`)都走这里。
-	 *
-	 * 这里只存字符串、不在 schema 里校验 JSON —— 设置页保存到一半的半截 JSON
-	 * 不该让整份配置存不下去。真正的解析与危险键过滤在
-	 * `@bilibili-notify/ai#parseExtraParams`,写错只影响这一次请求。
-	 */
-	extraParams: z.string().default(""),
-	/**
-	 * 把图**直接下挂给主模型**。它声明的是「这家的主模型自己看不看得见图」,
-	 * 不是「把图发给谁」 —— 所以按家存:gpt-4o 是,DeepSeek 永远否。
-	 *
-	 * 与下面的 {@link vision} 是两条独立的路:配了副模型就走副模型(它优先),
-	 * 两条都没开时发图会被明确拒绝,而不是静默丢掉。
-	 */
-	enableVision: z.boolean().default(false),
-	/**
-	 * 专门看图的副模型。填了 `model` 即启用:此后动态里的图先经它转成文字,
-	 * 主模型全程只吃纯文本。
-	 *
-	 * 为的是 DeepSeek 这类**根本没有视觉模型**的主力(官方 API 里一个都没有),
-	 * 所以副模型必然可能在另一家 —— baseUrl / apiKey 才要单独开口。两者留空
-	 * 则继承同桶主模型的。默认全空 = 不启用。
-	 */
-	vision: z
-		.object({
-			baseUrl: markBackupOnly(z.string(), { url: true }).default(""),
-			apiKey: markSecret(z.string()).default(""),
-			model: z.string().default(""),
-		})
-		.default({ baseUrl: "", apiKey: "", model: "" }),
-});
+export const AiProviderProfileSchema = z
+	.object({
+		/**
+		 * 这桶配置属于哪家服务商 —— 决定「开思考」翻译成哪家的方言。上一代配置
+		 * 以服务商名当桶键,开新代时由迁移器按键名盖章(`apps/server/src/migration/ai.ts`)。
+		 */
+		provider: z.enum(AI_PROVIDER_IDS),
+		/** 实例的显示名。空串 = 用注册表里那家的名字(不把家名抄进配置,免得改名过期)。 */
+		label: z.string().default(""),
+		apiKey: markSecret(z.string()).default(""),
+		baseUrl: markBackupOnly(z.string(), { url: true }).default(""),
+		model: z.string().default(""),
+		/**
+		 * 这桶走哪套 wire 协议:`chat`(chat completions,现状)或 `responses`
+		 * (OpenAI 2025 起的接任协议)。默认 `chat`,老配置零迁移;哪些家能选
+		 * `responses` 由 providerMeta 的 `supportsResponses` 把门(设置页不露选项),
+		 * schema 这层不掺和 —— 手改配置选了未确认的家,后果(404)自负且可逆。
+		 */
+		apiFlavor: z.enum(API_FLAVOR_IDS).default("chat"),
+		// 这里曾有一格 `temperature`(默认 0.7),已整个退役:请求里一律不发、走服务商默认
+		// —— 推理模型收到它直接 400。老桶里残留的值被本 schema 剥掉(裸 z.object,未知键
+		// strip,不会整份拒收);想调的主人写进下面的 extraParams。
+		/**
+		 * 开启模型的深度思考。具体发什么字段由**这个桶属于哪家**决定 ——
+		 * 四家四种写法,没有通用解(见 `@bilibili-notify/ai#buildProviderParams`)。
+		 *
+		 * 注意:这个开关在修好 `extra_body` 那个 bug 之前**从未真正生效过**,
+		 * 所以对老配置而言它是「第一次开始花钱」,别顺手改默认值。
+		 */
+		enableThinking: z.boolean().default(false),
+		/**
+		 * 思考深度,统一三档。等级枚举派(OpenRouter / DeepSeek)与 token 预算派
+		 * (火山 / 硅基)各自映射 —— 统一档位是为了让这个设置在换家时不作废。
+		 */
+		thinkingLevel: z.enum(THINKING_LEVELS).default("medium"),
+		/**
+		 * 主人手写的一段 JSON,原样摊进**请求体顶层**。方言适配的兜底口:适配之外的
+		 * 服务商、以及联网搜索这种分裂到没法统一的能力(OpenRouter 填 `plugins`、
+		 * 硅基填 `enable_search`)都走这里。
+		 *
+		 * 这里只存字符串、不在 schema 里校验 JSON —— 设置页保存到一半的半截 JSON
+		 * 不该让整份配置存不下去。真正的解析与危险键过滤在
+		 * `@bilibili-notify/ai#parseExtraParams`,写错只影响这一次请求。
+		 */
+		extraParams: z.string().default(""),
+		/** 兼容旧实例配置。联网工具由搜索页统一选择。 */
+		nativeWeb: z.boolean().optional(),
+		/** 请求 DeepSeek 审核输入和输出，并等候审核结果后显示回答。 */
+		safetyCheck: z.boolean().optional(),
+		/** 向支持视觉的主模型直接发送图片。配置了视觉副模型时优先走副模型。 */
+		enableVision: z.boolean().default(false),
+		/** 视觉副模型先将图片转成文字。空模型名表示停用，地址和密钥留空时沿用主模型。 */
+		vision: z
+			.object({
+				baseUrl: markBackupOnly(z.string(), { url: true }).default(""),
+				apiKey: markSecret(z.string()).default(""),
+				model: z.string().default(""),
+			})
+			.default({ baseUrl: "", apiKey: "", model: "" }),
+	})
+	.overwrite(normalizeDeepSeekProfile);
 export type AiProviderProfile = z.infer<typeof AiProviderProfileSchema>;
 
 /** AI 总配置（在 GlobalSettings.ai 出现）。 */
+const speechMode = z.enum(["text", "both", "voice"]);
+const speechUrl = z.url({ protocol: /^https?$/ });
+const speechSettings = z.object({
+	provider: z.enum(SPEECH_PROVIDER_IDS).optional(),
+	baseUrl: markBackupOnly(
+		z.string().refine((url) => url === "" || speechUrl.safeParse(url).success),
+		{
+			url: true,
+		},
+	).default(""),
+	apiKey: markSecret(z.string()).default(""),
+	model: z.string().trim().default(""),
+	voice: z.string().trim().default(""),
+	deepseekApiKey: markSecret(z.string()).optional(),
+	deepseekVoice: z.enum(DEEPSEEK_SPEECH_VOICES).optional(),
+	mode: speechMode.default("text"),
+	byTarget: z.record(z.uuid(), speechMode).default({}),
+});
+
 const AiSettingsObjectSchema = z.object({
 	enabled: z.boolean(),
 	/**
@@ -398,6 +418,7 @@ const AiSettingsObjectSchema = z.object({
 				.object({
 					bocha: markSecret(z.string()).default(""),
 					tavily: markSecret(z.string()).default(""),
+					deepseek: markSecret(z.string()).optional(),
 				})
 				.default({ bocha: "", tavily: "" }),
 			scenes: z
@@ -417,6 +438,7 @@ const AiSettingsObjectSchema = z.object({
 	 * 正文用 AI 写还是用模板写,按推送目标选(ADR-0032):动态与直播总结各一份「默认 + 按目标例外」。
 	 * 默认两份都开、无例外 = 与今天一样;老设置与老备份里没有这一格,由默认值补。
 	 */
+	speech: speechSettings.default(() => speechSettings.parse({})),
 	writing: AiWritingSettingsSchema.default(() => ({
 		post: { isOnByDefault: true, byTarget: {} },
 		liveSummary: { isOnByDefault: true, byTarget: {} },

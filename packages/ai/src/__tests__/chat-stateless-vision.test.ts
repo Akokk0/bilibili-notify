@@ -145,7 +145,7 @@ describe("独立端聊天发图 — 主模型自己看得见", () => {
 		expect(lastUserMsg().content).toContainEqual({ type: "text", text: "这张图是什么" });
 	});
 
-	it("这家没有视觉模型(DeepSeek)时,开着开关也不下挂 —— 发过去就是 400", async () => {
+	it("DeepSeek 文本模型开着看图开关也不下挂图片", async () => {
 		await ask(makeGen({ enableVision: true, provider: "deepseek" }), [IMG]);
 		expect(typeof lastUserMsg().content).toBe("string");
 	});

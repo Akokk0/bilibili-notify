@@ -32,7 +32,15 @@ import { packageText } from "@bilibili-notify/internal/texts";
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
 import { h, type VNode } from "vue";
-import { SVG_COMMENT, SVG_DANMAKU, SVG_FORWARD, SVG_LIKE, SVG_TOPIC, SVG_VIEW } from "../icons";
+import {
+	SVG_COMMENT,
+	SVG_DANMAKU,
+	SVG_FORWARD,
+	SVG_LIKE,
+	SVG_SAVE,
+	SVG_TOPIC,
+	SVG_VIEW,
+} from "../icons";
 import { buildGallery, type PostNode } from "../templates/post-content";
 import type { BlockRenderer } from "./types";
 
@@ -55,6 +63,7 @@ const withIconHook = (icon: VNode): VNode =>
 const ICON_FORWARD = () => withIconHook(SVG_FORWARD());
 const ICON_COMMENT = () => withIconHook(SVG_COMMENT());
 const ICON_LIKE = () => withIconHook(SVG_LIKE());
+const ICON_SAVE = () => withIconHook(SVG_SAVE());
 
 /**
  * 作品块吃的 props:一个 PostNode + **内层卡怎么装**。
@@ -202,14 +211,14 @@ const images: BlockRenderer<PostBlockProps> = ({ node }) => buildGallery(node.im
 const repost: BlockRenderer<PostBlockProps> = ({ node, renderForward }) =>
 	node.repost ? <div data-bn="bubble">{renderForward(node.repost)}</div> : null;
 
-/** 互动数三件共用的结构:图标与数并排、竖向居中。间距与字色归皮肤的 `text` 规则。 */
+/** 互动数共用的结构:图标与数并排、竖向居中。间距与字色归皮肤的 `text` 规则。 */
 const STAT_ATOM_CLASS = "flex items-center";
 
 type DynamicStats = NonNullable<PostNode["stats"]>;
 
 /**
  * 一项互动数(原子块):图标 + 数。没有互动数就收起 —— 转发框里的原动态本来就不带;这一项是空串
- * 也收起(拓展的作品三样各自选填,ADR-0019 决策 55),不画一个空着的图标。
+ * 也收起(互动数各自选填),不画一个空着的图标。
  */
 const statAtom =
 	(icon: () => VNode, pick: (s: DynamicStats) => string): BlockRenderer<PostBlockProps> =>
@@ -248,4 +257,5 @@ export const POST_BLOCKS: Record<string, BlockRenderer<PostBlockProps>> = {
 	shareCount: statAtom(ICON_FORWARD, (s) => s.shares),
 	commentCount: statAtom(ICON_COMMENT, (s) => s.comments),
 	likeCount: statAtom(ICON_LIKE, (s) => s.likes),
+	saveCount: statAtom(ICON_SAVE, (s) => s.saves ?? ""),
 };

@@ -885,9 +885,14 @@ export class Api {
 
 	// ---- Public API methods ----
 
-	async fetchAllDynamic(): Promise<Result<{ data: AllDynamicResponse["data"] }>> {
+	async fetchAllDynamic(offset?: string): Promise<Result<{ data: AllDynamicResponse["data"] }>> {
 		return this.retryResult<AllDynamicResponse["data"]>(
-			() => this.client.get(EP.ALL_DYNAMIC_URL),
+			() =>
+				this.client.get(
+					offset
+						? `${EP.ALL_DYNAMIC_URL}&offset=${encodeURIComponent(offset)}`
+						: EP.ALL_DYNAMIC_URL,
+				),
 			"fetchAllDynamic",
 		);
 	}

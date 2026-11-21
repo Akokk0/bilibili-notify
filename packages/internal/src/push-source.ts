@@ -105,6 +105,8 @@ export interface PlatformAdapter {
 		connection: Connection,
 		destination: DestinationRef,
 		payload: NotificationPayload,
+		/** 手动能力测试只投递一次。日常推送沿用连接的重试配置。 */
+		options?: { singleAttempt: boolean },
 	): Promise<DeliveryResult>;
 	/** 构造对应能力的真实样例；不支持时拒绝，不用文本替代。没有此成员的旧适配器仍可测试普通文本。 */
 	createTestPayload?(
@@ -118,7 +120,7 @@ export interface PlatformAdapter {
 	 * (老的拓展适配器)各项按「还不知道」算,怎么对待「还不知道」见 internal 的
 	 * `shouldSendAtAll` / `canReceiveReply` / `listsForLinkPreview`。
 	 */
-	capabilities?(connection: Connection): ConnectionCapabilities;
+	capabilities?(connection: Connection, destination?: DestinationRef): ConnectionCapabilities;
 	/** 宿主只读查询会话内身份与使用记录；暂不向拓展开放。 */
 	fetchDestinationStatus?(
 		connection: Connection,

@@ -7,6 +7,7 @@ import {
 	checkExtensionReport,
 	createSerialQueue,
 	EXTERNAL_ID_MAX,
+	EXTRA_KEYS,
 	ExtensionCreatorCandidatesSchema,
 	ExtensionLinkPreviewSchema,
 	type ExtensionManifest,
@@ -16,6 +17,7 @@ import {
 	FAILURE_CODES,
 	type Failure,
 	type FailureCode,
+	type FeatureKey,
 	fail,
 	formatZodIssues,
 	type Identity,
@@ -29,6 +31,7 @@ import {
 	type Post,
 	type PostImage,
 	type PostReport,
+	PUSH_EXTRAS,
 	type RichText,
 	readImageSize,
 	type Source,
@@ -99,7 +102,13 @@ export function manifestSourceDescriptor(
 	const subscription = manifest.contributes.subscription;
 	if (!subscription) return undefined;
 	const { cardSkin: _cardSkin, ...descriptor } = subscription;
-	return descriptor;
+	const features: readonly FeatureKey[] = descriptor.supportedFeatures;
+	// @全体由宿主在投递时附加，来源只需支持对应的推送。
+	const supportedExtras = EXTRA_KEYS.filter((key) => {
+		const extra = PUSH_EXTRAS[key];
+		return extra.capability === "atAll" && features.includes(extra.feature);
+	});
+	return supportedExtras.length > 0 ? { ...descriptor, supportedExtras } : descriptor;
 }
 
 export interface CreateExtensionSourceOptions {

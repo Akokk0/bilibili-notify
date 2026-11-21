@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { t } from "../i18n/index.js";
 import { readBestEffortJson, writeBestEffortJson } from "./durable-json.js";
 import { installedVersions } from "./version-dirs.js";
 import { compareVersions } from "./version-order.js";
@@ -12,6 +13,7 @@ export interface SelectVersionForBootOptions {
 	versionsRoot: string;
 	/** 连续启动失败多少次就把一个版本判死。 */
 	maxBootFailures: number;
+	attempted?: ReadonlySet<string>;
 }
 
 /**
@@ -49,6 +51,8 @@ interface BootState {
 	 * 一次明确的用户动作,压过之前那次回退的意思)。
 	 */
 	pinned?: string;
+	/** Signed repair chosen over higher retained fallbacks. It does not suspend automatic checks. */
+	repairTarget?: string;
 }
 
 const STATE_FILE = "boot-state.json";
@@ -61,6 +65,7 @@ function readState(versionsRoot: string): BootState {
 		failed: Array.isArray(raw?.failed) ? raw.failed : [],
 		revoked: Array.isArray(raw?.revoked) ? raw.revoked : [],
 		pinned: typeof raw?.pinned === "string" ? raw.pinned : undefined,
+		repairTarget: typeof raw?.repairTarget === "string" ? raw.repairTarget : undefined,
 	};
 }
 
@@ -97,11 +102,24 @@ export function selectVersionForBoot({
 	preinstalledPath,
 	versionsRoot,
 	maxBootFailures,
+	attempted,
 }: SelectVersionForBootOptions): BootSelection {
 	const state = readState(versionsRoot);
-	const installed = installedVersions(versionsRoot);
+	const preinstalledRevoked = state.revoked.includes(preinstalledVersion);
+	const preinstalled = {
+		version: preinstalledVersion,
+		path: preinstalledPath,
+		isPreinstalledVersion: true,
+	};
+	if (attempted?.size && !preinstalledRevoked) return preinstalled;
+	const installed = installedVersions(versionsRoot).filter((version) => !attempted?.has(version));
 
-	const pinned = usablePin(state, installed, preinstalledVersion);
+	const pinned = usablePin(
+		state.pinned ?? state.repairTarget,
+		state,
+		installed,
+		preinstalledVersion,
+	);
 	if (pinned !== null) {
 		if (pinned === preinstalledVersion)
 			return { version: preinstalledVersion, path: preinstalledPath, isPreinstalledVersion: true };
@@ -112,12 +130,15 @@ export function selectVersionForBoot({
 	let best: string | null = null;
 	for (const candidate of installed) {
 		if (blocked.includes(candidate)) continue;
-		if (compareVersions(candidate, preinstalledVersion) <= 0) continue;
+		if (!preinstalledRevoked && compareVersions(candidate, preinstalledVersion) <= 0) continue;
 		if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 	}
 
-	if (best === null)
-		return { version: preinstalledVersion, path: preinstalledPath, isPreinstalledVersion: true };
+	if (best === null) {
+		if (preinstalledRevoked)
+			throw new Error(t("service.boot.preinstalledRevoked", { version: preinstalledVersion }));
+		return preinstalled;
+	}
 
 	return recordAttempt(state, versionsRoot, best, maxBootFailures);
 }
@@ -130,14 +151,18 @@ export function selectVersionForBoot({
  * 永远在。
  */
 function usablePin(
+	pinned: string | undefined,
 	state: BootState,
 	installed: readonly string[],
 	preinstalledVersion: string,
 ): string | null {
-	const { pinned } = state;
 	if (!pinned) return null;
 	if (unbootable(state).includes(pinned)) return null;
-	if (compareVersions(preinstalledVersion, pinned) > 0) return null;
+	if (
+		!state.revoked.includes(preinstalledVersion) &&
+		compareVersions(preinstalledVersion, pinned) > 0
+	)
+		return null;
 	if (pinned === preinstalledVersion) return pinned;
 	return installed.includes(pinned) ? pinned : null;
 }
@@ -167,6 +192,9 @@ export interface ReadBootViewOptions {
 
 /** 下次开机时选版看到的那幅图景。 */
 export interface BootView {
+	/** Vendor recalls remain in force across update channels. */
+	revoked: readonly string[];
+	preinstalledRevoked: boolean;
 	/**
 	 * 盘上现在钉着谁 —— 按**选版那一套**判定(被判死 / 目录没了 / 镜像更新了都算没钉),
 	 * 这样面板看到的和下次开机真会发生的是同一件事。
@@ -205,7 +233,9 @@ export function readBootView({ versionsRoot, preinstalledVersion }: ReadBootView
 	const state = readState(versionsRoot);
 	const installed = installedVersions(versionsRoot);
 	return {
-		pinned: usablePin(state, installed, preinstalledVersion),
+		revoked: state.revoked,
+		preinstalledRevoked: state.revoked.includes(preinstalledVersion),
+		pinned: usablePin(state.pinned, state, installed, preinstalledVersion),
 		unbootable: unbootable(state),
 		installed,
 	};
@@ -243,13 +273,25 @@ export interface PinVersionOptions {
  * 能重试的事。
  */
 export function pinVersion({ versionsRoot, version }: PinVersionOptions): void {
-	writeState(versionsRoot, { ...readState(versionsRoot), pinned: version });
+	writeState(versionsRoot, {
+		...readState(versionsRoot),
+		pinned: version,
+		repairTarget: undefined,
+	});
 }
 
 /** 拔钉子 —— 装上新版本之后必须做,否则用户会永远停在他退回去的那一版。 */
-export function clearPinnedVersion({ versionsRoot }: { versionsRoot: string }): void {
-	const { pinned: _dropped, ...rest } = readState(versionsRoot);
-	writeState(versionsRoot, rest);
+export function clearPinnedVersion({
+	versionsRoot,
+	repairTarget,
+}: {
+	versionsRoot: string;
+	repairTarget?: string;
+}): void {
+	const next = { ...readState(versionsRoot), pinned: undefined, repairTarget };
+	writeBestEffortJson(versionsRoot, STATE_FILE, next, (error) => {
+		if (repairTarget) throw error;
+	});
 }
 
 export interface MarkBootSucceededOptions {

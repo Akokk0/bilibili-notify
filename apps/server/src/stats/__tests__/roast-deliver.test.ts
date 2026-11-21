@@ -9,8 +9,14 @@
  * 一次停用换来一条失败通知,而且要等好几分钟。
  */
 
-import type { Connection, DeliveryResult, PushTarget } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	DeliveryResult,
+	NotificationPayload,
+	PushTarget,
+} from "@bilibili-notify/internal";
 import { fail, identityColor, makeDefaultGlobalSettings, ok } from "@bilibili-notify/internal";
+import { createSpeechDelivery, type Narration } from "@bilibili-notify/push";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../i18n/index.js";
 import {
@@ -54,11 +60,21 @@ function connection(id: string, enabled: boolean): Connection {
 }
 
 function makeDeps() {
-	const sendToTarget = vi.fn(async (_id: string): Promise<DeliveryResult> => ok({ latencyMs: 1 }));
+	const sendToTarget = vi.fn(
+		async (_id: string, _payload: NotificationPayload): Promise<DeliveryResult> =>
+			ok({ latencyMs: 1 }),
+	);
+	const audio = {
+		kind: "audio",
+		audio: { buffer: Buffer.from("voice"), mime: "audio/silk" },
+	} as const;
+	const synthesize = vi.fn(async () => ok({ payload: audio }));
+	const createNarration = (part: Narration) =>
+		createSpeechDelivery(part, { mode: () => "voice", support: () => ok(), synthesize });
 	const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 	const deps = {
 		runtime: {
-			pipeline: { imageRenderer: null, push: { sendToTarget } },
+			pipeline: { imageRenderer: null, push: { sendToTarget, createNarration } },
 			serviceCtx: { logger },
 			subscriptionStateStore: { get: () => undefined },
 		},
@@ -73,8 +89,24 @@ function makeDeps() {
 			getConnections: () => [connection(ADAPTER, true), connection(ADAPTER_OFF, false)],
 		},
 	} as unknown as RoastDeliverDeps;
-	return { deps, sendToTarget };
+	return { deps, sendToTarget, synthesize };
 }
+
+it("定时锐评只读最终的 AI 文案，语音被拒后补发文字算送达", async () => {
+	const { deps, sendToTarget, synthesize } = makeDeps();
+	sendToTarget.mockImplementation(async (_id, payload) =>
+		payload.kind === "audio" ? fail("unsupported", "rejected") : ok({ latencyMs: 1 }),
+	);
+	const opts = { kind: "board" as const, days: 7, result: BOARD, targetIds: [T_ON] };
+	const result = await deliverRoast(deps, { ...opts, scheduled: true });
+	expect(synthesize).toHaveBeenCalledExactlyOnceWith(BOARD.pushText);
+	expect(sendToTarget.mock.calls.map(([, payload]) => payload.kind)).toEqual(["audio", "text"]);
+	expect(result.sent).toEqual([T_ON]);
+	expect(result.failed).toEqual([]);
+	await deliverRoast(deps, opts);
+	await deliverRoast(deps, { ...opts, result: { ...BOARD, pushText: "" }, scheduled: true });
+	expect(synthesize).toHaveBeenCalledTimes(1);
+});
 
 describe("锐评文字回落与服务未就绪提示随当前语言取字", () => {
 	it.each([

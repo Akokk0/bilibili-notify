@@ -312,8 +312,17 @@ it("resolves a protected video using its business fields and SDK signature", asy
 	});
 	expect(requestHeaders[0]?.get("sec-fetch-site")).toBe("same-origin");
 });
-it("keeps the application identity when resolving a photo post", async () => {
-	const photo = { ...detail, images: [{ url_list: ["https://images.example/photo.jpg"] }] };
+it("keeps the application identity and public content when resolving a photo post", async () => {
+	const photo = {
+		...detail,
+		desc: "一段图文\n#回顾",
+		text_extra: [
+			{ type: 1, start: 5, end: 8, hashtag_name: "回顾" },
+			{ type: 1, start: 0, end: 4, hashtag_name: "坏范围" },
+		],
+		statistics: { digg_count: 0, comment_count: -1, collect_count: 201 },
+		images: [{ url_list: ["https://images.example/photo.jpg"] }],
+	};
 	const { source } = setup(
 		(url) =>
 			url.searchParams.get("aid") === "6383"
@@ -332,7 +341,15 @@ it("keeps the application identity when resolving a photo post", async () => {
 	).toMatchObject({
 		ok: true,
 		postId: photo.aweme_id,
-		post: { images: ["image:ref"] },
+		post: {
+			text: photo.desc,
+			richText: [
+				{ kind: "text", text: "一段图文\n" },
+				{ kind: "topic", text: "#回顾", name: "回顾" },
+			],
+			stats: { likes: 0, saves: 201 },
+			images: ["image:ref"],
+		},
 	});
 });
 
@@ -352,6 +369,58 @@ it("resolves an unsubscribed video through an anonymous share redirect and signe
 	expect(calls).toHaveLength(2);
 	expect(calls[1].searchParams.get("a_bogus")).toBeTruthy();
 });
+it("shares short-link Retry-After with other links until recovery", async () => {
+	vi.useFakeTimers();
+	try {
+		const url = "https://v.douyin.com/abc/";
+		const signal = new AbortController().signal;
+		let limited = true;
+		const { source, calls } = setup(
+			(u): Reply =>
+				limited
+					? { status: 429, headers: { "retry-after": "90" } }
+					: u.hostname === "v.douyin.com"
+						? { status: 302, headers: { Location: direct } }
+						: { body: { status_code: 0, aweme_detail: detail } },
+		);
+		expect(await source.resolveLink(url, signal)).toMatchObject({ code: "rate_limited" });
+		limited = false;
+		vi.advanceTimersByTime(89000);
+		expect(await source.resolveLink(direct, signal)).toMatchObject({ code: "rate_limited" });
+		expect(await source.resolveLink(url, signal)).toMatchObject({ code: "rate_limited" });
+		expect(calls).toHaveLength(1);
+		vi.advanceTimersByTime(1000);
+		expect(await source.resolveLink(url, signal)).toMatchObject({ ok: true });
+	} finally {
+		vi.useRealTimers();
+	}
+});
+it("returns a retryable timeout for HTTP 408 from the short-link endpoint", async () => {
+	let timedOut = true;
+	const { source } = setup(
+		(u): Reply =>
+			timedOut
+				? { status: 408 }
+				: u.hostname === "v.douyin.com"
+					? { status: 302, headers: { Location: direct } }
+					: { body: { status_code: 0, aweme_detail: detail } },
+	);
+	const url = "https://v.douyin.com/abc/";
+	const signal = new AbortController().signal;
+	expect(await source.resolveLink(url, signal)).toMatchObject({ ok: false, code: "timeout" });
+	timedOut = false;
+	expect(await source.resolveLink(url, signal)).toMatchObject({
+		ok: true,
+		postId: detail.aweme_id,
+	});
+});
+it("classifies a temporary short-link failure as unavailable", async () => {
+	const { source } = setup(() => ({ status: 503 }));
+	expect(
+		await source.resolveLink("https://v.douyin.com/abc/", new AbortController().signal),
+	).toMatchObject({ code: "unavailable" });
+});
+
 it("never follows a share redirect to another domain", async () => {
 	const { source, calls } = setup(() => ({
 		status: 302,

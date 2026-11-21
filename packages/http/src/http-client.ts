@@ -251,21 +251,25 @@ interface WireBody {
 	arrayBuffer(): Promise<ArrayBuffer>;
 }
 
-/**
- * 读响应体。给了上限就边读边数:`Content-Length` 已经超的不读,读过上限当场 cancel(连接随之断开)——
- * 不能「先收完再量」,那等于把内存用量交给对端决定。超了回 `null`。
- */
 async function readBody(res: WireBody, maxBytes: number | undefined): Promise<Uint8Array | null> {
 	if (maxBytes === undefined) return new Uint8Array(await res.arrayBuffer());
 	const declared = Number(res.headers.get("content-length") ?? Number.NaN);
+	if (Number.isFinite(declared) && declared > maxBytes && res.body) {
+		await res.body.getReader().cancel();
+		return null;
+	}
+	return readCappedBody(res, maxBytes);
+}
+
+/** 按实际字节读取。超过上限就取消流，返回 null。 */
+export async function readCappedBody(
+	res: Pick<WireBody, "body" | "arrayBuffer">,
+	maxBytes: number,
+): Promise<Uint8Array | null> {
 	const reader = res.body?.getReader();
 	if (!reader) {
 		const buffered = new Uint8Array(await res.arrayBuffer());
 		return buffered.byteLength > maxBytes ? null : buffered;
-	}
-	if (Number.isFinite(declared) && declared > maxBytes) {
-		await reader.cancel();
-		return null;
 	}
 	const chunks: Uint8Array[] = [];
 	let total = 0;

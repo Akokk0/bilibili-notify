@@ -3,7 +3,13 @@ import { platform } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { DevelopmentExtensionMountView } from "@bilibili-notify/contract";
 import { EXTENSION_API_RANGE, fail, ok, type Result } from "@bilibili-notify/internal";
-import type { DevelopmentExtensionEntry } from "../extensions/discover.js";
+import { atomicWriteJson } from "@bilibili-notify/storage";
+import { z } from "zod";
+import {
+	type DevelopmentEntryResolver,
+	type DevelopmentExtensionEntry,
+	EXTENSION_ENTRY_FILE,
+} from "../extensions/discover.js";
 import { extensionIdSchema, parseHostExtensionManifest } from "../extensions/identity.js";
 import type { LoadedExtensions } from "../extensions/loader.js";
 import { browseDevelopmentDirectories } from "./development-directories.js";
@@ -15,10 +21,14 @@ export interface DevelopmentExtensionsOptions {
 	reservedIntegrationKeys: readonly string[];
 	extensions: () => Pick<LoadedExtensions, "changeDisk" | "reload" | "rescan" | "list"> | undefined;
 }
+const mountRecord = z.object({ directory: z.string().refine(isAbsolute), watching: z.boolean() });
+type MountRecord = z.infer<typeof mountRecord>;
+type Source = Awaited<ReturnType<typeof openDevelopmentSource>>;
+
 interface SourceMount {
 	view: DevelopmentExtensionMountView;
-	source: Awaited<ReturnType<typeof openDevelopmentSource>>;
-	entry: DevelopmentExtensionEntry;
+	source: Source;
+	entry: Result<{ entry: DevelopmentExtensionEntry }>;
 	closed: boolean;
 	timer?: NodeJS.Timeout;
 	work?: Promise<Result>;
@@ -28,13 +38,70 @@ interface SourceMount {
 /** 源码工程只经显式挂载进入唯一装载根，运行与收尾仍由原装载器负责。 */
 export function createDevelopmentExtensions(options: DevelopmentExtensionsOptions) {
 	const mounts = new Map<string, SourceMount>();
+	let disposed = false;
 	const list = () => [...mounts.values()].map(({ view }) => ({ ...view }));
 	const at = (id: string) => join(options.root, id);
+	const recordPath = (id: string) => join(options.root, `.${id}.development.json`);
+	const linkTarget = (id: string) => readlink(at(id)).catch(() => undefined);
 	async function owned(mount: SourceMount) {
-		return (await readlink(at(mount.view.id)).catch(() => undefined)) === mount.view.directory;
+		return (await linkTarget(mount.view.id)) === mount.view.directory;
+	}
+	async function prepare(id: string, { directory, watching }: MountRecord): Promise<SourceMount> {
+		let mounted: SourceMount | undefined;
+		const source = await openDevelopmentSource(directory, options.reservedIntegrationKeys, () => {
+			if (mounted) schedule(mounted);
+		});
+		const read = await source.read();
+		const entry =
+			read.ok && read.entry.manifest.id !== id
+				? fail("conflict", "源码工程ID在加载期间改变，请重新挂载")
+				: read;
+		mounted = {
+			view: {
+				id,
+				directory,
+				entry: join(directory, "src/index.ts"),
+				watching,
+				reloads: 0,
+				...(!entry.ok && { error: entry.message }),
+			},
+			source,
+			entry,
+			closed: false,
+			again: false,
+		};
+		return mounted;
+	}
+	async function restore(id: string) {
+		const persisted = await readFile(recordPath(id), "utf8")
+			.then((text) => mountRecord.safeParse(JSON.parse(text)))
+			.catch(() => undefined);
+		if (!persisted?.success || (await linkTarget(id)) !== persisted.data.directory) return;
+		if ((await realpath(at(id)).catch(() => undefined)) !== persisted.data.directory) return;
+		const mounted = await prepare(id, persisted.data);
+		if (disposed || !(await owned(mounted))) {
+			await mounted.source.dispose();
+			return;
+		}
+		mounts.set(id, mounted);
+		return mounted;
+	}
+	async function occupied(id: string, project: string) {
+		if (mounts.has(id)) return true;
+		if (!(await lstat(at(id)).catch(() => undefined))) return false;
+		// 旧版只留下链接。只有主人再次选择该源码工程时才接管它。
+		return (
+			(await linkTarget(id)) !== project ||
+			Boolean(await lstat(join(at(id), EXTENSION_ENTRY_FILE)).catch(() => undefined))
+		);
+	}
+	async function removeLink(id: string) {
+		await rm(at(id));
+		// 没有匹配的链接时，残留的记录不会恢复工程。
+		await rm(recordPath(id), { force: true }).catch(() => {});
 	}
 	function schedule(mount: SourceMount) {
-		if (mount.closed || !mount.view.watching) return;
+		if (mount.closed || !mount.view.watching || mounts.get(mount.view.id) !== mount) return;
 		if (mount.work) {
 			mount.again = true;
 			return;
@@ -64,9 +131,13 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 				return fail("conflict", mount.view.error);
 			}
 			if (mount.closed) return fail("not_found", "开发挂载已解除");
-			mount.entry = read.entry;
+			const needsRescan = !mount.entry.ok;
+			mount.entry = read;
 			try {
-				if (loaded.list().find((entry) => entry.id === mount.view.id)?.state === "disabled")
+				if (
+					needsRescan ||
+					loaded.list().find((entry) => entry.id === mount.view.id)?.state === "disabled"
+				)
 					await loaded.rescan();
 				else await loaded.reload(mount.view.id);
 				mount.view.reloads += 1;
@@ -91,7 +162,7 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 	async function mount(directory: string, shouldWatch: boolean) {
 		if (!isAbsolute(directory)) return fail("invalid", "请填写BN所在机器上的工程绝对路径");
 		const loaded = options.extensions();
-		if (!loaded) return fail("unavailable", "拓展装载器尚未就绪");
+		if (!loaded || disposed) return fail("unavailable", "拓展装载器尚未就绪");
 		let project: string;
 		let id: string;
 		try {
@@ -107,47 +178,43 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 		} catch {
 			return fail("invalid", "工程目录或extension.json读不了");
 		}
-		if (await lstat(at(id)).catch(() => undefined))
+		if (await occupied(id, project))
 			return fail("conflict", "这个拓展ID已经被安装或挂载，不能覆盖");
-		let mounted: SourceMount | undefined;
-		const source = await openDevelopmentSource(project, options.reservedIntegrationKeys, () => {
-			if (mounted) schedule(mounted);
-		});
-		const read = await source.read();
-		if (!read.ok) {
-			await source.dispose();
-			return read;
+		const record = { directory: project, watching: shouldWatch };
+		const prepared = await prepare(id, record);
+		if (!prepared.entry.ok) {
+			await prepared.source.dispose();
+			return prepared.entry;
 		}
-		if (read.entry.manifest.id !== id) {
-			await source.dispose();
-			return fail("conflict", "源码工程ID在加载期间改变，请重新挂载");
-		}
-		mounted = {
-			view: { id, directory: project, entry: read.entry.entry, watching: shouldWatch, reloads: 0 },
-			source,
-			entry: read.entry,
-			closed: false,
-			again: false,
-		};
-		const prepared = mounted;
 		let changed: Result;
 		try {
 			changed = await loaded.changeDisk(async () => {
-				if (await lstat(at(id)).catch(() => undefined))
+				if (disposed) return fail("unavailable", "拓展装载器尚未就绪");
+				if (await occupied(id, project))
 					return fail("conflict", "这个拓展ID已经被安装或挂载，不能覆盖");
 				await mkdir(options.root, { recursive: true });
-				await symlink(project, at(id), platform() === "win32" ? "junction" : "dir");
+				const existing = (await linkTarget(id)) === project;
+				if (!existing) await symlink(project, at(id), platform() === "win32" ? "junction" : "dir");
+				try {
+					await atomicWriteJson(recordPath(id), record);
+				} catch (error) {
+					if (!existing && (await owned(prepared))) await removeLink(id);
+					throw error;
+				}
+				if (disposed) return fail("unavailable", "拓展装载器尚未就绪");
 				mounts.set(id, prepared);
 				return ok();
 			});
 		} catch (error) {
-			prepared.closed = true;
-			await source.dispose();
+			if (mounts.get(id) !== prepared && !prepared.closed) {
+				prepared.closed = true;
+				await prepared.source.dispose();
+			}
 			return fail("unavailable", error instanceof Error ? error.message : String(error));
 		}
 		if (!changed.ok) {
 			prepared.closed = true;
-			await source.dispose();
+			await prepared.source.dispose();
 			return changed;
 		}
 		return ok({ id, mounts: list() });
@@ -155,19 +222,19 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 	async function unmount(id: string) {
 		const mounted = mounts.get(id);
 		if (!mounted) {
-			// 旧版dist链接、或重启后遗留的源码链接没有当前进程的监听句柄。
+			// 旧版构建产物或未重新挂载的源码链接没有当前进程的监听句柄。
 			// 仍只移除装载根中的链接，保留指向的工程以及配置、状态和密钥。
 			if (!extensionIdSchema(options.reservedIntegrationKeys).safeParse(id).success)
 				return fail("invalid", "拓展ID无效");
 			const loaded = options.extensions();
 			if (!loaded) return fail("unavailable", "拓展装载器尚未就绪");
-			const target = await readlink(at(id)).catch(() => undefined);
+			const target = await linkTarget(id);
 			if (target === undefined) return fail("not_found", "没有这项开发挂载");
 			const result = await loaded.changeDisk(async () => {
-				if ((await readlink(at(id)).catch(() => undefined)) !== target)
+				if ((await linkTarget(id)) !== target)
 					return fail("conflict", "挂载目录已被更改，不能移除其他文件");
 				// 非递归：即使路径被换成真实目录，也不会沿目录清理。
-				await rm(at(id));
+				await removeLink(id);
 				return ok();
 			});
 			return result.ok ? ok({ mounts: list() }) : result;
@@ -180,7 +247,7 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 		await mounted.work;
 		const result = await loaded.changeDisk(async () => {
 			if (!(await owned(mounted))) return fail("conflict", "挂载目录已被更改，不能移除其他文件");
-			await rm(at(id));
+			await removeLink(id);
 			mounts.delete(id);
 			return ok();
 		});
@@ -191,20 +258,24 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 		await mounted.source.dispose();
 		return ok({ mounts: list() });
 	}
+	const resolveEntry: DevelopmentEntryResolver = async (directory) => {
+		const id = basename(directory);
+		if (disposed || resolve(directory) !== resolve(at(id))) return;
+		try {
+			const mounted = mounts.get(id) ?? (await restore(id));
+			if (!mounted || !(await owned(mounted))) return;
+			return mounted.entry.ok ? mounted.entry.entry : { error: mounted.entry.message };
+		} catch (error) {
+			return { error: error instanceof Error ? error.message : String(error) };
+		}
+	};
 	return {
 		directories: (directory = options.initialDirectory ?? dirname(options.root)) =>
 			browseDevelopmentDirectories(directory),
 		list,
 		mount,
 		unmount,
-		async resolveEntry(directory: string) {
-			const mounted = mounts.get(basename(directory));
-			return mounted &&
-				resolve(directory) === resolve(at(mounted.view.id)) &&
-				(await owned(mounted))
-				? mounted.entry
-				: undefined;
-		},
+		resolveEntry,
 		devtoolsEntry(directory: string) {
 			const mounted = mounts.get(basename(directory));
 			return mounted && resolve(directory) === resolve(at(mounted.view.id))
@@ -227,19 +298,19 @@ export function createDevelopmentExtensions(options: DevelopmentExtensionsOption
 			return ok();
 		},
 		async dispose() {
-			for (const id of [...mounts.keys()]) {
-				const removed = await unmount(id);
-				if (!removed.ok) {
-					const mounted = mounts.get(id);
-					if (mounted) {
-						mounted.closed = true;
-						if (mounted.timer) clearTimeout(mounted.timer);
-						await mounted.work;
-						await mounted.source.dispose();
-					}
-				}
-			}
+			disposed = true;
+			const active = [...mounts.values()];
 			mounts.clear();
+			for (const mounted of active) {
+				mounted.closed = true;
+				if (mounted.timer) clearTimeout(mounted.timer);
+			}
+			await Promise.all(
+				active.map(async (mounted) => {
+					await mounted.work;
+					await mounted.source.dispose();
+				}),
+			);
 		},
 	};
 }

@@ -504,6 +504,7 @@ function createCardSkinFields(text: PackageTranslator): Record<CardKind, readonl
 			f("stats.shares", "text", () => text("internal.card-skin.62")),
 			f("stats.comments", "text", () => text("internal.card-skin.63")),
 			f("stats.likes", "text", () => text("internal.card-skin.64")),
+			f("stats.saves", "text", () => text("internal.card-skin.saveCount")),
 		],
 		// 醒目留言卡与会员卡两组字段随 ㉓ 改到最终名字(ADR-0021 决策 26 下 2026-10-05 的 🔗):观众是 `viewer.*`,
 		// 醒目留言的东西在 `superchat.*`,会员的在 `membership.*`;主播那两格 `master.*` 随 ㉔b 改成 `creator.*`。
@@ -1116,6 +1117,20 @@ function createCardSkinBuiltinBlocks(
 				hooks: {
 					get text() {
 						return text("internal.card-skin.145");
+					},
+					get icon() {
+						return text("internal.card-skin.146");
+					},
+				},
+			},
+			saveCount: {
+				get label() {
+					return text("internal.card-skin.saveCount");
+				},
+				atom: true,
+				hooks: {
+					get text() {
+						return text("internal.card-skin.saveCount");
 					},
 					get icon() {
 						return text("internal.card-skin.146");

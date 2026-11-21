@@ -128,8 +128,8 @@ export function repostAvatarUrlOf(item: Dynamic): string | undefined {
  */
 export function emojiUrlsOf(item: Dynamic): Map<string, string> {
 	const urls = new Map<string, string>();
-	// 被转发的原动态(翻译里递归的 `repost`)一并收,再往里一层也一样。
-	for (let layer: Dynamic | undefined = item; layer !== undefined; layer = layer.orig) {
+	// 当前动态和各层原动态的表情都收。orig 为 null 或缺席时就结束。
+	for (let layer: Dynamic | null | undefined = item; layer; layer = layer.orig) {
 		const mod = (layer.modules as Loose | undefined)?.module_dynamic ?? {};
 		const { desc, summary } = bodyNodesOf(mod);
 		for (const node of [...desc, ...summary]) {

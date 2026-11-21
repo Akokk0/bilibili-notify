@@ -319,11 +319,15 @@ export type AiProviderProfileView<S = SecretCellView> = Omit<
 	"vision"
 > & { vision: CellsAs<AiProviderProfile["vision"], "apiKey", S> };
 
-/** AI 设置下发时的样子:各实例的 key 与联网搜索的 key。 */
-export type AiSettingsView<S = SecretCellView> = Omit<AiSettings, "providers" | "search"> & {
+/** AI 设置下发时的样子:各实例、联网搜索和语音的 key。 */
+export type AiSettingsView<S = SecretCellView> = Omit<
+	AiSettings,
+	"providers" | "search" | "speech"
+> & {
+	speech: CellsAs<AiSettings["speech"], "apiKey" | "deepseekApiKey", S>;
 	providers: Record<string, AiProviderProfileView<S>>;
 	search: Omit<AiSettings["search"], "keys"> & {
-		keys: { [Backend in keyof AiSettings["search"]["keys"]]: S };
+		keys: CellsAs<AiSettings["search"]["keys"], keyof AiSettings["search"]["keys"], S>;
 	};
 };
 
@@ -673,6 +677,7 @@ export type HistoryMessageView = HistoryMessageBase &
 	);
 
 interface HistoryMessageBase {
+	speechNote?: string;
 	text?: string;
 	/**
 	 * 这条消息本来是哪一类(纯文字 / 一张图 / 图文混合)。过了保留期的老行,迁移时图格被拿掉了(`image` 缺着),

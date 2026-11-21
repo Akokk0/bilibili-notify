@@ -10,7 +10,7 @@
  * 逐条驱动能驱动的发送路径:每条先清空截流记录 → 驱动 → 断言记录**恰好多了一条**、且是这条路该有的
  * 目标 / 会话。走不到发送那一步的路径列在 {@link SEND_PATHS},每条带一句理由,免得清单悄悄漏掉。
  *
- * 接收端不出本机:一条 OneBot(HTTP)连接指向一个**不监听**的本机回环端口 —— 截流开着时适配器的 `send`
+ * 接收端不出本机:一条 OneBot(WebSocket)连接指向一个**不监听**的本机回环端口 —— 截流开着时适配器的 `send`
  * 压根不会被调到;唯一需要真发的那一次(造一行「没送到」的历史,好让重推有东西补)是回环上的连接被拒。
  * AI 那一跳是起在回环上的假模型服务。联网守卫(`scripts/network-guard.mjs`)对每条测试自动查账,只许回环。
  */
@@ -215,7 +215,7 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
 		});
 
-		// —— 接收端:一条 OneBot(HTTP)连接,指向没人监听的回环端口。
+		// —— 接收端:一条 OneBot(WebSocket)连接,指向没人监听的回环端口。
 		await okRes(
 			await api(
 				"/api/connections",
@@ -226,8 +226,8 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 					adapterKey: "onebot",
 					platform: "onebot",
 					settings: {
-						transport: "http",
-						baseUrl: `http://127.0.0.1:${await findFreePort()}`,
+						transport: "ws",
+						url: `ws://127.0.0.1:${await findFreePort()}`,
 						maxRetries: 0,
 						retryIntervalMs: 0,
 					},

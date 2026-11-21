@@ -45,6 +45,7 @@ function settings(over: Partial<AiSettings> = {}): AiSettings {
 		activeProfile: "",
 		providers: {},
 		chat: {},
+		speech: { baseUrl: "", apiKey: "", model: "", voice: "", mode: "text", byTarget: {} },
 		search: {
 			backend: "bocha",
 			keys: { bocha: "", tavily: "" },

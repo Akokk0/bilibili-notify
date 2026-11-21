@@ -22,10 +22,16 @@ import type { SecretCellDraft } from "@bilibili-notify/contract";
 import {
 	type APIFlavorId,
 	canProfileThink,
+	DEEPSEEK_BASE_URL,
+	DEEPSEEK_MODELS,
 	EMPTY_AI_PROVIDER_PROFILE,
+	hasOfficialDeepSeekVision,
+	isDeepSeekFlash,
+	modelSupportsVision,
 	providerMeta,
 	resolveActivePersona,
 	resolveAIProfile,
+	resolveWebSearchMode,
 	type ThinkingLevel,
 	WEB_SEARCH_BACKENDS,
 	webSearchBackendMeta,
@@ -74,10 +80,11 @@ import {
 	setActiveProfile,
 	setGlobalPersona,
 } from "./ai/model-ops";
+import { SpeechSettings } from "./ai/SpeechSettings";
 import { AiTestPanel } from "./ai/TestPanel";
 import { WritingSettings } from "./ai/WritingSettings";
 
-type TopTab = "global" | "model";
+type TopTab = "global" | "model" | "search" | "speech";
 
 /** 顶部配置tab。技能管理另走资源库，配置条仍共用`TabBar`原语。 */
 
@@ -121,6 +128,7 @@ function packIsland(ai: AiSettingsDraft, providerKeys: readonly string[]) {
 			// 正文偏好和联网搜索。两侧都经 schema 补齐,恒为完整对象,
 			// 不会踩「一侧 undefined 整块当叶子」那个明文 key 外泄的坑。
 			writing,
+			speech: ai.speech,
 			search: {
 				backend: search.backend,
 				keys: search.keys,
@@ -144,7 +152,7 @@ function packIsland(ai: AiSettingsDraft, providerKeys: readonly string[]) {
 
 /**
  * 说明条。本页几乎每条都在解释**为什么某个选项看起来不做事、或者干脆不见了**
- * —— 兜底档不发方言参数、默认开思考的家关位反而要发东西、DeepSeek 没有视觉模型。
+ * —— 兜底档不发方言参数、默认开思考的家关位反而要发东西、主模型只接受文本。
  * 不写清楚,主人只会觉得开关坏了或者设置没存上。
  */
 function FieldNote({ children }: { children: React.ReactNode }) {
@@ -155,14 +163,38 @@ function FieldNote({ children }: { children: React.ReactNode }) {
 	);
 }
 
+const deepSeekModelOptions = Object.values(DEEPSEEK_MODELS).map((id) => ({
+	value: id,
+	label: id,
+}));
+
 export default function Ai() {
 	const tx = useT();
-	const TOP_TABS = [
-		{ id: "global" as const, label: tx("aiSettings.page.tabs.global"), code: "global" },
-		{ id: "model" as const, label: tx("aiSettings.page.tabs.model"), code: "provider" },
-	];
+	const tabs = [
+		{
+			id: "global",
+			label: tx("aiSettings.page.tabs.global"),
+			code: "global",
+			icon: <Icon.gear size={14} />,
+		},
+		{
+			id: "model",
+			label: tx("aiSettings.page.tabs.model"),
+			code: "provider",
+			icon: <Icon.neuralNetwork size={14} />,
+		},
+		{
+			id: "search",
+			label: tx("speech.searchTab"),
+			code: "search",
+			icon: <Icon.search size={14} />,
+		},
+		{ id: "speech", label: tx("speech.tab"), code: "speech", icon: <Icon.waveform size={14} /> },
+	] as const;
 
 	const TAB_HINTS: Record<TopTab, string> = {
+		search: tx("aiSettings.page.search.subtitle"),
+		speech: tx("speech.tabHint"),
 		global: tx("aiSettings.page.tabs.globalHint"),
 		model: tx("aiSettings.page.tabs.modelHint"),
 	};
@@ -255,6 +287,7 @@ export default function Ai() {
 	// **设置页上显示什么由它说了算**:摆出一个那家根本不支持的选项,主人调了
 	// 没反应,只会以为是保存坏了。
 	const meta = providerMeta(profile.provider);
+	const officialDeepSeek = profile.provider === "deepseek";
 	// 基线(服务端下发的)里同一份实例 —— 密钥格是遮挡才算「已存着」(`DraftSecretInput` 据此画胶囊)。
 	const savedProfile = editing === null ? undefined : globalsQuery.data?.ai.providers[editing];
 	// 左栏 / 删除按钮上的显示名。
@@ -262,12 +295,17 @@ export default function Ai() {
 	const editingLabel = rail.find((i) => i.id === editing)?.label ?? meta.label;
 	// 头图那颗药丸报的是**女仆真正在用的那份**的模型,与左栏在看哪一份无关。
 	const globalProfile = resolveAIProfile(draft);
+	const { hosted: hostedSearch, useModelKey: sharesSearchKey } = resolveWebSearchMode(
+		globalProfile,
+		draft.search.backend,
+	);
 	// 头图那行名字同理:报的是**女仆真正在用的那份人格**(`activePreset` 指的那份),
 	// 与左栏在编辑哪一份无关;内置那份的内容取当前语言。
 	const globalPersona = resolveActivePersona(draft, builtins).persona;
 	// 配了视觉副模型 = 副模型无条件接管,enableVision 与它的地址/密钥两格的
 	// 可交互性都跟着这一个判断走(与 CommentaryGenerator#resolveImages 同源)。
 	const visionSubModelOn = profile.vision.model.trim().length > 0;
+	const nativeVision = hasOfficialDeepSeekVision(profile);
 
 	// 一份都没添加 → 右侧直接就是添加面板,那本身就是空态引导。
 	const showAddPanel = addingProvider || rail.length === 0;
@@ -375,15 +413,7 @@ export default function Ai() {
 
 			<div className="flex min-w-0 flex-wrap items-start gap-3">
 				<div className="min-w-0 flex-1">
-					<TabBar<TopTab>
-						items={TOP_TABS.map((t) => ({
-							...t,
-							icon: t.id === "model" ? <Icon.link size={14} /> : <Icon.gear size={14} />,
-						}))}
-						value={tab}
-						onChange={setTab}
-						hint={TAB_HINTS[tab]}
-					/>
+					<TabBar<TopTab> items={tabs} value={tab} onChange={setTab} hint={TAB_HINTS[tab]} />
 				</div>
 			</div>
 
@@ -426,67 +456,6 @@ export default function Ai() {
 						onChange={(writing) => setDraft((d) => (d ? { ...d, writing } : d))}
 					/>
 
-					{/* 聊天页的思考设置不在这里:开关是输入框旁那颗 ✦ 胶囊(会话级不落盘),
-					    **等级**(ai.chat.thinkingLevel)搬进了聊天侧栏的「设置」弹层 ——
-					    深度只有聊天在用,编辑口跟着聊天走。 */}
-
-					{/* 联网搜索 —— 与选哪家 AI 服务商**正交**:web_search 工具由这里选定的
-					    后端真正执行,任何支持 function calling 的服务商都能用上。所以它不挂
-					    在实例桶下,自己一块。聊天页那颗「联网搜索」胶囊是会话级的不落盘,
-					    这里落盘的只有后端 / key / 引擎开关。 */}
-					<GlassBox
-						title={tx("aiSettings.page.search.title")}
-						subtitle={tx("aiSettings.page.search.subtitle")}
-						accent={SECTION_ACCENT.capability}
-						icon={<Icon.search size={14} />}
-						badge="search"
-					>
-						<Field code="ai.search.backend" full>
-							<Picker<AiSettingsDraft["search"]["backend"]>
-								value={draft.search.backend}
-								onChange={(v) => setSearch({ backend: v })}
-								options={WEB_SEARCH_BACKENDS.map((b) => ({ value: b.id, label: b.label }))}
-							/>
-						</Field>
-						<Field
-							code={`ai.search.keys.${draft.search.backend}`}
-							full
-							hint={tx("aiSettings.page.search.keyHint", {
-								url: webSearchBackendMeta(draft.search.backend).keyUrl,
-							})}
-						>
-							<DraftSecretInput
-								value={draft.search.keys[draft.search.backend]}
-								saved={globalsQuery.data?.ai.search.keys[draft.search.backend]}
-								onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
-							/>
-						</Field>
-						{/* 三个引擎开关按表生成 —— 手抄三块只差 key/ariaLabel 的 JSX,
-						    抄错一处在评审里根本看不出来;加第四个引擎也只改这张表。 */}
-						{(
-							[
-								["post", tx("aiSettings.page.search.postAria")],
-								["live", tx("aiSettings.page.search.liveAria")],
-								["roast", tx("aiSettings.page.search.roastAria")],
-							] as const
-						).map(([k, aria]) => (
-							<Field key={k} code={`ai.search.scenes.${k}`}>
-								<div className="flex h-7.5 items-center">
-									<Toggle
-										value={draft.search.scenes[k]}
-										onChange={(v) => setSearch({ scenes: { [k]: v } })}
-										ariaLabel={aria}
-									/>
-								</div>
-							</Field>
-						))}
-						<FieldNote>
-							{tx("aiSettings.page.search.feePrefix")}
-							<strong>{tx("aiSettings.page.search.feeEmphasis")}</strong>
-							{tx("aiSettings.page.search.feeSuffix")}
-						</FieldNote>
-					</GlassBox>
-
 					{/* 全局人格选择 —— 它是个**指针**(ai.activePreset),不改写任何一份的内容;
 					    想改内容去「女仆性格」那个 Tab。 */}
 					<GlassBox
@@ -517,6 +486,81 @@ export default function Ai() {
 					{/* 试一句 —— 调完模型与人格,当场就能问她一句看看效果。 */}
 					<AiTestPanel draft={draft} />
 				</div>
+			) : tab === "speech" ? (
+				<SpeechSettings
+					ai={draft}
+					saved={globalsQuery.data?.ai}
+					onChange={(speech) => setDraft((d) => (d ? { ...d, speech } : d))}
+				/>
+			) : tab === "search" ? (
+				<GlassBox
+					title={tx("aiSettings.page.search.title")}
+					subtitle={tx("aiSettings.page.search.subtitle")}
+					accent={SECTION_ACCENT.capability}
+					icon={<Icon.search size={14} />}
+					badge="search"
+				>
+					<Field code="ai.search.backend" full>
+						<Picker<AiSettingsDraft["search"]["backend"]>
+							value={draft.search.backend}
+							onChange={(v) => setSearch({ backend: v })}
+							options={WEB_SEARCH_BACKENDS.map((b) => ({ value: b.id, label: b.label }))}
+						/>
+					</Field>
+					{sharesSearchKey ? (
+						<FieldNote>
+							{globalProfile.apiKey
+								? tx("deepseek.searchUsesModelKey")
+								: tx("deepseek.chatSearchKey")}
+						</FieldNote>
+					) : (
+						<Field
+							code={`ai.search.keys.${draft.search.backend}`}
+							full
+							hint={tx("aiSettings.page.search.keyHint", {
+								url: webSearchBackendMeta(draft.search.backend).keyUrl,
+							})}
+						>
+							<DraftSecretInput
+								value={draft.search.keys[draft.search.backend] ?? ""}
+								saved={globalsQuery.data?.ai.search.keys[draft.search.backend]}
+								onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
+							/>
+						</Field>
+					)}
+					{(
+						[
+							["post", tx("aiSettings.page.search.postAria")],
+							["live", tx("aiSettings.page.search.liveAria")],
+							["roast", tx("aiSettings.page.search.roastAria")],
+						] as const
+					).map(([k, aria]) => (
+						<Field
+							key={k}
+							code={`ai.search.scenes.${k}`}
+							hint={hostedSearch ? tx("deepseek.sceneHint") : undefined}
+						>
+							<div className="flex h-7.5 items-center">
+								<Toggle
+									value={draft.search.scenes[k]}
+									onChange={(v) => setSearch({ scenes: { [k]: v } })}
+									ariaLabel={aria}
+								/>
+							</div>
+						</Field>
+					))}
+					<FieldNote>
+						{hostedSearch ? (
+							tx("deepseek.searchScenes")
+						) : (
+							<>
+								{tx("aiSettings.page.search.feePrefix")}
+								<strong>{tx("aiSettings.page.search.feeEmphasis")}</strong>
+								{tx("aiSettings.page.search.feeSuffix")}
+							</>
+						)}
+					</FieldNote>
+				</GlassBox>
 			) : (
 				<div className="grid gap-4 xl:grid-bn-rail">
 					<SectionNav
@@ -536,8 +580,6 @@ export default function Ai() {
 											active={item.id === editing}
 										/>
 									) : undefined,
-								// 同 Targets 左栏:选中那格的品牌色会跟皮肤的实心块撞,喂
-								// currentColor 跟随。服务商名就在标签上,认得出是哪家。
 								icon: (
 									<ProviderLogo
 										id={item.provider}
@@ -605,6 +647,7 @@ export default function Ai() {
 									accent={AI_PURPLE}
 									icon={<Icon.link size={14} />}
 									badge="connection"
+									className="@container"
 									right={
 										<div className="flex items-center gap-1.5">
 											{/* 「在看这份」不等于「在用这份」。要换用得明确点一下 —— 与人格
@@ -665,23 +708,64 @@ export default function Ai() {
 									<Field
 										code={`ai.providers.${editing}.baseUrl`}
 										full
-										hint={`${meta.label}：${meta.baseUrlHint}`}
+										hint={
+											officialDeepSeek
+												? tx("aiSettings.page.models.deepSeekBaseUrlHint")
+												: `${meta.label}：${meta.baseUrlHint}`
+										}
 									>
-										<TInput
-											value={profile.baseUrl}
-											onChange={(v) => setProfile("baseUrl", v)}
-											mono
-											placeholder={meta.baseUrlHint}
-										/>
+										{officialDeepSeek ? (
+											<code className="font-mono text-bn-sm text-bn-text-primary">
+												{DEEPSEEK_BASE_URL}
+											</code>
+										) : (
+											<TInput
+												value={profile.baseUrl}
+												onChange={(v) => setProfile("baseUrl", v)}
+												mono
+												placeholder={meta.baseUrlHint}
+											/>
+										)}
 									</Field>
-									<Field code={`ai.providers.${editing}.model`}>
-										<TInput
-											value={profile.model}
-											onChange={(v) => setProfile("model", v)}
-											mono
-											full={false}
-										/>
+									<Field
+										code={`ai.providers.${editing}.model`}
+										responsive={officialDeepSeek}
+										hint={
+											officialDeepSeek &&
+											!deepSeekModelOptions.some((option) => option.value === profile.model)
+												? tx("aiSettings.page.models.deepSeekModelHint")
+												: undefined
+										}
+									>
+										{officialDeepSeek ? (
+											<div className="self-start">
+												<Picker<string>
+													value={profile.model}
+													onChange={(v) => setProfile("model", v)}
+													options={deepSeekModelOptions}
+												/>
+											</div>
+										) : (
+											<TInput
+												value={profile.model}
+												onChange={(v) => setProfile("model", v)}
+												mono
+												full={false}
+											/>
+										)}
 									</Field>
+									{isDeepSeekFlash(profile.provider, profile.model) && (
+										<Field
+											code={`ai.providers.${editing}.safetyCheck`}
+											label={tx("deepseek.safetyCheck")}
+										>
+											<Toggle
+												value={Boolean(profile.safetyCheck)}
+												onChange={(value) => setProfile("safetyCheck", value)}
+												ariaLabel={tx("deepseek.safetyCheck")}
+											/>
+										</Field>
+									)}
 									{/* 接口风味 —— 只对确认支持 /responses 的家摆出来(supportsResponses),
 									    硅基/火山未确认前不给选:选得到却必然 404 的组合比没有选项更糟。 */}
 									{meta.supportsResponses ? (
@@ -713,80 +797,81 @@ export default function Ai() {
 
 								{/* 图片理解。它同样是在描述「接哪个模型」,只不过整块可以不填:
 								    两条路都不开时,发图会被明确拒绝而不是静默丢掉。 */}
-								<GlassBox
-									title={tx("aiSettings.page.vision.title")}
-									subtitle={tx("aiSettings.page.vision.subtitle", {
-										fields: "{enableVision,vision}",
-									})}
-									accent={SECTION_ACCENT.capability}
-									icon={<Icon.image size={14} />}
-									badge="vision"
-								>
-									{/* 这家根本没有视觉模型(DeepSeek 官方接口一个都没有)的话,「主模型
-									    支持看图」是个永远为否的问题,整格不摆出来 —— 摆出来只会让人勾了
-									    发现没用。服务端的发图守卫也按同一条能力判断,两边同源。 */}
-									{meta.supportsVision ? (
-										<>
-											{/* 配了视觉模型之后这个开关**完全不生效**(副模型无条件优先)。与其
+								{(!nativeVision || visionSubModelOn) && (
+									<GlassBox
+										title={tx("aiSettings.page.vision.title")}
+										subtitle={tx("aiSettings.page.vision.subtitle", {
+											fields: "{enableVision,vision}",
+										})}
+										accent={SECTION_ACCENT.capability}
+										icon={<Icon.image size={14} />}
+										badge="vision"
+									>
+										{modelSupportsVision(profile.provider, profile.model) ? (
+											<>
+												{/* 配了视觉模型之后这个开关**完全不生效**(副模型无条件优先)。与其
 											    只写在说明里,不如让它在那一刻就点不动 —— 否则一个能勾上、勾了
 											    却什么也不改变的开关,比没有还糟。 */}
-											<Field code={`ai.providers.${editing}.enableVision`}>
-												<div className="flex h-7.5 items-center">
-													<Toggle
-														value={profile.enableVision}
-														onChange={(v) => setProfile("enableVision", v)}
-														disabled={visionSubModelOn}
-														ariaLabel={tx("aiSettings.page.vision.directAria")}
-													/>
-												</div>
-											</Field>
-											{visionSubModelOn ? (
-												<FieldNote>
-													{tx("aiSettings.page.vision.submodelPrefix")}
-													<strong>{tx("aiSettings.page.vision.submodelEmphasis")}</strong>
-													{tx("aiSettings.page.vision.submodelSuffix")}
-												</FieldNote>
-											) : null}
-										</>
-									) : (
-										<FieldNote>
-											{meta.label} {tx("aiSettings.page.vision.unsupportedPrefix")}
-											<strong>{tx("aiSettings.page.vision.unsupportedEmphasis")}</strong>
-											{tx("aiSettings.page.vision.unsupportedSuffix")}
-										</FieldNote>
-									)}
-									{/* 密钥 → 地址 → 模型,与上面「模型连接」**同序**:两块摆的是同一件事
+												{!nativeVision && (
+													<Field code={`ai.providers.${editing}.enableVision`}>
+														<div className="flex h-7.5 items-center">
+															<Toggle
+																value={profile.enableVision}
+																onChange={(v) => setProfile("enableVision", v)}
+																disabled={visionSubModelOn}
+																ariaLabel={tx("aiSettings.page.vision.directAria")}
+															/>
+														</div>
+													</Field>
+												)}
+												{visionSubModelOn ? (
+													<FieldNote>
+														{tx("aiSettings.page.vision.submodelPrefix")}
+														<strong>{tx("aiSettings.page.vision.submodelEmphasis")}</strong>
+														{tx("aiSettings.page.vision.submodelSuffix")}
+													</FieldNote>
+												) : null}
+											</>
+										) : (
+											<FieldNote>
+												{tx("aiSettings.page.vision.unsupported", {
+													model: profile.model || meta.label,
+												})}
+											</FieldNote>
+										)}
+										{/* 密钥 → 地址 → 模型,与上面「模型连接」**同序**:两块摆的是同一件事
 									    (接哪个模型),顺序各走各的只会让人以为这是另一种东西。
 
 									    地址与密钥**恒在场**,不等填了模型 ID 才现身。这块存在的前提就是主模型
 									    那家没有视觉模型,副模型多半在另一家 —— 藏起来的话主人打开只看见一个
 									    模型 ID 框,结论是「没法给它单配地址和密钥」,而副标题偏偏还写着有。
 									    三格全是选填(留空即跟随主模型 / 不启用),摆着不会被当成漏填。 */}
-									<Field code={`ai.providers.${editing}.vision.apiKey`} full>
-										<DraftSecretInput
-											value={profile.vision.apiKey}
-											saved={savedProfile?.vision.apiKey}
-											onChange={(v) => setVision("apiKey", v)}
-											placeholder={tx("aiSettings.page.vision.keyPlaceholder")}
-										/>
-									</Field>
-									<Field code={`ai.providers.${editing}.vision.baseUrl`} full>
-										<TInput
-											value={profile.vision.baseUrl}
-											onChange={(v) => setVision("baseUrl", v)}
-											mono
-											placeholder={tx("aiSettings.page.vision.urlPlaceholder")}
-										/>
-									</Field>
-									<Field code={`ai.providers.${editing}.vision.model`} full>
-										<TInput
-											value={profile.vision.model}
-											onChange={(v) => setVision("model", v)}
-											mono
-											placeholder={tx("aiSettings.page.vision.modelPlaceholder")}
-										/>
-									</Field>
-								</GlassBox>
+										<Field code={`ai.providers.${editing}.vision.apiKey`} full>
+											<DraftSecretInput
+												value={profile.vision.apiKey}
+												saved={savedProfile?.vision.apiKey}
+												onChange={(v) => setVision("apiKey", v)}
+												placeholder={tx("aiSettings.page.vision.keyPlaceholder")}
+											/>
+										</Field>
+										<Field code={`ai.providers.${editing}.vision.baseUrl`} full>
+											<TInput
+												value={profile.vision.baseUrl}
+												onChange={(v) => setVision("baseUrl", v)}
+												mono
+												placeholder={tx("aiSettings.page.vision.urlPlaceholder")}
+											/>
+										</Field>
+										<Field code={`ai.providers.${editing}.vision.model`} full>
+											<TInput
+												value={profile.vision.model}
+												onChange={(v) => setVision("model", v)}
+												mono
+												placeholder={tx("aiSettings.page.vision.modelPlaceholder")}
+											/>
+										</Field>
+									</GlassBox>
+								)}
 
 								{/* 生成参数 —— 深度思考与额外请求参数同属「这一次请求怎么生成」,合成一块。
 								    思考那半边的可见形态取决于这一家:各家写法不同,兜底档索性不发。
@@ -849,7 +934,11 @@ export default function Ai() {
 											onChange={(v) => setProfile("extraParams", v)}
 											rows={4}
 											mono
-											placeholder={'{"enable_search": true}'}
+											placeholder={
+												profile.apiFlavor === "responses"
+													? '{"max_output_tokens": 4096}'
+													: '{"max_tokens": 4096}'
+											}
 										/>
 									</Field>
 									{profile.apiFlavor === "responses" ? (

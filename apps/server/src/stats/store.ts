@@ -1,9 +1,9 @@
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, unlink } from "node:fs/promises";
+import { mkdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
-import { appendJsonl, atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
+import { appendJsonl, atomicWriteFile, listJsonlKeys } from "@bilibili-notify/storage";
 import { logText } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 import { compressRecordingEntries } from "./recording-compress.js";
@@ -462,20 +462,6 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 		}
 	}
 
-	/** 一个目录里的键(`<键>.jsonl` 的键,不含改名换写的临时残留);目录还没建回空。 */
-	async function keysIn(root: string): Promise<string[]> {
-		let names: string[];
-		try {
-			names = await readdir(root);
-		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-			throw err;
-		}
-		return names
-			.filter((name) => name.endsWith(".jsonl") && !isLeftoverName(name))
-			.map((name) => name.slice(0, -".jsonl".length));
-	}
-
 	return {
 		async appendPost(key, event) {
 			await ensureRoots();
@@ -614,10 +600,10 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			return rows;
 		},
 
-		recordingKeys: () => keysIn(recordingRoot),
+		recordingKeys: () => listJsonlKeys(recordingRoot),
 
 		async keys() {
-			const all = await Promise.all([postsRoot, liveRoot, recordingRoot].map(keysIn));
+			const all = await Promise.all([postsRoot, liveRoot, recordingRoot].map(listJsonlKeys));
 			return [...new Set(all.flat())];
 		},
 

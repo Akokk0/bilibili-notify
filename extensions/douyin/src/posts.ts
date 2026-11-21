@@ -1,6 +1,7 @@
 import {
 	type ExtensionContext,
 	type ExtensionPostReport,
+	type ExtensionRichText,
 	fail,
 	ok,
 	type Result,
@@ -15,6 +16,66 @@ function stamp(aweme: Record<string, unknown>) {
 	return { id, time };
 }
 
+function captionTopics(caption: string, fields: unknown): ExtensionRichText | undefined {
+	if (!caption || !Array.isArray(fields)) return;
+	// 换算 Unicode 码点下标，保留正文的 UTF-16 坐标供切片。
+	const offsets = [0];
+	let offset = 0;
+	for (const char of caption) {
+		offset += char.length;
+		offsets.push(offset);
+	}
+	const topics: { start: number; end: number; name: string }[] = [];
+	for (const field of fields) {
+		const extra = object(field);
+		const name = text(extra.hashtag_name);
+		const start = count(extra.start);
+		const end = count(extra.end);
+		if (
+			extra.type !== 1 ||
+			!name ||
+			name.length > 64 ||
+			start === undefined ||
+			end === undefined ||
+			start >= end
+		)
+			continue;
+		const token = `#${name}`;
+		if (end <= caption.length && caption.slice(start, end) === token) {
+			topics.push({ start, end, name });
+		} else if (end < offsets.length && caption.slice(offsets[start], offsets[end]) === token) {
+			topics.push({ start: offsets[start], end: offsets[end], name });
+		}
+	}
+	if (!topics.length) return;
+	const segments: ExtensionRichText = [];
+	let cursor = 0;
+	for (const { start, end, name } of topics.sort((a, b) => a.start - b.start || b.end - a.end)) {
+		if (start < cursor) continue;
+		if (start > cursor) segments.push({ kind: "text", text: caption.slice(cursor, start) });
+		segments.push({ kind: "topic", text: caption.slice(start, end), name });
+		cursor = end;
+	}
+	if (cursor < caption.length) segments.push({ kind: "text", text: caption.slice(cursor) });
+	return segments;
+}
+
+function postStats(value: unknown): ExtensionPostReport["post"]["stats"] {
+	const statistics = object(value);
+	const likes = count(statistics.digg_count);
+	const comments = count(statistics.comment_count);
+	const shares = count(statistics.share_count);
+	const saves = count(statistics.collect_count);
+	if (likes === undefined && comments === undefined && shares === undefined && saves === undefined)
+		return;
+	return {
+		...(likes !== undefined && { likes }),
+		...(comments !== undefined && { comments }),
+		...(shares !== undefined && { shares }),
+		...(saves !== undefined && { saves }),
+	};
+}
+
 export async function toPostReport(
 	ctx: ExtensionContext,
 	data: unknown,
@@ -27,10 +88,15 @@ export async function toPostReport(
 	const author = object(row.author);
 	const name = text(author.nickname);
 	const avatar = await image(ctx, author.avatar_thumb, signal);
+	const caption = text(row.desc) ?? "";
+	const richText = captionTopics(caption, row.text_extra);
+	const stats = postStats(row.statistics);
 	const post: ExtensionPostReport["post"] = {
-		text: text(row.desc) ?? "",
+		text: caption,
 		publishedAt: new Date(time * 1000).toISOString(),
 		...(name && { creator: { name, ...(avatar && { avatar }) } }),
+		...(richText && { richText }),
+		...(stats && { stats }),
 	};
 	const photos = Array.isArray(row.images) && row.images.length > 0;
 	if (photos && Array.isArray(row.images)) {

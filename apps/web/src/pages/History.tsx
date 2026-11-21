@@ -31,6 +31,7 @@ import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
 import { i18n, useT } from "../i18n";
 import { api } from "../services/api";
+import { SUBSCRIPTIONS_QUERY, TARGETS_QUERY } from "../services/list-queries";
 import {
 	type HistoryEntryView,
 	type HistoryMessageView,
@@ -93,14 +94,8 @@ export default function History() {
 		queryKey: historyQueryKey(200),
 		queryFn: () => api.get<HistoryResponse>("/api/history?limit=200"),
 	});
-	const subsQuery = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-	});
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const subsQuery = useQuery(SUBSCRIPTIONS_QUERY);
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	const globalsQuery = useCoreSettings();
 	const retentionDays = globalsQuery.data?.history.retentionDays;
 	// 拓展行的平台徽章照来源表里的描述符画(取自已装拓展的清单,ADR-0019 决策 9)。读不到就当没回来,徽章退拓展 id。
@@ -584,6 +579,9 @@ function MessageItem({
 						{tx("sourceUi.pages.History.HistoryRow.19")}
 					</span>
 				)}
+				{message.speechNote ? (
+					<span className="ml-1.5 text-bn-text-tertiary">{message.speechNote}</span>
+				) : null}
 				{message.ok === false && message.message ? (
 					<span className="ml-1.5 text-bn-danger">{message.message}</span>
 				) : null}
@@ -600,7 +598,9 @@ function MessageItem({
 				</Pill>
 			) : null}
 			<Pill color={result.tone} subtle size="sm">
-				{result.label}
+				{message.ok === false && message.code === "indeterminate"
+					? tx("targets.status.indeterminate")
+					: result.label}
 			</Pill>
 		</li>
 	);

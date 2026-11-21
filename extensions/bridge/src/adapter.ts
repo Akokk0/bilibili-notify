@@ -55,9 +55,7 @@ export interface BridgeAdapterOptions {
 	/**
 	 * 图片仓库 —— 只用得着「存进去」那一半(取图是路由的事)。
 	 *
-	 * ⚠️ 拼出来的 URL **只保证桥自己可达**:桥要把图交给平台去拉必须先自己下载(协议
-	 * 文档 §9 那条大写的警告)。BN 常在 NAS 上,外网进不来,而平台拉不到是**静默失败**。
-	 * 所以 URL 拿的是**那条桥自己连进来时用的地址**({@link BridgeSession.origin})。
+	 * 桥用这条接入配置的取图地址，或从握手请求推断的地址下载图片（协议 §9）。
 	 */
 	blobs: Pick<BridgeBlobStore, "put">;
 }
@@ -84,6 +82,7 @@ type Resolved = Result<{
 	bot: BridgeBot;
 	destination: SessionDestination;
 	session: BridgeSession;
+	blobUrl: BlobUrl;
 }>;
 
 /** 段的判别键内部叫 `kind`,帧里叫 `type`(线上的名字不随内部改),逐种写出来。 */
@@ -225,6 +224,8 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		if (!session) return fail("unavailable", t("error.linkDisconnected", { name: link.name }));
 		const bot = session.bots.find((candidate) => candidate.botId === settings.botId);
 		if (!bot) return fail("unavailable", t("error.botMissing", { botId: settings.botId }));
+		if (bot.platform !== mine.platform)
+			return fail("not_configured", t("error.botPlatformChanged"));
 		return ok({ connection: mine, link, session, bot });
 	}
 
@@ -233,7 +234,10 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		const located = locate(connection);
 		if (!located.ok) return located;
 		if (destination.kind !== "session") return fail("invalid", t("error.sessionOnly"));
-		return ok({ bot: located.bot, destination, session: located.session });
+		const { bot, link, session } = located;
+		const origin = link.publicOrigin ? new URL(link.publicOrigin).origin : session.origin;
+		const blobUrl: BlobUrl = (buffer, mime) => `${origin}${blobPrefix}/${blobs.put(buffer, mime)}`;
+		return ok({ bot, destination, session, blobUrl });
 	}
 
 	/**
@@ -252,8 +256,13 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		return { state: "unknown", reason: t("capability.unreported") };
 	}
 
-	/** 桥报的能力翻成宿主那份:宿主问的三项(@全体、收不收得到回复、小程序卡)都在这儿。 */
-	function capabilitiesOf(located: Extract<Located, { ok: true }>): ConnectionCapabilities {
+	/** 连接和探测都读这条 bot 在最近一次握手里报的能力。 */
+	function connectionCapabilities(connection: Connection): ConnectionCapabilities {
+		const located = locate(connection);
+		if (!located.ok) {
+			const unknown = { state: "unknown", reason: located.message } as const;
+			return { atAll: unknown, inbound: unknown, nativeShare: unknown };
+		}
 		const { capabilities } = located.bot;
 		const checkedAt = new Date(located.session.connectedAt).toISOString();
 		return {
@@ -267,12 +276,6 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 			// 内部这一格叫 nativeShare;桥帧的线上名照旧是 `capabilities.miniAppCard`,进 alpha 后两步改。
 			nativeShare: supportOf(capabilities.miniAppCard, checkedAt, "capability.noNativeShare"),
 		};
-	}
-
-	/** 没连着 / 没这个 bot:三项都是「还不知道」,带上原因。 */
-	function unreachableCapabilities(reason: string): ConnectionCapabilities {
-		const unknown = { state: "unknown", reason } as const;
-		return { atAll: unknown, inbound: unknown, nativeShare: unknown };
 	}
 
 	/**
@@ -354,8 +357,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 						payload: {
 							kind: "image-group",
 							mergeForward: true,
-							images: [samples.image, samples.secondImage].map((image) => ({
-								url: `${resolved.session.origin}${blobPrefix}/${blobs.put(image.buffer, image.mime)}`,
+							// Platforms may fetch forwarded images directly and more than once.
+							images: ["captain-Bjw5Byb5.png", "governor-DpDXKEdA.png"].map((name) => ({
+								url: `https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/${name}`,
 							})),
 						},
 					});
@@ -378,14 +382,20 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		deliverInbound(session, frame) {
 			const ctx = adapterContext;
 			if (!ctx) return;
-			// 停用的也算绑过 —— 「绑没绑过」与「收不收它的消息」是两问,后者下面按 `enabled` 再判一次。
-			const bound = connections().find((candidate) => {
+			const bot = session.bots.find((candidate) => candidate.botId === frame.botId);
+			const bindings = connections().filter((candidate) => {
 				const settings = settingsOf(candidate);
 				return settings?.link === session.linkId && settings.botId === frame.botId;
 			});
+			// 名单可能晚于第一条消息。没有名单佐证时，只能使用唯一的绑定。
+			const bound = bot
+				? bindings.find((candidate) => candidate.platform === bot.platform)
+				: bindings.length === 1
+					? bindings[0]
+					: undefined;
 			// 只有绑成了连接的 bot 收到的消息才归 BN:没绑的 bot 在 BN 眼里不存在,它收到
 			// 的指令也没有一条连接能拿来回。记 debug 不记 warn —— 桥驮上来的每条都会经这儿。
-			if (!bound) {
+			if (!bound || bound.platform !== frame.platform) {
 				ctx.logger.debug(t("log.unboundInbound"), {
 					event: "inbound.unbound",
 					linkId: session.linkId,
@@ -431,9 +441,6 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 			if (!resolved.ok) return resolved;
 			if (payload.kind === "markdown" && resolved.bot.capabilities.markdown !== "supported")
 				return fail("unsupported", t("capability.markdownUnconfirmed"));
-			// 取图 URL 拿**这条桥自己连进来时用的地址**拼 —— BN 猜不出别人从哪儿找得到它。
-			const blobUrl: BlobUrl = (buffer, mime) =>
-				`${resolved.session.origin}${blobPrefix}/${blobs.put(buffer, mime)}`;
 			// 拿不准就别发星号:只有明确报了 `supported` 才原样发(决策 32)。
 			const plain: PlainText =
 				resolved.bot.capabilities.markdown === "supported" ? (text) => text : stripMarkdown;
@@ -445,7 +452,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 					address: resolved.destination.address,
 					parentAddress: resolved.destination.parentAddress,
 				},
-				message: toBridgeMessage(payload, blobUrl, plain),
+				message: toBridgeMessage(payload, resolved.blobUrl, plain),
 			};
 			const outcome = await server.send(resolved.session.linkId, request);
 			return outcome.ok ? ok({ latencyMs: Date.now() - t0 }) : outcome;
@@ -462,23 +469,8 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 
 		stop(): void {},
 
-		/**
-		 * 能力按 bot 答 —— 一条连接就是一个 bot(决策 45),所以答得准。这两个方法曾经刻意
-		 * 不实现:那时连接是「一条接入」,底下同时挂着 QQ 与 telegram,跨 bot 合并出来的答案
-		 * 对谁都不对。没连着 / 没这个 bot 时答「还不知道」,带上原因。
-		 */
-		capabilities(connection: Connection): ConnectionCapabilities {
-			const located = locate(connection);
-			if (!located.ok) return unreachableCapabilities(located.message);
-			return capabilitiesOf(located);
-		},
-
-		async probeCapabilities(connection: Connection): Promise<ConnectionCapabilities> {
-			// 不打网络:能力是桥握手时报的,再问一次也是同一份。
-			const located = locate(connection);
-			if (!located.ok) return unreachableCapabilities(located.message);
-			return capabilitiesOf(located);
-		},
+		capabilities: connectionCapabilities,
+		probeCapabilities: async (connection) => connectionCapabilities(connection),
 
 		/**
 		 * 新建连接时供挑的候选:每条**连着**的接入驮着的每个 bot(没连上的接入在会话表里根本没有,
@@ -486,13 +478,17 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		 * `{ link, botId }`,`boundConnectionId` 让面板标出「已加过」。
 		 */
 		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
-			// 查表建**一次**。`connections()` 是现读的深拷贝,逐个 bot 去查等于把整张连接表
-			// 拷一遍又一遍。键里那个 `\0` 是分隔符 —— `botId` 是开放字符串(平台自己定的),
-			// 拿冒号拼会和 `telegram:12345` 这种撞上。
+			// 按接入、bot 和平台查已有绑定。平台变更时，面板可以建一条匹配新平台的连接。
+			const bindingKey = (link: string, botId: string, platform: string) =>
+				JSON.stringify([link, botId, platform]);
 			const boundTo = new Map<string, string>();
 			for (const connection of connections()) {
 				const settings = settingsOf(connection);
-				if (settings) boundTo.set(`${settings.link}\0${settings.botId}`, connection.id);
+				if (settings)
+					boundTo.set(
+						bindingKey(settings.link, settings.botId, connection.platform),
+						connection.id,
+					);
 			}
 			return opts.links().flatMap((link) => {
 				const session = server.getSession(link.id);
@@ -506,7 +502,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 						settings: { link: link.id, botId: bot.botId },
 						selfId: bot.selfId,
 						via: link.name,
-						boundConnectionId: boundTo.get(`${link.id}\0${bot.botId}`),
+						boundConnectionId: boundTo.get(bindingKey(link.id, bot.botId, bot.platform)),
 					};
 				});
 			});

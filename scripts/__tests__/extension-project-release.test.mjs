@@ -296,6 +296,7 @@ describe("生成工程的公开发布命令", () => {
 			(item) => item.method === "POST" && item.name?.includes("marketplace"),
 		);
 		expect(zip).toBeGreaterThan(-1);
+		expect(requests[zip].path).toMatch(/^\/repos\/Owner\/Tools\//);
 		expect(publish).toBeGreaterThan(zip);
 		expect(market).toBeGreaterThan(publish);
 		const writes = requests.filter((item) => item.method !== "GET").length;

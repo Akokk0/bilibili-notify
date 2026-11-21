@@ -1,8 +1,4 @@
-import {
-	CommentaryGenerator,
-	PROMPT_NEUTRAL_NOUNS,
-	webSearchExecutorFromSettings,
-} from "@bilibili-notify/ai";
+import { CommentaryGenerator, PROMPT_NEUTRAL_NOUNS } from "@bilibili-notify/ai";
 import type {
 	CreatorCandidate,
 	CreatorProfileReport,
@@ -16,7 +12,11 @@ import { resolveAIProfile } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { logText, t } from "../i18n/index.js";
 import type { LiveTable } from "../live/live-table.js";
-import { builtinPersonasOf, toGeneratorConfig } from "../runtime/ai-config.js";
+import {
+	builtinPersonasOf,
+	toGeneratorConfig,
+	webSearchExecutorForAi,
+} from "../runtime/ai-config.js";
 import type { SubscriptionStateStore } from "../runtime/subscription-state-store.js";
 import {
 	platformLabelOf,
@@ -128,7 +128,7 @@ export function createCommentary(deps: CommentaryDeps): CommentaryGenerator | nu
 		// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
 		// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,
 		// 生成器那侧静默不挂 web_search。
-		c.setWebSearchSource(() => webSearchExecutorFromSettings(deps.globals().ai.search));
+		c.setWebSearchSource(() => webSearchExecutorForAi(deps.globals().ai));
 		c.start();
 		return c;
 	} catch (err) {

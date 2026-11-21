@@ -138,9 +138,10 @@ export class GithubApi {
 			this.base.origin === "https://api.github.com"
 				? "https://uploads.github.com"
 				: this.base.origin;
+		const path = url.pathname.replace(/^\/repos\/[^/]+\/[^/]+(?=\/)/, (repo) => repo.toLowerCase());
 		if (
 			url.origin !== expectedOrigin ||
-			url.pathname !== `${this.repoPath}/releases/${release.id}/assets` ||
+			path !== `${this.repoPath}/releases/${release.id}/assets` ||
 			url.username ||
 			url.password
 		)

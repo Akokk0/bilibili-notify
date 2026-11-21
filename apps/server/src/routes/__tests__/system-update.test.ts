@@ -51,6 +51,7 @@ describe("update 路由", () => {
 		const probeMirrors = vi.fn(async () => []);
 		const applyUpdate = vi.fn(async () => {});
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService({ probeMirrors }),
 			applyUpdate,
@@ -72,8 +73,31 @@ describe("update 路由", () => {
 		expect(applyUpdate).not.toHaveBeenCalled();
 	});
 
+	it("无进程管理器时报告手动重启并保留正在运行的宿主", async () => {
+		const applyUpdate = vi.fn(async () => {});
+		const ability = { can: false, code: "unsupervised", message: "请手动重启" } as const;
+		const app = createSystemUpdateRoute({
+			startedAt: STARTED,
+			applyUpdate,
+			restartAbility: () => ability,
+			service: fakeService({
+				getStatus: () => ({
+					currentVersion: "0.8.0",
+					pinnedVersion: null,
+					rollbackTarget: null,
+					state: { phase: "ready", target: "0.9.0", releaseUrl: "https://x/t" },
+				}),
+			}),
+		});
+		const response = await app.request("/apply", { method: "POST" });
+		expect(await response.json()).toMatchObject({ code: "unsupported", message: ability.message });
+		expect(await (await app.request("/")).json()).toMatchObject({ restart: ability });
+		expect(applyUpdate).not.toHaveBeenCalled();
+	});
+
 	it("GET / 交出当前状态", async () => {
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService(),
 			applyUpdate: async () => {},
@@ -93,6 +117,7 @@ describe("update 路由", () => {
 			state: { phase: "ready" as const, target: "0.9.0", releaseUrl: "https://x/t" },
 		}));
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService({ check }),
 			applyUpdate: async () => {},
@@ -108,6 +133,7 @@ describe("update 路由", () => {
 		const download = vi.fn(async () => fakeService().getStatus());
 		const rollback = vi.fn(async () => fakeService().getStatus());
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService({ download, rollback }),
 			applyUpdate: async () => {},
@@ -124,6 +150,7 @@ describe("update 路由", () => {
 		// 推送会断、直播监听会掉。没东西可应用就别动。
 		const applyUpdate = vi.fn(async () => {});
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService(),
 			applyUpdate,
@@ -144,6 +171,7 @@ describe("update 路由", () => {
 			throw new Error("dispose exploded");
 		});
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
@@ -164,6 +192,7 @@ describe("update 路由", () => {
 	it("回退钉好之后 POST /apply 放行 —— 回退也要靠重启才生效", async () => {
 		const applyUpdate = vi.fn(async () => {});
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
@@ -193,6 +222,7 @@ describe("update 路由", () => {
 			order.push("shutdown");
 		});
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
@@ -229,6 +259,7 @@ describe("update 路由", () => {
 	it("功能没启用时 /apply 也拒 —— 不给一条能白白重启服务的路", async () => {
 		const applyUpdate = vi.fn(async () => {});
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
@@ -252,6 +283,7 @@ describe("update 路由 —— 测一遍加速站", () => {
 			prefixes.map((prefix) => ({ prefix, ok: true as const, ms: 12, version: "0.9.0" })),
 		);
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService({ probeMirrors }),
 			applyUpdate: async () => {},
@@ -276,6 +308,7 @@ describe("update 路由 —— 测一遍加速站", () => {
 	it("prefixes 不成形 → 400,不去碰 service —— 只收空串或 https:// 前缀,数量有上限", async () => {
 		const probeMirrors = vi.fn(async () => []);
 		const app = createSystemUpdateRoute({
+			restartAbility: () => ({ can: true, how: "desktop" }),
 			startedAt: STARTED,
 			service: fakeService({ probeMirrors }),
 			applyUpdate: async () => {},

@@ -256,25 +256,25 @@ describe("GET /api/sources", () => {
 			entries: [
 				extensionEntry("douyin", "running", subscription),
 				extensionEntry("kuaishou", "disabled", { label: "快手", supportedFeatures: ["post"] }),
-				extensionEntry("weibo", "failed", { label: "微博", supportedFeatures: ["post"] }),
+				extensionEntry("weibo", "failed", { label: "微博", supportedFeatures: ["liveEnd"] }),
 			],
 		});
 		expect(body.sources).toEqual([
 			{
 				key: "douyin",
 				status: "running",
-				descriptor: subscription,
+				descriptor: { ...subscription, supportedExtras: ["atAllPost", "atAllLiveStart"] },
 				has: { auth: false, liveStatus: false, preview: false },
 			},
 			{
 				key: "kuaishou",
 				status: "disabled",
-				descriptor: { label: "快手", supportedFeatures: ["post"] },
+				descriptor: { label: "快手", supportedFeatures: ["post"], supportedExtras: ["atAllPost"] },
 			},
 			{
 				key: "weibo",
 				status: "failed",
-				descriptor: { label: "微博", supportedFeatures: ["post"] },
+				descriptor: { label: "微博", supportedFeatures: ["liveEnd"] },
 			},
 		]);
 	});
@@ -298,7 +298,13 @@ describe("GET /api/sources", () => {
 			sources: {},
 			entries: [extensionEntry("douyin", "disabled", { ...declared, cardSkin: "card-skin" })],
 		});
-		expect(body.sources).toEqual([{ key: "douyin", status: "disabled", descriptor: declared }]);
+		expect(body.sources).toEqual([
+			{
+				key: "douyin",
+				status: "disabled",
+				descriptor: { ...declared, supportedExtras: ["atAllPost"] },
+			},
+		]);
 	});
 
 	it("没开订阅那一口的拓展、清单读不出来的拓展不列", async () => {

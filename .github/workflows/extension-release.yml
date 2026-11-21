@@ -27,7 +27,7 @@ on:
 
 concurrency:
   group: extensions-index
-  cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read
@@ -38,6 +38,9 @@ env:
 jobs:
   gate:
     if: startsWith(github.ref, 'refs/tags/extension/') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/gate.yml
 
   publish:
@@ -52,6 +55,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Check legacy signer retirement
+        env:
+          LEGACY_SIGNER_CONFIGURED: ${{ secrets.BN_UPDATE_SIGNING_KEY != '' }}
+        run: bash .github/scripts/shared/assert-update-signing-cutover.sh
 
       - name: Assert tag matches the extension manifest
         id: ext
@@ -98,7 +106,7 @@ jobs:
       - name: Assert signing key
         id: key
         env:
-          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_RELEASE_SIGNING_KEY }}
         run: bash .github/scripts/extension-release/assert-extension-signing-key.sh
 
       - name: Validate release token
@@ -130,7 +138,7 @@ jobs:
       - name: Merge this entry and sign the index
         if: steps.key.outputs.present == 'true'
         env:
-          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_RELEASE_SIGNING_KEY }}
           ID: ${{ steps.ext.outputs.id }}
           VERSION: ${{ steps.ext.outputs.version }}
           PRERELEASE: ${{ steps.ext.outputs.prerelease }}
@@ -139,6 +147,10 @@ jobs:
           SIZE: ${{ steps.pkg.outputs.size }}
           NOTES: ${{ steps.notes.outputs.value }}
         run: bash .github/scripts/extension-release/sign-extension-index.sh
+
+      - name: Verify release signature
+        if: steps.key.outputs.present == 'true'
+        run: node scripts/verify-release-signature.mjs dist/marketplace-next.sig.json
 
       - name: Publish the marketplace index
         if: env.DRY_RUN == 'false' && steps.key.outputs.present == 'true'

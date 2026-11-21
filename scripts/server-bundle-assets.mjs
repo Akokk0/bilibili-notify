@@ -34,6 +34,7 @@ export const SERVER_BUNDLE_FILES = [
 	"static/wordcloud2.min.js",
 	// jieba-wasm 的 wasm 本体,胶水按 __dirname 读它。
 	"jieba_rs_wasm_bg.wasm",
+	"silk.wasm",
 	// 首启动配置样例,与 bundle 平级。
 	"bn.config.example.yaml",
 	// 升级之后「本次更新」的数据,服务端开机时按载荷入口就近读。

@@ -10,11 +10,10 @@
  */
 
 import type { SubscriptionView } from "@bilibili-notify/contract";
-import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { TSelect, type TSelectOption } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { targetDisplay } from "../components/target-display";
-import { api } from "../services/api";
+import { CONNECTIONS_QUERY, SUBSCRIPTIONS_QUERY, TARGETS_QUERY } from "../services/list-queries";
 import { subscriptionIdentityOf } from "../types/domain";
 
 export type PickKind = "sub" | "target" | "connection" | "creator";
@@ -35,19 +34,10 @@ function subLabel(sub: SubscriptionView): string {
 
 /** 与站内各页共用同一套查询键,列表已经在缓存里就不再打请求。 */
 function useOptions(kind: PickKind, provider: string | undefined): Option[] {
-	const subs = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<SubscriptionView[]>("/api/subscriptions"),
-		enabled: kind === "sub" || kind === "creator",
-	});
-	const targets = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-		enabled: kind === "target",
-	});
+	const subs = useQuery({ ...SUBSCRIPTIONS_QUERY, enabled: kind === "sub" || kind === "creator" });
+	const targets = useQuery({ ...TARGETS_QUERY, enabled: kind === "target" });
 	const connections = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
+		...CONNECTIONS_QUERY,
 		enabled: kind === "connection" || kind === "target",
 	});
 	switch (kind) {

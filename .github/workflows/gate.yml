@@ -1,7 +1,7 @@
 name: Gate
 
-# **发版门禁**的唯一定义:Biome → build → typecheck → test。
-# CI、Docker、Desktop、npm与应用内更新全部复用它。
+# Biome、构建、类型检查和测试的共享发版门禁。
+# dev CI、本体发行、工具与官方拓展共用这份定义。
 #
 # 抽出来是因为门禁是「这份代码能不能发出去」的判据 —— 各自维护的副本迟早会飘,
 # 而飘的方式一定是某条发布路径悄悄少了一项检查,且没人发现(发布 workflow 全绿)。
@@ -10,69 +10,116 @@ name: Gate
 on:
   workflow_call:
 
+# 等待发生在 GitHub 的并发队列里，不占 runner。PR 始终验证自己的合并结果。
+concurrency:
+  group: shared-gate-${{ github.event_name == 'pull_request' && github.run_id || github.sha }}
+  queue: max
+
 jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      passed: ${{ steps.proof.outputs.passed }}
+      types_passed: ${{ steps.proof.outputs.types_passed }}
+    steps:
+      - uses: actions/checkout@v6
+        if: github.event_name != 'pull_request'
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Look up a verified gate for this commit
+        id: proof
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_DEV_BASE: ${{ github.ref == 'refs/heads/dev' && github.event.before || '' }}
+        run: node scripts/find-passed-gate.mjs "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: lookup
+    if: needs.lookup.outputs.passed != 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - name: Build
+        run: vpr build
+
+      # tar 保留 npm 工具的执行位和创建器模板里的点文件。
+      - name: Archive workspace build
+        run: tar -cf "$RUNNER_TEMP/workspace-build.tar" apps/*/lib apps/web/dist packages/*/lib tools/*/lib extensions/*/dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: workspace-build-${{ github.run_id }}
+          path: ${{ runner.temp }}/workspace-build.tar
+          compression-level: 1
+          if-no-files-found: error
+          overwrite: true
+
   test:
+    needs: [lookup, build]
+    if: needs.lookup.outputs.passed != 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
-
     steps:
       - uses: actions/checkout@v6
-
-      # Installs Vite+ (vp) globally at the version the root `vite-plus`
-      # devDependency names (setup-vp reads it by itself), the repo-pinned Node
-      # from .node-version, and runs `vp install`. On GitHub Actions CI=true →
-      # the underlying pnpm install is frozen-lockfile automatically (= old
-      # `pnpm install --frozen-lockfile`). `cache: true` keys off pnpm-lock.yaml.
-      # Every workflow pins setup-vp to an exact tag: its floating `v1` tag
-      # stopped at 1.15.0, before the install script was pinned to the requested
-      # vp version (1.18) and Windows cache links were restored correctly (1.21).
-      - name: Setup Vite+ (vp) + Node + deps
-        uses: voidzero-dev/setup-vp@v1.21.1
+      - uses: voidzero-dev/setup-vp@v1.21.1
         with:
           node-version-file: .node-version
           cache: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: workspace-build-${{ github.run_id }}
+          path: ${{ runner.temp }}
+      - name: Restore workspace build
+        run: tar -xf "$RUNNER_TEMP/workspace-build.tar"
 
       - name: Lint (Biome)
         if: matrix.shard == 1
         run: vp exec biome ci .
 
-      # `vpr <script>` 是 vp 的 shim 简写,等价 `vp run <script>`,从 root
-      # package.json scripts 入口走。build 内部是 `pnpm -r run build`;vp 把内嵌
-      # pnpm 注入子进程 PATH 让 legacy script body 继续 work(packages/* vp pack +
-      # apps/server vp pack + apps/web Vite)。typecheck 与 test 同模式。
-      - name: Build
-        run: vpr build
-
       - name: Typecheck
-        if: matrix.shard == 1
-        run: vpr typecheck
-
-      - name: Prepare registry cache for offline package tests
-        run: bash .github/scripts/shared/prepare-package-test-cache.sh
+        if: matrix.shard == 1 && needs.lookup.outputs.types_passed != 'true'
+        run: vpr typecheck:after-build
 
       - name: Test
         env:
           SHARD: ${{ matrix.shard }}
+          BN_GATE_WEB_DIST: ${{ github.workspace }}/apps/web/dist
+          BN_PACKAGE_TEST_CACHE_SCRIPT: .github/scripts/shared/prepare-package-test-cache.sh
         run: vp run test --shard="$SHARD/4"
 
       # 与四种面板语言均不同的默认数字/日期格式，防止遗漏 locale 又静默通过。
       - name: Test panel formatting with Arabic host locale
         if: matrix.shard == 1
-        env:
-          LANG: ar_EG.UTF-8
-          LC_ALL: ar_EG.UTF-8
-        run: vp run test apps/web/src/pages/__tests__/overview-health-details.test.tsx apps/web/src/pages/__tests__/ExtensionDetail.report-discrepancies.test.tsx -t '核心计数悬停值|上报时间悬停值' --reporter=dot
+        run: vp run test:panel-locale
 
   # 保留统一的 gate 结果，任何分片失败、取消或跳过都不能放行发行。
   gate:
-    needs: test
+    needs: [lookup, test]
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Require gate lookup
+        env:
+          RESULT: ${{ needs.lookup.result }}
+        run: test "$RESULT" = success
       - name: Require every test shard
+        if: needs.lookup.outputs.passed != 'true'
         env:
           RESULT: ${{ needs.test.result }}
         run: test "$RESULT" = success

@@ -60,13 +60,13 @@ const isHandsOff = (entry: InvalidSettingEntry): boolean => {
 	if (head !== "ai") return false;
 	return (
 		entry.path.length === 1 ||
-		(entry.path.length === 2 && (sub === "providers" || sub === "search"))
+		(entry.path.length === 2 && (sub === "providers" || sub === "search" || sub === "speech"))
 	);
 };
 
 /** 重存会把密钥换掉的两种:`ai` 整格、`ai.providers` 整张表。`ai.search` 重存不丢袋里的键,丢的是原文里手写的明文。 */
 const losesKeysOnResave = (entry: InvalidSettingEntry): boolean =>
-	isHandsOff(entry) && entry.path[1] !== "search";
+	isHandsOff(entry) && entry.path[1] !== "search" && entry.path[1] !== "speech";
 
 const cellName = (entry: InvalidSettingEntry): string => entry.path.join(".");
 

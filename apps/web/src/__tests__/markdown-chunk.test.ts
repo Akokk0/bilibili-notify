@@ -125,11 +125,11 @@ function resolveWorkspace(spec: string): string | null {
 }
 
 /** 从入口出发的静态可达集。返回访问过的文件、撞上的重依赖、解析不出的说明符。 */
-function crawl(): { visited: Set<string>; heavy: string[]; unresolved: string[] } {
+function crawl(entry: string): { visited: Set<string>; heavy: string[]; unresolved: string[] } {
 	const visited = new Set<string>();
 	const heavy: string[] = [];
 	const unresolved: string[] = [];
-	const queue = [ENTRY];
+	const queue = [entry];
 	while (queue.length > 0) {
 		const file = queue.pop() as string;
 		if (visited.has(file)) continue;
@@ -161,15 +161,22 @@ function crawl(): { visited: Set<string>; heavy: string[]; unresolved: string[] 
 
 describe("markdown 重依赖不许进初始包", () => {
 	it("从 main.tsx 出发的静态可达图里没有 react-markdown / remark-*", () => {
-		const { visited, heavy, unresolved } = crawl();
+		const { visited, heavy, unresolved } = crawl(ENTRY);
 		// 爬歪了(解析不出、只走到几个文件)会让守卫安静地失效,先钉住爬得动
 		expect(unresolved, "静态说明符没解析出来,守卫射程有洞").toEqual([]);
 		expect(visited.size).toBeGreaterThan(80);
-		expect(visited.has(join(SRC, "pages", "About.tsx"))).toBe(true);
+		expect(visited.has(join(SRC, "pages", "Overview.tsx"))).toBe(true);
+		expect(visited.has(join(SRC, "pages", "About.tsx"))).toBe(false);
 		// 工作区包那条路真的爬进去了 —— 少了这句,resolveWorkspace 哪天悄悄返回
 		// null(改名、换 exports)守卫就退回只认相对路径,而三条断言照样全绿
 		expect(visited.has(join(REPO, "packages", "ui", "src", "index.ts"))).toBe(true);
 		expect(heavy, '库要放在懒加载边界后面:lazy(() => import("…")),别从入口静态引到').toEqual([]);
+	});
+
+	it("打开关于页时，更新日志和指引仍按需加载 Markdown", () => {
+		const { heavy, unresolved } = crawl(join(SRC, "pages", "About.tsx"));
+		expect(unresolved).toEqual([]);
+		expect(heavy).toEqual([]);
 	});
 
 	it("只有指定的那两个模块持有 react-markdown 的运行时 import", () => {

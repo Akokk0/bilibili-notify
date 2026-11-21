@@ -18,7 +18,8 @@ import { ExtensionLogLevel } from "../components/extension-log-level";
 import { invalidateExtensionTables, useExtensions } from "../hooks/useExtensions";
 import { useT } from "../i18n";
 import { api } from "../services/api";
-import { type Subscription, subscriptionIdentityOf } from "../types/domain";
+import { SUBSCRIPTIONS_QUERY } from "../services/list-queries";
+import { subscriptionIdentityOf } from "../types/domain";
 import {
 	DeclarativeConfig,
 	DeclarativeHead,
@@ -82,8 +83,7 @@ export default function ExtensionDetail() {
 	const hasReportDiscrepancies =
 		(listed.data?.extensions.find((one) => one.id === id)?.reportDiscrepancies ?? []).length > 0;
 	const subsQuery = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
+		...SUBSCRIPTIONS_QUERY,
 		enabled: confirming || hasReportDiscrepancies,
 	});
 	// 来源键就是拓展 id:订阅的身份记在这个拓展名下的有几条(B 站来源的键是保留 id,不会等于任何拓展 id)。

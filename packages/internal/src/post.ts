@@ -89,7 +89,7 @@ export interface Post {
 	attachment?: Attachment;
 	/** 被转发的原作品。 */
 	repost?: Post;
-	stats?: { shares?: number; comments?: number; likes?: number };
+	stats?: { shares?: number; comments?: number; likes?: number; saves?: number };
 }
 
 /**

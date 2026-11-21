@@ -9,7 +9,7 @@
 # 必需 env:
 #   GITHUB_OUTPUT          GHA 自带;本地跑请指向一个文件,或直接用 /dev/stdout 看
 # 可选 env:
-#   BN_UPDATE_SIGNING_KEY  secrets.BN_UPDATE_SIGNING_KEY。没传与空串都算「没配」(所以这里
+#   BN_UPDATE_SIGNING_KEY  secrets.BN_RELEASE_SIGNING_KEY。没传与空串都算「没配」(所以这里
 #                          不做必填断言 —— 这正是本脚本要处理的情形)。只判空,绝不打印。
 #
 # Outputs(GITHUB_OUTPUT):present=true|false
@@ -22,7 +22,7 @@ set -euo pipefail
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT env 必填(GHA 自带;本地跑请指向一个文件)}"
 
 if [ -z "${BN_UPDATE_SIGNING_KEY:-}" ]; then
-	echo "::warning::未配置 BN_UPDATE_SIGNING_KEY,跳过索引签名 —— 这次发的拓展不会出现在市场里。生成方法见 docs/agents/self-update.md"
+	echo "::warning::未配置 BN_RELEASE_SIGNING_KEY,跳过索引签名 —— 这次发的拓展不会出现在市场里。生成方法见 docs/agents/self-update.md"
 	echo "present=false" >>"$GITHUB_OUTPUT"
 else
 	echo "present=true" >>"$GITHUB_OUTPUT"

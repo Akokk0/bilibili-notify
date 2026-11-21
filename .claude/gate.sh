@@ -1,23 +1,69 @@
 #!/usr/bin/env bash
-# 片级门禁：kit 插件的交付门禁回合结束时跑它；全量是 kit:gate 的 run --full，和 CI 的 gate.yml 同一套。
-# lint、构建、类型检查照跑全仓（加起来约 20 秒）；测试交给插件的 slice-tests.sh，只跑和改动相关的
-# （改动的源码、所属包的入口、扫源码的守卫测试；改到配置就跑全部）。直接手跑、没有插件传路径时跑全部测试。
+# kit 提供 GATE_SLICE_TESTS 时只跑相关测试。vp run gate 显式选择全量。
 set -euo pipefail
 shopt -s nullglob
 cd "$(git rev-parse --show-toplevel)"
 
+full=false
+if [[ ${1-} == --full ]]; then
+	full=true
+	shift
+fi
+base=
+if [[ $# == 2 && $1 == --base && -n $2 ]]; then
+	base=$2
+elif [[ $# != 0 ]]; then
+	echo 'Usage: vp run gate [--base <verified-commit>]' >&2
+	exit 2
+fi
+
+unset BN_MIGRATION_TIMING BN_DESKTOP_LIFECYCLE
 vp run check
-vp run build
-vp run typecheck
+BN_RUNTIME_PROFILE=production NODE_ENV=production vp run build
+vp run typecheck:after-build
+export BN_GATE_WEB_DIST="$PWD/apps/web/dist"
 
-[ -n "${GATE_SLICE_TESTS-}" ] || exec vp run test
+if [[ $full == false && -n ${GATE_SLICE_TESTS-} ]]; then
+	# 每轮带上扫源码的守卫，四个进程以内避免扫描超时。
+	always=()
+	for f in scripts/source-scan.mjs apps/web/src/__tests__/walk.ts apps/web/src/__tests__/source-text.ts \
+		scripts/__tests__/*.test.* apps/*/src/__tests__/*-{conformance,coverage,boundary,isolation}.test.ts; do
+		always+=(--always "$f")
+	done
+	exec bash "$GATE_SLICE_TESTS" "${always[@]}" -- --maxWorkers=4
+fi
 
-# 守卫每轮都跑。三类 grep 不到的：经扫描工具读源码的（交工具文件，引用它的测试都跑）、
-# scripts/__tests__ 的全仓棘轮、面板和服务端按名字认得出的守卫（直接用 fs/promises 读文件）。
-# 限 4 个进程：并发全开时整仓扫描的守卫会撞 5 秒上限，风扇也吵
-always=()
-for f in scripts/source-scan.mjs apps/web/src/__tests__/walk.ts apps/web/src/__tests__/source-text.ts \
-	scripts/__tests__/*.test.* apps/*/src/__tests__/*-{conformance,coverage,boundary,isolation}.test.ts; do
-	always+=(--always "$f")
-done
-exec bash "$GATE_SLICE_TESTS" "${always[@]}" -- --maxWorkers=4
+desktop=(apps/desktop scripts/__tests__/desktop-sidecar-lifecycle.test.mjs scripts/desktop-layout.mjs .github/workflows/rust-check.yml .node-version)
+cache=node_modules/.cache/bn-gate
+platform=$(uname -s)
+receipt="$cache/desktop-$platform-$(uname -m)"
+if [[ -z $base && -s $receipt ]]; then
+	IFS= read -r base < "$receipt"
+fi
+# Git diff 同时覆盖已提交、已暂存及工作区内容，未跟踪的桌面文件也需要验证。
+desktop_matches() {
+	local commit untracked
+	[[ -n $1 ]] &&
+		commit=$(git rev-parse --verify --quiet --end-of-options "$1^{commit}") &&
+		git diff --quiet --no-ext-diff "$commit" -- "${desktop[@]}" &&
+		untracked=$(git ls-files --others --exclude-standard -- "${desktop[@]}") &&
+		[[ -z $untracked ]]
+}
+
+head=$(git rev-parse HEAD)
+if desktop_matches "$base"; then
+	echo "Desktop inputs match verified baseline $base. Skipping native checks."
+else
+	vp run check:desktop
+	if [[ $platform == Darwin ]]; then export BN_DESKTOP_LIFECYCLE=1; fi
+fi
+vp run test
+vp run test:panel-locale
+
+# 测过未提交的桌面输入时不能把 HEAD 记成已验证。失败也不能推进基线。
+if desktop_matches "$head"; then
+	mkdir -p "$cache"
+	tmp=$(mktemp "$receipt.XXXXXXXX")
+	printf '%s\n' "$head" > "$tmp"
+	mv -f "$tmp" "$receipt"
+fi

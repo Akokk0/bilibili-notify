@@ -244,6 +244,7 @@ export async function deliverRoast(
 		result: BoardLike | SoloLike;
 		days: number;
 		targetIds: readonly string[];
+		scheduled?: boolean;
 	},
 ): Promise<RoastDeliveryResult> {
 	const pipeline = deps.runtime.pipeline;
@@ -251,6 +252,13 @@ export async function deliverRoast(
 
 	const targetsById = new Map(deps.store.getTargets().map((target) => [target.id, target]));
 	const connections = deps.store.getConnections();
+	const narration =
+		opts.scheduled && opts.result.pushText.trim()
+			? pipeline?.push.createNarration({
+					text: opts.result.pushText,
+					withoutText: payload.kind === "image" ? [{ kind: "image", image: payload.image }] : [],
+				})
+			: undefined;
 	const sent: string[] = [];
 	const skipped: string[] = [];
 	const failed: RoastDeliveryResult["failed"] = [];
@@ -265,7 +273,16 @@ export async function deliverRoast(
 			continue;
 		}
 		try {
-			const delivery = await pipeline.push.sendToTarget(targetId, payload);
+			const send = (part: NotificationPayload) => pipeline.push.sendToTarget(targetId, part);
+			const outcomes = narration
+				? await narration(targetId, [payload], send)
+				: [{ payload, result: await send(payload) }];
+			const note = outcomes.find((row) => row.speechNote)?.speechNote;
+			if (note) deps.runtime.serviceCtx.logger.warn(note, { event: "speech.fallback", targetId });
+			// A confirmed text fallback completes the delivery after a voice rejection.
+			const delivery =
+				outcomes.at(-1)?.result ?? outcomes.find((row) => row.result && !row.result.ok)?.result;
+			if (!delivery) continue;
 			if (delivery.ok) sent.push(targetId);
 			else failed.push({ targetId, failure: delivery });
 		} catch (err) {

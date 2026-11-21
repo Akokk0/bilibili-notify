@@ -1,4 +1,5 @@
 {
+	"ai.modelSafety.refused": "模型安全審核拒絕了這次請求。",
 	"internal.settings.imageAllowedCidrs": "請填寫有效的 IPv4 或 IPv6 CIDR 網段，例如 198.18.0.0/16。",
 	"storage.log.masterReadFailed": "主金鑰讀取失敗（非缺失），保留原檔案並停止載入",
 	"storage.log.masterLoaded": "主金鑰已載入",
@@ -265,6 +266,7 @@
 	"image.icons.forward": "轉發",
 	"image.icons.comment": "留言",
 	"image.icons.like": "按讚",
+	"image.icons.save": "收藏",
 	"image.icons.topic": "話題",
 	"image.icons.view": "播放次數",
 	"image.icons.danmaku": "彈幕",
@@ -661,6 +663,7 @@
 	"internal.card-skin.144": "按讚數",
 	"internal.card-skin.145": "文字",
 	"internal.card-skin.146": "圖示",
+	"internal.card-skin.saveCount": "收藏數",
 	"internal.card-skin.147": "留言",
 	"internal.card-skin.148": "留言氣泡",
 	"internal.card-skin.149": "留言文字",

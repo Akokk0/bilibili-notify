@@ -27,6 +27,8 @@ const BUDGET_BY_LEVEL: Record<ThinkingLevel, number> = {
 	high: 32768,
 };
 
+export const DEEPSEEK_EFFORT = { low: "low", medium: "high", high: "max" } as const;
+
 export interface BuildProviderParamsOptions {
 	provider: AIProviderId;
 	enableThinking: boolean;
@@ -66,10 +68,9 @@ export function buildProviderParams(input: BuildProviderParamsOptions): Record<s
 			return { reasoning: { enabled: true, effort: thinkingLevel } };
 
 		case "deepseek":
-			// 只认 high / max 两档;官方自己也把 low / medium 折到 high。
 			return {
 				thinking: { type: "enabled" },
-				reasoning_effort: thinkingLevel === "high" ? "max" : "high",
+				reasoning_effort: DEEPSEEK_EFFORT[thinkingLevel],
 			};
 
 		case "volcengine":

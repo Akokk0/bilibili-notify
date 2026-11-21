@@ -33,6 +33,9 @@ describe("stripMarkdown:该剥的", () => {
 		expect(stripMarkdown("[点这里](https://b23.tv/abc)")).toBe("点这里 https://b23.tv/abc");
 		// 文字与地址一样时不必说两遍。
 		expect(stripMarkdown("[https://b23.tv/abc](https://b23.tv/abc)")).toBe("https://b23.tv/abc");
+		expect(stripMarkdown("[https://b23.tv/a\\_b](https://b23.tv/a\\_b)")).toBe(
+			"https://b23.tv/a_b",
+		);
 		// 尖括号自动链接。
 		expect(stripMarkdown("见 <https://b23.tv/abc>")).toBe("见 https://b23.tv/abc");
 	});
@@ -58,6 +61,11 @@ describe("stripMarkdown:该剥的", () => {
 
 	it("转义:`\\*` 是主人想要的那个星号,还它", () => {
 		expect(stripMarkdown("三乘四写作 3 \\* 4")).toBe("三乘四写作 3 * 4");
+	});
+
+	it("成对转义的强调符保留，代码内的反斜线也保留", () => {
+		expect(stripMarkdown("\\*原样\\*，\\_原样\\_，**加粗**")).toBe("*原样*，_原样_，加粗");
+		expect(stripMarkdown("代码：`\\*原样\\*`")).toBe("代码：\\*原样\\*");
 	});
 });
 

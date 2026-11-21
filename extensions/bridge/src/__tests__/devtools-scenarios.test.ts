@@ -33,7 +33,12 @@ const FAKE_BOT_ID = "fake-bot-1";
 const DEFAULT_SENDER = "800100002";
 
 /** 绑着假 bot 的那条连接 —— 入站归属与投递的路都要它。 */
-const FAKE_CONNECTION = { ...CONNECTION, settings: { link: LINK_ID, botId: FAKE_BOT_ID } };
+const FAKE_CONNECTION = {
+	...CONNECTION,
+	platform: "onebot",
+	platformSnapshot: { ...CONNECTION.platformSnapshot, label: "onebot", shortLabel: "onebot" },
+	settings: { link: LINK_ID, botId: FAKE_BOT_ID },
+};
 
 let httpServer: HttpServer;
 let port: number;

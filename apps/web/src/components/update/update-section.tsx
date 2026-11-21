@@ -237,7 +237,9 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 
 					{canApply && !restarting ? (
 						<HintNote tone="neutral">
-							{tx("panelUi.components.update.update-section.21", { policy: "restart" })}
+							{status.restart?.can === false
+								? status.restart.message
+								: tx("panelUi.components.update.update-section.21", { policy: "restart" })}
 						</HintNote>
 					) : null}
 
@@ -302,7 +304,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 								{tx("panelUi.components.update.update-section.37")}
 							</Btn>
 						) : null}
-						{canApply ? (
+						{canApply && status.restart?.can !== false ? (
 							<Btn variant="primary" size="sm" disabled={busy} onClick={() => apply.mutate()}>
 								{tx("panelUi.components.update.update-section.38")}
 							</Btn>

@@ -1,4 +1,5 @@
 /** 适配器描述与连接快照提供外观;组件库只负责画。 */
+
 import type { AdapterEntry, ConnectionView } from "@bilibili-notify/contract";
 import type { NewConnection, PlatformSnapshot } from "@bilibili-notify/internal";
 import {
@@ -12,7 +13,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo } from "react";
 import { useAdapters } from "../hooks/useAdapters";
-import { api } from "../services/api";
+import { CONNECTIONS_QUERY } from "../services/list-queries";
 import { safeImage } from "../utils/settings-image";
 
 function appearanceOf(
@@ -91,11 +92,7 @@ export function useConnectionFace(): (
 
 export function PlatformMetaRoot({ children }: { children: ReactNode }) {
 	const adapters = useAdapters();
-	const connections = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<ConnectionView[]>("/api/connections"),
-		retry: false,
-	});
+	const connections = useQuery({ ...CONNECTIONS_QUERY, retry: false });
 	const lookup = useMemo(
 		() => buildPlatformTable(adapters.data?.adapters ?? [], connections.data ?? []),
 		[adapters.data, connections.data],

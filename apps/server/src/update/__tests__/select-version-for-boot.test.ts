@@ -317,6 +317,33 @@ describe("撤回判死与自愈判死", () => {
 		);
 	});
 
+	it("预装版被撤回时从已经安装的较旧正常版本启动", () => {
+		const root = tempRoot();
+		const versionsRoot = versionsWith(root, "0.8.5", "0.8.4");
+		markVersionRevoked({ versionsRoot, version: "0.9.0" });
+		const selection = selectVersionForBoot({
+			preinstalledVersion: "0.9.0",
+			preinstalledPath: join(root, "app"),
+			versionsRoot,
+			maxBootFailures: 3,
+		});
+		expect(selection).toMatchObject({ version: "0.8.5", isPreinstalledVersion: false });
+	});
+
+	it("磁盘上没有可用替代时也不启动已撤回的预装版", () => {
+		const root = tempRoot(),
+			versionsRoot = versionsWith(root);
+		markVersionRevoked({ versionsRoot, version: "0.9.0" });
+		expect(() =>
+			selectVersionForBoot({
+				preinstalledVersion: "0.9.0",
+				preinstalledPath: join(root, "app"),
+				versionsRoot,
+				maxBootFailures: 3,
+			}),
+		).toThrow("预装版本 0.9.0 已撤回。请安装新版宿主后重新启动 BN。");
+	});
+
 	it("选版不选被撤回的版本,哪怕它最新", () => {
 		const root = tempRoot();
 		const versionsRoot = versionsWith(root, "0.8.5", "0.9.0");

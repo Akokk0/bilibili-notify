@@ -10,11 +10,11 @@ import { logUrl } from "../logs/url.js";
  *                                    (作品取最近的第 `nth` 条,直播取直播间此刻的样子),
  *                                    经出卡器的同一个入口(`ImageRenderer`)画,与真推送一个样;
  *                                    没实现就用示例。来源回了失败也用示例,回应的 `sampleReason` 带原话;
- *   作品 / 直播,没挑订阅            → 示例数据(调样式不必登录任何平台);
+ *   作品 / 直播,没挑订阅            → 指定来源的示例数据(未指定用默认示例);
  *   醒目留言 / 上舰                   → 示例消息;挑了订阅就把收的人写成那条订阅的名字,付款人 / 新会员取
  *                                    那个来源登录着的账号资料;没挑订阅时沿用顶栏当前账号,未登录就用示例。
  *
- * 路由不认识任何平台:真数据只经来源登记表问来源(4-14,ADR-0021 决策 59)。
+ * 真数据经来源登记表读取，平台示例在本路由装配(4-14,ADR-0021 决策 59)。
  *
  * not_configured path (409) — when the operator hasn't set BN_CHROME_PATH (or
  * chromePath in yaml) we don't try to launch puppeteer. The route reports the
@@ -42,6 +42,7 @@ import {
 	type PostCardView,
 	renderCardWithSkin,
 	resolveKnobAssets,
+	sampleCard,
 	shrinkImageForCssVar,
 } from "@bilibili-notify/image";
 import {
@@ -67,6 +68,7 @@ import {
 	type PreviewReport,
 	type Result,
 	type SourceAccount,
+	SourceKeySchema,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -151,6 +153,7 @@ const ContentSchema = z
 	.object({
 		// 用哪条订阅的真数据(它的来源实现了 `fetchPreview` 才有);不给就是示例。醒目留言 / 上舰取它的名字。
 		subscriptionId: z.string().min(1).optional(),
+		sourceKey: SourceKeySchema.optional(),
 		// 作品卡取最近的第几条(1 = 最新那条);只对作品卡、且挑了订阅时有用。
 		nth: z.number().int().positive().optional(),
 		// sc / guard: text override (sc body / guard new captain uname).
@@ -296,13 +299,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	}
 
 	/** 与顶栏共用账号顺序;挑了订阅时只认该来源,不借其他来源的账号。 */
-	function previewAccountOf(sub: Subscription | undefined): SourceAccount | undefined {
+	function previewAccountOf(sourceKey: string | undefined): SourceAccount | undefined {
 		const accounts = accountViews(
 			opts.deps.runtime.sourceRegistry.list(),
 			opts.deps.store.getGlobals().accounts?.order,
 		);
-		const current = sub
-			? accounts.find((account) => account.sourceKey === subscriptionIdentityOf(sub).sourceKey)
+		const current = sourceKey
+			? accounts.find((account) => account.sourceKey === sourceKey)
 			: accounts[0];
 		return current && isLoggedIn(current.state) ? current.account : undefined;
 	}
@@ -612,12 +615,16 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const skinId = previewSkinId(requested.cardSkin);
 		const skin: CardSkinChoice = { cardSkin: skinId, cardSkinKnobs: requested.cardSkinKnobs };
 		const sub = previewSubscriptionOf(content);
+		const sourceKey = sub ? subscriptionIdentityOf(sub).sourceKey : content?.sourceKey;
+		const descriptor = sourceKey
+			? opts.deps.runtime.sourceRegistry.get(sourceKey)?.descriptor
+			: undefined;
 
 		if (kind === "superchat") {
 			const renderer = await getImageRenderer();
 			if (!renderer) throw new Error(t("cards.renderer.notReady"));
 			// 付款人 = 挑中那条订阅的来源登录着的账号(「我在别人直播间发条 SC 会长啥样」);收的人 = 那条订阅。
-			const payer = previewAccountOf(sub);
+			const payer = previewAccountOf(sourceKey);
 			const receiver = previewCreatorOf(sub);
 			const buffer = await renderer.generateSuperchatCard(
 				{
@@ -646,7 +653,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const renderer = await getImageRenderer();
 			if (!renderer) throw new Error(t("cards.renderer.notReady"));
 			// 新会员 = 挑中那条订阅的来源登录着的账号;显式 text 覆写仍优先。收的人 = 那条订阅。
-			const member = previewAccountOf(sub);
+			const member = previewAccountOf(sourceKey);
 			const uname = content?.text?.trim() || member?.name || t("cards.sample.memberName");
 			const receiver = previewCreatorOf(sub);
 			// 请求里的 `program` + `tierKey` 是（体系 id, 档 key),服务端按这一对找档(没带 tierKey = 那个体系最低一档);
@@ -750,14 +757,24 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 取「第一张盘上存在的图」,跳过悬空引用。卡片背景图不在这条路上了 —— 它归皮肤的
 		// `image` 旋钮,由下面的 `resolveKnobAssets` 解析。
 		const dataRoot = opts.deps.runtime.dataRoot;
-		// 直播封面与自带字体互不依赖(各自独立的资产解析),并发发起省一次串行 I/O。
-		const coverDataUrl =
+		// 内置来源先于拓展登记，与面板来源列表的默认项一致。
+		const defaultSourceKey = opts.deps.runtime.sourceRegistry.listRunViews()[0]?.sourceKey;
+		const account = previewAccountOf(sourceKey ?? defaultSourceKey);
+		const [coverDataUrl, avatarUrl] = await Promise.all([
 			kind === "live"
-				? await firstExistingCardBg(dataRoot, style.liveCoverImageIds).then((id) =>
+				? firstExistingCardBg(dataRoot, style.liveCoverImageIds).then((id) =>
 						readCardBgDataUrl(dataRoot, id),
 					)
-				: "";
-		const spec = buildPreviewSpec(kind, coverDataUrl);
+				: undefined,
+			account?.avatar && imageRefDataUrl(opts.deps.runtime.imageStore)(account.avatar),
+		]);
+		const spec = await buildPreviewSpec(kind, {
+			coverDataUrl,
+			sourceKey: sourceKey === defaultSourceKey ? undefined : sourceKey,
+			sourceLabel: descriptor?.label,
+			accountName: account?.name,
+			avatarUrl,
+		});
 		// 皮肤那条路与推送出图**同一个函数**(`renderCardWithSkin`)—— 各拼一份的话必然出现
 		// 「预览是这套皮肤、推出去是另一副样子」,而两边都说不出哪儿错了。
 		const manifest = await previewManifest(skinId);
@@ -983,19 +1000,59 @@ type PreviewSpec =
 	| { kind: "live"; props: LiveCardView; title: string }
 	| { kind: "post"; props: PostCardView; title: string };
 
-function buildPreviewSpec(
+async function buildPreviewSpec(
 	kind: "live" | "post",
-	/** 已解析的直播封面 data URL(mock SSR 路径不经 generate*,需在此注入;仅 live 卡消费)。 */
-	coverDataUrl?: string,
-): PreviewSpec {
+	{
+		coverDataUrl,
+		sourceKey,
+		sourceLabel,
+		accountName,
+		avatarUrl,
+	}: {
+		coverDataUrl?: string;
+		sourceKey?: string;
+		sourceLabel?: string;
+		accountName?: string;
+		avatarUrl?: string;
+	},
+): Promise<PreviewSpec> {
+	const sampleName = sourceLabel
+		? t("cards.sample.sourceCreator", { source: sourceLabel })
+		: t("cards.sample.creatorName");
+	const creator = {
+		creatorName: accountName || sampleName,
+		...(avatarUrl && { creatorAvatarUrl: avatarUrl }),
+	};
 	if (kind === "live") {
 		return {
 			kind: "live",
-			props: buildLivePreviewProps(coverDataUrl),
+			props: { ...buildLivePreviewProps(coverDataUrl), ...creator },
 			title: t("cards.sample.titleLive"),
 		};
 	}
-	return { kind: "post", props: buildDynamicPreviewProps(), title: t("cards.sample.titlePost") };
+	if (sourceKey) {
+		const { props } = await sampleCard("post", "pics");
+		const { node } = props;
+		return {
+			kind,
+			props: {
+				node: {
+					...node,
+					...creator,
+					creatorIsPremium: false,
+					stats:
+						node.stats && sourceKey === "douyin" ? { ...node.stats, saves: "201" } : node.stats,
+				},
+			},
+			title: t("cards.sample.titlePost"),
+		};
+	}
+	const props = buildDynamicPreviewProps();
+	return {
+		kind,
+		props: { node: { ...props.node, ...creator } },
+		title: t("cards.sample.titlePost"),
+	};
 }
 
 const SVG_COVER =

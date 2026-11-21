@@ -2,8 +2,7 @@
  * AI 密钥与核心设置文件(`config/settings/core.json`)之间的唯一通道。
  *
  * 「按实例分桶」之后密钥不再是一把,而是**每个实例桶两把** —— 主模型的
- * `apiKey` 与看图副模型的 `vision.apiKey`(副模型常在另一家,DeepSeek 没有视觉
- * 模型,跨厂商是常态)。
+ * `apiKey` 与看图副模型的 `vision.apiKey`。两者可以使用不同的服务商。
  *
  * 三个函数配成一套:
  *
@@ -20,6 +19,9 @@
  */
 
 import type { GlobalSettings } from "@bilibili-notify/internal";
+import type { ConfigSecrets } from "./secret-store.js";
+
+type SpeechSecrets = Pick<ConfigSecrets, "speechApiKey" | "deepseekSpeechApiKey">;
 
 /** 视觉副模型那把 key 在袋子里的后缀。 */
 const VISION_SUFFIX = ":vision";
@@ -91,6 +93,7 @@ export function stripAiSecrets(g: GlobalSettings): GlobalSettings {
 		g,
 		() => "",
 		() => "",
+		{},
 	);
 }
 
@@ -100,11 +103,16 @@ export function stripAiSecrets(g: GlobalSettings): GlobalSettings {
  * 袋里有而 `providers` 里没有的键**一律忽略**:主人删掉一家、袋里却还留着它的
  * key 时会走到这儿,凭空造出桶来会让设置页左栏多一块本该没有的。
  */
-export function applyAiSecrets(g: GlobalSettings, bag: Record<string, string>): GlobalSettings {
+export function applyAiSecrets(
+	g: GlobalSettings,
+	bag: Record<string, string>,
+	speechSecrets: SpeechSecrets = {},
+): GlobalSettings {
 	return mapAiSecrets(
 		g,
 		(id, vision) => bag[aiSecretKey(id, vision)] ?? "",
 		(backend) => bag[searchSecretKey(backend)] ?? "",
+		speechSecrets,
 	);
 }
 
@@ -116,6 +124,7 @@ function mapAiSecrets(
 	g: GlobalSettings,
 	next: (profileId: string, vision: boolean) => string,
 	nextSearch: (backend: string) => string,
+	speechSecrets: SpeechSecrets,
 ): GlobalSettings {
 	// 生产里的调用方只有配置仓(store.ts):`applyAiSecrets` 在 `hydrateSecrets` 里、`stripAiSecrets` 在落盘前,
 	// 递进来的都是读盘 / 内存里已过 schema 的 globals。备份恢复(assemble.ts 的 openFullBackup)并不经过这里,
@@ -131,6 +140,17 @@ function mapAiSecrets(
 		...g,
 		ai: {
 			...ai,
+			...(ai.speech
+				? {
+						speech: {
+							...ai.speech,
+							apiKey: speechSecrets.speechApiKey ?? "",
+							...(ai.speech.deepseekApiKey !== undefined
+								? { deepseekApiKey: speechSecrets.deepseekSpeechApiKey ?? "" }
+								: {}),
+						},
+					}
+				: {}),
 			...(providers
 				? {
 						providers: Object.fromEntries(

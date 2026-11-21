@@ -3,31 +3,33 @@ name: bilibili-notify — update payload
 # 应用内更新的发版侧:打一个自包含载荷 zip、签一份清单,挂到 v<VERSION> release,
 # 再把清单覆盖到滚动的 `update-channel` release 上当作渠道入口。
 #
-# 与 Docker / Desktop 两条路**互不阻塞**(同 build-release.md 里那条约定):三者由
-# 同一个 v* tag 触发,各跑各的。桌面构建挂了不该连带用户升不了级 —— 所以 v<VERSION>
-# release 这里**自己建**(与 desktop-release 共用同一个幂等脚本,谁先到谁建),不等
-# 别人。以前这里干等 desktop 建 release,桌面矩阵一慢或一挂,载荷和渠道清单就一起
-# 发不出去,而 Docker / Desktop 都绿着,没人会发现。
+# 共用门禁通过后各产物并行。本作业与 desktop-release 共用幂等脚本，
+# 谁先构建完谁建 v<VERSION> release。
 #
 # 需要的 repo secret:
-#   BN_UPDATE_SIGNING_KEY  Ed25519 私钥(PKCS#8 PEM,或它的 base64)。**没配就跳过签名**
+#   BN_RELEASE_SIGNING_KEY  Ed25519 私钥(PKCS#8 PEM,或它的 base64)。**没配就跳过签名**
 #                          并打一条 warning —— 与其让每次发版都红着,不如把这件事
 #                          显式地摆在 run summary 上。生成方法见 docs/agents/self-update.md。
 #   RELEASE_PAT            创建 / 更新 release 用
 
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+  workflow_call:
     inputs:
       dry_run:
-        description: "Build + sign only, skip uploading to the release"
         type: boolean
-        default: true
+        required: true
       version:
-        description: "App version for dry-run builds, e.g. 0.9.0"
         type: string
+    secrets:
+      AFDIAN_USER_ID:
+        required: false
+      AFDIAN_TOKEN:
+        required: false
+      RELEASE_PAT:
+        required: false
+      BN_UPDATE_SIGNING_KEY:
+        required: false
+      LEGACY_SIGNER_CONFIGURED:
         required: true
 
 # 串行化:两次 push 同时跑会让 update-channel 上的清单和 release 资产失同步。
@@ -42,20 +44,15 @@ permissions:
   contents: read
 
 env:
-  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+  DRY_RUN: ${{ inputs.dry_run }}
 
 jobs:
-  # 门禁定义在 gate.yml(唯一一份,四条路径共用)。它先绿,才谈得上把一个载荷
-  # 签名发出去 —— 签名只保证「这是我们发的」,不保证「这是好的」。
-  gate:
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
-    uses: ./.github/workflows/gate.yml
-
   publish:
     name: Build + sign update payload
-    needs: [gate]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.dry_run)
 
     steps:
       - name: Checkout
@@ -63,6 +60,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Check legacy signer retirement
+        env:
+          LEGACY_SIGNER_CONFIGURED: ${{ secrets.LEGACY_SIGNER_CONFIGURED }}
+        run: bash .github/scripts/shared/assert-update-signing-cutover.sh
 
       - name: Assert app tag format
         if: startsWith(github.ref, 'refs/tags/v')
@@ -81,12 +83,11 @@ jobs:
       - name: Install deps
         run: vp install
 
-      # dry-run 没有 tag,版本从 dispatch 输入来(同 desktop-release);tag 触发时输入为空,
-      # 脚本改读 GITHUB_REF_NAME。以前这里没传,dry-run 在这一步就红 —— 第一次跑 dry-run 才发现。
+      # 预检使用调用者传入的版本，正式发行由脚本读取 tag。
       - name: Read app version
         id: ver
         env:
-          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+          VERSION: ${{ inputs.version }}
         run: bash .github/scripts/shared/read-app-version.sh
 
       # 通知卡上念的那句概述,从 apps/CHANGELOG.md 该版本段的第一段抽(规矩见
@@ -136,6 +137,10 @@ jobs:
           NOTES: ${{ steps.notes.outputs.value }}
         run: bash .github/scripts/update-payload/sign-payload-manifest.sh
 
+      - name: Verify release signature
+        if: steps.sign.outputs.signed == 'true'
+        run: node scripts/verify-release-signature.mjs dist/manifest.sig.json
+
       - name: Validate release token
         if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
         env:
@@ -154,14 +159,27 @@ jobs:
 
       # 载荷先于渠道清单上传(下面两步):清单一旦发布就有客户端来拉,它指的包必须已经在。
       - name: Upload payload + manifest to the version release
+        id: published
         if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           VERSION: ${{ steps.ver.outputs.value }}
-        run: |
-          set -euo pipefail
-          gh release upload "v${VERSION}" \
-            "${{ steps.payload.outputs.path }}" dist/manifest.sig.json --clobber
+          PAYLOAD: ${{ steps.payload.outputs.path }}
+          MANIFEST: dist/manifest.sig.json
+        run: bash .github/scripts/update-payload/publish-version-payload.sh
+
+      # Re-sign the archived bytes for the rolling channel. A recall may have been
+      # issued after the version was archived but before its channel upload succeeded.
+      - name: Sign channel manifest
+        if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'
+        env:
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          VERSION: ${{ steps.ver.outputs.value }}
+          REPO: ${{ github.repository }}
+          SHA256: ${{ steps.published.outputs.sha256 }}
+          SIZE: ${{ steps.published.outputs.size }}
+          NOTES: ${{ steps.notes.outputs.value }}
+        run: bash .github/scripts/update-payload/sign-payload-manifest.sh
 
       # 正式版同时刷 stable 与 alpha —— 预发布渠道的用户也该拿到更新的正式版,
       # 否则他们会被卡在某个旧 alpha 上再也升不动。预发布只刷 alpha。

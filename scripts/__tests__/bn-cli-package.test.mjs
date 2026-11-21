@@ -73,6 +73,55 @@ describe("BN启动器的实际npm包", () => {
 		if (root) await rm(root, { recursive: true, force: true });
 	}, 60_000);
 
+	it("已有启动配置时终端地址跟随实际监听端口", async () => {
+		const fixture = await candidate("configured-port", "web", {
+			"boot.mjs": `import {readFileSync} from "node:fs";
+import {createServer} from "node:http";
+const { server: { host, port } } = JSON.parse(readFileSync(process.env.BN_CONFIG, "utf8"));
+const server = createServer((req, res) => res.end("ok"));
+export const booted = new Promise(resolve => server.listen(port, host, () => {
+ const address = server.address();
+ resolve({ address: { host: address.address, port: address.port } });
+}));
+process.once("SIGINT", () => server.close());`,
+		});
+		const portServer = createServer();
+		await new Promise((resolve) => portServer.listen(0, "127.0.0.1", resolve));
+		const port = portServer.address().port;
+		await new Promise((resolve) => portServer.close(resolve));
+		await mkdir(fixture.dataDir);
+		await writeFile(
+			join(fixture.dataDir, "bn.config.yaml"),
+			JSON.stringify({ server: { host: "127.0.0.1", port } }),
+		);
+		const running = await launch(fixture);
+		try {
+			await expect
+				.poll(running.output, { timeout: 3000 })
+				.toContain(`BN web: http://127.0.0.1:${port}`);
+			expect(await (await fetch(`http://127.0.0.1:${port}`)).text()).toBe("ok");
+		} finally {
+			await running.stop();
+		}
+	});
+
+	it("应用内更新后面板随选中的新版载荷切换", async () => {
+		const fixture = await candidate("updated-panel", "web", {
+			"boot.mjs": "await import('./updated/index.mjs');",
+			"updated/index.mjs": `import {createServer} from 'node:http';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+const page = process.env.BN_WEB_DIST ? join(process.env.BN_WEB_DIST, 'index.html') : new URL('./web-dist/index.html', import.meta.url);
+const server = createServer((req,res) => res.end(JSON.stringify({ panel: readFileSync(page,'utf8') })));
+server.listen(Number(process.env.BN_PORT),'127.0.0.1');
+process.once('SIGINT', () => server.close());`,
+			"updated/web-dist/index.html": "updated panel",
+		});
+		const running = await launch(fixture);
+		expect(await running.health()).toEqual({ panel: "updated panel" });
+		await running.stop();
+	});
+
 	it("npx能定位作用域包的bn命令，并说明web和dev两条入口", async () => {
 		const manifest = JSON.parse(
 			await readFile(join(host, "node_modules", PACKAGE, "package.json"), "utf8"),

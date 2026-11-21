@@ -252,11 +252,11 @@ async function request<T>(
  * Multipart upload(背景图等)。不设 content-type —— 让浏览器自动带上 multipart
  * boundary;其余(desktop token / 凭据 / 错误处理)与 `request` 一致。
  */
-async function upload<T>(path: string, form: FormData): Promise<T> {
+async function upload<T>(path: string, form: FormData, signal?: AbortSignal): Promise<T> {
 	const what = `POST ${path}`;
 	const headers = withDesktopTokenHeader();
 	const res = await withOffline(what, () =>
-		fetch(path, { method: "POST", headers, body: form, credentials: "include" }),
+		fetch(path, { method: "POST", headers, body: form, credentials: "include", signal }),
 	);
 	const { payload, failed } = await readJsonPayload(res);
 	if (!res.ok) {
@@ -272,9 +272,10 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
  * 带自定义 header,桌面壳 token-header 鉴权下直接 401;故由此 fetch 拿 Blob,调用方再
  * `URL.createObjectURL` 喂给 `<img>`。token 留在 header、不进 URL。
  */
-async function requestBlob(path: string): Promise<Blob> {
-	const res = await withOffline(`GET ${path}`, () =>
+async function requestBlob(path: string, method: "GET" | "POST" = "GET"): Promise<Blob> {
+	const res = await withOffline(`${method} ${path}`, () =>
 		fetch(path, {
+			method,
 			headers: withDesktopTokenHeader(),
 			credentials: "include",
 		}),
@@ -282,7 +283,7 @@ async function requestBlob(path: string): Promise<Blob> {
 	if (!res.ok) {
 		if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized?.();
 		const { payload } = await readJsonPayload(res);
-		throw apiErrorOf(res.status, payload, `GET ${path} → ${res.status}`);
+		throw apiErrorOf(res.status, payload, `${method} ${path} → ${res.status}`);
 	}
 	return res.blob();
 }
@@ -325,6 +326,6 @@ export const api = {
 	patch: <T>(path: string, body?: unknown) =>
 		request<T>("PATCH", path, body === undefined ? undefined : nullifyUndefined(body)),
 	delete: <T>(path: string) => request<T>("DELETE", path),
-	upload: <T>(path: string, form: FormData) => upload<T>(path, form),
-	blob: (path: string) => requestBlob(path),
+	upload,
+	blob: requestBlob,
 };

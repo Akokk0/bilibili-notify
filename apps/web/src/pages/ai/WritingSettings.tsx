@@ -13,8 +13,7 @@ import { useState } from "react";
 import { TargetExceptions } from "../../components/target-exceptions";
 import { AI_PURPLE } from "../../config/colors";
 import { useT } from "../../i18n";
-import { api } from "../../services/api";
-import type { Connection, PushTarget } from "../../types/domain";
+import { CONNECTIONS_QUERY, TARGETS_QUERY } from "../../services/list-queries";
 import type { AiSettingsDraft } from "../../types/globals";
 
 type Writing = AiSettingsDraft["writing"];
@@ -30,14 +29,8 @@ export function WritingSettings({
 }) {
 	const tx = useT();
 	const [scene, setScene] = useState<Scene>("post");
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
-	const connectionsQuery = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-	});
+	const targetsQuery = useQuery(TARGETS_QUERY);
+	const connectionsQuery = useQuery(CONNECTIONS_QUERY);
 	const entry = ai.writing[scene];
 	const targets = targetsQuery.data ?? [];
 	const connections = connectionsQuery.data ?? [];

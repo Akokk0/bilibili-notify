@@ -231,6 +231,7 @@ export class DynamicPoller {
 	 * 问状态的场合。
 	 */
 	private lastSuccessfulFetchAt?: number;
+	private feedThrough?: { time: number; ids: Set<string> };
 	private authWatch?: Disposable;
 
 	constructor(opts: DynamicPollerOptions) {
@@ -248,6 +249,7 @@ export class DynamicPoller {
 	/** 启动钩子。由来源的 `start` 调;名单现读,启动时就能开跑。 */
 	start(): void {
 		this.postAnchors = new Map();
+		this.feedThrough = undefined;
 		this.running = true;
 
 		this.logger.info(logText("log.bilibili.poller.started"));
@@ -279,6 +281,7 @@ export class DynamicPoller {
 		// 在途那一轮就此作废:它的错误与作品都不再算数(见 detectorGeneration)。
 		this.running = false;
 		this.detectorGeneration++;
+		this.feedThrough = undefined;
 		// 全停 = lifecycle 结束;下次 start 是全新 episode,风控边沿复位重新武装。
 		// (不在 restartDetector 复位 —— -352 自身退避重启也走那里,复位会
 		// 破坏边沿、每退避周期重刷 error,正是 Q7 要消除的。)
@@ -349,6 +352,7 @@ export class DynamicPoller {
 	private restartDetector(): void {
 		// 旧检测器在途的那一轮就此作废:新检测器会重新拉一遍,旧结果再交就算重复。
 		this.detectorGeneration++;
+		// 同一登录会话的退避重试仍从上次成功读取的位置继续。
 		// 一次显式启动取代任何待执行的退避重启,避免双重启动。
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
@@ -466,6 +470,7 @@ export class DynamicPoller {
 	private suspendDetector(): void {
 		// 挂着的退避重启与在途那一轮一起作废:它们到点 / 落定时都不许再把 cron 拉起来。
 		this.detectorGeneration++;
+		this.feedThrough = undefined;
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
 		if (this.dynamicJob) {
@@ -545,13 +550,60 @@ export class DynamicPoller {
 		return current ? current.then(() => this.runDetectLocked()) : this.runDetectLocked();
 	}
 
+	/** Read through the last successful feed boundary before advancing any creator. */
+	private async fetchFeed(generation: number) {
+		const first = await this.api.fetchAllDynamic();
+		if (!first.ok || generation !== this.detectorGeneration) return first;
+		const previous = this.feedThrough;
+		const since = Math.max(previous?.time ?? 0, Math.min(...this.postAnchors.values()));
+		const postTime = (item: Dynamic) => {
+			const author = item?.modules?.module_author;
+			return author && getDynamicPostTime(author);
+		};
+		const unread = (item: Dynamic) => {
+			const time = postTime(item);
+			if (time === since && previous?.time === since) return !previous.ids.has(item.id_str);
+			return (time ?? Infinity) > since;
+		};
+		let page = first.data;
+		const items = [...page.items];
+		const ids = new Set(items.map((item) => item?.id_str));
+		const offsets = new Set<string>();
+		while (page.has_more && page.items.every(unread)) {
+			if (!page.offset || offsets.has(page.offset))
+				throw new Error("Dynamic feed cursor did not advance");
+			offsets.add(page.offset);
+			const next = await this.api.fetchAllDynamic(page.offset);
+			if (!next.ok || generation !== this.detectorGeneration) return next;
+			page = next.data;
+			for (const item of page.items) {
+				if (!item || ids.has(item.id_str)) continue;
+				ids.add(item.id_str);
+				items.push(item);
+			}
+		}
+		// B 站时间戳只精确到秒。同一秒的新作品仍可能在下一页，只有已读 ID 才能截断。
+		const head = first.data.items.reduce(
+			(latest, item) => Math.max(latest, postTime(item) ?? 0),
+			previous?.time ?? 0,
+		);
+		if (head > 0) {
+			const boundary = previous?.time === head ? previous : { time: head, ids: new Set<string>() };
+			for (const item of items) {
+				if (postTime(item) === head) boundary.ids.add(item.id_str);
+			}
+			this.feedThrough = boundary;
+		}
+		return { ...first, data: { ...first.data, items } };
+	}
+
 	private async detectDynamics(): Promise<void> {
 		const generation = this.detectorGeneration;
 		this.logger.debug(logText("log.bilibili.poller.fetching"));
 
 		let content: Result<{ data: AllDynamicResponse["data"] }>;
 		try {
-			content = await this.api.fetchAllDynamic();
+			content = await this.fetchFeed(generation);
 		} catch (e) {
 			if (this.detectorGeneration !== generation) {
 				this.discardStaleRound();

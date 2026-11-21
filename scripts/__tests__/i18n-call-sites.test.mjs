@@ -1267,7 +1267,7 @@ describe("统计例外的真实取字读者", () => {
 					csv,
 					parseSource(
 						"apps/web/src/pages/Rules.tsx",
-						WEB_IMPORT + `export function Rules() { const tx = useT(); return tx("${key}"); }`,
+						`${WEB_IMPORT}export function Rules() { const tx = useT(); return tx("${key}"); }`,
 					),
 				],
 				words,
@@ -1287,14 +1287,14 @@ describe("统计例外的真实取字读者", () => {
 			analyzeFile(parseSource(file, WEB_IMPORT + body), ENDS.web, sentences).literalCalls,
 		).toEqual([key]);
 		expect(
-			analyzeFile(parseSource(file, 'import { useT } from "./fake";\n' + body), ENDS.web, sentences)
+			analyzeFile(parseSource(file, `import { useT } from "./fake";\n${body}`), ENDS.web, sentences)
 				.literalCalls,
 		).toEqual([]);
 		expect(
 			analyzeFile(
 				parseSource(
 					file,
-					WEB_IMPORT + body.replace(`return tx`, `function inner(tx) { return tx`) + "}",
+					`${WEB_IMPORT}export function View() { const tx = useT(); function inner(tx) { return tx("${key}"); } }`,
 				),
 				ENDS.web,
 				sentences,

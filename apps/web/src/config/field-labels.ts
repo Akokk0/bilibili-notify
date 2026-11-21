@@ -387,6 +387,62 @@ export const FIELD_LABELS = {
 	// 在聊天侧栏的「设置」弹层,点档位直接 PATCH,不经过灵动岛的 diff,也没有
 	// `Field code` —— 表里挂一条永远显示不出来的死条目只会误导。
 	// 联网搜索(ai.search)—— web_search 工具的执行后端,与选哪家 AI 服务商正交。
+	"ai.speech.provider": {
+		get label() {
+			return i18n.t("speech.provider");
+		},
+		section: "ai",
+	},
+	"ai.speech.deepseekApiKey": {
+		get label() {
+			return i18n.t("speech.key");
+		},
+		section: "ai",
+		secret: true,
+	},
+	"ai.speech.deepseekVoice": {
+		get label() {
+			return i18n.t("speech.defaultVoice");
+		},
+		section: "ai",
+	},
+	"ai.speech.baseUrl": {
+		get label() {
+			return i18n.t("speech.baseUrl");
+		},
+		section: "ai",
+	},
+	"ai.speech.apiKey": {
+		get label() {
+			return i18n.t("speech.key");
+		},
+		section: "ai",
+		secret: true,
+	},
+	"ai.speech.model": {
+		get label() {
+			return i18n.t("speech.model");
+		},
+		section: "ai",
+	},
+	"ai.speech.voice": {
+		get label() {
+			return i18n.t("speech.voiceName");
+		},
+		section: "ai",
+	},
+	"ai.speech.mode": {
+		get label() {
+			return i18n.t("speech.default");
+		},
+		section: "ai",
+	},
+	"ai.speech.byTarget": {
+		get label() {
+			return i18n.t("speech.delivery");
+		},
+		section: "ai",
+	},
 	"ai.search.backend": {
 		get label() {
 			return i18n.t("sourceUi.config.field.labels.label.42");
@@ -406,6 +462,7 @@ export const FIELD_LABELS = {
 		section: "ai",
 		secret: true,
 	},
+	"ai.search.keys.deepseek": { label: "DeepSeek API Key", section: "ai", secret: true },
 	"ai.search.keys.tavily": {
 		label: "Tavily API Key",
 		get hint() {
@@ -471,6 +528,24 @@ export const FIELD_LABELS = {
 		},
 		get hint() {
 			return i18n.t("sourceUi.config.field.labels.hint.53");
+		},
+		section: "ai",
+	},
+	"ai.nativeWeb": {
+		get label() {
+			return i18n.t("deepseek.nativeWeb");
+		},
+		get hint() {
+			return i18n.t("deepseek.nativeWebHint");
+		},
+		section: "ai",
+	},
+	"ai.safetyCheck": {
+		get label() {
+			return i18n.t("deepseek.safetyCheck");
+		},
+		get hint() {
+			return i18n.t("deepseek.safetyCheckHint");
 		},
 		section: "ai",
 	},

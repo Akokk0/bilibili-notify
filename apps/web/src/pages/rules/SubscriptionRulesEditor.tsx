@@ -34,7 +34,7 @@ import {
 import { InheritNote } from "../../components/inherit-note";
 import { OverrideBox } from "../../components/override-box";
 import { AI_PURPLE } from "../../config/colors";
-import { type MembershipProgram, membershipTiersOf } from "../../config/membership-programs";
+import { type MembershipProgram, rankedMembershipPrograms } from "../../config/membership-programs";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
@@ -568,10 +568,7 @@ function LiveOverrideBox({
 		programs,
 	);
 	/** 这个订阅生效的上舰门槛(rank):覆盖有就用覆盖,否则全局,都没配 = 全推 = 最低一档。 */
-	const ranked = programs.flatMap((program) => {
-		const tiers = membershipTiersOf(programs, program.id);
-		return tiers.length ? [{ program, tiers }] : [];
-	});
+	const ranked = rankedMembershipPrograms(programs);
 	const baselineRank = (id: string, lowest: number) => baselineMembership.minRank?.[id] ?? lowest;
 	function toggle(on: boolean): void {
 		if (on) {
@@ -583,9 +580,9 @@ function LiveOverrideBox({
 					minRank: {
 						...membership?.minRank,
 						...Object.fromEntries(
-							ranked.map(({ program, tiers }) => [
+							ranked.map(({ program, lowestRank }) => [
 								program.id,
-								baselineRank(program.id, tiers[0]!.rank),
+								baselineRank(program.id, lowestRank),
 							]),
 						),
 					},
@@ -622,11 +619,11 @@ function LiveOverrideBox({
 						suffix={tx("sourceUi.pages.rules.PerUpEditor.suffix.13")}
 					/>
 				</Field>
-				{ranked.map(({ program, tiers }) => (
+				{ranked.map(({ program, tiers, lowestRank }) => (
 					<Field key={program.id} code={`membership.minRank.${program.id}`} label={program.name}>
 						<TSelect
 							value={String(
-								membership?.minRank?.[program.id] ?? baselineRank(program.id, tiers[0]!.rank),
+								membership?.minRank?.[program.id] ?? baselineRank(program.id, lowestRank),
 							)}
 							onChange={(rank) =>
 								onMembership({

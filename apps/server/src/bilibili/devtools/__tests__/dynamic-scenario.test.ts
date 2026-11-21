@@ -18,19 +18,19 @@ const ROSTER = [rosterEntry("300", ["liveStart"]), rosterEntry("100"), rosterEnt
 
 class FakeApi {
 	real = vi.fn(
-		async (): ReturnType<Api["fetchAllDynamic"]> =>
+		async (offset?: string): ReturnType<Api["fetchAllDynamic"]> =>
 			ok({
 				data: {
-					has_more: false,
-					items: [{ id_str: "real-1" }] as never,
-					offset: "",
+					has_more: !offset,
+					items: [{ id_str: offset ? "real-2" : "real-1" }] as never,
+					offset: offset ? "" : "next-page",
 					update_baseline: "",
 					update_num: 0,
 				},
 			}),
 	);
-	fetchAllDynamic() {
-		return this.real();
+	fetchAllDynamic(offset?: string) {
+		return this.real(offset);
 	}
 	cards = vi.fn(
 		async (uid: string): ReturnType<Api["fetchUserCard"]> =>
@@ -135,6 +135,25 @@ describe("bilibili.dynamic.post", () => {
 				module_dynamic: { desc: { text: "今天也要元气满满" } },
 			},
 		});
+	});
+
+	it("翻页时透传上一页的游标，模拟动态只插入首页", async () => {
+		const { reg, api, raw, detectNow } = setup();
+		const pages: string[][] = [];
+		detectNow.mockImplementationOnce(async () => {
+			const first = await api.fetchAllDynamic();
+			if (!first.ok) throw new Error(first.message);
+			const next = await api.fetchAllDynamic(first.data.offset);
+			pages.push(
+				first.data.items.map((item) => item.id_str),
+				itemsOf(next).map((item) => item.id_str),
+			);
+		});
+		expect((await reg.run("bilibili.dynamic.post", { creator: "100", type: "word" })).ok).toBe(
+			true,
+		);
+		expect(raw.real).toHaveBeenNthCalledWith(2, "next-page");
+		expect(pages).toEqual([[expect.stringMatching(/^dev-/), "real-1"], ["real-2"]]);
 	});
 
 	it("假动态作者头像取自 B 站状态里记的网址;没有就退默认头像", async () => {

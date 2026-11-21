@@ -1,5 +1,5 @@
 {
-	"marketplace.notes": "Shows bot capabilities and adds delivery tests, with explicit limits for voice and Markdown.",
+	"marketplace.notes": "Merged-forward tests use public images that messaging platforms can fetch more than once.",
 	"view.connected": "Connected",
 	"view.mismatched": "Connected, but bridge type differs",
 	"view.configuredKind": "Configured: {kind}",
@@ -38,6 +38,7 @@
 	"error.linkDisabled": "Link “{name}” is disabled",
 	"error.linkDisconnected": "Link “{name}” is disconnected",
 	"error.botMissing": "The bridge does not currently have bot {botId}",
+	"error.botPlatformChanged": "This bot changed platforms. Bind it to a new connection.",
 	"error.sessionOnly": "The bridge only sends to session targets",
 	"error.disconnected": "The bridge is disconnected",
 	"error.connectionLost": "The bridge disconnected",
@@ -97,6 +98,10 @@
 						"name": {
 							"label": "Name",
 							"placeholder": "For example: Home koishi"
+						},
+						"publicOrigin": {
+							"label": "Image download address",
+							"description": "If the reverse proxy rewrites Host, enter the BN address the bridge plugin can reach. Leave blank to use the address from the handshake."
 						},
 						"enabled": {
 							"label": "Enabled"

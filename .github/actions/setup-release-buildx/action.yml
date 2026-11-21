@@ -1,0 +1,13 @@
+name: Set up release Buildx
+description: Retry builder setup once before running any image build or publish step.
+runs:
+  using: composite
+  steps:
+    - name: Set up Docker Buildx
+      id: setup
+      uses: docker/setup-buildx-action@v4
+      continue-on-error: true
+
+    - name: Retry Docker Buildx setup
+      if: steps.setup.outcome == 'failure'
+      uses: docker/setup-buildx-action@v4

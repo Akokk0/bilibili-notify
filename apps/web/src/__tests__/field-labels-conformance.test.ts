@@ -190,6 +190,13 @@ it("AI field descriptions localize while provider credentials stay secret and pr
 			expect(getFieldLabel("ai.search.keys.bocha")?.hint).toContain("open.bochaai.com");
 			expect(getFieldLabel("ai.vision.apiKey")?.secret).toBe(true);
 			expect(getFieldLabel("ai.search.keys.bocha")?.secret).toBe(true);
+			expect(getFieldLabel("ai.search.keys.deepseek")?.secret).toBe(true);
+			expect(getFieldLabel("ai.providers.deepseek.nativeWeb")?.label).toContain(
+				i18n.t("deepseek.nativeWeb"),
+			);
+			expect(getFieldLabel("ai.providers.deepseek.safetyCheck")?.label).toContain(
+				i18n.t("deepseek.safetyCheck"),
+			);
 			expect(getFieldLabel("ai.apiKey")?.secret).toBe(true);
 		}
 	} finally {

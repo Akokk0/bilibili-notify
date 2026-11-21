@@ -15,17 +15,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { buildResponsesReasoning, toResponsesInput, toResponsesTools } from "../responses-api";
 
 describe("buildResponsesReasoning", () => {
-	it("开思考 → 标准 reasoning.effort,三档原样透传(DeepSeek)", () => {
+	it.each([
+		["low", "low"],
+		["medium", "high"],
+		["high", "max"],
+	] as const)("DeepSeek 的 %s 档映射到原生 %s", (thinkingLevel, effort) => {
 		expect(
-			buildResponsesReasoning({ provider: "deepseek", enableThinking: true, thinkingLevel: "low" }),
-		).toEqual({ reasoning: { effort: "low" } });
-		expect(
-			buildResponsesReasoning({
-				provider: "deepseek",
-				enableThinking: true,
-				thinkingLevel: "high",
-			}),
-		).toEqual({ reasoning: { effort: "high" } });
+			buildResponsesReasoning({ provider: "deepseek", enableThinking: true, thinkingLevel }),
+		).toEqual({ reasoning: { effort } });
 	});
 
 	it("custom 也吃标准字段 —— responses 风味下思考不再是方言,custom 解禁", () => {

@@ -23,9 +23,9 @@ export interface SectionNavItem {
 	 * 已渲染的图标 glyph(调用方控制大小/字重)。
 	 *
 	 * **图形自带标识色的,选中态要让位** —— 标识色一律是中等亮度,摆在皮肤画的实心
-	 * 强调块上会撞(实测 QQ官方 `#14b8a6` 对主人那块粉只有 1.24:1)。`PlatformIcon`
-	 * 与 `ProviderLogo` 都收 `tone`,选中那格喂 `currentColor` 即可;这里够不到调用方
-	 * 渲染好的图形,只能靠这行说。底那半由 `iconTint` 自己处理,不用管。
+	 * 强调块上会撞(实测 QQ官方 `#14b8a6` 对主人那块粉只有 1.24:1)。可染色的
+	 * `PlatformIcon` 在选中项接收 `currentColor`；品牌图片以原色显示。
+	 * 图标底色由 `iconTint` 处理。
 	 */
 	icon?: ReactNode;
 	/**

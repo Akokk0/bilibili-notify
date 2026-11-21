@@ -54,6 +54,16 @@ describe("transitionNotice", () => {
 		});
 	});
 
+	it("无守护进程时就绪通知给出本机重启方式", () => {
+		const message = "请在终端重新启动 bn web";
+		expect(
+			transitionNotice(downloading, {
+				...ready,
+				restart: { can: false, code: "unsupervised", message },
+			})?.body,
+		).toBe(`${NOTES}\n${message}`);
+	});
+
 	it("正在下载 → 出错:error 不带版本号,用上一拍记着的那个", () => {
 		expect(transitionNotice(downloading, failed)).toEqual({
 			id: "update:0.9.0",

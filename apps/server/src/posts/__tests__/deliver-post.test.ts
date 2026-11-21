@@ -664,6 +664,17 @@ describe("deliverPost — AI 点评", () => {
 			{ kind: "image", buffer: CARD, mime: "image/jpeg" },
 			{ kind: "text", text: `阿绫发布了一条动态\n${LINK}` },
 		]);
+		expect(mainAnchorOf(h)).toMatchObject({
+			narration: {
+				text: "点评",
+				withoutText: [
+					[
+						{ kind: "image", buffer: CARD, mime: "image/jpeg" },
+						{ kind: "text", text: LINK },
+					],
+				],
+			},
+		});
 		expect(aiSegsOf(h)).toEqual([
 			{ kind: "image", buffer: CARD, mime: "image/jpeg" },
 			{ kind: "text", text: `点评\n${LINK}` },

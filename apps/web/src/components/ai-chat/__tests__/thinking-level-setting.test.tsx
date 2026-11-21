@@ -34,7 +34,7 @@ function globalsWith(provider: "deepseek" | "custom", flavor: "chat" | "response
 			provider,
 			label: "",
 			apiKey: "k",
-			baseUrl: "https://x",
+			baseUrl: provider === "deepseek" ? "https://api.deepseek.com" : "https://example.test",
 			model: "m",
 			apiFlavor: flavor,
 			enableThinking: false,

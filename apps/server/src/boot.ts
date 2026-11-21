@@ -28,7 +28,10 @@ import { findNearestPackageJson } from "./runtime/nearest-package-json.js";
 import { markBootSucceeded, selectVersionForBoot } from "./update/select-version-for-boot.js";
 import { resolveVersionsRoot } from "./update/versions-root.js";
 
-type StartEntry = (options: { installProcessHandlers: boolean }) => Promise<unknown>;
+type ListenAddress = { host: string; port: number };
+type StartEntry = (options: {
+	installProcessHandlers: boolean;
+}) => Promise<ListenAddress | undefined>;
 
 /** 载荷必须长成这样才起得来。两个名字都没有就当它坏了 —— 见文件头那条契约。 */
 interface PayloadModule {
@@ -55,6 +58,7 @@ export interface BootSelectedPayloadOptions {
 export interface BootResult {
 	version: string;
 	isPreinstalledVersion: boolean;
+	address?: ListenAddress;
 }
 
 async function start(
@@ -66,6 +70,7 @@ async function start(
 	// 载荷自己看不见镜像 —— 它只知道自己在哪。可「能退回到哪一版」得知道地板在哪,
 	// 所以由这里传下去。经 env 而不是函数参数:那个导出是**冻在镜像里**的向前兼容
 	// 契约,加参数就等于要求所有未来载荷都跟着改签名。
+	env.BN_BOOT_REVOKED_BASE = "1";
 	env.BN_PREINSTALLED_VERSION = preinstalled.version;
 	env.BN_PREINSTALLED_PATH = preinstalled.path;
 	// 与 Node 24 的旧载荷兼容；旧名按 ADR-0005 留到下次换 Node 大版本。
@@ -77,7 +82,9 @@ async function start(
 	if (typeof startEntry !== "function") {
 		throw new Error(serverText("service.boot.text.1", { value0: dir }));
 	}
-	await startEntry({ installProcessHandlers: true });
+	const server = await startEntry({ installProcessHandlers: true });
+	if (server && typeof server.host === "string" && typeof server.port === "number")
+		return { host: server.host, port: server.port };
 }
 
 export async function bootSelectedPayload({
@@ -89,48 +96,44 @@ export async function bootSelectedPayload({
 	log,
 	env = process.env,
 }: BootSelectedPayloadOptions): Promise<BootResult> {
-	const selection = selectVersionForBoot({
+	const attempted = new Set<string>();
+	const options = {
 		preinstalledVersion,
 		preinstalledPath,
 		versionsRoot,
 		maxBootFailures,
-	});
-
-	if (!selection.isPreinstalledVersion) {
+		attempted,
+	};
+	const preinstalled = { version: preinstalledVersion, path: preinstalledPath };
+	let selection = selectVersionForBoot(options);
+	while (true) {
 		try {
-			await start(
-				loadPayload,
-				selection.path,
-				{ version: preinstalledVersion, path: preinstalledPath },
-				env,
-			);
-			// 起来了才销账。反过来的话计数永远回到零,坏版本会被无限重试 ——
-			// 自愈等于没有。
+			const address = await start(loadPayload, selection.path, preinstalled, env);
 			markBootSucceeded({ versionsRoot, version: selection.version });
-			return { version: selection.version, isPreinstalledVersion: false };
+			return {
+				version: selection.version,
+				isPreinstalledVersion: selection.isPreinstalledVersion,
+				address,
+			};
 		} catch (err) {
-			// **刻意不销账**:这一次的尝试要留在账上,累够次数才判死。
-			// 日志里必须带上是哪一版、为什么 —— 否则用户只看到「更新完版本没变」。
+			if (selection.isPreinstalledVersion) throw err;
+			const failed = selection.version;
+			attempted.add(failed);
+			try {
+				selection = selectVersionForBoot(options);
+			} catch {
+				// No eligible candidate remains. Surface the actual startup failure.
+				throw err;
+			}
 			log(
 				logText("log.host.payloadFallback", {
-					version: selection.version,
-					preinstalledVersion,
+					version: failed,
+					fallbackVersion: selection.version,
 					message: err instanceof Error ? err.message : String(err),
 				}),
 			);
 		}
 	}
-
-	// 镜像那份要是也起不来,就让它抛出去。静默退 0 的容器会被编排系统当成「正常
-	// 结束」—— 不重启、不报警,用户只看到服务没了而日志里什么都没有。
-	await start(
-		loadPayload,
-		preinstalledPath,
-		{ version: preinstalledVersion, path: preinstalledPath },
-		env,
-	);
-	markBootSucceeded({ versionsRoot, version: preinstalledVersion });
-	return { version: preinstalledVersion, isPreinstalledVersion: true };
 }
 
 /**
@@ -168,9 +171,9 @@ function readPreinstalledVersion(here: string): string {
 	return "0.0.0";
 }
 
-if (isEntrypoint(import.meta.url)) {
+function bootFromEnvironment() {
 	const here = dirname(fileURLToPath(import.meta.url));
-	void bootSelectedPayload({
+	return bootSelectedPayload({
 		preinstalledVersion: readPreinstalledVersion(here),
 		preinstalledPath: here,
 		// 桌面壳用 `--data-dir` 传用户数据目录,容器把它写在 yaml 里 —— 只看
@@ -183,8 +186,11 @@ if (isEntrypoint(import.meta.url)) {
 		maxBootFailures: 3,
 		loadPayload: importPayload,
 		log: stderrLineRedacted,
-	}).catch((err) => {
-		consoleErrorRedacted(logText("log.host.fatalStartup"), err);
-		process.exit(1);
 	});
 }
+
+export const booted = isEntrypoint(import.meta.url) ? bootFromEnvironment() : undefined;
+void booted?.catch((err) => {
+	consoleErrorRedacted(logText("log.host.fatalStartup"), err);
+	process.exit(1);
+});

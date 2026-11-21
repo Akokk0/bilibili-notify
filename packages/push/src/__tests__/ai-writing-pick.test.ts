@@ -20,8 +20,8 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { describe, expect, it } from "vite-plus/test";
-import { PushRouter, type PushSendResult } from "../push-router";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { PushRouter, type PushRouterOptions, type PushSendResult } from "../push-router";
 import { type FakeDispatcher, setExtraDefault, silentLogger, trackedPushBase } from "./helpers";
 
 const TEMPLATE: NotificationPayload = { kind: "text", text: "模板" };
@@ -97,7 +97,7 @@ function postSub(targets: string[]): Subscription {
 
 function makePush(
 	sub: Subscription,
-	state: { writing: AiWritingSettings; muted?: boolean },
+	state: { writing: AiWritingSettings; muted?: boolean; speech?: PushRouterOptions["speech"] },
 	opts?: { disabled?: string[] },
 ) {
 	const { dispatcher, calls } = makeDispatcher(opts);
@@ -105,6 +105,7 @@ function makePush(
 	const sent: PushSendResult[] = [];
 	const push = new PushRouter({
 		...base,
+		speech: state.speech,
 		aiWriting: () => state.writing,
 		muted: () => state.muted ?? false,
 		dispatcher,
@@ -356,6 +357,25 @@ describe("按目标挑正文:附加项(writing.liveSummary)", () => {
 		expect(textsByTarget(calls)).toEqual({ t1: ["点评"], t2: ["模板"] });
 	});
 
+	it("下播总结仅朗读选中 AI 总结的目标，同时保留其他群的文字模板", async () => {
+		const sub = summarySub();
+		setExtraDefault(sub, "liveSummary", true);
+		sub.extraTargets.liveSummary = { t3: false };
+		const audio = {
+			kind: "audio",
+			audio: { buffer: Buffer.from("voice"), mime: "audio/silk" },
+		} as const;
+		const synthesize = vi.fn(async () => ({ ok: true, payload: audio }) as const);
+		const { push, calls, settled } = makePush(sub, {
+			writing: writing({}, { byTarget: { t2: false } }),
+			speech: () => ({ mode: () => "voice", support: () => ({ ok: true }), synthesize }),
+		});
+		await pushSummary(push);
+		await settled();
+		expect(textsByTarget(calls)).toEqual({ t1: ["audio"], t2: ["模板"] });
+		expect(synthesize).toHaveBeenCalledExactlyOnceWith("点评");
+	});
+
 	it("总结附加项不看 writing.post", async () => {
 		const sub = summarySub();
 		setExtraDefault(sub, "liveSummary", true);
@@ -386,4 +406,42 @@ describe("按目标挑正文:附加项(writing.liveSummary)", () => {
 		});
 		expect(textsByTarget(calls)).toEqual({ t1: ["模板"], t2: ["模板"], t3: ["模板"] });
 	});
+});
+
+it("only narrates the chosen AI version after routing and silence gates", async () => {
+	const audio = {
+		kind: "audio",
+		audio: { buffer: Buffer.from("voice"), mime: "audio/silk" },
+	} as const;
+	const synthesize = vi.fn(async () => ({ ok: true, payload: audio }) as const);
+	const state = {
+		writing: writing({ byTarget: { template: false } }),
+		muted: true,
+		speech: () => ({
+			mode: () => "voice" as const,
+			support: () => ({ ok: true }) as const,
+			synthesize,
+		}),
+	};
+	const { push, calls, sent } = makePush(postSub(["template", "a", "b"]), state);
+	const request = {
+		subscriptionId: "s1",
+		feature: "post" as const,
+		allowAtAll: false as const,
+		anchors: [
+			{
+				role: "main" as const,
+				messages: [TEMPLATE],
+				aiMessages: [AI],
+				narration: { text: "点评", withoutText: [] },
+			},
+		],
+	};
+	await push.push(request);
+	expect(synthesize).not.toHaveBeenCalled();
+	state.muted = false;
+	await push.push(request);
+	expect(synthesize).toHaveBeenCalledExactlyOnceWith("点评");
+	expect(textsByTarget(calls)).toEqual({ template: ["模板"], a: ["audio"], b: ["audio"] });
+	expect(sent.at(-1)?.messages[0]).toMatchObject({ speechText: "点评", payload: audio });
 });

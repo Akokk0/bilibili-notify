@@ -72,6 +72,7 @@ export interface TargetDispatcherOptions {
 }
 
 export interface HostTargetDispatcher extends TargetDispatcher {
+	audioSupport(targetId: string): Result;
 	/** 单次能力测试，不重试；载荷由所属适配器构造，发送仍经过统一出口。 */
 	sendTest(
 		targetId: string,
@@ -201,6 +202,19 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): HostTarge
 	}
 
 	return {
+		audioSupport(targetId) {
+			const target = findTarget(targetId);
+			if (!target) return fail("not_found", serverText("service.routes.targets.text.8"));
+			const route = routeOf(target.connectionId, undefined, (c) => refusal(target, c));
+			if (!route.ok) return route;
+			const support = capabilitiesOf(target.connectionId)?.audio;
+			if (support?.state !== "supported")
+				return fail("unsupported", support?.reason ?? serverText("speech.unsupported"));
+			const local = route.adapter.capabilities?.(route.connection, destinationOf(target))?.audio;
+			return local?.state === "unsupported"
+				? fail("unsupported", local.reason ?? serverText("speech.unsupported"))
+				: ok();
+		},
 		async sendTest(targetId, kind, samples, options) {
 			const target = findTarget(targetId);
 			if (!target) return fail("not_found", serverText("service.routes.targets.text.8"));
@@ -233,6 +247,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): HostTarge
 					destinationOf(target),
 					target,
 					made.payload,
+					{ singleAttempt: true },
 				);
 				// 无法测试／未获权限不表示整个目标失联。
 				if (result.ok || result.code !== "unsupported")
@@ -480,11 +495,14 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): HostTarge
 		destination: DestinationRef,
 		target: PushTarget | undefined,
 		payload: NotificationPayload,
+		options?: Parameters<SendableAdapter["send"]>[3],
 	): Promise<DeliveryResult> {
 		const intercepted = opts.interceptSend?.({ connection, destination, target, payload });
 		if (intercepted) return intercepted;
 		try {
-			return await adapter.send(connection, destination, payload);
+			return options
+				? await adapter.send(connection, destination, payload, options)
+				: await adapter.send(connection, destination, payload);
 		} catch (e) {
 			return thrown(
 				e,

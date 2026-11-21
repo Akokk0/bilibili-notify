@@ -121,7 +121,7 @@ export type PostNode = {
 	 * 互动数,已排好版的文本。某一项是空串 = 没有这一项,那一格连图标一起不画(拓展的作品三样各自
 	 * 选填,决策 55);B 站三样恒有。
 	 */
-	stats?: { shares: string; comments: string; likes: string };
+	stats?: { shares: string; comments: string; likes: string; saves?: string };
 };
 
 /**

@@ -412,7 +412,19 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 			...logContext,
 		});
 	} else {
-		anchors.push({ role: "main", messages, ...(aiMessages ? { aiMessages } : {}) });
+		anchors.push({
+			role: "main",
+			messages,
+			...(aiMessages && aiComment
+				? {
+						aiMessages,
+						narration: {
+							text: aiComment,
+							withoutText: assembleMessageGroups(layout, { card, text: "", link: event.url }),
+						},
+					}
+				: {}),
+		});
 	}
 
 	// 图集:从外层 `post.images` 推出来,只有带公网网址的图进(只有图库引用的,适配器没有链接可给)。

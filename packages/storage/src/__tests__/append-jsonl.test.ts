@@ -47,6 +47,13 @@ describe("appendLines", () => {
 		expect(await readFile(path, "utf8")).toBe('{"a":1}\nnot json, kept as is\n二\n{"c":true}\n');
 	});
 
+	it.each(['{"partial":', '{"old":1}'])("旧文件末行缺换行时隔开新记录（%s）", async (tail) => {
+		const path = join(dir, "x.jsonl");
+		await writeFile(path, tail);
+		await appendJsonl(path, [{ a: 1 }, { a: 2 }]);
+		expect((await readFile(path, "utf8")).split("\n")).toEqual([tail, '{"a":1}', '{"a":2}', ""]);
+	});
+
 	it("接在已有内容后面", async () => {
 		const path = join(dir, "x.jsonl");
 		await writeFile(path, "first\n");

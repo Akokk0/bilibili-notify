@@ -9,7 +9,7 @@ import { AI_PURPLE } from "../../config/colors";
 import { useCoreSettings } from "../../hooks/useSettings";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
-import type { Connection, PushTarget } from "../../types/domain";
+import { CONNECTIONS_QUERY, TARGETS_QUERY } from "../../services/list-queries";
 import type { GlobalSettings } from "../../types/globals";
 import { RoastRunNowBox } from "./RoastRunNowBox";
 import { STATS_RANGES } from "./ranges";
@@ -103,15 +103,9 @@ export function useApprovalReachability(): { canApprove: boolean; hint?: string 
 	const tx = useT();
 
 	const globalsQuery = useCoreSettings();
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	// 主人目标所挂的连接还在不在,看连接表;收不收得到回复,看能力表。
-	const connectionsQuery = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-	});
+	const connectionsQuery = useQuery(CONNECTIONS_QUERY);
 	const capabilitiesQuery = useQuery({
 		queryKey: ["connection-capabilities"],
 		queryFn: () => api.get<ConnectionCapabilitiesMap>("/api/connections/capabilities"),
@@ -160,16 +154,10 @@ export function RoastScheduleFields({
 }) {
 	const tx = useT();
 
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	// 「已停用」要跟调度器跳过它时同一条判定,所以把连接表一起取:目标自己开着、
 	// 它挂的连接停了,一样不发。
-	const connectionsQuery = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-	});
+	const connectionsQuery = useQuery(CONNECTIONS_QUERY);
 	// 停用的目标**照列照勾**并标「已停用」—— 与链接解析的逐群表同一条规矩(主人定的:
 	// 停用是暂停不是消失)。发送时调度器会跳过它、记进「跳过」,不算失败;以前这里把它
 	// 过滤掉,用户看不出它还勾在配置里,恢复启用那天它就悄悄收到周报了。

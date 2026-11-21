@@ -1013,7 +1013,12 @@ describe("聊天的独立思考设置 —— 开关会话级、等级从配置�
 	const PROFILE = {
 		activeProfile: "deepseek",
 		providers: {
-			deepseek: { provider: "deepseek", enableThinking: true, thinkingLevel: "high" },
+			deepseek: {
+				provider: "deepseek",
+				baseUrl: "https://api.deepseek.com",
+				enableThinking: true,
+				thinkingLevel: "high",
+			},
 		},
 	};
 

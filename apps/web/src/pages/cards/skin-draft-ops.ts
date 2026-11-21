@@ -607,6 +607,27 @@ type AddedKnob = { manifest: CardSkinManifest; key: string };
 type Knob = CardSkinKnob;
 type KnobType = Knob["type"];
 
+// 清单只保存 CSS key。编辑行另有稳定的编号，改名和删除相邻行时都沿用它。
+const knobRowIds = new WeakMap<Knob, number>();
+let nextKnobRowId = 0;
+
+export function knobRowId(knob: Knob): number {
+	const id = knobRowIds.get(knob);
+	if (id !== undefined) return id;
+	const newId = nextKnobRowId++;
+	knobRowIds.set(knob, newId);
+	return newId;
+}
+
+/** 编辑中的行用编号定位；已知名称唯一的清单也可按 CSS key 操作。 */
+type KnobTarget = number | string;
+
+function knobIndex(knobs: Knob[], target: KnobTarget): number {
+	return typeof target === "number"
+		? knobs.findIndex((knob) => knobRowIds.get(knob) === target)
+		: knobs.findIndex((knob) => knob.key === target);
+}
+
 /**
  * 各档的**出厂形状**。改档时整份换成这里的 —— 只改 `type` 不换值的话,
  * 「颜色 → 数值」留下的 `default: "#e0c3fc"` 当场违约,而主人只看见保存失败。
@@ -660,22 +681,23 @@ export function addKnob(manifest: CardSkinManifest): AddedKnob | null {
 	};
 }
 
-export function removeKnob(manifest: CardSkinManifest, key: string): CardSkinManifest {
+export function removeKnob(manifest: CardSkinManifest, target: KnobTarget): CardSkinManifest {
 	const knobs = knobsOf(manifest);
-	if (!knobs.some((k) => k.key === key)) return manifest;
+	const at = knobIndex(knobs, target);
+	if (at === -1) return manifest;
 	return withKnobs(
 		manifest,
-		knobs.filter((k) => k.key !== key),
+		knobs.filter((_, i) => i !== at),
 	);
 }
 
 /** 改一枚旋钮的 key / 人话名。都**照敲的存**,合不合法交给 {@link knobsError} 当场说。 */
 export function setKnobDecl(
 	manifest: CardSkinManifest,
-	key: string,
+	target: KnobTarget,
 	patch: { key?: string; label?: string },
 ): CardSkinManifest {
-	return mapKnob(manifest, key, (k) => ({
+	return mapKnob(manifest, target, (k) => ({
 		...k,
 		...(patch.key !== undefined ? { key: patch.key } : {}),
 		...(patch.label !== undefined ? { label: patch.label } : {}),
@@ -685,10 +707,10 @@ export function setKnobDecl(
 /** 改档。key 与人话名留着,其余整份换成那一档的出厂形状(理由见 {@link knobShapes})。 */
 export function setKnobType(
 	manifest: CardSkinManifest,
-	key: string,
+	target: KnobTarget,
 	type: KnobType,
 ): CardSkinManifest {
-	return mapKnob(manifest, key, (k) =>
+	return mapKnob(manifest, target, (k) =>
 		k.type === type
 			? k
 			: ({ key: k.key, label: k.label, type, ...knobShapes()[type] } as unknown as Knob),
@@ -698,10 +720,10 @@ export function setKnobType(
 /** 改起手位置。各档的 `default` 类型不同(颜色是 hex、数值是数、开关是布尔)。 */
 export function setKnobDefault(
 	manifest: CardSkinManifest,
-	key: string,
+	target: KnobTarget,
 	value: string | number | boolean,
 ): CardSkinManifest {
-	return mapKnob(manifest, key, (k) =>
+	return mapKnob(manifest, target, (k) =>
 		k.type === "image" ? k : ({ ...k, default: value } as unknown as Knob),
 	);
 }
@@ -713,14 +735,16 @@ export function setKnobDefault(
  */
 function mapKnob(
 	manifest: CardSkinManifest,
-	key: string,
+	target: KnobTarget,
 	fn: (knob: Knob) => Knob,
 ): CardSkinManifest {
 	const knobs = knobsOf(manifest);
-	const at = knobs.findIndex((k) => k.key === key);
-	if (at === -1) return manifest;
-	const next = fn(knobs[at] as Knob);
-	if (next === knobs[at]) return manifest;
+	const at = knobIndex(knobs, target);
+	const current = knobs[at];
+	if (!current) return manifest;
+	const next = fn(current);
+	if (next === current) return manifest;
+	knobRowIds.set(next, knobRowId(current));
 	return withKnobs(
 		manifest,
 		knobs.map((k, i) => (i === at ? next : k)),
@@ -819,10 +843,10 @@ function knobLiteralError(value: string): string | null {
 /** 数值旋钮的取值域与单位。`step: 0` / `unit: ""` = 删键(两项都是 optional)。 */
 export function setKnobNumber(
 	manifest: CardSkinManifest,
-	key: string,
+	target: KnobTarget,
 	patch: { min?: number; max?: number; step?: number; unit?: string },
 ): CardSkinManifest {
-	return mapKnob(manifest, key, (k) => {
+	return mapKnob(manifest, target, (k) => {
 		if (k.type !== "number") return k;
 		const next = { ...k };
 		if (patch.min !== undefined) next.min = patch.min;
@@ -843,10 +867,10 @@ export function setKnobNumber(
 /** 开关两端各自注进 CSS 的字面量(如 `block` / `none`)。 */
 export function setKnobSwitch(
 	manifest: CardSkinManifest,
-	key: string,
+	target: KnobTarget,
 	patch: { on?: string; off?: string },
 ): CardSkinManifest {
-	return mapKnob(manifest, key, (k) =>
+	return mapKnob(manifest, target, (k) =>
 		k.type === "switch"
 			? {
 					...k,
@@ -860,8 +884,8 @@ export function setKnobSwitch(
 type KnobOption = Extract<Knob, { type: "select" }>["options"][number];
 
 /** 加一个候选。加满 {@link CARD_SKIN_KNOB_LIMITS.maxOptions} 原样返回。 */
-export function addKnobOption(manifest: CardSkinManifest, key: string): CardSkinManifest {
-	return mapKnob(manifest, key, (k) => {
+export function addKnobOption(manifest: CardSkinManifest, target: KnobTarget): CardSkinManifest {
+	return mapKnob(manifest, target, (k) => {
 		if (k.type !== "select" || k.options.length >= CARD_SKIN_KNOB_LIMITS.maxOptions) return k;
 		// 候选的值也得让开:两个同值的候选在装包门那里同样判重复。
 		const value = uniqueName("option", new Set(k.options.map((o) => o.value)));
@@ -877,11 +901,11 @@ export function addKnobOption(manifest: CardSkinManifest, key: string): CardSkin
 
 export function setKnobOption(
 	manifest: CardSkinManifest,
-	key: string,
+	target: KnobTarget,
 	index: number,
 	patch: Partial<KnobOption>,
 ): CardSkinManifest {
-	return mapKnob(manifest, key, (k) =>
+	return mapKnob(manifest, target, (k) =>
 		k.type !== "select" || k.options[index] === undefined
 			? k
 			: { ...k, options: k.options.map((o, i) => (i === index ? { ...o, ...patch } : o)) },
@@ -894,10 +918,10 @@ export function setKnobOption(
  */
 export function removeKnobOption(
 	manifest: CardSkinManifest,
-	key: string,
+	target: KnobTarget,
 	index: number,
 ): CardSkinManifest {
-	return mapKnob(manifest, key, (k) =>
+	return mapKnob(manifest, target, (k) =>
 		k.type !== "select" || k.options.length <= 1 || k.options[index] === undefined
 			? k
 			: { ...k, options: k.options.filter((_, i) => i !== index) },

@@ -50,6 +50,8 @@ export const ALLOWLIST = {
 	"packages/http/src/websocket.ts": "集成的 WebSocket 建连",
 	// BN 自己的出口:应用内更新、拓展市场、签名清单。
 	"apps/server/src/update/fetch-through-mirrors.ts": "BN 自己的出口:更新、拓展市场、签名清单",
+	"apps/server/src/ai/deepseek-files.ts":
+		"BN 自己的出口:向已配置的 DeepSeek 服务上传、识别与清理文档及语音",
 	"packages/ai/src/web-search.ts": "BN 自己的出口:联网搜索",
 	// 设置页的 AI 连通测试(3b-02 从路由挪来:路由不出网,拿一份服务商配置去探活是 AI 包的事)。
 	"packages/ai/src/provider-probe.ts": "BN 自己的出口:AI 服务商的连通探活",

@@ -1,5 +1,5 @@
 {
-	"marketplace.notes": "桥接机器人展示更多能力，支持逐项测试发送；明确提示语音与未经确认的 Markdown 不可用。",
+	"marketplace.notes": "桥接的合并转发测试使用可重复下载的图片，平台再次取图时仍能显示测试图片。",
 	"view.connected": "已连接",
 	"view.mismatched": "连上了,但对不上",
 	"view.configuredKind": "配置:{kind}",
@@ -37,6 +37,7 @@
 	"error.linkDisabled": "接入「{name}」已停用",
 	"error.linkDisconnected": "接入「{name}」没连着",
 	"error.botMissing": "桥上现在没有这个 bot({botId})",
+	"error.botPlatformChanged": "这个 bot 的平台已变更，请重新绑定连接",
 	"error.sessionOnly": "桥只发会话目标",
 	"error.disconnected": "桥没连着",
 	"error.connectionLost": "桥断开了",
@@ -96,6 +97,10 @@
 						"name": {
 							"label": "名字",
 							"placeholder": "比如「家里那台 koishi」"
+						},
+						"publicOrigin": {
+							"label": "取图地址",
+							"description": "反向代理改写 Host 时，填桥接插件能访问的 BN 地址。留空则沿用握手请求的地址。"
 						},
 						"enabled": {
 							"label": "启用"

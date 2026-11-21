@@ -127,7 +127,7 @@ describe("SubscriptionDialog × 拓展订阅", () => {
 		renderDialog(extSub(), platform());
 		expect(screen.getAllByText("作品").length).toBeGreaterThan(0);
 		expect(screen.getAllByText("开播").length).toBeGreaterThan(0);
-		for (const gone of ["动态", "下播", "上舰", "SC", "特别弹幕", "特别用户进房", "特别关注"]) {
+		for (const gone of ["动态", "下播", "上舰", "SC", "特别关注弹幕", "进入直播间", "特别关注"]) {
 			expect(screen.queryAllByText(gone), gone).toHaveLength(0);
 		}
 	});

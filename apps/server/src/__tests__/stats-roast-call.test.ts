@@ -190,7 +190,7 @@ describe("锐评带谁的人格", () => {
 	it("这位 UP 配了自己的人格时,单人锐评就用他那份", async () => {
 		const deps = makeDeps([makeSub("s1", "1", true), makeSub("s2", "2")]);
 		await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
-		// persona 已由 buildAiOverride 从 schema 的 baseRole 翻译成
+		// persona 已从 schema 的 baseRole 翻译成
 		// CommentaryGenerator 的 customBase。
 		expect(comment.mock.calls[0]?.[3]?.persona?.customBase).toBe(PER_UP_ROLE);
 	});

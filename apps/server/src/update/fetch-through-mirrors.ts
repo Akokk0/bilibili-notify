@@ -1,3 +1,4 @@
+import { readCappedBody } from "@bilibili-notify/http";
 import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
 /**
@@ -51,42 +52,6 @@ export interface FetchThroughMirrorsOptions<T> {
 
 export type FetchThroughMirrorsResult<T> = Result<{ value: T }>;
 
-/**
- * 边读边数,超过上限**当场 cancel**。不能「先 arrayBuffer() 收完再看大小」——
- * 那等于把内存用量交给对方决定,一个不肯停的流就能把容器撑爆。
- *
- * 返回 null 表示这个候选超限,按失败处理。
- */
-async function readCapped(response: Response, maxBytes: number): Promise<Uint8Array | null> {
-	const reader = response.body?.getReader();
-	if (!reader) {
-		// 极少数没有 body stream 的实现:退化成缓冲后即时校验。
-		const buffered = await response.arrayBuffer();
-		return buffered.byteLength > maxBytes ? null : new Uint8Array(buffered);
-	}
-
-	const chunks: Uint8Array[] = [];
-	let total = 0;
-	for (;;) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		total += value.byteLength;
-		if (total > maxBytes) {
-			await reader.cancel();
-			return null;
-		}
-		chunks.push(value);
-	}
-
-	const bytes = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return bytes;
-}
-
 function candidateUrl(mirror: string, url: string): string {
 	return mirror ? `${mirror.replace(/\/+$/, "")}/${url}` : url;
 }
@@ -118,7 +83,7 @@ export async function fetchThroughMirrors<T>({
 				signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
 			});
 			if (!response.ok) continue;
-			const bytes = await readCapped(response, maxBytes);
+			const bytes = await readCappedBody(response, maxBytes);
 			if (bytes === null) continue; // 这个候选灌太多,换下一个
 			const accepted = accept(bytes);
 			if (accepted.ok) return ok({ value: accepted.value });

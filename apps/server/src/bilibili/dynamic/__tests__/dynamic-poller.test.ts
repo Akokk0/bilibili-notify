@@ -694,6 +694,84 @@ describe("DynamicPoller — 故障恢复", () => {
 		expect(b.logs.some((l) => l.msg.includes("恢复正常"))).toBe(false);
 	});
 
+	it("退避重启保留同一账号上次成功读到的关注流边界", async () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		b.engine.start();
+		try {
+			seed(b.engine, "1", 100);
+			const seen = { ...makeItem({ uid: 2, pubTs: 1000 }), id_str: "seen" };
+			const fresh = { ...makeItem({ uid: 1, pubTs: 1010 }), id_str: "fresh" };
+			b.fetchAllDynamic
+				.mockResolvedValueOnce(resp([seen]))
+				.mockResolvedValueOnce(resp([], -352, "risk"))
+				.mockResolvedValueOnce(
+					ok({ data: { items: [fresh, seen], has_more: true, offset: "old" } }),
+				)
+				.mockResolvedValue(resp([], 4101132, "历史页不可用"));
+			await b.engine.detectNow();
+			await b.engine.detectNow();
+			expect(b.timers).toHaveLength(1);
+			b.timers[0]?.();
+			await b.engine.detectNow();
+			expect(b.reportPost).toHaveBeenCalledTimes(1);
+			expect(b.fetchAllDynamic).toHaveBeenCalledTimes(3);
+		} finally {
+			b.engine.stop();
+		}
+	});
+
+	it("首页已跨过时间边界时，旧页不可用也会交出新动态", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 100);
+		const items = [110, 100, 90].map((pubTs) => ({
+			...makeItem({ uid: 1, pubTs }),
+			id_str: String(pubTs),
+		}));
+		b.fetchAllDynamic
+			.mockResolvedValueOnce(ok({ data: { items, has_more: true, offset: "old" } }))
+			.mockResolvedValue(resp([], 4101132, "历史页不可用"));
+		await b.engine.detectNow();
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(1);
+	});
+
+	it("首页末尾是同秒未读作品时继续翻页到上次已读的作品", async () => {
+		const b = makeEngine();
+		for (const uid of ["1", "2", "3", "4"]) seed(b.engine, uid, 900);
+		const seen = { ...makeItem({ uid: 1, pubTs: 1000 }), id_str: "seen" };
+		const head = { ...makeItem({ uid: 2, pubTs: 1010 }), id_str: "head" };
+		const first = { ...makeItem({ uid: 3, pubTs: 1000 }), id_str: "first" };
+		const next = { ...makeItem({ uid: 4, pubTs: 1000 }), id_str: "next" };
+		b.fetchAllDynamic
+			.mockResolvedValueOnce(resp([seen]))
+			.mockResolvedValueOnce(
+				ok({ data: { items: [head, first], has_more: true, offset: "page-2" } }),
+			)
+			.mockResolvedValueOnce(resp([first, next, seen]));
+		await b.engine.detectNow();
+		await b.engine.detectNow();
+		expect(b.reportPost.mock.calls.map(([, post]) => post.postId).sort()).toEqual([
+			"first",
+			"head",
+			"next",
+			"seen",
+		]);
+		expect(b.fetchAllDynamic).toHaveBeenNthCalledWith(3, "page-2");
+	});
+
+	it("关注流超过一页时交出第二页的新作品，重叠的作品只交一次", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 800);
+		const newer = { ...makeItem({ uid: 1, pubTs: 1000 }), id_str: "newer" };
+		const older = { ...makeItem({ uid: 1, pubTs: 900 }), id_str: "older" };
+		b.fetchAllDynamic
+			.mockResolvedValueOnce(ok({ data: { items: [newer], has_more: true, offset: "next" } }))
+			.mockResolvedValueOnce(resp([newer, older]));
+		await b.engine.detectNow();
+		expect(b.reportPost).toHaveBeenCalledTimes(2);
+		expect(b.fetchAllDynamic).toHaveBeenNthCalledWith(2, "next");
+	});
+
 	it("上报口抛错不能打断本轮动态的交出", async () => {
 		const throwing = makeThrowingLayers();
 		const b = makeEngine({ problems: throwing });
@@ -1167,6 +1245,26 @@ describe("DynamicPoller.detectDynamics — 交出之前先把图抓好(决策 3)
 		const emoji = reported(b)[1].post.richText?.find((segment) => segment.kind === "emoji");
 		expect(emoji).toMatchObject({ text: "[doge]" });
 		expect(emoji).toHaveProperty("image");
+	});
+
+	it.each([
+		{ type: "DYNAMIC_TYPE_WORD", notice: undefined },
+		{ type: "DYNAMIC_TYPE_FORWARD", notice: "UP转发了一条动态，但原动态已不可见" },
+	])("$type 的 orig 为 null 时，照常交出正文和表情图片", async ({ type, notice }) => {
+		const b = makeEngine();
+		const item = { ...emojiItem(), type, orig: null };
+		b.fetchAllDynamic.mockResolvedValue(resp([item]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		const { post } = reported(b)[1];
+		expect(post.text).toBe("看[doge]");
+		expect(post.notice).toBe(notice);
+		expect(post.richText?.find((segment) => segment.kind === "emoji")).toMatchObject({
+			text: "[doge]",
+			image: expect.anything(),
+		});
 	});
 
 	it("不管出不出卡、被不被过滤:这些都是核心的事,动态轮询一律照抓(决策 3,出网变多的代价主人知情)", async () => {

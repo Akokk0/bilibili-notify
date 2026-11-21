@@ -51,6 +51,8 @@ export interface CreateUpdateServiceOptions {
 	developmentBuild?: boolean;
 	/** 镜像 / 安装包自带的版本 —— 回退的地板。 */
 	preinstalledVersion: string;
+	/** Reported by the immutable boot entry. Older bootstraps always enforce the image floor. */
+	canBootBelowRevokedBase?: boolean;
 	versionsRoot: string;
 	nodeMajor: number;
 	/** 内置信任列表。**空 = 这个构建不做自主升级**。 */
@@ -142,6 +144,22 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 	 */
 	let downloadJob: Promise<UpdateStatus> | null = null;
 
+	// When both ordinary boot choices are unusable, a retained version above the repair
+	// would win the normal highest-version selection.
+	function needsRepairPreference(view: BootView, target: string): boolean {
+		return (
+			view.preinstalledRevoked &&
+			view.unbootable.includes(currentVersion) &&
+			view.installed.some(
+				(version) => !view.unbootable.includes(version) && compareVersions(version, target) > 0,
+			)
+		);
+	}
+
+	function minimumPayloadVersion(preinstalledRevoked: boolean): string | undefined {
+		return input.canBootBelowRevokedBase && preinstalledRevoked ? undefined : preinstalledVersion;
+	}
+
 	/**
 	 * 退一步会退到哪:装着的版本里比当前旧的那个最高的;都没有就退回镜像自带那版。
 	 * 已经在镜像那版上就是没得退 —— 与其给一个按了没反应的按钮,不如让它是灰的。
@@ -150,11 +168,12 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 	 * 都不能当目标,否则面板说「已回退,重启生效」,重启后选版把钉子当没钉过,版本纹丝不动。
 	 * 所以判死名单与已装列表都取自**选版那边给出的同一幅快照**(`readBootView`)。
 	 */
-	function rollbackTarget({ unbootable, installed }: BootView): string | null {
+	function rollbackTarget({ unbootable, installed, preinstalledRevoked }: BootView): string | null {
+		const floor = minimumPayloadVersion(preinstalledRevoked);
 		let best: string | null = null;
 		for (const candidate of installed) {
 			if (compareVersions(candidate, currentVersion) >= 0) continue;
-			if (compareVersions(candidate, preinstalledVersion) < 0) continue;
+			if (floor && compareVersions(candidate, floor) < 0) continue;
 			if (unbootable.includes(candidate)) continue;
 			if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 		}
@@ -279,12 +298,23 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 
 		// 装上新版本 = 用户明确要往前走,之前那次回退的钉子必须拔掉。留着的话他点了
 		// 「立即更新」、重启、版本号纹丝不动,而界面上一切正常 —— 最难查的一类症状。
-		clearPinnedVersion({ versionsRoot });
+		const beforeRestart = readBootView({ versionsRoot, preinstalledVersion });
+		clearPinnedVersion({
+			versionsRoot,
+			repairTarget: needsRepairPreference(beforeRestart, manifest.version)
+				? manifest.version
+				: undefined,
+		});
 
-		// 只留「正在跑的」和「刚装的」这两份。回退只退一步,再老的版本没人够得着,
-		// 留着就只是在小机器上白占 25MB 一份。**当前那份必须留** —— 它是我们此刻
-		// 正在执行的代码,也是待会儿要退回去的地方。
-		pruneOldVersions({ versionsRoot, keep: [currentVersion, manifest.version] });
+		// 平常留正在跑的版本和刚装的版本。两条退路都失效时，保留其他候选，
+		// 直到修复版真能启动；仅凭版本号无法判断剩余哪一份起得来。
+		const keep = [currentVersion, manifest.version];
+		if (beforeRestart.unbootable.includes(currentVersion) && beforeRestart.preinstalledRevoked) {
+			keep.push(
+				...beforeRestart.installed.filter((version) => !beforeRestart.unbootable.includes(version)),
+			);
+		}
+		pruneOldVersions({ versionsRoot, keep });
 
 		// 只记盘上的事实,不动 `state` —— `ready` 由 `reportedState` 从这里推出来。
 		onDisk = {
@@ -368,10 +398,9 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 		if (revoked.length === 0) return;
 		const installed = installedVersions(versionsRoot);
 		for (const version of revoked) {
-			if (version === currentVersion) {
-				markVersionRevoked({ versionsRoot, version });
-				continue;
-			}
+			// Removing bytes is best effort. Boot eligibility must survive a busy directory.
+			markVersionRevoked({ versionsRoot, version });
+			if (version === currentVersion) continue;
 			if (!installed.includes(version)) continue;
 			removeVersionDir(versionsRoot, version);
 			if (onDisk?.version === version) onDisk = null;
@@ -419,11 +448,28 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 
 		const manifest = fetched.manifest;
 		rememberIssuedAt(versionsRoot, channel, manifest.issuedAt);
-		quarantineRevoked(manifest.revoked ?? []);
+		const recalls = manifest.revoked ?? [];
+		quarantineRevoked(recalls);
+		const view = readBootView({ versionsRoot, preinstalledVersion });
+		const couldStillBoot = recalls.some(
+			(version) =>
+				!view.revoked.includes(version) &&
+				(version === currentVersion ||
+					version === preinstalledVersion ||
+					view.installed.includes(version)),
+		);
+		if (couldStillBoot) {
+			pending = null;
+			return recordFailure("install_failed", manifest.releaseUrl);
+		}
 		const decision = decideUpdate({
 			currentVersion,
 			manifest,
-			runtime: { nodeMajor },
+			knownRevoked: view.revoked,
+			runtime: {
+				nodeMajor,
+				minimumPayloadVersion: minimumPayloadVersion(view.preinstalledRevoked),
+			},
 			allowPrerelease: settings.channel === "prerelease",
 		});
 
@@ -432,7 +478,10 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 			state = { phase: "up-to-date", checkedAt: new Date().toISOString() };
 			return status();
 		}
-		if (decision.kind === "needs-image-pull") {
+		if (
+			decision.kind === "needs-image-pull" ||
+			(!input.canBootBelowRevokedBase && needsRepairPreference(view, manifest.version))
+		) {
 			// 载荷能比镜像新,但 Node / chromium / 字体全来自镜像。下下来也跑不起来,
 			// 所以连下都不下,直接告诉用户这一版得重拉镜像。
 			pending = null;
