@@ -21,6 +21,6 @@ export default defineConfig({
 		exclude: [...configDefaults.exclude, "**/.claude/**", ".bn-design/**"],
 		// 测试拦外网:连非本机地址直接报错,见 scripts/network-guard.mjs。
 		setupFiles: ["./scripts/vitest-setup.mjs"],
-		sequence: process.env.BN_PACKAGE_TEST_CACHE_SCRIPT ? { sequencer: PackageTestSequencer } : {},
+		sequence: { sequencer: PackageTestSequencer },
 	},
 });
