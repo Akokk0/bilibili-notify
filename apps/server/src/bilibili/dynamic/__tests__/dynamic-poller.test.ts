@@ -735,6 +735,30 @@ describe("DynamicPoller — 故障恢复", () => {
 		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(1);
 	});
 
+	it("首页末尾是同秒未读作品时继续翻页到上次已读的作品", async () => {
+		const b = makeEngine();
+		for (const uid of ["1", "2", "3", "4"]) seed(b.engine, uid, 900);
+		const seen = { ...makeItem({ uid: 1, pubTs: 1000 }), id_str: "seen" };
+		const head = { ...makeItem({ uid: 2, pubTs: 1010 }), id_str: "head" };
+		const first = { ...makeItem({ uid: 3, pubTs: 1000 }), id_str: "first" };
+		const next = { ...makeItem({ uid: 4, pubTs: 1000 }), id_str: "next" };
+		b.fetchAllDynamic
+			.mockResolvedValueOnce(resp([seen]))
+			.mockResolvedValueOnce(
+				ok({ data: { items: [head, first], has_more: true, offset: "page-2" } }),
+			)
+			.mockResolvedValueOnce(resp([first, next, seen]));
+		await b.engine.detectNow();
+		await b.engine.detectNow();
+		expect(b.reportPost.mock.calls.map(([, post]) => post.postId).sort()).toEqual([
+			"first",
+			"head",
+			"next",
+			"seen",
+		]);
+		expect(b.fetchAllDynamic).toHaveBeenNthCalledWith(3, "page-2");
+	});
+
 	it("关注流超过一页时交出第二页的新作品，重叠的作品只交一次", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 800);
