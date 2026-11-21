@@ -196,6 +196,7 @@ describe("bootSelectedPayload", () => {
 			BN_PREINSTALLED_PATH: preinstalledPath,
 			BN_IMAGE_VERSION: "0.8.0",
 			BN_IMAGE_PATH: preinstalledPath,
+			BN_BOOT_REVOKED_BASE: "1",
 		});
 	});
 

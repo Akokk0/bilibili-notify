@@ -51,6 +51,8 @@ export interface CreateUpdateServiceOptions {
 	developmentBuild?: boolean;
 	/** 镜像 / 安装包自带的版本 —— 回退的地板。 */
 	preinstalledVersion: string;
+	/** Reported by the immutable boot entry. Older bootstraps always enforce the image floor. */
+	canBootBelowRevokedBase?: boolean;
 	versionsRoot: string;
 	nodeMajor: number;
 	/** 内置信任列表。**空 = 这个构建不做自主升级**。 */
@@ -155,7 +157,7 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 		for (const candidate of installed) {
 			if (compareVersions(candidate, currentVersion) >= 0) continue;
 			if (
-				!unbootable.includes(preinstalledVersion) &&
+				(!input.canBootBelowRevokedBase || !unbootable.includes(preinstalledVersion)) &&
 				compareVersions(candidate, preinstalledVersion) < 0
 			)
 				continue;
@@ -426,7 +428,10 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 		const decision = decideUpdate({
 			currentVersion,
 			manifest,
-			runtime: { nodeMajor },
+			runtime: {
+				nodeMajor,
+				minimumPayloadVersion: input.canBootBelowRevokedBase ? undefined : preinstalledVersion,
+			},
 			allowPrerelease: settings.channel === "prerelease",
 		});
 

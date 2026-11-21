@@ -74,6 +74,7 @@ async function start(
 	// 载荷自己看不见镜像 —— 它只知道自己在哪。可「能退回到哪一版」得知道地板在哪,
 	// 所以由这里传下去。经 env 而不是函数参数:那个导出是**冻在镜像里**的向前兼容
 	// 契约,加参数就等于要求所有未来载荷都跟着改签名。
+	env.BN_BOOT_REVOKED_BASE = "1";
 	env.BN_PREINSTALLED_VERSION = preinstalled.version;
 	env.BN_PREINSTALLED_PATH = preinstalled.path;
 	// 与 Node 24 的旧载荷兼容；旧名按 ADR-0005 留到下次换 Node 大版本。

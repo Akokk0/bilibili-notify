@@ -171,6 +171,7 @@ function makeService(
 		currentVersion?: string;
 		developmentBuild?: boolean;
 		preinstalledVersion?: string;
+		canBootBelowRevokedBase?: boolean;
 		trustedKeys?: readonly string[];
 		settings?: Partial<UpdateSettings>;
 		nodeMajor?: number;
@@ -188,6 +189,7 @@ function makeService(
 			developmentBuild: overrides.developmentBuild,
 			preinstalledVersion: overrides.preinstalledVersion ?? "0.8.0",
 			versionsRoot,
+			canBootBelowRevokedBase: overrides.canBootBelowRevokedBase ?? true,
 			nodeMajor: overrides.nodeMajor ?? 24,
 			trustedKeys: overrides.trustedKeys ?? [],
 			manifestUrls: MANIFEST_URLS,
@@ -1009,6 +1011,29 @@ describe("createUpdateService —— 清单新鲜度", () => {
 });
 
 describe("createUpdateService —— 撤回", () => {
+	it("旧启动器遇到低于预装版的修复目标会要求更换宿主", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("1.1.0");
+		const fetch = stubNetwork({
+			payload: zip,
+			manifestBody: envelope(
+				key.privateKey,
+				manifestFor("1.1.0", zip, { revoked: ["1.2.0", "1.3.0"] }),
+			),
+		});
+		const { service, versionsRoot } = makeService({
+			currentVersion: "1.3.0",
+			preinstalledVersion: "1.2.0",
+			trustedKeys: [key.spkiBase64],
+			canBootBelowRevokedBase: false,
+		});
+		mkdirSync(join(versionsRoot, "1.1.0"));
+		await service.check();
+		const status = await settled(service);
+		expect(status.state).toMatchObject({ phase: "needs-image-pull", target: "1.1.0" });
+		expect(status.rollbackTarget).toBeNull();
+		expect(payloadFetches(fetch)).toBe(0);
+	});
 	it("清单撤回了盘上已装好、还没重启的那版 → 目录删掉,ready 撤掉,重启不会跑它", async () => {
 		// 选版只看盘上谁最新。装好 0.9.1 等重启、这时它被撤回 —— 不删目录的话,用户随手
 		// 一重启就装上了厂商已经召回的构建,而面板还在说「已就绪,重启就换」。

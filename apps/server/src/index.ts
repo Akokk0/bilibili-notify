@@ -754,6 +754,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		});
 		const updateService = createUpdateService({
 			currentVersion: payloadVersion,
+			canBootBelowRevokedBase: env.BN_BOOT_REVOKED_BASE === "1",
 			developmentBuild,
 			// boot.mjs 在加载这份载荷之前摆进来的(见 src/boot.ts)。直接跑
 			// index.mjs 时(dev / 老镜像)拿不到 —— 那就当自己就是地板,

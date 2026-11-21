@@ -13,6 +13,7 @@ export interface DecideUpdateOptions {
 
 interface RuntimeCapabilities {
 	nodeMajor: number;
+	minimumPayloadVersion?: string;
 }
 
 export type UpdateDecision =
@@ -38,7 +39,11 @@ export function decideUpdate({
 	if (!(isNewer || currentRevoked) || isRevoked || isGatedPrerelease) return { kind: "up-to-date" };
 
 	const requiredNode = manifest.requires?.nodeMajor;
-	if (requiredNode !== undefined && runtime.nodeMajor < requiredNode) {
+	if (
+		(requiredNode !== undefined && runtime.nodeMajor < requiredNode) ||
+		(runtime.minimumPayloadVersion &&
+			compareVersions(manifest.version, runtime.minimumPayloadVersion) < 0)
+	) {
 		return { kind: "needs-image-pull", target: manifest.version };
 	}
 
