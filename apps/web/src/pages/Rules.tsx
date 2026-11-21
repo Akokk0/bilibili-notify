@@ -23,7 +23,7 @@ import { useCallback, useMemo, useState } from "react";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
-import { useSettingsDraft } from "../hooks/useSettingsDraft";
+import { mergeSettingsDraft, useSettingsDraft } from "../hooks/useSettingsDraft";
 import { useSources } from "../hooks/useSources";
 import { useT } from "../i18n";
 import { api } from "../services/api";
@@ -125,39 +125,6 @@ function SectionList({
 			}))}
 		/>
 	);
-}
-
-// ── Deep merge (for global PATCH draft) ────────────────────────────────────
-
-/**
- * 草稿的合并走 JSON Merge Patch 的语义(同服务端):补丁里的 `null` = **把这个键从草稿里拿掉**,不是把 `null` 存进去。
- * 清空一个可选字段(上舰提示里某一档的文案)靠它 —— 拿掉之后草稿里就没有这个键,保存时 `buildPatch` 拿草稿与基线一比,
- * 才会编出显式 null 去服务端真的删;存成 `null` 的话界面读到的是 `null`、草稿与基线对不上又说不清是改了还是没改。
- */
-function deepMerge<T>(base: T, patch: GlobalSettingsPatch): T {
-	if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return patch as T;
-	const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
-	for (const k of Object.keys(patch)) {
-		const pv = (patch as Record<string, unknown>)[k];
-		if (pv === null) {
-			delete out[k];
-			continue;
-		}
-		const bv = out[k];
-		if (
-			pv != null &&
-			typeof pv === "object" &&
-			!Array.isArray(pv) &&
-			bv != null &&
-			typeof bv === "object" &&
-			!Array.isArray(bv)
-		) {
-			out[k] = deepMerge(bv, pv as GlobalSettingsPatch);
-		} else {
-			out[k] = pv;
-		}
-	}
-	return out as T;
 }
 
 // ── GlobalDraftBinder (全局 island,互斥挂载) ───────────────────────────────
@@ -312,7 +279,7 @@ export default function Rules() {
 	const removeSubCustomization = useMutation({
 		mutationFn: async (sub: Subscription) => {
 			// 移除该 UP 的所有 per-UP 配置。注意:发 `overrides: {}` 不行 —— 空对象给 store
-			// deepMerge 遍历不到任何键 → 当「不改」→ 旧 slice 原样保留(同 SY1)。须把每个
+			// 空补丁没有任何键 → 当「不改」→ 旧 slice 原样保留(同 SY1)。须把每个
 			// 现存 slice 显式置 null(清除哨兵),buildOverridesPatch({}, base) 正好生成。
 			const overrides = buildOverridesPatch({}, sub.overrides);
 			// 特别关注只有 B 站订阅有,拓展订阅那一支没有这一格,不发。
@@ -337,7 +304,7 @@ export default function Rules() {
 		(delta: GlobalSettingsPatch): void => {
 			setDraft((d) => {
 				if (!d) return d;
-				const next = deepMerge(d, delta);
+				const next = mergeSettingsDraft(d, delta);
 				// 基线里没有账本这一格(老形态)时别凭空补一个 `{}`,否则草稿与基线对不上、保存条白亮。
 				const before = next.templatesSeen ?? NO_SEEN;
 				const seen = syncTemplatesSeen(

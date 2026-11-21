@@ -15,7 +15,7 @@ import { ACCOUNTS_QUERY_KEY } from "../hooks/useAccounts";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { INVALID_SETTINGS_QUERY_PREFIX } from "../hooks/useInvalidSettings";
 import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
-import { useSettingsDraft } from "../hooks/useSettingsDraft";
+import { mergeSettingsDraft, useSettingsDraft } from "../hooks/useSettingsDraft";
 import { i18n, useT, useTextOptions } from "../i18n";
 import { api } from "../services/api";
 import type { Connection, PushTarget } from "../types/domain";
@@ -115,39 +115,6 @@ const HASH_SECTION: Readonly<Record<string, SystemSectionId>> = {
 	"#account": "account",
 };
 
-/**
- * 草稿层的合并。与线格式同一套语义:**`null` = 删除该键**,缺席 = 不改。
- *
- * 草稿层也必须认 null,否则「关掉一个可选覆盖」在这里就先失败了 —— 从前的写法是
- * 「拷一份、删掉那个键、整份回传」,而整份回传走的是合并,被删的键当场被合回来
- * (同时有两个以上模块覆盖时尤其明显:只剩一个时删空成 undefined 反而歪打正着)。
- */
-function deepMerge<T>(base: T, patch: GlobalSettingsPatch | SettingsPatch): T {
-	if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return patch as T;
-	const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
-	for (const k of Object.keys(patch)) {
-		const pv = (patch as Record<string, unknown>)[k];
-		if (pv === null) {
-			delete out[k];
-			continue;
-		}
-		const bv = out[k];
-		if (
-			pv != null &&
-			typeof pv === "object" &&
-			!Array.isArray(pv) &&
-			bv != null &&
-			typeof bv === "object" &&
-			!Array.isArray(bv)
-		) {
-			out[k] = deepMerge(bv, pv as GlobalSettingsPatch);
-		} else {
-			out[k] = pv;
-		}
-	}
-	return out as T;
-}
-
 export default function System() {
 	const t = useT();
 	const qc = useQueryClient();
@@ -201,7 +168,7 @@ export default function System() {
 	const [draft, setDraft] = useSettingsDraft(globalsQuery.data, "system.settings");
 
 	function patchDraft(delta: SettingsPatch): void {
-		setDraft((d) => (d ? deepMerge(d, delta) : d));
+		setDraft((d) => (d ? mergeSettingsDraft(d, delta) : d));
 	}
 	/** 只改核心那份的几张卡(主人目标、指令、链接解析)用它:它们认的是核心那份的形状。 */
 	function patchCoreDraft(delta: GlobalSettingsPatch): void {
