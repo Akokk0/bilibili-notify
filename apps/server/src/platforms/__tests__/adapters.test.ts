@@ -861,6 +861,18 @@ describe("onebot — 失败与重试", () => {
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 	});
 
+	it("能力测试在配置了重试时只发送一次", async () => {
+		fetchMock.mockImplementation(async () =>
+			res({ ok: true, json: { status: "failed", retcode: 1 } }),
+		);
+		const ad = startedOnebot(obOpts());
+		const result = await ad.send(obConnection({ maxRetries: 2 }), obTarget(), TEXT, {
+			singleAttempt: true,
+		});
+		expect(result.ok).toBe(false);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
 	it("maxRetries:首次失败后重试成功(fetch 调用 2 次)", async () => {
 		fetchMock
 			.mockResolvedValueOnce(res({ ok: true, json: { status: "failed", retcode: 1 } }))
@@ -928,6 +940,8 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		expect(r).toMatchObject({ ok: false, code: "unknown", upstreamCode: 100 });
 		expect(messageOf(r)).toContain("风控");
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(3);
+		await ad.send(connection, obTarget(), TEXT, { singleAttempt: true });
+		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(4);
 		ad.stop();
 	});
 

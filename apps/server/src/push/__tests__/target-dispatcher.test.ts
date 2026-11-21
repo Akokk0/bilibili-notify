@@ -116,7 +116,7 @@ describe("createTargetDispatcher — adapter 注册表", () => {
 				payload: { kind: "image", image: sample.image },
 			}),
 		});
-		const interceptSend = vi.fn(() => ({
+		const interceptSend = vi.fn<SendInterceptHandler>(() => ({
 			ok: true as const,
 			latencyMs: 0,
 			isSynthetic: true as const,
@@ -131,17 +131,26 @@ describe("createTargetDispatcher — adapter 注册表", () => {
 			interceptSend,
 		});
 		const image = { buffer: Buffer.from("png"), mime: "image/png" };
-		const result = await dispatcher.sendTest("t1", "image", {
+		const samples = {
 			text: "test",
 			image,
 			secondImage: image,
-			audio: { buffer: Buffer.from("silk"), mime: "audio/silk" },
-		});
+			audio: { buffer: Buffer.from("silk"), mime: "audio/silk" as const },
+		};
+		const result = await dispatcher.sendTest("t1", "image", samples);
 		expect(result).toMatchObject({ ok: true, isSynthetic: true });
 		expect(interceptSend).toHaveBeenCalledWith(
 			expect.objectContaining({ payload: { kind: "image", image } }),
 		);
 		expect(adapter.send).not.toHaveBeenCalled();
+		interceptSend.mockReturnValueOnce(undefined);
+		await dispatcher.sendTest("t1", "image", samples);
+		expect(adapter.send).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.anything(),
+			{ kind: "image", image },
+			{ singleAttempt: true },
+		);
 	});
 	it.each(["target", "connection", "private"] as const)(
 		"群状态的 %s 闸在请求上游前生效",

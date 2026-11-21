@@ -105,6 +105,8 @@ export interface PlatformAdapter {
 		connection: Connection,
 		destination: DestinationRef,
 		payload: NotificationPayload,
+		/** 手动能力测试只投递一次。日常推送沿用连接的重试配置。 */
+		options?: { singleAttempt: boolean },
 	): Promise<DeliveryResult>;
 	/** 构造对应能力的真实样例；不支持时拒绝，不用文本替代。没有此成员的旧适配器仍可测试普通文本。 */
 	createTestPayload?(

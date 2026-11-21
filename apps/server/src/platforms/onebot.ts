@@ -1590,6 +1590,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			connection: Connection,
 			destination: DestinationRef,
 			payload: NotificationPayload,
+			options,
 		): Promise<DeliveryResult> {
 			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			if (!isMine(connection)) {
@@ -1598,7 +1599,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 					t("onebot.connection.adapterMismatch", { adapterKey: connection.adapterKey }),
 				);
 			}
-			if (payload.kind === "native-share") return sendNativeShare(connection, destination, payload);
+			const sending = options?.singleAttempt
+				? { ...connection, settings: { ...connection.settings, maxRetries: 0 } }
+				: connection;
+			if (payload.kind === "native-share") return sendNativeShare(sending, destination, payload);
 			if (payload.kind === "markdown")
 				return fail("unsupported", t("onebot.capability.markdownUnsupported"));
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
@@ -1622,7 +1626,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				built = rebuilt;
 			}
 
-			return dispatch(connection, destination, built, t0);
+			return dispatch(sending, destination, built, t0);
 		},
 
 		async fetchDestinationStatus(connection, destination, _signal, options) {
