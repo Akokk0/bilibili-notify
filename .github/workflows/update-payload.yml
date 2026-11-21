@@ -7,7 +7,7 @@ name: bilibili-notify — update payload
 # 谁先构建完谁建 v<VERSION> release。
 #
 # 需要的 repo secret:
-#   BN_UPDATE_SIGNING_KEY  Ed25519 私钥(PKCS#8 PEM,或它的 base64)。**没配就跳过签名**
+#   BN_RELEASE_SIGNING_KEY  Ed25519 私钥(PKCS#8 PEM,或它的 base64)。**没配就跳过签名**
 #                          并打一条 warning —— 与其让每次发版都红着,不如把这件事
 #                          显式地摆在 run summary 上。生成方法见 docs/agents/self-update.md。
 #   RELEASE_PAT            创建 / 更新 release 用
@@ -29,6 +29,8 @@ on:
         required: false
       BN_UPDATE_SIGNING_KEY:
         required: false
+      LEGACY_SIGNER_CONFIGURED:
+        required: true
 
 # 串行化:两次 push 同时跑会让 update-channel 上的清单和 release 资产失同步。
 # group **不带 ref** —— 每个 tag 的 ref 都不一样,带上就等于每次都是新组,两个 tag
@@ -58,6 +60,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Check legacy signer retirement
+        env:
+          LEGACY_SIGNER_CONFIGURED: ${{ secrets.LEGACY_SIGNER_CONFIGURED }}
+        run: bash .github/scripts/shared/assert-update-signing-cutover.sh
 
       - name: Assert app tag format
         if: startsWith(github.ref, 'refs/tags/v')
@@ -129,6 +136,10 @@ jobs:
           SIZE: ${{ steps.payload.outputs.size }}
           NOTES: ${{ steps.notes.outputs.value }}
         run: bash .github/scripts/update-payload/sign-payload-manifest.sh
+
+      - name: Verify release signature
+        if: steps.sign.outputs.signed == 'true'
+        run: node scripts/verify-release-signature.mjs dist/manifest.sig.json
 
       - name: Validate release token
         if: env.DRY_RUN == 'false' && steps.sign.outputs.signed == 'true'

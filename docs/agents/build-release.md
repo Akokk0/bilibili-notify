@@ -77,7 +77,7 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 - `.github/workflows/image-release.yml` —— Docker Hub `docker.io/akokk0/bilibili-notify` 与 GHCR `ghcr.io/akokk0/bilibili-notify`。
 - `.github/workflows/desktop-release.yml` —— macOS / Windows Desktop 产物与 GitHub Release assets。
 - `.github/workflows/npm-release.yml` —— 构建并校验自带双宿主的`@bilibili-notify/bn`，上传可审阅tgz，随后通过可信发布写入npm并推进渠道。
-- `.github/workflows/update-payload.yml` —— 应用内更新的载荷 zip 与签名清单,挂到同一个 release,并覆盖滚动 tag `update-channel` 上的渠道清单。清单的 `notes` 是从 `apps/CHANGELOG.md` 该版本段抽的概述(`scripts/changelog-section.mjs`,构建前就抽,找不到 / 为空 / 超 120 字直接红)。**没配 `BN_UPDATE_SIGNING_KEY` 时整条跳过并打 warning**,不让发版红着。详见 [self-update.md](./self-update.md)。
+- `.github/workflows/update-payload.yml` —— 应用内更新的载荷 zip 与签名清单,挂到同一个 release,并覆盖滚动 tag `update-channel` 上的渠道清单。清单的 `notes` 是从 `apps/CHANGELOG.md` 该版本段抽的概述(`scripts/changelog-section.mjs`,构建前就抽,找不到 / 为空 / 超 120 字直接红)。**没配 `BN_RELEASE_SIGNING_KEY` 时整条跳过并打 warning**,不让发版红着。详见 [self-update.md](./self-update.md)。
 
 GitHub Release 的正文由 `create-app-github-release.sh` 拼(desktop-release 与 update-payload 共用,谁先到谁建):开头是同一个脚本抽出的 CHANGELOG **整段**,后面才是产物清单与 compare 链接;CHANGELOG 里没有这一版就红。所以 **tag 必须指向已含 CHANGELOG 段的 commit**。
 
@@ -87,7 +87,7 @@ GitHub Release 的正文由 `create-app-github-release.sh` 拼(desktop-release �
 
 拓展与本体分开发布(ADR-0013):
 
-- `.github/workflows/extension-release.yml` —— tag `extension/<id>@<version>` 触发:构建那个拓展、打成拓展包(`scripts/pack-extension.mjs`,必装 `extension.json` + `index.mjs`,另收可选的 `README.md` / `CHANGELOG.md`,打包可复现)、挂到同名的不可变 release 上,再把这一条并进官方索引(`scripts/marketplace-index.mjs`,同一把 `BN_UPDATE_SIGNING_KEY`)、覆盖到滚动 tag `extensions` 上的 `marketplace.json`(旧的 `extension-marketplace` 是 0.12 读的,已冻结)。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红;条目的 `notes` 从 `extensions/<id>/CHANGELOG.md` 抽。详见 [extension-marketplace.md](./extension-marketplace.md)。
+- `.github/workflows/extension-release.yml` —— tag `extension/<id>@<version>` 触发:构建那个拓展、打成拓展包(`scripts/pack-extension.mjs`,必装 `extension.json` + `index.mjs`,另收可选的 `README.md` / `CHANGELOG.md`,打包可复现)、挂到同名的不可变 release 上,再把这一条并进官方索引(`scripts/marketplace-index.mjs`,同一把 `BN_RELEASE_SIGNING_KEY`)、覆盖到滚动 tag `extensions` 上的 `marketplace.json`(旧的 `extension-marketplace` 是 0.12 读的,已冻结)。tag 与 `extensions/<id>/extension.json` 的 `version` 对不上直接红;条目的 `notes` 从 `extensions/<id>/CHANGELOG.md` 抽。详见 [extension-marketplace.md](./extension-marketplace.md)。
 
 不由 tag 触发、只手动跑的还有一条:
 

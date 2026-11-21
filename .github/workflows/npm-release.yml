@@ -66,7 +66,8 @@ jobs:
       AFDIAN_USER_ID: ${{ secrets.AFDIAN_USER_ID }}
       AFDIAN_TOKEN: ${{ secrets.AFDIAN_TOKEN }}
       RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
-      BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+      BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_RELEASE_SIGNING_KEY }}
+      LEGACY_SIGNER_CONFIGURED: ${{ secrets.BN_UPDATE_SIGNING_KEY != '' && 'true' || 'false' }}
 
   build:
     name: Build npm package

@@ -98,7 +98,7 @@ jobs:
       - name: Assert signing key
         id: key
         env:
-          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_RELEASE_SIGNING_KEY }}
         run: bash .github/scripts/extension-release/assert-extension-signing-key.sh
 
       - name: Validate release token
@@ -130,7 +130,7 @@ jobs:
       - name: Merge this entry and sign the index
         if: steps.key.outputs.present == 'true'
         env:
-          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_UPDATE_SIGNING_KEY }}
+          BN_UPDATE_SIGNING_KEY: ${{ secrets.BN_RELEASE_SIGNING_KEY }}
           ID: ${{ steps.ext.outputs.id }}
           VERSION: ${{ steps.ext.outputs.version }}
           PRERELEASE: ${{ steps.ext.outputs.prerelease }}
@@ -139,6 +139,10 @@ jobs:
           SIZE: ${{ steps.pkg.outputs.size }}
           NOTES: ${{ steps.notes.outputs.value }}
         run: bash .github/scripts/extension-release/sign-extension-index.sh
+
+      - name: Verify release signature
+        if: steps.key.outputs.present == 'true'
+        run: node scripts/verify-release-signature.mjs dist/marketplace-next.sig.json
 
       - name: Publish the marketplace index
         if: env.DRY_RUN == 'false' && steps.key.outputs.present == 'true'

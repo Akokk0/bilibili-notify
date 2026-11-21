@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -111,6 +111,140 @@ esac\n`,
 		expect(readFileSync(join(dir, "archived-manifest"), "utf8")).toBe(original);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+function workflow(name) {
+	return parse(readFileSync(join(repoRoot, ".github/workflows", name), "utf8"));
+}
+
+function secretName(expression) {
+	const match = /^\$\{\{ secrets\.(\w+) \}\}$/.exec(expression);
+	expect(match).not.toBeNull();
+	return match[1];
+}
+
+it("replaying the frozen alpha.4 job cannot replace a newer published channel", () => {
+	const dir = mkdtempSync(join(tmpdir(), "bn-legacy-release-"));
+	try {
+		mkdirSync(join(dir, "scripts"));
+		for (const name of ["sign-update-manifest.mjs", "cli-args.mjs"]) {
+			copyFileSync(join(repoRoot, "scripts", name), join(dir, "scripts", name));
+		}
+		mkdirSync(join(dir, "dist"));
+		const caller = workflow("npm-release.yml").jobs.update.secrets;
+		const signing = workflow("update-payload.yml").jobs.publish.steps.find((s) => s.id === "sign");
+		const activeName = secretName(caller[secretName(signing.env.BN_UPDATE_SIGNING_KEY)]);
+		const key = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" });
+		const available = { [activeName]: key };
+		const output = join(dir, "outputs");
+		const channel = join(dir, "alpha.json");
+		const sign = (version, signingKey) => {
+			writeFileSync(output, "");
+			const result = spawnSync(
+				"bash",
+				[join(repoRoot, ".github/scripts/update-payload/sign-payload-manifest.sh")],
+				{
+					cwd: dir,
+					encoding: "utf8",
+					env: {
+						...process.env,
+						BN_UPDATE_SIGNING_KEY: signingKey ?? "",
+						GITHUB_OUTPUT: output,
+						VERSION: version,
+						REPO: "fixture/repo",
+						SHA256: "a".repeat(64),
+						SIZE: "8",
+						NOTES: "fixture",
+					},
+				},
+			);
+			expect(result.status, result.stderr).toBe(0);
+			return readFileSync(output, "utf8").trim() === "signed=true";
+		};
+		expect(sign("1.0.0-alpha.5", available[activeName])).toBe(true);
+		copyFileSync(join(dir, "dist/manifest.sig.json"), channel);
+		// Frozen alpha.4 reads this exact repository secret and unconditionally replaces the
+		// channel after signing. It never consults a newer tag's comparison script.
+		if (sign("1.0.0-alpha.4", available.BN_UPDATE_SIGNING_KEY)) {
+			copyFileSync(join(dir, "dist/manifest.sig.json"), channel);
+		}
+		const published = JSON.parse(readFileSync(channel, "utf8"));
+		expect(JSON.parse(published.manifest).version).toBe("1.0.0-alpha.5");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+it("the migration dry run rejects a manifest signed by another valid Ed25519 key", () => {
+	const dir = mkdtempSync(join(tmpdir(), "bn-signing-cutover-"));
+	try {
+		const key = generateKeyPairSync("ed25519");
+		const doc = JSON.stringify({ version: "1.0.0" });
+		const file = join(dir, "manifest.sig.json");
+		writeFileSync(
+			file,
+			JSON.stringify({
+				manifest: doc,
+				signature: sign(null, Buffer.from(doc), key.privateKey).toString("base64"),
+			}),
+		);
+		const steps = workflow("update-payload.yml").jobs.publish.steps;
+		const check = steps.find((step) => step.name === "Verify release signature");
+		const runCheck = (script) => spawnSync("node", [script, file], { encoding: "utf8" });
+		const realScript = check && join(repoRoot, check.run.split(" ")[1]);
+		expect(realScript ? runCheck(realScript).status : 0).toBe(1);
+		expect(check.if).toBe("steps.sign.outputs.signed == 'true'");
+		expect(runCheck(realScript).stderr).toContain("public key");
+		const keys = join(dir, "apps/server/src/update");
+		mkdirSync(keys, { recursive: true });
+		mkdirSync(join(dir, "scripts"));
+		const localScript = join(dir, check.run.split(" ")[1]);
+		copyFileSync(realScript, localScript);
+		const publicKey = key.publicKey.export({ type: "spki", format: "der" }).toString("base64");
+		writeFileSync(
+			join(keys, "trusted-keys.ts"),
+			`export const TRUSTED_UPDATE_KEYS = [${JSON.stringify(publicKey)}];`,
+		);
+		expect(runCheck(localScript).status).toBe(0);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+it("publishing and revoking both stop while old tag jobs can still sign", () => {
+	const caller = workflow("npm-release.yml").jobs.update;
+	const update = workflow("update-payload.yml").jobs.publish.steps;
+	const revoke = workflow("revoke-update.yml").jobs.revoke.steps;
+	const oldSecretCheck = "secrets.BN_UPDATE_SIGNING_KEY != ''";
+	for (const steps of [update, revoke]) {
+		const guard = steps.find((step) => step.name === "Check legacy signer retirement");
+		const signing = steps.find((step) => step.env?.BN_UPDATE_SIGNING_KEY);
+		expect(steps.indexOf(guard)).toBeLessThan(steps.indexOf(signing));
+		const legacy = guard.env.LEGACY_SIGNER_CONFIGURED;
+		expect(steps === update ? caller.secrets[secretName(legacy)] : legacy).toContain(
+			oldSecretCheck,
+		);
+		for (const [present, expected] of [
+			["true", 1],
+			["false", 0],
+		]) {
+			const result = spawnSync("bash", ["-c", guard.run], {
+				cwd: repoRoot,
+				env: { LEGACY_SIGNER_CONFIGURED: present },
+			});
+			expect(result.status).toBe(expected);
+		}
+	}
+	const signers = Object.values(workflow("extension-release.yml").jobs)
+		.flatMap((job) => job.steps ?? [])
+		.filter((step) => step.env?.BN_UPDATE_SIGNING_KEY);
+	expect(signers).toHaveLength(2);
+	const current = secretName(
+		caller.secrets[secretName(update.find((step) => step.id === "sign").env.BN_UPDATE_SIGNING_KEY)],
+	);
+	for (const step of [...signers, revoke.find((step) => step.env?.BN_UPDATE_SIGNING_KEY)]) {
+		expect(secretName(step.env.BN_UPDATE_SIGNING_KEY)).toBe(current);
 	}
 });
 

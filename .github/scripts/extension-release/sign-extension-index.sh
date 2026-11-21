@@ -11,7 +11,7 @@
 #
 # 必需 env(ID / VERSION / PRERELEASE / REPO / SHA256 / SIZE / NOTES 由 marketplace-entry.mjs
 # 从环境里读,这里只负责断言它们在):
-#   BN_UPDATE_SIGNING_KEY  secrets.BN_UPDATE_SIGNING_KEY(marketplace-index.mjs 读)
+#   BN_UPDATE_SIGNING_KEY  secrets.BN_RELEASE_SIGNING_KEY(marketplace-index.mjs 读)
 #   ID          拓展 id
 #   VERSION     拓展版本
 #   PRERELEASE  "true"|"false"
@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-: "${BN_UPDATE_SIGNING_KEY:?BN_UPDATE_SIGNING_KEY env 必填(走 secrets.BN_UPDATE_SIGNING_KEY)}"
+: "${BN_UPDATE_SIGNING_KEY:?BN_UPDATE_SIGNING_KEY env 必填(走 secrets.BN_RELEASE_SIGNING_KEY)}"
 : "${ID:?ID env 必填(拓展 id)}"
 : "${VERSION:?VERSION env 必填(拓展版本)}"
 : "${PRERELEASE:?PRERELEASE env 必填(true|false)}"

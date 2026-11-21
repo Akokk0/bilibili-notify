@@ -5,7 +5,7 @@
 # 需要签名私钥,只在 CI 里跑;不要在本地拿真私钥调它。
 #
 # 必需 env:
-#   BN_UPDATE_SIGNING_KEY  secrets.BN_UPDATE_SIGNING_KEY(签名私钥 A;没配就报错退出)
+#   BN_UPDATE_SIGNING_KEY  secrets.BN_RELEASE_SIGNING_KEY(签名私钥 A;没配就报错退出)
 #   VERSION                用户该被送到的版本(steps.plan.outputs.version)
 #   PAYLOAD_URL            该版本载荷的下载地址(steps.plan.outputs.payloadUrl)
 #   SHA256                 载荷 sha256(steps.plan.outputs.sha256)
@@ -26,7 +26,7 @@ set -euo pipefail
 
 # 私钥单独判:没设和空串都走下面这句人话,不让 set -u 抢先抛 unbound variable。
 if [ -z "${BN_UPDATE_SIGNING_KEY:-}" ]; then
-	echo "::error::未配置 BN_UPDATE_SIGNING_KEY —— 撤回必须签名,没有私钥就只能离线手跑(见 docs/agents/self-update.md)"
+	echo "::error::未配置 BN_RELEASE_SIGNING_KEY —— 撤回必须签名,没有私钥就只能离线手跑(见 docs/agents/self-update.md)"
 	exit 1
 fi
 node scripts/sign-update-manifest.mjs \

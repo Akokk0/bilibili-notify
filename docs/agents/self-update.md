@@ -38,7 +38,7 @@
 
 | | 用途 | 放哪 |
 |---|---|---|
-| A 主用 | 每次发版签清单 | CI secret `BN_UPDATE_SIGNING_KEY` + 离线备份 |
+| A 主用 | 每次发版签清单 | CI secret `BN_RELEASE_SIGNING_KEY` + 离线备份 |
 | B 备用 | A 泄露时的唯一退路 | **只在离线备份里,永远不进 CI** |
 
 信任列表是**冻在已经发出去的那些安装里**的。A 泄露那天,唯一的办法是用 B 签一版、
@@ -69,11 +69,17 @@ node scripts/gen-update-keys.mjs --out ~/secrets/bn-update
 私钥 A 进 repo secret(PEM 换行在 secret 里容易丢,所以脚本也收 base64 包过一层的):
 
 ```bash
-base64 < ~/secrets/bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
+base64 < ~/secrets/bn-update-A.pem | gh secret set BN_RELEASE_SIGNING_KEY
 ```
 
 两把私钥离线各存一份(密码管理器 / 冷存储)。**丢了 A 还能用 B 顶上;两把都丢,
 存量用户就再也收不到能验过签的更新了。**
+
+### 迁移已上线仓库的签名 secret
+
+旧版发行作业重跑时仍按原标签读取 `BN_UPDATE_SIGNING_KEY`。迁移期间暂停发版和撤回，核实 A 的离线备份，移除仓库及对本仓可见的组织级同名 secret。等移除前排队的发行和撤回作业全部结束，再按上面的命令把**同一把 A** 配到 `BN_RELEASE_SIGNING_KEY`。应用内更新、撤回和拓展市场共用新名称，客户端继续使用已有公钥和渠道地址。
+
+运行新工作流的 dry-run，确认 `Verify release signature` 步骤用客户端内置的主用公钥验签通过。该步骤被跳过表示本次没有签发清单，需要检查新 secret。旧名称仍可用时，新版发行与撤回会在上传前报错。迁移后重跑历史发行，其签名步骤会跳过，已发布的版本资产与渠道清单会保留。GitHub 在运行排队时读取仓库 secret，重跑采用原提交。[GitHub 对 secret 的读取时机](https://docs.github.com/en/actions/reference/security/secrets#when-github-actions-reads-secrets) · [工作流重跑规则](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)
 
 ## 渠道入口
 
@@ -107,7 +113,7 @@ base64 < ~/secrets/bn-update-A.pem | gh secret set BN_UPDATE_SIGNING_KEY
    脚本抽出的 CHANGELOG **整段**,更新一节的「打开发布页」就能看到完整改动与 ⚠️),再覆盖
    `update-channel` 上对应渠道的清单
 
-没配 `BN_UPDATE_SIGNING_KEY` 时**整条跳过并打 warning**,不让发版红着 —— 但那次发版
+没配 `BN_RELEASE_SIGNING_KEY` 时**整条跳过并打 warning**,不让发版红着 —— 但那次发版
 的用户也就没有应用内更新。
 
 ## 面板上怎么提示
