@@ -1,5 +1,5 @@
 {
-	"marketplace.notes": "Shows bot capabilities and adds delivery tests, with explicit limits for voice and Markdown.",
+	"marketplace.notes": "Merged-forward tests use public images that messaging platforms can fetch more than once.",
 	"view.connected": "Connected",
 	"view.mismatched": "Connected, but bridge type differs",
 	"view.configuredKind": "Configured: {kind}",
