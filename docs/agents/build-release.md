@@ -25,7 +25,7 @@ CI、本体、开发工具和官方拓展发行都调用 `.github/workflows/gate
 
 仓外装包测试从空工程执行离线安装。新机器按主仓锁文件安装后，还需要为这些工程解析公共依赖所用的元数据。CI 在构建后运行 `bash .github/scripts/shared/prepare-package-test-cache.sh`，用本地打出的 SDK 和创建器安装一次临时拓展工程。本地冷缓存可复用这条命令。后续测试仍执行 `--offline`。
 
-CI 测试按 Vitest 文件分片并行，一次 Biome 检查和全仓构建后，四个分片从同一运行的归档还原库、面板、拓展和工具，仅分到仓外离线安装测试的分片预热依赖缓存。面板在构建时已由 `tsc -b` 检查，第一组运行 `typecheck:after-build` 检查其余包，并运行 Arabic locale 回归，所有组成功才通过统一的 `gate`。本地用 `vp run test` 跑全集，复现某组用 `vp run test --shard=1/4`，分片总数以 `gate.yml` 的矩阵为准。
+CI 完成一次全仓构建后，四个 Vitest 分片从同一归档还原库、面板、拓展和工具。分到仓外离线安装测试的分片会预热依赖缓存。第 1 片运行一次全仓 Biome 检查，执行 `typecheck:after-build` 检查面板以外的包，并运行 Arabic locale 回归。面板已在构建时由 `tsc -b` 检查。四片全部成功才通过统一的 `gate`。本地用 `vp run test` 跑全集，复现某片用 `vp run test --shard=1/4`，分片总数以 `gate.yml` 的矩阵为准。
 
 dev 推送只修改根 `README.md`，且直接父提交已有成功门禁时，类型检查复用父提交的结果。文档守卫、构建、四个测试分片和 Arabic locale 回归仍运行。
 

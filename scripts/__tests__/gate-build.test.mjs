@@ -10,6 +10,15 @@ const gate = parse(
 	await readFile(new URL("../../.github/workflows/gate.yml", import.meta.url), "utf8"),
 );
 
+it("全仓 Biome 检查只在第 1 个测试分片执行一次", () => {
+	const lint = Object.entries(gate.jobs).flatMap(([job, { steps }]) =>
+		steps
+			.filter((step) => step.run === "vp exec biome ci .")
+			.map((step) => ({ job, when: step.if })),
+	);
+	expect(lint).toEqual([{ job: "test", when: "matrix.shard == 1" }]);
+});
+
 it("四个测试分片拿到同一次构建的库、面板、拓展和可执行的工具", async () => {
 	const { build, test } = gate.jobs;
 	expect(build?.steps.some((step) => step.run === "vpr build")).toBe(true);

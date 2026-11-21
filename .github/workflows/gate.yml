@@ -1,6 +1,6 @@
 name: Gate
 
-# **发版门禁**的唯一定义:Biome → build → typecheck → test。
+# Biome、构建、类型检查和测试的共享发版门禁。
 # dev CI、本体发行、工具与官方拓展共用这份定义。
 #
 # 抽出来是因为门禁是「这份代码能不能发出去」的判据 —— 各自维护的副本迟早会飘,
@@ -51,8 +51,6 @@ jobs:
           node-version-file: .node-version
           cache: true
 
-      - name: Lint (Biome)
-        run: vp exec biome ci .
       - name: Build
         run: vpr build
 
@@ -89,6 +87,10 @@ jobs:
           path: ${{ runner.temp }}
       - name: Restore workspace build
         run: tar -xf "$RUNNER_TEMP/workspace-build.tar"
+
+      - name: Lint (Biome)
+        if: matrix.shard == 1
+        run: vp exec biome ci .
 
       - name: Typecheck
         if: matrix.shard == 1 && needs.lookup.outputs.types_passed != 'true'
