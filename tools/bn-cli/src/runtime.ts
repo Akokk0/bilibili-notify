@@ -195,7 +195,7 @@ export async function launchRuntime(options: LaunchOptions): Promise<void> {
 	process.env.BN_HOST = "127.0.0.1";
 	delete process.env.BN_CONFIG_DISABLED;
 	process.env.BN_CONFIG = join(dataDir, "bn.config.yaml");
-	process.env.BN_WEB_DIST = join(runtime, "web-dist");
+	if (options.profile === "dev") process.env.BN_WEB_DIST = join(runtime, "web-dist");
 	const entry = join(runtime, options.profile === "web" ? "boot.mjs" : "index.mjs");
 	console.log(`BN ${options.profile}: http://127.0.0.1:${options.port}\nData: ${dataDir}`);
 	process.argv = [process.execPath, entry];
