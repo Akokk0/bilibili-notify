@@ -102,7 +102,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 	const running = new Set<string>();
 
 	/** 闸那一半 —— `start` 与 `canRepush` 共用,免得两处各判各的、慢慢漂开。 */
-	function gate(entry: HistoryEntry): Failure | null {
+	function gate(entry: HistoryEntry, busy = running.has(entry.id)): Failure | null {
 		const subscriptionId = opts.currentSubscriptionOf(entry);
 		return repushDenial({
 			entry,
@@ -110,7 +110,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 			routedTargets:
 				subscriptionId === undefined ? [] : opts.routedTargets(subscriptionId, entry.feature),
 			targetEnabled: entry.targetId !== null && opts.targetEnabled(entry.targetId),
-			running: running.has(entry.id),
+			running: busy,
 		});
 	}
 
@@ -127,29 +127,36 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 		createdAt: string,
 		mode: RepushMode,
 	): Promise<RepushStartResult> {
-		const entry = await opts.history.findRow(rowId, createdAt);
-		if (!entry) return fail("not_found", serverText("service.history.repush-runner.text.2"));
-
-		const denial = gate(entry);
-		if (denial) return denial;
-
-		// 原件与行**按身份号**对表,不是按 messages.length —— 行会随着每次重推变长。
-		const snapshot = await opts.repush.load(rowId, createdAt, originalCount(entry.messages));
-		if (!snapshot) return fail("conflict", snapshotGone());
-
-		const indices =
-			mode === "all" ? snapshot.messages.map((_, i) => i) : unsentIndices(entry.messages);
-
+		if (running.has(rowId)) return fail("conflict", serverText("service.history.repush.text.6"));
 		running.add(rowId);
-		opts.serviceCtx.track(
-			run(entry, createdAt, snapshot.messages, indices)
-				.catch((err) => {
-					// 追进历史行失败(写道关了、盘满了)—— 以前这条 promise 没人接,是一次 unhandledRejection。
-					opts.logger.warn(logText("log.history.repushAborted"), { rowId, error: err });
-				})
-				.finally(() => running.delete(rowId)),
-		);
-		return ok({ count: indices.length });
+		let sending = false;
+		try {
+			const entry = await opts.history.findRow(rowId, createdAt);
+			if (!entry) return fail("not_found", serverText("service.history.repush-runner.text.2"));
+
+			const denial = gate(entry, false);
+			if (denial) return denial;
+
+			// 原件与行**按身份号**对表,不是按 messages.length —— 行会随着每次重推变长。
+			const snapshot = await opts.repush.load(rowId, createdAt, originalCount(entry.messages));
+			if (!snapshot) return fail("conflict", snapshotGone());
+
+			const indices =
+				mode === "all" ? snapshot.messages.map((_, i) => i) : unsentIndices(entry.messages);
+
+			opts.serviceCtx.track(
+				run(entry, createdAt, snapshot.messages, indices)
+					.catch((err) => {
+						// 追进历史行失败(写道关了、盘满了)—— 以前这条 promise 没人接,是一次 unhandledRejection。
+						opts.logger.warn(logText("log.history.repushAborted"), { rowId, error: err });
+					})
+					.finally(() => running.delete(rowId)),
+			);
+			sending = true;
+			return ok({ count: indices.length });
+		} finally {
+			if (!sending) running.delete(rowId);
+		}
 	}
 
 	/**

@@ -439,6 +439,16 @@ describe("canRepush — 给面板的预判", () => {
 });
 
 describe("闸", () => {
+	it("两个并发补发请求只受理一个", async () => {
+		const entry = await seedPartial();
+		const requests = await Promise.all([
+			runner.start(entry.id, entry.createdAt, "missing"),
+			runner.start(entry.id, entry.createdAt, "missing"),
+		]);
+		await settled(entry);
+		expect(requests.filter((result) => result.ok)).toHaveLength(1);
+		expect(sent.map((row) => row.text)).toEqual(["词云", "总结"]);
+	});
 	it("这一行正在补 → 第二次直接拒,一条都不多发", async () => {
 		const entry = await seedPartial();
 		gate = () => {};
