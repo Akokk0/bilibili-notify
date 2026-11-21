@@ -694,6 +694,21 @@ describe("DynamicPoller — 故障恢复", () => {
 		expect(b.logs.some((l) => l.msg.includes("恢复正常"))).toBe(false);
 	});
 
+	it("首页已跨过时间边界时，旧页不可用也会交出新动态", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 100);
+		const items = [110, 100, 90].map((pubTs) => ({
+			...makeItem({ uid: 1, pubTs }),
+			id_str: String(pubTs),
+		}));
+		b.fetchAllDynamic
+			.mockResolvedValueOnce(ok({ data: { items, has_more: true, offset: "old" } }))
+			.mockResolvedValue(resp([], 4101132, "历史页不可用"));
+		await b.engine.detectNow();
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(1);
+	});
+
 	it("关注流超过一页时交出第二页的新作品，重叠的作品只交一次", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 800);

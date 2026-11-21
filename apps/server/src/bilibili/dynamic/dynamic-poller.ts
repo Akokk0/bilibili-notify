@@ -554,17 +554,16 @@ export class DynamicPoller {
 		const first = await this.api.fetchAllDynamic();
 		if (!first.ok || generation !== this.detectorGeneration) return first;
 		const since = Math.max(this.feedThrough, Math.min(...this.postAnchors.values()));
-		const newest = (items: Dynamic[]) =>
-			items.reduce((time, item) => {
-				const author = item?.modules?.module_author;
-				return Math.max(time, author ? (getDynamicPostTime(author) ?? 0) : 0);
-			}, 0);
-		const head = newest(first.data.items);
+		const postTime = (item: Dynamic) => {
+			const author = item?.modules?.module_author;
+			return author && getDynamicPostTime(author);
+		};
+		const head = first.data.items.reduce((time, item) => Math.max(time, postTime(item) ?? 0), 0);
 		let page = first.data;
 		const items = [...page.items];
 		const ids = new Set(items.map((item) => item?.id_str));
 		const offsets = new Set<string>();
-		while (page.has_more && newest(page.items) > since) {
+		while (page.has_more && page.items.every((item) => (postTime(item) ?? Infinity) > since)) {
 			if (!page.offset || offsets.has(page.offset))
 				throw new Error("Dynamic feed cursor did not advance");
 			offsets.add(page.offset);
