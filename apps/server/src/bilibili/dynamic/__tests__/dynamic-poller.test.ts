@@ -694,6 +694,19 @@ describe("DynamicPoller — 故障恢复", () => {
 		expect(b.logs.some((l) => l.msg.includes("恢复正常"))).toBe(false);
 	});
 
+	it("关注流超过一页时交出第二页的新作品，重叠的作品只交一次", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 800);
+		const newer = { ...makeItem({ uid: 1, pubTs: 1000 }), id_str: "newer" };
+		const older = { ...makeItem({ uid: 1, pubTs: 900 }), id_str: "older" };
+		b.fetchAllDynamic
+			.mockResolvedValueOnce(ok({ data: { items: [newer], has_more: true, offset: "next" } }))
+			.mockResolvedValueOnce(resp([newer, older]));
+		await b.engine.detectNow();
+		expect(b.reportPost).toHaveBeenCalledTimes(2);
+		expect(b.fetchAllDynamic).toHaveBeenNthCalledWith(2, "next");
+	});
+
 	it("上报口抛错不能打断本轮动态的交出", async () => {
 		const throwing = makeThrowingLayers();
 		const b = makeEngine({ problems: throwing });
