@@ -47,6 +47,25 @@ describe("fetchThroughMirrors", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
+	it("镜像按实际读到的字节计数，声明的长度不影响验收", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(
+				new Response("abc", {
+					headers: { "content-length": "1000" },
+				}),
+			),
+		);
+		const result = await fetchThroughMirrors({
+			url: RELEASE_URL,
+			mirrors: [""],
+			maxBytes: 3,
+			timeoutMs: 1000,
+			accept: takeAll,
+		});
+		expect(result).toEqual({ ok: true, value: new TextEncoder().encode("abc") });
+	});
+
 	it("候选往死里灌 body → 超过上限当场中断,不缓冲完再检查", async () => {
 		// 恶意或坏掉的代理站可以一直往我们这儿灌。容器堆上限才 512MB,「先全收下
 		// 再看大小」等于把内存交给对方决定 —— 那不是防护,是把炸弹先抱进怀里。
