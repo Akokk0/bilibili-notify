@@ -16,6 +16,28 @@ describe("payloadDirOf", () => {
  * 直到某个改过的接口对不上才炸。AstrBot 的 core/dashboard 错配就是这个形态。
  */
 describe("resolveWebDistDir", () => {
+	it("旧 npm 启动器留下的预装面板路径随应用内更新切换", () => {
+		const preinstalledPath = `/custom/cache/web-1.0.0-alpha.4-${"a".repeat(64)}`;
+		const envValue = `${preinstalledPath}/web-dist`;
+		const options = {
+			preinstalledPath,
+			envValue,
+			configured: undefined,
+			bundleUrl: "file:///data/versions/1.1.0/index.mjs",
+		};
+		expect(resolveWebDistDir(options)).toEqual({
+			dir: "/data/versions/1.1.0/web-dist",
+			source: "payload",
+		});
+		expect(resolveWebDistDir({ ...options, configured: envValue })).toEqual({
+			dir: envValue,
+			source: "explicit",
+		});
+		expect(resolveWebDistDir({ ...options, envValue: "/custom/panel" })).toEqual({
+			dir: "/custom/panel",
+			source: "explicit",
+		});
+	});
 	it("没配过 → 跟着当前载荷走,而不是镜像里那份", () => {
 		const resolved = resolveWebDistDir({
 			configured: undefined,

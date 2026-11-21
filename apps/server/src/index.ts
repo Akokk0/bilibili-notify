@@ -405,6 +405,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const webDist = await resolveEffectiveWebDistDir({
 			configured: bootstrap.webDistDir,
 			envValue: normalizeOptionalEnv(env.BN_WEB_DIST),
+			preinstalledPath: env.BN_PREINSTALLED_PATH ?? env.BN_IMAGE_PATH,
 			bundleUrl: options.bundleUrl ?? import.meta.url,
 		});
 		const effectiveWebDistDir = webDist.dir;

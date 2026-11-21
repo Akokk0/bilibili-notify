@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
 
@@ -20,6 +20,8 @@ export interface ResolveWebDistDirOptions {
 	configured: string | undefined;
 	/** `BN_WEB_DIST`。 */
 	envValue: string | undefined;
+	/** The immutable bootstrap identifies the preinstalled runtime, including older npm caches. */
+	preinstalledPath?: string;
 	/** 当前这份载荷的入口(`import.meta.url`)。 */
 	bundleUrl: string;
 }
@@ -52,9 +54,16 @@ export interface ResolvedWebDistDir {
 export function resolveWebDistDir({
 	configured,
 	envValue,
+	preinstalledPath,
 	bundleUrl,
 }: ResolveWebDistDirOptions): ResolvedWebDistDir {
-	const explicit = pickExplicit(configured) ?? pickExplicit(envValue);
+	// Older bn web launchers always exported the hashed npm cache's own panel directory.
+	const launcherDefault =
+		preinstalledPath &&
+		envValue === join(preinstalledPath, "web-dist") &&
+		/^web-\d+\.\d+\.\d+(?:-[\w.-]+)?-[a-f0-9]{64}$/.test(basename(preinstalledPath));
+	const explicit =
+		pickExplicit(configured) ?? (launcherDefault ? undefined : pickExplicit(envValue));
 	if (explicit) return { dir: explicit, source: "explicit" };
 	return { dir: join(payloadDirOf(bundleUrl), "web-dist"), source: "payload" };
 }
