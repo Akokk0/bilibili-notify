@@ -1,11 +1,4 @@
-import type {
-	Connection,
-	GlobalSettings,
-	Json,
-	PushTarget,
-	Subscription,
-	SubscriptionTag,
-} from "@bilibili-notify/internal";
+import type { Json } from "@bilibili-notify/internal";
 import { t as serverText } from "../i18n/index.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { type BackupSecretBag, openSecrets, sealSecrets } from "./crypto.js";
@@ -23,14 +16,7 @@ import { applyRedactions, collectRedactions, redactBackupSections } from "./sani
  * decrypts and merges those back to rebuild the ready-to-persist config.
  */
 
-export interface FullBackupOptions {
-	globals?: GlobalSettings;
-	integrations?: Record<string, unknown>;
-	extensionSettings?: Record<string, unknown>;
-	subscriptions?: Subscription[];
-	subscriptionTags?: SubscriptionTag[];
-	connections?: Connection[];
-	targets?: PushTarget[];
+export interface FullBackupOptions extends BackupSections {
 	/** 各集成的 `secrets` 整袋(键是集成键);空袋的集成不用列。 */
 	integrationSecrets?: Record<string, Record<string, Json>>;
 }
