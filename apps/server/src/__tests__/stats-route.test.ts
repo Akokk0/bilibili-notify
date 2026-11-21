@@ -54,7 +54,8 @@ function makeDeps(f: Fixture): RouteDeps {
 	return {
 		runtime: {
 			fansStore: {
-				listSamplesSince: async (key: string) => f.samples?.[uidOf(key)] ?? [],
+				listSamplesSince: async (key: string, since: string) =>
+					(f.samples?.[uidOf(key)] ?? []).filter((sample) => sample.sampledAt >= since),
 				// 与真仓一致:替身手里这条订阅的样本里,不晚于入参时刻的最近一条;没有就 undefined。
 				findNearestBefore: async (key: string, iso: string) =>
 					(f.samples?.[uidOf(key)] ?? []).filter((s) => s.sampledAt <= iso).at(-1),
@@ -221,6 +222,16 @@ describe("GET /api/stats/overview — 数据投影", () => {
 			samples: { "1": [{ sampledAt: new Date(NOW - DAY).toISOString(), followers: 100 }] },
 		});
 		expect((await get(deps)).rows[0]?.followers).toBe(100);
+	});
+
+	it("窗口内没有采样时仍显示最后一次已知的粉丝数", async () => {
+		const deps = makeDeps({
+			subs: [{ uid: "1" }],
+			samples: { "1": [{ sampledAt: new Date(NOW - 8 * DAY).toISOString(), followers: 123 }] },
+		});
+		const row = (await get(deps, "?days=7")).rows[0];
+		expect(row?.followers).toBe(123);
+		expect(row?.netWindow).toBeNull();
 	});
 
 	it("投稿与动态按有没有视频分栏", async () => {

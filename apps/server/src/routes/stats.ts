@@ -297,7 +297,7 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 				identity,
 				// 当前粉丝优先用资料缓存里的最新值(只有启用着的才取),它比 jsonl 末行更新;
 				// 没有(资料刷新还没跑到、停用了、拓展还没报过)时回退到采样末值。
-				followers: one.followers ?? samples.at(-1)?.followers ?? null,
+				followers: one.followers ?? samples.at(-1)?.followers ?? baseline?.followers ?? null,
 				net1d: sumTail(series, 1),
 				// 窗口装不下 7 天就没法给出 7 天口径 —— 拿 3 天的和冒充 7 天更糟。
 				net7d: days >= 7 ? sumTail(series, 7) : null,
