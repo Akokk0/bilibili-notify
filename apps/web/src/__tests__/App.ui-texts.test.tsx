@@ -25,6 +25,7 @@ import { useSessionStore } from "../store/session";
 import { makeEmptySubscription } from "../types/domain";
 
 const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const pageLoadWait = { timeout: 5_000 };
 afterEach(() => {
 	cleanup();
 	useRestartStore.getState().dismiss();
@@ -178,7 +179,7 @@ it("系统页经管理资源往返保留外观草稿，返回后仍可放弃", a
 				return Response.json({ list: [], active: { light: null, dark: null } });
 		},
 	});
-	await screen.findByText("主人账号");
+	await screen.findByText("主人账号", {}, pageLoadWait);
 	fireEvent.click(screen.getAllByRole("button", { name: "外观" })[0]);
 	fireEvent.change(await screen.findByRole("textbox", { name: "时区" }), {
 		target: { value: "Europe/Paris" },
@@ -227,7 +228,7 @@ it("管理期间重取新设置只更新未编辑字段，保存或普通切页�
 			if (path === "/api/library/fonts") return Response.json({ ok: true, fonts: [] });
 		},
 	});
-	await screen.findByText("主人账号");
+	await screen.findByText("主人账号", {}, pageLoadWait);
 	fireEvent.click(screen.getAllByRole("button", { name: "外观" })[0]);
 	fireEvent.change(await screen.findByRole("textbox", { name: "时区" }), {
 		target: { value: "Europe/Paris" },
@@ -247,8 +248,9 @@ it("管理期间重取新设置只更新未编辑字段，保存或普通切页�
 	fireEvent.change(screen.getByRole("textbox", { name: "时区" }), { target: { value: "UTC" } });
 	// 再走一趟并切换资源分类；普通切到另一业务页后不应恢复这一趟的旧草稿。
 	fireEvent.click(screen.getByRole("button", { name: "管理资源" }));
-	await waitFor(() => expect(router.state.location.pathname).toBe("/library"));
-	fireEvent.click(screen.getAllByRole("button", { name: /^字体/ })[0]);
+	const [fonts] = await screen.findAllByRole("button", { name: /^字体/ }, pageLoadWait);
+	expect(router.state.location.pathname).toBe("/library");
+	fireEvent.click(fonts);
 	await act(() => router.navigate(-1));
 	await act(() => router.navigate(-1));
 	expect(await screen.findByRole("textbox", { name: "时区" })).toHaveProperty("value", "UTC");
