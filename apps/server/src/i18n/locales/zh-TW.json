@@ -518,7 +518,7 @@
 	"log.host.draftSweepFailed": "過期銳評草稿清理失敗",
 	"log.host.extensionNotLoaded": "擴充功能未載入",
 	"log.host.extensionsSyncFailed": "擴充功能啟停同步失敗",
-	"log.host.payloadFallback": "載荷 {version} 啟動失敗，改用預裝版本 {preinstalledVersion}：{message}",
+	"log.host.payloadFallback": "載荷 {version} 啟動失敗，嘗試版本 {fallbackVersion}。{message}",
 	"platforms.connection.token.label": "accessToken",
 	"platforms.connection.token.description": "用於連線驗證；監聽連入時建議設定，避免未經授權的存取。",
 	"platforms.connection.timeout.label": "回應逾時",

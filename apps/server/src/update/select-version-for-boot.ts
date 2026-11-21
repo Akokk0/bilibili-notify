@@ -13,6 +13,7 @@ export interface SelectVersionForBootOptions {
 	versionsRoot: string;
 	/** 连续启动失败多少次就把一个版本判死。 */
 	maxBootFailures: number;
+	attempted?: ReadonlySet<string>;
 }
 
 /**
@@ -98,9 +99,17 @@ export function selectVersionForBoot({
 	preinstalledPath,
 	versionsRoot,
 	maxBootFailures,
+	attempted,
 }: SelectVersionForBootOptions): BootSelection {
 	const state = readState(versionsRoot);
-	const installed = installedVersions(versionsRoot);
+	const preinstalledRevoked = state.revoked.includes(preinstalledVersion);
+	const preinstalled = {
+		version: preinstalledVersion,
+		path: preinstalledPath,
+		isPreinstalledVersion: true,
+	};
+	if (attempted?.size && !preinstalledRevoked) return preinstalled;
+	const installed = installedVersions(versionsRoot).filter((version) => !attempted?.has(version));
 
 	const pinned = usablePin(state, installed, preinstalledVersion);
 	if (pinned !== null) {
@@ -110,7 +119,6 @@ export function selectVersionForBoot({
 	}
 
 	const blocked = unbootable(state);
-	const preinstalledRevoked = state.revoked.includes(preinstalledVersion);
 	let best: string | null = null;
 	for (const candidate of installed) {
 		if (blocked.includes(candidate)) continue;
@@ -121,7 +129,7 @@ export function selectVersionForBoot({
 	if (best === null) {
 		if (preinstalledRevoked)
 			throw new Error(t("service.boot.preinstalledRevoked", { version: preinstalledVersion }));
-		return { version: preinstalledVersion, path: preinstalledPath, isPreinstalledVersion: true };
+		return preinstalled;
 	}
 
 	return recordAttempt(state, versionsRoot, best, maxBootFailures);

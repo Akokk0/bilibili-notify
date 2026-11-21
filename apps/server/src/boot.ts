@@ -25,11 +25,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { consoleErrorRedacted, stderrLineRedacted } from "./logs/console-fallback.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { findNearestPackageJson } from "./runtime/nearest-package-json.js";
-import {
-	markBootSucceeded,
-	readBootView,
-	selectVersionForBoot,
-} from "./update/select-version-for-boot.js";
+import { markBootSucceeded, selectVersionForBoot } from "./update/select-version-for-boot.js";
 import { resolveVersionsRoot } from "./update/versions-root.js";
 
 type ListenAddress = { host: string; port: number };
@@ -100,52 +96,44 @@ export async function bootSelectedPayload({
 	log,
 	env = process.env,
 }: BootSelectedPayloadOptions): Promise<BootResult> {
-	const selection = selectVersionForBoot({
+	const attempted = new Set<string>();
+	const options = {
 		preinstalledVersion,
 		preinstalledPath,
 		versionsRoot,
 		maxBootFailures,
-	});
-
-	if (!selection.isPreinstalledVersion) {
+		attempted,
+	};
+	const preinstalled = { version: preinstalledVersion, path: preinstalledPath };
+	let selection = selectVersionForBoot(options);
+	while (true) {
 		try {
-			const address = await start(
-				loadPayload,
-				selection.path,
-				{ version: preinstalledVersion, path: preinstalledPath },
-				env,
-			);
-			// 起来了才销账。反过来的话计数永远回到零,坏版本会被无限重试 ——
-			// 自愈等于没有。
+			const address = await start(loadPayload, selection.path, preinstalled, env);
 			markBootSucceeded({ versionsRoot, version: selection.version });
-			return { version: selection.version, isPreinstalledVersion: false, address };
+			return {
+				version: selection.version,
+				isPreinstalledVersion: selection.isPreinstalledVersion,
+				address,
+			};
 		} catch (err) {
-			if (
-				readBootView({ versionsRoot, preinstalledVersion }).unbootable.includes(preinstalledVersion)
-			)
+			if (selection.isPreinstalledVersion) throw err;
+			const failed = selection.version;
+			attempted.add(failed);
+			try {
+				selection = selectVersionForBoot(options);
+			} catch {
+				// No eligible candidate remains. Surface the actual startup failure.
 				throw err;
-			// **刻意不销账**:这一次的尝试要留在账上,累够次数才判死。
-			// 日志里必须带上是哪一版、为什么 —— 否则用户只看到「更新完版本没变」。
+			}
 			log(
 				logText("log.host.payloadFallback", {
-					version: selection.version,
-					preinstalledVersion,
+					version: failed,
+					fallbackVersion: selection.version,
 					message: err instanceof Error ? err.message : String(err),
 				}),
 			);
 		}
 	}
-
-	// 镜像那份要是也起不来,就让它抛出去。静默退 0 的容器会被编排系统当成「正常
-	// 结束」—— 不重启、不报警,用户只看到服务没了而日志里什么都没有。
-	const address = await start(
-		loadPayload,
-		preinstalledPath,
-		{ version: preinstalledVersion, path: preinstalledPath },
-		env,
-	);
-	markBootSucceeded({ versionsRoot, version: preinstalledVersion });
-	return { version: preinstalledVersion, isPreinstalledVersion: true, address };
 }
 
 /**

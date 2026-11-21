@@ -519,7 +519,7 @@
 	"log.host.draftSweepFailed": "Failed to remove expired roast drafts",
 	"log.host.extensionNotLoaded": "Extension not loaded",
 	"log.host.extensionsSyncFailed": "Failed to synchronize extension activation",
-	"log.host.payloadFallback": "Payload {version} failed to start; falling back to preinstalled version {preinstalledVersion}: {message}",
+	"log.host.payloadFallback": "Payload {version} failed to start. Trying version {fallbackVersion}. {message}",
 	"platforms.connection.token.label": "accessToken",
 	"platforms.connection.token.description": "Used for connection authentication. Set it when listening for incoming connections to prevent unauthorized access.",
 	"platforms.connection.timeout.label": "Response timeout",

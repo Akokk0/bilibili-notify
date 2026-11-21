@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { bootSelectedPayload } from "../boot.js";
 import { i18n } from "../i18n/index.js";
+import { markVersionRevoked, pinVersion } from "../update/select-version-for-boot.js";
 
 /**
  * 进程最早期决定跑哪一份载荷,然后**在同一个进程里**把它加载起来。
@@ -51,6 +52,27 @@ function deps(over: {
 }
 
 describe("bootSelectedPayload", () => {
+	it("预装版撤回时，首个候选启动失败仍在本次启动尝试其余版本", async () => {
+		const dirs = scaffold("1.1.0", "1.3.0");
+		markVersionRevoked({ versionsRoot: dirs.versionsRoot, version: "1.2.0" });
+		pinVersion({ versionsRoot: dirs.versionsRoot, version: "1.3.0" });
+		const attempted: string[] = [];
+		const result = await bootSelectedPayload(
+			deps({
+				...dirs,
+				preinstalledVersion: "1.2.0",
+				async loadPayload(entry) {
+					attempted.push(entry);
+					if (entry.includes("1.3.0")) throw new Error("broken payload");
+					return { startServer: async () => ({ host: "127.0.0.1", port: 9090 }) };
+				},
+			}),
+		);
+		expect(result).toMatchObject({ version: "1.1.0", address: { port: 9090 } });
+		expect(attempted).toEqual(
+			["1.3.0", "1.1.0"].map((v) => join(dirs.versionsRoot, v, "index.mjs")),
+		);
+	});
 	it.each([[], ["0.9.0"]])("返回实际启动载荷的监听地址 %s", async (...versions: string[]) => {
 		const { versionsRoot, preinstalledPath } = scaffold(...versions);
 		const address = { host: "::1", port: 9912 };
