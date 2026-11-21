@@ -66,7 +66,10 @@ export function createSpeechDelivery(part: Narration, policy: SpeechPolicy) {
 			return outcomes;
 		}
 		if (mode === "voice") outcomes.push(...(await sendPayloads(part.withoutText, send)));
-		if (outcomes.some((row) => !row.result?.ok)) return outcomes;
+		if (outcomes.some((row) => !row.result?.ok)) {
+			outcomes.push({ payload: speech.payload, speechText: part.text });
+			return outcomes;
+		}
 		const attempt = await send(speech.payload);
 		const result =
 			!attempt.ok && attempt.code === "timeout" ? fail("indeterminate", attempt.message) : attempt;

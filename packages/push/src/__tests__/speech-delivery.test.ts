@@ -42,6 +42,16 @@ it.each(["unsupported", "indeterminate"] as const)(
 		);
 	},
 );
+it("retains unsent voice for history when the preceding card fails", async () => {
+	const send = vi.fn(async () => fail("unavailable", "card refused"));
+	const sent = await createSpeechDelivery(part, policy("voice"))("a", original, send);
+	expect(send).toHaveBeenCalledTimes(1);
+	expect(sent).toEqual([
+		{ payload: withoutText[0], result: fail("unavailable", "card refused") },
+		{ payload: audio, speechText: part.text },
+	]);
+});
+
 it("unsupported destination uses original once and incurs no synthesis", async () => {
 	const p = policy("voice");
 	p.support = () => fail("unsupported", "scope");
