@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from "node:fs/promises";
+import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import { packageText } from "@bilibili-notify/internal/texts";
 
@@ -24,7 +24,19 @@ export async function appendLines(path: string, lines: readonly string[]): Promi
 		}
 	}
 	await mkdir(dirname(path), { recursive: true });
-	await appendFile(path, lines.map((line) => `${line}\n`).join(""), "utf8");
+	const file = await open(path, "a+");
+	try {
+		const { size } = await file.stat();
+		let separator = "";
+		if (size > 0) {
+			const last = Buffer.alloc(1);
+			await file.read(last, 0, 1, size - 1);
+			if (last[0] !== 0x0a) separator = "\n";
+		}
+		await file.appendFile(`${separator}${lines.join("\n")}\n`, "utf8");
+	} finally {
+		await file.close();
+	}
 }
 
 /**
