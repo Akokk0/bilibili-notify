@@ -27,6 +27,7 @@ import { mergeSettingsDraft, useSettingsDraft } from "../hooks/useSettingsDraft"
 import { useSources } from "../hooks/useSources";
 import { useT } from "../i18n";
 import { api } from "../services/api";
+import { SUBSCRIPTIONS_QUERY } from "../services/list-queries";
 import { type Subscription, subscriptionIdentityOf } from "../types/domain";
 import type { GlobalDefaults, GlobalSettings, GlobalSettingsPatch } from "../types/globals";
 import { buildOverridesPatch } from "./rules/overrides-patch";
@@ -209,10 +210,7 @@ export default function Rules() {
 	const tx = useT();
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
-	const subsQuery = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-	});
+	const subsQuery = useQuery(SUBSCRIPTIONS_QUERY);
 
 	const [scope, setScope] = useState<Scope>("__global");
 	const [section, setSection] = useState<SectionId>("filter");

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
-import type { PushTarget, Subscription } from "../../types/domain";
+import { SUBSCRIPTIONS_QUERY, TARGETS_QUERY } from "../../services/list-queries";
+import type { Subscription } from "../../types/domain";
 import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleFields";
 
 /**
@@ -29,14 +30,8 @@ export function SoloRoastScheduleBox({
 	const tx = useT();
 
 	const qc = useQueryClient();
-	const subsQuery = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-	});
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const subsQuery = useQuery(SUBSCRIPTIONS_QUERY);
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	const sub = (subsQuery.data ?? []).find((s) => s.id === subscriptionId);
 
 	const [draft, setDraft] = useState<Subscription["roastSchedule"] | null>(null);

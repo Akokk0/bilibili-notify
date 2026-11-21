@@ -35,6 +35,7 @@ import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
 import { useT } from "../i18n";
 import { api } from "../services/api";
+import { SUBSCRIPTIONS_QUERY, TARGETS_QUERY } from "../services/list-queries";
 import {
 	type DailyHistoryCountView,
 	FOLLOWERS_QUERY_KEY,
@@ -669,14 +670,8 @@ export default function Overview() {
 	const health = useQuery(HEALTH_QUERY_OPTIONS);
 
 	const updateQuery = useUpdateStatus();
-	const subsQuery = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-	});
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const subsQuery = useQuery(SUBSCRIPTIONS_QUERY);
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	const liveQuery = useQuery({
 		queryKey: ["live", "listening"],
 		queryFn: () => api.get<LiveListeningEntry[]>("/api/live/listening"),

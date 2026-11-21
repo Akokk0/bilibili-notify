@@ -39,10 +39,9 @@ import { useSources } from "../hooks/useSources";
 import { useSubscriptionTags } from "../hooks/useSubscriptionTags";
 import { useT } from "../i18n";
 import { ApiError, api } from "../services/api";
+import { CONNECTIONS_QUERY, SUBSCRIPTIONS_QUERY, TARGETS_QUERY } from "../services/list-queries";
 import {
-	type Connection,
 	makeEmptySubscription,
-	type PushTarget,
 	type SourceKey,
 	type Subscription,
 	type SubscriptionTag,
@@ -469,19 +468,10 @@ export default function Subscriptions() {
 		problemsQuery.data?.problems?.filter(
 			(problem) => problem.reporter === "core" && problem.code === "subscriptions_invalid",
 		) ?? [];
-	const subsQuery = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-	});
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const subsQuery = useQuery(SUBSCRIPTIONS_QUERY);
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	// 目标的平台取自它挂着的连接(订阅抽屉里的图标与 @全体 能力都读它);与推送目标页共用同一个 ["connections"] 缓存。
-	const connectionsQuery = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-	});
+	const connectionsQuery = useQuery(CONNECTIONS_QUERY);
 	// 连接能力表:订阅抽屉的 @全体 开关读目标所挂连接的 atAll 能力;与系统页共用同一个缓存。
 	const capabilitiesQuery = useQuery({
 		queryKey: ["connection-capabilities"],

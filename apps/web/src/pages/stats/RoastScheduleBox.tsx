@@ -4,8 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
 import { useT } from "../../i18n";
-import { api } from "../../services/api";
-import type { PushTarget } from "../../types/domain";
+import { TARGETS_QUERY } from "../../services/list-queries";
 import type { GlobalSettings } from "../../types/globals";
 import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleFields";
 
@@ -20,10 +19,7 @@ export function RoastScheduleBox() {
 
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const targetsQuery = useQuery(TARGETS_QUERY);
 
 	const [draft, setDraft] = useState<GlobalSettings["roastSchedule"] | null>(null);
 	useEffect(() => {

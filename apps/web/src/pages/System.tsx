@@ -18,7 +18,7 @@ import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
 import { mergeSettingsDraft, useSettingsDraft } from "../hooks/useSettingsDraft";
 import { i18n, useT, useTextOptions } from "../i18n";
 import { api } from "../services/api";
-import type { Connection, PushTarget } from "../types/domain";
+import { CONNECTIONS_QUERY, TARGETS_QUERY } from "../services/list-queries";
 import type { GlobalSettingsPatch, SettingsPatch } from "../types/globals";
 import { SkinSection } from "./skins/SkinSection";
 import { AccountSection } from "./system/account-section";
@@ -149,14 +149,8 @@ export default function System() {
 	}, [location.hash, location.key, integrationSection]);
 
 	const selectedIntegration = descriptors.find((entry) => `integration:${entry.key}` === section);
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
-	const connectionsQuery = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-	});
+	const targetsQuery = useQuery(TARGETS_QUERY);
+	const connectionsQuery = useQuery(CONNECTIONS_QUERY);
 	// 能力由宿主每分钟补探一轮,面板开着的时候半分钟刷一次,bot 后连上也能看到它变绿。
 	const capabilitiesQuery = useQuery({
 		queryKey: ["connection-capabilities"],

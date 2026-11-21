@@ -1,4 +1,4 @@
-import type { ConnectionView, ProblemsResponse } from "@bilibili-notify/contract";
+import type { ProblemsResponse } from "@bilibili-notify/contract";
 import {
 	Btn,
 	ErrorNote,
@@ -18,8 +18,7 @@ import { useExtensions } from "../hooks/useExtensions";
 import { useProblems } from "../hooks/useProblems";
 import { useSources } from "../hooks/useSources";
 import { useT, useTextOptions } from "../i18n";
-import { api } from "../services/api";
-import type { Subscription } from "../types/domain";
+import { CONNECTIONS_QUERY, SUBSCRIPTIONS_QUERY } from "../services/list-queries";
 
 const PROBLEMS_HASH = "#problems";
 export function ProblemBox() {
@@ -125,16 +124,8 @@ export function ProblemRows({
 	const sources = useSources().data?.sources,
 		adapters = useAdapters().data?.adapters,
 		extensions = useExtensions().data?.extensions;
-	const subs = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-		retry: false,
-	}).data;
-	const connections = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<ConnectionView[]>("/api/connections"),
-		retry: false,
-	}).data;
+	const subs = useQuery({ ...SUBSCRIPTIONS_QUERY, retry: false }).data;
+	const connections = useQuery({ ...CONNECTIONS_QUERY, retry: false }).data;
 	return (
 		<ul className="space-y-3">
 			{problems.map((problem) => {

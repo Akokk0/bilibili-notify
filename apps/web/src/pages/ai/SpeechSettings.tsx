@@ -22,7 +22,7 @@ import { TargetExceptions } from "../../components/target-exceptions";
 import { AI_PURPLE } from "../../config/colors";
 import { useT } from "../../i18n";
 import { api } from "../../services/api";
-import type { Connection, PushTarget } from "../../types/domain";
+import { CONNECTIONS_QUERY, TARGETS_QUERY } from "../../services/list-queries";
 import type { AiSettingsDraft } from "../../types/globals";
 
 function originOf(value: string | undefined) {
@@ -51,14 +51,8 @@ export function SpeechSettings({
 	const service = resolveSpeechService(speech, profile);
 	const savedService =
 		savedSpeech && savedProfile && resolveSpeechService(savedSpeech, savedProfile);
-	const targets = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
-	const connections = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-	});
+	const targets = useQuery(TARGETS_QUERY);
+	const connections = useQuery(CONNECTIONS_QUERY);
 	const serviceId = JSON.stringify([
 		service.provider,
 		service.usesModelKey ? ai.activeProfile : null,

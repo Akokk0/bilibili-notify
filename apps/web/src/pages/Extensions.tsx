@@ -22,7 +22,7 @@ import { HeroStrip } from "../components/hero-strip";
 import { useExtensions } from "../hooks/useExtensions";
 import { useScrollToHash } from "../hooks/useScrollToHash";
 import { useT } from "../i18n";
-import { api } from "../services/api";
+import { CONNECTIONS_QUERY } from "../services/list-queries";
 import { useCardMotionStore } from "./extensions/card-motion";
 import { CardMotionStage } from "./extensions/card-motion-stage";
 import { ExtensionSummary } from "./extensions/declarative/extension-page";
@@ -223,10 +223,7 @@ export default function Extensions() {
 	const [filter, setFilter] = useState<"all" | Provides>("all");
 	// 连接表 —— 只为卡片上那句「N 条连接」。**与拓展表分开取**:拓展没跑起来时它照样在,
 	// 而「配了但那个拓展没起来」正是最该看见的一种。
-	const connections = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<ConnectionRow[]>("/api/connections"),
-	});
+	const connections = useQuery(CONNECTIONS_QUERY);
 	const toggle = useExtensionToggle();
 	const [installing, setInstalling] = useState(false);
 	// 市场(ADR-0013):已装卡片上的「有新版」从这儿来;装从市场装的那一套与下面那一节共用。

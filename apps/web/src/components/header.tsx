@@ -23,13 +23,12 @@ import { SOURCE_AUTH_QUERY_PREFIX } from "../hooks/use-source-auth";
 import { ACCOUNTS_QUERY_KEY } from "../hooks/useAccounts";
 import { useBackendReachable } from "../hooks/useBackendReachable";
 import { i18n, useT } from "../i18n";
-import { api } from "../services/api";
+import { SUBSCRIPTIONS_QUERY, TARGETS_QUERY } from "../services/list-queries";
 import { submitLogout } from "../services/session";
 import { useNavStore } from "../store/nav";
 import { useSessionStore } from "../store/session";
 import { useSkinStore, useSkinText } from "../store/skin";
 import { type ThemePreference, useThemeStore } from "../store/theme";
-import type { PushTarget, Subscription } from "../types/domain";
 import { AccountChip } from "./accounts/account-chip";
 import { DragHandle } from "./drag-handle";
 import { ProblemBox } from "./problem-box";
@@ -390,14 +389,8 @@ export function GlassHeader() {
 	const reachable = useBackendReachable();
 	// 皮肤文案槽:皮肤没给就用产品默认标题。
 	const headerTitle = useSkinText("headerTitle") ?? tx("panelUi.components.header.23");
-	const subs = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-	});
-	const targets = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const subs = useQuery(SUBSCRIPTIONS_QUERY);
+	const targets = useQuery(TARGETS_QUERY);
 	const counts = {
 		subs: subs.data?.length ?? 0,
 		targets: targets.data?.length ?? 0,

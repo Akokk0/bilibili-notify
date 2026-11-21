@@ -2,7 +2,6 @@ import {
 	type ExtensionEntryView,
 	type FollowersGrain,
 	type SourceEntry,
-	type SubscriptionView,
 	sourceNounsOf,
 } from "@bilibili-notify/contract";
 import { type FormatCountOptions, formatAgo, formatCount } from "@bilibili-notify/internal/format";
@@ -31,6 +30,7 @@ import { useSources } from "../hooks/useSources";
 import { i18n, useT } from "../i18n";
 import { api } from "../services/api";
 import { errorTextOf } from "../services/error-text";
+import { SUBSCRIPTIONS_QUERY } from "../services/list-queries";
 import {
 	activityLevel,
 	computeTotals,
@@ -627,10 +627,7 @@ function StatsContent() {
 				: 60_000;
 		},
 	});
-	const subsQuery = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<SubscriptionView[]>("/api/subscriptions"),
-	});
+	const subsQuery = useQuery(SUBSCRIPTIONS_QUERY);
 	// 拓展行的平台名与徽章照来源表里的描述符(取自装着的拓展清单);没回来时写拓展 id。
 	const extensions = useExtensions({ retry: false }).data?.extensions;
 	const sources = useSources().data?.sources;

@@ -1,4 +1,5 @@
 import { targetDisplay } from "../components/target-display";
+import { CONNECTIONS_QUERY, SUBSCRIPTIONS_QUERY, TARGETS_QUERY } from "../services/list-queries";
 /**
  * Cards page — image plugin card preview. Ports `GlassPreviewTab` from
  * `.bn-design/variation-ac.jsx`.
@@ -51,12 +52,7 @@ import { useSettingsDraft } from "../hooks/useSettingsDraft";
 import { useSources } from "../hooks/useSources";
 import { useT, useTextOptions } from "../i18n";
 import { ApiError, api } from "../services/api";
-import {
-	type Connection,
-	type PushTarget,
-	type Subscription,
-	subscriptionIdentityOf,
-} from "../types/domain";
+import { type Subscription, subscriptionIdentityOf } from "../types/domain";
 import type { CardsSettings } from "../types/globals";
 import { walkTreeDiff } from "../utils/walkTreeDiff";
 import { CardSkinKnobsSection } from "./cards/CardSkinKnobs";
@@ -318,14 +314,8 @@ function TestPushCard({
 	subscriptions: readonly Subscription[];
 }) {
 	const t = useT();
-	const connectionsQuery = useQuery({
-		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
-	});
-	const targetsQuery = useQuery({
-		queryKey: ["targets"],
-		queryFn: () => api.get<PushTarget[]>("/api/targets"),
-	});
+	const connectionsQuery = useQuery(CONNECTIONS_QUERY);
+	const targetsQuery = useQuery(TARGETS_QUERY);
 	const targets = useMemo(
 		() => (targetsQuery.data ?? []).filter((target) => target.enabled),
 		[targetsQuery.data],
@@ -703,10 +693,7 @@ function hasCardCustomization(sub: Subscription): boolean {
 export default function Cards() {
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
-	const subsQuery = useQuery({
-		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-	});
+	const subsQuery = useQuery(SUBSCRIPTIONS_QUERY);
 
 	const [scope, setScope] = useResourceState<Scope>("cards.scope", "__global");
 	// 客户端临时添加(还没设覆盖)的 sub.id;刷新即清空。
