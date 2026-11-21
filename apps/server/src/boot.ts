@@ -25,7 +25,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { consoleErrorRedacted, stderrLineRedacted } from "./logs/console-fallback.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { findNearestPackageJson } from "./runtime/nearest-package-json.js";
-import { markBootSucceeded, selectVersionForBoot } from "./update/select-version-for-boot.js";
+import {
+	markBootSucceeded,
+	readBootView,
+	selectVersionForBoot,
+} from "./update/select-version-for-boot.js";
 import { resolveVersionsRoot } from "./update/versions-root.js";
 
 type StartEntry = (options: { installProcessHandlers: boolean }) => Promise<unknown>;
@@ -109,6 +113,10 @@ export async function bootSelectedPayload({
 			markBootSucceeded({ versionsRoot, version: selection.version });
 			return { version: selection.version, isPreinstalledVersion: false };
 		} catch (err) {
+			if (
+				readBootView({ versionsRoot, preinstalledVersion }).unbootable.includes(preinstalledVersion)
+			)
+				throw err;
 			// **刻意不销账**:这一次的尝试要留在账上,累够次数才判死。
 			// 日志里必须带上是哪一版、为什么 —— 否则用户只看到「更新完版本没变」。
 			log(

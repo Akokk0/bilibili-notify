@@ -31,6 +31,7 @@
 	"startup.migrating": "BN 正在移轉資料，請稍候。",
 	"startup.migratingStep": "BN 正在移轉資料（{done}/{total}）：{label}",
 	"roast.draftExpired": "編號 {id} 的銳評超過 {hours} 小時未回覆，已作廢。",
+	"service.boot.preinstalledRevoked": "預裝版本 {version} 已撤回。請安裝新版宿主後重新啟動 BN。",
 	"service.boot.text.1": "載荷未匯出 startServer / startStandaloneServer：{value0}",
 	"integration.stopReason.shutdown": "BN 正在關閉",
 	"service.config.loader.text.1": "  → 常見原因是 Docker 掛載單一 YAML 檔案時，主機端檔案尚不存在，Docker 便自動建立空目錄。\n",

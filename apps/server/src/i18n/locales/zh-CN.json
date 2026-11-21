@@ -513,6 +513,7 @@
 	"service.backup.assemble.text.3": "这份完整备份缺少加密的密钥段，文件可能被改动过",
 	"service.backup.crypto.text.1": "备份 PIN 错误，或文件已损坏",
 	"service.backup.rejected-error.text.1": "完整备份必须设置 PIN",
+	"service.boot.preinstalledRevoked": "预装版本 {version} 已撤回。请安装新版宿主后重新启动 BN。",
 	"service.boot.text.1": "载荷没有导出 startServer / startStandaloneServer:{value0}",
 	"service.card-skins.ai-css.text.1": "这套皮肤还没接管 {value0} 卡,先在编辑器里接管再写",
 	"service.card-skins.ai-css.text.2": "{value0} 卡里没有 id 为「{value1}」的块",

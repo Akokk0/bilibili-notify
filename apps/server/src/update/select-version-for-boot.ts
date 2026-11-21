@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { t } from "../i18n/index.js";
 import { readBestEffortJson, writeBestEffortJson } from "./durable-json.js";
 import { installedVersions } from "./version-dirs.js";
 import { compareVersions } from "./version-order.js";
@@ -109,15 +110,19 @@ export function selectVersionForBoot({
 	}
 
 	const blocked = unbootable(state);
+	const preinstalledRevoked = state.revoked.includes(preinstalledVersion);
 	let best: string | null = null;
 	for (const candidate of installed) {
 		if (blocked.includes(candidate)) continue;
-		if (compareVersions(candidate, preinstalledVersion) <= 0) continue;
+		if (!preinstalledRevoked && compareVersions(candidate, preinstalledVersion) <= 0) continue;
 		if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 	}
 
-	if (best === null)
+	if (best === null) {
+		if (preinstalledRevoked)
+			throw new Error(t("service.boot.preinstalledRevoked", { version: preinstalledVersion }));
 		return { version: preinstalledVersion, path: preinstalledPath, isPreinstalledVersion: true };
+	}
 
 	return recordAttempt(state, versionsRoot, best, maxBootFailures);
 }
@@ -137,7 +142,11 @@ function usablePin(
 	const { pinned } = state;
 	if (!pinned) return null;
 	if (unbootable(state).includes(pinned)) return null;
-	if (compareVersions(preinstalledVersion, pinned) > 0) return null;
+	if (
+		!state.revoked.includes(preinstalledVersion) &&
+		compareVersions(preinstalledVersion, pinned) > 0
+	)
+		return null;
 	if (pinned === preinstalledVersion) return pinned;
 	return installed.includes(pinned) ? pinned : null;
 }

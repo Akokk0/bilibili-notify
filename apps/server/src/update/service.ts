@@ -154,7 +154,11 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 		let best: string | null = null;
 		for (const candidate of installed) {
 			if (compareVersions(candidate, currentVersion) >= 0) continue;
-			if (compareVersions(candidate, preinstalledVersion) < 0) continue;
+			if (
+				!unbootable.includes(preinstalledVersion) &&
+				compareVersions(candidate, preinstalledVersion) < 0
+			)
+				continue;
 			if (unbootable.includes(candidate)) continue;
 			if (best === null || compareVersions(candidate, best) > 0) best = candidate;
 		}
@@ -368,10 +372,9 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 		if (revoked.length === 0) return;
 		const installed = installedVersions(versionsRoot);
 		for (const version of revoked) {
-			if (version === currentVersion) {
+			if (version === preinstalledVersion || version === currentVersion)
 				markVersionRevoked({ versionsRoot, version });
-				continue;
-			}
+			if (version === currentVersion) continue;
 			if (!installed.includes(version)) continue;
 			removeVersionDir(versionsRoot, version);
 			if (onDisk?.version === version) onDisk = null;

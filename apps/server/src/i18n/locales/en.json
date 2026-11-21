@@ -31,6 +31,7 @@
 	"startup.migrating": "BN is migrating data. Please wait.",
 	"startup.migratingStep": "BN is migrating data ({done}/{total}): {label}",
 	"roast.draftExpired": "Review {id} expired after {hours} hours without a reply.",
+	"service.boot.preinstalledRevoked": "Preinstalled version {version} was revoked. Install an updated host before restarting BN.",
 	"service.boot.text.1": "The payload does not export startServer / startStandaloneServer: {value0}",
 	"integration.stopReason.shutdown": "BN is shutting down",
 	"service.config.loader.text.1": "  → This commonly happens when Docker bind-mounts a single YAML file that does not exist on the host, so Docker creates an empty directory.\n",

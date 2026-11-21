@@ -31,6 +31,7 @@
 	"startup.migrating": "BNはデータを移行中です。しばらくお待ちください。",
 	"startup.migratingStep": "BNはデータを移行中です（{done}/{total}）：{label}",
 	"roast.draftExpired": "ID {id} のレビューは{hours}時間返信がなかったため、無効になりました。",
+	"service.boot.preinstalledRevoked": "プリインストール版 {version} は撤回されました。新しいホストをインストールしてから BN を再起動してください。",
 	"service.boot.text.1": "ペイロードにstartServer / startStandaloneServerのエクスポートがありません：{value0}",
 	"integration.stopReason.shutdown": "BNを終了しています",
 	"service.config.loader.text.1": "  → ホスト側に存在しない単一のYAMLファイルをDockerでバインドマウントすると、空のディレクトリが自動作成されることがあります。\n",
