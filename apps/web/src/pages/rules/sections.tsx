@@ -24,7 +24,11 @@ import {
 	TSelect,
 } from "../../components/forms";
 import { InheritNote } from "../../components/inherit-note";
-import { type MembershipProgram, membershipTiersOf } from "../../config/membership-programs";
+import {
+	type MembershipProgram,
+	membershipTiersOf,
+	rankedMembershipPrograms,
+} from "../../config/membership-programs";
 import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents";
 import type { FeatureKey, MessageKindLayoutFull, Subscription } from "../../types/domain";
 import type {
@@ -440,20 +444,17 @@ export function LiveThresholdsSection({
 						suffix={tx("sourceUi.pages.rules.PerUpEditor.suffix.13")}
 					/>
 				</Field>
-				{programs.map((program) => {
-					const tiers = membershipTiersOf(programs, program.id);
-					return tiers.length ? (
-						<Field key={program.id} code={`membership.minRank.${program.id}`} label={program.name}>
-							<TSelect
-								value={String(membership.minRank?.[program.id] ?? tiers[0]!.rank)}
-								onChange={(rank) =>
-									onPatch({ defaults: { membership: { minRank: { [program.id]: Number(rank) } } } })
-								}
-								options={tiers.map((tier) => ({ value: String(tier.rank), label: tier.name }))}
-							/>
-						</Field>
-					) : null;
-				})}
+				{rankedMembershipPrograms(programs).map(({ program, tiers, lowestRank }) => (
+					<Field key={program.id} code={`membership.minRank.${program.id}`} label={program.name}>
+						<TSelect
+							value={String(membership.minRank?.[program.id] ?? lowestRank)}
+							onChange={(rank) =>
+								onPatch({ defaults: { membership: { minRank: { [program.id]: Number(rank) } } } })
+							}
+							options={tiers.map((tier) => ({ value: String(tier.rank), label: tier.name }))}
+						/>
+					</Field>
+				))}
 				<Field code="features.liveStreaming">
 					<div className="flex h-7.5 items-center">
 						<Toggle
