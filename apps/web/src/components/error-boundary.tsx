@@ -107,7 +107,7 @@ export function PageErrorBoundary({ children }: { children: ReactNode }) {
 	);
 }
 
-function PageCrashNote({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+export function PageCrashNote({ error, onRetry }: { error: unknown; onRetry: () => void }) {
 	const tx = useT();
 
 	const navigate = useNavigate();

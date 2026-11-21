@@ -25,7 +25,29 @@ export default defineConfig({
 		),
 	},
 	plugins: [react(), tailwind()],
-	build: { outDir: process.env.BN_RUNTIME_PROFILE === "dev" ? "dist-dev" : "dist" },
+	build: {
+		outDir: process.env.BN_RUNTIME_PROFILE === "dev" ? "dist-dev" : "dist",
+		rolldownOptions: {
+			output: {
+				codeSplitting: {
+					groups: [
+						{
+							// 同一种语言的面板和共享词典可一起缓存，切换语言仍是同步的。
+							debugName: "locale-dictionaries",
+							tags: ["$initial"],
+							name(id) {
+								const locale = /\/locales\/([^/.]+)(?:\.maid)?\.json$/.exec(id)?.[1];
+								return locale ? `locale-${locale}` : null;
+							},
+						},
+						// 仅归并首屏静态依赖，后续路由及其专用依赖仍由动态 import 加载。
+						{ name: "vendor", test: /\/node_modules\//, tags: ["$initial"] },
+						{ name: "dashboard", tags: ["$initial"] },
+					],
+				},
+			},
+		},
+	},
 	// dev:apps 不预构建核心包；面板直接消费工作区源码，避免旧 lib 缺导出导致白屏。
 	// 子路径先匹配，保留 texts/builtin 等目录入口的正常解析。
 	resolve: {

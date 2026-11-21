@@ -1,4 +1,5 @@
 {
+	"shell.loadingPage": "Loading page",
 	"speech.customEndpoint": "Enter the API base URL of your OpenAI-compatible speech service.",
 	"deepseek.speechStella": "stella · female",
 	"deepseek.speechTide": "tide · male",

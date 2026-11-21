@@ -1,4 +1,5 @@
 {
+	"shell.loadingPage": "正在載入頁面",
 	"speech.customEndpoint": "填寫 OpenAI 相容語音合成服務的 API 位址。",
 	"deepseek.speechStella": "stella · 女聲",
 	"deepseek.speechTide": "tide · 男聲",

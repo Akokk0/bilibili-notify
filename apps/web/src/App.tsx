@@ -1,6 +1,6 @@
-import { Btn, ErrorNote, UiTextProvider, WarnNote } from "@bilibili-notify/ui";
+import { Btn, ErrorNote, LoadingBlock, UiTextProvider, WarnNote } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
+import { type ComponentType, lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import { AuthGate } from "./components/AuthGate";
 import { AiChatDock, CHAT_PATH } from "./components/ai-chat";
@@ -10,7 +10,7 @@ import {
 	DevelopmentExtensionUiContext,
 } from "./components/development-extension-ui";
 import { DraftIsland } from "./components/draft-island";
-import { PageErrorBoundary } from "./components/error-boundary";
+import { PageCrashNote, PageErrorBoundary } from "./components/error-boundary";
 import { GlassHeader } from "./components/header";
 import { ResourceDraftProvider } from "./components/library/resource-drafts";
 import { TourCompanion } from "./components/onboarding/tour-companion";
@@ -32,24 +32,43 @@ import { useUpdateCheckOnOpen } from "./hooks/useUpdateCheckOnOpen";
 import { useUpdateTransitionNotice } from "./hooks/useUpdateTransitionNotice";
 import { useT, useTextOptions } from "./i18n";
 import { useTextSettings } from "./i18n/use-text-settings";
-import About from "./pages/About";
-import Ai from "./pages/Ai";
-import CardSkinEditor from "./pages/CardSkinEditor";
-import Cards from "./pages/Cards";
-import Chat from "./pages/Chat";
-import ExtensionDetail from "./pages/ExtensionDetail";
-import Extensions from "./pages/Extensions";
-import History from "./pages/History";
-import Library from "./pages/Library";
-import Logs from "./pages/Logs";
 import Overview from "./pages/Overview";
-import Rules from "./pages/Rules";
-import Stats from "./pages/Stats";
-import Subscriptions from "./pages/Subscriptions";
-import System from "./pages/System";
-import Targets from "./pages/Targets";
 import { setWsBackendReady } from "./services/wsSingleton";
 import { useSessionStore } from "./store/session";
+
+// 每个页面有自己的等待边界。切页时及时卸下旧页，页内切换参数仍保留同一棵树。
+function lazyPage(load: () => Promise<{ default: ComponentType }>) {
+	// lazy 会缓存加载失败。点重试时重新取 HTML 入口，部署后也能拿到新文件名。
+	const Page = lazy(() =>
+		load().catch((error: unknown) => ({
+			default: () => <PageCrashNote error={error} onRetry={browser.reload} />,
+		})),
+	);
+	return function RoutePage() {
+		const tx = useT();
+		return (
+			<Suspense fallback={<LoadingBlock label={tx("shell.loadingPage")} />}>
+				<Page />
+			</Suspense>
+		);
+	};
+}
+
+const About = lazyPage(() => import("./pages/About"));
+const Ai = lazyPage(() => import("./pages/Ai"));
+const CardSkinEditor = lazyPage(() => import("./pages/CardSkinEditor"));
+const Cards = lazyPage(() => import("./pages/Cards"));
+const Chat = lazyPage(() => import("./pages/Chat"));
+const ExtensionDetail = lazyPage(() => import("./pages/ExtensionDetail"));
+const Extensions = lazyPage(() => import("./pages/Extensions"));
+const History = lazyPage(() => import("./pages/History"));
+const Library = lazyPage(() => import("./pages/Library"));
+const Logs = lazyPage(() => import("./pages/Logs"));
+const Rules = lazyPage(() => import("./pages/Rules"));
+const Stats = lazyPage(() => import("./pages/Stats"));
+const Subscriptions = lazyPage(() => import("./pages/Subscriptions"));
+const System = lazyPage(() => import("./pages/System"));
+const Targets = lazyPage(() => import("./pages/Targets"));
 
 /**
  * devtools 由源码开发或显式开发宿主的编译期常量控制，正式构建折成 `null`,
