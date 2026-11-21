@@ -7,6 +7,7 @@ import { stringify as stringifyYaml } from "yaml";
 import { shouldRefuseBareAuth } from "../auth/bare-auth-policy.js";
 import { logText, t as serverText, t } from "../i18n/index.js";
 import { stderrLineRedacted } from "../logs/console-fallback.js";
+import { bootstrapCli } from "./bootstrap-cli.js";
 import { LEGACY_CONFIG_CANDIDATES, readLegacyFile, readYamlOrJson } from "./bootstrap-file.js";
 import { type BootstrapConfig, BootstrapConfigSchema } from "./schema.js";
 import { dropLegacyWebDistDir } from "./web-dist.js";
@@ -346,28 +347,9 @@ const CLI_KEY_MAP: Record<string, string[]> = {
 
 function readCli(argv: readonly string[]): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
-	for (let i = 0; i < argv.length; i++) {
-		const tok = argv[i];
-		if (!tok?.startsWith("--")) continue;
-		const body = tok.slice(2);
-		const eq = body.indexOf("=");
-		let key: string;
-		let value: string | undefined;
-		if (eq >= 0) {
-			key = body.slice(0, eq);
-			value = body.slice(eq + 1);
-		} else {
-			key = body;
-			const next = argv[i + 1];
-			if (next !== undefined && !next.startsWith("--")) {
-				value = next;
-				i++;
-			} else {
-				value = "true";
-			}
-		}
+	for (const [key, value] of bootstrapCli(argv)) {
 		const path = CLI_KEY_MAP[key];
-		if (path && value !== undefined) setPath(out, path, value);
+		if (path) setPath(out, path, value);
 	}
 	return out;
 }

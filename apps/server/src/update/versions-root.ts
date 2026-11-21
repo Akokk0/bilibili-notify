@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { bootstrapCli } from "../config/bootstrap-cli.js";
 import { readLegacyFile, readYamlOrJson } from "../config/bootstrap-file.js";
 import { hostPath } from "../runtime/roots.js";
 
@@ -30,17 +31,8 @@ export interface ResolveVersionsRootOptions {
 	cwd: string;
 }
 
-function readCliDataDir(argv: readonly string[]): string | undefined {
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i];
-		if (arg === "--data-dir") return argv[i + 1];
-		if (arg?.startsWith("--data-dir=")) return arg.slice("--data-dir=".length);
-	}
-	return undefined;
-}
-
 export function resolveDataDir({ argv, env, cwd }: ResolveVersionsRootOptions): string {
-	const fromCli = readCliDataDir(argv);
+	const fromCli = bootstrapCli(argv).get("data-dir");
 	if (fromCli) return resolve(cwd, fromCli);
 	const seeded = env.BN_DATA_DIR || DEFAULT_DATA_DIR;
 	if (env.BN_CONFIG_DISABLED === "1") return resolve(cwd, seeded);

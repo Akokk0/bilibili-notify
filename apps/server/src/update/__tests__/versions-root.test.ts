@@ -69,6 +69,16 @@ describe("resolveDataDir 与 loadBootstrapConfig 必须算出同一个 dataDir",
 		);
 	});
 
+	it.each([
+		["--data-dir", "first", "--data-dir=second"],
+		["--data-dir=first", "--data-dir", "second"],
+	])("启动脚本追加的最后一个 data-dir 决定载荷目录 %j", (...argv) => {
+		const cwd = tempCwd();
+		expect(expectAgreement({ argv, env: { BN_CONFIG_DISABLED: "1" }, cwd })).toBe(
+			join(cwd, "second"),
+		);
+	});
+
 	it("CLI 给了 --data-dir", () => {
 		const cwd = tempCwd();
 		expectAgreement({
