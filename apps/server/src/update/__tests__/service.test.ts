@@ -1011,6 +1011,29 @@ describe("createUpdateService —— 清单新鲜度", () => {
 });
 
 describe("createUpdateService —— 撤回", () => {
+	it("安装替代版会保留撤回预装版以外的可用载荷", async () => {
+		const key = makeKey();
+		const zip = makePayloadZip("1.3.0");
+		stubNetwork({
+			payload: zip,
+			manifestBody: envelope(key.privateKey, manifestFor("1.3.0", zip, { revoked: ["1.2.0"] })),
+		});
+		const { service, versionsRoot } = makeService({
+			currentVersion: "1.2.0",
+			preinstalledVersion: "1.2.0",
+			trustedKeys: [key.spkiBase64],
+		});
+		mkdirSync(join(versionsRoot, "1.1.0"));
+		// The newer fallback already failed once but is still below the boot failure limit.
+		mkdirSync(join(versionsRoot, "1.2.1"));
+		writeFileSync(
+			join(versionsRoot, "boot-state.json"),
+			JSON.stringify({ attempts: { "1.2.1": 1 } }),
+		);
+		await service.check();
+		expect((await settled(service)).state.phase).toBe("ready");
+		expect(existsSync(join(versionsRoot, "1.1.0"))).toBe(true);
+	});
 	it("旧启动器遇到低于预装版的修复目标会要求更换宿主", async () => {
 		const key = makeKey();
 		const zip = makePayloadZip("1.1.0");

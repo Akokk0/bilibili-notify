@@ -285,12 +285,21 @@ export function createUpdateService(input: CreateUpdateServiceOptions): UpdateSe
 
 		// 装上新版本 = 用户明确要往前走,之前那次回退的钉子必须拔掉。留着的话他点了
 		// 「立即更新」、重启、版本号纹丝不动,而界面上一切正常 —— 最难查的一类症状。
+		const beforeRestart = readBootView({ versionsRoot, preinstalledVersion });
 		clearPinnedVersion({ versionsRoot });
 
-		// 只留「正在跑的」和「刚装的」这两份。回退只退一步,再老的版本没人够得着,
-		// 留着就只是在小机器上白占 25MB 一份。**当前那份必须留** —— 它是我们此刻
-		// 正在执行的代码,也是待会儿要退回去的地方。
-		pruneOldVersions({ versionsRoot, keep: [currentVersion, manifest.version] });
+		// 平常留正在跑的版本和刚装的版本。两条退路都失效时，保留其他候选，
+		// 直到修复版真能启动；仅凭版本号无法判断剩余哪一份起得来。
+		const keep = [currentVersion, manifest.version];
+		if (
+			beforeRestart.unbootable.includes(currentVersion) &&
+			beforeRestart.unbootable.includes(preinstalledVersion)
+		) {
+			keep.push(
+				...beforeRestart.installed.filter((version) => !beforeRestart.unbootable.includes(version)),
+			);
+		}
+		pruneOldVersions({ versionsRoot, keep });
 
 		// 只记盘上的事实,不动 `state` —— `ready` 由 `reportedState` 从这里推出来。
 		onDisk = {
