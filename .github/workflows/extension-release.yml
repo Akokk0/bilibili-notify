@@ -56,6 +56,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Check legacy signer retirement
+        env:
+          LEGACY_SIGNER_CONFIGURED: ${{ secrets.BN_UPDATE_SIGNING_KEY != '' }}
+        run: bash .github/scripts/shared/assert-update-signing-cutover.sh
+
       - name: Assert tag matches the extension manifest
         id: ext
         env:

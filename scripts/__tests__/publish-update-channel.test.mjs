@@ -212,15 +212,22 @@ it("the migration dry run rejects a manifest signed by another valid Ed25519 key
 	}
 });
 
-it("publishing and revoking both stop while old tag jobs can still sign", () => {
+it("app releases, extension releases and revocations stop while old tag jobs can still sign", () => {
 	const caller = workflow("npm-release.yml").jobs.update;
 	const update = workflow("update-payload.yml").jobs.publish.steps;
 	const revoke = workflow("revoke-update.yml").jobs.revoke.steps;
+	const extension = workflow("extension-release.yml").jobs.publish.steps;
 	const oldSecretCheck = "secrets.BN_UPDATE_SIGNING_KEY != ''";
-	for (const steps of [update, revoke]) {
+	for (const steps of [update, revoke, extension]) {
 		const guard = steps.find((step) => step.name === "Check legacy signer retirement");
 		const signing = steps.find((step) => step.env?.BN_UPDATE_SIGNING_KEY);
+		expect(guard).toBeDefined();
 		expect(steps.indexOf(guard)).toBeLessThan(steps.indexOf(signing));
+		if (steps === extension) {
+			expect(guard.if).toBeUndefined();
+			const upload = steps.findIndex((step) => step.run?.includes("create-extension-release.sh"));
+			expect(steps.indexOf(guard)).toBeLessThan(upload);
+		}
 		const legacy = guard.env.LEGACY_SIGNER_CONFIGURED;
 		expect(steps === update ? caller.secrets[secretName(legacy)] : legacy).toContain(
 			oldSecretCheck,
@@ -236,9 +243,7 @@ it("publishing and revoking both stop while old tag jobs can still sign", () => 
 			expect(result.status).toBe(expected);
 		}
 	}
-	const signers = Object.values(workflow("extension-release.yml").jobs)
-		.flatMap((job) => job.steps ?? [])
-		.filter((step) => step.env?.BN_UPDATE_SIGNING_KEY);
+	const signers = extension.filter((step) => step.env?.BN_UPDATE_SIGNING_KEY);
 	expect(signers).toHaveLength(2);
 	const current = secretName(
 		caller.secrets[secretName(update.find((step) => step.id === "sign").env.BN_UPDATE_SIGNING_KEY)],
