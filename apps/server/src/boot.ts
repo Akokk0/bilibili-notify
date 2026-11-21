@@ -32,7 +32,10 @@ import {
 } from "./update/select-version-for-boot.js";
 import { resolveVersionsRoot } from "./update/versions-root.js";
 
-type StartEntry = (options: { installProcessHandlers: boolean }) => Promise<unknown>;
+type ListenAddress = { host: string; port: number };
+type StartEntry = (options: {
+	installProcessHandlers: boolean;
+}) => Promise<ListenAddress | undefined>;
 
 /** 载荷必须长成这样才起得来。两个名字都没有就当它坏了 —— 见文件头那条契约。 */
 interface PayloadModule {
@@ -59,6 +62,7 @@ export interface BootSelectedPayloadOptions {
 export interface BootResult {
 	version: string;
 	isPreinstalledVersion: boolean;
+	address?: ListenAddress;
 }
 
 async function start(
@@ -81,7 +85,9 @@ async function start(
 	if (typeof startEntry !== "function") {
 		throw new Error(serverText("service.boot.text.1", { value0: dir }));
 	}
-	await startEntry({ installProcessHandlers: true });
+	const server = await startEntry({ installProcessHandlers: true });
+	if (server && typeof server.host === "string" && typeof server.port === "number")
+		return { host: server.host, port: server.port };
 }
 
 export async function bootSelectedPayload({
@@ -102,7 +108,7 @@ export async function bootSelectedPayload({
 
 	if (!selection.isPreinstalledVersion) {
 		try {
-			await start(
+			const address = await start(
 				loadPayload,
 				selection.path,
 				{ version: preinstalledVersion, path: preinstalledPath },
@@ -111,7 +117,7 @@ export async function bootSelectedPayload({
 			// 起来了才销账。反过来的话计数永远回到零,坏版本会被无限重试 ——
 			// 自愈等于没有。
 			markBootSucceeded({ versionsRoot, version: selection.version });
-			return { version: selection.version, isPreinstalledVersion: false };
+			return { version: selection.version, isPreinstalledVersion: false, address };
 		} catch (err) {
 			if (
 				readBootView({ versionsRoot, preinstalledVersion }).unbootable.includes(preinstalledVersion)
@@ -131,14 +137,14 @@ export async function bootSelectedPayload({
 
 	// 镜像那份要是也起不来,就让它抛出去。静默退 0 的容器会被编排系统当成「正常
 	// 结束」—— 不重启、不报警,用户只看到服务没了而日志里什么都没有。
-	await start(
+	const address = await start(
 		loadPayload,
 		preinstalledPath,
 		{ version: preinstalledVersion, path: preinstalledPath },
 		env,
 	);
 	markBootSucceeded({ versionsRoot, version: preinstalledVersion });
-	return { version: preinstalledVersion, isPreinstalledVersion: true };
+	return { version: preinstalledVersion, isPreinstalledVersion: true, address };
 }
 
 /**
@@ -176,9 +182,9 @@ function readPreinstalledVersion(here: string): string {
 	return "0.0.0";
 }
 
-if (isEntrypoint(import.meta.url)) {
+function bootFromEnvironment() {
 	const here = dirname(fileURLToPath(import.meta.url));
-	void bootSelectedPayload({
+	return bootSelectedPayload({
 		preinstalledVersion: readPreinstalledVersion(here),
 		preinstalledPath: here,
 		// 桌面壳用 `--data-dir` 传用户数据目录,容器把它写在 yaml 里 —— 只看
@@ -191,8 +197,11 @@ if (isEntrypoint(import.meta.url)) {
 		maxBootFailures: 3,
 		loadPayload: importPayload,
 		log: stderrLineRedacted,
-	}).catch((err) => {
-		consoleErrorRedacted(logText("log.host.fatalStartup"), err);
-		process.exit(1);
 	});
 }
+
+export const booted = isEntrypoint(import.meta.url) ? bootFromEnvironment() : undefined;
+void booted?.catch((err) => {
+	consoleErrorRedacted(logText("log.host.fatalStartup"), err);
+	process.exit(1);
+});

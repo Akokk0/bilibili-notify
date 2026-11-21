@@ -51,6 +51,14 @@ function deps(over: {
 }
 
 describe("bootSelectedPayload", () => {
+	it.each([[], ["0.9.0"]])("返回实际启动载荷的监听地址 %s", async (...versions: string[]) => {
+		const { versionsRoot, preinstalledPath } = scaffold(...versions);
+		const address = { host: "::1", port: 9912 };
+		const loadPayload = async () => ({ startServer: async () => ({ ...address, close: vi.fn() }) });
+		expect(
+			await bootSelectedPayload(deps({ versionsRoot, preinstalledPath, loadPayload })),
+		).toMatchObject({ address });
+	});
 	it.each([
 		["en", "The payload does not export startServer / startStandaloneServer: "],
 		["ja", "ペイロードにstartServer / startStandaloneServerのエクスポートがありません："],

@@ -197,12 +197,19 @@ export async function launchRuntime(options: LaunchOptions): Promise<void> {
 	process.env.BN_CONFIG = join(dataDir, "bn.config.yaml");
 	if (options.profile === "dev") process.env.BN_WEB_DIST = join(runtime, "web-dist");
 	const entry = join(runtime, options.profile === "web" ? "boot.mjs" : "index.mjs");
-	console.log(`BN ${options.profile}: http://127.0.0.1:${options.port}\nData: ${dataDir}`);
+	console.log(`Data: ${dataDir}`);
 	process.argv = [process.execPath, entry];
 	const host = await import(pathToFileURL(entry).href);
-	if (options.profile === "dev") {
-		if (typeof host.startServer !== "function")
-			throw new Error("Development runtime has no startServer entry.");
-		await host.startServer({ installProcessHandlers: true });
+	if (options.profile === "dev" && typeof host.startServer !== "function")
+		throw new Error("Development runtime has no startServer entry.");
+	const address =
+		options.profile === "dev"
+			? await host.startServer({ installProcessHandlers: true })
+			: (await host.booted)?.address;
+	if (address) {
+		const hostname =
+			address.host === "0.0.0.0" ? "127.0.0.1" : address.host === "::" ? "::1" : address.host;
+		const authority = hostname.includes(":") ? `[${hostname}]` : hostname;
+		console.log(`BN ${options.profile}: http://${authority}:${address.port}`);
 	}
 }
