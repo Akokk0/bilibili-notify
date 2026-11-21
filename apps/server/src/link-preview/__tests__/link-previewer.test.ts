@@ -799,6 +799,16 @@ describe("createLinkPreviewer", () => {
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
 		});
 
+		it("原生分享回执不确定时只发送一次", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("supported"),
+				sendResult: () => fail("indeterminate", "ack lost"),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["native-share"]);
+		});
+
 		it("小程序卡发送失败 → 同一条链接回落图片卡,群里不会空着", async () => {
 			const h = makeParser({}, undefined, {
 				policyFor: miniapp,

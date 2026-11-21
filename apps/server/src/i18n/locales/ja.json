@@ -449,6 +449,7 @@
 	"log.link.nativeShareSent": "ネイティブ共有の返信を送信しました",
 	"log.link.textSent": "テキストの返信を送信しました",
 	"log.link.imageSent": "リンクカードの返信を送信しました",
+	"log.link.nativeUnconfirmed": "ネイティブ共有の配信結果を確認できませんでした",
 	"log.link.nativeFailed": "ネイティブ共有の送信に失敗したため、画像カードに切り替えます",
 	"log.link.textFailed": "テキストの返信を送信できませんでした",
 	"log.link.imageFailed": "リンクカードを送信できませんでした",

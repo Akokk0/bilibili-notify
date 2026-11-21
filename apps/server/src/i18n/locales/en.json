@@ -450,6 +450,7 @@
 	"log.link.nativeShareSent": "Native share reply sent",
 	"log.link.textSent": "Text reply sent",
 	"log.link.imageSent": "Link card reply sent",
+	"log.link.nativeUnconfirmed": "Native share delivery was not confirmed",
 	"log.link.nativeFailed": "Native share send failed; falling back to image card",
 	"log.link.textFailed": "Text reply send failed",
 	"log.link.imageFailed": "Link card send failed",

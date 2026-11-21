@@ -1534,6 +1534,7 @@
 	"log.link.nativeShareSent": "原生分享回复已发送",
 	"log.link.textSent": "文字回复已发送",
 	"log.link.imageSent": "链接卡片回复已发送",
+	"log.link.nativeUnconfirmed": "原生分享已发出，平台未确认送达",
 	"log.link.nativeFailed": "原生分享发送失败，回落图片卡",
 	"log.link.textFailed": "文字回复发送失败",
 	"log.link.imageFailed": "链接卡片发送失败",
