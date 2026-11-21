@@ -52,7 +52,7 @@ esac\n`,
 			encoding: "utf8",
 			env: {
 				...process.env,
-				PATH: dir + ":" + process.env.PATH,
+				PATH: `${dir}:${process.env.PATH}`,
 				CASE_DIR: dir,
 				VERSION: "1.0.0",
 				REPO: "fixture/repo",
@@ -182,6 +182,11 @@ it.each([
 	["1.0.0-alpha.10", "1.0.0", true],
 ])("publishing %s then %s preserves channel version order", (current, next, uploaded) => {
 	expect(publish(envelope(current), envelope(next))).toEqual({ status: 0, uploaded });
+});
+
+it("replaying the forward-fix tag keeps its signed revocation list", () => {
+	const current = envelope("1.1.1", ["1.1.0"]);
+	expect(publish(current, envelope("1.1.1"))).toEqual({ status: 0, uploaded: false });
 });
 
 it("keeps a recalled target off the channel and allows explicit revocation", () => {

@@ -234,7 +234,7 @@ node scripts/sign-update-manifest.mjs --version 0.9.0 --revoked 0.9.1 \
   --payload-url https://github.com/Akokk0/bilibili-notify/releases/download/v0.9.0/bilibili-notify-payload-0.9.0.zip \
   --sha256 <那份 zip 的 sha256> --size <字节数> \
   --release-url https://github.com/Akokk0/bilibili-notify/releases/tag/v0.9.0 --out dist/manifest
-CHANNEL=stable FILE=dist/manifest.sig.json GH_TOKEN=… REPO=Akokk0/bilibili-notify \
+CHANNEL_ACTION=revoke CHANNEL=stable FILE=dist/manifest.sig.json GH_TOKEN=… REPO=Akokk0/bilibili-notify \
   bash .github/scripts/shared/publish-update-channel.sh   # 预发布渠道再来一遍 CHANNEL=alpha
 ```
 

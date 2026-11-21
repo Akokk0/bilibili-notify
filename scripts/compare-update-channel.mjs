@@ -24,8 +24,8 @@ const current = readManifest(currentPath);
 const candidate = readManifest(candidatePath);
 // A normal publish must not undo a recall. Only move past its revoked versions,
 // so a later rerun of any of those tags remains older than the channel.
-const older = compareVersions(candidate.version, current.version) < 0;
+const advancesChannel = compareVersions(candidate.version, current.version) > 0;
 const predatesRecall = current.revoked.some(
 	(version) => compareVersions(candidate.version, version) <= 0,
 );
-process.stdout.write(older || predatesRecall ? "skip" : "publish");
+process.stdout.write(advancesChannel && !predatesRecall ? "publish" : "skip");
