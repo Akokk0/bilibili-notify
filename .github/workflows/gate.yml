@@ -89,7 +89,7 @@ jobs:
 
       - name: Typecheck
         if: matrix.shard == 1
-        run: vpr typecheck
+        run: vpr typecheck:after-build
 
       - name: Test
         env:

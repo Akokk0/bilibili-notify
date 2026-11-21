@@ -8,7 +8,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 vp run check
 vp run build
-vp run typecheck
+vp run typecheck:after-build
 
 [ -n "${GATE_SLICE_TESTS-}" ] || exec vp run test
 
