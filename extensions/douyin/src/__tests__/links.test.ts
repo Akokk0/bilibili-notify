@@ -369,6 +369,39 @@ it("resolves an unsubscribed video through an anonymous share redirect and signe
 	expect(calls).toHaveLength(2);
 	expect(calls[1].searchParams.get("a_bogus")).toBeTruthy();
 });
+it("shares short-link Retry-After with other links until recovery", async () => {
+	vi.useFakeTimers();
+	try {
+		const url = "https://v.douyin.com/abc/";
+		const signal = new AbortController().signal;
+		let limited = true;
+		const { source, calls } = setup(
+			(u): Reply =>
+				limited
+					? { status: 429, headers: { "retry-after": "90" } }
+					: u.hostname === "v.douyin.com"
+						? { status: 302, headers: { Location: direct } }
+						: { body: { status_code: 0, aweme_detail: detail } },
+		);
+		expect(await source.resolveLink(url, signal)).toMatchObject({ code: "rate_limited" });
+		limited = false;
+		vi.advanceTimersByTime(89000);
+		expect(await source.resolveLink(direct, signal)).toMatchObject({ code: "rate_limited" });
+		expect(await source.resolveLink(url, signal)).toMatchObject({ code: "rate_limited" });
+		expect(calls).toHaveLength(1);
+		vi.advanceTimersByTime(1000);
+		expect(await source.resolveLink(url, signal)).toMatchObject({ ok: true });
+	} finally {
+		vi.useRealTimers();
+	}
+});
+it("classifies a temporary short-link failure as unavailable", async () => {
+	const { source } = setup(() => ({ status: 503 }));
+	expect(
+		await source.resolveLink("https://v.douyin.com/abc/", new AbortController().signal),
+	).toMatchObject({ code: "unavailable" });
+});
+
 it("never follows a share redirect to another domain", async () => {
 	const { source, calls } = setup(() => ({
 		status: 302,
