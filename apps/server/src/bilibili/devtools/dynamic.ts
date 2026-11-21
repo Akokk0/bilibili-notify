@@ -240,7 +240,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 			api.clear("fetchAllDynamic");
 			return;
 		}
-		api.override("fetchAllDynamic", async (real) => {
+		api.override("fetchAllDynamic", async (real, offset) => {
 			if (failing) {
 				const { code } = failing;
 				failing.remaining -= 1;
@@ -249,6 +249,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 				// 真接口出错时的样子:请求层把 B 站的码翻成的失败结果(同一个纯函数造),没有 data。
 				return failureFromBili(code, `devtools:模拟的错误码 ${code}`);
 			}
+			if (offset) return real(offset);
 			// 真 feed 拉不到(没登录 / 风控)也照样造:用一份空底。动态轮询收到失败会走错误处理,
 			// 那不是这次要看的东西。
 			let feed: Feed;
