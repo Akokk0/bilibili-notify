@@ -126,13 +126,11 @@ export function createAccount(ctx: ExtensionContext) {
 			if (state.status !== "logged-in" || force)
 				publish({ status: "confirming", message: result.message });
 			const delays = [300000, 1800000, 6 * HOUR];
-			scheduleCheck(
-				Math.min(
-					2147483647,
-					Math.max(delays[Math.min(failures++, delays.length - 1)], client.retryAt() - Date.now()),
-				),
-				signal,
-			);
+			const delay =
+				result.code === "rate_limited"
+					? Math.max(1000, client.retryAt() - Date.now())
+					: delays[Math.min(failures++, delays.length - 1)];
+			scheduleCheck(Math.min(2147483647, delay), signal);
 		}
 		return result;
 	}

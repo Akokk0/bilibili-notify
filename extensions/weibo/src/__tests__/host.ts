@@ -73,12 +73,14 @@ interface TestHost {
 	ctx: Pick<ExtensionContext, "reportProblem" | "resolveProblem">;
 	fetch: Mock<ExtensionContext["http"]["fetch"]>;
 	secrets: Map<string, string>;
+	state: Map<string, number>;
 	dispose(): void;
 }
 export function host(
 	handle: Handler,
 	secrets = new Map<string, string>(),
 	fetchImage: ExtensionContext["fetchImage"] = async () => fail("not_found", "image"),
+	state = new Map<string, number>(),
 ): TestHost {
 	const life = new AbortController();
 	const disposals: (() => void)[] = [];
@@ -106,6 +108,13 @@ export function host(
 	const ctx = {
 		signal: life.signal,
 		http: { fetch },
+		state: {
+			get: (key: string) => state.get(key),
+			set: async (key: string, value: number) => {
+				state.set(key, value);
+				return ok();
+			},
+		},
 		fetchImage,
 		secrets: {
 			get: (key: string) => secrets.get(key),
@@ -155,6 +164,7 @@ export function host(
 		ctx,
 		fetch,
 		secrets,
+		state,
 		dispose() {
 			life.abort();
 			for (const fn of disposals.reverse()) fn();

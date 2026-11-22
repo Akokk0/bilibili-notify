@@ -8,6 +8,28 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+it("honors a dated Retry-After across a restart, including before checking the saved account", async () => {
+	const until = Date.UTC(2026, 10, 23, 1);
+	vi.setSystemTime(until - 123000);
+	const app = host(
+		(url): Reply =>
+			url.pathname === "/ajax/profile/info"
+				? { status: 429, headers: { "Retry-After": new Date(until).toUTCString() } }
+				: loginReply(url),
+	);
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	await app.source.searchCreators("42", new AbortController().signal);
+	app.dispose();
+	const restored = host(loginReply, app.secrets, undefined, app.state);
+	await vi.advanceTimersByTimeAsync(119999);
+	expect(restored.fetch).not.toHaveBeenCalled();
+	await vi.advanceTimersByTimeAsync(1);
+	expect(restored.auth.state().status).toBe("logged-in");
+	expect(restored.fetch).toHaveBeenCalledTimes(1);
+	restored.dispose();
+});
+
 it("resolves a profile link through the authenticated PC API and preserves the UID as text", async () => {
 	const uid = "98765432109876543";
 	const app = host((url, options) => {

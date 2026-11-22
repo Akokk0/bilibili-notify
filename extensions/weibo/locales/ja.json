@@ -1,4 +1,5 @@
 {
+	"request.limitedLocal": "Weibo のリクエストを一時停止しました。再開時刻を保存できませんでした。",
 	"feed.cursor": "Weibo が同じページ位置を返しました。次の確認で先頭から取得します。",
 	"auth.renewal": "現在の Weibo セッションは有効です。自動更新を有効にするには、もう一度スキャンしてください。",
 	"auth.preparing": "Weibo の QR コードを取得しています。",

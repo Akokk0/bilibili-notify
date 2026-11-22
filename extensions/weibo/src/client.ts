@@ -51,10 +51,25 @@ export function loginRequired(response: HttpResponse) {
 }
 
 export function createClient(ctx: ExtensionContext) {
-	let retryAt = 0;
+	const storedDeadline = ctx.state.get("requests.retryAt");
+	let retryAt =
+		typeof storedDeadline === "number" &&
+		Number.isFinite(storedDeadline) &&
+		storedDeadline > Date.now()
+			? storedDeadline
+			: 0;
 	let nextRead = 0;
 	function limited() {
 		return fail("rate_limited", ctx.i18n.t("request.limited"));
+	}
+	async function coolDown(until: number) {
+		retryAt = Math.max(retryAt, until);
+		const stored = await ctx.state.set("requests.retryAt", retryAt);
+		ctx.reportProblem({
+			code: "weibo_rate_limited",
+			message: ctx.i18n.t(stored.ok ? "request.limited" : "request.limitedLocal"),
+		});
+		return limited();
 	}
 	function wait(ms: number, signal: AbortSignal) {
 		if (ms <= 0 || signal.aborted) return;
@@ -99,9 +114,7 @@ export function createClient(ctx: ExtensionContext) {
 			const after = response.headers.get("retry-after")?.trim() ?? "";
 			const now = Date.now();
 			const end = /^\d+$/.test(after) ? now + Number(after) * 1000 : Date.parse(after);
-			retryAt = Math.max(retryAt, Number.isFinite(end) ? Math.max(now + 1000, end) : now + 60000);
-			ctx.reportProblem({ code: "weibo_rate_limited", message: ctx.i18n.t("request.limited") });
-			return limited();
+			return coolDown(Number.isFinite(end) ? Math.max(now + 1000, end) : now + 60000);
 		}
 		if (retryAt && response.isSuccess && Date.now() >= retryAt) {
 			retryAt = 0;
@@ -139,9 +152,7 @@ export function createClient(ctx: ExtensionContext) {
 		)
 			return fail("unauthorized", ctx.i18n.t("auth.expired"));
 		if (refused && /频繁|rate limit/i.test(message)) {
-			retryAt = Math.max(retryAt, Date.now() + 60000);
-			ctx.reportProblem({ code: "weibo_rate_limited", message: ctx.i18n.t("request.limited") });
-			return limited();
+			return coolDown(Date.now() + 60000);
 		}
 		if (refused || !Object.keys(data).length)
 			return fail("unavailable", ctx.i18n.t("request.unavailable"));
