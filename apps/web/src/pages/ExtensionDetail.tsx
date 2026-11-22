@@ -11,7 +11,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DevelopmentMountNoteSlot } from "../components/development-extension-ui";
 import { ExtensionViewBoundary } from "../components/error-boundary";
 import { ExtensionLogLevel } from "../components/extension-log-level";
@@ -71,10 +71,10 @@ export default function ExtensionDetail() {
 	const listed = useExtensions();
 	const toggle = useExtensionToggle();
 	const navigate = useNavigate();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const qc = useQueryClient();
 	const [confirming, setConfirming] = useState(false);
 	const docs = useExtensionDocs(id);
-	const [picked, setPicked] = useState<DetailTab | null>(null);
 	/*
 	 * 卸掉之后它名下的订阅**保留**、暂停(ADR-0019 决策 10)—— 确认框得说清有几条,否则主人会以为
 	 * 它们跟着没了。与订阅页同一个键:那边刚改过的,这边直接用缓存。只在框开着、或有「上报出入」
@@ -154,8 +154,8 @@ export default function ExtensionDetail() {
 	const hasConfig = declarative && settingsFieldsOf(ext).length > 0;
 	const tabs: DetailTab[] = [...(hasConfig ? (["config"] as const) : []), ...docs.kinds];
 	/* 选中项每次都从「现在有哪几档」里挑:重取之后那一档可能没了,停在空档上就是一整块白。 */
-	const tab: DetailTab | null =
-		tabs.length === 0 ? null : picked && tabs.includes(picked) ? picked : tabs[0];
+	const requestedTab = searchParams.get("tab");
+	const tab = tabs.find((kind) => kind === requestedTab) ?? tabs[0];
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
 			{/*
@@ -258,7 +258,11 @@ export default function ExtensionDetail() {
 							: { id: t, label: EXTENSION_DOC_LABEL[t], icon: extensionDocIcon(t, 14) },
 					)}
 					value={tab}
-					onChange={setPicked}
+					onChange={(selected) => {
+						const next = new URLSearchParams(searchParams);
+						next.set("tab", selected);
+						setSearchParams(next, { replace: true });
+					}}
 				/>
 			) : null}
 

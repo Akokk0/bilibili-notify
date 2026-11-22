@@ -13,7 +13,8 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { i18n } from "../../../i18n";
 import { api } from "../../../services/api";
@@ -34,12 +35,23 @@ const BASE = {
 	restart: { can: true, how: "container" } as const,
 };
 
+function ExtensionDestination() {
+	const { pathname, search } = useLocation();
+	return <output>{pathname + search}</output>;
+}
+
 function show(over: Record<string, unknown>) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
-		<MemoryRouter>
+		<MemoryRouter initialEntries={["/extensions"]}>
 			<QueryClientProvider client={qc}>
-				<ExtensionInstallOutcome done={{ ...BASE, ...over } as never} />
+				<Routes>
+					<Route
+						path="/extensions"
+						element={<ExtensionInstallOutcome done={{ ...BASE, ...over } as never} />}
+					/>
+					<Route path="/extensions/:id" element={<ExtensionDestination />} />
+				</Routes>
 			</QueryClientProvider>
 		</MemoryRouter>,
 	);
@@ -155,12 +167,12 @@ describe("装完、新版等着换上", () => {
 				expect(screen.getByText("机器人框架桥接")).toBeTruthy();
 				expect(screen.getByText(skipped)).toBeTruthy();
 				expect(screen.getByText("locales/xx-ZZ.json")).toBeTruthy();
-				const link = screen.getByRole("link", {
-					name: kind === "running" ? readme : kind === "disabled" ? changelog : changes,
-				});
-				expect(link.getAttribute("href")).toBe("/extensions/bridge");
-				expect(link.getAttribute("target")).toBe(kind === "staged-disabled" ? "_blank" : null);
-				expect(screen.queryByRole("button")).toBeNull();
+				expect(
+					screen.getByRole("button", {
+						name: kind === "running" ? readme : kind === "disabled" ? changelog : changes,
+					}),
+				).toBeTruthy();
+				expect(screen.queryByRole("button", { name: "重启 BN" })).toBeNull();
 				expect(api.post).not.toHaveBeenCalled();
 			}
 		},
@@ -200,16 +212,16 @@ describe("装完、新版等着换上", () => {
 describe("装完那句话后面的文档入口", () => {
 	afterEach(cleanup);
 
-	it("新装 + 包里有 README → 给一颗「看看说明」,指向它自己那一页", () => {
+	it("新装 + 包里有 README → 点「看看说明」在本页打开说明", async () => {
 		show({ staged: false, docs: { readme: true, changelog: false } });
-		const link = screen.getByRole("link", { name: /看看说明/ });
-		expect(link.getAttribute("href")).toBe("/extensions/bridge");
+		await userEvent.click(screen.getByRole("button", { name: /看看说明/ }));
+		expect(await screen.findByText("/extensions/bridge?tab=readme")).toBeTruthy();
 	});
 
 	/** 更新完最想知道的是「这次改了啥」—— 那是 CHANGELOG,不是 README。 */
 	it("新版等着换上 + 包里有 CHANGELOG → 给的是「看看更新了什么」", () => {
 		show({ staged: true, enabled: true, docs: { readme: true, changelog: true } });
-		expect(screen.getByRole("link", { name: /看看更新了什么/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /看看更新了什么/ })).toBeTruthy();
 	});
 
 	/**
@@ -219,36 +231,28 @@ describe("装完那句话后面的文档入口", () => {
 	it("服务端老得没有这一格 → 当没有,别炸掉整块提示", () => {
 		show({ staged: false, docs: undefined });
 		expect(screen.getByText(/装好了/)).toBeTruthy();
-		expect(screen.queryByRole("link")).toBeNull();
+		expect(screen.queryByRole("button")).toBeNull();
 	});
 
-	/**
-	 * 🔴 **这一条挡的是「读完更新日志回来,这块提示没了」。**
-	 *
-	 * 那句话整块住在调用方的一个局部 `useState` 里,路由一跳就卸载。详情页头卡上虽然也有
-	 * 同一块两条出路(ADR-0012 决策 47),但「刚装的是哪个包、装成了什么」那句就没了 ——
-	 * 同一块提示里挂一条会离开本页的链接,等于让人读完回来对着一页没头没尾的提示。所以它
-	 * 另开一页。
-	 */
-	it("新版等着换上时,文档链接另开一页 —— 别把这块提示与它的两颗钮点没了", () => {
+	it("重载完成后，点「看看更新了什么」在本页打开拓展的更新日志", async () => {
+		vi.mocked(api.post).mockResolvedValue({ ok: true });
 		show({ staged: true, enabled: true, docs: { readme: true, changelog: true } });
-		expect(screen.getByRole("link", { name: /看看更新了什么/ }).getAttribute("target")).toBe(
-			"_blank",
-		);
-		expect(screen.getByRole("button", { name: "重启 BN" })).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "只重载这个拓展" }));
+		expect(await screen.findByText(/重载完了/)).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: /看看更新了什么/ }));
+		expect(await screen.findByText("/extensions/bridge?tab=changelog")).toBeTruthy();
 	});
 
 	/** 主次不能颠倒:先看见要做的那件事,再看见可以顺便读的那份。 */
 	it("新版等着换上时,两颗钮都排在文档链接前面", () => {
 		show({ staged: true, enabled: true, docs: { readme: false, changelog: true } });
 		const btn = screen.getByRole("button", { name: "只重载这个拓展" });
-		const link = screen.getByRole("link", { name: /看看更新了什么/ });
-		// DOCUMENT_POSITION_FOLLOWING:link 排在 btn 之后。
-		expect(btn.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		const docs = screen.getByRole("button", { name: /看看更新了什么/ });
+		expect(btn.compareDocumentPosition(docs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
 	it("包里两份都没有 → 一颗钮都不挂", () => {
 		show({ staged: false, docs: { readme: false, changelog: false } });
-		expect(screen.queryByRole("link")).toBeNull();
+		expect(screen.queryByRole("button")).toBeNull();
 	});
 });
