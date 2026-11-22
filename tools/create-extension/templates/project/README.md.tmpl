@@ -38,7 +38,7 @@ For live development, run `vp dlx @bilibili-notify/bn@alpha dev` after the launc
 
 BN checks source imports, settings schemas and the manifest before replacing the running instance. Failed checks keep the old instance until the source is fixed; saving does not enable a disabled extension. Unmounting or stopping BN closes the runtime and watcher without deleting this project. Mounts last for the current BN session. Production still requires the build and self-contained ZIP; ordinary release bundles have no source mounting. See the installed SDK's `DEVELOPMENT.md` for the full workflow and persistent data isolation.
 
-`pnpm-workspace.yaml` keeps the project isolated and permits Vite+'s core version only for the two bundled Vitest consumers of the Vite alias. Other peer checks remain active. Recheck these entries when upgrading the Vite+ major or adding plugins.
+`pnpm-workspace.yaml` keeps the generated project isolated.
 
 Pre-commit runs `vp staged` using the same Vite+ lint/format configuration as CI. Commit messages use Conventional Commits, for example `feat: add creator search`. Run `vp run format` and stage the result if formatting fails. [Vite+ hook documentation](https://viteplus.dev/guide/commit-hooks) explains the dispatcher and local preferences.
 

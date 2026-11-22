@@ -28,7 +28,7 @@
 		"access": "public"
 	},
 	"dependencies": {
-		"@voidzero-dev/vite-plus-core": "1.5.1",
+		"@voidzero-dev/vite-plus-core": "8.3.8000",
 		"fflate": "catalog:"
 	}
 }

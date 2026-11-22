@@ -357,7 +357,7 @@ SOFTWARE.
 
 ### Rolldown 运行时辅助函数（MIT）
 
-构建器写入了 CommonJS 互操作函数。以下是 Vite+ Core 1.5.1 中 Rolldown 的许可，以及 Rolldown 为源自 esbuild 的代码保留的许可。[@voidzero-dev/vite-plus-core 1.5.1 发布包](https://registry.npmjs.org/@voidzero-dev/vite-plus-core/-/vite-plus-core-1.5.1.tgz)、[Rolldown 运行时代码](https://github.com/rolldown/rolldown/blob/6322131b0d9dd1e1a030bfbb7ea7de1c03153a74/crates/rolldown/src/runtime/runtime-base.js)、[Rolldown 第三方许可证](https://github.com/rolldown/rolldown/blob/6322131b0d9dd1e1a030bfbb7ea7de1c03153a74/THIRD-PARTY-LICENSE)。
+构建器写入了 CommonJS 互操作函数。以下是 Vite+ Core 8.3.8000 中 Rolldown 1.2.19 的许可，以及 Rolldown 为源自 esbuild 的代码保留的许可。[@voidzero-dev/vite-plus-core 8.3.8000 发布包](https://registry.npmjs.org/@voidzero-dev/vite-plus-core/-/vite-plus-core-8.3.8000.tgz)、[Rolldown 运行时代码](https://github.com/rolldown/rolldown/blob/v1.2.19/crates/rolldown/src/runtime/runtime-base.js)、[Rolldown 第三方许可证](https://github.com/rolldown/rolldown/blob/v1.2.19/THIRD-PARTY-LICENSE)。
 
 MIT License
 
