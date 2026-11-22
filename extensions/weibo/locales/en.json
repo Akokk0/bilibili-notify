@@ -1,4 +1,5 @@
 {
+	"feed.cursor": "Weibo repeated a page cursor. The next check will start from the first page.",
 	"auth.renewal": "The current Weibo session works. Scan again to enable automatic renewal.",
 	"auth.preparing": "Requesting a Weibo QR code.",
 	"auth.qr": "Weibo could not provide a QR code. Try again later.",

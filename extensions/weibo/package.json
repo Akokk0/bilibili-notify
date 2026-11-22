@@ -9,7 +9,8 @@
 		"test": "vp test"
 	},
 	"dependencies": {
-		"@bilibili-notify/extension": "workspace:*"
+		"@bilibili-notify/extension": "workspace:*",
+		"parse5": "8.0.1"
 	},
 	"devDependencies": {
 		"tough-cookie": "6.0.0"

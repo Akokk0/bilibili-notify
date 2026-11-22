@@ -75,7 +75,11 @@ interface TestHost {
 	secrets: Map<string, string>;
 	dispose(): void;
 }
-export function host(handle: Handler, secrets = new Map<string, string>()): TestHost {
+export function host(
+	handle: Handler,
+	secrets = new Map<string, string>(),
+	fetchImage: ExtensionContext["fetchImage"] = async () => fail("not_found", "image"),
+): TestHost {
 	const life = new AbortController();
 	const disposals: (() => void)[] = [];
 	let source!: SourceDef;
@@ -102,6 +106,7 @@ export function host(handle: Handler, secrets = new Map<string, string>()): Test
 	const ctx = {
 		signal: life.signal,
 		http: { fetch },
+		fetchImage,
 		secrets: {
 			get: (key: string) => secrets.get(key),
 			set: async (key: string, value: string) => {

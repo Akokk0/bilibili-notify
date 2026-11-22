@@ -586,6 +586,9 @@ importers:
       '@bilibili-notify/extension':
         specifier: workspace:*
         version: link:../../packages/extension/lib
+      parse5:
+        specifier: 8.0.1
+        version: 8.0.1
     devDependencies:
       tough-cookie:
         specifier: 6.0.0
