@@ -167,6 +167,40 @@ it("expands only a subscribed new long post and sends plain text, available coun
 	app.dispose();
 });
 
+it("resumes the exact numeric cursor after a rate limit and reports the waiting posts once", async () => {
+	const cursor = "9876543210987654321";
+	const postId = "9223372036854775807";
+	const calls: string[] = [];
+	let limited = false;
+	const app = host((url) => {
+		if (url.pathname !== "/ajax/feed/friendstimeline") return loginReply(url);
+		const since = url.searchParams.get("since_id") ?? "";
+		calls.push(since);
+		if (since === "0") {
+			if (calls.length === 1) return { body: { statuses: [post("100", 1)] } };
+			const createdAt = post(postId, 3).created_at;
+			const row = `{"id":${postId},"user":{"id":42},"created_at":"${createdAt}"}`;
+			return { body: `{"statuses":[${row}],"since_id":${cursor}}` };
+		}
+		if (!limited) {
+			limited = true;
+			return { status: 429, headers: { "retry-after": "120" } };
+		}
+		return { body: { statuses: [post("102", 2), post("100", 1)] } };
+	});
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	const watched = subscribe(app.source);
+	await vi.advanceTimersByTimeAsync(181000);
+	expect(calls).toEqual(["0", "0", cursor]);
+	expect(watched.reportPost).not.toHaveBeenCalled();
+	await vi.advanceTimersByTimeAsync(120000);
+	expect(calls.slice(3)).toEqual([cursor, "0", cursor]);
+	expect(watched.reportPost.mock.calls.map(([, r]) => r.postId)).toEqual(["102", postId]);
+	await app.source.stop();
+	app.dispose();
+});
+
 it("retries an interrupted second page without advancing the baseline or replaying already reported posts", async () => {
 	let phase = 0;
 	const cursor = "9876543210987654321";

@@ -10,7 +10,18 @@ export function record(value: unknown): Record<string, unknown> {
 
 export function json(text: string): unknown {
 	try {
-		return JSON.parse(text);
+		return JSON.parse(text, (key, value: unknown, context?: { source?: string }) => {
+			// Node exposes the original token even when the decoded Number lost digits.
+			if (
+				typeof value === "number" &&
+				!Number.isSafeInteger(value) &&
+				["id", "idstr", "uid", "mid", "since_id", "since_id_str"].includes(key) &&
+				context?.source &&
+				/^\d+$/.test(context.source)
+			)
+				return context.source;
+			return value;
+		});
 	} catch {
 		return undefined;
 	}
