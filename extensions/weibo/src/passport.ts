@@ -92,10 +92,15 @@ export async function loginChain(
 	const { ctx, request } = client;
 	const visited = new Set<string>();
 	let url: URL | null = start;
-	let issued = false;
+	// This jar starts empty so an older SUB cannot satisfy the fresh-ticket check.
+	const issued = ctx.createCookieSession();
+	function validSession() {
+		return /(?:^|;\s*)SUB=[^;]+/.test((renewal ? issued : cookies).header(HOME));
+	}
 	while (
 		url &&
 		trustedHttps(url) &&
+		Object.hasOwn(LOGIN_PATHS, url.hostname) &&
 		LOGIN_PATHS[url.hostname]?.includes(url.pathname) &&
 		!visited.has(url.href) &&
 		visited.size < 10
@@ -106,19 +111,14 @@ export async function loginChain(
 		if (!response.ok) return response;
 		if (response.status === 429 || response.status >= 500)
 			return fail("unavailable", ctx.i18n.t("request.unavailable"));
-		if (
-			url.origin === PASSPORT &&
-			url.pathname === "/sso/crossdomain" &&
-			response.headers.getSetCookie().some((line) => /^SUB=[^;\s]+/.test(line)) &&
-			/(?:^|; )SUB=/.test(cookies.header(HOME))
-		)
-			issued = true;
+		if (renewal && url.origin === PASSPORT && url.pathname === "/sso/crossdomain")
+			for (const line of response.headers.getSetCookie()) issued.ingest(url.href, line);
 		if (
 			response.isSuccess &&
 			["weibo.com", "www.weibo.com"].includes(url.hostname) &&
 			url.pathname === "/"
 		) {
-			if (renewal && !issued) return fail("unauthorized", ctx.i18n.t("auth.expired"));
+			if (!validSession()) return fail("unauthorized", ctx.i18n.t("auth.expired"));
 			return checkedAccount(ctx, response, expected);
 		}
 		const html = response.text();
@@ -130,7 +130,8 @@ export async function loginChain(
 			response.headers.get("location") ?? (response.isSuccess ? redirectFromHtml(html) : undefined);
 		if (to && URL.parse(to, url)?.pathname === "/sso/signin")
 			return fail("unauthorized", ctx.i18n.t("auth.expired"));
-		if (!to && response.isSuccess && (!renewal || issued)) {
+		if (!to && response.isSuccess) {
+			if (!validSession()) return fail("unauthorized", ctx.i18n.t("auth.expired"));
 			const home = await request(cookies, new URL(HOME), signal, "text/html");
 			return home.ok ? checkedAccount(ctx, home, expected) : home;
 		}

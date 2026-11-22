@@ -235,16 +235,25 @@ export function createAccount(ctx: ExtensionContext) {
 		};
 		await maintain(signal);
 	}
-	ctx.onDispose(() => {
+	function stop() {
 		life.abort();
 		timer?.dispose();
+		session = undefined;
+		state = { status: "logged-out" };
+	}
+	ctx.onDispose(() => {
+		stop();
 		listeners.clear();
 	});
-	const saved = ctx.secrets.get(SECRET);
-	if (typeof saved === "string") {
+	function load() {
 		const signal = replace();
-		void serial(() => restore(saved, signal));
+		const saved = ctx.secrets.get(SECRET);
+		if (typeof saved === "string") {
+			publish({ status: "confirming", message: ctx.i18n.t("auth.checking") });
+			void serial(() => restore(saved, signal));
+		}
 	}
+	load();
 	const auth: SourceAuth = {
 		state: () => state,
 		account: () => (state.status === "logged-in" && session ? { name: session.name } : null),
@@ -257,6 +266,7 @@ export function createAccount(ctx: ExtensionContext) {
 			};
 		},
 		async beginLogin() {
+			if (ctx.signal.aborted || life.signal.aborted) return cancelled();
 			const signal = replace();
 			publish({ status: "confirming", message: ctx.i18n.t("auth.preparing") });
 			const cookies = ctx.createCookieSession();
@@ -275,6 +285,7 @@ export function createAccount(ctx: ExtensionContext) {
 			return ok();
 		},
 		async logout() {
+			if (ctx.signal.aborted || life.signal.aborted) return cancelled();
 			const signal = replace();
 			session = undefined;
 			const removed = await write(signal, () => ctx.secrets.delete(SECRET));
@@ -302,14 +313,20 @@ export function createAccount(ctx: ExtensionContext) {
 			const cookies = ctx.createCookieSession(current.cookies.snapshot());
 			const response = await client.read(cookies, url, signal, referer);
 			if (response.ok && response.updated) {
-				const stored = await save({ ...current, cookies }, signal);
+				const stored = await save({ ...current, cookies }, generation);
 				if (!stored.ok) return stored;
 			}
 			return response;
 		}
 		return serial(async (): Promise<Result<{ data: Record<string, unknown> }>> => {
 			if (signal.aborted) return cancelled();
-			if (!uid() || !session) return fail("unauthorized", ctx.i18n.t("auth.required"));
+			if (state.status === "confirming" || state.status === "error")
+				return fail("unavailable", state.message ?? ctx.i18n.t("auth.checking"));
+			if (!uid() || !session)
+				return fail(
+					"unauthorized",
+					state.status === "expired" ? state.message : ctx.i18n.t("auth.required"),
+				);
 			let response = await read(session);
 			if (!response.ok && response.code === "unauthorized" && !signal.aborted) {
 				const recovery = await maintain(generation, true);
@@ -328,7 +345,16 @@ export function createAccount(ctx: ExtensionContext) {
 			return response;
 		});
 	}
-	return { auth, get, uid, sessionSignal };
+	return {
+		auth,
+		get,
+		uid,
+		sessionSignal,
+		stop,
+		start() {
+			if (life.signal.aborted && !ctx.signal.aborted) load();
+		},
+	};
 }
 
 export type WeiboAccount = ReturnType<typeof createAccount>;

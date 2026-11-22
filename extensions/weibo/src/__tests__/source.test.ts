@@ -8,6 +8,27 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+it.each([
+	["Forbidden", "logged-in"],
+	["<html>验证码</html>", "error"],
+])("handles a 403 with %s without exchanging or erasing the session", async (body, status) => {
+	const app = host((url) =>
+		url.pathname === "/ajax/profile/info" ? { status: 403, body } : loginReply(url),
+	);
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	const saved = [...app.secrets.values()];
+	const before = app.fetch.mock.calls.length;
+	expect(await app.source.searchCreators("42", new AbortController().signal)).toMatchObject({
+		ok: false,
+		code: "unavailable",
+	});
+	expect(app.auth.state().status).toBe(status);
+	expect(app.fetch).toHaveBeenCalledTimes(before + 1);
+	expect([...app.secrets.values()]).toEqual(saved);
+	app.dispose();
+});
+
 it("honors a dated Retry-After across a restart, including before checking the saved account", async () => {
 	const until = Date.UTC(2026, 10, 23, 1);
 	vi.setSystemTime(until - 123000);
