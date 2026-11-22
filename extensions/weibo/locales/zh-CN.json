@@ -1,0 +1,32 @@
+{
+	"auth.renewal": "当前微博账号可用，自动续期需要重新扫码。",
+	"auth.preparing": "正在向微博获取二维码。",
+	"auth.qr": "微博暂时无法提供二维码，请稍后重试。",
+	"auth.qrExpired": "本次扫码已结束，请重新扫码。",
+	"auth.scanned": "请在手机上确认微博登录。",
+	"auth.checking": "正在核对微博账号。",
+	"auth.required": "请先登录微博账号。",
+	"auth.expired": "微博登录已失效，请重新扫码。",
+	"auth.verify": "微博要求安全验证。请在微博完成验证后重新扫码。",
+	"auth.changed": "微博返回了另一个账号。请重新扫码确认要使用的账号。",
+	"auth.redirect": "微博返回了无法识别的登录跳转，已停止此次登录。",
+	"auth.storage": "无法读取或保存微博登录信息，请检查本机存储。",
+	"request.cancelled": "微博请求已取消。",
+	"request.unavailable": "暂时无法从微博取得有效响应，请稍后重试。",
+	"request.limited": "微博限制了请求频率，等待冷却结束后再试。",
+	"profile.input": "请输入微博 UID 或带 UID 的博主主页链接。",
+	"profile.follow": "请先用当前微博账号关注这位博主，再添加订阅。",
+	"profile.notFound": "未找到该微博博主。",
+	"$manifest": {
+		"name": "微博",
+		"description": "用已登录账号的关注流订阅微博。请先在微博关注要订阅的博主。",
+		"contributes": {
+			"subscription": {
+				"label": "微博",
+				"creatorNoun": "博主",
+				"postNoun": "微博",
+				"externalIdNoun": "UID"
+			}
+		}
+	}
+}

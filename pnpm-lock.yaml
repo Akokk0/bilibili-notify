@@ -581,6 +581,16 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
 
+  extensions/weibo:
+    dependencies:
+      '@bilibili-notify/extension':
+        specifier: workspace:*
+        version: link:../../packages/extension/lib
+    devDependencies:
+      tough-cookie:
+        specifier: 6.0.0
+        version: 6.0.0
+
   packages/ai:
     dependencies:
       '@bilibili-notify/internal':

@@ -1,0 +1,32 @@
+{
+	"auth.renewal": "The current Weibo session works. Scan again to enable automatic renewal.",
+	"auth.preparing": "Requesting a Weibo QR code.",
+	"auth.qr": "Weibo could not provide a QR code. Try again later.",
+	"auth.qrExpired": "This QR login has ended. Request a new code.",
+	"auth.scanned": "Confirm the Weibo login on your phone.",
+	"auth.checking": "Verifying the Weibo account.",
+	"auth.required": "Sign in to Weibo first.",
+	"auth.expired": "The Weibo session expired. Scan a new code.",
+	"auth.verify": "Complete the security check in Weibo, then scan a new code.",
+	"auth.changed": "Weibo returned a different account. Scan again with the account you want to use.",
+	"auth.redirect": "Weibo returned an unrecognized sign-in redirect. The attempt has stopped.",
+	"auth.storage": "Could not read or save the Weibo session. Check local storage.",
+	"request.cancelled": "The Weibo request was cancelled.",
+	"request.unavailable": "Weibo did not return a usable response. Try again later.",
+	"request.limited": "Weibo is limiting requests. Wait for the cooldown to end.",
+	"profile.input": "Enter a Weibo UID or a profile link containing the UID.",
+	"profile.follow": "Follow this creator with the current Weibo account before subscribing.",
+	"profile.notFound": "Weibo could not find this creator.",
+	"$manifest": {
+		"name": "Weibo",
+		"description": "Subscribe to posts from creators you follow on Weibo.",
+		"contributes": {
+			"subscription": {
+				"label": "Weibo",
+				"creatorNoun": "creator",
+				"postNoun": "post",
+				"externalIdNoun": "UID"
+			}
+		}
+	}
+}

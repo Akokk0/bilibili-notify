@@ -1,0 +1,20 @@
+{
+	"id": "weibo",
+	"name": "微博",
+	"description": "用已登录账号的关注流订阅微博。请先在微博关注要订阅的博主。",
+	"version": "0.1.0-alpha.1",
+	"apiVersion": 1,
+	"apiRevision": 1,
+	"contributes": {
+		"subscription": {
+			"label": "微博",
+			"searchAccepts": ["id", "link"],
+			"supportedFeatures": ["post"],
+			"externalIdRegex": "[1-9][0-9]*",
+			"postNoun": "微博",
+			"creatorNoun": "博主",
+			"externalIdNoun": "UID",
+			"color": "#df302c"
+		}
+	}
+}

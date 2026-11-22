@@ -1,0 +1,32 @@
+{
+	"auth.renewal": "現在の Weibo セッションは有効です。自動更新を有効にするには、もう一度スキャンしてください。",
+	"auth.preparing": "Weibo の QR コードを取得しています。",
+	"auth.qr": "QR コードを取得できません。しばらくしてから再試行してください。",
+	"auth.qrExpired": "この QR コードは無効になりました。新しいコードを取得してください。",
+	"auth.scanned": "スマートフォンで Weibo へのログインを確認してください。",
+	"auth.checking": "Weibo アカウントを確認しています。",
+	"auth.required": "先に Weibo にログインしてください。",
+	"auth.expired": "Weibo のログイン期限が切れました。もう一度スキャンしてください。",
+	"auth.verify": "Weibo でセキュリティ確認を完了し、もう一度スキャンしてください。",
+	"auth.changed": "別の Weibo アカウントが返されました。使いたいアカウントでもう一度スキャンしてください。",
+	"auth.redirect": "Weibo から未対応の転送先が返されたため、ログインを中断しました。",
+	"auth.storage": "Weibo のログイン情報を読み書きできません。ストレージを確認してください。",
+	"request.cancelled": "Weibo へのリクエストが取り消されました。",
+	"request.unavailable": "Weibo から有効な応答を取得できません。しばらくしてから再試行してください。",
+	"request.limited": "Weibo のリクエスト制限中です。しばらく待ってから再試行してください。",
+	"profile.input": "Weibo UID または UID を含むプロフィールのリンクを入力してください。",
+	"profile.follow": "購読する前に、現在の Weibo アカウントでこの投稿者をフォローしてください。",
+	"profile.notFound": "Weibo の投稿者が見つかりません。",
+	"$manifest": {
+		"name": "Weibo",
+		"description": "Weibo でフォローしている投稿者の新しい投稿を購読します。",
+		"contributes": {
+			"subscription": {
+				"label": "Weibo",
+				"creatorNoun": "投稿者",
+				"postNoun": "投稿",
+				"externalIdNoun": "UID"
+			}
+		}
+	}
+}
