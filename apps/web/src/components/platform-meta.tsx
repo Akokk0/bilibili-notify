@@ -1,6 +1,6 @@
 /** 适配器描述与连接快照提供外观;组件库只负责画。 */
 
-import type { AdapterEntry, ConnectionView } from "@bilibili-notify/contract";
+import type { AdapterEntry, ConnectionView, SourceEntry } from "@bilibili-notify/contract";
 import type { NewConnection, PlatformSnapshot } from "@bilibili-notify/internal";
 import {
 	Icon,
@@ -63,6 +63,19 @@ export function DescriptorIcon({
 		</span>
 	) : (
 		icon
+	);
+}
+
+export function SourceIcon({ source, size = 12 }: { source: SourceEntry; size?: number }) {
+	return (
+		<DescriptorIcon
+			descriptor={{
+				...source.descriptor,
+				shortLabel: source.descriptor.shortLabel ?? source.descriptor.label,
+				color: source.descriptor.color ?? "var(--color-bn-blue)",
+			}}
+			size={size}
+		/>
 	);
 }
 
