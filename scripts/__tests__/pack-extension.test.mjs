@@ -16,6 +16,7 @@ import {
 	EXTENSION_LOCALE_FILE_MAX_BYTES as LOADER_LOCALE_FILE_MAX_BYTES,
 	EXTENSION_LOCALES_TOTAL_MAX_BYTES as LOADER_LOCALES_TOTAL_MAX_BYTES,
 } from "../../apps/server/src/extensions/locales.js";
+import { safeExtensionIcon } from "../../apps/server/src/extensions/manifest-icon.js";
 import { LOCALES } from "../../packages/internal/src/i18n.ts";
 import {
 	EXTENSION_DOC_MAX_BYTES,
@@ -187,6 +188,29 @@ describe("packExtension", () => {
 	it("缺一个文件就拒", () => {
 		expect(() => packExtension({ "index.mjs": files["index.mjs"] })).toThrow(/extension\.json/);
 	});
+});
+
+it.each(["weibo", "douyin"])("%s 发行包提供拓展图标，账号和订阅徽标统一用 BN 粉色", async (id) => {
+	const dist = resolve(REPO_ROOT, "extensions", id, "dist");
+	const files = {
+		"extension.json": await readFile(resolve(dist, "extension.json")),
+		"index.mjs": await readFile(resolve(dist, "index.mjs")),
+	};
+	const opened = openExtensionPackage(packExtension(files).zip, BUILTIN_INTEGRATION_KEYS);
+	expect(opened.ok).toBe(true);
+	if (!opened.ok) return;
+	const { manifest } = opened.pkg;
+	expect(safeExtensionIcon(manifest.icon)).toMatch(/<path\b/);
+	const { icon, color } = manifest.contributes.subscription;
+	expect(icon).toMatch(/^data:image\/svg\+xml;base64,/);
+	const sourceSvg = Buffer.from(icon.split(",")[1], "base64").toString("utf8");
+	expect(safeExtensionIcon(sourceSvg)).toMatch(/<path\b/);
+	expect(color).toBe("#fb7299");
+	const paints = Array.from(
+		sourceSvg.matchAll(/\b(?:fill|stroke)="([^"]+)"/g),
+		([, paint]) => paint,
+	);
+	expect(new Set(paints.filter((paint) => paint !== "none"))).toEqual(new Set([color]));
 });
 
 it("抖音发行入口随包保留许可证与第三方声明,不依赖 README 展示", async () => {
