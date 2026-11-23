@@ -17,6 +17,7 @@ import type {
 	CardKind,
 	CardSkinManifest,
 	ImageRef,
+	Post,
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import {
@@ -114,6 +115,43 @@ function liveCard(renderer: ImageRenderer, cardSkin?: string): Promise<Buffer> {
 		...(cardSkin !== undefined ? { cardSkin } : {}),
 	});
 }
+
+async function postWithStats(cardSkin: string, stats: NonNullable<Post["stats"]>) {
+	const h = makeHarness({ resolveCardSkin: () => structuredClone(DEFAULT_CARD_SKIN) });
+	await h.renderer.generatePostCard(
+		{ creator: { name: "创作者" }, publishedAt: "2026-11-23T02:38:42Z", text: "图文", stats },
+		{ cardSkin },
+	);
+	return new JSDOM(h.captured[0]).window.document;
+}
+
+it.each([
+	{ stats: { likes: 0 }, cells: ["like-count"] },
+	{ stats: { shares: 0, likes: 3 }, cells: ["share-count", "like-count"] },
+	{
+		stats: { shares: 0, comments: 0, likes: 0 },
+		cells: ["share-count", "comment-count", "like-count"],
+	},
+])("从皮肤库加载出厂作品卡时，实际显示的互动项平分整行 $cells", async ({ stats, cells }) => {
+	const doc = await postWithStats(DEFAULT_CARD_SKIN_ID, stats);
+	const visible = doc.querySelectorAll<HTMLElement>('[data-cell$="-count"]');
+	expect(Array.from(visible, (cell) => cell.dataset.cell)).toEqual(cells);
+	for (const [index, cell] of Array.from(visible).entries()) {
+		expect(cell.style.gridColumn).toBe("1 / -1");
+		expect(Number.parseFloat(cell.style.width)).toBeCloseTo(100 / cells.length);
+		expect(Number.parseFloat(cell.style.marginInlineStart)).toBeCloseTo(
+			(100 * index) / cells.length,
+		);
+	}
+});
+
+it("自定义皮肤按清单摆放三项互动数", async () => {
+	const doc = await postWithStats("custom", { shares: 0, comments: 0, likes: 0 });
+	const columns = ["share-count", "comment-count", "like-count"].map(
+		(key) => doc.querySelector<HTMLElement>(`[data-cell="${key}"]`)?.style.gridColumn,
+	);
+	expect(columns).toEqual(["1 / span 3", "4 / span 3", "7 / span 3"]);
+});
 
 /**
  * 根块(外框)那条 inline style 的**解码后**值。

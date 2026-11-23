@@ -33,6 +33,7 @@ import {
 	type CardSkinManifest,
 	cardSkinKnobDeclarations,
 	DEFAULT_CARD_SKIN,
+	DEFAULT_CARD_SKIN_ID,
 	DIVIDER_TYPE,
 	rowMapOf,
 } from "@bilibili-notify/internal";
@@ -72,6 +73,8 @@ const BLOCK_TABLES: Record<CardKind, Record<string, BlockRenderer<never>>> = {
 
 export interface SkinRenderOptions<K extends CardKind = CardKind> {
 	kind: K;
+	/** 皮肤库返回清单的副本，按所选皮肤的 ID 识别出厂版式。 */
+	skinId?: string;
 	/** 该卡种的皮肤条目(已由 server 清洗 / 校验过)。 */
 	card: CardSkinCard;
 	/** 与模板同一份 props。 */
@@ -301,10 +304,12 @@ interface PlacedBlock {
  * grid item 自成一个 painting 层级),所以这里只写一句就够。**它必须注在外层**:内层是
  * 外层那个单格网格的 item,它的 `z-index` 只在外层内部排序,压不过隔壁块。
  */
+const CELL_LAYOUT = "min-width:0;display:grid;place-self:stretch;place-items:inherit";
+
 function cellStyle(block: CardSkinBlock, row: number): string {
 	const { column, span, rowSpan, z } = block.grid;
 	const layer = z ? `;z-index:${z}` : "";
-	return `grid-row:${row} / span ${rowSpan ?? 1};grid-column:${column} / span ${span};min-width:0;display:grid;place-self:stretch;place-items:inherit${layer}`;
+	return `grid-row:${row} / span ${rowSpan ?? 1};grid-column:${column} / span ${span};${CELL_LAYOUT}${layer}`;
 }
 
 /**
@@ -406,6 +411,7 @@ function wrapCell(id: string, style: string, inner: VNode): VNode {
  */
 interface SkinAssemblyState {
 	kind: CardKind;
+	fitPostStats: boolean;
 	/** 这张卡的版式。**只有这一份** —— 出图端没有形态,每一层拿的都是它。 */
 	card: CardSkinCard;
 	resolveAsset?: (name: string) => string | undefined;
@@ -487,15 +493,9 @@ function placeBlocks(ctx: SkinAssemblyState, props: unknown): VNode[] {
 	// 决定叠放的缺省档,而那一档的约定就是「跟数组先后走」(见 schema 里 `z` 那段);验收门
 	// A 也照这个序跟模板逐块比。
 	const placed = kept.filter((item) => !dropped.has(item));
-	// 出厂作品卡按有数值的互动项平分一行。自定义皮肤照清单里的坐标渲染。
-	const stats =
-		card === DEFAULT_CARD_SKIN.cards.post
-			? placed.filter(
-					({ block }) => block.kind === "builtin" && POST_STAT_BLOCKS.has(block.builtin),
-				)
-			: [];
-	const statSpan = CARD_SKIN_LIMITS.columns / (stats.length || 1);
-
+	const stats = ctx.fitPostStats
+		? placed.filter(({ block }) => block.kind === "builtin" && POST_STAT_BLOCKS.has(block.builtin))
+		: [];
 	// ④ 压行:把剩下的块占到的行重编成 1..n,免得被收起的块留下吃 gap 的空行。算法住
 	// `@bilibili-notify/internal`,画布与这里共用同一份(见 `rowMapOf` 的注释)。
 	const rowMap = rowMapOf(placed.map((item) => item.block.grid));
@@ -511,20 +511,14 @@ function placeBlocks(ctx: SkinAssemblyState, props: unknown): VNode[] {
 		// 资产变量是给**皮肤 CSS** 用的,而皮肤写在内层 —— 跟 class 待在同一个元素上。
 		const vars = assetVarsStyle(item.block.assets, ctx.resolveAsset);
 		const inner = `min-width:0${sizedHeight(kind, item.block)}${vars ? `;${vars}` : ""}`;
-		const statIndex = stats.indexOf(item);
-		const block =
-			statIndex < 0
-				? item.block
-				: {
-						...item.block,
-						grid: {
-							...item.block.grid,
-							column: statIndex * statSpan + 1,
-							span: statSpan,
-						},
-					};
-		const cell = cellStyle(block, rowMap.get(block.grid.row) ?? 1);
-		return wrapCell(id, cell, wrapBlock(item, cls, inner, ctx.rank));
+		const row = rowMap.get(item.block.grid.row) ?? 1;
+		const index = stats.indexOf(item);
+		// 出厂卡外侧两列有固定宽度。统计格以整行作参照，宽度和起点都用整行的百分比。
+		const style =
+			index < 0
+				? cellStyle(item.block, row)
+				: `grid-row:${row} / span 1;grid-column:1 / -1;${CELL_LAYOUT};width:${100 / stats.length}%;margin-inline-start:${(index * 100) / stats.length}%`;
+		return wrapCell(id, style, wrapBlock(item, cls, inner, ctx.rank));
 	});
 }
 
@@ -544,6 +538,11 @@ export function renderSkinnedCard<K extends CardKind>(o: SkinRenderOptions<K>): 
 	const { props } = o;
 	const ctx: SkinAssemblyState = {
 		kind,
+		fitPostStats:
+			kind === "post" &&
+			(o.skinId === undefined
+				? card === DEFAULT_CARD_SKIN.cards.post
+				: o.skinId === DEFAULT_CARD_SKIN_ID),
 		card,
 		resolveAsset: o.resolveAsset,
 		used: new Set(),
@@ -589,6 +588,7 @@ export function cardOfManifest(manifest: CardSkinManifest, kind: CardKind): Card
 }
 
 export interface SkinCardHtmlOptions {
+	skinId?: string;
 	/** `<title>`(截图不显示,排障时看得见)。 */
 	title?: string;
 	/** CSS 家族名;自带字体时传 `USER_FONT_FAMILY`。 */
@@ -621,6 +621,7 @@ export async function renderCardWithSkin<K extends CardKind>(
 	const card = cardOfManifest(manifest, kind);
 	const { vnode, css } = renderSkinnedCard({
 		kind,
+		skinId: manifest.cards[kind] ? options.skinId : DEFAULT_CARD_SKIN_ID,
 		card,
 		props,
 		resolveAsset: options.resolveAsset,

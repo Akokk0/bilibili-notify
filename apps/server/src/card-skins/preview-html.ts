@@ -87,6 +87,7 @@ export async function renderSkinPreviewHtml(args: {
 	// 就是全部 —— 不再另递原始动态。
 	const sample = await sampleCard(kind, picked.id, { membershipTier: args.membershipTier });
 	const html = await renderCardWithSkin(kind, sample.props as never, manifest, {
+		skinId,
 		get title() {
 			return serverText("service.card-skins.preview-html.text.2", { value0: kind });
 		},
