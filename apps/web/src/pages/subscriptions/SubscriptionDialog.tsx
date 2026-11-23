@@ -363,6 +363,7 @@ export function SubscriptionDialog({
 	const identity = subscriptionIdentityOf(draft);
 	const ext = platform;
 	const previewName = createProfile?.name.trim() ? createProfile.name : displayName(draft, ext);
+	const followers = createProfile?.followers ?? draft.cachedProfile?.followers;
 	const accountLabel = creatorAccountLabel(
 		identity,
 		ext,
@@ -660,17 +661,10 @@ export function SubscriptionDialog({
 							<span className="min-w-0 flex-1 truncate tabular-nums" title={accountLabel}>
 								{accountLabel}
 							</span>
-							{(createProfile?.followers ?? draft.cachedProfile?.followers) != null ? (
-								<>
-									<span className="shrink-0 opacity-70">·</span>
-									<span className="shrink-0 whitespace-nowrap tabular-nums">
-										{tx("sourceUi.pages.up.UpDialog.UpDialog.15", {
-											count: formatCount(
-												createProfile?.followers ?? draft.cachedProfile?.followers ?? 0,
-											),
-										})}
-									</span>
-								</>
+							{followers != null ? (
+								<span className="shrink-0 whitespace-nowrap tabular-nums">
+									{tx("sourceUi.pages.up.UpDialog.UpDialog.15", { count: formatCount(followers) })}
+								</span>
 							) : null}
 						</div>
 					</div>

@@ -223,6 +223,7 @@ describe("SubscriptionDialog × 拓展订阅", () => {
 		).not.toBe(0);
 		expect(screen.getByTitle(`作者 ID ${id}`).textContent).toBe(`作者 ID ${id}`);
 		expect(screen.getByText("1047.7万 粉丝", { exact: true })).toBeTruthy();
+		expect(screen.queryByText("·", { exact: true })).toBeNull();
 		expect(screen.queryByText(/UID/)).toBeNull();
 	});
 
