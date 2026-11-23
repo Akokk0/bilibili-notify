@@ -1,5 +1,6 @@
 import { type ExtensionContext, fail, ok, type Result } from "@bilibili-notify/extension";
 import { createCooldown } from "./cooldown";
+import { vipStatRequest, vipViewersFrom } from "./vip-stat";
 
 export function record(value: unknown): Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -10,6 +11,13 @@ export function record(value: unknown): Record<string, unknown> {
 export function decimal(value: unknown): string | undefined {
 	const id = typeof value === "number" && Number.isSafeInteger(value) ? String(value) : value;
 	return typeof id === "string" && /^[1-9]\d*$/.test(id) ? id : undefined;
+}
+
+export function count(value: unknown): number | undefined {
+	const parsed = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
+	return typeof parsed === "number" && Number.isSafeInteger(parsed) && parsed >= 0
+		? parsed
+		: undefined;
 }
 
 const verification = /安全验证|人机验证|访问验证|请.{0,6}完成验证|验证码|captcha|security check/i;
@@ -52,7 +60,8 @@ export function createClient(ctx: ExtensionContext) {
 	const unavailable = () => fail("unavailable", ctx.i18n.t("request.unavailable"));
 	const cancelled = () => fail("indeterminate", ctx.i18n.t("request.cancelled"));
 	const cooldown = createCooldown(ctx);
-	type Page = Result<{ body: string; location?: string }>;
+	type Page = Result<{ body: string; location?: string; bytes?: Uint8Array }>;
+	type StatQuery = { uid: string; body: Uint8Array<ArrayBuffer> };
 	type Pending = { controller: AbortController; result: Promise<Page>; readers: number };
 	const pending = new Map<string, Pending>();
 	let tail = Promise.resolve();
@@ -70,18 +79,26 @@ export function createClient(ctx: ExtensionContext) {
 			signal.addEventListener("abort", finish, { once: true });
 		});
 	}
-	async function request(url: URL, signal: AbortSignal): Promise<Page> {
+	async function request(url: URL, signal: AbortSignal, stat?: StatQuery): Promise<Page> {
 		const blocked = cooldown.blocked();
 		if (blocked) return blocked;
+		if (stat && cooldown.probing()) return unavailable();
 		await wait(nextRequest - Date.now(), signal);
 		if (signal.aborted) return cancelled();
-		const response = await ctx.http.fetch(url, {
-			bare: true,
-			maxRedirects: 0,
-			maxBodyBytes: 2 * 1024 * 1024,
-			timeoutMs: 10000,
-			signal,
-		});
+		const response = await ctx.http
+			.fetch(url, {
+				bare: true,
+				maxRedirects: 0,
+				maxBodyBytes: stat ? 4096 : 2 * 1024 * 1024,
+				timeoutMs: 10000,
+				...(stat && {
+					method: "POST",
+					headers: { "Content-Type": "application/octet-stream" },
+					body: stat.body,
+				}),
+				signal,
+			})
+			.catch(unavailable);
 		nextRequest = Date.now() + 3000;
 		if (response.ok && response.status === 429)
 			return cooldown.pause("limited", response.headers.get("retry-after"));
@@ -106,17 +123,17 @@ export function createClient(ctx: ExtensionContext) {
 			if (!usableProbe(url, body)) return cooldown.retryProbe();
 			await cooldown.recovered();
 		}
-		return ok({ body });
+		return ok({ body, ...(stat && { bytes: response.body }) });
 	}
-	async function read(url: URL, signal: AbortSignal): Promise<Page> {
+	async function read(url: URL, signal: AbortSignal, stat?: StatQuery): Promise<Page> {
 		if (signal.aborted) return cancelled();
 		const blocked = cooldown.blocked();
 		if (blocked) return blocked;
-		const key = url.href;
+		const key = stat ? `vip:${stat.uid}` : url.href;
 		let call = pending.get(key);
 		if (!call) {
 			const controller = new AbortController();
-			const result = tail.then(() => request(url, controller.signal));
+			const result = tail.then(() => request(url, controller.signal, stat));
 			call = { controller, result, readers: 0 };
 			pending.set(key, call);
 			const entry = call;
@@ -160,6 +177,24 @@ export function createClient(ctx: ExtensionContext) {
 			return unavailable();
 		}
 	}
-	return { read, json, unavailable };
+	async function vipViewers(uid: string, signal: AbortSignal, deadline: number) {
+		const remaining = Math.min(6500, deadline - Date.now());
+		if (signal.aborted || remaining <= 0) return;
+		const body = vipStatRequest(uid);
+		if (!body) return;
+		const limit = new AbortController();
+		const timer = ctx.setTimeout(() => limit.abort(), remaining);
+		try {
+			const response = await read(
+				new URL("https://cdn.wup.huya.com/"),
+				AbortSignal.any([signal, limit.signal]),
+				{ uid, body },
+			);
+			if (response.ok && response.bytes) return vipViewersFrom(response.bytes, uid);
+		} finally {
+			timer.dispose();
+		}
+	}
+	return { read, json, vipViewers, unavailable };
 }
 export type HuyaClient = ReturnType<typeof createClient>;

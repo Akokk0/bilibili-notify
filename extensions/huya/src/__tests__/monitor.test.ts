@@ -60,7 +60,7 @@ it("首次建基线，间歇失败不中断在播场次，转入轮播只报一�
 		{ body: room("71", "42") },
 	]) {
 		reply = next;
-		await vi.advanceTimersByTimeAsync(61000);
+		await vi.advanceTimersByTimeAsync(65000);
 	}
 	expect(watched.reportLive.mock.calls.map(([uid, event]) => [uid, event.kind])).toEqual([
 		["71", "status"],
@@ -95,6 +95,31 @@ it("平台未给开播时间时，下播带上宿主第一次核实离线的时�
 	await app.source.stop();
 });
 
+it("开播与宿主取卡时查询贵宾，同场轮询与下播省去这次请求", async () => {
+	let status = "OFF";
+	const stats = vi.fn(() => ({ status: 503 }));
+	const app = host((url) =>
+		url.hostname === "cdn.wup.huya.com" ? stats() : { body: room("71", "42", status) },
+	);
+	await app.source.searchCreators("42", app.signal);
+	const watched = monitor(app.source);
+	await vi.advanceTimersByTimeAsync(6000);
+	expect(stats).toHaveBeenCalledTimes(0);
+	status = "ON";
+	await vi.advanceTimersByTimeAsync(185000);
+	expect(stats).toHaveBeenCalledTimes(1);
+	expect(watched.reportLive.mock.calls.map(([, e]) => e.kind)).toEqual(["status", "start"]);
+	const card = app.source.fetchLiveStatus?.({ sourceKey: "huya", externalId: "71" }, app.signal);
+	await vi.advanceTimersByTimeAsync(6000);
+	expect(await card).toMatchObject({ ok: true, kind: "live" });
+	expect(stats).toHaveBeenCalledTimes(2);
+	status = "OFF";
+	await vi.advanceTimersByTimeAsync(65000);
+	expect(stats).toHaveBeenCalledTimes(2);
+	expect(watched.reportLive.mock.calls.at(-1)?.[1].kind).toBe("end");
+	await app.source.stop();
+});
+
 it("同一场改标题只更新状态，中途缺场次号后仍能识别两场不同的大整数 ID", async () => {
 	const first = "9223372036854775801",
 		second = "9223372036854775802";
@@ -106,13 +131,13 @@ it("同一场改标题只更新状态，中途缺场次号后仍能识别两场�
 	});
 	await app.source.searchCreators("42", app.signal);
 	const watched = monitor(app.source);
-	await vi.advanceTimersByTimeAsync(3000);
+	await vi.advanceTimersByTimeAsync(6000);
 	session = undefined;
 	title = "下半场";
 	await vi.advanceTimersByTimeAsync(60000);
 	session = second;
 	title = "下一场";
-	await vi.advanceTimersByTimeAsync(60000);
+	await vi.advanceTimersByTimeAsync(63000);
 	await vi.advanceTimersByTimeAsync(60000);
 	expect(watched.reportLive.mock.calls.map(([, e]) => [e.kind, e.details?.title])).toEqual([
 		["status", "上半场"],
@@ -152,7 +177,7 @@ it.each(["stop", "unsubscribe"])(
 		expect(app.fetch).toHaveBeenCalledTimes(2);
 		if (action === "unsubscribe") {
 			watched.enable();
-			await vi.advanceTimersByTimeAsync(1);
+			await vi.advanceTimersByTimeAsync(3001);
 			expect(watched.reportLive.mock.calls.map(([, e]) => e.kind)).toEqual(["status"]);
 		}
 		await app.source.stop();

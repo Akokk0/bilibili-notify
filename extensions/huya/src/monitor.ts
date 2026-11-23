@@ -34,6 +34,7 @@ export function monitor(
 		}
 	}
 	async function check(watch: Watch) {
+		const started = Date.now();
 		const scoped = AbortSignal.any([signal, source.signal, watch.controller.signal]);
 		const room = await directory.lookup(watch.uid, scoped);
 		if (scoped.aborted) return;
@@ -44,7 +45,7 @@ export function monitor(
 			const { ok: _, ...fields } = profile;
 			source.reportProfile(watch.uid, fields);
 		}
-		const result = await directory.observationOf(room, scoped);
+		const result = await directory.observationOf(room, scoped, started, watch.previous);
 		if (scoped.aborted) return;
 		if (!result.ok) return failed(watch, result);
 		watch.failures = 0;

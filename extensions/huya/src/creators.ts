@@ -5,9 +5,9 @@ import {
 	type Identity,
 	ok,
 } from "@bilibili-notify/extension";
-import { decimal, type HuyaClient, record } from "./client";
+import { count, decimal, type HuyaClient, record } from "./client";
 import { createImageReader, imageDeadline } from "./images";
-import { observe } from "./live";
+import { type Observation, observe } from "./live";
 import { pageRoom, publicRoom, web } from "./pages";
 
 export interface HuyaRoom {
@@ -20,11 +20,6 @@ export interface HuyaRoom {
 interface CandidatePhoto {
 	candidate: CreatorCandidate;
 	url: string;
-}
-
-function followerCount(value: unknown): number | undefined {
-	const count = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
-	return typeof count === "number" && Number.isSafeInteger(count) && count >= 0 ? count : undefined;
 }
 
 export function createDirectory(ctx: ExtensionContext, client: HuyaClient) {
@@ -134,7 +129,7 @@ export function createDirectory(ctx: ExtensionContext, client: HuyaClient) {
 				displayId: number,
 				name: row.game_nick,
 			};
-			const followers = followerCount(row.game_activityCount);
+			const followers = count(row.game_activityCount);
 			if (followers !== undefined) candidate.followers = followers;
 			candidates.set(uid, candidate);
 			const url = [row.game_avatarUrl180, row.game_avatarUrl52].find(
@@ -178,8 +173,8 @@ export function createDirectory(ctx: ExtensionContext, client: HuyaClient) {
 		const profile = record(room.data.profileInfo);
 		const live = record(room.data.liveData);
 		const followers =
-			followerCount(profile.activityCount) ??
-			(decimal(live.uid) === room.uid ? followerCount(live.activityCount) : undefined);
+			count(profile.activityCount) ??
+			(decimal(live.uid) === room.uid ? count(live.activityCount) : undefined);
 		const avatar = await readImage(profile.avatar180, signal, imageDeadline(started));
 		if (signal.aborted) return fail("indeterminate", ctx.i18n.t("request.cancelled"));
 		return ok({
@@ -199,7 +194,7 @@ export function createDirectory(ctx: ExtensionContext, client: HuyaClient) {
 		fetchProfile,
 		lookup,
 		profileOf,
-		observationOf: (room: HuyaRoom, signal: AbortSignal, started = Date.now()) =>
-			observe(ctx, room, signal, readImage, imageDeadline(started)),
+		observationOf: (room: HuyaRoom, signal: AbortSignal, started: number, previous?: Observation) =>
+			observe(ctx, room, signal, readImage, client, started, previous),
 	};
 }
