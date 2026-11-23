@@ -43,7 +43,7 @@ export function decimalId(value: unknown) {
 }
 
 export function challenge(text: string) {
-	return /wbBotDetector|alc-auto-login|captcha|验证码/i.test(text);
+	return /wbBotDetector|alc-auto-login|captcha|验证码|安全验证|人机验证/i.test(text);
 }
 
 export function loginRequired(response: HttpResponse) {

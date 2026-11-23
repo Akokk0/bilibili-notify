@@ -128,6 +128,7 @@ export async function loginChain(
 			return fail("unavailable", ctx.i18n.t("auth.verify"), { upstreamCode: "weibo.verify" });
 		if (response.status === 401 || url.searchParams.get("retcode") === "6102")
 			return fail("unauthorized", ctx.i18n.t("auth.expired"));
+		if (response.status >= 400) return fail("unavailable", ctx.i18n.t("request.unavailable"));
 		const to =
 			response.headers.get("location") ?? (response.isSuccess ? redirectFromHtml(html) : undefined);
 		if (to && URL.parse(to, url)?.pathname === "/sso/signin")
@@ -140,6 +141,12 @@ export async function loginChain(
 		url = to ? URL.parse(to, url) : null;
 	}
 	return fail("unavailable", ctx.i18n.t("auth.redirect"), { upstreamCode: "weibo.protocol" });
+}
+
+function qrFailure(ctx: ExtensionContext, response: HttpResponse, fallback = "auth.qr") {
+	if (challenge(response.text()))
+		return fail("unavailable", ctx.i18n.t("auth.verify"), { upstreamCode: "weibo.verify" });
+	return fail("unavailable", ctx.i18n.t(fallback));
 }
 
 export async function checkQr(
@@ -161,14 +168,14 @@ export async function checkQr(
 		signal,
 	);
 	if (!body.ok) return body;
-	if (!body.isSuccess) return fail("unavailable", ctx.i18n.t("auth.qr"));
+	if (!body.isSuccess) return qrFailure(ctx, body);
 	const reply = ssoBody(body.text());
 	const code = Number(reply.retcode);
 	if (code === 50114001 || code === 50114002)
 		return ok({ kind: "waiting" as const, scanned: code === 50114002 });
 	const target = record(reply.data).url;
 	if (code !== 20000000 || typeof target !== "string")
-		return fail("unavailable", ctx.i18n.t("auth.qrExpired"));
+		return qrFailure(ctx, body, "auth.qrExpired");
 	const url = URL.parse(target);
 	if (url?.origin !== PASSPORT || !trustedHttps(url) || url.pathname !== "/sso/v2/login")
 		return fail("invalid", ctx.i18n.t("auth.redirect"));
@@ -190,7 +197,7 @@ export async function beginQr(client: WeiboClient, cookies: Cookies, signal: Abo
 		"text/html",
 	);
 	if (!init.ok) return init;
-	if (!init.isSuccess) return fail("unavailable", ctx.i18n.t("auth.qr"));
+	if (!init.isSuccess) return qrFailure(ctx, init);
 	const issued = await request(
 		cookies,
 		urlAt(PASSPORT, "/sso/v2/qrcode/image", {
@@ -209,7 +216,7 @@ export async function beginQr(client: WeiboClient, cookies: Cookies, signal: Abo
 		!data.qrid ||
 		typeof data.image !== "string"
 	)
-		return fail("unavailable", ctx.i18n.t("auth.qr"));
+		return qrFailure(ctx, issued);
 	ctx.redact(data.qrid);
 	const url = URL.parse(data.image, QR_IMAGE);
 	if (
@@ -230,6 +237,6 @@ export async function beginQr(client: WeiboClient, cookies: Cookies, signal: Abo
 		image.headers.get("content-type")?.split(";")[0]?.trim() !== "image/png" ||
 		!bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))
 	)
-		return fail("unavailable", ctx.i18n.t("auth.qr"));
+		return qrFailure(ctx, image);
 	return ok({ id: data.qrid, dataUrl: `data:image/png;base64,${bytes.toString("base64")}` });
 }

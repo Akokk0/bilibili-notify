@@ -187,6 +187,50 @@ it("keeps a verified web login usable when daily SSO renewal needs human verific
 	app.dispose();
 });
 
+it.each([true, false])(
+	"retries an ordinary renewal 403 with a usable web session: %s",
+	async (usable) => {
+		const first = host(loginReply);
+		await first.auth.beginLogin();
+		await vi.advanceTimersByTimeAsync(3000);
+		first.dispose();
+		vi.setSystemTime(Date.now() + 24 * 3600000);
+		let attempts = 0;
+		let renewed = false;
+		const app = host((url) => {
+			if (url.pathname === "/sso/login.php") {
+				if (++attempts === 1) return { status: 403, body: "Forbidden" };
+				return { status: 302, headers: { location: "https://passport.weibo.com/sso/crossdomain" } };
+			}
+			if (url.pathname === "/sso/crossdomain") renewed = true;
+			if (url.pathname === "/" && !usable && !renewed) return { status: 401 };
+			return loginReply(url);
+		}, first.secrets);
+		await vi.advanceTimersByTimeAsync(299999);
+		expect(app.auth.state().status).toBe(usable ? "logged-in" : "confirming");
+		expect(attempts).toBe(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(renewed).toBe(true);
+		expect(app.auth.state().status).toBe("logged-in");
+		app.dispose();
+	},
+);
+
+it.each([200, 403])("explains a verification page during QR polling (HTTP %i)", async (status) => {
+	const app = host((url) =>
+		url.pathname === "/sso/v2/qrcode/check"
+			? { status, body: "<html><title>安全验证</title></html>" }
+			: qrReply(url),
+	);
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	expect(app.auth.state()).toEqual({ status: "error", message: "auth.verify" });
+	const requests = app.fetch.mock.calls.length;
+	await vi.advanceTimersByTimeAsync(60000);
+	expect(app.fetch).toHaveBeenCalledTimes(requests);
+	app.dispose();
+});
+
 it("opens a Weibo QR challenge from the system account entry without saving an unconfirmed session", async () => {
 	const app = host(qrReply);
 	expect(app.auth.state()).toEqual({ status: "logged-out" });
