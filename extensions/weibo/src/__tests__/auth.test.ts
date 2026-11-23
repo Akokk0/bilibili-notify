@@ -301,6 +301,30 @@ it("keeps saved credentials on a temporary outage and rechecks after the five-mi
 	app.dispose();
 });
 
+it("keeps the first sign-in time through a failed account check and resets it on a fresh login", async () => {
+	let unavailable = false;
+	const app = host((url) => {
+		if (url.pathname === "/ajax/profile/info") return { status: 401 };
+		if (unavailable && url.pathname === "/") return { status: 503 };
+		return loginReply(url);
+	});
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	const first = app.auth.state();
+	expect(first.status).toBe("logged-in");
+	unavailable = true;
+	await app.source.searchCreators("42", new AbortController().signal);
+	expect(app.auth.state().status).toBe("confirming");
+	unavailable = false;
+	await vi.advanceTimersByTimeAsync(300000);
+	expect(app.auth.state()).toEqual(first);
+	await app.auth.logout();
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	expect(app.auth.state()).toEqual({ status: "logged-in", loggedInAt: new Date().toISOString() });
+	app.dispose();
+});
+
 it("confirms the homepage UID after mobile confirmation and restores the same scoped session after restart", async () => {
 	const app = host(loginReply);
 	await app.auth.beginLogin();

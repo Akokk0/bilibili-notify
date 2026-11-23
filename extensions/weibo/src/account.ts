@@ -31,6 +31,7 @@ export function createAccount(ctx: ExtensionContext) {
 	const client = createClient(ctx);
 	const listeners = new Set<() => void>();
 	let state: AuthState = { status: "logged-out" };
+	let loggedInAt: string | undefined;
 	let life = new AbortController();
 	let session: Session | undefined;
 	let avatar: ImageRef | undefined;
@@ -64,6 +65,7 @@ export function createAccount(ctx: ExtensionContext) {
 	}
 	function replace() {
 		life.abort();
+		loggedInAt = undefined;
 		avatarJob?.dispose();
 		avatar = undefined;
 		timer?.dispose();
@@ -123,10 +125,8 @@ export function createAccount(ctx: ExtensionContext) {
 			error(stored.message);
 			return stored;
 		}
-		publish({
-			status: "logged-in",
-			loggedInAt: state.status === "logged-in" ? state.loggedInAt : new Date().toISOString(),
-		});
+		loggedInAt ??= new Date().toISOString();
+		publish({ status: "logged-in", loggedInAt });
 		if (next.renewalBlocked || !canRenew(next.cookies))
 			ctx.reportProblem({ code: "weibo_renewal", message: ctx.i18n.t("auth.renewal") });
 		else ctx.resolveProblem({ code: "weibo_renewal" });
