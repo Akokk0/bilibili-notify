@@ -19,6 +19,7 @@
 	"profile.input": "Enter the creator’s full Weibo nickname, UID, or profile link.",
 	"profile.follow": "Follow this creator with the current Weibo account before subscribing.",
 	"profile.notFound": "Weibo could not find this creator.",
+	"post.via": "via {device}",
 	"$manifest": {
 		"name": "Weibo",
 		"description": "Subscribe to posts from creators you follow on Weibo.",

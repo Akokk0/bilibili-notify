@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
 	type ExtensionContext,
 	type FetchOptions,
@@ -9,6 +10,10 @@ import {
 import { CookieJar } from "tough-cookie";
 import { type Mock, vi } from "vite-plus/test";
 import { activate } from "../index";
+
+const messages: Record<string, unknown> = JSON.parse(
+	readFileSync(new URL("../../locales/zh-CN.json", import.meta.url), "utf8"),
+);
 
 export const png = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
 export type Reply = { body?: unknown; status?: number; headers?: HeadersInit };
@@ -137,7 +142,14 @@ export function host(
 				snapshot: () => JSON.stringify(jar.serializeSync()),
 			};
 		},
-		i18n: { t: (key: string) => key },
+		i18n: {
+			t(key: string, values?: Record<string, string | number>) {
+				const message = messages[key];
+				return values && typeof message === "string"
+					? message.replace(/\{(\w+)\}/g, (_, field) => String(values[field]))
+					: key;
+			},
+		},
 		onDispose: (fn: () => void) => disposals.push(fn),
 		redact: vi.fn(),
 		reportProblem: vi.fn(),

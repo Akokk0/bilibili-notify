@@ -14,7 +14,7 @@ function attribute(element: Element, name: string) {
 	return element.attrs.find((attr) => attr.name === name)?.value;
 }
 
-function communityId(value: unknown) {
+export function communityId(value: unknown) {
 	return typeof value === "string" && /^100808[\da-f]{32}$/i.test(value) ? value : undefined;
 }
 

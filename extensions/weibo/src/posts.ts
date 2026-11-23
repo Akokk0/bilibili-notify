@@ -10,6 +10,7 @@ import type { WeiboAccount } from "./account";
 import { caption } from "./caption";
 import { decimalId, HOME, record } from "./client";
 import { image, imageUrl } from "./media";
+import { postDetails } from "./post-details";
 
 export function feedPost(value: unknown) {
 	const row = record(value);
@@ -83,6 +84,7 @@ export async function postReport(
 		text: segments.map((segment) => segment.text).join(""),
 		...(segments.some((segment) => segment.kind !== "text") && { richText: segments }),
 		publishedAt: new Date(time).toISOString(),
+		...(await postDetails(ctx, row, signal)),
 		...(typeof user.screen_name === "string" && { creator: { name: user.screen_name } }),
 	};
 	const likes = count(row.attitudes_count),

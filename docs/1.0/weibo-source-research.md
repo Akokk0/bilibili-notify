@@ -28,7 +28,7 @@
 | 检查新微博 | `weibo.com/ajax/feed/friendstimeline`，`list_id` 和 `fid` 使用当前账号的“最新微博”流，`since_id` 分页，每页请求 25 条 | `subscriptions()` 给出启用名单，所有博主共享取数，只对开启作品通知的匹配者调用 `reportPost`。 |
 | 补全长文 | `weibo.com/ajax/statuses/longtext`，参数 `id` | 只为准备上报的长微博取正文。HTML 转为文本，图片经 `ctx.fetchImage` 取得图库引用。 |
 
-选择关注流意味着订阅前要由使用者在微博关注博主。增加或删除 BN 订阅只改变 BN 里的名单。创作者身份取数字 UID 字符串，作品取数字 ID。链接优先使用微博返回的 `mblogid`。SDK 当前的作品结构可交正文、配图、视频信息和统计。转发原文按署名文本呈现，因此宿主的原生转发过滤无法识别这种展示。[上游关注流解析](https://github.com/Colter23/dynamic-bot-weibo/blob/e7335bca8e3f121d90c4f669e4e2a3c3cf4d9b9a/src/main/kotlin/top/colter/dynamic/weibo/WeiboClient.kt#L554-L631) · [拓展作品类型](../../packages/internal/src/extension/index.ts)
+选择关注流意味着订阅前要由使用者在微博关注博主。增加或删除 BN 订阅只改变 BN 里的名单。创作者身份取数字 UID 字符串，作品取数字 ID。链接优先使用微博返回的 `mblogid`。拓展将话题与超话转为正文片段。卡片从关注流的 `source` 和 `region_name` 读取发布设备和公开发布地。超话归属取自 `title_source` 或作者旁的超话标记，匹配 `common_struct` 的名称、图库封面、说明与关注文字组成附卡。转发原文按署名文本呈现，因此宿主的原生转发过滤无法识别这种展示。[上游关注流解析](https://github.com/Colter23/dynamic-bot-weibo/blob/e7335bca8e3f121d90c4f669e4e2a3c3cf4d9b9a/src/main/kotlin/top/colter/dynamic/weibo/WeiboClient.kt#L554-L631) · [拓展作品类型](../../packages/internal/src/extension/index.ts)
 
 ## 分页与判新
 

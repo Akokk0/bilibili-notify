@@ -19,6 +19,7 @@
 	"profile.input": "請輸入微博部落客的完整暱稱、UID 或個人頁連結。",
 	"profile.follow": "請先用目前的微博帳號關注這位博主，再新增訂閱。",
 	"profile.notFound": "找不到這位微博博主。",
+	"post.via": "來自 {device}",
 	"$manifest": {
 		"name": "微博",
 		"description": "透過登入帳號的關注動態訂閱微博。請先在微博關注要訂閱的博主。",

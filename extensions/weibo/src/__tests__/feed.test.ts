@@ -156,6 +156,65 @@ it("retains a long post's visible caption when its expanded body contains no tex
 	expect(got.richText).toContainEqual({ kind: "topic", text: "#火锅#", name: "火锅" });
 });
 
+it("reports the public byline and the primary community's own card from the same feed item", async () => {
+	const id = "10080854838a6bbae2a14b0fb0c7905f6a070a";
+	const ref = `${"c".repeat(64)}.jpg`;
+	const icon = "https://h5.sinaimg.cn/upload/andriod_chaohua_header.png";
+	const iconRef = `${"b".repeat(64)}.png`;
+	const got = await receivePost(
+		{
+			source: '<a href="https://weibo.com/">iPhone</a>',
+			region_name: "发布于 四川",
+			reads_count: 38,
+			title_source: { name: "英雄联盟超话", url: `sinaweibo://pageinfo?pageid=${id}` },
+			screen_name_suffix_new: [
+				{ type: 1, content: "海棠", icons: [{ type: "chaohua", url: icon }] },
+				{ type: 2, content: "英雄联盟超话" },
+			],
+			common_struct: [
+				{ page_id: "100808aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", name: "另一社区" },
+				{
+					page_id: id,
+					name: "【超话】英雄联盟",
+					desc: "162.7万帖子 443.1万召唤师",
+					img: "http://wx4.sinaimg.cn/thumbnail/cover.jpg",
+					buttons: [{ name: "关注", type: "follow" }],
+				},
+			],
+		},
+		async (url) => {
+			if (url === icon) return ok({ ref: iconRef });
+			expect(url).toBe("https://wx4.sinaimg.cn/thumbnail/cover.jpg");
+			return ok({ ref });
+		},
+	);
+	expect(got).toMatchObject({
+		text: "微博 101",
+		publicationInfo: "来自 iPhone · 发布于 四川",
+		topic: "英雄联盟超话",
+		topicIcon: iconRef,
+		attachment: {
+			kind: "card",
+			title: "【超话】英雄联盟",
+			cover: ref,
+			lines: [{ text: "162.7万帖子 443.1万召唤师" }],
+			button: { text: "关注", enabled: true },
+		},
+	});
+});
+
+it("keeps a mention in the caption and omits the byline when only a read count is available", async () => {
+	const got = await receivePost({
+		text_raw: "#峡谷[超话]#",
+		reads_count: 0,
+		common_struct: [{ page_id: "unrelated", name: "另一张卡" }],
+	});
+	expect(got.richText).toEqual([{ kind: "topic", name: "峡谷", text: "峡谷超话" }]);
+	expect(got.publicationInfo).toBeUndefined();
+	expect(got.topic).toBeUndefined();
+	expect(got.attachment).toBeUndefined();
+});
+
 it("does not report a post if its subscription was removed and recreated during image loading", async () => {
 	let finishImage!: (result: ReturnType<typeof ok<{ ref: string }>>) => void;
 	const picture = new Promise<ReturnType<typeof ok<{ ref: string }>>>((resolve) => {
