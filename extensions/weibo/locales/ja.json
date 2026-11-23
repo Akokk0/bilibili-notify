@@ -16,7 +16,7 @@
 	"request.cancelled": "Weibo へのリクエストが取り消されました。",
 	"request.unavailable": "Weibo から有効な応答を取得できません。しばらくしてから再試行してください。",
 	"request.limited": "Weibo のリクエスト制限中です。しばらく待ってから再試行してください。",
-	"profile.input": "Weibo UID または UID を含むプロフィールのリンクを入力してください。",
+	"profile.input": "Weibo のニックネーム（完全一致）、UID、またはプロフィールのリンクを入力してください。",
 	"profile.follow": "購読する前に、現在の Weibo アカウントでこの投稿者をフォローしてください。",
 	"profile.notFound": "Weibo の投稿者が見つかりません。",
 	"$manifest": {

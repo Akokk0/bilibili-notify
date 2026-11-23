@@ -9,7 +9,7 @@
 	"contributes": {
 		"subscription": {
 			"label": "微博",
-			"searchAccepts": ["id", "link"],
+			"searchAccepts": ["id", "link", "name"],
 			"supportedFeatures": ["post"],
 			"externalIdRegex": "[1-9][0-9]*",
 			"postNoun": "微博",

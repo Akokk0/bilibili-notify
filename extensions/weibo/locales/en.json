@@ -16,7 +16,7 @@
 	"request.cancelled": "The Weibo request was cancelled.",
 	"request.unavailable": "Weibo did not return a usable response. Try again later.",
 	"request.limited": "Weibo is limiting requests. Wait for the cooldown to end.",
-	"profile.input": "Enter a Weibo UID or a profile link containing the UID.",
+	"profile.input": "Enter the creator’s full Weibo nickname, UID, or profile link.",
 	"profile.follow": "Follow this creator with the current Weibo account before subscribing.",
 	"profile.notFound": "Weibo could not find this creator.",
 	"$manifest": {

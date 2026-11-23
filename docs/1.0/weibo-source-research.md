@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | 获取二维码、等待确认 | `passport.weibo.com/sso/v2/qrcode/image`、`/sso/v2/qrcode/check`，成功后进入 `/sso/v2/login` | `SourceAuth` 提供二维码、等待确认、已登录与需要处理的状态。二维码图片只从预期的微博图片服务读取。 |
 | 检查账号、续期 | `weibo.com/`、`login.sina.com.cn/sso/login.php` 及其受支持的 SSO 跳转 | 核实同一账号，按域接收服务端更新的 Cookie。 |
-| UID 或主页查博主 | `weibo.com/ajax/profile/info`，参数 `uid`、`scene=1` | `searchCreators` 返回候选，`fetchProfile` 返回名字及可用的头像、简介、粉丝数。明确未关注时提示先在微博关注。 |
+| 昵称、UID 或主页查博主 | `weibo.com/ajax/profile/info`，以 `screen_name` 查完整昵称，或用 `uid` 查数字 UID，均带 `scene=1` | `searchCreators` 使用返回的 UID 标识候选，`fetchProfile` 按 UID 获取名字及可用的头像、简介、粉丝数。明确未关注时提示先在微博关注。 |
 | 检查新微博 | `weibo.com/ajax/feed/friendstimeline`，`list_id` 和 `fid` 使用当前账号的“最新微博”流，`since_id` 分页，每页请求 25 条 | `subscriptions()` 给出启用名单，所有博主共享取数，只对开启作品通知的匹配者调用 `reportPost`。 |
 | 补全长文 | `weibo.com/ajax/statuses/longtext`，参数 `id` | 只为准备上报的长微博取正文。HTML 转为文本，图片经 `ctx.fetchImage` 取得图库引用。 |
 

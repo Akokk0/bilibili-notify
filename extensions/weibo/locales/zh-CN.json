@@ -16,7 +16,7 @@
 	"request.cancelled": "微博请求已取消。",
 	"request.unavailable": "暂时无法从微博取得有效响应，请稍后重试。",
 	"request.limited": "微博限制了请求频率，等待冷却结束后再试。",
-	"profile.input": "请输入微博 UID 或带 UID 的博主主页链接。",
+	"profile.input": "请输入微博博主的完整昵称、UID 或主页链接。",
 	"profile.follow": "请先用当前微博账号关注这位博主，再添加订阅。",
 	"profile.notFound": "未找到该微博博主。",
 	"$manifest": {

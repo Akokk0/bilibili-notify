@@ -165,6 +165,12 @@ export function createClient(ctx: ExtensionContext) {
 		if (refused && /频繁|rate limit/i.test(message)) {
 			return coolDown(Date.now() + 60000);
 		}
+		if (
+			response.isSuccess &&
+			url.pathname === "/ajax/profile/info" &&
+			/该昵称当前没有人使用|用户不存在/.test(message)
+		)
+			return fail("not_found", ctx.i18n.t("profile.notFound"));
 		if (refused || !Object.keys(data).length)
 			return fail("unavailable", ctx.i18n.t("request.unavailable"));
 		return ok({ data, updated: response.headers.getSetCookie().length > 0 });

@@ -83,6 +83,45 @@ it("resolves a profile link through the authenticated PC API and preserves the U
 	app.dispose();
 });
 
+it.each(["虎牙楚河", "@虎牙楚河", "https://weibo.com/n/%E8%99%8E%E7%89%99%E6%A5%9A%E6%B2%B3"])(
+	"resolves a nickname to the creator's stable UID: %s",
+	async (input) => {
+		const app = host((url) => {
+			if (url.pathname !== "/ajax/profile/info") return loginReply(url);
+			expect(url.searchParams.get("screen_name")).toBe("虎牙楚河");
+			expect(url.searchParams.has("uid")).toBe(false);
+			return {
+				body: {
+					ok: 1,
+					data: { user: { idstr: "5710620661", screen_name: "虎牙楚河", following: true } },
+				},
+			};
+		});
+		await app.auth.beginLogin();
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(await app.source.searchCreators(input, new AbortController().signal)).toEqual({
+			ok: true,
+			candidates: [{ externalId: "5710620661", name: "虎牙楚河" }],
+		});
+		app.dispose();
+	},
+);
+
+it("returns an empty list for an unused nickname even when Weibo reports a successful request", async () => {
+	const app = host((url) =>
+		url.pathname === "/ajax/profile/info"
+			? { body: { ok: 1, msg: "该昵称当前没有人使用" } }
+			: loginReply(url),
+	);
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	expect(await app.source.searchCreators("无人使用", new AbortController().signal)).toEqual({
+		ok: true,
+		candidates: [],
+	});
+	app.dispose();
+});
+
 it("two concurrent reads with an expired session share a recovery and issue spaced reads using the renewed cookie", async () => {
 	let renewed = false;
 	const times: number[] = [];
