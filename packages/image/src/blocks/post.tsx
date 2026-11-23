@@ -111,7 +111,7 @@ const creatorName: BlockRenderer<PostBlockProps> = ({ node }) => (
  */
 const time: BlockRenderer<PostBlockProps> = ({ node }) => (
 	<span data-bn="text">
-		{!node.isReposted && node.label ? `${node.time} · ${node.label}` : node.time}
+		{[node.time, !node.isReposted && node.label, node.publicationInfo].filter(Boolean).join(" · ")}
 	</span>
 );
 
@@ -119,7 +119,11 @@ const time: BlockRenderer<PostBlockProps> = ({ node }) => (
 const topic: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.topic ? (
 		<div data-bn="text" class="flex items-center">
-			{SVG_TOPIC()}
+			{node.topicIconUrl === undefined ? (
+				SVG_TOPIC()
+			) : node.topicIconUrl ? (
+				<img alt="" src={node.topicIconUrl} style="width:1em;height:1em;flex-shrink:0" />
+			) : null}
 			{node.topic}
 		</div>
 	) : null;

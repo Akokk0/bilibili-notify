@@ -1320,7 +1320,7 @@ describe("拓展 id 的命名空间", () => {
 it("全新1.0契约仍接受1/0的严格清单,拒历史v1及伪装旧v2嵌套", () => {
 	const current = currentManifest({ apiVersion: 1 });
 	expect(parseExtensionManifest(current).ok).toBe(true);
-	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 4 });
+	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 5 });
 	expect(parseExtensionManifest(historicalV1()).ok).toBe(false);
 	expect(parseExtensionManifest({ ...current, provides: ["push"] }).ok).toBe(false);
 	const oldV2 = {

@@ -478,7 +478,15 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			publishedAt: utcIsoOf(reported.publishedAt),
 			text: text.trim() === "" ? "" : text,
 		};
-		if (reported.topic !== undefined) post.topic = reported.topic;
+		if (reported.topic !== undefined) {
+			post.topic = reported.topic;
+			if (reported.topicIcon !== undefined) post.topicIcon = reported.topicIcon;
+		}
+		if (reported.publicationInfo !== undefined) post.publicationInfo = reported.publicationInfo;
+		if (reported.attachment) {
+			const { cover, ...card } = reported.attachment;
+			post.attachment = { ...card, ...(cover && { cover: await postImageFromRef(cover) }) };
+		}
 		if (post.text !== "" && reported.richText !== undefined) {
 			const segmentTexts = normalizeNewlines(reported.richText.map((segment) => segment.text));
 			post.richText = reported.richText.map((segment, index) => ({

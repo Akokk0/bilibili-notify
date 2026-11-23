@@ -114,7 +114,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，接受 1.0 契
 
 ### 契约档位与契约小号（决策 18 / 59）
 
-- `EXTENSION_API_RANGE = { min: 1, current: 1, revision: 4 }`。依赖作品收藏数的拓展至少声明 1/3，依赖适配器 `send` 单次发送选项 `singleAttempt` 的拓展至少声明 1/4。这是全新1.0契约，保留当前完整接口，不恢复历史v1。历史provides/旧嵌套/混合格式由strict清单拒收且不import；旧1同号格式不合记unreadable，旧2/3记incompatible。apiRevision缺省0；安装、发现、loader和市场共同判版本，包内清单仍独立严格校验。
+- `EXTENSION_API_RANGE = { min: 1, current: 1, revision: 5 }`。依赖作品收藏数的拓展至少声明 1/3，依赖适配器 `send` 单次发送选项 `singleAttempt` 的拓展至少声明 1/4。上报发布信息、话题徽标或图文附卡的拓展至少声明 1/5。这是全新1.0契约，保留当前完整接口，不恢复历史v1。历史provides/旧嵌套/混合格式由strict清单拒收且不import；旧1同号格式不合记unreadable，旧2/3记incompatible。apiRevision缺省0；安装、发现、loader和市场共同判版本，包内清单仍独立严格校验。
 - 公开 SDK 首版的开发契约为 1/0；同为1/0的开发包无法按数字区分，不保留旧格式兼容。以后正式发布后的契约演进仍须回ADR-0019决策59审议，不能用本片起号规则替未来变更默认豁免。
 - 守卫 `packages/internal/src/schema/__tests__/extension-contract-shape.test.ts`：当前清单、译文、视图、当前的三种上报、搜人候选、直播拉取结果与来源健康这几份 zod 转成 JSON Schema 算摘要，与 `PINNED_REVISION` **成对**钉住，形状一动就红，报错里写着该怎么改（发过版 → 抬小号 + 更新摘要与 `PINNED_REVISION`；没发版 → 只更新摘要；新摘要照 Received 填）。以后加一份拓展交给 BN 的 schema，就往它的 `CONTRACT` 表里加一行。
 - ⚠️ 守卫**看不见的**：`refine` / `superRefine` 里的规矩、`checkExtensionReport` 的逐格丢弃/截断、ctx 多一个方法（纯 TS）。放宽这些同样要抬小号，自己想。

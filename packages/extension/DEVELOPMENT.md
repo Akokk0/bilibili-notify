@@ -4,7 +4,7 @@
 
 ## 版本与工程
 
-宿主契约为 `apiVersion: 1`。群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`，作品收藏数要求 `apiRevision: 3`。适配器如果依赖 `send` 第四个参数 `options.singleAttempt` 来关闭手动测试的重试，需要声明 `apiRevision: 4`。同一小号支持适配器在 `capabilities().inbound` 中返回 `groupTestReply: "token"`，让宿主使用纯文本群接收测试码。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。使用新增能力时应声明对应小号并核对宿主兼容性。
+宿主契约为 `apiVersion: 1`。群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`，作品收藏数要求 `apiRevision: 3`。适配器如果依赖 `send` 第四个参数 `options.singleAttempt` 来关闭手动测试的重试，需要声明 `apiRevision: 4`。同一小号支持适配器在 `capabilities().inbound` 中返回 `groupTestReply: "token"`，让宿主使用纯文本群接收测试码。作品发布信息、话题徽标和图文附卡要求 `apiRevision: 5`。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。使用新增能力时应声明对应小号并核对宿主兼容性。
 
 创建器默认生成独立Git工程、示例来源、完整vp命令、锁文件、提交hooks与GitHub Actions：
 
@@ -103,6 +103,12 @@ export function activate(ctx: ExtensionContext): void {
 `start(sourceCtx)`得到运行中的来源上下文：从`subscriptions()`读取自己平台的创作者名单，监听`onSubscriptionsChanged`，以`externalId`上报。`reportProfile`更新资料，`reportPost`交作品，`reportLive`交开播、状态或下播信号；具体载荷使用SDK的`ExtensionPostReport`、`ExtensionLiveSignalReport`等公开类型。直播`status`只更新状态，不触发推送。
 
 作品上报和群聊链接预览可用 `post.stats.saves` 传收藏数。平台未给出数值时省略，明确为零时传 `0`。使用此字段的拓展要求 `apiRevision: 3`。
+
+`post.publicationInfo` 是显示在发布时间旁的短说明，可写来源设备、公开发布地或平台返回的阅读数。正文和关键词过滤仍使用 `post.text`。
+
+有主话题时，`post.topic` 给出名称，`post.topicIcon` 可用图库引用显示平台返回的徽标。省略徽标会使用皮肤图标，传 `null` 则只显示话题名称。
+
+`post.attachment` 可附一张 `kind: "card"` 的卡片，必填 `title`。可选的 `cover` 是图库引用，`lines` 最多四行，每行一个 `{ text }`。可用 `button: { text, enabled }` 还原平台按钮的显示状态。推送图片里的按钮只展示文字。发布信息、标题及每行说明最长 256 字，按钮文字最长 128 字。
 
 ### 展示账号（API 1 修订 2）
 

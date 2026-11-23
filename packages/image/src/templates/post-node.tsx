@@ -142,7 +142,10 @@ function build(post: Post, fmt: PostNodeFormatters, isRepost: boolean): PostNode
 		// 内层不展示互动数(版式上 stats 块自动收起)。
 		stats: isRepost ? undefined : statsOf(post.stats),
 	};
+	if (node.topic && post.topicIcon !== undefined)
+		node.topicIconUrl = post.topicIcon ? (fmt.imageUrl?.(post.topicIcon) ?? null) : null;
 	if (post.label) node.label = post.label;
+	if (post.publicationInfo) node.publicationInfo = post.publicationInfo;
 	if (isRepost) node.isReposted = true;
 	// 头像:有引用就画(解析不到画占位,留一块空的头像位),没有引用头像块整块收起。
 	if (post.creator.avatar !== undefined) {

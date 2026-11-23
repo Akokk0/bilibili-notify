@@ -57,9 +57,13 @@ export interface Post {
 	creator: Creator;
 	/** ISO 时间。 */
 	publishedAt: string;
+	/** 来源提供的简短发布信息，与时间一起显示，不计入正文。 */
+	publicationInfo?: string;
 	/** 「投稿了视频」这类说明,来源给。 */
 	label?: string;
 	topic?: string;
+	/** 话题徽标的图库引用。省略沿用皮肤图标，null 只显示话题名。 */
+	topicIcon?: ImageRef | null;
 	/** 有这格就按文章排版;`images` 是文章配图。 */
 	article?: { title: string; images?: PostImage[] };
 	/** 有标题、但不是文章的作品(带标题的图文、笔记)的标题:画在正文上方,排版照普通作品。 */

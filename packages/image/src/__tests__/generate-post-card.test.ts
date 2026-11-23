@@ -14,6 +14,7 @@
 
 import type { CardSkinManifest, ImageRef, Post, ServiceContext } from "@bilibili-notify/internal";
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
+import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
 import { ImageRenderer } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
@@ -191,6 +192,10 @@ describe("generatePostCard — 视频那一行", () => {
 });
 
 describe("generatePostCard — 互动数", () => {
+	it("把发布信息排在时间旁边，与正文分开", async () => {
+		const html = await htmlOf(post({ text: "海边", publicationInfo: "相机 · 阅读 0" }));
+		expect(html).toMatch(/data-block="time"[^>]*><span[^>]*>[^<]* · 相机 · 阅读 0<\/span>/);
+	});
 	/**
 	 * 拓展的作品不一定三样都报(赞 / 评论 / 转发各自选填)。没报的那一项不画 —— 画一个空着的
 	 * 图标像是数字丢了,写 0 又是瞎说。
@@ -206,6 +211,18 @@ describe("generatePostCard — 互动数", () => {
 		const html = await htmlOf(post());
 		for (const label of ["转发", "评论", "点赞"]) expect(html).toContain(`aria-label="${label}"`);
 	});
+});
+
+it("在话题名前显示来源徽标，指定徽标取不到时仍显示名称", async () => {
+	const entry = post({ topic: "峡谷超话", topicIcon: ref(4) });
+	const html = await htmlOf(entry, { resolveImageRef: probeImage });
+	const topic = (s: string) => new JSDOM(s).window.document.querySelector('[data-block="topic"]');
+	expect(topic(html)?.querySelector("img")?.getAttribute("src")).toBe(img("R4"));
+	for (const topicIcon of [ref(4), null]) {
+		const heading = topic(await htmlOf({ ...entry, topicIcon }));
+		expect(heading?.querySelector("svg, img")).toBeNull();
+		expect(heading?.textContent).toBe("峡谷超话");
+	}
 });
 
 describe("generatePostCard — 作品卡的入口(吃中立的 Post)", () => {

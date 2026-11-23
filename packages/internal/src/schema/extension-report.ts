@@ -133,10 +133,21 @@ const PostStatsSchema = z.strictObject({
 const PostSchema = z.strictObject({
 	creator: SubscriptionCreatorSchema.optional(),
 	publishedAt: TimeSchema,
+	publicationInfo: NarrativeTextSchema.optional(),
 	text: PostTextSchema,
 	richText: list(ExtensionRichTextSegmentSchema).optional(),
 	images: list(ImageRefSchema, { max: SUBSCRIPTION_POST_IMAGES_MAX }).optional(),
 	topic: TopicSchema.optional(),
+	topicIcon: ImageRefSchema.nullish(),
+	attachment: z
+		.strictObject({
+			kind: z.literal("card"),
+			title: z.string().min(1).max(SUBSCRIPTION_REPORT_TITLE_MAX),
+			cover: ImageRefSchema.optional(),
+			lines: list(z.strictObject({ text: NarrativeTextSchema }), { max: 4 }).optional(),
+			button: z.strictObject({ text: NameSchema, enabled: z.boolean() }).optional(),
+		})
+		.optional(),
 	video: PostVideoSchema.optional(),
 	stats: PostStatsSchema.optional(),
 });

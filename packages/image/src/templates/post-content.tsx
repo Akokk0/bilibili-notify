@@ -90,6 +90,7 @@ export type PostNode = {
 	creatorIsPremium: boolean;
 	/** 发布时间,**只有时间**(皮肤契约的 `post.time`);动作标签单独在 {@link PostNode.label}。 */
 	time: string;
+	publicationInfo?: string;
 	/**
 	 * 动作标签(如「投稿了视频」),皮肤契约的 `post.label`,内外层卡都填、没有就不给。**画在哪由块定**:默认皮肤里
 	 * 外层卡把它接在时间那一行(「时间 · 标签」),被转发的内层卡({@link PostNode.isReposted})接在作者名后。
@@ -98,6 +99,7 @@ export type PostNode = {
 	/** 这是被转发的原作品那一层(转发框里的内层卡);外层卡不给。默认皮肤按它决定标签画在时间行还是名字行。 */
 	isReposted?: true;
 	topic?: string;
+	topicIconUrl?: string | null;
 	/**
 	 * 正文文字,进 `text` 原子块:正文的富文本(专栏连标题),充电专属是那块占位,`notice` 是那句提示。
 	 * 一个字都没有(只发了图)时为空。

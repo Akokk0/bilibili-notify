@@ -636,6 +636,37 @@ describe("createExtensionSource:作品上报", () => {
 		]);
 	});
 
+	it("把来源返回的发布信息与附卡交给出图器，封面使用图库引用", async () => {
+		const made = await make();
+		const extra = {
+			kind: "card" as const,
+			title: "摄影社区",
+			cover: REF,
+			lines: [{ text: "12 篇作品" }],
+			button: { text: "关注", enabled: true },
+		};
+		made.ext().reportPost("u1", {
+			postId: "p1",
+			url: "https://example.org/p1",
+			post: {
+				publishedAt: T_ISO,
+				text: "正文",
+				publicationInfo: "相机 · 0 次阅读",
+				topic: "摄影社区",
+				topicIcon: REF,
+				attachment: extra,
+			},
+		});
+		await made.idle();
+		expect(made.core.posts[0]?.[1].post).toMatchObject({
+			text: "正文",
+			publicationInfo: "相机 · 0 次阅读",
+			topicIcon: REF,
+			attachment: { ...extra, cover: { ref: REF } },
+		});
+		expect(made.discrepancies).toEqual([]);
+	});
+
 	it("事件带了作者名与头像:用它的,不补", async () => {
 		const made = await make();
 		made.ext().reportPost("u1", {
