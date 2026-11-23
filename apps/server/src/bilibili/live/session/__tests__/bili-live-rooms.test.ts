@@ -42,6 +42,7 @@ async function settle(): Promise<void> {
 
 function harness() {
 	let online = false;
+	let liveTime = "2026-03-01 11:58:30";
 	let roomInfoGate: Promise<void> | undefined;
 	let roomInfoMode: "ok" | "throws" | "empty" = "ok";
 	let preflight = {
@@ -107,7 +108,7 @@ function harness() {
 					uid: Number(EXTERNAL_ID),
 					room_id: Number(ROOM_ID),
 					live_status: online ? 1 : 0,
-					live_time: online ? "2026-03-01 11:58:30" : "0000-00-00 00:00:00",
+					live_time: online ? liveTime : "0000-00-00 00:00:00",
 					title: "今晚直播",
 					user_cover: "https://i0.hdslb.com/bfs/live/cover.jpg",
 					keyframe: "",
@@ -214,8 +215,9 @@ function harness() {
 		restoreLogin() {
 			setAuth({ status: "logged-in", loggedInAt: "2026-10-25T00:01:00.000Z" });
 		},
-		setOnline(value: boolean) {
+		setOnline(value: boolean, time = liveTime) {
 			online = value;
+			liveTime = time;
 		},
 		async setRoomId(value: string | undefined, externalId = EXTERNAL_ID) {
 			if (value === undefined) await state.delete(`room:${externalId}`);
@@ -388,6 +390,76 @@ describe("BiliLiveRooms", () => {
 				},
 			},
 		]);
+		h.rooms.stop();
+	});
+
+	it("本场的累计观看用于开播、周期卡和预览，下一场等待自己的第一帧", async () => {
+		const h = harness();
+		const identity = { sourceKey: "bilibili", externalId: EXTERNAL_ID };
+		const signal = new AbortController().signal;
+		await h.start();
+		h.setOnline(true);
+		const release = h.holdRoomInfo();
+		h.sockets.at(-1)?.fire("message", encodePacket(WsOp.Message, LIVE));
+		await h.frame({ cmd: "WATCHED_CHANGE", data: { num: 0 } });
+		release();
+		await settle();
+		expect(h.reports.at(-1)?.report).toMatchObject({ kind: "start", details: { totalViewers: 0 } });
+
+		await h.frame({ cmd: "WATCHED_CHANGE", data: { num: 174 } });
+		await h.frame({ cmd: "WATCHED_CHANGE", data: { num: 176 } });
+		for (const result of [
+			await h.rooms.fetchLiveStatus(identity, signal),
+			await h.rooms.fetchPreview(identity, signal),
+		])
+			expect(result).toMatchObject({ ok: true, kind: "live", details: { totalViewers: 176 } });
+
+		await h.frame(END);
+		expect(h.reports.at(-1)?.report).toMatchObject({ kind: "end", details: { totalViewers: 176 } });
+		await h.frame({ cmd: "WATCHED_CHANGE", data: { num: 180 } });
+		await vi.advanceTimersByTimeAsync(60_000);
+		await h.frame(LIVE);
+		const next = h.reports.at(-1)?.report as { kind: string; details: object };
+		expect(next.kind).toBe("start");
+		expect(next.details).not.toHaveProperty("totalViewers");
+		h.rooms.stop();
+	});
+
+	it("房间没有给开播时刻时，仍能显示当前监听收到的累计观看", async () => {
+		const h = harness();
+		h.setOnline(true, "");
+		await h.start();
+		await h.frame({ cmd: "WATCHED_CHANGE", data: { num: 32 } });
+		const result = await h.rooms.fetchPreview(
+			{ sourceKey: "bilibili", externalId: EXTERNAL_ID },
+			new AbortController().signal,
+		);
+		expect(result).toMatchObject({ ok: true, kind: "live", details: { totalViewers: 32 } });
+		h.rooms.stop();
+	});
+
+	it("漏收下播帧后，预览和房间核对遇到新的开播时刻就不沿用旧场的累计", async () => {
+		const h = harness();
+		h.setOnline(true);
+		await h.start();
+		await h.frame({ cmd: "WATCHED_CHANGE", data: { num: 99 } });
+		h.setOnline(true, "2026-03-02 14:00:00");
+		const identity = { sourceKey: "bilibili", externalId: EXTERNAL_ID };
+		const signal = new AbortController().signal;
+		for (const result of [
+			await h.rooms.fetchPreview(identity, signal),
+			await h.rooms.fetchLiveStatus(identity, signal),
+		]) {
+			expect(result).toMatchObject({ ok: true, kind: "live" });
+			if (result.ok && result.kind === "live")
+				expect(result.details).not.toHaveProperty("totalViewers");
+		}
+		await h.frame({ cmd: "WATCHED_CHANGE", data: { num: 0 } });
+		expect(await h.rooms.fetchPreview(identity, signal)).toMatchObject({
+			ok: true,
+			kind: "live",
+			details: { totalViewers: 0 },
+		});
 		h.rooms.stop();
 	});
 

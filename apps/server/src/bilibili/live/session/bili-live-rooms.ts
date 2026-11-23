@@ -127,13 +127,13 @@ export class BiliLiveRooms implements Disposable {
 			}
 			this.opts.problems.resolveFailure({ externalId, code: LIVE_STATUS_UNAVAILABLE });
 			if (status !== 1) {
-				this.listener?.noteLiveStatus(externalId, false);
+				this.listener?.sessionFor(externalId)?.noteLiveStatus(false);
 				const offline: LiveStatusResult = ok<{ kind: "offline" }>({ kind: "offline" });
 				return offline;
 			}
-			const details = await this.details(data);
 			const startedAt = liveTimeToIso(data.live_time);
-			this.listener?.noteLiveStatus(externalId, true);
+			this.listener?.sessionFor(externalId)?.noteLiveStatus(true, startedAt);
+			const details = await this.details(data, externalId, startedAt);
 			const live: LiveStatusResult = ok<{
 				kind: "live";
 				startedAt?: string;
@@ -179,8 +179,8 @@ export class BiliLiveRooms implements Disposable {
 			}
 			const data = response.data;
 			if (!data) return fail("unavailable", t("bilibili.preview.roomInfoMissing"));
-			const details = await this.details(data);
 			const startedAt = liveTimeToIso(data.live_time);
+			const details = await this.details(data, identity.externalId, startedAt);
 			return ok<PreviewReport>({
 				kind: "live",
 				...(startedAt === undefined ? {} : { startedAt }),
@@ -201,7 +201,11 @@ export class BiliLiveRooms implements Disposable {
 		});
 	}
 
-	private async details(data: Record<string, unknown>): Promise<LiveDetails> {
+	private async details(
+		data: Record<string, unknown>,
+		externalId: string,
+		startedAt: string | undefined,
+	): Promise<LiveDetails> {
 		const coverUrl =
 			typeof data.keyframe === "string"
 				? data.keyframe || (typeof data.user_cover === "string" ? data.user_cover : "")
@@ -217,6 +221,10 @@ export class BiliLiveRooms implements Disposable {
 		}
 		return liveDetailsFromRoomInfo(data, {
 			...(coverRef === undefined ? {} : { coverRef }),
+			totalViewers:
+				Number(data.live_status) === 1
+					? this.listener?.sessionFor(externalId)?.watchedAt(startedAt)
+					: undefined,
 			status: "streaming",
 		});
 	}
