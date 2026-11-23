@@ -133,12 +133,11 @@ const PostStatsSchema = z.strictObject({
 const PostSchema = z.strictObject({
 	creator: SubscriptionCreatorSchema.optional(),
 	publishedAt: TimeSchema,
-	publicationInfo: NarrativeTextSchema.optional(),
+	label: NarrativeTextSchema.optional(),
 	text: PostTextSchema,
 	richText: list(ExtensionRichTextSegmentSchema).optional(),
 	images: list(ImageRefSchema, { max: SUBSCRIPTION_POST_IMAGES_MAX }).optional(),
 	topic: TopicSchema.optional(),
-	topicIcon: ImageRefSchema.nullish(),
 	attachment: z
 		.strictObject({
 			kind: z.literal("card"),

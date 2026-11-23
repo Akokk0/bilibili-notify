@@ -637,7 +637,7 @@ describe("createExtensionSource:作品上报", () => {
 	});
 
 	it("把来源返回的发布信息与附卡交给出图器，封面使用图库引用", async () => {
-		const made = await make();
+		const made = await make({}, { apiRevision: 5 });
 		const extra = {
 			kind: "card" as const,
 			title: "摄影社区",
@@ -651,17 +651,16 @@ describe("createExtensionSource:作品上报", () => {
 			post: {
 				publishedAt: T_ISO,
 				text: "正文",
-				publicationInfo: "相机 · 0 次阅读",
+				label: "相机 · 四川",
 				topic: "摄影社区",
-				topicIcon: REF,
 				attachment: extra,
 			},
 		});
 		await made.idle();
 		expect(made.core.posts[0]?.[1].post).toMatchObject({
 			text: "正文",
-			publicationInfo: "相机 · 0 次阅读",
-			topicIcon: REF,
+			label: "相机 · 四川",
+			topic: "摄影社区",
 			attachment: { ...extra, cover: { ref: REF } },
 		});
 		expect(made.discrepancies).toEqual([]);

@@ -123,7 +123,7 @@ type PostCardAttachment = Extract<NonNullable<Post["attachment"]>, { kind: "card
 export type ExtensionPostReport = Simplify<
 	Pick<CorePostReport, "postId" | "url"> & {
 		post: Simplify<
-			Pick<Post, "publishedAt" | "publicationInfo" | "text" | "topic" | "topicIcon" | "stats"> & {
+			Pick<Post, "publishedAt" | "label" | "text" | "topic" | "stats"> & {
 				/** 出卡优先用这里的创作者;缺的格由订阅资料补。 */
 				creator?: SubscriptionCreator;
 				/** 正文片段;给了就要与 `text` 对得上。 */

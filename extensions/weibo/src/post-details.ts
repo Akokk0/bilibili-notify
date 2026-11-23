@@ -3,10 +3,7 @@ import { communityId, plainText } from "./caption";
 import { record } from "./client";
 import { image, imageUrl } from "./media";
 
-type Details = Pick<
-	ExtensionPostReport["post"],
-	"publicationInfo" | "topic" | "topicIcon" | "attachment"
->;
+type Details = Pick<ExtensionPostReport["post"], "label" | "topic" | "attachment">;
 
 function headerCommunity(row: Record<string, unknown>) {
 	const header = record(row.title_source);
@@ -18,16 +15,14 @@ function headerCommunity(row: Record<string, unknown>) {
 	const suffix = Array.isArray(row.screen_name_suffix_new)
 		? row.screen_name_suffix_new.map(record)
 		: [];
-	const badge = suffix
+	const hasBadge = suffix
 		.flatMap((item) => (Array.isArray(item.icons) ? item.icons : []))
-		.map(record)
-		.find((item) => item.type === "chaohua");
-	if (!id && !badge) return;
+		.some((icon) => record(icon).type === "chaohua");
+	if (!id && !hasBadge) return;
 	return {
 		id,
 		name:
 			(id && plainText(header.name)) || plainText(suffix.find((item) => item.type === 2)?.content),
-		icon: imageUrl(badge?.url),
 		cover: id ? imageUrl(header.image) : undefined,
 	};
 }
@@ -46,17 +41,14 @@ export async function postDetails(
 ): Promise<Details> {
 	const details: Details = {};
 	const device = plainText(row.source);
-	const info = [device && ctx.i18n.t("post.via", { device }), plainText(row.region_name)]
+	const label = [device && ctx.i18n.t("post.via", { device }), plainText(row.region_name)]
 		.filter(Boolean)
 		.join(" · ");
-	if (info) details.publicationInfo = info;
+	if (label) details.label = label;
 
 	const primary = headerCommunity(row);
 	if (!primary) return details;
-	if (primary.name) {
-		details.topic = primary.name;
-		details.topicIcon = (await image(ctx, primary.icon, signal)) ?? null;
-	}
+	if (primary.name) details.topic = primary.name;
 	const cards = Array.isArray(row.common_struct) ? row.common_struct.map(record) : [];
 	const name = communityName(primary.name);
 	const matching = cards.filter((item) => {

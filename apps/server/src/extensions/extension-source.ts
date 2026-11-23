@@ -478,11 +478,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			publishedAt: utcIsoOf(reported.publishedAt),
 			text: text.trim() === "" ? "" : text,
 		};
-		if (reported.topic !== undefined) {
-			post.topic = reported.topic;
-			if (reported.topicIcon !== undefined) post.topicIcon = reported.topicIcon;
-		}
-		if (reported.publicationInfo !== undefined) post.publicationInfo = reported.publicationInfo;
+		if (reported.label !== undefined) post.label = reported.label;
+		if (reported.topic !== undefined) post.topic = reported.topic;
 		if (reported.attachment) {
 			const { cover, ...card } = reported.attachment;
 			post.attachment = { ...card, ...(cover && { cover: await postImageFromRef(cover) }) };
@@ -497,7 +494,6 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		if (reported.images !== undefined) {
 			post.images = await Promise.all(reported.images.map(postImageFromRef));
 		}
-		// 视频作品的 `label`(「投稿了视频」)不要了:主人 2026-10-24 定,契约不开 `label`,宿主也不替平台写这句。
 		if (reported.video !== undefined) {
 			const video = reported.video;
 			post.video = {

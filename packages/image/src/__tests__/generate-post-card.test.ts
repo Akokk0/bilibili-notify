@@ -191,11 +191,16 @@ describe("generatePostCard — 视频那一行", () => {
 	});
 });
 
+it("把来源排好的标签放在时间旁边，正文只显示作品文字", async () => {
+	const html = await htmlOf(post({ text: "海边", label: "来自相机 · 发布于四川" }));
+	const { document } = new JSDOM(html).window;
+	expect(document.querySelector('[data-block="time"]')?.textContent).toBe(
+		"2023/11/15 06:13:20 · 来自相机 · 发布于四川",
+	);
+	expect(document.querySelector('[data-block="text"]')?.textContent).toBe("海边");
+});
+
 describe("generatePostCard — 互动数", () => {
-	it("把发布信息排在时间旁边，与正文分开", async () => {
-		const html = await htmlOf(post({ text: "海边", publicationInfo: "相机 · 阅读 0" }));
-		expect(html).toMatch(/data-block="time"[^>]*><span[^>]*>[^<]* · 相机 · 阅读 0<\/span>/);
-	});
 	/**
 	 * 拓展的作品不一定三样都报(赞 / 评论 / 转发各自选填)。没报的那一项不画 —— 画一个空着的
 	 * 图标像是数字丢了,写 0 又是瞎说。
@@ -213,16 +218,11 @@ describe("generatePostCard — 互动数", () => {
 	});
 });
 
-it("在话题名前显示来源徽标，指定徽标取不到时仍显示名称", async () => {
-	const entry = post({ topic: "峡谷超话", topicIcon: ref(4) });
-	const html = await htmlOf(entry, { resolveImageRef: probeImage });
-	const topic = (s: string) => new JSDOM(s).window.document.querySelector('[data-block="topic"]');
-	expect(topic(html)?.querySelector("img")?.getAttribute("src")).toBe(img("R4"));
-	for (const topicIcon of [ref(4), null]) {
-		const heading = topic(await htmlOf({ ...entry, topicIcon }));
-		expect(heading?.querySelector("svg, img")).toBeNull();
-		expect(heading?.textContent).toBe("峡谷超话");
-	}
+it("在超话名称旁显示默认皮肤的话题图标", async () => {
+	const html = await htmlOf(post({ topic: "峡谷超话" }));
+	const heading = new JSDOM(html).window.document.querySelector('[data-block="topic"]');
+	expect(heading?.textContent).toBe("峡谷超话");
+	expect(heading?.querySelector("svg")).toBeTruthy();
 });
 
 describe("generatePostCard — 作品卡的入口(吃中立的 Post)", () => {

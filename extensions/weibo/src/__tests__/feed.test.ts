@@ -160,7 +160,8 @@ it("reports the public byline and the primary community's own card from the same
 	const id = "10080854838a6bbae2a14b0fb0c7905f6a070a";
 	const ref = `${"c".repeat(64)}.jpg`;
 	const icon = "https://h5.sinaimg.cn/upload/andriod_chaohua_header.png";
-	const iconRef = `${"b".repeat(64)}.png`;
+	const cover = "https://wx4.sinaimg.cn/thumbnail/cover.jpg";
+	const requestedImages: string[] = [];
 	const got = await receivePost(
 		{
 			source: '<a href="https://weibo.com/">iPhone</a>',
@@ -183,16 +184,14 @@ it("reports the public byline and the primary community's own card from the same
 			],
 		},
 		async (url) => {
-			if (url === icon) return ok({ ref: iconRef });
-			expect(url).toBe("https://wx4.sinaimg.cn/thumbnail/cover.jpg");
+			requestedImages.push(url);
 			return ok({ ref });
 		},
 	);
 	expect(got).toMatchObject({
 		text: "微博 101",
-		publicationInfo: "来自 iPhone · 发布于 四川",
+		label: "来自 iPhone · 发布于 四川",
 		topic: "英雄联盟超话",
-		topicIcon: iconRef,
 		attachment: {
 			kind: "card",
 			title: "【超话】英雄联盟",
@@ -201,6 +200,7 @@ it("reports the public byline and the primary community's own card from the same
 			button: { text: "关注", enabled: true },
 		},
 	});
+	expect(requestedImages).toEqual([cover]);
 });
 
 it.each([
@@ -229,7 +229,7 @@ it("keeps a mention in the caption and omits the byline when only a read count i
 		common_struct: [{ page_id: "100808aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", name: "另一张卡" }],
 	});
 	expect(got.richText).toEqual([{ kind: "topic", name: "峡谷", text: "峡谷超话" }]);
-	expect(got.publicationInfo).toBeUndefined();
+	expect(got.label).toBeUndefined();
 	expect(got.topic).toBeUndefined();
 	expect(got.attachment).toBeUndefined();
 });
