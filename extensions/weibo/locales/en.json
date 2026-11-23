@@ -1,4 +1,5 @@
 {
+	"marketplace.notes": "Sign in with the Weibo app and subscribe to accounts you follow by name, UID, or profile link. New posts can include photos, topics, and Super Topic details.",
 	"request.limitedLocal": "Requests are paused for this run. The Weibo cooldown deadline could not be saved.",
 	"feed.cursor": "Weibo repeated a page cursor. The next check will start from the first page.",
 	"auth.renewal": "The current Weibo session works. Scan again to enable automatic renewal.",
