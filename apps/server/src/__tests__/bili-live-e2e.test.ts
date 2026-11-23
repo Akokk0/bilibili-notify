@@ -665,8 +665,8 @@ describe("漏收下播的兜底(核心按开播时刻周期核对)", () => {
 
 // 验红:
 // - 核心周期计时忽略设置里的小时数 → 第一条红(一小时就推了);
-// - `tickPushAtTime` 里 `const watched = this.liveData.watchedNum` 改成 `= undefined` → 第一条红(印成「暂未获取到」);
-// - `room-session.ts` 里 `this.ctx.emitViewers(…)` 删掉 → 第一条红(没有观看人数事件);
+// - 周期核对漏读当前监听的最新累计 → 卡片仍是第一帧的 1.2 万。
+// - 监听跳过首帧上报 → 面板收不到最初的累计观看。
 // - `room-helpers.ts` 的 `livePushKindOf` 最后一行改成回 `LivePushKind.LiveStart` → 「不 @」那条与只开周期推送的两条红
 //   (周期那一条成了开播:走开播的开关、带 @全体)。
 //
@@ -679,6 +679,8 @@ describe("周期「正在直播」", () => {
 		});
 		await startLive(w);
 		await w.frame({ cmd: "WATCHED_CHANGE", data: { num: 12345 } });
+		// 两帧挨在一起，第二帧在上报节流期内。到点出卡仍应拿到本场最新的一帧。
+		await w.frame({ cmd: "WATCHED_CHANGE", data: { num: 28000 } });
 		await w.advance(HOUR);
 		expect(w.sent).toEqual([START_MESSAGE]);
 
@@ -686,7 +688,7 @@ describe("周期「正在直播」", () => {
 
 		expect(w.sent).toEqual([
 			START_MESSAGE,
-			["[图 直播卡#2]", linked("测试主播 正在直播，已播 2小时，累计观看：1.2万")],
+			["[图 直播卡#2]", linked("测试主播 正在直播，已播 2小时，累计观看：2.8万")],
 		]);
 		expect(w.cards[1]).toEqual({
 			kind: "直播卡",
@@ -702,7 +704,7 @@ describe("周期「正在直播」", () => {
 				},
 				startedAt: LIVE_TIME_ISO,
 				currentViewers: 321,
-				totalViewers: 12345,
+				totalViewers: 28000,
 				followers: 1000,
 			},
 			options: { cardSkin: "default", cardSkinKnobs: undefined },
@@ -710,14 +712,13 @@ describe("周期「正在直播」", () => {
 		expect(viewerChanges(w)).toEqual([
 			{ subscriptionId: BILI_LIVE_SUBSCRIPTION_ID, currentViewers: 321 },
 			{ subscriptionId: BILI_LIVE_SUBSCRIPTION_ID, totalViewers: 12345 },
-			// 周期核对问到的房间信息只有此刻在线;人数帧只带这一份带了的格(累计观看在在播表里、卡上照有)。
-			{ subscriptionId: BILI_LIVE_SUBSCRIPTION_ID, currentViewers: 321 },
+			{ subscriptionId: BILI_LIVE_SUBSCRIPTION_ID, currentViewers: 321, totalViewers: 28000 },
 		]);
 
 		await w.advance(2 * HOUR);
 		expect(w.sent.at(-1)).toEqual([
 			"[图 直播卡#3]",
-			linked("测试主播 正在直播，已播 4小时，累计观看：1.2万"),
+			linked("测试主播 正在直播，已播 4小时，累计观看：2.8万"),
 		]);
 		expect(w.sent).toHaveLength(3);
 	});

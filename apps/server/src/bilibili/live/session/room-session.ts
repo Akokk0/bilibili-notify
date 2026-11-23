@@ -49,6 +49,7 @@ type ActivityReason =
 export class RoomSession {
 	private upName = "";
 	private watchedNumber: number | undefined;
+	private startedAt?: string;
 	private lastLiveStart = 0;
 	private lastLiveEnd = 0;
 	private lastViewersReportAt = 0;
@@ -89,8 +90,19 @@ export class RoomSession {
 	 * 直播间状态轮询核到的在播 / 不在播,由 `RoomSessionCoordinator` 转给当前活着的那一个会话。
 	 * 没有活着的会话时这一下就落空 —— 断线期间核到的在播不会写进下一个会话。
 	 */
-	noteLiveStatus(live: boolean): void {
+	noteLiveStatus(live: boolean, startedAt?: string): void {
+		if (!live || (this.startedAt && startedAt && this.startedAt !== startedAt)) {
+			this.watchedNumber = undefined;
+			this.lastViewersReportAt = 0;
+		}
+		this.startedAt = live ? (startedAt ?? this.startedAt) : undefined;
 		this.reportedLive = live;
+	}
+
+	/** HTTP 核对与预览读取当前监听的计数。有开播时刻可比时，同时核对场次。 */
+	watchedAt(startedAt: string | undefined): number | undefined {
+		if (!this.reportedLive || (this.startedAt && startedAt && this.startedAt !== startedAt)) return;
+		return this.watchedNumber;
 	}
 
 	cancel(): void {
@@ -157,7 +169,6 @@ export class RoomSession {
 
 	private async details(
 		roomInfo: Record<string, unknown>,
-		totalViewers = this.watchedNumber,
 		status: "start" | "streaming" = "start",
 	): Promise<LiveDetails> {
 		const roomCover = typeof roomInfo.user_cover === "string" ? roomInfo.user_cover : "";
@@ -172,8 +183,34 @@ export class RoomSession {
 		}
 		return liveDetailsFromRoomInfo(roomInfo, {
 			...(coverRef === undefined ? {} : { coverRef }),
-			...(totalViewers === undefined ? {} : { totalViewers }),
 			status,
+		});
+	}
+
+	private reportLiveRoom(
+		kind: "start" | "status",
+		info: Record<string, unknown>,
+		details: LiveDetails,
+	): void {
+		const startedAt = liveTimeToIso(info);
+		this.noteLiveStatus(true, startedAt);
+		if (this.watchedNumber !== undefined) details.totalViewers = this.watchedNumber;
+		this.ctx.source.reportLive(this.room.externalId, {
+			...(kind === "start" ? { kind } : { kind, isLive: true }),
+			...(startedAt === undefined ? {} : { startedAt }),
+			details,
+		});
+	}
+
+	private reportLiveEnd(now = Date.now()): void {
+		const wasLive = this.reportedLive;
+		const totalViewers = this.watchedNumber;
+		this.noteLiveStatus(false);
+		if (!wasLive || !this.alive) return;
+		this.ctx.source.reportLive(this.room.externalId, {
+			kind: "end",
+			endedAt: new Date(now).toISOString(),
+			...(totalViewers === undefined ? {} : { details: { totalViewers } }),
 		});
 	}
 
@@ -258,19 +295,16 @@ export class RoomSession {
 		this.bootstrapped = true;
 		this.resolveStopped(MONITOR_STOPPED_CODE);
 		if (Number(info.live_status) !== 1) {
-			if (!reportEnd || !this.reportedLive) return true;
-			this.reportedLive = false;
-			this.ctx.source.reportLive(this.room.externalId, {
-				kind: "end",
-				endedAt: new Date().toISOString(),
-			});
+			if (!this.reportedLive) {
+				if (!this.startingUp) this.noteLiveStatus(false);
+				return true;
+			}
+			if (!reportEnd) return true;
+			this.reportLiveEnd();
 			return true;
 		}
 
-		const [details] = await Promise.all([
-			this.details(info, this.watchedNumber, "streaming"),
-			this.rememberFanClub(),
-		]);
+		const [details] = await Promise.all([this.details(info, "streaming"), this.rememberFanClub()]);
 		if (this.liveEndSeq !== endSeq) {
 			if (reportEnd) {
 				this.ctx.logger.info(logText("log.bilibili.live.endedDuringReconnect"), {
@@ -283,15 +317,7 @@ export class RoomSession {
 			}
 			return true;
 		}
-		this.reportedLive = true;
-		this.ctx.source.reportLive(this.room.externalId, {
-			kind: "status",
-			isLive: true,
-			...(liveTimeToIso(String(info.live_time ?? "")) === undefined
-				? {}
-				: { startedAt: liveTimeToIso(String(info.live_time ?? "")) }),
-			details,
-		});
+		this.reportLiveRoom("status", info, details);
 		return true;
 	}
 
@@ -336,6 +362,7 @@ export class RoomSession {
 					return this.onMembership(event);
 				case "watched":
 					this.markActivity("watched");
+					if (!this.reportedLive && !this.startingUp && !this.bootstrapInFlight) return;
 					this.watchedNumber = event.num;
 					this.reportViewers(event.num);
 					return;
@@ -442,6 +469,7 @@ export class RoomSession {
 		}
 		this.lastLiveStart = now;
 		this.startingUp = true;
+		this.watchedNumber = undefined;
 		const endSeq = this.liveEndSeq;
 		let info: Record<string, unknown> | undefined;
 		let details: LiveDetails | undefined;
@@ -468,13 +496,7 @@ export class RoomSession {
 			});
 			return;
 		}
-		const startedAt = liveTimeToIso(String(info.live_time ?? ""));
-		this.reportedLive = true;
-		this.ctx.source.reportLive(this.room.externalId, {
-			kind: "start",
-			...(startedAt === undefined ? {} : { startedAt }),
-			details,
-		});
+		this.reportLiveRoom("start", info, details);
 	}
 
 	private async onLiveEnd(): Promise<void> {
@@ -486,14 +508,7 @@ export class RoomSession {
 			return;
 		}
 		this.lastLiveEnd = now;
-		if (!this.reportedLive) return;
-		this.reportedLive = false;
-		if (this.alive) {
-			this.ctx.source.reportLive(this.room.externalId, {
-				kind: "end",
-				endedAt: new Date(now).toISOString(),
-			});
-		}
+		this.reportLiveEnd(now);
 	}
 
 	private markActivity(reason: ActivityReason): void {
@@ -631,15 +646,8 @@ export class RoomSession {
 			maxAttempts: RECONNECT_BACKOFF_MS.length,
 		});
 		this.logMonitoringStopped("retries-exhausted");
-		const wasReportedLive = this.reportedLive;
-		this.reportedLive = false;
 		try {
-			if (wasReportedLive) {
-				this.ctx.source.reportLive(this.room.externalId, {
-					kind: "end",
-					endedAt: new Date().toISOString(),
-				});
-			}
+			this.reportLiveEnd();
 			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.gaveUp);
 		} catch (error) {
 			this.ctx.logger.warn(logText("log.bilibili.live.stoppedReportFailed"), {
