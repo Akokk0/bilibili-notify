@@ -19,6 +19,7 @@
 	"profile.input": "请输入微博博主的完整昵称、UID 或主页链接。",
 	"profile.follow": "请先用当前微博账号关注这位博主，再添加订阅。",
 	"profile.notFound": "未找到该微博博主。",
+	"post.notFound": "未找到这条微博的长文正文。",
 	"post.via": "来自 {device}",
 	"$manifest": {
 		"name": "微博",

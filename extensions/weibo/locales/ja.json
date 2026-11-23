@@ -19,6 +19,7 @@
 	"profile.input": "Weibo のニックネーム（完全一致）、UID、またはプロフィールのリンクを入力してください。",
 	"profile.follow": "購読する前に、現在の Weibo アカウントでこの投稿者をフォローしてください。",
 	"profile.notFound": "Weibo の投稿者が見つかりません。",
+	"post.notFound": "この投稿の全文が見つかりません。",
 	"post.via": "{device} から",
 	"$manifest": {
 		"name": "Weibo",

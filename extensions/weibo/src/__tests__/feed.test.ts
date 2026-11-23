@@ -253,6 +253,38 @@ it("does not report a post if its subscription was removed and recreated during 
 	app.dispose();
 });
 
+it("reports a timeline 404 as a feed outage and falls back to the caption for a missing long text", async () => {
+	const baseline = post("100", 1);
+	let statuses: ReturnType<typeof post>[] | undefined;
+	const app = host((url) => {
+		if (url.pathname === "/ajax/feed/friendstimeline")
+			return statuses ? { body: { statuses } } : { status: 404 };
+		if (url.pathname === "/ajax/statuses/longtext") return { status: 404 };
+		return loginReply(url);
+	});
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	const watched = subscribe(app.source);
+	await vi.advanceTimersByTimeAsync(0);
+	expect(watched.reportProblem).toHaveBeenCalledWith({
+		code: "weibo_feed",
+		message: "request.unavailable",
+	});
+	statuses = [baseline];
+	await vi.advanceTimersByTimeAsync(60000);
+	const long = { ...post("101", 2), isLongText: true };
+	statuses = [long, baseline];
+	await vi.advanceTimersByTimeAsync(62000);
+	expect(watched.reportPost).toHaveBeenCalledWith(
+		"42",
+		expect.objectContaining({
+			post: expect.objectContaining({ text: "微博 101" }),
+		}),
+	);
+	await app.source.stop();
+	app.dispose();
+});
+
 it("silently clears a feed problem when its last subscription leaves, including during a retry", async () => {
 	let attempts = 0;
 	let finish!: () => void;

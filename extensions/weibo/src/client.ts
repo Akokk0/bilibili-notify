@@ -153,7 +153,13 @@ export function createClient(ctx: ExtensionContext) {
 		const data = record(value);
 		const message = String(data.msg ?? data.message ?? data.error ?? record(data.data).msg ?? "");
 		if (response.status >= 500) return fail("unavailable", ctx.i18n.t("request.unavailable"));
-		if (response.status === 404) return fail("not_found", ctx.i18n.t("profile.notFound"));
+		if (response.status === 404) {
+			if (url.pathname === "/ajax/profile/info")
+				return fail("not_found", ctx.i18n.t("profile.notFound"));
+			if (url.pathname === "/ajax/statuses/longtext")
+				return fail("not_found", ctx.i18n.t("post.notFound"));
+			return fail("unavailable", ctx.i18n.t("request.unavailable"));
+		}
 		const refused = !response.isSuccess || (data.ok !== undefined && Number(data.ok) !== 1);
 		if ((refused && challenge(message)) || (value === undefined && challenge(text)))
 			return fail("unavailable", ctx.i18n.t("auth.verify"), { upstreamCode: "weibo.verify" });
