@@ -1,6 +1,9 @@
 {
 	"request.unavailable": "Huya data is temporarily unavailable. Try again later.",
 	"request.cancelled": "The Huya request was cancelled.",
+	"request.limited": "Huya is rate limiting requests. BN will retry after the cooldown.",
+	"request.verify": "Huya requires sign-in or verification. Queries for all rooms are paused and will retry automatically.",
+	"request.storage": "BN could not save the Huya cooldown state. Check BN storage.",
 	"profile.input": "Enter a Huya room number, room link, or streamer name.",
 	"profile.missing": "Huya could not find this room.",
 	"live.unknown": "Huya did not return a confirmed live status.",

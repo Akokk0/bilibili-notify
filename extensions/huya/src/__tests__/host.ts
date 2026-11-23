@@ -55,6 +55,10 @@ export function host(
 				state.set(key, value);
 				return ok();
 			},
+			delete: async (key: string) => {
+				state.delete(key);
+				return ok();
+			},
 		},
 		registerSource: (def: SourceDef) => {
 			source = def;
