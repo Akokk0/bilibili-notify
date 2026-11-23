@@ -1,4 +1,5 @@
 {
+	"marketplace.notes": "可用房間號、房間連結或主播暱稱訂閱虎牙，接收開播、直播中和下播通知。訂閱公開房間無需登入虎牙。",
 	"request.unavailable": "暫時無法取得虎牙資料，稍後會重試。",
 	"request.cancelled": "虎牙請求已取消。",
 	"request.limited": "虎牙限制了請求頻率，冷卻結束後會自動重試。",

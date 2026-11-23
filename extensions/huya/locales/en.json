@@ -1,4 +1,5 @@
 {
+	"marketplace.notes": "Follow a Huya streamer by room number, link, or name. Get start, ongoing, and end notifications without signing in.",
 	"request.unavailable": "Huya data is temporarily unavailable. Try again later.",
 	"request.cancelled": "The Huya request was cancelled.",
 	"request.limited": "Huya is rate limiting requests. BN will retry after the cooldown.",
