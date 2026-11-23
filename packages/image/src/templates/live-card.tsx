@@ -60,7 +60,9 @@ export type LiveCardInput = {
 	startedAt?: string;
 	/** 此刻在线(人气那一格,开播 / 直播中 / 没在播的卡上画)。 */
 	currentViewers?: number;
-	/** 本场累计观看(下播卡的那一格)。 */
+	heatScore?: number;
+	vipViewers?: number;
+	/** 本场累计观看，可在开播、直播中和下播卡的观众人数位显示。 */
 	totalViewers?: number;
 	/** 点赞(下播卡的那一格)。 */
 	likes?: number;
@@ -96,6 +98,8 @@ export type LiveCardView = {
 	/** 「开播时间：…」/「直播时长：…」/「未开播」那一句。 */
 	time: string;
 	currentViewers: string;
+	heatScore: string;
+	vipViewers: string;
 	likes: string;
 	totalViewers: string;
 	followers: string;

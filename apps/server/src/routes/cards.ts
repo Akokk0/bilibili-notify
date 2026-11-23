@@ -1085,6 +1085,8 @@ function buildLivePreviewProps(coverDataUrl?: string): LiveCardView {
 		hasCover: true,
 		time: "2026-05-09 19:00:00",
 		currentViewers: t("cards.sample.stats.currentViewers"),
+		heatScore: "",
+		vipViewers: "",
 		likes: t("cards.sample.stats.likes"),
 		totalViewers: t("cards.sample.stats.totalViewers"),
 		followers: t("cards.sample.stats.followers"),

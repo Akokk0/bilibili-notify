@@ -66,14 +66,14 @@ function liveFields(p: LiveCardView): CardFields {
 			isStreaming: onAir,
 			isEnded: ended,
 		},
-		// 每格只装名字说的那一样,不该有值的状态下是空串(字段表规定永不 undefined)。四格的分支与 `blocks/live.tsx`
-		// 的 `statsLeft` / `followerText` 同一套(下播是点赞与累计观看,决策 76),只是不带「人气：」这类前缀
-		// (前缀归皮肤的模板写)。
+		// 自定义模板按各字段的原始口径取值，内置人气和观众人数块负责选择数据和标签。
 		stats: {
 			currentViewers: ended ? "" : str(p.currentViewers),
+			heatScore: onAir ? str(p.heatScore) : "",
+			vipViewers: onAir ? str(p.vipViewers) : "",
 			likes: ended ? str(p.likes) : "",
 			followers: onAir ? str(p.followers) : "",
-			totalViewers: ended ? str(p.totalViewers) : "",
+			totalViewers: onAir || ended ? str(p.totalViewers) : "",
 			// 默认卡不画它(决策 76,它进下播文案),契约照给 —— 自己做皮肤的人想画就能画。
 			followersDelta,
 			hasFollowersDelta: followersDelta !== "",

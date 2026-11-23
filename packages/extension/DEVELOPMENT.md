@@ -104,7 +104,7 @@ export function activate(ctx: ExtensionContext): void {
 
 作品上报和群聊链接预览可用 `post.stats.saves` 传收藏数。平台未给出数值时省略，明确为零时传 `0`。使用此字段的拓展要求 `apiRevision: 3`。
 
-直播上报与 `fetchLiveStatus` 可以在 `details` 中提供 `heatScore`（平台直播热度）和 `vipViewers`（贵宾席人数），要求 `apiRevision: 5`。两项都接受非负整数，缺少时省略。开播和正在直播的默认卡片都会显示取到的指标。全房此刻在线与本场累计观看分别使用 `currentViewers` 和 `totalViewers`。
+直播上报与 `fetchLiveStatus` 可以在 `details` 中提供 `heatScore`（平台直播热度）和 `vipViewers`（贵宾席人数），要求 `apiRevision: 5`。两项都接受非负整数，缺少时省略。开播和正在直播卡在人气位优先显示 `heatScore`，在观众人数位优先显示 `vipViewers`。缺少贵宾数据时，有 `totalViewers` 就按「累计观看人数」展示。全房此刻在线与本场累计观看分别使用 `currentViewers` 和 `totalViewers` 上报。
 
 `post.label` 是作品皮肤已有的卡头说明。拓展把要显示的文字排好再上报，例如「投稿了视频」或「来自 iPhone · 发布于 四川」。默认皮肤把它放在发布时间旁。正文和关键词过滤使用 `post.text`。
 

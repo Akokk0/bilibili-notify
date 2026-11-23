@@ -77,8 +77,7 @@ function createSamples() {
 	 * 两个场景的差异全在这几项里(其余字段共用)。
 	 *
 	 * 示例直接写块吃的那一份({@link LiveCardView}):卡上那句时间写死,不读时钟。数据区跟着
-	 * 状态换:直播中报人气与当前粉丝数,下播报点赞与累计观看人数(ADR-0019 决策 76,
-	 * `blocks/live.tsx` 的 `statsLeft` / `followerText`)。
+	 * 直播中报人气、粉丝数和本场累计观看，下播报点赞与累计观看。
 	 */
 	type LiveSceneOverlay = Pick<LiveCardView, "status" | "time"> &
 		Partial<Pick<LiveCardView, "currentViewers" | "likes" | "totalViewers" | "followers">>;
@@ -88,6 +87,7 @@ function createSamples() {
 			status: "streaming",
 			time: packageText("image.preview.sample-cards.4"),
 			currentViewers: formatCount(123_456),
+			totalViewers: formatCount(31_200),
 			followers: formatCount(88_800),
 		},
 		ended: {
@@ -109,6 +109,8 @@ function createSamples() {
 			cover: SVG_COVER,
 			hasCover: true,
 			currentViewers: "",
+			heatScore: "",
+			vipViewers: "",
 			likes: "",
 			totalViewers: "",
 			followers: "",

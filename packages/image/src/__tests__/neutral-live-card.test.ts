@@ -131,12 +131,30 @@ afterEach(() => {
 });
 
 describe("generateLiveCard — 默认块在各状态画出的文字", () => {
+	it.each(["start", "streaming", "end", "offline"] as const)(
+		"%s 卡用原有的人气和观看人数位置显示直播热度与贵宾人数",
+		async (status) => {
+			const d = await drawn(input({ status, heatScore: 318_888, vipViewers: 0 }));
+			if (status === "start" || status === "streaming") {
+				expect(d.currentViewers).toBe("直播热度：31.9万");
+				expect(d.totalViewers).toBe("贵宾人数：0");
+				expect(d.followers).toBe("当前粉丝数：8.9万");
+			}
+			expect(
+				Object.values(d).filter(
+					(value) => value.includes("直播热度") || value.includes("贵宾人数"),
+				),
+			).toHaveLength(status === "start" || status === "streaming" ? 2 : 0);
+		},
+	);
+
 	it("开播:「直播中」角标、开播时间(北京时间)、人气 + 当前粉丝数", async () => {
 		const d = await drawn(input({ status: "start" }));
 		expect(d.status).toBe("直播中");
 		expect(d.time).toBe("开播时间：2026/9/13 20:00:00");
 		expect(d.currentViewers).toBe("人气：1.2万");
 		expect(d.followers).toBe("当前粉丝数：8.9万");
+		expect(d.totalViewers).toBe("累计观看人数：3.1万");
 		expect(d.cover).toBe(COVER_FROM_REF);
 	});
 
@@ -148,6 +166,15 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 		expect(d.time).toBe("直播时长：2小时13分5秒");
 		expect(d.currentViewers).toBe("人气：1.2万");
 		expect(d.followers).toBe("当前粉丝数：8.9万");
+		expect(d.totalViewers).toBe("累计观看人数：3.1万");
+	});
+
+	it("人数位收到零累计时显示 0，两种观众数字都缺失时收起", async () => {
+		const d = await drawn(input({ totalViewers: 0 }));
+		expect(d.totalViewers).toBe("累计观看人数：0");
+		const missing = await drawn(input({ heatScore: 42, totalViewers: undefined }));
+		expect(missing.totalViewers).toBeUndefined();
+		expect(missing.currentViewers).toBe("直播热度：42");
 	});
 
 	/** 出卡那一刻现取全局时区:设置改了,下一张直播卡跟着变。 */
@@ -447,9 +474,11 @@ describe("generateLiveCard — 皮肤契约的直播取值", () => {
 		expect(await contract(input({ status: "end" }))).toBe("|2.0万||3.1万|+1234|false|true");
 	});
 
-	it("开播 / 直播中:currentViewers = 在看人数、followers = 当前粉丝数(点赞与累计观看为空)", async () => {
-		expect(await contract(input({ status: "start" }))).toBe("1.2万||8.9万||+1234|true|false");
-		expect(await contract(input({ status: "streaming" }))).toBe("1.2万||8.9万||+1234|true|false");
+	it("开播和正在直播时，皮肤能读取本场累计观看", async () => {
+		expect(await contract(input({ status: "start" }))).toBe("1.2万||8.9万|3.1万|+1234|true|false");
+		expect(await contract(input({ status: "streaming" }))).toBe(
+			"1.2万||8.9万|3.1万|+1234|true|false",
+		);
 	});
 
 	it("粉丝数变化带正负号,过万写成「万」", async () => {
