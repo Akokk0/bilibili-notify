@@ -253,6 +253,39 @@ it("does not report a post if its subscription was removed and recreated during 
 	app.dispose();
 });
 
+it("silently clears a feed problem when its last subscription leaves, including during a retry", async () => {
+	let attempts = 0;
+	let finish!: () => void;
+	let retrySignal: AbortSignal | undefined;
+	const app = host(async (url, options) => {
+		if (url.pathname !== "/ajax/feed/friendstimeline") return loginReply(url);
+		if (++attempts > 1) {
+			retrySignal = options.signal;
+			await new Promise<void>((resolve) => {
+				finish = resolve;
+			});
+		}
+		return { status: 503 };
+	});
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	const watched = subscribe(app.source);
+	await vi.advanceTimersByTimeAsync(0);
+	expect(watched.reportProblem).toHaveBeenCalledTimes(1);
+	watched.update(["43"]);
+	expect(watched.resolveProblem).not.toHaveBeenCalled();
+	await vi.advanceTimersByTimeAsync(60000);
+	watched.update([]);
+	expect(watched.resolveProblem).toHaveBeenCalledWith({ code: "weibo_feed", notify: false });
+	expect(retrySignal?.aborted).toBe(true);
+	finish();
+	await vi.advanceTimersByTimeAsync(120000);
+	expect(watched.reportProblem).toHaveBeenCalledTimes(1);
+	expect(attempts).toBe(2);
+	await app.source.stop();
+	app.dispose();
+});
+
 it("leaves the baseline in place when a post has no timezone and processes the corrected page on recovery", async () => {
 	let phase = 0;
 	const app = host((url) => {
@@ -329,6 +362,38 @@ it("expands only a subscribed new long post and sends plain text, available coun
 			}),
 		}),
 	);
+	await app.source.stop();
+	app.dispose();
+});
+
+it("keeps reading new posts while one author's long text is unavailable and retries it once recovered", async () => {
+	const baseline = post("100", 1);
+	const long = { ...post("101", 2), isLongText: true };
+	let statuses = [baseline];
+	let available = false;
+	const app = host((url) => {
+		if (url.pathname === "/ajax/feed/friendstimeline") return { body: { statuses } };
+		if (url.pathname === "/ajax/statuses/longtext")
+			return available
+				? { body: { ok: 1, data: { longTextContent: "完整正文" } } }
+				: { status: 403, body: "Forbidden" };
+		return loginReply(url);
+	});
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	const watched = subscribe(app.source);
+	await vi.advanceTimersByTimeAsync(0);
+	const delivered = () => watched.reportPost.mock.calls.map(([, report]) => report.postId);
+	statuses = [post("102", 3, "43"), long, baseline];
+	await vi.advanceTimersByTimeAsync(62000);
+	expect(delivered()).toEqual(["102"]);
+	statuses = [post("103", 4, "43"), baseline];
+	await vi.advanceTimersByTimeAsync(60000);
+	expect(delivered()).toEqual(["102", "103"]);
+	available = true;
+	await vi.advanceTimersByTimeAsync(120000);
+	expect(delivered()).toEqual(["102", "103", "101"]);
+	expect(watched.reportPost.mock.calls.at(-1)?.[1].post.text).toBe("完整正文");
 	await app.source.stop();
 	app.dispose();
 });

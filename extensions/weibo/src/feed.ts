@@ -14,6 +14,7 @@ interface Baseline {
 interface Watch {
 	ready: boolean;
 	life: AbortController;
+	pending: Map<string, FeedPost>;
 }
 interface Scan {
 	watched: Map<string, Watch>;
@@ -59,8 +60,9 @@ function watchFeed(ctx: ExtensionContext, source: ExtensionSourceContext, accoun
 	let baseline: Baseline | undefined;
 	let scan: Scan | undefined;
 	let owner: string | undefined;
-	let running = false;
+	let running: AbortController | undefined;
 	function reconcile() {
+		const wasWatching = watchers.size > 0;
 		const wanted = new Set(
 			source
 				.subscriptions()
@@ -75,12 +77,15 @@ function watchFeed(ctx: ExtensionContext, source: ExtensionSourceContext, accoun
 			}
 		for (const id of wanted) {
 			if (watchers.has(id)) continue;
-			watchers.set(id, { ready: false, life: new AbortController() });
+			watchers.set(id, { ready: false, life: new AbortController(), pending: new Map() });
 			added = true;
 		}
-		if (!watchers.size) {
+		if (wasWatching && !watchers.size) {
+			running?.abort();
+			running = undefined;
 			baseline = undefined;
 			scan = undefined;
+			source.resolveProblem({ code: "weibo_feed", notify: false });
 		}
 		return added;
 	}
@@ -132,38 +137,43 @@ function watchFeed(ctx: ExtensionContext, source: ExtensionSourceContext, accoun
 			}
 			batch.cursor = page.next;
 		}
-		if (!batch.complete) return;
-		for (const post of [...batch.posts.values()].sort(
-			(a, b) => a.time - b.time || a.id.localeCompare(b.id),
-		)) {
-			if (signal.aborted || scan !== batch) return;
-			const watch = watchers.get(post.uid);
-			if (watch && batch.watched.get(post.uid) === watch) {
-				const result = await postReport(
-					ctx,
-					account,
-					post,
-					AbortSignal.any([signal, watch.life.signal]),
-				);
-				if (signal.aborted || scan !== batch) return;
-				if (!watch.life.signal.aborted) {
-					if (!result.ok) {
-						if (
-							!["rate_limited", "unauthorized"].includes(result.code) &&
-							result.upstreamCode !== "weibo.verify"
-						)
-							source.reportProblem({ code: "weibo_feed", message: result.message });
-						return;
-					}
-					source.reportPost(post.uid, result.report);
-				}
+		if (batch.complete) {
+			for (const post of batch.posts.values()) {
+				const watch = batch.watched.get(post.uid);
+				if (watch && !watch.life.signal.aborted) watch.pending.set(post.id, post);
 			}
-			batch.posts.delete(post.id);
+			baseline = batch.newest;
+			for (const watch of batch.watched.values()) watch.ready = true;
+			scan = undefined;
 		}
-		baseline = batch.newest;
-		for (const watch of batch.watched.values()) watch.ready = true;
-		scan = undefined;
-		source.resolveProblem({ code: "weibo_feed" });
+		// A completed timeline page can advance even when an individual post still needs its detail.
+		const pending = [...watchers.values()].flatMap((watch) => [...watch.pending.values()]);
+		let failed = false;
+		for (const post of pending.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id))) {
+			const watch = watchers.get(post.uid);
+			if (!watch?.pending.has(post.id)) continue;
+			const result = await postReport(
+				ctx,
+				account,
+				post,
+				AbortSignal.any([signal, watch.life.signal]),
+			);
+			if (signal.aborted) return;
+			if (watch.life.signal.aborted) continue;
+			if (!result.ok) {
+				if (
+					["rate_limited", "unauthorized", "indeterminate"].includes(result.code) ||
+					result.upstreamCode === "weibo.verify"
+				)
+					return;
+				failed = true;
+				source.reportProblem({ code: "weibo_feed", message: result.message });
+				continue;
+			}
+			source.reportPost(post.uid, result.report);
+			watch.pending.delete(post.id);
+		}
+		if (batch.complete && !failed && watchers.size) source.resolveProblem({ code: "weibo_feed" });
 	}
 	function tick() {
 		const uid = account.uid();
@@ -171,22 +181,25 @@ function watchFeed(ctx: ExtensionContext, source: ExtensionSourceContext, accoun
 		if (owner !== uid) {
 			baseline = undefined;
 			scan = undefined;
+			for (const watch of watchers.values()) watch.pending.clear();
 			owner = uid;
 		}
+		const current = new AbortController();
+		running = current;
 		const signal = AbortSignal.any([
+			current.signal,
 			life.signal,
 			source.signal,
 			ctx.signal,
 			account.sessionSignal(),
 		]);
-		running = true;
 		void poll(uid, signal)
 			.catch(() => {
 				if (!signal.aborted)
 					source.reportProblem({ code: "weibo_feed", message: ctx.i18n.t("request.unavailable") });
 			})
 			.finally(() => {
-				running = false;
+				if (running === current) running = undefined;
 			});
 	}
 	const changes = source.onSubscriptionsChanged(() => {
