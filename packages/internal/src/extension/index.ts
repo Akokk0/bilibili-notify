@@ -166,7 +166,15 @@ export type ExtensionLinkPreview = Simplify<
 export type ExtensionLiveDetails = Simplify<
 	Pick<
 		LiveDetails,
-		"title" | "category" | "url" | "currentViewers" | "totalViewers" | "likes" | "description"
+		| "title"
+		| "category"
+		| "url"
+		| "currentViewers"
+		| "totalViewers"
+		| "heatScore"
+		| "vipViewers"
+		| "likes"
+		| "description"
 	> & {
 		creator?: SubscriptionCreator;
 		cover?: ImageRef;

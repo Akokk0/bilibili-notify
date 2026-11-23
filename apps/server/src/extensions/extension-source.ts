@@ -522,6 +522,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			...(details.url === undefined ? {} : { url: details.url }),
 			...(details.currentViewers === undefined ? {} : { currentViewers: details.currentViewers }),
 			...(details.totalViewers === undefined ? {} : { totalViewers: details.totalViewers }),
+			...(details.heatScore === undefined ? {} : { heatScore: details.heatScore }),
+			...(details.vipViewers === undefined ? {} : { vipViewers: details.vipViewers }),
 			...(details.likes === undefined ? {} : { likes: details.likes }),
 			...(details.description === undefined ? {} : { description: details.description }),
 			...(details.creator === undefined

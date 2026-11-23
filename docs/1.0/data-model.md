@@ -280,6 +280,7 @@ interface LiveDetails {                 // 一场直播的内容
   title?: string; cover?: PostImage; category?: string; url?: string;
   currentViewers?: number;              // 此刻在线
   totalViewers?: number;                // 本场累计观看
+  heatScore?: number; vipViewers?: number; // 平台直播热度、贵宾席人数
   likes?: number; description?: string; creator?: Creator;
 }
 
