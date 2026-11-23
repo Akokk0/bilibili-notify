@@ -54,6 +54,8 @@ export function liveCardInputFromDetails(
 		cover: details.cover,
 		startedAt: isoOfMillis(opts.startedAt),
 		currentViewers: details.currentViewers,
+		heatScore: details.heatScore,
+		vipViewers: details.vipViewers,
 		totalViewers: details.totalViewers,
 		likes: details.likes,
 		followers: opts.followers,

@@ -97,7 +97,7 @@ type BlockHooks = { fixture: string; block: string; hooks: string[] };
 const SIDE_PROBES: Partial<Record<CardKind, { name: string; props: unknown }[]>> = {
 	live: [
 		{
-			name: "(旁路探针)拓展直播形状的视图,带头像",
+			name: "(旁路探针)拓展直播视图，带头像、热度和贵宾人数",
 			props: {
 				status: "streaming",
 				creatorName: "某人",
@@ -109,6 +109,8 @@ const SIDE_PROBES: Partial<Record<CardKind, { name: string; props: unknown }[]>>
 				hasCover: true,
 				time: "",
 				currentViewers: "",
+				heatScore: "31.9万",
+				vipViewers: "167",
 				likes: "",
 				totalViewers: "",
 				followers: "",

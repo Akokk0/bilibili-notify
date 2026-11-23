@@ -42,6 +42,8 @@ function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 		hasCover: true,
 		time: "直播时长：1小时",
 		currentViewers: "1.2万",
+		heatScore: "31.9万",
+		vipViewers: "167",
 		likes: "3000",
 		totalViewers: "5.4万",
 		followers: "10.1万",
@@ -63,6 +65,8 @@ function emptyLiveProps(): LiveCardView {
 		hasCover: false,
 		time: "",
 		currentViewers: "",
+		heatScore: "",
+		vipViewers: "",
 		likes: "",
 		totalViewers: "",
 		followers: "",
@@ -307,7 +311,7 @@ describe("缺数据时每个字段仍有值", () => {
 // ── 三、语义 ──────────────────────────────────────────────────────────────────
 
 describe("直播卡的几种状态", () => {
-	it("开播与直播中:isStreaming、在看人数、当前粉丝数(点赞与累计观看为空)", () => {
+	it("开播与直播中有在看人数、当前粉丝数和累计观看时都能取值", () => {
 		for (const status of ["start", "streaming"] as const) {
 			const d = cardFieldsOf("live", liveProps({ status }));
 			expect(d.live.isStreaming, status).toBe(true);
@@ -315,7 +319,7 @@ describe("直播卡的几种状态", () => {
 			expect(d.stats.currentViewers, status).toBe("1.2万");
 			expect(d.stats.followers, status).toBe("10.1万");
 			expect(d.stats.likes, status).toBe("");
-			expect(d.stats.totalViewers, status).toBe("");
+			expect(d.stats.totalViewers, status).toBe("5.4万");
 		}
 	});
 
@@ -354,7 +358,7 @@ describe("直播卡的几种状态", () => {
 
 /**
  * 直播卡 `stats` 的四格各只装名字说的那一样:`currentViewers`(在看人数)、`likes`(下播后的点赞)、`followers`(粉丝数)、
- * `totalViewers`(下播后的累计观看),不该有值的状态下是空串。(㉔a 钉住的是拆分之前的现状:`stats.popularity` 下播取点赞、
+ * `totalViewers`(本场累计观看),不该有值的状态下是空串。(㉔a 钉住的是拆分之前的现状:`stats.popularity` 下播取点赞、
  * 其余取在线人数;`stats.fans` 开播 / 直播中取粉丝数、下播取累计观看、没在播为空 —— ㉔b 拆成这四格。)
  * 四个来源格给**互不相同**的值,断言才分得出取的是哪一格;来源格为空串时也钉一遍。
  * 验红:把 `liveData` 里四格的三元条件任一个对调。
@@ -364,8 +368,8 @@ describe("直播卡 stats 四格各状态取哪一格", () => {
 
 	it.each([
 		// 状态,currentViewers,likes,followers,totalViewers
-		["start", "ON", "", "FN", ""],
-		["streaming", "ON", "", "FN", ""],
+		["start", "ON", "", "FN", "TV"],
+		["streaming", "ON", "", "FN", "TV"],
 		["end", "", "LK", "", "TV"],
 		["offline", "ON", "", "", ""],
 	] as const)(

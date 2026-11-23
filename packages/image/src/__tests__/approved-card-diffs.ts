@@ -250,6 +250,13 @@ const FIT_POST_STATS = {
 	basis: "主人反馈微博与 B 站推送给缺失的第四项留了空位，要求互动栏自适应。",
 } as const;
 
+const LIVE_AUDIENCE_SLOT = {
+	category: "master-approved",
+	approvedOn: "2026-11-23",
+	change: "观众人数放在第二行左侧，粉丝数居右。直播中可同时显示两项。",
+	basis: "主人确认虎牙贵宾人数与 B 站累计观看共用人数位，B 站直播时有累计就显示。",
+} as const;
+
 export const APPROVED_CARD_DIFFS: CardDiffList = {
 	baseline: {
 		"dynamic-article": "5dc8efb7725183cd",
@@ -441,5 +448,8 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 		{ sample: "dynamic-unrenderable", ...FIT_POST_STATS, hash: "ec9dd94b16a8bc32" },
 		{ sample: "dynamic-with-additional", ...FIT_POST_STATS, hash: "eec6d426ce647c77" },
 		{ sample: "dynamic-word", ...FIT_POST_STATS, hash: "f733f1cafb2b6a6e" },
+		{ sample: "live-streaming", ...LIVE_AUDIENCE_SLOT, hash: "1f857aa16a4ba6dc" },
+		{ sample: "live-ended", ...LIVE_AUDIENCE_SLOT, hash: "ee8c0aea89b8219f" },
+		{ sample: "live-with-fontface", ...LIVE_AUDIENCE_SLOT, hash: "c0b1dc3c057f82f5" },
 	],
 };

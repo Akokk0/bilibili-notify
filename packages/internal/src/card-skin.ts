@@ -476,6 +476,8 @@ function createCardSkinFields(text: PackageTranslator): Record<CardKind, readonl
 			f("live.isEnded", "bool", () => text("internal.card-skin.38")),
 			// 每格只装名字说的那一样;不该有值的状态下是空串(字段表规定永不 undefined)。
 			f("stats.currentViewers", "text", () => text("internal.card-skin.39")),
+			f("stats.heatScore", "text", () => text("internal.live.heatScore")),
+			f("stats.vipViewers", "text", () => text("internal.live.vipViewers")),
 			f("stats.likes", "text", () => text("internal.card-skin.40")),
 			f("stats.followers", "text", () => text("internal.card-skin.41")),
 			f("stats.totalViewers", "text", () => text("internal.card-skin.42")),
@@ -846,8 +848,8 @@ function createCardSkinBuiltinBlocks(
 			},
 			// 数据区(ADR-0014 决策 16 的 🔗):从前由三个显隐开关管,而开关管的是复合块
 			// **内部的一行**、块级的 `showIf` 够不着 —— 所以拆成原子块,想少显示哪件就删哪块。
-			// ㉔c 起随状态换含义的两块各拆成两块(`popularity` → `currentViewers` + `likes`,`fans` → `followers` +
-			// `totalViewers`):每块只画一样东西,各自只在该出现的状态下有内容(`scenes` 只给画布用,出图端不读)。
+			// currentViewers 和 totalViewers 是原皮肤沿用的人气位与观众人数位。
+			// 一格显示一个值，标签随指标口径变化。scenes 决定画布上展示这个块的场景。
 			currentViewers: {
 				get label() {
 					return text("internal.card-skin.98");
@@ -905,7 +907,7 @@ function createCardSkinBuiltinBlocks(
 						return text("internal.card-skin.107");
 					},
 				},
-				scenes: ["ended"],
+				scenes: ["streaming", "ended"],
 			},
 		},
 		post: {

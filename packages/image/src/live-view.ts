@@ -138,6 +138,8 @@ export function buildLiveCardView(
 		hasCover: cover !== "",
 		time: liveTimeText(input.status, input.startedAt, timezone),
 		currentViewers: countText(input.currentViewers),
+		heatScore: countText(input.heatScore),
+		vipViewers: countText(input.vipViewers),
 		likes: countText(input.likes),
 		totalViewers: countText(input.totalViewers),
 		followers: countText(input.followers),

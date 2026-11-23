@@ -119,6 +119,8 @@ describe("直播卡 currentViewers / likes / followers / totalViewers 块各状�
 		hasCover: true,
 		time: "直播时长：1小时",
 		currentViewers: "ON",
+		heatScore: "",
+		vipViewers: "",
 		likes: "LK",
 		totalViewers: "TV",
 		followers: "FN",
@@ -137,8 +139,8 @@ describe("直播卡 currentViewers / likes / followers / totalViewers 块各状�
 
 	it.each([
 		// 状态,currentViewers,likes,followers,totalViewers
-		["start", "人气：ON", null, "当前粉丝数：FN", null],
-		["streaming", "人气：ON", null, "当前粉丝数：FN", null],
+		["start", "人气：ON", null, "当前粉丝数：FN", "累计观看人数：TV"],
+		["streaming", "人气：ON", null, "当前粉丝数：FN", "累计观看人数：TV"],
 		["end", null, "点赞：LK", null, "累计观看人数：TV"],
 		["offline", "人气：ON", null, null, null],
 	] as const)(

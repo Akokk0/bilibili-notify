@@ -43,6 +43,8 @@ function input(over: Partial<LiveCardInput> = {}): LiveCardInput {
 		cover: { ref: COVER_REF },
 		startedAt: STARTED_AT,
 		currentViewers: 12_345,
+		heatScore: 318_888,
+		vipViewers: 167,
 		likes: 20_133,
 		totalViewers: 31_200,
 		followers: 88_800,
@@ -57,7 +59,7 @@ afterEach(() => {
 });
 
 describe("buildLiveCardView — 整个视图", () => {
-	/** 把视图的**全部十四个键**一次钉死(原来只有按块看文字),键多了少了、值变了都红。 */
+	/** 覆盖完整视图的每个字段。 */
 	it("一份满的输入排出一份满的视图", () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		vi.setSystemTime(STARTED_AT_MS + (2 * 3600 + 13 * 60 + 5) * 1000);
@@ -72,6 +74,8 @@ describe("buildLiveCardView — 整个视图", () => {
 			hasCover: true,
 			time: "直播时长：2小时13分5秒",
 			currentViewers: "1.2万",
+			heatScore: "31.9万",
+			vipViewers: "167",
 			likes: "2.0万",
 			totalViewers: "3.1万",
 			followers: "8.9万",
@@ -93,6 +97,8 @@ describe("buildLiveCardView — 整个视图", () => {
 			hasCover: false,
 			time: "",
 			currentViewers: "",
+			heatScore: "",
+			vipViewers: "",
 			likes: "",
 			totalViewers: "",
 			followers: "",

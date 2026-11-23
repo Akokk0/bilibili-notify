@@ -139,11 +139,13 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 		merge(subscriptionId, sourceKey, startedAt, details) {
 			const prev = entries.get(subscriptionId);
 			const at = startedAt ?? prev?.startedAt;
+			// 热度和贵宾人数只描述本次观测，查询缺失时不能用上次的数字出卡。
+			const { heatScore: _heat, vipViewers: _vips, ...prior } = prev?.details ?? {};
 			put(subscriptionId, {
 				subscriptionId,
 				sourceKey,
 				...(at === undefined ? {} : { startedAt: at }),
-				details: { ...prev?.details, ...reported(details) },
+				details: { ...prior, ...reported(details) },
 				updatedAt: now(),
 			});
 		},
