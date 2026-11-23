@@ -1,4 +1,9 @@
-import type { ExtensionSourceContext, SourceDef } from "@bilibili-notify/extension";
+import type {
+	ExtensionContext,
+	ExtensionPostReport,
+	ExtensionSourceContext,
+	SourceDef,
+} from "@bilibili-notify/extension";
 import { ok } from "@bilibili-notify/extension";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { host, loginReply } from "./host";
@@ -48,6 +53,108 @@ function subscribe(source: SourceDef, ids = ["42", "43"]) {
 		},
 	};
 }
+
+async function receivePost(
+	fields: Record<string, unknown>,
+	fetchImage?: ExtensionContext["fetchImage"],
+	longText?: Record<string, unknown>,
+) {
+	const baseline = post("100", 1);
+	let statuses = [baseline];
+	const app = host(
+		(url) => {
+			if (url.pathname === "/ajax/statuses/longtext" && longText)
+				return { body: { ok: 1, data: longText } };
+			return url.pathname === "/ajax/feed/friendstimeline"
+				? { body: { statuses } }
+				: loginReply(url);
+		},
+		undefined,
+		fetchImage,
+	);
+	try {
+		await app.auth.beginLogin();
+		await vi.advanceTimersByTimeAsync(3000);
+		const watched = subscribe(app.source);
+		await vi.advanceTimersByTimeAsync(0);
+		statuses = [{ ...post("101", 2), ...fields }, baseline];
+		await vi.advanceTimersByTimeAsync(62000);
+		expect(watched.reportPost).toHaveBeenCalledTimes(1);
+		return (watched.reportPost.mock.calls[0][1] as ExtensionPostReport).post;
+	} finally {
+		await app.source.stop();
+		app.dispose();
+	}
+}
+
+it("renders adjacent community and ordinary topics with the visible names and the community icon", async () => {
+	const page = "https://weibo.com/p/10080854838a6bbae2a14b0fb0c7905f6a070a";
+	const icon = "https://h5.sinaimg.cn/upload/timeline_card_small_super_default.png";
+	const ref = `${"a".repeat(64)}.png`;
+	const got = await receivePost(
+		{
+			text_raw: "Test#英雄联盟[超话]##火锅# \u200b\u200b\u200b",
+			text: `Test<a href="${page}"><img class="icon-link" title="#英雄联盟[超话]#" src="${icon}"/>英雄联盟超话</a><a href="//s.weibo.com/weibo?q=%23火锅%23">#火锅#</a>`,
+		},
+		async (url) => {
+			expect(url).toBe(icon);
+			return ok({ ref });
+		},
+	);
+	expect(got.text).toBe("Test英雄联盟超话#火锅#");
+	expect(got.richText).toEqual([
+		{ kind: "text", text: "Test" },
+		{ kind: "link", text: "英雄联盟超话", url: page, icon: ref },
+		{ kind: "topic", text: "#火锅#", name: "火锅" },
+	]);
+});
+
+it("preserves literal hashes and highlights raw topics in a repost even when its badge is unavailable", async () => {
+	const pageId = "10080854838a6bbae2a14b0fb0c7905f6a070a";
+	const got = await receivePost({
+		text_raw: "C# 和 #火锅#",
+		retweeted_status: {
+			user: { screen_name: "小星" },
+			text_raw: "#峡谷[超话]#",
+			url_struct: [
+				{
+					short_url: "#峡谷[超话]#",
+					url_title: "峡谷超话",
+					page_id: pageId,
+					url_type_pic: "https://example.org/badge.png",
+				},
+			],
+		},
+	});
+	expect(got.richText).toEqual([
+		{ kind: "text", text: "C# 和 " },
+		{ kind: "topic", text: "#火锅#", name: "火锅" },
+		{ kind: "text", text: "\n//@小星：" },
+		{ kind: "link", text: "峡谷超话", url: `https://weibo.com/p/${pageId}` },
+	]);
+	expect(got.richText?.map((part) => part.text).join("")).toBe(got.text);
+});
+
+it("reads topics, newlines and escaped characters from an expanded raw-only long post", async () => {
+	const page = "https://weibo.com/p/10080854838a6bbae2a14b0fb0c7905f6a070a";
+	const got = await receivePost({ isLongText: true }, undefined, {
+		longTextContent_raw: `长文 &amp; 换行<br><a href="${page}"><img title="#峡谷[超话]#">峡谷超话</a>#火锅#`,
+	});
+	expect(got.text).toBe("长文 & 换行\n峡谷超话#火锅#");
+	expect(got.richText).toEqual([
+		{ kind: "text", text: "长文 & 换行\n" },
+		{ kind: "link", text: "峡谷超话", url: page },
+		{ kind: "topic", text: "#火锅#", name: "火锅" },
+	]);
+});
+
+it("retains a long post's visible caption when its expanded body contains no text", async () => {
+	const got = await receivePost({ isLongText: true, text_raw: "预览#火锅#" }, undefined, {
+		longTextContent: "<br>",
+	});
+	expect(got.text).toBe("预览#火锅#");
+	expect(got.richText).toContainEqual({ kind: "topic", text: "#火锅#", name: "火锅" });
+});
 
 it("does not report a post if its subscription was removed and recreated during image loading", async () => {
 	let finishImage!: (result: ReturnType<typeof ok<{ ref: string }>>) => void;

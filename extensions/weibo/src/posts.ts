@@ -1,12 +1,13 @@
 import {
 	type ExtensionContext,
 	type ExtensionPostReport,
+	type ExtensionRichText,
 	fail,
 	ok,
 	type Result,
 } from "@bilibili-notify/extension";
-import { type DefaultTreeAdapterTypes, parseFragment } from "parse5";
 import type { WeiboAccount } from "./account";
+import { caption } from "./caption";
 import { decimalId, HOME, record } from "./client";
 import { image, imageUrl } from "./media";
 
@@ -25,23 +26,6 @@ export function feedPost(value: unknown) {
 }
 
 export type FeedPost = NonNullable<ReturnType<typeof feedPost>>;
-
-function plainText(html: unknown): string {
-	if (typeof html !== "string") return "";
-	function read(node: DefaultTreeAdapterTypes.ChildNode): string {
-		if ("value" in node) return node.value;
-		if (!("tagName" in node) || ["script", "style", "template"].includes(node.tagName)) return "";
-		if (node.tagName === "br") return "\n";
-		if (node.tagName === "img") return node.attrs.find((a) => a.name === "alt")?.value ?? "";
-		const contents = node.childNodes.map(read).join("");
-		return ["p", "div"].includes(node.tagName) ? `${contents}\n` : contents;
-	}
-	return parseFragment(html).childNodes.map(read).join("").trim();
-}
-
-function caption(row: Record<string, unknown>) {
-	return typeof row.text_raw === "string" ? row.text_raw : plainText(row.text);
-}
 
 function count(value: unknown) {
 	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
@@ -69,20 +53,35 @@ export async function postReport(
 	const bid =
 		typeof row.mblogid === "string" && /^[A-Za-z0-9]+$/.test(row.mblogid) ? row.mblogid : undefined;
 	const url = bid ? `${HOME}${uid}/${bid}` : `${HOME}detail/${id}`;
-	let text = caption(row);
+	let expanded: ExtensionRichText | undefined;
 	if (row.isLongText === true || row.isLongText === 1) {
 		const detail = await account.get("/ajax/statuses/longtext", { id: bid ?? id }, signal, url);
 		if (detail.ok) {
 			const data = record(detail.data.data);
-			text = plainText(data.longTextContent_raw ?? data.longTextContent) || text;
+			for (const text of [data.longTextContent, data.longTextContent_raw]) {
+				if (typeof text !== "string" || !text.trim()) continue;
+				const parts = await caption(ctx, { ...row, ...data, text, text_raw: undefined }, signal);
+				if (parts.length) {
+					expanded = parts;
+					break;
+				}
+			}
 		} else if (detail.code !== "not_found") return detail;
 	}
+	const segments = expanded ?? (await caption(ctx, row, signal));
 	const original = record(row.retweeted_status);
 	const author = record(original.user).screen_name;
-	if (typeof author === "string" && caption(original))
-		text = `${text}\n//@${author}：${caption(original)}`.trim();
+	if (typeof author === "string") {
+		const quoted = await caption(ctx, original, signal);
+		if (quoted.length)
+			segments.push(
+				{ kind: "text", text: `${segments.length ? "\n" : ""}//@${author}：` },
+				...quoted,
+			);
+	}
 	const post: ExtensionPostReport["post"] = {
-		text,
+		text: segments.map((segment) => segment.text).join(""),
+		...(segments.some((segment) => segment.kind !== "text") && { richText: segments }),
 		publishedAt: new Date(time).toISOString(),
 		...(typeof user.screen_name === "string" && { creator: { name: user.screen_name } }),
 	};
