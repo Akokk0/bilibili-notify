@@ -32,6 +32,13 @@ function headerCommunity(row: Record<string, unknown>) {
 	};
 }
 
+function communityName(label: string) {
+	const prefix = "【超话】";
+	return (
+		label.startsWith(prefix) ? label.slice(prefix.length) : label.replace(/超话$/u, "")
+	).trim();
+}
+
 export async function postDetails(
 	ctx: ExtensionContext,
 	row: Record<string, unknown>,
@@ -45,23 +52,23 @@ export async function postDetails(
 	if (info) details.publicationInfo = info;
 
 	const primary = headerCommunity(row);
-	if (primary?.name) {
+	if (!primary) return details;
+	if (primary.name) {
 		details.topic = primary.name;
 		details.topicIcon = (await image(ctx, primary.icon, signal)) ?? null;
 	}
 	const cards = Array.isArray(row.common_struct) ? row.common_struct.map(record) : [];
-	const card = cards.find(
-		(item) =>
-			communityId(item.page_id) &&
-			(!primary?.id || item.page_id === primary.id) &&
-			plainText(item.name),
-	);
+	const name = communityName(primary.name);
+	const matching = cards.filter((item) => {
+		const title = plainText(item.name);
+		if (!title || !communityId(item.page_id)) return false;
+		return primary.id
+			? item.page_id === primary.id
+			: Boolean(name) && communityName(title) === name;
+	});
+	const card = primary.id || matching.length === 1 ? matching[0] : undefined;
 	if (!card) return details;
-	const cover = await image(
-		ctx,
-		imageUrl(card.img) ?? (card.page_id === primary?.id ? primary?.cover : undefined),
-		signal,
-	);
+	const cover = await image(ctx, imageUrl(card.img) ?? primary.cover, signal);
 	const description = plainText(card.desc);
 	const action = Array.isArray(card.buttons)
 		? card.buttons.map(record).find((item) => item.type === "follow" && plainText(item.name))

@@ -203,11 +203,30 @@ it("reports the public byline and the primary community's own card from the same
 	});
 });
 
+it.each([
+	{ names: ["另一社区", "【超话】星空"], expected: "【超话】星空" },
+	{ names: ["另一社区"], expected: undefined },
+	{ names: ["【超话】星空", "星空超话"], expected: undefined },
+])(
+	"matches a badge-only community to its own unambiguous card: $names",
+	async ({ names, expected }) => {
+		const got = await receivePost({
+			screen_name_suffix_new: [{ icons: [{ type: "chaohua" }] }, { type: 2, content: "星空超话" }],
+			common_struct: names.map((name, index) => ({
+				page_id: `100808${String(index + 1).repeat(32)}`,
+				name,
+			})),
+		});
+		expect(got.topic).toBe("星空超话");
+		expect(got.attachment?.title).toBe(expected);
+	},
+);
+
 it("keeps a mention in the caption and omits the byline when only a read count is available", async () => {
 	const got = await receivePost({
 		text_raw: "#峡谷[超话]#",
 		reads_count: 0,
-		common_struct: [{ page_id: "unrelated", name: "另一张卡" }],
+		common_struct: [{ page_id: "100808aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", name: "另一张卡" }],
 	});
 	expect(got.richText).toEqual([{ kind: "topic", name: "峡谷", text: "峡谷超话" }]);
 	expect(got.publicationInfo).toBeUndefined();
