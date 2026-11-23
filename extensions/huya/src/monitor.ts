@@ -13,6 +13,7 @@ interface Watch {
 	next: number;
 	failures: number;
 	previous?: Observation;
+	offlineDetectedAt?: string;
 }
 const minute = 60000;
 
@@ -50,8 +51,12 @@ export function monitor(
 		source.resolveProblem({ externalId: watch.uid, code: "huya_room" });
 		const { latest, reports } = transition(watch.previous, result.observation);
 		for (const report of reports) {
-			if (!scoped.aborted) source.reportLive(watch.uid, report);
+			if (scoped.aborted) return;
+			if (report.kind === "end" && latest.kind === "offline" && watch.offlineDetectedAt)
+				report.endedAt = watch.offlineDetectedAt;
+			source.reportLive(watch.uid, report);
 		}
+		watch.offlineDetectedAt = undefined;
 		watch.previous = latest;
 	}
 	function schedule() {
@@ -99,6 +104,13 @@ export function monitor(
 	const subscriptions = source.onSubscriptionsChanged(reconcile);
 	reconcile();
 	return {
+		noteHostStatus(uid: string, observation: Observation) {
+			const watch = watches.get(uid);
+			if (!watch) return;
+			if (watch.previous?.kind === "live" && observation.kind === "offline")
+				watch.offlineDetectedAt ??= new Date().toISOString();
+			else watch.offlineDetectedAt = undefined;
+		},
 		dispose() {
 			subscriptions.dispose();
 			timer?.dispose();

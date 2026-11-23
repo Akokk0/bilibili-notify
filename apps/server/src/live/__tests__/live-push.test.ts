@@ -390,6 +390,34 @@ describe("下播", () => {
 		expect(sent.map((card) => card.type)).toEqual([3, 9]);
 	});
 
+	it.each([false, true])(
+		"复核先收场时，迟到的下播只推一次，独立场次仍推（宽限 %s）",
+		async (grace) => {
+			settings = baseSettings({ liveEndGrace: grace });
+			statusReader = { has: () => true, fetch: async () => ({ ok: true, kind: "offline" }) };
+			start();
+			liveStart();
+			await vi.advanceTimersByTimeAsync(HOUR + 3 * MINUTE);
+			liveEnd(grace ? { startedAt: isoOf(T0) } : { endedAt: isoOf(T0 + HOUR) });
+			await settle();
+			expect(sent.map((card) => card.type)).toEqual([3, 9]);
+
+			liveEnd({ startedAt: isoOf(T0 + HOUR + MINUTE) });
+			await settle();
+			expect(sent.map((card) => card.type)).toEqual([3, 9, 9]);
+		},
+	);
+
+	it("复核收场后，另一场只报了更晚的下播时刻仍有下播卡", async () => {
+		statusReader = { has: () => true, fetch: async () => ({ ok: true, kind: "offline" }) };
+		start();
+		liveStart();
+		await vi.advanceTimersByTimeAsync(2 * HOUR);
+		liveEnd();
+		await settle();
+		expect(sent.map((card) => card.type)).toEqual([3, 9, 9]);
+	});
+
 	it("下播推送关着:下播卡不推", async () => {
 		settings = baseSettings({ liveEnd: false });
 		start();

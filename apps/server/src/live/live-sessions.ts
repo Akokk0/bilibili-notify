@@ -170,6 +170,7 @@ interface SessionState {
 	interactions?: SessionInteractionsState;
 	lastDetails?: LiveDetails;
 	pendingEnd?: {
+		origin: "signal" | "poll";
 		endedAt: number;
 		startedAt?: number;
 		details?: LiveDetails;
@@ -343,6 +344,8 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 	const log = opts.logger;
 	const now = opts.now ?? Date.now;
 	const sessions = new Map<string, SessionState>();
+	// A source may confirm the same end after the host has already closed it by polling.
+	const polledEnds = new Map<string, { sourceKey: string; startedAt?: number; endedAt: number }>();
 	const listeners = new Set<(change: LiveSessionChange) => void>();
 	let disposed = false;
 
@@ -382,6 +385,13 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		session.pollHandle?.dispose();
 		session.pollHandle = undefined;
 		sessions.delete(id);
+		if (reason === "poll" || (reason === "grace-expired" && waiting?.origin === "poll")) {
+			polledEnds.set(id, {
+				sourceKey: session.sourceKey,
+				startedAt: session.sourceStartedAt ?? session.startedAt,
+				endedAt: at,
+			});
+		} else polledEnds.delete(id);
 		opts.table.remove(id);
 		log.debug(logText("log.live.sessionEnded"), {
 			event: "live.session_ended",
@@ -750,14 +760,28 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			});
 			return;
 		}
-		closeSession(
-			id,
-			sub,
-			millisOf(signal.endedAt) ?? now(),
-			millisOf(signal.startedAt),
-			signal.details,
-			"signal",
-		);
+		const startedAt = millisOf(signal.startedAt);
+		const endedAt = millisOf(signal.endedAt) ?? now();
+		const polled = polledEnds.get(id);
+		if (polled) {
+			polledEnds.delete(id);
+			const current = sessions.get(id);
+			if (
+				startedAt !== undefined &&
+				startedAt === polled.startedAt &&
+				startedAt !== current?.sourceStartedAt
+			)
+				return;
+			// 没有可比的开播时刻时，只认在这场结束前就已发生的下播。更晚的孤立下播照常推。
+			if (
+				(startedAt === undefined || polled.startedAt === undefined) &&
+				endedAt <= polled.endedAt &&
+				(polled.startedAt === undefined || endedAt >= polled.startedAt) &&
+				(!current || endedAt < current.detectedAt)
+			)
+				return;
+		}
+		closeSession(id, sub, endedAt, startedAt, signal.details, "signal");
 	}
 
 	/**
@@ -788,6 +812,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		}
 		notePeakTotalViewers(session, details);
 		if (session.pendingEnd) {
+			if (reason === "signal") session.pendingEnd.origin = "signal";
 			log.debug(logText("log.live.endAlreadyPending"), {
 				event: "live.end_already_pending",
 				subscriptionId: id,
@@ -805,6 +830,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		session.pollHandle?.dispose();
 		session.pollHandle = undefined;
 		session.pendingEnd = {
+			origin: reason,
 			endedAt,
 			startedAt: reportedStartedAt,
 			details,
@@ -882,7 +908,6 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 				return;
 			}
 		}
-		session.pendingEnd = undefined;
 		log.info(logText("log.live.graceFinished"), {
 			event: "live.grace_finished",
 			subscriptionId: id,
@@ -898,6 +923,8 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		opts.bus.on("extension-stopped", ({ extensionId }) => {
 			// 先撤销它名下在途的核对(回答回来也不改场次),再收场次。
 			abortSource(extensionId);
+			for (const [id, closed] of polledEnds)
+				if (closed.sourceKey === extensionId) polledEnds.delete(id);
 			for (const id of [...monitored]) {
 				const sub = opts.subscription(id);
 				if (!sub || subscriptionIdentityOf(sub).sourceKey === extensionId) monitored.delete(id);
@@ -914,6 +941,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		}),
 		opts.bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
+				if (op.kind === "remove" || !op.sub.enabled) polledEnds.delete(op.sub.id);
 				if (op.kind === "remove") {
 					log.debug(logText("log.live.sessionStopping"), {
 						event: "live.session_stopping",
@@ -1025,6 +1053,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			// 关停:撤销全部在途的核对(回答回来也不改场次)。
 			for (const sourceKey of [...aborters.keys()]) abortSource(sourceKey);
 			monitored.clear();
+			polledEnds.clear();
 			for (const watch of watches) watch.dispose();
 			for (const id of [...sessions.keys()]) {
 				log.debug(logText("log.live.sessionStopping"), {

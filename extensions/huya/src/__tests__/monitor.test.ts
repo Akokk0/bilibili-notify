@@ -72,6 +72,29 @@ it("首次建基线，间歇失败不中断在播场次，转入轮播只报一�
 	await app.source.stop();
 });
 
+it("平台未给开播时间时，下播带上宿主第一次核实离线的时刻", async () => {
+	let status = "ON";
+	const app = host(() => ({ body: room("71", "42", status) }));
+	await app.source.searchCreators("42", app.signal);
+	const watched = monitor(app.source);
+	await vi.advanceTimersByTimeAsync(9000);
+	status = "OFF";
+	const firstOffline = new Date().toISOString();
+	const identity = { sourceKey: "huya", externalId: "71" };
+	expect(await app.source.fetchLiveStatus?.(identity, app.signal)).toEqual({
+		ok: true,
+		kind: "offline",
+	});
+	await vi.advanceTimersByTimeAsync(3000);
+	await app.source.fetchLiveStatus?.(identity, app.signal);
+	await vi.advanceTimersByTimeAsync(60000);
+	expect(watched.reportLive).toHaveBeenCalledWith(
+		"71",
+		expect.objectContaining({ kind: "end", endedAt: firstOffline }),
+	);
+	await app.source.stop();
+});
+
 it("同一场改标题只更新状态，中途缺场次号后仍能识别两场不同的大整数 ID", async () => {
 	const first = "9223372036854775801",
 		second = "9223372036854775802";
