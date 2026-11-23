@@ -39,6 +39,7 @@ export function DescriptorIcon({
 	fallbackIcon,
 	label,
 	manifestSvg,
+	inheritColor = false,
 }: {
 	descriptor: Pick<PlatformSnapshot, "color" | "shortLabel" | "icon">;
 	size?: number;
@@ -48,15 +49,33 @@ export function DescriptorIcon({
 	label?: string;
 	/** 仅供宿主已用清单白名单核过的内联图形；不从普通描述符猜测 SVG。 */
 	manifestSvg?: string;
+	/** 单色场合用文字色绘制图标，图片按透明轮廓着色。 */
+	inheritColor?: boolean;
 }) {
 	const meta = appearanceOf(descriptor);
 	if (manifestSvg) meta.svg = manifestSvg;
 	if (!meta.image && !meta.icon && !meta.svg && fallbackIcon) meta.icon = fallbackIcon;
-	const icon = (
-		<PlatformMetaProvider value={() => meta}>
-			<PlatformIcon platform={descriptor.shortLabel} size={size} />
-		</PlatformMetaProvider>
-	);
+	const icon =
+		inheritColor && meta.image ? (
+			<span
+				aria-hidden="true"
+				className="inline-block shrink-0"
+				style={{
+					width: size,
+					height: size,
+					backgroundColor: "currentColor",
+					mask: `url("${meta.image}") center / contain no-repeat`,
+				}}
+			/>
+		) : (
+			<PlatformMetaProvider value={() => meta}>
+				<PlatformIcon
+					platform={descriptor.shortLabel}
+					size={size}
+					tone={inheritColor ? "currentColor" : undefined}
+				/>
+			</PlatformMetaProvider>
+		);
 	return label ? (
 		<span role="img" aria-label={label} title={label} className="inline-flex shrink-0 items-center">
 			{icon}
