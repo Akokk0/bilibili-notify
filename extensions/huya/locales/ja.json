@@ -1,0 +1,20 @@
+{
+	"request.unavailable": "虎牙のデータを取得できません。しばらくしてから再試行してください。",
+	"request.cancelled": "虎牙へのリクエストをキャンセルしました。",
+	"profile.input": "虎牙のルーム番号、ルームのリンク、または配信者名を入力してください。",
+	"profile.missing": "虎牙にこのルームが見つかりません。",
+	"live.unknown": "虎牙から配信状況を確認できませんでした。",
+	"live.restricted": "この虎牙ルームはアクセスが制限されています。",
+	"$manifest": {
+		"name": "虎牙",
+		"description": "虎牙の配信開始、配信中、終了を通知します。",
+		"contributes": {
+			"subscription": {
+				"label": "虎牙",
+				"creatorNoun": "配信者",
+				"externalIdNoun": "UID",
+				"displayIdNoun": "ルーム番号"
+			}
+		}
+	}
+}

@@ -1,0 +1,20 @@
+{
+	"request.unavailable": "Huya data is temporarily unavailable. Try again later.",
+	"request.cancelled": "The Huya request was cancelled.",
+	"profile.input": "Enter a Huya room number, room link, or streamer name.",
+	"profile.missing": "Huya could not find this room.",
+	"live.unknown": "Huya did not return a confirmed live status.",
+	"live.restricted": "Access to this Huya room is restricted.",
+	"$manifest": {
+		"name": "Huya",
+		"description": "Subscribe to start, ongoing, and end notifications for Huya streams.",
+		"contributes": {
+			"subscription": {
+				"label": "Huya",
+				"creatorNoun": "streamer",
+				"externalIdNoun": "UID",
+				"displayIdNoun": "Room ID"
+			}
+		}
+	}
+}

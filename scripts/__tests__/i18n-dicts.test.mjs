@@ -101,6 +101,7 @@ export const EXTENSION_LOCALE_DIRS = [
 	"extensions/bridge/locales",
 	"extensions/douyin/locales",
 	"extensions/fake-source/locales",
+	"extensions/huya/locales",
 	"extensions/weibo/locales",
 ];
 

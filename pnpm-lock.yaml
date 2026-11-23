@@ -581,6 +581,15 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
 
+  extensions/huya:
+    dependencies:
+      '@bilibili-notify/extension':
+        specifier: workspace:*
+        version: link:../../packages/extension/lib
+      parse5:
+        specifier: 8.0.1
+        version: 8.0.1
+
   extensions/weibo:
     dependencies:
       '@bilibili-notify/extension':
