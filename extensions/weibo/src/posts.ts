@@ -8,7 +8,7 @@ import {
 import { type DefaultTreeAdapterTypes, parseFragment } from "parse5";
 import type { WeiboAccount } from "./account";
 import { decimalId, HOME, record } from "./client";
-import { image } from "./creators";
+import { image, imageUrl } from "./media";
 
 export function feedPost(value: unknown) {
 	const row = record(value);
@@ -97,13 +97,13 @@ export async function postReport(
 		};
 	const images = [];
 	for (const value of pictures(row)) {
-		const ref = await image(ctx, value, signal);
+		const ref = await image(ctx, imageUrl(value), signal);
 		if (ref) images.push(ref);
 	}
 	if (images.length) post.images = images;
 	const page = record(row.page_info);
 	if (page.object_type === "video" || record(page.media_info).media_type === "video") {
-		const cover = await image(ctx, record(page.page_pic).url ?? page.page_pic, signal);
+		const cover = await image(ctx, imageUrl(record(page.page_pic).url ?? page.page_pic), signal);
 		post.video = {
 			...(cover && { cover }),
 			...(typeof page.page_title === "string" && { title: page.page_title }),

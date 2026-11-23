@@ -8,6 +8,7 @@ import {
 } from "@bilibili-notify/extension";
 import type { WeiboAccount } from "./account";
 import { decimalId, HOME, record, trustedHttps } from "./client";
+import { avatarUrl, image } from "./media";
 
 type CreatorQuery = { uid: string } | { screen_name: string };
 
@@ -34,16 +35,6 @@ function creatorQuery(input: string): CreatorQuery | undefined {
 			return;
 		}
 	}
-}
-
-export async function image(ctx: ExtensionContext, value: unknown, signal: AbortSignal) {
-	if (typeof value !== "string" || !value.trim() || signal.aborted) return;
-	const url = URL.parse(value, HOME);
-	if (!url || !/(?:^|\.)(?:sinaimg\.cn|sinaimg\.com|weibocdn\.com)$/.test(url.hostname)) return;
-	if (url.protocol === "http:") url.protocol = "https:";
-	if (!trustedHttps(url)) return;
-	const result = await ctx.fetchImage(url.href, { headers: { Referer: HOME }, signal });
-	return result.ok ? result.ref : undefined;
 }
 
 export function createCreators(
@@ -78,11 +69,7 @@ export function createCreators(
 			user.screen_name.toLowerCase() !== query.screen_name.toLowerCase()
 		)
 			return fail("not_found", ctx.i18n.t("profile.notFound"));
-		const avatar = await image(
-			ctx,
-			user.avatar_large ?? user.profile_image_url ?? user.avatar_hd,
-			signal,
-		);
+		const avatar = await image(ctx, avatarUrl(user), signal);
 		if (signal.aborted) return fail("indeterminate", ctx.i18n.t("request.cancelled"));
 		const profile: CreatorProfileReport = { name: user.screen_name };
 		if (avatar) profile.avatar = avatar;

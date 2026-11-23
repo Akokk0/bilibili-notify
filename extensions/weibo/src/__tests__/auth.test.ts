@@ -1,3 +1,4 @@
+import { type ExtensionContext, fail, ok } from "@bilibili-notify/extension";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { home, host, loginReply, qrReply, type Reply } from "./host";
 
@@ -6,6 +7,99 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.useRealTimers();
+});
+
+const portrait = "//tvax4.sinaimg.cn/large/portrait.jpg";
+const avatarRef = `${"ab".repeat(32)}.jpg`;
+
+function loginWithAvatar(url: URL): Reply {
+	return url.href === "https://weibo.com/"
+		? { body: home("12345", "阿青", portrait) }
+		: loginReply(url);
+}
+
+it("publishes the verified account immediately and notifies the panel when its gallery avatar is ready", async () => {
+	let finish!: () => void;
+	const fetchImage = vi.fn<ExtensionContext["fetchImage"]>(
+		() =>
+			new Promise((resolve) => {
+				finish = () => resolve(ok({ ref: avatarRef }));
+			}),
+	);
+	const app = host(loginWithAvatar, undefined, fetchImage);
+	const changed = vi.fn();
+	app.auth.onChange(changed);
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	expect(app.auth.account?.()).toEqual({ name: "阿青" });
+	expect(fetchImage).toHaveBeenCalledWith(`https:${portrait}`, {
+		headers: { Referer: "https://weibo.com/" },
+		signal: expect.any(AbortSignal),
+	});
+	changed.mockClear();
+	finish();
+	await vi.advanceTimersByTimeAsync(0);
+	expect(changed).toHaveBeenCalled();
+	expect(app.auth.account?.()).toEqual({ name: "阿青", avatar: avatarRef });
+	app.dispose();
+
+	const restored = host(loginWithAvatar, app.secrets, async () => ok({ ref: avatarRef }));
+	await vi.advanceTimersByTimeAsync(0);
+	expect(restored.auth.account?.()).toEqual({ name: "阿青", avatar: avatarRef });
+	expect(restored.fetch).toHaveBeenCalledTimes(1);
+	restored.dispose();
+});
+
+it("retries a failed avatar download without rechecking or signing out the account", async () => {
+	const fetchImage = vi
+		.fn<ExtensionContext["fetchImage"]>()
+		.mockResolvedValueOnce(fail("unavailable", "offline"))
+		.mockResolvedValue(ok({ ref: avatarRef }));
+	const app = host(loginWithAvatar, undefined, fetchImage);
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	expect(app.auth.account?.()).toEqual({ name: "阿青" });
+	const calls = app.fetch.mock.calls.length;
+	await vi.advanceTimersByTimeAsync(59_999);
+	expect(fetchImage).toHaveBeenCalledTimes(1);
+	await vi.advanceTimersByTimeAsync(1);
+	expect(app.auth.account?.()).toEqual({ name: "阿青", avatar: avatarRef });
+	expect(app.fetch).toHaveBeenCalledTimes(calls);
+	app.dispose();
+});
+
+it("keeps the new account's portrait when an old download finishes after logout", async () => {
+	let finish!: () => void;
+	let switched = false;
+	const nextRef = `${"cd".repeat(32)}.jpg`;
+	const fetchImage = vi
+		.fn<ExtensionContext["fetchImage"]>()
+		.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = () => resolve(ok({ ref: avatarRef }));
+				}),
+		)
+		.mockResolvedValue(ok({ ref: nextRef }));
+	const app = host(
+		(url) =>
+			switched && url.href === "https://weibo.com/"
+				? { body: home("987", "小叶", "//tvax4.sinaimg.cn/large/next.jpg") }
+				: loginWithAvatar(url),
+		undefined,
+		fetchImage,
+	);
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	await app.auth.logout();
+	switched = true;
+	await app.auth.beginLogin();
+	await vi.advanceTimersByTimeAsync(3000);
+	expect(app.auth.account?.()).toEqual({ name: "小叶", avatar: nextRef });
+	finish();
+	await vi.advanceTimersByTimeAsync(0);
+	expect(app.auth.account?.()).toEqual({ name: "小叶", avatar: nextRef });
+	app.dispose();
 });
 
 it("ignores a late account confirmation after logout", async () => {

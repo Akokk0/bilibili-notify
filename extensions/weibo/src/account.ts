@@ -3,11 +3,13 @@ import {
 	type Disposable,
 	type ExtensionContext,
 	fail,
+	type ImageRef,
 	ok,
 	type Result,
 	type SourceAuth,
 } from "@bilibili-notify/extension";
 import { type Cookies, createClient, decimalId, HOME, json, record, urlAt } from "./client";
+import { image } from "./media";
 import { beginQr, checkedAccount, checkQr, loginChain } from "./passport";
 
 const SECRET = "login.session";
@@ -31,6 +33,8 @@ export function createAccount(ctx: ExtensionContext) {
 	let state: AuthState = { status: "logged-out" };
 	let life = new AbortController();
 	let session: Session | undefined;
+	let avatar: ImageRef | undefined;
+	let avatarJob: Disposable | undefined;
 	let timer: Disposable | undefined;
 	let failures = 0;
 	let writes = Promise.resolve();
@@ -60,6 +64,8 @@ export function createAccount(ctx: ExtensionContext) {
 	}
 	function replace() {
 		life.abort();
+		avatarJob?.dispose();
+		avatar = undefined;
 		timer?.dispose();
 		failures = 0;
 		life = new AbortController();
@@ -85,7 +91,32 @@ export function createAccount(ctx: ExtensionContext) {
 		session = next;
 		return ok();
 	}
-	async function confirm(next: Session, signal: AbortSignal) {
+	function refreshAvatar(url: URL | undefined, sessionSignal: AbortSignal) {
+		avatarJob?.dispose();
+		if (!url) return;
+		const controller = new AbortController();
+		const signal = AbortSignal.any([sessionSignal, controller.signal]);
+		let retry: Disposable | undefined;
+		avatarJob = {
+			dispose() {
+				controller.abort();
+				retry?.dispose();
+			},
+		};
+		async function load(delay: number) {
+			if (signal.aborted || state.status !== "logged-in") return;
+			const ref = await image(ctx, url, signal);
+			if (signal.aborted || state.status !== "logged-in") return;
+			if (!ref) {
+				retry = ctx.setTimeout(() => load(Math.min(delay * 2, 15 * 60_000)), delay);
+			} else if (ref !== avatar) {
+				avatar = ref;
+				publish(state);
+			}
+		}
+		void load(60_000);
+	}
+	async function confirm(next: Session, signal: AbortSignal, url: URL | undefined) {
 		const stored = await save(next, signal);
 		if (signal.aborted) return cancelled();
 		if (!stored.ok) {
@@ -100,6 +131,7 @@ export function createAccount(ctx: ExtensionContext) {
 			ctx.reportProblem({ code: "weibo_renewal", message: ctx.i18n.t("auth.renewal") });
 		else ctx.resolveProblem({ code: "weibo_renewal" });
 		scheduleCheck(6 * HOUR, signal);
+		refreshAvatar(url, signal);
 		return ok();
 	}
 	function scheduleCheck(delay: number, signal: AbortSignal) {
@@ -162,6 +194,7 @@ export function createAccount(ctx: ExtensionContext) {
 			await confirm(
 				{ uid: verified.uid, name: verified.name, cookies, renewedAt: Date.now() },
 				signal,
+				verified.avatarUrl,
 			);
 		}, 3000);
 	}
@@ -200,15 +233,19 @@ export function createAccount(ctx: ExtensionContext) {
 				const kept = await confirm(
 					{ ...current, cookies, name: checked.name, renewalBlocked: blocked },
 					signal,
+					checked.avatarUrl,
 				);
 				return !kept.ok || blocked ? kept : renewed;
 			}
 			return confirm(
 				{ uid: current.uid, name: renewed.name, cookies: candidate, renewedAt: Date.now() },
 				signal,
+				renewed.avatarUrl,
 			);
 		}
-		return checked.ok ? confirm({ ...current, name: checked.name, cookies }, signal) : checked;
+		return checked.ok
+			? confirm({ ...current, name: checked.name, cookies }, signal, checked.avatarUrl)
+			: checked;
 	}
 	async function restore(saved: string, signal: AbortSignal) {
 		if (signal.aborted) return;
@@ -237,6 +274,8 @@ export function createAccount(ctx: ExtensionContext) {
 	}
 	function stop() {
 		life.abort();
+		avatarJob?.dispose();
+		avatar = undefined;
 		timer?.dispose();
 		session = undefined;
 		state = { status: "logged-out" };
@@ -256,7 +295,10 @@ export function createAccount(ctx: ExtensionContext) {
 	load();
 	const auth: SourceAuth = {
 		state: () => state,
-		account: () => (state.status === "logged-in" && session ? { name: session.name } : null),
+		account: () =>
+			state.status === "logged-in" && session
+				? { name: session.name, ...(avatar && { avatar }) }
+				: null,
 		onChange(fn) {
 			listeners.add(fn);
 			return {

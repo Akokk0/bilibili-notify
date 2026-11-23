@@ -12,6 +12,7 @@ import {
 	urlAt,
 	type WeiboClient,
 } from "./client";
+import { avatarUrl } from "./media";
 
 const PASSPORT = "https://passport.weibo.com";
 const QR_IMAGE = "https://v2.qr.weibo.cn/";
@@ -53,6 +54,7 @@ export function checkedAccount(ctx: ExtensionContext, response: HttpResponse, ex
 			});
 		return ok({
 			uid,
+			avatarUrl: avatarUrl(user),
 			name:
 				typeof user.screen_name === "string" && user.screen_name.trim() ? user.screen_name : uid,
 		});

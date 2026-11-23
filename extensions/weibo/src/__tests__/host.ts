@@ -14,8 +14,8 @@ export const png = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
 export type Reply = { body?: unknown; status?: number; headers?: HeadersInit };
 export type Handler = (url: URL, options: FetchOptions) => Reply | Promise<Reply>;
 
-export function home(uid = "12345", name = "阿青") {
-	return `<script>window.$CONFIG=${JSON.stringify({ user: { idstr: uid, screen_name: name } })};</script>`;
+export function home(uid = "12345", name = "阿青", avatar?: string) {
+	return `<script>window.$CONFIG=${JSON.stringify({ user: { idstr: uid, screen_name: name, avatar_large: avatar } })};</script>`;
 }
 
 export function qrReply(url: URL): Reply {
