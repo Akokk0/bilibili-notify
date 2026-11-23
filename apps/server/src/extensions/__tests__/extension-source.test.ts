@@ -992,6 +992,15 @@ describe("createExtensionSource:作品图的宽高与动图标记", () => {
 });
 
 describe("createExtensionSource:直播上报", () => {
+	it("把直播热度和零位贵宾分别交给宿主", async () => {
+		const made = await make({}, { apiRevision: 5 });
+		const details = { heatScore: 318_888, vipViewers: 0 };
+		made.ext().reportLive("u1", { kind: "start", details });
+		await made.idle();
+		expect(made.core.lives).toEqual([["u1", { kind: "start", details }]]);
+		expect(made.discrepancies).toEqual([]);
+	});
+
 	it("开播:ISO 统一成 UTC Z,封面与作者头像换成引用,现在在线 / 累计观看照搬", async () => {
 		const made = await make();
 		made.ext().reportLive("u1", {

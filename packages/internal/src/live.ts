@@ -25,6 +25,10 @@ export interface LiveDetails {
 	currentViewers?: number;
 	/** 本场累计观看。 */
 	totalViewers?: number;
+	/** 平台公布的直播热度分值。 */
+	heatScore?: number;
+	/** 直播间贵宾席的人数。 */
+	vipViewers?: number;
 	likes?: number;
 	description?: string;
 	creator?: Creator;

@@ -174,6 +174,8 @@ const LiveDetailsSchema = z.strictObject({
 	url: UrlSchema.optional(),
 	currentViewers: CountSchema.optional(),
 	totalViewers: CountSchema.optional(),
+	heatScore: CountSchema.optional(),
+	vipViewers: CountSchema.optional(),
 	likes: CountSchema.optional(),
 	description: LongTextSchema.optional(),
 });

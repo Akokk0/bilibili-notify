@@ -55,7 +55,7 @@ const CONTRACT: readonly ContractRow[] = [
 	{
 		name: "上报:直播信号",
 		schema: ExtensionLiveSignalReportSchema,
-		digest: "37c9d966e31bf4fd",
+		digest: "ea415aee1b225eb5",
 	},
 	{
 		name: "上报:资料",
@@ -70,7 +70,7 @@ const CONTRACT: readonly ContractRow[] = [
 	{
 		name: "直播拉取结果",
 		schema: ExtensionLiveStatusResultSchema,
-		digest: "dfd0b3120f0f9f13",
+		digest: "96baa3ae95e84eaa",
 	},
 	{
 		name: "来源健康",
