@@ -24,14 +24,18 @@ export function host(
 	const life = new AbortController();
 	const fetch = vi.fn(async (input: URL | string, options: FetchOptions = {}) => {
 		const { body, status = 200, headers } = await handle(new URL(input), options);
-		const raw = typeof body === "string" ? body : JSON.stringify(body ?? "");
+		const bytes =
+			body instanceof Uint8Array
+				? body
+				: new TextEncoder().encode(typeof body === "string" ? body : JSON.stringify(body ?? ""));
+		const raw = new TextDecoder().decode(bytes);
 		return ok({
 			url: String(input),
 			status,
 			isSuccess: status >= 200 && status < 300,
 			headers: new Headers(headers),
 			text: () => raw,
-			body: new TextEncoder().encode(raw),
+			body: bytes,
 			json() {
 				try {
 					return ok({ value: JSON.parse(raw) });

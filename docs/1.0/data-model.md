@@ -339,6 +339,7 @@ interface LiveCardInput {
   title?: string; category?: string; description?: string; cover?: PostImage;
   startedAt?: string;
   currentViewers?: number; totalViewers?: number; likes?: number;   // 只收精确数，缺了就缺键
+  heatScore?: number; vipViewers?: number;                          // 开播与直播中卡片
   followers?: number; followersDelta?: number;
 }
 ```

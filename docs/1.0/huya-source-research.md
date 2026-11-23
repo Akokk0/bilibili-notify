@@ -26,7 +26,7 @@
 
 ## BN 怎样订阅和判播
 
-**身份与资料。** 建议在 `extensions/huya/` 通过公开 SDK 的 `ctx.registerSource` 登记 `SourceDef`。身份用 `{ sourceKey: "huya", externalId: "<profileInfo.uid>" }`，可见房间号用 `displayId = String(profileInfo.profileRoom)`，最低宿主契约为 API 1 修订 2。虎牙允许房间号与自定义地址并存，也曾通过活动更换房间号。以 UID 认人，同一主播从昵称、房间号或别名链接添加都会落到同一身份。[虎牙房间号说明](https://blog.huya.com/product/187) · [SDK 展示账号契约](../../packages/extension/DEVELOPMENT.md#展示账号api-1-修订-2)
+**身份与资料。** 在 `extensions/huya/` 通过公开 SDK 的 `ctx.registerSource` 登记 `SourceDef`。身份用 `{ sourceKey: "huya", externalId: "<profileInfo.uid>" }`，可见房间号用 `displayId = String(profileInfo.profileRoom)`。展示房间号使用 API 1 修订 2 引入的字段，直播热度和贵宾人数使本拓展的最低宿主修订升至 5。虎牙允许房间号与自定义地址并存，也曾通过活动更换房间号。以 UID 认人，同一主播从昵称、房间号或别名链接添加都会落到同一身份。[虎牙房间号说明](https://blog.huya.com/product/187) · [SDK 作者指南](../../packages/extension/DEVELOPMENT.md#先做一个订阅来源)
 
 `searchCreators` 声明接受 `id`、`link`、`name`，数字输入按房间号解读，昵称返回至多十个去重候选。别名只解析已知虎牙房间页的 canonical，跟随跳转时逐跳核对 HTTPS 和主机。日常按 UID 查近期房间号，`fetchProfile` 与状态请求复用同一份房间资料。缓存缺失、旧房间消失或 UID 不符时，从该 UID 主页的直播间链接重新定位一次。仅在新响应的 `profileInfo.uid` 与订阅相符时接受资料和状态。仍找不到本人时保留原订阅并报告定位问题。[SDK 订阅源入口](../../packages/extension/AGENT_GUIDE.md) · [BN 订阅身份](../agents/subscriptions.md)
 
@@ -38,7 +38,9 @@
 | 两者均为 `OFF`，或两者均为 `REPLAY` | 确认为未开播。刚从在播变为轮播时结束上一场。轮播与离线互换时没有新的场次事件。 |
 | 字段缺失、未知、互相冲突，或房间受限而无法确认状态 | 轮询保留最后一次确认的观测。拉取返回 SDK 失败结果，交由宿主跳过该轮。恢复后的第一份有效观测再与上次确认值比较。 |
 
-首次有效观测只用 `reportLive` 报 `status` 建立基线。随后确认开播报 `start`、确认下播报 `end`，同一场重复观测只更新资料。跨过两轮之间的短暂下播时，只有前后均有可信且不同的场次标识才结束旧场、开启新场。缺少可靠的下播时间可省略 `endedAt`，由宿主取发现时刻。断流宽限、启动补报、周期卡、路由和历史由宿主处理。头像、封面经 `ctx.fetchImage` 换成图库引用，图片失败仍交付有效状态。现有样本不足以确定人气字段的计数口径，观看人数留空。[BN 直播契约](./subscription-sources.md#直播) · [SDK 副作用约定](../agents/conventions/integration-side-effects.md)
+首次有效观测只用 `reportLive` 报 `status` 建立基线。随后确认开播报 `start`、确认下播报 `end`，同一场重复观测只更新资料。跨过两轮之间的短暂下播时，只有前后均有可信且不同的场次标识才结束旧场、开启新场。缺少可靠的下播时间可省略 `endedAt`，由宿主取发现时刻。断流宽限、启动补报、周期卡、路由和历史由宿主处理。头像、封面经 `ctx.fetchImage` 换成图库引用，图片失败仍交付有效状态。[BN 直播契约](./subscription-sources.md#直播) · [SDK 副作用约定](../agents/conventions/integration-side-effects.md)
+
+直播间展示的「直播热度」来自房间资料的 `liveData.totalCount`。贵宾标签取自网页的匿名汇总接口 `liveui.getVipBarListStat`，按主播 UID 读取响应的 `iTotal`。在播基线、新场次和宿主取直播卡时查询贵宾人数，同一场的常规轮询直接复用房间请求。汇总失败时卡片仍展示其他已获取的资料，平台明确返回的零照常展示。[飞机文直播间](https://www.huya.com/155525) · [虎牙贵宾榜组件](https://a.msstatic.com/huya/main3/components_RoomRank_index_tsx_5ca0c9c1.js)
 
 ## 请求节奏与风控
 

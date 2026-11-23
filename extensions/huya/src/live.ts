@@ -7,20 +7,28 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/extension";
-import { decimal, record } from "./client";
+import { count, decimal, type HuyaClient, record } from "./client";
 import type { HuyaRoom } from "./creators";
-import type { createImageReader } from "./images";
+import { type createImageReader, imageDeadline } from "./images";
 import { web } from "./pages";
 
 export type Observation =
 	| { kind: "offline" }
 	| { kind: "live"; sessionId?: string; startedAt?: string; details: ExtensionLiveDetails };
+
+type LiveObservation = Extract<Observation, { kind: "live" }>;
+function sameSession(previous: LiveObservation, current: LiveObservation): boolean {
+	if (previous.sessionId && current.sessionId) return previous.sessionId === current.sessionId;
+	return !previous.startedAt || !current.startedAt || previous.startedAt === current.startedAt;
+}
 export async function observe(
 	ctx: ExtensionContext,
 	room: HuyaRoom,
 	signal: AbortSignal,
 	readImage: ReturnType<typeof createImageReader>,
-	deadline: number,
+	client: HuyaClient,
+	started: number,
+	previous?: Observation,
 ): Promise<Result<{ observation: Observation }>> {
 	const { data } = room,
 		live = record(data.liveData);
@@ -38,17 +46,28 @@ export async function observe(
 			const seconds = Number(decimal(live.startTime));
 			const startedAt =
 				seconds <= 253402300799 ? new Date(seconds * 1000).toISOString() : undefined;
-			const cover = await readImage(live.screenshot, signal, deadline);
-			if (signal.aborted) return fail("indeterminate", ctx.i18n.t("request.cancelled"));
 			const details: ExtensionLiveDetails = { url: `${web}/${room.number}` };
+			const observation: LiveObservation = {
+				kind: "live",
+				sessionId: decimal(live.liveId),
+				startedAt,
+				details,
+			};
+			const needsStats = previous?.kind !== "live" || !sameSession(previous, observation);
+			const [cover, vipViewers] = await Promise.all([
+				readImage(live.screenshot, signal, imageDeadline(started)),
+				needsStats ? client.vipViewers(room.uid, signal, started + 12000) : undefined,
+			]);
+			if (signal.aborted) return fail("indeterminate", ctx.i18n.t("request.cancelled"));
+			const heatScore = count(live.totalCount);
+			if (heatScore !== undefined) details.heatScore = heatScore;
+			if (vipViewers !== undefined) details.vipViewers = vipViewers;
 			if (typeof live.introduction === "string" && live.introduction.trim())
 				details.title = live.introduction;
 			if (typeof live.gameFullName === "string" && live.gameFullName.trim())
 				details.category = live.gameFullName;
 			if (cover) details.cover = cover;
-			return ok({
-				observation: { kind: "live" as const, sessionId: decimal(live.liveId), startedAt, details },
-			});
+			return ok({ observation });
 		}
 	}
 	return fail("unavailable", ctx.i18n.t("live.unknown"));
@@ -74,25 +93,20 @@ export function transition(
 	current: Observation,
 ): { latest: Observation; reports: ExtensionLiveSignalReport[] } {
 	if (!previous) return { latest: current, reports: [status(current)] };
-	if (current.kind === "live" && previous.kind === "live") {
-		const different =
-			previous.sessionId && current.sessionId
-				? previous.sessionId !== current.sessionId
-				: previous.startedAt && current.startedAt && previous.startedAt !== current.startedAt;
-		if (!different) {
-			const latest: Observation = {
-				kind: "live",
-				sessionId: current.sessionId ?? previous.sessionId,
-				startedAt: current.startedAt ?? previous.startedAt,
-				details: { ...previous.details, ...current.details },
-			};
-			const changed =
-				latest.startedAt !== previous.startedAt ||
-				(["title", "category", "url", "cover"] as const).some(
-					(key) => latest.details[key] !== previous.details[key],
-				);
-			return { latest, reports: changed ? [status(latest)] : [] };
-		}
+	if (current.kind === "live" && previous.kind === "live" && sameSession(previous, current)) {
+		const { heatScore: _heat, vipViewers: _vips, ...prior } = previous.details;
+		const latest: Observation = {
+			kind: "live",
+			sessionId: current.sessionId ?? previous.sessionId,
+			startedAt: current.startedAt ?? previous.startedAt,
+			details: { ...prior, ...current.details },
+		};
+		const changed =
+			latest.startedAt !== previous.startedAt ||
+			(["title", "category", "url", "cover"] as const).some(
+				(key) => latest.details[key] !== previous.details[key],
+			);
+		return { latest, reports: changed ? [status(latest)] : [] };
 	}
 	const reports: ExtensionLiveSignalReport[] = [];
 	if (previous.kind === "live")

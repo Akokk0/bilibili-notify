@@ -586,6 +586,9 @@ importers:
       '@bilibili-notify/extension':
         specifier: workspace:*
         version: link:../../packages/extension/lib
+      '@tars/stream':
+        specifier: 2.0.3
+        version: 2.0.3
       parse5:
         specifier: 8.0.1
         version: 8.0.1
@@ -1908,6 +1911,9 @@ packages:
     peerDependencies:
       react: ^18 || ^19
 
+  '@tars/stream@2.0.3':
+    resolution: {integrity: sha512-LNqVksDjTK2tYa0o7DpXMI8/NLpAsMwDIiME+WBDouEUdKq7k3DxKb0dYCRxyLWQaoJsdmuq9NbOxTvsbAIFGg==}
+
   '@tauri-apps/cli-darwin-arm64@2.11.4':
     resolution: {integrity: sha512-1ryOF3ZhpZ/nemHV5zVwBQBz9jDGKmKPvWPADOhc83ig0P4bMc2iER4NbC6r9sjeIZ6RVQ4g3RZIYvezhcl4TQ==}
     engines: {node: '>= 10'}
@@ -2471,6 +2477,9 @@ packages:
 
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
+
+  big.js@3.2.0:
+    resolution: {integrity: sha512-+hN/Zh2D08Mx65pZ/4g5bsmNiZUuChDiQfTUQ7qJr4/kuopCr88xZsAXv6mBoZEsUI4OuGHlX59qE94K2mMW8Q==}
 
   buffer-crc32@0.2.13:
     resolution: {integrity: sha512-VO9Ht/+p3SN7SKWqcrgEzjGbRSJYTx+Q1pTQC0wrWqHx0vpJraQ6GtHx8tvcg1rlK1byhU5gccxgOgj7B0TDkQ==}
@@ -4846,6 +4855,10 @@ snapshots:
       '@tanstack/query-core': 5.102.7
       react: 19.2.8
 
+  '@tars/stream@2.0.3':
+    dependencies:
+      big.js: 3.2.0
+
   '@tauri-apps/cli-darwin-arm64@2.11.4':
     optional: true
 
@@ -5290,6 +5303,8 @@ snapshots:
   bidi-js@1.0.3:
     dependencies:
       require-from-string: 2.0.2
+
+  big.js@3.2.0: {}
 
   buffer-crc32@0.2.13:
     optional: true

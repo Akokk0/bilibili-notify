@@ -186,6 +186,95 @@ it("昵称候选保留精确粉丝数和零粉丝，缺失或无效的计数留�
 	]);
 });
 
+// 虎牙对房间 155525 的匿名贵宾统计回包，只含主播 UID 和汇总数字。
+const vipStat = Buffer.from(
+	"0000004f10032c3c400156066c697665756966116765745669704261724c697374537461747d00002108000206001d0000010c0604745273701d00000d0a0206281ad31100a72100a70b8c980ca80c",
+	"hex",
+);
+
+it.each([
+	{ viewers: 167, response: vipStat },
+	// iTotal 为 0，iTotalNum 仍为 167，卡片跟随网页贵宾标签使用 iTotal。
+	{
+		viewers: 0,
+		response: Buffer.from(vipStat.toString("hex").replace("1100a721", "11000021"), "hex"),
+	},
+])("直播卡读取房间热度和同一主播的 $viewers 位贵宾", async ({ viewers, response }) => {
+	const uid = "103291603";
+	const app = host((url) => ({
+		body:
+			url.hostname === "cdn.wup.huya.com"
+				? response
+				: room(uid, "155525", "ON", { totalCount: "318888" }),
+	}));
+	await app.source.searchCreators("155525", app.signal);
+	const read = app.source.fetchLiveStatus?.({ sourceKey: "huya", externalId: uid }, app.signal);
+	await vi.advanceTimersByTimeAsync(9000);
+	expect(await read).toEqual({
+		ok: true,
+		kind: "live",
+		details: { url: "https://www.huya.com/155525", heatScore: 318888, vipViewers: viewers },
+	});
+});
+
+it.each(["超时", "异常"])("贵宾查询%s时仍按时交付已核实的直播卡资料", async (failure) => {
+	const app = host((url, options) => {
+		if (url.hostname !== "cdn.wup.huya.com")
+			return { body: room("71", "42", "ON", { totalCount: 515 }) };
+		if (failure === "异常") throw new Error("connection lost");
+		return new Promise((resolve) => {
+			options.signal?.addEventListener("abort", () => resolve({ status: 503 }), { once: true });
+		});
+	});
+	await app.source.searchCreators("42", app.signal);
+	const result = expect(
+		app.source.fetchLiveStatus?.({ sourceKey: "huya", externalId: "71" }, app.signal),
+	).resolves.toEqual({
+		ok: true,
+		kind: "live",
+		details: { url: "https://www.huya.com/42", heatScore: 515 },
+	});
+	await vi.advanceTimersByTimeAsync(12000);
+	await result;
+});
+
+it("贵宾查询限流时仍返回零热度，其他房间遵守同一冷却", async () => {
+	const app = host((url) =>
+		url.hostname === "cdn.wup.huya.com"
+			? { status: 429, headers: { "Retry-After": "60" } }
+			: { body: room("71", "42", "ON", { totalCount: 0 }) },
+	);
+	await app.source.searchCreators("42", app.signal);
+	const read = app.source.fetchLiveStatus?.({ sourceKey: "huya", externalId: "71" }, app.signal);
+	await vi.advanceTimersByTimeAsync(6000);
+	expect(await read).toEqual({
+		ok: true,
+		kind: "live",
+		details: { url: "https://www.huya.com/42", heatScore: 0 },
+	});
+	expect(await app.source.searchCreators("43", app.signal)).toMatchObject({ code: "rate_limited" });
+});
+
+it.each([
+	["其他主播的汇总", vipStat],
+	["截断的回包", vipStat.subarray(0, 76)],
+])("贵宾接口交来%s时省略该数字，房间在线状态照常", async (_label, body) => {
+	const app = host((url) => ({
+		body:
+			url.hostname === "cdn.wup.huya.com"
+				? body
+				: room("71", "42", "ON", { totalCount: -1, userCount: 40000 }),
+	}));
+	await app.source.searchCreators("42", app.signal);
+	const read = app.source.fetchLiveStatus?.({ sourceKey: "huya", externalId: "71" }, app.signal);
+	await vi.advanceTimersByTimeAsync(6000);
+	expect(await read).toEqual({
+		ok: true,
+		kind: "live",
+		details: { url: "https://www.huya.com/42" },
+	});
+});
+
 it.each([
 	{ profile: 0, live: 900, owner: "71", expected: 0 },
 	{ profile: "9884306", live: 500, owner: "71", expected: 9884306 },
@@ -272,16 +361,16 @@ it("搜索、资料和直播复核复用近期的图库引用，地址变化或�
 	await app.source.searchCreators("42", app.signal);
 	const profile = app.source.fetchProfile?.(identity, app.signal);
 	const live = app.source.fetchLiveStatus?.(identity, app.signal);
-	await vi.advanceTimersByTimeAsync(3000);
+	await vi.advanceTimersByTimeAsync(6000);
 	expect(await profile).toMatchObject({ ok: true, avatar: expect.any(String) });
 	expect(await live).toMatchObject({ ok: true, details: { cover: expect.any(String) } });
 	const repeated = app.source.fetchLiveStatus?.(identity, app.signal);
-	await vi.advanceTimersByTimeAsync(3000);
+	await vi.advanceTimersByTimeAsync(6000);
 	await repeated;
 	expect(app.ctx.fetchImage.mock.calls.map(([url]) => url)).toEqual([avatar, cover]);
 	cover = "https://anchorpost.msstatic.com/b.jpg";
 	const changed = app.source.fetchLiveStatus?.(identity, app.signal);
-	await vi.advanceTimersByTimeAsync(3000);
+	await vi.advanceTimersByTimeAsync(6000);
 	await changed;
 	await vi.advanceTimersByTimeAsync(300000);
 	await app.source.fetchProfile?.(identity, app.signal);
@@ -344,7 +433,7 @@ it.each([
 		{ sourceKey: "huya", externalId: "71" },
 		app.signal,
 	);
-	await vi.advanceTimersByTimeAsync(3000);
+	await vi.advanceTimersByTimeAsync(6000);
 	const actual = await statusRead;
 	if (expected === "live")
 		expect(actual).toEqual({
@@ -354,6 +443,7 @@ it.each([
 			details: {
 				title: "比赛",
 				category: "棋类",
+				heatScore: 5000,
 				cover: `${"a".repeat(64)}.jpg`,
 				url: "https://www.huya.com/42",
 			},
