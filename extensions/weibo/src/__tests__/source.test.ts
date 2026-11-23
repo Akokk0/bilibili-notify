@@ -83,6 +83,44 @@ it("resolves a profile link through the authenticated PC API and preserves the U
 	app.dispose();
 });
 
+it.each([0, 13000])(
+	"delivers the verified creator before a slow avatar when profile lookup took %i ms",
+	async (delay) => {
+		const app = host(
+			async (url) => {
+				if (url.pathname !== "/ajax/profile/info") return loginReply(url);
+				if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+				return {
+					body: {
+						ok: 1,
+						data: {
+							user: {
+								idstr: "42",
+								screen_name: "小雨",
+								following: true,
+								followers_count: 0,
+								avatar_large: "https://tvax4.sinaimg.cn/large/slow.jpg",
+							},
+						},
+					},
+				};
+			},
+			undefined,
+			() => new Promise(() => {}),
+		);
+		await app.auth.beginLogin();
+		await vi.advanceTimersByTimeAsync(3000);
+		const received = vi.fn();
+		void app.source.searchCreators("@小雨", new AbortController().signal).then(received);
+		await vi.advanceTimersByTimeAsync(delay || 3000);
+		expect(received).toHaveBeenCalledWith({
+			ok: true,
+			candidates: [{ externalId: "42", name: "小雨", followers: 0 }],
+		});
+		app.dispose();
+	},
+);
+
 it.each(["虎牙楚河", "@虎牙楚河", "https://weibo.com/n/%E8%99%8E%E7%89%99%E6%A5%9A%E6%B2%B3"])(
 	"resolves a nickname to the creator's stable UID: %s",
 	async (input) => {

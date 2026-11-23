@@ -12,6 +12,31 @@ import { avatarUrl, image } from "./media";
 
 type CreatorQuery = { uid: string } | { screen_name: string };
 
+async function profileAvatar(
+	ctx: ExtensionContext,
+	user: Record<string, unknown>,
+	signal: AbortSignal,
+	started: number,
+) {
+	const url = avatarUrl(user);
+	const budget = Math.min(2500, started + 12000 - Date.now());
+	if (!url || signal.aborted || budget <= 0) return;
+	const limit = new AbortController();
+	const photoSignal = AbortSignal.any([signal, limit.signal]);
+	let onAbort!: () => void;
+	const stopped = new Promise<undefined>((resolve) => {
+		onAbort = () => resolve(undefined);
+		photoSignal.addEventListener("abort", onAbort, { once: true });
+	});
+	const timer = ctx.setTimeout(() => limit.abort(), budget);
+	try {
+		return await Promise.race([image(ctx, url, photoSignal), stopped]);
+	} finally {
+		timer.dispose();
+		photoSignal.removeEventListener("abort", onAbort);
+	}
+}
+
 function nickname(value: string): CreatorQuery | undefined {
 	const name = value.replace(/^@/, "");
 	if (name && !/[\s/:?#@\\]/u.test(name)) return { screen_name: name };
@@ -45,6 +70,7 @@ export function createCreators(
 		query: CreatorQuery,
 		caller: AbortSignal,
 	): Promise<Result<{ uid: string; profile: CreatorProfileReport; following: unknown }>> {
+		const started = Date.now();
 		const signal = AbortSignal.any([caller, account.sessionSignal()]);
 		const result = await account.get(
 			"/ajax/profile/info",
@@ -69,7 +95,7 @@ export function createCreators(
 			user.screen_name.toLowerCase() !== query.screen_name.toLowerCase()
 		)
 			return fail("not_found", ctx.i18n.t("profile.notFound"));
-		const avatar = await image(ctx, avatarUrl(user), signal);
+		const avatar = await profileAvatar(ctx, user, signal, started);
 		if (signal.aborted) return fail("indeterminate", ctx.i18n.t("request.cancelled"));
 		const profile: CreatorProfileReport = { name: user.screen_name };
 		if (avatar) profile.avatar = avatar;
