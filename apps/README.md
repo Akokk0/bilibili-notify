@@ -1,12 +1,12 @@
-# Bilibili-Notify Dashboard
+# BN 部署与配置
 
-独立端形态:Hono HTTP / WS 服务端 + React 控制台，自带来源账号、订阅、推送目标、历史、统计、资源库与日志面板。可用 **Docker** 或 **macOS / Windows 桌面应用**部署；npm 成品渠道处于发行准备阶段。
+BN 自带 Web 控制台，可通过 Docker、macOS / Windows 桌面应用或 npm 运行。
 
-本文对应 `dev` 分支的 1.0 开发版。已发行版本请查看对应 tag 的文档；拓展需要与宿主契约兼容，具体安装包以市场或发行页提供的版本为准。
+Docker 和桌面应用默认使用最新正式版。各版本的功能与配置请查阅对应发行标签下的文档。
 
-## 部署(Docker)
+## Docker
 
-推荐用 compose,模板见 [`docker-compose.example.yaml`](./docker-compose.example.yaml)。复制后一条命令启动,不要手动创建 `config/bn.config.yaml`。镜像默认走 Docker Hub,也可改用 GHCR:`ghcr.io/akokk0/bilibili-notify:latest`。
+将 Compose 示例复制到部署目录，按需调整端口和挂载路径。示例使用 Docker Hub 的 `latest` 正式版镜像，也可换成 `ghcr.io/akokk0/bilibili-notify:latest`。容器首次启动会自动生成 `config/bn.config.yaml`。[`docker-compose.example.yaml`](./docker-compose.example.yaml)
 
 ```bash
 cp docker-compose.example.yaml docker-compose.yaml
@@ -23,9 +23,9 @@ docker compose up -d
 └── docker-compose.yaml
 ```
 
-打开 `http://<host>:8787` 登录面板，在「系统 → 账号」管理各来源的登录；B 站内置，拓展来源需先安装并启用。
+首次启动后，用 `docker compose logs bilibili-notify` 查看账号 `admin` 和随机密码。打开 `http://<host>:8787` 登录面板，再到「系统 → 账号」管理各来源的登录。
 
-最小 `docker run`:
+也可以直接运行容器。
 
 ```bash
 docker run -d --name bilibili-notify \
@@ -34,25 +34,22 @@ docker run -d --name bilibili-notify \
   akokk0/bilibili-notify:latest
 ```
 
-GHCR 镜像同 tag 发布:
+GHCR 使用相同的镜像标签。
 
 ```bash
 docker pull ghcr.io/akokk0/bilibili-notify:latest
 ```
 
-### 镜像变体:full 与 -slim
+### 镜像变体与更新
 
-| 变体 | tag | 内容 |
+| 变体 | 正式版标签 | 内容 |
 |---|---|---|
-| full(默认) | `:latest` / `:vX.Y.Z` / `:<short-sha>` | 内置 chromium + CJK 字体,开箱即用 |
-| slim | `:slim` / `:vX.Y.Z-slim` / `:<short-sha>-slim` | 无 chromium,体积与内存占用小得多 |
+| full | `latest` | 内置 Chromium 与 CJK 字体 |
+| slim | `slim` | 体积较小，可外接 Chromium |
 
-预览渠道另有 `:alpha` / `:alpha-slim`,**只在发布预览版(`vX.Y.Z-alpha.N`)时更新** —— 长期没有预览版时它们会停在上一个预览版、落后于正式渠道,别拿来当「最新」。
+更新到新正式版时，执行 `docker compose pull && docker compose up -d`。
 
-slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏览器**承担
-(`ws://…` 直连 browserless 等 DevTools WS;`http://…` 为 chromium
-`--remote-debugging-port` 端点)。不配远程浏览器 slim 也能正常运行,只是卡片渲染
-退化为文字推送。browserless 伴随容器写法见 `docker-compose.example.yaml` 注释段。
+使用 slim 出图时，在系统页配置远程浏览器，新部署也可在首次启动前设置 `BN_CHROME_ENDPOINT`。`ws://…` 可连接 browserless 等 DevTools WebSocket，`http://…` 可连接 Chromium 调试端口。缺少可用浏览器时发送文本。Compose 示例提供了 browserless 伴随容器的配置。
 
 另有两个省内存开关(两种变体都适用):
 
@@ -62,9 +59,9 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 浏览器来源(本地路径 / 远程端点)也可在 **dashboard 系统页**查看与热切换:先探测新浏览器
 连通,通了才替换并写回配置,无需重启;坏候选不会顶掉在用的配置。
 
-## 部署(桌面应用)
+## 桌面应用
 
-不想碰 Docker 的话,[Releases](https://github.com/Akokk0/bilibili-notify/releases) 里有打包好的桌面应用,与 Docker 镜像同一个 `v<VERSION>` tag 一起发:
+桌面应用与 Docker 同版本发布，可在最新正式版的发行页下载。[下载正式版桌面应用](https://github.com/Akokk0/bilibili-notify/releases/latest)
 
 | 平台 | 产物 |
 |---|---|
@@ -76,18 +73,25 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 - **卡片渲染用你本机的浏览器**,按平台自动探测 Chrome / Edge / Chromium 的默认安装位置;都没有则降级为纯文字推送,也可在系统页手填路径或指向远程浏览器。
 - **字体来自你的操作系统**,不是镜像里那套 —— 所以卡片设置里「手填字体名」在桌面版填苹方 / 微软雅黑这类系统自带字体就作数(容器里则只有思源黑 / 思源宋)。
 
-## npm 成品入口（发行准备中）
+## npm
 
-`@bilibili-notify/bn` 的完整包自带服务端、面板与两种宿主，首次运行从包内解包，不再从 GitHub 下载 BN。需要 Node 24.15.0 或更高版本，本机或远程 Chromium 用于卡片渲染。
+npm 正式版发布前，通过 `@alpha` 安装 BN。需要 Node.js 24.15.0 或更高版本。npm 包会从包内解出服务端和面板，卡片渲染使用本机或远程 Chromium。
 
-本体 npm 包尚未发布，发布后的启动命令及本仓试用方式见 [BN 启动器说明](../tools/bn-cli/README.md)。默认持久数据目录分别为：
+```bash
+npx @bilibili-notify/bn@alpha web
+vp dlx @bilibili-notify/bn@alpha dev  # 拓展开发
+```
+
+默认监听 `127.0.0.1:8787`。npm 的 `latest` 目前指向发行占位包。
 
 | 模式 | 数据目录 | 用途 |
 | --- | --- | --- |
-| `web` | `~/.bilibili-notify/data` | 日常使用，正式宿主与应用内更新 |
+| `web` | `~/.bilibili-notify/data` | 日常使用，支持应用内更新 |
 | `dev` | `~/.bilibili-notify/dev-data` | 拓展源码挂载与热重载，随 npm 包升级 |
 
-数据目录与运行缓存分开；清理缓存不会删除订阅或凭据。开发 BN 本体仍使用主仓源码的 `vp run dev:apps`。
+两个宿主可用 `--data-dir` 分别指定数据目录。用 `--port` 为新实例设置初始端口。开发 BN 本体使用主仓的 `vp run dev:apps`。[启动参数与数据目录](../tools/bn-cli/README.md)
+
+Docker 和桌面应用可在「系统 → 维护」的「正式版」渠道检查应用内更新。Docker 通过容器重启策略启动新版。用终端直接启动的 npm `web` 在更新就绪后会提示手动重启。[应用内更新机制](../docs/agents/self-update.md)
 
 ## 配置
 
@@ -200,7 +204,7 @@ environment:
 
 ## 登录与安全
 
-- **首次启动凭据**:未显式设凭据时,首启动自动生成 `admin` + 随机密码,写进 `./config/bn.config.yaml` 并打印到容器日志。也可在 compose 里设 `BN_DASHBOARD_USER` / `BN_DASHBOARD_PASS`(仅首启动生效)。**登录后请立即改掉默认密码。**
+- Docker 首次启动会生成 `admin` 和随机密码，写入 `./config/bn.config.yaml`，并在启动日志显示一次。需要自定凭据时，可在首次启动前设置 `BN_DASHBOARD_USER` 和 `BN_DASHBOARD_PASS`。如果仍在使用旧版示例的固定密码，请修改密码。
 - **拒启保护**:监听非 loopback 又无凭据时服务拒绝启动;`BN_ALLOW_NO_AUTH=1` 可强制放行(自担风险)。
 - **`auth.allowedOrigins`**:非 localhost 部署务必设置 —— 它门禁 WebSocket upgrade 并兜底防 CSRF,填 dashboard 自己的 origin。
 - **会话**:登录态是签名 cookie,滑动过期(空闲 ≤ 7 天),无服务端吊销;轮换 dashboard 密码可使所有已签发 cookie 立即失效。
@@ -215,9 +219,18 @@ environment:
 
 ## 来源账号与订阅
 
-先配置推送连接和目标，再点击「添加订阅」选择来源，按输入框提示搜索创作者。来源有登录能力时，先在「系统 → 账号」完成登录。账号互相独立；顶栏使用账号列表的第一位，可在系统页调整顺序。
+先配置推送连接和目标，再点击「添加订阅」选择来源，按输入框提示搜索创作者。需要账号的来源可在「系统 → 账号」登录。各来源独立管理账号，系统页账号列表的第一位用于顶栏和 AI 对话头像。
 
-可用功能由来源决定。B 站支持作品、直播及相关互动；[抖音拓展](../extensions/douyin/README.md)支持扫码登录、视频／图文和开播／直播中／下播通知，需单独安装启用。首次检查是否补推旧作品、轮询间隔等以各来源说明为准。
+| 来源 | 支持的内容 | 使用条件 |
+| --- | --- | --- |
+| B 站（内置） | 动态、开播 / 直播中 / 下播和直播互动 | 建议在系统页扫码登录 |
+| [抖音](../extensions/douyin/README.md) | 视频、图文、开播 / 直播中 / 下播和群聊作品链接解析 | 安装并启用后扫码登录 |
+| [虎牙](../extensions/huya/README.md) | 公开房间的开播 / 直播中 / 下播 | 安装并启用后可直接订阅 |
+| [微博](../extensions/weibo/README.md) | 关注流中的新微博，支持长文、转发和带超话的作品 | 安装并启用后扫码登录，并用该账号在微博关注博主 |
+
+订阅项根据所选来源提供的能力显示。各来源的首次检查与轮询规则见对应说明。
+
+头像或配图在路由器的 FakeIP 环境里一直加载失败时，可在「系统 → 运行 → 图片下载网络」查看和配置所用的代理网段。[图片下载的地址范围](../docs/agents/image-network.md)
 
 ## 资源库
 
@@ -235,13 +248,19 @@ environment:
 
 `docker-compose.example.yaml` 含注释掉的 NapCat 边车段落。
 
+## 验证推送
+
+在「推送目标」页先测试连接。机器人卡片显示各项能力，在具体目标的「测试」弹窗可选择该会话可测试的能力，发送测试会向所选会话实际投递消息。
+
+支持群内状态查询的目标可查看机器人身份。QQ 官方群的「今日艾特全体」显示 BN 当日发送记录，平台额度以腾讯实际返回为准。
+
 ## 拓展
 
-拓展是**装进来才有**的外挂模块 —— 本体一个都不带。而且**装完默认是关着的**,到它那张卡上把开关拨开才会跑;拨开关当场生效,不用重启。
+安装后，到「拓展」页打开对应卡片的启用开关。首次启用会立即生效。
 
 控制台 **拓展**,右上「装拓展」,两条来路:
 
-- **拓展市场** —— 这一页最底下那一节。官方源的条目点「装」就行,装完当场生效。
+- **拓展市场**提供官方拓展安装。请选择与当前 BN 版本兼容的拓展，兼容情况可在市场卡片上查看。
 - **传一个包上来** —— 把 `.zip` 拖进「装拓展」弹窗。**只装信得过的**:拓展在 BN 进程里跑,装的时候不验签。
 
 还有第三条不走面板的路：把解开的目录放进**拓展目录**，目录名就是拓展 ID。安装包必需 `extension.json` 和自包含入口 `index.mjs`，另可带 `README.md`、`CHANGELOG.md` 与支持语言的 `locales/<语言码>.json`。**这条要重启一次**才认得到。拓展目录位于当前数据代的 `<数据目录>/generations/<序号>/extensions/`；「装拓展」弹窗显示完整路径。
@@ -251,16 +270,16 @@ environment:
 | Docker | `/data`,在 volume 里 |
 | 桌面 macOS | `~/Library/Application Support/bilibili-notify/data` |
 | 桌面 Windows | `%LOCALAPPDATA%\bilibili-notify\data` |
-| npm `web`（待发布） | `~/.bilibili-notify/data` |
-| npm `dev`（待发布） | `~/.bilibili-notify/dev-data` |
+| npm `web` | `~/.bilibili-notify/data` |
+| npm `dev` | `~/.bilibili-notify/dev-data` |
 
-**盖掉一份已经装着的也要重启一次** —— 旧代码已经被这个进程认下了,在进程里换不掉。面板会就地给那颗重启按钮;这台机器上按了回不来的话(开发版 / 自己在终端里裸跑),它不给按钮,但会写清楚为什么。
+覆盖安装后，若面板显示新版本待生效，可重启 BN。已启用的拓展也可点「只重载这个拓展」。用终端直接运行且面板无法重启时，请从终端重启。
 
-开发版另有「挂载开发拓展」：选择含 `extension.json` 的**源码工程根目录**，启用后由 BN 运行，保存时自动重载。可同时挂载多个不同 ID 的工程；同 ID 已安装时会拒绝覆盖。日常生产包不开放此入口，源码开发不需要先构建 `dist`。作者用法见[拓展开发指南](../packages/extension/DEVELOPMENT.md)。
+开发宿主提供「挂载开发拓展」。选择含 `extension.json` 的源码工程根目录并启用，可监听保存并自动重载。重启时，BN 会用同一数据目录恢复仍指向原工程的挂载和监听设置，沿用启用状态。[拓展开发指南](../packages/extension/DEVELOPMENT.md)
 
-### 接上 koishi(机器人框架桥接)
+### 机器人框架桥接
 
-把你 koishi 里**已经配好的 bot 借给 BN 发推送** —— Telegram / Discord / KOOK 这些平台于是不必由 BN 各写一份适配。
+可以把 Koishi 或 AstrBot 里已配置的机器人接入 BN，用于 Telegram、Discord、KOOK 等平台。下面以 Koishi 为例。两个框架的插件入口、能力和常见问题见桥接说明。[机器人框架桥接](../extensions/bridge/README.md)
 
 1. 控制台 **拓展** → 装上「机器人框架桥接」→ 在它那张卡上**把开关拨开**。
 2. 卡片右下「管理 ›」→「桥接入」→ **新建接入**:桥的种类选 `koishi`,起个名字,弹窗会当场生成一条 token。

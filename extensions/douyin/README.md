@@ -2,7 +2,7 @@
 
 订阅抖音博主的视频、图文和直播，并在群聊中将作品链接转成卡片。登录和取数使用 HTTP 请求，无需常驻抖音网页，也不需要手动复制 Cookie。
 
-这是 BN 主仓维护的官方拓展，ID 为 `douyin`。当前源码清单版本为 `0.1.0-alpha.2`，需要 **API 1、修订号至少为 3** 的兼容 BN 宿主。本文说明源码和本地构建的用法，不表示该版本已经上架市场。
+这是 BN 主仓维护的官方拓展，ID 为 `douyin`。安装需要支持 **拓展 API 1、修订号 3 或更高**的 BN 宿主。
 
 ## 开始使用
 
@@ -30,11 +30,11 @@
 | 能力 | 当前行为 |
 | --- | --- |
 | 博主资料 | 读取昵称、头像、粉丝数、简介和抖音号；平台没有返回的字段保持缺省。 |
-| 作品通知 | 支持视频和图文，卡片包含可取得的封面或配图、正文及原链接；不下载或发送视频文件。 |
-| 直播通知 | 支持开播、直播中、下播，由轮询观测状态；投递频率和目标由 BN 的订阅设置控制。 |
+| 作品通知 | 支持视频和图文。卡片显示正文、配图或封面、原链接，以及抖音返回的点赞、评论、转发和收藏数。 |
+| 直播通知 | 支持开播、直播中、下播。分区、开播时刻、在线人数和累计观看取自直播间数据，仅在抖音返回可用值时展示。 |
 | 群聊链接 | 支持视频、图文长链及抖音分享短链，解析后使用 BN 的卡片渲染和发送链路。 |
 
-当前没有接入礼物、粉丝团、SC、会员等直播互动，也没有抖音专用私聊指令或 AI 工具。来源没有实现真实作品／直播的卡片预览取数入口；面板的样式预览可能使用示例数据，不能据此判断真实取数是否成功。
+作品和开播通知的「@全体」跟随抖音订阅及其推送目标的设置。直播互动（礼物、粉丝团、SC、会员、特别关注弹幕和进入直播间）目前未接入。卡片样式页可预览示例数据，真实字段以该次作品或直播通知为准。
 
 ### 轮询与首次检查
 
@@ -90,7 +90,7 @@ vp run -F @bilibili-notify/extension-douyin build
 vp exec node scripts/pack-extension.mjs --id douyin
 ```
 
-当前清单对应 `dist/douyin-0.1.0-alpha.2.zip`，在拓展页通过「装拓展」上传并启用。构建和打包不会自动安装，也不会发布到市场。模块、接口、回归与发布细节见[维护指南](https://github.com/Akokk0/bilibili-notify/blob/dev/extensions/douyin/DEVELOPMENT.md)；官方发行沿[拓展市场流程](https://github.com/Akokk0/bilibili-notify/blob/dev/docs/agents/extension-marketplace.md)。
+打包产物是 `dist/douyin-<清单版本>.zip`。在兼容的本地 BN 中，可通过「装拓展」上传该包并启用。[维护指南](https://github.com/Akokk0/bilibili-notify/blob/dev/extensions/douyin/DEVELOPMENT.md) · [拓展市场发布流程](https://github.com/Akokk0/bilibili-notify/blob/dev/docs/agents/extension-marketplace.md)
 
 早期仓外验证工程使用 ID `akokko.douyin`。订阅、凭据、历史和统计按来源身份隔离；安装官方版不会自动迁移或覆盖这些数据。已有仓外工程的使用者应先决定保留原来源还是另建官方来源，不能把两个 ID 当作同一个来源直接替换。
 

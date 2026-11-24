@@ -1,14 +1,13 @@
-# 用法:cp docker-compose.example.yaml docker-compose.yaml && docker compose up -d
+# 启动 BN 最新正式版。将此文件复制为 docker-compose.yaml，再执行 docker compose up -d。
 # 不要手动创建 ./config/bn.config.yaml;容器首次启动会自动生成完整配置。
 # 首启动后改配置请编辑 ./config/bn.config.yaml 再 docker compose restart。
 #
 # 更新:docker compose pull && docker compose up -d(restart 不会换镜像,必须 up -d)。
 # pull 时提示 "Layer already exists" 是正常的层复用,不代表没更新。
-# 若走镜像加速站,:alpha/:latest 浮动 tag 的 manifest 可能被站方缓存导致
-# 短时间拉不到新版 —— 改用固定版本 tag(如 :v0.1.0-alpha.13)或直连官源即可。
+# 若镜像加速站仍缓存旧版 :latest，可以直接从 Docker Hub 或 GHCR 拉取。
 #
 # 内存:full 镜像内置 chromium,出图那一下峰值不低,建议宿主可用内存 >= 1GB。
-# 只有 512MB 的小鸡请改用 :slim + 远程浏览器(见下方 browser 服务),否则渲染
+# 只有 512MB 的主机请改用 :slim + 远程浏览器（见下方 browser 服务），否则渲染
 # 时容易被系统 OOM 杀掉 —— 表现为「隔几分钟断线重连、卡片预览转半天报错」。
 # 排查:docker inspect bilibili-notify --format '{{.RestartCount}} {{.State.OOMKilled}}'
 #
@@ -19,13 +18,12 @@
 services:
   bilibili-notify:
     image: akokk0/bilibili-notify:latest
-    # GHCR 改用:image: ghcr.io/akokk0/bilibili-notify:latest
+    # GHCR 改用 image: ghcr.io/akokk0/bilibili-notify:latest
     # 本地构建改用:build: { context: .., dockerfile: apps/Dockerfile }
     #
-    # 省内存方案:-slim 变体(如 :slim)不内置 chromium,体积与内存
-    # 都小得多;卡片渲染改由下方 browser 伴随容器承担 —— 换 slim 镜像后解开
-    # BN_CHROME_ENDPOINT 与 browser 服务的注释即可。不配远程浏览器也能跑,
-    # 只是卡片图片渲染退化为文字推送。
+    # 省内存方案使用 :slim 正式版镜像，体积与内存占用更小。
+    # 需要渲染卡片时，取消 BN_CHROME_ENDPOINT 与下方 browser 服务的注释。
+    # 缺少可用的浏览器时，BN 发送文字推送。
     container_name: bilibili-notify
     restart: unless-stopped
     # 停容器时等它收尾的时长。服务端关停最多 8 秒(落盘、关连接),到点才 SIGKILL。
@@ -36,9 +34,7 @@ services:
     environment:
       # BN_* 仅首启动 seed 进 yaml;之后改值请编辑 ./config/bn.config.yaml
       BN_LOG_LEVEL: info
-      # dashboard 登录凭据;首启动后请改掉默认密码。删掉这两行则自动生成随机密码
-      BN_DASHBOARD_USER: admin
-      BN_DASHBOARD_PASS: change-me-on-first-boot
+      # 首次启动自动生成 admin 和随机密码。用 docker compose logs bilibili-notify 查看。
       # BN_COOKIE_KEY: ""          # secrets 加密密钥,openssl rand -base64 32
       # BN_CHROME_ENDPOINT: ws://browser:3000?token=change-me-browser-token
       # BN_CHROME_IDLE_SECONDS: "300"  # 渲染空闲多久后关浏览器省内存;0=常驻
