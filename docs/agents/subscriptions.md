@@ -50,7 +50,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 - **新建订阅的路由**（`routes/subscriptions.ts`，`POST` 新建那一支，`createSubscription`）：所有来源同一道门（4-15）。先按来源描述符核外部 id，再核随订阅交来的资料（连头像魔数），来源认不认得问来源登记表 —— 在册就认，不在册的得是装着的订阅源拓展（停着也行，`subscriptionSourceRefusal`），都不是回 404；身份判重在 store。带了候选资料就经资料缓存的单一写者种（头像那时才存进图库），没带就只建订阅、不当场刷（主人 10-28 定只种不刷：等来源自己报或定时刷新）。
 - **统计「这个小时在记」**（`stats/registry-source.ts`）：核心对**所有在册来源**记（`attachRegistryStatsSource`：来源在登记表里，且没有登录口或登录口现读是 `logged-in`（`confirming` 不算），就按每条订阅的 `recordsPosts` / `recordsLive` 记当前小时；挂上时、每 `RECORDING_CHECK_MS`（1 分钟）、`subscription-auth-changed` 时各看一眼）。没有登录口的拓展来源按「在册即在记」算，最多等 1 分钟记上。登录丢了（现读到 `expired` / `logged-out`）时同一模块忘掉那个来源名下的在飞场次，统计不再听 `auth-lost` / `auth-restored`。这里的「来源在跑」额外看登录；作品入口的闸与女仆查直播读 `SourceStatusReader`（在册即在跑），两种说法合成一个读口仍归第 4 期。
 - **`status` 指令的「登录」行**现读来源登记表：每个带登录口（`Source.auth`）的来源各一行（「<label>登录：<状态>」），其余几行（上次抓取一类）是各来源自己说的；`login [来源]` 同样从登记表挑来源，不带词且只有一个就直接扫，有好几个就列出来（3b-06 已落，对拍 P21，原名单 N17）。
-- 决策 64 列的**只属于 B 站**：群里链接自动出卡、私聊指令按 uid 订阅、弹幕那一族（SC / 上舰 / 特别关注 / 词云 / 总结）。
+- 按 UID 订阅的 B 站私聊指令、SC、上舰、特别关注弹幕与进入直播间、弹幕词云与总结目前由 B 站实现。群聊作品解析按来源登记，抖音也通过拓展契约注册解析器。[链接解析](./commands.md)
 
 反过来，**遍历所有订阅**的地方所有来源都要处理（订阅只有一份列表，就是为了它们不静默漏掉拓展的订阅）：删推送目标时清引用、目标别名改写、开机清资料缓存（`pruneOrphanSubscriptionState`；它丢掉的条目引用的头像由图库清扫收走，没有单独扫头像的一步）、删皮肤 / 卡片背景前查「还有人在用」、备份、健康页。
 
@@ -114,7 +114,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，接受 1.0 契
 
 ### 契约档位与契约小号（决策 18 / 59）
 
-- `EXTENSION_API_RANGE = { min: 1, current: 1, revision: 5 }`。依赖作品收藏数的拓展至少声明 1/3，依赖适配器 `send` 单次发送选项 `singleAttempt` 的拓展至少声明 1/4。上报作品卡头说明（`post.label`）或图文附卡（`post.attachment`）的拓展至少声明 1/5。这是全新1.0契约，保留当前完整接口，不恢复历史v1。历史provides/旧嵌套/混合格式由strict清单拒收且不import；旧1同号格式不合记unreadable，旧2/3记incompatible。apiRevision缺省0；安装、发现、loader和市场共同判版本，包内清单仍独立严格校验。
+- `EXTENSION_API_RANGE = { min: 1, current: 1, revision: 5 }`。按实际使用的能力声明修订号，省略按 0。安装、发现、装载与市场共享版本判断，包内清单仍需通过 1.0 的严格校验。同号旧格式解析失败记 `unreadable`，旧 2/3 大档记 `incompatible`。[修订号能力表](../../packages/extension/DEVELOPMENT.md#版本与工程)
 - 公开 SDK 首版的开发契约为 1/0；同为1/0的开发包无法按数字区分，不保留旧格式兼容。以后正式发布后的契约演进仍须回ADR-0019决策59审议，不能用本片起号规则替未来变更默认豁免。
 - 守卫 `packages/internal/src/schema/__tests__/extension-contract-shape.test.ts`：当前清单、译文、视图、当前的三种上报、搜人候选、直播拉取结果与来源健康这几份 zod 转成 JSON Schema 算摘要，与 `PINNED_REVISION` **成对**钉住，形状一动就红，报错里写着该怎么改（发过版 → 抬小号 + 更新摘要与 `PINNED_REVISION`；没发版 → 只更新摘要；新摘要照 Received 填）。以后加一份拓展交给 BN 的 schema，就往它的 `CONTRACT` 表里加一行。
 - ⚠️ 守卫**看不见的**：`refine` / `superRefine` 里的规矩、`checkExtensionReport` 的逐格丢弃/截断、ctx 多一个方法（纯 TS）。放宽这些同样要抬小号，自己想。

@@ -214,8 +214,7 @@ src/
 
 ## 拓展(`extensions/`)
 
-一个拓展 = 一个目录 + 一份 `extension.json` 清单 + 一个导出 `activate(ctx)` 的入口。定案见
-`docs/adr/0012-extensions.md`。主仓维护机器人框架桥接(`extensions/bridge/`)、开发假源(`extensions/fake-source/`)和抖音订阅源(`extensions/douyin/`)；桥接的线上协议在 `extensions/bridge/PROTOCOL.md`，抖音的开发与安装说明在 `extensions/douyin/README.md`。
+一个拓展有一个工程目录、一份 `extension.json` 清单和一个导出 `activate(ctx)` 的入口。主仓维护[桥接](../../extensions/bridge/README.md)、[抖音](../../extensions/douyin/README.md)、[虎牙](../../extensions/huya/README.md)、[微博](../../extensions/weibo/README.md)和[开发假源](../../extensions/fake-source/README.md)。[拓展定案](../adr/0012-extensions.md) · [桥接协议](../../extensions/bridge/PROTOCOL.md)
 
 - **一切副作用都从 `ctx` 过** —— 定时器、HTTP 挂载点、WS upgrade、推送源、入站、面板数据。
   裸 `setInterval`、裸挂端点是禁止的:那是「停用得干净」的唯一承重条件。
@@ -226,14 +225,8 @@ src/
   `settingsSchema` / `connectionSettingsSchema`;构建插件 `extensionPackageFiles` 照规则写进 `dist/extension.json`,
   并拷 `locales/`。源码根的 `extension.json` 不写设置项,读设置项的测试读 `dist/` 那份。导出(`settingsFieldsFromSchema`)
   与加载时的对表(`assertConfigFieldsMatchSchema`)都住 `packages/internal/src/schema/`,内置集成的设置项也调同一个导出。
-- ⛔ **本体一个拓展都不带。** 拓展只有两条来路:下载,或者主人自己放进
-  `<数据根>/extensions/<id>/`。载荷里没有 `extensions/`,装载器也**没有那个根** ——
-  这一条是结构性的,不是约定(主人 2026-09-09 推翻了 ADR-0012 决策 34 的「随载荷预装」)。
-- **只有一个根**:`<数据根>/extensions/`,入口只认 `index.mjs`。曾经还有个仓里的源码根,
-  2026-09-10 去掉了 —— 开发时改由 **devtools 把仓里构建好的 `dist` 链进那个根**
-  (左下角 dock 的「拓展」一组:装 / 卸 / 重载)。一个根意味着没有优先级、没有「同一个 id
-  有两份」,开发时跑的东西与手放的、日后市场下载的**形状一模一样**。清单里**没有 `entry`
-  字段** —— 入口固定,宿主自己判。
+- **装载根**位于当前数据代的 `<dataDir>/generations/<序号>/extensions/`。生产从市场、ZIP 或手放目录安装，使用固定入口 `index.mjs`。已安装和已挂载的拓展共享这个目录，每个 ID 只能占一个位置。
+- **源码联调**使用拓展页的「挂载开发拓展」，把源码工程链接到同一装载根，由开发宿主加载 `src/index.ts` 和可选的 `src/devtools/index.ts`。保存时可重载；下次启动会恢复仍指向原工程的挂载。[开发者工具](./devtools.md#仓外拓展联调)
 - **开箱即有 ≠ 默认开着**:`globals.extensions.<id>.enabled` 缺失就是关着。关着的拓展
   **一行代码都不 import**,但列得出来。
 - **两个 URL 前缀,分开它们的是鉴权域**:`/ext/<id>/*`(拓展自己的 HTTP 与 WS,**刻意在
@@ -247,11 +240,7 @@ src/
   内置连接字段由设置规则导出（条件字段、记录表、分支草稿、候选提示），拓展仍只开放原标量字段。
   `ExtensionEntryView.push` 已删，面板连接徽章读描述与已保存快照。新建统一读候选，列候选时宿主按
   `adapterKey + platform` 刷新既有快照，不改设置、不触发重连。平台闭集与三份规则仍留 4-30 搬出。
-- **打包 = 清单 + 一个自包含 `index.mjs`**:每个拓展自己 `vp pack` 出 `dist/`,第三方**全内联**
-  —— 装它的地方旁边没有 node_modules,留一个裸依赖是「构建全绿、主人拨开关那一刻才
-  `ERR_MODULE_NOT_FOUND`」。那个 `dist/` **就是拓展包本身**:拷进 `<数据根>/extensions/<id>/`
-  就能跑,日后的下载分发发的也是它。开发时由 devtools 把它**链**进去(`vp pack -w` 一改
-  就重打包,链着的那份当场是新的)。
+- **生产打包**将 `dist/` 的 `extension.json`、自包含 `index.mjs` 和可选的说明、更新日志及译文收入 ZIP。运行依赖内联到入口。官方包和第三方包沿同一安装校验。[拓展市场](./extension-marketplace.md)
 - **换代码走显式「重载」**:收摊 → 换一个按指纹定的 URL 重新 `import` → 重新 `activate`。
   ESM 的模块缓存删不掉,但**URL 不一样就是一份新模块**;代价是旧模块回收不掉(每重载一次漏
   一份)。开发版的 devtools 随时能按(代码没变 URL 也不变,不白漏);生产上**只在有新版等着
@@ -271,10 +260,6 @@ src/
   等着换上时,装完那句话与详情页头卡**并排给两个出口**:「重启 BN」(拉不起自己的机器上换成
   为什么)与「只重载这个拓展」(`swap()`,别的不断,代价写在按钮旁边)。面板上没有常驻的重启
   入口,没有新代码时也不给只重载。主人手放进去的包仍要重启。
-- 眼下**还做不到的**:干净地换代码(ESM 换不掉已加载的模块 —— 只重载是换一个 URL 再 import,
-  旧模块留在内存里;第二次启用跑的只有 `activate`,所以拓展的模块顶层不许存状态);**按需下载(签名镜像链)还没建** ——
-  所以今天要在构建产物上跑桥,只有「自己 `vp pack` 出包、手放进
-  `<数据根>/extensions/bridge/`」这一条路。
 
 ## 女仆技能(Agent Skill)
 
