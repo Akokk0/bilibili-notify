@@ -39,7 +39,7 @@ export interface ExtensionApiRange {
 export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({
 	min: 1,
 	current: 1,
-	revision: 4,
+	revision: 5,
 });
 
 /**

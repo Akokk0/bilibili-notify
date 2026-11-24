@@ -62,17 +62,13 @@ const creatorName: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.
 const time: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.time}</span>;
 
 /**
- * 数据区五件(在看人数 / 点赞 / 分类 / 粉丝数 / 累计观看)。每块只画**一样东西**、各自只在该出现的状态下有内容
- * (㉔c:从前的 `popularity` / `fans` 两块随状态换含义,现在各拆成两块)。那一格没有数就收起,不留一个只有
- * 前缀的空行 —— B 站那头恒给,拓展没报的话同理。
+ * 数据区的人气、点赞、分类、粉丝数和观众人数各占一块。每个块只显示一个带口径标签的数值，缺少时收起。
  *
  * 在看人数与点赞(以及分类)那几个 span 带 `block`,这不是样子而是复刻复合块里的既有行为:顶行曾是 `flex`,
  * 那几个 span 作为 flex item 本就被块化了(行盒按自己的字号算);原子块的 wrapper 是普通块容器,
  * span 若还留在行内,行盒会被 wrapper 继承来的基准字号撑高。粉丝数与累计观看是 div,本来就是块。
  *
- * 状态口径(ADR-0019 决策 76):在看人数开播 / 直播中 / 没在播都有(下播那一刻的在线人数概括不了这一场,所以
- * 下播不画);点赞与累计观看只有下播;粉丝数只有开播 / 直播中。粉丝数变化**不上默认卡**(它进下播文案;
- * 皮肤契约的 `stats.followersDelta` 照给,想画的皮肤自己画)。
+ * 点赞在下播时展示。粉丝数在开播和直播中展示，粉丝变化供下播文案和自定义皮肤使用。
  */
 const stat =
 	(
@@ -92,10 +88,14 @@ const stat =
 		);
 	};
 
-/** 在看人数(原子块):下播以外的状态。 */
+/** 人气位优先展示平台提供的直播热度。 */
 const currentViewers = stat(
 	(p) => p.status !== "end",
-	(p) => (p.currentViewers ? packageText("image.blocks.live.5", { value0: p.currentViewers }) : ""),
+	(p) => {
+		if (isOnAir(p) && p.heatScore)
+			return packageText("image.live.heatScore", { value: p.heatScore });
+		return p.currentViewers && packageText("image.blocks.live.5", { value0: p.currentViewers });
+	},
 	"span",
 );
 
@@ -120,10 +120,14 @@ const followers = stat(
 	"div",
 );
 
-/** 累计观看(原子块):只有下播。 */
+/** 观众人数位在直播时优先用当次贵宾人数，累计观看保留自身的标签。 */
 const totalViewers = stat(
-	(p) => p.status === "end",
-	(p) => (p.totalViewers ? packageText("image.blocks.live.9", { value0: p.totalViewers }) : ""),
+	(p) => p.status !== "offline",
+	(p) => {
+		if (isOnAir(p) && p.vipViewers)
+			return packageText("image.live.vipViewers", { value: p.vipViewers });
+		return p.totalViewers && packageText("image.blocks.live.9", { value0: p.totalViewers });
+	},
 	"div",
 );
 

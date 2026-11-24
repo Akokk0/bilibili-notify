@@ -112,6 +112,7 @@ describe("SubscriptionCard 描述符身份", () => {
 		const base = props({ sub, platform });
 		const view = render(<SubscriptionCard {...base} />);
 		expect(view.getByTitle("账号 public_42").textContent).toBe("账号 public_42");
+		expect(view.queryByText("·", { exact: true })).toBeNull();
 		expect(view.getByText("测试作者")).toBeTruthy();
 		view.rerender(
 			<SubscriptionCard

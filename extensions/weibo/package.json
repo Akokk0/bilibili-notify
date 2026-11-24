@@ -1,0 +1,21 @@
+{
+	"name": "@bilibili-notify/extension-weibo",
+	"version": "0.1.0-alpha.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vp pack",
+		"typecheck": "tsc --noEmit",
+		"test": "vp test"
+	},
+	"dependencies": {
+		"@bilibili-notify/extension": "workspace:*",
+		"parse5": "8.0.1"
+	},
+	"devDependencies": {
+		"tough-cookie": "6.0.0"
+	},
+	"engines": {
+		"node": ">=24.15.0"
+	}
+}

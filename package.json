@@ -2,7 +2,7 @@
 	"name": "@root/bilibili-notify",
 	"version": "0.0.0-dev",
 	"private": true,
-	"packageManager": "pnpm@12.18.0",
+	"packageManager": "pnpm@12.21.0",
 	"scripts": {
 		"gate": "bash .claude/gate.sh --full",
 		"build": "pnpm -r run build",
@@ -40,13 +40,13 @@
 		"@commitlint/cli": "^21.2.2",
 		"@commitlint/config-conventional": "^21.2.2",
 		"@types/node": "^24.13.3",
-		"@voidzero-dev/vite-plus-core": "1.5.1",
+		"@voidzero-dev/vite-plus-core": "8.3.8000",
 		"cross-env": "catalog:",
 		"fflate": "catalog:",
 		"knip": "^6.32.3",
 		"lefthook": "^2.1.10",
 		"npm-registry-client": "npm:npm@11.21.0",
 		"typescript": "^5.8.3",
-		"vite-plus": "1.5.1"
+		"vite-plus": "1.7.0"
 	}
 }

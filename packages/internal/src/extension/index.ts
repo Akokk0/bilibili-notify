@@ -114,20 +114,28 @@ export type ExtensionRichTextSegment = Extract<
  */
 export type ExtensionRichText = ExtensionRichTextSegment[];
 
+type PostCardAttachment = Extract<NonNullable<Post["attachment"]>, { kind: "card" }>;
+
 /**
  * 从核心 `PostReport` / `Post` 推导作品上报:只挑拓展开放的格,并覆盖图库引用、可缺作者与可缺视频格。
- * 不开放标题、文章、转发、附加块、锁、提醒、会员标记等格;`publishedAt` 是带时区的 ISO 8601 时刻。
+ * 附卡只开放带标题、文本行及可选图库封面与按钮的卡片。`publishedAt` 是带时区的 ISO 8601 时刻。
  */
 export type ExtensionPostReport = Simplify<
 	Pick<CorePostReport, "postId" | "url"> & {
 		post: Simplify<
-			Pick<Post, "publishedAt" | "text" | "topic" | "stats"> & {
+			Pick<Post, "publishedAt" | "label" | "text" | "topic" | "stats"> & {
 				/** 出卡优先用这里的创作者;缺的格由订阅资料补。 */
 				creator?: SubscriptionCreator;
 				/** 正文片段;给了就要与 `text` 对得上。 */
 				richText?: ExtensionRichText;
 				/** 作品图,图库引用。 */
 				images?: ImageRef[];
+				attachment?: Simplify<
+					Pick<PostCardAttachment, "kind" | "title" | "button"> & {
+						cover?: ImageRef;
+						lines?: { text: string }[];
+					}
+				>;
 				video?: Simplify<
 					Pick<NonNullable<Post["video"]>, "durationSec" | "views"> & {
 						cover?: ImageRef;
@@ -158,7 +166,15 @@ export type ExtensionLinkPreview = Simplify<
 export type ExtensionLiveDetails = Simplify<
 	Pick<
 		LiveDetails,
-		"title" | "category" | "url" | "currentViewers" | "totalViewers" | "likes" | "description"
+		| "title"
+		| "category"
+		| "url"
+		| "currentViewers"
+		| "totalViewers"
+		| "heatScore"
+		| "vipViewers"
+		| "likes"
+		| "description"
 	> & {
 		creator?: SubscriptionCreator;
 		cover?: ImageRef;

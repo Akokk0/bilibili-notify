@@ -1,0 +1,24 @@
+{
+	"marketplace.notes": "可用房間號、房間連結或主播暱稱訂閱虎牙，接收開播、直播中和下播通知。訂閱公開房間無需登入虎牙。",
+	"request.unavailable": "暫時無法取得虎牙資料，稍後會重試。",
+	"request.cancelled": "虎牙請求已取消。",
+	"request.limited": "虎牙限制了請求頻率，冷卻結束後會自動重試。",
+	"request.verify": "虎牙要求登入或驗證，已暫停查詢所有房間，稍後會自動複查。",
+	"request.storage": "無法儲存虎牙請求的冷卻狀態，請檢查 BN 儲存空間。",
+	"profile.input": "請輸入虎牙房間號、房間連結或主播暱稱。",
+	"profile.missing": "虎牙找不到這個房間。",
+	"live.unknown": "虎牙未傳回明確的直播狀態。",
+	"live.restricted": "這個虎牙房間限制存取。",
+	"$manifest": {
+		"name": "虎牙",
+		"description": "訂閱虎牙主播的開播、直播中及下播通知。",
+		"contributes": {
+			"subscription": {
+				"label": "虎牙",
+				"creatorNoun": "主播",
+				"externalIdNoun": "UID",
+				"displayIdNoun": "房間號"
+			}
+		}
+	}
+}

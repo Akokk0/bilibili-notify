@@ -33,6 +33,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ExtensionSettingsButton } from "../components/extension-settings-button";
+import { SourceIcon } from "../components/platform-meta";
 import { useProblems } from "../hooks/useProblems";
 import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
@@ -244,6 +245,11 @@ function NewSubDialog({
 							active={source?.key === one.key}
 							onClick={() => switchSource(one.key)}
 						>
+							{one.descriptor.icon ? (
+								<span aria-hidden="true" className="inline-flex shrink-0">
+									<SourceIcon source={one} size={14} />
+								</span>
+							) : null}
 							{one.descriptor.label}
 						</ToneChip>
 					))}

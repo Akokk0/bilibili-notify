@@ -1,0 +1,24 @@
+{
+	"marketplace.notes": "ルーム番号、リンク、配信者名で虎牙の配信を登録できます。公開ルームの配信開始、配信中、終了の通知はログインせずに受け取れます。",
+	"request.unavailable": "虎牙のデータを取得できません。しばらくしてから再試行してください。",
+	"request.cancelled": "虎牙へのリクエストをキャンセルしました。",
+	"request.limited": "虎牙のリクエスト回数制限に達しました。待機時間が過ぎると自動で再試行します。",
+	"request.verify": "虎牙でログインまたは認証が必要です。すべてのルームの取得を一時停止し、後ほど自動で再確認します。",
+	"request.storage": "虎牙のリクエスト待機状態を保存できません。BN のストレージを確認してください。",
+	"profile.input": "虎牙のルーム番号、ルームのリンク、または配信者名を入力してください。",
+	"profile.missing": "虎牙にこのルームが見つかりません。",
+	"live.unknown": "虎牙から配信状況を確認できませんでした。",
+	"live.restricted": "この虎牙ルームはアクセスが制限されています。",
+	"$manifest": {
+		"name": "虎牙",
+		"description": "虎牙の配信開始、配信中、終了を通知します。",
+		"contributes": {
+			"subscription": {
+				"label": "虎牙",
+				"creatorNoun": "配信者",
+				"externalIdNoun": "UID",
+				"displayIdNoun": "ルーム番号"
+			}
+		}
+	}
+}

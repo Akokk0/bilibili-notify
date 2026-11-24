@@ -243,6 +243,20 @@ const SUPERCHAT_DURATION_FORMATTED = {
 		"ADR-0021 决策 26 的 2026-10-05 🔗(㉓ 开片拷问):醒目留言的时长走 formatDuration,「60秒 / 2分钟 / 5分钟 / 30分钟」变成「1分 / 2分 / 5分 / 30分」",
 } as const;
 
+const FIT_POST_STATS = {
+	category: "master-approved",
+	approvedOn: "2026-11-23",
+	change: "出厂作品卡的互动栏独占整行，按实际显示的项数等宽排列。",
+	basis: "主人反馈微博与 B 站推送给缺失的第四项留了空位，要求互动栏自适应。",
+} as const;
+
+const LIVE_AUDIENCE_SLOT = {
+	category: "master-approved",
+	approvedOn: "2026-11-23",
+	change: "观众人数放在第二行左侧，粉丝数居右。直播中可同时显示两项。",
+	basis: "主人确认虎牙贵宾人数与 B 站累计观看共用人数位，B 站直播时有累计就显示。",
+} as const;
+
 export const APPROVED_CARD_DIFFS: CardDiffList = {
 	baseline: {
 		"dynamic-article": "5dc8efb7725183cd",
@@ -425,5 +439,17 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 				"phase-4-plan 4-37 / Q8、ADR-0028 决策 2:叫法按来源,零来源用中性词;图标的旧平台称号随文字一起清除",
 			hash: "e4d9387dcd36db52",
 		},
+		{ sample: "dynamic-article", ...FIT_POST_STATS, hash: "1ce97604a7677148" },
+		{ sample: "dynamic-av", ...FIT_POST_STATS, hash: "03e06dfe71b5e5d5" },
+		{ sample: "dynamic-charge-only", ...FIT_POST_STATS, hash: "90315acac42b45ea" },
+		{ sample: "dynamic-draw", ...FIT_POST_STATS, hash: "4587d8ab617ff5db" },
+		{ sample: "dynamic-draw-single", ...FIT_POST_STATS, hash: "0484303fbbda58e8" },
+		{ sample: "dynamic-forward", ...FIT_POST_STATS, hash: "04203212095ef23c" },
+		{ sample: "dynamic-unrenderable", ...FIT_POST_STATS, hash: "ec9dd94b16a8bc32" },
+		{ sample: "dynamic-with-additional", ...FIT_POST_STATS, hash: "eec6d426ce647c77" },
+		{ sample: "dynamic-word", ...FIT_POST_STATS, hash: "f733f1cafb2b6a6e" },
+		{ sample: "live-streaming", ...LIVE_AUDIENCE_SLOT, hash: "1f857aa16a4ba6dc" },
+		{ sample: "live-ended", ...LIVE_AUDIENCE_SLOT, hash: "ee8c0aea89b8219f" },
+		{ sample: "live-with-fontface", ...LIVE_AUDIENCE_SLOT, hash: "c0b1dc3c057f82f5" },
 	],
 };

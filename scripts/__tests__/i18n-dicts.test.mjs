@@ -101,6 +101,8 @@ export const EXTENSION_LOCALE_DIRS = [
 	"extensions/bridge/locales",
 	"extensions/douyin/locales",
 	"extensions/fake-source/locales",
+	"extensions/huya/locales",
+	"extensions/weibo/locales",
 ];
 
 /** 打底的语言:别的语言的句子都得是它句子的子集。 */

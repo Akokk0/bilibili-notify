@@ -636,6 +636,36 @@ describe("createExtensionSource:作品上报", () => {
 		]);
 	});
 
+	it("把来源返回的发布信息与附卡交给出图器，封面使用图库引用", async () => {
+		const made = await make({}, { apiRevision: 5 });
+		const extra = {
+			kind: "card" as const,
+			title: "摄影社区",
+			cover: REF,
+			lines: [{ text: "12 篇作品" }],
+			button: { text: "关注", enabled: true },
+		};
+		made.ext().reportPost("u1", {
+			postId: "p1",
+			url: "https://example.org/p1",
+			post: {
+				publishedAt: T_ISO,
+				text: "正文",
+				label: "相机 · 四川",
+				topic: "摄影社区",
+				attachment: extra,
+			},
+		});
+		await made.idle();
+		expect(made.core.posts[0]?.[1].post).toMatchObject({
+			text: "正文",
+			label: "相机 · 四川",
+			topic: "摄影社区",
+			attachment: { ...extra, cover: { ref: REF } },
+		});
+		expect(made.discrepancies).toEqual([]);
+	});
+
 	it("事件带了作者名与头像:用它的,不补", async () => {
 		const made = await make();
 		made.ext().reportPost("u1", {
@@ -962,6 +992,15 @@ describe("createExtensionSource:作品图的宽高与动图标记", () => {
 });
 
 describe("createExtensionSource:直播上报", () => {
+	it("把直播热度和零位贵宾分别交给宿主", async () => {
+		const made = await make({}, { apiRevision: 5 });
+		const details = { heatScore: 318_888, vipViewers: 0 };
+		made.ext().reportLive("u1", { kind: "start", details });
+		await made.idle();
+		expect(made.core.lives).toEqual([["u1", { kind: "start", details }]]);
+		expect(made.discrepancies).toEqual([]);
+	});
+
 	it("开播:ISO 统一成 UTC Z,封面与作者头像换成引用,现在在线 / 累计观看照搬", async () => {
 		const made = await make();
 		made.ext().reportLive("u1", {

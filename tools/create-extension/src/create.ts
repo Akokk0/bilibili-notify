@@ -136,18 +136,7 @@ async function create(): Promise<void> {
 			"vite-plus": versions.vitePlus,
 		},
 	});
-	const vitePlusMajor = versions.vitePlus.split(".")[0];
-	await writeFile(
-		join(target, "pnpm-workspace.yaml"),
-		`# Vite+ exposes Vite under the core's version; keep exceptions consumer-specific.
-packages:
-  - "."
-peerDependencyRules:
-  allowedVersions:
-    "vitest>vite": "${vitePlusMajor}"
-    "@vitest/mocker>vite": "${vitePlusMajor}"
-`,
-	);
+	await writeFile(join(target, "pnpm-workspace.yaml"), 'packages:\n  - "."\n');
 	await json("extension.json", {
 		id,
 		name,

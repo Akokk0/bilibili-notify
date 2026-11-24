@@ -16,8 +16,7 @@ packages:
 #      gets materialized in node_modules.
 #   2. pnpm 12 errors on unknown keys here (ERR_PNPM_UNRECOGNIZED_WORKSPACE_
 #      SETTINGS) instead of silently ignoring them, so a typo'd setting fails the
-#      install rather than quietly doing nothing. Every key in this file is valid
-#      as of 12.18.0.
+#      install rather than quietly doing nothing.
 
 # Vite+ replaces vite via npm overrides rather than coexisting. The override is
 # scoped to each React frontend sub-tree — `@bilibili-notify/web>vite` matches
@@ -31,16 +30,16 @@ packages:
 #
 # Bumping vite-plus? Two things move in lockstep, and missing either one
 # silently leaves half the toolchain on the old version:
-#   1. root `vite-plus` + `@voidzero-dev/vite-plus-core` devDeps
-#   2. the overrides below (else the React frontends keep the old core)
+#   1. root `vite-plus` + `@voidzero-dev/vite-plus-core` devDeps. Since Vite+ 1.7,
+#      the core has its own version derived from the bundled Vite version.
+#   2. the overrides below and the core dependencies in server and bn-cli
 # Everything else follows 1 by itself: CI's setup-vp installs that vp version,
 # and the image build passes it to apps/Dockerfile as `VP_BUILDER_IMAGE`
 # (.github/actions/build-push-image-digest), so the builder runs the same vp as
 # everywhere else. The Dockerfile's own default is the major floating tag, for
 # local `docker build` only: edit it on a major bump
 # (scripts/__tests__/vp-builder-image.test.mjs catches a miss). setup-vp itself
-# is pinned by exact tag (see gate.yml). A major bump also moves the
-# `peerDependencyRules` ranges below, which name the core's major.
+# is pinned by exact tag (see gate.yml).
 # Also: upgrade the global vp CLI FIRST (`vp upgrade`), then edit these
 # declarations — installing a newer vite-plus package with an older CLI has
 # corrupted the lockfile before (biome's entry took on vite-plus's resolution).
@@ -48,29 +47,9 @@ packages:
 # own copy; a root declaration on a different version would install a second
 # vitest, and @vitest/spy would then have two identities (mocks stop matching,
 # which surfaces as absurd test failures, not as a version error).
-#
-# pnpm's release-age floor defaults to 1440 min = 1 DAY. The exact 1.5.1
-# exclusions below were added by pnpm on 2026-11-10 because that release was
-# still under 24 hours old when explicitly adopted. Include the core and all
-# platform binaries, not just `vite-plus`; do not carry these entries forward
-# when bumping to a release that already clears the age floor.
 overrides:
-  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@1.5.1"
-  "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@1.5.1"
-
-# The core alias reports its own version (1.x) to pnpm, not the vite it bundles
-# (8.x), so every consumer with a `vite` peer range sees an unmet peer. Upstream's
-# answer is a blanket `allowAny: [vite]` (vite-plus issue 1021; issue 2806 asks
-# for something stricter). Allowing the core's major for the four consumers we
-# actually have keeps the check alive for anything new: a new vite plugin still
-# warns, and that is the prompt to check it against the bundled vite before
-# adding it here.
-peerDependencyRules:
-  allowedVersions:
-    "vitest>vite": "1"
-    "@vitest/mocker>vite": "1"
-    "@tailwindcss/vite>vite": "1"
-    "@vitejs/plugin-react>vite": "1"
+  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000"
+  "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000"
 
 # Shared dependency versions. Every package declares these as `"<dep>": "catalog:"`;
 # the version lives only here, so a bump is one edit and per-package drift (the
@@ -121,15 +100,3 @@ allowBuilds:
 
 patchedDependencies:
   css-tree: patches/css-tree.patch
-
-minimumReleaseAgeExclude:
-  - "@voidzero-dev/vite-plus-core@1.5.1"
-  - "@voidzero-dev/vite-plus-darwin-arm64@1.5.1"
-  - "@voidzero-dev/vite-plus-darwin-x64@1.5.1"
-  - "@voidzero-dev/vite-plus-linux-arm64-gnu@1.5.1"
-  - "@voidzero-dev/vite-plus-linux-arm64-musl@1.5.1"
-  - "@voidzero-dev/vite-plus-linux-x64-gnu@1.5.1"
-  - "@voidzero-dev/vite-plus-linux-x64-musl@1.5.1"
-  - "@voidzero-dev/vite-plus-win32-arm64-msvc@1.5.1"
-  - "@voidzero-dev/vite-plus-win32-x64-msvc@1.5.1"
-  - vite-plus@1.5.1

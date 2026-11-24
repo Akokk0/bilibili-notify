@@ -653,6 +653,44 @@ function versionRejection(raw: unknown): string[] | undefined {
 	return undefined;
 }
 
+const LEGACY_LIVE_BLOCKS = new Map([
+	["heatScore", "currentViewers"],
+	["vipViewers", "totalViewers"],
+]);
+
+function upgradeLiveSlots(card: CardSkinCard): void {
+	const builtins = new Set(card.blocks.flatMap((b) => (b.kind === "builtin" ? [b.builtin] : [])));
+	// 开发版的两个独立块折回共用位置。如果皮肤只有旧块，保留其 ID、位置和样式。
+	card.blocks = card.blocks.filter((b) => {
+		if (b.kind !== "builtin") return true;
+		const slot = LEGACY_LIVE_BLOCKS.get(b.builtin);
+		if (!slot) return true;
+		if (builtins.has(slot)) return false;
+		b.builtin = slot;
+		return true;
+	});
+	// 旧皮肤可以让粉丝与累计观看共用一整行。两者现在能同时出现，平分这一行。
+	const fullRow = card.blocks.filter(
+		(b) =>
+			b.kind === "builtin" &&
+			!b.showIf &&
+			b.grid.column === 1 &&
+			b.grid.span === 12 &&
+			(b.grid.rowSpan ?? 1) === 1 &&
+			b.grid.z === undefined,
+	);
+	for (const audience of fullRow) {
+		if (audience.kind !== "builtin" || audience.builtin !== "totalViewers") continue;
+		const fans = fullRow.find(
+			(b) => b.kind === "builtin" && b.builtin === "followers" && b.grid.row === audience.grid.row,
+		);
+		if (!fans) continue;
+		audience.grid.span = 6;
+		fans.grid.column = 7;
+		fans.grid.span = 6;
+	}
+}
+
 /**
  * 装包 / 保存的门:形状(zod)+ 跨字段规矩(id 唯一、内置块名在目录里、网格不越界、
  * showIf 指向该卡种真有的字段)。**不清洗 CSS / HTML**,那是 server 清洗器的事。
@@ -666,6 +704,7 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 		);
 	}
 	const m = parsed.data;
+	if (m.cards.live) upgradeLiveSlots(m.cards.live);
 	const errors: string[] = [];
 	const families = new Set<string>();
 	m.fonts?.forEach((f, i) => {
@@ -1032,8 +1071,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					),
 				),
 				at(DIVIDER_TYPE, full(10), "padding-top:10px", DIVIDER_LINE, "divider-1"),
-				// 在看人数与点赞(以及粉丝数与累计观看)摆在原来 `popularity`(`fans`)的位置:每块只在该出现的状态下
-				// 有内容(开播 / 直播中画在看人数与粉丝数,下播画点赞与累计观看),同一个状态下只会有一块占着那一格。
+				// 第一行左侧开播时显示人气，下播时显示点赞。第二行给观众人数和粉丝数各留半行。
 				at("currentViewers", { row: 11, column: 1, span: 6 }, "padding-top:10px", DATA_TEXT),
 				at("likes", { row: 11, column: 1, span: 6 }, "padding-top:10px", DATA_TEXT),
 				at(
@@ -1042,8 +1080,13 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"padding-top:10px;text-align:right",
 					DATA_TEXT,
 				),
-				at("followers", full(12), "padding-top:4px", DATA_TEXT),
-				at("totalViewers", full(12), "padding-top:4px", DATA_TEXT),
+				at("totalViewers", { row: 12, column: 1, span: 6 }, "padding-top:4px", DATA_TEXT),
+				at(
+					"followers",
+					{ row: 12, column: 7, span: 6 },
+					"padding-top:4px;text-align:right",
+					DATA_TEXT,
+				),
 				at(
 					"description",
 					full(13),

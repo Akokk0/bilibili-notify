@@ -488,6 +488,7 @@ export class ImageRenderer {
 			]);
 			let html = await renderCardWithSkin(kind, props, manifest, {
 				title,
+				skinId: id,
 				font: font.font,
 				fontFace: font.fontFace,
 				resolveAsset: (name) => assets.get(name),

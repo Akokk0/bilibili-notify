@@ -17,6 +17,7 @@ import type {
 	CardKind,
 	CardSkinManifest,
 	ImageRef,
+	Post,
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import {
@@ -115,6 +116,43 @@ function liveCard(renderer: ImageRenderer, cardSkin?: string): Promise<Buffer> {
 	});
 }
 
+async function postWithStats(cardSkin: string, stats: NonNullable<Post["stats"]>) {
+	const h = makeHarness({ resolveCardSkin: () => structuredClone(DEFAULT_CARD_SKIN) });
+	await h.renderer.generatePostCard(
+		{ creator: { name: "创作者" }, publishedAt: "2026-11-23T02:38:42Z", text: "图文", stats },
+		{ cardSkin },
+	);
+	return new JSDOM(h.captured[0]).window.document;
+}
+
+it.each([
+	{ stats: { likes: 0 }, cells: ["like-count"] },
+	{ stats: { shares: 0, likes: 3 }, cells: ["share-count", "like-count"] },
+	{
+		stats: { shares: 0, comments: 0, likes: 0 },
+		cells: ["share-count", "comment-count", "like-count"],
+	},
+])("从皮肤库加载出厂作品卡时，实际显示的互动项平分整行 $cells", async ({ stats, cells }) => {
+	const doc = await postWithStats(DEFAULT_CARD_SKIN_ID, stats);
+	const visible = doc.querySelectorAll<HTMLElement>('[data-cell$="-count"]');
+	expect(Array.from(visible, (cell) => cell.dataset.cell)).toEqual(cells);
+	for (const [index, cell] of Array.from(visible).entries()) {
+		expect(cell.style.gridColumn).toBe("1 / -1");
+		expect(Number.parseFloat(cell.style.width)).toBeCloseTo(100 / cells.length);
+		expect(Number.parseFloat(cell.style.marginInlineStart)).toBeCloseTo(
+			(100 * index) / cells.length,
+		);
+	}
+});
+
+it("自定义皮肤按清单摆放三项互动数", async () => {
+	const doc = await postWithStats("custom", { shares: 0, comments: 0, likes: 0 });
+	const columns = ["share-count", "comment-count", "like-count"].map(
+		(key) => doc.querySelector<HTMLElement>(`[data-cell="${key}"]`)?.style.gridColumn,
+	);
+	expect(columns).toEqual(["1 / span 3", "4 / span 3", "7 / span 3"]);
+});
+
 /**
  * 根块(外框)那条 inline style 的**解码后**值。
  *
@@ -172,7 +210,7 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 		expect(expected).toContain("creatorAvatar");
 		// B 站这条路到 3a 之前不画主播头像(㉒b,见 `LiveCardInput.author`):头像块整块收起,所以画出来的是
 		// 默认皮肤的块序**去掉 creatorAvatar**。带头像时画不画归 `neutral-live-card.test.ts` 的头像用例。
-		// 直播中的卡:点赞与累计观看只在下播时有内容(㉔c 拆块),没内容的块整块收起。
+		// 这一份在播夹具没有提供累计观看。点赞只在下播时展示。
 		const absent = new Set(["creatorAvatar", "likes", "totalViewers"]);
 		expect(blockLabels(html)).toEqual(expected.filter((b) => !absent.has(b)));
 	});

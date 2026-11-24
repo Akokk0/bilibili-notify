@@ -62,8 +62,9 @@ describe("liveCardInputFromDetails — 每一格", () => {
 	});
 
 	it("人数报了 0 就是 0(真数,留着);没报才没有", () => {
-		const input = liveCardInputFromDetails({ currentViewers: 0, likes: 0 }, base);
-		expect(input).toMatchObject({ currentViewers: 0, likes: 0 });
+		const counts = { currentViewers: 0, likes: 0, heatScore: 318_888, vipViewers: 0 };
+		const input = liveCardInputFromDetails(counts, base);
+		expect(input).toMatchObject(counts);
 		expect(Object.hasOwn(input, "totalViewers")).toBe(false);
 	});
 });

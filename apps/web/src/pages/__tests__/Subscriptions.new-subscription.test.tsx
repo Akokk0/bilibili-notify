@@ -278,17 +278,27 @@ describe("平台一排", () => {
 		expect(dialog.queryByRole("button", { name: "B 站" })).toBeNull();
 	});
 
-	it("钮的名字与颜色取自来源表里的描述符,不写死;默认选中第一颗", async () => {
+	it("来源胶囊在名称前显示描述符图标，切换后仍可按平台名称选择", async () => {
 		sources = [
 			{
 				...BILI_SOURCE,
-				descriptor: { ...BILI_SOURCE.descriptor, label: "哔哩哔哩", color: "#123456" },
+				descriptor: {
+					...BILI_SOURCE.descriptor,
+					label: "哔哩哔哩",
+					color: "#123456",
+					icon: AVATAR,
+				},
 			},
 			DOUYIN_SOURCE,
 		];
 		const dialog = await openNewDialog();
 		const bili = await dialog.findByRole("button", { name: "哔哩哔哩" });
 		expect(bili.style.getPropertyValue("--bn-tint")).toBe("#123456");
+		expect(bili.querySelector("img")?.getAttribute("src")).toBe(AVATAR);
+		const other = dialog.getByRole("button", { name: "抖音" });
+		fireEvent.click(other);
+		expect(other.style.getPropertyValue("--bn-tint")).toBe("#161823");
+		expect(bili.querySelector("img")?.getAttribute("src")).toBe(AVATAR);
 		expect(dialog.queryByRole("button", { name: "B 站" })).toBeNull();
 	});
 });

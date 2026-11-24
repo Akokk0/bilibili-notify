@@ -1,0 +1,37 @@
+{
+	"marketplace.notes": "用微博 App 掃碼登入後，可用暱稱、UID 或個人主頁連結訂閱已關注的博主。新微博會推送到所選目標，卡片可顯示圖片、話題和超話資訊。",
+	"request.limitedLocal": "微博限制了請求頻率，本次執行會暫停請求。本機無法儲存冷卻結束時間。",
+	"feed.cursor": "微博傳回了重複的分頁游標，下一輪會從首頁重新檢查。",
+	"auth.renewal": "目前的微博帳號可用，自動續期需要重新掃碼。",
+	"auth.preparing": "正在向微博取得 QR Code。",
+	"auth.qr": "微博暫時無法提供 QR Code，請稍後再試。",
+	"auth.qrExpired": "本次掃碼已結束，請重新掃碼。",
+	"auth.scanned": "請在手機上確認微博登入。",
+	"auth.checking": "正在核對微博帳號。",
+	"auth.required": "請先登入微博帳號。",
+	"auth.expired": "微博登入已失效，請重新掃碼。",
+	"auth.verify": "微博要求安全驗證。請在微博完成驗證後重新掃碼。",
+	"auth.changed": "微博傳回了另一個帳號。請重新掃碼確認要使用的帳號。",
+	"auth.redirect": "微博傳回了無法識別的登入轉址，已停止此次登入。",
+	"auth.storage": "無法讀取或儲存微博登入資訊，請檢查本機儲存空間。",
+	"request.cancelled": "微博請求已取消。",
+	"request.unavailable": "暫時無法從微博取得有效回應，請稍後再試。",
+	"request.limited": "微博限制了請求頻率，請在冷卻結束後再試。",
+	"profile.input": "請輸入微博部落客的完整暱稱、UID 或個人頁連結。",
+	"profile.follow": "請先用目前的微博帳號關注這位博主，再新增訂閱。",
+	"profile.notFound": "找不到這位微博博主。",
+	"post.notFound": "找不到這則微博的長文內容。",
+	"post.via": "來自 {device}",
+	"$manifest": {
+		"name": "微博",
+		"description": "透過登入帳號的關注動態訂閱微博。請先在微博關注要訂閱的博主。",
+		"contributes": {
+			"subscription": {
+				"label": "微博",
+				"creatorNoun": "博主",
+				"postNoun": "微博",
+				"externalIdNoun": "UID"
+			}
+		}
+	}
+}

@@ -131,6 +131,22 @@ describe("描述符图标的纯图标兜底", () => {
 		expect(container.textContent).toBe("");
 	});
 
+	it("单色图片图标保留来源轮廓，并使用周围的文字颜色", () => {
+		render(
+			<span style={{ color: "white" }}>
+				<DescriptorIcon
+					descriptor={{ shortLabel: "桥", color: "#123456", icon: IMAGE }}
+					label="桥接平台"
+					inheritColor
+				/>
+			</span>,
+		);
+		const icon = screen.getByRole("img", { name: "桥接平台" });
+		const shape = icon.firstElementChild as HTMLElement;
+		expect(getComputedStyle(shape).backgroundColor).toBe(getComputedStyle(icon).color);
+		expect(shape.style.mask).toContain(IMAGE);
+	});
+
 	it.each([
 		undefined,
 		"not-an-icon",

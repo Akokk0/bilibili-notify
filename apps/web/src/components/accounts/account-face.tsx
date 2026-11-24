@@ -1,7 +1,7 @@
 import type { AccountView, SourceEntry } from "@bilibili-notify/contract";
 import { Avatar, Icon } from "@bilibili-notify/ui";
 import { imageUrl } from "../../utils/image-url";
-import { DescriptorIcon } from "../platform-meta";
+import { SourceIcon } from "../platform-meta";
 
 export function accountSourceLabel(
 	key: string,
@@ -18,18 +18,6 @@ export function accountRowId(key: string): string {
 	return `source-account-${encodeURIComponent(key)}`;
 }
 
-export function AccountSourceIcon({ source, size = 12 }: { source: SourceEntry; size?: number }) {
-	return (
-		<DescriptorIcon
-			descriptor={{
-				...source.descriptor,
-				shortLabel: source.descriptor.shortLabel ?? source.descriptor.label,
-				color: source.descriptor.color ?? "var(--color-bn-blue)",
-			}}
-			size={size}
-		/>
-	);
-}
 export function AccountFace({
 	account,
 	source,
@@ -60,7 +48,7 @@ export function AccountFace({
 			)}
 			{source ? (
 				<span className="absolute -bottom-0.5 -right-0.5 rounded bg-bn-surface p-0.5 leading-none">
-					<AccountSourceIcon source={source} size={10} />
+					<SourceIcon source={source} size={10} />
 				</span>
 			) : null}
 		</span>

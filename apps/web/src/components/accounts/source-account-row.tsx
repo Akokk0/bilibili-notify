@@ -19,7 +19,8 @@ import { useT } from "../../i18n";
 import { errorTextOf } from "../../services/error-text";
 import { DragHandle } from "../drag-handle";
 
-import { AccountFace, AccountSourceIcon, accountRowId } from "./account-face";
+import { SourceIcon } from "../platform-meta";
+import { AccountFace, accountRowId } from "./account-face";
 
 export interface ScanSession {
 	scanning: boolean;
@@ -138,7 +139,7 @@ export function SourceAccountRow({
 				</div>
 				<div className="mt-0.5 flex min-w-0 items-center gap-2 text-bn-xs text-bn-text-secondary">
 					<span className="inline-flex min-w-0 items-center gap-1">
-						{source ? <AccountSourceIcon source={source} size={12} /> : null}
+						{source ? <SourceIcon source={source} size={12} /> : null}
 						<span className="truncate">{label}</span>
 					</span>
 					<span

@@ -1328,6 +1328,8 @@ const FIELDS: Record<string, string[]> = {
 		"live.isStreaming:bool",
 		"live.isEnded:bool",
 		"stats.currentViewers:text",
+		"stats.heatScore:text",
+		"stats.vipViewers:text",
 		"stats.likes:text",
 		"stats.followers:text",
 		"stats.totalViewers:text",
@@ -1448,6 +1450,54 @@ const BLOCKS: Record<string, Record<string, string[]>> = {
 		body: [],
 	},
 };
+
+it("读入旧直播皮肤时复用原有的人气和观众块，同一行的粉丝数与观众人数互不遮挡", () => {
+	const builtin = (id: string, name: string, row: number) => ({
+		id,
+		kind: "builtin",
+		builtin: name,
+		grid: { row, column: 1, span: 12 },
+	});
+	const old = {
+		...DEFAULT_CARD_SKIN,
+		cards: {
+			live: {
+				width: 600,
+				blocks: [
+					builtin("pop", "currentViewers", 2),
+					builtin("fans", "followers", 3),
+					builtin("audience", "totalViewers", 3),
+					builtin("heat", "heatScore", 4),
+					builtin("vips", "vipViewers", 5),
+				],
+			},
+		},
+	};
+	const parsed = parseCardSkin(old);
+	expect(parsed.ok && parsed.manifest.cards.live?.blocks).toMatchObject([
+		{ id: "pop", builtin: "currentViewers", grid: { row: 2, column: 1, span: 12 } },
+		{ id: "fans", builtin: "followers", grid: { row: 3, column: 7, span: 6 } },
+		{ id: "audience", builtin: "totalViewers", grid: { row: 3, column: 1, span: 6 } },
+	]);
+	const separate = parseCardSkin({
+		...old,
+		cards: {
+			live: {
+				width: 600,
+				blocks: [
+					builtin("fans", "followers", 2),
+					builtin("vips", "vipViewers", 4),
+					builtin("heat", "heatScore", 5),
+				],
+			},
+		},
+	});
+	expect(separate.ok && separate.manifest.cards.live?.blocks).toMatchObject([
+		{ id: "fans", builtin: "followers", grid: { row: 2, column: 1, span: 12 } },
+		{ id: "vips", builtin: "totalViewers", grid: { row: 4, column: 1, span: 12 } },
+		{ id: "heat", builtin: "currentViewers", grid: { row: 5, column: 1, span: 12 } },
+	]);
+});
 describe("㉔ 词表全集:卡种键、字段、块、挂点", () => {
 	it("七个卡种键(顺序也钉)", () => {
 		expect([...CARD_KINDS]).toEqual([

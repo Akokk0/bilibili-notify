@@ -57,7 +57,7 @@ export interface Post {
 	creator: Creator;
 	/** ISO 时间。 */
 	publishedAt: string;
-	/** 「投稿了视频」这类说明,来源给。 */
+	/** 来源排好的简短说明，例如「投稿了视频」或发布设备与公开发布地。 */
 	label?: string;
 	topic?: string;
 	/** 有这格就按文章排版;`images` 是文章配图。 */

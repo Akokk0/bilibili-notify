@@ -363,6 +363,7 @@ export function SubscriptionDialog({
 	const identity = subscriptionIdentityOf(draft);
 	const ext = platform;
 	const previewName = createProfile?.name.trim() ? createProfile.name : displayName(draft, ext);
+	const followers = createProfile?.followers ?? draft.cachedProfile?.followers;
 	const accountLabel = creatorAccountLabel(
 		identity,
 		ext,
@@ -631,46 +632,35 @@ export function SubscriptionDialog({
 						url={createProfile?.avatarUrl ?? profileAvatarUrl(draft.cachedProfile)}
 						ring
 					/>
-					<div
-						className="min-w-0 flex-1 pb-2 text-bn-on-solid"
-						style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}
-					>
-						<div className="flex min-w-0 items-center gap-1.5">
+					<div className="min-w-0 flex-1 pb-2">
+						<div
+							className="flex min-w-0 items-center gap-1.5 text-bn-on-solid"
+							style={{ filter: "drop-shadow(0 1px 2px rgb(0 0 0 / 45%))" }}
+						>
 							{ext.showBadge ? (
-								<span role="img" aria-label={ext.label} title={ext.label} className="shrink-0">
-									<DescriptorIcon
-										descriptor={{
-											icon: ext.icon,
-											color: ext.color ?? "var(--color-bn-inactive)",
-											shortLabel: ext.shortLabel ?? ext.label,
-										}}
-										size={14}
-										fallbackIcon="globe"
-									/>
-								</span>
+								<DescriptorIcon
+									descriptor={{
+										icon: ext.icon,
+										color: ext.color ?? "var(--color-bn-inactive)",
+										shortLabel: ext.shortLabel ?? ext.label,
+									}}
+									label={ext.label}
+									fallbackIcon="globe"
+									inheritColor
+								/>
 							) : null}
 							<div className="truncate text-bn-md font-bold" title={previewName}>
 								{previewName}
 							</div>
 						</div>
-						<div
-							className="mt-0.5 flex min-w-0 items-center gap-1.5 text-bn-xs font-semibold text-bn-text-secondary"
-							style={{ textShadow: "none" }}
-						>
+						<div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-bn-xs font-semibold text-bn-text-secondary">
 							<span className="min-w-0 flex-1 truncate tabular-nums" title={accountLabel}>
 								{accountLabel}
 							</span>
-							{(createProfile?.followers ?? draft.cachedProfile?.followers) != null ? (
-								<>
-									<span className="shrink-0 opacity-70">·</span>
-									<span className="shrink-0 whitespace-nowrap tabular-nums">
-										{tx("sourceUi.pages.up.UpDialog.UpDialog.15", {
-											count: formatCount(
-												createProfile?.followers ?? draft.cachedProfile?.followers ?? 0,
-											),
-										})}
-									</span>
-								</>
+							{followers != null ? (
+								<span className="shrink-0 whitespace-nowrap tabular-nums">
+									{tx("sourceUi.pages.up.UpDialog.UpDialog.15", { count: formatCount(followers) })}
+								</span>
 							) : null}
 						</div>
 					</div>

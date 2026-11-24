@@ -478,7 +478,12 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			publishedAt: utcIsoOf(reported.publishedAt),
 			text: text.trim() === "" ? "" : text,
 		};
+		if (reported.label !== undefined) post.label = reported.label;
 		if (reported.topic !== undefined) post.topic = reported.topic;
+		if (reported.attachment) {
+			const { cover, ...card } = reported.attachment;
+			post.attachment = { ...card, ...(cover && { cover: await postImageFromRef(cover) }) };
+		}
 		if (post.text !== "" && reported.richText !== undefined) {
 			const segmentTexts = normalizeNewlines(reported.richText.map((segment) => segment.text));
 			post.richText = reported.richText.map((segment, index) => ({
@@ -489,7 +494,6 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		if (reported.images !== undefined) {
 			post.images = await Promise.all(reported.images.map(postImageFromRef));
 		}
-		// 视频作品的 `label`(「投稿了视频」)不要了:主人 2026-10-24 定,契约不开 `label`,宿主也不替平台写这句。
 		if (reported.video !== undefined) {
 			const video = reported.video;
 			post.video = {
@@ -518,6 +522,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			...(details.url === undefined ? {} : { url: details.url }),
 			...(details.currentViewers === undefined ? {} : { currentViewers: details.currentViewers }),
 			...(details.totalViewers === undefined ? {} : { totalViewers: details.totalViewers }),
+			...(details.heatScore === undefined ? {} : { heatScore: details.heatScore }),
+			...(details.vipViewers === undefined ? {} : { vipViewers: details.vipViewers }),
 			...(details.likes === undefined ? {} : { likes: details.likes }),
 			...(details.description === undefined ? {} : { description: details.description }),
 			...(details.creator === undefined

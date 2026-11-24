@@ -62,10 +62,6 @@ it("出厂作品卡将四项互动数排在一行，收藏为零时也显示", a
 		document.querySelector<HTMLElement>(`[data-cell="${id}"]`),
 	);
 	expect(new Set(cells.map((cell) => cell?.style.gridRow)).size).toBe(1);
-	expect(cells.map((cell) => cell?.style.gridColumn)).toEqual([
-		"1 / span 3",
-		"4 / span 3",
-		"7 / span 3",
-		"10 / span 3",
-	]);
+	expect(cells.map((cell) => cell?.style.width)).toEqual(["25%", "25%", "25%", "25%"]);
+	expect(cells.map((cell) => cell?.style.marginInlineStart)).toEqual(["0%", "25%", "50%", "75%"]);
 });

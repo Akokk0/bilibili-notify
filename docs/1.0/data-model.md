@@ -280,6 +280,7 @@ interface LiveDetails {                 // 一场直播的内容
   title?: string; cover?: PostImage; category?: string; url?: string;
   currentViewers?: number;              // 此刻在线
   totalViewers?: number;                // 本场累计观看
+  heatScore?: number; vipViewers?: number; // 平台直播热度、贵宾席人数
   likes?: number; description?: string; creator?: Creator;
 }
 
@@ -338,6 +339,7 @@ interface LiveCardInput {
   title?: string; category?: string; description?: string; cover?: PostImage;
   startedAt?: string;
   currentViewers?: number; totalViewers?: number; likes?: number;   // 只收精确数，缺了就缺键
+  heatScore?: number; vipViewers?: number;                          // 开播与直播中卡片
   followers?: number; followersDelta?: number;
 }
 ```

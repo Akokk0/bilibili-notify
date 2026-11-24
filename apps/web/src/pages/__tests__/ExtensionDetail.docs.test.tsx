@@ -82,10 +82,10 @@ vi.mock("../../services/api", () => ({
 	},
 }));
 
-function renderDetail() {
+function renderDetail(url = "/extensions/bridge") {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
-		<MemoryRouter initialEntries={["/extensions/bridge"]}>
+		<MemoryRouter initialEntries={[url]}>
 			<QueryClientProvider client={qc}>
 				<Routes>
 					<Route path="/extensions/:id" element={<ExtensionDetail />} />
@@ -176,6 +176,18 @@ describe("详情页上的拓展文档", () => {
 		renderDetail();
 		await openTab(/更新日志/);
 		expect(await screen.findByText(/第一版/)).toBeTruthy();
+	});
+
+	it("从安装结果进入时直接显示更新日志，仍可切回说明", async () => {
+		docs.value = { readme: "# 桥接说明", changelog: "## [0.0.1]\n\n第一版。" };
+		renderDetail("/extensions/bridge?tab=changelog");
+
+		expect(await screen.findByText("第一版。")).toBeTruthy();
+		expect(screen.getByRole("tab", { name: "更新日志" }).getAttribute("aria-selected")).toBe(
+			"true",
+		);
+		await openTab(/说明/);
+		expect(await screen.findByRole("heading", { name: "桥接说明" })).toBeTruthy();
 	});
 
 	/**

@@ -14,6 +14,7 @@
 
 import type { CardSkinManifest, ImageRef, Post, ServiceContext } from "@bilibili-notify/internal";
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
+import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
 import { ImageRenderer } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
@@ -190,6 +191,15 @@ describe("generatePostCard — 视频那一行", () => {
 	});
 });
 
+it("把来源排好的标签放在时间旁边，正文只显示作品文字", async () => {
+	const html = await htmlOf(post({ text: "海边", label: "来自相机 · 发布于四川" }));
+	const { document } = new JSDOM(html).window;
+	expect(document.querySelector('[data-block="time"]')?.textContent).toBe(
+		"2023/11/15 06:13:20 · 来自相机 · 发布于四川",
+	);
+	expect(document.querySelector('[data-block="text"]')?.textContent).toBe("海边");
+});
+
 describe("generatePostCard — 互动数", () => {
 	/**
 	 * 拓展的作品不一定三样都报(赞 / 评论 / 转发各自选填)。没报的那一项不画 —— 画一个空着的
@@ -206,6 +216,13 @@ describe("generatePostCard — 互动数", () => {
 		const html = await htmlOf(post());
 		for (const label of ["转发", "评论", "点赞"]) expect(html).toContain(`aria-label="${label}"`);
 	});
+});
+
+it("在超话名称旁显示默认皮肤的话题图标", async () => {
+	const html = await htmlOf(post({ topic: "峡谷超话" }));
+	const heading = new JSDOM(html).window.document.querySelector('[data-block="topic"]');
+	expect(heading?.textContent).toBe("峡谷超话");
+	expect(heading?.querySelector("svg")).toBeTruthy();
 });
 
 describe("generatePostCard — 作品卡的入口(吃中立的 Post)", () => {

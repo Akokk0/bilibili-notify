@@ -55,6 +55,12 @@ function status(
 }
 
 describe("开播 / 下播", () => {
+	it("复核只拿到热度时，下一张直播卡没有上一份的贵宾人数", () => {
+		start({ title: "直播中", heatScore: 2000, vipViewers: 167 });
+		status({ heatScore: 0 });
+		expect(table.get(SUB_A)?.details).toEqual({ url: LIVE_URL, title: "直播中", heatScore: 0 });
+	});
+
 	it("行装的是 LiveDetails:开播 → 进表,带着开播时刻与直播那几格(图是图库引用);下播 → 出表", () => {
 		start(
 			{

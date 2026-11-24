@@ -4,7 +4,7 @@
 
 ## 版本与工程
 
-宿主契约为 `apiVersion: 1`。群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`，作品收藏数要求 `apiRevision: 3`。适配器如果依赖 `send` 第四个参数 `options.singleAttempt` 来关闭手动测试的重试，需要声明 `apiRevision: 4`。同一小号支持适配器在 `capabilities().inbound` 中返回 `groupTestReply: "token"`，让宿主使用纯文本群接收测试码。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。使用新增能力时应声明对应小号并核对宿主兼容性。
+宿主契约为 `apiVersion: 1`。群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`，作品收藏数要求 `apiRevision: 3`。适配器如果依赖 `send` 第四个参数 `options.singleAttempt` 来关闭手动测试的重试，需要声明 `apiRevision: 4`。同一小号支持适配器在 `capabilities().inbound` 中返回 `groupTestReply: "token"`，让宿主使用纯文本群接收测试码。上报作品卡头说明（`post.label`）或图文附卡（`post.attachment`）要求 `apiRevision: 5`。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。使用新增能力时应声明对应小号并核对宿主兼容性。
 
 创建器默认生成独立Git工程、示例来源、完整vp命令、锁文件、提交hooks与GitHub Actions：
 
@@ -37,7 +37,7 @@ vp dlx @bilibili-notify/bn@alpha dev
 
 拓展工程由创建器安装好依赖；已有工程先运行`vp install --frozen-lockfile`。只需启动BN，打开拓展页，点击“挂载开发拓展”，输入源码工程在BN机器上的绝对路径，再沿原开关启用。BN直接加载`src/index.ts`，负责运行、监听源码与子依赖、局部重载和收尾。工程不需要`dist/`，也没有独立的dev/start命令；`build`与打包用于生产。多个工程可同时挂载，保存一个只重载对应项。
 
-源码及其导入依赖、设置规则与清单预检通过后，BN沿原生命周期停止旧实例、启动新版；预检失败会在卡片显示错误，旧实例继续运行，修正后恢复更新。停用项不会因保存而自动启用。需要开发场景时，在清单声明`contributes.devtools: {}`，具名导出`src/devtools/index.ts`中的`devtools()`。解除或关闭BN时停止实例与监听，保留源工程；本次挂载不持久化，下次启动后重新指定。
+源码及其导入依赖、设置规则与清单预检通过后，BN沿原生命周期停止旧实例、启动新版；预检失败会在卡片显示错误，旧实例继续运行，修正后恢复更新。停用项不会因保存而自动启用。需要开发场景时，在清单声明`contributes.devtools: {}`，具名导出`src/devtools/index.ts`中的`devtools()`。关闭BN时会停止实例与监听。用同一数据目录重启开发宿主时，只要挂载仍指向原工程，BN就会自动恢复挂载，沿用原来的监听设置和启用状态。手动解除挂载会移除挂载记录，保留源工程。
 
 手动挂载存在于源码开发版和`bn dev`专用成品。`bn web`、Docker、桌面及普通生产构建没有此入口；运行期环境变量不能打开它。两个宿主使用相同默认端口时需先停止其中一个；多个拓展应挂到同一台开发BN。
 
@@ -103,6 +103,14 @@ export function activate(ctx: ExtensionContext): void {
 `start(sourceCtx)`得到运行中的来源上下文：从`subscriptions()`读取自己平台的创作者名单，监听`onSubscriptionsChanged`，以`externalId`上报。`reportProfile`更新资料，`reportPost`交作品，`reportLive`交开播、状态或下播信号；具体载荷使用SDK的`ExtensionPostReport`、`ExtensionLiveSignalReport`等公开类型。直播`status`只更新状态，不触发推送。
 
 作品上报和群聊链接预览可用 `post.stats.saves` 传收藏数。平台未给出数值时省略，明确为零时传 `0`。使用此字段的拓展要求 `apiRevision: 3`。
+
+直播上报与 `fetchLiveStatus` 可以在 `details` 中提供 `heatScore`（平台直播热度）和 `vipViewers`（贵宾席人数），要求 `apiRevision: 5`。两项都接受非负整数，缺少时省略。开播和正在直播卡在人气位优先显示 `heatScore`，在观众人数位优先显示 `vipViewers`。缺少贵宾数据时，有 `totalViewers` 就按「累计观看人数」展示。全房此刻在线与本场累计观看分别使用 `currentViewers` 和 `totalViewers` 上报。
+
+`post.label` 是作品皮肤已有的卡头说明。拓展把要显示的文字排好再上报，例如「投稿了视频」或「来自 iPhone · 发布于 四川」。默认皮肤把它放在发布时间旁。正文和关键词过滤使用 `post.text`。
+
+有主话题时，`post.topic` 给出名称，图标由皮肤绘制。
+
+`post.attachment` 可附一张 `kind: "card"` 的卡片，必填 `title`。可选的 `cover` 是图库引用，`lines` 最多四行，每行一个 `{ text }`。可用 `button: { text, enabled }` 还原平台按钮的显示状态。推送图片里的按钮只展示文字。卡头说明、附卡标题及每行说明最长 256 字，按钮文字最长 128 字。
 
 ### 展示账号（API 1 修订 2）
 

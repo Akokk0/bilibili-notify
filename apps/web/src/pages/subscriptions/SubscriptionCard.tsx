@@ -208,7 +208,6 @@ export function SubscriptionCard({
 					<span className="min-w-0 flex-1 truncate tabular-nums" title={accountLabel}>
 						{accountLabel}
 					</span>
-					<span className="shrink-0">·</span>
 					<span className="shrink-0 whitespace-nowrap tabular-nums">{fansLabel}</span>
 				</div>
 				{paused && ext ? (

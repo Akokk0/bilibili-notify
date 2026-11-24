@@ -47,15 +47,15 @@ interface ContractRow {
  * 只登记拓展**交给 BN**、或 BN 照着它画 / 收的那几份:清单、译文文件、搜人候选、视图、上报与读取结果。
  */
 const CONTRACT: readonly ContractRow[] = [
-	{ name: "群聊作品", schema: ExtensionLinkPreviewSchema, digest: "7cc351cc9987c0f6" },
+	{ name: "群聊作品", schema: ExtensionLinkPreviewSchema, digest: "9f92fb1ccbd18b61" },
 	{ name: "当前清单", schema: ExtensionManifestSchema, digest: "7dba4acdc8a62743" },
 	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "9bd1284b1a0d85b9" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "c7459400b5bf8f92" },
-	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "c3149c3f9d35dead" },
+	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "7883477f9f066f1e" },
 	{
 		name: "上报:直播信号",
 		schema: ExtensionLiveSignalReportSchema,
-		digest: "37c9d966e31bf4fd",
+		digest: "ea415aee1b225eb5",
 	},
 	{
 		name: "上报:资料",
@@ -70,7 +70,7 @@ const CONTRACT: readonly ContractRow[] = [
 	{
 		name: "直播拉取结果",
 		schema: ExtensionLiveStatusResultSchema,
-		digest: "dfd0b3120f0f9f13",
+		digest: "96baa3ae95e84eaa",
 	},
 	{
 		name: "来源健康",
@@ -80,7 +80,7 @@ const CONTRACT: readonly ContractRow[] = [
 ];
 
 /** 上面那些摘要是在哪个契约小号上记的。 */
-const PINNED_REVISION = 4;
+const PINNED_REVISION = 5;
 
 const HOW_TO_FIX = [
 	"契约形状变了(或契约小号变了,而这里记的还是旧的)。",

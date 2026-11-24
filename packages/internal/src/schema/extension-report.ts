@@ -133,10 +133,20 @@ const PostStatsSchema = z.strictObject({
 const PostSchema = z.strictObject({
 	creator: SubscriptionCreatorSchema.optional(),
 	publishedAt: TimeSchema,
+	label: NarrativeTextSchema.optional(),
 	text: PostTextSchema,
 	richText: list(ExtensionRichTextSegmentSchema).optional(),
 	images: list(ImageRefSchema, { max: SUBSCRIPTION_POST_IMAGES_MAX }).optional(),
 	topic: TopicSchema.optional(),
+	attachment: z
+		.strictObject({
+			kind: z.literal("card"),
+			title: z.string().min(1).max(SUBSCRIPTION_REPORT_TITLE_MAX),
+			cover: ImageRefSchema.optional(),
+			lines: list(z.strictObject({ text: NarrativeTextSchema }), { max: 4 }).optional(),
+			button: z.strictObject({ text: NameSchema, enabled: z.boolean() }).optional(),
+		})
+		.optional(),
 	video: PostVideoSchema.optional(),
 	stats: PostStatsSchema.optional(),
 });
@@ -164,6 +174,8 @@ const LiveDetailsSchema = z.strictObject({
 	url: UrlSchema.optional(),
 	currentViewers: CountSchema.optional(),
 	totalViewers: CountSchema.optional(),
+	heatScore: CountSchema.optional(),
+	vipViewers: CountSchema.optional(),
 	likes: CountSchema.optional(),
 	description: LongTextSchema.optional(),
 });
