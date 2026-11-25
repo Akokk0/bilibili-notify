@@ -7,6 +7,7 @@
 	"request.storage": "BN could not save the Huya cooldown state. Check BN storage.",
 	"profile.input": "Enter a Huya room number, room link, or streamer name.",
 	"profile.missing": "Huya could not find this room.",
+	"live.disconnected": "The Huya room connection was lost. Retrying automatically.",
 	"live.unknown": "Huya did not return a confirmed live status.",
 	"live.restricted": "Access to this Huya room is restricted.",
 	"$manifest": {

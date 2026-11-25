@@ -7,6 +7,7 @@
 	"request.storage": "无法保存虎牙请求的冷却状态，请检查 BN 存储。",
 	"profile.input": "请输入虎牙房间号、房间链接或主播昵称。",
 	"profile.missing": "虎牙未找到该房间。",
+	"live.disconnected": "虎牙房间的实时连接已断开，正在尝试重连。",
 	"live.unknown": "虎牙没有返回明确的直播状态。",
 	"live.restricted": "该虎牙房间限制访问。",
 	"$manifest": {

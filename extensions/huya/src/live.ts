@@ -17,7 +17,9 @@ export type Observation =
 	| { kind: "live"; sessionId?: string; startedAt?: string; details: ExtensionLiveDetails };
 
 type LiveObservation = Extract<Observation, { kind: "live" }>;
-function sameSession(previous: LiveObservation, current: LiveObservation): boolean {
+export type RoomMetrics = Pick<ExtensionLiveDetails, "heatScore" | "vipViewers">;
+export type ReadMetrics = (live: LiveObservation) => RoomMetrics | undefined;
+export function sameSession(previous: LiveObservation, current: LiveObservation): boolean {
 	if (previous.sessionId && current.sessionId) return previous.sessionId === current.sessionId;
 	return !previous.startedAt || !current.startedAt || previous.startedAt === current.startedAt;
 }
@@ -29,6 +31,7 @@ export async function observe(
 	client: HuyaClient,
 	started: number,
 	previous?: Observation,
+	readMetrics?: ReadMetrics,
 ): Promise<Result<{ observation: Observation }>> {
 	const { data } = room,
 		live = record(data.liveData);
@@ -53,13 +56,15 @@ export async function observe(
 				startedAt,
 				details,
 			};
+			const pushed = readMetrics?.(observation);
 			const needsStats = previous?.kind !== "live" || !sameSession(previous, observation);
 			const [cover, vipViewers] = await Promise.all([
 				readImage(live.screenshot, signal, imageDeadline(started)),
-				needsStats ? client.vipViewers(room.uid, signal, started + 12000) : undefined,
+				pushed?.vipViewers ??
+					(needsStats ? client.vipViewers(room.uid, signal, started + 12000) : undefined),
 			]);
 			if (signal.aborted) return fail("indeterminate", ctx.i18n.t("request.cancelled"));
-			const heatScore = count(live.totalCount);
+			const heatScore = pushed?.heatScore ?? count(live.totalCount);
 			if (heatScore !== undefined) details.heatScore = heatScore;
 			if (vipViewers !== undefined) details.vipViewers = vipViewers;
 			if (typeof live.introduction === "string" && live.introduction.trim())

@@ -5,85 +5,214 @@ import type {
 	Failure,
 } from "@bilibili-notify/extension";
 import type { createDirectory } from "./creators";
-import { type Observation, transition } from "./live";
+import {
+	type Observation,
+	type ReadMetrics,
+	type RoomMetrics,
+	sameSession,
+	transition,
+} from "./live";
+import { listen, type RoomNotice } from "./socket";
 
-interface Watch {
-	uid: string;
-	controller: AbortController;
-	next: number;
-	failures: number;
-	previous?: Observation;
-	offlineDetectedAt?: string;
-}
+type Directory = ReturnType<typeof createDirectory>;
 const minute = 60000;
+
+function watchRoom(
+	ctx: ExtensionContext,
+	source: ExtensionSourceContext,
+	directory: Directory,
+	uid: string,
+	needsRoomProbe: () => boolean,
+	parent: AbortSignal,
+) {
+	const life = new AbortController();
+	const signal = AbortSignal.any([parent, life.signal]);
+	let previous: Observation | undefined;
+	let offlineDetectedAt: string | undefined;
+	let hint: { kind: "live" | "offline"; sessionId?: string; until: number } | undefined;
+	let socket: Disposable | undefined;
+	let reconnect: Disposable | undefined;
+	let retryCount = 0;
+	let timer: Disposable | undefined;
+	let reading = false,
+		queued = false;
+	let failures = 0;
+	const metrics = new Map<keyof RoomMetrics, { value: number; at: number }>();
+	const readMetrics: ReadMetrics = (current) => {
+		if (
+			previous?.kind !== "live" ||
+			!sameSession(previous, current) ||
+			!((previous.sessionId && current.sessionId) || (previous.startedAt && current.startedAt))
+		)
+			return;
+		const fresh: RoomMetrics = {};
+		for (const [key, stat] of metrics)
+			if (Date.now() - stat.at < 2 * minute) fresh[key] = stat.value;
+		return fresh;
+	};
+	function refresh(delay = 0) {
+		if (signal.aborted) return;
+		if (reading && delay === 0) {
+			queued = true;
+			return;
+		}
+		timer?.dispose();
+		timer = ctx.setTimeout(run, delay);
+	}
+	function failed(failure: Failure) {
+		if (failure.code !== "rate_limited" && failure.upstreamCode !== "huya.verify")
+			source.reportProblem({ externalId: uid, code: "huya_room", message: failure.message });
+		refresh(minute * 2 ** Math.min(failures++, 4));
+	}
+	function notice(event: RoomNotice) {
+		switch (event.kind) {
+			case "vipViewers":
+			case "heatScore":
+				if (previous?.kind === "live" && !hint) {
+					metrics.set(event.kind, { value: event.value, at: Date.now() });
+					previous = { ...previous, details: { ...previous.details, [event.kind]: event.value } };
+				}
+				return;
+			case "live":
+			case "offline":
+				metrics.clear();
+				hint = { ...event, until: Date.now() + 90000 };
+		}
+		refresh();
+	}
+	function disconnected() {
+		socket = undefined;
+		metrics.clear();
+		if (signal.aborted) return;
+		source.reportProblem({
+			externalId: uid,
+			code: "huya_socket",
+			message: ctx.i18n.t("live.disconnected"),
+			notify: false,
+		});
+		reconnect = ctx.setTimeout(
+			() => {
+				reconnect = undefined;
+				connect();
+			},
+			Math.min(minute * 5, 5000 * 2 ** Math.min(retryCount++, 6)),
+		);
+	}
+	function connect() {
+		if (signal.aborted || socket || reconnect) return;
+		if (needsRoomProbe()) {
+			refresh(minute);
+			return;
+		}
+		socket = listen(ctx, uid, signal, {
+			ready() {
+				source.resolveProblem({ externalId: uid, code: "huya_socket" });
+				hint = undefined;
+				refresh();
+			},
+			heartbeat() {
+				retryCount = 0;
+			},
+			notice,
+			disconnected,
+		});
+		if (!socket) disconnected();
+	}
+	async function check() {
+		const started = Date.now();
+		const expected = hint;
+		const room = await directory.lookup(uid, signal);
+		if (signal.aborted) return;
+		if (!room.ok) return failed(room);
+		const profile = await directory.profileOf(room, signal);
+		if (signal.aborted) return;
+		if (profile.ok) {
+			const { ok: _, ...fields } = profile;
+			source.reportProfile(uid, fields);
+		}
+		const result = await directory.observationOf(room, signal, started, previous, readMetrics);
+		if (signal.aborted) return;
+		if (!result.ok) return failed(result);
+		failures = 0;
+		source.resolveProblem({ externalId: uid, code: "huya_room" });
+		connect();
+		if (expected !== hint) return;
+		// 虎牙房间资料有缓存；收到切换通知后给同一场状态一点时间追上。
+		const current = result.observation;
+		if (
+			expected &&
+			Date.now() < expected.until &&
+			(current.kind !== expected.kind ||
+				(current.kind === "live" && expected.sessionId && current.sessionId !== expected.sessionId))
+		) {
+			refresh(10000);
+			return;
+		}
+		hint = undefined;
+		const { latest, reports } = transition(previous, result.observation);
+		if (latest.kind !== "live" || previous?.kind !== "live" || !sameSession(previous, latest))
+			metrics.clear();
+		previous = latest;
+		for (const report of reports) {
+			if (signal.aborted) return;
+			if (report.kind === "end" && latest.kind === "offline" && offlineDetectedAt)
+				report.endedAt = offlineDetectedAt;
+			source.reportLive(uid, report);
+		}
+		offlineDetectedAt = undefined;
+	}
+	async function run() {
+		if (signal.aborted) return;
+		reading = true;
+		try {
+			await check();
+		} catch (error) {
+			if (!signal.aborted) {
+				ctx.logger.warn(ctx.i18n.t("request.unavailable"), error);
+				refresh(minute);
+			}
+		} finally {
+			reading = false;
+			if (queued) {
+				queued = false;
+				refresh();
+			}
+		}
+	}
+	function cleanup() {
+		timer?.dispose();
+		reconnect?.dispose();
+		socket?.dispose();
+	}
+	signal.addEventListener("abort", cleanup, { once: true });
+	refresh();
+	return {
+		readMetrics,
+		noteHostStatus(current: Observation) {
+			if (!previous) return;
+			if (previous.kind === "live" && current.kind === "offline")
+				offlineDetectedAt ??= new Date().toISOString();
+			else offlineDetectedAt = undefined;
+			if (
+				previous.kind !== current.kind ||
+				(previous.kind === "live" && current.kind === "live" && !sameSession(previous, current))
+			)
+				refresh();
+		},
+		dispose() {
+			life.abort();
+		},
+	};
+}
 
 export function monitor(
 	ctx: ExtensionContext,
 	source: ExtensionSourceContext,
-	directory: ReturnType<typeof createDirectory>,
+	directory: Directory,
+	needsRoomProbe: () => boolean,
 	signal: AbortSignal,
 ) {
-	const watches = new Map<string, Watch>();
-	let timer: Disposable | undefined;
-	let checking = false;
-
-	function failed(watch: Watch, failure: Failure) {
-		watch.failures++;
-		if (failure.code !== "rate_limited" && failure.upstreamCode !== "huya.verify") {
-			source.reportProblem({ externalId: watch.uid, code: "huya_room", message: failure.message });
-		}
-	}
-	async function check(watch: Watch) {
-		const started = Date.now();
-		const scoped = AbortSignal.any([signal, source.signal, watch.controller.signal]);
-		const room = await directory.lookup(watch.uid, scoped);
-		if (scoped.aborted) return;
-		if (!room.ok) return failed(watch, room);
-		const profile = await directory.profileOf(room, scoped);
-		if (scoped.aborted) return;
-		if (profile.ok) {
-			const { ok: _, ...fields } = profile;
-			source.reportProfile(watch.uid, fields);
-		}
-		const result = await directory.observationOf(room, scoped, started, watch.previous);
-		if (scoped.aborted) return;
-		if (!result.ok) return failed(watch, result);
-		watch.failures = 0;
-		source.resolveProblem({ externalId: watch.uid, code: "huya_room" });
-		const { latest, reports } = transition(watch.previous, result.observation);
-		for (const report of reports) {
-			if (scoped.aborted) return;
-			if (report.kind === "end" && latest.kind === "offline" && watch.offlineDetectedAt)
-				report.endedAt = watch.offlineDetectedAt;
-			source.reportLive(watch.uid, report);
-		}
-		watch.offlineDetectedAt = undefined;
-		watch.previous = latest;
-	}
-	function schedule() {
-		timer?.dispose();
-		if (checking || signal.aborted || source.signal.aborted) return;
-		let first: Watch | undefined;
-		for (const watch of watches.values()) if (!first || watch.next < first.next) first = watch;
-		if (!first) return;
-		const watch = first;
-		timer = ctx.setTimeout(
-			async () => {
-				checking = true;
-				try {
-					await check(watch);
-				} catch (error) {
-					if (!watch.controller.signal.aborted && !signal.aborted)
-						ctx.logger.warn(ctx.i18n.t("request.unavailable"), error);
-				} finally {
-					checking = false;
-					watch.next = Date.now() + minute * 2 ** Math.max(0, Math.min(watch.failures - 1, 4));
-					schedule();
-				}
-			},
-			Math.max(0, first.next - Date.now()),
-		);
-	}
+	const watches = new Map<string, ReturnType<typeof watchRoom>>();
 	function reconcile() {
 		const ids = new Set(
 			source
@@ -93,29 +222,24 @@ export function monitor(
 		);
 		for (const [uid, watch] of watches) {
 			if (ids.has(uid)) continue;
-			watch.controller.abort();
+			watch.dispose();
 			watches.delete(uid);
-			source.resolveProblem({ externalId: uid, code: "huya_room", notify: false });
+			for (const code of ["huya_room", "huya_socket"])
+				source.resolveProblem({ externalId: uid, code, notify: false });
 		}
 		for (const uid of ids)
 			if (!watches.has(uid))
-				watches.set(uid, { uid, controller: new AbortController(), next: Date.now(), failures: 0 });
-		schedule();
+				watches.set(uid, watchRoom(ctx, source, directory, uid, needsRoomProbe, signal));
 	}
 	const subscriptions = source.onSubscriptionsChanged(reconcile);
 	reconcile();
 	return {
-		noteHostStatus(uid: string, observation: Observation) {
-			const watch = watches.get(uid);
-			if (!watch) return;
-			if (watch.previous?.kind === "live" && observation.kind === "offline")
-				watch.offlineDetectedAt ??= new Date().toISOString();
-			else watch.offlineDetectedAt = undefined;
+		room(uid: string) {
+			return watches.get(uid);
 		},
 		dispose() {
 			subscriptions.dispose();
-			timer?.dispose();
-			for (const watch of watches.values()) watch.controller.abort();
+			for (const watch of watches.values()) watch.dispose();
 			watches.clear();
 		},
 	};

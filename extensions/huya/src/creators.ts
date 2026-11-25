@@ -7,7 +7,7 @@ import {
 } from "@bilibili-notify/extension";
 import { count, decimal, type HuyaClient, record } from "./client";
 import { createImageReader, imageDeadline } from "./images";
-import { type Observation, observe } from "./live";
+import { type Observation, observe, type ReadMetrics } from "./live";
 import { pageRoom, publicRoom, web } from "./pages";
 
 export interface HuyaRoom {
@@ -194,7 +194,12 @@ export function createDirectory(ctx: ExtensionContext, client: HuyaClient) {
 		fetchProfile,
 		lookup,
 		profileOf,
-		observationOf: (room: HuyaRoom, signal: AbortSignal, started: number, previous?: Observation) =>
-			observe(ctx, room, signal, readImage, client, started, previous),
+		observationOf: (
+			room: HuyaRoom,
+			signal: AbortSignal,
+			started: number,
+			previous?: Observation,
+			readMetrics?: ReadMetrics,
+		) => observe(ctx, room, signal, readImage, client, started, previous, readMetrics),
 	};
 }

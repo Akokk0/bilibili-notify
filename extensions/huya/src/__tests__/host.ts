@@ -12,6 +12,7 @@ interface TestHost {
 		resolveProblem: Mock;
 	};
 	fetch: Mock<ExtensionContext["http"]["fetch"]>;
+	websocket: Mock<ExtensionContext["http"]["websocket"]>;
 	state: Map<string, unknown>;
 	signal: AbortSignal;
 	dispose(): void;
@@ -45,11 +46,14 @@ export function host(
 			},
 		});
 	});
+	const websocket = vi.fn<ExtensionContext["http"]["websocket"]>(() =>
+		fail("unavailable", "offline"),
+	);
 	const reportProblem = vi.fn();
 	const resolveProblem = vi.fn();
 	const ctx = {
 		signal: life.signal,
-		http: { fetch },
+		http: { fetch, websocket },
 		reportProblem,
 		resolveProblem,
 		i18n: { t: (key: string) => key },
@@ -74,7 +78,7 @@ export function host(
 		fetchImage: vi.fn<ExtensionContext["fetchImage"]>(async () => fail("not_found", "no image")),
 	};
 	activate(ctx as unknown as ExtensionContext);
-	return { source, ctx, fetch, state, signal: life.signal, dispose: () => life.abort() };
+	return { source, ctx, fetch, websocket, state, signal: life.signal, dispose: () => life.abort() };
 }
 
 export function room(
