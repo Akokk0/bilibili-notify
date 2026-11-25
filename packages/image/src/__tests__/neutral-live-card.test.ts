@@ -148,6 +148,22 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 		},
 	);
 
+	it("下播时展示本场最后记录的热度与贵宾人数，包括零", async () => {
+		const d = await drawn(
+			input({
+				status: "end",
+				startedAt: "2026-11-24T08:55:42Z",
+				endedAt: "2026-11-24T17:55:45Z",
+				heatScore: 318888,
+				vipViewers: 0,
+				likes: undefined,
+				totalViewers: undefined,
+			}),
+		);
+		expect(d.time).toBe("直播时长：9小时3秒");
+		expect(d.currentViewers).toContain("31.9万");
+		expect(d.totalViewers).toBe("下播前贵宾人数：0");
+	});
 	it("开播:「直播中」角标、开播时间(北京时间)、人气 + 当前粉丝数", async () => {
 		const d = await drawn(input({ status: "start" }));
 		expect(d.status).toBe("直播中");

@@ -156,6 +156,7 @@ interface CardJob {
 	/** 卡上与文案要的直播那几格(图是图库引用,含直播间链接)。 */
 	facts: LiveDetails;
 	startedAt?: number;
+	endedAt?: number;
 	/** `{time}`:已经算好的时长(没有开播时刻就空着)。 */
 	time: string;
 	/** 卡上的「当前粉丝数」与开播文案的 `{follower}`。 */
@@ -297,6 +298,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const input: LiveCardInput = liveCardInputFromDetails(facts, {
 			status: job.status,
 			startedAt: job.startedAt,
+			endedAt: job.endedAt,
 			followers: job.fans,
 			followersDelta: job.fansChanged,
 			authorName,
@@ -535,6 +537,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				textKind: "liveEnd",
 				facts,
 				startedAt,
+				endedAt,
 				time: startedAt === undefined ? "" : formatDuration(startedAt, endedAt),
 				fansChanged,
 				extras,

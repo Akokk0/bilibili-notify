@@ -35,10 +35,16 @@ function liveTimeText(
 	status: LiveCardStatus,
 	startedAt: string | undefined,
 	timezone: string,
+	endedAt?: string,
 ): string {
 	if (status === "offline") return packageText("image.live-view.1");
 	const start = startedAtOf(startedAt, timezone);
 	if (start === undefined) return "";
+	const end = status === "end" ? startedAtOf(endedAt, timezone) : undefined;
+	if (end && end.toMillis() >= start.toMillis())
+		return packageText("image.live-view.2", {
+			value0: formatDuration(start.toMillis(), end.toMillis()),
+		});
 	if (status === "streaming")
 		return packageText("image.live-view.2", { value0: formatDuration(start.toMillis()) });
 	return packageText("image.live-view.3", {
@@ -136,7 +142,7 @@ export function buildLiveCardView(
 		description: input.description ?? "",
 		cover: cover || liveCoverPlaceholder(),
 		hasCover: cover !== "",
-		time: liveTimeText(input.status, input.startedAt, timezone),
+		time: liveTimeText(input.status, input.startedAt, timezone, input.endedAt),
 		currentViewers: countText(input.currentViewers),
 		heatScore: countText(input.heatScore),
 		vipViewers: countText(input.vipViewers),

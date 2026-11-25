@@ -6,6 +6,7 @@ import type {
 } from "@bilibili-notify/extension";
 import type { createDirectory } from "./creators";
 import {
+	endReport,
 	type Observation,
 	type ReadMetrics,
 	type RoomMetrics,
@@ -28,7 +29,7 @@ function watchRoom(
 	const life = new AbortController();
 	const signal = AbortSignal.any([parent, life.signal]);
 	let previous: Observation | undefined;
-	let offlineDetectedAt: string | undefined;
+	let sessionRevision = 0;
 	let hint: { kind: "live" | "offline"; sessionId?: string; until: number } | undefined;
 	let socket: Disposable | undefined;
 	let reconnect: Disposable | undefined;
@@ -121,6 +122,7 @@ function watchRoom(
 	async function check() {
 		const started = Date.now();
 		const expected = hint;
+		const revision = sessionRevision;
 		const room = await directory.lookup(uid, signal);
 		if (signal.aborted) return;
 		if (!room.ok) return failed(room);
@@ -136,7 +138,7 @@ function watchRoom(
 		failures = 0;
 		source.resolveProblem({ externalId: uid, code: "huya_room" });
 		connect();
-		if (expected !== hint) return;
+		if (expected !== hint || revision !== sessionRevision) return;
 		// 虎牙房间资料有缓存；收到切换通知后给同一场状态一点时间追上。
 		const current = result.observation;
 		if (
@@ -150,16 +152,18 @@ function watchRoom(
 		}
 		hint = undefined;
 		const { latest, reports } = transition(previous, result.observation);
-		if (latest.kind !== "live" || previous?.kind !== "live" || !sameSession(previous, latest))
+		if (
+			latest.kind !== previous?.kind ||
+			(latest.kind === "live" && previous?.kind === "live" && !sameSession(previous, latest))
+		) {
+			sessionRevision++;
 			metrics.clear();
+		}
 		previous = latest;
 		for (const report of reports) {
 			if (signal.aborted) return;
-			if (report.kind === "end" && latest.kind === "offline" && offlineDetectedAt)
-				report.endedAt = offlineDetectedAt;
 			source.reportLive(uid, report);
 		}
-		offlineDetectedAt = undefined;
 	}
 	async function run() {
 		if (signal.aborted) return;
@@ -188,16 +192,34 @@ function watchRoom(
 	refresh();
 	return {
 		readMetrics,
-		noteHostStatus(current: Observation) {
-			if (!previous) return;
-			if (previous.kind === "live" && current.kind === "offline")
-				offlineDetectedAt ??= new Date().toISOString();
-			else offlineDetectedAt = undefined;
-			if (
-				previous.kind !== current.kind ||
-				(previous.kind === "live" && current.kind === "live" && !sameSession(previous, current))
-			)
+		get sessionRevision() {
+			return sessionRevision;
+		},
+		noteHostStatus(current: Observation, revision: number | undefined) {
+			if (!previous || signal.aborted || revision !== sessionRevision) return;
+			if (previous.kind === "live" && current.kind === "offline") {
+				const report = endReport(previous);
+				previous = current;
+				sessionRevision++;
+				metrics.clear();
+				if (hint?.kind === "offline") hint = undefined;
+				const endedAt = new Date().toISOString();
+				source.reportLive(uid, { ...report, endedAt });
 				refresh();
+			} else if (
+				previous.kind === "live" &&
+				current.kind === "live" &&
+				sameSession(previous, current)
+			) {
+				const details = { ...previous.details };
+				for (const key of ["heatScore", "vipViewers"] as const) {
+					const value = current.details[key];
+					if (value !== undefined) details[key] = value;
+				}
+				previous = { ...previous, details };
+			} else if (current.kind === "live") {
+				refresh();
+			}
 		},
 		dispose() {
 			life.abort();

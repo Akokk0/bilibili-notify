@@ -90,8 +90,9 @@ const stat =
 
 /** 人气位优先展示平台提供的直播热度。 */
 const currentViewers = stat(
-	(p) => p.status !== "end",
+	(p) => p.status !== "end" || (!!p.heatScore && !p.likes),
 	(p) => {
+		if (p.status === "end") return packageText("image.live.lastHeatScore", { value: p.heatScore });
 		if (isOnAir(p) && p.heatScore)
 			return packageText("image.live.heatScore", { value: p.heatScore });
 		return p.currentViewers && packageText("image.blocks.live.5", { value0: p.currentViewers });
@@ -124,6 +125,8 @@ const followers = stat(
 const totalViewers = stat(
 	(p) => p.status !== "offline",
 	(p) => {
+		if (p.status === "end" && !p.totalViewers && p.vipViewers)
+			return packageText("image.live.lastVipViewers", { value: p.vipViewers });
 		if (isOnAir(p) && p.vipViewers)
 			return packageText("image.live.vipViewers", { value: p.vipViewers });
 		return p.totalViewers && packageText("image.blocks.live.9", { value0: p.totalViewers });

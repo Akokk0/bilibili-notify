@@ -31,9 +31,10 @@ export function activate(ctx: ExtensionContext): void {
 		async fetchLiveStatus(identity, signal) {
 			const started = Date.now();
 			signal = scoped(signal);
+			const watch = running?.room(identity.externalId);
+			const revision = watch?.sessionRevision;
 			const room = await directory.lookup(identity.externalId, signal);
 			if (!room.ok) return room;
-			const watch = running?.room(identity.externalId);
 			const result = await directory.observationOf(
 				room,
 				signal,
@@ -42,7 +43,7 @@ export function activate(ctx: ExtensionContext): void {
 				watch?.readMetrics,
 			);
 			if (!result.ok) return result;
-			watch?.noteHostStatus(result.observation);
+			watch?.noteHostStatus(result.observation, revision);
 			return liveStatus(result.observation);
 		},
 	});

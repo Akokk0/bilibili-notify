@@ -14,7 +14,13 @@ import { web } from "./pages";
 
 export type Observation =
 	| { kind: "offline" }
-	| { kind: "live"; sessionId?: string; startedAt?: string; details: ExtensionLiveDetails };
+	| {
+			kind: "live";
+			sessionId?: string;
+			lastMetrics?: RoomMetrics;
+			startedAt?: string;
+			details: ExtensionLiveDetails;
+	  };
 
 type LiveObservation = Extract<Observation, { kind: "live" }>;
 export type RoomMetrics = Pick<ExtensionLiveDetails, "heatScore" | "vipViewers">;
@@ -93,6 +99,14 @@ function status(value: Observation): ExtensionLiveSignalReport {
 		: { kind: "status", isLive: true, startedAt: value.startedAt, details: value.details };
 }
 
+export function endReport(previous: LiveObservation) {
+	return {
+		kind: "end" as const,
+		startedAt: previous.startedAt,
+		details: { ...previous.lastMetrics, ...previous.details },
+	};
+}
+
 export function transition(
 	previous: Observation | undefined,
 	current: Observation,
@@ -100,7 +114,13 @@ export function transition(
 	if (!previous) return { latest: current, reports: [status(current)] };
 	if (current.kind === "live" && previous.kind === "live" && sameSession(previous, current)) {
 		const { heatScore: _heat, vipViewers: _vips, ...prior } = previous.details;
+		const lastMetrics = { ...previous.lastMetrics };
+		for (const key of ["heatScore", "vipViewers"] as const) {
+			const value = current.details[key] ?? previous.details[key];
+			if (value !== undefined) lastMetrics[key] = value;
+		}
 		const latest: Observation = {
+			lastMetrics,
 			kind: "live",
 			sessionId: current.sessionId ?? previous.sessionId,
 			startedAt: current.startedAt ?? previous.startedAt,
@@ -114,8 +134,7 @@ export function transition(
 		return { latest, reports: changed ? [status(latest)] : [] };
 	}
 	const reports: ExtensionLiveSignalReport[] = [];
-	if (previous.kind === "live")
-		reports.push({ kind: "end", startedAt: previous.startedAt, details: previous.details });
+	if (previous.kind === "live") reports.push(endReport(previous));
 	if (current.kind === "live")
 		reports.push({ kind: "start", startedAt: current.startedAt, details: current.details });
 	return { latest: current, reports };

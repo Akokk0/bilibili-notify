@@ -69,8 +69,8 @@ function liveFields(p: LiveCardView): CardFields {
 		// 自定义模板按各字段的原始口径取值，内置人气和观众人数块负责选择数据和标签。
 		stats: {
 			currentViewers: ended ? "" : str(p.currentViewers),
-			heatScore: onAir ? str(p.heatScore) : "",
-			vipViewers: onAir ? str(p.vipViewers) : "",
+			heatScore: onAir || ended ? str(p.heatScore) : "",
+			vipViewers: onAir || ended ? str(p.vipViewers) : "",
 			likes: ended ? str(p.likes) : "",
 			followers: onAir ? str(p.followers) : "",
 			totalViewers: onAir || ended ? str(p.totalViewers) : "",

@@ -121,6 +121,11 @@ it("平台未给开播时间时，下播带上宿主第一次核实离线的时�
 		ok: true,
 		kind: "offline",
 	});
+	// 宿主收到 offline 后就结束场次，须先把本场最后的数据随下播交给宿主。
+	expect(watched.reportLive.mock.calls.at(-1)?.[1]).toMatchObject({
+		kind: "end",
+		endedAt: firstOffline,
+	});
 	await vi.advanceTimersByTimeAsync(3000);
 	const again = app.source.fetchLiveStatus?.(identity, app.signal);
 	await vi.advanceTimersByTimeAsync(9000);
@@ -352,5 +357,41 @@ it("连续两场都在播时，按开播帧的场次号等待缓存切到新场"
 	liveId = "82";
 	await vi.advanceTimersByTimeAsync(20000);
 	expect(watched.reportLive.mock.calls.map(([, e]) => e.kind)).toEqual(["status", "end", "start"]);
+	await app.source.stop();
+});
+
+it("下播用本场最后的实测数，同场缺项不清零，下一场不继承", async () => {
+	let status = "ON",
+		liveId = "81";
+	const app = host((url) =>
+		url.hostname === "cdn.wup.huya.com"
+			? { status: 503 }
+			: { body: room("71", "42", status, { liveId }) },
+	);
+	const socket = connected(app);
+	await app.source.searchCreators("42", app.signal);
+	const watched = monitor(app.source);
+	await vi.advanceTimersByTimeAsync(15000);
+	socket.frame(
+		"00161d00002306076c6976653a37311900020a011f461d000002002a0b0a0118431d00000300471c0b",
+	);
+	await vi.advanceTimersByTimeAsync(125000);
+	socket.frame(push(8004));
+	await vi.advanceTimersByTimeAsync(6000);
+	status = "OFF";
+	socket.frame(push(8001));
+	await vi.advanceTimersByTimeAsync(6000);
+	expect(watched.reportLive.mock.calls.at(-1)?.[1]).toMatchObject({
+		kind: "end",
+		details: { heatScore: 42, vipViewers: 0 },
+	});
+	status = "ON";
+	liveId = "82";
+	socket.frame(push(8000));
+	await vi.advanceTimersByTimeAsync(15000);
+	const next = watched.reportLive.mock.calls.at(-1)?.[1];
+	expect(next?.kind).toBe("start");
+	expect(next?.details?.vipViewers).toBeUndefined();
+	expect(next?.details?.heatScore).toBeUndefined();
 	await app.source.stop();
 });

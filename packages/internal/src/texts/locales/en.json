@@ -1,4 +1,6 @@
 {
+	"image.live.lastHeatScore": "Last live popularity: {value}",
+	"image.live.lastVipViewers": "Last VIP viewer count: {value}",
 	"image.live.heatScore": "Live popularity: {value}",
 	"image.live.vipViewers": "VIP viewers: {value}",
 	"internal.live.heatScore": "Live popularity",

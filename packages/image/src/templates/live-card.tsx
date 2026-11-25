@@ -58,6 +58,7 @@ export type LiveCardInput = {
 	 * 写。不给、或读不懂,就不写那句。
 	 */
 	startedAt?: string;
+	endedAt?: string;
 	/** 此刻在线(人气那一格,开播 / 直播中 / 没在播的卡上画)。 */
 	currentViewers?: number;
 	heatScore?: number;

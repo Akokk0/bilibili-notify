@@ -1,4 +1,6 @@
 {
+	"image.live.lastHeatScore": "下播前热度：{value}",
+	"image.live.lastVipViewers": "下播前贵宾人数：{value}",
 	"image.live.heatScore": "直播热度：{value}",
 	"image.live.vipViewers": "贵宾人数：{value}",
 	"internal.live.heatScore": "直播热度",
