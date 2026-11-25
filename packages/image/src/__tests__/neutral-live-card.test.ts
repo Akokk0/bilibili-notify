@@ -303,12 +303,23 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 
 /** 占位图本身:内嵌的 data URL(出卡不许联网),而且真是一张 SVG。 */
 describe("直播封面的占位图", () => {
-	it("是内嵌的 SVG,带「暂无封面」那行字", () => {
+	it("项目小电视只画前景，与「暂无封面」同灰，离线可画", () => {
 		const prefix = "data:image/svg+xml;base64,";
 		expect(liveCoverPlaceholder().startsWith(prefix)).toBe(true);
 		const svg = Buffer.from(liveCoverPlaceholder().slice(prefix.length), "base64").toString("utf8");
 		expect(svg).toMatch(/^<svg [^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
 		expect(svg).toContain("暂无封面");
+		const doc = new JSDOM(svg, { contentType: "image/svg+xml" }).window.document;
+		const logo = doc.querySelector("rect[mask]");
+		expect(logo).not.toBeNull();
+		const maskId = doc.querySelector("mask")?.id;
+		expect(logo?.getAttribute("mask")).toBe(`url(#${maskId})`);
+		expect(doc.querySelector("mask image")?.getAttribute("href")).toMatch(
+			/^data:image\/png;base64,/,
+		);
+		const fillOf = (el: Element | null) => el?.closest("[fill]")?.getAttribute("fill");
+		expect(fillOf(logo)).toBe("#999");
+		expect(fillOf(doc.querySelector("text"))).toBe(fillOf(logo));
 		// 16:9 —— 与 B 站封面同比例,没声明高度的皮肤里它按自己的比例撑开,不会压扁。
 		expect(svg).toContain('width="640" height="360"');
 	});

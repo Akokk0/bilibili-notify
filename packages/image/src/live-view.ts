@@ -17,6 +17,7 @@ import {
 import { DateTime } from "luxon";
 import { formatCardTime } from "./format";
 import { escapeHtml } from "./html-escape";
+import projectIcon from "./project-icon.json" with { type: "json" };
 import type { ImageUrlOf } from "./rich-text";
 import type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
 
@@ -84,24 +85,15 @@ export function coverUrlOf(
  * 加载出来的图,换了底色的皮肤上也不跳色。字用 `sans-serif`:SVG 当图用时读不到卡片的字体,
  * 走系统字体(镜像里装了 Noto CJK)。
  *
- * 图标是 BN 自己画的(圆角屏幕框 + 播放三角 + 上方两道信号弧),不抄任何图标库 —— 抄来的
- * 图形得随发行物附上它的许可声明,而 bundle 会剥掉注释。颜色只用卡片里现成的两种灰:
- * `#999`(次要文字,底色取它的 12%)与 `#aaa`(「已下播」角标)。
+ * 小电视沿用项目标志的透明前景，和占位文字共用填色。
  */
 export function liveCoverPlaceholder(): string {
 	const svg = [
-		'<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">',
-		'<rect width="640" height="360" fill="#999" fill-opacity="0.12"/>',
-		// 图标画在 64 格的网格里、放大 2.5 倍,中心落在 (320, 150)。
-		'<g transform="translate(240 77.5) scale(2.5)">',
-		'<g fill="none" stroke="#aaa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">',
-		'<rect x="8" y="18" width="48" height="34" rx="6"/>',
-		'<path d="M27 12.5a7 7 0 0 1 10 0"/>',
-		'<path d="M22.5 8a13.5 13.5 0 0 1 19 0"/>',
-		"</g>",
-		'<path d="M28 28v14l12-7z" fill="#aaa"/>',
-		"</g>",
-		`<text x="320" y="258" text-anchor="middle" font-family="sans-serif" font-size="26" fill="#999">${escapeHtml(packageText("image.live-view.4"))}</text>`,
+		'<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" fill="#999">',
+		'<rect width="640" height="360" fill-opacity="0.12"/>',
+		`<defs><mask id="bn-mark"><image x="216" y="56" width="208" height="208" href="data:image/png;base64,${projectIcon.maskBase64}"/></mask></defs>`,
+		'<rect x="216" y="56" width="208" height="208" mask="url(#bn-mark)"/>',
+		`<text x="320" y="258" text-anchor="middle" font-family="sans-serif" font-size="26">${escapeHtml(packageText("image.live-view.4"))}</text>`,
 		"</svg>",
 	].join("");
 
