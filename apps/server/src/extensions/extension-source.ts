@@ -308,6 +308,9 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		get displayIdNoun() {
 			return display().displayIdNoun;
 		},
+		get liveTemplates() {
+			return display().liveTemplates;
+		},
 		get featureHints() {
 			return display().featureHints;
 		},

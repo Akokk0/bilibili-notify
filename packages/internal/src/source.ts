@@ -15,12 +15,16 @@ import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
 import type { Result } from "./result";
 
+export const LIVE_TEMPLATE_KEYS = ["liveStart", "liveStreaming", "liveEnd"] as const;
+export type LiveTemplates = Partial<Record<(typeof LIVE_TEMPLATE_KEYS)[number], string>>;
+
 /**
  * 来源的自我介绍。这里只放已经有读者的格子;经 `GET /api/sources` 下发给面板(ADR-0027 决策 6),面板只从这里
  * 拿来源的信息。拓展的取清单订阅那一口的同名字段。`icon` 与 `searchAccepts` 是跟着清单并进来的:搜人提示句
  * 4-15 起由 contract 的 `creatorSearchHint` 按 `searchAccepts` 拼;平台图标的读者还在第 4 期后面。
  */
 export interface SourceDescriptor {
+	liveTemplates?: LiveTemplates;
 	/** 平台名(「B 站」)。`status` 指令的那一行、新建订阅的平台选择、徽章与平台列都取它。 */
 	label: string;
 	/** 短名:徽章上那个方章。不给就用 `label`。 */

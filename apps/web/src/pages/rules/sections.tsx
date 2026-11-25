@@ -704,6 +704,7 @@ const liveStreamingDescOf = () =>
 		name: i18n.t("sourceUi.pages.rules.sections.name.53"),
 		time: liveTimeDescOf(),
 		watched: i18n.t("sourceUi.pages.rules.sections.watched.55"),
+		vipViewers: i18n.t("rules.liveTemplates.vipViewers"),
 	}) satisfies VariableDescriptions<"liveStreaming">;
 const liveStreamingVarsOf = () => varsOf("liveStreaming", liveStreamingDescOf());
 
@@ -722,6 +723,7 @@ const liveMsgDescOf = () =>
 		follower_change: i18n.t("sourceUi.pages.rules.sections.followerchange.58"),
 		time: i18n.t("sourceUi.pages.rules.sections.time.59"),
 		watched: i18n.t("sourceUi.pages.rules.sections.watched.60"),
+		vipViewers: i18n.t("rules.liveTemplates.vipViewers"),
 	}) satisfies UnionDescriptions<readonly ["liveStart", "liveStreaming", "liveEnd"]>;
 const liveMsgVarsOf = () =>
 	mergedVars(["liveStart", "liveStreaming", "liveEnd"] as const, liveMsgDescOf());

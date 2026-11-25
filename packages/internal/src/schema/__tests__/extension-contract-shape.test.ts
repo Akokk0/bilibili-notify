@@ -48,8 +48,8 @@ interface ContractRow {
  */
 const CONTRACT: readonly ContractRow[] = [
 	{ name: "群聊作品", schema: ExtensionLinkPreviewSchema, digest: "9f92fb1ccbd18b61" },
-	{ name: "当前清单", schema: ExtensionManifestSchema, digest: "7dba4acdc8a62743" },
-	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "9bd1284b1a0d85b9" },
+	{ name: "当前清单", schema: ExtensionManifestSchema, digest: "ecf1210c020f65d2" },
+	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "18656456022da776" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "c7459400b5bf8f92" },
 	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "7883477f9f066f1e" },
 	{
@@ -80,7 +80,7 @@ const CONTRACT: readonly ContractRow[] = [
 ];
 
 /** 上面那些摘要是在哪个契约小号上记的。 */
-const PINNED_REVISION = 5;
+const PINNED_REVISION = 6;
 
 const HOW_TO_FIX = [
 	"契约形状变了(或契约小号变了,而这里记的还是旧的)。",

@@ -273,6 +273,11 @@ export function localizeManifest(
 		: undefined;
 
 	const { push, subscription } = manifest.contributes;
+	const liveTemplates = { ...subscription?.liveTemplates };
+	for (const key of ["liveStart", "liveStreaming", "liveEnd"] as const) {
+		const value = pick(layers, (layer) => layer.contributes?.subscription?.liveTemplates?.[key]);
+		if (value !== undefined && Object.hasOwn(liveTemplates, key)) liveTemplates[key] = value;
+	}
 	const featureHints = { ...subscription?.featureHints };
 	for (const key of FEATURE_KEYS) {
 		const text = pick(layers, (layer) => layer.contributes?.subscription?.featureHints?.[key]);
@@ -305,6 +310,7 @@ export function localizeManifest(
 							subscription,
 							layers.map((layer) => layer.contributes?.subscription),
 						),
+						...(Object.keys(liveTemplates).length ? { liveTemplates } : {}),
 						...(Object.keys(featureHints).length ? { featureHints } : {}),
 					},
 				}

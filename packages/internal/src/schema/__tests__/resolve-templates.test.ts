@@ -71,7 +71,7 @@ describe("新装的设置形状", () => {
 describe("resolveTemplates", () => {
 	it("没存:取出厂那句(简体字典原文)", () => {
 		const t = resolveTemplates(SUB, makeDefaultGlobalSettings().defaults, ZH);
-		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
+		expect(t.liveStart).toBe("{name} 开播啦");
 		expect(t.post).toBe("{name}发布了一条{postNoun}");
 		expect(t.membership("guard").default.template).toBe("{viewer} 成为了 {name} 的{tier}！");
 	});

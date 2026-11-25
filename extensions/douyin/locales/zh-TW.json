@@ -43,7 +43,12 @@
 				"postNoun": "作品",
 				"creatorNoun": "創作者",
 				"externalIdNoun": "作者 ID",
-				"displayIdNoun": "抖音帳號"
+				"displayIdNoun": "抖音帳號",
+				"liveTemplates": {
+					"liveStart": "{name} 開播了[[，目前粉絲數：{follower}]]",
+					"liveStreaming": "{name} 正在直播[[，已播 {time}]]",
+					"liveEnd": "{name} 下播了[[，本次直播了 {time}]][[，粉絲變化 {follower_change}]]"
+				}
 			}
 		}
 	},

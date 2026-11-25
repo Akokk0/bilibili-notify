@@ -65,7 +65,7 @@
 
 两颗入站按钮各有用途:一颗对每条开着且填了 `inboundFrom` 的连接,以那个地址发一条私聊 `/status`;另一颗拿不存在的连接 id 与发送者 `forged-sender` 发同一条私聊,宿主应丢掉并记一行,不会有任何回复。
 
-适配器里故意塞了 `adapterKey`、`listAddressCandidates`、`connectionAuth`,订阅侧故意塞了 `auth`、`liveInteractions`,它们是给契约守卫证明宿主会覆盖或摘掉的:宿主把 `adapterKey` 改成拓展 id,并摘掉适配器的两个与订阅侧的两个不开成员。开发者别把这些故意塞进去的格子当成假源已经开放的能力。
+适配器里故意塞了 `adapterKey`、`listAddressCandidates`、`connectionAuth`,订阅侧故意塞了 `liveInteractions`,它们是给契约守卫证明宿主会覆盖或摘掉的:宿主把 `adapterKey` 改成拓展 id,并摘掉适配器的两个与订阅侧的一个不开成员。开发者别把这些故意塞进去的格子当成假源已经开放的能力。
 
 ## 真机怎么看
 

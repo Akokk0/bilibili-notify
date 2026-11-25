@@ -139,6 +139,25 @@ export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 	// 纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。
 	searchAccepts: ["id", "link", "name"],
 	supportedFeatures: FEATURE_KEYS,
+	get liveTemplates() {
+		// 这些变量由宿主在发送时填值；来源只提供当前语言的格式串。
+		return {
+			liveStart: t("bilibili.source.liveTemplates.liveStart", {
+				name: "{name}",
+				follower: "{follower}",
+			}),
+			liveStreaming: t("bilibili.source.liveTemplates.liveStreaming", {
+				name: "{name}",
+				time: "{time}",
+				watched: "{watched}",
+			}),
+			liveEnd: t("bilibili.source.liveTemplates.liveEnd", {
+				name: "{name}",
+				time: "{time}",
+				follower_change: "{follower_change}",
+			}),
+		};
+	},
 	get featureHints() {
 		return {
 			post: t("bilibili.source.featureHints.post"),
@@ -159,12 +178,16 @@ function copyBiliDescriptor(): SourceDescriptor {
 		creatorNoun: _creatorNoun,
 		postNoun: _postNoun,
 		featureHints: _featureHints,
+		liveTemplates: _liveTemplates,
 		...descriptor
 	} = BILI_SOURCE_DESCRIPTOR;
 	return {
 		...descriptor,
 		get label() {
 			return BILI_SOURCE_DESCRIPTOR.label;
+		},
+		get liveTemplates() {
+			return BILI_SOURCE_DESCRIPTOR.liveTemplates;
 		},
 		get creatorNoun() {
 			return BILI_SOURCE_DESCRIPTOR.creatorNoun;

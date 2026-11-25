@@ -37,6 +37,7 @@ export const TEMPLATE_VARIABLES = {
 		name: { field: "Creator.name" },
 		time: { field: "LiveSession.startedAt" },
 		watched: { field: "LiveDetails.totalViewers" },
+		vipViewers: { field: "LiveDetails.vipViewers" },
 	},
 	liveEnd: {
 		name: { field: "Creator.name" },

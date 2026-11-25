@@ -43,7 +43,12 @@
 				"postNoun": "投稿",
 				"creatorNoun": "投稿者",
 				"externalIdNoun": "作者ID",
-				"displayIdNoun": "抖音ID"
+				"displayIdNoun": "抖音ID",
+				"liveTemplates": {
+					"liveStart": "{name}が配信を開始しました[[。現在のフォロワー数：{follower}]]",
+					"liveStreaming": "{name}が配信中です[[。配信時間：{time}]]",
+					"liveEnd": "{name}が配信を終了しました[[。配信時間：{time}]][[、フォロワー増減：{follower_change}]]"
+				}
 			}
 		}
 	},

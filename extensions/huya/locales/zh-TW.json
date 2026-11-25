@@ -18,7 +18,12 @@
 				"label": "虎牙",
 				"creatorNoun": "主播",
 				"externalIdNoun": "UID",
-				"displayIdNoun": "房間號"
+				"displayIdNoun": "房間號",
+				"liveTemplates": {
+					"liveStart": "{name} 開播了[[，目前粉絲數：{follower}]]",
+					"liveStreaming": "{name} 正在直播[[，已播 {time}]][[，目前貴賓人數：{vipViewers}]]",
+					"liveEnd": "{name} 下播了[[，本次直播了 {time}]][[，粉絲變化 {follower_change}]]"
+				}
 			}
 		}
 	}

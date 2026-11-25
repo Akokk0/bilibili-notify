@@ -264,6 +264,10 @@ function createInProcessSource(options: InProcessOptions = {}): {
 		supportedFeatures: ["post", "liveStart", "liveEnd", "membership"],
 		supportedExtras: ["atAllPost", "liveSummary"],
 		featureHints: { post: "Probe post hint", liveEnd: "Probe end hint" },
+		liveTemplates: {
+			liveStreaming: "{name} / {time} / {watched}",
+			liveEnd: "{name} / {time} / {follower_change}",
+		},
 		...(options.creatorNoun === undefined ? {} : { creatorNoun: options.creatorNoun }),
 		...(options.postNoun === undefined ? {} : { postNoun: options.postNoun }),
 		membershipPrograms: [

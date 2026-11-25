@@ -18,7 +18,12 @@
 				"label": "Huya",
 				"creatorNoun": "streamer",
 				"externalIdNoun": "UID",
-				"displayIdNoun": "Room ID"
+				"displayIdNoun": "Room ID",
+				"liveTemplates": {
+					"liveStart": "{name} went live[[. Current followers: {follower}]]",
+					"liveStreaming": "{name} is live[[. Duration: {time}]][[. Current VIP viewers: {vipViewers}]]",
+					"liveEnd": "{name} ended the stream[[. Duration: {time}]][[. Follower change: {follower_change}]]"
+				}
 			}
 		}
 	}

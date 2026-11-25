@@ -467,6 +467,9 @@ describe("createBiliSource", () => {
 			i18n.set({ locale: "en" });
 			try {
 				expect(source.descriptor.featureHints?.post).toBe("Current post hint");
+				expect(source.descriptor.liveTemplates?.liveStreaming).toContain(
+					"Total viewers: {watched}",
+				);
 			} finally {
 				if (previous === undefined) delete english[key];
 				else english[key] = previous;

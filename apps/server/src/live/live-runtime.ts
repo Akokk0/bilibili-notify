@@ -78,6 +78,7 @@ export function createLiveRuntime(options: LiveRuntimeOptions): LiveRuntime {
 	const liveSettings = createLiveSettingsCache({
 		bus: options.bus,
 		getGlobals: options.globals,
+		source: (sub) => options.sources.get(sub.identity.sourceKey)?.descriptor,
 	});
 
 	// `liveTable` 在这里是写口:场次引擎先写表、再改场次,表自己不听上报。

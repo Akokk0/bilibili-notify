@@ -18,7 +18,12 @@
 				"label": "虎牙",
 				"creatorNoun": "配信者",
 				"externalIdNoun": "UID",
-				"displayIdNoun": "ルーム番号"
+				"displayIdNoun": "ルーム番号",
+				"liveTemplates": {
+					"liveStart": "{name}が配信を開始しました[[。現在のフォロワー数：{follower}]]",
+					"liveStreaming": "{name}が配信中です[[。配信時間：{time}]][[、現在のVIP視聴者数：{vipViewers}]]",
+					"liveEnd": "{name}が配信を終了しました[[。配信時間：{time}]][[、フォロワー増減：{follower_change}]]"
+				}
 			}
 		}
 	}

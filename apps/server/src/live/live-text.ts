@@ -1,6 +1,5 @@
 import { formatCount } from "@bilibili-notify/internal";
-import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
-import { i18n, t as serverText } from "../i18n/index.js";
+import { t as serverText } from "../i18n/index.js";
 import { renderTemplate } from "../util/render-template";
 
 /**
@@ -92,6 +91,8 @@ export interface LiveTextInput {
 	follower?: number | string;
 	/** `{watched}`(正在直播):本场累计观看,精确数。缺了(一帧都没收到 / 来源没报)由 {@link renderLiveText} 在出口印「暂未获取到」。 */
 	watched?: number;
+	/** `{vipViewers}`（正在直播）：当次获取的贵宾人数。 */
+	vipViewers?: number;
 	/** `{follower_change}`(下播):本场粉丝数变化。 */
 	followerChange?: number | string;
 }
@@ -108,7 +109,7 @@ function textOf(v: number | string | undefined, format: (n: number) => string): 
  * **三句直播文案的中立渲染**:把调用方给的模板套上中立的值。
  *
  * 每一种只认自己那几个变量 —— 开播:`{name}` `{time}` `{follower}`;正在直播:`{name}` `{time}`
- * `{watched}`;下播:`{name}` `{time}` `{follower_change}`。别的原样留在文案里(与从前 B 站那三句一样,
+ * `{watched}` `{vipViewers}`;下播:`{name}` `{time}` `{follower_change}`。别的原样留在文案里(与从前 B 站那三句一样,
  * 主人在开播模板里写了 `{watched}`,看到的就是字面的 `{watched}`)。
  */
 export function renderLiveText(
@@ -125,16 +126,19 @@ export function renderLiveText(
 			// 缺数时的「暂未获取到」只在这里(文字出口)印,不写回直播数据。
 			vars.watched =
 				values.watched === undefined ? watchedUnknownText() : formatCount(values.watched);
-			if (!values.time && template === templateDefaultsFor(i18n.state().locale).liveStreaming) {
-				return serverText("service.live.live-text.streamingWithoutDuration", {
-					name: values.name,
-					watched: vars.watched,
-				});
-			}
+			vars.vipViewers = textOf(values.vipViewers, formatCount);
 			break;
 		case "liveEnd":
 			vars.follower_change = textOf(values.followerChange, (n) => formatCount(n, { signed: true }));
 			break;
 	}
-	return renderTemplate(template, vars);
+	// Resolve optional clauses before inserting user-provided names or formatted values.
+	const available = (key: string) =>
+		key === "watched" ? values.watched !== undefined : !!vars[key];
+	const selected = template.replace(/\[\[([^[\]]*)\]\]/g, (original: string, body: string) => {
+		const keys = [...body.matchAll(/\{(\w+)\}/g)];
+		if (!keys.length) return original;
+		return keys.every(([, key]) => key && Object.hasOwn(vars, key) && available(key)) ? body : "";
+	});
+	return renderTemplate(selected, vars);
 }

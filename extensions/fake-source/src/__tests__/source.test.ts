@@ -59,7 +59,8 @@ describe("健康(health)", () => {
 	});
 });
 
-it("注册的 def 上故意带着 auth 与 liveInteractions,交给宿主时才会被摘掉", () => {
+it("假源无需登录，只额外提供用来验证宿主会摘掉的互动成员", () => {
 	const fake = bootFakeSource();
-	expect(fake.members()).toEqual(expect.arrayContaining(["auth", "liveInteractions"]));
+	expect(fake.members()).toContain("liveInteractions");
+	expect(fake.members()).not.toContain("auth");
 });

@@ -126,10 +126,10 @@ describe("createLiveRuntime — 直播设置读口的接线", () => {
 			expect(send).not.toHaveBeenCalled();
 			const session = runtime.session(SUB.id);
 			for (const [locale, expected] of [
-				["en", "Original creator 原文 is live. Duration: 1h. Total viewers: 12.3K"],
-				["ja", "Original creator 原文が配信中です。配信時間：1時間、累計視聴者数：1.2万"],
-				["zh-TW", "Original creator 原文 正在直播，已播 1小時，累計觀看：1.2萬"],
-				["zh-CN", "Original creator 原文 正在直播，已播 1小时，累计观看：1.2万"],
+				["en", "Original creator 原文 is live. Duration: 1h"],
+				["ja", "Original creator 原文が配信中です。配信時間：1時間"],
+				["zh-TW", "Original creator 原文 正在直播，已播 1小時"],
+				["zh-CN", "Original creator 原文 正在直播，已播 1小时"],
 			] as const) {
 				globals.locale = locale;
 				i18n.set({ locale, voice: "plain" });

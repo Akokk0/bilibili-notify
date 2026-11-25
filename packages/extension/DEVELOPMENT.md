@@ -13,6 +13,7 @@
 | 3 | 作品收藏数 |
 | 4 | 适配器单次发送测试 `options.singleAttempt`、纯文本群接收测试码 `groupTestReply: "token"` |
 | 5 | 作品卡头说明 `post.label`、主话题 `post.topic`、图文附卡 `post.attachment`、直播热度 `heatScore` 与贵宾人数 `vipViewers` |
+| 6 | 来源自带的开播、直播中、下播文字模板 |
 
 创建器默认生成独立Git工程、示例来源、完整vp命令、锁文件、提交hooks与GitHub Actions：
 
@@ -206,3 +207,10 @@ vp run release --tag v0.1.0 --dry-run
 发布前更新根清单版本，提交修改，再打匹配的 `v<版本>` 标签并推送到自己的 GitHub 仓库。生成的 Release 工作流先以读取权限跑 dry-run，成功后发布作业才取得 `contents: write`。手动触发默认只验证。完整流程和中断重跑方法见生成工程的 README。
 
 用户在BN“拓展 → 市场源”输入`owner/repository`或GitHub仓库网址，即定位到固定`bn-marketplace` Release上的`marketplace.json`。只支持公开可读取的索引和ZIP；第三方来源仍需用户信任，SDK和创建器不会赋予官方身份。
+
+
+### 直播通知的默认文字
+
+支持直播的来源可以在 `contributes.subscription.liveTemplates` 分别声明 `liveStart`、`liveStreaming`、`liveEnd`，清单需声明 `apiRevision: 6` 或更高修订。各语言译文写在 `locales/<语言>.json` 的 `$manifest.contributes.subscription.liveTemplates`。订阅自定义文字优先，其次是全局自定义文字，再使用来源声明的模板。旧来源缺少某一条时，宿主使用只包含主播名、状态和可用时长的文字。
+
+例如虎牙在 `liveStreaming` 使用 `{name} 正在直播[[，已播 {time}]][[，当前贵宾人数：{vipViewers}]]`。双层方括号中的变量全部有值时显示该段，零也算有值。开播支持 `{follower}`，直播中支持 `{watched}`（累计观看）及 `{vipViewers}`（当前贵宾人数），下播支持 `{follower_change}`。三种通知均可使用 `{name}` 和 `{time}`。

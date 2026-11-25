@@ -205,14 +205,13 @@ describe("直播拆键 · 迁移器接缝", () => {
 			templates: { liveStreaming: "我的直播中 {name}", liveEnd: "我的下播" },
 		});
 
-		// 他写过自己的「正在直播」文案:账本里新键的指纹就是 1.0 默认的指纹,不会凭空亮「默认文案有更新」的灯。
-		// 其他没改过的文字已删,`post` 不再存也不再留账,所以这里没有待更新项。
+		// 自定义文案和旧指纹都保留，只有已更换出厂模板的 liveStreaming 提示更新。
 		const store = await sandbox.load();
 		const g = store.getGlobals().defaults;
 		expect(g.templates.liveStreaming).toBe("【直播中】{name} {time}");
 		expect(
 			pendingTemplateUpdates(g.templates, FACTORY_TEMPLATES, store.getGlobals().templatesSeen),
-		).toEqual([]);
+		).toEqual(["liveStreaming"]);
 	});
 
 	// ── 订阅 ──────────────────────────────────────────────────────────────────

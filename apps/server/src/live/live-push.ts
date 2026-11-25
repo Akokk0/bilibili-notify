@@ -310,6 +310,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			time: job.time,
 			follower: job.fans,
 			watched: facts.totalViewers,
+			vipViewers: facts.vipViewers,
 			followerChange: job.fansChanged,
 		});
 		const send = opts.sendFor(id);

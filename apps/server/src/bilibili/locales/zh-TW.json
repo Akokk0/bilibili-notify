@@ -282,5 +282,8 @@
 	"bilibili.videoViews.loginRequired": "請先登入，再收集累計播放次數。",
 	"bilibili.videoViews.noValue": "來源未傳回有效的累計播放次數，本次未記錄。",
 	"bilibili.videoViews.fetchFailed": "本次累計播放次數取得失敗：{reason}",
-	"log.bilibili.videoViews.fetchFailed": "累計影片播放次數請求發生錯誤"
+	"log.bilibili.videoViews.fetchFailed": "累計影片播放次數請求發生錯誤",
+	"bilibili.source.liveTemplates.liveStart": "{name} 開播了[[，目前粉絲數：{follower}]]",
+	"bilibili.source.liveTemplates.liveStreaming": "{name} 正在直播[[，已播 {time}]][[，累計觀看：{watched}]]",
+	"bilibili.source.liveTemplates.liveEnd": "{name} 下播了[[，本次直播了 {time}]][[，粉絲變化 {follower_change}]]"
 }

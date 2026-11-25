@@ -43,7 +43,12 @@
 				"postNoun": "post",
 				"creatorNoun": "creator",
 				"externalIdNoun": "ID",
-				"displayIdNoun": "Handle"
+				"displayIdNoun": "Handle",
+				"liveTemplates": {
+					"liveStart": "{name} went live[[. Current followers: {follower}]]",
+					"liveStreaming": "{name} is live[[. Duration: {time}]]",
+					"liveEnd": "{name} ended the stream[[. Duration: {time}]][[. Follower change: {follower_change}]]"
+				}
 			}
 		}
 	},

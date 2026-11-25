@@ -466,6 +466,7 @@ const SOURCE_DESCRIPTOR_MEMBERS = {
 	supportedFeatures: ["P50"],
 	supportedExtras: ["P50"],
 	featureHints: ["P50"],
+	liveTemplates: ["P35"],
 } as const satisfies Record<keyof SourceDescriptor, readonly RowId[]>;
 const SOURCE_AUTH_MEMBERS = {
 	submitVerification: ["P16"],
@@ -2533,7 +2534,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		});
 		await waitPushes("liveStart", 4);
 		await waitPushes("liveEnd", 4);
-		const endCard = (await captures()).find((entry) => entry.text?.includes("下播啦"));
+		const endCard = (await captures()).find((entry) => entry.text?.includes(" / "));
 		expect(endCard?.text).toContain("3小时");
 		expect(await rowsOf(who)).toEqual([]);
 
@@ -3213,12 +3214,10 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				const streaming = textOf(received[start + 6] as (typeof received)[number]);
 				expect(streaming).toMatch(
 					{
-						en: /^Creator 原文 is live\. Duration: 1h\S*\. Total viewers: 12\.3K\nhttps:\/\/example.invalid\/live$/,
-						ja: /^Creator 原文が配信中です。配信時間：1時間\S*、累計視聴者数：1\.2万\nhttps:\/\/example.invalid\/live$/,
-						"zh-TW":
-							/^Creator 原文 正在直播，已播 1小時\S*，累計觀看：1\.2萬\nhttps:\/\/example.invalid\/live$/,
-						"zh-CN":
-							/^Creator 原文 正在直播，已播 1小时\S*，累计观看：1\.2万\nhttps:\/\/example.invalid\/live$/,
+						en: /^Creator 原文 \/ 1h\S* \/ 12\.3K\nhttps:\/\/example.invalid\/live$/,
+						ja: /^Creator 原文 \/ 1時間\S* \/ 1\.2万\nhttps:\/\/example.invalid\/live$/,
+						"zh-TW": /^Creator 原文 \/ 1小時\S* \/ 1\.2萬\nhttps:\/\/example.invalid\/live$/,
+						"zh-CN": /^Creator 原文 \/ 1小时\S* \/ 1\.2万\nhttps:\/\/example.invalid\/live$/,
 					}[locale],
 				);
 				await patchCore({
@@ -3251,12 +3250,10 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				const ended = textOf(received[start + 7] as (typeof received)[number]);
 				expect(ended).toMatch(
 					{
-						en: /^Creator 原文 ended the stream\. Duration: 1h\S*\. Follower change: 0\nhttps:\/\/example.invalid\/live$/,
-						ja: /^Creator 原文の配信が終了しました。配信時間：1時間\S*、フォロワー増減：0\nhttps:\/\/example.invalid\/live$/,
-						"zh-TW":
-							/^Creator 原文 已結束直播，本次直播時長 1小時\S*，粉絲增減 0\nhttps:\/\/example.invalid\/live$/,
-						"zh-CN":
-							/^Creator 原文 下播啦，本次直播了 1小时\S*，粉丝变化 0\nhttps:\/\/example.invalid\/live$/,
+						en: /^Creator 原文 \/ 1h\S* \/ 0\nhttps:\/\/example.invalid\/live$/,
+						ja: /^Creator 原文 \/ 1時間\S* \/ 0\nhttps:\/\/example.invalid\/live$/,
+						"zh-TW": /^Creator 原文 \/ 1小時\S* \/ 0\nhttps:\/\/example.invalid\/live$/,
+						"zh-CN": /^Creator 原文 \/ 1小时\S* \/ 0\nhttps:\/\/example.invalid\/live$/,
 					}[locale],
 				);
 				const expected = [

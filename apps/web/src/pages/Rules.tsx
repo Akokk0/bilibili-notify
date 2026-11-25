@@ -541,7 +541,11 @@ export default function Rules() {
 								sub={focusedSub}
 								platform={focusedPlatform}
 								defaults={draft.defaults}
-								factory={factory}
+								factory={{
+									...factory,
+									...sources?.find((source) => source.key === focusedSub.identity.sourceKey)
+										?.descriptor.liveTemplates,
+								}}
 								presets={personaList}
 								section={shownSection}
 							/>

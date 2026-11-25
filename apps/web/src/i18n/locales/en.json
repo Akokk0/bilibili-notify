@@ -973,6 +973,7 @@
 	"sourceUi.pages.rules.sections.text.52": "Elapsed livestream time",
 	"sourceUi.pages.rules.sections.name.53": "Creator name",
 	"sourceUi.pages.rules.sections.follower.54": "Current followers",
+	"rules.liveTemplates.vipViewers": "Current VIP viewer count",
 	"sourceUi.pages.rules.sections.watched.55": "Cumulative viewers",
 	"sourceUi.pages.rules.sections.followerchange.56": "Follower change",
 	"sourceUi.pages.rules.sections.follower.57": "Current followers (stream start)",

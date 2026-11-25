@@ -293,6 +293,7 @@ describe("GET /api/sources", () => {
 			searchAccepts: ["link", "name"],
 			supportedFeatures: ["post"],
 			featureHints: { post: "Current localized hint" },
+			liveTemplates: { liveStreaming: "{name}: {vipViewers}" },
 		};
 		const { body } = await boot({
 			sources: {},

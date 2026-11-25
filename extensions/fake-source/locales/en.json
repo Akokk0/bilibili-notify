@@ -17,7 +17,12 @@
 				"label": "Fake source",
 				"postNoun": "mock",
 				"creatorNoun": "faker",
-				"externalIdNoun": "Fake ID"
+				"externalIdNoun": "Fake ID",
+				"liveTemplates": {
+					"liveStart": "{name} went live[[. Current followers: {follower}]]",
+					"liveStreaming": "{name} is live[[. Duration: {time}]][[. Total viewers: {watched}]]",
+					"liveEnd": "{name} ended the stream[[. Duration: {time}]][[. Follower change: {follower_change}]]"
+				}
 			},
 			"push": {
 				"label": "Fake platform",

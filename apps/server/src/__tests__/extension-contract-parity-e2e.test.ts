@@ -289,6 +289,11 @@ const SUBSCRIPTION_CELL_ROWS = {
 		file: "apps/server/src/routes/__tests__/sources-list-route.test.ts",
 		it: "拓展清单写了的格原样下发(图标、搜人收的输入都在),自带皮肤的包内路径不下发",
 	},
+	liveTemplates: {
+		state: "elsewhere",
+		file: "apps/server/src/routes/__tests__/sources-list-route.test.ts",
+		it: "拓展清单写了的格原样下发(图标、搜人收的输入都在),自带皮肤的包内路径不下发",
+	},
 	cardSkin: closed(
 		"宿主今天不读这一格:它是装包那头的事(自带卡片皮肤,ADR-0019 决策 13),面板视图里剥掉、服务端没有读者,等「自带皮肤」那一步。假源的清单也没写它。证据只有清单收下它的单测,没有单测钉「宿主不读」。",
 		{ file: MANIFEST_TEST, title: "cardSkin %s —— 收下" },
@@ -923,6 +928,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			"externalIdNoun",
 			"searchAccepts",
 			"externalIdRegex",
+			"liveTemplates",
 			"supportedFeatures",
 		]) {
 			expect(written[cell], `清单里应写了 ${cell}`).toBeDefined();
@@ -1014,7 +1020,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 	// 验红:`extensions/context.ts` 登记适配器时不摘 `listAddressCandidates`,`addresses` 那一段红;
 	// `extension-source.ts` 按展开取成员(不按成员表),`auth` 那一段红。
 	step(TITLE.closedPorts, async () => {
-		// 订阅源:假源在运行时塞了 `auth`,宿主没认,这个来源「不用登录」。
+		// 假源没有提供登录能力。
 		expect(await failed(await api(`/api/sources/${FAKE}/auth`))).toMatchObject({
 			status: 400,
 			body: { code: "unsupported", message: "这个来源不用登录" },
@@ -1035,7 +1041,6 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			status: 400,
 			body: { code: "unsupported" },
 		});
-		// This revision-zero fixture verifies compatibility with the earlier source API.
 		drove("PlatformAdapter", "listAddressCandidates", "connectionAuth", "fetchDestinationStatus");
 	});
 
@@ -1614,17 +1619,17 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		it("七张行表的行数,与走通 / 不开 / 宿主填各有几行(提交 9 抄进 architecture)", () => {
 			const size = (table: keyof Tables) => Object.keys(TABLES[table]).length;
 			expect(size("Source")).toBe(11);
-			expect(size("SubscriptionCell")).toBe(13);
+			expect(size("SubscriptionCell")).toBe(14);
 			expect(size("SourceContext")).toBe(7);
 			expect(size("PlatformAdapter")).toBe(15);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
 			expect(size("IntegrationContext")).toBe(14);
-			expect(entries).toHaveLength(68);
+			expect(entries).toHaveLength(69);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 本文件驱动39行，另有19行由引用测试管着（含auth、featureHints、displayIdNoun）；不开9行，宿主填1行。
+			// 本文件驱动39行，另有20行由引用测试管着（含auth、featureHints、displayIdNoun）；不开9行，宿主填1行。
 			expect(of("driven")).toHaveLength(39);
-			expect(of("elsewhere")).toHaveLength(19);
+			expect(of("elsewhere")).toHaveLength(20);
 			expect(of("closed")).toHaveLength(9);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(

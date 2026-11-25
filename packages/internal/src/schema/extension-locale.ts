@@ -3,6 +3,7 @@ import { FEATURE_KEYS, type FeatureKey } from "../features";
 import type { Dict } from "../i18n";
 import { isDictKey, malformedPlaceholders } from "../i18n";
 import type { SettingsField } from "../settings-field";
+import { LIVE_TEMPLATE_KEYS, type LiveTemplates } from "../source";
 import {
 	EXTENSION_DISPLAY_LABEL_MAX_CHARS,
 	EXTENSION_ITEM_LABEL_MAX_CHARS,
@@ -104,6 +105,9 @@ const ManifestTranslationSchema = z.strictObject({
 					creatorNoun: ShortLabelSchema.optional(),
 					externalIdNoun: ShortLabelSchema.optional(),
 					displayIdNoun: ShortLabelSchema.optional(),
+					liveTemplates: z
+						.partialRecord(z.enum(LIVE_TEMPLATE_KEYS), LocaleTextSchema.max(4096))
+						.optional(),
 					featureHints: z
 						.partialRecord(
 							z.enum(FEATURE_KEYS),
@@ -160,6 +164,7 @@ interface DisplayTranslation {
 	externalIdNoun?: string;
 	displayIdNoun?: string;
 	featureHints?: Partial<Record<FeatureKey, string>>;
+	liveTemplates?: LiveTemplates;
 }
 
 interface PushTranslation extends DisplayTranslation {
@@ -460,22 +465,24 @@ function pushOf(
 	return nonEmptyObject(out) ? out : undefined;
 }
 
-function featureHintsOf(
+function textMap<K extends string>(
+	keys: readonly K[],
 	source: unknown,
 	path: Path,
 	issues: ExtensionLocaleIssue[],
-): Partial<Record<FeatureKey, string>> | undefined {
+	max?: number,
+): Partial<Record<K, string>> | undefined {
 	if (!isRecord(source)) {
 		issues.push({ path, code: "invalid-text" });
 		return undefined;
 	}
-	const out: Partial<Record<FeatureKey, string>> = {};
+	const out: Partial<Record<K, string>> = {};
 	for (const key of Object.keys(source)) {
-		if (!FEATURE_KEYS.some((feature) => feature === key)) {
+		if (!keys.some((feature) => feature === key)) {
 			issues.push({ path: [...path, key], code: "unknown-entry" });
 			continue;
 		}
-		const text = textOf(source, key, path, issues, { nonBlank: true });
+		const text = textOf(source, key, path, issues, { nonBlank: true, max });
 		if (text !== undefined) put(out, key, text);
 	}
 	return nonEmptyObject(out) ? out : undefined;
@@ -495,8 +502,11 @@ function subscriptionOf(
 		const here = [...path, key];
 		if (SUBSCRIPTION_TEXT_KEYS.has(key)) {
 			putDisplayText(out, source, key, path, issues);
+		} else if (key === "liveTemplates") {
+			const templates = textMap(LIVE_TEMPLATE_KEYS, source[key], here, issues, 4096);
+			if (templates) out.liveTemplates = templates;
 		} else if (key === "featureHints") {
-			const hints = featureHintsOf(source[key], here, issues);
+			const hints = textMap(FEATURE_KEYS, source[key], here, issues);
 			if (hints !== undefined) out.featureHints = hints;
 		} else if (
 			key === "color" ||
