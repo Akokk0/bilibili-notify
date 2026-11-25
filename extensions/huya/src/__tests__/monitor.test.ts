@@ -360,6 +360,43 @@ it("连续两场都在播时，按开播帧的场次号等待缓存切到新场"
 	await app.source.stop();
 });
 
+it.each(["available", "absent", "unreachable"] as const)(
+	"开播优先读本房间发布的静态封面，缺图回退到直播帧，直播中仍用帧（封面 %s）",
+	async (posterState) => {
+		let status = "OFF";
+		const frame = "https://live-cover.msstatic.com/huyalive/71/frame.jpg";
+		const poster = "https://anchorpost.msstatic.com/cdnimage/anchorpost/71/poster.jpg";
+		const app = host((url) =>
+			url.hostname === "www.huya.com"
+				? {
+						body: `<head><link rel="canonical" href="https://www.huya.com/42"><meta name="image" content="${posterState !== "absent" ? poster : frame}"></head>`,
+					}
+				: { body: room("71", "42", status, { screenshot: frame, liveId: "81" }) },
+		);
+		const frameRef = `${"a".repeat(64)}.jpg`,
+			posterRef = `${"b".repeat(64)}.jpg`;
+		app.ctx.fetchImage.mockImplementation(async (url) => {
+			if (url === poster && posterState === "unreachable") throw new Error("image unavailable");
+			return ok({ ref: url === poster ? posterRef : frameRef });
+		});
+		const socket = connected(app);
+		await app.source.searchCreators("42", app.signal);
+		const watched = monitor(app.source);
+		await vi.advanceTimersByTimeAsync(12000);
+		status = "ON";
+		socket.frame(push(8000));
+		await vi.advanceTimersByTimeAsync(15000);
+		expect(watched.reportLive.mock.calls.at(-1)?.[1]).toMatchObject({
+			kind: "start",
+			details: { cover: posterState === "available" ? posterRef : frameRef },
+		});
+		const card = app.source.fetchLiveStatus?.({ sourceKey: "huya", externalId: "71" }, app.signal);
+		await vi.advanceTimersByTimeAsync(9000);
+		expect(await card).toMatchObject({ kind: "live", details: { cover: frameRef } });
+		await app.source.stop();
+	},
+);
+
 it("下播用本场最后的实测数，同场缺项不清零，下一场不继承", async () => {
 	let status = "ON",
 		liveId = "81";

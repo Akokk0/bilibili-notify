@@ -4,13 +4,14 @@ import {
 	type ExtensionLiveSignalReport,
 	type ExtensionLiveStatusResult,
 	fail,
+	type ImageRef,
 	ok,
 	type Result,
 } from "@bilibili-notify/extension";
 import { count, decimal, type HuyaClient, record } from "./client";
 import type { HuyaRoom } from "./creators";
 import { type createImageReader, imageDeadline } from "./images";
-import { web } from "./pages";
+import { posterUrl, roomPoster, web } from "./pages";
 
 export type Observation =
 	| { kind: "offline" }
@@ -18,6 +19,7 @@ export type Observation =
 			kind: "live";
 			sessionId?: string;
 			lastMetrics?: RoomMetrics;
+			startCover?: ImageRef;
 			startedAt?: string;
 			details: ExtensionLiveDetails;
 	  };
@@ -64,10 +66,29 @@ export async function observe(
 			};
 			const pushed = readMetrics?.(observation);
 			const needsStats = previous?.kind !== "live" || !sameSession(previous, observation);
-			const [cover, vipViewers] = await Promise.all([
+			async function startCover() {
+				if (!previous || !needsStats || posterUrl(live.screenshot)) return;
+				const deadline = started + 12000;
+				const remaining = deadline - Date.now();
+				if (remaining <= 0) return;
+				const limit = new AbortController();
+				const timer = ctx.setTimeout(() => limit.abort(), remaining);
+				const scoped = AbortSignal.any([signal, limit.signal]);
+				try {
+					const url = await roomPoster(client, room.number, scoped);
+					return url ? await readImage(url, scoped, deadline) : undefined;
+				} catch {
+					// 静态封面可选，取图失败仍交付已取得的房间画面。
+					return undefined;
+				} finally {
+					timer.dispose();
+				}
+			}
+			const [cover, vipViewers, poster] = await Promise.all([
 				readImage(live.screenshot, signal, imageDeadline(started)),
 				pushed?.vipViewers ??
 					(needsStats ? client.vipViewers(room.uid, signal, started + 12000) : undefined),
+				startCover(),
 			]);
 			if (signal.aborted) return fail("indeterminate", ctx.i18n.t("request.cancelled"));
 			const heatScore = pushed?.heatScore ?? count(live.totalCount);
@@ -78,6 +99,7 @@ export async function observe(
 			if (typeof live.gameFullName === "string" && live.gameFullName.trim())
 				details.category = live.gameFullName;
 			if (cover) details.cover = cover;
+			if (poster) observation.startCover = poster;
 			return ok({ observation });
 		}
 	}
@@ -136,6 +158,12 @@ export function transition(
 	const reports: ExtensionLiveSignalReport[] = [];
 	if (previous.kind === "live") reports.push(endReport(previous));
 	if (current.kind === "live")
-		reports.push({ kind: "start", startedAt: current.startedAt, details: current.details });
+		reports.push({
+			kind: "start",
+			startedAt: current.startedAt,
+			details: current.startCover
+				? { ...current.details, cover: current.startCover }
+				: current.details,
+		});
 	return { latest: current, reports };
 }
