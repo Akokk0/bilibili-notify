@@ -1408,3 +1408,12 @@ it("reports contract incompatibility in the current language and keeps extension
 		binding.dispose();
 	}
 });
+
+it("订阅源可从修订 6 起分别声明普通作品或视频的默认推送模板", () => {
+	const manifest = sub({ postTemplates: { postVideo: "{name} 的视频" } });
+	expect(parseExtensionManifest({ ...manifest, apiRevision: 6 }).ok).toBe(true);
+	expect(parseExtensionManifest({ ...manifest, apiRevision: 5 }).ok).toBe(false);
+	expect(
+		parseExtensionManifest({ ...sub({ postTemplates: { post: " " } }), apiRevision: 6 }).ok,
+	).toBe(false);
+});

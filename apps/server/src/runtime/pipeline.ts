@@ -648,6 +648,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 				globals,
 				// 「来源还在跑吗」:登记表里有它。拓展停止时撤销登记,还在队列里的作品不再补推。
 				sourceRunning: (sub) => sourceStatus.running(subscriptionIdentityOf(sub).sourceKey),
+				postTemplates: (sub) => opts.sources.get(sub.identity.sourceKey)?.descriptor.postTemplates,
 				targetIds,
 			}),
 			// 渲染器与 AI 会被热换:**必须是读外层 let 的闭包**,按值传就是「开机时没有浏览器,之后一直没有卡片」而门禁全绿。

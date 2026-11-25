@@ -9,6 +9,10 @@
 			"label": "抖音",
 			"searchAccepts": ["id", "link", "name"],
 			"supportedFeatures": ["post", "liveStart", "liveStreaming", "liveEnd"],
+			"postTemplates": {
+				"post": "{name}发布了新的抖音作品",
+				"postVideo": "{name}发布了新的抖音视频"
+			},
 			"postNoun": "作品",
 			"creatorNoun": "博主",
 			"externalIdNoun": "作者 ID",

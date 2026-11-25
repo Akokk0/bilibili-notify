@@ -283,6 +283,8 @@
 	"bilibili.videoViews.noValue": "The source returned no valid total video view count. No sample was recorded.",
 	"bilibili.videoViews.fetchFailed": "Could not fetch total video views: {reason}",
 	"log.bilibili.videoViews.fetchFailed": "Total video view request failed",
+	"bilibili.source.postTemplates.post": "{name} published a new {postNoun}",
+	"bilibili.source.postTemplates.postVideo": "{name} published a new video",
 	"bilibili.source.liveTemplates.liveStart": "{name} went live[[. Current followers: {follower}]]",
 	"bilibili.source.liveTemplates.liveStreaming": "{name} is live[[. Duration: {time}]][[. Total viewers: {watched}]]",
 	"bilibili.source.liveTemplates.liveEnd": "{name} ended the stream[[. Duration: {time}]][[. Follower change: {follower_change}]]"

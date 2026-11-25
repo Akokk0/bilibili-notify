@@ -151,6 +151,17 @@ function pick<T, R>(layers: Layers<T>, get: (layer: T) => R | undefined): R | un
 	return undefined;
 }
 
+/** 按键取当前语言的来源模板，只覆盖清单已经声明的项。 */
+function localizeTemplates<K extends string>(
+	base: Partial<Record<K, string>> | undefined,
+	layers: Layers<Partial<Record<K, string>>>,
+) {
+	if (!base) return undefined;
+	const result = { ...base };
+	for (const key in base) result[key] = pick(layers, (layer) => own(layer, key)) ?? base[key];
+	return result;
+}
+
 function localizeField<F extends SettingsField>(field: F, layers: Layers<FieldTranslation>): F {
 	const out: Record<string, unknown> = { ...field };
 	const label = pick(layers, (layer) => layer.label);
@@ -273,11 +284,14 @@ export function localizeManifest(
 		: undefined;
 
 	const { push, subscription } = manifest.contributes;
-	const liveTemplates = { ...subscription?.liveTemplates };
-	for (const key of ["liveStart", "liveStreaming", "liveEnd"] as const) {
-		const value = pick(layers, (layer) => layer.contributes?.subscription?.liveTemplates?.[key]);
-		if (value !== undefined && Object.hasOwn(liveTemplates, key)) liveTemplates[key] = value;
-	}
+	const postTemplates = localizeTemplates(
+		subscription?.postTemplates,
+		layers.map((layer) => layer.contributes?.subscription?.postTemplates),
+	);
+	const liveTemplates = localizeTemplates(
+		subscription?.liveTemplates,
+		layers.map((layer) => layer.contributes?.subscription?.liveTemplates),
+	);
 	const featureHints = { ...subscription?.featureHints };
 	for (const key of FEATURE_KEYS) {
 		const text = pick(layers, (layer) => layer.contributes?.subscription?.featureHints?.[key]);
@@ -310,7 +324,8 @@ export function localizeManifest(
 							subscription,
 							layers.map((layer) => layer.contributes?.subscription),
 						),
-						...(Object.keys(liveTemplates).length ? { liveTemplates } : {}),
+						...(postTemplates && { postTemplates }),
+						...(liveTemplates && { liveTemplates }),
 						...(Object.keys(featureHints).length ? { featureHints } : {}),
 					},
 				}

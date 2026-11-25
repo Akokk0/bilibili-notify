@@ -458,6 +458,9 @@ export default function Rules() {
 
 	const isGlobal = scope === "__global";
 	const focusedSub = !isGlobal ? allSubs.find((s) => s.id === scope) : undefined;
+	const focusedSource = sources?.find(
+		(source) => source.key === focusedSub?.identity.sourceKey,
+	)?.descriptor;
 	const focusedPlatform = focusedSub ? platformOf(focusedSub) : undefined;
 	const sections = sectionsFor(scope);
 	// 拓展列表晚一步回来时,源报得出的那几种会从「最多」收窄成它真报的,当前这一节可能就没了 ——
@@ -543,8 +546,8 @@ export default function Rules() {
 								defaults={draft.defaults}
 								factory={{
 									...factory,
-									...sources?.find((source) => source.key === focusedSub.identity.sourceKey)
-										?.descriptor.liveTemplates,
+									...focusedSource?.postTemplates,
+									...focusedSource?.liveTemplates,
 								}}
 								presets={personaList}
 								section={shownSection}

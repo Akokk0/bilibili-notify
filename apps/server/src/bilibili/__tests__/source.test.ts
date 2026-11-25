@@ -457,6 +457,7 @@ describe("createBiliSource", () => {
 		const key = "bilibili.source.featureHints.post";
 		try {
 			i18n.set({ locale: "zh-CN", voice: "plain" });
+			expect(source.descriptor.postTemplates?.postVideo).toBe("{name}发布了新视频");
 			expect(source.descriptor.featureHints).toEqual({
 				post: "投稿 / 转发 / 专栏",
 				superchat: "Super Chat 提醒",
@@ -467,6 +468,10 @@ describe("createBiliSource", () => {
 			i18n.set({ locale: "en" });
 			try {
 				expect(source.descriptor.featureHints?.post).toBe("Current post hint");
+				expect(source.descriptor.postTemplates).toEqual({
+					post: "{name} published a new {postNoun}",
+					postVideo: "{name} published a new video",
+				});
 				expect(source.descriptor.liveTemplates?.liveStreaming).toContain(
 					"Total viewers: {watched}",
 				);

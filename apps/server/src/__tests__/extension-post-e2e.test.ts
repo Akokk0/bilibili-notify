@@ -296,7 +296,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		const [first, second] = hooksFor("a");
 		for (const [hook, template, n] of [
 			[first, "发布了一条假帖", 1],
-			[second, "发布了新视频", 2],
+			[second, "发布了一条视频假帖", 2],
 		] as const) {
 			// 默认版式:卡片 + 文案 + 链接合成一条;链接是事件的 url(决策 77),文案的 {name} 取资料名。
 			expect(hook?.payload.kind).toBe("composite");
@@ -315,7 +315,9 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		}
 
 		const [onlyB] = hooksFor("b");
-		expect(onlyB?.payload.segments?.[1]?.text).toMatch(/发布了新视频\nhttps:\/\/.+\/post\/2$/);
+		expect(onlyB?.payload.segments?.[1]?.text).toMatch(
+			/发布了一条视频假帖\nhttps:\/\/.+\/post\/2$/,
+		);
 		expect(hooksFor("c")).toEqual([]);
 	}, 15_000);
 
@@ -468,10 +470,10 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		expect(protectedRows).toHaveLength(4);
 		let postNumber = 3;
 		for (const [locale, postText, videoText, topic] of [
-			["en", " published a new mock", " published a new video", "Topic"],
-			["ja", "が新しい假帖を公開しました", "が新しい動画を公開しました", "トピック"],
-			["zh-TW", "發布了新的假帖", "發布了新影片", "話題"],
-			["zh-CN", "发布了一条假帖", "发布了新视频", "话题"],
+			["en", " shared a new mock", " shared a video mock", "Topic"],
+			["ja", "发布了一条假帖", "发布了一条视频假帖", "トピック"],
+			["zh-TW", "发布了一条假帖", "发布了一条视频假帖", "話題"],
+			["zh-CN", "发布了一条假帖", "发布了一条视频假帖", "话题"],
 		] as const) {
 			await ok(
 				await api("/api/settings", {

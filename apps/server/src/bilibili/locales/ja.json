@@ -283,6 +283,8 @@
 	"bilibili.videoViews.noValue": "有効な動画の累計再生数が返されなかったため、今回は記録していません。",
 	"bilibili.videoViews.fetchFailed": "動画の累計再生数を取得できませんでした：{reason}",
 	"log.bilibili.videoViews.fetchFailed": "動画の累計再生数のリクエストに失敗しました",
+	"bilibili.source.postTemplates.post": "{name}が新しい{postNoun}を公開しました",
+	"bilibili.source.postTemplates.postVideo": "{name}が新しい動画を公開しました",
 	"bilibili.source.liveTemplates.liveStart": "{name}が配信を開始しました[[。現在のフォロワー数：{follower}]]",
 	"bilibili.source.liveTemplates.liveStreaming": "{name}が配信中です[[。配信時間：{time}]][[、累計視聴者数：{watched}]]",
 	"bilibili.source.liveTemplates.liveEnd": "{name}が配信を終了しました[[。配信時間：{time}]][[、フォロワー増減：{follower_change}]]"

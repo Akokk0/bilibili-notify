@@ -289,6 +289,7 @@ const SUBSCRIPTION_CELL_ROWS = {
 		file: "apps/server/src/routes/__tests__/sources-list-route.test.ts",
 		it: "拓展清单写了的格原样下发(图标、搜人收的输入都在),自带皮肤的包内路径不下发",
 	},
+	postTemplates: driven(TITLE.subscriptionCells),
 	liveTemplates: {
 		state: "elsewhere",
 		file: "apps/server/src/routes/__tests__/sources-list-route.test.ts",
@@ -929,6 +930,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			"searchAccepts",
 			"externalIdRegex",
 			"liveTemplates",
+			"postTemplates",
 			"supportedFeatures",
 		]) {
 			expect(written[cell], `清单里应写了 ${cell}`).toBeDefined();
@@ -941,6 +943,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		drove(
 			"SubscriptionCell",
 			"label",
+			"postTemplates",
 			"shortLabel",
 			"color",
 			"icon",
@@ -1619,16 +1622,16 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		it("七张行表的行数,与走通 / 不开 / 宿主填各有几行(提交 9 抄进 architecture)", () => {
 			const size = (table: keyof Tables) => Object.keys(TABLES[table]).length;
 			expect(size("Source")).toBe(11);
-			expect(size("SubscriptionCell")).toBe(14);
+			expect(size("SubscriptionCell")).toBe(15);
 			expect(size("SourceContext")).toBe(7);
 			expect(size("PlatformAdapter")).toBe(15);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
 			expect(size("IntegrationContext")).toBe(14);
-			expect(entries).toHaveLength(69);
+			expect(entries).toHaveLength(70);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 本文件驱动39行，另有20行由引用测试管着（含auth、featureHints、displayIdNoun）；不开9行，宿主填1行。
-			expect(of("driven")).toHaveLength(39);
+			// 本文件驱动40行，另有20行由引用测试管着（含auth、featureHints、displayIdNoun）；不开9行，宿主填1行。
+			expect(of("driven")).toHaveLength(40);
 			expect(of("elsewhere")).toHaveLength(20);
 			expect(of("closed")).toHaveLength(9);
 			expect(of("hostFilled")).toHaveLength(1);

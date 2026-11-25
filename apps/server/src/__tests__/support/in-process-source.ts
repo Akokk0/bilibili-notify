@@ -264,6 +264,7 @@ function createInProcessSource(options: InProcessOptions = {}): {
 		supportedFeatures: ["post", "liveStart", "liveEnd", "membership"],
 		supportedExtras: ["atAllPost", "liveSummary"],
 		featureHints: { post: "Probe post hint", liveEnd: "Probe end hint" },
+		postTemplates: { postVideo: "{name} · probe video" },
 		liveTemplates: {
 			liveStreaming: "{name} / {time} / {watched}",
 			liveEnd: "{name} / {time} / {follower_change}",

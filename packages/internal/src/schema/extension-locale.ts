@@ -3,7 +3,12 @@ import { FEATURE_KEYS, type FeatureKey } from "../features";
 import type { Dict } from "../i18n";
 import { isDictKey, malformedPlaceholders } from "../i18n";
 import type { SettingsField } from "../settings-field";
-import { LIVE_TEMPLATE_KEYS, type LiveTemplates } from "../source";
+import {
+	LIVE_TEMPLATE_KEYS,
+	type LiveTemplates,
+	POST_TEMPLATE_KEYS,
+	type PostTemplates,
+} from "../source";
 import {
 	EXTENSION_DISPLAY_LABEL_MAX_CHARS,
 	EXTENSION_ITEM_LABEL_MAX_CHARS,
@@ -105,6 +110,9 @@ const ManifestTranslationSchema = z.strictObject({
 					creatorNoun: ShortLabelSchema.optional(),
 					externalIdNoun: ShortLabelSchema.optional(),
 					displayIdNoun: ShortLabelSchema.optional(),
+					postTemplates: z
+						.partialRecord(z.enum(POST_TEMPLATE_KEYS), LocaleTextSchema.max(4096))
+						.optional(),
 					liveTemplates: z
 						.partialRecord(z.enum(LIVE_TEMPLATE_KEYS), LocaleTextSchema.max(4096))
 						.optional(),
@@ -164,6 +172,7 @@ interface DisplayTranslation {
 	externalIdNoun?: string;
 	displayIdNoun?: string;
 	featureHints?: Partial<Record<FeatureKey, string>>;
+	postTemplates?: PostTemplates;
 	liveTemplates?: LiveTemplates;
 }
 
@@ -502,6 +511,9 @@ function subscriptionOf(
 		const here = [...path, key];
 		if (SUBSCRIPTION_TEXT_KEYS.has(key)) {
 			putDisplayText(out, source, key, path, issues);
+		} else if (key === "postTemplates") {
+			const templates = textMap(POST_TEMPLATE_KEYS, source[key], here, issues, 4096);
+			if (templates) out.postTemplates = templates;
 		} else if (key === "liveTemplates") {
 			const templates = textMap(LIVE_TEMPLATE_KEYS, source[key], here, issues, 4096);
 			if (templates) out.liveTemplates = templates;

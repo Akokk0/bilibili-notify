@@ -14,6 +14,10 @@
 		"contributes": {
 			"subscription": {
 				"label": "假源",
+				"postTemplates": {
+					"post": "{name}发布了一条{postNoun}",
+					"postVideo": "{name}发布了一条视频{postNoun}"
+				},
 				"postNoun": "假帖",
 				"creatorNoun": "假主播",
 				"externalIdNoun": "假号",

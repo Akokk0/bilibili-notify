@@ -48,8 +48,8 @@ interface ContractRow {
  */
 const CONTRACT: readonly ContractRow[] = [
 	{ name: "群聊作品", schema: ExtensionLinkPreviewSchema, digest: "9f92fb1ccbd18b61" },
-	{ name: "当前清单", schema: ExtensionManifestSchema, digest: "ecf1210c020f65d2" },
-	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "18656456022da776" },
+	{ name: "当前清单", schema: ExtensionManifestSchema, digest: "14d78a6306e18714" },
+	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "670586c69f847aea" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "c7459400b5bf8f92" },
 	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "7883477f9f066f1e" },
 	{

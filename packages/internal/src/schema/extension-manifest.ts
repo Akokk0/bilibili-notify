@@ -8,7 +8,7 @@ import { EXTENSION_SOURCE_FEATURES, FEATURE_KEYS } from "../features";
 import { RESERVED_EXTENSION_IDS } from "../identity";
 import { fail, type Issue, ok, type Result } from "../result";
 import type { SettingsField, SettingsListField } from "../settings-field";
-import { CREATOR_SEARCH_KINDS, LIVE_TEMPLATE_KEYS } from "../source";
+import { CREATOR_SEARCH_KINDS, LIVE_TEMPLATE_KEYS, POST_TEMPLATE_KEYS } from "../source";
 import { packageText } from "../texts";
 import { checkUserRegex } from "../util/regex-safety";
 
@@ -641,6 +641,9 @@ const ContributesSchema = z
 					.optional(),
 				/** 这个源能报的几种特性,见 {@link SupportedFeaturesSchema}。 */
 				supportedFeatures: SupportedFeaturesSchema,
+				postTemplates: z
+					.partialRecord(z.enum(POST_TEMPLATE_KEYS), z.string().trim().min(1).max(4096))
+					.optional(),
 				liveTemplates: z
 					.partialRecord(z.enum(LIVE_TEMPLATE_KEYS), z.string().trim().min(1).max(4096))
 					.optional(),
@@ -728,6 +731,11 @@ export const ExtensionManifestSchema = z
 		/** 开哪几口、每口的声明 —— `provides` 由它的键推出来。 */
 		contributes: ContributesSchema,
 	})
+	.refine(
+		(manifest) =>
+			!manifest.contributes.subscription?.postTemplates || (manifest.apiRevision ?? 0) >= 6,
+		{ path: ["apiRevision"], message: "postTemplates requires apiRevision 6" },
+	)
 	.refine(
 		(manifest) =>
 			!manifest.contributes.subscription?.liveTemplates || (manifest.apiRevision ?? 0) >= 6,

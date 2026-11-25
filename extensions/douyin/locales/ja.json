@@ -40,6 +40,10 @@
 		"contributes": {
 			"subscription": {
 				"label": "抖音",
+				"postTemplates": {
+					"post": "{name}が抖音に投稿しました",
+					"postVideo": "{name}が抖音に動画を投稿しました"
+				},
 				"postNoun": "投稿",
 				"creatorNoun": "投稿者",
 				"externalIdNoun": "作者ID",

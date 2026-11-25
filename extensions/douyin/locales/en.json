@@ -40,6 +40,10 @@
 		"contributes": {
 			"subscription": {
 				"label": "Douyin",
+				"postTemplates": {
+					"post": "{name} shared a new post on Douyin",
+					"postVideo": "{name} shared a new video on Douyin"
+				},
 				"postNoun": "post",
 				"creatorNoun": "creator",
 				"externalIdNoun": "ID",

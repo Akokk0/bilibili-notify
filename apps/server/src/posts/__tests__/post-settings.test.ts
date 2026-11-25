@@ -194,6 +194,7 @@ describe("makePostSettingsReader — 不该推就回 undefined", () => {
 			subscription,
 			globals: () => state.g,
 			sourceRunning,
+			postTemplates: () => undefined,
 			targetIds: () => state.targetIds,
 		});
 		return { state, read, subscription, sourceRunning };
@@ -271,6 +272,7 @@ describe("makePostSettingsReader — 要不要生成点评(aiEnabled 的折法,A
 			subscription: () => sub,
 			globals: () => g,
 			sourceRunning: () => true,
+			postTemplates: () => undefined,
 			targetIds: () => opts.targetIds ?? [T1],
 		});
 		return read(ID)?.aiEnabled;
@@ -306,10 +308,37 @@ describe("makePostSettingsReader — 要不要生成点评(aiEnabled 的折法,A
 			subscription: () => biliSub(),
 			globals: () => g,
 			sourceRunning: () => true,
+			postTemplates: () => undefined,
 			targetIds: () => ids,
 		});
 		expect(read(ID)?.aiEnabled).toBe(true);
 		ids = [];
 		expect(read(ID)?.aiEnabled).toBe(false);
 	});
+});
+
+it("普通作品和视频分别取来源模板，订阅和全局覆盖优先，缺项用宿主默认", () => {
+	const globals = makeDefaultGlobalSettings();
+	const sub = makeExtensionSubscription();
+	const templates: { post?: string; postVideo?: string } = {
+		post: "source {name}",
+		postVideo: "source video {name}",
+	};
+	const read = makePostSettingsReader({
+		subscription: () => sub,
+		globals: () => globals,
+		sourceRunning: () => true,
+		postTemplates: () => templates,
+		targetIds: () => [],
+	});
+	expect(read(sub.id)).toMatchObject({
+		template: "source {name}",
+		videoTemplate: "source video {name}",
+	});
+	delete templates.postVideo;
+	expect(read(sub.id)?.videoTemplate).toBe("{name}发布了新视频");
+	globals.defaults.templates.post = "global";
+	globals.defaults.templates.postVideo = "global video";
+	sub.overrides.templates = { post: "subscription" };
+	expect(read(sub.id)).toMatchObject({ template: "subscription", videoTemplate: "global video" });
 });

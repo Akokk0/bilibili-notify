@@ -31,6 +31,10 @@
 			"shortLabel": "假",
 			"color": "#0d9488",
 			"icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMGQ5NDg4IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEwIDJ2Ny41YTIgMiAwIDAgMS0uMi45TDQuNyAyMC41YTEgMSAwIDAgMCAuOSAxLjVoMTIuOGExIDEgMCAwIDAgLjktMS41bC01LjEtMTAuMWEyIDIgMCAwIDEtLjItLjlWMiIvPjxwYXRoIGQ9Ik04LjUgMmg3Ii8+PHBhdGggZD0iTTcgMTZoMTAiLz48L3N2Zz4=",
+			"postTemplates": {
+				"post": "{name}发布了一条{postNoun}",
+				"postVideo": "{name}发布了一条视频{postNoun}"
+			},
 			"postNoun": "假帖",
 			"creatorNoun": "假主播",
 			"externalIdNoun": "假号",

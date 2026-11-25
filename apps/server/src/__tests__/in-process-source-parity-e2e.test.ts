@@ -466,6 +466,7 @@ const SOURCE_DESCRIPTOR_MEMBERS = {
 	supportedFeatures: ["P50"],
 	supportedExtras: ["P50"],
 	featureHints: ["P50"],
+	postTemplates: ["P50"],
 	liveTemplates: ["P35"],
 } as const satisfies Record<keyof SourceDescriptor, readonly RowId[]>;
 const SOURCE_AUTH_MEMBERS = {
@@ -1035,6 +1036,9 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(sources.find((one) => one.key === IN_PROCESS_KEY)?.descriptor.displayIdNoun).toBe(
 			"公开账号",
 		);
+		expect(sources.find((one) => one.key === IN_PROCESS_KEY)?.descriptor.postTemplates).toEqual({
+			postVideo: "{name} · probe video",
+		});
 		expect(sources.find((one) => one.key === IN_PROCESS_KEY)?.descriptor.featureHints).toEqual({
 			post: "Probe post hint",
 			liveEnd: "Probe end hint",

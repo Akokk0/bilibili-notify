@@ -209,7 +209,9 @@ vp run release --tag v0.1.0 --dry-run
 用户在BN“拓展 → 市场源”输入`owner/repository`或GitHub仓库网址，即定位到固定`bn-marketplace` Release上的`marketplace.json`。只支持公开可读取的索引和ZIP；第三方来源仍需用户信任，SDK和创建器不会赋予官方身份。
 
 
-### 直播通知的默认文字
+### 作品与直播通知的默认文字
+
+支持作品推送的来源可以在 `contributes.subscription.postTemplates` 提供 `post` 和 `postVideo`，同样要求 `apiRevision: 6`。上报的作品含 `post.video` 时选视频模板，其余选普通作品模板。两项均可单独提供，接受 `{name}`（作者名）和 `{postNoun}`（来源对作品的叫法）。例如微博可将 `postVideo` 写成「{name}发布了一条视频微博」。各语言译文放在 `$manifest.contributes.subscription.postTemplates`。每一项依次取订阅自定义、全局自定义、来源模板、宿主默认。链接由消息版式单独附上。
 
 支持直播的来源可以在 `contributes.subscription.liveTemplates` 分别声明 `liveStart`、`liveStreaming`、`liveEnd`，清单需声明 `apiRevision: 6` 或更高修订。各语言译文写在 `locales/<语言>.json` 的 `$manifest.contributes.subscription.liveTemplates`。订阅自定义文字优先，其次是全局自定义文字，再使用来源声明的模板。旧来源缺少某一条时，宿主使用只包含主播名、状态和可用时长的文字。
 

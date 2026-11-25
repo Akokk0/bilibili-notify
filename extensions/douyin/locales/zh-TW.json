@@ -40,6 +40,10 @@
 		"contributes": {
 			"subscription": {
 				"label": "抖音",
+				"postTemplates": {
+					"post": "{name}發布了新的抖音作品",
+					"postVideo": "{name}發布了新的抖音影片"
+				},
 				"postNoun": "作品",
 				"creatorNoun": "創作者",
 				"externalIdNoun": "作者 ID",

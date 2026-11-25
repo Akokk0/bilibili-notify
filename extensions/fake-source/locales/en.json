@@ -15,6 +15,10 @@
 		"contributes": {
 			"subscription": {
 				"label": "Fake source",
+				"postTemplates": {
+					"post": "{name} shared a new {postNoun}",
+					"postVideo": "{name} shared a video {postNoun}"
+				},
 				"postNoun": "mock",
 				"creatorNoun": "faker",
 				"externalIdNoun": "Fake ID",

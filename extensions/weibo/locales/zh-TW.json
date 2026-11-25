@@ -29,6 +29,10 @@
 			"subscription": {
 				"label": "微博",
 				"creatorNoun": "博主",
+				"postTemplates": {
+					"post": "{name}發布了一則微博",
+					"postVideo": "{name}發布了一則影片微博"
+				},
 				"postNoun": "微博",
 				"externalIdNoun": "UID"
 			}

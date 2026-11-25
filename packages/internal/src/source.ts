@@ -15,6 +15,9 @@ import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
 import type { Result } from "./result";
 
+export const POST_TEMPLATE_KEYS = ["post", "postVideo"] as const;
+export type PostTemplates = Partial<Record<(typeof POST_TEMPLATE_KEYS)[number], string>>;
+
 export const LIVE_TEMPLATE_KEYS = ["liveStart", "liveStreaming", "liveEnd"] as const;
 export type LiveTemplates = Partial<Record<(typeof LIVE_TEMPLATE_KEYS)[number], string>>;
 
@@ -24,6 +27,7 @@ export type LiveTemplates = Partial<Record<(typeof LIVE_TEMPLATE_KEYS)[number], 
  * 4-15 起由 contract 的 `creatorSearchHint` 按 `searchAccepts` 拼;平台图标的读者还在第 4 期后面。
  */
 export interface SourceDescriptor {
+	postTemplates?: PostTemplates;
 	liveTemplates?: LiveTemplates;
 	/** 平台名(「B 站」)。`status` 指令的那一行、新建订阅的平台选择、徽章与平台列都取它。 */
 	label: string;
