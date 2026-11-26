@@ -18,7 +18,7 @@
 | 行 | 多收什么 |
 | --- | --- |
 | 作品行 `PostEntry` | 链接 `url`、标题 `title`（截 100 字）、摘要 `summary`（与 AI 同一种拼法，截 200 字）、话题 `topic`、视频时长 `videoDurationSec`。链接取信封上的 `url`，其余从 `Post` 取，都经 `stats/post-entry-extras.ts` 那一个函数 |
-| 场次行 `LiveSessionEntry` | 标题 `title`、分区 `category`（开播帧）；弹幕条数 `viewerChatCount`、发弹幕人数 `viewerChatSenderCount`、醒目留言条数 `superchatCount`、按币种的总额 `superchatTotals`、按档的新增会员数 `membershipCounts`（下播帧的场次互动汇总）；累计观看本来就有（`peakTotalViewers`） |
+| 场次行 `LiveSessionEntry` | 标题 `title`、分区 `category`（开播帧）；弹幕条数 `viewerChatCount`、发弹幕人数 `viewerChatSenderCount`、礼物件数 `giftCount`、醒目留言条数 `superchatCount`、按币种的总额 `superchatTotals`、按档的新增会员数 `membershipCounts`（下播帧的场次互动汇总）；累计观看本来就有（`peakTotalViewers`） |
 
 想加新字段，先按上面五条对一遍；对不上就先问主人，别默认加。
 

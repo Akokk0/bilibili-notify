@@ -69,12 +69,13 @@ export interface LiveSessionStart {
 	category?: string;
 }
 
-/** 关一场直播要交的整包;峰值与五格互动汇总都只在来源给出时才有。 */
+/** 关一场直播要交的整包;峰值与互动汇总都只在来源给出时才有。 */
 export interface LiveSessionClose {
 	endedAt: string;
 	peakTotalViewers?: number;
 	viewerChatCount?: number;
 	viewerChatSenderCount?: number;
+	giftCount?: number;
 	superchatCount?: number;
 	superchatTotals?: Record<string, number>;
 	membershipCounts?: Record<string, Record<string, number>>;
@@ -94,6 +95,8 @@ export interface LiveSessionEntry {
 	viewerChatCount?: number;
 	/** 这一场发过弹幕的人数。 */
 	viewerChatSenderCount?: number;
+	/** 这一场收到的礼物件数。 */
+	giftCount?: number;
 	/** 这一场的醒目留言条数。 */
 	superchatCount?: number;
 	/** 币种 → 这一场的醒目留言总额。 */
@@ -134,6 +137,7 @@ interface LiveFrame {
 	peakTotalViewers?: number;
 	viewerChatCount?: number;
 	viewerChatSenderCount?: number;
+	giftCount?: number;
 	superchatCount?: number;
 	superchatTotals?: Record<string, number>;
 	membershipCounts?: Record<string, Record<string, number>>;
@@ -230,6 +234,7 @@ type LiveCloseExtras = Pick<
 	LiveSessionEntry,
 	| "viewerChatCount"
 	| "viewerChatSenderCount"
+	| "giftCount"
 	| "superchatCount"
 	| "superchatTotals"
 	| "membershipCounts"
@@ -259,7 +264,7 @@ function liveStartExtras(parsed: unknown): LiveStartExtras {
 	return out;
 }
 
-/** 多收的下播五格:计数只收有限的非负数,汇总逐键过滤并用无原型风险的方式重建。 */
+/** 下播汇总:计数只收有限的非负数,汇总逐键过滤并用无原型风险的方式重建。 */
 function liveCloseExtras(parsed: unknown): LiveCloseExtras {
 	if (!isRecord(parsed)) return {};
 	const out: LiveCloseExtras = {};
@@ -268,6 +273,13 @@ function liveCloseExtras(parsed: unknown): LiveCloseExtras {
 	}
 	if (isFiniteNonNegative(parsed.viewerChatSenderCount)) {
 		out.viewerChatSenderCount = parsed.viewerChatSenderCount;
+	}
+	if (
+		typeof parsed.giftCount === "number" &&
+		Number.isSafeInteger(parsed.giftCount) &&
+		parsed.giftCount > 0
+	) {
+		out.giftCount = parsed.giftCount;
 	}
 	if (isFiniteNonNegative(parsed.superchatCount)) out.superchatCount = parsed.superchatCount;
 	if (isRecord(parsed.superchatTotals)) {
@@ -337,7 +349,7 @@ function addMembershipCounts(
  * 同一场直播的第二帧(及以后)的下播帧怎么并进已记下的那一场:一场被重启切成几段时,每段各写一帧
  * end,各段的计数互不重叠,所以 ——
  *
- * - `viewerChatCount` / `superchatCount`:相加;
+ * - `viewerChatCount` / `superchatCount` / `giftCount`:相加;
  * - `superchatTotals`(按币种)、`membershipCounts`(按体系 → 按档):逐键相加;
  * - `viewerChatSenderCount`:取各段**最大值**。跨段去重没法精确(统计不收观众名单),相加会把两段都
  *   发过言的人算两次,取最大只会少报;
@@ -351,6 +363,7 @@ function mergeLiveClose(open: LiveSessionEntry, occurredAt: string, parsed: unkn
 	open.endedAt = occurredAt;
 	const extras = liveCloseExtras(parsed);
 	open.viewerChatCount = addCount(open.viewerChatCount, extras.viewerChatCount);
+	open.giftCount = addCount(open.giftCount, extras.giftCount);
 	open.superchatCount = addCount(open.superchatCount, extras.superchatCount);
 	open.viewerChatSenderCount = maxCount(open.viewerChatSenderCount, extras.viewerChatSenderCount);
 	if (extras.superchatTotals) {

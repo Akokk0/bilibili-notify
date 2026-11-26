@@ -16,6 +16,7 @@ import type {
 	ExtensionCreatorCandidatesSchema,
 	ExtensionCreatorProfileReportSchema,
 	ExtensionLinkPreviewSchema,
+	ExtensionLiveInteractionReportSchema,
 	ExtensionLiveSignalReportSchema,
 	ExtensionLiveStatusResultSchema,
 	ExtensionManifest,
@@ -33,6 +34,7 @@ import type {
 import type {
 	ExtensionLinkPreview,
 	ExtensionLiveDetails,
+	ExtensionLiveInteractionReport,
 	ExtensionLiveSignalReport,
 	ExtensionLiveStatusResult,
 	ExtensionPostReport,
@@ -102,6 +104,9 @@ export type ExtensionLinkPreviewPinned = Pinned<
 >;
 export type ExtensionLiveSignalReportPinned = Pinned<
 	Equals<z.infer<typeof ExtensionLiveSignalReportSchema>, ExtensionLiveSignalReport>
+>;
+export type ExtensionLiveInteractionReportPinned = Pinned<
+	Equals<z.infer<typeof ExtensionLiveInteractionReportSchema>, ExtensionLiveInteractionReport>
 >;
 export type ExtensionLiveDetailsPinned = Pinned<
 	Equals<

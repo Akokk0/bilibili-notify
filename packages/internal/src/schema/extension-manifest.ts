@@ -36,10 +36,11 @@ export interface ExtensionApiRange {
 	readonly current: number;
 	readonly revision: number;
 }
+export const EXTENSION_LIVE_INTERACTIONS_REVISION = 7;
 export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({
 	min: 1,
 	current: 1,
-	revision: 6,
+	revision: 7,
 });
 
 /**
@@ -550,14 +551,16 @@ const SupportedFeaturesSchema = z
 		"supportedFeatures must not repeat a feature",
 	)
 	.superRefine((features, ctx) => {
-		if (
-			features.includes("liveStreaming") &&
-			(!features.includes("liveStart") || !features.includes("liveEnd"))
-		) {
-			ctx.addIssue({
-				code: "custom",
-				message: "liveStreaming also requires liveStart and liveEnd",
-			});
+		for (const feature of ["liveStreaming", "viewerChat"] as const) {
+			if (
+				features.includes(feature) &&
+				!(features.includes("liveStart") && features.includes("liveEnd"))
+			) {
+				ctx.addIssue({
+					code: "custom",
+					message: `${feature} also requires liveStart and liveEnd`,
+				});
+			}
 		}
 	});
 
@@ -731,6 +734,12 @@ export const ExtensionManifestSchema = z
 		/** 开哪几口、每口的声明 —— `provides` 由它的键推出来。 */
 		contributes: ContributesSchema,
 	})
+	.refine(
+		(manifest) =>
+			!manifest.contributes.subscription?.supportedFeatures.includes("viewerChat") ||
+			(manifest.apiRevision ?? 0) >= EXTENSION_LIVE_INTERACTIONS_REVISION,
+		{ path: ["apiRevision"], message: "viewerChat requires apiRevision 7" },
+	)
 	.refine(
 		(manifest) =>
 			!manifest.contributes.subscription?.postTemplates || (manifest.apiRevision ?? 0) >= 6,

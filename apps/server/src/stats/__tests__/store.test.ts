@@ -552,6 +552,7 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 			endedAt: T(3),
 			viewerChatCount: 2_000,
 			viewerChatSenderCount: 400,
+			giftCount: 17,
 			superchatCount: 3,
 			superchatTotals: { CNY: 100 },
 			membershipCounts: { guard: { captain: 2 } },
@@ -561,11 +562,13 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 			endedAt: T(10),
 			viewerChatCount: 300,
 			viewerChatSenderCount: 120,
+			giftCount: 9,
 			superchatTotals: { CNY: 30, USD: 5 },
 		});
 		const [got] = await store.listLiveSessions("1", T(0));
 		// 两段互不重叠:计数与按币种的汇总都相加。
 		expect(got?.viewerChatCount).toBe(2_300);
+		expect(got?.giftCount).toBe(26);
 		expect(got?.superchatCount).toBe(3);
 		expect(got?.superchatTotals).toEqual({ CNY: 130, USD: 5 });
 		// 后一帧没带的会员汇总保留前一帧的。

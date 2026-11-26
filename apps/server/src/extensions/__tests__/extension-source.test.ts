@@ -11,6 +11,7 @@
 import {
 	type CreatorProfileReport,
 	type ExtensionManifest,
+	type LiveInteractionReport,
 	type LiveSignalReport,
 	type Logger,
 	ok,
@@ -44,6 +45,7 @@ function manifestOf(
 	supportedFeatures: string[] = ["post", "liveStart", "liveEnd"],
 	externalIdNoun?: string,
 	creatorNoun?: string,
+	apiRevision?: number,
 ): ExtensionManifest {
 	const read = parseExtensionManifest({
 		id: "douyin",
@@ -51,6 +53,7 @@ function manifestOf(
 		description: "测试用",
 		version: "0.1.0",
 		apiVersion: 1,
+		...(apiRevision !== undefined && { apiRevision }),
 		contributes: {
 			subscription: {
 				label: "抖音",
@@ -83,6 +86,7 @@ function recordingLogger() {
 function coreContext() {
 	const posts: Array<[string, PostReport]> = [];
 	const lives: Array<[string, LiveSignalReport]> = [];
+	const interactions: Array<[string, LiveInteractionReport]> = [];
 	const profiles: Array<[string, CreatorProfileReport]> = [];
 	const signal = new AbortController().signal;
 	const ctx = {
@@ -104,11 +108,12 @@ function coreContext() {
 		reportLive: (externalId: string, report: LiveSignalReport) => lives.push([externalId, report]),
 		reportProfile: (externalId: string, report: CreatorProfileReport) =>
 			profiles.push([externalId, report]),
-		reportLiveInteraction() {},
+		reportLiveInteraction: (externalId: string, report: LiveInteractionReport) =>
+			interactions.push([externalId, report]),
 		registerLinkResolver: () => ({ dispose() {} }),
 		registerAiToolProvider: () => ({ dispose() {} }),
 	} as unknown as SourceContext;
-	return { ctx, posts, lives, profiles };
+	return { ctx, posts, lives, profiles, interactions };
 }
 
 interface Made {
@@ -168,10 +173,8 @@ async function make(
 	} as unknown as SourceDef;
 	const source = createExtensionSource({
 		id: "douyin",
-		manifest: () => ({
-			...manifestOf(opts.supportedFeatures, opts.externalIdNoun, opts.creatorNoun),
-			apiRevision: opts.apiRevision,
-		}),
+		manifest: () =>
+			manifestOf(opts.supportedFeatures, opts.externalIdNoun, opts.creatorNoun, opts.apiRevision),
 		def: full,
 		logger,
 		images: { read: async (ref) => opts.images?.(ref) },
@@ -195,6 +198,41 @@ async function make(
 }
 
 describe("createExtensionSource:成员与描述符", () => {
+	it("按清单收同一来源的弹幕和礼物数，拒收无声明、异常数据与停用后的上报", async () => {
+		const made = await make(
+			{},
+			{ supportedFeatures: ["liveStart", "liveEnd", "viewerChat"], apiRevision: 7 },
+		);
+		const chat = {
+			kind: "viewerChat" as const,
+			viewer: { id: "7490000000000000021", name: "鱼" },
+			text: "你好",
+		};
+		made.ext().reportLiveInteraction?.("u1", chat);
+		made.ext().reportLiveInteraction?.("u1", { kind: "gift", count: 3 });
+		made.ext().reportLiveInteraction?.("u1", { kind: "gift", count: -1 });
+		made.ext().reportLiveInteraction?.("u1", { ...chat, subscriptionId: "another" } as typeof chat);
+		await made.idle();
+		expect(made.core.interactions).toEqual([
+			["u1", chat],
+			["u1", { kind: "gift", count: 3 }],
+		]);
+		expect(made.discrepancies.map((entry) => entry.outcome)).toEqual(["rejected", "rejected"]);
+		await made.source.stop();
+		made.ext().reportLiveInteraction?.("u1", chat);
+		await made.idle();
+		expect(made.core.interactions).toHaveLength(2);
+
+		const liveOnly = await make(
+			{},
+			{ supportedFeatures: ["liveStart", "liveEnd"], apiRevision: 7 },
+		);
+		liveOnly.ext().reportLiveInteraction?.("u1", chat);
+		await liveOnly.idle();
+		expect(liveOnly.core.interactions).toEqual([]);
+		expect(liveOnly.discrepancies[0]?.outcome).toBe("rejected");
+	});
+
 	it("描述符取自清单订阅那一口写了的格(平台名、短名、颜色、作品叫法、外部 id 格式、特性),不取拓展自己交的", async () => {
 		const made = await make({ descriptor: { label: "冒充" } });
 		expect(made.source.descriptor).toEqual({

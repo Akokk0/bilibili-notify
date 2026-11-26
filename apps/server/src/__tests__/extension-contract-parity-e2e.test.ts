@@ -235,7 +235,7 @@ const SOURCE_ROWS = {
 	fetchProfile: driven(TITLE.fetchProfile),
 	fetchLiveStatus: driven(TITLE.fetchLiveStatus),
 	liveInteractions: closed(
-		"这一版不开直播互动类特性:1.0 的拓展声明不了会员与直播互动(ADR-0021 决策 38 下 09-28 的 🔗),契约「订阅源」表里 `liveInteractions` 一行写「不开」。核心没有读口能看见拓展塞进来的这一格,证据只有单测(假源在运行时故意塞了它)。",
+		"头像和会员徽章的懒取方法由核心独占。修订号 7 开放的 reportLiveInteraction 是另一条通道，只上报弹幕和礼物件数。",
 		{
 			file: EXTENSION_SOURCE_TEST,
 			title: "旧小号仍不开放 auth；其余成员照既有白名单",
@@ -312,6 +312,11 @@ const SOURCE_CONTEXT_ROWS = {
 	onSubscriptionsChanged: driven(TITLE.subscriptions),
 	reportPost: driven(TITLE.reportPost),
 	reportLive: driven(TITLE.reportLive),
+	reportLiveInteraction: {
+		state: "elsewhere",
+		file: EXTENSION_SOURCE_TEST,
+		it: "按清单收同一来源的弹幕和礼物数，拒收无声明、异常数据与停用后的上报",
+	},
 	reportProfile: driven(TITLE.reportProfile),
 	reportProblem: driven(TITLE.problems),
 	resolveProblem: driven(TITLE.problems),
@@ -1623,16 +1628,16 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			const size = (table: keyof Tables) => Object.keys(TABLES[table]).length;
 			expect(size("Source")).toBe(11);
 			expect(size("SubscriptionCell")).toBe(15);
-			expect(size("SourceContext")).toBe(7);
+			expect(size("SourceContext")).toBe(8);
 			expect(size("PlatformAdapter")).toBe(15);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
 			expect(size("IntegrationContext")).toBe(14);
-			expect(entries).toHaveLength(70);
+			expect(entries).toHaveLength(71);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 本文件驱动40行，另有20行由引用测试管着（含auth、featureHints、displayIdNoun）；不开9行，宿主填1行。
+			// 本文件驱动40行，引用测试覆盖21行，不开9行，宿主填1行。
 			expect(of("driven")).toHaveLength(40);
-			expect(of("elsewhere")).toHaveLength(20);
+			expect(of("elsewhere")).toHaveLength(21);
 			expect(of("closed")).toHaveLength(9);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(

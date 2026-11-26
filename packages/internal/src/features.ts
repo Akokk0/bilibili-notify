@@ -32,6 +32,7 @@ export const EXTENSION_SOURCE_FEATURES = [
 	"liveStart",
 	"liveStreaming",
 	"liveEnd",
+	"viewerChat",
 ] as const satisfies readonly FeatureKey[];
 
 /**

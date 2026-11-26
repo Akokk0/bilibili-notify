@@ -6,6 +6,7 @@ import {
 	checkExtensionLiveStatus,
 	checkExtensionReport,
 	createSerialQueue,
+	EXTENSION_LIVE_INTERACTIONS_REVISION,
 	EXTERNAL_ID_MAX,
 	EXTRA_KEYS,
 	ExtensionCreatorCandidatesSchema,
@@ -58,7 +59,7 @@ import { extensionSourceAuth } from "./extension-source-auth.js";
  * 拓展交上来的 {@link SourceDef} 拼成一份核心来源,登记进来源登记表,和 B 站走同一个 `SourceContext`、
  * 同一条作品入口、同一个场次引擎、同一个资料写口。
  *
- * 🔴 **拓展交回的一切都当外来数据,只在这一处收**(三种上报、搜人候选、取资料、拉取式直播状态):
+ * 🔴 **拓展交回的一切都当外来数据,只在这一处收**(上报、搜人候选、取资料、拉取式直播状态):
  * 核心的 `createSourceContext` 不为拓展加分支。收的规矩在 `@bilibili-notify/internal` 的
  * `schema/extension-report.ts`(多一格整条拒、认识的选填格坏了只丢那一格、时刻是带时区的 ISO……),这里管:
  *
@@ -77,7 +78,7 @@ const SOURCE_HEALTH_SUMMARY_MAX_CHARS = 120;
 
 /** 一条该记进「上报出入」的事(宿主再补时刻与「哪条订阅」)。 */
 export interface ExtensionSourceDiscrepancy {
-	kind: ExtensionReportKind;
+	kind: Exclude<ExtensionReportKind, "interaction">;
 	/** 拓展报的外部 id(不是字符串 / 太长的已截成一段能看的)。 */
 	externalId: string;
 	/** `rejected`:整条拒了(一句);`dropped`:收下了,动了这几格(每格一句)。 */
@@ -277,7 +278,9 @@ function normalizeNewlines(texts: readonly string[]): string[] {
 export function createExtensionSource(opts: CreateExtensionSourceOptions): Source {
 	const { id, logger } = opts;
 	const now = opts.now ?? Date.now;
-	const initial = manifestSourceDescriptor(opts.manifest());
+	const manifest = opts.manifest();
+	const apiRevision = manifest.apiRevision ?? 0;
+	const initial = manifestSourceDescriptor(manifest);
 	if (!initial) {
 		throw new Error(`extension ${id}: manifest has no contributes.subscription`);
 	}
@@ -325,10 +328,10 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	/** 拓展的 `stop` 叫过了:之后的上报一概丢(契约:`stop()` 之后不许再上报)。 */
 	let stopped = false;
 	const auth =
-		(opts.manifest().apiRevision ?? 0) >= 1 && opts.def.auth
+		apiRevision >= 1 && opts.def.auth
 			? extensionSourceAuth(opts.def.auth, () => stopped)
 			: undefined;
-	/** 这个来源自己的一条串行队:三种上报按到达顺序一条条处理。 */
+	/** 这个来源自己的一条串行队:上报按到达顺序一条条处理。 */
 	const queue = createSerialQueue();
 	/** 上一次 `health()` 的毛病;同一句连读只记一遍,好了再坏会重新记。 */
 	let lastHealthProblem: string | undefined;
@@ -365,7 +368,12 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		externalId: string,
 		reasons: readonly string[],
 	): undefined {
-		opts.recordDiscrepancy({ kind, externalId, outcome: "rejected", reasons });
+		opts.recordDiscrepancy({
+			kind: kind === "interaction" ? "live" : kind,
+			externalId,
+			outcome: "rejected",
+			reasons,
+		});
 		return undefined;
 	}
 
@@ -377,7 +385,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	): void {
 		if (issues.length === 0) return;
 		opts.recordDiscrepancy({
-			kind,
+			kind: kind === "interaction" ? "live" : kind,
 			externalId,
 			outcome: "dropped",
 			reasons: issues.map(describeIssue),
@@ -393,6 +401,13 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 				: t("extension.report.undeclared", { feature: "post" });
 		}
 		const signal = isRecord(raw) ? raw.kind : undefined;
+		if (kind === "interaction") {
+			const feature =
+				signal === "viewerChat" ? "viewerChat" : signal === "gift" ? "liveEnd" : undefined;
+			return feature && !declared.has(feature)
+				? t("extension.report.undeclared", { feature })
+				: undefined;
+		}
 		if (signal === "start") {
 			return declared.has("liveStart")
 				? undefined
@@ -572,7 +587,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	}
 
 	/**
-	 * 拓展那一面的三种上报:都排进这个来源自己的一条串行队(翻作品要读图库、是异步的,不排队的话同一拓展先后两条
+	 * 拓展的上报都排进这个来源自己的一条串行队(翻作品要读图库、是异步的,不排队的话同一拓展先后两条
 	 * 上报交给核心的次序会乱)。到这里一律不抛(抛了会砸在拓展自己的调用栈上);`stop()` 之后的不收。
 	 */
 	/**
@@ -653,8 +668,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		...(auth ? { auth } : {}),
 		...(def.health ? { health: readHealth } : {}),
 		async start(ctx: SourceContext) {
-			// 🔴 逐格列出开放的成员,不展开核心那一份:`registerLinkResolver` / `registerAiToolProvider` /
-			// `reportLiveInteraction` 运行时也拿不到(类型上排除不够,第三方 JS 不受类型约束)。
+			// 逐格列出开放的成员。链接解析与 AI 工具登记归宿主管。
 			const extensionCtx: ExtensionSourceContext = {
 				timezone: ctx.timezone,
 				onTimezoneChanged: ctx.onTimezoneChanged,
@@ -698,6 +712,16 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 						}
 					});
 				},
+				...(apiRevision >= EXTENSION_LIVE_INTERACTIONS_REVISION &&
+					declared.has("liveEnd") && {
+						reportLiveInteraction(externalId, report) {
+							enqueue("interaction", () => {
+								const admitted = admit("interaction", externalId, report);
+								if (admitted && stillOpen("interaction"))
+									ctx.reportLiveInteraction(admitted.externalId, admitted.value);
+							});
+						},
+					}),
 				reportProfile(externalId, report) {
 					enqueue("profile", () => {
 						const admitted = admit("profile", externalId, report);

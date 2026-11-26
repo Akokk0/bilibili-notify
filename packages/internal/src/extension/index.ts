@@ -11,7 +11,12 @@ import type { ZodType } from "zod";
 import type { TextValues } from "../i18n";
 import type { Identity } from "../identity";
 import type { ImageRef } from "../image-ref";
-import type { LiveDetails, LiveSignalReport, LiveStatusResult } from "../live";
+import type {
+	LiveDetails,
+	LiveInteractionReport,
+	LiveSignalReport,
+	LiveStatusResult,
+} from "../live";
 import type { Disposable, IntegrationContext, Logger, SettingsReader } from "../platform";
 import type {
 	PostReport as CorePostReport,
@@ -213,11 +218,12 @@ export type ExtensionLiveStatusResult = Simplify<
 	  })
 >;
 
-/**
- * 从核心 `SourceContext` 白名单挑出拓展当前开放的成员,并覆盖两种上报的参数为拓展版;
- * 互动上报与两个登记口不开放。与核心那一份同一套名单、请求与收尾口,只开放作品、直播、资料三种
- * 上报;上报返回 `void`,被拒也不回话(`reportProfile` 同样:停用的订阅不收)。
- */
+/** 契约小号 7 开放的互动上报。礼物交件数，弹幕交正文及观众身份。 */
+export type ExtensionLiveInteractionReport = Simplify<
+	Extract<LiveInteractionReport, { kind: "viewerChat" | "gift" }>
+>;
+
+/** 按白名单从核心来源上下文开放成员，所有上报由宿主核对后送入对应的订阅。 */
 export type ExtensionSourceContext = Simplify<
 	Pick<
 		CoreSourceContext,
@@ -243,6 +249,8 @@ export type ExtensionSourceContext = Simplify<
 		reportPost(externalId: string, report: ExtensionPostReport): void;
 		/** 交一条直播信号。没有返回值;`status` 不触发推送。 */
 		reportLive(externalId: string, report: ExtensionLiveSignalReport): void;
+		/** 清单要求 apiRevision 7 时可用。弹幕须声明 viewerChat，礼物须声明 liveEnd。 */
+		reportLiveInteraction?(externalId: string, report: ExtensionLiveInteractionReport): void;
 	}
 >;
 
@@ -261,7 +269,7 @@ export interface SourceDef {
 	/** System account login. Requires manifest apiRevision >= 1. */
 	readonly auth?: SourceAuth;
 	/**
-	 * 启动来源。拿到名单与三种上报口;这里可以同步返回,也可以回 Promise。
+	 * 启动来源。拿到名单与约定的上报口;这里可以同步返回,也可以回 Promise。
 	 * `stop()` 之后不许再上报。
 	 */
 	start(ctx: ExtensionSourceContext): void | Promise<void>;

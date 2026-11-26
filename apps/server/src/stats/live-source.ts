@@ -101,7 +101,7 @@ export function attachLiveStatsSource(opts: LiveStatsSourceOptions): LiveStatsSo
 					return;
 				}
 				const { peakTotalViewers, interactions } = change.session;
-				// 互动汇总与场次行的五格同名同形(没收到的那种本来就不在),整份照抄。
+				// 互动汇总与场次行同名同形,没收到的类型不写。
 				const close: LiveSessionClose = {
 					endedAt: change.endedAt,
 					...(peakTotalViewers === undefined ? {} : { peakTotalViewers }),

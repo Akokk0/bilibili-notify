@@ -111,6 +111,8 @@ export function activate(ctx: ExtensionContext): void {
 
 `start(sourceCtx)`得到运行中的来源上下文：从`subscriptions()`读取自己平台的创作者名单，监听`onSubscriptionsChanged`，以`externalId`上报。`reportProfile`更新资料，`reportPost`交作品，`reportLive`交开播、状态或下播信号；具体载荷使用SDK的`ExtensionPostReport`、`ExtensionLiveSignalReport`等公开类型。直播`status`只更新状态，不触发推送。
 
+声明 `apiRevision: 7` 及 `liveEnd` 后可调用 `reportLiveInteraction(externalId, report)`。弹幕使用 `{ kind: "viewerChat", viewer: { id, name }, text }`，清单须同时声明 `liveStart` 和 `viewerChat`。礼物使用 `{ kind: "gift", count }`，只累计到当前场次，`count` 是本次新增件数。来源负责确认房间归属及消息去重。
+
 作品上报和群聊链接预览可用 `post.stats.saves` 传收藏数。平台未给出数值时省略，明确为零时传 `0`。使用此字段的拓展要求 `apiRevision: 3`。
 
 直播上报与 `fetchLiveStatus` 可以在 `details` 中提供 `heatScore`（平台直播热度）和 `vipViewers`（贵宾席人数），要求 `apiRevision: 5`。两项都接受非负整数，缺少时省略。开播和正在直播卡在人气位优先显示 `heatScore`，在观众人数位优先显示 `vipViewers`。缺少贵宾数据时，有 `totalViewers` 就按「累计观看人数」展示。全房此刻在线与本场累计观看分别使用 `currentViewers` 和 `totalViewers` 上报。

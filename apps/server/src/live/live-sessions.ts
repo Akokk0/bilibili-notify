@@ -148,6 +148,7 @@ export interface CreateLiveSessionEngineOptions {
 interface SessionInteractionsState {
 	viewerChatCount: number;
 	viewerChatSenders: Set<string>;
+	giftCount: number;
 	superchatCount: number;
 	superchatTotals: Map<string, number>;
 	membershipCounts: Map<string, Map<string, number>>;
@@ -225,6 +226,7 @@ function projectInteractions(
 					viewerChatCount: interactions.viewerChatCount,
 					viewerChatSenderCount: interactions.viewerChatSenders.size,
 				}),
+		...(interactions.giftCount > 0 && { giftCount: interactions.giftCount }),
 		...(interactions.superchatCount === 0
 			? {}
 			: {
@@ -1003,6 +1005,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			session.interactions ??= {
 				viewerChatCount: 0,
 				viewerChatSenders: new Set(),
+				giftCount: 0,
 				superchatCount: 0,
 				superchatTotals: new Map(),
 				membershipCounts: new Map(),
@@ -1012,6 +1015,12 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 				case "viewerChat":
 					interactions.viewerChatCount += 1;
 					interactions.viewerChatSenders.add(report.viewer.id);
+					return;
+				case "gift":
+					if (Number.isSafeInteger(report.count) && report.count > 0) {
+						const count = interactions.giftCount + report.count;
+						if (Number.isSafeInteger(count)) interactions.giftCount = count;
+					}
 					return;
 				case "superchat":
 					interactions.superchatCount += 1;
