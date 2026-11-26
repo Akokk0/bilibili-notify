@@ -327,12 +327,14 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 
 	/** 拓展的 `stop` 叫过了:之后的上报一概丢(契约:`stop()` 之后不许再上报)。 */
 	let stopped = false;
+	const lifetime = new AbortController();
 	const auth =
 		apiRevision >= 1 && opts.def.auth
 			? extensionSourceAuth(opts.def.auth, () => stopped)
 			: undefined;
 	/** 这个来源自己的一条串行队:上报按到达顺序一条条处理。 */
 	const queue = createSerialQueue();
+	const pendingLiveReports = new Map<string, { tail: Promise<void> }>();
 	/** 上一次 `health()` 的毛病;同一句连读只记一遍,好了再坏会重新记。 */
 	let lastHealthProblem: string | undefined;
 
@@ -600,18 +602,37 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		return false;
 	}
 
-	function enqueue(kind: ExtensionReportKind, job: () => void | Promise<void>): void {
+	function enqueue(kind: ExtensionReportKind, job: () => void | Promise<void>) {
 		if (stopped) {
 			logger.warn(logText("log.extension.stoppedReportDropped"), { kind });
 			return;
 		}
-		queue.run(REPORT_QUEUE_KEY, job).catch((err: unknown) => {
+		return queue.run(REPORT_QUEUE_KEY, job).catch((err: unknown) => {
 			logger.error(logText("log.extension.reportFailed"), { kind, error: err });
 		});
 	}
 
+	async function settleLiveReports(pending: { tail: Promise<void> }, signal: AbortSignal) {
+		const initial = pending.tail;
+		let cancel!: () => void;
+		const aborted = new Promise<void>((resolve) => {
+			cancel = resolve;
+		});
+		signal.addEventListener("abort", cancel, { once: true });
+		try {
+			let tail = initial;
+			while (!signal.aborted) {
+				await Promise.race([tail, aborted]);
+				if (tail === pending.tail) return tail === initial;
+				tail = pending.tail;
+			}
+			return false;
+		} finally {
+			signal.removeEventListener("abort", cancel);
+		}
+	}
+
 	const rules = opts.manifest().contributes.linkResolver;
-	const linkLifetime = new AbortController();
 	function matchedLink(input: string): URL | undefined {
 		const url = URL.parse(/^https?:\/\//i.test(input) ? input : `https://${input}`);
 		if (
@@ -639,7 +660,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			matches: (input) => !stopped && matchedLink(input) !== undefined,
 			async resolve(input, shutdown) {
 				const url = matchedLink(input);
-				const signal = AbortSignal.any([linkLifetime.signal, shutdown]);
+				const signal = AbortSignal.any([lifetime.signal, shutdown]);
 				if (!url) return invalidResult([describeIssue({ path: ["url"], code: "invalid" })]);
 				let raw: unknown;
 				try {
@@ -702,7 +723,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 				reportLive(externalId, report) {
 					// 下播的时刻取上报到达的那一刻,在核对之前就定下。
 					const arrivedAt = now();
-					enqueue("live", () => {
+					const task = enqueue("live", () => {
 						const admitted = admit("live", externalId, report);
 						if (admitted && stillOpen("live")) {
 							ctx.reportLive(
@@ -710,6 +731,13 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 								liveSignalFromExtension(admitted.externalId, admitted.value, arrivedAt),
 							);
 						}
+					});
+					if (!task) return;
+					const pending = pendingLiveReports.get(externalId) ?? { tail: task };
+					pending.tail = task;
+					pendingLiveReports.set(externalId, pending);
+					void task.then(() => {
+						if (pending.tail === task) pendingLiveReports.delete(externalId);
 					});
 				},
 				...(apiRevision >= EXTENSION_LIVE_INTERACTIONS_REVISION &&
@@ -737,7 +765,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		async stop() {
 			// 先置停(拒新的上报,队里还没交出去的也不再交),再叫拓展的 `stop`;登记表不等 `stop()` 返回。
 			stopped = true;
-			linkLifetime.abort();
+			lifetime.abort();
 			await def.stop();
 		},
 		async searchCreators(query, signal) {
@@ -804,6 +832,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 						identity: Identity,
 						signal: AbortSignal,
 					): Promise<LiveStatusResult> {
+						signal = AbortSignal.any([signal, lifetime.signal]);
+						if (signal.aborted) return fail("unavailable", reasonOf(signal.reason));
 						let raw: unknown;
 						try {
 							raw = await (def.fetchLiveStatus as NonNullable<OpenMembers["fetchLiveStatus"]>)(
@@ -811,12 +841,14 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 								signal,
 							);
 						} catch (err) {
+							if (signal.aborted) return fail("unavailable", reasonOf(signal.reason));
 							logger.warn(logText("log.extension.sourceCallFailed"), {
 								operation: "fetchLiveStatus",
 								error: err,
 							});
 							return fail("unavailable", reasonOf(err));
 						}
+						if (signal.aborted) return fail("unavailable", reasonOf(signal.reason));
 						const checked = checkExtensionLiveStatus(raw);
 						if (!checked.ok) {
 							const reasons = checked.issues.map(describeIssue);
@@ -831,6 +863,11 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 						recordDropped("live", identity.externalId, checked.dropped);
 						const result = checked.value;
 						if (!result.ok) return fail(result.code, result.message);
+						// 换场查询可能同时上报旧场下播和新场开播。先交付这两条事件，再让宿主看到新场状态。
+						const pending = pendingLiveReports.get(identity.externalId);
+						const current = !pending || (await settleLiveReports(pending, signal));
+						if (signal.aborted) return fail("unavailable", reasonOf(signal.reason));
+						if (!current) return fail("conflict", "a newer live report superseded this query");
 						if (result.kind === "offline") return ok({ kind: "offline" as const });
 						return ok({
 							kind: "live" as const,

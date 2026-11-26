@@ -1466,6 +1466,51 @@ describe("createExtensionSource:拉取式直播状态", () => {
 		});
 	});
 
+	it("换场上报排在慢速作品读图后时，先交下播与开播，再返回新场状态", async () => {
+		let finishReading!: () => void;
+		const slowImage = new Promise<void>((resolve) => {
+			finishReading = resolve;
+		});
+		let extension!: ExtensionSourceContext;
+		const made = await make(
+			{
+				async fetchLiveStatus() {
+					extension.reportLive("u1", { kind: "end", startedAt: T_ISO });
+					extension.reportLive("u1", {
+						kind: "start",
+						startedAt: ARRIVED_ISO,
+						details: { title: "新场" },
+					});
+					return ok({ kind: "live" as const, startedAt: ARRIVED_ISO, details: { title: "新场" } });
+				},
+			},
+			{
+				images: async () => {
+					await slowImage;
+					return undefined;
+				},
+			},
+		);
+		extension = made.ext();
+		extension.reportPost("u1", {
+			postId: "p1",
+			url: "https://douyin.invalid/p1",
+			post: { publishedAt: T_ISO, text: "x", images: [REF] },
+		});
+		const query = made.source
+			.fetchLiveStatus?.({ sourceKey: "douyin", externalId: "u1" }, new AbortController().signal)
+			.then((result) => ({
+				result,
+				reports: made.core.lives.map(([, report]) => report.kind),
+			}));
+		await made.idle();
+		finishReading();
+		expect(await query).toEqual({
+			result: { ok: true, kind: "live", startedAt: ARRIVED_ISO, details: { title: "新场" } },
+			reports: ["end", "start"],
+		});
+	});
+
 	it("没在播与拓展自己回的失败:原样", async () => {
 		const offline = await make({ fetchLiveStatus: async () => ({ ok: true, kind: "offline" }) });
 		const signal = new AbortController().signal;
