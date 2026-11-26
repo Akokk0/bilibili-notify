@@ -39,6 +39,8 @@ export interface DouyinSourceClient {
 
 interface LiveWatcher {
 	controller: AbortController;
+	/** Identifies transitions independently of updates to the room details. */
+	revision: number;
 	observation?: LiveObservation;
 	ended?: LiveRoom;
 	socket?: Disposable & { signal: AbortSignal };
@@ -115,7 +117,7 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 			}
 			if (liveEnabled !== Boolean(entry.live)) {
 				entry.live?.controller.abort();
-				entry.live = liveEnabled ? { controller: new AbortController() } : undefined;
+				entry.live = liveEnabled ? { controller: new AbortController(), revision: 0 } : undefined;
 				if (!liveEnabled) resolveSocketProblem(active, id);
 			}
 			pending.add(id);
@@ -148,7 +150,9 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 					details: { ...previous.details, ...next.details },
 				}
 			: next;
-		for (const change of liveChanges(previous, next)) source.reportLive(id, change);
+		const changes = liveChanges(previous, next);
+		if (changes.length > 0) live.revision++;
+		for (const change of changes) source.reportLive(id, change);
 		if (next.kind !== "live") {
 			if (previous?.kind === "live") resolveSocketProblem(source, id);
 			return;
@@ -181,6 +185,7 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 					if (signal.aborted || ended?.kind !== "live" || !sameRoom(ended, next)) return;
 					live.ended = ended;
 					live.observation = { kind: "offline" };
+					live.revision++;
 					listener.dispose();
 					live.socket = undefined;
 					resolveSocketProblem(source, id);
@@ -229,7 +234,7 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 			const signal = requestSignal(session, source.signal, entry.controller.signal);
 			if (signal.aborted) continue;
 			const { live, posts: postWatch } = entry;
-			const previousLive = live?.observation;
+			const liveRevision = live?.revision;
 			const found = await directory.lookup(id, signal);
 			if (signal.aborted) continue;
 			if (found.ok) {
@@ -247,7 +252,7 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 						await observeLive(ctx, client, found.user, liveSignal),
 						liveSignal,
 					);
-					if (!liveSignal.aborted && observed.ok && live.observation === previousLive)
+					if (!liveSignal.aborted && observed.ok && live.revision === liveRevision)
 						noteLive(source, id, entry, observed.observation);
 				}
 			} else record(id, "profile", found, signal);
@@ -316,7 +321,7 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 			const { externalId } = identity;
 			const entry = watchers.get(externalId);
 			const live = entry?.live;
-			const previous = live?.observation;
+			const liveRevision = live?.revision;
 			signal = requestSignal(
 				signal,
 				...(entry ? [entry.controller.signal] : []),
@@ -332,7 +337,7 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 				signal,
 			);
 			if (signal.aborted) return fail("indeterminate", ctx.i18n.t("error.stopped"));
-			if (live?.observation && live.observation !== previous) return liveStatus(live.observation);
+			if (live?.observation && live.revision !== liveRevision) return liveStatus(live.observation);
 			if (!observed.ok) return observed;
 			if (entry && live && active) {
 				noteLive(active, externalId, entry, observed.observation);
