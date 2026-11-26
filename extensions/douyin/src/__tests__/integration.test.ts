@@ -160,6 +160,8 @@ async function liveFixture() {
 	let tick!: () => void | Promise<void>;
 	let broadcasting = false;
 	let activeRoom = roomId;
+	let postEnabled = false;
+	let subscriptionsChanged: (() => void) | undefined;
 	const sockets: Array<ReturnType<typeof socketFixture>> = [];
 	function socketFixture() {
 		return Object.assign(new EventEmitter(), {
@@ -231,9 +233,20 @@ async function liveFixture() {
 	const host = {
 		signal,
 		subscriptions: () => [
-			{ externalId: liveAuthor.sec_uid, features: new Set(["liveEnd"]), monitorsLive: true },
+			{
+				externalId: liveAuthor.sec_uid,
+				features: new Set(postEnabled ? ["liveEnd", "post"] : ["liveEnd"]),
+				monitorsLive: true,
+			},
 		],
-		onSubscriptionsChanged: () => ({ dispose() {} }),
+		onSubscriptionsChanged(fn: () => void) {
+			subscriptionsChanged = fn;
+			return {
+				dispose() {
+					subscriptionsChanged = undefined;
+				},
+			};
+		},
 		onDispose: vi.fn(),
 		reportProfile: vi.fn(),
 		reportLive: vi.fn(),
@@ -254,6 +267,10 @@ async function liveFixture() {
 		},
 		changeRoom: (id: string) => {
 			activeRoom = id;
+		},
+		setPostNotifications(enabled: boolean) {
+			postEnabled = enabled;
+			subscriptionsChanged?.();
 		},
 		broadcast: async (value: boolean) => {
 			broadcasting = value;
@@ -304,6 +321,30 @@ it("connects after a poll discovers a live room and reports that room's end with
 				fixture.signal,
 			),
 		).toEqual({ ok: true, kind: "offline" });
+	} finally {
+		await fixture.source.stop();
+	}
+});
+
+it("keeps the live connection and receives the end when post notifications change", async () => {
+	const fixture = await liveFixture();
+	try {
+		await fixture.broadcast(true);
+		const socket = fixture.socket(0);
+		socket.readyState = 1;
+		socket.emit("open");
+		fixture.setPostNotifications(true);
+		await fixture.broadcast(true);
+		expect(socket.close).not.toHaveBeenCalled();
+		expect(fixture.websocket).toHaveBeenCalledTimes(1);
+		socket.emit(
+			"message",
+			pushFrame("WebcastControlMessage", [...data(1, integer(3, roomId)), ...integer(2, 3)]),
+		);
+		expect(fixture.reportLive).toHaveBeenLastCalledWith(
+			liveAuthor.sec_uid,
+			expect.objectContaining({ kind: "end" }),
+		);
 	} finally {
 		await fixture.source.stop();
 	}
