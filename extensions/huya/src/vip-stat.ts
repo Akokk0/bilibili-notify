@@ -1,5 +1,6 @@
-import { BinBuffer, type TarsInputStream, type TarsOutputStream, Tup } from "@tars/stream";
+import tars, { type TarsInputStream, type TarsOutputStream } from "@tars/stream";
 
+const { BinBuffer, Tup } = tars;
 const service = "liveui";
 const method = "getVipBarListStat";
 

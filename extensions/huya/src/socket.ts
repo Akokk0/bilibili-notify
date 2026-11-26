@@ -1,11 +1,7 @@
 import type { Disposable, ExtensionContext } from "@bilibili-notify/extension";
-import {
-	BinBuffer,
-	List,
-	TarsInputStream,
-	TarsOutputStream,
-	String as TarsString,
-} from "@tars/stream";
+import tars from "@tars/stream";
+
+const { BinBuffer, List, TarsInputStream, TarsOutputStream, String: TarsString } = tars;
 
 export type RoomNotice =
 	| { kind: "live" | "offline"; sessionId?: string }
@@ -28,12 +24,12 @@ function register(uid: string) {
 class PushItem {
 	constructor(
 		readonly uri: number,
-		readonly payload: BinBuffer,
+		readonly payload: tars.BinBuffer,
 	) {}
-	static _read(input: TarsInputStream, tag: number) {
+	static _read(input: tars.TarsInputStream, tag: number) {
 		return input.readStruct(tag, true, PushItem);
 	}
-	static _readFrom(input: TarsInputStream) {
+	static _readFrom(input: tars.TarsInputStream) {
 		return new PushItem(input.readInt64(0, true), input.readBytes(1, true, BinBuffer));
 	}
 }

@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, parse } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
 	DevelopmentDirectoriesResponse,
 	DevelopmentExtensionsResponse,
@@ -85,6 +86,7 @@ describe("开发拓展挂载请求", () => {
 			onSettingsChanged: () => ({ dispose() {} }),
 			inbound: {},
 			upgrades: createExtensionUpgrades(),
+			registerSource: async () => ({ dispose() {} }),
 		});
 		app = createDevRoute({
 			registry: createDevRegistry(providers),
@@ -197,6 +199,12 @@ describe("开发拓展挂载请求", () => {
 		await loaded.sync();
 		expect(loaded.status("example.source")).toMatchObject({ summary: { text: ["source"] } });
 		await expect(access(join(directory, "dist"))).rejects.toMatchObject({ code: "ENOENT" });
+	});
+	it("挂载虎牙拓展源码后可启动", async () => {
+		const directory = fileURLToPath(new URL("../../../../../extensions/huya", import.meta.url));
+		const response = await mount(directory);
+		expect(response.status, await response.clone().text()).toBe(200);
+		expect(loaded.list()).toMatchObject([{ id: "huya", state: "running" }]);
 	});
 	it("只改源码子依赖也会热更新，不需要拓展构建或独立启动", async () => {
 		const directory = await project("example.helper");
