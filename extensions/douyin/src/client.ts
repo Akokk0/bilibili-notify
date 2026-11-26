@@ -8,6 +8,7 @@ import {
 	type Result,
 } from "@bilibili-notify/extension";
 import { DEFAULT_ENV, getVerifyFp, signWebUrl } from "abogus";
+import { liveOrigin, roomSocketUrl } from "./live-socket";
 import { dict, sign, str, trusted, userAgent, WEB } from "./web";
 
 type Session = {
@@ -402,9 +403,25 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 					enter_from: "web_share_link",
 				},
 				s,
-				"https://live.douyin.com",
-				`https://live.douyin.com/${encodeURIComponent(web_rid)}`,
+				liveOrigin,
+				`${liveOrigin}/${encodeURIComponent(web_rid)}`,
 			),
+		openLiveSocket(roomId: string, viewerId: string, signal: AbortSignal) {
+			sameSession();
+			if (signal.aborted || ctx.signal.aborted) return fail("unavailable", message("cancelled"));
+			if (sessionScope.gate) return sessionScope.gate.err;
+			const url = roomSocketUrl(roomId, viewerId);
+			const cookie = auth.credentials(new URL(url.pathname, `https://${url.hostname}`));
+			return ctx.http.websocket(url, {
+				bare: true,
+				signal,
+				headers: {
+					...(cookie && { Cookie: cookie }),
+					Origin: liveOrigin,
+					"User-Agent": userAgent,
+				},
+			});
+		},
 		detail: (id: string, s: AbortSignal) =>
 			call("detail", "/aweme/v1/web/aweme/detail/", { aweme_id: id }, s, WEB, `${WEB}/video/${id}`),
 	};

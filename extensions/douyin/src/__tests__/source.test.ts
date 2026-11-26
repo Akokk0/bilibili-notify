@@ -35,6 +35,7 @@ function fixture() {
 		room: vi.fn((_webRid: string, _roomId: string, _signal: AbortSignal) =>
 			result({ data: { data: [] } }),
 		),
+		openLiveSocket: () => fail("unavailable", "no socket in this fixture"),
 		expand: vi.fn(async (url: URL, _signal: AbortSignal) => ok({ url })),
 	};
 	let tick: () => void | Promise<void> = () => {};
