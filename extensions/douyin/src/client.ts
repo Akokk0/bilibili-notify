@@ -9,7 +9,7 @@ import {
 } from "@bilibili-notify/extension";
 import { DEFAULT_ENV, getVerifyFp, signWebUrl } from "abogus";
 import { liveOrigin, roomSocketUrl } from "./live-socket";
-import { dict, sign, str, trusted, userAgent, WEB } from "./web";
+import { dict, retryAfter, sign, str, trusted, userAgent, WEB } from "./web";
 
 type Session = {
 	credentials(url: URL): string;
@@ -54,11 +54,6 @@ const searchEnvironment = {
 	effective_type: "4g",
 	round_trip_time: "50",
 };
-function retryAfter(header: string | null) {
-	if (!header) return 60000;
-	const n = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
-	return Number.isFinite(n) ? Math.max(1000, n) : 60000;
-}
 function challenge(h: Headers, d: Record<string, unknown>, body: string) {
 	const raw = h.get("bdturing-verify") ?? h.get("x-vc-bdturing-parameters");
 	if (raw?.trim()) {

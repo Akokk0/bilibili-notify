@@ -15,10 +15,11 @@ function fixture(
 ) {
 	const requests: { url: URL; headers: Headers; method?: string; body?: unknown }[] = [];
 	const ops: string[] = [],
-		timers: Array<() => void | Promise<void>> = [];
+		timers: Array<{ run: () => void | Promise<void>; delay: number }> = [];
 	const secrets = new Map<string, string>();
 	if (saved) secrets.set("login.cookies", saved);
 	let pollReply: object | undefined;
+	let pollRateLimit: Headers | undefined;
 	let unreadableAccountReplies = 0;
 	let deletion: Promise<void> | undefined;
 	let homeStatus = 200;
@@ -49,11 +50,12 @@ function fixture(
 		},
 		redact: vi.fn(),
 		onDispose: vi.fn(),
-		setTimeout: (fn: () => void) => {
-			timers.push(fn);
+		setTimeout: (run: () => void, delay: number) => {
+			const timer = { run, delay };
+			timers.push(timer);
 			return {
 				dispose() {
-					const i = timers.indexOf(fn);
+					const i = timers.indexOf(timer);
 					if (i >= 0) timers.splice(i, 1);
 				},
 			};
@@ -71,6 +73,11 @@ function fixture(
 				expect(o.maxRedirects).toBe(0);
 				const h = new Headers();
 				let body: object = {};
+				if (url.pathname.endsWith("check_qrconnect/") && pollRateLimit) {
+					const headers = pollRateLimit;
+					pollRateLimit = undefined;
+					return { ok: true, status: 429, isSuccess: false, headers };
+				}
 				if (url.href === "https://www.douyin.com/") {
 					h.append("Set-Cookie", "__ac_nonce=synthetic-nonce; Path=/; Secure");
 					h.append(
@@ -187,7 +194,11 @@ function fixture(
 		pollNext: async () => {
 			const next = timers.shift();
 			if (!next) throw new Error("Missing scheduled poll");
-			await next();
+			await next.run();
+		},
+		nextPollDelay: () => timers[0]?.delay,
+		rateLimitNextPoll: (retryAfter?: string) => {
+			pollRateLimit = new Headers(retryAfter ? { "Retry-After": retryAfter } : {});
 		},
 		secrets,
 		redact: ctx.redact,
@@ -646,6 +657,24 @@ it("stops QR creation when the homepage negotiation is rejected and permits a fr
 	expect(await f.auth.beginLogin()).toEqual({ ok: true });
 	expect(f.auth.state().status).toBe("awaiting-scan");
 });
+
+it.each(["60", "Thu, 26 Nov 2026 00:01:00 GMT", undefined, "1.5"])(
+	"backs off QR polling after HTTP 429 with Retry-After %s",
+	async (header) => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			vi.setSystemTime(new Date("2026-11-26T00:00:00Z"));
+			const f = fixture();
+			expect(await f.auth.beginLogin()).toEqual({ ok: true });
+			f.rateLimitNextPoll(header);
+			await f.pollNext();
+			expect(f.auth.state().status).toBe("awaiting-scan");
+			expect(f.nextPollDelay()).toBe(60_000);
+		} finally {
+			vi.useRealTimers();
+		}
+	},
+);
 
 it("carries the refreshed login token into QR polling without saving an unverified login", async () => {
 	const f = fixture();
