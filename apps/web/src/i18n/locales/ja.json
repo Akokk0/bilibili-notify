@@ -957,6 +957,7 @@
 	"sourceUi.pages.rules.sections.text.52": "配信の経過時間",
 	"sourceUi.pages.rules.sections.name.53": "クリエイター名",
 	"sourceUi.pages.rules.sections.follower.54": "現在のフォロワー数",
+	"rules.liveTemplates.vipViewers": "現在のVIP視聴者数",
 	"sourceUi.pages.rules.sections.watched.55": "累計視聴者数",
 	"sourceUi.pages.rules.sections.followerchange.56": "フォロワー数の増減",
 	"sourceUi.pages.rules.sections.follower.57": "現在のフォロワー数（配信開始）",

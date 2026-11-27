@@ -10,9 +10,22 @@ import {
 import { count, image, object, text } from "./media";
 import type { DouyinSourceClient } from "./source";
 
-export type LiveObservation =
-	| { kind: "offline" }
-	| { kind: "live"; roomId: string; startedAt?: string; details: ExtensionLiveDetails };
+export type LiveObservation = { kind: "offline" } | LiveRoom;
+
+export interface LiveRoom {
+	kind: "live";
+	roomId: string;
+	viewerId?: string;
+	startedAt?: string;
+	details: ExtensionLiveDetails;
+}
+
+export function sameRoom(first: LiveRoom, second: LiveRoom): boolean {
+	return (
+		first.roomId === second.roomId &&
+		(!first.startedAt || !second.startedAt || first.startedAt === second.startedAt)
+	);
+}
 
 /** 直播间有些数字只给字符串，像「5万+」的展示值没有精确读数。 */
 function exactCount(value: unknown): number | undefined {
@@ -42,14 +55,17 @@ export async function observeLive(
 	const result = await client.room(webRid, roomId, signal);
 	if (!result.ok) return result;
 	const payload = object(object(result.data).data);
+	const viewer = object(payload.user);
+	const rawViewerId = exactCount(viewer.id);
+	const viewerId = text(viewer.id_str) ?? (rawViewerId ? String(rawViewerId) : undefined);
 	const rooms = payload.data;
 	if (!Array.isArray(rooms)) return unknown();
 	const room = rooms.map(object).find((room) => room.id_str === roomId);
-	if (
-		room?.status !== 2 ||
-		(object(room.owner).sec_uid && object(room.owner).sec_uid !== user.sec_uid)
-	)
+	if (!room || (object(room.owner).sec_uid && object(room.owner).sec_uid !== user.sec_uid))
 		return unknown();
+	if (room.status === 3 || room.status === 4)
+		return ok({ observation: { kind: "offline" as const } });
+	if (room.status !== 2) return unknown();
 	const cover = await image(ctx, room.cover, signal);
 	if (signal.aborted) return fail("indeterminate", ctx.i18n.t("error.stopped"));
 	const start = exactCount(room.start_time);
@@ -83,13 +99,19 @@ export async function observeLive(
 		...(totalViewers !== undefined && { totalViewers }),
 	};
 	return ok({
-		observation: { kind: "live" as const, roomId, details, ...(startedAt && { startedAt }) },
+		observation: {
+			kind: "live" as const,
+			roomId,
+			details,
+			...(startedAt && { startedAt }),
+			...(viewerId && /^[1-9]\d{0,19}$/.test(viewerId) && { viewerId }),
+		},
 	});
 }
 
 export function liveStatus(observation: LiveObservation): ExtensionLiveStatusResult {
 	if (observation.kind === "offline") return ok({ kind: "offline" as const });
-	const { roomId: _, ...status } = observation;
+	const { roomId: _, viewerId: _viewer, ...status } = observation;
 	return ok(status);
 }
 
@@ -103,8 +125,7 @@ export function liveChanges(
 				? { kind: "status", isLive: false, details: {} }
 				: { kind: "status", isLive: true, startedAt: next.startedAt, details: next.details },
 		];
-	if (previous.kind === "live" && next.kind === "live" && previous.roomId === next.roomId)
-		return [];
+	if (previous.kind === "live" && next.kind === "live" && sameRoom(previous, next)) return [];
 	const changes: ExtensionLiveSignalReport[] = [];
 	if (previous.kind === "live")
 		changes.push({ kind: "end", startedAt: previous.startedAt, details: previous.details });

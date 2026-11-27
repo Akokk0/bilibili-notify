@@ -6,9 +6,18 @@ import {
 	fail,
 	type Result,
 	type SourceDef,
+	type WebSocketLike,
 } from "@bilibili-notify/extension";
 import { createCreatorDirectory } from "./creators";
-import { type LiveObservation, liveChanges, liveStatus, observeLive } from "./live";
+import {
+	type LiveObservation,
+	type LiveRoom,
+	liveChanges,
+	liveStatus,
+	observeLive,
+	sameRoom,
+} from "./live";
+import { watchRoomSocket } from "./live-socket";
 import { type PostBaseline, readPosts } from "./posts";
 
 type ApiResponse = Promise<Result<{ data: unknown }>>;
@@ -20,7 +29,36 @@ export interface DouyinSourceClient {
 	search(keyword: string, signal: AbortSignal): ApiResponse;
 	posts(id: string, cursor: string, signal: AbortSignal): ApiResponse;
 	room(webRid: string, roomId: string, signal: AbortSignal): ApiResponse;
+	openLiveSocket(
+		roomId: string,
+		viewerId: string,
+		signal: AbortSignal,
+	): Result<{ socket: WebSocketLike }>;
 	expand(url: URL, signal: AbortSignal): Promise<Result<{ url: URL }>>;
+}
+
+interface LiveWatcher {
+	controller: AbortController;
+	/** Identifies transitions independently of updates to the room details. */
+	revision: number;
+	observation?: LiveObservation;
+	ended?: LiveRoom;
+	socket?: Disposable & { signal: AbortSignal };
+}
+
+interface Watcher {
+	controller: AbortController;
+	posts?: { controller: AbortController; baseline?: PostBaseline };
+	live?: LiveWatcher;
+}
+
+function afterSocketEnd(
+	observation: LiveObservation,
+	ended: LiveRoom | undefined,
+): LiveObservation {
+	return observation.kind === "live" && ended && sameRoom(observation, ended)
+		? { kind: "offline" }
+		: observation;
 }
 
 export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceClient) {
@@ -31,16 +69,7 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 	let running: Promise<void> | undefined;
 	let active: ExtensionSourceContext | undefined;
 	const pending = new Set<string>();
-	const watchers = new Map<
-		string,
-		{
-			controller: AbortController;
-			posts?: PostBaseline;
-			postEnabled: boolean;
-			liveEnabled: boolean;
-			live?: LiveObservation;
-		}
-	>();
+	const watchers = new Map<string, Watcher>();
 
 	// Bind a whole operation (including pagination and image downloads) to the
 	// account that started it, even when the transport has finished its first call.
@@ -68,24 +97,109 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 		for (const [id, entry] of watchers) {
 			if (subs.has(id)) continue;
 			entry.controller.abort();
+			if (entry.live) resolveSocketProblem(active, id);
 			watchers.delete(id);
 			pending.delete(id);
 		}
 		for (const [id, sub] of subs) {
 			const postEnabled = sub.features.has("post");
 			const liveEnabled = sub.monitorsLive;
-			const existing = watchers.get(id);
-			if (existing?.postEnabled === postEnabled && existing.liveEnabled === liveEnabled) continue;
-			existing?.controller.abort();
-			watchers.set(id, {
-				postEnabled,
-				liveEnabled,
-				controller: new AbortController(),
-				posts: postEnabled ? existing?.posts : undefined,
-				live: liveEnabled ? existing?.live : undefined,
-			});
+			let entry = watchers.get(id);
+			if (entry && Boolean(entry.posts) === postEnabled && Boolean(entry.live) === liveEnabled)
+				continue;
+			if (!entry) {
+				entry = { controller: new AbortController() };
+				watchers.set(id, entry);
+			}
+			if (postEnabled !== Boolean(entry.posts)) {
+				entry.posts?.controller.abort();
+				entry.posts = postEnabled ? { controller: new AbortController() } : undefined;
+			}
+			if (liveEnabled !== Boolean(entry.live)) {
+				entry.live?.controller.abort();
+				entry.live = liveEnabled ? { controller: new AbortController(), revision: 0 } : undefined;
+				if (!liveEnabled) resolveSocketProblem(active, id);
+			}
 			pending.add(id);
 		}
+	}
+	function resolveSocketProblem(source: ExtensionSourceContext, id: string) {
+		source.resolveProblem({ externalId: id, code: "douyin_live_socket", notify: false });
+	}
+	function noteLive(
+		source: ExtensionSourceContext,
+		id: string,
+		entry: Watcher,
+		observed: LiveObservation,
+	) {
+		const live = entry.live;
+		if (!live) return;
+		const previous = live.observation;
+		const next = afterSocketEnd(observed, live.ended);
+		// A cached observation of the ended room must not stop a newer room.
+		if (observed.kind === "live" && next.kind === "offline" && previous?.kind === "live") return;
+		const matched = previous?.kind === "live" && next.kind === "live" && sameRoom(previous, next);
+		if (!matched || live.socket?.signal.aborted) {
+			live.socket?.dispose();
+			live.socket = undefined;
+		}
+		live.observation = matched
+			? {
+					...next,
+					startedAt: next.startedAt ?? previous.startedAt,
+					details: { ...previous.details, ...next.details },
+				}
+			: next;
+		const changes = liveChanges(previous, next);
+		if (changes.length > 0) live.revision++;
+		for (const change of changes) source.reportLive(id, change);
+		if (next.kind !== "live") {
+			if (previous?.kind === "live") resolveSocketProblem(source, id);
+			return;
+		}
+		if (live.socket) return;
+		const unavailable = () =>
+			source.reportProblem({
+				externalId: id,
+				code: "douyin_live_socket",
+				message: ctx.i18n.t("live.socketUnavailable"),
+				warning: true,
+				notify: false,
+			});
+		if (!next.viewerId) return unavailable();
+		const signal = requestSignal(source.signal, entry.controller.signal, live.controller.signal);
+		if (signal.aborted) return;
+		const viewerId = next.viewerId;
+		const listener = watchRoomSocket(
+			ctx,
+			() => client.openLiveSocket(next.roomId, viewerId, signal),
+			next.roomId,
+			signal,
+			{
+				ready: () => resolveSocketProblem(source, id),
+				interaction(report) {
+					if (!signal.aborted) source.reportLiveInteraction?.(id, report);
+				},
+				unavailable,
+				ended() {
+					const ended = live.observation;
+					if (signal.aborted || ended?.kind !== "live" || !sameRoom(ended, next)) return;
+					live.ended = ended;
+					live.observation = { kind: "offline" };
+					live.revision++;
+					listener.dispose();
+					live.socket = undefined;
+					resolveSocketProblem(source, id);
+					source.reportLive(id, {
+						kind: "end",
+						endedAt: new Date().toISOString(),
+						startedAt: ended.startedAt,
+						details: ended.details,
+					});
+				},
+			},
+		);
+		live.socket = { ...listener, signal };
 	}
 	function record<T extends { ok: true } | Failure>(
 		id: string,
@@ -120,6 +234,8 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 			if (!entry) continue;
 			const signal = requestSignal(session, source.signal, entry.controller.signal);
 			if (signal.aborted) continue;
+			const { live, posts: postWatch } = entry;
+			const liveRevision = live?.revision;
 			const found = await directory.lookup(id, signal);
 			if (signal.aborted) continue;
 			if (found.ok) {
@@ -129,37 +245,34 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 					const { ok: _, ...report } = info;
 					source.reportProfile(id, report);
 				}
-				if (entry.liveEnabled && !signal.aborted) {
+				if (live && !signal.aborted && !live.controller.signal.aborted) {
+					const liveSignal = AbortSignal.any([signal, live.controller.signal]);
 					const observed = record(
 						id,
 						"live",
-						await observeLive(ctx, client, found.user, signal),
-						signal,
+						await observeLive(ctx, client, found.user, liveSignal),
+						liveSignal,
 					);
-					if (signal.aborted) continue;
-					if (observed.ok) {
-						for (const change of liveChanges(entry.live, observed.observation)) {
-							if (signal.aborted) break;
-							source.reportLive(id, change);
-						}
-						entry.live = observed.observation;
-					}
+					if (!liveSignal.aborted && observed.ok && live.revision === liveRevision)
+						noteLive(source, id, entry, observed.observation);
 				}
 			} else record(id, "profile", found, signal);
-			if (!entry.postEnabled || signal.aborted) continue;
+			if (!postWatch) continue;
+			const postSignal = AbortSignal.any([signal, postWatch.controller.signal]);
+			if (postSignal.aborted) continue;
 			const posts = record(
 				id,
 				"posts",
-				await readPosts(ctx, client, id, entry.posts, signal),
-				signal,
+				await readPosts(ctx, client, id, postWatch.baseline, postSignal),
+				postSignal,
 			);
-			if (signal.aborted) continue;
+			if (postSignal.aborted) continue;
 			if (posts.ok) {
 				for (const report of posts.reports) {
-					if (signal.aborted) break;
+					if (postSignal.aborted) break;
 					source.reportPost(id, report);
 				}
-				entry.posts = posts.baseline;
+				postWatch.baseline = posts.baseline;
 			}
 		}
 	}
@@ -206,17 +319,32 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 				: directory.searchCreators(query, request);
 		},
 		async fetchLiveStatus(identity, signal) {
-			signal = requestSignal(signal);
+			const { externalId } = identity;
+			const entry = watchers.get(externalId);
+			const live = entry?.live;
+			const liveRevision = live?.revision;
+			signal = requestSignal(
+				signal,
+				...(entry ? [entry.controller.signal] : []),
+				...(live ? [live.controller.signal] : []),
+			);
 			if (signal.aborted) return fail("indeterminate", ctx.i18n.t("error.stopped"));
-			const found = await directory.lookup(identity.externalId, signal);
-			if (!found.ok) return record(identity.externalId, "live", found, signal);
+			const found = await directory.lookup(externalId, signal);
+			if (!found.ok) return record(externalId, "live", found, signal);
 			const observed = record(
-				identity.externalId,
+				externalId,
 				"live",
 				await observeLive(ctx, client, found.user, signal),
 				signal,
 			);
-			return observed.ok ? liveStatus(observed.observation) : observed;
+			if (signal.aborted) return fail("indeterminate", ctx.i18n.t("error.stopped"));
+			if (live?.observation && live.revision !== liveRevision) return liveStatus(live.observation);
+			if (!observed.ok) return observed;
+			if (entry && live && active) {
+				noteLive(active, externalId, entry, observed.observation);
+				if (live.observation) return liveStatus(live.observation);
+			}
+			return liveStatus(observed.observation);
 		},
 		async fetchProfile(identity, signal) {
 			signal = requestSignal(signal);

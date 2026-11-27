@@ -4,7 +4,16 @@
 
 ## 版本与工程
 
-宿主契约为 `apiVersion: 1`。群聊作品与来源扫码登录要求 `apiRevision: 1`，展示账号要求 `apiRevision: 2`，作品收藏数要求 `apiRevision: 3`。适配器如果依赖 `send` 第四个参数 `options.singleAttempt` 来关闭手动测试的重试，需要声明 `apiRevision: 4`。同一小号支持适配器在 `capabilities().inbound` 中返回 `groupTestReply: "token"`，让宿主使用纯文本群接收测试码。上报作品卡头说明（`post.label`）或图文附卡（`post.attachment`）要求 `apiRevision: 5`。只用原有能力的拓展仍可省略小号（按 0 处理）。SDK 的 npm 版本和拓展自己的 `version` 分别管理。使用新增能力时应声明对应小号并核对宿主兼容性。
+宿主契约为 `apiVersion: 1`。按拓展使用的能力声明最低 `apiRevision`，省略时按 0 处理。SDK 的 npm 版本、拓展清单的 `version` 和宿主契约分别管理。
+
+| 修订号 | 新增能力 |
+| --- | --- |
+| 1 | 群聊作品链接解析、来源扫码登录 |
+| 2 | 创作者展示账号 |
+| 3 | 作品收藏数 |
+| 4 | 适配器单次发送测试 `options.singleAttempt`、纯文本群接收测试码 `groupTestReply: "token"` |
+| 5 | 作品卡头说明 `post.label`、主话题 `post.topic`、图文附卡 `post.attachment`、直播热度 `heatScore` 与贵宾人数 `vipViewers` |
+| 6 | 来源自带的开播、直播中、下播文字模板 |
 
 创建器默认生成独立Git工程、示例来源、完整vp命令、锁文件、提交hooks与GitHub Actions：
 
@@ -25,13 +34,13 @@ git commit -m "feat: create extension"
 
 ## 源码拓展联调
 
-`create-bn-ext`生成独立拓展；`@bilibili-notify/bn`直接取得并运行宿主成品。工具发布后：
+`create-bn-ext@alpha` 生成独立拓展。用下面的命令启动 npm 发行的开发宿主。
 
 ```sh
 vp dlx @bilibili-notify/bn@alpha dev
 ```
 
-无需检出BN主仓或在隐藏目录构建宿主。正式运行使用`npx @bilibili-notify/bn@alpha web`；alpha发行期间入口带`@alpha`，本地审阅归档不代表已经发布。开发BN本体仍克隆主仓、按主仓指引使用vp。
+日常使用运行 `npx @bilibili-notify/bn@alpha web`。这两个命令都从 npm 的 `alpha` 渠道安装宿主。开发 BN 本体使用主仓的 `vp run dev:apps`。
 
 启动器从npm包内解包宿主，并按版本与用途核对缓存。默认数据分别在`~/.bilibili-notify/dev-data`与`~/.bilibili-notify/data`；配置、凭据和其他持久数据位于该数据目录，启动配置文件为`bn.config.yaml`。可用`--data-dir <绝对目录>`明确指定；缓存删除不影响持久数据，其他实例的数据需要通过`--data-dir`显式指定。端口可用`--port`调整。npm包与依赖装好后，启动宿主不再下载载荷，也不需要额外的离线参数；删除缓存后仍可从包内重建。
 
@@ -101,6 +110,10 @@ export function activate(ctx: ExtensionContext): void {
 `searchCreators`最多返回10个候选；查不到是成功的空数组。可选`fetchProfile(identity, signal)`拉取资料，`fetchLiveStatus(identity, signal)`提供在播状态；声明周期直播时必须实现后者。按每次调用的`signal`尽快中止请求。
 
 `start(sourceCtx)`得到运行中的来源上下文：从`subscriptions()`读取自己平台的创作者名单，监听`onSubscriptionsChanged`，以`externalId`上报。`reportProfile`更新资料，`reportPost`交作品，`reportLive`交开播、状态或下播信号；具体载荷使用SDK的`ExtensionPostReport`、`ExtensionLiveSignalReport`等公开类型。直播`status`只更新状态，不触发推送。
+
+声明 `apiRevision: 7` 及 `liveEnd` 后可调用 `reportLiveInteraction(externalId, report)`。弹幕使用 `{ kind: "viewerChat", viewer: { id, name }, text }`，清单须同时声明 `liveStart` 和 `viewerChat`。礼物使用 `{ kind: "gift", count }`，只累计到当前场次，`count` 是本次新增件数。来源负责确认房间归属及消息去重。
+
+当来源可以降级继续工作时，例如实时连接暂不可用但轮询仍在运行，契约修订 7 的来源上下文可在 `reportProblem` 上报中传入 `warning: true`。带 `externalId` 的警示显示在订阅卡底部。私聊仍由 `notify` 控制。
 
 作品上报和群聊链接预览可用 `post.stats.saves` 传收藏数。平台未给出数值时省略，明确为零时传 `0`。使用此字段的拓展要求 `apiRevision: 3`。
 
@@ -198,3 +211,12 @@ vp run release --tag v0.1.0 --dry-run
 发布前更新根清单版本，提交修改，再打匹配的 `v<版本>` 标签并推送到自己的 GitHub 仓库。生成的 Release 工作流先以读取权限跑 dry-run，成功后发布作业才取得 `contents: write`。手动触发默认只验证。完整流程和中断重跑方法见生成工程的 README。
 
 用户在BN“拓展 → 市场源”输入`owner/repository`或GitHub仓库网址，即定位到固定`bn-marketplace` Release上的`marketplace.json`。只支持公开可读取的索引和ZIP；第三方来源仍需用户信任，SDK和创建器不会赋予官方身份。
+
+
+### 作品与直播通知的默认文字
+
+支持作品推送的来源可以在 `contributes.subscription.postTemplates` 提供 `post` 和 `postVideo`，同样要求 `apiRevision: 6`。上报的作品含 `post.video` 时选视频模板，其余选普通作品模板。两项均可单独提供，接受 `{name}`（作者名）和 `{postNoun}`（来源对作品的叫法）。例如微博可将 `postVideo` 写成「{name}发布了一条视频微博」。各语言译文放在 `$manifest.contributes.subscription.postTemplates`。每一项依次取订阅自定义、全局自定义、来源模板、宿主默认。链接由消息版式单独附上。
+
+支持直播的来源可以在 `contributes.subscription.liveTemplates` 分别声明 `liveStart`、`liveStreaming`、`liveEnd`，清单需声明 `apiRevision: 6` 或更高修订。各语言译文写在 `locales/<语言>.json` 的 `$manifest.contributes.subscription.liveTemplates`。订阅自定义文字优先，其次是全局自定义文字，再使用来源声明的模板。旧来源缺少某一条时，宿主使用只包含主播名、状态和可用时长的文字。
+
+例如虎牙在 `liveStreaming` 使用 `{name} 正在直播[[，已播 {time}]][[，当前贵宾人数：{vipViewers}]]`。双层方括号中的变量全部有值时显示该段，零也算有值。开播支持 `{follower}`，直播中支持 `{watched}`（累计观看）及 `{vipViewers}`（当前贵宾人数），下播支持 `{follower_change}`。三种通知均可使用 `{name}` 和 `{time}`。

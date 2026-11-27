@@ -15,12 +15,20 @@ import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
 import type { Result } from "./result";
 
+export const POST_TEMPLATE_KEYS = ["post", "postVideo"] as const;
+export type PostTemplates = Partial<Record<(typeof POST_TEMPLATE_KEYS)[number], string>>;
+
+export const LIVE_TEMPLATE_KEYS = ["liveStart", "liveStreaming", "liveEnd"] as const;
+export type LiveTemplates = Partial<Record<(typeof LIVE_TEMPLATE_KEYS)[number], string>>;
+
 /**
  * 来源的自我介绍。这里只放已经有读者的格子;经 `GET /api/sources` 下发给面板(ADR-0027 决策 6),面板只从这里
  * 拿来源的信息。拓展的取清单订阅那一口的同名字段。`icon` 与 `searchAccepts` 是跟着清单并进来的:搜人提示句
  * 4-15 起由 contract 的 `creatorSearchHint` 按 `searchAccepts` 拼;平台图标的读者还在第 4 期后面。
  */
 export interface SourceDescriptor {
+	postTemplates?: PostTemplates;
+	liveTemplates?: LiveTemplates;
 	/** 平台名(「B 站」)。`status` 指令的那一行、新建订阅的平台选择、徽章与平台列都取它。 */
 	label: string;
 	/** 短名:徽章上那个方章。不给就用 `label`。 */
@@ -98,6 +106,7 @@ export interface SourceContext extends IntegrationContext {
 	 * `notify: true` 请核心私聊主人一次。没有返回值;形状不对(含空白的 `message` / `recoveryMessage`)、
 	 * 来源已停下的上报被丢弃。
 	 *
+	 * `warning: true` 表示来源仍能降级工作，订阅卡用黄色警示。此标记独立于私聊开关。
 	 * `recoveryMessage`:这件事清掉、且当初真私聊过时核心发的那一句(发的是私聊出去那一刻的那句);
 	 * 不给就用宿主带来源名的通用说法(接当初私聊的原文)。
 	 */
@@ -105,6 +114,7 @@ export interface SourceContext extends IntegrationContext {
 		externalId?: string;
 		code: string;
 		message: string;
+		warning?: boolean;
 		notify?: boolean;
 		recoveryMessage?: string;
 	}): void;

@@ -7,6 +7,7 @@
 	"request.storage": "無法儲存虎牙請求的冷卻狀態，請檢查 BN 儲存空間。",
 	"profile.input": "請輸入虎牙房間號、房間連結或主播暱稱。",
 	"profile.missing": "虎牙找不到這個房間。",
+	"live.disconnected": "虎牙房間的即時連線已中斷，正在嘗試重新連線。",
 	"live.unknown": "虎牙未傳回明確的直播狀態。",
 	"live.restricted": "這個虎牙房間限制存取。",
 	"$manifest": {
@@ -17,7 +18,12 @@
 				"label": "虎牙",
 				"creatorNoun": "主播",
 				"externalIdNoun": "UID",
-				"displayIdNoun": "房間號"
+				"displayIdNoun": "房間號",
+				"liveTemplates": {
+					"liveStart": "{name} 開播了[[，目前粉絲數：{follower}]]",
+					"liveStreaming": "{name} 正在直播[[，已播 {time}]][[，目前貴賓人數：{vipViewers}]]",
+					"liveEnd": "{name} 下播了[[，本次直播了 {time}]][[，粉絲變化 {follower_change}]]"
+				}
 			}
 		}
 	}

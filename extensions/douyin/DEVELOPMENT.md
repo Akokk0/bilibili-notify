@@ -4,7 +4,7 @@
 
 ## 工程与宿主契约
 
-- 官方拓展 ID 为 `douyin`。当前源码要求 `apiVersion: 1`、`apiRevision: 3`，用于上报作品收藏数。稳定订阅身份为 `{ sourceKey, externalId }`，其中 `externalId` 是平台的 `sec_uid`。
+- 官方拓展 ID 为 `douyin`。当前源码要求 `apiVersion: 1`、`apiRevision: 7`，支持直播互动上报。稳定订阅身份为 `{ sourceKey, externalId }`，其中 `externalId` 是平台的 `sec_uid`。
 - 本工程使用 workspace SDK；所有 BN 运行时能力只从 `@bilibili-notify/extension` 获取，构建配置使用其 `/build` 入口。源码不直接依赖宿主或 `internal`，请求、图片、凭据、计时器和问题报告均通过 `ctx`。
 - `activate()` 注册一个带账号和链接解析能力的订阅源。没有拓展专用设置、指令或 AI 工具；没有实现 `fetchPreview`。作品和直播事件交给宿主，由宿主处理目标选择、发送、历史和统计。
 - 官方拓展走主仓打包和市场流程，不需要 `.bn-extension/marketplace.json`。早期 `akokko.douyin` 是独立身份，代码收归不等于凭据或订阅迁移。
@@ -22,6 +22,8 @@
 | [src/source.ts](src/source.ts) | 订阅协调、逐博主轮询、资料及作品／直播上报、取消与收尾。 |
 | [src/posts.ts](src/posts.ts) | 分页、作品基线、置顶／同秒判新以及视频／图文的卡片数据。 |
 | [src/live.ts](src/live.ts) | 直播间核实、状态观测和场次变化。 |
+| [src/live-socket.ts](src/live-socket.ts) | 直播间签名、心跳、回执和退避重连。 |
+| [src/live-wire.ts](src/live-wire.ts) | 解码直播间的下播、弹幕与礼物帧。 |
 | [src/links.ts](src/links.ts) | 分享链接展开、作品详情校验与卡片报告。 |
 | [src/media.ts](src/media.ts) | 响应字段读取、候选图片 URL 与宿主图片库引用。 |
 | `locales/{zh-CN,zh-TW,en,ja}.json` | 拓展的四语清单、提示和故障文案。 |
@@ -87,7 +89,9 @@ vp run dev:apps
 
 作品基线保存最高发布时间和同秒已见作品 ID；先完整解析所需分页，再更新基线。首次成功只建基线，后续按时间从旧到新上报；旧置顶不提前截断分页，同秒作品分别去重。每页请求 20 条，最多检查 20 页；循环或不前进的游标、缺页和不完整条目会使本次失败，保留旧基线。订阅推送和链接预览共享作品解析，按返回的正文、话题区间与互动数出卡。
 
-首次直播观测只报状态，随后对开播／下播及场次切换生成变化。同场次未变化不重复产生开／下播；周期直播提醒由宿主策略安排。未知状态和请求失败不替换原观测。这里没有连接弹幕流，无法捕获所有轮询间隙内的短场次。
+首次直播观测只报状态。后续开播和场次切换由 HTTP 查询发现，确认在播后，以直播间 ID 与上游返回的观众 ID 构造签名。握手只使用固定的抖音直播消息端点和当前会话可用于该域的 Cookie。WebSocket 收到本场的结束信号时立即上报下播，HTTP 查询继续兜底。连接、重连计时器和消息去重都跟随订阅及账号会话。
+
+直播消息只收当前房间的帧。弹幕可用于特别关注和场次计数，礼物只交场次件数。没有收到的礼物数保持缺省。协议字段见[公开直播消息参考](https://github.com/opedium/douyin-live-proto/blob/master/docs/complete_payload_reference.md)。
 
 停用、卸载或来源销毁会取消计时器、监听和作者请求。基线在内存中，进程重启或来源重载会丢失；作品开关关闭后再开启也会建立新基线。停用期间不提供作品补推保证。
 

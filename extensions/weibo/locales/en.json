@@ -29,6 +29,10 @@
 			"subscription": {
 				"label": "Weibo",
 				"creatorNoun": "creator",
+				"postTemplates": {
+					"post": "{name} posted on Weibo",
+					"postVideo": "{name} posted a video on Weibo"
+				},
 				"postNoun": "post",
 				"externalIdNoun": "UID"
 			}

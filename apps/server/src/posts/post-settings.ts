@@ -2,6 +2,7 @@ import {
 	aiWritingNeeded,
 	type EffectiveSubscription,
 	type GlobalSettings,
+	type PostTemplates,
 	resolve,
 	resolveTemplates,
 	type Subscription,
@@ -28,10 +29,14 @@ export function postSettingsOf(
 	globals: GlobalSettings,
 	aiWriting: boolean,
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
+	postTemplates?: PostTemplates,
 ): PostSettings {
 	const d = globals.defaults;
 	// 文字模板设置里只存主人改过的:缺的此刻按当前语言取出厂,不写盘(换语言立即生效)。
-	const templates = resolveTemplates(sub, d, templateDefaultsFor(textSettingsOf(globals).locale));
+	const templates = resolveTemplates(sub, d, {
+		...templateDefaultsFor(textSettingsOf(globals).locale),
+		...postTemplates,
+	});
 	return {
 		filter: eff.filters,
 		// per-UP 解析后的消息版式动态切片,恒有值(默认 = 复刻现状:卡片+文本+链接合并一条)。
@@ -59,6 +64,7 @@ export function makePostSettingsReader(deps: {
 	globals: () => GlobalSettings;
 	/** 这条订阅的来源还在跑吗(问来源登记表:内置来源登着就在;拓展看它自己在不在跑)。 */
 	sourceRunning: (sub: Subscription) => boolean;
+	postTemplates: (sub: Subscription) => PostTemplates | undefined;
 	/** 现存目标的 id:AI 正文的例外只数还在的目标,指向已删目标的例外不算开着。 */
 	targetIds: () => Iterable<string>;
 }): (subscriptionId: string) => PostSettings | undefined {
@@ -69,6 +75,12 @@ export function makePostSettingsReader(deps: {
 		const eff = resolve(sub, g.defaults);
 		if (!eff.features.post) return undefined;
 		if (!deps.sourceRunning(sub)) return undefined;
-		return postSettingsOf(sub, g, aiWritingNeeded(g.ai.writing.post, deps.targetIds()), eff);
+		return postSettingsOf(
+			sub,
+			g,
+			aiWritingNeeded(g.ai.writing.post, deps.targetIds()),
+			eff,
+			deps.postTemplates(sub),
+		);
 	};
 }

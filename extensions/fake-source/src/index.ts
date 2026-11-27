@@ -83,13 +83,7 @@ export function activate(ctx: ExtensionContext): void {
 			}
 		},
 		fetchLiveStatus: buttons.liveStatusOf,
-		// 故意的:auth 与 liveInteractions 这一版不对拓展开放,交上去让守卫证明宿主会摘掉。
-		auth: {
-			beginLogin: async () => ok(),
-			logout: async () => ok(),
-			state: () => ({ status: "logged-in" }),
-			onChange: () => ({ dispose() {} }),
-		},
+		// 故意带上未开放的互动成员，验证宿主会摘掉。
 		liveInteractions: {
 			fetchViewerAvatar: async () =>
 				fail("unsupported", "fake source does not support live interactions"),

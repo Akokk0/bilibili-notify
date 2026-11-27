@@ -457,6 +457,27 @@ describe("createSourceContext · reportProblem / resolveProblem", () => {
 		expect(problems.report.mock.calls[0]?.[0]).toMatchObject({ writtenBy: "测试" });
 	});
 
+	it("forwards a subscription warning independently of notification", () => {
+		const { handle, problems } = setup([makeSub("a", "1")]);
+		handle.ctx.reportProblem({
+			externalId: "1",
+			code: "fallback",
+			message: "正在轮询",
+			warning: true,
+			notify: false,
+		});
+
+		expect(problems.report).toHaveBeenCalledWith({
+			reporter: SOURCE_KEY,
+			writtenBy: "测试",
+			about: { subscriptionId: "a" },
+			code: "fallback",
+			message: "正在轮询",
+			warning: true,
+			notify: false,
+		});
+	});
+
 	it("带 externalId:按身份展开,遗留的两条重复订阅各记一条,别人的订阅不碰", () => {
 		const { handle, problems } = setup([makeSub("a", "1"), makeSub("b", "1"), makeSub("c", "2")]);
 		handle.ctx.reportProblem({ externalId: "1", code: "monitor_stopped", message: "停了" });

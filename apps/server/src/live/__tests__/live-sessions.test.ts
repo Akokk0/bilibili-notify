@@ -1072,6 +1072,15 @@ describe("本场互动汇总", () => {
 		return change;
 	};
 
+	it("礼物按件累计到当前场次，场次外的礼物不计入下一场", () => {
+		start();
+		sessions.noteInteraction(SUB.id, { kind: "gift", count: 100 });
+		liveStart();
+		sessions.noteInteraction(SUB.id, { kind: "gift", count: 3 });
+		sessions.noteInteraction(SUB.id, { kind: "gift", count: 6 });
+		expect(endOfCurrent().session.interactions).toEqual({ giftCount: 9 });
+	});
+
 	it("两个人各发两条弹幕:条数逐条累计,人数按 viewer.id 去重", () => {
 		start();
 		liveStart();

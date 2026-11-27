@@ -6,6 +6,7 @@ import {
 	checkExtensionLiveStatus,
 	checkExtensionReport,
 	createSerialQueue,
+	EXTENSION_LIVE_INTERACTIONS_REVISION,
 	EXTERNAL_ID_MAX,
 	EXTRA_KEYS,
 	ExtensionCreatorCandidatesSchema,
@@ -58,7 +59,7 @@ import { extensionSourceAuth } from "./extension-source-auth.js";
  * 拓展交上来的 {@link SourceDef} 拼成一份核心来源,登记进来源登记表,和 B 站走同一个 `SourceContext`、
  * 同一条作品入口、同一个场次引擎、同一个资料写口。
  *
- * 🔴 **拓展交回的一切都当外来数据,只在这一处收**(三种上报、搜人候选、取资料、拉取式直播状态):
+ * 🔴 **拓展交回的一切都当外来数据,只在这一处收**(上报、搜人候选、取资料、拉取式直播状态):
  * 核心的 `createSourceContext` 不为拓展加分支。收的规矩在 `@bilibili-notify/internal` 的
  * `schema/extension-report.ts`(多一格整条拒、认识的选填格坏了只丢那一格、时刻是带时区的 ISO……),这里管:
  *
@@ -77,7 +78,7 @@ const SOURCE_HEALTH_SUMMARY_MAX_CHARS = 120;
 
 /** 一条该记进「上报出入」的事(宿主再补时刻与「哪条订阅」)。 */
 export interface ExtensionSourceDiscrepancy {
-	kind: ExtensionReportKind;
+	kind: Exclude<ExtensionReportKind, "interaction">;
 	/** 拓展报的外部 id(不是字符串 / 太长的已截成一段能看的)。 */
 	externalId: string;
 	/** `rejected`:整条拒了(一句);`dropped`:收下了,动了这几格(每格一句)。 */
@@ -277,7 +278,9 @@ function normalizeNewlines(texts: readonly string[]): string[] {
 export function createExtensionSource(opts: CreateExtensionSourceOptions): Source {
 	const { id, logger } = opts;
 	const now = opts.now ?? Date.now;
-	const initial = manifestSourceDescriptor(opts.manifest());
+	const manifest = opts.manifest();
+	const apiRevision = manifest.apiRevision ?? 0;
+	const initial = manifestSourceDescriptor(manifest);
 	if (!initial) {
 		throw new Error(`extension ${id}: manifest has no contributes.subscription`);
 	}
@@ -308,6 +311,12 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		get displayIdNoun() {
 			return display().displayIdNoun;
 		},
+		get postTemplates() {
+			return display().postTemplates;
+		},
+		get liveTemplates() {
+			return display().liveTemplates;
+		},
 		get featureHints() {
 			return display().featureHints;
 		},
@@ -318,12 +327,14 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 
 	/** 拓展的 `stop` 叫过了:之后的上报一概丢(契约:`stop()` 之后不许再上报)。 */
 	let stopped = false;
+	const lifetime = new AbortController();
 	const auth =
-		(opts.manifest().apiRevision ?? 0) >= 1 && opts.def.auth
+		apiRevision >= 1 && opts.def.auth
 			? extensionSourceAuth(opts.def.auth, () => stopped)
 			: undefined;
-	/** 这个来源自己的一条串行队:三种上报按到达顺序一条条处理。 */
+	/** 这个来源自己的一条串行队:上报按到达顺序一条条处理。 */
 	const queue = createSerialQueue();
+	const pendingLiveReports = new Map<string, { tail: Promise<void> }>();
 	/** 上一次 `health()` 的毛病;同一句连读只记一遍,好了再坏会重新记。 */
 	let lastHealthProblem: string | undefined;
 
@@ -359,7 +370,12 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		externalId: string,
 		reasons: readonly string[],
 	): undefined {
-		opts.recordDiscrepancy({ kind, externalId, outcome: "rejected", reasons });
+		opts.recordDiscrepancy({
+			kind: kind === "interaction" ? "live" : kind,
+			externalId,
+			outcome: "rejected",
+			reasons,
+		});
 		return undefined;
 	}
 
@@ -371,7 +387,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	): void {
 		if (issues.length === 0) return;
 		opts.recordDiscrepancy({
-			kind,
+			kind: kind === "interaction" ? "live" : kind,
 			externalId,
 			outcome: "dropped",
 			reasons: issues.map(describeIssue),
@@ -387,6 +403,13 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 				: t("extension.report.undeclared", { feature: "post" });
 		}
 		const signal = isRecord(raw) ? raw.kind : undefined;
+		if (kind === "interaction") {
+			const feature =
+				signal === "viewerChat" ? "viewerChat" : signal === "gift" ? "liveEnd" : undefined;
+			return feature && !declared.has(feature)
+				? t("extension.report.undeclared", { feature })
+				: undefined;
+		}
 		if (signal === "start") {
 			return declared.has("liveStart")
 				? undefined
@@ -566,7 +589,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	}
 
 	/**
-	 * 拓展那一面的三种上报:都排进这个来源自己的一条串行队(翻作品要读图库、是异步的,不排队的话同一拓展先后两条
+	 * 拓展的上报都排进这个来源自己的一条串行队(翻作品要读图库、是异步的,不排队的话同一拓展先后两条
 	 * 上报交给核心的次序会乱)。到这里一律不抛(抛了会砸在拓展自己的调用栈上);`stop()` 之后的不收。
 	 */
 	/**
@@ -579,18 +602,37 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		return false;
 	}
 
-	function enqueue(kind: ExtensionReportKind, job: () => void | Promise<void>): void {
+	function enqueue(kind: ExtensionReportKind, job: () => void | Promise<void>) {
 		if (stopped) {
 			logger.warn(logText("log.extension.stoppedReportDropped"), { kind });
 			return;
 		}
-		queue.run(REPORT_QUEUE_KEY, job).catch((err: unknown) => {
+		return queue.run(REPORT_QUEUE_KEY, job).catch((err: unknown) => {
 			logger.error(logText("log.extension.reportFailed"), { kind, error: err });
 		});
 	}
 
+	async function settleLiveReports(pending: { tail: Promise<void> }, signal: AbortSignal) {
+		const initial = pending.tail;
+		let cancel!: () => void;
+		const aborted = new Promise<void>((resolve) => {
+			cancel = resolve;
+		});
+		signal.addEventListener("abort", cancel, { once: true });
+		try {
+			let tail = initial;
+			while (!signal.aborted) {
+				await Promise.race([tail, aborted]);
+				if (tail === pending.tail) return tail === initial;
+				tail = pending.tail;
+			}
+			return false;
+		} finally {
+			signal.removeEventListener("abort", cancel);
+		}
+	}
+
 	const rules = opts.manifest().contributes.linkResolver;
-	const linkLifetime = new AbortController();
 	function matchedLink(input: string): URL | undefined {
 		const url = URL.parse(/^https?:\/\//i.test(input) ? input : `https://${input}`);
 		if (
@@ -618,7 +660,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			matches: (input) => !stopped && matchedLink(input) !== undefined,
 			async resolve(input, shutdown) {
 				const url = matchedLink(input);
-				const signal = AbortSignal.any([linkLifetime.signal, shutdown]);
+				const signal = AbortSignal.any([lifetime.signal, shutdown]);
 				if (!url) return invalidResult([describeIssue({ path: ["url"], code: "invalid" })]);
 				let raw: unknown;
 				try {
@@ -647,8 +689,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		...(auth ? { auth } : {}),
 		...(def.health ? { health: readHealth } : {}),
 		async start(ctx: SourceContext) {
-			// 🔴 逐格列出开放的成员,不展开核心那一份:`registerLinkResolver` / `registerAiToolProvider` /
-			// `reportLiveInteraction` 运行时也拿不到(类型上排除不够,第三方 JS 不受类型约束)。
+			// 逐格列出开放的成员。链接解析与 AI 工具登记归宿主管。
 			const extensionCtx: ExtensionSourceContext = {
 				timezone: ctx.timezone,
 				onTimezoneChanged: ctx.onTimezoneChanged,
@@ -682,7 +723,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 				reportLive(externalId, report) {
 					// 下播的时刻取上报到达的那一刻,在核对之前就定下。
 					const arrivedAt = now();
-					enqueue("live", () => {
+					const task = enqueue("live", () => {
 						const admitted = admit("live", externalId, report);
 						if (admitted && stillOpen("live")) {
 							ctx.reportLive(
@@ -691,7 +732,24 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 							);
 						}
 					});
+					if (!task) return;
+					const pending = pendingLiveReports.get(externalId) ?? { tail: task };
+					pending.tail = task;
+					pendingLiveReports.set(externalId, pending);
+					void task.then(() => {
+						if (pending.tail === task) pendingLiveReports.delete(externalId);
+					});
 				},
+				...(apiRevision >= EXTENSION_LIVE_INTERACTIONS_REVISION &&
+					declared.has("liveEnd") && {
+						reportLiveInteraction(externalId, report) {
+							enqueue("interaction", () => {
+								const admitted = admit("interaction", externalId, report);
+								if (admitted && stillOpen("interaction"))
+									ctx.reportLiveInteraction(admitted.externalId, admitted.value);
+							});
+						},
+					}),
 				reportProfile(externalId, report) {
 					enqueue("profile", () => {
 						const admitted = admit("profile", externalId, report);
@@ -707,7 +765,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		async stop() {
 			// 先置停(拒新的上报,队里还没交出去的也不再交),再叫拓展的 `stop`;登记表不等 `stop()` 返回。
 			stopped = true;
-			linkLifetime.abort();
+			lifetime.abort();
 			await def.stop();
 		},
 		async searchCreators(query, signal) {
@@ -774,6 +832,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 						identity: Identity,
 						signal: AbortSignal,
 					): Promise<LiveStatusResult> {
+						signal = AbortSignal.any([signal, lifetime.signal]);
+						if (signal.aborted) return fail("unavailable", reasonOf(signal.reason));
 						let raw: unknown;
 						try {
 							raw = await (def.fetchLiveStatus as NonNullable<OpenMembers["fetchLiveStatus"]>)(
@@ -781,12 +841,14 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 								signal,
 							);
 						} catch (err) {
+							if (signal.aborted) return fail("unavailable", reasonOf(signal.reason));
 							logger.warn(logText("log.extension.sourceCallFailed"), {
 								operation: "fetchLiveStatus",
 								error: err,
 							});
 							return fail("unavailable", reasonOf(err));
 						}
+						if (signal.aborted) return fail("unavailable", reasonOf(signal.reason));
 						const checked = checkExtensionLiveStatus(raw);
 						if (!checked.ok) {
 							const reasons = checked.issues.map(describeIssue);
@@ -801,6 +863,11 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 						recordDropped("live", identity.externalId, checked.dropped);
 						const result = checked.value;
 						if (!result.ok) return fail(result.code, result.message);
+						// 换场查询可能同时上报旧场下播和新场开播。先交付这两条事件，再让宿主看到新场状态。
+						const pending = pendingLiveReports.get(identity.externalId);
+						const current = !pending || (await settleLiveReports(pending, signal));
+						if (signal.aborted) return fail("unavailable", reasonOf(signal.reason));
+						if (!current) return fail("conflict", "a newer live report superseded this query");
 						if (result.kind === "offline") return ok({ kind: "offline" as const });
 						return ok({
 							kind: "live" as const,

@@ -350,8 +350,7 @@ describe("SubscriptionCard 菜单触发", () => {
 });
 
 /**
- * 挂在订阅上的问题(服务端从问题表 join 来):每条一个红字提示,正文是问题的 message;
- * 不看来源、不看 code —— 拓展订阅一样出。没有问题就什么都不出。
+ * 挂在订阅上的问题按上报的标记显示提示，正文取问题的 message。
  */
 describe("SubscriptionCard 订阅上的问题", () => {
 	const PROBLEM = {
@@ -369,7 +368,25 @@ describe("SubscriptionCard 订阅上的问题", () => {
 		};
 		const { getByText } = render(<SubscriptionCard {...props({ sub })} />);
 
-		expect(getByText(/直播间读不到/)).toBeTruthy();
+		expect(getByText(/直播间读不到/).closest("[data-bn~='note-danger']")).not.toBeNull();
+	});
+
+	it("shows the warning between the subscription metadata and the update time", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "douyin", externalId: "MS4wLjAB-sec" }),
+			notes: "订阅备注",
+			problems: [{ ...PROBLEM, warning: true }],
+		};
+		const { getByText } = render(<SubscriptionCard {...props({ sub })} />);
+
+		const notice = getByText(PROBLEM.message);
+		expect(notice.closest("[data-bn~='note-warn']")).not.toBeNull();
+		expect(getByText("订阅备注").compareDocumentPosition(notice)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
+		expect(notice.compareDocumentPosition(getByText(/更新于/))).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
 	});
 
 	it("每条问题各出一个", () => {
@@ -448,16 +465,24 @@ describe("SubscriptionCard 标签角标", () => {
 		expect(container.textContent).not.toContain("· 更新于");
 	});
 
-	it("keeps the update time separate from label pills", () => {
+	it("shows the update time below the subscription labels", () => {
 		const sub = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			tagIds: [GAME.id],
 		};
-		const { container } = render(<SubscriptionCard {...props({ sub, tags: [GAME] })} />);
+		const { getByText, getByRole } = render(
+			<SubscriptionCard
+				{...props({ sub, tags: [GAME], platform: { ...props().platform, postNoun: "作品" } })}
+			/>,
+		);
 
-		expect(container.textContent).toContain("游戏");
-		expect(container.textContent).toContain("更新于");
-		expect(container.textContent).not.toContain("· 更新于");
+		const updated = getByText(/更新于/);
+		expect(getByText("作品").compareDocumentPosition(updated)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
+		expect(getByRole("list", { name: "订阅标签" }).compareDocumentPosition(updated)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
 	});
 
 	it("标签表没读到 / 表里查不到那个 id → 当没挂,什么都不写(两张表各自重取,一时对不上不许崩)", () => {

@@ -8,11 +8,11 @@
 <p align="center">
   订阅创作者的<b>作品 / 直播</b>,渲染成卡片图片,推送到 QQ 群等渠道。
   <br>
-  自带 Web 控制台:<b>Docker 镜像</b>,或 <b>macOS / Windows 桌面应用</b>。
+  自带 Web 控制台，通过 <b>Docker</b>、<b>macOS / Windows 桌面应用</b>或 <b>npm</b> 运行。
 </p>
 
 <p align="center">
-  <a href="https://github.com/Akokk0/bilibili-notify/releases/latest"><img src="https://img.shields.io/github/v/release/Akokk0/bilibili-notify?label=standalone" alt="独立端最新版本" /></a>
+  <a href="https://github.com/Akokk0/bilibili-notify/releases/latest"><img src="https://img.shields.io/github/v/release/Akokk0/bilibili-notify?label=stable" alt="最新正式版" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license" /></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A524.15.0-339933?logo=nodedotjs&logoColor=white" alt="node" />
 </p>
@@ -23,17 +23,17 @@
 
 ---
 
-本页对应 `dev` 分支的 1.0 开发版；使用已发行版本时，请查看对应 tag 的文档。
+Docker 和桌面应用的快速开始使用最新正式版。功能介绍跟随仓库实现，已发布版本的功能与配置请查阅对应发行标签下的文档。[最新正式版](https://github.com/Akokk0/bilibili-notify/releases/latest)
 
 ## 功能
 
-- **来源与作品**:内置 B 站，抖音等来源通过拓展安装；支持作品通知、关键词黑白名单、正则过滤、免扰时段和定时复推。来源支持的内容与功能各有不同
-- **直播**:开播 / 直播中 / 下播通知；B 站还支持 Superchat、上舰、弹幕词云、AI 直播总结、特别关注用户进房 / 弹幕
-- **AI**:OpenAI 兼容接口,作品点评 + 直播总结,可为订阅指定女仆性格;主模型不支持看图也能配视觉子模型代读。另带聊天界面(连续对话、贴图、Markdown 排版)
+- 内置 **B 站**，可安装抖音、虎牙和微博拓展。按来源提供的能力配置作品或直播提醒，支持关键词过滤、免扰时段和定时复推
+- **直播通知**覆盖开播、直播中与下播。B 站还支持 Superchat、上舰、弹幕词云、AI 直播总结、特别关注用户进入直播间或发弹幕
+- **女仆 AI** 使用 OpenAI 兼容接口或 DeepSeek 官方服务生成作品点评、直播总结与统计周报。女仆聊天和推送可按配置联网。图片理解、文件解析和录音转写依赖所选服务，推送里的女仆文字可在支持的目标转成语音
 - **数据统计**:粉丝 / 作品 / 直播活动留档,B 站累计视频播放量可按创作者或全部开启,支持小时 / 日走势;对比表、热力图、雷达图、单人分析;可让 AI 据此写周报或单人锐评并推成卡片
 - **卡片渲染**:Vue + UnoCSS + Puppeteer SSR 出图,配色 / 背景图 / 字体可自定义(还能直接上传字体文件),实时预览
 - **多推送目标**:QQ 官方机器人、OneBot v11(NapCat 等,支持 HTTP / 正向 WS / 反向 WS)、飞书 / 钉钉 / 企业微信群机器人、自定义 HTTP 端点和 Web 通知中心
-- **拓展**:通过市场或 ZIP 安装，开发版支持挂载源码并自动重载。机器人框架桥接可借用 koishi / AstrBot 的 bot，将通知发到 Telegram / Discord / KOOK 等平台；抖音拓展支持扫码登录、视频 / 图文和直播通知
+- **拓展**可从市场或 ZIP 安装，开发版支持挂载源码并自动重载。机器人框架桥接可借用 Koishi / AstrBot 的机器人，将通知发到 Telegram / Discord / KOOK 等平台
 - **按订阅定制**:特性开关 / 路由 / 过滤 / 模板 / AI / 卡片样式可继承全局设置或单独覆盖
 - **资源库**:统一管理图片、字体、女仆技能、女仆性格、界面皮肤和卡片皮肤，支持导入导出
 - **多语言**:面板、使用指引和运行日志支持简体中文、台湾繁体中文、英文、日文
@@ -68,7 +68,7 @@
 
 ### Docker
 
-compose 与 `docker run` 都可以,**推荐 compose** —— 配置留在文件里,以后升级或改参数不用重敲一长串命令。新建 `docker-compose.yaml`:
+使用 Compose 管理镜像、端口和数据目录。把下面内容保存为 `docker-compose.yaml`。
 
 ```yaml
 services:
@@ -78,26 +78,22 @@ services:
     restart: unless-stopped
     ports:
       - "8787:8787"
-    environment:
-      # 首启动后请改掉默认密码;删掉这两行则自动生成随机密码(见容器日志)
-      BN_DASHBOARD_USER: admin
-      BN_DASHBOARD_PASS: change-me-on-first-boot
     volumes:
-      - ./data:/data       # 运行时状态(订阅 / 历史 / 日志 / 凭据)
-      - ./config:/config   # 只挂目录,bn.config.yaml 由容器自动生成
+      - ./data:/data       # 订阅、历史、日志和凭据
+      - ./config:/config   # 首次启动自动生成 bn.config.yaml
 ```
 
-然后在同目录启动:
+在同目录启动。
 
 ```bash
 docker compose up -d
 ```
 
-浏览器打开 `http://<host>:8787` 登录面板。屏幕左缘的**「指引」导览**会带你完成来源账号、推送连接、推送目标和订阅的配置；需要拓展来源时先安装并启用拓展。手把手图文教程(含 QQ 机器人接入选型)在面板内 **关于 · 新手指引**。**不要手动创建 `config/bn.config.yaml`** —— 容器首次启动会自己生成完整配置。
+首次启动后，运行 `docker compose logs bilibili-notify` 查看默认账号 `admin` 和随机密码，也可从 `./config/bn.config.yaml` 读取。浏览器打开 `http://<host>:8787` 登录面板。左侧「指引」会带你配置来源账号、推送连接、推送目标和订阅。使用拓展来源前，先安装并启用对应拓展。面板的「关于 → 新手指引」包含 QQ 机器人接入教程。
 
 更新镜像用 `docker compose pull && docker compose up -d`(`restart` 不换镜像)。带 browserless / NapCat 边车的完整模板见 [`apps/docker-compose.example.yaml`](./apps/docker-compose.example.yaml),完整部署 / 配置见 **[apps/README.md](./apps/README.md)**。
 
-不想写 compose 文件也可以直接 `docker run`。下面这条与上面的 compose 等效,只是没设登录凭据 —— 密码会随机生成,到容器日志或 `./config/bn.config.yaml` 里取:
+也可以直接运行容器。首次启动的密码可用 `docker logs bilibili-notify` 查看。
 
 ```bash
 docker run -d --name bilibili-notify \
@@ -107,17 +103,15 @@ docker run -d --name bilibili-notify \
   akokk0/bilibili-notify:latest
 ```
 
-镜像 tag:`latest` = 最新正式版(**推荐**);`vX.Y.Z` = 固定版本;`<short-sha>` = 按 commit 精确 pin。另有 `alpha` 预览渠道,**只在发布预览版时才更新** —— 没有在途预览版时它会一直停在上一个预览版,别拿它当「最新」。
-
-full 镜像内置 chromium,出图峰值不低,建议宿主可用内存 ≥ 1GB;只有 512MB 的小鸡请改用免 chromium 的 slim 变体 + 远程浏览器,见 [apps/README.md](./apps/README.md)。
+`latest` 镜像内置 Chromium，建议宿主可用内存至少 1 GB。内存较小的主机可用正式版的 `slim` 镜像并外接浏览器。[部署与配置](./apps/README.md)
 
 ### 桌面应用
 
-不想碰 Docker 的话,[Releases](https://github.com/Akokk0/bilibili-notify/releases) 里有打包好的桌面应用:macOS(Apple Silicon,`.dmg`)与 Windows x64(`.exe` 安装包 / 免安装 zip)。装完直接开,面板与功能同 Docker 版;卡片渲染用你本机装的 Chrome / Edge。
+从最新正式版发行页下载 macOS Apple Silicon 的 `.dmg`，或 Windows x64 的 `.exe` 安装包或免安装 ZIP。卡片渲染使用本机安装的 Chrome / Edge，也可配置远程浏览器。[下载正式版桌面应用](https://github.com/Akokk0/bilibili-notify/releases/latest)
 
-### npm 成品入口（1.0 预览版）
+### npm
 
-`@bilibili-notify/bn` 的 1.0 预览版已发布到 npm 的 `alpha` 渠道。需要 Node.js 24.15.0 或更高版本。运行以下命令启动 Web 面板：
+npm 正式版发布前，通过 `@alpha` 安装 BN。需要 Node.js 24.15.0 或更高版本。
 
 ```bash
 npx @bilibili-notify/bn@alpha web
@@ -142,16 +136,13 @@ tools/        BN npm 启动器与拓展创建器
 
 ```bash
 vp install
-vp run typecheck
-vp run build
-vp test
 vp run dev:apps     # 启动服务端与面板，在拓展页挂载要联调的源码目录
-vp run check        # Biome lint + format(:fix 自动修)
+vp run gate         # 全量检查、构建和测试
 ```
 
-分支:`dev` 为活跃开发主干;`main` 是发布快照,不触发任何发版;`koishi-astrbot-maintenance` 是两个插件宿主的维护线。
+开发在 `dev` 进行，发布快照通过 PR 从 `dev` 同步到 `main`。`koishi-astrbot-maintenance` 保存旧 Koishi / AstrBot 插件的维护代码。
 
-发版由 `v<VERSION>` git tag 触发，分别构建 Docker 镜像、macOS / Windows 桌面应用、npm 成品包和应用内更新载荷。SDK 与拓展创建器独立编号、独立发行。机制详见 [`docs/agents/build-release.md`](./docs/agents/build-release.md)。
+本体使用 `v<VERSION>` 标签发布 Docker、桌面应用、npm 和应用内更新。官方拓展、SDK 与拓展创建器各自编号发行。[构建与发布参考](./docs/agents/build-release.md)
 
 ## 问题反馈
 

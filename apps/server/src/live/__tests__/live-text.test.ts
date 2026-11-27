@@ -16,10 +16,10 @@ import {
 afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 it.each([
-	["zh-CN", "甲 正在直播，累计观看：暂未获取到"],
-	["zh-TW", "甲 正在直播，累計觀看：尚未取得"],
-	["en", "甲 is live. Total viewers: Not available yet"],
-	["ja", "甲が配信中です。累計視聴者数：未取得"],
+	["zh-CN", "甲 正在直播"],
+	["zh-TW", "甲 正在直播"],
+	["en", "甲 is live"],
+	["ja", "甲が配信中です"],
 ] as const)(
 	"%s omits unavailable duration from the default streaming message",
 	(locale, expected) => {
@@ -313,4 +313,14 @@ describe("`-key` 老写法不再认", () => {
 			}),
 		).toBe("-fanclub 小晨");
 	});
+});
+
+it("来源模板按可用字段组句，贵宾零值保留，主播名里的占位符原样发送", () => {
+	const template = "{name} 正在直播[[，已播 {time}]][[，当前贵宾人数：{vipViewers}]]";
+	expect(
+		renderLiveText("liveStreaming", template, { name: "甲{time}", time: "", vipViewers: 0 }),
+	).toBe("甲{time} 正在直播，当前贵宾人数：0");
+	expect(renderLiveText("liveStreaming", template, { name: "甲", time: "1小时" })).toBe(
+		"甲 正在直播，已播 1小时",
+	);
 });

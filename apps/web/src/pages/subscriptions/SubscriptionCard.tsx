@@ -57,13 +57,7 @@ export interface SubscriptionCardProps {
 	globalFeatures?: FeatureFlagValues;
 }
 
-/**
- * UP 卡与末尾那张「添加 UP 主」卡**共用**的最小高度。
- *
- * grid 同一行的高度由最高的那张卡决定。这个值从前只写在添加卡上,UP 卡自己没有
- * —— 于是一切到标签筛选(添加卡按设计不出现),整排 UP 卡当场矮一截。两处引同一个
- * 常量,谁也别再替谁撑着。
- */
+/** 订阅卡与添加卡共用的最小高度，筛选时订阅卡也维持这个高度。 */
 export const SUBSCRIPTION_CARD_MIN_HEIGHT = "min-h-55";
 
 export function SubscriptionCard({
@@ -96,6 +90,7 @@ export function SubscriptionCard({
 			: tx("sourceUi.pages.up.UpCard.UpCard.2", { value1: formatCount(fans) });
 	// Display order belongs to the registry; subscription tagIds remain unchanged.
 	const cardTags = (tags ?? []).filter((tag) => sub.tagIds.includes(tag.id));
+	const warnings = sub.problems.filter((problem) => problem.warning);
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: outer card holds inner <button>s (select / enabled toggle); nested HTML <button> is invalid, so a div + role=button is the right escape.
 		<div
@@ -120,7 +115,7 @@ export function SubscriptionCard({
 			onMouseEnter={() => setHover(true)}
 			onMouseLeave={() => setHover(false)}
 			// 玻璃底(皮肤壁纸可透出);玻璃卡无描边(卡片风),未选中态靠阴影分层,选中态叠粉色 ring
-			className={`bn-glass group relative cursor-pointer overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${SUBSCRIPTION_CARD_MIN_HEIGHT} ${
+			className={`bn-glass group relative flex cursor-pointer flex-col overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${SUBSCRIPTION_CARD_MIN_HEIGHT} ${
 				selected ? "ring-2 ring-bn-pink" : ""
 			} ${hover ? "-translate-y-0.5 shadow-bn-elev" : "shadow-bn-card"} ${
 				sub.enabled && !paused ? "" : "opacity-70"
@@ -128,7 +123,7 @@ export function SubscriptionCard({
 		>
 			{/* cover band */}
 			<div
-				className="relative h-14"
+				className="relative h-14 shrink-0"
 				style={{
 					background: `linear-gradient(135deg, color-mix(in srgb, ${color} 40%, transparent), color-mix(in srgb, ${color} 20%, transparent))`,
 				}}
@@ -157,7 +152,7 @@ export function SubscriptionCard({
 			</div>
 
 			{/* body */}
-			<div className="relative px-3.5 pb-3 pt-0">
+			<div className="relative flex flex-1 flex-col px-3.5 pb-3">
 				<div className="-mt-5 mb-2">
 					<Avatar
 						name={displayName(sub, ext)}
@@ -217,18 +212,19 @@ export function SubscriptionCard({
 							: tx("sourceUi.pages.up.UpCard.UpCard.5", { source: ext.label })}
 					</WarnNote>
 				) : null}
-				{/* 挂在这条订阅上的问题(服务端从问题表 join 来):每条一个,不看来源、不看 code。 */}
-				{sub.problems.map((problem) => (
-					<ErrorNote
-						key={`${problem.reporter}/${problem.code}`}
-						size="sm"
-						icon={<Icon.warning size={12} />}
-						className="mb-2.5"
-					>
-						{problem.message}
-					</ErrorNote>
-				))}
-				<div className="mb-2.5 flex flex-wrap gap-1">
+				{sub.problems
+					.filter((problem) => !problem.warning)
+					.map((problem) => (
+						<ErrorNote
+							key={`${problem.reporter}/${problem.code}`}
+							size="sm"
+							icon={<Icon.warning size={12} />}
+							className="mb-2.5"
+						>
+							{problem.message}
+						</ErrorNote>
+					))}
+				<div className="flex flex-wrap items-center gap-1">
 					{features.length === 0 ? (
 						<span className="text-bn-2xs text-bn-text-secondary">
 							{tx("sourceUi.pages.up.UpCard.UpCard.6")}
@@ -242,14 +238,14 @@ export function SubscriptionCard({
 					)}
 				</div>
 				{sub.notes ? (
-					<div className="mb-2 truncate text-bn-xs italic text-bn-text-secondary" title={sub.notes}>
+					<div className="mt-2 truncate text-bn-xs italic text-bn-text-secondary" title={sub.notes}>
 						{sub.notes}
 					</div>
 				) : null}
 				{cardTags.length > 0 ? (
 					<ul
 						aria-label={tx("subscriptionTags.cardLabels")}
-						className="m-0 mb-2.5 flex min-w-0 list-none flex-wrap gap-1 p-0"
+						className="m-0 mt-2 flex min-w-0 list-none flex-wrap gap-1 p-0"
 					>
 						{cardTags.map((tag) => (
 							<li key={tag.id} className="max-w-full" title={tag.name}>
@@ -260,7 +256,20 @@ export function SubscriptionCard({
 						))}
 					</ul>
 				) : null}
-				<div className="text-right text-bn-xs text-bn-text-secondary">
+				{warnings.length > 0 ? (
+					<div className="mt-2.5 space-y-2">
+						{warnings.map((problem) => (
+							<WarnNote
+								key={`${problem.reporter}/${problem.code}`}
+								size="sm"
+								icon={<Icon.warning size={12} />}
+							>
+								{problem.message}
+							</WarnNote>
+						))}
+					</div>
+				) : null}
+				<div className="mt-auto pt-2.5 text-right text-bn-xs leading-4 text-bn-text-secondary">
 					{tx("sourceUi.pages.up.UpCard.UpCard.8")}{" "}
 					<RelativeTime at={sub.cachedProfile?.refreshedAt} />
 				</div>

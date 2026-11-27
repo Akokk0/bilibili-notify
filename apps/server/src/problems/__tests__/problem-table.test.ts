@@ -71,6 +71,21 @@ function makeTable(
 
 const key = { reporter: "src-a", code: "auth_lost" };
 
+it("includes the warning flag and updates it without resetting the first occurrence", () => {
+	const { table, changes, advance } = makeTable();
+	const report = { ...key, message: "正在轮询" };
+	table.report({ ...report, warning: true });
+	const [warning] = table.list();
+	expect(warning).toMatchObject({ warning: true });
+
+	advance(1000);
+	table.report({ ...report, warning: true });
+	table.report(report);
+	expect(changes.map((change) => change.kind)).toEqual(["opened", "updated"]);
+	expect(table.list()[0]?.since).toBe(warning?.since);
+	expect(table.list()[0]).not.toHaveProperty("warning");
+});
+
 describe("问题表 · 换语言与口吻", () => {
 	it("交取字函数:重跑后字变了就换文案,带 reworded,since 与 notify 不动", () => {
 		let word = "旧话";

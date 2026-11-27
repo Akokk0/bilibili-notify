@@ -15,9 +15,18 @@
 		"contributes": {
 			"subscription": {
 				"label": "Fake source",
+				"postTemplates": {
+					"post": "{name} shared a new {postNoun}",
+					"postVideo": "{name} shared a video {postNoun}"
+				},
 				"postNoun": "mock",
 				"creatorNoun": "faker",
-				"externalIdNoun": "Fake ID"
+				"externalIdNoun": "Fake ID",
+				"liveTemplates": {
+					"liveStart": "{name} went live[[. Current followers: {follower}]]",
+					"liveStreaming": "{name} is live[[. Duration: {time}]][[. Total viewers: {watched}]]",
+					"liveEnd": "{name} ended the stream[[. Duration: {time}]][[. Follower change: {follower_change}]]"
+				}
 			},
 			"push": {
 				"label": "Fake platform",

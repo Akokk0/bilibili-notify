@@ -284,7 +284,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 			new RegExp(`^${escapeRe(who.a.name)} 开播啦，当前粉丝数：\\S+\\n${link}$`),
 		);
 		expect(textOf(cardsFor("b")[0])).toMatch(
-			new RegExp(`^${escapeRe(who.b.name)} 开播啦，当前粉丝数：\\n${link}$`),
+			new RegExp(`^${escapeRe(who.b.name)} 开播啦\\n${link}$`),
 		);
 
 		// 卡是照事件画的:标题、分区、封面。封面与事件头像的字节出卡前存进图库(`liveImages`),卡输入里只放引用,
@@ -315,7 +315,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 			new RegExp(`^${escapeRe(who.a.name)} 下播啦，本次直播了 \\S+，粉丝变化 0\\n`),
 		);
 		expect(textOf(cardsFor("b")[1])).toMatch(
-			new RegExp(`^${escapeRe(who.b.name)} 下播啦，本次直播了 \\S+，粉丝变化 \\n`),
+			new RegExp(`^${escapeRe(who.b.name)} 下播啦，本次直播了 \\S+\\n`),
 		);
 	}, 15_000);
 
@@ -353,10 +353,12 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 		let protectedRows = await readHistory();
 		expect(protectedRows).toHaveLength(4);
 
-		for (const [locale, start, end, durationTail, liveLabel, endLabel] of [
+		// 假源只发行简中和英文模板；其他语言按拓展回落链取简中，卡片标签仍用当前语言。
+		for (const [locale, start, followers, end, durationTail, liveLabel, endLabel] of [
 			[
 				"en",
-				" is live. Current followers: ",
+				" went live",
+				". Current followers: ",
 				" ended the stream. Duration: ",
 				". Follower change: ",
 				"Live",
@@ -364,21 +366,31 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 			],
 			[
 				"ja",
-				"が配信を開始しました。現在のフォロワー数：",
-				"の配信が終了しました。配信時間：",
-				"、フォロワー増減：",
+				" 开播啦",
+				"，当前粉丝数：",
+				" 下播啦，本次直播了 ",
+				"，粉丝变化 ",
 				"配信中",
 				"配信終了",
 			],
 			[
 				"zh-TW",
-				" 開播了，目前粉絲數：",
-				" 已結束直播，本次直播時長 ",
-				"，粉絲增減 ",
+				" 开播啦",
+				"，当前粉丝数：",
+				" 下播啦，本次直播了 ",
+				"，粉丝变化 ",
 				"直播中",
 				"已結束直播",
 			],
-			["zh-CN", " 开播啦，当前粉丝数：", " 下播啦，本次直播了 ", "，粉丝变化 ", "直播中", "已下播"],
+			[
+				"zh-CN",
+				" 开播啦",
+				"，当前粉丝数：",
+				" 下播啦，本次直播了 ",
+				"，粉丝变化 ",
+				"直播中",
+				"已下播",
+			],
 		] as const) {
 			await ok(
 				await api("/api/settings", {
@@ -402,7 +414,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 				const text = textOf(cardsFor(key).at(-1));
 				expect(text).toMatch(
 					new RegExp(
-						`^${escapeRe(who[key].name + start)}${key === "a" ? "\\S+" : ""}\\nhttps://live\\.fake-source\\.invalid/[0-9a-f]{12}$`,
+						`^${escapeRe(who[key].name + start)}${key === "a" ? `${escapeRe(followers)}\\S+` : ""}\\nhttps://live\\.fake-source\\.invalid/[0-9a-f]{12}$`,
 					),
 				);
 				const html = renderedHtml.slice(seenHtml).find((card) => card.includes(who[key].name));
@@ -421,7 +433,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 				const text = textOf(cardsFor(key).at(-1));
 				expect(text).toMatch(
 					new RegExp(
-						`^${escapeRe(who[key].name + end)}.+${escapeRe(durationTail)}${key === "a" ? "0" : ""}\\nhttps://live\\.fake-source\\.invalid/[0-9a-f]{12}$`,
+						`^${escapeRe(who[key].name + end)}.+${key === "a" ? escapeRe(`${durationTail}0`) : ""}\\nhttps://live\\.fake-source\\.invalid/[0-9a-f]{12}$`,
 					),
 				);
 				const html = renderedHtml.slice(seenHtml).find((card) => card.includes(who[key].name));

@@ -4,20 +4,30 @@ import {
 	type ExtensionLiveSignalReport,
 	type ExtensionLiveStatusResult,
 	fail,
+	type ImageRef,
 	ok,
 	type Result,
 } from "@bilibili-notify/extension";
 import { count, decimal, type HuyaClient, record } from "./client";
 import type { HuyaRoom } from "./creators";
 import { type createImageReader, imageDeadline } from "./images";
-import { web } from "./pages";
+import { posterUrl, roomPoster, web } from "./pages";
 
 export type Observation =
 	| { kind: "offline" }
-	| { kind: "live"; sessionId?: string; startedAt?: string; details: ExtensionLiveDetails };
+	| {
+			kind: "live";
+			sessionId?: string;
+			lastMetrics?: RoomMetrics;
+			startCover?: ImageRef;
+			startedAt?: string;
+			details: ExtensionLiveDetails;
+	  };
 
 type LiveObservation = Extract<Observation, { kind: "live" }>;
-function sameSession(previous: LiveObservation, current: LiveObservation): boolean {
+export type RoomMetrics = Pick<ExtensionLiveDetails, "heatScore" | "vipViewers">;
+export type ReadMetrics = (live: LiveObservation) => RoomMetrics | undefined;
+export function sameSession(previous: LiveObservation, current: LiveObservation): boolean {
 	if (previous.sessionId && current.sessionId) return previous.sessionId === current.sessionId;
 	return !previous.startedAt || !current.startedAt || previous.startedAt === current.startedAt;
 }
@@ -29,6 +39,7 @@ export async function observe(
 	client: HuyaClient,
 	started: number,
 	previous?: Observation,
+	readMetrics?: ReadMetrics,
 ): Promise<Result<{ observation: Observation }>> {
 	const { data } = room,
 		live = record(data.liveData);
@@ -53,13 +64,34 @@ export async function observe(
 				startedAt,
 				details,
 			};
+			const pushed = readMetrics?.(observation);
 			const needsStats = previous?.kind !== "live" || !sameSession(previous, observation);
-			const [cover, vipViewers] = await Promise.all([
+			async function startCover() {
+				if (!previous || !needsStats || posterUrl(live.screenshot)) return;
+				const deadline = started + 12000;
+				const remaining = deadline - Date.now();
+				if (remaining <= 0) return;
+				const limit = new AbortController();
+				const timer = ctx.setTimeout(() => limit.abort(), remaining);
+				const scoped = AbortSignal.any([signal, limit.signal]);
+				try {
+					const url = await roomPoster(client, room.number, scoped);
+					return url ? await readImage(url, scoped, deadline) : undefined;
+				} catch {
+					// 静态封面可选，取图失败仍交付已取得的房间画面。
+					return undefined;
+				} finally {
+					timer.dispose();
+				}
+			}
+			const [cover, vipViewers, poster] = await Promise.all([
 				readImage(live.screenshot, signal, imageDeadline(started)),
-				needsStats ? client.vipViewers(room.uid, signal, started + 12000) : undefined,
+				pushed?.vipViewers ??
+					(needsStats ? client.vipViewers(room.uid, signal, started + 12000) : undefined),
+				startCover(),
 			]);
 			if (signal.aborted) return fail("indeterminate", ctx.i18n.t("request.cancelled"));
-			const heatScore = count(live.totalCount);
+			const heatScore = pushed?.heatScore ?? count(live.totalCount);
 			if (heatScore !== undefined) details.heatScore = heatScore;
 			if (vipViewers !== undefined) details.vipViewers = vipViewers;
 			if (typeof live.introduction === "string" && live.introduction.trim())
@@ -67,6 +99,7 @@ export async function observe(
 			if (typeof live.gameFullName === "string" && live.gameFullName.trim())
 				details.category = live.gameFullName;
 			if (cover) details.cover = cover;
+			if (poster) observation.startCover = poster;
 			return ok({ observation });
 		}
 	}
@@ -88,6 +121,14 @@ function status(value: Observation): ExtensionLiveSignalReport {
 		: { kind: "status", isLive: true, startedAt: value.startedAt, details: value.details };
 }
 
+export function endReport(previous: LiveObservation) {
+	return {
+		kind: "end" as const,
+		startedAt: previous.startedAt,
+		details: { ...previous.lastMetrics, ...previous.details },
+	};
+}
+
 export function transition(
 	previous: Observation | undefined,
 	current: Observation,
@@ -95,7 +136,13 @@ export function transition(
 	if (!previous) return { latest: current, reports: [status(current)] };
 	if (current.kind === "live" && previous.kind === "live" && sameSession(previous, current)) {
 		const { heatScore: _heat, vipViewers: _vips, ...prior } = previous.details;
+		const lastMetrics = { ...previous.lastMetrics };
+		for (const key of ["heatScore", "vipViewers"] as const) {
+			const value = current.details[key] ?? previous.details[key];
+			if (value !== undefined) lastMetrics[key] = value;
+		}
 		const latest: Observation = {
+			lastMetrics,
 			kind: "live",
 			sessionId: current.sessionId ?? previous.sessionId,
 			startedAt: current.startedAt ?? previous.startedAt,
@@ -109,9 +156,14 @@ export function transition(
 		return { latest, reports: changed ? [status(latest)] : [] };
 	}
 	const reports: ExtensionLiveSignalReport[] = [];
-	if (previous.kind === "live")
-		reports.push({ kind: "end", startedAt: previous.startedAt, details: previous.details });
+	if (previous.kind === "live") reports.push(endReport(previous));
 	if (current.kind === "live")
-		reports.push({ kind: "start", startedAt: current.startedAt, details: current.details });
+		reports.push({
+			kind: "start",
+			startedAt: current.startedAt,
+			details: current.startCover
+				? { ...current.details, cover: current.startCover }
+				: current.details,
+		});
 	return { latest: current, reports };
 }

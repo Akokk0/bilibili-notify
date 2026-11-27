@@ -284,18 +284,13 @@ describe("每一代旧默认改写之后就是今天的默认", () => {
 		).toBe(FACTORY_TEMPLATES.liveSummary);
 	});
 
-	it("开播、正在直播、下播的 0.12 默认本来就是今天的默认,改写不动它们", () => {
+	it("0.12 开播、正在直播、下播的占位符仍有效，迁移保留原文", () => {
 		const zero = {
 			liveStart: "{name} 开播啦，当前粉丝数：{follower}",
 			liveStreaming: "{name} 正在直播，已播 {time}，累计观看：{watched}",
 			liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 		};
 		expect(templatesOf(rewriteGlobalLivePlaceholders(globalsOf(zero)))).toEqual(zero);
-		expect(zero).toEqual({
-			liveStart: FACTORY_TEMPLATES.liveStart,
-			liveStreaming: FACTORY_TEMPLATES.liveStreaming,
-			liveEnd: FACTORY_TEMPLATES.liveEnd,
-		});
 	});
 });
 

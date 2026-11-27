@@ -29,6 +29,10 @@
 			"subscription": {
 				"label": "Weibo",
 				"creatorNoun": "投稿者",
+				"postTemplates": {
+					"post": "{name}がWeiboに投稿しました",
+					"postVideo": "{name}がWeiboに動画を投稿しました"
+				},
 				"postNoun": "投稿",
 				"externalIdNoun": "UID"
 			}

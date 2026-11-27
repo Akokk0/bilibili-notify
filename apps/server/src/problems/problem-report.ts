@@ -19,6 +19,7 @@ export interface ProblemReport {
 	connectionId?: string;
 	code: string;
 	message: string;
+	warning?: boolean;
 	recoveryMessage?: string;
 	notify?: boolean;
 }
@@ -85,6 +86,10 @@ export function parseProblemReport(report: unknown): Result<ProblemReport> {
 	if (message.trim() === "") {
 		return fail("invalid", t("problem.report.issue.blank", { cell: "message" }));
 	}
+	const warning = raw.warning;
+	if (warning !== undefined && typeof warning !== "boolean") {
+		return fail("invalid", t("problem.report.issue.notBoolean", { cell: "warning" }));
+	}
 	const recoveryMessage = raw.recoveryMessage;
 	if (recoveryMessage !== undefined && typeof recoveryMessage !== "string") {
 		return fail("invalid", t("problem.report.issue.notString", { cell: "recoveryMessage" }));
@@ -97,6 +102,7 @@ export function parseProblemReport(report: unknown): Result<ProblemReport> {
 		...(keys.connectionId === undefined ? {} : { connectionId: keys.connectionId }),
 		code: keys.code,
 		message,
+		...(warning === undefined ? {} : { warning }),
 		...(recoveryMessage === undefined ? {} : { recoveryMessage }),
 		...(keys.notify === undefined ? {} : { notify: keys.notify }),
 	});

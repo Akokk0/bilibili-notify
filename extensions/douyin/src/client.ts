@@ -8,7 +8,8 @@ import {
 	type Result,
 } from "@bilibili-notify/extension";
 import { DEFAULT_ENV, getVerifyFp, signWebUrl } from "abogus";
-import { dict, sign, str, trusted, userAgent, WEB } from "./web";
+import { liveOrigin, roomSocketUrl } from "./live-socket";
+import { dict, retryAfter, sign, str, trusted, userAgent, WEB } from "./web";
 
 type Session = {
 	credentials(url: URL): string;
@@ -53,11 +54,6 @@ const searchEnvironment = {
 	effective_type: "4g",
 	round_trip_time: "50",
 };
-function retryAfter(header: string | null) {
-	if (!header) return 60000;
-	const n = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
-	return Number.isFinite(n) ? Math.max(1000, n) : 60000;
-}
 function challenge(h: Headers, d: Record<string, unknown>, body: string) {
 	const raw = h.get("bdturing-verify") ?? h.get("x-vc-bdturing-parameters");
 	if (raw?.trim()) {
@@ -402,9 +398,25 @@ export function createDouyinClient(ctx: ExtensionContext, auth: Session) {
 					enter_from: "web_share_link",
 				},
 				s,
-				"https://live.douyin.com",
-				`https://live.douyin.com/${encodeURIComponent(web_rid)}`,
+				liveOrigin,
+				`${liveOrigin}/${encodeURIComponent(web_rid)}`,
 			),
+		openLiveSocket(roomId: string, viewerId: string, signal: AbortSignal) {
+			sameSession();
+			if (signal.aborted || ctx.signal.aborted) return fail("unavailable", message("cancelled"));
+			if (sessionScope.gate) return sessionScope.gate.err;
+			const url = roomSocketUrl(roomId, viewerId);
+			const cookie = auth.credentials(new URL(url.pathname, `https://${url.hostname}`));
+			return ctx.http.websocket(url, {
+				bare: true,
+				signal,
+				headers: {
+					...(cookie && { Cookie: cookie }),
+					Origin: liveOrigin,
+					"User-Agent": userAgent,
+				},
+			});
+		},
 		detail: (id: string, s: AbortSignal) =>
 			call("detail", "/aweme/v1/web/aweme/detail/", { aweme_id: id }, s, WEB, `${WEB}/video/${id}`),
 	};

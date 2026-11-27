@@ -303,7 +303,7 @@ describe("parseExtensionManifest —— 当前新清单", () => {
 	});
 
 	it.each([
-		["未知特性", ["viewerChat"], "supportedFeatures"],
+		["未知特性", ["superchat"], "supportedFeatures"],
 		["重复特性", ["post", "post"], "supportedFeatures"],
 		["周期直播缺开播", ["liveStreaming", "liveEnd"], "supportedFeatures"],
 		["周期直播缺下播", ["liveStreaming", "liveStart"], "supportedFeatures"],
@@ -1320,7 +1320,7 @@ describe("拓展 id 的命名空间", () => {
 it("全新1.0契约仍接受1/0的严格清单,拒历史v1及伪装旧v2嵌套", () => {
 	const current = currentManifest({ apiVersion: 1 });
 	expect(parseExtensionManifest(current).ok).toBe(true);
-	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 5 });
+	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 7 });
 	expect(parseExtensionManifest(historicalV1()).ok).toBe(false);
 	expect(parseExtensionManifest({ ...current, provides: ["push"] }).ok).toBe(false);
 	const oldV2 = {
@@ -1407,4 +1407,13 @@ it("reports contract incompatibility in the current language and keeps extension
 	} finally {
 		binding.dispose();
 	}
+});
+
+it("订阅源可从修订 6 起分别声明普通作品或视频的默认推送模板", () => {
+	const manifest = sub({ postTemplates: { postVideo: "{name} 的视频" } });
+	expect(parseExtensionManifest({ ...manifest, apiRevision: 6 }).ok).toBe(true);
+	expect(parseExtensionManifest({ ...manifest, apiRevision: 5 }).ok).toBe(false);
+	expect(
+		parseExtensionManifest({ ...sub({ postTemplates: { post: " " } }), apiRevision: 6 }).ok,
+	).toBe(false);
 });

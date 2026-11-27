@@ -6,6 +6,21 @@ export const userAgent = DEFAULT_ENV.userAgent;
 export const dict = (v: unknown): Record<string, unknown> =>
 	v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 export const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+export function retryAfter(header: string | null) {
+	const value = header?.trim() ?? "";
+	let delay = Number.NaN;
+	if (/^\d+$/.test(value)) delay = Number(value) * 1000;
+	else if (
+		/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*[, ]/i.test(value) &&
+		/\d{2}:\d{2}:\d{2}/.test(value)
+	) {
+		const date = / GMT$/i.test(value) ? value : `${value} GMT`;
+		delay = Date.parse(date) - Date.now();
+	}
+	return Number.isFinite(delay) ? Math.max(1000, delay) : 60_000;
+}
+
 export function trusted(url: URL, hosts: readonly string[]) {
 	return (
 		url.protocol === "https:" &&

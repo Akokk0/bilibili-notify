@@ -11,6 +11,7 @@
 	"dependencies": {
 		"@bilibili-notify/extension": "workspace:*",
 		"abogus": "2.1.1",
+		"protobufjs": "8.8.0",
 		"qrcode": "catalog:"
 	},
 	"devDependencies": {

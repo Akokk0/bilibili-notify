@@ -67,6 +67,8 @@ export interface LiveSessionInteractions {
 	readonly viewerChatCount?: number;
 	/** 发过弹幕的人数,按观众 id 去重。 */
 	readonly viewerChatSenderCount?: number;
+	/** 这一场接收的礼物件数。 */
+	readonly giftCount?: number;
 	/** 醒目留言条数。 */
 	readonly superchatCount?: number;
 	/** 币种 → 这一场的醒目留言总额(金额单位同 `SuperchatEvent.amount`)。 */
@@ -168,14 +170,15 @@ export type LiveSessionChange =
 	  };
 
 /**
- * 来源经 `reportLiveInteraction(externalId, report)` 上报的观众互动:形状是对应事件去掉 `subscriptionId`
- * (订阅 id 来源不知道,核心按身份展开成每条订阅一份时补上)。四种:特别弹幕、特别进场、醒目留言、会员。
+ * 来源经 `reportLiveInteraction(externalId, report)` 上报观众互动，核心按来源和外部 id 找到对应订阅。
+ * 礼物报告只带件数。
  *
  * `fallbackText`:出不了卡时发的那句;来源给了就用它(平台自己的叫法由来源拼好),没给就用核心字典里一句中性的。
  */
 export type LiveInteractionReport =
 	| ({ kind: "viewerChat" } & Omit<ViewerChatEvent, "subscriptionId">)
 	| ({ kind: "viewerEnter" } & Omit<ViewerEnterEvent, "subscriptionId">)
+	| { kind: "gift"; count: number }
 	| ({ kind: "superchat" } & Omit<SuperchatEvent, "subscriptionId"> & {
 				fallbackText?: string;
 			})

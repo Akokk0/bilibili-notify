@@ -206,6 +206,22 @@ export const ExtensionLiveSignalReportSchema = z.discriminatedUnion("kind", [
 	ExtensionLiveEndSchema,
 ]);
 
+const ExtensionViewerChatSchema = z.strictObject({
+	kind: z.literal("viewerChat"),
+	viewer: z.strictObject({ id: ExternalIdSchema, name: NameSchema }),
+	text: truncatingText(1024).min(1),
+});
+
+const ExtensionGiftSchema = z.strictObject({
+	kind: z.literal("gift"),
+	count: z.number().int().positive(),
+});
+
+export const ExtensionLiveInteractionReportSchema = z.discriminatedUnion("kind", [
+	ExtensionViewerChatSchema,
+	ExtensionGiftSchema,
+]);
+
 export const ExtensionCreatorProfileReportSchema = z.strictObject({
 	name: NameSchema,
 	displayId: z.string().max(EXTERNAL_ID_MAX).optional(),
@@ -272,6 +288,7 @@ export const ExtensionSourceHealthSchema = z.strictObject({
 const REPORT_SCHEMAS = {
 	post: ExtensionPostReportSchema,
 	live: ExtensionLiveSignalReportSchema,
+	interaction: ExtensionLiveInteractionReportSchema,
 	profile: ExtensionCreatorProfileReportSchema,
 } as const;
 
@@ -586,7 +603,15 @@ export function checkExtensionReport<K extends ExtensionReportKind>(
 			return rejected([reportIssue([], "type")]);
 		}
 		const schema: z.ZodType | undefined =
-			kind === "live" ? liveSchemaFor(raw) : (REPORT_SCHEMAS[kind] as z.ZodObject);
+			kind === "live"
+				? liveSchemaFor(raw)
+				: kind === "interaction"
+					? raw.kind === "viewerChat"
+						? ExtensionViewerChatSchema
+						: raw.kind === "gift"
+							? ExtensionGiftSchema
+							: undefined
+					: REPORT_SCHEMAS[kind];
 		if (schema === undefined) {
 			return rejected([reportIssue(["kind"], "invalid")]);
 		}

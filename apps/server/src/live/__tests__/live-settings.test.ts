@@ -136,3 +136,34 @@ describe("createLiveSettingsCache", () => {
 		cache.dispose();
 	});
 });
+
+it("直播出厂模板取自当前来源，保留用户的全局及订阅覆盖", () => {
+	const bus = createNodeMessageBus();
+	const globals = makeDefaultGlobalSettings();
+	const sub = makeEmptySubscription({
+		id: "s1",
+		identity: { sourceKey: "acme", externalId: "71" },
+	});
+	const descriptor = {
+		label: "test",
+		supportedFeatures: [],
+		liveTemplates: {
+			liveStart: "from source",
+			liveStreaming: "source streaming",
+			liveEnd: "source end",
+		},
+	};
+	globals.defaults.templates.liveEnd = "custom global";
+	sub.overrides.templates = { liveStreaming: "custom subscription" };
+	const cache = createLiveSettingsCache({
+		bus,
+		getGlobals: () => globals,
+		source: () => descriptor,
+	});
+	expect(cache.of(sub).customLiveMsg).toEqual({
+		customLiveStart: "from source",
+		customLiveStreaming: "custom subscription",
+		customLiveEnd: "custom global",
+	});
+	cache.dispose();
+});

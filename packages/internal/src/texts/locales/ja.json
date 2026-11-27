@@ -1,4 +1,6 @@
 {
+	"image.live.lastHeatScore": "終了前の配信人気度：{value}",
+	"image.live.lastVipViewers": "終了前のVIP視聴者数：{value}",
 	"image.live.heatScore": "配信の人気度：{value}",
 	"image.live.vipViewers": "VIP視聴者数：{value}",
 	"internal.live.heatScore": "配信の人気度",

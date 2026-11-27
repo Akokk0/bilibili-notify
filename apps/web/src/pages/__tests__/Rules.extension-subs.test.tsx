@@ -52,6 +52,7 @@ function source(supportedFeatures: Declared): SourceEntry {
 			shortLabel: "抖音",
 			color: "#161823",
 			postNoun: "作品",
+			postTemplates: { postVideo: "{name}发布了新的抖音视频" },
 			supportedFeatures,
 		},
 	};
@@ -69,6 +70,7 @@ const BILI: Subscription = makeEmptySubscription({ sourceKey: "bilibili", extern
 
 function globals(): GlobalSettings {
 	const defaults = makeDefaults();
+	delete defaults.templates.postVideo;
 	defaults.schedule.quietHours = [{ start: 23, end: 7 }];
 	return { logging: {}, master: {}, defaults, ai: makeAi() } as unknown as GlobalSettings;
 }
@@ -309,6 +311,8 @@ describe("高级规则 × 拓展订阅:存与清", () => {
 		fireEvent.click(await screen.findByText("抖音乙"));
 		await screen.findByText("抖音乙 · 覆盖项");
 		pickSection(container, "作品消息");
+		expect(await screen.findByDisplayValue("新作品!")).toBeTruthy();
+		expect(screen.getByDisplayValue("{name}发布了新的抖音视频")).toBeTruthy();
 		fireEvent.click(await screen.findByLabelText("覆盖:作品消息覆盖"));
 		await waitFor(() => expect(diffCodes().length).toBeGreaterThan(0));
 

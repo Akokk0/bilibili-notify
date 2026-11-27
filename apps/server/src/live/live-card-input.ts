@@ -18,6 +18,7 @@ export interface LiveCardInputFromDetailsOptions {
 	status: LiveCardStatus;
 	/** 开播时刻(毫秒);没有、或不是有效时刻就不给卡。 */
 	startedAt?: number;
+	endedAt?: number;
 	/** 卡上的「当前粉丝数」。 */
 	followers?: number;
 	/** 本场粉丝数变化(下播)。 */
@@ -53,6 +54,7 @@ export function liveCardInputFromDetails(
 		description: details.description,
 		cover: details.cover,
 		startedAt: isoOfMillis(opts.startedAt),
+		endedAt: isoOfMillis(opts.endedAt),
 		currentViewers: details.currentViewers,
 		heatScore: details.heatScore,
 		vipViewers: details.vipViewers,

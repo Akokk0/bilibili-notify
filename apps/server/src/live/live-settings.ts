@@ -14,6 +14,7 @@ import {
 	type MessageKindLayout,
 	resolve,
 	resolveTemplates,
+	type SourceDescriptor,
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
@@ -139,13 +140,13 @@ export function liveSettingsOf(
 	sub: Subscription,
 	globals: GlobalSettings,
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
+	liveTemplates?: SourceDescriptor["liveTemplates"],
 ): LiveSettings {
 	// 文字模板设置里只存主人改过的:缺的此刻按当前语言取出厂,不写盘(换语言立即生效)。
-	const templates = resolveTemplates(
-		sub,
-		globals.defaults,
-		templateDefaultsFor(textSettingsOf(globals).locale),
-	);
+	const templates = resolveTemplates(sub, globals.defaults, {
+		...templateDefaultsFor(textSettingsOf(globals).locale),
+		...liveTemplates,
+	});
 	return {
 		aiOverride: resolveAiOverride(sub, globals.ai, builtinPersonasOf(globals)),
 		// 特性布尔 = features.X(source-side gate)。routing 由推送层 PushRouter 在每个锚点发出
@@ -227,18 +228,22 @@ export interface LiveSettingsCache extends Disposable {
 export function createLiveSettingsCache(opts: {
 	bus: MessageBus;
 	getGlobals: () => GlobalSettings;
+	source?(sub: Subscription): SourceDescriptor | undefined;
 }): LiveSettingsCache {
-	let bySubscription = new WeakMap<Subscription, LiveSettings>();
+	let bySubscription = new WeakMap<
+		Subscription,
+		{ descriptor?: SourceDescriptor; settings: LiveSettings }
+	>();
 	const subscription = opts.bus.on("config-changed", ({ scope }) => {
 		if (scope === "globals") bySubscription = new WeakMap();
 	});
 	return {
 		of(sub) {
-			let settings = bySubscription.get(sub);
-			if (!settings) {
-				settings = liveSettingsOf(sub, opts.getGlobals());
-				bySubscription.set(sub, settings);
-			}
+			const descriptor = opts.source?.(sub);
+			const cached = bySubscription.get(sub);
+			if (cached && cached.descriptor === descriptor) return cached.settings;
+			const settings = liveSettingsOf(sub, opts.getGlobals(), undefined, descriptor?.liveTemplates);
+			bySubscription.set(sub, { descriptor, settings });
 			return settings;
 		},
 		dispose() {

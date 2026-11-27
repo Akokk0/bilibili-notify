@@ -156,9 +156,8 @@ describe("十二颗按钮", () => {
 	});
 
 	/** 清单 `events` 声明了开播 + 下播,宿主据此推出周期直播并要求 `fetchLiveStatus`。 */
-	it("来源登记了契约成员,外加故意给宿主摘的 auth 与 liveInteractions", () => {
+	it("来源登记了契约成员，另带宿主会摘掉的 liveInteractions", () => {
 		expect(bootFakeSource().members()).toEqual([
-			"auth",
 			"fetchLiveStatus",
 			"fetchProfile",
 			"health",

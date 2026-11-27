@@ -3,6 +3,7 @@
 //   swift render-icon.swift
 //
 // 在本目录(docs/images/)下跑,只要 Command Line Tools。产出:
+//   ../../packages/image/src/project-icon.json    直播卡占位封面的小电视前景
 //   logo-squircle.png                              README 用,512 × 512
 //   ../../apps/desktop/src-tauri/icons/icon.icns   macOS —— 10 个切片
 //   ../../apps/desktop/src-tauri/icons/icon.ico    Windows —— 6 个切片,PNG 编码
@@ -281,6 +282,21 @@ func png(_ image: CGImage) -> Data {
 
 let fm = FileManager.default
 guard fm.fileExists(atPath: desktopDir) else { fail("找不到 \(desktopDir)") }
+
+// 直播卡只取小电视的透明前景，颜色由卡片与占位文字一起设置。
+do {
+	let size = 384
+	guard let ctx = CGContext(
+		data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+		space: CGColorSpace(name: CGColorSpace.sRGB)!,
+		bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+	) else { fail("建不出直播卡图标画布") }
+	ctx.interpolationQuality = .high
+	ctx.draw(foreground, in: CGRect(x: 0, y: 0, width: size, height: size))
+	guard let mask = ctx.makeImage() else { fail("导出直播卡图标失败") }
+	let json = "{\n\t\"maskBase64\": \"\(png(mask).base64EncodedString())\"\n}\n"
+	try json.write(toFile: "../../packages/image/src/project-icon.json", atomically: true, encoding: .utf8)
+}
 
 // ---- README ---------------------------------------------------------------
 try png(render(side: readmeSize)).write(to: URL(fileURLWithPath: readmeTarget))

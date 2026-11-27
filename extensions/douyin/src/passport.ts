@@ -11,6 +11,7 @@ import {
 	dict,
 	homepageSignature,
 	LOGIN,
+	retryAfter,
 	sign,
 	str,
 	trusted,
@@ -210,13 +211,18 @@ export function passport(ctx: ExtensionContext, jar = ctx.createCookieSession())
 			"x-tt-passport-verify-portrait": portrait,
 			"x-tt-passport-csrf-token": cookieValue(jar.header(url.href), "passport_csrf_token") ?? csrf,
 		};
-		return json(
-			await request(url, signal, {
-				headers,
-				method: post ? "POST" : "GET",
-				...(post ? { body: new URLSearchParams(fields).toString() } : {}),
-			}),
-		);
+		const response = await request(url, signal, {
+			headers,
+			method: post ? "POST" : "GET",
+			...(post ? { body: new URLSearchParams(fields).toString() } : {}),
+		});
+		return {
+			result: json(response),
+			retryAfterMs:
+				response.ok && response.status === 429
+					? retryAfter(response.headers.get("retry-after"))
+					: undefined,
+		};
 	}
 	return { prepare, account, exchange, sso, jar };
 }

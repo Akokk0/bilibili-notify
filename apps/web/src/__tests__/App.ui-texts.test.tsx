@@ -432,9 +432,7 @@ it("WS globals 更新与 hydrate 四语重取时整页重画，默认模板跟�
 	fireEvent.click((await screen.findAllByText("直播消息版式"))[0]);
 	const input = (key: string) =>
 		document.querySelector(`[data-code="templates.${key}"] textarea`) as HTMLTextAreaElement;
-	await waitFor(() =>
-		expect(input("liveStart")?.value).toBe("{name} 开播啦，当前粉丝数：{follower}"),
-	);
+	await waitFor(() => expect(input("liveStart")?.value).toBe("{name} 开播啦"));
 	let edited = input("liveStart");
 	fireEvent.change(edited, { target: { value: "Original unsaved template 原文: {name}" } });
 	await waitFor(() => expect(socket).toBeDefined());
@@ -451,7 +449,7 @@ it("WS globals 更新与 hydrate 四语重取时整页重画，默认模板跟�
 			"config-changed",
 			"Stream ended",
 			"Live starts",
-			"{name} ended the stream. Duration: {time}. Follower change: {follower_change}",
+			"{name} ended the stream[[. Duration: {time}]]",
 		],
 		[
 			"ja",
@@ -459,24 +457,10 @@ it("WS globals 更新与 hydrate 四语重取时整页重画，默认模板跟�
 			"config-changed",
 			"配信終了",
 			"配信開始",
-			"{name}の配信が終了しました。配信時間：{time}、フォロワー増減：{follower_change}",
+			"{name}が配信を終了しました[[。配信時間：{time}]]",
 		],
-		[
-			"zh-TW",
-			"plain",
-			"hydrate",
-			"下播",
-			"開播",
-			"{name} 已結束直播，本次直播時長 {time}，粉絲增減 {follower_change}",
-		],
-		[
-			"zh-CN",
-			"maid",
-			"config-changed",
-			"下播",
-			"开播",
-			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
-		],
+		["zh-TW", "plain", "hydrate", "下播", "開播", "{name} 下播了[[，本次直播了 {time}]]"],
+		["zh-CN", "maid", "config-changed", "下播", "开播", "{name} 下播啦[[，本次直播了 {time}]]"],
 	] as const) {
 		const previousReads = vi
 			.mocked(fetch)

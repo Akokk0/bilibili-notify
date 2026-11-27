@@ -235,7 +235,7 @@ const SOURCE_ROWS = {
 	fetchProfile: driven(TITLE.fetchProfile),
 	fetchLiveStatus: driven(TITLE.fetchLiveStatus),
 	liveInteractions: closed(
-		"这一版不开直播互动类特性:1.0 的拓展声明不了会员与直播互动(ADR-0021 决策 38 下 09-28 的 🔗),契约「订阅源」表里 `liveInteractions` 一行写「不开」。核心没有读口能看见拓展塞进来的这一格,证据只有单测(假源在运行时故意塞了它)。",
+		"头像和会员徽章的懒取方法由核心独占。修订号 7 开放的 reportLiveInteraction 是另一条通道，只上报弹幕和礼物件数。",
 		{
 			file: EXTENSION_SOURCE_TEST,
 			title: "旧小号仍不开放 auth；其余成员照既有白名单",
@@ -289,6 +289,12 @@ const SUBSCRIPTION_CELL_ROWS = {
 		file: "apps/server/src/routes/__tests__/sources-list-route.test.ts",
 		it: "拓展清单写了的格原样下发(图标、搜人收的输入都在),自带皮肤的包内路径不下发",
 	},
+	postTemplates: driven(TITLE.subscriptionCells),
+	liveTemplates: {
+		state: "elsewhere",
+		file: "apps/server/src/routes/__tests__/sources-list-route.test.ts",
+		it: "拓展清单写了的格原样下发(图标、搜人收的输入都在),自带皮肤的包内路径不下发",
+	},
 	cardSkin: closed(
 		"宿主今天不读这一格:它是装包那头的事(自带卡片皮肤,ADR-0019 决策 13),面板视图里剥掉、服务端没有读者,等「自带皮肤」那一步。假源的清单也没写它。证据只有清单收下它的单测,没有单测钉「宿主不读」。",
 		{ file: MANIFEST_TEST, title: "cardSkin %s —— 收下" },
@@ -306,6 +312,11 @@ const SOURCE_CONTEXT_ROWS = {
 	onSubscriptionsChanged: driven(TITLE.subscriptions),
 	reportPost: driven(TITLE.reportPost),
 	reportLive: driven(TITLE.reportLive),
+	reportLiveInteraction: {
+		state: "elsewhere",
+		file: EXTENSION_SOURCE_TEST,
+		it: "按清单收同一来源的弹幕和礼物数，拒收无声明、异常数据与停用后的上报",
+	},
 	reportProfile: driven(TITLE.reportProfile),
 	reportProblem: driven(TITLE.problems),
 	resolveProblem: driven(TITLE.problems),
@@ -923,6 +934,8 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			"externalIdNoun",
 			"searchAccepts",
 			"externalIdRegex",
+			"liveTemplates",
+			"postTemplates",
 			"supportedFeatures",
 		]) {
 			expect(written[cell], `清单里应写了 ${cell}`).toBeDefined();
@@ -935,6 +948,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		drove(
 			"SubscriptionCell",
 			"label",
+			"postTemplates",
 			"shortLabel",
 			"color",
 			"icon",
@@ -1014,7 +1028,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 	// 验红:`extensions/context.ts` 登记适配器时不摘 `listAddressCandidates`,`addresses` 那一段红;
 	// `extension-source.ts` 按展开取成员(不按成员表),`auth` 那一段红。
 	step(TITLE.closedPorts, async () => {
-		// 订阅源:假源在运行时塞了 `auth`,宿主没认,这个来源「不用登录」。
+		// 假源没有提供登录能力。
 		expect(await failed(await api(`/api/sources/${FAKE}/auth`))).toMatchObject({
 			status: 400,
 			body: { code: "unsupported", message: "这个来源不用登录" },
@@ -1035,7 +1049,6 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			status: 400,
 			body: { code: "unsupported" },
 		});
-		// This revision-zero fixture verifies compatibility with the earlier source API.
 		drove("PlatformAdapter", "listAddressCandidates", "connectionAuth", "fetchDestinationStatus");
 	});
 
@@ -1614,17 +1627,17 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		it("七张行表的行数,与走通 / 不开 / 宿主填各有几行(提交 9 抄进 architecture)", () => {
 			const size = (table: keyof Tables) => Object.keys(TABLES[table]).length;
 			expect(size("Source")).toBe(11);
-			expect(size("SubscriptionCell")).toBe(13);
-			expect(size("SourceContext")).toBe(7);
+			expect(size("SubscriptionCell")).toBe(15);
+			expect(size("SourceContext")).toBe(8);
 			expect(size("PlatformAdapter")).toBe(15);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
 			expect(size("IntegrationContext")).toBe(14);
-			expect(entries).toHaveLength(68);
+			expect(entries).toHaveLength(71);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 本文件驱动39行，另有19行由引用测试管着（含auth、featureHints、displayIdNoun）；不开9行，宿主填1行。
-			expect(of("driven")).toHaveLength(39);
-			expect(of("elsewhere")).toHaveLength(19);
+			// 本文件驱动40行，引用测试覆盖21行，不开9行，宿主填1行。
+			expect(of("driven")).toHaveLength(40);
+			expect(of("elsewhere")).toHaveLength(21);
 			expect(of("closed")).toHaveLength(9);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(

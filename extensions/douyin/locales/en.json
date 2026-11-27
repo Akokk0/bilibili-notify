@@ -34,16 +34,26 @@
 	"error.posts": "The post list was incomplete. The next check will start from the latest page.",
 	"error.live": "Could not confirm the live room’s status.",
 	"error.poll": "The check did not finish. It will run again at the next scheduled interval.",
+	"live.socketUnavailable": "The live room connection is unavailable. BN is checking for stream starts and ends by polling.",
 	"$manifest": {
 		"name": "Douyin",
 		"description": "Follow Douyin creators’ videos, photo posts and live streams, and preview works shared in group chats.",
 		"contributes": {
 			"subscription": {
 				"label": "Douyin",
+				"postTemplates": {
+					"post": "{name} shared a new post on Douyin",
+					"postVideo": "{name} shared a new video on Douyin"
+				},
 				"postNoun": "post",
 				"creatorNoun": "creator",
 				"externalIdNoun": "ID",
-				"displayIdNoun": "Handle"
+				"displayIdNoun": "Handle",
+				"liveTemplates": {
+					"liveStart": "{name} went live[[. Current followers: {follower}]]",
+					"liveStreaming": "{name} is live[[. Duration: {time}]]",
+					"liveEnd": "{name} ended the stream[[. Duration: {time}]][[. Follower change: {follower_change}]]"
+				}
 			}
 		}
 	},

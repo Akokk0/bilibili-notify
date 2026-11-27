@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考」。拓展联调采用[ADR-0045](docs/adr/0045-bn-runtime-cli.md)、[ADR-0046](docs/adr/0046-bundled-npm-distribution.md)：`@bilibili-notify/bn`自带正式/开发宿主成品，create-bn-ext生成拓展源码，由BN手动挂载、监听和重载，生产才打包。实施与发行状态见第6期计划。
+Bilibili-Notify monorepo 的工作指引。应用入口、全量检查和分支见下文。拓展开发由 `create-bn-ext` 创建工程，使用 `@bilibili-notify/bn@alpha dev` 挂载并监听源码。生产按拓展契约构建 ZIP。[拓展作者指南](packages/extension/DEVELOPMENT.md)
 
 ## 项目
 
@@ -14,6 +14,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 ```bash
 vp install
+vp run gate            # 全量检查、生成产物、类型检查与测试
 vp run build           # 全 workspace 拓扑序构建
 vp run typecheck       # 全 workspace tsc --noEmit
 vp test                # vitest,全包;定向跑用 vp test <路径> --reporter=dot(只出点和汇总)。别用 vpx vitest:根不声明 vitest,会 dlx 一份野的 runner
@@ -50,7 +51,7 @@ tools/        独立开发工具(拓展创建器/发布器),不被宿主加载
 ## 分支
 
 - `dev` —— 活跃开发主干(独立端)。
-- `main` —— GitHub 默认分支,发布快照。不触发任何发版。
+- `main` —— GitHub 默认分支和发布快照，从 `dev` 经 PR 同步。各产物由发行标签或各自的工作流发布。
 - `koishi-astrbot-maintenance` —— Koishi 插件(`koishi/`)与 AstrBot 插件(`astrbot/`)的维护线;两端各自的发版 workflow 只认这条分支,dev 不含这两个目录。
 
 独立端由 `v<VERSION>` tag 触发 `npm-release.yml`。同一次门禁通过后，Docker、Desktop、npm 和应用内更新并行发布。版本同步、预检与产物验收见 [构建与发布参考](docs/agents/build-release.md)。

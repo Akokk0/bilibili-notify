@@ -38,7 +38,7 @@ import { pushSuperchat } from "./superchat.js";
  * 特别关注名单上有没有这位观众(按 `viewer.id` 整串认)。开关与名单两样都要;推什么交给特别弹幕 / 特别进场的装配
  * ({@link pushViewerChat} / {@link pushViewerEnter}),发送绑到这条订阅上。
  *
- * 四种互动都从这里过:`viewerChat`、`viewerEnter`、`superchat`、`membership`。会员按事件带来的 `program`
+ * 礼物直接累计到当前场次。会员按事件带来的 `program`
  * 在**这条订阅所属来源**的描述符里找体系、再按 `tier.key` 找档;体系 id 全局唯一、档 key 只在体系内唯一。
  *
  * **回顾的弹幕收集归核心**:场次开了登记,这一场里每条弹幕记一条(条件同 {@link wantsLiveEndExtras}:下播开着、
@@ -235,6 +235,10 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 					subscriptionId,
 					kind: report.kind,
 				});
+				return;
+			}
+			if (report.kind === "gift") {
+				opts.sessions.noteInteraction(subscriptionId, report);
 				return;
 			}
 			const settings = opts.settings(sub);

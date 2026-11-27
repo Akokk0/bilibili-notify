@@ -48,10 +48,13 @@ describe("出厂文案读口:按语言打底", () => {
 });
 
 describe("出厂文案读口:真字典", () => {
-	it("templateDefaultsFor(zh-CN) 的文字与搬家前的 DEFAULT_TEMPLATES 逐字相等(非文字的格已收出去)", () => {
+	it("直播缺省文字只描述状态，其余模板仍沿用原文", () => {
 		const { wordcloudStopWords: _w, membership, ...texts } = before.templates;
 		expect(templateDefaultsFor("zh-CN")).toEqual({
 			...texts,
+			liveStart: "{name} 开播啦",
+			liveStreaming: "{name} 正在直播[[，已播 {time}]]",
+			liveEnd: "{name} 下播啦[[，本次直播了 {time}]]",
 			membership: membership.guard.default.template,
 		});
 	});
@@ -110,9 +113,9 @@ it("keeps the two model prompt fields Chinese even when human dictionaries offer
 
 it("provides localized factory personas and templates while retaining custom template text", () => {
 	for (const [locale, liveStart, label, name] of [
-		["en", "{name} is live. Current followers: {follower}", "Gentle Maid", "Ling"],
-		["ja", "{name}が配信を開始しました。現在のフォロワー数：{follower}", "優しいメイド", "アヤ"],
-		["zh-TW", "{name} 開播了，目前粉絲數：{follower}", "溫柔女僕", "小綾"],
+		["en", "{name} went live", "Gentle Maid", "Ling"],
+		["ja", "{name}が配信を開始しました", "優しいメイド", "アヤ"],
+		["zh-TW", "{name} 開播了", "溫柔女僕", "小綾"],
 	] as const) {
 		const defaults = templateDefaultsFor(locale);
 		expect(defaults.liveStart).toBe(liveStart);

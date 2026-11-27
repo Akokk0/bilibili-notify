@@ -1,7 +1,6 @@
 # 应用内自主升级
 
-独立端(Docker + Desktop)可以在应用内换版本,不必重拉镜像或重下安装包。
-(Koishi / AstrBot 插件不在范围内 —— 两端已暂停,维护线见 `build-release.md`。)
+Docker、桌面应用与 npm 的 `bn web` 支持应用内换版。系统的「维护」页提供更新渠道、检查更新和版本选择。Docker 应用更新后由容器重启策略拉起，直接在终端运行的 `bn web` 会提示手动重启。`bn dev` 随 npm 包更新。[部署与配置](../../apps/README.md)
 
 ## 一句话机制
 

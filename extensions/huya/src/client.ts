@@ -195,6 +195,12 @@ export function createClient(ctx: ExtensionContext) {
 			timer.dispose();
 		}
 	}
-	return { read, json, vipViewers, unavailable };
+	return {
+		read,
+		json,
+		vipViewers,
+		unavailable,
+		needsRoomProbe: () => Boolean(cooldown.blocked()) || cooldown.probing(),
+	};
 }
 export type HuyaClient = ReturnType<typeof createClient>;

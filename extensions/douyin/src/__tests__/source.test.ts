@@ -35,6 +35,7 @@ function fixture() {
 		room: vi.fn((_webRid: string, _roomId: string, _signal: AbortSignal) =>
 			result({ data: { data: [] } }),
 		),
+		openLiveSocket: () => fail("unavailable", "no socket in this fixture"),
 		expand: vi.fn(async (url: URL, _signal: AbortSignal) => ok({ url })),
 	};
 	let tick: () => void | Promise<void> = () => {};
@@ -297,6 +298,13 @@ it("observes a live session once, retains it through uncertainty and distinguish
 		isLive: true,
 		details: { url: `https://live.douyin.com/${webRid}` },
 	});
+	expect(context.reportProblem).toHaveBeenCalledWith({
+		externalId: secUid,
+		code: "douyin_live_socket",
+		message: "live.socketUnavailable",
+		warning: true,
+		notify: false,
+	});
 	expect(client.profile).toHaveBeenCalledTimes(1);
 	expect(await source.fetchLiveStatus(identity, signal)).toMatchObject({
 		ok: true,
@@ -334,6 +342,54 @@ it("observes a live session once, retains it through uncertainty and distinguish
 		"status",
 	]);
 	expect(client.posts).not.toHaveBeenCalled();
+});
+
+it("uses a confirmed end even when another request refreshed the same live room", async () => {
+	const { source, start, tick, client, setSubs, context, result } = fixture();
+	const roomId = "7490000000000000001";
+	const roomReply = (status: number, title: string) =>
+		result({ data: { data: [{ id_str: roomId, status, title, start_time: 1700000000 }] } });
+	client.profile.mockImplementation(() =>
+		result({
+			user: {
+				...user,
+				live_status: 1,
+				room_id_str: roomId,
+				room_data: { owner: { web_rid: "4387654" } },
+			},
+		}),
+	);
+	client.room.mockImplementation(() => roomReply(2, "开播"));
+	setSubs([{ externalId: secUid, features: new Set(["liveEnd"]), monitorsLive: true }]);
+	await start();
+
+	type RoomReply = Awaited<ReturnType<typeof result>>;
+	let refresh!: (reply: RoomReply) => void;
+	let ended!: (reply: RoomReply) => void;
+	client.room
+		.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					refresh = resolve;
+				}),
+		)
+		.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					ended = resolve;
+				}),
+		);
+	const poll = tick();
+	await vi.waitFor(() => expect(client.room).toHaveBeenCalledTimes(2));
+	const status = source.fetchLiveStatus({ sourceKey: "douyin", externalId: secUid }, signal);
+	await vi.waitFor(() => expect(client.room).toHaveBeenCalledTimes(3));
+	refresh(await roomReply(2, "更新标题"));
+	await poll;
+	ended(await roomReply(4, "下播"));
+
+	expect(await status).toEqual({ ok: true, kind: "offline" });
+	expect(context.reportLive.mock.calls.map((call) => call[1].kind)).toEqual(["status", "end"]);
+	await source.stop();
 });
 
 it.each([

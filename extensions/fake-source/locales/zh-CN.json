@@ -14,9 +14,18 @@
 		"contributes": {
 			"subscription": {
 				"label": "假源",
+				"postTemplates": {
+					"post": "{name}发布了一条{postNoun}",
+					"postVideo": "{name}发布了一条视频{postNoun}"
+				},
 				"postNoun": "假帖",
 				"creatorNoun": "假主播",
-				"externalIdNoun": "假号"
+				"externalIdNoun": "假号",
+				"liveTemplates": {
+					"liveStart": "{name} 开播啦[[，当前粉丝数：{follower}]]",
+					"liveStreaming": "{name} 正在直播[[，已播 {time}]][[，累计观看：{watched}]]",
+					"liveEnd": "{name} 下播啦[[，本次直播了 {time}]][[，粉丝变化 {follower_change}]]"
+				}
 			},
 			"push": {
 				"label": "假平台",

@@ -4,6 +4,8 @@
 
 ## 工具链
 
+Node 版本见 [`.node-version`](../../.node-version)。Vite+ 与 pnpm 分别读取根 `package.json` 的 `devDependencies.vite-plus` 和 `packageManager`。
+
 - **vp pack** —— 每个包只构建成 ESM(`.mjs`)+ 声明文件(`.d.mts`);消费方全是 ESM,CJS 产物随 koishi 插件一起退场
 - **Biome** —— linter + formatter(tab 缩进,100 列)
 - **Lefthook** —— `vp install` 时经 prepare 钩子自动装。pre-commit 对暂存的 `*.ts/.js/.mjs/.json` 跑 `biome check --staged --write`;commit-msg 跑 commitlint(强制 conventional-commits)
@@ -19,6 +21,7 @@ CI、本体、开发工具和官方拓展发行都调用 `.github/workflows/gate
 | `ci.yml` | `gate` |
 | `npm-release.yml`（本体） | 一次 `gate`，通过后并行构建 Docker、Desktop、npm 和应用内更新 |
 | `tooling-release.yml`(SDK 与创建器) | 手动触发，`gate` → `build` → 按需 `publish` |
+| `extension-release.yml`（官方拓展） | `gate` → 构建 ZIP → 发布版本资产 → 发布签名索引 |
 | `revoke-update.yml`(撤回坏版本) | **不过门禁** —— 它一行代码都不发,只把渠道清单指回一个**已经发布过**的载荷(那次发版已经过过门禁)。给一件几十秒的急事加十几分钟没有意义,而且门禁红了也不说明这次撤回有问题。 |
 
 **每条发布路径都过门禁,门禁不绿就不发。** 抽成 reusable workflow 是因为门禁是「这份代码能不能发出去」的判据 —— 各自维护的副本迟早会飘,而飘的方式一定是某条发布路径悄悄少了一项检查,且发布 workflow 还是全绿的。加新检查只改 `gate.yml` 一处。
@@ -35,7 +38,7 @@ dev 推送只修改根 `README.md`，且直接父提交已有成功门禁时，�
 
 一个**别踩**的点:
 
-- **`assert-release-ref-on-dev.sh` 不是门禁。** 它只断言 tag 指向的 commit 在 `origin/dev` 上 —— 防的是「拿旁支 commit 发版」,不保证那个 commit 是绿的。dev 上一个测试红的 commit 照样能打 tag。堵这个口子的是 `gate`。
+- `assert-release-ref-on-dev.sh` 检查发行标签指向的提交是否在 `origin/dev` 的历史上，构建与测试由 `gate` 执行。重写提交描述也会生成不同的提交。标签所指的提交若已不在 `dev` 历史里，重跑该标签会停在这道检查。
 
 ## workflow 的脚本(`.github/scripts/`)
 
@@ -46,7 +49,7 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 单主干,不按产品形态分叉。
 
 - **`dev`** —— 活跃开发主干(独立端:`packages/` + `apps/`)。
-- **`main`** —— GitHub 默认分支,发布快照。不再触发任何发版。
+- **`main`** —— GitHub 默认分支和发布快照。通过 `dev` → `main` 的 PR 合并已验证的快照，保留 `dev` 的提交历史。本体和拓展发行由各自标签触发。
 - **`koishi-astrbot-maintenance`** —— Koishi 插件(`koishi/`)与 AstrBot 插件(`astrbot/`)的维护线。两端已暂停更新,dev 不再含这两个目录;它们各自的发版 workflow(`publish.yml` 发 npm、`astrbot-release.yml` squash-push 到独立仓)只存在于这条分支、也只认这条分支。要发维护版就在这条分支上改版本号再 push。
 
 业务核心 workspace 包保持 private。`@bilibili-notify/bn` 自带正式与开发宿主，按 [ADR-0046](../adr/0046-bundled-npm-distribution.md) 与主程序同版本发行。
@@ -55,7 +58,7 @@ workflow 与 composite action 里的 `run:` 只留一两行(`\` 折行的一条�
 
 ### git tag = 唯一发布事实源
 
-独立端发布版本取自 git tag 名 `v<VERSION>`,例如 `v0.1.0-alpha.7`。源码中的独立端版本元数据保持开发占位 `0.0.0-dev`;发布 workflow 在构建前运行 `.github/scripts/shared/sync-app-version.sh`,按 tag 或手动 dry-run 输入把以下文件临时改成发布版本:
+本体发布版本取自 Git 标签 `v<VERSION>`，例如 `v1.0.0-alpha.6`。源码中的版本元数据使用开发占位 `0.0.0-dev`。发布工作流运行 `.github/scripts/shared/sync-app-version.sh`，按标签或手动预检输入同步以下文件。
 
 - `apps/server/package.json#version` —— 后端运行时 `/api/health.version` 与 Docker 镜像内版本。
 - `apps/web/package.json#version` —— 前端概览页展示。
@@ -182,13 +185,15 @@ docker build -f apps/Dockerfile -t bilibili-notify:dev .
 
 ## npm成品包
 
+`@bilibili-notify/bn`、`@bilibili-notify/extension` 和 `create-bn-ext` 已通过 npm 的 `alpha` 渠道发行，请在安装命令里显式选择 `@alpha`。npm 的 `latest` 会在首次正式发行时推进。
+
 `vp run build:bn-package`生成完整tgz，包含正式/开发两种宿主和面板，首次运行直接解包，不访问GitHub。源码构建壳不能代替此包；发布前应核对包版本、两种用途、字节数和SHA256。持久数据位于npm缓存之外；web沿既有应用内更新，dev通过更新npm包升级。使用方式见[启动器README](../../tools/bn-cli/README.md)。
 
 `npm-release.yml`从主程序tag读版本，沿共享门禁、分支守卫和版本同步构建；构建作业只读，只有tag的push发布作业获得`id-token: write`。手动dispatch仅允许dev上的dry-run，不能发布。版本包先用`bn-release-<VERSION>`标签上传，复验registry摘要后才推进预发布`alpha`或正式`latest`；发布作业跨tag串行，晋升前重读渠道。较旧tag可补齐自己的包，不倒退渠道。
 
 发行命令默认dry-run：`vp run release:bn-package --directory <候选目录> --tag v<VERSION> --dry-run`，会检查实际tgz、宿主用途/版本/入口和校验清单，不写registry。只有明确`--publish`才上传。同版本重跑先比SHA512，一致就复用，冲突拒绝覆盖；请求失败不自动重传。只重跑失败的publish作业可复用原Actions候选；重新构建若字节改变，同号将被拒绝，应使用新版本。
 
-### npm首次发行与可信发布配置
+### npm 首次发行与可信发布配置参考
 
 根目录的`npm-registry-client`别名固定npm 11.21.0，仅作为发行客户端，经`vp exec npm`执行；包管理仍由vp调用pnpm。该版本覆盖可信发布的dist-tag支持，需分别允许直接发布和管理标签，见[npm官方说明](https://docs.npmjs.com/trusted-publishers/#managing-dist-tags-with-trusted-publishing)。
 

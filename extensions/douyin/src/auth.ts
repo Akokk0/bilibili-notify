@@ -101,7 +101,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 			failure(a, t("expired"));
 			return;
 		}
-		const r = await a.session.exchange("check_qrconnect", signal(a), {
+		const { result: r, retryAfterMs } = await a.session.exchange("check_qrconnect", signal(a), {
 			token: a.token,
 			next: `${WEB}/`,
 			is_frontier: "true",
@@ -111,7 +111,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		});
 		if (!valid(a)) return;
 		if (!r.ok) {
-			later(a, 6000);
+			later(a, retryAfterMs ?? 6000);
 			return;
 		}
 		const d = dict(r.body.data),
@@ -136,7 +136,12 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 				const trace = randomBytes(4).toString("hex");
 				for (const k of ["verify_ticket", "std_verify_token", "encrypt_uid"])
 					if (str(d[k])) ctx.redact(str(d[k]));
-				const sent = await a.session.exchange("send_code", signal(a), smsFields(d, way), trace);
+				const { result: sent } = await a.session.exchange(
+					"send_code",
+					signal(a),
+					smsFields(d, way),
+					trace,
+				);
 				if (!valid(a)) return;
 				if (!sent.ok || !accepted(sent.body)) {
 					failure(a, t("sendFailed"));
@@ -273,7 +278,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		const prepared = await a.session.prepare(signal(a));
 		if (!valid(a)) return fail("conflict", t("expired"));
 		if (!prepared.ok) return failure(a, prepared.message);
-		const r = await a.session.exchange("get_qrcode", signal(a), {
+		const { result: r } = await a.session.exchange("get_qrcode", signal(a), {
 			next: `${WEB}/`,
 			need_short_url: "true",
 			need_logo: "false",
@@ -317,7 +322,7 @@ export function createDouyinAuth(ctx: ExtensionContext) {
 		c.busy = true;
 		ctx.redact(code);
 		try {
-			const r = await a.session.exchange(
+			const { result: r } = await a.session.exchange(
 				"validate_code",
 				signal(a),
 				smsFields(c.data, c.way, code),

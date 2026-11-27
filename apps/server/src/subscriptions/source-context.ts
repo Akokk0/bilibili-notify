@@ -380,6 +380,7 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 					...(about ? { about } : {}),
 					code: report.code,
 					message: report.message,
+					...(report.warning === undefined ? {} : { warning: report.warning }),
 					...(report.notify === undefined ? {} : { notify: report.notify }),
 					...(report.recoveryMessage === undefined
 						? {}

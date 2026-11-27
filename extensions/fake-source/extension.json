@@ -31,12 +31,22 @@
 			"shortLabel": "假",
 			"color": "#0d9488",
 			"icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMGQ5NDg4IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEwIDJ2Ny41YTIgMiAwIDAgMS0uMi45TDQuNyAyMC41YTEgMSAwIDAgMCAuOSAxLjVoMTIuOGExIDEgMCAwIDAgLjktMS41bC01LjEtMTAuMWEyIDIgMCAwIDEtLjItLjlWMiIvPjxwYXRoIGQ9Ik04LjUgMmg3Ii8+PHBhdGggZD0iTTcgMTZoMTAiLz48L3N2Zz4=",
+			"postTemplates": {
+				"post": "{name}发布了一条{postNoun}",
+				"postVideo": "{name}发布了一条视频{postNoun}"
+			},
 			"postNoun": "假帖",
 			"creatorNoun": "假主播",
 			"externalIdNoun": "假号",
 			"externalIdRegex": "fake-[0-9a-f]{16}-[a-z]",
 			"searchAccepts": ["name"],
-			"supportedFeatures": ["post", "liveStart", "liveStreaming", "liveEnd"]
+			"supportedFeatures": ["post", "liveStart", "liveStreaming", "liveEnd"],
+			"liveTemplates": {
+				"liveStart": "{name} 开播啦[[，当前粉丝数：{follower}]]",
+				"liveStreaming": "{name} 正在直播[[，已播 {time}]][[，累计观看：{watched}]]",
+				"liveEnd": "{name} 下播啦[[，本次直播了 {time}]][[，粉丝变化 {follower_change}]]"
+			}
 		}
-	}
+	},
+	"apiRevision": 6
 }

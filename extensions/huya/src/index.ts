@@ -5,7 +5,8 @@ import { liveStatus } from "./live";
 import { monitor } from "./monitor";
 
 export function activate(ctx: ExtensionContext): void {
-	const directory = createDirectory(ctx, createClient(ctx));
+	const client = createClient(ctx);
+	const directory = createDirectory(ctx, client);
 	let life = new AbortController();
 	let running: ReturnType<typeof monitor> | undefined;
 	const scoped = (signal: AbortSignal) => AbortSignal.any([ctx.signal, life.signal, signal]);
@@ -18,7 +19,7 @@ export function activate(ctx: ExtensionContext): void {
 		start(source) {
 			if (running) stop();
 			if (life.signal.aborted) life = new AbortController();
-			const current = monitor(ctx, source, directory, scoped(source.signal));
+			const current = monitor(ctx, source, directory, client.needsRoomProbe, scoped(source.signal));
 			running = current;
 			source.onDispose(() => {
 				if (running === current) stop();
@@ -30,11 +31,19 @@ export function activate(ctx: ExtensionContext): void {
 		async fetchLiveStatus(identity, signal) {
 			const started = Date.now();
 			signal = scoped(signal);
+			const watch = running?.room(identity.externalId);
+			const revision = watch?.sessionRevision;
 			const room = await directory.lookup(identity.externalId, signal);
 			if (!room.ok) return room;
-			const result = await directory.observationOf(room, signal, started);
+			const result = await directory.observationOf(
+				room,
+				signal,
+				started,
+				undefined,
+				watch?.readMetrics,
+			);
 			if (!result.ok) return result;
-			running?.noteHostStatus(identity.externalId, result.observation);
+			watch?.noteHostStatus(result.observation, revision);
 			return liveStatus(result.observation);
 		},
 	});

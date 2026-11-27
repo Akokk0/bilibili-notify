@@ -561,6 +561,9 @@ importers:
       abogus:
         specifier: 2.1.1
         version: 2.1.1
+      protobufjs:
+        specifier: 8.8.0
+        version: 8.8.0
       qrcode:
         specifier: 'catalog:'
         version: 1.5.4

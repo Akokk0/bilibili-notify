@@ -236,6 +236,7 @@ describe("下播", () => {
 						ref: `${"a".repeat(64)}.webp`,
 					},
 					startedAt: LIVE_TIME_ISO,
+					endedAt: "2026-03-01T05:00:00.000Z",
 					currentViewers: 321,
 					totalViewers: 4321,
 					followersDelta: -10,

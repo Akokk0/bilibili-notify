@@ -30,7 +30,7 @@ import {
 	WarnNote,
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ExtensionSettingsButton } from "../components/extension-settings-button";
 import { SourceIcon } from "../components/platform-meta";
@@ -84,6 +84,7 @@ const UNTAGGED = "__untagged__";
 
 /** 标签表还没读到时的占位 —— 模块级常量,免得每次渲染一个新数组把 useMemo 的依赖冲掉。 */
 const NO_TAGS: ReadonlyArray<SubscriptionTag> = [];
+const SUBSCRIPTION_CARD_MIN_WIDTH = 280;
 
 function TagChip({
 	label,
@@ -463,6 +464,29 @@ function formatApiError(err: unknown): string {
 
 export default function Subscriptions() {
 	const t = useT();
+	const cardGrid = useRef<HTMLDivElement>(null);
+	const [cardColumnCount, setCardColumnCount] = useState(1);
+	useLayoutEffect(() => {
+		const grid = cardGrid.current;
+		if (!grid) return;
+		let previousWidth: number | undefined;
+		const updateColumnCount = (width: number) => {
+			if (width === previousWidth) return;
+			previousWidth = width;
+			const gap = Number.parseFloat(getComputedStyle(grid).columnGap) || 0;
+			setCardColumnCount(
+				Math.max(1, Math.floor((width + gap) / (SUBSCRIPTION_CARD_MIN_WIDTH + gap))),
+			);
+		};
+		updateColumnCount(grid.getBoundingClientRect().width);
+		if (typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(([entry]) => {
+			if (entry) updateColumnCount(entry.contentRect.width);
+		});
+		observer.observe(grid);
+		return () => observer.disconnect();
+	}, []);
+
 	const filterLabels: Record<FilterId, string> = {
 		all: t("subs.filter.all"),
 		enabled: t("subs.filter.enabled"),
@@ -731,6 +755,35 @@ export default function Subscriptions() {
 		setShowNewDialog(false);
 	}
 
+	const cards = filtered.map((sub) => (
+		<SubscriptionCard
+			key={sub.id}
+			sub={sub}
+			selected={selection.has(sub.id)}
+			togglePending={patchSub.isPending && patchSub.variables?.id === sub.id}
+			onClick={() => setDrawerSubId(sub.id)}
+			onToggleSelect={() => toggleSelect(sub.id)}
+			onToggleEnabled={(on) => patchSub.mutate({ id: sub.id, patch: { enabled: on } })}
+			onRequestMenu={(pos) => setMenuAt({ subId: sub.id, x: pos.x, y: pos.y })}
+			platform={platformOf(sub)}
+			extensionSettings={<ExtensionSettingsButton id={subscriptionIdentityOf(sub).sourceKey} />}
+			tags={tags}
+			globalFeatures={globalFeatures}
+		/>
+	));
+	if (!q.trim() && filterId === "all" && !activeTagFilter) {
+		cards.push(
+			<AddCard
+				key="add-subscription"
+				data-tour="subs-add"
+				label={t("subs.addCard.label")}
+				hint={t("subs.addCard.hint")}
+				className={`${SUBSCRIPTION_CARD_MIN_HEIGHT} focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink`}
+				onClick={() => setShowNewDialog(true)}
+			/>,
+		);
+	}
+
 	return (
 		<div className="bn-anim-page-in space-y-4">
 			<div className="flex flex-wrap items-center gap-2.5">
@@ -906,43 +959,17 @@ export default function Subscriptions() {
 			) : null}
 
 			<div
-				className="grid gap-3"
-				style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
+				ref={cardGrid}
+				className="grid items-start gap-3"
+				style={{ gridTemplateColumns: `repeat(${cardColumnCount}, minmax(0, 1fr))` }}
 			>
-				{filtered.map((s) => (
-					<SubscriptionCard
-						key={s.id}
-						sub={s}
-						selected={selection.has(s.id)}
-						togglePending={patchSub.isPending && patchSub.variables?.id === s.id}
-						onClick={() => setDrawerSubId(s.id)}
-						onToggleSelect={() => toggleSelect(s.id)}
-						onToggleEnabled={(on) => patchSub.mutate({ id: s.id, patch: { enabled: on } })}
-						onRequestMenu={(pos) => setMenuAt({ subId: s.id, x: pos.x, y: pos.y })}
-						platform={platformOf(s)}
-						extensionSettings={<ExtensionSettingsButton id={subscriptionIdentityOf(s).sourceKey} />}
-						tags={tags}
-						globalFeatures={globalFeatures}
-					/>
+				{/* 按订阅顺序从左到右分列。每列各自叠放，提示只会撑高所在列。 */}
+				{Array.from({ length: Math.min(cards.length, cardColumnCount) }, (_, column) => (
+					// biome-ignore lint/suspicious/noArrayIndexKey: 列的位置固定，订阅卡各自用订阅 id 做 key。
+					<div key={column} className="flex min-w-0 flex-col gap-3">
+						{cards.filter((_, index) => index % cardColumnCount === column)}
+					</div>
 				))}
-				{/* 在 grid 末尾追加「+ 添加 UP 主」预选卡。仅在没有任何搜索 / 过滤时
-				    显示 —— 过滤视图下加这张卡会让人误以为它本来就在过滤集合里。点击
-				    等价右上「添加」Btn,打开 NewDialog。视觉走 Targets 的 AddCard 风
-				    格(1px dashed + 实色白底 + unicode 加号),圆角与最小高度跟 SubscriptionCard
-				    对齐,在 grid 里视觉等高。
-
-				    最小高度**必须与 SubscriptionCard 引同一个常量**:grid 同行的高度取最高那张卡,
-				    这个值从前只写在这儿,于是它一被筛掉,整排 UP 卡就矮一截(真机 220→199)。 */}
-				{!q.trim() && filterId === "all" && !activeTagFilter ? (
-					// data-tour 与右上「添加」同名 —— 同名实例是等价入口,导览聚光灯一起亮
-					<AddCard
-						data-tour="subs-add"
-						label={t("subs.addCard.label")}
-						hint={t("subs.addCard.hint")}
-						className={`${SUBSCRIPTION_CARD_MIN_HEIGHT} focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink`}
-						onClick={() => setShowNewDialog(true)}
-					/>
-				) : null}
 			</div>
 
 			{newDraft ? (

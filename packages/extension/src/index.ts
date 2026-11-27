@@ -120,6 +120,7 @@ export type {
 	ExtensionI18n,
 	ExtensionLinkPreview,
 	ExtensionLiveDetails,
+	ExtensionLiveInteractionReport,
 	ExtensionLiveSignalReport,
 	ExtensionLiveStatusResult,
 	ExtensionPostReport,
