@@ -2,7 +2,7 @@
 	"id": "douyin",
 	"name": "抖音",
 	"description": "订阅抖音博主的视频、图文和直播，解析群聊中的作品链接。",
-	"version": "0.1.0-alpha.3",
+	"version": "0.1.0-alpha.4",
 	"apiVersion": 1,
 	"contributes": {
 		"subscription": {
