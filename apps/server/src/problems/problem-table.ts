@@ -50,7 +50,7 @@ export interface ProblemKey {
 
 export interface ProblemTable {
 	/**
-	 * 同键已有就只换 message(与 notify、recoveryMessage),`since` 不动。`notify` 缺省不私聊。
+	 * 同键再次上报会刷新文案、警示标记与通知设置，`since` 不动。`notify` 缺省不私聊。
 	 * `message` / `recoveryMessage` 交字符串就照用;交函数就由表存下,当场跑一次得出今天的字,之后
 	 * 语言或口吻变了再重跑(见文件头「换语言」)。
 	 * `recoveryMessage`:清掉且当初真私聊过时核心发的那一句;不给就用核心的通用说法。
@@ -59,6 +59,7 @@ export interface ProblemTable {
 	report(
 		input: ProblemKey & {
 			message: string | (() => string);
+			warning?: boolean;
 			notify?: boolean;
 			recoveryMessage?: string | (() => string);
 			writtenBy?: string;
@@ -242,6 +243,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 		report(input) {
 			const key = problemKeyOf(input);
 			const notify = input.notify ?? false;
+			const warning = input.warning === true;
 			const locale = options.texts?.locale();
 			const message = textOf(input.message);
 			const recoveryMessage =
@@ -255,6 +257,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 					typeof input.recoveryMessage === "function" ? input.recoveryMessage : undefined;
 				if (
 					existing.problem.message === message &&
+					(existing.problem.warning === true) === warning &&
 					existing.notify === notify &&
 					existing.recoveryMessage === recoveryMessage &&
 					existing.writtenBy === input.writtenBy
@@ -262,6 +265,8 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 					return;
 				}
 				existing.problem = { ...existing.problem, message };
+				if (warning) existing.problem.warning = true;
+				else delete existing.problem.warning;
 				existing.notify = notify;
 				if (recoveryMessage === undefined) delete existing.recoveryMessage;
 				else existing.recoveryMessage = recoveryMessage;
@@ -286,6 +291,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 				...(input.about ? { about: copyAbout(input.about) } : {}),
 				code: input.code,
 				message,
+				...(warning ? { warning } : {}),
 				since: now().toISOString(),
 			};
 			const entry: Entry = {

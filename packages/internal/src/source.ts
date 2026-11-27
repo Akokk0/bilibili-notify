@@ -106,6 +106,7 @@ export interface SourceContext extends IntegrationContext {
 	 * `notify: true` 请核心私聊主人一次。没有返回值;形状不对(含空白的 `message` / `recoveryMessage`)、
 	 * 来源已停下的上报被丢弃。
 	 *
+	 * `warning: true` 表示来源仍能降级工作，订阅卡用黄色警示。此标记独立于私聊开关。
 	 * `recoveryMessage`:这件事清掉、且当初真私聊过时核心发的那一句(发的是私聊出去那一刻的那句);
 	 * 不给就用宿主带来源名的通用说法(接当初私聊的原文)。
 	 */
@@ -113,6 +114,7 @@ export interface SourceContext extends IntegrationContext {
 		externalId?: string;
 		code: string;
 		message: string;
+		warning?: boolean;
 		notify?: boolean;
 		recoveryMessage?: string;
 	}): void;

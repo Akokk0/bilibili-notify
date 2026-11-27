@@ -298,6 +298,13 @@ it("observes a live session once, retains it through uncertainty and distinguish
 		isLive: true,
 		details: { url: `https://live.douyin.com/${webRid}` },
 	});
+	expect(context.reportProblem).toHaveBeenCalledWith({
+		externalId: secUid,
+		code: "douyin_live_socket",
+		message: "live.socketUnavailable",
+		warning: true,
+		notify: false,
+	});
 	expect(client.profile).toHaveBeenCalledTimes(1);
 	expect(await source.fetchLiveStatus(identity, signal)).toMatchObject({
 		ok: true,

@@ -163,6 +163,7 @@ export function createDouyinSource(ctx: ExtensionContext, client: DouyinSourceCl
 				externalId: id,
 				code: "douyin_live_socket",
 				message: ctx.i18n.t("live.socketUnavailable"),
+				warning: true,
 				notify: false,
 			});
 		if (!next.viewerId) return unavailable();

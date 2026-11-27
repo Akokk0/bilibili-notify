@@ -350,8 +350,7 @@ describe("SubscriptionCard 菜单触发", () => {
 });
 
 /**
- * 挂在订阅上的问题(服务端从问题表 join 来):每条一个红字提示,正文是问题的 message;
- * 不看来源、不看 code —— 拓展订阅一样出。没有问题就什么都不出。
+ * 挂在订阅上的问题按上报的标记显示提示，正文取问题的 message。
  */
 describe("SubscriptionCard 订阅上的问题", () => {
 	const PROBLEM = {
@@ -369,7 +368,22 @@ describe("SubscriptionCard 订阅上的问题", () => {
 		};
 		const { getByText } = render(<SubscriptionCard {...props({ sub })} />);
 
-		expect(getByText(/直播间读不到/)).toBeTruthy();
+		expect(getByText(/直播间读不到/).closest("[data-bn~='note-danger']")).not.toBeNull();
+	});
+
+	it("shows a warning at the bottom after the subscription metadata", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "douyin", externalId: "MS4wLjAB-sec" }),
+			notes: "订阅备注",
+			problems: [{ ...PROBLEM, warning: true }],
+		};
+		const { getByText } = render(<SubscriptionCard {...props({ sub })} />);
+
+		const notice = getByText(PROBLEM.message).closest("[data-bn~='note-warn']");
+		expect(notice).not.toBeNull();
+		expect(getByText("订阅备注").compareDocumentPosition(notice as Node)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
 	});
 
 	it("每条问题各出一个", () => {

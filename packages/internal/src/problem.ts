@@ -16,6 +16,8 @@ export interface Problem {
 	/** snake 风格;不受标准失败码表约束。同一个报的人、同一个对象下,同一个 code 只有一条。 */
 	code: string;
 	message: string;
+	/** 仍能继续工作的降级状态，在订阅卡上用警示样式。 */
+	warning?: boolean;
 	/** 第一次出现的时刻(ISO)。重复报不重置。 */
 	since: string;
 }

@@ -90,6 +90,7 @@ export function SubscriptionCard({
 			: tx("sourceUi.pages.up.UpCard.UpCard.2", { value1: formatCount(fans) });
 	// Display order belongs to the registry; subscription tagIds remain unchanged.
 	const cardTags = (tags ?? []).filter((tag) => sub.tagIds.includes(tag.id));
+	const warnings = sub.problems.filter((problem) => problem.warning);
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: outer card holds inner <button>s (select / enabled toggle); nested HTML <button> is invalid, so a div + role=button is the right escape.
 		<div
@@ -114,7 +115,7 @@ export function SubscriptionCard({
 			onMouseEnter={() => setHover(true)}
 			onMouseLeave={() => setHover(false)}
 			// 玻璃底(皮肤壁纸可透出);玻璃卡无描边(卡片风),未选中态靠阴影分层,选中态叠粉色 ring
-			className={`bn-glass group relative cursor-pointer overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${SUBSCRIPTION_CARD_MIN_HEIGHT} ${
+			className={`bn-glass group relative flex cursor-pointer flex-col overflow-hidden rounded-xl text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink ${SUBSCRIPTION_CARD_MIN_HEIGHT} ${
 				selected ? "ring-2 ring-bn-pink" : ""
 			} ${hover ? "-translate-y-0.5 shadow-bn-elev" : "shadow-bn-card"} ${
 				sub.enabled && !paused ? "" : "opacity-70"
@@ -122,7 +123,7 @@ export function SubscriptionCard({
 		>
 			{/* cover band */}
 			<div
-				className="relative h-14"
+				className="relative h-14 shrink-0"
 				style={{
 					background: `linear-gradient(135deg, color-mix(in srgb, ${color} 40%, transparent), color-mix(in srgb, ${color} 20%, transparent))`,
 				}}
@@ -151,7 +152,7 @@ export function SubscriptionCard({
 			</div>
 
 			{/* body */}
-			<div className="relative px-3.5 pb-3 pt-0">
+			<div className="relative flex flex-1 flex-col px-3.5 pb-3">
 				<div className="-mt-5 mb-2">
 					<Avatar
 						name={displayName(sub, ext)}
@@ -211,17 +212,18 @@ export function SubscriptionCard({
 							: tx("sourceUi.pages.up.UpCard.UpCard.5", { source: ext.label })}
 					</WarnNote>
 				) : null}
-				{/* 挂在这条订阅上的问题(服务端从问题表 join 来):每条一个,不看来源、不看 code。 */}
-				{sub.problems.map((problem) => (
-					<ErrorNote
-						key={`${problem.reporter}/${problem.code}`}
-						size="sm"
-						icon={<Icon.warning size={12} />}
-						className="mb-2.5"
-					>
-						{problem.message}
-					</ErrorNote>
-				))}
+				{sub.problems
+					.filter((problem) => !problem.warning)
+					.map((problem) => (
+						<ErrorNote
+							key={`${problem.reporter}/${problem.code}`}
+							size="sm"
+							icon={<Icon.warning size={12} />}
+							className="mb-2.5"
+						>
+							{problem.message}
+						</ErrorNote>
+					))}
 				<div className="flex flex-wrap items-start gap-x-2 gap-y-1">
 					<div className="flex min-w-0 flex-[1_1_min-content] flex-wrap items-center gap-1">
 						{features.length === 0 ? (
@@ -264,6 +266,19 @@ export function SubscriptionCard({
 							</li>
 						))}
 					</ul>
+				) : null}
+				{warnings.length > 0 ? (
+					<div className="mt-auto space-y-2 pt-2.5">
+						{warnings.map((problem) => (
+							<WarnNote
+								key={`${problem.reporter}/${problem.code}`}
+								size="sm"
+								icon={<Icon.warning size={12} />}
+							>
+								{problem.message}
+							</WarnNote>
+						))}
+					</div>
 				) : null}
 			</div>
 		</div>
