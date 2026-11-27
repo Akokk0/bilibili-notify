@@ -33,7 +33,7 @@
 					"post": "{name}發布了一則微博",
 					"postVideo": "{name}發布了一則影片微博"
 				},
-				"postNoun": "微博",
+				"postNoun": "作品",
 				"externalIdNoun": "UID"
 			}
 		}
