@@ -448,16 +448,20 @@ describe("SubscriptionCard 标签角标", () => {
 		expect(container.textContent).not.toContain("· 更新于");
 	});
 
-	it("keeps the update time separate from label pills", () => {
+	it("puts the update time in the same row as the subscription features", () => {
 		const sub = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			tagIds: [GAME.id],
 		};
-		const { container } = render(<SubscriptionCard {...props({ sub, tags: [GAME] })} />);
+		const { getByText } = render(
+			<SubscriptionCard
+				{...props({ sub, tags: [GAME], platform: { ...props().platform, postNoun: "作品" } })}
+			/>,
+		);
 
-		expect(container.textContent).toContain("游戏");
-		expect(container.textContent).toContain("更新于");
-		expect(container.textContent).not.toContain("· 更新于");
+		const updated = getByText(/更新于/);
+		expect(getByText("作品").parentElement?.nextElementSibling).toBe(updated);
+		expect(updated.textContent).not.toContain("· 更新于");
 	});
 
 	it("标签表没读到 / 表里查不到那个 id → 当没挂,什么都不写(两张表各自重取,一时对不上不许崩)", () => {

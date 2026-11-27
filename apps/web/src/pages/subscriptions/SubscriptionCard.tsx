@@ -57,13 +57,7 @@ export interface SubscriptionCardProps {
 	globalFeatures?: FeatureFlagValues;
 }
 
-/**
- * UP 卡与末尾那张「添加 UP 主」卡**共用**的最小高度。
- *
- * grid 同一行的高度由最高的那张卡决定。这个值从前只写在添加卡上,UP 卡自己没有
- * —— 于是一切到标签筛选(添加卡按设计不出现),整排 UP 卡当场矮一截。两处引同一个
- * 常量,谁也别再替谁撑着。
- */
+/** 订阅卡与添加卡共用的最小高度，筛选时订阅卡也维持这个高度。 */
 export const SUBSCRIPTION_CARD_MIN_HEIGHT = "min-h-55";
 
 export function SubscriptionCard({
@@ -228,28 +222,39 @@ export function SubscriptionCard({
 						{problem.message}
 					</ErrorNote>
 				))}
-				<div className="mb-2.5 flex flex-wrap gap-1">
-					{features.length === 0 ? (
-						<span className="text-bn-2xs text-bn-text-secondary">
-							{tx("sourceUi.pages.up.UpCard.UpCard.6")}
-						</span>
-					) : (
-						features.map((f) => (
-							<Pill key={f} color={FEATURE_TONE[f] ?? "var(--color-bn-inactive)"} subtle size="sm">
-								{featureLabelOf(f, ext)}
-							</Pill>
-						))
-					)}
+				<div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+					<div className="flex min-w-0 flex-[1_1_min-content] flex-wrap items-center gap-1">
+						{features.length === 0 ? (
+							<span className="text-bn-2xs text-bn-text-secondary">
+								{tx("sourceUi.pages.up.UpCard.UpCard.6")}
+							</span>
+						) : (
+							features.map((f) => (
+								<Pill
+									key={f}
+									color={FEATURE_TONE[f] ?? "var(--color-bn-inactive)"}
+									subtle
+									size="sm"
+								>
+									{featureLabelOf(f, ext)}
+								</Pill>
+							))
+						)}
+					</div>
+					<div className="ml-auto max-w-full text-right text-bn-xs leading-4 text-bn-text-secondary">
+						{tx("sourceUi.pages.up.UpCard.UpCard.8")}{" "}
+						<RelativeTime at={sub.cachedProfile?.refreshedAt} />
+					</div>
 				</div>
 				{sub.notes ? (
-					<div className="mb-2 truncate text-bn-xs italic text-bn-text-secondary" title={sub.notes}>
+					<div className="mt-2 truncate text-bn-xs italic text-bn-text-secondary" title={sub.notes}>
 						{sub.notes}
 					</div>
 				) : null}
 				{cardTags.length > 0 ? (
 					<ul
 						aria-label={tx("subscriptionTags.cardLabels")}
-						className="m-0 mb-2.5 flex min-w-0 list-none flex-wrap gap-1 p-0"
+						className="m-0 mt-2 flex min-w-0 list-none flex-wrap gap-1 p-0"
 					>
 						{cardTags.map((tag) => (
 							<li key={tag.id} className="max-w-full" title={tag.name}>
@@ -260,10 +265,6 @@ export function SubscriptionCard({
 						))}
 					</ul>
 				) : null}
-				<div className="text-right text-bn-xs text-bn-text-secondary">
-					{tx("sourceUi.pages.up.UpCard.UpCard.8")}{" "}
-					<RelativeTime at={sub.cachedProfile?.refreshedAt} />
-				</div>
 			</div>
 		</div>
 	);
