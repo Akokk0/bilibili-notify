@@ -371,7 +371,7 @@ describe("SubscriptionCard 订阅上的问题", () => {
 		expect(getByText(/直播间读不到/).closest("[data-bn~='note-danger']")).not.toBeNull();
 	});
 
-	it("shows a warning at the bottom after the subscription metadata", () => {
+	it("shows the warning between the subscription metadata and the update time", () => {
 		const sub = {
 			...makeEmptySubscription({ sourceKey: "douyin", externalId: "MS4wLjAB-sec" }),
 			notes: "订阅备注",
@@ -379,9 +379,12 @@ describe("SubscriptionCard 订阅上的问题", () => {
 		};
 		const { getByText } = render(<SubscriptionCard {...props({ sub })} />);
 
-		const notice = getByText(PROBLEM.message).closest("[data-bn~='note-warn']");
-		expect(notice).not.toBeNull();
-		expect(getByText("订阅备注").compareDocumentPosition(notice as Node)).toBe(
+		const notice = getByText(PROBLEM.message);
+		expect(notice.closest("[data-bn~='note-warn']")).not.toBeNull();
+		expect(getByText("订阅备注").compareDocumentPosition(notice)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
+		expect(notice.compareDocumentPosition(getByText(/更新于/))).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
 	});
@@ -462,20 +465,24 @@ describe("SubscriptionCard 标签角标", () => {
 		expect(container.textContent).not.toContain("· 更新于");
 	});
 
-	it("puts the update time in the same row as the subscription features", () => {
+	it("shows the update time below the subscription labels", () => {
 		const sub = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			tagIds: [GAME.id],
 		};
-		const { getByText } = render(
+		const { getByText, getByRole } = render(
 			<SubscriptionCard
 				{...props({ sub, tags: [GAME], platform: { ...props().platform, postNoun: "作品" } })}
 			/>,
 		);
 
 		const updated = getByText(/更新于/);
-		expect(getByText("作品").parentElement?.nextElementSibling).toBe(updated);
-		expect(updated.textContent).not.toContain("· 更新于");
+		expect(getByText("作品").compareDocumentPosition(updated)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
+		expect(getByRole("list", { name: "订阅标签" }).compareDocumentPosition(updated)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
 	});
 
 	it("标签表没读到 / 表里查不到那个 id → 当没挂,什么都不写(两张表各自重取,一时对不上不许崩)", () => {

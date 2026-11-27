@@ -224,29 +224,18 @@ export function SubscriptionCard({
 							{problem.message}
 						</ErrorNote>
 					))}
-				<div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-					<div className="flex min-w-0 flex-[1_1_min-content] flex-wrap items-center gap-1">
-						{features.length === 0 ? (
-							<span className="text-bn-2xs text-bn-text-secondary">
-								{tx("sourceUi.pages.up.UpCard.UpCard.6")}
-							</span>
-						) : (
-							features.map((f) => (
-								<Pill
-									key={f}
-									color={FEATURE_TONE[f] ?? "var(--color-bn-inactive)"}
-									subtle
-									size="sm"
-								>
-									{featureLabelOf(f, ext)}
-								</Pill>
-							))
-						)}
-					</div>
-					<div className="ml-auto max-w-full text-right text-bn-xs leading-4 text-bn-text-secondary">
-						{tx("sourceUi.pages.up.UpCard.UpCard.8")}{" "}
-						<RelativeTime at={sub.cachedProfile?.refreshedAt} />
-					</div>
+				<div className="flex flex-wrap items-center gap-1">
+					{features.length === 0 ? (
+						<span className="text-bn-2xs text-bn-text-secondary">
+							{tx("sourceUi.pages.up.UpCard.UpCard.6")}
+						</span>
+					) : (
+						features.map((f) => (
+							<Pill key={f} color={FEATURE_TONE[f] ?? "var(--color-bn-inactive)"} subtle size="sm">
+								{featureLabelOf(f, ext)}
+							</Pill>
+						))
+					)}
 				</div>
 				{sub.notes ? (
 					<div className="mt-2 truncate text-bn-xs italic text-bn-text-secondary" title={sub.notes}>
@@ -268,7 +257,7 @@ export function SubscriptionCard({
 					</ul>
 				) : null}
 				{warnings.length > 0 ? (
-					<div className="mt-auto space-y-2 pt-2.5">
+					<div className="mt-2.5 space-y-2">
 						{warnings.map((problem) => (
 							<WarnNote
 								key={`${problem.reporter}/${problem.code}`}
@@ -280,6 +269,10 @@ export function SubscriptionCard({
 						))}
 					</div>
 				) : null}
+				<div className="mt-auto pt-2.5 text-right text-bn-xs leading-4 text-bn-text-secondary">
+					{tx("sourceUi.pages.up.UpCard.UpCard.8")}{" "}
+					<RelativeTime at={sub.cachedProfile?.refreshedAt} />
+				</div>
 			</div>
 		</div>
 	);
